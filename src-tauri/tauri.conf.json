@@ -13,10 +13,18 @@
     "windows": [
       {
         "title": "qx",
-        "width": 800,
-        "height": 600
+        "width": 680,
+        "height": 500,
+        "decorations": false,
+        "transparent": true,
+        "center": true,
+        "visible": false
       }
     ],
+    "trayIcon": {
+      "iconPath": "icons/32x32.png",
+      "iconAsTemplate": true
+    },
     "security": {
       "csp": null
     }
