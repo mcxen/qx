@@ -131,3 +131,108 @@ CREATE TABLE plugins (id TEXT PRIMARY KEY, name TEXT NOT NULL, title TEXT NOT NU
 - 使用 Tauri v2 最新稳定版
 - Rust 后端逻辑拆分到单独模块文件
 - 前端组件按 modules/ 目录组织
+
+---
+
+## P1 — RSS 阅读器（控制台内嵌模块）
+
+**概述**：在 Qx 启动器内嵌一个 RSS 阅读器，支持订阅管理、列表阅读、图片查看。作为控制台的扩展功能，可通过搜索或快捷键唤出。
+
+### 功能需求
+
+**订阅管理**：
+- Rust 后端：RSS/Atom feed 解析（`feed-rs` crate）
+- SQLite 存储订阅源 URL、名称、图标、最后更新时间
+- 支持手动添加/删除订阅源
+- 支持 OPML 导入/导出
+
+**列表阅读**：
+- 订阅源列表（左列）：显示所有订阅，未读数标记
+- 文章列表（中列）：选中订阅后显示文章标题、摘要、发布时间
+- 文章详情（右列/弹窗）：全文阅读，支持 Markdown/HTML 渲染
+- 标记已读/未读，全部标记已读
+
+**图片查看**：
+- 文章内嵌图片自动加载显示
+- 点击图片放大查看（lightbox 模式）
+- 支持图片保存到本地
+
+**前端 UI**：
+- 三栏布局（订阅列表 / 文章列表 / 阅读区），参考 Reeder / NetNewsWire 风格
+- 亮色毛玻璃风格，与启动器统一
+- 快捷键：`J/K` 上下篇文章，`R` 刷新，`U` 切换未读
+- 搜索框过滤文章
+
+**控制台集成**：
+- 在启动器中输入 "rss" / "feeds" 唤出阅读器
+- 阅读器作为一个 View 插件或内嵌模块，占满启动器窗口
+- 支持系统托盘通知新文章
+
+### 技术方案
+
+```rust
+// Rust 后端
+// Cargo.toml 新增依赖
+feed-rs = "2"     // RSS/Atom 解析
+reqwest = { version = "0.12", features = ["rustls-tls"] }  // HTTP 获取 feed
+quick-xml = "0.36" // XML 解析
+
+// 模块文件
+src-tauri/src/rss/
+├── mod.rs       // 模块入口 + Tauri commands
+├── fetcher.rs   // 网络获取 + 解析
+├── storage.rs   // SQLite CRUD
+└── types.rs     // 数据结构
+
+// 前端组件
+src/modules/rss/
+├── RssPanel.tsx        // 主面板（三栏布局）
+├── FeedList.tsx        // 订阅源列表
+├── ArticleList.tsx     // 文章列表
+├── ArticleViewer.tsx   // 文章阅读区
+├── ImageLightbox.tsx   // 图片放大查看
+├── AddFeedDialog.tsx   // 添加订阅对话框
+└── store.ts            // zustand 状态
+```
+
+### 数据库表
+
+```sql
+CREATE TABLE rss_feeds (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  url TEXT NOT NULL UNIQUE,
+  title TEXT,
+  icon TEXT,
+  last_fetched INTEGER,
+  error_count INTEGER DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE rss_articles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  feed_id INTEGER NOT NULL REFERENCES rss_feeds(id),
+  guid TEXT NOT NULL UNIQUE,
+  title TEXT,
+  summary TEXT,
+  content TEXT,
+  author TEXT,
+  link TEXT,
+  image_url TEXT,
+  is_read INTEGER DEFAULT 0,
+  is_starred INTEGER DEFAULT 0,
+  published_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+```
+
+### 快捷键
+
+| 快捷键 | 功能 |
+|--------|------|
+| `Alt+R` | 唤出 RSS 阅读器 |
+| `J` / `K` | 上/下篇文章 |
+| `R` | 刷新当前订阅 |
+| `U` | 切换仅未读 |
+| `S` | 星标/取消星标 |
+| `O` | 浏览器打开原文 |
+| `Esc` | 返回列表 / 关闭阅读器 |
