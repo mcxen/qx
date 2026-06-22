@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 interface ScreenshotResult {
   path: string;
@@ -33,14 +32,6 @@ export default function ScreenshotPanel() {
       console.error("Capture failed:", e);
     }
     setCapturing(false);
-  };
-
-  const copyToClipboard = async (path: string) => {
-    try {
-      const img = await fetch(`file://${path}`);
-      // For MVP, just copy the path
-      await writeText(path);
-    } catch {}
   };
 
   return (

@@ -7,20 +7,20 @@ import ResultsList from "./ResultsList";
 import "./App.css";
 
 function App() {
-  const { visible, query, setVisible, setQuery, setResults, results, selectedIndex, setSelectedIndex } = useStore();
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const { query, setVisible, setQuery, setResults, results, selectedIndex, setSelectedIndex } = useStore();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     const win = getCurrentWindow();
-    const unlisten = win.onVisibilityChanged(({ visible }) => {
-      setVisible(visible);
-      if (visible) {
+    const unlisten = win.onFocusChanged(({ payload: focused }) => {
+      setVisible(focused);
+      if (focused) {
         setQuery("");
         setResults([]);
         setSelectedIndex(0);
       }
     });
-    return () => { unlisten.then((f) => f()); };
+    return () => { unlisten.then((f: () => void) => f()); };
   }, []);
 
   const doSearch = useCallback(async (q: string) => {

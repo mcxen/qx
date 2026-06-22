@@ -6,7 +6,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager,
 };
-use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 #[tauri::command]
 fn open_app(path: String) {
@@ -23,12 +23,9 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             let win = app.get_webview_window("main").unwrap();
+            let gs = handle.global_shortcut();
 
-            app.global_shortcut().register(
-                Shortcut::new(Some(Modifiers::ALT), Code::Space),
-            )?;
-
-            app.on_shortcut_event(move |_app, event, _shortcut| {
+            gs.on_shortcut(Shortcut::new(Some(Modifiers::ALT), Code::Space), move |_app, _shortcut, event| {
                 if event.state() == ShortcutState::Pressed {
                     if win.is_visible().unwrap_or(false) {
                         let _ = win.hide();
@@ -37,7 +34,7 @@ pub fn run() {
                         let _ = win.set_focus();
                     }
                 }
-            });
+            })?;
 
             let show = MenuItem::with_id(app, "show", "Show/Hide", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Qx", true, Some("Cmd+Q"))?;
