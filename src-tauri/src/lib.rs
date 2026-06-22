@@ -1,5 +1,6 @@
 mod apps;
 mod clipboard;
+mod macro_recorder;
 mod marketplace;
 mod rss;
 mod screencap;
@@ -140,6 +141,12 @@ pub fn run() {
             marketplace::install_plugin,
             marketplace::uninstall_plugin,
             marketplace::list_installed_plugins,
+            macro_recorder::macro_start_recording,
+            macro_recorder::macro_stop_recording,
+            macro_recorder::macro_save,
+            macro_recorder::macro_list,
+            macro_recorder::macro_delete,
+            macro_recorder::macro_play,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

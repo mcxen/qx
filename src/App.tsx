@@ -10,12 +10,15 @@ import ScreenshotPanel from "./modules/screenshot/ScreenshotPanel";
 import ScreenRecorder from "./modules/screencap/ScreenRecorder";
 import SettingsPanel from "./modules/settings/SettingsPanel";
 import RssReader from "./modules/rss";
+import MacroRecorder from "./modules/macros/MacroRecorder";
 import { useSettingsStore } from "./modules/settings/store";
+import { ThemeProvider } from "./ThemeProvider";
 import "./App.css";
 
 const SETTINGS_KEYWORDS = ["settings", "preferences", "plugins", "shortcuts", "appearance", "advanced"];
-const SCREENCAP_KEYWORDS = ["gif", "recording", "screencap", "screen record", "录屏"];
+const SCREENCAP_KEYWORDS = ["gif", "screencap", "screen record", "录屏"];
 const RSS_KEYWORDS = ["rss", "feeds", "feed", "articles", "订阅"];
+const MACROS_KEYWORDS = ["macro", "macros", "recording", "宏", "录制"];
 
 function isTauriRuntime(): boolean {
   return "__TAURI_INTERNALS__" in window;
@@ -37,6 +40,12 @@ function matchesRss(query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return false;
   return RSS_KEYWORDS.some((k) => k === q || k.startsWith(q) || q.startsWith(k));
+}
+
+function matchesMacros(query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return false;
+  return MACROS_KEYWORDS.some((k) => k === q || k.startsWith(q) || q.startsWith(k));
 }
 
 function App() {
@@ -90,7 +99,7 @@ function App() {
     });
     const unlistenNav = listen<string>("navigate", (e) => {
       const next = e.payload;
-      if (next === "clipboard" || next === "screenshot" || next === "screencap" || next === "rss" || next === "settings") {
+      if (next === "clipboard" || next === "screenshot" || next === "screencap" || next === "rss" || next === "macros" || next === "settings") {
         setTab(next);
       } else if (next === "launcher") {
         setTab("launcher");
@@ -122,6 +131,20 @@ function App() {
         const synthetic: AppEntry = {
           name: "Record Screen GIF",
           path: "__qx:screencap",
+          icon: "",
+        };
+        try {
+          const res = await invoke<AppEntry[]>("search_apps", { query: q });
+          setResults([synthetic, ...res]);
+        } catch {
+          setResults([synthetic]);
+        }
+        return;
+      }
+      if (matchesMacros(q)) {
+        const synthetic: AppEntry = {
+          name: "Macro Recorder",
+          path: "__qx:macros",
           icon: "",
         };
         try {
@@ -177,6 +200,10 @@ function App() {
       setTab("rss");
       return;
     }
+    if (item.path === "__qx:macros") {
+      setTab("macros");
+      return;
+    }
     await invoke("open_app", { path: item.path });
     if (isTauriRuntime()) await getCurrentWindow().hide();
   };
@@ -226,6 +253,8 @@ function App() {
         return <ScreenRecorder />;
       case "rss":
         return <RssReader />;
+      case "macros":
+        return <MacroRecorder />;
       case "settings":
         return <SettingsPanel onClose={() => setTab("launcher")} />;
       case "launcher":
@@ -240,13 +269,14 @@ function App() {
   };
 
   return (
-    <div className="qx-canvas">
-      <div
-        style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
-        onKeyDown={tab !== "launcher" ? handleKeyDown : undefined}
-      >
-        {renderBody()}
-      </div>
+    <ThemeProvider>
+      <div className="qx-canvas">
+        <div
+          style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
+          onKeyDown={tab !== "launcher" ? handleKeyDown : undefined}
+        >
+          {renderBody()}
+        </div>
       <div className="qx-actionbar" style={tab === "rss" ? { display: "none" } : undefined}>
         {tab === "launcher" && (
           <>
@@ -269,7 +299,7 @@ function App() {
           style={{
             border: "none",
             background: "transparent",
-            color: "var(--color-text-secondary)",
+            color: "var(--qx-text-secondary)",
             fontSize: 12,
             cursor: "pointer",
             padding: 0,
@@ -282,7 +312,8 @@ function App() {
           <kbd>⌘,</kbd>Settings
         </button>
       </div>
-    </div>
+      </div>
+    </ThemeProvider>
   );
 }
 

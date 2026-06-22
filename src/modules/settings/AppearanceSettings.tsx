@@ -1,4 +1,5 @@
 import { useSettingsStore } from "./store";
+import { useTheme } from "../../ThemeProvider";
 
 function Row({
   title,
@@ -53,14 +54,18 @@ function SegmentedControl<T extends string>({
 
 export default function AppearanceSettings() {
   const { settings, patch } = useSettingsStore();
+  const { theme, setTheme } = useTheme();
   const a = settings.appearance;
 
   return (
     <div className="qx-settings-page">
       <Row title="Theme" description="Choose the interface color scheme.">
         <SegmentedControl
-          value={a.theme}
-          onChange={(v) => patch("appearance", { ...a, theme: v })}
+          value={theme}
+          onChange={(v) => {
+            setTheme(v);
+            patch("appearance", { ...a, theme: v });
+          }}
           options={[
             { value: "light", label: "Light" },
             { value: "dark", label: "Dark" },

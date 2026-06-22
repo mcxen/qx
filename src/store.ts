@@ -41,7 +41,7 @@ export interface RssArticle {
   published_at: number;
 }
 
-export type Tab = "launcher" | "clipboard" | "screenshot" | "screencap" | "rss" | "settings";
+export type Tab = "launcher" | "clipboard" | "screenshot" | "screencap" | "rss" | "settings" | "macros";
 
 interface AppStore {
   visible: boolean;

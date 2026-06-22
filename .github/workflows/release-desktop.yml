@@ -10,23 +10,18 @@ on:
         description: Release tag, for example v0.1.0
         required: true
         type: string
-      release_name:
-        description: Release title
-        required: false
-        type: string
       prerelease:
         description: Mark as a prerelease
         required: false
         default: false
         type: boolean
 
-env:
-  RELEASE_REPOSITORY: mcxen/qx-releases
-
 jobs:
   build:
     name: Build ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -36,27 +31,6 @@ jobs:
             os: macos-14
             target: aarch64-apple-darwin
             bundles: app
-            asset_glob: qx_*_aarch64-apple-darwin.app.zip
-          - label: macOS Intel
-            artifact: macos-x64
-            os: macos-13
-            target: x86_64-apple-darwin
-            bundles: app
-            asset_glob: qx_*_x86_64-apple-darwin.app.zip
-          - label: Windows
-            artifact: windows-x64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bundles: nsis
-            asset_glob: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-          - label: Linux
-            artifact: linux-x64
-            os: ubuntu-22.04
-            target: x86_64-unknown-linux-gnu
-            bundles: deb,appimage
-            asset_glob: |
-              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
-              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
 
     steps:
       - name: Checkout
@@ -88,17 +62,6 @@ jobs:
           workspaces: src-tauri
           key: ${{ matrix.target }}
 
-      - name: Install Linux system dependencies
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libgtk-3-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf
-
       - name: Install frontend dependencies
         run: npm ci
 
@@ -116,26 +79,26 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: qx-${{ matrix.artifact }}
-          path: ${{ matrix.asset_glob }}
-          if-no-files-found: error
+          path: |
+            qx_*.app.zip
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          if-no-files-found: warn
 
   publish:
-    name: Publish desktop release
+    name: Publish release
     needs: build
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
 
     steps:
       - name: Resolve release metadata
         run: |
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             echo "RELEASE_TAG=${{ inputs.tag }}" >> "${GITHUB_ENV}"
-            echo "RELEASE_NAME=${{ inputs.release_name || inputs.tag }}" >> "${GITHUB_ENV}"
             echo "PRERELEASE=${{ inputs.prerelease }}" >> "${GITHUB_ENV}"
           else
             echo "RELEASE_TAG=${GITHUB_REF_NAME}" >> "${GITHUB_ENV}"
-            echo "RELEASE_NAME=${GITHUB_REF_NAME}" >> "${GITHUB_ENV}"
             echo "PRERELEASE=false" >> "${GITHUB_ENV}"
           fi
 
@@ -150,31 +113,14 @@ jobs:
 
       - name: Publish GitHub release
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -z "${GH_TOKEN}" ]; then
-            echo "Missing RELEASE_TOKEN secret with access to ${RELEASE_REPOSITORY}."
-            exit 1
-          fi
-
-          if gh release view "${RELEASE_TAG}" --repo "${RELEASE_REPOSITORY}" >/dev/null 2>&1; then
-            gh release upload "${RELEASE_TAG}" release-assets/* \
-              --repo "${RELEASE_REPOSITORY}" \
-              --clobber
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release-assets/* --clobber
             exit 0
           fi
 
-          create_args=(
-            release
-            create "${RELEASE_TAG}"
-            release-assets/*
-            --repo "${RELEASE_REPOSITORY}"
-            --title "${RELEASE_NAME}"
-            --notes "Desktop clients built from ${GITHUB_REPOSITORY}@${GITHUB_SHA}."
-          )
-
-          if [ "${PRERELEASE}" = "true" ]; then
-            create_args+=(--prerelease)
-          fi
-
-          gh "${create_args[@]}"
+          gh release create "${RELEASE_TAG}" release-assets/* \
+            --title "${RELEASE_TAG}" \
+            --notes "Desktop clients built from ${GITHUB_REPOSITORY}@${GITHUB_SHA}." \
+            $([ "${PRERELEASE}" = "true" ] && echo "--prerelease" || echo "")
