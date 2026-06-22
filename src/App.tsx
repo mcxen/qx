@@ -1,50 +1,93 @@
-import { useState } from "react";
-import reactLogo from "./assets/react.svg";
+import { useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useStore, type AppEntry } from "./store";
+import SearchBar from "./SearchBar";
+import ResultsList from "./ResultsList";
 import "./App.css";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const { visible, query, setVisible, setQuery, setResults, results, selectedIndex, setSelectedIndex } = useStore();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  useEffect(() => {
+    const win = getCurrentWindow();
+    const unlisten = win.onVisibilityChanged(({ visible }) => {
+      setVisible(visible);
+      if (visible) {
+        setQuery("");
+        setResults([]);
+        setSelectedIndex(0);
+      }
+    });
+    return () => { unlisten.then((f) => f()); };
+  }, []);
+
+  const doSearch = useCallback(async (q: string) => {
+    try {
+      const res = await invoke<AppEntry[]>("search_apps", { query: q });
+      setResults(res);
+    } catch {
+      setResults([]);
+    }
+  }, [setResults]);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => doSearch(query), 100);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [query, doSearch]);
+
+  const handleKeyDown = async (e: React.KeyboardEvent) => {
+    const item = results[selectedIndex];
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setSelectedIndex(Math.min(selectedIndex + 1, results.length - 1));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setSelectedIndex(Math.max(selectedIndex - 1, 0));
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (item) {
+          await invoke("open_app", { path: item.path });
+          const win = getCurrentWindow();
+          await win.hide();
+        }
+        break;
+      case "Escape":
+        await getCurrentWindow().hide();
+        break;
+    }
+  };
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
-
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
+    <div
+      style={{
+        width: "100vw",
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        background: "var(--bg-primary)",
+        backdropFilter: "blur(30px)",
+        WebkitBackdropFilter: "blur(30px)",
+        borderRadius: 16,
+        border: "1px solid var(--border-color)",
+        boxShadow: "var(--shadow-lg)",
+      }}
+    >
+      <SearchBar onKeyDown={handleKeyDown} />
+      <ResultsList
+        items={results}
+        onItemClick={async (item) => {
+          await invoke("open_app", { path: item.path });
+          await getCurrentWindow().hide();
         }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+      />
+    </div>
   );
 }
 
