@@ -141,7 +141,7 @@ export default function RssPanel() {
     >
       <div className="qx-plugin-toolbar">
         <div className="qx-search-wrap">
-          <span className="qx-search-icon">⌕</span>
+          <span className="qx-search-icon" aria-hidden="true" />
           <input
             type="text"
             value={query}

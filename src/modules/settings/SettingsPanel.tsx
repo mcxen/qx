@@ -9,15 +9,15 @@ import AdvancedSettings from "./AdvancedSettings";
 interface NavItem {
   id: SettingsTab;
   label: string;
-  icon: string;
+  code: string;
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { id: "general", label: "General", icon: "⚙" },
-  { id: "plugins", label: "Extensions", icon: "🧩" },
-  { id: "shortcuts", label: "Shortcuts", icon: "⌨" },
-  { id: "appearance", label: "Appearance", icon: "✦" },
-  { id: "advanced", label: "Advanced", icon: "⚡" },
+  { id: "general", label: "General", code: "GN" },
+  { id: "plugins", label: "Extensions", code: "EX" },
+  { id: "shortcuts", label: "Shortcuts", code: "SC" },
+  { id: "appearance", label: "Appearance", code: "AP" },
+  { id: "advanced", label: "Advanced", code: "AD" },
 ];
 
 const TAB_LABELS: Record<SettingsTab, string> = {
@@ -63,7 +63,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     <div className="qx-raycast">
       <div className="qx-plugin-toolbar">
         <div className="qx-search-wrap">
-        <span className="qx-search-icon">⌕</span>
+        <span className="qx-search-icon" aria-hidden="true" />
         <input
           type="text"
           value={filter}
@@ -100,8 +100,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
                 onClick={() => setActiveTab(item.id)}
                 className={`qx-settings-nav-item${active ? " is-active" : ""}`}
               >
-                <span style={{ width: 16, textAlign: "center", fontSize: 13 }}>
-                  {item.icon}
+                <span style={{ width: 22, textAlign: "center", fontSize: 10, fontWeight: 700 }}>
+                  {item.code}
                 </span>
                 <span>{item.label}</span>
               </button>

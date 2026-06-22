@@ -16,7 +16,7 @@ export default function SearchBar({
   return (
     <div className="qx-plugin-toolbar">
       <div className="qx-search-wrap">
-        <span className="qx-search-icon">⌕</span>
+        <span className="qx-search-icon" aria-hidden="true" />
       <input
         ref={inputRef}
         type="text"

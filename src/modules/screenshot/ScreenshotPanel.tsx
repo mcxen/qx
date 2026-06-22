@@ -180,7 +180,7 @@ export default function ScreenshotPanel() {
                 }}
                 className={`qx-list-row compact${preview === `file://${s.path}` ? " is-active" : ""}`}
               >
-                <span className="qx-list-icon">▣</span>
+                <span className="qx-list-icon">IMG</span>
                 <span className="qx-list-copy">
                   <span className="qx-list-title">{s.path.split("/").pop()}</span>
                   <span className="qx-list-subtitle">{s.timestamp}</span>

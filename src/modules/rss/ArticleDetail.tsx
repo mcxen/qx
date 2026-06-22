@@ -235,7 +235,7 @@ export default function ArticleDetail() {
             {currentArticle.link && (
               <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--color-border)" }}>
                 <button className="qx-command-button" onClick={() => void openUrl(currentArticle.link)}>
-                  Open original ↗
+                  Open original
                 </button>
               </div>
             )}

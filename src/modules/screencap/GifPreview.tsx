@@ -118,8 +118,7 @@ export default function GifPreview({ path, onClose }: Props) {
               justifyContent: "center",
             }}
           >
-            <span style={{ fontSize: 28 }}>▶</span>
-            <span style={{ fontSize: 12 }}>Paused</span>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>Playback paused</span>
           </div>
         )}
       </div>
@@ -134,7 +133,7 @@ export default function GifPreview({ path, onClose }: Props) {
         }}
       >
         <button onClick={() => setPlaying((p) => !p)} style={toggleBtn}>
-          {playing ? "⏸ Pause" : "▶ Play"}
+          {playing ? "Pause" : "Play"}
         </button>
         <span>{dims ? `${dims.w} × ${dims.h} px` : "—"}</span>
         <span>{size !== null ? formatBytes(size) : "—"}</span>

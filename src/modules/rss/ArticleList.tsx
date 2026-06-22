@@ -169,7 +169,7 @@ export default function ArticleList() {
     >
       <div className="qx-plugin-toolbar">
         <div className="qx-search-wrap">
-          <span className="qx-search-icon">⌕</span>
+          <span className="qx-search-icon" aria-hidden="true" />
           <input
             type="text"
             value={localQuery}
@@ -239,7 +239,7 @@ export default function ArticleList() {
                     </span>
                     <span className="qx-list-time">
                       {formatTime(a.published_at)}
-                      {a.is_starred ? " ★" : ""}
+                      {a.is_starred ? " Starred" : ""}
                     </span>
                   </button>
                 );

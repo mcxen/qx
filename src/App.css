@@ -1,28 +1,128 @@
 @import "tailwindcss";
 
 :root {
+  /* Toggleable theme-independent tokens */
   --qx-canvas-opacity: 0.85;
   --qx-radius: 12px;
   --qx-control-radius: 6px;
   --qx-card-radius: 8px;
   --qx-font-size: 14px;
-  --color-canvas: rgba(246, 246, 246, var(--qx-canvas-opacity));
-  --color-surface: #ffffff;
-  --color-surface-hover: rgba(0, 0, 0, 0.04);
-  --color-surface-active: rgba(0, 0, 0, 0.08);
-  --color-border: rgba(0, 0, 0, 0.08);
-  --color-text-primary: #1a1a1a;
-  --color-text-secondary: #666666;
-  --color-text-tertiary: #999999;
-  --color-accent: #6366f1;
-  --color-accent-hover: #4f46e5;
-  --color-accent-soft: rgba(99, 102, 241, 0.12);
 
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
-    Arial, sans-serif;
+  --qx-font-sans: 'Geist Variable', 'Geist', -apple-system, BlinkMacSystemFont,
+    'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --qx-font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, SFMono-Regular,
+    'SF Mono', Menlo, Monaco, Consolas, monospace;
+
+  font-family: var(--qx-font-sans);
   font-size: var(--qx-font-size);
   line-height: 1.5;
-  color: var(--color-text-primary);
+  color: var(--qx-text-primary);
+}
+
+/* ====== 亮色主题 (Light) ====== */
+[data-theme="light"] {
+  --qx-bg-100: #fafafa;
+  --qx-bg-200: #ffffff;
+
+  --qx-gray-100: #0a0a0a;
+  --qx-gray-200: #1a1a1a;
+  --qx-gray-300: #2e2e2e;
+  --qx-gray-400: #404040;
+  --qx-gray-500: #6b6b6b;
+  --qx-gray-600: #8a8a8a;
+  --qx-gray-700: #a0a0a0;
+  --qx-gray-800: #b0b0b0;
+  --qx-gray-900: #d4d4d4;
+  --qx-gray-1000: #ededed;
+
+  --qx-blue-600: #2563eb;
+  --qx-blue-700: #1d4ed8;
+  --qx-blue-900: #60a5fa;
+  --qx-blue-1000: #eff6ff;
+
+  --qx-bg-component-1: #ffffff;
+  --qx-bg-component-2: #f5f5f5;
+  --qx-bg-component-3: #e8e8e8;
+  --qx-border-1: #e5e5e5;
+  --qx-border-2: #d4d4d4;
+  --qx-border-3: #a3a3a3;
+  --qx-text-primary: #0a0a0a;
+  --qx-text-secondary: #6b6b6b;
+  --qx-text-tertiary: #a0a0a0;
+
+  --qx-glass-bg: rgba(250, 250, 250, 0.75);
+  --qx-glass-border: rgba(0, 0, 0, 0.06);
+  --qx-glass-shadow: rgba(0, 0, 0, 0.04);
+
+  --qx-accent: var(--qx-blue-600);
+  --qx-accent-hover: var(--qx-blue-700);
+  --qx-accent-soft: rgba(37, 99, 235, 0.12);
+  --qx-text-on-accent: #ffffff;
+  --qx-danger: #b42318;
+  --qx-danger-border: rgba(180, 35, 24, 0.22);
+
+  --qx-overlay-1: rgba(255, 255, 255, 0.42);
+  --qx-overlay-2: rgba(255, 255, 255, 0.34);
+  --qx-overlay-3: rgba(255, 255, 255, 0.24);
+  --qx-overlay-4: rgba(255, 255, 255, 0.18);
+
+  --qx-scrollbar-thumb: rgba(0, 0, 0, 0.12);
+  --qx-scrollbar-thumb-hover: rgba(0, 0, 0, 0.22);
+
+  --qx-grid-line: rgba(128, 128, 128, 0.05);
+}
+
+/* ====== 暗色主题 (Dark) ====== */
+[data-theme="dark"] {
+  --qx-bg-100: #0a0a0a;
+  --qx-bg-200: #000000;
+
+  --qx-gray-100: #1a1a1a;
+  --qx-gray-200: #1f1f1f;
+  --qx-gray-300: #292929;
+  --qx-gray-400: #2e2e2e;
+  --qx-gray-500: #454545;
+  --qx-gray-600: #878787;
+  --qx-gray-700: #8f8f8f;
+  --qx-gray-800: #7d7d7d;
+  --qx-gray-900: #a1a1a1;
+  --qx-gray-1000: #ededed;
+
+  --qx-blue-600: #3b82f6;
+  --qx-blue-700: #60a5fa;
+  --qx-blue-900: #93c5fd;
+  --qx-blue-1000: #172554;
+
+  --qx-bg-component-1: #1a1a1a;
+  --qx-bg-component-2: #1f1f1f;
+  --qx-bg-component-3: #292929;
+  --qx-border-1: #292929;
+  --qx-border-2: #333333;
+  --qx-border-3: #454545;
+  --qx-text-primary: #ededed;
+  --qx-text-secondary: #878787;
+  --qx-text-tertiary: #6b6b6b;
+
+  --qx-glass-bg: rgba(10, 10, 10, 0.8);
+  --qx-glass-border: rgba(255, 255, 255, 0.06);
+  --qx-glass-shadow: rgba(0, 0, 0, 0.3);
+
+  --qx-accent: var(--qx-blue-600);
+  --qx-accent-hover: var(--qx-blue-700);
+  --qx-accent-soft: rgba(59, 130, 246, 0.18);
+  --qx-text-on-accent: #ffffff;
+  --qx-danger: #f04438;
+  --qx-danger-border: rgba(240, 68, 56, 0.28);
+
+  --qx-overlay-1: rgba(255, 255, 255, 0.06);
+  --qx-overlay-2: rgba(255, 255, 255, 0.05);
+  --qx-overlay-3: rgba(255, 255, 255, 0.04);
+  --qx-overlay-4: rgba(255, 255, 255, 0.03);
+
+  --qx-scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  --qx-scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
+
+  --qx-grid-line: rgba(128, 128, 128, 0.08);
 }
 
 html,
@@ -52,15 +152,23 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.12);
+  background: var(--qx-scrollbar-thumb);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--qx-scrollbar-thumb-hover);
 }
 
 ::selection {
-  background: var(--color-accent-soft);
+  background: var(--qx-accent-soft);
+}
+
+/* Vercel-style grid background */
+.qx-grid-bg {
+  background-image:
+    linear-gradient(var(--qx-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--qx-grid-line) 1px, transparent 1px);
+  background-size: 40px 40px;
 }
 
 .qx-canvas {
@@ -68,12 +176,13 @@ body {
   height: 100vh;
   display: flex;
   flex-direction: column;
-  background: var(--color-canvas);
+  background: var(--qx-glass-bg);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
   border-radius: var(--qx-radius);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qx-glass-border);
   overflow: hidden;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .qx-section-header {
@@ -84,7 +193,7 @@ body {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
-  color: var(--color-text-tertiary);
+  color: var(--qx-text-tertiary);
   text-transform: uppercase;
 }
 
@@ -101,19 +210,21 @@ body {
   gap: 16px;
   height: 36px;
   padding: 0 14px;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--qx-border-1);
   font-size: 12px;
-  color: var(--color-text-secondary);
-  background: rgba(255, 255, 255, 0.4);
+  color: var(--qx-text-secondary);
+  background: var(--qx-overlay-2);
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .qx-actionbar kbd {
   font-family: inherit;
   font-size: 11px;
-  background: var(--color-surface-active);
+  background: var(--qx-bg-component-3);
   border-radius: 4px;
   padding: 1px 5px;
   margin-right: 4px;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .qx-actionbar .item {
@@ -135,13 +246,14 @@ body {
   gap: 10px;
   height: 52px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--qx-border-1);
+  transition: border-color 0.2s ease;
 }
 
 .qx-toolbar-title {
   font-size: 13px;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: var(--qx-text-primary);
   white-space: nowrap;
 }
 
@@ -155,10 +267,35 @@ body {
 }
 
 .qx-search-icon {
+  position: relative;
   width: 18px;
+  height: 18px;
   text-align: center;
-  color: var(--color-text-tertiary);
-  font-size: 15px;
+  color: var(--qx-text-tertiary);
+  flex-shrink: 0;
+}
+
+.qx-search-icon::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--qx-text-tertiary);
+  border-radius: 50%;
+}
+
+.qx-search-icon::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 11px;
+  width: 6px;
+  height: 1.5px;
+  border-radius: 999px;
+  background: var(--qx-text-tertiary);
+  transform: rotate(45deg);
 }
 
 .qx-plugin-search {
@@ -167,7 +304,7 @@ body {
   height: 36px;
   border: none;
   background: transparent;
-  color: var(--color-text-primary);
+  color: var(--qx-text-primary);
   font-size: 15px;
   outline: none;
 }
@@ -176,12 +313,13 @@ body {
   flex-shrink: 0;
   width: 132px;
   height: 30px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qx-border-1);
   border-radius: var(--qx-control-radius);
-  background: rgba(255, 255, 255, 0.45);
-  color: var(--color-text-secondary);
+  background: var(--qx-overlay-1);
+  color: var(--qx-text-secondary);
   font-size: 12px;
   outline: none;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .qx-command-button {
@@ -192,18 +330,19 @@ body {
   min-width: 0;
   height: 30px;
   padding: 0 11px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qx-border-1);
   border-radius: var(--qx-control-radius);
-  background: rgba(255, 255, 255, 0.42);
-  color: var(--color-text-primary);
+  background: var(--qx-overlay-1);
+  color: var(--qx-text-primary);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .qx-command-button:hover {
-  background: var(--color-surface-hover);
+  background: var(--qx-bg-component-2);
 }
 
 .qx-command-button:disabled {
@@ -213,56 +352,63 @@ body {
 
 .qx-command-button.primary {
   border-color: transparent;
-  background: var(--color-accent);
-  color: #fff;
+  background: var(--qx-accent);
+  color: var(--qx-text-on-accent);
+}
+
+.qx-command-button.primary:hover {
+  background: var(--qx-accent-hover);
 }
 
 .qx-command-button.danger {
-  color: #b42318;
-  border-color: rgba(180, 35, 24, 0.22);
+  color: var(--qx-danger);
+  border-color: var(--qx-danger-border);
 }
 
 .qx-command-button.ghost {
   border-color: transparent;
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--qx-text-secondary);
 }
 
 .qx-inline-input {
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qx-border-1);
   border-radius: var(--qx-control-radius);
-  background: rgba(255, 255, 255, 0.42);
-  color: var(--color-text-primary);
+  background: var(--qx-overlay-1);
+  color: var(--qx-text-primary);
   font-size: 12px;
   outline: none;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .qx-inline-input:focus,
 .qx-plugin-search:focus,
 .qx-plugin-dropdown:focus {
-  box-shadow: 0 0 0 3px var(--color-accent-soft);
+  box-shadow: 0 0 0 3px var(--qx-accent-soft);
 }
 
 .qx-segmented {
   display: inline-flex;
   align-items: center;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qx-border-1);
   border-radius: var(--qx-control-radius);
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--qx-overlay-1);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .qx-segmented button {
   height: 28px;
   padding: 0 10px;
   border: none;
-  border-left: 1px solid var(--color-border);
+  border-left: 1px solid var(--qx-border-1);
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--qx-text-secondary);
   font-size: 12px;
   cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .qx-segmented button:first-child {
@@ -270,8 +416,8 @@ body {
 }
 
 .qx-segmented button.is-active {
-  background: var(--color-surface-active);
-  color: var(--color-text-primary);
+  background: var(--qx-bg-component-3);
+  color: var(--qx-text-primary);
 }
 
 .qx-plugin-body {
@@ -297,7 +443,8 @@ body {
 }
 
 .qx-plugin-list {
-  border-right: 1px solid var(--color-border);
+  border-right: 1px solid var(--qx-border-1);
+  transition: border-color 0.2s ease;
 }
 
 .qx-list-row {
@@ -310,17 +457,18 @@ body {
   padding: 7px 12px;
   border: none;
   background: transparent;
-  color: var(--color-text-primary);
+  color: var(--qx-text-primary);
   text-align: left;
   cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .qx-list-row:hover {
-  background: var(--color-surface-hover);
+  background: var(--qx-bg-component-2);
 }
 
 .qx-list-row.is-active {
-  background: var(--color-surface-active);
+  background: var(--qx-bg-component-3);
 }
 
 .qx-list-icon {
@@ -330,9 +478,11 @@ body {
   width: 24px;
   height: 24px;
   border-radius: var(--qx-control-radius);
-  background: rgba(255, 255, 255, 0.42);
-  color: var(--color-text-secondary);
+  background: var(--qx-overlay-1);
+  color: var(--qx-text-secondary);
   font-size: 13px;
+  font-weight: 600;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .qx-list-row.compact {
@@ -351,7 +501,7 @@ body {
   height: 8px;
   border-radius: 999px;
   margin-top: 6px;
-  background: var(--color-accent);
+  background: var(--qx-accent);
 }
 
 .qx-badge {
@@ -362,10 +512,11 @@ body {
   height: 18px;
   padding: 0 7px;
   border-radius: 999px;
-  background: var(--color-accent);
-  color: #fff;
+  background: var(--qx-accent);
+  color: var(--qx-text-on-accent);
   font-size: 11px;
   font-weight: 600;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .qx-list-copy {
@@ -384,13 +535,13 @@ body {
 .qx-list-title {
   font-size: 13px;
   line-height: 18px;
-  color: var(--color-text-primary);
+  color: var(--qx-text-primary);
 }
 
 .qx-list-subtitle,
 .qx-list-time {
   font-size: 11px;
-  color: var(--color-text-tertiary);
+  color: var(--qx-text-tertiary);
 }
 
 .qx-list-time {
@@ -401,8 +552,9 @@ body {
 .qx-plugin-detail {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--color-border);
-  background: rgba(255, 255, 255, 0.18);
+  border-right: 1px solid var(--qx-border-1);
+  background: var(--qx-overlay-4);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .qx-detail-header {
@@ -412,18 +564,19 @@ body {
   gap: 10px;
   min-height: 54px;
   padding: 10px 12px;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--qx-border-1);
+  transition: border-color 0.2s ease;
 }
 
 .qx-detail-title {
-  color: var(--color-text-primary);
+  color: var(--qx-text-primary);
   font-size: 13px;
   font-weight: 600;
 }
 
 .qx-detail-meta {
   margin-top: 1px;
-  color: var(--color-text-tertiary);
+  color: var(--qx-text-tertiary);
   font-size: 11px;
 }
 
@@ -432,8 +585,8 @@ body {
   min-height: 0;
   margin: 0;
   padding: 12px;
-  color: var(--color-text-primary);
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  color: var(--qx-text-primary);
+  font-family: var(--qx-font-mono);
   font-size: 12px;
   line-height: 1.55;
   white-space: pre-wrap;
@@ -446,10 +599,11 @@ body {
 }
 
 .qx-panel-card {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qx-border-1);
   border-radius: var(--qx-card-radius);
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--qx-overlay-2);
   overflow: hidden;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .qx-module-stage {
@@ -464,12 +618,13 @@ body {
   flex-direction: column;
   gap: 6px;
   padding: 10px;
-  background: rgba(255, 255, 255, 0.24);
+  background: var(--qx-overlay-3);
+  transition: background-color 0.2s ease;
 }
 
 .qx-action-title {
   padding: 4px 4px 6px;
-  color: var(--color-text-tertiary);
+  color: var(--qx-text-tertiary);
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -478,11 +633,12 @@ body {
 
 .qx-action-item,
 .qx-icon-button {
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--qx-border-1);
   border-radius: var(--qx-control-radius);
-  background: rgba(255, 255, 255, 0.35);
-  color: var(--color-text-primary);
+  background: var(--qx-overlay-1);
+  color: var(--qx-text-primary);
   cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .qx-settings-layout {
@@ -494,10 +650,11 @@ body {
 .qx-settings-sidebar {
   width: 200px;
   flex-shrink: 0;
-  border-right: 1px solid var(--color-border);
+  border-right: 1px solid var(--qx-border-1);
   overflow-y: auto;
   padding: 8px 6px;
-  background: rgba(255, 255, 255, 0.24);
+  background: var(--qx-overlay-3);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .qx-settings-nav-item {
@@ -510,16 +667,17 @@ body {
   border: none;
   border-radius: var(--qx-control-radius);
   background: transparent;
-  color: var(--color-text-secondary);
+  color: var(--qx-text-secondary);
   font-size: 13px;
   cursor: pointer;
   text-align: left;
   margin: 1px 0;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 .qx-settings-nav-item.is-active {
-  background: var(--color-surface-active);
-  color: var(--color-text-primary);
+  background: var(--qx-bg-component-3);
+  color: var(--qx-text-primary);
   font-weight: 500;
 }
 
@@ -533,11 +691,12 @@ body {
 
 .qx-settings-title {
   padding: 10px 20px;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--qx-border-1);
   font-size: 13px;
   font-weight: 600;
-  color: var(--color-text-primary);
-  background: rgba(255, 255, 255, 0.28);
+  color: var(--qx-text-primary);
+  background: var(--qx-overlay-2);
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
 
 .qx-settings-page {
@@ -551,18 +710,19 @@ body {
   gap: 16px;
   min-height: 48px;
   padding: 11px 0;
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--qx-border-1);
+  transition: border-color 0.2s ease;
 }
 
 .qx-settings-row-title {
   font-size: 13px;
   font-weight: 500;
-  color: var(--color-text-primary);
+  color: var(--qx-text-primary);
 }
 
 .qx-settings-row-description {
   font-size: 12px;
-  color: var(--color-text-tertiary);
+  color: var(--qx-text-tertiary);
   margin-top: 2px;
 }
 
@@ -580,7 +740,7 @@ body {
 
 .qx-action-item:hover,
 .qx-icon-button:hover {
-  background: var(--color-surface-hover);
+  background: var(--qx-bg-component-2);
 }
 
 .qx-action-item:disabled {
@@ -589,12 +749,12 @@ body {
 }
 
 .qx-action-item.danger {
-  color: #b42318;
+  color: var(--qx-danger);
 }
 
 .qx-action-item kbd {
   flex-shrink: 0;
-  color: var(--color-text-tertiary);
+  color: var(--qx-text-tertiary);
   font-family: inherit;
   font-size: 11px;
 }
@@ -608,7 +768,7 @@ body {
 .qx-empty-state {
   padding: 32px 16px;
   text-align: center;
-  color: var(--color-text-tertiary);
+  color: var(--qx-text-tertiary);
   font-size: 13px;
 }
 

@@ -1,0 +1,180 @@
+name: Release Desktop Clients
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.1.0
+        required: true
+        type: string
+      release_name:
+        description: Release title
+        required: false
+        type: string
+      prerelease:
+        description: Mark as a prerelease
+        required: false
+        default: false
+        type: boolean
+
+env:
+  RELEASE_REPOSITORY: mcxen/qx-releases
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS Apple Silicon
+            artifact: macos-arm64
+            os: macos-14
+            target: aarch64-apple-darwin
+            bundles: app
+            asset_glob: qx_*_aarch64-apple-darwin.app.zip
+          - label: macOS Intel
+            artifact: macos-x64
+            os: macos-13
+            target: x86_64-apple-darwin
+            bundles: app
+            asset_glob: qx_*_x86_64-apple-darwin.app.zip
+          - label: Windows
+            artifact: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis
+            asset_glob: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          - label: Linux
+            artifact: linux-x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
+            asset_glob: |
+              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+              src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        shell: bash
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "RELEASE_TAG=${{ inputs.tag }}" >> "${GITHUB_ENV}"
+          else
+            echo "RELEASE_TAG=${GITHUB_REF_NAME}" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.target }}
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri bundle
+        run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+      - name: Archive macOS app bundle
+        if: runner.os == 'macOS'
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/qx.app \
+            qx_${RELEASE_TAG}_${{ matrix.target }}.app.zip
+
+      - name: Upload desktop artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qx-${{ matrix.artifact }}
+          path: ${{ matrix.asset_glob }}
+          if-no-files-found: error
+
+  publish:
+    name: Publish desktop release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Resolve release metadata
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "RELEASE_TAG=${{ inputs.tag }}" >> "${GITHUB_ENV}"
+            echo "RELEASE_NAME=${{ inputs.release_name || inputs.tag }}" >> "${GITHUB_ENV}"
+            echo "PRERELEASE=${{ inputs.prerelease }}" >> "${GITHUB_ENV}"
+          else
+            echo "RELEASE_TAG=${GITHUB_REF_NAME}" >> "${GITHUB_ENV}"
+            echo "RELEASE_NAME=${GITHUB_REF_NAME}" >> "${GITHUB_ENV}"
+            echo "PRERELEASE=false" >> "${GITHUB_ENV}"
+          fi
+
+      - name: Download desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List release assets
+        run: find release-assets -type f -maxdepth 2 -print
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [ -z "${GH_TOKEN}" ]; then
+            echo "Missing RELEASE_TOKEN secret with access to ${RELEASE_REPOSITORY}."
+            exit 1
+          fi
+
+          if gh release view "${RELEASE_TAG}" --repo "${RELEASE_REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" release-assets/* \
+              --repo "${RELEASE_REPOSITORY}" \
+              --clobber
+            exit 0
+          fi
+
+          create_args=(
+            release
+            create "${RELEASE_TAG}"
+            release-assets/*
+            --repo "${RELEASE_REPOSITORY}"
+            --title "${RELEASE_NAME}"
+            --notes "Desktop clients built from ${GITHUB_REPOSITORY}@${GITHUB_SHA}."
+          )
+
+          if [ "${PRERELEASE}" = "true" ]; then
+            create_args+=(--prerelease)
+          fi
+
+          gh "${create_args[@]}"

@@ -155,7 +155,7 @@ export default function ClipboardPanel() {
     <div className="qx-raycast" onKeyDown={handleKeyDown}>
       <div className="qx-plugin-toolbar">
         <div className="qx-search-wrap">
-          <span className="qx-search-icon">⌕</span>
+          <span className="qx-search-icon" aria-hidden="true" />
           <input
             type="text"
             value={query}
@@ -208,7 +208,7 @@ export default function ClipboardPanel() {
                     role="option"
                     aria-selected={active}
                   >
-                    <span className="qx-list-icon">{classify(item) === "links" ? "↗" : "¶"}</span>
+                    <span className="qx-list-icon">{classify(item) === "links" ? "URL" : "TXT"}</span>
                     <span className="qx-list-copy">
                       <span className="qx-list-title">{preview(item.text) || "Empty Text"}</span>
                       <span className="qx-list-subtitle">{formatMeta(item)}</span>

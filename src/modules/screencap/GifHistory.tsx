@@ -111,7 +111,7 @@ export default function GifHistory() {
                 lineHeight: 1,
               }}
             >
-              ✕
+              Delete
             </button>
           </div>
         );
