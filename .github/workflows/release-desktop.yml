@@ -92,6 +92,11 @@ jobs:
       contents: write
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Resolve release metadata
         run: |
           if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
