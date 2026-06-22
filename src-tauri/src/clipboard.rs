@@ -3,7 +3,7 @@ use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::{command, AppHandle, Emitter};
+use tauri::{command, AppHandle, Emitter, Manager};
 
 #[derive(Debug, Serialize, Clone)]
 pub struct ClipboardEntry {
@@ -52,6 +52,7 @@ pub fn start_listener(app: &AppHandle) {
     let db_clone = db.clone();
     app.manage(ClipboardDb(db));
 
+    let app_handle = app.clone();
     std::thread::spawn(move || {
         let mut last_text = String::new();
 
@@ -70,7 +71,7 @@ pub fn start_listener(app: &AppHandle) {
                 if !text.is_empty() && text != last_text {
                     last_text = text.clone();
                     store(&db_clone, &text);
-                    let _ = app.emit("clipboard-updated", ());
+                    let _ = app_handle.emit("clipboard-updated", ());
                 }
             }
         }
@@ -130,6 +131,20 @@ pub fn clear_clipboard_history(state: tauri::State<'_, ClipboardDb>) -> Result<(
     if let Ok(guard) = state.0.lock() {
         if let Some(ref conn) = *guard {
             conn.execute("DELETE FROM clipboard_history", [])
+                .map_err(|e| format!("{e}"))?;
+        }
+    }
+    Ok(())
+}
+
+#[command]
+pub fn delete_clipboard_entry(
+    state: tauri::State<'_, ClipboardDb>,
+    id: String,
+) -> Result<(), String> {
+    if let Ok(guard) = state.0.lock() {
+        if let Some(ref conn) = *guard {
+            conn.execute("DELETE FROM clipboard_history WHERE id = ?1", params![id])
                 .map_err(|e| format!("{e}"))?;
         }
     }

@@ -10,7 +10,14 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+src-tauri/target
+src-tauri/target/
+*.app
+*.dmg
+*.app.zip
 *.local
+.env
+.env.*
 
 # Editor directories and files
 .vscode/*

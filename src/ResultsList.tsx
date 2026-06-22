@@ -13,57 +13,47 @@ function ResultItem({ item, index }: { item: AppEntry; index: number }) {
       exit={{ opacity: 0, y: -4 }}
       transition={{ duration: 0.12 }}
       onMouseEnter={() => setSelectedIndex(index)}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "8px 12px",
-        margin: "0 6px",
-        borderRadius: 8,
-        cursor: "pointer",
-        background: selected ? "var(--selection)" : "transparent",
-      }}
+      className={`qx-list-row${selected ? " is-active" : ""}`}
     >
-      <img
-        src={item.icon}
-        alt=""
-        style={{ width: 24, height: 24, borderRadius: 4 }}
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.display = "none";
-        }}
-      />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div
-          style={{
-            fontSize: 14,
-            fontWeight: 500,
-            color: "var(--text-primary)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+      {item.icon ? (
+        <img
+          src={`file://${item.icon}`}
+          alt=""
+          className="qx-list-icon"
+          onError={(e) => {
+            (e.target as HTMLImageElement).style.visibility = "hidden";
           }}
-        >
+        />
+      ) : (
+        <div className="qx-list-icon" />
+      )}
+      <div className="qx-list-copy">
+        <div className="qx-list-title" style={{ fontWeight: 500 }}>
           {item.name}
         </div>
-        <div
-          style={{
-            fontSize: 11,
-            color: "var(--text-muted)",
-            whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-          }}
-        >
-          {item.path}
+        <div className="qx-list-subtitle">
+          {item.path.replace("/Applications/", "").replace("/System/Applications/", "System/")}
         </div>
       </div>
+      <span className="qx-list-time">
+        Application
+      </span>
     </motion.div>
   );
 }
 
-export default function ResultsList({ items, onItemClick }: { items: AppEntry[]; onItemClick: (item: AppEntry) => void }) {
+export default function ResultsList({
+  items,
+  onItemClick,
+}: {
+  items: AppEntry[];
+  onItemClick: (item: AppEntry) => void;
+}) {
   return (
-    <div style={{ padding: "6px 0", maxHeight: 380, overflowY: "auto" }}>
+    <div className="qx-plugin-list" style={{ flex: 1, borderRight: "none" }}>
+      {items.length > 0 && (
+        <div className="qx-section-header">Suggestions</div>
+      )}
       <AnimatePresence>
         {items.map((item, i) => (
           <div key={item.path} onClick={() => onItemClick(item)}>
@@ -74,9 +64,9 @@ export default function ResultsList({ items, onItemClick }: { items: AppEntry[];
       {items.length === 0 && (
         <div
           style={{
-            padding: "24px 16px",
+            padding: "32px 16px",
             textAlign: "center",
-            color: "var(--text-muted)",
+            color: "var(--color-text-tertiary)",
             fontSize: 13,
           }}
         >

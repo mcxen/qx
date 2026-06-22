@@ -13,12 +13,35 @@ export interface ClipboardEntry {
 }
 
 export interface ScreenshotEntry {
-  id: string;
   path: string;
   timestamp: string;
 }
 
-type Tab = "launcher" | "clipboard" | "screenshot";
+export interface RssFeed {
+  id: number;
+  url: string;
+  title: string;
+  icon: string;
+  last_fetched: number;
+  error_count: number;
+}
+
+export interface RssArticle {
+  id: number;
+  feed_id: number;
+  guid: string;
+  title: string;
+  summary: string;
+  content: string;
+  author: string;
+  link: string;
+  image_url: string;
+  is_read: number;
+  is_starred: number;
+  published_at: number;
+}
+
+export type Tab = "launcher" | "clipboard" | "screenshot" | "screencap" | "rss" | "settings";
 
 interface AppStore {
   visible: boolean;
@@ -46,6 +69,6 @@ export const useStore = create<AppStore>((set) => ({
   setQuery: (query) => set({ query }),
   setResults: (results) => set({ results }),
   setSelectedIndex: (selectedIndex) => set({ selectedIndex }),
-  setTab: (tab) => set({ tab }),
+  setTab: (tab) => set({ tab, query: "", results: [], selectedIndex: 0 }),
   setClipboardHistory: (clipboardHistory) => set({ clipboardHistory }),
 }));

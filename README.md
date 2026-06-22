@@ -1,7 +1,20 @@
-# Tauri + React + Typescript
+# Qx
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+Qx is a macOS Raycast-style productivity launcher built with Tauri, React, and
+TypeScript.
 
-## Recommended IDE Setup
+## License
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+This repository is source-available for code review only.
+
+It is not open source software. Commercial use, redistribution, public or
+private forks, derivative works, and deployment are not permitted without prior
+written permission.
+
+See [LICENSE](LICENSE) for the full terms.
+
+## Review Scope
+
+The source is published so reviewers can inspect implementation, security
+posture, architecture, and release workflow. Public releases are distributed
+from the separate `qx-releases` repository.

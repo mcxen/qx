@@ -1,0 +1,38 @@
+Qx Source Review License v1.0
+
+Copyright (c) 2026 MCXEN. All rights reserved.
+
+This repository is published as source-available software for source code
+review only. It is not open source software under the Open Source Initiative
+definition and it is not free software.
+
+Permission is granted only to view the source code through GitHub and to make
+one temporary local copy solely for private security review, architecture
+review, audit, or compatibility review.
+
+No other rights are granted.
+
+You may not:
+
+1. use the software or source code for commercial purposes;
+2. run, deploy, host, sell, sublicense, rent, lease, or provide the software as
+   a service;
+3. copy, redistribute, mirror, publish, or share the source code or binaries;
+4. fork this repository on GitHub or any other service;
+5. create, publish, or distribute derivative works;
+6. remove or alter copyright, license, or attribution notices;
+7. use the project name, logo, or branding without prior written permission.
+
+Any contribution, pull request, issue attachment, patch, suggestion, or other
+submitted material is provided under this same license unless a separate
+written agreement is signed by the copyright holder.
+
+If you need commercial use, redistribution rights, private audit rights, or a
+different license, contact the copyright holder for written permission.
+
+THE SOFTWARE AND SOURCE CODE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO
+EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY ARISING FROM OR RELATED TO THE SOFTWARE, SOURCE CODE, OR USE OF THIS
+REPOSITORY.

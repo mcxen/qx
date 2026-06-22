@@ -45,7 +45,12 @@ pub fn take_screenshot() -> Result<ScreenshotResult, String> {
 }
 
 #[command]
-pub fn take_screenshot_area(x: i32, y: i32, width: u32, height: u32) -> Result<ScreenshotResult, String> {
+pub fn take_screenshot_area(
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+) -> Result<ScreenshotResult, String> {
     let monitors = xcap::Monitor::all().map_err(|e| format!("Failed to get monitors: {}", e))?;
 
     if monitors.is_empty() {
@@ -62,8 +67,7 @@ pub fn take_screenshot_area(x: i32, y: i32, width: u32, height: u32) -> Result<S
     let width = width.min(image.width() - x);
     let height = height.min(image.height() - y);
 
-    let cropped = image::imageops::crop_imm(&image, x, y, width, height)
-        .to_image();
+    let cropped = image::imageops::crop_imm(&image, x, y, width, height).to_image();
 
     let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
     let filename = format!("screenshot_area_{}.png", timestamp);
