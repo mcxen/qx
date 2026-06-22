@@ -1,4 +1,5 @@
 mod apps;
+mod screenshot;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -83,7 +84,13 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![apps::search_apps, open_app])
+        .invoke_handler(tauri::generate_handler![
+            apps::search_apps,
+            open_app,
+            screenshot::take_screenshot,
+            screenshot::take_screenshot_area,
+            screenshot::get_recent_screenshots,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
