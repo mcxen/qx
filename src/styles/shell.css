@@ -8,6 +8,16 @@
   color: var(--qx-text-primary);
 }
 
+.qx-shell.visual-elevated {
+  background: var(--qx-bg-component-2);
+}
+
+.qx-shell.visual-glass {
+  background: rgba(var(--qx-glass-bg), calc(var(--qx-canvas-opacity) * 1.5));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
 .qx-shell-topbar {
   display: grid;
   grid-template-columns: auto minmax(var(--qx-search-min-w), 1fr) auto;
@@ -17,6 +27,19 @@
   padding: 12px 16px;
   border-bottom: 1px solid var(--qx-border-1);
   -webkit-app-region: drag;
+}
+
+.qx-shell.visual-elevated .qx-shell-topbar,
+.qx-shell.visual-elevated .qx-shell-bottombar {
+  background: var(--qx-bg-component-1);
+}
+
+.qx-shell.visual-glass .qx-shell-topbar,
+.qx-shell.visual-glass .qx-shell-bottombar,
+.qx-shell.visual-glass .qx-shell-context {
+  background: rgba(var(--qx-glass-bg), calc(var(--qx-canvas-opacity) * 1.35));
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
 }
 
 .qx-shell.launcher-shell .qx-shell-topbar {
@@ -102,6 +125,14 @@
 .qx-shell-context {
   border-left: 1px solid var(--qx-border-1);
   background: var(--qx-overlay-3);
+}
+
+.qx-shell.visual-elevated .qx-shell-context {
+  background: var(--qx-bg-component-2);
+}
+
+.qx-shell.visual-elevated .qx-shell-content {
+  background: var(--qx-bg-component-1);
 }
 
 .qx-shell-bottombar {

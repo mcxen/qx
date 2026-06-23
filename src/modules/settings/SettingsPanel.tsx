@@ -142,6 +142,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   return (
     <QxShell
       title={t("launcher.settings", "Settings")}
+      visual="elevated"
       search={settingsSearch}
       trailing={<span className="qx-shell-meta">Qx v{version || "..."}</span>}
       context={settingsContext}

@@ -20,6 +20,7 @@ interface QxShellAction {
 
 interface QxShellProps {
   title: string;
+  visual?: "solid" | "elevated" | "glass";
   search?: ReactNode;
   leading?: ReactNode;
   trailing?: ReactNode;
@@ -113,6 +114,7 @@ function ShellActionButton({
 
 const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   title,
+  visual = "solid",
   search,
   leading,
   trailing,
@@ -140,7 +142,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   return (
     <div
       ref={ref}
-      className={`qx-shell ${context ? "has-context" : ""} ${overlayBottom ? "qx-shell-overlay-bottom" : ""} ${className}`}
+      className={`qx-shell visual-${visual} ${context ? "has-context" : ""} ${overlayBottom ? "qx-shell-overlay-bottom" : ""} ${className}`}
       aria-label={title}
       onKeyDown={onKeyDown}
       tabIndex={0}
