@@ -209,6 +209,8 @@ Information 字段：
 - `Cmd P` 切换置顶。
 - `Enter` 复制当前条目。
 - 空状态清晰显示，不撑坏布局。
+- 左侧 Clipboard List 和右侧 Preview / Information 必须独立滚动；外层 shell content 不得滚动导致左右区域一起移动。
+- 右侧 Preview 与 Information 可各自内部滚动，但不得把整个 Clipboard 页面推成单一滚动页。
 
 ### Variant C: Content Detail / RSS Detail
 

@@ -4568,7 +4568,7 @@ dependencies = [
 
 [[package]]
 name = "qx"
-version = "0.4.12"
+version = "0.4.13"
 dependencies = [
  "blake3",
  "chrono",
