@@ -2,7 +2,7 @@
   /* Toggleable theme-independent tokens */
   --qx-canvas-opacity: 0.20;
   --qx-radius: 6px;
-  --qx-effective-radius: min(var(--qx-radius), 6px);
+  --qx-effective-radius: var(--qx-radius);
   --qx-control-radius: 4px;
   --qx-card-radius: 4px;
   --qx-font-size: 13px;
