@@ -100,17 +100,11 @@ fn download_file(
         .map_err(|e| format!("HTTP request failed for {}: {}", filename, e))?;
 
     if !resp.status().is_success() {
-        return Err(format!(
-            "HTTP {} for {}",
-            resp.status(),
-            filename
-        ));
+        return Err(format!("HTTP {} for {}", resp.status(), filename));
     }
 
     // Get content length for progress calculation
-    let content_length = resp
-        .content_length()
-        .unwrap_or(0);
+    let content_length = resp.content_length().unwrap_or(0);
 
     // Stream download with progress
     let mut response_bytes = Vec::new();
@@ -154,8 +148,7 @@ fn download_file(
     }
 
     // Write to disk
-    std::fs::create_dir_all(target_dir)
-        .map_err(|e| format!("Create models dir: {}", e))?;
+    std::fs::create_dir_all(target_dir).map_err(|e| format!("Create models dir: {}", e))?;
     std::fs::write(&target_path, &response_bytes)
         .map_err(|e| format!("Write {}: {}", filename, e))?;
 
@@ -191,8 +184,8 @@ pub fn download_ocr_model(app: AppHandle, size: String) -> Result<String, String
     let sizes: Vec<u64> = vec![
         // Rough sizes in bytes (PP-OCRv6)
         match size.as_str() {
-            "tiny" => 1780590 + 4462639 + 27156,    // ~6.3 MB
-            "small" => 9880512 + 21159378 + 74947,  // ~31 MB
+            "tiny" => 1780590 + 4462639 + 27156,     // ~6.3 MB
+            "small" => 9880512 + 21159378 + 74947,   // ~31 MB
             "medium" => 62032837 + 76554979 + 74947, // ~138 MB
             _ => 6_000_000,
         },
@@ -204,7 +197,13 @@ pub fn download_ocr_model(app: AppHandle, size: String) -> Result<String, String
     // Download each model file sequentially with progress
     download_file(&app, models.det, &target_dir, &mut total_bytes, grand_total)?;
     download_file(&app, models.rec, &target_dir, &mut total_bytes, grand_total)?;
-    download_file(&app, models.dict, &target_dir, &mut total_bytes, grand_total)?;
+    download_file(
+        &app,
+        models.dict,
+        &target_dir,
+        &mut total_bytes,
+        grand_total,
+    )?;
 
     let _ = app.emit(
         "ocr-download-progress",

@@ -49,3 +49,7 @@ ed25519-dalek = { version = "2", features = ["alloc"] }
 hex = "0.4"
 sysinfo = "0.30"
 dirs = "5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+search-cache = { path = "vendor/cardinal/search-cache" }
+search-cancel = { path = "vendor/cardinal/search-cancel" }

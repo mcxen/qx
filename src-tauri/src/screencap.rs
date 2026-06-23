@@ -8,6 +8,9 @@ use std::sync::{Mutex, OnceLock};
 use tauri::command;
 
 const FPS: u32 = 15;
+const MAX_RECORDING_SECONDS: u64 = 180;
+const MAX_FRAME_COUNT: u64 = FPS as u64 * MAX_RECORDING_SECONDS;
+const MAX_TEMP_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecordArea {
@@ -118,7 +121,16 @@ fn recording_loop(
     let delay = std::time::Duration::from_millis(1000 / FPS as u64);
 
     let mut frame_idx: u64 = 0;
+    let mut temp_bytes: u64 = 0;
+    let started_at = std::time::Instant::now();
     while !stop_flag.load(Ordering::Relaxed) {
+        if frame_idx >= MAX_FRAME_COUNT
+            || temp_bytes >= MAX_TEMP_BYTES
+            || started_at.elapsed() >= std::time::Duration::from_secs(MAX_RECORDING_SECONDS)
+        {
+            break;
+        }
+
         match capturer.frame() {
             Ok(frame) => {
                 let rgba = bgra_to_rgba(&frame);
@@ -135,7 +147,11 @@ fn recording_loop(
                         img
                     };
                     let path = temp_dir.join(format!("frame_{:06}.png", frame_idx));
-                    let _ = final_img.save(&path);
+                    if final_img.save(&path).is_ok() {
+                        if let Ok(meta) = fs::metadata(&path) {
+                            temp_bytes = temp_bytes.saturating_add(meta.len());
+                        }
+                    }
                 }
                 frame_idx += 1;
             }

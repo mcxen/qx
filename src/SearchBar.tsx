@@ -8,7 +8,9 @@ export default function SearchBar({
   onKeyDown: (e: React.KeyboardEvent) => void;
   embedded?: boolean;
 }) {
-  const { query, setQuery, setSelectedIndex } = useStore();
+  const query = useStore((state) => state.query);
+  const setQuery = useStore((state) => state.setQuery);
+  const setSelectedIndex = useStore((state) => state.setSelectedIndex);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {

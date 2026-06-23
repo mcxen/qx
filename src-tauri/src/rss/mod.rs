@@ -68,7 +68,9 @@ fn prune_feed(conn: &rusqlite::Connection, feed_id: i64) -> rusqlite::Result<()>
 
 #[command]
 pub fn rss_list_feeds(state: State<RssDb>) -> Result<Vec<Feed>, String> {
-    with_db(&state, |conn| storage::list_feeds(conn).map_err(|e| format!("{e}")))
+    with_db(&state, |conn| {
+        storage::list_feeds(conn).map_err(|e| format!("{e}"))
+    })
 }
 
 #[command]
@@ -114,7 +116,9 @@ pub fn rss_update_feed(
 
 #[command]
 pub fn rss_remove_feed(state: State<RssDb>, id: i64) -> Result<(), String> {
-    with_db(&state, |conn| storage::delete_feed(conn, id).map_err(|e| format!("{e}")))
+    with_db(&state, |conn| {
+        storage::delete_feed(conn, id).map_err(|e| format!("{e}"))
+    })
 }
 
 #[command]
@@ -132,22 +136,30 @@ pub fn rss_list_articles(
 
 #[command]
 pub fn rss_get_article(state: State<RssDb>, id: i64) -> Result<Option<Article>, String> {
-    with_db(&state, |conn| storage::get_article(conn, id).map_err(|e| format!("{e}")))
+    with_db(&state, |conn| {
+        storage::get_article(conn, id).map_err(|e| format!("{e}"))
+    })
 }
 
 #[command]
 pub fn rss_mark_read(state: State<RssDb>, id: i64, is_read: bool) -> Result<(), String> {
-    with_db(&state, |conn| storage::set_read(conn, id, is_read).map_err(|e| format!("{e}")))
+    with_db(&state, |conn| {
+        storage::set_read(conn, id, is_read).map_err(|e| format!("{e}"))
+    })
 }
 
 #[command]
 pub fn rss_mark_all_read(state: State<RssDb>, feed_id: i64) -> Result<(), String> {
-    with_db(&state, |conn| storage::mark_all_read(conn, feed_id).map_err(|e| format!("{e}")))
+    with_db(&state, |conn| {
+        storage::mark_all_read(conn, feed_id).map_err(|e| format!("{e}"))
+    })
 }
 
 #[command]
 pub fn rss_toggle_star(state: State<RssDb>, id: i64, is_starred: bool) -> Result<(), String> {
-    with_db(&state, |conn| storage::set_starred(conn, id, is_starred).map_err(|e| format!("{e}")))
+    with_db(&state, |conn| {
+        storage::set_starred(conn, id, is_starred).map_err(|e| format!("{e}"))
+    })
 }
 
 #[command]
@@ -233,7 +245,9 @@ pub async fn rss_import_opml(state: State<'_, RssDb>, content: String) -> Result
 
 #[command]
 pub fn rss_export_opml(state: State<RssDb>) -> Result<String, String> {
-    let feeds = with_db(&state, |conn| storage::list_feeds(conn).map_err(|e| format!("{e}")))?;
+    let feeds = with_db(&state, |conn| {
+        storage::list_feeds(conn).map_err(|e| format!("{e}"))
+    })?;
     let triples: Vec<(i64, String, String)> =
         feeds.into_iter().map(|f| (f.id, f.url, f.title)).collect();
     Ok(fetcher::build_opml(&triples))

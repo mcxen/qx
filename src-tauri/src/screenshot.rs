@@ -122,9 +122,11 @@ pub fn take_screenshot_area(
         if monitors.is_empty() {
             return Err("No monitors found".to_string());
         }
-        image::DynamicImage::from(monitors[0]
-            .capture_image()
-            .map_err(|e| format!("Failed to capture: {e}"))?)
+        image::DynamicImage::from(
+            monitors[0]
+                .capture_image()
+                .map_err(|e| format!("Failed to capture: {e}"))?,
+        )
     };
 
     let x = x.max(0) as u32;

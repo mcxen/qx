@@ -4,10 +4,12 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::{Cursor, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use tauri::command;
 
 const INDEX_URL: &str = "https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json";
 const USER_AGENT: &str = "Qx/0.1 (Marketplace; +https://github.com/mcxen/qx)";
+static PLUGIN_STORAGE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginCommand {
@@ -146,6 +148,29 @@ fn plugin_data_dir(id: &str) -> PathBuf {
 
 fn plugin_storage_path(id: &str) -> PathBuf {
     plugin_data_dir(id).join("storage.json")
+}
+
+fn plugin_storage_lock() -> &'static Mutex<()> {
+    PLUGIN_STORAGE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let tmp_path = path.with_extension(format!("tmp.{}", std::process::id()));
+    {
+        let mut file = fs::File::create(&tmp_path)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+    }
+    fs::rename(&tmp_path, path)?;
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+    Ok(())
 }
 
 fn plugin_enabled_path(id: &str) -> PathBuf {
@@ -457,6 +482,9 @@ pub fn plugin_storage_get(id: String, key: String) -> Result<Option<serde_json::
 
 #[command]
 pub fn plugin_storage_set(id: String, key: String, value: serde_json::Value) -> Result<(), String> {
+    let _guard = plugin_storage_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let path = plugin_storage_path(&id);
     fs::create_dir_all(plugin_data_dir(&id)).ok();
     let mut map: BTreeMap<String, serde_json::Value> = if path.exists() {
@@ -469,11 +497,14 @@ pub fn plugin_storage_set(id: String, key: String, value: serde_json::Value) -> 
     };
     map.insert(key, value);
     let json = serde_json::to_string_pretty(&map).map_err(|e| format!("serialize: {e}"))?;
-    fs::write(&path, json).map_err(|e| format!("write storage for {id}: {e}"))
+    atomic_write(&path, json.as_bytes()).map_err(|e| format!("write storage for {id}: {e}"))
 }
 
 #[command]
 pub fn plugin_storage_delete(id: String, key: String) -> Result<(), String> {
+    let _guard = plugin_storage_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let path = plugin_storage_path(&id);
     if !path.exists() {
         return Ok(());
@@ -483,7 +514,7 @@ pub fn plugin_storage_delete(id: String, key: String) -> Result<(), String> {
         serde_json::from_str(&content).map_err(|e| format!("parse storage for {id}: {e}"))?;
     map.remove(&key);
     let json = serde_json::to_string_pretty(&map).map_err(|e| format!("serialize: {e}"))?;
-    fs::write(&path, json).map_err(|e| format!("write storage for {id}: {e}"))
+    atomic_write(&path, json.as_bytes()).map_err(|e| format!("write storage for {id}: {e}"))
 }
 
 #[command]

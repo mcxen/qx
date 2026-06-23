@@ -1,8 +1,7 @@
 use enigo::{Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use rdev::{listen, Event, EventType};
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc, Mutex, OnceLock};
+use std::sync::{Mutex, Once, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::command;
 
@@ -26,15 +25,96 @@ pub struct MacroData {
 }
 
 struct RecordingState {
-    receiver: Option<mpsc::Receiver<Event>>,
-    steps: Arc<Mutex<Vec<MacroStep>>>,
+    steps: Vec<MacroStep>,
     start_time: Instant,
+    last_ts: Instant,
 }
 
 static RECORDING: OnceLock<Mutex<Option<RecordingState>>> = OnceLock::new();
+static LISTENER: Once = Once::new();
 
 fn recording_state() -> &'static Mutex<Option<RecordingState>> {
     RECORDING.get_or_init(|| Mutex::new(None))
+}
+
+fn start_listener_once() {
+    LISTENER.call_once(|| {
+        std::thread::Builder::new()
+            .name("qx-macro-recorder".to_string())
+            .spawn(|| {
+                if let Err(e) = listen(|event| record_event(event)) {
+                    eprintln!("rdev listen error: {e:?}");
+                }
+            })
+            .ok();
+    });
+}
+
+fn record_event(event: Event) {
+    let Ok(mut guard) = recording_state().lock() else {
+        return;
+    };
+    let Some(state) = guard.as_mut() else {
+        return;
+    };
+
+    let now = Instant::now();
+    let elapsed = now.duration_since(state.last_ts).as_millis() as u64;
+
+    let step = match event.event_type {
+        EventType::KeyPress(key) => Some(MacroStep {
+            event_type: "key_press".into(),
+            key: Some(format!("{:?}", key)),
+            x: None,
+            y: None,
+            button: None,
+            duration_ms: elapsed,
+        }),
+        EventType::KeyRelease(key) => Some(MacroStep {
+            event_type: "key_release".into(),
+            key: Some(format!("{:?}", key)),
+            x: None,
+            y: None,
+            button: None,
+            duration_ms: elapsed,
+        }),
+        EventType::ButtonPress(button) => Some(MacroStep {
+            event_type: "mouse_click".into(),
+            key: None,
+            x: None,
+            y: None,
+            button: Some(format!("{:?}", button)),
+            duration_ms: elapsed,
+        }),
+        EventType::ButtonRelease(button) => Some(MacroStep {
+            event_type: "mouse_release".into(),
+            key: None,
+            x: None,
+            y: None,
+            button: Some(format!("{:?}", button)),
+            duration_ms: elapsed,
+        }),
+        EventType::MouseMove { x, y } => {
+            if elapsed > 16 {
+                Some(MacroStep {
+                    event_type: "mouse_move".into(),
+                    key: None,
+                    x: Some(x as i32),
+                    y: Some(y as i32),
+                    button: None,
+                    duration_ms: elapsed,
+                })
+            } else {
+                None
+            }
+        }
+        _ => None,
+    };
+
+    if let Some(step) = step {
+        state.steps.push(step);
+        state.last_ts = now;
+    }
 }
 
 fn open_db() -> Result<rusqlite::Connection, String> {
@@ -63,103 +143,18 @@ fn dirs_db_path() -> std::path::PathBuf {
 
 #[command]
 pub fn macro_start_recording() -> Result<(), String> {
+    start_listener_once();
+
     let mut guard = recording_state().lock().map_err(|e| format!("lock: {e}"))?;
     if guard.is_some() {
         return Err("Already recording".into());
     }
 
-    let (tx, rx) = mpsc::channel::<Event>();
-    let steps = Arc::new(Mutex::new(Vec::new()));
-    let steps_clone = steps.clone();
-    let stop_flag = Arc::new(AtomicBool::new(false));
-    let stop_clone = stop_flag.clone();
-
-    std::thread::spawn(move || {
-        let tx_clone = tx.clone();
-        let callback = move |event: Event| {
-            if stop_clone.load(Ordering::Relaxed) {
-                return;
-            }
-            let _ = tx_clone.send(event);
-        };
-        if let Err(e) = listen(callback) {
-            eprintln!("rdev listen error: {e:?}");
-        }
-    });
-
-    std::thread::spawn(move || {
-        let start = Instant::now();
-        let mut last_ts = Instant::now();
-        for received in rx {
-            if stop_flag.load(Ordering::Relaxed) {
-                break;
-            }
-            let now = Instant::now();
-            let elapsed = now.duration_since(last_ts).as_millis() as u64;
-
-            let step = match received.event_type {
-                EventType::KeyPress(key) => Some(MacroStep {
-                    event_type: "key_press".into(),
-                    key: Some(format!("{:?}", key)),
-                    x: None,
-                    y: None,
-                    button: None,
-                    duration_ms: elapsed,
-                }),
-                EventType::KeyRelease(key) => Some(MacroStep {
-                    event_type: "key_release".into(),
-                    key: Some(format!("{:?}", key)),
-                    x: None,
-                    y: None,
-                    button: None,
-                    duration_ms: elapsed,
-                }),
-                EventType::ButtonPress(button) => Some(MacroStep {
-                    event_type: "mouse_click".into(),
-                    key: None,
-                    x: None,
-                    y: None,
-                    button: Some(format!("{:?}", button)),
-                    duration_ms: elapsed,
-                }),
-                EventType::ButtonRelease(button) => Some(MacroStep {
-                    event_type: "mouse_release".into(),
-                    key: None,
-                    x: None,
-                    y: None,
-                    button: Some(format!("{:?}", button)),
-                    duration_ms: elapsed,
-                }),
-                EventType::MouseMove { x, y } => {
-                    if elapsed > 16 {
-                        Some(MacroStep {
-                            event_type: "mouse_move".into(),
-                            key: None,
-                            x: Some(x as i32),
-                            y: Some(y as i32),
-                            button: None,
-                            duration_ms: elapsed,
-                        })
-                    } else {
-                        None
-                    }
-                }
-                _ => None,
-            };
-
-            if let Some(s) = step {
-                if let Ok(mut steps) = steps_clone.lock() {
-                    steps.push(s);
-                }
-                last_ts = now;
-            }
-        }
-    });
-
+    let now = Instant::now();
     *guard = Some(RecordingState {
-        receiver: None,
-        steps,
-        start_time: Instant::now(),
+        steps: Vec::new(),
+        start_time: now,
+        last_ts: now,
     });
 
     Ok(())
@@ -171,16 +166,11 @@ pub fn macro_stop_recording() -> Result<MacroData, String> {
     let state = guard.take().ok_or("Not recording")?;
 
     let total_duration_ms = state.start_time.elapsed().as_millis() as u64;
-    let steps = state
-        .steps
-        .lock()
-        .map_err(|e| format!("lock steps: {e}"))?
-        .clone();
 
     Ok(MacroData {
         id: None,
         name: String::new(),
-        steps,
+        steps: state.steps,
         total_duration_ms,
         created_at: None,
     })

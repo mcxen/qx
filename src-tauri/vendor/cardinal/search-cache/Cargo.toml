@@ -1,0 +1,42 @@
+[package]
+name = "search-cache"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+fswalk = { path = "../fswalk" }
+namepool = { path = "../namepool" }
+cardinal-sdk = { path = "../cardinal-sdk" }
+cardinal-syntax = { path = "../cardinal-syntax" }
+query-segmentation = { path = "../query-segmentation" }
+search-cancel = { path = "../search-cancel" }
+zstd = { version = "0.13", features = ["zstdmt"] }
+serde = { version = "1", features = ["derive"] }
+anyhow = "1.0.97"
+memchr = "2.7"
+crossbeam-channel = "0.5.15"
+typed-num = { version = "0.3.0", default-features = false, features = [
+  "serde",
+] }
+itertools = "0.14"
+tracing = "0.1"
+postcard = { version = "1", default-features = false, features = ["use-std"] }
+enumn = "0.1"
+thin-vec = { version = "0.2.14", features = ["serde"] }
+hashbrown = { version = "0.16.0", features = ["serde"] }
+regex = "1"
+jiff = "0.2"
+rayon = "1.9"
+slab-mmap = { path = "../slab-mmap" }
+file-tags = { path = "../file-tags" }
+unicode-normalization = "0.1"
+
+[dev-dependencies]
+tempdir = "0.3"
+plist = "1.7"
+xattr = "1.4"
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[[bench]]
+name = "walk_and_search"
+harness = false

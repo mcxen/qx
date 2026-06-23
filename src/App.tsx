@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useTransition } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -79,11 +79,22 @@ function App() {
     setAppsReady,
   } = useStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const slowSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const recordSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const searchSeqRef = useRef(0);
   const searchScopeRef = useRef<SearchScope>("all");
   const originalBoundsRef = useRef<{ width: number; height: number; x: number; y: number } | null>(null);
   const { settings, load: loadSettings, loaded: settingsLoaded } = useSettingsStore();
   const { load: loadPlugins, findCommands } = usePluginRegistry();
   const phase1Ref = useRef(false);
+  const [, startSearchTransition] = useTransition();
+
+  const applyResults = useCallback(
+    (entries: AppEntry[]) => {
+      startSearchTransition(() => setResults(entries));
+    },
+    [setResults, startSearchTransition],
+  );
 
   // Phase 1: Load app cache immediately — runs once on mount
   useEffect(() => {
@@ -363,14 +374,62 @@ function App() {
     tab,
   ]);
 
+  const loadSlowSearchProviders = useCallback(
+    async (
+      q: string,
+      scope: SearchScope,
+      baseEntries: AppEntry[],
+      syntheticEntries: AppEntry[],
+      seq: number,
+    ) => {
+      const trimmed = q.trim();
+      const shouldSearchFiles =
+        (scope === "files" && trimmed.length >= 2) || (scope === "all" && trimmed.length >= 3);
+      const shouldSearchClipboard = (scope === "all" || scope === "clipboard") && trimmed.length > 0;
+
+      if (!shouldSearchFiles && !shouldSearchClipboard) return;
+
+      const [files, clipboardEntries] = await Promise.all([
+        shouldSearchFiles
+          ? invoke<AppEntry[]>("search_files", { query: q })
+              .then((items) => items.map((item) => ({ ...item, kind: "file" as const })))
+              .catch(() => [] as AppEntry[])
+          : Promise.resolve([] as AppEntry[]),
+        shouldSearchClipboard
+          ? invoke<{ id: string; text: string }[]>("get_clipboard_history", { limit: 80 })
+              .then((history) => {
+                const lower = trimmed.toLowerCase();
+                return history
+                  .filter((item) => item.text.toLowerCase().includes(lower))
+                  .slice(0, 8)
+                  .map((item) => ({
+                    name: item.text.replace(/\s+/g, " ").trim().slice(0, 80) || "Clipboard Item",
+                    path: `__qx:clipboard:${item.id}`,
+                    icon: "builtin:clipboard",
+                    kind: "clipboard" as const,
+                  }));
+              })
+              .catch(() => syntheticEntries.filter((item) => item.path.includes("clipboard")))
+          : Promise.resolve([] as AppEntry[]),
+      ]);
+
+      if (seq !== searchSeqRef.current) return;
+      applyResults([...baseEntries, ...files, ...clipboardEntries]);
+    },
+    [applyResults],
+  );
+
   const doSearch = useCallback(
     async (q: string) => {
-      const scope = searchScopeRef.current;
+      const seq = searchSeqRef.current + 1;
+      searchSeqRef.current = seq;
 
-      // Phase 1: Apps results come first — from instant in-memory cache
+      if (slowSearchDebounceRef.current) clearTimeout(slowSearchDebounceRef.current);
+      if (recordSearchDebounceRef.current) clearTimeout(recordSearchDebounceRef.current);
+
+      const scope = searchScopeRef.current;
       const entries: AppEntry[] = [];
 
-      // Build synthetic entries from registry commands (built-in + external plugins)
       const pluginMatches = findCommands(q);
       const syntheticEntries: AppEntry[] = pluginMatches.map((m) => ({
         name: m.command.title,
@@ -379,7 +438,6 @@ function App() {
         kind: "command",
       }));
 
-      // Settings shortcut
       if ((scope === "all" || scope === "apps") && matchesSettings(q)) {
         syntheticEntries.unshift({
           name: "Settings",
@@ -393,59 +451,32 @@ function App() {
         entries.push(...syntheticEntries);
       }
 
-      // Phase 1: search_apps returns instantly from memory cache
       try {
         if (scope === "all" || scope === "apps") {
           const res = await invoke<AppEntry[]>("search_apps", { query: q });
+          if (seq !== searchSeqRef.current) return;
           entries.push(...res.map((item) => ({ ...item, kind: item.kind ?? "app" as const })));
         }
       } catch {}
 
-      // Show results immediately with apps + commands (even while other providers load)
-      setResults(entries);
+      if (seq !== searchSeqRef.current) return;
+      const baseEntries = [...entries];
+      applyResults(baseEntries);
 
-      // Phase 2/3: Gradually load other providers
-      try {
-        if (scope === "all" || scope === "files") {
-          const files = await invoke<AppEntry[]>("search_files", { query: q });
-          if (files.length > 0) {
-            entries.push(...files.map((item) => ({ ...item, kind: "file" as const })));
-            setResults([...entries]);
-          }
-        }
-      } catch {}
+      slowSearchDebounceRef.current = setTimeout(() => {
+        void loadSlowSearchProviders(q, scope, baseEntries, syntheticEntries, seq);
+      }, scope === "files" ? 80 : 260);
 
-      try {
-        if ((scope === "all" || scope === "clipboard") && q.trim()) {
-          const history = await invoke<{ id: string; text: string }[]>("get_clipboard_history", { limit: 80 });
-          const lower = q.trim().toLowerCase();
-          const clipboardEntries = history
-            .filter((item) => item.text.toLowerCase().includes(lower))
-            .slice(0, 8)
-            .map((item) => ({
-              name: item.text.replace(/\s+/g, " ").trim().slice(0, 80) || "Clipboard Item",
-              path: `__qx:clipboard:${item.id}`,
-              icon: "builtin:clipboard",
-              kind: "clipboard" as const,
-            }));
-          if (clipboardEntries.length > 0) {
-            entries.push(...clipboardEntries);
-            setResults([...entries]);
-          }
-        }
-      } catch {
-        if (scope === "all" || scope === "clipboard") {
-          entries.push(...syntheticEntries.filter((item) => item.path.includes("clipboard")));
-        }
-      }
-
-      // Record search query for history (skip empty/whitespace-only)
       const trimmed = q.trim();
       if (trimmed.length > 0) {
-        invoke("record_search", { query: trimmed }).catch(() => {});
+        recordSearchDebounceRef.current = setTimeout(() => {
+          if (seq === searchSeqRef.current) {
+            invoke("record_search", { query: trimmed }).catch(() => {});
+          }
+        }, 900);
       }
     },
-    [setResults, findCommands],
+    [applyResults, findCommands, loadSlowSearchProviders],
   );
 
   useEffect(() => {
@@ -453,6 +484,8 @@ function App() {
     debounceRef.current = setTimeout(() => doSearch(query), 100);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (slowSearchDebounceRef.current) clearTimeout(slowSearchDebounceRef.current);
+      if (recordSearchDebounceRef.current) clearTimeout(recordSearchDebounceRef.current);
     };
   }, [query, doSearch]);
 

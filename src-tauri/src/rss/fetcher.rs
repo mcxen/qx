@@ -19,19 +19,15 @@ fn http_client() -> reqwest::Client {
 
 /// Async HTTP fetch.
 async fn fetch_url(url: &str) -> Result<Vec<u8>, String> {
-    let resp = http_client()
-        .get(url)
-        .send()
-        .await
-        .map_err(|e| {
-            if e.is_timeout() {
-                format!("timeout fetching {url}")
-            } else if e.is_connect() {
-                format!("connection failed: {url} — {e}")
-            } else {
-                format!("http error: {e}")
-            }
-        })?;
+    let resp = http_client().get(url).send().await.map_err(|e| {
+        if e.is_timeout() {
+            format!("timeout fetching {url}")
+        } else if e.is_connect() {
+            format!("connection failed: {url} — {e}")
+        } else {
+            format!("http error: {e}")
+        }
+    })?;
 
     if !resp.status().is_success() {
         return Err(format!("http status {} for {url}", resp.status()));

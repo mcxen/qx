@@ -57,7 +57,8 @@ export default function Launcher({
   const [actionIndex, setActionIndex] = useState(0);
   const [recentLaunches, setRecentLaunches] = useState<HistoryEntry[]>([]);
   const [recentSearches, setRecentSearches] = useState<SearchHistoryEntry[]>([]);
-  const { query, setQuery } = useStore();
+  const query = useStore((state) => state.query);
+  const setQuery = useStore((state) => state.setQuery);
   const scopeOptions: { value: SearchScope; label: string }[] = [
     { value: "all", label: "All" },
     { value: "apps", label: "Apps" },

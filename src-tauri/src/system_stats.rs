@@ -21,9 +21,13 @@ fn system() -> &'static Mutex<System> {
 
 #[tauri::command]
 pub fn get_system_stats() -> Result<SystemStats, String> {
-    let mut sys = system().lock().map_err(|e| format!("system lock: {e}"))?;
-    sys.refresh_cpu();
+    {
+        let mut sys = system().lock().map_err(|e| format!("system lock: {e}"))?;
+        sys.refresh_cpu();
+    }
     thread::sleep(Duration::from_millis(120));
+
+    let mut sys = system().lock().map_err(|e| format!("system lock: {e}"))?;
     sys.refresh_cpu();
     sys.refresh_memory();
 

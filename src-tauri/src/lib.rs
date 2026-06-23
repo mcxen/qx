@@ -1,6 +1,8 @@
 mod apps;
 mod clipboard;
 mod display_monitor;
+mod file_search;
+mod github_calendar;
 mod history;
 mod macro_recorder;
 mod marketplace;
@@ -15,7 +17,7 @@ mod v2ex;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    LogicalSize, Manager, PhysicalSize, WindowEvent,
+    LogicalSize, Manager, PhysicalSize,
 };
 
 #[tauri::command]
@@ -156,6 +158,9 @@ pub fn run() {
             // Initialize app cache from DB (instant), then background re-scan
             apps::ensure_cache(Some(&handle));
 
+            // Initialize fast platform file search backends.
+            file_search::init(&handle);
+
             // Pre-convert app icons in background (keeps first search fast)
             apps::preload_icons(&handle);
 
@@ -271,6 +276,8 @@ pub fn run() {
             history::delete_search_entry,
             v2ex::v2ex_fetch_topics,
             v2ex::v2ex_search_topics,
+            github_calendar::github_contributions,
+            github_calendar::github_contributions_raw,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

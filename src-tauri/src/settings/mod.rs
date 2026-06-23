@@ -1,9 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
 use tauri::{command, AppHandle, Emitter, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+static SETTINGS_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneralSettings {
@@ -159,10 +163,7 @@ pub struct RssSettings {
         rename = "max_articles_per_feed"
     )]
     pub max_articles_per_feed: u32,
-    #[serde(
-        default = "default_bottom_island_mode",
-        rename = "bottom_island_mode"
-    )]
+    #[serde(default = "default_bottom_island_mode", rename = "bottom_island_mode")]
     pub bottom_island_mode: String,
 }
 
@@ -286,9 +287,32 @@ pub(crate) fn read_settings() -> Settings {
 }
 
 fn write_settings(settings: &Settings) -> Result<(), String> {
+    let _guard = SETTINGS_WRITE_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let path = settings_path();
     let json = serde_json::to_string_pretty(settings).map_err(|e| format!("serialize: {e}"))?;
-    fs::write(&path, json).map_err(|e| format!("write {}: {e}", path.display()))
+    atomic_write(&path, json.as_bytes()).map_err(|e| format!("write {}: {e}", path.display()))
+}
+
+fn atomic_write(path: &PathBuf, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let tmp_path = path.with_extension(format!("tmp.{}", std::process::id()));
+    {
+        let mut file = fs::File::create(&tmp_path)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+    }
+    fs::rename(&tmp_path, path)?;
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+    Ok(())
 }
 
 #[command]

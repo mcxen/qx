@@ -1,4 +1,4 @@
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
@@ -17,8 +17,7 @@ pub struct AppEntry {
 
 static APP_CACHE: Mutex<Vec<AppEntry>> = Mutex::new(Vec::new());
 static DB_PATH: OnceLock<PathBuf> = OnceLock::new();
-static CACHE_INITIALIZED: std::sync::atomic::AtomicBool =
-    std::sync::atomic::AtomicBool::new(false);
+static CACHE_INITIALIZED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 fn get_db_path() -> &'static PathBuf {
     DB_PATH.get_or_init(|| {
@@ -41,10 +40,8 @@ fn init_db() -> Result<Connection, rusqlite::Error> {
         );",
     )?;
     // Ensure the table has the expected columns even if created by an older schema
-    conn.execute_batch(
-        "ALTER TABLE apps ADD COLUMN kind TEXT NOT NULL DEFAULT 'app';",
-    )
-    .ok();
+    conn.execute_batch("ALTER TABLE apps ADD COLUMN kind TEXT NOT NULL DEFAULT 'app';")
+        .ok();
     conn.execute_batch(
         "ALTER TABLE apps ADD COLUMN last_seen TEXT NOT NULL DEFAULT (datetime('now'));",
     )
@@ -125,15 +122,19 @@ fn sync_db(entries: &[AppEntry]) {
 
     // Delete entries no longer present
     if !current_paths.is_empty() {
-        let placeholders: Vec<String> = current_paths.iter().enumerate()
+        let placeholders: Vec<String> = current_paths
+            .iter()
+            .enumerate()
             .map(|(i, _)| format!("?{}", i + 1))
             .collect();
         let sql = format!(
             "DELETE FROM apps WHERE path NOT IN ({})",
             placeholders.join(",")
         );
-        let params: Vec<&dyn rusqlite::types::ToSql> =
-            current_paths.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+        let params: Vec<&dyn rusqlite::types::ToSql> = current_paths
+            .iter()
+            .map(|s| s as &dyn rusqlite::types::ToSql)
+            .collect();
         let _ = conn.execute(&sql, params.as_slice());
     } else {
         // No current apps, clear everything
@@ -373,7 +374,9 @@ pub fn search_apps(query: String) -> Result<Vec<AppEntry>, String> {
         ensure_cache(None);
     }
 
-    let cache = APP_CACHE.lock().map_err(|e| format!("lock poisoned: {e}"))?;
+    let cache = APP_CACHE
+        .lock()
+        .map_err(|e| format!("lock poisoned: {e}"))?;
 
     if query.is_empty() {
         let results: Vec<AppEntry> = cache.iter().take(20).cloned().collect();
@@ -399,45 +402,6 @@ pub fn search_apps(query: String) -> Result<Vec<AppEntry>, String> {
 }
 
 #[tauri::command]
-pub fn search_files(query: String) -> Vec<AppEntry> {
-    let q = query.trim();
-    if q.len() < 2 {
-        return Vec::new();
-    }
-
-    let output = Command::new("mdfind")
-        .args([
-            "-onlyin",
-            &std::env::var("HOME").unwrap_or_else(|_| "/".to_string()),
-            "-name",
-            q,
-        ])
-        .output();
-
-    let Ok(output) = output else {
-        return Vec::new();
-    };
-    if !output.status.success() {
-        return Vec::new();
-    }
-
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .take(12)
-        .map(|path| {
-            let path_buf = PathBuf::from(path);
-            let name = path_buf
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or(path)
-                .to_string();
-            AppEntry {
-                name,
-                path: path.to_string(),
-                icon: "builtin:file".to_string(),
-                kind: "file".to_string(),
-            }
-        })
-        .collect()
+pub async fn search_files(query: String) -> Vec<AppEntry> {
+    crate::file_search::search(query, 12).await
 }

@@ -6,7 +6,7 @@ use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::{command, AppHandle, Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
@@ -66,7 +66,10 @@ fn get_db_path() -> PathBuf {
 
 fn get_image_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(format!("{}/Library/Application Support/qx/clipboard_images", home));
+    let dir = PathBuf::from(format!(
+        "{}/Library/Application Support/qx/clipboard_images",
+        home
+    ));
     std::fs::create_dir_all(&dir).ok();
     dir
 }
@@ -116,6 +119,17 @@ fn ensure_column(conn: &Connection, name: &str, definition: &str) -> rusqlite::R
 fn compute_id(text: &str) -> String {
     let hash = blake3::hash(text.as_bytes());
     hash.to_hex()[..16].to_string()
+}
+
+fn lock_db(db: &Arc<Mutex<Option<Connection>>>) -> MutexGuard<'_, Option<Connection>> {
+    db.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn ensure_connection(guard: &mut Option<Connection>) -> rusqlite::Result<&Connection> {
+    if guard.is_none() {
+        *guard = Some(init_db()?);
+    }
+    Ok(guard.as_ref().expect("clipboard connection initialized"))
 }
 
 pub fn start_listener(app: &AppHandle) {
@@ -223,8 +237,7 @@ pub fn start_listener(app: &AppHandle) {
                                         .write_image(rgba, width, height, ExtendedColorType::Rgba8)
                                         .is_ok()
                                     {
-                                        let path_str =
-                                            image_path.to_string_lossy().to_string();
+                                        let path_str = image_path.to_string_lossy().to_string();
                                         store(&db_clone, "", Some(&path_str));
                                         let _ = app_handle.emit("clipboard-updated", ());
                                     }
@@ -242,75 +255,70 @@ pub fn start_listener(app: &AppHandle) {
 }
 
 fn store(db: &Arc<Mutex<Option<Connection>>>, text: &str, image_path: Option<&str>) {
-    if let Ok(guard) = db.lock() {
-        if let Some(ref conn) = *guard {
-            let id = if !text.is_empty() {
-                compute_id(text)
-            } else if let Some(path) = image_path {
-                compute_id(path)
-            } else {
-                return; // nothing to store
-            };
-            let ts = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-            let _ = conn.execute(
-                "INSERT INTO clipboard_history (id, text, timestamp, image_path)
-                 VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT(id) DO UPDATE SET
-                    text = excluded.text,
-                    timestamp = excluded.timestamp,
-                    image_path = COALESCE(excluded.image_path, clipboard_history.image_path)",
-                params![id, text, ts, image_path],
-            );
-        }
-    }
+    let mut guard = lock_db(db);
+    let Ok(conn) = ensure_connection(&mut guard) else {
+        return;
+    };
+    let id = if !text.is_empty() {
+        compute_id(text)
+    } else if let Some(path) = image_path {
+        compute_id(path)
+    } else {
+        return; // nothing to store
+    };
+    let ts = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let _ = conn.execute(
+        "INSERT INTO clipboard_history (id, text, timestamp, image_path)
+         VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(id) DO UPDATE SET
+            text = excluded.text,
+            timestamp = excluded.timestamp,
+            image_path = COALESCE(excluded.image_path, clipboard_history.image_path)",
+        params![id, text, ts, image_path],
+    );
 }
 
 #[command]
 pub fn get_clipboard_history(
     state: tauri::State<'_, ClipboardDb>,
     limit: Option<u32>,
-) -> Vec<ClipboardEntry> {
+) -> Result<Vec<ClipboardEntry>, String> {
     let limit = limit.unwrap_or(50);
     let mut results = Vec::new();
-    if let Ok(guard) = state.0.lock() {
-        if let Some(ref conn) = *guard {
-            let mut stmt = conn
-                .prepare(
-                    "SELECT id, text, timestamp, pinned, copy_count, image_path
-                     FROM clipboard_history
-                     ORDER BY pinned DESC, timestamp DESC
-                     LIMIT ?1",
-                )
-                .ok();
-            if let Some(ref mut stmt) = stmt {
-                if let Ok(rows) = stmt.query_map(params![limit], |row| {
-                    Ok(ClipboardEntry {
-                        id: row.get(0)?,
-                        text: row.get(1)?,
-                        timestamp: row.get(2)?,
-                        pinned: row.get::<_, i64>(3)? != 0,
-                        copy_count: row.get(4)?,
-                        image_path: row.get(5)?,
-                    })
-                }) {
-                    for row in rows.flatten() {
-                        results.push(row);
-                    }
-                }
-            }
-        }
+    let mut guard = lock_db(&state.0);
+    let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, text, timestamp, pinned, copy_count, image_path
+             FROM clipboard_history
+             ORDER BY pinned DESC, timestamp DESC
+             LIMIT ?1",
+        )
+        .map_err(|e| format!("{e}"))?;
+    let rows = stmt
+        .query_map(params![limit], |row| {
+            Ok(ClipboardEntry {
+                id: row.get(0)?,
+                text: row.get(1)?,
+                timestamp: row.get(2)?,
+                pinned: row.get::<_, i64>(3)? != 0,
+                copy_count: row.get(4)?,
+                image_path: row.get(5)?,
+            })
+        })
+        .map_err(|e| format!("{e}"))?;
+    for row in rows {
+        results.push(row.map_err(|e| format!("{e}"))?);
     }
-    results
+    Ok(results)
 }
 
 #[command]
 pub fn clear_clipboard_history(state: tauri::State<'_, ClipboardDb>) -> Result<(), String> {
-    if let Ok(guard) = state.0.lock() {
-        if let Some(ref conn) = *guard {
-            conn.execute("DELETE FROM clipboard_history", [])
-                .map_err(|e| format!("{e}"))?;
-        }
-    }
+    let mut guard = lock_db(&state.0);
+    let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+    conn.execute("DELETE FROM clipboard_history", [])
+        .map_err(|e| format!("{e}"))?;
     Ok(())
 }
 
@@ -319,12 +327,10 @@ pub fn delete_clipboard_entry(
     state: tauri::State<'_, ClipboardDb>,
     id: String,
 ) -> Result<(), String> {
-    if let Ok(guard) = state.0.lock() {
-        if let Some(ref conn) = *guard {
-            conn.execute("DELETE FROM clipboard_history WHERE id = ?1", params![id])
-                .map_err(|e| format!("{e}"))?;
-        }
-    }
+    let mut guard = lock_db(&state.0);
+    let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+    conn.execute("DELETE FROM clipboard_history WHERE id = ?1", params![id])
+        .map_err(|e| format!("{e}"))?;
     Ok(())
 }
 
@@ -333,17 +339,15 @@ pub fn toggle_clipboard_pin(
     state: tauri::State<'_, ClipboardDb>,
     id: String,
 ) -> Result<(), String> {
-    if let Ok(guard) = state.0.lock() {
-        if let Some(ref conn) = *guard {
-            conn.execute(
-                "UPDATE clipboard_history
-                 SET pinned = CASE pinned WHEN 1 THEN 0 ELSE 1 END
-                 WHERE id = ?1",
-                params![id],
-            )
-            .map_err(|e| format!("{e}"))?;
-        }
-    }
+    let mut guard = lock_db(&state.0);
+    let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+    conn.execute(
+        "UPDATE clipboard_history
+         SET pinned = CASE pinned WHEN 1 THEN 0 ELSE 1 END
+         WHERE id = ?1",
+        params![id],
+    )
+    .map_err(|e| format!("{e}"))?;
     Ok(())
 }
 
@@ -352,18 +356,16 @@ pub fn record_clipboard_copy(
     state: tauri::State<'_, ClipboardDb>,
     id: String,
 ) -> Result<(), String> {
-    if let Ok(guard) = state.0.lock() {
-        if let Some(ref conn) = *guard {
-            let ts = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
-            conn.execute(
-                "UPDATE clipboard_history
-                 SET copy_count = copy_count + 1,
-                     timestamp = ?2
-                 WHERE id = ?1",
-                params![id, ts],
-            )
-            .map_err(|e| format!("{e}"))?;
-        }
-    }
+    let mut guard = lock_db(&state.0);
+    let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+    let ts = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    conn.execute(
+        "UPDATE clipboard_history
+         SET copy_count = copy_count + 1,
+             timestamp = ?2
+         WHERE id = ?1",
+        params![id, ts],
+    )
+    .map_err(|e| format!("{e}"))?;
     Ok(())
 }

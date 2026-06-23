@@ -1,11 +1,12 @@
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use tauri::command;
 
 static DB_PATH: OnceLock<PathBuf> = OnceLock::new();
+static DB: OnceLock<Mutex<Option<Connection>>> = OnceLock::new();
 
 fn get_db_path() -> &'static PathBuf {
     DB_PATH.get_or_init(|| {
@@ -36,6 +37,15 @@ fn init_db() -> Result<Connection, rusqlite::Error> {
     Ok(conn)
 }
 
+fn with_db<T>(f: impl FnOnce(&Connection) -> Result<T, String>) -> Result<T, String> {
+    let db = DB.get_or_init(|| Mutex::new(None));
+    let mut guard = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if guard.is_none() {
+        *guard = Some(init_db().map_err(|e| format!("DB init failed: {e}"))?);
+    }
+    f(guard.as_ref().expect("history connection initialized"))
+}
+
 #[derive(Debug, Serialize)]
 pub struct HistoryEntry {
     pub id: i64,
@@ -54,51 +64,54 @@ pub struct SearchEntry {
 /// Record that an app/file was launched.
 #[command]
 pub fn record_launch(path: String, name: String) -> Result<(), String> {
-    let conn = init_db().map_err(|e| format!("DB init failed: {e}"))?;
-    conn.execute(
-        "INSERT INTO launch_history (path, name) VALUES (?1, ?2)",
-        params![path, name],
-    )
-    .map_err(|e| format!("Failed to record launch: {e}"))?;
-    Ok(())
+    with_db(|conn| {
+        conn.execute(
+            "INSERT INTO launch_history (path, name) VALUES (?1, ?2)",
+            params![path, name],
+        )
+        .map_err(|e| format!("Failed to record launch: {e}"))?;
+        Ok(())
+    })
 }
 
 /// Get recent launch history.
 #[command]
 pub fn get_launch_history(limit: u32) -> Result<Vec<HistoryEntry>, String> {
-    let conn = init_db().map_err(|e| format!("DB init failed: {e}"))?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, name, path, timestamp
-             FROM launch_history
-             ORDER BY timestamp DESC
-             LIMIT ?1",
-        )
-        .map_err(|e| format!("Query prepare failed: {e}"))?;
-    let rows = stmt
-        .query_map(params![limit], |row| {
-            Ok(HistoryEntry {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                path: row.get(2)?,
-                timestamp: row.get(3)?,
+    with_db(|conn| {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, path, timestamp
+                 FROM launch_history
+                 ORDER BY timestamp DESC
+                 LIMIT ?1",
+            )
+            .map_err(|e| format!("Query prepare failed: {e}"))?;
+        let rows = stmt
+            .query_map(params![limit], |row| {
+                Ok(HistoryEntry {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    path: row.get(2)?,
+                    timestamp: row.get(3)?,
+                })
             })
-        })
-        .map_err(|e| format!("Query failed: {e}"))?;
-    let mut out = Vec::new();
-    for row in rows.flatten() {
-        out.push(row);
-    }
-    Ok(out)
+            .map_err(|e| format!("Query failed: {e}"))?;
+        let mut out = Vec::new();
+        for row in rows.flatten() {
+            out.push(row);
+        }
+        Ok(out)
+    })
 }
 
 /// Clear launch history.
 #[command]
 pub fn clear_launch_history() -> Result<(), String> {
-    let conn = init_db().map_err(|e| format!("DB init failed: {e}"))?;
-    conn.execute("DELETE FROM launch_history", [])
-        .map_err(|e| format!("Failed to clear: {e}"))?;
-    Ok(())
+    with_db(|conn| {
+        conn.execute("DELETE FROM launch_history", [])
+            .map_err(|e| format!("Failed to clear: {e}"))?;
+        Ok(())
+    })
 }
 
 /// Record a search query. Skips duplicates (same query as the most recent entry).
@@ -108,86 +121,86 @@ pub fn record_search(query: String) -> Result<(), String> {
     if q.is_empty() {
         return Ok(());
     }
-    let conn = init_db().map_err(|e| format!("DB init failed: {e}"))?;
+    with_db(|conn| {
+        // Skip if the same query was the last one
+        let duplicate: bool = conn
+            .query_row(
+                "SELECT 1 FROM search_history WHERE query = ?1 ORDER BY timestamp DESC LIMIT 1",
+                params![q],
+                |_| Ok(true),
+            )
+            .unwrap_or(false);
+        if duplicate {
+            // Touch the timestamp
+            let _ = conn.execute(
+                "UPDATE search_history SET timestamp = datetime('now') WHERE id = (
+                    SELECT id FROM search_history WHERE query = ?1 ORDER BY timestamp DESC LIMIT 1
+                )",
+                params![q],
+            );
+            return Ok(());
+        }
 
-    // Skip if the same query was the last one
-    let duplicate: bool = conn
-        .query_row(
-            "SELECT 1 FROM search_history WHERE query = ?1 ORDER BY timestamp DESC LIMIT 1",
-            params![q],
-            |_| Ok(true),
-        )
-        .unwrap_or(false);
-    if duplicate {
-        // Touch the timestamp
+        conn.execute("INSERT INTO search_history (query) VALUES (?1)", params![q])
+            .map_err(|e| format!("Failed to record search: {e}"))?;
+
+        // Prune to max 100 entries
         let _ = conn.execute(
-            "UPDATE search_history SET timestamp = datetime('now') WHERE id = (
-                SELECT id FROM search_history WHERE query = ?1 ORDER BY timestamp DESC LIMIT 1
+            "DELETE FROM search_history WHERE id NOT IN (
+                SELECT id FROM search_history ORDER BY timestamp DESC LIMIT 100
             )",
-            params![q],
+            [],
         );
-        return Ok(());
-    }
 
-    conn.execute(
-        "INSERT INTO search_history (query) VALUES (?1)",
-        params![q],
-    )
-    .map_err(|e| format!("Failed to record search: {e}"))?;
-
-    // Prune to max 100 entries
-    let _ = conn.execute(
-        "DELETE FROM search_history WHERE id NOT IN (
-            SELECT id FROM search_history ORDER BY timestamp DESC LIMIT 100
-        )",
-        [],
-    );
-
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Get recent search history.
 #[command]
 pub fn get_search_history(limit: u32) -> Result<Vec<SearchEntry>, String> {
-    let conn = init_db().map_err(|e| format!("DB init failed: {e}"))?;
-    let mut stmt = conn
-        .prepare(
-            "SELECT id, query, timestamp
-             FROM search_history
-             ORDER BY timestamp DESC
-             LIMIT ?1",
-        )
-        .map_err(|e| format!("Query prepare failed: {e}"))?;
-    let rows = stmt
-        .query_map(params![limit], |row| {
-            Ok(SearchEntry {
-                id: row.get(0)?,
-                query: row.get(1)?,
-                timestamp: row.get(2)?,
+    with_db(|conn| {
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, query, timestamp
+                 FROM search_history
+                 ORDER BY timestamp DESC
+                 LIMIT ?1",
+            )
+            .map_err(|e| format!("Query prepare failed: {e}"))?;
+        let rows = stmt
+            .query_map(params![limit], |row| {
+                Ok(SearchEntry {
+                    id: row.get(0)?,
+                    query: row.get(1)?,
+                    timestamp: row.get(2)?,
+                })
             })
-        })
-        .map_err(|e| format!("Query failed: {e}"))?;
-    let mut out = Vec::new();
-    for row in rows.flatten() {
-        out.push(row);
-    }
-    Ok(out)
+            .map_err(|e| format!("Query failed: {e}"))?;
+        let mut out = Vec::new();
+        for row in rows.flatten() {
+            out.push(row);
+        }
+        Ok(out)
+    })
 }
 
 /// Clear all search history.
 #[command]
 pub fn clear_search_history() -> Result<(), String> {
-    let conn = init_db().map_err(|e| format!("DB init failed: {e}"))?;
-    conn.execute("DELETE FROM search_history", [])
-        .map_err(|e| format!("Failed to clear: {e}"))?;
-    Ok(())
+    with_db(|conn| {
+        conn.execute("DELETE FROM search_history", [])
+            .map_err(|e| format!("Failed to clear: {e}"))?;
+        Ok(())
+    })
 }
 
 /// Delete a single search entry by ID.
 #[command]
 pub fn delete_search_entry(id: i64) -> Result<(), String> {
-    let conn = init_db().map_err(|e| format!("DB init failed: {e}"))?;
-    conn.execute("DELETE FROM search_history WHERE id = ?1", params![id])
-        .map_err(|e| format!("Failed to delete: {e}"))?;
-    Ok(())
+    with_db(|conn| {
+        conn.execute("DELETE FROM search_history WHERE id = ?1", params![id])
+            .map_err(|e| format!("Failed to delete: {e}"))?;
+        Ok(())
+    })
 }
