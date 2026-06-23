@@ -23,7 +23,7 @@ export default function ImageLightbox({
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(0,0,0,0.85)",
+        background: "var(--qx-overlay-1)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -36,7 +36,7 @@ export default function ImageLightbox({
         <div
           style={{
             position: "absolute",
-            color: "#fff",
+            color: "var(--qx-text-on-accent)",
             fontSize: 13,
             opacity: 0.7,
           }}
@@ -52,11 +52,11 @@ export default function ImageLightbox({
         style={{
           maxWidth: "100%",
           maxHeight: "100%",
-          borderRadius: 8,
+          borderRadius: 4,
           objectFit: "contain",
-          boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+          boxShadow: "none",
           opacity: loaded ? 1 : 0,
-          transition: "opacity 0.15s",
+          transition: "opacity 0.1s",
         }}
       />
       <button
@@ -67,10 +67,10 @@ export default function ImageLightbox({
           right: 16,
           width: 32,
           height: 32,
-          borderRadius: 16,
+          borderRadius: 6,
           border: "none",
-          background: "rgba(255,255,255,0.15)",
-          color: "#fff",
+          background: "var(--qx-overlay-4)",
+          color: "var(--qx-text-on-accent)",
           fontSize: 16,
           cursor: "pointer",
           display: "flex",

@@ -5,6 +5,7 @@ import {
   useSettingsStore,
   type ShortcutBinding,
 } from "./store";
+import { LinkButton } from "../../components/ui";
 
 function normalizeKey(e: KeyboardEvent): string | null {
   const k = e.key;
@@ -194,7 +195,7 @@ export default function ShortcutSettings() {
                     onCommit={(b) => patchShortcut(id, b)}
                     onCancel={() => {}}
                   />
-                  <button
+                  <LinkButton
                     onClick={() => {
                       const defaults: Record<string, string> = {
                         toggle_launcher: "Alt+Space",
@@ -209,18 +210,10 @@ export default function ShortcutSettings() {
                         enabled: true,
                       });
                     }}
-                    style={{
-                      border: "none",
-                      background: "transparent",
-                      color: "var(--color-text-tertiary)",
-                      cursor: "pointer",
-                      fontSize: 14,
-                      padding: 0,
-                    }}
                     title="Reset to default"
                   >
                     ↺
-                  </button>
+                  </LinkButton>
                 </div>
               </div>
             );

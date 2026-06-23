@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useMacroStore } from "./store";
+import { Kbd } from "../../components/ui";
+import QxShell from "../../components/QxShell";
+import SaveDialog from "./SaveDialog";
 
 function formatTime(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -18,15 +21,6 @@ function formatTimestamp(ts: number | null): string {
     minute: "2-digit",
   });
 }
-
-const kbdStyle: React.CSSProperties = {
-  fontFamily: "inherit",
-  fontSize: 11,
-  background: "var(--qx-bg-component-3)",
-  borderRadius: 4,
-  padding: "1px 5px",
-  marginRight: 4,
-};
 
 export default function MacroRecorder() {
   const {
@@ -100,52 +94,61 @@ export default function MacroRecorder() {
       }
       return;
     }
-    if (lastRecordedSteps) {
-      if (e.key === "Enter" && name.trim()) {
-        e.preventDefault();
-        e.stopPropagation();
-        void handleSave();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        handleDiscard();
-      }
-    }
   };
 
   return (
-    <div
+    <QxShell
       ref={shellRef}
-      className="qx-module-shell"
+      title="Macro Recorder"
+      search={<div className="qx-rss-detail-title">Macro Recorder</div>}
+      trailing={
+        <>
+          {!isRecording && !lastRecordedSteps && (
+            <button className="qx-command-button primary" onClick={handleStart}>
+              Start Recording
+            </button>
+          )}
+          {isRecording && (
+            <button className="qx-command-button danger" onClick={handleStop}>
+              Stop
+            </button>
+          )}
+        </>
+      }
+      island={{
+        label: isRecording ? "Recording Macro" : lastRecordedSteps ? "Macro Captured" : "Macro Recorder",
+        detail: isRecording
+          ? formatTime(elapsed)
+          : lastRecordedSteps
+            ? `${lastRecordedSteps.length} steps · ${formatTime(lastTotalDurationMs)}`
+            : `${savedMacros.length} saved macros`,
+        tone: error ? "danger" : isRecording ? "danger" : lastRecordedSteps ? "success" : "neutral",
+      }}
+      primaryAction={
+        isRecording
+          ? { label: "Stop", kbd: "Esc", tone: "danger", onClick: handleStop }
+          : lastRecordedSteps
+            ? { label: "Save", kbd: "Enter", disabled: !name.trim(), onClick: handleSave }
+            : { label: "Record", onClick: handleStart }
+      }
+      secondaryAction={
+        lastRecordedSteps
+          ? { label: "Discard", kbd: "Esc", onClick: handleDiscard }
+          : undefined
+      }
       onKeyDown={handleKeyDown}
-      tabIndex={0}
+      className="qx-macro-shell"
     >
-      <div className="qx-plugin-toolbar">
-        <div className="qx-toolbar-title" style={{ flex: 1 }}>
-          Macro Recorder
-        </div>
-        {!isRecording && !lastRecordedSteps && (
-          <button className="qx-command-button primary" onClick={handleStart}>
-            Start Recording
-          </button>
-        )}
-        {isRecording && (
-          <button className="qx-command-button danger" onClick={handleStop}>
-            Stop
-          </button>
-        )}
-      </div>
-
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
         <div className="qx-module-stage">
           <div
             className="qx-panel-card"
             style={{
-              padding: 20,
+              padding: 8,
               display: "flex",
               flexDirection: "column",
               alignItems: "center",
-              gap: 14,
+              gap: 8,
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -156,7 +159,7 @@ export default function MacroRecorder() {
                     width: 10,
                     height: 10,
                     borderRadius: "50%",
-                    background: "#ef4444",
+                    background: "var(--qx-danger)",
                   }}
                 />
               )}
@@ -190,55 +193,23 @@ export default function MacroRecorder() {
             {isRecording ? (
               <button
                 className="qx-command-button danger"
-                style={{ height: 40, padding: "0 28px" }}
+                    style={{ height: 28, padding: "0 12px" }}
                 onClick={handleStop}
               >
                 Stop
               </button>
             ) : lastRecordedSteps ? (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 10,
-                  width: "100%",
-                  maxWidth: 360,
-                }}
-              >
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "var(--qx-text-tertiary)",
-                    textAlign: "center",
-                  }}
-                >
-                  {lastRecordedSteps.length} steps captured
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    className="qx-inline-input"
-                    style={{ flex: 1 }}
-                    placeholder="Macro name…"
-                    value={name}
-                    autoFocus
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                  <button
-                    className="qx-command-button primary"
-                    onClick={handleSave}
-                    disabled={!name.trim()}
-                  >
-                    Save
-                  </button>
-                  <button className="qx-command-button" onClick={handleDiscard}>
-                    Discard
-                  </button>
-                </div>
-              </div>
+              <SaveDialog
+                stepCount={lastRecordedSteps.length}
+                name={name}
+                setName={setName}
+                onSave={() => void handleSave()}
+                onDiscard={handleDiscard}
+              />
             ) : (
               <button
                 className="qx-command-button primary"
-                style={{ height: 40, padding: "0 28px" }}
+                style={{ height: 28, padding: "0 12px" }}
                 onClick={handleStart}
               >
                 Start Recording
@@ -250,22 +221,22 @@ export default function MacroRecorder() {
             style={{
               display: "flex",
               justifyContent: "center",
-              gap: 16,
+              gap: 12,
               fontSize: 11,
               color: "var(--qx-text-tertiary)",
             }}
           >
             {isRecording ? (
               <span>
-                <kbd style={kbdStyle}>Esc</kbd>Stop recording
+                <Kbd>Esc</Kbd>Stop recording
               </span>
             ) : lastRecordedSteps ? (
               <>
                 <span>
-                  <kbd style={kbdStyle}>↩</kbd>Save macro
+                  <Kbd>↩</Kbd>Save macro
                 </span>
                 <span>
-                  <kbd style={kbdStyle}>Esc</kbd>Discard
+                  <Kbd>Esc</Kbd>Discard
                 </span>
               </>
             ) : (
@@ -276,7 +247,7 @@ export default function MacroRecorder() {
           {error && (
             <div
               className="qx-panel-card"
-              style={{ padding: "8px 12px", fontSize: 12, color: "var(--qx-danger)" }}
+              style={{ padding: "6px 8px", fontSize: 12, color: "var(--qx-danger)" }}
             >
               {error}
             </div>
@@ -299,8 +270,8 @@ export default function MacroRecorder() {
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  padding: "8px 14px",
-                  gap: 10,
+                  padding: "5px 10px",
+                  gap: 8,
                 }}
               >
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -328,6 +299,6 @@ export default function MacroRecorder() {
           })
         )}
       </div>
-    </div>
+    </QxShell>
   );
 }

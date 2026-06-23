@@ -3,68 +3,40 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useStore, type ClipboardEntry } from "../../store";
+import QxShell from "../../components/QxShell";
+import { Select } from "../../components/ui";
+import {
+  classify,
+  sectionName,
+  preview,
+  formatCopied,
+  wordCount,
+  contentType,
+  matchesQuery,
+} from "./utils";
 
-type Filter = "all" | "links" | "code" | "long";
+type Filter = "all" | "pinned" | "links" | "code" | "long" | "frequent";
 
 const FILTER_LABELS: Record<Filter, string> = {
-  all: "All Items",
+  all: "All Types",
+  pinned: "Pinned",
   links: "Links",
   code: "Code",
-  long: "Long Text",
+  long: "Long",
+  frequent: "Frequent",
 };
 
-function classify(item: ClipboardEntry): Exclude<Filter, "all"> | "text" {
-  const text = item.text.trim();
-  if (/^https?:\/\/\S+$/i.test(text)) return "links";
-  if (
-    /[{}[\];]/.test(text) ||
-    /\b(function|const|let|class|import|SELECT|FROM|fn|pub)\b/.test(text)
-  ) {
-    return "code";
-  }
-  if (text.length > 280 || text.includes("\n")) return "long";
-  return "text";
-}
-
-function sectionName(timestamp: string): string {
-  const date = new Date(timestamp.replace(" ", "T"));
-  if (Number.isNaN(date.getTime())) return "Recent";
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startItem = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  const diff = Math.round((startToday - startItem) / 86_400_000);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Yesterday";
-  if (diff < 7) return "This Week";
-  return "Older";
-}
-
-function preview(text: string): string {
-  return text.replace(/\s+/g, " ").trim();
-}
-
-function formatMeta(item: ClipboardEntry): string {
-  const kind = classify(item);
-  const lines = item.text.split(/\r?\n/).length;
-  const count = item.text.length;
-  const label = kind === "text" ? "Text" : FILTER_LABELS[kind];
-  return `${label} - ${count} chars${lines > 1 ? ` - ${lines} lines` : ""}`;
+function isTauriRuntime(): boolean {
+  return "__TAURI_INTERNALS__" in window;
 }
 
 export default function ClipboardPanel() {
-  const { clipboardHistory, setClipboardHistory } = useStore();
+  const { clipboardHistory, setClipboardHistory, setTab } = useStore();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState(0);
   const [detailOpen, setDetailOpen] = useState(false);
-
-  useEffect(() => {
-    loadHistory();
-    const unlisten = listen("clipboard-updated", () => loadHistory());
-    return () => {
-      unlisten.then((f) => f());
-    };
-  }, []);
+  const [status, setStatus] = useState("");
 
   const loadHistory = async () => {
     try {
@@ -75,14 +47,35 @@ export default function ClipboardPanel() {
     } catch {}
   };
 
+  useEffect(() => {
+    loadHistory();
+    if (!isTauriRuntime()) return;
+    const unlisten = listen("clipboard-updated", () => loadHistory());
+    return () => {
+      unlisten.then((f) => f());
+    };
+  }, []);
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return clipboardHistory.filter((item) => {
+    const matches = clipboardHistory.filter((item) => {
       const kind = classify(item);
-      const matchesFilter = filter === "all" || kind === filter;
-      const matchesQuery = !q || item.text.toLowerCase().includes(q);
-      return matchesFilter && matchesQuery;
+      const matchesFilter =
+        filter === "all" ||
+        (filter === "pinned" && item.pinned) ||
+        (filter === "frequent" && item.copy_count > 0) ||
+        kind === filter;
+      return matchesFilter && matchesQuery(item, q);
     });
+
+    if (filter === "frequent") {
+      return [...matches].sort((a, b) => {
+        if (b.copy_count !== a.copy_count) return b.copy_count - a.copy_count;
+        return Date.parse(b.timestamp.replace(" ", "T")) - Date.parse(a.timestamp.replace(" ", "T"));
+      });
+    }
+
+    return matches;
   }, [clipboardHistory, filter, query]);
 
   useEffect(() => {
@@ -109,6 +102,10 @@ export default function ClipboardPanel() {
     if (!item) return;
     try {
       await writeText(item.text);
+      await invoke("record_clipboard_copy", { id: item.id });
+      await loadHistory();
+      setStatus("Copied");
+      window.setTimeout(() => setStatus(""), 1200);
     } catch {}
   };
 
@@ -120,11 +117,12 @@ export default function ClipboardPanel() {
     if (selected >= next.length) setSelected(Math.max(next.length - 1, 0));
   };
 
-  const clearAll = async () => {
-    await invoke("clear_clipboard_history");
-    setClipboardHistory([]);
-    setSelected(0);
-    setDetailOpen(false);
+  const togglePin = async (item?: ClipboardEntry) => {
+    if (!item) return;
+    await invoke("toggle_clipboard_pin", { id: item.id });
+    await loadHistory();
+    setStatus(item.pinned ? "Unpinned" : "Pinned");
+    window.setTimeout(() => setStatus(""), 1200);
   };
 
   const handleKeyDown = async (e: React.KeyboardEvent) => {
@@ -140,21 +138,25 @@ export default function ClipboardPanel() {
     } else if (e.key === "Enter") {
       e.preventDefault();
       await copyItem(selectedItem);
+    } else if (e.key.toLowerCase() === "p" && e.metaKey) {
+      e.preventDefault();
+      await togglePin(selectedItem);
     } else if ((e.key === "Backspace" || e.key === "Delete") && e.metaKey) {
       e.preventDefault();
       await deleteItem(selectedItem);
     } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
       if (detailOpen) setDetailOpen(false);
       else if (query) setQuery("");
+      else setTab("launcher");
     }
   };
 
   let flatIndex = 0;
 
-  return (
-    <div className="qx-raycast" onKeyDown={handleKeyDown}>
-      <div className="qx-plugin-toolbar">
-        <div className="qx-search-wrap">
+  const searchSlot = (
+        <div className="qx-clipboard-search-wrap">
           <span className="qx-search-icon" aria-hidden="true" />
           <input
             type="text"
@@ -164,29 +166,63 @@ export default function ClipboardPanel() {
               setQuery(e.target.value);
               setSelected(0);
             }}
-            placeholder="Search clipboard history..."
-            className="qx-plugin-search"
+            placeholder="Type to filter entries..."
+            className="qx-clipboard-search"
           />
         </div>
-        <select
-          value={filter}
-          onChange={(e) => {
-            setFilter(e.target.value as Filter);
-            setSelected(0);
-          }}
-          className="qx-plugin-dropdown"
-          title="Filter clipboard history"
-        >
-          {(Object.keys(FILTER_LABELS) as Filter[]).map((id) => (
-            <option key={id} value={id}>
-              {FILTER_LABELS[id]}
-            </option>
-          ))}
-        </select>
-      </div>
+  );
 
-      <div className="qx-plugin-body">
-        <div className="qx-plugin-list" role="listbox" aria-label="Clipboard history">
+  const trailing = (
+    <>
+      <Select
+        value={filter}
+        options={(Object.keys(FILTER_LABELS) as Filter[]).map((id) => ({
+          value: id,
+          label: FILTER_LABELS[id],
+        }))}
+        ariaLabel="Clipboard filter"
+        className="qx-clipboard-filter"
+        onChange={(next) => {
+          setFilter(next);
+          setSelected(0);
+        }}
+      />
+      <div className="qx-clipboard-status" aria-live="polite">
+        {status}
+      </div>
+    </>
+  );
+
+  return (
+    <QxShell
+      title="Clipboard History"
+      search={searchSlot}
+      trailing={trailing}
+      onBack={() => setTab("launcher")}
+      onKeyDown={handleKeyDown}
+      className="qx-clipboard-shell"
+      island={{
+        label: status || "Clipboard History",
+        detail: selectedItem
+          ? `${contentType(selectedItem)} · ${FILTER_LABELS[filter]} · ${filtered.length} items`
+          : `${FILTER_LABELS[filter]} · ${filtered.length} items`,
+        tone: status ? "success" : "neutral",
+      }}
+      primaryAction={{
+        label: "Paste to Clipboard",
+        kbd: "Enter",
+        disabled: !selectedItem,
+        onClick: () => copyItem(selectedItem),
+      }}
+      secondaryAction={{
+        label: selectedItem?.pinned ? "Unpin" : "Pin",
+        kbd: "Cmd P",
+        disabled: !selectedItem,
+        onClick: () => togglePin(selectedItem),
+      }}
+    >
+      <div className="qx-clipboard-body">
+        <div className="qx-clipboard-list" role="listbox" aria-label="Clipboard history">
           {grouped.map((section) => (
             <div key={section.title}>
               <div className="qx-section-header">
@@ -196,24 +232,32 @@ export default function ClipboardPanel() {
               {section.items.map((item) => {
                 const index = flatIndex++;
                 const active = index === selected;
+                const kind = classify(item);
                 return (
                   <button
                     key={item.id}
                     className={`qx-list-row${active ? " is-active" : ""}`}
                     onClick={() => {
                       setSelected(index);
-                      setDetailOpen(true);
+                      setDetailOpen(false);
                     }}
                     onDoubleClick={() => copyItem(item)}
                     role="option"
                     aria-selected={active}
                   >
-                    <span className="qx-list-icon">{classify(item) === "links" ? "URL" : "TXT"}</span>
-                    <span className="qx-list-copy">
-                      <span className="qx-list-title">{preview(item.text) || "Empty Text"}</span>
-                      <span className="qx-list-subtitle">{formatMeta(item)}</span>
+                    <span className="qx-clipboard-row-icon" aria-hidden="true">
+                      <span
+                        className={`qx-symbol-icon ${
+                          item.pinned ? "pin" : kind === "links" ? "link" : kind === "code" ? "code" : "doc"
+                        }`}
+                      />
                     </span>
-                    <span className="qx-list-time">{item.timestamp.slice(5, 16)}</span>
+                    <span className="qx-clipboard-row-copy">
+                      <span className="qx-clipboard-row-title">
+                        {item.pinned && <span className="qx-clipboard-pin-dot" />}
+                        {preview(item.text) || "Empty Text"}
+                      </span>
+                    </span>
                   </button>
                 );
               })}
@@ -226,50 +270,41 @@ export default function ClipboardPanel() {
           )}
         </div>
 
-        <div className="qx-plugin-detail">
+        <div className="qx-clipboard-detail">
           {selectedItem ? (
             <>
-              <div className="qx-detail-header">
-                <div>
-                  <div className="qx-detail-title">{detailOpen ? "Detail" : "Preview"}</div>
-                  <div className="qx-detail-meta">{selectedItem.timestamp}</div>
-                </div>
-                <button className="qx-icon-button" onClick={() => setDetailOpen((v) => !v)}>
-                  {detailOpen ? "List" : "Open"}
-                </button>
-              </div>
-              <pre className={detailOpen ? "qx-detail-content is-open" : "qx-detail-content"}>
+              <pre
+                className={`qx-clipboard-content${detailOpen ? " is-expanded" : ""}`}
+              >
                 {selectedItem.text}
               </pre>
+              <div className="qx-clipboard-info">
+                <h2>Information</h2>
+                <dl>
+                  <div>
+                    <dt>Content type</dt>
+                    <dd>{contentType(selectedItem)}</dd>
+                  </div>
+                  <div>
+                    <dt>Characters</dt>
+                    <dd>{selectedItem.text.length.toLocaleString()}</dd>
+                  </div>
+                  <div>
+                    <dt>Words</dt>
+                    <dd>{wordCount(selectedItem.text).toLocaleString()}</dd>
+                  </div>
+                  <div>
+                    <dt>Copied</dt>
+                    <dd>{formatCopied(selectedItem.timestamp)}</dd>
+                  </div>
+                </dl>
+              </div>
             </>
           ) : (
-            <div className="qx-empty-state">Select an item to preview it</div>
+            <div className="qx-empty-state">Select an item to preview</div>
           )}
         </div>
-
-        <aside className="qx-action-panel" aria-label="Action panel">
-          <div className="qx-action-title">ActionPanel</div>
-          <button className="qx-action-item" onClick={() => copyItem(selectedItem)} disabled={!selectedItem}>
-            <span>Copy to Clipboard</span>
-            <kbd>↩</kbd>
-          </button>
-          <button
-            className="qx-action-item"
-            onClick={() => setDetailOpen(true)}
-            disabled={!selectedItem}
-          >
-            <span>Open Detail</span>
-            <kbd>⌘↩</kbd>
-          </button>
-          <button className="qx-action-item" onClick={() => deleteItem(selectedItem)} disabled={!selectedItem}>
-            <span>Delete Item</span>
-            <kbd>⌘⌫</kbd>
-          </button>
-          <button className="qx-action-item danger" onClick={clearAll} disabled={clipboardHistory.length === 0}>
-            <span>Clear History</span>
-          </button>
-        </aside>
       </div>
-    </div>
+    </QxShell>
   );
 }

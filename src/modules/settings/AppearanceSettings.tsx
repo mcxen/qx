@@ -1,65 +1,17 @@
 import { useSettingsStore } from "./store";
 import { useTheme } from "../../ThemeProvider";
-
-function Row({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="qx-settings-row">
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="qx-settings-row-title">{title}</div>
-        {description && (
-          <div className="qx-settings-row-description">{description}</div>
-        )}
-      </div>
-      <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function SegmentedControl<T extends string>({
-  value,
-  options,
-  onChange,
-}: {
-  value: T;
-  options: { value: T; label: string }[];
-  onChange: (v: T) => void;
-}) {
-  return (
-    <div className="qx-segmented">
-      {options.map((o) => {
-        const active = o.value === value;
-        return (
-          <button
-            key={o.value}
-            onClick={() => onChange(o.value)}
-            className={active ? "is-active" : ""}
-          >
-            {o.label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+import { Row, SegmentedControl, Toggle } from "../../components/ui";
+import { useT } from "../../i18n";
 
 export default function AppearanceSettings() {
   const { settings, patch } = useSettingsStore();
   const { theme, setTheme } = useTheme();
+  const t = useT();
   const a = settings.appearance;
 
   return (
     <div className="qx-settings-page">
-      <Row title="Theme" description="Choose the interface color scheme.">
+      <Row title={t("appearance.theme", "Theme")} description={t("appearance.theme.desc", "Choose the interface color scheme.")}>
         <SegmentedControl
           value={theme}
           onChange={(v) => {
@@ -67,15 +19,15 @@ export default function AppearanceSettings() {
             patch("appearance", { ...a, theme: v });
           }}
           options={[
-            { value: "light", label: "Light" },
-            { value: "dark", label: "Dark" },
-            { value: "system", label: "System" },
+            { value: "light", label: t("appearance.theme.light", "Light") },
+            { value: "dark", label: t("appearance.theme.dark", "Dark") },
+            { value: "system", label: t("appearance.theme.system", "System") },
           ]}
         />
       </Row>
       <Row
-        title="Frosted Glass Opacity"
-        description={`Canvas transparency (${a.blur_opacity.toFixed(2)})`}
+        title={t("appearance.opacity", "Frosted Glass Opacity")}
+        description={`${t("appearance.opacity.desc", "Canvas transparency")} (${a.blur_opacity.toFixed(2)})`}
       >
         <input
           type="range"
@@ -89,44 +41,36 @@ export default function AppearanceSettings() {
           style={{ width: 160 }}
         />
       </Row>
-      <Row title="Window Size" description="Launcher window dimensions (min 400×300).">
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <input
-            type="number"
-            min={400}
-            value={a.window_width}
-            onChange={(e) =>
-              patch("appearance", {
-                ...a,
-                window_width: Math.max(400, parseInt(e.target.value) || 400),
-              })
-            }
-            style={{
-              width: 64,
-              textAlign: "center",
-            }}
-            className="qx-inline-input"
-          />
-          <span style={{ color: "var(--color-text-tertiary)" }}>×</span>
-          <input
-            type="number"
-            min={300}
-            value={a.window_height}
-            onChange={(e) =>
-              patch("appearance", {
-                ...a,
-                window_height: Math.max(300, parseInt(e.target.value) || 300),
-              })
-            }
-            style={{
-              width: 64,
-              textAlign: "center",
-            }}
-            className="qx-inline-input"
-          />
-        </div>
+      <Row title={t("appearance.windowSize", "Window Size")} description={t("appearance.windowSize.desc", "Launcher window dimensions (min 400×300).")}>
+        <input
+          type="number"
+          min={400}
+          value={a.window_width}
+          onChange={(e) =>
+            patch("appearance", {
+              ...a,
+              window_width: Math.max(400, parseInt(e.target.value) || 400),
+            })
+          }
+          style={{ width: 64, textAlign: "center" }}
+          className="qx-inline-input"
+        />
+        <span style={{ color: "var(--color-text-tertiary)" }}>×</span>
+        <input
+          type="number"
+          min={300}
+          value={a.window_height}
+          onChange={(e) =>
+            patch("appearance", {
+              ...a,
+              window_height: Math.max(300, parseInt(e.target.value) || 300),
+            })
+          }
+          style={{ width: 64, textAlign: "center" }}
+          className="qx-inline-input"
+        />
       </Row>
-      <Row title="Corner Radius" description="Window and card border radius.">
+      <Row title={t("appearance.cornerRadius", "Corner Radius")} description={t("appearance.cornerRadius.desc", "Window and card border radius.")}>
         <SegmentedControl
           value={String(a.border_radius)}
           onChange={(v) => patch("appearance", { ...a, border_radius: parseInt(v) })}
@@ -137,7 +81,7 @@ export default function AppearanceSettings() {
           ]}
         />
       </Row>
-      <Row title="Font Size" description="Base UI font size.">
+      <Row title={t("appearance.fontSize", "Font Size")} description={t("appearance.fontSize.desc", "Base UI font size.")}>
         <SegmentedControl
           value={String(a.font_size)}
           onChange={(v) => patch("appearance", { ...a, font_size: parseInt(v) })}
@@ -148,6 +92,47 @@ export default function AppearanceSettings() {
             { value: "16", label: "16" },
           ]}
         />
+      </Row>
+      <Row
+        title={t("appearance.homeIsland", "Home Island")}
+        description={t("appearance.homeIsland.desc", "Content shown in the launcher island when search is idle.")}
+      >
+        <SegmentedControl
+          value={a.home_island_mode}
+          onChange={(v) => patch("appearance", { ...a, home_island_mode: v })}
+          options={[
+            { value: "default", label: t("appearance.homeIsland.default", "Default") },
+            { value: "system", label: t("appearance.homeIsland.system", "System") },
+          ]}
+        />
+      </Row>
+      <Row
+        title={t("appearance.systemCurves", "System Curves")}
+        description={t("appearance.systemCurves.desc", "Dotted GEEK-style metrics for the homepage island.")}
+      >
+        <div className="qx-home-island-settings">
+          <label>
+            <span>CPU</span>
+            <Toggle
+              value={a.home_island_cpu}
+              onChange={(v) => patch("appearance", { ...a, home_island_cpu: v })}
+            />
+          </label>
+          <label>
+            <span>GPU</span>
+            <Toggle
+              value={a.home_island_gpu}
+              onChange={(v) => patch("appearance", { ...a, home_island_gpu: v })}
+            />
+          </label>
+          <label>
+            <span>MEM</span>
+            <Toggle
+              value={a.home_island_memory}
+              onChange={(v) => patch("appearance", { ...a, home_island_memory: v })}
+            />
+          </label>
+        </div>
       </Row>
     </div>
   );

@@ -1,250 +1,559 @@
-import { useEffect, useState } from "react";
-import { useSettingsStore, type PluginConfig } from "./store";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { usePluginRegistry } from "../../plugin/registry";
+import { Toggle, SegmentedControl, Row, Select } from "../../components/ui";
+import type {
+  InstalledPlugin,
+  PluginIndexEntry,
+  PluginPreference,
+} from "../../plugin/types";
 
-interface LocalPlugin {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  path: string;
-}
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
 
-const DEFAULT_LOCAL: LocalPlugin[] = [
-  {
-    id: "rss",
-    name: "RSS Reader",
-    version: "0.1.0",
-    description: "Subscribe to feeds and read articles in a three-pane layout.",
-    path: "~/.qx/plugins/rss",
-  },
-  {
-    id: "clipboard",
-    name: "Clipboard Manager",
-    version: "0.1.0",
-    description: "Track and search clipboard history (text, images, files).",
-    path: "~/.qx/plugins/clipboard",
-  },
-  {
-    id: "screenshot",
-    name: "Screenshot + OCR",
-    version: "0.1.0",
-    description: "Region capture with overlay and searchable history.",
-    path: "~/.qx/plugins/screenshot",
-  },
-];
+type Tab = "installed" | "browse";
 
-function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      onClick={() => onChange(!value)}
-      style={{
-        width: 36,
-        height: 20,
-        borderRadius: 10,
-        border: "none",
-        background: value ? "var(--color-accent)" : "var(--color-surface-active)",
-        position: "relative",
-        cursor: "pointer",
-        padding: 0,
-      }}
-    >
-      <span
-        style={{
-          position: "absolute",
-          top: 2,
-          left: value ? 18 : 2,
-          width: 16,
-          height: 16,
-          borderRadius: 8,
-          background: "#fff",
-        }}
-      />
-    </button>
-  );
-}
+/* ------------------------------------------------------------------ */
+/*  Helpers                                                            */
+/* ------------------------------------------------------------------ */
+
+const isBuiltin = (p: InstalledPlugin) => p.id.startsWith("builtin:");
 
 function Badge({ children }: { children: React.ReactNode }) {
+  return <span className="qx-badge">{children}</span>;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Preference form field                                              */
+/* ------------------------------------------------------------------ */
+
+function PreferenceField({
+  pref,
+  value,
+  onChange,
+}: {
+  pref: PluginPreference;
+  value: string | number | boolean;
+  onChange: (v: string | number | boolean) => void;
+}) {
+  switch (pref.type) {
+    case "boolean":
+      return (
+        <Toggle
+          value={Boolean(value)}
+          onChange={(v) => onChange(v)}
+        />
+      );
+
+    case "select":
+      return (
+        <Select
+          value={String(value ?? "")}
+          options={pref.options ?? []}
+          ariaLabel={pref.label}
+          className="qx-inline-select"
+          onChange={(next) => onChange(next)}
+        />
+      );
+
+    case "number":
+      return (
+        <input
+          type="number"
+          className="qx-inline-input"
+          style={{ width: 100 }}
+          value={Number(value ?? 0)}
+          onChange={(e) => onChange(Number(e.target.value))}
+        />
+      );
+
+    case "password":
+      return (
+        <input
+          type="password"
+          className="qx-inline-input"
+          style={{ width: 200 }}
+          value={String(value ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      );
+
+    default: // "string"
+      return (
+        <input
+          type="text"
+          className="qx-inline-input"
+          style={{ width: 200 }}
+          value={String(value ?? "")}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      );
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Plugin detail panel                                                */
+/* ------------------------------------------------------------------ */
+
+function PluginDetail({
+  plugin,
+  onToggle,
+  onUninstall,
+}: {
+  plugin: InstalledPlugin;
+  onToggle: () => void;
+  onUninstall: () => void;
+}) {
+  const builtin = isBuiltin(plugin);
+  const preferences = plugin.manifest?.preferences ?? [];
+  const permissions = plugin.manifest?.permissions ?? plugin.permissions ?? [];
+
+  /* ---- preference values ---- */
+  const [prefValues, setPrefValues] = useState<Record<string, string | number | boolean>>({});
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
+  const [prefsBusy, setPrefsBusy] = useState(false);
+  const loadTokenRef = useRef(0);
+
+  // Load preferences whenever the selected plugin changes.
+  useEffect(() => {
+    if (preferences.length === 0) {
+      setPrefValues({});
+      setPrefsLoaded(true);
+      return;
+    }
+
+    const token = ++loadTokenRef.current;
+    setPrefsLoaded(false);
+
+    (async () => {
+      try {
+        const saved = await invoke<Record<string, string | number | boolean>>(
+          "plugin_preferences_get",
+          { id: plugin.id },
+        );
+        if (token !== loadTokenRef.current) return; // stale
+        // Merge saved values over defaults.
+        const defaults: Record<string, string | number | boolean> = {};
+        for (const p of preferences) {
+          defaults[p.id] = p.default ?? (p.type === "boolean" ? false : p.type === "number" ? 0 : "");
+        }
+        setPrefValues({ ...defaults, ...saved });
+      } catch {
+        if (token !== loadTokenRef.current) return;
+        // Fall back to defaults.
+        const defaults: Record<string, string | number | boolean> = {};
+        for (const p of preferences) {
+          defaults[p.id] = p.default ?? (p.type === "boolean" ? false : p.type === "number" ? 0 : "");
+        }
+        setPrefValues(defaults);
+      } finally {
+        if (token === loadTokenRef.current) setPrefsLoaded(true);
+      }
+    })();
+  }, [plugin.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handlePrefChange = useCallback(
+    async (prefId: string, value: string | number | boolean) => {
+      setPrefValues((prev) => ({ ...prev, [prefId]: value }));
+      setPrefsBusy(true);
+      try {
+        // Persist the full set of values.
+        const next = { ...prefValues, [prefId]: value };
+        await invoke("plugin_preferences_set", { id: plugin.id, values: next });
+      } catch (err) {
+        console.error("Failed to save preference", err);
+      } finally {
+        setPrefsBusy(false);
+      }
+    },
+    [plugin.id, prefValues],
+  );
+
   return (
-    <span
-      style={{
-        fontSize: 10,
-        fontWeight: 600,
-        letterSpacing: "0.04em",
-        textTransform: "uppercase",
-        color: "var(--color-text-tertiary)",
-        border: "1px solid var(--color-border)",
-        borderRadius: 4,
-        padding: "1px 6px",
-        background: "var(--color-surface)",
-      }}
-    >
-      {children}
-    </span>
+    <div style={{ padding: 10, overflowY: "auto", height: "100%" }}>
+      {/* Header */}
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--qx-text-primary)" }}>
+        {plugin.name}
+      </div>
+
+      <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+        <Badge>v{plugin.version}</Badge>
+        {builtin ? <Badge>Built-in</Badge> : <Badge>External</Badge>}
+        <Badge>{plugin.enabled ? "Enabled" : "Disabled"}</Badge>
+      </div>
+
+      {/* Author */}
+      {plugin.author && (
+        <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)", marginTop: 6 }}>
+          by {plugin.author}
+        </div>
+      )}
+
+      {/* Description */}
+      {plugin.description && (
+        <div
+          style={{
+            fontSize: 13,
+            color: "var(--qx-text-secondary)",
+            marginTop: 8,
+            lineHeight: 1.4,
+          }}
+        >
+          {plugin.description}
+        </div>
+      )}
+
+      {/* Path */}
+      <div
+        style={{
+          fontSize: 11,
+          color: "var(--qx-text-tertiary)",
+          marginTop: 8,
+          fontFamily: "var(--qx-font-mono)",
+          wordBreak: "break-all",
+        }}
+      >
+        {plugin.path}
+      </div>
+
+      {/* Enable / Disable */}
+      <div style={{ marginTop: 12 }}>
+        <Row title="Enabled" description="Toggle this plugin on or off.">
+          <Toggle value={plugin.enabled} onChange={onToggle} />
+        </Row>
+      </div>
+
+      {/* Permissions */}
+      {permissions.length > 0 && (
+        <div style={{ marginTop: 10, fontSize: 12, color: "var(--qx-text-secondary)" }}>
+          <div style={{ fontWeight: 600, marginBottom: 4 }}>Permissions</div>
+          <ul style={{ margin: 0, paddingLeft: 16 }}>
+            {permissions.map((perm) => (
+              <li key={perm}>{perm}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Preferences */}
+      {preferences.length > 0 && prefsLoaded && (
+        <div style={{ marginTop: 12 }}>
+          <div
+            style={{
+              fontWeight: 600,
+              fontSize: 12,
+              color: "var(--qx-text-secondary)",
+              marginBottom: 6,
+            }}
+          >
+            Preferences
+            {prefsBusy && (
+              <span
+                style={{
+                  fontWeight: 400,
+                  fontSize: 11,
+                  color: "var(--qx-text-tertiary)",
+                  marginLeft: 6,
+                }}
+              >
+                Saving...
+              </span>
+            )}
+          </div>
+          {preferences.map((pref) => (
+            <Row
+              key={pref.id}
+              title={pref.label}
+              description={pref.description}
+            >
+              <PreferenceField
+                pref={pref}
+                value={prefValues[pref.id] ?? pref.default ?? ""}
+                onChange={(v) => handlePrefChange(pref.id, v)}
+              />
+            </Row>
+          ))}
+        </div>
+      )}
+
+      {/* Uninstall */}
+      {!builtin && (
+        <button
+          className="qx-command-button danger"
+          onClick={onUninstall}
+          style={{ marginTop: 12 }}
+        >
+          Uninstall
+        </button>
+      )}
+    </div>
   );
 }
 
-export default function PluginManager() {
-  const { settings, patch } = useSettingsStore();
-  const [plugins, setPlugins] = useState<LocalPlugin[]>(DEFAULT_LOCAL);
-  const [installPath, setInstallPath] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(DEFAULT_LOCAL[0]?.id ?? null);
-  const [busy, setBusy] = useState(false);
+/* ------------------------------------------------------------------ */
+/*  Marketplace / Browse tab                                           */
+/* ------------------------------------------------------------------ */
+
+function MarketplaceTab({
+  installedIds,
+  onInstallComplete,
+}: {
+  installedIds: Set<string>;
+  onInstallComplete: () => void;
+}) {
+  const [entries, setEntries] = useState<PluginIndexEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [installingId, setInstallingId] = useState<string | null>(null);
+
+  const fetchIndex = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const index = await invoke<{ schema_version: number; plugins: PluginIndexEntry[] }>(
+        "fetch_plugin_index",
+      );
+      setEntries(index.plugins);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    const map = new Map(settings.plugins.map((p) => [p.id, p]));
-    setPlugins(
-      DEFAULT_LOCAL.map((p) => {
-        const stored = map.get(p.id);
-        return stored
-          ? { ...p, name: stored.name || p.name, version: stored.version || p.version }
-          : p;
-      }),
-    );
-  }, [settings.plugins]);
+    void fetchIndex();
+  }, [fetchIndex]);
 
-  const enabledMap = new Map(settings.plugins.map((p) => [p.id, p.enabled]));
-
-  const isEnabled = (id: string) => enabledMap.get(id) ?? true;
-
-  const togglePlugin = (id: string, name: string, version: string, path: string) => {
-    const next = settings.plugins.filter((p) => p.id !== id);
-    next.push({ id, name, version, path, enabled: !isEnabled(id) });
-    patch("plugins", next);
+  const handleInstall = async (entry: PluginIndexEntry) => {
+    setInstallingId(entry.id);
+    try {
+      const result = await invoke<{ path: string }>("download_plugin", {
+        url: entry.download_url,
+      });
+      await invoke("install_plugin", { path: result.path });
+      onInstallComplete();
+    } catch (err) {
+      console.error("Marketplace install failed", err);
+    } finally {
+      setInstallingId(null);
+    }
   };
 
-  const installFromPath = async () => {
-    if (!installPath.trim()) return;
+  if (loading) {
+    return <div className="qx-empty-state">Loading marketplace...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="qx-empty-state">
+        <div>Failed to load marketplace.</div>
+        <div style={{ fontSize: 11, marginTop: 4 }}>{error}</div>
+        <button className="qx-command-button" onClick={fetchIndex} style={{ marginTop: 8 }}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (entries.length === 0) {
+    return <div className="qx-empty-state">No plugins available in the marketplace.</div>;
+  }
+
+  return (
+    <div style={{ overflowY: "auto", flex: 1 }}>
+      {entries.map((entry) => {
+        const alreadyInstalled = installedIds.has(entry.id);
+        const installing = installingId === entry.id;
+
+        return (
+          <div
+            key={entry.id}
+            className="qx-settings-row"
+            style={{ gap: 8, alignItems: "flex-start" }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--qx-text-primary)" }}>
+                {entry.name}
+              </div>
+              <div style={{ fontSize: 11, color: "var(--qx-text-tertiary)", marginTop: 2 }}>
+                v{entry.version}
+                {entry.author ? ` · ${entry.author}` : ""}
+                {entry.size_bytes
+                  ? ` · ${(entry.size_bytes / 1024).toFixed(0)} KB`
+                  : ""}
+              </div>
+              {entry.description && (
+                <div
+                  style={{
+                    fontSize: 12,
+                    color: "var(--qx-text-secondary)",
+                    marginTop: 4,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  {entry.description}
+                </div>
+              )}
+              {entry.required_permissions && entry.required_permissions.length > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 4,
+                    flexWrap: "wrap",
+                    marginTop: 4,
+                  }}
+                >
+                  {entry.required_permissions.map((p) => (
+                    <Badge key={p}>{p}</Badge>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              className="qx-command-button"
+              disabled={alreadyInstalled || installing}
+              onClick={() => handleInstall(entry)}
+              style={{ flexShrink: 0 }}
+            >
+              {alreadyInstalled ? "Installed" : installing ? "Installing..." : "Install"}
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Main PluginManager                                                 */
+/* ------------------------------------------------------------------ */
+
+export default function PluginManager() {
+  const { plugins, install, uninstall, setEnabled, refresh } = usePluginRegistry();
+  const [tab, setTab] = useState<Tab>("installed");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [installPath, setInstallPath] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  /* Keep selection valid when the plugin list changes. */
+  useEffect(() => {
+    if (selectedId && !plugins.find((p) => p.id === selectedId)) {
+      setSelectedId(plugins[0]?.id ?? null);
+    }
+  }, [plugins, selectedId]);
+
+  /* ---- actions ---- */
+
+  const handleInstallFromPath = async () => {
+    const trimmed = installPath.trim();
+    if (!trimmed) return;
     setBusy(true);
     try {
-      const trimmed = installPath.trim();
-      const id = trimmed.split("/").pop()?.replace(".json", "") ?? "plugin";
-      const name = id;
-      const next: PluginConfig[] = [
-        ...settings.plugins.filter((p) => p.id !== id),
-        {
-          id,
-          name,
-          version: "0.0.1",
-          path: trimmed,
-          enabled: true,
-        },
-      ];
-      patch("plugins", next);
+      await install(trimmed);
       setInstallPath("");
+    } catch (err) {
+      console.error("Plugin install failed", err);
     } finally {
       setBusy(false);
     }
   };
 
-  const uninstall = (id: string) => {
-    patch(
-      "plugins",
-      settings.plugins.filter((p) => p.id !== id),
-    );
+  const handleToggle = async (plugin: InstalledPlugin) => {
+    try {
+      await setEnabled(plugin.id, !plugin.enabled);
+    } catch (err) {
+      console.error("Toggle failed", err);
+    }
   };
 
-  const rescan = () => {
-    const map = new Map(settings.plugins.map((p) => [p.id, p]));
-    setPlugins(
-      DEFAULT_LOCAL.map((p) => {
-        const stored = map.get(p.id);
-        return stored
-          ? { ...p, name: stored.name || p.name, version: stored.version || p.version }
-          : p;
-      }),
-    );
+  const handleUninstall = async (id: string) => {
+    try {
+      await uninstall(id);
+    } catch (err) {
+      console.error("Uninstall failed", err);
+    }
   };
+
+  const handleRefresh = async () => {
+    try {
+      await refresh();
+    } catch (err) {
+      console.error("Rescan failed", err);
+    }
+  };
+
+  /* ---- derived ---- */
 
   const selected = plugins.find((p) => p.id === selectedId) ?? null;
-  const selectedConfig = settings.plugins.find((p) => p.id === selectedId);
+  const installedIds = new Set(plugins.map((p) => p.id));
+
+  /* ---- render ---- */
 
   return (
     <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
-      <div style={{ padding: "12px 20px", borderBottom: "1px solid var(--color-border)" }}>
+      {/* Top bar: tab switcher + actions */}
+      <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--qx-border-1)" }}>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input
-            type="text"
-            value={installPath}
-            onChange={(e) => setInstallPath(e.target.value)}
-            placeholder="Install from local path (manifest.json or .qx package)"
-            style={{
-              flex: 1,
-              height: 30,
-              padding: "0 10px",
-              border: "1px solid var(--color-border)",
-              borderRadius: 6,
-              background: "var(--color-surface)",
-              color: "var(--color-text-primary)",
-              fontSize: 12,
-              outline: "none",
-            }}
+          <SegmentedControl
+            value={tab}
+            options={[
+              { value: "installed", label: "Installed" },
+              { value: "browse", label: "Browse" },
+            ]}
+            onChange={setTab}
           />
-          <button
-            onClick={installFromPath}
-            disabled={busy || !installPath.trim()}
-            style={{
-              height: 30,
-              padding: "0 12px",
-              border: "1px solid var(--color-border)",
-              borderRadius: 6,
-              background: "var(--color-surface)",
-              color: "var(--color-text-primary)",
-              fontSize: 12,
-              cursor: busy || !installPath.trim() ? "default" : "pointer",
-              opacity: !installPath.trim() || busy ? 0.6 : 1,
-            }}
-          >
-            Install
-          </button>
-          <button
-            onClick={rescan}
-            style={{
-              height: 30,
-              padding: "0 12px",
-              border: "1px solid var(--color-border)",
-              borderRadius: 6,
-              background: "var(--color-surface)",
-              color: "var(--color-text-primary)",
-              fontSize: 12,
-              cursor: "pointer",
-            }}
-            title="Rescan ~/.qx/plugins/"
-          >
+          <div style={{ flex: 1 }} />
+          <button className="qx-command-button" onClick={handleRefresh} title="Rescan plugins">
             Rescan
           </button>
         </div>
+
+        {/* Install-from-path row (only on Installed tab) */}
+        {tab === "installed" && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+            <input
+              type="text"
+              value={installPath}
+              onChange={(e) => setInstallPath(e.target.value)}
+              placeholder="Install from local path (.qx-plugin or manifest directory)"
+              className="qx-inline-input"
+              style={{ flex: 1 }}
+            />
+            <button
+              className="qx-command-button"
+              onClick={handleInstallFromPath}
+              disabled={busy || !installPath.trim()}
+            >
+              {busy ? "Installing..." : "Install"}
+            </button>
+          </div>
+        )}
       </div>
 
-      <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        <div style={{ flex: 1, overflowY: "auto", borderRight: "1px solid var(--color-border)" }}>
-          {plugins.map((p) => {
-            const active = p.id === selectedId;
-            const enabled = isEnabled(p.id);
-            return (
-              <div
-                key={p.id}
-                onClick={() => setSelectedId(p.id)}
-                style={{
-                  padding: "12px 20px",
-                  cursor: "pointer",
-                  background: active ? "var(--color-surface-active)" : "transparent",
-                  borderBottom: "1px solid var(--color-border)",
-                }}
-              >
+      {/* Content area */}
+      {tab === "installed" ? (
+        <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+          {/* Plugin list */}
+          <div
+            style={{ flex: 1, overflowY: "auto", borderRight: "1px solid var(--qx-border-1)" }}
+          >
+            {plugins.map((p) => {
+              const active = p.id === selectedId;
+              return (
                 <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 10,
-                  }}
+                  key={p.id}
+                  onClick={() => setSelectedId(p.id)}
+                  className={`qx-settings-nav-item${active ? " is-active" : ""}`}
+                  style={{ borderBottom: "1px solid var(--qx-border-1)" }}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div
                       style={{
                         fontSize: 13,
                         fontWeight: 500,
-                        color: "var(--color-text-primary)",
+                        color: "var(--qx-text-primary)",
                       }}
                     >
                       {p.name}
@@ -252,129 +561,44 @@ export default function PluginManager() {
                     <div
                       style={{
                         fontSize: 11,
-                        color: "var(--color-text-tertiary)",
+                        color: "var(--qx-text-tertiary)",
                         marginTop: 2,
                       }}
                     >
                       v{p.version}
+                      {isBuiltin(p) ? " · Built-in" : ""}
                     </div>
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
-                    <Toggle
-                      value={enabled}
-                      onChange={() => togglePlugin(p.id, p.name, p.version, p.path)}
-                    />
+                    <Toggle value={p.enabled} onChange={() => handleToggle(p)} />
                   </div>
                 </div>
-              </div>
-            );
-          })}
-          {plugins.length === 0 && (
-            <div
-              style={{
-                padding: "32px 20px",
-                color: "var(--color-text-tertiary)",
-                fontSize: 13,
-                textAlign: "center",
-              }}
-            >
-              No plugins installed
-            </div>
-          )}
-        </div>
+              );
+            })}
+            {plugins.length === 0 && (
+              <div className="qx-empty-state">No plugins installed</div>
+            )}
+          </div>
 
-        <div style={{ width: 280, flexShrink: 0, padding: 16, overflowY: "auto" }}>
-          {selected ? (
-            <div>
-              <div
-                style={{
-                  fontSize: 15,
-                  fontWeight: 600,
-                  color: "var(--color-text-primary)",
-                }}
-              >
-                {selected.name}
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 6,
-                  marginTop: 8,
-                }}
-              >
-                <Badge>v{selected.version}</Badge>
-                <Badge>Local</Badge>
-                <Badge>{isEnabled(selected.id) ? "Enabled" : "Disabled"}</Badge>
-              </div>
-              <div
-                style={{
-                  fontSize: 13,
-                  color: "var(--color-text-secondary)",
-                  marginTop: 12,
-                  lineHeight: 1.5,
-                }}
-              >
-                {selected.description}
-              </div>
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "var(--color-text-tertiary)",
-                  marginTop: 12,
-                  fontFamily:
-                    'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace',
-                  wordBreak: "break-all",
-                }}
-              >
-                {selected.path}
-              </div>
-              <div
-                style={{
-                  marginTop: 16,
-                  fontSize: 12,
-                  color: "var(--color-text-secondary)",
-                }}
-              >
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>Permissions</div>
-                <ul style={{ margin: 0, paddingLeft: 16 }}>
-                  <li>Read clipboard history</li>
-                  <li>Open external links</li>
-                  <li>Store data in ~/.qx/</li>
-                </ul>
-              </div>
-              {selectedConfig && (
-                <button
-                  onClick={() => uninstall(selected.id)}
-                  style={{
-                    marginTop: 20,
-                    height: 28,
-                    padding: "0 12px",
-                    border: "1px solid rgba(220,38,38,0.3)",
-                    borderRadius: 6,
-                    background: "var(--color-surface)",
-                    color: "#dc2626",
-                    fontSize: 12,
-                    cursor: "pointer",
-                  }}
-                >
-                  Uninstall
-                </button>
-              )}
-            </div>
-          ) : (
-            <div
-              style={{
-                color: "var(--color-text-tertiary)",
-                fontSize: 13,
-                textAlign: "center",
-                padding: "32px 0",
-              }}
-            >
-              Select a plugin to view details
-            </div>
-          )}
+          {/* Detail panel */}
+          <div style={{ width: 280, flexShrink: 0, overflowY: "auto" }}>
+            {selected ? (
+              <PluginDetail
+                plugin={selected}
+                onToggle={() => handleToggle(selected)}
+                onUninstall={() => handleUninstall(selected.id)}
+              />
+            ) : (
+              <div className="qx-empty-state">Select a plugin to view details</div>
+            )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <MarketplaceTab
+          installedIds={installedIds}
+          onInstallComplete={handleRefresh}
+        />
+      )}
     </div>
   );
 }

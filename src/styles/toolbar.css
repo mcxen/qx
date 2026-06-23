@@ -1,0 +1,246 @@
+.qx-actionbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 30px;
+  padding: 0 10px;
+  border-top: 1px solid var(--qx-border-1);
+  font-size: 12px;
+  color: var(--qx-text-secondary);
+  background: var(--qx-overlay-2);
+  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+
+.qx-actionbar kbd {
+  font-family: inherit;
+  font-size: 11px;
+  background: var(--qx-bg-component-3);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-right: 4px;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+.qx-actionbar .item {
+  display: flex;
+  align-items: center;
+  cursor: default;
+}
+
+.qx-raycast {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.qx-plugin-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 10px 6px 76px;
+  border-bottom: none;
+  transition: border-color 0.1s ease;
+  -webkit-app-region: drag;
+}
+
+.qx-plugin-toolbar input,
+.qx-plugin-toolbar button,
+.qx-plugin-toolbar select,
+.qx-plugin-toolbar .qx-segmented {
+  -webkit-app-region: no-drag;
+}
+
+.qx-toolbar-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--qx-text-primary);
+  white-space: nowrap;
+}
+
+.qx-search-wrap {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  transition: background-color 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease;
+}
+
+.qx-shell.launcher-shell .qx-search-wrap {
+  border-color: var(--qx-border-1);
+  background: var(--qx-bg-component-1);
+}
+
+.qx-shell.launcher-shell .qx-search-wrap:focus-within {
+  border-color: color-mix(in srgb, var(--qx-accent) 48%, var(--qx-border-1));
+  box-shadow: 0 0 0 2px var(--qx-accent-soft);
+}
+
+.qx-search-icon {
+  position: relative;
+  width: 18px;
+  height: 18px;
+  text-align: center;
+  color: var(--qx-text-tertiary);
+  flex-shrink: 0;
+}
+
+.qx-search-icon::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  width: 8px;
+  height: 8px;
+  border: 1.5px solid var(--qx-text-tertiary);
+  border-radius: 50%;
+}
+
+.qx-search-icon::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 11px;
+  width: 6px;
+  height: 1.5px;
+  border-radius: 999px;
+  background: var(--qx-text-tertiary);
+  transform: rotate(45deg);
+}
+
+.qx-plugin-search {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--qx-text-primary);
+  font-size: 13px;
+  outline: none;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.qx-plugin-search:focus,
+.qx-plugin-search:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.qx-plugin-dropdown {
+  flex-shrink: 0;
+  width: 132px;
+  height: 28px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-overlay-1);
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+  outline: none;
+  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+
+.qx-command-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-overlay-1);
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+
+.qx-command-button:hover {
+  background: var(--qx-bg-component-2);
+}
+
+.qx-command-button:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+
+.qx-command-button.primary {
+  border-color: color-mix(in srgb, var(--qx-accent) 45%, var(--qx-border-1));
+  background: var(--qx-accent);
+  color: var(--qx-text-on-accent);
+}
+
+.qx-command-button.primary:hover {
+  background: var(--qx-accent-hover);
+}
+
+.qx-command-button.danger {
+  color: var(--qx-danger);
+  border-color: var(--qx-danger-border);
+}
+
+.qx-command-button.ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--qx-text-secondary);
+}
+
+.qx-inline-input {
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-overlay-1);
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  outline: none;
+  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+
+.qx-inline-input:focus,
+.qx-plugin-dropdown:focus {
+  box-shadow: 0 0 0 2px var(--qx-accent-soft);
+}
+
+.qx-segmented {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  overflow: hidden;
+  background: var(--qx-overlay-1);
+  transition: background-color 0.1s ease, border-color 0.1s ease;
+}
+
+.qx-segmented button {
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-left: 1px solid var(--qx-border-1);
+  background: transparent;
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+
+.qx-segmented button:first-child {
+  border-left: none;
+}
+
+.qx-segmented button.is-active {
+  background: var(--qx-bg-component-3);
+  color: var(--qx-text-primary);
+}

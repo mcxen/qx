@@ -66,6 +66,7 @@ interface RssStore {
   refreshAll: () => Promise<void>;
   removeFeed: (id: number) => Promise<void>;
   addFeed: (url: string) => Promise<void>;
+  updateFeed: (id: number, url: string, title: string) => Promise<void>;
 
   loadArticles: () => Promise<void>;
   openArticle: (id: number) => Promise<void>;
@@ -77,18 +78,8 @@ interface RssStore {
   moveSelection: (delta: number, length: number) => void;
 }
 
-function startOfDay(d: Date): number {
-  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  return Math.floor(x.getTime() / 1000);
-}
-
-export function classifyArticleTime(publishedAt: number): "today" | "yesterday" | "earlier" {
-  if (!publishedAt) return "earlier";
-  const today = startOfDay(new Date());
-  const yesterday = today - 86400;
-  if (publishedAt >= today) return "today";
-  if (publishedAt >= yesterday) return "yesterday";
-  return "earlier";
+function isTauriRuntime(): boolean {
+  return "__TAURI_INTERNALS__" in window;
 }
 
 export const useRssStore = create<RssStore>((set, get) => ({
@@ -126,6 +117,10 @@ export const useRssStore = create<RssStore>((set, get) => ({
   setRefreshing: (refreshingFeedId) => set({ refreshingFeedId }),
 
   loadFeeds: async () => {
+    if (!isTauriRuntime()) {
+      set({ feeds: [], loading: false, error: null });
+      return;
+    }
     set({ loading: true, error: null });
     try {
       const feeds = await invoke<RssFeed[]>("rss_list_feeds");
@@ -141,6 +136,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
   },
 
   refreshFeed: async (id) => {
+    if (!isTauriRuntime()) return;
     set({ refreshingFeedId: id, error: null });
     try {
       await invoke<number>("rss_refresh_feed", { id });
@@ -156,6 +152,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
   },
 
   refreshAll: async () => {
+    if (!isTauriRuntime()) return;
     set({ refreshingFeedId: -1, error: null });
     try {
       await invoke<number>("rss_refresh_all");
@@ -169,6 +166,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
   },
 
   removeFeed: async (id) => {
+    if (!isTauriRuntime()) return;
     try {
       await invoke("rss_remove_feed", { id });
       await get().loadFeeds();
@@ -178,6 +176,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
   },
 
   addFeed: async (url) => {
+    if (!isTauriRuntime()) return;
     set({ loading: true, error: null });
     try {
       await invoke<RssFeed>("rss_add_feed", { url });
@@ -189,8 +188,25 @@ export const useRssStore = create<RssStore>((set, get) => ({
     }
   },
 
+  updateFeed: async (id, url, title) => {
+    if (!isTauriRuntime()) return;
+    set({ loading: true, error: null });
+    try {
+      await invoke<RssFeed>("rss_update_feed", { id, url, title });
+      await get().loadFeeds();
+      set({ loading: false });
+    } catch (e) {
+      set({ loading: false, error: String(e) });
+      throw e;
+    }
+  },
+
   loadArticles: async () => {
     const { selectedFeedId, filter, search } = get();
+    if (!isTauriRuntime()) {
+      set({ articles: [], error: null });
+      return;
+    }
     if (selectedFeedId == null) {
       set({ articles: [] });
       return;
@@ -210,6 +226,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
   },
 
   openArticle: async (id) => {
+    if (!isTauriRuntime()) return;
     try {
       const a = await invoke<RssArticle | null>("rss_get_article", { id });
       set({ selectedArticleId: id, currentArticle: a, view: "detail" });
@@ -225,6 +242,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
   },
 
   markRead: async (id, isRead) => {
+    if (!isTauriRuntime()) return;
     try {
       await invoke("rss_mark_read", { id, isRead });
       set((s) => ({
@@ -241,6 +259,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
   },
 
   markAllRead: async (feedId) => {
+    if (!isTauriRuntime()) return;
     try {
       await invoke("rss_mark_all_read", { feedId });
       set((s) => ({
@@ -253,6 +272,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
   },
 
   toggleStar: async (id, isStarred) => {
+    if (!isTauriRuntime()) return;
     try {
       await invoke("rss_toggle_star", { id, isStarred });
       set((s) => ({

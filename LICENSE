@@ -1,38 +1,60 @@
-Qx Source Review License v1.0
+Qx Source-Available License v1.0
 
 Copyright (c) 2026 MCXEN. All rights reserved.
 
-This repository is published as source-available software for source code
-review only. It is not open source software under the Open Source Initiative
-definition and it is not free software.
+This software is provided as source-available. It is not open source software
+under the Open Source Initiative definition, but you are granted the rights
+below to use, study, and modify the source code for non-commercial purposes.
 
-Permission is granted only to view the source code through GitHub and to make
-one temporary local copy solely for private security review, architecture
-review, audit, or compatibility review.
+1. GRANTS
 
-No other rights are granted.
+   You are permitted to:
 
-You may not:
+   a. View, read, and study the source code;
+   b. Make a local copy of the source code for personal use;
+   c. Modify the source code for personal or non-commercial purposes;
+   d. Run modified or unmodified copies of the software on your own devices
+      for personal or non-commercial purposes.
 
-1. use the software or source code for commercial purposes;
-2. run, deploy, host, sell, sublicense, rent, lease, or provide the software as
-   a service;
-3. copy, redistribute, mirror, publish, or share the source code or binaries;
-4. fork this repository on GitHub or any other service;
-5. create, publish, or distribute derivative works;
-6. remove or alter copyright, license, or attribution notices;
-7. use the project name, logo, or branding without prior written permission.
+2. RESTRICTIONS
 
-Any contribution, pull request, issue attachment, patch, suggestion, or other
-submitted material is provided under this same license unless a separate
-written agreement is signed by the copyright holder.
+   You may NOT:
 
-If you need commercial use, redistribution rights, private audit rights, or a
-different license, contact the copyright holder for written permission.
+   a. Use the software or source code (original or modified) for commercial
+      purposes, including but not limited to selling, offering as a service,
+      or incorporating into commercial products;
+   b. Redistribute, sublicense, rent, lease, or provide the software as a
+      service to third parties;
+   c. Remove or alter copyright, license, or attribution notices;
+   d. Use the project name, logo, or branding for commercial purposes without
+      prior written permission from the copyright holder.
 
-THE SOFTWARE AND SOURCE CODE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
-KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO
-EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
-LIABILITY ARISING FROM OR RELATED TO THE SOFTWARE, SOURCE CODE, OR USE OF THIS
-REPOSITORY.
+3. DERIVATIVE WORKS
+
+   You may create derivative works based on the source code. However:
+
+   a. Derivative works must not be used for commercial purposes;
+   b. Derivative works must retain this license and the original copyright
+      notice;
+   c. You may not relicense derivative works under terms that grant commercial
+      rights.
+
+4. CONTRIBUTIONS
+
+   Any contribution, pull request, patch, or other submitted material is
+   provided under this same license unless a separate written agreement is
+   signed by the copyright holder.
+
+5. COMMERCIAL LICENSING
+
+   If you need commercial use, redistribution rights, or a different license,
+   contact the copyright holder for written permission.
+
+6. DISCLAIMER
+
+   THE SOFTWARE AND SOURCE CODE ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY
+   KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+   MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN
+   NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+   OTHER LIABILITY ARISING FROM OR RELATED TO THE SOFTWARE, SOURCE CODE, OR
+   USE OF THIS SOFTWARE.

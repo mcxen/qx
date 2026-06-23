@@ -1,0 +1,226 @@
+:root {
+  /* Toggleable theme-independent tokens */
+  --qx-canvas-opacity: 0.85;
+  --qx-radius: 6px;
+  --qx-effective-radius: min(var(--qx-radius), 6px);
+  --qx-control-radius: 4px;
+  --qx-card-radius: 4px;
+  --qx-font-size: 13px;
+  --qx-shell-gap: 16px;
+  --qx-topbar-h: clamp(64px, 11vh, 92px);
+  --qx-bottom-bar-h: clamp(46px, 5.8vh, 56px);
+  --qx-context-w: clamp(240px, 28vw, 340px);
+  --qx-search-min-w: 220px;
+
+  --qx-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display",
+    "Helvetica Neue", "PingFang SC", sans-serif;
+  --qx-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco,
+    Consolas, monospace;
+
+  font-family: var(--qx-font-sans);
+  font-size: var(--qx-font-size);
+  line-height: 1.4;
+  color: var(--qx-text-primary);
+}
+
+/* ====== 亮色主题 (Light) ====== */
+[data-theme="light"] {
+  --qx-bg-100: #fafafa;
+  --qx-bg-200: #ffffff;
+
+  --qx-gray-100: #0a0a0a;
+  --qx-gray-200: #1a1a1a;
+  --qx-gray-300: #2e2e2e;
+  --qx-gray-400: #404040;
+  --qx-gray-500: #6b6b6b;
+  --qx-gray-600: #8a8a8a;
+  --qx-gray-700: #a0a0a0;
+  --qx-gray-800: #b0b0b0;
+  --qx-gray-900: #d4d4d4;
+  --qx-gray-1000: #ededed;
+
+  --qx-blue-600: #2563eb;
+  --qx-blue-700: #1d4ed8;
+  --qx-blue-900: #60a5fa;
+  --qx-blue-1000: #eff6ff;
+
+  --qx-bg-component-1: #ffffff;
+  --qx-bg-component-2: #f5f5f5;
+  --qx-bg-component-3: #e8e8e8;
+  --qx-border-1: #e5e5e5;
+  --qx-border-2: #d4d4d4;
+  --qx-border-3: #a3a3a3;
+  --qx-text-primary: #0a0a0a;
+  --qx-text-secondary: #6b6b6b;
+  --qx-text-tertiary: #a0a0a0;
+
+  --qx-glass-bg: rgba(250, 250, 250, 0.98);
+  --qx-glass-border: rgba(0, 0, 0, 0.06);
+  --qx-glass-shadow: rgba(0, 0, 0, 0.04);
+
+  --qx-accent: var(--qx-blue-600);
+  --qx-accent-hover: var(--qx-blue-700);
+  --qx-accent-soft: rgba(37, 99, 235, 0.12);
+  --qx-text-on-accent: #ffffff;
+  --qx-danger: #b42318;
+  --qx-danger-border: rgba(180, 35, 24, 0.22);
+
+  --qx-overlay-1: rgba(255, 255, 255, 0.42);
+  --qx-overlay-2: rgba(255, 255, 255, 0.34);
+  --qx-overlay-3: rgba(255, 255, 255, 0.24);
+  --qx-overlay-4: rgba(255, 255, 255, 0.18);
+
+  --qx-scrollbar-thumb: rgba(0, 0, 0, 0.12);
+  --qx-scrollbar-thumb-hover: rgba(0, 0, 0, 0.22);
+
+  --qx-grid-line: rgba(128, 128, 128, 0.05);
+  --qx-system-island-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(245, 245, 245, 0.96));
+  --qx-system-island-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 1px 10px rgba(0, 0, 0, 0.06);
+  --qx-system-island-text: #171717;
+  --qx-system-island-muted: #737373;
+  --qx-system-island-dim: #a3a3a3;
+
+  --color-canvas: var(--qx-bg-component-1);
+  --color-surface: var(--qx-bg-component-1);
+  --color-surface-active: var(--qx-bg-component-3);
+  --color-border: var(--qx-border-1);
+  --color-accent: var(--qx-accent);
+  --color-accent-hover: var(--qx-accent-hover);
+  --color-accent-soft: var(--qx-accent-soft);
+  --color-text-primary: var(--qx-text-primary);
+  --color-text-secondary: var(--qx-text-secondary);
+  --color-text-tertiary: var(--qx-text-tertiary);
+}
+
+/* ====== 暗色主题 (Dark) ====== */
+[data-theme="dark"] {
+  --qx-bg-100: #0a0a0a;
+  --qx-bg-200: #000000;
+
+  --qx-gray-100: #1a1a1a;
+  --qx-gray-200: #1f1f1f;
+  --qx-gray-300: #292929;
+  --qx-gray-400: #2e2e2e;
+  --qx-gray-500: #454545;
+  --qx-gray-600: #878787;
+  --qx-gray-700: #8f8f8f;
+  --qx-gray-800: #7d7d7d;
+  --qx-gray-900: #a1a1a1;
+  --qx-gray-1000: #ededed;
+
+  --qx-blue-600: #3b82f6;
+  --qx-blue-700: #60a5fa;
+  --qx-blue-900: #93c5fd;
+  --qx-blue-1000: #172554;
+
+  --qx-bg-component-1: #1a1a1a;
+  --qx-bg-component-2: #1f1f1f;
+  --qx-bg-component-3: #292929;
+  --qx-border-1: #292929;
+  --qx-border-2: #333333;
+  --qx-border-3: #454545;
+  --qx-text-primary: #ededed;
+  --qx-text-secondary: #878787;
+  --qx-text-tertiary: #6b6b6b;
+
+  --qx-glass-bg: rgba(10, 10, 10, 0.98);
+  --qx-glass-border: rgba(255, 255, 255, 0.06);
+  --qx-glass-shadow: rgba(0, 0, 0, 0.3);
+
+  --qx-accent: var(--qx-blue-600);
+  --qx-accent-hover: var(--qx-blue-700);
+  --qx-accent-soft: rgba(59, 130, 246, 0.18);
+  --qx-text-on-accent: #ffffff;
+  --qx-danger: #f04438;
+  --qx-danger-border: rgba(240, 68, 56, 0.28);
+
+  --qx-overlay-1: rgba(255, 255, 255, 0.06);
+  --qx-overlay-2: rgba(255, 255, 255, 0.05);
+  --qx-overlay-3: rgba(255, 255, 255, 0.04);
+  --qx-overlay-4: rgba(255, 255, 255, 0.03);
+
+  --qx-scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  --qx-scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
+
+  --qx-grid-line: rgba(128, 128, 128, 0.08);
+  --qx-system-island-bg: linear-gradient(180deg, rgba(18, 18, 20, 0.96), rgba(39, 39, 42, 0.94));
+  --qx-system-island-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --qx-system-island-text: #e5e7eb;
+  --qx-system-island-muted: #94a3b8;
+  --qx-system-island-dim: #71717a;
+
+  --color-canvas: var(--qx-bg-component-1);
+  --color-surface: var(--qx-bg-component-1);
+  --color-surface-active: var(--qx-bg-component-3);
+  --color-border: var(--qx-border-1);
+  --color-accent: var(--qx-accent);
+  --color-accent-hover: var(--qx-accent-hover);
+  --color-accent-soft: var(--qx-accent-soft);
+  --color-text-primary: var(--qx-text-primary);
+  --color-text-secondary: var(--qx-text-secondary);
+  --color-text-tertiary: var(--qx-text-tertiary);
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background: var(--qx-accent-soft);
+}
+
+.qx-grid-bg {
+  background-image: none;
+}
+
+.qx-canvas {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  -webkit-mask-image: -webkit-radial-gradient(white, black);
+  mask-image: radial-gradient(white, black);
+  opacity: var(--qx-canvas-opacity);
+  background: var(--qx-glass-bg);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border-radius: var(--qx-effective-radius);
+  border: 1px solid var(--qx-glass-border);
+  overflow: hidden;
+  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+
+.qx-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px 3px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--qx-text-tertiary);
+  text-transform: uppercase;
+}
+
+.qx-module-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}

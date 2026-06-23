@@ -6,6 +6,7 @@ mod rss;
 mod screencap;
 mod screenshot;
 mod settings;
+mod system_stats;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -23,6 +24,7 @@ fn toggle_window(win: &tauri::WebviewWindow) {
         let _ = win.hide();
     } else {
         let _ = win.show();
+        let _ = win.center();
         let _ = win.set_focus();
     }
 }
@@ -35,6 +37,9 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             let handle = app.handle().clone();
             let win = app.get_webview_window("main").unwrap();
 
@@ -69,6 +74,9 @@ pub fn run() {
 
             // Initialize settings file
             settings::init();
+
+            // Pre-convert app icons in background (keeps first search fast)
+            apps::preload_icons(&handle);
 
             let show = MenuItem::with_id(app, "show", "Show/Hide", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Qx", true, Some("Cmd+Q"))?;
@@ -105,6 +113,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             apps::search_apps,
+            apps::search_files,
             open_app,
             screenshot::take_screenshot,
             screenshot::take_screenshot_area,
@@ -112,8 +121,11 @@ pub fn run() {
             clipboard::get_clipboard_history,
             clipboard::clear_clipboard_history,
             clipboard::delete_clipboard_entry,
+            clipboard::toggle_clipboard_pin,
+            clipboard::record_clipboard_copy,
             rss::rss_list_feeds,
             rss::rss_add_feed,
+            rss::rss_update_feed,
             rss::rss_remove_feed,
             rss::rss_list_articles,
             rss::rss_get_article,
@@ -129,6 +141,7 @@ pub fn run() {
             settings::reset_settings,
             settings::import_settings,
             settings::export_settings,
+            system_stats::get_system_stats,
             screencap::start_recording,
             screencap::stop_recording,
             screencap::save_gif,
@@ -141,6 +154,15 @@ pub fn run() {
             marketplace::install_plugin,
             marketplace::uninstall_plugin,
             marketplace::list_installed_plugins,
+            marketplace::read_plugin_entry,
+            marketplace::set_plugin_enabled,
+            marketplace::plugin_storage_get,
+            marketplace::plugin_storage_set,
+            marketplace::plugin_storage_delete,
+            marketplace::plugin_preferences_get,
+            marketplace::plugin_preferences_set,
+            marketplace::sign_plugin,
+            marketplace::scaffold_plugin,
             macro_recorder::macro_start_recording,
             macro_recorder::macro_stop_recording,
             macro_recorder::macro_save,

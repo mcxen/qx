@@ -1,23 +1,37 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { ScreenshotEntry } from "../../store";
+import { useStore, type ScreenshotEntry } from "../../store";
+import QxShell from "../../components/QxShell";
 
-type Mode = "list" | "selecting" | "preview";
+type Mode = "list" | "preview";
+
+export const REGION_CAPTURE_EVENT = "qx:screenshot-region-capture";
+
+export function enterRegionCapture() {
+  window.dispatchEvent(new Event(REGION_CAPTURE_EVENT));
+}
 
 export default function ScreenshotPanel() {
   const [mode, setMode] = useState<Mode>("list");
   const [recent, setRecent] = useState<ScreenshotEntry[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(
-    null
-  );
-  const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);
+  const screenshotCapture = useStore((state) => state.screenshotCapture);
 
   useEffect(() => {
     loadRecent();
   }, []);
+
+  useEffect(() => {
+    if (screenshotCapture.previewPath) {
+      setPreview(`file://${screenshotCapture.previewPath}`);
+      setMode("preview");
+      void loadRecent();
+    }
+    if (screenshotCapture.error) {
+      setError(screenshotCapture.error);
+    }
+  }, [screenshotCapture.error, screenshotCapture.previewPath]);
 
   const loadRecent = async () => {
     try {
@@ -40,122 +54,54 @@ export default function ScreenshotPanel() {
   };
 
   const startAreaSelect = () => {
-    setMode("selecting");
-    setDragStart(null);
-    setDragEnd(null);
-  };
-
-  const onMouseDown = (e: React.MouseEvent) => {
-    if (mode !== "selecting") return;
-    setDragStart({ x: e.clientX, y: e.clientY });
-    setDragEnd({ x: e.clientX, y: e.clientY });
-  };
-
-  const onMouseMove = (e: React.MouseEvent) => {
-    if (mode !== "selecting" || !dragStart) return;
-    setDragEnd({ x: e.clientX, y: e.clientY });
-  };
-
-  const onMouseUp = async () => {
-    if (mode !== "selecting" || !dragStart || !dragEnd) {
-      setMode("list");
-      return;
-    }
-    const x = Math.min(dragStart.x, dragEnd.x);
-    const y = Math.min(dragStart.y, dragEnd.y);
-    const w = Math.abs(dragEnd.x - dragStart.x);
-    const h = Math.abs(dragEnd.y - dragStart.y);
-    setMode("list");
-    setDragStart(null);
-    setDragEnd(null);
-    if (w < 8 || h < 8) return;
     setError(null);
-    try {
-      const result = await invoke<ScreenshotEntry>("take_screenshot_area", {
-        x,
-        y,
-        width: w,
-        height: h,
-      });
-      setPreview(`file://${result.path}`);
-      setMode("preview");
-      loadRecent();
-    } catch (e) {
-      setError(String(e));
-    }
+    enterRegionCapture();
   };
 
-  const selX = dragStart && dragEnd ? Math.min(dragStart.x, dragEnd.x) : 0;
-  const selY = dragStart && dragEnd ? Math.min(dragStart.y, dragEnd.y) : 0;
-  const selW = dragStart && dragEnd ? Math.abs(dragEnd.x - dragStart.x) : 0;
-  const selH = dragStart && dragEnd ? Math.abs(dragEnd.y - dragStart.y) : 0;
-
-  if (mode === "selecting") {
-    return (
-      <div
-        ref={overlayRef}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.4)",
-          cursor: "crosshair",
-          zIndex: 100,
-        }}
-      >
-        {dragStart && dragEnd && (
-          <div
-            style={{
-              position: "absolute",
-              left: selX,
-              top: selY,
-              width: selW,
-              height: selH,
-              border: "2px solid var(--color-accent)",
-              background: "rgba(99,102,241,0.1)",
-            }}
-          />
-        )}
-        <div
-          style={{
-            position: "absolute",
-            top: 16,
-            left: 0,
-            right: 0,
-            textAlign: "center",
-            color: "#fff",
-            fontSize: 13,
-            pointerEvents: "none",
-          }}
-        >
-          Drag to select area · Esc to cancel
-        </div>
-      </div>
-    );
-  }
+  const context = (
+    <div className="qx-action-panel">
+      <div className="qx-action-title">Capture</div>
+      <button className="qx-action-item" onClick={captureFull}>
+        <span>Capture Full Screen</span>
+      </button>
+      <button className="qx-action-item" onClick={startAreaSelect}>
+        <span>Select Area</span>
+      </button>
+    </div>
+  );
 
   return (
-    <div className="qx-raycast">
-      <div className="qx-plugin-toolbar">
-        <div className="qx-toolbar-title" style={{ flex: 1 }}>Screenshot</div>
-        <button className="qx-command-button primary" onClick={captureFull}>
+    <QxShell
+      title="Screenshot"
+      search={<div className="qx-rss-detail-title">Screenshot</div>}
+      trailing={
+        <>
+          <button className="qx-command-button primary" onClick={captureFull}>
           Capture Full Screen
-        </button>
-        <button className="qx-command-button" onClick={startAreaSelect}>
-          Select Area
-        </button>
-      </div>
+          </button>
+          <button className="qx-command-button" onClick={startAreaSelect}>
+            Select Area
+          </button>
+        </>
+      }
+      context={context}
+      island={{
+        label: screenshotCapture.status === "idle" ? "Screenshot" : "Capturing",
+        detail: screenshotCapture.status === "idle" ? `${recent.length} recent captures` : screenshotCapture.status,
+        tone: error ? "danger" : "neutral",
+      }}
+      primaryAction={{ label: "Capture", onClick: captureFull }}
+      secondaryAction={{ label: "Area", onClick: startAreaSelect }}
+    >
       {error && (
         <div
           style={{
-            margin: "0 16px 8px",
-            padding: "8px 12px",
+            margin: "0 10px 6px",
+            padding: "6px 8px",
             fontSize: 12,
-            color: "#b91c1c",
-            background: "rgba(185,28,28,0.08)",
-            borderRadius: 8,
+            color: "var(--qx-danger)",
+            background: "var(--qx-danger-border)",
+            borderRadius: 4,
           }}
         >
           {error}
@@ -180,7 +126,9 @@ export default function ScreenshotPanel() {
                 }}
                 className={`qx-list-row compact${preview === `file://${s.path}` ? " is-active" : ""}`}
               >
-                <span className="qx-list-icon">IMG</span>
+                <span className="qx-list-icon" aria-hidden="true">
+                  <span className="qx-symbol-icon image" />
+                </span>
                 <span className="qx-list-copy">
                   <span className="qx-list-title">{s.path.split("/").pop()}</span>
                   <span className="qx-list-subtitle">{s.timestamp}</span>
@@ -211,17 +159,7 @@ export default function ScreenshotPanel() {
             )}
           </div>
         </div>
-
-        <aside className="qx-action-panel">
-          <div className="qx-action-title">ActionPanel</div>
-          <button className="qx-action-item" onClick={captureFull}>
-            <span>Capture Full Screen</span>
-          </button>
-          <button className="qx-action-item" onClick={startAreaSelect}>
-            <span>Select Area</span>
-          </button>
-        </aside>
       </div>
-    </div>
+    </QxShell>
   );
 }

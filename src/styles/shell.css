@@ -1,0 +1,325 @@
+/* ====== Spec Shell ====== */
+.qx-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-primary);
+}
+
+.qx-shell-topbar {
+  display: grid;
+  grid-template-columns: auto minmax(var(--qx-search-min-w), 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--qx-topbar-h);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--qx-border-1);
+  -webkit-app-region: drag;
+}
+
+.qx-shell.launcher-shell .qx-shell-topbar {
+  grid-template-columns: minmax(0, 78fr) minmax(124px, 22fr);
+  gap: 8px;
+}
+
+.qx-shell.launcher-shell .qx-shell-search-slot {
+  grid-column: 1;
+}
+
+.qx-shell.launcher-shell .qx-shell-trailing {
+  grid-column: 2;
+  width: 100%;
+}
+
+.qx-shell-topbar input,
+.qx-shell-topbar button,
+.qx-shell-topbar select {
+  -webkit-app-region: no-drag;
+}
+
+.qx-shell-search-slot {
+  min-width: 0;
+}
+
+.qx-shell-trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.qx-shell-back {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 8px;
+  background: var(--qx-bg-component-3);
+  color: var(--qx-text-primary);
+  cursor: pointer;
+}
+
+.qx-shell-back span::before,
+.qx-shell-back span::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 17px;
+  width: 12px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform-origin: left center;
+}
+
+.qx-shell-back span::before {
+  transform: rotate(45deg);
+}
+
+.qx-shell-back span::after {
+  transform: rotate(-45deg);
+}
+
+.qx-shell-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+}
+
+.qx-shell.has-context .qx-shell-main {
+  grid-template-columns: minmax(0, 1fr) var(--qx-context-w);
+}
+
+.qx-shell-content,
+.qx-shell-context {
+  min-height: 0;
+  overflow: auto;
+}
+
+.qx-shell-context {
+  border-left: 1px solid var(--qx-border-1);
+  background: var(--qx-overlay-3);
+}
+
+.qx-shell-bottombar {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 360px) minmax(160px, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: var(--qx-bottom-bar-h);
+  padding: 5px 14px;
+  border-top: 1px solid var(--qx-border-1);
+  background: var(--qx-bg-component-2);
+}
+
+.qx-shell-left {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-width: 0;
+}
+
+.qx-bottom-island {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+  justify-self: center;
+  width: clamp(180px, 26vw, 360px);
+  height: 32px;
+  min-height: 32px;
+  max-height: 36px;
+  padding: 4px 9px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 8px;
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-primary);
+  overflow: hidden;
+}
+
+.qx-bottom-island.is-empty {
+  visibility: hidden;
+}
+
+.qx-bottom-island-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.qx-bottom-island-label,
+.qx-bottom-island-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-bottom-island-label {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.qx-bottom-island-detail {
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+}
+
+.qx-bottom-island-progress {
+  grid-column: 1 / -1;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--qx-bg-component-3);
+}
+
+.qx-bottom-island-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--qx-accent);
+}
+
+.qx-bottom-island.tone-success .qx-bottom-island-progress span {
+  background: #16a34a;
+}
+
+.qx-bottom-island.tone-warning .qx-bottom-island-progress span {
+  background: #d97706;
+}
+
+.qx-bottom-island.tone-danger .qx-bottom-island-progress span {
+  background: var(--qx-danger);
+}
+
+.qx-bottom-island-action {
+  border: none;
+  background: transparent;
+  color: var(--qx-accent);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.qx-home-system-island {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  justify-self: center;
+  width: min(100%, 360px);
+  height: 34px;
+  min-height: 34px;
+  max-height: 36px;
+  padding: 4px 9px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--qx-accent) 18%, var(--qx-border-1));
+  border-radius: 8px;
+  background: var(--qx-system-island-bg);
+  box-shadow: var(--qx-system-island-shadow);
+  color: var(--qx-system-island-text);
+}
+
+.qx-system-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.qx-system-main-head {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.qx-system-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34, 197, 94, 0.9);
+  animation: qx-home-pulse 1.4s ease-in-out infinite;
+}
+
+.qx-system-title,
+.qx-system-main-head strong,
+.qx-system-side-row span,
+.qx-system-side-row strong,
+.qx-system-side-row small {
+  font-family: var(--qx-font-mono);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.qx-system-title {
+  color: var(--qx-system-island-muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.qx-system-main-head strong {
+  color: var(--qx-system-island-text);
+  text-align: right;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.qx-system-trend {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(2px, 1fr));
+  align-items: center;
+  gap: 2px;
+  height: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.qx-system-trend span {
+  width: 3px;
+  height: 3px;
+  justify-self: center;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 7px rgba(34, 197, 94, 0.85);
+  transition: transform 0.35s ease, opacity 0.35s ease;
+}
+
+.qx-system-side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.qx-system-side-row {
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-areas: "label value";
+  align-items: center;
+  gap: 3px;
+}
+
+.qx-system-side-row span {
+  grid-area: label;
+  color: var(--qx-system-island-muted);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.qx-system-side-row strong {
+  grid-area: value;
+  color: var(--qx-system-island-text);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: right;
+}
+
+.qx-system-side-row small {
+  display: none;
+}

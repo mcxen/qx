@@ -1,0 +1,30 @@
+{
+  "id": "hello-world",
+  "name": "Hello World",
+  "version": "1.0.0",
+  "description": "A minimal Qx plugin demonstrating the plugin API",
+  "author": "Qx Team",
+  "icon": "icon.png",
+  "keywords": ["hello", "world", "示例", "你好"],
+  "permissions": ["notifications"],
+  "entry": "index.js",
+  "commands": [
+    {
+      "name": "hello",
+      "title": "Say Hello",
+      "description": "Display a greeting message",
+      "keywords": ["hi", "greet", "hello"]
+    },
+    {
+      "name": "goodbye",
+      "title": "Say Goodbye",
+      "description": "Display a farewell message",
+      "keywords": ["bye", "farewell"]
+    }
+  ],
+  "panel": {
+    "title": "Hello World",
+    "icon": "icon.png",
+    "keywords": ["hello world panel"]
+  }
+}

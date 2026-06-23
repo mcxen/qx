@@ -1,70 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import QxShell, { type BottomIslandContent } from "../../components/QxShell";
 import { useRssStore } from "./store";
 import ImageLightbox from "./ImageLightbox";
-
-function formatDate(ts: number): string {
-  if (!ts) return "";
-  const d = new Date(ts * 1000);
-  return d.toLocaleString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function sanitizeHtml(html: string): string {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  doc.querySelectorAll("script,style,iframe,object,embed,form,input,button").forEach((el) => el.remove());
-  doc.querySelectorAll("a").forEach((el) => {
-    const a = el as HTMLAnchorElement;
-    a.setAttribute("target", "_blank");
-    a.setAttribute("rel", "noopener noreferrer");
-  });
-  doc.querySelectorAll("img").forEach((el) => {
-    const img = el as HTMLImageElement;
-    img.style.maxWidth = "100%";
-    img.style.height = "auto";
-    img.style.borderRadius = "8px";
-    img.style.display = "block";
-    img.style.margin = "10px 0";
-    img.setAttribute("loading", "lazy");
-  });
-  doc.querySelectorAll("pre,code").forEach((el) => {
-    const h = el as HTMLElement;
-    h.style.background = "rgba(0,0,0,0.05)";
-    h.style.padding = "2px 6px";
-    h.style.borderRadius = "4px";
-    h.style.fontSize = "12px";
-    h.style.fontFamily = 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace';
-  });
-  doc.querySelectorAll("pre").forEach((el) => {
-    const h = el as HTMLElement;
-    h.style.padding = "10px 12px";
-    h.style.overflowX = "auto";
-  });
-  doc.querySelectorAll("h1,h2,h3,h4").forEach((el) => {
-    const h = el as HTMLElement;
-    h.style.marginTop = "16px";
-    h.style.marginBottom = "6px";
-    h.style.fontWeight = "600";
-  });
-  doc.querySelectorAll("p,li").forEach((el) => {
-    const h = el as HTMLElement;
-    h.style.lineHeight = "1.6";
-    h.style.margin = "6px 0";
-  });
-  doc.querySelectorAll("blockquote").forEach((el) => {
-    const h = el as HTMLElement;
-    h.style.borderLeft = "3px solid var(--color-accent)";
-    h.style.paddingLeft = "12px";
-    h.style.color = "var(--color-text-secondary)";
-    h.style.margin = "10px 0";
-  });
-  return doc.body ? doc.body.innerHTML : html;
-}
+import { formatDate, sanitizeHtml } from "./article-utils";
 
 export default function ArticleDetail() {
   const {
@@ -107,6 +46,9 @@ export default function ArticleDetail() {
   const currentIdx = articles.findIndex((a) => a.id === selectedArticleId);
   const prev = currentIdx > 0 ? articles[currentIdx - 1] : null;
   const next = currentIdx >= 0 && currentIdx < articles.length - 1 ? articles[currentIdx + 1] : null;
+  const progress = articles.length > 0 && currentIdx >= 0
+    ? Math.round(((currentIdx + 1) / articles.length) * 100)
+    : 0;
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     switch (e.key) {
@@ -147,7 +89,7 @@ export default function ArticleDetail() {
           alignItems: "center",
           justifyContent: "center",
           color: "var(--color-text-tertiary)",
-          fontSize: 13,
+          fontSize: 12,
         }}
       >
         Article not found
@@ -155,95 +97,26 @@ export default function ArticleDetail() {
     );
   }
 
+  const island: BottomIslandContent = {
+    label: "Reading RSS",
+    detail: `${currentIdx + 1}/${articles.length || 1} articles`,
+    progress,
+  };
+
   return (
-    <div
-      className="qx-raycast"
+    <QxShell
+      title={feed?.title || "RSS Detail"}
       onKeyDown={onKeyDown}
-      tabIndex={0}
-    >
-      <div className="qx-plugin-body two-pane">
-        <article className="qx-plugin-detail" style={{ borderRight: "1px solid var(--color-border)" }}>
-          <div className="qx-detail-header">
-            <div style={{ minWidth: 0 }}>
-              <div className="qx-detail-title">{feed?.title || "Article"}</div>
-              <div className="qx-detail-meta">{formatDate(currentArticle.published_at)}</div>
-            </div>
-            <button className="qx-icon-button" onClick={goBack}>List</button>
-          </div>
-          <div style={{ flex: 1, overflowY: "auto", padding: "16px 20px 24px" }}>
-            <h1
-              style={{
-                fontSize: 20,
-                fontWeight: 600,
-                color: "var(--color-text-primary)",
-                margin: "0 0 8px",
-                lineHeight: 1.3,
-              }}
-            >
-              {currentArticle.title || "(untitled)"}
-            </h1>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
-                fontSize: 11,
-                color: "var(--color-text-tertiary)",
-                marginBottom: 16,
-                paddingBottom: 12,
-                borderBottom: "1px solid var(--color-border)",
-              }}
-            >
-              {currentArticle.author && <span>By {currentArticle.author}</span>}
-              {currentArticle.is_starred && <span style={{ color: "#eab308" }}>Starred</span>}
-              {currentArticle.is_read ? (
-                <span>Read</span>
-              ) : (
-                <span style={{ color: "var(--color-accent)" }}>Unread</span>
-              )}
-            </div>
-
-            {currentArticle.image_url && (
-              <img
-                src={currentArticle.image_url}
-                alt=""
-                onClick={() => setLightbox(currentArticle.image_url)}
-                className="qx-panel-card"
-                style={{
-                  width: "100%",
-                  maxHeight: 280,
-                  objectFit: "cover",
-                  marginBottom: 16,
-                  cursor: "zoom-in",
-                  display: "block",
-                }}
-              />
-            )}
-
-            <div
-              id="rss-article-content"
-              className="rss-article-content"
-              dangerouslySetInnerHTML={{ __html: cleanContent }}
-              style={{
-                fontSize: 14,
-                color: "var(--color-text-primary)",
-                lineHeight: 1.65,
-                wordBreak: "break-word",
-              }}
-            />
-
-            {currentArticle.link && (
-              <div style={{ marginTop: 24, paddingTop: 16, borderTop: "1px solid var(--color-border)" }}>
-                <button className="qx-command-button" onClick={() => void openUrl(currentArticle.link)}>
-                  Open original
-                </button>
-              </div>
-            )}
-          </div>
-        </article>
-
+      onBack={goBack}
+      escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
+      search={
+        <div className="qx-rss-detail-title">
+          <span>{currentArticle.title || "(untitled)"}</span>
+        </div>
+      }
+      context={
         <aside className="qx-action-panel">
-          <div className="qx-action-title">ActionPanel</div>
+          <div className="qx-action-title">Detail Nav</div>
           <button className="qx-action-item" onClick={() => currentArticle.link && void openUrl(currentArticle.link)} disabled={!currentArticle.link}>
             <span>Open in Browser</span>
             <kbd>O</kbd>
@@ -265,9 +138,100 @@ export default function ArticleDetail() {
             <kbd>K</kbd>
           </button>
         </aside>
-      </div>
+      }
+      island={island}
+      primaryAction={{
+        label: currentArticle.link ? "Open Original" : "Back",
+        kbd: currentArticle.link ? "O" : "Esc",
+        tone: "primary",
+        onClick: () => {
+          if (currentArticle.link) void openUrl(currentArticle.link);
+          else goBack();
+        },
+      }}
+      secondaryAction={{ label: "Actions", kbd: "⌘K" }}
+    >
+        <article className="qx-plugin-detail qx-rss-detail-content">
+          <div className="qx-detail-header">
+            <div style={{ minWidth: 0 }}>
+              <div className="qx-detail-title">{feed?.title || "Article"}</div>
+              <div className="qx-detail-meta">{formatDate(currentArticle.published_at)}</div>
+            </div>
+            <button className="qx-icon-button" onClick={goBack}>List</button>
+          </div>
+          <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px 16px" }}>
+            <h1
+              style={{
+                fontSize: 18,
+                fontWeight: 600,
+                color: "var(--qx-text-primary)",
+                margin: "0 0 8px",
+                lineHeight: 1.3,
+              }}
+            >
+              {currentArticle.title || "(untitled)"}
+            </h1>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 11,
+                color: "var(--qx-text-tertiary)",
+                marginBottom: 10,
+                paddingBottom: 8,
+                borderBottom: "1px solid var(--qx-border-1)",
+              }}
+            >
+              {currentArticle.author && <span>By {currentArticle.author}</span>}
+              {currentArticle.is_starred && <span style={{ color: "var(--qx-accent)" }}>Starred</span>}
+              {currentArticle.is_read ? (
+                <span>Read</span>
+              ) : (
+                <span style={{ color: "var(--qx-accent)" }}>Unread</span>
+              )}
+            </div>
+
+            {currentArticle.image_url && (
+              <img
+                src={currentArticle.image_url}
+                alt=""
+                onClick={() => setLightbox(currentArticle.image_url)}
+                className="qx-panel-card"
+                style={{
+                  width: "100%",
+                  maxHeight: 280,
+                  objectFit: "cover",
+                  marginBottom: 10,
+                  cursor: "zoom-in",
+                  display: "block",
+                }}
+              />
+            )}
+
+            <div
+              id="rss-article-content"
+              className="rss-article-content"
+              dangerouslySetInnerHTML={{ __html: cleanContent }}
+              style={{
+                fontSize: 13,
+                color: "var(--qx-text-primary)",
+                lineHeight: 1.4,
+                wordBreak: "break-word",
+              }}
+            />
+
+            {currentArticle.link && (
+              <div style={{ marginTop: 16, paddingTop: 10, borderTop: "1px solid var(--qx-border-1)" }}>
+                <button className="qx-command-button" onClick={() => void openUrl(currentArticle.link)}>
+                  Open original
+                </button>
+              </div>
+            )}
+          </div>
+        </article>
 
       {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
-    </div>
+    </QxShell>
   );
 }

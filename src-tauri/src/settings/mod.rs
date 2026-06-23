@@ -10,7 +10,13 @@ pub struct GeneralSettings {
     pub launch_at_login: bool,
     pub language: String,
     pub auto_update: bool,
+    #[serde(default = "default_auto_hide_on_blur", rename = "autoHideOnBlur")]
+    pub auto_hide_on_blur: bool,
     pub data_path: String,
+}
+
+fn default_auto_hide_on_blur() -> bool {
+    true
 }
 
 impl Default for GeneralSettings {
@@ -20,6 +26,7 @@ impl Default for GeneralSettings {
             launch_at_login: false,
             language: "en".to_string(),
             auto_update: true,
+            auto_hide_on_blur: true,
             data_path: format!("{}/Library/Application Support/qx", home),
         }
     }
@@ -27,23 +34,73 @@ impl Default for GeneralSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppearanceSettings {
+    #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_blur_opacity")]
     pub blur_opacity: f64,
+    #[serde(default = "default_window_width")]
     pub window_width: u32,
+    #[serde(default = "default_window_height")]
     pub window_height: u32,
+    #[serde(default = "default_border_radius")]
     pub border_radius: u32,
+    #[serde(default = "default_font_size")]
     pub font_size: u32,
+    #[serde(default = "default_home_island_mode")]
+    pub home_island_mode: String,
+    #[serde(default = "default_true")]
+    pub home_island_cpu: bool,
+    #[serde(default = "default_true")]
+    pub home_island_gpu: bool,
+    #[serde(default = "default_true")]
+    pub home_island_memory: bool,
+}
+
+fn default_theme() -> String {
+    "light".to_string()
+}
+
+fn default_blur_opacity() -> f64 {
+    0.85
+}
+
+fn default_window_width() -> u32 {
+    680
+}
+
+fn default_window_height() -> u32 {
+    500
+}
+
+fn default_border_radius() -> u32 {
+    12
+}
+
+fn default_font_size() -> u32 {
+    14
+}
+
+fn default_home_island_mode() -> String {
+    "system".to_string()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Default for AppearanceSettings {
     fn default() -> Self {
         Self {
-            theme: "light".to_string(),
-            blur_opacity: 0.85,
-            window_width: 680,
-            window_height: 500,
-            border_radius: 12,
-            font_size: 14,
+            theme: default_theme(),
+            blur_opacity: default_blur_opacity(),
+            window_width: default_window_width(),
+            window_height: default_window_height(),
+            border_radius: default_border_radius(),
+            font_size: default_font_size(),
+            home_island_mode: default_home_island_mode(),
+            home_island_cpu: true,
+            home_island_gpu: true,
+            home_island_memory: true,
         }
     }
 }
@@ -69,6 +126,37 @@ impl Default for AdvancedSettings {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RssSettings {
+    #[serde(
+        default = "default_offline_cache_enabled",
+        rename = "offline_cache_enabled"
+    )]
+    pub offline_cache_enabled: bool,
+    #[serde(
+        default = "default_max_articles_per_feed",
+        rename = "max_articles_per_feed"
+    )]
+    pub max_articles_per_feed: u32,
+}
+
+fn default_offline_cache_enabled() -> bool {
+    true
+}
+
+fn default_max_articles_per_feed() -> u32 {
+    500
+}
+
+impl Default for RssSettings {
+    fn default() -> Self {
+        Self {
+            offline_cache_enabled: true,
+            max_articles_per_feed: 500,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct PluginConfig {
     pub id: String,
@@ -90,6 +178,8 @@ pub struct Settings {
     pub plugins: Vec<PluginConfig>,
     #[serde(default)]
     pub advanced: AdvancedSettings,
+    #[serde(default)]
+    pub rss: RssSettings,
 }
 
 impl Default for Settings {
@@ -144,6 +234,7 @@ impl Default for Settings {
             shortcuts,
             plugins: Vec::new(),
             advanced: AdvancedSettings::default(),
+            rss: RssSettings::default(),
         }
     }
 }
@@ -255,7 +346,10 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
     if let Some(key) = shortcut_for(settings, "screenshot") {
         gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
-                show_and_navigate(app, "screenshot");
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.hide();
+                }
+                app.emit("screenshot:capture-region", ()).ok();
             }
         })
         .map_err(|e| format!("register screenshot shortcut: {e}"))?;

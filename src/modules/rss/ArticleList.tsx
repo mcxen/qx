@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useRssStore, classifyArticleTime, type RssArticle } from "./store";
+import QxShell, { type BottomIslandContent } from "../../components/QxShell";
+import { useRssStore, type RssArticle } from "./store";
+import { classifyArticleTime } from "./article-utils";
 function formatTime(publishedAt: number): string {
   if (!publishedAt) return "";
   const d = new Date(publishedAt * 1000);
@@ -160,14 +162,27 @@ export default function ArticleList() {
     { key: "unread", label: "Unread" },
     { key: "starred", label: "Starred" },
   ];
+  const selectedArticle = articles[selectedIndex];
+  const unreadCount = articles.filter((article) => !article.is_read).length;
+  const island: BottomIslandContent = refreshingFeedId != null
+    ? {
+        label: "RSS Syncing",
+        detail: feed?.title,
+        progress: 55,
+        actionLabel: "Pause",
+      }
+    : {
+        label: feed?.title || "RSS Articles",
+        detail: `${articles.length} articles · ${unreadCount} unread · ${filter}`,
+      };
 
   return (
-    <div
-      className="qx-raycast"
+    <QxShell
+      title={feed?.title || "RSS Articles"}
       onKeyDown={onKeyDown}
-      tabIndex={0}
-    >
-      <div className="qx-plugin-toolbar">
+      onBack={goBack}
+      escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
+      search={
         <div className="qx-search-wrap">
           <span className="qx-search-icon" aria-hidden="true" />
           <input
@@ -181,24 +196,83 @@ export default function ArticleList() {
             placeholder={feed ? `Search in ${feed.title}…` : "Search articles..."}
             className="qx-plugin-search"
           />
-          <div className="qx-segmented">
-            {filterChips.map((c) => {
-              const active = c.key === filter;
-              return (
-                <button
-                  key={c.key}
-                  onClick={() => setFilter(c.key)}
-                  className={active ? "is-active" : ""}
-                >
-                  {c.label}
-                </button>
-              );
-            })}
-          </div>
         </div>
-      </div>
-
-      <div className="qx-plugin-body two-pane">
+      }
+      trailing={
+        <div className="qx-segmented">
+          {filterChips.map((c) => {
+            const active = c.key === filter;
+            return (
+              <button
+                key={c.key}
+                onClick={() => setFilter(c.key)}
+                className={active ? "is-active" : ""}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+      }
+      context={
+        <aside className="qx-action-panel">
+          <div className="qx-action-title">Article Actions</div>
+          <button
+            className="qx-action-item"
+            onClick={() => selectedArticle && void openArticle(selectedArticle.id)}
+            disabled={!selectedArticle}
+          >
+            <span>Read Article</span>
+            <kbd>↩</kbd>
+          </button>
+          <button
+            className="qx-action-item"
+            onClick={() => selectedArticle && void toggleStar(selectedArticle.id, !selectedArticle.is_starred)}
+            disabled={!selectedArticle}
+          >
+            <span>Toggle Star</span>
+            <kbd>S</kbd>
+          </button>
+          <button
+            className="qx-action-item"
+            onClick={() => selectedArticle && void markRead(selectedArticle.id, !selectedArticle.is_read)}
+            disabled={!selectedArticle}
+          >
+            <span>Toggle Read</span>
+            <kbd>U</kbd>
+          </button>
+          <button
+            className="qx-action-item"
+            onClick={() => selectedArticle?.link && void openUrl(selectedArticle.link)}
+            disabled={!selectedArticle?.link}
+          >
+            <span>Open in Browser</span>
+            <kbd>O</kbd>
+          </button>
+          <button
+            className="qx-action-item"
+            onClick={() => {
+              if (selectedFeedId != null) void refreshFeed(selectedFeedId);
+            }}
+            disabled={selectedFeedId == null}
+          >
+            <span>Refresh Feed</span>
+            <kbd>R</kbd>
+          </button>
+        </aside>
+      }
+      island={island}
+      primaryAction={{
+        label: selectedArticle ? "Read Article" : "Back",
+        kbd: selectedArticle ? "↵" : "Esc",
+        tone: "primary",
+        onClick: () => {
+          if (selectedArticle) void openArticle(selectedArticle.id);
+          else goBack();
+        },
+      }}
+      secondaryAction={{ label: "Actions", kbd: "⌘K" }}
+    >
         <div className="qx-plugin-list">
           {sections.map((section) => (
             <div key={section.key}>
@@ -219,27 +293,18 @@ export default function ArticleList() {
                     key={a.id}
                     onClick={() => setSelectedIndex(idx)}
                     onDoubleClick={() => void openArticle(a.id)}
-                    className={`qx-list-row tall${active ? " is-active" : ""}`}
+                    className={`qx-list-row tall${active ? " is-active" : ""}${a.is_read ? " is-read" : " is-unread"}`}
                   >
-                    <span
-                      className="qx-status-dot"
-                      style={{ background: a.is_read ? "transparent" : "var(--color-accent)" }}
-                    />
+                    <span className={`qx-rss-dot${a.is_read ? " is-read" : ""}`} />
                     <span className="qx-list-copy">
-                      <span
-                        className="qx-list-title"
-                        style={{
-                          fontWeight: a.is_read ? 400 : 600,
-                          color: a.is_read ? "var(--color-text-secondary)" : "var(--color-text-primary)",
-                        }}
-                      >
+                      <span className="qx-list-title">
                         {a.title || "(untitled)"}
                       </span>
                       <span className="qx-list-subtitle">{stripHtml(a.summary).slice(0, 120)}</span>
                     </span>
                     <span className="qx-list-time">
                       {formatTime(a.published_at)}
-                      {a.is_starred ? " Starred" : ""}
+                      {a.is_starred ? " ★" : ""}
                     </span>
                   </button>
                 );
@@ -252,65 +317,6 @@ export default function ArticleList() {
             </div>
           )}
         </div>
-
-        <aside className="qx-action-panel">
-          <div className="qx-action-title">ActionPanel</div>
-          <button
-            className="qx-action-item"
-            onClick={() => {
-              const a = articles[selectedIndex];
-              if (a) void openArticle(a.id);
-            }}
-            disabled={!articles[selectedIndex]}
-          >
-            <span>Read Article</span>
-            <kbd>↩</kbd>
-          </button>
-          <button
-            className="qx-action-item"
-            onClick={() => {
-              const a = articles[selectedIndex];
-              if (a) void toggleStar(a.id, !a.is_starred);
-            }}
-            disabled={!articles[selectedIndex]}
-          >
-            <span>Toggle Star</span>
-            <kbd>S</kbd>
-          </button>
-          <button
-            className="qx-action-item"
-            onClick={() => {
-              const a = articles[selectedIndex];
-              if (a) void markRead(a.id, !a.is_read);
-            }}
-            disabled={!articles[selectedIndex]}
-          >
-            <span>Toggle Read</span>
-            <kbd>U</kbd>
-          </button>
-          <button
-            className="qx-action-item"
-            onClick={() => {
-              const a = articles[selectedIndex];
-              if (a?.link) void openUrl(a.link);
-            }}
-            disabled={!articles[selectedIndex]?.link}
-          >
-            <span>Open in Browser</span>
-            <kbd>O</kbd>
-          </button>
-          <button
-            className="qx-action-item"
-            onClick={() => {
-              if (selectedFeedId != null) void refreshFeed(selectedFeedId);
-            }}
-            disabled={selectedFeedId == null}
-          >
-            <span>Refresh Feed</span>
-            <kbd>R</kbd>
-          </button>
-        </aside>
-      </div>
-    </div>
+    </QxShell>
   );
 }

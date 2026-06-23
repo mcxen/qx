@@ -2,11 +2,14 @@ pub mod fetcher;
 pub mod storage;
 pub mod types;
 
+use rusqlite::params;
 use std::sync::Arc;
 use tauri::{command, Manager, State};
 
 use storage::RssDb;
 use types::{Article, Feed};
+
+use crate::settings;
 
 pub fn init(app: &tauri::AppHandle) {
     if let Ok(conn) = storage::open() {
@@ -20,6 +23,47 @@ where
 {
     let guard = state.0.lock().map_err(|e| format!("db lock: {e}"))?;
     f(&guard)
+}
+
+fn rss_settings() -> settings::RssSettings {
+    settings::read_settings().rss
+}
+
+fn store_article(
+    conn: &rusqlite::Connection,
+    feed_id: i64,
+    a: &types::ParsedArticle,
+) -> rusqlite::Result<()> {
+    let s = rss_settings();
+    let content = if s.offline_cache_enabled {
+        a.content.clone()
+    } else {
+        String::new()
+    };
+    let now = chrono::Local::now().timestamp();
+    conn.execute(
+        "INSERT OR IGNORE INTO rss_articles
+         (feed_id, guid, title, summary, content, author, link, image_url, is_read, is_starred, published_at, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, 0, ?9, ?10)",
+        params![
+            feed_id,
+            a.guid,
+            a.title,
+            a.summary,
+            content,
+            a.author,
+            a.link,
+            a.image_url,
+            a.published_at,
+            now,
+        ],
+    )?;
+    Ok(())
+}
+
+fn prune_feed(conn: &rusqlite::Connection, feed_id: i64) -> rusqlite::Result<()> {
+    let max = rss_settings().max_articles_per_feed;
+    storage::prune_articles(conn, feed_id, max)
 }
 
 #[command]
@@ -36,8 +80,9 @@ pub fn rss_add_feed(state: State<RssDb>, url: String) -> Result<Feed, String> {
         let id = storage::insert_feed(conn, &url, &parsed.title, &parsed.icon)
             .map_err(|e| format!("{e}"))?;
         for a in &parsed.articles {
-            let _ = storage::insert_article(conn, id, a);
+            let _ = store_article(conn, id, a);
         }
+        let _ = prune_feed(conn, id);
         storage::update_feed_meta(conn, id, &parsed.title, &parsed.icon)
             .map_err(|e| format!("{e}"))?;
         let mut feeds = storage::list_feeds(conn).map_err(|e| format!("{e}"))?;
@@ -45,6 +90,27 @@ pub fn rss_add_feed(state: State<RssDb>, url: String) -> Result<Feed, String> {
             .into_iter()
             .find(|f| f.id == id)
             .ok_or_else(|| "feed not found after insert".to_string())
+    })
+}
+
+#[command]
+pub fn rss_update_feed(
+    state: State<RssDb>,
+    id: i64,
+    url: String,
+    title: String,
+) -> Result<Feed, String> {
+    let url_trimmed = url.trim().to_string();
+    if url_trimmed.is_empty() {
+        return Err("URL cannot be empty".to_string());
+    }
+    with_db(&state, |conn| {
+        storage::update_feed(conn, id, &url_trimmed, &title).map_err(|e| format!("{e}"))?;
+        storage::list_feeds(conn)
+            .map_err(|e| format!("{e}"))?
+            .into_iter()
+            .find(|f| f.id == id)
+            .ok_or_else(|| "feed not found after update".to_string())
     })
 }
 
@@ -104,8 +170,9 @@ pub fn rss_refresh_feed(state: State<RssDb>, id: i64) -> Result<usize, String> {
     let count = parsed.articles.len();
     with_db(&state, |conn| {
         for a in &parsed.articles {
-            let _ = storage::insert_article(conn, id, a);
+            let _ = store_article(conn, id, a);
         }
+        let _ = prune_feed(conn, id);
         storage::update_feed_meta(conn, id, &parsed.title, &parsed.icon)
             .map_err(|e| format!("{e}"))?;
         Ok::<(), String>(())
@@ -124,8 +191,9 @@ pub fn rss_refresh_all(state: State<RssDb>) -> Result<usize, String> {
             Ok(parsed) => {
                 let _ = with_db(&state, |conn| {
                     for a in &parsed.articles {
-                        let _ = storage::insert_article(conn, id, a);
+                        let _ = store_article(conn, id, a);
                     }
+                    let _ = prune_feed(conn, id);
                     storage::update_feed_meta(conn, id, &parsed.title, &parsed.icon)
                         .map_err(|e| format!("{e}"))?;
                     Ok::<(), String>(())
@@ -163,8 +231,9 @@ pub fn rss_import_opml(state: State<RssDb>, content: String) -> Result<usize, St
         let _ = with_db(&state, |conn| {
             let id = storage::insert_feed(conn, &url, &t, &icon).map_err(|e| format!("{e}"))?;
             for a in &articles {
-                let _ = storage::insert_article(conn, id, a);
+                let _ = store_article(conn, id, a);
             }
+            let _ = prune_feed(conn, id);
             storage::update_feed_meta(conn, id, &t, &icon).map_err(|e| format!("{e}"))?;
             Ok::<(), String>(())
         });

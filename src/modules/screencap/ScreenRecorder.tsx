@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useScreencapStore, type RecordArea } from "./store";
+import { LinkButton } from "../../components/ui";
 import GifPreview from "./GifPreview";
 import GifHistory from "./GifHistory";
+import QxShell from "../../components/QxShell";
 
 type SelectMode = "none" | "selecting";
 
@@ -103,6 +105,56 @@ export default function ScreenRecorder() {
     setArea(null);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    const state = useScreencapStore.getState();
+    const { history, lastGifPath, setPreview, deleteEntry, reset: resetState } = state;
+    if (history.length === 0) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        resetState();
+      }
+      return;
+    }
+    const currentIndex = Math.max(
+      0,
+      history.findIndex((h) => h.path === lastGifPath),
+    );
+    switch (e.key) {
+      case "ArrowDown":
+      case "j": {
+        e.preventDefault();
+        const next = Math.min(currentIndex + 1, history.length - 1);
+        setPreview(history[next].path);
+        break;
+      }
+      case "ArrowUp":
+      case "k": {
+        e.preventDefault();
+        const prev = Math.max(currentIndex - 1, 0);
+        setPreview(history[prev].path);
+        break;
+      }
+      case "Enter": {
+        e.preventDefault();
+        const entry = history[currentIndex];
+        if (entry) setPreview(entry.path);
+        break;
+      }
+      case "Delete":
+      case "Backspace": {
+        e.preventDefault();
+        const entry = history[currentIndex];
+        if (entry) void deleteEntry(entry.id);
+        break;
+      }
+      case "Escape": {
+        e.preventDefault();
+        resetState();
+        break;
+      }
+    }
+  };
+
   if (selectMode === "selecting") {
     const selX = dragStart && dragEnd ? Math.min(dragStart.x, dragEnd.x) : 0;
     const selY = dragStart && dragEnd ? Math.min(dragStart.y, dragEnd.y) : 0;
@@ -116,7 +168,7 @@ export default function ScreenRecorder() {
         style={{
           position: "fixed",
           inset: 0,
-          background: "rgba(0,0,0,0.4)",
+          background: "var(--qx-overlay-1)",
           cursor: "crosshair",
           zIndex: 100,
         }}
@@ -129,8 +181,8 @@ export default function ScreenRecorder() {
               top: selY,
               width: selW,
               height: selH,
-              border: "2px solid var(--color-accent)",
-              background: "rgba(99,102,241,0.1)",
+              border: "2px solid var(--qx-accent)",
+              background: "var(--qx-accent-soft)",
             }}
           />
         )}
@@ -141,7 +193,7 @@ export default function ScreenRecorder() {
             left: 0,
             right: 0,
             textAlign: "center",
-            color: "#fff",
+            color: "var(--qx-text-on-accent)",
             fontSize: 13,
             pointerEvents: "none",
           }}
@@ -154,23 +206,37 @@ export default function ScreenRecorder() {
 
   if (status === "done" && lastGifPath) {
     return (
-      <div className="qx-module-shell">
-        <div className="qx-plugin-toolbar">
-          <div className="qx-toolbar-title" style={{ flex: 1 }}>Recording Complete</div>
-          <button className="qx-command-button" onClick={handleNewRecording}>New</button>
-        </div>
+      <QxShell
+        title="Screen Recording"
+        search={<div className="qx-rss-detail-title">Recording Complete</div>}
+        trailing={<button className="qx-command-button" onClick={handleNewRecording}>New</button>}
+        island={{ label: "GIF Ready", detail: lastGifPath.split("/").pop(), tone: "success" }}
+        primaryAction={{ label: "New", onClick: handleNewRecording }}
+        onKeyDown={handleKeyDown}
+      >
         <GifPreview path={lastGifPath} onClose={handleNewRecording} />
         <GifHistory />
-      </div>
+      </QxShell>
     );
   }
 
   if (isRecording || status === "processing") {
     return (
-      <div className="qx-module-shell">
-        <div className="qx-plugin-toolbar">
-          <div className="qx-toolbar-title">Recording</div>
-        </div>
+      <QxShell
+        title="Screen Recording"
+        search={<div className="qx-rss-detail-title">Recording</div>}
+        island={{
+          label: status === "processing" ? "Encoding GIF" : "Recording",
+          detail: status === "processing" ? "Processing frames" : formatTime(elapsed),
+          tone: status === "processing" ? "warning" : "danger",
+        }}
+        primaryAction={{
+          label: status === "processing" ? "Encoding" : "Stop",
+          disabled: status === "processing",
+          tone: status === "processing" ? "normal" : "danger",
+          onClick: handleStop,
+        }}
+      >
         <div className="qx-module-stage" style={{ alignItems: "center", justifyContent: "center", flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span
@@ -179,14 +245,14 @@ export default function ScreenRecorder() {
                 width: 12,
                 height: 12,
                 borderRadius: "50%",
-                background: "#ef4444",
+                background: "var(--qx-danger)",
               }}
             />
             <span
               style={{
                 fontSize: 14,
                 fontWeight: 600,
-                color: "var(--color-text-primary)",
+                color: "var(--qx-text-primary)",
               }}
             >
               {status === "processing" ? "Processing" : "Recording"}
@@ -196,7 +262,7 @@ export default function ScreenRecorder() {
             style={{
               fontSize: 44,
               fontVariantNumeric: "tabular-nums",
-              color: "var(--color-text-primary)",
+              color: "var(--qx-text-primary)",
               fontWeight: 300,
               letterSpacing: 1,
             }}
@@ -204,7 +270,7 @@ export default function ScreenRecorder() {
             {formatTime(elapsed)}
           </div>
           {area && (
-            <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+            <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
               {area.w} × {area.h} px
             </div>
           )}
@@ -212,28 +278,54 @@ export default function ScreenRecorder() {
             onClick={handleStop}
             disabled={status === "processing"}
             className={`qx-command-button${status === "processing" ? "" : " danger"}`}
-            style={{ height: 40, padding: "0 28px" }}
+            style={{ height: 28, padding: "0 12px" }}
           >
             {status === "processing" ? "Encoding GIF…" : "Stop"}
           </button>
         </div>
-      </div>
+      </QxShell>
     );
   }
 
+  const context = (
+    <div className="qx-action-panel">
+      <div className="qx-action-title">Recording</div>
+      <button className="qx-action-item" onClick={handleStart}>
+        <span>Start Recording</span>
+      </button>
+      <button className="qx-action-item" onClick={beginAreaSelect}>
+        <span>Select Area</span>
+      </button>
+      <button className="qx-action-item" onClick={() => setArea(null)} disabled={!area}>
+        <span>Clear Area</span>
+      </button>
+    </div>
+  );
+
   return (
-    <div className="qx-raycast">
-      <div className="qx-plugin-toolbar">
-        <div className="qx-toolbar-title" style={{ flex: 1 }}>Screen Recording</div>
-        <button className="qx-command-button primary" onClick={handleStart}>
-          Start Recording
-        </button>
-        <button className="qx-command-button" onClick={beginAreaSelect}>
-          Select Area
-        </button>
-      </div>
+    <QxShell
+      title="Screen Recording"
+      search={<div className="qx-rss-detail-title">Screen Recording</div>}
+      trailing={
+        <>
+          <button className="qx-command-button primary" onClick={handleStart}>
+            Start Recording
+          </button>
+          <button className="qx-command-button" onClick={beginAreaSelect}>
+            Select Area
+          </button>
+        </>
+      }
+      context={context}
+      island={{
+        label: "Ready to Record",
+        detail: area ? `${area.w} x ${area.h} px · ${estimatePerMinute(area)}` : "Full screen",
+      }}
+      primaryAction={{ label: "Start", onClick: handleStart }}
+      secondaryAction={{ label: "Area", onClick: beginAreaSelect }}
+    >
       <div className="qx-plugin-body two-pane">
-        <div className="qx-plugin-detail" style={{ borderRight: "1px solid var(--color-border)" }}>
+        <div className="qx-plugin-detail" style={{ borderRight: "1px solid var(--qx-border-1)" }}>
           <div className="qx-detail-header">
             <div>
               <div className="qx-detail-title">Configuration</div>
@@ -241,8 +333,8 @@ export default function ScreenRecorder() {
             </div>
           </div>
           <div className="qx-module-stage">
-            <div className="qx-panel-card" style={{ padding: 16 }}>
-              <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            <div className="qx-panel-card" style={{ padding: 8 }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                 <button onClick={handleStart} className="qx-command-button primary" style={{ flex: 1 }}>
                   Start Recording
                 </button>
@@ -254,7 +346,7 @@ export default function ScreenRecorder() {
             <div
               style={{
                 fontSize: 12,
-                color: "var(--color-text-tertiary)",
+                color: "var(--qx-text-tertiary)",
                 display: "flex",
                 alignItems: "center",
                 gap: 8,
@@ -263,45 +355,22 @@ export default function ScreenRecorder() {
               <span>
                 Area: {area.w} × {area.h} px · Est. ~{estimatePerMinute(area)}
               </span>
-              <button onClick={() => setArea(null)} style={linkBtn}>
-                Clear
-              </button>
+              <LinkButton onClick={() => setArea(null)}>Clear</LinkButton>
             </div>
           ) : (
-            <div style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+            <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
               Full screen · ~3–8 MB/min (varies by content)
             </div>
           )}
             </div>
             {error && (
-              <div className="qx-panel-card" style={{ padding: "8px 12px", fontSize: 12, color: "#b91c1c" }}>
+              <div className="qx-panel-card" style={{ padding: "6px 8px", fontSize: 12, color: "var(--qx-danger)" }}>
                 {error}
               </div>
             )}
           </div>
         </div>
-        <aside className="qx-action-panel">
-          <div className="qx-action-title">ActionPanel</div>
-          <button className="qx-action-item" onClick={handleStart}>
-            <span>Start Recording</span>
-          </button>
-          <button className="qx-action-item" onClick={beginAreaSelect}>
-            <span>Select Area</span>
-          </button>
-          <button className="qx-action-item" onClick={() => setArea(null)} disabled={!area}>
-            <span>Clear Area</span>
-          </button>
-        </aside>
       </div>
-    </div>
+    </QxShell>
   );
 }
-
-const linkBtn: React.CSSProperties = {
-  border: "none",
-  background: "transparent",
-  color: "var(--color-accent)",
-  fontSize: 12,
-  cursor: "pointer",
-  padding: 0,
-};

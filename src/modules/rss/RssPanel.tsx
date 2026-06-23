@@ -1,51 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
+import QxShell, { type BottomIslandContent } from "../../components/QxShell";
 import { useRssStore, type RssFeed } from "./store";
+import { useStore } from "../../store";
 import AddFeedDialog from "./AddFeedDialog";
-
-function formatRelative(ts: number): string {
-  if (!ts) return "";
-  const diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d ago`;
-  const d = new Date(ts * 1000);
-  return `${d.getMonth() + 1}/${d.getDate()}`;
-}
-
-function FeedIcon({ feed }: { feed: RssFeed }) {
-  if (feed.icon) {
-    return (
-      <img
-        src={feed.icon}
-        alt=""
-        style={{ width: 22, height: 22, borderRadius: 5, flexShrink: 0 }}
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.visibility = "hidden";
-        }}
-      />
-    );
-  }
-  return (
-    <div
-      style={{
-        width: 22,
-        height: 22,
-        borderRadius: 5,
-        background: "var(--color-accent-soft)",
-        color: "var(--color-accent)",
-        fontSize: 12,
-        fontWeight: 600,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-      }}
-    >
-      {(feed.title || "R").slice(0, 1).toUpperCase()}
-    </div>
-  );
-}
+import EditFeedDialog from "./EditFeedDialog";
+import { FeedIcon, formatRelative } from "./rss-components";
 
 export default function RssPanel() {
   const {
@@ -61,9 +20,11 @@ export default function RssPanel() {
     refreshAll,
     removeFeed,
   } = useRssStore();
+  const setTab = useStore((state) => state.setTab);
 
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
+  const [editFeed, setEditFeed] = useState<RssFeed | null>(null);
 
   useEffect(() => {
     void loadFeeds();
@@ -82,13 +43,18 @@ export default function RssPanel() {
     setSelectedIndex(0);
   }, [filtered.length, setSelectedIndex]);
 
+  const selectedFeed = filtered[selectedIndex];
+  const unreadCount = feeds.reduce((sum, feed) => sum + feed.unread_count, 0);
+
   const onKeyDown = (e: React.KeyboardEvent) => {
     switch (e.key) {
       case "Escape":
+        e.preventDefault();
+        e.stopPropagation();
         if (query) {
-          e.preventDefault();
-          e.stopPropagation();
           setQuery("");
+        } else {
+          setTab("launcher");
         }
         break;
       case "ArrowDown":
@@ -99,17 +65,14 @@ export default function RssPanel() {
         e.preventDefault();
         setSelectedIndex(Math.max(selectedIndex - 1, 0));
         break;
-      case "Enter": {
+      case "Enter":
         e.preventDefault();
-        const item = filtered[selectedIndex];
-        if (item) void openFeed(item.id);
+        if (selectedFeed) void openFeed(selectedFeed.id);
         break;
-      }
       case "r":
         if (!e.metaKey && !e.ctrlKey) {
           e.preventDefault();
-          const item = filtered[selectedIndex];
-          if (item) void refreshFeed(item.id);
+          if (selectedFeed) void refreshFeed(selectedFeed.id);
         }
         break;
       case "R":
@@ -124,6 +87,12 @@ export default function RssPanel() {
           setShowAdd(true);
         }
         break;
+      case "e":
+        if (!e.metaKey && !e.ctrlKey && selectedFeed) {
+          e.preventDefault();
+          setEditFeed(selectedFeed);
+        }
+        break;
     }
   };
 
@@ -133,13 +102,24 @@ export default function RssPanel() {
     }
   };
 
+  const island: BottomIslandContent = refreshingFeedId
+    ? {
+        label: "RSS Syncing",
+        detail: refreshingFeedId === -1 ? `${feeds.length} feeds` : selectedFeed?.title,
+        progress: refreshingFeedId === -1 ? 42 : 55,
+        actionLabel: "Pause",
+      }
+    : {
+        label: "RSS Reader",
+        detail: `${feeds.length} feeds · ${unreadCount} unread`,
+      };
+
   return (
-    <div
-      className="qx-raycast"
+    <QxShell
+      title="RSS Reader"
+      className="qx-rss-shell"
       onKeyDown={onKeyDown}
-      tabIndex={0}
-    >
-      <div className="qx-plugin-toolbar">
+      search={
         <div className="qx-search-wrap">
           <span className="qx-search-icon" aria-hidden="true" />
           <input
@@ -151,86 +131,32 @@ export default function RssPanel() {
             className="qx-plugin-search"
           />
         </div>
-        <button className="qx-command-button" onClick={() => void refreshAll()} title="Refresh all">
-          Refresh
-        </button>
-        <button className="qx-command-button primary" onClick={() => setShowAdd(true)} title="Add feed (N)">
-          Add Feed
-        </button>
-      </div>
-
-      <div className="qx-plugin-body two-pane">
-        <div className="qx-plugin-list">
-          <div className="qx-section-header">
-            <span style={{ flex: 1 }}>Subscriptions</span>
-            <span>{filtered.length}</span>
-          </div>
-          {filtered.map((feed, i) => {
-            const active = i === selectedIndex;
-            const refreshing = refreshingFeedId === feed.id;
-            return (
-              <button
-                key={feed.id}
-                onClick={() => setSelectedIndex(i)}
-                onDoubleClick={() => void openFeed(feed.id)}
-                className={`qx-list-row${active ? " is-active" : ""}`}
-              >
-                <FeedIcon feed={feed} />
-                <span className="qx-list-copy">
-                  <span className="qx-list-title" style={{ fontWeight: 500 }}>
-                    {feed.title || feed.url}
-                  </span>
-                  <span className="qx-list-subtitle">
-                    {formatRelative(feed.last_fetched) || "never fetched"}
-                    {feed.error_count > 0 ? ` - ${feed.error_count} errors` : ""}
-                    {refreshing ? " - refreshing" : ""}
-                  </span>
-                </span>
-                {feed.unread_count > 0 && <span className="qx-badge">{feed.unread_count}</span>}
-              </button>
-            );
-          })}
-          {filtered.length === 0 && (
-            <div className="qx-empty-state">
-              {loading ? "Loading feeds..." : "No feeds yet. Press N to add one."}
-            </div>
-          )}
-          {error && (
-            <div
-              style={{
-                margin: "12px 14px",
-                padding: "8px 12px",
-                fontSize: 12,
-                color: "#b91c1c",
-                background: "rgba(185,28,28,0.08)",
-                borderRadius: "var(--qx-card-radius)",
-              }}
-            >
-              {error}
-            </div>
-          )}
-        </div>
-
-        <aside className="qx-action-panel">
-          <div className="qx-action-title">ActionPanel</div>
+      }
+      trailing={
+        <>
+          <button className="qx-command-button" onClick={() => void refreshAll()}>
+            Refresh
+          </button>
+          <button className="qx-command-button primary" onClick={() => setShowAdd(true)}>
+            Add Feed
+          </button>
+        </>
+      }
+      context={
+        <div className="qx-action-panel">
+          <div className="qx-action-title">Feed Actions</div>
           <button
             className="qx-action-item"
-            onClick={() => {
-              const item = filtered[selectedIndex];
-              if (item) void openFeed(item.id);
-            }}
-            disabled={!filtered[selectedIndex]}
+            onClick={() => selectedFeed && void openFeed(selectedFeed.id)}
+            disabled={!selectedFeed}
           >
             <span>View Articles</span>
             <kbd>↩</kbd>
           </button>
           <button
             className="qx-action-item"
-            onClick={() => {
-              const item = filtered[selectedIndex];
-              if (item) void refreshFeed(item.id);
-            }}
-            disabled={!filtered[selectedIndex]}
+            onClick={() => selectedFeed && void refreshFeed(selectedFeed.id)}
+            disabled={!selectedFeed}
           >
             <span>Refresh Feed</span>
             <kbd>R</kbd>
@@ -243,20 +169,94 @@ export default function RssPanel() {
             <span>Refresh All</span>
           </button>
           <button
+            className="qx-action-item"
+            onClick={() => selectedFeed && setEditFeed(selectedFeed)}
+            disabled={!selectedFeed}
+          >
+            <span>Edit Feed</span>
+            <kbd>E</kbd>
+          </button>
+          <button
             className="qx-action-item danger"
-            onClick={() => {
-              const item = filtered[selectedIndex];
-              if (item) handleDelete(item.id);
-            }}
-            disabled={!filtered[selectedIndex]}
+            onClick={() => selectedFeed && handleDelete(selectedFeed.id)}
+            disabled={!selectedFeed}
           >
             <span>Delete Feed</span>
             <kbd>⌘D</kbd>
           </button>
-        </aside>
+        </div>
+      }
+      island={island}
+      escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setTab("launcher") }}
+      primaryAction={{
+        label: selectedFeed ? "View Articles" : "Add Feed",
+        kbd: selectedFeed ? "↵" : "N",
+        tone: "primary",
+        onClick: () => {
+          if (selectedFeed) void openFeed(selectedFeed.id);
+          else setShowAdd(true);
+        },
+      }}
+      secondaryAction={{ label: "Actions", kbd: "⌘K" }}
+    >
+      <div className="qx-plugin-list qx-rss-feed-list">
+        <div className="qx-section-header">
+          <span style={{ flex: 1 }}>Subscriptions</span>
+          <span>{filtered.length}</span>
+        </div>
+        {filtered.map((feed, i) => {
+          const active = i === selectedIndex;
+          const refreshing = refreshingFeedId === feed.id;
+          return (
+            <button
+              key={feed.id}
+              onClick={() => setSelectedIndex(i)}
+              onDoubleClick={() => void openFeed(feed.id)}
+              className={`qx-list-row${active ? " is-active" : ""}`}
+            >
+              <FeedIcon feed={feed} />
+              <span className="qx-list-copy">
+                <span className="qx-list-title" style={{ fontWeight: 500 }}>
+                  {feed.title || feed.url}
+                </span>
+                <span className="qx-list-subtitle">
+                  {formatRelative(feed.last_fetched) || "never fetched"}
+                  {feed.error_count > 0 ? ` - ${feed.error_count} errors` : ""}
+                  {refreshing ? " - refreshing" : ""}
+                </span>
+              </span>
+              {feed.unread_count > 0 && <span className="qx-badge">{feed.unread_count}</span>}
+            </button>
+          );
+        })}
+        {filtered.length === 0 && (
+          <div className="qx-empty-state">
+            {loading ? "Loading feeds..." : "No feeds yet. Press N to add one."}
+          </div>
+        )}
+        {error && (
+          <div
+            style={{
+              margin: "8px 10px",
+              padding: "6px 8px",
+              fontSize: 12,
+              color: "var(--qx-danger)",
+              background: "var(--qx-danger-border)",
+              borderRadius: "var(--qx-card-radius)",
+            }}
+          >
+            {error}
+          </div>
+        )}
       </div>
 
       {showAdd && <AddFeedDialog onClose={() => setShowAdd(false)} />}
-    </div>
+      {editFeed && (
+        <EditFeedDialog
+          feed={editFeed}
+          onClose={() => setEditFeed(null)}
+        />
+      )}
+    </QxShell>
   );
 }

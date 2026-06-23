@@ -3,8 +3,10 @@ import { useStore } from "./store";
 
 export default function SearchBar({
   onKeyDown,
+  embedded = false,
 }: {
   onKeyDown: (e: React.KeyboardEvent) => void;
+  embedded?: boolean;
 }) {
   const { query, setQuery, setSelectedIndex } = useStore();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -13,10 +15,9 @@ export default function SearchBar({
     inputRef.current?.focus();
   }, []);
 
-  return (
-    <div className="qx-plugin-toolbar">
-      <div className="qx-search-wrap">
-        <span className="qx-search-icon" aria-hidden="true" />
+  const input = (
+    <div className="qx-search-wrap">
+      <span className="qx-search-icon" aria-hidden="true" />
       <input
         ref={inputRef}
         type="text"
@@ -29,7 +30,14 @@ export default function SearchBar({
         placeholder="Search for apps and commands..."
         className="qx-plugin-search"
       />
-      </div>
+    </div>
+  );
+
+  if (embedded) return input;
+
+  return (
+    <div className="qx-plugin-toolbar" data-tauri-drag-region>
+      {input}
     </div>
   );
 }

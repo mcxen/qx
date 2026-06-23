@@ -82,32 +82,6 @@ pub fn increment_feed_error(conn: &Connection, id: i64) -> rusqlite::Result<()> 
     Ok(())
 }
 
-pub fn insert_article(
-    conn: &Connection,
-    feed_id: i64,
-    a: &super::types::ParsedArticle,
-) -> rusqlite::Result<()> {
-    let now = chrono::Local::now().timestamp();
-    conn.execute(
-        "INSERT OR IGNORE INTO rss_articles
-         (feed_id, guid, title, summary, content, author, link, image_url, is_read, is_starred, published_at, created_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, 0, ?9, ?10)",
-        params![
-            feed_id,
-            a.guid,
-            a.title,
-            a.summary,
-            a.content,
-            a.author,
-            a.link,
-            a.image_url,
-            a.published_at,
-            now,
-        ],
-    )?;
-    Ok(())
-}
-
 pub fn list_feeds(conn: &Connection) -> rusqlite::Result<Vec<Feed>> {
     let mut stmt = conn.prepare(
         "SELECT f.id, f.url, f.title, f.icon, f.last_fetched, f.error_count, f.created_at,
@@ -257,4 +231,36 @@ pub fn all_feed_urls(conn: &Connection) -> rusqlite::Result<Vec<(i64, String)>> 
         out.push(r?);
     }
     Ok(out)
+}
+
+pub fn update_feed(conn: &Connection, id: i64, url: &str, title: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE rss_feeds SET url = ?1, title = ?2 WHERE id = ?3",
+        params![url, title, id],
+    )?;
+    Ok(())
+}
+
+pub fn prune_articles(conn: &Connection, feed_id: i64, max_count: u32) -> rusqlite::Result<()> {
+    if max_count == 0 {
+        return Ok(());
+    }
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM rss_articles WHERE feed_id = ?1",
+        params![feed_id],
+        |row| row.get(0),
+    )?;
+    if count <= max_count as i64 {
+        return Ok(());
+    }
+    let to_delete = count - max_count as i64;
+    conn.execute(
+        "DELETE FROM rss_articles
+         WHERE feed_id = ?1
+         AND is_starred = 0
+         ORDER BY published_at ASC NULLS FIRST, created_at ASC
+         LIMIT ?2",
+        params![feed_id, to_delete],
+    )?;
+    Ok(())
 }

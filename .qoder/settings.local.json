@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(which cargo && cargo --version && which rustc && rustc --version)"
+    ]
+  }
+}

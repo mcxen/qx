@@ -1,0 +1,148 @@
+/* ====== Shared UI primitives ====== */
+.qx-settings-row-control {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qx-home-island-settings {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.qx-home-island-settings label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.qx-toggle {
+  width: 36px;
+  height: 20px;
+  border-radius: 6px;
+  border: none;
+  background: var(--qx-bg-component-3);
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+  transition: background-color 0.1s ease;
+  flex-shrink: 0;
+}
+
+.qx-toggle.is-on {
+  background: var(--qx-accent);
+}
+
+.qx-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 6px;
+  background: #fff;
+  transition: left 0.1s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+.qx-toggle.is-on .qx-toggle-knob {
+  left: 18px;
+}
+
+.qx-link-button {
+  border: none;
+  background: transparent;
+  color: var(--qx-accent);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.08s ease;
+}
+
+.qx-link-button:hover {
+  color: var(--qx-accent-hover);
+}
+
+.qx-link-button:disabled {
+  color: var(--qx-text-tertiary);
+  cursor: default;
+}
+
+.qx-kbd {
+  font-family: inherit;
+  font-size: 11px;
+  background: var(--qx-bg-component-3);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-right: 4px;
+  transition: background-color 0.1s ease, color 0.1s ease;
+}
+
+/* ====== Modal / Dialog ====== */
+.qx-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--qx-overlay-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.qx-modal {
+  width: 440px;
+  max-width: 90vw;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--qx-card-radius);
+  padding: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+.qx-modal-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+
+.qx-modal-subtitle {
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-bottom: 10px;
+}
+
+.qx-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.qx-modal-field-label {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
+
+.qx-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.qx-modal-error {
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--qx-danger);
+  background: var(--qx-danger-border);
+  border-radius: 4px;
+  padding: 6px 10px;
+}

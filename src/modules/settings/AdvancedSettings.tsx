@@ -1,64 +1,19 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "./store";
-
-function Row({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="qx-settings-row">
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="qx-settings-row-title">{title}</div>
-        {description && (
-          <div className="qx-settings-row-description">{description}</div>
-        )}
-      </div>
-      <div style={{ flexShrink: 0 }}>{children}</div>
-    </div>
-  );
-}
-
-function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <button
-      onClick={() => onChange(!value)}
-      style={{
-        width: 36,
-        height: 20,
-        borderRadius: 10,
-        border: "none",
-        background: value ? "var(--color-accent)" : "var(--color-surface-active)",
-        position: "relative",
-        cursor: "pointer",
-        padding: 0,
-      }}
-    >
-      <span
-        style={{
-          position: "absolute",
-          top: 2,
-          left: value ? 18 : 2,
-          width: 16,
-          height: 16,
-          borderRadius: 8,
-          background: "#fff",
-        }}
-      />
-    </button>
-  );
-}
+import { usePluginRegistry } from "../../plugin/registry";
+import { Row, Toggle, Select } from "../../components/ui";
+import { useT } from "../../i18n";
 
 export default function AdvancedSettings() {
   const { settings, patch, importFrom, exportTo } = useSettingsStore();
+  const { devWatcherActive, startDevWatcher, stopDevWatcher, refresh } = usePluginRegistry();
+  const t = useT();
   const adv = settings.advanced;
   const [busy, setBusy] = useState<string | null>(null);
   const [ioPath, setIoPath] = useState("");
+  const [pluginName, setPluginName] = useState("");
+  const [scaffoldMsg, setScaffoldMsg] = useState("");
 
   const handleImport = async () => {
     if (!ioPath.trim()) return;
@@ -97,67 +52,150 @@ export default function AdvancedSettings() {
     }
   };
 
+  const handleScaffold = async () => {
+    if (!pluginName.trim()) return;
+    try {
+      setBusy("scaffold");
+      const dir = await invoke<string>("scaffold_plugin", {
+        name: pluginName.trim().toLowerCase().replace(/\s+/g, "-"),
+        outputDir: "~/.qx/plugins",
+      });
+      setScaffoldMsg(t("advanced.pluginCreated", "Plugin created at: {path}").replace("{path}", dir));
+      setPluginName("");
+      await refresh();
+    } catch (e) {
+      setScaffoldMsg(t("advanced.error", "Error: {message}").replace("{message}", String(e)));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
     <div className="qx-settings-page">
-      <Row title="Log Level" description="Verbosity of the Qx diagnostic log.">
-        <select
+      <Row title={t("advanced.logLevel", "Log Level")} description={t("advanced.logLevel.desc", "Verbosity of the Qx diagnostic log.")}>
+        <Select
           value={adv.log_level}
-          onChange={(e) => patch("advanced", { ...adv, log_level: e.target.value })}
-          className="qx-inline-input"
-        >
-          <option value="error">Error</option>
-          <option value="warn">Warn</option>
-          <option value="info">Info</option>
-          <option value="debug">Debug</option>
-        </select>
+          onChange={(v) => patch("advanced", { ...adv, log_level: v })}
+          options={[
+            { value: "error", label: t("advanced.log.error", "Error") },
+            { value: "warn", label: t("advanced.log.warn", "Warn") },
+            { value: "info", label: t("advanced.log.info", "Info") },
+            { value: "debug", label: t("advanced.log.debug", "Debug") },
+          ]}
+        />
       </Row>
-      <Row title="Developer Mode" description="Show DevTools and verbose diagnostics.">
+      <Row title={t("advanced.devMode", "Developer Mode")} description={t("advanced.devMode.desc", "Show DevTools and verbose diagnostics.")}>
         <Toggle
           value={adv.dev_mode}
           onChange={(v) => patch("advanced", { ...adv, dev_mode: v })}
         />
       </Row>
       <Row
-        title="Import / Export Configuration"
-        description="Enter an absolute path. Import loads settings from JSON; Export writes current settings to JSON."
+        title={t("advanced.importExport", "Import / Export Configuration")}
+        description={t("advanced.importExport.desc", "Enter an absolute path. Import loads settings from JSON; Export writes current settings to JSON.")}
       >
-        <div style={{ display: "flex", gap: 6 }}>
-          <input
-            type="text"
-            value={ioPath}
-            onChange={(e) => setIoPath(e.target.value)}
-            placeholder="/path/to/qx-settings.json"
-            style={{
-              width: 220,
-            }}
-            className="qx-inline-input"
-          />
-          <button
-            onClick={handleImport}
-            disabled={busy === "import" || !ioPath.trim()}
-            className="qx-command-button"
-          >
-            {busy === "import" ? "…" : "Import"}
-          </button>
-          <button
-            onClick={handleExport}
-            disabled={busy === "export" || !ioPath.trim()}
-            className="qx-command-button"
-          >
-            {busy === "export" ? "…" : "Export"}
-          </button>
-        </div>
+        <input
+          type="text"
+          value={ioPath}
+          onChange={(e) => setIoPath(e.target.value)}
+          placeholder="/path/to/qx-settings.json"
+          style={{ width: 220 }}
+          className="qx-inline-input"
+        />
+        <button
+          onClick={handleImport}
+          disabled={busy === "import" || !ioPath.trim()}
+          className="qx-command-button"
+        >
+          {busy === "import" ? "…" : t("advanced.import", "Import")}
+        </button>
+        <button
+          onClick={handleExport}
+          disabled={busy === "export" || !ioPath.trim()}
+          className="qx-command-button"
+        >
+          {busy === "export" ? "…" : t("advanced.export", "Export")}
+        </button>
       </Row>
       <Row
-        title="Clear Cache & History"
-        description="Wipe clipboard history and cached screenshots."
+        title={t("advanced.clearCache", "Clear Cache & History")}
+        description={t("advanced.clearCache.desc", "Wipe clipboard history and cached screenshots.")}
       >
         <button
           onClick={clearCache}
           disabled={busy === "clear"}
           className="qx-command-button danger"
         >
-          {busy === "clear" ? "Clearing…" : "Clear"}
+          {busy === "clear" ? t("advanced.clearing", "Clearing…") : t("advanced.clear", "Clear")}
+        </button>
+      </Row>
+
+      {/* ── Developer Tools ── */}
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 600,
+          letterSpacing: "0.06em",
+          color: "var(--qx-text-tertiary)",
+          textTransform: "uppercase",
+          padding: "16px 0 6px",
+          borderTop: "1px solid var(--qx-border-1)",
+          marginTop: 12,
+        }}
+      >
+        {t("advanced.developerTools", "Developer Tools")}
+      </div>
+
+      <Row
+        title={t("advanced.createPlugin", "Create Plugin (qx init)")}
+        description={t("advanced.createPlugin.desc", "Generate a new plugin scaffold with manifest.json, index.js, and README.")}
+      >
+        <input
+          type="text"
+          value={pluginName}
+          onChange={(e) => setPluginName(e.target.value)}
+          placeholder="my-plugin"
+          style={{ width: 140 }}
+          className="qx-inline-input"
+        />
+        <button
+          onClick={handleScaffold}
+          disabled={busy === "scaffold" || !pluginName.trim()}
+          className="qx-command-button primary"
+        >
+          {busy === "scaffold" ? t("advanced.creating", "Creating…") : t("advanced.create", "Create")}
+        </button>
+      </Row>
+      {scaffoldMsg && (
+        <div
+          style={{
+            fontSize: 12,
+            color: scaffoldMsg.startsWith("Error") ? "var(--qx-danger)" : "var(--qx-text-secondary)",
+            padding: "4px 0 8px",
+          }}
+        >
+          {scaffoldMsg}
+        </div>
+      )}
+
+      <Row
+        title={t("advanced.hotReload", "Dev Mode Hot Reload")}
+        description={t("advanced.hotReload.desc", "Auto-refresh plugins every 3 seconds while developing.")}
+      >
+        <button
+          onClick={() => (devWatcherActive ? stopDevWatcher() : startDevWatcher())}
+          className={`qx-command-button${devWatcherActive ? " danger" : ""}`}
+        >
+          {devWatcherActive ? t("advanced.stopWatching", "Stop Watching") : t("advanced.startWatching", "Start Watching")}
+        </button>
+      </Row>
+
+      <Row
+        title={t("advanced.reloadPlugins", "Reload Plugins")}
+        description={t("advanced.reloadPlugins.desc", "Manually rescan and reload all installed plugins.")}
+      >
+        <button onClick={() => refresh()} className="qx-command-button">
+          {t("advanced.reloadNow", "Reload Now")}
         </button>
       </Row>
     </div>

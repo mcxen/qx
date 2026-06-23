@@ -5,6 +5,7 @@ export interface GeneralSettings {
   launch_at_login: boolean;
   language: string;
   auto_update: boolean;
+  autoHideOnBlur: boolean;
   data_path: string;
 }
 
@@ -15,6 +16,10 @@ export interface AppearanceSettings {
   window_height: number;
   border_radius: number;
   font_size: number;
+  home_island_mode: "default" | "system";
+  home_island_cpu: boolean;
+  home_island_gpu: boolean;
+  home_island_memory: boolean;
 }
 
 export interface ShortcutBinding {
@@ -25,6 +30,11 @@ export interface ShortcutBinding {
 export interface AdvancedSettings {
   log_level: string;
   dev_mode: boolean;
+}
+
+export interface RssSettings {
+  offline_cache_enabled: boolean;
+  max_articles_per_feed: number;
 }
 
 export interface PluginConfig {
@@ -41,6 +51,7 @@ export interface Settings {
   shortcuts: Record<string, ShortcutBinding>;
   plugins: PluginConfig[];
   advanced: AdvancedSettings;
+  rss: RssSettings;
 }
 
 export type SettingsTab =
@@ -48,6 +59,7 @@ export type SettingsTab =
   | "plugins"
   | "shortcuts"
   | "appearance"
+  | "rss"
   | "advanced";
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -55,6 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
     launch_at_login: false,
     language: "en",
     auto_update: true,
+    autoHideOnBlur: true,
     data_path: "",
   },
   appearance: {
@@ -64,6 +77,10 @@ export const DEFAULT_SETTINGS: Settings = {
     window_height: 500,
     border_radius: 12,
     font_size: 14,
+    home_island_mode: "system",
+    home_island_cpu: true,
+    home_island_gpu: true,
+    home_island_memory: true,
   },
   shortcuts: {
     toggle_launcher: { key: "Alt+Space", enabled: true },
@@ -77,6 +94,10 @@ export const DEFAULT_SETTINGS: Settings = {
   advanced: {
     log_level: "info",
     dev_mode: false,
+  },
+  rss: {
+    offline_cache_enabled: true,
+    max_articles_per_feed: 500,
   },
 };
 
@@ -117,7 +138,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   load: async () => {
     try {
       const s = await invoke<Settings>("get_settings");
-      set({ settings: { ...DEFAULT_SETTINGS, ...s }, loaded: true });
+      set({
+        settings: {
+          ...DEFAULT_SETTINGS,
+          ...s,
+          general: { ...DEFAULT_SETTINGS.general, ...s.general },
+          appearance: { ...DEFAULT_SETTINGS.appearance, ...s.appearance },
+          advanced: { ...DEFAULT_SETTINGS.advanced, ...s.advanced },
+          rss: { ...DEFAULT_SETTINGS.rss, ...s.rss },
+          shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...s.shortcuts },
+        },
+        loaded: true,
+      });
     } catch {
       set({ loaded: true });
     }

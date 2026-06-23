@@ -1,0 +1,9 @@
+icon.png - Placeholder
+
+This plugin requires an icon file (icon.png).
+Please provide a 128x128 or 256x256 PNG icon for the Hello World plugin.
+
+The icon will be displayed in:
+- Plugin list/manager
+- Command palette (if applicable)
+- Panel header (if applicable)

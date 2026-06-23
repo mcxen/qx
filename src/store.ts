@@ -4,17 +4,30 @@ export interface AppEntry {
   name: string;
   path: string;
   icon: string;
+  kind?: "app" | "command" | "clipboard" | "file";
 }
 
 export interface ClipboardEntry {
   id: string;
   text: string;
   timestamp: string;
+  pinned: boolean;
+  copy_count: number;
 }
 
 export interface ScreenshotEntry {
   path: string;
   timestamp: string;
+}
+
+export type ScreenshotCaptureStatus = "idle" | "selecting" | "saving";
+
+export interface ScreenshotCaptureState {
+  status: ScreenshotCaptureStatus;
+  backgroundPath: string | null;
+  error: string | null;
+  previewPath: string | null;
+  scaleFactor: number;
 }
 
 export interface RssFeed {
@@ -41,7 +54,16 @@ export interface RssArticle {
   published_at: number;
 }
 
-export type Tab = "launcher" | "clipboard" | "screenshot" | "screencap" | "rss" | "settings" | "macros";
+export type BuiltinTab =
+  | "launcher"
+  | "clipboard"
+  | "screenshot"
+  | "screencap"
+  | "rss"
+  | "settings"
+  | "macros";
+export type Tab = BuiltinTab | string;
+export type SearchScope = "all" | "apps" | "files" | "clipboard";
 
 interface AppStore {
   visible: boolean;
@@ -50,13 +72,23 @@ interface AppStore {
   selectedIndex: number;
   tab: Tab;
   clipboardHistory: ClipboardEntry[];
+  screenshotCapture: ScreenshotCaptureState;
   setVisible: (v: boolean) => void;
   setQuery: (q: string) => void;
   setResults: (r: AppEntry[]) => void;
   setSelectedIndex: (i: number) => void;
   setTab: (t: Tab) => void;
   setClipboardHistory: (h: ClipboardEntry[]) => void;
+  setScreenshotCapture: (state: Partial<ScreenshotCaptureState>) => void;
 }
+
+const initialScreenshotCapture: ScreenshotCaptureState = {
+  status: "idle",
+  backgroundPath: null,
+  error: null,
+  previewPath: null,
+  scaleFactor: 1,
+};
 
 export const useStore = create<AppStore>((set) => ({
   visible: false,
@@ -65,10 +97,15 @@ export const useStore = create<AppStore>((set) => ({
   selectedIndex: 0,
   tab: "launcher",
   clipboardHistory: [],
+  screenshotCapture: initialScreenshotCapture,
   setVisible: (visible) => set({ visible }),
   setQuery: (query) => set({ query }),
   setResults: (results) => set({ results }),
   setSelectedIndex: (selectedIndex) => set({ selectedIndex }),
   setTab: (tab) => set({ tab, query: "", results: [], selectedIndex: 0 }),
   setClipboardHistory: (clipboardHistory) => set({ clipboardHistory }),
+  setScreenshotCapture: (state) =>
+    set((current) => ({
+      screenshotCapture: { ...current.screenshotCapture, ...state },
+    })),
 }));

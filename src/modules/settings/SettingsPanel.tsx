@@ -4,7 +4,10 @@ import GeneralSettings from "./GeneralSettings";
 import PluginManager from "./PluginManager";
 import ShortcutSettings from "./ShortcutSettings";
 import AppearanceSettings from "./AppearanceSettings";
+import RssSettings from "./RssSettings";
 import AdvancedSettings from "./AdvancedSettings";
+import QxShell from "../../components/QxShell";
+import { useT } from "../../i18n";
 
 interface NavItem {
   id: SettingsTab;
@@ -17,6 +20,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "plugins", label: "Extensions", code: "EX" },
   { id: "shortcuts", label: "Shortcuts", code: "SC" },
   { id: "appearance", label: "Appearance", code: "AP" },
+  { id: "rss", label: "RSS Reader", code: "RS" },
   { id: "advanced", label: "Advanced", code: "AD" },
 ];
 
@@ -25,11 +29,13 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   plugins: "Extensions",
   shortcuts: "Shortcuts",
   appearance: "Appearance",
+  rss: "RSS Reader",
   advanced: "Advanced",
 };
 
 export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const { activeTab, setActiveTab, load, loaded } = useSettingsStore();
+  const t = useT();
   const [filter, setFilter] = useState("");
 
   useEffect(() => {
@@ -39,8 +45,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const filteredNav = useMemo(() => {
     const q = filter.trim().toLowerCase();
     if (!q) return NAV_ITEMS;
-    return NAV_ITEMS.filter((n) => n.label.toLowerCase().includes(q));
-  }, [filter]);
+    return NAV_ITEMS.filter((n) => t(`nav.${n.id}`, n.label).toLowerCase().includes(q));
+  }, [filter, t]);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -52,6 +58,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         return <ShortcutSettings />;
       case "appearance":
         return <AppearanceSettings />;
+      case "rss":
+        return <RssSettings />;
       case "advanced":
         return <AdvancedSettings />;
       default:
@@ -59,74 +67,76 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
-  return (
-    <div className="qx-raycast">
-      <div className="qx-plugin-toolbar">
-        <div className="qx-search-wrap">
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "Escape") return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (filter && filteredNav.length > 0) {
+      setFilter("");
+    } else {
+      onClose();
+    }
+  };
+
+  const settingsSearch = (
+    <div className="qx-search-wrap">
         <span className="qx-search-icon" aria-hidden="true" />
         <input
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              if (filter) setFilter("");
-              else onClose();
-            }
-          }}
-          placeholder="Search settings..."
+          placeholder={t("settings.search", "Search settings...")}
           autoFocus
           className="qx-plugin-search"
         />
-        </div>
-        <span
+    </div>
+  );
+
+  const settingsContext = (
+    <nav className="qx-settings-sidebar">
+      {filteredNav.map((item) => {
+        const active = item.id === activeTab;
+        return (
+          <button
+            key={item.id}
+            onClick={() => setActiveTab(item.id)}
+            className={`qx-settings-nav-item${active ? " is-active" : ""}`}
+          >
+            <span style={{ width: 22, textAlign: "center", fontSize: 10, fontWeight: 700 }}>
+              {item.code}
+            </span>
+            <span>{t(`nav.${item.id}`, item.label)}</span>
+          </button>
+        );
+      })}
+      {filteredNav.length === 0 && (
+        <div
           style={{
+            padding: "16px 10px",
+            color: "var(--qx-text-tertiary)",
             fontSize: 12,
-            color: "var(--color-text-tertiary)",
-            whiteSpace: "nowrap",
           }}
         >
-          Qx v0.1.0
-        </span>
-      </div>
+          {t("settings.noMatches", "No matching settings")}
+        </div>
+      )}
+    </nav>
+  );
 
-      <div className="qx-settings-layout">
-        <nav className="qx-settings-sidebar">
-          {filteredNav.map((item) => {
-            const active = item.id === activeTab;
-            return (
-              <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`qx-settings-nav-item${active ? " is-active" : ""}`}
-              >
-                <span style={{ width: 22, textAlign: "center", fontSize: 10, fontWeight: 700 }}>
-                  {item.code}
-                </span>
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-          {filteredNav.length === 0 && (
-            <div
-              style={{
-                padding: "16px 10px",
-                color: "var(--color-text-tertiary)",
-                fontSize: 12,
-              }}
-            >
-              No matching settings
-            </div>
-          )}
-        </nav>
-
-        <section className="qx-settings-content">
-          <div className="qx-settings-title">
-            {TAB_LABELS[activeTab]}
-          </div>
-          <div style={{ flex: 1, overflowY: "auto" }}>{renderContent()}</div>
-        </section>
-      </div>
-    </div>
+  return (
+    <QxShell
+      title={t("launcher.settings", "Settings")}
+      search={settingsSearch}
+      trailing={<span className="qx-shell-meta">Qx v0.1.0</span>}
+      context={settingsContext}
+      island={{ label: t("launcher.settings", "Settings"), detail: t(`nav.${activeTab}`, TAB_LABELS[activeTab]) }}
+      escapeAction={{ label: t("settings.close", "Close"), kbd: "Esc", onClick: onClose }}
+      onKeyDown={handleKeyDown}
+    >
+      <section className="qx-settings-content">
+        <div className="qx-settings-title">{t(`nav.${activeTab}`, TAB_LABELS[activeTab])}</div>
+        <div style={{ flex: 1, overflowY: "auto" }}>{renderContent()}</div>
+      </section>
+    </QxShell>
   );
 }

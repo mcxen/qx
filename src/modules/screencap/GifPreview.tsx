@@ -70,7 +70,7 @@ export default function GifPreview({ path, onClose }: Props) {
   return (
     <div
       style={{
-        padding: "0 16px 12px",
+        padding: "0 10px 8px",
         display: "flex",
         flexDirection: "column",
         gap: 10,
@@ -78,10 +78,10 @@ export default function GifPreview({ path, onClose }: Props) {
     >
       <div
         style={{
-          borderRadius: 10,
+          borderRadius: 4,
           overflow: "hidden",
-          border: "1px solid var(--color-border)",
-          background: "rgba(255,255,255,0.5)",
+          border: "1px solid var(--qx-border-1)",
+          background: "var(--qx-overlay-1)",
           display: "flex",
           justifyContent: "center",
           alignItems: "center",
@@ -113,7 +113,7 @@ export default function GifPreview({ path, onClose }: Props) {
               flexDirection: "column",
               alignItems: "center",
               gap: 8,
-              color: "var(--color-text-tertiary)",
+              color: "var(--qx-text-tertiary)",
               minHeight: 160,
               justifyContent: "center",
             }}
@@ -129,7 +129,7 @@ export default function GifPreview({ path, onClose }: Props) {
           alignItems: "center",
           gap: 12,
           fontSize: 12,
-          color: "var(--color-text-secondary)",
+          color: "var(--qx-text-secondary)",
         }}
       >
         <button onClick={() => setPlaying((p) => !p)} style={toggleBtn}>
@@ -143,7 +143,7 @@ export default function GifPreview({ path, onClose }: Props) {
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
-            color: "var(--color-text-tertiary)",
+            color: "var(--qx-text-tertiary)",
           }}
         >
           {fileName}
@@ -158,12 +158,12 @@ export default function GifPreview({ path, onClose }: Props) {
           placeholder="filename…"
           style={{
             flex: 1,
-            height: 32,
-            padding: "0 10px",
-            border: "1px solid var(--color-border)",
-            borderRadius: 6,
-            background: "rgba(255,255,255,0.6)",
-            color: "var(--color-text-primary)",
+            height: 28,
+            padding: "0 8px",
+            border: "1px solid var(--qx-border-1)",
+            borderRadius: 4,
+            background: "var(--qx-overlay-1)",
+            color: "var(--qx-text-primary)",
             fontSize: 13,
             outline: "none",
           }}
@@ -183,7 +183,7 @@ export default function GifPreview({ path, onClose }: Props) {
         <div
           style={{
             fontSize: 11,
-            color: isError ? "#b91c1c" : "var(--color-text-tertiary)",
+            color: isError ? "var(--qx-danger)" : "var(--qx-text-tertiary)",
             wordBreak: "break-all",
           }}
         >
@@ -195,22 +195,22 @@ export default function GifPreview({ path, onClose }: Props) {
 }
 
 const toggleBtn: React.CSSProperties = {
-  border: "1px solid var(--color-border)",
-  borderRadius: 6,
-  background: "rgba(255,255,255,0.6)",
-  color: "var(--color-text-primary)",
+  border: "1px solid var(--qx-border-1)",
+  borderRadius: 4,
+  background: "var(--qx-overlay-1)",
+  color: "var(--qx-text-primary)",
   fontSize: 12,
   padding: "4px 10px",
   cursor: "pointer",
 };
 
 const primaryBtn: React.CSSProperties = {
-  height: 32,
-  padding: "0 14px",
-  border: "none",
-  borderRadius: 6,
-  background: "var(--color-accent)",
-  color: "#fff",
+  height: 28,
+  padding: "0 10px",
+  border: "1px solid color-mix(in srgb, var(--qx-accent) 45%, var(--qx-border-1))",
+  borderRadius: 4,
+  background: "var(--qx-accent)",
+  color: "var(--qx-text-on-accent)",
   fontSize: 12,
   fontWeight: 500,
   cursor: "pointer",
@@ -218,24 +218,24 @@ const primaryBtn: React.CSSProperties = {
 };
 
 const secondaryBtn: React.CSSProperties = {
-  height: 32,
-  padding: "0 14px",
-  border: "1px solid var(--color-border)",
-  borderRadius: 6,
-  background: "rgba(255,255,255,0.6)",
-  color: "var(--color-text-primary)",
+  height: 28,
+  padding: "0 10px",
+  border: "1px solid var(--qx-border-1)",
+  borderRadius: 4,
+  background: "var(--qx-overlay-1)",
+  color: "var(--qx-text-primary)",
   fontSize: 12,
   cursor: "pointer",
   whiteSpace: "nowrap",
 };
 
 const ghostBtn: React.CSSProperties = {
-  height: 32,
-  padding: "0 14px",
+  height: 28,
+  padding: "0 10px",
   border: "none",
-  borderRadius: 6,
+  borderRadius: 4,
   background: "transparent",
-  color: "var(--color-text-secondary)",
+  color: "var(--qx-text-secondary)",
   fontSize: 12,
   cursor: "pointer",
   whiteSpace: "nowrap",

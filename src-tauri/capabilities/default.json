@@ -18,6 +18,9 @@
     "core:window:default",
     "core:window:allow-show",
     "core:window:allow-hide",
-    "core:window:allow-toggle-maximize"
+    "core:window:allow-toggle-maximize",
+    "core:path:default",
+    "core:path:allow-resolve-directory",
+    "core:path:allow-resolve"
   ]
 }

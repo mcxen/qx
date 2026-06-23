@@ -213,8 +213,7 @@ pub fn macro_list() -> Vec<MacroData> {
     };
     let rows = match stmt.query_map([], |row| {
         let steps_str: String = row.get(2)?;
-        let steps: Vec<MacroStep> =
-            serde_json::from_str(&steps_str).unwrap_or_default();
+        let steps: Vec<MacroStep> = serde_json::from_str(&steps_str).unwrap_or_default();
         Ok(MacroData {
             id: Some(row.get(0)?),
             name: row.get(1)?,
@@ -269,10 +268,7 @@ pub fn macro_play(id: i64) -> Result<(), String> {
                 }
             }
             "mouse_click" => {
-                let _ = enigo.button(
-                    enigo::Button::Left,
-                    Direction::Click,
-                );
+                let _ = enigo.button(enigo::Button::Left, Direction::Click);
             }
             _ => {}
         }
