@@ -16,6 +16,13 @@ use tauri::{
 };
 
 #[tauri::command]
+fn get_file_size(path: String) -> Result<u64, String> {
+    std::fs::metadata(&path)
+        .map(|m| m.len())
+        .map_err(|e| format!("Failed to get file size: {e}"))
+}
+
+#[tauri::command]
 fn open_app(path: String) {
     let _ = std::process::Command::new("open").arg(path).spawn();
 }
@@ -145,6 +152,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            get_file_size,
             apps::search_apps,
             apps::search_files,
             open_app,

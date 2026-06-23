@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 
 interface Props {
@@ -21,7 +21,7 @@ export default function GifPreview({ path, onClose }: Props) {
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
-  const src = `file://${path}`;
+  const src = convertFileSrc(path);
   const fileName = path.split("/").pop() ?? path;
   const dir = path.substring(0, path.lastIndexOf("/"));
 
@@ -31,12 +31,10 @@ export default function GifPreview({ path, onClose }: Props) {
     setDims(null);
     setStatusMsg(null);
     setSaveName("");
-    fetch(src)
-      .then((r) => r.blob())
-      .then((b) => setSize(b.size))
-      .catch(() => {
-        // file:// fetch may be blocked; size stays null
-      });
+    // Get file size via Tauri command — file:// fetch doesn't work in Tauri v2
+    invoke<number>("get_file_size", { path })
+      .then((s) => setSize(s))
+      .catch(() => {});
   }, [src]);
 
   const handleReveal = async () => {
