@@ -15,10 +15,11 @@ mod system_stats;
 mod v2ex;
 
 use tauri::{
+    AppHandle,
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    LogicalSize, Manager, PhysicalSize,
+    LogicalSize, Manager, PhysicalPosition, PhysicalSize,
 };
 
 #[tauri::command]
@@ -40,55 +41,36 @@ fn set_window_size(app: tauri::AppHandle, width: u32, height: u32) {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn cursor_monitor_position() -> Option<(f64, f64, f64, f64)> {
-    use core_graphics::event::CGEvent;
-    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
-    let source = CGEventSource::new(CGEventSourceStateID::Private).ok()?;
-    let event = CGEvent::new(source).ok()?;
-    let point = event.location();
-    let x = point.x as i32;
-    let y = point.y as i32;
-    if let Ok(mon) = xcap::Monitor::from_point(x, y) {
-        let mx = mon.x().ok()? as f64;
-        let my = mon.y().ok()? as f64;
-        let mw = mon.width().ok()? as f64;
-        let mh = mon.height().ok()? as f64;
-        Some((mx, my, mw, mh))
-    } else {
-        None
-    }
+fn center_on_cursor_monitor(app: &AppHandle, win: &tauri::WebviewWindow) -> tauri::Result<()> {
+    let monitor = app
+        .cursor_position()
+        .ok()
+        .and_then(|cursor| app.monitor_from_point(cursor.x, cursor.y).ok().flatten())
+        .or_else(|| win.current_monitor().ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten());
+
+    let Some(monitor) = monitor else {
+        return Ok(());
+    };
+
+    let area = monitor.work_area();
+    let win_size = win.outer_size().or_else(|_| win.inner_size())?;
+    let x = area.position.x + ((area.size.width as i32 - win_size.width as i32) / 2);
+    let y = area.position.y + ((area.size.height as i32 - win_size.height as i32) / 2);
+    win.set_position(PhysicalPosition::new(x, y))
 }
 
-#[cfg(not(target_os = "macos"))]
-fn cursor_monitor_position() -> Option<(f64, f64, f64, f64)> {
-    None
-}
-
-#[cfg(target_os = "macos")]
-pub(crate) fn show_on_cursor_monitor(win: &tauri::WebviewWindow) {
-    if let Some((mx, my, mw, mh)) = cursor_monitor_position() {
-        let cw = 680.0;
-        let ch = 500.0;
-        let cx = mx + (mw - cw) / 2.0;
-        let cy = my + (mh - ch) / 2.0;
-        let _ = win.set_position(tauri::PhysicalPosition::new(cx as i32, cy as i32));
-    }
+pub(crate) fn show_on_cursor_monitor(app: &AppHandle, win: &tauri::WebviewWindow) {
+    let _ = center_on_cursor_monitor(app, win);
     let _ = win.show();
     let _ = win.set_focus();
 }
 
-#[cfg(not(target_os = "macos"))]
-pub(crate) fn show_on_cursor_monitor(win: &tauri::WebviewWindow) {
-    let _ = win.show();
-    let _ = win.set_focus();
-}
-
-fn toggle_window(win: &tauri::WebviewWindow) {
+fn toggle_window(app: &AppHandle, win: &tauri::WebviewWindow) {
     if win.is_visible().unwrap_or(false) {
         let _ = win.hide();
     } else {
-        show_on_cursor_monitor(win);
+        show_on_cursor_monitor(app, win);
     }
 }
 
@@ -189,7 +171,7 @@ pub fn run() {
                     }
                     "show" => {
                         if let Some(win) = app.get_webview_window("main") {
-                            toggle_window(&win);
+                            toggle_window(app, &win);
                         }
                     }
                     _ => {}
@@ -201,8 +183,9 @@ pub fn run() {
                         ..
                     } = event
                     {
-                        if let Some(win) = tray.app_handle().get_webview_window("main") {
-                            toggle_window(&win);
+                        let app = tray.app_handle();
+                        if let Some(win) = app.get_webview_window("main") {
+                            toggle_window(app, &win);
                         }
                     }
                 })

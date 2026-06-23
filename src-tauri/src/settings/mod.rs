@@ -363,7 +363,7 @@ fn shortcut_for(settings: &Settings, id: &str) -> Option<String> {
 
 fn show_and_navigate(app: &AppHandle, route: &str) {
     if let Some(win) = app.get_webview_window("main") {
-        crate::show_on_cursor_monitor(&win);
+        crate::show_on_cursor_monitor(app, &win);
         let _ = win.emit("navigate", route);
     }
 }
@@ -379,7 +379,7 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
                     if win.is_visible().unwrap_or(false) {
                         let _ = win.hide();
                     } else {
-                        crate::show_on_cursor_monitor(&win);
+                        crate::show_on_cursor_monitor(app, &win);
                     }
                 }
             }

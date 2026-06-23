@@ -66,7 +66,7 @@ fn poll_once(handle: &tauri::AppHandle, known_count: &Arc<AtomicUsize>) {
     // Auto-show Qx when an external monitor is connected.
     if attached {
         if let Some(win) = handle.get_webview_window("main") {
-            crate::show_on_cursor_monitor(&win);
+            crate::show_on_cursor_monitor(handle, &win);
         }
     }
 }
