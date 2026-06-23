@@ -7,6 +7,7 @@ mod screencap;
 mod screenshot;
 mod settings;
 mod system_stats;
+mod v2ex;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -202,6 +203,8 @@ pub fn run() {
             macro_recorder::macro_list,
             macro_recorder::macro_delete,
             macro_recorder::macro_play,
+            v2ex::v2ex_fetch_topics,
+            v2ex::v2ex_search_topics,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
