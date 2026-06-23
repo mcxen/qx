@@ -289,6 +289,13 @@ Esc / Back   [ Dynamic Island Slot ]   Actions
 └─────────────────────────────────────────────────────────┘
 ```
 
+定位规则（强制）：
+
+- Island 必须通过 `position: absolute; left: 50%; transform: translateX(-50%)` 始终相对窗口居中。
+- 禁止使用 `justify-self: center` 或 `margin: 0 auto` 在 grid 列内居中 —— 左右列宽度变化会导致 island 视觉偏移。
+- 父容器 `.qx-shell-bottombar` 必须设 `position: relative` 作为锚点。
+- Island 脱离 grid 流后，grid 的 `1fr` 中间列允许为空。
+
 尺寸：
 
 - 默认宽度：`clamp(180px, 26vw, 360px)`

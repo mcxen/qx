@@ -109,6 +109,7 @@
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 0;
+  position: relative;
   min-height: var(--qx-bottom-bar-h);
   padding: 5px 14px;
   border-top: 1px solid var(--qx-border-1);
@@ -146,9 +147,11 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
-  justify-self: center;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
   width: 340px;
-  margin: 0 auto;
   height: 32px;
   min-height: 32px;
   max-height: 36px;
@@ -224,122 +227,74 @@
   cursor: pointer;
 }
 
+/* ====== Home System Island ====== */
 .qx-home-system-island {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  display: flex;
   align-items: center;
-  gap: 8px;
-  justify-self: center;
-  width: min(100%, 360px);
+  gap: 10px;
+  width: min(100%, 380px);
   height: 34px;
   min-height: 34px;
   max-height: 36px;
-  padding: 4px 9px;
-  overflow: hidden;
+  padding: 0 8px;
   border: 1px solid color-mix(in srgb, var(--qx-accent) 18%, var(--qx-border-1));
   border-radius: 8px;
   background: var(--qx-system-island-bg);
-  box-shadow: var(--qx-system-island-shadow);
+  box-shadow:
+    0 2px 8px color-mix(in srgb, var(--qx-shadow) 12%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--qx-shadow) 4%, transparent);
   color: var(--qx-system-island-text);
-}
-
-.qx-system-main {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.qx-system-main-head {
-  display: grid;
-  grid-template-columns: auto auto 1fr;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.qx-system-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 10px rgba(34, 197, 94, 0.9);
-  animation: qx-home-pulse 1.4s ease-in-out infinite;
-}
-
-.qx-system-title,
-.qx-system-main-head strong,
-.qx-system-side-row span,
-.qx-system-side-row strong,
-.qx-system-side-row small {
+  overflow: hidden;
   font-family: var(--qx-font-mono);
   line-height: 1;
   letter-spacing: 0;
 }
 
-.qx-system-title {
-  color: var(--qx-system-island-muted);
-  font-size: 9px;
-  font-weight: 800;
-}
-
-.qx-system-main-head strong {
-  color: var(--qx-system-island-text);
-  text-align: right;
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.qx-system-trend {
-  display: grid;
-  grid-template-columns: repeat(24, minmax(2px, 1fr));
-  align-items: center;
-  gap: 2px;
-  height: 8px;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.qx-system-trend span {
-  width: 3px;
-  height: 3px;
-  justify-self: center;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 7px rgba(34, 197, 94, 0.85);
-  transition: transform 0.35s ease, opacity 0.35s ease;
-}
-
-.qx-system-side {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.qx-system-side-row {
-  display: grid;
-  grid-template-columns: auto auto;
-  grid-template-areas: "label value";
+/* single-row inline item: dot + label + value + sparkline */
+.qx-si-item {
+  display: inline-flex;
   align-items: center;
   gap: 3px;
+  min-width: 0;
+  white-space: nowrap;
 }
 
-.qx-system-side-row span {
-  grid-area: label;
+.qx-si-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  align-self: center;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.qx-si-dot.cpu { color: var(--qx-stats-cpu); background: var(--qx-stats-cpu); }
+.qx-si-dot.mem { color: var(--qx-stats-mem); background: var(--qx-stats-mem); }
+.qx-si-dot.gpu { color: var(--qx-stats-gpu); background: var(--qx-stats-gpu); }
+
+.qx-si-label {
   color: var(--qx-system-island-muted);
   font-size: 9px;
-  font-weight: 800;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
-.qx-system-side-row strong {
-  grid-area: value;
+.qx-si-value {
   color: var(--qx-system-island-text);
   font-size: 11px;
   font-weight: 800;
-  text-align: right;
 }
 
-.qx-system-side-row small {
-  display: none;
+.qx-system-sparkline {
+  overflow: visible;
+  flex-shrink: 0;
+}
+
+@keyframes qx-home-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
