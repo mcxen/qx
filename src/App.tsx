@@ -9,7 +9,7 @@ import ClipboardPanel from "./modules/clipboard/ClipboardPanel";
 import ScreenshotPanel, { REGION_CAPTURE_EVENT } from "./modules/screenshot/ScreenshotPanel";
 import ScreenshotRegionOverlay, { type Point } from "./modules/screenshot/ScreenshotRegionOverlay";
 import ScreenRecorder from "./modules/screencap/ScreenRecorder";
-import DocumentTools from "./modules/documents/DocumentTools";
+import DevTxtTool from "./modules/documents/DevTxtTool";
 import SettingsPanel from "./modules/settings/SettingsPanel";
 import RssReader from "./modules/rss";
 import MacroRecorder from "./modules/macros/MacroRecorder";
@@ -339,8 +339,14 @@ function App() {
       }
       if (focused) {
         setQuery("");
-        setResults([]);
         setSelectedIndex(0);
+        // Kick off an immediate empty search so apps show right away
+        invoke<AppEntry[]>("search_apps", { query: "" })
+          .then((apps) => {
+            const mapped: AppEntry[] = apps.map((a) => ({ ...a, kind: a.kind ?? "app" }));
+            useStore.getState().setResults(mapped);
+          })
+          .catch(() => {});
       }
     });
     const unlistenNav = listen<string>("navigate", (e) => {
@@ -633,7 +639,7 @@ function App() {
       case "macros":
         return <MacroRecorder />;
       case "documents":
-        return <DocumentTools />;
+        return <DevTxtTool />;
       case "settings":
         return <SettingsPanel onClose={() => setTab("launcher")} />;
       case "launcher":

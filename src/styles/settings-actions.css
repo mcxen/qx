@@ -262,3 +262,58 @@
 .qx-rec-dot {
   animation: qx-rec-pulse 1s ease-in-out infinite;
 }
+
+/* ====== Window Size Controls ====== */
+.qx-window-size-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.qx-dimension-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.qx-dimension-label-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--qx-text-tertiary);
+  width: 14px;
+  text-align: center;
+}
+
+.qx-dimension-input {
+  width: 56px;
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-overlay-1);
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+}
+
+.qx-dimension-input::-webkit-inner-spin-button,
+.qx-dimension-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.qx-dimension-input:focus {
+  border-color: var(--qx-accent);
+  box-shadow: 0 0 0 2px var(--qx-accent-soft);
+}
+
+.qx-dimension-sep {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--qx-text-tertiary);
+  line-height: 1;
+}

@@ -248,8 +248,8 @@ pub fn start_listener(app: &AppHandle) {
                                 }
                             }
                         }
-                        Err(_) => {
-                            // No image in clipboard — normal, not an error
+                        Err(e) => {
+                            eprintln!("clipboard read_image: {e}");
                         }
                     }
                 }
@@ -315,6 +315,67 @@ pub fn get_clipboard_history(
         results.push(row.map_err(|e| format!("{e}"))?);
     }
     Ok(results)
+}
+
+#[command]
+pub fn read_clipboard_image_now(
+    app: tauri::AppHandle,
+    db: tauri::State<'_, ClipboardDb>,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    match app.clipboard().read_image() {
+        Ok(image) => {
+            let width = image.width();
+            let height = image.height();
+            if width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION
+                || (width as u64).saturating_mul(height as u64) > MAX_IMAGE_PIXELS
+            {
+                return Ok(None);
+            }
+            let rgba = image.rgba();
+            let hash = blake3::hash(rgba);
+            let hash_hex = hash.to_hex()[..16].to_string();
+            if rgba.is_empty() {
+                return Ok(None);
+            }
+            let filename = format!("{}.png", hash_hex);
+            let image_dir = get_image_dir();
+            let image_path = image_dir.join(&filename);
+            if !image_path.exists() {
+                if let Ok(file) = std::fs::File::create(&image_path) {
+                    use image::codecs::png::PngEncoder;
+                    use image::ExtendedColorType;
+                    use image::ImageEncoder;
+                    let encoder = PngEncoder::new(file);
+                    if encoder
+                        .write_image(rgba, width, height, ExtendedColorType::Rgba8)
+                        .is_err()
+                    {
+                        let _ = std::fs::remove_file(&image_path);
+                        return Ok(None);
+                    }
+                }
+            }
+            let path_str = image_path.to_string_lossy().to_string();
+            let mut guard = lock_db(&db.0);
+            let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+            let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+            let _ = conn.execute(
+                "INSERT INTO clipboard_history (id, text, timestamp, image_path)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT(id) DO UPDATE SET
+                    timestamp = excluded.timestamp,
+                    image_path = COALESCE(excluded.image_path, clipboard_history.image_path)",
+                rusqlite::params![hash_hex, "", ts, path_str],
+            );
+            let _ = app.emit("clipboard-updated", ());
+            Ok(Some(path_str))
+        }
+        Err(e) => {
+            eprintln!("clipboard read_clipboard_image_now: {e}");
+            Ok(None)
+        }
+    }
 }
 
 #[command]

@@ -50,6 +50,12 @@ export default function ClipboardPanel() {
 
   useEffect(() => {
     loadHistory();
+    // Try to read any image currently on the clipboard
+    invoke("read_clipboard_image_now")
+      .then((saved: unknown) => {
+        if (saved) loadHistory();
+      })
+      .catch(() => {});
     if (!isTauriRuntime()) return;
     const unlisten = listen("clipboard-updated", () => loadHistory());
     return () => {

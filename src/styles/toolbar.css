@@ -197,6 +197,12 @@
   color: var(--qx-text-secondary);
 }
 
+.qx-command-button.is-active {
+  border-color: var(--qx-accent);
+  background: var(--qx-accent-soft);
+  color: var(--qx-accent);
+}
+
 .qx-inline-input {
   height: 28px;
   padding: 0 8px;

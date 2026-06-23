@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "./store";
 import { useTheme } from "../../ThemeProvider";
-import { Row, SegmentedControl, Toggle } from "../../components/ui";
+import { Row, SegmentedControl, Toggle, Slider } from "../../components/ui";
 import { useT } from "../../i18n";
 
 export default function AppearanceSettings() {
@@ -12,6 +12,7 @@ export default function AppearanceSettings() {
   const a = settings.appearance;
   const mounted = useRef(false);
 
+  // Apply window size changes to the actual window
   useEffect(() => {
     if (!mounted.current) {
       mounted.current = true;
@@ -43,46 +44,48 @@ export default function AppearanceSettings() {
         title={t("appearance.opacity", "Frosted Glass Opacity")}
         description={`${t("appearance.opacity.desc", "Canvas transparency")} (${a.blur_opacity.toFixed(2)})`}
       >
-        <input
-          type="range"
+        <Slider
+          value={a.blur_opacity}
           min={0.05}
           max={0.40}
           step={0.01}
-          value={a.blur_opacity}
-          onChange={(e) =>
-            patch("appearance", { ...a, blur_opacity: parseFloat(e.target.value) })
-          }
-          style={{ width: 160 }}
+          onChange={(v) => patch("appearance", { ...a, blur_opacity: v })}
+          ariaLabel="Frosted glass opacity"
+          formatLabel={(v) => v.toFixed(2)}
         />
       </Row>
       <Row title={t("appearance.windowSize", "Window Size")} description={t("appearance.windowSize.desc", "Launcher window dimensions (min 400×300).")}>
-        <input
-          type="number"
-          min={400}
-          value={a.window_width}
-          onChange={(e) =>
-            patch("appearance", {
-              ...a,
-              window_width: Math.max(400, parseInt(e.target.value) || 400),
-            })
-          }
-          style={{ width: 64, textAlign: "center" }}
-          className="qx-inline-input"
-        />
-        <span style={{ color: "var(--color-text-tertiary)" }}>×</span>
-        <input
-          type="number"
-          min={300}
-          value={a.window_height}
-          onChange={(e) =>
-            patch("appearance", {
-              ...a,
-              window_height: Math.max(300, parseInt(e.target.value) || 300),
-            })
-          }
-          style={{ width: 64, textAlign: "center" }}
-          className="qx-inline-input"
-        />
+        <div className="qx-window-size-group">
+          <label className="qx-dimension-label">
+            <span className="qx-dimension-label-text">W</span>
+            <input
+              type="number"
+              min={400}
+              max={2800}
+              value={a.window_width}
+              onChange={(e) => {
+                const v = Math.max(400, parseInt(e.target.value) || 400);
+                patch("appearance", { ...a, window_width: v });
+              }}
+              className="qx-dimension-input"
+            />
+          </label>
+          <span className="qx-dimension-sep">×</span>
+          <label className="qx-dimension-label">
+            <span className="qx-dimension-label-text">H</span>
+            <input
+              type="number"
+              min={300}
+              max={1800}
+              value={a.window_height}
+              onChange={(e) => {
+                const v = Math.max(300, parseInt(e.target.value) || 300);
+                patch("appearance", { ...a, window_height: v });
+              }}
+              className="qx-dimension-input"
+            />
+          </label>
+        </div>
       </Row>
       <Row title={t("appearance.cornerRadius", "Corner Radius")} description={t("appearance.cornerRadius.desc", "Window and card border radius.")}>
         <SegmentedControl

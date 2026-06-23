@@ -31,11 +31,12 @@ fn entry_from_path(path: &str) -> AppEntry {
         .and_then(|s| s.to_str())
         .unwrap_or(path)
         .to_string();
+    let is_dir = path_buf.is_dir();
     AppEntry {
         name,
         path: path.to_string(),
-        icon: "builtin:file".to_string(),
-        kind: "file".to_string(),
+        icon: if is_dir { "builtin:folder".to_string() } else { "builtin:file".to_string() },
+        kind: if is_dir { "folder".to_string() } else { "file".to_string() },
     }
 }
 

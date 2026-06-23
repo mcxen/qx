@@ -215,6 +215,7 @@ pub fn run() {
             screenshot::capture_at_point,
             screenshot::get_monitors,
             clipboard::get_clipboard_history,
+            clipboard::read_clipboard_image_now,
             clipboard::clear_clipboard_history,
             clipboard::delete_clipboard_entry,
             clipboard::toggle_clipboard_pin,

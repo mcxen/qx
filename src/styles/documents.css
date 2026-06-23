@@ -1,105 +1,29 @@
-.qx-documents-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  flex: 1;
-  min-height: 0;
-}
-
-.qx-documents-editor,
-.qx-documents-side {
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.qx-documents-editor {
-  border-right: 1px solid var(--qx-border-1);
-}
-
-.qx-documents-toolbar {
-  display: flex;
-  gap: 4px;
-  padding: 7px 8px;
-  border-bottom: 1px solid var(--qx-border-1);
-}
-
-.qx-documents-mode {
-  height: 24px;
-  padding: 0 8px;
-  border: 1px solid transparent;
-  border-radius: var(--qx-control-radius);
-  background: transparent;
-  color: var(--qx-text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.qx-documents-mode:hover {
-  background: var(--qx-bg-component-2);
-  color: var(--qx-text-primary);
-}
-
-.qx-documents-mode.is-active {
-  border-color: var(--qx-border-2);
-  background: var(--qx-bg-component-3);
-  color: var(--qx-text-primary);
-}
-
-.qx-documents-textarea {
+.qx-documents-textarea-full {
   flex: 1;
   min-height: 0;
   width: 100%;
   resize: none;
   border: 0;
   outline: none;
-  padding: 10px;
+  padding: 12px;
   background: transparent;
   color: var(--qx-text-primary);
-  font: 12px/1.5 var(--qx-font-mono);
+  font: 13px/1.6 var(--qx-font-mono);
 }
 
-.qx-documents-textarea::placeholder {
+.qx-documents-textarea-full::placeholder {
   color: var(--qx-text-tertiary);
 }
 
-.qx-documents-side {
-  background: var(--qx-overlay-4);
-}
-
-.qx-documents-stats {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 6px 10px;
-  padding: 10px;
-  border-bottom: 1px solid var(--qx-border-1);
-  color: var(--qx-text-tertiary);
-  font-size: 12px;
-}
-
-.qx-documents-stats strong {
-  color: var(--qx-text-primary);
-  font-weight: 600;
-}
-
-.qx-documents-output {
+.qx-documents-output-only {
   flex: 1;
   min-height: 0;
   margin: 0;
-  padding: 10px;
+  padding: 12px;
   overflow: auto;
   color: var(--qx-text-secondary);
-  font: 12px/1.5 var(--qx-font-mono);
+  font: 13px/1.6 var(--qx-font-mono);
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-@media (max-width: 720px) {
-  .qx-documents-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .qx-documents-side {
-    min-height: 180px;
-    border-top: 1px solid var(--qx-border-1);
-  }
+  background: var(--qx-overlay-3);
 }

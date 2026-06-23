@@ -167,6 +167,105 @@ export function Select<T extends string>({
   );
 }
 
+export function Slider({
+  value,
+  min,
+  max,
+  step = 1,
+  onChange,
+  ariaLabel,
+  formatLabel,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  onChange: (v: number) => void;
+  ariaLabel?: string;
+  formatLabel?: (v: number) => string;
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+  const sliderId = useId();
+
+  const pct = ((value - min) / (max - min)) * 100;
+
+  const clamp = (v: number) => Math.min(max, Math.max(min, v));
+
+  const setFromPointer = (clientX: number) => {
+    if (!trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const raw = min + ratio * (max - min);
+    const stepped = Math.round((raw - min) / step) * step + min;
+    onChange(clamp(stepped));
+  };
+
+  useEffect(() => {
+    if (!draggingRef.current) return;
+    const onMove = (e: PointerEvent) => {
+      e.preventDefault();
+      setFromPointer(e.clientX);
+    };
+    const onUp = () => {
+      draggingRef.current = false;
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    return () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+  }, [value, min, max, step, onChange]);
+
+  const stepUp = () => onChange(clamp(value + step));
+  const stepDown = () => onChange(clamp(value - step));
+
+  return (
+    <div className="qx-slider" role="none">
+      <div
+        ref={trackRef}
+        className="qx-slider-track"
+        role="slider"
+        tabIndex={0}
+        aria-label={ariaLabel ?? "Slider"}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={value}
+        aria-valuetext={formatLabel ? formatLabel(value) : String(value)}
+        aria-orientation="horizontal"
+        id={sliderId}
+        onPointerDown={(e) => {
+          draggingRef.current = true;
+          e.preventDefault();
+          (e.target as HTMLElement).setPointerCapture(e.pointerId);
+          setFromPointer(e.clientX);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight" || e.key === "ArrowUp") {
+            e.preventDefault();
+            stepUp();
+          } else if (e.key === "ArrowLeft" || e.key === "ArrowDown") {
+            e.preventDefault();
+            stepDown();
+          } else if (e.key === "Home") {
+            e.preventDefault();
+            onChange(min);
+          } else if (e.key === "End") {
+            e.preventDefault();
+            onChange(max);
+          }
+        }}
+      >
+        <span className="qx-slider-fill" style={{ width: `${pct}%` }} />
+        <span className="qx-slider-thumb" style={{ left: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 export function LinkButton({
   children,
   onClick,
@@ -177,7 +276,7 @@ export function LinkButton({
   onClick: () => void;
   title?: string;
   disabled?: boolean;
-}) {
+}): ReactNode {
   return (
     <button
       className="qx-link-button"

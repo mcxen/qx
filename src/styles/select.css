@@ -115,3 +115,64 @@
 .qx-inline-select .qx-select-menu {
   min-width: 100%;
 }
+
+/* ====== Custom Slider (like Select) ====== */
+.qx-slider {
+  width: 160px;
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.qx-slider-track {
+  position: relative;
+  width: 100%;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  outline: none;
+  border-radius: 6px;
+}
+
+.qx-slider-track::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--qx-overlay-1);
+}
+
+.qx-slider-fill {
+  position: absolute;
+  left: 0;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--qx-accent);
+  pointer-events: none;
+}
+
+.qx-slider-thumb {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--qx-accent);
+  border: 2px solid var(--qx-bg-component-1);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--qx-shadow) 20%, transparent);
+  transform: translate(-50%, -50%);
+  top: 50%;
+  pointer-events: none;
+  transition: transform 0.08s ease;
+}
+
+.qx-slider-track:hover .qx-slider-thumb {
+  transform: translate(-50%, -50%) scale(1.15);
+}
+
+.qx-slider-track:focus-visible {
+  box-shadow: 0 0 0 2px var(--qx-accent-soft);
+  border-radius: 6px;
+}

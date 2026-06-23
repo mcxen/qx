@@ -4,7 +4,7 @@ export interface AppEntry {
   name: string;
   path: string;
   icon: string;
-  kind?: "app" | "command" | "clipboard" | "file" | "calculation";
+  kind?: "app" | "command" | "clipboard" | "file" | "folder" | "calculation";
 }
 
 export interface ClipboardEntry {

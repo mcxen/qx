@@ -328,6 +328,29 @@
   background: #14b8a6;
 }
 
+/* Folder icon — yellow accent, folder shape with tab */
+.qx-app-icon.kind-folder {
+  background: #eab308;
+  color: #fff;
+}
+
+.qx-app-icon.kind-folder .qx-app-icon-symbol {
+  inset: 3px 4px;
+  border: 2px solid currentColor;
+  border-radius: 2px 4px 4px 4px;
+}
+
+.qx-app-icon.kind-folder .qx-app-icon-symbol::before {
+  left: -2px;
+  top: -2px;
+  width: 6px;
+  height: 3px;
+  border: 2px solid currentColor;
+  border-bottom: none;
+  border-radius: 2px 2px 0 0;
+  background: #eab308;
+}
+
 .qx-list-row.compact {
   min-height: 28px;
 }
