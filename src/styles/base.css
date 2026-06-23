@@ -1,6 +1,6 @@
 :root {
   /* Toggleable theme-independent tokens */
-  --qx-canvas-opacity: 0.20;
+  --qx-canvas-opacity: 0.16;
   --qx-radius: 6px;
   --qx-effective-radius: var(--qx-radius);
   --qx-control-radius: 4px;
@@ -200,8 +200,13 @@ body {
   -webkit-mask-image: -webkit-radial-gradient(white, black);
   mask-image: radial-gradient(white, black);
   background: rgba(var(--qx-glass-bg), var(--qx-canvas-opacity));
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
   border-radius: var(--qx-effective-radius);
   border: 1px solid var(--qx-glass-border);
+  box-shadow:
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
+    0 24px 60px rgba(0, 0, 0, 0.28);
   overflow: hidden;
   transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
 }

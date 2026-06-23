@@ -4,19 +4,117 @@
 
 **English** | [中文](#qx--macos-效率启动器)
 
-Qx is a Raycast-style desktop launcher for macOS, built with Tauri v2, React, and TypeScript. It lives in your menu bar and pops up with a global hotkey.
+Qx is a **menu-bar resident desktop launcher** for macOS, inspired by Raycast. It pops up with a global hotkey, giving you instant access to search, clipboard history, screenshots, screen recording (GIF), RSS feeds, macros, and more — all within a unified, keyboard-first interface.
+
+Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the macOS native frosted-glass appearance, Mach kernel APIs for system stats, and vendored native search for fast file lookups.
+
+> **Status**: v0.4.14 — active development
+
+---
 
 ## Features
 
-| Module | What it does |
+| Module | Description |
 |--------|-------------|
-| **Launcher** | Fuzzy-search apps, files, and built-in commands |
-| **Clipboard** | History manager — browse and paste recent clippings |
-| **Screenshot** | Take and manage screenshots |
-| **Screen Recording** | Record screen region to animated GIF |
-| **RSS Reader** | Subscribe to feeds, read articles inline, star/bookmark |
-| **Macros** | Record and replay keyboard/mouse macros |
-| **Settings** | General, appearance (light/dark/system theme), shortcuts, plugins |
+| **Launcher** | Fuzzy-search installed apps, files, built-in commands, and plugin actions |
+| **Clipboard** | Persisted clipboard history with text/image support, pinning, filtering, inline preview |
+| **Screenshot** | Full-screen or region capture, recent screenshot gallery |
+| **Screen Recording** | Region-based GIF recording at 15fps (gifski), auto-saves to history |
+| **RSS Reader** | Add feeds, inline article reading, star/bookmark, OPML import/export, background auto-refresh |
+| **Macros** | Record and replay keyboard/mouse macro sequences |
+| **Dev Tools** | Text / JSON / Markdown utility tools |
+| **GitHub Calendar** | View your GitHub contribution graph inline |
+| **Plugin System** | Sandboxed iframe-based plugin runtime with RPC bridge, marketplace, ed25519 signature verification |
+| **Settings** | General, appearance (light/dark/system theme with Geist design system), keyboard shortcuts, plugin management |
+
+---
+
+## Technology Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Desktop Shell** | [Tauri v2](https://v2.tauri.app) (macOS private API, tray icon, frosted glass) |
+| **Frontend** | React 19 + TypeScript + Vite 7 |
+| **Styling** | Tailwind CSS v4 + CSS custom properties (Geist-inspired 10-step design tokens) |
+| **State** | Zustand (global, plugin registry, per-module stores) |
+| **Animation** | Framer Motion v12 |
+| **Backend** | Rust (async via tokio, Tauri commands) |
+| **Database** | SQLite via rusqlite (apps cache, clipboard history, RSS, plugin data) |
+| **i18n** | English / Simplified Chinese |
+| **Plugin Runtime** | Sandboxed iframe + postMessage RPC bridge |
+
+### Rust Dependencies (key)
+
+| Crate | Purpose |
+|-------|---------|
+| `xcap` | Screenshot capture |
+| `scrap` + `gifski` | Screen recording → GIF encoding |
+| `rdev` + `enigo` | Macro record/replay |
+| `feed-rs` | RSS/Atom parsing |
+| `reqwest` | HTTP client (RSS fetch, marketplace, GitHub API) |
+| `rusqlite` | App data persistence |
+| `objc2` / `core-graphics` | macOS native APIs |
+| `window-vibrancy` | Frosted glass effect |
+| `ed25519-dalek` | Plugin signature verification |
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    Tauri v2 Shell                         │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │              React 19 + TypeScript                  │  │
+│  │  ┌──────────┐ ┌──────────┐ ┌──────────────────┐   │  │
+│  │  │ Launcher │ │ Clipboard│ │ RSS / Settings /   │   │  │
+│  │  │ (search) │ │ History  │ │ Screenshot / etc.  │   │  │
+│  │  └──────────┘ └──────────┘ └──────────────────┘   │  │
+│  │  ┌──────────────────────────────────────────────┐  │  │
+│  │  │  Plugin System (iframe sandbox + RPC bridge) │  │  │
+│  │  └──────────────────────────────────────────────┘  │  │
+│  └────────────────────────────────────────────────────┘  │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │              Rust Backend (Tauri Commands)          │  │
+│  │  apps  |  clipboard  |  screenshot  |  screencap   │  │
+│  │  rss   |  settings   |  marketplace  |  system_    │  │
+│  │        |             |               |  stats       │  │
+│  │  macros | file_search | history | ocr | github_    │  │
+│  │        |             |         |     | calendar     │  │
+│  └────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Shell Layout
+
+```
+┌──────────────────────────────────────────────┐
+│ Top Bar: Back + Search + Quick Actions       │
+├──────────────────────────────────────────────┤
+│ Main Area (content)       │ Context Panel    │
+│                           │ (240–340px)      │
+├──────────────────────────────────────────────┤
+│ Esc      [ Dynamic Island ]          Actions │
+└──────────────────────────────────────────────┘
+```
+
+The Dynamic Island is always centered via `position: absolute; left: 50%; transform: translateX(-50%)`. Three visual styles are available: `solid`, `elevated`, and `glass`.
+
+---
+
+## Screenshots
+
+> *Screenshots to be added.*
+
+| View | Preview |
+|------|---------|
+| Launcher + Search Results | `<!-- screenshot -->` |
+| Clipboard History | `<!-- screenshot -->` |
+| RSS Reader | `<!-- screenshot -->` |
+| Settings — Appearance | `<!-- screenshot -->` |
+| Screen Recording (GIF) | `<!-- screenshot -->` |
+
+---
 
 ## Installation
 
@@ -27,12 +125,14 @@ brew tap mcxen/qx
 brew install --cask qx
 ```
 
+> **Note for users in China**: If GitHub is inaccessible, use SSH: `git clone git@github.com:mcxen/homebrew-qx.git /opt/homebrew/Library/Taps/mcxen/homebrew-qx`
+
 ### Manual
 
 1. Download `qx_<version>_aarch64-apple-darwin.app.zip` from [Releases](https://github.com/mcxen/qx/releases)
 2. Unzip and move `Qx.app` to `/Applications`
 3. Right-click → Open (first launch needs Gatekeeper override)
-4. Qx sits in your menu bar — click the icon or press the global hotkey to open
+4. Qx lives in the menu bar — click the icon or press the global hotkey to open
 
 ### Update
 
@@ -41,88 +141,215 @@ brew update
 brew upgrade --cask qx
 ```
 
+---
+
 ## Usage
 
 ### Global Hotkey
-- **`⌘Space`** — Toggle Qx window (configurable in Settings → Shortcuts)
+
+| Action | Default Shortcut |
+|--------|-----------------|
+| Toggle Qx window | `⌘Space` (configurable in Settings → Shortcuts) |
 
 ### Launcher
-Type anything into the search bar:
-- App names → launch applications
-- `settings` / `preferences` → open Settings panel
-- `gif` / `screencap` / `录屏` → Screen Recorder
-- `rss` / `feed` / `订阅` → RSS Reader
-- `macro` / `录制` → Macro Recorder
 
-### Panel Navigation
-- **`⌘,`** — Open Settings
-- **`Escape`** — Close panel / go back to launcher
-- **`↑` `↓`** — Navigate results
-- **`Enter`** — Confirm selection
+Type anything into the search bar. Results include:
 
-### RSS Reader
-- Search `rss` in the launcher to open
-- Click **+** to add a feed URL
-- Click article title → read full content in the detail pane
-- Star articles to bookmark them
+- **Apps** — fuzzy-matched from LaunchServices DB
+- **Files** — native file search (kMDQuery)
+- **Commands** — `settings`, `clipboard`, `rss`, `gif`, `macro`, `screenshot`
+- **Calculator** — inline expression evaluation (`42 * 3.14`, `sqrt(144)`)
+- **Plugin commands** — from installed plugins
 
-### Screen Recording (GIF)
-- Search `gif` in the launcher
-- Click **Record**, select a screen region
-- Press **Stop** when done — GIF saves to history automatically
+### Keyboard Navigation
 
-### Macros
-- Search `macro` / `录制`
-- **Record** — capture keyboard/mouse actions
-- **Play** — replay a recorded macro
-- Saved macros appear in the history list
+| Key | Action |
+|-----|--------|
+| `↑` / `↓` | Navigate results |
+| `Enter` | Select / confirm |
+| `Esc` | 3-level cascade: close detail → clear search → back to launcher |
+| `⌘K` | Open Actions menu for current selection |
+| `⌘,` | Open Settings |
+| `⌘P` | Toggle pin (clipboard) |
+| `⌘⌫` | Delete current entry |
 
-### Clipboard
-- Every copy is saved automatically
-- Search `clipboard` or press **`⌘⇧V`** to open
-- Click any entry to copy it back
+### Modules
 
-### Appearance
-Settings → Appearance:
-- Light / Dark / System theme toggle
-- Geist Design System throughout
+**Clipboard** — every copy is saved automatically. Open via `⌘⇧V` or search `clipboard`. Supports text, images, pinning, and type filtering.
+
+**Screenshot** — search `screenshot`. Take full-screen or region capture. Recent screenshots shown in a gallery.
+
+**Screen Recording** — search `gif` / `screencap`. Region-select and record up to 180s. Output is auto-encoded to animated GIF via gifski.
+
+**RSS Reader** — search `rss`. Add feeds by URL, read articles inline with a detail pane, star to bookmark. Supports OPML import/export.
+
+**Macros** — search `macro`. Record keyboard/mouse sequences and replay them. Saved macros persist in history.
+
+**Settings** — search `settings` or press `⌘,`. Configure theme, shortcuts, RSS, plugins, and advanced options.
+
+---
 
 ## Development
+
+### Prerequisites
+
+- [Rust](https://rustup.rs) (edition 2021)
+- Node.js ≥ 20
+- macOS 14+ (for Tauri v2 + macOS private APIs)
+
+### Setup
 
 ```bash
 git clone https://github.com/mcxen/qx.git
 cd qx
 npm install
+```
+
+### Development
+
+```bash
 npm run tauri dev
 ```
 
-Build for distribution:
+This starts a Vite dev server on `:1420` and opens a Tauri window.
+
+### Build for Distribution
 
 ```bash
 npm run tauri build -- --target aarch64-apple-darwin --bundles app
 ```
 
+### Validation
+
+```bash
+cd src-tauri && cargo check
+npx tsc --noEmit
+```
+
+---
+
+## Project Structure
+
+```
+src/                          # Frontend (React + TypeScript)
+├── App.tsx                   # Root component + tab routing
+├── App.css                   # Global styles + CSS variable references
+├── store.ts                  # Global Zustand store
+├── ThemeProvider.tsx         # Light/dark/system theme provider
+├── i18n.ts                   # EN / zh-CN translations
+├── Launcher.tsx              # Main launcher with search + results
+├── modules/                  # Feature modules
+│   ├── clipboard/            # Clipboard history panel
+│   ├── rss/                  # RSS reader (list + detail + store)
+│   ├── settings/             # Settings (8 sub-panels + store)
+│   ├── screenshot/           # Screenshot panel + region overlay
+│   ├── screencap/            # Screen recorder + GIF history
+│   ├── macros/               # Macro recorder + replayer
+│   ├── documents/            # Dev text/JSON/MD tools
+│   └── github-calendar/      # GitHub contributions viewer
+├── plugin/                   # Plugin system
+│   ├── types.ts              # Plugin manifest/command/panel types
+│   ├── registry.ts           # Zustand registry + topological sort
+│   ├── runtime.ts            # iframe sandbox + RPC bridge
+│   ├── builtin.ts            # Built-in modules as pseudo-plugins
+│   └── PluginHost.tsx        # iframe container + panel viewport
+├── components/               # Shared components
+│   ├── QxShell.tsx           # Core 3-layer shell layout
+│   ├── HomeSystemIsland.tsx  # CPU/MEM/GPU sparkline island
+│   └── ui.tsx                # Toggle, Select, Slider, Modal, etc.
+├── hooks/
+│   └── useEscBack.ts         # 3-level cascading Esc hook
+├── search/
+│   └── calculator.ts         # Inline expression evaluator
+└── styles/                   # CSS files (base, shell, launcher, etc.)
+
+src-tauri/                    # Rust backend
+├── Cargo.toml                # Rust dependencies
+├── tauri.conf.json           # Window/config (680×500, transparent, no-decor)
+├── src/
+│   ├── main.rs               # Binary entry
+│   ├── lib.rs                # Tauri app setup (plugins, tray, shortcuts)
+│   ├── apps.rs               # App scanning + fuzzy search
+│   ├── clipboard.rs          # Clipboard listener + SQLite history
+│   ├── screenshot.rs         # Screenshot capture (xcap)
+│   ├── screencap.rs          # Screen recording to GIF (scrap + gifski)
+│   ├── rss/                  # RSS module (fetcher, storage, types)
+│   ├── settings/mod.rs       # TOML settings + global shortcuts
+│   ├── marketplace/mod.rs    # Plugin marketplace (index, download, verify)
+│   ├── system_stats.rs       # Mach kernel CPU/MEM/GPU stats
+│   ├── macro_recorder.rs     # Keyboard/mouse macro record/replay
+│   ├── file_search.rs        # Native file search (vendored)
+│   ├── history.rs            # Launch + search history
+│   ├── display_monitor.rs    # External display monitor
+│   ├── ocr.rs                # OCR model management
+│   ├── github_calendar.rs    # GitHub contribution fetch
+│   └── v2ex.rs               # V2EX topic fetch/search
+```
+
+---
+
+## Contributing
+
+Contributions are welcome under the [Qx Source-Available License](#license).
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feat/my-feature`)
+3. Make your changes
+4. Run validation: `cargo check` (in `src-tauri/`) and `npx tsc --noEmit`
+5. Commit and push
+6. Open a Pull Request
+
+### Coding Guidelines
+
+- Read `UI_SPEC.md` and `AGENTS.md` before making UI changes — they contain comprehensive design rules and technical constraints.
+- Follow the **Esc Cascading Protocol**: all openable modules must use `useEscBack` for 3-level back navigation (inner state → query → launcher).
+- Use CSS custom properties (`var(--qx-*)`) — never hardcode color values.
+- File paths must use `convertFileSrc()` — no `file://` URLs.
+- Custom Slider component (`src/components/ui.tsx`) — no `<input type="range">`.
+- System stats use Mach kernel APIs — no `sysinfo` crate.
+
+---
+
 ## License
 
-Source-available. You may read, study, and modify the source code for personal or non-commercial purposes. Commercial use requires written permission from the copyright holder. See [LICENSE](LICENSE) for full terms.
+Source-available — see [LICENSE](./LICENSE) for full terms.
+
+- ✅ View, study, and modify source for **personal / non-commercial** use
+- ❌ Commercial use, redistribution, or SaaS requires **written permission**
+- Contributions are under the same license
+
+---
+
+## Acknowledgments
+
+- [Vercel Geist Design System](https://vercel.com/geist) for design inspiration
+- [Tauri](https://tauri.app) for the desktop framework
+- [Raycast](https://raycast.com) for the product concept
 
 ---
 
 # Qx — macOS 效率启动器
 
-Qx 是一款类 Raycast 风格的 macOS 桌面启动器，基于 Tauri v2、React 和 TypeScript 构建。它常驻于菜单栏，通过全局快捷键唤起。
+Qx 是一款常驻菜单栏的 macOS 桌面启动器，类 Raycast 风格，通过全局快捷键唤起。集搜索、剪贴板历史、截图、GIF 录屏、RSS 阅读、宏录制等功能于一体。
+
+基于 **Tauri v2** + **React 19** + **TypeScript** + **Rust**，使用 macOS 原生毛玻璃效果、Mach 内核 API 获取系统状态。
+
+> **版本**: v0.4.14 — 活跃开发中
 
 ## 功能特性
 
-| 模块 | 功能说明 |
-|------|---------|
-| **启动器** | 模糊搜索应用、文件和内置命令 |
-| **剪贴板** | 历史记录管理器 — 浏览并粘贴最近的剪贴内容 |
-| **截图** | 截图与管理 |
-| **录屏** | 选择屏幕区域录制为 GIF 动画 |
-| **RSS 阅读器** | 订阅源、内联阅读文章、收藏/书签 |
-| **宏录制** | 录制和回放键盘/鼠标宏操作 |
-| **设置** | 通用设置、外观（亮色/暗色/跟随系统）、快捷键、插件管理 |
+| 模块 | 说明 |
+|------|------|
+| **启动器** | 模糊搜索应用、文件、内置命令和插件动作 |
+| **剪贴板** | 持久化历史记录，支持文本/图片、置顶、筛选和内联预览 |
+| **截图** | 全屏或区域截图，近期截图画廊 |
+| **录屏** | 选择区域录制为 GIF（15fps，gifski 编码），自动保存历史 |
+| **RSS 阅读器** | 添加订阅源、内联阅读、收藏、OPML 导入/导出、后台自动刷新 |
+| **宏录制** | 录制和回放键盘/鼠标宏序列 |
+| **开发者工具** | 文本 / JSON / Markdown 实用工具 |
+| **GitHub 日历** | 内联查看 GitHub 贡献图 |
+| **插件系统** | 基于沙盒 iframe 的插件运行时，含 RPC 桥接、市场、ed25519 签名验证 |
+| **设置** | 通用、外观（亮色/暗色/跟随系统，Geist 设计系统）、快捷键、插件管理 |
 
 ## 安装
 
@@ -135,63 +362,7 @@ brew install --cask qx
 
 ### 手动安装
 
-1. 从 [Releases](https://github.com/mcxen/qx/releases) 下载 `qx_<version>_aarch64-apple-darwin.app.zip`
-2. 解压后将 `Qx.app` 移至 `/Applications`
-3. 右键 → 打开（首次启动需绕过 Gatekeeper）
-4. Qx 常驻菜单栏 — 点击图标或使用全局快捷键打开
-
-### 更新
-
-```bash
-brew update
-brew upgrade --cask qx
-```
-
-## 使用方法
-
-### 全局快捷键
-- **`⌘Space`** — 切换 Qx 窗口（可在设置 → 快捷键中修改）
-
-### 启动器
-在搜索栏中输入任意内容：
-- 应用名称 → 启动应用
-- `settings` / `preferences` → 打开设置面板
-- `gif` / `screencap` / `录屏` → 屏幕录制
-- `rss` / `feed` / `订阅` → RSS 阅读器
-- `macro` / `录制` → 宏录制器
-
-### 面板导航
-- **`⌘,`** — 打开设置
-- **`Escape`** — 关闭面板 / 返回启动器
-- **`↑` `↓`** — 上下选择结果
-- **`Enter`** — 确认选择
-
-### RSS 阅读器
-- 在启动器中搜索 `rss` 打开
-- 点击 **+** 添加订阅源 URL
-- 点击文章标题 → 在详情面板中阅读完整内容
-- 星标文章以收藏
-
-### 屏幕录制（GIF）
-- 在启动器中搜索 `gif`
-- 点击 **录制**，选择屏幕区域
-- 完成后点击 **停止** — GIF 自动保存到历史记录
-
-### 宏录制
-- 搜索 `macro` / `录制`
-- **录制** — 捕获键盘/鼠标操作
-- **回放** — 重放已录制的宏
-- 已保存的宏显示在历史列表中
-
-### 剪贴板
-- 每次复制自动保存
-- 搜索 `clipboard` 或按 **`⌘⇧V`** 打开
-- 点击任意条目即可重新复制
-
-### 外观
-设置 → 外观：
-- 亮色 / 暗色 / 跟随系统 主题切换
-- 全局采用 Geist 设计系统
+从 [Releases](https://github.com/mcxen/qx/releases) 下载并安装。
 
 ## 开发
 
@@ -199,15 +370,10 @@ brew upgrade --cask qx
 git clone https://github.com/mcxen/qx.git
 cd qx
 npm install
-npm run tauri dev
-```
-
-构建发布版本：
-
-```bash
-npm run tauri build -- --target aarch64-apple-darwin --bundles app
+npm run tauri dev      # 开发模式
+npm run tauri build -- --target aarch64-apple-darwin --bundles app  # 构建
 ```
 
 ## 许可证
 
-源码可用。你可以阅读、学习和修改源代码用于个人或非商业用途。商业用途需获得著作权人的书面授权。完整条款请参阅 [LICENSE](LICENSE)。
+源码可用许可证 — 个人/非商业用途可阅读、学习、修改源代码。商业用途需书面授权。

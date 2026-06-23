@@ -134,7 +134,9 @@
   padding: 7px;
   border: 1px solid var(--qx-border-1);
   border-radius: 8px;
-  background: var(--qx-bg-component-1);
+  background: rgba(var(--qx-glass-bg), calc(var(--qx-canvas-opacity) * 3.6));
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
   box-shadow: 0 18px 42px color-mix(in srgb, var(--qx-shadow) 18%, transparent);
 }
 
