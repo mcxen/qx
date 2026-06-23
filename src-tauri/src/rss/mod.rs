@@ -68,14 +68,12 @@ fn prune_feed(conn: &rusqlite::Connection, feed_id: i64) -> rusqlite::Result<()>
 
 #[command]
 pub fn rss_list_feeds(state: State<RssDb>) -> Result<Vec<Feed>, String> {
-    with_db(&state, |conn| {
-        storage::list_feeds(conn).map_err(|e| format!("{e}"))
-    })
+    with_db(&state, |conn| storage::list_feeds(conn).map_err(|e| format!("{e}")))
 }
 
 #[command]
-pub fn rss_add_feed(state: State<RssDb>, url: String) -> Result<Feed, String> {
-    let parsed = fetcher::fetch_and_parse(&url)?;
+pub async fn rss_add_feed(state: State<'_, RssDb>, url: String) -> Result<Feed, String> {
+    let parsed = fetcher::fetch_and_parse(&url).await?;
     with_db(&state, |conn| {
         let id = storage::insert_feed(conn, &url, &parsed.title, &parsed.icon)
             .map_err(|e| format!("{e}"))?;
@@ -85,7 +83,7 @@ pub fn rss_add_feed(state: State<RssDb>, url: String) -> Result<Feed, String> {
         let _ = prune_feed(conn, id);
         storage::update_feed_meta(conn, id, &parsed.title, &parsed.icon)
             .map_err(|e| format!("{e}"))?;
-        let mut feeds = storage::list_feeds(conn).map_err(|e| format!("{e}"))?;
+        let feeds = storage::list_feeds(conn).map_err(|e| format!("{e}"))?;
         feeds
             .into_iter()
             .find(|f| f.id == id)
@@ -116,9 +114,7 @@ pub fn rss_update_feed(
 
 #[command]
 pub fn rss_remove_feed(state: State<RssDb>, id: i64) -> Result<(), String> {
-    with_db(&state, |conn| {
-        storage::delete_feed(conn, id).map_err(|e| format!("{e}"))
-    })
+    with_db(&state, |conn| storage::delete_feed(conn, id).map_err(|e| format!("{e}")))
 }
 
 #[command]
@@ -136,37 +132,29 @@ pub fn rss_list_articles(
 
 #[command]
 pub fn rss_get_article(state: State<RssDb>, id: i64) -> Result<Option<Article>, String> {
-    with_db(&state, |conn| {
-        storage::get_article(conn, id).map_err(|e| format!("{e}"))
-    })
+    with_db(&state, |conn| storage::get_article(conn, id).map_err(|e| format!("{e}")))
 }
 
 #[command]
 pub fn rss_mark_read(state: State<RssDb>, id: i64, is_read: bool) -> Result<(), String> {
-    with_db(&state, |conn| {
-        storage::set_read(conn, id, is_read).map_err(|e| format!("{e}"))
-    })
+    with_db(&state, |conn| storage::set_read(conn, id, is_read).map_err(|e| format!("{e}")))
 }
 
 #[command]
 pub fn rss_mark_all_read(state: State<RssDb>, feed_id: i64) -> Result<(), String> {
-    with_db(&state, |conn| {
-        storage::mark_all_read(conn, feed_id).map_err(|e| format!("{e}"))
-    })
+    with_db(&state, |conn| storage::mark_all_read(conn, feed_id).map_err(|e| format!("{e}")))
 }
 
 #[command]
 pub fn rss_toggle_star(state: State<RssDb>, id: i64, is_starred: bool) -> Result<(), String> {
-    with_db(&state, |conn| {
-        storage::set_starred(conn, id, is_starred).map_err(|e| format!("{e}"))
-    })
+    with_db(&state, |conn| storage::set_starred(conn, id, is_starred).map_err(|e| format!("{e}")))
 }
 
 #[command]
-pub fn rss_refresh_feed(state: State<RssDb>, id: i64) -> Result<usize, String> {
+pub async fn rss_refresh_feed(state: State<'_, RssDb>, id: i64) -> Result<usize, String> {
     let url = with_db(&state, |conn| Ok(storage::feed_url_by_id(conn, id)))?;
     let url = url.ok_or_else(|| "feed not found".to_string())?;
-    let parsed = fetcher::fetch_and_parse(&url)?;
+    let parsed = fetcher::fetch_and_parse(&url).await?;
     let count = parsed.articles.len();
     with_db(&state, |conn| {
         for a in &parsed.articles {
@@ -181,14 +169,16 @@ pub fn rss_refresh_feed(state: State<RssDb>, id: i64) -> Result<usize, String> {
 }
 
 #[command]
-pub fn rss_refresh_all(state: State<RssDb>) -> Result<usize, String> {
+pub async fn rss_refresh_all(state: State<'_, RssDb>) -> Result<usize, String> {
     let feeds = with_db(&state, |conn| {
         storage::all_feed_urls(conn).map_err(|e| format!("{e}"))
     })?;
+
     let mut total = 0usize;
     for (id, url) in feeds {
-        match fetcher::fetch_and_parse(&url) {
+        match fetcher::fetch_and_parse(&url).await {
             Ok(parsed) => {
+                total += parsed.articles.len();
                 let _ = with_db(&state, |conn| {
                     for a in &parsed.articles {
                         let _ = store_article(conn, id, a);
@@ -198,7 +188,6 @@ pub fn rss_refresh_all(state: State<RssDb>) -> Result<usize, String> {
                         .map_err(|e| format!("{e}"))?;
                     Ok::<(), String>(())
                 });
-                total += 1;
             }
             Err(_) => {
                 let _ = with_db(&state, |conn| {
@@ -211,11 +200,11 @@ pub fn rss_refresh_all(state: State<RssDb>) -> Result<usize, String> {
 }
 
 #[command]
-pub fn rss_import_opml(state: State<RssDb>, content: String) -> Result<usize, String> {
+pub async fn rss_import_opml(state: State<'_, RssDb>, content: String) -> Result<usize, String> {
     let feeds = fetcher::parse_opml(&content);
     let mut count = 0usize;
     for (url, title) in feeds {
-        let parsed = fetcher::fetch_and_parse(&url).ok();
+        let parsed = fetcher::fetch_and_parse(&url).await.ok();
         let (t, icon, articles) = match parsed {
             Some(p) => (
                 if p.title.is_empty() {
@@ -244,9 +233,7 @@ pub fn rss_import_opml(state: State<RssDb>, content: String) -> Result<usize, St
 
 #[command]
 pub fn rss_export_opml(state: State<RssDb>) -> Result<String, String> {
-    let feeds = with_db(&state, |conn| {
-        storage::list_feeds(conn).map_err(|e| format!("{e}"))
-    })?;
+    let feeds = with_db(&state, |conn| storage::list_feeds(conn).map_err(|e| format!("{e}")))?;
     let triples: Vec<(i64, String, String)> =
         feeds.into_iter().map(|f| (f.id, f.url, f.title)).collect();
     Ok(fetcher::build_opml(&triples))

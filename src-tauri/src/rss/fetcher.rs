@@ -7,15 +7,56 @@ use super::types::{ParsedArticle, ParsedFeed};
 
 const USER_AGENT: &str = "Qx/0.1 (RSS Reader; +https://github.com/mcx/qx)";
 
-pub fn fetch_and_parse(url: &str) -> Result<ParsedFeed, String> {
-    let body = fetch_url(url)?;
+/// Build a shared async client lazily.
+fn http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(USER_AGENT)
+        .timeout(std::time::Duration::from_secs(15))
+        .connect_timeout(std::time::Duration::from_secs(8))
+        .build()
+        .expect("reqwest client")
+}
+
+/// Async HTTP fetch.
+async fn fetch_url(url: &str) -> Result<Vec<u8>, String> {
+    let resp = http_client()
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| {
+            if e.is_timeout() {
+                format!("timeout fetching {url}")
+            } else if e.is_connect() {
+                format!("connection failed: {url} — {e}")
+            } else {
+                format!("http error: {e}")
+            }
+        })?;
+
+    if !resp.status().is_success() {
+        return Err(format!("http status {} for {url}", resp.status()));
+    }
+
+    resp.bytes()
+        .await
+        .map(|b| b.to_vec())
+        .map_err(|e| format!("read body: {e}"))
+}
+
+/// Fetch RSS/Atom feed XML and parse into a structured result.
+pub async fn fetch_and_parse(url: &str) -> Result<ParsedFeed, String> {
+    let body = fetch_url(url).await?;
+
+    // feed-rs parser is synchronous and fast — run it on the current task.
     let feed = parser::parse(Cursor::new(body.as_slice()))
         .map_err(|e| format!("feed parse error: {e}"))?;
+
     let title = feed
         .title
         .as_ref()
         .map(|t| t.content.clone())
         .unwrap_or_default();
+
     let icon = feed
         .icon
         .as_ref()
@@ -23,7 +64,7 @@ pub fn fetch_and_parse(url: &str) -> Result<ParsedFeed, String> {
         .or_else(|| feed.logo.as_ref().map(|l| l.uri.clone()))
         .unwrap_or_default();
 
-    let mut articles = Vec::new();
+    let mut articles = Vec::with_capacity(feed.entries.len());
     for entry in feed.entries {
         let guid = if entry.id.is_empty() {
             entry
@@ -37,6 +78,7 @@ pub fn fetch_and_parse(url: &str) -> Result<ParsedFeed, String> {
         if guid.is_empty() {
             continue;
         }
+
         let title = entry
             .title
             .as_ref()
@@ -100,24 +142,6 @@ pub fn fetch_and_parse(url: &str) -> Result<ParsedFeed, String> {
     })
 }
 
-fn fetch_url(url: &str) -> Result<Vec<u8>, String> {
-    let client = reqwest::blocking::Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .map_err(|e| format!("http client: {e}"))?;
-    let resp = client
-        .get(url)
-        .send()
-        .map_err(|e| format!("http request: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("http status {}", resp.status()));
-    }
-    resp.bytes()
-        .map(|b| b.to_vec())
-        .map_err(|e| format!("read body: {e}"))
-}
-
 fn extract_image(html: &str) -> Option<String> {
     let lower = html.to_lowercase();
     let idx = lower.find("<img ")?;
@@ -153,7 +177,6 @@ pub fn parse_opml(content: &str) -> Vec<(String, String)> {
     reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
     let mut results = Vec::new();
-    let mut current_title = String::new();
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) if e.name().as_ref() == b"outline" => {
@@ -169,18 +192,15 @@ pub fn parse_opml(content: &str) -> Vec<(String, String)> {
                     }
                 }
                 if !url.is_empty() {
-                    current_title = title.clone();
                     results.push((url, title));
                 }
             }
             _ => {}
             Err(_) => break,
             Ok(Event::Eof) => break,
-            _ => {}
         }
         buf.clear();
     }
-    let _ = current_title;
     results
 }
 
