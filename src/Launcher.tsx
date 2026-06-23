@@ -104,6 +104,16 @@ export default function Launcher({
             },
           ];
         }
+        if (kind === "calculation") {
+          return [
+            {
+              id: "copy-result",
+              label: "Copy Result",
+              kbd: "↵",
+              run: () => onItemClick(selectedItem),
+            },
+          ];
+        }
         return [
           {
             id: "open",
@@ -183,6 +193,12 @@ export default function Launcher({
       title: t("launcher.rss", "RSS Reader"),
       subtitle: t("launcher.rss.desc", "Feeds and articles"),
       onClick: () => onNavigate("rss"),
+    },
+    {
+      id: "documents",
+      title: t("launcher.documents", "Documents"),
+      subtitle: t("launcher.documents.desc", "Text, Markdown, JSON"),
+      onClick: () => onNavigate("documents"),
     },
     {
       id: "settings",

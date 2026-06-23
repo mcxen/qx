@@ -2,12 +2,14 @@ import { useEffect, useCallback, useRef, useTransition } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useStore, type AppEntry, type ScreenshotEntry, type MonitorInfo, type SearchScope } from "./store";
 import Launcher from "./Launcher";
 import ClipboardPanel from "./modules/clipboard/ClipboardPanel";
 import ScreenshotPanel, { REGION_CAPTURE_EVENT } from "./modules/screenshot/ScreenshotPanel";
 import ScreenshotRegionOverlay, { type Point } from "./modules/screenshot/ScreenshotRegionOverlay";
 import ScreenRecorder from "./modules/screencap/ScreenRecorder";
+import DocumentTools from "./modules/documents/DocumentTools";
 import SettingsPanel from "./modules/settings/SettingsPanel";
 import RssReader from "./modules/rss";
 import MacroRecorder from "./modules/macros/MacroRecorder";
@@ -16,6 +18,7 @@ import { ThemeProvider } from "./ThemeProvider";
 import { usePluginRegistry } from "./plugin/registry";
 import { registerAllBuiltins } from "./plugin/builtin";
 import { PluginHost, PluginPanelViewport } from "./plugin/PluginHost";
+import { calculateExpression } from "./search/calculator";
 import "./App.css";
 
 const SETTINGS_KEYWORDS = ["settings", "preferences", "plugins", "shortcuts", "appearance", "advanced"];
@@ -124,7 +127,7 @@ function App() {
     const handler = (e: Event) => {
       const tabId = (e as CustomEvent).detail as string;
       if (tabId === "clipboard" || tabId === "screenshot" || tabId === "screencap"
-          || tabId === "rss" || tabId === "macros" || tabId === "settings") {
+          || tabId === "rss" || tabId === "macros" || tabId === "documents" || tabId === "settings") {
         setTab(tabId);
       } else if (tabId?.startsWith("plugin:")) {
         setTab(tabId);
@@ -346,6 +349,8 @@ function App() {
         setTab(next);
       } else if (next === "launcher") {
         setTab("launcher");
+      } else if (next === "documents") {
+        setTab("documents");
       } else if (next.startsWith("plugin:")) {
         setTab(next);
       }
@@ -437,6 +442,16 @@ function App() {
         icon: `builtin:${m.command.pluginId}`,
         kind: "command",
       }));
+
+      const calculation = calculateExpression(q);
+      if (calculation && (scope === "all" || scope === "apps")) {
+        syntheticEntries.unshift({
+          name: `${calculation.expression} = ${calculation.formatted}`,
+          path: `__qx:calc:${encodeURIComponent(calculation.formatted)}`,
+          icon: "builtin:calculator",
+          kind: "calculation",
+        });
+      }
 
       if ((scope === "all" || scope === "apps") && matchesSettings(q)) {
         syntheticEntries.unshift({
@@ -546,8 +561,13 @@ function App() {
       setTab("clipboard");
       return;
     }
+    if (item.path.startsWith("__qx:calc:")) {
+      await writeText(decodeURIComponent(item.path.slice("__qx:calc:".length)));
+      if (isTauriRuntime()) await getCurrentWindow().hide();
+      return;
+    }
     // Handle __qx:<tabId> style paths (backward compat)
-    const tabMatch = item.path.match(/^__qx:(clipboard|screenshot|screencap|rss|macros)$/);
+    const tabMatch = item.path.match(/^__qx:(clipboard|screenshot|screencap|rss|macros|documents)$/);
     if (tabMatch) {
       setTab(tabMatch[1] as any);
       return;
@@ -612,6 +632,8 @@ function App() {
         return <RssReader />;
       case "macros":
         return <MacroRecorder />;
+      case "documents":
+        return <DocumentTools />;
       case "settings":
         return <SettingsPanel onClose={() => setTab("launcher")} />;
       case "launcher":
@@ -658,6 +680,7 @@ function App() {
           tab === "screencap" ||
           tab === "rss" ||
           tab === "macros" ||
+          tab === "documents" ||
           tab === "settings"
             ? { display: "none" }
             : undefined

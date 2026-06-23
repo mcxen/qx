@@ -6,6 +6,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 function iconKind(item: AppEntry): string {
   if (item.kind === "file") return "file";
   if (item.kind === "clipboard") return "clipboard";
+  if (item.kind === "calculation") return "calculator";
   if (item.icon.startsWith("builtin:")) {
     const value = `${item.icon} ${item.path}`.toLowerCase();
     if (value.includes("clipboard")) return "clipboard";
@@ -13,6 +14,8 @@ function iconKind(item: AppEntry): string {
     if (value.includes("screencap")) return "record";
     if (value.includes("rss")) return "rss";
     if (value.includes("macro")) return "macro";
+    if (value.includes("document") || value.includes("doc")) return "document";
+    if (value.includes("calculator") || value.includes("calc")) return "calculator";
     if (value.includes("settings")) return "settings";
     return "command";
   }
@@ -22,6 +25,7 @@ function iconKind(item: AppEntry): string {
 function sourceLabel(item: AppEntry): string {
   if (item.kind === "file") return "File";
   if (item.kind === "clipboard") return "Clipboard";
+  if (item.kind === "calculation") return "Copy Result";
   if (item.kind === "command") return "Command";
   return "Application";
 }

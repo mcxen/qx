@@ -4,7 +4,7 @@ export interface AppEntry {
   name: string;
   path: string;
   icon: string;
-  kind?: "app" | "command" | "clipboard" | "file";
+  kind?: "app" | "command" | "clipboard" | "file" | "calculation";
 }
 
 export interface ClipboardEntry {
@@ -87,7 +87,8 @@ export type BuiltinTab =
   | "screencap"
   | "rss"
   | "settings"
-  | "macros";
+  | "macros"
+  | "documents";
 export type Tab = BuiltinTab | string;
 export type SearchScope = "all" | "apps" | "files" | "clipboard";
 export type LoadingPhase = "loading-apps" | "ready" | "loading-background";

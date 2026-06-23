@@ -1,4 +1,5 @@
 use chrono::Local;
+use dirs;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -45,15 +46,21 @@ fn recording_state() -> &'static Mutex<Option<RecordingState>> {
 }
 
 fn gifs_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(format!("{}/Pictures/Qx", home));
+    let base = dirs::picture_dir().unwrap_or_else(|| {
+        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
+            .join("Pictures")
+    });
+    let dir = base.join("Qx");
     let _ = fs::create_dir_all(&dir);
     dir
 }
 
 fn db_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(format!("{}/Library/Application Support/qx", home));
+    let base = dirs::data_dir().unwrap_or_else(|| {
+        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
+            .join("Library/Application Support/qx")
+    });
+    let dir = base.join("qx");
     let _ = fs::create_dir_all(&dir);
     dir.join("screencap.db")
 }

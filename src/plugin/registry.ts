@@ -137,6 +137,41 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
             onPrompt: hooks.onPrompt,
             onGetPreference: hooks.onGetPreference,
           });
+          const rpcHandler = (event: MessageEvent) => {
+            const data = event.data || {};
+            if (data.type !== "qx:rpc" || data.pluginId !== plugin.id) return;
+            const requestId = String(data.requestId || "");
+            void handlePluginRpc(
+              plugin,
+              String(data.method),
+              (data.payload || {}) as Record<string, unknown>,
+              hooks,
+            )
+              .then((rpcResult) => {
+                result.iframe.contentWindow?.postMessage(
+                  {
+                    type: "qx:rpc:response",
+                    pluginId: plugin.id,
+                    requestId,
+                    result: rpcResult,
+                  },
+                  "*",
+                );
+              })
+              .catch((error) => {
+                result.iframe.contentWindow?.postMessage(
+                  {
+                    type: "qx:rpc:response",
+                    pluginId: plugin.id,
+                    requestId,
+                    error: String(error),
+                  },
+                  "*",
+                );
+              });
+          };
+          window.addEventListener("message", rpcHandler);
+          (result.iframe as HTMLIFrameElement & { __qxRpcHandler?: (event: MessageEvent) => void }).__qxRpcHandler = rpcHandler;
           commands.push(...result.commands);
           if (result.panel) {
             panels[result.panel.pluginId] = result.panel;
@@ -162,7 +197,11 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
 
   unload: () => {
     const { workers } = get();
-    Object.values(workers).forEach((iframe) => iframe.remove());
+    Object.values(workers).forEach((iframe) => {
+      const handler = (iframe as HTMLIFrameElement & { __qxRpcHandler?: (event: MessageEvent) => void }).__qxRpcHandler;
+      if (handler) window.removeEventListener("message", handler);
+      iframe.remove();
+    });
     const builtinCommands = get().commands.filter((command) =>
       isBuiltinPluginId(command.pluginId),
     );

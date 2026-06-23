@@ -244,6 +244,69 @@
   border-radius: 3px;
 }
 
+.qx-app-icon.kind-calculator {
+  background: #2563eb;
+  color: #fff;
+}
+
+.qx-app-icon.kind-calculator .qx-app-icon-symbol {
+  inset: 4px;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+}
+
+.qx-app-icon.kind-calculator .qx-app-icon-symbol::before {
+  left: 3px;
+  right: 3px;
+  top: 4px;
+  height: 2px;
+  background: currentColor;
+}
+
+.qx-app-icon.kind-calculator .qx-app-icon-symbol::after {
+  left: 3px;
+  right: 3px;
+  bottom: 3px;
+  height: 5px;
+  background:
+    linear-gradient(currentColor, currentColor) left top / 2px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) center top / 2px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) right top / 2px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) left bottom / 2px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) center bottom / 2px 2px no-repeat,
+    linear-gradient(currentColor, currentColor) right bottom / 2px 2px no-repeat;
+}
+
+.qx-app-icon.kind-document {
+  background: #0891b2;
+  color: #fff;
+}
+
+.qx-app-icon.kind-document .qx-app-icon-symbol {
+  inset: 4px;
+  border: 2px solid currentColor;
+  border-radius: 3px;
+}
+
+.qx-app-icon.kind-document .qx-app-icon-symbol::before {
+  right: -2px;
+  top: -2px;
+  width: 7px;
+  height: 7px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  background: #0891b2;
+}
+
+.qx-app-icon.kind-document .qx-app-icon-symbol::after {
+  left: 3px;
+  right: 3px;
+  bottom: 3px;
+  height: 5px;
+  border-top: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+}
+
 .qx-app-icon.kind-file {
   background: #14b8a6;
   color: #fff;

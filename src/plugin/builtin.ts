@@ -100,6 +100,22 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       keywords: ["macro", "macros", "recording", "宏", "录制"],
     },
   },
+  {
+    id: "documents",
+    name: "Documents",
+    keywords: ["document", "documents", "doc", "markdown", "json", "word count", "文档", "字数", "文本"],
+    commands: [
+      {
+        name: "open-documents",
+        title: "Open Document Tools",
+        keywords: ["document", "documents", "doc", "markdown", "json", "word count", "文档", "字数", "文本", "open"],
+      },
+    ],
+    panel: {
+      title: "Document Tools",
+      keywords: ["document", "documents", "doc", "markdown", "json", "word count", "文档", "字数", "文本"],
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

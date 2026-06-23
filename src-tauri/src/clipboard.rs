@@ -1,4 +1,5 @@
 use chrono::Local;
+use dirs;
 use image::codecs::png::PngEncoder;
 use image::ExtendedColorType;
 use image::ImageEncoder;
@@ -58,18 +59,21 @@ pub struct ClipboardDb(pub Arc<Mutex<Option<Connection>>>);
 pub struct ClipboardShutdown(pub Arc<AtomicBool>);
 
 fn get_db_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(format!("{}/Library/Application Support/qx", home));
+    let base = dirs::data_dir().unwrap_or_else(|| {
+        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
+            .join("Library/Application Support/qx")
+    });
+    let dir = base.join("qx");
     std::fs::create_dir_all(&dir).ok();
     dir.join("clipboard.db")
 }
 
 fn get_image_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(format!(
-        "{}/Library/Application Support/qx/clipboard_images",
-        home
-    ));
+    let base = dirs::data_dir().unwrap_or_else(|| {
+        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
+            .join("Library/Application Support/qx")
+    });
+    let dir = base.join("qx/clipboard_images");
     std::fs::create_dir_all(&dir).ok();
     dir
 }
