@@ -84,10 +84,7 @@ jobs:
           name: qx-${{ matrix.artifact }}
           path: |
             qx_*.app.zip
-            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
-            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
-            src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
-          if-no-files-found: warn
+          if-no-files-found: error
 
   publish:
     name: Publish release
