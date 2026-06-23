@@ -129,3 +129,32 @@ jobs:
             --title "${RELEASE_TAG}" \
             --notes "Desktop clients built from ${GITHUB_REPOSITORY}@${GITHUB_SHA}." \
             $([ "${PRERELEASE}" = "true" ] && echo "--prerelease" || echo "")
+
+      - name: Compute SHA256 and notify Homebrew tap
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HOMEBREW_PAT: ${{ secrets.HOMEBREW_TAP_PAT }}
+        run: |
+          # Find the ARM64 app.zip artifact
+          ZIP=$(ls release-assets/*_aarch64-apple-darwin.app.zip 2>/dev/null | head -1)
+          if [ -z "$ZIP" ]; then
+            echo "No ARM64 app.zip found, skipping homebrew update"
+            exit 0
+          fi
+          SHA256_ARM=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
+          echo "SHA256 (arm): $SHA256_ARM"
+
+          # Dispatch to homebrew-qx repo
+          if [ -n "$HOMEBREW_PAT" ]; then
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "Authorization: Bearer ${HOMEBREW_PAT}" \
+              /repos/mcxen/homebrew-qx/dispatches \
+              -f "event_type=qx-release" \
+              -f "client_payload[version]=${RELEASE_TAG#v}" \
+              -f "client_payload[sha256_arm]=${SHA256_ARM}"
+            echo "Dispatched to mcxen/homebrew-qx"
+          else
+            echo "HOMEBREW_TAP_PAT not set, skipping dispatch"
+          fi
