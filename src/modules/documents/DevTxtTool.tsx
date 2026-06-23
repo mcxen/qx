@@ -3,6 +3,7 @@ import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import QxShell from "../../components/QxShell";
 import { SegmentedControl } from "../../components/ui";
 import { useStore } from "../../store";
+import { useEscBack } from "../../hooks/useEscBack";
 
 type Mode = "stats" | "markdown" | "json";
 
@@ -74,17 +75,10 @@ export default function DevTxtTool() {
     setText(value ?? "");
   };
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      if (showOutput) {
-        setShowOutput(false);
-      } else {
-        setTab("launcher");
-      }
-    }
-  };
+  const { onKeyDown } = useEscBack({
+    inner: { active: showOutput, close: () => setShowOutput(false) },
+    launcher: () => setTab("launcher"),
+  });
 
   const islandDetail = [
     `${stats.chars.toLocaleString()} chars`,

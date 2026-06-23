@@ -5,6 +5,7 @@ import { writeText, writeImage } from "@tauri-apps/plugin-clipboard-manager";
 import { useStore, type ClipboardEntry } from "../../store";
 import QxShell from "../../components/QxShell";
 import { Select } from "../../components/ui";
+import { useEscBack } from "../../hooks/useEscBack";
 import {
   classify,
   sectionName,
@@ -140,7 +141,15 @@ export default function ClipboardPanel() {
     window.setTimeout(() => setStatus(""), 1200);
   };
 
+  const { onKeyDown: escKeyDown } = useEscBack({
+    inner: { active: detailOpen, close: () => setDetailOpen(false) },
+    query: { active: query.length > 0, clear: () => setQuery("") },
+    launcher: () => setTab("launcher"),
+  });
+
   const handleKeyDown = async (e: React.KeyboardEvent) => {
+    escKeyDown(e);
+    if (e.key === "Escape") return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setSelected((s) => Math.min(s + 1, filtered.length - 1));
@@ -159,12 +168,6 @@ export default function ClipboardPanel() {
     } else if ((e.key === "Backspace" || e.key === "Delete") && e.metaKey) {
       e.preventDefault();
       await deleteItem(selectedItem);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      if (detailOpen) setDetailOpen(false);
-      else if (query) setQuery("");
-      else setTab("launcher");
     }
   };
 

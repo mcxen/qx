@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useStore, type ScreenshotEntry } from "../../store";
 import QxShell from "../../components/QxShell";
+import { useEscBack } from "../../hooks/useEscBack";
 
 export const REGION_CAPTURE_EVENT = "qx:screenshot-region-capture";
 
@@ -71,19 +72,15 @@ export default function ScreenshotPanel() {
     enterRegionCapture();
   }, []);
 
+  const { onKeyDown: escKeyDown } = useEscBack({
+    inner: { active: preview !== null, close: () => setPreview(null) },
+    query: { active: query.length > 0, clear: () => setQuery("") },
+    launcher: () => setTab("launcher"),
+  });
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      if (preview) {
-        setPreview(null);
-      } else if (query) {
-        setQuery("");
-      } else {
-        setTab("launcher");
-      }
-      return;
-    }
+    escKeyDown(e);
+    if (e.key === "Escape") return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setSelected((s) => Math.min(s + 1, filtered.length - 1));

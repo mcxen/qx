@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useScreencapStore, type RecordArea } from "./store";
+import { useStore } from "../../store";
+import { useEscBack } from "../../hooks/useEscBack";
 import { LinkButton } from "../../components/ui";
 import GifPreview from "./GifPreview";
 import GifHistory from "./GifHistory";
@@ -34,12 +36,21 @@ export default function ScreenRecorder() {
     reset,
   } = useScreencapStore();
 
+  const setTab = useStore((state) => state.setTab);
+
   const [selectMode, setSelectMode] = useState<SelectMode>("none");
   const [area, setArea] = useState<RecordArea | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (selectMode === "selecting") {
+      overlayRef.current?.focus();
+    }
+  }, [selectMode]);
 
   useEffect(() => {
     void loadHistory();
@@ -105,14 +116,28 @@ export default function ScreenRecorder() {
     setArea(null);
   };
 
+  const { onKeyDown: escKeyDown } = useEscBack({
+    inner: {
+      active: selectMode === "selecting",
+      close: () => {
+        setSelectMode("none");
+        setDragStart(null);
+        setDragEnd(null);
+      },
+    },
+    launcher: () => {
+      if (isRecording) void stopRecording();
+      reset();
+      setTab("launcher");
+    },
+  });
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    escKeyDown(e);
+    if (e.key === "Escape") return;
     const state = useScreencapStore.getState();
-    const { history, lastGifPath, setPreview, deleteEntry, reset: resetState } = state;
+    const { history, lastGifPath, setPreview, deleteEntry } = state;
     if (history.length === 0) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        resetState();
-      }
       return;
     }
     const currentIndex = Math.max(
@@ -147,11 +172,6 @@ export default function ScreenRecorder() {
         if (entry) void deleteEntry(entry.id);
         break;
       }
-      case "Escape": {
-        e.preventDefault();
-        resetState();
-        break;
-      }
     }
   };
 
@@ -162,6 +182,9 @@ export default function ScreenRecorder() {
     const selH = dragStart && dragEnd ? Math.abs(dragEnd.y - dragStart.y) : 0;
     return (
       <div
+        ref={overlayRef}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
@@ -171,6 +194,7 @@ export default function ScreenRecorder() {
           background: "var(--qx-overlay-1)",
           cursor: "crosshair",
           zIndex: 100,
+          outline: "none",
         }}
       >
         {dragStart && dragEnd && (
@@ -225,6 +249,7 @@ export default function ScreenRecorder() {
       <QxShell
         title="Screen Recording"
         search={<div className="qx-rss-detail-title">Recording</div>}
+        onKeyDown={handleKeyDown}
         island={{
           label: status === "processing" ? "Encoding GIF" : "Recording",
           detail: status === "processing" ? "Processing frames" : formatTime(elapsed),
@@ -306,6 +331,7 @@ export default function ScreenRecorder() {
     <QxShell
       title="Screen Recording"
       search={<div className="qx-rss-detail-title">Screen Recording</div>}
+      onKeyDown={handleKeyDown}
       trailing={
         <>
           <button className="qx-command-button primary" onClick={handleStart}>

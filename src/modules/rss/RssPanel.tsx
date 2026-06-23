@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import QxShell, { type BottomIslandContent } from "../../components/QxShell";
 import { useRssStore, type RssFeed } from "./store";
 import { useStore } from "../../store";
+import { useEscBack } from "../../hooks/useEscBack";
 import AddFeedDialog from "./AddFeedDialog";
 import EditFeedDialog from "./EditFeedDialog";
 import { FeedIcon, formatRelative } from "./rss-components";
@@ -46,17 +47,22 @@ export default function RssPanel() {
   const selectedFeed = filtered[selectedIndex];
   const unreadCount = feeds.reduce((sum, feed) => sum + feed.unread_count, 0);
 
+  const { onKeyDown: escKeyDown } = useEscBack({
+    inner: {
+      active: showAdd || editFeed !== null,
+      close: () => {
+        setShowAdd(false);
+        setEditFeed(null);
+      },
+    },
+    query: { active: query.length > 0, clear: () => setQuery("") },
+    launcher: () => setTab("launcher"),
+  });
+
   const onKeyDown = (e: React.KeyboardEvent) => {
+    escKeyDown(e);
+    if (e.key === "Escape") return;
     switch (e.key) {
-      case "Escape":
-        e.preventDefault();
-        e.stopPropagation();
-        if (query) {
-          setQuery("");
-        } else {
-          setTab("launcher");
-        }
-        break;
       case "ArrowDown":
         e.preventDefault();
         setSelectedIndex(Math.min(selectedIndex + 1, filtered.length - 1));
