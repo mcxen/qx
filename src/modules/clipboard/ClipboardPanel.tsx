@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { writeText, writeImage } from "@tauri-apps/plugin-clipboard-manager";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useStore, type ClipboardEntry } from "../../store";
 import QxShell from "../../components/QxShell";
 import { Select } from "../../components/ui";
@@ -110,11 +110,7 @@ export default function ClipboardPanel() {
     if (!item) return;
     try {
       if (item.image_path) {
-        // Read the PNG file and write it as image to clipboard
-        const response = await fetch(convertFileSrc(item.image_path));
-        const blob = await response.blob();
-        const buffer = await blob.arrayBuffer();
-        await writeImage(new Uint8Array(buffer));
+        await invoke("write_clipboard_image_entry", { id: item.id });
       } else {
         await writeText(item.text);
       }

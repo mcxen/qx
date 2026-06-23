@@ -15,6 +15,7 @@ mod system_stats;
 mod v2ex;
 
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     LogicalSize, Manager, PhysicalSize,
@@ -170,9 +171,15 @@ pub fn run() {
             let show = MenuItem::with_id(app, "show", "Show/Hide", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Qx", true, Some("Cmd+Q"))?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
+            let tray_rgba = image::load_from_memory(include_bytes!("../icons/tray-template.png"))?
+                .into_rgba8();
+            let (tray_width, tray_height) = tray_rgba.dimensions();
+            let tray_icon = Image::new_owned(tray_rgba.into_raw(), tray_width, tray_height);
 
             TrayIconBuilder::new()
                 .menu(&menu)
+                .icon(tray_icon)
+                .icon_as_template(true)
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "quit" => {
                         if let Some(flag) = app.try_state::<clipboard::ClipboardShutdown>() {
@@ -216,6 +223,7 @@ pub fn run() {
             screenshot::get_monitors,
             clipboard::get_clipboard_history,
             clipboard::read_clipboard_image_now,
+            clipboard::write_clipboard_image_entry,
             clipboard::clear_clipboard_history,
             clipboard::delete_clipboard_entry,
             clipboard::toggle_clipboard_pin,

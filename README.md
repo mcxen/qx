@@ -1,5 +1,7 @@
 # Qx — macOS Productivity Launcher
 
+<img src="README.assets/%E5%B7%B2%E7%94%9F%E6%88%90%E5%9B%BE%E5%83%8F%202.png" alt="Qx app icon" width="160" />
+
 **English** | [中文](#qx--macos-效率启动器)
 
 Qx is a Raycast-style desktop launcher for macOS, built with Tauri v2, React, and TypeScript. It lives in your menu bar and pops up with a global hotkey.

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { useSettingsStore, type SettingsTab } from "./store";
 import GeneralSettings from "./GeneralSettings";
 import PluginManager from "./PluginManager";
@@ -43,10 +44,17 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const { activeTab, setActiveTab, load, loaded } = useSettingsStore();
   const t = useT();
   const [filter, setFilter] = useState("");
+  const [version, setVersion] = useState("");
 
   useEffect(() => {
     if (!loaded) void load();
   }, [loaded, load]);
+
+  useEffect(() => {
+    void getVersion()
+      .then(setVersion)
+      .catch(() => setVersion("unknown"));
+  }, []);
 
   const filteredNav = useMemo(() => {
     const q = filter.trim().toLowerCase();
@@ -137,7 +145,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     <QxShell
       title={t("launcher.settings", "Settings")}
       search={settingsSearch}
-      trailing={<span className="qx-shell-meta">Qx v0.1.0</span>}
+      trailing={<span className="qx-shell-meta">Qx v{version || "..."}</span>}
       context={settingsContext}
       island={{ label: t("launcher.settings", "Settings"), detail: t(`nav.${activeTab}`, TAB_LABELS[activeTab]) }}
       escapeAction={{ label: t("settings.close", "Close"), kbd: "Esc", onClick: onClose }}

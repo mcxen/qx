@@ -4,10 +4,12 @@ use image::codecs::png::PngEncoder;
 use image::ExtendedColorType;
 use image::ImageEncoder;
 use rusqlite::{params, Connection};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
+use tauri::image::Image as TauriImage;
 use tauri::{command, AppHandle, Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
@@ -17,6 +19,18 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 const MAX_IMAGE_DIMENSION: u32 = 4096;
 /// Maximum total pixel count (width × height).
 const MAX_IMAGE_PIXELS: u64 = 16_777_216; // 4096 × 4096
+const MAX_PASTEBOARD_SNAPSHOT_BYTES: usize = 32 * 1024 * 1024;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct PasteboardSnapshot {
+    entries: Vec<PasteboardSnapshotEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct PasteboardSnapshotEntry {
+    type_name: String,
+    file_name: String,
+}
 
 // --- macOS clipboard change count (lightweight content-change detection) ---
 /// Returns the current `NSPasteboard` changeCount on macOS, or `None` on
@@ -37,6 +51,197 @@ fn clipboard_change_count() -> Option<i64> {
         let count: i64 = msg_send![pasteboard, changeCount];
         Some(count)
     }
+}
+
+#[cfg(target_os = "macos")]
+fn should_snapshot_pasteboard_type(type_name: &str) -> bool {
+    let lower = type_name.to_ascii_lowercase();
+    lower.contains("png")
+        || lower.contains("tiff")
+        || lower.contains("jpeg")
+        || lower.contains("jpg")
+        || lower.contains("image")
+        || lower.contains("pdf")
+        || lower.contains("file-url")
+        || lower.contains("url")
+        || lower.contains("filename")
+}
+
+#[cfg(target_os = "macos")]
+fn snapshot_current_pasteboard(id: &str) -> Option<String> {
+    use objc2::msg_send;
+    use objc2::runtime::{AnyClass, NSObject};
+    use std::ffi::CStr;
+
+    let dir = get_image_dir().join(format!("{id}.pasteboard"));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).ok()?;
+
+    let mut entries = Vec::new();
+    let mut total_bytes = 0usize;
+
+    unsafe {
+        let cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSPasteboard\0").ok()?)?;
+        let pasteboard: *mut NSObject = msg_send![cls, generalPasteboard];
+        if pasteboard.is_null() {
+            return None;
+        }
+
+        let types: *mut NSObject = msg_send![pasteboard, types];
+        if types.is_null() {
+            return None;
+        }
+
+        let count: usize = msg_send![types, count];
+        for index in 0..count {
+            let pasteboard_type: *mut NSObject = msg_send![types, objectAtIndex: index];
+            if pasteboard_type.is_null() {
+                continue;
+            }
+
+            let type_ptr: *const std::os::raw::c_char = msg_send![pasteboard_type, UTF8String];
+            if type_ptr.is_null() {
+                continue;
+            }
+            let type_name = CStr::from_ptr(type_ptr).to_string_lossy().to_string();
+            if !should_snapshot_pasteboard_type(&type_name) {
+                continue;
+            }
+
+            let data: *mut NSObject = msg_send![pasteboard, dataForType: pasteboard_type];
+            if data.is_null() {
+                continue;
+            }
+            let len: usize = msg_send![data, length];
+            if len == 0 || total_bytes.saturating_add(len) > MAX_PASTEBOARD_SNAPSHOT_BYTES {
+                continue;
+            }
+            let bytes: *const u8 = msg_send![data, bytes];
+            if bytes.is_null() {
+                continue;
+            }
+
+            let file_name = format!("{:02}.bin", entries.len());
+            let file_path = dir.join(&file_name);
+            let slice = std::slice::from_raw_parts(bytes, len);
+            if fs::write(&file_path, slice).is_ok() {
+                total_bytes += len;
+                entries.push(PasteboardSnapshotEntry {
+                    type_name,
+                    file_name,
+                });
+            }
+        }
+    }
+
+    if entries.is_empty() {
+        let _ = fs::remove_dir_all(&dir);
+        return None;
+    }
+
+    let manifest = PasteboardSnapshot { entries };
+    let manifest_path = dir.join("manifest.json");
+    let json = serde_json::to_vec(&manifest).ok()?;
+    fs::write(&manifest_path, json).ok()?;
+    Some(manifest_path.to_string_lossy().to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn snapshot_current_pasteboard(_id: &str) -> Option<String> {
+    None
+}
+
+#[cfg(target_os = "macos")]
+fn restore_pasteboard_snapshot(manifest_path: &str) -> Result<(), String> {
+    use objc2::msg_send;
+    use objc2::runtime::{AnyClass, NSObject};
+    use std::ffi::{CStr, CString};
+
+    let manifest_bytes =
+        fs::read(manifest_path).map_err(|e| format!("read pasteboard snapshot: {e}"))?;
+    let snapshot: PasteboardSnapshot = serde_json::from_slice(&manifest_bytes)
+        .map_err(|e| format!("parse pasteboard snapshot: {e}"))?;
+    if snapshot.entries.is_empty() {
+        return Err("pasteboard snapshot is empty".to_string());
+    }
+
+    let base_dir = PathBuf::from(manifest_path)
+        .parent()
+        .ok_or_else(|| "pasteboard snapshot has no parent directory".to_string())?
+        .to_path_buf();
+
+    unsafe {
+        let pasteboard_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSPasteboard\0").unwrap())
+            .ok_or_else(|| "NSPasteboard class missing".to_string())?;
+        let string_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSString\0").unwrap())
+            .ok_or_else(|| "NSString class missing".to_string())?;
+        let data_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSData\0").unwrap())
+            .ok_or_else(|| "NSData class missing".to_string())?;
+        let array_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSMutableArray\0").unwrap())
+            .ok_or_else(|| "NSMutableArray class missing".to_string())?;
+
+        let pasteboard: *mut NSObject = msg_send![pasteboard_cls, generalPasteboard];
+        if pasteboard.is_null() {
+            return Err("general pasteboard missing".to_string());
+        }
+
+        let types: *mut NSObject = msg_send![array_cls, arrayWithCapacity: snapshot.entries.len()];
+        if types.is_null() {
+            return Err("failed to create pasteboard type array".to_string());
+        }
+
+        let mut type_strings = Vec::new();
+        for entry in &snapshot.entries {
+            let c_type = CString::new(entry.type_name.as_str())
+                .map_err(|_| "pasteboard type contains NUL".to_string())?;
+            let type_string: *mut NSObject =
+                msg_send![string_cls, stringWithUTF8String: c_type.as_ptr()];
+            if type_string.is_null() {
+                continue;
+            }
+            let _: () = msg_send![types, addObject: type_string];
+            type_strings.push((entry, type_string));
+        }
+
+        if type_strings.is_empty() {
+            return Err("pasteboard snapshot has no restorable types".to_string());
+        }
+
+        let _: isize = msg_send![pasteboard, clearContents];
+        let _: isize =
+            msg_send![pasteboard, declareTypes: types, owner: std::ptr::null_mut::<NSObject>()];
+
+        let mut restored = 0usize;
+        for (entry, type_string) in type_strings {
+            let bytes = match fs::read(base_dir.join(&entry.file_name)) {
+                Ok(bytes) => bytes,
+                Err(_) => continue,
+            };
+            if bytes.is_empty() {
+                continue;
+            }
+            let data: *mut NSObject =
+                msg_send![data_cls, dataWithBytes: bytes.as_ptr(), length: bytes.len()];
+            if data.is_null() {
+                continue;
+            }
+            let ok: bool = msg_send![pasteboard, setData: data, forType: type_string];
+            if ok {
+                restored += 1;
+            }
+        }
+
+        if restored == 0 {
+            return Err("no pasteboard snapshot data restored".to_string());
+        }
+    }
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn restore_pasteboard_snapshot(_manifest_path: &str) -> Result<(), String> {
+    Err("pasteboard snapshots are only supported on macOS".to_string())
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -91,6 +296,7 @@ fn init_db() -> rusqlite::Result<Connection> {
     ensure_column(&conn, "pinned", "INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(&conn, "copy_count", "INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(&conn, "image_path", "TEXT")?;
+    ensure_column(&conn, "image_pasteboard_path", "TEXT")?;
 
     // Cleanup old unpinned entries while preserving user-curated items.
     conn.execute(
@@ -164,7 +370,7 @@ pub fn start_listener(app: &AppHandle) {
             if let Ok(text) = app_handle.clipboard().read_text() {
                 if !text.is_empty() {
                     last_text = text.clone();
-                    store(&db_clone, &text, None);
+                    store(&db_clone, &text, None, None);
                 }
             }
 
@@ -182,7 +388,7 @@ pub fn start_listener(app: &AppHandle) {
                 match app_handle.clipboard().read_text() {
                     Ok(text) if !text.is_empty() && text != last_text => {
                         last_text = text.clone();
-                        store(&db_clone, &text, None);
+                        store(&db_clone, &text, None, None);
                         let _ = app_handle.emit("clipboard-updated", ());
                     }
                     Err(e) => {
@@ -242,7 +448,14 @@ pub fn start_listener(app: &AppHandle) {
                                         .is_ok()
                                     {
                                         let path_str = image_path.to_string_lossy().to_string();
-                                        store(&db_clone, "", Some(&path_str));
+                                        let pasteboard_path =
+                                            snapshot_current_pasteboard(&hash_hex);
+                                        store(
+                                            &db_clone,
+                                            "",
+                                            Some(&path_str),
+                                            pasteboard_path.as_deref(),
+                                        );
                                         let _ = app_handle.emit("clipboard-updated", ());
                                     }
                                 }
@@ -258,7 +471,12 @@ pub fn start_listener(app: &AppHandle) {
         .ok();
 }
 
-fn store(db: &Arc<Mutex<Option<Connection>>>, text: &str, image_path: Option<&str>) {
+fn store(
+    db: &Arc<Mutex<Option<Connection>>>,
+    text: &str,
+    image_path: Option<&str>,
+    image_pasteboard_path: Option<&str>,
+) {
     let mut guard = lock_db(db);
     let Ok(conn) = ensure_connection(&mut guard) else {
         return;
@@ -272,13 +490,14 @@ fn store(db: &Arc<Mutex<Option<Connection>>>, text: &str, image_path: Option<&st
     };
     let ts = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let _ = conn.execute(
-        "INSERT INTO clipboard_history (id, text, timestamp, image_path)
-         VALUES (?1, ?2, ?3, ?4)
+        "INSERT INTO clipboard_history (id, text, timestamp, image_path, image_pasteboard_path)
+         VALUES (?1, ?2, ?3, ?4, ?5)
          ON CONFLICT(id) DO UPDATE SET
             text = excluded.text,
             timestamp = excluded.timestamp,
-            image_path = COALESCE(excluded.image_path, clipboard_history.image_path)",
-        params![id, text, ts, image_path],
+            image_path = COALESCE(excluded.image_path, clipboard_history.image_path),
+            image_pasteboard_path = COALESCE(excluded.image_pasteboard_path, clipboard_history.image_pasteboard_path)",
+        params![id, text, ts, image_path, image_pasteboard_path],
     );
 }
 
@@ -327,7 +546,8 @@ pub fn read_clipboard_image_now(
         Ok(image) => {
             let width = image.width();
             let height = image.height();
-            if width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION
+            if width > MAX_IMAGE_DIMENSION
+                || height > MAX_IMAGE_DIMENSION
                 || (width as u64).saturating_mul(height as u64) > MAX_IMAGE_PIXELS
             {
                 return Ok(None);
@@ -357,16 +577,18 @@ pub fn read_clipboard_image_now(
                 }
             }
             let path_str = image_path.to_string_lossy().to_string();
+            let pasteboard_path = snapshot_current_pasteboard(&hash_hex);
             let mut guard = lock_db(&db.0);
             let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
             let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
             let _ = conn.execute(
-                "INSERT INTO clipboard_history (id, text, timestamp, image_path)
-                 VALUES (?1, ?2, ?3, ?4)
+                "INSERT INTO clipboard_history (id, text, timestamp, image_path, image_pasteboard_path)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
                  ON CONFLICT(id) DO UPDATE SET
                     timestamp = excluded.timestamp,
-                    image_path = COALESCE(excluded.image_path, clipboard_history.image_path)",
-                rusqlite::params![hash_hex, "", ts, path_str],
+                    image_path = COALESCE(excluded.image_path, clipboard_history.image_path),
+                    image_pasteboard_path = COALESCE(excluded.image_pasteboard_path, clipboard_history.image_pasteboard_path)",
+                rusqlite::params![hash_hex, "", ts, path_str, pasteboard_path],
             );
             let _ = app.emit("clipboard-updated", ());
             Ok(Some(path_str))
@@ -376,6 +598,49 @@ pub fn read_clipboard_image_now(
             Ok(None)
         }
     }
+}
+
+#[command]
+pub fn write_clipboard_image_entry(
+    app: tauri::AppHandle,
+    db: tauri::State<'_, ClipboardDb>,
+    id: String,
+) -> Result<(), String> {
+    let (image_path, image_pasteboard_path): (String, Option<String>) = {
+        let mut guard = lock_db(&db.0);
+        let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+        conn.query_row(
+            "SELECT image_path, image_pasteboard_path
+             FROM clipboard_history
+             WHERE id = ?1 AND image_path IS NOT NULL",
+            rusqlite::params![id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|e| format!("clipboard image entry not found: {e}"))?
+    };
+
+    if let Some(manifest_path) = image_pasteboard_path {
+        if restore_pasteboard_snapshot(&manifest_path).is_ok() {
+            return Ok(());
+        }
+    }
+
+    let decoded = image::open(&image_path)
+        .map_err(|e| format!("decode clipboard image: {e}"))?
+        .to_rgba8();
+    let (width, height) = decoded.dimensions();
+    if width > MAX_IMAGE_DIMENSION
+        || height > MAX_IMAGE_DIMENSION
+        || (width as u64).saturating_mul(height as u64) > MAX_IMAGE_PIXELS
+    {
+        return Err("clipboard image is too large".to_string());
+    }
+
+    let image = TauriImage::new_owned(decoded.into_raw(), width, height);
+    app.clipboard()
+        .write_image(&image)
+        .map_err(|e| format!("write clipboard image: {e}"))?;
+    Ok(())
 }
 
 #[command]
