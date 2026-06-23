@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { revealItemInDir, openPath } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import QxShell, { type BottomIslandContent } from "./components/QxShell";
@@ -7,7 +8,7 @@ import HomeSystemIsland from "./components/HomeSystemIsland";
 import ResultsList from "./ResultsList";
 import SearchBar from "./SearchBar";
 import { Select } from "./components/ui";
-import type { AppEntry, SearchScope } from "./store";
+import { useStore, type AppEntry, type HistoryEntry, type SearchHistoryEntry, type SearchScope } from "./store";
 import { useSettingsStore } from "./modules/settings/store";
 import { useT } from "./i18n";
 
@@ -54,6 +55,9 @@ export default function Launcher({
   const [scope, setScope] = useState<SearchScope>(searchScopeRef.current);
   const [actionPanelOpen, setActionPanelOpen] = useState(false);
   const [actionIndex, setActionIndex] = useState(0);
+  const [recentLaunches, setRecentLaunches] = useState<HistoryEntry[]>([]);
+  const [recentSearches, setRecentSearches] = useState<SearchHistoryEntry[]>([]);
+  const { query, setQuery } = useStore();
   const scopeOptions: { value: SearchScope; label: string }[] = [
     { value: "all", label: "All" },
     { value: "apps", label: "Apps" },
@@ -136,6 +140,29 @@ export default function Launcher({
     setActionPanelOpen(false);
     setActionIndex(0);
   }, [selectedItem?.path]);
+
+  // Load recent launches and search history
+  const loadHistory = useCallback(async () => {
+    try {
+      const [launches, searches] = await Promise.all([
+        invoke<HistoryEntry[]>("get_launch_history", { limit: 5 }),
+        invoke<SearchHistoryEntry[]>("get_search_history", { limit: 5 }),
+      ]);
+      setRecentLaunches(launches);
+      setRecentSearches(searches);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory]);
+
+  // Reload history when results become empty (user cleared search or opened app)
+  useEffect(() => {
+    if (results.length === 0 && !loadingPhase) {
+      void loadHistory();
+    }
+  }, [results.length, loadingPhase, loadHistory]);
 
   const quickEntries: QuickEntry[] = [
     {
@@ -268,6 +295,41 @@ export default function Launcher({
               <span className="qx-context-entry-subtitle">{entry.subtitle}</span>
             </button>
           ))}
+          {recentLaunches.length > 0 && (
+            <>
+              <div className="qx-context-title" style={{ marginTop: 12 }}>Recent</div>
+              {recentLaunches.map((entry) => (
+                <button
+                  key={`launch-${entry.id}`}
+                  className="qx-context-entry"
+                  onClick={() => {
+                    invoke("open_app", { path: entry.path }).catch(() => {});
+                    getCurrentWindow().hide().catch(() => {});
+                  }}
+                  type="button"
+                >
+                  <span className="qx-context-entry-title">{entry.name}</span>
+                  <span className="qx-context-entry-subtitle">{entry.timestamp}</span>
+                </button>
+              ))}
+            </>
+          )}
+          {recentSearches.length > 0 && !query && (
+            <>
+              <div className="qx-context-title" style={{ marginTop: 12 }}>Recent Searches</div>
+              {recentSearches.map((entry) => (
+                <button
+                  key={`search-${entry.id}`}
+                  className="qx-context-entry"
+                  onClick={() => setQuery(entry.query)}
+                  type="button"
+                >
+                  <span className="qx-context-entry-title">{entry.query}</span>
+                  <span className="qx-context-entry-subtitle">{entry.timestamp}</span>
+                </button>
+              ))}
+            </>
+          )}
         </div>
       }
       island={island}

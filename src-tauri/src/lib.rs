@@ -1,5 +1,7 @@
 mod apps;
 mod clipboard;
+mod display_monitor;
+mod history;
 mod macro_recorder;
 mod marketplace;
 mod ocr;
@@ -157,6 +159,9 @@ pub fn run() {
             // Pre-convert app icons in background (keeps first search fast)
             apps::preload_icons(&handle);
 
+            // Start external display monitor (polls every 2s, auto-shows on connect)
+            display_monitor::start_display_monitor(handle.clone());
+
             let show = MenuItem::with_id(app, "show", "Show/Hide", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Qx", true, Some("Cmd+Q"))?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
@@ -202,6 +207,8 @@ pub fn run() {
             screenshot::take_screenshot,
             screenshot::take_screenshot_area,
             screenshot::get_recent_screenshots,
+            screenshot::capture_at_point,
+            screenshot::get_monitors,
             clipboard::get_clipboard_history,
             clipboard::clear_clipboard_history,
             clipboard::delete_clipboard_entry,
@@ -255,6 +262,13 @@ pub fn run() {
             macro_recorder::macro_list,
             macro_recorder::macro_delete,
             macro_recorder::macro_play,
+            history::record_launch,
+            history::get_launch_history,
+            history::clear_launch_history,
+            history::record_search,
+            history::get_search_history,
+            history::clear_search_history,
+            history::delete_search_entry,
             v2ex::v2ex_fetch_topics,
             v2ex::v2ex_search_topics,
         ])

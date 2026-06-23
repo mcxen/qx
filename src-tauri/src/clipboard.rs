@@ -1,4 +1,7 @@
 use chrono::Local;
+use image::codecs::png::PngEncoder;
+use image::ExtendedColorType;
+use image::ImageEncoder;
 use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::path::PathBuf;
@@ -6,6 +9,39 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{command, AppHandle, Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
+
+// --- Image safety limits ---
+/// Maximum allowed image dimension in pixels (width or height).
+/// A 4096×4096 RGBA image is ~64 MB — safely reject anything larger.
+const MAX_IMAGE_DIMENSION: u32 = 4096;
+/// Maximum total pixel count (width × height).
+const MAX_IMAGE_PIXELS: u64 = 16_777_216; // 4096 × 4096
+
+// --- macOS clipboard change count (lightweight content-change detection) ---
+/// Returns the current `NSPasteboard` changeCount on macOS, or `None` on
+/// other platforms.  Reading this integer is **orders of magnitude cheaper**
+/// than decoding a full RGBA image from the clipboard.
+#[cfg(target_os = "macos")]
+fn clipboard_change_count() -> Option<i64> {
+    use objc2::msg_send;
+    use objc2::runtime::AnyClass;
+
+    use std::ffi::CStr;
+    let cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSPasteboard\0").ok()?)?;
+    unsafe {
+        let pasteboard: *mut objc2::runtime::NSObject = msg_send![cls, generalPasteboard];
+        if pasteboard.is_null() {
+            return None;
+        }
+        let count: i64 = msg_send![pasteboard, changeCount];
+        Some(count)
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn clipboard_change_count() -> Option<i64> {
+    None // format probing not available on this platform
+}
 
 #[derive(Debug, Serialize, Clone)]
 pub struct ClipboardEntry {
@@ -104,6 +140,7 @@ pub fn start_listener(app: &AppHandle) {
         .spawn(move || {
             let mut last_text = String::new();
             let mut last_image_hash = String::new();
+            let mut last_change_count: Option<i64> = None;
 
             // Initialize with current clipboard via Tauri plugin API
             if let Ok(text) = app_handle.clipboard().read_text() {
@@ -137,35 +174,66 @@ pub fn start_listener(app: &AppHandle) {
                 }
 
                 // Check for new image
-                match app_handle.clipboard().read_image() {
-                    Ok(image) => {
-                        let rgba = image.rgba().to_vec();
-                        let width = image.width();
-                        let height = image.height();
-                        let hash = blake3::hash(&rgba);
-                        let hash_hex = hash.to_hex()[..16].to_string();
+                //
+                // On macOS we use NSPasteboard::changeCount to skip the
+                // expensive read_image() when clipboard content hasn't
+                // actually changed (the common case — nothing to do).
+                let should_check_image = match clipboard_change_count() {
+                    Some(current) => {
+                        let changed = last_change_count.map_or(true, |prev| prev != current);
+                        last_change_count = Some(current);
+                        changed
+                    }
+                    None => true, // non-macOS: always check
+                };
 
-                        if !rgba.is_empty() && hash_hex != last_image_hash {
-                            last_image_hash = hash_hex.clone();
+                if should_check_image {
+                    match app_handle.clipboard().read_image() {
+                        Ok(image) => {
+                            let width = image.width();
+                            let height = image.height();
 
-                            let filename = format!("{}.png", hash_hex);
-                            let image_dir = get_image_dir();
-                            let image_path = image_dir.join(&filename);
-
-                            // Save RGBA bytes as PNG
-                            if let Some(img) =
-                                image::RgbaImage::from_raw(width, height, rgba)
+                            // --- Safety guard: reject oversized images ---
+                            if width > MAX_IMAGE_DIMENSION
+                                || height > MAX_IMAGE_DIMENSION
+                                || (width as u64).saturating_mul(height as u64) > MAX_IMAGE_PIXELS
                             {
-                                if img.save(&image_path).is_ok() {
-                                    let path_str = image_path.to_string_lossy().to_string();
-                                    store(&db_clone, "", Some(&path_str));
-                                    let _ = app_handle.emit("clipboard-updated", ());
+                                continue;
+                            }
+
+                            // Borrow the RGBA slice — no heap copy.
+                            let rgba = image.rgba();
+
+                            let hash = blake3::hash(rgba);
+                            let hash_hex = hash.to_hex()[..16].to_string();
+
+                            if !rgba.is_empty() && hash_hex != last_image_hash {
+                                last_image_hash = hash_hex.clone();
+
+                                let filename = format!("{}.png", hash_hex);
+                                let image_dir = get_image_dir();
+                                let image_path = image_dir.join(&filename);
+
+                                // Encode directly from the borrowed slice —
+                                // avoids the intermediate RgbaImage
+                                // allocation and the .to_vec() copy.
+                                if let Ok(file) = std::fs::File::create(&image_path) {
+                                    let encoder = PngEncoder::new(file);
+                                    if encoder
+                                        .write_image(rgba, width, height, ExtendedColorType::Rgba8)
+                                        .is_ok()
+                                    {
+                                        let path_str =
+                                            image_path.to_string_lossy().to_string();
+                                        store(&db_clone, "", Some(&path_str));
+                                        let _ = app_handle.emit("clipboard-updated", ());
+                                    }
                                 }
                             }
                         }
-                    }
-                    Err(_) => {
-                        // No image in clipboard — this is normal, not an error worth logging
+                        Err(_) => {
+                            // No image in clipboard — normal, not an error
+                        }
                     }
                 }
             }

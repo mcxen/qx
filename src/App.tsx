@@ -1,8 +1,8 @@
 import { useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow, primaryMonitor, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
-import { useStore, type AppEntry, type ScreenshotEntry, type SearchScope } from "./store";
+import { useStore, type AppEntry, type ScreenshotEntry, type MonitorInfo, type SearchScope } from "./store";
 import Launcher from "./Launcher";
 import ClipboardPanel from "./modules/clipboard/ClipboardPanel";
 import ScreenshotPanel, { REGION_CAPTURE_EVENT } from "./modules/screenshot/ScreenshotPanel";
@@ -192,26 +192,50 @@ function App() {
       // Small delay to ensure window is fully hidden before capturing
       await new Promise((r) => setTimeout(r, 150));
 
-      const background = await invoke<ScreenshotEntry>("take_screenshot");
-      const monitor = await primaryMonitor();
+      // Capture the monitor under the window's current position (cross-platform)
+      const windowCenterX = outerPos.x + innerSize.width / 2;
+      const windowCenterY = outerPos.y + innerSize.height / 2;
+      const background = await invoke<ScreenshotEntry>("capture_at_point", {
+        screenX: Math.round(windowCenterX),
+        screenY: Math.round(windowCenterY),
+      });
 
-      // Expand window to cover the entire monitor
+      // Find the monitor at that point for overlay positioning
+      const monitors = await invoke<MonitorInfo[]>("get_monitors");
+      const monitor = monitors.find((m) => {
+        const mx = m.x;
+        const my = m.y;
+        const mw = m.width;
+        const mh = m.height;
+        return (
+          windowCenterX >= mx &&
+          windowCenterX < mx + mw &&
+          windowCenterY >= my &&
+          windowCenterY < my + mh
+        );
+      }) ?? monitors[0];
+
+      // Expand window to cover the entire monitor.
+      // Use the TARGET monitor's scale_factor (not the window's current one),
+      // since the window may be moving across monitors with different DPI.
       if (monitor) {
-        const monSize = monitor.size;
-        const monPos = monitor.position;
-        const logicalW = monSize.width / scaleFactor;
-        const logicalH = monSize.height / scaleFactor;
-        const logicalX = monPos.x / scaleFactor;
-        const logicalY = monPos.y / scaleFactor;
+        const monScale = monitor.scale_factor || scaleFactor;
+        const logicalW = monitor.width / monScale;
+        const logicalH = monitor.height / monScale;
+        const logicalX = monitor.x / monScale;
+        const logicalY = monitor.y / monScale;
         await win.setSize(new LogicalSize(logicalW, logicalH)).catch(() => {});
         await win.setPosition(new LogicalPosition(logicalX, logicalY)).catch(() => {});
       }
 
+      // store the TARGET monitor's scale so completeRegionCapture can map
+      // CSS px -> screenshot physical px correctly when monitors are mixed-DPI.
+      const targetScale = monitor ? (monitor.scale_factor || scaleFactor) : scaleFactor;
       setScreenshotCapture({
         status: "selecting",
         backgroundPath: background.path,
         error: null,
-        scaleFactor,
+        scaleFactor: targetScale,
       });
       await win.show();
       await win.setFocus();
@@ -266,6 +290,7 @@ function App() {
           y,
           width: physicalWidth,
           height: physicalHeight,
+          sourcePath: useStore.getState().screenshotCapture.backgroundPath,
         });
 
         setScreenshotCapture({
@@ -413,6 +438,12 @@ function App() {
           entries.push(...syntheticEntries.filter((item) => item.path.includes("clipboard")));
         }
       }
+
+      // Record search query for history (skip empty/whitespace-only)
+      const trimmed = q.trim();
+      if (trimmed.length > 0) {
+        invoke("record_search", { query: trimmed }).catch(() => {});
+      }
     },
     [setResults, findCommands],
   );
@@ -490,6 +521,8 @@ function App() {
     }
     // Open external application or file
     await invoke("open_app", { path: item.path });
+    // Record launch history (fire-and-forget)
+    invoke("record_launch", { path: item.path, name: item.name }).catch(() => {});
     if (isTauriRuntime()) await getCurrentWindow().hide();
   };
 

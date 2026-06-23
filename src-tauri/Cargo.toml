@@ -47,3 +47,4 @@ enigo = { version = "0.2", features = ["wayland"] }
 ed25519-dalek = { version = "2", features = ["alloc"] }
 hex = "0.4"
 sysinfo = "0.30"
+dirs = "5"

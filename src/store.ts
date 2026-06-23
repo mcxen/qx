@@ -21,6 +21,31 @@ export interface ScreenshotEntry {
   timestamp: string;
 }
 
+/** Mirror of Rust screenshot::MonitorInfo */
+export interface MonitorInfo {
+  id: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  scale_factor: number;
+}
+
+/** History entry (launches) */
+export interface HistoryEntry {
+  id: number;
+  name: string;
+  path: string;
+  timestamp: string;
+}
+
+/** Search history entry */
+export interface SearchHistoryEntry {
+  id: number;
+  query: string;
+  timestamp: string;
+}
+
 export type ScreenshotCaptureStatus = "idle" | "selecting" | "saving";
 
 export interface ScreenshotCaptureState {
