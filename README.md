@@ -30,7 +30,7 @@ brew install --cask qx
 ### Manual
 
 1. Download `qx_<version>_aarch64-apple-darwin.app.zip` from [Releases](https://github.com/mcxen/qx/releases)
-2. Unzip and move `qx.app` to `/Applications`
+2. Unzip and move `Qx.app` to `/Applications`
 3. Right-click → Open (first launch needs Gatekeeper override)
 4. Qx sits in your menu bar — click the icon or press the global hotkey to open
 
@@ -136,7 +136,7 @@ brew install --cask qx
 ### 手动安装
 
 1. 从 [Releases](https://github.com/mcxen/qx/releases) 下载 `qx_<version>_aarch64-apple-darwin.app.zip`
-2. 解压后将 `qx.app` 移至 `/Applications`
+2. 解压后将 `Qx.app` 移至 `/Applications`
 3. 右键 → 打开（首次启动需绕过 Gatekeeper）
 4. Qx 常驻菜单栏 — 点击图标或使用全局快捷键打开
 

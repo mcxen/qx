@@ -75,7 +75,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           ditto -c -k --sequesterRsrc --keepParent \
-            src-tauri/target/${{ matrix.target }}/release/bundle/macos/qx.app \
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/Qx.app \
             qx_${RELEASE_TAG}_${{ matrix.target }}.app.zip
 
       - name: Upload desktop artifact
