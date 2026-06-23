@@ -1,6 +1,7 @@
 import { useStore } from "./store";
 import type { AppEntry } from "./store";
 import { useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 function iconKind(item: AppEntry): string {
   if (item.kind === "file") return "file";
@@ -49,7 +50,7 @@ function AppIcon({ item }: { item: AppEntry }) {
     <span className={`qx-list-icon qx-app-icon kind-${kind}`} aria-hidden="true">
       {canUseImage ? (
         <img
-          src={item.icon.startsWith("/") ? `file://${item.icon}` : item.icon}
+          src={item.icon.startsWith("/") ? convertFileSrc(item.icon) : item.icon}
           alt=""
           onError={() => setFailed(true)}
         />

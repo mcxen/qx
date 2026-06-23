@@ -80,6 +80,7 @@ interface AppStore {
   setTab: (t: Tab) => void;
   setClipboardHistory: (h: ClipboardEntry[]) => void;
   setScreenshotCapture: (state: Partial<ScreenshotCaptureState>) => void;
+  updateResultIcons: (iconForPath: (path: string) => string | undefined) => void;
 }
 
 const initialScreenshotCapture: ScreenshotCaptureState = {
@@ -107,5 +108,12 @@ export const useStore = create<AppStore>((set) => ({
   setScreenshotCapture: (state) =>
     set((current) => ({
       screenshotCapture: { ...current.screenshotCapture, ...state },
+    })),
+  updateResultIcons: (iconForPath) =>
+    set((state) => ({
+      results: state.results.map((r) => {
+        const icon = iconForPath(r.path);
+        return icon !== undefined ? { ...r, icon } : r;
+      }),
     })),
 }));

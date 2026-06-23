@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 
 export type Point = { x: number; y: number };
 
@@ -13,14 +14,19 @@ function ScreenshotRegionOverlay({
 }) {
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [dragEnd, setDragEnd] = useState<Point | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel]);
+    containerRef.current?.focus();
+  }, []);
+
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      onCancel();
+    }
+  };
 
   const onMouseDown = (event: React.MouseEvent) => {
     const point = { x: event.clientX, y: event.clientY };
@@ -55,6 +61,9 @@ function ScreenshotRegionOverlay({
 
   return (
     <div
+      ref={containerRef}
+      tabIndex={0}
+      onKeyDown={onKeyDown}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
@@ -63,7 +72,8 @@ function ScreenshotRegionOverlay({
         inset: 0,
         cursor: "crosshair",
         zIndex: 1000,
-        backgroundImage: `url(file://${backgroundPath})`,
+        outline: "none",
+        backgroundImage: `url(${convertFileSrc(backgroundPath)})`,
         backgroundSize: "cover",
         backgroundPosition: "center",
       }}

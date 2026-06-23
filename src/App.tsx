@@ -46,6 +46,7 @@ function App() {
     setTab,
     screenshotCapture,
     setScreenshotCapture,
+    updateResultIcons,
   } = useStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const searchScopeRef = useRef<SearchScope>("all");
@@ -375,13 +376,18 @@ function App() {
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
-    const unlisten = listen("apps:icons-ready", () => {
-      void doSearch(useStore.getState().query);
+    const unlisten = listen("apps:icons-ready", async () => {
+      const { query } = useStore.getState();
+      try {
+        const apps = await invoke<AppEntry[]>("search_apps", { query });
+        const iconMap = new Map(apps.map((a) => [a.path, a.icon]));
+        updateResultIcons((path) => iconMap.get(path));
+      } catch {}
     });
     return () => {
       unlisten.then((f: () => void) => f());
     };
-  }, [doSearch]);
+  }, [updateResultIcons]);
 
   const openItem = async (item: AppEntry) => {
     // Handle plugin command execution

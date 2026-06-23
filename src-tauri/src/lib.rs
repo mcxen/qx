@@ -19,13 +19,62 @@ fn open_app(path: String) {
     let _ = std::process::Command::new("open").arg(path).spawn();
 }
 
+#[tauri::command]
+fn set_window_size(app: tauri::AppHandle, width: u32, height: u32) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.set_size(LogicalSize::new(width, height));
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn cursor_monitor_position() -> Option<(f64, f64, f64, f64)> {
+    use core_graphics::event::CGEvent;
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+    let source = CGEventSource::new(CGEventSourceStateID::Private).ok()?;
+    let event = CGEvent::new(source).ok()?;
+    let point = event.location();
+    let x = point.x as i32;
+    let y = point.y as i32;
+    if let Ok(mon) = xcap::Monitor::from_point(x, y) {
+        let mx = mon.x().ok()? as f64;
+        let my = mon.y().ok()? as f64;
+        let mw = mon.width().ok()? as f64;
+        let mh = mon.height().ok()? as f64;
+        Some((mx, my, mw, mh))
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn cursor_monitor_position() -> Option<(f64, f64, f64, f64)> {
+    None
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn show_on_cursor_monitor(win: &tauri::WebviewWindow) {
+    if let Some((mx, my, mw, mh)) = cursor_monitor_position() {
+        let cw = 680.0;
+        let ch = 500.0;
+        let cx = mx + (mw - cw) / 2.0;
+        let cy = my + (mh - ch) / 2.0;
+        let _ = win.set_position(tauri::PhysicalPosition::new(cx as i32, cy as i32));
+    }
+    let _ = win.show();
+    let _ = win.set_focus();
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn show_on_cursor_monitor(win: &tauri::WebviewWindow) {
+    let _ = win.show();
+    let _ = win.set_focus();
+}
+
 fn toggle_window(win: &tauri::WebviewWindow) {
     if win.is_visible().unwrap_or(false) {
         let _ = win.hide();
     } else {
-        let _ = win.show();
-        let _ = win.center();
-        let _ = win.set_focus();
+        show_on_cursor_monitor(win);
     }
 }
 
@@ -43,26 +92,9 @@ pub fn run() {
             let handle = app.handle().clone();
             let win = app.get_webview_window("main").unwrap();
 
-            // Enable resizing and enforce a minimum size + 17:10 aspect ratio.
+            // Enable resizing with minimum size.
             let _ = win.set_resizable(true);
             let _ = win.set_min_size(Some(PhysicalSize::new(480, 360)));
-
-            // Maintain 17:10 aspect ratio during interactive resize.
-            // We compute the ideal height from the new width and re-set the size
-            // when it drifts beyond a 1px tolerance (which also breaks the
-            // recursive Resized event loop).
-            let win_for_resize = win.clone();
-            win.on_window_event(move |event| {
-                if let WindowEvent::Resized(size) = event {
-                    let target_w = size.width;
-                    let ideal_h = ((target_w as f64) * 10.0 / 17.0).round() as u32;
-                    let ideal_h = ideal_h.max(360);
-                    if ideal_h.abs_diff(size.height) > 1 {
-                        let _ = win_for_resize
-                            .set_size(LogicalSize::new(target_w as f64, ideal_h as f64));
-                    }
-                }
-            });
 
             settings::register_shortcuts(&handle, &settings::read_settings())?;
 
@@ -115,6 +147,7 @@ pub fn run() {
             apps::search_apps,
             apps::search_files,
             open_app,
+            set_window_size,
             screenshot::take_screenshot,
             screenshot::take_screenshot_area,
             screenshot::get_recent_screenshots,

@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "./store";
 import { useTheme } from "../../ThemeProvider";
 import { Row, SegmentedControl, Toggle } from "../../components/ui";
@@ -8,6 +10,14 @@ export default function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const t = useT();
   const a = settings.appearance;
+
+  useEffect(() => {
+    void invoke("set_window_size", {
+      width: a.window_width,
+      height: a.window_height,
+    }).catch(() => {});
+  }, [a.window_width, a.window_height]);
+
 
   return (
     <div className="qx-settings-page">

@@ -4240,16 +4240,19 @@ dependencies = [
 
 [[package]]
 name = "qx"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "blake3",
  "chrono",
+ "core-graphics 0.21.0",
  "ed25519-dalek",
  "enigo",
  "feed-rs",
  "gifski",
  "hex",
  "image 0.25.10",
+ "objc2 0.6.4",
+ "objc2-app-kit",
  "quick-xml 0.36.2",
  "rdev",
  "reqwest 0.12.28",

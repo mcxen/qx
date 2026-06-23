@@ -1,9 +1,7 @@
-import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { useStore, type ScreenshotEntry } from "../../store";
 import QxShell from "../../components/QxShell";
-
-type Mode = "list" | "preview";
 
 export const REGION_CAPTURE_EVENT = "qx:screenshot-region-capture";
 
@@ -12,51 +10,110 @@ export function enterRegionCapture() {
 }
 
 export default function ScreenshotPanel() {
-  const [mode, setMode] = useState<Mode>("list");
+  const setTab = useStore((state) => state.setTab);
+  const screenshotCapture = useStore((state) => state.screenshotCapture);
   const [recent, setRecent] = useState<ScreenshotEntry[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
+  const [selected, setSelected] = useState(0);
+  const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const screenshotCapture = useStore((state) => state.screenshotCapture);
 
-  useEffect(() => {
-    loadRecent();
-  }, []);
-
-  useEffect(() => {
-    if (screenshotCapture.previewPath) {
-      setPreview(`file://${screenshotCapture.previewPath}`);
-      setMode("preview");
-      void loadRecent();
-    }
-    if (screenshotCapture.error) {
-      setError(screenshotCapture.error);
-    }
-  }, [screenshotCapture.error, screenshotCapture.previewPath]);
-
-  const loadRecent = async () => {
+  const loadRecent = useCallback(async () => {
     try {
       const res = await invoke<ScreenshotEntry[]>("get_recent_screenshots", {
         limit: 20,
       });
       setRecent(res);
     } catch {}
-  };
+  }, []);
 
-  const captureFull = async () => {
+  useEffect(() => {
+    void loadRecent();
+  }, [loadRecent]);
+
+  useEffect(() => {
+    if (screenshotCapture.previewPath) {
+      setPreview(convertFileSrc(screenshotCapture.previewPath));
+      void loadRecent();
+    }
+    if (screenshotCapture.error) {
+      setError(screenshotCapture.error);
+    }
+  }, [screenshotCapture.error, screenshotCapture.previewPath, loadRecent]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return recent;
+    return recent.filter((s) =>
+      (s.path.split("/").pop() ?? "").toLowerCase().includes(q),
+    );
+  }, [recent, query]);
+
+  useEffect(() => {
+    setSelected((cur) => Math.min(cur, Math.max(filtered.length - 1, 0)));
+  }, [filtered.length]);
+
+  const selectedItem = filtered[selected];
+
+  const captureFull = useCallback(async () => {
     setError(null);
     try {
       const result = await invoke<ScreenshotEntry>("take_screenshot");
-      setPreview(`file://${result.path}`);
-      loadRecent();
+      setPreview(convertFileSrc(result.path));
+      void loadRecent();
     } catch (e) {
       setError(String(e));
     }
-  };
+  }, [loadRecent]);
 
-  const startAreaSelect = () => {
+  const startAreaSelect = useCallback(() => {
     setError(null);
     enterRegionCapture();
+  }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      if (preview) {
+        setPreview(null);
+      } else if (query) {
+        setQuery("");
+      } else {
+        setTab("launcher");
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSelected((s) => Math.min(s + 1, filtered.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelected((s) => Math.max(s - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (selectedItem) {
+        setPreview(convertFileSrc(selectedItem.path));
+      }
+    }
   };
+
+  const searchSlot = (
+    <div className="qx-clipboard-search-wrap">
+      <span className="qx-search-icon" aria-hidden="true" />
+      <input
+        type="text"
+        value={query}
+        autoFocus
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setSelected(0);
+        }}
+        placeholder="Filter screenshots..."
+        className="qx-clipboard-search"
+      />
+    </div>
+  );
 
   const context = (
     <div className="qx-action-panel">
@@ -73,25 +130,20 @@ export default function ScreenshotPanel() {
   return (
     <QxShell
       title="Screenshot"
-      search={<div className="qx-rss-detail-title">Screenshot</div>}
-      trailing={
-        <>
-          <button className="qx-command-button primary" onClick={captureFull}>
-          Capture Full Screen
-          </button>
-          <button className="qx-command-button" onClick={startAreaSelect}>
-            Select Area
-          </button>
-        </>
-      }
+      search={searchSlot}
+      onBack={() => setTab("launcher")}
+      onKeyDown={handleKeyDown}
       context={context}
       island={{
         label: screenshotCapture.status === "idle" ? "Screenshot" : "Capturing",
-        detail: screenshotCapture.status === "idle" ? `${recent.length} recent captures` : screenshotCapture.status,
+        detail:
+          screenshotCapture.status === "idle"
+            ? `${recent.length} recent captures`
+            : screenshotCapture.status,
         tone: error ? "danger" : "neutral",
       }}
-      primaryAction={{ label: "Capture", onClick: captureFull }}
-      secondaryAction={{ label: "Area", onClick: startAreaSelect }}
+      primaryAction={{ label: "Capture Full", onClick: captureFull }}
+      secondaryAction={{ label: "Select Area", onClick: startAreaSelect }}
     >
       {error && (
         <div
@@ -112,29 +164,37 @@ export default function ScreenshotPanel() {
         <div className="qx-plugin-list">
           <div className="qx-section-header">
             <span style={{ flex: 1 }}>Recent</span>
-            <span>{recent.length}</span>
+            <span>{filtered.length}</span>
           </div>
-          {recent.length === 0 ? (
-            <div className="qx-empty-state">No screenshots yet</div>
+          {filtered.length === 0 ? (
+            <div className="qx-empty-state">
+              {recent.length === 0
+                ? "No screenshots yet"
+                : "No matching screenshots"}
+            </div>
           ) : (
-            recent.map((s) => (
-              <button
-                key={s.path}
-                onClick={() => {
-                  setPreview(`file://${s.path}`);
-                  setMode("preview");
-                }}
-                className={`qx-list-row compact${preview === `file://${s.path}` ? " is-active" : ""}`}
-              >
-                <span className="qx-list-icon" aria-hidden="true">
-                  <span className="qx-symbol-icon image" />
-                </span>
-                <span className="qx-list-copy">
-                  <span className="qx-list-title">{s.path.split("/").pop()}</span>
-                  <span className="qx-list-subtitle">{s.timestamp}</span>
-                </span>
-              </button>
-            ))
+            filtered.map((s, i) => {
+              const active = i === selected;
+              const fileUrl = convertFileSrc(s.path);
+              return (
+                <button
+                  key={s.path}
+                  onClick={() => {
+                    setSelected(i);
+                    setPreview(fileUrl);
+                  }}
+                  className={`qx-list-row compact${active ? " is-active" : ""}`}
+                >
+                  <span className="qx-list-icon" aria-hidden="true">
+                    <span className="qx-symbol-icon image" />
+                  </span>
+                  <span className="qx-list-copy">
+                    <span className="qx-list-title">{s.path.split("/").pop()}</span>
+                    <span className="qx-list-subtitle">{s.timestamp}</span>
+                  </span>
+                </button>
+              );
+            })
           )}
         </div>
 
@@ -142,7 +202,9 @@ export default function ScreenshotPanel() {
           <div className="qx-detail-header">
             <div>
               <div className="qx-detail-title">Preview</div>
-              <div className="qx-detail-meta">{mode === "preview" ? "Captured image" : "Select a screenshot"}</div>
+              <div className="qx-detail-meta">
+                {preview ? "Captured image" : "Select a screenshot"}
+              </div>
             </div>
           </div>
           <div className="qx-module-stage" style={{ flex: 1, minHeight: 0 }}>
@@ -151,11 +213,18 @@ export default function ScreenshotPanel() {
                 <img
                   src={preview}
                   alt="preview"
-                  style={{ width: "100%", objectFit: "contain", display: "block", maxHeight: 320 }}
+                  style={{
+                    width: "100%",
+                    objectFit: "contain",
+                    display: "block",
+                    maxHeight: 320,
+                  }}
                 />
               </div>
             ) : (
-              <div className="qx-empty-state">Capture or select a screenshot to preview it</div>
+              <div className="qx-empty-state">
+                Capture or select a screenshot to preview it
+              </div>
             )}
           </div>
         </div>
