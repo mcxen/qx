@@ -120,9 +120,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
             onClick={() => setActiveTab(item.id)}
             className={`qx-settings-nav-item${active ? " is-active" : ""}`}
           >
-            <span style={{ width: 22, textAlign: "center", fontSize: 10, fontWeight: 700 }}>
-              {item.code}
-            </span>
+            <span className="qx-settings-nav-code">{item.code}</span>
             <span>{t(`nav.${item.id}`, item.label)}</span>
           </button>
         );
