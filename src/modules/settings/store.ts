@@ -73,7 +73,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   appearance: {
     theme: "light",
-    blur_opacity: 0.85,
+    blur_opacity: 0.20,
     window_width: 680,
     window_height: 500,
     border_radius: 12,

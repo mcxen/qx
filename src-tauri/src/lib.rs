@@ -93,10 +93,11 @@ fn setup_frosted_glass(app: &tauri::App) {
         eprintln!("frosted glass: main window not found");
         return;
     };
-    let _ = window_vibrancy::apply_vibrancy(
+    use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
+    let _ = apply_vibrancy(
         &win,
-        window_vibrancy::NSVisualEffectMaterial::HudWindow,
-        Some(window_vibrancy::NSVisualEffectState::Active),
+        NSVisualEffectMaterial::HudWindow,
+        Some(NSVisualEffectState::Active),
         Some(12.0),
     );
 }

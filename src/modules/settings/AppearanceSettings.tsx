@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "./store";
 import { useTheme } from "../../ThemeProvider";
@@ -10,14 +10,18 @@ export default function AppearanceSettings() {
   const { theme, setTheme } = useTheme();
   const t = useT();
   const a = settings.appearance;
+  const mounted = useRef(false);
 
   useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
     void invoke("set_window_size", {
       width: a.window_width,
       height: a.window_height,
     }).catch(() => {});
   }, [a.window_width, a.window_height]);
-
 
   return (
     <div className="qx-settings-page">
@@ -41,8 +45,8 @@ export default function AppearanceSettings() {
       >
         <input
           type="range"
-          min={0.7}
-          max={0.95}
+          min={0.05}
+          max={0.40}
           step={0.01}
           value={a.blur_opacity}
           onChange={(e) =>

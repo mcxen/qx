@@ -61,7 +61,7 @@ fn default_theme() -> String {
 }
 
 fn default_blur_opacity() -> f64 {
-    0.85
+    0.20
 }
 
 fn default_window_width() -> u32 {
