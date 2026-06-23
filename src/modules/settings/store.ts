@@ -30,6 +30,9 @@ export interface ShortcutBinding {
 export interface AdvancedSettings {
   log_level: string;
   dev_mode: boolean;
+  ocr_enabled: boolean;
+  ocr_engine: string;
+  ocr_model_size: string;
 }
 
 export interface RssSettings {
@@ -62,6 +65,7 @@ export type SettingsTab =
   | "appearance"
   | "rss"
   | "advanced"
+  | "ocr"
   | "about";
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -96,6 +100,9 @@ export const DEFAULT_SETTINGS: Settings = {
   advanced: {
     log_level: "info",
     dev_mode: false,
+    ocr_enabled: false,
+    ocr_engine: "apple-vision",
+    ocr_model_size: "tiny",
   },
   rss: {
     offline_cache_enabled: true,

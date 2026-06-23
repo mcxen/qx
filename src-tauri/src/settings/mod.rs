@@ -115,6 +115,24 @@ pub struct ShortcutBinding {
 pub struct AdvancedSettings {
     pub log_level: String,
     pub dev_mode: bool,
+    #[serde(default = "default_ocr_enabled", rename = "ocr_enabled")]
+    pub ocr_enabled: bool,
+    #[serde(default = "default_ocr_engine", rename = "ocr_engine")]
+    pub ocr_engine: String,
+    #[serde(default = "default_ocr_model_size", rename = "ocr_model_size")]
+    pub ocr_model_size: String,
+}
+
+fn default_ocr_enabled() -> bool {
+    false
+}
+
+fn default_ocr_engine() -> String {
+    "apple-vision".to_string()
+}
+
+fn default_ocr_model_size() -> String {
+    "tiny".to_string()
 }
 
 impl Default for AdvancedSettings {
@@ -122,6 +140,9 @@ impl Default for AdvancedSettings {
         Self {
             log_level: "info".to_string(),
             dev_mode: false,
+            ocr_enabled: false,
+            ocr_engine: "apple-vision".to_string(),
+            ocr_model_size: "tiny".to_string(),
         }
     }
 }

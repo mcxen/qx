@@ -2,6 +2,7 @@ mod apps;
 mod clipboard;
 mod macro_recorder;
 mod marketplace;
+mod ocr;
 mod rss;
 mod screencap;
 mod screenshot;
@@ -246,6 +247,7 @@ pub fn run() {
             marketplace::plugin_preferences_set,
             marketplace::sign_plugin,
             marketplace::scaffold_plugin,
+            ocr::download_ocr_model,
             macro_recorder::macro_start_recording,
             macro_recorder::macro_stop_recording,
             macro_recorder::macro_save,
