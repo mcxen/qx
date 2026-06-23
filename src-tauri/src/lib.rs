@@ -150,6 +150,9 @@ pub fn run() {
             // Initialize settings file
             settings::init();
 
+            // Initialize app cache from DB (instant), then background re-scan
+            apps::ensure_cache(Some(&handle));
+
             // Pre-convert app icons in background (keeps first search fast)
             apps::preload_icons(&handle);
 

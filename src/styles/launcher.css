@@ -213,8 +213,8 @@
   }
 
   .qx-shell-bottombar {
-    grid-template-columns: auto minmax(180px, 1fr) auto;
-    gap: 8px;
+    grid-template-columns: auto 1fr auto;
+    gap: 0;
     padding: 5px 10px;
   }
 
@@ -225,8 +225,8 @@
 
   .qx-bottom-island,
   .qx-home-system-island {
-    width: 100%;
-    min-width: 0;
+    width: 340px;
+    min-width: 340px;
     min-height: 32px;
   }
 
@@ -253,7 +253,8 @@
 
 @media (max-width: 680px) {
   .qx-shell-bottombar {
-    grid-template-columns: minmax(96px, 1fr) auto;
+    grid-template-columns: auto 1fr;
+    gap: 8px;
   }
 
   .qx-bottom-island,

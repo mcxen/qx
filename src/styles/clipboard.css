@@ -504,3 +504,36 @@
     display: none;
   }
 }
+
+/* ====== Image display within clipboard ====== */
+.qx-clipboard-thumb {
+  display: inline-block;
+  max-height: 28px;
+  max-width: 100%;
+  border-radius: 4px;
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.qx-clipboard-image-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px;
+}
+
+.qx-clipboard-image-preview {
+  max-width: 100%;
+  max-height: 280px;
+  border-radius: 8px;
+  object-fit: contain;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+}
+
+.qx-symbol-icon.image::before {
+  content: "🖼";
+  font-size: 14px;
+}

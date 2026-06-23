@@ -1,10 +1,11 @@
 import type { ClipboardEntry } from "../../store";
 
-export function classify(item: ClipboardEntry): "pinned" | "links" | "code" | "long" | "frequent" | "text" {
+export function classify(item: ClipboardEntry): "pinned" | "links" | "code" | "long" | "frequent" | "image" | "text" {
+  if (item.image_path) return "image";
   const text = item.text.trim();
   if (/^https?:\/\/\S+$/i.test(text)) return "links";
   if (
-    /[{}[\];]/.test(text) ||
+    /[{}[\]();]/.test(text) ||
     /\b(function|const|let|class|import|SELECT|FROM|fn|pub)\b/.test(text)
   ) {
     return "code";
@@ -46,6 +47,7 @@ export function formatCopied(timestamp: string): string {
 }
 
 export function formatMeta(item: ClipboardEntry): string {
+  if (item.image_path) return "Image";
   const lines = item.text.split(/\r?\n/).length;
   const count = item.text.length;
   const parts = [`${count} chars`];
@@ -62,6 +64,7 @@ export function contentType(item: ClipboardEntry): string {
   const kind = classify(item);
   if (kind === "links") return "Link";
   if (kind === "code") return "Code";
+  if (kind === "image") return "Image";
   return "Text";
 }
 

@@ -33,6 +33,19 @@ export default function RssSettings() {
           ]}
         />
       </Row>
+      <Row
+        title={t("rss.bottomIslandMode", "Bottom Island Mode")}
+        description={t("rss.bottomIslandMode.desc", "Choose what to display in the bottom status island while reading articles.")}
+      >
+        <SegmentedControl
+          value={r.bottom_island_mode}
+          onChange={(v) => patch("rss", { ...r, bottom_island_mode: v as "scroll" | "index" })}
+          options={[
+            { value: "scroll", label: t("rss.bottomIslandMode.scroll", "Reading Progress") },
+            { value: "index", label: t("rss.bottomIslandMode.index", "Article Index") },
+          ]}
+        />
+      </Row>
     </div>
   );
 }

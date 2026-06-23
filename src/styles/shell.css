@@ -106,9 +106,9 @@
 
 .qx-shell-bottombar {
   display: grid;
-  grid-template-columns: auto minmax(220px, 360px) minmax(160px, 1fr);
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 12px;
+  gap: 0;
   min-height: var(--qx-bottom-bar-h);
   padding: 5px 14px;
   border-top: 1px solid var(--qx-border-1);
@@ -147,7 +147,8 @@
   align-items: center;
   gap: 6px;
   justify-self: center;
-  width: clamp(180px, 26vw, 360px);
+  width: 340px;
+  margin: 0 auto;
   height: 32px;
   min-height: 32px;
   max-height: 36px;

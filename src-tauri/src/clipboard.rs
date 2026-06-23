@@ -14,6 +14,7 @@ pub struct ClipboardEntry {
     pub timestamp: String,
     pub pinned: bool,
     pub copy_count: i64,
+    pub image_path: Option<String>,
 }
 
 pub struct ClipboardDb(pub Arc<Mutex<Option<Connection>>>);
@@ -25,6 +26,13 @@ fn get_db_path() -> PathBuf {
     let dir = PathBuf::from(format!("{}/Library/Application Support/qx", home));
     std::fs::create_dir_all(&dir).ok();
     dir.join("clipboard.db")
+}
+
+fn get_image_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let dir = PathBuf::from(format!("{}/Library/Application Support/qx/clipboard_images", home));
+    std::fs::create_dir_all(&dir).ok();
+    dir
 }
 
 fn init_db() -> rusqlite::Result<Connection> {
@@ -39,6 +47,7 @@ fn init_db() -> rusqlite::Result<Connection> {
     )?;
     ensure_column(&conn, "pinned", "INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(&conn, "copy_count", "INTEGER NOT NULL DEFAULT 0")?;
+    ensure_column(&conn, "image_path", "TEXT")?;
 
     // Cleanup old unpinned entries while preserving user-curated items.
     conn.execute(
@@ -94,12 +103,13 @@ pub fn start_listener(app: &AppHandle) {
         .name("qx-clipboard".to_string())
         .spawn(move || {
             let mut last_text = String::new();
+            let mut last_image_hash = String::new();
 
             // Initialize with current clipboard via Tauri plugin API
             if let Ok(text) = app_handle.clipboard().read_text() {
                 if !text.is_empty() {
                     last_text = text.clone();
-                    store(&db_clone, &text);
+                    store(&db_clone, &text, None);
                 }
             }
 
@@ -113,34 +123,75 @@ pub fn start_listener(app: &AppHandle) {
                     break;
                 }
 
+                // Check for new text
                 match app_handle.clipboard().read_text() {
                     Ok(text) if !text.is_empty() && text != last_text => {
                         last_text = text.clone();
-                        store(&db_clone, &text);
+                        store(&db_clone, &text, None);
                         let _ = app_handle.emit("clipboard-updated", ());
                     }
                     Err(e) => {
-                        eprintln!("clipboard read error: {e}");
+                        eprintln!("clipboard read text error: {e}");
                     }
                     _ => {}
+                }
+
+                // Check for new image
+                match app_handle.clipboard().read_image() {
+                    Ok(image) => {
+                        let rgba = image.rgba().to_vec();
+                        let width = image.width();
+                        let height = image.height();
+                        let hash = blake3::hash(&rgba);
+                        let hash_hex = hash.to_hex()[..16].to_string();
+
+                        if !rgba.is_empty() && hash_hex != last_image_hash {
+                            last_image_hash = hash_hex.clone();
+
+                            let filename = format!("{}.png", hash_hex);
+                            let image_dir = get_image_dir();
+                            let image_path = image_dir.join(&filename);
+
+                            // Save RGBA bytes as PNG
+                            if let Some(img) =
+                                image::RgbaImage::from_raw(width, height, rgba)
+                            {
+                                if img.save(&image_path).is_ok() {
+                                    let path_str = image_path.to_string_lossy().to_string();
+                                    store(&db_clone, "", Some(&path_str));
+                                    let _ = app_handle.emit("clipboard-updated", ());
+                                }
+                            }
+                        }
+                    }
+                    Err(_) => {
+                        // No image in clipboard — this is normal, not an error worth logging
+                    }
                 }
             }
         })
         .ok();
 }
 
-fn store(db: &Arc<Mutex<Option<Connection>>>, text: &str) {
+fn store(db: &Arc<Mutex<Option<Connection>>>, text: &str, image_path: Option<&str>) {
     if let Ok(guard) = db.lock() {
         if let Some(ref conn) = *guard {
-            let id = compute_id(text);
+            let id = if !text.is_empty() {
+                compute_id(text)
+            } else if let Some(path) = image_path {
+                compute_id(path)
+            } else {
+                return; // nothing to store
+            };
             let ts = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
             let _ = conn.execute(
-                "INSERT INTO clipboard_history (id, text, timestamp)
-                 VALUES (?1, ?2, ?3)
+                "INSERT INTO clipboard_history (id, text, timestamp, image_path)
+                 VALUES (?1, ?2, ?3, ?4)
                  ON CONFLICT(id) DO UPDATE SET
                     text = excluded.text,
-                    timestamp = excluded.timestamp",
-                params![id, text, ts],
+                    timestamp = excluded.timestamp,
+                    image_path = COALESCE(excluded.image_path, clipboard_history.image_path)",
+                params![id, text, ts, image_path],
             );
         }
     }
@@ -157,7 +208,7 @@ pub fn get_clipboard_history(
         if let Some(ref conn) = *guard {
             let mut stmt = conn
                 .prepare(
-                    "SELECT id, text, timestamp, pinned, copy_count
+                    "SELECT id, text, timestamp, pinned, copy_count, image_path
                      FROM clipboard_history
                      ORDER BY pinned DESC, timestamp DESC
                      LIMIT ?1",
@@ -171,6 +222,7 @@ pub fn get_clipboard_history(
                         timestamp: row.get(2)?,
                         pinned: row.get::<_, i64>(3)? != 0,
                         copy_count: row.get(4)?,
+                        image_path: row.get(5)?,
                     })
                 }) {
                     for row in rows.flatten() {

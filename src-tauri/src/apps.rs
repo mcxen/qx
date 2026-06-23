@@ -1,8 +1,10 @@
+use rusqlite::{Connection, params};
 use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter};
 
 #[derive(Debug, Serialize, Clone)]
@@ -14,6 +16,130 @@ pub struct AppEntry {
 }
 
 static APP_CACHE: Mutex<Vec<AppEntry>> = Mutex::new(Vec::new());
+static DB_PATH: OnceLock<PathBuf> = OnceLock::new();
+static CACHE_INITIALIZED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn get_db_path() -> &'static PathBuf {
+    DB_PATH.get_or_init(|| {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let dir = PathBuf::from(format!("{}/Library/Application Support/qx", home));
+        let _ = fs::create_dir_all(&dir);
+        dir.join("apps.db")
+    })
+}
+
+fn init_db() -> Result<Connection, rusqlite::Error> {
+    let conn = Connection::open(get_db_path())?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS apps (
+            path TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            icon TEXT NOT NULL DEFAULT '',
+            kind TEXT NOT NULL DEFAULT 'app',
+            last_seen TEXT NOT NULL DEFAULT (datetime('now'))
+        );",
+    )?;
+    // Ensure the table has the expected columns even if created by an older schema
+    conn.execute_batch(
+        "ALTER TABLE apps ADD COLUMN kind TEXT NOT NULL DEFAULT 'app';",
+    )
+    .ok();
+    conn.execute_batch(
+        "ALTER TABLE apps ADD COLUMN last_seen TEXT NOT NULL DEFAULT (datetime('now'));",
+    )
+    .ok();
+    Ok(conn)
+}
+
+/// Load all apps from the SQLite DB into APP_CACHE.
+/// Returns the number of entries loaded (0 if DB is empty/new).
+fn load_from_db() -> Vec<AppEntry> {
+    let conn = match init_db() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[apps] DB init failed: {e}");
+            return Vec::new();
+        }
+    };
+
+    let mut stmt = match conn.prepare("SELECT path, name, icon, kind FROM apps ORDER BY name") {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[apps] DB query prepare failed: {e}");
+            return Vec::new();
+        }
+    };
+
+    let rows = match stmt.query_map([], |row| {
+        Ok(AppEntry {
+            path: row.get(0)?,
+            name: row.get(1)?,
+            icon: row.get(2)?,
+            kind: row.get(3)?,
+        })
+    }) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[apps] DB query failed: {e}");
+            return Vec::new();
+        }
+    };
+
+    let mut entries = Vec::new();
+    for row in rows.flatten() {
+        entries.push(row);
+    }
+    entries
+}
+
+/// Sync the provided app entries into the DB (upsert + delete stale).
+fn sync_db(entries: &[AppEntry]) {
+    let conn = match init_db() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[apps] DB sync init failed: {e}");
+            return;
+        }
+    };
+
+    // Collect current paths
+    let current_paths: Vec<String> = entries.iter().map(|e| e.path.clone()).collect();
+
+    // Upsert all current entries
+    for entry in entries {
+        let result = conn.execute(
+            "INSERT INTO apps (path, name, icon, kind, last_seen)
+             VALUES (?1, ?2, ?3, ?4, datetime('now'))
+             ON CONFLICT(path) DO UPDATE SET
+                name = excluded.name,
+                icon = excluded.icon,
+                kind = excluded.kind,
+                last_seen = datetime('now')",
+            params![entry.path, entry.name, entry.icon, entry.kind],
+        );
+        if let Err(e) = result {
+            eprintln!("[apps] DB upsert failed for {}: {e}", entry.path);
+        }
+    }
+
+    // Delete entries no longer present
+    if !current_paths.is_empty() {
+        let placeholders: Vec<String> = current_paths.iter().enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect();
+        let sql = format!(
+            "DELETE FROM apps WHERE path NOT IN ({})",
+            placeholders.join(",")
+        );
+        let params: Vec<&dyn rusqlite::types::ToSql> =
+            current_paths.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+        let _ = conn.execute(&sql, params.as_slice());
+    } else {
+        // No current apps, clear everything
+        let _ = conn.execute("DELETE FROM apps", []);
+    }
+}
 
 fn get_icon_cache_dir() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
@@ -152,10 +278,49 @@ fn scan_all_apps() -> Vec<AppEntry> {
     results
 }
 
-fn ensure_cache() {
-    let mut cache = APP_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    if cache.is_empty() {
-        *cache = scan_all_apps();
+/// Initialize the app cache from persistent DB, then spawn a background
+/// re-scan. The cold load from DB is ~1ms. The background scan eventually
+/// updates both DB and in-memory cache and emits 'apps:updated'.
+pub fn ensure_cache(app: Option<&AppHandle>) {
+    // Phase 1: Load from DB (instant)
+    let db_entries = load_from_db();
+    {
+        let mut cache = APP_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if !db_entries.is_empty() {
+            *cache = db_entries;
+        }
+    }
+    CACHE_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
+
+    // If we have entries from DB, we're already usable.
+    // If DB was empty, do the initial scan synchronously so the user
+    // sees apps on first search.
+    let need_initial_scan = {
+        let cache = APP_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        cache.is_empty()
+    };
+
+    if need_initial_scan {
+        let fresh = scan_all_apps();
+        sync_db(&fresh);
+        let mut cache = APP_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        *cache = fresh;
+    }
+
+    // Phase 2: Spawn background re-scan to catch changes
+    if let Some(handle) = app {
+        let app_handle = handle.clone();
+        std::thread::spawn(move || {
+            let fresh = scan_all_apps();
+            // Update DB
+            sync_db(&fresh);
+            // Update in-memory cache
+            {
+                let mut cache = APP_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+                *cache = fresh;
+            }
+            let _ = app_handle.emit("apps:updated", ());
+        });
     }
 }
 
@@ -163,7 +328,6 @@ fn ensure_cache() {
 /// search is instant. Emits `apps:icons-ready` when done so the frontend
 /// can refresh results with icons.
 pub fn preload_icons(app: &AppHandle) {
-    ensure_cache();
     let apps = APP_CACHE.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
     let handle = app.clone();
@@ -186,6 +350,13 @@ pub fn preload_icons(app: &AppHandle) {
                             }
                         }
                     }
+                    // Also update DB
+                    if let Ok(conn) = init_db() {
+                        let _ = conn.execute(
+                            "UPDATE apps SET icon = ?1 WHERE path = ?2",
+                            params![png, entry.path],
+                        );
+                    }
                 }
             }
         }
@@ -197,39 +368,34 @@ pub fn preload_icons(app: &AppHandle) {
 
 #[tauri::command]
 pub fn search_apps(query: String) -> Result<Vec<AppEntry>, String> {
-    ensure_cache();
-    let results: Vec<AppEntry> = APP_CACHE
-        .lock()
-        .map_err(|e| format!("lock poisoned: {e}"))?
-        .clone();
+    // Ensure cache is initialized (if ensure_cache wasn't called yet)
+    if !CACHE_INITIALIZED.load(std::sync::atomic::Ordering::SeqCst) {
+        ensure_cache(None);
+    }
+
+    let cache = APP_CACHE.lock().map_err(|e| format!("lock poisoned: {e}"))?;
 
     if query.is_empty() {
-        let mut sorted = results;
-        sorted.sort_by(|a, b| a.name.cmp(&b.name));
-        sorted.truncate(20);
-        return Ok(sorted);
+        let results: Vec<AppEntry> = cache.iter().take(20).cloned().collect();
+        return Ok(results);
     }
 
     let q = query.to_lowercase();
-    let mut scored: Vec<(i32, AppEntry)> = results
-        .into_iter()
-        .filter_map(|app| {
-            let name_lower = app.name.to_lowercase();
-            if name_lower == q {
-                Some((0, app))
-            } else if name_lower.starts_with(&q) {
-                Some((1, app))
-            } else if name_lower.contains(&q) {
-                Some((2, app))
-            } else {
-                None
-            }
-        })
-        .collect();
+    let mut scored: Vec<(i32, &AppEntry)> = Vec::with_capacity(cache.len() / 2);
+    for app in cache.iter() {
+        let name_lower = app.name.to_lowercase();
+        if name_lower == q {
+            scored.push((0, app));
+        } else if name_lower.starts_with(&q) {
+            scored.push((1, app));
+        } else if name_lower.contains(&q) {
+            scored.push((2, app));
+        }
+    }
 
     scored.sort_by_key(|(score, _)| *score);
     scored.truncate(12);
-    Ok(scored.into_iter().map(|(_, app)| app).collect())
+    Ok(scored.into_iter().map(|(_, app)| app.clone()).collect())
 }
 
 #[tauri::command]

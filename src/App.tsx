@@ -33,6 +33,32 @@ function matchesSettings(query: string): boolean {
   return SETTINGS_KEYWORDS.some((k) => k === q || k.startsWith(q) || q.startsWith(k));
 }
 
+/**
+ * Phased startup:
+ *   Phase 1 (immediate): Load apps DB cache via search_apps("") — instant from memory
+ *   Phase 2 (background): Preload icons, scan for new apps (apps:updated event triggers refresh)
+ *   Phase 3 (lazy): Settings, plugins, clipboard history
+ */
+async function triggerPhase1Load(appsReady: boolean, setAppsReady: (r: boolean) => void, setLoadingPhase: (p: import("./store").LoadingPhase) => void) {
+  if (appsReady) return;
+  if (!isTauriRuntime()) {
+    // Non-Tauri: just mark ready immediately
+    setAppsReady(true);
+    setLoadingPhase("ready");
+    return;
+  }
+  try {
+    // Phase 1: warm the cache by doing one search (triggers DB load)
+    await invoke<AppEntry[]>("search_apps", { query: "" });
+    setAppsReady(true);
+    setLoadingPhase("ready");
+  } catch {
+    // Fallback: mark ready anyway so UI isn't stuck
+    setAppsReady(true);
+    setLoadingPhase("ready");
+  }
+}
+
 function App() {
   const {
     query,
@@ -47,26 +73,40 @@ function App() {
     screenshotCapture,
     setScreenshotCapture,
     updateResultIcons,
+    loadingPhase,
+    setLoadingPhase,
+    appsReady,
+    setAppsReady,
   } = useStore();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const searchScopeRef = useRef<SearchScope>("all");
   const originalBoundsRef = useRef<{ width: number; height: number; x: number; y: number } | null>(null);
   const { settings, load: loadSettings, loaded: settingsLoaded } = useSettingsStore();
   const { load: loadPlugins, findCommands } = usePluginRegistry();
+  const phase1Ref = useRef(false);
 
-  // Load settings on first mount
+  // Phase 1: Load app cache immediately — runs once on mount
   useEffect(() => {
+    if (phase1Ref.current) return;
+    phase1Ref.current = true;
+    triggerPhase1Load(appsReady, setAppsReady, setLoadingPhase);
+  }, [appsReady, setAppsReady, setLoadingPhase]);
+
+  // Phase 3 (lazy): Load settings on first mount — deferred slightly
+  useEffect(() => {
+    if (!appsReady) return; // Wait for phase 1
     if (!settingsLoaded) void loadSettings();
-  }, [settingsLoaded, loadSettings]);
+  }, [settingsLoaded, loadSettings, appsReady]);
 
-  // Load external plugins from ~/.qx/plugins/
+  // Phase 3 (lazy): Load external plugins — deferred
   useEffect(() => {
+    if (!appsReady) return; // Wait for phase 1
     void loadPlugins({
       onToast: (msg) => window.dispatchEvent(new CustomEvent("qx:toast", { detail: msg })),
       onPrompt: async (label, def) => window.prompt(label, def ?? ""),
       onGetPreference: async () => null,
     });
-  }, [loadPlugins]);
+  }, [loadPlugins, appsReady]);
 
   // Listen for qx:navigate custom events (from built-in module commands)
   useEffect(() => {
@@ -301,6 +341,10 @@ function App() {
   const doSearch = useCallback(
     async (q: string) => {
       const scope = searchScopeRef.current;
+
+      // Phase 1: Apps results come first — from instant in-memory cache
+      const entries: AppEntry[] = [];
+
       // Build synthetic entries from registry commands (built-in + external plugins)
       const pluginMatches = findCommands(q);
       const syntheticEntries: AppEntry[] = pluginMatches.map((m) => ({
@@ -320,11 +364,11 @@ function App() {
         });
       }
 
-      const entries: AppEntry[] = [];
       if (scope === "all" || scope === "apps") {
         entries.push(...syntheticEntries);
       }
 
+      // Phase 1: search_apps returns instantly from memory cache
       try {
         if (scope === "all" || scope === "apps") {
           const res = await invoke<AppEntry[]>("search_apps", { query: q });
@@ -332,10 +376,17 @@ function App() {
         }
       } catch {}
 
+      // Show results immediately with apps + commands (even while other providers load)
+      setResults(entries);
+
+      // Phase 2/3: Gradually load other providers
       try {
         if (scope === "all" || scope === "files") {
           const files = await invoke<AppEntry[]>("search_files", { query: q });
-          entries.push(...files.map((item) => ({ ...item, kind: "file" as const })));
+          if (files.length > 0) {
+            entries.push(...files.map((item) => ({ ...item, kind: "file" as const })));
+            setResults([...entries]);
+          }
         }
       } catch {}
 
@@ -343,25 +394,25 @@ function App() {
         if ((scope === "all" || scope === "clipboard") && q.trim()) {
           const history = await invoke<{ id: string; text: string }[]>("get_clipboard_history", { limit: 80 });
           const lower = q.trim().toLowerCase();
-          entries.push(
-            ...history
-              .filter((item) => item.text.toLowerCase().includes(lower))
-              .slice(0, 8)
-              .map((item) => ({
-                name: item.text.replace(/\s+/g, " ").trim().slice(0, 80) || "Clipboard Item",
-                path: `__qx:clipboard:${item.id}`,
-                icon: "builtin:clipboard",
-                kind: "clipboard" as const,
-              })),
-          );
+          const clipboardEntries = history
+            .filter((item) => item.text.toLowerCase().includes(lower))
+            .slice(0, 8)
+            .map((item) => ({
+              name: item.text.replace(/\s+/g, " ").trim().slice(0, 80) || "Clipboard Item",
+              path: `__qx:clipboard:${item.id}`,
+              icon: "builtin:clipboard",
+              kind: "clipboard" as const,
+            }));
+          if (clipboardEntries.length > 0) {
+            entries.push(...clipboardEntries);
+            setResults([...entries]);
+          }
         }
       } catch {
         if (scope === "all" || scope === "clipboard") {
           entries.push(...syntheticEntries.filter((item) => item.path.includes("clipboard")));
         }
       }
-
-      setResults(entries);
     },
     [setResults, findCommands],
   );
@@ -374,6 +425,28 @@ function App() {
     };
   }, [query, doSearch]);
 
+  // Listen for apps:updated event (background scan completed)
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    const unlisten = listen("apps:updated", async () => {
+      // Refresh search results with updated app list
+      const { query: currentQuery } = useStore.getState();
+      try {
+        const apps = await invoke<AppEntry[]>("search_apps", { query: currentQuery });
+        // Merge updated apps into existing results
+        const state = useStore.getState();
+        const nonApps = state.results.filter((r) => r.kind !== "app" && !(r.kind === undefined));
+        // Also keep apps that don't match kind "app" but are not in the app list
+        const updatedApps = apps.map((a) => ({ ...a, kind: a.kind ?? "app" as const }));
+        useStore.getState().setResults([...nonApps, ...updatedApps]);
+      } catch {}
+    });
+    return () => {
+      unlisten.then((f: () => void) => f());
+    };
+  }, []);
+
+  // Listen for apps:icons-ready event (icon preloading done)
   useEffect(() => {
     if (!isTauriRuntime()) return;
     const unlisten = listen("apps:icons-ready", async () => {
@@ -486,6 +559,7 @@ function App() {
             onNavigate={setTab}
             searchScopeRef={searchScopeRef}
             onScopeChange={() => doSearch(useStore.getState().query)}
+            loadingPhase={loadingPhase}
           />
         );
     }

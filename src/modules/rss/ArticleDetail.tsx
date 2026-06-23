@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type BottomIslandContent } from "../../components/QxShell";
 import { useRssStore } from "./store";
+import { useSettingsStore } from "../settings/store";
 import ImageLightbox from "./ImageLightbox";
 import { formatDate, sanitizeHtml } from "./article-utils";
 
@@ -18,6 +19,10 @@ export default function ArticleDetail() {
   } = useRssStore();
 
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [scrollPercent, setScrollPercent] = useState(0);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const bottomIslandMode = useSettingsStore((s) => s.settings.rss.bottom_island_mode);
 
   const feed = useMemo(
     () => (currentArticle ? feeds.find((f) => f.id === currentArticle.feed_id) : null),
@@ -42,6 +47,24 @@ export default function ArticleDetail() {
     root.addEventListener("click", onClick);
     return () => root.removeEventListener("click", onClick);
   }, [cleanContent]);
+
+  // Scroll progress tracking
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      if (scrollHeight <= clientHeight) {
+        setScrollPercent(100);
+      } else {
+        setScrollPercent(Math.round((scrollTop / (scrollHeight - clientHeight)) * 100));
+      }
+    };
+    el.addEventListener("scroll", onScroll);
+    // Run once on mount to capture initial state
+    onScroll();
+    return () => el.removeEventListener("scroll", onScroll);
+  }, []);
 
   const currentIdx = articles.findIndex((a) => a.id === selectedArticleId);
   const prev = currentIdx > 0 ? articles[currentIdx - 1] : null;
@@ -99,8 +122,11 @@ export default function ArticleDetail() {
 
   const island: BottomIslandContent = {
     label: "Reading RSS",
-    detail: `${currentIdx + 1}/${articles.length || 1} articles`,
-    progress,
+    detail:
+      bottomIslandMode === "index"
+        ? `${currentIdx + 1}/${articles.length || 1} articles`
+        : `${scrollPercent}%`,
+    progress: bottomIslandMode === "index" ? progress : scrollPercent,
   };
 
   return (
@@ -160,7 +186,7 @@ export default function ArticleDetail() {
             </div>
             <button className="qx-icon-button" onClick={goBack}>List</button>
           </div>
-          <div style={{ flex: 1, overflowY: "auto", padding: "10px 12px 16px" }}>
+          <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "10px 12px 16px" }}>
             <h1
               style={{
                 fontSize: 18,

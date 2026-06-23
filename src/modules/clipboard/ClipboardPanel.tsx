@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { writeText, writeImage } from "@tauri-apps/plugin-clipboard-manager";
 import { useStore, type ClipboardEntry } from "../../store";
 import QxShell from "../../components/QxShell";
 import { Select } from "../../components/ui";
@@ -15,7 +15,7 @@ import {
   matchesQuery,
 } from "./utils";
 
-type Filter = "all" | "pinned" | "links" | "code" | "long" | "frequent";
+type Filter = "all" | "pinned" | "links" | "code" | "long" | "frequent" | "image";
 
 const FILTER_LABELS: Record<Filter, string> = {
   all: "All Types",
@@ -24,6 +24,7 @@ const FILTER_LABELS: Record<Filter, string> = {
   code: "Code",
   long: "Long",
   frequent: "Frequent",
+  image: "Images",
 };
 
 function isTauriRuntime(): boolean {
@@ -101,7 +102,15 @@ export default function ClipboardPanel() {
   const copyItem = async (item?: ClipboardEntry) => {
     if (!item) return;
     try {
-      await writeText(item.text);
+      if (item.image_path) {
+        // Read the PNG file and write it as image to clipboard
+        const response = await fetch(convertFileSrc(item.image_path));
+        const blob = await response.blob();
+        const buffer = await blob.arrayBuffer();
+        await writeImage(new Uint8Array(buffer));
+      } else {
+        await writeText(item.text);
+      }
       await invoke("record_clipboard_copy", { id: item.id });
       await loadHistory();
       setStatus("Copied");
@@ -233,6 +242,7 @@ export default function ClipboardPanel() {
                 const index = flatIndex++;
                 const active = index === selected;
                 const kind = classify(item);
+                const isImage = kind === "image";
                 return (
                   <button
                     key={item.id}
@@ -248,14 +258,22 @@ export default function ClipboardPanel() {
                     <span className="qx-clipboard-row-icon" aria-hidden="true">
                       <span
                         className={`qx-symbol-icon ${
-                          item.pinned ? "pin" : kind === "links" ? "link" : kind === "code" ? "code" : "doc"
+                          isImage ? "image" : item.pinned ? "pin" : kind === "links" ? "link" : kind === "code" ? "code" : "doc"
                         }`}
                       />
                     </span>
                     <span className="qx-clipboard-row-copy">
                       <span className="qx-clipboard-row-title">
                         {item.pinned && <span className="qx-clipboard-pin-dot" />}
-                        {preview(item.text) || "Empty Text"}
+                        {isImage ? (
+                          <img
+                            className="qx-clipboard-thumb"
+                            src={convertFileSrc(item.image_path!)}
+                            alt="Clipboard image"
+                          />
+                        ) : (
+                          preview(item.text) || "Empty Text"
+                        )}
                       </span>
                     </span>
                   </button>
@@ -273,11 +291,21 @@ export default function ClipboardPanel() {
         <div className="qx-clipboard-detail">
           {selectedItem ? (
             <>
-              <pre
-                className={`qx-clipboard-content${detailOpen ? " is-expanded" : ""}`}
-              >
-                {selectedItem.text}
-              </pre>
+              {selectedItem.image_path ? (
+                <div className="qx-clipboard-image-wrap">
+                  <img
+                    className="qx-clipboard-image-preview"
+                    src={convertFileSrc(selectedItem.image_path)}
+                    alt="Clipboard image"
+                  />
+                </div>
+              ) : (
+                <pre
+                  className={`qx-clipboard-content${detailOpen ? " is-expanded" : ""}`}
+                >
+                  {selectedItem.text}
+                </pre>
+              )}
               <div className="qx-clipboard-info">
                 <h2>Information</h2>
                 <dl>
@@ -285,14 +313,18 @@ export default function ClipboardPanel() {
                     <dt>Content type</dt>
                     <dd>{contentType(selectedItem)}</dd>
                   </div>
-                  <div>
-                    <dt>Characters</dt>
-                    <dd>{selectedItem.text.length.toLocaleString()}</dd>
-                  </div>
-                  <div>
-                    <dt>Words</dt>
-                    <dd>{wordCount(selectedItem.text).toLocaleString()}</dd>
-                  </div>
+                  {!selectedItem.image_path && (
+                    <>
+                      <div>
+                        <dt>Characters</dt>
+                        <dd>{selectedItem.text.length.toLocaleString()}</dd>
+                      </div>
+                      <div>
+                        <dt>Words</dt>
+                        <dd>{wordCount(selectedItem.text).toLocaleString()}</dd>
+                      </div>
+                    </>
+                  )}
                   <div>
                     <dt>Copied</dt>
                     <dd>{formatCopied(selectedItem.timestamp)}</dd>

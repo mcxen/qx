@@ -91,9 +91,11 @@ function ResultItem({ item, index }: { item: AppEntry; index: number }) {
 export default function ResultsList({
   items,
   onItemClick,
+  loadingPhase,
 }: {
   items: AppEntry[];
   onItemClick: (item: AppEntry) => void;
+  loadingPhase?: string;
 }) {
   return (
     <div className="qx-plugin-list" style={{ flex: 1, borderRight: "none" }}>
@@ -105,7 +107,19 @@ export default function ResultsList({
           <ResultItem item={item} index={i} />
         </div>
       ))}
-      {items.length === 0 && (
+      {items.length === 0 && loadingPhase === "loading-apps" && (
+        <div
+          style={{
+            padding: "32px 16px",
+            textAlign: "center",
+            color: "var(--qx-text-tertiary)",
+            fontSize: 13,
+          }}
+        >
+          Loading apps...
+        </div>
+      )}
+      {items.length === 0 && loadingPhase !== "loading-apps" && (
         <div
           style={{
             padding: "32px 16px",

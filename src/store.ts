@@ -13,6 +13,7 @@ export interface ClipboardEntry {
   timestamp: string;
   pinned: boolean;
   copy_count: number;
+  image_path?: string | null;
 }
 
 export interface ScreenshotEntry {
@@ -64,6 +65,7 @@ export type BuiltinTab =
   | "macros";
 export type Tab = BuiltinTab | string;
 export type SearchScope = "all" | "apps" | "files" | "clipboard";
+export type LoadingPhase = "loading-apps" | "ready" | "loading-background";
 
 interface AppStore {
   visible: boolean;
@@ -73,6 +75,10 @@ interface AppStore {
   tab: Tab;
   clipboardHistory: ClipboardEntry[];
   screenshotCapture: ScreenshotCaptureState;
+  /** Loading phase for phased startup */
+  loadingPhase: LoadingPhase;
+  /** Set true once apps cache has been loaded from DB */
+  appsReady: boolean;
   setVisible: (v: boolean) => void;
   setQuery: (q: string) => void;
   setResults: (r: AppEntry[]) => void;
@@ -80,6 +86,8 @@ interface AppStore {
   setTab: (t: Tab) => void;
   setClipboardHistory: (h: ClipboardEntry[]) => void;
   setScreenshotCapture: (state: Partial<ScreenshotCaptureState>) => void;
+  setLoadingPhase: (phase: LoadingPhase) => void;
+  setAppsReady: (ready: boolean) => void;
   updateResultIcons: (iconForPath: (path: string) => string | undefined) => void;
 }
 
@@ -99,6 +107,8 @@ export const useStore = create<AppStore>((set) => ({
   tab: "launcher",
   clipboardHistory: [],
   screenshotCapture: initialScreenshotCapture,
+  loadingPhase: "loading-apps",
+  appsReady: false,
   setVisible: (visible) => set({ visible }),
   setQuery: (query) => set({ query }),
   setResults: (results) => set({ results }),
@@ -109,6 +119,8 @@ export const useStore = create<AppStore>((set) => ({
     set((current) => ({
       screenshotCapture: { ...current.screenshotCapture, ...state },
     })),
+  setLoadingPhase: (loadingPhase) => set({ loadingPhase }),
+  setAppsReady: (appsReady) => set({ appsReady }),
   updateResultIcons: (iconForPath) =>
     set((state) => ({
       results: state.results.map((r) => {

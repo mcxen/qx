@@ -35,6 +35,7 @@ export interface AdvancedSettings {
 export interface RssSettings {
   offline_cache_enabled: boolean;
   max_articles_per_feed: number;
+  bottom_island_mode: "scroll" | "index";
 }
 
 export interface PluginConfig {
@@ -99,6 +100,7 @@ export const DEFAULT_SETTINGS: Settings = {
   rss: {
     offline_cache_enabled: true,
     max_articles_per_feed: 500,
+    bottom_island_mode: "scroll",
   },
 };
 

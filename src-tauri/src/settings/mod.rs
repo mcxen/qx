@@ -138,6 +138,11 @@ pub struct RssSettings {
         rename = "max_articles_per_feed"
     )]
     pub max_articles_per_feed: u32,
+    #[serde(
+        default = "default_bottom_island_mode",
+        rename = "bottom_island_mode"
+    )]
+    pub bottom_island_mode: String,
 }
 
 fn default_offline_cache_enabled() -> bool {
@@ -148,11 +153,16 @@ fn default_max_articles_per_feed() -> u32 {
     500
 }
 
+fn default_bottom_island_mode() -> String {
+    "scroll".to_string()
+}
+
 impl Default for RssSettings {
     fn default() -> Self {
         Self {
             offline_cache_enabled: true,
             max_articles_per_feed: 500,
+            bottom_island_mode: "scroll".to_string(),
         }
     }
 }

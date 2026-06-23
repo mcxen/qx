@@ -35,6 +35,7 @@ interface LauncherProps {
   onNavigate: (tab: string) => void;
   searchScopeRef: React.MutableRefObject<SearchScope>;
   onScopeChange: () => void;
+  loadingPhase?: string;
 }
 
 export default function Launcher({
@@ -45,6 +46,7 @@ export default function Launcher({
   onNavigate,
   searchScopeRef,
   onScopeChange,
+  loadingPhase,
 }: LauncherProps) {
   const { settings } = useSettingsStore();
   const t = useT();
@@ -162,7 +164,13 @@ export default function Launcher({
     },
   ];
 
-  const island: BottomIslandContent | null = results.length
+  const island: BottomIslandContent | null = loadingPhase === "loading-apps"
+    ? {
+        label: t("launcher.loading", "Loading apps..."),
+        detail: t("launcher.loading.detail", "Preparing application cache"),
+        progress: 0,
+      }
+    : results.length
     ? {
         label: t("launcher.ready", "Search ready"),
         detail: `${results.length} ${t("launcher.result", results.length === 1 ? "result" : "results")}`,
@@ -284,7 +292,7 @@ export default function Launcher({
         },
       }}
     >
-      <ResultsList items={results} onItemClick={onItemClick} />
+      <ResultsList items={results} onItemClick={onItemClick} loadingPhase={loadingPhase} />
       {actionPanelOpen && selectedItem && (
         <div
           className="qx-actions-popover"
