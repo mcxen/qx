@@ -306,6 +306,7 @@ function MarketplaceTab({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [installingId, setInstallingId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const fetchIndex = useCallback(async () => {
     setLoading(true);
@@ -363,7 +364,46 @@ function MarketplaceTab({
 
   return (
     <div style={{ overflowY: "auto", flex: 1 }}>
-      {entries.map((entry) => {
+      {/* Search input */}
+      <div style={{ padding: "6px 12px", borderBottom: "1px solid var(--qx-border-1)" }}>
+        <input
+          type="text"
+          placeholder="Search marketplace plugins..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{
+            width: "100%",
+            boxSizing: "border-box",
+            padding: "5px 10px",
+            borderRadius: 6,
+            border: "1px solid var(--qx-border-2)",
+            background: "var(--qx-bg-component-2)",
+            color: "var(--qx-text-primary)",
+            fontSize: 13,
+            outline: "none",
+          }}
+        />
+      </div>
+      {(() => {
+        const filtered = entries
+          .filter((entry) => {
+            if (!searchQuery.trim()) return true;
+            const q = searchQuery.toLowerCase();
+            return (
+              entry.name.toLowerCase().includes(q) ||
+              entry.id.toLowerCase().includes(q) ||
+              (entry.description && entry.description.toLowerCase().includes(q)) ||
+              (entry.author && entry.author.toLowerCase().includes(q))
+            );
+          });
+        if (filtered.length === 0 && searchQuery.trim()) {
+          return (
+            <div className="qx-empty-state" style={{ padding: 24, textAlign: "center" }}>
+              No plugins match "{searchQuery}"
+            </div>
+          );
+        }
+        return filtered.map((entry) => {
         const alreadyInstalled = installedIds.has(entry.id);
         const installing = installingId === entry.id;
 
@@ -421,7 +461,8 @@ function MarketplaceTab({
             </button>
           </div>
         );
-      })}
+      });
+    })()}
     </div>
   );
 }
