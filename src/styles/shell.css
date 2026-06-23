@@ -115,6 +115,25 @@
   background: var(--qx-bg-component-2);
 }
 
+/* Overlay bottom bar with frosted glass (RSS reading, etc.) */
+.qx-shell.qx-shell-overlay-bottom {
+  position: relative;
+}
+.qx-shell.qx-shell-overlay-bottom .qx-shell-main {
+  padding-bottom: var(--qx-bottom-bar-h);
+}
+.qx-shell.qx-shell-overlay-bottom .qx-shell-bottombar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  border-top: none;
+  background: rgba(var(--qx-glass-bg), calc(var(--qx-canvas-opacity) * 1.5));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
 .qx-shell-left {
   display: inline-flex;
   align-items: center;

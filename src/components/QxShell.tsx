@@ -34,6 +34,7 @@ interface QxShellProps {
   backLabel?: string;
   className?: string;
   onKeyDown?: (event: React.KeyboardEvent) => void;
+  overlayBottom?: boolean;
 }
 
 function clampProgress(value?: number): number | null {
@@ -126,6 +127,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   backLabel = "Back",
   className = "",
   onKeyDown,
+  overlayBottom,
 }, ref) {
   const fallbackEscapeAction: QxShellAction = onBack
     ? { label: backLabel, kbd: "Esc", onClick: onBack }
@@ -138,7 +140,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   return (
     <div
       ref={ref}
-      className={`qx-shell ${context ? "has-context" : ""} ${className}`}
+      className={`qx-shell ${context ? "has-context" : ""} ${overlayBottom ? "qx-shell-overlay-bottom" : ""} ${className}`}
       aria-label={title}
       onKeyDown={onKeyDown}
       tabIndex={0}
