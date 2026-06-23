@@ -29,19 +29,56 @@ function emptyPoints(): number[] {
   return Array.from({ length: POINT_COUNT }, () => 0);
 }
 
-function TrendDots({ points }: { points: number[] }) {
+/** Tiny inline SVG sparkline (smooth quadratic Bezier) */
+function MiniSparkline({ points, color }: { points: number[]; color: string }) {
+  const w = 48;
+  const h = 14;
+  const pad = 1;
+  const chartW = w - pad * 2;
+  const chartH = h - pad * 2;
+  const step = chartW / (points.length - 1);
+
+  const d = useMemo(() => {
+    return points
+      .map((p, i) => {
+        const x = pad + i * step;
+        const y = pad + chartH - (clamp(p) / 100) * chartH;
+        if (i === 0) return `M${x},${y}`;
+        const px = pad + (i - 1) * step;
+        const py = pad + chartH - (clamp(points[i - 1]) / 100) * chartH;
+        const cx = (px + x) / 2;
+        return `Q${cx},${py} ${x},${y}`;
+      })
+      .join(" ");
+  }, [points]);
+
   return (
-    <div className="qx-system-trend" aria-hidden="true">
-      {points.map((point, index) => (
-        <span
-          key={index}
-          style={{
-            transform: `translateY(${Math.round((100 - point) * 0.18)}px)`,
-            opacity: point <= 0 ? 0.18 : 0.35 + point / 180,
-          }}
-        />
-      ))}
-    </div>
+    <svg
+      className="qx-system-sparkline"
+      viewBox={`0 0 ${w} ${h}`}
+      width={w}
+      height={h}
+      aria-hidden="true"
+    >
+      <defs>
+        <filter id={`mg-${color.replace("#", "")}`}>
+          <feGaussianBlur stdDeviation="0.8" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      <path
+        d={d}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        filter={`url(#mg-${color.replace("#", "")})`}
+      />
+    </svg>
   );
 }
 
@@ -51,11 +88,13 @@ export default function HomeSystemIsland({
   showMemory,
 }: HomeSystemIslandProps) {
   const [stats, setStats] = useState<SystemStats | null>(null);
-  const [points, setPoints] = useState<number[]>(emptyPoints);
+  const [cpuPoints, setCpuPoints] = useState<number[]>(emptyPoints);
+  const [memPoints, setMemPoints] = useState<number[]>(emptyPoints);
   const [available, setAvailable] = useState(isTauriRuntime());
 
   useEffect(() => {
     let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
 
     const sample = async () => {
       if (!isTauriRuntime()) {
@@ -66,63 +105,80 @@ export default function HomeSystemIsland({
         const next = await invoke<SystemStats>("get_system_stats");
         if (cancelled) return;
         setAvailable(true);
-        setStats(next);
-        setPoints((current) => [...current.slice(1), clamp(next.cpu)]);
+        setStats((prev) => {
+          if (
+            prev &&
+            prev.cpu === next.cpu &&
+            prev.memory === next.memory &&
+            prev.memory_used_gb === next.memory_used_gb
+          ) {
+            return prev;
+          }
+          return next;
+        });
+        setCpuPoints((cur) => [...cur.slice(1), clamp(next.cpu)]);
+        setMemPoints((cur) => [...cur.slice(1), clamp(next.memory)]);
       } catch {
         if (!cancelled) setAvailable(false);
       }
     };
 
+    const onVisibility = () => {
+      if (document.hidden) {
+        if (timer !== undefined) {
+          clearInterval(timer);
+          timer = undefined;
+        }
+      } else {
+        if (timer === undefined) {
+          void sample();
+          timer = setInterval(sample, 1600);
+        }
+      }
+    };
+
     void sample();
-    const timer = window.setInterval(sample, 1600);
+    timer = setInterval(sample, 1600);
+    document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      if (timer !== undefined) clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, []);
 
   const cpuText = stats && available ? `${Math.round(stats.cpu)}%` : "--";
-  const memText = stats && available
-    ? `${Math.round(stats.memory)}%`
-    : "--";
-  const memDetail = stats && available
-    ? `${stats.memory_used_gb.toFixed(1)}/${stats.memory_total_gb.toFixed(0)}GB`
-    : "runtime";
-  const gpuText = useMemo(() => {
-    if (!showGpu) return null;
-    if (!available) return "--";
-    return stats?.gpu == null ? "N/A" : `${Math.round(stats.gpu)}%`;
-  }, [available, showGpu, stats?.gpu]);
+  const memText = stats && available ? `${Math.round(stats.memory)}%` : "--";
+  const gpuText = !showGpu ? null : !available ? "--" : stats?.gpu == null ? "N/A" : `${Math.round(stats.gpu)}%`;
 
   if (!showCpu && !showGpu && !showMemory) return null;
 
   return (
     <div className="qx-home-system-island" aria-label="System monitor">
-      <div className="qx-system-main">
-        <div className="qx-system-main-head">
-          <span className="qx-system-status-dot" aria-hidden="true" />
-          <span className="qx-system-title">{showCpu ? "CPU" : "SYS"}</span>
-          <strong>{showCpu ? cpuText : available ? "LIVE" : "--"}</strong>
-        </div>
-        <TrendDots points={showCpu ? points : emptyPoints()} />
-      </div>
-
-      <div className="qx-system-side">
-        {showMemory && (
-          <div className="qx-system-side-row">
-            <span>MEM</span>
-            <strong>{memText}</strong>
-            <small>{memDetail}</small>
-          </div>
-        )}
-        {showGpu && (
-          <div className="qx-system-side-row">
-            <span>GPU</span>
-            <strong>{gpuText}</strong>
-            <small>{stats?.gpu == null ? "unavailable" : "active"}</small>
-          </div>
-        )}
-      </div>
+      {showCpu && (
+        <span className="qx-si-item">
+          <span className="qx-si-dot cpu" />
+          <span className="qx-si-label">CPU</span>
+          <strong className="qx-si-value">{cpuText}</strong>
+          <MiniSparkline points={cpuPoints} color="var(--qx-stats-cpu)" />
+        </span>
+      )}
+      {showMemory && (
+        <span className="qx-si-item">
+          <span className="qx-si-dot mem" />
+          <span className="qx-si-label">MEM</span>
+          <strong className="qx-si-value">{memText}</strong>
+          <MiniSparkline points={memPoints} color="var(--qx-stats-mem)" />
+        </span>
+      )}
+      {showGpu && gpuText !== null && (
+        <span className="qx-si-item">
+          <span className="qx-si-dot gpu" />
+          <span className="qx-si-label">GPU</span>
+          <strong className="qx-si-value">{gpuText}</strong>
+        </span>
+      )}
     </div>
   );
 }

@@ -79,6 +79,9 @@
   --qx-system-island-text: #171717;
   --qx-system-island-muted: #737373;
   --qx-system-island-dim: #a3a3a3;
+  --qx-stats-cpu: #22c55e;
+  --qx-stats-mem: #3b82f6;
+  --qx-stats-gpu: #a855f7;
 
   --color-canvas: var(--qx-bg-component-1);
   --color-surface: var(--qx-bg-component-1);
