@@ -248,6 +248,7 @@ pub fn run() {
             marketplace::sign_plugin,
             marketplace::scaffold_plugin,
             ocr::download_ocr_model,
+            ocr::check_ocr_models,
             macro_recorder::macro_start_recording,
             macro_recorder::macro_stop_recording,
             macro_recorder::macro_save,
