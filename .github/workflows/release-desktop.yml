@@ -31,11 +31,6 @@ jobs:
             os: macos-14
             target: aarch64-apple-darwin
             bundles: app,dmg
-          - label: macOS Intel
-            artifact: macos-x64
-            os: macos-13
-            target: x86_64-apple-darwin
-            bundles: app,dmg
           - label: Windows x64
             artifact: windows-x64
             os: windows-latest
