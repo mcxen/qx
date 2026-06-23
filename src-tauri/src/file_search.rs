@@ -1,4 +1,5 @@
 use crate::apps::AppEntry;
+use fswalk::NodeFileType;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
@@ -25,13 +26,16 @@ pub async fn search(query: String, limit: usize) -> Vec<AppEntry> {
 }
 
 fn entry_from_path(path: &str) -> AppEntry {
+    entry_from_path_with_kind(path, PathBuf::from(path).is_dir())
+}
+
+fn entry_from_path_with_kind(path: &str, is_dir: bool) -> AppEntry {
     let path_buf = PathBuf::from(path);
     let name = path_buf
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap_or(path)
         .to_string();
-    let is_dir = path_buf.is_dir();
     AppEntry {
         name,
         path: path.to_string(),
@@ -60,6 +64,30 @@ mod platform {
     static CARDINAL_READY: std::sync::atomic::AtomicBool =
         std::sync::atomic::AtomicBool::new(false);
     static NEVER_STOPPED: AtomicBool = AtomicBool::new(false);
+
+    fn cardinal_query(query: &str) -> String {
+        let lower = query.to_ascii_lowercase();
+        let has_type_filter = [
+            "file:",
+            "files:",
+            "folder:",
+            "folders:",
+            "dir:",
+            "directory:",
+            "type:",
+            "ext:",
+            "parent:",
+            "infolder:",
+        ]
+        .iter()
+        .any(|prefix| lower.contains(prefix));
+        if has_type_filter {
+            return query.to_string();
+        }
+
+        let quoted = query.replace('"', "\"\"");
+        format!(r#"{query} | folder:"{quoted}""#)
+    }
 
     pub fn init_platform() {
         CARDINAL_CACHE.get_or_init(|| Mutex::new(None));
@@ -107,10 +135,18 @@ mod platform {
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 if let Some(cache) = guard.as_mut() {
-                    if let Ok(Some(nodes)) = cache.query_files(query, CancellationToken::noop()) {
+                    let query = cardinal_query(query);
+                    if let Ok(Some(nodes)) = cache.query_files(&query, CancellationToken::noop()) {
                         return nodes
                             .into_iter()
-                            .filter_map(|node| node.path.to_str().map(super::entry_from_path))
+                            .filter_map(|node| {
+                                node.path.to_str().map(|path| {
+                                    super::entry_from_path_with_kind(
+                                        path,
+                                        node.metadata.file_type_hint() == NodeFileType::Dir,
+                                    )
+                                })
+                            })
                             .take(limit)
                             .collect();
                     }

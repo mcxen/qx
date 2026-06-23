@@ -1,6 +1,6 @@
 [package]
 name = "qx"
-version = "0.4.7"
+version = "0.4.8"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -53,3 +53,4 @@ window-vibrancy = "0.6"
 core-graphics = "0.21"
 search-cache = { path = "vendor/cardinal/search-cache" }
 search-cancel = { path = "vendor/cardinal/search-cancel" }
+fswalk = { path = "vendor/cardinal/fswalk" }
