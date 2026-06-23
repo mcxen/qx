@@ -41,7 +41,14 @@
   min-width: 42px;
   padding: 0 9px;
   justify-content: center;
+  border-color: var(--qx-border-2);
+  background: var(--qx-bg-component-3);
   color: var(--qx-text-secondary);
+}
+
+.qx-shell-action.variant-escape:hover {
+  border-color: var(--qx-border-3);
+  color: var(--qx-text-primary);
 }
 
 .qx-shell-action.tone-primary {
@@ -219,7 +226,7 @@
   }
 
   .qx-bottom-island-detail,
-  .qx-shell-action kbd {
+  .qx-shell-action:not(.variant-escape) kbd {
     display: none;
   }
 
