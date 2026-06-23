@@ -28,8 +28,52 @@
 - 系统监控用 Mach 内核 API（`host_processor_info` / `host_statistics64`），不用 `sysinfo` crate。
 - 任何情况不允许模拟 —— 使用真实 HTTP 下载、真实 API 调用。
 
+### Esc 级联协议 (Cascading Esc)
+
+每个可打开的模块（Clipboard、Screenshot、RSS、DevTxtTool、ScreenRecorder 等）必须通过 `useEscBack` hook 统一实现多级 Esc 级联行为：
+
+1. **inner state**（模块内部子状态：详情面板、预览、输出视图等）→ 关闭子面板
+2. **local query**（模块自己管理的搜索框文本）→ 清空
+3. **launcher**（关闭当前模块，回到主搜索页）→ 执行
+
+如果模块没有某个层级，自动跳过，递进到下一级。
+
+实现方式：
+
+```ts
+// src/hooks/useEscBack.ts
+const { onKeyDown } = useEscBack({
+  inner: { active: showDetail, close: () => setShowDetail(false) },
+  query: { active: !!localQuery, clear: () => setLocalQuery("") },
+  launcher: props.onBack,
+})
+```
+
+规则：
+- 每个层级按顺序检查，命中即消费、阻止冒泡、不再递进。
+- `inner` 和 `query` 是可选的（`?`），无对应状态时跳过。
+- 禁止各模块自己复制这段逻辑，必须统一引用 `useEscBack`。
+- 模块新增内部子状态时，将其纳入 `inner` 层级，不要自己写额外的 Esc 监听。
+
 ## 工作流程
 
 - 编码任务优先通过 OpenCode CLI 或 Codex CLI 执行。
 - 提交前运行 `cargo check`（在 `src-tauri/` 目录）和 `npx tsc --noEmit` 确保零错误。
 - 每次提交打 tag 并发布 GitHub Release。
+- Release 发布后，brew tap `mcxen/qx` 的 cask 配置（位于 `github.com/mcxen/homebrew-qx`）需要同步更新 version 和 sha256。安装方式：
+
+  ```
+  brew tap mcxen/qx
+  brew install --cask qx
+  brew upgrade --cask qx  # 升级
+  ```
+
+  **国内网络注意**：`brew tap` 默认走 HTTPS，GitHub 可能被阻断。改用 SSH 克隆：
+
+  ```
+  git clone git@github.com:mcxen/homebrew-qx.git /opt/homebrew/Library/Taps/mcxen/homebrew-qx
+  brew trust mcxen/qx
+  brew install --cask qx
+  ```
+
+  下载 .app.zip 同样需要 GitHub 可达，如有必要请配置代理。
