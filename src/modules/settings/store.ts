@@ -60,7 +60,8 @@ export type SettingsTab =
   | "shortcuts"
   | "appearance"
   | "rss"
-  | "advanced";
+  | "advanced"
+  | "about";
 
 export const DEFAULT_SETTINGS: Settings = {
   general: {

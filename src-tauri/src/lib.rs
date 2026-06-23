@@ -86,23 +86,57 @@ fn toggle_window(win: &tauri::WebviewWindow) {
     }
 }
 
+#[cfg(target_os = "macos")]
+fn setup_frosted_glass(app: &tauri::App) {
+    use tauri::Manager;
+    let Some(win) = app.get_webview_window("main") else {
+        eprintln!("frosted glass: main window not found");
+        return;
+    };
+    let _ = window_vibrancy::apply_vibrancy(
+        &win,
+        window_vibrancy::NSVisualEffectMaterial::HudWindow,
+        Some(window_vibrancy::NSVisualEffectState::Active),
+        Some(12.0),
+    );
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    std::panic::set_hook(Box::new(|info| {
+        let msg = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            format!("{:?}", info.location())
+        };
+        let loc = info.location().map(|l| l.to_string()).unwrap_or_default();
+        eprintln!("[QX PANIC] {loc}: {msg}");
+    }));
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             let handle = app.handle().clone();
-            let win = app.get_webview_window("main").unwrap();
+            let Some(win) = app.get_webview_window("main") else {
+                eprintln!("main window not found during setup");
+                return Ok(());
+            };
 
             // Enable resizing with minimum size.
             let _ = win.set_resizable(true);
             let _ = win.set_min_size(Some(PhysicalSize::new(480, 360)));
+
+            #[cfg(target_os = "macos")]
+            setup_frosted_glass(app);
 
             settings::register_shortcuts(&handle, &settings::read_settings())?;
 
@@ -126,6 +160,9 @@ pub fn run() {
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "quit" => {
+                        if let Some(flag) = app.try_state::<clipboard::ClipboardShutdown>() {
+                            flag.0.store(true, std::sync::atomic::Ordering::SeqCst);
+                        }
                         app.exit(0);
                     }
                     "show" => {

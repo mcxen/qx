@@ -153,7 +153,7 @@ fn scan_all_apps() -> Vec<AppEntry> {
 }
 
 fn ensure_cache() {
-    let mut cache = APP_CACHE.lock().unwrap();
+    let mut cache = APP_CACHE.lock().unwrap_or_else(|e| e.into_inner());
     if cache.is_empty() {
         *cache = scan_all_apps();
     }
@@ -164,7 +164,7 @@ fn ensure_cache() {
 /// can refresh results with icons.
 pub fn preload_icons(app: &AppHandle) {
     ensure_cache();
-    let apps = APP_CACHE.lock().unwrap().clone();
+    let apps = APP_CACHE.lock().unwrap_or_else(|e| e.into_inner()).clone();
 
     let handle = app.clone();
     std::thread::spawn(move || {
@@ -196,15 +196,18 @@ pub fn preload_icons(app: &AppHandle) {
 }
 
 #[tauri::command]
-pub fn search_apps(query: String) -> Vec<AppEntry> {
+pub fn search_apps(query: String) -> Result<Vec<AppEntry>, String> {
     ensure_cache();
-    let results: Vec<AppEntry> = APP_CACHE.lock().unwrap().clone();
+    let results: Vec<AppEntry> = APP_CACHE
+        .lock()
+        .map_err(|e| format!("lock poisoned: {e}"))?
+        .clone();
 
     if query.is_empty() {
         let mut sorted = results;
         sorted.sort_by(|a, b| a.name.cmp(&b.name));
         sorted.truncate(20);
-        return sorted;
+        return Ok(sorted);
     }
 
     let q = query.to_lowercase();
@@ -226,7 +229,7 @@ pub fn search_apps(query: String) -> Vec<AppEntry> {
 
     scored.sort_by_key(|(score, _)| *score);
     scored.truncate(12);
-    scored.into_iter().map(|(_, app)| app).collect()
+    Ok(scored.into_iter().map(|(_, app)| app).collect())
 }
 
 #[tauri::command]

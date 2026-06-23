@@ -6,6 +6,7 @@ import ShortcutSettings from "./ShortcutSettings";
 import AppearanceSettings from "./AppearanceSettings";
 import RssSettings from "./RssSettings";
 import AdvancedSettings from "./AdvancedSettings";
+import AboutPanel from "./AboutPanel";
 import QxShell from "../../components/QxShell";
 import { useT } from "../../i18n";
 
@@ -22,6 +23,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "appearance", label: "Appearance", code: "AP" },
   { id: "rss", label: "RSS Reader", code: "RS" },
   { id: "advanced", label: "Advanced", code: "AD" },
+  { id: "about", label: "About", code: "AB" },
 ];
 
 const TAB_LABELS: Record<SettingsTab, string> = {
@@ -31,6 +33,7 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   appearance: "Appearance",
   rss: "RSS Reader",
   advanced: "Advanced",
+  about: "About",
 };
 
 export default function SettingsPanel({ onClose }: { onClose: () => void }) {
@@ -62,6 +65,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         return <RssSettings />;
       case "advanced":
         return <AdvancedSettings />;
+      case "about":
+        return <AboutPanel />;
       default:
         return null;
     }

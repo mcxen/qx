@@ -2,6 +2,7 @@ use chrono::Local;
 use rusqlite::{params, Connection};
 use serde::Serialize;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{command, AppHandle, Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -16,6 +17,8 @@ pub struct ClipboardEntry {
 }
 
 pub struct ClipboardDb(pub Arc<Mutex<Option<Connection>>>);
+
+pub struct ClipboardShutdown(pub Arc<AtomicBool>);
 
 fn get_db_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
@@ -71,39 +74,59 @@ fn compute_id(text: &str) -> String {
 }
 
 pub fn start_listener(app: &AppHandle) {
-    let conn = init_db().expect("Failed to init clipboard DB");
-    let db = Arc::new(Mutex::new(Some(conn)));
+    let conn = match init_db() {
+        Ok(c) => Some(c),
+        Err(e) => {
+            eprintln!("clipboard DB init failed: {e}");
+            None
+        }
+    };
+    let db = Arc::new(Mutex::new(conn));
     let db_clone = db.clone();
     app.manage(ClipboardDb(db));
 
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let shutdown_clone = shutdown.clone();
+    app.manage(ClipboardShutdown(shutdown));
+
     let app_handle = app.clone();
-    std::thread::spawn(move || {
-        let mut last_text = String::new();
+    std::thread::Builder::new()
+        .name("qx-clipboard".to_string())
+        .spawn(move || {
+            let mut last_text = String::new();
 
-        // Initialize with current clipboard via Tauri plugin API
-        if let Ok(text) = app_handle.clipboard().read_text() {
-            if !text.is_empty() {
-                last_text = text.clone();
-                store(&db_clone, &text);
-            }
-        }
-
-        loop {
-            std::thread::sleep(std::time::Duration::from_millis(1000));
-
-            match app_handle.clipboard().read_text() {
-                Ok(text) if !text.is_empty() && text != last_text => {
+            // Initialize with current clipboard via Tauri plugin API
+            if let Ok(text) = app_handle.clipboard().read_text() {
+                if !text.is_empty() {
                     last_text = text.clone();
                     store(&db_clone, &text);
-                    let _ = app_handle.emit("clipboard-updated", ());
                 }
-                Err(e) => {
-                    eprintln!("clipboard read error: {e}");
-                }
-                _ => {}
             }
-        }
-    });
+
+            loop {
+                if shutdown_clone.load(Ordering::Relaxed) {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(1000));
+
+                if shutdown_clone.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                match app_handle.clipboard().read_text() {
+                    Ok(text) if !text.is_empty() && text != last_text => {
+                        last_text = text.clone();
+                        store(&db_clone, &text);
+                        let _ = app_handle.emit("clipboard-updated", ());
+                    }
+                    Err(e) => {
+                        eprintln!("clipboard read error: {e}");
+                    }
+                    _ => {}
+                }
+            }
+        })
+        .ok();
 }
 
 fn store(db: &Arc<Mutex<Option<Connection>>>, text: &str) {
