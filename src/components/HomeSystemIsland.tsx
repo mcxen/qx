@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 
 interface HomeSystemIslandProps {
   showCpu: boolean;
@@ -152,11 +152,27 @@ export default function HomeSystemIsland({
   const memText = stats && available ? `${Math.round(stats.memory)}%` : "--";
   const gpuText = !showGpu ? null : !available ? "--" : stats?.gpu == null ? "N/A" : `${Math.round(stats.gpu)}%`;
 
+  const marqueeRef = useRef<HTMLDivElement>(null);
+  const [overflowing, setOverflowing] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = marqueeRef.current;
+    if (el) {
+      const group = el.firstElementChild;
+      if (group) {
+        setOverflowing(group.scrollWidth > el.clientWidth);
+      }
+    }
+  }, [cpuText, memText, gpuText, showCpu, showGpu, showMemory]);
+
   if (!showCpu && !showGpu && !showMemory) return null;
 
   return (
     <div className="qx-home-system-island" aria-label="System monitor">
-      <div className="qx-island-marquee">
+      <div
+        ref={marqueeRef}
+        className={`qx-island-marquee${overflowing ? " is-overflowing" : ""}`}
+      >
         {[0, 1].map((copy) => (
           <div className="qx-island-marquee-group" aria-hidden={copy === 1} key={copy}>
             {showCpu && (

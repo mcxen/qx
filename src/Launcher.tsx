@@ -1,32 +1,21 @@
-import { useEffect, useState, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { revealItemInDir, openPath } from "@tauri-apps/plugin-opener";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { useEffect, useMemo, useState } from "react";
 import QxShell, { type BottomIslandContent } from "./components/QxShell";
 import HomeDateIsland from "./components/HomeDateIsland";
 import HomeSystemIsland from "./components/HomeSystemIsland";
 import ResultsList from "./ResultsList";
 import SearchBar from "./SearchBar";
 import { Select } from "./components/ui";
-import { useStore, type AppEntry, type HistoryEntry, type SearchHistoryEntry, type SearchScope } from "./store";
+import { useStore, type AppEntry, type SearchScope } from "./store";
 import { useSettingsStore } from "./modules/settings/store";
+import LauncherActionPopover from "./launcher/LauncherActionPopover";
+import LauncherContext from "./launcher/LauncherContext";
+import { createLauncherActions } from "./launcher/launcherActions";
+import { useLauncherHistory } from "./launcher/useLauncherHistory";
+import type { QuickEntry } from "./launcher/types";
 import { useT } from "./i18n";
 
-interface QuickEntry {
-  id: string;
-  title: string;
-  subtitle: string;
-  onClick: () => void;
-}
-
-interface LauncherAction {
-  id: string;
-  label: string;
-  kbd?: string;
-  danger?: boolean;
-  disabled?: boolean;
-  run: () => void | Promise<void>;
+function clampActionIndex(index: number, actionCount: number): number {
+  return Math.max(0, Math.min(index, Math.max(0, actionCount - 1)));
 }
 
 interface LauncherProps {
@@ -56,8 +45,6 @@ export default function Launcher({
   const [scope, setScope] = useState<SearchScope>(searchScopeRef.current);
   const [actionPanelOpen, setActionPanelOpen] = useState(false);
   const [actionIndex, setActionIndex] = useState(0);
-  const [recentLaunches, setRecentLaunches] = useState<HistoryEntry[]>([]);
-  const [recentSearches, setRecentSearches] = useState<SearchHistoryEntry[]>([]);
   const query = useStore((state) => state.query);
   const setQuery = useStore((state) => state.setQuery);
   const scopeOptions: { value: SearchScope; label: string }[] = [
@@ -67,114 +54,18 @@ export default function Launcher({
     { value: "clipboard", label: "Clipboard" },
   ];
   const selectedItem = results[selectedIndex] ?? null;
-
-  const readClipboardText = async (item: AppEntry) => {
-    const id = item.path.slice("__qx:clipboard:".length);
-    const history = await invoke<{ id: string; text: string }[]>("get_clipboard_history", {
-      limit: 200,
-    });
-    return history.find((entry) => entry.id === id)?.text ?? item.name;
-  };
-
-  const launcherActions: LauncherAction[] = selectedItem
-    ? (() => {
-        const kind = selectedItem.kind ?? (selectedItem.path.startsWith("__qx:") ? "command" : "app");
-        if (kind === "clipboard") {
-          return [
-            {
-              id: "copy-text",
-              label: "Copy Text",
-              kbd: "↵",
-              run: async () => writeText(await readClipboardText(selectedItem)),
-            },
-            {
-              id: "open-clipboard",
-              label: "Open Clipboard History",
-              kbd: "⌘ ↵",
-              run: () => onNavigate("clipboard"),
-            },
-          ];
-        }
-        if (kind === "command") {
-          return [
-            {
-              id: "run-command",
-              label: selectedItem.path === "__qx:settings" ? "Open Settings" : "Run Command",
-              kbd: "↵",
-              run: () => onItemClick(selectedItem),
-            },
-          ];
-        }
-        if (kind === "calculation") {
-          return [
-            {
-              id: "copy-result",
-              label: "Copy Result",
-              kbd: "↵",
-              run: () => onItemClick(selectedItem),
-            },
-          ];
-        }
-        return [
-          {
-            id: "open",
-            label: kind === "file" ? "Open File" : "Open Application",
-            kbd: "↵",
-            run: () => onItemClick(selectedItem),
-          },
-          {
-            id: "reveal",
-            label: "Show in Finder",
-            kbd: "⌘ ↵",
-            run: () => revealItemInDir(selectedItem.path),
-          },
-          {
-            id: "copy-path",
-            label: "Copy Path",
-            kbd: "⌘ C",
-            run: () => writeText(selectedItem.path),
-          },
-          ...(kind === "app"
-            ? [
-                {
-                  id: "show-package",
-                  label: "Show Package Contents",
-                  kbd: "⌥ ⌘ ↵",
-                  run: () => openPath(`${selectedItem.path}/Contents`),
-                },
-              ]
-            : []),
-        ];
-      })()
-    : [];
+  const launcherActions = useMemo(
+    () => createLauncherActions({ item: selectedItem, onItemClick, onNavigate }),
+    [selectedItem, onItemClick, onNavigate],
+  );
+  const { recentLaunches, recentSearches } = useLauncherHistory({
+    shouldRefreshWhenIdle: results.length === 0 && !loadingPhase,
+  });
 
   useEffect(() => {
     setActionPanelOpen(false);
     setActionIndex(0);
   }, [selectedItem?.path]);
-
-  // Load recent launches and search history
-  const loadHistory = useCallback(async () => {
-    try {
-      const [launches, searches] = await Promise.all([
-        invoke<HistoryEntry[]>("get_launch_history", { limit: 5 }),
-        invoke<SearchHistoryEntry[]>("get_search_history", { limit: 5 }),
-      ]);
-      setRecentLaunches(launches);
-      setRecentSearches(searches);
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    void loadHistory();
-  }, [loadHistory]);
-
-  // Reload history when results become empty (user cleared search or opened app)
-  useEffect(() => {
-    if (results.length === 0 && !loadingPhase) {
-      void loadHistory();
-    }
-  }, [results.length, loadingPhase, loadHistory]);
 
   const quickEntries: QuickEntry[] = [
     {
@@ -257,13 +148,13 @@ export default function Launcher({
       if (event.key === "ArrowDown") {
         event.preventDefault();
         event.stopPropagation();
-        setActionIndex((index) => Math.min(index + 1, launcherActions.length - 1));
+        setActionIndex((index) => clampActionIndex(index + 1, launcherActions.length));
         return;
       }
       if (event.key === "ArrowUp") {
         event.preventDefault();
         event.stopPropagation();
-        setActionIndex((index) => Math.max(index - 1, 0));
+        setActionIndex((index) => clampActionIndex(index - 1, launcherActions.length));
         return;
       }
       if (event.key === "Enter") {
@@ -309,55 +200,13 @@ export default function Launcher({
         />
       }
       context={
-        <div className="qx-launcher-context">
-          <div className="qx-context-title">{t("launcher.quickEntries", "Quick Entries")}</div>
-          {quickEntries.map((entry) => (
-            <button
-              key={entry.id}
-              className="qx-context-entry"
-              onClick={entry.onClick}
-              type="button"
-            >
-              <span className="qx-context-entry-title">{entry.title}</span>
-              <span className="qx-context-entry-subtitle">{entry.subtitle}</span>
-            </button>
-          ))}
-          {recentLaunches.length > 0 && (
-            <>
-              <div className="qx-context-title" style={{ marginTop: 12 }}>Recent</div>
-              {recentLaunches.map((entry) => (
-                <button
-                  key={`launch-${entry.id}`}
-                  className="qx-context-entry"
-                  onClick={() => {
-                    invoke("open_app", { path: entry.path }).catch(() => {});
-                    getCurrentWindow().hide().catch(() => {});
-                  }}
-                  type="button"
-                >
-                  <span className="qx-context-entry-title">{entry.name}</span>
-                  <span className="qx-context-entry-subtitle">{entry.timestamp}</span>
-                </button>
-              ))}
-            </>
-          )}
-          {recentSearches.length > 0 && !query && (
-            <>
-              <div className="qx-context-title" style={{ marginTop: 12 }}>Recent Searches</div>
-              {recentSearches.map((entry) => (
-                <button
-                  key={`search-${entry.id}`}
-                  className="qx-context-entry"
-                  onClick={() => setQuery(entry.query)}
-                  type="button"
-                >
-                  <span className="qx-context-entry-title">{entry.query}</span>
-                  <span className="qx-context-entry-subtitle">{entry.timestamp}</span>
-                </button>
-              ))}
-            </>
-          )}
-        </div>
+        <LauncherContext
+          quickEntries={quickEntries}
+          recentLaunches={recentLaunches}
+          recentSearches={recentSearches}
+          query={query}
+          onSearchSelect={setQuery}
+        />
       }
       island={island}
       customIsland={customIsland}
@@ -383,48 +232,16 @@ export default function Launcher({
     >
       <ResultsList items={results} onItemClick={onItemClick} loadingPhase={loadingPhase} />
       {actionPanelOpen && selectedItem && (
-        <div
-          className="qx-actions-popover"
-          role="menu"
-          aria-label={
-            selectedItem.kind === "file"
-              ? "File Actions"
-              : selectedItem.kind === "clipboard"
-                ? "Clipboard Actions"
-                : selectedItem.kind === "command"
-                  ? "Command Actions"
-                  : "Application Actions"
-          }
-        >
-          <div className="qx-actions-popover-title">
-            {selectedItem.kind === "file"
-              ? "File Actions"
-              : selectedItem.kind === "clipboard"
-                ? "Clipboard Actions"
-                : selectedItem.kind === "command"
-                  ? "Command Actions"
-                  : "Application Actions"}
-          </div>
-          {launcherActions.map((action, index) => (
-            <button
-              key={action.id}
-              className={`qx-actions-popover-item${index === actionIndex ? " is-active" : ""}${
-                action.danger ? " danger" : ""
-              }`}
-              disabled={action.disabled}
-              onMouseEnter={() => setActionIndex(index)}
-              onClick={() => {
-                setActionPanelOpen(false);
-                void action.run();
-              }}
-              role="menuitem"
-              type="button"
-            >
-              <span>{action.label}</span>
-              {action.kbd && <kbd>{action.kbd}</kbd>}
-            </button>
-          ))}
-        </div>
+        <LauncherActionPopover
+          actions={launcherActions}
+          activeIndex={actionIndex}
+          selectedItem={selectedItem}
+          onHover={setActionIndex}
+          onRun={(action) => {
+            setActionPanelOpen(false);
+            void action.run();
+          }}
+        />
       )}
     </QxShell>
   );

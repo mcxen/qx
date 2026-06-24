@@ -1,22 +1,10 @@
 import { forwardRef } from "react";
 import type { ReactNode } from "react";
+import QxBottomIsland, { type BottomIslandContent } from "./QxBottomIsland";
+import ShellActionButton, { type QxShellAction } from "./ShellActionButton";
 
-export interface BottomIslandContent {
-  label: string;
-  detail?: string;
-  progress?: number;
-  tone?: "neutral" | "success" | "warning" | "danger";
-  actionLabel?: string;
-  onAction?: () => void;
-}
-
-interface QxShellAction {
-  label: string;
-  kbd?: string;
-  disabled?: boolean;
-  tone?: "normal" | "primary" | "danger";
-  onClick?: () => void;
-}
+export type { BottomIslandContent } from "./QxBottomIsland";
+export type { QxShellAction } from "./ShellActionButton";
 
 interface QxShellProps {
   title: string;
@@ -36,80 +24,6 @@ interface QxShellProps {
   className?: string;
   onKeyDown?: (event: React.KeyboardEvent) => void;
   overlayBottom?: boolean;
-}
-
-function clampProgress(value?: number): number | null {
-  if (typeof value !== "number" || Number.isNaN(value)) return null;
-  return Math.max(0, Math.min(100, value));
-}
-
-export function QxBottomIsland({ content }: { content?: BottomIslandContent | null }) {
-  const progress = clampProgress(content?.progress);
-
-  return (
-    <div
-      className={`qx-bottom-island${content ? "" : " is-empty"}${
-        content?.tone ? ` tone-${content.tone}` : ""
-      }`}
-    >
-      {content ? (
-        <>
-          <div className="qx-bottom-island-copy">
-            <span className="qx-bottom-island-label">{content.label}</span>
-            {content.detail && (
-              <span className="qx-bottom-island-detail">{content.detail}</span>
-            )}
-          </div>
-          {progress !== null && (
-            <div
-              className="qx-bottom-island-progress"
-              aria-label={`${progress}%`}
-            >
-              <span style={{ width: `${progress}%` }} />
-            </div>
-          )}
-          {content.actionLabel && (
-            <button
-              className="qx-bottom-island-action"
-              onClick={content.onAction}
-              type="button"
-            >
-              {content.actionLabel}
-            </button>
-          )}
-        </>
-      ) : (
-        <span className="qx-bottom-island-placeholder" />
-      )}
-    </div>
-  );
-}
-
-function ShellActionButton({
-  action,
-  variant = "normal",
-}: {
-  action?: QxShellAction;
-  variant?: "normal" | "escape";
-}) {
-  if (!action || action.disabled) return null;
-  return (
-    <button
-      className={`qx-shell-action tone-${action.tone ?? "normal"} variant-${variant}`}
-      disabled={action.disabled}
-      onClick={action.onClick}
-      type="button"
-    >
-      {variant === "escape" && action.kbd ? (
-        <kbd>{action.kbd}</kbd>
-      ) : (
-        <>
-          <span>{action.label}</span>
-          {action.kbd && <kbd>{action.kbd}</kbd>}
-        </>
-      )}
-    </button>
-  );
 }
 
 const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({

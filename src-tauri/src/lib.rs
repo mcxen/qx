@@ -2,6 +2,7 @@ mod apps;
 mod clipboard;
 mod display_monitor;
 mod file_search;
+mod g4f;
 mod github_calendar;
 mod history;
 mod http_client;
@@ -14,7 +15,6 @@ mod screenshot;
 mod settings;
 mod system_stats;
 mod v2ex;
-mod g4f;
 
 use tauri::{
     image::Image,

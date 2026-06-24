@@ -1,3 +1,24 @@
+## Maintenance — QxShell / Launcher 结构整理
+
+**状态**：已实现，已通过静态验证。
+
+### 整理内容
+
+- 将 `QxShell.tsx` 中的底部灵动岛渲染拆到 `QxBottomIsland.tsx`，并保留 `BottomIslandContent` 类型从 `QxShell` re-export，避免影响现有模块 import。
+- 将 Shell 底部动作按钮拆到 `ShellActionButton.tsx`，使 Shell 主文件只负责三层布局编排。
+- 将 Launcher 的选中项动作生成、动作弹层、右侧 Context Panel、历史加载分别拆到 `src/launcher/` 下的小模块。
+- 将 `.qx-shell-action` 与 Shell 响应式布局样式从 `launcher.css` 迁移到 `shell.css`，解除 Shell 公共 UI 对 Launcher 私有样式的依赖。
+- 移除 Launcher Context 的内联 spacing style，改用 CSS class。
+- 补充动作面板键盘索引 clamp，避免空动作列表时出现非法索引。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [ ] 手动验证 Launcher 搜索、右侧入口、Recent、`Cmd+K` 动作面板、`Cmd+,` 设置入口和底部动作按钮行为保持一致。
+
+---
+
 ## Bugfix — 外观设置控件与窗口尺寸同步
 
 **状态**：已实现，已通过静态验证。

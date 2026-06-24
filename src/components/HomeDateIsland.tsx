@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 
 function formatTime(date: Date): string {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -44,9 +44,25 @@ export default function HomeDateIsland() {
     [now],
   );
 
+  const marqueeRef = useRef<HTMLDivElement>(null);
+  const [overflowing, setOverflowing] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = marqueeRef.current;
+    if (el) {
+      const group = el.firstElementChild;
+      if (group) {
+        setOverflowing(group.scrollWidth > el.clientWidth);
+      }
+    }
+  }, [parts]);
+
   return (
     <div className="qx-home-date-island" aria-label="Date display">
-      <div className="qx-island-marquee">
+      <div
+        ref={marqueeRef}
+        className={`qx-island-marquee${overflowing ? " is-overflowing" : ""}`}
+      >
         {[0, 1].map((copy) => (
           <div className="qx-island-marquee-group" aria-hidden={copy === 1} key={copy}>
             <span className="qx-date-time">{parts.time}</span>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useStore, type ClipboardEntry } from "../../store";
@@ -28,6 +28,19 @@ const FILTER_LABELS: Record<Filter, string> = {
   image: "Images",
 };
 
+const IMAGE_CACHE = new Map<string, string>();
+
+async function loadImageAsDataUrl(path: string): Promise<string> {
+  const cached = IMAGE_CACHE.get(path);
+  if (cached) return cached;
+  const bytes = await invoke<number[]>("read_image_file", { path });
+  const binary = Uint8Array.from(bytes);
+  const blob = new Blob([binary], { type: "image/png" });
+  const url = URL.createObjectURL(blob);
+  IMAGE_CACHE.set(path, url);
+  return url;
+}
+
 function isTauriRuntime(): boolean {
   return "__TAURI_INTERNALS__" in window;
 }
@@ -39,6 +52,7 @@ export default function ClipboardPanel() {
   const [selected, setSelected] = useState(0);
   const [detailOpen, setDetailOpen] = useState(false);
   const [status, setStatus] = useState("");
+  const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
 
   const loadHistory = async () => {
     try {
@@ -89,6 +103,24 @@ export default function ClipboardPanel() {
   useEffect(() => {
     setSelected((current) => Math.min(current, Math.max(filtered.length - 1, 0)));
   }, [filtered.length]);
+
+  // Load clipboard images as data URLs (avoids asset protocol issues)
+  useEffect(() => {
+    const paths = filtered.filter((e) => e.image_path).map((e) => e.image_path!);
+    const uniquePaths = [...new Set(paths)];
+    const loadAll = async () => {
+      const results: Record<string, string> = {};
+      await Promise.all(
+        uniquePaths.map(async (p) => {
+          try {
+            results[p] = await loadImageAsDataUrl(p);
+          } catch {}
+        }),
+      );
+      setImageUrls((prev) => ({ ...prev, ...results }));
+    };
+    void loadAll();
+  }, [filtered]);
 
   const selectedItem = filtered[selected];
 
@@ -273,7 +305,7 @@ export default function ClipboardPanel() {
                         {isImage ? (
                           <img
                             className="qx-clipboard-thumb"
-                            src={convertFileSrc(item.image_path!)}
+                            src={imageUrls[item.image_path!] || ""}
                             alt="Clipboard image"
                           />
                         ) : (
@@ -300,7 +332,7 @@ export default function ClipboardPanel() {
                 <div className="qx-clipboard-image-wrap">
                   <img
                     className="qx-clipboard-image-preview"
-                    src={convertFileSrc(selectedItem.image_path)}
+                    src={imageUrls[selectedItem.image_path] || ""}
                     alt="Clipboard image"
                   />
                 </div>

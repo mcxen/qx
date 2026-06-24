@@ -1,6 +1,8 @@
 use rusqlite::{params, Connection};
 use serde::Serialize;
+use std::collections::hash_map::DefaultHasher;
 use std::fs;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Mutex;
@@ -149,12 +151,41 @@ fn get_icon_cache_dir() -> PathBuf {
     dir
 }
 
+fn has_info_plist(app_path: &PathBuf) -> bool {
+    app_path.join("Contents").join("Info.plist").is_file()
+}
+
+fn icon_cache_path(app_path: &PathBuf, app_name: &str) -> PathBuf {
+    let mut hasher = DefaultHasher::new();
+    app_path.to_string_lossy().hash(&mut hasher);
+    let path_hash = hasher.finish();
+    let safe_name = app_name
+        .chars()
+        .map(|c| match c {
+            '/' | ':' => '-',
+            _ => c,
+        })
+        .collect::<String>();
+    get_icon_cache_dir().join(format!("{safe_name}-{path_hash:016x}.png"))
+}
+
+fn legacy_icon_cache_path(app_name: &str) -> PathBuf {
+    let safe_name = app_name.replace('/', "-");
+    get_icon_cache_dir().join(format!("{safe_name}.png"))
+}
+
+fn has_current_cached_icon(app_path: &PathBuf, app_name: &str, icon: &str) -> bool {
+    if icon.is_empty() {
+        return false;
+    }
+    let current_path = icon_cache_path(app_path, app_name);
+    icon == current_path.to_string_lossy() && current_path.exists()
+}
+
 /// Convert .icns to .png using macOS built-in `sips` tool, cache results.
 /// Chromium/Tauri webview cannot render .icns, only PNG/JPEG/GIF/WebP.
-fn icon_to_png(icns_path: &PathBuf, app_name: &str) -> String {
-    let cache_dir = get_icon_cache_dir();
-    let safe_name = app_name.replace('/', "-");
-    let png_path = cache_dir.join(format!("{}.png", safe_name));
+fn icon_to_png(icns_path: &PathBuf, app_path: &PathBuf, app_name: &str) -> String {
+    let png_path = icon_cache_path(app_path, app_name);
 
     if png_path.exists() {
         let png_modified = fs::metadata(&png_path).ok().and_then(|m| m.modified().ok());
@@ -181,6 +212,82 @@ fn icon_to_png(icns_path: &PathBuf, app_name: &str) -> String {
         Ok(o) if o.status.success() && png_path.exists() => png_path.to_string_lossy().to_string(),
         _ => String::new(),
     }
+}
+
+#[cfg(target_os = "macos")]
+fn appkit_icon_to_png(app_path: &PathBuf, app_name: &str) -> String {
+    use objc2::AnyThread;
+    use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSWorkspace};
+    use objc2_foundation::{NSDictionary, NSSize, NSString};
+
+    let png_path = icon_cache_path(app_path, app_name);
+    if png_path.exists() {
+        return png_path.to_string_lossy().to_string();
+    }
+
+    let app_path_string = app_path.to_string_lossy();
+    let ns_path = NSString::from_str(&app_path_string);
+    let empty_props = NSDictionary::new();
+
+    let write_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let workspace = NSWorkspace::sharedWorkspace();
+        let image = workspace.iconForFile(&ns_path);
+        image.setSize(NSSize::new(256.0, 256.0));
+        let tiff = image.TIFFRepresentation()?;
+        let bitmap = NSBitmapImageRep::initWithData(NSBitmapImageRep::alloc(), &tiff)?;
+        let png = unsafe {
+            bitmap.representationUsingType_properties(NSBitmapImageFileType::PNG, &empty_props)
+        }?;
+        fs::write(&png_path, unsafe { png.as_bytes_unchecked() }).ok()?;
+        Some(())
+    }));
+
+    match write_result {
+        Ok(Some(())) if png_path.exists() => png_path.to_string_lossy().to_string(),
+        _ => String::new(),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn appkit_icon_to_png(_app_path: &PathBuf, _app_name: &str) -> String {
+    String::new()
+}
+
+fn resolve_app_bundle(path: PathBuf) -> Option<PathBuf> {
+    if has_info_plist(&path) {
+        return Some(path);
+    }
+
+    let wrapper_dir = path.join("Wrapper");
+    if let Ok(entries) = fs::read_dir(&wrapper_dir) {
+        for entry in entries.flatten() {
+            let nested = entry.path();
+            if nested.extension().map(|e| e == "app").unwrap_or(false) && has_info_plist(&nested) {
+                return Some(nested);
+            }
+        }
+    }
+
+    let mut stack = vec![path];
+    while let Some(dir) = stack.pop() {
+        let entries = match fs::read_dir(&dir) {
+            Ok(entries) => entries,
+            Err(_) => continue,
+        };
+        for entry in entries.flatten() {
+            let nested = entry.path();
+            if nested.extension().map(|e| e == "app").unwrap_or(false) {
+                if has_info_plist(&nested) {
+                    return Some(nested);
+                }
+                stack.push(nested);
+            } else if nested.is_dir() {
+                stack.push(nested);
+            }
+        }
+    }
+
+    None
 }
 
 fn plist_value(info_plist: &PathBuf, key: &str) -> Option<String> {
@@ -236,19 +343,25 @@ fn scan_dir_fast(dir: &PathBuf, results: &mut Vec<AppEntry>) {
         return;
     }
     if let Ok(entries) = fs::read_dir(dir) {
-        let cache_dir = get_icon_cache_dir();
         for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().map(|e| e == "app").unwrap_or(false) {
+            let original_path = entry.path();
+            if original_path
+                .extension()
+                .map(|e| e == "app")
+                .unwrap_or(false)
+            {
+                let path = resolve_app_bundle(original_path.clone()).unwrap_or(original_path);
                 let name = path
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("Unknown")
                     .to_string();
-                let safe_name = name.replace('/', "-");
-                let png_path = cache_dir.join(format!("{}.png", safe_name));
+                let png_path = icon_cache_path(&path, &name);
+                let legacy_png_path = legacy_icon_cache_path(&name);
                 let icon = if png_path.exists() {
                     png_path.to_string_lossy().to_string()
+                } else if legacy_png_path.exists() {
+                    legacy_png_path.to_string_lossy().to_string()
                 } else {
                     String::new()
                 };
@@ -335,29 +448,32 @@ pub fn preload_icons(app: &AppHandle) {
     std::thread::spawn(move || {
         let mut changed = false;
         for entry in apps.iter() {
-            if !entry.icon.is_empty() {
+            let app_path = PathBuf::from(&entry.path);
+            if has_current_cached_icon(&app_path, &entry.name, &entry.icon) {
                 continue;
             }
-            let app_path = PathBuf::from(&entry.path);
-            if let Some(icon_path) = resolve_icon_path(&app_path, &entry.name) {
-                let png = icon_to_png(&icon_path, &entry.name);
-                if !png.is_empty() {
-                    if let Ok(mut cache) = APP_CACHE.lock() {
-                        for c in cache.iter_mut() {
-                            if c.path == entry.path {
-                                c.icon = png.clone();
-                                changed = true;
-                                break;
-                            }
+            let mut png = appkit_icon_to_png(&app_path, &entry.name);
+            if png.is_empty() {
+                if let Some(icon_path) = resolve_icon_path(&app_path, &entry.name) {
+                    png = icon_to_png(&icon_path, &app_path, &entry.name);
+                }
+            }
+            if !png.is_empty() {
+                if let Ok(mut cache) = APP_CACHE.lock() {
+                    for c in cache.iter_mut() {
+                        if c.path == entry.path {
+                            c.icon = png.clone();
+                            changed = true;
+                            break;
                         }
                     }
-                    // Also update DB
-                    if let Ok(conn) = init_db() {
-                        let _ = conn.execute(
-                            "UPDATE apps SET icon = ?1 WHERE path = ?2",
-                            params![png, entry.path],
-                        );
-                    }
+                }
+                // Also update DB
+                if let Ok(conn) = init_db() {
+                    let _ = conn.execute(
+                        "UPDATE apps SET icon = ?1 WHERE path = ?2",
+                        params![png, entry.path],
+                    );
                 }
             }
         }

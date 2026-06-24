@@ -57,11 +57,7 @@ fn duckduckgo_get_vqd(client: &reqwest::blocking::Client) -> Result<String, Stri
         .map_err(|e| format!("failed to get DDG status: {e}"))?;
 
     let status = resp.status();
-    if let Some(vqd) = resp
-        .headers()
-        .get("x-vqd-4")
-        .and_then(|v| v.to_str().ok())
-    {
+    if let Some(vqd) = resp.headers().get("x-vqd-4").and_then(|v| v.to_str().ok()) {
         return Ok(vqd.to_string());
     }
 
@@ -95,7 +91,8 @@ fn duckduckgo_post_chat(
         return Err(format!("duckduckgo returned HTTP {status}: {text}"));
     }
 
-    resp.text().map_err(|e| format!("failed to read response body: {e}"))
+    resp.text()
+        .map_err(|e| format!("failed to read response body: {e}"))
 }
 
 /// Parse an SSE response into a single concatenated message string.
@@ -198,8 +195,9 @@ fn provider_openai_chat(
         return Err(format!("{url} returned HTTP {status}: {text}"));
     }
 
-    let json: serde_json::Value =
-        resp.json().map_err(|e| format!("parse response from {url}: {e}"))?;
+    let json: serde_json::Value = resp
+        .json()
+        .map_err(|e| format!("parse response from {url}: {e}"))?;
 
     json["choices"][0]["message"]["content"]
         .as_str()
@@ -255,16 +253,14 @@ pub fn g4f_chat_custom(
 /// List all available AI providers and their models.
 #[tauri::command]
 pub fn g4f_list_providers() -> Vec<ProviderInfo> {
-    vec![
-        ProviderInfo {
-            id: "duckduckgo".to_string(),
-            name: "DuckDuckGo AI Chat".to_string(),
-            models: vec![ProviderModel {
-                id: "gpt-4o-mini".to_string(),
-                name: "GPT-4o Mini".to_string(),
-            }],
-        },
-    ]
+    vec![ProviderInfo {
+        id: "duckduckgo".to_string(),
+        name: "DuckDuckGo AI Chat".to_string(),
+        models: vec![ProviderModel {
+            id: "gpt-4o-mini".to_string(),
+            name: "GPT-4o Mini".to_string(),
+        }],
+    }]
 }
 
 // ---------------------------------------------------------------------------
@@ -292,7 +288,6 @@ pub fn qxai_get_custom_providers() -> Vec<CustomProviderConfig> {
 #[tauri::command]
 pub fn qxai_save_custom_providers(providers: Vec<CustomProviderConfig>) -> Result<(), String> {
     let path = custom_providers_path();
-    let json =
-        serde_json::to_string_pretty(&providers).map_err(|e| format!("serialize: {e}"))?;
+    let json = serde_json::to_string_pretty(&providers).map_err(|e| format!("serialize: {e}"))?;
     std::fs::write(&path, json).map_err(|e| format!("write {}: {e}", path.display()))
 }

@@ -743,3 +743,9 @@ pub fn record_clipboard_copy(
     .map_err(|e| format!("{e}"))?;
     Ok(())
 }
+
+#[command]
+pub fn read_image_file(path: String) -> Result<Vec<u8>, String> {
+    use std::fs;
+    fs::read(&path).map_err(|e| format!("Failed to read image file: {e}"))
+}
