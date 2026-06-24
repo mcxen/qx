@@ -89,8 +89,8 @@ export const DEFAULT_SETTINGS: Settings = {
   appearance: {
     theme: "light",
     blur_opacity: 0.16,
-    window_width: 680,
-    window_height: 500,
+    window_width: 0,
+    window_height: 0,
     border_radius: 8,
     font_size: 14,
     home_island_mode: "system",

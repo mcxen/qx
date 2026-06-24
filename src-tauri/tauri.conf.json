@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Qx",
-  "version": "0.4.23",
+  "version": "0.4.24",
   "identifier": "com.mcx.qx",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -14,8 +14,8 @@
     "windows": [
       {
         "title": "Qx",
-        "width": 680,
-        "height": 500,
+        "width": 980,
+        "height": 576,
         "minWidth": 480,
         "minHeight": 360,
         "resizable": true,

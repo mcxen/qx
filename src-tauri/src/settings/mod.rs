@@ -69,11 +69,11 @@ fn default_blur_opacity() -> f64 {
 }
 
 fn default_window_width() -> u32 {
-    680
+    0
 }
 
 fn default_window_height() -> u32 {
-    500
+    0
 }
 
 fn default_border_radius() -> u32 {

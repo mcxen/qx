@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef, useTransition } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow, LogicalSize, LogicalPosition } from "@tauri-apps/api/window";
+import { currentMonitor, getCurrentWindow, LogicalSize, LogicalPosition, primaryMonitor } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useStore, type AppEntry, type ScreenshotEntry, type MonitorInfo, type SearchScope } from "./store";
@@ -27,12 +27,45 @@ const MIN_WINDOW_WIDTH = 480;
 const MIN_WINDOW_HEIGHT = 360;
 const MAX_WINDOW_WIDTH = 1500;
 const MAX_WINDOW_HEIGHT = 882;
+const FIRST_LAUNCH_WINDOW_RATIO = 0.6;
+const OVERSIZED_SAVED_WINDOW_RATIO = 0.9;
 
 function clampWindowSize(width: number, height: number) {
   return {
     width: Math.min(MAX_WINDOW_WIDTH, Math.max(MIN_WINDOW_WIDTH, Math.round(width || 0))),
     height: Math.min(MAX_WINDOW_HEIGHT, Math.max(MIN_WINDOW_HEIGHT, Math.round(height || 0))),
   };
+}
+
+async function getMonitorLogicalWorkSize() {
+  const monitor = await currentMonitor().then((m) => m ?? primaryMonitor()).catch(() => null);
+  return monitor?.workArea.size.toLogical(monitor.scaleFactor) ?? null;
+}
+
+function clampWindowSizeForMonitor(width: number, height: number, monitorSize: { width: number; height: number } | null) {
+  const base = clampWindowSize(width, height);
+  if (!monitorSize) return base;
+  const isOversized =
+    base.width > monitorSize.width * OVERSIZED_SAVED_WINDOW_RATIO ||
+    base.height > monitorSize.height * OVERSIZED_SAVED_WINDOW_RATIO;
+  if (!isOversized) return base;
+
+  return clampWindowSize(
+    Math.min(base.width, monitorSize.width * FIRST_LAUNCH_WINDOW_RATIO),
+    Math.min(base.height, monitorSize.height * FIRST_LAUNCH_WINDOW_RATIO),
+  );
+}
+
+async function getFirstLaunchWindowSize() {
+  const logicalSize = await getMonitorLogicalWorkSize();
+  if (!logicalSize) {
+    return clampWindowSize(980, 576);
+  }
+
+  return clampWindowSize(
+    logicalSize.width * FIRST_LAUNCH_WINDOW_RATIO,
+    logicalSize.height * FIRST_LAUNCH_WINDOW_RATIO,
+  );
 }
 
 // Register built-in modules into the plugin registry once at startup.
@@ -179,26 +212,27 @@ function App() {
     settings.appearance.font_size,
   ]);
 
-  // Restore window size from saved settings on startup (first launch uses a default size)
+  // Restore window size from saved settings; first launch derives size from the active monitor.
   useEffect(() => {
     if (!settingsLoaded || !isTauriRuntime()) return;
     const restoreAndShow = async () => {
       const win = getCurrentWindow();
       const appearance = settings.appearance;
       if (!appearance) return;
-      const fallback = { width: 900, height: 640 };
-      const rawWidth = appearance.window_width > 0 ? appearance.window_width : fallback.width;
-      const rawHeight = appearance.window_height > 0 ? appearance.window_height : fallback.height;
-      const { width, height } = clampWindowSize(rawWidth, rawHeight);
+      const hasSavedSize = appearance.window_width > 0 && appearance.window_height > 0;
+      const monitorSize = await getMonitorLogicalWorkSize();
+      const { width, height } = hasSavedSize
+        ? clampWindowSizeForMonitor(appearance.window_width, appearance.window_height, monitorSize)
+        : await getFirstLaunchWindowSize();
       await win.setSize(new LogicalSize(width, height)).catch(() => {});
-      if (rawWidth !== width || rawHeight !== height) {
+      if (appearance.window_width !== width || appearance.window_height !== height) {
         useSettingsStore.getState().patch("appearance", {
           ...appearance,
           window_width: width,
           window_height: height,
         });
       }
-      if (appearance.window_width <= 0 || appearance.window_height <= 0) {
+      if (!hasSavedSize) {
         await win.center().catch(() => {});
       }
 
@@ -219,8 +253,12 @@ function App() {
   useEffect(() => {
     if (!isTauriRuntime()) return;
     const win = getCurrentWindow();
-    const unlisten = win.onResized(async () => {
-      const logical = await win.innerSize();
+    const unlisten = win.onResized(async ({ payload }) => {
+      const scaleFactor = await win.scaleFactor().catch(() => 1);
+      const logical = {
+        width: payload.width / scaleFactor,
+        height: payload.height / scaleFactor,
+      };
       const { settings, patch } = useSettingsStore.getState();
       const { width, height } = clampWindowSize(logical.width, logical.height);
       if (logical.width !== width || logical.height !== height) {
