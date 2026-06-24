@@ -77,7 +77,7 @@ fn default_window_height() -> u32 {
 }
 
 fn default_border_radius() -> u32 {
-    12
+    8
 }
 
 fn default_font_size() -> u32 {
@@ -119,6 +119,10 @@ pub struct ShortcutBinding {
 pub struct AdvancedSettings {
     pub log_level: String,
     pub dev_mode: bool,
+    #[serde(default, rename = "network_proxy_enabled")]
+    pub network_proxy_enabled: bool,
+    #[serde(default, rename = "network_proxy_url")]
+    pub network_proxy_url: String,
     #[serde(default = "default_ocr_enabled", rename = "ocr_enabled")]
     pub ocr_enabled: bool,
     #[serde(default = "default_ocr_engine", rename = "ocr_engine")]
@@ -144,6 +148,8 @@ impl Default for AdvancedSettings {
         Self {
             log_level: "info".to_string(),
             dev_mode: false,
+            network_proxy_enabled: false,
+            network_proxy_url: String::new(),
             ocr_enabled: false,
             ocr_engine: "apple-vision".to_string(),
             ocr_model_size: "tiny".to_string(),

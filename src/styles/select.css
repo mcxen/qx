@@ -25,6 +25,11 @@
   transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
+.qx-shell-topbar .qx-select-trigger {
+  height: 42px;
+  border-radius: var(--qx-control-radius);
+}
+
 .qx-select-trigger:hover,
 .qx-select-trigger.is-open {
   border-color: var(--qx-border-2);

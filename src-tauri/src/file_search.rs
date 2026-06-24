@@ -39,8 +39,16 @@ fn entry_from_path_with_kind(path: &str, is_dir: bool) -> AppEntry {
     AppEntry {
         name,
         path: path.to_string(),
-        icon: if is_dir { "builtin:folder".to_string() } else { "builtin:file".to_string() },
-        kind: if is_dir { "folder".to_string() } else { "file".to_string() },
+        icon: if is_dir {
+            "builtin:folder".to_string()
+        } else {
+            "builtin:file".to_string()
+        },
+        kind: if is_dir {
+            "folder".to_string()
+        } else {
+            "file".to_string()
+        },
     }
 }
 

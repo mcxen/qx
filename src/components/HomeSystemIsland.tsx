@@ -156,29 +156,35 @@ export default function HomeSystemIsland({
 
   return (
     <div className="qx-home-system-island" aria-label="System monitor">
-      {showCpu && (
-        <span className="qx-si-item">
-          <span className="qx-si-dot cpu" />
-          <span className="qx-si-label">CPU</span>
-          <strong className="qx-si-value">{cpuText}</strong>
-          <MiniSparkline points={cpuPoints} color="var(--qx-stats-cpu)" />
-        </span>
-      )}
-      {showMemory && (
-        <span className="qx-si-item">
-          <span className="qx-si-dot mem" />
-          <span className="qx-si-label">MEM</span>
-          <strong className="qx-si-value">{memText}</strong>
-          <MiniSparkline points={memPoints} color="var(--qx-stats-mem)" />
-        </span>
-      )}
-      {showGpu && gpuText !== null && (
-        <span className="qx-si-item">
-          <span className="qx-si-dot gpu" />
-          <span className="qx-si-label">GPU</span>
-          <strong className="qx-si-value">{gpuText}</strong>
-        </span>
-      )}
+      <div className="qx-island-marquee">
+        {[0, 1].map((copy) => (
+          <div className="qx-island-marquee-group" aria-hidden={copy === 1} key={copy}>
+            {showCpu && (
+              <span className="qx-si-item">
+                <span className="qx-si-dot cpu" />
+                <span className="qx-si-label">CPU</span>
+                <strong className="qx-si-value">{cpuText}</strong>
+                <MiniSparkline points={cpuPoints} color="var(--qx-stats-cpu)" />
+              </span>
+            )}
+            {showMemory && (
+              <span className="qx-si-item">
+                <span className="qx-si-dot mem" />
+                <span className="qx-si-label">MEM</span>
+                <strong className="qx-si-value">{memText}</strong>
+                <MiniSparkline points={memPoints} color="var(--qx-stats-mem)" />
+              </span>
+            )}
+            {showGpu && gpuText !== null && (
+              <span className="qx-si-item">
+                <span className="qx-si-dot gpu" />
+                <span className="qx-si-label">GPU</span>
+                <strong className="qx-si-value">{gpuText}</strong>
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

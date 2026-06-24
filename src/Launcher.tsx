@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { revealItemInDir, openPath } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import QxShell, { type BottomIslandContent } from "./components/QxShell";
+import HomeDateIsland from "./components/HomeDateIsland";
 import HomeSystemIsland from "./components/HomeSystemIsland";
 import ResultsList from "./ResultsList";
 import SearchBar from "./SearchBar";
@@ -220,21 +221,22 @@ export default function Launcher({
         detail: `${results.length} ${t("launcher.result", results.length === 1 ? "result" : "results")}`,
         progress: Math.min(100, Math.max(12, results.length * 12)),
       }
-    : appearance.home_island_mode === "system"
+    : appearance.home_island_mode === "system" || appearance.home_island_mode === "date"
       ? null
       : {
         label: t("launcher.title", "Qx Launcher"),
         detail: t("launcher.idle", "Type to search apps and commands"),
       };
 
-  const customIsland =
-    !results.length && appearance.home_island_mode === "system" ? (
-      <HomeSystemIsland
-        showCpu={appearance.home_island_cpu}
-        showGpu={appearance.home_island_gpu}
-        showMemory={appearance.home_island_memory}
-      />
-    ) : undefined;
+  const customIsland = !results.length && appearance.home_island_mode === "date" ? (
+    <HomeDateIsland />
+  ) : !results.length && appearance.home_island_mode === "system" ? (
+    <HomeSystemIsland
+      showCpu={appearance.home_island_cpu}
+      showGpu={appearance.home_island_gpu}
+      showMemory={appearance.home_island_memory}
+    />
+  ) : undefined;
 
   const handleLauncherKeyDown = (event: React.KeyboardEvent) => {
     if (actionPanelOpen) {

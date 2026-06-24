@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 
+let saveSeq = 0;
+
 export interface GeneralSettings {
   launch_at_login: boolean;
   language: string;
@@ -16,7 +18,7 @@ export interface AppearanceSettings {
   window_height: number;
   border_radius: number;
   font_size: number;
-  home_island_mode: "default" | "system";
+  home_island_mode: "default" | "system" | "date";
   home_island_cpu: boolean;
   home_island_gpu: boolean;
   home_island_memory: boolean;
@@ -30,6 +32,8 @@ export interface ShortcutBinding {
 export interface AdvancedSettings {
   log_level: string;
   dev_mode: boolean;
+  network_proxy_enabled: boolean;
+  network_proxy_url: string;
   ocr_enabled: boolean;
   ocr_engine: string;
   ocr_model_size: string;
@@ -81,7 +85,7 @@ export const DEFAULT_SETTINGS: Settings = {
     blur_opacity: 0.16,
     window_width: 680,
     window_height: 500,
-    border_radius: 12,
+    border_radius: 8,
     font_size: 14,
     home_island_mode: "system",
     home_island_cpu: true,
@@ -100,6 +104,8 @@ export const DEFAULT_SETTINGS: Settings = {
   advanced: {
     log_level: "info",
     dev_mode: false,
+    network_proxy_enabled: false,
+    network_proxy_url: "",
     ocr_enabled: false,
     ocr_engine: "apple-vision",
     ocr_model_size: "tiny",
@@ -165,13 +171,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     }
   },
   save: async () => {
+    const seq = ++saveSeq;
+    const settings = get().settings;
     try {
-      const s = await invoke<Settings>("update_settings", {
-        settings: get().settings,
+      await invoke<Settings>("update_settings", {
+        settings,
       });
-      set({ settings: s });
     } catch (e) {
-      console.error("update_settings failed", e);
+      if (seq === saveSeq) {
+        console.error("update_settings failed", e);
+      }
     }
   },
   reset: async () => {

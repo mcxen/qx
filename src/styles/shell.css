@@ -68,7 +68,14 @@
 }
 
 .qx-shell-search-slot {
+  display: flex;
   min-width: 0;
+  width: 100%;
+}
+
+.qx-shell-search-slot > .qx-search-wrap {
+  width: 100%;
+  flex: 1 1 auto;
 }
 
 .qx-shell-trailing {
@@ -76,6 +83,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  justify-self: end;
 }
 
 .qx-shell-back {
@@ -336,7 +344,103 @@
   flex-shrink: 0;
 }
 
+.qx-island-marquee {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, black 7%, black 93%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 7%, black 93%, transparent);
+}
+
+.qx-island-marquee-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  min-width: max-content;
+  padding-right: 18px;
+  animation: qx-island-marquee 18s linear infinite;
+}
+
+.qx-island-marquee:hover .qx-island-marquee-group,
+.qx-island-marquee:focus-within .qx-island-marquee-group {
+  animation-play-state: paused;
+}
+
+/* ====== Home Date Island ====== */
+.qx-home-date-island {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(100%, 360px);
+  height: 34px;
+  min-height: 34px;
+  max-height: 36px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--qx-accent) 18%, var(--qx-border-1));
+  border-radius: 8px;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--qx-system-island-muted) 20%, transparent) 1px, transparent 1px),
+    var(--qx-system-island-bg);
+  background-size: 5px 5px, auto;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--qx-system-island-text) 8%, transparent),
+    0 2px 8px color-mix(in srgb, var(--qx-shadow) 12%, transparent);
+  color: var(--qx-system-island-text);
+  overflow: hidden;
+  font-family: var(--qx-font-mono);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.qx-date-time {
+  flex: 0 0 auto;
+  color: var(--qx-system-island-text);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 5px color-mix(in srgb, var(--qx-accent) 28%, transparent);
+}
+
+.qx-date-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  color: var(--qx-system-island-muted);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.qx-date-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @keyframes qx-home-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.3; }
+}
+
+@keyframes qx-island-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qx-island-marquee-group {
+    animation: none;
+  }
 }

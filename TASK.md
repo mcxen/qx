@@ -1,3 +1,91 @@
+## Bugfix — 外观设置控件与窗口尺寸同步
+
+**状态**：已实现，已通过静态验证。
+
+### 修复内容
+
+- 外观页 `W/H` 宽高输入改为输入草稿，失焦或回车后提交，避免半截数字触发窗口跳动。
+- 接入 Tauri `onResized`，用户手动拖拽窗口后会回写 `appearance.window_width/window_height` 并同步显示到设置页。
+- 设置保存改为乐观更新，避免旧的 `update_settings` 响应覆盖较新的本地状态。
+- 圆角设置收敛到规范内的 `4px / 6px / 8px`，并让 `--qx-control-radius`、`--qx-card-radius` 跟随设置生效。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [ ] 手动验证外观页宽高、圆角、字号点击与窗口拖拽尺寸同步。
+
+---
+
+## Bugfix — QxShell Top Bar 搜索样式统一
+
+**状态**：已实现，已通过静态验证。
+
+### 修复内容
+
+- 明确 `UI_SPEC.md` 中 Shell Top Bar 搜索框实现约束：统一使用 `qx-search-wrap` + `qx-plugin-search`。
+- 将通用搜索框样式从 Launcher 特例提升为 Shell 通用样式。
+- 截图模块搜索框不再复用 Clipboard 私有样式，改用 Shell 通用搜索样式。
+- Top Bar 内 Select 控件高度统一到搜索框高度，保证首页右上角筛选与搜索框对齐。
+- Shell 搜索槽强制搜索框填满可用宽度，修复设置页搜索框收缩/无统一外观的问题。
+- 纯文本 Top Bar 状态（如 `Qx v...`）统一成 42px 高的右上状态控件。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [ ] 手动验证首页与截图模块 Top Bar 搜索框高度、圆角、边框、focus 态一致。
+
+---
+
+## Feature — 主页灵动岛日期显示
+
+**状态**：已实现，已通过静态验证。
+
+### 新增内容
+
+- 主页灵动岛模式新增 `日期显示`，用点阵屏风格显示当前时间、公历日期和农历日期。
+- 原 `系统` 模式文案改为 `系统信息`，保留 CPU / GPU / MEM 老样式监控。
+- `UI_SPEC.md` 补充灵动岛可承载消息通知、动态进度、播放进度，以及主页空闲样式说明。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [ ] 手动验证设置页可切换 `默认 / 系统信息 / 日期显示`，主页空闲时日期岛正常显示并实时更新。
+
+---
+
+## Spec — QxShell 灵动岛协议
+
+**状态**：已完成。
+
+### 规范内容
+
+- 在 `UI_SPEC.md` 中新增灵动岛内容协议，明确模块和插件默认使用 `QxShell island` prop。
+- 定义 `label/detail/progress/tone/actionLabel/onAction` 的字段语义和使用边界。
+- 定义 `idle / notice / progress / activity / playback / error` 标准状态类型。
+- 定义多消息抢占优先级：进行中任务、错误、完成通知、模块空闲信息、主页空闲样式。
+- 明确视觉约束：默认 32px、最大 36px、窗口居中、单行截断、插件不得直接改 Shell 核心样式。
+- 补充滚动展示规范：内部横向滚动、渐隐遮罩、hover/focus 暂停、遵守减少动态效果。
+
+---
+
+## Feature — 灵动岛滚动展示
+
+**状态**：已实现，已通过静态验证。
+
+### 新增内容
+
+- 新增通用 `qx-island-marquee` 滚动轨道，支持固定岛尺寸内连续横向滚动。
+- 系统信息和日期显示主页灵动岛已接入滚动展示。
+- 支持 hover/focus 暂停滚动，并在 `prefers-reduced-motion: reduce` 下关闭自动滚动。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [ ] 手动验证系统信息与日期显示灵动岛滚动连续、不改变 Bottom Bar 高度和居中位置。
+
+---
+
 ## P1 — 主题系统（Vercel Geist 风格）
 
 **概述**：参考 Vercel Geist Design System 重新设计 Qx 主题系统，支持亮色/暗色/跟随系统三种模式，提供统一的设计语言和 CSS 自定义属性架构。

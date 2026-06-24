@@ -72,11 +72,12 @@ fn group_into_weeks(levels: &[u8]) -> Vec<ContributionWeek> {
 pub fn github_contributions(username: String) -> Result<ContributionCalendar, String> {
     let url = format!("https://github.com/{}", username);
 
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .user_agent("Qx/0.2 (GitHub Calendar; +https://github.com/mcxen/qx)")
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+    let client = crate::http_client::blocking_client(
+        "Qx/0.2 (GitHub Calendar; +https://github.com/mcxen/qx)",
+        Duration::from_secs(15),
+        None,
+    )
+    .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
     let resp = client
         .get(&url)
@@ -144,11 +145,12 @@ pub fn github_contributions(username: String) -> Result<ContributionCalendar, St
 pub fn github_contributions_raw(username: String) -> Result<String, String> {
     // Returns the raw HTML snippet around contribution SVG for debugging
     let url = format!("https://github.com/{}", username);
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(15))
-        .user_agent("Qx/0.2 (GitHub Calendar; +https://github.com/mcxen/qx)")
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+    let client = crate::http_client::blocking_client(
+        "Qx/0.2 (GitHub Calendar; +https://github.com/mcxen/qx)",
+        Duration::from_secs(15),
+        None,
+    )
+    .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
     let resp = client
         .get(&url)

@@ -22,11 +22,12 @@ pub struct V2exNode {
 }
 
 fn v2ex_get(endpoint: &str) -> Result<String, String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .user_agent("Qx/0.2 (V2EX Plugin; +https://github.com/mcxen/qx)")
-        .build()
-        .map_err(|e| format!("HTTP client: {e}"))?;
+    let client = crate::http_client::blocking_client(
+        "Qx/0.2 (V2EX Plugin; +https://github.com/mcxen/qx)",
+        std::time::Duration::from_secs(10),
+        None,
+    )
+    .map_err(|e| format!("HTTP client: {e}"))?;
 
     let url = format!("https://www.v2ex.com{}", endpoint);
     let resp = client
@@ -102,11 +103,12 @@ pub fn v2ex_fetch_topics(mode: Option<String>) -> Result<Vec<V2exTopic>, String>
 
 #[tauri::command]
 pub fn v2ex_search_topics(query: String) -> Result<Vec<V2exTopic>, String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(10))
-        .user_agent("Qx/0.2 (V2EX Plugin; +https://github.com/mcxen/qx)")
-        .build()
-        .map_err(|e| format!("HTTP client: {e}"))?;
+    let client = crate::http_client::blocking_client(
+        "Qx/0.2 (V2EX Plugin; +https://github.com/mcxen/qx)",
+        std::time::Duration::from_secs(10),
+        None,
+    )
+    .map_err(|e| format!("HTTP client: {e}"))?;
 
     let url = format!(
         "https://www.v2ex.com/api/topics/search.json?q={}",

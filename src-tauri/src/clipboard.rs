@@ -1,3 +1,4 @@
+use arboard::{Clipboard, ImageData};
 use chrono::Local;
 use dirs;
 use image::codecs::png::PngEncoder;
@@ -5,11 +6,11 @@ use image::ExtendedColorType;
 use image::ImageEncoder;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
-use tauri::image::Image as TauriImage;
 use tauri::{command, AppHandle, Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
@@ -244,6 +245,31 @@ fn restore_pasteboard_snapshot(_manifest_path: &str) -> Result<(), String> {
     Err("pasteboard snapshots are only supported on macOS".to_string())
 }
 
+fn pasteboard_snapshot_has_file_reference(manifest_path: &str) -> bool {
+    let Ok(manifest_bytes) = fs::read(manifest_path) else {
+        return false;
+    };
+    let Ok(snapshot) = serde_json::from_slice::<PasteboardSnapshot>(&manifest_bytes) else {
+        return false;
+    };
+
+    snapshot.entries.iter().any(|entry| {
+        let lower = entry.type_name.to_ascii_lowercase();
+        lower.contains("file-url") || lower.contains("filename")
+    })
+}
+
+fn write_rgba_image_to_clipboard(rgba: Vec<u8>, width: u32, height: u32) -> Result<(), String> {
+    let mut clipboard = Clipboard::new().map_err(|e| format!("open clipboard: {e}"))?;
+    clipboard
+        .set_image(ImageData {
+            width: width as usize,
+            height: height as usize,
+            bytes: Cow::Owned(rgba),
+        })
+        .map_err(|e| format!("write clipboard image: {e}"))
+}
+
 #[cfg(not(target_os = "macos"))]
 fn clipboard_change_count() -> Option<i64> {
     None // format probing not available on this platform
@@ -331,6 +357,15 @@ fn compute_id(text: &str) -> String {
     hash.to_hex()[..16].to_string()
 }
 
+fn compute_image_id(image_path: &str) -> String {
+    PathBuf::from(image_path)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| compute_id(image_path))
+}
+
 fn lock_db(db: &Arc<Mutex<Option<Connection>>>) -> MutexGuard<'_, Option<Connection>> {
     db.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
@@ -391,7 +426,11 @@ pub fn start_listener(app: &AppHandle) {
                         store(&db_clone, &text, None, None);
                         let _ = app_handle.emit("clipboard-updated", ());
                     }
+                    Ok(text) if text.is_empty() => {
+                        last_text.clear();
+                    }
                     Err(e) => {
+                        last_text.clear();
                         eprintln!("clipboard read text error: {e}");
                     }
                     _ => {}
@@ -484,7 +523,7 @@ fn store(
     let id = if !text.is_empty() {
         compute_id(text)
     } else if let Some(path) = image_path {
-        compute_id(path)
+        compute_image_id(path)
     } else {
         return; // nothing to store
     };
@@ -619,8 +658,10 @@ pub fn write_clipboard_image_entry(
         .map_err(|e| format!("clipboard image entry not found: {e}"))?
     };
 
-    if let Some(manifest_path) = image_pasteboard_path {
-        if restore_pasteboard_snapshot(&manifest_path).is_ok() {
+    if let Some(manifest_path) = image_pasteboard_path.as_deref() {
+        if pasteboard_snapshot_has_file_reference(manifest_path)
+            && restore_pasteboard_snapshot(manifest_path).is_ok()
+        {
             return Ok(());
         }
     }
@@ -636,10 +677,13 @@ pub fn write_clipboard_image_entry(
         return Err("clipboard image is too large".to_string());
     }
 
-    let image = TauriImage::new_owned(decoded.into_raw(), width, height);
-    app.clipboard()
-        .write_image(&image)
-        .map_err(|e| format!("write clipboard image: {e}"))?;
+    let rgba = decoded.into_raw();
+    if let Err(arboard_error) = write_rgba_image_to_clipboard(rgba.clone(), width, height) {
+        let image = tauri::image::Image::new_owned(rgba, width, height);
+        app.clipboard().write_image(&image).map_err(|tauri_error| {
+            format!("write clipboard image: {arboard_error}; tauri fallback: {tauri_error}")
+        })?;
+    }
     Ok(())
 }
 

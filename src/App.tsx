@@ -138,13 +138,23 @@ function App() {
   }, [setTab]);
 
   useEffect(() => {
+    const shellRadius = Math.min(8, Math.max(4, settings.appearance.border_radius));
+    const controlRadius = Math.min(6, Math.max(4, settings.appearance.border_radius));
     document.documentElement.style.setProperty(
       "--qx-canvas-opacity",
       String(settings.appearance.blur_opacity),
     );
     document.documentElement.style.setProperty(
       "--qx-radius",
-      `${settings.appearance.border_radius}px`,
+      `${shellRadius}px`,
+    );
+    document.documentElement.style.setProperty(
+      "--qx-control-radius",
+      `${controlRadius}px`,
+    );
+    document.documentElement.style.setProperty(
+      "--qx-card-radius",
+      `${shellRadius}px`,
     );
     document.documentElement.style.setProperty(
       "--qx-font-size",

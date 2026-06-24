@@ -44,7 +44,8 @@ const zh: Record<string, string> = {
   "appearance.homeIsland": "主页灵动岛",
   "appearance.homeIsland.desc": "搜索空闲时，启动器灵动岛显示的内容。",
   "appearance.homeIsland.default": "默认",
-  "appearance.homeIsland.system": "系统",
+  "appearance.homeIsland.system": "系统信息",
+  "appearance.homeIsland.date": "日期显示",
   "appearance.systemCurves": "系统曲线",
   "appearance.systemCurves.desc": "主页灵动岛中的点状 GEEK 风格指标。",
 

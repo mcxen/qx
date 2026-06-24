@@ -88,11 +88,12 @@ fn download_file(
     );
 
     // Real HTTP download with byte-level progress
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(120))
-        .user_agent("Qx/0.2 (OCR Download; +https://github.com/mcxen/qx)")
-        .build()
-        .map_err(|e| format!("HTTP client: {}", e))?;
+    let client = crate::http_client::blocking_client(
+        "Qx/0.2 (OCR Download; +https://github.com/mcxen/qx)",
+        std::time::Duration::from_secs(120),
+        None,
+    )
+    .map_err(|e| format!("HTTP client: {}", e))?;
 
     let resp = client
         .get(&url)

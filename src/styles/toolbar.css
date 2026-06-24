@@ -67,18 +67,13 @@
   height: 42px;
   gap: 10px;
   padding: 0 12px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-1);
   transition: background-color 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease;
 }
 
-.qx-shell.launcher-shell .qx-search-wrap {
-  border-color: var(--qx-border-1);
-  background: var(--qx-bg-component-1);
-}
-
-.qx-shell.launcher-shell .qx-search-wrap:focus-within {
+.qx-search-wrap:focus-within {
   border-color: color-mix(in srgb, var(--qx-accent) 48%, var(--qx-border-1));
   box-shadow: 0 0 0 2px var(--qx-accent-soft);
 }
@@ -122,7 +117,9 @@
   border: none;
   background: transparent;
   color: var(--qx-text-primary);
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
   outline: none;
   box-shadow: none;
   appearance: none;

@@ -8,18 +8,17 @@ use super::types::{ParsedArticle, ParsedFeed};
 const USER_AGENT: &str = "Qx/0.1 (RSS Reader; +https://github.com/mcx/qx)";
 
 /// Build a shared async client lazily.
-fn http_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(std::time::Duration::from_secs(15))
-        .connect_timeout(std::time::Duration::from_secs(8))
-        .build()
-        .expect("reqwest client")
+fn http_client() -> Result<reqwest::Client, String> {
+    crate::http_client::client(
+        USER_AGENT,
+        std::time::Duration::from_secs(15),
+        Some(std::time::Duration::from_secs(8)),
+    )
 }
 
 /// Async HTTP fetch.
 async fn fetch_url(url: &str) -> Result<Vec<u8>, String> {
-    let resp = http_client().get(url).send().await.map_err(|e| {
+    let resp = http_client()?.get(url).send().await.map_err(|e| {
         if e.is_timeout() {
             format!("timeout fetching {url}")
         } else if e.is_connect() {

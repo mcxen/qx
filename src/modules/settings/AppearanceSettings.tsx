@@ -1,16 +1,52 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useSettingsStore } from "./store";
 import { useTheme } from "../../ThemeProvider";
 import { Row, SegmentedControl, Toggle, Slider } from "../../components/ui";
 import { useT } from "../../i18n";
+
+const MIN_WINDOW_WIDTH = 480;
+const MIN_WINDOW_HEIGHT = 360;
+const MAX_WINDOW_WIDTH = 2800;
+const MAX_WINDOW_HEIGHT = 1800;
+const RESIZE_SAVE_DELAY_MS = 250;
+
+function isTauriRuntime(): boolean {
+  return "__TAURI_INTERNALS__" in window;
+}
+
+function clampDimension(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+function parseDimensionDraft(value: string, fallback: number, min: number, max: number): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return clampDimension(parsed, min, max);
+}
 
 export default function AppearanceSettings() {
   const { settings, patch } = useSettingsStore();
   const { theme, setTheme } = useTheme();
   const t = useT();
   const a = settings.appearance;
+  const radiusValue = String(clampDimension(a.border_radius, 4, 8));
   const mounted = useRef(false);
+  const resizeSyncRef = useRef(false);
+  const resizeTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const [focusedDimension, setFocusedDimension] = useState<"width" | "height" | null>(null);
+  const [widthDraft, setWidthDraft] = useState(String(a.window_width));
+  const [heightDraft, setHeightDraft] = useState(String(a.window_height));
+
+  useEffect(() => {
+    if (focusedDimension !== "width") {
+      setWidthDraft(String(a.window_width));
+    }
+    if (focusedDimension !== "height") {
+      setHeightDraft(String(a.window_height));
+    }
+  }, [a.window_width, a.window_height, focusedDimension]);
 
   // Apply window size changes to the actual window
   useEffect(() => {
@@ -18,11 +54,99 @@ export default function AppearanceSettings() {
       mounted.current = true;
       return;
     }
+    if (resizeSyncRef.current) {
+      resizeSyncRef.current = false;
+      return;
+    }
+    if (!isTauriRuntime()) return;
     void invoke("set_window_size", {
       width: a.window_width,
       height: a.window_height,
     }).catch(() => {});
   }, [a.window_width, a.window_height]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    const win = getCurrentWindow();
+
+    void win
+      .onResized((size) => {
+        if (resizeTimerRef.current) {
+          window.clearTimeout(resizeTimerRef.current);
+        }
+
+        resizeTimerRef.current = window.setTimeout(() => {
+          void win
+            .scaleFactor()
+            .then((scaleFactor) => {
+              if (disposed) return;
+              const width = clampDimension(
+                Math.round(size.payload.width / scaleFactor),
+                MIN_WINDOW_WIDTH,
+                MAX_WINDOW_WIDTH,
+              );
+              const height = clampDimension(
+                Math.round(size.payload.height / scaleFactor),
+                MIN_WINDOW_HEIGHT,
+                MAX_WINDOW_HEIGHT,
+              );
+              const current = useSettingsStore.getState().settings.appearance;
+              if (current.window_width === width && current.window_height === height) return;
+
+              resizeSyncRef.current = true;
+              patch("appearance", {
+                ...current,
+                window_width: width,
+                window_height: height,
+              });
+            })
+            .catch(() => {});
+        }, RESIZE_SAVE_DELAY_MS);
+      })
+      .then((off) => {
+        if (disposed) {
+          off();
+        } else {
+          unlisten = off;
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      disposed = true;
+      if (resizeTimerRef.current) {
+        window.clearTimeout(resizeTimerRef.current);
+        resizeTimerRef.current = null;
+      }
+      unlisten?.();
+    };
+  }, [patch]);
+
+  const commitWindowDimensions = (nextWidthDraft = widthDraft, nextHeightDraft = heightDraft) => {
+    const width = parseDimensionDraft(
+      nextWidthDraft,
+      a.window_width,
+      MIN_WINDOW_WIDTH,
+      MAX_WINDOW_WIDTH,
+    );
+    const height = parseDimensionDraft(
+      nextHeightDraft,
+      a.window_height,
+      MIN_WINDOW_HEIGHT,
+      MAX_WINDOW_HEIGHT,
+    );
+    setWidthDraft(String(width));
+    setHeightDraft(String(height));
+    if (width === a.window_width && height === a.window_height) return;
+    patch("appearance", {
+      ...a,
+      window_width: width,
+      window_height: height,
+    });
+  };
 
   return (
     <div className="qx-settings-page">
@@ -60,12 +184,21 @@ export default function AppearanceSettings() {
             <span className="qx-dimension-label-text">W</span>
             <input
               type="number"
-              min={400}
-              max={2800}
-              value={a.window_width}
+              min={MIN_WINDOW_WIDTH}
+              max={MAX_WINDOW_WIDTH}
+              value={widthDraft}
               onChange={(e) => {
-                const v = Math.max(400, parseInt(e.target.value) || 400);
-                patch("appearance", { ...a, window_width: v });
+                setWidthDraft(e.target.value);
+              }}
+              onFocus={() => setFocusedDimension("width")}
+              onBlur={() => {
+                setFocusedDimension(null);
+                commitWindowDimensions();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.currentTarget.blur();
+                }
               }}
               className="qx-dimension-input"
             />
@@ -75,12 +208,21 @@ export default function AppearanceSettings() {
             <span className="qx-dimension-label-text">H</span>
             <input
               type="number"
-              min={300}
-              max={1800}
-              value={a.window_height}
+              min={MIN_WINDOW_HEIGHT}
+              max={MAX_WINDOW_HEIGHT}
+              value={heightDraft}
               onChange={(e) => {
-                const v = Math.max(300, parseInt(e.target.value) || 300);
-                patch("appearance", { ...a, window_height: v });
+                setHeightDraft(e.target.value);
+              }}
+              onFocus={() => setFocusedDimension("height")}
+              onBlur={() => {
+                setFocusedDimension(null);
+                commitWindowDimensions();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.currentTarget.blur();
+                }
               }}
               className="qx-dimension-input"
             />
@@ -89,12 +231,12 @@ export default function AppearanceSettings() {
       </Row>
       <Row title={t("appearance.cornerRadius", "Corner Radius")} description={t("appearance.cornerRadius.desc", "Window and card border radius.")}>
         <SegmentedControl
-          value={String(a.border_radius)}
+          value={radiusValue}
           onChange={(v) => patch("appearance", { ...a, border_radius: parseInt(v) })}
           options={[
+            { value: "4", label: "4px" },
+            { value: "6", label: "6px" },
             { value: "8", label: "8px" },
-            { value: "12", label: "12px" },
-            { value: "16", label: "16px" },
           ]}
         />
       </Row>
@@ -119,7 +261,8 @@ export default function AppearanceSettings() {
           onChange={(v) => patch("appearance", { ...a, home_island_mode: v })}
           options={[
             { value: "default", label: t("appearance.homeIsland.default", "Default") },
-            { value: "system", label: t("appearance.homeIsland.system", "System") },
+            { value: "system", label: t("appearance.homeIsland.system", "System Info") },
+            { value: "date", label: t("appearance.homeIsland.date", "Date Display") },
           ]}
         />
       </Row>

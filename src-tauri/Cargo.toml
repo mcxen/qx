@@ -1,6 +1,6 @@
 [package]
 name = "qx"
-version = "0.4.14"
+version = "0.4.15"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -24,6 +24,7 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-shell = "2"
 tauri-plugin-updater = "2"
+arboard = "3.6.1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 xcap = "0.4"
@@ -32,7 +33,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 chrono = "0.4"
 blake3 = "1"
 feed-rs = "2"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking", "json"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking", "json", "socks"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 quick-xml = "0.36"
 scrap = "0.5"

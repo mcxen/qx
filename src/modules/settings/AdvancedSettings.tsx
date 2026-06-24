@@ -91,6 +91,24 @@ export default function AdvancedSettings() {
         />
       </Row>
       <Row
+        title={t("advanced.networkProxy", "Network Proxy")}
+        description={t("advanced.networkProxy.desc", "Route marketplace index and plugin downloads through an HTTP, HTTPS, or SOCKS proxy.")}
+      >
+        <Toggle
+          value={adv.network_proxy_enabled}
+          onChange={(v) => patch("advanced", { ...adv, network_proxy_enabled: v })}
+        />
+        <input
+          type="text"
+          value={adv.network_proxy_url}
+          onChange={(e) => patch("advanced", { ...adv, network_proxy_url: e.target.value })}
+          placeholder="http://127.0.0.1:7890"
+          disabled={!adv.network_proxy_enabled}
+          style={{ width: 220 }}
+          className="qx-inline-input"
+        />
+      </Row>
+      <Row
         title={t("advanced.importExport", "Import / Export Configuration")}
         description={t("advanced.importExport.desc", "Enter an absolute path. Import loads settings from JSON; Export writes current settings to JSON.")}
       >

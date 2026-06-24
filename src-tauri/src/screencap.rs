@@ -47,8 +47,7 @@ fn recording_state() -> &'static Mutex<Option<RecordingState>> {
 
 fn gifs_dir() -> PathBuf {
     let base = dirs::picture_dir().unwrap_or_else(|| {
-        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
-            .join("Pictures")
+        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())).join("Pictures")
     });
     let dir = base.join("Qx");
     let _ = fs::create_dir_all(&dir);

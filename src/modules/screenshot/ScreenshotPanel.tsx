@@ -96,7 +96,7 @@ export default function ScreenshotPanel() {
   };
 
   const searchSlot = (
-    <div className="qx-clipboard-search-wrap">
+    <div className="qx-search-wrap">
       <span className="qx-search-icon" aria-hidden="true" />
       <input
         type="text"
@@ -107,7 +107,7 @@ export default function ScreenshotPanel() {
           setSelected(0);
         }}
         placeholder="Filter screenshots..."
-        className="qx-clipboard-search"
+        className="qx-plugin-search"
       />
     </div>
   );

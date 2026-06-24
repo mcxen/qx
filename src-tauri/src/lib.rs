@@ -4,6 +4,7 @@ mod display_monitor;
 mod file_search;
 mod github_calendar;
 mod history;
+mod http_client;
 mod macro_recorder;
 mod marketplace;
 mod ocr;
@@ -15,11 +16,10 @@ mod system_stats;
 mod v2ex;
 
 use tauri::{
-    AppHandle,
     image::Image,
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    LogicalSize, Manager, PhysicalPosition, PhysicalSize,
+    AppHandle, LogicalSize, Manager, PhysicalPosition, PhysicalSize,
 };
 
 #[tauri::command]
@@ -153,8 +153,8 @@ pub fn run() {
             let show = MenuItem::with_id(app, "show", "Show/Hide", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Qx", true, Some("Cmd+Q"))?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
-            let tray_rgba = image::load_from_memory(include_bytes!("../icons/tray-template.png"))?
-                .into_rgba8();
+            let tray_rgba =
+                image::load_from_memory(include_bytes!("../icons/tray-template.png"))?.into_rgba8();
             let (tray_width, tray_height) = tray_rgba.dimensions();
             let tray_icon = Image::new_owned(tray_rgba.into_raw(), tray_width, tray_height);
 

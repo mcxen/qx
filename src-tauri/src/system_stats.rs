@@ -64,11 +64,7 @@ extern "C" {
         out_processor_info: *mut *mut i32,
         out_processor_info_cnt: *mut MachMsgTypeNumber,
     ) -> libc::c_int;
-    fn vm_deallocate(
-        task: MachPort,
-        addr: *mut libc::c_void,
-        size: usize,
-    ) -> libc::c_int;
+    fn vm_deallocate(task: MachPort, addr: *mut libc::c_void, size: usize) -> libc::c_int;
 }
 
 // --- Cached CPU to avoid 120ms sleep ---
@@ -119,7 +115,11 @@ fn get_cpu_usage() -> f32 {
 
     // Free Mach memory
     unsafe {
-        vm_deallocate(mach_host_self(), info_ptr as *mut libc::c_void, (count * 4 * 4) as usize);
+        vm_deallocate(
+            mach_host_self(),
+            info_ptr as *mut libc::c_void,
+            (count * 4 * 4) as usize,
+        );
     }
 
     let cache = CPU_CACHE.get_or_init(|| CpuSample {
@@ -162,16 +162,11 @@ fn get_cpu_usage() -> f32 {
 /// Page size is computed from the OS.
 fn get_memory() -> (f32, f32, f32) {
     let mut vm_info: VmStatistics = Default::default();
-    let mut count = (std::mem::size_of::<VmStatistics>() / std::mem::size_of::<u32>()) as MachMsgTypeNumber;
+    let mut count =
+        (std::mem::size_of::<VmStatistics>() / std::mem::size_of::<u32>()) as MachMsgTypeNumber;
 
-    let ret = unsafe {
-        host_statistics64(
-            mach_host_self(),
-            HOST_VM_INFO64,
-            &mut vm_info,
-            &mut count,
-        )
-    };
+    let ret =
+        unsafe { host_statistics64(mach_host_self(), HOST_VM_INFO64, &mut vm_info, &mut count) };
     if ret != 0 {
         return (0.0, 0.0, 0.0);
     }

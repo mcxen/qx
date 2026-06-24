@@ -197,11 +197,7 @@ fn read_manifest(dir: &Path) -> Option<PluginManifest> {
 }
 
 async fn http_get(url: &str) -> Result<Vec<u8>, String> {
-    let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("http client: {e}"))?;
+    let client = crate::http_client::client(USER_AGENT, std::time::Duration::from_secs(30), None)?;
     let resp = client
         .get(url)
         .send()

@@ -1,11 +1,11 @@
 :root {
   /* Toggleable theme-independent tokens */
   --qx-canvas-opacity: 0.16;
-  --qx-radius: 6px;
+  --qx-radius: 8px;
   --qx-effective-radius: var(--qx-radius);
-  --qx-control-radius: 4px;
-  --qx-card-radius: 4px;
-  --qx-font-size: 13px;
+  --qx-control-radius: 6px;
+  --qx-card-radius: 8px;
+  --qx-font-size: 14px;
   --qx-shell-gap: 16px;
   --qx-topbar-h: clamp(64px, 11vh, 92px);
   --qx-bottom-bar-h: clamp(46px, 5.8vh, 56px);

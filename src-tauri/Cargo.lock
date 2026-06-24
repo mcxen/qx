@@ -4568,8 +4568,9 @@ dependencies = [
 
 [[package]]
 name = "qx"
-version = "0.4.14"
+version = "0.4.15"
 dependencies = [
+ "arboard",
  "blake3",
  "chrono",
  "core-graphics 0.21.0",
