@@ -1,0 +1,434 @@
+import { useEffect, useMemo, useState } from "react";
+import QxShell from "../../components/QxShell";
+import { Select } from "../../components/ui";
+import { useEscBack } from "../../hooks/useEscBack";
+import { useG4fStore, type CustomProvider } from "./store";
+
+function AddProviderForm({
+  initial,
+  onSave,
+  onCancel,
+}: {
+  initial?: CustomProvider;
+  onSave: (p: { name: string; baseUrl: string; apiKey: string; models: { id: string; name: string }[] }) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(initial?.name ?? "");
+  const [baseUrl, setBaseUrl] = useState(initial?.baseUrl ?? "");
+  const [apiKey, setApiKey] = useState(initial?.apiKey ?? "");
+  const [modelsText, setModelsText] = useState(
+    initial?.models.map((m) => m.id).join(", ") ?? "",
+  );
+
+  const canSave = name.trim() && baseUrl.trim() && apiKey.trim() && modelsText.trim();
+
+  return (
+    <div
+      style={{
+        background: "var(--qx-bg-component-2)",
+        borderRadius: "var(--qx-card-radius)",
+        padding: 12,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
+      }}
+    >
+      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--qx-text-primary)" }}>
+        {initial ? "Edit Custom Provider" : "Add Custom Provider"}
+      </div>
+
+      <label style={{ fontSize: 12, color: "var(--qx-text-secondary)" }}>
+        Provider Name
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. My OpenAI"
+          className="qx-inline-input"
+          style={{ width: "100%", marginTop: 4, boxSizing: "border-box" }}
+        />
+      </label>
+
+      <label style={{ fontSize: 12, color: "var(--qx-text-secondary)" }}>
+        Base URL
+        <input
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          placeholder="e.g. https://api.openai.com/v1"
+          className="qx-inline-input"
+          style={{ width: "100%", marginTop: 4, boxSizing: "border-box" }}
+        />
+      </label>
+
+      <label style={{ fontSize: 12, color: "var(--qx-text-secondary)" }}>
+        API Key
+        <input
+          value={apiKey}
+          onChange={(e) => setApiKey(e.target.value)}
+          placeholder="sk-..."
+          type="password"
+          className="qx-inline-input"
+          style={{ width: "100%", marginTop: 4, boxSizing: "border-box" }}
+        />
+      </label>
+
+      <label style={{ fontSize: 12, color: "var(--qx-text-secondary)" }}>
+        Models (comma-separated IDs)
+        <input
+          value={modelsText}
+          onChange={(e) => setModelsText(e.target.value)}
+          placeholder="gpt-4o, gpt-4o-mini, claude-sonnet-4"
+          className="qx-inline-input"
+          style={{ width: "100%", marginTop: 4, boxSizing: "border-box" }}
+        />
+      </label>
+
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+        <button className="qx-command-button" onClick={onCancel}>
+          Cancel
+        </button>
+        <button
+          className="qx-command-button primary"
+          disabled={!canSave}
+          onClick={() => {
+            if (!canSave) return;
+            const models = modelsText
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .map((id) => ({ id, name: id }));
+            onSave({ name: name.trim(), baseUrl: baseUrl.trim(), apiKey, models });
+          }}
+        >
+          {initial ? "Save" : "Add"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function QxAiSettings() {
+  const {
+    builtInProviders,
+    customProviders,
+    loading,
+    error,
+    defaultSystemPrompt,
+    currentProvider,
+    currentModel,
+    setDefaultSystemPrompt,
+    setCurrentProvider,
+    setCurrentModel,
+    setView,
+    loadProviders,
+    addCustomProvider,
+    removeCustomProvider,
+    updateCustomProvider,
+  } = useG4fStore();
+
+  const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  // Merge built-in + custom for the Select
+  const allProviders = useMemo(() => {
+    const builtIn: { value: string; label: string }[] = builtInProviders.map((p) => ({
+      value: p.id,
+      label: p.name,
+    }));
+    const custom: { value: string; label: string }[] = customProviders.map((p) => ({
+      value: p.id,
+      label: p.name,
+    }));
+    if (custom.length > 0) {
+      builtIn.push({ value: "---divider---", label: "──────────" });
+    }
+    return [...builtIn, ...custom];
+  }, [builtInProviders, customProviders]);
+
+  const models = useMemo(() => {
+    const allProvs = [...builtInProviders, ...customProviders.map((c) => ({ id: c.id, name: c.name, models: c.models }))];
+    const prov = allProvs.find((p) => p.id === currentProvider);
+    return prov?.models ?? [];
+  }, [builtInProviders, customProviders, currentProvider]);
+
+  const { onKeyDown } = useEscBack({
+    launcher: () => setView("list"),
+  });
+
+  useEffect(() => {
+    if (builtInProviders.length === 0 && customProviders.length === 0) {
+      void loadProviders();
+    }
+  }, [loadProviders, builtInProviders.length, customProviders.length]);
+
+  // Select auto-switches to first model if current model gone
+  useEffect(() => {
+    if (models.length > 0 && !models.find((m) => m.id === currentModel)) {
+      setCurrentModel(models[0].id);
+    }
+  }, [models, currentModel, setCurrentModel]);
+
+  // Handle divider selection
+  const handleProviderChange = (next: string) => {
+    if (next === "---divider---") return;
+    setCurrentProvider(next);
+    const allProvs = [...builtInProviders, ...customProviders.map((c) => ({ id: c.id, name: c.name, models: c.models }))];
+    const prov = allProvs.find((p) => p.id === next);
+    if (prov && prov.models.length > 0) {
+      setCurrentModel(prov.models[0].id);
+    }
+  };
+
+  const maskedKey = (cp: CustomProvider) => {
+    if (cp.apiKey.length <= 8) return "********";
+    return cp.apiKey.slice(0, 4) + "…" + cp.apiKey.slice(-4);
+  };
+
+  return (
+    <QxShell
+      title="QxAI Settings"
+      className="qx-qxai-settings-shell"
+      onKeyDown={onKeyDown}
+      onBack={() => setView("list")}
+      backLabel="Back"
+      island={{
+        label: "Settings",
+        detail: `${builtInProviders.length + customProviders.length} provider${builtInProviders.length + customProviders.length !== 1 ? "s" : ""}`,
+      }}
+      escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setView("list") }}
+    >
+      <div
+        style={{
+          padding: "16px 20px",
+          display: "flex",
+          flexDirection: "column",
+          gap: 20,
+          color: "var(--qx-text-primary)",
+          fontSize: 14,
+        }}
+      >
+        {/* Provider selector */}
+        <div>
+          <label
+            style={{
+              display: "block",
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--qx-text-primary)",
+              marginBottom: 6,
+            }}
+          >
+            AI Provider
+          </label>
+          {loading ? (
+            <div style={{ fontSize: 13, color: "var(--qx-text-tertiary)" }}>
+              Loading providers...
+            </div>
+          ) : allProviders.length > 0 ? (
+            <Select
+              value={currentProvider}
+              options={allProviders}
+              onChange={handleProviderChange}
+              ariaLabel="AI Provider"
+            />
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--qx-text-tertiary)" }}>
+              {error || "No providers available"}
+            </div>
+          )}
+        </div>
+
+        {/* Model selector */}
+        <div>
+          <label
+            style={{
+              display: "block",
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--qx-text-primary)",
+              marginBottom: 6,
+            }}
+          >
+            Model
+          </label>
+          {models.length > 0 ? (
+            <Select
+              value={currentModel}
+              options={models.map((m) => ({ value: m.id, label: m.name }))}
+              onChange={(next) => setCurrentModel(next)}
+              ariaLabel="Model"
+            />
+          ) : (
+            <div style={{ fontSize: 13, color: "var(--qx-text-tertiary)" }}>
+              {currentProvider
+                ? "No models available for this provider"
+                : "Select a provider first"}
+            </div>
+          )}
+        </div>
+
+        {/* Default system prompt */}
+        <div>
+          <label
+            style={{
+              display: "block",
+              fontSize: 13,
+              fontWeight: 600,
+              color: "var(--qx-text-primary)",
+              marginBottom: 6,
+            }}
+          >
+            Default System Prompt
+          </label>
+          <textarea
+            value={defaultSystemPrompt}
+            onChange={(e) => setDefaultSystemPrompt(e.target.value)}
+            rows={4}
+            style={{
+              width: "100%",
+              padding: "8px 12px",
+              borderRadius: "var(--qx-control-radius)",
+              border: "1px solid var(--qx-border-1)",
+              background: "var(--qx-bg-component-1)",
+              color: "var(--qx-text-primary)",
+              fontSize: 13,
+              fontFamily: "inherit",
+              lineHeight: 1.5,
+              resize: "vertical",
+              outline: "none",
+              boxSizing: "border-box",
+            }}
+            placeholder="You are a helpful AI assistant."
+          />
+        </div>
+
+        {/* ——— Custom Providers (BYOK) ——— */}
+        <div
+          style={{
+            borderTop: "1px solid var(--qx-border-1)",
+            paddingTop: 16,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 12,
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Custom Providers (BYOK)</span>
+            {!adding && (
+              <button
+                className="qx-command-button primary"
+                onClick={() => setAdding(true)}
+              >
+                + Add
+              </button>
+            )}
+          </div>
+
+          {adding && (
+            <div style={{ marginBottom: 12 }}>
+              <AddProviderForm
+                onSave={(data) => {
+                  void addCustomProvider(data);
+                  setAdding(false);
+                }}
+                onCancel={() => setAdding(false)}
+              />
+            </div>
+          )}
+
+          {customProviders.length === 0 && !adding && (
+            <div style={{ fontSize: 13, color: "var(--qx-text-tertiary)" }}>
+              No custom providers yet. Add your own API key-based providers.
+            </div>
+          )}
+
+          {customProviders.map((cp) => {
+            const isEditing = editingId === cp.id;
+            return (
+              <div
+                key={cp.id}
+                style={{
+                  background: "var(--qx-bg-component-2)",
+                  borderRadius: "var(--qx-card-radius)",
+                  padding: 12,
+                  marginBottom: 8,
+                }}
+              >
+                {isEditing ? (
+                  <AddProviderForm
+                    initial={cp}
+                    onSave={(data) => {
+                      void updateCustomProvider(cp.id, data);
+                      setEditingId(null);
+                    }}
+                    onCancel={() => setEditingId(null)}
+                  />
+                ) : (
+                  <>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "flex-start",
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>
+                          {cp.name}
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--qx-text-secondary)", marginBottom: 2 }}>
+                          Base URL: {cp.baseUrl}
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--qx-text-secondary)", marginBottom: 2 }}>
+                          API Key: {maskedKey(cp)}
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--qx-text-secondary)" }}>
+                          Models: {cp.models.map((m) => m.id).join(", ")}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <button
+                          className="qx-command-button"
+                          onClick={() => setEditingId(cp.id)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="qx-command-button"
+                          style={{ color: "var(--qx-danger)" }}
+                          onClick={() => {
+                            if (window.confirm(`Delete provider "${cp.name}"?`)) {
+                              void removeCustomProvider(cp.id);
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Info */}
+        <div
+          style={{
+            fontSize: 12,
+            color: "var(--qx-text-tertiary)",
+            lineHeight: 1.5,
+          }}
+        >
+          Changes take effect when creating new conversations. Existing
+          conversations retain their original provider and model settings.
+          Custom providers are persisted locally at ~/.qx/qxai-custom-providers.json.
+        </div>
+      </div>
+    </QxShell>
+  );
+}

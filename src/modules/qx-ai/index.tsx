@@ -1,17 +1,17 @@
 import { useEffect } from "react";
 import { useG4fStore } from "./store";
-import G4FPanel from "./G4FPanel";
-import G4FChat from "./G4FChat";
-import G4FSettings from "./G4FSettings";
+import QxAiPanel from "./QxAiPanel";
+import QxAiChat from "./QxAiChat";
+import QxAiSettings from "./QxAiSettings";
 
-export default function G4fReader() {
+export default function QxAiReader() {
   const { view, loadProviders } = useG4fStore();
 
   useEffect(() => {
     void loadProviders();
   }, [loadProviders]);
 
-  if (view === "settings") return <G4FSettings />;
-  if (view === "chat") return <G4FChat />;
-  return <G4FPanel />;
+  if (view === "chat") return <QxAiChat />;
+  if (view === "settings") return <QxAiSettings />;
+  return <QxAiPanel />;
 }

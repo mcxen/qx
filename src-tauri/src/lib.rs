@@ -212,6 +212,7 @@ pub fn run() {
             clipboard::delete_clipboard_entry,
             clipboard::toggle_clipboard_pin,
             clipboard::record_clipboard_copy,
+            clipboard::read_image_file,
             rss::rss_list_feeds,
             rss::rss_add_feed,
             rss::rss_update_feed,
@@ -273,7 +274,10 @@ pub fn run() {
             github_calendar::github_contributions_raw,
             g4f::g4f_chat,
             g4f::g4f_stream_chat,
+            g4f::g4f_chat_custom,
             g4f::g4f_list_providers,
+            g4f::qxai_get_custom_providers,
+            g4f::qxai_save_custom_providers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

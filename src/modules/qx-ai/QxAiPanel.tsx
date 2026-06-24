@@ -1,23 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import QxShell, { type BottomIslandContent } from "../../components/QxShell";
-import { useStore } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useG4fStore } from "./store";
 
-export default function G4FPanel() {
+export default function QxAiPanel() {
   const {
     conversations,
     loading,
     error,
     setView,
-    loadProviders,
-    createConversation,
     selectConversation,
+    createConversation,
     deleteConversation,
+    loadProviders,
   } = useG4fStore();
-  const setTab = useStore((state) => state.setTab);
+
   const [query, setQuery] = useState("");
-  const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
     void loadProviders();
@@ -31,15 +29,17 @@ export default function G4FPanel() {
     );
   }, [conversations, query]);
 
+  const [selectedIndex, setSelectedIndex] = useState(0);
+
   useEffect(() => {
-    setSelectedIndex((current) => Math.min(current, Math.max(filtered.length - 1, 0)));
+    setSelectedIndex(0);
   }, [filtered.length]);
 
   const selectedConv = filtered[selectedIndex];
 
   const { onKeyDown: escKeyDown } = useEscBack({
     query: { active: query.length > 0, clear: () => setQuery("") },
-    launcher: () => setTab("launcher"),
+    launcher: () => setView("list"),
   });
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -56,7 +56,10 @@ export default function G4FPanel() {
         break;
       case "Enter":
         e.preventDefault();
-        if (selectedConv) selectConversation(selectedConv.id);
+        if (selectedConv) {
+          selectConversation(selectedConv.id);
+          setView("chat");
+        }
         break;
       case "n":
         if (!e.metaKey && !e.ctrlKey) {
@@ -64,28 +67,30 @@ export default function G4FPanel() {
           createConversation();
         }
         break;
+      case "s":
+        if (!e.metaKey && !e.ctrlKey) {
+          e.preventDefault();
+          setView("settings");
+        }
+        break;
     }
   };
 
   const island: BottomIslandContent = loading
     ? { label: "AI Chat", detail: "Loading providers...", progress: 42 }
-    : {
-        label: "AI Chat",
-        detail: `${conversations.length} conversation${conversations.length !== 1 ? "s" : ""}`,
-      };
-
-  const handleDelete = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (window.confirm("Delete this conversation?")) {
-      deleteConversation(id);
-    }
-  };
+    : error
+      ? { label: "AI Chat", detail: error, tone: "danger" }
+      : {
+          label: "AI Chat",
+          detail: `${conversations.length} conversation${conversations.length !== 1 ? "s" : ""}`,
+        };
 
   return (
     <QxShell
-      title="AI Chat"
-      className="qx-g4f-shell"
+      title="QxAI Chat"
+      className="qx-qxai-panel-shell"
       onKeyDown={onKeyDown}
+      onBack={() => setView("list")}
       search={
         <div className="qx-search-wrap">
           <span className="qx-search-icon" aria-hidden="true" />
@@ -93,10 +98,7 @@ export default function G4FPanel() {
             type="text"
             value={query}
             autoFocus
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setSelectedIndex(0);
-            }}
+            onChange={(e) => setQuery(e.target.value)}
             placeholder="Search conversations..."
             className="qx-plugin-search"
           />
@@ -104,58 +106,64 @@ export default function G4FPanel() {
       }
       trailing={
         <>
-          <button
-            className="qx-command-button primary"
-            onClick={() => createConversation()}
-          >
+          <button className="qx-command-button primary" onClick={() => createConversation()}>
             New Chat
+          </button>
+          <button className="qx-command-button" onClick={() => setView("settings")}>
+            Settings
           </button>
         </>
       }
       context={
         <div className="qx-action-panel">
-          <div className="qx-action-title">Conversation Actions</div>
+          <div className="qx-action-title">Actions</div>
           <button
             className="qx-action-item"
-            onClick={() => selectedConv && selectConversation(selectedConv.id)}
+            onClick={() => {
+              if (selectedConv) {
+                selectConversation(selectedConv.id);
+                setView("chat");
+              }
+            }}
             disabled={!selectedConv}
           >
             <span>Open Chat</span>
             <kbd>↩</kbd>
           </button>
-          <button
-            className="qx-action-item"
-            onClick={() => createConversation()}
-          >
+          <button className="qx-action-item" onClick={() => createConversation()}>
             <span>New Chat</span>
             <kbd>N</kbd>
           </button>
-          <button
-            className="qx-action-item"
-            onClick={() => setView("settings")}
-          >
+          <button className="qx-action-item" onClick={() => setView("settings")}>
             <span>Settings</span>
             <kbd>S</kbd>
           </button>
           <button
             className="qx-action-item danger"
-            onClick={(e) => selectedConv && handleDelete(selectedConv.id, e)}
+            onClick={() => {
+              if (selectedConv && window.confirm("Delete this conversation?")) {
+                deleteConversation(selectedConv.id);
+              }
+            }}
             disabled={!selectedConv}
           >
-            <span>Delete Conversation</span>
-            <kbd>⌘D</kbd>
+            <span>Delete</span>
           </button>
         </div>
       }
       island={island}
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setTab("launcher") }}
+      escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setView("list") }}
       primaryAction={{
         label: selectedConv ? "Open Chat" : "New Chat",
         kbd: selectedConv ? "↵" : "N",
         tone: "primary",
         onClick: () => {
-          if (selectedConv) selectConversation(selectedConv.id);
-          else createConversation();
+          if (selectedConv) {
+            selectConversation(selectedConv.id);
+            setView("chat");
+          } else {
+            createConversation();
+          }
         },
       }}
       secondaryAction={{
@@ -175,17 +183,16 @@ export default function G4FPanel() {
             <button
               key={conv.id}
               onClick={() => setSelectedIndex(i)}
-              onDoubleClick={() => selectConversation(conv.id)}
+              onDoubleClick={() => {
+                selectConversation(conv.id);
+                setView("chat");
+              }}
               className={`qx-list-row${active ? " is-active" : ""}`}
             >
               <span className="qx-list-copy">
-                <span className="qx-list-title" style={{ fontWeight: 500 }}>
-                  {conv.name}
-                </span>
+                <span className="qx-list-title">{conv.name}</span>
                 <span className="qx-list-subtitle">
-                  {conv.messages.filter((m) => m.role === "user").length} messages
-                  {" · "}
-                  {conv.provider || "no provider"}
+                  {conv.provider} · {conv.messages.length} message{conv.messages.length !== 1 ? "s" : ""}
                 </span>
               </span>
             </button>
@@ -193,9 +200,7 @@ export default function G4FPanel() {
         })}
         {filtered.length === 0 && (
           <div className="qx-empty-state">
-            {loading
-              ? "Loading..."
-              : "No conversations yet. Press N to start one."}
+            {loading ? "Loading..." : "No conversations yet. Press N to start one."}
           </div>
         )}
         {error && (

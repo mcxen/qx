@@ -559,6 +559,117 @@ context.bottomIsland.set({
 - `--qx-accent`
 - `--qx-danger`
 
+### 超链接样式
+
+在 RSS 文章详情等富文本内容中，超链接使用 `--qx-accent`：
+
+```css
+.rss-article-content a {
+  color: var(--qx-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+```
+
+禁止使用浏览器默认蓝色 `#0000ee` / `#551a8b`。
+
+### 自定义滚动条
+
+所有模块禁止使用原生滚动条，改为 Qx 自定义样式，以支持半透明背景下的沉浸显示：
+
+```css
+/* 窄轨道 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--qx-scrollbar-thumb, rgba(128, 128, 128, 0.3));
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--qx-scrollbar-thumb-hover, rgba(128, 128, 128, 0.5));
+}
+```
+
+- 轨道始终 `transparent`，不显示白色背景条
+- 滑块使用 `--qx-scrollbar-thumb` 变量统一控制，用户可在主题中覆盖
+- 鼠标经过时加深至 `--qx-scrollbar-thumb-hover`
+- 宽度 6px 兼顾触控精准和视觉轻盈
+
+### Select 组件分隔项
+
+`Select` 组件支持 `<option>` 中插入分隔项。分隔项的 `value` 约定为 `---divider---`，`label` 为任意占位文本。组件内部遇到分隔项时渲染为分隔线（不可选）：
+
+```tsx
+const options = [
+  { value: "builtin-a", label: "Built-in A" },
+  { value: "---divider---", label: "──────────" },
+  { value: "custom:abc", label: "My Custom" },
+];
+```
+
+处理 `onChange` 时需跳过分隔项：
+
+```tsx
+const handleChange = (next: string) => {
+  if (next === "---divider---") return;
+  // ... rest of logic
+};
+```
+
+### BYOK 自定义 Provider 管理模式
+
+在 Settings 类模块中，支持用户添加自己的 API key 提供方。模式要求：
+
+1. **持久化**：自定义 provider 通过 Tauri Rust 命令读写 `~/.qx/qxai-custom-providers.json`，使用 `qxai_get_custom_providers` / `qxai_save_custom_providers`
+2. **API Key 掩码**：显示时仅保留前 4 位 + … + 后 4 位，输入框用 `type="password"`
+3. **内联表单**：添加/编辑使用内联展开表单，不用弹窗 Modal
+4. **Provider 合并**：内置 provider + 自定义 provider 合并到一个 `Select` 组件中，中间用分隔项分隔
+5. **命名规则**：自定义 provider id 使用 `custom:<uuid>` 前缀，前端据此判断调用 `g4f_chat_custom` 还是 `g4f_chat`
+6. **模型输入**：支持逗号分隔的模型 ID 列表，自动转为 `{ id, name }` 数组
+
+卡片展示风格：
+
+```tsx
+<div style={{
+  background: "var(--qx-bg-component-2)",
+  borderRadius: "var(--qx-card-radius)",
+  padding: 12,
+}}>
+  <div style={{ fontWeight: 600, fontSize: 14 }}>{name}</div>
+  <div style={{ fontSize: 12, color: "var(--qx-text-secondary)" }}>
+    Base URL: {baseUrl}
+  </div>
+  <div style={{ fontSize: 12, color: "var(--qx-text-secondary)" }}>
+    API Key: {maskedKey}
+  </div>
+  <div style={{ fontSize: 12, color: "var(--qx-text-secondary)" }}>
+    Models: {modelList}
+  </div>
+  <div style={{ display: "flex", gap: 6 }}>
+    <button className="qx-command-button">Edit</button>
+    <button className="qx-command-button" style={{ color: "var(--qx-danger)" }}>Delete</button>
+  </div>
+</div>
+```
+
+### 内联 Add/Edit 表单模式
+
+用于少量字段的配置表单（如 BYOK provider 添加/编辑），使用以下约束：
+
+- 背景 `var(--qx-bg-component-2)`，无需外层 shell
+- 表单内联展开，不使用 Modal 弹窗
+- 字段：最多 5 个 input，垂直排列，间距 10px
+- 保存/取消按钮右对齐
+- label 字号 12px，颜色 `var(--qx-text-secondary)`
+
 新增模块类名建议：
 
 - `.qx-shell`

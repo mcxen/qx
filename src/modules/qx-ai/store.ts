@@ -21,16 +21,29 @@ export interface G4fProvider {
   models: { id: string; name: string }[];
 }
 
+export interface CustomProvider {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  models: { id: string; name: string }[];
+}
+
 export type G4fView = "list" | "chat" | "settings";
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 }
 
+function makeCustomProviderId(): string {
+  return "custom:" + generateId();
+}
+
 interface G4fStore {
   conversations: G4fConversation[];
   currentConversationId: string | null;
-  providers: G4fProvider[];
+  builtInProviders: G4fProvider[];
+  customProviders: CustomProvider[];
   loading: boolean;
   streaming: boolean;
   streamedContent: string;
@@ -46,6 +59,9 @@ interface G4fStore {
   setDefaultSystemPrompt: (p: string) => void;
   setStreamedContent: (c: string) => void;
 
+  /** Combined list of built-in + custom providers for UI selection. */
+  providers: G4fProvider[];
+
   createConversation: (provider?: string, model?: string) => string;
   deleteConversation: (id: string) => void;
   renameConversation: (id: string, name: string) => void;
@@ -56,16 +72,34 @@ interface G4fStore {
 
   loadProviders: () => Promise<void>;
   getCurrentConversation: () => G4fConversation | undefined;
+
+  // BYOK
+  addCustomProvider: (p: Omit<CustomProvider, "id">) => Promise<void>;
+  removeCustomProvider: (id: string) => Promise<void>;
+  updateCustomProvider: (id: string, p: Partial<CustomProvider>) => Promise<void>;
 }
 
 function isTauriRuntime(): boolean {
   return "__TAURI_INTERNALS__" in window;
 }
 
+function buildProviders(
+  builtIns: G4fProvider[],
+  customs: CustomProvider[],
+): G4fProvider[] {
+  const mapped: G4fProvider[] = customs.map((c) => ({
+    id: c.id,
+    name: c.name,
+    models: c.models,
+  }));
+  return [...builtIns, ...mapped];
+}
+
 export const useG4fStore = create<G4fStore>((set, get) => ({
   conversations: [],
   currentConversationId: null,
-  providers: [],
+  builtInProviders: [],
+  customProviders: [],
   loading: false,
   streaming: false,
   streamedContent: "",
@@ -75,6 +109,9 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   currentProvider: "",
   currentModel: "",
 
+  // computed – kept in sync by actions
+  providers: [],
+
   setView: (view) => set({ view }),
   setCurrentProvider: (currentProvider) => set({ currentProvider }),
   setCurrentModel: (currentModel) => set({ currentModel }),
@@ -82,12 +119,8 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   setStreamedContent: (streamedContent) => set({ streamedContent }),
 
   createConversation: (provider, model) => {
-    const {
-      currentProvider,
-      currentModel,
-      conversations,
-      defaultSystemPrompt,
-    } = get();
+    const { currentProvider, currentModel, conversations, defaultSystemPrompt } =
+      get();
     const id = generateId();
     const conv: G4fConversation = {
       id,
@@ -129,7 +162,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   },
 
   sendMessage: async (content) => {
-    const { currentConversationId, conversations } = get();
+    const { currentConversationId, conversations, customProviders } = get();
     if (!currentConversationId) return;
 
     const conv = conversations.find((c) => c.id === currentConversationId);
@@ -150,19 +183,30 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     });
 
     if (!isTauriRuntime()) {
-      set({
-        streaming: false,
-        streamedContent: "",
-      });
+      set({ streaming: false, streamedContent: "" });
       return;
     }
 
     try {
-      const response = await invoke<string>("g4f_chat", {
-        provider: conv.provider,
-        model: conv.model || null,
-        messages: updatedConv.messages,
-      });
+      let response: string;
+
+      if (conv.provider.startsWith("custom:")) {
+        // BYOK provider
+        const cp = customProviders.find((p) => p.id === conv.provider);
+        if (!cp) throw new Error(`Custom provider "${conv.provider}" not found`);
+        response = await invoke<string>("g4f_chat_custom", {
+          baseUrl: cp.baseUrl,
+          apiKey: cp.apiKey,
+          model: conv.model,
+          messages: updatedConv.messages,
+        });
+      } else {
+        response = await invoke<string>("g4f_chat", {
+          provider: conv.provider,
+          model: conv.model || null,
+          messages: updatedConv.messages,
+        });
+      }
 
       const assistantMessage: G4fMessage = {
         role: "assistant",
@@ -179,10 +223,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         streamedContent: response,
       }));
     } catch (e) {
-      set({
-        streaming: false,
-        error: String(e),
-      });
+      set({ streaming: false, error: String(e) });
     }
   },
 
@@ -191,9 +232,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     if (!currentConversationId) return;
     set({
       conversations: conversations.map((c) =>
-        c.id === currentConversationId
-          ? { ...c, messages: [] }
-          : c,
+        c.id === currentConversationId ? { ...c, messages: [] } : c,
       ),
     });
   },
@@ -205,8 +244,17 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     }
     set({ loading: true, error: null });
     try {
-      const providers = await invoke<G4fProvider[]>("g4f_list_providers");
-      set({ providers, loading: false });
+      const builtInProviders = await invoke<G4fProvider[]>("g4f_list_providers");
+      const customProviders = await invoke<CustomProvider[]>(
+        "qxai_get_custom_providers",
+      );
+      const providers = buildProviders(builtInProviders, customProviders);
+      set({
+        builtInProviders,
+        customProviders,
+        providers,
+        loading: false,
+      });
       if (providers.length > 0 && !get().currentProvider) {
         set({
           currentProvider: providers[0].id,
@@ -221,5 +269,48 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   getCurrentConversation: () => {
     const { currentConversationId, conversations } = get();
     return conversations.find((c) => c.id === currentConversationId);
+  },
+
+  // BYOK actions
+
+  addCustomProvider: async (input) => {
+    const id = makeCustomProviderId();
+    const newProvider: CustomProvider = { id, ...input };
+    const { customProviders: oldCustoms, builtInProviders } = get();
+    const customProviders = [...oldCustoms, newProvider];
+    const providers = buildProviders(builtInProviders, customProviders);
+    set({ customProviders, providers });
+    if (isTauriRuntime()) {
+      await invoke("qxai_save_custom_providers", { providers: customProviders });
+    }
+  },
+
+  removeCustomProvider: async (id) => {
+    const { customProviders: oldCustoms, builtInProviders, currentProvider } = get();
+    const customProviders = oldCustoms.filter((p) => p.id !== id);
+    const providers = buildProviders(builtInProviders, customProviders);
+    const next: Partial<G4fStore> = { customProviders, providers };
+    // If the removed provider was selected, switch to first available
+    if (currentProvider === id) {
+      const first = providers[0];
+      next.currentProvider = first?.id ?? "";
+      next.currentModel = first?.models[0]?.id ?? "";
+    }
+    set(next);
+    if (isTauriRuntime()) {
+      await invoke("qxai_save_custom_providers", { providers: customProviders });
+    }
+  },
+
+  updateCustomProvider: async (id, patch) => {
+    const { customProviders: oldCustoms, builtInProviders } = get();
+    const customProviders = oldCustoms.map((p) =>
+      p.id === id ? { ...p, ...patch } : p,
+    );
+    const providers = buildProviders(builtInProviders, customProviders);
+    set({ customProviders, providers });
+    if (isTauriRuntime()) {
+      await invoke("qxai_save_custom_providers", { providers: customProviders });
+    }
   },
 }));

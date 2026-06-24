@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::time::Duration;
 
 // ---------------------------------------------------------------------------
@@ -11,7 +12,7 @@ pub struct ChatMessage {
     pub content: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderModel {
     pub id: String,
     pub name: String,
@@ -21,6 +22,16 @@ pub struct ProviderModel {
 pub struct ProviderInfo {
     pub id: String,
     pub name: String,
+    pub models: Vec<ProviderModel>,
+}
+
+/// A user-configured custom provider (BYOK — Bring Your Own Key).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomProviderConfig {
+    pub id: String,
+    pub name: String,
+    pub base_url: String,
+    pub api_key: String,
     pub models: Vec<ProviderModel>,
 }
 
@@ -155,20 +166,45 @@ fn provider_duckduckgo_stream(messages: &[ChatMessage]) -> Result<Vec<String>, S
     parse_sse_chunks(&body)
 }
 
-fn provider_nexra() -> Result<String, String> {
-    Err("nexra is not implemented in the Rust backend; implement it on the JS side".to_string())
-}
+// ---------------------------------------------------------------------------
+// OpenAI-compatible provider (BYOK)
+// ---------------------------------------------------------------------------
 
-fn provider_nexra_stream() -> Result<Vec<String>, String> {
-    Err("nexra is not implemented in the Rust backend; implement it on the JS side".to_string())
-}
+fn provider_openai_chat(
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    messages: &[ChatMessage],
+) -> Result<String, String> {
+    let client = make_client()?;
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
-fn provider_blackbox() -> Result<String, String> {
-    Err("blackbox is not implemented in the Rust backend; implement it on the JS side".to_string())
-}
+    let body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+    });
 
-fn provider_blackbox_stream() -> Result<Vec<String>, String> {
-    Err("blackbox is not implemented in the Rust backend; implement it on the JS side".to_string())
+    let resp = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&body)
+        .send()
+        .map_err(|e| format!("request to {url} failed: {e}"))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().unwrap_or_default();
+        return Err(format!("{url} returned HTTP {status}: {text}"));
+    }
+
+    let json: serde_json::Value =
+        resp.json().map_err(|e| format!("parse response from {url}: {e}"))?;
+
+    json["choices"][0]["message"]["content"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "no content in API response".to_string())
 }
 
 // ---------------------------------------------------------------------------
@@ -186,8 +222,6 @@ pub fn g4f_chat(
 
     match provider.as_str() {
         "duckduckgo" => provider_duckduckgo(&messages),
-        "nexra" => provider_nexra(),
-        "blackbox" => provider_blackbox(),
         _ => Err(format!("unknown provider: {provider}")),
     }
 }
@@ -203,10 +237,19 @@ pub fn g4f_stream_chat(
 
     match provider.as_str() {
         "duckduckgo" => provider_duckduckgo_stream(&messages),
-        "nexra" => provider_nexra_stream(),
-        "blackbox" => provider_blackbox_stream(),
         _ => Err(format!("unknown provider: {provider}")),
     }
+}
+
+/// Send a chat message to an OpenAI-compatible custom provider (BYOK).
+#[tauri::command]
+pub fn g4f_chat_custom(
+    base_url: String,
+    api_key: String,
+    model: String,
+    messages: Vec<ChatMessage>,
+) -> Result<String, String> {
+    provider_openai_chat(&base_url, &api_key, &model, &messages)
 }
 
 /// List all available AI providers and their models.
@@ -221,21 +264,35 @@ pub fn g4f_list_providers() -> Vec<ProviderInfo> {
                 name: "GPT-4o Mini".to_string(),
             }],
         },
-        ProviderInfo {
-            id: "nexra".to_string(),
-            name: "Nexra".to_string(),
-            models: vec![ProviderModel {
-                id: "gpt-4o-mini".to_string(),
-                name: "GPT-4o Mini".to_string(),
-            }],
-        },
-        ProviderInfo {
-            id: "blackbox".to_string(),
-            name: "Blackbox AI".to_string(),
-            models: vec![ProviderModel {
-                id: "blackbox-llm".to_string(),
-                name: "Blackbox AI".to_string(),
-            }],
-        },
     ]
+}
+
+// ---------------------------------------------------------------------------
+// Custom provider persistence (BYOK)
+// ---------------------------------------------------------------------------
+
+fn custom_providers_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let dir = PathBuf::from(format!("{}/.qx", home));
+    let _ = std::fs::create_dir_all(&dir);
+    dir.join("qxai-custom-providers.json")
+}
+
+/// Load persisted custom providers.
+#[tauri::command]
+pub fn qxai_get_custom_providers() -> Vec<CustomProviderConfig> {
+    let path = custom_providers_path();
+    match std::fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => vec![],
+    }
+}
+
+/// Save custom providers to disk.
+#[tauri::command]
+pub fn qxai_save_custom_providers(providers: Vec<CustomProviderConfig>) -> Result<(), String> {
+    let path = custom_providers_path();
+    let json =
+        serde_json::to_string_pretty(&providers).map_err(|e| format!("serialize: {e}"))?;
+    std::fs::write(&path, json).map_err(|e| format!("write {}: {e}", path.display()))
 }
