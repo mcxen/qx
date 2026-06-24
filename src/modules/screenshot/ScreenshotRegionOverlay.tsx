@@ -15,10 +15,21 @@ function ScreenshotRegionOverlay({
   const [dragStart, setDragStart] = useState<Point | null>(null);
   const [dragEnd, setDragEnd] = useState<Point | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const [imgLoaded, setImgLoaded] = useState(false);
 
   useEffect(() => {
     containerRef.current?.focus();
   }, []);
+
+  // Preload the background image
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      setImgLoaded(true);
+    };
+    img.src = convertFileSrc(backgroundPath);
+  }, [backgroundPath]);
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === "Escape") {
@@ -73,13 +84,35 @@ function ScreenshotRegionOverlay({
         cursor: "crosshair",
         zIndex: 1000,
         outline: "none",
-        backgroundImage: `url(${convertFileSrc(backgroundPath)})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
+        overflow: "hidden",
       }}
     >
-      {/* Dim overlay everywhere */}
-      {!dragStart && <div style={{ ...dimStyle, inset: 0 }} />}
+      {/* Full-viewport background image, always fills the viewport */}
+      <img
+        ref={imgRef}
+        src={convertFileSrc(backgroundPath)}
+        alt=""
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100vw",
+          height: "100vh",
+          objectFit: "fill",
+          pointerEvents: "none",
+          userSelect: "none",
+        }}
+        draggable={false}
+      />
+
+      {/* Dim overlay everywhere before selection starts */}
+      {!imgLoaded && (
+        <div style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.3)" }} />
+      )}
+      {!dragStart && imgLoaded && (
+        <div style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.5)" }} />
+      )}
+
+      {/* Spotlight: dim everything except the selected area */}
       {dragStart && dragEnd && (
         <>
           {/* Top strip */}
@@ -108,7 +141,7 @@ function ScreenshotRegionOverlay({
             <div
               style={{
                 position: "absolute",
-                left: selX,
+                left: selX + 4,
                 top: Math.max(0, selY - 28),
                 backgroundColor: "rgba(59,130,246,0.95)",
                 color: "#fff",
@@ -120,13 +153,14 @@ function ScreenshotRegionOverlay({
                 whiteSpace: "nowrap",
               }}
             >
-              {Math.round(selW)} × {Math.round(selH)}
+              {Math.round(selW)} &times; {Math.round(selH)}
             </div>
           )}
         </>
       )}
+
       {/* Hint text */}
-      {!dragStart && (
+      {!dragStart && imgLoaded && (
         <div
           style={{
             position: "absolute",
@@ -140,7 +174,7 @@ function ScreenshotRegionOverlay({
             textShadow: "0 1px 4px rgba(0,0,0,0.6)",
           }}
         >
-          Drag to select screenshot area · Esc to cancel
+          Drag to select screenshot area &middot; Esc to cancel
         </div>
       )}
     </div>

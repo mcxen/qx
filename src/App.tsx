@@ -167,18 +167,57 @@ function App() {
     settings.appearance.font_size,
   ]);
 
+  // Restore window size from saved settings on startup
+  useEffect(() => {
+    if (!settingsLoaded || !isTauriRuntime()) return;
+    const { window_width, window_height } = settings.appearance;
+    if (window_width > 0 && window_height > 0) {
+      const win = getCurrentWindow();
+      win.setSize(new LogicalSize(window_width, window_height)).catch(() => {});
+    }
+  }, [settingsLoaded]);
+
+  // Save window size on resize
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    const win = getCurrentWindow();
+    const unlisten = win.onResized(async () => {
+      const logical = await win.innerSize();
+      const { settings, patch } = useSettingsStore.getState();
+      if (
+        logical.width !== settings.appearance.window_width ||
+        logical.height !== settings.appearance.window_height
+      ) {
+        patch("appearance", {
+          ...settings.appearance,
+          window_width: logical.width,
+          window_height: logical.height,
+        });
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
   const restoreCaptureWindow = useCallback(async () => {
     if (!isTauriRuntime()) return;
     const win = getCurrentWindow();
-    // Restore original window bounds if we saved them
-    if (originalBoundsRef.current) {
-      const { width, height, x, y } = originalBoundsRef.current;
-      await win.setSize(new LogicalSize(width, height)).catch(() => {});
-      await win.setPosition(new LogicalPosition(x, y)).catch(() => {});
-      originalBoundsRef.current = null;
+    // Exit fullscreen mode if we used it
+    try {
+      await win.setFullscreen(false);
+    } catch {
+      // Fallback: restore original window bounds if we saved them
+      if (originalBoundsRef.current) {
+        const { width, height, x, y } = originalBoundsRef.current;
+        await win.setSize(new LogicalSize(width, height));
+        await win.setPosition(new LogicalPosition(x, y));
+        originalBoundsRef.current = null;
+      }
     }
-    await win.show().catch(() => {});
-    await win.setFocus().catch(() => {});
+    originalBoundsRef.current = null;
+    await win.show();
+    await win.setFocus();
   }, []);
 
   const beginRegionCapture = useCallback(async () => {
@@ -190,6 +229,7 @@ function App() {
       error: null,
       previewPath: null,
       scaleFactor: 1,
+      monitorIndex: 0,
     });
 
     if (!isTauriRuntime()) {
@@ -239,19 +279,13 @@ function App() {
           windowCenterY < my + mh
         );
       }) ?? monitors[0];
+      const monitorIndex = monitors.indexOf(monitor);
 
-      // Expand window to cover the entire monitor.
-      // Use the TARGET monitor's scale_factor (not the window's current one),
-      // since the window may be moving across monitors with different DPI.
-      if (monitor) {
-        const monScale = monitor.scale_factor || scaleFactor;
-        const logicalW = monitor.width / monScale;
-        const logicalH = monitor.height / monScale;
-        const logicalX = monitor.x / monScale;
-        const logicalY = monitor.y / monScale;
-        await win.setSize(new LogicalSize(logicalW, logicalH)).catch(() => {});
-        await win.setPosition(new LogicalPosition(logicalX, logicalY)).catch(() => {});
-      }
+      // Expand window to cover the entire monitor using fullscreen.
+      // setFullscreen(true) is more reliable on macOS than setSize/setPosition
+      // when the window is freshly shown.
+      await win.show();
+      await win.setFullscreen(true);
 
       // store the TARGET monitor's scale so completeRegionCapture can map
       // CSS px -> screenshot physical px correctly when monitors are mixed-DPI.
@@ -261,8 +295,8 @@ function App() {
         backgroundPath: background.path,
         error: null,
         scaleFactor: targetScale,
+        monitorIndex,
       });
-      await win.show();
       await win.setFocus();
     } catch (error) {
       setScreenshotCapture({
@@ -298,16 +332,17 @@ function App() {
 
       try {
         const scaleFactor = useStore.getState().screenshotCapture.scaleFactor || 1;
+        const monitorIndex = useStore.getState().screenshotCapture.monitorIndex || 0;
 
-        // Window is now fullscreen at (0,0) covering the entire monitor,
-        // so logical coordinates map directly to screen coordinates.
+        // Window is now fullscreen covering the entire monitor,
+        // so CSS coordinates map directly to screen coordinates.
         const x = Math.max(0, Math.round(left * scaleFactor));
         const y = Math.max(0, Math.round(top * scaleFactor));
         const physicalWidth = Math.max(1, Math.round(width * scaleFactor));
         const physicalHeight = Math.max(1, Math.round(height * scaleFactor));
 
         if (isTauriRuntime()) {
-          await getCurrentWindow().hide().catch(() => {});
+          await getCurrentWindow().hide();
         }
 
         const result = await invoke<ScreenshotEntry>("take_screenshot_area", {
@@ -315,7 +350,7 @@ function App() {
           y,
           width: physicalWidth,
           height: physicalHeight,
-          sourcePath: useStore.getState().screenshotCapture.backgroundPath,
+          monitorIndex,
         });
 
         setScreenshotCapture({

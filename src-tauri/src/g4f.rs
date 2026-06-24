@@ -27,6 +27,7 @@ pub struct ProviderInfo {
 
 /// A user-configured custom provider (BYOK — Bring Your Own Key).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CustomProviderConfig {
     pub id: String,
     pub name: String,

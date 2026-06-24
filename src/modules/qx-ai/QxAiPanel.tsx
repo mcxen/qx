@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import QxShell, { type BottomIslandContent } from "../../components/QxShell";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useG4fStore } from "./store";
+import { useStore } from "../../store";
 
 export default function QxAiPanel() {
+  const setTab = useStore((state) => state.setTab);
   const {
     conversations,
     loading,
@@ -39,7 +41,7 @@ export default function QxAiPanel() {
 
   const { onKeyDown: escKeyDown } = useEscBack({
     query: { active: query.length > 0, clear: () => setQuery("") },
-    launcher: () => setView("list"),
+    launcher: () => setTab("launcher"),
   });
 
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -90,7 +92,7 @@ export default function QxAiPanel() {
       title="QxAI Chat"
       className="qx-qxai-panel-shell"
       onKeyDown={onKeyDown}
-      onBack={() => setView("list")}
+      onBack={() => setTab("launcher")}
       search={
         <div className="qx-search-wrap">
           <span className="qx-search-icon" aria-hidden="true" />

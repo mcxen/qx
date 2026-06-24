@@ -195,8 +195,8 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         const cp = customProviders.find((p) => p.id === conv.provider);
         if (!cp) throw new Error(`Custom provider "${conv.provider}" not found`);
         response = await invoke<string>("g4f_chat_custom", {
-          baseUrl: cp.baseUrl,
-          apiKey: cp.apiKey,
+          base_url: cp.baseUrl,
+          api_key: cp.apiKey,
           model: conv.model,
           messages: updatedConv.messages,
         });

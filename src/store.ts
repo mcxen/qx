@@ -54,6 +54,7 @@ export interface ScreenshotCaptureState {
   error: string | null;
   previewPath: string | null;
   scaleFactor: number;
+  monitorIndex: number;
 }
 
 export interface RssFeed {
@@ -123,6 +124,7 @@ const initialScreenshotCapture: ScreenshotCaptureState = {
   error: null,
   previewPath: null,
   scaleFactor: 1,
+  monitorIndex: 0,
 };
 
 export const useStore = create<AppStore>((set) => ({

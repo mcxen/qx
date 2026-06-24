@@ -15,9 +15,11 @@ export default function ScreenshotPanel() {
   const screenshotCapture = useStore((state) => state.screenshotCapture);
   const [recent, setRecent] = useState<ScreenshotEntry[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
+  const [previewFile, setPreviewFile] = useState<ScreenshotEntry | null>(null);
   const [selected, setSelected] = useState(0);
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [actionMsg, setActionMsg] = useState<string | null>(null);
 
   const loadRecent = useCallback(async () => {
     try {
@@ -34,7 +36,12 @@ export default function ScreenshotPanel() {
 
   useEffect(() => {
     if (screenshotCapture.previewPath) {
-      setPreview(convertFileSrc(screenshotCapture.previewPath));
+      const src = convertFileSrc(screenshotCapture.previewPath);
+      setPreview(src);
+      setPreviewFile({
+        path: screenshotCapture.previewPath,
+        timestamp: new Date().toISOString().slice(0, 19).replace("T", " "),
+      });
       void loadRecent();
     }
     if (screenshotCapture.error) {
@@ -56,11 +63,19 @@ export default function ScreenshotPanel() {
 
   const selectedItem = filtered[selected];
 
+  const showPreview = useCallback((entry: ScreenshotEntry) => {
+    setPreview(convertFileSrc(entry.path));
+    setPreviewFile(entry);
+    setActionMsg(null);
+  }, []);
+
   const captureFull = useCallback(async () => {
     setError(null);
+    setActionMsg(null);
     try {
       const result = await invoke<ScreenshotEntry>("take_screenshot");
       setPreview(convertFileSrc(result.path));
+      setPreviewFile(result);
       void loadRecent();
     } catch (e) {
       setError(String(e));
@@ -69,8 +84,41 @@ export default function ScreenshotPanel() {
 
   const startAreaSelect = useCallback(() => {
     setError(null);
+    setActionMsg(null);
     enterRegionCapture();
   }, []);
+
+  const copyToClipboard = useCallback(async () => {
+    if (!previewFile) return;
+    try {
+      await invoke("copy_screenshot_to_clipboard", { path: previewFile.path });
+      setActionMsg("Copied to clipboard");
+      setTimeout(() => setActionMsg(null), 2000);
+    } catch (e) {
+      setActionMsg(`Copy failed: ${e}`);
+    }
+  }, [previewFile]);
+
+  const openInPreview = useCallback(async () => {
+    if (!previewFile) return;
+    try {
+      await invoke("open_in_preview", { path: previewFile.path });
+    } catch (e) {
+      setActionMsg(`Open failed: ${e}`);
+    }
+  }, [previewFile]);
+
+  const deleteScreenshot = useCallback(async () => {
+    if (!previewFile) return;
+    try {
+      await invoke("delete_screenshot", { path: previewFile.path });
+      setPreview(null);
+      setPreviewFile(null);
+      void loadRecent();
+    } catch (e) {
+      setActionMsg(`Delete failed: ${e}`);
+    }
+  }, [previewFile, loadRecent]);
 
   const { onKeyDown: escKeyDown } = useEscBack({
     inner: { active: preview !== null, close: () => setPreview(null) },
@@ -90,7 +138,7 @@ export default function ScreenshotPanel() {
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (selectedItem) {
-        setPreview(convertFileSrc(selectedItem.path));
+        showPreview(selectedItem);
       }
     }
   };
@@ -124,13 +172,44 @@ export default function ScreenshotPanel() {
     </div>
   );
 
+  // Dynamic actions: when preview is shown, replace capture actions with screenshot actions
+  const actions = previewFile ? (
+    <div className="qx-action-panel">
+      <div className="qx-action-title">Actions</div>
+      <button className="qx-action-item" onClick={copyToClipboard}>
+        <span>Copy to Clipboard</span>
+      </button>
+      <button className="qx-action-item" onClick={openInPreview}>
+        <span>Open in Preview</span>
+      </button>
+      <button className="qx-action-item" onClick={deleteScreenshot} style={{ color: "var(--qx-danger)" }}>
+        <span>Delete</span>
+      </button>
+    </div>
+  ) : (
+    context
+  );
+
+  // Extract info from the preview file
+  const fileName = previewFile ? (previewFile.path.split("/").pop() ?? "") : "";
+  const fileTimestamp = previewFile ? previewFile.timestamp : "";
+
+  // primary/secondary action dynamic based on preview state
+  const primaryAction = preview
+    ? { label: "Copy to Clipboard", onClick: copyToClipboard }
+    : { label: "Capture Full", onClick: captureFull };
+
+  const secondaryAction = preview
+    ? { label: "Open in Preview", onClick: openInPreview }
+    : { label: "Select Area", onClick: startAreaSelect };
+
   return (
     <QxShell
       title="Screenshot"
       search={searchSlot}
       onBack={() => setTab("launcher")}
       onKeyDown={handleKeyDown}
-      context={context}
+      context={actions}
       island={{
         label: screenshotCapture.status === "idle" ? "Screenshot" : "Capturing",
         detail:
@@ -139,8 +218,8 @@ export default function ScreenshotPanel() {
             : screenshotCapture.status,
         tone: error ? "danger" : "neutral",
       }}
-      primaryAction={{ label: "Capture Full", onClick: captureFull }}
-      secondaryAction={{ label: "Select Area", onClick: startAreaSelect }}
+      primaryAction={primaryAction}
+      secondaryAction={secondaryAction}
     >
       {error && (
         <div
@@ -154,6 +233,21 @@ export default function ScreenshotPanel() {
           }}
         >
           {error}
+        </div>
+      )}
+
+      {actionMsg && (
+        <div
+          style={{
+            margin: "0 10px 6px",
+            padding: "6px 8px",
+            fontSize: 12,
+            color: "var(--qx-accent)",
+            background: "var(--qx-accent-bg, rgba(59,130,246,0.1))",
+            borderRadius: 4,
+          }}
+        >
+          {actionMsg}
         </div>
       )}
 
@@ -172,13 +266,12 @@ export default function ScreenshotPanel() {
           ) : (
             filtered.map((s, i) => {
               const active = i === selected;
-              const fileUrl = convertFileSrc(s.path);
               return (
                 <button
                   key={s.path}
                   onClick={() => {
                     setSelected(i);
-                    setPreview(fileUrl);
+                    showPreview(s);
                   }}
                   className={`qx-list-row compact${active ? " is-active" : ""}`}
                 >
@@ -200,7 +293,7 @@ export default function ScreenshotPanel() {
             <div>
               <div className="qx-detail-title">Preview</div>
               <div className="qx-detail-meta">
-                {preview ? "Captured image" : "Select a screenshot"}
+                {preview ? fileName : "Select a screenshot"}
               </div>
             </div>
           </div>
@@ -215,8 +308,25 @@ export default function ScreenshotPanel() {
                     objectFit: "contain",
                     display: "block",
                     maxHeight: 320,
+                    borderRadius: "4px 4px 0 0",
                   }}
                 />
+                {previewFile && (
+                  <div
+                    style={{
+                      padding: "6px 8px",
+                      fontSize: 11,
+                      color: "var(--qx-text-secondary)",
+                      borderTop: "1px solid var(--qx-border-1)",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 8,
+                    }}
+                  >
+                    <span>{fileName}</span>
+                    <span>{fileTimestamp}</span>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="qx-empty-state">
