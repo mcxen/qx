@@ -512,3 +512,20 @@
   flex-direction: column;
   gap: 8px;
 }
+
+/* RSS 文章内容超链接蓝色 */
+.rss-article-content a {
+  color: var(--qx-accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--qx-accent) 40%, transparent);
+  transition: color 0.08s ease, text-decoration-color 0.08s ease;
+}
+
+.rss-article-content a:hover {
+  color: var(--qx-accent-hover);
+  text-decoration-color: var(--qx-accent);
+}
+
+.rss-article-content a:visited {
+  color: color-mix(in srgb, var(--qx-accent) 80%, var(--qx-text-tertiary));
+}

@@ -14,6 +14,7 @@ mod screenshot;
 mod settings;
 mod system_stats;
 mod v2ex;
+mod g4f;
 
 use tauri::{
     image::Image,
@@ -270,6 +271,9 @@ pub fn run() {
             v2ex::v2ex_search_topics,
             github_calendar::github_contributions,
             github_calendar::github_contributions_raw,
+            g4f::g4f_chat,
+            g4f::g4f_stream_chat,
+            g4f::g4f_list_providers,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

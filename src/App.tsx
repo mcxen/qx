@@ -12,6 +12,7 @@ import ScreenRecorder from "./modules/screencap/ScreenRecorder";
 import DevTxtTool from "./modules/documents/DevTxtTool";
 import SettingsPanel from "./modules/settings/SettingsPanel";
 import RssReader from "./modules/rss";
+import G4fReader from "./modules/qx-ai";
 import MacroRecorder from "./modules/macros/MacroRecorder";
 import { useSettingsStore } from "./modules/settings/store";
 import { ThemeProvider } from "./ThemeProvider";
@@ -127,7 +128,7 @@ function App() {
     const handler = (e: Event) => {
       const tabId = (e as CustomEvent).detail as string;
       if (tabId === "clipboard" || tabId === "screenshot" || tabId === "screencap"
-          || tabId === "rss" || tabId === "macros" || tabId === "documents" || tabId === "settings") {
+          || tabId === "rss" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "settings") {
         setTab(tabId);
       } else if (tabId?.startsWith("plugin:")) {
         setTab(tabId);
@@ -361,7 +362,7 @@ function App() {
     });
     const unlistenNav = listen<string>("navigate", (e) => {
       const next = e.payload;
-      if (next === "clipboard" || next === "screenshot" || next === "screencap" || next === "rss" || next === "macros" || next === "settings") {
+      if (next === "clipboard" || next === "screenshot" || next === "screencap" || next === "rss" || next === "qx-ai" || next === "macros" || next === "settings") {
         setTab(next);
       } else if (next === "launcher") {
         setTab("launcher");
@@ -583,7 +584,7 @@ function App() {
       return;
     }
     // Handle __qx:<tabId> style paths (backward compat)
-    const tabMatch = item.path.match(/^__qx:(clipboard|screenshot|screencap|rss|macros|documents)$/);
+    const tabMatch = item.path.match(/^__qx:(clipboard|screenshot|screencap|rss|qx-ai|macros|documents)$/);
     if (tabMatch) {
       setTab(tabMatch[1] as any);
       return;
@@ -646,6 +647,8 @@ function App() {
         return <ScreenRecorder />;
       case "rss":
         return <RssReader />;
+      case "qx-ai":
+        return <G4fReader />;
       case "macros":
         return <MacroRecorder />;
       case "documents":
@@ -695,6 +698,7 @@ function App() {
           tab === "screenshot" ||
           tab === "screencap" ||
           tab === "rss" ||
+          tab === "qx-ai" ||
           tab === "macros" ||
           tab === "documents" ||
           tab === "settings"

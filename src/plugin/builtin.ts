@@ -37,6 +37,22 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     },
   },
   {
+    id: "qx-ai",
+    name: "QxAI",
+    keywords: ["ai", "chat", "gpt", "qxai", "llm", "人工智能", "聊天"],
+    commands: [
+      {
+        name: "open-qxai",
+        title: "Open QxAI Chat",
+        keywords: ["ai", "chat", "gpt", "qxai", "llm", "人工智能", "聊天", "open"],
+      },
+    ],
+    panel: {
+      title: "QxAI Chat",
+      keywords: ["ai", "chat", "gpt", "qxai", "llm", "人工智能", "聊天"],
+    },
+  },
+  {
     id: "screenshot",
     name: "Screenshot",
     keywords: ["screenshot", "capture", "screen", "截图", "截屏"],

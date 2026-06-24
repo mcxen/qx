@@ -229,3 +229,25 @@ body {
   flex: 1;
   min-height: 0;
 }
+
+/* ====== 自定义滚动条（沉浸式毛玻璃风格） ====== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--qx-scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--qx-scrollbar-thumb-hover);
+  background-clip: content-box;
+}
