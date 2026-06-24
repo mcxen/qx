@@ -167,13 +167,16 @@ function App() {
     settings.appearance.font_size,
   ]);
 
-  // Restore window size from saved settings on startup
+  // Restore window size from saved settings on startup (first launch uses a default size)
   useEffect(() => {
     if (!settingsLoaded || !isTauriRuntime()) return;
+    const win = getCurrentWindow();
     const { window_width, window_height } = settings.appearance;
     if (window_width > 0 && window_height > 0) {
-      const win = getCurrentWindow();
       win.setSize(new LogicalSize(window_width, window_height)).catch(() => {});
+    } else {
+      win.setSize(new LogicalSize(900, 640)).catch(() => {});
+      win.center().catch(() => {});
     }
   }, [settingsLoaded]);
 
@@ -495,6 +498,43 @@ function App() {
         kind: "command",
       }));
 
+      // Also match installed plugin panel names/keywords as navigation entries
+      const pluginState = usePluginRegistry.getState();
+      const lowerQuery = q.trim().toLowerCase();
+      if (lowerQuery) {
+        for (const [pluginId, panel] of Object.entries(pluginState.panels)) {
+          if (pluginId.startsWith("builtin:")) continue;
+          const nameSource = (panel.pluginName || pluginId).toLowerCase();
+          const titleSource = (panel.title || pluginId).toLowerCase();
+          const kw = panel.keywords || [];
+          if (nameSource.includes(lowerQuery) || titleSource.includes(lowerQuery) || kw.some((k) => k.toLowerCase().includes(lowerQuery))) {
+            syntheticEntries.push({
+              name: panel.title || pluginId,
+              path: `__qx:plugin:${pluginId}`,
+              icon: panel.icon || `builtin:${pluginId}`,
+              kind: "command",
+            });
+          }
+        }
+        // Also match panel-less plugins (commands-only) by name/description/keywords
+        for (const p of pluginState.plugins) {
+          if (p.id.startsWith("builtin:")) continue;
+          if (pluginState.panels[p.id]) continue;
+          if (!p.enabled) continue;
+          const nameSource = p.name.toLowerCase();
+          const descSource = (p.description || "").toLowerCase();
+          const manifestKw = p.manifest?.keywords || [];
+          if (nameSource.includes(lowerQuery) || descSource.includes(lowerQuery) || manifestKw.some((k) => k.toLowerCase().includes(lowerQuery))) {
+            syntheticEntries.push({
+              name: p.name,
+              path: `__qx:plugin:${p.id}`,
+              icon: `builtin:${p.id}`,
+              kind: "command",
+            });
+          }
+        }
+      }
+
       const calculation = calculateExpression(q);
       if (calculation && (scope === "all" || scope === "apps")) {
         syntheticEntries.unshift({
@@ -602,6 +642,12 @@ function App() {
       if (cmd) {
         await usePluginRegistry.getState().runCommand(cmd);
       }
+      return;
+    }
+    // Handle plugin panel navigation
+    if (item.path.startsWith("__qx:plugin:")) {
+      const pluginId = item.path.slice("__qx:plugin:".length);
+      setTab(`plugin:${pluginId}`);
       return;
     }
     // Handle built-in tab navigation

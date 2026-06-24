@@ -184,7 +184,7 @@ fn is_plugin_enabled(id: &str) -> bool {
 fn set_plugin_enabled_fs(id: &str, enabled: bool) -> Result<(), String> {
     let path = plugin_enabled_path(id);
     if enabled {
-        fs::write(&path, "true").map_err(|e| format!("write enabled flag: {e}"))?;
+        atomic_write(&path, b"true").map_err(|e| format!("write enabled flag: {e}"))?;
     } else if path.exists() {
         fs::remove_file(&path).map_err(|e| format!("remove enabled flag: {e}"))?;
     }
@@ -391,7 +391,8 @@ fn install_plugin_archive(
     if let Some(path) = cleanup_path {
         let _ = fs::remove_file(path);
     }
-    let _ = fs::write(plugin_enabled_path(&manifest.id), "true");
+    atomic_write(&plugin_enabled_path(&manifest.id), b"true")
+        .map_err(|e| format!("write enabled flag: {e}"))?;
 
     Ok(InstalledPlugin {
         id: manifest.id.clone(),

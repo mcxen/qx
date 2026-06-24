@@ -67,38 +67,42 @@ export default function Launcher({
     setActionIndex(0);
   }, [selectedItem?.path]);
 
-  const quickEntries: QuickEntry[] = [
-    {
-      id: "clipboard",
-      title: t("launcher.clipboard", "Clipboard History"),
-      subtitle: t("launcher.clipboard.desc", "Pinned, frequent, links"),
-      onClick: () => onNavigate("clipboard"),
-    },
-    {
-      id: "screenshot",
-      title: t("launcher.screenshot", "Screenshot"),
-      subtitle: t("launcher.screenshot.desc", "Capture region or screen"),
-      onClick: () => onNavigate("screenshot"),
-    },
-    {
-      id: "rss",
-      title: t("launcher.rss", "RSS Reader"),
-      subtitle: t("launcher.rss.desc", "Feeds and articles"),
-      onClick: () => onNavigate("rss"),
-    },
-    {
-      id: "documents",
-      title: t("launcher.documents", "Documents"),
-      subtitle: t("launcher.documents.desc", "Text, Markdown, JSON"),
-      onClick: () => onNavigate("documents"),
-    },
-    {
-      id: "settings",
-      title: t("launcher.settings", "Settings"),
-      subtitle: t("launcher.settings.desc", "Appearance and plugins"),
-      onClick: () => onNavigate("settings"),
-    },
-  ];
+  const quickEntries: QuickEntry[] = useMemo(() => {
+    const builtIn: QuickEntry[] = [
+      {
+        id: "clipboard",
+        title: t("launcher.clipboard", "Clipboard History"),
+        subtitle: t("launcher.clipboard.desc", "Pinned, frequent, links"),
+        onClick: () => onNavigate("clipboard"),
+      },
+      {
+        id: "screenshot",
+        title: t("launcher.screenshot", "Screenshot"),
+        subtitle: t("launcher.screenshot.desc", "Capture region or screen"),
+        onClick: () => onNavigate("screenshot"),
+      },
+      {
+        id: "rss",
+        title: t("launcher.rss", "RSS Reader"),
+        subtitle: t("launcher.rss.desc", "Feeds and articles"),
+        onClick: () => onNavigate("rss"),
+      },
+      {
+        id: "documents",
+        title: t("launcher.documents", "Documents"),
+        subtitle: t("launcher.documents.desc", "Text, Markdown, JSON"),
+        onClick: () => onNavigate("documents"),
+      },
+      {
+        id: "settings",
+        title: t("launcher.settings", "Settings"),
+        subtitle: t("launcher.settings.desc", "Appearance and plugins"),
+        onClick: () => onNavigate("settings"),
+      },
+    ];
+
+    return [...builtIn];
+  }, [t, onNavigate]);
 
   const island: BottomIslandContent | null = loadingPhase === "loading-apps"
     ? {

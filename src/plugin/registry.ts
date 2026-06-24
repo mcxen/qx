@@ -113,7 +113,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
   _devWatcherInterval: null as ReturnType<typeof setInterval> | null,
 
   load: async (hooks) => {
-    if (get().loading) return;
+    if (get().loading || get().loaded) return;
     set({ loading: true, error: null, hooks });
     try {
       const builtinCommands = get().commands.filter((command) =>

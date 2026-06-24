@@ -474,7 +474,8 @@ function MarketplaceTab({
 
 export default function PluginManager() {
   const t = useT();
-  const { plugins, install, uninstall, setEnabled, refresh } = usePluginRegistry();
+  const { plugins, install, uninstall, setEnabled, refresh, loaded, loading } =
+    usePluginRegistry();
   const [tab, setTab] = useState<Tab>("installed");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [archivePath, setArchivePath] = useState("");
@@ -488,6 +489,13 @@ export default function PluginManager() {
       setSelectedId(plugins[0]?.id ?? null);
     }
   }, [plugins, selectedId]);
+
+  /* Trigger a load if the registry hasn't been populated yet. */
+  useEffect(() => {
+    if (!loaded && !loading) {
+      void refresh();
+    }
+  }, [loaded, loading, refresh]);
 
   /* ---- actions ---- */
 
