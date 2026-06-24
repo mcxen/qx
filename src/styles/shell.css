@@ -1,5 +1,6 @@
 /* ====== Spec Shell ====== */
 .qx-shell {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -8,6 +9,42 @@
   backdrop-filter: blur(14px) saturate(140%);
   -webkit-backdrop-filter: blur(14px) saturate(140%);
   color: var(--qx-text-primary);
+}
+
+.qx-shell-drag-edge {
+  position: absolute;
+  z-index: 60;
+  -webkit-app-region: drag;
+}
+
+.qx-shell-drag-edge.edge-top,
+.qx-shell-drag-edge.edge-bottom {
+  left: 0;
+  right: 0;
+  height: 8px;
+}
+
+.qx-shell-drag-edge.edge-top {
+  top: 0;
+}
+
+.qx-shell-drag-edge.edge-bottom {
+  bottom: 0;
+}
+
+.qx-shell-drag-edge.edge-left,
+.qx-shell-drag-edge.edge-right {
+  top: 0;
+  bottom: 0;
+  width: 8px;
+}
+
+.qx-shell-drag-edge.edge-left {
+  left: 0;
+}
+
+.qx-shell-drag-edge.edge-right {
+  right: 0;
 }
 
 .qx-shell.visual-elevated {

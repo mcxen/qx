@@ -12,6 +12,25 @@ interface PermissionStatus {
   settings_url: string;
 }
 
+const PERMISSION_CHECK_TIMEOUT_MS = 5000;
+
+async function invokeWithTimeout<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  let timer: ReturnType<typeof window.setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      invoke<T>(command, args),
+      new Promise<T>((_, reject) => {
+        timer = window.setTimeout(
+          () => reject(new Error("Permission check timed out.")),
+          PERMISSION_CHECK_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) window.clearTimeout(timer);
+  }
+}
+
 const LABEL_KEYS: Record<string, string> = {
   "screen-recording": "permissions.screenRecording",
   accessibility: "permissions.accessibility",
@@ -42,7 +61,7 @@ export default function PermissionSettings() {
     setLoading(true);
     setMessage(null);
     try {
-      const next = await invoke<PermissionStatus[]>("qx_permissions_status");
+      const next = await invokeWithTimeout<PermissionStatus[]>("qx_permissions_status");
       setItems(next);
     } catch (err) {
       setMessage(t("permissions.error", "Permission check failed: {message}").replace("{message}", String(err)));
@@ -68,7 +87,7 @@ export default function PermissionSettings() {
     setBusyId(id);
     setMessage(null);
     try {
-      await invoke<boolean>("qx_permissions_request", { id });
+      await invokeWithTimeout<boolean>("qx_permissions_request", { id });
       await loadPermissions();
       setMessage(t("permissions.requested", "System permission panel opened. Refresh after granting access."));
     } catch (err) {
@@ -82,7 +101,7 @@ export default function PermissionSettings() {
     setBusyId(id);
     setMessage(null);
     try {
-      await invoke("qx_permissions_open_settings", { id });
+      await invokeWithTimeout("qx_permissions_open_settings", { id });
       setMessage(t("permissions.opened", "System Settings opened. Refresh after changing access."));
     } catch (err) {
       setMessage(t("permissions.error", "Permission check failed: {message}").replace("{message}", String(err)));

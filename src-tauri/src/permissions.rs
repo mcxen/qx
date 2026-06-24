@@ -85,8 +85,13 @@ fn open_settings_url(url: &str) -> Result<(), String> {
 }
 
 #[cfg(target_os = "macos")]
-fn screen_recording_granted() -> bool {
+pub(crate) fn screen_recording_granted() -> bool {
     unsafe { CGPreflightScreenCaptureAccess() }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn screen_recording_granted() -> bool {
+    true
 }
 
 #[cfg(target_os = "macos")]

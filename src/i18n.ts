@@ -1,3 +1,4 @@
+import { useCallback } from "react";
 import { useSettingsStore } from "./modules/settings/store";
 
 type Locale = "en" | "zh-CN";
@@ -137,8 +138,8 @@ const zh: Record<string, string> = {
   "permissions.openSettings": "打开",
   "permissions.opening": "打开中...",
   "permissions.checking": "检查中...",
-  "permissions.requested": "已打开系统权限面板。授权后请刷新状态。",
-  "permissions.opened": "已打开系统设置。修改授权后请刷新状态。",
+  "permissions.requested": "已打开系统权限面板。授权后请重启 Qx，再刷新状态。",
+  "permissions.opened": "已打开系统设置。修改授权后请重启 Qx，再刷新状态。",
   "permissions.error": "权限检查失败：{message}",
 
   "plugins.importArchive": "导入插件压缩包",
@@ -177,8 +178,8 @@ export function useLocale(): Locale {
 
 export function useT() {
   const locale = useLocale();
-  return (key: string, fallback: string): string => {
+  return useCallback((key: string, fallback: string): string => {
     if (locale === "zh-CN") return zh[key] ?? fallback;
     return fallback;
-  };
+  }, [locale]);
 }

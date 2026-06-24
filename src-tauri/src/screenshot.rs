@@ -4,7 +4,104 @@ use serde::Serialize;
 use std::borrow::Cow;
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use tauri::command;
+
+fn capture_permission_hint(error: impl std::fmt::Display) -> String {
+    format!(
+        "Failed to capture screen: {error}. If Screen Recording is enabled, quit and reopen Qx. If it still fails, remove Qx from System Settings > Privacy & Security > Screen Recording and grant it again."
+    )
+}
+
+#[cfg(target_os = "macos")]
+fn run_screencapture(args: &[String], save_path: &PathBuf) -> Result<(), String> {
+    let output = Command::new("screencapture")
+        .args(args)
+        .arg(save_path)
+        .output()
+        .map_err(|e| capture_permission_hint(e))?;
+
+    if output.status.success() && save_path.exists() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let reason = if stderr.is_empty() {
+        format!("screencapture exited with {}", output.status)
+    } else {
+        stderr
+    };
+    Err(capture_permission_hint(reason))
+}
+
+#[cfg(target_os = "macos")]
+fn save_monitor_capture(monitor: &xcap::Monitor, save_path: &PathBuf) -> Result<(), String> {
+    let scale = monitor.scale_factor().unwrap_or(1.0).max(1.0) as f64;
+    let x = monitor.x().map_err(capture_permission_hint)? as f64 / scale;
+    let y = monitor.y().map_err(capture_permission_hint)? as f64 / scale;
+    let width = monitor.width().map_err(capture_permission_hint)? as f64 / scale;
+    let height = monitor.height().map_err(capture_permission_hint)? as f64 / scale;
+    let rect = format!(
+        "{},{},{},{}",
+        x.round() as i32,
+        y.round() as i32,
+        width.round() as u32,
+        height.round() as u32
+    );
+    run_screencapture(&["-x".to_string(), "-R".to_string(), rect], save_path)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn save_monitor_capture(monitor: &xcap::Monitor, save_path: &PathBuf) -> Result<(), String> {
+    let image = monitor.capture_image().map_err(capture_permission_hint)?;
+    image
+        .save(save_path)
+        .map_err(|e| format!("Failed to save screenshot: {e}"))
+}
+
+#[cfg(target_os = "macos")]
+fn save_area_capture(
+    monitor: &xcap::Monitor,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    save_path: &PathBuf,
+) -> Result<(), String> {
+    let scale = monitor.scale_factor().unwrap_or(1.0).max(1.0) as f64;
+    let monitor_x = monitor.x().map_err(capture_permission_hint)? as f64 / scale;
+    let monitor_y = monitor.y().map_err(capture_permission_hint)? as f64 / scale;
+    let rect = format!(
+        "{},{},{},{}",
+        (monitor_x + (x as f64 / scale)).round() as i32,
+        (monitor_y + (y as f64 / scale)).round() as i32,
+        (width as f64 / scale).round().max(1.0) as u32,
+        (height as f64 / scale).round().max(1.0) as u32
+    );
+    run_screencapture(&["-x".to_string(), "-R".to_string(), rect], save_path)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn save_area_capture(
+    monitor: &xcap::Monitor,
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    save_path: &PathBuf,
+) -> Result<(), String> {
+    let full = monitor.capture_image().map_err(capture_permission_hint)?;
+    let mon_x = monitor.x().unwrap_or(0);
+    let mon_y = monitor.y().unwrap_or(0);
+    let rel_x = (x - mon_x).max(0) as u32;
+    let rel_y = (y - mon_y).max(0) as u32;
+    let crop_w = width.min(full.width().saturating_sub(rel_x));
+    let crop_h = height.min(full.height().saturating_sub(rel_y));
+    let cropped = image::imageops::crop_imm(&full, rel_x, rel_y, crop_w, crop_h).to_image();
+    cropped
+        .save(save_path)
+        .map_err(|e| format!("Failed to save screenshot: {}", e))
+}
 
 #[command]
 pub fn capture_at_point(screen_x: i32, screen_y: i32) -> Result<ScreenshotResult, String> {
@@ -16,17 +113,11 @@ pub fn capture_at_point(screen_x: i32, screen_y: i32) -> Result<ScreenshotResult
         .or_else(|| monitors.first().cloned())
         .ok_or_else(|| "No monitors found".to_string())?;
 
-    let image = monitor
-        .capture_image()
-        .map_err(|e| format!("Failed to capture: {e}"))?;
-
     let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
     let filename = format!("screenshot_{}.png", timestamp);
     let save_path = get_screenshots_dir().join(&filename);
 
-    image
-        .save(&save_path)
-        .map_err(|e| format!("Failed to save screenshot: {e}"))?;
+    save_monitor_capture(&monitor, &save_path)?;
 
     Ok(ScreenshotResult {
         path: save_path.to_string_lossy().to_string(),
@@ -89,18 +180,11 @@ pub fn take_screenshot() -> Result<ScreenshotResult, String> {
         return Err("No monitors found".to_string());
     }
 
-    let primary = &monitors[0];
-    let image = primary
-        .capture_image()
-        .map_err(|e| format!("Failed to capture: {}", e))?;
-
     let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
     let filename = format!("screenshot_{}.png", timestamp);
     let save_path = get_screenshots_dir().join(&filename);
 
-    image
-        .save(&save_path)
-        .map_err(|e| format!("Failed to save screenshot: {}", e))?;
+    save_monitor_capture(&monitors[0], &save_path)?;
 
     Ok(ScreenshotResult {
         path: save_path.to_string_lossy().to_string(),
@@ -109,8 +193,8 @@ pub fn take_screenshot() -> Result<ScreenshotResult, String> {
 }
 
 /// Capture a region directly from the specified monitor.
-/// Uses xcap to capture the full monitor, then crops to the requested region.
-/// This is more efficient than saving a full screenshot and then re-reading it.
+/// On macOS this uses the system screencapture tool with a logical-point rect;
+/// other platforms keep the xcap full-monitor capture and crop path.
 #[command]
 pub fn take_screenshot_area(
     x: i32,
@@ -127,32 +211,11 @@ pub fn take_screenshot_area(
     let idx = monitor_index.min(monitors.len() as u32 - 1) as usize;
     let monitor = &monitors[idx];
 
-    // Capture the full monitor image
-    let full = monitor
-        .capture_image()
-        .map_err(|e| format!("Failed to capture monitor: {e}"))?;
-
-    // Get monitor bounds for coordinate adjustment
-    let mon_x = monitor.x().unwrap_or(0);
-    let mon_y = monitor.y().unwrap_or(0);
-
-    // Coordinates are relative to the monitor, not the global screen space.
-    // The frontend sends coordinates relative to the overlay, which covers the monitor.
-    // So x, y are already relative to the monitor origin.
-    let rel_x = (x - mon_x).max(0) as u32;
-    let rel_y = (y - mon_y).max(0) as u32;
-    let crop_w = width.min(full.width().saturating_sub(rel_x));
-    let crop_h = height.min(full.height().saturating_sub(rel_y));
-
-    let cropped = image::imageops::crop_imm(&full, rel_x, rel_y, crop_w, crop_h).to_image();
-
     let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
     let filename = format!("screenshot_area_{}.png", timestamp);
     let save_path = get_screenshots_dir().join(&filename);
 
-    cropped
-        .save(&save_path)
-        .map_err(|e| format!("Failed to save screenshot: {}", e))?;
+    save_area_capture(monitor, x, y, width, height, &save_path)?;
 
     Ok(ScreenshotResult {
         path: save_path.to_string_lossy().to_string(),

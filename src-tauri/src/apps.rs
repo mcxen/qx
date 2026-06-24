@@ -15,6 +15,8 @@ pub struct AppEntry {
     pub path: String,
     pub icon: String,
     pub kind: String,
+    #[serde(skip_serializing)]
+    pub aliases: String,
 }
 
 static APP_CACHE: Mutex<Vec<AppEntry>> = Mutex::new(Vec::new());
@@ -38,6 +40,7 @@ fn init_db() -> Result<Connection, rusqlite::Error> {
             name TEXT NOT NULL,
             icon TEXT NOT NULL DEFAULT '',
             kind TEXT NOT NULL DEFAULT 'app',
+            aliases TEXT NOT NULL DEFAULT '',
             last_seen TEXT NOT NULL DEFAULT (datetime('now'))
         );",
     )?;
@@ -48,6 +51,8 @@ fn init_db() -> Result<Connection, rusqlite::Error> {
         "ALTER TABLE apps ADD COLUMN last_seen TEXT NOT NULL DEFAULT (datetime('now'));",
     )
     .ok();
+    conn.execute_batch("ALTER TABLE apps ADD COLUMN aliases TEXT NOT NULL DEFAULT '';")
+        .ok();
     Ok(conn)
 }
 
@@ -62,13 +67,14 @@ fn load_from_db() -> Vec<AppEntry> {
         }
     };
 
-    let mut stmt = match conn.prepare("SELECT path, name, icon, kind FROM apps ORDER BY name") {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("[apps] DB query prepare failed: {e}");
-            return Vec::new();
-        }
-    };
+    let mut stmt =
+        match conn.prepare("SELECT path, name, icon, kind, aliases FROM apps ORDER BY name") {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("[apps] DB query prepare failed: {e}");
+                return Vec::new();
+            }
+        };
 
     let rows = match stmt.query_map([], |row| {
         Ok(AppEntry {
@@ -76,6 +82,7 @@ fn load_from_db() -> Vec<AppEntry> {
             name: row.get(1)?,
             icon: row.get(2)?,
             kind: row.get(3)?,
+            aliases: row.get(4)?,
         })
     }) {
         Ok(r) => r,
@@ -108,14 +115,21 @@ fn sync_db(entries: &[AppEntry]) {
     // Upsert all current entries
     for entry in entries {
         let result = conn.execute(
-            "INSERT INTO apps (path, name, icon, kind, last_seen)
-             VALUES (?1, ?2, ?3, ?4, datetime('now'))
+            "INSERT INTO apps (path, name, icon, kind, aliases, last_seen)
+             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))
              ON CONFLICT(path) DO UPDATE SET
                 name = excluded.name,
                 icon = excluded.icon,
                 kind = excluded.kind,
+                aliases = excluded.aliases,
                 last_seen = datetime('now')",
-            params![entry.path, entry.name, entry.icon, entry.kind],
+            params![
+                entry.path,
+                entry.name,
+                entry.icon,
+                entry.kind,
+                entry.aliases
+            ],
         );
         if let Err(e) = result {
             eprintln!("[apps] DB upsert failed for {}: {e}", entry.path);
@@ -306,6 +320,88 @@ fn plist_value(info_plist: &PathBuf, key: &str) -> Option<String> {
     }
 }
 
+fn push_alias(aliases: &mut Vec<String>, value: Option<String>, primary_name: &str) {
+    let Some(value) = value else {
+        return;
+    };
+    let value = value.trim();
+    if value.is_empty() || value == primary_name {
+        return;
+    }
+    if !aliases.iter().any(|alias| alias == value) {
+        aliases.push(value.to_string());
+    }
+}
+
+fn localized_string_value(strings_path: &PathBuf, key: &str) -> Option<String> {
+    plist_value(strings_path, key)
+}
+
+fn localized_bundle_aliases(app_path: &PathBuf, primary_name: &str) -> String {
+    let info_plist = app_path.join("Contents").join("Info.plist");
+    let resources = app_path.join("Contents").join("Resources");
+    let mut aliases = Vec::new();
+
+    push_alias(
+        &mut aliases,
+        plist_value(&info_plist, "CFBundleDisplayName"),
+        primary_name,
+    );
+    push_alias(
+        &mut aliases,
+        plist_value(&info_plist, "CFBundleName"),
+        primary_name,
+    );
+
+    let preferred_lprojs = [
+        "zh-Hans.lproj",
+        "zh-Hant.lproj",
+        "zh_CN.lproj",
+        "zh_TW.lproj",
+        "Chinese.lproj",
+    ];
+    for lproj in preferred_lprojs {
+        let strings_path = resources.join(lproj).join("InfoPlist.strings");
+        if strings_path.is_file() {
+            push_alias(
+                &mut aliases,
+                localized_string_value(&strings_path, "CFBundleDisplayName"),
+                primary_name,
+            );
+            push_alias(
+                &mut aliases,
+                localized_string_value(&strings_path, "CFBundleName"),
+                primary_name,
+            );
+        }
+    }
+
+    if let Ok(entries) = fs::read_dir(&resources) {
+        for entry in entries.flatten() {
+            let lproj = entry.path();
+            if !lproj.is_dir() || lproj.extension().map(|ext| ext != "lproj").unwrap_or(true) {
+                continue;
+            }
+            let strings_path = lproj.join("InfoPlist.strings");
+            if !strings_path.is_file() {
+                continue;
+            }
+            push_alias(
+                &mut aliases,
+                localized_string_value(&strings_path, "CFBundleDisplayName"),
+                primary_name,
+            );
+            push_alias(
+                &mut aliases,
+                localized_string_value(&strings_path, "CFBundleName"),
+                primary_name,
+            );
+        }
+    }
+
+    aliases.join("\n")
+}
+
 fn resolve_icon_path(app_path: &PathBuf, app_name: &str) -> Option<PathBuf> {
     let resources = app_path.join("Contents").join("Resources");
     let info_plist = app_path.join("Contents").join("Info.plist");
@@ -356,6 +452,7 @@ fn scan_dir_fast(dir: &PathBuf, results: &mut Vec<AppEntry>) {
                     .and_then(|s| s.to_str())
                     .unwrap_or("Unknown")
                     .to_string();
+                let aliases = localized_bundle_aliases(&path, &name);
                 let png_path = icon_cache_path(&path, &name);
                 let legacy_png_path = legacy_icon_cache_path(&name);
                 let icon = if png_path.exists() {
@@ -370,6 +467,7 @@ fn scan_dir_fast(dir: &PathBuf, results: &mut Vec<AppEntry>) {
                     path: path.to_string_lossy().to_string(),
                     icon,
                     kind: "app".to_string(),
+                    aliases,
                 });
             }
         }
@@ -503,12 +601,19 @@ pub fn search_apps(query: String) -> Result<Vec<AppEntry>, String> {
     let mut scored: Vec<(i32, &AppEntry)> = Vec::with_capacity(cache.len() / 2);
     for app in cache.iter() {
         let name_lower = app.name.to_lowercase();
+        let aliases_lower = app.aliases.to_lowercase();
         if name_lower == q {
             scored.push((0, app));
         } else if name_lower.starts_with(&q) {
             scored.push((1, app));
         } else if name_lower.contains(&q) {
             scored.push((2, app));
+        } else if aliases_lower.lines().any(|alias| alias == q) {
+            scored.push((3, app));
+        } else if aliases_lower.lines().any(|alias| alias.starts_with(&q)) {
+            scored.push((4, app));
+        } else if aliases_lower.contains(&q) {
+            scored.push((5, app));
         }
     }
 

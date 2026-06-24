@@ -61,6 +61,11 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       onKeyDown={onKeyDown}
       tabIndex={0}
     >
+      <div className="qx-shell-drag-edge edge-top" data-tauri-drag-region aria-hidden="true" />
+      <div className="qx-shell-drag-edge edge-right" data-tauri-drag-region aria-hidden="true" />
+      <div className="qx-shell-drag-edge edge-bottom" data-tauri-drag-region aria-hidden="true" />
+      <div className="qx-shell-drag-edge edge-left" data-tauri-drag-region aria-hidden="true" />
+
       <div className="qx-shell-topbar" data-tauri-drag-region>
         {onBack ? (
           <button

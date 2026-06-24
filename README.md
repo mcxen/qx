@@ -8,7 +8,7 @@ Qx is a **menu-bar resident desktop launcher** for macOS, inspired by Raycast. I
 
 Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the macOS native frosted-glass appearance, Mach kernel APIs for system stats, and vendored native search for fast file lookups.
 
-> **Status**: v0.4.24 — active development
+> **Status**: v0.4.25 — active development
 
 ---
 
@@ -338,7 +338,7 @@ Qx 是一款常驻菜单栏的 macOS 桌面启动器，类 Raycast 风格，通�
 
 基于 **Tauri v2** + **React 19** + **TypeScript** + **Rust**，使用 macOS 原生毛玻璃效果、Mach 内核 API 获取系统状态。
 
-> **版本**: v0.4.24 — 活跃开发中
+> **版本**: v0.4.25 — 活跃开发中
 
 ## 功能特性
 

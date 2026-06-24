@@ -49,6 +49,7 @@ fn entry_from_path_with_kind(path: &str, is_dir: bool) -> AppEntry {
         } else {
             "file".to_string()
         },
+        aliases: String::new(),
     }
 }
 
