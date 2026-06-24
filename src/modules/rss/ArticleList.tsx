@@ -3,6 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type BottomIslandContent } from "../../components/QxShell";
 import { useRssStore, type RssArticle } from "./store";
 import { classifyArticleTime } from "./article-utils";
+import { useEscBack } from "../../hooks/useEscBack";
 function formatTime(publishedAt: number): string {
   if (!publishedAt) return "";
   const d = new Date(publishedAt * 1000);
@@ -96,18 +97,28 @@ export default function ArticleList() {
     setSelectedIndex(0);
   }, [articles.length, setSelectedIndex]);
 
+  const filterChips: { key: typeof filter; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "unread", label: "Unread" },
+    { key: "starred", label: "Starred" },
+  ];
+  const selectedArticle = articles[selectedIndex];
+  const unreadCount = articles.filter((article) => !article.is_read).length;
+  const { onKeyDown: escKeyDown } = useEscBack({
+    query: {
+      active: localQuery.length > 0,
+      clear: () => {
+        setLocalQuery("");
+        setSearch("");
+      },
+    },
+    launcher: goBack,
+  });
+
   const onKeyDown = (e: React.KeyboardEvent) => {
+    escKeyDown(e);
+    if (e.key === "Escape") return;
     switch (e.key) {
-      case "Escape":
-        e.preventDefault();
-        e.stopPropagation();
-        if (localQuery) {
-          setLocalQuery("");
-          setSearch("");
-        } else {
-          goBack();
-        }
-        break;
       case "ArrowDown":
         e.preventDefault();
         setSelectedIndex(Math.min(selectedIndex + 1, articles.length - 1));
@@ -156,14 +167,6 @@ export default function ArticleList() {
         break;
     }
   };
-
-  const filterChips: { key: typeof filter; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "unread", label: "Unread" },
-    { key: "starred", label: "Starred" },
-  ];
-  const selectedArticle = articles[selectedIndex];
-  const unreadCount = articles.filter((article) => !article.is_read).length;
   const island: BottomIslandContent = refreshingFeedId != null
     ? {
         label: "RSS Syncing",

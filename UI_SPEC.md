@@ -206,6 +206,35 @@ Top Bar 包含：
 - Shell search slot 必须让搜索框填满可用宽度，不得因 trailing 文本或模块局部样式收缩。
 - 模块不得复用其他模块的私有搜索样式（例如 clipboard 专用 class）来实现 Shell Top Bar。
 
+## 自绘控件系统
+
+设置页、模块工具栏和产品 UI 中的选择、开关、分段与滑动控件必须使用 Qx 自绘控件系统，避免出现平台原生外观不一致的问题。统一控件出口为 `src/components/ui.tsx`，新增通用控件也应放在这里，而不是在模块内临时实现第二套。
+
+禁止直接出现在产品 UI：
+
+- `<input type="range">`
+- 原生 `<select>`
+- 原生 checkbox / radio 外观
+
+允许保留原生输入语义：
+
+- 文本输入、数字输入、密码输入可以继续使用原生输入能力，但必须使用 Qx class 与 CSS 变量重绘外观，例如 `qx-plugin-search`、`qx-inline-input`。
+- 文件选择、隐藏输入等非可见辅助控件只允许作为系统能力桥接，不得暴露原生控件外观。
+
+统一组件：
+
+- `Slider`：使用 `div role="slider"` 自绘轨道、填充条和 thumb，不引入原生 range。必须支持 pointer drag、click-to-set、`ArrowLeft/Right/Up/Down`、`Home`、`End`，并提供 `aria-valuemin`、`aria-valuemax`、`aria-valuenow`、必要时提供 `aria-valuetext`。
+- `Select`：使用 button + custom listbox，不使用原生 `<select>`。必须支持 `ArrowUp/ArrowDown` 高亮移动、`Enter/Space` 选择或打开、`Esc` 关闭、blur/click outside 关闭。`value: "---divider---"` 是保留分隔线约定，只渲染分隔线且不可选。
+- `Toggle`：使用 button 类控件表达开关状态，必须提供 `aria-pressed`，视觉状态使用 CSS 变量。
+- `SegmentedControl`：使用 button group 表达互斥选项，选中态不得依赖原生 radio 外观。
+
+视觉规则：
+
+- 控件圆角遵循 `var(--qx-control-radius)`，当前规范上限为 `6px`。
+- 边框使用 `1px solid var(--qx-border-1)`，焦点态和选中态使用 `--qx-accent*` 系列变量。
+- 禁止在控件 CSS 中硬编码色值；所有状态通过 CSS 变量或既有语义 class 表达。
+- 控件文本必须在紧凑容器内可截断或换行，不得撑开 Top Bar、Bottom Bar 或 Context Panel。
+
 ## Main Area Variants
 
 ### Variant A: Launcher / Search Results

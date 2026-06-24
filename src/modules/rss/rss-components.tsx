@@ -11,8 +11,8 @@ export function formatRelative(ts: number): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-export function FeedIcon({ feed }: { feed: RssFeed }) {
-  if (feed.icon) {
+export function FeedIcon({ feed, showImage = true }: { feed: RssFeed; showImage?: boolean }) {
+  if (showImage && feed.icon) {
     return (
       <img
         src={feed.icon}

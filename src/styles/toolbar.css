@@ -132,19 +132,6 @@
   box-shadow: none;
 }
 
-.qx-plugin-dropdown {
-  flex-shrink: 0;
-  width: 132px;
-  height: 28px;
-  border: 1px solid var(--qx-border-1);
-  border-radius: var(--qx-control-radius);
-  background: var(--qx-overlay-1);
-  color: var(--qx-text-secondary);
-  font-size: 12px;
-  outline: none;
-  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
-}
-
 .qx-command-button {
   display: inline-flex;
   align-items: center;
@@ -212,8 +199,7 @@
   transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
 }
 
-.qx-inline-input:focus,
-.qx-plugin-dropdown:focus {
+.qx-inline-input:focus {
   box-shadow: 0 0 0 2px var(--qx-accent-soft);
 }
 

@@ -62,7 +62,7 @@ export function sanitizeHtml(html: string): string {
   });
   doc.querySelectorAll("p,li").forEach((el) => {
     const h = el as HTMLElement;
-    h.style.lineHeight = "1.4";
+    h.style.lineHeight = "inherit";
     h.style.margin = "6px 0";
   });
   doc.querySelectorAll("blockquote").forEach((el) => {

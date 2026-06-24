@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import QxShell, { type BottomIslandContent } from "../../components/QxShell";
 import { useRssStore, type RssFeed } from "./store";
+import { useSettingsStore } from "../settings/store";
 import { useStore } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
 import AddFeedDialog from "./AddFeedDialog";
@@ -22,6 +23,7 @@ export default function RssPanel() {
     removeFeed,
   } = useRssStore();
   const setTab = useStore((state) => state.setTab);
+  const showFeedIcons = useSettingsStore((s) => s.settings.rss.show_feed_icons);
 
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
@@ -220,7 +222,7 @@ export default function RssPanel() {
               onDoubleClick={() => void openFeed(feed.id)}
               className={`qx-list-row${active ? " is-active" : ""}`}
             >
-              <FeedIcon feed={feed} />
+              <FeedIcon feed={feed} showImage={showFeedIcons} />
               <span className="qx-list-copy">
                 <span className="qx-list-title" style={{ fontWeight: 500 }}>
                   {feed.title || feed.url}
