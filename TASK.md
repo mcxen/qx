@@ -86,6 +86,22 @@
 
 ---
 
+## Bugfix — Launcher Top Bar 层级和局部快捷键
+
+**状态**：已实现，已通过静态验证。
+
+### 修复内容
+
+- 保持 Launcher Top Bar 的搜索框 + 右侧范围筛选结构不变，仅提升 Top Bar 层级，保证下拉菜单展开时覆盖下方内容区。
+- Launcher 打开并聚焦时，`Cmd+,` 进入设置，`Cmd+K` 打开/关闭当前选中项操作框。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [ ] 手动验证下拉菜单不会被右侧内容覆盖，`Cmd+,` 和 `Cmd+K` 只在 Launcher 内按预期生效。
+
+---
+
 ## P1 — 主题系统（Vercel Geist 风格）
 
 **概述**：参考 Vercel Geist Design System 重新设计 Qx 主题系统，支持亮色/暗色/跟随系统三种模式，提供统一的设计语言和 CSS 自定义属性架构。

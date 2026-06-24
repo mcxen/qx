@@ -239,6 +239,14 @@ export default function Launcher({
   ) : undefined;
 
   const handleLauncherKeyDown = (event: React.KeyboardEvent) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+      event.preventDefault();
+      event.stopPropagation();
+      setActionPanelOpen(false);
+      onNavigate("settings");
+      return;
+    }
+
     if (actionPanelOpen) {
       if (event.key === "Escape") {
         event.preventDefault();

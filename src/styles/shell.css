@@ -21,6 +21,8 @@
 }
 
 .qx-shell-topbar {
+  position: relative;
+  z-index: 30;
   display: grid;
   grid-template-columns: auto minmax(var(--qx-search-min-w), 1fr) auto;
   align-items: center;
@@ -59,6 +61,15 @@
 .qx-shell.launcher-shell .qx-shell-trailing {
   grid-column: 2;
   width: 100%;
+}
+
+.qx-shell-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  z-index: 1;
 }
 
 .qx-shell-topbar input,
@@ -116,13 +127,6 @@
 
 .qx-shell-back span::after {
   transform: rotate(-45deg);
-}
-
-.qx-shell-main {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  flex: 1;
-  min-height: 0;
 }
 
 .qx-shell.has-context .qx-shell-main {

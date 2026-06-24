@@ -58,8 +58,58 @@ const { onKeyDown } = useEscBack({
 ## 工作流程
 
 - 编码任务优先通过 OpenCode CLI 或 Codex CLI 执行。
-- 提交前运行 `cargo check`（在 `src-tauri/` 目录）和 `npx tsc --noEmit` 确保零错误。
-- 每次提交打 tag 并发布 GitHub Release。
+- 提交前运行 `cargo check`（在 `src-tauri/` 目录）和 `npx tsc --noEmit` 确保零错误；发布前还要运行 `npm run build` 和 `cargo fmt --check`。
+- 发布通过 GitHub Actions 执行：推送 `v*` tag 会触发 `.github/workflows/release-desktop.yml`，构建 macOS Apple Silicon app.zip，创建 GitHub Release，并在配置了 `HOMEBREW_TAP_PAT` 时通知 `mcxen/homebrew-qx` 更新 cask。
+
+### 发布流程
+
+1. **审核当前 diff**
+   - `git status --short`
+   - `git diff --stat`
+   - 对所有代码 diff 做 review；确认没有无关文件、构建产物、密钥、临时文件。
+   - 新增文件必须显式纳入审核，不能只看 tracked diff。
+
+2. **同步版本号**
+   - 选择下一个未使用版本，例如当前最新 tag 是 `v0.4.14`，下一版用 `0.4.15` / `v0.4.15`。
+   - 同步更新：
+     - `package.json`
+     - `package-lock.json`
+     - `src-tauri/Cargo.toml`
+     - `src-tauri/Cargo.lock` 中 `name = "qx"` 的 package version
+     - `src-tauri/tauri.conf.json`
+     - `README.md` 状态版本
+   - 用 `git tag --list 'v*' --sort=-version:refname | head` 和 `git ls-remote --tags origin 'v*'` 确认 tag 未被占用。
+
+3. **本地验证**
+   - `npx tsc --noEmit`
+   - `npm run build`
+   - `cargo fmt --check`（在 `src-tauri/` 目录；失败时先运行 `cargo fmt` 再复查）
+   - `cargo check`（在 `src-tauri/` 目录）
+   - 已知 warning 可以记录，但不能忽略新增 error。
+
+4. **提交和打 tag**
+   - `git add ...`
+   - `git diff --cached --check`
+   - `git commit -m "vX.Y.Z: <summary>"`
+   - `git tag vX.Y.Z`
+   - 提交后确认 `git status --short` 干净。
+
+5. **推送并触发发布**
+   - `git push origin main`
+   - `git push origin vX.Y.Z`
+   - 推送 tag 后确认 GitHub Action 已触发：
+     - `gh run list --repo mcxen/qx --workflow release-desktop.yml --limit 5`
+     - `gh run watch <run-id> --repo mcxen/qx --exit-status`
+   - 如果 Action 失败，先查看失败 step 日志，修复后重新提交并使用新的 patch 版本 tag；不要移动已推送的发布 tag，除非明确确认需要重写发布历史。
+
+6. **发布后确认**
+   - 确认 GitHub Release 存在且包含 `qx_vX.Y.Z_aarch64-apple-darwin.app.zip`。
+   - 确认 workflow 的 Homebrew dispatch 步骤成功；如果缺少 `HOMEBREW_TAP_PAT`，需要手动更新 `github.com/mcxen/homebrew-qx` 的 cask version 和 sha256。
+   - 必要时本地验证安装/升级：
+     - `brew tap mcxen/qx`
+     - `brew install --cask qx`
+     - `brew upgrade --cask qx`
+
 - Release 发布后，brew tap `mcxen/qx` 的 cask 配置（位于 `github.com/mcxen/homebrew-qx`）需要同步更新 version 和 sha256。安装方式：
 
   ```

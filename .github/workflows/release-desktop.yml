@@ -30,7 +30,7 @@ jobs:
             artifact: macos-arm64
             os: macos-14
             target: aarch64-apple-darwin
-            bundles: app,dmg
+            bundles: app
 
     steps:
       - name: Checkout
