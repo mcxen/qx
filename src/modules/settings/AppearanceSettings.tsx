@@ -8,8 +8,8 @@ import { useT } from "../../i18n";
 
 const MIN_WINDOW_WIDTH = 480;
 const MIN_WINDOW_HEIGHT = 360;
-const MAX_WINDOW_WIDTH = 2800;
-const MAX_WINDOW_HEIGHT = 1800;
+const MAX_WINDOW_WIDTH = 1500;
+const MAX_WINDOW_HEIGHT = 882;
 const RESIZE_SAVE_DELAY_MS = 250;
 
 function isTauriRuntime(): boolean {

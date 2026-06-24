@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>NSScreenCaptureDescription</key>
+    <string>Qx needs Screen Recording access to capture screenshots and record screen GIFs.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Qx uses Apple Events to open apps and automation when requested.</string>
+</dict>
+</plist>

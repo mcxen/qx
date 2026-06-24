@@ -44,24 +44,37 @@ export function PluginPanelViewport() {
     }
 
     const pluginId = tab.slice("plugin:".length);
+    const panel = panels[pluginId];
     const iframe = workers[pluginId];
+    if (!panel) {
+      container.innerHTML = `<div style="padding:20px;color:var(--qx-text-secondary)">Plugin ${pluginId} panel not registered</div>`;
+      return;
+    }
     if (!iframe) {
       container.innerHTML = `<div style="padding:20px;color:var(--qx-text-secondary)">Plugin ${pluginId} not loaded</div>`;
       return;
     }
 
+    let disposed = false;
     container.innerHTML = "";
     iframe.style.visibility = "visible";
     iframe.style.pointerEvents = "auto";
     iframe.style.zIndex = "1";
     container.appendChild(iframe);
+    void Promise.resolve(panel.render(container, undefined as never)).catch((err: unknown) => {
+      if (!disposed) {
+        container.innerHTML = `<div style="padding:20px;color:var(--qx-danger)">Plugin ${pluginId} render failed: ${String(err)}</div>`;
+      }
+    });
 
     return () => {
+      disposed = true;
+      void Promise.resolve(panel.destroy?.(container)).catch(() => {});
       iframe.style.visibility = "hidden";
       iframe.style.pointerEvents = "none";
       iframe.style.zIndex = "-1";
     };
-  }, [tab, workers]);
+  }, [tab, panels, workers]);
 
   if (!tab.startsWith("plugin:")) return null;
   const pluginId = tab.slice("plugin:".length);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef, useCallback, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, useRef, useCallback, type CSSProperties } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type BottomIslandContent } from "../../components/QxShell";
 import { useRssStore } from "./store";
@@ -19,7 +19,7 @@ export default function ArticleDetail() {
     currentArticle,
     feeds,
     selectedArticleId,
-    articles,
+    readingArticles,
     openArticle,
     markRead,
     toggleStar,
@@ -30,6 +30,7 @@ export default function ArticleDetail() {
   const [scrollPercent, setScrollPercent] = useState(0);
   const [showActions, setShowActions] = useState(false);
   const [actionIndex, setActionIndex] = useState(0);
+  const shellRef = useRef<HTMLDivElement>(null);
   const actionsRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -61,34 +62,59 @@ export default function ArticleDetail() {
     return () => root.removeEventListener("click", onClick);
   }, [cleanContent]);
 
+  const updateScrollProgress = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    if (scrollHeight <= clientHeight) {
+      setScrollPercent(100);
+      return;
+    }
+    setScrollPercent(Math.round((scrollTop / (scrollHeight - clientHeight)) * 100));
+  }, []);
+
+  const resetArticleScroll = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    setScrollPercent(0);
+  }, []);
+
+  const openArticleAtTop = useCallback(
+    async (id: number) => {
+      resetArticleScroll();
+      await openArticle(id);
+      resetArticleScroll();
+      window.requestAnimationFrame(() => {
+        resetArticleScroll();
+        window.requestAnimationFrame(resetArticleScroll);
+      });
+    },
+    [openArticle, resetArticleScroll],
+  );
+
   // Scroll progress tracking
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const onScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = el;
-      if (scrollHeight <= clientHeight) {
-        setScrollPercent(100);
-      } else {
-        setScrollPercent(Math.round((scrollTop / (scrollHeight - clientHeight)) * 100));
-      }
-    };
-    el.addEventListener("scroll", onScroll);
-    onScroll();
-    return () => el.removeEventListener("scroll", onScroll);
-  }, []);
+    el.addEventListener("scroll", updateScrollProgress);
+    updateScrollProgress();
+    return () => el.removeEventListener("scroll", updateScrollProgress);
+  }, [updateScrollProgress]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!scrollRef.current) return;
-    scrollRef.current.scrollTop = 0;
-    setScrollPercent(0);
-  }, [currentArticle?.id]);
+    resetArticleScroll();
+    shellRef.current?.focus({ preventScroll: true });
+    const frame = window.requestAnimationFrame(updateScrollProgress);
+    return () => window.cancelAnimationFrame(frame);
+  }, [currentArticle?.id, cleanContent, resetArticleScroll, updateScrollProgress]);
 
-  const currentIdx = articles.findIndex((a) => a.id === selectedArticleId);
-  const prev = currentIdx > 0 ? articles[currentIdx - 1] : null;
-  const next = currentIdx >= 0 && currentIdx < articles.length - 1 ? articles[currentIdx + 1] : null;
-  const progress = articles.length > 0 && currentIdx >= 0
-    ? Math.round(((currentIdx + 1) / articles.length) * 100)
+  const currentIdx = readingArticles.findIndex((a) => a.id === selectedArticleId);
+  const prev = currentIdx > 0 ? readingArticles[currentIdx - 1] : null;
+  const next = currentIdx >= 0 && currentIdx < readingArticles.length - 1 ? readingArticles[currentIdx + 1] : null;
+  const articleProgress = readingArticles.length > 0 && currentIdx >= 0
+    ? Math.round(((currentIdx + 1) / readingArticles.length) * 100)
     : 0;
 
   // Build actions list (used by both context panel and Cmd+K menu)
@@ -117,18 +143,18 @@ export default function ArticleDetail() {
       list.push({
         label: `Next: ${next.title?.slice(0, 40) || "(untitled)"}`,
         kbd: "J",
-        onClick: () => void openArticle(next.id),
+        onClick: () => void openArticleAtTop(next.id),
       });
     }
     if (prev) {
       list.push({
         label: `Prev: ${prev.title?.slice(0, 40) || "(untitled)"}`,
         kbd: "K",
-        onClick: () => void openArticle(prev.id),
+        onClick: () => void openArticleAtTop(prev.id),
       });
     }
     return list;
-  }, [currentArticle, next, prev, openArticle, toggleStar, markRead]);
+  }, [currentArticle, next, prev, openArticleAtTop, toggleStar, markRead]);
 
   const executeAction = useCallback(
     (idx: number) => {
@@ -192,13 +218,13 @@ export default function ArticleDetail() {
       case "j":
         if (!e.metaKey && !e.ctrlKey) {
           e.preventDefault();
-          if (next) void openArticle(next.id);
+          if (next) void openArticleAtTop(next.id);
         }
         break;
       case "k":
         if (!e.metaKey && !e.ctrlKey) {
           e.preventDefault();
-          if (prev) void openArticle(prev.id);
+          if (prev) void openArticleAtTop(prev.id);
         }
         break;
       case "s":
@@ -237,9 +263,9 @@ export default function ArticleDetail() {
     label: "Reading RSS",
     detail:
       bottom_island_mode === "index"
-        ? `${currentIdx + 1}/${articles.length || 1} articles`
+        ? `${currentIdx >= 0 ? currentIdx + 1 : 0}/${readingArticles.length || 1} articles`
         : `${scrollPercent}%`,
-    progress: bottom_island_mode === "index" ? progress : scrollPercent,
+    progress: bottom_island_mode === "index" ? articleProgress : scrollPercent,
   };
 
   // Hero image style based on display mode
@@ -272,6 +298,7 @@ export default function ArticleDetail() {
 
   return (
     <QxShell
+      ref={shellRef}
       title={feed?.title || "RSS Detail"}
       onKeyDown={onKeyDown}
       onBack={goBack}
@@ -320,7 +347,10 @@ export default function ArticleDetail() {
           </div>
           <button className="qx-icon-button" onClick={goBack}>List</button>
         </div>
-        <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "10px 12px 16px" }}>
+        <div
+          ref={scrollRef}
+          style={{ flex: 1, overflowY: "auto", padding: "10px 12px 16px", overflowAnchor: "none" }}
+        >
           <h1
             style={{
               fontSize: Math.min(article_font_size + 4, 26),
@@ -378,7 +408,7 @@ export default function ArticleDetail() {
               <div className="qx-rss-next-label">Up Next</div>
               <button
                 className="qx-rss-next-link"
-                onClick={() => void openArticle(next.id)}
+                onClick={() => void openArticleAtTop(next.id)}
                 title={next.title || "(untitled)"}
               >
                 {next.title || "(untitled)"}

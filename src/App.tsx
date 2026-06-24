@@ -23,6 +23,17 @@ import { calculateExpression } from "./search/calculator";
 import "./App.css";
 
 const SETTINGS_KEYWORDS = ["settings", "preferences", "plugins", "shortcuts", "appearance", "advanced"];
+const MIN_WINDOW_WIDTH = 480;
+const MIN_WINDOW_HEIGHT = 360;
+const MAX_WINDOW_WIDTH = 1500;
+const MAX_WINDOW_HEIGHT = 882;
+
+function clampWindowSize(width: number, height: number) {
+  return {
+    width: Math.min(MAX_WINDOW_WIDTH, Math.max(MIN_WINDOW_WIDTH, Math.round(width || 0))),
+    height: Math.min(MAX_WINDOW_HEIGHT, Math.max(MIN_WINDOW_HEIGHT, Math.round(height || 0))),
+  };
+}
 
 // Register built-in modules into the plugin registry once at startup.
 registerAllBuiltins();
@@ -91,6 +102,7 @@ function App() {
   const { settings, load: loadSettings, loaded: settingsLoaded } = useSettingsStore();
   const { load: loadPlugins, findCommands } = usePluginRegistry();
   const phase1Ref = useRef(false);
+  const startupWindowShownRef = useRef(false);
   const [, startSearchTransition] = useTransition();
 
   const applyResults = useCallback(
@@ -170,15 +182,38 @@ function App() {
   // Restore window size from saved settings on startup (first launch uses a default size)
   useEffect(() => {
     if (!settingsLoaded || !isTauriRuntime()) return;
-    const win = getCurrentWindow();
-    const { window_width, window_height } = settings.appearance;
-    if (window_width > 0 && window_height > 0) {
-      win.setSize(new LogicalSize(window_width, window_height)).catch(() => {});
-    } else {
-      win.setSize(new LogicalSize(900, 640)).catch(() => {});
-      win.center().catch(() => {});
-    }
-  }, [settingsLoaded]);
+    const restoreAndShow = async () => {
+      const win = getCurrentWindow();
+      const appearance = settings.appearance;
+      if (!appearance) return;
+      const fallback = { width: 900, height: 640 };
+      const rawWidth = appearance.window_width > 0 ? appearance.window_width : fallback.width;
+      const rawHeight = appearance.window_height > 0 ? appearance.window_height : fallback.height;
+      const { width, height } = clampWindowSize(rawWidth, rawHeight);
+      await win.setSize(new LogicalSize(width, height)).catch(() => {});
+      if (rawWidth !== width || rawHeight !== height) {
+        useSettingsStore.getState().patch("appearance", {
+          ...appearance,
+          window_width: width,
+          window_height: height,
+        });
+      }
+      if (appearance.window_width <= 0 || appearance.window_height <= 0) {
+        await win.center().catch(() => {});
+      }
+
+      if (!startupWindowShownRef.current) {
+        startupWindowShownRef.current = true;
+        setTab("launcher");
+        await win.show();
+        await win.setFocus();
+      }
+    };
+
+    restoreAndShow().catch((e) => {
+      console.warn("window size restore failed:", e);
+    });
+  }, [settingsLoaded, setTab, settings.appearance]);
 
   // Save window size on resize
   useEffect(() => {
@@ -187,14 +222,18 @@ function App() {
     const unlisten = win.onResized(async () => {
       const logical = await win.innerSize();
       const { settings, patch } = useSettingsStore.getState();
+      const { width, height } = clampWindowSize(logical.width, logical.height);
+      if (logical.width !== width || logical.height !== height) {
+        await win.setSize(new LogicalSize(width, height)).catch(() => {});
+      }
       if (
-        logical.width !== settings.appearance.window_width ||
-        logical.height !== settings.appearance.window_height
+        width !== settings.appearance.window_width ||
+        height !== settings.appearance.window_height
       ) {
         patch("appearance", {
           ...settings.appearance,
-          window_width: logical.width,
-          window_height: logical.height,
+          window_width: width,
+          window_height: height,
         });
       }
     });
@@ -491,12 +530,7 @@ function App() {
       const entries: AppEntry[] = [];
 
       const pluginMatches = findCommands(q);
-      const syntheticEntries: AppEntry[] = pluginMatches.map((m) => ({
-        name: m.command.title,
-        path: `__qx:cmd:${m.command.pluginId}:${m.command.name}`,
-        icon: `builtin:${m.command.pluginId}`,
-        kind: "command",
-      }));
+      const syntheticEntries: AppEntry[] = [];
 
       // Also match installed plugin panel names/keywords as navigation entries
       const pluginState = usePluginRegistry.getState();
@@ -534,6 +568,15 @@ function App() {
           }
         }
       }
+
+      syntheticEntries.push(
+        ...pluginMatches.map((m) => ({
+          name: m.command.title,
+          path: `__qx:cmd:${m.command.pluginId}:${m.command.name}`,
+          icon: `builtin:${m.command.pluginId}`,
+          kind: "command" as const,
+        })),
+      );
 
       const calculation = calculateExpression(q);
       if (calculation && (scope === "all" || scope === "apps")) {

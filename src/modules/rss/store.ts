@@ -40,6 +40,7 @@ interface RssStore {
 
   feeds: RssFeed[];
   articles: RssArticle[];
+  readingArticles: RssArticle[];
   currentArticle: RssArticle | null;
 
   filter: ArticleFilter;
@@ -56,6 +57,7 @@ interface RssStore {
   setFilter: (f: ArticleFilter) => void;
   setSearch: (s: string) => void;
   setArticles: (a: RssArticle[]) => void;
+  setReadingArticles: (a: RssArticle[]) => void;
   setCurrentArticle: (a: RssArticle | null) => void;
   setError: (e: string | null) => void;
   setRefreshing: (id: number | null) => void;
@@ -90,6 +92,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
 
   feeds: [],
   articles: [],
+  readingArticles: [],
   currentArticle: null,
 
   filter: "all",
@@ -112,6 +115,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
     void get().loadArticles();
   },
   setArticles: (articles) => set({ articles }),
+  setReadingArticles: (readingArticles) => set({ readingArticles }),
   setCurrentArticle: (currentArticle) => set({ currentArticle }),
   setError: (error) => set({ error }),
   setRefreshing: (refreshingFeedId) => set({ refreshingFeedId }),
@@ -228,11 +232,21 @@ export const useRssStore = create<RssStore>((set, get) => ({
   openArticle: async (id) => {
     if (!isTauriRuntime()) return;
     try {
+      const state = get();
+      const readingArticles =
+        state.view === "detail" && state.readingArticles.some((article) => article.id === id)
+          ? state.readingArticles
+          : state.articles;
       const a = await invoke<RssArticle | null>("rss_get_article", { id });
-      set({ selectedArticleId: id, currentArticle: a, view: "detail" });
+      set({ selectedArticleId: id, currentArticle: a, readingArticles, view: "detail" });
       if (a && !a.is_read) {
         await invoke("rss_mark_read", { id, isRead: true });
-        set({ currentArticle: { ...a, is_read: true } });
+        set((s) => ({
+          currentArticle: { ...a, is_read: true },
+          readingArticles: s.readingArticles.map((article) =>
+            article.id === id ? { ...article, is_read: true } : article,
+          ),
+        }));
         void get().loadArticles();
         void get().loadFeeds();
       }
@@ -247,6 +261,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
       await invoke("rss_mark_read", { id, isRead });
       set((s) => ({
         articles: s.articles.map((a) => (a.id === id ? { ...a, is_read: isRead } : a)),
+        readingArticles: s.readingArticles.map((a) => (a.id === id ? { ...a, is_read: isRead } : a)),
         currentArticle:
           s.currentArticle && s.currentArticle.id === id
             ? { ...s.currentArticle, is_read: isRead }
@@ -264,6 +279,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
       await invoke("rss_mark_all_read", { feedId });
       set((s) => ({
         articles: s.articles.map((a) => ({ ...a, is_read: true })),
+        readingArticles: s.readingArticles.map((a) => ({ ...a, is_read: true })),
       }));
       void get().loadFeeds();
     } catch (e) {
@@ -279,6 +295,9 @@ export const useRssStore = create<RssStore>((set, get) => ({
         articles: s.articles.map((a) =>
           a.id === id ? { ...a, is_starred: isStarred } : a,
         ),
+        readingArticles: s.readingArticles.map((a) =>
+          a.id === id ? { ...a, is_starred: isStarred } : a,
+        ),
         currentArticle:
           s.currentArticle && s.currentArticle.id === id
             ? { ...s.currentArticle, is_starred: isStarred }
@@ -292,9 +311,9 @@ export const useRssStore = create<RssStore>((set, get) => ({
   goBack: () => {
     const { view } = get();
     if (view === "detail") {
-      set({ view: "articles", selectedArticleId: null, currentArticle: null });
+      set({ view: "articles", selectedArticleId: null, currentArticle: null, readingArticles: [] });
     } else if (view === "articles") {
-      set({ view: "feeds", selectedFeedId: null, articles: [], selectedIndex: 0 });
+      set({ view: "feeds", selectedFeedId: null, articles: [], readingArticles: [], selectedIndex: 0 });
     }
   },
 

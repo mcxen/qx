@@ -103,40 +103,26 @@ pub fn v2ex_fetch_topics(mode: Option<String>) -> Result<Vec<V2exTopic>, String>
 
 #[tauri::command]
 pub fn v2ex_search_topics(query: String) -> Result<Vec<V2exTopic>, String> {
-    let client = crate::http_client::blocking_client(
-        "Qx/0.2 (V2EX Plugin; +https://github.com/mcxen/qx)",
-        std::time::Duration::from_secs(10),
-        None,
-    )
-    .map_err(|e| format!("HTTP client: {e}"))?;
-
-    let url = format!(
-        "https://www.v2ex.com/api/topics/search.json?q={}",
-        urlencoding(&query)
-    );
-    let resp = client
-        .get(&url)
-        .send()
-        .map_err(|e| format!("HTTP request: {e}"))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("V2EX search error: HTTP {}", resp.status()));
+    let needle = query.trim().to_lowercase();
+    if needle.is_empty() {
+        return v2ex_fetch_topics(Some("latest".to_string()));
     }
 
-    let text = resp.text().map_err(|e| format!("Read response: {e}"))?;
-    parse_topics_legacy(&text)
-}
-
-fn urlencoding(s: &str) -> String {
-    let mut out = String::new();
-    for byte in s.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(byte as char);
-            }
-            b' ' => out.push_str("%20"),
-            _ => out.push_str(&format!("%{:02X}", byte)),
-        }
+    let mut topics = Vec::new();
+    for mode in ["latest", "hot"] {
+        topics.extend(v2ex_fetch_topics(Some(mode.to_string()))?);
     }
-    out
+
+    topics.sort_by_key(|topic| std::cmp::Reverse(topic.last_modified.max(topic.created)));
+    topics.dedup_by_key(|topic| topic.id);
+
+    Ok(topics
+        .into_iter()
+        .filter(|topic| {
+            topic.title.to_lowercase().contains(&needle)
+                || topic.node.to_lowercase().contains(&needle)
+                || topic.author.to_lowercase().contains(&needle)
+                || topic.content.to_lowercase().contains(&needle)
+        })
+        .collect())
 }

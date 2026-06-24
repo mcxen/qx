@@ -115,7 +115,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
             let handle = app.handle().clone();
             let Some(win) = app.get_webview_window("main") else {
@@ -132,23 +132,36 @@ pub fn run() {
 
             settings::register_shortcuts(&handle, &settings::read_settings())?;
 
+            // Subsystems that touch FFI / external state are panic-guarded so
+            // a panic in one initializer does not abort the whole app.
+            let safe_init = |name: &'static str, f: &dyn Fn()| {
+                if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+                    let msg = payload
+                        .downcast_ref::<&str>()
+                        .map(|s| (*s).to_string())
+                        .or_else(|| payload.downcast_ref::<String>().map(|s| s.clone()))
+                        .unwrap_or_else(|| "<unknown panic>".to_string());
+                    eprintln!("[setup] {name} panicked: {msg}");
+                }
+            };
+
             // Start clipboard listener
-            clipboard::start_listener(&handle);
+            safe_init("clipboard", &|| clipboard::start_listener(&handle));
 
             // Initialize RSS DB
-            rss::init(&handle);
+            safe_init("rss", &|| rss::init(&handle));
 
             // Initialize settings file
-            settings::init();
+            safe_init("settings::init", &|| settings::init());
 
             // Initialize app cache from DB (instant), then background re-scan
-            apps::ensure_cache(Some(&handle));
+            safe_init("apps::ensure_cache", &|| apps::ensure_cache(Some(&handle)));
 
             // Initialize fast platform file search backends.
-            file_search::init(&handle);
+            safe_init("file_search::init", &|| file_search::init(&handle));
 
             // Pre-convert app icons in background (keeps first search fast)
-            apps::preload_icons(&handle);
+            safe_init("apps::preload_icons", &|| apps::preload_icons(&handle));
 
             // Start external display monitor (polls every 2s, auto-shows on connect)
             display_monitor::start_display_monitor(handle.clone());

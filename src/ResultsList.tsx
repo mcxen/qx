@@ -1,6 +1,6 @@
 import { useStore } from "./store";
 import type { AppEntry } from "./store";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 function iconKind(item: AppEntry): string {
@@ -52,6 +52,10 @@ function AppIcon({ item }: { item: AppEntry }) {
     !failed &&
     !builtin &&
     !item.icon.startsWith("plugin:");
+
+  useEffect(() => {
+    setFailed(false);
+  }, [item.icon]);
 
   return (
     <span className={`qx-list-icon qx-app-icon kind-${kind}`} aria-hidden="true">
