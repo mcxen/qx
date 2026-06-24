@@ -4,6 +4,7 @@ import { useSettingsStore, type SettingsTab } from "./store";
 import GeneralSettings from "./GeneralSettings";
 import PluginManager from "./PluginManager";
 import ShortcutSettings from "./ShortcutSettings";
+import PermissionSettings from "./PermissionSettings";
 import AppearanceSettings from "./AppearanceSettings";
 import RssSettings from "./RssSettings";
 import AdvancedSettings from "./AdvancedSettings";
@@ -22,6 +23,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "general", label: "General", code: "GN" },
   { id: "plugins", label: "Extensions", code: "EX" },
   { id: "shortcuts", label: "Shortcuts", code: "SC" },
+  { id: "permissions", label: "Permissions", code: "PM" },
   { id: "appearance", label: "Appearance", code: "AP" },
   { id: "rss", label: "RSS Reader", code: "RS" },
   { id: "ocr", label: "OCR", code: "OC" },
@@ -33,6 +35,7 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   general: "General",
   plugins: "Extensions",
   shortcuts: "Shortcuts",
+  permissions: "Permissions",
   appearance: "Appearance",
   rss: "RSS Reader",
   ocr: "OCR",
@@ -70,6 +73,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         return <PluginManager />;
       case "shortcuts":
         return <ShortcutSettings />;
+      case "permissions":
+        return <PermissionSettings />;
       case "appearance":
         return <AppearanceSettings />;
       case "rss":

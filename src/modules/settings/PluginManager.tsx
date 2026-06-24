@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { usePluginRegistry } from "../../plugin/registry";
 import { Toggle, SegmentedControl, Row, Select } from "../../components/ui";
+import { useT } from "../../i18n";
 import type {
   InstalledPlugin,
   PluginIndexEntry,
@@ -472,11 +473,14 @@ function MarketplaceTab({
 /* ------------------------------------------------------------------ */
 
 export default function PluginManager() {
+  const t = useT();
   const { plugins, install, uninstall, setEnabled, refresh } = usePluginRegistry();
   const [tab, setTab] = useState<Tab>("installed");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [installPath, setInstallPath] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [archivePath, setArchivePath] = useState("");
+  const [archiveUrl, setArchiveUrl] = useState("");
+  const [busy, setBusy] = useState<"path" | "url" | null>(null);
+  const [installStatus, setInstallStatus] = useState<string | null>(null);
 
   /* Keep selection valid when the plugin list changes. */
   useEffect(() => {
@@ -488,16 +492,37 @@ export default function PluginManager() {
   /* ---- actions ---- */
 
   const handleInstallFromPath = async () => {
-    const trimmed = installPath.trim();
+    const trimmed = archivePath.trim();
     if (!trimmed) return;
-    setBusy(true);
+    setBusy("path");
+    setInstallStatus(null);
     try {
       await install(trimmed);
-      setInstallPath("");
+      setArchivePath("");
+      setInstallStatus(t("plugins.installComplete", "Plugin installed."));
     } catch (err) {
       console.error("Plugin install failed", err);
+      setInstallStatus(t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err)));
     } finally {
-      setBusy(false);
+      setBusy(null);
+    }
+  };
+
+  const handleInstallFromUrl = async () => {
+    const trimmed = archiveUrl.trim();
+    if (!trimmed) return;
+    setBusy("url");
+    setInstallStatus(null);
+    try {
+      await invoke("install_plugin_from_url", { url: trimmed });
+      await refresh();
+      setArchiveUrl("");
+      setInstallStatus(t("plugins.installComplete", "Plugin installed."));
+    } catch (err) {
+      console.error("Plugin URL install failed", err);
+      setInstallStatus(t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err)));
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -553,22 +578,51 @@ export default function PluginManager() {
 
         {/* Install-from-path row (only on Installed tab) */}
         {tab === "installed" && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
-            <input
-              type="text"
-              value={installPath}
-              onChange={(e) => setInstallPath(e.target.value)}
-              placeholder="Install from local path (.qx-plugin or manifest directory)"
-              className="qx-inline-input"
-              style={{ flex: 1 }}
-            />
-            <button
-              className="qx-command-button"
-              onClick={handleInstallFromPath}
-              disabled={busy || !installPath.trim()}
-            >
-              {busy ? "Installing..." : "Install"}
-            </button>
+          <div className="qx-plugin-import-box">
+            <div className="qx-plugin-import-copy">
+              <div className="qx-plugin-import-title">
+                {t("plugins.importArchive", "Import Plugin Archive")}
+              </div>
+              <div className="qx-plugin-import-desc">
+                {t(
+                  "plugins.importArchive.desc",
+                  "Install a .zip or .qx-plugin package from disk, or paste a GitHub release/source archive URL.",
+                )}
+              </div>
+            </div>
+            <div className="qx-plugin-import-row">
+              <input
+                type="text"
+                value={archivePath}
+                onChange={(e) => setArchivePath(e.target.value)}
+                placeholder={t("plugins.localArchive.placeholder", "Local archive path, e.g. ~/Downloads/plugin.zip")}
+                className="qx-inline-input"
+              />
+              <button
+                className="qx-command-button"
+                onClick={handleInstallFromPath}
+                disabled={busy !== null || !archivePath.trim()}
+              >
+                {busy === "path" ? t("plugins.installing", "Installing...") : t("plugins.installLocal", "Install Local")}
+              </button>
+            </div>
+            <div className="qx-plugin-import-row">
+              <input
+                type="url"
+                value={archiveUrl}
+                onChange={(e) => setArchiveUrl(e.target.value)}
+                placeholder={t("plugins.githubArchive.placeholder", "GitHub repo, release asset, or archive ZIP URL")}
+                className="qx-inline-input"
+              />
+              <button
+                className="qx-command-button"
+                onClick={handleInstallFromUrl}
+                disabled={busy !== null || !archiveUrl.trim()}
+              >
+                {busy === "url" ? t("plugins.downloading", "Downloading...") : t("plugins.installUrl", "Install URL")}
+              </button>
+            </div>
+            {installStatus && <div className="qx-plugin-import-status">{installStatus}</div>}
           </div>
         )}
       </div>

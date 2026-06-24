@@ -171,6 +171,19 @@ pub struct RssSettings {
     pub max_articles_per_feed: u32,
     #[serde(default = "default_bottom_island_mode", rename = "bottom_island_mode")]
     pub bottom_island_mode: String,
+    #[serde(default = "default_image_display_mode", rename = "image_display_mode")]
+    pub image_display_mode: String,
+    #[serde(default = "default_image_fixed_width", rename = "image_fixed_width")]
+    pub image_fixed_width: u32,
+    #[serde(default = "default_article_font_size", rename = "article_font_size")]
+    pub article_font_size: u32,
+    #[serde(
+        default = "default_article_font_family",
+        rename = "article_font_family"
+    )]
+    pub article_font_family: String,
+    #[serde(default = "default_show_feed_icons", rename = "show_feed_icons")]
+    pub show_feed_icons: bool,
 }
 
 fn default_offline_cache_enabled() -> bool {
@@ -185,12 +198,37 @@ fn default_bottom_island_mode() -> String {
     "scroll".to_string()
 }
 
+fn default_image_display_mode() -> String {
+    "full".to_string()
+}
+
+fn default_image_fixed_width() -> u32 {
+    320
+}
+
+fn default_article_font_size() -> u32 {
+    14
+}
+
+fn default_article_font_family() -> String {
+    "system-ui".to_string()
+}
+
+fn default_show_feed_icons() -> bool {
+    true
+}
+
 impl Default for RssSettings {
     fn default() -> Self {
         Self {
             offline_cache_enabled: true,
             max_articles_per_feed: 500,
             bottom_island_mode: "scroll".to_string(),
+            image_display_mode: "full".to_string(),
+            image_fixed_width: 320,
+            article_font_size: 14,
+            article_font_family: "system-ui".to_string(),
+            show_feed_icons: true,
         }
     }
 }

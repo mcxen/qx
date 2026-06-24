@@ -43,6 +43,11 @@ export interface RssSettings {
   offline_cache_enabled: boolean;
   max_articles_per_feed: number;
   bottom_island_mode: "scroll" | "index";
+  image_display_mode: "fixed" | "full";
+  image_fixed_width: number;
+  article_font_size: number;
+  article_font_family: string;
+  show_feed_icons: boolean;
 }
 
 export interface PluginConfig {
@@ -66,6 +71,7 @@ export type SettingsTab =
   | "general"
   | "plugins"
   | "shortcuts"
+  | "permissions"
   | "appearance"
   | "rss"
   | "advanced"
@@ -114,6 +120,11 @@ export const DEFAULT_SETTINGS: Settings = {
     offline_cache_enabled: true,
     max_articles_per_feed: 500,
     bottom_island_mode: "scroll",
+    image_display_mode: "full",
+    image_fixed_width: 320,
+    article_font_size: 14,
+    article_font_family: "system-ui",
+    show_feed_icons: true,
   },
 };
 

@@ -1,11 +1,23 @@
 import { useSettingsStore } from "./store";
-import { Row, Toggle, SegmentedControl } from "../../components/ui";
+import { Row, Toggle, SegmentedControl, Select, Slider } from "../../components/ui";
 import { useT } from "../../i18n";
+
+const FONT_OPTIONS: { value: string; label: string }[] = [
+  { value: "system-ui", label: "System" },
+  { value: "Georgia, serif", label: "Georgia" },
+  { value: "'New York', serif", label: "New York" },
+  { value: "'Iowan Old Style', serif", label: "Iowan" },
+  { value: "'Helvetica Neue', sans-serif", label: "Helvetica" },
+  { value: "'SF Mono', ui-monospace, monospace", label: "SF Mono" },
+];
 
 export default function RssSettings() {
   const { settings, patch } = useSettingsStore();
   const t = useT();
   const r = settings.rss;
+
+  const patchR = (partial: Partial<typeof r>) =>
+    patch("rss", { ...r, ...partial });
 
   return (
     <div className="qx-settings-page">
@@ -15,7 +27,7 @@ export default function RssSettings() {
       >
         <Toggle
           value={r.offline_cache_enabled}
-          onChange={(v) => patch("rss", { ...r, offline_cache_enabled: v })}
+          onChange={(v) => patchR({ offline_cache_enabled: v })}
         />
       </Row>
       <Row
@@ -24,7 +36,7 @@ export default function RssSettings() {
       >
         <SegmentedControl
           value={String(r.max_articles_per_feed)}
-          onChange={(v) => patch("rss", { ...r, max_articles_per_feed: parseInt(v) })}
+          onChange={(v) => patchR({ max_articles_per_feed: parseInt(v) })}
           options={[
             { value: "100", label: "100" },
             { value: "500", label: "500" },
@@ -39,11 +51,73 @@ export default function RssSettings() {
       >
         <SegmentedControl
           value={r.bottom_island_mode}
-          onChange={(v) => patch("rss", { ...r, bottom_island_mode: v as "scroll" | "index" })}
+          onChange={(v) => patchR({ bottom_island_mode: v as "scroll" | "index" })}
           options={[
             { value: "scroll", label: t("rss.bottomIslandMode.scroll", "Reading Progress") },
             { value: "index", label: t("rss.bottomIslandMode.index", "Article Index") },
           ]}
+        />
+      </Row>
+      <Row
+        title={t("rss.imageDisplayMode", "Image Display Mode")}
+        description={t("rss.imageDisplayMode.desc", "Control how images appear in article detail view. Fixed size constrains width; Full-width fills the content column.")}
+      >
+        <SegmentedControl
+          value={r.image_display_mode}
+          onChange={(v) => patchR({ image_display_mode: v as "fixed" | "full" })}
+          options={[
+            { value: "full", label: t("rss.imageDisplayMode.full", "Full Width") },
+            { value: "fixed", label: t("rss.imageDisplayMode.fixed", "Fixed Size") },
+          ]}
+        />
+      </Row>
+      {r.image_display_mode === "fixed" && (
+        <Row
+          title={t("rss.imageFixedWidth", "Fixed Image Width")}
+          description={t("rss.imageFixedWidth.desc", "Maximum width in pixels for images when using fixed-size mode.")}
+        >
+          <Slider
+            value={r.image_fixed_width}
+            min={160}
+            max={640}
+            step={20}
+            onChange={(v) => patchR({ image_fixed_width: v })}
+            formatLabel={(v) => `${v}px`}
+            ariaLabel={t("rss.imageFixedWidth", "Fixed Image Width")}
+          />
+        </Row>
+      )}
+      <Row
+        title={t("rss.articleFontSize", "Article Font Size")}
+        description={t("rss.articleFontSize.desc", "Base font size for article content. Adjust for comfortable reading.")}
+      >
+        <Slider
+          value={r.article_font_size}
+          min={12}
+          max={22}
+          step={1}
+          onChange={(v) => patchR({ article_font_size: v })}
+          formatLabel={(v) => `${v}px`}
+          ariaLabel={t("rss.articleFontSize", "Article Font Size")}
+        />
+      </Row>
+      <Row
+        title={t("rss.articleFontFamily", "Article Font")}
+        description={t("rss.articleFontFamily.desc", "Choose a typeface for article content. System uses the OS default.")}
+      >
+        <Select
+          value={r.article_font_family}
+          onChange={(v) => patchR({ article_font_family: v })}
+          options={FONT_OPTIONS}
+        />
+      </Row>
+      <Row
+        title={t("rss.showFeedIcons", "Show Feed Icons")}
+        description={t("rss.showFeedIcons.desc", "Display subscription source icons in the feed list. Disabling uses letter placeholders.")}
+      >
+        <Toggle
+          value={r.show_feed_icons}
+          onChange={(v) => patchR({ show_feed_icons: v })}
         />
       </Row>
     </div>

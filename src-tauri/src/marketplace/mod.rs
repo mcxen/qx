@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::{Cursor, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use tauri::command;
 
@@ -227,6 +227,17 @@ pub async fn download_plugin(url: String) -> Result<String, String> {
     Ok(tmp.to_string_lossy().to_string())
 }
 
+#[command]
+pub async fn install_plugin_from_url(url: String) -> Result<InstalledPlugin, String> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() {
+        return Err("plugin archive URL is empty".to_string());
+    }
+    let archive_url = normalize_plugin_archive_url(trimmed);
+    let bytes = http_get(&archive_url).await?;
+    install_plugin_archive(&bytes, None)
+}
+
 fn uuid_like() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -284,7 +295,8 @@ fn compute_plugin_hash(dir: &Path, manifest: &PluginManifest) -> Result<Vec<u8>,
 
 #[command]
 pub fn install_plugin(path: String) -> Result<InstalledPlugin, String> {
-    let pkg = Path::new(&path);
+    let expanded = expand_home_path(path.trim());
+    let pkg = expanded.as_path();
     if !pkg.exists() {
         return Err(format!("plugin package not found: {path}"));
     }
@@ -293,8 +305,20 @@ pub fn install_plugin(path: String) -> Result<InstalledPlugin, String> {
     f.read_to_end(&mut buf)
         .map_err(|e| format!("read package: {e}"))?;
 
+    let cleanup_path = if should_cleanup_downloaded_package(pkg) {
+        Some(pkg)
+    } else {
+        None
+    };
+    install_plugin_archive(&buf, cleanup_path)
+}
+
+fn install_plugin_archive(
+    buf: &[u8],
+    cleanup_path: Option<&Path>,
+) -> Result<InstalledPlugin, String> {
     let mut archive =
-        zip::ZipArchive::new(Cursor::new(&buf)).map_err(|e| format!("open zip: {e}"))?;
+        zip::ZipArchive::new(Cursor::new(buf)).map_err(|e| format!("open zip: {e}"))?;
 
     let mut manifest_name = None;
     for i in 0..archive.len() {
@@ -306,9 +330,10 @@ pub fn install_plugin(path: String) -> Result<InstalledPlugin, String> {
     }
     let manifest_name =
         manifest_name.ok_or_else(|| "manifest.json not found in package".to_string())?;
+    let manifest_root = archive_parent(&manifest_name);
 
     let mut archive =
-        zip::ZipArchive::new(Cursor::new(&buf)).map_err(|e| format!("reopen zip: {e}"))?;
+        zip::ZipArchive::new(Cursor::new(buf)).map_err(|e| format!("reopen zip: {e}"))?;
     let mut manifest_bytes = Vec::new();
     {
         let mut mf = archive
@@ -331,14 +356,16 @@ pub fn install_plugin(path: String) -> Result<InstalledPlugin, String> {
     fs::create_dir_all(&dest).map_err(|e| format!("create plugin dir: {e}"))?;
 
     let mut archive =
-        zip::ZipArchive::new(Cursor::new(&buf)).map_err(|e| format!("reopen zip: {e}"))?;
+        zip::ZipArchive::new(Cursor::new(buf)).map_err(|e| format!("reopen zip: {e}"))?;
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| format!("entry {i}: {e}"))?;
         let entry_name = entry.name().to_string();
         if entry.is_dir() {
             continue;
         }
-        let rel = strip_top_level(&entry_name);
+        let Some(rel) = archive_relative_to_manifest_root(&entry_name, &manifest_root) else {
+            continue;
+        };
         let out = dest.join(rel);
         if let Some(parent) = out.parent() {
             fs::create_dir_all(parent).ok();
@@ -361,7 +388,9 @@ pub fn install_plugin(path: String) -> Result<InstalledPlugin, String> {
         }
     }
 
-    let _ = fs::remove_file(pkg);
+    if let Some(path) = cleanup_path {
+        let _ = fs::remove_file(path);
+    }
     let _ = fs::write(plugin_enabled_path(&manifest.id), "true");
 
     Ok(InstalledPlugin {
@@ -377,12 +406,102 @@ pub fn install_plugin(path: String) -> Result<InstalledPlugin, String> {
     })
 }
 
-fn strip_top_level(name: &str) -> String {
-    let normalized = name.replace('\\', "/");
-    if let Some(idx) = normalized.find('/') {
-        normalized[idx + 1..].to_string()
+fn normalize_plugin_archive_url(input: &str) -> String {
+    let trimmed = input.trim();
+    let Some(path_start) = trimmed.find("github.com/") else {
+        return trimmed.to_string();
+    };
+    if trimmed.contains("/archive/") || trimmed.contains("/releases/download/") {
+        return trimmed.to_string();
+    }
+
+    let path = &trimmed[path_start + "github.com/".len()..];
+    let mut parts = path
+        .split(['?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim_matches('/')
+        .split('/');
+    let Some(owner) = parts.next().filter(|s| !s.is_empty()) else {
+        return trimmed.to_string();
+    };
+    let Some(repo) = parts.next().filter(|s| !s.is_empty()) else {
+        return trimmed.to_string();
+    };
+    let marker = parts.next();
+    let branch = if marker == Some("tree") {
+        parts.next().filter(|s| !s.is_empty()).unwrap_or("main")
     } else {
-        normalized
+        "main"
+    };
+
+    format!("https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip")
+}
+
+fn expand_home_path(input: &str) -> PathBuf {
+    if input == "~" {
+        return PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()));
+    }
+    if let Some(rest) = input.strip_prefix("~/") {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+        return PathBuf::from(home).join(rest);
+    }
+    PathBuf::from(input)
+}
+
+fn should_cleanup_downloaded_package(path: &Path) -> bool {
+    let Ok(temp_dir) = std::env::temp_dir().canonicalize() else {
+        return false;
+    };
+    let Ok(parent) = path
+        .parent()
+        .unwrap_or_else(|| Path::new(""))
+        .canonicalize()
+    else {
+        return false;
+    };
+    let file_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy())
+        .unwrap_or_default();
+    parent == temp_dir && file_name.starts_with("qx-plugin-")
+}
+
+fn archive_parent(name: &str) -> String {
+    let normalized = name.replace('\\', "/");
+    normalized
+        .rsplit_once('/')
+        .map(|(parent, _)| parent.to_string())
+        .unwrap_or_default()
+}
+
+fn archive_relative_to_manifest_root(name: &str, root: &str) -> Option<PathBuf> {
+    let normalized = name.replace('\\', "/");
+    let rel = if root.is_empty() {
+        normalized.as_str()
+    } else {
+        let prefix = format!("{root}/");
+        normalized.strip_prefix(&prefix)?
+    };
+    if rel.is_empty() {
+        return None;
+    }
+    safe_relative_path(rel)
+}
+
+fn safe_relative_path(rel: &str) -> Option<PathBuf> {
+    let mut out = PathBuf::new();
+    for component in Path::new(rel).components() {
+        match component {
+            Component::Normal(part) => out.push(part),
+            Component::CurDir => {}
+            _ => return None,
+        }
+    }
+    if out.as_os_str().is_empty() {
+        None
+    } else {
+        Some(out)
     }
 }
 

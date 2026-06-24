@@ -9,10 +9,12 @@ mod http_client;
 mod macro_recorder;
 mod marketplace;
 mod ocr;
+mod permissions;
 mod rss;
 mod screencap;
 mod screenshot;
 mod settings;
+mod storage;
 mod system_stats;
 mod v2ex;
 
@@ -231,6 +233,9 @@ pub fn run() {
             settings::reset_settings,
             settings::import_settings,
             settings::export_settings,
+            storage::qx_storage_overview,
+            storage::qx_storage_clear_cache,
+            storage::qx_storage_clear_files,
             system_stats::get_system_stats,
             screencap::start_recording,
             screencap::stop_recording,
@@ -242,6 +247,7 @@ pub fn run() {
             marketplace::fetch_plugin_index,
             marketplace::download_plugin,
             marketplace::install_plugin,
+            marketplace::install_plugin_from_url,
             marketplace::uninstall_plugin,
             marketplace::list_installed_plugins,
             marketplace::read_plugin_entry,
@@ -253,6 +259,9 @@ pub fn run() {
             marketplace::plugin_preferences_set,
             marketplace::sign_plugin,
             marketplace::scaffold_plugin,
+            permissions::qx_permissions_status,
+            permissions::qx_permissions_request,
+            permissions::qx_permissions_open_settings,
             ocr::download_ocr_model,
             ocr::check_ocr_models,
             macro_recorder::macro_start_recording,
