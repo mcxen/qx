@@ -1,3 +1,51 @@
+## Feature — Raycast system-information 转换适配
+
+**状态**：进行中，已通过静态验证。
+
+### 新增内容
+
+- 新增 `scripts/convert-raycast-extension.mjs`，可将 Raycast 扩展目录转换为 Qx 插件目录，并可打包为 `.qx-plugin`。
+- 插件管理器新增 Raycast extension URL 安装入口，可直接粘贴 GitHub Raycast extension tree URL 触发转换安装。
+- 针对 Raycast `system-information` 扩展生成 Qx 插件适配层，保留 `View System Information` 面板和 `check-storage / check-system-info / check-network / list-processes / kill-process` 命令。
+- 新增后端真实系统信息命令：系统信息、存储、网络、进程列表、结束进程。
+- 插件 RPC 权限检查同时支持精确命令名和 `invoke:<cmd>` 写法。
+- 新增 `public/doc/raycast-plugin-conversion.md` 记录 Raycast 兼容边界和转换流程。
+
+### 验证
+
+- [x] `node scripts/convert-raycast-extension.mjs /tmp/qx-raycast-sparse/extensions/system-information --out /tmp/qx-raycast-converted --package`
+- [x] `node --check scripts/convert-raycast-extension.mjs`
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo test marketplace::tests -- --nocapture`
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [x] 安装转换后的 `.qx-plugin` 到 `~/.qx/plugins/raycast-system-information` 并启用。
+- [x] 用已安装插件入口执行 6 个命令和面板渲染，验证 Hostname / Storage / Network / Running Processes 输出。
+- [ ] 在 Qx UI 中手动验证搜索入口、面板展示和命令 toast。
+
+---
+
+## Bugfix — 窗口尺寸拖拽闪烁
+
+**状态**：已实现，已通过本地构建验证。
+
+### 修复内容
+
+- `App.tsx` 启动恢复窗口尺寸只执行一次，不再依赖整个 `settings.appearance`，避免拖动窗口时 settings 回写触发 `setSize()`。
+- `App.tsx` 的 resize 保存改为 250ms debounce，减少拖动时频繁保存和重渲染。
+- `AppearanceSettings.tsx` 移除重复的 `onResized` 监听和自动 `set_window_size` effect，外观页只在用户提交 W/H 输入时主动调整窗口。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [x] `npm run tauri build`
+- [x] 本地替换 `/Applications/Qx.app` 并启动。
+
+---
+
 ## Maintenance — QxShell / Launcher 结构整理
 
 **状态**：已实现，已通过静态验证。

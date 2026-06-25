@@ -291,7 +291,7 @@ export async function handlePluginRpc(
     case "invoke": {
       const { cmd, args } = payload;
       const cmdStr = String(cmd);
-      if (!perms.has(cmdStr) && !perms.has("*")) {
+      if (!perms.has(cmdStr) && !perms.has(`invoke:${cmdStr}`) && !perms.has("*")) {
         throw new Error(`Plugin ${plugin.id} lacks permission: ${cmdStr}`);
       }
       return invoke(cmdStr, (args as Record<string, unknown>) || {});

@@ -66,7 +66,7 @@ function ScreenshotRegionOverlay({
   // Four dim rectangles around the selection to create the "spotlight" effect
   const dimStyle: React.CSSProperties = {
     position: "absolute",
-    backgroundColor: "rgba(0,0,0,0.5)",
+    backgroundColor: "color-mix(in srgb, var(--qx-bg-200) 62%, transparent)",
     pointerEvents: "none",
   };
 
@@ -106,10 +106,22 @@ function ScreenshotRegionOverlay({
 
       {/* Dim overlay everywhere before selection starts */}
       {!imgLoaded && (
-        <div style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.3)" }} />
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundColor: "color-mix(in srgb, var(--qx-bg-200) 38%, transparent)",
+          }}
+        />
       )}
       {!dragStart && imgLoaded && (
-        <div style={{ position: "absolute", inset: 0, backgroundColor: "rgba(0,0,0,0.5)" }} />
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundColor: "color-mix(in srgb, var(--qx-bg-200) 62%, transparent)",
+          }}
+        />
       )}
 
       {/* Spotlight: dim everything except the selected area */}
@@ -131,7 +143,7 @@ function ScreenshotRegionOverlay({
               top: selY,
               width: selW,
               height: selH,
-              border: "2px solid #3B82F6",
+              border: "2px solid var(--qx-accent)",
               boxSizing: "border-box",
               pointerEvents: "none",
             }}
@@ -143,8 +155,8 @@ function ScreenshotRegionOverlay({
                 position: "absolute",
                 left: selX + 4,
                 top: Math.max(0, selY - 28),
-                backgroundColor: "rgba(59,130,246,0.95)",
-                color: "#fff",
+                backgroundColor: "var(--qx-accent)",
+                color: "var(--qx-text-on-accent)",
                 fontSize: 12,
                 fontFamily: "monospace",
                 padding: "2px 8px",
@@ -168,10 +180,10 @@ function ScreenshotRegionOverlay({
             left: 0,
             right: 0,
             textAlign: "center",
-            color: "#fff",
+            color: "var(--qx-text-on-accent)",
             fontSize: 16,
             pointerEvents: "none",
-            textShadow: "0 1px 4px rgba(0,0,0,0.6)",
+            textShadow: "0 1px 4px var(--qx-glass-shadow)",
           }}
         >
           Drag to select screenshot area &middot; Esc to cancel

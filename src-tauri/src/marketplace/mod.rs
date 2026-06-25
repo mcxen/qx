@@ -131,6 +131,14 @@ pub struct InstalledPlugin {
     pub manifest: Option<PluginManifest>,
 }
 
+#[derive(Debug)]
+struct RaycastSource {
+    owner: String,
+    repo: String,
+    reference: String,
+    extension_path: String,
+}
+
 fn plugins_root() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
     let dir = PathBuf::from(format!("{}/.qx/plugins", home));
@@ -236,6 +244,325 @@ pub async fn install_plugin_from_url(url: String) -> Result<InstalledPlugin, Str
     let archive_url = normalize_plugin_archive_url(trimmed);
     let bytes = http_get(&archive_url).await?;
     install_plugin_archive(&bytes, None)
+}
+
+#[command]
+pub async fn install_raycast_extension_from_url(url: String) -> Result<InstalledPlugin, String> {
+    let source = parse_raycast_github_tree_url(url.trim())?;
+    let package_url = source.raw_url("package.json");
+    let package_bytes = http_get(&package_url).await?;
+    let package_json: serde_json::Value = serde_json::from_slice(&package_bytes)
+        .map_err(|e| format!("parse Raycast package.json: {e}"))?;
+    let raycast_name = package_json
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("extension");
+    let manifest = build_raycast_plugin_manifest(&package_json);
+    let entry = if raycast_name == "system-information" {
+        raycast_system_information_entry()
+    } else {
+        raycast_placeholder_entry(&manifest.name)
+    };
+
+    let dest = plugin_dir(&manifest.id);
+    if dest.exists() {
+        fs::remove_dir_all(&dest).map_err(|e| format!("clear existing Raycast plugin: {e}"))?;
+    }
+    fs::create_dir_all(&dest).map_err(|e| format!("create Raycast plugin dir: {e}"))?;
+    let manifest_json =
+        serde_json::to_string_pretty(&manifest).map_err(|e| format!("serialize manifest: {e}"))?;
+    atomic_write(&dest.join("manifest.json"), manifest_json.as_bytes())
+        .map_err(|e| format!("write manifest: {e}"))?;
+    atomic_write(&dest.join("index.js"), entry.as_bytes())
+        .map_err(|e| format!("write entry: {e}"))?;
+
+    if !manifest.icon.trim().is_empty() {
+        let icon_name = manifest.icon.clone();
+        let candidates = [format!("assets/{icon_name}"), icon_name.clone()];
+        for candidate in candidates {
+            if let Ok(bytes) = http_get(&source.raw_url(&candidate)).await {
+                fs::write(dest.join(&icon_name), bytes).map_err(|e| format!("write icon: {e}"))?;
+                break;
+            }
+        }
+    }
+
+    fs::create_dir_all(plugin_data_dir(&manifest.id)).ok();
+    atomic_write(&plugin_enabled_path(&manifest.id), b"true")
+        .map_err(|e| format!("write enabled flag: {e}"))?;
+
+    Ok(InstalledPlugin {
+        id: manifest.id.clone(),
+        name: manifest.name.clone(),
+        version: manifest.version.clone(),
+        description: manifest.description.clone(),
+        path: dest.to_string_lossy().to_string(),
+        enabled: true,
+        permissions: manifest.permissions.clone(),
+        author: manifest.author.clone(),
+        manifest: Some(manifest),
+    })
+}
+
+impl RaycastSource {
+    fn raw_url(&self, rel: &str) -> String {
+        let rel = rel.trim_start_matches('/');
+        format!(
+            "https://raw.githubusercontent.com/{}/{}/{}/{}/{}",
+            self.owner, self.repo, self.reference, self.extension_path, rel
+        )
+    }
+}
+
+fn parse_raycast_github_tree_url(input: &str) -> Result<RaycastSource, String> {
+    if input.is_empty() {
+        return Err("Raycast extension URL is empty".to_string());
+    }
+    let Some(path_start) = input.find("github.com/") else {
+        return Err("Raycast conversion currently expects a GitHub tree URL".to_string());
+    };
+    let path = input[path_start + "github.com/".len()..]
+        .split(['?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim_matches('/');
+    let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+    if parts.len() < 5 || parts[2] != "tree" {
+        return Err(
+            "Expected a GitHub URL like https://github.com/owner/repo/tree/<ref>/extensions/<name>"
+                .to_string(),
+        );
+    }
+    let extension_path = parts[4..].join("/");
+    if !extension_path.starts_with("extensions/") {
+        return Err(
+            "Only Raycast extension paths under extensions/<name> are supported".to_string(),
+        );
+    }
+    Ok(RaycastSource {
+        owner: parts[0].to_string(),
+        repo: parts[1].to_string(),
+        reference: parts[3].to_string(),
+        extension_path,
+    })
+}
+
+fn json_string(value: &serde_json::Value, key: &str) -> String {
+    value
+        .get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+        .to_string()
+}
+
+fn json_string_array(value: &serde_json::Value, key: &str) -> Vec<String> {
+    value
+        .get(key)
+        .and_then(|v| v.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn title_case_id(id: &str) -> String {
+    id.split(['-', '_'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().to_string() + &chars.as_str().to_lowercase(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn build_raycast_plugin_manifest(package: &serde_json::Value) -> PluginManifest {
+    let raycast_id = json_string(package, "name");
+    let id_source = if raycast_id.is_empty() {
+        "extension"
+    } else {
+        &raycast_id
+    };
+    let title = json_string(package, "title");
+    let name = if title.is_empty() {
+        title_case_id(id_source)
+    } else {
+        title
+    };
+    let icon = Path::new(&json_string(package, "icon"))
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let keywords = json_string_array(package, "keywords");
+    let mut commands = Vec::new();
+    if let Some(items) = package.get("commands").and_then(|v| v.as_array()) {
+        for item in items {
+            commands.push(PluginCommand {
+                name: json_string(item, "name"),
+                title: json_string(item, "title"),
+                description: json_string(item, "description"),
+                icon: icon.clone(),
+                keywords: keywords.clone(),
+            });
+        }
+    }
+    if let Some(items) = package.get("tools").and_then(|v| v.as_array()) {
+        for item in items {
+            let tool_name = json_string(item, "name");
+            let title = json_string(item, "title");
+            commands.push(PluginCommand {
+                name: tool_name.clone(),
+                title: if title.is_empty() {
+                    title_case_id(&tool_name)
+                } else {
+                    title
+                },
+                description: json_string(item, "description"),
+                icon: icon.clone(),
+                keywords: {
+                    let mut out = vec![tool_name];
+                    out.extend(keywords.clone());
+                    out
+                },
+            });
+        }
+    }
+    if commands.is_empty() {
+        commands.push(PluginCommand {
+            name: "index".to_string(),
+            title: name.clone(),
+            description: json_string(package, "description"),
+            icon: icon.clone(),
+            keywords: keywords.clone(),
+        });
+    }
+
+    PluginManifest {
+        id: format!("raycast-{id_source}"),
+        name: name.clone(),
+        version: json_string(package, "version")
+            .chars()
+            .next()
+            .map(|_| json_string(package, "version"))
+            .unwrap_or_else(|| "1.0.0".to_string()),
+        description: json_string(package, "description"),
+        author: json_string(package, "author"),
+        icon: icon.clone(),
+        keywords: keywords.clone(),
+        permissions: vec![
+            "qx_system_information_check_system_info".to_string(),
+            "qx_system_information_check_storage".to_string(),
+            "qx_system_information_check_network".to_string(),
+            "qx_system_information_list_processes".to_string(),
+            "qx_system_information_kill_process".to_string(),
+        ],
+        preferences: Vec::new(),
+        commands,
+        panel: Some(PluginPanel {
+            title: name,
+            icon,
+            keywords,
+        }),
+        dependencies: Vec::new(),
+        min_app_version: String::new(),
+        entry: "index.js".to_string(),
+        signature: String::new(),
+        pubkey: String::new(),
+    }
+}
+
+fn raycast_placeholder_entry(name: &str) -> String {
+    format!(
+        r#"export default {{
+  commands: [
+    {{
+      name: "index",
+      title: {title:?},
+      async run(context) {{
+        context.showToast({message:?});
+      }}
+    }}
+  ],
+  panel: {{
+    title: {title:?},
+    render(container) {{
+      container.innerHTML = "<div style='padding:16px;color:var(--qx-text-secondary)'>This Raycast extension was imported, but it needs a custom Qx adapter before it can run fully.</div>";
+    }}
+  }}
+}};
+"#,
+        title = name,
+        message = format!("{name} was imported from Raycast and needs a custom adapter.")
+    )
+}
+
+fn raycast_system_information_entry() -> String {
+    r##"const call = (context, cmd, args) => context.invoke(cmd, args || {});
+function escapeHtml(value) {
+  return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+}
+function section(title, rows) {
+  return '<section class="qx-raycast-section"><h2>' + escapeHtml(title) + '</h2>' + rows.join("") + '</section>';
+}
+function row(icon, title, detail) {
+  return '<div class="qx-raycast-row"><div class="qx-raycast-icon">' + escapeHtml(icon) + '</div><div class="qx-raycast-main"><div class="qx-raycast-title">' + escapeHtml(title) + '</div><div class="qx-raycast-detail">' + escapeHtml(detail) + '</div></div></div>';
+}
+function styles() {
+  return '<style>body{font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--qx-text-primary,#111);background:transparent;margin:0}.qx-raycast-wrap{box-sizing:border-box;height:100%;overflow:auto;padding:14px 18px 28px}.qx-raycast-header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.qx-raycast-header h1{font-size:18px;line-height:1.2;margin:0;font-weight:650}.qx-raycast-header button{border:1px solid var(--qx-border-1,#ddd);background:var(--qx-bg-component-1,#fff);color:inherit;border-radius:6px;padding:6px 10px;font:inherit;cursor:pointer}.qx-raycast-section{border-top:1px solid var(--qx-border-1,#ddd);padding-top:10px;margin-top:12px}.qx-raycast-section h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--qx-text-tertiary,#888);margin:0 0 8px}.qx-raycast-row{min-height:38px;display:flex;align-items:center;gap:10px;border-radius:6px;padding:7px 8px}.qx-raycast-row:hover{background:var(--qx-bg-component-2,#f5f5f5)}.qx-raycast-icon{width:22px;text-align:center;flex:0 0 22px}.qx-raycast-main{min-width:0;flex:1}.qx-raycast-title{font-weight:560;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qx-raycast-detail{margin-top:2px;color:var(--qx-text-secondary,#666);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qx-raycast-error{color:var(--qx-danger,#c00);padding:16px}</style>';
+}
+async function loadAll(context) {
+  const [system, storage, network, processes] = await Promise.all([
+    call(context, "qx_system_information_check_system_info"),
+    call(context, "qx_system_information_check_storage"),
+    call(context, "qx_system_information_check_network"),
+    call(context, "qx_system_information_list_processes"),
+  ]);
+  return { system, storage, network, processes };
+}
+async function renderSystemInformation(container, context) {
+  container.innerHTML = styles() + '<div class="qx-raycast-wrap">Loading system information...</div>';
+  try {
+    const data = await loadAll(context);
+    const processRows = (data.processes.processes || []).slice(0, 80).map((proc) => row("A", proc.name, "PID: " + proc.pid + " | CPU: " + Number(proc.cpu || 0).toFixed(1) + "% | MEM: " + Number(proc.mem || 0).toFixed(1) + "%"));
+    const networkRows = (data.network.devices || []).map((device) => row("N", device.name, device.ip));
+    container.innerHTML = styles() + '<div class="qx-raycast-wrap"><div class="qx-raycast-header"><h1>System Information</h1><button id="qx-refresh">Refresh</button></div>' +
+      section("About This Mac", [row("H", "Hostname", data.system.hostname), row("C", "Chip", data.system.chip), row("M", "Memory", data.system.memory), row("#", "Serial Number", data.system.serialNumber)]) +
+      section("Storage", [row("D", "Macintosh HD", data.storage.summary)]) +
+      section("macOS", [row("i", data.system.macOS, "Kernel " + data.system.kernel)]) +
+      section("Network", networkRows.length ? networkRows : [row("N", "No active IPv4 network devices", "-")]) +
+      section("Running Processes", processRows.length ? processRows : [row("A", "No processes", "-")]) + "</div>";
+    container.querySelector("#qx-refresh")?.addEventListener("click", () => renderSystemInformation(container, context));
+  } catch (error) {
+    container.innerHTML = styles() + '<div class="qx-raycast-error">Failed to load system information: ' + escapeHtml(error) + '</div>';
+  }
+}
+function toastJson(context, title, value) {
+  const compact = typeof value === "string" ? value : JSON.stringify(value);
+  context.showToast(title + ": " + compact.slice(0, 220));
+}
+export default {
+  commands: [
+    { name: "index", title: "View System Information", async run(context) { toastJson(context, "System Information", await call(context, "qx_system_information_check_system_info")); } },
+    { name: "check-storage", title: "Check Storage", async run(context) { const result = await call(context, "qx_system_information_check_storage"); context.showToast(result.summary); } },
+    { name: "check-system-info", title: "Check System Info", async run(context) { toastJson(context, "System", await call(context, "qx_system_information_check_system_info")); } },
+    { name: "check-network", title: "Check Network", async run(context) { const result = await call(context, "qx_system_information_check_network"); context.showToast(result.count + " network device(s)"); } },
+    { name: "list-processes", title: "List Processes", async run(context) { const result = await call(context, "qx_system_information_list_processes"); context.showToast(result.count + " running process(es)"); } },
+    { name: "kill-process", title: "Kill Process", async run(context) { const pid = await context.prompt("PID to kill"); if (!pid) return; const result = await call(context, "qx_system_information_kill_process", { pid: Number(pid) }); context.showToast(result.message); } }
+  ],
+  panel: {
+    title: "System Information",
+    async render(container, context) { await renderSystemInformation(container, context); },
+    destroy(container) { container.innerHTML = ""; }
+  }
+};
+"##
+    .to_string()
 }
 
 fn uuid_like() -> String {
@@ -764,4 +1091,59 @@ pub fn scaffold_plugin(name: String, output_dir: String) -> Result<String, Strin
     fs::write(plugin_dir.join("README.md"), readme).map_err(|e| format!("write README: {e}"))?;
 
     Ok(plugin_dir.to_string_lossy().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const RAYCAST_SYSTEM_INFORMATION_URL: &str = "https://github.com/raycast/extensions/tree/888d04008da11340e0a0fa98b32dde4465a33e72/extensions/system-information";
+
+    #[test]
+    fn parses_raycast_tree_url() {
+        let source = parse_raycast_github_tree_url(RAYCAST_SYSTEM_INFORMATION_URL).unwrap();
+        assert_eq!(source.owner, "raycast");
+        assert_eq!(source.repo, "extensions");
+        assert_eq!(source.reference, "888d04008da11340e0a0fa98b32dde4465a33e72");
+        assert_eq!(source.extension_path, "extensions/system-information");
+        assert_eq!(
+            source.raw_url("package.json"),
+            "https://raw.githubusercontent.com/raycast/extensions/888d04008da11340e0a0fa98b32dde4465a33e72/extensions/system-information/package.json"
+        );
+    }
+
+    #[test]
+    fn builds_system_information_manifest_from_raycast_package() {
+        let package = serde_json::json!({
+            "name": "system-information",
+            "title": "System Information",
+            "description": "Quick access to your system information",
+            "icon": "command-icon.png",
+            "author": "Visual-Studio-Coder",
+            "keywords": ["system", "information"],
+            "commands": [
+                {
+                    "name": "index",
+                    "title": "View System Information",
+                    "description": "View your system information"
+                }
+            ],
+            "tools": [
+                {
+                    "name": "check-storage",
+                    "title": "Check Storage",
+                    "description": "See storage information"
+                }
+            ]
+        });
+        let manifest = build_raycast_plugin_manifest(&package);
+        assert_eq!(manifest.id, "raycast-system-information");
+        assert_eq!(manifest.name, "System Information");
+        assert_eq!(manifest.entry, "index.js");
+        assert_eq!(manifest.commands.len(), 2);
+        assert!(manifest
+            .permissions
+            .contains(&"qx_system_information_check_storage".to_string()));
+        assert_eq!(manifest.panel.unwrap().title, "System Information");
+    }
 }

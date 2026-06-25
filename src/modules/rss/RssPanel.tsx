@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import QxShell, { type BottomIslandContent } from "../../components/QxShell";
+import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { useRssStore, type RssFeed } from "./store";
 import { useSettingsStore } from "../settings/store";
 import { useStore } from "../../store";
@@ -77,30 +77,6 @@ export default function RssPanel() {
         e.preventDefault();
         if (selectedFeed) void openFeed(selectedFeed.id);
         break;
-      case "r":
-        if (!e.metaKey && !e.ctrlKey) {
-          e.preventDefault();
-          if (selectedFeed) void refreshFeed(selectedFeed.id);
-        }
-        break;
-      case "R":
-        if (e.shiftKey) {
-          e.preventDefault();
-          void refreshAll();
-        }
-        break;
-      case "n":
-        if (!e.metaKey && !e.ctrlKey) {
-          e.preventDefault();
-          setShowAdd(true);
-        }
-        break;
-      case "e":
-        if (!e.metaKey && !e.ctrlKey && selectedFeed) {
-          e.preventDefault();
-          setEditFeed(selectedFeed);
-        }
-        break;
     }
   };
 
@@ -109,6 +85,51 @@ export default function RssPanel() {
       void removeFeed(id);
     }
   };
+
+  const actions = useMemo<QxShellAction[]>(() => [
+    {
+      label: "View Articles",
+      kbd: "↵",
+      disabled: !selectedFeed,
+      onClick: () => {
+        if (selectedFeed) void openFeed(selectedFeed.id);
+      },
+    },
+    {
+      label: "Refresh Feed",
+      kbd: "R",
+      disabled: !selectedFeed,
+      onClick: () => {
+        if (selectedFeed) void refreshFeed(selectedFeed.id);
+      },
+    },
+    {
+      label: "Add Feed",
+      kbd: "N",
+      onClick: () => setShowAdd(true),
+    },
+    {
+      label: "Refresh All",
+      onClick: () => void refreshAll(),
+    },
+    {
+      label: "Edit Feed",
+      kbd: "E",
+      disabled: !selectedFeed,
+      onClick: () => {
+        if (selectedFeed) setEditFeed(selectedFeed);
+      },
+    },
+    {
+      label: "Delete Feed",
+      kbd: "D",
+      tone: "danger",
+      disabled: !selectedFeed,
+      onClick: () => {
+        if (selectedFeed) handleDelete(selectedFeed.id);
+      },
+    },
+  ], [openFeed, refreshAll, refreshFeed, selectedFeed]);
 
   const island: BottomIslandContent = refreshingFeedId
     ? {
@@ -167,11 +188,11 @@ export default function RssPanel() {
             disabled={!selectedFeed}
           >
             <span>Refresh Feed</span>
-            <kbd>R</kbd>
+            <kbd>⌘K R</kbd>
           </button>
           <button className="qx-action-item" onClick={() => setShowAdd(true)}>
             <span>Add Feed</span>
-            <kbd>N</kbd>
+            <kbd>⌘K N</kbd>
           </button>
           <button className="qx-action-item" onClick={() => void refreshAll()}>
             <span>Refresh All</span>
@@ -182,7 +203,7 @@ export default function RssPanel() {
             disabled={!selectedFeed}
           >
             <span>Edit Feed</span>
-            <kbd>E</kbd>
+            <kbd>⌘K E</kbd>
           </button>
           <button
             className="qx-action-item danger"
@@ -190,7 +211,7 @@ export default function RssPanel() {
             disabled={!selectedFeed}
           >
             <span>Delete Feed</span>
-            <kbd>⌘D</kbd>
+            <kbd>⌘K D</kbd>
           </button>
         </div>
       }
@@ -206,6 +227,8 @@ export default function RssPanel() {
         },
       }}
       secondaryAction={{ label: "Actions", kbd: "⌘K" }}
+      actionTitle="Feed Actions"
+      actions={actions}
     >
       <div className="qx-plugin-list qx-rss-feed-list">
         <div className="qx-section-header">

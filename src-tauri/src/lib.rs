@@ -15,6 +15,7 @@ mod screencap;
 mod screenshot;
 mod settings;
 mod storage;
+mod system_information;
 mod system_stats;
 mod v2ex;
 
@@ -111,6 +112,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
@@ -217,12 +219,19 @@ pub fn run() {
             set_window_size,
             screenshot::take_screenshot,
             screenshot::take_screenshot_area,
+            screenshot::capture_all_monitors,
+            screenshot::list_capturable_windows,
+            screenshot::capture_window,
             screenshot::get_recent_screenshots,
             screenshot::capture_at_point,
             screenshot::get_monitors,
             screenshot::copy_screenshot_to_clipboard,
             screenshot::open_in_preview,
             screenshot::delete_screenshot,
+            screenshot::export_screenshot_image,
+            screenshot::save_temp_export,
+            screenshot::save_screenshot_project,
+            screenshot::read_screenshot_project,
             clipboard::get_clipboard_history,
             clipboard::read_clipboard_image_now,
             clipboard::write_clipboard_image_entry,
@@ -252,6 +261,11 @@ pub fn run() {
             storage::qx_storage_overview,
             storage::qx_storage_clear_cache,
             storage::qx_storage_clear_files,
+            system_information::qx_system_information_check_system_info,
+            system_information::qx_system_information_check_storage,
+            system_information::qx_system_information_check_network,
+            system_information::qx_system_information_list_processes,
+            system_information::qx_system_information_kill_process,
             system_stats::get_system_stats,
             screencap::start_recording,
             screencap::stop_recording,
@@ -264,6 +278,7 @@ pub fn run() {
             marketplace::download_plugin,
             marketplace::install_plugin,
             marketplace::install_plugin_from_url,
+            marketplace::install_raycast_extension_from_url,
             marketplace::uninstall_plugin,
             marketplace::list_installed_plugins,
             marketplace::read_plugin_entry,

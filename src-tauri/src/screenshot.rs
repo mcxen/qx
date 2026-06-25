@@ -1,11 +1,13 @@
 use arboard::{Clipboard, ImageData};
 use chrono::Local;
+use image::{ImageBuffer, ImageEncoder, Rgba};
 use serde::Serialize;
 use std::borrow::Cow;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 use tauri::command;
+use xcap::{Monitor, Window};
 
 fn capture_permission_hint(error: impl std::fmt::Display) -> String {
     format!(
@@ -57,6 +59,24 @@ fn save_monitor_capture(monitor: &xcap::Monitor, save_path: &PathBuf) -> Result<
     image
         .save(save_path)
         .map_err(|e| format!("Failed to save screenshot: {e}"))
+}
+
+fn save_image_capture(image: &xcap::image::RgbaImage, save_path: &PathBuf) -> Result<(), String> {
+    image
+        .save(save_path)
+        .map_err(|e| format!("Failed to save screenshot: {e}"))
+}
+
+fn screenshot_result(save_path: PathBuf) -> ScreenshotResult {
+    ScreenshotResult {
+        path: save_path.to_string_lossy().to_string(),
+        timestamp: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+    }
+}
+
+fn screenshot_path(prefix: &str) -> PathBuf {
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
+    get_screenshots_dir().join(format!("{prefix}_{timestamp}.png"))
 }
 
 #[cfg(target_os = "macos")]
@@ -113,16 +133,11 @@ pub fn capture_at_point(screen_x: i32, screen_y: i32) -> Result<ScreenshotResult
         .or_else(|| monitors.first().cloned())
         .ok_or_else(|| "No monitors found".to_string())?;
 
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
-    let filename = format!("screenshot_{}.png", timestamp);
-    let save_path = get_screenshots_dir().join(&filename);
+    let save_path = screenshot_path("screenshot");
 
     save_monitor_capture(&monitor, &save_path)?;
 
-    Ok(ScreenshotResult {
-        path: save_path.to_string_lossy().to_string(),
-        timestamp: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-    })
+    Ok(screenshot_result(save_path))
 }
 
 #[command]
@@ -158,6 +173,13 @@ pub struct ScreenshotResult {
     pub timestamp: String,
 }
 
+#[derive(Debug, Serialize)]
+pub struct WindowInfo {
+    pub id: u32,
+    pub title: String,
+    pub app_name: String,
+}
+
 fn get_screenshots_dir() -> PathBuf {
     // Cross-platform: use dirs::picture_dir() (resolves to ~/Pictures on macOS/Linux,
     // %USERPROFILE%\Pictures on Windows). Fall back to $HOME-based or /tmp for
@@ -180,16 +202,118 @@ pub fn take_screenshot() -> Result<ScreenshotResult, String> {
         return Err("No monitors found".to_string());
     }
 
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
-    let filename = format!("screenshot_{}.png", timestamp);
-    let save_path = get_screenshots_dir().join(&filename);
+    let save_path = screenshot_path("screenshot");
 
     save_monitor_capture(&monitors[0], &save_path)?;
 
-    Ok(ScreenshotResult {
-        path: save_path.to_string_lossy().to_string(),
-        timestamp: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-    })
+    Ok(screenshot_result(save_path))
+}
+
+#[command]
+pub fn capture_all_monitors() -> Result<ScreenshotResult, String> {
+    let monitors = Monitor::all().map_err(|e| format!("Failed to list monitors: {e}"))?;
+    if monitors.is_empty() {
+        return Err("No monitors found".to_string());
+    }
+
+    let save_path = screenshot_path("screenshot_all");
+    if monitors.len() == 1 {
+        save_monitor_capture(&monitors[0], &save_path)?;
+        return Ok(screenshot_result(save_path));
+    }
+
+    let mut min_x = i32::MAX;
+    let mut min_y = i32::MAX;
+    let mut max_x = i32::MIN;
+    let mut max_y = i32::MIN;
+    let mut captures: Vec<(i32, i32, xcap::image::RgbaImage)> = Vec::new();
+
+    for monitor in &monitors {
+        let x = monitor.x().map_err(capture_permission_hint)?;
+        let y = monitor.y().map_err(capture_permission_hint)?;
+        let image = monitor.capture_image().map_err(capture_permission_hint)?;
+        let w = image.width() as i32;
+        let h = image.height() as i32;
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x + w);
+        max_y = max_y.max(y + h);
+        captures.push((x, y, image));
+    }
+
+    let total_w = (max_x - min_x).max(1) as u32;
+    let total_h = (max_y - min_y).max(1) as u32;
+    let mut stitched = xcap::image::RgbaImage::new(total_w, total_h);
+    for (x, y, image) in &captures {
+        image::imageops::overlay(&mut stitched, image, (x - min_x) as i64, (y - min_y) as i64);
+    }
+
+    save_image_capture(&stitched, &save_path)?;
+    Ok(screenshot_result(save_path))
+}
+
+fn is_filtered_window(title: &str, app_name: &str) -> bool {
+    const FILTERED_TITLES: &[&str] = &[
+        "Control Center",
+        "Notification Center",
+        "Spotlight",
+        "Focus",
+        "Dock",
+        "Window Server",
+        "WindowManager",
+        "SystemUIServer",
+        "Wallpaper",
+        "Finder Desktop",
+    ];
+    const FILTERED_APPS: &[&str] = &[
+        "Control Center",
+        "Notification Center",
+        "WindowManager",
+        "Window Server",
+        "Dock",
+        "SystemUIServer",
+        "Spotlight",
+        "Qx",
+    ];
+
+    title.trim().is_empty()
+        || FILTERED_TITLES.iter().any(|needle| title.contains(needle))
+        || FILTERED_APPS.iter().any(|needle| app_name == *needle)
+}
+
+#[command]
+pub fn list_capturable_windows() -> Result<Vec<WindowInfo>, String> {
+    let windows = Window::all().map_err(|e| format!("Failed to list windows: {e}"))?;
+    let mut out = Vec::new();
+
+    for window in windows {
+        let title = window.title().unwrap_or_default();
+        let app_name = window.app_name().unwrap_or_default();
+        if is_filtered_window(&title, &app_name) {
+            continue;
+        }
+        out.push(WindowInfo {
+            id: window.id().unwrap_or(0),
+            title,
+            app_name,
+        });
+    }
+
+    Ok(out)
+}
+
+#[command]
+pub fn capture_window(window_id: u32) -> Result<ScreenshotResult, String> {
+    let windows = Window::all().map_err(|e| format!("Failed to list windows: {e}"))?;
+    let window = windows
+        .into_iter()
+        .find(|window| window.id().unwrap_or(0) == window_id)
+        .ok_or_else(|| format!("Window with ID {window_id} not found"))?;
+
+    let image = window.capture_image().map_err(capture_permission_hint)?;
+    let save_path = screenshot_path("screenshot_window");
+    save_image_capture(&image, &save_path)?;
+    Ok(screenshot_result(save_path))
 }
 
 /// Capture a region directly from the specified monitor.
@@ -211,16 +335,11 @@ pub fn take_screenshot_area(
     let idx = monitor_index.min(monitors.len() as u32 - 1) as usize;
     let monitor = &monitors[idx];
 
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S").to_string();
-    let filename = format!("screenshot_area_{}.png", timestamp);
-    let save_path = get_screenshots_dir().join(&filename);
+    let save_path = screenshot_path("screenshot_area");
 
     save_area_capture(monitor, x, y, width, height, &save_path)?;
 
-    Ok(ScreenshotResult {
-        path: save_path.to_string_lossy().to_string(),
-        timestamp: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
-    })
+    Ok(screenshot_result(save_path))
 }
 
 /// Copy a screenshot image (PNG file) to the system clipboard.
@@ -257,6 +376,86 @@ pub fn open_in_preview(path: String) -> Result<(), String> {
 #[command]
 pub fn delete_screenshot(path: String) -> Result<(), String> {
     fs::remove_file(&path).map_err(|e| format!("Failed to delete screenshot: {e}"))
+}
+
+#[command]
+pub fn export_screenshot_image(
+    image_data: Vec<u8>,
+    width: u32,
+    height: u32,
+    output_path: String,
+    format: String,
+    quality: u32,
+) -> Result<String, String> {
+    let expected_len = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|px| px.checked_mul(4))
+        .ok_or_else(|| "Image dimensions are too large".to_string())?;
+    if image_data.len() != expected_len {
+        return Err(format!(
+            "Invalid image data: expected {expected_len} bytes, got {}",
+            image_data.len()
+        ));
+    }
+
+    let img: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_raw(width, height, image_data)
+        .ok_or_else(|| "Invalid image data dimensions".to_string())?;
+
+    let path = PathBuf::from(&output_path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {e}"))?;
+    }
+    let file = fs::File::create(&path).map_err(|e| format!("Failed to create file: {e}"))?;
+    let writer = std::io::BufWriter::new(file);
+
+    match format.as_str() {
+        "png" => image::codecs::png::PngEncoder::new(writer)
+            .write_image(img.as_raw(), width, height, image::ExtendedColorType::Rgba8)
+            .map_err(|e| format!("PNG encoding failed: {e}"))?,
+        "jpeg" | "jpg" => {
+            let rgb = image::DynamicImage::ImageRgba8(img).to_rgb8();
+            image::codecs::jpeg::JpegEncoder::new_with_quality(writer, quality.min(100) as u8)
+                .write_image(rgb.as_raw(), width, height, image::ExtendedColorType::Rgb8)
+                .map_err(|e| format!("JPEG encoding failed: {e}"))?;
+        }
+        "webp" => image::codecs::webp::WebPEncoder::new_lossless(writer)
+            .write_image(img.as_raw(), width, height, image::ExtendedColorType::Rgba8)
+            .map_err(|e| format!("WebP encoding failed: {e}"))?,
+        _ => return Err(format!("Unsupported format: {format}")),
+    }
+
+    Ok(output_path)
+}
+
+#[command]
+pub fn save_temp_export(image_data: Vec<u8>, width: u32, height: u32) -> Result<String, String> {
+    let output_path = std::env::temp_dir()
+        .join("qx")
+        .join("screenshot-export.png");
+    export_screenshot_image(
+        image_data,
+        width,
+        height,
+        output_path.to_string_lossy().to_string(),
+        "png".to_string(),
+        100,
+    )
+}
+
+#[command]
+pub fn save_screenshot_project(path: String, contents: String) -> Result<String, String> {
+    let path_buf = PathBuf::from(&path);
+    if let Some(parent) = path_buf.parent() {
+        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {e}"))?;
+    }
+    fs::write(&path_buf, contents.as_bytes())
+        .map_err(|e| format!("Failed to save project: {e}"))?;
+    Ok(path)
+}
+
+#[command]
+pub fn read_screenshot_project(path: String) -> Result<String, String> {
+    fs::read_to_string(&path).map_err(|e| format!("Failed to read project: {e}"))
 }
 
 #[command]

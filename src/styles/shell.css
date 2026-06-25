@@ -296,6 +296,68 @@
   opacity: 0.72;
 }
 
+.qx-actions-popover {
+  position: fixed;
+  right: 16px;
+  bottom: calc(var(--qx-bottom-bar-h) + 10px);
+  z-index: 80;
+  width: min(280px, calc(100vw - 32px));
+  padding: 7px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 8px;
+  background: rgba(var(--qx-glass-bg), calc(var(--qx-canvas-opacity) * 3.6));
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  box-shadow: 0 18px 42px color-mix(in srgb, var(--qx-shadow) 18%, transparent);
+}
+
+.qx-actions-popover-title {
+  padding: 3px 5px 7px;
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.qx-actions-popover-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 30px;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qx-actions-popover-item.is-active {
+  background: var(--qx-bg-component-3);
+}
+
+.qx-actions-popover-item.danger {
+  color: var(--qx-danger);
+}
+
+.qx-actions-popover-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.qx-actions-popover-item kbd {
+  flex-shrink: 0;
+  color: var(--qx-text-tertiary);
+  font-family: inherit;
+  font-size: 11px;
+}
+
 .qx-bottom-island {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

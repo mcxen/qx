@@ -1,18 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useState, useRef, useCallback, type CSSProperties } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import QxShell, { type BottomIslandContent } from "../../components/QxShell";
+import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { useRssStore } from "./store";
 import { useSettingsStore } from "../settings/store";
 import { useEscBack } from "../../hooks/useEscBack";
+import { shouldIgnoreBareShortcut } from "../../utils/keyboard";
 import ImageLightbox from "./ImageLightbox";
 import { formatDate, sanitizeHtml } from "./article-utils";
-
-interface ActionItem {
-  label: string;
-  kbd?: string;
-  disabled?: boolean;
-  onClick: () => void;
-}
 
 export default function ArticleDetail() {
   const {
@@ -28,10 +22,7 @@ export default function ArticleDetail() {
 
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [scrollPercent, setScrollPercent] = useState(0);
-  const [showActions, setShowActions] = useState(false);
-  const [actionIndex, setActionIndex] = useState(0);
   const shellRef = useRef<HTMLDivElement>(null);
-  const actionsRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const rss = useSettingsStore((s) => s.settings.rss);
@@ -117,9 +108,9 @@ export default function ArticleDetail() {
     ? Math.round(((currentIdx + 1) / readingArticles.length) * 100)
     : 0;
 
-  // Build actions list (used by both context panel and Cmd+K menu)
-  const actions = useMemo<ActionItem[]>(() => {
-    const list: ActionItem[] = [];
+  // Build actions list used by both context panel and Shell Cmd+K menu.
+  const actions = useMemo<QxShellAction[]>(() => {
+    const list: QxShellAction[] = [];
     if (currentArticle?.link) {
       list.push({
         label: "Open in Browser",
@@ -156,88 +147,34 @@ export default function ArticleDetail() {
     return list;
   }, [currentArticle, next, prev, openArticleAtTop, toggleStar, markRead]);
 
-  const executeAction = useCallback(
-    (idx: number) => {
-      const a = actions[idx];
-      if (a && !a.disabled) {
-        a.onClick();
-        setShowActions(false);
-      }
-    },
-    [actions],
-  );
-
-  // Cascading Esc: close actions menu → close lightbox → go back
+  // Cascading Esc: close lightbox → go back. Shell handles Actions menu Esc.
   const { onKeyDown: escKeyDown } = useEscBack({
     inner: {
-      active: showActions || lightbox !== null,
+      active: lightbox !== null,
       close: () => {
-        if (showActions) setShowActions(false);
-        else setLightbox(null);
+        setLightbox(null);
       },
     },
     launcher: goBack,
   });
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    // Handle Cmd+K to toggle actions menu
-    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-      e.preventDefault();
-      setShowActions((v) => !v);
-      setActionIndex(0);
-      return;
-    }
-
-    // Handle actions menu navigation
-    if (showActions) {
-      switch (e.key) {
-        case "ArrowDown":
-          e.preventDefault();
-          setActionIndex((i) => Math.min(i + 1, actions.length - 1));
-          return;
-        case "ArrowUp":
-          e.preventDefault();
-          setActionIndex((i) => Math.max(i - 1, 0));
-          return;
-        case "Enter":
-          e.preventDefault();
-          executeAction(actionIndex);
-          return;
-        case "Escape":
-          escKeyDown(e);
-          return;
-      }
-      return;
-    }
-
-    // Normal key handling
+    const ignoreBare = shouldIgnoreBareShortcut(e.nativeEvent);
     switch (e.key) {
       case "Escape":
         escKeyDown(e);
         break;
       case "j":
-        if (!e.metaKey && !e.ctrlKey) {
+        if (!ignoreBare && !e.metaKey && !e.ctrlKey) {
           e.preventDefault();
           if (next) void openArticleAtTop(next.id);
         }
         break;
       case "k":
-        if (!e.metaKey && !e.ctrlKey) {
+        if (!ignoreBare && !e.metaKey && !e.ctrlKey) {
           e.preventDefault();
           if (prev) void openArticleAtTop(prev.id);
         }
-        break;
-      case "s":
-        e.preventDefault();
-        if (currentArticle) void toggleStar(currentArticle.id, !currentArticle.is_starred);
-        break;
-      case "u":
-        e.preventDefault();
-        if (currentArticle) void markRead(currentArticle.id, !currentArticle.is_read);
-        break;
-      case "o":
-        e.preventDefault();
-        if (currentArticle?.link) void openUrl(currentArticle.link);
         break;
     }
   };
@@ -323,7 +260,7 @@ export default function ArticleDetail() {
       island={island}
       primaryAction={{
         label: currentArticle.link ? "Open Original" : "Back",
-        kbd: currentArticle.link ? "O" : "Esc",
+        kbd: currentArticle.link ? "⌘K O" : "Esc",
         tone: "primary",
         onClick: () => {
           if (currentArticle.link) void openUrl(currentArticle.link);
@@ -333,11 +270,9 @@ export default function ArticleDetail() {
       secondaryAction={{
         label: "Actions",
         kbd: "⌘K",
-        onClick: () => {
-          setShowActions((v) => !v);
-          setActionIndex(0);
-        },
       }}
+      actionTitle="Article Actions"
+      actions={actions}
     >
       <article className="qx-plugin-detail qx-rss-detail-content">
         <div className="qx-detail-header">
@@ -428,30 +363,6 @@ export default function ArticleDetail() {
           )}
         </div>
       </article>
-
-      {/* Cmd+K Actions Mini Menu */}
-      {showActions && (
-        <div
-          ref={actionsRef}
-          className="qx-actions-menu"
-          role="menu"
-        >
-          <div className="qx-actions-menu-title">Article Actions</div>
-          {actions.map((a, i) => (
-            <button
-              key={i}
-              role="menuitem"
-              className={`qx-actions-menu-item${i === actionIndex ? " is-active" : ""}`}
-              onClick={() => executeAction(i)}
-              onMouseEnter={() => setActionIndex(i)}
-              disabled={a.disabled}
-            >
-              <span className="qx-actions-menu-label">{a.label}</span>
-              {a.kbd && <kbd className="qx-actions-menu-kbd">{a.kbd}</kbd>}
-            </button>
-          ))}
-        </div>
-      )}
 
       {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
     </QxShell>

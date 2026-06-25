@@ -480,7 +480,8 @@ export default function PluginManager() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [archivePath, setArchivePath] = useState("");
   const [archiveUrl, setArchiveUrl] = useState("");
-  const [busy, setBusy] = useState<"path" | "url" | null>(null);
+  const [raycastUrl, setRaycastUrl] = useState("");
+  const [busy, setBusy] = useState<"path" | "url" | "raycast" | null>(null);
   const [installStatus, setInstallStatus] = useState<string | null>(null);
 
   /* Keep selection valid when the plugin list changes. */
@@ -528,6 +529,24 @@ export default function PluginManager() {
       setInstallStatus(t("plugins.installComplete", "Plugin installed."));
     } catch (err) {
       console.error("Plugin URL install failed", err);
+      setInstallStatus(t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err)));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleInstallFromRaycast = async () => {
+    const trimmed = raycastUrl.trim();
+    if (!trimmed) return;
+    setBusy("raycast");
+    setInstallStatus(null);
+    try {
+      await invoke("install_raycast_extension_from_url", { url: trimmed });
+      await refresh();
+      setRaycastUrl("");
+      setInstallStatus(t("plugins.installComplete", "Plugin installed."));
+    } catch (err) {
+      console.error("Raycast extension install failed", err);
       setInstallStatus(t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err)));
     } finally {
       setBusy(null);
@@ -628,6 +647,22 @@ export default function PluginManager() {
                 disabled={busy !== null || !archiveUrl.trim()}
               >
                 {busy === "url" ? t("plugins.downloading", "Downloading...") : t("plugins.installUrl", "Install URL")}
+              </button>
+            </div>
+            <div className="qx-plugin-import-row">
+              <input
+                type="url"
+                value={raycastUrl}
+                onChange={(e) => setRaycastUrl(e.target.value)}
+                placeholder="Raycast extension URL, e.g. https://github.com/raycast/extensions/tree/<ref>/extensions/system-information"
+                className="qx-inline-input"
+              />
+              <button
+                className="qx-command-button"
+                onClick={handleInstallFromRaycast}
+                disabled={busy !== null || !raycastUrl.trim()}
+              >
+                {busy === "raycast" ? "Converting..." : "Install Raycast"}
               </button>
             </div>
             {installStatus && <div className="qx-plugin-import-status">{installStatus}</div>}

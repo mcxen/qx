@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import QxShell, { type BottomIslandContent } from "../../components/QxShell";
+import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { useRssStore, type RssArticle } from "./store";
 import { classifyArticleTime } from "./article-utils";
 import { useEscBack } from "../../hooks/useEscBack";
+import { shouldIgnoreBareShortcut } from "../../utils/keyboard";
 function formatTime(publishedAt: number): string {
   if (!publishedAt) return "";
   const d = new Date(publishedAt * 1000);
@@ -118,6 +119,7 @@ export default function ArticleList() {
   const onKeyDown = (e: React.KeyboardEvent) => {
     escKeyDown(e);
     if (e.key === "Escape") return;
+    const ignoreBare = shouldIgnoreBareShortcut(e.nativeEvent);
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
@@ -128,10 +130,12 @@ export default function ArticleList() {
         setSelectedIndex(Math.max(selectedIndex - 1, 0));
         break;
       case "j":
+        if (ignoreBare || e.metaKey || e.ctrlKey) return;
         e.preventDefault();
         setSelectedIndex(Math.min(selectedIndex + 1, articles.length - 1));
         break;
       case "k":
+        if (ignoreBare || e.metaKey || e.ctrlKey) return;
         e.preventDefault();
         setSelectedIndex(Math.max(selectedIndex - 1, 0));
         break;
@@ -141,32 +145,52 @@ export default function ArticleList() {
         if (a) void openArticle(a.id);
         break;
       }
-      case "s": {
-        e.preventDefault();
-        const a = articles[selectedIndex];
-        if (a) void toggleStar(a.id, !a.is_starred);
-        break;
-      }
-      case "u": {
-        e.preventDefault();
-        const a = articles[selectedIndex];
-        if (a) void markRead(a.id, !a.is_read);
-        break;
-      }
-      case "o": {
-        e.preventDefault();
-        const a = articles[selectedIndex];
-        if (a?.link) void openUrl(a.link);
-        break;
-      }
-      case "r":
-        if (!e.metaKey && !e.ctrlKey) {
-          e.preventDefault();
-          if (selectedFeedId != null) void refreshFeed(selectedFeedId);
-        }
-        break;
     }
   };
+
+  const actions = useMemo<QxShellAction[]>(() => [
+    {
+      label: "Read Article",
+      kbd: "↵",
+      disabled: !selectedArticle,
+      onClick: () => {
+        if (selectedArticle) void openArticle(selectedArticle.id);
+      },
+    },
+    {
+      label: "Toggle Star",
+      kbd: "S",
+      disabled: !selectedArticle,
+      onClick: () => {
+        if (selectedArticle) void toggleStar(selectedArticle.id, !selectedArticle.is_starred);
+      },
+    },
+    {
+      label: "Toggle Read",
+      kbd: "U",
+      disabled: !selectedArticle,
+      onClick: () => {
+        if (selectedArticle) void markRead(selectedArticle.id, !selectedArticle.is_read);
+      },
+    },
+    {
+      label: "Open in Browser",
+      kbd: "O",
+      disabled: !selectedArticle?.link,
+      onClick: () => {
+        if (selectedArticle?.link) void openUrl(selectedArticle.link);
+      },
+    },
+    {
+      label: "Refresh Feed",
+      kbd: "R",
+      disabled: selectedFeedId == null,
+      onClick: () => {
+        if (selectedFeedId != null) void refreshFeed(selectedFeedId);
+      },
+    },
+  ], [markRead, openArticle, refreshFeed, selectedArticle, selectedFeedId, toggleStar]);
+
   const island: BottomIslandContent = refreshingFeedId != null
     ? {
         label: "RSS Syncing",
@@ -234,7 +258,7 @@ export default function ArticleList() {
             disabled={!selectedArticle}
           >
             <span>Toggle Star</span>
-            <kbd>S</kbd>
+            <kbd>⌘K S</kbd>
           </button>
           <button
             className="qx-action-item"
@@ -242,7 +266,7 @@ export default function ArticleList() {
             disabled={!selectedArticle}
           >
             <span>Toggle Read</span>
-            <kbd>U</kbd>
+            <kbd>⌘K U</kbd>
           </button>
           <button
             className="qx-action-item"
@@ -250,7 +274,7 @@ export default function ArticleList() {
             disabled={!selectedArticle?.link}
           >
             <span>Open in Browser</span>
-            <kbd>O</kbd>
+            <kbd>⌘K O</kbd>
           </button>
           <button
             className="qx-action-item"
@@ -260,7 +284,7 @@ export default function ArticleList() {
             disabled={selectedFeedId == null}
           >
             <span>Refresh Feed</span>
-            <kbd>R</kbd>
+            <kbd>⌘K R</kbd>
           </button>
         </aside>
       }
@@ -275,6 +299,8 @@ export default function ArticleList() {
         },
       }}
       secondaryAction={{ label: "Actions", kbd: "⌘K" }}
+      actionTitle="Article Actions"
+      actions={actions}
     >
         <div className="qx-plugin-list">
           {sections.map((section) => (

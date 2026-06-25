@@ -31,6 +31,13 @@ export interface MonitorInfo {
   scale_factor: number;
 }
 
+/** Mirror of Rust screenshot::WindowInfo */
+export interface WindowInfo {
+  id: number;
+  title: string;
+  app_name: string;
+}
+
 /** History entry (launches) */
 export interface HistoryEntry {
   id: number;

@@ -1,6 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useSettingsStore } from "./store";
 import { useTheme } from "../../ThemeProvider";
 import { Row, SegmentedControl, Toggle, Slider } from "../../components/ui";
@@ -10,8 +9,6 @@ const MIN_WINDOW_WIDTH = 480;
 const MIN_WINDOW_HEIGHT = 360;
 const MAX_WINDOW_WIDTH = 1500;
 const MAX_WINDOW_HEIGHT = 882;
-const RESIZE_SAVE_DELAY_MS = 250;
-
 function isTauriRuntime(): boolean {
   return "__TAURI_INTERNALS__" in window;
 }
@@ -32,9 +29,6 @@ export default function AppearanceSettings() {
   const t = useT();
   const a = settings.appearance;
   const radiusValue = String(clampDimension(a.border_radius, 4, 8));
-  const mounted = useRef(false);
-  const resizeSyncRef = useRef(false);
-  const resizeTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const [focusedDimension, setFocusedDimension] = useState<"width" | "height" | null>(null);
   const [widthDraft, setWidthDraft] = useState(String(a.window_width));
   const [heightDraft, setHeightDraft] = useState(String(a.window_height));
@@ -47,83 +41,6 @@ export default function AppearanceSettings() {
       setHeightDraft(String(a.window_height));
     }
   }, [a.window_width, a.window_height, focusedDimension]);
-
-  // Apply window size changes to the actual window
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    if (resizeSyncRef.current) {
-      resizeSyncRef.current = false;
-      return;
-    }
-    if (!isTauriRuntime()) return;
-    void invoke("set_window_size", {
-      width: a.window_width,
-      height: a.window_height,
-    }).catch(() => {});
-  }, [a.window_width, a.window_height]);
-
-  useEffect(() => {
-    if (!isTauriRuntime()) return;
-
-    let disposed = false;
-    let unlisten: (() => void) | undefined;
-    const win = getCurrentWindow();
-
-    void win
-      .onResized((size) => {
-        if (resizeTimerRef.current) {
-          window.clearTimeout(resizeTimerRef.current);
-        }
-
-        resizeTimerRef.current = window.setTimeout(() => {
-          void win
-            .scaleFactor()
-            .then((scaleFactor) => {
-              if (disposed) return;
-              const width = clampDimension(
-                Math.round(size.payload.width / scaleFactor),
-                MIN_WINDOW_WIDTH,
-                MAX_WINDOW_WIDTH,
-              );
-              const height = clampDimension(
-                Math.round(size.payload.height / scaleFactor),
-                MIN_WINDOW_HEIGHT,
-                MAX_WINDOW_HEIGHT,
-              );
-              const current = useSettingsStore.getState().settings.appearance;
-              if (current.window_width === width && current.window_height === height) return;
-
-              resizeSyncRef.current = true;
-              patch("appearance", {
-                ...current,
-                window_width: width,
-                window_height: height,
-              });
-            })
-            .catch(() => {});
-        }, RESIZE_SAVE_DELAY_MS);
-      })
-      .then((off) => {
-        if (disposed) {
-          off();
-        } else {
-          unlisten = off;
-        }
-      })
-      .catch(() => {});
-
-    return () => {
-      disposed = true;
-      if (resizeTimerRef.current) {
-        window.clearTimeout(resizeTimerRef.current);
-        resizeTimerRef.current = null;
-      }
-      unlisten?.();
-    };
-  }, [patch]);
 
   const commitWindowDimensions = (nextWidthDraft = widthDraft, nextHeightDraft = heightDraft) => {
     const width = parseDimensionDraft(
@@ -146,6 +63,9 @@ export default function AppearanceSettings() {
       window_width: width,
       window_height: height,
     });
+    if (isTauriRuntime()) {
+      void invoke("set_window_size", { width, height }).catch(() => {});
+    }
   };
 
   return (

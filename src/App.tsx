@@ -136,6 +136,7 @@ function App() {
   const { load: loadPlugins, findCommands } = usePluginRegistry();
   const phase1Ref = useRef(false);
   const startupWindowShownRef = useRef(false);
+  const resizeSaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const [, startSearchTransition] = useTransition();
 
   const applyResults = useCallback(
@@ -215,9 +216,10 @@ function App() {
   // Restore window size from saved settings; first launch derives size from the active monitor.
   useEffect(() => {
     if (!settingsLoaded || !isTauriRuntime()) return;
+    if (startupWindowShownRef.current) return;
     const restoreAndShow = async () => {
       const win = getCurrentWindow();
-      const appearance = settings.appearance;
+      const appearance = useSettingsStore.getState().settings.appearance;
       if (!appearance) return;
       const hasSavedSize = appearance.window_width > 0 && appearance.window_height > 0;
       const monitorSize = await getMonitorLogicalWorkSize();
@@ -236,18 +238,16 @@ function App() {
         await win.center().catch(() => {});
       }
 
-      if (!startupWindowShownRef.current) {
-        startupWindowShownRef.current = true;
-        setTab("launcher");
-        await win.show();
-        await win.setFocus();
-      }
+      startupWindowShownRef.current = true;
+      setTab("launcher");
+      await win.show();
+      await win.setFocus();
     };
 
     restoreAndShow().catch((e) => {
       console.warn("window size restore failed:", e);
     });
-  }, [settingsLoaded, setTab, settings.appearance]);
+  }, [settingsLoaded, setTab]);
 
   // Save window size on resize
   useEffect(() => {
@@ -259,23 +259,32 @@ function App() {
         width: payload.width / scaleFactor,
         height: payload.height / scaleFactor,
       };
-      const { settings, patch } = useSettingsStore.getState();
       const { width, height } = clampWindowSize(logical.width, logical.height);
       if (logical.width !== width || logical.height !== height) {
         await win.setSize(new LogicalSize(width, height)).catch(() => {});
       }
-      if (
-        width !== settings.appearance.window_width ||
-        height !== settings.appearance.window_height
-      ) {
-        patch("appearance", {
-          ...settings.appearance,
-          window_width: width,
-          window_height: height,
-        });
+      if (resizeSaveTimerRef.current) {
+        window.clearTimeout(resizeSaveTimerRef.current);
       }
+      resizeSaveTimerRef.current = window.setTimeout(() => {
+        const { settings, patch } = useSettingsStore.getState();
+        if (
+          width !== settings.appearance.window_width ||
+          height !== settings.appearance.window_height
+        ) {
+          patch("appearance", {
+            ...settings.appearance,
+            window_width: width,
+            window_height: height,
+          });
+        }
+      }, 250);
     });
     return () => {
+      if (resizeSaveTimerRef.current) {
+        window.clearTimeout(resizeSaveTimerRef.current);
+        resizeSaveTimerRef.current = null;
+      }
       unlisten.then((fn) => fn());
     };
   }, []);

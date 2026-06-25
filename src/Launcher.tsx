@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import QxShell, { type BottomIslandContent } from "./components/QxShell";
 import HomeDateIsland from "./components/HomeDateIsland";
 import HomeSystemIsland from "./components/HomeSystemIsland";
@@ -7,16 +7,11 @@ import SearchBar from "./SearchBar";
 import { Select } from "./components/ui";
 import { useStore, type AppEntry, type SearchScope } from "./store";
 import { useSettingsStore } from "./modules/settings/store";
-import LauncherActionPopover from "./launcher/LauncherActionPopover";
 import LauncherContext from "./launcher/LauncherContext";
-import { createLauncherActions } from "./launcher/launcherActions";
+import { createLauncherActions, getLauncherActionTitle } from "./launcher/launcherActions";
 import { useLauncherHistory } from "./launcher/useLauncherHistory";
 import type { QuickEntry } from "./launcher/types";
 import { useT } from "./i18n";
-
-function clampActionIndex(index: number, actionCount: number): number {
-  return Math.max(0, Math.min(index, Math.max(0, actionCount - 1)));
-}
 
 interface LauncherProps {
   results: AppEntry[];
@@ -43,8 +38,6 @@ export default function Launcher({
   const t = useT();
   const appearance = settings.appearance;
   const [scope, setScope] = useState<SearchScope>(searchScopeRef.current);
-  const [actionPanelOpen, setActionPanelOpen] = useState(false);
-  const [actionIndex, setActionIndex] = useState(0);
   const query = useStore((state) => state.query);
   const setQuery = useStore((state) => state.setQuery);
   const scopeOptions: { value: SearchScope; label: string }[] = [
@@ -61,11 +54,6 @@ export default function Launcher({
   const { recentLaunches, recentSearches } = useLauncherHistory({
     shouldRefreshWhenIdle: results.length === 0 && !loadingPhase,
   });
-
-  useEffect(() => {
-    setActionPanelOpen(false);
-    setActionIndex(0);
-  }, [selectedItem?.path]);
 
   const quickEntries: QuickEntry[] = useMemo(() => {
     const builtIn: QuickEntry[] = [
@@ -137,49 +125,7 @@ export default function Launcher({
     if ((event.metaKey || event.ctrlKey) && event.key === ",") {
       event.preventDefault();
       event.stopPropagation();
-      setActionPanelOpen(false);
       onNavigate("settings");
-      return;
-    }
-
-    if (actionPanelOpen) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        setActionPanelOpen(false);
-        return;
-      }
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        event.stopPropagation();
-        setActionIndex((index) => clampActionIndex(index + 1, launcherActions.length));
-        return;
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        event.stopPropagation();
-        setActionIndex((index) => clampActionIndex(index - 1, launcherActions.length));
-        return;
-      }
-      if (event.key === "Enter") {
-        event.preventDefault();
-        event.stopPropagation();
-        const action = launcherActions[actionIndex];
-        if (action) {
-          setActionPanelOpen(false);
-          void action.run();
-        }
-        return;
-      }
-    }
-
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-      event.preventDefault();
-      event.stopPropagation();
-      if (launcherActions.length > 0) {
-        setActionIndex(0);
-        setActionPanelOpen((open) => !open);
-      }
       return;
     }
     onKeyDown(event);
@@ -228,25 +174,17 @@ export default function Launcher({
         label: t("launcher.actions", "Actions"),
         kbd: "⌘K",
         disabled: results.length === 0,
-        onClick: () => {
-          setActionIndex(0);
-          setActionPanelOpen((open) => !open);
-        },
       }}
+      actionTitle={selectedItem ? getLauncherActionTitle(selectedItem) : t("launcher.actions", "Actions")}
+      actions={launcherActions.map((action) => ({
+        label: action.label,
+        kbd: action.kbd,
+        disabled: action.disabled,
+        tone: action.danger ? "danger" : "normal",
+        onClick: () => void action.run(),
+      }))}
     >
       <ResultsList items={results} onItemClick={onItemClick} loadingPhase={loadingPhase} />
-      {actionPanelOpen && selectedItem && (
-        <LauncherActionPopover
-          actions={launcherActions}
-          activeIndex={actionIndex}
-          selectedItem={selectedItem}
-          onHover={setActionIndex}
-          onRun={(action) => {
-            setActionPanelOpen(false);
-            void action.run();
-          }}
-        />
-      )}
     </QxShell>
   );
 }

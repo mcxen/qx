@@ -1,0 +1,49 @@
+import { useEffect, useRef } from "react";
+import type { QxShellAction } from "./ShellActionButton";
+
+export default function ShellActionMenu({
+  title,
+  actions,
+  activeIndex,
+  onHover,
+  onRun,
+}: {
+  title: string;
+  actions: QxShellAction[];
+  activeIndex: number;
+  onHover: (index: number) => void;
+  onRun: (action: QxShellAction) => void;
+}) {
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    itemRefs.current[activeIndex]?.scrollIntoView({
+      block: "nearest",
+    });
+  }, [activeIndex]);
+
+  return (
+    <div className="qx-actions-popover" role="menu" aria-label={title}>
+      <div className="qx-actions-popover-title">{title}</div>
+      {actions.map((action, index) => (
+        <button
+          key={`${action.label}-${index}`}
+          ref={(element) => {
+            itemRefs.current[index] = element;
+          }}
+          className={`qx-actions-popover-item${index === activeIndex ? " is-active" : ""}${
+            action.tone === "danger" ? " danger" : ""
+          }`}
+          disabled={action.disabled}
+          onMouseEnter={() => onHover(index)}
+          onClick={() => onRun(action)}
+          role="menuitem"
+          type="button"
+        >
+          <span>{action.label}</span>
+          {action.kbd && <kbd>{action.kbd}</kbd>}
+        </button>
+      ))}
+    </div>
+  );
+}

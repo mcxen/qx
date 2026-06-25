@@ -247,6 +247,7 @@ App 启动
 - [ ] 完整开发手册文档
 - [ ] 插件市场 UI
 - [ ] 依赖加载顺序（拓扑排序）
+- [x] Raycast 扩展转换器：`scripts/convert-raycast-extension.mjs`
 
 ---
 
