@@ -11,7 +11,6 @@ function iconKind(item: AppEntry): string {
   if (item.icon.startsWith("builtin:")) {
     const value = `${item.icon} ${item.path}`.toLowerCase();
     if (value.includes("clipboard")) return "clipboard";
-    if (value.includes("screenshot")) return "screenshot";
     if (value.includes("screencap")) return "record";
     if (value.includes("rss")) return "rss";
     if (value.includes("macro")) return "macro";

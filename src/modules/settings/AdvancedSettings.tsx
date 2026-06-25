@@ -137,7 +137,7 @@ export default function AdvancedSettings() {
       </Row>
       <Row
         title={t("advanced.clearCache", "Clear Cache & History")}
-        description={t("advanced.clearCache.desc", "Wipe clipboard history and cached screenshots.")}
+        description={t("advanced.clearCache.desc", "Wipe clipboard history and reusable caches.")}
       >
         <button
           onClick={clearCache}

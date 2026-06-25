@@ -139,35 +139,6 @@
   border-radius: 0 12px 0 0;
 }
 
-.qx-app-icon.kind-screenshot {
-  background: #0ea5e9;
-  color: #fff;
-}
-
-.qx-app-icon.kind-screenshot .qx-app-icon-symbol {
-  border: 2px solid currentColor;
-  border-radius: 3px;
-}
-
-.qx-app-icon.kind-screenshot .qx-app-icon-symbol::before,
-.qx-app-icon.kind-screenshot .qx-app-icon-symbol::after {
-  background: currentColor;
-}
-
-.qx-app-icon.kind-screenshot .qx-app-icon-symbol::before {
-  left: 3px;
-  right: 3px;
-  top: 5px;
-  height: 2px;
-}
-
-.qx-app-icon.kind-screenshot .qx-app-icon-symbol::after {
-  top: 3px;
-  bottom: 3px;
-  left: 5px;
-  width: 2px;
-}
-
 .qx-app-icon.kind-record {
   background: #dc2626;
   color: #fff;
@@ -496,6 +467,39 @@
 
 .qx-detail-content.is-open {
   overflow: auto;
+}
+
+.v2ex-body .qx-plugin-list {
+  min-width: 0;
+}
+
+.v2ex-topic-row {
+  min-height: 42px;
+  padding-block: 6px;
+}
+
+.v2ex-topic-row .qx-list-title {
+  font-weight: 560;
+}
+
+.v2ex-detail-content {
+  font-family: var(--qx-font-sans);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.v2ex-context-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+}
+
+.v2ex-context-copy strong {
+  color: var(--qx-text-primary);
+  font-size: 13px;
 }
 
 .qx-panel-card {

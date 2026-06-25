@@ -114,12 +114,14 @@ function PluginDetail({
   const [prefValues, setPrefValues] = useState<Record<string, string | number | boolean>>({});
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [prefsBusy, setPrefsBusy] = useState(false);
+  const prefValuesRef = useRef<Record<string, string | number | boolean>>({});
   const loadTokenRef = useRef(0);
 
   // Load preferences whenever the selected plugin changes.
   useEffect(() => {
     if (preferences.length === 0) {
       setPrefValues({});
+      prefValuesRef.current = {};
       setPrefsLoaded(true);
       return;
     }
@@ -139,7 +141,9 @@ function PluginDetail({
         for (const p of preferences) {
           defaults[p.id] = p.default ?? (p.type === "boolean" ? false : p.type === "number" ? 0 : "");
         }
-        setPrefValues({ ...defaults, ...saved });
+        const next = { ...defaults, ...saved };
+        prefValuesRef.current = next;
+        setPrefValues(next);
       } catch {
         if (token !== loadTokenRef.current) return;
         // Fall back to defaults.
@@ -147,6 +151,7 @@ function PluginDetail({
         for (const p of preferences) {
           defaults[p.id] = p.default ?? (p.type === "boolean" ? false : p.type === "number" ? 0 : "");
         }
+        prefValuesRef.current = defaults;
         setPrefValues(defaults);
       } finally {
         if (token === loadTokenRef.current) setPrefsLoaded(true);
@@ -156,11 +161,11 @@ function PluginDetail({
 
   const handlePrefChange = useCallback(
     async (prefId: string, value: string | number | boolean) => {
-      setPrefValues((prev) => ({ ...prev, [prefId]: value }));
+      const next = { ...prefValuesRef.current, [prefId]: value };
+      prefValuesRef.current = next;
+      setPrefValues(next);
       setPrefsBusy(true);
       try {
-        // Persist the full set of values.
-        const next = { ...prefValues, [prefId]: value };
         await invoke("plugin_preferences_set", { id: plugin.id, values: next });
       } catch (err) {
         console.error("Failed to save preference", err);
@@ -168,7 +173,7 @@ function PluginDetail({
         setPrefsBusy(false);
       }
     },
-    [plugin.id, prefValues],
+    [plugin.id],
   );
 
   return (
@@ -486,6 +491,10 @@ export default function PluginManager() {
 
   /* Keep selection valid when the plugin list changes. */
   useEffect(() => {
+    if (!selectedId && plugins.length > 0) {
+      setSelectedId(plugins[0].id);
+      return;
+    }
     if (selectedId && !plugins.find((p) => p.id === selectedId)) {
       setSelectedId(plugins[0]?.id ?? null);
     }

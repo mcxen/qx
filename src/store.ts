@@ -16,28 +16,6 @@ export interface ClipboardEntry {
   image_path?: string | null;
 }
 
-export interface ScreenshotEntry {
-  path: string;
-  timestamp: string;
-}
-
-/** Mirror of Rust screenshot::MonitorInfo */
-export interface MonitorInfo {
-  id: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  scale_factor: number;
-}
-
-/** Mirror of Rust screenshot::WindowInfo */
-export interface WindowInfo {
-  id: number;
-  title: string;
-  app_name: string;
-}
-
 /** History entry (launches) */
 export interface HistoryEntry {
   id: number;
@@ -51,17 +29,6 @@ export interface SearchHistoryEntry {
   id: number;
   query: string;
   timestamp: string;
-}
-
-export type ScreenshotCaptureStatus = "idle" | "selecting" | "saving";
-
-export interface ScreenshotCaptureState {
-  status: ScreenshotCaptureStatus;
-  backgroundPath: string | null;
-  error: string | null;
-  previewPath: string | null;
-  scaleFactor: number;
-  monitorIndex: number;
 }
 
 export interface RssFeed {
@@ -91,9 +58,9 @@ export interface RssArticle {
 export type BuiltinTab =
   | "launcher"
   | "clipboard"
-  | "screenshot"
   | "screencap"
   | "rss"
+  | "v2ex"
   | "settings"
   | "macros"
   | "documents";
@@ -108,7 +75,6 @@ interface AppStore {
   selectedIndex: number;
   tab: Tab;
   clipboardHistory: ClipboardEntry[];
-  screenshotCapture: ScreenshotCaptureState;
   /** Loading phase for phased startup */
   loadingPhase: LoadingPhase;
   /** Set true once apps cache has been loaded from DB */
@@ -119,20 +85,10 @@ interface AppStore {
   setSelectedIndex: (i: number) => void;
   setTab: (t: Tab) => void;
   setClipboardHistory: (h: ClipboardEntry[]) => void;
-  setScreenshotCapture: (state: Partial<ScreenshotCaptureState>) => void;
   setLoadingPhase: (phase: LoadingPhase) => void;
   setAppsReady: (ready: boolean) => void;
   updateResultIcons: (iconForPath: (path: string) => string | undefined) => void;
 }
-
-const initialScreenshotCapture: ScreenshotCaptureState = {
-  status: "idle",
-  backgroundPath: null,
-  error: null,
-  previewPath: null,
-  scaleFactor: 1,
-  monitorIndex: 0,
-};
 
 export const useStore = create<AppStore>((set) => ({
   visible: false,
@@ -141,7 +97,6 @@ export const useStore = create<AppStore>((set) => ({
   selectedIndex: 0,
   tab: "launcher",
   clipboardHistory: [],
-  screenshotCapture: initialScreenshotCapture,
   loadingPhase: "loading-apps",
   appsReady: false,
   setVisible: (visible) => set({ visible }),
@@ -150,10 +105,6 @@ export const useStore = create<AppStore>((set) => ({
   setSelectedIndex: (selectedIndex) => set({ selectedIndex }),
   setTab: (tab) => set({ tab, query: "", results: [], selectedIndex: 0 }),
   setClipboardHistory: (clipboardHistory) => set({ clipboardHistory }),
-  setScreenshotCapture: (state) =>
-    set((current) => ({
-      screenshotCapture: { ...current.screenshotCapture, ...state },
-    })),
   setLoadingPhase: (loadingPhase) => set({ loadingPhase }),
   setAppsReady: (appsReady) => set({ appsReady }),
   updateResultIcons: (iconForPath) =>

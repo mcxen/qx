@@ -2,7 +2,7 @@
 
 ## 一、现状
 
-当前所有模块（clipboard、screenshot、rss、macros 等）都是硬编码在 `App.tsx` 中的：
+当前所有模块（clipboard、rss、macros 等）都是硬编码在 `App.tsx` 中的：
 
 - 静态 `import`
 - `switch(tab)` 渲染
@@ -236,8 +236,8 @@ App 启动
 
 - [ ] 插件 panel 注册为全屏视图
 - [ ] `PluginManager` 支持安装/卸载/启用/禁用（基于文件系统扫描）
-- [ ] preferences 在设置中渲染，用户可配置
-- [ ] `getPreference` 读取用户配置
+- [x] preferences 在设置中渲染，用户可配置
+- [x] `getPreference` 读取用户配置
 - [ ] 签名验证（ed25519）
 
 ### 第三期：开发者体验

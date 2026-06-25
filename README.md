@@ -4,7 +4,7 @@
 
 **English** | [中文](#qx--macos-效率启动器)
 
-Qx is a **menu-bar resident desktop launcher** for macOS, inspired by Raycast. It pops up with a global hotkey, giving you instant access to search, clipboard history, screenshots, screen recording (GIF), RSS feeds, macros, and more — all within a unified, keyboard-first interface.
+Qx is a **menu-bar resident desktop launcher** for macOS, inspired by Raycast. It pops up with a global hotkey, giving you instant access to search, clipboard history, screen recording (GIF), RSS feeds, macros, and more — all within a unified, keyboard-first interface.
 
 Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the macOS native frosted-glass appearance, Mach kernel APIs for system stats, and vendored native search for fast file lookups.
 
@@ -18,7 +18,6 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the
 |--------|-------------|
 | **Launcher** | Fuzzy-search installed apps, files, built-in commands, and plugin actions |
 | **Clipboard** | Persisted clipboard history with text/image support, pinning, filtering, inline preview |
-| **Screenshot** | Full-screen or region capture, recent screenshot gallery |
 | **Screen Recording** | Region-based GIF recording at 15fps (gifski), auto-saves to history |
 | **RSS Reader** | Add feeds, inline article reading, star/bookmark, OPML import/export, background auto-refresh |
 | **Macros** | Record and replay keyboard/mouse macro sequences |
@@ -47,7 +46,7 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the
 
 | Crate | Purpose |
 |-------|---------|
-| `xcap` | Screenshot capture |
+| `xcap` | Display enumeration helpers |
 | `scrap` + `gifski` | Screen recording → GIF encoding |
 | `rdev` + `enigo` | Macro record/replay |
 | `feed-rs` | RSS/Atom parsing |
@@ -68,7 +67,7 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the
 │  │              React 19 + TypeScript                  │  │
 │  │  ┌──────────┐ ┌──────────┐ ┌──────────────────┐   │  │
 │  │  │ Launcher │ │ Clipboard│ │ RSS / Settings /   │   │  │
-│  │  │ (search) │ │ History  │ │ Screenshot / etc.  │   │  │
+│  │  │ (search) │ │ History  │ │ RSS / Settings     │   │  │
 │  │  └──────────┘ └──────────┘ └──────────────────┘   │  │
 │  │  ┌──────────────────────────────────────────────┐  │  │
 │  │  │  Plugin System (iframe sandbox + RPC bridge) │  │  │
@@ -76,7 +75,7 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the
 │  └────────────────────────────────────────────────────┘  │
 │  ┌────────────────────────────────────────────────────┐  │
 │  │              Rust Backend (Tauri Commands)          │  │
-│  │  apps  |  clipboard  |  screenshot  |  screencap   │  │
+│  │  apps  |  clipboard  |  screencap   |  rss          │  │
 │  │  rss   |  settings   |  marketplace  |  system_    │  │
 │  │        |             |               |  stats       │  │
 │  │  macros | file_search | history | ocr | github_    │  │
@@ -157,7 +156,7 @@ Type anything into the search bar. Results include:
 
 - **Apps** — fuzzy-matched from LaunchServices DB
 - **Files** — native file search (kMDQuery)
-- **Commands** — `settings`, `clipboard`, `rss`, `gif`, `macro`, `screenshot`
+- **Commands** — `settings`, `clipboard`, `rss`, `gif`, `macro`
 - **Calculator** — inline expression evaluation (`42 * 3.14`, `sqrt(144)`)
 - **Plugin commands** — from installed plugins
 
@@ -176,8 +175,6 @@ Type anything into the search bar. Results include:
 ### Modules
 
 **Clipboard** — every copy is saved automatically. Open via `⌘⇧V` or search `clipboard`. Supports text, images, pinning, and type filtering.
-
-**Screenshot** — search `screenshot`. Take full-screen or region capture. Recent screenshots shown in a gallery.
 
 **Screen Recording** — search `gif` / `screencap`. Region-select and record up to 180s. Output is auto-encoded to animated GIF via gifski.
 
@@ -246,7 +243,6 @@ src/                          # Frontend (React + TypeScript)
 │   ├── clipboard/            # Clipboard history panel
 │   ├── rss/                  # RSS reader (list + detail + store)
 │   ├── settings/             # Settings (8 sub-panels + store)
-│   ├── screenshot/           # Screenshot panel + region overlay
 │   ├── screencap/            # Screen recorder + GIF history
 │   ├── macros/               # Macro recorder + replayer
 │   ├── documents/            # Dev text/JSON/MD tools
@@ -275,7 +271,6 @@ src-tauri/                    # Rust backend
 │   ├── lib.rs                # Tauri app setup (plugins, tray, shortcuts)
 │   ├── apps.rs               # App scanning + fuzzy search
 │   ├── clipboard.rs          # Clipboard listener + SQLite history
-│   ├── screenshot.rs         # Screenshot capture (xcap)
 │   ├── screencap.rs          # Screen recording to GIF (scrap + gifski)
 │   ├── rss/                  # RSS module (fetcher, storage, types)
 │   ├── settings/mod.rs       # TOML settings + global shortcuts
@@ -334,7 +329,7 @@ Source-available — see [LICENSE](./LICENSE) for full terms.
 
 # Qx — macOS 效率启动器
 
-Qx 是一款常驻菜单栏的 macOS 桌面启动器，类 Raycast 风格，通过全局快捷键唤起。集搜索、剪贴板历史、截图、GIF 录屏、RSS 阅读、宏录制等功能于一体。
+Qx 是一款常驻菜单栏的 macOS 桌面启动器，类 Raycast 风格，通过全局快捷键唤起。集搜索、剪贴板历史、GIF 录屏、RSS 阅读、宏录制等功能于一体。
 
 基于 **Tauri v2** + **React 19** + **TypeScript** + **Rust**，使用 macOS 原生毛玻璃效果、Mach 内核 API 获取系统状态。
 
@@ -346,7 +341,6 @@ Qx 是一款常驻菜单栏的 macOS 桌面启动器，类 Raycast 风格，通�
 |------|------|
 | **启动器** | 模糊搜索应用、文件、内置命令和插件动作 |
 | **剪贴板** | 持久化历史记录，支持文本/图片、置顶、筛选和内联预览 |
-| **截图** | 全屏或区域截图，近期截图画廊 |
 | **录屏** | 选择区域录制为 GIF（15fps，gifski 编码），自动保存历史 |
 | **RSS 阅读器** | 添加订阅源、内联阅读、收藏、OPML 导入/导出、后台自动刷新 |
 | **宏录制** | 录制和回放键盘/鼠标宏序列 |

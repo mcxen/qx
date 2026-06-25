@@ -1,7 +1,7 @@
 {
   "name": "qx",
   "private": true,
-  "version": "0.4.27",
+  "version": "0.4.28",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,20 +15,16 @@
     "@tailwindcss/vite": "^4.3.1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
-    "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-global-shortcut": "^2.3.2",
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-shell": "^2.3.5",
     "@tauri-apps/plugin-updater": "^2.10.1",
     "framer-motion": "^12.40.0",
     "geist": "^1.7.2",
-    "konva": "^10.3.0",
     "lucide-react": "^1.21.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-konva": "^19.2.5",
     "tailwindcss": "^4.3.1",
-    "zundo": "^2.3.0",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

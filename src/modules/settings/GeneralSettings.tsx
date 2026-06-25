@@ -51,7 +51,7 @@ export default function GeneralSettings() {
       </Row>
       <Row
         title={t("general.dataPath", "Data Path")}
-        description={t("general.dataPath.desc", "Where Qx stores databases, screenshots and history.")}
+        description={t("general.dataPath.desc", "Where Qx stores databases, recordings and history.")}
       >
         <input
           type="text"

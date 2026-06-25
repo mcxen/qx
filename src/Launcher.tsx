@@ -22,6 +22,8 @@ interface LauncherProps {
   searchScopeRef: React.MutableRefObject<SearchScope>;
   onScopeChange: () => void;
   loadingPhase?: string;
+  isSearching?: boolean;
+  isSearchSettling?: boolean;
 }
 
 export default function Launcher({
@@ -33,6 +35,8 @@ export default function Launcher({
   searchScopeRef,
   onScopeChange,
   loadingPhase,
+  isSearching = false,
+  isSearchSettling = false,
 }: LauncherProps) {
   const { settings } = useSettingsStore();
   const t = useT();
@@ -64,16 +68,16 @@ export default function Launcher({
         onClick: () => onNavigate("clipboard"),
       },
       {
-        id: "screenshot",
-        title: t("launcher.screenshot", "Screenshot"),
-        subtitle: t("launcher.screenshot.desc", "Capture region or screen"),
-        onClick: () => onNavigate("screenshot"),
-      },
-      {
         id: "rss",
         title: t("launcher.rss", "RSS Reader"),
         subtitle: t("launcher.rss.desc", "Feeds and articles"),
         onClick: () => onNavigate("rss"),
+      },
+      {
+        id: "v2ex",
+        title: "V2EX",
+        subtitle: t("launcher.v2ex.desc", "Latest and hot topics"),
+        onClick: () => onNavigate("v2ex"),
       },
       {
         id: "documents",
@@ -92,11 +96,17 @@ export default function Launcher({
     return [...builtIn];
   }, [t, onNavigate]);
 
+  const isSearchActivity = (isSearching || isSearchSettling) && !!query.trim();
   const island: BottomIslandContent | null = loadingPhase === "loading-apps"
     ? {
         label: t("launcher.loading", "Loading apps..."),
         detail: t("launcher.loading.detail", "Preparing application cache"),
-        progress: 0,
+        activity: "bounce",
+      }
+    : isSearchActivity
+    ? {
+        label: t("launcher.searching", "Searching"),
+        activity: isSearchSettling ? "bounce-exit" : "bounce",
       }
     : results.length
     ? {
@@ -111,9 +121,9 @@ export default function Launcher({
         detail: t("launcher.idle", "Type to search apps and commands"),
       };
 
-  const customIsland = !results.length && appearance.home_island_mode === "date" ? (
+  const customIsland = !isSearchActivity && !results.length && appearance.home_island_mode === "date" ? (
     <HomeDateIsland />
-  ) : !results.length && appearance.home_island_mode === "system" ? (
+  ) : !isSearchActivity && !results.length && appearance.home_island_mode === "system" ? (
     <HomeSystemIsland
       showCpu={appearance.home_island_cpu}
       showGpu={appearance.home_island_gpu}

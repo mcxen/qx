@@ -109,7 +109,7 @@ export default function AboutPanel() {
     const message =
       kind === "cache"
         ? t("about.storage.confirmCache", "Clear reusable caches? App icons and OCR models can be rebuilt or downloaded again.")
-        : t("about.storage.confirmFiles", "Delete Qx screenshots and GIF recordings from the output folder?");
+        : t("about.storage.confirmFiles", "Delete Qx GIF recordings from the output folder?");
     if (!window.confirm(message)) return;
     try {
       setStorageBusy(kind);

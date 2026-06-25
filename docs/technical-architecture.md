@@ -8,7 +8,7 @@
 
 ## 1. 项目概述
 
-Qx 是一个跨平台桌面启动器，定位为 Raycast / Alfred 的开源替代。核心功能包括：应用搜索与启动、剪贴板历史、截图、RSS 阅读器、屏幕录制 (GIF)、宏录制播放、插件市场。
+Qx 是一个跨平台桌面启动器，定位为 Raycast / Alfred 的开源替代。核心功能包括：应用搜索与启动、剪贴板历史、RSS 阅读器、屏幕录制 (GIF)、宏录制播放、插件市场。
 
 ### 技术栈
 
@@ -43,7 +43,6 @@ Qx/
 │   │   └── ui.tsx               # Kbd, LinkButton 等
 │   ├── modules/
 │   │   ├── clipboard/            # 剪贴板历史
-│   │   ├── screenshot/           # 截图
 │   │   ├── scrrencap/            # 屏幕录制 (GIF)
 │   │   ├── rss/                  # RSS 阅读器
 │   │   ├── macros/               # 宏录制与回放
@@ -60,7 +59,6 @@ Qx/
 │       ├── main.rs               # 入口
 │       ├── apps.rs               # macOS 应用搜索
 │       ├── clipboard.rs          # 剪贴板监听 + SQLite 持久化
-│       ├── screenshot.rs         # 全屏/区域截图
 │       ├── screencap.rs          # 屏幕录制 (scrap + gifski)
 │       ├── macro_recorder.rs     # 宏捕捉与回放 (rdev + enigo)
 │       ├── settings/             # 设置读写 (JSON)
@@ -92,7 +90,6 @@ useStore:
   - selectedIndex: number     // 选中位置
   - tab: Tab                  // 当前视图 (launcher|clipboard|rss|...)
   - clipboardHistory: ClipboardEntry[]
-  - screenshotCapture: ScreenshotCaptureState
 ```
 
 **插件注册中心 (`src/plugin/registry.ts`)**
@@ -117,7 +114,6 @@ usePluginRegistry:
 ```
 tab = "launcher"   → SearchBar + ResultsList
 tab = "clipboard"  → ClipboardPanel
-tab = "screenshot" → ScreenshotPanel
 tab = "screencap"  → ScreenRecorder
 tab = "rss"        → RssReader (→ feeds/articles/detail 子视图)
 tab = "macros"     → MacroRecorder
@@ -187,14 +183,7 @@ tab = "plugin:*"   → PluginPanelViewport
 - 支持: 分类(link/code/long)、搜索、固定、计数
 - 键盘: ↑↓ 导航, Enter 复制, ⌘P 固定, ⌘⌫ 删除, 类型 Filter 无键盘
 
-### 4.3 截图
-
-- **全屏截图**: 隐藏窗口 → 调用系统截图 API → 显示区域选择覆盖层
-- **区域选择**: 鼠标拖选 (`ScreenshotRegionOverlay`)
-- **保存**: 自动保存到截图历史
-- 键盘无操作（设计师如此: 截图需要鼠标拖选）
-
-### 4.4 RSS 阅读器
+### 4.3 RSS 阅读器
 
 - Rust 引擎: `src-tauri/src/rss/` (feed-rs 解析 + reqwest 网络 + rusqlite 持久化)
 - 本地缓存: `rss.db` (订阅源 + 文章)
@@ -242,7 +231,6 @@ tab = "plugin:*"   → PluginPanelViewport
 ```
 apps::* (search_apps)
 clipboard::* (get/clear/delete/toggle/record)
-screenshot::* (take/list)
 rss::* (list/add/update/remove/refresh/mark/toggle/import/export)
 settings::* (get/update/reset/import/export)
 screencap::* (start/stop/save/list/delete)
@@ -278,7 +266,6 @@ marketplace::* (fetch/download/install/uninstall/list/sign)
 | RSS Feeds | ↑↓, Enter, R, Shift+R, N, E, Esc | — |
 | RSS Articles | ↑↓/j/k, Enter, S, U, O, R, Esc | — |
 | RSS Detail | j/k, S, U, O, Esc | — |
-| Screenshot | — (鼠标操作) | 设计师如此 |
 | ScreenRecorder | **无** | ↑↓, Enter, ⌫, Esc |
 | MacroRecorder | Esc, Enter (保存时) | ↑↓ 列表导航 |
 | Settings | Esc, 搜索过滤 | ↑↓ 切换标签页 |
@@ -351,7 +338,6 @@ marketplace::* (fetch/download/install/uninstall/list/sign)
 3. **自动更新** — `tauri-plugin-updater` 集成
 4. **国际化的 Geist 字体** — 中日韩字体回退
 5. **Windows/Linux 适配测试**
-6. **截图 IINA 式贴图** — 截图固定在屏幕上
 
 ### P3 - 远期
 1. **插件市场完整前端** — 浏览、安装、管理 UI

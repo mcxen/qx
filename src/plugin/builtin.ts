@@ -53,22 +53,6 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     },
   },
   {
-    id: "screenshot",
-    name: "Screenshot",
-    keywords: ["screenshot", "capture", "screen", "截图", "截屏"],
-    commands: [
-      {
-        name: "open-screenshot",
-        title: "Open Screenshot",
-        keywords: ["screenshot", "capture", "screen", "截图", "截屏", "open"],
-      },
-    ],
-    panel: {
-      title: "Screenshot",
-      keywords: ["screenshot", "capture", "screen", "截图", "截屏"],
-    },
-  },
-  {
     id: "screencap",
     name: "Screen Recording",
     keywords: ["gif", "screencap", "screen record", "录屏"],
@@ -98,6 +82,22 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     panel: {
       title: "RSS Reader",
       keywords: ["rss", "feeds", "feed", "articles", "订阅"],
+    },
+  },
+  {
+    id: "v2ex",
+    name: "V2EX",
+    keywords: ["v2ex", "topics", "forum", "社区", "帖子", "热门"],
+    commands: [
+      {
+        name: "open-v2ex",
+        title: "Open V2EX",
+        keywords: ["v2ex", "topics", "forum", "社区", "帖子", "热门", "open"],
+      },
+    ],
+    panel: {
+      title: "V2EX",
+      keywords: ["v2ex", "topics", "forum", "社区", "帖子", "热门"],
     },
   },
   {

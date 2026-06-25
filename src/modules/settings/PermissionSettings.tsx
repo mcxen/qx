@@ -120,7 +120,7 @@ export default function PermissionSettings() {
           <div className="qx-permissions-summary-desc">
             {t(
               "permissions.desc",
-              "Check the system permissions Qx needs for screenshots, GIF recording, and macros.",
+              "Check the system permissions Qx needs for GIF recording and macros.",
             )}
           </div>
         </div>

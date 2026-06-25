@@ -33,12 +33,13 @@ export function PluginPanelViewport() {
   const { panels, workers } = usePluginRegistry();
   const tab = useStore((s) => s.tab);
   const containerRef = useRef<HTMLDivElement>(null);
+  const isPluginTab = tab.startsWith("plugin:");
 
   useEffect(() => {
     if (!containerRef.current) return;
     const container = containerRef.current;
 
-    if (!tab.startsWith("plugin:")) {
+    if (!isPluginTab) {
       container.innerHTML = "";
       return;
     }
@@ -74,12 +75,11 @@ export function PluginPanelViewport() {
       iframe.style.pointerEvents = "none";
       iframe.style.zIndex = "-1";
     };
-  }, [tab, panels, workers]);
+  }, [isPluginTab, tab, panels, workers]);
 
-  if (!tab.startsWith("plugin:")) return null;
+  if (!isPluginTab) return null;
   const pluginId = tab.slice("plugin:".length);
   const panel = panels[pluginId];
-  if (!panel) return null;
 
   return (
     <div
@@ -90,6 +90,12 @@ export function PluginPanelViewport() {
         position: "relative",
         overflow: "hidden",
       }}
-    />
+    >
+      {!panel && (
+        <div style={{ padding: 20, color: "var(--qx-text-secondary)" }}>
+          Plugin {pluginId} panel not registered
+        </div>
+      )}
+    </div>
   );
 }

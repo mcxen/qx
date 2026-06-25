@@ -25,14 +25,19 @@ export interface PluginRuntimeOptions {
   onGetPreference: (pluginId: string, id: string) => Promise<unknown>;
 }
 
+function serializeForInlineScript(value: string): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
 export function buildPluginRuntimeHtml(
   pluginId: string,
-  entryBlobUrl: string,
+  entrySource: string,
 ): string {
   const runtime = `
     <style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}</style>
     <script type="module">
       const pluginId = ${JSON.stringify(pluginId)};
+      const entrySource = ${serializeForInlineScript(entrySource)};
       let plugin = null;
       const pending = new Map();
 
@@ -127,7 +132,13 @@ export function buildPluginRuntimeHtml(
       });
 
       try {
-        const mod = await import(${JSON.stringify(entryBlobUrl)});
+        const entryBlobUrl = URL.createObjectURL(new Blob([entrySource], { type: 'text/javascript' }));
+        let mod;
+        try {
+          mod = await import(entryBlobUrl);
+        } finally {
+          URL.revokeObjectURL(entryBlobUrl);
+        }
         plugin = mod.default || mod;
         parent.postMessage({ type: 'qx:plugin:loaded', pluginId }, '*');
       } catch (err) {
@@ -142,7 +153,8 @@ export function buildPluginRuntimeHtml(
 function createSandboxIframe(_pluginId: string, html: string): HTMLIFrameElement {
   const iframe = document.createElement("iframe");
   iframe.sandbox.add("allow-scripts");
-  iframe.style.cssText = "width:100%;height:100%;border:0;";
+  iframe.style.cssText =
+    "position:absolute;inset:0;width:100%;height:100%;border:0;visibility:hidden;pointer-events:none;z-index:-1;";
   iframe.srcdoc = html;
   return iframe;
 }
@@ -152,10 +164,33 @@ export async function loadPlugin(
   _options: PluginRuntimeOptions,
 ): Promise<PluginLoadResult> {
   const entrySource = await invoke<string>("read_plugin_entry", { id: plugin.id });
-  const blob = new Blob([entrySource], { type: "text/javascript" });
-  const blobUrl = URL.createObjectURL(blob);
-  const html = buildPluginRuntimeHtml(plugin.id, blobUrl);
+  const html = buildPluginRuntimeHtml(plugin.id, entrySource);
   const iframe = createSandboxIframe(plugin.id, html);
+  const pluginLoaded = new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const handler = (event: MessageEvent) => {
+      const data = event.data || {};
+      if (data.pluginId !== plugin.id) return;
+      if (data.type === "qx:plugin:loaded") {
+        settled = true;
+        clearTimeout(timeout);
+        window.removeEventListener("message", handler);
+        resolve();
+      } else if (data.type === "qx:plugin:error") {
+        settled = true;
+        clearTimeout(timeout);
+        window.removeEventListener("message", handler);
+        reject(new Error(data.error || "unknown plugin error"));
+      }
+    };
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      window.removeEventListener("message", handler);
+      reject(new Error(`Plugin ${plugin.id} load timeout`));
+    }, 10000);
+    window.addEventListener("message", handler);
+  });
+  document.body.appendChild(iframe);
 
   const result: PluginLoadResult = {
     plugin,
@@ -254,27 +289,12 @@ export async function loadPlugin(
     };
   }
 
-  await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      window.removeEventListener("message", handler);
-      reject(new Error(`Plugin ${plugin.id} load timeout`));
-    }, 10000);
-
-    const handler = (event: MessageEvent) => {
-      const data = event.data || {};
-      if (data.pluginId !== plugin.id) return;
-      if (data.type === "qx:plugin:loaded") {
-        clearTimeout(timeout);
-        window.removeEventListener("message", handler);
-        resolve();
-      } else if (data.type === "qx:plugin:error") {
-        clearTimeout(timeout);
-        window.removeEventListener("message", handler);
-        reject(new Error(data.error || "unknown plugin error"));
-      }
-    };
-    window.addEventListener("message", handler);
-  });
+  try {
+    await pluginLoaded;
+  } catch (error) {
+    iframe.remove();
+    throw error;
+  }
 
   return result;
 }

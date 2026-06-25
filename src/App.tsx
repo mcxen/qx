@@ -1,17 +1,16 @@
-import { useEffect, useCallback, useRef, useTransition } from "react";
+import { useEffect, useCallback, useRef, useState, useTransition } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { currentMonitor, getCurrentWindow, LogicalSize, LogicalPosition, primaryMonitor } from "@tauri-apps/api/window";
+import { currentMonitor, getCurrentWindow, LogicalSize, primaryMonitor } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { useStore, type AppEntry, type ScreenshotEntry, type MonitorInfo, type SearchScope } from "./store";
+import { useStore, type AppEntry, type SearchScope } from "./store";
 import Launcher from "./Launcher";
 import ClipboardPanel from "./modules/clipboard/ClipboardPanel";
-import ScreenshotPanel, { REGION_CAPTURE_EVENT } from "./modules/screenshot/ScreenshotPanel";
-import ScreenshotRegionOverlay, { type Point } from "./modules/screenshot/ScreenshotRegionOverlay";
 import ScreenRecorder from "./modules/screencap/ScreenRecorder";
 import DevTxtTool from "./modules/documents/DevTxtTool";
 import SettingsPanel from "./modules/settings/SettingsPanel";
 import RssReader from "./modules/rss";
+import V2exPanel from "./modules/v2ex/V2exPanel";
 import G4fReader from "./modules/qx-ai";
 import MacroRecorder from "./modules/macros/MacroRecorder";
 import { useSettingsStore } from "./modules/settings/store";
@@ -81,6 +80,15 @@ function matchesSettings(query: string): boolean {
   return SETTINGS_KEYWORDS.some((k) => k === q || k.startsWith(q) || q.startsWith(k));
 }
 
+function shouldLoadSlowSearchProviders(query: string, scope: SearchScope): boolean {
+  const trimmed = query.trim();
+  const shouldSearchFiles =
+    (scope === "files" && trimmed.length >= 2) || (scope === "all" && trimmed.length >= 3);
+  const shouldSearchClipboard = (scope === "all" || scope === "clipboard") && trimmed.length > 0;
+
+  return shouldSearchFiles || shouldSearchClipboard;
+}
+
 /**
  * Phased startup:
  *   Phase 1 (immediate): Load apps DB cache via search_apps("") — instant from memory
@@ -118,8 +126,6 @@ function App() {
     setSelectedIndex,
     tab,
     setTab,
-    screenshotCapture,
-    setScreenshotCapture,
     updateResultIcons,
     loadingPhase,
     setLoadingPhase,
@@ -129,14 +135,16 @@ function App() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const slowSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const recordSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const searchFadeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const searchSeqRef = useRef(0);
   const searchScopeRef = useRef<SearchScope>("all");
-  const originalBoundsRef = useRef<{ width: number; height: number; x: number; y: number } | null>(null);
   const { settings, load: loadSettings, loaded: settingsLoaded } = useSettingsStore();
   const { load: loadPlugins, findCommands } = usePluginRegistry();
   const phase1Ref = useRef(false);
   const startupWindowShownRef = useRef(false);
   const resizeSaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isSearchSettling, setIsSearchSettling] = useState(false);
   const [, startSearchTransition] = useTransition();
 
   const applyResults = useCallback(
@@ -145,6 +153,17 @@ function App() {
     },
     [setResults, startSearchTransition],
   );
+
+  const finishSearchActivity = useCallback((seq: number) => {
+    if (seq !== searchSeqRef.current) return;
+    if (searchFadeTimerRef.current) clearTimeout(searchFadeTimerRef.current);
+    setIsSearching(false);
+    setIsSearchSettling(true);
+    searchFadeTimerRef.current = setTimeout(() => {
+      if (seq === searchSeqRef.current) setIsSearchSettling(false);
+      searchFadeTimerRef.current = undefined;
+    }, 180);
+  }, []);
 
   // Phase 1: Load app cache immediately — runs once on mount
   useEffect(() => {
@@ -165,7 +184,16 @@ function App() {
     void loadPlugins({
       onToast: (msg) => window.dispatchEvent(new CustomEvent("qx:toast", { detail: msg })),
       onPrompt: async (label, def) => window.prompt(label, def ?? ""),
-      onGetPreference: async () => null,
+      onGetPreference: async (pluginId, id) => {
+        const values = await invoke<Record<string, unknown>>("plugin_preferences_get", {
+          id: pluginId,
+        });
+        if (Object.prototype.hasOwnProperty.call(values, id)) {
+          return values[id];
+        }
+        const plugin = usePluginRegistry.getState().plugins.find((item) => item.id === pluginId);
+        return plugin?.manifest?.preferences?.find((pref) => pref.id === id)?.default ?? null;
+      },
     });
   }, [loadPlugins, appsReady]);
 
@@ -173,8 +201,8 @@ function App() {
   useEffect(() => {
     const handler = (e: Event) => {
       const tabId = (e as CustomEvent).detail as string;
-      if (tabId === "clipboard" || tabId === "screenshot" || tabId === "screencap"
-          || tabId === "rss" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "settings") {
+      if (tabId === "clipboard" || tabId === "screencap"
+          || tabId === "rss" || tabId === "v2ex" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "settings") {
         setTab(tabId);
       } else if (tabId?.startsWith("plugin:")) {
         setTab(tabId);
@@ -289,190 +317,18 @@ function App() {
     };
   }, []);
 
-  const restoreCaptureWindow = useCallback(async () => {
-    if (!isTauriRuntime()) return;
-    const win = getCurrentWindow();
-    // Exit fullscreen mode if we used it
-    try {
-      await win.setFullscreen(false);
-    } catch {
-      // Fallback: restore original window bounds if we saved them
-      if (originalBoundsRef.current) {
-        const { width, height, x, y } = originalBoundsRef.current;
-        await win.setSize(new LogicalSize(width, height));
-        await win.setPosition(new LogicalPosition(x, y));
-        originalBoundsRef.current = null;
-      }
-    }
-    originalBoundsRef.current = null;
-    await win.show();
-    await win.setFocus();
-  }, []);
-
-  const beginRegionCapture = useCallback(async () => {
-    if (useStore.getState().screenshotCapture.status !== "idle") return;
-    setTab("screenshot");
-    setScreenshotCapture({
-      status: "saving",
-      backgroundPath: null,
-      error: null,
-      previewPath: null,
-      scaleFactor: 1,
-      monitorIndex: 0,
-    });
-
-    if (!isTauriRuntime()) {
-      setScreenshotCapture({
-        status: "idle",
-        error: "Screenshot capture requires the Tauri runtime.",
-      });
-      return;
-    }
-
-    const win = getCurrentWindow();
-    try {
-      // Save current window bounds before expanding to fullscreen
-      const innerSize = await win.innerSize();
-      const outerPos = await win.outerPosition();
-      const scaleFactor = await win.scaleFactor().catch(() => 1);
-      originalBoundsRef.current = {
-        width: innerSize.width / scaleFactor,
-        height: innerSize.height / scaleFactor,
-        x: outerPos.x / scaleFactor,
-        y: outerPos.y / scaleFactor,
-      };
-
-      await win.hide();
-      // Small delay to ensure window is fully hidden before capturing
-      await new Promise((r) => setTimeout(r, 150));
-
-      // Capture the monitor under the window's current position (cross-platform)
-      const windowCenterX = outerPos.x + innerSize.width / 2;
-      const windowCenterY = outerPos.y + innerSize.height / 2;
-      const background = await invoke<ScreenshotEntry>("capture_at_point", {
-        screenX: Math.round(windowCenterX),
-        screenY: Math.round(windowCenterY),
-      });
-
-      // Find the monitor at that point for overlay positioning
-      const monitors = await invoke<MonitorInfo[]>("get_monitors");
-      const monitor = monitors.find((m) => {
-        const mx = m.x;
-        const my = m.y;
-        const mw = m.width;
-        const mh = m.height;
-        return (
-          windowCenterX >= mx &&
-          windowCenterX < mx + mw &&
-          windowCenterY >= my &&
-          windowCenterY < my + mh
-        );
-      }) ?? monitors[0];
-      const monitorIndex = monitors.indexOf(monitor);
-
-      // Expand window to cover the entire monitor using fullscreen.
-      // setFullscreen(true) is more reliable on macOS than setSize/setPosition
-      // when the window is freshly shown.
-      await win.show();
-      await win.setFullscreen(true);
-
-      // store the TARGET monitor's scale so completeRegionCapture can map
-      // CSS px -> screenshot physical px correctly when monitors are mixed-DPI.
-      const targetScale = monitor ? (monitor.scale_factor || scaleFactor) : scaleFactor;
-      setScreenshotCapture({
-        status: "selecting",
-        backgroundPath: background.path,
-        error: null,
-        scaleFactor: targetScale,
-        monitorIndex,
-      });
-      await win.setFocus();
-    } catch (error) {
-      setScreenshotCapture({
-        status: "idle",
-        backgroundPath: null,
-        error: String(error),
-      });
-      await restoreCaptureWindow();
-    }
-  }, [restoreCaptureWindow, setScreenshotCapture, setTab]);
-
-  const cancelRegionCapture = useCallback(async () => {
-    setScreenshotCapture({
-      status: "idle",
-      backgroundPath: null,
-    });
-    await restoreCaptureWindow();
-  }, [restoreCaptureWindow, setScreenshotCapture]);
-
-  const completeRegionCapture = useCallback(
-    async (start: Point, end: Point) => {
-      const left = Math.min(start.x, end.x);
-      const top = Math.min(start.y, end.y);
-      const width = Math.abs(end.x - start.x);
-      const height = Math.abs(end.y - start.y);
-
-      if (width < 8 || height < 8) {
-        await cancelRegionCapture();
-        return;
-      }
-
-      setScreenshotCapture({ status: "saving", error: null });
-
-      try {
-        const scaleFactor = useStore.getState().screenshotCapture.scaleFactor || 1;
-        const monitorIndex = useStore.getState().screenshotCapture.monitorIndex || 0;
-
-        // Window is now fullscreen covering the entire monitor,
-        // so CSS coordinates map directly to screen coordinates.
-        const x = Math.max(0, Math.round(left * scaleFactor));
-        const y = Math.max(0, Math.round(top * scaleFactor));
-        const physicalWidth = Math.max(1, Math.round(width * scaleFactor));
-        const physicalHeight = Math.max(1, Math.round(height * scaleFactor));
-
-        if (isTauriRuntime()) {
-          await getCurrentWindow().hide();
-        }
-
-        const result = await invoke<ScreenshotEntry>("take_screenshot_area", {
-          x,
-          y,
-          width: physicalWidth,
-          height: physicalHeight,
-          monitorIndex,
-        });
-
-        setScreenshotCapture({
-          status: "idle",
-          backgroundPath: null,
-          error: null,
-          previewPath: result.path,
-        });
-      } catch (error) {
-        setScreenshotCapture({
-          status: "idle",
-          backgroundPath: null,
-          error: String(error),
-        });
-      } finally {
-        await restoreCaptureWindow();
-      }
-    },
-    [cancelRegionCapture, restoreCaptureWindow, setScreenshotCapture],
-  );
-
   useEffect(() => {
     if (!isTauriRuntime()) return;
     const win = getCurrentWindow();
     const unlistenFocus = win.onFocusChanged(({ payload: focused }) => {
       setVisible(focused);
-      // Don't auto-hide during screenshot region selection
-      const captureStatus = useStore.getState().screenshotCapture.status;
-      const shouldAutoHide = settings.general.autoHideOnBlur && captureStatus === "idle";
-      if (!focused && shouldAutoHide) {
+      if (!focused && settings.general.autoHideOnBlur) {
         win.hide().catch(() => {});
       }
       if (focused) {
+        if (searchFadeTimerRef.current) clearTimeout(searchFadeTimerRef.current);
+        setIsSearching(false);
+        setIsSearchSettling(false);
         setQuery("");
         setSelectedIndex(0);
         // Kick off an immediate empty search so apps show right away
@@ -486,7 +342,7 @@ function App() {
     });
     const unlistenNav = listen<string>("navigate", (e) => {
       const next = e.payload;
-      if (next === "clipboard" || next === "screenshot" || next === "screencap" || next === "rss" || next === "qx-ai" || next === "macros" || next === "settings") {
+      if (next === "clipboard" || next === "screencap" || next === "rss" || next === "v2ex" || next === "qx-ai" || next === "macros" || next === "settings") {
         setTab(next);
       } else if (next === "launcher") {
         setTab("launcher");
@@ -496,21 +352,11 @@ function App() {
         setTab(next);
       }
     });
-    const unlistenCapture = listen("screenshot:capture-region", () => {
-      void beginRegionCapture();
-    });
-    const onDomCapture = () => {
-      void beginRegionCapture();
-    };
-    window.addEventListener(REGION_CAPTURE_EVENT, onDomCapture);
     return () => {
       unlistenFocus.then((f: () => void) => f());
       unlistenNav.then((f: () => void) => f());
-      unlistenCapture.then((f: () => void) => f());
-      window.removeEventListener(REGION_CAPTURE_EVENT, onDomCapture);
     };
   }, [
-    beginRegionCapture,
     setQuery,
     setResults,
     setSelectedIndex,
@@ -529,8 +375,7 @@ function App() {
       seq: number,
     ) => {
       const trimmed = q.trim();
-      const shouldSearchFiles =
-        (scope === "files" && trimmed.length >= 2) || (scope === "all" && trimmed.length >= 3);
+      const shouldSearchFiles = (scope === "files" && trimmed.length >= 2) || (scope === "all" && trimmed.length >= 3);
       const shouldSearchClipboard = (scope === "all" || scope === "clipboard") && trimmed.length > 0;
 
       if (!shouldSearchFiles && !shouldSearchClipboard) return;
@@ -569,6 +414,11 @@ function App() {
     async (q: string) => {
       const seq = searchSeqRef.current + 1;
       searchSeqRef.current = seq;
+      const trimmed = q.trim();
+      const showSearchActivity = trimmed.length > 0;
+      if (searchFadeTimerRef.current) clearTimeout(searchFadeTimerRef.current);
+      setIsSearching(showSearchActivity);
+      setIsSearchSettling(false);
 
       if (slowSearchDebounceRef.current) clearTimeout(slowSearchDebounceRef.current);
       if (recordSearchDebounceRef.current) clearTimeout(recordSearchDebounceRef.current);
@@ -660,11 +510,20 @@ function App() {
       const baseEntries = [...entries];
       applyResults(baseEntries);
 
-      slowSearchDebounceRef.current = setTimeout(() => {
-        void loadSlowSearchProviders(q, scope, baseEntries, syntheticEntries, seq);
-      }, scope === "files" ? 80 : 260);
+      if (shouldLoadSlowSearchProviders(q, scope)) {
+        slowSearchDebounceRef.current = setTimeout(() => {
+          void loadSlowSearchProviders(q, scope, baseEntries, syntheticEntries, seq)
+            .finally(() => {
+              finishSearchActivity(seq);
+            });
+        }, scope === "files" ? 80 : 260);
+      } else if (showSearchActivity) {
+        finishSearchActivity(seq);
+      } else if (seq === searchSeqRef.current) {
+        setIsSearching(false);
+        setIsSearchSettling(false);
+      }
 
-      const trimmed = q.trim();
       if (trimmed.length > 0) {
         recordSearchDebounceRef.current = setTimeout(() => {
           if (seq === searchSeqRef.current) {
@@ -673,7 +532,7 @@ function App() {
         }, 900);
       }
     },
-    [applyResults, findCommands, loadSlowSearchProviders],
+    [applyResults, findCommands, finishSearchActivity, loadSlowSearchProviders],
   );
 
   useEffect(() => {
@@ -683,6 +542,7 @@ function App() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (slowSearchDebounceRef.current) clearTimeout(slowSearchDebounceRef.current);
       if (recordSearchDebounceRef.current) clearTimeout(recordSearchDebounceRef.current);
+      if (searchFadeTimerRef.current) clearTimeout(searchFadeTimerRef.current);
     };
   }, [query, doSearch]);
 
@@ -755,7 +615,7 @@ function App() {
       return;
     }
     // Handle __qx:<tabId> style paths (backward compat)
-    const tabMatch = item.path.match(/^__qx:(clipboard|screenshot|screencap|rss|qx-ai|macros|documents)$/);
+    const tabMatch = item.path.match(/^__qx:(clipboard|screencap|rss|v2ex|qx-ai|macros|documents)$/);
     if (tabMatch) {
       setTab(tabMatch[1] as any);
       return;
@@ -812,12 +672,12 @@ function App() {
     switch (tab) {
       case "clipboard":
         return <ClipboardPanel />;
-      case "screenshot":
-        return <ScreenshotPanel />;
       case "screencap":
         return <ScreenRecorder />;
       case "rss":
         return <RssReader />;
+      case "v2ex":
+        return <V2exPanel />;
       case "qx-ai":
         return <G4fReader />;
       case "macros":
@@ -838,6 +698,8 @@ function App() {
             searchScopeRef={searchScopeRef}
             onScopeChange={() => doSearch(useStore.getState().query)}
             loadingPhase={loadingPhase}
+            isSearching={isSearching}
+            isSearchSettling={isSearchSettling}
           />
         );
     }
@@ -854,21 +716,14 @@ function App() {
         >
           {renderBody()}
         </div>
-      {screenshotCapture.status === "selecting" && screenshotCapture.backgroundPath && (
-        <ScreenshotRegionOverlay
-          backgroundPath={screenshotCapture.backgroundPath}
-          onComplete={completeRegionCapture}
-          onCancel={cancelRegionCapture}
-        />
-      )}
       <div
         className="qx-actionbar"
         style={
           tab === "launcher" ||
           tab === "clipboard" ||
-          tab === "screenshot" ||
           tab === "screencap" ||
           tab === "rss" ||
+          tab === "v2ex" ||
           tab === "qx-ai" ||
           tab === "macros" ||
           tab === "documents" ||

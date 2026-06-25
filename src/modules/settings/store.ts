@@ -100,7 +100,6 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   shortcuts: {
     toggle_launcher: { key: "Alt+Space", enabled: true },
-    screenshot: { key: "Alt+S", enabled: true },
     clipboard: { key: "Alt+V", enabled: true },
     record_gif: { key: "Alt+G", enabled: true },
     rss: { key: "Alt+R", enabled: true },
@@ -223,7 +222,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 
 export const SHORTCUT_GROUPS: { group: string; ids: string[] }[] = [
   { group: "Global", ids: ["toggle_launcher", "settings"] },
-  { group: "Screenshot", ids: ["screenshot"] },
   { group: "Clipboard", ids: ["clipboard"] },
   { group: "RSS", ids: ["rss"] },
   { group: "Recording", ids: ["record_gif"] },
@@ -231,7 +229,6 @@ export const SHORTCUT_GROUPS: { group: string; ids: string[] }[] = [
 
 export const SHORTCUT_LABELS: Record<string, string> = {
   toggle_launcher: "Toggle Launcher",
-  screenshot: "Take Screenshot",
   clipboard: "Open Clipboard",
   record_gif: "Record Screen GIF",
   rss: "Open RSS Reader",

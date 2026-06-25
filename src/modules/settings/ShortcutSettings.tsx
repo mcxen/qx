@@ -199,7 +199,6 @@ export default function ShortcutSettings() {
                     onClick={() => {
                       const defaults: Record<string, string> = {
                         toggle_launcher: "Alt+Space",
-                        screenshot: "Alt+S",
                         clipboard: "Alt+V",
                         record_gif: "Alt+G",
                         rss: "Alt+R",

@@ -269,13 +269,6 @@ impl Default for Settings {
             },
         );
         shortcuts.insert(
-            "screenshot".to_string(),
-            ShortcutBinding {
-                key: "Alt+S".to_string(),
-                enabled: true,
-            },
-        );
-        shortcuts.insert(
             "clipboard".to_string(),
             ShortcutBinding {
                 key: "Alt+V".to_string(),
@@ -438,18 +431,6 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
             }
         })
         .map_err(|e| format!("register clipboard shortcut: {e}"))?;
-    }
-
-    if let Some(key) = shortcut_for(settings, "screenshot") {
-        gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-            if event.state() == ShortcutState::Pressed {
-                if let Some(win) = app.get_webview_window("main") {
-                    let _ = win.hide();
-                }
-                app.emit("screenshot:capture-region", ()).ok();
-            }
-        })
-        .map_err(|e| format!("register screenshot shortcut: {e}"))?;
     }
 
     if let Some(key) = shortcut_for(settings, "rss") {

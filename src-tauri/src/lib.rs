@@ -12,7 +12,6 @@ mod ocr;
 mod permissions;
 mod rss;
 mod screencap;
-mod screenshot;
 mod settings;
 mod storage;
 mod system_information;
@@ -112,7 +111,6 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
@@ -217,21 +215,6 @@ pub fn run() {
             apps::search_files,
             open_app,
             set_window_size,
-            screenshot::take_screenshot,
-            screenshot::take_screenshot_area,
-            screenshot::capture_all_monitors,
-            screenshot::list_capturable_windows,
-            screenshot::capture_window,
-            screenshot::get_recent_screenshots,
-            screenshot::capture_at_point,
-            screenshot::get_monitors,
-            screenshot::copy_screenshot_to_clipboard,
-            screenshot::open_in_preview,
-            screenshot::delete_screenshot,
-            screenshot::export_screenshot_image,
-            screenshot::save_temp_export,
-            screenshot::save_screenshot_project,
-            screenshot::read_screenshot_project,
             clipboard::get_clipboard_history,
             clipboard::read_clipboard_image_now,
             clipboard::write_clipboard_image_entry,
