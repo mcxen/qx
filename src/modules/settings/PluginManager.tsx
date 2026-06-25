@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { usePluginRegistry } from "../../plugin/registry";
+import { BUILTIN_SETTINGS_KEYS } from "../../plugin/builtin";
+import { useSettingsStore } from "./store";
 import { Toggle, SegmentedControl, Row, Select } from "../../components/ui";
 import { useT } from "../../i18n";
 import type {
@@ -109,6 +112,8 @@ function PluginDetail({
   const builtin = isBuiltin(plugin);
   const preferences = plugin.manifest?.preferences ?? [];
   const permissions = plugin.manifest?.permissions ?? plugin.permissions ?? [];
+  const settingsKey = builtin ? BUILTIN_SETTINGS_KEYS[plugin.id] : undefined;
+  const { settings, patch } = useSettingsStore();
 
   /* ---- preference values ---- */
   const [prefValues, setPrefValues] = useState<Record<string, string | number | boolean>>({});
@@ -116,6 +121,15 @@ function PluginDetail({
   const [prefsBusy, setPrefsBusy] = useState(false);
   const prefValuesRef = useRef<Record<string, string | number | boolean>>({});
   const loadTokenRef = useRef(0);
+
+  // Compute defaults from preference definitions.
+  const computeDefaults = useCallback(() => {
+    const defaults: Record<string, string | number | boolean> = {};
+    for (const p of preferences) {
+      defaults[p.id] = p.default ?? (p.type === "boolean" ? false : p.type === "number" ? 0 : "");
+    }
+    return defaults;
+  }, [preferences]);
 
   // Load preferences whenever the selected plugin changes.
   useEffect(() => {
@@ -128,36 +142,42 @@ function PluginDetail({
 
     const token = ++loadTokenRef.current;
     setPrefsLoaded(false);
+    const defaults = computeDefaults();
 
+    if (settingsKey) {
+      // Built-in module: read from global settings store.
+      const storeSection = (settings as unknown as Record<string, Record<string, unknown>>)[settingsKey] ?? {};
+      const next: Record<string, string | number | boolean> = {};
+      for (const p of preferences) {
+        next[p.id] = (storeSection[p.id] as string | number | boolean) ?? defaults[p.id];
+      }
+      if (token !== loadTokenRef.current) return;
+      prefValuesRef.current = next;
+      setPrefValues(next);
+      setPrefsLoaded(true);
+      return;
+    }
+
+    // External plugin: read from plugin_preferences_get.
     (async () => {
       try {
         const saved = await invoke<Record<string, string | number | boolean>>(
           "plugin_preferences_get",
           { id: plugin.id },
         );
-        if (token !== loadTokenRef.current) return; // stale
-        // Merge saved values over defaults.
-        const defaults: Record<string, string | number | boolean> = {};
-        for (const p of preferences) {
-          defaults[p.id] = p.default ?? (p.type === "boolean" ? false : p.type === "number" ? 0 : "");
-        }
+        if (token !== loadTokenRef.current) return;
         const next = { ...defaults, ...saved };
         prefValuesRef.current = next;
         setPrefValues(next);
       } catch {
         if (token !== loadTokenRef.current) return;
-        // Fall back to defaults.
-        const defaults: Record<string, string | number | boolean> = {};
-        for (const p of preferences) {
-          defaults[p.id] = p.default ?? (p.type === "boolean" ? false : p.type === "number" ? 0 : "");
-        }
         prefValuesRef.current = defaults;
         setPrefValues(defaults);
       } finally {
         if (token === loadTokenRef.current) setPrefsLoaded(true);
       }
     })();
-  }, [plugin.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [plugin.id, settingsKey, settings, computeDefaults]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePrefChange = useCallback(
     async (prefId: string, value: string | number | boolean) => {
@@ -165,6 +185,16 @@ function PluginDetail({
       prefValuesRef.current = next;
       setPrefValues(next);
       setPrefsBusy(true);
+
+      if (settingsKey) {
+        // Built-in module: write to global settings store.
+        const storeSection = (settings as unknown as Record<string, Record<string, unknown>>)[settingsKey] ?? {};
+        patch(settingsKey as any, { ...storeSection, [prefId]: value });
+        setPrefsBusy(false);
+        return;
+      }
+
+      // External plugin: write to plugin_preferences_set.
       try {
         await invoke("plugin_preferences_set", { id: plugin.id, values: next });
       } catch (err) {
@@ -173,7 +203,7 @@ function PluginDetail({
         setPrefsBusy(false);
       }
     },
-    [plugin.id],
+    [plugin.id, settingsKey, settings, patch],
   );
 
   return (
@@ -225,8 +255,8 @@ function PluginDetail({
 
       {/* Enable / Disable */}
       <div style={{ marginTop: 12 }}>
-        <Row title="Enabled" description="Toggle this plugin on or off.">
-          <Toggle value={plugin.enabled} onChange={onToggle} />
+        <Row title="Enabled" description={builtin ? "Built-in modules are always enabled." : "Toggle this plugin on or off."}>
+          <Toggle value={plugin.enabled} onChange={onToggle} disabled={builtin} />
         </Row>
       </div>
 
@@ -280,6 +310,18 @@ function PluginDetail({
               />
             </Row>
           ))}
+
+          {/* V2EX token link */}
+          {settingsKey === "v2ex" && (
+            <button
+              className="qx-command-button"
+              onClick={() => void openUrl("https://v2ex.com/settings/tokens")}
+              style={{ marginTop: 8 }}
+              type="button"
+            >
+              Get Token →
+            </button>
+          )}
         </div>
       )}
 
@@ -717,7 +759,11 @@ export default function PluginManager() {
                     </div>
                   </div>
                   <div onClick={(e) => e.stopPropagation()}>
-                    <Toggle value={p.enabled} onChange={() => handleToggle(p)} />
+                    <Toggle
+                      value={p.enabled}
+                      onChange={() => handleToggle(p)}
+                      disabled={isBuiltin(p)}
+                    />
                   </div>
                 </div>
               );

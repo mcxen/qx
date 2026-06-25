@@ -191,6 +191,12 @@
   background: transparent;
 }
 
+.qx-plugin-shell .qx-shell-content {
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .qx-shell-bottombar {
   display: grid;
   grid-template-columns: auto 1fr auto;

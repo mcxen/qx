@@ -1,5 +1,5 @@
 import { usePluginRegistry } from "./registry";
-import type { RegisteredCommand, RegisteredPanel, PluginContext } from "./types";
+import type { RegisteredCommand, RegisteredPanel, PluginContext, InstalledPlugin, PluginPreference } from "./types";
 
 // ---------------------------------------------------------------------------
 // Builtin module definitions
@@ -17,6 +17,12 @@ interface BuiltinInfo {
   keywords: string[];
   commands: BuiltinCommandDef[];
   panel?: { title: string; keywords: string[] };
+  description?: string;
+  version?: string;
+  author?: string;
+  preferences?: PluginPreference[];
+  /** Key in the global Settings store for preference values (e.g. "v2ex"). */
+  settingsKey?: string;
 }
 
 const BUILTIN_MODULES: BuiltinInfo[] = [
@@ -35,6 +41,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       title: "Clipboard History",
       keywords: ["clipboard", "paste", "history", "剪贴板", "粘贴"],
     },
+    description: "Clipboard history manager",
   },
   {
     id: "qx-ai",
@@ -51,6 +58,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       title: "QxAI Chat",
       keywords: ["ai", "chat", "gpt", "qxai", "llm", "人工智能", "聊天"],
     },
+    description: "AI chat assistant",
   },
   {
     id: "screencap",
@@ -67,6 +75,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       title: "Screen Recording",
       keywords: ["gif", "screencap", "screen record", "录屏"],
     },
+    description: "Screen recording and GIF capture",
   },
   {
     id: "rss",
@@ -83,6 +92,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       title: "RSS Reader",
       keywords: ["rss", "feeds", "feed", "articles", "订阅"],
     },
+    description: "RSS/Atom feed reader",
   },
   {
     id: "v2ex",
@@ -99,6 +109,25 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       title: "V2EX",
       keywords: ["v2ex", "topics", "forum", "社区", "帖子", "热门"],
     },
+    description: "V2EX forum viewer",
+    preferences: [
+      {
+        id: "token",
+        label: "Access Token",
+        type: "password",
+        required: false,
+        description: "Required for API v2 features (notifications, node topics, replies). Go to v2ex.com/settings/tokens to create one.",
+      },
+      {
+        id: "nodes",
+        label: "Nodes",
+        type: "string",
+        required: false,
+        default: "programmer create share ideas apple jobs qna",
+        description: "Node names for the 'Topics By Node' view, separated by spaces.",
+      },
+    ],
+    settingsKey: "v2ex",
   },
   {
     id: "macros",
@@ -115,6 +144,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       title: "Macro Recorder",
       keywords: ["macro", "macros", "recording", "宏", "录制"],
     },
+    description: "Keyboard macro recorder",
   },
   {
     id: "documents",
@@ -131,6 +161,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       title: "Document Tools",
       keywords: ["document", "documents", "doc", "markdown", "json", "word count", "文档", "字数", "文本"],
     },
+    description: "Document and text tools",
   },
 ];
 
@@ -140,6 +171,51 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
 
 /** Flat list of all built-in module IDs. */
 export const BUILTIN_IDS: string[] = BUILTIN_MODULES.map((m) => m.id);
+
+/** Synthetic InstalledPlugin entries for built-in modules, for display in PluginManager. */
+export const BUILTIN_PLUGINS: InstalledPlugin[] = BUILTIN_MODULES.map((mod) => ({
+  id: `builtin:${mod.id}`,
+  name: mod.name,
+  version: mod.version ?? "built-in",
+  description: mod.description ?? "",
+  path: "",
+  enabled: true,
+  permissions: [],
+  author: mod.author ?? "Qx",
+  manifest: {
+    id: `builtin:${mod.id}`,
+    name: mod.name,
+    version: mod.version ?? "0.0.0",
+    description: mod.description ?? "",
+    author: mod.author ?? "Qx",
+    icon: "",
+    keywords: mod.keywords,
+    permissions: [],
+    preferences: mod.preferences ?? [],
+    commands: mod.commands.map((c) => ({
+      name: c.name,
+      title: c.title,
+      keywords: c.keywords,
+    })),
+    panel: mod.panel
+      ? { title: mod.panel.title, keywords: mod.panel.keywords }
+      : undefined,
+    dependencies: [],
+    minAppVersion: "",
+    entry: "index.js",
+    signature: "",
+    pubkey: "",
+    settingsKey: mod.settingsKey,
+  } as InstalledPlugin["manifest"] & { settingsKey?: string },
+}));
+
+/** Map of built-in plugin id → global settings key for preference storage. */
+export const BUILTIN_SETTINGS_KEYS: Record<string, string> = Object.fromEntries(
+  BUILTIN_MODULES.filter((m) => m.settingsKey).map((m) => [
+    `builtin:${m.id}`,
+    m.settingsKey!,
+  ]),
+);
 
 // ---------------------------------------------------------------------------
 // Helpers

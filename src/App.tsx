@@ -727,7 +727,8 @@ function App() {
           tab === "qx-ai" ||
           tab === "macros" ||
           tab === "documents" ||
-          tab === "settings"
+          tab === "settings" ||
+          tab.startsWith("plugin:")
             ? { display: "none" }
             : undefined
         }

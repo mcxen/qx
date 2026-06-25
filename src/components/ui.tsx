@@ -24,12 +24,21 @@ export function Row({
   );
 }
 
-export function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+export function Toggle({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
     <button
-      onClick={() => onChange(!value)}
-      className={`qx-toggle${value ? " is-on" : ""}`}
+      onClick={() => !disabled && onChange(!value)}
+      className={`qx-toggle${value ? " is-on" : ""}${disabled ? " is-disabled" : ""}`}
       aria-pressed={value}
+      disabled={disabled}
     >
       <span className="qx-toggle-knob" />
     </button>

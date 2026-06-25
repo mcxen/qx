@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { loadPlugin, handlePluginRpc } from "./runtime";
+import { BUILTIN_PLUGINS } from "./builtin";
 import type {
   InstalledPlugin,
   RegisteredCommand,
@@ -183,7 +184,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       }
 
       set({
-        plugins,
+        plugins: [...BUILTIN_PLUGINS, ...plugins],
         commands: [...builtinCommands, ...commands],
         panels: { ...builtinPanels, ...panels },
         workers,
@@ -209,7 +210,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       Object.entries(get().panels).filter(([id]) => isBuiltinPluginId(id)),
     );
     set({
-      plugins: [],
+      plugins: BUILTIN_PLUGINS,
       commands: builtinCommands,
       panels: builtinPanels,
       workers: {},

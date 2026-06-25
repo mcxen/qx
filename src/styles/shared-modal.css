@@ -54,6 +54,11 @@
   left: 18px;
 }
 
+.qx-toggle.is-disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .qx-link-button {
   border: none;
   background: transparent;

@@ -50,6 +50,11 @@ export interface RssSettings {
   show_feed_icons: boolean;
 }
 
+export interface V2exSettings {
+  token: string;
+  nodes: string;
+}
+
 export interface PluginConfig {
   id: string;
   name: string;
@@ -65,6 +70,7 @@ export interface Settings {
   plugins: PluginConfig[];
   advanced: AdvancedSettings;
   rss: RssSettings;
+  v2ex: V2exSettings;
 }
 
 export type SettingsTab =
@@ -125,6 +131,10 @@ export const DEFAULT_SETTINGS: Settings = {
     article_font_family: "system-ui",
     show_feed_icons: true,
   },
+  v2ex: {
+    token: "",
+    nodes: "programmer create share ideas apple jobs qna",
+  },
 };
 
 interface SettingsStore {
@@ -172,6 +182,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           appearance: { ...DEFAULT_SETTINGS.appearance, ...s.appearance },
           advanced: { ...DEFAULT_SETTINGS.advanced, ...s.advanced },
           rss: { ...DEFAULT_SETTINGS.rss, ...s.rss },
+          v2ex: { ...DEFAULT_SETTINGS.v2ex, ...s.v2ex },
           shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...s.shortcuts },
         },
         loaded: true,

@@ -243,6 +243,27 @@ pub struct PluginConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct V2exSettings {
+    #[serde(default, rename = "token")]
+    pub token: String,
+    #[serde(default = "default_v2ex_nodes", rename = "nodes")]
+    pub nodes: String,
+}
+
+fn default_v2ex_nodes() -> String {
+    "programmer create share ideas apple jobs qna".to_string()
+}
+
+impl Default for V2exSettings {
+    fn default() -> Self {
+        Self {
+            token: String::new(),
+            nodes: default_v2ex_nodes(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
     pub general: GeneralSettings,
@@ -256,6 +277,8 @@ pub struct Settings {
     pub advanced: AdvancedSettings,
     #[serde(default)]
     pub rss: RssSettings,
+    #[serde(default)]
+    pub v2ex: V2exSettings,
 }
 
 impl Default for Settings {
@@ -304,6 +327,7 @@ impl Default for Settings {
             plugins: Vec::new(),
             advanced: AdvancedSettings::default(),
             rss: RssSettings::default(),
+            v2ex: V2exSettings::default(),
         }
     }
 }
