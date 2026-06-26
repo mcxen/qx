@@ -5,7 +5,7 @@ export default {
       title: "Count Clipboard Text",
       async run(context) {
         try {
-          const text = await context.invoke("get_clipboard_text");
+          const text = await context.clipboard.read();
           if (!text || typeof text !== 'string') {
             context.showToast("Clipboard is empty or not text.");
             return;
