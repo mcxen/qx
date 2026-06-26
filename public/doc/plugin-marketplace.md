@@ -32,7 +32,7 @@ zip -r ../my-plugin.qx-plugin manifest.json index.js icon.png
   "author": "Your Name",
   "icon": "icon.png",
   "keywords": ["hello", "test"],
-  "permissions": ["open-url"],
+  "permissions": ["open-url", "http", "notifications"],
   "entry": "index.js",
   "preferences": [
     {
@@ -49,6 +49,13 @@ zip -r ../my-plugin.qx-plugin manifest.json index.js icon.png
       "title": "Run My Plugin",
       "description": "Execute the main command",
       "keywords": ["run", "execute"]
+    }
+  ],
+  "shortcuts": [
+    {
+      "command": "run",
+      "key": "CommandOrControl+Shift+R",
+      "enabled": true
     }
   ],
   "panel": {
@@ -77,6 +84,7 @@ zip -r ../my-plugin.qx-plugin manifest.json index.js icon.png
 | `entry` | 否 | 入口文件，默认 `index.js` |
 | `preferences` | 否 | 用户可配置的偏好项 |
 | `commands` | 否 | 搜索结果中出现的命令 |
+| `shortcuts` | 否 | 全局快捷键，`command` 对应命令 `name`，`key` 使用 Tauri global-shortcut 格式 |
 | `panel` | 否 | 注册为全屏面板 tab |
 | `min_app_version` | 否 | 最低 Qx 版本要求 |
 | `pubkey` / `signature` | 否 | ed25519 签名（可选） |
@@ -127,6 +135,23 @@ export default {
 | `context.prompt(label, defaultValue?)` | 弹出输入框 | 无 |
 | `context.openUrl(url)` | 打开外部链接 | `open-url` |
 | `context.getPreference(id)` | 读取用户偏好 | 无 |
+| `context.clipboard.read()` | 读取系统剪贴板文本 | `clipboard` |
+| `context.clipboard.write(text)` | 写入系统剪贴板文本 | `clipboard` |
+| `context.http.fetch(url, opts)` | 通过 Rust 后端发起真实 HTTP/HTTPS 请求 | `http` |
+| `context.notification.show(input)` | 显示系统通知 | `notifications` |
+| `context.system.stats()` | 读取 CPU / MEM / GPU 运行监控 | `system-stats` |
+| `context.system.info()` | 读取系统信息 | `system-info` |
+| `context.system.storage()` | 读取磁盘存储信息 | `system-info` |
+| `context.system.network()` | 读取网络设备信息 | `system-info` |
+| `context.system.processes.list()` | 读取进程列表 | `processes` |
+| `context.system.processes.kill(pid)` | 结束进程 | `invoke:qx_system_information_kill_process` |
+| `context.permissions.status()` | 读取 macOS 权限状态 | `permissions` |
+| `context.permissions.request(id)` | 申请 macOS 权限 | `invoke:qx_permissions_request` |
+| `context.permissions.openSettings(id)` | 打开 macOS 权限设置 | `permissions` |
+| `context.apps.search(query)` | 搜索系统应用 | `apps` |
+| `context.files.search(query, limit?)` | 搜索文件 | `files` |
+| `context.qx.invokeRust(cmd, args)` | 调用受控 Rust/Tauri 命令 | 能力组、`invoke:<cmd>` 或 `*` |
+| `context.setTimeout/setInterval` | 面板生命周期定时器，面板销毁/插件卸载时自动清理 | 无 |
 | `context.storage.get(key)` | 读取插件 KV 存储 | 无 |
 | `context.storage.set(key, value)` | 写入插件 KV 存储 | 无 |
 | `context.storage.delete(key)` | 删除插件 KV 存储 | 无 |
@@ -135,9 +160,22 @@ export default {
 
 ```
 open-url           打开外部链接
+clipboard          读写系统剪贴板文本
+http               发起真实 HTTP/HTTPS 请求
+notifications      显示系统通知
+system-info        读取系统、存储、网络等静态系统信息
+system-stats       读取 CPU / MEM / GPU 运行监控
+processes          读取进程列表
+apps               搜索系统应用
+files              搜索文件
+permissions        读取权限状态、打开系统设置
+automation         读取录屏/宏等自动化状态
+storage-management 读取 Qx 存储概览
 invoke:<cmd>       调用指定 Tauri 命令（精确授权）
 *                  通配所有权限（仅调试用）
 ```
+
+危险 Rust 命令必须精确授权，不能只依赖能力组。例如结束进程、申请权限、清空数据、宏回放、录屏启动、文件导出/删除等，需要在 manifest 中写入对应 `invoke:<cmd>`。
 
 ## 发布到市场
 

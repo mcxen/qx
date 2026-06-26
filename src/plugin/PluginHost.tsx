@@ -6,21 +6,11 @@ import { useStore } from "../store";
 import { shouldIgnoreBareShortcut } from "../utils/keyboard";
 
 export function PluginHost() {
-  const { workers, loaded } = usePluginRegistry();
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!containerRef.current || !loaded) return;
-    const container = containerRef.current;
-    container.innerHTML = "";
-    Object.values(workers).forEach((iframe) => {
-      container.appendChild(iframe);
-    });
-  }, [workers, loaded]);
+  const { loaded } = usePluginRegistry();
 
   return (
     <div
-      ref={containerRef}
+      data-qx-plugin-host={loaded ? "loaded" : "loading"}
       style={{
         position: "absolute",
         inset: 0,
@@ -32,8 +22,21 @@ export function PluginHost() {
   );
 }
 
+function renderPluginStatus(
+  container: HTMLElement,
+  message: string,
+  tone: "neutral" | "danger" = "neutral",
+) {
+  container.innerHTML = "";
+  const status = document.createElement("div");
+  status.style.padding = "20px";
+  status.style.color = tone === "danger" ? "var(--qx-danger)" : "var(--qx-text-secondary)";
+  status.textContent = message;
+  container.appendChild(status);
+}
+
 export function PluginPanelViewport() {
-  const { panels, workers, commands, plugins } = usePluginRegistry();
+  const { panels, commands, plugins } = usePluginRegistry();
   const tab = useStore((s) => s.tab);
   const setTab = useStore((s) => s.setTab);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -42,7 +45,6 @@ export function PluginPanelViewport() {
 
   const pluginId = isPluginTab ? tab.slice("plugin:".length) : "";
   const panel = isPluginTab ? panels[pluginId] : undefined;
-  const iframe = isPluginTab ? workers[pluginId] : undefined;
   const plugin = isPluginTab ? plugins.find((p) => p.id === pluginId) : undefined;
   const pluginCommands = useMemo(
     () => (isPluginTab ? commands.filter((c) => c.pluginId === pluginId) : []),
@@ -74,29 +76,37 @@ export function PluginPanelViewport() {
     if (!containerRef.current || !isPluginTab) return;
     const container = containerRef.current;
     const activePanel = panels[pluginId];
-    const activeIframe = workers[pluginId];
-    if (!activePanel || !activeIframe) return;
+    if (!activePanel) return;
 
     let disposed = false;
-    container.innerHTML = "";
-    activeIframe.style.visibility = "visible";
-    activeIframe.style.pointerEvents = "auto";
-    activeIframe.style.zIndex = "1";
-    container.appendChild(activeIframe);
-    void Promise.resolve(activePanel.render(container, undefined as never)).catch((err: unknown) => {
-      if (!disposed) {
-        container.innerHTML = `<div style="padding:20px;color:var(--qx-danger)">Plugin ${pluginId} render failed: ${String(err)}</div>`;
-      }
-    });
+    renderPluginStatus(container, `Loading ${pluginId}...`);
+
+    const renderTimer = window.setTimeout(() => {
+      if (disposed) return;
+      const timeout = window.setTimeout(() => {
+        if (!disposed) {
+          renderPluginStatus(container, `Plugin ${pluginId} render timed out.`, "danger");
+        }
+      }, 8500);
+      void Promise.resolve(activePanel.render(container, undefined as never))
+        .then(() => {
+          window.clearTimeout(timeout);
+        })
+        .catch((err: unknown) => {
+          window.clearTimeout(timeout);
+          if (!disposed) {
+            renderPluginStatus(container, `Plugin ${pluginId} render failed: ${String(err)}`, "danger");
+          }
+        });
+    }, 0);
 
     return () => {
       disposed = true;
+      window.clearTimeout(renderTimer);
       void Promise.resolve(activePanel.destroy?.(container)).catch(() => {});
-      activeIframe.style.visibility = "hidden";
-      activeIframe.style.pointerEvents = "none";
-      activeIframe.style.zIndex = "-1";
+      container.innerHTML = "";
     };
-  }, [isPluginTab, pluginId, panels, workers, refreshKey]);
+  }, [isPluginTab, pluginId, panels, refreshKey]);
 
   if (!isPluginTab) return null;
 
@@ -187,11 +197,6 @@ export function PluginPanelViewport() {
         {!panel && (
           <div className="qx-empty-state">
             Plugin {pluginId} panel not registered
-          </div>
-        )}
-        {panel && !iframe && (
-          <div className="qx-empty-state">
-            Plugin {pluginId} not loaded
           </div>
         )}
       </div>

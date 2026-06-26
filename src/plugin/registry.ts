@@ -1,9 +1,16 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import { loadPlugin, handlePluginRpc } from "./runtime";
+import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
+import {
+  handlePluginRpc,
+  isPluginRuntimeSource,
+  loadPlugin,
+  unloadPluginRuntime,
+} from "./runtime";
 import { BUILTIN_PLUGINS } from "./builtin";
 import type {
   InstalledPlugin,
+  PluginContext,
   RegisteredCommand,
   RegisteredPanel,
 } from "./types";
@@ -24,6 +31,7 @@ interface PluginRegistryStore {
   commands: RegisteredCommand[];
   panels: Record<string, RegisteredPanel>;
   workers: Record<string, HTMLIFrameElement>;
+  shortcuts: Record<string, string[]>;
   loaded: boolean;
   loading: boolean;
   error: string | null;
@@ -101,11 +109,53 @@ function scoreCommand(command: RegisteredCommand, query: string): number {
   return 0;
 }
 
+function unavailableContext(pluginId: string): PluginContext {
+  const unavailable = async () => {
+    throw new Error("Direct context not available; command runs inside plugin iframe");
+  };
+  const unavailableVoid = () => {
+    throw new Error("Direct context not available; command runs inside plugin iframe");
+  };
+  return {
+    pluginId,
+    invoke: unavailable,
+    showToast: unavailableVoid,
+    prompt: unavailable,
+    openUrl: unavailable,
+    getPreference: unavailable,
+    setTimeout: () => window.setTimeout(() => {}, 0),
+    setInterval: () => window.setInterval(() => {}, 1000),
+    clearTimeout: (id) => window.clearTimeout(id),
+    clearInterval: (id) => window.clearInterval(id),
+    clipboard: { read: unavailable, write: unavailable },
+    http: { fetch: unavailable },
+    notification: { show: unavailable },
+    system: {
+      stats: unavailable,
+      info: unavailable,
+      storage: unavailable,
+      network: unavailable,
+      qxStorageOverview: unavailable,
+      processes: { list: unavailable, kill: unavailable },
+    },
+    permissions: {
+      status: unavailable,
+      request: unavailable,
+      openSettings: unavailable,
+    },
+    apps: { search: unavailable },
+    files: { search: unavailable },
+    qx: { invokeRust: unavailable },
+    storage: { get: unavailable, set: unavailable, delete: unavailable },
+  };
+}
+
 export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
   plugins: [],
   commands: [],
   panels: {},
   workers: {},
+  shortcuts: {},
   loaded: false,
   loading: false,
   error: null,
@@ -130,6 +180,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       const commands: RegisteredCommand[] = [];
       const panels: Record<string, RegisteredPanel> = {};
       const workers: Record<string, HTMLIFrameElement> = {};
+      const shortcuts: Record<string, string[]> = {};
 
       for (const plugin of sorted) {
         try {
@@ -142,6 +193,10 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
             const data = event.data || {};
             if (data.type !== "qx:rpc" || data.pluginId !== plugin.id) return;
             const requestId = String(data.requestId || "");
+            const runtimeId = String(data.runtimeId || "");
+            const source = event.source as Window | null;
+            if (!source || typeof source.postMessage !== "function") return;
+            if (!isPluginRuntimeSource(plugin.id, runtimeId, source)) return;
             void handlePluginRpc(
               plugin,
               String(data.method),
@@ -149,10 +204,11 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
               hooks,
             )
               .then((rpcResult) => {
-                result.iframe.contentWindow?.postMessage(
+                source.postMessage(
                   {
                     type: "qx:rpc:response",
                     pluginId: plugin.id,
+                    runtimeId,
                     requestId,
                     result: rpcResult,
                   },
@@ -160,10 +216,11 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
                 );
               })
               .catch((error) => {
-                result.iframe.contentWindow?.postMessage(
+                source.postMessage(
                   {
                     type: "qx:rpc:response",
                     pluginId: plugin.id,
+                    runtimeId,
                     requestId,
                     error: String(error),
                   },
@@ -172,12 +229,31 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
               });
           };
           window.addEventListener("message", rpcHandler);
-          (result.iframe as HTMLIFrameElement & { __qxRpcHandler?: (event: MessageEvent) => void }).__qxRpcHandler = rpcHandler;
+          (result.iframe as HTMLIFrameElement & {
+            __qxRpcHandler?: (event: MessageEvent) => void;
+            __qxRuntimeId?: string;
+          }).__qxRpcHandler = rpcHandler;
+          (result.iframe as HTMLIFrameElement & { __qxRuntimeId?: string }).__qxRuntimeId = result.runtimeId;
           commands.push(...result.commands);
           if (result.panel) {
             panels[result.panel.pluginId] = result.panel;
           }
           workers[plugin.id] = result.iframe;
+          const pluginShortcuts = plugin.manifest?.shortcuts || [];
+          for (const shortcut of pluginShortcuts) {
+            if (shortcut.enabled === false || !shortcut.key || !shortcut.command) continue;
+            const command = result.commands.find((cmd) => cmd.name === shortcut.command);
+            if (!command) continue;
+            try {
+              await register(shortcut.key, (event) => {
+                if (event.state !== "Pressed") return;
+                void get().runCommand(command);
+              });
+              shortcuts[plugin.id] = [...(shortcuts[plugin.id] || []), shortcut.key];
+            } catch (error) {
+              console.warn(`Failed to register shortcut ${shortcut.key} for ${plugin.id}:`, error);
+            }
+          }
         } catch (err) {
           console.error(`Failed to load plugin ${plugin.id}:`, err);
         }
@@ -188,6 +264,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
         commands: [...builtinCommands, ...commands],
         panels: { ...builtinPanels, ...panels },
         workers,
+        shortcuts,
         loaded: true,
         loading: false,
       });
@@ -197,10 +274,20 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
   },
 
   unload: () => {
-    const { workers } = get();
-    Object.values(workers).forEach((iframe) => {
-      const handler = (iframe as HTMLIFrameElement & { __qxRpcHandler?: (event: MessageEvent) => void }).__qxRpcHandler;
+    const { workers, shortcuts } = get();
+    Object.values(shortcuts).flat().forEach((shortcut) => {
+      void unregister(shortcut).catch(() => {});
+    });
+    Object.entries(workers).forEach(([pluginId, iframe]) => {
+      const decorated = iframe as HTMLIFrameElement & {
+        __qxRpcHandler?: (event: MessageEvent) => void;
+        __qxRuntimeId?: string;
+      };
+      const handler = decorated.__qxRpcHandler;
       if (handler) window.removeEventListener("message", handler);
+      if (decorated.__qxRuntimeId) {
+        unloadPluginRuntime(pluginId, iframe, decorated.__qxRuntimeId);
+      }
       iframe.remove();
     });
     const builtinCommands = get().commands.filter((command) =>
@@ -214,6 +301,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       commands: builtinCommands,
       panels: builtinPanels,
       workers: {},
+      shortcuts: {},
       loaded: false,
     });
   },
@@ -261,21 +349,12 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
   getPanel: (id: string) => get().panels[id],
 
   runCommand: async (command) => {
-    await command.run({
-      pluginId: command.pluginId,
-      invoke: async () => {
-        throw new Error("Direct invoke not available; command runs inside plugin iframe");
-      },
-      showToast: () => {},
-      prompt: async () => null,
-      openUrl: async () => {},
-      getPreference: async () => undefined,
-      storage: {
-        get: async () => undefined,
-        set: async () => {},
-        delete: async () => {},
-      },
-    });
+    try {
+      await command.run(unavailableContext(command.pluginId));
+    } catch (error) {
+      const message = `Plugin command failed: ${String(error)}`;
+      get().hooks?.onToast(message);
+    }
   },
 
   startDevWatcher: () => {
@@ -304,26 +383,92 @@ export function createPluginContext(
     onPrompt: (label: string, defaultValue?: string) => Promise<string | null>;
     onGetPreference: (pluginId: string, id: string) => Promise<unknown>;
   },
-) {
+): PluginContext {
+  const rpc = (method: string, payload: Record<string, unknown> = {}) =>
+    handlePluginRpc(plugin, method, payload, hooks);
+
   return {
     pluginId: plugin.id,
-    invoke: (cmd: string, args?: Record<string, unknown>) =>
-      handlePluginRpc(plugin, "invoke", { cmd, args }, hooks),
-    showToast: (msg: string) =>
-      handlePluginRpc(plugin, "showToast", { msg }, hooks),
+    invoke: (cmd: string, args?: Record<string, unknown>) => rpc("invoke", { cmd, args }),
+    showToast: (msg: string) => {
+      void rpc("showToast", { msg });
+    },
     prompt: (label: string, defaultValue?: string) =>
-      handlePluginRpc(plugin, "prompt", { label, defaultValue }, hooks) as Promise<string | null>,
-    openUrl: (url: string) =>
-      handlePluginRpc(plugin, "openUrl", { url }, hooks) as Promise<void>,
-    getPreference: (id: string) =>
-      handlePluginRpc(plugin, "getPreference", { id }, hooks),
+      rpc("prompt", { label, defaultValue }) as Promise<string | null>,
+    openUrl: (url: string) => rpc("openUrl", { url }) as Promise<void>,
+    getPreference: (id: string) => rpc("getPreference", { id }),
+    setTimeout: (handler, delay, ...args) => window.setTimeout(handler, delay, ...args),
+    setInterval: (handler, delay, ...args) => window.setInterval(handler, delay, ...args),
+    clearTimeout: (id) => window.clearTimeout(id),
+    clearInterval: (id) => window.clearInterval(id),
+    clipboard: {
+      read: () => rpc("clipboardRead") as Promise<string>,
+      write: (text: string) => rpc("clipboardWrite", { text }) as Promise<void>,
+    },
+    http: {
+      fetch: async (url, options = {}) => {
+        const result = await rpc("httpFetch", { url, options }) as {
+          status: number;
+          ok: boolean;
+          headers: Record<string, string>;
+          body: string;
+        };
+        const body = String(result.body ?? "");
+        return {
+          ...result,
+          body,
+          text: async () => body,
+          json: async () => JSON.parse(body) as unknown,
+        };
+      },
+    },
+    notification: {
+      show: (input) => rpc("notificationShow", input) as Promise<void>,
+    },
+    system: {
+      stats: () => rpc("invoke", { cmd: "get_system_stats", args: {} }),
+      info: () => rpc("invoke", { cmd: "qx_system_information_check_system_info", args: {} }),
+      storage: () => rpc("invoke", { cmd: "qx_system_information_check_storage", args: {} }),
+      network: () => rpc("invoke", { cmd: "qx_system_information_check_network", args: {} }),
+      qxStorageOverview: () => rpc("invoke", { cmd: "qx_storage_overview", args: {} }),
+      processes: {
+        list: () => rpc("invoke", { cmd: "qx_system_information_list_processes", args: {} }),
+        kill: (pid) => rpc("invoke", {
+          cmd: "qx_system_information_kill_process",
+          args: { pid },
+        }),
+      },
+    },
+    permissions: {
+      status: () => rpc("invoke", { cmd: "qx_permissions_status", args: {} }),
+      request: (id) => rpc("invoke", {
+        cmd: "qx_permissions_request",
+        args: { id },
+      }) as Promise<boolean>,
+      openSettings: (id) => rpc("invoke", {
+        cmd: "qx_permissions_open_settings",
+        args: { id },
+      }) as Promise<void>,
+    },
+    apps: {
+      search: (query) => rpc("invoke", { cmd: "search_apps", args: { query } }) as Promise<unknown[]>,
+    },
+    files: {
+      search: async (query, limit) => {
+        const results = await rpc("invoke", {
+          cmd: "search_files",
+          args: { query },
+        }) as unknown[];
+        return typeof limit === "number" ? results.slice(0, Math.max(0, limit)) : results;
+      },
+    },
+    qx: {
+      invokeRust: (cmd, args) => rpc("invokeRust", { cmd, args }),
+    },
     storage: {
-      get: (key: string) =>
-        handlePluginRpc(plugin, "storageGet", { key }, hooks),
-      set: (key: string, value: unknown) =>
-        handlePluginRpc(plugin, "storageSet", { key, value }, hooks) as Promise<void>,
-      delete: (key: string) =>
-        handlePluginRpc(plugin, "storageDelete", { key }, hooks) as Promise<void>,
+      get: (key: string) => rpc("storageGet", { key }),
+      set: (key: string, value: unknown) => rpc("storageSet", { key, value }) as Promise<void>,
+      delete: (key: string) => rpc("storageDelete", { key }) as Promise<void>,
     },
   };
 }

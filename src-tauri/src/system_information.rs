@@ -36,6 +36,32 @@ pub struct QxNetworkInfo {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QxNetworkCounter {
+    name: String,
+    bytes_in: u64,
+    bytes_out: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QxNetworkCounters {
+    interfaces: Vec<QxNetworkCounter>,
+    total_bytes_in: u64,
+    total_bytes_out: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QxPowerInfo {
+    battery_level: Option<u8>,
+    is_charging: bool,
+    fully_charged: bool,
+    source: String,
+    summary: String,
+}
+
+#[derive(Debug, Serialize)]
 pub struct QxProcessInfo {
     pid: u32,
     name: String,
@@ -220,6 +246,81 @@ pub fn qx_system_information_check_network() -> Result<QxNetworkInfo, String> {
     Ok(QxNetworkInfo {
         count: devices.len(),
         devices,
+    })
+}
+
+#[tauri::command]
+pub fn qx_system_monitor_network_counters() -> Result<QxNetworkCounters, String> {
+    let stdout = command_output("/usr/sbin/netstat", &["-ibn"])?;
+    let mut interfaces = Vec::new();
+
+    for line in stdout.lines().skip(1) {
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        if cols.len() < 10 || cols[0] == "lo0" || cols[2] != "<Link#>" {
+            continue;
+        }
+        let bytes_in = cols.get(6).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+        let bytes_out = cols.get(9).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+        if bytes_in == 0 && bytes_out == 0 {
+            continue;
+        }
+        interfaces.push(QxNetworkCounter {
+            name: cols[0].to_string(),
+            bytes_in,
+            bytes_out,
+        });
+    }
+
+    interfaces.sort_by(|a, b| {
+        let a_total = a.bytes_in.saturating_add(a.bytes_out);
+        let b_total = b.bytes_in.saturating_add(b.bytes_out);
+        b_total.cmp(&a_total)
+    });
+    let total_bytes_in = interfaces.iter().map(|item| item.bytes_in).sum();
+    let total_bytes_out = interfaces.iter().map(|item| item.bytes_out).sum();
+
+    Ok(QxNetworkCounters {
+        interfaces,
+        total_bytes_in,
+        total_bytes_out,
+    })
+}
+
+#[tauri::command]
+pub fn qx_system_monitor_power() -> Result<QxPowerInfo, String> {
+    let stdout = command_output("/usr/bin/pmset", &["-g", "batt"])?;
+    let source = stdout
+        .lines()
+        .next()
+        .and_then(|line| line.split('\'').nth(1))
+        .unwrap_or("Unknown")
+        .to_string();
+    let battery_line = stdout
+        .lines()
+        .find(|line| line.contains('%'))
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let battery_level = battery_line
+        .split('%')
+        .next()
+        .and_then(|left| left.split_whitespace().last())
+        .and_then(|value| value.parse::<u8>().ok());
+    let lower = battery_line.to_lowercase();
+    let fully_charged = lower.contains("charged");
+    let is_charging = lower.contains("charging") || source.to_lowercase().contains("ac power");
+    let summary = if battery_line.is_empty() {
+        source.clone()
+    } else {
+        format!("{source}: {battery_line}")
+    };
+
+    Ok(QxPowerInfo {
+        battery_level,
+        is_charging,
+        fully_charged,
+        source,
+        summary,
     })
 }
 

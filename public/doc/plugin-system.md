@@ -69,7 +69,7 @@ Tauri 生产环境前端是 `tauri://localhost`（或 `asset://`），`~/.qx/plu
   "author": "Your Name",
   "icon": "icon.png",
   "keywords": ["hello", "test"],
-  "permissions": ["clipboard", "notifications", "open-url"],
+  "permissions": ["clipboard", "http", "notifications", "open-url"],
   "entry": "index.js",
   "dependencies": ["rss"],
   "preferences": [
@@ -87,6 +87,13 @@ Tauri 生产环境前端是 `tauri://localhost`（或 `asset://`），`~/.qx/plu
       "description": "Display a greeting",
       "keywords": ["hi", "greet"],
       "icon": "icon.png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "command": "hello",
+      "key": "CommandOrControl+Shift+H",
+      "enabled": true
     }
   ],
   "panel": {
@@ -112,6 +119,7 @@ Tauri 生产环境前端是 `tauri://localhost`（或 `asset://`），`~/.qx/plu
 - `dependencies`：依赖的其他插件 id（预留，用于加载顺序）
 - `preferences`：用户在设置中可配置的项
 - `commands`：出现在搜索结果中的命令列表
+- `shortcuts`：可选，全局快捷键列表。`command` 对应命令 `name`，`key` 使用 Tauri global-shortcut 格式，例如 `CommandOrControl+Shift+V`
 - `panel`：是否注册为一个可切换的全屏面板 tab
 - `min_app_version`：最低 Qx 版本
 - `pubkey` / `signature`：ed25519 签名（可选，建议开启）
@@ -155,6 +163,23 @@ export default {
 | `context.prompt(label, defaultValue?)` | 弹出输入框 |
 | `context.openUrl(url)` | 打开外部链接（需 `open-url` 权限） |
 | `context.getPreference(id)` | 读取用户在设置中配置的偏好 |
+| `context.clipboard.read()` | 读取系统剪贴板文本（需 `clipboard` 权限） |
+| `context.clipboard.write(text)` | 写入系统剪贴板文本（需 `clipboard` 权限） |
+| `context.http.fetch(url, opts)` | 通过 Rust 后端发起真实 HTTP/HTTPS 请求（需 `http` 权限） |
+| `context.notification.show(input)` | 显示系统通知（需 `notifications` 权限） |
+| `context.system.stats()` | 读取 CPU / MEM / GPU 运行监控（需 `system-stats` 权限） |
+| `context.system.info()` | 读取系统信息（需 `system-info` 权限） |
+| `context.system.storage()` | 读取磁盘存储信息（需 `system-info` 权限） |
+| `context.system.network()` | 读取网络设备信息（需 `system-info` 权限） |
+| `context.system.processes.list()` | 读取进程列表（需 `processes` 权限） |
+| `context.system.processes.kill(pid)` | 结束进程（需精确 `invoke:qx_system_information_kill_process` 权限） |
+| `context.permissions.status()` | 读取 macOS 权限状态（需 `permissions` 权限） |
+| `context.permissions.request(id)` | 申请 macOS 权限（需精确 `invoke:qx_permissions_request` 权限） |
+| `context.permissions.openSettings(id)` | 打开 macOS 权限设置（需 `permissions` 权限） |
+| `context.apps.search(query)` | 搜索系统应用（需 `apps` 权限） |
+| `context.files.search(query, limit?)` | 搜索文件（需 `files` 权限） |
+| `context.qx.invokeRust(cmd, args)` | 调用受控 Rust/Tauri 命令（需能力组、`invoke:<cmd>` 或 `*`） |
+| `context.setTimeout/setInterval` | 面板生命周期定时器，面板销毁/插件卸载时自动清理 |
 | `context.storage.get(key)` | 读取插件本地 KV |
 | `context.storage.set(key, value)` | 写入插件本地 KV |
 | `context.storage.delete(key)` | 删除插件本地 KV |
@@ -167,14 +192,23 @@ export default {
 
 ```
 clipboard          访问剪贴板相关命令
+http               发起真实 HTTP/HTTPS 请求
 notifications      显示通知 / toast
 open-url           打开外部链接
 storage            插件本地存储（默认已包含）
+system-info        读取系统、存储、网络等静态系统信息
+system-stats       读取 CPU / MEM / GPU 运行监控
+processes          读取进程列表
+apps               搜索系统应用
+files              搜索文件
+permissions        读取权限状态、打开系统设置
+automation         读取录屏/宏等自动化状态
+storage-management 读取 Qx 存储概览
 invoke:<cmd>       调用某个具体的 Tauri 命令
 *                  通配，允许所有（仅内部/调试插件使用）
 ```
 
-实际执行时，前端 `handlePluginRpc` 会检查该插件 manifest 中的权限列表，未声明的调用会被拒绝。
+实际执行时，前端 `handlePluginRpc` 会检查该插件 manifest 中的权限列表，未声明的调用会被拒绝。危险命令必须显式声明精确 `invoke:<cmd>` 权限，即使插件已经声明能力组也不会被隐式放行，例如结束进程、申请权限、清空数据、宏回放、录屏启动、文件导出/删除等。
 
 ---
 
@@ -265,6 +299,11 @@ App 启动
 | `plugin_storage_delete(id, key)` | 删除插件存储 |
 | `plugin_preferences_get(id)` | 读取插件用户偏好 |
 | `plugin_preferences_set(id, values)` | 写入插件用户偏好 |
+| `plugin_clipboard_read()` | 读取系统剪贴板文本 |
+| `plugin_clipboard_write(text)` | 写入系统剪贴板文本 |
+| `plugin_http_fetch(req)` | 真实 HTTP/HTTPS 请求 |
+| `plugin_notification_show(req)` | 显示系统通知 |
+| `plugin_resolve_asset(id, asset_path)` | 将插件资源解析为可被 `convertFileSrc()` 使用的路径 |
 | `fetch_plugin_index()` | 拉取远程插件索引 |
 | `download_plugin(url)` | 下载插件包到临时目录 |
 

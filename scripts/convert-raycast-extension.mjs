@@ -5,11 +5,10 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const INVOKE_PERMISSIONS = [
-  "qx_system_information_check_system_info",
-  "qx_system_information_check_storage",
-  "qx_system_information_check_network",
-  "qx_system_information_list_processes",
-  "qx_system_information_kill_process",
+  "system-info",
+  "system-stats",
+  "processes",
+  "invoke:qx_system_information_kill_process",
 ];
 
 function usage() {
@@ -56,17 +55,14 @@ function normalizeIcon(icon) {
 }
 
 function buildManifest(pkg) {
-  const id = pkg.name || "raycast-extension";
-  const viewCommand = (pkg.commands || [])[0];
-  const commands = [
-    {
-      name: viewCommand?.name || "index",
-      title: viewCommand?.title || pkg.title || titleCase(id),
-      description: viewCommand?.description || pkg.description || "",
-      icon: normalizeIcon(pkg.icon),
-      keywords: pkg.keywords || [],
-    },
-  ];
+  const id = (pkg.name || "raycast-extension").replace(/^raycast-/, "");
+  const commands = (pkg.commands || []).map((command) => ({
+    name: command.name || "index",
+    title: command.title || pkg.title || titleCase(id),
+    description: command.description || pkg.description || "",
+    icon: normalizeIcon(pkg.icon),
+    keywords: pkg.keywords || [],
+  }));
 
   for (const tool of pkg.tools || []) {
     commands.push({
@@ -75,6 +71,15 @@ function buildManifest(pkg) {
       description: tool.description || "",
       icon: normalizeIcon(pkg.icon),
       keywords: [tool.name, ...(pkg.keywords || [])],
+    });
+  }
+  if (commands.length === 0) {
+    commands.push({
+      name: "index",
+      title: pkg.title || titleCase(id),
+      description: pkg.description || "",
+      icon: normalizeIcon(pkg.icon),
+      keywords: pkg.keywords || [],
     });
   }
 
@@ -248,6 +253,21 @@ export default {
 `;
 }
 
+function systemMonitorIndexJs() {
+  return String.raw`function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")}
+function bytes(v){const n=Math.max(0,Number(v||0));if(n<1024)return Math.round(n)+" B";if(n<1048576)return(n/1024).toFixed(2)+" KB";if(n<1073741824)return(n/1048576).toFixed(2)+" MB";return(n/1073741824).toFixed(2)+" GB"}
+function css(){return '<style>:root{--b:#f7f7f7;--p:#fff;--p2:#ededed;--l:#d7d7d7;--t:#111;--m:#777;--s:#222}@media(prefers-color-scheme:dark){:root{--b:#1e1e1f;--p:#252526;--p2:#3a3a3c;--l:#3c3c3f;--t:#f5f5f5;--m:#a9a9aa;--s:#fff}}html,body,#root{margin:0;width:100%;height:100%;background:transparent}body{font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--t)}.sm{height:100%;display:grid;grid-template-columns:minmax(220px,32%) minmax(0,1fr);background:var(--b)}.nav{border-right:1px solid var(--l);padding:22px 16px;overflow:auto}.nav button{width:100%;min-height:52px;display:grid;grid-template-columns:28px 1fr auto;align-items:center;gap:10px;border:0;border-radius:8px;background:transparent;color:var(--t);font:inherit;text-align:left;padding:8px 12px;cursor:pointer}.nav button.active{background:var(--p2)}.label{font-size:16px;font-weight:650}.metric{color:var(--m);font-size:14px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.detail{padding:24px 30px;overflow:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.top h1{font-size:22px;margin:0}.top button{border:1px solid var(--l);background:var(--p);color:var(--t);border-radius:6px;padding:7px 12px;font:inherit}.row{min-height:42px;display:flex;align-items:center;justify-content:space-between;gap:20px;border-bottom:1px solid var(--l);padding:8px 0}.name{color:var(--m);font-weight:650}.value{font-size:15px;font-weight:650;text-align:right}.bar{height:8px;background:var(--p2);border-radius:999px;overflow:hidden}.fill{height:100%;background:var(--s);border-radius:999px}.error{padding:20px;color:#d44}.small{font-size:12px;color:var(--m)}</style>'}
+function row(n,v){return '<div class="row"><div class="name">'+esc(n)+'</div><div class="value">'+esc(v)+'</div></div>'}
+function bar(p){return '<div class="bar"><div class="fill" style="width:'+Math.max(0,Math.min(100,Number(p||0))).toFixed(0)+'%"></div></div>'}
+let active="system-info",lastNet=null;
+async function data(ctx){const [stats,system,storage,network,processes,power,counters]=await Promise.all([ctx.system.stats(),ctx.system.info(),ctx.system.storage(),ctx.system.network(),ctx.system.processes.list(),ctx.qx.invokeRust("qx_system_monitor_power",{}),ctx.qx.invokeRust("qx_system_monitor_network_counters",{})]);const now=Date.now();let down=0,up=0;if(lastNet&&counters){const s=Math.max(.001,(now-lastNet.time)/1000);down=Math.max(0,(Number(counters.totalBytesIn||0)-lastNet.in)/s);up=Math.max(0,(Number(counters.totalBytesOut||0)-lastNet.out)/s)}lastNet={time:now,in:Number(counters?.totalBytesIn||0),out:Number(counters?.totalBytesOut||0)};return{stats,system,storage,network,processes,power,counters,down,up}}
+function nav(id,i,l,m){return '<button data-tab="'+id+'" class="'+(active===id?'active':'')+'"><span>'+i+'</span><span class="label">'+l+'</span><span class="metric">'+esc(m||'')+'</span></button>'}
+function pane(d){const st=d.stats||{};if(active==="cpu")return '<div class="top"><h1>CPU</h1><button id="refresh">Refresh</button></div>'+bar(st.cpu)+row("Usage",Number(st.cpu||0).toFixed(1)+" %")+row("Chip",d.system?.chip||"Unknown")+row("Temperature","N/A");if(active==="memory")return '<div class="top"><h1>Memory</h1><button id="refresh">Refresh</button></div>'+bar(st.memory)+row("Used",Number(st.memoryUsedGb||0).toFixed(2)+" GB")+row("Total",Number(st.memoryTotalGb||0).toFixed(2)+" GB")+row("Usage",Number(st.memory||0).toFixed(1)+" %");if(active==="power")return '<div class="top"><h1>Power</h1><button id="refresh">Refresh</button></div>'+(d.power?.batteryLevel==null?'':bar(d.power.batteryLevel))+row("Battery",d.power?.batteryLevel==null?"N/A":d.power.batteryLevel+" %")+row("Source",d.power?.source||"Unknown")+row("State",d.power?.summary||"Unknown");if(active==="network"){const dev=(d.network?.devices||[]).map(x=>row(x.name,x.ip)).join("");const c=(d.counters?.interfaces||[]).slice(0,8).map(x=>row(x.name,"In "+bytes(x.bytesIn)+" / Out "+bytes(x.bytesOut))).join("");return '<div class="top"><h1>Network</h1><button id="refresh">Refresh</button></div>'+row("Download Speed",bytes(d.down)+"/s")+row("Upload Speed",bytes(d.up)+"/s")+row("Active Devices",String(d.network?.count||0))+dev+c}const ps=(d.processes?.processes||[]).slice(0,8).map((p,i)=>'<div class="row"><div><strong>'+(i+1)+' -> '+esc(p.name)+'</strong><div class="small">PID '+p.pid+'</div></div><div class="value">CPU '+Number(p.cpu||0).toFixed(1)+'% / MEM '+Number(p.mem||0).toFixed(1)+'%</div></div>').join("");return '<div class="top"><h1>System Info</h1><button id="refresh">Refresh</button></div>'+row("Hostname",d.system?.hostname||"Unknown")+row("macOS",d.system?.macOS||"Unknown")+row("Kernel",d.system?.kernel||"Unknown")+row("Storage",d.storage?.summary||"Unknown")+row("Serial Number",d.system?.serialNumber||"Unknown")+ps}
+async function draw(c,ctx){c.innerHTML=css()+'<div class="sm"><div class="nav">Loading System Monitor...</div><div></div></div>';try{const d=await data(ctx);c.innerHTML=css()+'<div class="sm"><div class="nav">'+nav("system-info","S","System Info","")+nav("cpu","C","CPU",Number(d.stats?.cpu||0).toFixed(0)+" %")+nav("memory","M","Memory",Number(d.stats?.memory||0).toFixed(0)+" %")+nav("power","P","Power",d.power?.batteryLevel==null?"N/A":d.power.batteryLevel+" %")+nav("network","N","Network","↓ "+bytes(d.down)+"/s")+'</div><div class="detail">'+pane(d)+'</div></div>';c.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{active=b.getAttribute("data-tab")||"system-info";draw(c,ctx)}));c.querySelector("#refresh")?.addEventListener("click",()=>draw(c,ctx))}catch(e){c.innerHTML=css()+'<div class="error">Failed to load System Monitor: '+esc(e?.message||e)+'</div>'}}
+export default{commands:[{name:"system-monitor",title:"System Monitor",async run(ctx){const s=await ctx.system.stats();ctx.showToast("CPU "+Number(s.cpu||0).toFixed(1)+"%, Memory "+Number(s.memory||0).toFixed(1)+"%")}},{name:"menubar-system-monitor",title:"Menubar System Monitor",async run(ctx){const s=await ctx.system.stats();ctx.showToast("Qx panel monitor ready: CPU "+Number(s.cpu||0).toFixed(1)+"%")}}],panel:{title:"System Monitor",async render(c,ctx){await draw(c,ctx);c.__timer=ctx.setInterval(()=>draw(c,ctx),3000)},destroy(c){c.innerHTML=""}}};
+`;
+}
+
 function fallbackIndexJs(pkg) {
   const name = pkg.title || titleCase(pkg.name || "Raycast Extension");
   return `export default {
@@ -307,7 +327,11 @@ async function main() {
   await writeFile(path.join(pluginDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   await writeFile(
     path.join(pluginDir, "index.js"),
-    pkg.name === "system-information" ? systemInformationIndexJs() : fallbackIndexJs(pkg),
+    pkg.name === "system-information"
+      ? systemInformationIndexJs()
+      : pkg.name === "raycast-system-monitor" || pkg.name === "system-monitor"
+        ? systemMonitorIndexJs()
+        : fallbackIndexJs(pkg),
   );
   await copyAssetIfPresent(source, pluginDir, pkg.icon);
   await writeFile(

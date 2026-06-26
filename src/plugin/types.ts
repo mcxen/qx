@@ -16,6 +16,12 @@ export interface PluginCommand {
   keywords?: string[];
 }
 
+export interface PluginShortcut {
+  command: string;
+  key: string;
+  enabled?: boolean;
+}
+
 export interface PluginPanel {
   title?: string;
   icon?: string;
@@ -33,6 +39,7 @@ export interface PluginManifest {
   permissions?: string[];
   preferences?: PluginPreference[];
   commands?: PluginCommand[];
+  shortcuts?: PluginShortcut[];
   panel?: PluginPanel;
   dependencies?: string[];
   min_app_version?: string;
@@ -79,6 +86,60 @@ export interface PluginContext {
   prompt: (label: string, defaultValue?: string) => Promise<string | null>;
   openUrl: (url: string) => Promise<void>;
   getPreference: (id: string) => Promise<unknown>;
+  setTimeout: (handler: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => number;
+  setInterval: (handler: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => number;
+  clearTimeout: (id: number) => void;
+  clearInterval: (id: number) => void;
+  clipboard: {
+    read: () => Promise<string>;
+    write: (text: string) => Promise<void>;
+  };
+  http: {
+    fetch: (
+      url: string,
+      options?: {
+        method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+        headers?: Record<string, string>;
+        body?: string;
+        timeoutMs?: number;
+      },
+    ) => Promise<{
+      status: number;
+      ok: boolean;
+      headers: Record<string, string>;
+      body: string;
+      text: () => Promise<string>;
+      json: () => Promise<unknown>;
+    }>;
+  };
+  notification: {
+    show: (input: { title: string; body?: string; subtitle?: string }) => Promise<void>;
+  };
+  system: {
+    stats: () => Promise<unknown>;
+    info: () => Promise<unknown>;
+    storage: () => Promise<unknown>;
+    network: () => Promise<unknown>;
+    qxStorageOverview: () => Promise<unknown>;
+    processes: {
+      list: () => Promise<unknown>;
+      kill: (pid: number) => Promise<unknown>;
+    };
+  };
+  permissions: {
+    status: () => Promise<unknown>;
+    request: (id: string) => Promise<boolean>;
+    openSettings: (id: string) => Promise<void>;
+  };
+  apps: {
+    search: (query: string) => Promise<unknown[]>;
+  };
+  files: {
+    search: (query: string, limit?: number) => Promise<unknown[]>;
+  };
+  qx: {
+    invokeRust: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
+  };
   storage: {
     get: (key: string) => Promise<unknown>;
     set: (key: string, value: unknown) => Promise<void>;

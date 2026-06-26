@@ -470,7 +470,7 @@ function App() {
         ...pluginMatches.map((m) => ({
           name: m.command.title,
           path: `__qx:cmd:${m.command.pluginId}:${m.command.name}`,
-          icon: `builtin:${m.command.pluginId}`,
+          icon: m.command.icon || m.command.pluginIcon || `builtin:${m.command.pluginId}`,
           kind: "command" as const,
         })),
       );

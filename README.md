@@ -107,11 +107,11 @@ The Dynamic Island is always centered via `position: absolute; left: 50%; transf
 
 | View | Preview |
 |------|---------|
-| Launcher + Search Results | `<!-- screenshot -->` |
-| Clipboard History | `<!-- screenshot -->` |
-| RSS Reader | `<!-- screenshot -->` |
+| Launcher + Search Results | <img src="README.assets/PixPin_2026-06-25_22-57-00.png" alt="PixPin_2026-06-25_22-57-00" style="zoom: 25%;" /> |
+| Clipboard History | <img src="README.assets/PixPin_2026-06-25_22-57-25.png" alt="PixPin_2026-06-25_22-57-25" style="zoom:25%;" /> |
+| RSS Reader | <img src="README.assets/PixPin_2026-06-25_22-57-39.png" alt="PixPin_2026-06-25_22-57-39" style="zoom:25%;" /> |
 | Settings — Appearance | `<!-- screenshot -->` |
-| Screen Recording (GIF) | `<!-- screenshot -->` |
+|                           |                                                              |
 
 ---
 

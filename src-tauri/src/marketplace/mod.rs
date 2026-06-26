@@ -50,6 +50,18 @@ pub struct PluginPreference {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginShortcut {
+    pub command: String,
+    pub key: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
     pub id: String,
     pub name: String,
@@ -68,6 +80,8 @@ pub struct PluginManifest {
     pub preferences: Vec<PluginPreference>,
     #[serde(default)]
     pub commands: Vec<PluginCommand>,
+    #[serde(default)]
+    pub shortcuts: Vec<PluginShortcut>,
     #[serde(default)]
     pub panel: Option<PluginPanel>,
     #[serde(default)]
@@ -139,23 +153,49 @@ struct RaycastSource {
     extension_path: String,
 }
 
-fn plugins_root() -> PathBuf {
+pub(crate) fn plugins_root() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
     let dir = PathBuf::from(format!("{}/.qx/plugins", home));
     let _ = fs::create_dir_all(&dir);
     dir
 }
 
-fn plugin_dir(id: &str) -> PathBuf {
+pub(crate) fn plugin_dir(id: &str) -> PathBuf {
     plugins_root().join(id)
 }
 
-fn plugin_data_dir(id: &str) -> PathBuf {
-    plugin_dir(id).join("data")
+pub(crate) fn validate_plugin_id(id: &str) -> Result<&str, String> {
+    let trimmed = id.trim();
+    if trimmed.is_empty() {
+        return Err("plugin id is empty".to_string());
+    }
+    if trimmed.len() > 128 {
+        return Err(format!("plugin id is too long: {trimmed}"));
+    }
+    if trimmed.starts_with('.') {
+        return Err(format!("plugin id must not start with '.': {trimmed}"));
+    }
+    if !trimmed
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+    {
+        return Err(format!(
+            "plugin id may only contain ASCII letters, numbers, '.', '_' and '-': {trimmed}"
+        ));
+    }
+    Ok(trimmed)
 }
 
-fn plugin_storage_path(id: &str) -> PathBuf {
-    plugin_data_dir(id).join("storage.json")
+pub(crate) fn checked_plugin_dir(id: &str) -> Result<PathBuf, String> {
+    Ok(plugin_dir(validate_plugin_id(id)?))
+}
+
+fn checked_plugin_data_dir(id: &str) -> Result<PathBuf, String> {
+    Ok(checked_plugin_dir(id)?.join("data"))
+}
+
+fn checked_plugin_storage_path(id: &str) -> Result<PathBuf, String> {
+    Ok(checked_plugin_data_dir(id)?.join("storage.json"))
 }
 
 fn plugin_storage_lock() -> &'static Mutex<()> {
@@ -185,12 +225,16 @@ fn plugin_enabled_path(id: &str) -> PathBuf {
     plugin_dir(id).join(".enabled")
 }
 
+fn checked_plugin_enabled_path(id: &str) -> Result<PathBuf, String> {
+    Ok(checked_plugin_dir(id)?.join(".enabled"))
+}
+
 fn is_plugin_enabled(id: &str) -> bool {
     plugin_enabled_path(id).exists()
 }
 
 fn set_plugin_enabled_fs(id: &str, enabled: bool) -> Result<(), String> {
-    let path = plugin_enabled_path(id);
+    let path = checked_plugin_enabled_path(id)?;
     if enabled {
         atomic_write(&path, b"true").map_err(|e| format!("write enabled flag: {e}"))?;
     } else if path.exists() {
@@ -258,13 +302,14 @@ pub async fn install_raycast_extension_from_url(url: String) -> Result<Installed
         .and_then(|v| v.as_str())
         .unwrap_or("extension");
     let manifest = build_raycast_plugin_manifest(&package_json);
-    let entry = if raycast_name == "system-information" {
-        raycast_system_information_entry()
-    } else {
-        raycast_placeholder_entry(&manifest.name)
+    validate_plugin_id(&manifest.id)?;
+    let entry = match raycast_name {
+        "system-information" => raycast_system_information_entry(),
+        "raycast-system-monitor" | "system-monitor" => raycast_system_monitor_entry(),
+        _ => raycast_placeholder_entry(&manifest.name),
     };
 
-    let dest = plugin_dir(&manifest.id);
+    let dest = checked_plugin_dir(&manifest.id)?;
     if dest.exists() {
         fs::remove_dir_all(&dest).map_err(|e| format!("clear existing Raycast plugin: {e}"))?;
     }
@@ -287,8 +332,8 @@ pub async fn install_raycast_extension_from_url(url: String) -> Result<Installed
         }
     }
 
-    fs::create_dir_all(plugin_data_dir(&manifest.id)).ok();
-    atomic_write(&plugin_enabled_path(&manifest.id), b"true")
+    fs::create_dir_all(checked_plugin_data_dir(&manifest.id)?).ok();
+    atomic_write(&checked_plugin_enabled_path(&manifest.id)?, b"true")
         .map_err(|e| format!("write enabled flag: {e}"))?;
 
     Ok(InstalledPlugin {
@@ -384,11 +429,14 @@ fn title_case_id(id: &str) -> String {
 
 fn build_raycast_plugin_manifest(package: &serde_json::Value) -> PluginManifest {
     let raycast_id = json_string(package, "name");
-    let id_source = if raycast_id.is_empty() {
+    let id_source_raw = if raycast_id.is_empty() {
         "extension"
     } else {
         &raycast_id
     };
+    let id_source = id_source_raw
+        .strip_prefix("raycast-")
+        .unwrap_or(id_source_raw);
     let title = json_string(package, "title");
     let name = if title.is_empty() {
         title_case_id(id_source)
@@ -456,14 +504,14 @@ fn build_raycast_plugin_manifest(package: &serde_json::Value) -> PluginManifest 
         icon: icon.clone(),
         keywords: keywords.clone(),
         permissions: vec![
-            "qx_system_information_check_system_info".to_string(),
-            "qx_system_information_check_storage".to_string(),
-            "qx_system_information_check_network".to_string(),
-            "qx_system_information_list_processes".to_string(),
-            "qx_system_information_kill_process".to_string(),
+            "system-info".to_string(),
+            "system-stats".to_string(),
+            "processes".to_string(),
+            "invoke:qx_system_information_kill_process".to_string(),
         ],
         preferences: Vec::new(),
         commands,
+        shortcuts: Vec::new(),
         panel: Some(PluginPanel {
             title: name,
             icon,
@@ -565,6 +613,22 @@ export default {
     .to_string()
 }
 
+fn raycast_system_monitor_entry() -> String {
+    r##"function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;")}
+function bytes(v){const n=Math.max(0,Number(v||0));if(n<1024)return Math.round(n)+" B";if(n<1048576)return(n/1024).toFixed(2)+" KB";if(n<1073741824)return(n/1048576).toFixed(2)+" MB";return(n/1073741824).toFixed(2)+" GB"}
+function css(){return '<style>:root{--b:#f7f7f7;--p:#fff;--p2:#ededed;--l:#d7d7d7;--t:#111;--m:#777;--s:#222}@media(prefers-color-scheme:dark){:root{--b:#1e1e1f;--p:#252526;--p2:#3a3a3c;--l:#3c3c3f;--t:#f5f5f5;--m:#a9a9aa;--s:#fff}}html,body,#root{margin:0;width:100%;height:100%;background:transparent}body{font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--t)}.sm{height:100%;display:grid;grid-template-columns:minmax(220px,32%) minmax(0,1fr);background:var(--b)}.nav{border-right:1px solid var(--l);padding:22px 16px;overflow:auto}.nav button{width:100%;min-height:52px;display:grid;grid-template-columns:28px 1fr auto;align-items:center;gap:10px;border:0;border-radius:8px;background:transparent;color:var(--t);font:inherit;text-align:left;padding:8px 12px;cursor:pointer}.nav button.active{background:var(--p2)}.label{font-size:16px;font-weight:650}.metric{color:var(--m);font-size:14px;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.detail{padding:24px 30px;overflow:auto}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}.top h1{font-size:22px;margin:0}.top button{border:1px solid var(--l);background:var(--p);color:var(--t);border-radius:6px;padding:7px 12px;font:inherit}.row{min-height:42px;display:flex;align-items:center;justify-content:space-between;gap:20px;border-bottom:1px solid var(--l);padding:8px 0}.name{color:var(--m);font-weight:650}.value{font-size:15px;font-weight:650;text-align:right}.bar{height:8px;background:var(--p2);border-radius:999px;overflow:hidden}.fill{height:100%;background:var(--s);border-radius:999px}.error{padding:20px;color:#d44}.small{font-size:12px;color:var(--m)}</style>'}
+function row(n,v){return '<div class="row"><div class="name">'+esc(n)+'</div><div class="value">'+esc(v)+'</div></div>'}
+function bar(p){return '<div class="bar"><div class="fill" style="width:'+Math.max(0,Math.min(100,Number(p||0))).toFixed(0)+'%"></div></div>'}
+let active="system-info",lastNet=null;
+async function data(ctx){const [stats,system,storage,network,processes,power,counters]=await Promise.all([ctx.system.stats(),ctx.system.info(),ctx.system.storage(),ctx.system.network(),ctx.system.processes.list(),ctx.qx.invokeRust("qx_system_monitor_power",{}),ctx.qx.invokeRust("qx_system_monitor_network_counters",{})]);const now=Date.now();let down=0,up=0;if(lastNet&&counters){const s=Math.max(.001,(now-lastNet.time)/1000);down=Math.max(0,(Number(counters.totalBytesIn||0)-lastNet.in)/s);up=Math.max(0,(Number(counters.totalBytesOut||0)-lastNet.out)/s)}lastNet={time:now,in:Number(counters?.totalBytesIn||0),out:Number(counters?.totalBytesOut||0)};return{stats,system,storage,network,processes,power,counters,down,up}}
+function nav(id,i,l,m){return '<button data-tab="'+id+'" class="'+(active===id?'active':'')+'"><span>'+i+'</span><span class="label">'+l+'</span><span class="metric">'+esc(m||'')+'</span></button>'}
+function pane(d){const st=d.stats||{};if(active==="cpu")return '<div class="top"><h1>CPU</h1><button id="refresh">Refresh</button></div>'+bar(st.cpu)+row("Usage",Number(st.cpu||0).toFixed(1)+" %")+row("Chip",d.system?.chip||"Unknown")+row("Temperature","N/A");if(active==="memory")return '<div class="top"><h1>Memory</h1><button id="refresh">Refresh</button></div>'+bar(st.memory)+row("Used",Number(st.memoryUsedGb||0).toFixed(2)+" GB")+row("Total",Number(st.memoryTotalGb||0).toFixed(2)+" GB")+row("Usage",Number(st.memory||0).toFixed(1)+" %");if(active==="power")return '<div class="top"><h1>Power</h1><button id="refresh">Refresh</button></div>'+(d.power?.batteryLevel==null?'':bar(d.power.batteryLevel))+row("Battery",d.power?.batteryLevel==null?"N/A":d.power.batteryLevel+" %")+row("Source",d.power?.source||"Unknown")+row("State",d.power?.summary||"Unknown");if(active==="network"){const dev=(d.network?.devices||[]).map(x=>row(x.name,x.ip)).join("");const c=(d.counters?.interfaces||[]).slice(0,8).map(x=>row(x.name,"In "+bytes(x.bytesIn)+" / Out "+bytes(x.bytesOut))).join("");return '<div class="top"><h1>Network</h1><button id="refresh">Refresh</button></div>'+row("Download Speed",bytes(d.down)+"/s")+row("Upload Speed",bytes(d.up)+"/s")+row("Active Devices",String(d.network?.count||0))+dev+c}const ps=(d.processes?.processes||[]).slice(0,8).map((p,i)=>'<div class="row"><div><strong>'+(i+1)+' -> '+esc(p.name)+'</strong><div class="small">PID '+p.pid+'</div></div><div class="value">CPU '+Number(p.cpu||0).toFixed(1)+'% / MEM '+Number(p.mem||0).toFixed(1)+'%</div></div>').join("");return '<div class="top"><h1>System Info</h1><button id="refresh">Refresh</button></div>'+row("Hostname",d.system?.hostname||"Unknown")+row("macOS",d.system?.macOS||"Unknown")+row("Kernel",d.system?.kernel||"Unknown")+row("Storage",d.storage?.summary||"Unknown")+row("Serial Number",d.system?.serialNumber||"Unknown")+ps}
+async function render(c,ctx){c.innerHTML=css()+'<div class="sm"><div class="nav">Loading System Monitor...</div><div></div></div>';try{const d=await data(ctx);c.innerHTML=css()+'<div class="sm"><div class="nav">'+nav("system-info","S","System Info","")+nav("cpu","C","CPU",Number(d.stats?.cpu||0).toFixed(0)+" %")+nav("memory","M","Memory",Number(d.stats?.memory||0).toFixed(0)+" %")+nav("power","P","Power",d.power?.batteryLevel==null?"N/A":d.power.batteryLevel+" %")+nav("network","N","Network","↓ "+bytes(d.down)+"/s")+'</div><div class="detail">'+pane(d)+'</div></div>';c.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{active=b.getAttribute("data-tab")||"system-info";render(c,ctx)}));c.querySelector("#refresh")?.addEventListener("click",()=>render(c,ctx))}catch(e){c.innerHTML=css()+'<div class="error">Failed to load System Monitor: '+esc(e?.message||e)+'</div>'}}
+export default{commands:[{name:"system-monitor",title:"System Monitor",async run(ctx){const s=await ctx.system.stats();ctx.showToast("CPU "+Number(s.cpu||0).toFixed(1)+"%, Memory "+Number(s.memory||0).toFixed(1)+"%")}},{name:"menubar-system-monitor",title:"Menubar System Monitor",async run(ctx){const s=await ctx.system.stats();ctx.showToast("Qx panel monitor ready: CPU "+Number(s.cpu||0).toFixed(1)+"%")}}],panel:{title:"System Monitor",async render(c,ctx){await render(c,ctx);c.__timer=ctx.setInterval(()=>render(c,ctx),3000)},destroy(c){c.innerHTML=""}}};
+"##
+    .to_string()
+}
+
 fn uuid_like() -> String {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -614,7 +678,9 @@ fn compute_plugin_hash(dir: &Path, manifest: &PluginManifest) -> Result<Vec<u8>,
     } else {
         &manifest.entry
     };
-    let entry_path = dir.join(entry);
+    let entry_rel =
+        safe_relative_path(entry).ok_or_else(|| format!("invalid plugin entry path: {entry}"))?;
+    let entry_path = dir.join(entry_rel);
     let content = std::fs::read(&entry_path).map_err(|e| format!("read entry for hash: {e}"))?;
     let hash = blake3::hash(&content);
     Ok(hash.as_bytes().to_vec())
@@ -675,8 +741,9 @@ fn install_plugin_archive(
     if manifest.id.trim().is_empty() {
         return Err("manifest.id is empty".to_string());
     }
+    let plugin_id = validate_plugin_id(&manifest.id)?;
 
-    let dest = plugin_dir(&manifest.id);
+    let dest = checked_plugin_dir(plugin_id)?;
     if dest.exists() {
         fs::remove_dir_all(&dest).map_err(|e| format!("clear existing: {e}"))?;
     }
@@ -704,7 +771,7 @@ fn install_plugin_archive(
         fs::write(&out, &body).map_err(|e| format!("write {}: {e}", out.display()))?;
     }
 
-    fs::create_dir_all(plugin_data_dir(&manifest.id)).ok();
+    fs::create_dir_all(checked_plugin_data_dir(plugin_id)?).ok();
 
     // Verify signature if present
     if !manifest.pubkey.is_empty() && !manifest.signature.is_empty() {
@@ -718,7 +785,7 @@ fn install_plugin_archive(
     if let Some(path) = cleanup_path {
         let _ = fs::remove_file(path);
     }
-    atomic_write(&plugin_enabled_path(&manifest.id), b"true")
+    atomic_write(&checked_plugin_enabled_path(plugin_id)?, b"true")
         .map_err(|e| format!("write enabled flag: {e}"))?;
 
     Ok(InstalledPlugin {
@@ -835,7 +902,7 @@ fn safe_relative_path(rel: &str) -> Option<PathBuf> {
 
 #[command]
 pub fn uninstall_plugin(id: String) -> Result<(), String> {
-    let dir = plugin_dir(&id);
+    let dir = checked_plugin_dir(&id)?;
     if dir.exists() {
         fs::remove_dir_all(&dir).map_err(|e| format!("remove plugin dir: {e}"))?;
     }
@@ -860,9 +927,15 @@ pub fn list_installed_plugins() -> Result<Vec<InstalledPlugin>, String> {
             .file_name()
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_default();
+        if validate_plugin_id(&id).is_err() {
+            continue;
+        }
         let enabled = is_plugin_enabled(&id);
 
         if let Some(m) = manifest {
+            if m.id != id || validate_plugin_id(&m.id).is_err() {
+                continue;
+            }
             out.push(InstalledPlugin {
                 id: m.id.clone(),
                 name: m.name.clone(),
@@ -894,16 +967,27 @@ pub fn list_installed_plugins() -> Result<Vec<InstalledPlugin>, String> {
 
 #[command]
 pub fn read_plugin_entry(id: String) -> Result<String, String> {
-    let dir = plugin_dir(&id);
+    let dir = checked_plugin_dir(&id)?;
     let manifest = read_manifest(&dir).ok_or_else(|| format!("manifest not found for {id}"))?;
     let entry_name = if manifest.entry.trim().is_empty() {
         "index.js"
     } else {
         &manifest.entry
     };
-    let entry_path = dir.join(entry_name);
-    fs::read_to_string(&entry_path)
-        .map_err(|e| format!("read plugin entry {}: {e}", entry_path.display()))
+    let entry_rel = safe_relative_path(entry_name)
+        .ok_or_else(|| format!("invalid plugin entry path: {entry_name}"))?;
+    let entry_path = dir.join(entry_rel);
+    let canonical_dir = dir
+        .canonicalize()
+        .map_err(|e| format!("resolve plugin dir for {id}: {e}"))?;
+    let canonical_entry = entry_path
+        .canonicalize()
+        .map_err(|e| format!("resolve plugin entry {}: {e}", entry_path.display()))?;
+    if !canonical_entry.starts_with(&canonical_dir) || !canonical_entry.is_file() {
+        return Err(format!("plugin entry not found: {entry_name}"));
+    }
+    fs::read_to_string(&canonical_entry)
+        .map_err(|e| format!("read plugin entry {}: {e}", canonical_entry.display()))
 }
 
 #[command]
@@ -913,7 +997,7 @@ pub fn set_plugin_enabled(id: String, enabled: bool) -> Result<(), String> {
 
 #[command]
 pub fn plugin_storage_get(id: String, key: String) -> Result<Option<serde_json::Value>, String> {
-    let path = plugin_storage_path(&id);
+    let path = checked_plugin_storage_path(&id)?;
     if !path.exists() {
         return Ok(None);
     }
@@ -928,8 +1012,8 @@ pub fn plugin_storage_set(id: String, key: String, value: serde_json::Value) -> 
     let _guard = plugin_storage_lock()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let path = plugin_storage_path(&id);
-    fs::create_dir_all(plugin_data_dir(&id)).ok();
+    let path = checked_plugin_storage_path(&id)?;
+    fs::create_dir_all(checked_plugin_data_dir(&id)?).ok();
     let mut map: BTreeMap<String, serde_json::Value> = if path.exists() {
         serde_json::from_str(
             &fs::read_to_string(&path).map_err(|e| format!("read storage for {id}: {e}"))?,
@@ -948,7 +1032,7 @@ pub fn plugin_storage_delete(id: String, key: String) -> Result<(), String> {
     let _guard = plugin_storage_lock()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let path = plugin_storage_path(&id);
+    let path = checked_plugin_storage_path(&id)?;
     if !path.exists() {
         return Ok(());
     }
@@ -962,7 +1046,7 @@ pub fn plugin_storage_delete(id: String, key: String) -> Result<(), String> {
 
 #[command]
 pub fn plugin_preferences_get(id: String) -> Result<BTreeMap<String, serde_json::Value>, String> {
-    let path = plugin_data_dir(&id).join("preferences.json");
+    let path = checked_plugin_data_dir(&id)?.join("preferences.json");
     if !path.exists() {
         return Ok(BTreeMap::new());
     }
@@ -976,7 +1060,7 @@ pub fn plugin_preferences_set(
     id: String,
     values: BTreeMap<String, serde_json::Value>,
 ) -> Result<(), String> {
-    let dir = plugin_data_dir(&id);
+    let dir = checked_plugin_data_dir(&id)?;
     fs::create_dir_all(&dir).ok();
     let path = dir.join("preferences.json");
     let json = serde_json::to_string_pretty(&values).map_err(|e| format!("serialize: {e}"))?;
@@ -1056,7 +1140,8 @@ pub fn scaffold_plugin(name: String, output_dir: String) -> Result<String, Strin
                 "description": "Execute the main command",
                 "keywords": [name.clone()]
             }
-        ]
+        ],
+        "shortcuts": []
     });
     let manifest_json =
         serde_json::to_string_pretty(&manifest).map_err(|e| format!("serialize manifest: {e}"))?;
@@ -1141,9 +1226,10 @@ mod tests {
         assert_eq!(manifest.name, "System Information");
         assert_eq!(manifest.entry, "index.js");
         assert_eq!(manifest.commands.len(), 2);
+        assert!(manifest.permissions.contains(&"system-info".to_string()));
         assert!(manifest
             .permissions
-            .contains(&"qx_system_information_check_storage".to_string()));
+            .contains(&"invoke:qx_system_information_kill_process".to_string()));
         assert_eq!(manifest.panel.unwrap().title, "System Information");
     }
 }

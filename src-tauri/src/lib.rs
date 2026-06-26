@@ -10,6 +10,7 @@ mod macro_recorder;
 mod marketplace;
 mod ocr;
 mod permissions;
+mod plugin_api;
 mod rss;
 mod screencap;
 mod settings;
@@ -249,6 +250,8 @@ pub fn run() {
             system_information::qx_system_information_check_network,
             system_information::qx_system_information_list_processes,
             system_information::qx_system_information_kill_process,
+            system_information::qx_system_monitor_network_counters,
+            system_information::qx_system_monitor_power,
             system_stats::get_system_stats,
             screencap::start_recording,
             screencap::stop_recording,
@@ -273,6 +276,12 @@ pub fn run() {
             marketplace::plugin_preferences_set,
             marketplace::sign_plugin,
             marketplace::scaffold_plugin,
+            plugin_api::plugin_clipboard_read,
+            plugin_api::plugin_clipboard_write,
+            plugin_api::plugin_perform_paste,
+            plugin_api::plugin_http_fetch,
+            plugin_api::plugin_notification_show,
+            plugin_api::plugin_resolve_asset,
             permissions::qx_permissions_status,
             permissions::qx_permissions_request,
             permissions::qx_permissions_open_settings,

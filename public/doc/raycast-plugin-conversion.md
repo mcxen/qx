@@ -59,9 +59,19 @@ runtime:
 This keeps the plugin real and testable while preserving the Raycast command and
 tool surface.
 
+Converted adapters should prefer Qx capability permissions such as
+`system-info`, `processes`, `clipboard`, `http`, and `notifications`. Dangerous
+actions still require exact `invoke:<cmd>` permissions; for example the
+system-information adapter declares `invoke:qx_system_information_kill_process`
+for `kill-process`.
+
 ## Generic Raycast Extensions
 
 For extensions without a custom adapter, the converter still produces a Qx
 manifest and a placeholder entry. That output is intentionally explicit: the
 extension metadata is preserved, but command behavior needs a custom adapter
 before the plugin is considered functional.
+
+Qx does not load Raycast's native Swift bridge, Node runtime, or arbitrary Rust
+binaries from converted plugins. Native system access goes through Qx's
+permissioned Rust capability bridge.
