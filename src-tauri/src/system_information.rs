@@ -288,35 +288,40 @@ pub fn qx_system_monitor_network_counters() -> Result<QxNetworkCounters, String>
 
 #[tauri::command]
 pub fn qx_system_monitor_power() -> Result<QxPowerInfo, String> {
-    let stdout = command_output("/usr/bin/pmset", &["-g", "batt"])?;
-    let source = stdout
-        .lines()
+    use battery::units::ratio::percent;
+
+    let manager = battery::Manager::new().map_err(|e| format!("battery manager: {e}"))?;
+    let battery = manager
+        .batteries()
+        .map_err(|e| format!("list batteries: {e}"))?
         .next()
-        .and_then(|line| line.split('\'').nth(1))
-        .unwrap_or("Unknown")
-        .to_string();
-    let battery_line = stdout
-        .lines()
-        .find(|line| line.contains('%'))
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let battery_level = battery_line
-        .split('%')
-        .next()
-        .and_then(|left| left.split_whitespace().last())
-        .and_then(|value| value.parse::<u8>().ok());
-    let lower = battery_line.to_lowercase();
-    let fully_charged = lower.contains("charged");
-    let is_charging = lower.contains("charging") || source.to_lowercase().contains("ac power");
-    let summary = if battery_line.is_empty() {
-        source.clone()
-    } else {
-        format!("{source}: {battery_line}")
+        .transpose()
+        .map_err(|e| format!("read battery: {e}"))?;
+
+    let Some(battery) = battery else {
+        return Ok(QxPowerInfo {
+            battery_level: None,
+            is_charging: false,
+            fully_charged: false,
+            source: "No battery".to_string(),
+            summary: "No battery detected".to_string(),
+        });
     };
 
+    let level = battery.state_of_charge().get::<percent>().round() as u8;
+    let state = battery.state();
+    let is_charging = matches!(state, battery::State::Charging | battery::State::Full);
+    let fully_charged = matches!(state, battery::State::Full);
+    let source = if is_charging {
+        "AC Power"
+    } else {
+        "Battery Power"
+    }
+    .to_string();
+    let summary = format!("{source}: {level}% ({state})");
+
     Ok(QxPowerInfo {
-        battery_level,
+        battery_level: Some(level.min(100)),
         is_charging,
         fully_charged,
         source,
