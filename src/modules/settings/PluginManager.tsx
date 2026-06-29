@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import {
+  Download,
+  ExternalLink,
+  PackageCheck,
+  PackagePlus,
+  RefreshCw,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { usePluginRegistry } from "../../plugin/registry";
 import { BUILTIN_SETTINGS_KEYS } from "../../plugin/builtin";
 import { useSettingsStore } from "./store";
@@ -17,15 +26,71 @@ import type {
 /* ------------------------------------------------------------------ */
 
 type Tab = "installed" | "browse";
+type InstalledFilter = "all" | "builtin" | "external" | "enabled" | "disabled";
+type StatusTone = "success" | "danger" | "neutral";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
 const isBuiltin = (p: InstalledPlugin) => p.id.startsWith("builtin:");
+const normalizeSearch = (value: string) => value.trim().toLowerCase();
+
+function pluginMatchesQuery(plugin: InstalledPlugin, query: string) {
+  if (!query) return true;
+  return [
+    plugin.id,
+    plugin.name,
+    plugin.version,
+    plugin.author,
+    plugin.description,
+    ...(plugin.manifest?.keywords ?? []),
+    ...(plugin.manifest?.permissions ?? plugin.permissions ?? []),
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(query));
+}
+
+function marketplaceEntryMatchesQuery(entry: PluginIndexEntry, query: string) {
+  if (!query) return true;
+  return [
+    entry.id,
+    entry.name,
+    entry.version,
+    entry.author,
+    entry.description,
+    entry.min_app_version,
+    ...(entry.required_permissions ?? []),
+  ]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(query));
+}
+
+function formatBytes(bytes?: number) {
+  if (!bytes) return "";
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString();
+}
 
 function Badge({ children }: { children: React.ReactNode }) {
   return <span className="qx-badge">{children}</span>;
+}
+
+function StatusMessage({
+  tone,
+  children,
+}: {
+  tone: StatusTone;
+  children: React.ReactNode;
+}) {
+  return <div className={`qx-plugin-status is-${tone}`}>{children}</div>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -207,13 +272,13 @@ function PluginDetail({
   );
 
   return (
-    <div style={{ padding: 10, overflowY: "auto", height: "100%" }}>
+    <div className="qx-plugin-detail-panel">
       {/* Header */}
-      <div style={{ fontSize: 13, fontWeight: 600, color: "var(--qx-text-primary)" }}>
+      <div className="qx-plugin-detail-title">
         {plugin.name}
       </div>
 
-      <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+      <div className="qx-plugin-badges">
         <Badge>v{plugin.version}</Badge>
         {builtin ? <Badge>Built-in</Badge> : <Badge>External</Badge>}
         <Badge>{plugin.enabled ? "Enabled" : "Disabled"}</Badge>
@@ -221,35 +286,20 @@ function PluginDetail({
 
       {/* Author */}
       {plugin.author && (
-        <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)", marginTop: 6 }}>
+        <div className="qx-plugin-meta">
           by {plugin.author}
         </div>
       )}
 
       {/* Description */}
       {plugin.description && (
-        <div
-          style={{
-            fontSize: 13,
-            color: "var(--qx-text-secondary)",
-            marginTop: 8,
-            lineHeight: 1.4,
-          }}
-        >
+        <div className="qx-plugin-description">
           {plugin.description}
         </div>
       )}
 
       {/* Path */}
-      <div
-        style={{
-          fontSize: 11,
-          color: "var(--qx-text-tertiary)",
-          marginTop: 8,
-          fontFamily: "var(--qx-font-mono)",
-          wordBreak: "break-all",
-        }}
-      >
+      <div className="qx-plugin-path">
         {plugin.path}
       </div>
 
@@ -262,9 +312,9 @@ function PluginDetail({
 
       {/* Permissions */}
       {permissions.length > 0 && (
-        <div style={{ marginTop: 10, fontSize: 12, color: "var(--qx-text-secondary)" }}>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>Permissions</div>
-          <ul style={{ margin: 0, paddingLeft: 16 }}>
+        <div className="qx-plugin-section">
+          <div className="qx-plugin-section-title">Permissions</div>
+          <ul className="qx-plugin-permissions">
             {permissions.map((perm) => (
               <li key={perm}>{perm}</li>
             ))}
@@ -274,25 +324,11 @@ function PluginDetail({
 
       {/* Preferences */}
       {preferences.length > 0 && prefsLoaded && (
-        <div style={{ marginTop: 12 }}>
-          <div
-            style={{
-              fontWeight: 600,
-              fontSize: 12,
-              color: "var(--qx-text-secondary)",
-              marginBottom: 6,
-            }}
-          >
+        <div className="qx-plugin-section">
+          <div className="qx-plugin-section-title">
             Preferences
             {prefsBusy && (
-              <span
-                style={{
-                  fontWeight: 400,
-                  fontSize: 11,
-                  color: "var(--qx-text-tertiary)",
-                  marginLeft: 6,
-                }}
-              >
+              <span className="qx-plugin-saving">
                 Saving...
               </span>
             )}
@@ -316,10 +352,10 @@ function PluginDetail({
             <button
               className="qx-command-button"
               onClick={() => void openUrl("https://v2ex.com/settings/tokens")}
-              style={{ marginTop: 8 }}
               type="button"
             >
-              Get Token →
+              <ExternalLink size={13} aria-hidden="true" />
+              Get Token
             </button>
           )}
         </div>
@@ -330,8 +366,8 @@ function PluginDetail({
         <button
           className="qx-command-button danger"
           onClick={onUninstall}
-          style={{ marginTop: 12 }}
         >
+          <Trash2 size={13} aria-hidden="true" />
           Uninstall
         </button>
       )}
@@ -355,10 +391,26 @@ function MarketplaceTab({
   const [error, setError] = useState<string | null>(null);
   const [installingId, setInstallingId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [installStatus, setInstallStatus] = useState<{ tone: StatusTone; message: string } | null>(null);
+
+  const filteredEntries = useMemo(() => {
+    const q = normalizeSearch(searchQuery);
+    return entries.filter((entry) => marketplaceEntryMatchesQuery(entry, q));
+  }, [entries, searchQuery]);
+
+  const selectedEntry = useMemo(() => {
+    if (selectedId) {
+      const selected = filteredEntries.find((entry) => entry.id === selectedId);
+      if (selected) return selected;
+    }
+    return filteredEntries[0] ?? null;
+  }, [filteredEntries, selectedId]);
 
   const fetchIndex = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setInstallStatus(null);
     try {
       const index = await invoke<{ schema_version: number; plugins: PluginIndexEntry[] }>(
         "fetch_plugin_index",
@@ -377,14 +429,17 @@ function MarketplaceTab({
 
   const handleInstall = async (entry: PluginIndexEntry) => {
     setInstallingId(entry.id);
+    setInstallStatus(null);
     try {
       const result = await invoke<{ path: string }>("download_plugin", {
         url: entry.download_url,
       });
       await invoke("install_plugin", { path: result.path });
       onInstallComplete();
+      setInstallStatus({ tone: "success", message: `${entry.name} installed.` });
     } catch (err) {
       console.error("Marketplace install failed", err);
+      setInstallStatus({ tone: "danger", message: `Install failed: ${String(err)}` });
     } finally {
       setInstallingId(null);
     }
@@ -411,107 +466,187 @@ function MarketplaceTab({
   }
 
   return (
-    <div style={{ overflowY: "auto", flex: 1 }}>
+    <div className="qx-marketplace">
       {/* Search input */}
-      <div style={{ padding: "6px 12px", borderBottom: "1px solid var(--qx-border-1)" }}>
-        <input
-          type="text"
-          placeholder="Search marketplace plugins..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{
-            width: "100%",
-            boxSizing: "border-box",
-            padding: "5px 10px",
-            borderRadius: 6,
-            border: "1px solid var(--qx-border-2)",
-            background: "var(--qx-bg-component-2)",
-            color: "var(--qx-text-primary)",
-            fontSize: 13,
-            outline: "none",
-          }}
-        />
+      <div className="qx-plugin-list-toolbar">
+        <div className="qx-plugin-search-wrap">
+          <Search size={14} aria-hidden="true" />
+          <input
+            type="text"
+            placeholder="Search marketplace plugins..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="qx-inline-input"
+          />
+        </div>
+        <button className="qx-command-button" onClick={fetchIndex} disabled={loading}>
+          <RefreshCw size={13} aria-hidden="true" />
+          Refresh
+        </button>
       </div>
-      {(() => {
-        const filtered = entries
-          .filter((entry) => {
-            if (!searchQuery.trim()) return true;
-            const q = searchQuery.toLowerCase();
-            return (
-              entry.name.toLowerCase().includes(q) ||
-              entry.id.toLowerCase().includes(q) ||
-              (entry.description && entry.description.toLowerCase().includes(q)) ||
-              (entry.author && entry.author.toLowerCase().includes(q))
-            );
-          });
-        if (filtered.length === 0 && searchQuery.trim()) {
-          return (
-            <div className="qx-empty-state" style={{ padding: 24, textAlign: "center" }}>
-              No plugins match "{searchQuery}"
-            </div>
-          );
-        }
-        return filtered.map((entry) => {
-        const alreadyInstalled = installedIds.has(entry.id);
-        const installing = installingId === entry.id;
 
-        return (
-          <div
-            key={entry.id}
-            className="qx-settings-row"
-            style={{ gap: 8, alignItems: "flex-start" }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 500, color: "var(--qx-text-primary)" }}>
-                {entry.name}
-              </div>
-              <div style={{ fontSize: 11, color: "var(--qx-text-tertiary)", marginTop: 2 }}>
-                v{entry.version}
-                {entry.author ? ` · ${entry.author}` : ""}
-                {entry.size_bytes
-                  ? ` · ${(entry.size_bytes / 1024).toFixed(0)} KB`
-                  : ""}
-              </div>
-              {entry.description && (
-                <div
-                  style={{
-                    fontSize: 12,
-                    color: "var(--qx-text-secondary)",
-                    marginTop: 4,
-                    lineHeight: 1.4,
-                  }}
+      {installStatus && <StatusMessage tone={installStatus.tone}>{installStatus.message}</StatusMessage>}
+
+      <div className="qx-plugin-library-body">
+        <div className="qx-plugin-library-list">
+          {filteredEntries.length === 0 && searchQuery.trim() ? (
+            <div className="qx-empty-state">No plugins match "{searchQuery}"</div>
+          ) : (
+            filteredEntries.map((entry) => {
+              const active = entry.id === selectedEntry?.id;
+              const alreadyInstalled = installedIds.has(entry.id);
+              const installing = installingId === entry.id;
+
+              return (
+                <button
+                  key={entry.id}
+                  className={`qx-plugin-library-item${active ? " is-active" : ""}`}
+                  onClick={() => setSelectedId(entry.id)}
+                  type="button"
                 >
-                  {entry.description}
+                  <div className="qx-plugin-list-main">
+                    <div className="qx-plugin-list-title">{entry.name}</div>
+                    <div className="qx-plugin-list-meta">
+                      v{entry.version}
+                      {entry.author ? ` · ${entry.author}` : ""}
+                      {entry.size_bytes ? ` · ${formatBytes(entry.size_bytes)}` : ""}
+                    </div>
+                    {entry.description && (
+                      <div className="qx-plugin-list-desc">{entry.description}</div>
+                    )}
+                  </div>
+                  {alreadyInstalled && <PackageCheck size={14} aria-label="Installed" />}
+                  {installing && <Download size={14} aria-label="Installing" />}
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        <div className="qx-plugin-library-detail">
+          {selectedEntry ? (
+            <>
+              <div className="qx-plugin-detail-title">{selectedEntry.name}</div>
+              <div className="qx-plugin-badges">
+                <Badge>v{selectedEntry.version}</Badge>
+                {selectedEntry.author && <Badge>{selectedEntry.author}</Badge>}
+                {selectedEntry.size_bytes && <Badge>{formatBytes(selectedEntry.size_bytes)}</Badge>}
+              </div>
+              {selectedEntry.description && (
+                <div className="qx-plugin-description">{selectedEntry.description}</div>
+              )}
+              <div className="qx-plugin-section">
+                <div className="qx-plugin-section-title">Install</div>
+                <button
+                  className="qx-command-button primary"
+                  disabled={installedIds.has(selectedEntry.id) || installingId === selectedEntry.id}
+                  onClick={() => handleInstall(selectedEntry)}
+                >
+                  {installedIds.has(selectedEntry.id) ? (
+                    <PackageCheck size={13} aria-hidden="true" />
+                  ) : (
+                    <PackagePlus size={13} aria-hidden="true" />
+                  )}
+                  {installedIds.has(selectedEntry.id)
+                    ? "Installed"
+                    : installingId === selectedEntry.id
+                      ? "Installing..."
+                      : "Install"}
+                </button>
+              </div>
+              {selectedEntry.required_permissions && selectedEntry.required_permissions.length > 0 && (
+                <div className="qx-plugin-section">
+                  <div className="qx-plugin-section-title">Required permissions</div>
+                  <div className="qx-plugin-badges">
+                    {selectedEntry.required_permissions.map((p) => (
+                      <Badge key={p}>{p}</Badge>
+                    ))}
+                  </div>
                 </div>
               )}
-              {entry.required_permissions && entry.required_permissions.length > 0 && (
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 4,
-                    flexWrap: "wrap",
-                    marginTop: 4,
-                  }}
-                >
-                  {entry.required_permissions.map((p) => (
-                    <Badge key={p}>{p}</Badge>
-                  ))}
+              {(selectedEntry.updated_at || selectedEntry.min_app_version || selectedEntry.checksum_sha256) && (
+                <div className="qx-plugin-section">
+                  <div className="qx-plugin-section-title">Metadata</div>
+                  <div className="qx-plugin-info-grid">
+                    {selectedEntry.updated_at && (
+                      <>
+                        <span>Updated</span>
+                        <span>{formatDate(selectedEntry.updated_at)}</span>
+                      </>
+                    )}
+                    {selectedEntry.min_app_version && (
+                      <>
+                        <span>Min Qx</span>
+                        <span>{selectedEntry.min_app_version}</span>
+                      </>
+                    )}
+                    {selectedEntry.checksum_sha256 && (
+                      <>
+                        <span>SHA256</span>
+                        <span>{selectedEntry.checksum_sha256}</span>
+                      </>
+                    )}
+                  </div>
                 </div>
               )}
-            </div>
-            <button
-              className="qx-command-button"
-              disabled={alreadyInstalled || installing}
-              onClick={() => handleInstall(entry)}
-              style={{ flexShrink: 0 }}
-            >
-              {alreadyInstalled ? "Installed" : installing ? "Installing..." : "Install"}
-            </button>
-          </div>
-        );
-      });
-    })()}
+            </>
+          ) : (
+            <div className="qx-empty-state">Select a plugin to view details</div>
+          )}
+        </div>
+      </div>
     </div>
+  );
+}
+
+function filterInstalledPlugin(plugin: InstalledPlugin, filter: InstalledFilter) {
+  switch (filter) {
+    case "builtin":
+      return isBuiltin(plugin);
+    case "external":
+      return !isBuiltin(plugin);
+    case "enabled":
+      return plugin.enabled;
+    case "disabled":
+      return !plugin.enabled;
+    default:
+      return true;
+  }
+}
+
+function InstalledPluginRow({
+  plugin,
+  active,
+  onSelect,
+  onToggle,
+}: {
+  plugin: InstalledPlugin;
+  active: boolean;
+  onSelect: () => void;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`qx-plugin-library-item${active ? " is-active" : ""}`}
+      type="button"
+    >
+      <div className="qx-plugin-list-main">
+        <div className="qx-plugin-list-title">{plugin.name}</div>
+        <div className="qx-plugin-list-meta">
+          v{plugin.version}
+          {isBuiltin(plugin) ? " · Built-in" : plugin.author ? ` · ${plugin.author}` : ""}
+        </div>
+        {plugin.description && <div className="qx-plugin-list-desc">{plugin.description}</div>}
+      </div>
+      <span onClick={(e) => e.stopPropagation()}>
+        <Toggle
+          value={plugin.enabled}
+          onChange={onToggle}
+          disabled={isBuiltin(plugin)}
+        />
+      </span>
+    </button>
   );
 }
 
@@ -530,6 +665,8 @@ export default function PluginManager() {
   const [raycastUrl, setRaycastUrl] = useState("");
   const [busy, setBusy] = useState<"path" | "url" | "raycast" | null>(null);
   const [installStatus, setInstallStatus] = useState<string | null>(null);
+  const [installedQuery, setInstalledQuery] = useState("");
+  const [installedFilter, setInstalledFilter] = useState<InstalledFilter>("all");
 
   /* Keep selection valid when the plugin list changes. */
   useEffect(() => {
@@ -632,14 +769,19 @@ export default function PluginManager() {
 
   const selected = plugins.find((p) => p.id === selectedId) ?? null;
   const installedIds = new Set(plugins.map((p) => p.id));
+  const filteredPlugins = useMemo(() => {
+    const q = normalizeSearch(installedQuery);
+    return plugins.filter((plugin) => filterInstalledPlugin(plugin, installedFilter) && pluginMatchesQuery(plugin, q));
+  }, [plugins, installedFilter, installedQuery]);
+  const selectedPlugin = filteredPlugins.find((p) => p.id === selected?.id) ?? filteredPlugins[0] ?? null;
 
   /* ---- render ---- */
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+    <div className="qx-plugin-manager">
       {/* Top bar: tab switcher + actions */}
-      <div style={{ padding: "8px 12px", borderBottom: "1px solid var(--qx-border-1)" }}>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <div className="qx-plugin-manager-top">
+        <div className="qx-plugin-manager-actions">
           <SegmentedControl
             value={tab}
             options={[
@@ -648,8 +790,8 @@ export default function PluginManager() {
             ]}
             onChange={setTab}
           />
-          <div style={{ flex: 1 }} />
           <button className="qx-command-button" onClick={handleRefresh} title="Rescan plugins">
+            <RefreshCw size={13} aria-hidden="true" />
             Rescan
           </button>
         </div>
@@ -723,67 +865,63 @@ export default function PluginManager() {
 
       {/* Content area */}
       {tab === "installed" ? (
-        <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+        <div className="qx-marketplace">
+          <div className="qx-plugin-list-toolbar">
+            <div className="qx-plugin-search-wrap">
+              <Search size={14} aria-hidden="true" />
+              <input
+                type="text"
+                value={installedQuery}
+                onChange={(e) => setInstalledQuery(e.target.value)}
+                placeholder="Search installed plugins..."
+                className="qx-inline-input"
+              />
+            </div>
+            <SegmentedControl
+              value={installedFilter}
+              options={[
+                { value: "all", label: "All" },
+                { value: "builtin", label: "Built-in" },
+                { value: "external", label: "External" },
+                { value: "enabled", label: "Enabled" },
+                { value: "disabled", label: "Disabled" },
+              ]}
+              onChange={setInstalledFilter}
+            />
+          </div>
+          <div className="qx-plugin-library-body">
           {/* Plugin list */}
-          <div
-            style={{ flex: 1, overflowY: "auto", borderRight: "1px solid var(--qx-border-1)" }}
-          >
-            {plugins.map((p) => {
-              const active = p.id === selectedId;
-              return (
-                <div
-                  key={p.id}
-                  onClick={() => setSelectedId(p.id)}
-                  className={`qx-settings-nav-item${active ? " is-active" : ""}`}
-                  style={{ borderBottom: "1px solid var(--qx-border-1)" }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 500,
-                        color: "var(--qx-text-primary)",
-                      }}
-                    >
-                      {p.name}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "var(--qx-text-tertiary)",
-                        marginTop: 2,
-                      }}
-                    >
-                      v{p.version}
-                      {isBuiltin(p) ? " · Built-in" : ""}
-                    </div>
-                  </div>
-                  <div onClick={(e) => e.stopPropagation()}>
-                    <Toggle
-                      value={p.enabled}
-                      onChange={() => handleToggle(p)}
-                      disabled={isBuiltin(p)}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-            {plugins.length === 0 && (
+          <div className="qx-plugin-library-list">
+            {filteredPlugins.map((p) => (
+              <InstalledPluginRow
+                key={p.id}
+                plugin={p}
+                active={p.id === selectedPlugin?.id}
+                onSelect={() => setSelectedId(p.id)}
+                onToggle={() => handleToggle(p)}
+              />
+            ))}
+            {plugins.length === 0 ? (
               <div className="qx-empty-state">No plugins installed</div>
+            ) : filteredPlugins.length === 0 && (
+              <div className="qx-empty-state">
+                No plugins match "{installedQuery || installedFilter}"
+              </div>
             )}
           </div>
 
           {/* Detail panel */}
-          <div style={{ width: 280, flexShrink: 0, overflowY: "auto" }}>
-            {selected ? (
+          <div className="qx-plugin-library-detail">
+            {selectedPlugin ? (
               <PluginDetail
-                plugin={selected}
-                onToggle={() => handleToggle(selected)}
-                onUninstall={() => handleUninstall(selected.id)}
+                plugin={selectedPlugin}
+                onToggle={() => handleToggle(selectedPlugin)}
+                onUninstall={() => handleUninstall(selectedPlugin.id)}
               />
             ) : (
               <div className="qx-empty-state">Select a plugin to view details</div>
             )}
+          </div>
           </div>
         </div>
       ) : (

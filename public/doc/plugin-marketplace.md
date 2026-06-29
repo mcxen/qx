@@ -99,7 +99,7 @@ zip -r ../my-plugin.qx-plugin manifest.json index.js icon.png
 | `boolean` | 开关 | Toggle |
 | `select` | 下拉选择 | Select |
 
-用户在「设置 → Extensions」中选择插件后，右侧详情面板会自动渲染 preferences 表单。
+用户在「设置 → Extensions → Installed」中选择插件后，右侧详情面板会自动渲染 preferences 表单。Installed 列表支持按名称、ID、作者、描述、关键词和权限搜索，也可以用 `All / Built-in / External / Enabled / Disabled` 分段筛选快速定位插件。
 
 ## index.js 接口
 
@@ -239,6 +239,15 @@ qx-plugins/
 
 提交 Pull Request 到 `mcxen/qx-plugins`，合并后插件即可在 Qx 的 Extensions → Browse 中被搜索和安装。
 
+## 插件库界面
+
+设置页的 Extensions 是当前插件库入口，分为两个标签：
+
+- `Installed`：管理已安装插件和内置模块。顶部可导入本地 `.zip` / `.qx-plugin`、安装 GitHub URL、安装 Raycast extension tree URL；下方提供搜索、类型/状态筛选、启用/禁用、卸载、权限查看和 preferences 编辑。
+- `Browse`：浏览远程市场。左侧是可搜索插件列表，右侧展示选中插件详情、版本、作者、大小、权限、最低 Qx 版本、更新时间和 SHA256。安装按钮会显示安装中、已安装、失败等状态。
+
+内置模块会以 Built-in 标记出现，只能查看和配置，不能禁用或卸载。外部插件安装后默认进入 `~/.qx/plugins/<id>/`，重新扫描可通过顶部 `Rescan` 完成。
+
 ## 从市场安装
 
 在 Qx 中：
@@ -246,8 +255,8 @@ qx-plugins/
 1. 打开设置（`Cmd+,`）
 2. 进入 Extensions
 3. 切换到 Browse 标签
-4. 搜索或浏览插件列表
-5. 点击 Install
+4. 搜索或浏览插件列表，选中插件查看右侧详情
+5. 点击右侧 Install
 
 Qx 会自动下载 `.qx-plugin` 包并安装到 `~/.qx/plugins/<id>/`。
 
@@ -255,15 +264,15 @@ Qx 会自动下载 `.qx-plugin` 包并安装到 `~/.qx/plugins/<id>/`。
 
 ### 从本地文件安装
 
-在 Extensions → Installed → Import Plugin Archive 中输入本地 `.qx-plugin` 文件路径。
+在 Extensions → Installed → Import Plugin Archive 中输入本地 `.qx-plugin` 文件路径，然后点击 Install Local。
 
 ### 从 URL 安装
 
-输入 GitHub repo、release asset 或 archive ZIP URL。
+输入 GitHub repo、release asset 或 archive ZIP URL，然后点击 Install URL。
 
 ### 从 Raycast 扩展安装
 
-输入 Raycast extension tree URL，Qx 会自动转换安装。例如：
+输入 Raycast extension tree URL，然后点击 Install Raycast。Qx 会自动转换安装。例如：
 
 ```
 https://github.com/raycast/extensions/tree/<ref>/extensions/system-information
@@ -307,7 +316,7 @@ https://github.com/raycast/extensions/tree/<ref>/extensions/system-information
 
 ### 热重载
 
-在 Extensions 页面点击 Rescan 按钮可以重新扫描插件目录，无需重启应用。
+在 Extensions 页面点击 Rescan 按钮可以重新扫描插件目录，无需重启应用。Installed 列表会保留当前搜索/筛选条件，并在插件增删后自动修正右侧选中项。
 
 ### 开发者模式
 

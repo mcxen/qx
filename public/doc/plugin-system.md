@@ -8,7 +8,14 @@
 - `switch(tab)` 渲染
 - `doSearch()` 里写死关键词匹配
 
-`PluginManager` 目前只是一个 UI 壳，管理的也是内置模块的开关，没有真正的插件加载能力。
+插件运行时和插件库已具备可用闭环：
+
+- `PluginManager` 可扫描 `~/.qx/plugins/`，安装/卸载/启用/禁用外部插件，并渲染内置模块和外部插件 preferences。
+- Installed 插件库支持搜索、`All / Built-in / External / Enabled / Disabled` 筛选、左侧列表 + 右侧详情。
+- Browse 插件市场支持远程索引搜索、左侧列表 + 右侧详情、权限/元数据展示和安装状态反馈。
+- 外部插件命令已经能注入 Launcher 搜索结果，插件 panel 通过 sandboxed iframe 渲染。
+
+仍待继续收敛的是：把 `PluginManager` 拆分成更小的组件、补充插件库键盘列表导航，以及让更多内置模块从硬编码 React 路由迁移到统一注册接口。
 
 ---
 
@@ -247,7 +254,7 @@ App 启动
 | `App.tsx` 路由 | `switch(tab)` 硬编码 | 动态 tab 注册，插件可注册新 tab |
 | `store.ts` Tab 类型 | 静态联合类型 | 扩展为 `string`，支持动态值 |
 | `doSearch()` | 硬编码关键词匹配 | 插件 commands 注入搜索结果 |
-| `PluginManager` | 管理内置模块开关 | 扫描 `~/.qx/plugins/`，动态加载/卸载 |
+| `PluginManager` | 已支持 Installed/Browse 插件库、导入、启用/禁用、卸载和偏好设置 | 继续拆分组件，补充键盘导航和大列表性能优化 |
 | Tab 渲染 | 硬编码组件 | 对插件 panel，渲染到 iframe 容器中 |
 | 内置模块 | 单独 import + switch case | 也走同一套注册接口 |
 
@@ -263,24 +270,24 @@ App 启动
 - [x] 插件 commands 出现在搜索结果中，Enter 触发 `run()`
 - [x] 基础 context：`invoke`、`showToast`、`openUrl`、`prompt`、`storage`
 - [x] `Tab` 类型改为 `string`，`App.tsx` 支持动态插件 tab
-- [ ] 内置模块迁移到同一注册接口
+- [ ] 内置模块渲染迁移到同一注册接口
 - [x] hello-world 示例插件
 
 ### 第二期：面板插件 + 偏好设置
 
-- [ ] 插件 panel 注册为全屏视图
-- [ ] `PluginManager` 支持安装/卸载/启用/禁用（基于文件系统扫描）
+- [x] 插件 panel 注册为全屏视图
+- [x] `PluginManager` 支持安装/卸载/启用/禁用（基于文件系统扫描）
 - [x] preferences 在设置中渲染，用户可配置
 - [x] `getPreference` 读取用户配置
-- [ ] 签名验证（ed25519）
+- [x] 签名验证（ed25519）
 
 ### 第三期：开发者体验
 
 - [ ] `qx init` 脚手架命令，一键生成插件模板
 - [ ] 开发模式：文件变更自动重载
 - [ ] 完整开发手册文档
-- [ ] 插件市场 UI
-- [ ] 依赖加载顺序（拓扑排序）
+- [x] 插件市场 UI
+- [x] 依赖加载顺序（拓扑排序）
 - [x] Raycast 扩展转换器：`scripts/convert-raycast-extension.mjs`
 
 ---
@@ -306,6 +313,8 @@ App 启动
 | `plugin_resolve_asset(id, asset_path)` | 将插件资源解析为可被 `convertFileSrc()` 使用的路径 |
 | `fetch_plugin_index()` | 拉取远程插件索引 |
 | `download_plugin(url)` | 下载插件包到临时目录 |
+| `install_plugin_from_url(url)` | 从 GitHub repo、release asset 或 archive ZIP URL 下载并安装插件 |
+| `install_raycast_extension_from_url(url)` | 下载 Raycast extension tree URL，转换并安装为 Qx 插件 |
 
 ---
 

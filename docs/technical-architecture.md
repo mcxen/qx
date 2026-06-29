@@ -218,7 +218,11 @@ tab = "plugin:*"   → PluginPanelViewport
 - zip 包发布机制
 - 签名验证 (`sign_plugin`)
 - 权限系统
-- 前端: partial (`PluginManager.tsx` 604 行，需拆分)
+- 前端插件库：`PluginManager.tsx`
+  - `Installed`：本地插件/内置模块搜索，`All / Built-in / External / Enabled / Disabled` 筛选，启用/禁用、卸载、preferences、权限详情。
+  - `Browse`：远程市场搜索，左侧列表 + 右侧详情，展示版本、作者、大小、权限、最低 Qx 版本、更新时间、SHA256，并提供安装状态反馈。
+  - 导入入口：本地 `.zip` / `.qx-plugin`、GitHub repo/release/archive URL、Raycast extension tree URL。
+  - 后续优化：组件拆分、键盘列表导航、大列表虚拟化。
 
 ---
 
@@ -296,7 +300,7 @@ marketplace::* (fetch/download/install/uninstall/list/sign)
 - [x] 图标缓存 (sips + `~/.qx/icons/`)
 - [ ] 虚拟列表 (react-window / tanstack-virtual) — 剪贴板、文章列表大数量时
 - [ ] 模块懒加载 (`React.lazy` + Suspense)
-- [ ] 大型模块 (PluginManager 604 行) 拆分为子组件
+- [ ] 大型模块 (PluginManager 935 行) 拆分为子组件
 
 **后端**:
 - [ ] 单 SQLite 连接池而非多独立文件
@@ -329,7 +333,7 @@ marketplace::* (fetch/download/install/uninstall/list/sign)
 ### P1 - 重要
 1. **Settings 标签页键盘切换** — 当前只能鼠标点或搜索过滤
 2. **剪切板类型筛选键盘快捷** — Ctrl+1~5 切换
-3. **大文件拆分** — App.tsx (695行), PluginManager.tsx (604行), ClipboardPanel.tsx (372行)
+3. **大文件拆分** — App.tsx (775行), PluginManager.tsx (935行), ClipboardPanel.tsx (379行)
 4. **模块懒加载** — 首屏加载约 308KB JS bundle，可拆为异步 chunk
 
 ### P2 - 增强
@@ -340,7 +344,7 @@ marketplace::* (fetch/download/install/uninstall/list/sign)
 5. **Windows/Linux 适配测试**
 
 ### P3 - 远期
-1. **插件市场完整前端** — 浏览、安装、管理 UI
+1. **插件库高级能力** — 插件详情截图/README、分页或虚拟列表、评分/来源信任展示
 2. **OCR 模块**
 3. **AI 模块** — 基于 LLM 的智能搜索
 4. **Store 统一** — 整合多个 Zustand store 为单一状态树 vs 保持模块化
@@ -380,12 +384,12 @@ npm run tauri build -- --bundles app
 
 | 文件 | 行数 | 说明 |
 |------|------|------|
-| `src/App.tsx` | 695 | 主应用壳，包含渲染逻辑、键盘处理、窗口管理 |
-| `src/modules/settings/PluginManager.tsx` | 604 | 插件管理 UI，需要拆分 |
-| `src/modules/clipboard/ClipboardPanel.tsx` | 372 | 剪贴板面板 + 工具函数混在一起 |
-| `src/modules/macros/MacroRecorder.tsx` | 346 | 宏录制面板，需要键盘增强 |
-| `src/modules/screencap/ScreenRecorder.tsx` | 325 | 屏幕录制，缺失键盘 |
-| `src/modules/rss/RssPanel.tsx` | 306 | RSS 订阅列表 |
+| `src/App.tsx` | 775 | 主应用壳，包含渲染逻辑、键盘处理、窗口管理 |
+| `src/modules/settings/PluginManager.tsx` | 935 | 插件库 UI，Installed/Browse 已可用，后续需要拆分 |
+| `src/modules/clipboard/ClipboardPanel.tsx` | 379 | 剪贴板面板 + 工具函数混在一起 |
+| `src/modules/macros/MacroRecorder.tsx` | 304 | 宏录制面板，需要键盘增强 |
+| `src/modules/screencap/ScreenRecorder.tsx` | 402 | 屏幕录制，缺失键盘 |
+| `src/modules/rss/RssPanel.tsx` | 293 | RSS 订阅列表 |
 | `src/modules/rss/ArticleList.tsx` | 321 | RSS 文章列表 |
 | `src/modules/rss/store.ts` | 321 | RSS store + 辅助函数 |
 | `src/modules/rss/ArticleDetail.tsx` | 299 | RSS 文章详情 |

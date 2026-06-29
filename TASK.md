@@ -1,3 +1,24 @@
+## Maintenance — 插件库 UI 与文档更新
+
+**状态**：已实现，已通过前端静态验证。
+
+### 优化内容
+
+- Extensions → Installed 新增已安装插件搜索，以及 `All / Built-in / External / Enabled / Disabled` 筛选。
+- Installed 和 Browse 统一为左侧列表 + 右侧详情结构，便于查看插件权限、preferences、版本、作者、大小、更新时间和 SHA256。
+- Browse 市场安装增加安装中、已安装、失败状态反馈。
+- 插件管理按钮补充 lucide 图标，样式收敛到 `settings-actions.css` 的插件库类名。
+- 更新 `public/doc/plugin-marketplace.md`、`public/doc/plugin-system.md`、`docs/technical-architecture.md` 和 `README.md` 中的插件库说明。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [ ] 手动验证 Installed 搜索/筛选、Browse 搜索/详情、安装状态和右侧插件详情。
+
+---
+
 ## Feature — Raycast system-information 转换适配
 
 **状态**：进行中，已通过静态验证。
