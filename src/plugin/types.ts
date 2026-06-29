@@ -79,6 +79,112 @@ export interface PluginIndex {
   plugins: PluginIndexEntry[];
 }
 
+export interface PluginAiMessage {
+  role: "system" | "user" | "assistant";
+  content: string | PluginAiContentPart[];
+}
+
+export type PluginAiContentPart =
+  | { type: "text"; text: string }
+  | {
+      type: "image_url";
+      image_url: {
+        url: string;
+        detail?: "auto" | "low" | "high";
+      };
+    };
+
+export interface PluginAiModel {
+  id: string;
+  name: string;
+}
+
+export interface PluginAiProvider {
+  id: string;
+  name: string;
+  models: PluginAiModel[];
+}
+
+export interface PluginAiModelSelection {
+  provider: string;
+  model: string;
+}
+
+export interface PluginAiAgentSettings {
+  agent_mode_enabled: boolean;
+  default_provider: string;
+  default_model: string;
+  model_tools_enabled: boolean;
+  tools_enabled: boolean;
+  memory_tool_enabled: boolean;
+  app_search_enabled: boolean;
+  file_search_enabled: boolean;
+  http_fetch_enabled: boolean;
+  notifications_enabled: boolean;
+  mcp_enabled: boolean;
+  bash_enabled: boolean;
+  bash_timeout_ms: number;
+  bash_cwd: string;
+  grep_search_enabled: boolean;
+  grep_command: string;
+  grep_root: string;
+  grep_max_results: number;
+  background_tasks_enabled: boolean;
+}
+
+export interface PluginAiChatOptions {
+  provider?: string;
+  model?: string;
+  system?: string;
+  prompt?: string;
+  images?: string[];
+  imageDetail?: "auto" | "low" | "high";
+  messages?: PluginAiMessage[];
+}
+
+export interface PluginAiBashResult {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+}
+
+export interface PluginAiMemoryEntry {
+  id: string;
+  text: string;
+  tags: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface PluginAiGrepResult {
+  path: string;
+  line?: number;
+  text: string;
+}
+
+export type PluginAiTaskState =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+
+export interface PluginAiTask {
+  id: string;
+  title: string;
+  state: PluginAiTaskState;
+  createdAt: number;
+  updatedAt: number;
+  result?: string;
+  error?: string;
+}
+
+export interface PluginAiTaskInput extends PluginAiChatOptions {
+  title?: string;
+  notify?: boolean;
+}
+
 export interface PluginContext {
   pluginId: string;
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -114,6 +220,42 @@ export interface PluginContext {
   };
   notification: {
     show: (input: { title: string; body?: string; subtitle?: string }) => Promise<void>;
+  };
+  ai: {
+    providers: () => Promise<PluginAiProvider[]>;
+    models: (provider?: string) => Promise<PluginAiModel[]>;
+    defaultModel: () => Promise<PluginAiModelSelection | null>;
+    agentSettings: () => Promise<PluginAiAgentSettings>;
+    chat: (
+      input: string | PluginAiChatOptions | PluginAiMessage[],
+      options?: Omit<PluginAiChatOptions, "prompt" | "messages">,
+    ) => Promise<string>;
+    stream: (
+      input: string | PluginAiChatOptions | PluginAiMessage[],
+      onChunk: (chunk: string) => void,
+      options?: Omit<PluginAiChatOptions, "prompt" | "messages">,
+    ) => Promise<string>;
+    runBash: (
+      script: string,
+      options?: { cwd?: string; timeoutMs?: number },
+    ) => Promise<PluginAiBashResult>;
+    memory: {
+      list: () => Promise<PluginAiMemoryEntry[]>;
+      add: (text: string, tags?: string[]) => Promise<PluginAiMemoryEntry>;
+      delete: (id: string) => Promise<void>;
+    };
+    search: {
+      grep: (
+        query: string,
+        options?: { root?: string; maxResults?: number },
+      ) => Promise<PluginAiGrepResult[]>;
+    };
+    tasks: {
+      submit: (input: string | PluginAiTaskInput) => Promise<PluginAiTask>;
+      list: () => Promise<PluginAiTask[]>;
+      get: (id: string) => Promise<PluginAiTask | null>;
+      cancel: (id: string) => Promise<PluginAiTask>;
+    };
   };
   system: {
     stats: () => Promise<unknown>;

@@ -1,3 +1,104 @@
+## Feature — AI Agent 设置模块与工具门控
+
+**状态**：已实现，等待验证。
+
+### 新增内容
+
+- Settings 新增独立 `AI Agent` 模块，支持开启 Agent 模式。
+- Agent 设置可配置默认 provider/model，并同步 QxAI 当前模型选择。
+- Agent 设置可配置模型工具调用标记、工具总开关、memory/app search/file search/http/notification/MCP/background task 等工具组。
+- Agent 设置可配置 bash 工具开关、默认 cwd 和超时上限。
+- Agent 设置可配置真实 `rg` / `grep` 文本搜索接入、默认搜索根目录和结果数量上限。
+- Rust settings schema 新增 `agent` 持久化分支，支持设置导入/导出。
+- 插件 AI runtime 新增 `context.ai.agentSettings()` 和 `context.ai.search.grep()`。
+- `plugin_ai_run_bash` 与新增 `plugin_ai_grep_search` 会读取 Settings -> AI Agent 的全局开关进行门控。
+- 更新 `docs/ai-agent-runtime.md`、`public/doc/plugin-system.md`、`public/doc/plugin-marketplace.md` 和 `docs/technical-architecture.md`。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [ ] 手动验证 Settings -> AI Agent 中开关、provider/model、bash、grep 配置能保存并在插件调用时生效。
+
+---
+
+## Bugfix — 界面透明度一致性
+
+**状态**：已实现，已通过本地验证。
+
+### 修复内容
+
+- 透明度设置从单一 `--qx-canvas-opacity` 扩展为语义变量：窗口底色、Shell 区域叠层、Elevated/Glass 区域、Overlay Bottom、Popover/Bottom Island。
+- 组件表面色 `--qx-bg-component-1/2/3` 改为 RGB + 透明度派生变量，列表、按钮、卡片、选择器等控件跟随同一个透明度设置。
+- QxShell 根背景改为透明，由外层画布承载统一透明度，Top Bar / Context Panel / Bottom Bar / 灵动岛使用同一组透明度派生变量。
+- 移除 Clipboard 模块对 QxShell 根背景的私有不透明覆盖，遵循 Shell 背景语义由统一样式控制。
+- 外观设置文案从“画布透明度”调整为“界面透明度”，明确统一控制主壳、面板和灵动岛。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [x] 运行态 computed style 验证：`.qx-canvas` 使用 `--qx-window-opacity`，`.qx-shell-topbar` / `.qx-shell-context` / `.qx-shell-bottombar` 使用同一 `--qx-shell-region-opacity`，`.qx-bottom-island` 使用 `--qx-shell-popover-opacity`，`.qx-shell-action` 跟随 `--qx-bg-component-3` 的 surface opacity。
+
+---
+
+## Feature — AI 插件底层能力与多模态模型目录
+
+**状态**：已实现，等待验证。
+
+### 新增内容
+
+- 新增插件 `context.ai` SDK：`providers()`、`models(provider?)`、`defaultModel()`、`chat(input, options?)`。
+- 新增 `ai` 插件权限，插件声明后可调用 QxAI 文本和图片多模态能力。
+- 自定义 OpenAI-compatible provider 的模型目录优先通过真实 API `GET /models` 获取，失败时回退到本地缓存/手填模型。
+- QxAI 设置页自定义 provider 支持 `Fetch Models`，可从 API 拉取模型列表。
+- 插件 AI 调用支持字符串 prompt、messages 数组、OpenAI-compatible content parts，以及 `images` 便捷参数。
+- 插件 AI 新增 `context.ai.stream()`，以 chunk 回调方式支持流式文字输出。
+- 后端多模态消息以 JSON content 透传给自定义 provider；DuckDuckGo 文本 provider 遇到图片输入时返回明确错误。
+- 插件 AI 新增真实 bash 子进程工具 `context.ai.runBash()`，使用 `ai-bash` 独立权限和超时保护。
+- 插件 AI 新增用户记忆接口 `context.ai.memory.*`，使用 `ai-memory` 独立权限，当前持久化到 `~/.qx/qxai-memory.json`。
+- QxAI Settings 新增 Memory 管理区，用户可直接新增、刷新、删除持久记忆。
+- 插件 AI 新增进程内后台任务接口 `context.ai.tasks.*`，使用 `ai-background` 独立权限，任务可在 Qx 隐藏到托盘后继续运行并在完成/失败时通知。
+- 新增 `docs/ai-agent-runtime.md`，定义 ReAct、tool calling、MCP、memory、soul 和更持久后台任务的后续 runtime 边界。
+- 更新 `public/doc/plugin-system.md`、`public/doc/plugin-marketplace.md` 和 `docs/technical-architecture.md`。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [ ] 手动验证插件声明 `ai` 权限后列模型、选择模型、文本调用、图片调用、stream chunk、后台任务、bash、memory 和缺权限报错。
+
+---
+
+## Bugfix — QxAI 输出与模型选择修复
+
+**状态**：已实现，已通过本地验证。
+
+### 修复内容
+
+- QxAI 新会话创建时会从已加载 provider 列表中解析有效 provider/model，避免 provider 尚未加载完导致空配置会话。
+- 发送消息前会再次校验并补齐会话 provider/model；缺失或异常时通过 QxShell 底部灵动岛显示错误。
+- 聊天页右侧 Context Panel 新增当前会话 provider/model 选择，可直接切换已有会话模型。
+- 修正自定义 OpenAI-compatible provider 的 Tauri invoke 参数名，确保真实请求能带上 `baseUrl/apiKey/model/messages`。
+- DuckDuckGo provider 会将 `system` prompt 合并进首条 user 消息，并忽略 SSE 中非正文事件，避免接口格式导致空输出或异常正文。
+- 通用 Select 支持 disabled 选项，QxAI provider 分隔项不再可被键盘或鼠标选中。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [ ] 手动验证内置 DuckDuckGo 输出、自定义 provider 输出、已有会话切换模型和异常灵动岛报错。
+
+---
+
 ## Bugfix — 插件异常隔离与灵动岛报错
 
 **状态**：已实现，已通过静态验证。

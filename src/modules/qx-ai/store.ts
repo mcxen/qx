@@ -66,6 +66,7 @@ interface G4fStore {
   deleteConversation: (id: string) => void;
   renameConversation: (id: string, name: string) => void;
   selectConversation: (id: string) => void;
+  setConversationModel: (id: string, provider: string, model: string) => void;
 
   sendMessage: (content: string) => Promise<void>;
   clearMessages: () => void;
@@ -95,6 +96,25 @@ function buildProviders(
   return [...builtIns, ...mapped];
 }
 
+function resolveProviderModel(
+  providers: G4fProvider[],
+  provider?: string,
+  model?: string,
+): { provider: string; model: string } {
+  if (providers.length === 0) return { provider: provider ?? "", model: model ?? "" };
+
+  const selectedProvider =
+    providers.find((p) => p.id === provider) ?? providers[0];
+  const selectedModel =
+    selectedProvider.models.find((m) => m.id === model) ??
+    selectedProvider.models[0];
+
+  return {
+    provider: selectedProvider.id,
+    model: selectedModel?.id ?? "",
+  };
+}
+
 export const useG4fStore = create<G4fStore>((set, get) => ({
   conversations: [],
   currentConversationId: null,
@@ -113,14 +133,23 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   providers: [],
 
   setView: (view) => set({ view }),
-  setCurrentProvider: (currentProvider) => set({ currentProvider }),
+  setCurrentProvider: (currentProvider) => {
+    const { providers, currentModel } = get();
+    const next = resolveProviderModel(providers, currentProvider, currentModel);
+    set({ currentProvider: next.provider, currentModel: next.model });
+  },
   setCurrentModel: (currentModel) => set({ currentModel }),
   setDefaultSystemPrompt: (defaultSystemPrompt) => set({ defaultSystemPrompt }),
   setStreamedContent: (streamedContent) => set({ streamedContent }),
 
   createConversation: (provider, model) => {
-    const { currentProvider, currentModel, conversations, defaultSystemPrompt } =
+    const { currentProvider, currentModel, conversations, defaultSystemPrompt, providers } =
       get();
+    const selection = resolveProviderModel(
+      providers,
+      provider ?? currentProvider,
+      model ?? currentModel,
+    );
     const id = generateId();
     const conv: G4fConversation = {
       id,
@@ -129,8 +158,8 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       messages: defaultSystemPrompt
         ? [{ role: "system", content: defaultSystemPrompt }]
         : [],
-      provider: provider ?? currentProvider,
-      model: model ?? currentModel,
+      provider: selection.provider,
+      model: selection.model,
     };
     set({
       conversations: [...conversations, conv],
@@ -161,15 +190,55 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     set({ currentConversationId: id, view: "chat" });
   },
 
+  setConversationModel: (id, provider, model) => {
+    const { providers } = get();
+    const selection = resolveProviderModel(providers, provider, model);
+    set((s) => ({
+      conversations: s.conversations.map((c) =>
+        c.id === id
+          ? { ...c, provider: selection.provider, model: selection.model }
+          : c,
+      ),
+      currentProvider: selection.provider,
+      currentModel: selection.model,
+      error: null,
+    }));
+  },
+
   sendMessage: async (content) => {
-    const { currentConversationId, conversations, customProviders } = get();
+    const {
+      currentConversationId,
+      conversations,
+      customProviders,
+      providers,
+      currentProvider,
+      currentModel,
+    } = get();
     if (!currentConversationId) return;
 
     const conv = conversations.find((c) => c.id === currentConversationId);
     if (!conv) return;
 
+    const selection = resolveProviderModel(
+      providers,
+      conv.provider || currentProvider,
+      conv.model || currentModel,
+    );
+
+    if (!selection.provider) {
+      set({ error: "No AI provider available. Open QxAI Settings first." });
+      return;
+    }
+
+    if (!selection.model) {
+      set({ error: `No model available for provider "${selection.provider}".` });
+      return;
+    }
+
     const updatedConv: G4fConversation = {
       ...conv,
+      provider: selection.provider,
+      model: selection.model,
       messages: [...conv.messages, { role: "user", content }],
     };
 
@@ -190,20 +259,20 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     try {
       let response: string;
 
-      if (conv.provider.startsWith("custom:")) {
+      if (selection.provider.startsWith("custom:")) {
         // BYOK provider
-        const cp = customProviders.find((p) => p.id === conv.provider);
-        if (!cp) throw new Error(`Custom provider "${conv.provider}" not found`);
+        const cp = customProviders.find((p) => p.id === selection.provider);
+        if (!cp) throw new Error(`Custom provider "${selection.provider}" not found`);
         response = await invoke<string>("g4f_chat_custom", {
-          base_url: cp.baseUrl,
-          api_key: cp.apiKey,
-          model: conv.model,
+          baseUrl: cp.baseUrl,
+          apiKey: cp.apiKey,
+          model: selection.model,
           messages: updatedConv.messages,
         });
       } else {
         response = await invoke<string>("g4f_chat", {
-          provider: conv.provider,
-          model: conv.model || null,
+          provider: selection.provider,
+          model: selection.model,
           messages: updatedConv.messages,
         });
       }
@@ -244,21 +313,29 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     }
     set({ loading: true, error: null });
     try {
-      const builtInProviders = await invoke<G4fProvider[]>("g4f_list_providers");
+      const providers = await invoke<G4fProvider[]>("qxai_list_providers");
       const customProviders = await invoke<CustomProvider[]>(
         "qxai_get_custom_providers",
       );
-      const providers = buildProviders(builtInProviders, customProviders);
+      const builtInProviders = providers.filter((provider) => !provider.id.startsWith("custom:"));
+      const customProvidersWithModels = customProviders.map((provider) => {
+        const catalogProvider = providers.find((item) => item.id === provider.id);
+        return catalogProvider
+          ? { ...provider, models: catalogProvider.models }
+          : provider;
+      });
       set({
         builtInProviders,
-        customProviders,
+        customProviders: customProvidersWithModels,
         providers,
         loading: false,
       });
-      if (providers.length > 0 && !get().currentProvider) {
+      const { currentProvider, currentModel } = get();
+      const selection = resolveProviderModel(providers, currentProvider, currentModel);
+      if (selection.provider !== currentProvider || selection.model !== currentModel) {
         set({
-          currentProvider: providers[0].id,
-          currentModel: providers[0].models[0]?.id ?? "",
+          currentProvider: selection.provider,
+          currentModel: selection.model,
         });
       }
     } catch (e) {
@@ -279,36 +356,57 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     const { customProviders: oldCustoms, builtInProviders } = get();
     const customProviders = [...oldCustoms, newProvider];
     const providers = buildProviders(builtInProviders, customProviders);
-    set({ customProviders, providers });
+    const selection = resolveProviderModel(providers, get().currentProvider, get().currentModel);
+    set({
+      customProviders,
+      providers,
+      currentProvider: selection.provider,
+      currentModel: selection.model,
+    });
     if (isTauriRuntime()) {
       await invoke("qxai_save_custom_providers", { providers: customProviders });
     }
   },
 
   removeCustomProvider: async (id) => {
-    const { customProviders: oldCustoms, builtInProviders, currentProvider } = get();
+    const { customProviders: oldCustoms, builtInProviders, currentProvider, currentModel } = get();
     const customProviders = oldCustoms.filter((p) => p.id !== id);
     const providers = buildProviders(builtInProviders, customProviders);
-    const next: Partial<G4fStore> = { customProviders, providers };
-    // If the removed provider was selected, switch to first available
-    if (currentProvider === id) {
-      const first = providers[0];
-      next.currentProvider = first?.id ?? "";
-      next.currentModel = first?.models[0]?.id ?? "";
-    }
-    set(next);
+    const selection = resolveProviderModel(providers, currentProvider, currentModel);
+    set({
+      customProviders,
+      providers,
+      currentProvider: selection.provider,
+      currentModel: selection.model,
+      conversations: get().conversations.map((c) =>
+        c.provider === id
+          ? { ...c, provider: selection.provider, model: selection.model }
+          : c,
+      ),
+    });
     if (isTauriRuntime()) {
       await invoke("qxai_save_custom_providers", { providers: customProviders });
     }
   },
 
   updateCustomProvider: async (id, patch) => {
-    const { customProviders: oldCustoms, builtInProviders } = get();
+    const { customProviders: oldCustoms, builtInProviders, currentProvider, currentModel } = get();
     const customProviders = oldCustoms.map((p) =>
       p.id === id ? { ...p, ...patch } : p,
     );
     const providers = buildProviders(builtInProviders, customProviders);
-    set({ customProviders, providers });
+    const selection = resolveProviderModel(providers, currentProvider, currentModel);
+    set({
+      customProviders,
+      providers,
+      currentProvider: selection.provider,
+      currentModel: selection.model,
+      conversations: get().conversations.map((c) => {
+        if (c.provider !== id) return c;
+        const next = resolveProviderModel(providers, c.provider, c.model);
+        return { ...c, provider: next.provider, model: next.model };
+      }),
+    });
     if (isTauriRuntime()) {
       await invoke("qxai_save_custom_providers", { providers: customProviders });
     }

@@ -10,6 +10,8 @@ import {
 import { BUILTIN_PLUGINS } from "./builtin";
 import type {
   InstalledPlugin,
+  PluginAiModelSelection,
+  PluginAiProvider,
   PluginContext,
   RegisteredCommand,
   RegisteredPanel,
@@ -144,6 +146,29 @@ function unavailableContext(pluginId: string): PluginContext {
     clipboard: { read: unavailable, write: unavailable },
     http: { fetch: unavailable },
     notification: { show: unavailable },
+    ai: {
+      providers: unavailable,
+      models: unavailable,
+      defaultModel: unavailable,
+      agentSettings: unavailable,
+      chat: unavailable,
+      stream: unavailable,
+      runBash: unavailable,
+      memory: {
+        list: unavailable,
+        add: unavailable,
+        delete: unavailable,
+      },
+      search: {
+        grep: unavailable,
+      },
+      tasks: {
+        submit: unavailable,
+        list: unavailable,
+        get: unavailable,
+        cancel: unavailable,
+      },
+    },
     system: {
       stats: unavailable,
       info: unavailable,
@@ -454,6 +479,14 @@ export function createPluginContext(
 ): PluginContext {
   const rpc = (method: string, payload: Record<string, unknown> = {}) =>
     handlePluginRpc(plugin, method, payload, hooks);
+  const createAiChatPayload = (
+    input: Parameters<PluginContext["ai"]["chat"]>[0],
+    options: Parameters<PluginContext["ai"]["chat"]>[1] = {},
+  ) => {
+    if (typeof input === "string") return { ...options, prompt: input };
+    if (Array.isArray(input)) return { ...options, messages: input };
+    return { ...input };
+  };
 
   return {
     pluginId: plugin.id,
@@ -492,6 +525,65 @@ export function createPluginContext(
     },
     notification: {
       show: (input) => rpc("notificationShow", input) as Promise<void>,
+    },
+    ai: {
+      providers: () => rpc("aiListProviders") as Promise<PluginAiProvider[]>,
+      models: async (provider) => {
+        const providers = await rpc("aiListProviders") as PluginAiProvider[];
+        const selected = provider
+          ? providers.find((item) => item.id === provider)
+          : providers[0];
+        return selected?.models ?? [];
+      },
+      defaultModel: () => rpc("aiDefaultModel") as Promise<PluginAiModelSelection | null>,
+      agentSettings: () =>
+        rpc("aiAgentSettings") as ReturnType<PluginContext["ai"]["agentSettings"]>,
+      chat: (input, options) =>
+        rpc("aiChat", createAiChatPayload(input, options)) as Promise<string>,
+      stream: async (input, onChunk, options) => {
+        const chunks = await rpc("aiStreamChat", createAiChatPayload(input, options)) as string[];
+        let full = "";
+        for (const chunk of chunks) {
+          const text = String(chunk ?? "");
+          full += text;
+          onChunk(text);
+          await new Promise((resolve) => window.setTimeout(resolve, 0));
+        }
+        return full;
+      },
+      runBash: (script, options = {}) =>
+        rpc("aiRunBash", {
+          script,
+          cwd: options.cwd,
+          timeoutMs: options.timeoutMs,
+        }) as ReturnType<PluginContext["ai"]["runBash"]>,
+      memory: {
+        list: () => rpc("aiMemoryList") as ReturnType<PluginContext["ai"]["memory"]["list"]>,
+        add: (text, tags = []) =>
+          rpc("aiMemoryAdd", { text, tags }) as ReturnType<PluginContext["ai"]["memory"]["add"]>,
+        delete: (id) =>
+          rpc("aiMemoryDelete", { id }) as ReturnType<PluginContext["ai"]["memory"]["delete"]>,
+      },
+      search: {
+        grep: (query, options = {}) =>
+          rpc("aiGrepSearch", {
+            query,
+            root: options.root,
+            maxResults: options.maxResults,
+          }) as ReturnType<PluginContext["ai"]["search"]["grep"]>,
+      },
+      tasks: {
+        submit: (input) =>
+          rpc(
+            "aiTaskSubmit",
+            typeof input === "string" ? { prompt: input } : { ...input },
+          ) as ReturnType<PluginContext["ai"]["tasks"]["submit"]>,
+        list: () => rpc("aiTaskList") as ReturnType<PluginContext["ai"]["tasks"]["list"]>,
+        get: (id) =>
+          rpc("aiTaskGet", { id }) as ReturnType<PluginContext["ai"]["tasks"]["get"]>,
+        cancel: (id) =>
+          rpc("aiTaskCancel", { id }) as ReturnType<PluginContext["ai"]["tasks"]["cancel"]>,
+      },
     },
     system: {
       stats: () => rpc("invoke", { cmd: "get_system_stats", args: {} }),

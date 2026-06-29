@@ -39,6 +39,28 @@ export interface AdvancedSettings {
   ocr_model_size: string;
 }
 
+export interface AgentSettings {
+  agent_mode_enabled: boolean;
+  default_provider: string;
+  default_model: string;
+  model_tools_enabled: boolean;
+  tools_enabled: boolean;
+  memory_tool_enabled: boolean;
+  app_search_enabled: boolean;
+  file_search_enabled: boolean;
+  http_fetch_enabled: boolean;
+  notifications_enabled: boolean;
+  mcp_enabled: boolean;
+  bash_enabled: boolean;
+  bash_timeout_ms: number;
+  bash_cwd: string;
+  grep_search_enabled: boolean;
+  grep_command: "rg" | "grep";
+  grep_root: string;
+  grep_max_results: number;
+  background_tasks_enabled: boolean;
+}
+
 export interface RssSettings {
   offline_cache_enabled: boolean;
   max_articles_per_feed: number;
@@ -69,6 +91,7 @@ export interface Settings {
   shortcuts: Record<string, ShortcutBinding>;
   plugins: PluginConfig[];
   advanced: AdvancedSettings;
+  agent: AgentSettings;
   rss: RssSettings;
   v2ex: V2exSettings;
 }
@@ -79,6 +102,7 @@ export type SettingsTab =
   | "shortcuts"
   | "permissions"
   | "appearance"
+  | "agent"
   | "rss"
   | "advanced"
   | "ocr"
@@ -120,6 +144,27 @@ export const DEFAULT_SETTINGS: Settings = {
     ocr_enabled: false,
     ocr_engine: "apple-vision",
     ocr_model_size: "tiny",
+  },
+  agent: {
+    agent_mode_enabled: false,
+    default_provider: "",
+    default_model: "",
+    model_tools_enabled: false,
+    tools_enabled: false,
+    memory_tool_enabled: true,
+    app_search_enabled: true,
+    file_search_enabled: true,
+    http_fetch_enabled: false,
+    notifications_enabled: true,
+    mcp_enabled: false,
+    bash_enabled: false,
+    bash_timeout_ms: 30000,
+    bash_cwd: "",
+    grep_search_enabled: false,
+    grep_command: "rg",
+    grep_root: "",
+    grep_max_results: 80,
+    background_tasks_enabled: false,
   },
   rss: {
     offline_cache_enabled: true,
@@ -181,6 +226,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           general: { ...DEFAULT_SETTINGS.general, ...s.general },
           appearance: { ...DEFAULT_SETTINGS.appearance, ...s.appearance },
           advanced: { ...DEFAULT_SETTINGS.advanced, ...s.advanced },
+          agent: { ...DEFAULT_SETTINGS.agent, ...s.agent },
           rss: { ...DEFAULT_SETTINGS.rss, ...s.rss },
           v2ex: { ...DEFAULT_SETTINGS.v2ex, ...s.v2ex },
           shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...s.shortcuts },

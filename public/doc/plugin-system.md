@@ -174,6 +174,19 @@ export default {
 | `context.clipboard.write(text)` | 写入系统剪贴板文本（需 `clipboard` 权限） |
 | `context.http.fetch(url, opts)` | 通过 Rust 后端发起真实 HTTP/HTTPS 请求（需 `http` 权限） |
 | `context.notification.show(input)` | 显示系统通知（需 `notifications` 权限） |
+| `context.ai.providers()` | 读取 QxAI 可用 provider 和模型列表（需 `ai` 权限；自定义 provider 优先通过 API `/models` 获取） |
+| `context.ai.models(provider?)` | 读取某个 provider 的模型列表，省略时返回默认 provider 模型（需 `ai` 权限） |
+| `context.ai.defaultModel()` | 读取默认 provider/model 选择（需 `ai` 权限） |
+| `context.ai.agentSettings()` | 读取 Settings -> AI Agent 中的全局 Agent 开关和工具配置（需 `ai` 权限） |
+| `context.ai.chat(input, options?)` | 调用 QxAI 聊天能力，支持指定 provider/model 和图片输入（需 `ai` 权限） |
+| `context.ai.stream(input, onChunk, options?)` | 流式接收 QxAI 文本输出 chunk（需 `ai` 权限） |
+| `context.ai.runBash(script, opts?)` | 执行真实 bash 脚本并返回 stdout/stderr/status（需 `ai-bash` 权限，并受全局 Agent/Bash 开关约束） |
+| `context.ai.search.grep(query, opts?)` | 使用用户配置的真实 `rg` / `grep` 后端搜索文本（需 `ai-tools` 权限，并受全局 Agent/Grep 开关约束） |
+| `context.ai.memory.list()` | 列出用户可管理 AI 记忆（需 `ai-memory` 权限） |
+| `context.ai.memory.add(text, tags?)` | 新增用户可管理 AI 记忆（需 `ai-memory` 权限） |
+| `context.ai.memory.delete(id)` | 删除 AI 记忆（需 `ai-memory` 权限） |
+| `context.ai.tasks.submit(input)` | 提交进程内后台 AI 任务，可在 Qx 隐藏到托盘后继续运行（需 `ai` + `ai-background` 权限） |
+| `context.ai.tasks.list/get/cancel()` | 管理当前插件提交的后台 AI 任务（需 `ai-background` 权限） |
 | `context.system.stats()` | 读取 CPU / MEM / GPU 运行监控（需 `system-stats` 权限） |
 | `context.system.info()` | 读取系统信息（需 `system-info` 权限） |
 | `context.system.storage()` | 读取磁盘存储信息（需 `system-info` 权限） |
@@ -191,6 +204,74 @@ export default {
 | `context.storage.set(key, value)` | 写入插件本地 KV |
 | `context.storage.delete(key)` | 删除插件本地 KV |
 
+AI 调用示例：
+
+```js
+export default {
+  commands: [
+    {
+      name: "summarize",
+      title: "Summarize with QxAI",
+      async run(context) {
+        const providers = await context.ai.providers();
+        const provider = providers[0];
+        const model = provider?.models[0];
+        const text = await context.prompt("Text to summarize");
+        if (!provider || !model || !text) return;
+
+        const result = await context.ai.chat(text, {
+          provider: provider.id,
+          model: model.id,
+          system: "Summarize in three short bullet points."
+        });
+        await context.clipboard.write(result);
+        context.showToast("Summary copied");
+      }
+    }
+  ]
+};
+```
+
+图片多模态可使用 `images` 便捷参数，或直接传 OpenAI-compatible `content` parts。图片 URL 可以是远程 HTTPS URL，也可以是目标 provider 支持的 `data:image/...;base64,...`：
+
+```js
+const answer = await context.ai.chat({
+  provider: "custom:openai",
+  model: "gpt-4o",
+  prompt: "What is in this screenshot?",
+  images: ["data:image/png;base64,..."],
+  imageDetail: "auto"
+});
+
+let streamed = "";
+await context.ai.stream("Write a release note", (chunk) => {
+  streamed += chunk;
+  // Update your panel DOM here.
+});
+```
+
+Bash 工具和记忆接口使用独立权限：
+
+```js
+const result = await context.ai.runBash("git status --short", {
+  cwd: "/Users/me/project",
+  timeoutMs: 10000
+});
+
+const matches = await context.ai.search.grep("TODO", {
+  root: "/Users/me/project",
+  maxResults: 50
+});
+
+await context.ai.memory.add("User prefers short Chinese answers", ["preference"]);
+
+const task = await context.ai.tasks.submit({
+  title: "Long summary",
+  prompt: "Summarize this long document later",
+  notify: true
+});
+```
+
 ---
 
 ## 六、权限系统
@@ -201,6 +282,11 @@ export default {
 clipboard          访问剪贴板相关命令
 http               发起真实 HTTP/HTTPS 请求
 notifications      显示通知 / toast
+ai                 使用 QxAI provider 目录、模型选择、文本和图片多模态聊天能力
+ai-memory          读取、新增、删除用户可管理 AI 记忆
+ai-bash            允许 AI/插件执行真实 bash 脚本（危险能力，需谨慎授予）
+ai-tools           允许 AI/插件调用非危险工具，例如用户配置的 rg/grep 搜索
+ai-background      提交和管理 Qx 进程内后台 AI 任务
 open-url           打开外部链接
 storage            插件本地存储（默认已包含）
 system-info        读取系统、存储、网络等静态系统信息

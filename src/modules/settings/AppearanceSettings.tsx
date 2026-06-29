@@ -85,8 +85,8 @@ export default function AppearanceSettings() {
         />
       </Row>
       <Row
-        title={t("appearance.opacity", "Frosted Glass Opacity")}
-        description={`${t("appearance.opacity.desc", "Canvas transparency")} (${a.blur_opacity.toFixed(2)})`}
+        title={t("appearance.opacity", "Interface Transparency")}
+        description={`${t("appearance.opacity.desc", "Controls the whole shell, panels, and bottom island")} (${a.blur_opacity.toFixed(2)})`}
       >
         <Slider
           value={a.blur_opacity}

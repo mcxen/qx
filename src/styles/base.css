@@ -1,6 +1,15 @@
 :root {
   /* Toggleable theme-independent tokens */
   --qx-canvas-opacity: 0.16;
+  --qx-window-opacity: 0.16;
+  --qx-shell-region-opacity: 0.05;
+  --qx-shell-elevated-region-opacity: 0.07;
+  --qx-shell-glass-region-opacity: 0.03;
+  --qx-shell-overlay-region-opacity: 0.06;
+  --qx-shell-popover-opacity: 0.28;
+  --qx-surface-opacity-1: 0.48;
+  --qx-surface-opacity-2: 0.38;
+  --qx-surface-opacity-3: 0.30;
   --qx-radius: 8px;
   --qx-effective-radius: var(--qx-radius);
   --qx-control-radius: 6px;
@@ -44,9 +53,12 @@
   --qx-blue-900: #60a5fa;
   --qx-blue-1000: #eff6ff;
 
-  --qx-bg-component-1: #ffffff;
-  --qx-bg-component-2: #f5f5f5;
-  --qx-bg-component-3: #e8e8e8;
+  --qx-surface-rgb-1: 255, 255, 255;
+  --qx-surface-rgb-2: 245, 245, 245;
+  --qx-surface-rgb-3: 232, 232, 232;
+  --qx-bg-component-1: rgba(var(--qx-surface-rgb-1), var(--qx-surface-opacity-1));
+  --qx-bg-component-2: rgba(var(--qx-surface-rgb-2), var(--qx-surface-opacity-2));
+  --qx-bg-component-3: rgba(var(--qx-surface-rgb-3), var(--qx-surface-opacity-3));
   --qx-border-1: #e5e5e5;
   --qx-border-2: #d4d4d4;
   --qx-border-3: #a3a3a3;
@@ -116,9 +128,12 @@
   --qx-blue-900: #93c5fd;
   --qx-blue-1000: #172554;
 
-  --qx-bg-component-1: #1a1a1a;
-  --qx-bg-component-2: #1f1f1f;
-  --qx-bg-component-3: #292929;
+  --qx-surface-rgb-1: 26, 26, 26;
+  --qx-surface-rgb-2: 31, 31, 31;
+  --qx-surface-rgb-3: 41, 41, 41;
+  --qx-bg-component-1: rgba(var(--qx-surface-rgb-1), var(--qx-surface-opacity-1));
+  --qx-bg-component-2: rgba(var(--qx-surface-rgb-2), var(--qx-surface-opacity-2));
+  --qx-bg-component-3: rgba(var(--qx-surface-rgb-3), var(--qx-surface-opacity-3));
   --qx-border-1: #292929;
   --qx-border-2: #333333;
   --qx-border-3: #454545;
@@ -199,7 +214,7 @@ body {
   flex-direction: column;
   -webkit-mask-image: -webkit-radial-gradient(white, black);
   mask-image: radial-gradient(white, black);
-  background: rgba(var(--qx-glass-bg), var(--qx-canvas-opacity));
+  background: rgba(var(--qx-glass-bg), var(--qx-window-opacity));
   backdrop-filter: blur(24px) saturate(160%);
   -webkit-backdrop-filter: blur(24px) saturate(160%);
   border-radius: var(--qx-effective-radius);

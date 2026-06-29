@@ -158,6 +158,89 @@ impl Default for AdvancedSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentSettings {
+    #[serde(default, rename = "agent_mode_enabled")]
+    pub agent_mode_enabled: bool,
+    #[serde(default, rename = "default_provider")]
+    pub default_provider: String,
+    #[serde(default, rename = "default_model")]
+    pub default_model: String,
+    #[serde(default, rename = "model_tools_enabled")]
+    pub model_tools_enabled: bool,
+    #[serde(default, rename = "tools_enabled")]
+    pub tools_enabled: bool,
+    #[serde(default = "default_true", rename = "memory_tool_enabled")]
+    pub memory_tool_enabled: bool,
+    #[serde(default = "default_true", rename = "app_search_enabled")]
+    pub app_search_enabled: bool,
+    #[serde(default = "default_true", rename = "file_search_enabled")]
+    pub file_search_enabled: bool,
+    #[serde(default, rename = "http_fetch_enabled")]
+    pub http_fetch_enabled: bool,
+    #[serde(default = "default_true", rename = "notifications_enabled")]
+    pub notifications_enabled: bool,
+    #[serde(default, rename = "mcp_enabled")]
+    pub mcp_enabled: bool,
+    #[serde(default, rename = "bash_enabled")]
+    pub bash_enabled: bool,
+    #[serde(default = "default_agent_bash_timeout_ms", rename = "bash_timeout_ms")]
+    pub bash_timeout_ms: u32,
+    #[serde(default, rename = "bash_cwd")]
+    pub bash_cwd: String,
+    #[serde(default, rename = "grep_search_enabled")]
+    pub grep_search_enabled: bool,
+    #[serde(default = "default_agent_grep_command", rename = "grep_command")]
+    pub grep_command: String,
+    #[serde(default, rename = "grep_root")]
+    pub grep_root: String,
+    #[serde(
+        default = "default_agent_grep_max_results",
+        rename = "grep_max_results"
+    )]
+    pub grep_max_results: u32,
+    #[serde(default, rename = "background_tasks_enabled")]
+    pub background_tasks_enabled: bool,
+}
+
+fn default_agent_bash_timeout_ms() -> u32 {
+    30_000
+}
+
+fn default_agent_grep_command() -> String {
+    "rg".to_string()
+}
+
+fn default_agent_grep_max_results() -> u32 {
+    80
+}
+
+impl Default for AgentSettings {
+    fn default() -> Self {
+        Self {
+            agent_mode_enabled: false,
+            default_provider: String::new(),
+            default_model: String::new(),
+            model_tools_enabled: false,
+            tools_enabled: false,
+            memory_tool_enabled: true,
+            app_search_enabled: true,
+            file_search_enabled: true,
+            http_fetch_enabled: false,
+            notifications_enabled: true,
+            mcp_enabled: false,
+            bash_enabled: false,
+            bash_timeout_ms: default_agent_bash_timeout_ms(),
+            bash_cwd: String::new(),
+            grep_search_enabled: false,
+            grep_command: default_agent_grep_command(),
+            grep_root: String::new(),
+            grep_max_results: default_agent_grep_max_results(),
+            background_tasks_enabled: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RssSettings {
     #[serde(
         default = "default_offline_cache_enabled",
@@ -276,6 +359,8 @@ pub struct Settings {
     #[serde(default)]
     pub advanced: AdvancedSettings,
     #[serde(default)]
+    pub agent: AgentSettings,
+    #[serde(default)]
     pub rss: RssSettings,
     #[serde(default)]
     pub v2ex: V2exSettings,
@@ -326,6 +411,7 @@ impl Default for Settings {
             shortcuts,
             plugins: Vec::new(),
             advanced: AdvancedSettings::default(),
+            agent: AgentSettings::default(),
             rss: RssSettings::default(),
             v2ex: V2exSettings::default(),
         }

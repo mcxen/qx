@@ -1,6 +1,511 @@
 use serde::{Deserialize, Serialize};
+use std::io::Write;
 use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
+
+// ---------------------------------------------------------------------------
+// AI
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginAiChatRequest {
+    #[serde(default)]
+    pub provider: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub messages: Vec<crate::g4f::ChatMessage>,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub system: Option<String>,
+    #[serde(default)]
+    pub images: Vec<String>,
+    #[serde(default)]
+    pub image_detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginAiBashRequest {
+    pub script: String,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default = "default_ai_bash_timeout_ms")]
+    pub timeout_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginAiBashResult {
+    pub status: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub timed_out: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginAiGrepRequest {
+    pub query: String,
+    #[serde(default)]
+    pub root: Option<String>,
+    #[serde(default)]
+    pub max_results: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginAiGrepResult {
+    pub path: String,
+    pub line: Option<u32>,
+    pub text: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginAiMemoryEntry {
+    pub id: String,
+    pub text: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginAiMemoryInput {
+    pub text: String,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
+fn default_ai_bash_timeout_ms() -> u64 {
+    30_000
+}
+
+static AI_MEMORY_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+#[tauri::command]
+pub fn plugin_ai_list_providers() -> Result<Vec<crate::g4f::ProviderInfo>, String> {
+    Ok(crate::g4f::qxai_provider_catalog())
+}
+
+#[tauri::command]
+pub fn plugin_ai_default_model() -> Result<Option<crate::g4f::ModelSelection>, String> {
+    let settings = crate::settings::read_settings();
+    let provider = settings.agent.default_provider.trim();
+    let model = settings.agent.default_model.trim();
+    if !provider.is_empty() && !model.is_empty() && provider_catalog_contains(provider, model) {
+        return Ok(Some(crate::g4f::ModelSelection {
+            provider: provider.to_string(),
+            model: model.to_string(),
+        }));
+    }
+    Ok(crate::g4f::qxai_default_model_selection())
+}
+
+#[tauri::command]
+pub fn plugin_ai_agent_settings() -> Result<crate::settings::AgentSettings, String> {
+    Ok(crate::settings::read_settings().agent)
+}
+
+#[tauri::command]
+pub fn plugin_ai_chat(req: PluginAiChatRequest) -> Result<String, String> {
+    let (provider, model, messages) = normalize_ai_chat_request(req)?;
+    crate::g4f::qxai_chat(provider, model, messages)
+}
+
+#[tauri::command]
+pub fn plugin_ai_stream_chat(req: PluginAiChatRequest) -> Result<Vec<String>, String> {
+    let (provider, model, messages) = normalize_ai_chat_request(req)?;
+    crate::g4f::qxai_stream_chat(provider, model, messages)
+}
+
+fn normalize_ai_chat_request(
+    req: PluginAiChatRequest,
+) -> Result<(Option<String>, Option<String>, Vec<crate::g4f::ChatMessage>), String> {
+    let mut messages = req.messages;
+
+    if let Some(system) = req.system {
+        let trimmed = system.trim();
+        if !trimmed.is_empty() {
+            messages.insert(
+                0,
+                crate::g4f::ChatMessage {
+                    role: "system".to_string(),
+                    content: serde_json::Value::String(trimmed.to_string()),
+                },
+            );
+        }
+    }
+
+    if let Some(prompt) = req.prompt {
+        let trimmed = prompt.trim();
+        if !trimmed.is_empty() {
+            let content = if req.images.is_empty() {
+                serde_json::Value::String(trimmed.to_string())
+            } else {
+                let mut parts = vec![serde_json::json!({
+                    "type": "text",
+                    "text": trimmed,
+                })];
+                for image in req.images {
+                    let url = image.trim();
+                    if url.is_empty() {
+                        continue;
+                    }
+                    parts.push(serde_json::json!({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": url,
+                            "detail": req.image_detail.as_deref().unwrap_or("auto"),
+                        },
+                    }));
+                }
+                serde_json::Value::Array(parts)
+            };
+            messages.push(crate::g4f::ChatMessage {
+                role: "user".to_string(),
+                content,
+            });
+        }
+    }
+
+    if messages.is_empty() {
+        return Err("AI chat requires messages or prompt".to_string());
+    }
+
+    let (provider, model) = configured_ai_selection(req.provider, req.model);
+    Ok((provider, model, messages))
+}
+
+fn configured_ai_selection(
+    provider: Option<String>,
+    model: Option<String>,
+) -> (Option<String>, Option<String>) {
+    if provider
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        return (provider, model);
+    }
+
+    let settings = crate::settings::read_settings();
+    let configured_provider = settings.agent.default_provider.trim();
+    let configured_model = settings.agent.default_model.trim();
+    if configured_provider.is_empty()
+        || configured_model.is_empty()
+        || !provider_catalog_contains(configured_provider, configured_model)
+    {
+        return (provider, model);
+    }
+
+    (
+        Some(configured_provider.to_string()),
+        Some(configured_model.to_string()),
+    )
+}
+
+fn provider_catalog_contains(provider_id: &str, model_id: &str) -> bool {
+    crate::g4f::qxai_provider_catalog()
+        .into_iter()
+        .any(|provider| {
+            provider.id == provider_id && provider.models.iter().any(|model| model.id == model_id)
+        })
+}
+
+#[tauri::command]
+pub fn plugin_ai_run_bash(req: PluginAiBashRequest) -> Result<PluginAiBashResult, String> {
+    let settings = crate::settings::read_settings().agent;
+    ensure_agent_tool_enabled(&settings)?;
+    if !settings.bash_enabled {
+        return Err("AI bash tool is disabled in Settings > Agent".to_string());
+    }
+
+    let configured_timeout = u64::from(settings.bash_timeout_ms).clamp(1000, 300_000);
+    let timeout = Duration::from_millis(req.timeout_ms.clamp(1000, configured_timeout));
+    let mut cmd = std::process::Command::new("/bin/bash");
+    cmd.arg("-lc")
+        .arg(req.script)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let cwd = req
+        .cwd
+        .as_deref()
+        .unwrap_or(settings.bash_cwd.as_str())
+        .trim()
+        .to_string();
+    if !cwd.is_empty() {
+        cmd.current_dir(cwd);
+    }
+
+    let mut child = cmd.spawn().map_err(|e| format!("spawn bash: {e}"))?;
+    let start = std::time::Instant::now();
+
+    loop {
+        if let Some(status) = child.try_wait().map_err(|e| format!("wait bash: {e}"))? {
+            let output = child
+                .wait_with_output()
+                .map_err(|e| format!("read bash output: {e}"))?;
+            return Ok(PluginAiBashResult {
+                status: status.code(),
+                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                timed_out: false,
+            });
+        }
+
+        if start.elapsed() >= timeout {
+            let _ = child.kill();
+            let output = child
+                .wait_with_output()
+                .map_err(|e| format!("read killed bash output: {e}"))?;
+            return Ok(PluginAiBashResult {
+                status: None,
+                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                timed_out: true,
+            });
+        }
+
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[tauri::command]
+pub fn plugin_ai_grep_search(req: PluginAiGrepRequest) -> Result<Vec<PluginAiGrepResult>, String> {
+    let settings = crate::settings::read_settings().agent;
+    ensure_agent_tool_enabled(&settings)?;
+    if !settings.grep_search_enabled {
+        return Err("AI grep search is disabled in Settings > Agent".to_string());
+    }
+
+    let query = req.query.trim();
+    if query.is_empty() {
+        return Err("grep search query is empty".to_string());
+    }
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let root = req
+        .root
+        .as_deref()
+        .unwrap_or(settings.grep_root.as_str())
+        .trim()
+        .to_string();
+    let root = if root.is_empty() { home } else { root };
+    let max_results = req
+        .max_results
+        .unwrap_or(settings.grep_max_results)
+        .clamp(1, 500);
+
+    let output = run_grep_command(
+        settings.grep_command.as_str(),
+        query,
+        root.as_str(),
+        max_results,
+    )?;
+    Ok(parse_grep_output(&output, max_results))
+}
+
+fn ensure_agent_tool_enabled(settings: &crate::settings::AgentSettings) -> Result<(), String> {
+    if !settings.agent_mode_enabled {
+        return Err("AI Agent mode is disabled in Settings > Agent".to_string());
+    }
+    if !settings.tools_enabled {
+        return Err("AI tools are disabled in Settings > Agent".to_string());
+    }
+    Ok(())
+}
+
+fn run_grep_command(
+    configured_command: &str,
+    query: &str,
+    root: &str,
+    max_results: u32,
+) -> Result<String, String> {
+    let command = match configured_command.trim() {
+        "grep" => "grep",
+        _ => "rg",
+    };
+    if command == "rg" {
+        match run_single_grep_command("rg", query, root, max_results) {
+            Ok(output) => return Ok(output),
+            Err(err) if err.contains("not found") || err.contains("No such file") => {
+                return run_single_grep_command("grep", query, root, max_results);
+            }
+            Err(err) => return Err(err),
+        }
+    }
+    run_single_grep_command("grep", query, root, max_results)
+}
+
+fn run_single_grep_command(
+    command: &str,
+    query: &str,
+    root: &str,
+    max_results: u32,
+) -> Result<String, String> {
+    let mut cmd = std::process::Command::new(command);
+    if command == "grep" {
+        cmd.arg("-RIn")
+            .arg("-m")
+            .arg(max_results.to_string())
+            .arg("--")
+            .arg(query)
+            .arg(root);
+    } else {
+        cmd.arg("--line-number")
+            .arg("--no-heading")
+            .arg("--color")
+            .arg("never")
+            .arg("--max-count")
+            .arg(max_results.to_string())
+            .arg("--")
+            .arg(query)
+            .arg(root);
+    }
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+
+    let mut child = cmd.spawn().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            format!("{command} search executable not found")
+        } else {
+            format!("spawn {command} search: {e}")
+        }
+    })?;
+    let start = std::time::Instant::now();
+    let timeout = Duration::from_secs(20);
+    loop {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|e| format!("wait {command} search: {e}"))?
+        {
+            let output = child
+                .wait_with_output()
+                .map_err(|e| format!("read {command} output: {e}"))?;
+            if status.success() || status.code() == Some(1) {
+                return Ok(String::from_utf8_lossy(&output.stdout).to_string());
+            }
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("{command} search failed: {stderr}"));
+        }
+
+        if start.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!("{command} search timed out"));
+        }
+
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn parse_grep_output(output: &str, max_results: u32) -> Vec<PluginAiGrepResult> {
+    output
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(3, ':');
+            let path = parts.next()?.trim();
+            let line_no = parts.next().and_then(|value| value.parse::<u32>().ok());
+            let text = parts.next().unwrap_or("").trim();
+            if path.is_empty() {
+                None
+            } else {
+                Some(PluginAiGrepResult {
+                    path: path.to_string(),
+                    line: line_no,
+                    text: text.to_string(),
+                })
+            }
+        })
+        .take(max_results as usize)
+        .collect()
+}
+
+fn ai_memory_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let dir = PathBuf::from(format!("{}/.qx", home));
+    let _ = std::fs::create_dir_all(&dir);
+    dir.join("qxai-memory.json")
+}
+
+fn now_millis() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64
+}
+
+fn read_ai_memory() -> Vec<PluginAiMemoryEntry> {
+    let path = ai_memory_path();
+    match std::fs::read_to_string(path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => vec![],
+    }
+}
+
+fn write_ai_memory(entries: &[PluginAiMemoryEntry]) -> Result<(), String> {
+    let path = ai_memory_path();
+    let json =
+        serde_json::to_string_pretty(entries).map_err(|e| format!("serialize memory: {e}"))?;
+    let tmp = path.with_extension("json.tmp");
+    {
+        let mut file =
+            std::fs::File::create(&tmp).map_err(|e| format!("create memory tmp: {e}"))?;
+        file.write_all(json.as_bytes())
+            .map_err(|e| format!("write memory tmp: {e}"))?;
+    }
+    std::fs::rename(&tmp, &path).map_err(|e| format!("replace memory file: {e}"))
+}
+
+#[tauri::command]
+pub fn plugin_ai_memory_list() -> Result<Vec<PluginAiMemoryEntry>, String> {
+    Ok(read_ai_memory())
+}
+
+#[tauri::command]
+pub fn plugin_ai_memory_add(input: PluginAiMemoryInput) -> Result<PluginAiMemoryEntry, String> {
+    let text = input.text.trim();
+    if text.is_empty() {
+        return Err("memory text is empty".to_string());
+    }
+    let now = now_millis();
+    let suffix = AI_MEMORY_COUNTER.fetch_add(1, Ordering::Relaxed);
+    let entry = PluginAiMemoryEntry {
+        id: format!("mem-{now}-{suffix}"),
+        text: text.to_string(),
+        tags: input
+            .tags
+            .into_iter()
+            .map(|tag| tag.trim().to_string())
+            .filter(|tag| !tag.is_empty())
+            .collect(),
+        created_at: now,
+        updated_at: now,
+    };
+    let mut entries = read_ai_memory();
+    entries.push(entry.clone());
+    write_ai_memory(&entries)?;
+    Ok(entry)
+}
+
+#[tauri::command]
+pub fn plugin_ai_memory_delete(id: String) -> Result<(), String> {
+    let mut entries = read_ai_memory();
+    let before = entries.len();
+    entries.retain(|entry| entry.id != id);
+    if entries.len() == before {
+        return Err(format!("memory entry not found: {id}"));
+    }
+    write_ai_memory(&entries)
+}
 
 // ---------------------------------------------------------------------------
 // Clipboard

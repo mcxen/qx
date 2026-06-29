@@ -248,9 +248,54 @@ function App() {
   useEffect(() => {
     const shellRadius = Math.min(8, Math.max(4, settings.appearance.border_radius));
     const controlRadius = Math.min(6, Math.max(4, settings.appearance.border_radius));
+    const opacity = Math.min(0.4, Math.max(0.05, settings.appearance.blur_opacity));
+    const regionOpacity = Math.min(0.16, Math.max(0.02, opacity * 0.32));
+    const elevatedRegionOpacity = Math.min(0.20, Math.max(0.03, opacity * 0.46));
+    const glassRegionOpacity = Math.min(0.12, Math.max(0.015, opacity * 0.24));
+    const overlayRegionOpacity = Math.min(0.18, Math.max(0.025, opacity * 0.38));
+    const popoverOpacity = Math.min(0.54, Math.max(0.20, opacity + 0.14));
+    const surfaceOpacity1 = Math.min(0.78, Math.max(0.28, opacity * 1.55));
+    const surfaceOpacity2 = Math.min(0.66, Math.max(0.22, opacity * 1.28));
+    const surfaceOpacity3 = Math.min(0.58, Math.max(0.18, opacity * 1.05));
     document.documentElement.style.setProperty(
       "--qx-canvas-opacity",
-      String(settings.appearance.blur_opacity),
+      String(opacity),
+    );
+    document.documentElement.style.setProperty(
+      "--qx-window-opacity",
+      String(opacity),
+    );
+    document.documentElement.style.setProperty(
+      "--qx-shell-region-opacity",
+      String(regionOpacity),
+    );
+    document.documentElement.style.setProperty(
+      "--qx-shell-elevated-region-opacity",
+      String(elevatedRegionOpacity),
+    );
+    document.documentElement.style.setProperty(
+      "--qx-shell-glass-region-opacity",
+      String(glassRegionOpacity),
+    );
+    document.documentElement.style.setProperty(
+      "--qx-shell-overlay-region-opacity",
+      String(overlayRegionOpacity),
+    );
+    document.documentElement.style.setProperty(
+      "--qx-shell-popover-opacity",
+      String(popoverOpacity),
+    );
+    document.documentElement.style.setProperty(
+      "--qx-surface-opacity-1",
+      String(surfaceOpacity1),
+    );
+    document.documentElement.style.setProperty(
+      "--qx-surface-opacity-2",
+      String(surfaceOpacity2),
+    );
+    document.documentElement.style.setProperty(
+      "--qx-surface-opacity-3",
+      String(surfaceOpacity3),
     );
     document.documentElement.style.setProperty(
       "--qx-radius",

@@ -6,7 +6,7 @@ import { SegmentedControl } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useStore } from "../../store";
 import { type V2exMode, type V2exTopic, formatTime } from "./types";
-import V2exDetail from "./V2exDetail";
+import { sanitizeTopicHtml } from "./V2exDetail";
 
 export default function V2exPanel() {
   const setTab = useStore((state) => state.setTab);
@@ -56,7 +56,29 @@ export default function V2exPanel() {
     setSelectedIndex((index) => Math.max(0, Math.min(index, topics.length - 1)));
   }, [topics.length]);
 
+  useEffect(() => {
+    if (viewingTopic && !topics.some((topic) => topic.id === viewingTopic.id)) {
+      setViewingTopic(null);
+    }
+  }, [topics, viewingTopic]);
+
   const goBack = () => setTab("launcher");
+  const openTopicAtIndex = (index: number) => {
+    if (topics.length === 0) {
+      setSelectedIndex(0);
+      return;
+    }
+    const nextIndex = Math.max(0, Math.min(index, topics.length - 1));
+    const topic = topics[nextIndex];
+    setSelectedIndex(nextIndex);
+    if (topic) setViewingTopic(topic);
+  };
+  const detailTopic = viewingTopic;
+  const contextTopic = detailTopic ?? selectedTopic;
+  const cleanTopicContent = useMemo(
+    () => (detailTopic ? sanitizeTopicHtml(detailTopic.content) : ""),
+    [detailTopic],
+  );
 
   const { onKeyDown: escKeyDown } = useEscBack({
     inner: { active: viewingTopic !== null, close: () => setViewingTopic(null) },
@@ -70,15 +92,17 @@ export default function V2exPanel() {
     switch (event.key) {
       case "ArrowDown":
         event.preventDefault();
-        setSelectedIndex(Math.min(selectedIndex + 1, topics.length - 1));
+        if (viewingTopic) openTopicAtIndex(selectedIndex + 1);
+        else setSelectedIndex(topics.length > 0 ? Math.min(selectedIndex + 1, topics.length - 1) : 0);
         break;
       case "ArrowUp":
         event.preventDefault();
-        setSelectedIndex(Math.max(selectedIndex - 1, 0));
+        if (viewingTopic) openTopicAtIndex(selectedIndex - 1);
+        else setSelectedIndex(Math.max(selectedIndex - 1, 0));
         break;
       case "Enter":
         event.preventDefault();
-        if (selectedTopic) setViewingTopic(selectedTopic);
+        if (selectedTopic) openTopicAtIndex(selectedIndex);
         break;
       case "r":
       case "R":
@@ -92,11 +116,12 @@ export default function V2exPanel() {
 
   const actions = useMemo<QxShellAction[]>(() => [
     {
-      label: "View Topic",
+      label: detailTopic ? "Close Detail" : "View Topic",
       kbd: "Enter",
       disabled: !selectedTopic,
       onClick: () => {
-        if (selectedTopic) setViewingTopic(selectedTopic);
+        if (detailTopic) setViewingTopic(null);
+        else if (selectedTopic) openTopicAtIndex(selectedIndex);
       },
     },
     {
@@ -116,7 +141,7 @@ export default function V2exPanel() {
       label: mode === "latest" ? "Show Hot" : "Show Latest",
       onClick: () => setMode(mode === "latest" ? "hot" : "latest"),
     },
-  ], [mode, query, selectedTopic]);
+  ], [detailTopic, mode, query, selectedIndex, selectedTopic]);
 
   const island: BottomIslandContent = loading
     ? {
@@ -134,14 +159,10 @@ export default function V2exPanel() {
         detail: `${topics.length} topics · ${mode}`,
       };
 
-  if (viewingTopic) {
-    return <V2exDetail topic={viewingTopic} onBack={() => setViewingTopic(null)} />;
-  }
-
   return (
     <QxShell
       title="V2EX"
-      className="v2ex-shell"
+      className="v2ex-shell qx-content-shell"
       onKeyDown={onKeyDown}
       onBack={goBack}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
@@ -179,7 +200,7 @@ export default function V2exPanel() {
           <button
             className="qx-action-item"
             disabled={!selectedTopic}
-            onClick={() => selectedTopic && setViewingTopic(selectedTopic)}
+            onClick={() => selectedTopic && openTopicAtIndex(selectedIndex)}
             type="button"
           >
             <span>View Topic</span>
@@ -200,11 +221,11 @@ export default function V2exPanel() {
           </button>
           <div className="qx-action-title">Selected</div>
           <div className="v2ex-context-copy">
-            {selectedTopic ? (
+            {contextTopic ? (
               <>
-                <strong>{selectedTopic.title}</strong>
-                <span>{selectedTopic.node || "V2EX"} · {selectedTopic.author || "unknown"} · {selectedTopic.replies} replies</span>
-                <span>{formatTime(selectedTopic.last_modified || selectedTopic.created)}</span>
+                <strong>{contextTopic.title}</strong>
+                <span>{contextTopic.node || "V2EX"} · {contextTopic.author || "unknown"} · {contextTopic.replies} replies</span>
+                <span>{formatTime(contextTopic.last_modified || contextTopic.created)}</span>
               </>
             ) : (
               <span>No topic selected</span>
@@ -214,49 +235,91 @@ export default function V2exPanel() {
       }
       island={island}
       primaryAction={{
-        label: selectedTopic ? "View Topic" : "Open",
-        kbd: "Enter",
+        label: detailTopic?.url ? "Open Topic" : selectedTopic ? "View Topic" : "Open",
+        kbd: detailTopic?.url ? "O" : "Enter",
         disabled: !selectedTopic,
         tone: "primary",
         onClick: () => {
-          if (selectedTopic) setViewingTopic(selectedTopic);
+          if (detailTopic?.url) void openUrl(detailTopic.url);
+          else if (selectedTopic) openTopicAtIndex(selectedIndex);
         },
       }}
       secondaryAction={{ label: "Actions", kbd: "Cmd K" }}
       actionTitle="V2EX Actions"
       actions={actions}
     >
-      <div className="qx-plugin-list">
-        <div className="qx-section-header">
-          <span style={{ flex: 1 }}>{query.trim() ? "Search Results" : mode === "hot" ? "Hot Topics" : "Latest Topics"}</span>
-          <span>{loading ? "..." : topics.length}</span>
-        </div>
-        {topics.map((topic, index) => (
-          <button
-            key={topic.id}
-            className={`qx-list-row v2ex-topic-row${index === selectedIndex ? " is-active" : ""}`}
-            onClick={() => setSelectedIndex(index)}
-            onDoubleClick={() => setViewingTopic(topic)}
-            type="button"
-          >
-            <span className="qx-list-icon">{topic.node ? topic.node.slice(0, 1).toUpperCase() : "V"}</span>
-            <span className="qx-list-copy">
-              <span className="qx-list-title">{topic.title}</span>
-              <span className="qx-list-subtitle">
-                {topic.node || "V2EX"} · {topic.author || "unknown"} · {topic.replies} replies
-              </span>
-            </span>
-            <span className="qx-badge">{topic.replies}</span>
-          </button>
-        ))}
-        {!loading && topics.length === 0 && (
-          <div className="qx-empty-state">
-            {error || (query.trim() ? "No matching topics." : "No topics loaded.")}
+      <div className={`qx-content-split${detailTopic ? " has-detail" : ""}`}>
+        <div className="qx-content-list qx-plugin-list">
+          <div className="qx-section-header">
+            <span style={{ flex: 1 }}>{query.trim() ? "Search Results" : mode === "hot" ? "Hot Topics" : "Latest Topics"}</span>
+            <span>{loading ? "..." : topics.length}</span>
           </div>
-        )}
-        {loading && topics.length === 0 && (
-          <div className="qx-empty-state">Loading V2EX topics...</div>
-        )}
+          {topics.map((topic, index) => (
+            <button
+              key={topic.id}
+              className={`qx-list-row v2ex-topic-row${index === selectedIndex ? " is-active" : ""}`}
+              onClick={() => openTopicAtIndex(index)}
+              type="button"
+            >
+              <span className="qx-list-icon">{topic.node ? topic.node.slice(0, 1).toUpperCase() : "V"}</span>
+              <span className="qx-list-copy">
+                <span className="qx-list-title">{topic.title}</span>
+                <span className="qx-list-subtitle">
+                  {topic.node || "V2EX"} · {topic.author || "unknown"} · {topic.replies} replies
+                </span>
+              </span>
+              <span className="qx-badge">{topic.replies}</span>
+            </button>
+          ))}
+          {!loading && topics.length === 0 && (
+            <div className="qx-empty-state">
+              {error || (query.trim() ? "No matching topics." : "No topics loaded.")}
+            </div>
+          )}
+          {loading && topics.length === 0 && (
+            <div className="qx-empty-state">Loading V2EX topics...</div>
+          )}
+        </div>
+
+        <article className="qx-content-detail qx-plugin-detail qx-rss-detail-content">
+          {detailTopic ? (
+            <>
+              <div className="qx-detail-header">
+                <div style={{ minWidth: 0 }}>
+                  <div className="qx-detail-title">{detailTopic.title}</div>
+                  <div className="qx-detail-meta">
+                    {detailTopic.node || "V2EX"} · {detailTopic.author || "unknown"} · {formatTime(detailTopic.created)}
+                  </div>
+                </div>
+                <span className="qx-badge">{detailTopic.replies}</span>
+              </div>
+              <div className="qx-content-detail-scroll">
+                <h1 className="qx-content-detail-heading">{detailTopic.title}</h1>
+                <div className="qx-content-detail-meta">
+                  <span>{detailTopic.node || "V2EX"}</span>
+                  <span>{detailTopic.author || "unknown"}</span>
+                  <span>{detailTopic.replies} replies</span>
+                </div>
+                <div
+                  className="v2ex-detail-content"
+                  dangerouslySetInnerHTML={{ __html: cleanTopicContent }}
+                />
+                {detailTopic.url && (
+                  <div className="qx-content-detail-footer">
+                    <button className="qx-command-button" onClick={() => void openUrl(detailTopic.url)} type="button">
+                      Open in Browser
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="qx-content-detail-empty">
+              <div>Select a topic to view details</div>
+              <span>{topics.length} topics · {mode}</span>
+            </div>
+          )}
+        </article>
       </div>
     </QxShell>
   );

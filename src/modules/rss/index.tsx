@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import { useRssStore } from "./store";
 import RssPanel from "./RssPanel";
 import ArticleList from "./ArticleList";
-import ArticleDetail from "./ArticleDetail";
 
 export default function RssReader() {
   const { view, loadFeeds } = useRssStore();
@@ -11,7 +10,6 @@ export default function RssReader() {
     void loadFeeds();
   }, [loadFeeds]);
 
-  if (view === "detail") return <ArticleDetail />;
-  if (view === "articles") return <ArticleList />;
+  if (view === "detail" || view === "articles") return <ArticleList />;
   return <RssPanel />;
 }

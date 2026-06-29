@@ -320,6 +320,7 @@ marketplace::* (fetch/download/install/uninstall/list/sign)
 - 插件沙箱: iframe sandbox (`allow-scripts`)
 - 插件签名: ed25519 签名验证
 - 权限声明: 插件 manifest 声明所需权限
+- AI 能力: 插件通过 `context.ai` 使用 QxAI provider/model 目录、模型选择和文本/图片多模态聊天；自定义 OpenAI-compatible provider 的模型优先通过 `/models` API 获取，API key 由 Qx 后端代管，不暴露给插件。Settings -> AI Agent 提供全局 Agent 模式、默认模型、工具、bash、MCP 预留、后台任务和 rg/grep 搜索开关；bash 与 grep 后端调用会读取该配置进行门控。Agent Runtime 的 ReAct、MCP、memory、soul、background task 设计见 `docs/ai-agent-runtime.md`。
 
 ---
 
@@ -346,7 +347,7 @@ marketplace::* (fetch/download/install/uninstall/list/sign)
 ### P3 - 远期
 1. **插件库高级能力** — 插件详情截图/README、分页或虚拟列表、评分/来源信任展示
 2. **OCR 模块**
-3. **AI 模块** — 基于 LLM 的智能搜索
+3. **AI 能力扩展** — 将 QxAI 接入更多内置模块和插件工作流
 4. **Store 统一** — 整合多个 Zustand store 为单一状态树 vs 保持模块化
 
 ---

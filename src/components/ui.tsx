@@ -77,7 +77,7 @@ export function Select<T extends string>({
   className = "",
 }: {
   value: T;
-  options: { value: T; label: string }[];
+  options: { value: T; label: string; disabled?: boolean }[];
   onChange: (v: T) => void;
   ariaLabel?: string;
   className?: string;
@@ -105,14 +105,21 @@ export function Select<T extends string>({
   }, [open]);
 
   const choose = (next: T) => {
+    if (options.find((option) => option.value === next)?.disabled) return;
     onChange(next);
     setOpen(false);
   };
 
   const move = (delta: number) => {
     if (!options.length) return;
-    const next = (selectedIndex + delta + options.length) % options.length;
-    onChange(options[next].value);
+    let next = selectedIndex;
+    for (let i = 0; i < options.length; i += 1) {
+      next = (next + delta + options.length) % options.length;
+      if (!options[next].disabled) {
+        onChange(options[next].value);
+        return;
+      }
+    }
   };
 
   return (
@@ -164,7 +171,9 @@ export function Select<T extends string>({
               type="button"
               role="option"
               aria-selected={option.value === value}
-              className={`qx-select-option${option.value === value ? " is-active" : ""}`}
+              aria-disabled={option.disabled}
+              disabled={option.disabled}
+              className={`qx-select-option${option.value === value ? " is-active" : ""}${option.disabled ? " is-disabled" : ""}`}
               onClick={() => choose(option.value)}
             >
               {option.label}

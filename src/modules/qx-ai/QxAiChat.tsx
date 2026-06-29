@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import QxShell, { type BottomIslandContent } from "../../components/QxShell";
+import { Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useG4fStore } from "./store";
 
@@ -10,17 +11,30 @@ export default function QxAiChat() {
     streaming,
     streamedContent,
     error,
+    providers,
     setView,
     sendMessage,
     clearMessages,
     deleteConversation,
     createConversation,
+    setConversationModel,
+    loadProviders,
   } = useG4fStore();
 
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const conv = conversations.find((c) => c.id === currentConversationId);
+  const activeProvider = useMemo(
+    () => providers.find((provider) => provider.id === conv?.provider),
+    [providers, conv?.provider],
+  );
+  const activeModels = activeProvider?.models ?? [];
+  const canChat = Boolean(
+    conv &&
+      activeProvider &&
+      activeModels.some((model) => model.id === conv.model),
+  );
 
   const { onKeyDown: escKeyDown } = useEscBack({
     query: { active: input.length > 0, clear: () => setInput("") },
@@ -29,7 +43,7 @@ export default function QxAiChat() {
 
   const handleSend = () => {
     const trimmed = input.trim();
-    if (!trimmed || streaming) return;
+    if (!trimmed || streaming || !canChat) return;
     setInput("");
     void sendMessage(trimmed);
   };
@@ -46,6 +60,18 @@ export default function QxAiChat() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conv?.messages, streamedContent]);
+
+  useEffect(() => {
+    if (providers.length === 0) {
+      void loadProviders();
+    }
+  }, [providers.length, loadProviders]);
+
+  useEffect(() => {
+    if (!conv || providers.length === 0 || canChat) return;
+    const provider = providers.find((p) => p.id === conv.provider) ?? providers[0];
+    setConversationModel(conv.id, provider.id, provider.models[0]?.id ?? "");
+  }, [conv, providers, canChat, setConversationModel]);
 
   const userMessageCount = conv?.messages.filter((m) => m.role === "user").length ?? 0;
 
@@ -105,6 +131,61 @@ export default function QxAiChat() {
       }
       context={
         <div className="qx-action-panel">
+          <div className="qx-action-title">Model</div>
+          {providers.length > 0 && conv ? (
+            <>
+              <Select
+                value={conv.provider}
+                options={providers.map((provider) => ({
+                  value: provider.id,
+                  label: provider.name,
+                }))}
+                onChange={(provider) => {
+                  const nextProvider = providers.find((p) => p.id === provider);
+                  setConversationModel(
+                    conv.id,
+                    provider,
+                    nextProvider?.models[0]?.id ?? "",
+                  );
+                }}
+                ariaLabel="AI Provider"
+                className="qx-inline-select"
+              />
+              {activeModels.length > 0 ? (
+                <Select
+                  value={conv.model}
+                  options={activeModels.map((model) => ({
+                    value: model.id,
+                    label: model.name,
+                  }))}
+                  onChange={(model) => setConversationModel(conv.id, conv.provider, model)}
+                  ariaLabel="AI Model"
+                  className="qx-inline-select"
+                />
+              ) : (
+                <div
+                  style={{
+                    color: "var(--qx-text-tertiary)",
+                    fontSize: 12,
+                    lineHeight: 1.4,
+                  }}
+                >
+                  No models available for this provider.
+                </div>
+              )}
+            </>
+          ) : (
+            <div
+              style={{
+                color: "var(--qx-text-tertiary)",
+                fontSize: 12,
+                lineHeight: 1.4,
+              }}
+            >
+              Open Settings to load or add providers.
+            </div>
+          )}
+
           <div className="qx-action-title">Chat Actions</div>
           <button
             className="qx-action-item"
@@ -137,7 +218,7 @@ export default function QxAiChat() {
         label: streaming ? "..." : "Send",
         kbd: "Enter",
         tone: "primary",
-        disabled: streaming || !input.trim(),
+        disabled: streaming || !input.trim() || !canChat,
         onClick: handleSend,
       }}
       secondaryAction={{

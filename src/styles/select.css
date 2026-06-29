@@ -105,6 +105,15 @@
   background: var(--qx-bg-component-3);
 }
 
+.qx-select-option.is-disabled {
+  color: var(--qx-text-tertiary);
+  cursor: default;
+}
+
+.qx-select-option.is-disabled:hover {
+  background: transparent;
+}
+
 .qx-inline-select {
   width: 160px;
 }

@@ -9,7 +9,7 @@ interface V2exDetailProps {
   onBack: () => void;
 }
 
-function sanitizeTopicHtml(html: string): string {
+export function sanitizeTopicHtml(html: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("script,style,iframe,object,embed,form,input,button").forEach((el) => el.remove());
   doc.querySelectorAll("a").forEach((el) => {

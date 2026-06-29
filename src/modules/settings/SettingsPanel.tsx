@@ -9,6 +9,7 @@ import AppearanceSettings from "./AppearanceSettings";
 import RssSettings from "./RssSettings";
 import AdvancedSettings from "./AdvancedSettings";
 import OcrSettings from "./OcrSettings";
+import AgentSettings from "./AgentSettings";
 import AboutPanel from "./AboutPanel";
 import QxShell from "../../components/QxShell";
 import { useT } from "../../i18n";
@@ -25,6 +26,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "shortcuts", label: "Shortcuts", code: "SC" },
   { id: "permissions", label: "Permissions", code: "PM" },
   { id: "appearance", label: "Appearance", code: "AP" },
+  { id: "agent", label: "AI Agent", code: "AI" },
   { id: "rss", label: "RSS Reader", code: "RS" },
   { id: "ocr", label: "OCR", code: "OC" },
   { id: "advanced", label: "Advanced", code: "AD" },
@@ -37,6 +39,7 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   shortcuts: "Shortcuts",
   permissions: "Permissions",
   appearance: "Appearance",
+  agent: "AI Agent",
   rss: "RSS Reader",
   ocr: "OCR",
   advanced: "Advanced",
@@ -77,6 +80,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         return <PermissionSettings />;
       case "appearance":
         return <AppearanceSettings />;
+      case "agent":
+        return <AgentSettings />;
       case "rss":
         return <RssSettings />;
       case "advanced":
@@ -157,7 +162,9 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     >
       <section className="qx-settings-content">
         <div className="qx-settings-title">{t(`nav.${activeTab}`, TAB_LABELS[activeTab])}</div>
-        <div style={{ flex: 1, overflowY: "auto" }}>{renderContent()}</div>
+        <div className={`qx-settings-body${activeTab === "plugins" ? " is-plugin-manager" : ""}`}>
+          {renderContent()}
+        </div>
       </section>
     </QxShell>
   );

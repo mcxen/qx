@@ -37,8 +37,31 @@ interface PanelRuntimeSession {
   runtimeId: string;
 }
 
+type AiTaskState = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+interface AiTaskRecord {
+  id: string;
+  pluginId: string;
+  title: string;
+  state: AiTaskState;
+  createdAt: number;
+  updatedAt: number;
+  result?: string;
+  error?: string;
+  cancelled?: boolean;
+}
+
+interface AgentRuntimeSettings {
+  agent_mode_enabled: boolean;
+  tools_enabled: boolean;
+  memory_tool_enabled: boolean;
+  notifications_enabled: boolean;
+  background_tasks_enabled: boolean;
+}
+
 const panelSessions = new WeakMap<HTMLElement, PanelRuntimeSession>();
 const runtimeSources = new Map<string, Map<string, Window>>();
+const aiTasks = new Map<string, AiTaskRecord>();
 
 function registerPluginRuntime(
   pluginId: string,
@@ -127,6 +150,16 @@ export function buildPluginRuntimeHtml(
         };
       }
 
+      function createAiChatPayload(input, options = {}) {
+        if (typeof input === 'string') {
+          return { ...options, prompt: input };
+        }
+        if (Array.isArray(input)) {
+          return { ...options, messages: input };
+        }
+        return { ...(input || {}) };
+      }
+
       function clearContextTimers() {
         for (const [id, item] of contextTimers) {
           if (item.type === 'interval') window.clearInterval(item.nativeId);
@@ -182,6 +215,53 @@ export function buildPluginRuntimeHtml(
         },
         notification: {
           show: (input) => rpc('notificationShow', input || {}),
+        },
+        ai: {
+          providers: () => rpc('aiListProviders'),
+          models: async (provider) => {
+            const providers = await rpc('aiListProviders');
+            const selected = provider
+              ? providers.find((item) => item.id === provider)
+              : providers[0];
+            return selected?.models || [];
+          },
+          defaultModel: () => rpc('aiDefaultModel'),
+          agentSettings: () => rpc('aiAgentSettings'),
+          chat: (input, options = {}) => rpc('aiChat', createAiChatPayload(input, options)),
+          stream: async (input, onChunk, options = {}) => {
+            const chunks = await rpc('aiStreamChat', createAiChatPayload(input, options));
+            let full = '';
+            for (const chunk of chunks || []) {
+              const text = String(chunk || '');
+              full += text;
+              if (typeof onChunk === 'function') onChunk(text);
+              await new Promise((resolve) => window.setTimeout(resolve, 0));
+            }
+            return full;
+          },
+          runBash: (script, options = {}) => rpc('aiRunBash', {
+            script: String(script || ''),
+            cwd: options.cwd,
+            timeoutMs: options.timeoutMs,
+          }),
+          memory: {
+            list: () => rpc('aiMemoryList'),
+            add: (text, tags = []) => rpc('aiMemoryAdd', { text: String(text || ''), tags }),
+            delete: (id) => rpc('aiMemoryDelete', { id: String(id || '') }),
+          },
+          search: {
+            grep: (query, options = {}) => rpc('aiGrepSearch', {
+              query: String(query || ''),
+              root: options.root,
+              maxResults: options.maxResults,
+            }),
+          },
+          tasks: {
+            submit: (input) => rpc('aiTaskSubmit', typeof input === 'string' ? { prompt: input } : (input || {})),
+            list: () => rpc('aiTaskList'),
+            get: (id) => rpc('aiTaskGet', { id: String(id || '') }),
+            cancel: (id) => rpc('aiTaskCancel', { id: String(id || '') }),
+          },
         },
         system: {
           stats: () => rpc('invoke', { cmd: 'get_system_stats', args: {} }),
@@ -429,6 +509,21 @@ function hasInvokePermission(perms: Set<string>, cmd: string): boolean {
 }
 
 const COMMAND_CAPABILITIES: Record<string, string> = {
+  plugin_ai_list_providers: "ai",
+  plugin_ai_default_model: "ai",
+  plugin_ai_agent_settings: "ai",
+  plugin_ai_chat: "ai",
+  plugin_ai_stream_chat: "ai",
+  plugin_ai_memory_list: "ai-memory",
+  plugin_ai_memory_add: "ai-memory",
+  plugin_ai_memory_delete: "ai-memory",
+  plugin_ai_run_bash: "ai-bash",
+  plugin_ai_grep_search: "ai-tools",
+  qxai_list_providers: "ai",
+  qxai_fetch_models: "ai",
+  g4f_list_providers: "ai",
+  g4f_chat: "ai",
+  g4f_chat_custom: "ai",
   get_system_stats: "system-stats",
   qx_system_information_check_system_info: "system-info",
   qx_system_information_check_storage: "system-info",
@@ -502,6 +597,126 @@ function assertInvokeAllowed(
   const capability = COMMAND_CAPABILITIES[cmd];
   if (capability && hasPermission(perms, capability)) return;
   throw new Error(`Plugin ${plugin.id} lacks permission: invoke:${cmd}`);
+}
+
+function publicAiTask(task: AiTaskRecord): Omit<AiTaskRecord, "pluginId" | "cancelled"> {
+  const { pluginId: _pluginId, cancelled: _cancelled, ...publicTask } = task;
+  return publicTask;
+}
+
+async function readAgentRuntimeSettings(): Promise<AgentRuntimeSettings> {
+  return invoke<AgentRuntimeSettings>("plugin_ai_agent_settings");
+}
+
+function assertAgentToolsEnabled(settings: AgentRuntimeSettings): void {
+  if (!settings.agent_mode_enabled) {
+    throw new Error("AI Agent mode is disabled in Settings > Agent");
+  }
+  if (!settings.tools_enabled) {
+    throw new Error("AI tools are disabled in Settings > Agent");
+  }
+}
+
+function assertAgentToolFlag(
+  settings: AgentRuntimeSettings,
+  key: keyof Pick<AgentRuntimeSettings, "memory_tool_enabled" | "background_tasks_enabled">,
+  label: string,
+): void {
+  assertAgentToolsEnabled(settings);
+  if (!settings[key]) {
+    throw new Error(`${label} is disabled in Settings > Agent`);
+  }
+}
+
+async function notifyAiTask(
+  plugin: InstalledPlugin,
+  perms: Set<string>,
+  settings: AgentRuntimeSettings,
+  title: string,
+  body: string,
+): Promise<void> {
+  if (!hasPermission(perms, "notifications")) return;
+  if (!settings.notifications_enabled) return;
+  await invoke("plugin_notification_show", {
+    req: {
+      title,
+      body,
+      subtitle: plugin.name,
+    },
+  }).catch(() => {});
+}
+
+function submitAiTask(
+  plugin: InstalledPlugin,
+  perms: Set<string>,
+  settings: AgentRuntimeSettings,
+  payload: Record<string, unknown>,
+  options: PluginRuntimeOptions,
+): Omit<AiTaskRecord, "pluginId" | "cancelled"> {
+  const now = Date.now();
+  const id = `ai-task-${now}-${requestCounter += 1}`;
+  const title = String(payload.title || "AI task").slice(0, 80);
+  const notify = payload.notify !== false;
+  const task: AiTaskRecord = {
+    id,
+    pluginId: plugin.id,
+    title,
+    state: "queued",
+    createdAt: now,
+    updatedAt: now,
+  };
+  aiTasks.set(id, task);
+
+  void (async () => {
+    task.state = "running";
+    task.updatedAt = Date.now();
+    options.onPluginStatus?.({
+      kind: "activity",
+      pluginId: plugin.id,
+      label: "AI task",
+      detail: title,
+    });
+    try {
+      const result = await invoke<string>("plugin_ai_chat", { req: payload });
+      if (task.cancelled) {
+        task.state = "cancelled";
+        task.updatedAt = Date.now();
+        return;
+      }
+      task.result = result;
+      task.state = "succeeded";
+      task.updatedAt = Date.now();
+      options.onPluginStatus?.({
+        kind: "success",
+        pluginId: plugin.id,
+        label: "AI task done",
+        detail: title,
+      });
+      if (notify) {
+        await notifyAiTask(plugin, perms, settings, title, "AI task completed");
+      }
+    } catch (error) {
+      if (task.cancelled) {
+        task.state = "cancelled";
+        task.updatedAt = Date.now();
+        return;
+      }
+      task.error = error instanceof Error ? error.message : String(error);
+      task.state = "failed";
+      task.updatedAt = Date.now();
+      options.onPluginStatus?.({
+        kind: "error",
+        pluginId: plugin.id,
+        label: "AI task failed",
+        detail: task.error.slice(0, 120),
+      });
+      if (notify) {
+        await notifyAiTask(plugin, perms, settings, title, task.error.slice(0, 160));
+      }
+    }
+  })();
+
+  return publicAiTask(task);
 }
 
 export async function loadPlugin(
@@ -689,6 +904,94 @@ export async function handlePluginRpc(
           subtitle: String(payload.subtitle || ""),
         },
       });
+    }
+    case "aiListProviders": {
+      assertPermission(plugin, perms, "ai");
+      return invoke("plugin_ai_list_providers");
+    }
+    case "aiDefaultModel": {
+      assertPermission(plugin, perms, "ai");
+      return invoke("plugin_ai_default_model");
+    }
+    case "aiAgentSettings": {
+      assertPermission(plugin, perms, "ai");
+      return invoke("plugin_ai_agent_settings");
+    }
+    case "aiChat": {
+      assertPermission(plugin, perms, "ai");
+      return invoke("plugin_ai_chat", { req: payload });
+    }
+    case "aiStreamChat": {
+      assertPermission(plugin, perms, "ai");
+      return invoke("plugin_ai_stream_chat", { req: payload });
+    }
+    case "aiRunBash": {
+      assertPermission(plugin, perms, "ai-bash");
+      return invoke("plugin_ai_run_bash", { req: payload });
+    }
+    case "aiGrepSearch": {
+      assertPermission(plugin, perms, "ai-tools");
+      return invoke("plugin_ai_grep_search", { req: payload });
+    }
+    case "aiMemoryList": {
+      assertPermission(plugin, perms, "ai-memory");
+      const settings = await readAgentRuntimeSettings();
+      assertAgentToolFlag(settings, "memory_tool_enabled", "AI memory tool");
+      return invoke("plugin_ai_memory_list");
+    }
+    case "aiMemoryAdd": {
+      assertPermission(plugin, perms, "ai-memory");
+      const settings = await readAgentRuntimeSettings();
+      assertAgentToolFlag(settings, "memory_tool_enabled", "AI memory tool");
+      return invoke("plugin_ai_memory_add", {
+        input: {
+          text: String(payload.text || ""),
+          tags: Array.isArray(payload.tags) ? payload.tags : [],
+        },
+      });
+    }
+    case "aiMemoryDelete": {
+      assertPermission(plugin, perms, "ai-memory");
+      const settings = await readAgentRuntimeSettings();
+      assertAgentToolFlag(settings, "memory_tool_enabled", "AI memory tool");
+      return invoke("plugin_ai_memory_delete", { id: String(payload.id || "") });
+    }
+    case "aiTaskSubmit": {
+      assertPermission(plugin, perms, "ai");
+      assertPermission(plugin, perms, "ai-background");
+      const settings = await readAgentRuntimeSettings();
+      assertAgentToolFlag(settings, "background_tasks_enabled", "AI background tasks");
+      return submitAiTask(plugin, perms, settings, payload, options);
+    }
+    case "aiTaskList": {
+      assertPermission(plugin, perms, "ai-background");
+      const settings = await readAgentRuntimeSettings();
+      assertAgentToolFlag(settings, "background_tasks_enabled", "AI background tasks");
+      return Array.from(aiTasks.values())
+        .filter((task) => task.pluginId === plugin.id)
+        .map(publicAiTask);
+    }
+    case "aiTaskGet": {
+      assertPermission(plugin, perms, "ai-background");
+      const settings = await readAgentRuntimeSettings();
+      assertAgentToolFlag(settings, "background_tasks_enabled", "AI background tasks");
+      const task = aiTasks.get(String(payload.id || ""));
+      return task && task.pluginId === plugin.id ? publicAiTask(task) : null;
+    }
+    case "aiTaskCancel": {
+      assertPermission(plugin, perms, "ai-background");
+      const settings = await readAgentRuntimeSettings();
+      assertAgentToolFlag(settings, "background_tasks_enabled", "AI background tasks");
+      const task = aiTasks.get(String(payload.id || ""));
+      if (!task || task.pluginId !== plugin.id) {
+        throw new Error(`AI task not found: ${String(payload.id || "")}`);
+      }
+      if (task.state === "queued" || task.state === "running") {
+        task.cancelled = true;
+        task.state = "cancelled";
+        task.updatedAt = Date.now();
+      }
+      return publicAiTask(task);
     }
     case "getPreference": {
       return options.onGetPreference(plugin.id, String(payload.id));

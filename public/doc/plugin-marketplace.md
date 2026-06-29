@@ -139,6 +139,15 @@ export default {
 | `context.clipboard.write(text)` | 写入系统剪贴板文本 | `clipboard` |
 | `context.http.fetch(url, opts)` | 通过 Rust 后端发起真实 HTTP/HTTPS 请求 | `http` |
 | `context.notification.show(input)` | 显示系统通知 | `notifications` |
+| `context.ai.providers()` | 读取 QxAI provider/model 目录，自定义 provider 优先通过 API `/models` 获取 | `ai` |
+| `context.ai.defaultModel()` | 读取默认 provider/model | `ai` |
+| `context.ai.agentSettings()` | 读取 Settings -> AI Agent 的全局开关和工具配置 | `ai` |
+| `context.ai.chat(input, opts?)` | 调用 QxAI 文本或图片多模态聊天能力，可指定 provider/model | `ai` |
+| `context.ai.stream(input, onChunk, opts?)` | 流式接收 QxAI 文本输出 chunk | `ai` |
+| `context.ai.runBash(script, opts?)` | 执行真实 bash 脚本并返回结构化 stdout/stderr/status，受全局 Agent/Bash 开关约束 | `ai-bash` |
+| `context.ai.search.grep(query, opts?)` | 使用用户配置的真实 `rg` / `grep` 后端搜索文本，受全局 Agent/Grep 开关约束 | `ai-tools` |
+| `context.ai.memory.*` | 读取、新增、删除用户可管理 AI 记忆 | `ai-memory` |
+| `context.ai.tasks.*` | 提交和管理 Qx 进程内后台 AI 任务 | `ai-background` |
 | `context.system.stats()` | 读取 CPU / MEM / GPU 运行监控 | `system-stats` |
 | `context.system.info()` | 读取系统信息 | `system-info` |
 | `context.system.storage()` | 读取磁盘存储信息 | `system-info` |
@@ -163,6 +172,11 @@ open-url           打开外部链接
 clipboard          读写系统剪贴板文本
 http               发起真实 HTTP/HTTPS 请求
 notifications      显示系统通知
+ai                 使用 QxAI provider 目录、模型选择、文本和图片多模态聊天能力
+ai-memory          读取、新增、删除用户可管理 AI 记忆
+ai-bash            允许 AI/插件执行真实 bash 脚本（危险能力，需谨慎授予）
+ai-tools           允许 AI/插件调用非危险工具，例如用户配置的 rg/grep 搜索
+ai-background      提交和管理 Qx 进程内后台 AI 任务
 system-info        读取系统、存储、网络等静态系统信息
 system-stats       读取 CPU / MEM / GPU 运行监控
 processes          读取进程列表
