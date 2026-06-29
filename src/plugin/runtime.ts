@@ -24,6 +24,12 @@ export interface PluginRuntimeOptions {
   onToast: (msg: string) => void;
   onPrompt: (label: string, defaultValue?: string) => Promise<string | null>;
   onGetPreference: (pluginId: string, id: string) => Promise<unknown>;
+  onPluginStatus?: (status: {
+    kind: "activity" | "success" | "error";
+    pluginId?: string;
+    label: string;
+    detail?: string;
+  }) => void;
 }
 
 interface PanelRuntimeSession {

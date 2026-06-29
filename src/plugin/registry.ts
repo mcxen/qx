@@ -24,6 +24,7 @@ interface PluginRuntimeHooks {
   onToast: (msg: string) => void;
   onPrompt: (label: string, defaultValue?: string) => Promise<string | null>;
   onGetPreference: (pluginId: string, id: string) => Promise<unknown>;
+  onPluginStatus?: (status: PluginRuntimeStatus) => void;
 }
 
 interface PluginRegistryStore {
@@ -52,6 +53,14 @@ interface PluginRegistryStore {
   stopDevWatcher: () => void;
   devWatcherActive: boolean;
   /** @internal */ _devWatcherInterval: ReturnType<typeof setInterval> | null;
+  /** @internal */ _loadToken: number;
+}
+
+export interface PluginRuntimeStatus {
+  kind: "activity" | "success" | "error";
+  pluginId?: string;
+  label: string;
+  detail?: string;
 }
 
 function normalizeQuery(q: string): string {
@@ -109,6 +118,11 @@ function scoreCommand(command: RegisteredCommand, query: string): number {
   return 0;
 }
 
+function summarizeError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/^Error:\s*/i, "").slice(0, 140);
+}
+
 function unavailableContext(pluginId: string): PluginContext {
   const unavailable = async () => {
     throw new Error("Direct context not available; command runs inside plugin iframe");
@@ -162,10 +176,12 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
   hooks: null,
   devWatcherActive: false,
   _devWatcherInterval: null as ReturnType<typeof setInterval> | null,
+  _loadToken: 0,
 
   load: async (hooks) => {
     if (get().loading || get().loaded) return;
-    set({ loading: true, error: null, hooks });
+    const loadToken = get()._loadToken + 1;
+    set({ loading: true, error: null, hooks, _loadToken: loadToken });
     try {
       const builtinCommands = get().commands.filter((command) =>
         isBuiltinPluginId(command.pluginId),
@@ -177,17 +193,31 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       const enabled = plugins.filter((p) => p.enabled);
       // Topological sort: load dependencies first
       const sorted = topologicalSort(enabled);
-      const commands: RegisteredCommand[] = [];
-      const panels: Record<string, RegisteredPanel> = {};
-      const workers: Record<string, HTMLIFrameElement> = {};
-      const shortcuts: Record<string, string[]> = {};
+      set({
+        plugins: [...BUILTIN_PLUGINS, ...plugins],
+        commands: builtinCommands,
+        panels: builtinPanels,
+        workers: {},
+        shortcuts: {},
+        loaded: true,
+      });
 
-      for (const plugin of sorted) {
+      if (sorted.length > 0) {
+        hooks.onPluginStatus?.({
+          kind: "activity",
+          label: "Plugins",
+          detail: `Loading ${sorted.length} plugin${sorted.length === 1 ? "" : "s"}`,
+        });
+      }
+
+      const loadOne = async (plugin: InstalledPlugin) => {
+        if (get()._loadToken !== loadToken) return;
         try {
           const result = await loadPlugin(plugin, {
             onToast: hooks.onToast,
             onPrompt: hooks.onPrompt,
             onGetPreference: hooks.onGetPreference,
+            onPluginStatus: hooks.onPluginStatus,
           });
           const rpcHandler = (event: MessageEvent) => {
             const data = event.data || {};
@@ -234,12 +264,8 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
             __qxRuntimeId?: string;
           }).__qxRpcHandler = rpcHandler;
           (result.iframe as HTMLIFrameElement & { __qxRuntimeId?: string }).__qxRuntimeId = result.runtimeId;
-          commands.push(...result.commands);
-          if (result.panel) {
-            panels[result.panel.pluginId] = result.panel;
-          }
-          workers[plugin.id] = result.iframe;
           const pluginShortcuts = plugin.manifest?.shortcuts || [];
+          const registeredShortcuts: string[] = [];
           for (const shortcut of pluginShortcuts) {
             if (shortcut.enabled === false || !shortcut.key || !shortcut.command) continue;
             const command = result.commands.find((cmd) => cmd.name === shortcut.command);
@@ -249,27 +275,61 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
                 if (event.state !== "Pressed") return;
                 void get().runCommand(command);
               });
-              shortcuts[plugin.id] = [...(shortcuts[plugin.id] || []), shortcut.key];
+              registeredShortcuts.push(shortcut.key);
             } catch (error) {
               console.warn(`Failed to register shortcut ${shortcut.key} for ${plugin.id}:`, error);
+              hooks.onPluginStatus?.({
+                kind: "error",
+                pluginId: plugin.id,
+                label: "Shortcut failed",
+                detail: `${plugin.name}: ${summarizeError(error)}`,
+              });
             }
           }
+          if (get()._loadToken !== loadToken) {
+            unloadPluginRuntime(plugin.id, result.iframe, result.runtimeId);
+            result.iframe.remove();
+            return;
+          }
+          set((state) => ({
+            commands: [...state.commands, ...result.commands],
+            panels: result.panel
+              ? { ...state.panels, [result.panel.pluginId]: result.panel }
+              : state.panels,
+            workers: { ...state.workers, [plugin.id]: result.iframe },
+            shortcuts: registeredShortcuts.length
+              ? { ...state.shortcuts, [plugin.id]: registeredShortcuts }
+              : state.shortcuts,
+          }));
+          hooks.onPluginStatus?.({
+            kind: "success",
+            pluginId: plugin.id,
+            label: "Plugin loaded",
+            detail: plugin.name,
+          });
         } catch (err) {
           console.error(`Failed to load plugin ${plugin.id}:`, err);
+          hooks.onPluginStatus?.({
+            kind: "error",
+            pluginId: plugin.id,
+            label: "Plugin failed",
+            detail: `${plugin.name}: ${summarizeError(err)}`,
+          });
         }
-      }
+      };
 
-      set({
-        plugins: [...BUILTIN_PLUGINS, ...plugins],
-        commands: [...builtinCommands, ...commands],
-        panels: { ...builtinPanels, ...panels },
-        workers,
-        shortcuts,
-        loaded: true,
-        loading: false,
+      void Promise.allSettled(sorted.map(loadOne)).then(() => {
+        if (get()._loadToken === loadToken) set({ loading: false });
       });
     } catch (err) {
-      set({ error: String(err), loading: false, loaded: true });
+      if (get()._loadToken === loadToken) {
+        set({ error: String(err), loading: false, loaded: true });
+      }
+      hooks.onPluginStatus?.({
+        kind: "error",
+        label: "Plugins failed",
+        detail: summarizeError(err),
+      });
     }
   },
 
@@ -303,6 +363,8 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       workers: {},
       shortcuts: {},
       loaded: false,
+      loading: false,
+      _loadToken: get()._loadToken + 1,
     });
   },
 
@@ -354,6 +416,12 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     } catch (error) {
       const message = `Plugin command failed: ${String(error)}`;
       get().hooks?.onToast(message);
+      get().hooks?.onPluginStatus?.({
+        kind: "error",
+        pluginId: command.pluginId,
+        label: "Command failed",
+        detail: `${command.pluginName}: ${summarizeError(error)}`,
+      });
     }
   },
 

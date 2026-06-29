@@ -16,6 +16,8 @@ import MacroRecorder from "./modules/macros/MacroRecorder";
 import { useSettingsStore } from "./modules/settings/store";
 import { ThemeProvider } from "./ThemeProvider";
 import { usePluginRegistry } from "./plugin/registry";
+import type { PluginRuntimeStatus } from "./plugin/registry";
+import type { BottomIslandContent } from "./components/QxShell";
 import { registerAllBuiltins } from "./plugin/builtin";
 import { PluginHost, PluginPanelViewport } from "./plugin/PluginHost";
 import { calculateExpression } from "./search/calculator";
@@ -140,11 +142,16 @@ function App() {
   const searchScopeRef = useRef<SearchScope>("all");
   const { settings, load: loadSettings, loaded: settingsLoaded } = useSettingsStore();
   const { load: loadPlugins, findCommands } = usePluginRegistry();
+  const pluginCommandCount = usePluginRegistry((state) => state.commands.length);
+  const pluginPanelCount = usePluginRegistry((state) => Object.keys(state.panels).length);
   const phase1Ref = useRef(false);
   const startupWindowShownRef = useRef(false);
   const resizeSaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const pluginSearchVersionRef = useRef("");
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchSettling, setIsSearchSettling] = useState(false);
+  const [pluginIsland, setPluginIsland] = useState<BottomIslandContent | null>(null);
+  const pluginIslandTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const [, startSearchTransition] = useTransition();
 
   const applyResults = useCallback(
@@ -181,6 +188,25 @@ function App() {
   // Phase 3 (lazy): Load external plugins — deferred
   useEffect(() => {
     if (!appsReady) return; // Wait for phase 1
+    const showPluginStatus = (status: PluginRuntimeStatus) => {
+      if (pluginIslandTimerRef.current) {
+        window.clearTimeout(pluginIslandTimerRef.current);
+        pluginIslandTimerRef.current = null;
+      }
+      const next: BottomIslandContent = {
+        label: status.label,
+        detail: status.detail,
+        tone: status.kind === "error" ? "danger" : status.kind === "success" ? "success" : "neutral",
+        activity: status.kind === "activity" ? "bounce" : undefined,
+      };
+      setPluginIsland(next);
+      if (status.kind !== "activity") {
+        pluginIslandTimerRef.current = window.setTimeout(() => {
+          setPluginIsland(null);
+          pluginIslandTimerRef.current = null;
+        }, status.kind === "error" ? 8000 : 2600);
+      }
+    };
     void loadPlugins({
       onToast: (msg) => window.dispatchEvent(new CustomEvent("qx:toast", { detail: msg })),
       onPrompt: async (label, def) => window.prompt(label, def ?? ""),
@@ -194,7 +220,14 @@ function App() {
         const plugin = usePluginRegistry.getState().plugins.find((item) => item.id === pluginId);
         return plugin?.manifest?.preferences?.find((pref) => pref.id === id)?.default ?? null;
       },
+      onPluginStatus: showPluginStatus,
     });
+    return () => {
+      if (pluginIslandTimerRef.current) {
+        window.clearTimeout(pluginIslandTimerRef.current);
+        pluginIslandTimerRef.current = null;
+      }
+    };
   }, [loadPlugins, appsReady]);
 
   // Listen for qx:navigate custom events (from built-in module commands)
@@ -546,6 +579,14 @@ function App() {
     };
   }, [query, doSearch]);
 
+  useEffect(() => {
+    const version = `${pluginCommandCount}:${pluginPanelCount}`;
+    if (pluginSearchVersionRef.current === version) return;
+    pluginSearchVersionRef.current = version;
+    if (tab !== "launcher" || !query.trim()) return;
+    void doSearch(query);
+  }, [pluginCommandCount, pluginPanelCount, query, tab, doSearch]);
+
   // Listen for apps:updated event (background scan completed)
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -700,6 +741,7 @@ function App() {
             loadingPhase={loadingPhase}
             isSearching={isSearching}
             isSearchSettling={isSearchSettling}
+            pluginIsland={pluginIsland}
           />
         );
     }

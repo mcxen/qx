@@ -24,6 +24,7 @@ interface LauncherProps {
   loadingPhase?: string;
   isSearching?: boolean;
   isSearchSettling?: boolean;
+  pluginIsland?: BottomIslandContent | null;
 }
 
 export default function Launcher({
@@ -37,6 +38,7 @@ export default function Launcher({
   loadingPhase,
   isSearching = false,
   isSearchSettling = false,
+  pluginIsland = null,
 }: LauncherProps) {
   const { settings } = useSettingsStore();
   const t = useT();
@@ -108,6 +110,8 @@ export default function Launcher({
         label: t("launcher.searching", "Searching"),
         activity: isSearchSettling ? "bounce-exit" : "bounce",
       }
+    : pluginIsland
+    ? pluginIsland
     : results.length
     ? {
         label: t("launcher.ready", "Search ready"),
@@ -121,9 +125,9 @@ export default function Launcher({
         detail: t("launcher.idle", "Type to search apps and commands"),
       };
 
-  const customIsland = !isSearchActivity && !results.length && appearance.home_island_mode === "date" ? (
+  const customIsland = !isSearchActivity && !pluginIsland && !results.length && appearance.home_island_mode === "date" ? (
     <HomeDateIsland />
-  ) : !isSearchActivity && !results.length && appearance.home_island_mode === "system" ? (
+  ) : !isSearchActivity && !pluginIsland && !results.length && appearance.home_island_mode === "system" ? (
     <HomeSystemIsland
       showCpu={appearance.home_island_cpu}
       showGpu={appearance.home_island_gpu}

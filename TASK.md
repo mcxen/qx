@@ -1,3 +1,25 @@
+## Bugfix — 插件异常隔离与灵动岛报错
+
+**状态**：已实现，已通过静态验证。
+
+### 修复内容
+
+- 插件加载改为非阻塞异步落地：先显示已安装插件列表和内置能力，再并发加载外部插件命令/面板。
+- 单个插件加载失败、快捷键注册失败、命令运行失败不再影响其他插件加载。
+- 插件加载、成功和失败状态通过统一 runtime status hook 汇报到 Launcher 灵动岛。
+- Launcher 当前搜索时，插件命令/面板异步加载完成后会自动刷新搜索结果。
+- 插件面板 render/loading/timeout/error 状态接入插件页自己的底部灵动岛，错误时显示 Retry。
+- 增加 load token，避免刷新/启停插件时旧异步加载结果污染当前 registry。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [ ] 手动验证坏插件 entry、坏 panel render、慢插件加载、命令异常时 Qx 可正常打开且灵动岛显示错误。
+
+---
+
 ## Maintenance — 插件库 UI 与文档更新
 
 **状态**：已实现，已通过前端静态验证。

@@ -41,6 +41,10 @@ export function PluginPanelViewport() {
   const setTab = useStore((s) => s.setTab);
   const containerRef = useRef<HTMLDivElement>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [renderState, setRenderState] = useState<{
+    kind: "idle" | "loading" | "error";
+    detail?: string;
+  }>({ kind: "idle" });
   const isPluginTab = tab.startsWith("plugin:");
 
   const pluginId = isPluginTab ? tab.slice("plugin:".length) : "";
@@ -76,9 +80,13 @@ export function PluginPanelViewport() {
     if (!containerRef.current || !isPluginTab) return;
     const container = containerRef.current;
     const activePanel = panels[pluginId];
-    if (!activePanel) return;
+    if (!activePanel) {
+      setRenderState({ kind: "error", detail: "Panel not registered" });
+      return;
+    }
 
     let disposed = false;
+    setRenderState({ kind: "loading", detail: "Rendering panel" });
     renderPluginStatus(container, `Loading ${pluginId}...`);
 
     const renderTimer = window.setTimeout(() => {
@@ -86,16 +94,20 @@ export function PluginPanelViewport() {
       const timeout = window.setTimeout(() => {
         if (!disposed) {
           renderPluginStatus(container, `Plugin ${pluginId} render timed out.`, "danger");
+          setRenderState({ kind: "error", detail: "Render timed out" });
         }
       }, 8500);
       void Promise.resolve(activePanel.render(container, undefined as never))
         .then(() => {
           window.clearTimeout(timeout);
+          if (!disposed) setRenderState({ kind: "idle" });
         })
         .catch((err: unknown) => {
           window.clearTimeout(timeout);
           if (!disposed) {
-            renderPluginStatus(container, `Plugin ${pluginId} render failed: ${String(err)}`, "danger");
+            const detail = String(err).replace(/^Error:\s*/i, "").slice(0, 120);
+            renderPluginStatus(container, `Plugin ${pluginId} render failed: ${detail}`, "danger");
+            setRenderState({ kind: "error", detail });
           }
         });
     }, 0);
@@ -105,6 +117,7 @@ export function PluginPanelViewport() {
       window.clearTimeout(renderTimer);
       void Promise.resolve(activePanel.destroy?.(container)).catch(() => {});
       container.innerHTML = "";
+      setRenderState({ kind: "idle" });
     };
   }, [isPluginTab, pluginId, panels, refreshKey]);
 
@@ -124,10 +137,24 @@ export function PluginPanelViewport() {
     })),
   ], [pluginCommands]);
 
-  const island: BottomIslandContent = {
-    label: plugin?.name || shellTitle,
-    detail: plugin?.version ? `v${plugin.version}` : undefined,
-  };
+  const island: BottomIslandContent = renderState.kind === "loading"
+    ? {
+        label: "Plugin loading",
+        detail: plugin?.name || pluginId,
+        activity: "bounce",
+      }
+    : renderState.kind === "error"
+    ? {
+        label: "Plugin error",
+        detail: renderState.detail || plugin?.name || pluginId,
+        tone: "danger",
+        actionLabel: "Retry",
+        onAction: () => setRefreshKey((k) => k + 1),
+      }
+    : {
+        label: plugin?.name || shellTitle,
+        detail: plugin?.version ? `v${plugin.version}` : undefined,
+      };
 
   return (
     <QxShell
