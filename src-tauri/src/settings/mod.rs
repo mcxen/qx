@@ -347,6 +347,37 @@ impl Default for V2exSettings {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WeatherSettings {
+    #[serde(default = "default_weather_provider", rename = "provider")]
+    pub provider: String,
+    #[serde(default, rename = "api_key")]
+    pub api_key: String,
+    #[serde(default, rename = "location_override")]
+    pub location_override: String,
+    #[serde(default = "default_weather_units", rename = "units")]
+    pub units: String,
+}
+
+fn default_weather_provider() -> String {
+    "open-meteo".to_string()
+}
+
+fn default_weather_units() -> String {
+    "celsius".to_string()
+}
+
+impl Default for WeatherSettings {
+    fn default() -> Self {
+        Self {
+            provider: default_weather_provider(),
+            api_key: String::new(),
+            location_override: String::new(),
+            units: default_weather_units(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
     pub general: GeneralSettings,
@@ -364,6 +395,8 @@ pub struct Settings {
     pub rss: RssSettings,
     #[serde(default)]
     pub v2ex: V2exSettings,
+    #[serde(default)]
+    pub weather: WeatherSettings,
 }
 
 impl Default for Settings {
@@ -414,6 +447,7 @@ impl Default for Settings {
             agent: AgentSettings::default(),
             rss: RssSettings::default(),
             v2ex: V2exSettings::default(),
+            weather: WeatherSettings::default(),
         }
     }
 }

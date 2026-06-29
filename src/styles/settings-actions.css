@@ -210,6 +210,30 @@
   background: var(--qx-bg-component-2);
 }
 
+.qx-plugin-import-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+  text-align: left;
+}
+
+.qx-plugin-import-chevron {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--qx-text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.qx-plugin-import-chevron.is-open {
+  transform: rotate(90deg);
+}
+
 .qx-plugin-import-copy {
   min-width: 0;
 }

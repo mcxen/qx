@@ -47,8 +47,7 @@
 
 .qx-plugin-toolbar input,
 .qx-plugin-toolbar button,
-.qx-plugin-toolbar select,
-.qx-plugin-toolbar .qx-segmented {
+.qx-plugin-toolbar select {
   -webkit-app-region: no-drag;
 }
 
@@ -201,35 +200,4 @@
 
 .qx-inline-input:focus {
   box-shadow: 0 0 0 2px var(--qx-accent-soft);
-}
-
-.qx-segmented {
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid var(--qx-border-1);
-  border-radius: var(--qx-control-radius);
-  overflow: hidden;
-  background: var(--qx-overlay-1);
-  transition: background-color 0.1s ease, border-color 0.1s ease;
-}
-
-.qx-segmented button {
-  height: 28px;
-  padding: 0 10px;
-  border: none;
-  border-left: 1px solid var(--qx-border-1);
-  background: transparent;
-  color: var(--qx-text-secondary);
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
-}
-
-.qx-segmented button:first-child {
-  border-left: none;
-}
-
-.qx-segmented button.is-active {
-  background: var(--qx-bg-component-3);
-  color: var(--qx-text-primary);
 }

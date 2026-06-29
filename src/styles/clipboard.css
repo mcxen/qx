@@ -141,7 +141,7 @@
   flex: 1 1 auto;
 }
 
-.qx-clipboard-filter .qx-select-trigger {
+.qx-clipboard-filter .qx-shadcn-select-trigger {
   height: 38px;
 }
 
@@ -460,7 +460,7 @@
     grid-column: 1 / -1;
   }
 
-  .qx-clipboard-filter .qx-select-trigger {
+  .qx-clipboard-filter .qx-shadcn-select-trigger {
     height: 36px;
   }
 

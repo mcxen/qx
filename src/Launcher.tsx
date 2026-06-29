@@ -88,6 +88,12 @@ export default function Launcher({
         onClick: () => onNavigate("documents"),
       },
       {
+        id: "weather",
+        title: t("launcher.weather", "Weather"),
+        subtitle: t("launcher.weather.desc", "Current conditions and forecast"),
+        onClick: () => onNavigate("weather"),
+      },
+      {
         id: "settings",
         title: t("launcher.settings", "Settings"),
         subtitle: t("launcher.settings.desc", "Appearance and plugins"),

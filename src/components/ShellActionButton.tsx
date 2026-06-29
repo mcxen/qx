@@ -1,3 +1,5 @@
+import { Button } from "./shadcn/button";
+
 export interface QxShellAction {
   label: string;
   kbd?: string;
@@ -16,7 +18,7 @@ export default function ShellActionButton({
   if (!action || action.disabled) return null;
 
   return (
-    <button
+    <Button
       className={`qx-shell-action tone-${action.tone ?? "normal"} variant-${variant}`}
       disabled={action.disabled}
       onClick={action.onClick}
@@ -30,6 +32,6 @@ export default function ShellActionButton({
           {action.kbd && <kbd>{action.kbd}</kbd>}
         </>
       )}
-    </button>
+    </Button>
   );
 }

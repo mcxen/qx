@@ -11,6 +11,7 @@ const zh: Record<string, string> = {
   "nav.appearance": "外观",
   "nav.agent": "AI Agent",
   "nav.rss": "RSS 阅读器",
+  "nav.weather": "天气",
   "nav.ocr": "OCR",
   "nav.advanced": "高级",
   "nav.about": "关于",
@@ -220,6 +221,8 @@ const zh: Record<string, string> = {
   "launcher.v2ex.desc": "最新和热门帖子",
   "launcher.settings": "设置",
   "launcher.settings.desc": "外观和插件",
+  "launcher.weather": "天气",
+  "launcher.weather.desc": "当前天气和预报",
   "launcher.ready": "搜索就绪",
   "launcher.searching": "搜索中",
   "launcher.result": "条结果",
@@ -228,6 +231,20 @@ const zh: Record<string, string> = {
   "launcher.open": "打开",
   "launcher.search": "搜索",
   "launcher.actions": "操作",
+
+  "weather.loading": "加载天气中...",
+  "weather.back": "返回",
+  "weather.refresh": "刷新",
+  "weather.retry": "重试",
+  "weather.provider": "数据源",
+  "weather.provider.desc": "选择天气数据来源。Open-Meteo 免费且无需 API 密钥。",
+  "weather.apiKey": "OpenWeatherMap API Key",
+  "weather.apiKey.desc": "可选。从 openweathermap.org 获取。未填写时使用 Open-Meteo 兜底。",
+  "weather.location": "位置",
+  "weather.location.desc": "留空自动检测（IP 定位），或输入城市名（如 Beijing）或坐标（如 39.9,116.4）。",
+  "weather.location.placeholder": "自动检测或输入城市/纬度,经度",
+  "weather.units": "温度单位",
+  "weather.units.desc": "选择温度显示单位。",
 };
 
 export function useLocale(): Locale {

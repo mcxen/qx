@@ -14,6 +14,7 @@
   --qx-effective-radius: var(--qx-radius);
   --qx-control-radius: 6px;
   --qx-card-radius: 8px;
+  --radius: var(--qx-control-radius);
   --qx-font-size: 14px;
   --qx-shell-gap: 16px;
   --qx-topbar-h: clamp(64px, 11vh, 92px);
@@ -69,6 +70,7 @@
   --qx-glass-bg: 250, 250, 250;
   --qx-glass-border: rgba(0, 0, 0, 0.06);
   --qx-glass-shadow: rgba(0, 0, 0, 0.04);
+  --qx-shadow: #000000;
 
   --qx-accent: var(--qx-blue-600);
   --qx-accent-hover: var(--qx-blue-700);
@@ -105,6 +107,26 @@
   --color-text-primary: var(--qx-text-primary);
   --color-text-secondary: var(--qx-text-secondary);
   --color-text-tertiary: var(--qx-text-tertiary);
+
+  --background: rgba(var(--qx-glass-bg), var(--qx-window-opacity));
+  --foreground: var(--qx-text-primary);
+  --card: var(--qx-bg-component-1);
+  --card-foreground: var(--qx-text-primary);
+  --popover: rgba(var(--qx-glass-bg), var(--qx-shell-popover-opacity));
+  --popover-foreground: var(--qx-text-primary);
+  --primary: var(--qx-accent);
+  --primary-foreground: var(--qx-text-on-accent);
+  --secondary: var(--qx-bg-component-2);
+  --secondary-foreground: var(--qx-text-primary);
+  --muted: var(--qx-bg-component-2);
+  --muted-foreground: var(--qx-text-secondary);
+  --accent: var(--qx-bg-component-3);
+  --accent-foreground: var(--qx-text-primary);
+  --destructive: var(--qx-danger);
+  --destructive-foreground: var(--qx-text-on-accent);
+  --border: var(--qx-border-1);
+  --input: var(--qx-border-1);
+  --ring: var(--qx-accent-soft);
 }
 
 /* ====== 暗色主题 (Dark) ====== */
@@ -144,6 +166,7 @@
   --qx-glass-bg: 10, 10, 10;
   --qx-glass-border: rgba(255, 255, 255, 0.06);
   --qx-glass-shadow: rgba(0, 0, 0, 0.3);
+  --qx-shadow: #000000;
 
   --qx-accent: var(--qx-blue-600);
   --qx-accent-hover: var(--qx-blue-700);
@@ -177,6 +200,26 @@
   --color-text-primary: var(--qx-text-primary);
   --color-text-secondary: var(--qx-text-secondary);
   --color-text-tertiary: var(--qx-text-tertiary);
+
+  --background: rgba(var(--qx-glass-bg), var(--qx-window-opacity));
+  --foreground: var(--qx-text-primary);
+  --card: var(--qx-bg-component-1);
+  --card-foreground: var(--qx-text-primary);
+  --popover: rgba(var(--qx-glass-bg), var(--qx-shell-popover-opacity));
+  --popover-foreground: var(--qx-text-primary);
+  --primary: var(--qx-accent);
+  --primary-foreground: var(--qx-text-on-accent);
+  --secondary: var(--qx-bg-component-2);
+  --secondary-foreground: var(--qx-text-primary);
+  --muted: var(--qx-bg-component-2);
+  --muted-foreground: var(--qx-text-secondary);
+  --accent: var(--qx-bg-component-3);
+  --accent-foreground: var(--qx-text-primary);
+  --destructive: var(--qx-danger);
+  --destructive-foreground: var(--qx-text-on-accent);
+  --border: var(--qx-border-1);
+  --input: var(--qx-border-1);
+  --ring: var(--qx-accent-soft);
 }
 
 html,

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRssStore } from "./store";
-import { Modal } from "../../components/ui";
+import { LoadingLabel, Modal } from "../../components/ui";
 
 export default function AddFeedDialog({ onClose }: { onClose: () => void }) {
   const { addFeed, loading } = useRssStore();
@@ -64,7 +64,7 @@ export default function AddFeedDialog({ onClose }: { onClose: () => void }) {
           onClick={() => void submit()}
           disabled={loading || !url.trim()}
         >
-          {loading ? "Adding…" : "Add Feed"}
+          {loading ? <LoadingLabel>Add Feed</LoadingLabel> : "Add Feed"}
         </button>
       </div>
     </Modal>

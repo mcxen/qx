@@ -2,6 +2,7 @@ import { useStore } from "./store";
 import type { AppEntry } from "./store";
 import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { LoadingLabel, Skeleton } from "./components/ui";
 
 function iconKind(item: AppEntry): string {
   if (item.kind === "file") return "file";
@@ -98,6 +99,23 @@ function ResultItem({ item, index }: { item: AppEntry; index: number }) {
   );
 }
 
+function ResultSkeletonRows() {
+  return (
+    <div className="qx-skeleton-stack" aria-label="Loading apps">
+      {Array.from({ length: 7 }).map((_, index) => (
+        <div className="qx-skeleton-row" key={index}>
+          <Skeleton className="qx-skeleton-icon" />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Skeleton className="qx-skeleton-line long" />
+            <Skeleton className="qx-skeleton-line medium" style={{ marginTop: 8 }} />
+          </div>
+          <Skeleton className="qx-skeleton-line short" style={{ width: 72 }} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ResultsList({
   items,
   onItemClick,
@@ -118,16 +136,12 @@ export default function ResultsList({
         </div>
       ))}
       {items.length === 0 && loadingPhase === "loading-apps" && (
-        <div
-          style={{
-            padding: "32px 16px",
-            textAlign: "center",
-            color: "var(--qx-text-tertiary)",
-            fontSize: 13,
-          }}
-        >
-          Loading apps...
-        </div>
+        <>
+          <ResultSkeletonRows />
+          <div className="qx-empty-state">
+            <LoadingLabel>Loading apps...</LoadingLabel>
+          </div>
+        </>
       )}
       {items.length === 0 && loadingPhase !== "loading-apps" && (
         <div

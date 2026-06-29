@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRssStore, type RssFeed } from "./store";
-import { Modal } from "../../components/ui";
+import { LoadingLabel, Modal } from "../../components/ui";
 
 export default function EditFeedDialog({
   feed,
@@ -89,7 +89,7 @@ export default function EditFeedDialog({
           onClick={() => void submit()}
           disabled={loading || !url.trim()}
         >
-          {loading ? "Saving…" : "Save"}
+          {loading ? <LoadingLabel>Save</LoadingLabel> : "Save"}
         </button>
       </div>
     </Modal>

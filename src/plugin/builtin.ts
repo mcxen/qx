@@ -163,6 +163,41 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     },
     description: "Document and text tools",
   },
+  {
+    id: "weather",
+    name: "Weather",
+    keywords: ["weather", "forecast", "temperature", "天气", "气温", "预报"],
+    commands: [
+      {
+        name: "open-weather",
+        title: "Open Weather",
+        keywords: ["weather", "forecast", "temperature", "天气", "气温", "预报", "open"],
+      },
+    ],
+    panel: {
+      title: "Weather",
+      keywords: ["weather", "forecast", "temperature", "天气", "气温", "预报"],
+    },
+    description: "Weather forecast and current conditions",
+    preferences: [
+      {
+        id: "provider",
+        label: "Provider",
+        type: "string",
+        required: false,
+        default: "open-meteo",
+        description: "Weather data provider: Open-Meteo (free) or OpenWeatherMap.",
+      },
+      {
+        id: "api_key",
+        label: "OpenWeatherMap API Key",
+        type: "password",
+        required: false,
+        description: "Optional. Get one at openweathermap.org. Without it, Open-Meteo is used.",
+      },
+    ],
+    settingsKey: "weather",
+  },
 ];
 
 // ---------------------------------------------------------------------------

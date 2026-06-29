@@ -18,6 +18,7 @@ mod storage;
 mod system_information;
 mod system_stats;
 mod v2ex;
+mod weather;
 
 use tauri::{
     image::Image,
@@ -124,8 +125,7 @@ pub fn run() {
                 return Ok(());
             };
 
-            // Enable resizing with minimum size.
-            let _ = win.set_resizable(true);
+            // Keep the configured resizable window behavior and enforce minimum size.
             let _ = win.set_min_size(Some(PhysicalSize::new(480, 360)));
 
             #[cfg(target_os = "macos")]
@@ -318,6 +318,8 @@ pub fn run() {
             v2ex::v2ex_fetch_notifications,
             github_calendar::github_contributions,
             github_calendar::github_contributions_raw,
+            weather::fetch_weather,
+            weather::detect_location,
             g4f::g4f_chat,
             g4f::g4f_stream_chat,
             g4f::g4f_chat_custom,

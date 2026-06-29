@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from "react";
-import { Row, SegmentedControl, Select, Slider, Toggle } from "../../components/ui";
+import { LoadingLabel, Row, SegmentedControl, Select, Slider, Toggle } from "../../components/ui";
 import { useG4fStore } from "../qx-ai/store";
 import { useT } from "../../i18n";
 import { useSettingsStore, type AgentSettings as AgentSettingsValue } from "./store";
@@ -120,7 +120,9 @@ export default function AgentSettings() {
       >
         <div className="qx-agent-control-stack">
           {loading ? (
-            <span className="qx-settings-muted">{t("agent.loadingModels", "Loading models...")}</span>
+            <span className="qx-settings-muted">
+              <LoadingLabel>{t("agent.loadingModels", "Loading models...")}</LoadingLabel>
+            </span>
           ) : providerOptions.length > 0 ? (
             <>
               <Select

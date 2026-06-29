@@ -1,3 +1,22 @@
+## Feature — 灵动岛 LED 点阵时间显示
+
+**状态**：已实现，已通过静态验证。
+
+### 新增内容
+
+- 新增 `src/components/Matrix.tsx`，移植 unlumen UI 的 LED 点阵 Matrix 组件（SVG 像素 + 辉光 + 帧动画 + VU 表），渐变/滤镜 id 用 `React.useId()` 做唯一前缀避免多实例冲突。
+- `HomeDateIsland.tsx` 改用 Matrix 渲染 `HH:MM` 时间点阵：通过 `digits` 字模拼接 H H : M M 为 24×7 单 Frame，冒号按秒奇偶闪烁；公历/农历日期继续保留为右侧滚动副本。
+- 灵动岛调色板使用 Qx 既有变量（`--qx-system-island-text` / `--qx-system-island-muted`），不引入新色值。
+- 新增 `.qx-date-matrix` 样式收缩点阵与日期副本间距。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [ ] 手动验证设置 → 日期显示模式下灵动岛显示点阵时间，冒号秒级闪烁，公历/农历滚动正常。
+
+---
+
 ## Feature — AI Agent 设置模块与工具门控
 
 **状态**：已实现，等待验证。

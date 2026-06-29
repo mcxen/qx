@@ -10,6 +10,7 @@ import RssSettings from "./RssSettings";
 import AdvancedSettings from "./AdvancedSettings";
 import OcrSettings from "./OcrSettings";
 import AgentSettings from "./AgentSettings";
+import WeatherSettings from "./WeatherSettings";
 import AboutPanel from "./AboutPanel";
 import QxShell from "../../components/QxShell";
 import { useT } from "../../i18n";
@@ -28,6 +29,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "appearance", label: "Appearance", code: "AP" },
   { id: "agent", label: "AI Agent", code: "AI" },
   { id: "rss", label: "RSS Reader", code: "RS" },
+  { id: "weather", label: "Weather", code: "WT" },
   { id: "ocr", label: "OCR", code: "OC" },
   { id: "advanced", label: "Advanced", code: "AD" },
   { id: "about", label: "About", code: "AB" },
@@ -41,6 +43,7 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   appearance: "Appearance",
   agent: "AI Agent",
   rss: "RSS Reader",
+  weather: "Weather",
   ocr: "OCR",
   advanced: "Advanced",
   about: "About",
@@ -84,6 +87,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         return <AgentSettings />;
       case "rss":
         return <RssSettings />;
+      case "weather":
+        return <WeatherSettings />;
       case "advanced":
         return <AdvancedSettings />;
       case "ocr":

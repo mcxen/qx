@@ -4,6 +4,7 @@ import { useRssStore, type RssFeed } from "./store";
 import { useSettingsStore } from "../settings/store";
 import { useStore } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
+import { LoadingLabel, Skeleton } from "../../components/ui";
 import AddFeedDialog from "./AddFeedDialog";
 import EditFeedDialog from "./EditFeedDialog";
 import { FeedIcon, formatRelative } from "./rss-components";
@@ -235,6 +236,19 @@ export default function RssPanel() {
           <span style={{ flex: 1 }}>Subscriptions</span>
           <span>{filtered.length}</span>
         </div>
+        {loading && filtered.length === 0 && (
+          <div className="qx-skeleton-stack" aria-label="Loading feeds">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div className="qx-skeleton-row" key={index}>
+                <Skeleton className="qx-skeleton-icon" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Skeleton className="qx-skeleton-line long" />
+                  <Skeleton className="qx-skeleton-line medium" style={{ marginTop: 8 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {filtered.map((feed, i) => {
           const active = i === selectedIndex;
           const refreshing = refreshingFeedId === feed.id;
@@ -262,7 +276,7 @@ export default function RssPanel() {
         })}
         {filtered.length === 0 && (
           <div className="qx-empty-state">
-            {loading ? "Loading feeds..." : "No feeds yet. Press N to add one."}
+            {loading ? <LoadingLabel>Loading feeds...</LoadingLabel> : "No feeds yet. Press N to add one."}
           </div>
         )}
         {error && (

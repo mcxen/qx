@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
-import { SegmentedControl } from "../../components/ui";
+import { LoadingLabel, SegmentedControl, Skeleton } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useStore } from "../../store";
 import { type V2exMode, type V2exTopic, formatTime } from "./types";
@@ -277,7 +277,23 @@ export default function V2exPanel() {
             </div>
           )}
           {loading && topics.length === 0 && (
-            <div className="qx-empty-state">Loading V2EX topics...</div>
+            <>
+              <div className="qx-skeleton-stack" aria-label="Loading V2EX topics">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div className="qx-skeleton-row" key={index}>
+                    <Skeleton className="qx-skeleton-icon" />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <Skeleton className="qx-skeleton-line long" />
+                      <Skeleton className="qx-skeleton-line medium" style={{ marginTop: 8 }} />
+                    </div>
+                    <Skeleton className="qx-skeleton-line short" style={{ width: 34 }} />
+                  </div>
+                ))}
+              </div>
+              <div className="qx-empty-state">
+                <LoadingLabel>Loading V2EX topics...</LoadingLabel>
+              </div>
+            </>
           )}
         </div>
 

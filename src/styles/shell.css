@@ -301,9 +301,6 @@
 }
 
 .qx-actions-popover {
-  position: fixed;
-  right: 16px;
-  bottom: calc(var(--qx-bottom-bar-h) + 10px);
   z-index: 80;
   width: min(280px, calc(100vw - 32px));
   padding: 7px;
@@ -313,6 +310,15 @@
   backdrop-filter: blur(16px) saturate(150%);
   -webkit-backdrop-filter: blur(16px) saturate(150%);
   box-shadow: 0 18px 42px color-mix(in srgb, var(--qx-shadow) 18%, transparent);
+}
+
+.qx-actions-popover-anchor {
+  position: fixed;
+  right: 16px;
+  bottom: var(--qx-bottom-bar-h);
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
 }
 
 .qx-actions-popover-title {
@@ -623,6 +629,12 @@
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 0 5px color-mix(in srgb, var(--qx-accent) 28%, transparent);
+}
+
+.qx-date-matrix {
+  flex: 0 0 auto;
+  color: var(--qx-accent);
+  opacity: 0.92;
 }
 
 .qx-date-copy {

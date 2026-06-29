@@ -61,6 +61,7 @@ export type BuiltinTab =
   | "screencap"
   | "rss"
   | "v2ex"
+  | "weather"
   | "settings"
   | "macros"
   | "documents";

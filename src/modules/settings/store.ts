@@ -77,6 +77,13 @@ export interface V2exSettings {
   nodes: string;
 }
 
+export interface WeatherSettings {
+  provider: string;
+  api_key: string;
+  location_override: string;
+  units: string;
+}
+
 export interface PluginConfig {
   id: string;
   name: string;
@@ -94,6 +101,7 @@ export interface Settings {
   agent: AgentSettings;
   rss: RssSettings;
   v2ex: V2exSettings;
+  weather: WeatherSettings;
 }
 
 export type SettingsTab =
@@ -104,6 +112,7 @@ export type SettingsTab =
   | "appearance"
   | "agent"
   | "rss"
+  | "weather"
   | "advanced"
   | "ocr"
   | "about";
@@ -180,6 +189,12 @@ export const DEFAULT_SETTINGS: Settings = {
     token: "",
     nodes: "programmer create share ideas apple jobs qna",
   },
+  weather: {
+    provider: "open-meteo",
+    api_key: "",
+    location_override: "",
+    units: "celsius",
+  },
 };
 
 interface SettingsStore {
@@ -229,6 +244,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           agent: { ...DEFAULT_SETTINGS.agent, ...s.agent },
           rss: { ...DEFAULT_SETTINGS.rss, ...s.rss },
           v2ex: { ...DEFAULT_SETTINGS.v2ex, ...s.v2ex },
+          weather: { ...DEFAULT_SETTINGS.weather, ...s.weather },
           shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...s.shortcuts },
         },
         loaded: true,

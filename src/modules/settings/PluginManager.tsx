@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
+  ChevronRight,
   Download,
   ExternalLink,
   PackageCheck,
@@ -13,7 +14,7 @@ import {
 import { usePluginRegistry } from "../../plugin/registry";
 import { BUILTIN_SETTINGS_KEYS } from "../../plugin/builtin";
 import { useSettingsStore } from "./store";
-import { Toggle, SegmentedControl, Row, Select } from "../../components/ui";
+import { LoadingLabel, Skeleton, Toggle, SegmentedControl, Row, Select } from "../../components/ui";
 import { useT } from "../../i18n";
 import type {
   InstalledPlugin,
@@ -446,7 +447,25 @@ function MarketplaceTab({
   };
 
   if (loading) {
-    return <div className="qx-empty-state">Loading marketplace...</div>;
+    return (
+      <div className="qx-marketplace">
+        <div className="qx-skeleton-stack" aria-label="Loading marketplace">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div className="qx-skeleton-row" key={index}>
+              <Skeleton className="qx-skeleton-icon" />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Skeleton className="qx-skeleton-line long" />
+                <Skeleton className="qx-skeleton-line medium" style={{ marginTop: 8 }} />
+              </div>
+              <Skeleton className="qx-skeleton-line short" style={{ width: 56 }} />
+            </div>
+          ))}
+        </div>
+        <div className="qx-empty-state">
+          <LoadingLabel>Loading marketplace...</LoadingLabel>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
@@ -480,8 +499,12 @@ function MarketplaceTab({
           />
         </div>
         <button className="qx-command-button" onClick={fetchIndex} disabled={loading}>
-          <RefreshCw size={13} aria-hidden="true" />
-          Refresh
+          {loading ? <LoadingLabel>Refresh</LoadingLabel> : (
+            <>
+              <RefreshCw size={13} aria-hidden="true" />
+              Refresh
+            </>
+          )}
         </button>
       </div>
 
@@ -516,7 +539,7 @@ function MarketplaceTab({
                     )}
                   </div>
                   {alreadyInstalled && <PackageCheck size={14} aria-label="Installed" />}
-                  {installing && <Download size={14} aria-label="Installing" />}
+                  {installing && <Download className="qx-loading-spinner" size={14} aria-label="Installing" />}
                 </button>
               );
             })
@@ -544,6 +567,8 @@ function MarketplaceTab({
                 >
                   {installedIds.has(selectedEntry.id) ? (
                     <PackageCheck size={13} aria-hidden="true" />
+                  ) : installingId === selectedEntry.id ? (
+                    <Download className="qx-loading-spinner" size={13} aria-hidden="true" />
                   ) : (
                     <PackagePlus size={13} aria-hidden="true" />
                   )}
@@ -667,6 +692,7 @@ export default function PluginManager() {
   const [installStatus, setInstallStatus] = useState<string | null>(null);
   const [installedQuery, setInstalledQuery] = useState("");
   const [installedFilter, setInstalledFilter] = useState<InstalledFilter>("all");
+  const [importExpanded, setImportExpanded] = useState(false);
 
   /* Keep selection valid when the plugin list changes. */
   useEffect(() => {
@@ -799,66 +825,82 @@ export default function PluginManager() {
         {/* Install-from-path row (only on Installed tab) */}
         {tab === "installed" && (
           <div className="qx-plugin-import-box">
-            <div className="qx-plugin-import-copy">
-              <div className="qx-plugin-import-title">
-                {t("plugins.importArchive", "Import Plugin Archive")}
+            <button
+              type="button"
+              className="qx-plugin-import-header"
+              onClick={() => setImportExpanded((v) => !v)}
+              aria-expanded={importExpanded}
+            >
+              <ChevronRight
+                size={14}
+                className={`qx-plugin-import-chevron${importExpanded ? " is-open" : ""}`}
+                aria-hidden="true"
+              />
+              <div className="qx-plugin-import-copy">
+                <div className="qx-plugin-import-title">
+                  {t("plugins.importArchive", "Import Plugin Archive")}
+                </div>
+                <div className="qx-plugin-import-desc">
+                  {t(
+                    "plugins.importArchive.desc",
+                    "Install a .zip or .qx-plugin package from disk, or paste a GitHub release/source archive URL.",
+                  )}
+                </div>
               </div>
-              <div className="qx-plugin-import-desc">
-                {t(
-                  "plugins.importArchive.desc",
-                  "Install a .zip or .qx-plugin package from disk, or paste a GitHub release/source archive URL.",
-                )}
-              </div>
-            </div>
-            <div className="qx-plugin-import-row">
-              <input
-                type="text"
-                value={archivePath}
-                onChange={(e) => setArchivePath(e.target.value)}
-                placeholder={t("plugins.localArchive.placeholder", "Local archive path, e.g. ~/Downloads/plugin.zip")}
-                className="qx-inline-input"
-              />
-              <button
-                className="qx-command-button"
-                onClick={handleInstallFromPath}
-                disabled={busy !== null || !archivePath.trim()}
-              >
-                {busy === "path" ? t("plugins.installing", "Installing...") : t("plugins.installLocal", "Install Local")}
-              </button>
-            </div>
-            <div className="qx-plugin-import-row">
-              <input
-                type="url"
-                value={archiveUrl}
-                onChange={(e) => setArchiveUrl(e.target.value)}
-                placeholder={t("plugins.githubArchive.placeholder", "GitHub repo, release asset, or archive ZIP URL")}
-                className="qx-inline-input"
-              />
-              <button
-                className="qx-command-button"
-                onClick={handleInstallFromUrl}
-                disabled={busy !== null || !archiveUrl.trim()}
-              >
-                {busy === "url" ? t("plugins.downloading", "Downloading...") : t("plugins.installUrl", "Install URL")}
-              </button>
-            </div>
-            <div className="qx-plugin-import-row">
-              <input
-                type="url"
-                value={raycastUrl}
-                onChange={(e) => setRaycastUrl(e.target.value)}
-                placeholder="Raycast extension URL, e.g. https://github.com/raycast/extensions/tree/<ref>/extensions/system-information"
-                className="qx-inline-input"
-              />
-              <button
-                className="qx-command-button"
-                onClick={handleInstallFromRaycast}
-                disabled={busy !== null || !raycastUrl.trim()}
-              >
-                {busy === "raycast" ? "Converting..." : "Install Raycast"}
-              </button>
-            </div>
-            {installStatus && <div className="qx-plugin-import-status">{installStatus}</div>}
+            </button>
+            {importExpanded && (
+              <>
+                <div className="qx-plugin-import-row">
+                  <input
+                    type="text"
+                    value={archivePath}
+                    onChange={(e) => setArchivePath(e.target.value)}
+                    placeholder={t("plugins.localArchive.placeholder", "Local archive path, e.g. ~/Downloads/plugin.zip")}
+                    className="qx-inline-input"
+                  />
+                  <button
+                    className="qx-command-button"
+                    onClick={handleInstallFromPath}
+                    disabled={busy !== null || !archivePath.trim()}
+                  >
+                    {busy === "path" ? t("plugins.installing", "Installing...") : t("plugins.installLocal", "Install Local")}
+                  </button>
+                </div>
+                <div className="qx-plugin-import-row">
+                  <input
+                    type="url"
+                    value={archiveUrl}
+                    onChange={(e) => setArchiveUrl(e.target.value)}
+                    placeholder={t("plugins.githubArchive.placeholder", "GitHub repo, release asset, or archive ZIP URL")}
+                    className="qx-inline-input"
+                  />
+                  <button
+                    className="qx-command-button"
+                    onClick={handleInstallFromUrl}
+                    disabled={busy !== null || !archiveUrl.trim()}
+                  >
+                    {busy === "url" ? t("plugins.downloading", "Downloading...") : t("plugins.installUrl", "Install URL")}
+                  </button>
+                </div>
+                <div className="qx-plugin-import-row">
+                  <input
+                    type="url"
+                    value={raycastUrl}
+                    onChange={(e) => setRaycastUrl(e.target.value)}
+                    placeholder="Raycast extension URL, e.g. https://github.com/raycast/extensions/tree/<ref>/extensions/system-information"
+                    className="qx-inline-input"
+                  />
+                  <button
+                    className="qx-command-button"
+                    onClick={handleInstallFromRaycast}
+                    disabled={busy !== null || !raycastUrl.trim()}
+                  >
+                    {busy === "raycast" ? "Converting..." : "Install Raycast"}
+                  </button>
+                </div>
+                {installStatus && <div className="qx-plugin-import-status">{installStatus}</div>}
+              </>
+            )}
           </div>
         )}
       </div>

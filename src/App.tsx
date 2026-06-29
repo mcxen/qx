@@ -13,6 +13,7 @@ import RssReader from "./modules/rss";
 import V2exPanel from "./modules/v2ex/V2exPanel";
 import G4fReader from "./modules/qx-ai";
 import MacroRecorder from "./modules/macros/MacroRecorder";
+import WeatherPanel from "./modules/weather/WeatherPanel";
 import { useSettingsStore } from "./modules/settings/store";
 import { ThemeProvider } from "./ThemeProvider";
 import { usePluginRegistry } from "./plugin/registry";
@@ -235,7 +236,7 @@ function App() {
     const handler = (e: Event) => {
       const tabId = (e as CustomEvent).detail as string;
       if (tabId === "clipboard" || tabId === "screencap"
-          || tabId === "rss" || tabId === "v2ex" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "settings") {
+          || tabId === "rss" || tabId === "v2ex" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "settings") {
         setTab(tabId);
       } else if (tabId?.startsWith("plugin:")) {
         setTab(tabId);
@@ -303,6 +304,10 @@ function App() {
     );
     document.documentElement.style.setProperty(
       "--qx-control-radius",
+      `${controlRadius}px`,
+    );
+    document.documentElement.style.setProperty(
+      "--radius",
       `${controlRadius}px`,
     );
     document.documentElement.style.setProperty(
@@ -420,7 +425,7 @@ function App() {
     });
     const unlistenNav = listen<string>("navigate", (e) => {
       const next = e.payload;
-      if (next === "clipboard" || next === "screencap" || next === "rss" || next === "v2ex" || next === "qx-ai" || next === "macros" || next === "settings") {
+      if (next === "clipboard" || next === "screencap" || next === "rss" || next === "v2ex" || next === "weather" || next === "qx-ai" || next === "macros" || next === "settings") {
         setTab(next);
       } else if (next === "launcher") {
         setTab("launcher");
@@ -701,7 +706,7 @@ function App() {
       return;
     }
     // Handle __qx:<tabId> style paths (backward compat)
-    const tabMatch = item.path.match(/^__qx:(clipboard|screencap|rss|v2ex|qx-ai|macros|documents)$/);
+    const tabMatch = item.path.match(/^__qx:(clipboard|screencap|rss|v2ex|weather|qx-ai|macros|documents)$/);
     if (tabMatch) {
       setTab(tabMatch[1] as any);
       return;
@@ -770,6 +775,8 @@ function App() {
         return <MacroRecorder />;
       case "documents":
         return <DevTxtTool />;
+      case "weather":
+        return <WeatherPanel />;
       case "settings":
         return <SettingsPanel onClose={() => setTab("launcher")} />;
       case "launcher":

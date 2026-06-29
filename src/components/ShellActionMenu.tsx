@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { QxShellAction } from "./ShellActionButton";
+import { Popover, PopoverAnchor, PopoverContent } from "./shadcn/popover";
 
 export default function ShellActionMenu({
   title,
@@ -23,7 +24,18 @@ export default function ShellActionMenu({
   }, [activeIndex]);
 
   return (
-    <div className="qx-actions-popover" role="menu" aria-label={title}>
+    <Popover open modal={false}>
+      <PopoverAnchor asChild>
+        <span className="qx-actions-popover-anchor" aria-hidden="true" />
+      </PopoverAnchor>
+      <PopoverContent
+        align="end"
+        side="top"
+        sideOffset={10}
+        className="qx-actions-popover"
+        role="menu"
+        aria-label={title}
+      >
       <div className="qx-actions-popover-title">{title}</div>
       {actions.map((action, index) => (
         <button
@@ -44,6 +56,7 @@ export default function ShellActionMenu({
           {action.kbd && <kbd>{action.kbd}</kbd>}
         </button>
       ))}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }

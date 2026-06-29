@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import QxShell, { type BottomIslandContent } from "../../components/QxShell";
+import { LoadingLabel, Skeleton } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useG4fStore } from "./store";
 import { useStore } from "../../store";
@@ -179,6 +180,19 @@ export default function QxAiPanel() {
           <span style={{ flex: 1 }}>Conversations</span>
           <span>{filtered.length}</span>
         </div>
+        {loading && filtered.length === 0 && (
+          <div className="qx-skeleton-stack" aria-label="Loading AI providers">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <div className="qx-skeleton-row" key={index}>
+                <Skeleton className="qx-skeleton-icon" />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <Skeleton className="qx-skeleton-line long" />
+                  <Skeleton className="qx-skeleton-line medium" style={{ marginTop: 8 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {filtered.map((conv, i) => {
           const active = i === selectedIndex;
           return (
@@ -202,7 +216,7 @@ export default function QxAiPanel() {
         })}
         {filtered.length === 0 && (
           <div className="qx-empty-state">
-            {loading ? "Loading..." : "No conversations yet. Press N to start one."}
+            {loading ? <LoadingLabel>Loading providers...</LoadingLabel> : "No conversations yet. Press N to start one."}
           </div>
         )}
         {error && (

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import QxShell from "../../components/QxShell";
-import { Select } from "../../components/ui";
+import { LoadingLabel, Skeleton, Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useG4fStore, type CustomProvider } from "./store";
 
@@ -116,7 +116,7 @@ function AddProviderForm({
           disabled={!canFetchModels}
           onClick={() => void fetchModels()}
         >
-          {fetchingModels ? "Fetching..." : "Fetch Models"}
+          {fetchingModels ? <LoadingLabel>Fetch Models</LoadingLabel> : "Fetch Models"}
         </button>
         {modelsError && (
           <span style={{ color: "var(--qx-danger)", fontSize: 12 }}>
@@ -314,8 +314,10 @@ export default function QxAiSettings() {
             AI Provider
           </label>
           {loading ? (
-            <div style={{ fontSize: 13, color: "var(--qx-text-tertiary)" }}>
-              Loading providers...
+            <div className="qx-skeleton-stack" aria-label="Loading providers">
+              <LoadingLabel>Loading providers...</LoadingLabel>
+              <Skeleton className="qx-skeleton-line long" />
+              <Skeleton className="qx-skeleton-line medium" />
             </div>
           ) : allProviders.length > 0 ? (
             <Select
@@ -416,7 +418,7 @@ export default function QxAiSettings() {
               disabled={memoryLoading}
               onClick={() => void loadMemories()}
             >
-              {memoryLoading ? "Loading..." : "Refresh"}
+              {memoryLoading ? <LoadingLabel>Refresh</LoadingLabel> : "Refresh"}
             </button>
           </div>
 

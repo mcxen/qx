@@ -7,6 +7,7 @@ import { useEscBack } from "../../hooks/useEscBack";
 import { shouldIgnoreBareShortcut } from "../../utils/keyboard";
 import { useSettingsStore } from "../settings/store";
 import ImageLightbox from "./ImageLightbox";
+import { LoadingLabel, SegmentedControl, Skeleton } from "../../components/ui";
 function formatTime(publishedAt: number): string {
   if (!publishedAt) return "";
   const d = new Date(publishedAt * 1000);
@@ -382,20 +383,14 @@ export default function ArticleList() {
         </div>
       }
       trailing={
-        <div className="qx-segmented">
-          {filterChips.map((c) => {
-            const active = c.key === filter;
-            return (
-              <button
-                key={c.key}
-                onClick={() => setFilter(c.key)}
-                className={active ? "is-active" : ""}
-              >
-                {c.label}
-              </button>
-            );
-          })}
-        </div>
+        <SegmentedControl
+          value={filter}
+          onChange={setFilter}
+          options={filterChips.map((chip) => ({
+            value: chip.key,
+            label: chip.label,
+          }))}
+        />
       }
       context={
         <aside className="qx-action-panel">
@@ -473,7 +468,20 @@ export default function ArticleList() {
           ))}
           {articles.length === 0 && (
             <div className="qx-empty-state">
-              {refreshingFeedId != null ? "Refreshing..." : "No articles in this feed."}
+              {refreshingFeedId != null ? <LoadingLabel>Refreshing...</LoadingLabel> : "No articles in this feed."}
+            </div>
+          )}
+          {refreshingFeedId != null && articles.length === 0 && (
+            <div className="qx-skeleton-stack" aria-label="Refreshing articles">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div className="qx-skeleton-row" key={index}>
+                  <Skeleton className="qx-skeleton-line short" style={{ width: 8, height: 8, borderRadius: 999 }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <Skeleton className="qx-skeleton-line long" />
+                    <Skeleton className="qx-skeleton-line medium" style={{ marginTop: 8 }} />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
