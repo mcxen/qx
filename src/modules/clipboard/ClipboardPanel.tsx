@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useStore, type ClipboardEntry } from "../../store";
 import QxShell from "../../components/QxShell";
 import { Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
+import { pasteClipboardEntry, writeClipboardEntry } from "./actions";
 import {
   classify,
   sectionName,
@@ -141,16 +141,24 @@ export default function ClipboardPanel() {
   const copyItem = async (item?: ClipboardEntry) => {
     if (!item) return;
     try {
-      if (item.image_path) {
-        await invoke("write_clipboard_image_entry", { id: item.id });
-      } else {
-        await writeText(item.text);
-      }
-      await invoke("record_clipboard_copy", { id: item.id });
+      await writeClipboardEntry(item);
       await loadHistory();
       setStatus("Copied");
       window.setTimeout(() => setStatus(""), 1200);
     } catch {}
+  };
+
+  const pasteItem = async (item?: ClipboardEntry, options: { focusAtCursor?: boolean } = {}) => {
+    if (!item) return;
+    try {
+      setStatus("Pasting");
+      await pasteClipboardEntry(item, options);
+      await loadHistory();
+      window.setTimeout(() => setStatus(""), 1200);
+    } catch {
+      setStatus("Paste failed");
+      window.setTimeout(() => setStatus(""), 1600);
+    }
   };
 
   const deleteItem = async (item?: ClipboardEntry) => {
@@ -189,7 +197,7 @@ export default function ClipboardPanel() {
       setDetailOpen(true);
     } else if (e.key === "Enter") {
       e.preventDefault();
-      await copyItem(selectedItem);
+      await pasteItem(selectedItem, { focusAtCursor: true });
     } else if (e.key.toLowerCase() === "p" && e.metaKey) {
       e.preventDefault();
       await togglePin(selectedItem);
@@ -255,10 +263,10 @@ export default function ClipboardPanel() {
         tone: status ? "success" : "neutral",
       }}
       primaryAction={{
-        label: "Paste to Clipboard",
+        label: "Paste",
         kbd: "Enter",
         disabled: !selectedItem,
-        onClick: () => copyItem(selectedItem),
+        onClick: () => pasteItem(selectedItem),
       }}
       secondaryAction={{
         label: selectedItem?.pinned ? "Unpin" : "Pin",
@@ -266,6 +274,26 @@ export default function ClipboardPanel() {
         disabled: !selectedItem,
         onClick: () => togglePin(selectedItem),
       }}
+      actions={[
+        {
+          label: "Copy",
+          kbd: "Cmd C",
+          disabled: !selectedItem,
+          onClick: () => copyItem(selectedItem),
+        },
+        {
+          label: selectedItem?.pinned ? "Unpin" : "Pin",
+          kbd: "Cmd P",
+          disabled: !selectedItem,
+          onClick: () => togglePin(selectedItem),
+        },
+        {
+          label: "Delete",
+          kbd: "Cmd Delete",
+          disabled: !selectedItem,
+          onClick: () => deleteItem(selectedItem),
+        },
+      ]}
     >
       <div className="qx-clipboard-body">
         <div className="qx-clipboard-list" role="listbox" aria-label="Clipboard history">
@@ -288,7 +316,7 @@ export default function ClipboardPanel() {
                       setSelected(index);
                       setDetailOpen(false);
                     }}
-                    onDoubleClick={() => copyItem(item)}
+                    onDoubleClick={() => pasteItem(item)}
                     role="option"
                     aria-selected={active}
                   >

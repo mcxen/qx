@@ -1,28 +1,32 @@
-import { useEffect, useCallback, useRef, useState, useTransition } from "react";
+import { Suspense, lazy, useEffect, useCallback, useRef, useState, useTransition } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { currentMonitor, getCurrentWindow, LogicalSize, primaryMonitor } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useStore, type AppEntry, type SearchScope } from "./store";
 import Launcher from "./Launcher";
-import ClipboardPanel from "./modules/clipboard/ClipboardPanel";
-import ScreenRecorder from "./modules/screencap/ScreenRecorder";
-import DevTxtTool from "./modules/documents/DevTxtTool";
-import SettingsPanel from "./modules/settings/SettingsPanel";
-import RssReader from "./modules/rss";
-import V2exPanel from "./modules/v2ex/V2exPanel";
-import G4fReader from "./modules/qx-ai";
-import MacroRecorder from "./modules/macros/MacroRecorder";
-import WeatherPanel from "./modules/weather/WeatherPanel";
 import { useSettingsStore } from "./modules/settings/store";
 import { ThemeProvider } from "./ThemeProvider";
 import { usePluginRegistry } from "./plugin/registry";
 import type { PluginRuntimeStatus } from "./plugin/registry";
 import type { BottomIslandContent } from "./components/QxShell";
+import QxShell from "./components/QxShell";
+import { LoadingLabel, Skeleton } from "./components/ui";
 import { registerAllBuiltins } from "./plugin/builtin";
 import { PluginHost, PluginPanelViewport } from "./plugin/PluginHost";
 import { calculateExpression } from "./search/calculator";
+import { loadClipboardEntryById, pasteClipboardEntryAtCursor } from "./modules/clipboard/actions";
 import "./App.css";
+
+const ClipboardPanel = lazy(() => import("./modules/clipboard/ClipboardPanel"));
+const ScreenRecorder = lazy(() => import("./modules/screencap/ScreenRecorder"));
+const DevTxtTool = lazy(() => import("./modules/documents/DevTxtTool"));
+const SettingsPanel = lazy(() => import("./modules/settings/SettingsPanel"));
+const RssReader = lazy(() => import("./modules/rss"));
+const V2exPanel = lazy(() => import("./modules/v2ex/V2exPanel"));
+const G4fReader = lazy(() => import("./modules/qx-ai"));
+const MacroRecorder = lazy(() => import("./modules/macros/MacroRecorder"));
+const WeatherPanel = lazy(() => import("./modules/weather/WeatherPanel"));
 
 const SETTINGS_KEYWORDS = ["settings", "preferences", "plugins", "shortcuts", "appearance", "advanced"];
 const MIN_WINDOW_WIDTH = 480;
@@ -31,6 +35,86 @@ const MAX_WINDOW_WIDTH = 1500;
 const MAX_WINDOW_HEIGHT = 882;
 const FIRST_LAUNCH_WINDOW_RATIO = 0.6;
 const OVERSIZED_SAVED_WINDOW_RATIO = 0.9;
+const MODULE_SWITCH_PAINT_DELAY_MS = 32;
+
+const MODULE_LABELS: Record<string, string> = {
+  clipboard: "Clipboard History",
+  screencap: "Screen Recording",
+  rss: "RSS Reader",
+  v2ex: "V2EX",
+  weather: "Weather",
+  "qx-ai": "QxAI Chat",
+  macros: "Macro Recorder",
+  documents: "Document Tools",
+  settings: "Settings",
+};
+
+function getModuleLabel(tab: string): string {
+  if (tab.startsWith("plugin:")) {
+    const pluginId = tab.slice("plugin:".length);
+    const panel = usePluginRegistry.getState().panels[pluginId];
+    return panel?.title || panel?.pluginName || pluginId;
+  }
+  return MODULE_LABELS[tab] ?? "Module";
+}
+
+function ModuleLoadingShell({
+  tab,
+  onBack,
+}: {
+  tab: string;
+  onBack: () => void;
+}) {
+  const title = getModuleLabel(tab);
+
+  return (
+    <QxShell
+      title={title}
+      className="qx-module-loading-shell"
+      onBack={onBack}
+      search={
+        <div className="qx-search-wrap qx-module-loading-search" aria-hidden="true">
+          <span className="qx-search-icon" />
+          <Skeleton className="qx-module-loading-search-line" />
+        </div>
+      }
+      context={
+        <div className="qx-module-loading-context" aria-hidden="true">
+          <Skeleton className="qx-skeleton-line medium" />
+          <Skeleton className="qx-skeleton-line long" />
+          <Skeleton className="qx-skeleton-line short" />
+        </div>
+      }
+      island={{
+        label: title,
+        detail: "Loading module",
+        activity: "bounce",
+      }}
+      primaryAction={{
+        label: "Loading",
+        disabled: true,
+      }}
+    >
+      <div className="qx-module-loading-stage" aria-label={`Loading ${title}`}>
+        <div className="qx-skeleton-stack">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div className="qx-skeleton-row" key={index}>
+              <Skeleton className="qx-skeleton-icon" />
+              <div className="qx-module-loading-copy">
+                <Skeleton className="qx-skeleton-line long" />
+                <Skeleton className="qx-skeleton-line medium" />
+              </div>
+              <Skeleton className="qx-skeleton-line short" />
+            </div>
+          ))}
+        </div>
+        <div className="qx-empty-state">
+          <LoadingLabel>Loading {title}...</LoadingLabel>
+        </div>
+      </div>
+    </QxShell>
+  );
+}
 
 function clampWindowSize(width: number, height: number) {
   return {
@@ -153,6 +237,7 @@ function App() {
   const [isSearchSettling, setIsSearchSettling] = useState(false);
   const [pluginIsland, setPluginIsland] = useState<BottomIslandContent | null>(null);
   const pluginIslandTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const [mountedTab, setMountedTab] = useState(tab);
   const [, startSearchTransition] = useTransition();
 
   const applyResults = useCallback(
@@ -172,6 +257,27 @@ function App() {
       searchFadeTimerRef.current = undefined;
     }, 180);
   }, []);
+
+  useEffect(() => {
+    if (tab === mountedTab) return;
+    if (tab === "launcher") {
+      setMountedTab(tab);
+      return;
+    }
+
+    let frameId: number | undefined;
+    let timerId: ReturnType<typeof window.setTimeout> | undefined;
+    frameId = window.requestAnimationFrame(() => {
+      timerId = window.setTimeout(() => {
+        setMountedTab(tab);
+      }, MODULE_SWITCH_PAINT_DELAY_MS);
+    });
+
+    return () => {
+      if (frameId !== undefined) window.cancelAnimationFrame(frameId);
+      if (timerId !== undefined) window.clearTimeout(timerId);
+    };
+  }, [mountedTab, tab]);
 
   // Phase 1: Load app cache immediately — runs once on mount
   useEffect(() => {
@@ -697,7 +803,9 @@ function App() {
       return;
     }
     if (item.path.startsWith("__qx:clipboard:")) {
-      setTab("clipboard");
+      const id = item.path.slice("__qx:clipboard:".length);
+      const entry = await loadClipboardEntryById(id);
+      if (entry) await pasteClipboardEntryAtCursor(entry);
       return;
     }
     if (item.path.startsWith("__qx:calc:")) {
@@ -754,13 +862,34 @@ function App() {
     }
   };
 
+  const renderLauncher = () => (
+    <Launcher
+      results={results}
+      selectedIndex={selectedIndex}
+      onItemClick={openItem}
+      onKeyDown={handleKeyDown}
+      onNavigate={setTab}
+      searchScopeRef={searchScopeRef}
+      onScopeChange={() => doSearch(useStore.getState().query)}
+      loadingPhase={loadingPhase}
+      isSearching={isSearching}
+      isSearchSettling={isSearchSettling}
+      pluginIsland={pluginIsland}
+    />
+  );
+
   const renderBody = () => {
+    if (tab !== mountedTab) {
+      if (tab === "launcher") return renderLauncher();
+      return <ModuleLoadingShell tab={tab} onBack={() => setTab("launcher")} />;
+    }
+
     // Handle external plugin panels (tabs like "plugin:<id>")
-    if (tab.startsWith("plugin:")) {
+    if (mountedTab.startsWith("plugin:")) {
       return <PluginPanelViewport />;
     }
 
-    switch (tab) {
+    switch (mountedTab) {
       case "clipboard":
         return <ClipboardPanel />;
       case "screencap":
@@ -781,21 +910,7 @@ function App() {
         return <SettingsPanel onClose={() => setTab("launcher")} />;
       case "launcher":
       default:
-        return (
-          <Launcher
-            results={results}
-            selectedIndex={selectedIndex}
-            onItemClick={openItem}
-            onKeyDown={handleKeyDown}
-            onNavigate={setTab}
-            searchScopeRef={searchScopeRef}
-            onScopeChange={() => doSearch(useStore.getState().query)}
-            loadingPhase={loadingPhase}
-            isSearching={isSearching}
-            isSearchSettling={isSearchSettling}
-            pluginIsland={pluginIsland}
-          />
-        );
+        return renderLauncher();
     }
   };
 
@@ -808,7 +923,9 @@ function App() {
           style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
           onKeyDown={tab !== "launcher" ? handleKeyDown : undefined}
         >
-          {renderBody()}
+          <Suspense fallback={<ModuleLoadingShell tab={tab} onBack={() => setTab("launcher")} />}>
+            {renderBody()}
+          </Suspense>
         </div>
       <div
         className="qx-actionbar"

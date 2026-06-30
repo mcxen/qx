@@ -151,7 +151,7 @@
   padding: 5px;
   border: 1px solid var(--qx-border-1);
   border-radius: calc(var(--radius) + 2px);
-  background: rgba(var(--qx-glass-bg), var(--qx-shell-popover-opacity));
+  background: rgba(var(--qx-glass-bg), var(--qx-shell-popover-opacity-effective));
   color: var(--qx-text-primary);
   backdrop-filter: blur(18px) saturate(150%);
   -webkit-backdrop-filter: blur(18px) saturate(150%);
@@ -347,7 +347,7 @@
   padding: 18px;
   border: 1px solid var(--qx-border-1);
   border-radius: calc(var(--radius) + 4px);
-  background: rgba(var(--qx-glass-bg), var(--qx-shell-popover-opacity));
+  background: rgba(var(--qx-glass-bg), var(--qx-shell-popover-opacity-effective));
   color: var(--qx-text-primary);
   transform: translate(-50%, -50%);
   backdrop-filter: blur(20px) saturate(150%);
@@ -505,7 +505,7 @@
   padding: 6px 8px;
   border: 1px solid var(--qx-border-1);
   border-radius: var(--radius);
-  background: rgba(var(--qx-glass-bg), var(--qx-shell-popover-opacity));
+  background: rgba(var(--qx-glass-bg), var(--qx-shell-popover-opacity-effective));
   color: var(--qx-text-primary);
   font-size: 12px;
   line-height: 1.4;

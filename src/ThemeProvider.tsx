@@ -29,6 +29,7 @@ function systemPreference(): ResolvedTheme {
 
 function applyTheme(resolved: ResolvedTheme): void {
   document.documentElement.setAttribute("data-theme", resolved);
+  document.documentElement.classList.toggle("dark", resolved === "dark");
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {

@@ -548,6 +548,24 @@ pub fn plugin_perform_paste() -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn plugin_perform_paste_at_cursor() -> Result<(), String> {
+    use enigo::{Button, Direction, Enigo, Key, Keyboard, Mouse, Settings};
+    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| format!("enigo init: {e}"))?;
+    enigo
+        .button(Button::Left, Direction::Click)
+        .map_err(|e| format!("click target: {e}"))?;
+    std::thread::sleep(std::time::Duration::from_millis(35));
+    enigo
+        .key(Key::Meta, Direction::Press)
+        .map_err(|e| format!("press command: {e}"))?;
+    let key_result = enigo.key(Key::Unicode('v'), Direction::Click);
+    let release_result = enigo.key(Key::Meta, Direction::Release);
+    key_result.map_err(|e| format!("press v: {e}"))?;
+    release_result.map_err(|e| format!("release command: {e}"))?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // HTTP fetch
 // ---------------------------------------------------------------------------

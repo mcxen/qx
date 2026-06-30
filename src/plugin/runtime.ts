@@ -547,6 +547,7 @@ const COMMAND_CAPABILITIES: Record<string, string> = {
 
 const DANGEROUS_INVOKE_COMMANDS = new Set([
   "plugin_perform_paste",
+  "plugin_perform_paste_at_cursor",
   "qx_system_information_kill_process",
   "qx_permissions_request",
   "qx_storage_clear_cache",

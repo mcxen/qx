@@ -279,6 +279,7 @@ pub fn run() {
             plugin_api::plugin_clipboard_read,
             plugin_api::plugin_clipboard_write,
             plugin_api::plugin_perform_paste,
+            plugin_api::plugin_perform_paste_at_cursor,
             plugin_api::plugin_ai_list_providers,
             plugin_api::plugin_ai_default_model,
             plugin_api::plugin_ai_agent_settings,
