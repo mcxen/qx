@@ -479,10 +479,13 @@
 }
 
 .qx-bottom-island-activity {
-  grid-column: 1 / -1;
   position: relative;
-  height: 12px;
-  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 64px;
+  height: 16px;
+  overflow: visible;
   border-radius: 999px;
   background: transparent;
 }
@@ -493,12 +496,41 @@
 
 .qx-bottom-island-activity-curve {
   position: absolute;
-  top: 0;
-  left: 4px;
-  width: 84px;
+  top: 2px;
+  right: 18px;
+  width: 36px;
   height: 12px;
   color: var(--qx-accent);
-  animation: qx-bottom-island-bounce 0.92s cubic-bezier(0.42, 0, 0.28, 1) infinite alternate;
+  animation: qx-bottom-island-bounce-mini 0.92s cubic-bezier(0.42, 0, 0.28, 1) infinite alternate;
+}
+
+.qx-bottom-island-activity-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+}
+
+.qx-bottom-island-activity-dots i {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--qx-accent);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--qx-accent) 60%, transparent);
+  animation: qx-bottom-island-dot 0.9s ease-in-out infinite;
+}
+
+.qx-bottom-island-activity-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.qx-bottom-island-activity-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.qx-bottom-island-label[data-pulse="true"] {
+  animation: qx-bottom-island-label-pulse 1.4s ease-in-out infinite;
 }
 
 .qx-bottom-island-activity-curve svg {
@@ -725,6 +757,38 @@
   }
 }
 
+@keyframes qx-bottom-island-bounce-mini {
+  from {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-1px);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes qx-bottom-island-dot {
+  0%, 100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-1.5px);
+  }
+}
+
+@keyframes qx-bottom-island-label-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
 @keyframes qx-bottom-island-wave {
   to {
     stroke-dashoffset: -20;
@@ -745,13 +809,14 @@
 
   .qx-bottom-island.is-activity-exiting .qx-bottom-island-activity,
   .qx-bottom-island-activity-curve,
-  .qx-bottom-island-activity-curve path {
+  .qx-bottom-island-activity-curve path,
+  .qx-bottom-island-activity-dots i,
+  .qx-bottom-island-label[data-pulse="true"] {
     animation: none;
   }
 
   .qx-bottom-island-activity-curve {
-    left: 50%;
-    transform: translateX(-50%);
+    right: 8px;
   }
 }
 

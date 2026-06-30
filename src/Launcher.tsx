@@ -76,6 +76,7 @@ export default function Launcher({
     : isSearchActivity
     ? {
         label: t("launcher.searching", "Searching"),
+        detail: query.trim(),
         activity: isSearchSettling ? "bounce-exit" : "bounce",
       }
     : pluginIsland
