@@ -1,5 +1,5 @@
 import { useSettingsStore } from "./store";
-import { Row, SegmentedControl } from "../../components/ui";
+import { Input, Row, SegmentedControl } from "../../components/ui";
 import { useT } from "../../i18n";
 
 export default function WeatherSettings() {
@@ -31,14 +31,14 @@ export default function WeatherSettings() {
           title={t("weather.apiKey", "OpenWeatherMap API Key")}
           description={t("weather.apiKey.desc", "Optional. Get one at openweathermap.org. Without a key, Open-Meteo is used as fallback.")}
         >
-          <input
-            type="password"
-            value={w.api_key}
-            onChange={(e) => patchW({ api_key: e.target.value })}
-            placeholder="Enter API key..."
-            className="qx-input"
-            style={{ width: 240 }}
-          />
+          <div className="qx-settings-input-wrap">
+            <Input
+              type="password"
+              value={w.api_key}
+              onChange={(e) => patchW({ api_key: e.target.value })}
+              placeholder="Enter API key..."
+            />
+          </div>
         </Row>
       )}
 
@@ -46,14 +46,14 @@ export default function WeatherSettings() {
         title={t("weather.location", "Location")}
         description={t("weather.location.desc", "Leave empty for auto-detection via IP. Or enter a city name (e.g. Beijing) or coordinates (e.g. 39.9,116.4).")}
       >
-        <input
-          type="text"
-          value={w.location_override}
-          onChange={(e) => patchW({ location_override: e.target.value })}
-          placeholder={t("weather.location.placeholder", "Auto-detect or enter city/lat,lon")}
-          className="qx-input"
-          style={{ width: 240 }}
-        />
+        <div className="qx-settings-input-wrap">
+          <Input
+            type="text"
+            value={w.location_override}
+            onChange={(e) => patchW({ location_override: e.target.value })}
+            placeholder={t("weather.location.placeholder", "Auto-detect or enter city/lat,lon")}
+          />
+        </div>
       </Row>
 
       <Row

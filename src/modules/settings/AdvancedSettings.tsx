@@ -2,7 +2,7 @@ import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "./store";
 import { usePluginRegistry } from "../../plugin/registry";
-import { Row, Toggle, Select } from "../../components/ui";
+import { Row, Toggle, Select, Input } from "../../components/ui";
 import { useT } from "../../i18n";
 
 export default function AdvancedSettings() {
@@ -98,28 +98,28 @@ export default function AdvancedSettings() {
           value={adv.network_proxy_enabled}
           onChange={(v) => patch("advanced", { ...adv, network_proxy_enabled: v })}
         />
-        <input
-          type="text"
-          value={adv.network_proxy_url}
-          onChange={(e) => patch("advanced", { ...adv, network_proxy_url: e.target.value })}
-          placeholder="http://127.0.0.1:7890"
-          disabled={!adv.network_proxy_enabled}
-          style={{ width: 220 }}
-          className="qx-inline-input"
-        />
+        <div className="qx-settings-input-wrap">
+          <Input
+            type="text"
+            value={adv.network_proxy_url}
+            onChange={(e) => patch("advanced", { ...adv, network_proxy_url: e.target.value })}
+            placeholder="http://127.0.0.1:7890"
+            disabled={!adv.network_proxy_enabled}
+          />
+        </div>
       </Row>
       <Row
         title={t("advanced.importExport", "Import / Export Configuration")}
         description={t("advanced.importExport.desc", "Enter an absolute path. Import loads settings from JSON; Export writes current settings to JSON.")}
       >
-        <input
-          type="text"
-          value={ioPath}
-          onChange={(e) => setIoPath(e.target.value)}
-          placeholder="/path/to/qx-settings.json"
-          style={{ width: 220 }}
-          className="qx-inline-input"
-        />
+        <div className="qx-settings-input-wrap">
+          <Input
+            type="text"
+            value={ioPath}
+            onChange={(e) => setIoPath(e.target.value)}
+            placeholder="/path/to/qx-settings.json"
+          />
+        </div>
         <button
           onClick={handleImport}
           disabled={busy === "import" || !ioPath.trim()}
@@ -168,14 +168,14 @@ export default function AdvancedSettings() {
         title={t("advanced.createPlugin", "Create Plugin (qx init)")}
         description={t("advanced.createPlugin.desc", "Generate a new plugin scaffold with manifest.json, index.js, and README.")}
       >
-        <input
-          type="text"
-          value={pluginName}
-          onChange={(e) => setPluginName(e.target.value)}
-          placeholder="my-plugin"
-          style={{ width: 140 }}
-          className="qx-inline-input"
-        />
+        <div className="qx-settings-input-wrap" style={{ maxWidth: 160 }}>
+          <Input
+            type="text"
+            value={pluginName}
+            onChange={(e) => setPluginName(e.target.value)}
+            placeholder="my-plugin"
+          />
+        </div>
         <button
           onClick={handleScaffold}
           disabled={busy === "scaffold" || !pluginName.trim()}

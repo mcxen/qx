@@ -19,9 +19,48 @@ import { Skeleton } from "./shadcn/skeleton";
 import { Slider as ShadcnSlider } from "./shadcn/slider";
 import { Switch } from "./shadcn/switch";
 import { ToggleGroup, ToggleGroupItem } from "./shadcn/toggle-group";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./shadcn/card";
+import { Separator } from "./shadcn/separator";
+import { ScrollArea, ScrollBar } from "./shadcn/scroll-area";
 export { Badge } from "./shadcn/badge";
 export { Button } from "./shadcn/button";
 export { Input } from "./shadcn/input";
+export { Card, CardContent, CardDescription, CardHeader, CardTitle };
+export { Separator };
+export { ScrollArea, ScrollBar };
+
+export function SettingsCard({
+  title,
+  description,
+  trailing,
+  children,
+  className = "",
+}: {
+  title: string;
+  description?: string;
+  trailing?: ReactNode;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Card className={`qx-card ${className}`.trim()}>
+      <CardHeader>
+        <div style={{ minWidth: 0 }}>
+          <CardTitle>{title}</CardTitle>
+          {description && <CardDescription>{description}</CardDescription>}
+        </div>
+        {trailing}
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
+  );
+}
 
 export function Row({
   title,

@@ -269,8 +269,7 @@ RSS：
 Settings：
 
 - 使用 `visual="elevated"`。
-- 表单控件使用 shadcn/Qx 门面。
-- 设置组之间用分隔线或 spacing，不使用嵌套大卡片。
+- 面板结构、设计令牌、Row/Card/SettingsCard 规范、响应式断点与新增 tab 步骤见 [docs/settings-panel.md](docs/settings-panel.md)。
 
 Plugin Manager：
 

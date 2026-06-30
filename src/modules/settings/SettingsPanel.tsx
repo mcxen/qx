@@ -13,6 +13,7 @@ import AgentSettings from "./AgentSettings";
 import WeatherSettings from "./WeatherSettings";
 import AboutPanel from "./AboutPanel";
 import QxShell from "../../components/QxShell";
+import { ScrollArea } from "../../components/ui";
 import { useT } from "../../i18n";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
 
@@ -170,7 +171,11 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       <section className="qx-settings-content">
         <div className="qx-settings-title">{t(`nav.${activeTab}`, TAB_LABELS[activeTab])}</div>
         <div className={`qx-settings-body${activeTab === "plugins" ? " is-plugin-manager" : ""}`}>
-          {renderContent()}
+          {activeTab === "plugins" ? (
+            renderContent()
+          ) : (
+            <ScrollArea className="qx-settings-scroll">{renderContent()}</ScrollArea>
+          )}
         </div>
       </section>
     </QxShell>

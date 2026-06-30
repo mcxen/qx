@@ -1,3 +1,5 @@
+> Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
+
 ## Feature — 应用搜索中文名与拼音匹配
 
 **状态**：已实现，等待手动验证。

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { check } from "@tauri-apps/plugin-updater";
 import { open } from "@tauri-apps/plugin-shell";
-import { Row } from "../../components/ui";
+import { Row, SettingsCard } from "../../components/ui";
 import GifText from "../../components/gif-text";
 import { useT } from "../../i18n";
 
@@ -177,155 +177,164 @@ export default function AboutPanel() {
         />
       </div>
 
-      <Row title="Qx" description="A keyboard-driven productivity launcher for macOS.">
-        <span style={{ color: "var(--qx-text-secondary)" }}>v{version || "..."}</span>
-      </Row>
-
-      <Row
-        title="Latest Release"
-        description="Most recent version published on GitHub."
+      <SettingsCard
+        title={t("about.aboutCard.title", "About Qx")}
+        description={t(
+          "about.aboutCard.desc",
+          "Version, release, and update status.",
+        )}
       >
-        <span style={{ color: "var(--qx-text-secondary)" }}>
-          {latest ?? "Unable to fetch"}
-        </span>
-      </Row>
-
-      <Row title="Check for Updates" description="Manually check and install an available update.">
-        <button
-          onClick={() => void handleCheckUpdate()}
-          disabled={checking}
-          className="qx-command-button primary"
-        >
-          {checking ? "Checking..." : "Check Now"}
-        </button>
-      </Row>
-
-      {status && (
-        <Row title="Update Status" description={status}>
-          <span />
+        <Row title="Qx" description="A keyboard-driven productivity launcher for macOS.">
+          <span style={{ color: "var(--qx-text-secondary)" }}>v{version || "..."}</span>
         </Row>
-      )}
 
-      <Row title="GitHub Releases" description="View all releases and release notes.">
-        <button onClick={handleOpenReleases} className="qx-command-button">
-          Open Releases
-        </button>
-      </Row>
+        <Row
+          title="Latest Release"
+          description="Most recent version published on GitHub."
+        >
+          <span style={{ color: "var(--qx-text-secondary)" }}>
+            {latest ?? "Unable to fetch"}
+          </span>
+        </Row>
 
-      <div className="qx-storage-panel" aria-label={t("about.storage", "Storage")}>
-        <div className="qx-storage-header">
-          <div>
-            <div className="qx-settings-row-title">{t("about.storage", "Storage")}</div>
-            <div className="qx-settings-row-description">
-              {t("about.storage.desc", "View Qx local storage and clear generated cache or files.")}
-            </div>
-          </div>
-          <div className="qx-storage-total">{formatBytes(totalBytes)}</div>
-        </div>
-
-        <div className="qx-storage-rainbow" aria-hidden="true">
-          {(storage?.buckets ?? []).map((bucket) => {
-            const width = totalBytes > 0 ? Math.max((bucket.bytes / totalBytes) * 100, bucket.bytes > 0 ? 2 : 0) : 0;
-            return (
-              <span
-                key={bucket.id}
-                className={`qx-storage-slice bucket-${bucket.id}`}
-                style={{ width: `${width}%` }}
-              />
-            );
-          })}
-        </div>
-
-        <div className="qx-storage-actions">
+        <Row title="Check for Updates" description="Manually check and install an available update.">
           <button
-            className="qx-command-button"
-            onClick={() => void loadStorage()}
-            disabled={storageBusy !== null}
+            onClick={() => void handleCheckUpdate()}
+            disabled={checking}
+            className="qx-command-button primary"
           >
-            {storageBusy === "refresh" ? t("about.storage.refreshing", "Refreshing...") : t("about.storage.refresh", "Refresh")}
+            {checking ? "Checking..." : "Check Now"}
           </button>
-          <button
-            className="qx-command-button"
-            onClick={() => void clearStorage("cache")}
-            disabled={storageBusy !== null}
-          >
-            {storageBusy === "cache" ? t("about.storage.clearing", "Clearing...") : t("about.storage.clearCache", "Clear Cache")}
-          </button>
-          <button
-            className="qx-command-button"
-            onClick={() => void clearStorage("clipboard")}
-            disabled={storageBusy !== null}
-          >
-            {storageBusy === "clipboard" ? t("about.storage.clearing", "Clearing...") : t("about.storage.clearClipboard", "Clear Clipboard")}
-          </button>
-          <button
-            className="qx-command-button danger"
-            onClick={() => void clearStorage("files")}
-            disabled={storageBusy !== null}
-          >
-            {storageBusy === "files" ? t("about.storage.clearing", "Clearing...") : t("about.storage.clearFiles", "Clear Files")}
-          </button>
-        </div>
+        </Row>
 
-        {storageStatus && <div className="qx-storage-status">{storageStatus}</div>}
-        {warnings.length > 0 && (
-          <div className="qx-storage-status">
-            {t("about.storage.warnings", "Some entries were skipped:")} {warnings.join("; ")}
-          </div>
+        {status && (
+          <Row title="Update Status" description={status}>
+            <span />
+          </Row>
         )}
 
-        <div className="qx-storage-list">
-          {(storage?.buckets ?? []).map((bucket) => {
-            const label = t(`about.storage.${bucket.id}`, BUCKET_LABELS[bucket.id] ?? bucket.label);
-            return (
-              <div className="qx-storage-row" key={bucket.id}>
-                <span className={`qx-storage-dot bucket-${bucket.id}`} aria-hidden="true" />
-                <div className="qx-storage-copy">
-                  <div className="qx-storage-name">{label}</div>
-                  <div className="qx-storage-paths">
-                    {bucket.paths.map((entry) => (
-                      <div
-                        className={`qx-storage-path${entry.exists ? "" : " is-missing"}`}
-                        key={entry.path}
-                        title={entry.path}
-                      >
-                        {shortenPath(entry.path)}
-                        {!entry.exists && (
-                          <span className="qx-storage-path-tag">
-                            {t("about.storage.missing", "missing")}
-                          </span>
-                        )}
-                      </div>
-                    ))}
+        <Row title="GitHub Releases" description="View all releases and release notes.">
+          <button onClick={handleOpenReleases} className="qx-command-button">
+            Open Releases
+          </button>
+        </Row>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t("about.storage", "Storage")}
+        description={t(
+          "about.storage.desc",
+          "View Qx local storage and clear generated cache or files.",
+        )}
+        trailing={<div className="qx-storage-total">{formatBytes(totalBytes)}</div>}
+      >
+        <div className="qx-storage-panel" aria-label={t("about.storage", "Storage")}>
+          <div className="qx-storage-rainbow" aria-hidden="true">
+            {(storage?.buckets ?? []).map((bucket) => {
+              const width = totalBytes > 0 ? Math.max((bucket.bytes / totalBytes) * 100, bucket.bytes > 0 ? 2 : 0) : 0;
+              return (
+                <span
+                  key={bucket.id}
+                  className={`qx-storage-slice bucket-${bucket.id}`}
+                  style={{ width: `${width}%` }}
+                />
+              );
+            })}
+          </div>
+
+          <div className="qx-storage-actions">
+            <button
+              className="qx-command-button"
+              onClick={() => void loadStorage()}
+              disabled={storageBusy !== null}
+            >
+              {storageBusy === "refresh" ? t("about.storage.refreshing", "Refreshing...") : t("about.storage.refresh", "Refresh")}
+            </button>
+            <button
+              className="qx-command-button"
+              onClick={() => void clearStorage("cache")}
+              disabled={storageBusy !== null}
+            >
+              {storageBusy === "cache" ? t("about.storage.clearing", "Clearing...") : t("about.storage.clearCache", "Clear Cache")}
+            </button>
+            <button
+              className="qx-command-button"
+              onClick={() => void clearStorage("clipboard")}
+              disabled={storageBusy !== null}
+            >
+              {storageBusy === "clipboard" ? t("about.storage.clearing", "Clearing...") : t("about.storage.clearClipboard", "Clear Clipboard")}
+            </button>
+            <button
+              className="qx-command-button danger"
+              onClick={() => void clearStorage("files")}
+              disabled={storageBusy !== null}
+            >
+              {storageBusy === "files" ? t("about.storage.clearing", "Clearing...") : t("about.storage.clearFiles", "Clear Files")}
+            </button>
+          </div>
+
+          {storageStatus && <div className="qx-storage-status">{storageStatus}</div>}
+          {warnings.length > 0 && (
+            <div className="qx-storage-status">
+              {t("about.storage.warnings", "Some entries were skipped:")} {warnings.join("; ")}
+            </div>
+          )}
+
+          <div className="qx-storage-list">
+            {(storage?.buckets ?? []).map((bucket) => {
+              const label = t(`about.storage.${bucket.id}`, BUCKET_LABELS[bucket.id] ?? bucket.label);
+              return (
+                <div className="qx-storage-row" key={bucket.id}>
+                  <span className={`qx-storage-dot bucket-${bucket.id}`} aria-hidden="true" />
+                  <div className="qx-storage-copy">
+                    <div className="qx-storage-name">{label}</div>
+                    <div className="qx-storage-paths">
+                      {bucket.paths.map((entry) => (
+                        <div
+                          className={`qx-storage-path${entry.exists ? "" : " is-missing"}`}
+                          key={entry.path}
+                          title={entry.path}
+                        >
+                          {shortenPath(entry.path)}
+                          {!entry.exists && (
+                            <span className="qx-storage-path-tag">
+                              {t("about.storage.missing", "missing")}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="qx-storage-row-side">
+                    <div className="qx-storage-meta">
+                      <span>{formatBytes(bucket.bytes)}</span>
+                      <span>
+                        {bucket.files} {t("about.storage.files.unit", "files")}
+                      </span>
+                    </div>
+                    <div className="qx-storage-row-actions">
+                      {bucket.paths
+                        .filter((entry) => entry.path.startsWith("/"))
+                        .map((entry) => (
+                          <button
+                            key={entry.path}
+                            className="qx-icon-button"
+                            onClick={() => void open(entry.path)}
+                            disabled={!entry.exists}
+                            type="button"
+                            title={entry.path}
+                          >
+                            {t("about.storage.open", "Open")}
+                          </button>
+                        ))}
+                    </div>
                   </div>
                 </div>
-                <div className="qx-storage-meta">
-                  <span>{formatBytes(bucket.bytes)}</span>
-                  <span>
-                    {bucket.files} {t("about.storage.files.unit", "files")}
-                  </span>
-                </div>
-                <div className="qx-storage-row-actions">
-                  {bucket.paths
-                    .filter((entry) => entry.path.startsWith("/"))
-                    .map((entry) => (
-                      <button
-                        key={entry.path}
-                        className="qx-icon-button"
-                        onClick={() => void open(entry.path)}
-                        disabled={!entry.exists}
-                        type="button"
-                        title={entry.path}
-                      >
-                        {t("about.storage.open", "Open")}
-                      </button>
-                    ))}
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </SettingsCard>
     </div>
   );
 }

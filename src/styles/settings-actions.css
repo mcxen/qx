@@ -126,7 +126,12 @@
 }
 
 .qx-settings-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   padding: 6px 12px 16px;
+  min-width: 0;
+  width: 100%;
 }
 
 .qx-settings-row {
@@ -138,6 +143,13 @@
   padding: 8px 0;
   border-bottom: 1px solid var(--qx-border-1);
   transition: border-color 0.1s ease;
+  min-width: 0;
+}
+
+@media (max-width: 520px) {
+  .qx-settings-row {
+    flex-wrap: wrap;
+  }
 }
 
 .qx-settings-row-title {
@@ -169,9 +181,9 @@
 
 .qx-agent-control-stack {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(150px, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 8px;
-  min-width: min(360px, 46vw);
+  min-width: 0;
 }
 
 .qx-agent-inline-toggles {
@@ -181,6 +193,7 @@
   color: var(--qx-text-secondary);
   font-size: 12px;
   white-space: nowrap;
+  flex-wrap: wrap;
 }
 
 .qx-action-item {
@@ -1075,16 +1088,35 @@
   display: flex;
   flex-direction: column;
   border-top: 1px solid var(--qx-border-1);
+  container-type: inline-size;
 }
 
 .qx-storage-row {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   min-height: 42px;
   padding: 8px 0;
   border-bottom: 1px solid var(--qx-border-1);
+}
+
+@container (max-width: 560px) {
+  .qx-storage-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .qx-storage-row-side {
+    align-items: flex-start !important;
+  }
+}
+
+.qx-storage-row-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  min-width: 0;
 }
 
 .qx-storage-copy {
@@ -1130,8 +1162,10 @@
 
 .qx-storage-row-actions {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 4px;
 }
 
@@ -1148,4 +1182,85 @@
   color: var(--qx-text-secondary);
   font-size: 11px;
   white-space: nowrap;
+}
+
+@container (max-width: 560px) {
+  .qx-storage-meta {
+    align-items: flex-start;
+    white-space: normal;
+  }
+}
+
+/* ====== Card primitive (shadcn-style hook) ====== */
+.qx-shadcn-card,
+.qx-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-card-radius);
+  padding: 14px 16px;
+  min-width: 0;
+}
+
+.qx-card + .qx-card {
+  margin-top: 0;
+}
+
+.qx-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.qx-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--qx-text-primary);
+}
+
+.qx-card-description {
+  font-size: 12px;
+  color: var(--qx-text-tertiary);
+  margin-top: 2px;
+}
+
+.qx-card-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  margin-top: 8px;
+}
+
+.qx-card-body .qx-settings-row:last-child {
+  border-bottom: none;
+}
+
+/* ====== Settings body uses ScrollArea ====== */
+.qx-settings-body {
+  overflow: hidden;
+}
+
+.qx-settings-scroll {
+  height: 100%;
+  width: 100%;
+}
+
+.qx-settings-title {
+  min-width: 0;
+}
+
+/* Wrapper used inside .qx-settings-row-control to constrain a shadcn Input to a
+   sensible max width while still shrinking at narrow window widths. */
+.qx-settings-input-wrap {
+  width: 100%;
+  max-width: 280px;
+  min-width: 0;
+}
+
+.qx-settings-input-wrap .qx-shadcn-input,
+.qx-settings-input-wrap input {
+  width: 100%;
 }

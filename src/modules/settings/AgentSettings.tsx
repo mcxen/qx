@@ -1,14 +1,10 @@
 import { useEffect, useMemo } from "react";
-import { LoadingLabel, Row, SegmentedControl, Select, Slider, Toggle } from "../../components/ui";
+import { LoadingLabel, Row, SegmentedControl, Select, SettingsCard, Slider, Toggle } from "../../components/ui";
 import { useG4fStore } from "../qx-ai/store";
 import { useT } from "../../i18n";
 import { useSettingsStore, type AgentSettings as AgentSettingsValue } from "./store";
 
 type ProviderOption = { value: string; label: string; disabled?: boolean };
-
-function SectionLabel({ children }: { children: string }) {
-  return <div className="qx-settings-section-label">{children}</div>;
-}
 
 export default function AgentSettings() {
   const { settings, patch } = useSettingsStore();
@@ -104,216 +100,245 @@ export default function AgentSettings() {
 
   return (
     <div className="qx-settings-page">
-      <Row
-        title={t("agent.mode", "Agent Mode")}
-        description={t("agent.mode.desc", "Allow QxAI and plugins to run multi-step agent tasks with model and tool settings.")}
+      <SettingsCard
+        title={t("agent.basics.title", "Agent & Model")}
+        description={t(
+          "agent.basics.desc",
+          "Master switch and the model used for agent tasks.",
+        )}
       >
-        <Toggle
-          value={agent.agent_mode_enabled}
-          onChange={(value) => patchAgent({ agent_mode_enabled: value })}
-        />
-      </Row>
+        <Row
+          title={t("agent.mode", "Agent Mode")}
+          description={t("agent.mode.desc", "Allow QxAI and plugins to run multi-step agent tasks with model and tool settings.")}
+        >
+          <Toggle
+            value={agent.agent_mode_enabled}
+            onChange={(value) => patchAgent({ agent_mode_enabled: value })}
+          />
+        </Row>
 
-      <Row
-        title={t("agent.defaultModel", "Default Agent Model")}
-        description={t("agent.defaultModel.desc", "Model used when an agent task does not specify provider or model.")}
-      >
-        <div className="qx-agent-control-stack">
-          {loading ? (
-            <span className="qx-settings-muted">
-              <LoadingLabel>{t("agent.loadingModels", "Loading models...")}</LoadingLabel>
-            </span>
-          ) : providerOptions.length > 0 ? (
-            <>
-              <Select
-                value={effectiveProvider}
-                onChange={selectProvider}
-                options={providerOptions}
-                ariaLabel={t("agent.provider", "Agent Provider")}
-              />
-              {modelOptions.length > 0 ? (
+        <Row
+          title={t("agent.defaultModel", "Default Agent Model")}
+          description={t("agent.defaultModel.desc", "Model used when an agent task does not specify provider or model.")}
+        >
+          <div className="qx-agent-control-stack">
+            {loading ? (
+              <span className="qx-settings-muted">
+                <LoadingLabel>{t("agent.loadingModels", "Loading models...")}</LoadingLabel>
+              </span>
+            ) : providerOptions.length > 0 ? (
+              <>
                 <Select
-                  value={effectiveModel}
-                  onChange={selectModel}
-                  options={modelOptions}
-                  ariaLabel={t("agent.model", "Agent Model")}
+                  value={effectiveProvider}
+                  onChange={selectProvider}
+                  options={providerOptions}
+                  ariaLabel={t("agent.provider", "Agent Provider")}
                 />
-              ) : (
-                <span className="qx-settings-muted">{t("agent.noModels", "No models for this provider")}</span>
-              )}
-            </>
-          ) : (
-            <span className="qx-settings-muted">{error || t("agent.noProviders", "No AI providers available")}</span>
-          )}
-        </div>
-      </Row>
+                {modelOptions.length > 0 ? (
+                  <Select
+                    value={effectiveModel}
+                    onChange={selectModel}
+                    options={modelOptions}
+                    ariaLabel={t("agent.model", "Agent Model")}
+                  />
+                ) : (
+                  <span className="qx-settings-muted">{t("agent.noModels", "No models for this provider")}</span>
+                )}
+              </>
+            ) : (
+              <span className="qx-settings-muted">{error || t("agent.noProviders", "No AI providers available")}</span>
+            )}
+          </div>
+        </Row>
 
-      <Row
-        title={t("agent.modelTools", "Model Tool Calling")}
-        description={t("agent.modelTools.desc", "Mark the selected model as allowed to receive tool schemas when the runtime supports it.")}
-      >
-        <Toggle
-          value={agent.model_tools_enabled}
-          onChange={(value) => patchAgent({ model_tools_enabled: value })}
-        />
-      </Row>
+        <Row
+          title={t("agent.modelTools", "Model Tool Calling")}
+          description={t("agent.modelTools.desc", "Mark the selected model as allowed to receive tool schemas when the runtime supports it.")}
+        >
+          <Toggle
+            value={agent.model_tools_enabled}
+            onChange={(value) => patchAgent({ model_tools_enabled: value })}
+          />
+        </Row>
+      </SettingsCard>
 
-      <SectionLabel>{t("agent.tools", "Tools")}</SectionLabel>
-      <Row
-        title={t("agent.tools.enabled", "Enable Tools")}
-        description={`${t("agent.tools.enabled.desc", "Master switch for agent tool execution.")} ${toolCount} tool groups selected.`}
+      <SettingsCard
+        title={t("agent.tools", "Tools")}
+        description={t(
+          "agent.tools.desc",
+          "Tool groups the agent runtime can call. Driven by these switches.",
+        )}
       >
-        <Toggle
-          value={agent.tools_enabled}
-          onChange={(value) => patchAgent({ tools_enabled: value })}
-        />
-      </Row>
-      <Row
-        title={t("agent.tools.memory", "Memory Tool")}
-        description={t("agent.tools.memory.desc", "Allow agents to read and write user-managed QxAI memory.")}
-      >
-        <Toggle
-          value={agent.memory_tool_enabled}
-          onChange={(value) => patchAgent({ memory_tool_enabled: value })}
-        />
-      </Row>
-      <Row
-        title={t("agent.tools.search", "App & File Search")}
-        description={t("agent.tools.search.desc", "Expose Qx app search and file search as agent tools.")}
-      >
-        <div className="qx-agent-inline-toggles">
-          <span>{t("agent.tools.apps", "Apps")}</span>
+        <Row
+          title={t("agent.tools.enabled", "Enable Tools")}
+          description={`${t("agent.tools.enabled.desc", "Master switch for agent tool execution.")} ${toolCount} tool groups selected.`}
+        >
           <Toggle
-            value={agent.app_search_enabled}
-            onChange={(value) => patchAgent({ app_search_enabled: value })}
+            value={agent.tools_enabled}
+            onChange={(value) => patchAgent({ tools_enabled: value })}
           />
-          <span>{t("agent.tools.files", "Files")}</span>
+        </Row>
+        <Row
+          title={t("agent.tools.memory", "Memory Tool")}
+          description={t("agent.tools.memory.desc", "Allow agents to read and write user-managed QxAI memory.")}
+        >
           <Toggle
-            value={agent.file_search_enabled}
-            onChange={(value) => patchAgent({ file_search_enabled: value })}
+            value={agent.memory_tool_enabled}
+            onChange={(value) => patchAgent({ memory_tool_enabled: value })}
           />
-        </div>
-      </Row>
-      <Row
-        title={t("agent.tools.network", "HTTP & Notifications")}
-        description={t("agent.tools.network.desc", "Optional external fetch and completion notification tools.")}
-      >
-        <div className="qx-agent-inline-toggles">
-          <span>{t("agent.tools.http", "HTTP")}</span>
+        </Row>
+        <Row
+          title={t("agent.tools.search", "App & File Search")}
+          description={t("agent.tools.search.desc", "Expose Qx app search and file search as agent tools.")}
+        >
+          <div className="qx-agent-inline-toggles">
+            <span>{t("agent.tools.apps", "Apps")}</span>
+            <Toggle
+              value={agent.app_search_enabled}
+              onChange={(value) => patchAgent({ app_search_enabled: value })}
+            />
+            <span>{t("agent.tools.files", "Files")}</span>
+            <Toggle
+              value={agent.file_search_enabled}
+              onChange={(value) => patchAgent({ file_search_enabled: value })}
+            />
+          </div>
+        </Row>
+        <Row
+          title={t("agent.tools.network", "HTTP & Notifications")}
+          description={t("agent.tools.network.desc", "Optional external fetch and completion notification tools.")}
+        >
+          <div className="qx-agent-inline-toggles">
+            <span>{t("agent.tools.http", "HTTP")}</span>
+            <Toggle
+              value={agent.http_fetch_enabled}
+              onChange={(value) => patchAgent({ http_fetch_enabled: value })}
+            />
+            <span>{t("agent.tools.notify", "Notify")}</span>
+            <Toggle
+              value={agent.notifications_enabled}
+              onChange={(value) => patchAgent({ notifications_enabled: value })}
+            />
+          </div>
+        </Row>
+        <Row
+          title={t("agent.tools.mcp", "MCP Tools")}
+          description={t("agent.tools.mcp.desc", "Reserve MCP tool access for the agent runtime. Individual MCP servers are still configured separately.")}
+        >
           <Toggle
-            value={agent.http_fetch_enabled}
-            onChange={(value) => patchAgent({ http_fetch_enabled: value })}
+            value={agent.mcp_enabled}
+            onChange={(value) => patchAgent({ mcp_enabled: value })}
           />
-          <span>{t("agent.tools.notify", "Notify")}</span>
+        </Row>
+        <Row
+          title={t("agent.background", "Background Tasks")}
+          description={t("agent.background.desc", "Allow agent tasks to continue while Qx is hidden and notify when they finish.")}
+        >
           <Toggle
-            value={agent.notifications_enabled}
-            onChange={(value) => patchAgent({ notifications_enabled: value })}
+            value={agent.background_tasks_enabled}
+            onChange={(value) => patchAgent({ background_tasks_enabled: value })}
           />
-        </div>
-      </Row>
-      <Row
-        title={t("agent.tools.mcp", "MCP Tools")}
-        description={t("agent.tools.mcp.desc", "Reserve MCP tool access for the agent runtime. Individual MCP servers are still configured separately.")}
-      >
-        <Toggle
-          value={agent.mcp_enabled}
-          onChange={(value) => patchAgent({ mcp_enabled: value })}
-        />
-      </Row>
-      <Row
-        title={t("agent.background", "Background Tasks")}
-        description={t("agent.background.desc", "Allow agent tasks to continue while Qx is hidden and notify when they finish.")}
-      >
-        <Toggle
-          value={agent.background_tasks_enabled}
-          onChange={(value) => patchAgent({ background_tasks_enabled: value })}
-        />
-      </Row>
+        </Row>
+      </SettingsCard>
 
-      <SectionLabel>{t("agent.bash", "Bash Tool")}</SectionLabel>
-      <Row
-        title={t("agent.bash.enabled", "Enable Bash")}
-        description={t("agent.bash.enabled.desc", "Allow permissioned plugins to run real /bin/bash scripts through the AI runtime.")}
+      <SettingsCard
+        title={t("agent.bash", "Bash Tool")}
+        description={t(
+          "agent.bash.desc",
+          "Run real shell scripts through the AI runtime.",
+        )}
       >
-        <Toggle
-          value={agent.bash_enabled}
-          onChange={(value) => patchAgent({ bash_enabled: value })}
-        />
-      </Row>
-      <Row
-        title={t("agent.bash.cwd", "Default Working Directory")}
-        description={t("agent.bash.cwd.desc", "Optional cwd used when a task does not provide one. Empty uses the app process cwd.")}
-      >
-        <input
-          className="qx-inline-input"
-          value={agent.bash_cwd}
-          onChange={(event) => patchAgent({ bash_cwd: event.target.value })}
-          placeholder="~/Documents/OpenSpring/Qx"
-        />
-      </Row>
-      <Row
-        title={t("agent.bash.timeout", "Bash Timeout")}
-        description={t("agent.bash.timeout.desc", "Upper bound for each bash call. Plugin requests are clamped to this value.")}
-      >
-        <Slider
-          value={agent.bash_timeout_ms}
-          min={5000}
-          max={120000}
-          step={5000}
-          onChange={(value) => patchAgent({ bash_timeout_ms: value })}
-          formatLabel={(value) => `${Math.round(value / 1000)}s`}
-          ariaLabel={t("agent.bash.timeout", "Bash Timeout")}
-        />
-      </Row>
+        <Row
+          title={t("agent.bash.enabled", "Enable Bash")}
+          description={t("agent.bash.enabled.desc", "Allow permissioned plugins to run real /bin/bash scripts through the AI runtime.")}
+        >
+          <Toggle
+            value={agent.bash_enabled}
+            onChange={(value) => patchAgent({ bash_enabled: value })}
+          />
+        </Row>
+        <Row
+          title={t("agent.bash.cwd", "Default Working Directory")}
+          description={t("agent.bash.cwd.desc", "Optional cwd used when a task does not provide one. Empty uses the app process cwd.")}
+        >
+          <input
+            className="qx-inline-input"
+            value={agent.bash_cwd}
+            onChange={(event) => patchAgent({ bash_cwd: event.target.value })}
+            placeholder="~/Documents/OpenSpring/Qx"
+          />
+        </Row>
+        <Row
+          title={t("agent.bash.timeout", "Bash Timeout")}
+          description={t("agent.bash.timeout.desc", "Upper bound for each bash call. Plugin requests are clamped to this value.")}
+        >
+          <Slider
+            value={agent.bash_timeout_ms}
+            min={5000}
+            max={120000}
+            step={5000}
+            onChange={(value) => patchAgent({ bash_timeout_ms: value })}
+            formatLabel={(value) => `${Math.round(value / 1000)}s`}
+            ariaLabel={t("agent.bash.timeout", "Bash Timeout")}
+          />
+        </Row>
+      </SettingsCard>
 
-      <SectionLabel>{t("agent.grep", "Grep Search")}</SectionLabel>
-      <Row
-        title={t("agent.grep.enabled", "Enable Grep Search")}
-        description={t("agent.grep.enabled.desc", "Expose a real rg/grep text search tool for agent tasks.")}
+      <SettingsCard
+        title={t("agent.grep", "Grep Search")}
+        description={t(
+          "agent.grep.desc",
+          "Expose a real text search tool for agent tasks.",
+        )}
       >
-        <Toggle
-          value={agent.grep_search_enabled}
-          onChange={(value) => patchAgent({ grep_search_enabled: value })}
-        />
-      </Row>
-      <Row
-        title={t("agent.grep.command", "Search Backend")}
-        description={t("agent.grep.command.desc", "Use ripgrep when available; grep is the system fallback.")}
-      >
-        <SegmentedControl
-          value={agent.grep_command}
-          onChange={(value) => patchAgent({ grep_command: value })}
-          options={[
-            { value: "rg", label: "rg" },
-            { value: "grep", label: "grep" },
-          ]}
-        />
-      </Row>
-      <Row
-        title={t("agent.grep.root", "Default Search Root")}
-        description={t("agent.grep.root.desc", "Optional folder used when a grep task does not provide a root. Empty uses the home folder.")}
-      >
-        <input
-          className="qx-inline-input"
-          value={agent.grep_root}
-          onChange={(event) => patchAgent({ grep_root: event.target.value })}
-          placeholder="~/Documents"
-        />
-      </Row>
-      <Row
-        title={t("agent.grep.limit", "Max Grep Results")}
-        description={t("agent.grep.limit.desc", "Result cap returned to the agent for each grep search.")}
-      >
-        <Slider
-          value={agent.grep_max_results}
-          min={10}
-          max={250}
-          step={10}
-          onChange={(value) => patchAgent({ grep_max_results: value })}
-          formatLabel={(value) => `${value}`}
-          ariaLabel={t("agent.grep.limit", "Max Grep Results")}
-        />
-      </Row>
+        <Row
+          title={t("agent.grep.enabled", "Enable Grep Search")}
+          description={t("agent.grep.enabled.desc", "Expose a real rg/grep text search tool for agent tasks.")}
+        >
+          <Toggle
+            value={agent.grep_search_enabled}
+            onChange={(value) => patchAgent({ grep_search_enabled: value })}
+          />
+        </Row>
+        <Row
+          title={t("agent.grep.command", "Search Backend")}
+          description={t("agent.grep.command.desc", "Use ripgrep when available; grep is the system fallback.")}
+        >
+          <SegmentedControl
+            value={agent.grep_command}
+            onChange={(value) => patchAgent({ grep_command: value })}
+            options={[
+              { value: "rg", label: "rg" },
+              { value: "grep", label: "grep" },
+            ]}
+          />
+        </Row>
+        <Row
+          title={t("agent.grep.root", "Default Search Root")}
+          description={t("agent.grep.root.desc", "Optional folder used when a grep task does not provide a root. Empty uses the home folder.")}
+        >
+          <input
+            className="qx-inline-input"
+            value={agent.grep_root}
+            onChange={(event) => patchAgent({ grep_root: event.target.value })}
+            placeholder="~/Documents"
+          />
+        </Row>
+        <Row
+          title={t("agent.grep.limit", "Max Grep Results")}
+          description={t("agent.grep.limit.desc", "Result cap returned to the agent for each grep search.")}
+        >
+          <Slider
+            value={agent.grep_max_results}
+            min={10}
+            max={250}
+            step={10}
+            onChange={(value) => patchAgent({ grep_max_results: value })}
+            formatLabel={(value) => `${value}`}
+            ariaLabel={t("agent.grep.limit", "Max Grep Results")}
+          />
+        </Row>
+      </SettingsCard>
     </div>
   );
 }

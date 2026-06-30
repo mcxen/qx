@@ -1,5 +1,5 @@
 import { useSettingsStore } from "./store";
-import { Row, Toggle, Select } from "../../components/ui";
+import { Input, Row, Toggle, Select } from "../../components/ui";
 import { useT } from "../../i18n";
 
 export default function GeneralSettings() {
@@ -53,13 +53,13 @@ export default function GeneralSettings() {
         title={t("general.dataPath", "Data Path")}
         description={t("general.dataPath.desc", "Where Qx stores databases, recordings and history.")}
       >
-        <input
-          type="text"
-          value={g.data_path}
-          onChange={(e) => patch("general", { ...g, data_path: e.target.value })}
-          style={{ width: 280 }}
-          className="qx-inline-input"
-        />
+        <div className="qx-settings-input-wrap">
+          <Input
+            type="text"
+            value={g.data_path}
+            onChange={(e) => patch("general", { ...g, data_path: e.target.value })}
+          />
+        </div>
       </Row>
       <Row
         title={t("general.reset", "Reset All Settings")}
