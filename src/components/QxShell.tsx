@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useMemo, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import QxBottomIsland, { type BottomIslandContent } from "./QxBottomIsland";
 import ShellActionButton, { type QxShellAction } from "./ShellActionButton";
 import ShellActionMenu from "./ShellActionMenu";
@@ -25,6 +25,7 @@ interface QxShellProps {
   onBack?: () => void;
   backLabel?: string;
   className?: string;
+  style?: CSSProperties;
   onKeyDown?: (event: React.KeyboardEvent) => void;
   overlayBottom?: boolean;
 }
@@ -47,6 +48,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   onBack,
   backLabel = "Back",
   className = "",
+  style,
   onKeyDown,
   overlayBottom,
 }, ref) {
@@ -147,6 +149,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     <div
       ref={ref}
       className={`qx-shell visual-${visual} ${context ? "has-context" : ""} ${overlayBottom ? "qx-shell-overlay-bottom" : ""} ${className}`}
+      style={style}
       aria-label={title}
       onKeyDownCapture={handleKeyDown}
       tabIndex={0}

@@ -64,8 +64,8 @@
   --qx-border-2: #d4d4d4;
   --qx-border-3: #a3a3a3;
   --qx-text-primary: #0a0a0a;
-  --qx-text-secondary: #6b6b6b;
-  --qx-text-tertiary: #a0a0a0;
+  --qx-text-secondary: #525252;
+  --qx-text-tertiary: #737373;
 
   --qx-glass-bg: 250, 250, 250;
   --qx-glass-border: rgba(0, 0, 0, 0.06);
@@ -160,8 +160,8 @@
   --qx-border-2: #333333;
   --qx-border-3: #454545;
   --qx-text-primary: #ededed;
-  --qx-text-secondary: #878787;
-  --qx-text-tertiary: #6b6b6b;
+  --qx-text-secondary: #b8b8b8;
+  --qx-text-tertiary: #9a9a9a;
 
   --qx-glass-bg: 10, 10, 10;
   --qx-glass-border: rgba(255, 255, 255, 0.06);

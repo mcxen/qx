@@ -44,6 +44,21 @@ const SECTION_LABELS: Record<Section["key"], string> = {
   earlier: "Earlier",
 };
 
+const RSS_LIST_WIDTH_KEY = "qx:rss:list-width";
+const RSS_CONTEXT_WIDTH_KEY = "qx:rss:context-width";
+const DEFAULT_RSS_LIST_WIDTH = 340;
+const DEFAULT_RSS_CONTEXT_WIDTH = 300;
+
+function clampWidth(value: number, min: number, max: number): number {
+  return Math.round(Math.max(min, Math.min(max, value)));
+}
+
+function readStoredWidth(key: string, fallback: number): number {
+  if (typeof window === "undefined") return fallback;
+  const stored = Number(window.localStorage.getItem(key));
+  return Number.isFinite(stored) && stored > 0 ? stored : fallback;
+}
+
 export default function ArticleList() {
   const {
     feeds,
@@ -71,6 +86,14 @@ export default function ArticleList() {
   const [localQuery, setLocalQuery] = useState("");
   const [lightbox, setLightbox] = useState<string | null>(null);
   const [scrollPercent, setScrollPercent] = useState(0);
+  const [listWidth, setListWidth] = useState(() =>
+    readStoredWidth(RSS_LIST_WIDTH_KEY, DEFAULT_RSS_LIST_WIDTH),
+  );
+  const [contextWidth, setContextWidth] = useState(() =>
+    readStoredWidth(RSS_CONTEXT_WIDTH_KEY, DEFAULT_RSS_CONTEXT_WIDTH),
+  );
+  const shellRef = useRef<HTMLDivElement>(null);
+  const splitRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const rss = useSettingsStore((s) => s.settings.rss);
   const { bottom_island_mode, image_display_mode, image_fixed_width, article_font_size, article_font_family } = rss;
@@ -117,6 +140,98 @@ export default function ArticleList() {
         display: "block",
         borderRadius: 4,
       };
+  const shellStyle = {
+    "--qx-rss-list-w": `${listWidth}px`,
+    "--qx-context-w": `${contextWidth}px`,
+  } as CSSProperties;
+
+  const startListResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const split = splitRef.current;
+    if (!split) return;
+    const rect = split.getBoundingClientRect();
+    const min = 220;
+    const max = Math.max(min, rect.width - 320);
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const update = (clientX: number) => {
+      const next = clampWidth(clientX - rect.left, min, max);
+      setListWidth(next);
+      window.localStorage.setItem(RSS_LIST_WIDTH_KEY, String(next));
+    };
+    const onMove = (moveEvent: PointerEvent) => update(moveEvent.clientX);
+    const onUp = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+
+    update(event.clientX);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+  }, []);
+
+  const startContextResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const main = shellRef.current?.querySelector(".qx-shell-main") as HTMLElement | null;
+    if (!main) return;
+    const rect = main.getBoundingClientRect();
+    const min = 220;
+    const max = Math.max(min, rect.width - 420);
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const update = (clientX: number) => {
+      const next = clampWidth(rect.right - clientX, min, max);
+      setContextWidth(next);
+      window.localStorage.setItem(RSS_CONTEXT_WIDTH_KEY, String(next));
+    };
+    const onMove = (moveEvent: PointerEvent) => update(moveEvent.clientX);
+    const onUp = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+
+    update(event.clientX);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+  }, []);
+
+  const nudgeListWidth = useCallback((delta: number) => {
+    const split = splitRef.current;
+    const rectWidth = split?.getBoundingClientRect().width ?? 980;
+    const next = clampWidth(listWidth + delta, 220, Math.max(220, rectWidth - 320));
+    setListWidth(next);
+    window.localStorage.setItem(RSS_LIST_WIDTH_KEY, String(next));
+  }, [listWidth]);
+
+  const nudgeContextWidth = useCallback((delta: number) => {
+    const main = shellRef.current?.querySelector(".qx-shell-main") as HTMLElement | null;
+    const rectWidth = main?.getBoundingClientRect().width ?? 980;
+    const next = clampWidth(contextWidth + delta, 220, Math.max(220, rectWidth - 420));
+    setContextWidth(next);
+    window.localStorage.setItem(RSS_CONTEXT_WIDTH_KEY, String(next));
+  }, [contextWidth]);
+
+  const onListResizeKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    nudgeListWidth(event.key === "ArrowLeft" ? -24 : 24);
+  }, [nudgeListWidth]);
+
+  const onContextResizeKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    nudgeContextWidth(event.key === "ArrowLeft" ? 24 : -24);
+  }, [nudgeContextWidth]);
 
   const sections: Section[] = useMemo(() => {
     const groups: Record<string, RssArticle[]> = {
@@ -361,8 +476,10 @@ export default function ArticleList() {
 
   return (
     <QxShell
+      ref={shellRef}
       title={feed?.title || "RSS Articles"}
       className="qx-content-shell qx-rss-shell"
+      style={shellStyle}
       onKeyDown={onKeyDown}
       onBack={goBack}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
@@ -393,21 +510,36 @@ export default function ArticleList() {
         />
       }
       context={
-        <aside className="qx-action-panel">
-          <div className="qx-action-title">Article Actions</div>
-          {actions.map((action, index) => (
-            <button
-              key={`${action.label}-${index}`}
-              className={`qx-action-item${action.tone === "danger" ? " danger" : ""}`}
-              onClick={action.onClick}
-              disabled={action.disabled}
-              type="button"
-            >
-              <span>{action.label}</span>
-              {action.kbd && <kbd>{action.kbd}</kbd>}
-            </button>
-          ))}
-        </aside>
+        <div className="qx-rss-context-wrap">
+          <div
+            className="qx-rss-resize-handle qx-rss-context-resize"
+            role="separator"
+            aria-label="Resize RSS actions panel"
+            aria-orientation="vertical"
+            tabIndex={0}
+            onPointerDown={startContextResize}
+            onKeyDown={onContextResizeKeyDown}
+            onDoubleClick={() => {
+              setContextWidth(DEFAULT_RSS_CONTEXT_WIDTH);
+              window.localStorage.setItem(RSS_CONTEXT_WIDTH_KEY, String(DEFAULT_RSS_CONTEXT_WIDTH));
+            }}
+          />
+          <div className="qx-action-panel qx-rss-context-content">
+            <div className="qx-action-title">Article Actions</div>
+            {actions.map((action, index) => (
+              <button
+                key={`${action.label}-${index}`}
+                className={`qx-action-item${action.tone === "danger" ? " danger" : ""}`}
+                onClick={action.onClick}
+                disabled={action.disabled}
+                type="button"
+              >
+                <span>{action.label}</span>
+                {action.kbd && <kbd>{action.kbd}</kbd>}
+              </button>
+            ))}
+          </div>
+        </div>
       }
       island={island}
       primaryAction={{
@@ -424,7 +556,10 @@ export default function ArticleList() {
       actionTitle="Article Actions"
       actions={actions}
     >
-      <div className={`qx-content-split${currentArticle ? " has-detail" : ""}`}>
+      <div
+        ref={splitRef}
+        className={`qx-content-split qx-rss-article-split${currentArticle ? " has-detail" : ""}`}
+      >
         <div className="qx-content-list qx-plugin-list">
           {sections.map((section) => (
             <div key={section.key}>
@@ -485,6 +620,20 @@ export default function ArticleList() {
             </div>
           )}
         </div>
+
+        <div
+          className="qx-rss-resize-handle qx-rss-list-resize"
+          role="separator"
+          aria-label="Resize RSS article list"
+          aria-orientation="vertical"
+          tabIndex={0}
+          onPointerDown={startListResize}
+          onKeyDown={onListResizeKeyDown}
+          onDoubleClick={() => {
+            setListWidth(DEFAULT_RSS_LIST_WIDTH);
+            window.localStorage.setItem(RSS_LIST_WIDTH_KEY, String(DEFAULT_RSS_LIST_WIDTH));
+          }}
+        />
 
         <article className="qx-content-detail qx-plugin-detail qx-rss-detail-content">
           {currentArticle ? (
