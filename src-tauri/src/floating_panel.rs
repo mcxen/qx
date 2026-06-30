@@ -51,10 +51,13 @@ mod macos {
                 | NSWindowStyleMask::Resizable.0 as usize;
             let _: () = msg_send![ns_window, setStyleMask: next];
 
-            // Don't deactivate when other apps come to front; only become key
-            // window on explicit request (e.g. when a text input is focused).
+            // Don't deactivate when other apps come to front; we explicitly
+            // make the panel key on every show so keyboard events (Esc,
+            // arrows, typing) reliably reach the webview. The Nonactivating
+            // mask + Accessory activation policy still keep the previous
+            // app visually frontmost — its menu bar stays active.
             let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
-            let _: () = msg_send![ns_window, setBecomesKeyOnlyIfNeeded: true];
+            let _: () = msg_send![ns_window, setBecomesKeyOnlyIfNeeded: false];
             let _: () = msg_send![ns_window, setWorksWhenModal: true];
             let _: () = msg_send![ns_window, setFloatingPanel: true];
 
@@ -131,6 +134,11 @@ pub fn show_floating(app: &AppHandle) {
     {
         macos::promote_main_to_panel(app);
         macos::order_front_without_activating(app);
+        // Make the panel key window on every show. Without this, the panel
+        // loses key status after hide and keyboard events (Esc especially)
+        // stop reaching the webview — SearchBar's mount effect only fires
+        // once, so it can't restore key on subsequent shows.
+        macos::make_key_window(app);
     }
     #[cfg(not(target_os = "macos"))]
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
