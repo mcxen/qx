@@ -1,3 +1,28 @@
+## Feature — 应用搜索中文名与拼音匹配
+
+**状态**：已实现，等待手动验证。
+
+### 新增内容
+
+- `apps::AppEntry` 新增 `display_name` 字段并下发前端，优先取 `zh-Hans.lproj` / `zh_CN.lproj` / `Chinese.lproj` 中的 `CFBundleDisplayName`。
+- 新增 `apps_zh_dict.rs`，内置 Apple 系统应用（访达、应用商店、系统设置、邮件、终端、活动监视器等约 60 项）的中文展示名与别名，按 `CFBundleIdentifier` 索引。
+- `localized_bundle_aliases` 改为 `resolve_localized_names`，同时返回 `(display_name, aliases)`；扫描时把所有中文别名（含字典）转成全拼与首字母写入 `aliases`，让用户用 `weixin` / `wx` 也能命中。
+- `search_apps` 评分新增 `display_name` 的 exact / starts_with / contains 三档，与 `name` 等权重；`aliases` 仍按原顺序兜底，命中拼音和 Apple 系统 app 中文名。
+- 引入 Rust `pinyin = "0.10"` crate（轻量、纯 Rust，无 native 依赖）。
+- 前端 `AppEntry` 类型新增可选 `display_name`，新增 `src/search/appDisplay.ts` 暴露 `useDisplayName()`；`ResultsList` 与 `LauncherContext` 在 `general.language === "zh-CN"` 时优先渲染中文名。
+- `apps` 表 schema 新增 `display_name` 列并通过 `ALTER TABLE` 安全升级旧 DB。
+- `UI_SPEC.md` 新增 "Application Naming" 节，明确 `name` / `display_name` / `aliases` 的语义与优先级。
+
+### 验证
+
+- [ ] `npx tsc --noEmit`
+- [ ] `npm run build`
+- [ ] `cargo fmt --check`（`src-tauri/`）
+- [ ] `cargo check`（`src-tauri/`）
+- [ ] 手动验证：在 Launcher 输入"微信"命中 WeChat.app；输入"应用商店"命中 App Store；输入"访达"命中 Finder；输入 `weixin` / `wx` 命中微信；切换语言为英文时列表显示英文名。
+
+---
+
 ## Feature — Launcher 搜索别名与标签
 
 **状态**：已实现，等待验证。

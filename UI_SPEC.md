@@ -316,6 +316,15 @@ Esc 级联统一通过 `useEscBack`：
 - Bottom Bar 隐藏非必要快捷键，保留 Esc、Bottom Island 和主动作。
 - 按钮文字必须截断或缩短，不溢出容器。
 
+## Application Naming
+
+- 后端 `AppEntry` 同时携带 `name`（`.app` 文件名去掉 `.app`，作为身份标识）和 `display_name`（本地化展示名）。
+- `display_name` 解析优先级：`zh-Hans.lproj > zh_CN.lproj > Chinese.lproj > zh-Hant/zh_TW > 内置 Apple 系统 app 中文字典 > CFBundleDisplayName > name`。
+- `name` 永远是 path / metadata key / 历史记录的唯一身份，不随语言改变。
+- 前端在 `general.language === "zh-CN"` 时优先渲染 `display_name`，其他语言始终渲染 `name`。前端统一通过 `useDisplayName()` 取值，不要在业务组件中直接读取。
+- 搜索匹配使用 `name`、`display_name` 与 `aliases` 三路打分，`aliases` 由 Rust 端在扫描时一次性生成，包含全部本地化名称及其拼音（全拼 + 首字母），不下发到前端，不写入用户可见 UI。
+- Apple 系统应用中文名字典位于 `src-tauri/src/apps_zh_dict.rs`，按 `CFBundleIdentifier` 索引；新增条目时第一项默认作为该 app 的 zh-Hans 展示名（仅在没有 lproj 名时使用）。
+
 ## Native And Tauri Constraints
 
 - Tauri v2 通信使用 `@tauri-apps/api/core` 的 `invoke`。

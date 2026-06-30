@@ -7,10 +7,15 @@ import { Row } from "../../components/ui";
 import GifText from "../../components/gif-text";
 import { useT } from "../../i18n";
 
+interface StoragePath {
+  path: string;
+  exists: boolean;
+}
+
 interface StorageBucket {
   id: string;
   label: string;
-  path: string;
+  paths: StoragePath[];
   bytes: number;
   files: number;
   clearable: boolean;
@@ -19,6 +24,7 @@ interface StorageBucket {
 interface StorageOverview {
   total_bytes: number;
   buckets: StorageBucket[];
+  warnings: string[];
 }
 
 interface StorageClearResult {
@@ -26,10 +32,14 @@ interface StorageClearResult {
   cleared_files: number;
 }
 
+type ClearKind = "cache" | "files" | "clipboard";
+type BusyKind = ClearKind | "refresh";
+
 const BUCKET_LABELS: Record<string, string> = {
   cache: "Cache",
   files: "Files",
   databases: "Databases",
+  clipboard: "Clipboard",
   plugins: "Plugins",
   settings: "Settings",
 };
@@ -46,6 +56,16 @@ function formatBytes(bytes: number): string {
   return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
 }
 
+function shortenPath(path: string): string {
+  const home = "/Users/";
+  if (path.startsWith(home)) {
+    const rest = path.slice(home.length);
+    const slash = rest.indexOf("/");
+    if (slash >= 0) return `~${rest.slice(slash)}`;
+  }
+  return path;
+}
+
 export default function AboutPanel() {
   const t = useT();
   const [version, setVersion] = useState<string>("");
@@ -53,7 +73,7 @@ export default function AboutPanel() {
   const [checking, setChecking] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [storage, setStorage] = useState<StorageOverview | null>(null);
-  const [storageBusy, setStorageBusy] = useState<"cache" | "files" | "refresh" | null>(null);
+  const [storageBusy, setStorageBusy] = useState<BusyKind | null>(null);
   const [storageStatus, setStorageStatus] = useState("");
 
   const loadStorage = async () => {
@@ -106,17 +126,31 @@ export default function AboutPanel() {
     void open("https://github.com/mcxen/qx/releases");
   };
 
-  const clearStorage = async (kind: "cache" | "files") => {
-    const message =
-      kind === "cache"
-        ? t("about.storage.confirmCache", "Clear reusable caches? App icons and OCR models can be rebuilt or downloaded again.")
-        : t("about.storage.confirmFiles", "Delete Qx GIF recordings from the output folder?");
-    if (!window.confirm(message)) return;
+  const clearStorage = async (kind: ClearKind) => {
+    const messageMap: Record<ClearKind, string> = {
+      cache: t(
+        "about.storage.confirmCache",
+        "Clear reusable caches? App icons and OCR models can be rebuilt or downloaded again.",
+      ),
+      files: t(
+        "about.storage.confirmFiles",
+        "Delete Qx GIF recordings from the output folder?",
+      ),
+      clipboard: t(
+        "about.storage.confirmClipboard",
+        "Delete cached clipboard images? Text history is preserved.",
+      ),
+    };
+    if (!window.confirm(messageMap[kind])) return;
     try {
       setStorageBusy(kind);
       setStorageStatus("");
-      const command = kind === "cache" ? "qx_storage_clear_cache" : "qx_storage_clear_files";
-      const result = await invoke<StorageClearResult>(command);
+      const commandMap: Record<ClearKind, string> = {
+        cache: "qx_storage_clear_cache",
+        files: "qx_storage_clear_files",
+        clipboard: "qx_storage_clear_clipboard",
+      };
+      const result = await invoke<StorageClearResult>(commandMap[kind]);
       setStorageStatus(
         t("about.storage.cleared", "Cleared {size} across {count} files.")
           .replace("{size}", formatBytes(result.cleared_bytes))
@@ -131,6 +165,7 @@ export default function AboutPanel() {
   };
 
   const totalBytes = storage?.total_bytes ?? 0;
+  const warnings = storage?.warnings ?? [];
 
   return (
     <div className="qx-settings-page">
@@ -217,6 +252,13 @@ export default function AboutPanel() {
             {storageBusy === "cache" ? t("about.storage.clearing", "Clearing...") : t("about.storage.clearCache", "Clear Cache")}
           </button>
           <button
+            className="qx-command-button"
+            onClick={() => void clearStorage("clipboard")}
+            disabled={storageBusy !== null}
+          >
+            {storageBusy === "clipboard" ? t("about.storage.clearing", "Clearing...") : t("about.storage.clearClipboard", "Clear Clipboard")}
+          </button>
+          <button
             className="qx-command-button danger"
             onClick={() => void clearStorage("files")}
             disabled={storageBusy !== null}
@@ -226,27 +268,59 @@ export default function AboutPanel() {
         </div>
 
         {storageStatus && <div className="qx-storage-status">{storageStatus}</div>}
+        {warnings.length > 0 && (
+          <div className="qx-storage-status">
+            {t("about.storage.warnings", "Some entries were skipped:")} {warnings.join("; ")}
+          </div>
+        )}
 
         <div className="qx-storage-list">
           {(storage?.buckets ?? []).map((bucket) => {
             const label = t(`about.storage.${bucket.id}`, BUCKET_LABELS[bucket.id] ?? bucket.label);
-            const canOpenPath = bucket.path.startsWith("/");
             return (
               <div className="qx-storage-row" key={bucket.id}>
                 <span className={`qx-storage-dot bucket-${bucket.id}`} aria-hidden="true" />
                 <div className="qx-storage-copy">
                   <div className="qx-storage-name">{label}</div>
-                  <div className="qx-storage-path">{bucket.path}</div>
+                  <div className="qx-storage-paths">
+                    {bucket.paths.map((entry) => (
+                      <div
+                        className={`qx-storage-path${entry.exists ? "" : " is-missing"}`}
+                        key={entry.path}
+                        title={entry.path}
+                      >
+                        {shortenPath(entry.path)}
+                        {!entry.exists && (
+                          <span className="qx-storage-path-tag">
+                            {t("about.storage.missing", "missing")}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
                 <div className="qx-storage-meta">
                   <span>{formatBytes(bucket.bytes)}</span>
-                  <span>{bucket.files} files</span>
+                  <span>
+                    {bucket.files} {t("about.storage.files.unit", "files")}
+                  </span>
                 </div>
-                {canOpenPath && (
-                  <button className="qx-icon-button" onClick={() => void open(bucket.path)} type="button">
-                    Open
-                  </button>
-                )}
+                <div className="qx-storage-row-actions">
+                  {bucket.paths
+                    .filter((entry) => entry.path.startsWith("/"))
+                    .map((entry) => (
+                      <button
+                        key={entry.path}
+                        className="qx-icon-button"
+                        onClick={() => void open(entry.path)}
+                        disabled={!entry.exists}
+                        type="button"
+                        title={entry.path}
+                      >
+                        {t("about.storage.open", "Open")}
+                      </button>
+                    ))}
+                </div>
               </div>
             );
           })}

@@ -1,10 +1,20 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { useSettingsStore } from "../settings/store";
+import {
+  type AgentStep,
+  getEnabledTools,
+  runReactAgent,
+  runFunctionCallingAgent,
+} from "./react-agent";
+
+export type { AgentStep } from "./react-agent";
 
 export interface G4fMessage {
   role: "user" | "assistant" | "system";
   content: string;
+  steps?: AgentStep[];
 }
 
 export interface G4fConversation {
@@ -56,6 +66,7 @@ interface G4fStore {
   streaming: boolean;
   streamingConversationId: string | null;
   streamedContent: string;
+  streamingSteps: AgentStep[];
   error: string | null;
   view: G4fView;
   defaultSystemPrompt: string;
@@ -137,6 +148,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   streaming: false,
   streamingConversationId: null,
   streamedContent: "",
+  streamingSteps: [],
   error: null,
   view: "list",
   defaultSystemPrompt: "You are a helpful AI assistant.",
@@ -227,6 +239,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       providers,
       currentProvider,
       currentModel,
+      defaultSystemPrompt,
     } = get();
     if (!currentConversationId) return;
 
@@ -263,20 +276,90 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       streaming: true,
       streamingConversationId: currentConversationId,
       streamedContent: "",
+      streamingSteps: [],
       error: null,
     });
 
     if (!isTauriRuntime()) {
-      set({ streaming: false, streamingConversationId: null, streamedContent: "" });
+      set({
+        streaming: false,
+        streamingConversationId: null,
+        streamedContent: "",
+        streamingSteps: [],
+      });
       return;
     }
 
+    const agentSettings = useSettingsStore.getState().settings.agent;
+    const enabledTools = getEnabledTools(agentSettings);
+    const useAgent = enabledTools.length > 0;
+
     try {
-      const requestId = generateStreamRequestId();
       if (selection.provider.startsWith("custom:")) {
         const cp = customProviders.find((p) => p.id === selection.provider);
         if (!cp) throw new Error(`Custom provider "${selection.provider}" not found`);
       }
+
+      if (useAgent) {
+        const basePrompt =
+          updatedConv.messages.find((m) => m.role === "system")?.content?.trim() ||
+          defaultSystemPrompt;
+        const nonSystem = updatedConv.messages.filter((m) => m.role !== "system");
+
+        const useFunctionCalling = selection.provider.startsWith("custom:");
+        const runAgent = useFunctionCalling ? runFunctionCallingAgent : runReactAgent;
+
+        const result = await runAgent({
+          messages: nonSystem,
+          provider: selection.provider,
+          model: selection.model,
+          basePrompt,
+          agentSettings,
+          onStep: (step) =>
+            set((s) =>
+              s.streamingConversationId === currentConversationId
+                ? { streamingSteps: [...s.streamingSteps, step] }
+                : s,
+            ),
+          onStepUpdate: (id, patch) =>
+            set((s) =>
+              s.streamingConversationId === currentConversationId
+                ? {
+                    streamingSteps: s.streamingSteps.map((step) =>
+                      step.id === id ? { ...step, ...patch } : step,
+                    ),
+                  }
+                : s,
+            ),
+          onAssistantStream: (text) =>
+            set((s) =>
+              s.streamingConversationId === currentConversationId
+                ? { streamedContent: text }
+                : s,
+            ),
+        });
+
+        const assistantMessage: G4fMessage = {
+          role: "assistant",
+          content: result.finalAnswer,
+          steps: result.steps,
+        };
+
+        set((s) => ({
+          conversations: s.conversations.map((c) =>
+            c.id === currentConversationId
+              ? { ...c, messages: [...c.messages, assistantMessage] }
+              : c,
+          ),
+          streaming: false,
+          streamingConversationId: null,
+          streamedContent: "",
+          streamingSteps: [],
+        }));
+        return;
+      }
+
+      const requestId = generateStreamRequestId();
       const response = await new Promise<string>(async (resolve, reject) => {
         let responseText = "";
         let unlisten: (() => void) | undefined;
@@ -304,7 +387,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           responseText += event.payload.chunk;
           set((s) => ({
             streamedContent:
-            s.currentConversationId === currentConversationId ? responseText : s.streamedContent,
+              s.currentConversationId === currentConversationId ? responseText : s.streamedContent,
           }));
         });
         try {
@@ -319,13 +402,6 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         }
       });
 
-      if (response) {
-        set((s) => ({
-          streamedContent:
-            s.currentConversationId === currentConversationId ? response : s.streamedContent,
-        }));
-      }
-
       const assistantMessage: G4fMessage = {
         role: "assistant",
         content: response,
@@ -339,13 +415,15 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         ),
         streaming: false,
         streamingConversationId: null,
-        streamedContent:
-          s.currentConversationId === currentConversationId ? response : "",
+        streamedContent: "",
+        streamingSteps: [],
       }));
     } catch (e) {
       set((s) => ({
         streaming: false,
         streamingConversationId: null,
+        streamedContent: "",
+        streamingSteps: [],
         error: s.currentConversationId === currentConversationId ? String(e) : s.error,
       }));
     }

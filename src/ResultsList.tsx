@@ -3,6 +3,7 @@ import type { AppEntry } from "./store";
 import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { LoadingLabel, Skeleton } from "./components/ui";
+import { useDisplayName } from "./search/appDisplay";
 
 function iconKind(item: AppEntry): string {
   if (item.kind === "file") return "file";
@@ -33,8 +34,8 @@ function sourceLabel(item: AppEntry): string {
   return "Application";
 }
 
-function fallbackLabel(item: AppEntry): string {
-  const trimmed = item.name.trim();
+function fallbackLabel(label: string): string {
+  const trimmed = label.trim();
   if (!trimmed) return "A";
   const parts = trimmed.split(/\s+/).filter(Boolean);
   if (parts.length > 1) {
@@ -43,7 +44,7 @@ function fallbackLabel(item: AppEntry): string {
   return trimmed.slice(0, 2).toUpperCase();
 }
 
-function AppIcon({ item }: { item: AppEntry }) {
+function AppIcon({ item, label }: { item: AppEntry; label: string }) {
   const [failed, setFailed] = useState(false);
   const kind = iconKind(item);
   const builtin = item.icon.startsWith("builtin:");
@@ -68,13 +69,13 @@ function AppIcon({ item }: { item: AppEntry }) {
       ) : builtin ? (
         <span className="qx-app-icon-symbol" />
       ) : (
-        <span className="qx-app-icon-fallback">{fallbackLabel(item)}</span>
+        <span className="qx-app-icon-fallback">{fallbackLabel(label)}</span>
       )}
     </span>
   );
 }
 
-function ResultItem({ item, index }: { item: AppEntry; index: number }) {
+function ResultItem({ item, index, label }: { item: AppEntry; index: number; label: string }) {
   const { selectedIndex, setSelectedIndex } = useStore();
   const selected = index === selectedIndex;
 
@@ -83,10 +84,10 @@ function ResultItem({ item, index }: { item: AppEntry; index: number }) {
       onMouseEnter={() => setSelectedIndex(index)}
       className={`qx-list-row${selected ? " is-active" : ""}`}
     >
-      <AppIcon item={item} />
+      <AppIcon item={item} label={label} />
       <div className="qx-list-copy">
         <div className="qx-list-title" style={{ fontWeight: 500 }}>
-          {item.name}
+          {label}
         </div>
         <div className="qx-list-subtitle">
           {item.path.replace("/Applications/", "").replace("/System/Applications/", "System/")}
@@ -125,6 +126,7 @@ export default function ResultsList({
   onItemClick: (item: AppEntry) => void;
   loadingPhase?: string;
 }) {
+  const getDisplayName = useDisplayName();
   return (
     <div className="qx-plugin-list" style={{ flex: 1, borderRight: "none" }}>
       {items.length > 0 && (
@@ -132,7 +134,7 @@ export default function ResultsList({
       )}
       {items.map((item, i) => (
         <div key={`${item.kind}:${item.path}:${item.name}`} onClick={() => onItemClick(item)}>
-          <ResultItem item={item} index={i} />
+          <ResultItem item={item} index={i} label={getDisplayName(item)} />
         </div>
       ))}
       {items.length === 0 && loadingPhase === "loading-apps" && (

@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ReactNode } from "react";
 import SearchAliasTagEditor from "../components/SearchAliasTagEditor";
 import { useT } from "../i18n";
+import { useDisplayName } from "../search/appDisplay";
 import type { AppEntry, HistoryEntry, SearchHistoryEntry } from "../store";
 import { useSettingsStore } from "../modules/settings/store";
 import {
@@ -63,6 +64,7 @@ export default function LauncherContext({
   selectedItem: AppEntry | null;
 }) {
   const t = useT();
+  const getDisplayName = useDisplayName();
   const { settings, patchSearchMetadata } = useSettingsStore();
   const selectedMetadataKey = metadataKeyForEntry(selectedItem ?? { name: "", path: "", icon: "" });
   const selectedMetadata = metadataForKey(settings, selectedMetadataKey);
@@ -113,7 +115,9 @@ export default function LauncherContext({
       {canEditMetadata && selectedMetadataKey && (
         <ContextSection title={t("launcher.aliasesTags", "Aliases & Tags")} spacing>
           <div className="qx-context-editor">
-            <div className="qx-context-editor-title">{selectedItem?.name}</div>
+            <div className="qx-context-editor-title">
+              {selectedItem ? getDisplayName(selectedItem) : ""}
+            </div>
             <SearchAliasTagEditor
               compact
               entry={selectedMetadata}

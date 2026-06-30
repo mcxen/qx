@@ -1,5 +1,6 @@
-import { Wrench } from "lucide-react";
+import { Brain, CheckCircle2, Loader2, Search, Wrench, XCircle } from "lucide-react";
 import type { ReactNode } from "react";
+import type { AgentStep } from "./react-agent";
 
 type MessagePart =
   | { type: "text"; text: string }
@@ -130,15 +131,93 @@ function ToolInvocation({ part }: { part: Extract<MessagePart, { type: "tool" }>
   );
 }
 
+function StepStateIcon({ state }: { state: AgentStep["state"] }) {
+  if (state === "running") return <Loader2 size={12} className="qx-spin" />;
+  if (state === "error") return <XCircle size={12} />;
+  return <CheckCircle2 size={12} />;
+}
+
+export function AgentStepView({ step }: { step: AgentStep }) {
+  if (step.kind === "thought") {
+    return (
+      <div className="qx-agent-step is-thought">
+        <div className="qx-agent-step-head">
+          <Brain size={12} />
+          <span>Thought</span>
+        </div>
+        <div className="qx-agent-step-body">{step.text}</div>
+      </div>
+    );
+  }
+  if (step.kind === "action") {
+    return (
+      <div className={`qx-agent-step is-action is-${step.state}`}>
+        <div className="qx-agent-step-head">
+          <Wrench size={12} />
+          <span>Action · {step.tool}</span>
+          <StepStateIcon state={step.state} />
+        </div>
+        {step.input && (
+          <pre className="qx-agent-step-pre">
+            <code>{step.input}</code>
+          </pre>
+        )}
+      </div>
+    );
+  }
+  if (step.kind === "observation") {
+    return (
+      <div className="qx-agent-step is-observation">
+        <div className="qx-agent-step-head">
+          <Search size={12} />
+          <span>Observation{step.tool ? ` · ${step.tool}` : ""}</span>
+        </div>
+        {step.output && (
+          <pre className="qx-agent-step-pre is-output">
+            <code>{step.output}</code>
+          </pre>
+        )}
+      </div>
+    );
+  }
+  if (step.kind === "error") {
+    return (
+      <div className="qx-agent-step is-error">
+        <div className="qx-agent-step-head">
+          <XCircle size={12} />
+          <span>Error</span>
+        </div>
+        <div className="qx-agent-step-body">{step.text}</div>
+      </div>
+    );
+  }
+  return null;
+}
+
+export function AgentStepsView({ steps }: { steps: AgentStep[] }) {
+  const visible = steps.filter((s) => s.kind !== "final");
+  if (visible.length === 0) return null;
+  return (
+    <div className="qx-agent-steps">
+      {visible.map((step) => (
+        <AgentStepView key={step.id} step={step} />
+      ))}
+    </div>
+  );
+}
+
 export function AiMessageContent({
   content,
   streaming = false,
+  steps,
 }: {
   content: string;
   streaming?: boolean;
+  steps?: AgentStep[];
 }) {
   return (
     <>
+      {steps && steps.length > 0 && <AgentStepsView steps={steps} />}
       {parseParts(content).map((part, index) =>
         part.type === "tool" ? (
           <ToolInvocation key={`tool-${index}-${part.name}`} part={part} />

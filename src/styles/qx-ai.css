@@ -227,3 +227,84 @@
     opacity: 0;
   }
 }
+
+/* ====== Agent steps (ReAct) ====== */
+.qx-agent-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.qx-agent-step {
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-2);
+  padding: 6px 8px;
+  font-size: 12px;
+  color: var(--qx-text-secondary);
+}
+
+.qx-agent-step-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--qx-text-primary);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.qx-agent-step-body {
+  margin-top: 4px;
+  color: var(--qx-text-secondary);
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.qx-agent-step-pre {
+  margin: 4px 0 0;
+  padding: 6px 8px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-overlay-1);
+  color: var(--qx-text-secondary);
+  font-family: var(--qx-font-mono);
+  font-size: 11px;
+  line-height: 1.4;
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.qx-agent-step-pre.is-output {
+  background: var(--qx-overlay-2);
+}
+
+.qx-agent-step.is-action.is-running {
+  border-color: var(--qx-accent-border, var(--qx-accent));
+}
+
+.qx-agent-step.is-action.is-error,
+.qx-agent-step.is-error {
+  border-color: var(--qx-danger-border);
+  color: var(--qx-danger);
+}
+
+.qx-agent-step.is-thought {
+  background: var(--qx-overlay-1);
+}
+
+.qx-spin {
+  animation: qx-spin 0.8s linear infinite;
+}
+
+@keyframes qx-spin {
+  to { transform: rotate(360deg); }
+}
+
+.qx-ai-tool-hint {
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+  line-height: 1.45;
+}

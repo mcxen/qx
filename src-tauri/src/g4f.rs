@@ -447,6 +447,51 @@ fn provider_openai_chat_stream(
     Ok(full)
 }
 
+fn provider_openai_chat_with_tools(
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    messages: &[serde_json::Value],
+    tools: &[serde_json::Value],
+    tool_choice: &str,
+) -> Result<serde_json::Value, String> {
+    let client = make_client()?;
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+
+    let mut body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+    });
+    if !tools.is_empty() {
+        body["tools"] = serde_json::Value::Array(tools.to_vec());
+        body["tool_choice"] = serde_json::Value::String(tool_choice.to_string());
+    }
+
+    let resp = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&body)
+        .send()
+        .map_err(|e| format!("request to {url} failed: {e}"))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().unwrap_or_default();
+        return Err(format!("{url} returned HTTP {status}: {text}"));
+    }
+
+    let json: serde_json::Value = resp
+        .json()
+        .map_err(|e| format!("parse response from {url}: {e}"))?;
+
+    json.get("choices")
+        .and_then(|choices| choices.get(0))
+        .and_then(|choice| choice.get("message"))
+        .cloned()
+        .ok_or_else(|| "no message in API response".to_string())
+}
+
 // ---------------------------------------------------------------------------
 // Tauri commands
 // ---------------------------------------------------------------------------
@@ -574,6 +619,41 @@ pub fn qxai_chat(
     } else {
         g4f_chat(selection.provider, Some(selection.model), messages)
     }
+}
+
+/// OpenAI-style function calling for BYOK custom providers.
+/// Returns the raw `choices[0].message` JSON, including any `tool_calls`.
+#[tauri::command]
+pub fn qxai_chat_with_tools(
+    provider: Option<String>,
+    model: Option<String>,
+    messages: Vec<serde_json::Value>,
+    tools: Vec<serde_json::Value>,
+    tool_choice: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let providers = qxai_provider_catalog();
+    let selection = resolve_model_selection(&providers, provider, model)?;
+
+    if !selection.provider.starts_with("custom:") {
+        return Err(
+            "function calling is only supported for custom OpenAI-compatible providers".to_string(),
+        );
+    }
+
+    let custom_provider = qxai_get_custom_providers()
+        .into_iter()
+        .find(|p| p.id == selection.provider)
+        .ok_or_else(|| format!("custom provider {} not found", selection.provider))?;
+
+    let choice = tool_choice.unwrap_or_else(|| "auto".to_string());
+    provider_openai_chat_with_tools(
+        &custom_provider.base_url,
+        &custom_provider.api_key,
+        &selection.model,
+        &messages,
+        &tools,
+        &choice,
+    )
 }
 
 #[tauri::command]

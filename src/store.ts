@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 export interface AppEntry {
   name: string;
+  display_name?: string;
   path: string;
   icon: string;
   kind?: "app" | "command" | "clipboard" | "file" | "folder" | "calculation";

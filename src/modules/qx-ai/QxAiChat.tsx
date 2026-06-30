@@ -14,6 +14,7 @@ export default function QxAiChat() {
     streaming,
     streamingConversationId,
     streamedContent,
+    streamingSteps,
     error,
     providers,
     setView,
@@ -223,11 +224,19 @@ export default function QxAiChat() {
               <Hammer size={14} />
               <span>{enabledTools.length ? `${enabledTools.length} enabled` : "Disabled"}</span>
             </div>
-            {enabledTools.length > 0 && (
+            {enabledTools.length > 0 ? (
               <div className="qx-ai-tool-chips">
                 {enabledTools.map((tool) => (
                   <span key={tool}>{tool}</span>
                 ))}
+              </div>
+            ) : (
+              <div className="qx-ai-tool-hint">
+                {!agentSettings.agent_mode_enabled
+                  ? "Enable Agent mode in Settings > Agent to let the AI call tools."
+                  : !agentSettings.tools_enabled
+                    ? "Master tools switch is off. Enable it in Settings > Agent."
+                    : "No individual tools enabled. Turn some on in Settings > Agent."}
               </div>
             )}
           </div>
@@ -263,13 +272,13 @@ export default function QxAiChat() {
                   {msg.role === "user" ? "You" : conv?.provider || "AI"}
                 </div>
                 <div className="qx-ai-message-bubble">
-                  <AiMessageContent content={msg.content} />
+                  <AiMessageContent content={msg.content} steps={msg.steps} />
                 </div>
               </div>
             </div>
           ))}
 
-          {isCurrentConversationStreaming && streamedContent && (
+          {isCurrentConversationStreaming && (streamedContent || streamingSteps.length > 0) && (
             <div className="qx-ai-message is-assistant">
               <div className="qx-ai-message-avatar" aria-hidden="true">
                 <Bot size={14} />
@@ -277,7 +286,11 @@ export default function QxAiChat() {
               <div className="qx-ai-message-body">
                 <div className="qx-ai-message-meta">{conv?.provider || "AI"}</div>
                 <div className="qx-ai-message-bubble">
-                  <AiMessageContent content={streamedContent} streaming />
+                  <AiMessageContent
+                    content={streamedContent}
+                    streaming
+                    steps={streamingSteps}
+                  />
                 </div>
               </div>
             </div>

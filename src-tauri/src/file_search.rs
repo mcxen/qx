@@ -37,7 +37,8 @@ fn entry_from_path_with_kind(path: &str, is_dir: bool) -> AppEntry {
         .unwrap_or(path)
         .to_string();
     AppEntry {
-        name,
+        name: name.clone(),
+        display_name: name,
         path: path.to_string(),
         icon: if is_dir {
             "builtin:folder".to_string()

@@ -1,4 +1,5 @@
 mod apps;
+mod apps_zh_dict;
 mod clipboard;
 mod display_monitor;
 mod file_search;
@@ -284,6 +285,7 @@ pub fn run() {
             storage::qx_storage_overview,
             storage::qx_storage_clear_cache,
             storage::qx_storage_clear_files,
+            storage::qx_storage_clear_clipboard,
             system_information::qx_system_information_check_system_info,
             system_information::qx_system_information_check_storage,
             system_information::qx_system_information_check_network,
@@ -366,6 +368,7 @@ pub fn run() {
             g4f::g4f_list_providers,
             g4f::qxai_stream_chat,
             g4f::qxai_stream_chat_events,
+            g4f::qxai_chat_with_tools,
             g4f::qxai_list_providers,
             g4f::qxai_fetch_models,
             g4f::qxai_get_custom_providers,

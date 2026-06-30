@@ -12,6 +12,7 @@ use tauri::{AppHandle, Emitter};
 #[derive(Debug, Serialize, Clone)]
 pub struct AppEntry {
     pub name: String,
+    pub display_name: String,
     pub path: String,
     pub icon: String,
     pub kind: String,
@@ -48,6 +49,7 @@ fn init_db() -> Result<Connection, rusqlite::Error> {
         "CREATE TABLE IF NOT EXISTS apps (
             path TEXT PRIMARY KEY,
             name TEXT NOT NULL,
+            display_name TEXT NOT NULL DEFAULT '',
             icon TEXT NOT NULL DEFAULT '',
             kind TEXT NOT NULL DEFAULT 'app',
             aliases TEXT NOT NULL DEFAULT '',
@@ -63,6 +65,8 @@ fn init_db() -> Result<Connection, rusqlite::Error> {
     .ok();
     conn.execute_batch("ALTER TABLE apps ADD COLUMN aliases TEXT NOT NULL DEFAULT '';")
         .ok();
+    conn.execute_batch("ALTER TABLE apps ADD COLUMN display_name TEXT NOT NULL DEFAULT '';")
+        .ok();
     Ok(conn)
 }
 
@@ -77,22 +81,32 @@ fn load_from_db() -> Vec<AppEntry> {
         }
     };
 
-    let mut stmt =
-        match conn.prepare("SELECT path, name, icon, kind, aliases FROM apps ORDER BY name") {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("[apps] DB query prepare failed: {e}");
-                return Vec::new();
-            }
-        };
+    let mut stmt = match conn
+        .prepare("SELECT path, name, display_name, icon, kind, aliases FROM apps ORDER BY name")
+    {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[apps] DB query prepare failed: {e}");
+            return Vec::new();
+        }
+    };
 
     let rows = match stmt.query_map([], |row| {
+        let path: String = row.get(0)?;
+        let name: String = row.get(1)?;
+        let display_name: String = row.get(2).unwrap_or_default();
+        let display_name = if display_name.is_empty() {
+            name.clone()
+        } else {
+            display_name
+        };
         Ok(AppEntry {
-            path: row.get(0)?,
-            name: row.get(1)?,
-            icon: row.get(2)?,
-            kind: row.get(3)?,
-            aliases: row.get(4)?,
+            path,
+            name,
+            display_name,
+            icon: row.get(3)?,
+            kind: row.get(4)?,
+            aliases: row.get(5)?,
         })
     }) {
         Ok(r) => r,
@@ -125,10 +139,11 @@ fn sync_db(entries: &[AppEntry]) {
     // Upsert all current entries
     for entry in entries {
         let result = conn.execute(
-            "INSERT INTO apps (path, name, icon, kind, aliases, last_seen)
-             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))
+            "INSERT INTO apps (path, name, display_name, icon, kind, aliases, last_seen)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))
              ON CONFLICT(path) DO UPDATE SET
                 name = excluded.name,
+                display_name = excluded.display_name,
                 icon = excluded.icon,
                 kind = excluded.kind,
                 aliases = excluded.aliases,
@@ -136,6 +151,7 @@ fn sync_db(entries: &[AppEntry]) {
             params![
                 entry.path,
                 entry.name,
+                entry.display_name,
                 entry.icon,
                 entry.kind,
                 entry.aliases
@@ -347,11 +363,105 @@ fn localized_string_value(strings_path: &PathBuf, key: &str) -> Option<String> {
     plist_value(strings_path, key)
 }
 
-fn localized_bundle_aliases(app_path: &PathBuf, primary_name: &str) -> String {
+fn contains_han(s: &str) -> bool {
+    s.chars().any(|c| {
+        let code = c as u32;
+        (0x4E00..=0x9FFF).contains(&code)
+            || (0x3400..=0x4DBF).contains(&code)
+            || (0x20000..=0x2A6DF).contains(&code)
+            || (0xF900..=0xFAFF).contains(&code)
+    })
+}
+
+fn pinyin_variants(text: &str) -> (String, String) {
+    use pinyin::ToPinyin;
+    let mut full = String::new();
+    let mut initials = String::new();
+    for ch in text.chars() {
+        match ch.to_pinyin() {
+            Some(py) => {
+                let plain = py.plain();
+                full.push_str(plain);
+                if let Some(first) = plain.chars().next() {
+                    initials.push(first);
+                }
+            }
+            None => {
+                if !ch.is_whitespace() {
+                    full.push(ch);
+                    if ch.is_ascii_alphanumeric() {
+                        initials.push(ch);
+                    }
+                }
+            }
+        }
+    }
+    (full, initials)
+}
+
+/// Resolve the localized name set for a `.app` bundle.
+/// Returns `(display_name, aliases_joined_by_newline)` where `display_name`
+/// prefers zh-Hans lproj > zh_CN lproj > built-in dictionary > CFBundleDisplayName > primary_name.
+fn resolve_localized_names(app_path: &PathBuf, primary_name: &str) -> (String, String) {
     let info_plist = app_path.join("Contents").join("Info.plist");
     let resources = app_path.join("Contents").join("Resources");
-    let mut aliases = Vec::new();
+    let mut aliases: Vec<String> = Vec::new();
+    let mut zh_display: Option<String> = None;
 
+    let take_zh_candidate = |value: Option<String>| -> Option<String> {
+        let value = value?;
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        if contains_han(trimmed) {
+            Some(trimmed.to_string())
+        } else {
+            None
+        }
+    };
+
+    // 1. zh-Hans / zh_CN / Chinese lproj -- highest priority for display name.
+    let zh_lprojs = [
+        "zh-Hans.lproj",
+        "zh_CN.lproj",
+        "Chinese.lproj",
+        "zh-Hant.lproj",
+        "zh_TW.lproj",
+    ];
+    for lproj in zh_lprojs {
+        let strings_path = resources.join(lproj).join("InfoPlist.strings");
+        if !strings_path.is_file() {
+            continue;
+        }
+        let display = localized_string_value(&strings_path, "CFBundleDisplayName");
+        let bundle = localized_string_value(&strings_path, "CFBundleName");
+        if zh_display.is_none() {
+            if let Some(v) = take_zh_candidate(display.clone()) {
+                zh_display = Some(v);
+            } else if let Some(v) = take_zh_candidate(bundle.clone()) {
+                zh_display = Some(v);
+            }
+        }
+        push_alias(&mut aliases, display, primary_name);
+        push_alias(&mut aliases, bundle, primary_name);
+    }
+
+    // 2. Built-in dictionary by CFBundleIdentifier (covers Apple system apps
+    //    whose strings files do not include a Chinese display name).
+    let bundle_id = plist_value(&info_plist, "CFBundleIdentifier");
+    if let Some(ref id) = bundle_id {
+        if let Some(zh_names) = crate::apps_zh_dict::lookup(id) {
+            for (idx, name) in zh_names.iter().enumerate() {
+                if idx == 0 && zh_display.is_none() && contains_han(name) {
+                    zh_display = Some((*name).to_string());
+                }
+                push_alias(&mut aliases, Some((*name).to_string()), primary_name);
+            }
+        }
+    }
+
+    // 3. Plain CFBundleDisplayName / CFBundleName from Info.plist (often English).
     push_alias(
         &mut aliases,
         plist_value(&info_plist, "CFBundleDisplayName"),
@@ -363,29 +473,7 @@ fn localized_bundle_aliases(app_path: &PathBuf, primary_name: &str) -> String {
         primary_name,
     );
 
-    let preferred_lprojs = [
-        "zh-Hans.lproj",
-        "zh-Hant.lproj",
-        "zh_CN.lproj",
-        "zh_TW.lproj",
-        "Chinese.lproj",
-    ];
-    for lproj in preferred_lprojs {
-        let strings_path = resources.join(lproj).join("InfoPlist.strings");
-        if strings_path.is_file() {
-            push_alias(
-                &mut aliases,
-                localized_string_value(&strings_path, "CFBundleDisplayName"),
-                primary_name,
-            );
-            push_alias(
-                &mut aliases,
-                localized_string_value(&strings_path, "CFBundleName"),
-                primary_name,
-            );
-        }
-    }
-
+    // 4. Fallback: walk every other *.lproj/InfoPlist.strings for completeness.
     if let Ok(entries) = fs::read_dir(&resources) {
         for entry in entries.flatten() {
             let lproj = entry.path();
@@ -409,7 +497,38 @@ fn localized_bundle_aliases(app_path: &PathBuf, primary_name: &str) -> String {
         }
     }
 
-    aliases.join("\n")
+    // 5. Generate pinyin for every Chinese alias so users can type "weixin" / "wx".
+    let chinese_aliases: Vec<String> = aliases
+        .iter()
+        .filter(|a| contains_han(a))
+        .cloned()
+        .collect();
+    if let Some(ref display) = zh_display {
+        if !chinese_aliases.iter().any(|a| a == display) {
+            // ensure pinyin for the display name itself is generated even if it
+            // was not pushed to aliases (it could equal primary_name only when
+            // primary is Chinese, but display from dictionary is fine to use).
+            let (full, initials) = pinyin_variants(display);
+            if !full.is_empty() && full != *display {
+                push_alias(&mut aliases, Some(full), primary_name);
+            }
+            if !initials.is_empty() {
+                push_alias(&mut aliases, Some(initials), primary_name);
+            }
+        }
+    }
+    for zh in chinese_aliases {
+        let (full, initials) = pinyin_variants(&zh);
+        if !full.is_empty() && full != zh {
+            push_alias(&mut aliases, Some(full), primary_name);
+        }
+        if !initials.is_empty() {
+            push_alias(&mut aliases, Some(initials), primary_name);
+        }
+    }
+
+    let display_name = zh_display.unwrap_or_else(|| primary_name.to_string());
+    (display_name, aliases.join("\n"))
 }
 
 fn resolve_icon_path(app_path: &PathBuf, app_name: &str) -> Option<PathBuf> {
@@ -462,7 +581,7 @@ fn scan_dir_fast(dir: &PathBuf, results: &mut Vec<AppEntry>) {
                     .and_then(|s| s.to_str())
                     .unwrap_or("Unknown")
                     .to_string();
-                let aliases = localized_bundle_aliases(&path, &name);
+                let (display_name, aliases) = resolve_localized_names(&path, &name);
                 let png_path = icon_cache_path(&path, &name);
                 let legacy_png_path = legacy_icon_cache_path(&name);
                 let icon = if png_path.exists() {
@@ -474,6 +593,7 @@ fn scan_dir_fast(dir: &PathBuf, results: &mut Vec<AppEntry>) {
                 };
                 results.push(AppEntry {
                     name,
+                    display_name,
                     path: path.to_string_lossy().to_string(),
                     icon,
                     kind: "app".to_string(),
@@ -613,12 +733,13 @@ pub fn search_apps(query: String) -> Result<Vec<AppEntry>, String> {
     let mut scored: Vec<(i32, &AppEntry)> = Vec::with_capacity(cache.len() / 2);
     for app in cache.iter() {
         let name_lower = app.name.to_lowercase();
+        let display_lower = app.display_name.to_lowercase();
         let aliases_lower = app.aliases.to_lowercase();
-        if name_lower == q {
+        if name_lower == q || display_lower == q {
             scored.push((0, app));
-        } else if name_lower.starts_with(&q) {
+        } else if name_lower.starts_with(&q) || display_lower.starts_with(&q) {
             scored.push((1, app));
-        } else if name_lower.contains(&q) {
+        } else if name_lower.contains(&q) || display_lower.contains(&q) {
             scored.push((2, app));
         } else if aliases_lower.lines().any(|alias| alias == q) {
             scored.push((3, app));
