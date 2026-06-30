@@ -222,34 +222,27 @@
   color: var(--qx-danger);
 }
 
-.qx-plugin-import-box {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-  padding: 10px;
-  border: 1px solid var(--qx-border-1);
-  border-radius: var(--qx-control-radius);
-  background: var(--qx-bg-component-2);
-}
-
 .qx-plugin-import-header {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: none;
-  background: none;
+  border-radius: var(--qx-control-radius);
+  background: transparent;
   cursor: pointer;
-  color: inherit;
-  text-align: left;
+  color: var(--qx-text-tertiary);
+}
+
+.qx-plugin-import-header:hover {
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-primary);
 }
 
 .qx-plugin-import-chevron {
   flex-shrink: 0;
-  margin-top: 2px;
-  color: var(--qx-text-tertiary);
   transition: transform 0.15s ease;
 }
 
@@ -257,22 +250,10 @@
   transform: rotate(90deg);
 }
 
-.qx-plugin-import-copy {
-  min-width: 0;
-}
-
-.qx-plugin-import-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--qx-text-primary);
-}
-
-.qx-plugin-import-desc,
-.qx-plugin-import-status {
-  margin-top: 3px;
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--qx-text-tertiary);
+.qx-plugin-import-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .qx-plugin-import-row {
@@ -282,9 +263,16 @@
   align-items: center;
 }
 
-.qx-plugin-import-row .qx-inline-input {
+.qx-plugin-import-row .qx-shadcn-input {
   min-width: 0;
   width: 100%;
+}
+
+.qx-plugin-import-status {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--qx-text-tertiary);
 }
 
 .qx-plugin-manager {
@@ -343,13 +331,20 @@
   color: var(--qx-text-tertiary);
 }
 
-.qx-plugin-search-wrap .qx-inline-input {
+.qx-plugin-search-wrap .qx-inline-input,
+.qx-plugin-search-wrap .qx-shadcn-input {
   flex: 1;
   min-width: 0;
   width: 100%;
   height: 26px;
+  padding: 0;
   border: none;
   background: transparent;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.qx-plugin-search-wrap .qx-shadcn-input:focus {
   box-shadow: none;
 }
 

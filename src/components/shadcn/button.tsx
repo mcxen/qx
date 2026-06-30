@@ -8,6 +8,7 @@ const buttonVariants = cva("qx-shadcn-button", {
     variant: {
       default: "",
       secondary: "variant-secondary",
+      outline: "variant-outline",
       ghost: "variant-ghost",
       destructive: "variant-destructive",
     },

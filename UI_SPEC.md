@@ -273,8 +273,13 @@ Settings：
 
 Plugin Manager：
 
+- 使用 `Tabs` 切换 Installed / Browse，不使用 `SegmentedControl`。
+- 列表项禁用行内开关；启用/禁用、偏好配置统一放在右侧详情区。
+- 导入区、详情区分组使用 `Card` / `SettingsCard`。
+- 搜索和偏好输入使用 shadcn `Input`，不暴露原生 `<input>` 外观。
 - 安装、刷新、加载使用 Skeleton 或 spinner。
-- 插件详情放 Context Panel 或详情区域，不弹出系统样式窗口。
+- 响应式规则：`max-width: 760px` 下列表与详情上下堆叠，详情区隐藏，仅列表可点击展开详情。
+- 完整实现与扩展规范见 [docs/plugin-architecture.md](./docs/plugin-architecture.md) 和 [public/doc/plugin-system.md](./public/doc/plugin-system.md)。
 
 ## Loading States
 

@@ -79,6 +79,13 @@ export interface PluginIndex {
   plugins: PluginIndexEntry[];
 }
 
+export interface PluginRuntimeStatus {
+  kind: "activity" | "success" | "error";
+  pluginId?: string;
+  label: string;
+  detail?: string;
+}
+
 export interface PluginAiMessage {
   role: "system" | "user" | "assistant";
   content: string | PluginAiContentPart[];

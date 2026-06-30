@@ -76,6 +76,18 @@
   color: var(--qx-text-secondary);
 }
 
+.qx-shadcn-button.variant-outline {
+  background: transparent;
+  border-color: var(--qx-border-2);
+  color: var(--qx-text-secondary);
+}
+
+.qx-shadcn-button.variant-outline:hover {
+  background: var(--qx-bg-component-2);
+  border-color: var(--qx-border-3);
+  color: var(--qx-text-primary);
+}
+
 .qx-shadcn-button.variant-ghost {
   border-color: transparent;
   background: transparent;
@@ -428,6 +440,30 @@
   font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.qx-shadcn-badge.variant-default {
+  background: var(--qx-accent);
+  border-color: var(--qx-accent);
+  color: var(--qx-accent-contrast, var(--qx-text-primary));
+}
+
+.qx-shadcn-badge.variant-secondary {
+  background: var(--qx-bg-component-3);
+  border-color: var(--qx-border-1);
+  color: var(--qx-text-secondary);
+}
+
+.qx-shadcn-badge.variant-outline {
+  background: transparent;
+  border-color: var(--qx-border-2);
+  color: var(--qx-text-secondary);
+}
+
+.qx-shadcn-badge.variant-destructive {
+  background: var(--qx-danger-soft, color-mix(in srgb, var(--qx-danger) 12%, transparent));
+  border-color: var(--qx-danger-border);
+  color: var(--qx-danger);
 }
 
 .qx-shadcn-tabs-list {

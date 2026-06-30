@@ -331,6 +331,8 @@ App 启动
 - `qx:renderPanel` / `qx:renderPanel:response` — 渲染面板
 - `qx:destroyPanel` / `qx:destroyPanel:response` — 销毁面板
 
+> 内部实现细节（RPC 分发、AI 任务、权限模型、面板生命周期）见 [docs/plugin-architecture.md](../../docs/plugin-architecture.md)。
+
 ---
 
 ## 八、核心改造点
@@ -369,9 +371,9 @@ App 启动
 
 ### 第三期：开发者体验
 
-- [ ] `qx init` 脚手架命令，一键生成插件模板
-- [ ] 开发模式：文件变更自动重载
-- [ ] 完整开发手册文档
+- [x] `qx init` 脚手架命令，一键生成插件模板（Settings → Advanced → Create Plugin）
+- [x] 开发模式：文件变更自动重载（Settings → Advanced → Dev Mode Hot Reload）
+- [ ] 完整开发手册文档（持续更新中）
 - [x] 插件市场 UI
 - [x] 依赖加载顺序（拓扑排序）
 - [x] Raycast 扩展转换器：`scripts/convert-raycast-extension.mjs`
@@ -401,10 +403,40 @@ App 启动
 | `download_plugin(url)` | 下载插件包到临时目录 |
 | `install_plugin_from_url(url)` | 从 GitHub repo、release asset 或 archive ZIP URL 下载并安装插件 |
 | `install_raycast_extension_from_url(url)` | 下载 Raycast extension tree URL，转换并安装为 Qx 插件 |
+| `scaffold_plugin(name, outputDir)` | 在指定目录生成插件脚手架（manifest.json、index.js、README） |
 
 ---
 
-## 十一、示例插件：hello-world
+## 十一、开发调试
+
+### 热重载
+
+在 Extensions 页面点击 `Rescan` 按钮可以重新扫描插件目录，无需重启应用。Installed 列表会保留当前搜索/筛选条件，并在插件增删后自动修正右侧选中项。
+
+开启 Settings → Advanced → `Dev Mode Hot Reload` 后，插件文件变更会每 3 秒自动触发重载，方便开发调试。
+
+### 脚手架
+
+Settings → Advanced → `Create Plugin (qx init)` 可以一键生成插件模板，默认输出到 `~/.qx/plugins/<name>/`：
+
+```
+my-plugin/
+├── manifest.json
+├── index.js
+└── README.md
+```
+
+生成后点击 Rescan 即可在 Installed 列表中看到新插件。
+
+### 日志与错误
+
+- 插件加载失败会在 Launcher 灵动岛显示错误详情。
+- 单个插件加载失败、快捷键注册失败、命令运行失败不会影响其他插件。
+- 插件面板 render/loading/timeout/error 状态会接入插件页自己的底部灵动岛，错误时显示 Retry。
+
+---
+
+## 十二、示例插件：hello-world
 
 目录结构：
 

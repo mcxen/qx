@@ -9,7 +9,7 @@ import Launcher from "./Launcher";
 import { useSettingsStore } from "./modules/settings/store";
 import { ThemeProvider } from "./ThemeProvider";
 import { usePluginRegistry } from "./plugin/registry";
-import type { PluginRuntimeStatus } from "./plugin/registry";
+import type { PluginRuntimeStatus } from "./plugin/types";
 import type { BottomIslandContent } from "./components/QxShell";
 import QxShell from "./components/QxShell";
 import { LoadingLabel, Skeleton } from "./components/ui";

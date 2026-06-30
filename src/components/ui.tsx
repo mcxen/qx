@@ -28,12 +28,19 @@ import {
 } from "./shadcn/card";
 import { Separator } from "./shadcn/separator";
 import { ScrollArea, ScrollBar } from "./shadcn/scroll-area";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "./shadcn/tabs";
 export { Badge } from "./shadcn/badge";
 export { Button } from "./shadcn/button";
 export { Input } from "./shadcn/input";
 export { Card, CardContent, CardDescription, CardHeader, CardTitle };
 export { Separator };
 export { ScrollArea, ScrollBar };
+export { Tabs, TabsContent, TabsList, TabsTrigger };
 
 export function SettingsCard({
   title,

@@ -247,6 +247,11 @@ qx-plugins/
 }
 ```
 
+| 字段 | 说明 |
+|---|---|
+| `schema_version` | 索引格式版本，当前为 `1` |
+| `plugins` | 插件条目数组，字段与上表一致 |
+
 > `download_url` 也可以指向 GitHub Release 的 asset，便于大文件分发。
 
 ### 5. 提交 PR
@@ -286,18 +291,20 @@ Qx 会自动下载 `.qx-plugin` 包并安装到 `~/.qx/plugins/<id>/`。
 
 ### 从 Raycast 扩展安装
 
-输入 Raycast extension tree URL，然后点击 Install Raycast。Qx 会自动转换安装。例如：
+输入 Raycast extension tree URL，然后点击 Install Raycast。Qx 会自动下载、转换并安装为 Qx 插件。例如：
 
 ```
 https://github.com/raycast/extensions/tree/<ref>/extensions/system-information
 ```
+
+转换后的插件会进入 `~/.qx/plugins/raycast-<extension-name>/`，与常规插件一样可在 Installed 列表中管理。详见 [Raycast 转换文档](./raycast-plugin-conversion.md)。
 
 ## 内置模块的偏好设置
 
 内置模块（V2EX、RSS、Clipboard 等）也出现在 Extensions 列表中，标记为 Built-in。
 
 - 选中内置模块后，右侧详情面板会显示该模块的偏好设置
-- 例如 V2EX 的 Access Token 和 Nodes 配置在此设置，不再单独占用设置页分类栏
+- 内置模块不可禁用或卸载，只能查看和配置
 - 内置模块的偏好存储在 `~/.qx/settings.json` 中，与全局设置一起持久化
 
 ## 签名（可选）

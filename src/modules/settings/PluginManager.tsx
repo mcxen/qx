@@ -16,7 +16,22 @@ import { BUILTIN_SETTINGS_KEYS } from "../../plugin/builtin";
 import { useSettingsStore } from "./store";
 import type { SearchMetadataEntry } from "./store";
 import SearchAliasTagEditor from "../../components/SearchAliasTagEditor";
-import { LoadingLabel, Skeleton, Toggle, SegmentedControl, Row, Select } from "../../components/ui";
+import {
+  Badge,
+  Button,
+  Input,
+  LoadingLabel,
+  Row,
+  SegmentedControl,
+  Select,
+  SettingsCard,
+  Skeleton,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+  Toggle,
+} from "../../components/ui";
 import { useT } from "../../i18n";
 import {
   metadataForKey,
@@ -95,20 +110,6 @@ function formatDate(value?: string) {
   return date.toLocaleDateString();
 }
 
-function Badge({ children }: { children: React.ReactNode }) {
-  return <span className="qx-badge">{children}</span>;
-}
-
-function StatusMessage({
-  tone,
-  children,
-}: {
-  tone: StatusTone;
-  children: React.ReactNode;
-}) {
-  return <div className={`qx-plugin-status is-${tone}`}>{children}</div>;
-}
-
 /* ------------------------------------------------------------------ */
 /*  Preference form field                                              */
 /* ------------------------------------------------------------------ */
@@ -144,34 +145,31 @@ function PreferenceField({
 
     case "number":
       return (
-        <input
+        <Input
           type="number"
-          className="qx-inline-input"
-          style={{ width: 100 }}
-          value={Number(value ?? 0)}
+          value={String(value ?? 0)}
           onChange={(e) => onChange(Number(e.target.value))}
+          style={{ maxWidth: 120 }}
         />
       );
 
     case "password":
       return (
-        <input
+        <Input
           type="password"
-          className="qx-inline-input"
-          style={{ width: 200 }}
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
+          style={{ maxWidth: 240 }}
         />
       );
 
     default: // "string"
       return (
-        <input
+        <Input
           type="text"
-          className="qx-inline-input"
-          style={{ width: 200 }}
           value={String(value ?? "")}
           onChange={(e) => onChange(e.target.value)}
+          style={{ maxWidth: 240 }}
         />
       );
   }
@@ -298,9 +296,9 @@ function PluginDetail({
       </div>
 
       <div className="qx-plugin-badges">
-        <Badge>v{plugin.version}</Badge>
-        {builtin ? <Badge>Built-in</Badge> : <Badge>External</Badge>}
-        <Badge>{plugin.enabled ? "Enabled" : "Disabled"}</Badge>
+        <Badge variant="secondary">v{plugin.version}</Badge>
+        {builtin ? <Badge variant="secondary">Built-in</Badge> : <Badge variant="secondary">External</Badge>}
+        <Badge variant={plugin.enabled ? "default" : "outline"}>{plugin.enabled ? "Enabled" : "Disabled"}</Badge>
       </div>
 
       {/* Author */}
@@ -322,47 +320,40 @@ function PluginDetail({
         {plugin.path}
       </div>
 
-      {/* Enable / Disable */}
-      <div style={{ marginTop: 12 }}>
-        <Row title="Enabled" description={builtin ? "Built-in modules are always enabled." : "Toggle this plugin on or off."}>
+      <SettingsCard
+        title="Status"
+        description={builtin ? "Built-in modules are always enabled." : "Toggle this plugin on or off."}
+      >
+        <Row title="Enabled">
           <Toggle value={plugin.enabled} onChange={onToggle} disabled={builtin} />
         </Row>
-      </div>
+      </SettingsCard>
 
-      <div className="qx-plugin-section">
-        <div className="qx-plugin-section-title">Search Aliases & Tags</div>
-        <div className="qx-plugin-section-copy">
-          Add names or tags that should make this module appear in Launcher search.
-        </div>
+      <SettingsCard
+        title="Search Aliases & Tags"
+        description="Add names or tags that should make this module appear in Launcher search."
+      >
         <SearchAliasTagEditor
           entry={aliasMetadata}
           onChange={(next) => patchSearchMetadata(aliasMetadataKey, next)}
         />
-      </div>
+      </SettingsCard>
 
-      {/* Permissions */}
       {permissions.length > 0 && (
-        <div className="qx-plugin-section">
-          <div className="qx-plugin-section-title">Permissions</div>
+        <SettingsCard title="Permissions" description="Capabilities declared by this plugin.">
           <ul className="qx-plugin-permissions">
             {permissions.map((perm) => (
               <li key={perm}>{perm}</li>
             ))}
           </ul>
-        </div>
+        </SettingsCard>
       )}
 
-      {/* Preferences */}
       {preferences.length > 0 && prefsLoaded && (
-        <div className="qx-plugin-section">
-          <div className="qx-plugin-section-title">
-            Preferences
-            {prefsBusy && (
-              <span className="qx-plugin-saving">
-                Saving...
-              </span>
-            )}
-          </div>
+        <SettingsCard
+          title="Preferences"
+          description={prefsBusy ? "Saving…" : "Configure plugin-specific options."}
+        >
           {preferences.map((pref) => (
             <Row
               key={pref.id}
@@ -377,29 +368,24 @@ function PluginDetail({
             </Row>
           ))}
 
-          {/* V2EX token link */}
           {settingsKey === "v2ex" && (
-            <button
-              className="qx-command-button"
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => void openUrl("https://v2ex.com/settings/tokens")}
-              type="button"
             >
               <ExternalLink size={13} aria-hidden="true" />
               Get Token
-            </button>
+            </Button>
           )}
-        </div>
+        </SettingsCard>
       )}
 
-      {/* Uninstall */}
       {!builtin && (
-        <button
-          className="qx-command-button danger"
-          onClick={onUninstall}
-        >
+        <Button variant="destructive" size="sm" onClick={onUninstall}>
           <Trash2 size={13} aria-hidden="true" />
           Uninstall
-        </button>
+        </Button>
       )}
     </div>
   );
@@ -502,9 +488,9 @@ function MarketplaceTab({
       <div className="qx-empty-state">
         <div>Failed to load marketplace.</div>
         <div style={{ fontSize: 11, marginTop: 4 }}>{error}</div>
-        <button className="qx-command-button" onClick={fetchIndex} style={{ marginTop: 8 }}>
+        <Button variant="outline" size="sm" onClick={fetchIndex} style={{ marginTop: 8 }}>
           Retry
-        </button>
+        </Button>
       </div>
     );
   }
@@ -519,25 +505,29 @@ function MarketplaceTab({
       <div className="qx-plugin-list-toolbar">
         <div className="qx-plugin-search-wrap">
           <Search size={14} aria-hidden="true" />
-          <input
+          <Input
             type="text"
             placeholder="Search marketplace plugins..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="qx-inline-input"
+            className="qx-plugin-search-input"
           />
         </div>
-        <button className="qx-command-button" onClick={fetchIndex} disabled={loading}>
+        <Button variant="outline" size="sm" onClick={fetchIndex} disabled={loading}>
           {loading ? <LoadingLabel>Refresh</LoadingLabel> : (
             <>
               <RefreshCw size={13} aria-hidden="true" />
               Refresh
             </>
           )}
-        </button>
+        </Button>
       </div>
 
-      {installStatus && <StatusMessage tone={installStatus.tone}>{installStatus.message}</StatusMessage>}
+      {installStatus && (
+        <div className={`qx-plugin-status is-${installStatus.tone}`}>
+          {installStatus.message}
+        </div>
+      )}
 
       <div className="qx-plugin-library-body">
         <div className="qx-plugin-library-list">
@@ -580,17 +570,17 @@ function MarketplaceTab({
             <>
               <div className="qx-plugin-detail-title">{selectedEntry.name}</div>
               <div className="qx-plugin-badges">
-                <Badge>v{selectedEntry.version}</Badge>
-                {selectedEntry.author && <Badge>{selectedEntry.author}</Badge>}
-                {selectedEntry.size_bytes && <Badge>{formatBytes(selectedEntry.size_bytes)}</Badge>}
+                <Badge variant="secondary">v{selectedEntry.version}</Badge>
+                {selectedEntry.author && <Badge variant="secondary">{selectedEntry.author}</Badge>}
+                {selectedEntry.size_bytes && <Badge variant="secondary">{formatBytes(selectedEntry.size_bytes)}</Badge>}
               </div>
               {selectedEntry.description && (
                 <div className="qx-plugin-description">{selectedEntry.description}</div>
               )}
-              <div className="qx-plugin-section">
-                <div className="qx-plugin-section-title">Install</div>
-                <button
-                  className="qx-command-button primary"
+              <SettingsCard title="Install">
+                <Button
+                  variant={installedIds.has(selectedEntry.id) ? "outline" : "default"}
+                  size="sm"
                   disabled={installedIds.has(selectedEntry.id) || installingId === selectedEntry.id}
                   onClick={() => handleInstall(selectedEntry)}
                 >
@@ -606,21 +596,19 @@ function MarketplaceTab({
                     : installingId === selectedEntry.id
                       ? "Installing..."
                       : "Install"}
-                </button>
-              </div>
+                </Button>
+              </SettingsCard>
               {selectedEntry.required_permissions && selectedEntry.required_permissions.length > 0 && (
-                <div className="qx-plugin-section">
-                  <div className="qx-plugin-section-title">Required permissions</div>
+                <SettingsCard title="Required permissions">
                   <div className="qx-plugin-badges">
                     {selectedEntry.required_permissions.map((p) => (
-                      <Badge key={p}>{p}</Badge>
+                      <Badge key={p} variant="secondary">{p}</Badge>
                     ))}
                   </div>
-                </div>
+                </SettingsCard>
               )}
               {(selectedEntry.updated_at || selectedEntry.min_app_version || selectedEntry.checksum_sha256) && (
-                <div className="qx-plugin-section">
-                  <div className="qx-plugin-section-title">Metadata</div>
+                <SettingsCard title="Metadata">
                   <div className="qx-plugin-info-grid">
                     {selectedEntry.updated_at && (
                       <>
@@ -641,7 +629,7 @@ function MarketplaceTab({
                       </>
                     )}
                   </div>
-                </div>
+                </SettingsCard>
               )}
             </>
           ) : (
@@ -672,12 +660,10 @@ function InstalledPluginRow({
   plugin,
   active,
   onSelect,
-  onToggle,
 }: {
   plugin: InstalledPlugin;
   active: boolean;
   onSelect: () => void;
-  onToggle: () => void;
 }) {
   return (
     <button
@@ -693,13 +679,6 @@ function InstalledPluginRow({
         </div>
         {plugin.description && <div className="qx-plugin-list-desc">{plugin.description}</div>}
       </div>
-      <span onClick={(e) => e.stopPropagation()}>
-        <Toggle
-          value={plugin.enabled}
-          onChange={onToggle}
-          disabled={isBuiltin(plugin)}
-        />
-      </span>
     </button>
   );
 }
@@ -834,27 +813,32 @@ export default function PluginManager() {
   /* ---- render ---- */
 
   return (
-    <div className="qx-plugin-manager">
-      {/* Top bar: tab switcher + actions */}
+    <Tabs
+      value={tab}
+      onValueChange={(value: string) => setTab(value as Tab)}
+      className="qx-plugin-manager"
+    >
       <div className="qx-plugin-manager-top">
         <div className="qx-plugin-manager-actions">
-          <SegmentedControl
-            value={tab}
-            options={[
-              { value: "installed", label: "Installed" },
-              { value: "browse", label: "Browse" },
-            ]}
-            onChange={setTab}
-          />
-          <button className="qx-command-button" onClick={handleRefresh} title="Rescan plugins">
+          <TabsList>
+            <TabsTrigger value="installed">Installed</TabsTrigger>
+            <TabsTrigger value="browse">Browse</TabsTrigger>
+          </TabsList>
+          <Button variant="outline" size="sm" onClick={handleRefresh} title="Rescan plugins">
             <RefreshCw size={13} aria-hidden="true" />
             Rescan
-          </button>
+          </Button>
         </div>
+      </div>
 
-        {/* Install-from-path row (only on Installed tab) */}
-        {tab === "installed" && (
-          <div className="qx-plugin-import-box">
+      <TabsContent value="installed" className="qx-marketplace">
+        <SettingsCard
+          title={t("plugins.importArchive", "Import Plugin Archive")}
+          description={t(
+            "plugins.importArchive.desc",
+            "Install a .zip or .qx-plugin package from disk, or paste a GitHub release/source archive URL.",
+          )}
+          trailing={
             <button
               type="button"
               className="qx-plugin-import-header"
@@ -866,102 +850,88 @@ export default function PluginManager() {
                 className={`qx-plugin-import-chevron${importExpanded ? " is-open" : ""}`}
                 aria-hidden="true"
               />
-              <div className="qx-plugin-import-copy">
-                <div className="qx-plugin-import-title">
-                  {t("plugins.importArchive", "Import Plugin Archive")}
-                </div>
-                <div className="qx-plugin-import-desc">
-                  {t(
-                    "plugins.importArchive.desc",
-                    "Install a .zip or .qx-plugin package from disk, or paste a GitHub release/source archive URL.",
-                  )}
-                </div>
-              </div>
             </button>
-            {importExpanded && (
-              <>
-                <div className="qx-plugin-import-row">
-                  <input
-                    type="text"
-                    value={archivePath}
-                    onChange={(e) => setArchivePath(e.target.value)}
-                    placeholder={t("plugins.localArchive.placeholder", "Local archive path, e.g. ~/Downloads/plugin.zip")}
-                    className="qx-inline-input"
-                  />
-                  <button
-                    className="qx-command-button"
-                    onClick={handleInstallFromPath}
-                    disabled={busy !== null || !archivePath.trim()}
-                  >
-                    {busy === "path" ? t("plugins.installing", "Installing...") : t("plugins.installLocal", "Install Local")}
-                  </button>
-                </div>
-                <div className="qx-plugin-import-row">
-                  <input
-                    type="url"
-                    value={archiveUrl}
-                    onChange={(e) => setArchiveUrl(e.target.value)}
-                    placeholder={t("plugins.githubArchive.placeholder", "GitHub repo, release asset, or archive ZIP URL")}
-                    className="qx-inline-input"
-                  />
-                  <button
-                    className="qx-command-button"
-                    onClick={handleInstallFromUrl}
-                    disabled={busy !== null || !archiveUrl.trim()}
-                  >
-                    {busy === "url" ? t("plugins.downloading", "Downloading...") : t("plugins.installUrl", "Install URL")}
-                  </button>
-                </div>
-                <div className="qx-plugin-import-row">
-                  <input
-                    type="url"
-                    value={raycastUrl}
-                    onChange={(e) => setRaycastUrl(e.target.value)}
-                    placeholder="Raycast extension URL, e.g. https://github.com/raycast/extensions/tree/<ref>/extensions/system-information"
-                    className="qx-inline-input"
-                  />
-                  <button
-                    className="qx-command-button"
-                    onClick={handleInstallFromRaycast}
-                    disabled={busy !== null || !raycastUrl.trim()}
-                  >
-                    {busy === "raycast" ? "Converting..." : "Install Raycast"}
-                  </button>
-                </div>
-                {installStatus && <div className="qx-plugin-import-status">{installStatus}</div>}
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Content area */}
-      {tab === "installed" ? (
-        <div className="qx-marketplace">
-          <div className="qx-plugin-list-toolbar">
-            <div className="qx-plugin-search-wrap">
-              <Search size={14} aria-hidden="true" />
-              <input
-                type="text"
-                value={installedQuery}
-                onChange={(e) => setInstalledQuery(e.target.value)}
-                placeholder="Search installed plugins..."
-                className="qx-inline-input"
-              />
+          }
+        >
+          {importExpanded && (
+            <div className="qx-plugin-import-stack">
+              <div className="qx-plugin-import-row">
+                <Input
+                  type="text"
+                  value={archivePath}
+                  onChange={(e) => setArchivePath(e.target.value)}
+                  placeholder={t("plugins.localArchive.placeholder", "Local archive path, e.g. ~/Downloads/plugin.zip")}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleInstallFromPath}
+                  disabled={busy !== null || !archivePath.trim()}
+                >
+                  {busy === "path" ? t("plugins.installing", "Installing...") : t("plugins.installLocal", "Install Local")}
+                </Button>
+              </div>
+              <div className="qx-plugin-import-row">
+                <Input
+                  type="url"
+                  value={archiveUrl}
+                  onChange={(e) => setArchiveUrl(e.target.value)}
+                  placeholder={t("plugins.githubArchive.placeholder", "GitHub repo, release asset, or archive ZIP URL")}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleInstallFromUrl}
+                  disabled={busy !== null || !archiveUrl.trim()}
+                >
+                  {busy === "url" ? t("plugins.downloading", "Downloading...") : t("plugins.installUrl", "Install URL")}
+                </Button>
+              </div>
+              <div className="qx-plugin-import-row">
+                <Input
+                  type="url"
+                  value={raycastUrl}
+                  onChange={(e) => setRaycastUrl(e.target.value)}
+                  placeholder="Raycast extension URL, e.g. https://github.com/raycast/extensions/tree/<ref>/extensions/system-information"
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleInstallFromRaycast}
+                  disabled={busy !== null || !raycastUrl.trim()}
+                >
+                  {busy === "raycast" ? "Converting..." : "Install Raycast"}
+                </Button>
+              </div>
+              {installStatus && <div className="qx-plugin-import-status">{installStatus}</div>}
             </div>
-            <SegmentedControl
-              value={installedFilter}
-              options={[
-                { value: "all", label: "All" },
-                { value: "builtin", label: "Built-in" },
-                { value: "external", label: "External" },
-                { value: "enabled", label: "Enabled" },
-                { value: "disabled", label: "Disabled" },
-              ]}
-              onChange={setInstalledFilter}
+          )}
+        </SettingsCard>
+
+        <div className="qx-plugin-list-toolbar">
+          <div className="qx-plugin-search-wrap">
+            <Search size={14} aria-hidden="true" />
+            <Input
+              type="text"
+              value={installedQuery}
+              onChange={(e) => setInstalledQuery(e.target.value)}
+              placeholder="Search installed plugins..."
+              className="qx-plugin-search-input"
             />
           </div>
-          <div className="qx-plugin-library-body">
+          <SegmentedControl
+            value={installedFilter}
+            options={[
+              { value: "all", label: "All" },
+              { value: "builtin", label: "Built-in" },
+              { value: "external", label: "External" },
+              { value: "enabled", label: "Enabled" },
+              { value: "disabled", label: "Disabled" },
+            ]}
+            onChange={setInstalledFilter}
+          />
+        </div>
+        <div className="qx-plugin-library-body">
           {/* Plugin list */}
           <div className="qx-plugin-library-list">
             {filteredPlugins.map((p) => (
@@ -970,7 +940,6 @@ export default function PluginManager() {
                 plugin={p}
                 active={p.id === selectedPlugin?.id}
                 onSelect={() => setSelectedId(p.id)}
-                onToggle={() => handleToggle(p)}
               />
             ))}
             {plugins.length === 0 ? (
@@ -994,14 +963,15 @@ export default function PluginManager() {
               <div className="qx-empty-state">Select a plugin to view details</div>
             )}
           </div>
-          </div>
         </div>
-      ) : (
+      </TabsContent>
+
+      <TabsContent value="browse" className="qx-marketplace">
         <MarketplaceTab
           installedIds={installedIds}
           onInstallComplete={handleRefresh}
         />
-      )}
-    </div>
+      </TabsContent>
+    </Tabs>
   );
 }
