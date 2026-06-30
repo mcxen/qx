@@ -20,10 +20,6 @@ mod macos {
     use tauri::AppHandle;
     use tauri::Manager;
 
-    // NSWindowStyleMaskNonactivatingPanel — not exposed as a named variant in
-    // objc2-app-kit 0.3, so we OR the raw bit (1 << 7) into the style mask.
-    const NS_WINDOW_STYLE_MASK_NONACTIVATING_PANEL: usize = 0x80;
-
     fn ns_window(app: &AppHandle) -> Option<*mut AnyObject> {
         let win = app.get_webview_window(MAIN_LABEL)?;
         let ptr = win.ns_window().ok()? as *mut AnyObject;
@@ -34,32 +30,30 @@ mod macos {
         }
     }
 
-    /// Apply NSPanel + non-activating semantics to the main window.
-    /// Idempotent — safe to call on every show in case Tauri resets state.
+    /// Apply panel-like semantics to the main NSWindow.
+    ///
+    /// Tauri creates a plain NSWindow. NSPanel-specific bits such as
+    /// NonactivatingPanel (0x80) and setBecomesKeyOnlyIfNeeded: are not valid
+    /// on NSWindow and throw at runtime, so we only set NSWindow-safe
+    /// properties here. The app stays hidden from the dock via
+    /// ActivationPolicy::Accessory, and we explicitly request key status when
+    /// the user interacts with an input.
     pub(super) fn promote_main_to_panel(app: &AppHandle) {
         let Some(ns_window) = ns_window(app) else {
             return;
         };
         unsafe {
             let current: usize = msg_send![ns_window, styleMask];
-            // Preserve existing bits (Resizable, Borderless) and OR in the
-            // NonactivatingPanel high bit. Borderless is required for the
-            // frameless transparent shell.
+            // Keep the window borderless (required for the transparent shell)
+            // and resizable. Do NOT OR in NonactivatingPanel (0x80) — that
+            // mask is NSPanel-only and aborts on an NSWindow.
             let next: usize = current
-                | NS_WINDOW_STYLE_MASK_NONACTIVATING_PANEL
                 | NSWindowStyleMask::Borderless.0 as usize
                 | NSWindowStyleMask::Resizable.0 as usize;
             let _: () = msg_send![ns_window, setStyleMask: next];
 
-            // Don't deactivate when other apps come to front; we explicitly
-            // make the panel key on every show so keyboard events (Esc,
-            // arrows, typing) reliably reach the webview. The Nonactivating
-            // mask + Accessory activation policy still keep the previous
-            // app visually frontmost — its menu bar stays active.
+            // Keep the panel visible when the user switches to another app.
             let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
-            let _: () = msg_send![ns_window, setBecomesKeyOnlyIfNeeded: false];
-            let _: () = msg_send![ns_window, setWorksWhenModal: true];
-            let _: () = msg_send![ns_window, setFloatingPanel: true];
 
             // Float above regular windows. 3 == NSFloatingWindowLevel.
             let _: () = msg_send![ns_window, setLevel: 3isize];
