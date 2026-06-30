@@ -98,6 +98,61 @@
   width: 100%;
 }
 
+.qx-launcher-trailing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  justify-content: flex-end;
+  -webkit-app-region: no-drag;
+}
+
+.qx-launcher-trailing .qx-launcher-scope {
+  flex: 0 1 auto;
+  min-width: 100px;
+}
+
+.qx-quick-entry-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 8px;
+  background: var(--qx-bg-component-1);
+}
+
+.qx-quick-entry-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--qx-text-secondary);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.qx-quick-entry-icon:hover {
+  background: color-mix(in srgb, var(--qx-accent) 14%, transparent);
+  color: var(--qx-accent);
+}
+
+.qx-quick-entry-icon:active {
+  background: color-mix(in srgb, var(--qx-accent) 22%, transparent);
+}
+
+@media (max-width: 760px) {
+  .qx-quick-entry-icons {
+    display: none;
+  }
+}
+
 .qx-shell-main {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

@@ -10,6 +10,7 @@ import { useSettingsStore } from "./modules/settings/store";
 import LauncherContext from "./launcher/LauncherContext";
 import { createLauncherActions, getLauncherActionTitle } from "./launcher/launcherActions";
 import { toLauncherQuickEntries } from "./launcher/quickEntries";
+import QuickEntryIcons from "./launcher/QuickEntryIcons";
 import { useLauncherHistory } from "./launcher/useLauncherHistory";
 import type { QuickEntry } from "./launcher/types";
 import { useT } from "./i18n";
@@ -120,17 +121,20 @@ export default function Launcher({
       className="launcher-shell"
       search={<SearchBar onKeyDown={handleLauncherKeyDown} embedded />}
       trailing={
-        <Select
-          value={scope}
-          options={scopeOptions}
-          ariaLabel="Search scope"
-          className="qx-launcher-scope"
-          onChange={(next) => {
-            setScope(next);
-            searchScopeRef.current = next;
-            onScopeChange();
-          }}
-        />
+        <div className="qx-launcher-trailing">
+          <QuickEntryIcons entries={quickEntries} />
+          <Select
+            value={scope}
+            options={scopeOptions}
+            ariaLabel="Search scope"
+            className="qx-launcher-scope"
+            onChange={(next) => {
+              setScope(next);
+              searchScopeRef.current = next;
+              onScopeChange();
+            }}
+          />
+        </div>
       }
       context={
         <LauncherContext
