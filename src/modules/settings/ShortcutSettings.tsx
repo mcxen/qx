@@ -202,7 +202,6 @@ export default function ShortcutSettings() {
                         clipboard: "Alt+V",
                         record_gif: "Alt+G",
                         rss: "Alt+R",
-                        settings: "Cmd+,",
                       };
                       patchShortcut(id, {
                         key: defaults[id] ?? "",

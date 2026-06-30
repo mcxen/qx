@@ -440,13 +440,6 @@ impl Default for Settings {
                 enabled: true,
             },
         );
-        shortcuts.insert(
-            "settings".to_string(),
-            ShortcutBinding {
-                key: "Cmd+,".to_string(),
-                enabled: true,
-            },
-        );
 
         Self {
             general: GeneralSettings::default(),
@@ -604,15 +597,6 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
             }
         })
         .map_err(|e| format!("register record_gif shortcut: {e}"))?;
-    }
-
-    if let Some(key) = shortcut_for(settings, "settings") {
-        gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-            if event.state() == ShortcutState::Pressed {
-                show_and_navigate(app, "settings");
-            }
-        })
-        .map_err(|e| format!("register settings shortcut: {e}"))?;
     }
 
     Ok(())

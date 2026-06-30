@@ -150,7 +150,6 @@ export const DEFAULT_SETTINGS: Settings = {
     clipboard: { key: "Alt+V", enabled: true },
     record_gif: { key: "Alt+G", enabled: true },
     rss: { key: "Alt+R", enabled: true },
-    settings: { key: "Cmd+,", enabled: true },
   },
   plugins: [],
   advanced: {
@@ -333,7 +332,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
 }));
 
 export const SHORTCUT_GROUPS: { group: string; ids: string[] }[] = [
-  { group: "Global", ids: ["toggle_launcher", "settings"] },
+  { group: "Global", ids: ["toggle_launcher"] },
   { group: "Clipboard", ids: ["clipboard"] },
   { group: "RSS", ids: ["rss"] },
   { group: "Recording", ids: ["record_gif"] },
@@ -344,5 +343,4 @@ export const SHORTCUT_LABELS: Record<string, string> = {
   clipboard: "Open Clipboard",
   record_gif: "Record Screen GIF",
   rss: "Open RSS Reader",
-  settings: "Open Settings",
 };

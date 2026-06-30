@@ -136,7 +136,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
             className={`qx-settings-nav-item${active ? " is-active" : ""}`}
           >
             <span className="qx-settings-nav-code">{item.code}</span>
-            <span>{t(`nav.${item.id}`, item.label)}</span>
+            <span className="qx-settings-nav-label">{t(`nav.${item.id}`, item.label)}</span>
           </button>
         );
       })}

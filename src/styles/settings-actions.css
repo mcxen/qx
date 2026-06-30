@@ -50,7 +50,9 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  min-height: 34px;
+  min-width: 0;
+  height: 34px;
+  flex-shrink: 0;
   padding: 0 10px;
   border: none;
   border-radius: var(--qx-control-radius);
@@ -70,6 +72,14 @@
   font-weight: 700;
   text-align: center;
   letter-spacing: 0;
+}
+
+.qx-settings-nav-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .qx-settings-nav-item.is-active {

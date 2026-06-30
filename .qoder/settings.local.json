@@ -1,7 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "Bash(which cargo && cargo --version && which rustc && rustc --version)"
+      "Bash(which cargo && cargo --version && which rustc && rustc --version)",
+      "Bash(cd /Users/mcx/Documents/OpenSpring/Qx && git log --oneline -20 -- src/styles/settings-actions.css src/modules/settings/SettingsPanel.tsx)",
+      "Bash(cd /Users/mcx/Documents/OpenSpring/Qx && git log -p -3 -- src/modules/settings/SettingsPanel.tsx | head -200)",
+      "Bash(cd /Users/mcx/Documents/OpenSpring/Qx && find src/styles -type f -name \"*.css\" | head -20)",
+      "Bash(cd /Users/mcx/Documents/OpenSpring/Qx && git log --oneline -10 -- src/styles/settings-actions.css)",
+      "Bash(cd /Users/mcx/Documents/OpenSpring/Qx && npx tsc --noEmit 2>&1 | tail -20)",
+      "Bash(cd /Users/mcx/Documents/OpenSpring/Qx && find src -name \"SearchBar.tsx\" -path \"*/components/*\" 2>/dev/null; find src -name \"SearchBar*.tsx\" 2>/dev/null)",
+      "Bash(cd /Users/mcx/Documents/OpenSpring/Qx && wc -l src/SearchBar.tsx)",
+      "Bash(cd /Users/mcx/Documents/OpenSpring/Qx/src-tauri && cargo check 2>&1 | tail -25)"
     ]
   }
 }

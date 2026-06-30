@@ -1015,12 +1015,6 @@ function App() {
   };
 
   const handleKeyDown = async (e: React.KeyboardEvent) => {
-    if (e.metaKey && e.key === ",") {
-      e.preventDefault();
-      setTab("settings");
-      return;
-    }
-
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
