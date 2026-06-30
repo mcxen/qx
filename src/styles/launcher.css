@@ -29,6 +29,12 @@
   margin-top: 12px;
 }
 
+.qx-context-section-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: -34px 2px 6px 0;
+}
+
 .qx-context-entry {
   display: flex;
   flex-direction: column;
@@ -79,6 +85,52 @@
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.qx-quick-entry-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qx-quick-entry-edit-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-card-radius);
+  background: var(--qx-bg-component-1);
+}
+
+.qx-quick-entry-edit-fields {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.qx-quick-entry-edit-fields .qx-select,
+.qx-quick-entry-edit-fields .qx-select-trigger,
+.qx-quick-entry-edit-fields .qx-shadcn-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.qx-quick-entry-edit-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.qx-quick-entry-editor-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.qx-quick-entry-editor-footer .qx-shadcn-button,
+.qx-context-section-actions .qx-shadcn-button {
+  gap: 6px;
 }
 
 .qx-rss-detail-title {

@@ -386,6 +386,39 @@ pub struct SearchMetadataEntry {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QuickEntryConfig {
+    pub id: String,
+    pub title: String,
+    pub subtitle: String,
+    pub target: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+fn default_quick_entries() -> Vec<QuickEntryConfig> {
+    [
+        ("clipboard", "Clipboard History", "Pinned, frequent, links"),
+        ("qx-ai", "QxAI", "Chat and agent tasks"),
+        ("rss", "RSS Reader", "Feeds and articles"),
+        ("screencap", "Screen Recording", "GIF capture"),
+        ("v2ex", "V2EX", "Latest and hot topics"),
+        ("weather", "Weather", "Current conditions and forecast"),
+        ("documents", "Documents", "Text, Markdown, JSON"),
+        ("macros", "Macro Recorder", "Record and replay actions"),
+        ("settings", "Settings", "Appearance and plugins"),
+    ]
+    .into_iter()
+    .map(|(id, title, subtitle)| QuickEntryConfig {
+        id: id.to_string(),
+        title: title.to_string(),
+        subtitle: subtitle.to_string(),
+        target: id.to_string(),
+        enabled: true,
+    })
+    .collect()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
     pub general: GeneralSettings,
@@ -407,6 +440,8 @@ pub struct Settings {
     pub weather: WeatherSettings,
     #[serde(default)]
     pub search_metadata: BTreeMap<String, SearchMetadataEntry>,
+    #[serde(default = "default_quick_entries")]
+    pub quick_entries: Vec<QuickEntryConfig>,
 }
 
 impl Default for Settings {
@@ -452,6 +487,7 @@ impl Default for Settings {
             v2ex: V2exSettings::default(),
             weather: WeatherSettings::default(),
             search_metadata: BTreeMap::new(),
+            quick_entries: default_quick_entries(),
         }
     }
 }
@@ -509,21 +545,26 @@ pub fn get_settings() -> Settings {
 pub fn update_settings(app: AppHandle, settings: Settings) -> Result<Settings, String> {
     write_settings(&settings)?;
     register_shortcuts(&app, &settings)?;
+    crate::refresh_tray_menu(&app, &settings)?;
     Ok(settings)
 }
 
 #[command]
-pub fn reset_settings() -> Result<Settings, String> {
+pub fn reset_settings(app: AppHandle) -> Result<Settings, String> {
     let default = Settings::default();
     write_settings(&default)?;
+    register_shortcuts(&app, &default)?;
+    crate::refresh_tray_menu(&app, &default)?;
     Ok(default)
 }
 
 #[command]
-pub fn import_settings(path: String) -> Result<Settings, String> {
+pub fn import_settings(app: AppHandle, path: String) -> Result<Settings, String> {
     let content = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path))?;
     let settings: Settings = serde_json::from_str(&content).map_err(|e| format!("parse: {e}"))?;
     write_settings(&settings)?;
+    register_shortcuts(&app, &settings)?;
+    crate::refresh_tray_menu(&app, &settings)?;
     Ok(settings)
 }
 

@@ -684,8 +684,6 @@ pub fn qxai_stream_chat_events(
     model: Option<String>,
     messages: Vec<ChatMessage>,
 ) -> Result<(), String> {
-    let providers = qxai_provider_catalog();
-    let selection = resolve_model_selection(&providers, provider, model)?;
     std::thread::spawn(move || {
         let stream_app = app.clone();
         let stream_request_id = request_id.clone();
@@ -701,24 +699,43 @@ pub fn qxai_stream_chat_events(
             );
         };
 
-        let result = if selection.provider.starts_with("custom:") {
-            match qxai_get_custom_providers()
-                .into_iter()
-                .find(|p| p.id == selection.provider)
-            {
-                Some(custom_provider) => provider_openai_chat_stream(
-                    &custom_provider.base_url,
-                    &custom_provider.api_key,
-                    &selection.model,
-                    &messages,
-                    emit_chunk,
-                ),
-                None => Err(format!("custom provider {} not found", selection.provider)),
+        let work = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let providers = qxai_provider_catalog();
+            let selection = resolve_model_selection(&providers, provider, model)?;
+
+            if selection.provider.starts_with("custom:") {
+                match qxai_get_custom_providers()
+                    .into_iter()
+                    .find(|p| p.id == selection.provider)
+                {
+                    Some(custom_provider) => provider_openai_chat_stream(
+                        &custom_provider.base_url,
+                        &custom_provider.api_key,
+                        &selection.model,
+                        &messages,
+                        emit_chunk,
+                    ),
+                    None => Err(format!("custom provider {} not found", selection.provider)),
+                }
+            } else {
+                match selection.provider.as_str() {
+                    "duckduckgo" => provider_duckduckgo_stream_events(&messages, emit_chunk),
+                    other => Err(format!("unknown provider: {other}")),
+                }
             }
-        } else {
-            match selection.provider.as_str() {
-                "duckduckgo" => provider_duckduckgo_stream_events(&messages, emit_chunk),
-                _ => Err(format!("unknown provider: {}", selection.provider)),
+        }));
+
+        let result: Result<String, String> = match work {
+            Ok(inner) => inner,
+            Err(panic) => {
+                let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+                    (*s).to_string()
+                } else if let Some(s) = panic.downcast_ref::<String>() {
+                    s.clone()
+                } else {
+                    "qxai stream thread panicked".to_string()
+                };
+                Err(msg)
             }
         };
 

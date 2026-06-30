@@ -1,0 +1,195 @@
+//! Floating, non-activating window shell (macOS-first).
+//!
+//! Converts the `main` Tauri window into a Raycast/Alfred-style accessory
+//! panel: the app is hidden from the dock entirely (`ActivationPolicy::
+//! Accessory`), and the window is promoted into a non-activating NSPanel so
+//! invoking it from a global shortcut never steals focus from the user's
+//! current foreground app. Inputs that need keyboard focus explicitly
+//! request key-window status through `floating_request_key`.
+
+use tauri::{AppHandle, Manager, PhysicalPosition};
+
+pub(crate) const MAIN_LABEL: &str = "main";
+
+#[cfg(target_os = "macos")]
+mod macos {
+    use super::MAIN_LABEL;
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    use objc2_app_kit::{NSWindowCollectionBehavior, NSWindowStyleMask};
+    use tauri::AppHandle;
+    use tauri::Manager;
+
+    // NSWindowStyleMaskNonactivatingPanel — not exposed as a named variant in
+    // objc2-app-kit 0.3, so we OR the raw bit (1 << 7) into the style mask.
+    const NS_WINDOW_STYLE_MASK_NONACTIVATING_PANEL: usize = 0x80;
+
+    fn ns_window(app: &AppHandle) -> Option<*mut AnyObject> {
+        let win = app.get_webview_window(MAIN_LABEL)?;
+        let ptr = win.ns_window().ok()? as *mut AnyObject;
+        if ptr.is_null() {
+            None
+        } else {
+            Some(ptr)
+        }
+    }
+
+    /// Apply NSPanel + non-activating semantics to the main window.
+    /// Idempotent — safe to call on every show in case Tauri resets state.
+    pub(super) fn promote_main_to_panel(app: &AppHandle) {
+        let Some(ns_window) = ns_window(app) else {
+            return;
+        };
+        unsafe {
+            let current: usize = msg_send![ns_window, styleMask];
+            // Preserve existing bits (Resizable, Borderless) and OR in the
+            // NonactivatingPanel high bit. Borderless is required for the
+            // frameless transparent shell.
+            let next: usize = current
+                | NS_WINDOW_STYLE_MASK_NONACTIVATING_PANEL
+                | NSWindowStyleMask::Borderless.0 as usize
+                | NSWindowStyleMask::Resizable.0 as usize;
+            let _: () = msg_send![ns_window, setStyleMask: next];
+
+            // Don't deactivate when other apps come to front; only become key
+            // window on explicit request (e.g. when a text input is focused).
+            let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
+            let _: () = msg_send![ns_window, setBecomesKeyOnlyIfNeeded: true];
+            let _: () = msg_send![ns_window, setWorksWhenModal: true];
+            let _: () = msg_send![ns_window, setFloatingPanel: true];
+
+            // Float above regular windows. 3 == NSFloatingWindowLevel.
+            let _: () = msg_send![ns_window, setLevel: 3isize];
+
+            // Visible on every Space and inside other apps' fullscreen.
+            let behavior = NSWindowCollectionBehavior::CanJoinAllSpaces
+                | NSWindowCollectionBehavior::Stationary
+                | NSWindowCollectionBehavior::FullScreenAuxiliary
+                | NSWindowCollectionBehavior::IgnoresCycle;
+            let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+        }
+    }
+
+    /// Show the window in its current position without activating the app
+    /// or stealing key-window status from the frontmost application.
+    pub(super) fn order_front_without_activating(app: &AppHandle) {
+        let Some(ns_window) = ns_window(app) else {
+            return;
+        };
+        unsafe {
+            let _: () = msg_send![ns_window, orderFrontRegardless];
+        }
+    }
+
+    /// Promote the window to key window — needed when the user clicks into a
+    /// text input or otherwise needs keyboard focus inside the panel.
+    pub(super) fn make_key_window(app: &AppHandle) {
+        let Some(ns_window) = ns_window(app) else {
+            return;
+        };
+        unsafe {
+            let _: () = msg_send![ns_window, makeKeyAndOrderFront: std::ptr::null::<AnyObject>()];
+        }
+    }
+}
+
+fn center_on_cursor(app: &AppHandle) -> Option<()> {
+    let win = app.get_webview_window(MAIN_LABEL)?;
+    let cursor = app.cursor_position().ok()?;
+    let monitor = app
+        .monitor_from_point(cursor.x, cursor.y)
+        .ok()
+        .flatten()
+        .or_else(|| win.current_monitor().ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten())?;
+    let area = monitor.work_area();
+    let size = win.outer_size().or_else(|_| win.inner_size()).ok()?;
+    let x = area.position.x + ((area.size.width as i32 - size.width as i32) / 2);
+    let y = area.position.y + ((area.size.height as i32 - size.height as i32) / 3);
+    let _ = win.set_position(PhysicalPosition::new(x, y));
+    Some(())
+}
+
+/// One-time installation during app setup: hide the dock icon and promote
+/// the main window into an NSPanel.
+pub fn install(app: &AppHandle) {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+        macos::promote_main_to_panel(app);
+    }
+    let _ = app; // suppress unused on non-macos
+}
+
+/// Show the main window as a floating, non-activating panel.
+pub fn show_floating(app: &AppHandle) {
+    let _ = center_on_cursor(app);
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        let _ = win.show();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        macos::promote_main_to_panel(app);
+        macos::order_front_without_activating(app);
+    }
+    #[cfg(not(target_os = "macos"))]
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        let _ = win.set_focus();
+    }
+}
+
+/// Hide the main window. No-op if already hidden.
+pub fn hide(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        let _ = win.hide();
+    }
+}
+
+/// Toggle visibility — used by the toggle_launcher global shortcut.
+pub fn toggle(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        if win.is_visible().unwrap_or(false) {
+            let _ = win.hide();
+        } else {
+            show_floating(app);
+        }
+    }
+}
+
+/// Show + navigate to a route by emitting the existing `navigate` event.
+/// Mirrors the old `show_and_navigate` behavior but never steals focus.
+pub fn show_and_navigate(app: &AppHandle, route: &str) {
+    show_floating(app);
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        let _ = tauri::Emitter::emit(&win, "navigate", route);
+    }
+}
+
+#[tauri::command]
+pub fn floating_show(app: AppHandle) {
+    show_floating(&app);
+}
+
+#[tauri::command]
+pub fn floating_hide(app: AppHandle) {
+    hide(&app);
+}
+
+#[tauri::command]
+pub fn floating_toggle(app: AppHandle) {
+    toggle(&app);
+}
+
+/// Promote the panel to key window so keyboard input reaches the webview.
+/// The frontend calls this when an input/textarea inside the panel is
+/// focused; otherwise the panel stays non-activating and the user's
+/// foreground app keeps key-window status.
+#[tauri::command]
+pub fn floating_request_key(app: AppHandle) {
+    #[cfg(target_os = "macos")]
+    macos::make_key_window(&app);
+    #[cfg(not(target_os = "macos"))]
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        let _ = win.set_focus();
+    }
+}

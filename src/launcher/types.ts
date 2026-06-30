@@ -2,6 +2,7 @@ export interface QuickEntry {
   id: string;
   title: string;
   subtitle: string;
+  target: string;
   onClick: () => void;
 }
 

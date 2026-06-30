@@ -3,6 +3,7 @@ mod apps_zh_dict;
 mod clipboard;
 mod display_monitor;
 mod file_search;
+mod floating_panel;
 mod g4f;
 mod github_calendar;
 mod history;
@@ -23,10 +24,12 @@ mod weather;
 
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, LogicalSize, Manager, PhysicalPosition, PhysicalSize,
+    AppHandle, LogicalSize, Manager, PhysicalSize,
 };
+
+const MAIN_TRAY_ID: &str = "qx-main-tray";
 
 #[tauri::command]
 fn get_file_size(path: String) -> Result<u64, String> {
@@ -86,37 +89,65 @@ fn set_window_size(app: tauri::AppHandle, width: u32, height: u32) {
     }
 }
 
-fn center_on_cursor_monitor(app: &AppHandle, win: &tauri::WebviewWindow) -> tauri::Result<()> {
-    let monitor = app
-        .cursor_position()
-        .ok()
-        .and_then(|cursor| app.monitor_from_point(cursor.x, cursor.y).ok().flatten())
-        .or_else(|| win.current_monitor().ok().flatten())
-        .or_else(|| app.primary_monitor().ok().flatten());
-
-    let Some(monitor) = monitor else {
-        return Ok(());
-    };
-
-    let area = monitor.work_area();
-    let win_size = win.outer_size().or_else(|_| win.inner_size())?;
-    let x = area.position.x + ((area.size.width as i32 - win_size.width as i32) / 2);
-    let y = area.position.y + ((area.size.height as i32 - win_size.height as i32) / 2);
-    win.set_position(PhysicalPosition::new(x, y))
+pub(crate) fn show_on_cursor_monitor(app: &AppHandle, _win: &tauri::WebviewWindow) {
+    floating_panel::show_floating(app);
 }
 
-pub(crate) fn show_on_cursor_monitor(app: &AppHandle, win: &tauri::WebviewWindow) {
-    let _ = center_on_cursor_monitor(app, win);
-    let _ = win.show();
-    let _ = win.set_focus();
+fn toggle_window(app: &AppHandle, _win: &tauri::WebviewWindow) {
+    floating_panel::toggle(app);
 }
 
-fn toggle_window(app: &AppHandle, win: &tauri::WebviewWindow) {
-    if win.is_visible().unwrap_or(false) {
-        let _ = win.hide();
-    } else {
-        show_on_cursor_monitor(app, win);
+fn show_and_navigate(app: &AppHandle, route: &str) {
+    floating_panel::show_and_navigate(app, route);
+}
+
+fn build_tray_menu(
+    app: &AppHandle,
+    settings: &settings::Settings,
+) -> tauri::Result<Menu<tauri::Wry>> {
+    let menu = Menu::new(app)?;
+    for (index, entry) in settings
+        .quick_entries
+        .iter()
+        .filter(|entry| entry.enabled && !entry.target.trim().is_empty())
+        .enumerate()
+    {
+        let title = if entry.title.trim().is_empty() {
+            entry.target.trim()
+        } else {
+            entry.title.trim()
+        };
+        let item = MenuItem::with_id(
+            app,
+            format!("quick:{index}:{}", entry.target.trim()),
+            title,
+            true,
+            None::<&str>,
+        )?;
+        menu.append(&item)?;
     }
+
+    if settings.quick_entries.iter().any(|entry| entry.enabled) {
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+    }
+
+    let show = MenuItem::with_id(app, "show", "Show/Hide", true, None::<&str>)?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Qx", true, Some("Cmd+Q"))?;
+    menu.append(&show)?;
+    menu.append(&quit)?;
+    Ok(menu)
+}
+
+pub(crate) fn refresh_tray_menu(
+    app: &AppHandle,
+    settings: &settings::Settings,
+) -> Result<(), String> {
+    let menu = build_tray_menu(app, settings).map_err(|e| format!("build tray menu: {e}"))?;
+    if let Some(tray) = app.tray_by_id(MAIN_TRAY_ID) {
+        tray.set_menu(Some(menu))
+            .map_err(|e| format!("refresh tray menu: {e}"))?;
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -156,9 +187,6 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
-            #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Regular);
-
             let handle = app.handle().clone();
             let Some(win) = app.get_webview_window("main") else {
                 eprintln!("main window not found during setup");
@@ -170,6 +198,10 @@ pub fn run() {
 
             #[cfg(target_os = "macos")]
             setup_frosted_glass(app);
+
+            // Hide from dock and promote the main window into a
+            // non-activating NSPanel so global shortcuts never steal focus.
+            floating_panel::install(&handle);
 
             settings::register_shortcuts(&handle, &settings::read_settings())?;
 
@@ -207,31 +239,40 @@ pub fn run() {
             // Start external display monitor (polls every 2s, auto-shows on connect)
             display_monitor::start_display_monitor(handle.clone());
 
-            let show = MenuItem::with_id(app, "show", "Show/Hide", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Quit Qx", true, Some("Cmd+Q"))?;
-            let menu = Menu::with_items(app, &[&show, &quit])?;
+            let current_settings = settings::read_settings();
+            let menu = build_tray_menu(&handle, &current_settings)?;
             let tray_rgba =
                 image::load_from_memory(include_bytes!("../icons/tray-template.png"))?.into_rgba8();
             let (tray_width, tray_height) = tray_rgba.dimensions();
             let tray_icon = Image::new_owned(tray_rgba.into_raw(), tray_width, tray_height);
 
-            TrayIconBuilder::new()
+            TrayIconBuilder::with_id(MAIN_TRAY_ID)
                 .menu(&menu)
                 .icon(tray_icon)
                 .icon_as_template(true)
-                .on_menu_event(|app, event| match event.id().as_ref() {
-                    "quit" => {
-                        if let Some(flag) = app.try_state::<clipboard::ClipboardShutdown>() {
-                            flag.0.store(true, std::sync::atomic::Ordering::SeqCst);
-                        }
-                        app.exit(0);
+                .on_menu_event(|app, event| {
+                    let id = event.id().as_ref();
+                    if let Some(route) = id
+                        .strip_prefix("quick:")
+                        .and_then(|value| value.split_once(':').map(|(_, route)| route))
+                    {
+                        show_and_navigate(app, route);
+                        return;
                     }
-                    "show" => {
-                        if let Some(win) = app.get_webview_window("main") {
-                            toggle_window(app, &win);
+                    match id {
+                        "quit" => {
+                            if let Some(flag) = app.try_state::<clipboard::ClipboardShutdown>() {
+                                flag.0.store(true, std::sync::atomic::Ordering::SeqCst);
+                            }
+                            app.exit(0);
                         }
+                        "show" => {
+                            if let Some(win) = app.get_webview_window("main") {
+                                toggle_window(app, &win);
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
                     if let TrayIconEvent::Click {
@@ -264,6 +305,10 @@ pub fn run() {
             clipboard::toggle_clipboard_pin,
             clipboard::record_clipboard_copy,
             clipboard::read_image_file,
+            floating_panel::floating_show,
+            floating_panel::floating_hide,
+            floating_panel::floating_toggle,
+            floating_panel::floating_request_key,
             rss::rss_list_feeds,
             rss::rss_add_feed,
             rss::rss_update_feed,

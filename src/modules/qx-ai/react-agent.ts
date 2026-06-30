@@ -426,7 +426,11 @@ async function streamOnce(
       if (settled) return;
       settled = true;
       window.clearTimeout(timeout);
-      unlisten?.();
+      try {
+        unlisten?.();
+      } catch {
+        // ignore
+      }
       if (err) reject(err);
       else resolve(value);
     };
@@ -449,6 +453,14 @@ async function streamOnce(
       onChunk(acc);
     })
       .then((un) => {
+        if (settled) {
+          try {
+            un();
+          } catch {
+            // ignore
+          }
+          return;
+        }
         unlisten = un;
         return invoke("qxai_stream_chat_events", {
           requestId,

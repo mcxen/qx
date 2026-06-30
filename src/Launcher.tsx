@@ -9,6 +9,7 @@ import { useStore, type AppEntry, type SearchScope } from "./store";
 import { useSettingsStore } from "./modules/settings/store";
 import LauncherContext from "./launcher/LauncherContext";
 import { createLauncherActions, getLauncherActionTitle } from "./launcher/launcherActions";
+import { toLauncherQuickEntries } from "./launcher/quickEntries";
 import { useLauncherHistory } from "./launcher/useLauncherHistory";
 import type { QuickEntry } from "./launcher/types";
 import { useT } from "./i18n";
@@ -62,47 +63,8 @@ export default function Launcher({
   });
 
   const quickEntries: QuickEntry[] = useMemo(() => {
-    const builtIn: QuickEntry[] = [
-      {
-        id: "clipboard",
-        title: t("launcher.clipboard", "Clipboard History"),
-        subtitle: t("launcher.clipboard.desc", "Pinned, frequent, links"),
-        onClick: () => onNavigate("clipboard"),
-      },
-      {
-        id: "rss",
-        title: t("launcher.rss", "RSS Reader"),
-        subtitle: t("launcher.rss.desc", "Feeds and articles"),
-        onClick: () => onNavigate("rss"),
-      },
-      {
-        id: "v2ex",
-        title: "V2EX",
-        subtitle: t("launcher.v2ex.desc", "Latest and hot topics"),
-        onClick: () => onNavigate("v2ex"),
-      },
-      {
-        id: "documents",
-        title: t("launcher.documents", "Documents"),
-        subtitle: t("launcher.documents.desc", "Text, Markdown, JSON"),
-        onClick: () => onNavigate("documents"),
-      },
-      {
-        id: "weather",
-        title: t("launcher.weather", "Weather"),
-        subtitle: t("launcher.weather.desc", "Current conditions and forecast"),
-        onClick: () => onNavigate("weather"),
-      },
-      {
-        id: "settings",
-        title: t("launcher.settings", "Settings"),
-        subtitle: t("launcher.settings.desc", "Appearance and plugins"),
-        onClick: () => onNavigate("settings"),
-      },
-    ];
-
-    return [...builtIn];
-  }, [t, onNavigate]);
+    return toLauncherQuickEntries(settings.quick_entries, onNavigate);
+  }, [settings.quick_entries, onNavigate]);
 
   const isSearchActivity = (isSearching || isSearchSettling) && !!query.trim();
   const island: BottomIslandContent | null = loadingPhase === "loading-apps"

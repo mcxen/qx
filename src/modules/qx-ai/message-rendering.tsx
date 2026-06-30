@@ -1,6 +1,6 @@
 import { Brain, CheckCircle2, Loader2, Search, Wrench, XCircle } from "lucide-react";
-import type { ReactNode } from "react";
 import type { AgentStep } from "./react-agent";
+import MarkdownRenderer from "./MarkdownRenderer";
 
 type MessagePart =
   | { type: "text"; text: string }
@@ -30,7 +30,7 @@ function parseToolBlock(raw: string): MessagePart | null {
 
 function parseParts(content: string): MessagePart[] {
   const parts: MessagePart[] = [];
-  const blockPattern = /```(?:tool|tool_call|tool-call|json)\s*\n([\s\S]*?)```/gi;
+  const blockPattern = /```(?:tool|tool_call|tool-call)\s*\n([\s\S]*?)```/gi;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -46,67 +46,6 @@ function parseParts(content: string): MessagePart[] {
   const rest = content.slice(lastIndex);
   if (rest) parts.push({ type: "text", text: rest });
   return parts.length ? parts : [{ type: "text", text: content }];
-}
-
-function renderInline(text: string): ReactNode[] {
-  const nodes: ReactNode[] = [];
-  const pattern = /`([^`]+)`|\*\*([^*]+)\*\*/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = pattern.exec(text))) {
-    if (match.index > lastIndex) nodes.push(text.slice(lastIndex, match.index));
-    if (match[1]) {
-      nodes.push(<code key={`code-${match.index}`}>{match[1]}</code>);
-    } else if (match[2]) {
-      nodes.push(<strong key={`strong-${match.index}`}>{match[2]}</strong>);
-    }
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
-  return nodes;
-}
-
-function MarkdownText({ content }: { content: string }) {
-  const blocks = content.split(/(```[\s\S]*?```)/g).filter(Boolean);
-  return (
-    <div className="qx-ai-response">
-      {blocks.map((block, blockIndex) => {
-        const codeMatch = block.match(/^```(\w+)?\s*\n?([\s\S]*?)```$/);
-        if (codeMatch) {
-          return (
-            <pre className="qx-ai-code" key={`code-${blockIndex}`}>
-              <code>{codeMatch[2]}</code>
-            </pre>
-          );
-        }
-
-        return block
-          .split(/\n{2,}/)
-          .filter((paragraph) => paragraph.trim())
-          .map((paragraph, paragraphIndex) => {
-            const listItems = paragraph
-              .split("\n")
-              .map((line) => line.match(/^\s*[-*]\s+(.+)$/)?.[1])
-              .filter((line): line is string => Boolean(line));
-            if (listItems.length > 0 && listItems.length === paragraph.split("\n").length) {
-              return (
-                <ul key={`list-${blockIndex}-${paragraphIndex}`}>
-                  {listItems.map((item, itemIndex) => (
-                    <li key={`${itemIndex}-${item.slice(0, 18)}`}>{renderInline(item)}</li>
-                  ))}
-                </ul>
-              );
-            }
-            return (
-              <p key={`p-${blockIndex}-${paragraphIndex}`}>
-                {renderInline(paragraph)}
-              </p>
-            );
-          });
-      })}
-    </div>
-  );
 }
 
 function ToolInvocation({ part }: { part: Extract<MessagePart, { type: "tool" }> }) {
@@ -222,7 +161,7 @@ export function AiMessageContent({
         part.type === "tool" ? (
           <ToolInvocation key={`tool-${index}-${part.name}`} part={part} />
         ) : (
-          <MarkdownText key={`text-${index}`} content={part.text} />
+          <MarkdownRenderer key={`text-${index}`} content={part.text} />
         ),
       )}
       {streaming && <span className="qx-typing-cursor">|</span>}

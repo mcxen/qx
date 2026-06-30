@@ -1,9 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { ClipboardEntry } from "../../store";
 
-const PASTE_FOCUS_DELAY_MS = 140;
+const PASTE_FOCUS_DELAY_MS = 60;
 
 interface PasteClipboardEntryOptions {
   focusAtCursor?: boolean;
@@ -28,15 +27,19 @@ export async function writeClipboardEntry(item: ClipboardEntry): Promise<void> {
 
 export async function pasteClipboardEntry(
   item: ClipboardEntry,
-  options: PasteClipboardEntryOptions = {},
+  _options: PasteClipboardEntryOptions = {},
 ): Promise<void> {
   await writeClipboardEntry(item);
 
   if (!isTauriRuntime()) return;
 
-  await getCurrentWindow().hide().catch(() => {});
+  // The panel is non-activating, so the user's foreground app still has key
+  // focus. We just need to hide ourselves so the panel doesn't visually
+  // overlap the target, then post a synthetic Cmd+V into the OS — which
+  // lands in whichever app the user was actually using.
+  await invoke("floating_hide").catch(() => {});
   await wait(PASTE_FOCUS_DELAY_MS);
-  await invoke(options.focusAtCursor ? "plugin_perform_paste_at_cursor" : "plugin_perform_paste");
+  await invoke("plugin_perform_paste");
 }
 
 export async function pasteClipboardEntryAtCursor(item: ClipboardEntry): Promise<void> {

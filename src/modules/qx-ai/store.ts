@@ -139,6 +139,81 @@ function generateStreamRequestId(): string {
   return "qxai-stream-" + generateId();
 }
 
+const STREAM_TIMEOUT_MS = 180_000;
+
+interface StreamChatEventsArgs {
+  requestId: string;
+  provider: string;
+  model: string;
+  messages: G4fMessage[];
+  onChunk: (full: string) => void;
+}
+
+async function streamChatEvents({
+  requestId,
+  provider,
+  model,
+  messages,
+  onChunk,
+}: StreamChatEventsArgs): Promise<string> {
+  let responseText = "";
+  let unlisten: (() => void) | undefined;
+  let settled = false;
+  let timer: number | undefined;
+
+  const stop = () => {
+    if (settled) return false;
+    settled = true;
+    if (timer !== undefined) window.clearTimeout(timer);
+    try {
+      unlisten?.();
+    } catch {
+      // ignore
+    }
+    return true;
+  };
+
+  return await new Promise<string>((resolve, reject) => {
+    timer = window.setTimeout(() => {
+      if (stop()) reject(new Error("AI stream timed out"));
+    }, STREAM_TIMEOUT_MS);
+
+    listen<StreamEvent>("qxai://stream", (event) => {
+      if (event.payload.requestId !== requestId) return;
+      if (event.payload.error) {
+        if (stop()) reject(new Error(event.payload.error));
+        return;
+      }
+      if (event.payload.done) {
+        if (stop()) resolve(responseText || event.payload.chunk);
+        return;
+      }
+      responseText += event.payload.chunk;
+      onChunk(responseText);
+    })
+      .then((un) => {
+        if (settled) {
+          try {
+            un();
+          } catch {
+            // ignore
+          }
+          return;
+        }
+        unlisten = un;
+        return invoke("qxai_stream_chat_events", {
+          requestId,
+          provider,
+          model,
+          messages,
+        });
+      })
+      .catch((err) => {
+        if (stop()) reject(err instanceof Error ? err : new Error(String(err)));
+      });
+  });
+}
+
 export const useG4fStore = create<G4fStore>((set, get) => ({
   conversations: [],
   currentConversationId: null,
@@ -360,46 +435,17 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       }
 
       const requestId = generateStreamRequestId();
-      const response = await new Promise<string>(async (resolve, reject) => {
-        let responseText = "";
-        let unlisten: (() => void) | undefined;
-        let settled = false;
-        const cleanup = () => {
-          if (settled) return false;
-          settled = true;
-          window.clearTimeout(timeout);
-          unlisten?.();
-          return true;
-        };
-        const timeout = window.setTimeout(() => {
-          if (cleanup()) reject(new Error("AI stream timed out"));
-        }, 180_000);
-        unlisten = await listen<StreamEvent>("qxai://stream", (event) => {
-          if (event.payload.requestId !== requestId) return;
-          if (event.payload.error) {
-            if (cleanup()) reject(new Error(event.payload.error));
-            return;
-          }
-          if (event.payload.done) {
-            if (cleanup()) resolve(responseText || event.payload.chunk);
-            return;
-          }
-          responseText += event.payload.chunk;
-          set((s) => ({
-            streamedContent:
-              s.currentConversationId === currentConversationId ? responseText : s.streamedContent,
-          }));
-        });
-        try {
-          await invoke("qxai_stream_chat_events", {
-            requestId,
-            provider: selection.provider,
-            model: selection.model,
-            messages: updatedConv.messages,
-          });
-        } catch (error) {
-          if (cleanup()) reject(error);
-        }
+      const response = await streamChatEvents({
+        requestId,
+        provider: selection.provider,
+        model: selection.model,
+        messages: updatedConv.messages,
+        onChunk: (full) =>
+          set((s) =>
+            s.streamingConversationId === currentConversationId
+              ? { streamedContent: full }
+              : s,
+          ),
       });
 
       const assistantMessage: G4fMessage = {

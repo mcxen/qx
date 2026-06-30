@@ -91,6 +91,14 @@ export interface SearchMetadataEntry {
   tags: string[];
 }
 
+export interface QuickEntryConfig {
+  id: string;
+  title: string;
+  subtitle: string;
+  target: string;
+  enabled: boolean;
+}
+
 export interface PluginConfig {
   id: string;
   name: string;
@@ -110,6 +118,7 @@ export interface Settings {
   v2ex: V2exSettings;
   weather: WeatherSettings;
   search_metadata: Record<string, SearchMetadataEntry>;
+  quick_entries: QuickEntryConfig[];
 }
 
 export type SettingsTab =
@@ -203,6 +212,17 @@ export const DEFAULT_SETTINGS: Settings = {
     units: "celsius",
   },
   search_metadata: {},
+  quick_entries: [
+    { id: "clipboard", title: "Clipboard History", subtitle: "Pinned, frequent, links", target: "clipboard", enabled: true },
+    { id: "qx-ai", title: "QxAI", subtitle: "Chat and agent tasks", target: "qx-ai", enabled: true },
+    { id: "rss", title: "RSS Reader", subtitle: "Feeds and articles", target: "rss", enabled: true },
+    { id: "screencap", title: "Screen Recording", subtitle: "GIF capture", target: "screencap", enabled: true },
+    { id: "v2ex", title: "V2EX", subtitle: "Latest and hot topics", target: "v2ex", enabled: true },
+    { id: "weather", title: "Weather", subtitle: "Current conditions and forecast", target: "weather", enabled: true },
+    { id: "documents", title: "Documents", subtitle: "Text, Markdown, JSON", target: "documents", enabled: true },
+    { id: "macros", title: "Macro Recorder", subtitle: "Record and replay actions", target: "macros", enabled: true },
+    { id: "settings", title: "Settings", subtitle: "Appearance and plugins", target: "settings", enabled: true },
+  ],
 };
 
 interface SettingsStore {
@@ -272,6 +292,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           weather: { ...DEFAULT_SETTINGS.weather, ...s.weather },
           shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...s.shortcuts },
           search_metadata: { ...DEFAULT_SETTINGS.search_metadata, ...s.search_metadata },
+          quick_entries: Array.isArray(s.quick_entries) && s.quick_entries.length > 0
+            ? s.quick_entries
+            : DEFAULT_SETTINGS.quick_entries,
         },
         loaded: true,
       });

@@ -3,6 +3,7 @@ import { Bot, Hammer, UserRound } from "lucide-react";
 import QxShell, { type BottomIslandContent } from "../../components/QxShell";
 import { Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
+import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
 import { useSettingsStore } from "../settings/store";
 import { AiMessageContent } from "./message-rendering";
 import { useG4fStore } from "./store";
@@ -124,6 +125,7 @@ export default function QxAiChat() {
             type="text"
             value={input}
             autoFocus
+            onFocus={requestPanelKeyWindow}
             onChange={(e) => setInput(e.target.value)}
             placeholder={isCurrentConversationStreaming ? "Waiting for response..." : "Type a message... (Enter to send)"}
             className="qx-plugin-search"

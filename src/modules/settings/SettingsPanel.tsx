@@ -14,6 +14,7 @@ import WeatherSettings from "./WeatherSettings";
 import AboutPanel from "./AboutPanel";
 import QxShell from "../../components/QxShell";
 import { useT } from "../../i18n";
+import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
 
 interface NavItem {
   id: SettingsTab;
@@ -118,6 +119,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
+          onFocus={requestPanelKeyWindow}
           placeholder={t("settings.search", "Search settings...")}
           autoFocus
           className="qx-plugin-search"
