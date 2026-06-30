@@ -21,22 +21,28 @@ export interface EscCascade {
 }
 
 export function useEscBack(cascade: EscCascade) {
+  const innerActive = cascade.inner?.active;
+  const innerClose = cascade.inner?.close;
+  const queryActive = cascade.query?.active;
+  const queryClear = cascade.query?.clear;
+  const launcher = cascade.launcher;
+
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
       e.stopPropagation();
-      if (cascade.inner?.active) {
-        cascade.inner.close();
+      if (innerActive && innerClose) {
+        innerClose();
         return;
       }
-      if (cascade.query?.active) {
-        cascade.query.clear();
+      if (queryActive && queryClear) {
+        queryClear();
         return;
       }
-      cascade.launcher();
+      launcher();
     },
-    [cascade],
+    [innerActive, innerClose, queryActive, queryClear, launcher],
   );
   return { onKeyDown };
 }

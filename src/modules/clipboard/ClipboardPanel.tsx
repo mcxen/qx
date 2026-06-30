@@ -29,15 +29,58 @@ const FILTER_LABELS: Record<Filter, string> = {
 };
 
 const IMAGE_CACHE = new Map<string, string>();
+const IMAGE_CACHE_LIMIT = 120;
+
+function imageMimeType(bytes: Uint8Array): string {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+    return "image/jpeg";
+  }
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x45 &&
+    bytes[10] === 0x42 &&
+    bytes[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  if (
+    bytes.length >= 8 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  ) {
+    return "image/png";
+  }
+  return "application/octet-stream";
+}
+
+function cacheImageUrl(path: string, url: string): void {
+  const previous = IMAGE_CACHE.get(path);
+  if (previous) URL.revokeObjectURL(previous);
+  IMAGE_CACHE.set(path, url);
+  while (IMAGE_CACHE.size > IMAGE_CACHE_LIMIT) {
+    const oldest = IMAGE_CACHE.keys().next().value;
+    if (!oldest) break;
+    const oldUrl = IMAGE_CACHE.get(oldest);
+    if (oldUrl) URL.revokeObjectURL(oldUrl);
+    IMAGE_CACHE.delete(oldest);
+  }
+}
 
 async function loadImageAsDataUrl(path: string): Promise<string> {
   const cached = IMAGE_CACHE.get(path);
   if (cached) return cached;
   const bytes = await invoke<number[]>("read_image_file", { path });
   const binary = Uint8Array.from(bytes);
-  const blob = new Blob([binary], { type: "image/png" });
+  const blob = new Blob([binary], { type: imageMimeType(binary) });
   const url = URL.createObjectURL(blob);
-  IMAGE_CACHE.set(path, url);
+  cacheImageUrl(path, url);
   return url;
 }
 
@@ -121,6 +164,16 @@ export default function ClipboardPanel() {
     };
     void loadAll();
   }, [filtered]);
+
+  useEffect(() => {
+    const activePaths = new Set(clipboardHistory.map((entry) => entry.image_path).filter(Boolean));
+    for (const [path, url] of IMAGE_CACHE) {
+      if (!activePaths.has(path)) {
+        URL.revokeObjectURL(url);
+        IMAGE_CACHE.delete(path);
+      }
+    }
+  }, [clipboardHistory]);
 
   const selectedItem = filtered[selected];
 

@@ -1,3 +1,5 @@
+import { stripDangerousHtmlAttributes } from "../../utils/sanitize-html";
+
 export function startOfDay(d: Date): number {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   return Math.floor(x.getTime() / 1000);
@@ -27,8 +29,10 @@ export function formatDate(ts: number): string {
 export function sanitizeHtml(html: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("script,style,iframe,object,embed,form,input,button").forEach((el) => el.remove());
+  stripDangerousHtmlAttributes(doc);
   doc.querySelectorAll("a").forEach((el) => {
     const a = el as HTMLAnchorElement;
+    if (!a.hasAttribute("href")) return;
     a.setAttribute("target", "_blank");
     a.setAttribute("rel", "noopener noreferrer");
   });

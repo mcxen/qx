@@ -747,5 +747,18 @@ pub fn record_clipboard_copy(
 #[command]
 pub fn read_image_file(path: String) -> Result<Vec<u8>, String> {
     use std::fs;
-    fs::read(&path).map_err(|e| format!("Failed to read image file: {e}"))
+    let bytes = fs::read(&path).map_err(|e| format!("Failed to read image file: {e}"))?;
+    if is_supported_image_bytes(&bytes) {
+        Ok(bytes)
+    } else {
+        Err("File is not a supported clipboard image".to_string())
+    }
+}
+
+fn is_supported_image_bytes(bytes: &[u8]) -> bool {
+    bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a])
+        || bytes.starts_with(&[0xff, 0xd8, 0xff])
+        || bytes.starts_with(b"GIF87a")
+        || bytes.starts_with(b"GIF89a")
+        || (bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP")
 }

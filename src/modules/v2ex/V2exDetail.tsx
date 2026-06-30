@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { useEscBack } from "../../hooks/useEscBack";
+import { stripDangerousHtmlAttributes } from "../../utils/sanitize-html";
 import { type V2exTopic, formatTime } from "./types";
 
 interface V2exDetailProps {
@@ -12,8 +13,10 @@ interface V2exDetailProps {
 export function sanitizeTopicHtml(html: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("script,style,iframe,object,embed,form,input,button").forEach((el) => el.remove());
+  stripDangerousHtmlAttributes(doc);
   doc.querySelectorAll("a").forEach((el) => {
     const a = el as HTMLAnchorElement;
+    if (!a.hasAttribute("href")) return;
     a.setAttribute("target", "_blank");
     a.setAttribute("rel", "noopener noreferrer");
   });

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 export interface G4fMessage {
   role: "user" | "assistant" | "system";
@@ -29,6 +30,13 @@ export interface CustomProvider {
   models: { id: string; name: string }[];
 }
 
+interface StreamEvent {
+  requestId: string;
+  chunk: string;
+  done: boolean;
+  error?: string;
+}
+
 export type G4fView = "list" | "chat" | "settings";
 
 function generateId(): string {
@@ -46,6 +54,7 @@ interface G4fStore {
   customProviders: CustomProvider[];
   loading: boolean;
   streaming: boolean;
+  streamingConversationId: string | null;
   streamedContent: string;
   error: string | null;
   view: G4fView;
@@ -115,6 +124,10 @@ function resolveProviderModel(
   };
 }
 
+function generateStreamRequestId(): string {
+  return "qxai-stream-" + generateId();
+}
+
 export const useG4fStore = create<G4fStore>((set, get) => ({
   conversations: [],
   currentConversationId: null,
@@ -122,6 +135,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   customProviders: [],
   loading: false,
   streaming: false,
+  streamingConversationId: null,
   streamedContent: "",
   error: null,
   view: "list",
@@ -247,34 +261,69 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         c.id === currentConversationId ? updatedConv : c,
       ),
       streaming: true,
+      streamingConversationId: currentConversationId,
       streamedContent: "",
       error: null,
     });
 
     if (!isTauriRuntime()) {
-      set({ streaming: false, streamedContent: "" });
+      set({ streaming: false, streamingConversationId: null, streamedContent: "" });
       return;
     }
 
     try {
-      let response: string;
-
+      const requestId = generateStreamRequestId();
       if (selection.provider.startsWith("custom:")) {
-        // BYOK provider
         const cp = customProviders.find((p) => p.id === selection.provider);
         if (!cp) throw new Error(`Custom provider "${selection.provider}" not found`);
-        response = await invoke<string>("g4f_chat_custom", {
-          baseUrl: cp.baseUrl,
-          apiKey: cp.apiKey,
-          model: selection.model,
-          messages: updatedConv.messages,
+      }
+      const response = await new Promise<string>(async (resolve, reject) => {
+        let responseText = "";
+        let unlisten: (() => void) | undefined;
+        let settled = false;
+        const cleanup = () => {
+          if (settled) return false;
+          settled = true;
+          window.clearTimeout(timeout);
+          unlisten?.();
+          return true;
+        };
+        const timeout = window.setTimeout(() => {
+          if (cleanup()) reject(new Error("AI stream timed out"));
+        }, 180_000);
+        unlisten = await listen<StreamEvent>("qxai://stream", (event) => {
+          if (event.payload.requestId !== requestId) return;
+          if (event.payload.error) {
+            if (cleanup()) reject(new Error(event.payload.error));
+            return;
+          }
+          if (event.payload.done) {
+            if (cleanup()) resolve(responseText || event.payload.chunk);
+            return;
+          }
+          responseText += event.payload.chunk;
+          set((s) => ({
+            streamedContent:
+            s.currentConversationId === currentConversationId ? responseText : s.streamedContent,
+          }));
         });
-      } else {
-        response = await invoke<string>("g4f_chat", {
-          provider: selection.provider,
-          model: selection.model,
-          messages: updatedConv.messages,
-        });
+        try {
+          await invoke("qxai_stream_chat_events", {
+            requestId,
+            provider: selection.provider,
+            model: selection.model,
+            messages: updatedConv.messages,
+          });
+        } catch (error) {
+          if (cleanup()) reject(error);
+        }
+      });
+
+      if (response) {
+        set((s) => ({
+          streamedContent:
+            s.currentConversationId === currentConversationId ? response : s.streamedContent,
+        }));
       }
 
       const assistantMessage: G4fMessage = {
@@ -289,10 +338,16 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
             : c,
         ),
         streaming: false,
-        streamedContent: response,
+        streamingConversationId: null,
+        streamedContent:
+          s.currentConversationId === currentConversationId ? response : "",
       }));
     } catch (e) {
-      set({ streaming: false, error: String(e) });
+      set((s) => ({
+        streaming: false,
+        streamingConversationId: null,
+        error: s.currentConversationId === currentConversationId ? String(e) : s.error,
+      }));
     }
   },
 
@@ -324,14 +379,15 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           ? { ...provider, models: catalogProvider.models }
           : provider;
       });
+      const combinedProviders = buildProviders(builtInProviders, customProvidersWithModels);
       set({
         builtInProviders,
         customProviders: customProvidersWithModels,
-        providers,
+        providers: combinedProviders,
         loading: false,
       });
       const { currentProvider, currentModel } = get();
-      const selection = resolveProviderModel(providers, currentProvider, currentModel);
+      const selection = resolveProviderModel(combinedProviders, currentProvider, currentModel);
       if (selection.provider !== currentProvider || selection.model !== currentModel) {
         set({
           currentProvider: selection.provider,

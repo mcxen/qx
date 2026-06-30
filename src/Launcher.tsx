@@ -175,6 +175,7 @@ export default function Launcher({
           recentLaunches={recentLaunches}
           recentSearches={recentSearches}
           query={query}
+          selectedItem={selectedItem}
           onSearchSelect={setQuery}
         />
       }

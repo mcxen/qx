@@ -35,8 +35,47 @@ fn get_file_size(path: String) -> Result<u64, String> {
 }
 
 #[tauri::command]
-fn open_app(path: String) {
-    let _ = std::process::Command::new("open").arg(path).spawn();
+fn open_app(path: String) -> Result<(), String> {
+    let app_path = validate_open_app_path(&path)?;
+    std::process::Command::new("open")
+        .arg(app_path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to open app: {e}"))
+}
+
+fn validate_open_app_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let raw_path = std::path::Path::new(path);
+    if raw_path.extension().and_then(|value| value.to_str()) != Some("app") {
+        return Err("open_app only accepts .app bundles".to_string());
+    }
+
+    let app_path = raw_path
+        .canonicalize()
+        .map_err(|e| format!("Invalid app path: {e}"))?;
+    if app_path.extension().and_then(|value| value.to_str()) != Some("app") {
+        return Err("open_app only accepts .app bundles".to_string());
+    }
+
+    let home_applications = std::env::var("HOME")
+        .ok()
+        .map(|home| std::path::PathBuf::from(home).join("Applications"));
+    let allowed_roots = [
+        Some(std::path::PathBuf::from("/Applications")),
+        Some(std::path::PathBuf::from("/System/Applications")),
+        home_applications,
+    ];
+
+    let allowed = allowed_roots
+        .iter()
+        .flatten()
+        .filter_map(|root| root.canonicalize().ok())
+        .any(|root| app_path.starts_with(root));
+    if !allowed {
+        return Err("open_app path must be inside /Applications or ~/Applications".to_string());
+    }
+
+    Ok(app_path)
 }
 
 #[tauri::command]
@@ -325,6 +364,8 @@ pub fn run() {
             g4f::g4f_stream_chat,
             g4f::g4f_chat_custom,
             g4f::g4f_list_providers,
+            g4f::qxai_stream_chat,
+            g4f::qxai_stream_chat_events,
             g4f::qxai_list_providers,
             g4f::qxai_fetch_models,
             g4f::qxai_get_custom_providers,

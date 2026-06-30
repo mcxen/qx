@@ -1,8 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { ReactNode } from "react";
+import SearchAliasTagEditor from "../components/SearchAliasTagEditor";
 import { useT } from "../i18n";
-import type { HistoryEntry, SearchHistoryEntry } from "../store";
+import type { AppEntry, HistoryEntry, SearchHistoryEntry } from "../store";
+import { useSettingsStore } from "../modules/settings/store";
+import {
+  metadataForKey,
+  metadataKeyForEntry,
+} from "../search/searchMetadata";
 import type { QuickEntry } from "./types";
 
 function ContextSection({
@@ -47,14 +53,20 @@ export default function LauncherContext({
   recentSearches,
   query,
   onSearchSelect,
+  selectedItem,
 }: {
   quickEntries: QuickEntry[];
   recentLaunches: HistoryEntry[];
   recentSearches: SearchHistoryEntry[];
   query: string;
   onSearchSelect: (query: string) => void;
+  selectedItem: AppEntry | null;
 }) {
   const t = useT();
+  const { settings, patchSearchMetadata } = useSettingsStore();
+  const selectedMetadataKey = metadataKeyForEntry(selectedItem ?? { name: "", path: "", icon: "" });
+  const selectedMetadata = metadataForKey(settings, selectedMetadataKey);
+  const canEditMetadata = Boolean(selectedItem && selectedMetadataKey);
 
   return (
     <div className="qx-launcher-context">
@@ -95,6 +107,19 @@ export default function LauncherContext({
               onClick={() => onSearchSelect(entry.query)}
             />
           ))}
+        </ContextSection>
+      )}
+
+      {canEditMetadata && selectedMetadataKey && (
+        <ContextSection title={t("launcher.aliasesTags", "Aliases & Tags")} spacing>
+          <div className="qx-context-editor">
+            <div className="qx-context-editor-title">{selectedItem?.name}</div>
+            <SearchAliasTagEditor
+              compact
+              entry={selectedMetadata}
+              onChange={(next) => patchSearchMetadata(selectedMetadataKey, next)}
+            />
+          </div>
         </ContextSection>
       )}
     </div>

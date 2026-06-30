@@ -63,6 +63,10 @@ const panelSessions = new WeakMap<HTMLElement, PanelRuntimeSession>();
 const runtimeSources = new Map<string, Map<string, Window>>();
 const aiTasks = new Map<string, AiTaskRecord>();
 
+export function isExpectedPluginMessageOrigin(event: MessageEvent): boolean {
+  return event.origin === window.location.origin || event.origin === "null";
+}
+
 function registerPluginRuntime(
   pluginId: string,
   runtimeId: string,
@@ -123,18 +127,22 @@ export function buildPluginRuntimeHtml(
         return 'req-' + Date.now() + '-' + Math.random().toString(36).slice(2);
       }
 
+      function postToParent(message) {
+        parent.postMessage(message, '*');
+      }
+
       function rpc(method, payload = {}) {
         const requestId = generateId();
         return new Promise((resolve, reject) => {
           pending.set(requestId, { resolve, reject });
-          parent.postMessage({
+          postToParent({
             type: 'qx:rpc',
             pluginId,
             runtimeId,
             method,
             payload,
             requestId,
-          }, '*');
+          });
         });
       }
 
@@ -194,6 +202,16 @@ export function buildPluginRuntimeHtml(
         else window.clearTimeout(item.nativeId);
         contextTimers.delete(Number(id));
       }
+
+      window.addEventListener('keydown', (event) => {
+        if (event.key !== 'Escape') return;
+        postToParent({
+          type: 'qx:host-keydown',
+          pluginId,
+          runtimeId,
+          key: 'Escape',
+        });
+      }, true);
 
       const context = {
         pluginId,
@@ -299,6 +317,7 @@ export function buildPluginRuntimeHtml(
       };
 
       window.addEventListener('message', async (event) => {
+        if (event.source !== parent) return;
         const data = event.data || {};
         const { type } = data;
         if (type === 'qx:rpc:response') {
@@ -321,9 +340,9 @@ export function buildPluginRuntimeHtml(
               throw new Error('Command not found: ' + name);
             }
             const result = await cmd.run(context);
-            parent.postMessage({ type: 'qx:runCommand:response', pluginId, runtimeId, requestId, result }, '*');
+            postToParent({ type: 'qx:runCommand:response', pluginId, runtimeId, requestId, result });
           } catch (err) {
-            parent.postMessage({ type: 'qx:runCommand:response', pluginId, runtimeId, requestId, error: String(err) }, '*');
+            postToParent({ type: 'qx:runCommand:response', pluginId, runtimeId, requestId, error: String(err) });
           }
           return;
         }
@@ -337,9 +356,9 @@ export function buildPluginRuntimeHtml(
             if (plugin?.panel && typeof plugin.panel.render === 'function') {
               await plugin.panel.render(container, context);
             }
-            parent.postMessage({ type: 'qx:renderPanel:response', pluginId, runtimeId, requestId, result: null }, '*');
+            postToParent({ type: 'qx:renderPanel:response', pluginId, runtimeId, requestId, result: null });
           } catch (err) {
-            parent.postMessage({ type: 'qx:renderPanel:response', pluginId, runtimeId, requestId, error: String(err) }, '*');
+            postToParent({ type: 'qx:renderPanel:response', pluginId, runtimeId, requestId, error: String(err) });
           }
           return;
         }
@@ -354,9 +373,9 @@ export function buildPluginRuntimeHtml(
             }
             clearContextTimers();
             container.innerHTML = '';
-            parent.postMessage({ type: 'qx:destroyPanel:response', pluginId, runtimeId, requestId, result: null }, '*');
+            postToParent({ type: 'qx:destroyPanel:response', pluginId, runtimeId, requestId, result: null });
           } catch (err) {
-            parent.postMessage({ type: 'qx:destroyPanel:response', pluginId, runtimeId, requestId, error: String(err) }, '*');
+            postToParent({ type: 'qx:destroyPanel:response', pluginId, runtimeId, requestId, error: String(err) });
           }
           return;
         }
@@ -385,9 +404,9 @@ export function buildPluginRuntimeHtml(
           URL.revokeObjectURL(entryBlobUrl);
         }
         plugin = mod.default || mod;
-        parent.postMessage({ type: 'qx:plugin:loaded', pluginId, runtimeId }, '*');
+        postToParent({ type: 'qx:plugin:loaded', pluginId, runtimeId });
       } catch (err) {
-        parent.postMessage({ type: 'qx:plugin:error', pluginId, runtimeId, error: String(err) }, '*');
+        postToParent({ type: 'qx:plugin:error', pluginId, runtimeId, error: String(err) });
       }
     </script>
     <div id="root" style="width:100%;height:100%;"></div>
@@ -415,6 +434,7 @@ function waitForPluginRuntime(
     let settled = false;
     const handler = (event: MessageEvent) => {
       const data = event.data || {};
+      if (!isExpectedPluginMessageOrigin(event)) return;
       if (event.source !== iframe.contentWindow) return;
       if (data.pluginId !== plugin.id || data.runtimeId !== runtimeId) return;
       if (data.type === "qx:plugin:loaded") {
@@ -452,6 +472,7 @@ function sendRuntimeRequest(
     let settled = false;
     const handler = (event: MessageEvent) => {
       const data = event.data || {};
+      if (!isExpectedPluginMessageOrigin(event)) return;
       if (event.source !== iframe.contentWindow) return;
       if (data.pluginId !== plugin.id || data.runtimeId !== runtimeId) return;
       if (data.type !== responseType || data.requestId !== requestId) return;

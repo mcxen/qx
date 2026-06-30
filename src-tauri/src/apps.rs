@@ -23,6 +23,16 @@ static APP_CACHE: Mutex<Vec<AppEntry>> = Mutex::new(Vec::new());
 static DB_PATH: OnceLock<PathBuf> = OnceLock::new();
 static CACHE_INITIALIZED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+fn app_cache_lock() -> Option<std::sync::MutexGuard<'static, Vec<AppEntry>>> {
+    match APP_CACHE.lock() {
+        Ok(guard) => Some(guard),
+        Err(err) => {
+            eprintln!("[apps] app cache lock poisoned; ignoring cached state: {err}");
+            None
+        }
+    }
+}
+
 fn get_db_path() -> &'static PathBuf {
     DB_PATH.get_or_init(|| {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
@@ -496,8 +506,7 @@ fn scan_all_apps() -> Vec<AppEntry> {
 pub fn ensure_cache(app: Option<&AppHandle>) {
     // Phase 1: Load from DB (instant)
     let db_entries = load_from_db();
-    {
-        let mut cache = APP_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(mut cache) = app_cache_lock() {
         if !db_entries.is_empty() {
             *cache = db_entries;
         }
@@ -508,15 +517,17 @@ pub fn ensure_cache(app: Option<&AppHandle>) {
     // If DB was empty, do the initial scan synchronously so the user
     // sees apps on first search.
     let need_initial_scan = {
-        let cache = APP_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-        cache.is_empty()
+        app_cache_lock()
+            .map(|cache| cache.is_empty())
+            .unwrap_or(true)
     };
 
     if need_initial_scan {
         let fresh = scan_all_apps();
         sync_db(&fresh);
-        let mut cache = APP_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-        *cache = fresh;
+        if let Some(mut cache) = app_cache_lock() {
+            *cache = fresh;
+        }
     }
 
     // Phase 2: Spawn background re-scan to catch changes
@@ -527,8 +538,7 @@ pub fn ensure_cache(app: Option<&AppHandle>) {
             // Update DB
             sync_db(&fresh);
             // Update in-memory cache
-            {
-                let mut cache = APP_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+            if let Some(mut cache) = app_cache_lock() {
                 *cache = fresh;
             }
             let _ = app_handle.emit("apps:updated", ());
@@ -540,7 +550,9 @@ pub fn ensure_cache(app: Option<&AppHandle>) {
 /// search is instant. Emits `apps:icons-ready` when done so the frontend
 /// can refresh results with icons.
 pub fn preload_icons(app: &AppHandle) {
-    let apps = APP_CACHE.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let apps = app_cache_lock()
+        .map(|cache| cache.clone())
+        .unwrap_or_default();
 
     let handle = app.clone();
     std::thread::spawn(move || {

@@ -131,7 +131,7 @@ export default function ResultsList({
         <div className="qx-section-header">Suggestions</div>
       )}
       {items.map((item, i) => (
-        <div key={item.path} onClick={() => onItemClick(item)}>
+        <div key={`${item.kind}:${item.path}:${item.name}`} onClick={() => onItemClick(item)}>
           <ResultItem item={item} index={i} />
         </div>
       ))}

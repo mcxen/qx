@@ -64,6 +64,23 @@
   white-space: nowrap;
 }
 
+.qx-context-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.qx-context-editor-title {
+  overflow: hidden;
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .qx-rss-detail-title {
   overflow: hidden;
   color: var(--qx-text-primary);

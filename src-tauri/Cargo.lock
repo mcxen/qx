@@ -4900,7 +4900,7 @@ dependencies = [
 
 [[package]]
 name = "qx"
-version = "0.4.33"
+version = "0.4.34"
 dependencies = [
  "arboard",
  "battery",

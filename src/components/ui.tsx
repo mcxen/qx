@@ -19,6 +19,9 @@ import { Skeleton } from "./shadcn/skeleton";
 import { Slider as ShadcnSlider } from "./shadcn/slider";
 import { Switch } from "./shadcn/switch";
 import { ToggleGroup, ToggleGroupItem } from "./shadcn/toggle-group";
+export { Badge } from "./shadcn/badge";
+export { Button } from "./shadcn/button";
+export { Input } from "./shadcn/input";
 
 export function Row({
   title,

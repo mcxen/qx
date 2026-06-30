@@ -14,8 +14,16 @@ import {
 import { usePluginRegistry } from "../../plugin/registry";
 import { BUILTIN_SETTINGS_KEYS } from "../../plugin/builtin";
 import { useSettingsStore } from "./store";
+import type { SearchMetadataEntry } from "./store";
+import SearchAliasTagEditor from "../../components/SearchAliasTagEditor";
 import { LoadingLabel, Skeleton, Toggle, SegmentedControl, Row, Select } from "../../components/ui";
 import { useT } from "../../i18n";
+import {
+  metadataForKey,
+  metadataMatchesQuery,
+  moduleMetadataKey,
+  pluginMetadataKey,
+} from "../../search/searchMetadata";
 import type {
   InstalledPlugin,
   PluginIndexEntry,
@@ -37,8 +45,13 @@ type StatusTone = "success" | "danger" | "neutral";
 const isBuiltin = (p: InstalledPlugin) => p.id.startsWith("builtin:");
 const normalizeSearch = (value: string) => value.trim().toLowerCase();
 
-function pluginMatchesQuery(plugin: InstalledPlugin, query: string) {
+function pluginMatchesQuery(
+  plugin: InstalledPlugin,
+  query: string,
+  searchMetadata: Record<string, SearchMetadataEntry>,
+) {
   if (!query) return true;
+  const builtinModuleId = plugin.id.startsWith("builtin:") ? plugin.id.slice("builtin:".length) : null;
   return [
     plugin.id,
     plugin.name,
@@ -49,7 +62,9 @@ function pluginMatchesQuery(plugin: InstalledPlugin, query: string) {
     ...(plugin.manifest?.permissions ?? plugin.permissions ?? []),
   ]
     .filter(Boolean)
-    .some((value) => String(value).toLowerCase().includes(query));
+    .some((value) => String(value).toLowerCase().includes(query)) ||
+    metadataMatchesQuery(searchMetadata[pluginMetadataKey(plugin.id)], query) ||
+    (builtinModuleId ? metadataMatchesQuery(searchMetadata[moduleMetadataKey(builtinModuleId)], query) : false);
 }
 
 function marketplaceEntryMatchesQuery(entry: PluginIndexEntry, query: string) {
@@ -179,7 +194,10 @@ function PluginDetail({
   const preferences = plugin.manifest?.preferences ?? [];
   const permissions = plugin.manifest?.permissions ?? plugin.permissions ?? [];
   const settingsKey = builtin ? BUILTIN_SETTINGS_KEYS[plugin.id] : undefined;
-  const { settings, patch } = useSettingsStore();
+  const { settings, patch, patchSearchMetadata } = useSettingsStore();
+  const builtinModuleId = builtin ? plugin.id.slice("builtin:".length) : null;
+  const aliasMetadataKey = builtinModuleId ? moduleMetadataKey(builtinModuleId) : pluginMetadataKey(plugin.id);
+  const aliasMetadata = metadataForKey(settings, aliasMetadataKey);
 
   /* ---- preference values ---- */
   const [prefValues, setPrefValues] = useState<Record<string, string | number | boolean>>({});
@@ -309,6 +327,17 @@ function PluginDetail({
         <Row title="Enabled" description={builtin ? "Built-in modules are always enabled." : "Toggle this plugin on or off."}>
           <Toggle value={plugin.enabled} onChange={onToggle} disabled={builtin} />
         </Row>
+      </div>
+
+      <div className="qx-plugin-section">
+        <div className="qx-plugin-section-title">Search Aliases & Tags</div>
+        <div className="qx-plugin-section-copy">
+          Add names or tags that should make this module appear in Launcher search.
+        </div>
+        <SearchAliasTagEditor
+          entry={aliasMetadata}
+          onChange={(next) => patchSearchMetadata(aliasMetadataKey, next)}
+        />
       </div>
 
       {/* Permissions */}
@@ -683,6 +712,7 @@ export default function PluginManager() {
   const t = useT();
   const { plugins, install, uninstall, setEnabled, refresh, loaded, loading } =
     usePluginRegistry();
+  const searchMetadata = useSettingsStore((state) => state.settings.search_metadata);
   const [tab, setTab] = useState<Tab>("installed");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [archivePath, setArchivePath] = useState("");
@@ -797,8 +827,8 @@ export default function PluginManager() {
   const installedIds = new Set(plugins.map((p) => p.id));
   const filteredPlugins = useMemo(() => {
     const q = normalizeSearch(installedQuery);
-    return plugins.filter((plugin) => filterInstalledPlugin(plugin, installedFilter) && pluginMatchesQuery(plugin, q));
-  }, [plugins, installedFilter, installedQuery]);
+    return plugins.filter((plugin) => filterInstalledPlugin(plugin, installedFilter) && pluginMatchesQuery(plugin, q, searchMetadata));
+  }, [plugins, installedFilter, installedQuery, searchMetadata]);
   const selectedPlugin = filteredPlugins.find((p) => p.id === selected?.id) ?? filteredPlugins[0] ?? null;
 
   /* ---- render ---- */

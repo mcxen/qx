@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Bot, Hammer, UserRound } from "lucide-react";
 import QxShell, { type BottomIslandContent } from "../../components/QxShell";
 import { Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
+import { useSettingsStore } from "../settings/store";
+import { AiMessageContent } from "./message-rendering";
 import { useG4fStore } from "./store";
 
 export default function QxAiChat() {
@@ -9,6 +12,7 @@ export default function QxAiChat() {
     conversations,
     currentConversationId,
     streaming,
+    streamingConversationId,
     streamedContent,
     error,
     providers,
@@ -23,8 +27,22 @@ export default function QxAiChat() {
 
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const agentSettings = useSettingsStore((state) => state.settings.agent);
 
   const conv = conversations.find((c) => c.id === currentConversationId);
+  const isCurrentConversationStreaming = streaming && streamingConversationId === conv?.id;
+  const enabledTools = useMemo(() => {
+    if (!agentSettings.agent_mode_enabled || !agentSettings.tools_enabled) return [];
+    return [
+      agentSettings.memory_tool_enabled && "memory",
+      agentSettings.app_search_enabled && "apps",
+      agentSettings.file_search_enabled && "files",
+      agentSettings.http_fetch_enabled && "http",
+      agentSettings.grep_search_enabled && "grep",
+      agentSettings.bash_enabled && "bash",
+      agentSettings.mcp_enabled && "mcp",
+    ].filter(Boolean) as string[];
+  }, [agentSettings]);
   const activeProvider = useMemo(
     () => providers.find((provider) => provider.id === conv?.provider),
     [providers, conv?.provider],
@@ -43,7 +61,7 @@ export default function QxAiChat() {
 
   const handleSend = () => {
     const trimmed = input.trim();
-    if (!trimmed || streaming || !canChat) return;
+    if (!trimmed || isCurrentConversationStreaming || !canChat) return;
     setInput("");
     void sendMessage(trimmed);
   };
@@ -75,7 +93,7 @@ export default function QxAiChat() {
 
   const userMessageCount = conv?.messages.filter((m) => m.role === "user").length ?? 0;
 
-  const island: BottomIslandContent = streaming
+  const island: BottomIslandContent = isCurrentConversationStreaming
     ? { label: "AI Chat", detail: "Streaming response...", progress: 55 }
     : error
       ? { label: "AI Chat", detail: error, tone: "danger" }
@@ -88,18 +106,6 @@ export default function QxAiChat() {
                 ? `${conv.provider} · ${conv.model}`
                 : "No messages yet",
         };
-
-  const messageBubble = (_content: string, isUser: boolean) => ({
-    maxWidth: "80%",
-    padding: "8px 14px",
-    borderRadius: "var(--qx-card-radius)",
-    background: isUser ? "var(--qx-accent)" : "var(--qx-bg-component-2)",
-    color: isUser ? "var(--qx-text-on-accent)" : "var(--qx-text-primary)",
-    fontSize: 14,
-    lineHeight: 1.5,
-    whiteSpace: "pre-wrap" as const,
-    wordBreak: "break-word" as const,
-  });
 
   const messages = conv?.messages.filter((m) => m.role !== "system") ?? [];
 
@@ -118,9 +124,9 @@ export default function QxAiChat() {
             value={input}
             autoFocus
             onChange={(e) => setInput(e.target.value)}
-            placeholder={streaming ? "Waiting for response..." : "Type a message... (Enter to send)"}
+            placeholder={isCurrentConversationStreaming ? "Waiting for response..." : "Type a message... (Enter to send)"}
             className="qx-plugin-search"
-            disabled={streaming || !conv}
+            disabled={isCurrentConversationStreaming || !conv}
           />
         </div>
       }
@@ -210,15 +216,30 @@ export default function QxAiChat() {
           >
             <span>Delete Chat</span>
           </button>
+
+          <div className="qx-action-title">Tools</div>
+          <div className="qx-ai-tool-summary">
+            <div className="qx-ai-tool-summary-head">
+              <Hammer size={14} />
+              <span>{enabledTools.length ? `${enabledTools.length} enabled` : "Disabled"}</span>
+            </div>
+            {enabledTools.length > 0 && (
+              <div className="qx-ai-tool-chips">
+                {enabledTools.map((tool) => (
+                  <span key={tool}>{tool}</span>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       }
       island={island}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setView("list") }}
       primaryAction={{
-        label: streaming ? "..." : "Send",
+        label: isCurrentConversationStreaming ? "..." : "Send",
         kbd: "Enter",
         tone: "primary",
-        disabled: streaming || !input.trim() || !canChat,
+        disabled: isCurrentConversationStreaming || !input.trim() || !canChat,
         onClick: handleSend,
       }}
       secondaryAction={{
@@ -227,81 +248,43 @@ export default function QxAiChat() {
         onClick: () => setView("settings"),
       }}
     >
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          height: "100%",
-        }}
-      >
-        {/* Messages area */}
-        <div
-          style={{
-            flex: 1,
-            overflowY: "auto",
-            padding: "12px 16px",
-          }}
-        >
+      <div className="qx-ai-conversation">
+        <div className="qx-ai-message-list">
           {messages.map((msg, i) => (
             <div
-              key={i}
-              style={{
-                marginBottom: 12,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: msg.role === "user" ? "flex-end" : "flex-start",
-              }}
+              key={`${conv?.id ?? "chat"}-${msg.role}-${i}-${msg.content.slice(0, 24)}`}
+              className={`qx-ai-message is-${msg.role}`}
             >
-              <div style={messageBubble(msg.content, msg.role === "user")}>
-                {msg.content}
+              <div className="qx-ai-message-avatar" aria-hidden="true">
+                {msg.role === "user" ? <UserRound size={14} /> : <Bot size={14} />}
               </div>
-              <span
-                style={{
-                  fontSize: 11,
-                  color: "var(--qx-text-tertiary)",
-                  marginTop: 2,
-                  padding: "0 4px",
-                }}
-              >
-                {msg.role === "user" ? "You" : conv?.provider || "AI"}
-              </span>
+              <div className="qx-ai-message-body">
+                <div className="qx-ai-message-meta">
+                  {msg.role === "user" ? "You" : conv?.provider || "AI"}
+                </div>
+                <div className="qx-ai-message-bubble">
+                  <AiMessageContent content={msg.content} />
+                </div>
+              </div>
             </div>
           ))}
 
-          {/* Streaming content */}
-          {streaming && streamedContent && (
-            <div
-              style={{
-                marginBottom: 12,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "flex-start",
-              }}
-            >
-              <div
-                style={{
-                  ...messageBubble(streamedContent, false),
-                  display: "inline-block",
-                }}
-              >
-                {streamedContent}
-                <span className="qx-typing-cursor">|</span>
+          {isCurrentConversationStreaming && streamedContent && (
+            <div className="qx-ai-message is-assistant">
+              <div className="qx-ai-message-avatar" aria-hidden="true">
+                <Bot size={14} />
+              </div>
+              <div className="qx-ai-message-body">
+                <div className="qx-ai-message-meta">{conv?.provider || "AI"}</div>
+                <div className="qx-ai-message-bubble">
+                  <AiMessageContent content={streamedContent} streaming />
+                </div>
               </div>
             </div>
           )}
 
-          {/* Empty state */}
-          {conv && messages.length === 0 && !streaming && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "100%",
-                color: "var(--qx-text-tertiary)",
-                fontSize: 14,
-              }}
-            >
+          {conv && messages.length === 0 && !isCurrentConversationStreaming && (
+            <div className="qx-ai-empty-state">
               {conv.provider
                 ? `Chatting with ${conv.provider} (${conv.model}). Type a message below.`
                 : "No provider selected. Go to Settings to configure."}
@@ -309,16 +292,7 @@ export default function QxAiChat() {
           )}
 
           {!conv && (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "100%",
-                color: "var(--qx-text-tertiary)",
-                fontSize: 14,
-              }}
-            >
+            <div className="qx-ai-empty-state">
               Select or create a conversation to begin.
             </div>
           )}

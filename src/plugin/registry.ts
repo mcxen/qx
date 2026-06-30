@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
 import {
   handlePluginRpc,
+  isExpectedPluginMessageOrigin,
   isPluginRuntimeSource,
   loadPlugin,
   unloadPluginRuntime,
@@ -246,12 +247,22 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
           });
           const rpcHandler = (event: MessageEvent) => {
             const data = event.data || {};
-            if (data.type !== "qx:rpc" || data.pluginId !== plugin.id) return;
-            const requestId = String(data.requestId || "");
+            if (!isExpectedPluginMessageOrigin(event)) return;
+            if (data.pluginId !== plugin.id) return;
             const runtimeId = String(data.runtimeId || "");
             const source = event.source as Window | null;
             if (!source || typeof source.postMessage !== "function") return;
             if (!isPluginRuntimeSource(plugin.id, runtimeId, source)) return;
+            if (data.type === "qx:host-keydown") {
+              if (data.key === "Escape") {
+                window.dispatchEvent(new CustomEvent("qx:host-escape", {
+                  detail: { pluginId: plugin.id, runtimeId },
+                }));
+              }
+              return;
+            }
+            if (data.type !== "qx:rpc") return;
+            const requestId = String(data.requestId || "");
             void handlePluginRpc(
               plugin,
               String(data.method),
@@ -452,6 +463,8 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
 
   startDevWatcher: () => {
     if (get().devWatcherActive) return;
+    const existing = get()._devWatcherInterval;
+    if (existing) clearInterval(existing);
     const interval = setInterval(async () => {
       try {
         await get().refresh();

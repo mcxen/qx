@@ -4,6 +4,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { check } from "@tauri-apps/plugin-updater";
 import { open } from "@tauri-apps/plugin-shell";
 import { Row } from "../../components/ui";
+import GifText from "../../components/gif-text";
 import { useT } from "../../i18n";
 
 interface StorageBucket {
@@ -133,6 +134,14 @@ export default function AboutPanel() {
 
   return (
     <div className="qx-settings-page">
+      <div className="qx-about-gif-text">
+        <GifText
+          text="QxSTART"
+          gif="https://assets.amarn.me/gif-text.gif"
+          containerClassName="qx-about-gif-text-frame"
+        />
+      </div>
+
       <Row title="Qx" description="A keyboard-driven productivity launcher for macOS.">
         <span style={{ color: "var(--qx-text-secondary)" }}>v{version || "..."}</span>
       </Row>

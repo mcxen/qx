@@ -2,6 +2,8 @@ import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 
 let saveSeq = 0;
+let saveInFlight = false;
+let saveQueued = false;
 
 export interface GeneralSettings {
   launch_at_login: boolean;
@@ -84,6 +86,11 @@ export interface WeatherSettings {
   units: string;
 }
 
+export interface SearchMetadataEntry {
+  aliases: string[];
+  tags: string[];
+}
+
 export interface PluginConfig {
   id: string;
   name: string;
@@ -102,6 +109,7 @@ export interface Settings {
   rss: RssSettings;
   v2ex: V2exSettings;
   weather: WeatherSettings;
+  search_metadata: Record<string, SearchMetadataEntry>;
 }
 
 export type SettingsTab =
@@ -195,6 +203,7 @@ export const DEFAULT_SETTINGS: Settings = {
     location_override: "",
     units: "celsius",
   },
+  search_metadata: {},
 };
 
 interface SettingsStore {
@@ -205,6 +214,7 @@ interface SettingsStore {
   setActiveTab: (t: SettingsTab) => void;
   patch: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   patchShortcut: (id: string, binding: Partial<ShortcutBinding>) => void;
+  patchSearchMetadata: (id: string, value: SearchMetadataEntry) => void;
   load: () => Promise<void>;
   save: () => Promise<void>;
   reset: () => Promise<void>;
@@ -231,6 +241,22 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ settings });
     void get().save();
   },
+  patchSearchMetadata: (id, value) => {
+    const nextEntry = {
+      aliases: Array.from(new Set(value.aliases.map((item) => item.trim()).filter(Boolean))),
+      tags: Array.from(new Set(value.tags.map((item) => item.trim()).filter(Boolean))),
+    };
+    const current = get().settings.search_metadata;
+    const nextMetadata = { ...current };
+    if (nextEntry.aliases.length === 0 && nextEntry.tags.length === 0) {
+      delete nextMetadata[id];
+    } else {
+      nextMetadata[id] = nextEntry;
+    }
+    const settings = { ...get().settings, search_metadata: nextMetadata };
+    set({ settings });
+    void get().save();
+  },
   load: async () => {
     try {
       const s = await invoke<Settings>("get_settings");
@@ -246,6 +272,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           v2ex: { ...DEFAULT_SETTINGS.v2ex, ...s.v2ex },
           weather: { ...DEFAULT_SETTINGS.weather, ...s.weather },
           shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...s.shortcuts },
+          search_metadata: { ...DEFAULT_SETTINGS.search_metadata, ...s.search_metadata },
         },
         loaded: true,
       });
@@ -254,16 +281,28 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     }
   },
   save: async () => {
-    const seq = ++saveSeq;
-    const settings = get().settings;
+    saveSeq += 1;
+    saveQueued = true;
+    if (saveInFlight) return;
+
+    saveInFlight = true;
     try {
-      await invoke<Settings>("update_settings", {
-        settings,
-      });
-    } catch (e) {
-      if (seq === saveSeq) {
-        console.error("update_settings failed", e);
+      while (saveQueued) {
+        saveQueued = false;
+        const seq = saveSeq;
+        const settings = get().settings;
+        try {
+          await invoke<Settings>("update_settings", {
+            settings,
+          });
+        } catch (e) {
+          if (seq === saveSeq) {
+            console.error("update_settings failed", e);
+          }
+        }
       }
+    } finally {
+      saveInFlight = false;
     }
   },
   reset: async () => {

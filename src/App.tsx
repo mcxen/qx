@@ -1,4 +1,5 @@
-import { Suspense, lazy, useEffect, useCallback, useRef, useState, useTransition } from "react";
+import { Component, Suspense, lazy, useEffect, useCallback, useRef, useState, useTransition } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { currentMonitor, getCurrentWindow, LogicalSize, primaryMonitor } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
@@ -15,7 +16,14 @@ import { LoadingLabel, Skeleton } from "./components/ui";
 import { registerAllBuiltins } from "./plugin/builtin";
 import { PluginHost, PluginPanelViewport } from "./plugin/PluginHost";
 import { calculateExpression } from "./search/calculator";
+import {
+  itemMatchesSearchMetadata,
+  metadataMatchesQuery,
+  moduleMetadataKey,
+  pluginMetadataKey,
+} from "./search/searchMetadata";
 import { loadClipboardEntryById, pasteClipboardEntryAtCursor } from "./modules/clipboard/actions";
+import { useEscBack } from "./hooks/useEscBack";
 import "./App.css";
 
 const ClipboardPanel = lazy(() => import("./modules/clipboard/ClipboardPanel"));
@@ -36,6 +44,7 @@ const MAX_WINDOW_HEIGHT = 882;
 const FIRST_LAUNCH_WINDOW_RATIO = 0.6;
 const OVERSIZED_SAVED_WINDOW_RATIO = 0.9;
 const MODULE_SWITCH_PAINT_DELAY_MS = 32;
+const HOST_ESCAPE_EVENT = "qx:host-escape";
 
 const MODULE_LABELS: Record<string, string> = {
   clipboard: "Clipboard History",
@@ -66,12 +75,16 @@ function ModuleLoadingShell({
   onBack: () => void;
 }) {
   const title = getModuleLabel(tab);
+  const { onKeyDown } = useEscBack({
+    launcher: onBack,
+  });
 
   return (
     <QxShell
       title={title}
       className="qx-module-loading-shell"
       onBack={onBack}
+      onKeyDown={onKeyDown}
       search={
         <div className="qx-search-wrap qx-module-loading-search" aria-hidden="true">
           <span className="qx-search-icon" />
@@ -114,6 +127,103 @@ function ModuleLoadingShell({
       </div>
     </QxShell>
   );
+}
+
+function ModuleErrorShell({
+  tab,
+  error,
+  onBack,
+}: {
+  tab: string;
+  error: string;
+  onBack: () => void;
+}) {
+  const title = getModuleLabel(tab);
+  const { onKeyDown } = useEscBack({
+    launcher: onBack,
+  });
+
+  return (
+    <QxShell
+      title={title}
+      className="qx-module-loading-shell"
+      onBack={onBack}
+      onKeyDown={onKeyDown}
+      search={
+        <div className="qx-rss-detail-title">
+          <span>{title}</span>
+        </div>
+      }
+      context={
+        <div className="qx-action-panel">
+          <div className="qx-action-title">Module Error</div>
+          <div className="v2ex-context-copy">
+            <span>{error}</span>
+          </div>
+        </div>
+      }
+      island={{
+        label: "Module error",
+        detail: title,
+        tone: "danger",
+        actionLabel: "Back",
+        onAction: onBack,
+      }}
+      primaryAction={{
+        label: "Back",
+        kbd: "Esc",
+        tone: "primary",
+        onClick: onBack,
+      }}
+    >
+      <div className="qx-empty-state">
+        {title} failed to render.
+      </div>
+    </QxShell>
+  );
+}
+
+class ModuleErrorBoundary extends Component<
+  {
+    tab: string;
+    onBack: () => void;
+    children: ReactNode;
+  },
+  {
+    error: string | null;
+  }
+> {
+  state: { error: string | null } = { error: null };
+
+  static getDerivedStateFromError(error: unknown) {
+    return {
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+
+  componentDidCatch(error: unknown, info: ErrorInfo) {
+    console.error("Module render failed:", error, info);
+  }
+
+  componentDidUpdate(prevProps: { tab: string }) {
+    if (prevProps.tab !== this.props.tab && this.state.error) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <ModuleErrorShell
+          tab={this.props.tab}
+          error={this.state.error}
+          onBack={this.props.onBack}
+        />
+      );
+    }
+
+    return this.props.children;
+  }
 }
 
 function clampWindowSize(width: number, height: number) {
@@ -165,6 +275,18 @@ function matchesSettings(query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return false;
   return SETTINGS_KEYWORDS.some((k) => k === q || k.startsWith(q) || q.startsWith(k));
+}
+
+function dedupeEntries(entries: AppEntry[]): AppEntry[] {
+  const seen = new Set<string>();
+  const next: AppEntry[] = [];
+  for (const entry of entries) {
+    const key = `${entry.kind ?? "app"}:${entry.path}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    next.push(entry);
+  }
+  return next;
 }
 
 function shouldLoadSlowSearchProviders(query: string, scope: SearchScope): boolean {
@@ -239,6 +361,17 @@ function App() {
   const pluginIslandTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const [mountedTab, setMountedTab] = useState(tab);
   const [, startSearchTransition] = useTransition();
+
+  const performHostEscape = useCallback(() => {
+    const currentTab = useStore.getState().tab;
+    if (currentTab !== "launcher") {
+      setTab("launcher");
+      return;
+    }
+    if (isTauriRuntime()) {
+      getCurrentWindow().hide().catch(() => {});
+    }
+  }, [setTab]);
 
   const applyResults = useCallback(
     (entries: AppEntry[]) => {
@@ -617,20 +750,27 @@ function App() {
 
       const pluginMatches = findCommands(q);
       const syntheticEntries: AppEntry[] = [];
+      const settingsState = useSettingsStore.getState().settings;
 
       // Also match installed plugin panel names/keywords as navigation entries
       const pluginState = usePluginRegistry.getState();
       const lowerQuery = q.trim().toLowerCase();
       if (lowerQuery) {
         for (const [pluginId, panel] of Object.entries(pluginState.panels)) {
-          if (pluginId.startsWith("builtin:")) continue;
           const nameSource = (panel.pluginName || pluginId).toLowerCase();
           const titleSource = (panel.title || pluginId).toLowerCase();
           const kw = panel.keywords || [];
-          if (nameSource.includes(lowerQuery) || titleSource.includes(lowerQuery) || kw.some((k) => k.toLowerCase().includes(lowerQuery))) {
+          const builtinModuleId = pluginId.startsWith("builtin:") ? pluginId.slice("builtin:".length) : null;
+          if (
+            nameSource.includes(lowerQuery) ||
+            titleSource.includes(lowerQuery) ||
+            kw.some((k) => k.toLowerCase().includes(lowerQuery)) ||
+            itemMatchesSearchMetadata(settingsState, pluginMetadataKey(pluginId), q) ||
+            (builtinModuleId ? itemMatchesSearchMetadata(settingsState, moduleMetadataKey(builtinModuleId), q) : false)
+          ) {
             syntheticEntries.push({
               name: panel.title || pluginId,
-              path: `__qx:plugin:${pluginId}`,
+              path: builtinModuleId ? `__qx:${builtinModuleId}` : `__qx:plugin:${pluginId}`,
               icon: panel.icon || `builtin:${pluginId}`,
               kind: "command",
             });
@@ -644,7 +784,12 @@ function App() {
           const nameSource = p.name.toLowerCase();
           const descSource = (p.description || "").toLowerCase();
           const manifestKw = p.manifest?.keywords || [];
-          if (nameSource.includes(lowerQuery) || descSource.includes(lowerQuery) || manifestKw.some((k) => k.toLowerCase().includes(lowerQuery))) {
+          if (
+            nameSource.includes(lowerQuery) ||
+            descSource.includes(lowerQuery) ||
+            manifestKw.some((k) => k.toLowerCase().includes(lowerQuery)) ||
+            itemMatchesSearchMetadata(settingsState, pluginMetadataKey(p.id), q)
+          ) {
             syntheticEntries.push({
               name: p.name,
               path: `__qx:plugin:${p.id}`,
@@ -683,8 +828,20 @@ function App() {
         });
       }
 
+      if (
+        (scope === "all" || scope === "apps") &&
+        itemMatchesSearchMetadata(settingsState, moduleMetadataKey("settings"), q)
+      ) {
+        syntheticEntries.unshift({
+          name: "Settings",
+          path: "__qx:settings",
+          icon: "builtin:settings",
+          kind: "command",
+        });
+      }
+
       if (scope === "all" || scope === "apps") {
-        entries.push(...syntheticEntries);
+        entries.push(...dedupeEntries(syntheticEntries));
       }
 
       try {
@@ -692,11 +849,23 @@ function App() {
           const res = await invoke<AppEntry[]>("search_apps", { query: q });
           if (seq !== searchSeqRef.current) return;
           entries.push(...res.map((item) => ({ ...item, kind: item.kind ?? "app" as const })));
+          const metadataMatches = Object.entries(settingsState.search_metadata)
+            .filter(([key, metadata]) => key.startsWith("app:") && metadataMatchesQuery(metadata, q));
+          if (metadataMatches.length > 0) {
+            const allApps = await invoke<AppEntry[]>("search_apps", { query: "" }).catch(() => [] as AppEntry[]);
+            if (seq !== searchSeqRef.current) return;
+            const matchingPaths = new Set(metadataMatches.map(([key]) => key.slice("app:".length)));
+            entries.push(
+              ...allApps
+                .filter((item) => matchingPaths.has(item.path))
+                .map((item) => ({ ...item, kind: item.kind ?? "app" as const })),
+            );
+          }
         }
       } catch {}
 
       if (seq !== searchSeqRef.current) return;
-      const baseEntries = [...entries];
+      const baseEntries = dedupeEntries(entries);
       applyResults(baseEntries);
 
       if (shouldLoadSlowSearchProviders(q, scope)) {
@@ -742,6 +911,25 @@ function App() {
     if (tab !== "launcher" || !query.trim()) return;
     void doSearch(query);
   }, [pluginCommandCount, pluginPanelCount, query, tab, doSearch]);
+
+  useEffect(() => {
+    const onGlobalKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      window.setTimeout(() => {
+        if (event.defaultPrevented) return;
+        performHostEscape();
+      }, 0);
+    };
+    const onHostEscape = () => {
+      performHostEscape();
+    };
+    window.addEventListener("keydown", onGlobalKeyDown, true);
+    window.addEventListener(HOST_ESCAPE_EVENT, onHostEscape);
+    return () => {
+      window.removeEventListener("keydown", onGlobalKeyDown, true);
+      window.removeEventListener(HOST_ESCAPE_EVENT, onHostEscape);
+    };
+  }, [performHostEscape]);
 
   // Listen for apps:updated event (background scan completed)
   useEffect(() => {
@@ -835,9 +1023,8 @@ function App() {
 
     if (e.key === "Escape") {
       e.preventDefault();
-      if (isTauriRuntime()) {
-        getCurrentWindow().hide().catch(() => {});
-      }
+      e.stopPropagation();
+      performHostEscape();
       return;
     }
 
@@ -923,9 +1110,20 @@ function App() {
           style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
           onKeyDown={tab !== "launcher" ? handleKeyDown : undefined}
         >
-          <Suspense fallback={<ModuleLoadingShell tab={tab} onBack={() => setTab("launcher")} />}>
-            {renderBody()}
-          </Suspense>
+          <ModuleErrorBoundary
+            tab={tab}
+            onBack={() => {
+              if (useStore.getState().tab !== "launcher") {
+                setTab("launcher");
+              } else {
+                performHostEscape();
+              }
+            }}
+          >
+            <Suspense fallback={<ModuleLoadingShell tab={tab} onBack={() => setTab("launcher")} />}>
+              {renderBody()}
+            </Suspense>
+          </ModuleErrorBoundary>
         </div>
       <div
         className="qx-actionbar"

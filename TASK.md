@@ -1,3 +1,26 @@
+## Feature — Launcher 搜索别名与标签
+
+**状态**：已实现，等待验证。
+
+### 新增内容
+
+- Settings 持久化新增 `search_metadata`，按 `app:<path>`、`plugin:<id>`、`module:<id>` 保存用户自定义 aliases 和 tags。
+- Launcher 右侧 Context Panel 在选中应用或模块时可直接编辑别名/标签，使用 Qx shadcn `Input` / `Button` / `Badge`。
+- Extensions → Installed 详情页新增 Search Aliases & Tags，可为内置模块和外部插件配置搜索别名/标签。
+- Launcher 搜索现在会匹配应用别名/标签、插件/模块别名/标签；别名命中应用时会补入真实应用结果。
+- Installed 插件列表搜索会匹配别名/标签，便于按用户自定义分类查找插件。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `rg '<select|type="range"|type="checkbox"|type="radio"' src`
+- [x] `npm run build`
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [ ] 手动验证给应用、内置模块和外部插件添加 aliases/tags 后，Launcher 和 Installed 搜索均可命中。
+
+---
+
 ## Feature — 灵动岛 LED 点阵时间显示
 
 **状态**：已实现，已通过静态验证。

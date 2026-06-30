@@ -43,6 +43,7 @@
 }
 
 /* ====== 亮色主题 (Light) ====== */
+:root,
 [data-theme="light"] {
   --qx-bg-100: #fafafa;
   --qx-bg-200: #ffffff;
@@ -110,7 +111,6 @@
   --color-surface: var(--qx-bg-component-1);
   --color-surface-active: var(--qx-bg-component-3);
   --color-border: var(--qx-border-1);
-  --color-accent: var(--qx-accent);
   --color-accent-hover: var(--qx-accent-hover);
   --color-accent-soft: var(--qx-accent-soft);
   --color-text-primary: var(--qx-text-primary);
@@ -135,10 +135,24 @@
   --destructive-foreground: var(--qx-text-on-accent);
   --border: var(--qx-border-1);
   --input: var(--qx-border-1);
-  --ring: var(--qx-accent-soft);
+  --ring: color-mix(in srgb, var(--qx-accent) 42%, transparent);
+  --chart-1: #2563eb;
+  --chart-2: #16a34a;
+  --chart-3: #9333ea;
+  --chart-4: #ea580c;
+  --chart-5: #0891b2;
+  --sidebar: var(--qx-bg-component-2);
+  --sidebar-foreground: var(--qx-text-primary);
+  --sidebar-primary: var(--qx-accent);
+  --sidebar-primary-foreground: var(--qx-text-on-accent);
+  --sidebar-accent: var(--qx-bg-component-3);
+  --sidebar-accent-foreground: var(--qx-text-primary);
+  --sidebar-border: var(--qx-border-1);
+  --sidebar-ring: var(--ring);
 }
 
 /* ====== 暗色主题 (Dark) ====== */
+.dark,
 [data-theme="dark"] {
   --qx-bg-100: #0a0a0a;
   --qx-bg-200: #000000;
@@ -212,7 +226,6 @@
   --color-surface: var(--qx-bg-component-1);
   --color-surface-active: var(--qx-bg-component-3);
   --color-border: var(--qx-border-1);
-  --color-accent: var(--qx-accent);
   --color-accent-hover: var(--qx-accent-hover);
   --color-accent-soft: var(--qx-accent-soft);
   --color-text-primary: var(--qx-text-primary);
@@ -237,7 +250,20 @@
   --destructive-foreground: var(--qx-text-on-accent);
   --border: var(--qx-border-1);
   --input: var(--qx-border-1);
-  --ring: var(--qx-accent-soft);
+  --ring: color-mix(in srgb, var(--qx-accent) 48%, transparent);
+  --chart-1: #60a5fa;
+  --chart-2: #4ade80;
+  --chart-3: #c084fc;
+  --chart-4: #fb923c;
+  --chart-5: #22d3ee;
+  --sidebar: var(--qx-bg-component-2);
+  --sidebar-foreground: var(--qx-text-primary);
+  --sidebar-primary: var(--qx-accent);
+  --sidebar-primary-foreground: var(--qx-text-on-accent);
+  --sidebar-accent: var(--qx-bg-component-3);
+  --sidebar-accent-foreground: var(--qx-text-primary);
+  --sidebar-border: var(--qx-border-1);
+  --sidebar-ring: var(--ring);
 }
 
 html,

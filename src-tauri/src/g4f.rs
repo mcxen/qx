@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
+use std::io::BufRead;
 use std::path::PathBuf;
 use std::time::Duration;
+use tauri::Emitter;
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -41,6 +43,16 @@ pub struct CustomProviderConfig {
     pub base_url: String,
     pub api_key: String,
     pub models: Vec<ProviderModel>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QxaiStreamEvent {
+    pub request_id: String,
+    pub chunk: String,
+    pub done: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -102,6 +114,55 @@ fn duckduckgo_post_chat(
 
     resp.text()
         .map_err(|e| format!("failed to read response body: {e}"))
+}
+
+fn duckduckgo_post_chat_stream(
+    client: &reqwest::blocking::Client,
+    vqd: &str,
+    messages: &[ChatMessage],
+    mut on_chunk: impl FnMut(&str),
+) -> Result<String, String> {
+    let messages = duckduckgo_messages(messages)?;
+    let body = serde_json::json!({
+        "model": "gpt-4o-mini",
+        "messages": messages,
+    });
+
+    let resp = client
+        .post("https://duckduckgo.com/duckchat/v1/chat")
+        .header("Content-Type", "application/json")
+        .header("x-vqd-4", vqd)
+        .header("Accept", "text/event-stream")
+        .json(&body)
+        .send()
+        .map_err(|e| format!("duckduckgo chat request failed: {e}"))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().unwrap_or_default();
+        return Err(format!("duckduckgo returned HTTP {status}: {text}"));
+    }
+
+    let mut full = String::new();
+    let reader = std::io::BufReader::new(resp);
+    for line in reader.lines() {
+        let line = line.map_err(|e| format!("failed to read duckduckgo stream: {e}"))?;
+        if let Some(data) = line.strip_prefix("data: ") {
+            if data == "[DONE]" {
+                break;
+            }
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
+                if let Some(msg) = val.get("message").and_then(|m| m.as_str()) {
+                    full.push_str(msg);
+                    on_chunk(msg);
+                }
+            }
+        }
+    }
+    if full.is_empty() {
+        return Err("no content received from duckduckgo".to_string());
+    }
+    Ok(full)
 }
 
 fn openai_list_models(base_url: &str, api_key: &str) -> Result<Vec<ProviderModel>, String> {
@@ -280,6 +341,15 @@ fn provider_duckduckgo_stream(messages: &[ChatMessage]) -> Result<Vec<String>, S
     parse_sse_chunks(&body)
 }
 
+fn provider_duckduckgo_stream_events(
+    messages: &[ChatMessage],
+    on_chunk: impl FnMut(&str),
+) -> Result<String, String> {
+    let client = make_client()?;
+    let vqd = duckduckgo_get_vqd(&client)?;
+    duckduckgo_post_chat_stream(&client, &vqd, messages, on_chunk)
+}
+
 // ---------------------------------------------------------------------------
 // OpenAI-compatible provider (BYOK)
 // ---------------------------------------------------------------------------
@@ -320,6 +390,61 @@ fn provider_openai_chat(
         .as_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "no content in API response".to_string())
+}
+
+fn provider_openai_chat_stream(
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    messages: &[ChatMessage],
+    mut on_chunk: impl FnMut(&str),
+) -> Result<String, String> {
+    let client = make_client()?;
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+
+    let body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "stream": true,
+    });
+
+    let resp = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&body)
+        .send()
+        .map_err(|e| format!("request to {url} failed: {e}"))?;
+
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().unwrap_or_default();
+        return Err(format!("{url} returned HTTP {status}: {text}"));
+    }
+
+    let mut full = String::new();
+    let reader = std::io::BufReader::new(resp);
+    for line in reader.lines() {
+        let line = line.map_err(|e| format!("failed to read response stream from {url}: {e}"))?;
+        let Some(data) = line.strip_prefix("data: ") else {
+            continue;
+        };
+        if data == "[DONE]" {
+            break;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(data) else {
+            continue;
+        };
+        if let Some(content) = value["choices"][0]["delta"]["content"].as_str() {
+            full.push_str(content);
+            on_chunk(content);
+        }
+    }
+
+    if full.is_empty() {
+        return provider_openai_chat(base_url, api_key, model, messages);
+    }
+    Ok(full)
 }
 
 // ---------------------------------------------------------------------------
@@ -451,6 +576,7 @@ pub fn qxai_chat(
     }
 }
 
+#[tauri::command]
 pub fn qxai_stream_chat(
     provider: Option<String>,
     model: Option<String>,
@@ -468,6 +594,70 @@ pub fn qxai_stream_chat(
     } else {
         g4f_stream_chat(selection.provider, Some(selection.model), messages)
     }
+}
+
+#[tauri::command]
+pub fn qxai_stream_chat_events(
+    app: tauri::AppHandle,
+    request_id: String,
+    provider: Option<String>,
+    model: Option<String>,
+    messages: Vec<ChatMessage>,
+) -> Result<(), String> {
+    let providers = qxai_provider_catalog();
+    let selection = resolve_model_selection(&providers, provider, model)?;
+    std::thread::spawn(move || {
+        let stream_app = app.clone();
+        let stream_request_id = request_id.clone();
+        let emit_chunk = |chunk: &str| {
+            let _ = stream_app.emit(
+                "qxai://stream",
+                QxaiStreamEvent {
+                    request_id: stream_request_id.clone(),
+                    chunk: chunk.to_string(),
+                    done: false,
+                    error: None,
+                },
+            );
+        };
+
+        let result = if selection.provider.starts_with("custom:") {
+            match qxai_get_custom_providers()
+                .into_iter()
+                .find(|p| p.id == selection.provider)
+            {
+                Some(custom_provider) => provider_openai_chat_stream(
+                    &custom_provider.base_url,
+                    &custom_provider.api_key,
+                    &selection.model,
+                    &messages,
+                    emit_chunk,
+                ),
+                None => Err(format!("custom provider {} not found", selection.provider)),
+            }
+        } else {
+            match selection.provider.as_str() {
+                "duckduckgo" => provider_duckduckgo_stream_events(&messages, emit_chunk),
+                _ => Err(format!("unknown provider: {}", selection.provider)),
+            }
+        };
+
+        let (chunk, error) = match result {
+            Ok(text) => (text, None),
+            Err(err) => (String::new(), Some(err)),
+        };
+        let _ = app.emit(
+            "qxai://stream",
+            QxaiStreamEvent {
+                request_id,
+                chunk,
+                done: true,
+                error,
+            },
+        );
+    });
+
+    Ok(())
 }
 
 #[tauri::command]

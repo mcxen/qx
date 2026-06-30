@@ -377,6 +377,14 @@ impl Default for WeatherSettings {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SearchMetadataEntry {
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
@@ -397,6 +405,8 @@ pub struct Settings {
     pub v2ex: V2exSettings,
     #[serde(default)]
     pub weather: WeatherSettings,
+    #[serde(default)]
+    pub search_metadata: BTreeMap<String, SearchMetadataEntry>,
 }
 
 impl Default for Settings {
@@ -448,6 +458,7 @@ impl Default for Settings {
             rss: RssSettings::default(),
             v2ex: V2exSettings::default(),
             weather: WeatherSettings::default(),
+            search_metadata: BTreeMap::new(),
         }
     }
 }
