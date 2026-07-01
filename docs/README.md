@@ -22,6 +22,7 @@
 | 文档 | 覆盖范围 |
 |---|---|
 | [plugin-architecture.md](./plugin-architecture.md) | 前端 iframe runtime、RPC 分发、AI 任务链路、权限模型 |
+| [plugin-design-research.md](./plugin-design-research.md) | Raycast-like Rust 启动器插件设计调研 + Qx 落地建议 |
 | [ai-agent-runtime.md](./ai-agent-runtime.md) | QxAI 各层（provider / streaming / tools / MCP / memory / soul） |
 | [`public/doc/plugin-system.md`](../public/doc/plugin-system.md) | 插件系统白皮书（提案、manifest schema、打包） |
 | [`public/doc/plugin-marketplace.md`](../public/doc/plugin-marketplace.md) | 插件市场发布 / 用户安装（面向作者） |
