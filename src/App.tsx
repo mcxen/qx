@@ -425,6 +425,16 @@ function App() {
     if (!settingsLoaded) void loadSettings();
   }, [settingsLoaded, loadSettings, appsReady]);
 
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    const unlisten = listen("settings-updated", () => {
+      void loadSettings();
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [loadSettings]);
+
   // Phase 3 (lazy): Load external plugins — deferred
   useEffect(() => {
     if (!appsReady) return; // Wait for phase 1

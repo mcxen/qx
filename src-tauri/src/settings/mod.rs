@@ -419,6 +419,30 @@ fn default_quick_entries() -> Vec<QuickEntryConfig> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrayActionConfig {
+    pub id: String,
+    pub title: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+fn default_tray_actions() -> Vec<TrayActionConfig> {
+    [
+        ("open_main", "Open Main Window", true),
+        ("keep_visible", "Keep Window Visible", true),
+        ("settings", "Settings", true),
+        ("hide_main", "Hide Main Window", false),
+    ]
+    .into_iter()
+    .map(|(id, title, enabled)| TrayActionConfig {
+        id: id.to_string(),
+        title: title.to_string(),
+        enabled,
+    })
+    .collect()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
     pub general: GeneralSettings,
@@ -442,6 +466,8 @@ pub struct Settings {
     pub search_metadata: BTreeMap<String, SearchMetadataEntry>,
     #[serde(default = "default_quick_entries")]
     pub quick_entries: Vec<QuickEntryConfig>,
+    #[serde(default = "default_tray_actions")]
+    pub tray_actions: Vec<TrayActionConfig>,
 }
 
 impl Default for Settings {
@@ -488,6 +514,7 @@ impl Default for Settings {
             weather: WeatherSettings::default(),
             search_metadata: BTreeMap::new(),
             quick_entries: default_quick_entries(),
+            tray_actions: default_tray_actions(),
         }
     }
 }
@@ -507,7 +534,7 @@ pub(crate) fn read_settings() -> Settings {
     }
 }
 
-fn write_settings(settings: &Settings) -> Result<(), String> {
+pub(crate) fn write_settings(settings: &Settings) -> Result<(), String> {
     let _guard = SETTINGS_WRITE_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()

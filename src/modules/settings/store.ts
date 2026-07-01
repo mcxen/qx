@@ -99,6 +99,12 @@ export interface QuickEntryConfig {
   enabled: boolean;
 }
 
+export interface TrayActionConfig {
+  id: string;
+  title: string;
+  enabled: boolean;
+}
+
 export interface PluginConfig {
   id: string;
   name: string;
@@ -119,6 +125,7 @@ export interface Settings {
   weather: WeatherSettings;
   search_metadata: Record<string, SearchMetadataEntry>;
   quick_entries: QuickEntryConfig[];
+  tray_actions: TrayActionConfig[];
 }
 
 export type SettingsTab =
@@ -223,6 +230,12 @@ export const DEFAULT_SETTINGS: Settings = {
     { id: "macros", title: "Macro Recorder", subtitle: "Record and replay actions", target: "macros", enabled: true },
     { id: "settings", title: "Settings", subtitle: "Appearance and plugins", target: "settings", enabled: true },
   ],
+  tray_actions: [
+    { id: "open_main", title: "Open Main Window", enabled: true },
+    { id: "keep_visible", title: "Keep Window Visible", enabled: true },
+    { id: "settings", title: "Settings", enabled: true },
+    { id: "hide_main", title: "Hide Main Window", enabled: false },
+  ],
 };
 
 interface SettingsStore {
@@ -295,6 +308,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           quick_entries: Array.isArray(s.quick_entries) && s.quick_entries.length > 0
             ? s.quick_entries
             : DEFAULT_SETTINGS.quick_entries,
+          tray_actions: Array.isArray(s.tray_actions) && s.tray_actions.length > 0
+            ? s.tray_actions
+            : DEFAULT_SETTINGS.tray_actions,
         },
         loaded: true,
       });

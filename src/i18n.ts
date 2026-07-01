@@ -34,6 +34,14 @@ const zh: Record<string, string> = {
   "general.reset.desc": "将快捷键、外观和偏好恢复为默认值。",
   "general.reset.button": "重置",
 
+  "general.trayMenu": "托盘菜单",
+  "general.trayMenu.desc": "自定义系统托盘菜单中显示的项目。",
+  "general.trayMenu.title": "操作标题",
+  "general.trayMenu.remove": "移除",
+  "general.trayMenu.addAction": "添加操作",
+  "general.trayMenu.add": "添加",
+  "general.trayMenu.reset": "恢复默认",
+
   "appearance.theme": "主题",
   "appearance.theme.desc": "选择界面配色方案。",
   "appearance.theme.light": "浅色",

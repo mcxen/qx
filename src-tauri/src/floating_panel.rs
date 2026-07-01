@@ -166,6 +166,27 @@ mod macos {
             let _: () = msg_send![ns_window, makeKeyAndOrderFront: std::ptr::null::<AnyObject>()];
         }
     }
+
+    /// Activate the Qx app itself.
+    ///
+    /// With `ActivationPolicy::Accessory` and no `NonactivatingPanel` mask,
+    /// `makeKeyAndOrderFront:` alone is not enough for the window to receive
+    /// key status. We briefly activate our own app so typing reaches the
+    /// search field; focus is restored to the previous foreground app on hide.
+    pub(super) fn activate_app() {
+        unsafe {
+            let app_cls =
+                match AnyClass::get(CStr::from_bytes_with_nul(b"NSApplication\0").unwrap()) {
+                    Some(cls) => cls,
+                    None => return,
+                };
+            let app: *mut AnyObject = msg_send![app_cls, sharedApplication];
+            if app.is_null() {
+                return;
+            }
+            let _: () = msg_send![app, activateIgnoringOtherApps: true];
+        }
+    }
 }
 
 fn center_on_cursor(app: &AppHandle) -> Option<()> {
@@ -208,6 +229,11 @@ pub fn show_floating(app: &AppHandle) {
     {
         macos::promote_main_to_panel(app);
         macos::order_front_without_activating(app);
+        // With only NSWindow-safe flags (no NonactivatingPanel mask), the
+        // accessory-policy app must be explicitly activated before the panel
+        // can become key window. Focus is restored to the previous foreground
+        // app when the panel is hidden via hide_and_restore_focus.
+        macos::activate_app();
         // Make the panel key window on every show. Without this, the panel
         // loses key status after hide and keyboard events (Esc especially)
         // stop reaching the webview — SearchBar's mount effect only fires

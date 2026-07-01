@@ -26,7 +26,7 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, LogicalSize, Manager, PhysicalSize,
+    AppHandle, Emitter, LogicalSize, Manager, PhysicalSize,
 };
 
 const MAIN_TRAY_ID: &str = "qx-main-tray";
@@ -101,6 +101,23 @@ fn show_and_navigate(app: &AppHandle, route: &str) {
     floating_panel::show_and_navigate(app, route);
 }
 
+fn tray_action_title(settings: &settings::Settings, action: &settings::TrayActionConfig) -> String {
+    let title = if action.title.trim().is_empty() {
+        action.id.trim()
+    } else {
+        action.title.trim()
+    };
+    if action.id == "keep_visible" {
+        let state = if settings.general.auto_hide_on_blur {
+            "Off"
+        } else {
+            "On"
+        };
+        return format!("{title}: {state}");
+    }
+    title.to_string()
+}
+
 fn build_tray_menu(
     app: &AppHandle,
     settings: &settings::Settings,
@@ -131,11 +148,60 @@ fn build_tray_menu(
         menu.append(&PredefinedMenuItem::separator(app)?)?;
     }
 
-    let show = MenuItem::with_id(app, "show", "Show/Hide", true, None::<&str>)?;
+    let mut appended_action = false;
+    for action in settings
+        .tray_actions
+        .iter()
+        .filter(|action| action.enabled && !action.id.trim().is_empty())
+    {
+        let item = MenuItem::with_id(
+            app,
+            format!("tray_action:{}", action.id.trim()),
+            tray_action_title(settings, action),
+            true,
+            None::<&str>,
+        )?;
+        menu.append(&item)?;
+        appended_action = true;
+    }
+
+    if !appended_action {
+        let show = MenuItem::with_id(app, "show", "Show/Hide", true, None::<&str>)?;
+        menu.append(&show)?;
+        appended_action = true;
+    }
+
+    if appended_action {
+        menu.append(&PredefinedMenuItem::separator(app)?)?;
+    }
+
     let quit = MenuItem::with_id(app, "quit", "Quit Qx", true, Some("Cmd+Q"))?;
-    menu.append(&show)?;
     menu.append(&quit)?;
     Ok(menu)
+}
+
+fn handle_tray_action(app: &AppHandle, action_id: &str) {
+    match action_id {
+        "open_main" => floating_panel::show_floating(app),
+        "settings" => show_and_navigate(app, "settings"),
+        "hide_main" => floating_panel::hide(app),
+        "keep_visible" => {
+            let mut next = settings::read_settings();
+            next.general.auto_hide_on_blur = !next.general.auto_hide_on_blur;
+            if let Err(err) = settings::write_settings(&next) {
+                eprintln!("update keep_visible tray action: {err}");
+                return;
+            }
+            if let Err(err) = refresh_tray_menu(app, &next) {
+                eprintln!("refresh tray menu after keep_visible: {err}");
+            }
+            let _ = app.emit("settings-updated", next.clone());
+            if !next.general.auto_hide_on_blur {
+                floating_panel::show_floating(app);
+            }
+        }
+        _ => {}
+    }
 }
 
 pub(crate) fn refresh_tray_menu(
@@ -257,6 +323,10 @@ pub fn run() {
                         .and_then(|value| value.split_once(':').map(|(_, route)| route))
                     {
                         show_and_navigate(app, route);
+                        return;
+                    }
+                    if let Some(action_id) = id.strip_prefix("tray_action:") {
+                        handle_tray_action(app, action_id);
                         return;
                     }
                     match id {
