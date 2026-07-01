@@ -8,6 +8,8 @@
 //! request key-window status through `floating_request_key`.
 
 use std::sync::{Mutex, OnceLock};
+use std::thread;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, PhysicalPosition};
 
 pub(crate) const MAIN_LABEL: &str = "main";
@@ -92,6 +94,17 @@ mod macos {
                 running_app,
                 activateWithOptions: NS_APPLICATION_ACTIVATE_IGNORING_OTHER_APPS
             ];
+        }
+    }
+
+    pub(super) fn is_previous_foreground_application_frontmost() -> bool {
+        let previous_pid = previous_foreground_pid()
+            .lock()
+            .ok()
+            .and_then(|previous| *previous);
+        match (previous_pid, frontmost_application_pid()) {
+            (Some(previous), Some(frontmost)) => previous == frontmost,
+            _ => false,
         }
     }
 
@@ -222,6 +235,24 @@ pub fn hide_and_restore_focus(app: &AppHandle) {
     hide(app);
     #[cfg(target_os = "macos")]
     macos::restore_foreground_application();
+}
+
+pub fn hide_restore_focus_and_wait(app: &AppHandle, timeout: Duration) {
+    hide_and_restore_focus(app);
+    #[cfg(target_os = "macos")]
+    {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if macos::is_previous_foreground_application_frontmost() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        // Let the restored app finish re-establishing first responder state.
+        thread::sleep(Duration::from_millis(120));
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = timeout;
 }
 
 /// Toggle visibility — used by the toggle_launcher global shortcut.

@@ -208,8 +208,8 @@ export default function ClipboardPanel() {
       await pasteClipboardEntry(item, options);
       await loadHistory();
       window.setTimeout(() => setStatus(""), 1200);
-    } catch {
-      setStatus("Paste failed");
+    } catch (err) {
+      setStatus(String(err || "Paste failed"));
       window.setTimeout(() => setStatus(""), 1600);
     }
   };

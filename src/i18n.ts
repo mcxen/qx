@@ -190,11 +190,11 @@ const zh: Record<string, string> = {
   "about.storage.warnings": "部分条目已跳过：",
 
   "permissions.title": "macOS 权限",
-  "permissions.desc": "检查 Qx GIF 录屏和宏功能需要的系统权限。",
+  "permissions.desc": "检查 Qx 剪贴板粘贴、GIF 录屏和宏功能需要的系统权限。",
   "permissions.screenRecording": "屏幕录制",
   "permissions.screenRecording.desc": "GIF 屏幕录制需要此权限。",
   "permissions.accessibility": "辅助功能",
-  "permissions.accessibility.desc": "宏回放和系统自动化需要此权限。",
+  "permissions.accessibility.desc": "剪贴板粘贴、宏回放和系统自动化需要此权限。",
   "permissions.inputMonitoring": "输入监听",
   "permissions.inputMonitoring.desc": "录制键盘和鼠标宏事件需要此权限。",
   "permissions.granted": "已授权",

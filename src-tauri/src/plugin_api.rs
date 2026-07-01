@@ -535,8 +535,16 @@ pub fn plugin_clipboard_write(app: AppHandle, text: String) -> Result<(), String
 }
 
 #[tauri::command]
-pub fn plugin_perform_paste() -> Result<(), String> {
+pub fn plugin_perform_paste(app: AppHandle) -> Result<(), String> {
     use enigo::{Direction, Enigo, Key, Keyboard, Settings};
+    #[cfg(target_os = "macos")]
+    if !crate::permissions::accessibility_granted() {
+        return Err(
+            "Accessibility permission is required to paste from Qx. Open Settings > Permissions and grant Accessibility."
+                .to_string(),
+        );
+    }
+    crate::floating_panel::hide_restore_focus_and_wait(&app, Duration::from_millis(700));
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| format!("enigo init: {e}"))?;
     enigo
         .key(Key::Meta, Direction::Press)
@@ -551,6 +559,13 @@ pub fn plugin_perform_paste() -> Result<(), String> {
 #[tauri::command]
 pub fn plugin_perform_paste_at_cursor() -> Result<(), String> {
     use enigo::{Button, Direction, Enigo, Key, Keyboard, Mouse, Settings};
+    #[cfg(target_os = "macos")]
+    if !crate::permissions::accessibility_granted() {
+        return Err(
+            "Accessibility permission is required to paste from Qx. Open Settings > Permissions and grant Accessibility."
+                .to_string(),
+        );
+    }
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| format!("enigo init: {e}"))?;
     enigo
         .button(Button::Left, Direction::Click)

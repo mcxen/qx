@@ -95,7 +95,7 @@ pub(crate) fn screen_recording_granted() -> bool {
 }
 
 #[cfg(target_os = "macos")]
-fn accessibility_granted() -> bool {
+pub(crate) fn accessibility_granted() -> bool {
     unsafe { AXIsProcessTrusted() }
 }
 
@@ -119,7 +119,7 @@ pub fn qx_permissions_status() -> Result<Vec<MacPermissionStatus>, String> {
             permission(
                 "accessibility",
                 "Accessibility",
-                "Required for macro playback and system automation.",
+                "Required for clipboard paste, macro playback, and system automation.",
                 accessibility_granted(),
                 ACCESSIBILITY_SETTINGS,
             ),
