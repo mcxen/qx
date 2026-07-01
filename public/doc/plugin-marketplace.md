@@ -31,6 +31,8 @@ zip -r ../my-plugin.qx-plugin manifest.json index.js icon.png
   "description": "A custom plugin for Qx",
   "author": "Your Name",
   "icon": "icon.png",
+  "screenshots": ["screenshot-1.png"],
+  "platforms": ["macos", "windows"],
   "keywords": ["hello", "test"],
   "permissions": ["open-url", "http", "notifications"],
   "entry": "index.js",
@@ -79,6 +81,8 @@ zip -r ../my-plugin.qx-plugin manifest.json index.js icon.png
 | `description` | 否 | 简短描述 |
 | `author` | 否 | 作者名 |
 | `icon` | 否 | 图标文件名，相对路径 |
+| `screenshots` | 否 | 截图文件名数组，相对路径 |
+| `platforms` | 否 | 支持平台数组：`macos`、`windows`、`linux` |
 | `keywords` | 否 | 全局搜索关键词 |
 | `permissions` | 否 | 需要的能力权限 |
 | `entry` | 否 | 入口文件，默认 `index.js` |
@@ -161,9 +165,11 @@ export default {
 | `context.files.search(query, limit?)` | 搜索文件 | `files` |
 | `context.qx.invokeRust(cmd, args)` | 调用受控 Rust/Tauri 命令 | 能力组、`invoke:<cmd>` 或 `*` |
 | `context.setTimeout/setInterval` | 面板生命周期定时器，面板销毁/插件卸载时自动清理 | 无 |
-| `context.storage.get(key)` | 读取插件 KV 存储 | 无 |
-| `context.storage.set(key, value)` | 写入插件 KV 存储 | 无 |
-| `context.storage.delete(key)` | 删除插件 KV 存储 | 无 |
+| `context.storage.get(key)` | 读取插件持久 KV（兼容旧 API，等同 `persist.get`） | 无 |
+| `context.storage.set(key, value)` | 写入插件持久 KV（兼容旧 API，等同 `persist.set`） | 无 |
+| `context.storage.delete(key)` | 删除插件持久 KV（兼容旧 API，等同 `persist.delete`） | 无 |
+| `context.storage.session.get/set/delete(key)` | 当前 Qx 进程内的临时 KV，适合首屏缓存 | 无 |
+| `context.storage.persist.get/set/delete(key)` | 落盘到插件 `data/storage.json` 的长期 KV，适合跨重启缓存 | 无 |
 
 ### 权限列表
 
@@ -190,6 +196,15 @@ invoke:<cmd>       调用指定 Tauri 命令（精确授权）
 ```
 
 危险 Rust 命令必须精确授权，不能只依赖能力组。例如结束进程、申请权限、清空数据、宏回放、录屏启动、文件导出/删除等，需要在 manifest 中写入对应 `invoke:<cmd>`。
+
+Raycast generic 转换插件为了提高兼容性，会使用精确文件桥权限
+`invoke:plugin_file_read_base64`、`invoke:plugin_file_write_base64`、
+`invoke:plugin_file_exists`、`invoke:plugin_file_ensure_dir`、
+`invoke:plugin_file_empty_dir`、`invoke:plugin_file_list`。这些权限允许转换
+插件访问真实绝对路径、`~/...` 路径以及 `/qx-plugin-files/<plugin-id>`
+虚拟私有路径；清空目录仍会拒绝根目录、用户 Home 和 `/tmp` 等过宽目标。
+
+Raycast 转换插件可带 `raycast.platformCompatibility`，用于 Installed 详情页展示 macOS / Windows / Linux 的 Supported、Partial、Mac Only 或 Unsupported 状态，以及可用、降级和不可用能力列表。
 
 ## 发布到市场
 

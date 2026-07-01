@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { copyFile, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -51,18 +52,183 @@ function titleCase(input) {
 
 function normalizeIcon(icon) {
   if (!icon) return undefined;
-  return path.basename(icon);
+  if (typeof icon === "string") return path.basename(icon);
+  if (typeof icon === "object") return normalizeIcon(icon.source || icon.path || icon.light || icon.dark);
+  return undefined;
+}
+
+function normalizeAssetList(value) {
+  const items = Array.isArray(value) ? value : value ? [value] : [];
+  return items.map(normalizeIcon).filter(Boolean);
+}
+
+function packageScreenshots(pkg) {
+  return [
+    ...normalizeAssetList(pkg.screenshots),
+    ...normalizeAssetList(pkg.screenshot),
+    ...normalizeAssetList(pkg.media),
+    ...normalizeAssetList(pkg.gallery),
+    ...normalizeAssetList(pkg.metadata?.screenshots),
+  ].filter((item, index, all) => all.indexOf(item) === index);
+}
+
+async function discoverScreenshots(sourceDir, pkg) {
+  const declared = packageScreenshots(pkg);
+  const found = new Set(declared);
+  for (const folderName of ["metadata", "screenshots", "media"]) {
+    const folder = path.join(sourceDir, folderName);
+    if (!existsSync(folder)) continue;
+    const entries = await readdir(folder).catch(() => []);
+    for (const entry of entries) {
+      if (/\.(png|jpe?g|webp|gif)$/i.test(entry)) found.add(entry);
+    }
+  }
+  return [...found];
+}
+
+function adapterKind(pkg) {
+  if (pkg.name === "system-information") return "system-information";
+  if (pkg.name === "raycast-system-monitor" || pkg.name === "system-monitor") return "system-monitor";
+  return "generic";
+}
+
+function unique(items) {
+  return [...new Set(items.filter(Boolean))];
+}
+
+function hasPattern(text, pattern) {
+  return pattern.test(text);
+}
+
+async function collectTextFiles(dir) {
+  if (!existsSync(dir)) return "";
+  const chunks = [];
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      chunks.push(await collectTextFiles(fullPath));
+      continue;
+    }
+    if (/\.(cjs|mjs|js|jsx|ts|tsx|json)$/i.test(entry.name)) {
+      chunks.push(await readFile(fullPath, "utf8").catch(() => ""));
+    }
+  }
+  return chunks.join("\n");
+}
+
+async function collectRaycastSourceText(sourceDir) {
+  const packageText = await readFile(path.join(sourceDir, "package.json"), "utf8").catch(() => "");
+  const srcText = await collectTextFiles(path.join(sourceDir, "src"));
+  return `${packageText}\n${srcText}`;
+}
+
+function raycastPlatforms(kind) {
+  return kind === "generic" ? ["macos", "windows"] : ["macos"];
+}
+
+function analyzeRaycastCompatibility(pkg, kind, sourceText) {
+  if (kind !== "generic") {
+    return {
+      macos: {
+        status: "supported",
+        features: ["Qx native adapter"],
+      },
+      windows: {
+        status: "unsupported",
+        unsupported: ["This Raycast adapter currently uses macOS-specific system APIs"],
+      },
+    };
+  }
+
+  const commandModes = (pkg.commands || []).map((command) => command.mode || "view");
+  const usesAppleScript = hasPattern(sourceText, /\brunAppleScript\b|run-applescript/i);
+  const usesFinder = hasPattern(sourceText, /\bshowInFinder\b|Action\.ShowInFinder/i);
+  const usesClipboard = hasPattern(sourceText, /\bClipboard\b|Action\.CopyToClipboard/i);
+  const usesHttp = hasPattern(sourceText, /\bnode-fetch\b|\bfetch\s*\(/i);
+  const usesStorage = hasPattern(sourceText, /\bLocalStorage\b|\bCache\b/i);
+  const usesFileSystem = hasPattern(sourceText, /\bfs-extra\b|from\s+["']fs["']|require\(["']fs["']\)/i);
+  const usesOpen = hasPattern(sourceText, /\bopen\s*\(|Action\.Open|Action\.OpenInBrowser/i);
+  const hasBackground = (pkg.commands || []).some((command) => command.mode === "no-view" && command.interval);
+  const hasMenuBar = commandModes.some((mode) => mode === "menu-bar" || mode === "menuBar");
+  const wallpaperScript = usesAppleScript && hasPattern(sourceText, /desktop picture|wallpaper|System Events/i);
+
+  const commonFeatures = ["Raycast UI"];
+  if (usesHttp) commonFeatures.push("HTTP fetch");
+  if (usesClipboard) commonFeatures.push("Clipboard");
+  if (usesStorage) commonFeatures.push("LocalStorage / Cache");
+  if (usesFileSystem) commonFeatures.push("File cache");
+  if (usesOpen) commonFeatures.push("Open URL/file");
+  if (hasBackground) commonFeatures.push("Background interval");
+
+  const macFeatures = [...commonFeatures];
+  if (usesAppleScript) macFeatures.push("AppleScript automation");
+  if (usesFinder) macFeatures.push("Finder reveal");
+
+  const macDegraded = [];
+  if (hasMenuBar) macDegraded.push("Raycast menu bar command -> Qx background/command entry");
+
+  const windowsFeatures = [...commonFeatures];
+  const windowsDegraded = [];
+  const windowsUnsupported = [];
+  const windowsNotes = [];
+  if (usesFinder) windowsDegraded.push("showInFinder -> open target path");
+  if (usesAppleScript) windowsUnsupported.push(wallpaperScript ? "AppleScript wallpaper setter" : "AppleScript automation");
+  if (hasMenuBar) windowsUnsupported.push("Raycast menu bar command");
+  if (wallpaperScript) {
+    windowsNotes.push("This can become Windows-compatible after mapping the script to automation.wallpaper.setImage(path).");
+  }
+
+  return {
+    macos: {
+      status: macDegraded.length > 0 ? "partial" : "supported",
+      features: unique(macFeatures),
+      degraded: macDegraded,
+    },
+    windows: {
+      status: windowsUnsupported.length > 0 || windowsDegraded.length > 0 ? "partial" : "supported",
+      features: unique(windowsFeatures),
+      degraded: windowsDegraded,
+      unsupported: unique(windowsUnsupported),
+      notes: windowsNotes,
+    },
+  };
+}
+
+function genericPermissionsForSource(sourceText) {
+  const permissions = ["http", "open-url", "clipboard"];
+  if (hasPattern(sourceText, /\brunAppleScript\b|run-applescript/i)) {
+    permissions.push("invoke:plugin_run_applescript");
+  }
+  if (hasPattern(sourceText, /\bfs-extra\b|from\s+["']fs["']|require\(["']fs["']\)/i)) {
+    permissions.push(
+      "invoke:plugin_file_read_base64",
+      "invoke:plugin_file_exists",
+      "invoke:plugin_file_ensure_dir",
+      "invoke:plugin_file_write_base64",
+      "invoke:plugin_file_empty_dir",
+      "invoke:plugin_file_list",
+    );
+  }
+  return permissions;
 }
 
 function buildManifest(pkg) {
   const id = (pkg.name || "raycast-extension").replace(/^raycast-/, "");
-  const commands = (pkg.commands || []).map((command) => ({
+  const name = pkg.title || titleCase(id);
+  const kind = adapterKind(pkg);
+  const commands = [];
+
+  commands.push(...(pkg.commands || []).map((command) => ({
     name: command.name || "index",
-    title: command.title || pkg.title || titleCase(id),
+    title: command.title || name,
     description: command.description || pkg.description || "",
-    icon: normalizeIcon(pkg.icon),
+    icon: normalizeIcon(command.icon || pkg.icon),
     keywords: pkg.keywords || [],
-  }));
+    mode: command.mode || "view",
+    interval: command.interval,
+  })));
 
   for (const tool of pkg.tools || []) {
     commands.push({
@@ -73,10 +239,11 @@ function buildManifest(pkg) {
       keywords: [tool.name, ...(pkg.keywords || [])],
     });
   }
+
   if (commands.length === 0) {
     commands.push({
       name: "index",
-      title: pkg.title || titleCase(id),
+      title: name,
       description: pkg.description || "",
       icon: normalizeIcon(pkg.icon),
       keywords: pkg.keywords || [],
@@ -85,13 +252,28 @@ function buildManifest(pkg) {
 
   return {
     id: `raycast-${id}`,
-    name: pkg.title || titleCase(id),
+    name,
     version: pkg.version || "1.0.0",
     description: pkg.description || "",
     author: pkg.author || "",
     icon: normalizeIcon(pkg.icon),
+    screenshots: packageScreenshots(pkg),
+    platforms: raycastPlatforms(kind),
     keywords: pkg.keywords || [],
-    permissions: INVOKE_PERMISSIONS,
+    permissions: kind === "generic"
+      ? [
+          "http",
+          "open-url",
+          "clipboard",
+          "invoke:plugin_run_applescript",
+          "invoke:plugin_file_read_base64",
+          "invoke:plugin_file_exists",
+          "invoke:plugin_file_ensure_dir",
+          "invoke:plugin_file_write_base64",
+          "invoke:plugin_file_empty_dir",
+          "invoke:plugin_file_list",
+        ]
+      : INVOKE_PERMISSIONS,
     entry: "index.js",
     commands,
     panel: {
@@ -101,7 +283,10 @@ function buildManifest(pkg) {
     },
     raycast: {
       source: pkg.name || id,
-      compatible: "converted",
+      compatible: kind === "generic" ? "generic-shim" : "converted",
+      sourceCommands: (pkg.commands || []).map((command) => command.name).filter(Boolean),
+      sourceTools: (pkg.tools || []).map((tool) => tool.name).filter(Boolean),
+      platformCompatibility: analyzeRaycastCompatibility(pkg, kind, ""),
     },
   };
 }
@@ -242,8 +427,8 @@ export default {
   ],
   panel: {
     title: "System Information",
-    async render(container, context) {
-      await renderSystemInformation(container, context);
+    render(container, context) {
+      void renderSystemInformation(container, context);
     },
     destroy(container) {
       container.innerHTML = "";
@@ -265,7 +450,7 @@ async function data(ctx){const [stats,system,storage,network,processes,power,cou
 function nav(id,i,l,m){return '<button data-tab="'+id+'" class="'+(active===id?'active':'')+'"><span>'+i+'</span><span class="label">'+l+'</span><span class="metric">'+esc(m||'')+'</span></button>'}
 function pane(d){const st=d.stats||{};if(active==="cpu")return '<div class="top"><h1>CPU</h1><button id="refresh">Refresh</button></div>'+bar(st.cpu)+row("Usage",Number(st.cpu||0).toFixed(1)+" %")+row("Chip",d.system?.chip||"Unknown")+row("Temperature","N/A");if(active==="memory")return '<div class="top"><h1>Memory</h1><button id="refresh">Refresh</button></div>'+bar(st.memory)+row("Used",stat(st,"memory_used_gb","memoryUsedGb").toFixed(2)+" GB")+row("Total",stat(st,"memory_total_gb","memoryTotalGb").toFixed(2)+" GB")+row("Usage",Number(st.memory||0).toFixed(1)+" %");if(active==="power")return '<div class="top"><h1>Power</h1><button id="refresh">Refresh</button></div>'+(d.power?.batteryLevel==null?'':bar(d.power.batteryLevel))+row("Battery",d.power?.batteryLevel==null?"N/A":d.power.batteryLevel+" %")+row("Source",d.power?.source||"Unknown")+row("State",d.power?.summary||"Unknown");if(active==="network"){const dev=(d.network?.devices||[]).map(x=>row(x.name,x.ip)).join("");const c=(d.counters?.interfaces||[]).slice(0,8).map(x=>row(x.name,"In "+bytes(x.bytesIn)+" / Out "+bytes(x.bytesOut))).join("");return '<div class="top"><h1>Network</h1><button id="refresh">Refresh</button></div>'+row("Download Speed",bytes(d.down)+"/s")+row("Upload Speed",bytes(d.up)+"/s")+row("Active Devices",String(d.network?.count||0))+dev+c}const ps=(d.processes?.processes||[]).slice(0,8).map((p,i)=>'<div class="row"><div><strong>'+(i+1)+' -> '+esc(p.name)+'</strong><div class="small">PID '+p.pid+'</div></div><div class="value">CPU '+Number(p.cpu||0).toFixed(1)+'% / MEM '+Number(p.mem||0).toFixed(1)+'%</div></div>').join("");return '<div class="top"><h1>System Info</h1><button id="refresh">Refresh</button></div>'+row("Hostname",d.system?.hostname||"Unknown")+row("macOS",d.system?.macOS||"Unknown")+row("Kernel",d.system?.kernel||"Unknown")+row("Storage",d.storage?.summary||"Unknown")+row("Serial Number",d.system?.serialNumber||"Unknown")+ps}
 async function draw(c,ctx){c.innerHTML=css()+'<div class="sm"><div class="nav">Loading System Monitor...</div><div></div></div>';try{const d=await data(ctx);c.innerHTML=css()+'<div class="sm"><div class="nav">'+nav("system-info","S","System Info","")+nav("cpu","C","CPU",Number(d.stats?.cpu||0).toFixed(0)+" %")+nav("memory","M","Memory",Number(d.stats?.memory||0).toFixed(0)+" %")+nav("power","P","Power",d.power?.batteryLevel==null?"N/A":d.power.batteryLevel+" %")+nav("network","N","Network","↓ "+bytes(d.down)+"/s")+'</div><div class="detail">'+pane(d)+'</div></div>';c.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{active=b.getAttribute("data-tab")||"system-info";draw(c,ctx)}));c.querySelector("#refresh")?.addEventListener("click",()=>draw(c,ctx))}catch(e){c.innerHTML=css()+'<div class="error">Failed to load System Monitor: '+esc(e?.message||e)+'</div>'}}
-export default{commands:[{name:"system-monitor",title:"System Monitor",async run(ctx){const s=await ctx.system.stats();ctx.showToast("CPU "+Number(s.cpu||0).toFixed(1)+"%, Memory "+Number(s.memory||0).toFixed(1)+"%")}},{name:"menubar-system-monitor",title:"Menubar System Monitor",async run(ctx){const s=await ctx.system.stats();ctx.showToast("Qx panel monitor ready: CPU "+Number(s.cpu||0).toFixed(1)+"%")}}],panel:{title:"System Monitor",async render(c,ctx){await draw(c,ctx);c.__timer=ctx.setInterval(()=>draw(c,ctx),3000)},destroy(c){c.innerHTML=""}}};
+export default{commands:[{name:"system-monitor",title:"System Monitor",async run(ctx){const s=await ctx.system.stats();ctx.showToast("CPU "+Number(s.cpu||0).toFixed(1)+"%, Memory "+Number(s.memory||0).toFixed(1)+"%")}},{name:"menubar-system-monitor",title:"Menubar System Monitor",async run(ctx){const s=await ctx.system.stats();ctx.showToast("Qx panel monitor ready: CPU "+Number(s.cpu||0).toFixed(1)+"%")}}],panel:{title:"System Monitor",render(c,ctx){void draw(c,ctx);c.__timer=ctx.setInterval(()=>draw(c,ctx),3000)},destroy(c){c.innerHTML=""}}};
 `;
 }
 
@@ -291,16 +476,712 @@ function fallbackIndexJs(pkg) {
 `;
 }
 
-async function copyAssetIfPresent(sourceDir, destDir, icon) {
-  const iconName = normalizeIcon(icon);
-  if (!iconName) return;
+function raycastApiShimModule() {
+  return String.raw`
+import React from "react";
+
+function runtime() {
+  return globalThis.__qxRaycastRuntime;
+}
+
+function cx(...parts) {
+  return parts.filter(Boolean).join(" ");
+}
+
+function textOf(value) {
+  if (value == null) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return value.title || value.name || value.text || "";
+}
+
+function firstAction(node) {
+  const children = React.Children.toArray(node?.props?.children);
+  for (const child of children) {
+    if (!React.isValidElement(child)) continue;
+    if (child.type === Action) return child;
+    const nested = firstAction(child);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function runAction(action) {
+  const handler = action?.props?.onAction;
+  if (typeof handler === "function") {
+    void Promise.resolve(handler());
+  }
+}
+
+export const Icon = {
+  Info: "info",
+  Download: "download",
+  Desktop: "desktop",
+  Eye: "eye",
+  Folder: "folder",
+  Gear: "gear",
+  Link: "link",
+  Trash: "trash",
+  XMarkCircle: "x",
+};
+
+export const Color = {
+  Blue: "blue",
+  Green: "green",
+  Orange: "orange",
+  Purple: "purple",
+  Red: "red",
+  Yellow: "yellow",
+};
+
+export const Toast = {
+  Style: {
+    Animated: "animated",
+    Success: "success",
+    Failure: "failure",
+  },
+};
+
+export async function showToast(input, title, message) {
+  const toast = typeof input === "object"
+    ? { ...input }
+    : { style: input, title: String(title || ""), message: String(message || "") };
+  runtime()?.context?.showToast?.([toast.title, toast.message].filter(Boolean).join(": "));
+  return {
+    ...toast,
+    hide() {},
+    show() { runtime()?.context?.showToast?.(this.title || ""); },
+  };
+}
+
+export async function showHUD(message) {
+  runtime()?.context?.showToast?.(String(message || ""));
+}
+
+export async function open(target) {
+  return runtime()?.context?.openUrl?.(String(target || ""));
+}
+
+export async function showInFinder(target) {
+  return runtime()?.context?.openUrl?.(String(target || ""));
+}
+
+export async function openExtensionPreferences() {
+  runtime()?.context?.showToast?.("Preferences are managed in Qx Extensions settings.");
+}
+
+export async function confirmAlert(options) {
+  const title = options?.title || "Confirm";
+  const message = options?.message ? "\n" + options.message : "";
+  return globalThis.confirm ? globalThis.confirm(title + message) : true;
+}
+
+export function getPreferenceValues() {
+  return runtime()?.preferences || {};
+}
+
+export const environment = {
+  get supportPath() {
+    return runtime()?.supportPath || "/tmp";
+  },
+  get assetsPath() {
+    return runtime()?.assetsPath || "";
+  },
+  get commandName() {
+    return runtime()?.activeCommand || "index";
+  },
+  get launchType() {
+    return LaunchType.UserInitiated;
+  },
+};
+
+export const LaunchType = {
+  UserInitiated: "userInitiated",
+  Background: "background",
+};
+
+export const LocalStorage = {
+  async getItem(key) {
+    const value = await runtime()?.context?.storage?.persist?.get?.(String(key));
+    return value == null ? undefined : value;
+  },
+  async setItem(key, value) {
+    await runtime()?.context?.storage?.persist?.set?.(String(key), value);
+  },
+  async removeItem(key) {
+    await runtime()?.context?.storage?.persist?.delete?.(String(key));
+  },
+  async allItems() {
+    return {};
+  },
+};
+
+export class Cache {
+  constructor(options = {}) {
+    this.namespace = options.namespace || "default";
+  }
+  key(key) {
+    return "raycast-cache:" + this.namespace + ":" + key;
+  }
+  get(key) {
+    return runtime()?.cache?.get(this.key(key));
+  }
+  set(key, value) {
+    runtime()?.cache?.set(this.key(key), value);
+  }
+  remove(key) {
+    runtime()?.cache?.delete(this.key(key));
+  }
+  clear() {}
+}
+
+export const Clipboard = {
+  readText: () => runtime()?.context?.clipboard?.read?.(),
+  copy: (value) => runtime()?.context?.clipboard?.write?.(String(value || "")),
+};
+
+export function useNavigation() {
+  return {
+    push(element) {
+      runtime()?.render?.(element);
+    },
+    pop() {},
+  };
+}
+
+export function ActionPanel({ children }) {
+  return React.createElement("div", { "data-raycast-actions": true, style: { display: "none" } }, children);
+}
+ActionPanel.Section = function ActionPanelSection({ children }) {
+  return React.createElement(React.Fragment, null, children);
+};
+
+export function Action(props) {
+  return React.createElement("button", { type: "button", onClick: props.onAction }, props.title || "Action");
+}
+Action.OpenInBrowser = function ActionOpenInBrowser(props) {
+  return React.createElement(Action, { ...props, onAction: () => open(props.url), title: props.title || "Open in Browser" });
+};
+Action.Open = function ActionOpen(props) {
+  return React.createElement(Action, { ...props, onAction: () => open(props.target), title: props.title || "Open" });
+};
+Action.ShowInFinder = function ActionShowInFinder(props) {
+  return React.createElement(Action, { ...props, onAction: () => showInFinder(props.path), title: props.title || "Show in Finder" });
+};
+Action.CopyToClipboard = function ActionCopyToClipboard(props) {
+  return React.createElement(Action, { ...props, onAction: () => Clipboard.copy(props.content), title: props.title || "Copy" });
+};
+Action.Push = function ActionPush(props) {
+  const nav = useNavigation();
+  return React.createElement(Action, { ...props, onAction: () => nav.push(props.target), title: props.title || "Open" });
+};
+
+function SearchInput({ placeholder }) {
+  return React.createElement("input", {
+    className: "qx-raycast-search",
+    placeholder: placeholder || "Search",
+    onChange: (event) => runtime()?.setSearch?.(event.target.value),
+  });
+}
+
+function ItemShell({ title, subtitle, icon, accessories, actions, children, image }) {
+  const action = firstAction(actions);
+  return React.createElement("button", {
+    type: "button",
+    className: "qx-raycast-item",
+    onClick: () => runAction(action),
+  },
+    image ? React.createElement("img", { className: "qx-raycast-thumb", src: typeof image === "string" ? image : image?.source || image }) : React.createElement("span", { className: "qx-raycast-icon" }, textOf(icon)),
+    React.createElement("span", { className: "qx-raycast-item-main" },
+      React.createElement("strong", null, textOf(title)),
+      subtitle ? React.createElement("small", null, textOf(subtitle)) : null,
+      children),
+    accessories ? React.createElement("span", { className: "qx-raycast-accessory" }, textOf(Array.isArray(accessories) ? accessories[0] : accessories)) : null);
+}
+
+export function List(props) {
+  return React.createElement("div", { className: "qx-raycast-view" },
+    React.createElement(SearchInput, { placeholder: props.searchBarPlaceholder }),
+    props.isLoading ? React.createElement("div", { className: "qx-raycast-loading" }, "Loading...") : null,
+    React.createElement("div", { className: "qx-raycast-list" }, props.children));
+}
+List.Item = function ListItem(props) {
+  return React.createElement(ItemShell, props);
+};
+List.Section = function ListSection({ title, children }) {
+  return React.createElement("section", { className: "qx-raycast-section" },
+    title ? React.createElement("h2", null, title) : null,
+    children);
+};
+List.EmptyView = function ListEmptyView(props) {
+  return React.createElement("div", { className: "qx-raycast-empty" }, props.title || "No results");
+};
+List.Dropdown = function ListDropdown() { return null; };
+List.Dropdown.Item = function ListDropdownItem() { return null; };
+
+export function Grid(props) {
+  return React.createElement("div", { className: "qx-raycast-view" },
+    React.createElement(SearchInput, { placeholder: props.searchBarPlaceholder }),
+    props.isLoading ? React.createElement("div", { className: "qx-raycast-loading" }, "Loading...") : null,
+    React.createElement("div", { className: "qx-raycast-grid" }, props.children));
+}
+Grid.Item = function GridItem(props) {
+  return React.createElement(ItemShell, { ...props, image: props.content });
+};
+Grid.Section = List.Section;
+Grid.EmptyView = List.EmptyView;
+Grid.Dropdown = List.Dropdown;
+Grid.Dropdown.Item = List.Dropdown.Item;
+Grid.Fit = { Fill: "fill", Contain: "contain" };
+
+export function Detail(props) {
+  return React.createElement("div", { className: "qx-raycast-detail" },
+    props.markdown ? React.createElement("pre", null, props.markdown) : props.children);
+}
+`;
+}
+
+function nodeFetchShimModule() {
+  return String.raw`
+export class AbortError extends Error {}
+export default async function fetch(url, options = {}) {
+  return globalThis.__qxRaycastRuntime.context.http.fetch(String(url), options);
+}
+`;
+}
+
+function fileUrlShimModule() {
+  return "export default function fileUrl(path) { return String(path || ''); }\n";
+}
+
+function osShimModule() {
+  return "export function homedir() { return globalThis.__qxRaycastRuntime?.homeDirectory || '/qx-home'; }\nexport default { homedir };\n";
+}
+
+function pathShimModule() {
+  return String.raw`
+export function parse(input) {
+  const value = String(input || "");
+  const slash = value.lastIndexOf("/");
+  const base = slash >= 0 ? value.slice(slash + 1) : value;
+  const dot = base.lastIndexOf(".");
+  return {
+    root: value.startsWith("/") ? "/" : "",
+    dir: slash >= 0 ? value.slice(0, slash) : "",
+    base,
+    ext: dot > 0 ? base.slice(dot) : "",
+    name: dot > 0 ? base.slice(0, dot) : base,
+  };
+}
+export function basename(input) { return parse(input).base; }
+export function dirname(input) { return parse(input).dir || "."; }
+export function join(...parts) { return parts.filter(Boolean).join("/").replace(/\/+/g, "/"); }
+export default { parse, basename, dirname, join };
+`;
+}
+
+function fsExtraShimModule() {
+  return String.raw`
+const mem = new Map();
+const dirs = new Set(["/"]);
+function runtime() {
+  return globalThis.__qxRaycastRuntime;
+}
+function writes() {
+  if (!globalThis.__qxRaycastPendingWrites) globalThis.__qxRaycastPendingWrites = new Map();
+  return globalThis.__qxRaycastPendingWrites;
+}
+function toUint8Array(data) {
+  if (data instanceof Uint8Array) return data;
+  if (data instanceof ArrayBuffer) return new Uint8Array(data);
+  if (ArrayBuffer.isView(data)) return new Uint8Array(data.buffer);
+  return new TextEncoder().encode(String(data ?? ""));
+}
+function toBase64(data) {
+  const bytes = toUint8Array(data);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.slice(i, i + chunk));
+  }
+  return btoa(binary);
+}
+function normalizePath(path) {
+  return String(path || "").replace(/\/+/g, "/").replace(/\/$/, "") || "/";
+}
+function dirname(path) {
+  const value = normalizePath(path);
+  const slash = value.lastIndexOf("/");
+  if (slash <= 0) return "/";
+  return value.slice(0, slash);
+}
+function basename(path) {
+  const value = normalizePath(path);
+  const slash = value.lastIndexOf("/");
+  return slash >= 0 ? value.slice(slash + 1) : value;
+}
+function rememberDir(path) {
+  let current = normalizePath(path);
+  while (current && current !== "/") {
+    dirs.add(current);
+    current = dirname(current);
+  }
+  dirs.add("/");
+}
+function fromBase64(text) {
+  const binary = atob(String(text || ""));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+export function existsSync(path) {
+  const value = normalizePath(path);
+  return mem.has(value) || dirs.has(value);
+}
+export function pathExistsSync(path) {
+  const value = normalizePath(path);
+  if (existsSync(value)) return true;
+  if (value.startsWith("/qx-plugin-files/")) return true;
+  return [...mem.keys()].some((key) => key.startsWith(value + "/"));
+}
+export async function pathExists(path) {
+  const value = normalizePath(path);
+  if (pathExistsSync(value)) return true;
+  try {
+    const exists = await runtime()?.context?.qx?.invokeRust?.("plugin_file_exists", { path: value });
+    if (exists) dirs.add(value);
+    return !!exists;
+  } catch {
+    return false;
+  }
+}
+export function readdirSync(dir) {
+  const folder = normalizePath(dir);
+  const names = new Set();
+  for (const key of mem.keys()) {
+    if (dirname(key) === folder) names.add(basename(key));
+  }
+  return [...names];
+}
+export async function emptydir(dir) {
+  const prefix = normalizePath(dir);
+  for (const key of [...mem.keys()]) if (key === prefix || key.startsWith(prefix + "/")) mem.delete(key);
+  for (const key of [...dirs.keys()]) if (key !== prefix && key.startsWith(prefix + "/")) dirs.delete(key);
+  dirs.add(prefix);
+  await runtime()?.context?.qx?.invokeRust?.("plugin_file_empty_dir", { path: prefix });
+}
+export async function ensureDir(dir) {
+  const target = normalizePath(dir);
+  rememberDir(target);
+  await runtime()?.context?.qx?.invokeRust?.("plugin_file_ensure_dir", { path: target });
+}
+export const mkdirp = ensureDir;
+export function writeFile(path, data, callback) {
+  const target = normalizePath(path);
+  rememberDir(dirname(target));
+  mem.set(target, data);
+  const promise = runtime()?.context?.qx?.invokeRust?.("plugin_file_write_base64", {
+    path: target,
+    dataBase64: toBase64(data),
+  }) || Promise.resolve();
+  writes().set(target, promise);
+  promise
+    .then(() => {
+      writes().delete(target);
+      if (typeof callback === "function") callback(null);
+    })
+    .catch((error) => {
+      writes().delete(target);
+      if (typeof callback === "function") callback(error);
+    });
+}
+export function writeFileSync(path, data) {
+  writeFile(path, data);
+}
+export async function readFile(path, options, callback) {
+  if (typeof options === "function") {
+    callback = options;
+    options = undefined;
+  }
+  const target = normalizePath(path);
+  const promise = mem.has(target)
+    ? Promise.resolve(toUint8Array(mem.get(target)))
+    : runtime()?.context?.qx?.invokeRust?.("plugin_file_read_base64", { path: target }).then(fromBase64);
+  return promise.then((bytes) => {
+    const encoding = typeof options === "string" ? options : options?.encoding;
+    const value = encoding ? new TextDecoder().decode(bytes) : bytes;
+    if (typeof callback === "function") callback(null, value);
+    return value;
+  }).catch((error) => {
+    if (typeof callback === "function") callback(error);
+    else throw error;
+  });
+}
+export function readFileSync(path, options) {
+  const target = normalizePath(path);
+  if (!mem.has(target)) throw new Error("readFileSync only supports files touched in this runtime");
+  const bytes = toUint8Array(mem.get(target));
+  return options ? new TextDecoder().decode(bytes) : bytes;
+}
+export async function readJson(path) {
+  return JSON.parse(await readFile(path, "utf8"));
+}
+export async function writeJson(path, value, options) {
+  const spaces = options?.spaces ?? 2;
+  return writeFile(path, JSON.stringify(value, null, spaces));
+}
+export default { existsSync, pathExistsSync, pathExists, readdirSync, emptydir, ensureDir, mkdirp, writeFile, writeFileSync, readFile, readFileSync, readJson, writeJson };
+`;
+}
+
+function runAppleScriptShimModule() {
+  return String.raw`
+export async function runAppleScript(script) {
+  const pending = globalThis.__qxRaycastPendingWrites
+    ? [...globalThis.__qxRaycastPendingWrites.values()]
+    : [];
+  if (pending.length) await Promise.allSettled(pending);
+  return globalThis.__qxRaycastRuntime?.context?.qx?.invokeRust?.("plugin_run_applescript", { script: String(script || "") })
+    .catch(() => "unsupported");
+}
+export default runAppleScript;
+`;
+}
+
+function bufferShimModule() {
+  return String.raw`
+export const Buffer = {
+  from(value) {
+    if (value instanceof ArrayBuffer) return new Uint8Array(value);
+    if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer);
+    return new TextEncoder().encode(String(value || ""));
+  },
+};
+export default { Buffer };
+`;
+}
+
+function raycastShimStyles() {
+  const css = `
+    html,body,#root{margin:0;width:100%;height:100%;background:transparent;color:var(--qx-text-primary,#111);font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}
+    .qx-raycast-view{box-sizing:border-box;height:100%;display:flex;flex-direction:column;gap:10px;padding:14px;overflow:hidden;}
+    .qx-raycast-search{height:34px;border:1px solid var(--qx-border-1,#ddd);border-radius:7px;background:var(--qx-bg-component-1,#fff);color:inherit;padding:0 10px;font:inherit;outline:none;}
+    .qx-raycast-list{display:flex;flex-direction:column;gap:4px;overflow:auto;min-height:0;}
+    .qx-raycast-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px;overflow:auto;min-height:0;}
+    .qx-raycast-section{display:contents;}
+    .qx-raycast-section h2{grid-column:1/-1;margin:10px 0 2px;color:var(--qx-text-tertiary,#777);font-size:11px;text-transform:uppercase;letter-spacing:.08em;}
+    .qx-raycast-item{min-width:0;display:flex;align-items:center;gap:10px;border:0;border-radius:7px;background:transparent;color:inherit;text-align:left;padding:8px;cursor:pointer;font:inherit;}
+    .qx-raycast-grid .qx-raycast-item{display:flex;flex-direction:column;align-items:stretch;padding:0;overflow:hidden;background:var(--qx-bg-component-1,#fff);border:1px solid var(--qx-border-1,#ddd);}
+    .qx-raycast-item:hover{background:var(--qx-bg-component-2,#f5f5f5);}
+    .qx-raycast-thumb{width:100%;aspect-ratio:16/9;object-fit:cover;background:var(--qx-bg-component-2,#eee);}
+    .qx-raycast-list .qx-raycast-thumb{width:52px;height:34px;border-radius:5px;flex:0 0 auto;}
+    .qx-raycast-icon{width:22px;min-height:22px;display:inline-flex;align-items:center;justify-content:center;color:var(--qx-text-tertiary,#777);}
+    .qx-raycast-item-main{min-width:0;display:flex;flex-direction:column;gap:2px;padding:6px;}
+    .qx-raycast-item-main strong,.qx-raycast-item-main small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .qx-raycast-item-main small,.qx-raycast-accessory{color:var(--qx-text-secondary,#666);}
+    .qx-raycast-loading,.qx-raycast-empty,.qx-raycast-detail{padding:18px;color:var(--qx-text-secondary,#666);overflow:auto;}
+  `;
+  return String.raw`
+function injectRaycastStyles() {
+  if (document.getElementById("qx-raycast-shim-style")) return;
+  const style = document.createElement("style");
+  style.id = "qx-raycast-shim-style";
+  style.textContent = ${JSON.stringify(css)};
+  document.head.appendChild(style);
+}
+`;
+}
+
+function commandSourcePath(sourceDir, commandName) {
   const candidates = [
-    path.join(sourceDir, "assets", iconName),
-    path.join(sourceDir, iconName),
+    path.join(sourceDir, "src", `${commandName}.tsx`),
+    path.join(sourceDir, "src", `${commandName}.ts`),
+    path.join(sourceDir, "src", `${commandName}.jsx`),
+    path.join(sourceDir, "src", `${commandName}.js`),
+    path.join(sourceDir, "src", "index.tsx"),
+    path.join(sourceDir, "src", "index.ts"),
+  ];
+  return candidates.find((candidate) => existsSync(candidate));
+}
+
+function preferencesObject(pkg) {
+  const result = {};
+  for (const pref of pkg.preferences || []) {
+    if (!pref?.name) continue;
+    result[pref.name] = pref.default ?? "";
+  }
+  for (const command of pkg.commands || []) {
+    for (const pref of command.preferences || []) {
+      if (!pref?.name || result[pref.name] !== undefined) continue;
+      result[pref.name] = pref.default ?? "";
+    }
+  }
+  return result;
+}
+
+function virtualModulePlugin(modules) {
+  return {
+    name: "qx-raycast-virtual-modules",
+    setup(build) {
+      build.onResolve({ filter: /.*/ }, (args) => {
+        if (modules[args.path]) return { path: args.path, namespace: "qx-virtual" };
+        return null;
+      });
+      build.onLoad({ filter: /.*/, namespace: "qx-virtual" }, (args) => ({
+        contents: modules[args.path],
+        loader: "js",
+        resolveDir: process.cwd(),
+      }));
+    },
+  };
+}
+
+async function genericRaycastIndexJs(sourceDir, pkg, manifest) {
+  const esbuild = await import("esbuild");
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "qx-raycast-build-"));
+  const imports = [];
+  const commandNames = [];
+  for (const command of pkg.commands || []) {
+    const commandName = command.name || "index";
+    const sourcePath = commandSourcePath(sourceDir, commandName);
+    if (!sourcePath) continue;
+    const ident = "cmd_" + commandName.replace(/[^a-zA-Z0-9_$]/g, "_");
+    imports.push(`import * as ${ident} from ${JSON.stringify(sourcePath)};`);
+    commandNames.push({ name: commandName, ident, mode: command.mode || "view" });
+  }
+  if (commandNames.length === 0) {
+    return fallbackIndexJs(pkg);
+  }
+  const entryPath = path.join(tempDir, "entry.jsx");
+  await writeFile(entryPath, `
+import React from "react";
+import { createRoot } from "react-dom/client";
+${imports.join("\n")}
+${raycastShimStyles()}
+
+const commandModules = {
+${commandNames.map((item) => JSON.stringify(item.name) + ": " + item.ident).join(",\n")}
+};
+const commandModes = ${JSON.stringify(Object.fromEntries(commandNames.map((item) => [item.name, item.mode])))};
+const manifestCommands = ${JSON.stringify(manifest.commands)};
+const preferences = ${JSON.stringify(preferencesObject(pkg))};
+let root = null;
+
+function renderElement(container, element) {
+  injectRaycastStyles();
+  if (!root) root = createRoot(container);
+  root.render(element || React.createElement("div", { className: "qx-raycast-empty" }, "No view"));
+}
+
+async function invokeCommand(name, container, context) {
+  const mod = commandModules[name] || commandModules[Object.keys(commandModules)[0]];
+  if (!mod) throw new Error("Command not bundled: " + name);
+  const component = mod.default || mod.Command || mod;
+  const cache = new Map();
+  globalThis.__qxRaycastRuntime = {
+    context,
+    preferences,
+    activeCommand: name,
+    cache,
+    supportPath: "/qx-plugin-files/" + ${JSON.stringify(manifest.id)},
+    assetsPath: "",
+    homeDirectory: "/qx-home",
+    render: (element) => renderElement(container, element),
+    setSearch: () => {},
+  };
+  const result = typeof component === "function" ? await component({}) : component;
+  if (React.isValidElement(result)) {
+    renderElement(container, result);
+  } else if (container) {
+    renderElement(container, React.createElement("div", { className: "qx-raycast-empty" }, result == null ? "" : String(result)));
+  }
+}
+
+export default {
+  commands: manifestCommands.map((command) => ({
+    ...command,
+    async run(context) {
+      const mode = commandModes[command.name] || "view";
+      const hidden = document.createElement("div");
+      hidden.style.display = "none";
+      document.body.appendChild(hidden);
+      try {
+        await invokeCommand(command.name, hidden, context);
+        if (mode === "view") context.showToast("Open " + command.title + " from the plugin panel.");
+      } finally {
+        hidden.remove();
+      }
+    },
+  })),
+  panel: {
+    title: ${JSON.stringify(manifest.panel.title)},
+    render(container, context) {
+      const firstView = manifestCommands.find((command) => (commandModes[command.name] || "view") === "view") || manifestCommands[0];
+      return invokeCommand(firstView.name, container, context);
+    },
+    destroy() {
+      if (root) {
+        root.unmount();
+        root = null;
+      }
+    },
+  },
+};
+`);
+  try {
+    const result = await esbuild.build({
+      entryPoints: [entryPath],
+      bundle: true,
+      write: false,
+      nodePaths: [path.join(process.cwd(), "node_modules")],
+      platform: "browser",
+      format: "esm",
+      jsx: "automatic",
+      mainFields: ["browser", "module", "main"],
+      conditions: ["browser", "default"],
+      plugins: [virtualModulePlugin({
+        "@raycast/api": raycastApiShimModule(),
+        "node-fetch": nodeFetchShimModule(),
+        "file-url": fileUrlShimModule(),
+        "fs-extra": fsExtraShimModule(),
+        "run-applescript": runAppleScriptShimModule(),
+        "os": osShimModule(),
+        "path": pathShimModule(),
+        "buffer": bufferShimModule(),
+      })],
+      define: {
+        "process.env.NODE_ENV": JSON.stringify("production"),
+        "global": "globalThis",
+      },
+    });
+    return result.outputFiles[0].text;
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function copyAssetIfPresent(sourceDir, destDir, asset) {
+  const assetName = normalizeIcon(asset);
+  if (!assetName) return;
+  const candidates = [
+    path.join(sourceDir, "assets", assetName),
+    path.join(sourceDir, "metadata", assetName),
+    path.join(sourceDir, "media", assetName),
+    path.join(sourceDir, assetName),
   ];
   const from = candidates.find((candidate) => existsSync(candidate));
   if (from) {
-    await copyFile(from, path.join(destDir, iconName));
+    await copyFile(from, path.join(destDir, assetName));
+  }
+}
+
+async function copyRaycastAssets(sourceDir, destDir, pkg, manifest) {
+  const assets = new Set([pkg.icon, ...(manifest?.screenshots || packageScreenshots(pkg))]);
+  for (const command of pkg.commands || []) {
+    if (command.icon) assets.add(command.icon);
+  }
+  for (const asset of assets) {
+    await copyAssetIfPresent(sourceDir, destDir, asset);
   }
 }
 
@@ -321,6 +1202,14 @@ async function main() {
   const packageJsonPath = path.join(source, "package.json");
   const pkg = JSON.parse(await readFile(packageJsonPath, "utf8"));
   const manifest = buildManifest(pkg);
+  manifest.screenshots = await discoverScreenshots(source, pkg);
+  const kind = adapterKind(pkg);
+  const sourceText = await collectRaycastSourceText(source);
+  manifest.platforms = raycastPlatforms(kind);
+  manifest.raycast.platformCompatibility = analyzeRaycastCompatibility(pkg, kind, sourceText);
+  if (kind === "generic") {
+    manifest.permissions = genericPermissionsForSource(sourceText);
+  }
   const pluginDir = path.join(out, manifest.id);
 
   await rm(pluginDir, { recursive: true, force: true });
@@ -328,13 +1217,13 @@ async function main() {
   await writeFile(path.join(pluginDir, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   await writeFile(
     path.join(pluginDir, "index.js"),
-    pkg.name === "system-information"
+    kind === "system-information"
       ? systemInformationIndexJs()
-      : pkg.name === "raycast-system-monitor" || pkg.name === "system-monitor"
+      : kind === "system-monitor"
         ? systemMonitorIndexJs()
-        : fallbackIndexJs(pkg),
+        : await genericRaycastIndexJs(source, pkg, manifest),
   );
-  await copyAssetIfPresent(source, pluginDir, pkg.icon);
+  await copyRaycastAssets(source, pluginDir, pkg, manifest);
   await writeFile(
     path.join(pluginDir, "README.md"),
     `# ${manifest.name}\n\nConverted from Raycast extension \`${pkg.name}\` for Qx.\n\nSource commands: ${(pkg.commands || []).map((c) => c.name).join(", ") || "-"}\nSource tools: ${(pkg.tools || []).map((t) => t.name).join(", ") || "-"}\n`,

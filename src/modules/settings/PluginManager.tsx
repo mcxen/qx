@@ -12,6 +12,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { usePluginRegistry } from "../../plugin/registry";
+import { resolvePluginAssetUrl } from "../../plugin/runtime";
 import { BUILTIN_SETTINGS_KEYS } from "../../plugin/builtin";
 import { useSettingsStore } from "./store";
 import type { SearchMetadataEntry } from "./store";
@@ -41,7 +42,10 @@ import {
 } from "../../search/searchMetadata";
 import type {
   InstalledPlugin,
+  PluginCompatibilityStatus,
   PluginIndexEntry,
+  PluginPlatform,
+  PluginPlatformCompatibility,
   PluginPreference,
 } from "../../plugin/types";
 
@@ -59,6 +63,152 @@ type StatusTone = "success" | "danger" | "neutral";
 
 const isBuiltin = (p: InstalledPlugin) => p.id.startsWith("builtin:");
 const normalizeSearch = (value: string) => value.trim().toLowerCase();
+const PLATFORM_LABELS: Record<PluginPlatform, string> = {
+  macos: "macOS",
+  windows: "Windows",
+  linux: "Linux",
+};
+
+function compatibilityLabel(status: PluginCompatibilityStatus): string {
+  switch (status) {
+    case "supported":
+      return "Supported";
+    case "partial":
+      return "Partial";
+    case "mac-only":
+      return "Mac Only";
+    default:
+      return "Unsupported";
+  }
+}
+
+function compatibilityBadgeVariant(status: PluginCompatibilityStatus): "default" | "secondary" | "outline" | "destructive" {
+  if (status === "supported") return "default";
+  if (status === "partial") return "secondary";
+  if (status === "mac-only") return "outline";
+  return "destructive";
+}
+
+function currentPlatform(): PluginPlatform {
+  const platform = navigator.platform.toLowerCase();
+  if (platform.includes("mac")) return "macos";
+  if (platform.includes("win")) return "windows";
+  return "linux";
+}
+
+function fallbackLabel(label: string): string {
+  const trimmed = label.trim();
+  if (!trimmed) return "P";
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length > 1) return parts.slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+  return trimmed.slice(0, 2).toUpperCase();
+}
+
+function PluginAssetImage({
+  plugin,
+  asset,
+  className,
+  fallback,
+}: {
+  plugin: InstalledPlugin;
+  asset?: string;
+  className: string;
+  fallback?: string;
+}) {
+  const [src, setSrc] = useState<string | undefined>();
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSrc(undefined);
+    setFailed(false);
+    if (!asset || isBuiltin(plugin)) return;
+    void resolvePluginAssetUrl(plugin.id, asset).then((url) => {
+      if (!cancelled) setSrc(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [plugin, plugin.id, asset]);
+
+  if (!src || failed) {
+    return <span className={`${className} is-fallback`}>{fallbackLabel(fallback || plugin.name)}</span>;
+  }
+  return <img className={className} src={src} alt="" onError={() => setFailed(true)} />;
+}
+
+function CompatibilityList({
+  title,
+  items,
+}: {
+  title: string;
+  items?: string[];
+}) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div className="qx-plugin-compat-list">
+      <div className="qx-plugin-compat-list-title">{title}</div>
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PlatformCompatibilityBlock({
+  platform,
+  compatibility,
+  active,
+}: {
+  platform: PluginPlatform;
+  compatibility: PluginPlatformCompatibility;
+  active: boolean;
+}) {
+  return (
+    <div className={`qx-plugin-compat-platform${active ? " is-active" : ""}`}>
+      <div className="qx-plugin-compat-head">
+        <div className="qx-plugin-compat-platform-name">{PLATFORM_LABELS[platform]}</div>
+        <Badge variant={compatibilityBadgeVariant(compatibility.status)}>
+          {compatibilityLabel(compatibility.status)}
+        </Badge>
+      </div>
+      <CompatibilityList title="Available" items={compatibility.features} />
+      <CompatibilityList title="Degraded" items={compatibility.degraded} />
+      <CompatibilityList title="Unavailable" items={compatibility.unsupported} />
+      <CompatibilityList title="Notes" items={compatibility.notes} />
+    </div>
+  );
+}
+
+function RaycastCompatibilityReport({ plugin }: { plugin: InstalledPlugin }) {
+  const report = plugin.manifest?.raycast?.platformCompatibility;
+  if (!report) return null;
+  const activePlatform = currentPlatform();
+  const entries = (["macos", "windows", "linux"] as PluginPlatform[])
+    .map((platform) => ({ platform, compatibility: report[platform] }))
+    .filter((entry): entry is { platform: PluginPlatform; compatibility: PluginPlatformCompatibility } => Boolean(entry.compatibility));
+  if (entries.length === 0) return null;
+  const active = report[activePlatform] ?? entries[0].compatibility;
+  return (
+    <SettingsCard
+      title="Raycast Compatibility"
+      description={`Current platform: ${compatibilityLabel(active.status)}. Converted Raycast extensions can be partially available when some macOS APIs do not map to this platform.`}
+    >
+      <div className="qx-plugin-compat-grid">
+        {entries.map(({ platform, compatibility }) => (
+          <PlatformCompatibilityBlock
+            key={platform}
+            platform={platform}
+            compatibility={compatibility}
+            active={platform === activePlatform}
+          />
+        ))}
+      </div>
+    </SettingsCard>
+  );
+}
 
 function pluginMatchesQuery(
   plugin: InstalledPlugin,
@@ -191,6 +341,8 @@ function PluginDetail({
   const builtin = isBuiltin(plugin);
   const preferences = plugin.manifest?.preferences ?? [];
   const permissions = plugin.manifest?.permissions ?? plugin.permissions ?? [];
+  const iconAsset = plugin.manifest?.icon;
+  const screenshots = plugin.manifest?.screenshots ?? [];
   const settingsKey = builtin ? BUILTIN_SETTINGS_KEYS[plugin.id] : undefined;
   const { settings, patch, patchSearchMetadata } = useSettingsStore();
   const builtinModuleId = builtin ? plugin.id.slice("builtin:".length) : null;
@@ -291,8 +443,23 @@ function PluginDetail({
   return (
     <div className="qx-plugin-detail-panel">
       {/* Header */}
-      <div className="qx-plugin-detail-title">
-        {plugin.name}
+      <div className="qx-plugin-detail-header">
+        <PluginAssetImage
+          plugin={plugin}
+          asset={iconAsset}
+          className="qx-plugin-detail-icon"
+          fallback={plugin.name}
+        />
+        <div className="qx-plugin-detail-heading">
+          <div className="qx-plugin-detail-title">
+            {plugin.name}
+          </div>
+          {plugin.author && (
+            <div className="qx-plugin-meta">
+              by {plugin.author}
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="qx-plugin-badges">
@@ -300,13 +467,6 @@ function PluginDetail({
         {builtin ? <Badge variant="secondary">Built-in</Badge> : <Badge variant="secondary">External</Badge>}
         <Badge variant={plugin.enabled ? "default" : "outline"}>{plugin.enabled ? "Enabled" : "Disabled"}</Badge>
       </div>
-
-      {/* Author */}
-      {plugin.author && (
-        <div className="qx-plugin-meta">
-          by {plugin.author}
-        </div>
-      )}
 
       {/* Description */}
       {plugin.description && (
@@ -319,6 +479,24 @@ function PluginDetail({
       <div className="qx-plugin-path">
         {plugin.path}
       </div>
+
+      {!builtin && screenshots.length > 0 && (
+        <SettingsCard title="Screenshots" description="Preview images bundled with this plugin.">
+          <div className="qx-plugin-screenshot-grid">
+            {screenshots.map((screenshot) => (
+              <PluginAssetImage
+                key={screenshot}
+                plugin={plugin}
+                asset={screenshot}
+                className="qx-plugin-screenshot"
+                fallback="Preview"
+              />
+            ))}
+          </div>
+        </SettingsCard>
+      )}
+
+      {!builtin && <RaycastCompatibilityReport plugin={plugin} />}
 
       <SettingsCard
         title="Status"
@@ -671,6 +849,12 @@ function InstalledPluginRow({
       className={`qx-plugin-library-item${active ? " is-active" : ""}`}
       type="button"
     >
+      <PluginAssetImage
+        plugin={plugin}
+        asset={plugin.manifest?.icon}
+        className="qx-plugin-list-icon"
+        fallback={plugin.name}
+      />
       <div className="qx-plugin-list-main">
         <div className="qx-plugin-list-title">{plugin.name}</div>
         <div className="qx-plugin-list-meta">

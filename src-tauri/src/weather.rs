@@ -1,11 +1,17 @@
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 // ---------------------------------------------------------------------------
 // Types returned to the frontend
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Serialize, Clone)]
+static WEATHER_CACHE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WeatherLocation {
     pub name: String,
@@ -14,7 +20,7 @@ pub struct WeatherLocation {
     pub country: String,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WeatherCurrent {
     pub temperature: f64,
@@ -25,7 +31,7 @@ pub struct WeatherCurrent {
     pub wind_speed: f64,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WeatherForecastDay {
     pub label: String,
@@ -34,7 +40,7 @@ pub struct WeatherForecastDay {
     pub condition_code: String,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct WeatherData {
     pub location: WeatherLocation,
@@ -51,6 +57,13 @@ pub struct GeoLocation {
     pub longitude: f64,
     pub city: String,
     pub country: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WeatherCacheEntry {
+    settings_key: String,
+    data: WeatherData,
 }
 
 // ---------------------------------------------------------------------------
@@ -248,6 +261,69 @@ fn weather_settings() -> crate::settings::WeatherSettings {
     crate::settings::read_settings().weather
 }
 
+fn weather_cache_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let dir = PathBuf::from(format!("{}/.qx/cache", home));
+    let _ = fs::create_dir_all(&dir);
+    dir.join("weather-cache.json")
+}
+
+fn weather_settings_key(settings: &crate::settings::WeatherSettings) -> String {
+    format!(
+        "{}\n{}\n{}",
+        settings.provider.trim(),
+        settings.location_override.trim(),
+        settings.api_key.trim()
+    )
+}
+
+fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let tmp_path = path.with_extension(format!("tmp.{}", std::process::id()));
+    {
+        let mut file = fs::File::create(&tmp_path)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+    }
+    fs::rename(&tmp_path, path)?;
+    if let Some(parent) = path.parent() {
+        if let Ok(dir) = fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
+    Ok(())
+}
+
+fn read_weather_cache_for(settings: &crate::settings::WeatherSettings) -> Option<WeatherData> {
+    let path = weather_cache_path();
+    let content = fs::read_to_string(path).ok()?;
+    let entry: WeatherCacheEntry = serde_json::from_str(&content).ok()?;
+    if entry.settings_key == weather_settings_key(settings) {
+        Some(entry.data)
+    } else {
+        None
+    }
+}
+
+fn write_weather_cache(
+    settings: &crate::settings::WeatherSettings,
+    data: &WeatherData,
+) -> Result<(), String> {
+    let _guard = WEATHER_CACHE_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let entry = WeatherCacheEntry {
+        settings_key: weather_settings_key(settings),
+        data: data.clone(),
+    };
+    let json = serde_json::to_string_pretty(&entry).map_err(|e| format!("serialize: {e}"))?;
+    atomic_write(&weather_cache_path(), json.as_bytes())
+        .map_err(|e| format!("write weather cache: {e}"))
+}
+
 // ---------------------------------------------------------------------------
 // Resolve location: settings override → IP geolocation
 // ---------------------------------------------------------------------------
@@ -350,21 +426,42 @@ pub fn detect_location() -> Result<GeoLocation, String> {
 pub fn fetch_weather() -> Result<WeatherData, String> {
     let settings = weather_settings();
 
-    let client = crate::http_client::blocking_client(
-        "Qx/0.2 (Weather; +https://github.com/mcxen/qx)",
-        Duration::from_secs(10),
-        Some(Duration::from_secs(5)),
-    )
-    .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+    let result = (|| {
+        let client = crate::http_client::blocking_client(
+            "Qx/0.2 (Weather; +https://github.com/mcxen/qx)",
+            Duration::from_secs(10),
+            Some(Duration::from_secs(5)),
+        )
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-    let location = resolve_location(&client, &settings.location_override)?;
+        let location = resolve_location(&client, &settings.location_override)?;
 
-    // Choose provider
-    if settings.provider == "openweathermap" && !settings.api_key.trim().is_empty() {
-        fetch_openweathermap(&client, &location, settings.api_key.trim())
-    } else {
-        fetch_open_meteo(&client, &location)
+        if settings.provider == "openweathermap" && !settings.api_key.trim().is_empty() {
+            fetch_openweathermap(&client, &location, settings.api_key.trim())
+        } else {
+            fetch_open_meteo(&client, &location)
+        }
+    })();
+
+    match result {
+        Ok(data) => {
+            let _ = write_weather_cache(&settings, &data);
+            Ok(data)
+        }
+        Err(err) => {
+            if let Some(cached) = read_weather_cache_for(&settings) {
+                Ok(cached)
+            } else {
+                Err(err)
+            }
+        }
     }
+}
+
+#[tauri::command]
+pub fn get_cached_weather() -> Result<Option<WeatherData>, String> {
+    let settings = weather_settings();
+    Ok(read_weather_cache_for(&settings))
 }
 
 fn fetch_open_meteo(

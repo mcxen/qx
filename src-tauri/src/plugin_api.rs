@@ -1,3 +1,4 @@
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
@@ -90,9 +91,188 @@ fn default_ai_bash_timeout_ms() -> u64 {
 
 static AI_MEMORY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
+fn plugin_files_dir(id: &str) -> Result<PathBuf, String> {
+    let id = crate::marketplace::validate_plugin_id(id)?;
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    let dir = PathBuf::from(format!("{}/.qx/plugins/{}/data/files", home, id));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("create plugin files dir: {e}"))?;
+    Ok(dir)
+}
+
+fn plugin_virtual_prefix(id: &str) -> String {
+    format!("/qx-plugin-files/{id}")
+}
+
+fn home_dir() -> PathBuf {
+    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
+}
+
+fn qx_home_alias() -> &'static str {
+    "/qx-home"
+}
+
+fn clean_path(path: &Path) -> PathBuf {
+    let mut cleaned = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => cleaned.push(prefix.as_os_str()),
+            Component::RootDir => cleaned.push(Path::new("/")),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                cleaned.pop();
+            }
+            Component::Normal(part) => cleaned.push(part),
+        }
+    }
+    cleaned
+}
+
+fn plugin_file_path(id: &str, path: &str) -> Result<PathBuf, String> {
+    let base = plugin_files_dir(id)?;
+    let prefix = plugin_virtual_prefix(id);
+    let raw = path.trim();
+    if raw.is_empty() || raw == prefix {
+        return Ok(base);
+    }
+    if let Some(rest) = raw.strip_prefix(&(prefix.clone() + "/")) {
+        return Ok(clean_path(&base.join(rest)));
+    }
+    let home = home_dir();
+    if raw == "~" || raw == qx_home_alias() {
+        return Ok(home);
+    }
+    if let Some(rest) = raw.strip_prefix("~/") {
+        return Ok(clean_path(&home.join(rest)));
+    }
+    if let Some(rest) = raw.strip_prefix(&(qx_home_alias().to_string() + "/")) {
+        return Ok(clean_path(&home.join(rest)));
+    }
+    let candidate = PathBuf::from(raw);
+    if candidate.is_absolute() {
+        return Ok(clean_path(&candidate));
+    }
+    Ok(clean_path(&base.join(candidate)))
+}
+
+fn replace_plugin_virtual_paths(id: &str, script: &str) -> Result<String, String> {
+    let base = plugin_files_dir(id)?;
+    let home = home_dir();
+    Ok(script
+        .replace(&plugin_virtual_prefix(id), base.to_string_lossy().as_ref())
+        .replace(qx_home_alias(), home.to_string_lossy().as_ref()))
+}
+
+fn is_dangerous_empty_dir(path: &Path) -> bool {
+    let cleaned = clean_path(path);
+    cleaned == Path::new("/")
+        || cleaned == home_dir()
+        || cleaned == Path::new("/Users")
+        || cleaned == Path::new("/tmp")
+        || cleaned == Path::new("/private/tmp")
+}
+
 #[tauri::command]
 pub fn plugin_ai_list_providers() -> Result<Vec<crate::g4f::ProviderInfo>, String> {
     Ok(crate::g4f::qxai_provider_catalog())
+}
+
+#[tauri::command]
+pub fn plugin_run_applescript(id: String, script: String) -> Result<String, String> {
+    let expanded = replace_plugin_virtual_paths(&id, &script)?;
+    let trimmed = expanded.trim();
+    if trimmed.is_empty() {
+        return Err("AppleScript is empty".to_string());
+    }
+    let mut child = std::process::Command::new("osascript")
+        .arg("-")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn osascript: {e}"))?;
+    {
+        let stdin = child
+            .stdin
+            .as_mut()
+            .ok_or_else(|| "open osascript stdin failed".to_string())?;
+        stdin
+            .write_all(trimmed.as_bytes())
+            .map_err(|e| format!("write osascript: {e}"))?;
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("wait osascript: {e}"))?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
+}
+
+#[tauri::command]
+pub fn plugin_file_write_base64(
+    id: String,
+    path: String,
+    data_base64: String,
+) -> Result<(), String> {
+    let target = plugin_file_path(&id, &path)?;
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("create parent dir: {e}"))?;
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.as_bytes())
+        .map_err(|e| format!("decode base64: {e}"))?;
+    std::fs::write(&target, bytes).map_err(|e| format!("write plugin file: {e}"))
+}
+
+#[tauri::command]
+pub fn plugin_file_read_base64(id: String, path: String) -> Result<String, String> {
+    let target = plugin_file_path(&id, &path)?;
+    let bytes = std::fs::read(&target).map_err(|e| format!("read plugin file: {e}"))?;
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+#[tauri::command]
+pub fn plugin_file_exists(id: String, path: String) -> Result<bool, String> {
+    let target = plugin_file_path(&id, &path)?;
+    Ok(target.exists())
+}
+
+#[tauri::command]
+pub fn plugin_file_ensure_dir(id: String, path: String) -> Result<(), String> {
+    let target = plugin_file_path(&id, &path)?;
+    std::fs::create_dir_all(&target).map_err(|e| format!("create plugin dir: {e}"))
+}
+
+#[tauri::command]
+pub fn plugin_file_empty_dir(id: String, path: String) -> Result<(), String> {
+    let target = plugin_file_path(&id, &path)?;
+    if is_dangerous_empty_dir(&target) {
+        return Err(format!(
+            "refuse to empty broad directory: {}",
+            target.display()
+        ));
+    }
+    if target.exists() {
+        std::fs::remove_dir_all(&target).map_err(|e| format!("clear plugin dir: {e}"))?;
+    }
+    std::fs::create_dir_all(&target).map_err(|e| format!("create plugin dir: {e}"))
+}
+
+#[tauri::command]
+pub fn plugin_file_list(id: String, path: String) -> Result<Vec<String>, String> {
+    let target = plugin_file_path(&id, &path)?;
+    if !target.exists() {
+        return Ok(Vec::new());
+    }
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(&target).map_err(|e| format!("read plugin dir: {e}"))? {
+        let entry = entry.map_err(|e| format!("read plugin dir entry: {e}"))?;
+        if let Some(name) = entry.file_name().to_str() {
+            files.push(name.to_string());
+        }
+    }
+    Ok(files)
 }
 
 #[tauri::command]

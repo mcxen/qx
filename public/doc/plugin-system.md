@@ -75,6 +75,8 @@ Tauri 生产环境前端是 `tauri://localhost`（或 `asset://`），`~/.qx/plu
   "description": "A custom plugin for Qx",
   "author": "Your Name",
   "icon": "icon.png",
+  "screenshots": ["screenshot-1.png", "screenshot-2.png"],
+  "platforms": ["macos", "windows"],
   "keywords": ["hello", "test"],
   "permissions": ["clipboard", "http", "notifications", "open-url"],
   "entry": "index.js",
@@ -120,6 +122,8 @@ Tauri 生产环境前端是 `tauri://localhost`（或 `asset://`），`~/.qx/plu
 - `name` / `version` / `description`：展示用
 - `author`：作者
 - `icon`：相对路径
+- `screenshots`：相对路径数组，用于 Installed 详情页预览图
+- `platforms`：插件声明支持的平台，可选值为 `macos`、`windows`、`linux`
 - `keywords`：全局搜索关键词
 - `permissions`：插件可申请的能力，具体见权限表
 - `entry`：入口文件，默认 `index.js`
@@ -200,9 +204,11 @@ export default {
 | `context.files.search(query, limit?)` | 搜索文件（需 `files` 权限） |
 | `context.qx.invokeRust(cmd, args)` | 调用受控 Rust/Tauri 命令（需能力组、`invoke:<cmd>` 或 `*`） |
 | `context.setTimeout/setInterval` | 面板生命周期定时器，面板销毁/插件卸载时自动清理 |
-| `context.storage.get(key)` | 读取插件本地 KV |
-| `context.storage.set(key, value)` | 写入插件本地 KV |
-| `context.storage.delete(key)` | 删除插件本地 KV |
+| `context.storage.get(key)` | 读取插件持久 KV（兼容旧 API，等同 `persist.get`） |
+| `context.storage.set(key, value)` | 写入插件持久 KV（兼容旧 API，等同 `persist.set`） |
+| `context.storage.delete(key)` | 删除插件持久 KV（兼容旧 API，等同 `persist.delete`） |
+| `context.storage.session.get/set/delete(key)` | 当前 Qx 进程内的临时 KV，适合首屏内存缓存 |
+| `context.storage.persist.get/set/delete(key)` | 落盘到插件 `data/storage.json` 的长期 KV，适合跨重启缓存 |
 
 AI 调用示例：
 
@@ -302,6 +308,37 @@ invoke:<cmd>       调用某个具体的 Tauri 命令
 ```
 
 实际执行时，前端 `handlePluginRpc` 会检查该插件 manifest 中的权限列表，未声明的调用会被拒绝。危险命令必须显式声明精确 `invoke:<cmd>` 权限，即使插件已经声明能力组也不会被隐式放行，例如结束进程、申请权限、清空数据、宏回放、录屏启动、文件导出/删除等。
+
+Raycast generic shim 为兼容原扩展会声明一组精确文件桥权限，例如
+`invoke:plugin_file_read_base64`、`invoke:plugin_file_write_base64`、
+`invoke:plugin_file_exists`、`invoke:plugin_file_ensure_dir`、
+`invoke:plugin_file_empty_dir` 和 `invoke:plugin_file_list`。这些命令允许
+Raycast 转换插件访问真实绝对路径、`~/...` 路径和虚拟私有路径
+`/qx-plugin-files/<plugin-id>`；删除目录仍会拒绝根目录、用户 Home 和
+`/tmp` 这类过宽路径。
+
+Raycast 转换插件可以在 manifest 中包含兼容报告：
+
+```json
+{
+  "raycast": {
+    "compatible": "generic-shim",
+    "platformCompatibility": {
+      "macos": {
+        "status": "supported",
+        "features": ["Raycast UI", "HTTP fetch", "AppleScript automation"]
+      },
+      "windows": {
+        "status": "partial",
+        "features": ["Raycast UI", "HTTP fetch"],
+        "unsupported": ["AppleScript automation"]
+      }
+    }
+  }
+}
+```
+
+Settings -> Plugins -> Installed 会展示该报告。`partial` 表示主界面或部分动作可用，但某些 Raycast/macOS 能力会降级或不可用。
 
 ---
 

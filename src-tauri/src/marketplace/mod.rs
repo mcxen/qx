@@ -21,6 +21,10 @@ pub struct PluginCommand {
     pub icon: String,
     #[serde(default)]
     pub keywords: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub mode: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub interval: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +65,37 @@ fn default_true() -> bool {
     true
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PlatformCompatibility {
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub features: Vec<String>,
+    #[serde(default)]
+    pub degraded: Vec<String>,
+    #[serde(default)]
+    pub unsupported: Vec<String>,
+    #[serde(default)]
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RaycastMetadata {
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub compatible: String,
+    #[serde(default)]
+    #[serde(rename = "sourceCommands")]
+    pub source_commands: Vec<String>,
+    #[serde(default)]
+    #[serde(rename = "sourceTools")]
+    pub source_tools: Vec<String>,
+    #[serde(default)]
+    #[serde(rename = "platformCompatibility")]
+    pub platform_compatibility: BTreeMap<String, PlatformCompatibility>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
     pub id: String,
@@ -72,6 +107,10 @@ pub struct PluginManifest {
     pub author: String,
     #[serde(default)]
     pub icon: String,
+    #[serde(default)]
+    pub screenshots: Vec<String>,
+    #[serde(default)]
+    pub platforms: Vec<String>,
     #[serde(default)]
     pub keywords: Vec<String>,
     #[serde(default)]
@@ -90,6 +129,8 @@ pub struct PluginManifest {
     pub min_app_version: String,
     #[serde(default = "default_entry")]
     pub entry: String,
+    #[serde(default)]
+    pub raycast: Option<RaycastMetadata>,
     #[serde(default)]
     pub signature: String,
     #[serde(default)]
@@ -301,11 +342,15 @@ pub async fn install_raycast_extension_from_url(url: String) -> Result<Installed
         .get("name")
         .and_then(|v| v.as_str())
         .unwrap_or("extension");
-    let manifest = build_raycast_plugin_manifest(&package_json);
+    let adapter = raycast_adapter_kind(raycast_name);
+    let manifest = build_raycast_plugin_manifest(&package_json, adapter);
     validate_plugin_id(&manifest.id)?;
-    let entry = match raycast_name {
+    if adapter == "generic" {
+        return install_raycast_with_js_converter(&source, &manifest);
+    }
+    let entry = match adapter {
         "system-information" => raycast_system_information_entry(),
-        "raycast-system-monitor" | "system-monitor" => raycast_system_monitor_entry(),
+        "system-monitor" => raycast_system_monitor_entry(),
         _ => raycast_placeholder_entry(&manifest.name),
     };
 
@@ -347,6 +392,82 @@ pub async fn install_raycast_extension_from_url(url: String) -> Result<Installed
         author: manifest.author.clone(),
         manifest: Some(manifest),
     })
+}
+
+fn raycast_converter_script_path() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        candidates.push(cwd.join("scripts/convert-raycast-extension.mjs"));
+        candidates.push(cwd.join("../scripts/convert-raycast-extension.mjs"));
+    }
+    candidates.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../scripts/convert-raycast-extension.mjs"),
+    );
+    candidates.into_iter().find(|path| path.exists())
+}
+
+fn run_checked_command(mut command: std::process::Command, label: &str) -> Result<(), String> {
+    let output = command.output().map_err(|e| format!("run {label}: {e}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(format!("{label} failed: {stderr}"))
+}
+
+fn install_raycast_with_js_converter(
+    source: &RaycastSource,
+    manifest: &PluginManifest,
+) -> Result<InstalledPlugin, String> {
+    let script = raycast_converter_script_path()
+        .ok_or_else(|| "Raycast JS converter script not found".to_string())?;
+    let tmp = std::env::temp_dir().join(format!("qx-raycast-convert-{}", uuid_like()));
+    let repo_dir = tmp.join("repo");
+    let out_dir = tmp.join("out");
+    fs::create_dir_all(&tmp).map_err(|e| format!("create temp dir: {e}"))?;
+
+    let repo_url = format!("https://github.com/{}/{}.git", source.owner, source.repo);
+    let mut clone_cmd = std::process::Command::new("git");
+    clone_cmd
+        .arg("clone")
+        .arg("--filter=blob:none")
+        .arg("--sparse")
+        .arg(&repo_url)
+        .arg(&repo_dir);
+    run_checked_command(clone_cmd, "git clone Raycast repo")?;
+
+    let mut checkout_cmd = std::process::Command::new("git");
+    checkout_cmd
+        .arg("-C")
+        .arg(&repo_dir)
+        .arg("checkout")
+        .arg(&source.reference);
+    run_checked_command(checkout_cmd, "git checkout Raycast ref")?;
+
+    let mut sparse_cmd = std::process::Command::new("git");
+    sparse_cmd
+        .arg("-C")
+        .arg(&repo_dir)
+        .arg("sparse-checkout")
+        .arg("set")
+        .arg(&source.extension_path);
+    run_checked_command(sparse_cmd, "git sparse-checkout Raycast extension")?;
+
+    let extension_dir = repo_dir.join(&source.extension_path);
+    let mut convert_cmd = std::process::Command::new("node");
+    convert_cmd
+        .arg(&script)
+        .arg(&extension_dir)
+        .arg("--out")
+        .arg(&out_dir)
+        .arg("--package");
+    run_checked_command(convert_cmd, "Qx Raycast JS converter")?;
+
+    let archive = out_dir.join(format!("{}.qx-plugin", manifest.id));
+    let bytes = fs::read(&archive).map_err(|e| format!("read converted plugin archive: {e}"))?;
+    let installed = install_plugin_archive(&bytes, None);
+    let _ = fs::remove_dir_all(&tmp);
+    installed
 }
 
 impl RaycastSource {
@@ -427,7 +548,88 @@ fn title_case_id(id: &str) -> String {
         .join(" ")
 }
 
-fn build_raycast_plugin_manifest(package: &serde_json::Value) -> PluginManifest {
+fn raycast_adapter_kind(name: &str) -> &'static str {
+    match name {
+        "system-information" => "system-information",
+        "raycast-system-monitor" | "system-monitor" => "system-monitor",
+        _ => "generic",
+    }
+}
+
+fn vec_strings(items: &[&str]) -> Vec<String> {
+    items.iter().map(|item| item.to_string()).collect()
+}
+
+fn raycast_platforms(adapter: &str) -> Vec<String> {
+    match adapter {
+        "system-information" | "system-monitor" => vec_strings(&["macos"]),
+        _ => vec_strings(&["macos", "windows"]),
+    }
+}
+
+fn raycast_platform_compatibility(adapter: &str) -> BTreeMap<String, PlatformCompatibility> {
+    let mut map = BTreeMap::new();
+    if adapter == "generic" {
+        map.insert(
+            "macos".to_string(),
+            PlatformCompatibility {
+                status: "supported".to_string(),
+                features: vec_strings(&[
+                    "Raycast UI",
+                    "HTTP fetch",
+                    "Clipboard",
+                    "File cache",
+                    "Background interval",
+                    "AppleScript escape hatch",
+                ]),
+                ..Default::default()
+            },
+        );
+        map.insert(
+            "windows".to_string(),
+            PlatformCompatibility {
+                status: "partial".to_string(),
+                features: vec_strings(&[
+                    "Raycast UI",
+                    "HTTP fetch",
+                    "Clipboard",
+                    "File cache",
+                    "Background interval",
+                ]),
+                unsupported: vec_strings(&["AppleScript automation", "macOS Finder actions"]),
+                notes: vec_strings(&[
+                    "Windows support depends on replacing macOS-only automation with Qx automation providers.",
+                ]),
+                ..Default::default()
+            },
+        );
+    } else {
+        map.insert(
+            "macos".to_string(),
+            PlatformCompatibility {
+                status: "supported".to_string(),
+                features: vec_strings(&["Qx native adapter"]),
+                ..Default::default()
+            },
+        );
+        map.insert(
+            "windows".to_string(),
+            PlatformCompatibility {
+                status: "unsupported".to_string(),
+                unsupported: vec_strings(&[
+                    "This Raycast adapter currently uses macOS-specific system APIs",
+                ]),
+                ..Default::default()
+            },
+        );
+    }
+    map
+}
+
+fn build_raycast_plugin_manifest(
+    package: &serde_json::Value,
+    adapter: &'static str,
+) -> PluginManifest {
     let raycast_id = json_string(package, "name");
     let id_source_raw = if raycast_id.is_empty() {
         "extension"
@@ -451,12 +653,18 @@ fn build_raycast_plugin_manifest(package: &serde_json::Value) -> PluginManifest 
     let mut commands = Vec::new();
     if let Some(items) = package.get("commands").and_then(|v| v.as_array()) {
         for item in items {
+            let command_icon = Path::new(&json_string(item, "icon"))
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| icon.clone());
             commands.push(PluginCommand {
                 name: json_string(item, "name"),
                 title: json_string(item, "title"),
                 description: json_string(item, "description"),
-                icon: icon.clone(),
+                icon: command_icon,
                 keywords: keywords.clone(),
+                mode: json_string(item, "mode"),
+                interval: json_string(item, "interval"),
             });
         }
     }
@@ -478,6 +686,8 @@ fn build_raycast_plugin_manifest(package: &serde_json::Value) -> PluginManifest 
                     out.extend(keywords.clone());
                     out
                 },
+                mode: "no-view".to_string(),
+                interval: String::new(),
             });
         }
     }
@@ -488,6 +698,8 @@ fn build_raycast_plugin_manifest(package: &serde_json::Value) -> PluginManifest 
             description: json_string(package, "description"),
             icon: icon.clone(),
             keywords: keywords.clone(),
+            mode: "view".to_string(),
+            interval: String::new(),
         });
     }
 
@@ -502,13 +714,30 @@ fn build_raycast_plugin_manifest(package: &serde_json::Value) -> PluginManifest 
         description: json_string(package, "description"),
         author: json_string(package, "author"),
         icon: icon.clone(),
+        screenshots: Vec::new(),
+        platforms: raycast_platforms(adapter),
         keywords: keywords.clone(),
-        permissions: vec![
-            "system-info".to_string(),
-            "system-stats".to_string(),
-            "processes".to_string(),
-            "invoke:qx_system_information_kill_process".to_string(),
-        ],
+        permissions: if adapter == "generic" {
+            vec![
+                "http".to_string(),
+                "open-url".to_string(),
+                "clipboard".to_string(),
+                "invoke:plugin_run_applescript".to_string(),
+                "invoke:plugin_file_read_base64".to_string(),
+                "invoke:plugin_file_exists".to_string(),
+                "invoke:plugin_file_ensure_dir".to_string(),
+                "invoke:plugin_file_write_base64".to_string(),
+                "invoke:plugin_file_empty_dir".to_string(),
+                "invoke:plugin_file_list".to_string(),
+            ]
+        } else {
+            vec![
+                "system-info".to_string(),
+                "system-stats".to_string(),
+                "processes".to_string(),
+                "invoke:qx_system_information_kill_process".to_string(),
+            ]
+        },
         preferences: Vec::new(),
         commands,
         shortcuts: Vec::new(),
@@ -520,6 +749,37 @@ fn build_raycast_plugin_manifest(package: &serde_json::Value) -> PluginManifest 
         dependencies: Vec::new(),
         min_app_version: String::new(),
         entry: "index.js".to_string(),
+        raycast: Some(RaycastMetadata {
+            source: raycast_id,
+            compatible: if adapter == "generic" {
+                "generic-shim".to_string()
+            } else {
+                "converted".to_string()
+            },
+            source_commands: package
+                .get("commands")
+                .and_then(|v| v.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .map(|item| json_string(item, "name"))
+                        .filter(|name| !name.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default(),
+            source_tools: package
+                .get("tools")
+                .and_then(|v| v.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .map(|item| json_string(item, "name"))
+                        .filter(|name| !name.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default(),
+            platform_compatibility: raycast_platform_compatibility(adapter),
+        }),
         signature: String::new(),
         pubkey: String::new(),
     }
@@ -605,7 +865,7 @@ export default {
   ],
   panel: {
     title: "System Information",
-    async render(container, context) { await renderSystemInformation(container, context); },
+    render(container, context) { void renderSystemInformation(container, context); },
     destroy(container) { container.innerHTML = ""; }
   }
 };
@@ -625,7 +885,7 @@ async function data(ctx){const [stats,system,storage,network,processes,power,cou
 function nav(id,i,l,m){return '<button data-tab="'+id+'" class="'+(active===id?'active':'')+'"><span>'+i+'</span><span class="label">'+l+'</span><span class="metric">'+esc(m||'')+'</span></button>'}
 function pane(d){const st=d.stats||{};if(active==="cpu")return '<div class="top"><h1>CPU</h1><button id="refresh">Refresh</button></div>'+bar(st.cpu)+row("Usage",Number(st.cpu||0).toFixed(1)+" %")+row("Chip",d.system?.chip||"Unknown")+row("Temperature","N/A");if(active==="memory")return '<div class="top"><h1>Memory</h1><button id="refresh">Refresh</button></div>'+bar(st.memory)+row("Used",stat(st,"memory_used_gb","memoryUsedGb").toFixed(2)+" GB")+row("Total",stat(st,"memory_total_gb","memoryTotalGb").toFixed(2)+" GB")+row("Usage",Number(st.memory||0).toFixed(1)+" %");if(active==="power")return '<div class="top"><h1>Power</h1><button id="refresh">Refresh</button></div>'+(d.power?.batteryLevel==null?'':bar(d.power.batteryLevel))+row("Battery",d.power?.batteryLevel==null?"N/A":d.power.batteryLevel+" %")+row("Source",d.power?.source||"Unknown")+row("State",d.power?.summary||"Unknown");if(active==="network"){const dev=(d.network?.devices||[]).map(x=>row(x.name,x.ip)).join("");const c=(d.counters?.interfaces||[]).slice(0,8).map(x=>row(x.name,"In "+bytes(x.bytesIn)+" / Out "+bytes(x.bytesOut))).join("");return '<div class="top"><h1>Network</h1><button id="refresh">Refresh</button></div>'+row("Download Speed",bytes(d.down)+"/s")+row("Upload Speed",bytes(d.up)+"/s")+row("Active Devices",String(d.network?.count||0))+dev+c}const ps=(d.processes?.processes||[]).slice(0,8).map((p,i)=>'<div class="row"><div><strong>'+(i+1)+' -> '+esc(p.name)+'</strong><div class="small">PID '+p.pid+'</div></div><div class="value">CPU '+Number(p.cpu||0).toFixed(1)+'% / MEM '+Number(p.mem||0).toFixed(1)+'%</div></div>').join("");return '<div class="top"><h1>System Info</h1><button id="refresh">Refresh</button></div>'+row("Hostname",d.system?.hostname||"Unknown")+row("macOS",d.system?.macOS||"Unknown")+row("Kernel",d.system?.kernel||"Unknown")+row("Storage",d.storage?.summary||"Unknown")+row("Serial Number",d.system?.serialNumber||"Unknown")+ps}
 async function render(c,ctx){c.innerHTML=css()+'<div class="sm"><div class="nav">Loading System Monitor...</div><div></div></div>';try{const d=await data(ctx);c.innerHTML=css()+'<div class="sm"><div class="nav">'+nav("system-info","S","System Info","")+nav("cpu","C","CPU",Number(d.stats?.cpu||0).toFixed(0)+" %")+nav("memory","M","Memory",Number(d.stats?.memory||0).toFixed(0)+" %")+nav("power","P","Power",d.power?.batteryLevel==null?"N/A":d.power.batteryLevel+" %")+nav("network","N","Network","↓ "+bytes(d.down)+"/s")+'</div><div class="detail">'+pane(d)+'</div></div>';c.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{active=b.getAttribute("data-tab")||"system-info";render(c,ctx)}));c.querySelector("#refresh")?.addEventListener("click",()=>render(c,ctx))}catch(e){c.innerHTML=css()+'<div class="error">Failed to load System Monitor: '+esc(e?.message||e)+'</div>'}}
-export default{commands:[{name:"system-monitor",title:"System Monitor",async run(ctx){const s=await ctx.system.stats();ctx.showToast("CPU "+Number(s.cpu||0).toFixed(1)+"%, Memory "+Number(s.memory||0).toFixed(1)+"%")}},{name:"menubar-system-monitor",title:"Menubar System Monitor",async run(ctx){const s=await ctx.system.stats();ctx.showToast("Qx panel monitor ready: CPU "+Number(s.cpu||0).toFixed(1)+"%")}}],panel:{title:"System Monitor",async render(c,ctx){await render(c,ctx);c.__timer=ctx.setInterval(()=>render(c,ctx),3000)},destroy(c){c.innerHTML=""}}};
+export default{commands:[{name:"system-monitor",title:"System Monitor",async run(ctx){const s=await ctx.system.stats();ctx.showToast("CPU "+Number(s.cpu||0).toFixed(1)+"%, Memory "+Number(s.memory||0).toFixed(1)+"%")}},{name:"menubar-system-monitor",title:"Menubar System Monitor",async run(ctx){const s=await ctx.system.stats();ctx.showToast("Qx panel monitor ready: CPU "+Number(s.cpu||0).toFixed(1)+"%")}}],panel:{title:"System Monitor",render(c,ctx){void render(c,ctx);c.__timer=ctx.setInterval(()=>render(c,ctx),3000)},destroy(c){c.innerHTML=""}}};
 "##
     .to_string()
 }
@@ -1240,7 +1500,8 @@ mod tests {
                 }
             ]
         });
-        let manifest = build_raycast_plugin_manifest(&package);
+        let manifest =
+            build_raycast_plugin_manifest(&package, raycast_adapter_kind("system-information"));
         assert_eq!(manifest.id, "raycast-system-information");
         assert_eq!(manifest.name, "System Information");
         assert_eq!(manifest.entry, "index.js");
@@ -1250,5 +1511,41 @@ mod tests {
             .permissions
             .contains(&"invoke:qx_system_information_kill_process".to_string()));
         assert_eq!(manifest.panel.unwrap().title, "System Information");
+    }
+
+    #[test]
+    fn builds_generic_manifest_for_raycast_package() {
+        let package = serde_json::json!({
+            "name": "bing-wallpaper",
+            "title": "Bing Wallpaper",
+            "description": "Get, set, auto-switch Bing wallpapers to explore the world.",
+            "icon": "extension-icon.png",
+            "commands": [
+                {
+                    "name": "set-bing-wallpaper",
+                    "title": "Set Bing Wallpaper",
+                    "description": "Get, set, auto-download Bing wallpapers to explore the world."
+                },
+                {
+                    "name": "auto-switch-bing-wallpaper",
+                    "title": "Auto Switch Bing Wallpaper",
+                    "mode": "no-view",
+                    "interval": "30m"
+                }
+            ]
+        });
+        let manifest =
+            build_raycast_plugin_manifest(&package, raycast_adapter_kind("bing-wallpaper"));
+        assert_eq!(manifest.id, "raycast-bing-wallpaper");
+        assert_eq!(manifest.name, "Bing Wallpaper");
+        assert!(manifest.permissions.contains(&"http".to_string()));
+        assert!(manifest
+            .permissions
+            .contains(&"invoke:plugin_file_write_base64".to_string()));
+        assert_eq!(manifest.commands.len(), 2);
+        assert_eq!(manifest.commands[0].name, "set-bing-wallpaper");
+        assert_eq!(manifest.commands[1].name, "auto-switch-bing-wallpaper");
+        assert_eq!(manifest.commands[1].mode, "no-view");
+        assert_eq!(manifest.commands[1].interval, "30m");
     }
 }

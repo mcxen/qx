@@ -14,6 +14,27 @@ export interface PluginCommand {
   description?: string;
   icon?: string;
   keywords?: string[];
+  mode?: string;
+  interval?: string;
+}
+
+export type PluginPlatform = "macos" | "windows" | "linux";
+export type PluginCompatibilityStatus = "supported" | "partial" | "mac-only" | "unsupported";
+
+export interface PluginPlatformCompatibility {
+  status: PluginCompatibilityStatus;
+  features?: string[];
+  degraded?: string[];
+  unsupported?: string[];
+  notes?: string[];
+}
+
+export interface PluginRaycastMetadata {
+  source?: string;
+  compatible?: string;
+  sourceCommands?: string[];
+  sourceTools?: string[];
+  platformCompatibility?: Partial<Record<PluginPlatform, PluginPlatformCompatibility>>;
 }
 
 export interface PluginShortcut {
@@ -35,6 +56,8 @@ export interface PluginManifest {
   description?: string;
   author?: string;
   icon?: string;
+  screenshots?: string[];
+  platforms?: PluginPlatform[];
   keywords?: string[];
   permissions?: string[];
   preferences?: PluginPreference[];
@@ -44,6 +67,7 @@ export interface PluginManifest {
   dependencies?: string[];
   min_app_version?: string;
   entry?: string;
+  raycast?: PluginRaycastMetadata;
   signature?: string;
   pubkey?: string;
 }
@@ -293,6 +317,16 @@ export interface PluginContext {
     get: (key: string) => Promise<unknown>;
     set: (key: string, value: unknown) => Promise<void>;
     delete: (key: string) => Promise<void>;
+    session: {
+      get: (key: string) => Promise<unknown>;
+      set: (key: string, value: unknown) => Promise<void>;
+      delete: (key: string) => Promise<void>;
+    };
+    persist: {
+      get: (key: string) => Promise<unknown>;
+      set: (key: string, value: unknown) => Promise<void>;
+      delete: (key: string) => Promise<void>;
+    };
   };
 }
 

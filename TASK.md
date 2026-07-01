@@ -1,5 +1,58 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — 插件缓存存储与天气秒开
+
+**状态**：已实现，等待验证。
+
+### 新增内容
+
+- 天气后端新增 `get_cached_weather`，成功拉取天气后写入 `~/.qx/cache/weather-cache.json`；缓存按 provider、location override、API key 匹配，设置变化后不会误用旧数据。
+- 天气面板打开时先读取缓存并立即渲染，再静默刷新实时天气；无缓存时保留原 loading/retry 流程。
+- 插件 SDK 新增 `context.storage.session.*` 进程内临时 KV 和 `context.storage.persist.*` 长期 KV；旧 `context.storage.get/set/delete` 保持为持久存储兼容别名。
+- Raycast 转换生成的 System Information / System Monitor 面板改成非阻塞首屏：先同步显示 loading，再异步填充系统数据，避免插件 Host 等待系统命令完成。
+- 已检查其他现有模块：RSS、Clipboard、Screencap 主要读本地历史；V2EX 和 GitHub Calendar 是网络型但在组件内显示 loading/skeleton，不会阻塞插件 Host。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [ ] 手动验证：首次打开天气无缓存时显示 loading；成功后再次打开天气立即显示旧数据并后台刷新；转换后的系统信息/监控插件打开不再等待数据请求完成。
+
+## Bugfix — Raycast 转换器未适配扩展稳定性
+
+**状态**：进行中，已完成 CLI 通用 shim 原型。
+
+### 修复内容
+
+- 验证 Raycast `bing-wallpaper`（commit `870667fc671801a467deb7c4c7fc72992efe3820`）：它依赖 `@raycast/api` React view、Node fetch/fs 下载、AppleScript 设置壁纸和 Raycast background command runtime。
+- CLI 转换器新增 generic Raycast shim：使用 esbuild 打包 Raycast TS/TSX command，虚拟替换 `@raycast/api`、`node-fetch`、`file-url`、`fs-extra`、`run-applescript`、`os`、`path`、`buffer`。
+- Shim 覆盖 `List` / `Grid` / `Detail` / `ActionPanel` / `Action` / `Toast` / `showToast` / `showHUD` / `LocalStorage` / `Cache` / `getPreferenceValues` / `open` / `showInFinder` / `Clipboard` / `useNavigation` 等常用 Raycast API。
+- `bing-wallpaper` 通过 CLI 转换后生成 `raycast-bing-wallpaper.qx-plugin`：manifest 保留 3 个 Raycast commands，`index.js` 为 bundled runtime，不再是 placeholder。
+- 转换器会复制 Raycast 图标资源，并自动识别 `screenshots` / `media` / `gallery` / `metadata/` 图片写入 manifest；Settings -> Plugins Installed 列表和详情页可显示插件图标与截图。
+- Raycast 转换产物新增 `platforms` 与 `raycast.platformCompatibility` 兼容报告；CLI 会静态分析 Raycast UI、HTTP、Clipboard、LocalStorage/Cache、fs-extra、showInFinder、run-applescript、no-view interval 和 menu bar command，Installed 详情页显示 macOS / Windows 的 Supported、Partial 或 Unsupported 状态，以及可用/降级/不可用能力。
+- 转换产物保留 `mode` / `interval`，Qx 插件 registry 根据 no-view command interval 做持久化后台调度；next run 写入 `localStorage`，插件重载或 Qx 重启后恢复。
+- 新增 `plugin_run_applescript` 后端命令，generic shim 的 `run-applescript` 可通过精确权限 `invoke:plugin_run_applescript` 走真实 `osascript`。
+- 新增 `plugin_file_read_base64` / `plugin_file_exists` / `plugin_file_ensure_dir` / `plugin_file_write_base64` / `plugin_file_empty_dir` / `plugin_file_list` 后端命令，generic shim 的 `fs-extra` 可访问真实文件路径、`~/...` 和虚拟私有路径 `/qx-plugin-files/<id>`；`/qx-home` 会映射到真实用户 Home，AppleScript 执行前也会替换为真实路径。
+- app 内 `install_raycast_extension_from_url` 对 generic 扩展优先调用同一套 JS converter：临时 sparse clone Raycast 源码、bundle/package 后再用现有 `.qx-plugin` 安装路径落地。
+- CLI 转换器同步 System Information / System Monitor 非阻塞首屏行为，与 app 内转换模板保持一致。
+- 已知剩余：打包分发版需要随 app 提供 JS converter pipeline；generic shim 的同步文件读取只能覆盖当前运行内存中写过的文件，跨进程真实文件读取需要使用异步 `readFile/readJson/pathExists`；本机 UI 自动化受 AppleEvent/进程查询限制，尚未完成可视化点击验证。
+
+### 验证
+
+- [x] `node --check scripts/convert-raycast-extension.mjs`
+- [x] `node scripts/convert-raycast-extension.mjs /private/tmp/qx-raycast-bing/extensions/extensions/bing-wallpaper --out /private/tmp/qx-raycast-bing/qx-generic --package`
+- [x] `node --check /private/tmp/qx-raycast-bing/qx-generic/raycast-bing-wallpaper/index.js`
+- [x] 产物检查：`raycast-bing-wallpaper.qx-plugin` 带 3 张 Raycast metadata 截图后约 11 MB；bundled `index.js` 约 637 KB；包含 `HPImageArchive`、`plugin_run_applescript`、`plugin_file_read_base64`、`/qx-home`、`qx-raycast-grid`、截图资源和 no-view interval metadata。
+- [x] `cargo test marketplace::tests -- --nocapture`（`src-tauri/`，含 generic manifest 测试）
+- [x] `npx tsc --noEmit`
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [x] `npm run build`
+- [x] 安装转换出的 `/private/tmp/qx-raycast-bing/qx-generic/raycast-bing-wallpaper.qx-plugin` 到 `~/.qx/plugins/raycast-bing-wallpaper`，真实安装目录 manifest、图标、3 张截图资源和 `index.js` 语法检查通过。
+- [ ] UI 点击验证：打开 Bing Wallpaper 面板显示 Bing 图片、Action 能下载/设置壁纸、no-view interval 可恢复。
+
 ## Feature — 应用搜索中文名与拼音匹配
 
 **状态**：已实现，等待手动验证。

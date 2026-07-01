@@ -290,6 +290,16 @@ export function buildPluginRuntimeHtml(
           get: (key) => rpc('storageGet', { key }),
           set: (key, value) => rpc('storageSet', { key, value }),
           delete: (key) => rpc('storageDelete', { key }),
+          session: {
+            get: (key) => rpc('sessionStorageGet', { key }),
+            set: (key, value) => rpc('sessionStorageSet', { key, value }),
+            delete: (key) => rpc('sessionStorageDelete', { key }),
+          },
+          persist: {
+            get: (key) => rpc('storageGet', { key }),
+            set: (key, value) => rpc('storageSet', { key, value }),
+            delete: (key) => rpc('storageDelete', { key }),
+          },
         },
       };
 
@@ -479,7 +489,7 @@ function sendRuntimeRequest(
   });
 }
 
-async function resolvePluginAssetUrl(
+export async function resolvePluginAssetUrl(
   pluginId: string,
   assetPath?: string,
 ): Promise<string | undefined> {

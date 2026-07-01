@@ -17,6 +17,8 @@ import type {
   RegisteredPanel,
 } from "./types";
 
+const backgroundTimers = new Map<string, number[]>();
+
 export interface CommandMatch {
   command: RegisteredCommand;
   score: number;
@@ -64,6 +66,48 @@ function normalizeQuery(q: string): string {
 
 function isBuiltinPluginId(id: string): boolean {
   return id.startsWith("builtin:");
+}
+
+function parseIntervalMs(interval?: string): number | null {
+  const match = String(interval || "").trim().match(/^(\d+)\s*(s|m|h|d)?$/i);
+  if (!match) return null;
+  const value = Number(match[1]);
+  const unit = (match[2] || "m").toLowerCase();
+  const multiplier = unit === "s" ? 1000 : unit === "h" ? 3_600_000 : unit === "d" ? 86_400_000 : 60_000;
+  return Math.max(1000, value * multiplier);
+}
+
+function backgroundStorageKey(pluginId: string, commandName: string): string {
+  return `qx:plugin-background:${pluginId}:${commandName}:nextRunAt`;
+}
+
+function clearBackgroundTimers(pluginId?: string): void {
+  const ids = pluginId ? [pluginId] : [...backgroundTimers.keys()];
+  for (const id of ids) {
+    for (const timer of backgroundTimers.get(id) || []) {
+      window.clearTimeout(timer);
+    }
+    backgroundTimers.delete(id);
+  }
+}
+
+function scheduleBackgroundCommand(command: RegisteredCommand): void {
+  if (command.mode !== "no-view") return;
+  const intervalMs = parseIntervalMs(command.interval);
+  if (!intervalMs) return;
+  const key = backgroundStorageKey(command.pluginId, command.name);
+  const savedNext = Number(window.localStorage.getItem(key) || 0);
+  const now = Date.now();
+  const delay = Math.max(0, (Number.isFinite(savedNext) && savedNext > 0 ? savedNext : now + intervalMs) - now);
+  const timers = backgroundTimers.get(command.pluginId) || [];
+  const timer = window.setTimeout(() => {
+    window.localStorage.setItem(key, String(Date.now() + intervalMs));
+    void usePluginRegistry.getState().runCommand(command).finally(() => {
+      scheduleBackgroundCommand(command);
+    });
+  }, delay);
+  timers.push(timer);
+  backgroundTimers.set(command.pluginId, timers);
 }
 
 /** Topological sort of plugins based on declared dependencies. */
@@ -265,6 +309,10 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
               ? { ...state.shortcuts, [plugin.id]: registeredShortcuts }
               : state.shortcuts,
           }));
+          clearBackgroundTimers(plugin.id);
+          for (const command of result.commands) {
+            scheduleBackgroundCommand(command);
+          }
           hooks.onPluginStatus?.({
             kind: "success",
             pluginId: plugin.id,
@@ -299,6 +347,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
 
   unload: () => {
     const { workers, shortcuts } = get();
+    clearBackgroundTimers();
     Object.values(shortcuts).flat().forEach((shortcut) => {
       void unregister(shortcut).catch(() => {});
     });
@@ -409,4 +458,3 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     set({ devWatcherActive: false, _devWatcherInterval: null });
   },
 }));
-

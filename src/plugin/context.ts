@@ -172,6 +172,17 @@ export function createPluginContext(
       get: (key: string) => rpc("storageGet", { key }),
       set: (key: string, value: unknown) => rpc("storageSet", { key, value }) as Promise<void>,
       delete: (key: string) => rpc("storageDelete", { key }) as Promise<void>,
+      session: {
+        get: (key: string) => rpc("sessionStorageGet", { key }),
+        set: (key: string, value: unknown) =>
+          rpc("sessionStorageSet", { key, value }) as Promise<void>,
+        delete: (key: string) => rpc("sessionStorageDelete", { key }) as Promise<void>,
+      },
+      persist: {
+        get: (key: string) => rpc("storageGet", { key }),
+        set: (key: string, value: unknown) => rpc("storageSet", { key, value }) as Promise<void>,
+        delete: (key: string) => rpc("storageDelete", { key }) as Promise<void>,
+      },
     },
   };
 }

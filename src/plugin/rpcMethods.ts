@@ -11,6 +11,17 @@ import {
   type AgentRuntimeSettings,
 } from "./aiRuntime";
 
+const pluginSessionStorage = new Map<string, Map<string, unknown>>();
+
+function sessionBucket(pluginId: string): Map<string, unknown> {
+  let bucket = pluginSessionStorage.get(pluginId);
+  if (!bucket) {
+    bucket = new Map<string, unknown>();
+    pluginSessionStorage.set(pluginId, bucket);
+  }
+  return bucket;
+}
+
 export interface PluginRuntimeOptions {
   onToast: (msg: string) => void;
   onPrompt: (label: string, defaultValue?: string) => Promise<string | null>;
@@ -58,6 +69,13 @@ const COMMAND_CAPABILITIES: Record<string, string> = {
 const DANGEROUS_INVOKE_COMMANDS = new Set([
   "plugin_perform_paste",
   "plugin_perform_paste_at_cursor",
+  "plugin_run_applescript",
+  "plugin_file_read_base64",
+  "plugin_file_exists",
+  "plugin_file_ensure_dir",
+  "plugin_file_write_base64",
+  "plugin_file_empty_dir",
+  "plugin_file_list",
   "qx_system_information_kill_process",
   "qx_permissions_request",
   "qx_storage_clear_cache",
@@ -158,13 +176,21 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   invoke: async (plugin, perms, payload) => {
     const cmd = String(payload.cmd);
     assertInvokeAllowed(plugin, perms, cmd);
-    return invoke(cmd, (payload.args as Record<string, unknown>) || {});
+    const args = ((payload.args as Record<string, unknown>) || {}) as Record<string, unknown>;
+    if (cmd === "plugin_run_applescript" || cmd.startsWith("plugin_file_")) {
+      return invoke(cmd, { ...args, id: plugin.id });
+    }
+    return invoke(cmd, args);
   },
 
   invokeRust: async (plugin, perms, payload) => {
     const cmd = String(payload.cmd);
     assertInvokeAllowed(plugin, perms, cmd);
-    return invoke(cmd, (payload.args as Record<string, unknown>) || {});
+    const args = ((payload.args as Record<string, unknown>) || {}) as Record<string, unknown>;
+    if (cmd === "plugin_run_applescript" || cmd.startsWith("plugin_file_")) {
+      return invoke(cmd, { ...args, id: plugin.id });
+    }
+    return invoke(cmd, args);
   },
 
   showToast: async (_plugin, _perms, payload, options) => {
@@ -314,6 +340,21 @@ export const rpcHandlers: Record<string, RpcHandler> = {
       id: plugin.id,
       key: String(payload.key),
     });
+  },
+
+  sessionStorageGet: async (plugin, _perms, payload) => {
+    const bucket = pluginSessionStorage.get(plugin.id);
+    return bucket?.has(String(payload.key)) ? bucket.get(String(payload.key)) : null;
+  },
+
+  sessionStorageSet: async (plugin, _perms, payload) => {
+    sessionBucket(plugin.id).set(String(payload.key), payload.value);
+    return undefined;
+  },
+
+  sessionStorageDelete: async (plugin, _perms, payload) => {
+    pluginSessionStorage.get(plugin.id)?.delete(String(payload.key));
+    return undefined;
   },
 };
 

@@ -57,21 +57,41 @@ export default function WeatherPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const loadWeather = useCallback(async () => {
-    setLoading(true);
+  const loadWeather = useCallback(async (options: { silent?: boolean } = {}) => {
+    setLoading(!options.silent);
     setError("");
     try {
       const data = await invoke<WeatherData>("fetch_weather");
       setWeather(data);
     } catch (err) {
-      setError(String(err));
+      if (!options.silent) setError(String(err));
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadWeather();
+    let cancelled = false;
+
+    async function loadInitialWeather() {
+      try {
+        const cached = await invoke<WeatherData | null>("get_cached_weather");
+        if (cancelled) return;
+        if (cached) {
+          setWeather(cached);
+          void loadWeather({ silent: true });
+          return;
+        }
+      } catch {
+        // Cache is a best-effort fast path; live weather remains the source of truth.
+      }
+      if (!cancelled) void loadWeather();
+    }
+
+    void loadInitialWeather();
+    return () => {
+      cancelled = true;
+    };
   }, [loadWeather]);
 
   const goBack = () => setTab("launcher");
