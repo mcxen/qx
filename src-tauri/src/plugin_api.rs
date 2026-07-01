@@ -400,7 +400,7 @@ fn provider_catalog_contains(provider_id: &str, model_id: &str) -> bool {
 }
 
 #[tauri::command]
-pub fn plugin_ai_run_bash(req: PluginAiBashRequest) -> Result<PluginAiBashResult, String> {
+pub async fn plugin_ai_run_bash(req: PluginAiBashRequest) -> Result<PluginAiBashResult, String> {
     let settings = crate::settings::read_settings().agent;
     ensure_agent_tool_enabled(&settings)?;
     if !settings.bash_enabled {
@@ -408,58 +408,66 @@ pub fn plugin_ai_run_bash(req: PluginAiBashRequest) -> Result<PluginAiBashResult
     }
 
     let configured_timeout = u64::from(settings.bash_timeout_ms).clamp(1000, 300_000);
-    let timeout = Duration::from_millis(req.timeout_ms.clamp(1000, configured_timeout));
-    let mut cmd = std::process::Command::new("/bin/bash");
-    cmd.arg("-lc")
-        .arg(req.script)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-
+    let timeout_ms = req.timeout_ms.clamp(1000, configured_timeout);
+    let script = req.script;
     let cwd = req
         .cwd
         .as_deref()
         .unwrap_or(settings.bash_cwd.as_str())
         .trim()
         .to_string();
-    if !cwd.is_empty() {
-        cmd.current_dir(cwd);
-    }
 
-    let mut child = cmd.spawn().map_err(|e| format!("spawn bash: {e}"))?;
-    let start = std::time::Instant::now();
-
-    loop {
-        if let Some(status) = child.try_wait().map_err(|e| format!("wait bash: {e}"))? {
-            let output = child
-                .wait_with_output()
-                .map_err(|e| format!("read bash output: {e}"))?;
-            return Ok(PluginAiBashResult {
-                status: status.code(),
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                timed_out: false,
-            });
+    tauri::async_runtime::spawn_blocking(move || {
+        let timeout = Duration::from_millis(timeout_ms);
+        let mut cmd = std::process::Command::new("/bin/bash");
+        cmd.arg("-lc")
+            .arg(script)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        if !cwd.is_empty() {
+            cmd.current_dir(cwd);
         }
 
-        if start.elapsed() >= timeout {
-            let _ = child.kill();
-            let output = child
-                .wait_with_output()
-                .map_err(|e| format!("read killed bash output: {e}"))?;
-            return Ok(PluginAiBashResult {
-                status: None,
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                timed_out: true,
-            });
-        }
+        let mut child = cmd.spawn().map_err(|e| format!("spawn bash: {e}"))?;
+        let start = std::time::Instant::now();
 
-        std::thread::sleep(Duration::from_millis(50));
-    }
+        loop {
+            if let Some(status) = child.try_wait().map_err(|e| format!("wait bash: {e}"))? {
+                let output = child
+                    .wait_with_output()
+                    .map_err(|e| format!("read bash output: {e}"))?;
+                return Ok(PluginAiBashResult {
+                    status: status.code(),
+                    stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                    timed_out: false,
+                });
+            }
+
+            if start.elapsed() >= timeout {
+                let _ = child.kill();
+                let output = child
+                    .wait_with_output()
+                    .map_err(|e| format!("read killed bash output: {e}"))?;
+                return Ok(PluginAiBashResult {
+                    status: None,
+                    stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                    timed_out: true,
+                });
+            }
+
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    })
+    .await
+    .map_err(|e| format!("bash task failed: {e}"))?
 }
 
 #[tauri::command]
-pub fn plugin_ai_grep_search(req: PluginAiGrepRequest) -> Result<Vec<PluginAiGrepResult>, String> {
+pub async fn plugin_ai_grep_search(
+    req: PluginAiGrepRequest,
+) -> Result<Vec<PluginAiGrepResult>, String> {
     let settings = crate::settings::read_settings().agent;
     ensure_agent_tool_enabled(&settings)?;
     if !settings.grep_search_enabled {
@@ -483,14 +491,15 @@ pub fn plugin_ai_grep_search(req: PluginAiGrepRequest) -> Result<Vec<PluginAiGre
         .max_results
         .unwrap_or(settings.grep_max_results)
         .clamp(1, 500);
+    let grep_command = settings.grep_command;
+    let query = query.to_string();
 
-    let output = run_grep_command(
-        settings.grep_command.as_str(),
-        query,
-        root.as_str(),
-        max_results,
-    )?;
-    Ok(parse_grep_output(&output, max_results))
+    let output = tauri::async_runtime::spawn_blocking(move || {
+        run_grep_command(grep_command.as_str(), &query, root.as_str(), max_results)
+    })
+    .await
+    .map_err(|e| format!("grep task failed: {e}"))?;
+    Ok(parse_grep_output(&output?, max_results))
 }
 
 fn ensure_agent_tool_enabled(settings: &crate::settings::AgentSettings) -> Result<(), String> {

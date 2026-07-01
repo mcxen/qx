@@ -447,15 +447,20 @@ fn provider_openai_chat_stream(
     Ok(full)
 }
 
-fn provider_openai_chat_with_tools(
-    base_url: &str,
-    api_key: &str,
-    model: &str,
-    messages: &[serde_json::Value],
-    tools: &[serde_json::Value],
-    tool_choice: &str,
+async fn provider_openai_chat_with_tools(
+    base_url: String,
+    api_key: String,
+    model: String,
+    messages: Vec<serde_json::Value>,
+    tools: Vec<serde_json::Value>,
+    tool_choice: String,
 ) -> Result<serde_json::Value, String> {
-    let client = make_client()?;
+    let client = crate::http_client::client(
+        "Qx/1.0 (g4f)",
+        Duration::from_secs(60),
+        Some(Duration::from_secs(10)),
+    )
+    .map_err(|e| format!("http client: {e}"))?;
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
     let mut body = serde_json::json!({
@@ -463,8 +468,8 @@ fn provider_openai_chat_with_tools(
         "messages": messages,
     });
     if !tools.is_empty() {
-        body["tools"] = serde_json::Value::Array(tools.to_vec());
-        body["tool_choice"] = serde_json::Value::String(tool_choice.to_string());
+        body["tools"] = serde_json::Value::Array(tools);
+        body["tool_choice"] = serde_json::Value::String(tool_choice);
     }
 
     let resp = client
@@ -473,16 +478,18 @@ fn provider_openai_chat_with_tools(
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&body)
         .send()
+        .await
         .map_err(|e| format!("request to {url} failed: {e}"))?;
 
     let status = resp.status();
     if !status.is_success() {
-        let text = resp.text().unwrap_or_default();
+        let text = resp.text().await.unwrap_or_default();
         return Err(format!("{url} returned HTTP {status}: {text}"));
     }
 
     let json: serde_json::Value = resp
         .json()
+        .await
         .map_err(|e| format!("parse response from {url}: {e}"))?;
 
     json.get("choices")
@@ -491,10 +498,6 @@ fn provider_openai_chat_with_tools(
         .cloned()
         .ok_or_else(|| "no message in API response".to_string())
 }
-
-// ---------------------------------------------------------------------------
-// Tauri commands
-// ---------------------------------------------------------------------------
 
 /// Send a chat message to an AI provider and get a complete response.
 #[tauri::command]
@@ -624,7 +627,7 @@ pub fn qxai_chat(
 /// OpenAI-style function calling for BYOK custom providers.
 /// Returns the raw `choices[0].message` JSON, including any `tool_calls`.
 #[tauri::command]
-pub fn qxai_chat_with_tools(
+pub async fn qxai_chat_with_tools(
     provider: Option<String>,
     model: Option<String>,
     messages: Vec<serde_json::Value>,
@@ -647,13 +650,14 @@ pub fn qxai_chat_with_tools(
 
     let choice = tool_choice.unwrap_or_else(|| "auto".to_string());
     provider_openai_chat_with_tools(
-        &custom_provider.base_url,
-        &custom_provider.api_key,
-        &selection.model,
-        &messages,
-        &tools,
-        &choice,
+        custom_provider.base_url,
+        custom_provider.api_key,
+        selection.model,
+        messages,
+        tools,
+        choice,
     )
+    .await
 }
 
 #[tauri::command]

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Brain, CheckCircle2, Loader2, Search, Wrench, XCircle } from "lucide-react";
 import type { AgentStep } from "./react-agent";
 import MarkdownRenderer from "./MarkdownRenderer";
@@ -76,7 +77,7 @@ function StepStateIcon({ state }: { state: AgentStep["state"] }) {
   return <CheckCircle2 size={12} />;
 }
 
-export function AgentStepView({ step }: { step: AgentStep }) {
+export const AgentStepView = memo(function AgentStepView({ step }: { step: AgentStep }) {
   if (step.kind === "thought") {
     return (
       <div className="qx-agent-step is-thought">
@@ -131,9 +132,9 @@ export function AgentStepView({ step }: { step: AgentStep }) {
     );
   }
   return null;
-}
+});
 
-export function AgentStepsView({ steps }: { steps: AgentStep[] }) {
+export const AgentStepsView = memo(function AgentStepsView({ steps }: { steps: AgentStep[] }) {
   const visible = steps.filter((s) => s.kind !== "final");
   if (visible.length === 0) return null;
   return (
@@ -143,7 +144,7 @@ export function AgentStepsView({ steps }: { steps: AgentStep[] }) {
       ))}
     </div>
   );
-}
+});
 
 export function AiMessageContent({
   content,

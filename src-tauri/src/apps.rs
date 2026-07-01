@@ -714,45 +714,49 @@ pub fn preload_icons(app: &AppHandle) {
 }
 
 #[tauri::command]
-pub fn search_apps(query: String) -> Result<Vec<AppEntry>, String> {
-    // Ensure cache is initialized (if ensure_cache wasn't called yet)
-    if !CACHE_INITIALIZED.load(std::sync::atomic::Ordering::SeqCst) {
-        ensure_cache(None);
-    }
-
-    let cache = APP_CACHE
-        .lock()
-        .map_err(|e| format!("lock poisoned: {e}"))?;
-
-    if query.is_empty() {
-        let results: Vec<AppEntry> = cache.iter().take(20).cloned().collect();
-        return Ok(results);
-    }
-
-    let q = query.to_lowercase();
-    let mut scored: Vec<(i32, &AppEntry)> = Vec::with_capacity(cache.len() / 2);
-    for app in cache.iter() {
-        let name_lower = app.name.to_lowercase();
-        let display_lower = app.display_name.to_lowercase();
-        let aliases_lower = app.aliases.to_lowercase();
-        if name_lower == q || display_lower == q {
-            scored.push((0, app));
-        } else if name_lower.starts_with(&q) || display_lower.starts_with(&q) {
-            scored.push((1, app));
-        } else if name_lower.contains(&q) || display_lower.contains(&q) {
-            scored.push((2, app));
-        } else if aliases_lower.lines().any(|alias| alias == q) {
-            scored.push((3, app));
-        } else if aliases_lower.lines().any(|alias| alias.starts_with(&q)) {
-            scored.push((4, app));
-        } else if aliases_lower.contains(&q) {
-            scored.push((5, app));
+pub async fn search_apps(query: String) -> Result<Vec<AppEntry>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        // Ensure cache is initialized (if ensure_cache wasn't called yet)
+        if !CACHE_INITIALIZED.load(std::sync::atomic::Ordering::SeqCst) {
+            ensure_cache(None);
         }
-    }
 
-    scored.sort_by_key(|(score, _)| *score);
-    scored.truncate(12);
-    Ok(scored.into_iter().map(|(_, app)| app.clone()).collect())
+        let cache = APP_CACHE
+            .lock()
+            .map_err(|e| format!("lock poisoned: {e}"))?;
+
+        if query.is_empty() {
+            let results: Vec<AppEntry> = cache.iter().take(20).cloned().collect();
+            return Ok(results);
+        }
+
+        let q = query.to_lowercase();
+        let mut scored: Vec<(i32, &AppEntry)> = Vec::with_capacity(cache.len() / 2);
+        for app in cache.iter() {
+            let name_lower = app.name.to_lowercase();
+            let display_lower = app.display_name.to_lowercase();
+            let aliases_lower = app.aliases.to_lowercase();
+            if name_lower == q || display_lower == q {
+                scored.push((0, app));
+            } else if name_lower.starts_with(&q) || display_lower.starts_with(&q) {
+                scored.push((1, app));
+            } else if name_lower.contains(&q) || display_lower.contains(&q) {
+                scored.push((2, app));
+            } else if aliases_lower.lines().any(|alias| alias == q) {
+                scored.push((3, app));
+            } else if aliases_lower.lines().any(|alias| alias.starts_with(&q)) {
+                scored.push((4, app));
+            } else if aliases_lower.contains(&q) {
+                scored.push((5, app));
+            }
+        }
+
+        scored.sort_by_key(|(score, _)| *score);
+        scored.truncate(12);
+        Ok(scored.into_iter().map(|(_, app)| app.clone()).collect())
+    })
+    .await
+    .map_err(|e| format!("search apps task failed: {e}"))?
 }
 
 #[tauri::command]

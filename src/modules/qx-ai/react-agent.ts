@@ -439,6 +439,23 @@ async function streamOnce(
       180_000,
     );
 
+    // Throttle UI updates so long streams do not re-render on every chunk.
+    const THROTTLE_MS = 80;
+    let lastFlush = 0;
+    let flushTimer: number | undefined;
+    const flush = () => {
+      window.clearTimeout(flushTimer);
+      flushTimer = undefined;
+      lastFlush = Date.now();
+      if (!settled) onChunk(acc);
+    };
+    const scheduleFlush = () => {
+      if (flushTimer !== undefined) return;
+      const now = Date.now();
+      const delay = Math.max(0, THROTTLE_MS - (now - lastFlush));
+      flushTimer = window.setTimeout(flush, delay);
+    };
+
     listen<StreamEvent>("qxai://stream", (event) => {
       if (event.payload.requestId !== requestId) return;
       if (event.payload.error) {
@@ -446,11 +463,16 @@ async function streamOnce(
         return;
       }
       if (event.payload.done) {
+        flush();
         finish(null, acc || event.payload.chunk);
         return;
       }
       acc += event.payload.chunk;
-      onChunk(acc);
+      if (Date.now() - lastFlush >= THROTTLE_MS) {
+        flush();
+      } else {
+        scheduleFlush();
+      }
     })
       .then((un) => {
         if (settled) {
