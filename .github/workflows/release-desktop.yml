@@ -71,6 +71,14 @@ jobs:
       - name: Build Tauri bundle
         run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
+      - name: Sign macOS app bundle
+        if: runner.os == 'macOS'
+        run: |
+          codesign --force --deep --sign - \
+            --identifier "com.mcx.qx" \
+            --entitlements src-tauri/entitlements.plist \
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/Qx.app
+
       - name: Archive macOS app bundle
         if: runner.os == 'macOS'
         run: |
