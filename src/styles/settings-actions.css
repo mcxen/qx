@@ -1088,10 +1088,20 @@ span.qx-plugin-screenshot {
 
 .qx-gif-text-base {
   color: var(--qx-text-primary);
+  opacity: 0.18;
 }
 
 .qx-gif-text-fill {
-  background-image: var(--qx-gif-text-image);
+  background-image: var(
+    --qx-gif-text-image,
+    linear-gradient(
+      110deg,
+      var(--qx-text-primary) 0%,
+      var(--qx-accent) 38%,
+      var(--qx-text-secondary) 68%,
+      var(--qx-text-primary) 100%
+    )
+  );
   background-position: center;
   background-size: cover;
   background-clip: text;

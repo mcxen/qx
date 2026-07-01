@@ -2,13 +2,13 @@ import type { CSSProperties } from "react";
 
 interface GifTextProps {
   text: string;
-  gif: string;
+  gif?: string;
   className?: string;
   containerClassName?: string;
 }
 
 type GifTextStyle = CSSProperties & {
-  "--qx-gif-text-image": string;
+  "--qx-gif-text-image"?: string;
 };
 
 export default function GifText({
@@ -18,7 +18,7 @@ export default function GifText({
   containerClassName = "",
 }: GifTextProps) {
   const style: GifTextStyle = {
-    "--qx-gif-text-image": `url(${JSON.stringify(gif)})`,
+    ...(gif ? { "--qx-gif-text-image": `url(${JSON.stringify(gif)})` } : {}),
   };
 
   return (

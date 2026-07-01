@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import QxShell, { type BottomIslandContent } from "../../components/QxShell";
 import { WeatherWidget } from "@/components/tool-ui/weather-widget/runtime";
@@ -40,6 +40,55 @@ interface WeatherData {
   provider: string;
 }
 
+interface WeatherCachePayload {
+  data: WeatherData;
+  cachedAt: number;
+}
+
+interface WeatherSettingsSnapshot {
+  provider: string;
+  api_key: string;
+  location_override: string;
+}
+
+const LOCAL_WEATHER_CACHE_PREFIX = "qx.weather.cache:";
+const LOCAL_WEATHER_CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 12;
+
+function localWeatherCacheKey(weatherSettings: WeatherSettingsSnapshot): string | null {
+  const provider = weatherSettings.provider.trim() || "open-meteo";
+  const location = weatherSettings.location_override.trim();
+
+  if (provider === "openweathermap" && weatherSettings.api_key.trim()) {
+    return null;
+  }
+
+  return `${LOCAL_WEATHER_CACHE_PREFIX}${provider}\n${location}`;
+}
+
+function readLocalWeatherCache(cacheKey: string | null): WeatherData | null {
+  if (!cacheKey || typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(cacheKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<WeatherCachePayload>;
+    if (!parsed.data || typeof parsed.cachedAt !== "number") return null;
+    if (Date.now() - parsed.cachedAt > LOCAL_WEATHER_CACHE_MAX_AGE_MS) return null;
+    return parsed.data;
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalWeatherCache(cacheKey: string | null, data: WeatherData): void {
+  if (!cacheKey || typeof window === "undefined") return;
+  try {
+    const payload: WeatherCachePayload = { data, cachedAt: Date.now() };
+    window.localStorage.setItem(cacheKey, JSON.stringify(payload));
+  } catch {
+    // Native cache remains the source of truth; this is only an instant UI path.
+  }
+}
+
 function celsiusToFahrenheit(c: number): number {
   return Math.round((c * 9) / 5 + 32);
 }
@@ -52,8 +101,14 @@ export default function WeatherPanel() {
   const setTab = useStore((state) => state.setTab);
   const { settings } = useSettingsStore();
   const t = useT();
+  const localCacheKey = useMemo(
+    () => localWeatherCacheKey(settings.weather),
+    [settings.weather.provider, settings.weather.api_key, settings.weather.location_override],
+  );
 
-  const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weather, setWeather] = useState<WeatherData | null>(() =>
+    readLocalWeatherCache(localWeatherCacheKey(settings.weather)),
+  );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -63,22 +118,31 @@ export default function WeatherPanel() {
     try {
       const data = await invoke<WeatherData>("fetch_weather");
       setWeather(data);
+      writeLocalWeatherCache(localCacheKey, data);
     } catch (err) {
       if (!options.silent) setError(String(err));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [localCacheKey]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadInitialWeather() {
+      const localCached = readLocalWeatherCache(localCacheKey);
+      if (localCached) {
+        setWeather(localCached);
+        void loadWeather({ silent: true });
+        return;
+      }
+
       try {
         const cached = await invoke<WeatherData | null>("get_cached_weather");
         if (cancelled) return;
         if (cached) {
           setWeather(cached);
+          writeLocalWeatherCache(localCacheKey, cached);
           void loadWeather({ silent: true });
           return;
         }
@@ -92,7 +156,7 @@ export default function WeatherPanel() {
     return () => {
       cancelled = true;
     };
-  }, [loadWeather]);
+  }, [loadWeather, localCacheKey]);
 
   const goBack = () => setTab("launcher");
 

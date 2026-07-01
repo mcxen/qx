@@ -172,7 +172,6 @@ export default function AboutPanel() {
       <div className="qx-about-gif-text">
         <GifText
           text="QxSTART"
-          gif="https://assets.amarn.me/gif-text.gif"
           containerClassName="qx-about-gif-text-frame"
         />
       </div>

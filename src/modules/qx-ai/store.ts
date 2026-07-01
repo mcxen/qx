@@ -53,6 +53,44 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 }
 
+function isDefaultConversationName(name: string): boolean {
+  return /^Chat \d+$/.test(name);
+}
+
+function normalizeTitleSource(content: string): string[] {
+  return content
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]+)`/g, "$1")
+    .split(/\n{2,}|[。！？!?]\s+|\.\s+/)
+    .map((part) =>
+      part
+        .replace(/[#*_~>\-[\](){}]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
+    .filter(Boolean);
+}
+
+function compactConversationTitle(messages: G4fMessage[]): string | null {
+  const userMessages = messages.filter((message) => message.role === "user");
+  const paragraphs = userMessages.flatMap((message) => normalizeTitleSource(message.content));
+
+  if (userMessages.length < 2 && paragraphs.length < 2) return null;
+
+  const source = paragraphs.slice(0, 2).join(" ");
+  if (!source) return null;
+
+  const maxLength = 32;
+  const title = source.length > maxLength ? `${source.slice(0, maxLength - 1).trimEnd()}...` : source;
+  return title || null;
+}
+
+function withAutoTitle(conversation: G4fConversation): G4fConversation {
+  if (!isDefaultConversationName(conversation.name)) return conversation;
+  const title = compactConversationTitle(conversation.messages);
+  return title ? { ...conversation, name: title } : conversation;
+}
+
 function makeCustomProviderId(): string {
   return "custom:" + generateId();
 }
@@ -343,10 +381,11 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       model: selection.model,
       messages: [...conv.messages, { role: "user", content }],
     };
+    const titledConv = withAutoTitle(updatedConv);
 
     set({
       conversations: conversations.map((c) =>
-        c.id === currentConversationId ? updatedConv : c,
+        c.id === currentConversationId ? titledConv : c,
       ),
       streaming: true,
       streamingConversationId: currentConversationId,
@@ -377,9 +416,9 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
 
       if (useAgent) {
         const basePrompt =
-          updatedConv.messages.find((m) => m.role === "system")?.content?.trim() ||
+          titledConv.messages.find((m) => m.role === "system")?.content?.trim() ||
           defaultSystemPrompt;
-        const nonSystem = updatedConv.messages.filter((m) => m.role !== "system");
+        const nonSystem = titledConv.messages.filter((m) => m.role !== "system");
 
         const useFunctionCalling = selection.provider.startsWith("custom:");
         const runAgent = useFunctionCalling ? runFunctionCallingAgent : runReactAgent;
@@ -439,7 +478,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         requestId,
         provider: selection.provider,
         model: selection.model,
-        messages: updatedConv.messages,
+        messages: titledConv.messages,
         onChunk: (full) =>
           set((s) =>
             s.streamingConversationId === currentConversationId
