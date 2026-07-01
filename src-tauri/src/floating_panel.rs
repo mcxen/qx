@@ -7,18 +7,28 @@
 //! current foreground app. Inputs that need keyboard focus explicitly
 //! request key-window status through `floating_request_key`.
 
+use std::sync::{Mutex, OnceLock};
 use tauri::{AppHandle, Manager, PhysicalPosition};
 
 pub(crate) const MAIN_LABEL: &str = "main";
+static PREVIOUS_FOREGROUND_PID: OnceLock<Mutex<Option<i32>>> = OnceLock::new();
+
+fn previous_foreground_pid() -> &'static Mutex<Option<i32>> {
+    PREVIOUS_FOREGROUND_PID.get_or_init(|| Mutex::new(None))
+}
 
 #[cfg(target_os = "macos")]
 mod macos {
+    use super::previous_foreground_pid;
     use super::MAIN_LABEL;
     use objc2::msg_send;
-    use objc2::runtime::AnyObject;
+    use objc2::runtime::{AnyClass, AnyObject};
     use objc2_app_kit::{NSWindowCollectionBehavior, NSWindowStyleMask};
+    use std::ffi::CStr;
     use tauri::AppHandle;
     use tauri::Manager;
+
+    const NS_APPLICATION_ACTIVATE_IGNORING_OTHER_APPS: usize = 1 << 1;
 
     fn ns_window(app: &AppHandle) -> Option<*mut AnyObject> {
         let win = app.get_webview_window(MAIN_LABEL)?;
@@ -27,6 +37,61 @@ mod macos {
             None
         } else {
             Some(ptr)
+        }
+    }
+
+    fn frontmost_application_pid() -> Option<i32> {
+        unsafe {
+            let workspace_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSWorkspace\0").ok()?)?;
+            let workspace: *mut AnyObject = msg_send![workspace_cls, sharedWorkspace];
+            if workspace.is_null() {
+                return None;
+            }
+            let app: *mut AnyObject = msg_send![workspace, frontmostApplication];
+            if app.is_null() {
+                return None;
+            }
+            let pid: i32 = msg_send![app, processIdentifier];
+            Some(pid)
+        }
+    }
+
+    pub(super) fn remember_foreground_application() {
+        let Some(pid) = frontmost_application_pid() else {
+            return;
+        };
+        if pid == std::process::id() as i32 {
+            return;
+        }
+        if let Ok(mut previous) = previous_foreground_pid().lock() {
+            *previous = Some(pid);
+        }
+    }
+
+    pub(super) fn restore_foreground_application() {
+        let pid = previous_foreground_pid()
+            .lock()
+            .ok()
+            .and_then(|previous| *previous);
+        let Some(pid) = pid else {
+            return;
+        };
+        unsafe {
+            let app_cls = match AnyClass::get(
+                CStr::from_bytes_with_nul(b"NSRunningApplication\0").unwrap(),
+            ) {
+                Some(cls) => cls,
+                None => return,
+            };
+            let running_app: *mut AnyObject =
+                msg_send![app_cls, runningApplicationWithProcessIdentifier: pid];
+            if running_app.is_null() {
+                return;
+            }
+            let _: bool = msg_send![
+                running_app,
+                activateWithOptions: NS_APPLICATION_ACTIVATE_IGNORING_OTHER_APPS
+            ];
         }
     }
 
@@ -121,6 +186,8 @@ pub fn install(app: &AppHandle) {
 /// Show the main window as a floating, non-activating panel.
 pub fn show_floating(app: &AppHandle) {
     let _ = center_on_cursor(app);
+    #[cfg(target_os = "macos")]
+    macos::remember_foreground_application();
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         let _ = win.show();
     }
@@ -145,6 +212,16 @@ pub fn hide(app: &AppHandle) {
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         let _ = win.hide();
     }
+}
+
+/// Hide the main window and restore the app that was frontmost before Qx
+/// floated above it. Use this for paste-at-cursor flows; plain hide remains
+/// available for launch/open actions where another app may intentionally take
+/// focus next.
+pub fn hide_and_restore_focus(app: &AppHandle) {
+    hide(app);
+    #[cfg(target_os = "macos")]
+    macos::restore_foreground_application();
 }
 
 /// Toggle visibility — used by the toggle_launcher global shortcut.
@@ -175,6 +252,11 @@ pub fn floating_show(app: AppHandle) {
 #[tauri::command]
 pub fn floating_hide(app: AppHandle) {
     hide(&app);
+}
+
+#[tauri::command]
+pub fn floating_hide_restore_focus(app: AppHandle) {
+    hide_and_restore_focus(&app);
 }
 
 #[tauri::command]

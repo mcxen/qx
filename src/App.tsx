@@ -590,8 +590,7 @@ function App() {
 
       startupWindowShownRef.current = true;
       setTab("launcher");
-      await win.show();
-      await win.setFocus();
+      await invoke("floating_show");
     };
 
     restoreAndShow().catch((e) => {

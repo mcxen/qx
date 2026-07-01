@@ -307,6 +307,7 @@ pub fn run() {
             clipboard::read_image_file,
             floating_panel::floating_show,
             floating_panel::floating_hide,
+            floating_panel::floating_hide_restore_focus,
             floating_panel::floating_toggle,
             floating_panel::floating_request_key,
             rss::rss_list_feeds,

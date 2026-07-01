@@ -27,17 +27,18 @@ export async function writeClipboardEntry(item: ClipboardEntry): Promise<void> {
 
 export async function pasteClipboardEntry(
   item: ClipboardEntry,
-  _options: PasteClipboardEntryOptions = {},
+  options: PasteClipboardEntryOptions = {},
 ): Promise<void> {
   await writeClipboardEntry(item);
 
   if (!isTauriRuntime()) return;
 
-  // The panel is non-activating, so the user's foreground app still has key
-  // focus. We just need to hide ourselves so the panel doesn't visually
-  // overlap the target, then post a synthetic Cmd+V into the OS — which
-  // lands in whichever app the user was actually using.
-  await invoke("floating_hide").catch(() => {});
+  // Hide Qx, restore the app that was frontmost before the floating shell
+  // appeared, then post Cmd+V into the restored target.
+  const shouldRestoreFocus = options.focusAtCursor ?? true;
+  await invoke(shouldRestoreFocus ? "floating_hide_restore_focus" : "floating_hide").catch(
+    () => {},
+  );
   await wait(PASTE_FOCUS_DELAY_MS);
   await invoke("plugin_perform_paste");
 }
