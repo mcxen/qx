@@ -5,7 +5,7 @@ import QxShell, { type BottomIslandContent, type QxShellAction } from "../../com
 import { LoadingLabel, SegmentedControl, Skeleton } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useStore } from "../../store";
-import { type V2exMode, type V2exTopic, formatTime } from "./types";
+import { type V2exMode, type V2exReply, type V2exTopic, formatTime } from "./types";
 import { sanitizeTopicHtml } from "./V2exDetail";
 
 export default function V2exPanel() {
@@ -17,6 +17,9 @@ export default function V2exPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [viewingTopic, setViewingTopic] = useState<V2exTopic | null>(null);
+  const [replies, setReplies] = useState<V2exReply[]>([]);
+  const [repliesLoading, setRepliesLoading] = useState(false);
+  const [repliesError, setRepliesError] = useState("");
 
   const selectedTopic = topics[selectedIndex] ?? null;
 
@@ -61,6 +64,28 @@ export default function V2exPanel() {
       setViewingTopic(null);
     }
   }, [topics, viewingTopic]);
+
+  useEffect(() => {
+    if (!viewingTopic) {
+      setReplies([]);
+      setRepliesError("");
+      return;
+    }
+    let cancelled = false;
+    setRepliesLoading(true);
+    setRepliesError("");
+    invoke<V2exReply[]>("v2ex_fetch_topic_replies", { topicId: viewingTopic.id })
+      .then((result) => {
+        if (!cancelled) setReplies(result);
+      })
+      .catch((err) => {
+        if (!cancelled) setRepliesError(String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setRepliesLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [viewingTopic?.id]);
 
   const goBack = () => setTab("launcher");
   const openTopicAtIndex = (index: number) => {
@@ -320,6 +345,36 @@ export default function V2exPanel() {
                   className="v2ex-detail-content"
                   dangerouslySetInnerHTML={{ __html: cleanTopicContent }}
                 />
+                <div className="v2ex-replies-section">
+                  <div className="v2ex-replies-header">
+                    <span>Replies ({detailTopic.replies})</span>
+                  </div>
+                  {repliesLoading && (
+                    <div className="v2ex-replies-hint">
+                      <LoadingLabel>Loading replies...</LoadingLabel>
+                    </div>
+                  )}
+                  {repliesError && (
+                    <div className="v2ex-replies-hint v2ex-replies-error">{repliesError}</div>
+                  )}
+                  {!repliesLoading && !repliesError && replies.length === 0 && (
+                    <div className="v2ex-replies-hint">No replies yet.</div>
+                  )}
+                  {replies.map((reply) => (
+                    <div key={reply.id} className="v2ex-reply-item">
+                      <div className="v2ex-reply-meta">
+                        <span className="v2ex-reply-floor">#{reply.floor}</span>
+                        <span className="v2ex-reply-author">{reply.author}</span>
+                        {reply.author === detailTopic.author && <span className="v2ex-reply-op">OP</span>}
+                        <span className="v2ex-reply-time">{formatTime(reply.created)}</span>
+                      </div>
+                      <div
+                        className="v2ex-reply-content v2ex-detail-content"
+                        dangerouslySetInnerHTML={{ __html: sanitizeTopicHtml(reply.content) }}
+                      />
+                    </div>
+                  ))}
+                </div>
                 {detailTopic.url && (
                   <div className="qx-content-detail-footer">
                     <button className="qx-command-button" onClick={() => void openUrl(detailTopic.url)} type="button">

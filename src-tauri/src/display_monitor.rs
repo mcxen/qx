@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use tauri::{Emitter, Manager};
+use tauri::Emitter;
 
 /// Starts a background thread that polls screen count every 2 seconds.
 /// When the count increases (external monitor connected), Qx auto-shows.
@@ -63,10 +63,15 @@ fn poll_once(handle: &tauri::AppHandle, known_count: &Arc<AtomicUsize>) {
         eprintln!("[display_monitor] emit display:changed failed: {e}");
     }
 
-    // Auto-show Qx when an external monitor is connected.
+    // Auto-show Qx when an external monitor is connected. The monitor poller
+    // runs on a background thread, while AppKit window operations must run on
+    // the main thread.
     if attached {
-        if let Some(win) = handle.get_webview_window("main") {
-            crate::show_on_cursor_monitor(handle, &win);
+        let app = handle.clone();
+        if let Err(e) = handle.run_on_main_thread(move || {
+            crate::floating_panel::show_floating(&app);
+        }) {
+            eprintln!("[display_monitor] schedule auto-show failed: {e}");
         }
     }
 }

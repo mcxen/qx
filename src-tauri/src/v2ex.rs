@@ -56,7 +56,7 @@ fn v2ex_get(endpoint: &str) -> Result<String, String> {
     let client = crate::http_client::blocking_client(
         "Qx/0.2 (V2EX Plugin; +https://github.com/mcxen/qx)",
         std::time::Duration::from_secs(10),
-        None,
+        Some(std::time::Duration::from_secs(5)),
     )
     .map_err(|e| format!("HTTP client: {e}"))?;
 
@@ -82,7 +82,7 @@ fn v2ex_get_authed(endpoint: &str) -> Result<String, String> {
     let client = crate::http_client::blocking_client(
         "Qx/0.2 (V2EX Plugin; +https://github.com/mcxen/qx)",
         std::time::Duration::from_secs(10),
-        None,
+        Some(std::time::Duration::from_secs(5)),
     )
     .map_err(|e| format!("HTTP client: {e}"))?;
 

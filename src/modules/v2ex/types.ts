@@ -12,6 +12,14 @@ export interface V2exTopic {
   last_modified: number;
 }
 
+export interface V2exReply {
+  id: number;
+  content: string;
+  author: string;
+  created: number;
+  floor: number;
+}
+
 export function formatTime(seconds: number): string {
   if (!seconds) return "unknown";
   const date = new Date(seconds * 1000);
