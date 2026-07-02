@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { useRssStore, type RssArticle } from "./store";
@@ -8,6 +9,14 @@ import { shouldIgnoreBareShortcut } from "../../utils/keyboard";
 import { useSettingsStore } from "../settings/store";
 import ImageLightbox from "./ImageLightbox";
 import { LoadingLabel, SegmentedControl, Skeleton } from "../../components/ui";
+
+interface V2exReply {
+  id: number;
+  content: string;
+  author: string;
+  created: number;
+  floor: number;
+}
 function formatTime(publishedAt: number): string {
   if (!publishedAt) return "";
   const d = new Date(publishedAt * 1000);
@@ -98,6 +107,33 @@ export default function ArticleList() {
   const rss = useSettingsStore((s) => s.settings.rss);
   const { bottom_island_mode, image_display_mode, image_fixed_width, article_font_size, article_font_family } = rss;
 
+  const [originalContent, setOriginalContent] = useState<string | null>(null);
+  const [loadingOriginal, setLoadingOriginal] = useState(false);
+  const [v2exReplies, setV2exReplies] = useState<V2exReply[]>([]);
+  const [v2exLoading, setV2exLoading] = useState(false);
+
+  useEffect(() => {
+    setOriginalContent(null);
+    setLoadingOriginal(false);
+  }, [currentArticle?.id]);
+
+  const v2exTopicId = useMemo(() => {
+    const m = currentArticle?.link?.match(/^https?:\/\/(?:www\.)?v2ex\.com\/t\/(\d+)/);
+    return m ? Number(m[1]) : null;
+  }, [currentArticle?.link]);
+
+  useEffect(() => {
+    if (!v2exTopicId) {
+      setV2exReplies([]);
+      return;
+    }
+    setV2exLoading(true);
+    invoke<V2exReply[]>("v2ex_fetch_topic_replies", { topicId: v2exTopicId })
+      .then(setV2exReplies)
+      .catch(() => setV2exReplies([]))
+      .finally(() => setV2exLoading(false));
+  }, [v2exTopicId]);
+
   useEffect(() => {
     void loadArticles();
   }, [loadArticles, selectedFeedId, filter]);
@@ -111,8 +147,8 @@ export default function ArticleList() {
     [feeds, selectedFeedId],
   );
   const cleanContent = useMemo(
-    () => (currentArticle ? sanitizeHtml(currentArticle.content || currentArticle.summary) : ""),
-    [currentArticle],
+    () => (currentArticle ? sanitizeHtml(originalContent ?? currentArticle.content ?? currentArticle.summary) : ""),
+    [currentArticle, originalContent],
   );
   const articleContentStyle = {
     "--rss-article-font-size": `${article_font_size}px`,
@@ -428,6 +464,22 @@ export default function ArticleList() {
         },
       },
       {
+        label: originalContent ? "Revert to Feed Content" : loadingOriginal ? "Loading..." : "Load Full Article",
+        kbd: "L",
+        disabled: !currentArticle?.link || loadingOriginal,
+        onClick: () => {
+          if (originalContent) {
+            setOriginalContent(null);
+          } else if (currentArticle?.link) {
+            setLoadingOriginal(true);
+            void invoke<string>("rss_fetch_original_content", { url: currentArticle.link })
+              .then((html) => setOriginalContent(html))
+              .catch(() => {})
+              .finally(() => setLoadingOriginal(false));
+          }
+        },
+      },
+      {
         label: "Refresh Feed",
         kbd: "R",
         disabled: selectedFeedId == null,
@@ -451,7 +503,7 @@ export default function ArticleList() {
       });
     }
     return list;
-  }, [currentArticle, focusArticle, goBack, markRead, next, openArticleAtTop, prev, refreshFeed, selectedFeedId, toggleStar]);
+  }, [currentArticle, focusArticle, goBack, loadingOriginal, markRead, next, openArticleAtTop, originalContent, prev, refreshFeed, selectedFeedId, toggleStar]);
 
   const island: BottomIslandContent = refreshingFeedId != null
     ? {
@@ -681,6 +733,39 @@ export default function ArticleList() {
                   dangerouslySetInnerHTML={{ __html: cleanContent }}
                   style={articleContentStyle}
                 />
+
+                {v2exTopicId != null && (
+                  <div className="qx-rss-v2ex-comments">
+                    <div className="qx-rss-v2ex-header">
+                      V2EX Comments {v2exReplies.length > 0 && `(${v2exReplies.length})`}
+                    </div>
+                    {v2exLoading && (
+                      <div className="qx-rss-v2ex-loading">Loading comments...</div>
+                    )}
+                    {!v2exLoading && v2exReplies.length === 0 && (
+                      <div className="qx-rss-v2ex-empty">
+                        No comments loaded. Ensure a V2EX token is set in Settings.
+                      </div>
+                    )}
+                    {v2exReplies.map((reply) => (
+                      <div key={reply.id} className="qx-rss-v2ex-reply">
+                        <div className="qx-rss-v2ex-reply-meta">
+                          <span className="qx-rss-v2ex-floor">#{reply.floor}</span>
+                          <strong>{reply.author}</strong>
+                          <span className="qx-rss-v2ex-time">{formatTime(reply.created)}</span>
+                        </div>
+                        <div
+                          className="qx-rss-v2ex-reply-body"
+                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(reply.content) }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {originalContent && (
+                  <div className="qx-rss-original-badge">Showing original page content</div>
+                )}
 
                 {next && (
                   <div className="qx-rss-next-article">

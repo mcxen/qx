@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "./store";
 import { Row, Toggle, SegmentedControl, Select, Slider, SettingsCard } from "../../components/ui";
 import { useT } from "../../i18n";
@@ -15,9 +17,29 @@ export default function RssSettings() {
   const { settings, patch } = useSettingsStore();
   const t = useT();
   const r = settings.rss;
+  const [cleanupMsg, setCleanupMsg] = useState("");
 
   const patchR = (partial: Partial<typeof r>) =>
     patch("rss", { ...r, ...partial });
+
+  const clearRead = async () => {
+    try {
+      const count = await invoke<number>("rss_clear_read_articles");
+      setCleanupMsg(`${count} read article${count !== 1 ? "s" : ""} cleared.`);
+    } catch (e) {
+      setCleanupMsg(String(e));
+    }
+  };
+
+  const clearAll = async () => {
+    if (!window.confirm("Delete ALL articles? (Feeds will be kept.) This cannot be undone.")) return;
+    try {
+      const count = await invoke<number>("rss_clear_all_articles");
+      setCleanupMsg(`${count} article${count !== 1 ? "s" : ""} deleted.`);
+    } catch (e) {
+      setCleanupMsg(String(e));
+    }
+  };
 
   return (
     <div className="qx-settings-page">
@@ -50,6 +72,23 @@ export default function RssSettings() {
           />
         </Row>
         <Row
+          title={t("rss.retentionDays", "Auto-Cleanup by Age")}
+          description={t("rss.retentionDays.desc", "Articles older than this (by publish date) are deleted on each refresh. Starred articles are never deleted.")}
+        >
+          <SegmentedControl
+            value={String(r.retention_days)}
+            onChange={(v) => patchR({ retention_days: parseInt(v) })}
+            options={[
+              { value: "7", label: "7d" },
+              { value: "14", label: "14d" },
+              { value: "30", label: "30d" },
+              { value: "60", label: "60d" },
+              { value: "90", label: "90d" },
+              { value: "0", label: t("rss.keepAll", "Keep All") },
+            ]}
+          />
+        </Row>
+        <Row
           title={t("rss.showFeedIcons", "Show Feed Icons")}
           description={t("rss.showFeedIcons.desc", "Display subscription source icons in the feed list. Disabling uses letter placeholders.")}
         >
@@ -58,6 +97,25 @@ export default function RssSettings() {
             onChange={(v) => patchR({ show_feed_icons: v })}
           />
         </Row>
+        <Row
+          title={t("rss.clearRead", "Clear Read Articles")}
+          description={t("rss.clearRead.desc", "Delete all read, non-starred articles from the database.")}
+        >
+          <button className="qx-command-button" onClick={clearRead}>
+            {t("rss.clearRead.action", "Clear Read")}
+          </button>
+        </Row>
+        <Row
+          title={t("rss.clearAll", "Clear All Articles")}
+          description={t("rss.clearAll.desc", "Delete every article (feeds are kept). Use this to start fresh.")}
+        >
+          <button className="qx-command-button qx-danger-text" onClick={clearAll}>
+            {t("rss.clearAll.action", "Clear All")}
+          </button>
+        </Row>
+        {cleanupMsg && (
+          <div className="qx-settings-muted" style={{ padding: "6px 0" }}>{cleanupMsg}</div>
+        )}
       </SettingsCard>
 
       <SettingsCard

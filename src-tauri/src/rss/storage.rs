@@ -264,3 +264,27 @@ pub fn prune_articles(conn: &Connection, feed_id: i64, max_count: u32) -> rusqli
     )?;
     Ok(())
 }
+
+pub fn delete_old_articles(conn: &Connection, max_age_days: u32) -> rusqlite::Result<usize> {
+    if max_age_days == 0 {
+        return Ok(0);
+    }
+    let cutoff = chrono::Local::now().timestamp() - (max_age_days as i64 * 86400);
+    conn.execute(
+        "DELETE FROM rss_articles
+         WHERE is_starred = 0
+           AND COALESCE(published_at, created_at) < ?1",
+        params![cutoff],
+    )
+}
+
+pub fn delete_read_articles(conn: &Connection) -> rusqlite::Result<usize> {
+    conn.execute(
+        "DELETE FROM rss_articles WHERE is_read = 1 AND is_starred = 0",
+        [],
+    )
+}
+
+pub fn delete_all_articles(conn: &Connection) -> rusqlite::Result<usize> {
+    conn.execute("DELETE FROM rss_articles", [])
+}

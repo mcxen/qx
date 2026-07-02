@@ -173,6 +173,10 @@ pub async fn rss_refresh_feed(state: State<'_, RssDb>, id: i64) -> Result<usize,
             let _ = store_article(conn, id, a);
         }
         let _ = prune_feed(conn, id);
+        let retention = rss_settings().retention_days;
+        if retention > 0 {
+            let _ = storage::delete_old_articles(conn, retention);
+        }
         storage::update_feed_meta(conn, id, &parsed.title, &parsed.icon)
             .map_err(|e| format!("{e}"))?;
         Ok::<(), String>(())
@@ -207,6 +211,12 @@ pub async fn rss_refresh_all(state: State<'_, RssDb>) -> Result<usize, String> {
                 });
             }
         }
+    }
+    let retention = rss_settings().retention_days;
+    if retention > 0 {
+        let _ = with_db(&state, |conn| {
+            storage::delete_old_articles(conn, retention).map_err(|e| format!("{e}"))
+        });
     }
     Ok(total)
 }
@@ -251,4 +261,79 @@ pub fn rss_export_opml(state: State<RssDb>) -> Result<String, String> {
     let triples: Vec<(i64, String, String)> =
         feeds.into_iter().map(|f| (f.id, f.url, f.title)).collect();
     Ok(fetcher::build_opml(&triples))
+}
+
+#[command]
+pub fn rss_clear_read_articles(state: State<RssDb>) -> Result<usize, String> {
+    with_db(&state, |conn| {
+        storage::delete_read_articles(conn).map_err(|e| format!("{e}"))
+    })
+}
+
+#[command]
+pub fn rss_clear_all_articles(state: State<RssDb>) -> Result<usize, String> {
+    with_db(&state, |conn| {
+        storage::delete_all_articles(conn).map_err(|e| format!("{e}"))
+    })
+}
+
+#[command]
+pub async fn rss_fetch_original_content(url: String) -> Result<String, String> {
+    use std::time::Duration;
+
+    let parsed_url = reqwest::Url::parse(&url).map_err(|e| format!("invalid URL: {e}"))?;
+    match parsed_url.scheme() {
+        "http" | "https" => {}
+        s => return Err(format!("unsupported scheme: {s}")),
+    }
+
+    let client = crate::http_client::client(
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Qx/1.0",
+        Duration::from_secs(20),
+        None,
+    )?;
+
+    let resp = client
+        .get(parsed_url)
+        .send()
+        .await
+        .map_err(|e| format!("fetch failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    let html = resp.text().await.map_err(|e| format!("read body: {e}"))?;
+    Ok(extract_article_body(&html))
+}
+
+fn extract_article_body(html: &str) -> String {
+    let strip_tags = [
+        "script", "style", "nav", "footer", "header", "aside", "iframe", "noscript",
+    ];
+    let mut result = html.to_string();
+    for tag in &strip_tags {
+        let pattern = format!(r"(?is)<{tag}[\s>].*?</{tag}>");
+        if let Ok(re) = regex::Regex::new(&pattern) {
+            result = re.replace_all(&result, "").to_string();
+        }
+    }
+
+    if let Ok(re) = regex::Regex::new(r"(?is)<article[^>]*>(.*)</article>") {
+        if let Some(cap) = re.captures(&result) {
+            if let Some(body) = cap.get(1) {
+                return body.as_str().trim().to_string();
+            }
+        }
+    }
+
+    if let Ok(re) = regex::Regex::new(r"(?is)<body[^>]*>(.*)</body>") {
+        if let Some(cap) = re.captures(&result) {
+            if let Some(body) = cap.get(1) {
+                return body.as_str().trim().to_string();
+            }
+        }
+    }
+
+    result.trim().to_string()
 }

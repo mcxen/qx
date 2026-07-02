@@ -99,6 +99,7 @@ export interface RssSettings {
   article_font_size: number;
   article_font_family: string;
   show_feed_icons: boolean;
+  retention_days: number;
 }
 
 export interface V2exSettings {
@@ -236,6 +237,7 @@ export const DEFAULT_SETTINGS: Settings = {
     article_font_size: 14,
     article_font_family: "system-ui",
     show_feed_icons: true,
+    retention_days: 30,
   },
   v2ex: {
     token: "",

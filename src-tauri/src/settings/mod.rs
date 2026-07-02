@@ -277,6 +277,8 @@ pub struct RssSettings {
     pub article_font_family: String,
     #[serde(default = "default_show_feed_icons", rename = "show_feed_icons")]
     pub show_feed_icons: bool,
+    #[serde(default = "default_retention_days", rename = "retention_days")]
+    pub retention_days: u32,
 }
 
 fn default_offline_cache_enabled() -> bool {
@@ -311,6 +313,10 @@ fn default_show_feed_icons() -> bool {
     true
 }
 
+fn default_retention_days() -> u32 {
+    30
+}
+
 impl Default for RssSettings {
     fn default() -> Self {
         Self {
@@ -322,6 +328,7 @@ impl Default for RssSettings {
             article_font_size: 14,
             article_font_family: "system-ui".to_string(),
             show_feed_icons: true,
+            retention_days: 30,
         }
     }
 }

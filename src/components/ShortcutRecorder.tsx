@@ -39,6 +39,10 @@ export default function ShortcutRecorder({
   const [recording, setRecording] = useState(false);
   const [draft, setDraft] = useState<ShortcutBinding | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const onCommitRef = useRef(onCommit);
+  const onCancelRef = useRef(onCancel);
+  onCommitRef.current = onCommit;
+  onCancelRef.current = onCancel;
 
   useEffect(() => {
     if (!recording) return;
@@ -47,7 +51,7 @@ export default function ShortcutRecorder({
       event.stopPropagation();
       if (event.key === "Escape") {
         setRecording(false);
-        onCancel();
+        onCancelRef.current();
         return;
       }
       const binding = eventToBinding(event);
@@ -58,12 +62,12 @@ export default function ShortcutRecorder({
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [recording, onCancel]);
+  }, [recording]);
 
   useEffect(() => {
     if (!draft) return;
-    onCommit(draft);
-  }, [draft, onCommit]);
+    onCommitRef.current(draft);
+  }, [draft]);
 
   return (
     <div ref={containerRef} className="qx-shortcut-recorder">

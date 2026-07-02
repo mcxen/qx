@@ -4828,7 +4828,7 @@ dependencies = [
 
 [[package]]
 name = "qx"
-version = "0.4.53"
+version = "0.4.54"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -4851,6 +4851,7 @@ dependencies = [
  "pinyin",
  "quick-xml 0.36.2",
  "rdev",
+ "regex",
  "reqwest 0.12.28",
  "rusqlite",
  "scrap",
