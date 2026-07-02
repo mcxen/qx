@@ -364,6 +364,7 @@ function App() {
   const resizeSaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const pendingWindowSizeRef = useRef<{ width: number; height: number } | null>(null);
   const closeAfterSettingsFlushRef = useRef(false);
+  const windowFocusedRef = useRef<boolean | null>(null);
   const pluginSearchVersionRef = useRef("");
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchSettling, setIsSearchSettling] = useState(false);
@@ -733,7 +734,7 @@ function App() {
         await flushSettingsBeforeExit();
       } finally {
         closeAfterSettingsFlushRef.current = true;
-        await win.close().catch(() => {
+        await win.destroy().catch(() => {
           closeAfterSettingsFlushRef.current = false;
         });
       }
@@ -752,6 +753,8 @@ function App() {
     if (!isTauriRuntime()) return;
     const win = getCurrentWindow();
     const unlistenFocus = win.onFocusChanged(({ payload: focused }) => {
+      if (windowFocusedRef.current === focused) return;
+      windowFocusedRef.current = focused;
       setVisible(focused);
       if (!focused && settings.general.autoHideOnBlur) {
         win.hide().catch(() => {});
@@ -794,7 +797,6 @@ function App() {
     setTab,
     setVisible,
     settings.general.autoHideOnBlur,
-    tab,
   ]);
 
   const loadSlowSearchProviders = useCallback(

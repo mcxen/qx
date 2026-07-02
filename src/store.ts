@@ -101,14 +101,23 @@ export const useStore = create<AppStore>((set) => ({
   clipboardHistory: [],
   loadingPhase: "loading-apps",
   appsReady: false,
-  setVisible: (visible) => set({ visible }),
-  setQuery: (query) => set({ query }),
-  setResults: (results) => set({ results }),
-  setSelectedIndex: (selectedIndex) => set({ selectedIndex }),
-  setTab: (tab) => set({ tab, query: "", results: [], selectedIndex: 0 }),
-  setClipboardHistory: (clipboardHistory) => set({ clipboardHistory }),
-  setLoadingPhase: (loadingPhase) => set({ loadingPhase }),
-  setAppsReady: (appsReady) => set({ appsReady }),
+  setVisible: (visible) => set((state) => (state.visible === visible ? state : { visible })),
+  setQuery: (query) => set((state) => (state.query === query ? state : { query })),
+  setResults: (results) => set((state) => (state.results === results ? state : { results })),
+  setSelectedIndex: (selectedIndex) =>
+    set((state) => (state.selectedIndex === selectedIndex ? state : { selectedIndex })),
+  setTab: (tab) =>
+    set((state) => {
+      if (state.tab === tab && state.query === "" && state.results.length === 0 && state.selectedIndex === 0) {
+        return state;
+      }
+      return { tab, query: "", results: [], selectedIndex: 0 };
+    }),
+  setClipboardHistory: (clipboardHistory) =>
+    set((state) => (state.clipboardHistory === clipboardHistory ? state : { clipboardHistory })),
+  setLoadingPhase: (loadingPhase) =>
+    set((state) => (state.loadingPhase === loadingPhase ? state : { loadingPhase })),
+  setAppsReady: (appsReady) => set((state) => (state.appsReady === appsReady ? state : { appsReady })),
   updateResultIcons: (iconForPath) =>
     set((state) => ({
       results: state.results.map((r) => {
