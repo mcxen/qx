@@ -20,13 +20,17 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the
 | **Clipboard** | Persisted clipboard history with text/image support, pinning, filtering, inline preview |
 | **Screen Recording** | Region-based GIF recording at 15fps (gifski), auto-saves to history |
 | **RSS Reader** | Add feeds, inline article reading, star/bookmark, OPML import/export, background auto-refresh |
+| **Weather** | Real-time weather display with location auto-detection, provider config, caching for instant launch, and background refresh |
 | **QxAI** | Built-in AI chat assistant with multi-provider support (DuckDuckGo, BYOK OpenAI-compatible), streaming responses, persistent memory, and per-conversation model switching |
 | **V2EX** | Browse and search v2ex.com topics (latest/hot), read articles inline with HTML sanitization, node-based filtering |
 | **Macros** | Record and replay keyboard/mouse macro sequences |
 | **Dev Tools** | Text / JSON / Markdown utility tools |
 | **GitHub Calendar** | View your GitHub contribution graph inline |
-| **Plugin System** | Sandboxed iframe-based plugin runtime with RPC bridge, marketplace, archive import, ed25519 signature verification, and `context.ai` SDK for plugin AI capabilities |
+| **OCR** | Optical character recognition model management for extracting text from images |
+| **Plugin System** | Sandboxed iframe-based plugin runtime with RPC bridge, marketplace, archive import, ed25519 signature verification, Raycast extension conversion, and `context.ai` SDK for plugin AI capabilities |
 | **AI Agent Settings** | Configure AI agent mode, default provider/model, tool toggles (bash, grep, memory, MCP, background tasks), and bash/grep execution parameters |
+| **Weather Settings** | Configure weather provider (Open-Meteo / OpenWeatherMap), location override, and auto-refresh interval |
+| **OCR Settings** | Download and manage OCR recognition models (languages, versions) |
 | **Settings** | General, appearance (light/dark/system theme with Geist design system), keyboard shortcuts, macOS permissions, plugin management |
 
 ---
@@ -83,11 +87,13 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the
 │  ┌────────────────────────────────────────────────────┐  │
 │  │              Rust Backend (Tauri Commands)          │  │
 │  │  apps  |  clipboard  |  screencap   |  rss          │  │
-│  │  g4f   |  plugin_api |  settings    |  system_     │  │
+│  │  g4f   |  plugin_api |  settings    |  system_      │  │
 │  │        |             |              |  stats        │  │
+│  │  system_  |  weather  |  floating_ |  apps_zh_     │  │
+│  │  information  |       |  panel     |  dict         │  │
 │  │  macros | file_search | history | ocr | github_    │  │
 │  │        |             |         |     | calendar     │  │
-│  │  v2ex  | system_info | storage | permissions       │  │
+│  │  v2ex  | storage | permissions | http_client |     │  │
 │  └────────────────────────────────────────────────────┘  │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -105,7 +111,7 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the
 └──────────────────────────────────────────────┘
 ```
 
-The Dynamic Island is always centered via `position: absolute; left: 50%; transform: translateX(-50%)`. Three visual styles are available: `solid`, `elevated`, and `glass`. The island supports idle modes (system info, date display with lunar calendar), notice, progress, activity, playback, and error states with marquee scrolling.
+The Dynamic Island is always centered via `position: absolute; left: 50%; transform: translateX(-50%)`. Three visual styles are available: `solid`, `elevated`, and `glass`. The island supports idle modes (system info, date display with lunar calendar and LED matrix clock), notice, progress, activity, playback, and error states with marquee scrolling.
 
 ---
 
@@ -119,7 +125,6 @@ The Dynamic Island is always centered via `position: absolute; left: 50%; transf
 | Clipboard History | <img src="README.assets/PixPin_2026-06-25_22-57-25.png" alt="PixPin_2026-06-25_22-57-25" style="zoom:25%;" /> |
 | RSS Reader | <img src="README.assets/PixPin_2026-06-25_22-57-39.png" alt="PixPin_2026-06-25_22-57-39" style="zoom:25%;" /> |
 | Settings — Appearance | `<!-- screenshot -->` |
-|                           |                                                              |
 
 ---
 
@@ -164,7 +169,7 @@ Type anything into the search bar. Results include:
 
 - **Apps** — fuzzy-matched from LaunchServices DB
 - **Files** — native file search (kMDQuery)
-- **Commands** — `settings`, `clipboard`, `rss`, `gif`, `macro`, `qxai`, `v2ex`
+- **Commands** — `settings`, `clipboard`, `rss`, `gif`, `macro`, `qxai`, `v2ex`, `weather`, `ocr`
 - **Calculator** — inline expression evaluation (`42 * 3.14`, `sqrt(144)`)
 - **Plugin commands** — from installed plugins
 
@@ -192,9 +197,13 @@ Type anything into the search bar. Results include:
 
 **V2EX** — search `v2ex`. Browse v2ex.com topics in latest or hot mode, search by keyword, and read articles with rendered HTML inline. Configure a V2EX API token and favorite nodes in the module preferences for extended features.
 
+**Weather** — search `weather`. Real-time weather display with provider config (Open-Meteo / OpenWeatherMap), location auto-detection, and caching for instant launch. Configure in Settings → Weather.
+
+**OCR** — search `ocr`. Download and manage OCR recognition models for extracting text from images. Configure languages and model versions in Settings → OCR.
+
 **Macros** — search `macro`. Record keyboard/mouse sequences and replay them. Saved macros persist in history.
 
-**Settings** — search `settings` or press `⌘,`. Configure theme, shortcuts, RSS, plugins, AI agent, and advanced options.
+**Settings** — search `settings` or press `⌘,`. Configure theme, shortcuts, RSS, Weather, OCR, plugins, AI agent, and advanced options across 11 settings panels.
 
 **AI Agent** — open Settings → AI Agent to configure the AI agent runtime: enable/disable agent mode, set default provider and model, and toggle tool groups including bash execution, grep search, memory, app/file search, HTTP fetch, MCP, notifications, and background tasks. Bash and grep have additional configuration for working directory, timeout, search root, and result limits. These settings gate plugin `context.ai` tool access at runtime.
 
@@ -300,9 +309,10 @@ src/                          # Frontend (React + TypeScript)
 │   ├── rss/                  # RSS reader (list + detail + store)
 │   ├── qx-ai/               # AI chat assistant (chat + settings + store)
 │   ├── v2ex/                # V2EX forum viewer (panel + detail)
-│   ├── settings/            # Settings (10 sub-panels + store)
+│   ├── settings/            # Settings (11 sub-panels + store)
 │   ├── screencap/           # Screen recorder + GIF history
 │   ├── macros/              # Macro recorder + replayer
+│   ├── weather/             # Weather display panel
 │   ├── documents/           # Dev text/JSON/MD tools
 │   └── github-calendar/     # GitHub contributions viewer
 ├── launcher/                 # Launcher sub-modules
@@ -321,6 +331,8 @@ src/                          # Frontend (React + TypeScript)
 │   ├── QxBottomIsland.tsx    # Dynamic Island component (status, progress, marquee)
 │   ├── ShellActionButton.tsx # Shell action bar button
 │   ├── HomeSystemIsland.tsx  # CPU/MEM/GPU sparkline island
+│   ├── HomeDateIsland.tsx    # LED matrix time + date island
+│   ├── Matrix.tsx            # LED dot matrix renderer
 │   └── ui.tsx                # Toggle, Select, Slider, Modal, etc.
 ├── hooks/
 │   └── useEscBack.ts         # 3-level cascading Esc hook
@@ -349,6 +361,10 @@ src-tauri/                    # Rust backend
 │   ├── history.rs            # Launch + search history
 │   ├── display_monitor.rs    # External display monitor
 │   ├── ocr.rs                # OCR model management
+│   ├── weather.rs             # Weather fetch + caching
+│   ├── floating_panel.rs      # Floating overlay panel
+│   ├── apps_zh_dict.rs        # Apple system app Chinese name dictionary
+│   ├── http_client.rs         # HTTP client helper
 │   ├── github_calendar.rs    # GitHub contribution fetch
 │   ├── v2ex.rs               # V2EX topic fetch/search
 │   ├── storage.rs            # Plugin key-value storage
@@ -399,7 +415,7 @@ Source-available — see [LICENSE](./LICENSE) for full terms.
 
 # Qx — macOS 效率启动器
 
-Qx 是一款常驻菜单栏的 macOS 桌面启动器，类 Raycast 风格，通过全局快捷键唤起。集搜索、剪贴板历史、GIF 录屏、RSS 阅读、AI 聊天、V2EX 浏览、宏录制等功能于一体。
+Qx 是一款常驻菜单栏的 macOS 桌面启动器，类 Raycast 风格，通过全局快捷键唤起。集搜索、剪贴板历史、GIF 录屏、RSS 阅读、天气、AI 聊天、V2EX 浏览、OCR、宏录制等功能于一体。
 
 基于 **Tauri v2** + **React 19** + **TypeScript** + **Rust**，使用 macOS 原生毛玻璃效果、Mach 内核 API 获取系统状态。
 
@@ -413,13 +429,17 @@ Qx 是一款常驻菜单栏的 macOS 桌面启动器，类 Raycast 风格，通�
 | **剪贴板** | 持久化历史记录，支持文本/图片、置顶、筛选和内联预览 |
 | **录屏** | 选择区域录制为 GIF（15fps，gifski 编码），自动保存历史 |
 | **RSS 阅读器** | 添加订阅源、内联阅读、收藏、OPML 导入/导出、后台自动刷新 |
+| **天气** | 实时天气显示，支持自动定位、多 provider 切换、缓存秒开和后台刷新 |
 | **QxAI** | 内置 AI 聊天助手，支持多 provider（DuckDuckGo、自定义 BYOK）、流式输出、持久记忆、会话内切换模型 |
 | **V2EX** | 浏览和搜索 v2ex.com 话题（最新/热门），内联阅读文章，节点过滤 |
 | **宏录制** | 录制和回放键盘/鼠标宏序列 |
 | **开发者工具** | 文本 / JSON / Markdown 实用工具 |
 | **GitHub 日历** | 内联查看 GitHub 贡献图 |
-| **插件系统** | 基于沙盒 iframe 的插件运行时，含 RPC 桥接、市场、压缩包导入、ed25519 签名验证和 `context.ai` AI SDK |
+| **OCR** | 光学字符识别模型管理，从图片中提取文字 |
+| **插件系统** | 基于沙盒 iframe 的插件运行时，含 RPC 桥接、市场、压缩包导入、ed25519 签名验证、Raycast 扩展转换和 `context.ai` AI SDK |
 | **AI Agent 设置** | 配置 AI Agent 模式、默认 provider/模型、工具开关（bash、grep、记忆、MCP、后台任务等） |
+| **天气设置** | 配置天气 provider（Open-Meteo / OpenWeatherMap）、位置覆盖和自动刷新间隔 |
+| **OCR 设置** | 下载和管理 OCR 识别模型（语言、版本） |
 | **设置** | 通用、外观（亮色/暗色/跟随系统，Geist 设计系统）、快捷键、macOS 权限、插件管理 |
 
 ## 安装

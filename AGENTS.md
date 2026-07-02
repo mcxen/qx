@@ -84,6 +84,8 @@ Record any skipped validation and why.
 ## Release Checklist
 
 Only run this when the user asks to release, tag, or publish.
+For the full operational flow, credential fallbacks, remote confirmation, and
+post-push dirty-worktree handling, follow `public/doc/release-workflow.md`.
 
 1. Review all changes:
    - `git status --short`
