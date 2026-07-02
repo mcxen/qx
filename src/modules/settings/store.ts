@@ -142,12 +142,17 @@ export interface PluginConfig {
   path: string;
 }
 
+export interface PluginDisplaySettings {
+  raycast_action_panel: boolean;
+}
+
 export interface Settings {
   general: GeneralSettings;
   appearance: AppearanceSettings;
   shortcuts: Record<string, ShortcutBinding>;
   app_shortcuts: Record<string, ShortcutBinding>;
   plugins: PluginConfig[];
+  plugin_display: PluginDisplaySettings;
   advanced: AdvancedSettings;
   agent: AgentSettings;
   rss: RssSettings;
@@ -198,6 +203,9 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   app_shortcuts: {},
   plugins: [],
+  plugin_display: {
+    raycast_action_panel: true,
+  },
   advanced: {
     log_level: "info",
     dev_mode: false,
@@ -347,6 +355,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           ...s,
           general: { ...DEFAULT_SETTINGS.general, ...s.general },
           appearance: { ...DEFAULT_SETTINGS.appearance, ...s.appearance },
+          plugin_display: { ...DEFAULT_SETTINGS.plugin_display, ...s.plugin_display },
           advanced: { ...DEFAULT_SETTINGS.advanced, ...s.advanced },
           agent: { ...DEFAULT_SETTINGS.agent, ...s.agent },
           rss: { ...DEFAULT_SETTINGS.rss, ...s.rss },

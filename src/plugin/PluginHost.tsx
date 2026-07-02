@@ -3,6 +3,7 @@ import QxShell, { type BottomIslandContent, type QxShellAction } from "../compon
 import { useEscBack } from "../hooks/useEscBack";
 import { usePluginRegistry } from "./registry";
 import { useStore } from "../store";
+import { useSettingsStore } from "../modules/settings/store";
 import { shouldIgnoreBareShortcut } from "../utils/keyboard";
 
 export function PluginHost() {
@@ -45,6 +46,9 @@ export function PluginPanelViewport() {
     kind: "idle" | "loading" | "error";
     detail?: string;
   }>({ kind: "idle" });
+  const raycastActionPanel = useSettingsStore(
+    (state) => state.settings.plugin_display.raycast_action_panel,
+  );
   const isPluginTab = tab.startsWith("plugin:");
 
   const pluginId = isPluginTab ? tab.slice("plugin:".length) : "";
@@ -119,7 +123,7 @@ export function PluginPanelViewport() {
       container.innerHTML = "";
       setRenderState({ kind: "idle" });
     };
-  }, [isPluginTab, pluginId, panels, refreshKey]);
+  }, [isPluginTab, pluginId, panels, refreshKey, raycastActionPanel]);
 
   if (!isPluginTab) return null;
 

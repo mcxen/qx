@@ -218,6 +218,9 @@ export interface PluginAiTaskInput extends PluginAiChatOptions {
 
 export interface PluginContext {
   pluginId: string;
+  display: {
+    raycastActionPanel: boolean;
+  };
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
   showToast: (msg: string) => void;
   prompt: (label: string, defaultValue?: string) => Promise<string | null>;

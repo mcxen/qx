@@ -1049,6 +1049,8 @@ export default function PluginManager() {
   const { plugins, install, uninstall, setEnabled, refresh, loaded, loading } =
     usePluginRegistry();
   const searchMetadata = useSettingsStore((state) => state.settings.search_metadata);
+  const pluginDisplay = useSettingsStore((state) => state.settings.plugin_display);
+  const patchSettings = useSettingsStore((state) => state.patch);
   const [tab, setTab] = useState<Tab>("installed");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [archivePath, setArchivePath] = useState("");
@@ -1190,11 +1192,31 @@ export default function PluginManager() {
 
       <TabsContent value="installed" className="qx-marketplace">
         <SettingsCard
+          title="Display"
+          description="Controls how converted plugin interfaces expose secondary actions."
+          className="qx-plugin-display-card"
+        >
+          <Row
+            title="Show Raycast ActionPanel buttons"
+            description="Display converted Raycast item actions as compact buttons on the right. Narrow plugin panels hide them first to protect the list layout."
+          >
+            <Toggle
+              value={pluginDisplay.raycast_action_panel}
+              onChange={(raycast_action_panel) => patchSettings("plugin_display", {
+                ...pluginDisplay,
+                raycast_action_panel,
+              })}
+            />
+          </Row>
+        </SettingsCard>
+
+        <SettingsCard
           title={t("plugins.importArchive", "Import Plugin Archive")}
           description={t(
             "plugins.importArchive.desc",
             "Install a .zip or .qx-plugin package from disk, or paste a GitHub release/source archive URL.",
           )}
+          className="qx-plugin-import-card"
           trailing={
             <button
               type="button"

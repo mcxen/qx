@@ -476,9 +476,12 @@ function fallbackIndexJs(pkg) {
 `;
 }
 
-function raycastApiShimModule() {
+function raycastApiShimModule(defaultPreferences, defaultSupportPath) {
   return String.raw`
 import React from "react";
+
+const defaultPreferenceValues = ${JSON.stringify(defaultPreferences)};
+const defaultEnvironmentSupportPath = ${JSON.stringify(defaultSupportPath)};
 
 function runtime() {
   return globalThis.__qxRaycastRuntime;
@@ -504,6 +507,26 @@ function firstAction(node) {
     if (nested) return nested;
   }
   return null;
+}
+
+function collectActions(node, result = []) {
+  const children = React.Children.toArray(node?.props?.children);
+  for (const child of children) {
+    if (!React.isValidElement(child)) continue;
+    if (child.type === Action && typeof child.props?.onAction === "function") {
+      result.push(child);
+    }
+    if (child.type !== Action && typeof child.type === "function") {
+      try {
+        collectActions(child.type(child.props || {}), result);
+      } catch {
+        // Action-only components should be pure. Ignore anything that needs
+        // a React render dispatcher and let the primary click action handle it.
+      }
+    }
+    collectActions(child, result);
+  }
+  return result;
 }
 
 function runAction(action) {
@@ -577,12 +600,12 @@ export async function confirmAlert(options) {
 }
 
 export function getPreferenceValues() {
-  return runtime()?.preferences || {};
+  return runtime()?.preferences || defaultPreferenceValues;
 }
 
 export const environment = {
   get supportPath() {
-    return runtime()?.supportPath || "/tmp";
+    return runtime()?.supportPath || defaultEnvironmentSupportPath;
   },
   get assetsPath() {
     return runtime()?.assetsPath || "";
@@ -649,15 +672,29 @@ export function useNavigation() {
   };
 }
 
+function actionPanelVisible() {
+  return runtime()?.context?.display?.raycastActionPanel !== false;
+}
+
 export function ActionPanel({ children }) {
-  return React.createElement("div", { "data-raycast-actions": true, style: { display: "none" } }, children);
+  return React.createElement("div", {
+    "data-raycast-actions": true,
+    className: cx("qx-raycast-actions-inline", actionPanelVisible() ? null : "is-hidden"),
+  }, children);
 }
 ActionPanel.Section = function ActionPanelSection({ children }) {
   return React.createElement(React.Fragment, null, children);
 };
 
 export function Action(props) {
-  return React.createElement("button", { type: "button", onClick: props.onAction }, props.title || "Action");
+  return React.createElement("button", {
+    type: "button",
+    className: "qx-raycast-action-button",
+    onClick: (event) => {
+      event?.stopPropagation?.();
+      if (typeof props.onAction === "function") void Promise.resolve(props.onAction());
+    },
+  }, props.title || "Action");
 }
 Action.OpenInBrowser = function ActionOpenInBrowser(props) {
   return React.createElement(Action, { ...props, onAction: () => open(props.url), title: props.title || "Open in Browser" });
@@ -686,17 +723,22 @@ function SearchInput({ placeholder }) {
 
 function ItemShell({ title, subtitle, icon, accessories, actions, children, image }) {
   const action = firstAction(actions);
-  return React.createElement("button", {
-    type: "button",
+  return React.createElement("div", {
+    role: "button",
+    tabIndex: 0,
     className: "qx-raycast-item",
     onClick: () => runAction(action),
+    onKeyDown: (event) => {
+      if (event.key === "Enter" || event.key === " ") runAction(action);
+    },
   },
     image ? React.createElement("img", { className: "qx-raycast-thumb", src: typeof image === "string" ? image : image?.source || image }) : React.createElement("span", { className: "qx-raycast-icon" }, textOf(icon)),
     React.createElement("span", { className: "qx-raycast-item-main" },
       React.createElement("strong", null, textOf(title)),
       subtitle ? React.createElement("small", null, textOf(subtitle)) : null,
       children),
-    accessories ? React.createElement("span", { className: "qx-raycast-accessory" }, textOf(Array.isArray(accessories) ? accessories[0] : accessories)) : null);
+    accessories ? React.createElement("span", { className: "qx-raycast-accessory" }, textOf(Array.isArray(accessories) ? accessories[0] : accessories)) : null,
+    actions);
 }
 
 export function List(props) {
@@ -980,6 +1022,14 @@ function raycastShimStyles() {
     .qx-raycast-item-main strong,.qx-raycast-item-main small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .qx-raycast-item-main small,.qx-raycast-accessory{color:var(--qx-text-secondary,#666);}
     .qx-raycast-loading,.qx-raycast-empty,.qx-raycast-detail{padding:18px;color:var(--qx-text-secondary,#666);overflow:auto;}
+    .qx-raycast-actions-inline{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:0 1 min(42%,360px);margin-left:auto;min-width:0;max-width:min(42%,360px);overflow:hidden;padding:4px 6px 4px 0;}
+    .qx-raycast-actions-inline.is-hidden{display:none;}
+    .qx-raycast-action-button{border:1px solid var(--qx-border-1,#ddd);background:var(--qx-bg-component-1,#fff);color:inherit;border-radius:6px;padding:4px 7px;font:inherit;font-size:11px;cursor:pointer;}
+    .qx-raycast-action-button{min-width:0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .qx-raycast-action-button:hover{background:var(--qx-bg-component-2,#f5f5f5);}
+    .qx-raycast-grid .qx-raycast-actions-inline{margin-left:0;max-width:100%;width:100%;justify-content:flex-start;padding:0 8px 8px;}
+    :root[data-qx-raycast-action-panel="hidden"] .qx-raycast-actions-inline{display:none;}
+    @media (max-width: 680px){.qx-raycast-actions-inline{display:none;}}
   `;
   return String.raw`
 function injectRaycastStyles() {
@@ -1036,6 +1086,23 @@ function virtualModulePlugin(modules) {
   };
 }
 
+function stabilizeBundleComments(text) {
+  return text
+    .split("\n")
+    .map((line) => {
+      if (/^\/\/ .*qx-raycast-build-[^/]+\/entry\.jsx$/.test(line)) {
+        return "// qx-raycast-entry";
+      }
+      const sourceMatch = line.match(/^\/\/ .*\/extensions\/([^/]+\/src\/.+)$/);
+      if (sourceMatch) {
+        return `// raycast-source/${sourceMatch[1]}`;
+      }
+      return line;
+    })
+    .join("\n")
+    .replace(/[ \t]+$/gm, "");
+}
+
 async function genericRaycastIndexJs(sourceDir, pkg, manifest) {
   const esbuild = await import("esbuild");
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "qx-raycast-build-"));
@@ -1077,6 +1144,7 @@ async function invokeCommand(name, container, context) {
   const mod = commandModules[name] || commandModules[Object.keys(commandModules)[0]];
   if (!mod) throw new Error("Command not bundled: " + name);
   const component = mod.default || mod.Command || mod;
+  const mode = commandModes[name] || "view";
   const cache = new Map();
   globalThis.__qxRaycastRuntime = {
     context,
@@ -1089,6 +1157,11 @@ async function invokeCommand(name, container, context) {
     render: (element) => renderElement(container, element),
     setSearch: () => {},
   };
+  if (mode === "view") {
+    const element = React.isValidElement(component) ? component : React.createElement(component);
+    renderElement(container, element);
+    return;
+  }
   const result = typeof component === "function" ? await component({}) : component;
   if (React.isValidElement(result)) {
     renderElement(container, result);
@@ -1140,7 +1213,7 @@ export default {
       mainFields: ["browser", "module", "main"],
       conditions: ["browser", "default"],
       plugins: [virtualModulePlugin({
-        "@raycast/api": raycastApiShimModule(),
+        "@raycast/api": raycastApiShimModule(preferencesObject(pkg), `/qx-plugin-files/${manifest.id}`),
         "node-fetch": nodeFetchShimModule(),
         "file-url": fileUrlShimModule(),
         "fs-extra": fsExtraShimModule(),
@@ -1154,7 +1227,7 @@ export default {
         "global": "globalThis",
       },
     });
-    return result.outputFiles[0].text;
+    return stabilizeBundleComments(result.outputFiles[0].text);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

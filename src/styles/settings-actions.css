@@ -278,6 +278,16 @@
   color: var(--qx-text-tertiary);
 }
 
+.qx-plugin-display-card,
+.qx-plugin-import-card {
+  flex: 0 0 auto;
+  margin: 10px var(--qx-settings-gutter-x) 0;
+}
+
+.qx-plugin-import-card {
+  margin-top: 8px;
+}
+
 .qx-plugin-import-header:hover {
   background: var(--qx-bg-component-2);
   color: var(--qx-text-primary);

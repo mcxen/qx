@@ -343,6 +343,20 @@ pub struct PluginConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginDisplaySettings {
+    #[serde(default = "default_true", rename = "raycast_action_panel")]
+    pub raycast_action_panel: bool,
+}
+
+impl Default for PluginDisplaySettings {
+    fn default() -> Self {
+        Self {
+            raycast_action_panel: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct V2exSettings {
     #[serde(default, rename = "token")]
     pub token: String,
@@ -475,6 +489,8 @@ pub struct Settings {
     #[serde(default)]
     pub plugins: Vec<PluginConfig>,
     #[serde(default)]
+    pub plugin_display: PluginDisplaySettings,
+    #[serde(default)]
     pub advanced: AdvancedSettings,
     #[serde(default)]
     pub agent: AgentSettings,
@@ -530,6 +546,7 @@ impl Default for Settings {
             shortcuts,
             app_shortcuts: BTreeMap::new(),
             plugins: Vec::new(),
+            plugin_display: PluginDisplaySettings::default(),
             advanced: AdvancedSettings::default(),
             agent: AgentSettings::default(),
             rss: RssSettings::default(),

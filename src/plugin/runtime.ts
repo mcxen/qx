@@ -5,6 +5,11 @@ import type {
   RegisteredPanel,
 } from "./types";
 import { handlePluginRpc } from "./rpcMethods";
+import {
+  DEFAULT_SETTINGS,
+  useSettingsStore,
+  type PluginDisplaySettings,
+} from "../modules/settings/store";
 
 let requestCounter = 0;
 function nextRequestId(): string {
@@ -84,17 +89,29 @@ function serializeForInlineScript(value: string): string {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
 
+function pluginDisplaySettingsSnapshot(): PluginDisplaySettings {
+  return {
+    ...DEFAULT_SETTINGS.plugin_display,
+    ...useSettingsStore.getState().settings.plugin_display,
+  };
+}
+
 export function buildPluginRuntimeHtml(
   pluginId: string,
   entrySource: string,
   runtimeId: string,
+  pluginDisplay: PluginDisplaySettings = pluginDisplaySettingsSnapshot(),
 ): string {
+  const raycastActionPanel = pluginDisplay.raycast_action_panel !== false;
   const runtime = `
     <style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}</style>
     <script type="module">
       const pluginId = ${JSON.stringify(pluginId)};
       const runtimeId = ${JSON.stringify(runtimeId)};
       const entrySource = ${serializeForInlineScript(entrySource)};
+      const pluginDisplay = ${JSON.stringify({
+        raycastActionPanel,
+      })};
       let plugin = null;
       const pending = new Map();
       const contextTimers = new Map();
@@ -107,6 +124,9 @@ export function buildPluginRuntimeHtml(
       function postToParent(message) {
         parent.postMessage(message, '*');
       }
+
+      document.documentElement.dataset.qxRaycastActionPanel = pluginDisplay.raycastActionPanel ? 'visible' : 'hidden';
+      document.documentElement.dataset.qxPluginActionPanel = pluginDisplay.raycastActionPanel ? 'visible' : 'hidden';
 
       function rpc(method, payload = {}) {
         const requestId = generateId();
@@ -192,6 +212,7 @@ export function buildPluginRuntimeHtml(
 
       const context = {
         pluginId,
+        display: pluginDisplay,
         invoke: (cmd, args) => rpc('invoke', { cmd, args }),
         showToast: (msg) => rpc('showToast', { msg }),
         prompt: (label, defaultValue) => rpc('prompt', { label, defaultValue }),
