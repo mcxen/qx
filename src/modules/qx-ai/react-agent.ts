@@ -352,7 +352,7 @@ Action Input: <a single-line JSON object matching the tool's schema>
 After each Action the runtime will append a line:
 Observation: <the tool result>
 
-You may chain up to 5 Thought/Action/Observation rounds.
+You may chain several Thought/Action/Observation rounds.
 When you have enough information, finish with:
 
 Final Answer: <the answer to the user's question, in plain prose>
@@ -524,7 +524,7 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
   }
 
   const steps: AgentStep[] = [];
-  const maxIterations = opts.maxIterations ?? 5;
+  const maxIterations = opts.maxIterations ?? opts.agentSettings.agent_max_iterations ?? 12;
   let lastRaw = "";
   let scratchpad = "";
 
@@ -631,8 +631,39 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
     scratchpad = `${scratchpad ? `${scratchpad}\n` : ""}${lastRaw.trim()}\nObservation: ${observation}`;
   }
 
-  const truncatedFinal =
-    "I was unable to finish within the iteration limit. Last reasoning:\n\n" + scratchpad;
+  const recoveryMessages: G4fMessage[] = [
+    ...working,
+    { role: "assistant", content: scratchpad.trim() },
+    {
+      role: "user",
+      content:
+        "You have reached the maximum number of steps. Review the observations above carefully and provide your best `Final Answer:` now. Summarize what you learned and respond directly to the user's request.",
+    },
+  ];
+
+  try {
+    const recoveryText = await streamOnce(
+      recoveryMessages,
+      opts.provider,
+      opts.model,
+      (partial) => opts.onAssistantStream(scratchpad ? `${scratchpad}\n${partial}` : partial),
+    );
+    const parsed = parseAgentResponse(recoveryText);
+    const answer = parsed.kind === "final" ? (parsed.finalAnswer ?? recoveryText.trim()) : recoveryText.trim();
+    const finalStep: AgentStep = {
+      id: nextStepId(),
+      kind: "final",
+      text: answer,
+      state: "completed",
+    };
+    steps.push(finalStep);
+    opts.onStep(finalStep);
+    return { finalAnswer: answer, steps };
+  } catch {
+    // recovery failed, fall through to error
+  }
+
+  const truncatedFinal = "Unable to complete: hit iteration limit. " + scratchpad.slice(0, 500);
   const finalStep: AgentStep = {
     id: nextStepId(),
     kind: "error",
@@ -697,7 +728,7 @@ export async function runFunctionCallingAgent(
   }
 
   const steps: AgentStep[] = [];
-  const maxIterations = opts.maxIterations ?? 5;
+  const maxIterations = opts.maxIterations ?? opts.agentSettings.agent_max_iterations ?? 12;
   let lastFinal = "";
 
   for (let i = 0; i < maxIterations; i++) {
@@ -800,6 +831,40 @@ export async function runFunctionCallingAgent(
         content: observation,
       });
     }
+  }
+
+  const recoveryMessages: Array<Record<string, unknown>> = [
+    ...working,
+    {
+      role: "user",
+      content:
+        "You have reached the maximum number of steps. Review the observations above and provide your final answer to the user's request. Respond with text only, no more tool calls.",
+    },
+  ];
+
+  try {
+    const recoveryMessage = await invoke<OpenAIMessage>("qxai_chat_with_tools", {
+      provider: opts.provider,
+      model: opts.model,
+      messages: recoveryMessages,
+      tools: [],
+      toolChoice: "none",
+    });
+    const finalText = (recoveryMessage.content?.trim() ?? lastFinal).trim();
+    if (finalText) {
+      opts.onAssistantStream(finalText);
+    }
+    const finalStep: AgentStep = {
+      id: nextStepId(),
+      kind: "final",
+      text: finalText,
+      state: "completed",
+    };
+    steps.push(finalStep);
+    opts.onStep(finalStep);
+    return { finalAnswer: finalText, steps };
+  } catch {
+    // recovery failed, fall through to error
   }
 
   const errStep: AgentStep = {

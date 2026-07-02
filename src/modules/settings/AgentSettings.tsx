@@ -160,6 +160,21 @@ export default function AgentSettings() {
             onChange={(value) => patchAgent({ model_tools_enabled: value })}
           />
         </Row>
+
+        <Row
+          title={t("agent.maxIterations", "Max Iterations")}
+          description={t("agent.maxIterations.desc", "Maximum Thought/Action rounds before the agent is forced to summarize. Increase for complex multi-step tasks.")}
+        >
+          <Slider
+            value={agent.agent_max_iterations}
+            min={3}
+            max={50}
+            step={1}
+            onChange={(value) => patchAgent({ agent_max_iterations: value })}
+            formatLabel={(value) => `${value}`}
+            ariaLabel={t("agent.maxIterations", "Max Iterations")}
+          />
+        </Row>
       </SettingsCard>
 
       <SettingsCard

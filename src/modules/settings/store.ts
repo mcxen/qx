@@ -87,6 +87,7 @@ export interface AgentSettings {
   grep_root: string;
   grep_max_results: number;
   background_tasks_enabled: boolean;
+  agent_max_iterations: number;
 }
 
 export interface RssSettings {
@@ -224,6 +225,7 @@ export const DEFAULT_SETTINGS: Settings = {
     grep_root: "",
     grep_max_results: 80,
     background_tasks_enabled: false,
+    agent_max_iterations: 12,
   },
   rss: {
     offline_cache_enabled: true,

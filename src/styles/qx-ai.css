@@ -303,6 +303,23 @@
   to { transform: rotate(360deg); }
 }
 
+/* QxAI conversation list titles should use full row width */
+.qx-qxai-panel-shell .qx-list-row {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.qx-qxai-panel-shell .qx-list-copy {
+  min-width: 0;
+}
+
+.qx-qxai-panel-shell .qx-list-title,
+.qx-qxai-panel-shell .qx-list-subtitle {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .qx-ai-tool-hint {
   color: var(--qx-text-tertiary);
   font-size: 11px;

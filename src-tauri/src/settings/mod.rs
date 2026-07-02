@@ -200,6 +200,11 @@ pub struct AgentSettings {
     pub grep_max_results: u32,
     #[serde(default, rename = "background_tasks_enabled")]
     pub background_tasks_enabled: bool,
+    #[serde(
+        default = "default_agent_max_iterations",
+        rename = "agent_max_iterations"
+    )]
+    pub agent_max_iterations: u32,
 }
 
 fn default_agent_bash_timeout_ms() -> u32 {
@@ -212,6 +217,10 @@ fn default_agent_grep_command() -> String {
 
 fn default_agent_grep_max_results() -> u32 {
     80
+}
+
+fn default_agent_max_iterations() -> u32 {
+    12
 }
 
 impl Default for AgentSettings {
@@ -236,6 +245,7 @@ impl Default for AgentSettings {
             grep_root: String::new(),
             grep_max_results: default_agent_grep_max_results(),
             background_tasks_enabled: false,
+            agent_max_iterations: default_agent_max_iterations(),
         }
     }
 }
