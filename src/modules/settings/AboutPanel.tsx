@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-shell";
-import { Row, SettingsCard } from "../../components/ui";
+import type { LucideIcon } from "lucide-react";
+import { Archive, Clipboard, Folder, History, RefreshCw, Rss, Trash2 } from "lucide-react";
+import { Button, Row, SettingsCard } from "../../components/ui";
 import GifText from "../../components/gif-text";
 import { useT } from "../../i18n";
 
@@ -31,6 +33,8 @@ interface StorageOverview {
 interface StorageClearResult {
   cleared_bytes: number;
   cleared_files: number;
+  cleared_records?: number;
+  warnings?: string[];
 }
 
 interface QxUpdateInfo {
@@ -55,7 +59,14 @@ interface QxUpdateInstallResult {
   message: string;
 }
 
-type ClearKind = "cache" | "files" | "clipboard";
+type ClearKind =
+  | "cache"
+  | "files"
+  | "clipboard"
+  | "clipboard-history"
+  | "launcher-history"
+  | "rss-cache"
+  | "reclaimable";
 type BusyKind = ClearKind | "refresh";
 
 const BUCKET_LABELS: Record<string, string> = {
@@ -66,6 +77,16 @@ const BUCKET_LABELS: Record<string, string> = {
   plugins: "Plugins",
   settings: "Settings",
 };
+
+interface CleanupAction {
+  id: ClearKind;
+  icon: LucideIcon;
+  command: string;
+  title: string;
+  description: string;
+  confirm: string;
+  danger?: boolean;
+}
 
 function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -182,36 +203,142 @@ export default function AboutPanel() {
     void open(latestUrl || RELEASES_URL);
   };
 
-  const clearStorage = async (kind: ClearKind) => {
-    const messageMap: Record<ClearKind, string> = {
-      cache: t(
+  const cleanupActions: CleanupAction[] = [
+    {
+      id: "cache",
+      icon: Archive,
+      command: "qx_storage_clear_cache",
+      title: t("about.storage.cleanup.cache", "Rebuildable Cache"),
+      description: t(
+        "about.storage.cleanup.cache.desc",
+        "App icons, OCR models, and temporary recording folders.",
+      ),
+      confirm: t(
         "about.storage.confirmCache",
         "Clear reusable caches? App icons and OCR models can be rebuilt or downloaded again.",
       ),
-      files: t(
+    },
+    {
+      id: "files",
+      icon: Folder,
+      command: "qx_storage_clear_files",
+      title: t("about.storage.cleanup.files", "Generated Files"),
+      description: t(
+        "about.storage.cleanup.files.desc",
+        "Qx screenshots and GIF recordings in the output folder.",
+      ),
+      confirm: t(
         "about.storage.confirmFiles",
         "Delete Qx GIF recordings from the output folder?",
       ),
-      clipboard: t(
+      danger: true,
+    },
+    {
+      id: "clipboard",
+      icon: Clipboard,
+      command: "qx_storage_clear_clipboard",
+      title: t("about.storage.cleanup.clipboard", "Clipboard Attachments"),
+      description: t(
+        "about.storage.cleanup.clipboard.desc",
+        "Cached clipboard images and pasteboard snapshots. Text history is preserved.",
+      ),
+      confirm: t(
         "about.storage.confirmClipboard",
         "Delete cached clipboard images? Text history is preserved.",
       ),
-    };
-    if (!window.confirm(messageMap[kind])) return;
+    },
+    {
+      id: "clipboard-history",
+      icon: Trash2,
+      command: "qx_storage_clear_clipboard_history",
+      title: t("about.storage.cleanup.clipboardHistory", "Clipboard History"),
+      description: t(
+        "about.storage.cleanup.clipboardHistory.desc",
+        "All clipboard text entries, image entries, and cached attachments.",
+      ),
+      confirm: t(
+        "about.storage.confirmClipboardHistory",
+        "Delete all clipboard history, including text entries and cached images?",
+      ),
+      danger: true,
+    },
+    {
+      id: "launcher-history",
+      icon: History,
+      command: "qx_storage_clear_launcher_history",
+      title: t("about.storage.cleanup.launcherHistory", "Launcher History"),
+      description: t(
+        "about.storage.cleanup.launcherHistory.desc",
+        "Recent launches and search suggestions used by the launcher.",
+      ),
+      confirm: t(
+        "about.storage.confirmLauncherHistory",
+        "Clear recent launches and search suggestion history?",
+      ),
+    },
+    {
+      id: "rss-cache",
+      icon: Rss,
+      command: "qx_storage_clear_rss_cache",
+      title: t("about.storage.cleanup.rssCache", "RSS Offline Articles"),
+      description: t(
+        "about.storage.cleanup.rssCache.desc",
+        "Non-starred RSS articles. Feed subscriptions and starred items stay.",
+      ),
+      confirm: t(
+        "about.storage.confirmRssCache",
+        "Delete non-starred RSS offline articles while keeping feeds and starred items?",
+      ),
+    },
+    {
+      id: "reclaimable",
+      icon: RefreshCw,
+      command: "qx_storage_clear_reclaimable",
+      title: t("about.storage.cleanup.reclaimable", "All Cache & History"),
+      description: t(
+        "about.storage.cleanup.reclaimable.desc",
+        "Rebuildable cache plus clipboard, launcher, and RSS history. Generated files are not removed.",
+      ),
+      confirm: t(
+        "about.storage.confirmReclaimable",
+        "Clear all cache and history? Generated files, plugins, and settings will remain.",
+      ),
+      danger: true,
+    },
+  ];
+
+  const formatStorageClearResult = (result: StorageClearResult): string => {
+    const parts: string[] = [];
+    if (result.cleared_bytes > 0) parts.push(formatBytes(result.cleared_bytes));
+    if (result.cleared_files > 0) {
+      parts.push(
+        `${result.cleared_files} ${t("about.storage.files.unit", "files")}`,
+      );
+    }
+    if ((result.cleared_records ?? 0) > 0) {
+      parts.push(
+        `${result.cleared_records} ${t("about.storage.records.unit", "records")}`,
+      );
+    }
+    if (parts.length === 0) return t("about.storage.clearedNothing", "Nothing to clear.");
+    return t("about.storage.clearedDetailed", "Cleared {items}.").replace(
+      "{items}",
+      parts.join(" / "),
+    );
+  };
+
+  const clearStorage = async (kind: ClearKind) => {
+    const action = cleanupActions.find((item) => item.id === kind);
+    if (!action) return;
+    if (!window.confirm(action.confirm)) return;
     try {
       setStorageBusy(kind);
       setStorageStatus("");
-      const commandMap: Record<ClearKind, string> = {
-        cache: "qx_storage_clear_cache",
-        files: "qx_storage_clear_files",
-        clipboard: "qx_storage_clear_clipboard",
-      };
-      const result = await invoke<StorageClearResult>(commandMap[kind]);
-      setStorageStatus(
-        t("about.storage.cleared", "Cleared {size} across {count} files.")
-          .replace("{size}", formatBytes(result.cleared_bytes))
-          .replace("{count}", String(result.cleared_files)),
-      );
+      const result = await invoke<StorageClearResult>(action.command);
+      const warningText = result.warnings?.length
+        ? ` ${t("about.storage.warnings", "Some entries were skipped:")} ${result.warnings.join("; ")}`
+        : "";
+      setStorageStatus(`${action.title}: ${formatStorageClearResult(result)}${warningText}`);
       await loadStorage();
     } catch (e) {
       setStorageStatus(String(e));
@@ -316,34 +443,15 @@ export default function AboutPanel() {
           </div>
 
           <div className="qx-storage-actions">
-            <button
-              className="qx-command-button"
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => void loadStorage()}
               disabled={storageBusy !== null}
             >
+              <RefreshCw size={14} aria-hidden="true" />
               {storageBusy === "refresh" ? t("about.storage.refreshing", "Refreshing...") : t("about.storage.refresh", "Refresh")}
-            </button>
-            <button
-              className="qx-command-button"
-              onClick={() => void clearStorage("cache")}
-              disabled={storageBusy !== null}
-            >
-              {storageBusy === "cache" ? t("about.storage.clearing", "Clearing...") : t("about.storage.clearCache", "Clear Cache")}
-            </button>
-            <button
-              className="qx-command-button"
-              onClick={() => void clearStorage("clipboard")}
-              disabled={storageBusy !== null}
-            >
-              {storageBusy === "clipboard" ? t("about.storage.clearing", "Clearing...") : t("about.storage.clearClipboard", "Clear Clipboard")}
-            </button>
-            <button
-              className="qx-command-button danger"
-              onClick={() => void clearStorage("files")}
-              disabled={storageBusy !== null}
-            >
-              {storageBusy === "files" ? t("about.storage.clearing", "Clearing...") : t("about.storage.clearFiles", "Clear Files")}
-            </button>
+            </Button>
           </div>
 
           {storageStatus && <div className="qx-storage-status">{storageStatus}</div>}
@@ -352,6 +460,32 @@ export default function AboutPanel() {
               {t("about.storage.warnings", "Some entries were skipped:")} {warnings.join("; ")}
             </div>
           )}
+
+          <div className="qx-cleanup-list" aria-label={t("about.storage.cleanup", "Cleanup Targets")}>
+            {cleanupActions.map((action) => {
+              const Icon = action.icon;
+              const busy = storageBusy === action.id;
+              return (
+                <div className={`qx-cleanup-item${action.danger ? " is-danger" : ""}`} key={action.id}>
+                  <span className="qx-cleanup-icon" aria-hidden="true">
+                    <Icon size={16} strokeWidth={2.1} />
+                  </span>
+                  <div className="qx-cleanup-copy">
+                    <div className="qx-cleanup-title">{action.title}</div>
+                    <div className="qx-cleanup-desc">{action.description}</div>
+                  </div>
+                  <Button
+                    variant={action.danger ? "destructive" : "outline"}
+                    size="sm"
+                    onClick={() => void clearStorage(action.id)}
+                    disabled={storageBusy !== null}
+                  >
+                    {busy ? t("about.storage.clearing", "Clearing...") : t("about.storage.clean", "Clean")}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
 
           <div className="qx-storage-list">
             {(storage?.buckets ?? []).map((bucket) => {

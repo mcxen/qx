@@ -1352,6 +1352,65 @@ span.qx-plugin-screenshot {
   flex-wrap: wrap;
 }
 
+.qx-cleanup-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.qx-cleanup-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-2);
+}
+
+.qx-cleanup-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-accent-soft);
+  color: var(--qx-accent);
+}
+
+.qx-cleanup-item.is-danger .qx-cleanup-icon {
+  background: color-mix(in srgb, var(--qx-danger) 14%, transparent);
+  color: var(--qx-danger);
+}
+
+.qx-cleanup-copy {
+  min-width: 0;
+}
+
+.qx-cleanup-title {
+  overflow: hidden;
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-cleanup-desc {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .qx-storage-status {
   padding: 6px 8px;
   border: 1px solid var(--qx-border-1);
@@ -1359,6 +1418,51 @@ span.qx-plugin-screenshot {
   background: var(--qx-overlay-1);
   color: var(--qx-text-secondary);
   font-size: 12px;
+}
+
+.qx-settings-inline-status {
+  padding: 8px 10px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+}
+
+.qx-settings-inline-status.is-danger {
+  border-color: color-mix(in srgb, var(--qx-danger) 28%, transparent);
+  background: color-mix(in srgb, var(--qx-danger) 10%, transparent);
+  color: var(--qx-danger);
+}
+
+.qx-settings-progress {
+  padding: 4px 0 8px;
+}
+
+.qx-settings-progress-track {
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-2);
+}
+
+.qx-settings-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--qx-accent);
+  transition: width 0.2s ease;
+}
+
+.qx-settings-progress-label,
+.qx-settings-success {
+  margin-top: 6px;
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+}
+
+.qx-settings-success {
+  color: var(--qx-success);
 }
 
 .qx-storage-list {
@@ -1385,6 +1489,13 @@ span.qx-plugin-screenshot {
   }
   .qx-storage-row-side {
     align-items: flex-start !important;
+  }
+  .qx-cleanup-item {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+  .qx-cleanup-item .qx-shadcn-button {
+    grid-column: 2;
+    justify-self: flex-start;
   }
 }
 
@@ -1535,6 +1646,10 @@ span.qx-plugin-screenshot {
   width: 100%;
   max-width: 280px;
   min-width: 0;
+}
+
+.qx-settings-input-wrap--narrow {
+  max-width: 160px;
 }
 
 .qx-settings-input-wrap .qx-shadcn-input,

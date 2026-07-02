@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useT } from "../../i18n";
+import { Button, SettingsCard } from "../../components/ui";
 
 interface PermissionStatus {
   id: string;
@@ -112,74 +113,91 @@ export default function PermissionSettings() {
 
   return (
     <div className="qx-settings-page">
-      <div className="qx-permissions-summary">
-        <div>
-          <div className="qx-permissions-summary-title">
-            {t("permissions.title", "macOS Permissions")}
+      <SettingsCard
+        title={t("permissions.title", "macOS Permissions")}
+        description={t(
+          "permissions.desc",
+          "Check the system permissions Qx needs for GIF recording and macros.",
+        )}
+        trailing={
+          <div className="qx-permissions-score">
+            {loading ? t("permissions.checking", "Checking...") : `${grantedCount}/${availableCount}`}
           </div>
-          <div className="qx-permissions-summary-desc">
-            {t(
-              "permissions.desc",
-              "Check the system permissions Qx needs for GIF recording and macros.",
-            )}
+        }
+      >
+        <div className="qx-permissions-summary">
+          <div>
+            <div className="qx-permissions-summary-title">
+              {availableCount === 0
+                ? t("permissions.summary.none", "No available permissions")
+                : t("permissions.summary.ready", "Permission Readiness")}
+            </div>
+            <div className="qx-permissions-summary-desc">
+              {t(
+                "permissions.summary.desc",
+                "Grant only the permissions needed by the modules you use. Refresh after changing macOS settings.",
+              )}
+            </div>
           </div>
+          <Button variant="outline" size="sm" onClick={loadPermissions} disabled={loading}>
+            {loading ? t("permissions.checking", "Checking...") : t("permissions.refresh", "Refresh")}
+          </Button>
         </div>
-        <div className="qx-permissions-score">
-          {loading ? t("permissions.checking", "Checking...") : `${grantedCount}/${availableCount}`}
-        </div>
-      </div>
+      </SettingsCard>
 
-      <div className="qx-permissions-list">
-        {items.map((item) => {
-          const granted = item.available && item.granted;
-          const label = t(LABEL_KEYS[item.id] ?? item.label, item.label);
-          const description = t(DESC_KEYS[item.id] ?? item.description, item.description);
-          return (
-            <div key={item.id} className="qx-permission-row">
-              <div className="qx-permission-main">
-                <span
-                  className={`qx-permission-light ${granted ? "is-granted" : "is-needed"}`}
-                  aria-hidden="true"
-                />
-                <div className="qx-permission-copy">
-                  <div className="qx-permission-title">{label}</div>
-                  <div className="qx-permission-desc">{description}</div>
+      <SettingsCard
+        title={t("permissions.requests.title", "Permission Requests")}
+        description={t("permissions.requests.desc", "Open macOS prompts and jump to the matching System Settings page.")}
+      >
+        <div className="qx-permissions-list">
+          {items.map((item) => {
+            const granted = item.available && item.granted;
+            const label = t(LABEL_KEYS[item.id] ?? item.label, item.label);
+            const description = t(DESC_KEYS[item.id] ?? item.description, item.description);
+            return (
+              <div key={item.id} className="qx-permission-row">
+                <div className="qx-permission-main">
+                  <span
+                    className={`qx-permission-light ${granted ? "is-granted" : "is-needed"}`}
+                    aria-hidden="true"
+                  />
+                  <div className="qx-permission-copy">
+                    <div className="qx-permission-title">{label}</div>
+                    <div className="qx-permission-desc">{description}</div>
+                  </div>
+                </div>
+                <div className="qx-permission-actions">
+                  <span className={`qx-permission-status ${granted ? "is-granted" : "is-needed"}`}>
+                    {statusLabel(item, t)}
+                  </span>
+                  {!granted && item.available && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => requestPermission(item.id)}
+                      disabled={busyId === item.id}
+                    >
+                      {busyId === item.id
+                        ? t("permissions.opening", "Opening...")
+                        : t("permissions.request", "Request")}
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openPermissionSettings(item.id)}
+                    disabled={!item.available || busyId === item.id}
+                  >
+                    {t("permissions.openSettings", "Open")}
+                  </Button>
                 </div>
               </div>
-              <div className="qx-permission-actions">
-                <span className={`qx-permission-status ${granted ? "is-granted" : "is-needed"}`}>
-                  {statusLabel(item, t)}
-                </span>
-                {!granted && item.available && (
-                  <button
-                    className="qx-command-button primary"
-                    onClick={() => requestPermission(item.id)}
-                    disabled={busyId === item.id}
-                  >
-                    {busyId === item.id
-                      ? t("permissions.opening", "Opening...")
-                      : t("permissions.request", "Request")}
-                  </button>
-                )}
-                <button
-                  className="qx-command-button"
-                  onClick={() => openPermissionSettings(item.id)}
-                  disabled={!item.available || busyId === item.id}
-                >
-                  {t("permissions.openSettings", "Open")}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
 
-      <div className="qx-permissions-footer">
-        <button className="qx-command-button" onClick={loadPermissions} disabled={loading}>
-          {loading ? t("permissions.checking", "Checking...") : t("permissions.refresh", "Refresh")}
-        </button>
-        {message && <span className="qx-permissions-message">{message}</span>}
-      </div>
+        {message && <div className="qx-permissions-message">{message}</div>}
+      </SettingsCard>
     </div>
   );
 }

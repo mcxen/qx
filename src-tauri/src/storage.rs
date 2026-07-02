@@ -1,6 +1,7 @@
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tauri::command;
 
 #[derive(Debug, Serialize, Default)]
@@ -30,6 +31,8 @@ pub struct StorageOverview {
 pub struct StorageClearResult {
     pub cleared_bytes: u64,
     pub cleared_files: u64,
+    pub cleared_records: u64,
+    pub warnings: Vec<String>,
 }
 
 fn home_dir() -> PathBuf {
@@ -67,6 +70,14 @@ fn output_files_dir() -> PathBuf {
 
 fn screencap_db_path() -> PathBuf {
     app_support_dir().join("screencap.db")
+}
+
+fn history_db_path() -> PathBuf {
+    app_support_dir().join("history.db")
+}
+
+fn rss_db_path() -> PathBuf {
+    app_support_dir().join("rss.db")
 }
 
 fn clipboard_db_path() -> PathBuf {
@@ -162,6 +173,43 @@ fn measure_paths(paths: &[PathBuf], warnings: &mut Vec<String>) -> (u64, u64) {
         files = files.saturating_add(f);
     }
     (bytes, files)
+}
+
+fn file_size(path: &Path) -> u64 {
+    fs::symlink_metadata(path).map(|m| m.len()).unwrap_or(0)
+}
+
+fn merge_clear_result(total: &mut StorageClearResult, result: StorageClearResult) {
+    total.cleared_bytes = total.cleared_bytes.saturating_add(result.cleared_bytes);
+    total.cleared_files = total.cleared_files.saturating_add(result.cleared_files);
+    total.cleared_records = total.cleared_records.saturating_add(result.cleared_records);
+    total.warnings.extend(result.warnings);
+}
+
+fn open_storage_db(path: &Path) -> Result<rusqlite::Connection, String> {
+    let conn =
+        rusqlite::Connection::open(path).map_err(|e| format!("open {}: {e}", path.display()))?;
+    conn.busy_timeout(Duration::from_millis(800))
+        .map_err(|e| format!("configure {}: {e}", path.display()))?;
+    Ok(conn)
+}
+
+fn count_query(conn: &rusqlite::Connection, sql: &str) -> u64 {
+    conn.query_row(sql, [], |row| row.get::<_, i64>(0))
+        .map(|count| count.max(0) as u64)
+        .unwrap_or(0)
+}
+
+fn optimize_database(conn: &rusqlite::Connection, path: &Path, result: &mut StorageClearResult) {
+    if let Err(e) = conn.execute_batch("PRAGMA optimize; VACUUM;") {
+        result
+            .warnings
+            .push(format!("compact {}: {e}", path.display()));
+    }
+}
+
+fn db_bytes_reclaimed(before: u64, path: &Path) -> u64 {
+    before.saturating_sub(file_size(path))
 }
 
 fn settings_top_level_size(dir: &Path, warnings: &mut Vec<String>) -> (u64, u64) {
@@ -324,6 +372,8 @@ fn clear_dir_contents(path: &Path) -> Result<StorageClearResult, String> {
     Ok(StorageClearResult {
         cleared_bytes,
         cleared_files,
+        warnings,
+        ..StorageClearResult::default()
     })
 }
 
@@ -339,6 +389,7 @@ fn clear_cache_sync() -> Result<StorageClearResult, String> {
         let r = clear_dir_contents(&path)?;
         total.cleared_bytes = total.cleared_bytes.saturating_add(r.cleared_bytes);
         total.cleared_files = total.cleared_files.saturating_add(r.cleared_files);
+        total.warnings.extend(r.warnings);
     }
     for path in recording_temp_dirs() {
         let mut warnings: Vec<String> = Vec::new();
@@ -348,6 +399,7 @@ fn clear_cache_sync() -> Result<StorageClearResult, String> {
         }
         total.cleared_bytes = total.cleared_bytes.saturating_add(b);
         total.cleared_files = total.cleared_files.saturating_add(f);
+        total.warnings.extend(warnings);
     }
     Ok(total)
 }
@@ -360,30 +412,48 @@ pub async fn qx_storage_clear_files() -> Result<StorageClearResult, String> {
 fn clear_files_sync() -> Result<StorageClearResult, String> {
     let dir = output_files_dir();
     let mut total = StorageClearResult::default();
-    if !dir.exists() {
-        return Ok(total);
-    }
 
-    for entry in fs::read_dir(&dir).map_err(|e| format!("read {}: {e}", dir.display()))? {
-        let entry = entry.map_err(|e| format!("entry {}: {e}", dir.display()))?;
-        let path = entry.path();
-        let is_qx_file = path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "png" | "gif"))
-            .unwrap_or(false);
-        if !is_qx_file || !path.is_file() {
-            continue;
+    let mut deleted_paths = 0_u64;
+    if dir.exists() {
+        for entry in fs::read_dir(&dir).map_err(|e| format!("read {}: {e}", dir.display()))? {
+            let entry = entry.map_err(|e| format!("entry {}: {e}", dir.display()))?;
+            let path = entry.path();
+            let is_qx_file = path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "png" | "gif"))
+                .unwrap_or(false);
+            if !is_qx_file || !path.is_file() {
+                continue;
+            }
+            let bytes = fs::symlink_metadata(&path).map(|m| m.len()).unwrap_or(0);
+            fs::remove_file(&path).map_err(|e| format!("remove {}: {e}", path.display()))?;
+            total.cleared_bytes = total.cleared_bytes.saturating_add(bytes);
+            total.cleared_files = total.cleared_files.saturating_add(1);
+            deleted_paths = deleted_paths.saturating_add(1);
         }
-        let bytes = fs::symlink_metadata(&path).map(|m| m.len()).unwrap_or(0);
-        fs::remove_file(&path).map_err(|e| format!("remove {}: {e}", path.display()))?;
-        total.cleared_bytes = total.cleared_bytes.saturating_add(bytes);
-        total.cleared_files = total.cleared_files.saturating_add(1);
     }
 
-    if total.cleared_files > 0 {
-        if let Ok(conn) = rusqlite::Connection::open(screencap_db_path()) {
-            let _ = conn.execute("DELETE FROM gif_history", []);
+    let db_path = screencap_db_path();
+    if db_path.exists() {
+        match open_storage_db(&db_path) {
+            Ok(conn) => {
+                let records = count_query(&conn, "SELECT COUNT(*) FROM gif_history");
+                if records > 0 {
+                    let before = file_size(&db_path);
+                    if let Err(e) = conn.execute("DELETE FROM gif_history", []) {
+                        total.warnings.push(format!("clear screencap history: {e}"));
+                    } else {
+                        total.cleared_records = total.cleared_records.saturating_add(records);
+                        optimize_database(&conn, &db_path, &mut total);
+                        total.cleared_bytes = total
+                            .cleared_bytes
+                            .saturating_add(db_bytes_reclaimed(before, &db_path));
+                    }
+                }
+            }
+            Err(e) if deleted_paths > 0 => total.warnings.push(e),
+            Err(_) => {}
         }
     }
 
@@ -392,24 +462,145 @@ fn clear_files_sync() -> Result<StorageClearResult, String> {
 
 #[command]
 pub async fn qx_storage_clear_clipboard() -> Result<StorageClearResult, String> {
-    storage_io(clear_clipboard_sync).await
+    storage_io(clear_clipboard_attachments_sync).await
 }
 
-fn clear_clipboard_sync() -> Result<StorageClearResult, String> {
-    let total = clear_dir_contents(&clipboard_images_dir())?;
+fn clear_clipboard_attachments_sync() -> Result<StorageClearResult, String> {
+    let mut total = clear_dir_contents(&clipboard_images_dir())?;
 
-    if total.cleared_files > 0 {
-        if let Ok(conn) = rusqlite::Connection::open(clipboard_db_path()) {
-            let _ = conn.execute(
-                "UPDATE clipboard_history SET image_path = NULL WHERE image_path IS NOT NULL",
-                [],
-            );
-            let _ = conn.execute(
-                "UPDATE clipboard_history SET image_pasteboard_path = NULL WHERE image_pasteboard_path IS NOT NULL",
-                [],
-            );
+    let db_path = clipboard_db_path();
+    if db_path.exists() {
+        match open_storage_db(&db_path) {
+            Ok(conn) => {
+                let refs = count_query(
+                    &conn,
+                    "SELECT COUNT(*) FROM clipboard_history
+                     WHERE image_path IS NOT NULL OR image_pasteboard_path IS NOT NULL",
+                );
+                if let Err(e) = conn.execute(
+                    "UPDATE clipboard_history SET image_path = NULL WHERE image_path IS NOT NULL",
+                    [],
+                ) {
+                    total
+                        .warnings
+                        .push(format!("reset clipboard image refs: {e}"));
+                }
+                if let Err(e) = conn.execute(
+                    "UPDATE clipboard_history SET image_pasteboard_path = NULL WHERE image_pasteboard_path IS NOT NULL",
+                    [],
+                ) {
+                    total
+                        .warnings
+                        .push(format!("reset clipboard pasteboard refs: {e}"));
+                }
+                total.cleared_records = total.cleared_records.saturating_add(refs);
+            }
+            Err(e) => total.warnings.push(e),
         }
     }
 
+    Ok(total)
+}
+
+#[command]
+pub async fn qx_storage_clear_clipboard_history() -> Result<StorageClearResult, String> {
+    storage_io(clear_clipboard_history_sync).await
+}
+
+fn clear_clipboard_history_sync() -> Result<StorageClearResult, String> {
+    let mut total = clear_dir_contents(&clipboard_images_dir())?;
+    let db_path = clipboard_db_path();
+    if !db_path.exists() {
+        return Ok(total);
+    }
+
+    let conn = open_storage_db(&db_path)?;
+    let records = count_query(&conn, "SELECT COUNT(*) FROM clipboard_history");
+    if records == 0 {
+        return Ok(total);
+    }
+
+    let before = file_size(&db_path);
+    conn.execute("DELETE FROM clipboard_history", [])
+        .map_err(|e| format!("clear clipboard history: {e}"))?;
+    total.cleared_records = total.cleared_records.saturating_add(records);
+    optimize_database(&conn, &db_path, &mut total);
+    total.cleared_bytes = total
+        .cleared_bytes
+        .saturating_add(db_bytes_reclaimed(before, &db_path));
+    Ok(total)
+}
+
+#[command]
+pub async fn qx_storage_clear_launcher_history() -> Result<StorageClearResult, String> {
+    storage_io(clear_launcher_history_sync).await
+}
+
+fn clear_launcher_history_sync() -> Result<StorageClearResult, String> {
+    let mut total = StorageClearResult::default();
+    let db_path = history_db_path();
+    if !db_path.exists() {
+        return Ok(total);
+    }
+
+    let conn = open_storage_db(&db_path)?;
+    let records = count_query(&conn, "SELECT COUNT(*) FROM launch_history")
+        .saturating_add(count_query(&conn, "SELECT COUNT(*) FROM search_history"));
+    if records == 0 {
+        return Ok(total);
+    }
+
+    let before = file_size(&db_path);
+    conn.execute("DELETE FROM launch_history", [])
+        .map_err(|e| format!("clear launch history: {e}"))?;
+    conn.execute("DELETE FROM search_history", [])
+        .map_err(|e| format!("clear search history: {e}"))?;
+    total.cleared_records = records;
+    optimize_database(&conn, &db_path, &mut total);
+    total.cleared_bytes = db_bytes_reclaimed(before, &db_path);
+    Ok(total)
+}
+
+#[command]
+pub async fn qx_storage_clear_rss_cache() -> Result<StorageClearResult, String> {
+    storage_io(clear_rss_cache_sync).await
+}
+
+fn clear_rss_cache_sync() -> Result<StorageClearResult, String> {
+    let mut total = StorageClearResult::default();
+    let db_path = rss_db_path();
+    if !db_path.exists() {
+        return Ok(total);
+    }
+
+    let conn = open_storage_db(&db_path)?;
+    let records = count_query(
+        &conn,
+        "SELECT COUNT(*) FROM rss_articles WHERE is_starred = 0",
+    );
+    if records == 0 {
+        return Ok(total);
+    }
+
+    let before = file_size(&db_path);
+    conn.execute("DELETE FROM rss_articles WHERE is_starred = 0", [])
+        .map_err(|e| format!("clear RSS offline articles: {e}"))?;
+    total.cleared_records = records;
+    optimize_database(&conn, &db_path, &mut total);
+    total.cleared_bytes = db_bytes_reclaimed(before, &db_path);
+    Ok(total)
+}
+
+#[command]
+pub async fn qx_storage_clear_reclaimable() -> Result<StorageClearResult, String> {
+    storage_io(clear_reclaimable_sync).await
+}
+
+fn clear_reclaimable_sync() -> Result<StorageClearResult, String> {
+    let mut total = StorageClearResult::default();
+    merge_clear_result(&mut total, clear_cache_sync()?);
+    merge_clear_result(&mut total, clear_clipboard_history_sync()?);
+    merge_clear_result(&mut total, clear_launcher_history_sync()?);
+    merge_clear_result(&mut total, clear_rss_cache_sync()?);
     Ok(total)
 }

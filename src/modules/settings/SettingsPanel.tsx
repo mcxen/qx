@@ -42,18 +42,18 @@ interface NavGroup {
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: "Workspace",
+    label: "Core",
     items: [
       { id: "general", label: "General", icon: Settings2 },
       { id: "appearance", label: "Appearance", icon: Palette },
-      { id: "agent", label: "AI Agent", icon: Bot },
+      { id: "plugins", label: "Extensions", icon: Puzzle },
     ],
   },
   {
-    label: "Extensions",
+    label: "Intelligence",
     items: [
-      { id: "plugins", label: "Extensions", icon: Puzzle },
-      { id: "permissions", label: "Permissions", icon: ShieldCheck },
+      { id: "agent", label: "AI Agent", icon: Bot },
+      { id: "ocr", label: "OCR", icon: ScanText },
     ],
   },
   {
@@ -61,12 +61,12 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "rss", label: "RSS Reader", icon: Rss },
       { id: "weather", label: "Weather", icon: CloudSun },
-      { id: "ocr", label: "OCR", icon: ScanText },
     ],
   },
   {
     label: "System",
     items: [
+      { id: "permissions", label: "Permissions", icon: ShieldCheck },
       { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
       { id: "about", label: "About", icon: Info },
     ],

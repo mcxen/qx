@@ -1,14 +1,15 @@
 use arboard::{Clipboard, ImageData};
 use chrono::Local;
 use dirs;
-use image::codecs::png::PngEncoder;
+use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::ExtendedColorType;
 use image::ImageEncoder;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
+use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::{command, AppHandle, Emitter, Manager};
@@ -20,7 +21,11 @@ use tauri_plugin_clipboard_manager::ClipboardExt;
 const MAX_IMAGE_DIMENSION: u32 = 4096;
 /// Maximum total pixel count (width × height).
 const MAX_IMAGE_PIXELS: u64 = 16_777_216; // 4096 × 4096
-const MAX_PASTEBOARD_SNAPSHOT_BYTES: usize = 32 * 1024 * 1024;
+const MAX_STORED_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
+const MAX_TEXT_BYTES: usize = 512 * 1024;
+const MAX_PASTEBOARD_SNAPSHOT_BYTES: usize = 512 * 1024;
+const CLIPBOARD_RETENTION_DAYS: i64 = 90;
+const CLIPBOARD_UNPINNED_LIMIT: i64 = 300;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PasteboardSnapshot {
@@ -31,6 +36,11 @@ struct PasteboardSnapshot {
 struct PasteboardSnapshotEntry {
     type_name: String,
     file_name: String,
+}
+
+fn is_file_reference_pasteboard_type(type_name: &str) -> bool {
+    let lower = type_name.to_ascii_lowercase();
+    lower.contains("file-url") || lower.contains("filename")
 }
 
 // --- macOS clipboard change count (lightweight content-change detection) ---
@@ -56,16 +66,7 @@ fn clipboard_change_count() -> Option<i64> {
 
 #[cfg(target_os = "macos")]
 fn should_snapshot_pasteboard_type(type_name: &str) -> bool {
-    let lower = type_name.to_ascii_lowercase();
-    lower.contains("png")
-        || lower.contains("tiff")
-        || lower.contains("jpeg")
-        || lower.contains("jpg")
-        || lower.contains("image")
-        || lower.contains("pdf")
-        || lower.contains("file-url")
-        || lower.contains("url")
-        || lower.contains("filename")
+    is_file_reference_pasteboard_type(type_name)
 }
 
 #[cfg(target_os = "macos")]
@@ -309,6 +310,297 @@ fn get_image_dir() -> PathBuf {
     dir
 }
 
+fn is_clipboard_artifact_path(path: &Path) -> bool {
+    path.starts_with(get_image_dir())
+}
+
+fn remove_clipboard_artifact(path: &str) {
+    let path = PathBuf::from(path);
+    if !is_clipboard_artifact_path(&path) {
+        return;
+    }
+    if path.is_dir() {
+        let _ = fs::remove_dir_all(&path);
+    } else {
+        let _ = fs::remove_file(&path);
+    }
+}
+
+fn is_artifact_referenced(conn: &Connection, path: &str) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*)
+         FROM clipboard_history
+         WHERE image_path = ?1 OR image_pasteboard_path = ?1",
+        params![path],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|count| count > 0)
+    .unwrap_or(true)
+}
+
+fn remove_unreferenced_artifacts(conn: &Connection, paths: impl IntoIterator<Item = String>) {
+    let mut seen = HashSet::new();
+    for path in paths {
+        if path.is_empty() || !seen.insert(path.clone()) {
+            continue;
+        }
+        if !is_artifact_referenced(conn, &path) {
+            remove_clipboard_artifact(&path);
+        }
+    }
+}
+
+fn collect_artifact_paths(conn: &Connection, sql: &str) -> Vec<String> {
+    let mut paths = Vec::new();
+    let Ok(mut stmt) = conn.prepare(sql) else {
+        return paths;
+    };
+    let Ok(rows) = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, Option<String>>(0)?,
+            row.get::<_, Option<String>>(1)?,
+        ))
+    }) else {
+        return paths;
+    };
+    for row in rows.flatten() {
+        if let Some(path) = row.0 {
+            paths.push(path);
+        }
+        if let Some(path) = row.1 {
+            paths.push(path);
+        }
+    }
+    paths
+}
+
+fn cleanup_orphan_clipboard_artifacts(conn: &Connection) {
+    let image_dir = get_image_dir();
+    let mut referenced = HashSet::new();
+    if let Ok(mut stmt) =
+        conn.prepare("SELECT image_path, image_pasteboard_path FROM clipboard_history")
+    {
+        if let Ok(rows) = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+            ))
+        }) {
+            for row in rows.flatten() {
+                if let Some(path) = row.0 {
+                    referenced.insert(path);
+                }
+                if let Some(path) = row.1 {
+                    referenced.insert(path);
+                }
+            }
+        }
+    }
+
+    let Ok(entries) = fs::read_dir(&image_dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let path_str = path.to_string_lossy().to_string();
+        if !referenced.contains(&path_str) {
+            remove_clipboard_artifact(&path_str);
+        }
+    }
+}
+
+fn compact_pasteboard_snapshot(manifest_path: &str) -> Option<String> {
+    let manifest_path = PathBuf::from(manifest_path);
+    if !is_clipboard_artifact_path(&manifest_path) {
+        return None;
+    }
+
+    let manifest_bytes = fs::read(&manifest_path).ok()?;
+    let mut snapshot = serde_json::from_slice::<PasteboardSnapshot>(&manifest_bytes).ok()?;
+    let base_dir = manifest_path.parent()?.to_path_buf();
+    let mut kept = Vec::new();
+    let mut total_bytes = 0usize;
+
+    for entry in std::mem::take(&mut snapshot.entries) {
+        let file_path = base_dir.join(&entry.file_name);
+        if !is_file_reference_pasteboard_type(&entry.type_name) {
+            let _ = fs::remove_file(file_path);
+            continue;
+        }
+
+        let len = fs::metadata(&file_path)
+            .map(|m| m.len() as usize)
+            .unwrap_or(0);
+        if len == 0 || total_bytes.saturating_add(len) > MAX_PASTEBOARD_SNAPSHOT_BYTES {
+            let _ = fs::remove_file(file_path);
+            continue;
+        }
+
+        total_bytes += len;
+        kept.push(entry);
+    }
+
+    if kept.is_empty() {
+        let _ = fs::remove_dir_all(&base_dir);
+        return None;
+    }
+
+    snapshot.entries = kept;
+    let json = serde_json::to_vec(&snapshot).ok()?;
+    fs::write(&manifest_path, json).ok()?;
+    Some(manifest_path.to_string_lossy().to_string())
+}
+
+fn compact_existing_pasteboard_snapshots(conn: &Connection) {
+    let mut rows = Vec::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT id, image_pasteboard_path
+         FROM clipboard_history
+         WHERE image_pasteboard_path IS NOT NULL",
+    ) {
+        if let Ok(mapped) = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        }) {
+            for row in mapped.flatten() {
+                rows.push(row);
+            }
+        }
+    }
+
+    for (id, manifest_path) in rows {
+        if compact_pasteboard_snapshot(&manifest_path).is_none() {
+            let _ = conn.execute(
+                "UPDATE clipboard_history
+                 SET image_pasteboard_path = NULL
+                 WHERE id = ?1 AND image_pasteboard_path = ?2",
+                params![id, manifest_path],
+            );
+        }
+    }
+}
+
+fn enforce_existing_image_limits(conn: &Connection) {
+    let mut rows = Vec::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT id, image_path, image_pasteboard_path
+         FROM clipboard_history
+         WHERE pinned = 0 AND image_path IS NOT NULL",
+    ) {
+        if let Ok(mapped) = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        }) {
+            for row in mapped.flatten() {
+                rows.push(row);
+            }
+        }
+    }
+
+    let mut paths = Vec::new();
+    for (id, image_path, pasteboard_path) in rows {
+        let image = PathBuf::from(&image_path);
+        let bytes = fs::metadata(&image).map(|m| m.len()).unwrap_or(0);
+        if bytes > 0 && bytes <= MAX_STORED_IMAGE_BYTES {
+            continue;
+        }
+
+        let _ = conn.execute("DELETE FROM clipboard_history WHERE id = ?1", params![id]);
+        paths.push(image_path);
+        if let Some(path) = pasteboard_path {
+            paths.push(path);
+        }
+    }
+    remove_unreferenced_artifacts(conn, paths);
+}
+
+fn prune_clipboard_storage(conn: &Connection) {
+    let cutoff = (Local::now() - chrono::Duration::days(CLIPBOARD_RETENTION_DAYS))
+        .format("%Y-%m-%d %H:%M:%S")
+        .to_string();
+    let mut paths = Vec::new();
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT image_path, image_pasteboard_path
+         FROM clipboard_history
+         WHERE pinned = 0
+           AND (
+             timestamp < ?1
+             OR id NOT IN (
+               SELECT id
+               FROM clipboard_history
+               WHERE pinned = 0 AND timestamp >= ?1
+               ORDER BY timestamp DESC
+               LIMIT ?2
+             )
+           )",
+    ) {
+        if let Ok(rows) = stmt.query_map(params![cutoff, CLIPBOARD_UNPINNED_LIMIT], |row| {
+            Ok((
+                row.get::<_, Option<String>>(0)?,
+                row.get::<_, Option<String>>(1)?,
+            ))
+        }) {
+            for row in rows.flatten() {
+                if let Some(path) = row.0 {
+                    paths.push(path);
+                }
+                if let Some(path) = row.1 {
+                    paths.push(path);
+                }
+            }
+        }
+    }
+
+    let _ = conn.execute(
+        "DELETE FROM clipboard_history
+         WHERE pinned = 0
+           AND (
+             timestamp < ?1
+             OR id NOT IN (
+               SELECT id
+               FROM clipboard_history
+               WHERE pinned = 0 AND timestamp >= ?1
+               ORDER BY timestamp DESC
+               LIMIT ?2
+             )
+           )",
+        params![cutoff, CLIPBOARD_UNPINNED_LIMIT],
+    );
+    remove_unreferenced_artifacts(conn, paths);
+}
+
+fn ensure_clipboard_png_file(
+    image_path: &Path,
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    if image_path.exists() {
+        if let Ok(metadata) = fs::metadata(image_path) {
+            if metadata.len() > 0 && metadata.len() <= MAX_STORED_IMAGE_BYTES {
+                return Ok(());
+            }
+        }
+        let _ = fs::remove_file(image_path);
+    }
+
+    let file = fs::File::create(image_path).map_err(|e| format!("create clipboard image: {e}"))?;
+    let encoder = PngEncoder::new_with_quality(file, CompressionType::Best, FilterType::Adaptive);
+    if let Err(e) = encoder.write_image(rgba, width, height, ExtendedColorType::Rgba8) {
+        let _ = fs::remove_file(image_path);
+        return Err(format!("encode clipboard image: {e}"));
+    }
+
+    let bytes = fs::metadata(image_path).map(|m| m.len()).unwrap_or(0);
+    if bytes == 0 || bytes > MAX_STORED_IMAGE_BYTES {
+        let _ = fs::remove_file(image_path);
+        return Err("clipboard image exceeds storage limit".to_string());
+    }
+    Ok(())
+}
+
 fn init_db() -> rusqlite::Result<Connection> {
     let path = get_db_path();
     let conn = Connection::open(&path)?;
@@ -324,16 +616,10 @@ fn init_db() -> rusqlite::Result<Connection> {
     ensure_column(&conn, "image_path", "TEXT")?;
     ensure_column(&conn, "image_pasteboard_path", "TEXT")?;
 
-    // Cleanup old unpinned entries while preserving user-curated items.
-    conn.execute(
-        "DELETE FROM clipboard_history WHERE id NOT IN (
-            SELECT id FROM clipboard_history
-            WHERE pinned = 0
-            ORDER BY timestamp DESC
-            LIMIT 300
-        ) AND pinned = 0",
-        [],
-    )?;
+    enforce_existing_image_limits(&conn);
+    compact_existing_pasteboard_snapshots(&conn);
+    prune_clipboard_storage(&conn);
+    cleanup_orphan_clipboard_artifacts(&conn);
     Ok(conn)
 }
 
@@ -477,26 +763,20 @@ pub fn start_listener(app: &AppHandle) {
                                 let image_dir = get_image_dir();
                                 let image_path = image_dir.join(&filename);
 
-                                // Encode directly from the borrowed slice —
-                                // avoids the intermediate RgbaImage
-                                // allocation and the .to_vec() copy.
-                                if let Ok(file) = std::fs::File::create(&image_path) {
-                                    let encoder = PngEncoder::new(file);
-                                    if encoder
-                                        .write_image(rgba, width, height, ExtendedColorType::Rgba8)
-                                        .is_ok()
-                                    {
-                                        let path_str = image_path.to_string_lossy().to_string();
-                                        let pasteboard_path =
-                                            snapshot_current_pasteboard(&hash_hex);
-                                        store(
-                                            &db_clone,
-                                            "",
-                                            Some(&path_str),
-                                            pasteboard_path.as_deref(),
-                                        );
-                                        let _ = app_handle.emit("clipboard-updated", ());
-                                    }
+                                // Encode directly from the borrowed slice and
+                                // skip unusually large PNG outputs.
+                                if ensure_clipboard_png_file(&image_path, rgba, width, height)
+                                    .is_ok()
+                                {
+                                    let path_str = image_path.to_string_lossy().to_string();
+                                    let pasteboard_path = snapshot_current_pasteboard(&hash_hex);
+                                    store(
+                                        &db_clone,
+                                        "",
+                                        Some(&path_str),
+                                        pasteboard_path.as_deref(),
+                                    );
+                                    let _ = app_handle.emit("clipboard-updated", ());
                                 }
                             }
                         }
@@ -516,6 +796,10 @@ fn store(
     image_path: Option<&str>,
     image_pasteboard_path: Option<&str>,
 ) {
+    if !text.is_empty() && text.as_bytes().len() > MAX_TEXT_BYTES {
+        return;
+    }
+
     let mut guard = lock_db(db);
     let Ok(conn) = ensure_connection(&mut guard) else {
         return;
@@ -538,6 +822,7 @@ fn store(
             image_pasteboard_path = COALESCE(excluded.image_pasteboard_path, clipboard_history.image_pasteboard_path)",
         params![id, text, ts, image_path, image_pasteboard_path],
     );
+    prune_clipboard_storage(conn);
 }
 
 #[command]
@@ -600,20 +885,8 @@ pub fn read_clipboard_image_now(
             let filename = format!("{}.png", hash_hex);
             let image_dir = get_image_dir();
             let image_path = image_dir.join(&filename);
-            if !image_path.exists() {
-                if let Ok(file) = std::fs::File::create(&image_path) {
-                    use image::codecs::png::PngEncoder;
-                    use image::ExtendedColorType;
-                    use image::ImageEncoder;
-                    let encoder = PngEncoder::new(file);
-                    if encoder
-                        .write_image(rgba, width, height, ExtendedColorType::Rgba8)
-                        .is_err()
-                    {
-                        let _ = std::fs::remove_file(&image_path);
-                        return Ok(None);
-                    }
-                }
+            if ensure_clipboard_png_file(&image_path, rgba, width, height).is_err() {
+                return Ok(None);
             }
             let path_str = image_path.to_string_lossy().to_string();
             let pasteboard_path = snapshot_current_pasteboard(&hash_hex);
@@ -629,6 +902,7 @@ pub fn read_clipboard_image_now(
                     image_pasteboard_path = COALESCE(excluded.image_pasteboard_path, clipboard_history.image_pasteboard_path)",
                 rusqlite::params![hash_hex, "", ts, path_str, pasteboard_path],
             );
+            prune_clipboard_storage(conn);
             let _ = app.emit("clipboard-updated", ());
             Ok(Some(path_str))
         }
@@ -691,8 +965,13 @@ pub fn write_clipboard_image_entry(
 pub fn clear_clipboard_history(state: tauri::State<'_, ClipboardDb>) -> Result<(), String> {
     let mut guard = lock_db(&state.0);
     let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+    let paths = collect_artifact_paths(
+        conn,
+        "SELECT image_path, image_pasteboard_path FROM clipboard_history",
+    );
     conn.execute("DELETE FROM clipboard_history", [])
         .map_err(|e| format!("{e}"))?;
+    remove_unreferenced_artifacts(conn, paths);
     Ok(())
 }
 
@@ -703,8 +982,32 @@ pub fn delete_clipboard_entry(
 ) -> Result<(), String> {
     let mut guard = lock_db(&state.0);
     let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+    let paths = {
+        let mut paths = Vec::new();
+        if let Ok((image_path, image_pasteboard_path)) = conn.query_row(
+            "SELECT image_path, image_pasteboard_path
+             FROM clipboard_history
+             WHERE id = ?1",
+            params![id.as_str()],
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                ))
+            },
+        ) {
+            if let Some(path) = image_path {
+                paths.push(path);
+            }
+            if let Some(path) = image_pasteboard_path {
+                paths.push(path);
+            }
+        }
+        paths
+    };
     conn.execute("DELETE FROM clipboard_history WHERE id = ?1", params![id])
         .map_err(|e| format!("{e}"))?;
+    remove_unreferenced_artifacts(conn, paths);
     Ok(())
 }
 
@@ -722,6 +1025,7 @@ pub fn toggle_clipboard_pin(
         params![id],
     )
     .map_err(|e| format!("{e}"))?;
+    prune_clipboard_storage(conn);
     Ok(())
 }
 
@@ -741,6 +1045,7 @@ pub fn record_clipboard_copy(
         params![id, ts],
     )
     .map_err(|e| format!("{e}"))?;
+    prune_clipboard_storage(conn);
     Ok(())
 }
 
