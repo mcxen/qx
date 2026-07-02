@@ -148,60 +148,84 @@ fn parse_topics_legacy(json: &str) -> Result<Vec<V2exTopic>, String> {
 }
 
 #[tauri::command]
-pub fn v2ex_fetch_topics(mode: Option<String>) -> Result<Vec<V2exTopic>, String> {
+pub async fn v2ex_fetch_topics(mode: Option<String>) -> Result<Vec<V2exTopic>, String> {
+    tokio::task::spawn_blocking(move || {
+        let mode = mode.unwrap_or_else(|| "latest".to_string());
+        let endpoint = match mode.as_str() {
+            "hot" => "/api/topics/hot.json",
+            _ => "/api/topics/latest.json",
+        };
+        let json = v2ex_get(endpoint)?;
+        parse_topics_legacy(&json)
+    })
+    .await
+    .map_err(|e| format!("V2EX fetch topics panicked: {e}"))?
+}
+
+#[tauri::command]
+pub async fn v2ex_search_topics(query: String) -> Result<Vec<V2exTopic>, String> {
+    tokio::task::spawn_blocking(move || {
+        let needle = query.trim().to_lowercase();
+        if needle.is_empty() {
+            return v2ex_fetch_topics_sync(Some("latest".to_string()));
+        }
+
+        let mut topics = Vec::new();
+        for mode in ["latest", "hot"] {
+            topics.extend(v2ex_fetch_topics_sync(Some(mode.to_string()))?);
+        }
+
+        topics.sort_by_key(|topic| std::cmp::Reverse(topic.last_modified.max(topic.created)));
+        topics.dedup_by_key(|topic| topic.id);
+
+        Ok(topics
+            .into_iter()
+            .filter(|topic| {
+                topic.title.to_lowercase().contains(&needle)
+                    || topic.node.to_lowercase().contains(&needle)
+                    || topic.author.to_lowercase().contains(&needle)
+                    || topic.content.to_lowercase().contains(&needle)
+            })
+            .collect())
+    })
+    .await
+    .map_err(|e| format!("V2EX search panicked: {e}"))?
+}
+
+fn v2ex_fetch_topics_sync(mode: Option<String>) -> Result<Vec<V2exTopic>, String> {
     let mode = mode.unwrap_or_else(|| "latest".to_string());
     let endpoint = match mode.as_str() {
         "hot" => "/api/topics/hot.json",
         _ => "/api/topics/latest.json",
     };
-
     let json = v2ex_get(endpoint)?;
     parse_topics_legacy(&json)
 }
 
 #[tauri::command]
-pub fn v2ex_search_topics(query: String) -> Result<Vec<V2exTopic>, String> {
-    let needle = query.trim().to_lowercase();
-    if needle.is_empty() {
-        return v2ex_fetch_topics(Some("latest".to_string()));
-    }
-
-    let mut topics = Vec::new();
-    for mode in ["latest", "hot"] {
-        topics.extend(v2ex_fetch_topics(Some(mode.to_string()))?);
-    }
-
-    topics.sort_by_key(|topic| std::cmp::Reverse(topic.last_modified.max(topic.created)));
-    topics.dedup_by_key(|topic| topic.id);
-
-    Ok(topics
-        .into_iter()
-        .filter(|topic| {
-            topic.title.to_lowercase().contains(&needle)
-                || topic.node.to_lowercase().contains(&needle)
-                || topic.author.to_lowercase().contains(&needle)
-                || topic.content.to_lowercase().contains(&needle)
-        })
-        .collect())
+pub async fn v2ex_fetch_node_topics(node: String) -> Result<Vec<V2exTopic>, String> {
+    tokio::task::spawn_blocking(move || {
+        let node = node.trim();
+        if node.is_empty() {
+            return Err("Node name is empty".to_string());
+        }
+        let json = v2ex_get_authed(&format!("/api/v2/nodes/{}/topics", node))?;
+        parse_v2_topics(&json)
+    })
+    .await
+    .map_err(|e| format!("V2EX node topics panicked: {e}"))?
 }
 
-#[tauri::command]
-pub fn v2ex_fetch_node_topics(node: String) -> Result<Vec<V2exTopic>, String> {
-    let node = node.trim();
-    if node.is_empty() {
-        return Err("Node name is empty".to_string());
-    }
-
-    let json = v2ex_get_authed(&format!("/api/v2/nodes/{}/topics", node))?;
+fn parse_v2_topics(json: &str) -> Result<Vec<V2exTopic>, String> {
     let resp: serde_json::Value =
-        serde_json::from_str(&json).map_err(|e| format!("Parse JSON: {e}"))?;
+        serde_json::from_str(json).map_err(|e| format!("Parse JSON: {e}"))?;
 
     let result = resp
         .get("result")
         .and_then(|v| v.as_array())
         .ok_or_else(|| "Missing result array in v2 response".to_string())?;
 
-    let topics = result
+    Ok(result
         .into_iter()
         .filter_map(|v| {
             let id = v.get("id")?.as_u64()?;
@@ -239,51 +263,51 @@ pub fn v2ex_fetch_node_topics(node: String) -> Result<Vec<V2exTopic>, String> {
                 last_modified,
             })
         })
-        .collect();
-
-    Ok(topics)
+        .collect())
 }
 
 #[tauri::command]
-pub fn v2ex_fetch_topic_replies(topic_id: u64) -> Result<Vec<V2exReply>, String> {
-    let json = v2ex_get_authed(&format!("/api/v2/topics/{}/replies", topic_id))?;
-    let resp: serde_json::Value =
-        serde_json::from_str(&json).map_err(|e| format!("Parse JSON: {e}"))?;
+pub async fn v2ex_fetch_topic_replies(topic_id: u64) -> Result<Vec<V2exReply>, String> {
+    tokio::task::spawn_blocking(move || {
+        let json = v2ex_get_authed(&format!("/api/v2/topics/{}/replies", topic_id))?;
+        let resp: serde_json::Value =
+            serde_json::from_str(&json).map_err(|e| format!("Parse JSON: {e}"))?;
 
-    let result = resp
-        .get("result")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| "Missing result array in v2 response".to_string())?;
+        let result = resp
+            .get("result")
+            .and_then(|v| v.as_array())
+            .ok_or_else(|| "Missing result array in v2 response".to_string())?;
 
-    let replies = result
-        .into_iter()
-        .filter_map(|v| {
-            let id = v.get("id")?.as_u64()?;
-            let content = v
-                .get("content_rendered")
-                .and_then(|c| c.as_str())
-                .unwrap_or("")
-                .to_string();
-            let author = v
-                .get("member")
-                .and_then(|m| m.get("username"))
-                .and_then(|u| u.as_str())
-                .unwrap_or("")
-                .to_string();
-            let created = v.get("created").and_then(|c| c.as_i64()).unwrap_or(0);
-            let floor = v.get("no").and_then(|n| n.as_u64()).unwrap_or(0) as u32;
+        Ok(result
+            .into_iter()
+            .filter_map(|v| {
+                let id = v.get("id")?.as_u64()?;
+                let content = v
+                    .get("content_rendered")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let author = v
+                    .get("member")
+                    .and_then(|m| m.get("username"))
+                    .and_then(|u| u.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let created = v.get("created").and_then(|c| c.as_i64()).unwrap_or(0);
+                let floor = v.get("no").and_then(|n| n.as_u64()).unwrap_or(0) as u32;
 
-            Some(V2exReply {
-                id,
-                content,
-                author,
-                created,
-                floor,
+                Some(V2exReply {
+                    id,
+                    content,
+                    author,
+                    created,
+                    floor,
+                })
             })
-        })
-        .collect();
-
-    Ok(replies)
+            .collect())
+    })
+    .await
+    .map_err(|e| format!("V2EX replies panicked: {e}"))?
 }
 
 #[tauri::command]

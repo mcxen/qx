@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useMemo, useState } from "react";
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import QxBottomIsland, { type BottomIslandContent } from "./QxBottomIsland";
 import ShellActionButton, { type QxShellAction } from "./ShellActionButton";
@@ -61,6 +61,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const hasRightActions = Boolean(visiblePrimaryAction || visibleSecondaryAction);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [actionIndex, setActionIndex] = useState(0);
+  const searchGlowTimers = useRef<WeakMap<HTMLElement, ReturnType<typeof setTimeout>>>(new WeakMap());
   const menuActions = useMemo(() => actions ?? [], [actions]);
   const menuTitle = actionTitle ?? `${title} Actions`;
 
@@ -145,6 +146,21 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     onKeyDown?.(event);
   };
 
+  const handleInputCapture = (event: React.FormEvent<HTMLDivElement>) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || !target.classList.contains("qx-plugin-search")) return;
+    const wrap = target.closest<HTMLElement>(".qx-search-wrap");
+    if (!wrap) return;
+    wrap.classList.add("is-searching");
+    const existingTimer = searchGlowTimers.current.get(wrap);
+    if (existingTimer) clearTimeout(existingTimer);
+    const nextTimer = setTimeout(() => {
+      wrap.classList.remove("is-searching");
+      searchGlowTimers.current.delete(wrap);
+    }, 720);
+    searchGlowTimers.current.set(wrap, nextTimer);
+  };
+
   return (
     <div
       ref={ref}
@@ -152,6 +168,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       style={style}
       aria-label={title}
       onKeyDownCapture={handleKeyDown}
+      onInputCapture={handleInputCapture}
       tabIndex={0}
     >
       <div className="qx-shell-drag-edge edge-top" data-tauri-drag-region aria-hidden="true" />

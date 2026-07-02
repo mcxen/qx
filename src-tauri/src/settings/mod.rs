@@ -109,7 +109,7 @@ impl Default for AppearanceSettings {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ShortcutBinding {
     pub key: String,
     pub enabled: bool,
@@ -385,7 +385,7 @@ pub struct SearchMetadataEntry {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct QuickEntryConfig {
     pub id: String,
     pub title: String,
@@ -418,7 +418,7 @@ fn default_quick_entries() -> Vec<QuickEntryConfig> {
     .collect()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TrayActionConfig {
     pub id: String,
     pub title: String,
@@ -566,43 +566,82 @@ fn atomic_write(path: &PathBuf, bytes: &[u8]) -> std::io::Result<()> {
     Ok(())
 }
 
-#[command]
-pub fn get_settings() -> Settings {
-    read_settings()
+async fn settings_io<T, F>(task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(task)
+        .await
+        .map_err(|e| format!("settings IO task failed: {e}"))?
 }
 
 #[command]
-pub fn update_settings(app: AppHandle, settings: Settings) -> Result<Settings, String> {
-    write_settings(&settings)?;
-    register_shortcuts(&app, &settings)?;
-    crate::refresh_tray_menu(&app, &settings)?;
+pub async fn get_settings() -> Settings {
+    tokio::task::spawn_blocking(read_settings)
+        .await
+        .unwrap_or_default()
+}
+
+#[command]
+pub async fn update_settings(app: AppHandle, settings: Settings) -> Result<Settings, String> {
+    let settings_for_io = settings.clone();
+    let (shortcuts_changed, tray_changed) = settings_io(move || {
+        let old = read_settings();
+        let shortcuts_changed = old.shortcuts != settings_for_io.shortcuts
+            || old.app_shortcuts != settings_for_io.app_shortcuts;
+        let tray_changed = old.quick_entries != settings_for_io.quick_entries
+            || old.tray_actions != settings_for_io.tray_actions
+            || old.general.auto_hide_on_blur != settings_for_io.general.auto_hide_on_blur;
+        write_settings(&settings_for_io)?;
+        Ok((shortcuts_changed, tray_changed))
+    })
+    .await?;
+
+    if shortcuts_changed {
+        register_shortcuts(&app, &settings)?;
+    }
+    if tray_changed {
+        crate::refresh_tray_menu(&app, &settings)?;
+    }
     Ok(settings)
 }
 
 #[command]
-pub fn reset_settings(app: AppHandle) -> Result<Settings, String> {
+pub async fn reset_settings(app: AppHandle) -> Result<Settings, String> {
     let default = Settings::default();
-    write_settings(&default)?;
+    let default_for_io = default.clone();
+    settings_io(move || write_settings(&default_for_io)).await?;
     register_shortcuts(&app, &default)?;
     crate::refresh_tray_menu(&app, &default)?;
     Ok(default)
 }
 
 #[command]
-pub fn import_settings(app: AppHandle, path: String) -> Result<Settings, String> {
-    let content = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path))?;
-    let settings: Settings = serde_json::from_str(&content).map_err(|e| format!("parse: {e}"))?;
-    write_settings(&settings)?;
+pub async fn import_settings(app: AppHandle, path: String) -> Result<Settings, String> {
+    let settings = settings_io(move || {
+        let content = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path))?;
+        let settings: Settings =
+            serde_json::from_str(&content).map_err(|e| format!("parse: {e}"))?;
+        write_settings(&settings)?;
+        Ok(settings)
+    })
+    .await?;
     register_shortcuts(&app, &settings)?;
     crate::refresh_tray_menu(&app, &settings)?;
     Ok(settings)
 }
 
 #[command]
-pub fn export_settings(path: String) -> Result<(), String> {
-    let settings = read_settings();
-    let json = serde_json::to_string_pretty(&settings).map_err(|e| format!("serialize: {e}"))?;
-    fs::write(&path, json).map_err(|e| format!("write {}: {e}", path))
+pub async fn export_settings(path: String) -> Result<(), String> {
+    settings_io(move || {
+        let settings = read_settings();
+        let json =
+            serde_json::to_string_pretty(&settings).map_err(|e| format!("serialize: {e}"))?;
+        let path_buf = PathBuf::from(&path);
+        atomic_write(&path_buf, json.as_bytes()).map_err(|e| format!("write {}: {e}", path))
+    })
+    .await
 }
 
 pub fn init() {

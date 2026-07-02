@@ -19,6 +19,10 @@ const zh: Record<string, string> = {
   "settings.search": "搜索设置...",
   "settings.noMatches": "没有匹配的设置",
   "settings.close": "关闭",
+  "settings.navGroup.workspace": "工作区",
+  "settings.navGroup.extensions": "扩展",
+  "settings.navGroup.modules": "模块",
+  "settings.navGroup.system": "系统",
 
   "general.launchAtLogin": "登录时启动",
   "general.launchAtLogin.desc": "登录后自动打开 Qx。",

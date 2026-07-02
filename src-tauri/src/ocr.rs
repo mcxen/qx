@@ -172,53 +172,57 @@ fn download_file(
 }
 
 #[command]
-pub fn download_ocr_model(app: AppHandle, size: String) -> Result<String, String> {
-    let pack = PACKS
-        .iter()
-        .find(|(name, _)| *name == size)
-        .ok_or_else(|| format!("Unknown model size: {}. Use tiny/small/medium", size))?;
-    let models = &pack.1;
+pub async fn download_ocr_model(app: AppHandle, size: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || {
+        let pack = PACKS
+            .iter()
+            .find(|(name, _)| *name == size)
+            .ok_or_else(|| format!("Unknown model size: {}. Use tiny/small/medium", size))?;
+        let models = &pack.1;
 
-    let target_dir = oar_home();
+        let target_dir = oar_home();
 
-    // Calculate total size estimate for progress
-    let sizes: Vec<u64> = vec![
-        // Rough sizes in bytes (PP-OCRv6)
-        match size.as_str() {
-            "tiny" => 1780590 + 4462639 + 27156,     // ~6.3 MB
-            "small" => 9880512 + 21159378 + 74947,   // ~31 MB
-            "medium" => 62032837 + 76554979 + 74947, // ~138 MB
-            _ => 6_000_000,
-        },
-    ];
-    let grand_total = sizes[0];
+        // Calculate total size estimate for progress
+        let sizes: Vec<u64> = vec![
+            // Rough sizes in bytes (PP-OCRv6)
+            match size.as_str() {
+                "tiny" => 1780590 + 4462639 + 27156,     // ~6.3 MB
+                "small" => 9880512 + 21159378 + 74947,   // ~31 MB
+                "medium" => 62032837 + 76554979 + 74947, // ~138 MB
+                _ => 6_000_000,
+            },
+        ];
+        let grand_total = sizes[0];
 
-    let mut total_bytes: u64 = 0;
+        let mut total_bytes: u64 = 0;
 
-    // Download each model file sequentially with progress
-    download_file(&app, models.det, &target_dir, &mut total_bytes, grand_total)?;
-    download_file(&app, models.rec, &target_dir, &mut total_bytes, grand_total)?;
-    download_file(
-        &app,
-        models.dict,
-        &target_dir,
-        &mut total_bytes,
-        grand_total,
-    )?;
+        // Download each model file sequentially with progress
+        download_file(&app, models.det, &target_dir, &mut total_bytes, grand_total)?;
+        download_file(&app, models.rec, &target_dir, &mut total_bytes, grand_total)?;
+        download_file(
+            &app,
+            models.dict,
+            &target_dir,
+            &mut total_bytes,
+            grand_total,
+        )?;
 
-    let _ = app.emit(
-        "ocr-download-progress",
-        serde_json::json!({
-            "percent": 100,
-            "status": "Download complete!",
-        }),
-    );
+        let _ = app.emit(
+            "ocr-download-progress",
+            serde_json::json!({
+                "percent": 100,
+                "status": "Download complete!",
+            }),
+        );
 
-    Ok(format!(
-        "oar-ocr-{} models downloaded to {}",
-        size,
-        target_dir.display()
-    ))
+        Ok(format!(
+            "oar-ocr-{} models downloaded to {}",
+            size,
+            target_dir.display()
+        ))
+    })
+    .await
+    .map_err(|e| format!("OCR download task panicked: {e}"))?
 }
 
 #[command]

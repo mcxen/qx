@@ -4,6 +4,32 @@ import { invoke } from "@tauri-apps/api/core";
 let saveSeq = 0;
 let saveInFlight = false;
 let saveQueued = false;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let saveIdleWaiters: Array<() => void> = [];
+const SAVE_DEBOUNCE_MS = 350;
+
+function notifySaveIdle() {
+  if (saveInFlight || saveQueued || saveTimer) return;
+  const waiters = saveIdleWaiters;
+  saveIdleWaiters = [];
+  waiters.forEach((resolve) => resolve());
+}
+
+function waitForSaveIdle(): Promise<void> {
+  if (!saveInFlight && !saveQueued && !saveTimer) return Promise.resolve();
+  return new Promise((resolve) => {
+    saveIdleWaiters.push(resolve);
+  });
+}
+
+function cancelScheduledSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  saveQueued = false;
+  notifySaveIdle();
+}
 
 export interface GeneralSettings {
   launch_at_login: boolean;
@@ -132,7 +158,6 @@ export interface Settings {
 export type SettingsTab =
   | "general"
   | "plugins"
-  | "shortcuts"
   | "permissions"
   | "appearance"
   | "agent"
@@ -252,6 +277,7 @@ interface SettingsStore {
   patchSearchMetadata: (id: string, value: SearchMetadataEntry) => void;
   load: () => Promise<void>;
   save: () => Promise<void>;
+  flush: () => Promise<void>;
   reset: () => Promise<void>;
   importFrom: (path: string) => Promise<void>;
   exportTo: (path: string) => Promise<void>;
@@ -339,30 +365,19 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   save: async () => {
     saveSeq += 1;
     saveQueued = true;
-    if (saveInFlight) return;
-
-    saveInFlight = true;
-    try {
-      while (saveQueued) {
-        saveQueued = false;
-        const seq = saveSeq;
-        const settings = get().settings;
-        try {
-          await invoke<Settings>("update_settings", {
-            settings,
-          });
-        } catch (e) {
-          if (seq === saveSeq) {
-            console.error("update_settings failed", e);
-          }
-        }
-      }
-    } finally {
-      saveInFlight = false;
-    }
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      void flushSettingsSave(get);
+    }, SAVE_DEBOUNCE_MS);
+  },
+  flush: async () => {
+    await flushQueuedSettingsSave(get);
   },
   reset: async () => {
     try {
+      cancelScheduledSave();
+      await waitForSaveIdle();
       const s = await invoke<Settings>("reset_settings");
       set({ settings: s });
     } catch (e) {
@@ -371,6 +386,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
   importFrom: async (path: string) => {
     try {
+      cancelScheduledSave();
+      await waitForSaveIdle();
       const s = await invoke<Settings>("import_settings", { path });
       set({ settings: s });
     } catch (e) {
@@ -380,6 +397,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   },
   exportTo: async (path: string) => {
     try {
+      await flushQueuedSettingsSave(get);
       await invoke("export_settings", { path });
     } catch (e) {
       console.error("export_settings failed", e);
@@ -387,6 +405,46 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     }
   },
 }));
+
+async function flushQueuedSettingsSave(get: () => SettingsStore) {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  if (saveQueued && !saveInFlight) {
+    void flushSettingsSave(get);
+  }
+  await waitForSaveIdle();
+}
+
+async function flushSettingsSave(get: () => SettingsStore) {
+  if (saveInFlight) return;
+
+  saveInFlight = true;
+  try {
+    while (saveQueued) {
+      saveQueued = false;
+      const seq = saveSeq;
+      const settings = get().settings;
+      try {
+        await invoke<Settings>("update_settings", {
+          settings,
+        });
+      } catch (e) {
+        if (seq === saveSeq) {
+          console.error("update_settings failed", e);
+        }
+      }
+    }
+  } finally {
+    saveInFlight = false;
+    if (saveQueued) {
+      void flushSettingsSave(get);
+    } else {
+      notifySaveIdle();
+    }
+  }
+}
 
 export const SHORTCUT_GROUPS: { group: string; ids: string[] }[] = [
   { group: "Global", ids: ["toggle_launcher"] },

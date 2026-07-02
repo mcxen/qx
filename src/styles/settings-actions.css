@@ -35,14 +35,35 @@
 .qx-settings-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 10px;
   width: 100%;
   min-width: 0;
   height: 100%;
   overflow-y: auto;
-  padding: 12px;
+  padding: 14px 12px;
   background: transparent;
   transition: background-color 0.1s ease;
+}
+
+.qx-settings-nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.qx-settings-nav-group + .qx-settings-nav-group {
+  padding-top: 8px;
+  border-top: 1px solid var(--qx-border-1);
+}
+
+.qx-settings-nav-group-label {
+  padding: 0 10px 4px;
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .qx-settings-nav-item {
@@ -54,7 +75,7 @@
   height: 34px;
   flex-shrink: 0;
   padding: 0 10px;
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--qx-control-radius);
   background: transparent;
   color: var(--qx-text-secondary);
@@ -64,14 +85,22 @@
   transition: background-color 0.08s ease, color 0.08s ease;
 }
 
-.qx-settings-nav-code {
+.qx-settings-nav-item.qx-shadcn-button {
+  justify-content: flex-start;
+  font-weight: 600;
+}
+
+.qx-settings-nav-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 24px;
-  color: inherit;
-  font-family: var(--qx-font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  text-align: center;
-  letter-spacing: 0;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-tertiary);
+  transition: background-color 0.08s ease, color 0.08s ease;
 }
 
 .qx-settings-nav-label {
@@ -84,8 +113,14 @@
 
 .qx-settings-nav-item.is-active {
   background: var(--qx-bg-component-3);
+  border-color: var(--qx-border-1);
   color: var(--qx-text-primary);
   font-weight: 600;
+}
+
+.qx-settings-nav-item.is-active .qx-settings-nav-icon {
+  background: color-mix(in srgb, var(--qx-accent) 14%, transparent);
+  color: var(--qx-accent);
 }
 
 .qx-settings-nav-item:hover {
@@ -93,7 +128,14 @@
   color: var(--qx-text-primary);
 }
 
+.qx-settings-empty {
+  padding: 16px 10px;
+  color: var(--qx-text-tertiary);
+  font-size: 12px;
+}
+
 .qx-settings-content {
+  --qx-settings-gutter-x: clamp(18px, 2.4vw, 26px);
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -116,7 +158,7 @@
 }
 
 .qx-settings-title {
-  padding: 7px 12px;
+  padding: 8px var(--qx-settings-gutter-x);
   border-bottom: 1px solid var(--qx-border-1);
   font-size: 13px;
   font-weight: 600;
@@ -129,7 +171,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 6px 12px 16px;
+  padding: 10px var(--qx-settings-gutter-x) 18px;
   min-width: 0;
   width: 100%;
 }
@@ -287,7 +329,7 @@
 
 .qx-plugin-manager-top {
   flex: 0 0 auto;
-  padding: 8px 12px;
+  padding: 10px var(--qx-settings-gutter-x);
   border-bottom: 1px solid var(--qx-border-1);
 }
 
@@ -313,7 +355,7 @@
 
 .qx-plugin-list-toolbar {
   flex-shrink: 0;
-  padding: 8px 12px;
+  padding: 10px var(--qx-settings-gutter-x);
   border-bottom: 1px solid var(--qx-border-1);
   background: var(--qx-overlay-1);
 }
@@ -350,7 +392,7 @@
 
 .qx-plugin-library-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(260px, 32vw, 360px);
+  grid-template-columns: minmax(280px, 1fr) clamp(320px, 38vw, 440px);
   flex: 1;
   min-height: 0;
   min-width: 0;
@@ -370,7 +412,7 @@
   gap: 10px;
   width: 100%;
   min-height: 58px;
-  padding: 10px 12px;
+  padding: 10px var(--qx-settings-gutter-x);
   border: none;
   border-bottom: 1px solid var(--qx-border-1);
   background: transparent;
@@ -412,6 +454,12 @@
 img.qx-plugin-list-icon,
 img.qx-plugin-detail-icon {
   padding: 0;
+}
+
+.qx-plugin-list-icon.is-builtin-icon,
+.qx-plugin-detail-icon.is-builtin-icon {
+  background: color-mix(in srgb, var(--qx-accent) 11%, var(--qx-bg-component-2));
+  color: var(--qx-accent);
 }
 
 .qx-plugin-library-item:hover {
@@ -486,16 +534,23 @@ img.qx-plugin-detail-icon {
 
 .qx-plugin-detail-panel {
   min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   overflow: visible;
 }
 
 .qx-plugin-library-detail,
 .qx-plugin-detail-panel {
-  padding: 10px;
+  padding: 12px var(--qx-settings-gutter-x);
 }
 
 .qx-plugin-library-detail .qx-plugin-detail-panel {
   padding: 0;
+}
+
+.qx-plugin-detail-panel > .qx-card {
+  flex: 0 0 auto;
 }
 
 .qx-plugin-badges {
@@ -704,6 +759,92 @@ span.qx-plugin-screenshot {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--qx-text-secondary);
+}
+
+.qx-extension-command-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+}
+
+.qx-extension-command-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--qx-border-1);
+}
+
+.qx-extension-command-row:last-child {
+  border-bottom: none;
+}
+
+.qx-extension-command-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-secondary);
+}
+
+.qx-extension-command-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.qx-extension-command-title {
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.qx-extension-command-description {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-extension-shortcut-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.qx-extension-shortcut-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 74px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-primary);
+  font-family: var(--qx-font-mono);
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.qx-extension-shortcut-reset.qx-shadcn-button {
+  width: 28px;
+  height: 28px;
+  color: var(--qx-text-tertiary);
 }
 
 .qx-plugin-status {

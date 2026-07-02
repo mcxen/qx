@@ -80,41 +80,58 @@ struct HelperStatus {
 }
 
 #[tauri::command]
-pub fn qx_update_check(app: AppHandle) -> Result<QxUpdateInfo, String> {
+pub async fn qx_update_check(app: AppHandle) -> Result<QxUpdateInfo, String> {
     let current = app.package_info().version.to_string();
-    check_for_update(&current)
+    tokio::task::spawn_blocking(move || check_for_update(&current))
+        .await
+        .map_err(|e| format!("update check task failed: {e}"))?
 }
 
 #[tauri::command]
-pub fn qx_update_download_and_install(app: AppHandle) -> Result<QxUpdateInstallResult, String> {
+pub async fn qx_update_download_and_install(
+    app: AppHandle,
+) -> Result<QxUpdateInstallResult, String> {
     let current = app.package_info().version.to_string();
-    let update = check_for_update(&current)?;
-    if !update.available {
-        return Err("Qx is already on the latest version.".to_string());
-    }
-    if !update.can_install {
-        return Err(update
-            .install_reason
-            .unwrap_or_else(|| "This update is not installable automatically.".to_string()));
-    }
+    let result = tokio::task::spawn_blocking(move || {
+        let update = check_for_update(&current)?;
+        if !update.available {
+            return Err("Qx is already on the latest version.".to_string());
+        }
+        if !update.can_install {
+            return Err(update
+                .install_reason
+                .unwrap_or_else(|| "This update is not installable automatically.".to_string()));
+        }
 
-    let asset_url = update
-        .asset_url
-        .clone()
-        .ok_or_else(|| "update asset URL missing".to_string())?;
-    let expected_sha = update
-        .sha256
-        .clone()
-        .ok_or_else(|| "update SHA256 missing".to_string())?;
-    let latest_version = update
-        .latest_version
-        .clone()
-        .ok_or_else(|| "latest version missing".to_string())?;
+        let asset_url = update
+            .asset_url
+            .clone()
+            .ok_or_else(|| "update asset URL missing".to_string())?;
+        let expected_sha = update
+            .sha256
+            .clone()
+            .ok_or_else(|| "update SHA256 missing".to_string())?;
+        let latest_version = update
+            .latest_version
+            .clone()
+            .ok_or_else(|| "latest version missing".to_string())?;
 
-    let target_app = current_app_bundle()?;
-    let staged = download_and_stage(&latest_version, &asset_url, &expected_sha, update.size)?;
-    validate_staged_app(&staged, &target_app, &latest_version)?;
-    let helper = spawn_update_helper(&staged, &target_app, &latest_version)?;
+        let target_app = current_app_bundle()?;
+        let staged = download_and_stage(&latest_version, &asset_url, &expected_sha, update.size)?;
+        validate_staged_app(&staged, &target_app, &latest_version)?;
+        let helper = spawn_update_helper(&staged, &target_app, &latest_version)?;
+
+        Ok(QxUpdateInstallResult {
+            version: latest_version,
+            staged_app: staged.display().to_string(),
+            target_app: target_app.display().to_string(),
+            helper_path: helper.display().to_string(),
+            message: "Update staged. Qx will quit, replace the app bundle, and relaunch."
+                .to_string(),
+        })
+    })
+    .await
+    .map_err(|e| format!("update install task failed: {e}"))??;
 
     let app_for_exit = app.clone();
     std::thread::spawn(move || {
@@ -122,13 +139,7 @@ pub fn qx_update_download_and_install(app: AppHandle) -> Result<QxUpdateInstallR
         app_for_exit.exit(0);
     });
 
-    Ok(QxUpdateInstallResult {
-        version: latest_version,
-        staged_app: staged.display().to_string(),
-        target_app: target_app.display().to_string(),
-        helper_path: helper.display().to_string(),
-        message: "Update staged. Qx will quit, replace the app bundle, and relaunch.".to_string(),
-    })
+    Ok(result)
 }
 
 pub(crate) fn maybe_run_update_helper_from_args() -> bool {

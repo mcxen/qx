@@ -59,6 +59,7 @@
 }
 
 .qx-search-wrap {
+  position: relative;
   display: flex;
   align-items: center;
   flex: 1;
@@ -69,7 +70,44 @@
   border: 1px solid var(--qx-border-1);
   border-radius: var(--qx-control-radius);
   background: var(--qx-bg-component-1);
+  isolation: isolate;
   transition: background-color 0.1s ease, border-color 0.1s ease, box-shadow 0.1s ease;
+}
+
+.qx-search-wrap::before,
+.qx-search-wrap::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.55s ease;
+}
+
+.qx-search-wrap::before {
+  z-index: -1;
+  inset: -6px;
+  border-radius: calc(var(--qx-control-radius) + 8px);
+  background:
+    radial-gradient(110px 54px at 18% 50%, color-mix(in srgb, var(--qx-accent) 34%, transparent), transparent 68%),
+    radial-gradient(120px 60px at 82% 50%, color-mix(in srgb, var(--qx-stats-gpu) 24%, transparent), transparent 70%);
+  filter: blur(10px);
+}
+
+.qx-search-wrap::after {
+  z-index: 1;
+  inset: -1px;
+  border-radius: calc(var(--qx-control-radius) + 1px);
+  padding: 1px;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    color-mix(in srgb, var(--qx-accent) 52%, transparent) 34%,
+    color-mix(in srgb, var(--qx-stats-gpu) 38%, transparent) 62%,
+    transparent 100%
+  );
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
 }
 
 .qx-search-wrap:focus-within {
@@ -77,8 +115,28 @@
   box-shadow: 0 0 0 2px var(--qx-accent-soft);
 }
 
+.qx-search-wrap.is-searching::before,
+.qx-search-wrap.is-searching::after {
+  opacity: 1;
+}
+
+.qx-search-wrap.is-searching::after {
+  animation: qx-search-glow-sweep 0.72s ease-out;
+}
+
+@keyframes qx-search-glow-sweep {
+  from {
+    background-position: -160px 0;
+  }
+
+  to {
+    background-position: 160px 0;
+  }
+}
+
 .qx-search-icon {
   position: relative;
+  z-index: 2;
   width: 18px;
   height: 18px;
   text-align: center;
@@ -110,6 +168,8 @@
 }
 
 .qx-plugin-search {
+  position: relative;
+  z-index: 2;
   flex: 1;
   min-width: 0;
   height: 100%;

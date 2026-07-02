@@ -397,36 +397,8 @@ fn resolve_location(
 // ---------------------------------------------------------------------------
 
 #[tauri::command]
-pub fn detect_location() -> Result<GeoLocation, String> {
-    let client = crate::http_client::blocking_client(
-        "Qx/0.2 (Weather; +https://github.com/mcxen/qx)",
-        Duration::from_secs(10),
-        Some(Duration::from_secs(5)),
-    )
-    .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
-
-    let resp = client
-        .get("https://ipapi.co/json/")
-        .send()
-        .map_err(|e| format!("IP geolocation failed: {e}"))?;
-
-    let data: IpApiCoResponse = resp
-        .json()
-        .map_err(|e| format!("IP geolocation parse failed: {e}"))?;
-
-    Ok(GeoLocation {
-        latitude: data.latitude,
-        longitude: data.longitude,
-        city: data.city,
-        country: data.country_name,
-    })
-}
-
-#[tauri::command]
-pub fn fetch_weather() -> Result<WeatherData, String> {
-    let settings = weather_settings();
-
-    let result = (|| {
+pub async fn detect_location() -> Result<GeoLocation, String> {
+    tokio::task::spawn_blocking(move || {
         let client = crate::http_client::blocking_client(
             "Qx/0.2 (Weather; +https://github.com/mcxen/qx)",
             Duration::from_secs(10),
@@ -434,34 +406,74 @@ pub fn fetch_weather() -> Result<WeatherData, String> {
         )
         .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
 
-        let location = resolve_location(&client, &settings.location_override)?;
+        let resp = client
+            .get("https://ipapi.co/json/")
+            .send()
+            .map_err(|e| format!("IP geolocation failed: {e}"))?;
 
-        if settings.provider == "openweathermap" && !settings.api_key.trim().is_empty() {
-            fetch_openweathermap(&client, &location, settings.api_key.trim())
-        } else {
-            fetch_open_meteo(&client, &location)
-        }
-    })();
+        let data: IpApiCoResponse = resp
+            .json()
+            .map_err(|e| format!("IP geolocation parse failed: {e}"))?;
 
-    match result {
-        Ok(data) => {
-            let _ = write_weather_cache(&settings, &data);
-            Ok(data)
-        }
-        Err(err) => {
-            if let Some(cached) = read_weather_cache_for(&settings) {
-                Ok(cached)
-            } else {
-                Err(err)
-            }
-        }
-    }
+        Ok(GeoLocation {
+            latitude: data.latitude,
+            longitude: data.longitude,
+            city: data.city,
+            country: data.country_name,
+        })
+    })
+    .await
+    .map_err(|e| format!("Weather detection task panicked: {e}"))?
 }
 
 #[tauri::command]
-pub fn get_cached_weather() -> Result<Option<WeatherData>, String> {
-    let settings = weather_settings();
-    Ok(read_weather_cache_for(&settings))
+pub async fn fetch_weather() -> Result<WeatherData, String> {
+    tokio::task::spawn_blocking(move || {
+        let settings = weather_settings();
+
+        let result = (|| {
+            let client = crate::http_client::blocking_client(
+                "Qx/0.2 (Weather; +https://github.com/mcxen/qx)",
+                Duration::from_secs(10),
+                Some(Duration::from_secs(5)),
+            )
+            .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+
+            let location = resolve_location(&client, &settings.location_override)?;
+
+            if settings.provider == "openweathermap" && !settings.api_key.trim().is_empty() {
+                fetch_openweathermap(&client, &location, settings.api_key.trim())
+            } else {
+                fetch_open_meteo(&client, &location)
+            }
+        })();
+
+        match result {
+            Ok(data) => {
+                let _ = write_weather_cache(&settings, &data);
+                Ok(data)
+            }
+            Err(err) => {
+                if let Some(cached) = read_weather_cache_for(&settings) {
+                    Ok(cached)
+                } else {
+                    Err(err)
+                }
+            }
+        }
+    })
+    .await
+    .map_err(|e| format!("Weather fetch task panicked: {e}"))?
+}
+
+#[tauri::command]
+pub async fn get_cached_weather() -> Result<Option<WeatherData>, String> {
+    tokio::task::spawn_blocking(move || {
+        let settings = weather_settings();
+        Ok(read_weather_cache_for(&settings))
+    })
+    .await
+    .map_err(|e| format!("Weather cache task panicked: {e}"))?
 }
 
 fn fetch_open_meteo(

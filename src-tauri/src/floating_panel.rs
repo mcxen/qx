@@ -187,21 +187,182 @@ mod macos {
             let _: () = msg_send![app, activateIgnoringOtherApps: true];
         }
     }
+
+    pub(super) fn cursor_position_for_display_lookup() -> Option<(f64, f64)> {
+        unsafe {
+            let event_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSEvent\0").ok()?)?;
+            let point: objc2_foundation::NSPoint = msg_send![event_cls, mouseLocation];
+            let y = core_graphics::display::CGDisplay::main().pixels_high() as f64 - point.y;
+            Some((point.x, y))
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+mod platform {
+    pub(super) fn cursor_position_for_display_lookup() -> Option<(f64, f64)> {
+        None
+    }
+}
+
+#[cfg(target_os = "macos")]
+use macos as platform;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct DisplayArea {
+    scale_factor: f64,
+    frame_x: i32,
+    frame_y: i32,
+    frame_width: u32,
+    frame_height: u32,
+    work_x: i32,
+    work_y: i32,
+    work_width: u32,
+    work_height: u32,
+}
+
+fn display_area_from_monitor(monitor: &tauri::Monitor) -> DisplayArea {
+    let frame = monitor.position();
+    let frame_size = monitor.size();
+    let work = monitor.work_area();
+    DisplayArea {
+        scale_factor: monitor.scale_factor(),
+        frame_x: frame.x,
+        frame_y: frame.y,
+        frame_width: frame_size.width,
+        frame_height: frame_size.height,
+        work_x: work.position.x,
+        work_y: work.position.y,
+        work_width: work.size.width,
+        work_height: work.size.height,
+    }
+}
+
+fn contains_point(area: DisplayArea, x: f64, y: f64) -> bool {
+    let left = area.frame_x as f64;
+    let top = area.frame_y as f64;
+    let right = left + area.frame_width as f64;
+    let bottom = top + area.frame_height as f64;
+    x >= left && x < right && y >= top && y < bottom
+}
+
+fn distance_to_area(area: DisplayArea, x: f64, y: f64) -> f64 {
+    let left = area.frame_x as f64;
+    let top = area.frame_y as f64;
+    let right = left + area.frame_width as f64;
+    let bottom = top + area.frame_height as f64;
+    let dx = if x < left {
+        left - x
+    } else if x > right {
+        x - right
+    } else {
+        0.0
+    };
+    let dy = if y < top {
+        top - y
+    } else if y > bottom {
+        y - bottom
+    } else {
+        0.0
+    };
+    (dx * dx) + (dy * dy)
+}
+
+fn select_display_area_for_cursor(areas: &[DisplayArea], x: f64, y: f64) -> Option<DisplayArea> {
+    areas
+        .iter()
+        .copied()
+        .find(|area| contains_point(*area, x, y))
+        .or_else(|| {
+            areas.iter().copied().min_by(|left, right| {
+                distance_to_area(*left, x, y)
+                    .partial_cmp(&distance_to_area(*right, x, y))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+        })
+}
+
+fn select_display_area_for_raw_cursor(
+    areas: &[DisplayArea],
+    x: f64,
+    y: f64,
+) -> Option<DisplayArea> {
+    areas
+        .iter()
+        .copied()
+        .find(|area| contains_point(*area, x * area.scale_factor, y * area.scale_factor))
+        .or_else(|| {
+            areas.iter().copied().min_by(|left, right| {
+                distance_to_area(*left, x * left.scale_factor, y * left.scale_factor)
+                    .partial_cmp(&distance_to_area(
+                        *right,
+                        x * right.scale_factor,
+                        y * right.scale_factor,
+                    ))
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+        })
+}
+
+fn available_display_areas(app: &AppHandle) -> Vec<DisplayArea> {
+    app.available_monitors()
+        .ok()
+        .map(|monitors| {
+            monitors
+                .iter()
+                .map(display_area_from_monitor)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
+}
+
+fn display_area_for_raw_cursor(app: &AppHandle, x: f64, y: f64) -> Option<DisplayArea> {
+    select_display_area_for_raw_cursor(&available_display_areas(app), x, y)
+}
+
+fn display_area_for_cursor(app: &AppHandle, x: f64, y: f64) -> Option<DisplayArea> {
+    let areas = available_display_areas(app);
+    select_display_area_for_cursor(&areas, x, y).or_else(|| {
+        app.monitor_from_point(x, y)
+            .ok()
+            .flatten()
+            .map(|monitor| display_area_from_monitor(&monitor))
+    })
+}
+
+fn fallback_display_area(app: &AppHandle, win: &tauri::WebviewWindow) -> Option<DisplayArea> {
+    win.current_monitor()
+        .ok()
+        .flatten()
+        .map(|monitor| display_area_from_monitor(&monitor))
+        .or_else(|| {
+            app.primary_monitor()
+                .ok()
+                .flatten()
+                .map(|monitor| display_area_from_monitor(&monitor))
+        })
+}
+
+fn display_area_for_current_cursor(
+    app: &AppHandle,
+    win: &tauri::WebviewWindow,
+) -> Option<DisplayArea> {
+    platform::cursor_position_for_display_lookup()
+        .and_then(|(x, y)| display_area_for_raw_cursor(app, x, y))
+        .or_else(|| {
+            app.cursor_position()
+                .ok()
+                .and_then(|cursor| display_area_for_cursor(app, cursor.x, cursor.y))
+        })
+        .or_else(|| fallback_display_area(app, win))
 }
 
 fn center_on_cursor(app: &AppHandle) -> Option<()> {
     let win = app.get_webview_window(MAIN_LABEL)?;
-    let cursor = app.cursor_position().ok()?;
-    let monitor = app
-        .monitor_from_point(cursor.x, cursor.y)
-        .ok()
-        .flatten()
-        .or_else(|| win.current_monitor().ok().flatten())
-        .or_else(|| app.primary_monitor().ok().flatten())?;
-    let area = monitor.work_area();
+    let area = display_area_for_current_cursor(app, &win)?;
     let size = win.outer_size().or_else(|_| win.inner_size()).ok()?;
-    let x = area.position.x + ((area.size.width as i32 - size.width as i32) / 2);
-    let y = area.position.y + ((area.size.height as i32 - size.height as i32) / 3);
+    let x = area.work_x + ((area.work_width as i32 - size.width as i32) / 2);
+    let y = area.work_y + ((area.work_height as i32 - size.height as i32) / 3);
     let _ = win.set_position(PhysicalPosition::new(x, y));
     Some(())
 }
@@ -332,5 +493,87 @@ pub fn floating_request_key(app: AppHandle) {
     #[cfg(not(target_os = "macos"))]
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         let _ = win.set_focus();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        contains_point, select_display_area_for_cursor, select_display_area_for_raw_cursor,
+        DisplayArea,
+    };
+
+    fn area(x: i32, y: i32, width: u32, height: u32) -> DisplayArea {
+        DisplayArea {
+            scale_factor: 1.0,
+            frame_x: x,
+            frame_y: y,
+            frame_width: width,
+            frame_height: height,
+            work_x: x,
+            work_y: y + 24,
+            work_width: width,
+            work_height: height - 24,
+        }
+    }
+
+    fn scaled_area(scale_factor: f64, frame_x: i32, frame_width: u32) -> DisplayArea {
+        DisplayArea {
+            scale_factor,
+            frame_x,
+            frame_y: 0,
+            frame_width,
+            frame_height: 2000,
+            work_x: frame_x,
+            work_y: 0,
+            work_width: frame_width,
+            work_height: 1900,
+        }
+    }
+
+    #[test]
+    fn selects_external_display_left_of_builtin() {
+        let external = area(-1920, 0, 1920, 1080);
+        let builtin = area(0, 0, 3024, 1964);
+        let selected = select_display_area_for_cursor(&[builtin, external], -100.0, 500.0);
+        assert_eq!(selected, Some(external));
+    }
+
+    #[test]
+    fn selects_external_display_right_of_builtin() {
+        let builtin = area(0, 0, 3024, 1964);
+        let external = area(3024, 120, 2560, 1440);
+        let selected = select_display_area_for_cursor(&[builtin, external], 4000.0, 800.0);
+        assert_eq!(selected, Some(external));
+    }
+
+    #[test]
+    fn full_frame_contains_menu_bar_area() {
+        let builtin = area(0, 0, 3024, 1964);
+        assert!(contains_point(builtin, 1200.0, 10.0));
+    }
+
+    #[test]
+    fn falls_back_to_nearest_display_when_cursor_is_between_frames() {
+        let left = area(0, 0, 1000, 800);
+        let right = area(1200, 0, 1000, 800);
+        let selected = select_display_area_for_cursor(&[left, right], 1120.0, 300.0);
+        assert_eq!(selected, Some(right));
+    }
+
+    #[test]
+    fn raw_cursor_selection_uses_each_display_scale() {
+        let built_in = scaled_area(2.0, 0, 3024);
+        let external = scaled_area(1.0, 3024, 1920);
+        let displays = [built_in, external];
+
+        assert_eq!(
+            select_display_area_for_raw_cursor(&displays, 500.0, 500.0),
+            Some(built_in)
+        );
+        assert_eq!(
+            select_display_area_for_raw_cursor(&displays, 3300.0, 500.0),
+            Some(external)
+        );
     }
 }

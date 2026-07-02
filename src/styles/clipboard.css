@@ -211,13 +211,37 @@
   justify-content: center;
   width: 22px;
   height: 22px;
-  color: var(--qx-text-primary);
+  color: var(--qx-text-secondary);
 }
 
-.qx-clipboard-row-icon .qx-symbol-icon {
-  width: 17px;
-  height: 17px;
-  color: currentColor;
+.qx-clipboard-type-icon {
+  flex: 0 0 auto;
+}
+
+.qx-clipboard-type-icon.is-pin,
+.qx-clipboard-type-icon.is-pinned {
+  color: var(--qx-accent);
+}
+
+.qx-clipboard-type-icon.is-links {
+  color: var(--chart-5);
+}
+
+.qx-clipboard-type-icon.is-code {
+  color: var(--chart-3);
+}
+
+.qx-clipboard-type-icon.is-long {
+  color: var(--muted-foreground);
+}
+
+.qx-clipboard-type-icon.is-image {
+  color: var(--chart-1);
+}
+
+.qx-clipboard-type-icon.is-text,
+.qx-clipboard-type-icon.is-frequent {
+  color: var(--qx-text-secondary);
 }
 
 .qx-clipboard-row-copy {
@@ -548,9 +572,4 @@
   border-radius: 8px;
   object-fit: contain;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
-}
-
-.qx-symbol-icon.image::before {
-  content: "🖼";
-  font-size: 14px;
 }

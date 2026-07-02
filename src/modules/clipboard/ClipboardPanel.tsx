@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import type { LucideIcon } from "lucide-react";
+import { AlignLeft, Code2, FileText, Image, Link, Pin } from "lucide-react";
 import { useStore, type ClipboardEntry } from "../../store";
 import QxShell from "../../components/QxShell";
 import { Select } from "../../components/ui";
@@ -26,6 +28,19 @@ const FILTER_LABELS: Record<Filter, string> = {
   long: "Long",
   frequent: "Frequent",
   image: "Images",
+};
+
+type ClipboardIconKind = ReturnType<typeof classify> | "pin";
+
+const CLIPBOARD_TYPE_ICONS: Record<ClipboardIconKind, LucideIcon> = {
+  pinned: Pin,
+  pin: Pin,
+  links: Link,
+  code: Code2,
+  long: AlignLeft,
+  frequent: FileText,
+  image: Image,
+  text: FileText,
 };
 
 const IMAGE_CACHE = new Map<string, string>();
@@ -86,6 +101,19 @@ async function loadImageAsDataUrl(path: string): Promise<string> {
 
 function isTauriRuntime(): boolean {
   return "__TAURI_INTERNALS__" in window;
+}
+
+function ClipboardTypeIcon({ item }: { item: ClipboardEntry }) {
+  const kind: ClipboardIconKind = item.pinned ? "pin" : classify(item);
+  const Icon = CLIPBOARD_TYPE_ICONS[kind] ?? FileText;
+  return (
+    <Icon
+      className={`qx-clipboard-type-icon is-${kind}`}
+      size={15}
+      strokeWidth={2.1}
+      aria-hidden="true"
+    />
+  );
 }
 
 export default function ClipboardPanel() {
@@ -374,11 +402,7 @@ export default function ClipboardPanel() {
                     aria-selected={active}
                   >
                     <span className="qx-clipboard-row-icon" aria-hidden="true">
-                      <span
-                        className={`qx-symbol-icon ${
-                          isImage ? "image" : item.pinned ? "pin" : kind === "links" ? "link" : kind === "code" ? "code" : "doc"
-                        }`}
-                      />
+                      <ClipboardTypeIcon item={item} />
                     </span>
                     <span className="qx-clipboard-row-copy">
                       <span className="qx-clipboard-row-title">

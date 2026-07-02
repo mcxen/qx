@@ -762,13 +762,20 @@ pub fn qxai_stream_chat_events(
 }
 
 #[tauri::command]
-pub fn qxai_list_providers() -> Vec<ProviderInfo> {
-    qxai_provider_catalog()
+pub async fn qxai_list_providers() -> Vec<ProviderInfo> {
+    tokio::task::spawn_blocking(move || qxai_provider_catalog())
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
-pub fn qxai_fetch_models(base_url: String, api_key: String) -> Result<Vec<ProviderModel>, String> {
-    openai_list_models(&base_url, &api_key)
+pub async fn qxai_fetch_models(
+    base_url: String,
+    api_key: String,
+) -> Result<Vec<ProviderModel>, String> {
+    tokio::task::spawn_blocking(move || openai_list_models(&base_url, &api_key))
+        .await
+        .map_err(|e| format!("Model fetch task panicked: {e}"))?
 }
 
 // ---------------------------------------------------------------------------

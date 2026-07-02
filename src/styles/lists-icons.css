@@ -215,6 +215,10 @@
   object-fit: contain;
 }
 
+.qx-app-icon-lucide {
+  flex: 0 0 auto;
+}
+
 .qx-app-icon-fallback {
   font-size: 9px;
   font-weight: 800;
@@ -417,47 +421,63 @@
 }
 
 .qx-app-icon.kind-file {
-  background: #14b8a6;
-  color: #fff;
+  background: color-mix(in srgb, var(--primary) 76%, var(--qx-bg-component-3));
+  color: var(--qx-text-on-accent);
 }
 
-.qx-app-icon.kind-file .qx-app-icon-symbol {
-  inset: 4px;
-  border: 2px solid currentColor;
-  border-radius: 3px;
+.qx-app-icon[class*="kind-file-"] {
+  --qx-file-icon-bg: var(--primary);
+  background: var(--qx-file-icon-bg);
+  color: var(--qx-text-on-accent);
 }
 
-.qx-app-icon.kind-file .qx-app-icon-symbol::before {
-  right: -2px;
-  top: -2px;
-  width: 7px;
-  height: 7px;
-  border-left: 2px solid currentColor;
-  border-bottom: 2px solid currentColor;
-  background: #14b8a6;
+.qx-app-icon.kind-file-pdf {
+  --qx-file-icon-bg: color-mix(in srgb, var(--destructive) 88%, var(--qx-bg-component-3));
 }
 
-/* Folder icon — yellow accent, folder shape with tab */
+.qx-app-icon.kind-file-image {
+  --qx-file-icon-bg: color-mix(in srgb, var(--chart-3) 88%, var(--qx-bg-component-3));
+}
+
+.qx-app-icon.kind-file-video {
+  --qx-file-icon-bg: color-mix(in srgb, var(--chart-1) 88%, var(--qx-bg-component-3));
+}
+
+.qx-app-icon.kind-file-audio {
+  --qx-file-icon-bg: color-mix(in srgb, var(--chart-2) 88%, var(--qx-bg-component-3));
+}
+
+.qx-app-icon.kind-file-archive {
+  --qx-file-icon-bg: color-mix(in srgb, var(--chart-4) 88%, var(--qx-bg-component-3));
+}
+
+.qx-app-icon.kind-file-code {
+  --qx-file-icon-bg: color-mix(in srgb, var(--foreground) 78%, var(--qx-bg-component-3));
+}
+
+.qx-app-icon.kind-file-text {
+  --qx-file-icon-bg: color-mix(in srgb, var(--muted-foreground) 86%, var(--qx-bg-component-3));
+}
+
+.qx-app-icon.kind-file-sheet {
+  --qx-file-icon-bg: color-mix(in srgb, var(--qx-stats-cpu) 88%, var(--qx-bg-component-3));
+}
+
+.qx-app-icon.kind-file-presentation {
+  --qx-file-icon-bg: color-mix(in srgb, var(--chart-5) 88%, var(--qx-bg-component-3));
+}
+
+.qx-app-icon.kind-file-design {
+  --qx-file-icon-bg: color-mix(in srgb, var(--qx-stats-gpu) 88%, var(--qx-bg-component-3));
+}
+
+.qx-app-icon.kind-file-font {
+  --qx-file-icon-bg: color-mix(in srgb, var(--qx-text-secondary) 86%, var(--qx-bg-component-3));
+}
+
 .qx-app-icon.kind-folder {
-  background: #eab308;
-  color: #fff;
-}
-
-.qx-app-icon.kind-folder .qx-app-icon-symbol {
-  inset: 3px 4px;
-  border: 2px solid currentColor;
-  border-radius: 2px 4px 4px 4px;
-}
-
-.qx-app-icon.kind-folder .qx-app-icon-symbol::before {
-  left: -2px;
-  top: -2px;
-  width: 6px;
-  height: 3px;
-  border: 2px solid currentColor;
-  border-bottom: none;
-  border-radius: 2px 2px 0 0;
-  background: #eab308;
+  background: color-mix(in srgb, var(--chart-4) 82%, var(--qx-bg-component-3));
+  color: var(--qx-text-on-accent);
 }
 
 .qx-list-row.compact {

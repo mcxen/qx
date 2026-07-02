@@ -1,22 +1,40 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import type { LucideIcon } from "lucide-react";
 import {
+  Bot,
   ChevronRight,
+  Clipboard,
+  CloudSun,
+  Command,
   Download,
   ExternalLink,
+  FileText,
+  Keyboard,
+  MessageCircle,
+  MonitorPlay,
   PackageCheck,
   PackagePlus,
+  Puzzle,
   RefreshCw,
+  RotateCcw,
+  Rss,
   Search,
   Trash2,
 } from "lucide-react";
 import { usePluginRegistry } from "../../plugin/registry";
 import { resolvePluginAssetUrl } from "../../plugin/runtime";
 import { BUILTIN_SETTINGS_KEYS } from "../../plugin/builtin";
-import { useSettingsStore } from "./store";
-import type { SearchMetadataEntry } from "./store";
+import {
+  DEFAULT_SETTINGS,
+  SHORTCUT_LABELS,
+  useSettingsStore,
+  type SearchMetadataEntry,
+  type ShortcutBinding,
+} from "./store";
 import SearchAliasTagEditor from "../../components/SearchAliasTagEditor";
+import ShortcutRecorder from "../../components/ShortcutRecorder";
 import {
   Badge,
   Button,
@@ -63,6 +81,21 @@ type StatusTone = "success" | "danger" | "neutral";
 
 const isBuiltin = (p: InstalledPlugin) => p.id.startsWith("builtin:");
 const normalizeSearch = (value: string) => value.trim().toLowerCase();
+const BUILTIN_PLUGIN_ICONS: Record<string, LucideIcon> = {
+  "builtin:clipboard": Clipboard,
+  "builtin:qx-ai": Bot,
+  "builtin:screencap": MonitorPlay,
+  "builtin:rss": Rss,
+  "builtin:v2ex": MessageCircle,
+  "builtin:macros": Keyboard,
+  "builtin:documents": FileText,
+  "builtin:weather": CloudSun,
+};
+const BUILTIN_PLUGIN_SHORTCUTS: Record<string, string[]> = {
+  "builtin:clipboard": ["clipboard"],
+  "builtin:rss": ["rss"],
+  "builtin:screencap": ["record_gif"],
+};
 const PLATFORM_LABELS: Record<PluginPlatform, string> = {
   macos: "macOS",
   windows: "Windows",
@@ -130,6 +163,16 @@ function PluginAssetImage({
       cancelled = true;
     };
   }, [plugin, plugin.id, asset]);
+
+  if (isBuiltin(plugin)) {
+    const BuiltinIcon = BUILTIN_PLUGIN_ICONS[plugin.id] ?? Puzzle;
+    const size = className.includes("detail") ? 22 : 17;
+    return (
+      <span className={`${className} is-builtin-icon`}>
+        <BuiltinIcon size={size} strokeWidth={2} aria-hidden="true" />
+      </span>
+    );
+  }
 
   if (!src || failed) {
     return <span className={`${className} is-fallback`}>{fallbackLabel(fallback || plugin.name)}</span>;
@@ -260,6 +303,57 @@ function formatDate(value?: string) {
   return date.toLocaleDateString();
 }
 
+function shortcutCounts(
+  shortcuts: Record<string, ShortcutBinding>,
+  appShortcuts: Record<string, ShortcutBinding>,
+) {
+  const counts: Record<string, number> = {};
+  [...Object.values(shortcuts), ...Object.values(appShortcuts)].forEach((binding) => {
+    if (binding.enabled && binding.key) {
+      counts[binding.key] = (counts[binding.key] || 0) + 1;
+    }
+  });
+  return counts;
+}
+
+function shortcutHasConflict(binding: ShortcutBinding | undefined, counts: Record<string, number>) {
+  return Boolean(binding?.enabled && binding.key && counts[binding.key] > 1);
+}
+
+function ShortcutKey({ value }: { value?: string }) {
+  return <span className="qx-extension-shortcut-key">{value?.trim() || "None"}</span>;
+}
+
+function ExtensionCommandsCard({ plugin }: { plugin: InstalledPlugin }) {
+  const commands = plugin.manifest?.commands ?? [];
+  if (commands.length === 0) return null;
+  return (
+    <SettingsCard
+      title="Commands"
+      description="Launcher commands exposed by this extension."
+    >
+      <div className="qx-extension-command-list">
+        {commands.map((command) => (
+          <div key={command.name} className="qx-extension-command-row">
+            <span className="qx-extension-command-icon" aria-hidden="true">
+              <Command size={14} strokeWidth={2} />
+            </span>
+            <div className="qx-extension-command-copy">
+              <div className="qx-extension-command-title">{command.title || command.name}</div>
+              {(command.description || command.keywords?.length) && (
+                <div className="qx-extension-command-description">
+                  {command.description || command.keywords?.slice(0, 5).join(", ")}
+                </div>
+              )}
+            </div>
+            {command.mode && <Badge variant="outline">{command.mode}</Badge>}
+          </div>
+        ))}
+      </div>
+    </SettingsCard>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  Preference form field                                              */
 /* ------------------------------------------------------------------ */
@@ -323,6 +417,81 @@ function PreferenceField({
         />
       );
   }
+}
+
+function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
+  const { settings, patchShortcut } = useSettingsStore();
+  const builtinShortcutIds = BUILTIN_PLUGIN_SHORTCUTS[plugin.id] ?? [];
+  const manifestShortcuts = plugin.manifest?.shortcuts ?? [];
+  const counts = useMemo(
+    () => shortcutCounts(settings.shortcuts, settings.app_shortcuts),
+    [settings.shortcuts, settings.app_shortcuts],
+  );
+
+  if (builtinShortcutIds.length === 0 && manifestShortcuts.length === 0) return null;
+
+  return (
+    <SettingsCard
+      title="Shortcuts"
+      description={isBuiltin(plugin)
+        ? "Global shortcuts for this built-in extension."
+        : "Shortcuts declared by this extension manifest."}
+    >
+      {builtinShortcutIds.map((id) => {
+        const binding = settings.shortcuts[id] ?? DEFAULT_SETTINGS.shortcuts[id] ?? { key: "", enabled: true };
+        const conflict = shortcutHasConflict(binding, counts);
+        const defaultBinding = DEFAULT_SETTINGS.shortcuts[id] ?? { key: "", enabled: true };
+        return (
+          <Row
+            key={id}
+            title={SHORTCUT_LABELS[id] ?? id}
+            description={conflict ? "Conflict: this shortcut is used by another action." : "Available from anywhere in Qx."}
+          >
+            <div className="qx-extension-shortcut-control">
+              <Toggle
+                value={binding.enabled}
+                onChange={(enabled) => patchShortcut(id, { enabled })}
+              />
+              <ShortcutRecorder
+                initial={binding.key}
+                conflict={conflict}
+                onCommit={(next) => patchShortcut(id, next)}
+                onCancel={() => {}}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="qx-extension-shortcut-reset"
+                onClick={() => patchShortcut(id, defaultBinding)}
+                title="Reset shortcut"
+              >
+                <RotateCcw size={13} aria-hidden="true" />
+              </Button>
+            </div>
+          </Row>
+        );
+      })}
+
+      {manifestShortcuts.map((shortcut) => {
+        const command = plugin.manifest?.commands?.find((item) => item.name === shortcut.command);
+        return (
+          <Row
+            key={`${shortcut.command}-${shortcut.key}`}
+            title={command?.title ?? shortcut.command}
+            description={shortcut.enabled === false ? "Declared by the plugin, currently disabled." : "Declared by the plugin manifest."}
+          >
+            <div className="qx-extension-shortcut-control">
+              <Badge variant={shortcut.enabled === false ? "outline" : "secondary"}>
+                {shortcut.enabled === false ? "Disabled" : "Manifest"}
+              </Badge>
+              <ShortcutKey value={shortcut.key} />
+            </div>
+          </Row>
+        );
+      })}
+    </SettingsCard>
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -506,6 +675,10 @@ function PluginDetail({
           <Toggle value={plugin.enabled} onChange={onToggle} disabled={builtin} />
         </Row>
       </SettingsCard>
+
+      <ExtensionCommandsCard plugin={plugin} />
+
+      <ExtensionShortcutsCard plugin={plugin} />
 
       <SettingsCard
         title="Search Aliases & Tags"

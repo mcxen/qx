@@ -362,6 +362,8 @@ function App() {
   const startupWindowShownRef = useRef(false);
   const autoUpdateStartedRef = useRef(false);
   const resizeSaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const pendingWindowSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const closeAfterSettingsFlushRef = useRef(false);
   const pluginSearchVersionRef = useRef("");
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchSettling, setIsSearchSettling] = useState(false);
@@ -387,6 +389,33 @@ function App() {
     },
     [setResults, startSearchTransition],
   );
+
+  const persistPendingWindowSize = useCallback(() => {
+    const pending = pendingWindowSizeRef.current;
+    pendingWindowSizeRef.current = null;
+    if (resizeSaveTimerRef.current) {
+      window.clearTimeout(resizeSaveTimerRef.current);
+      resizeSaveTimerRef.current = null;
+    }
+    if (!pending) return;
+
+    const { settings, patch } = useSettingsStore.getState();
+    if (
+      pending.width !== settings.appearance.window_width ||
+      pending.height !== settings.appearance.window_height
+    ) {
+      patch("appearance", {
+        ...settings.appearance,
+        window_width: pending.width,
+        window_height: pending.height,
+      });
+    }
+  }, []);
+
+  const flushSettingsBeforeExit = useCallback(async () => {
+    persistPendingWindowSize();
+    await useSettingsStore.getState().flush();
+  }, [persistPendingWindowSize]);
 
   const finishSearchActivity = useCallback((seq: number) => {
     if (seq !== searchSeqRef.current) return;
@@ -673,21 +702,12 @@ function App() {
       if (logical.width !== width || logical.height !== height) {
         await win.setSize(new LogicalSize(width, height)).catch(() => {});
       }
+      pendingWindowSizeRef.current = { width, height };
       if (resizeSaveTimerRef.current) {
         window.clearTimeout(resizeSaveTimerRef.current);
       }
       resizeSaveTimerRef.current = window.setTimeout(() => {
-        const { settings, patch } = useSettingsStore.getState();
-        if (
-          width !== settings.appearance.window_width ||
-          height !== settings.appearance.window_height
-        ) {
-          patch("appearance", {
-            ...settings.appearance,
-            window_width: width,
-            window_height: height,
-          });
-        }
+        persistPendingWindowSize();
       }, 250);
     });
     return () => {
@@ -695,9 +715,38 @@ function App() {
         window.clearTimeout(resizeSaveTimerRef.current);
         resizeSaveTimerRef.current = null;
       }
+      pendingWindowSizeRef.current = null;
       unlisten.then((fn) => fn());
     };
-  }, []);
+  }, [persistPendingWindowSize]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    const win = getCurrentWindow();
+    const flushOnPageExit = () => {
+      void flushSettingsBeforeExit();
+    };
+    const unlisten = win.onCloseRequested(async (event) => {
+      if (closeAfterSettingsFlushRef.current) return;
+      event.preventDefault();
+      try {
+        await flushSettingsBeforeExit();
+      } finally {
+        closeAfterSettingsFlushRef.current = true;
+        await win.close().catch(() => {
+          closeAfterSettingsFlushRef.current = false;
+        });
+      }
+    });
+
+    window.addEventListener("pagehide", flushOnPageExit);
+    window.addEventListener("beforeunload", flushOnPageExit);
+    return () => {
+      window.removeEventListener("pagehide", flushOnPageExit);
+      window.removeEventListener("beforeunload", flushOnPageExit);
+      unlisten.then((fn) => fn());
+    };
+  }, [flushSettingsBeforeExit]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -765,7 +814,6 @@ function App() {
       const [files, clipboardEntries] = await Promise.all([
         shouldSearchFiles
           ? invoke<AppEntry[]>("search_files", { query: q })
-              .then((items) => items.map((item) => ({ ...item, kind: "file" as const })))
               .catch(() => [] as AppEntry[])
           : Promise.resolve([] as AppEntry[]),
         shouldSearchClipboard

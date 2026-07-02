@@ -192,8 +192,28 @@ fn settings_top_level_size(dir: &Path, warnings: &mut Vec<String>) -> (u64, u64)
     (bytes, files)
 }
 
+async fn storage_io<T, F>(task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(task)
+        .await
+        .map_err(|e| format!("storage task failed: {e}"))?
+}
+
 #[command]
-pub fn qx_storage_overview() -> StorageOverview {
+pub async fn qx_storage_overview() -> StorageOverview {
+    storage_io(|| Ok(build_storage_overview()))
+        .await
+        .unwrap_or_else(|err| StorageOverview {
+            total_bytes: 0,
+            buckets: Vec::new(),
+            warnings: vec![err],
+        })
+}
+
+fn build_storage_overview() -> StorageOverview {
     let mut warnings: Vec<String> = Vec::new();
 
     // Cache: icons + OCR models + temp recordings (multi-path).
@@ -308,7 +328,11 @@ fn clear_dir_contents(path: &Path) -> Result<StorageClearResult, String> {
 }
 
 #[command]
-pub fn qx_storage_clear_cache() -> Result<StorageClearResult, String> {
+pub async fn qx_storage_clear_cache() -> Result<StorageClearResult, String> {
+    storage_io(clear_cache_sync).await
+}
+
+fn clear_cache_sync() -> Result<StorageClearResult, String> {
     let mut total = StorageClearResult::default();
 
     for path in [icons_dir(), ocr_models_dir()] {
@@ -329,7 +353,11 @@ pub fn qx_storage_clear_cache() -> Result<StorageClearResult, String> {
 }
 
 #[command]
-pub fn qx_storage_clear_files() -> Result<StorageClearResult, String> {
+pub async fn qx_storage_clear_files() -> Result<StorageClearResult, String> {
+    storage_io(clear_files_sync).await
+}
+
+fn clear_files_sync() -> Result<StorageClearResult, String> {
     let dir = output_files_dir();
     let mut total = StorageClearResult::default();
     if !dir.exists() {
@@ -363,7 +391,11 @@ pub fn qx_storage_clear_files() -> Result<StorageClearResult, String> {
 }
 
 #[command]
-pub fn qx_storage_clear_clipboard() -> Result<StorageClearResult, String> {
+pub async fn qx_storage_clear_clipboard() -> Result<StorageClearResult, String> {
+    storage_io(clear_clipboard_sync).await
+}
+
+fn clear_clipboard_sync() -> Result<StorageClearResult, String> {
     let total = clear_dir_contents(&clipboard_images_dir())?;
 
     if total.cleared_files > 0 {

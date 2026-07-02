@@ -2,13 +2,170 @@ import { useStore } from "./store";
 import type { AppEntry } from "./store";
 import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import type { LucideIcon } from "lucide-react";
+import {
+  File,
+  FileArchive,
+  FileAudio,
+  FileCode2,
+  FileImage,
+  FileSpreadsheet,
+  FileText,
+  FileType,
+  FileVideo,
+  Folder,
+  Palette,
+  Presentation,
+} from "lucide-react";
 import { LoadingLabel, Skeleton } from "./components/ui";
 import AppResultContextMenu from "./launcher/AppResultContextMenu";
 import { useDisplayName } from "./search/appDisplay";
 
+const FILE_ICON_BY_EXTENSION: Record<string, string> = {
+  pdf: "file-pdf",
+  png: "file-image",
+  jpg: "file-image",
+  jpeg: "file-image",
+  gif: "file-image",
+  webp: "file-image",
+  avif: "file-image",
+  heic: "file-image",
+  heif: "file-image",
+  svg: "file-image",
+  ico: "file-image",
+  tif: "file-image",
+  tiff: "file-image",
+  bmp: "file-image",
+  mp4: "file-video",
+  mov: "file-video",
+  m4v: "file-video",
+  avi: "file-video",
+  mkv: "file-video",
+  webm: "file-video",
+  mp3: "file-audio",
+  wav: "file-audio",
+  aiff: "file-audio",
+  aif: "file-audio",
+  flac: "file-audio",
+  m4a: "file-audio",
+  aac: "file-audio",
+  ogg: "file-audio",
+  zip: "file-archive",
+  rar: "file-archive",
+  "7z": "file-archive",
+  tar: "file-archive",
+  gz: "file-archive",
+  tgz: "file-archive",
+  bz2: "file-archive",
+  xz: "file-archive",
+  dmg: "file-archive",
+  pkg: "file-archive",
+  ts: "file-code",
+  tsx: "file-code",
+  js: "file-code",
+  jsx: "file-code",
+  mjs: "file-code",
+  cjs: "file-code",
+  py: "file-code",
+  rs: "file-code",
+  go: "file-code",
+  java: "file-code",
+  c: "file-code",
+  h: "file-code",
+  cpp: "file-code",
+  hpp: "file-code",
+  cs: "file-code",
+  swift: "file-code",
+  kt: "file-code",
+  rb: "file-code",
+  php: "file-code",
+  html: "file-code",
+  css: "file-code",
+  scss: "file-code",
+  sass: "file-code",
+  json: "file-code",
+  jsonc: "file-code",
+  yml: "file-code",
+  yaml: "file-code",
+  toml: "file-code",
+  xml: "file-code",
+  sh: "file-code",
+  zsh: "file-code",
+  bash: "file-code",
+  sql: "file-code",
+  vue: "file-code",
+  svelte: "file-code",
+  astro: "file-code",
+  txt: "file-text",
+  md: "file-text",
+  markdown: "file-text",
+  rtf: "file-text",
+  log: "file-text",
+  doc: "file-text",
+  docx: "file-text",
+  pages: "file-text",
+  csv: "file-sheet",
+  tsv: "file-sheet",
+  xls: "file-sheet",
+  xlsx: "file-sheet",
+  numbers: "file-sheet",
+  ppt: "file-presentation",
+  pptx: "file-presentation",
+  key: "file-presentation",
+  fig: "file-design",
+  sketch: "file-design",
+  psd: "file-design",
+  ai: "file-design",
+  ttf: "file-font",
+  otf: "file-font",
+  woff: "file-font",
+  woff2: "file-font",
+};
+
+const FILE_LABEL_BY_ICON_KIND: Record<string, string> = {
+  "file-pdf": "PDF",
+  "file-image": "Image",
+  "file-video": "Video",
+  "file-audio": "Audio",
+  "file-archive": "Archive",
+  "file-code": "Code",
+  "file-text": "Text",
+  "file-sheet": "Sheet",
+  "file-presentation": "Slides",
+  "file-design": "Design",
+  "file-font": "Font",
+};
+
+const LUCIDE_ICON_BY_KIND: Record<string, LucideIcon> = {
+  folder: Folder,
+  file: File,
+  "file-pdf": FileText,
+  "file-image": FileImage,
+  "file-video": FileVideo,
+  "file-audio": FileAudio,
+  "file-archive": FileArchive,
+  "file-code": FileCode2,
+  "file-text": FileText,
+  "file-sheet": FileSpreadsheet,
+  "file-presentation": Presentation,
+  "file-design": Palette,
+  "file-font": FileType,
+};
+
+function fileExtension(item: AppEntry): string {
+  const leaf = (item.name || item.path.split(/[\\/]/).pop() || "").trim();
+  const dotIndex = leaf.lastIndexOf(".");
+  if (dotIndex <= 0 || dotIndex === leaf.length - 1) return "";
+  return leaf.slice(dotIndex + 1).toLowerCase();
+}
+
+function fileIconKind(item: AppEntry): string {
+  return FILE_ICON_BY_EXTENSION[fileExtension(item)] ?? "file";
+}
+
 function iconKind(item: AppEntry): string {
-  if (item.kind === "file") return "file";
   if (item.kind === "folder") return "folder";
+  if (item.kind === "file") return fileIconKind(item);
   if (item.kind === "clipboard") return "clipboard";
   if (item.kind === "calculation") return "calculator";
   if (item.icon.startsWith("builtin:")) {
@@ -28,7 +185,7 @@ function iconKind(item: AppEntry): string {
 
 function sourceLabel(item: AppEntry): string {
   if (item.kind === "folder") return "Folder";
-  if (item.kind === "file") return "File";
+  if (item.kind === "file") return FILE_LABEL_BY_ICON_KIND[fileIconKind(item)] ?? "File";
   if (item.kind === "clipboard") return "Clipboard";
   if (item.kind === "calculation") return "Copy Result";
   if (item.kind === "command") return "Command";
@@ -45,9 +202,14 @@ function fallbackLabel(label: string): string {
   return trimmed.slice(0, 2).toUpperCase();
 }
 
+function lucideIconForKind(kind: string): LucideIcon | null {
+  return LUCIDE_ICON_BY_KIND[kind] ?? null;
+}
+
 function AppIcon({ item, label }: { item: AppEntry; label: string }) {
   const [failed, setFailed] = useState(false);
   const kind = iconKind(item);
+  const LucideIcon = lucideIconForKind(kind);
   const builtin = item.icon.startsWith("builtin:");
   const canUseImage =
     item.icon &&
@@ -67,6 +229,8 @@ function AppIcon({ item, label }: { item: AppEntry; label: string }) {
           alt=""
           onError={() => setFailed(true)}
         />
+      ) : LucideIcon ? (
+        <LucideIcon className="qx-app-icon-lucide" size={13} strokeWidth={2.1} />
       ) : builtin ? (
         <span className="qx-app-icon-symbol" />
       ) : (

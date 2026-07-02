@@ -147,8 +147,18 @@ export default function AboutPanel() {
     void getVersion()
       .then(setVersion)
       .catch(() => setVersion("unknown"));
-    void loadUpdateInfo(false);
-    void loadStorage();
+
+    const storageTimer = window.setTimeout(() => {
+      void loadStorage();
+    }, 120);
+    const updateTimer = window.setTimeout(() => {
+      void loadUpdateInfo(false);
+    }, 700);
+
+    return () => {
+      window.clearTimeout(storageTimer);
+      window.clearTimeout(updateTimer);
+    };
   }, []);
 
   const handleCheckUpdate = async () => {

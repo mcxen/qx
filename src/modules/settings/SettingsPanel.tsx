@@ -1,9 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { getVersion } from "@tauri-apps/api/app";
+import type { LucideIcon } from "lucide-react";
+import {
+  Bot,
+  CloudSun,
+  Info,
+  Palette,
+  Puzzle,
+  Rss,
+  ScanText,
+  Settings2,
+  ShieldCheck,
+  SlidersHorizontal,
+} from "lucide-react";
 import { useSettingsStore, type SettingsTab } from "./store";
 import GeneralSettings from "./GeneralSettings";
 import PluginManager from "./PluginManager";
-import ShortcutSettings from "./ShortcutSettings";
 import PermissionSettings from "./PermissionSettings";
 import AppearanceSettings from "./AppearanceSettings";
 import RssSettings from "./RssSettings";
@@ -13,34 +25,57 @@ import AgentSettings from "./AgentSettings";
 import WeatherSettings from "./WeatherSettings";
 import AboutPanel from "./AboutPanel";
 import QxShell from "../../components/QxShell";
-import { ScrollArea } from "../../components/ui";
+import { Button, ScrollArea } from "../../components/ui";
 import { useT } from "../../i18n";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
 
 interface NavItem {
   id: SettingsTab;
   label: string;
-  code: string;
+  icon: LucideIcon;
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { id: "general", label: "General", code: "GN" },
-  { id: "plugins", label: "Extensions", code: "EX" },
-  { id: "shortcuts", label: "Shortcuts", code: "SC" },
-  { id: "permissions", label: "Permissions", code: "PM" },
-  { id: "appearance", label: "Appearance", code: "AP" },
-  { id: "agent", label: "AI Agent", code: "AI" },
-  { id: "rss", label: "RSS Reader", code: "RS" },
-  { id: "weather", label: "Weather", code: "WT" },
-  { id: "ocr", label: "OCR", code: "OC" },
-  { id: "advanced", label: "Advanced", code: "AD" },
-  { id: "about", label: "About", code: "AB" },
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Workspace",
+    items: [
+      { id: "general", label: "General", icon: Settings2 },
+      { id: "appearance", label: "Appearance", icon: Palette },
+      { id: "agent", label: "AI Agent", icon: Bot },
+    ],
+  },
+  {
+    label: "Extensions",
+    items: [
+      { id: "plugins", label: "Extensions", icon: Puzzle },
+      { id: "permissions", label: "Permissions", icon: ShieldCheck },
+    ],
+  },
+  {
+    label: "Modules",
+    items: [
+      { id: "rss", label: "RSS Reader", icon: Rss },
+      { id: "weather", label: "Weather", icon: CloudSun },
+      { id: "ocr", label: "OCR", icon: ScanText },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
+      { id: "about", label: "About", icon: Info },
+    ],
+  },
 ];
 
 const TAB_LABELS: Record<SettingsTab, string> = {
   general: "General",
   plugins: "Extensions",
-  shortcuts: "Shortcuts",
   permissions: "Permissions",
   appearance: "Appearance",
   agent: "AI Agent",
@@ -67,10 +102,16 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       .catch(() => setVersion("unknown"));
   }, []);
 
-  const filteredNav = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return NAV_ITEMS;
-    return NAV_ITEMS.filter((n) => t(`nav.${n.id}`, n.label).toLowerCase().includes(q));
+  const navGroups = useMemo(() => {
+    if (!filter.trim()) return NAV_GROUPS;
+    return NAV_GROUPS
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) =>
+          t(`nav.${item.id}`, item.label).toLowerCase().includes(filter.trim().toLowerCase()),
+        ),
+      }))
+      .filter((group) => group.items.length > 0);
   }, [filter, t]);
 
   const renderContent = () => {
@@ -79,8 +120,6 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         return <GeneralSettings />;
       case "plugins":
         return <PluginManager />;
-      case "shortcuts":
-        return <ShortcutSettings />;
       case "permissions":
         return <PermissionSettings />;
       case "appearance":
@@ -106,7 +145,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     if (e.key !== "Escape") return;
     e.preventDefault();
     e.stopPropagation();
-    if (filter && filteredNav.length > 0) {
+    if (filter && navGroups.length > 0) {
       setFilter("");
     } else {
       onClose();
@@ -115,42 +154,49 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
 
   const settingsSearch = (
     <div className="qx-search-wrap">
-        <span className="qx-search-icon" aria-hidden="true" />
-        <input
-          type="text"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          onFocus={requestPanelKeyWindow}
-          placeholder={t("settings.search", "Search settings...")}
-          autoFocus
-          className="qx-plugin-search"
-        />
+      <span className="qx-search-icon" aria-hidden="true" />
+      <input
+        type="text"
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        onFocus={requestPanelKeyWindow}
+        placeholder={t("settings.search", "Search settings...")}
+        autoFocus
+        className="qx-plugin-search"
+      />
     </div>
   );
 
   const settingsContext = (
     <nav className="qx-settings-sidebar">
-      {filteredNav.map((item) => {
-        const active = item.id === activeTab;
-        return (
-          <button
-            key={item.id}
-            onClick={() => setActiveTab(item.id)}
-            className={`qx-settings-nav-item${active ? " is-active" : ""}`}
-          >
-            <span className="qx-settings-nav-code">{item.code}</span>
-            <span className="qx-settings-nav-label">{t(`nav.${item.id}`, item.label)}</span>
-          </button>
-        );
-      })}
-      {filteredNav.length === 0 && (
-        <div
-          style={{
-            padding: "16px 10px",
-            color: "var(--qx-text-tertiary)",
-            fontSize: 12,
-          }}
-        >
+      {navGroups.map((group) => (
+        <div key={group.label} className="qx-settings-nav-group">
+          <div className="qx-settings-nav-group-label">
+            {t(`settings.navGroup.${group.label.toLowerCase()}`, group.label)}
+          </div>
+          {group.items.map((item) => {
+            const active = item.id === activeTab;
+            const Icon = item.icon;
+            return (
+              <Button
+                key={item.id}
+                type="button"
+                variant="ghost"
+                onClick={() => setActiveTab(item.id)}
+                className={`qx-settings-nav-item${active ? " is-active" : ""}`}
+                aria-current={active ? "page" : undefined}
+              >
+                <span className="qx-settings-nav-icon" aria-hidden="true">
+                  <Icon size={14} strokeWidth={2} />
+                </span>
+                <span className="qx-settings-nav-label">{t(`nav.${item.id}`, item.label)}</span>
+              </Button>
+            );
+          })}
+        </div>
+      ))}
+      {navGroups.length === 0 && (
+        <div className="qx-settings-empty">
           {t("settings.noMatches", "No matching settings")}
         </div>
       )}

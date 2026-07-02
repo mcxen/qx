@@ -20,7 +20,8 @@ QxShell (visual="elevated", has-context)
 │  │                    └─ Row[]                ← 单条设置项
 │  └─ aside.qx-shell-context
 │     └─ nav.qx-settings-sidebar
-│        └─ button.qx-settings-nav-item × 11
+│        ├─ .qx-settings-nav-group × 4
+│        └─ Button.qx-settings-nav-item × 10
 └─ qx-shell-bottom-island
 ```
 
@@ -35,6 +36,7 @@ QxShell (visual="elevated", has-context)
 | `src/modules/settings/AboutPanel.tsx` | 关于页：版本信息 + 存储详情 |
 | `src/modules/settings/AgentSettings.tsx` | AI Agent 设置，分 4 张 Card |
 | `src/modules/settings/GeneralSettings.tsx` 等 | 其他 tab |
+| `src/modules/settings/PluginManager.tsx` | Extensions 页：Installed/Browse、扩展详情、Commands/Shortcuts/Preferences |
 | `src/components/ui.tsx` | `Row` / `SettingsCard` / `Toggle` / `Select` / `Slider` / `Input` 等 |
 | `src/components/shadcn/card.tsx` | shadcn Card primitive |
 | `src/styles/settings-actions.css` | 设置面板所有 CSS（含 Card 视觉） |
@@ -101,9 +103,9 @@ QxShell (visual="elevated", has-context)
    ```ts
    export type SettingsTab = ... | "myfeature";
    ```
-2. 在 `SettingsPanel.tsx` 的 `NAV_ITEMS` 末尾加一项：
+2. 在 `SettingsPanel.tsx` 的 `NAV_GROUPS` 合适分组里加一项：
    ```ts
-   { id: "myfeature", label: "My Feature", code: "MF" },
+   { id: "myfeature", label: "My Feature", icon: Sparkles },
    ```
 3. 在 `TAB_LABELS` 加同名映射。
 4. 在 `renderContent()` 的 switch 加 case：
