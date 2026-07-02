@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
@@ -451,6 +451,8 @@ pub struct Settings {
     #[serde(default)]
     pub shortcuts: BTreeMap<String, ShortcutBinding>,
     #[serde(default)]
+    pub app_shortcuts: BTreeMap<String, ShortcutBinding>,
+    #[serde(default)]
     pub plugins: Vec<PluginConfig>,
     #[serde(default)]
     pub advanced: AdvancedSettings,
@@ -506,6 +508,7 @@ impl Default for Settings {
             general: GeneralSettings::default(),
             appearance: AppearanceSettings::default(),
             shortcuts,
+            app_shortcuts: BTreeMap::new(),
             plugins: Vec::new(),
             advanced: AdvancedSettings::default(),
             agent: AgentSettings::default(),
@@ -614,6 +617,14 @@ fn shortcut_for(settings: &Settings, id: &str) -> Option<String> {
         .map(|binding| binding.key.trim().to_string())
 }
 
+fn enabled_shortcut_key(binding: &ShortcutBinding) -> Option<String> {
+    if binding.enabled && !binding.key.trim().is_empty() {
+        Some(binding.key.trim().to_string())
+    } else {
+        None
+    }
+}
+
 fn show_and_navigate(app: &AppHandle, route: &str) {
     if let Some(win) = app.get_webview_window("main") {
         crate::show_on_cursor_monitor(app, &win);
@@ -624,6 +635,7 @@ fn show_and_navigate(app: &AppHandle, route: &str) {
 pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result<(), String> {
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
+    let mut registered = BTreeSet::new();
 
     if let Some(key) = shortcut_for(settings, "toggle_launcher") {
         gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
@@ -638,6 +650,7 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
             }
         })
         .map_err(|e| format!("register toggle_launcher shortcut: {e}"))?;
+        registered.insert(key);
     }
 
     if let Some(key) = shortcut_for(settings, "clipboard") {
@@ -647,6 +660,7 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
             }
         })
         .map_err(|e| format!("register clipboard shortcut: {e}"))?;
+        registered.insert(key);
     }
 
     if let Some(key) = shortcut_for(settings, "rss") {
@@ -656,6 +670,7 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
             }
         })
         .map_err(|e| format!("register rss shortcut: {e}"))?;
+        registered.insert(key);
     }
 
     if let Some(key) = shortcut_for(settings, "record_gif") {
@@ -665,6 +680,34 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
             }
         })
         .map_err(|e| format!("register record_gif shortcut: {e}"))?;
+        registered.insert(key);
+    }
+
+    for (id, binding) in &settings.app_shortcuts {
+        let Some(key) = enabled_shortcut_key(binding) else {
+            continue;
+        };
+        if !registered.insert(key.clone()) {
+            eprintln!("skip duplicate app shortcut {key} for {id}");
+            continue;
+        }
+        let Some(path) = id.strip_prefix("app:") else {
+            eprintln!("skip invalid app shortcut id {id}");
+            continue;
+        };
+        let app_path = match crate::validate_open_app_path(path) {
+            Ok(path) => path,
+            Err(error) => {
+                eprintln!("skip app shortcut {id}: {error}");
+                continue;
+            }
+        };
+        gs.on_shortcut(key.as_str(), move |_app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                let _ = std::process::Command::new("open").arg(&app_path).spawn();
+            }
+        })
+        .map_err(|e| format!("register app shortcut {id}: {e}"))?;
     }
 
     Ok(())

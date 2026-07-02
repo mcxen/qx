@@ -48,7 +48,7 @@ fn open_app(path: String) -> Result<(), String> {
         .map_err(|e| format!("Failed to open app: {e}"))
 }
 
-fn validate_open_app_path(path: &str) -> Result<std::path::PathBuf, String> {
+pub(crate) fn validate_open_app_path(path: &str) -> Result<std::path::PathBuf, String> {
     let raw_path = std::path::Path::new(path);
     if raw_path.extension().and_then(|value| value.to_str()) != Some("app") {
         return Err("open_app only accepts .app bundles".to_string());

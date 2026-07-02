@@ -41,6 +41,20 @@ export { Card, CardContent, CardDescription, CardHeader, CardTitle };
 export { Separator };
 export { ScrollArea, ScrollBar };
 export { Tabs, TabsContent, TabsList, TabsTrigger };
+export {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+};
+export {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "./shadcn/context-menu";
 
 export function SettingsCard({
   title,

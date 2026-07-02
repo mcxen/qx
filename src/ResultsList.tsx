@@ -3,6 +3,7 @@ import type { AppEntry } from "./store";
 import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { LoadingLabel, Skeleton } from "./components/ui";
+import AppResultContextMenu from "./launcher/AppResultContextMenu";
 import { useDisplayName } from "./search/appDisplay";
 
 function iconKind(item: AppEntry): string {
@@ -133,9 +134,11 @@ export default function ResultsList({
         <div className="qx-section-header">Suggestions</div>
       )}
       {items.map((item, i) => (
-        <div key={`${item.kind}:${item.path}:${item.name}`} onClick={() => onItemClick(item)}>
-          <ResultItem item={item} index={i} label={getDisplayName(item)} />
-        </div>
+        <AppResultContextMenu item={item} key={`${item.kind}:${item.path}:${item.name}`}>
+          <div onClick={() => onItemClick(item)}>
+            <ResultItem item={item} index={i} label={getDisplayName(item)} />
+          </div>
+        </AppResultContextMenu>
       ))}
       {items.length === 0 && loadingPhase === "loading-apps" && (
         <>

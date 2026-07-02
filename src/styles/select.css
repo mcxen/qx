@@ -195,9 +195,18 @@
   user-select: none;
 }
 
+.qx-shadcn-dropdown-item .qx-kbd {
+  margin-left: auto;
+  margin-right: 0;
+}
+
 .qx-shadcn-select-item[data-highlighted],
 .qx-shadcn-dropdown-item[data-highlighted] {
   background: var(--qx-bg-component-3);
+}
+
+.qx-shadcn-dropdown-item.is-danger {
+  color: var(--qx-danger);
 }
 
 .qx-shadcn-select-item[data-disabled],

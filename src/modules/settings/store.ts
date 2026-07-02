@@ -117,6 +117,7 @@ export interface Settings {
   general: GeneralSettings;
   appearance: AppearanceSettings;
   shortcuts: Record<string, ShortcutBinding>;
+  app_shortcuts: Record<string, ShortcutBinding>;
   plugins: PluginConfig[];
   advanced: AdvancedSettings;
   agent: AgentSettings;
@@ -167,6 +168,7 @@ export const DEFAULT_SETTINGS: Settings = {
     record_gif: { key: "Alt+G", enabled: true },
     rss: { key: "Alt+R", enabled: true },
   },
+  app_shortcuts: {},
   plugins: [],
   advanced: {
     log_level: "info",
@@ -246,6 +248,7 @@ interface SettingsStore {
   setActiveTab: (t: SettingsTab) => void;
   patch: <K extends keyof Settings>(key: K, value: Settings[K]) => void;
   patchShortcut: (id: string, binding: Partial<ShortcutBinding>) => void;
+  patchAppShortcut: (id: string, binding: Partial<ShortcutBinding>) => void;
   patchSearchMetadata: (id: string, value: SearchMetadataEntry) => void;
   load: () => Promise<void>;
   save: () => Promise<void>;
@@ -270,6 +273,20 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const existing = cur[id] ?? { key: "", enabled: true };
     const next = { ...cur, [id]: { ...existing, ...binding } };
     const settings = { ...get().settings, shortcuts: next };
+    set({ settings });
+    void get().save();
+  },
+  patchAppShortcut: (id, binding) => {
+    const cur = get().settings.app_shortcuts;
+    const existing = cur[id] ?? { key: "", enabled: true };
+    const nextBinding = { ...existing, ...binding };
+    const next = { ...cur };
+    if (!nextBinding.key.trim()) {
+      delete next[id];
+    } else {
+      next[id] = nextBinding;
+    }
+    const settings = { ...get().settings, app_shortcuts: next };
     set({ settings });
     void get().save();
   },
@@ -304,6 +321,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           v2ex: { ...DEFAULT_SETTINGS.v2ex, ...s.v2ex },
           weather: { ...DEFAULT_SETTINGS.weather, ...s.weather },
           shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...s.shortcuts },
+          app_shortcuts: { ...DEFAULT_SETTINGS.app_shortcuts, ...s.app_shortcuts },
           search_metadata: { ...DEFAULT_SETTINGS.search_metadata, ...s.search_metadata },
           quick_entries: Array.isArray(s.quick_entries) && s.quick_entries.length > 0
             ? s.quick_entries

@@ -60,6 +60,48 @@
   transition: background-color 0.1s ease, color 0.1s ease;
 }
 
+.qx-shortcut-recorder {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.qx-shortcut-recorder-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 96px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-primary);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.qx-shortcut-recorder-button.is-recording {
+  background: var(--qx-accent-soft);
+  color: var(--qx-accent-hover);
+}
+
+.qx-shortcut-recorder-button.has-conflict {
+  border-color: var(--qx-danger-border);
+  color: var(--qx-danger);
+}
+
+.qx-shortcut-recorder-cancel {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--qx-text-tertiary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
 .qx-modal-field {
   display: flex;
   flex-direction: column;
@@ -86,4 +128,10 @@
   background: var(--qx-danger-border);
   border-radius: 4px;
   padding: 6px 10px;
+}
+
+.qx-app-shortcut-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
