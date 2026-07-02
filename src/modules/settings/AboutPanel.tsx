@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
-import { check } from "@tauri-apps/plugin-updater";
 import { open } from "@tauri-apps/plugin-shell";
 import { Row, SettingsCard } from "../../components/ui";
 import GifText from "../../components/gif-text";
 import { useT } from "../../i18n";
+
+const RELEASES_URL = "https://github.com/mcxen/qx/releases";
 
 interface StoragePath {
   path: string;
@@ -30,6 +31,28 @@ interface StorageOverview {
 interface StorageClearResult {
   cleared_bytes: number;
   cleared_files: number;
+}
+
+interface QxUpdateInfo {
+  available: boolean;
+  current_version: string;
+  latest_version: string | null;
+  release_url: string | null;
+  asset_name: string | null;
+  asset_url: string | null;
+  sha256: string | null;
+  size: number | null;
+  notes: string | null;
+  can_install: boolean;
+  install_reason: string | null;
+}
+
+interface QxUpdateInstallResult {
+  version: string;
+  staged_app: string;
+  target_app: string;
+  helper_path: string;
+  message: string;
 }
 
 type ClearKind = "cache" | "files" | "clipboard";
@@ -70,7 +93,10 @@ export default function AboutPanel() {
   const t = useT();
   const [version, setVersion] = useState<string>("");
   const [latest, setLatest] = useState<string | null>(null);
+  const [latestUrl, setLatestUrl] = useState<string>(RELEASES_URL);
+  const [updateInfo, setUpdateInfo] = useState<QxUpdateInfo | null>(null);
   const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [status, setStatus] = useState<string>("");
   const [storage, setStorage] = useState<StorageOverview | null>(null);
   const [storageBusy, setStorageBusy] = useState<BusyKind | null>(null);
@@ -88,42 +114,62 @@ export default function AboutPanel() {
     }
   };
 
+  const loadUpdateInfo = async (visible: boolean) => {
+    if (visible) {
+      setChecking(true);
+      setStatus("");
+    }
+    try {
+      const info = await invoke<QxUpdateInfo>("qx_update_check");
+      setUpdateInfo(info);
+      setVersion(info.current_version || "unknown");
+      setLatest(info.latest_version ? `v${info.latest_version}` : null);
+      setLatestUrl(info.release_url || RELEASES_URL);
+      if (visible) {
+        if (!info.available) {
+          setStatus("You're on the latest version.");
+        } else if (info.can_install) {
+          setStatus(`Latest release is v${info.latest_version}. Ready to download and install.`);
+        } else {
+          setStatus(info.install_reason || `Latest release is v${info.latest_version}.`);
+        }
+      }
+    } catch (e) {
+      if (visible) setStatus(`Update check failed: ${String(e)}`);
+      setUpdateInfo(null);
+      setLatest(null);
+    } finally {
+      if (visible) setChecking(false);
+    }
+  };
+
   useEffect(() => {
     void getVersion()
       .then(setVersion)
       .catch(() => setVersion("unknown"));
-
-    fetch("https://api.github.com/repos/mcxen/qx/releases/latest")
-      .then((res) => res.json())
-      .then((data) => {
-        const tag = typeof data.tag_name === "string" ? data.tag_name : null;
-        setLatest(tag);
-      })
-      .catch(() => setLatest(null));
+    void loadUpdateInfo(false);
     void loadStorage();
   }, []);
 
   const handleCheckUpdate = async () => {
-    setChecking(true);
+    await loadUpdateInfo(true);
+  };
+
+  const handleInstallUpdate = async () => {
+    setInstalling(true);
     setStatus("");
     try {
-      const update = await check();
-      if (update) {
-        setStatus(`Downloading ${update.version}...`);
-        await update.downloadAndInstall();
-        setStatus("Update installed. Restart Qx to apply it.");
-      } else {
-        setStatus("You're on the latest version.");
-      }
+      const result = await invoke<QxUpdateInstallResult>("qx_update_download_and_install");
+      setStatus(result.message);
     } catch (e) {
-      setStatus(`Update check failed: ${String(e)}`);
+      setStatus(`Update install failed: ${String(e)}`);
     } finally {
-      setChecking(false);
+      setInstalling(false);
     }
   };
 
   const handleOpenReleases = () => {
-    void open("https://github.com/mcxen/qx/releases");
+    void open(latestUrl || RELEASES_URL);
   };
 
   const clearStorage = async (kind: ClearKind) => {
@@ -196,14 +242,32 @@ export default function AboutPanel() {
           </span>
         </Row>
 
-        <Row title="Check for Updates" description="Manually check and install an available update.">
-          <button
-            onClick={() => void handleCheckUpdate()}
-            disabled={checking}
-            className="qx-command-button primary"
-          >
-            {checking ? "Checking..." : "Check Now"}
-          </button>
+        <Row
+          title="Check for Updates"
+          description={
+            updateInfo?.available && updateInfo.can_install
+              ? `Download ${updateInfo.asset_name ?? "the latest release"} and restart Qx.`
+              : "Check the latest GitHub release."
+          }
+        >
+          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            <button
+              onClick={() => void handleCheckUpdate()}
+              disabled={checking || installing}
+              className="qx-command-button"
+            >
+              {checking ? "Checking..." : "Check Now"}
+            </button>
+            {updateInfo?.available && updateInfo.can_install && (
+              <button
+                onClick={() => void handleInstallUpdate()}
+                disabled={checking || installing}
+                className="qx-command-button primary"
+              >
+                {installing ? "Downloading..." : "Download & Install"}
+              </button>
+            )}
+          </div>
         </Row>
 
         {status && (

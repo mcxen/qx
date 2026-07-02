@@ -45,6 +45,13 @@ const FIRST_LAUNCH_WINDOW_RATIO = 0.6;
 const OVERSIZED_SAVED_WINDOW_RATIO = 0.9;
 const MODULE_SWITCH_PAINT_DELAY_MS = 32;
 const HOST_ESCAPE_EVENT = "qx:host-escape";
+const AUTO_UPDATE_START_DELAY_MS = 2200;
+
+interface QxUpdateInfo {
+  available: boolean;
+  latest_version: string | null;
+  can_install: boolean;
+}
 
 const MODULE_LABELS: Record<string, string> = {
   clipboard: "Clipboard History",
@@ -353,6 +360,7 @@ function App() {
   const pluginPanelCount = usePluginRegistry((state) => Object.keys(state.panels).length);
   const phase1Ref = useRef(false);
   const startupWindowShownRef = useRef(false);
+  const autoUpdateStartedRef = useRef(false);
   const resizeSaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const pluginSearchVersionRef = useRef("");
   const [isSearching, setIsSearching] = useState(false);
@@ -434,6 +442,49 @@ function App() {
       unlisten.then((fn) => fn());
     };
   }, [loadSettings]);
+
+  useEffect(() => {
+    if (!settingsLoaded || !appsReady || !settings.general.auto_update || !isTauriRuntime()) return;
+    if (autoUpdateStartedRef.current) return;
+    autoUpdateStartedRef.current = true;
+
+    let cancelled = false;
+    const timerId = window.setTimeout(() => {
+      const runAutoUpdate = async () => {
+        try {
+          const info = await invoke<QxUpdateInfo>("qx_update_check");
+          if (cancelled || !info.available || !info.can_install) return;
+
+          const versionLabel = info.latest_version ? `v${info.latest_version}` : "latest release";
+          setPluginIsland({
+            label: "Updating Qx",
+            detail: `Downloading ${versionLabel}`,
+            tone: "neutral",
+            activity: "bounce",
+          });
+
+          await invoke("qx_update_download_and_install");
+          if (!cancelled) {
+            setPluginIsland({
+              label: "Installing update",
+              detail: "Qx will restart.",
+              tone: "success",
+              activity: "bounce",
+            });
+          }
+        } catch (error) {
+          console.info("auto update skipped:", error);
+        }
+      };
+
+      void runAutoUpdate();
+    }, AUTO_UPDATE_START_DELAY_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timerId);
+    };
+  }, [appsReady, settings.general.auto_update, settingsLoaded]);
 
   // Phase 3 (lazy): Load external plugins — deferred
   useEffect(() => {

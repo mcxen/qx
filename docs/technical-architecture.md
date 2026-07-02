@@ -240,6 +240,7 @@ settings::* (get/update/reset/import/export)
 screencap::* (start/stop/save/list/delete)
 macro_recorder::* (start/stop/save/list/delete/play)
 marketplace::* (fetch/download/install/uninstall/list/sign)
+updater::* (check/download_and_install/helper_replace)
 ```
 
 ### 5.2 数据持久化
@@ -311,7 +312,7 @@ marketplace::* (fetch/download/install/uninstall/list/sign)
 **打包**:
 - [x] GitHub Actions release workflow
 - [ ] 代码签名 (macOS notarization)
-- [ ] 自动更新 (`tauri-plugin-updater`)
+- [x] 自动更新（自定义 macOS helper + GitHub Release manifest + quarantine xattr cleanup）
 - [ ] 增量更新
 
 ### 7.3 安全
@@ -340,7 +341,7 @@ marketplace::* (fetch/download/install/uninstall/list/sign)
 ### P2 - 增强
 1. **虚拟列表** — 剪贴板历史 >500 条时性能下降
 2. **RSS 定时后台刷新** — 当前需手动 R/R
-3. **自动更新** — `tauri-plugin-updater` 集成
+3. **自动更新体验** — 展示 helper 安装失败详情、支持更多平台
 4. **国际化的 Geist 字体** — 中日韩字体回退
 5. **Windows/Linux 适配测试**
 

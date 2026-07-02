@@ -181,6 +181,16 @@ the check, report that the branch and tag were confirmed by `git ls-remote` and
 that Actions/Release artifact confirmation could not be completed from the
 current environment.
 
+The release assets must include both:
+
+- `qx_vX.Y.Z_aarch64-apple-darwin.app.zip`
+- `latest.json`
+
+`latest.json` is the app updater manifest. It must point at the ARM64 app zip and
+include the matching SHA256 and size. The release workflow generates it before
+uploading `release-assets/*`; if it is missing, the app can still detect a newer
+release but will refuse automatic installation because it cannot verify the zip.
+
 ## Dirty Files After Push
 
 After pushing, run:

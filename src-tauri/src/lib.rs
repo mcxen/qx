@@ -19,6 +19,7 @@ mod settings;
 mod storage;
 mod system_information;
 mod system_stats;
+mod updater;
 mod v2ex;
 mod weather;
 
@@ -246,12 +247,15 @@ pub fn run() {
         eprintln!("[QX PANIC] {loc}: {msg}");
     }));
 
+    if updater::maybe_run_update_helper_from_args() {
+        return;
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let handle = app.handle().clone();
             let Some(win) = app.get_webview_window("main") else {
@@ -460,6 +464,8 @@ pub fn run() {
             permissions::qx_permissions_status,
             permissions::qx_permissions_request,
             permissions::qx_permissions_open_settings,
+            updater::qx_update_check,
+            updater::qx_update_download_and_install,
             ocr::download_ocr_model,
             ocr::check_ocr_models,
             macro_recorder::macro_start_recording,

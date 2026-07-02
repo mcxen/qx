@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import QxShell from "../../components/QxShell";
+import type { BottomIslandContent } from "../../components/QxBottomIsland";
 import { LoadingLabel, Skeleton, Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useG4fStore, type CustomProvider } from "./store";
@@ -176,6 +177,36 @@ export default function QxAiSettings() {
   const [memoryError, setMemoryError] = useState<string | null>(null);
   const [memoryLoading, setMemoryLoading] = useState(false);
 
+  const defaultIsland = useMemo<BottomIslandContent>(
+    () => ({
+      label: "Settings",
+      detail: `${builtInProviders.length + customProviders.length} providers · ${memories.length} memories`,
+    }),
+    [builtInProviders.length, customProviders.length, memories.length],
+  );
+
+  const [island, setIsland] = useState<BottomIslandContent>(defaultIsland);
+  const islandTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const promptDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const transientRef = useRef(false);
+
+  const flashSaved = useCallback((detail?: string) => {
+    transientRef.current = true;
+    setIsland({ label: "Saved", detail: detail ?? "Settings updated", tone: "success" });
+    clearTimeout(islandTimer.current);
+    islandTimer.current = setTimeout(() => {
+      transientRef.current = false;
+      setIsland(defaultIsland);
+    }, 2500);
+  }, [defaultIsland]);
+
+  // sync island when defaultIsland changes, but not during transient "Saved" display
+  useEffect(() => {
+    if (!transientRef.current) {
+      setIsland(defaultIsland);
+    }
+  }, [defaultIsland]);
+
   // Merge built-in + custom for the Select
   const allProviders = useMemo(() => {
     const builtIn: { value: string; label: string; disabled?: boolean }[] = builtInProviders.map((p) => ({
@@ -240,6 +271,7 @@ export default function QxAiSettings() {
       setMemoryText("");
       setMemoryTags("");
       await loadMemories();
+      flashSaved("Memory added");
     } catch (err) {
       setMemoryError(String(err));
     }
@@ -250,6 +282,7 @@ export default function QxAiSettings() {
     try {
       await invoke("plugin_ai_memory_delete", { id });
       await loadMemories();
+      flashSaved("Memory deleted");
     } catch (err) {
       setMemoryError(String(err));
     }
@@ -265,6 +298,7 @@ export default function QxAiSettings() {
   const handleProviderChange = (next: string) => {
     if (next === "---divider---") return;
     setCurrentProvider(next);
+    flashSaved("Provider updated");
     const allProvs = [...builtInProviders, ...customProviders.map((c) => ({ id: c.id, name: c.name, models: c.models }))];
     const prov = allProvs.find((p) => p.id === next);
     if (prov && prov.models.length > 0) {
@@ -284,10 +318,7 @@ export default function QxAiSettings() {
       onKeyDown={onKeyDown}
       onBack={() => setView("list")}
       backLabel="Back"
-      island={{
-        label: "Settings",
-        detail: `${builtInProviders.length + customProviders.length} providers · ${memories.length} memories`,
-      }}
+      island={island}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setView("list") }}
     >
       <div
@@ -350,7 +381,7 @@ export default function QxAiSettings() {
             <Select
               value={currentModel}
               options={models.map((m) => ({ value: m.id, label: m.name }))}
-              onChange={(next) => setCurrentModel(next)}
+              onChange={(next) => { setCurrentModel(next); flashSaved("Model updated"); }}
               ariaLabel="Model"
             />
           ) : (
@@ -377,7 +408,11 @@ export default function QxAiSettings() {
           </label>
           <textarea
             value={defaultSystemPrompt}
-            onChange={(e) => setDefaultSystemPrompt(e.target.value)}
+            onChange={(e) => {
+              setDefaultSystemPrompt(e.target.value);
+              clearTimeout(promptDebounce.current);
+              promptDebounce.current = setTimeout(() => flashSaved("System prompt updated"), 1500);
+            }}
             rows={4}
             style={{
               width: "100%",
@@ -536,6 +571,7 @@ export default function QxAiSettings() {
                 onSave={(data) => {
                   void addCustomProvider(data);
                   setAdding(false);
+                  flashSaved("Provider added");
                 }}
                 onCancel={() => setAdding(false)}
               />
@@ -566,6 +602,7 @@ export default function QxAiSettings() {
                     onSave={(data) => {
                       void updateCustomProvider(cp.id, data);
                       setEditingId(null);
+                      flashSaved("Provider updated");
                     }}
                     onCancel={() => setEditingId(null)}
                   />

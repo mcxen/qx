@@ -1,5 +1,32 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — 应用内自动更新与 helper 覆盖安装
+
+**状态**：已实现，已通过本地验证。
+
+### 新增内容
+
+- 新增自定义 updater 后端命令 `qx_update_check` / `qx_update_download_and_install`，读取 GitHub latest release，优先使用 release asset `latest.json`，fallback 到 ARM64 `.app.zip` asset。
+- Release workflow 生成并上传 `latest.json`，包含版本、ARM64 zip URL、SHA256 和 size；应用只有在 SHA256 可用、当前运行于 `.app` bundle、目标为 macOS ARM64 时才允许自动安装。
+- 下载流程写入 `~/.qx/cache/updates/<version>/`，流式计算 SHA256，校验 size，然后用 `/usr/bin/ditto -x -k` 解压 staging app。
+- 安装流程复制当前可执行文件为临时 helper；主进程退出后 helper 等待 PID 消失，用 `ditto` 替换 `Qx.app`，清理 `com.apple.quarantine` xattr，确认主二进制可执行，并通过 `/usr/bin/open` 重启。
+- Settings -> General 的 `auto_update` 会在启动后后台检查并自动下载安装可安装版本；About 页面支持手动检查和 `Download & Install`。
+- 移除旧 `tauri-plugin-updater` 前端包、Rust 插件依赖、Tauri 插件配置和 ACL，避免继续走 `plugin:updater|check`。
+- 更新 `docs/release-and-versioning.md`、`docs/technical-architecture.md`、`public/doc/release-workflow.md` 记录 helper updater 与 `latest.json` 要求。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [x] `cargo test updater::tests -- --nocapture`（6 个 updater 单测：版本比较、SHA256 digest、asset 解析、下载校验 staging、helper launch 准备、bundle 覆盖替换）
+- [x] `npm run tauri -- build --target aarch64-apple-darwin --bundles app`
+- [x] 本地模拟 release workflow `latest.json` 生成并用 Node 解析校验字段。
+- [x] 旧 updater 残留扫描无命中：`tauri-plugin-updater` / `@tauri-apps/plugin-updater` / `plugin:updater` / `updater:allow-check`。
+- [x] Native control scan 仅命中 Markdown 内容样式：`src/styles/qx-ai.css:.qx-md-body li input[type="checkbox"]`，非产品控件。
+- [ ] 线上 GitHub latest release API 确认：当前环境 unauthenticated `curl` 返回 403，无法从本机确认当前 release assets。下一次发布后需确认 GitHub Release 同时包含 ARM64 `.app.zip` 和 `latest.json`。
+
 ## Feature — 插件缓存存储与天气秒开
 
 **状态**：已实现，等待验证。

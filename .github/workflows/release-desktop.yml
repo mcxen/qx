@@ -126,6 +126,31 @@ jobs:
       - name: List release assets
         run: find release-assets -type f -maxdepth 2 -print
 
+      - name: Prepare updater manifest
+        shell: bash
+        run: |
+          ZIP=$(ls release-assets/*_aarch64-apple-darwin.app.zip 2>/dev/null | head -1)
+          if [ -z "$ZIP" ]; then
+            echo "No ARM64 app.zip found, skipping updater manifest"
+            exit 0
+          fi
+          ZIP_NAME=$(basename "$ZIP")
+          SHA256_ARM=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
+          SIZE_ARM=$(wc -c < "$ZIP" | tr -d ' ')
+          ASSET_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ZIP_NAME}"
+          cat > release-assets/latest.json <<EOF
+          {
+            "version": "${RELEASE_TAG#v}",
+            "tag": "${RELEASE_TAG}",
+            "platform": "macos",
+            "target": "aarch64-apple-darwin",
+            "asset_name": "${ZIP_NAME}",
+            "asset_url": "${ASSET_URL}",
+            "sha256": "${SHA256_ARM}",
+            "size": ${SIZE_ARM}
+          }
+          EOF
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
