@@ -49,14 +49,24 @@ interface WeatherSettingsSnapshot {
   provider: string;
   api_key: string;
   location_override: string;
+  locations?: string[];
 }
 
 const LOCAL_WEATHER_CACHE_PREFIX = "qx.weather.cache:";
 const LOCAL_WEATHER_CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 12;
 
-function localWeatherCacheKey(weatherSettings: WeatherSettingsSnapshot): string | null {
+function normalizeWeatherLocations(weatherSettings: WeatherSettingsSnapshot): string[] {
+  const configured = Array.isArray(weatherSettings.locations)
+    ? weatherSettings.locations.map((item) => item.trim()).filter(Boolean)
+    : [];
+  if (configured.length > 0) return Array.from(new Set(configured));
+  const legacyLocation = weatherSettings.location_override.trim();
+  return legacyLocation ? [legacyLocation] : [""];
+}
+
+function localWeatherCacheKey(weatherSettings: WeatherSettingsSnapshot, locationOverride = ""): string | null {
   const provider = weatherSettings.provider.trim() || "open-meteo";
-  const location = weatherSettings.location_override.trim();
+  const location = locationOverride.trim();
 
   if (provider === "openweathermap" && weatherSettings.api_key.trim()) {
     return null;
@@ -77,6 +87,12 @@ function readLocalWeatherCache(cacheKey: string | null): WeatherData | null {
   } catch {
     return null;
   }
+}
+
+function readLocalWeatherCaches(weatherSettings: WeatherSettingsSnapshot, locations: string[]): WeatherData[] {
+  return locations
+    .map((location) => readLocalWeatherCache(localWeatherCacheKey(weatherSettings, location)))
+    .filter((item): item is WeatherData => Boolean(item));
 }
 
 function writeLocalWeatherCache(cacheKey: string | null, data: WeatherData): void {
@@ -101,13 +117,18 @@ export default function WeatherPanel() {
   const setTab = useStore((state) => state.setTab);
   const { settings } = useSettingsStore();
   const t = useT();
-  const localCacheKey = useMemo(
-    () => localWeatherCacheKey(settings.weather),
-    [settings.weather.provider, settings.weather.api_key, settings.weather.location_override],
+  const weatherLocations = useMemo(
+    () => normalizeWeatherLocations(settings.weather),
+    [
+      settings.weather.provider,
+      settings.weather.api_key,
+      settings.weather.location_override,
+      settings.weather.locations,
+    ],
   );
 
-  const [weather, setWeather] = useState<WeatherData | null>(() =>
-    readLocalWeatherCache(localWeatherCacheKey(settings.weather)),
+  const [weatherItems, setWeatherItems] = useState<WeatherData[]>(() =>
+    readLocalWeatherCaches(settings.weather, normalizeWeatherLocations(settings.weather)),
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -116,33 +137,62 @@ export default function WeatherPanel() {
     setLoading(!options.silent);
     setError("");
     try {
-      const data = await invoke<WeatherData>("fetch_weather");
-      setWeather(data);
-      writeLocalWeatherCache(localCacheKey, data);
+      const results = await Promise.allSettled(
+        weatherLocations.map((location) =>
+          invoke<WeatherData>("fetch_weather_for_location", { location }),
+        ),
+      );
+      const data: WeatherData[] = [];
+      const errors: string[] = [];
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled") {
+          const location = weatherLocations[index] ?? "";
+          data.push(result.value);
+          writeLocalWeatherCache(localWeatherCacheKey(settings.weather, location), result.value);
+        } else {
+          errors.push(String(result.reason));
+        }
+      });
+      if (data.length > 0) {
+        setWeatherItems(data);
+        if (!options.silent && errors.length > 0) {
+          setError(t("weather.partialError", "Some locations could not be refreshed."));
+        }
+        return;
+      }
+      throw new Error(errors[0] || "Weather fetch failed");
     } catch (err) {
       if (!options.silent) setError(String(err));
     } finally {
       setLoading(false);
     }
-  }, [localCacheKey]);
+  }, [settings.weather, t, weatherLocations]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadInitialWeather() {
-      const localCached = readLocalWeatherCache(localCacheKey);
-      if (localCached) {
-        setWeather(localCached);
+      const localCached = readLocalWeatherCaches(settings.weather, weatherLocations);
+      if (localCached.length > 0) {
+        setWeatherItems(localCached);
         void loadWeather({ silent: true });
         return;
       }
 
       try {
-        const cached = await invoke<WeatherData | null>("get_cached_weather");
+        const cachedResults = await Promise.all(
+          weatherLocations.map((location) =>
+            invoke<WeatherData | null>("get_cached_weather_for_location", { location }).catch(() => null),
+          ),
+        );
         if (cancelled) return;
-        if (cached) {
-          setWeather(cached);
-          writeLocalWeatherCache(localCacheKey, cached);
+        const cached = cachedResults.filter((item): item is WeatherData => Boolean(item));
+        if (cached.length > 0) {
+          setWeatherItems(cached);
+          cachedResults.forEach((item, index) => {
+            if (!item) return;
+            writeLocalWeatherCache(localWeatherCacheKey(settings.weather, weatherLocations[index] ?? ""), item);
+          });
           void loadWeather({ silent: true });
           return;
         }
@@ -156,7 +206,7 @@ export default function WeatherPanel() {
     return () => {
       cancelled = true;
     };
-  }, [loadWeather, localCacheKey]);
+  }, [loadWeather, settings.weather, weatherLocations]);
 
   const goBack = () => setTab("launcher");
 
@@ -176,10 +226,14 @@ export default function WeatherPanel() {
   const units = settings.weather.units || "celsius";
   const tempUnit = units === "fahrenheit" ? "fahrenheit" : "celsius";
 
-  const island: BottomIslandContent | null = weather
+  const primaryWeather = weatherItems[0] ?? null;
+
+  const island: BottomIslandContent | null = primaryWeather
     ? {
-        label: `${toUnit(weather.current.temperature, units)}° ${weather.current.conditionCode.replace("-", " ")}`,
-        detail: weather.location.name,
+        label: `${toUnit(primaryWeather.current.temperature, units)}° ${primaryWeather.current.conditionCode.replace("-", " ")}`,
+        detail: weatherItems.length > 1
+          ? `${primaryWeather.location.name} +${weatherItems.length - 1}`
+          : primaryWeather.location.name,
       }
     : loading
       ? { label: t("weather.loading", "Loading weather..."), detail: "" }
@@ -207,17 +261,8 @@ export default function WeatherPanel() {
       island={island}
       onKeyDown={handleKeyDown}
     >
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "flex-start",
-          padding: "24px 16px",
-          height: "100%",
-          overflowY: "auto",
-        }}
-      >
-        {loading && !weather && (
+      <div className={`qx-weather-stage${weatherItems.length > 1 ? " has-multiple" : ""}`}>
+        {loading && weatherItems.length === 0 && (
           <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--qx-text-secondary)" }}>
             <LoadingSpinner />
             <span>{t("weather.loading", "Loading weather...")}</span>
@@ -239,28 +284,34 @@ export default function WeatherPanel() {
           </div>
         )}
 
-        {weather && (
-          <WeatherWidget
-            version="3.1"
-            id="weather-widget-main"
-            location={{ name: weather.location.name }}
-            units={{ temperature: tempUnit }}
-            current={{
-              temperature: toUnit(weather.current.temperature, units),
-              tempMin: toUnit(weather.current.tempMin, units),
-              tempMax: toUnit(weather.current.tempMax, units),
-              conditionCode: weather.current.conditionCode,
-              windSpeed: weather.current.windSpeed,
-            }}
-            forecast={weather.forecast.slice(0, 6).map((day) => ({
-              label: day.label,
-              tempMin: toUnit(day.tempMin, units),
-              tempMax: toUnit(day.tempMax, units),
-              conditionCode: day.conditionCode,
-            }))}
-            time={{ localTimeOfDay }}
-            updatedAt={weather.updatedAt}
-          />
+        {weatherItems.length > 0 && (
+          <div className="qx-weather-grid">
+            {weatherItems.map((weather, index) => (
+              <div className="qx-weather-card" key={`${weather.location.name}:${weather.location.latitude}:${weather.location.longitude}`}>
+                <WeatherWidget
+                  version="3.1"
+                  id={`weather-widget-${index}`}
+                  location={{ name: weather.location.name }}
+                  units={{ temperature: tempUnit }}
+                  current={{
+                    temperature: toUnit(weather.current.temperature, units),
+                    tempMin: toUnit(weather.current.tempMin, units),
+                    tempMax: toUnit(weather.current.tempMax, units),
+                    conditionCode: weather.current.conditionCode,
+                    windSpeed: weather.current.windSpeed,
+                  }}
+                  forecast={weather.forecast.slice(0, 6).map((day) => ({
+                    label: day.label,
+                    tempMin: toUnit(day.tempMin, units),
+                    tempMax: toUnit(day.tempMax, units),
+                    conditionCode: day.conditionCode,
+                  }))}
+                  time={{ localTimeOfDay }}
+                  updatedAt={weather.updatedAt}
+                />
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </QxShell>

@@ -9,8 +9,11 @@
 }
 
 .qx-clipboard-shell .qx-shell-topbar {
-  grid-template-columns: auto minmax(220px, 1fr) minmax(142px, 180px);
+  grid-template-columns: auto minmax(160px, 1fr) minmax(112px, auto);
+  height: 56px;
   min-height: 56px;
+  max-height: 56px;
+  overflow: hidden;
   padding: 8px 12px;
   gap: 10px;
   border-bottom: 1px solid var(--qx-border-1);
@@ -36,6 +39,8 @@
   gap: 8px;
   position: relative;
   width: 100%;
+  overflow: hidden;
+  flex-wrap: nowrap;
 }
 
 .qx-clipboard-shell .qx-shell-content {
@@ -138,7 +143,8 @@
 }
 
 .qx-clipboard-filter {
-  flex: 1 1 auto;
+  flex: 0 1 132px;
+  min-width: 0;
 }
 
 .qx-clipboard-filter .qx-shadcn-select-trigger {
@@ -158,11 +164,14 @@
 
 .qx-clipboard-status {
   position: static;
-  flex: 0 0 auto;
-  min-width: 42px;
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: 12px;
   color: var(--qx-text-tertiary);
   text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .qx-clipboard-pin-dot {
@@ -473,21 +482,29 @@
   background: var(--qx-border-2);
 }
 
-@media (max-width: 700px) {
+@media (max-width: 860px) {
   .qx-clipboard-shell .qx-shell-topbar {
-    grid-template-columns: auto minmax(0, 1fr);
-    min-height: auto;
+    grid-template-columns: auto minmax(0, 1fr) minmax(96px, 132px);
+    height: 56px;
+    min-height: 56px;
+    max-height: 56px;
     padding: 8px;
   }
 
   .qx-clipboard-shell .qx-shell-trailing {
-    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+
+  .qx-clipboard-status {
+    display: none;
   }
 
   .qx-clipboard-filter .qx-shadcn-select-trigger {
     height: 36px;
   }
+}
 
+@media (max-width: 700px) {
   .qx-clipboard-search {
     font-size: 13px;
   }

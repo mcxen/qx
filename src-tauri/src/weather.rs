@@ -66,6 +66,12 @@ struct WeatherCacheEntry {
     data: WeatherData,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WeatherCacheFile {
+    entries: Vec<WeatherCacheEntry>,
+}
+
 // ---------------------------------------------------------------------------
 // Open-Meteo API types
 // ---------------------------------------------------------------------------
@@ -268,11 +274,14 @@ fn weather_cache_path() -> PathBuf {
     dir.join("weather-cache.json")
 }
 
-fn weather_settings_key(settings: &crate::settings::WeatherSettings) -> String {
+fn weather_settings_location_key(
+    settings: &crate::settings::WeatherSettings,
+    location_override: &str,
+) -> String {
     format!(
         "{}\n{}\n{}",
         settings.provider.trim(),
-        settings.location_override.trim(),
+        location_override.trim(),
         settings.api_key.trim()
     )
 }
@@ -297,31 +306,67 @@ fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 fn read_weather_cache_for(settings: &crate::settings::WeatherSettings) -> Option<WeatherData> {
-    let path = weather_cache_path();
-    let content = fs::read_to_string(path).ok()?;
-    let entry: WeatherCacheEntry = serde_json::from_str(&content).ok()?;
-    if entry.settings_key == weather_settings_key(settings) {
-        Some(entry.data)
-    } else {
-        None
-    }
+    read_weather_cache_for_location(settings, &settings.location_override)
+}
+
+fn read_weather_cache_for_location(
+    settings: &crate::settings::WeatherSettings,
+    location_override: &str,
+) -> Option<WeatherData> {
+    let settings_key = weather_settings_location_key(settings, location_override);
+    read_weather_cache_entries()
+        .into_iter()
+        .find(|entry| entry.settings_key == settings_key)
+        .map(|entry| entry.data)
 }
 
 fn write_weather_cache(
     settings: &crate::settings::WeatherSettings,
     data: &WeatherData,
 ) -> Result<(), String> {
+    write_weather_cache_for_location(settings, &settings.location_override, data)
+}
+
+fn write_weather_cache_for_location(
+    settings: &crate::settings::WeatherSettings,
+    location_override: &str,
+    data: &WeatherData,
+) -> Result<(), String> {
     let _guard = WEATHER_CACHE_LOCK
         .get_or_init(|| Mutex::new(()))
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let entry = WeatherCacheEntry {
-        settings_key: weather_settings_key(settings),
+    let settings_key = weather_settings_location_key(settings, location_override);
+    let mut entries = read_weather_cache_entries()
+        .into_iter()
+        .filter(|entry| entry.settings_key != settings_key)
+        .collect::<Vec<_>>();
+    entries.push(WeatherCacheEntry {
+        settings_key,
         data: data.clone(),
-    };
-    let json = serde_json::to_string_pretty(&entry).map_err(|e| format!("serialize: {e}"))?;
+    });
+
+    let cache_file = WeatherCacheFile { entries };
+    let json = serde_json::to_string_pretty(&cache_file).map_err(|e| format!("serialize: {e}"))?;
     atomic_write(&weather_cache_path(), json.as_bytes())
         .map_err(|e| format!("write weather cache: {e}"))
+}
+
+fn read_weather_cache_entries() -> Vec<WeatherCacheEntry> {
+    let content = match fs::read_to_string(weather_cache_path()) {
+        Ok(content) => content,
+        Err(_) => return Vec::new(),
+    };
+
+    if let Ok(cache_file) = serde_json::from_str::<WeatherCacheFile>(&content) {
+        return cache_file.entries;
+    }
+
+    if let Ok(entry) = serde_json::from_str::<WeatherCacheEntry>(&content) {
+        return vec![entry];
+    }
+
+    Vec::new()
 }
 
 // ---------------------------------------------------------------------------
@@ -464,6 +509,60 @@ pub async fn fetch_weather() -> Result<WeatherData, String> {
     })
     .await
     .map_err(|e| format!("Weather fetch task panicked: {e}"))?
+}
+
+#[tauri::command]
+pub async fn fetch_weather_for_location(location: String) -> Result<WeatherData, String> {
+    tokio::task::spawn_blocking(move || {
+        let settings = weather_settings();
+        let location_override = location.trim().to_string();
+
+        let result = (|| {
+            let client = crate::http_client::blocking_client(
+                "Qx/0.2 (Weather; +https://github.com/mcxen/qx)",
+                Duration::from_secs(10),
+                Some(Duration::from_secs(5)),
+            )
+            .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+
+            let resolved_location = resolve_location(&client, &location_override)?;
+
+            if settings.provider == "openweathermap" && !settings.api_key.trim().is_empty() {
+                fetch_openweathermap(&client, &resolved_location, settings.api_key.trim())
+            } else {
+                fetch_open_meteo(&client, &resolved_location)
+            }
+        })();
+
+        match result {
+            Ok(data) => {
+                let _ = write_weather_cache_for_location(&settings, &location_override, &data);
+                Ok(data)
+            }
+            Err(err) => {
+                if let Some(cached) = read_weather_cache_for_location(&settings, &location_override)
+                {
+                    Ok(cached)
+                } else {
+                    Err(err)
+                }
+            }
+        }
+    })
+    .await
+    .map_err(|e| format!("Weather fetch task panicked: {e}"))?
+}
+
+#[tauri::command]
+pub async fn get_cached_weather_for_location(
+    location: String,
+) -> Result<Option<WeatherData>, String> {
+    tokio::task::spawn_blocking(move || {
+        let settings = weather_settings();
+        Ok(read_weather_cache_for_location(&settings, location.trim()))
+    })
+    .await
+    .map_err(|e| format!("Weather cache task panicked: {e}"))?
 }
 
 #[tauri::command]

@@ -1,0 +1,63 @@
+.qx-weather-stage {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  height: 100%;
+  min-height: 0;
+  padding: 24px 16px;
+  overflow: auto;
+}
+
+.qx-weather-stage.has-multiple {
+  justify-content: stretch;
+}
+
+.qx-weather-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  align-items: start;
+  gap: 14px;
+  width: min(100%, 1120px);
+}
+
+.qx-weather-card {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--qx-radius);
+}
+
+.qx-weather-card > * {
+  width: 100%;
+}
+
+.qx-weather-stage:not(.has-multiple) .qx-weather-grid {
+  display: block;
+  width: min(100%, 520px);
+}
+
+.qx-weather-location-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qx-weather-location-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .qx-weather-stage {
+    padding: 14px 10px;
+  }
+
+  .qx-weather-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qx-weather-location-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

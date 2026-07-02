@@ -371,6 +371,8 @@ pub struct WeatherSettings {
     pub api_key: String,
     #[serde(default, rename = "location_override")]
     pub location_override: String,
+    #[serde(default, rename = "locations")]
+    pub locations: Vec<String>,
     #[serde(default = "default_weather_units", rename = "units")]
     pub units: String,
 }
@@ -389,6 +391,7 @@ impl Default for WeatherSettings {
             provider: default_weather_provider(),
             api_key: String::new(),
             location_override: String::new(),
+            locations: Vec::new(),
             units: default_weather_units(),
         }
     }

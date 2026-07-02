@@ -62,7 +62,10 @@
   grid-template-columns: auto minmax(var(--qx-search-min-w), 1fr) auto;
   align-items: center;
   gap: 12px;
+  height: var(--qx-topbar-h);
   min-height: var(--qx-topbar-h);
+  max-height: var(--qx-topbar-h);
+  overflow: hidden;
   padding: 12px 16px;
   border-bottom: 1px solid var(--qx-border-1);
   background: rgba(var(--qx-glass-bg), var(--qx-shell-region-opacity-effective));
@@ -184,6 +187,9 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  flex-wrap: nowrap;
   justify-self: end;
 }
 
@@ -299,7 +305,10 @@
   align-items: center;
   gap: 0;
   position: relative;
+  height: var(--qx-bottom-bar-h);
   min-height: var(--qx-bottom-bar-h);
+  max-height: var(--qx-bottom-bar-h);
+  overflow: hidden;
   padding: 5px 14px;
   border-top: 1px solid var(--qx-border-1);
   background: rgba(var(--qx-glass-bg), var(--qx-shell-region-opacity-effective));
@@ -875,15 +884,15 @@
   }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 860px) {
   .qx-shell-topbar {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 8px;
   }
 
   .qx-shell-trailing {
-    grid-column: 1 / -1;
     justify-content: flex-end;
+    justify-self: end;
   }
 
   .qx-shell.has-context .qx-shell-main {

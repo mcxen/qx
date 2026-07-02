@@ -111,6 +111,7 @@ export interface WeatherSettings {
   provider: string;
   api_key: string;
   location_override: string;
+  locations: string[];
   units: string;
 }
 
@@ -247,6 +248,7 @@ export const DEFAULT_SETTINGS: Settings = {
     provider: "open-meteo",
     api_key: "",
     location_override: "",
+    locations: [],
     units: "celsius",
   },
   search_metadata: {},
@@ -349,7 +351,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           agent: { ...DEFAULT_SETTINGS.agent, ...s.agent },
           rss: { ...DEFAULT_SETTINGS.rss, ...s.rss },
           v2ex: { ...DEFAULT_SETTINGS.v2ex, ...s.v2ex },
-          weather: { ...DEFAULT_SETTINGS.weather, ...s.weather },
+          weather: {
+            ...DEFAULT_SETTINGS.weather,
+            ...s.weather,
+            locations: Array.isArray(s.weather?.locations) ? s.weather.locations : DEFAULT_SETTINGS.weather.locations,
+          },
           shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...s.shortcuts },
           app_shortcuts: { ...DEFAULT_SETTINGS.app_shortcuts, ...s.app_shortcuts },
           search_metadata: { ...DEFAULT_SETTINGS.search_metadata, ...s.search_metadata },
