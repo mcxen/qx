@@ -8,6 +8,9 @@ use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
 const GITHUB_LATEST_API: &str = "https://api.github.com/repos/mcxen/qx/releases/latest";
+const GITHUB_LATEST_WEB: &str = "https://github.com/mcxen/qx/releases/latest";
+const GITHUB_RELEASE_DOWNLOAD_BASE: &str = "https://github.com/mcxen/qx/releases/download";
+const GITHUB_RELEASE_TAG_BASE: &str = "https://github.com/mcxen/qx/releases/tag";
 const UPDATE_TARGET: &str = "aarch64-apple-darwin";
 const HELPER_FLAG: &str = "--qx-update-helper";
 const STATUS_FILE: &str = "last-update-status.json";
@@ -162,6 +165,14 @@ pub(crate) fn maybe_run_update_helper_from_args() -> bool {
 }
 
 fn check_for_update(current_version: &str) -> Result<QxUpdateInfo, String> {
+    check_for_update_via_api(current_version).or_else(|api_error| {
+        check_for_update_via_latest_manifest(current_version).map_err(|fallback_error| {
+            format!("{api_error}; latest.json fallback failed: {fallback_error}")
+        })
+    })
+}
+
+fn check_for_update_via_api(current_version: &str) -> Result<QxUpdateInfo, String> {
     let release: GitHubRelease = http_client()?
         .get(GITHUB_LATEST_API)
         .send()
@@ -171,8 +182,14 @@ fn check_for_update(current_version: &str) -> Result<QxUpdateInfo, String> {
         .json()
         .map_err(|e| format!("parse latest release: {e}"))?;
 
+    update_info_from_release(current_version, release)
+}
+
+fn update_info_from_release(
+    current_version: &str,
+    release: GitHubRelease,
+) -> Result<QxUpdateInfo, String> {
     let latest_version = release.tag_name.trim_start_matches('v').to_string();
-    let available = compare_versions(&latest_version, current_version) > 0;
     let manifest = fetch_update_manifest(&release).ok();
     let app_asset = manifest
         .as_ref()
@@ -209,7 +226,96 @@ fn check_for_update(current_version: &str) -> Result<QxUpdateInfo, String> {
         (None, None, None, None)
     };
 
-    let (can_install, install_reason) = if !available {
+    Ok(build_update_info(
+        current_version,
+        latest_version,
+        Some(release.html_url),
+        asset_name,
+        asset_url,
+        sha256,
+        size,
+        release.body,
+    ))
+}
+
+fn check_for_update_via_latest_manifest(current_version: &str) -> Result<QxUpdateInfo, String> {
+    let tag = resolve_latest_release_tag()?;
+    let manifest_url = format!("{GITHUB_RELEASE_DOWNLOAD_BASE}/{tag}/latest.json");
+    let manifest: QxUpdateManifest = http_client()?
+        .get(&manifest_url)
+        .send()
+        .map_err(|e| format!("fetch {manifest_url}: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("fetch {manifest_url}: {e}"))?
+        .json()
+        .map_err(|e| format!("parse {manifest_url}: {e}"))?;
+
+    let target_matches =
+        manifest.target.trim().is_empty() || manifest.target.trim() == UPDATE_TARGET;
+    let platform_matches =
+        manifest.platform.trim().is_empty() || manifest.platform.trim() == "macos";
+    let (asset_name, asset_url, sha256, size) =
+        if target_matches && platform_matches && !manifest.asset_url.trim().is_empty() {
+            (
+                Some(if manifest.asset_name.trim().is_empty() {
+                    format!("qx_v{}_{}.app.zip", manifest.version, UPDATE_TARGET)
+                } else {
+                    manifest.asset_name.clone()
+                }),
+                Some(manifest.asset_url.clone()),
+                Some(normalize_sha256(&manifest.sha256)).filter(|value| !value.trim().is_empty()),
+                manifest.size,
+            )
+        } else {
+            (None, None, None, None)
+        };
+
+    Ok(build_update_info(
+        current_version,
+        manifest.version,
+        Some(format!("{GITHUB_RELEASE_TAG_BASE}/{tag}")),
+        asset_name,
+        asset_url,
+        sha256,
+        size,
+        None,
+    ))
+}
+
+fn build_update_info(
+    current_version: &str,
+    latest_version: String,
+    release_url: Option<String>,
+    asset_name: Option<String>,
+    asset_url: Option<String>,
+    sha256: Option<String>,
+    size: Option<u64>,
+    notes: Option<String>,
+) -> QxUpdateInfo {
+    let available = compare_versions(&latest_version, current_version) > 0;
+    let (can_install, install_reason) =
+        install_state(available, asset_url.as_ref(), sha256.as_ref());
+    QxUpdateInfo {
+        available,
+        current_version: current_version.to_string(),
+        latest_version: Some(latest_version),
+        release_url,
+        asset_name,
+        asset_url,
+        sha256,
+        size,
+        notes,
+        can_install,
+        install_reason,
+    }
+}
+
+fn install_state(
+    available: bool,
+    asset_url: Option<&String>,
+    sha256: Option<&String>,
+) -> (bool, Option<String>) {
+    if !available {
         (false, Some("No newer release is available.".to_string()))
     } else if cfg!(not(target_os = "macos")) {
         (
@@ -221,7 +327,7 @@ fn check_for_update(current_version: &str) -> Result<QxUpdateInfo, String> {
             false,
             Some("No macOS app zip asset was found on the latest release.".to_string()),
         )
-    } else if sha256.as_deref().unwrap_or_default().len() != 64 {
+    } else if sha256.map(String::as_str).unwrap_or_default().len() != 64 {
         (
             false,
             Some(
@@ -239,21 +345,29 @@ fn check_for_update(current_version: &str) -> Result<QxUpdateInfo, String> {
         )
     } else {
         (true, None)
-    };
+    }
+}
 
-    Ok(QxUpdateInfo {
-        available,
-        current_version: current_version.to_string(),
-        latest_version: Some(latest_version),
-        release_url: Some(release.html_url),
-        asset_name,
-        asset_url,
-        sha256,
-        size,
-        notes: release.body,
-        can_install,
-        install_reason,
+fn resolve_latest_release_tag() -> Result<String, String> {
+    let response = http_client()?
+        .head(GITHUB_LATEST_WEB)
+        .send()
+        .map_err(|e| format!("resolve latest release redirect: {e}"))?
+        .error_for_status()
+        .map_err(|e| format!("resolve latest release redirect: {e}"))?;
+    latest_tag_from_url(response.url()).ok_or_else(|| {
+        format!(
+            "latest release redirect did not include a tag: {}",
+            response.url()
+        )
     })
+}
+
+fn latest_tag_from_url(url: &reqwest::Url) -> Option<String> {
+    let segments: Vec<&str> = url.path_segments()?.collect();
+    segments
+        .windows(2)
+        .find_map(|window| (window[0] == "tag").then(|| window[1].to_string()))
 }
 
 struct ResolvedAsset {
@@ -770,6 +884,12 @@ mod tests {
         );
         assert_eq!(digest_sha256("md5:abcdef"), None);
         assert_eq!(digest_sha256("sha256:short"), None);
+    }
+
+    #[test]
+    fn parses_latest_release_redirect_tag() {
+        let url = reqwest::Url::parse("https://github.com/mcxen/qx/releases/tag/v0.4.54").unwrap();
+        assert_eq!(latest_tag_from_url(&url), Some("v0.4.54".to_string()));
     }
 
     #[test]
