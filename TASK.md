@@ -1,5 +1,29 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — Raycast ActionPanel 显示偏好与窄屏收起
+
+**状态**：已实现，等待验证。
+
+### 新增内容
+
+- Settings -> Extensions -> Installed 新增 Display 卡片，可控制转换后的 Raycast `ActionPanel` 行内按钮是否显示。
+- 插件 runtime 新增同步 `context.display.raycastActionPanel`，并在插件 iframe 根节点写入 `data-qx-raycast-action-panel`，让转换插件可按宿主偏好渲染。
+- Raycast generic shim 默认将 `ActionPanel` 渲染为条目右侧紧凑按钮；用户关闭偏好或插件面板左右缩窄时优先隐藏按钮，保留列表文本/缩略图空间。
+- 主仓与 `qx-plugins` 转换器已同步该协议，`raycast-bing-wallpaper` 已重新转换并重新打包。
+- 更新 `README.md`、`public/doc/plugin-system.md`、`public/doc/plugin-marketplace.md`、`public/doc/raycast-plugin-conversion.md` 和 `qx-plugins` README。
+
+### 验证
+
+- [x] `node --check scripts/convert-raycast-extension.mjs`
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [x] Native control scan：仅命中 Markdown 内容样式 `src/styles/qx-ai.css:.qx-md-body li input[type="checkbox"]`，非产品控件。
+- [x] `qx-plugins`：`node --check scripts/convert-raycast-extension.mjs`、`node --check src/raycast-bing-wallpaper/index.js`、`unzip -t raycast-bing-wallpaper.qx-plugin`。
+- [x] `qx-plugins` Bing Wallpaper happy-dom 抽样：`context.display.raycastActionPanel=false` 时 15 个 ActionPanel 均带 `is-hidden`，动作按钮仍存在。
+- [ ] 手动验证：Settings -> Extensions -> Installed -> Display 开关保存；Bing Wallpaper 在宽面板显示动作按钮，窄面板先隐藏；关闭开关后重新打开插件不显示动作按钮。
+
 ## Feature — 应用内自动更新与 helper 覆盖安装
 
 **状态**：已实现，已通过本地验证。

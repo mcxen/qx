@@ -91,6 +91,14 @@ React/Raycast UI. The converted plugin declares `http`, `open-url`,
 commands such as `invoke:plugin_file_read_base64` and
 `invoke:plugin_file_write_base64`.
 
+Converted Raycast `ActionPanel` entries are rendered as compact item-level
+buttons by default so secondary actions such as "Download Wallpaper" remain
+discoverable. Users can hide these buttons from Settings -> Extensions ->
+Installed -> Display. Converted plugins read the host preference from
+`context.display.raycastActionPanel`; the shim also hides ActionPanel buttons
+automatically when the plugin panel is narrow, before text or thumbnails are
+compressed.
+
 The converter copies command/plugin icons and records screenshots from common
 Raycast metadata locations: `screenshots`, `screenshot`, `media`, `gallery`,
 `metadata.screenshots`, plus image files found in `metadata/`, `screenshots/`,

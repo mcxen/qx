@@ -209,7 +209,7 @@ Type anything into the search bar. Results include:
 
 **Permissions** — open Settings → Permissions to check macOS Screen Recording, Accessibility, and Input Monitoring access. Green means Qx already has access; red means the feature needs approval. Use Request/Open to jump to the right System Settings privacy pane, then refresh the status after changing access.
 
-**Plugins** — open Settings → Extensions to manage installed plugins, browse the marketplace, or import a plugin archive. Installed supports search and `All / Built-in / External / Enabled / Disabled` filtering, with details showing version, path, permissions, preferences, and SHA256 on the right. Browse shows marketplace search results with metadata and install status. Qx accepts local `.zip` / `.qx-plugin` packages, GitHub repository URLs, direct GitHub archive URLs such as release assets or `https://github.com/<owner>/<repo>/archive/refs/heads/main.zip`, and Raycast extension tree URLs. Repository URLs are downloaded as the `main` branch archive. The archive may contain the plugin at the zip root or inside a GitHub-generated top-level folder; Qx locates `manifest.json`, installs that plugin root into `~/.qx/plugins/<plugin-id>`, verifies ed25519 signatures when present, and enables the plugin automatically.
+**Plugins** — open Settings → Extensions to manage installed plugins, browse the marketplace, or import a plugin archive. Installed supports search and `All / Built-in / External / Enabled / Disabled` filtering, with details showing version, path, permissions, preferences, display options, and SHA256 on the right. Browse shows marketplace search results with metadata and install status. Qx accepts local `.zip` / `.qx-plugin` packages, GitHub repository URLs, direct GitHub archive URLs such as release assets or `https://github.com/<owner>/<repo>/archive/refs/heads/main.zip`, and Raycast extension tree URLs. Repository URLs are downloaded as the `main` branch archive. The archive may contain the plugin at the zip root or inside a GitHub-generated top-level folder; Qx locates `manifest.json`, installs that plugin root into `~/.qx/plugins/<plugin-id>`, verifies ed25519 signatures when present, and enables the plugin automatically. Converted Raycast ActionPanel buttons can be shown or hidden from Extensions → Installed → Display, and are hidden first when a plugin panel is narrow.
 
 ---
 
@@ -461,7 +461,7 @@ brew install --cask qx
 
 ## 插件
 
-打开「设置 → 扩展」可以管理已安装插件、浏览插件市场，或直接导入插件压缩包。Installed 支持搜索和 `All / Built-in / External / Enabled / Disabled` 筛选，右侧详情展示版本、路径、权限、preferences 和 SHA256；Browse 支持市场搜索、详情查看、权限/元数据展示和安装状态反馈。支持本地 `.zip` / `.qx-plugin` 文件，也支持 GitHub 仓库链接、Release 资源链接和源码压缩包链接，例如：
+打开「设置 → 扩展」可以管理已安装插件、浏览插件市场，或直接导入插件压缩包。Installed 支持搜索和 `All / Built-in / External / Enabled / Disabled` 筛选，右侧详情展示版本、路径、权限、preferences、显示选项和 SHA256；Browse 支持市场搜索、详情查看、权限/元数据展示和安装状态反馈。转换后的 Raycast ActionPanel 行内按钮可在 Extensions → Installed → Display 显示或隐藏，插件面板左右缩窄时会优先隐藏。支持本地 `.zip` / `.qx-plugin` 文件，也支持 GitHub 仓库链接、Release 资源链接和源码压缩包链接，例如：
 
 ```text
 https://github.com/<owner>/<repo>/archive/refs/heads/main.zip

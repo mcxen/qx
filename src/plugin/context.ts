@@ -5,6 +5,7 @@ import type {
   PluginContext,
 } from "./types";
 import { handlePluginRpc } from "./rpcMethods";
+import { DEFAULT_SETTINGS, useSettingsStore } from "../modules/settings/store";
 
 export interface PluginContextHooks {
   onToast: (msg: string) => void;
@@ -30,6 +31,12 @@ export function createPluginContext(
 
   return {
     pluginId: plugin.id,
+    display: {
+      raycastActionPanel: (
+        useSettingsStore.getState().settings.plugin_display
+          ?? DEFAULT_SETTINGS.plugin_display
+      ).raycast_action_panel !== false,
+    },
     invoke: (cmd: string, args?: Record<string, unknown>) => rpc("invoke", { cmd, args }),
     showToast: (msg: string) => {
       void rpc("showToast", { msg });
