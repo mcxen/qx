@@ -1229,57 +1229,6 @@ function App() {
             </Suspense>
           </ModuleErrorBoundary>
         </div>
-      <div
-        className="qx-actionbar"
-        style={
-          tab === "launcher" ||
-          tab === "clipboard" ||
-          tab === "screencap" ||
-          tab === "rss" ||
-          tab === "v2ex" ||
-          tab === "qx-ai" ||
-          tab === "macros" ||
-          tab === "documents" ||
-          tab === "settings" ||
-          tab.startsWith("plugin:")
-            ? { display: "none" }
-            : undefined
-        }
-      >
-        {tab === "launcher" && (
-          <>
-            <span className="item">
-              <kbd>↩</kbd>Open
-            </span>
-            <span className="item">
-              <kbd>⌘K</kbd>Commands
-            </span>
-          </>
-        )}
-        {tab !== "launcher" && (
-          <span className="item">
-            <kbd>Esc</kbd>Hide
-          </span>
-        )}
-        <span style={{ flex: 1 }} />
-        <button
-          onClick={() => setTab("settings")}
-          style={{
-            border: "none",
-            background: "transparent",
-            color: "var(--qx-text-secondary)",
-            fontSize: 12,
-            cursor: "pointer",
-            padding: 0,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 4,
-          }}
-          title="Open Settings (⌘,)"
-        >
-          <kbd>⌘,</kbd>Settings
-        </button>
-      </div>
       </div>
     </ThemeProvider>
   );

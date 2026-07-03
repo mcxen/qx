@@ -130,6 +130,12 @@ mod macos {
                 | NSWindowStyleMask::Resizable.0 as usize;
             let _: () = msg_send![ns_window, setStyleMask: next];
 
+            // Native shadows on transparent borderless windows create a
+            // larger AppKit hit-test region around the visual shell. Qx draws
+            // its own CSS shadows, so keep the platform shadow disabled to
+            // let outside clicks leave the panel cleanly.
+            let _: () = msg_send![ns_window, setHasShadow: false];
+
             // Keep the panel visible when the user switches to another app.
             let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
 

@@ -6,7 +6,9 @@ use std::time::Duration;
 use tauri::Emitter;
 
 /// Starts a background thread that polls screen count every 2 seconds.
-/// When the count increases (external monitor connected), Qx auto-shows.
+/// Display changes are emitted for the frontend, but they must not surface the
+/// launcher by themselves: macOS sleep/wake and xcap can transiently report a
+/// lower count, then recover and look like a fresh attachment.
 pub(crate) fn start_display_monitor(handle: tauri::AppHandle) {
     // Snapshot the display count at app startup.
     let known_count = Arc::new(AtomicUsize::new(0));
@@ -61,17 +63,5 @@ fn poll_once(handle: &tauri::AppHandle, known_count: &Arc<AtomicUsize>) {
         }),
     ) {
         eprintln!("[display_monitor] emit display:changed failed: {e}");
-    }
-
-    // Auto-show Qx when an external monitor is connected. The monitor poller
-    // runs on a background thread, while AppKit window operations must run on
-    // the main thread.
-    if attached {
-        let app = handle.clone();
-        if let Err(e) = handle.run_on_main_thread(move || {
-            crate::floating_panel::show_floating(&app);
-        }) {
-            eprintln!("[display_monitor] schedule auto-show failed: {e}");
-        }
     }
 }
