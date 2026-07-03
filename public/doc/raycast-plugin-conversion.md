@@ -83,6 +83,16 @@ replaces common Raycast/Node imports with Qx shims:
   `/qx-home` is mapped to the real user home directory by the Rust bridge and
   before AppleScript execution.
 
+When a Raycast extension declares regular npm dependencies beyond the shimmed
+modules, the converter installs its production dependencies inside the temporary
+extension checkout with lifecycle scripts disabled. React and React DOM are
+always resolved from Qx's converter dependencies so converted commands do not
+load a second React copy and break hooks.
+
+Raycast preferences are mapped into Qx plugin manifest preferences where
+possible: dropdowns become `select`, checkboxes become `boolean`, passwords stay
+`password`, and text-like preferences become `string`.
+
 For example, Raycast's `bing-wallpaper` extension at commit
 `870667fc671801a467deb7c4c7fc72992efe3820` converts into a
 `raycast-bing-wallpaper.qx-plugin` with its original commands and bundled
@@ -97,7 +107,8 @@ discoverable. Users can hide these buttons from Settings -> Extensions ->
 Installed -> Display. Converted plugins read the host preference from
 `context.display.raycastActionPanel`; the shim also hides ActionPanel buttons
 automatically when the plugin panel is narrow, before text or thumbnails are
-compressed.
+compressed. `Detail` commands also render their `actions` prop, so converted
+detail-style tools can expose navigation, copy, and preference actions.
 
 The converter copies command/plugin icons and records screenshots from common
 Raycast metadata locations: `screenshots`, `screenshot`, `media`, `gallery`,

@@ -4,6 +4,9 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
 
 const INVOKE_PERMISSIONS = [
   "system-info",
@@ -11,6 +14,17 @@ const INVOKE_PERMISSIONS = [
   "processes",
   "invoke:qx_system_information_kill_process",
 ];
+
+const VIRTUAL_DEPENDENCIES = new Set([
+  "@raycast/api",
+  "node-fetch",
+  "file-url",
+  "fs-extra",
+  "run-applescript",
+  "os",
+  "path",
+  "buffer",
+]);
 
 function usage() {
   console.error(`Usage:
@@ -214,6 +228,60 @@ function genericPermissionsForSource(sourceText) {
   return permissions;
 }
 
+function raycastPreferenceType(pref) {
+  switch (pref?.type) {
+    case "checkbox":
+      return "boolean";
+    case "dropdown":
+      return "select";
+    case "password":
+      return "password";
+    case "number":
+      return "number";
+    default:
+      return "string";
+  }
+}
+
+function raycastPreferenceOptions(pref) {
+  const items = Array.isArray(pref?.data)
+    ? pref.data
+    : Array.isArray(pref?.options)
+      ? pref.options
+      : [];
+  return items
+    .map((item) => ({
+      label: String(item.title || item.label || item.name || item.value || ""),
+      value: String(item.value ?? item.id ?? item.title ?? item.label ?? ""),
+    }))
+    .filter((item) => item.label && item.value);
+}
+
+function raycastPreferences(pkg) {
+  const seen = new Set();
+  const result = [];
+  const add = (pref) => {
+    if (!pref?.name || seen.has(pref.name)) return;
+    seen.add(pref.name);
+    const mapped = {
+      id: pref.name,
+      label: pref.title || pref.label || pref.name,
+      type: raycastPreferenceType(pref),
+      required: pref.required !== false,
+      default: pref.default ?? (pref.type === "checkbox" ? false : ""),
+      description: pref.description || "",
+    };
+    const options = raycastPreferenceOptions(pref);
+    if (options.length > 0) mapped.options = options;
+    result.push(mapped);
+  };
+  for (const pref of pkg.preferences || []) add(pref);
+  for (const command of pkg.commands || []) {
+    for (const pref of command.preferences || []) add(pref);
+  }
+  return result;
+}
+
 function buildManifest(pkg) {
   const id = (pkg.name || "raycast-extension").replace(/^raycast-/, "");
   const name = pkg.title || titleCase(id);
@@ -260,6 +328,7 @@ function buildManifest(pkg) {
     screenshots: packageScreenshots(pkg),
     platforms: raycastPlatforms(kind),
     keywords: pkg.keywords || [],
+    preferences: raycastPreferences(pkg),
     permissions: kind === "generic"
       ? [
           "http",
@@ -778,7 +847,9 @@ Grid.Fit = { Fill: "fill", Contain: "contain" };
 
 export function Detail(props) {
   return React.createElement("div", { className: "qx-raycast-detail" },
-    props.markdown ? React.createElement("pre", null, props.markdown) : props.children);
+    React.createElement("div", { className: "qx-raycast-detail-content" },
+      props.markdown ? React.createElement("pre", null, props.markdown) : props.children),
+    props.actions || null);
 }
 `;
 }
@@ -1022,12 +1093,15 @@ function raycastShimStyles() {
     .qx-raycast-item-main strong,.qx-raycast-item-main small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .qx-raycast-item-main small,.qx-raycast-accessory{color:var(--qx-text-secondary,#666);}
     .qx-raycast-loading,.qx-raycast-empty,.qx-raycast-detail{padding:18px;color:var(--qx-text-secondary,#666);overflow:auto;}
+    .qx-raycast-detail{box-sizing:border-box;height:100%;}
+    .qx-raycast-detail-content pre{margin:0;white-space:pre-wrap;font:inherit;color:var(--qx-text-primary,#111);}
     .qx-raycast-actions-inline{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex:0 1 min(42%,360px);margin-left:auto;min-width:0;max-width:min(42%,360px);overflow:hidden;padding:4px 6px 4px 0;}
     .qx-raycast-actions-inline.is-hidden{display:none;}
     .qx-raycast-action-button{border:1px solid var(--qx-border-1,#ddd);background:var(--qx-bg-component-1,#fff);color:inherit;border-radius:6px;padding:4px 7px;font:inherit;font-size:11px;cursor:pointer;}
     .qx-raycast-action-button{min-width:0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
     .qx-raycast-action-button:hover{background:var(--qx-bg-component-2,#f5f5f5);}
     .qx-raycast-grid .qx-raycast-actions-inline{margin-left:0;max-width:100%;width:100%;justify-content:flex-start;padding:0 8px 8px;}
+    .qx-raycast-detail > .qx-raycast-actions-inline{justify-content:flex-start;margin:12px 0 0;max-width:100%;padding:0;overflow:visible;}
     :root[data-qx-raycast-action-panel="hidden"] .qx-raycast-actions-inline{display:none;}
     @media (max-width: 680px){.qx-raycast-actions-inline{display:none;}}
   `;
@@ -1086,6 +1160,55 @@ function virtualModulePlugin(modules) {
   };
 }
 
+function sharedReactPlugin() {
+  const sharedModules = new Set([
+    "react",
+    "react-dom",
+    "react-dom/client",
+    "react/jsx-runtime",
+    "react/jsx-dev-runtime",
+  ]);
+  return {
+    name: "qx-raycast-shared-react",
+    setup(build) {
+      build.onResolve({ filter: /^(react|react-dom(?:\/client)?|react\/jsx(?:-dev)?-runtime)$/ }, (args) => {
+        if (!sharedModules.has(args.path)) return null;
+        return { path: require.resolve(args.path, { paths: [process.cwd()] }) };
+      });
+    },
+  };
+}
+
+function raycastDependenciesToInstall(pkg) {
+  return Object.keys(pkg.dependencies || {})
+    .filter((name) => !VIRTUAL_DEPENDENCIES.has(name));
+}
+
+function installRaycastDependencies(sourceDir, pkg) {
+  const dependencies = raycastDependenciesToInstall(pkg);
+  if (dependencies.length === 0 || existsSync(path.join(sourceDir, "node_modules"))) return;
+
+  const hasLockfile = existsSync(path.join(sourceDir, "package-lock.json"));
+  const args = hasLockfile
+    ? ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"]
+    : ["install", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false"];
+  const result = spawnSync("npm", args, {
+    cwd: sourceDir,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      npm_config_ignore_scripts: "true",
+      npm_config_audit: "false",
+      npm_config_fund: "false",
+    },
+  });
+  if (result.stdout) process.stderr.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.status !== 0) {
+    throw new Error(`npm ${args[0]} failed while installing Raycast dependencies: ${dependencies.join(", ")}`);
+  }
+}
+
 function stabilizeBundleComments(text) {
   return text
     .split("\n")
@@ -1105,16 +1228,14 @@ function stabilizeBundleComments(text) {
 
 async function genericRaycastIndexJs(sourceDir, pkg, manifest) {
   const esbuild = await import("esbuild");
+  installRaycastDependencies(sourceDir, pkg);
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "qx-raycast-build-"));
-  const imports = [];
   const commandNames = [];
   for (const command of pkg.commands || []) {
     const commandName = command.name || "index";
     const sourcePath = commandSourcePath(sourceDir, commandName);
     if (!sourcePath) continue;
-    const ident = "cmd_" + commandName.replace(/[^a-zA-Z0-9_$]/g, "_");
-    imports.push(`import * as ${ident} from ${JSON.stringify(sourcePath)};`);
-    commandNames.push({ name: commandName, ident, mode: command.mode || "view" });
+    commandNames.push({ name: commandName, sourcePath, mode: command.mode || "view" });
   }
   if (commandNames.length === 0) {
     return fallbackIndexJs(pkg);
@@ -1123,16 +1244,16 @@ async function genericRaycastIndexJs(sourceDir, pkg, manifest) {
   await writeFile(entryPath, `
 import React from "react";
 import { createRoot } from "react-dom/client";
-${imports.join("\n")}
 ${raycastShimStyles()}
 
-const commandModules = {
-${commandNames.map((item) => JSON.stringify(item.name) + ": " + item.ident).join(",\n")}
+const commandLoaders = {
+${commandNames.map((item) => JSON.stringify(item.name) + ": () => import(" + JSON.stringify(item.sourcePath) + ")").join(",\n")}
 };
 const commandModes = ${JSON.stringify(Object.fromEntries(commandNames.map((item) => [item.name, item.mode])))};
 const manifestCommands = ${JSON.stringify(manifest.commands)};
 const preferences = ${JSON.stringify(preferencesObject(pkg))};
 let root = null;
+const loadedCommandModules = new Map();
 
 function renderElement(container, element) {
   injectRaycastStyles();
@@ -1140,15 +1261,34 @@ function renderElement(container, element) {
   root.render(element || React.createElement("div", { className: "qx-raycast-empty" }, "No view"));
 }
 
+async function loadPreferences(context) {
+  const next = { ...preferences };
+  if (!context?.getPreference) return next;
+  await Promise.all(Object.keys(next).map(async (key) => {
+    try {
+      const value = await context.getPreference(key);
+      if (value !== undefined && value !== null) next[key] = value;
+    } catch {
+    }
+  }));
+  return next;
+}
+
+async function loadCommandModule(name) {
+  const key = commandLoaders[name] ? name : Object.keys(commandLoaders)[0];
+  if (!key) throw new Error("Command not bundled: " + name);
+  if (!loadedCommandModules.has(key)) {
+    loadedCommandModules.set(key, await commandLoaders[key]());
+  }
+  return loadedCommandModules.get(key);
+}
+
 async function invokeCommand(name, container, context) {
-  const mod = commandModules[name] || commandModules[Object.keys(commandModules)[0]];
-  if (!mod) throw new Error("Command not bundled: " + name);
-  const component = mod.default || mod.Command || mod;
   const mode = commandModes[name] || "view";
   const cache = new Map();
   globalThis.__qxRaycastRuntime = {
     context,
-    preferences,
+    preferences: await loadPreferences(context),
     activeCommand: name,
     cache,
     supportPath: "/qx-plugin-files/" + ${JSON.stringify(manifest.id)},
@@ -1157,6 +1297,8 @@ async function invokeCommand(name, container, context) {
     render: (element) => renderElement(container, element),
     setSearch: () => {},
   };
+  const mod = await loadCommandModule(name);
+  const component = mod.default || mod.Command || mod;
   if (mode === "view") {
     const element = React.isValidElement(component) ? component : React.createElement(component);
     renderElement(container, element);
@@ -1206,22 +1348,25 @@ export default {
       entryPoints: [entryPath],
       bundle: true,
       write: false,
-      nodePaths: [path.join(process.cwd(), "node_modules")],
+      nodePaths: [path.join(sourceDir, "node_modules"), path.join(process.cwd(), "node_modules")],
       platform: "browser",
       format: "esm",
       jsx: "automatic",
       mainFields: ["browser", "module", "main"],
       conditions: ["browser", "default"],
-      plugins: [virtualModulePlugin({
-        "@raycast/api": raycastApiShimModule(preferencesObject(pkg), `/qx-plugin-files/${manifest.id}`),
-        "node-fetch": nodeFetchShimModule(),
-        "file-url": fileUrlShimModule(),
-        "fs-extra": fsExtraShimModule(),
-        "run-applescript": runAppleScriptShimModule(),
-        "os": osShimModule(),
-        "path": pathShimModule(),
-        "buffer": bufferShimModule(),
-      })],
+      plugins: [
+        sharedReactPlugin(),
+        virtualModulePlugin({
+          "@raycast/api": raycastApiShimModule(preferencesObject(pkg), `/qx-plugin-files/${manifest.id}`),
+          "node-fetch": nodeFetchShimModule(),
+          "file-url": fileUrlShimModule(),
+          "fs-extra": fsExtraShimModule(),
+          "run-applescript": runAppleScriptShimModule(),
+          "os": osShimModule(),
+          "path": pathShimModule(),
+          "buffer": bufferShimModule(),
+        }),
+      ],
       define: {
         "process.env.NODE_ENV": JSON.stringify("production"),
         "global": "globalThis",

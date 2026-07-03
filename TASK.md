@@ -9,7 +9,11 @@
 - Settings -> Extensions -> Installed 新增 Display 卡片，可控制转换后的 Raycast `ActionPanel` 行内按钮是否显示。
 - 插件 runtime 新增同步 `context.display.raycastActionPanel`，并在插件 iframe 根节点写入 `data-qx-raycast-action-panel`，让转换插件可按宿主偏好渲染。
 - Raycast generic shim 默认将 `ActionPanel` 渲染为条目右侧紧凑按钮；用户关闭偏好或插件面板左右缩窄时优先隐藏按钮，保留列表文本/缩略图空间。
+- Raycast `Detail` shim 会渲染 `props.actions`，详情型扩展可继续提供复制、切换和设置入口。
+- 转换器支持安装扩展生产 npm 依赖（禁用 lifecycle scripts），并强制 React / React DOM 解析到 Qx converter 依赖，避免扩展目录依赖带来双 React hooks 错误。
+- Raycast preferences 映射到 Qx manifest preferences：dropdown -> select、checkbox -> boolean、password -> password、文本类 -> string。
 - 主仓与 `qx-plugins` 转换器已同步该协议，`raycast-bing-wallpaper` 已重新转换并重新打包。
+- 验证 Raycast `calendar`（commit `186d955eda64f9e956b25a3fdf5566b1d38f57f2`）：依赖 `calendar` / `weeknumber`，转换为 `raycast-calendar` 后可显示日历、切换月份、复制当前视图，并带 3 个 preferences 与 2 张截图。
 - 更新 `README.md`、`public/doc/plugin-system.md`、`public/doc/plugin-marketplace.md`、`public/doc/raycast-plugin-conversion.md` 和 `qx-plugins` README。
 
 ### 验证
@@ -22,6 +26,9 @@
 - [x] Native control scan：仅命中 Markdown 内容样式 `src/styles/qx-ai.css:.qx-md-body li input[type="checkbox"]`，非产品控件。
 - [x] `qx-plugins`：`node --check scripts/convert-raycast-extension.mjs`、`node --check src/raycast-bing-wallpaper/index.js`、`unzip -t raycast-bing-wallpaper.qx-plugin`。
 - [x] `qx-plugins` Bing Wallpaper happy-dom 抽样：`context.display.raycastActionPanel=false` 时 15 个 ActionPanel 均带 `is-hidden`，动作按钮仍存在。
+- [x] `qx-plugins` Calendar：`node --check src/raycast-calendar/index.js`、`unzip -t raycast-calendar.qx-plugin`。
+- [x] `qx-plugins` Calendar happy-dom 抽样：显示 `# July 2026`，点击 `Next Month` 后变成 `# August 2026`，`Copy` 写入 clipboard bridge 且内容匹配当前视图。
+- [x] 本机安装 `raycast-calendar.qx-plugin` 到 `~/.qx/plugins/raycast-calendar`，manifest、`index.js` 语法、`.enabled`、1 个命令、3 个 preferences、2 张截图验证通过。
 - [ ] 手动验证：Settings -> Extensions -> Installed -> Display 开关保存；Bing Wallpaper 在宽面板显示动作按钮，窄面板先隐藏；关闭开关后重新打开插件不显示动作按钮。
 
 ## Feature — 应用内自动更新与 helper 覆盖安装
