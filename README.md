@@ -6,6 +6,8 @@
 
 Qx is a **menu-bar resident desktop launcher** for macOS, inspired by Raycast. It pops up with a global hotkey, giving you instant access to search, clipboard history, screen recording (GIF), RSS feeds, AI chat, V2EX browsing, macros, and more — all within a unified, keyboard-first interface.
 
+
+
 Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the macOS native frosted-glass appearance, Mach kernel APIs for system stats, and vendored native search for fast file lookups.
 
 > **Status**: v0.4.56 — active development
@@ -127,6 +129,12 @@ The Dynamic Island is always centered via `position: absolute; left: 50%; transf
 | Settings — Appearance | `<!-- screenshot -->` |
 
 ---
+
+<img width="1212" height="706" alt="截屏2026-07-03 08 19 11" src="https://github.com/user-attachments/assets/9bf6f32a-0bdf-4b3f-9b0f-3db180a8ab8a" />
+
+
+<img width="2424" height="1412" alt="image" src="https://github.com/user-attachments/assets/85f61b1e-1bd4-4bd3-85c5-0bc1193d4503" />
+
 
 ## Installation
 
