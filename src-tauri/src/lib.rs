@@ -1,6 +1,7 @@
 mod apps;
 mod apps_zh_dict;
 mod clipboard;
+mod diagnostics;
 mod display_monitor;
 mod external_displays;
 mod file_search;
@@ -191,11 +192,21 @@ fn handle_tray_action(app: &AppHandle, action_id: &str) {
             let mut next = settings::read_settings();
             next.general.auto_hide_on_blur = !next.general.auto_hide_on_blur;
             if let Err(err) = settings::write_settings(&next) {
-                eprintln!("update keep_visible tray action: {err}");
+                diagnostics::log(
+                    diagnostics::LogLevel::Error,
+                    "main.tray",
+                    "update keep_visible tray action failed",
+                    serde_json::json!({ "error": err.to_string() }),
+                );
                 return;
             }
             if let Err(err) = refresh_tray_menu(app, &next) {
-                eprintln!("refresh tray menu after keep_visible: {err}");
+                diagnostics::log(
+                    diagnostics::LogLevel::Error,
+                    "main.tray",
+                    "refresh tray menu after keep_visible failed",
+                    serde_json::json!({ "error": err.to_string() }),
+                );
             }
             let _ = app.emit("settings-updated", next.clone());
             if !next.general.auto_hide_on_blur {
@@ -222,7 +233,12 @@ pub(crate) fn refresh_tray_menu(
 fn setup_frosted_glass(app: &tauri::App) {
     use tauri::Manager;
     let Some(win) = app.get_webview_window("main") else {
-        eprintln!("frosted glass: main window not found");
+        diagnostics::log(
+            diagnostics::LogLevel::Warn,
+            "main.window",
+            "frosted glass skipped because main window was not found",
+            serde_json::json!({}),
+        );
         return;
     };
     use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
@@ -245,6 +261,12 @@ pub fn run() {
             format!("{:?}", info.location())
         };
         let loc = info.location().map(|l| l.to_string()).unwrap_or_default();
+        crate::diagnostics::log(
+            crate::diagnostics::LogLevel::Error,
+            "main.panic",
+            "panic captured",
+            serde_json::json!({ "location": loc, "panic": msg }),
+        );
         eprintln!("[QX PANIC] {loc}: {msg}");
     }));
 
@@ -260,9 +282,25 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             let Some(win) = app.get_webview_window("main") else {
-                eprintln!("main window not found during setup");
+                diagnostics::log(
+                    diagnostics::LogLevel::Error,
+                    "main.setup",
+                    "main window not found during setup",
+                    serde_json::json!({}),
+                );
                 return Ok(());
             };
+
+            let startup_settings = settings::read_settings();
+            diagnostics::log(
+                diagnostics::LogLevel::Info,
+                "main.setup",
+                "Qx setup started",
+                serde_json::json!({
+                    "devMode": startup_settings.advanced.dev_mode,
+                    "logLevel": startup_settings.advanced.log_level,
+                }),
+            );
 
             // Keep the configured resizable window behavior and enforce minimum size.
             let _ = win.set_min_size(Some(PhysicalSize::new(480, 360)));
@@ -285,7 +323,12 @@ pub fn run() {
                         .map(|s| (*s).to_string())
                         .or_else(|| payload.downcast_ref::<String>().map(|s| s.clone()))
                         .unwrap_or_else(|| "<unknown panic>".to_string());
-                    eprintln!("[setup] {name} panicked: {msg}");
+                    diagnostics::log(
+                        diagnostics::LogLevel::Error,
+                        "main.setup",
+                        format!("{name} initializer panicked"),
+                        serde_json::json!({ "panic": msg }),
+                    );
                 }
             };
 
@@ -364,10 +407,19 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            diagnostics::log(
+                diagnostics::LogLevel::Info,
+                "main.setup",
+                "Qx setup completed",
+                serde_json::json!({}),
+            );
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_file_size,
+            diagnostics::qx_log_event,
+            diagnostics::qx_log_path,
             apps::search_apps,
             apps::search_files,
             open_app,

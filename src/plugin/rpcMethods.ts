@@ -10,6 +10,7 @@ import {
   submitAiTask,
   type AgentRuntimeSettings,
 } from "./aiRuntime";
+import { qxLog, type QxLogLevel } from "../lib/logger";
 
 const pluginSessionStorage = new Map<string, Map<string, unknown>>();
 
@@ -115,6 +116,10 @@ function hasInvokePermission(perms: Set<string>, cmd: string): boolean {
   return perms.has("*") || perms.has(cmd) || perms.has(`invoke:${cmd}`);
 }
 
+function normalizeLogLevel(level: unknown): QxLogLevel {
+  return level === "error" || level === "warn" || level === "debug" ? level : "info";
+}
+
 export function assertPermission(
   plugin: InstalledPlugin,
   perms: Set<string>,
@@ -180,6 +185,11 @@ export const rpcHandlers: Record<string, RpcHandler> = {
     const cmd = String(payload.cmd);
     assertInvokeAllowed(plugin, perms, cmd);
     const args = ((payload.args as Record<string, unknown>) || {}) as Record<string, unknown>;
+    qxLog("debug", "plugin.rpc.invoke", "Plugin invoke started", {
+      pluginId: plugin.id,
+      command: cmd,
+      permissionCount: plugin.manifest?.permissions?.length || 0,
+    });
     if (cmd === "plugin_run_applescript" || cmd.startsWith("plugin_file_")) {
       return invoke(cmd, { ...args, id: plugin.id });
     }
@@ -190,6 +200,11 @@ export const rpcHandlers: Record<string, RpcHandler> = {
     const cmd = String(payload.cmd);
     assertInvokeAllowed(plugin, perms, cmd);
     const args = ((payload.args as Record<string, unknown>) || {}) as Record<string, unknown>;
+    qxLog("debug", "plugin.rpc.invokeRust", "Plugin invokeRust started", {
+      pluginId: plugin.id,
+      command: cmd,
+      permissionCount: plugin.manifest?.permissions?.length || 0,
+    });
     if (cmd === "plugin_run_applescript" || cmd.startsWith("plugin_file_")) {
       return invoke(cmd, { ...args, id: plugin.id });
     }
@@ -198,6 +213,19 @@ export const rpcHandlers: Record<string, RpcHandler> = {
 
   showToast: async (_plugin, _perms, payload, options) => {
     options.onToast(String(payload.msg));
+    return undefined;
+  },
+
+  log: async (plugin, _perms, payload) => {
+    qxLog(
+      normalizeLogLevel(payload.level),
+      "plugin.context",
+      String(payload.message || ""),
+      {
+        pluginId: plugin.id,
+        fields: payload.fields || {},
+      },
+    );
     return undefined;
   },
 
@@ -225,6 +253,11 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   httpFetch: async (plugin, perms, payload) => {
     assertPermission(plugin, perms, "http");
     const options = (payload.options || {}) as Record<string, unknown>;
+    qxLog("debug", "plugin.rpc.http", "Plugin HTTP fetch started", {
+      pluginId: plugin.id,
+      url: String(payload.url || ""),
+      method: String(options.method || "GET"),
+    });
     return invoke("plugin_http_fetch", {
       req: {
         url: String(payload.url || ""),
@@ -264,21 +297,41 @@ export const rpcHandlers: Record<string, RpcHandler> = {
 
   aiChat: async (plugin, perms, payload) => {
     assertAi(plugin, perms);
+    qxLog("debug", "plugin.rpc.ai", "Plugin AI chat started", {
+      pluginId: plugin.id,
+      hasPrompt: typeof payload.prompt === "string" && payload.prompt.length > 0,
+      messageCount: Array.isArray(payload.messages) ? payload.messages.length : 0,
+    });
     return invoke("plugin_ai_chat", { req: payload });
   },
 
   aiStreamChat: async (plugin, perms, payload) => {
     assertAi(plugin, perms);
+    qxLog("debug", "plugin.rpc.ai", "Plugin AI stream started", {
+      pluginId: plugin.id,
+      hasPrompt: typeof payload.prompt === "string" && payload.prompt.length > 0,
+      messageCount: Array.isArray(payload.messages) ? payload.messages.length : 0,
+    });
     return invoke("plugin_ai_stream_chat", { req: payload });
   },
 
   aiRunBash: async (plugin, perms, payload) => {
     assertPermission(plugin, perms, "ai-bash");
+    qxLog("debug", "plugin.rpc.ai", "Plugin AI bash started", {
+      pluginId: plugin.id,
+      cwd: payload.cwd,
+      timeoutMs: payload.timeoutMs,
+    });
     return invoke("plugin_ai_run_bash", { req: payload });
   },
 
   aiGrepSearch: async (plugin, perms, payload) => {
     assertPermission(plugin, perms, "ai-tools");
+    qxLog("debug", "plugin.rpc.ai", "Plugin AI grep started", {
+      pluginId: plugin.id,
+      root: payload.root,
+      maxResults: payload.maxResults,
+    });
     return invoke("plugin_ai_grep_search", { req: payload });
   },
 

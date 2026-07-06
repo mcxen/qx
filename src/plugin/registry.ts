@@ -10,6 +10,7 @@ import {
 } from "./runtime";
 import { createUnavailableContext } from "./context";
 import { BUILTIN_PLUGINS } from "./builtin";
+import { createQxLogger, qxLog } from "../lib/logger";
 import type {
   InstalledPlugin,
   PluginRuntimeStatus,
@@ -18,6 +19,7 @@ import type {
 } from "./types";
 
 const backgroundTimers = new Map<string, number[]>();
+const registryLogger = createQxLogger("plugin.registry");
 
 export interface CommandMatch {
   command: RegisteredCommand;
@@ -101,11 +103,22 @@ function scheduleBackgroundCommand(command: RegisteredCommand): void {
   const delay = Math.max(0, (Number.isFinite(savedNext) && savedNext > 0 ? savedNext : now + intervalMs) - now);
   const timers = backgroundTimers.get(command.pluginId) || [];
   const timer = window.setTimeout(() => {
+    registryLogger.info("Background plugin command triggered", {
+      pluginId: command.pluginId,
+      command: command.name,
+      interval: command.interval,
+    });
     window.localStorage.setItem(key, String(Date.now() + intervalMs));
     void usePluginRegistry.getState().runCommand(command).finally(() => {
       scheduleBackgroundCommand(command);
     });
   }, delay);
+  registryLogger.debug("Background plugin command scheduled", {
+    pluginId: command.pluginId,
+    command: command.name,
+    delayMs: delay,
+    intervalMs,
+  });
   timers.push(timer);
   backgroundTimers.set(command.pluginId, timers);
 }
@@ -180,6 +193,8 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     if (get().loading || get().loaded) return;
     const loadToken = get()._loadToken + 1;
     set({ loading: true, error: null, hooks, _loadToken: loadToken });
+    const startedAt = performance.now();
+    registryLogger.info("Plugin registry load started", { loadToken });
     try {
       const builtinCommands = get().commands.filter((command) =>
         isBuiltinPluginId(command.pluginId),
@@ -191,6 +206,11 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       const enabled = plugins.filter((p) => p.enabled);
       // Topological sort: load dependencies first
       const sorted = topologicalSort(enabled);
+      registryLogger.info("Installed plugins listed", {
+        total: plugins.length,
+        enabled: enabled.length,
+        builtin: BUILTIN_PLUGINS.length,
+      });
       set({
         plugins: [...BUILTIN_PLUGINS, ...plugins],
         commands: builtinCommands,
@@ -225,6 +245,14 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
             const source = event.source as Window | null;
             if (!source || typeof source.postMessage !== "function") return;
             if (!isPluginRuntimeSource(plugin.id, runtimeId, source)) return;
+            if (data.type === "qx:plugin-log") {
+              qxLog(data.level === "error" || data.level === "warn" || data.level === "debug" ? data.level : "info", "plugin.iframe", String(data.message || ""), {
+                pluginId: plugin.id,
+                runtimeId,
+                ...(data.fields || {}),
+              });
+              return;
+            }
             if (data.type === "qx:host-keydown") {
               if (data.key === "Escape") {
                 window.dispatchEvent(new CustomEvent("qx:host-escape", {
@@ -235,6 +263,13 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
             }
             if (data.type !== "qx:rpc") return;
             const requestId = String(data.requestId || "");
+            const rpcStartedAt = performance.now();
+            registryLogger.debug("Plugin RPC started", {
+              pluginId: plugin.id,
+              runtimeId,
+              requestId,
+              method: String(data.method),
+            });
             void handlePluginRpc(
               plugin,
               String(data.method),
@@ -242,6 +277,13 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
               hooks,
             )
               .then((rpcResult) => {
+                registryLogger.debug("Plugin RPC completed", {
+                  pluginId: plugin.id,
+                  runtimeId,
+                  requestId,
+                  method: String(data.method),
+                  durationMs: Math.round(performance.now() - rpcStartedAt),
+                });
                 source.postMessage(
                   {
                     type: "qx:rpc:response",
@@ -254,6 +296,14 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
                 );
               })
               .catch((error) => {
+                registryLogger.error("Plugin RPC failed", {
+                  pluginId: plugin.id,
+                  runtimeId,
+                  requestId,
+                  method: String(data.method),
+                  durationMs: Math.round(performance.now() - rpcStartedAt),
+                  error,
+                });
                 source.postMessage(
                   {
                     type: "qx:rpc:response",
@@ -285,6 +335,12 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
               });
               registeredShortcuts.push(shortcut.key);
             } catch (error) {
+              registryLogger.warn("Plugin shortcut registration failed", {
+                pluginId: plugin.id,
+                shortcut: shortcut.key,
+                command: shortcut.command,
+                error,
+              });
               console.warn(`Failed to register shortcut ${shortcut.key} for ${plugin.id}:`, error);
               hooks.onPluginStatus?.({
                 kind: "error",
@@ -320,6 +376,11 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
             detail: plugin.name,
           });
         } catch (err) {
+          registryLogger.error("Plugin failed to load into registry", {
+            pluginId: plugin.id,
+            pluginName: plugin.name,
+            error: err,
+          });
           console.error(`Failed to load plugin ${plugin.id}:`, err);
           hooks.onPluginStatus?.({
             kind: "error",
@@ -331,9 +392,20 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       };
 
       void Promise.allSettled(sorted.map(loadOne)).then(() => {
-        if (get()._loadToken === loadToken) set({ loading: false });
+        if (get()._loadToken === loadToken) {
+          registryLogger.info("Plugin registry load completed", {
+            loadToken,
+            durationMs: Math.round(performance.now() - startedAt),
+          });
+          set({ loading: false });
+        }
       });
     } catch (err) {
+      registryLogger.error("Plugin registry load failed", {
+        loadToken,
+        durationMs: Math.round(performance.now() - startedAt),
+        error: err,
+      });
       if (get()._loadToken === loadToken) {
         set({ error: String(err), loading: false, loaded: true });
       }
@@ -347,6 +419,10 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
 
   unload: () => {
     const { workers, shortcuts } = get();
+    registryLogger.info("Plugin registry unload started", {
+      workers: Object.keys(workers).length,
+      shortcuts: Object.values(shortcuts).flat().length,
+    });
     clearBackgroundTimers();
     Object.values(shortcuts).flat().forEach((shortcut) => {
       void unregister(shortcut).catch(() => {});
@@ -379,32 +455,44 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       loading: false,
       _loadToken: get()._loadToken + 1,
     });
+    registryLogger.info("Plugin registry unload completed");
   },
 
   install: async (path: string) => {
+    registryLogger.info("Plugin install started", { path });
     const plugin = await invoke<InstalledPlugin>("install_plugin", { path });
+    registryLogger.info("Plugin install completed", {
+      pluginId: plugin.id,
+      pluginName: plugin.name,
+    });
     await get().refresh();
     return plugin;
   },
 
   uninstall: async (id: string) => {
+    registryLogger.info("Plugin uninstall started", { pluginId: id });
     await invoke("uninstall_plugin", { id });
+    registryLogger.info("Plugin uninstall completed", { pluginId: id });
     await get().refresh();
   },
 
   setEnabled: async (id: string, enabled: boolean) => {
+    registryLogger.info("Plugin enabled state change started", { pluginId: id, enabled });
     await invoke("set_plugin_enabled", { id, enabled });
+    registryLogger.info("Plugin enabled state change completed", { pluginId: id, enabled });
     await get().refresh();
   },
 
   refresh: async () => {
     const hooks = get().hooks;
+    registryLogger.info("Plugin registry refresh started", { hasHooks: Boolean(hooks) });
     get().unload();
     if (hooks) {
       await get().load(hooks);
     } else {
       set({ loaded: true, loading: false });
     }
+    registryLogger.info("Plugin registry refresh requested");
   },
 
   findCommands: (query: string) => {
@@ -424,9 +512,26 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
   getPanel: (id: string) => get().panels[id],
 
   runCommand: async (command) => {
+    const startedAt = performance.now();
+    registryLogger.info("Plugin command dispatch started", {
+      pluginId: command.pluginId,
+      command: command.name,
+      mode: command.mode,
+    });
     try {
       await command.run(createUnavailableContext(command.pluginId));
+      registryLogger.info("Plugin command dispatch completed", {
+        pluginId: command.pluginId,
+        command: command.name,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
     } catch (error) {
+      registryLogger.error("Plugin command dispatch failed", {
+        pluginId: command.pluginId,
+        command: command.name,
+        durationMs: Math.round(performance.now() - startedAt),
+        error,
+      });
       const message = `Plugin command failed: ${String(error)}`;
       get().hooks?.onToast(message);
       get().hooks?.onPluginStatus?.({
@@ -444,17 +549,21 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     if (existing) clearInterval(existing);
     const interval = setInterval(async () => {
       try {
+        registryLogger.debug("Dev watcher refresh tick");
         await get().refresh();
-      } catch {
+      } catch (error) {
+        registryLogger.warn("Dev watcher refresh failed", { error });
         // Ignore errors during auto-refresh
       }
     }, 3000);
     set({ devWatcherActive: true, _devWatcherInterval: interval });
+    registryLogger.info("Plugin dev watcher started");
   },
 
   stopDevWatcher: () => {
     const interval = (get() as any)._devWatcherInterval;
     if (interval) clearInterval(interval);
     set({ devWatcherActive: false, _devWatcherInterval: null });
+    registryLogger.info("Plugin dev watcher stopped");
   },
 }));

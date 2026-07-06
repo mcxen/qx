@@ -24,6 +24,7 @@ import {
 } from "./search/searchMetadata";
 import { loadClipboardEntryById, pasteClipboardEntryAtCursor } from "./modules/clipboard/actions";
 import { useEscBack } from "./hooks/useEscBack";
+import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./lib/logger";
 import "./App.css";
 
 const ClipboardPanel = lazy(() => import("./modules/clipboard/ClipboardPanel"));
@@ -46,6 +47,7 @@ const OVERSIZED_SAVED_WINDOW_RATIO = 0.9;
 const MODULE_SWITCH_PAINT_DELAY_MS = 32;
 const HOST_ESCAPE_EVENT = "qx:host-escape";
 const AUTO_UPDATE_START_DELAY_MS = 2200;
+const appLogger = createQxLogger("main.app");
 
 interface QxUpdateInfo {
   available: boolean;
@@ -209,6 +211,11 @@ class ModuleErrorBoundary extends Component<
   }
 
   componentDidCatch(error: unknown, info: ErrorInfo) {
+    appLogger.error("Module render failed", {
+      error,
+      componentStack: info.componentStack,
+      tab: this.props.tab,
+    });
     console.error("Module render failed:", error, info);
   }
 
@@ -464,6 +471,16 @@ function App() {
   }, [settingsLoaded, loadSettings, appsReady]);
 
   useEffect(() => {
+    configureQxLogger({
+      level: settings.advanced.log_level,
+      devMode: settings.advanced.dev_mode,
+    });
+    if (settings.advanced.dev_mode) {
+      installDevConsoleCapture();
+    }
+  }, [settings.advanced.dev_mode, settings.advanced.log_level]);
+
+  useEffect(() => {
     if (!isTauriRuntime()) return;
     const unlisten = listen("settings-updated", () => {
       void loadSettings();
@@ -482,7 +499,9 @@ function App() {
     const timerId = window.setTimeout(() => {
       const runAutoUpdate = async () => {
         try {
+          appLogger.info("Auto update check started");
           const info = await invoke<QxUpdateInfo>("qx_update_check");
+          appLogger.debug("Auto update check completed", { info });
           if (cancelled || !info.available || !info.can_install) return;
 
           const versionLabel = info.latest_version ? `v${info.latest_version}` : "latest release";
@@ -494,6 +513,9 @@ function App() {
           });
 
           await invoke("qx_update_download_and_install");
+          appLogger.info("Auto update download and install started", {
+            latestVersion: info.latest_version,
+          });
           if (!cancelled) {
             setPluginIsland({
               label: "Installing update",
@@ -503,6 +525,7 @@ function App() {
             });
           }
         } catch (error) {
+          appLogger.debug("Auto update skipped", { error });
           console.info("auto update skipped:", error);
         }
       };
