@@ -196,6 +196,8 @@ export default {
 | `context.system.info()` | 读取系统信息（需 `system-info` 权限） |
 | `context.system.storage()` | 读取磁盘存储信息（需 `system-info` 权限） |
 | `context.system.network()` | 读取网络设备信息（需 `system-info` 权限） |
+| `context.invoke("qx_external_displays_driver/list")` | 读取外接显示器 DDC/CI 驱动与显示器参数（需 `external-displays` 权限） |
+| `context.invoke("qx_external_displays_set_control")` | 调节外接显示器亮度/对比度/音量（需精确 `invoke:qx_external_displays_set_control` 权限） |
 | `context.system.processes.list()` | 读取进程列表（需 `processes` 权限） |
 | `context.system.processes.kill(pid)` | 结束进程（需精确 `invoke:qx_system_information_kill_process` 权限） |
 | `context.permissions.status()` | 读取 macOS 权限状态（需 `permissions` 权限） |
@@ -298,6 +300,7 @@ open-url           打开外部链接
 storage            插件本地存储（默认已包含）
 system-info        读取系统、存储、网络等静态系统信息
 system-stats       读取 CPU / MEM / GPU 运行监控
+external-displays  读取外接显示器 DDC/CI 驱动与显示器参数
 processes          读取进程列表
 apps               搜索系统应用
 files              搜索文件

@@ -430,11 +430,13 @@ fn normalize_sha256(value: &str) -> String {
 }
 
 fn http_client() -> Result<reqwest::blocking::Client, String> {
-    reqwest::blocking::Client::builder()
-        .user_agent(format!("Qx/{}", env!("CARGO_PKG_VERSION")))
-        .timeout(Duration::from_secs(60))
-        .build()
-        .map_err(|e| format!("build HTTP client: {e}"))
+    let user_agent = format!("Qx/{}", env!("CARGO_PKG_VERSION"));
+    crate::http_client::blocking_client(
+        &user_agent,
+        Duration::from_secs(60),
+        Some(Duration::from_secs(15)),
+    )
+    .map_err(|e| format!("build update HTTP client: {e}"))
 }
 
 fn download_and_stage(

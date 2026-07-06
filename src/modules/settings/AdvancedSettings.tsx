@@ -148,11 +148,11 @@ export default function AdvancedSettings() {
 
       <SettingsCard
         title={t("advanced.network.title", "Network")}
-        description={t("advanced.network.desc", "Configure proxy access for marketplace indexes and plugin downloads.")}
+        description={t("advanced.network.desc", "Configure proxy access for marketplace, plugins, app updates, and network tools.")}
       >
         <Row
           title={t("advanced.networkProxy", "Network Proxy")}
-          description={t("advanced.networkProxy.desc", "Route marketplace index and plugin downloads through an HTTP, HTTPS, or SOCKS proxy.")}
+          description={t("advanced.networkProxy.desc", "Route Qx network requests through an HTTP, HTTPS, or SOCKS proxy.")}
         >
           <Toggle
             value={adv.network_proxy_enabled}

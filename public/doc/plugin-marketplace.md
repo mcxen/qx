@@ -156,6 +156,8 @@ export default {
 | `context.system.info()` | 读取系统信息 | `system-info` |
 | `context.system.storage()` | 读取磁盘存储信息 | `system-info` |
 | `context.system.network()` | 读取网络设备信息 | `system-info` |
+| `context.invoke("qx_external_displays_driver/list")` | 读取外接显示器 DDC/CI 驱动与显示器参数 | `external-displays` |
+| `context.invoke("qx_external_displays_set_control")` | 调节外接显示器亮度/对比度/音量 | `invoke:qx_external_displays_set_control` |
 | `context.system.processes.list()` | 读取进程列表 | `processes` |
 | `context.system.processes.kill(pid)` | 结束进程 | `invoke:qx_system_information_kill_process` |
 | `context.permissions.status()` | 读取 macOS 权限状态 | `permissions` |
@@ -185,6 +187,7 @@ ai-tools           允许 AI/插件调用非危险工具，例如用户配置的
 ai-background      提交和管理 Qx 进程内后台 AI 任务
 system-info        读取系统、存储、网络等静态系统信息
 system-stats       读取 CPU / MEM / GPU 运行监控
+external-displays  读取外接显示器 DDC/CI 驱动与显示器参数
 processes          读取进程列表
 apps               搜索系统应用
 files              搜索文件

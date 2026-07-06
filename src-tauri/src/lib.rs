@@ -2,6 +2,7 @@ mod apps;
 mod apps_zh_dict;
 mod clipboard;
 mod display_monitor;
+mod external_displays;
 mod file_search;
 mod floating_panel;
 mod g4f;
@@ -421,6 +422,9 @@ pub fn run() {
             system_information::qx_system_monitor_network_counters,
             system_information::qx_system_monitor_power,
             system_stats::get_system_stats,
+            external_displays::qx_external_displays_driver,
+            external_displays::qx_external_displays_list,
+            external_displays::qx_external_displays_set_control,
             screencap::start_recording,
             screencap::stop_recording,
             screencap::save_gif,
