@@ -5,11 +5,14 @@ use std::fs;
 use std::io::{Cursor, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
+use std::time::Duration;
 use tauri::command;
 
 const INDEX_URL: &str = "https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json";
 const USER_AGENT: &str = "Qx/0.1 (Marketplace; +https://github.com/mcxen/qx)";
 static PLUGIN_STORAGE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+const HTTP_RETRY_ATTEMPTS: usize = 2;
+const HTTP_RETRY_AFTER_CAP_SECS: u64 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginCommand {
@@ -289,15 +292,46 @@ fn read_manifest(dir: &Path) -> Option<PluginManifest> {
     serde_json::from_str::<PluginManifest>(&content).ok()
 }
 
-async fn http_get(url: &str) -> Result<Vec<u8>, String> {
+fn retry_after_seconds(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+    headers
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.trim().parse::<u64>().ok())
+}
+
+fn http_status_error(
+    url: &str,
+    status: reqwest::StatusCode,
+    body: &str,
+    retry_after: Option<u64>,
+) -> String {
+    let mut detail = format!("http status {status} for {url}");
+    if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+        detail.push_str(". Remote service rate limited this request");
+        if let Some(seconds) = retry_after {
+            detail.push_str(&format!("; retry after {seconds}s"));
+        }
+    }
+    let snippet = body.trim();
+    if !snippet.is_empty() {
+        detail.push_str(": ");
+        detail.push_str(&snippet.chars().take(180).collect::<String>());
+    }
+    detail
+}
+
+async fn http_get_once(url: &str) -> Result<Vec<u8>, String> {
     let client = crate::http_client::client(USER_AGENT, std::time::Duration::from_secs(30), None)?;
     let resp = client
         .get(url)
         .send()
         .await
         .map_err(|e| format!("http request: {e}"))?;
-    if !resp.status().is_success() {
-        return Err(format!("http status {}", resp.status()));
+    let status = resp.status();
+    let retry_after = retry_after_seconds(resp.headers());
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        return Err(http_status_error(url, status, &body, retry_after));
     }
     resp.bytes()
         .await
@@ -305,15 +339,50 @@ async fn http_get(url: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("read body: {e}"))
 }
 
+async fn http_get(url: &str) -> Result<Vec<u8>, String> {
+    let mut last_error = String::new();
+    for attempt in 0..=HTTP_RETRY_ATTEMPTS {
+        match http_get_once(url).await {
+            Ok(bytes) => return Ok(bytes),
+            Err(error) => {
+                last_error = error;
+                if !last_error.contains("429 Too Many Requests") || attempt == HTTP_RETRY_ATTEMPTS {
+                    break;
+                }
+                let delay_secs = last_error
+                    .split("retry after ")
+                    .nth(1)
+                    .and_then(|value| value.split('s').next())
+                    .and_then(|value| value.parse::<u64>().ok())
+                    .unwrap_or(1)
+                    .min(HTTP_RETRY_AFTER_CAP_SECS);
+                tokio::time::sleep(Duration::from_secs(delay_secs)).await;
+            }
+        }
+    }
+    Err(last_error)
+}
+
+async fn http_get_with_fallbacks(url: &str) -> Result<Vec<u8>, String> {
+    let mut errors = Vec::new();
+    for candidate in github_url_candidates(url) {
+        match http_get(&candidate).await {
+            Ok(bytes) => return Ok(bytes),
+            Err(error) => errors.push(error),
+        }
+    }
+    Err(errors.join(" | fallback failed: "))
+}
+
 #[command]
 pub async fn fetch_plugin_index() -> Result<PluginIndex, String> {
-    let bytes = http_get(INDEX_URL).await?;
+    let bytes = http_get_with_fallbacks(INDEX_URL).await?;
     serde_json::from_slice::<PluginIndex>(&bytes).map_err(|e| format!("parse index: {e}"))
 }
 
 #[command]
 pub async fn download_plugin(url: String) -> Result<String, String> {
-    let bytes = http_get(&url).await?;
+    let bytes = http_get_with_fallbacks(&url).await?;
     let tmp = std::env::temp_dir().join(format!("qx-plugin-{}.qx", uuid_like()));
     let mut f = fs::File::create(&tmp).map_err(|e| format!("create tmp: {e}"))?;
     f.write_all(&bytes).map_err(|e| format!("write tmp: {e}"))?;
@@ -327,7 +396,7 @@ pub async fn install_plugin_from_url(url: String) -> Result<InstalledPlugin, Str
         return Err("plugin archive URL is empty".to_string());
     }
     let archive_url = normalize_plugin_archive_url(trimmed);
-    let bytes = http_get(&archive_url).await?;
+    let bytes = http_get_with_fallbacks(&archive_url).await?;
     install_plugin_archive(&bytes, None)
 }
 
@@ -335,7 +404,7 @@ pub async fn install_plugin_from_url(url: String) -> Result<InstalledPlugin, Str
 pub async fn install_raycast_extension_from_url(url: String) -> Result<InstalledPlugin, String> {
     let source = parse_raycast_github_tree_url(url.trim())?;
     let package_url = source.raw_url("package.json");
-    let package_bytes = http_get(&package_url).await?;
+    let package_bytes = http_get_with_fallbacks(&package_url).await?;
     let package_json: serde_json::Value = serde_json::from_slice(&package_bytes)
         .map_err(|e| format!("parse Raycast package.json: {e}"))?;
     let raycast_name = package_json
@@ -370,7 +439,7 @@ pub async fn install_raycast_extension_from_url(url: String) -> Result<Installed
         let icon_name = manifest.icon.clone();
         let candidates = [format!("assets/{icon_name}"), icon_name.clone()];
         for candidate in candidates {
-            if let Ok(bytes) = http_get(&source.raw_url(&candidate)).await {
+            if let Ok(bytes) = http_get_with_fallbacks(&source.raw_url(&candidate)).await {
                 fs::write(dest.join(&icon_name), bytes).map_err(|e| format!("write icon: {e}"))?;
                 break;
             }
@@ -1094,6 +1163,66 @@ fn normalize_plugin_archive_url(input: &str) -> String {
     format!("https://github.com/{owner}/{repo}/archive/refs/heads/{branch}.zip")
 }
 
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
+}
+
+fn github_url_candidates(input: &str) -> Vec<String> {
+    let trimmed = input.trim();
+    let mut candidates = vec![trimmed.to_string()];
+
+    if let Some(path_start) = trimmed.find("github.com/") {
+        let path = trimmed[path_start + "github.com/".len()..]
+            .split(['?', '#'])
+            .next()
+            .unwrap_or("")
+            .trim_matches('/');
+        let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+        if parts.len() >= 6 && parts[2] == "archive" && parts[3] == "refs" {
+            let owner = parts[0];
+            let repo = parts[1];
+            let reference = parts[4..].join("/").trim_end_matches(".zip").to_string();
+            push_unique(
+                &mut candidates,
+                format!("https://codeload.github.com/{owner}/{repo}/zip/refs/{reference}"),
+            );
+        }
+        if parts.len() >= 5 && parts[2] == "raw" {
+            let owner = parts[0];
+            let repo = parts[1];
+            let reference = parts[3];
+            let rel = parts[4..].join("/");
+            push_unique(
+                &mut candidates,
+                format!("https://raw.githubusercontent.com/{owner}/{repo}/{reference}/{rel}"),
+            );
+        }
+    }
+
+    if let Some(path_start) = trimmed.find("raw.githubusercontent.com/") {
+        let path = trimmed[path_start + "raw.githubusercontent.com/".len()..]
+            .split(['?', '#'])
+            .next()
+            .unwrap_or("")
+            .trim_matches('/');
+        let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+        if parts.len() >= 4 {
+            let owner = parts[0];
+            let repo = parts[1];
+            let reference = parts[2];
+            let rel = parts[3..].join("/");
+            push_unique(
+                &mut candidates,
+                format!("https://github.com/{owner}/{repo}/raw/{reference}/{rel}"),
+            );
+        }
+    }
+
+    candidates
+}
+
 fn expand_home_path(input: &str) -> PathBuf {
     if input == "~" {
         return PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()));
@@ -1455,6 +1584,34 @@ mod tests {
         assert_eq!(
             source.raw_url("package.json"),
             "https://raw.githubusercontent.com/raycast/extensions/888d04008da11340e0a0fa98b32dde4465a33e72/extensions/system-information/package.json"
+        );
+    }
+
+    #[test]
+    fn builds_github_archive_fallback_candidates() {
+        let candidates = github_url_candidates(
+            "https://github.com/mcxen/qx-plugins/archive/refs/heads/main.zip",
+        );
+        assert_eq!(
+            candidates,
+            vec![
+                "https://github.com/mcxen/qx-plugins/archive/refs/heads/main.zip",
+                "https://codeload.github.com/mcxen/qx-plugins/zip/refs/heads/main",
+            ]
+        );
+    }
+
+    #[test]
+    fn builds_github_raw_fallback_candidates() {
+        let candidates = github_url_candidates(
+            "https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json",
+        );
+        assert_eq!(
+            candidates,
+            vec![
+                "https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json",
+                "https://github.com/mcxen/qx-plugins/raw/main/index.json",
+            ]
         );
     }
 
