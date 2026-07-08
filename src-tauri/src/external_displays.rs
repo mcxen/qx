@@ -1,5 +1,5 @@
 use regex::Regex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -31,6 +31,22 @@ pub struct ExternalDisplay {
     volume: Option<ExternalDisplayControl>,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalDisplayInstallRequest {
+    driver: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalDisplayInstallResult {
+    driver: String,
+    command: String,
+    stdout: String,
+    stderr: String,
+    detected: Option<ExternalDisplayDriver>,
+}
+
 fn candidate_paths(binary: &str) -> Vec<PathBuf> {
     [
         "/opt/homebrew/bin",
@@ -49,6 +65,22 @@ fn find_binary(binary: &str) -> Option<PathBuf> {
     candidate_paths(binary)
         .into_iter()
         .find(|path| path.is_file())
+}
+
+fn brew_binary() -> Option<PathBuf> {
+    candidate_paths("brew")
+        .into_iter()
+        .find(|path| path.is_file())
+}
+
+fn supported_install_driver(input: &str) -> Result<&'static str, String> {
+    match input.trim() {
+        "m1ddc" => Ok("m1ddc"),
+        "ddcctl" => Ok("ddcctl"),
+        other => Err(format!(
+            "Unsupported DDC CLI install target: {other}. Expected m1ddc or ddcctl."
+        )),
+    }
 }
 
 fn detected_driver() -> Option<ExternalDisplayDriver> {
@@ -325,6 +357,56 @@ pub fn qx_external_displays_set_control(
     Ok(())
 }
 
+#[tauri::command]
+pub async fn qx_external_displays_install_driver(
+    req: ExternalDisplayInstallRequest,
+) -> Result<ExternalDisplayInstallResult, String> {
+    let driver = supported_install_driver(&req.driver)?.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Some(existing) = detected_driver().filter(|item| item.name == driver) {
+            return Ok(ExternalDisplayInstallResult {
+                driver,
+                command: "already installed".to_string(),
+                stdout: String::new(),
+                stderr: String::new(),
+                detected: Some(existing),
+            });
+        }
+
+        let brew = brew_binary().ok_or_else(|| {
+            "Homebrew is required to install DDC/CI tools automatically. Install Homebrew first, then retry."
+                .to_string()
+        })?;
+        let command = format!("{} install {driver}", brew.display());
+        let output = Command::new(&brew)
+            .arg("install")
+            .arg(&driver)
+            .output()
+            .map_err(|e| format!("run brew install {driver}: {e}"))?;
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let detected = detected_driver().filter(|item| item.name == driver);
+
+        if output.status.success() || detected.is_some() {
+            return Ok(ExternalDisplayInstallResult {
+                driver,
+                command,
+                stdout,
+                stderr,
+                detected,
+            });
+        }
+
+        Err(if stderr.is_empty() {
+            format!("brew install failed: {stdout}")
+        } else {
+            format!("brew install failed: {stderr}")
+        })
+    })
+    .await
+    .map_err(|e| format!("install task failed: {e}"))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +429,12 @@ mod tests {
     fn parses_m1ddc_display_ids() {
         let ids = display_ids_from_m1ddc_list("Display 1: Dell\nDisplay 2: LG\n");
         assert_eq!(ids, vec![1, 2]);
+    }
+
+    #[test]
+    fn validates_supported_install_drivers() {
+        assert_eq!(supported_install_driver("m1ddc").unwrap(), "m1ddc");
+        assert_eq!(supported_install_driver("ddcctl").unwrap(), "ddcctl");
+        assert!(supported_install_driver("rm -rf").is_err());
     }
 }

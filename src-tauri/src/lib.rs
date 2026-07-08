@@ -475,6 +475,7 @@ pub fn run() {
             system_information::qx_system_monitor_power,
             system_stats::get_system_stats,
             external_displays::qx_external_displays_driver,
+            external_displays::qx_external_displays_install_driver,
             external_displays::qx_external_displays_list,
             external_displays::qx_external_displays_set_control,
             screencap::start_recording,

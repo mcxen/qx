@@ -197,6 +197,14 @@ struct RaycastSource {
     extension_path: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct GitHubRawSource {
+    owner: String,
+    repo: String,
+    reference: String,
+    rel: String,
+}
+
 pub(crate) fn plugins_root() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
     let dir = PathBuf::from(format!("{}/.qx/plugins", home));
@@ -371,7 +379,105 @@ async fn http_get_with_fallbacks(url: &str) -> Result<Vec<u8>, String> {
             Err(error) => errors.push(error),
         }
     }
+    if let Some(source) = github_raw_archive_source(url) {
+        match http_get_from_repo_archive(&source).await {
+            Ok(bytes) => return Ok(bytes),
+            Err(error) => errors.push(error),
+        }
+    }
     Err(errors.join(" | fallback failed: "))
+}
+
+fn marketplace_repo_cache_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    PathBuf::from(home)
+        .join(".qx")
+        .join("cache")
+        .join("marketplace-repos")
+}
+
+fn cache_safe_part(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.') {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+fn repo_archive_cache_path(source: &GitHubRawSource) -> PathBuf {
+    marketplace_repo_cache_dir().join(format!(
+        "{}-{}-{}.zip",
+        cache_safe_part(&source.owner),
+        cache_safe_part(&source.repo),
+        cache_safe_part(&source.reference)
+    ))
+}
+
+fn read_file_from_repo_archive(archive_bytes: &[u8], rel: &str) -> Result<Vec<u8>, String> {
+    let rel = rel.trim_start_matches('/');
+    let mut archive = zip::ZipArchive::new(Cursor::new(archive_bytes))
+        .map_err(|e| format!("open repo zip: {e}"))?;
+    for index in 0..archive.len() {
+        let mut file = archive
+            .by_index(index)
+            .map_err(|e| format!("read repo zip entry: {e}"))?;
+        if file.is_dir() {
+            continue;
+        }
+        let name = file.name().trim_start_matches('/');
+        let entry_rel = name.split_once('/').map(|(_, rest)| rest).unwrap_or(name);
+        if entry_rel != rel {
+            continue;
+        }
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)
+            .map_err(|e| format!("read {rel} from repo zip: {e}"))?;
+        return Ok(bytes);
+    }
+    Err(format!("repo archive does not contain {rel}"))
+}
+
+fn read_cached_repo_file(source: &GitHubRawSource) -> Result<Vec<u8>, String> {
+    let cache_path = repo_archive_cache_path(source);
+    if !cache_path.exists() {
+        return Err(format!("repo archive cache miss: {}", cache_path.display()));
+    }
+    let archive_bytes =
+        fs::read(&cache_path).map_err(|e| format!("read repo archive cache: {e}"))?;
+    read_file_from_repo_archive(&archive_bytes, &source.rel)
+}
+
+async fn http_get_from_repo_archive(source: &GitHubRawSource) -> Result<Vec<u8>, String> {
+    if let Ok(bytes) = read_cached_repo_file(source) {
+        return Ok(bytes);
+    }
+
+    let mut errors = Vec::new();
+    for archive_url in source.archive_urls() {
+        match http_get(&archive_url).await {
+            Ok(archive_bytes) => {
+                let cache_path = repo_archive_cache_path(source);
+                if let Some(parent) = cache_path.parent() {
+                    let _ = fs::create_dir_all(parent);
+                }
+                let _ = fs::write(&cache_path, &archive_bytes);
+                return read_file_from_repo_archive(&archive_bytes, &source.rel);
+            }
+            Err(error) => errors.push(error),
+        }
+    }
+    Err(format!(
+        "GitHub repo archive fallback failed for {}/{} {}: {}",
+        source.owner,
+        source.repo,
+        source.rel,
+        errors.join(" | ")
+    ))
 }
 
 #[command]
@@ -1223,6 +1329,78 @@ fn github_url_candidates(input: &str) -> Vec<String> {
     candidates
 }
 
+fn parse_github_raw_path(path: &str) -> Option<GitHubRawSource> {
+    let parts: Vec<&str> = path
+        .split(['?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim_matches('/')
+        .split('/')
+        .filter(|part| !part.is_empty())
+        .collect();
+    if parts.len() < 4 {
+        return None;
+    }
+    Some(GitHubRawSource {
+        owner: parts[0].to_string(),
+        repo: parts[1].to_string(),
+        reference: parts[2].to_string(),
+        rel: parts[3..].join("/"),
+    })
+}
+
+fn github_raw_archive_source(input: &str) -> Option<GitHubRawSource> {
+    let trimmed = input.trim();
+    if let Some(path_start) = trimmed.find("raw.githubusercontent.com/") {
+        return parse_github_raw_path(&trimmed[path_start + "raw.githubusercontent.com/".len()..]);
+    }
+    if let Some(path_start) = trimmed.find("github.com/") {
+        let path = trimmed[path_start + "github.com/".len()..]
+            .split(['?', '#'])
+            .next()
+            .unwrap_or("")
+            .trim_matches('/');
+        let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
+        if parts.len() >= 5 && parts[2] == "raw" {
+            return Some(GitHubRawSource {
+                owner: parts[0].to_string(),
+                repo: parts[1].to_string(),
+                reference: parts[3].to_string(),
+                rel: parts[4..].join("/"),
+            });
+        }
+    }
+    None
+}
+
+impl GitHubRawSource {
+    fn archive_urls(&self) -> Vec<String> {
+        let mut urls = Vec::new();
+        push_unique(
+            &mut urls,
+            format!(
+                "https://codeload.github.com/{}/{}/zip/refs/heads/{}",
+                self.owner, self.repo, self.reference
+            ),
+        );
+        push_unique(
+            &mut urls,
+            format!(
+                "https://codeload.github.com/{}/{}/zip/refs/tags/{}",
+                self.owner, self.repo, self.reference
+            ),
+        );
+        push_unique(
+            &mut urls,
+            format!(
+                "https://codeload.github.com/{}/{}/zip/{}",
+                self.owner, self.repo, self.reference
+            ),
+        );
+        urls
+    }
+}
+
 fn expand_home_path(input: &str) -> PathBuf {
     if input == "~" {
         return PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".to_string()));
@@ -1612,6 +1790,50 @@ mod tests {
                 "https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json",
                 "https://github.com/mcxen/qx-plugins/raw/main/index.json",
             ]
+        );
+    }
+
+    #[test]
+    fn parses_github_raw_source_for_archive_fallback() {
+        let source = github_raw_archive_source(
+            "https://raw.githubusercontent.com/mcxen/qx-plugins/main/external-display-control.qx-plugin",
+        )
+        .unwrap();
+        assert_eq!(
+            source,
+            GitHubRawSource {
+                owner: "mcxen".to_string(),
+                repo: "qx-plugins".to_string(),
+                reference: "main".to_string(),
+                rel: "external-display-control.qx-plugin".to_string(),
+            }
+        );
+        assert_eq!(
+            source.archive_urls(),
+            vec![
+                "https://codeload.github.com/mcxen/qx-plugins/zip/refs/heads/main",
+                "https://codeload.github.com/mcxen/qx-plugins/zip/refs/tags/main",
+                "https://codeload.github.com/mcxen/qx-plugins/zip/main",
+            ]
+        );
+    }
+
+    #[test]
+    fn extracts_file_from_repo_archive() {
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        writer
+            .start_file(
+                "qx-plugins-main/external-display-control.qx-plugin",
+                zip::write::SimpleFileOptions::default(),
+            )
+            .unwrap();
+        writer.write_all(b"plugin-bytes").unwrap();
+        let archive_bytes = writer.finish().unwrap().into_inner();
+
+        assert_eq!(
+            read_file_from_repo_archive(&archive_bytes, "external-display-control.qx-plugin")
+                .unwrap(),
+            b"plugin-bytes".to_vec()
         );
     }
 
