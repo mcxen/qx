@@ -173,9 +173,18 @@ mod platform {
     }
 
     pub fn cpu_usage() -> f32 {
-        let mut idle = FILETIME::default();
-        let mut kernel = FILETIME::default();
-        let mut user = FILETIME::default();
+        let mut idle = FILETIME {
+            dwLowDateTime: 0,
+            dwHighDateTime: 0,
+        };
+        let mut kernel = FILETIME {
+            dwLowDateTime: 0,
+            dwHighDateTime: 0,
+        };
+        let mut user = FILETIME {
+            dwLowDateTime: 0,
+            dwHighDateTime: 0,
+        };
         if unsafe { GetSystemTimes(&mut idle, &mut kernel, &mut user) } == 0 {
             return 0.0;
         }

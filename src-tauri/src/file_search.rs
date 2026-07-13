@@ -1,8 +1,11 @@
 use crate::apps::AppEntry;
+#[cfg(target_os = "macos")]
 use fswalk::NodeFileType;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::{Mutex, OnceLock};
+#[cfg(target_os = "macos")]
+use std::sync::Mutex;
+use std::sync::OnceLock;
 use tauri::Manager;
 
 static RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();

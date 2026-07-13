@@ -1351,7 +1351,7 @@ fn write_file_to_clipboard(path: &Path) -> Result<(), String> {
         }
         let header = DROPFILES {
             pFiles: header_size as u32,
-            pt: Default::default(),
+            pt: windows_sys::Win32::Foundation::POINT { x: 0, y: 0 },
             fNC: 0,
             fWide: 1,
         };
