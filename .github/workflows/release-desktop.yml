@@ -4,6 +4,10 @@ on:
   push:
     tags:
       - "v*"
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release-desktop.yml"
   workflow_dispatch:
     inputs:
       tag:
@@ -44,7 +48,9 @@ jobs:
       - name: Resolve release tag
         shell: bash
         run: |
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+          if [ "${GITHUB_REF_TYPE}" = "branch" ]; then
+            echo "RELEASE_TAG=v0.5.1" >> "${GITHUB_ENV}"
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             echo "RELEASE_TAG=${{ inputs.tag }}" >> "${GITHUB_ENV}"
           else
             echo "RELEASE_TAG=${GITHUB_REF_NAME}" >> "${GITHUB_ENV}"
@@ -115,7 +121,10 @@ jobs:
 
       - name: Resolve release metadata
         run: |
-          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+          if [ "${GITHUB_REF_TYPE}" = "branch" ]; then
+            echo "RELEASE_TAG=v0.5.1" >> "${GITHUB_ENV}"
+            echo "PRERELEASE=false" >> "${GITHUB_ENV}"
+          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             echo "RELEASE_TAG=${{ inputs.tag }}" >> "${GITHUB_ENV}"
             echo "PRERELEASE=${{ inputs.prerelease }}" >> "${GITHUB_ENV}"
           else
