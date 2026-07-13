@@ -1,5 +1,31 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Bugfix — 跨平台后台驻留、异步核心、Windows DPI 与快捷键兼容
+
+**状态**：已实现，macOS 编译/单测/运行烟雾通过，等待 Windows CI 与双机手动验证。
+
+### 修复内容
+
+- 主窗口关闭改为隐藏并复用 WebView；Rust 托盘、全局快捷键和后台线程继续驻留，避免进程仍在但 `main` 窗口已销毁、无法再次唤起。
+- 首次应用扫描和显示器枚举移到命名后台线程；系统信息、系统采样、外接显示器命令与录屏 GIF 编码使用 `spawn_blocking`，录屏编码前释放全局录制锁。
+- 灵动岛系统采样增加 in-flight 门控，隐藏时暂停轮询，避免慢采样重叠堆积。
+- Windows 启动器扫描用户/系统 Start Menu 的 `.lnk`，通过 `ShellExecuteW` 启动；持久化路径改用 macOS Application Support / Windows LocalAppData 兼容层。
+- Windows 使用 Tauri/Wry 底层 Per-Monitor V2 DPI；窗口最小尺寸改为逻辑像素，跨 125%/200% 等不同 DPI 显示器时按目标显示器缩放预测居中，并把超大窗口限制到目标工作区 90%。
+- 快捷键建立 macOS/Windows 双预设：QxShell Action 面板统一使用 `CmdOrCtrl+K`，macOS 显示/匹配 `⌘K`，Windows 显示/匹配 `Ctrl+K`；插件 iframe 获得焦点时也会把该预设转给所属 QxShell。
+- Rust 全局快捷键复用 Tauri `global-hotkey` 的 `CmdOrCtrl` 解析；旧 `Cmd` 配置和插件快捷键规范化为跨平台主修饰键，显式 Windows 键仍可使用 `Super`。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [x] `cargo test --lib -- --nocapture`（27 个测试通过，含混合 DPI 定位与快捷键规范化）
+- [x] macOS `tauri dev` 启动烟雾：Rust 核心持续运行，采样确认 `qx-display-monitor` 后台线程存活。
+- [x] 键盘兼容抽样：macOS `Cmd K -> ⌘K`、Windows `⌘K -> Ctrl+K`，Windows 只接受 `Ctrl+K` 打开 Action 面板。
+- [ ] Windows Compatibility Action：当前本机没有 `rustup`/MSVC target，需在改动推送后确认 `cargo check --target x86_64-pc-windows-msvc` 与 NSIS 构建均通过。
+- [ ] 双机手动验证：关闭后快捷键再次唤起；任务运行时继续搜索/导航；Windows 在 100%/125%/150%/200% 混合 DPI 显示器间唤起、移动、缩放；`Ctrl+K` Action 面板与右侧 Context Panel 内容一致。
+
 ## Feature — Raycast ActionPanel 显示偏好与窄屏收起
 
 **状态**：已实现，等待验证。

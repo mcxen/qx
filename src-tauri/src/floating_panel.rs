@@ -10,7 +10,7 @@
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager, PhysicalPosition};
+use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition};
 
 pub(crate) const MAIN_LABEL: &str = "main";
 static PREVIOUS_FOREGROUND_PID: OnceLock<Mutex<Option<i32>>> = OnceLock::new();
@@ -363,12 +363,59 @@ fn display_area_for_current_cursor(
         .or_else(|| fallback_display_area(app, win))
 }
 
+fn destination_geometry(
+    area: DisplayArea,
+    current_scale: f64,
+    current_width: u32,
+    current_height: u32,
+) -> (f64, f64, i32, i32) {
+    let current_scale = if current_scale > 0.0 {
+        current_scale
+    } else {
+        1.0
+    };
+    let target_scale = if area.scale_factor > 0.0 {
+        area.scale_factor
+    } else {
+        1.0
+    };
+    let logical_width = current_width as f64 / current_scale;
+    let logical_height = current_height as f64 / current_scale;
+    let max_logical_width = area.work_width as f64 / target_scale * 0.9;
+    let max_logical_height = area.work_height as f64 / target_scale * 0.9;
+    let target_logical_width = logical_width.min(max_logical_width).max(1.0);
+    let target_logical_height = logical_height.min(max_logical_height).max(1.0);
+    let target_width = (target_logical_width * target_scale).round() as i32;
+    let target_height = (target_logical_height * target_scale).round() as i32;
+    let x = area.work_x + ((area.work_width as i32 - target_width) / 2);
+    let y = area.work_y + ((area.work_height as i32 - target_height) / 3);
+    (target_logical_width, target_logical_height, x, y)
+}
+
 fn center_on_cursor(app: &AppHandle) -> Option<()> {
     let win = app.get_webview_window(MAIN_LABEL)?;
     let area = display_area_for_current_cursor(app, &win)?;
     let size = win.outer_size().or_else(|_| win.inner_size()).ok()?;
-    let x = area.work_x + ((area.work_width as i32 - size.width as i32) / 2);
-    let y = area.work_y + ((area.work_height as i32 - size.height as i32) / 3);
+    let current_scale = win
+        .scale_factor()
+        .ok()
+        .filter(|scale| *scale > 0.0)
+        .unwrap_or(1.0);
+
+    // Tauri/Wry is per-monitor-DPI-aware on Windows. Preserve the launcher's
+    // logical size when crossing displays and predict its physical size using
+    // the destination scale factor; centering with the old monitor's physical
+    // pixels otherwise shifts the window after WM_DPICHANGED is applied.
+    let logical_width = size.width as f64 / current_scale;
+    let logical_height = size.height as f64 / current_scale;
+    let (target_logical_width, target_logical_height, x, y) =
+        destination_geometry(area, current_scale, size.width, size.height);
+    if target_logical_width < logical_width || target_logical_height < logical_height {
+        let _ = win.set_size(LogicalSize::new(
+            target_logical_width,
+            target_logical_height,
+        ));
+    }
     let _ = win.set_position(PhysicalPosition::new(x, y));
     Some(())
 }
@@ -505,8 +552,8 @@ pub fn floating_request_key(app: AppHandle) {
 #[cfg(test)]
 mod tests {
     use super::{
-        contains_point, select_display_area_for_cursor, select_display_area_for_raw_cursor,
-        DisplayArea,
+        contains_point, destination_geometry, select_display_area_for_cursor,
+        select_display_area_for_raw_cursor, DisplayArea,
     };
 
     fn area(x: i32, y: i32, width: u32, height: u32) -> DisplayArea {
@@ -581,5 +628,33 @@ mod tests {
             select_display_area_for_raw_cursor(&displays, 3300.0, 500.0),
             Some(external)
         );
+    }
+
+    #[test]
+    fn destination_geometry_preserves_logical_size_across_windows_dpi_changes() {
+        let destination = DisplayArea {
+            scale_factor: 2.0,
+            frame_x: 0,
+            frame_y: 0,
+            frame_width: 3840,
+            frame_height: 2160,
+            work_x: 0,
+            work_y: 0,
+            work_width: 3840,
+            work_height: 2080,
+        };
+        let (width, height, x, y) = destination_geometry(destination, 1.25, 1225, 720);
+        assert_eq!((width, height), (980.0, 576.0));
+        assert_eq!(x, 940);
+        assert_eq!(y, 309);
+    }
+
+    #[test]
+    fn destination_geometry_fits_oversized_window_to_smaller_work_area() {
+        let destination = scaled_area(1.0, 0, 1280);
+        let (width, height, x, _) = destination_geometry(destination, 2.0, 3000, 1800);
+        assert_eq!(width, 1152.0);
+        assert_eq!(height, 900.0);
+        assert_eq!(x, 64);
     }
 }

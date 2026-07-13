@@ -233,14 +233,18 @@ mod platform {
 }
 
 #[tauri::command]
-pub fn get_system_stats() -> Result<SystemStats, String> {
-    let cpu = platform::cpu_usage();
-    let (memory, memory_used_gb, memory_total_gb) = platform::memory();
-    Ok(SystemStats {
-        cpu,
-        memory,
-        memory_used_gb,
-        memory_total_gb,
-        gpu: None,
+pub async fn get_system_stats() -> Result<SystemStats, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let cpu = platform::cpu_usage();
+        let (memory, memory_used_gb, memory_total_gb) = platform::memory();
+        SystemStats {
+            cpu,
+            memory,
+            memory_used_gb,
+            memory_total_gb,
+            gpu: None,
+        }
     })
+    .await
+    .map_err(|error| format!("system stats worker failed: {error}"))
 }

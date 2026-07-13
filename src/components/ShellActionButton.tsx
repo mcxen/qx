@@ -1,4 +1,5 @@
 import { Button } from "./ui";
+import { formatQxShortcut } from "../utils/keyboard";
 
 export interface QxShellAction {
   label: string;
@@ -16,6 +17,7 @@ export default function ShellActionButton({
   variant?: "normal" | "escape";
 }) {
   if (!action || action.disabled) return null;
+  const shortcutLabel = formatQxShortcut(action.kbd);
 
   return (
     <Button
@@ -24,12 +26,12 @@ export default function ShellActionButton({
       onClick={action.onClick}
       type="button"
     >
-      {variant === "escape" && action.kbd ? (
-        <kbd>{action.kbd}</kbd>
+      {variant === "escape" && shortcutLabel ? (
+        <kbd>{shortcutLabel}</kbd>
       ) : (
         <>
           <span>{action.label}</span>
-          {action.kbd && <kbd>{action.kbd}</kbd>}
+          {shortcutLabel && <kbd>{shortcutLabel}</kbd>}
         </>
       )}
     </Button>

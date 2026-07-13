@@ -56,8 +56,7 @@ fn now_millis() -> u128 {
 }
 
 fn log_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home).join(".qx").join("logs")
+    crate::paths::state_dir().join("logs")
 }
 
 pub fn log_file_path() -> PathBuf {

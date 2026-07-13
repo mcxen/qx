@@ -94,13 +94,16 @@ export default function HomeSystemIsland({
 
   useEffect(() => {
     let cancelled = false;
+    let sampling = false;
     let timer: ReturnType<typeof setInterval> | undefined;
 
     const sample = async () => {
+      if (sampling || cancelled) return;
       if (!isTauriRuntime()) {
         setAvailable(false);
         return;
       }
+      sampling = true;
       try {
         const next = await invoke<SystemStats>("get_system_stats");
         if (cancelled) return;
@@ -120,6 +123,8 @@ export default function HomeSystemIsland({
         setMemPoints((cur) => [...cur.slice(1), clamp(next.memory)]);
       } catch {
         if (!cancelled) setAvailable(false);
+      } finally {
+        sampling = false;
       }
     };
 

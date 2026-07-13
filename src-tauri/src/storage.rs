@@ -36,18 +36,15 @@ pub struct StorageClearResult {
 }
 
 fn home_dir() -> PathBuf {
-    std::env::var("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("/tmp"))
+    crate::paths::home_dir()
 }
 
 fn app_support_dir() -> PathBuf {
-    let base = dirs::data_dir().unwrap_or_else(|| home_dir().join("Library/Application Support"));
-    base.join("qx")
+    crate::paths::data_dir()
 }
 
 fn qx_home_dir() -> PathBuf {
-    home_dir().join(".qx")
+    crate::paths::state_dir()
 }
 
 fn icons_dir() -> PathBuf {
@@ -63,9 +60,7 @@ fn ocr_models_dir() -> PathBuf {
 }
 
 fn output_files_dir() -> PathBuf {
-    dirs::picture_dir()
-        .unwrap_or_else(|| home_dir().join("Pictures"))
-        .join("Qx")
+    crate::paths::pictures_dir().join("Qx")
 }
 
 fn screencap_db_path() -> PathBuf {

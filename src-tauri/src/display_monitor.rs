@@ -10,32 +10,35 @@ use tauri::Emitter;
 /// launcher by themselves: macOS sleep/wake and xcap can transiently report a
 /// lower count, then recover and look like a fresh attachment.
 pub(crate) fn start_display_monitor(handle: tauri::AppHandle) {
-    // Snapshot the display count at app startup.
     let known_count = Arc::new(AtomicUsize::new(0));
-    let kc = known_count.clone();
+    let _ = thread::Builder::new()
+        .name("qx-display-monitor".to_string())
+        .spawn(move || {
+            // xcap can touch native display APIs. Take the initial snapshot on
+            // this worker too, never on Tauri setup's event-loop thread.
+            if let Ok(monitors) = xcap::Monitor::all() {
+                known_count.store(monitors.len(), Ordering::SeqCst);
+            }
 
-    if let Ok(monitors) = xcap::Monitor::all() {
-        kc.store(monitors.len(), Ordering::SeqCst);
-    }
+            loop {
+                thread::sleep(Duration::from_secs(2));
 
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(2));
-
-        // Wrap the whole pass in catch_unwind so a panic (e.g. from xcap on a
-        // monitor going away mid-enumeration) doesn't silently kill the
-        // monitoring thread. We log and keep polling.
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            poll_once(&handle, &known_count);
-        }));
-        if let Err(payload) = result {
-            let msg = payload
-                .downcast_ref::<&str>()
-                .map(|s| (*s).to_string())
-                .or_else(|| payload.downcast_ref::<String>().map(|s| s.clone()))
-                .unwrap_or_else(|| "<unknown panic>".to_string());
-            eprintln!("[display_monitor] poll panicked: {msg}");
-        }
-    });
+                // Wrap the whole pass in catch_unwind so a panic (e.g. from
+                // xcap while a monitor disappears) doesn't silently kill the
+                // long-lived Rust monitor.
+                let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+                    poll_once(&handle, &known_count);
+                }));
+                if let Err(payload) = result {
+                    let msg = payload
+                        .downcast_ref::<&str>()
+                        .map(|s| (*s).to_string())
+                        .or_else(|| payload.downcast_ref::<String>().map(|s| s.clone()))
+                        .unwrap_or_else(|| "<unknown panic>".to_string());
+                    eprintln!("[display_monitor] poll panicked: {msg}");
+                }
+            }
+        });
 }
 
 fn poll_once(handle: &tauri::AppHandle, known_count: &Arc<AtomicUsize>) {

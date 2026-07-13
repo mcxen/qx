@@ -137,8 +137,7 @@ fn open_db() -> Result<rusqlite::Connection, String> {
 }
 
 fn dirs_db_path() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    std::path::PathBuf::from(home).join(".qx/macros.db")
+    crate::paths::state_dir().join("macros.db")
 }
 
 #[command]

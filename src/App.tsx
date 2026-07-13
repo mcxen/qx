@@ -397,7 +397,7 @@ function App() {
   const autoUpdateStartedRef = useRef(false);
   const resizeSaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const pendingWindowSizeRef = useRef<{ width: number; height: number } | null>(null);
-  const closeAfterSettingsFlushRef = useRef(false);
+  const closeToBackgroundRef = useRef(false);
   const windowFocusedRef = useRef<boolean | null>(null);
   const pluginSearchVersionRef = useRef("");
   const [isSearching, setIsSearching] = useState(false);
@@ -791,15 +791,14 @@ function App() {
       void flushSettingsBeforeExit();
     };
     const unlisten = win.onCloseRequested(async (event) => {
-      if (closeAfterSettingsFlushRef.current) return;
       event.preventDefault();
+      if (closeToBackgroundRef.current) return;
+      closeToBackgroundRef.current = true;
       try {
         await flushSettingsBeforeExit();
       } finally {
-        closeAfterSettingsFlushRef.current = true;
-        await win.destroy().catch(() => {
-          closeAfterSettingsFlushRef.current = false;
-        });
+        await win.hide().catch(() => {});
+        closeToBackgroundRef.current = false;
       }
     });
 

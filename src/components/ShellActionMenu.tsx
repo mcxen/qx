@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { QxShellAction } from "./ShellActionButton";
 import { Popover, PopoverAnchor, PopoverContent } from "./ui";
+import { formatQxShortcut } from "../utils/keyboard";
 
 export default function ShellActionMenu({
   title,
@@ -53,7 +54,7 @@ export default function ShellActionMenu({
           type="button"
         >
           <span>{action.label}</span>
-          {action.kbd && <kbd>{action.kbd}</kbd>}
+          {action.kbd && <kbd>{formatQxShortcut(action.kbd)}</kbd>}
         </button>
       ))}
       </PopoverContent>

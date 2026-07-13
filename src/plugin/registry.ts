@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
+import { toPortableGlobalShortcut } from "../utils/keyboard";
 import {
   handlePluginRpc,
   isExpectedPluginMessageOrigin,
@@ -260,6 +261,23 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
                 window.dispatchEvent(new CustomEvent("qx:host-escape", {
                   detail: { pluginId: plugin.id, runtimeId },
                 }));
+              } else {
+                // Re-dispatch on the owning iframe element so the keyboard
+                // event bubbles through only the QxShell that contains the
+                // focused plugin panel. Hidden worker runtimes live outside a
+                // shell and therefore cannot open a stale action menu.
+                const ownerFrame = Array.from(document.querySelectorAll("iframe"))
+                  .find((frame) => frame.contentWindow === source);
+                ownerFrame?.dispatchEvent(new KeyboardEvent("keydown", {
+                  key: String(data.key || ""),
+                  code: String(data.code || ""),
+                  metaKey: data.metaKey === true,
+                  ctrlKey: data.ctrlKey === true,
+                  altKey: data.altKey === true,
+                  shiftKey: data.shiftKey === true,
+                  bubbles: true,
+                  cancelable: true,
+                }));
               }
               return;
             }
@@ -328,18 +346,19 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
           const registeredShortcuts: string[] = [];
           for (const shortcut of pluginShortcuts) {
             if (shortcut.enabled === false || !shortcut.key || !shortcut.command) continue;
+            const portableKey = toPortableGlobalShortcut(shortcut.key);
             const command = result.commands.find((cmd) => cmd.name === shortcut.command);
             if (!command) continue;
             try {
-              await register(shortcut.key, (event) => {
+              await register(portableKey, (event) => {
                 if (event.state !== "Pressed") return;
                 void get().runCommand(command);
               });
-              registeredShortcuts.push(shortcut.key);
+              registeredShortcuts.push(portableKey);
             } catch (error) {
               registryLogger.warn("Plugin shortcut registration failed", {
                 pluginId: plugin.id,
-                shortcut: shortcut.key,
+                shortcut: portableKey,
                 command: shortcut.command,
                 error,
               });

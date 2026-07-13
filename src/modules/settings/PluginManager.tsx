@@ -35,6 +35,7 @@ import {
 } from "./store";
 import SearchAliasTagEditor from "../../components/SearchAliasTagEditor";
 import ShortcutRecorder from "../../components/ShortcutRecorder";
+import { formatQxShortcut } from "../../utils/keyboard";
 import {
   Badge,
   Button,
@@ -321,7 +322,7 @@ function shortcutHasConflict(binding: ShortcutBinding | undefined, counts: Recor
 }
 
 function ShortcutKey({ value }: { value?: string }) {
-  return <span className="qx-extension-shortcut-key">{value?.trim() || "None"}</span>;
+  return <span className="qx-extension-shortcut-key">{formatQxShortcut(value?.trim()) || "None"}</span>;
 }
 
 function ExtensionCommandsCard({ plugin }: { plugin: InstalledPlugin }) {

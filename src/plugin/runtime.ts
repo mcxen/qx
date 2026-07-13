@@ -252,6 +252,37 @@ export function buildPluginRuntimeHtml(
       }
 
       window.addEventListener('keydown', (event) => {
+        const desktopIdentity = String(navigator.platform || '') + ' ' + String(navigator.userAgent || '');
+        const isMacDesktop = desktopIdentity.toLowerCase().includes('mac');
+        const hasPrimaryModifier = isMacDesktop
+          ? event.metaKey && !event.ctrlKey
+          : event.ctrlKey && !event.metaKey;
+        const isHostActionMenu = event.key.toLowerCase() === 'k'
+          && hasPrimaryModifier
+          && !event.altKey
+          && !event.shiftKey;
+        if (isHostActionMenu) {
+          // The iframe is an isolated document, so its key events cannot
+          // bubble into the surrounding QxShell. Reserve the portable
+          // primary+K chord for the host action menu and forward its exact
+          // modifiers; the host compatibility layer decides which primary
+          // modifier is valid for the current desktop platform.
+          event.preventDefault();
+          event.stopPropagation();
+          postToParent({
+            type: 'qx:host-keydown',
+            pluginId,
+            runtimeId,
+            key: event.key,
+            code: event.code,
+            metaKey: event.metaKey,
+            ctrlKey: event.ctrlKey,
+            altKey: event.altKey,
+            shiftKey: event.shiftKey,
+          });
+          return;
+        }
+
         if (event.key !== 'Escape') return;
         // Let the plugin's own dialog/detail handlers consume Esc first.
         // Only an unhandled event crosses the iframe boundary to QxShell.

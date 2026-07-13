@@ -366,21 +366,13 @@ pub struct ClipboardDb(pub Arc<Mutex<Option<Connection>>>);
 pub struct ClipboardShutdown(pub Arc<AtomicBool>);
 
 fn get_db_path() -> PathBuf {
-    let base = dirs::data_dir().unwrap_or_else(|| {
-        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
-            .join("Library/Application Support/qx")
-    });
-    let dir = base.join("qx");
+    let dir = crate::paths::data_dir();
     std::fs::create_dir_all(&dir).ok();
     dir.join("clipboard.db")
 }
 
 fn get_image_dir() -> PathBuf {
-    let base = dirs::data_dir().unwrap_or_else(|| {
-        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
-            .join("Library/Application Support/qx")
-    });
-    let dir = base.join("qx/clipboard_images");
+    let dir = crate::paths::data_dir().join("clipboard_images");
     std::fs::create_dir_all(&dir).ok();
     dir
 }

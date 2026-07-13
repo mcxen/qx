@@ -43,8 +43,7 @@ fn oar_home() -> PathBuf {
     if let Ok(val) = std::env::var("OAR_HOME") {
         PathBuf::from(val)
     } else {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        PathBuf::from(format!("{}/{}", home, OAR_HOME))
+        crate::paths::home_dir().join(OAR_HOME)
     }
 }
 

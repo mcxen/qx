@@ -13,6 +13,7 @@ mod http_client;
 mod macro_recorder;
 mod marketplace;
 mod ocr;
+mod paths;
 mod permissions;
 mod plugin_api;
 mod rss;
@@ -29,7 +30,7 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, LogicalSize, Manager, PhysicalSize,
+    AppHandle, Emitter, LogicalSize, Manager,
 };
 
 const MAIN_TRAY_ID: &str = "qx-main-tray";
@@ -44,6 +45,11 @@ fn get_file_size(path: String) -> Result<u64, String> {
 #[tauri::command]
 fn open_app(path: String) -> Result<(), String> {
     let app_path = validate_open_app_path(&path)?;
+    launch_app_path(&app_path)
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn launch_app_path(app_path: &std::path::Path) -> Result<(), String> {
     std::process::Command::new("open")
         .arg(app_path)
         .spawn()
@@ -51,6 +57,45 @@ fn open_app(path: String) -> Result<(), String> {
         .map_err(|e| format!("Failed to open app: {e}"))
 }
 
+#[cfg(target_os = "windows")]
+pub(crate) fn launch_app_path(app_path: &std::path::Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let path = app_path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            path.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    } as isize;
+    if result <= 32 {
+        Err(format!(
+            "Failed to open Windows app (ShellExecuteW code {result})"
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub(crate) fn launch_app_path(app_path: &std::path::Path) -> Result<(), String> {
+    std::process::Command::new(app_path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("Failed to open app: {e}"))
+}
+
+#[cfg(target_os = "macos")]
 pub(crate) fn validate_open_app_path(path: &str) -> Result<std::path::PathBuf, String> {
     let raw_path = std::path::Path::new(path);
     if raw_path.extension().and_then(|value| value.to_str()) != Some("app") {
@@ -83,6 +128,44 @@ pub(crate) fn validate_open_app_path(path: &str) -> Result<std::path::PathBuf, S
     }
 
     Ok(app_path)
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn validate_open_app_path(path: &str) -> Result<std::path::PathBuf, String> {
+    let raw_path = std::path::Path::new(path);
+    let extension = raw_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    if !extension.eq_ignore_ascii_case("lnk") && !extension.eq_ignore_ascii_case("exe") {
+        return Err("open_app only accepts Windows shortcuts or executables".to_string());
+    }
+    let app_path = raw_path
+        .canonicalize()
+        .map_err(|e| format!("Invalid app path: {e}"))?;
+    let allowed = [
+        "APPDATA",
+        "PROGRAMDATA",
+        "LOCALAPPDATA",
+        "ProgramFiles",
+        "ProgramFiles(x86)",
+    ]
+    .into_iter()
+    .filter_map(|name| std::env::var_os(name))
+    .map(std::path::PathBuf::from)
+    .filter_map(|root| root.canonicalize().ok())
+    .any(|root| app_path.starts_with(root));
+    if !allowed {
+        return Err("open_app path must be inside a Windows application directory".to_string());
+    }
+    Ok(app_path)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub(crate) fn validate_open_app_path(path: &str) -> Result<std::path::PathBuf, String> {
+    std::path::Path::new(path)
+        .canonicalize()
+        .map_err(|e| format!("Invalid app path: {e}"))
 }
 
 #[tauri::command]
@@ -178,7 +261,7 @@ fn build_tray_menu(
         menu.append(&PredefinedMenuItem::separator(app)?)?;
     }
 
-    let quit = MenuItem::with_id(app, "quit", "Quit Qx", true, Some("Cmd+Q"))?;
+    let quit = MenuItem::with_id(app, "quit", "Quit Qx", true, Some("CmdOrCtrl+Q"))?;
     menu.append(&quit)?;
     Ok(menu)
 }
@@ -279,6 +362,19 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
+        .on_window_event(|window, event| {
+            if window.label() != floating_panel::MAIN_LABEL {
+                return;
+            }
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                // Qx is a background helper. Closing the launcher must only
+                // hide its reusable WebView; destroying it leaves the Rust
+                // tray process alive but makes later global shortcuts unable
+                // to surface the launcher again.
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .setup(|app| {
             let handle = app.handle().clone();
             let Some(win) = app.get_webview_window("main") else {
@@ -303,7 +399,9 @@ pub fn run() {
             );
 
             // Keep the configured resizable window behavior and enforce minimum size.
-            let _ = win.set_min_size(Some(PhysicalSize::new(480, 360)));
+            // Product dimensions are logical pixels. Using PhysicalSize here
+            // made the minimum shrink on Windows displays above 100% scaling.
+            let _ = win.set_min_size(Some(LogicalSize::new(480, 360)));
 
             #[cfg(target_os = "macos")]
             setup_frosted_glass(app);

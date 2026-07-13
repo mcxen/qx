@@ -268,8 +268,7 @@ fn weather_settings() -> crate::settings::WeatherSettings {
 }
 
 fn weather_cache_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(format!("{}/.qx/cache", home));
+    let dir = crate::paths::cache_dir();
     let _ = fs::create_dir_all(&dir);
     dir.join("weather-cache.json")
 }

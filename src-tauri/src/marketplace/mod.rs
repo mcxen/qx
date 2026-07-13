@@ -206,8 +206,7 @@ struct GitHubRawSource {
 }
 
 pub(crate) fn plugins_root() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(format!("{}/.qx/plugins", home));
+    let dir = crate::paths::state_dir().join("plugins");
     let _ = fs::create_dir_all(&dir);
     dir
 }
@@ -389,11 +388,7 @@ async fn http_get_with_fallbacks(url: &str) -> Result<Vec<u8>, String> {
 }
 
 fn marketplace_repo_cache_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    PathBuf::from(home)
-        .join(".qx")
-        .join("cache")
-        .join("marketplace-repos")
+    crate::paths::cache_dir().join("marketplace-repos")
 }
 
 fn cache_safe_part(value: &str) -> String {

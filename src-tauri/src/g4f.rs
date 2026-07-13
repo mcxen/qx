@@ -783,8 +783,7 @@ pub async fn qxai_fetch_models(
 // ---------------------------------------------------------------------------
 
 fn custom_providers_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(format!("{}/.qx", home));
+    let dir = crate::paths::state_dir();
     let _ = std::fs::create_dir_all(&dir);
     dir.join("qxai-custom-providers.json")
 }

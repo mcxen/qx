@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ShortcutBinding } from "../modules/settings/store";
+import { formatQxShortcut, getQxDesktopPlatform } from "../utils/keyboard";
 
 function normalizeKey(event: KeyboardEvent): string | null {
   const key = event.key;
@@ -17,8 +18,8 @@ export function eventToBinding(event: KeyboardEvent): ShortcutBinding | null {
   const key = normalizeKey(event);
   if (!key) return null;
   const parts: string[] = [];
-  if (event.metaKey) parts.push("Cmd");
-  if (event.ctrlKey) parts.push("Ctrl");
+  if (event.metaKey) parts.push(getQxDesktopPlatform() === "macos" ? "CmdOrCtrl" : "Cmd");
+  if (event.ctrlKey) parts.push(getQxDesktopPlatform() === "windows" ? "CmdOrCtrl" : "Ctrl");
   if (event.altKey) parts.push("Alt");
   if (event.shiftKey) parts.push("Shift");
   parts.push(key);
@@ -82,7 +83,7 @@ export default function ShortcutRecorder({
           if (recording) setRecording(false);
         }}
       >
-        {recording ? "Press shortcut..." : (initial || "None")}
+        {recording ? "Press shortcut..." : (formatQxShortcut(initial) || "None")}
       </button>
       {recording && (
         <button

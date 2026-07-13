@@ -7,8 +7,7 @@ use super::types::{Article, Feed};
 pub struct RssDb(pub Arc<Mutex<Connection>>);
 
 pub fn db_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(format!("{}/Library/Application Support/qx", home));
+    let dir = crate::paths::data_dir();
     std::fs::create_dir_all(&dir).ok();
     dir.join("rss.db")
 }

@@ -10,8 +10,7 @@ static DB: OnceLock<Mutex<Option<Connection>>> = OnceLock::new();
 
 fn get_db_path() -> &'static PathBuf {
     DB_PATH.get_or_init(|| {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        let dir = PathBuf::from(format!("{}/Library/Application Support/qx", home));
+        let dir = crate::paths::data_dir();
         let _ = fs::create_dir_all(&dir);
         dir.join("history.db")
     })

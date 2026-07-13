@@ -27,13 +27,12 @@ fn default_auto_hide_on_blur() -> bool {
 
 impl Default for GeneralSettings {
     fn default() -> Self {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
         Self {
             launch_at_login: false,
             language: "en".to_string(),
             auto_update: true,
             auto_hide_on_blur: true,
-            data_path: format!("{}/Library/Application Support/qx", home),
+            data_path: crate::paths::data_dir().to_string_lossy().to_string(),
             has_shown_launcher: false,
         }
     }
@@ -563,8 +562,7 @@ impl Default for Settings {
 }
 
 fn settings_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(format!("{}/.qx", home));
+    let dir = crate::paths::state_dir();
     let _ = fs::create_dir_all(&dir);
     dir.join("settings.json")
 }
@@ -693,15 +691,29 @@ fn shortcut_for(settings: &Settings, id: &str) -> Option<String> {
         .shortcuts
         .get(id)
         .filter(|binding| binding.enabled && !binding.key.trim().is_empty())
-        .map(|binding| binding.key.trim().to_string())
+        .map(|binding| portable_shortcut_key(binding.key.trim()))
 }
 
 fn enabled_shortcut_key(binding: &ShortcutBinding) -> Option<String> {
     if binding.enabled && !binding.key.trim().is_empty() {
-        Some(binding.key.trim().to_string())
+        Some(portable_shortcut_key(binding.key.trim()))
     } else {
         None
     }
+}
+
+/// Canonical cross-platform modifier understood by Tauri's global-hotkey
+/// parser. `CmdOrCtrl` becomes Super/Command on macOS and Control on Windows.
+/// `Super` remains available when a user explicitly wants the Windows key.
+fn portable_shortcut_key(key: &str) -> String {
+    key.split('+')
+        .map(str::trim)
+        .map(|token| match token.to_ascii_lowercase().as_str() {
+            "cmd" | "command" | "meta" | "primary" | "mod" => "CmdOrCtrl".to_string(),
+            _ => token.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("+")
 }
 
 fn show_and_navigate(app: &AppHandle, route: &str) {
@@ -783,11 +795,27 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
         };
         gs.on_shortcut(key.as_str(), move |_app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
-                let _ = std::process::Command::new("open").arg(&app_path).spawn();
+                let _ = crate::launch_app_path(&app_path);
             }
         })
         .map_err(|e| format!("register app shortcut {id}: {e}"))?;
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::portable_shortcut_key;
+
+    #[test]
+    fn canonicalizes_primary_modifier_for_both_desktop_platforms() {
+        assert_eq!(portable_shortcut_key("Cmd+K"), "CmdOrCtrl+K");
+        assert_eq!(
+            portable_shortcut_key("Primary + Shift + P"),
+            "CmdOrCtrl+Shift+P"
+        );
+        assert_eq!(portable_shortcut_key("Super+K"), "Super+K");
+        assert_eq!(portable_shortcut_key("Ctrl+K"), "Ctrl+K");
+    }
 }

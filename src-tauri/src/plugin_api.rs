@@ -93,8 +93,11 @@ static AI_MEMORY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn plugin_files_dir(id: &str) -> Result<PathBuf, String> {
     let id = crate::marketplace::validate_plugin_id(id)?;
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(format!("{}/.qx/plugins/{}/data/files", home, id));
+    let dir = crate::paths::state_dir()
+        .join("plugins")
+        .join(id)
+        .join("data")
+        .join("files");
     std::fs::create_dir_all(&dir).map_err(|e| format!("create plugin files dir: {e}"))?;
     Ok(dir)
 }
@@ -104,7 +107,7 @@ fn plugin_virtual_prefix(id: &str) -> String {
 }
 
 fn home_dir() -> PathBuf {
-    PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
+    crate::paths::home_dir()
 }
 
 fn qx_home_alias() -> &'static str {

@@ -36,8 +36,7 @@ fn app_cache_lock() -> Option<std::sync::MutexGuard<'static, Vec<AppEntry>>> {
 
 fn get_db_path() -> &'static PathBuf {
     DB_PATH.get_or_init(|| {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        let dir = PathBuf::from(format!("{}/Library/Application Support/qx", home));
+        let dir = crate::paths::data_dir();
         let _ = fs::create_dir_all(&dir);
         dir.join("apps.db")
     })
@@ -184,9 +183,16 @@ fn sync_db(entries: &[AppEntry]) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn get_icon_cache_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(format!("{}/.qx/icons", home));
+    let dir = crate::paths::state_dir().join("icons");
+    let _ = fs::create_dir_all(&dir);
+    dir
+}
+
+#[cfg(not(target_os = "macos"))]
+fn get_icon_cache_dir() -> PathBuf {
+    let dir = crate::paths::cache_dir().join("icons");
     let _ = fs::create_dir_all(&dir);
     dir
 }
@@ -604,6 +610,7 @@ fn scan_dir_fast(dir: &PathBuf, results: &mut Vec<AppEntry>) {
     }
 }
 
+#[cfg(target_os = "macos")]
 fn scan_all_apps() -> Vec<AppEntry> {
     let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_string());
     let dirs = vec![
@@ -620,6 +627,79 @@ fn scan_all_apps() -> Vec<AppEntry> {
     results
 }
 
+#[cfg(target_os = "windows")]
+fn scan_all_apps() -> Vec<AppEntry> {
+    fn scan_start_menu(dir: PathBuf, results: &mut Vec<AppEntry>) {
+        let mut stack = vec![dir];
+        while let Some(current) = stack.pop() {
+            let Ok(entries) = fs::read_dir(current) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                let is_shortcut = path
+                    .extension()
+                    .and_then(|extension| extension.to_str())
+                    .map(|extension| extension.eq_ignore_ascii_case("lnk"))
+                    .unwrap_or(false);
+                if !is_shortcut {
+                    continue;
+                }
+                let name = path
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or("Unknown")
+                    .to_string();
+                results.push(AppEntry {
+                    display_name: name.clone(),
+                    name,
+                    path: path.to_string_lossy().to_string(),
+                    icon: String::new(),
+                    kind: "app".to_string(),
+                    aliases: String::new(),
+                });
+            }
+        }
+    }
+
+    let mut roots = Vec::new();
+    if let Some(app_data) = std::env::var_os("APPDATA") {
+        roots.push(
+            PathBuf::from(app_data)
+                .join("Microsoft")
+                .join("Windows")
+                .join("Start Menu")
+                .join("Programs"),
+        );
+    }
+    if let Some(program_data) = std::env::var_os("PROGRAMDATA") {
+        roots.push(
+            PathBuf::from(program_data)
+                .join("Microsoft")
+                .join("Windows")
+                .join("Start Menu")
+                .join("Programs"),
+        );
+    }
+
+    let mut results = Vec::new();
+    for root in roots {
+        scan_start_menu(root, &mut results);
+    }
+    results.sort_by(|left, right| left.name.to_lowercase().cmp(&right.name.to_lowercase()));
+    results.dedup_by(|left, right| left.path.eq_ignore_ascii_case(&right.path));
+    results
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn scan_all_apps() -> Vec<AppEntry> {
+    Vec::new()
+}
+
 /// Initialize the app cache from persistent DB, then spawn a background
 /// re-scan. The cold load from DB is ~1ms. The background scan eventually
 /// updates both DB and in-memory cache and emits 'apps:updated'.
@@ -633,36 +713,34 @@ pub fn ensure_cache(app: Option<&AppHandle>) {
     }
     CACHE_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
 
-    // If we have entries from DB, we're already usable.
-    // If DB was empty, do the initial scan synchronously so the user
-    // sees apps on first search.
-    let need_initial_scan = {
-        app_cache_lock()
-            .map(|cache| cache.is_empty())
-            .unwrap_or(true)
-    };
-
-    if need_initial_scan {
+    // Phase 2: Always scan in the background, including a truly cold first
+    // launch. Directory walking, plist reads and icon discovery must never
+    // delay Tauri setup or shortcut/tray registration.
+    if let Some(handle) = app {
+        let app_handle = handle.clone();
+        let _ = std::thread::Builder::new()
+            .name("qx-app-scan".to_string())
+            .spawn(move || {
+                let fresh = scan_all_apps();
+                // Update DB
+                sync_db(&fresh);
+                // Update in-memory cache
+                if let Some(mut cache) = app_cache_lock() {
+                    *cache = fresh;
+                }
+                let _ = app_handle.emit("apps:updated", ());
+            });
+    } else if app_cache_lock()
+        .map(|cache| cache.is_empty())
+        .unwrap_or(true)
+    {
+        // Recovery path used only from search_apps' spawn_blocking worker if
+        // startup initialization was skipped or failed.
         let fresh = scan_all_apps();
         sync_db(&fresh);
         if let Some(mut cache) = app_cache_lock() {
             *cache = fresh;
         }
-    }
-
-    // Phase 2: Spawn background re-scan to catch changes
-    if let Some(handle) = app {
-        let app_handle = handle.clone();
-        std::thread::spawn(move || {
-            let fresh = scan_all_apps();
-            // Update DB
-            sync_db(&fresh);
-            // Update in-memory cache
-            if let Some(mut cache) = app_cache_lock() {
-                *cache = fresh;
-            }
-            let _ = app_handle.emit("apps:updated", ());
-        });
     }
 }
 

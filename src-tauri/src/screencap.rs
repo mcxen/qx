@@ -1,5 +1,4 @@
 use chrono::Local;
-use dirs;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -46,20 +45,14 @@ fn recording_state() -> &'static Mutex<Option<RecordingState>> {
 }
 
 fn gifs_dir() -> PathBuf {
-    let base = dirs::picture_dir().unwrap_or_else(|| {
-        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string())).join("Pictures")
-    });
+    let base = crate::paths::pictures_dir();
     let dir = base.join("Qx");
     let _ = fs::create_dir_all(&dir);
     dir
 }
 
 fn db_path() -> PathBuf {
-    let base = dirs::data_dir().unwrap_or_else(|| {
-        PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string()))
-            .join("Library/Application Support/qx")
-    });
-    let dir = base.join("qx");
+    let dir = crate::paths::data_dir();
     let _ = fs::create_dir_all(&dir);
     dir.join("screencap.db")
 }
@@ -198,10 +191,10 @@ pub fn start_recording(area: Option<RecordArea>) -> Result<(), String> {
     Ok(())
 }
 
-#[command]
-pub fn stop_recording() -> Result<String, String> {
+fn stop_recording_blocking() -> Result<String, String> {
     let mut guard = recording_state().lock().map_err(|e| format!("lock: {e}"))?;
     let mut state = guard.take().ok_or("Not recording")?;
+    drop(guard);
 
     state.stop_flag.store(true, Ordering::Relaxed);
     if let Some(handle) = state.thread_handle.take() {
@@ -283,6 +276,16 @@ pub fn stop_recording() -> Result<String, String> {
     let _ = insert_history(&gif_path, w, h, frame_count, duration_ms);
 
     Ok(gif_path.to_string_lossy().to_string())
+}
+
+#[command]
+pub async fn stop_recording() -> Result<String, String> {
+    // Joining the capture thread, decoding PNG frames and encoding GIF output
+    // are all blocking/CPU-heavy. Keep them off Tauri's async core threads so
+    // the launcher and its progress island remain responsive.
+    tauri::async_runtime::spawn_blocking(stop_recording_blocking)
+        .await
+        .map_err(|e| format!("recording encoder worker failed: {e}"))?
 }
 
 #[command]

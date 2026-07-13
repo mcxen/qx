@@ -170,8 +170,7 @@ fn powershell(script: &str) -> Result<String, String> {
     )
 }
 
-#[tauri::command]
-pub fn qx_system_information_check_system_info() -> Result<QxSystemInfo, String> {
+fn check_system_info_blocking() -> Result<QxSystemInfo, String> {
     #[cfg(target_os = "windows")]
     {
         let raw = powershell("$cpu=(Get-CimInstance Win32_Processor|Select-Object -First 1 -ExpandProperty Name);$os=Get-CimInstance Win32_OperatingSystem;$bios=Get-CimInstance Win32_BIOS;[pscustomobject]@{chip=$cpu;memory=[uint64]$os.TotalVisibleMemorySize*1024;caption=$os.Caption;version=$os.Version;serial=$bios.SerialNumber}|ConvertTo-Json -Compress")?;
@@ -217,8 +216,7 @@ pub fn qx_system_information_check_system_info() -> Result<QxSystemInfo, String>
     })
 }
 
-#[tauri::command]
-pub fn qx_system_information_check_storage() -> Result<QxStorageInfo, String> {
+fn check_storage_blocking() -> Result<QxStorageInfo, String> {
     #[cfg(target_os = "windows")]
     {
         let raw = powershell("$drive=Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='$env:SystemDrive'\";[pscustomobject]@{size=[uint64]$drive.Size;free=[uint64]$drive.FreeSpace}|ConvertTo-Json -Compress")?;
@@ -283,8 +281,7 @@ pub fn qx_system_information_check_storage() -> Result<QxStorageInfo, String> {
     })
 }
 
-#[tauri::command]
-pub fn qx_system_information_check_network() -> Result<QxNetworkInfo, String> {
+fn check_network_blocking() -> Result<QxNetworkInfo, String> {
     #[cfg(target_os = "windows")]
     {
         let raw = powershell("@(Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -ne '127.0.0.1' -and $_.AddressState -eq 'Preferred'} | Select-Object InterfaceAlias,IPAddress)|ConvertTo-Json -Compress")?;
@@ -336,8 +333,37 @@ pub fn qx_system_information_check_network() -> Result<QxNetworkInfo, String> {
     })
 }
 
-#[tauri::command]
-pub fn qx_system_monitor_network_counters() -> Result<QxNetworkCounters, String> {
+fn network_counters_blocking() -> Result<QxNetworkCounters, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let raw = powershell("@(Get-NetAdapterStatistics | Select-Object Name,ReceivedBytes,SentBytes)|ConvertTo-Json -Compress")?;
+        let value: serde_json::Value = serde_json::from_str(raw.trim())
+            .map_err(|e| format!("parse Windows network counters: {e}"))?;
+        let items = value.as_array().cloned().unwrap_or_else(|| {
+            value
+                .as_object()
+                .map(|_| vec![value.clone()])
+                .unwrap_or_default()
+        });
+        let interfaces = items
+            .into_iter()
+            .filter_map(|item| {
+                Some(QxNetworkCounter {
+                    name: item["Name"].as_str()?.to_string(),
+                    bytes_in: item["ReceivedBytes"].as_u64().unwrap_or(0),
+                    bytes_out: item["SentBytes"].as_u64().unwrap_or(0),
+                })
+            })
+            .collect::<Vec<_>>();
+        let total_bytes_in = interfaces.iter().map(|item| item.bytes_in).sum();
+        let total_bytes_out = interfaces.iter().map(|item| item.bytes_out).sum();
+        return Ok(QxNetworkCounters {
+            interfaces,
+            total_bytes_in,
+            total_bytes_out,
+        });
+    }
+
     let stdout = command_output("/usr/sbin/netstat", &["-ibn"])?;
     let mut interfaces = Vec::new();
 
@@ -373,8 +399,7 @@ pub fn qx_system_monitor_network_counters() -> Result<QxNetworkCounters, String>
     })
 }
 
-#[tauri::command]
-pub fn qx_system_monitor_power() -> Result<QxPowerInfo, String> {
+fn power_blocking() -> Result<QxPowerInfo, String> {
     use battery::units::ratio::percent;
 
     let manager = battery::Manager::new().map_err(|e| format!("battery manager: {e}"))?;
@@ -416,8 +441,35 @@ pub fn qx_system_monitor_power() -> Result<QxPowerInfo, String> {
     })
 }
 
-#[tauri::command]
-pub fn qx_system_information_list_processes() -> Result<QxProcessList, String> {
+fn list_processes_blocking() -> Result<QxProcessList, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let raw = powershell("$total=[double](Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize*1024;@(Get-Process | ForEach-Object {[pscustomobject]@{pid=$_.Id;name=$_.ProcessName;cpu=0;mem=if($total -gt 0){[math]::Round($_.WorkingSet64/$total*100,2)}else{0}}})|ConvertTo-Json -Compress")?;
+        let value: serde_json::Value = serde_json::from_str(raw.trim())
+            .map_err(|e| format!("parse Windows process list: {e}"))?;
+        let items = value.as_array().cloned().unwrap_or_else(|| {
+            value
+                .as_object()
+                .map(|_| vec![value.clone()])
+                .unwrap_or_default()
+        });
+        let processes = items
+            .into_iter()
+            .filter_map(|item| {
+                Some(QxProcessInfo {
+                    pid: item["pid"].as_u64()? as u32,
+                    name: item["name"].as_str()?.to_string(),
+                    cpu: item["cpu"].as_f64().unwrap_or(0.0) as f32,
+                    mem: item["mem"].as_f64().unwrap_or(0.0) as f32,
+                })
+            })
+            .collect::<Vec<_>>();
+        return Ok(QxProcessList {
+            count: processes.len(),
+            processes,
+        });
+    }
+
     let stdout = command_output("/bin/ps", &["-axo", "pid=,pcpu=,pmem=,comm="])?;
     let mut processes = Vec::new();
     for line in stdout.lines() {
@@ -451,8 +503,7 @@ pub fn qx_system_information_list_processes() -> Result<QxProcessList, String> {
     })
 }
 
-#[tauri::command]
-pub fn qx_system_information_kill_process(pid: u32) -> Result<QxKillProcessResult, String> {
+fn kill_process_blocking(pid: u32) -> Result<QxKillProcessResult, String> {
     if pid == 0 || pid == std::process::id() {
         return Err("Refusing to terminate this process".to_string());
     }
@@ -474,4 +525,53 @@ pub fn qx_system_information_kill_process(pid: u32) -> Result<QxKillProcessResul
         success: true,
         message: format!("Process with PID {pid} has been terminated successfully."),
     })
+}
+
+#[tauri::command]
+pub async fn qx_system_information_check_system_info() -> Result<QxSystemInfo, String> {
+    tauri::async_runtime::spawn_blocking(check_system_info_blocking)
+        .await
+        .map_err(|e| format!("system information worker failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn qx_system_information_check_storage() -> Result<QxStorageInfo, String> {
+    tauri::async_runtime::spawn_blocking(check_storage_blocking)
+        .await
+        .map_err(|e| format!("storage information worker failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn qx_system_information_check_network() -> Result<QxNetworkInfo, String> {
+    tauri::async_runtime::spawn_blocking(check_network_blocking)
+        .await
+        .map_err(|e| format!("network information worker failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn qx_system_monitor_network_counters() -> Result<QxNetworkCounters, String> {
+    tauri::async_runtime::spawn_blocking(network_counters_blocking)
+        .await
+        .map_err(|e| format!("network counters worker failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn qx_system_monitor_power() -> Result<QxPowerInfo, String> {
+    tauri::async_runtime::spawn_blocking(power_blocking)
+        .await
+        .map_err(|e| format!("power information worker failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn qx_system_information_list_processes() -> Result<QxProcessList, String> {
+    tauri::async_runtime::spawn_blocking(list_processes_blocking)
+        .await
+        .map_err(|e| format!("process list worker failed: {e}"))?
+}
+
+#[tauri::command]
+pub async fn qx_system_information_kill_process(pid: u32) -> Result<QxKillProcessResult, String> {
+    tauri::async_runtime::spawn_blocking(move || kill_process_blocking(pid))
+        .await
+        .map_err(|e| format!("kill process worker failed: {e}"))?
 }

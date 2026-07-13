@@ -3,7 +3,12 @@ import type { CSSProperties, ReactNode } from "react";
 import QxBottomIsland, { type BottomIslandContent } from "./QxBottomIsland";
 import ShellActionButton, { type QxShellAction } from "./ShellActionButton";
 import ShellActionMenu from "./ShellActionMenu";
-import { isNativeEditingShortcut, matchesQxShortcut, shouldIgnoreBareShortcut } from "../utils/keyboard";
+import {
+  getQxShortcutPreset,
+  isNativeEditingShortcut,
+  matchesQxShortcut,
+  shouldIgnoreBareShortcut,
+} from "../utils/keyboard";
 
 export type { BottomIslandContent } from "./QxBottomIsland";
 export type { QxShellAction } from "./ShellActionButton";
@@ -148,7 +153,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       return;
     }
 
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k" && menuActions.length > 0) {
+    if (matchesQxShortcut(event.nativeEvent, getQxShortcutPreset().actionMenu) && menuActions.length > 0) {
       event.preventDefault();
       event.stopPropagation();
       openActionMenu();

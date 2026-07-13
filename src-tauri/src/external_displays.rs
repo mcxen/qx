@@ -307,54 +307,64 @@ fn list_ddcctl_displays(driver: &ExternalDisplayDriver) -> Vec<ExternalDisplay> 
 }
 
 #[tauri::command]
-pub fn qx_external_displays_driver() -> Result<Option<ExternalDisplayDriver>, String> {
-    Ok(detected_driver())
+pub async fn qx_external_displays_driver() -> Result<Option<ExternalDisplayDriver>, String> {
+    tauri::async_runtime::spawn_blocking(detected_driver)
+        .await
+        .map_err(|e| format!("display driver worker failed: {e}"))
 }
 
 #[tauri::command]
-pub fn qx_external_displays_list() -> Result<Vec<ExternalDisplay>, String> {
-    let driver = detected_driver().ok_or_else(|| {
-        "No DDC CLI found. Install m1ddc or ddcctl in /opt/homebrew/bin or /usr/local/bin."
-            .to_string()
-    })?;
-    if driver.name == "m1ddc" {
-        list_m1ddc_displays(&driver)
-    } else {
-        Ok(list_ddcctl_displays(&driver))
-    }
+pub async fn qx_external_displays_list() -> Result<Vec<ExternalDisplay>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let driver = detected_driver().ok_or_else(|| {
+            "No DDC CLI found. Install m1ddc or ddcctl in /opt/homebrew/bin or /usr/local/bin."
+                .to_string()
+        })?;
+        if driver.name == "m1ddc" {
+            list_m1ddc_displays(&driver)
+        } else {
+            Ok(list_ddcctl_displays(&driver))
+        }
+    })
+    .await
+    .map_err(|e| format!("display list worker failed: {e}"))?
 }
 
 #[tauri::command]
-pub fn qx_external_displays_set_control(
+pub async fn qx_external_displays_set_control(
     display_id: u8,
     control: String,
     value: u8,
 ) -> Result<(), String> {
-    let driver = detected_driver().ok_or_else(|| {
-        "No DDC CLI found. Install m1ddc or ddcctl in /opt/homebrew/bin or /usr/local/bin."
-            .to_string()
-    })?;
-    let value = value.min(100).to_string();
-    if driver.name == "m1ddc" {
-        let control = match control.as_str() {
-            "brightness" | "luminance" => "luminance",
-            "contrast" => "contrast",
-            "volume" => "volume",
-            _ => return Err("Unsupported display control".to_string()),
+    tauri::async_runtime::spawn_blocking(move || {
+        let driver = detected_driver().ok_or_else(|| {
+            "No DDC CLI found. Install m1ddc or ddcctl in /opt/homebrew/bin or /usr/local/bin."
+                .to_string()
+        })?;
+        let value = value.min(100).to_string();
+        if driver.name == "m1ddc" {
+            let control = match control.as_str() {
+                "brightness" | "luminance" => "luminance",
+                "contrast" => "contrast",
+                "volume" => "volume",
+                _ => return Err("Unsupported display control".to_string()),
+            };
+            run_driver(
+                &driver,
+                &["display", &display_id.to_string(), "set", control, &value],
+            )?;
+            return Ok(());
+        }
+        let flag = match control.as_str() {
+            "brightness" | "luminance" => "-b",
+            "contrast" => "-c",
+            _ => return Err("ddcctl supports brightness and contrast in this command".to_string()),
         };
-        run_driver(
-            &driver,
-            &["display", &display_id.to_string(), "set", control, &value],
-        )?;
-        return Ok(());
-    }
-    let flag = match control.as_str() {
-        "brightness" | "luminance" => "-b",
-        "contrast" => "-c",
-        _ => return Err("ddcctl supports brightness and contrast in this command".to_string()),
-    };
-    run_driver(&driver, &["-d", &display_id.to_string(), flag, &value])?;
-    Ok(())
+        run_driver(&driver, &["-d", &display_id.to_string(), flag, &value])?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("display control worker failed: {e}"))?
 }
 
 #[tauri::command]
