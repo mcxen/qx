@@ -1,10 +1,11 @@
 /* ====== Spec Shell ====== */
 .qx-shell {
   position: relative;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
   flex: 1;
   min-height: 0;
+  overflow: hidden;
   background: transparent;
   color: var(--qx-text-primary);
 }
@@ -51,12 +52,12 @@
 
 .qx-shell.visual-glass {
   background: rgba(var(--qx-glass-bg), var(--qx-shell-glass-region-opacity-effective));
-  backdrop-filter: blur(22px) saturate(170%);
-  -webkit-backdrop-filter: blur(22px) saturate(170%);
 }
 
 .qx-shell-topbar {
   position: relative;
+  grid-area: 1 / 1;
+  align-self: start;
   z-index: 30;
   display: grid;
   grid-template-columns: auto minmax(var(--qx-search-min-w), 1fr) auto;
@@ -65,13 +66,43 @@
   height: var(--qx-topbar-h);
   min-height: var(--qx-topbar-h);
   max-height: var(--qx-topbar-h);
-  overflow: hidden;
+  overflow: visible;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--qx-border-1);
-  background: rgba(var(--qx-glass-bg), var(--qx-shell-region-opacity-effective));
-  backdrop-filter: blur(10px) saturate(130%);
-  -webkit-backdrop-filter: blur(10px) saturate(130%);
+  border-bottom: 1px solid color-mix(in srgb, var(--qx-border-1) 72%, transparent);
+  background: linear-gradient(
+    180deg,
+    rgba(var(--qx-glass-bg), calc(var(--qx-shell-region-opacity-effective) + 0.08)),
+    rgba(var(--qx-glass-bg), var(--qx-shell-region-opacity-effective))
+  );
+  box-shadow:
+    inset 0 1px 0 var(--qx-shell-chrome-highlight),
+    0 1px 10px var(--qx-shell-chrome-shadow);
+  backdrop-filter: blur(var(--qx-shell-chrome-blur)) saturate(var(--qx-shell-chrome-saturation));
+  -webkit-backdrop-filter: blur(var(--qx-shell-chrome-blur)) saturate(var(--qx-shell-chrome-saturation));
   -webkit-app-region: drag;
+}
+
+.qx-shell-topbar::after,
+.qx-shell-bottombar::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--qx-shell-scroll-edge-size);
+  pointer-events: none;
+}
+
+.qx-shell-topbar::after {
+  top: 100%;
+  background: linear-gradient(
+    180deg,
+    rgba(var(--qx-glass-bg), var(--qx-shell-scroll-edge-opacity)),
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(180deg, #000, transparent);
+  mask-image: linear-gradient(180deg, #000, transparent);
+  backdrop-filter: blur(8px) saturate(135%);
+  -webkit-backdrop-filter: blur(8px) saturate(135%);
 }
 
 .qx-shell.visual-elevated .qx-shell-topbar,
@@ -83,12 +114,15 @@
 .qx-shell.visual-glass .qx-shell-bottombar,
 .qx-shell.visual-glass .qx-shell-context {
   background: rgba(var(--qx-glass-bg), var(--qx-shell-glass-region-opacity-effective));
-  backdrop-filter: blur(18px) saturate(160%);
-  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(28px) saturate(175%);
+  -webkit-backdrop-filter: blur(28px) saturate(175%);
 }
 
 .qx-shell.launcher-shell .qx-shell-topbar {
-  grid-template-columns: minmax(0, 78fr) minmax(124px, 22fr);
+  /* Match the top-bar split to QxShell's main/context split. With 16px
+     horizontal padding and an 8px gap, subtract 24px from the context track
+     so the search card ends exactly on the Context Panel divider. */
+  grid-template-columns: minmax(0, 1fr) calc(var(--qx-context-w) - 24px);
   gap: 8px;
 }
 
@@ -111,58 +145,20 @@
 }
 
 .qx-launcher-trailing .qx-launcher-scope {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
+  width: 100%;
   min-width: 100px;
 }
 
-.qx-quick-entry-icons {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--qx-border-1);
-  border-radius: 8px;
-  background: var(--qx-bg-component-1);
-}
-
-.qx-quick-entry-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--qx-text-secondary);
-  cursor: pointer;
-  -webkit-app-region: no-drag;
-  transition: background 120ms ease, color 120ms ease;
-}
-
-.qx-quick-entry-icon:hover {
-  background: color-mix(in srgb, var(--qx-accent) 14%, transparent);
-  color: var(--qx-accent);
-}
-
-.qx-quick-entry-icon:active {
-  background: color-mix(in srgb, var(--qx-accent) 22%, transparent);
-}
-
-@media (max-width: 760px) {
-  .qx-quick-entry-icons {
-    display: none;
-  }
-}
-
 .qx-shell-main {
+  grid-area: 1 / 1;
+  align-self: stretch;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  flex: 1;
   min-height: 0;
   position: relative;
   z-index: 1;
+  overflow: hidden;
 }
 
 .qx-shell-topbar input,
@@ -233,6 +229,19 @@
 .qx-shell-context {
   min-height: 0;
   overflow: auto;
+  box-sizing: border-box;
+  padding-top: var(--qx-topbar-h);
+  padding-bottom: var(--qx-bottom-bar-h);
+  scroll-padding-top: calc(var(--qx-topbar-h) + 8px);
+  scroll-padding-bottom: calc(var(--qx-bottom-bar-h) + 8px);
+}
+
+[data-qx-region] {
+  outline: none;
+}
+
+[data-qx-region].is-qx-region-active:focus-visible {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--qx-accent) 46%, transparent);
 }
 
 .qx-shell-context {
@@ -300,6 +309,9 @@
 }
 
 .qx-shell-bottombar {
+  grid-area: 1 / 1;
+  align-self: end;
+  z-index: 30;
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
@@ -308,12 +320,32 @@
   height: var(--qx-bottom-bar-h);
   min-height: var(--qx-bottom-bar-h);
   max-height: var(--qx-bottom-bar-h);
-  overflow: hidden;
+  overflow: visible;
   padding: 5px 14px;
-  border-top: 1px solid var(--qx-border-1);
-  background: rgba(var(--qx-glass-bg), var(--qx-shell-region-opacity-effective));
-  backdrop-filter: blur(10px) saturate(130%);
-  -webkit-backdrop-filter: blur(10px) saturate(130%);
+  border-top: 1px solid color-mix(in srgb, var(--qx-border-1) 72%, transparent);
+  background: linear-gradient(
+    0deg,
+    rgba(var(--qx-glass-bg), calc(var(--qx-shell-region-opacity-effective) + 0.08)),
+    rgba(var(--qx-glass-bg), var(--qx-shell-region-opacity-effective))
+  );
+  box-shadow:
+    inset 0 -1px 0 var(--qx-shell-chrome-highlight),
+    0 -1px 10px var(--qx-shell-chrome-shadow);
+  backdrop-filter: blur(var(--qx-shell-chrome-blur)) saturate(var(--qx-shell-chrome-saturation));
+  -webkit-backdrop-filter: blur(var(--qx-shell-chrome-blur)) saturate(var(--qx-shell-chrome-saturation));
+}
+
+.qx-shell-bottombar::before {
+  bottom: 100%;
+  background: linear-gradient(
+    0deg,
+    rgba(var(--qx-glass-bg), var(--qx-shell-scroll-edge-opacity)),
+    transparent
+  );
+  -webkit-mask-image: linear-gradient(0deg, #000, transparent);
+  mask-image: linear-gradient(0deg, #000, transparent);
+  backdrop-filter: blur(8px) saturate(135%);
+  -webkit-backdrop-filter: blur(8px) saturate(135%);
 }
 
 /* Overlay bottom bar with frosted glass (RSS reading, etc.) */
@@ -321,7 +353,7 @@
   position: relative;
 }
 .qx-shell.qx-shell-overlay-bottom .qx-shell-main {
-  padding-bottom: var(--qx-bottom-bar-h);
+  padding-bottom: 0;
 }
 .qx-shell.qx-shell-overlay-bottom .qx-shell-bottombar {
   position: absolute;
@@ -893,6 +925,10 @@
   .qx-shell-trailing {
     justify-content: flex-end;
     justify-self: end;
+  }
+
+  .qx-shell.launcher-shell .qx-shell-topbar {
+    grid-template-columns: minmax(0, 1fr) minmax(100px, 132px);
   }
 
   .qx-shell.has-context .qx-shell-main {

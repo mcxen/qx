@@ -383,7 +383,7 @@ export default function ClipboardPanel() {
   let flatIndex = 0;
 
   const searchSlot = (
-        <div className="qx-clipboard-search-wrap">
+        <div className="qx-search-wrap qx-clipboard-search-wrap">
           <span className="qx-search-icon" aria-hidden="true" />
           <input
             type="text"
@@ -394,7 +394,7 @@ export default function ClipboardPanel() {
               setSelected(0);
             }}
             placeholder="Type to filter entries..."
-            className="qx-clipboard-search"
+            className="qx-plugin-search qx-clipboard-search"
           />
         </div>
   );

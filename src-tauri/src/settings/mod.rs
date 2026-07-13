@@ -229,8 +229,8 @@ impl Default for AgentSettings {
     fn default() -> Self {
         Self {
             agent_mode_enabled: false,
-            default_provider: String::new(),
-            default_model: String::new(),
+            default_provider: "openrouter".to_string(),
+            default_model: "openrouter/auto".to_string(),
             model_tools_enabled: false,
             tools_enabled: false,
             memory_tool_enabled: true,
@@ -524,21 +524,21 @@ impl Default for Settings {
             "clipboard".to_string(),
             ShortcutBinding {
                 key: "Alt+V".to_string(),
-                enabled: true,
+                enabled: false,
             },
         );
         shortcuts.insert(
             "record_gif".to_string(),
             ShortcutBinding {
                 key: "Alt+G".to_string(),
-                enabled: true,
+                enabled: false,
             },
         );
         shortcuts.insert(
             "rss".to_string(),
             ShortcutBinding {
                 key: "Alt+R".to_string(),
-                enabled: true,
+                enabled: false,
             },
         );
 
@@ -569,10 +569,16 @@ fn settings_path() -> PathBuf {
 
 pub(crate) fn read_settings() -> Settings {
     let path = settings_path();
-    match fs::read_to_string(&path) {
+    let mut settings = match fs::read_to_string(&path) {
         Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
         Err(_) => Settings::default(),
+    };
+    if settings.agent.default_provider.is_empty() || settings.agent.default_provider == "duckduckgo"
+    {
+        settings.agent.default_provider = "openrouter".to_string();
+        settings.agent.default_model = "openrouter/auto".to_string();
     }
+    settings
 }
 
 pub(crate) fn write_settings(settings: &Settings) -> Result<(), String> {
@@ -806,7 +812,7 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
 
 #[cfg(test)]
 mod tests {
-    use super::portable_shortcut_key;
+    use super::{portable_shortcut_key, AgentSettings, Settings};
 
     #[test]
     fn canonicalizes_primary_modifier_for_both_desktop_platforms() {
@@ -817,5 +823,23 @@ mod tests {
         );
         assert_eq!(portable_shortcut_key("Super+K"), "Super+K");
         assert_eq!(portable_shortcut_key("Ctrl+K"), "Ctrl+K");
+    }
+
+    #[test]
+    fn default_global_shortcuts_only_enable_launcher_recall() {
+        let settings = Settings::default();
+        let enabled = settings
+            .shortcuts
+            .iter()
+            .filter_map(|(id, binding)| binding.enabled.then_some(id.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(enabled, vec!["toggle_launcher"]);
+    }
+
+    #[test]
+    fn default_agent_uses_openrouter_auto() {
+        let agent = AgentSettings::default();
+        assert_eq!(agent.default_provider, "openrouter");
+        assert_eq!(agent.default_model, "openrouter/auto");
     }
 }

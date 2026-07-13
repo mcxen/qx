@@ -21,10 +21,13 @@ pub struct ProviderModel {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProviderInfo {
     pub id: String,
     pub name: String,
     pub models: Vec<ProviderModel>,
+    pub base_url: Option<String>,
+    pub requires_api_key: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +46,14 @@ pub struct CustomProviderConfig {
     pub base_url: String,
     pub api_key: String,
     pub models: Vec<ProviderModel>,
+}
+
+/// Credentials for Qx-managed providers whose endpoints and models are fixed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuiltInProviderCredential {
+    pub id: String,
+    pub api_key: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -68,101 +79,54 @@ fn make_client() -> Result<reqwest::blocking::Client, String> {
     )
 }
 
-/// Obtain an x-vqd-4 token from DuckDuckGo (required for chat).
-fn duckduckgo_get_vqd(client: &reqwest::blocking::Client) -> Result<String, String> {
-    let resp = client
-        .get("https://duckduckgo.com/duckchat/v1/status")
-        .header("x-vqd-accept", "1")
-        .send()
-        .map_err(|e| format!("failed to get DDG status: {e}"))?;
+const OPENROUTER_ID: &str = "openrouter";
+const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
+const DEEPSEEK_ID: &str = "deepseek";
+const DEEPSEEK_BASE_URL: &str = "https://api.deepseek.com";
 
-    let status = resp.status();
-    if let Some(vqd) = resp.headers().get("x-vqd-4").and_then(|v| v.to_str().ok()) {
-        return Ok(vqd.to_string());
-    }
-
-    let body = resp.text().unwrap_or_default();
-    Err(format!("missing x-vqd-4 header (status {status}): {body}"))
+struct ProviderEndpoint {
+    base_url: String,
+    api_key: String,
 }
 
-/// Post a chat request to DuckDuckGo and return the raw SSE body.
-fn duckduckgo_post_chat(
-    client: &reqwest::blocking::Client,
-    vqd: &str,
-    messages: &[ChatMessage],
-) -> Result<String, String> {
-    let messages = duckduckgo_messages(messages)?;
-    let body = serde_json::json!({
-        "model": "gpt-4o-mini",
-        "messages": messages,
-    });
-
-    let resp = client
-        .post("https://duckduckgo.com/duckchat/v1/chat")
-        .header("Content-Type", "application/json")
-        .header("x-vqd-4", vqd)
-        .header("Accept", "text/event-stream")
-        .json(&body)
-        .send()
-        .map_err(|e| format!("duckduckgo chat request failed: {e}"))?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let text = resp.text().unwrap_or_default();
-        return Err(format!("duckduckgo returned HTTP {status}: {text}"));
-    }
-
-    resp.text()
-        .map_err(|e| format!("failed to read response body: {e}"))
+fn built_in_provider_endpoint(provider: &str) -> Option<ProviderEndpoint> {
+    let base_url = match provider {
+        OPENROUTER_ID => OPENROUTER_BASE_URL,
+        DEEPSEEK_ID => DEEPSEEK_BASE_URL,
+        _ => return None,
+    };
+    let api_key = qxai_get_builtin_provider_credentials()
+        .into_iter()
+        .find(|credential| credential.id == provider)
+        .map(|credential| credential.api_key)
+        .unwrap_or_default();
+    Some(ProviderEndpoint {
+        base_url: base_url.to_string(),
+        api_key,
+    })
 }
 
-fn duckduckgo_post_chat_stream(
-    client: &reqwest::blocking::Client,
-    vqd: &str,
-    messages: &[ChatMessage],
-    mut on_chunk: impl FnMut(&str),
-) -> Result<String, String> {
-    let messages = duckduckgo_messages(messages)?;
-    let body = serde_json::json!({
-        "model": "gpt-4o-mini",
-        "messages": messages,
-    });
+fn provider_endpoint(provider: &str) -> Result<ProviderEndpoint, String> {
+    let endpoint = if provider.starts_with("custom:") {
+        qxai_get_custom_providers()
+            .into_iter()
+            .find(|item| item.id == provider)
+            .map(|item| ProviderEndpoint {
+                base_url: item.base_url,
+                api_key: item.api_key,
+            })
+            .ok_or_else(|| format!("custom provider {provider} not found"))?
+    } else {
+        built_in_provider_endpoint(provider)
+            .ok_or_else(|| format!("unknown provider: {provider}"))?
+    };
 
-    let resp = client
-        .post("https://duckduckgo.com/duckchat/v1/chat")
-        .header("Content-Type", "application/json")
-        .header("x-vqd-4", vqd)
-        .header("Accept", "text/event-stream")
-        .json(&body)
-        .send()
-        .map_err(|e| format!("duckduckgo chat request failed: {e}"))?;
-
-    let status = resp.status();
-    if !status.is_success() {
-        let text = resp.text().unwrap_or_default();
-        return Err(format!("duckduckgo returned HTTP {status}: {text}"));
+    if endpoint.api_key.trim().is_empty() {
+        return Err(format!(
+            "API key missing for {provider}. Add it in QxAI Settings."
+        ));
     }
-
-    let mut full = String::new();
-    let reader = std::io::BufReader::new(resp);
-    for line in reader.lines() {
-        let line = line.map_err(|e| format!("failed to read duckduckgo stream: {e}"))?;
-        if let Some(data) = line.strip_prefix("data: ") {
-            if data == "[DONE]" {
-                break;
-            }
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
-                if let Some(msg) = val.get("message").and_then(|m| m.as_str()) {
-                    full.push_str(msg);
-                    on_chunk(msg);
-                }
-            }
-        }
-    }
-    if full.is_empty() {
-        return Err("no content received from duckduckgo".to_string());
-    }
-    Ok(full)
+    Ok(endpoint)
 }
 
 fn openai_list_models(base_url: &str, api_key: &str) -> Result<Vec<ProviderModel>, String> {
@@ -203,151 +167,6 @@ fn openai_list_models(base_url: &str, api_key: &str) -> Result<Vec<ProviderModel
     }
 
     Ok(models)
-}
-
-/// Parse an SSE response into a single concatenated message string.
-///
-/// DuckDuckGo sends lines in the format `data: {"message":"..."}`.
-fn parse_sse(text: &str) -> Result<String, String> {
-    let mut full = String::new();
-    for line in text.lines() {
-        if let Some(data) = line.strip_prefix("data: ") {
-            if data == "[DONE]" {
-                break;
-            }
-            // Try DDG format: {"message":"..."}
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
-                if let Some(msg) = val.get("message").and_then(|m| m.as_str()) {
-                    full.push_str(msg);
-                }
-                continue;
-            }
-            // Fallback: push raw data line
-            full.push_str(data);
-        }
-    }
-    if full.is_empty() {
-        return Err("no content received from duckduckgo".to_string());
-    }
-    Ok(full)
-}
-
-/// Parse an SSE response into individual message chunks.
-fn parse_sse_chunks(text: &str) -> Result<Vec<String>, String> {
-    let mut chunks = Vec::new();
-    for line in text.lines() {
-        if let Some(data) = line.strip_prefix("data: ") {
-            if data == "[DONE]" {
-                break;
-            }
-            if let Ok(val) = serde_json::from_str::<serde_json::Value>(data) {
-                if let Some(msg) = val.get("message").and_then(|m| m.as_str()) {
-                    chunks.push(msg.to_string());
-                }
-                continue;
-            }
-            chunks.push(data.to_string());
-        }
-    }
-    if chunks.is_empty() {
-        return Err("no content received from duckduckgo".to_string());
-    }
-    Ok(chunks)
-}
-
-fn duckduckgo_messages(messages: &[ChatMessage]) -> Result<Vec<ChatMessage>, String> {
-    let mut system_prompt = Vec::new();
-    let mut chat_messages = Vec::new();
-
-    for message in messages {
-        match message.role.as_str() {
-            "system" => {
-                let text = text_content(&message.content)?;
-                if !text.trim().is_empty() {
-                    system_prompt.push(text.trim().to_string());
-                }
-            }
-            "user" | "assistant" => chat_messages.push(ChatMessage {
-                role: message.role.clone(),
-                content: serde_json::Value::String(text_content(&message.content)?),
-            }),
-            _ => {}
-        }
-    }
-
-    if chat_messages.is_empty() {
-        return Err("duckduckgo requires at least one user message".to_string());
-    }
-
-    if !system_prompt.is_empty() {
-        let prompt = system_prompt.join("\n\n");
-        if let Some(first_user) = chat_messages.iter_mut().find(|m| m.role == "user") {
-            let content = first_user
-                .content
-                .as_str()
-                .map(ToString::to_string)
-                .unwrap_or_default();
-            first_user.content = serde_json::Value::String(format!("{prompt}\n\n{content}"));
-        }
-    }
-
-    Ok(chat_messages)
-}
-
-fn text_content(content: &serde_json::Value) -> Result<String, String> {
-    if let Some(text) = content.as_str() {
-        return Ok(text.to_string());
-    }
-
-    if let Some(parts) = content.as_array() {
-        let mut text_parts = Vec::new();
-        for part in parts {
-            match part.get("type").and_then(|value| value.as_str()) {
-                Some("text") => {
-                    if let Some(text) = part.get("text").and_then(|value| value.as_str()) {
-                        text_parts.push(text.to_string());
-                    }
-                }
-                Some("image_url") | Some("input_image") | Some("image") => {
-                    return Err(
-                        "duckduckgo provider does not support image input; choose a multimodal custom provider"
-                            .to_string(),
-                    );
-                }
-                _ => {}
-            }
-        }
-        return Ok(text_parts.join("\n"));
-    }
-
-    Err("unsupported message content format".to_string())
-}
-
-// ---------------------------------------------------------------------------
-// Provider implementations
-// ---------------------------------------------------------------------------
-
-fn provider_duckduckgo(messages: &[ChatMessage]) -> Result<String, String> {
-    let client = make_client()?;
-    let vqd = duckduckgo_get_vqd(&client)?;
-    let body = duckduckgo_post_chat(&client, &vqd, messages)?;
-    parse_sse(&body)
-}
-
-fn provider_duckduckgo_stream(messages: &[ChatMessage]) -> Result<Vec<String>, String> {
-    let client = make_client()?;
-    let vqd = duckduckgo_get_vqd(&client)?;
-    let body = duckduckgo_post_chat(&client, &vqd, messages)?;
-    parse_sse_chunks(&body)
-}
-
-fn provider_duckduckgo_stream_events(
-    messages: &[ChatMessage],
-    on_chunk: impl FnMut(&str),
-) -> Result<String, String> {
-    let client = make_client()?;
-    let vqd = duckduckgo_get_vqd(&client)?;
-    duckduckgo_post_chat_stream(&client, &vqd, messages, on_chunk)
 }
 
 // ---------------------------------------------------------------------------
@@ -506,12 +325,9 @@ pub fn g4f_chat(
     model: Option<String>,
     messages: Vec<ChatMessage>,
 ) -> Result<String, String> {
-    let _ = model; // reserved for future use per-provider model selection
-
-    match provider.as_str() {
-        "duckduckgo" => provider_duckduckgo(&messages),
-        _ => Err(format!("unknown provider: {provider}")),
-    }
+    let endpoint = provider_endpoint(&provider)?;
+    let model = model.ok_or_else(|| format!("no model selected for {provider}"))?;
+    provider_openai_chat(&endpoint.base_url, &endpoint.api_key, &model, &messages)
 }
 
 /// Send a chat message to an AI provider and return individual SSE chunks.
@@ -521,12 +337,17 @@ pub fn g4f_stream_chat(
     model: Option<String>,
     messages: Vec<ChatMessage>,
 ) -> Result<Vec<String>, String> {
-    let _ = model; // reserved for future use per-provider model selection
-
-    match provider.as_str() {
-        "duckduckgo" => provider_duckduckgo_stream(&messages),
-        _ => Err(format!("unknown provider: {provider}")),
-    }
+    let endpoint = provider_endpoint(&provider)?;
+    let model = model.ok_or_else(|| format!("no model selected for {provider}"))?;
+    let mut chunks = Vec::new();
+    provider_openai_chat_stream(
+        &endpoint.base_url,
+        &endpoint.api_key,
+        &model,
+        &messages,
+        |chunk| chunks.push(chunk.to_string()),
+    )?;
+    Ok(chunks)
 }
 
 /// Send a chat message to an OpenAI-compatible custom provider (BYOK).
@@ -543,14 +364,34 @@ pub fn g4f_chat_custom(
 /// List all available AI providers and their models.
 #[tauri::command]
 pub fn g4f_list_providers() -> Vec<ProviderInfo> {
-    vec![ProviderInfo {
-        id: "duckduckgo".to_string(),
-        name: "DuckDuckGo AI Chat".to_string(),
-        models: vec![ProviderModel {
-            id: "gpt-4o-mini".to_string(),
-            name: "GPT-4o Mini".to_string(),
-        }],
-    }]
+    vec![
+        ProviderInfo {
+            id: OPENROUTER_ID.to_string(),
+            name: "OpenRouter".to_string(),
+            base_url: Some(OPENROUTER_BASE_URL.to_string()),
+            requires_api_key: true,
+            models: vec![ProviderModel {
+                id: "openrouter/auto".to_string(),
+                name: "Auto Router".to_string(),
+            }],
+        },
+        ProviderInfo {
+            id: DEEPSEEK_ID.to_string(),
+            name: "DeepSeek".to_string(),
+            base_url: Some(DEEPSEEK_BASE_URL.to_string()),
+            requires_api_key: true,
+            models: vec![
+                ProviderModel {
+                    id: "deepseek-v4-flash".to_string(),
+                    name: "DeepSeek V4 Flash".to_string(),
+                },
+                ProviderModel {
+                    id: "deepseek-v4-pro".to_string(),
+                    name: "DeepSeek V4 Pro".to_string(),
+                },
+            ],
+        },
+    ]
 }
 
 pub fn qxai_provider_catalog() -> Vec<ProviderInfo> {
@@ -561,6 +402,8 @@ pub fn qxai_provider_catalog() -> Vec<ProviderInfo> {
             .map(|provider| ProviderInfo {
                 id: provider.id,
                 name: provider.name,
+                base_url: Some(provider.base_url.clone()),
+                requires_api_key: true,
                 models: openai_list_models(&provider.base_url, &provider.api_key)
                     .unwrap_or(provider.models),
             }),
@@ -608,23 +451,16 @@ pub fn qxai_chat(
     let providers = qxai_provider_catalog();
     let selection = resolve_model_selection(&providers, provider, model)?;
 
-    if selection.provider.starts_with("custom:") {
-        let custom_provider = qxai_get_custom_providers()
-            .into_iter()
-            .find(|p| p.id == selection.provider)
-            .ok_or_else(|| format!("custom provider {} not found", selection.provider))?;
-        provider_openai_chat(
-            &custom_provider.base_url,
-            &custom_provider.api_key,
-            &selection.model,
-            &messages,
-        )
-    } else {
-        g4f_chat(selection.provider, Some(selection.model), messages)
-    }
+    let endpoint = provider_endpoint(&selection.provider)?;
+    provider_openai_chat(
+        &endpoint.base_url,
+        &endpoint.api_key,
+        &selection.model,
+        &messages,
+    )
 }
 
-/// OpenAI-style function calling for BYOK custom providers.
+/// OpenAI-style function calling for built-in and custom compatible providers.
 /// Returns the raw `choices[0].message` JSON, including any `tool_calls`.
 #[tauri::command]
 pub async fn qxai_chat_with_tools(
@@ -637,21 +473,12 @@ pub async fn qxai_chat_with_tools(
     let providers = qxai_provider_catalog();
     let selection = resolve_model_selection(&providers, provider, model)?;
 
-    if !selection.provider.starts_with("custom:") {
-        return Err(
-            "function calling is only supported for custom OpenAI-compatible providers".to_string(),
-        );
-    }
-
-    let custom_provider = qxai_get_custom_providers()
-        .into_iter()
-        .find(|p| p.id == selection.provider)
-        .ok_or_else(|| format!("custom provider {} not found", selection.provider))?;
+    let endpoint = provider_endpoint(&selection.provider)?;
 
     let choice = tool_choice.unwrap_or_else(|| "auto".to_string());
     provider_openai_chat_with_tools(
-        custom_provider.base_url,
-        custom_provider.api_key,
+        endpoint.base_url,
+        endpoint.api_key,
         selection.model,
         messages,
         tools,
@@ -669,15 +496,7 @@ pub fn qxai_stream_chat(
     let providers = qxai_provider_catalog();
     let selection = resolve_model_selection(&providers, provider, model)?;
 
-    if selection.provider.starts_with("custom:") {
-        Ok(vec![qxai_chat(
-            Some(selection.provider),
-            Some(selection.model),
-            messages,
-        )?])
-    } else {
-        g4f_stream_chat(selection.provider, Some(selection.model), messages)
-    }
+    g4f_stream_chat(selection.provider, Some(selection.model), messages)
 }
 
 #[tauri::command]
@@ -707,26 +526,14 @@ pub fn qxai_stream_chat_events(
             let providers = qxai_provider_catalog();
             let selection = resolve_model_selection(&providers, provider, model)?;
 
-            if selection.provider.starts_with("custom:") {
-                match qxai_get_custom_providers()
-                    .into_iter()
-                    .find(|p| p.id == selection.provider)
-                {
-                    Some(custom_provider) => provider_openai_chat_stream(
-                        &custom_provider.base_url,
-                        &custom_provider.api_key,
-                        &selection.model,
-                        &messages,
-                        emit_chunk,
-                    ),
-                    None => Err(format!("custom provider {} not found", selection.provider)),
-                }
-            } else {
-                match selection.provider.as_str() {
-                    "duckduckgo" => provider_duckduckgo_stream_events(&messages, emit_chunk),
-                    other => Err(format!("unknown provider: {other}")),
-                }
-            }
+            let endpoint = provider_endpoint(&selection.provider)?;
+            provider_openai_chat_stream(
+                &endpoint.base_url,
+                &endpoint.api_key,
+                &selection.model,
+                &messages,
+                emit_chunk,
+            )
         }));
 
         let result: Result<String, String> = match work {
@@ -776,6 +583,52 @@ pub async fn qxai_fetch_models(
     tokio::task::spawn_blocking(move || openai_list_models(&base_url, &api_key))
         .await
         .map_err(|e| format!("Model fetch task panicked: {e}"))?
+}
+
+// ---------------------------------------------------------------------------
+// Built-in provider credentials
+// ---------------------------------------------------------------------------
+
+fn built_in_provider_credentials_path() -> PathBuf {
+    let dir = crate::paths::state_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    dir.join("qxai-provider-credentials.json")
+}
+
+#[tauri::command]
+pub fn qxai_get_builtin_provider_credentials() -> Vec<BuiltInProviderCredential> {
+    let path = built_in_provider_credentials_path();
+    match std::fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str::<Vec<BuiltInProviderCredential>>(&content)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|credential| matches!(credential.id.as_str(), OPENROUTER_ID | DEEPSEEK_ID))
+            .collect(),
+        Err(_) => vec![],
+    }
+}
+
+#[tauri::command]
+pub fn qxai_save_builtin_provider_credentials(
+    credentials: Vec<BuiltInProviderCredential>,
+) -> Result<(), String> {
+    let mut credentials = credentials
+        .into_iter()
+        .filter(|credential| matches!(credential.id.as_str(), OPENROUTER_ID | DEEPSEEK_ID))
+        .collect::<Vec<_>>();
+    credentials.sort_by(|a, b| a.id.cmp(&b.id));
+    credentials.dedup_by(|a, b| a.id == b.id);
+
+    let path = built_in_provider_credentials_path();
+    let json = serde_json::to_string_pretty(&credentials).map_err(|e| format!("serialize: {e}"))?;
+    std::fs::write(&path, json).map_err(|e| format!("write {}: {e}", path.display()))?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))
+            .map_err(|e| format!("secure {}: {e}", path.display()))?;
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------

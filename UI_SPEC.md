@@ -177,6 +177,7 @@ Shell 基础设施可以直接消费 shadcn primitive，但应限制在 `src/com
 - 工具栏、列表行、Context Panel 操作区的 lucide 图标默认使用 `14px-16px`，空状态或详情标题可放大到 `20px-24px`。
 - `strokeWidth` 默认 `2` 或 `2.1`；不要在同一控件组内混用粗细。
 - 图标颜色必须继承当前文本色或使用语义 CSS 变量，不在组件里硬编码色值。
+- 列表、工具栏和信息区的功能/内容类型图标默认使用中性色，不按文件类型、模块或装饰目的分配多种强调色；强调色只用于当前选中项、置顶/固定状态、主操作和危险操作。
 - 图标容器尺寸必须固定，避免 hover、loading 或选中状态造成布局跳动。
 
 动画：
@@ -196,6 +197,11 @@ Top Bar 包含搜索、返回、筛选和少量上下文操作。
 
 - 模块搜索统一使用 `qx-search-wrap` + `qx-plugin-search`。
 - 搜索框自动聚焦。
+- 搜索是 Top Bar 的左侧主体内容，并保留一个独立、紧凑的输入控件表面；只允许一层边框、背景和 focus ring，不得再包裹第二张搜索卡片或装饰容器。
+- 有返回按钮的列表型模块，搜索文字的起始位置必须与主列表行标题列的起始位置对齐，允许误差不超过 `4px`；对齐对象是标题文字，不是列表外边缘或类型图标。
+- Launcher 等带 Context Panel 的两栏 Shell，搜索卡片右边缘必须与 Main Area / Context Panel 分割线对齐，允许误差不超过 `4px`；筛选控件位于右侧 trailing/context 轨道。
+- 返回按钮占用独立 leading 列；搜索占据其后的全部可用主列；筛选和少量上下文操作固定在 trailing 列，不得把搜索缩成短输入框。
+- Quick Entries 不以成组图标占用 Top Bar；它们保留在 Context Panel、Actions 或专用入口中。Top Bar trailing 只保留筛选和当前上下文必需操作。
 - trailing 操作不得挤压搜索框到不可输入。
 - Top Bar 必须保持单行。筛选、状态和 trailing 操作不得换行，不得移动到第二行，也不得用 `grid-column: 1 / -1` 做窄屏兜底。
 - 窄屏空间不足时，优先压缩搜索宽度、限制 trailing 最大宽度、隐藏次要状态文本、使用图标按钮或把低频动作收进菜单；不得通过增加 Top Bar 高度解决。
@@ -221,6 +227,10 @@ Top Bar 包含搜索、返回、筛选和少量上下文操作。
 滚动规则：
 
 - Shell 外层不做页面级滚动。
+- Main Area 在几何上延伸到 Top/Bottom Bar 背后；上下栏使用单层自适应磨砂材质、
+  细边缘高光和短距离 scroll-edge fade。禁止在整个 Shell 与上下栏重复叠加 blur。
+- 内容滚动容器使用与上下栏等高的安全 inset；滚动时内容可以进入栏后并被材质柔化，
+  初始内容和键盘滚动落点不得被栏遮挡。
 - 内容列表、详情、Context Panel 各自管理滚动。
 - 左右栏滚动互不影响。
 - 任意宽度下不得产生横向页面滚动。
@@ -402,6 +412,10 @@ Esc 级联统一通过 `useEscBack`：
 - 异步结果和错误使用适当的 `aria-live`，频繁进度不得持续打断屏幕阅读器。
 - 表单错误与输入控件通过 `aria-describedby` / `aria-invalid` 关联。
 - Focus ring 不得被 `outline: none` 无替代地移除；键盘操作必须能到达所有真实动作。
+- 多栏内容使用 QxShell 区域协议：左右键切换可见区域，上下键处理区域内部导航或阅读滚动；
+  `Cmd/Ctrl+K` 仅在当前 Shell 有 Actions 时拦截，且不得重置区域、条目或滚动位置。
+- 除用户明确启用的全局功能外，不得注册系统级快捷键；QxShell 的 Esc、方向键、
+  `Cmd/Ctrl+K` 和裸键动作只在当前窗口当前 Shell 的事件链中处理。
 - 状态不得只靠颜色表达；至少同时提供文字、图标、形状或数值之一。
 - 自动化最低要求：静态 a11y 检查 + 关键 Shell/Dialog 的键盘人工验收。
 
@@ -423,6 +437,8 @@ Esc 级联统一通过 `useEscBack`：
 - Apple 系统应用中文名字典位于 `src-tauri/src/apps_zh_dict.rs`，按 `CFBundleIdentifier` 索引；新增条目时第一项默认作为该 app 的 zh-Hans 展示名（仅在没有 lproj 名时使用）。
 
 ## Native And Tauri Constraints
+
+- QxAI 内置供应商按 OpenRouter、DeepSeek 排序，OpenRouter 是默认供应商；内置供应商固定 API endpoint 和推荐模型，设置界面只要求用户填写对应 API Key。DuckDuckGo 不属于内置供应商目录。
 
 - Tauri v2 通信使用 `@tauri-apps/api/core` 的 `invoke`。
 - 文件路径展示必须通过 `convertFileSrc()`，禁止直接拼 `file://`。

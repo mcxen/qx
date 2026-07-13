@@ -7,6 +7,10 @@
   --qx-shell-glass-region-opacity: 0.03;
   --qx-shell-overlay-region-opacity: 0.06;
   --qx-shell-popover-opacity: 0.28;
+  --qx-shell-chrome-blur: 24px;
+  --qx-shell-chrome-saturation: 165%;
+  --qx-shell-scroll-edge-size: 18px;
+  --qx-shell-scroll-edge-opacity: 0.16;
   --qx-surface-opacity-1: 0.48;
   --qx-surface-opacity-2: 0.38;
   --qx-surface-opacity-3: 0.30;
@@ -89,6 +93,9 @@
   --qx-glass-bg: 250, 250, 250;
   --qx-glass-border: rgba(0, 0, 0, 0.06);
   --qx-glass-shadow: rgba(0, 0, 0, 0.04);
+  --qx-shell-chrome-highlight: rgba(255, 255, 255, 0.58);
+  --qx-shell-chrome-shadow: rgba(0, 0, 0, 0.08);
+  --qx-shell-scroll-edge-opacity: 0.18;
   --qx-shadow: #000000;
 
   --qx-accent: var(--qx-blue-600);
@@ -212,6 +219,9 @@
   --qx-glass-bg: 10, 10, 10;
   --qx-glass-border: rgba(255, 255, 255, 0.06);
   --qx-glass-shadow: rgba(0, 0, 0, 0.3);
+  --qx-shell-chrome-highlight: rgba(255, 255, 255, 0.10);
+  --qx-shell-chrome-shadow: rgba(0, 0, 0, 0.34);
+  --qx-shell-scroll-edge-opacity: 0.14;
   --qx-shadow: #000000;
 
   --qx-accent: var(--qx-blue-600);

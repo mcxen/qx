@@ -322,8 +322,14 @@ export default function ArticleList() {
     setScrollPercent(0);
   }, []);
 
+  const focusRegion = useCallback((id: string) => {
+    shellRef.current
+      ?.querySelector<HTMLElement>(`[data-qx-region="${id}"]`)
+      ?.focus({ preventScroll: true });
+  }, []);
+
   const openArticleAtTop = useCallback(
-    async (id: number) => {
+    async (id: number, focusReader = false) => {
       const index = articles.findIndex((article) => article.id === id);
       if (index >= 0) setSelectedIndex(index);
       resetArticleScroll();
@@ -331,10 +337,14 @@ export default function ArticleList() {
       resetArticleScroll();
       window.requestAnimationFrame(() => {
         resetArticleScroll();
-        window.requestAnimationFrame(resetArticleScroll);
+        if (focusReader) focusRegion("rss-reader");
+        window.requestAnimationFrame(() => {
+          resetArticleScroll();
+          if (focusReader) focusRegion("rss-reader");
+        });
       });
     },
-    [articles, openArticle, resetArticleScroll, setSelectedIndex],
+    [articles, focusRegion, openArticle, resetArticleScroll, setSelectedIndex],
   );
 
   useEffect(() => {
@@ -397,14 +407,21 @@ export default function ArticleList() {
     escKeyDown(e);
     if (e.key === "Escape") return;
     const ignoreBare = shouldIgnoreBareShortcut(e.nativeEvent);
+    const region = e.target instanceof Element
+      ? e.target.closest<HTMLElement>("[data-qx-region]")?.dataset.qxRegion
+      : undefined;
     switch (e.key) {
       case "ArrowDown":
+        if (region === "rss-reader" || region === "rss-actions") return;
         e.preventDefault();
         setSelectedIndex(articles.length > 0 ? Math.min(selectedIndex + 1, articles.length - 1) : 0);
+        focusRegion("rss-list");
         break;
       case "ArrowUp":
+        if (region === "rss-reader" || region === "rss-actions") return;
         e.preventDefault();
         setSelectedIndex(Math.max(selectedIndex - 1, 0));
+        focusRegion("rss-list");
         break;
       case "j":
         if (ignoreBare || e.metaKey || e.ctrlKey) return;
@@ -419,9 +436,10 @@ export default function ArticleList() {
         else setSelectedIndex(Math.max(selectedIndex - 1, 0));
         break;
       case "Enter": {
+        if (region === "rss-reader" || region === "rss-actions") return;
         e.preventDefault();
         const a = articles[selectedIndex];
-        if (a) void openArticleAtTop(a.id);
+        if (a) void openArticleAtTop(a.id, true);
         break;
       }
     }
@@ -576,7 +594,13 @@ export default function ArticleList() {
               window.localStorage.setItem(RSS_CONTEXT_WIDTH_KEY, String(DEFAULT_RSS_CONTEXT_WIDTH));
             }}
           />
-          <div className="qx-action-panel qx-rss-context-content">
+          <div
+            className="qx-action-panel qx-rss-context-content"
+            data-qx-region="rss-actions"
+            data-qx-region-label="Article actions"
+            data-qx-region-scroll
+            tabIndex={-1}
+          >
             <div className="qx-action-title">Article Actions</div>
             {actions.map((action, index) => (
               <button
@@ -612,7 +636,14 @@ export default function ArticleList() {
         ref={splitRef}
         className={`qx-content-split qx-rss-article-split${currentArticle ? " has-detail" : ""}`}
       >
-        <div className="qx-content-list qx-plugin-list">
+        <div
+          className="qx-content-list qx-plugin-list"
+          data-qx-region="rss-list"
+          data-qx-region-label="Article list"
+          data-qx-region-initial="true"
+          data-qx-region-scroll
+          tabIndex={-1}
+        >
           {sections.map((section) => (
             <div key={section.key}>
               <div className="qx-section-header">
@@ -687,7 +718,12 @@ export default function ArticleList() {
           }}
         />
 
-        <article className="qx-content-detail qx-plugin-detail qx-rss-detail-content">
+        <article
+          className="qx-content-detail qx-plugin-detail qx-rss-detail-content"
+          data-qx-region="rss-reader"
+          data-qx-region-label="Article reader"
+          tabIndex={-1}
+        >
           {currentArticle ? (
             <>
               <div className="qx-detail-header">
@@ -697,7 +733,7 @@ export default function ArticleList() {
                 </div>
                 <span className="qx-badge">{currentArticle.is_starred ? "Starred" : currentArticle.is_read ? "Read" : "Unread"}</span>
               </div>
-              <div ref={scrollRef} className="qx-content-detail-scroll">
+              <div ref={scrollRef} className="qx-content-detail-scroll" data-qx-region-scroll>
                 <h1
                   style={{
                     fontSize: Math.min(article_font_size + 4, 26),

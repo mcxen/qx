@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { useRssStore, type RssFeed } from "./store";
 import { useSettingsStore } from "../settings/store";
@@ -29,6 +29,7 @@ export default function RssPanel() {
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [editFeed, setEditFeed] = useState<RssFeed | null>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void loadFeeds();
@@ -65,16 +66,28 @@ export default function RssPanel() {
   const onKeyDown = (e: React.KeyboardEvent) => {
     escKeyDown(e);
     if (e.key === "Escape") return;
+    const region = e.target instanceof Element
+      ? e.target.closest<HTMLElement>("[data-qx-region]")?.dataset.qxRegion
+      : undefined;
     switch (e.key) {
       case "ArrowDown":
+        if (region === "rss-feed-actions") return;
         e.preventDefault();
-        setSelectedIndex(Math.min(selectedIndex + 1, filtered.length - 1));
+        setSelectedIndex(filtered.length > 0 ? Math.min(selectedIndex + 1, filtered.length - 1) : 0);
+        shellRef.current
+          ?.querySelector<HTMLElement>('[data-qx-region="rss-feeds"]')
+          ?.focus({ preventScroll: true });
         break;
       case "ArrowUp":
+        if (region === "rss-feed-actions") return;
         e.preventDefault();
         setSelectedIndex(Math.max(selectedIndex - 1, 0));
+        shellRef.current
+          ?.querySelector<HTMLElement>('[data-qx-region="rss-feeds"]')
+          ?.focus({ preventScroll: true });
         break;
       case "Enter":
+        if (region === "rss-feed-actions") return;
         e.preventDefault();
         if (selectedFeed) void openFeed(selectedFeed.id);
         break;
@@ -146,6 +159,7 @@ export default function RssPanel() {
 
   return (
     <QxShell
+      ref={shellRef}
       title="RSS Reader"
       className="qx-rss-shell"
       onKeyDown={onKeyDown}
@@ -173,7 +187,13 @@ export default function RssPanel() {
         </>
       }
       context={
-        <div className="qx-action-panel">
+        <div
+          className="qx-action-panel"
+          data-qx-region="rss-feed-actions"
+          data-qx-region-label="Feed actions"
+          data-qx-region-scroll
+          tabIndex={-1}
+        >
           <div className="qx-action-title">Feed Actions</div>
           <button
             className="qx-action-item"
@@ -231,7 +251,14 @@ export default function RssPanel() {
       actionTitle="Feed Actions"
       actions={actions}
     >
-      <div className="qx-plugin-list qx-rss-feed-list">
+      <div
+        className="qx-plugin-list qx-rss-feed-list"
+        data-qx-region="rss-feeds"
+        data-qx-region-label="Feed list"
+        data-qx-region-initial="true"
+        data-qx-region-scroll
+        tabIndex={-1}
+      >
         <div className="qx-section-header">
           <span style={{ flex: 1 }}>Subscriptions</span>
           <span>{filtered.length}</span>

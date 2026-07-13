@@ -1,8 +1,8 @@
 !macro NSIS_HOOK_POSTINSTALL
   DetailPrint "Installing the Qx Everything indexing service"
   nsExec::ExecToLog '"$INSTDIR\resources\search\everything.exe" -instance Qx -install-service'
-  DetailPrint "Starting the Qx Everything background index"
-  nsExec::ExecToLog '"$INSTDIR\resources\search\everything.exe" -instance Qx -startup -app-data -no-update-notification'
+  ; Qx starts its Everything instance asynchronously on first launch. Starting
+  ; the persistent process through nsExec would make NSIS wait for it to exit.
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

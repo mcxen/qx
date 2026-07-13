@@ -333,6 +333,18 @@ fn setup_frosted_glass(app: &tauri::App) {
     );
 }
 
+#[cfg(target_os = "windows")]
+fn setup_frosted_glass(app: &tauri::App) {
+    use tauri::Manager;
+    let Some(win) = app.get_webview_window("main") else {
+        return;
+    };
+    // Acrylic is the Windows counterpart to the macOS vibrancy material.
+    // Remote Desktop and older Windows builds may reject it; the stronger CSS
+    // surface opacity remains the deliberate fallback in that case.
+    let _ = window_vibrancy::apply_acrylic(&win, None);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     std::panic::set_hook(Box::new(|info| {
@@ -365,6 +377,15 @@ pub fn run() {
         .on_window_event(|window, event| {
             if window.label() != floating_panel::MAIN_LABEL {
                 return;
+            }
+            #[cfg(target_os = "windows")]
+            if matches!(event, tauri::WindowEvent::Focused(false))
+                && settings::read_settings().general.auto_hide_on_blur
+            {
+                // WebView2 focus notifications can arrive after a topmost,
+                // transparent HWND has already consumed an outside click.
+                // Hide from the native event so the selected app can surface.
+                let _ = window.hide();
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Qx is a background helper. Closing the launcher must only
@@ -403,7 +424,7 @@ pub fn run() {
             // made the minimum shrink on Windows displays above 100% scaling.
             let _ = win.set_min_size(Some(LogicalSize::new(480, 360)));
 
-            #[cfg(target_os = "macos")]
+            #[cfg(any(target_os = "macos", target_os = "windows"))]
             setup_frosted_glass(app);
 
             // Hide from dock and promote the main window into a
@@ -669,6 +690,8 @@ pub fn run() {
             g4f::qxai_chat_with_tools,
             g4f::qxai_list_providers,
             g4f::qxai_fetch_models,
+            g4f::qxai_get_builtin_provider_credentials,
+            g4f::qxai_save_builtin_provider_credentials,
             g4f::qxai_get_custom_providers,
             g4f::qxai_save_custom_providers,
         ])

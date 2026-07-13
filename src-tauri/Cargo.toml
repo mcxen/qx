@@ -1,6 +1,6 @@
 [package]
 name = "qx"
-version = "0.5.2"
+version = "0.5.3"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -62,6 +62,7 @@ search-cancel = { path = "vendor/cardinal/search-cancel" }
 fswalk = { path = "vendor/cardinal/fswalk" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
+window-vibrancy = "0.6"
 windows-sys = { version = "0.59", features = [
   "Win32_Foundation",
   "Win32_System_DataExchange",

@@ -47,7 +47,7 @@
 
 | 文件 | 说明 |
 |---|---|
-| `g4f.rs` | 内置 provider catalog（DuckDuckGo 等）+ OpenAI-compatible BYOK；`qxai_stream_chat_events` 起线程通过 `qxai://stream` 事件回推 chunk |
+| `g4f.rs` | 内置 OpenRouter（默认）与 DeepSeek BYOK provider + 自定义 OpenAI-compatible BYOK；内置供应商固定 endpoint/model，用户只保存 API Key；`qxai_stream_chat_events` 起线程通过 `qxai://stream` 事件回推 chunk |
 | `plugin_api.rs` | 面向插件的受控 AI 入口：`plugin_ai_chat/stream_chat/run_bash/grep_search/memory_*`；bash 子进程强制 timeout 且用 `bash -lc` 白名单 |
 | `http_client.rs` | 复用的 reqwest 客户端（异步和 blocking 两份），设置 UA / timeout / accept-encoding |
 

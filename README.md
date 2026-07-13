@@ -10,7 +10,7 @@ Qx is a **background-resident desktop launcher** for macOS and Windows, inspired
 
 Built with **Tauri v2**, **React 19**, **TypeScript**, and a shared **Rust** core. Platform adapters provide native clipboard files and system information through AppKit/Mach on macOS and Win32 on Windows, while the frontend uses the same commands and data models on both systems.
 
-> **Status**: v0.5.1 — active development
+> **Status**: v0.5.3 — active development
 
 ---
 
@@ -23,7 +23,7 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, and a shared **Rust** cor
 | **Screen Recording** | Region-based GIF recording at 15fps (gifski), auto-saves to history |
 | **RSS Reader** | Add feeds, inline article reading, star/bookmark, OPML import/export, background auto-refresh |
 | **Weather** | Real-time weather display with location auto-detection, provider config, caching for instant launch, and background refresh |
-| **QxAI** | Built-in AI chat assistant with multi-provider support (DuckDuckGo, BYOK OpenAI-compatible), streaming responses, persistent memory, and per-conversation model switching |
+| **QxAI** | Built-in AI chat assistant with OpenRouter (default), DeepSeek, and custom OpenAI-compatible BYOK providers, streaming responses, persistent memory, and per-conversation model switching |
 | **V2EX** | Browse and search v2ex.com topics (latest/hot), read articles inline with HTML sanitization, node-based filtering |
 | **Macros** | Record and replay keyboard/mouse macro sequences |
 | **Dev Tools** | Text / JSON / Markdown utility tools |
@@ -48,7 +48,7 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, and a shared **Rust** cor
 | **Animation** | Framer Motion v12 |
 | **Backend** | Rust (async via tokio, Tauri commands) |
 | **Database** | SQLite via rusqlite (apps cache, clipboard history, RSS, plugin data) |
-| **AI Runtime** | Multi-provider chat (DuckDuckGo, custom OpenAI-compatible), streaming, agent tool-calling with gating |
+| **AI Runtime** | Multi-provider chat (OpenRouter, DeepSeek, custom OpenAI-compatible), streaming, agent tool-calling with gating |
 | **i18n** | English / Simplified Chinese |
 | **Plugin Runtime** | Sandboxed iframe + postMessage RPC bridge with `context.ai` SDK |
 
@@ -213,7 +213,7 @@ Type anything into the search bar. Results include:
 
 **RSS Reader** — search `rss`. Add feeds by URL, read articles inline with a detail pane, star to bookmark. Supports OPML import/export.
 
-**QxAI** — search `qxai`. Built-in AI chat assistant supporting multi-turn conversations with streaming responses. Configure providers in Settings → QxAI: the built-in DuckDuckGo provider works out of the box; add custom OpenAI-compatible providers (BYOK) with auto-fetched model lists. Each conversation can switch provider/model independently. Persistent memory stores user preferences accessible to both QxAI and plugins.
+**QxAI** — search `qxai`. Built-in AI chat assistant supporting multi-turn conversations with streaming responses. Configure providers in Settings → QxAI: add only your API key for the built-in OpenRouter (default) or DeepSeek provider, or add a custom OpenAI-compatible provider (BYOK) with auto-fetched model lists. Each conversation can switch provider/model independently. Persistent memory stores user preferences accessible to both QxAI and plugins.
 
 **V2EX** — search `v2ex`. Browse v2ex.com topics in latest or hot mode, search by keyword, and read articles with rendered HTML inline. Configure a V2EX API token and favorite nodes in the module preferences for extended features.
 
@@ -369,7 +369,7 @@ src-tauri/                    # Rust backend
 │   ├── apps.rs               # App scanning + fuzzy search
 │   ├── clipboard.rs          # Clipboard listener + SQLite history
 │   ├── screencap.rs          # Screen recording to GIF (scrap + gifski)
-│   ├── g4f.rs                # AI provider abstraction (DuckDuckGo + custom BYOK)
+│   ├── g4f.rs                # AI providers (OpenRouter + DeepSeek + custom BYOK)
 │   ├── plugin_api.rs         # Plugin AI runtime (bash, grep, memory, tasks)
 │   ├── rss/                  # RSS module (fetcher, storage, types)
 │   ├── settings/mod.rs       # TOML settings + global shortcuts + agent config
@@ -439,7 +439,7 @@ Qx 是一款运行于 macOS 和 Windows 的后台桌面启动器，通过全局�
 
 基于 **Tauri v2** + **React 19** + **TypeScript** + 共享 **Rust** 核心。macOS 使用 AppKit/Mach，Windows 使用 Win32 平台适配层；两端共享相同的前端命令、剪贴板模型、RSS 和系统信息模型。
 
-> **版本**: v0.5.1 — 活跃开发中
+> **版本**: v0.5.3 — 活跃开发中
 
 ## 功能特性
 
@@ -450,7 +450,7 @@ Qx 是一款运行于 macOS 和 Windows 的后台桌面启动器，通过全局�
 | **录屏** | 选择区域录制为 GIF（15fps，gifski 编码），自动保存历史 |
 | **RSS 阅读器** | 添加订阅源、内联阅读、收藏、OPML 导入/导出、后台自动刷新 |
 | **天气** | 实时天气显示，支持自动定位、多 provider 切换、缓存秒开和后台刷新 |
-| **QxAI** | 内置 AI 聊天助手，支持多 provider（DuckDuckGo、自定义 BYOK）、流式输出、持久记忆、会话内切换模型 |
+| **QxAI** | 内置 AI 聊天助手，支持 OpenRouter（默认）、DeepSeek 与自定义 BYOK、流式输出、持久记忆、会话内切换模型 |
 | **V2EX** | 浏览和搜索 v2ex.com 话题（最新/热门），内联阅读文章，节点过滤 |
 | **宏录制** | 录制和回放键盘/鼠标宏序列 |
 | **开发者工具** | 文本 / JSON / Markdown 实用工具 |

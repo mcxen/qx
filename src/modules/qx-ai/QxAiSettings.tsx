@@ -4,7 +4,13 @@ import QxShell from "../../components/QxShell";
 import type { BottomIslandContent } from "../../components/QxBottomIsland";
 import { LoadingLabel, Skeleton, Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
-import { useG4fStore, type CustomProvider } from "./store";
+import { useT } from "../../i18n";
+import {
+  useG4fStore,
+  type BuiltInProviderCredential,
+  type CustomProvider,
+  type G4fProvider,
+} from "./store";
 
 interface AiMemoryEntry {
   id: string;
@@ -12,6 +18,96 @@ interface AiMemoryEntry {
   tags: string[];
   createdAt: number;
   updatedAt: number;
+}
+
+function BuiltInProviderKeys({
+  providers,
+  credentials,
+  onSave,
+}: {
+  providers: G4fProvider[];
+  credentials: BuiltInProviderCredential[];
+  onSave: (id: string, apiKey: string) => Promise<void>;
+}) {
+  const t = useT();
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setDrafts(Object.fromEntries(credentials.map((item) => [item.id, item.apiKey])));
+  }, [credentials]);
+
+  return (
+    <div style={{ borderTop: "1px solid var(--qx-border-1)", paddingTop: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+        {t("qxai.builtinKeys", "Built-in Provider Keys")}
+      </div>
+      <div style={{ fontSize: 12, color: "var(--qx-text-secondary)", marginBottom: 10 }}>
+        {t(
+          "qxai.builtinKeys.desc",
+          "Qx manages the endpoint and recommended models. Add only your API key.",
+        )}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {providers.map((provider) => {
+          const savedKey = credentials.find((item) => item.id === provider.id)?.apiKey ?? "";
+          const draft = drafts[provider.id] ?? "";
+          const isSaving = savingId === provider.id;
+          return (
+            <div
+              key={provider.id}
+              style={{
+                background: "var(--qx-bg-component-2)",
+                borderRadius: "var(--qx-card-radius)",
+                padding: 12,
+              }}
+            >
+              <div style={{ fontWeight: 600, marginBottom: 2 }}>{provider.name}</div>
+              <div style={{ fontSize: 11, color: "var(--qx-text-tertiary)", marginBottom: 8 }}>
+                {provider.baseUrl}
+              </div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="password"
+                  value={draft}
+                  onChange={(event) =>
+                    setDrafts((current) => ({ ...current, [provider.id]: event.target.value }))
+                  }
+                  placeholder={provider.id === "openrouter" ? "sk-or-v1-..." : "sk-..."}
+                  aria-label={`${provider.name} API Key`}
+                  className="qx-inline-input"
+                  style={{ flex: 1, minWidth: 0 }}
+                />
+                <button
+                  className="qx-command-button primary"
+                  disabled={isSaving || draft === savedKey}
+                  onClick={() => {
+                    setSavingId(provider.id);
+                    setSaveError(null);
+                    void onSave(provider.id, draft)
+                      .catch((error) => setSaveError(String(error)))
+                      .finally(() => setSavingId(null));
+                  }}
+                >
+                  {isSaving
+                    ? t("qxai.key.saving", "Saving...")
+                    : draft.trim()
+                      ? t("qxai.key.save", "Save Key")
+                      : t("qxai.key.remove", "Remove Key")}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {saveError && (
+        <div role="alert" style={{ color: "var(--qx-danger)", fontSize: 12, marginTop: 8 }}>
+          {saveError}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function AddProviderForm({
@@ -151,8 +247,10 @@ function AddProviderForm({
 }
 
 export default function QxAiSettings() {
+  const t = useT();
   const {
     builtInProviders,
+    builtInCredentials,
     customProviders,
     loading,
     error,
@@ -164,6 +262,7 @@ export default function QxAiSettings() {
     setCurrentModel,
     setView,
     loadProviders,
+    saveBuiltInProviderKey,
     addCustomProvider,
     removeCustomProvider,
     updateCustomProvider,
@@ -392,6 +491,20 @@ export default function QxAiSettings() {
             </div>
           )}
         </div>
+
+        {/* Built-in provider credentials */}
+        <BuiltInProviderKeys
+          providers={builtInProviders}
+          credentials={builtInCredentials}
+          onSave={async (id, apiKey) => {
+            await saveBuiltInProviderKey(id, apiKey);
+            flashSaved(
+              apiKey.trim()
+                ? t("qxai.key.saved", "API key saved")
+                : t("qxai.key.removed", "API key removed"),
+            );
+          }}
+        />
 
         {/* Default system prompt */}
         <div>

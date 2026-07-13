@@ -1,7 +1,7 @@
 /* ====== Clipboard Panel ====== */
 .qx-clipboard-shell {
-  display: flex;
-  flex-direction: column;
+  --qx-topbar-h: 56px;
+  display: grid;
   flex: 1;
   min-height: 0;
   color: var(--qx-text-primary);
@@ -13,7 +13,7 @@
   height: 56px;
   min-height: 56px;
   max-height: 56px;
-  overflow: hidden;
+  overflow: visible;
   padding: 8px 12px;
   gap: 10px;
   border-bottom: 1px solid var(--qx-border-1);
@@ -102,16 +102,10 @@
 }
 
 .qx-clipboard-search-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  height: 38px;
   min-height: 38px;
-  min-width: 0;
+  gap: 8px;
   padding: 0 10px;
-  border: 1px solid var(--qx-border-1);
-  border-radius: 8px;
-  background: var(--qx-bg-component-1);
-  transition: background-color 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 .qx-clipboard-search-wrap .qx-search-icon {
@@ -131,11 +125,6 @@
   font-size: 14px;
   font-weight: 500;
   letter-spacing: 0;
-}
-
-.qx-clipboard-search-wrap:focus-within {
-  border-color: var(--qx-accent);
-  box-shadow: 0 0 0 2px var(--qx-accent-soft);
 }
 
 .qx-clipboard-search::placeholder {
@@ -206,12 +195,12 @@
   grid-template-columns: 24px minmax(0, 1fr);
   gap: 8px;
   min-height: 38px;
-  padding: 6px 8px;
+  padding: 6px 8px 6px 52px;
   border-radius: 6px;
 }
 
 .qx-clipboard-list .qx-list-row.is-active {
-  background: var(--qx-bg-component-3);
+  background: color-mix(in srgb, var(--qx-accent) 9%, var(--qx-bg-component-2));
 }
 
 .qx-clipboard-row-icon {
@@ -225,6 +214,7 @@
 
 .qx-clipboard-type-icon {
   flex: 0 0 auto;
+  color: inherit;
 }
 
 .qx-clipboard-type-icon.is-pin,
@@ -232,25 +222,8 @@
   color: var(--qx-accent);
 }
 
-.qx-clipboard-type-icon.is-links {
-  color: var(--chart-5);
-}
-
-.qx-clipboard-type-icon.is-code {
-  color: var(--chart-3);
-}
-
-.qx-clipboard-type-icon.is-long {
-  color: var(--muted-foreground);
-}
-
-.qx-clipboard-type-icon.is-image {
-  color: var(--chart-1);
-}
-
-.qx-clipboard-type-icon.is-text,
-.qx-clipboard-type-icon.is-frequent {
-  color: var(--qx-text-secondary);
+.qx-clipboard-list .qx-list-row.is-active .qx-clipboard-row-icon {
+  color: var(--qx-accent);
 }
 
 .qx-clipboard-row-copy {
@@ -547,6 +520,10 @@
   .qx-clipboard-filter .qx-shadcn-select-trigger {
     height: 36px;
   }
+
+  .qx-clipboard-list .qx-list-row {
+    padding-left: 48px;
+  }
 }
 
 @media (max-width: 700px) {
@@ -578,6 +555,7 @@
 
   .qx-clipboard-list .qx-list-row {
     min-height: 38px;
+    padding-left: 46px;
     border-radius: 6px;
   }
 

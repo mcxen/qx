@@ -36,6 +36,8 @@ export default function ShellActionMenu({
         className="qx-actions-popover"
         role="menu"
         aria-label={title}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
       >
       <div className="qx-actions-popover-title">{title}</div>
       {actions.map((action, index) => (

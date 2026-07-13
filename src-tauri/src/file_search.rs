@@ -202,15 +202,26 @@ mod platform {
 mod platform {
     use super::*;
     use std::collections::HashMap;
+    use std::ffi::OsStr;
+    use std::os::windows::process::CommandExt;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
+    use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
     const EVERYTHING_INSTANCE: &str = "Qx";
     const CACHE_TTL: Duration = Duration::from_secs(20);
     static EVERYTHING_READY: AtomicBool = AtomicBool::new(false);
     static QUERY_CACHE: OnceLock<Mutex<HashMap<String, (Instant, Vec<AppEntry>)>>> =
         OnceLock::new();
+
+    fn background_command(program: impl AsRef<OsStr>) -> Command {
+        let mut command = Command::new(program);
+        // Qx is a GUI helper. Console-based sidecars such as es.exe must never
+        // surface a terminal window while the user types a search query.
+        command.creation_flags(CREATE_NO_WINDOW);
+        command
+    }
 
     pub fn init_platform() {
         QUERY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
@@ -220,7 +231,7 @@ mod platform {
                 let Some(everything) = find_everything_engine() else {
                     return;
                 };
-                let _ = Command::new(everything)
+                let _ = background_command(everything)
                     .args([
                         "-instance",
                         EVERYTHING_INSTANCE,
@@ -278,7 +289,7 @@ mod platform {
 
     fn query_everything(query: &str, limit: usize) -> Option<Vec<AppEntry>> {
         let es = find_everything_cli()?;
-        let output = Command::new(es)
+        let output = background_command(es)
             .args([
                 "-instance",
                 EVERYTHING_INSTANCE,

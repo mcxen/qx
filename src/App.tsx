@@ -25,6 +25,7 @@ import {
 import { loadClipboardEntryById, pasteClipboardEntryAtCursor } from "./modules/clipboard/actions";
 import { useEscBack } from "./hooks/useEscBack";
 import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./lib/logger";
+import { getQxDesktopPlatform } from "./utils/keyboard";
 import "./App.css";
 
 const ClipboardPanel = lazy(() => import("./modules/clipboard/ClipboardPanel"));
@@ -629,15 +630,38 @@ function App() {
   useEffect(() => {
     const shellRadius = Math.min(8, Math.max(4, settings.appearance.border_radius));
     const controlRadius = Math.min(6, Math.max(4, settings.appearance.border_radius));
-    const opacity = Math.min(0.4, Math.max(0.05, settings.appearance.blur_opacity));
-    const regionOpacity = Math.min(0.16, Math.max(0.02, opacity * 0.32));
-    const elevatedRegionOpacity = Math.min(0.20, Math.max(0.03, opacity * 0.46));
-    const glassRegionOpacity = Math.min(0.12, Math.max(0.015, opacity * 0.24));
-    const overlayRegionOpacity = Math.min(0.18, Math.max(0.025, opacity * 0.38));
-    const popoverOpacity = Math.min(0.54, Math.max(0.20, opacity + 0.14));
-    const surfaceOpacity1 = Math.min(0.78, Math.max(0.28, opacity * 1.55));
-    const surfaceOpacity2 = Math.min(0.66, Math.max(0.22, opacity * 1.28));
-    const surfaceOpacity3 = Math.min(0.58, Math.max(0.18, opacity * 1.05));
+    const configuredOpacity = Math.min(0.4, Math.max(0.05, settings.appearance.blur_opacity));
+    const opacityScale = (configuredOpacity - 0.05) / 0.35;
+    const isWindows = getQxDesktopPlatform() === "windows";
+
+    // WebView2 does not reproduce macOS vibrancy from CSS backdrop-filter.
+    // Keep Windows surfaces substantially more opaque while preserving the
+    // full settings slider range; native Acrylic remains an optional backdrop.
+    const opacity = isWindows ? 0.82 + opacityScale * 0.14 : configuredOpacity;
+    const regionOpacity = isWindows
+      ? 0.76 + opacityScale * 0.16
+      : Math.min(0.16, Math.max(0.02, opacity * 0.32));
+    const elevatedRegionOpacity = isWindows
+      ? 0.82 + opacityScale * 0.14
+      : Math.min(0.20, Math.max(0.03, opacity * 0.46));
+    const glassRegionOpacity = isWindows
+      ? 0.70 + opacityScale * 0.18
+      : Math.min(0.12, Math.max(0.015, opacity * 0.24));
+    const overlayRegionOpacity = isWindows
+      ? 0.78 + opacityScale * 0.16
+      : Math.min(0.18, Math.max(0.025, opacity * 0.38));
+    const popoverOpacity = isWindows
+      ? 0.90 + opacityScale * 0.08
+      : Math.min(0.54, Math.max(0.20, opacity + 0.14));
+    const surfaceOpacity1 = isWindows
+      ? 0.90 + opacityScale * 0.08
+      : Math.min(0.78, Math.max(0.28, opacity * 1.55));
+    const surfaceOpacity2 = isWindows
+      ? 0.84 + opacityScale * 0.12
+      : Math.min(0.66, Math.max(0.22, opacity * 1.28));
+    const surfaceOpacity3 = isWindows
+      ? 0.78 + opacityScale * 0.14
+      : Math.min(0.58, Math.max(0.18, opacity * 1.05));
     document.documentElement.style.setProperty(
       "--qx-canvas-opacity",
       String(opacity),

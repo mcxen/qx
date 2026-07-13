@@ -345,7 +345,9 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
           const pluginShortcuts = plugin.manifest?.shortcuts || [];
           const registeredShortcuts: string[] = [];
           for (const shortcut of pluginShortcuts) {
-            if (shortcut.enabled === false || !shortcut.key || !shortcut.command) continue;
+            // A plugin shortcut is process-global. Never reserve a system key
+            // unless the manifest/user has explicitly enabled that binding.
+            if (shortcut.enabled !== true || !shortcut.key || !shortcut.command) continue;
             const portableKey = toPortableGlobalShortcut(shortcut.key);
             const command = result.commands.find((cmd) => cmd.name === shortcut.command);
             if (!command) continue;

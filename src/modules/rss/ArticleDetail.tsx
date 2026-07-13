@@ -96,7 +96,9 @@ export default function ArticleDetail() {
   useLayoutEffect(() => {
     if (!scrollRef.current) return;
     resetArticleScroll();
-    shellRef.current?.focus({ preventScroll: true });
+    shellRef.current
+      ?.querySelector<HTMLElement>('[data-qx-region="rss-reader"]')
+      ?.focus({ preventScroll: true });
     const frame = window.requestAnimationFrame(updateScrollProgress);
     return () => window.cancelAnimationFrame(frame);
   }, [currentArticle?.id, cleanContent, resetArticleScroll, updateScrollProgress]);
@@ -247,7 +249,13 @@ export default function ArticleDetail() {
         </div>
       }
       context={
-        <aside className="qx-action-panel">
+        <aside
+          className="qx-action-panel"
+          data-qx-region="rss-actions"
+          data-qx-region-label="Article actions"
+          data-qx-region-scroll
+          tabIndex={-1}
+        >
           <div className="qx-action-title">Detail Nav</div>
           {actions.map((a, i) => (
             <button key={i} className="qx-action-item" onClick={a.onClick} disabled={a.disabled}>
@@ -274,7 +282,13 @@ export default function ArticleDetail() {
       actionTitle="Article Actions"
       actions={actions}
     >
-      <article className="qx-plugin-detail qx-rss-detail-content">
+      <article
+        className="qx-plugin-detail qx-rss-detail-content"
+        data-qx-region="rss-reader"
+        data-qx-region-label="Article reader"
+        data-qx-region-initial="true"
+        tabIndex={-1}
+      >
         <div className="qx-detail-header">
           <div style={{ minWidth: 0 }}>
             <div className="qx-detail-title">{feed?.title || "Article"}</div>
@@ -284,6 +298,7 @@ export default function ArticleDetail() {
         </div>
         <div
           ref={scrollRef}
+          data-qx-region-scroll
           style={{ flex: 1, overflowY: "auto", padding: "10px 12px 16px", overflowAnchor: "none" }}
         >
           <h1

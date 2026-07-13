@@ -147,8 +147,9 @@ Keyboard events flow from the most specific state to the broadest fallback:
    select-all, undo, IME, and composition behavior.
 2. Open dialogs, previews, popovers, and action menus handle their own keys.
 3. The feature view handles its Esc cascade and feature-only commands.
-4. `QxShell.navigation` handles list movement and disclosure.
-5. QxShell runs visible action shortcuts and its final Esc action.
+4. `data-qx-region` areas handle left/right region selection and reading scroll.
+5. `QxShell.navigation` handles list movement and disclosure.
+6. QxShell runs visible action shortcuts and its final Esc action.
 
 Use the standard navigation mapping:
 
@@ -159,6 +160,19 @@ Use the standard navigation mapping:
 - `ArrowLeft`: close details or preview.
 - `Enter`: execute the primary/open action supplied by the feature.
 - `Cmd+K` on macOS or `Ctrl+K` on Windows: open the shell action menu.
+
+Region navigation uses `data-qx-region="stable-id"` on each focusable area,
+`data-qx-region-initial="true"` on the preferred starting area, and
+`data-qx-region-scroll` on its scroll container. Left/right moves only among
+visible regions. Arrow/Page/Space/Home/End scroll a reading region after the
+feature view declines the event. Opening the Actions menu must not change the
+active region, selected item, or reading position.
+
+Shell shortcuts are local responder-chain events. Do not register `Cmd/Ctrl+K`,
+region arrows, bare action keys, or Esc as process-global shortcuts. The only
+default global binding is launcher recall; clipboard, RSS, recording, app, and
+plugin shortcuts must be explicitly enabled before registration. A mounted but
+hidden worker/plugin must never reserve host or system keys.
 
 Never add a process-wide Esc monitor to compensate for a missing feature handler.
 A global monitor can steal Esc from system dialogs, editors, IME, menus, and other

@@ -5,7 +5,6 @@ import { useSettingsStore } from "../settings/store";
 import {
   type AgentStep,
   getEnabledTools,
-  runReactAgent,
   runFunctionCallingAgent,
 } from "./react-agent";
 
@@ -30,6 +29,8 @@ export interface G4fProvider {
   id: string;
   name: string;
   models: { id: string; name: string }[];
+  baseUrl?: string;
+  requiresApiKey?: boolean;
 }
 
 export interface CustomProvider {
@@ -38,6 +39,11 @@ export interface CustomProvider {
   baseUrl: string;
   apiKey: string;
   models: { id: string; name: string }[];
+}
+
+export interface BuiltInProviderCredential {
+  id: string;
+  apiKey: string;
 }
 
 interface StreamEvent {
@@ -99,6 +105,7 @@ interface G4fStore {
   conversations: G4fConversation[];
   currentConversationId: string | null;
   builtInProviders: G4fProvider[];
+  builtInCredentials: BuiltInProviderCredential[];
   customProviders: CustomProvider[];
   loading: boolean;
   streaming: boolean;
@@ -130,6 +137,7 @@ interface G4fStore {
   clearMessages: () => void;
 
   loadProviders: () => Promise<void>;
+  saveBuiltInProviderKey: (id: string, apiKey: string) => Promise<void>;
   getCurrentConversation: () => G4fConversation | undefined;
 
   // BYOK
@@ -256,6 +264,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   conversations: [],
   currentConversationId: null,
   builtInProviders: [],
+  builtInCredentials: [],
   customProviders: [],
   loading: false,
   streaming: false,
@@ -420,8 +429,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           defaultSystemPrompt;
         const nonSystem = titledConv.messages.filter((m) => m.role !== "system");
 
-        const useFunctionCalling = selection.provider.startsWith("custom:");
-        const runAgent = useFunctionCalling ? runFunctionCallingAgent : runReactAgent;
+        const runAgent = runFunctionCallingAgent;
 
         const result = await runAgent({
           messages: nonSystem,
@@ -531,10 +539,11 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     }
     set({ loading: true, error: null });
     try {
-      const providers = await invoke<G4fProvider[]>("qxai_list_providers");
-      const customProviders = await invoke<CustomProvider[]>(
-        "qxai_get_custom_providers",
-      );
+      const [providers, customProviders, builtInCredentials] = await Promise.all([
+        invoke<G4fProvider[]>("qxai_list_providers"),
+        invoke<CustomProvider[]>("qxai_get_custom_providers"),
+        invoke<BuiltInProviderCredential[]>("qxai_get_builtin_provider_credentials"),
+      ]);
       const builtInProviders = providers.filter((provider) => !provider.id.startsWith("custom:"));
       const customProvidersWithModels = customProviders.map((provider) => {
         const catalogProvider = providers.find((item) => item.id === provider.id);
@@ -545,6 +554,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       const combinedProviders = buildProviders(builtInProviders, customProvidersWithModels);
       set({
         builtInProviders,
+        builtInCredentials,
         customProviders: customProvidersWithModels,
         providers: combinedProviders,
         loading: false,
@@ -565,6 +575,21 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   getCurrentConversation: () => {
     const { currentConversationId, conversations } = get();
     return conversations.find((c) => c.id === currentConversationId);
+  },
+
+  saveBuiltInProviderKey: async (id, apiKey) => {
+    const previousCredentials = get().builtInCredentials;
+    const credentials = previousCredentials.filter((item) => item.id !== id);
+    if (apiKey.trim()) credentials.push({ id, apiKey: apiKey.trim() });
+    set({ builtInCredentials: credentials, error: null });
+    if (isTauriRuntime()) {
+      try {
+        await invoke("qxai_save_builtin_provider_credentials", { credentials });
+      } catch (error) {
+        set({ builtInCredentials: previousCredentials, error: String(error) });
+        throw error;
+      }
+    }
   },
 
   // BYOK actions

@@ -54,7 +54,7 @@ export default function AgentSettings() {
   }, [allProviders]);
 
   const effectiveProvider =
-    agent.default_provider ||
+    allProviders.find((provider) => provider.id === agent.default_provider)?.id ||
     currentProvider ||
     providerOptions.find((option) => !option.disabled)?.value ||
     "";
@@ -65,7 +65,7 @@ export default function AgentSettings() {
     label: model.name,
   }));
   const effectiveModel =
-    agent.default_model ||
+    selectedProvider?.models.find((model) => model.id === agent.default_model)?.id ||
     (currentProvider === effectiveProvider ? currentModel : "") ||
     modelOptions[0]?.value ||
     "";

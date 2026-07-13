@@ -199,9 +199,9 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   shortcuts: {
     toggle_launcher: { key: "Alt+Space", enabled: true },
-    clipboard: { key: "Alt+V", enabled: true },
-    record_gif: { key: "Alt+G", enabled: true },
-    rss: { key: "Alt+R", enabled: true },
+    clipboard: { key: "Alt+V", enabled: false },
+    record_gif: { key: "Alt+G", enabled: false },
+    rss: { key: "Alt+R", enabled: false },
   },
   app_shortcuts: {},
   plugins: [],
@@ -219,8 +219,8 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   agent: {
     agent_mode_enabled: false,
-    default_provider: "",
-    default_model: "",
+    default_provider: "openrouter",
+    default_model: "openrouter/auto",
     model_tools_enabled: false,
     tools_enabled: false,
     memory_tool_enabled: true,
