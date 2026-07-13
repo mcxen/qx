@@ -127,7 +127,17 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-assets
-          merge-multiple: true
+
+      - name: Flatten release assets
+        shell: bash
+        run: |
+          find release-assets -type f -print0 | while IFS= read -r -d '' asset; do
+            target="release-assets/$(basename "$asset")"
+            if [ "$asset" != "$target" ]; then
+              mv "$asset" "$target"
+            fi
+          done
+          find release-assets -mindepth 1 -type d -empty -delete
 
       - name: List release assets
         run: find release-assets -type f -maxdepth 2 -print
