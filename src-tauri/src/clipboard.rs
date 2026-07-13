@@ -93,9 +93,43 @@ fn current_pasteboard_file_path() -> Option<String> {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn current_pasteboard_file_path() -> Option<String> {
     None
+}
+
+#[cfg(target_os = "windows")]
+fn current_pasteboard_file_path() -> Option<String> {
+    use windows_sys::Win32::System::DataExchange::{
+        CloseClipboard, GetClipboardData, OpenClipboard,
+    };
+    use windows_sys::Win32::UI::Shell::DragQueryFileW;
+
+    const CF_HDROP: u32 = 15;
+    unsafe {
+        if OpenClipboard(std::ptr::null_mut()) == 0 {
+            return None;
+        }
+        let handle = GetClipboardData(CF_HDROP);
+        if handle.is_null() {
+            CloseClipboard();
+            return None;
+        }
+        let length = DragQueryFileW(handle, 0, std::ptr::null_mut(), 0);
+        if length == 0 {
+            CloseClipboard();
+            return None;
+        }
+        let mut buffer = vec![0u16; length as usize + 1];
+        let copied = DragQueryFileW(handle, 0, buffer.as_mut_ptr(), buffer.len() as u32);
+        CloseClipboard();
+        if copied == 0 {
+            return None;
+        }
+        buffer.truncate(copied as usize);
+        let path = PathBuf::from(String::from_utf16_lossy(&buffer));
+        path.exists().then(|| path.to_string_lossy().to_string())
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -305,9 +339,15 @@ fn write_rgba_image_to_clipboard(rgba: Vec<u8>, width: u32, height: u32) -> Resu
         .map_err(|e| format!("write clipboard image: {e}"))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn clipboard_change_count() -> Option<i64> {
     None // format probing not available on this platform
+}
+
+#[cfg(target_os = "windows")]
+fn clipboard_change_count() -> Option<i64> {
+    let value = unsafe { windows_sys::Win32::System::DataExchange::GetClipboardSequenceNumber() };
+    (value != 0).then_some(i64::from(value))
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -1275,9 +1315,67 @@ fn write_file_to_clipboard(path: &Path) -> Result<(), String> {
         .ok_or_else(|| "write file clipboard failed".to_string())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn write_file_to_clipboard(_path: &Path) -> Result<(), String> {
     Err("file clipboard is currently supported on macOS".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn write_file_to_clipboard(path: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Foundation::GlobalFree;
+    use windows_sys::Win32::System::DataExchange::{
+        CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
+    };
+    use windows_sys::Win32::System::Memory::{
+        GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE,
+    };
+    use windows_sys::Win32::UI::Shell::DROPFILES;
+
+    const CF_HDROP: u32 = 15;
+    let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+    wide.push(0);
+    wide.push(0);
+    let header_size = std::mem::size_of::<DROPFILES>();
+    let total_size = header_size + wide.len() * std::mem::size_of::<u16>();
+
+    unsafe {
+        let allocation = GlobalAlloc(GMEM_MOVEABLE, total_size);
+        if allocation.is_null() {
+            return Err("allocate Windows file clipboard data failed".to_string());
+        }
+        let data = GlobalLock(allocation);
+        if data.is_null() {
+            GlobalFree(allocation);
+            return Err("lock Windows file clipboard data failed".to_string());
+        }
+        let header = DROPFILES {
+            pFiles: header_size as u32,
+            pt: Default::default(),
+            fNC: 0,
+            fWide: 1,
+        };
+        std::ptr::write_unaligned(data.cast::<DROPFILES>(), header);
+        std::ptr::copy_nonoverlapping(
+            wide.as_ptr().cast::<u8>(),
+            data.cast::<u8>().add(header_size),
+            wide.len() * std::mem::size_of::<u16>(),
+        );
+        GlobalUnlock(allocation);
+
+        if OpenClipboard(std::ptr::null_mut()) == 0 {
+            GlobalFree(allocation);
+            return Err("open Windows clipboard failed".to_string());
+        }
+        EmptyClipboard();
+        let result = SetClipboardData(CF_HDROP, allocation);
+        CloseClipboard();
+        if result.is_null() {
+            GlobalFree(allocation);
+            return Err("set Windows file clipboard data failed".to_string());
+        }
+    }
+    Ok(())
 }
 
 #[command]

@@ -60,3 +60,13 @@ core-graphics = "0.21"
 search-cache = { path = "vendor/cardinal/search-cache" }
 search-cancel = { path = "vendor/cardinal/search-cancel" }
 fswalk = { path = "vendor/cardinal/fswalk" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_System_SystemInformation",
+  "Win32_System_Threading",
+  "Win32_UI_Shell",
+] }

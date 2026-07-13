@@ -156,8 +156,49 @@ fn serial_number() -> String {
         .unwrap_or_else(|| "Not available".to_string())
 }
 
+#[cfg(target_os = "windows")]
+fn powershell(script: &str) -> Result<String, String> {
+    command_output(
+        "powershell.exe",
+        &[
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            script,
+        ],
+    )
+}
+
 #[tauri::command]
 pub fn qx_system_information_check_system_info() -> Result<QxSystemInfo, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let raw = powershell("$cpu=(Get-CimInstance Win32_Processor|Select-Object -First 1 -ExpandProperty Name);$os=Get-CimInstance Win32_OperatingSystem;$bios=Get-CimInstance Win32_BIOS;[pscustomobject]@{chip=$cpu;memory=[uint64]$os.TotalVisibleMemorySize*1024;caption=$os.Caption;version=$os.Version;serial=$bios.SerialNumber}|ConvertTo-Json -Compress")?;
+        let value: serde_json::Value = serde_json::from_str(raw.trim())
+            .map_err(|e| format!("parse Windows system information: {e}"))?;
+        return Ok(QxSystemInfo {
+            hostname: std::env::var("COMPUTERNAME").unwrap_or_else(|_| "Unknown".to_string()),
+            chip: value["chip"]
+                .as_str()
+                .unwrap_or("Unknown")
+                .trim()
+                .to_string(),
+            memory: format_gb(value["memory"].as_u64().unwrap_or(0)),
+            mac_os: format!(
+                "{} ({})",
+                value["caption"].as_str().unwrap_or("Windows"),
+                value["version"].as_str().unwrap_or("Unknown")
+            ),
+            kernel: value["version"].as_str().unwrap_or("Unknown").to_string(),
+            serial_number: value["serial"]
+                .as_str()
+                .unwrap_or("Not available")
+                .trim()
+                .to_string(),
+        });
+    }
+
     let version = macos_version();
     let kernel = command_output("/usr/bin/uname", &["-r"])
         .map(|s| s.trim().to_string())
@@ -178,6 +219,31 @@ pub fn qx_system_information_check_system_info() -> Result<QxSystemInfo, String>
 
 #[tauri::command]
 pub fn qx_system_information_check_storage() -> Result<QxStorageInfo, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let raw = powershell("$drive=Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='$env:SystemDrive'\";[pscustomobject]@{size=[uint64]$drive.Size;free=[uint64]$drive.FreeSpace}|ConvertTo-Json -Compress")?;
+        let value: serde_json::Value = serde_json::from_str(raw.trim())
+            .map_err(|e| format!("parse Windows storage information: {e}"))?;
+        let total = value["size"].as_u64().unwrap_or(0);
+        let free = value["free"].as_u64().unwrap_or(0);
+        let used = total.saturating_sub(free);
+        let percent = if total == 0 {
+            0.0
+        } else {
+            used as f64 / total as f64 * 100.0
+        };
+        let total_s = format_gb(total);
+        let used_s = format_gb(used);
+        let free_s = format_gb(free);
+        return Ok(QxStorageInfo {
+            total: total_s.clone(),
+            used: used_s.clone(),
+            free: free_s.clone(),
+            percent_used: format!("{percent:.2}%"),
+            summary: format!("{used_s} used of {total_s} ({free_s} available)"),
+        });
+    }
+
     let stdout = command_output("/bin/df", &["-k", "/"])?;
     let line = stdout
         .lines()
@@ -219,6 +285,27 @@ pub fn qx_system_information_check_storage() -> Result<QxStorageInfo, String> {
 
 #[tauri::command]
 pub fn qx_system_information_check_network() -> Result<QxNetworkInfo, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let raw = powershell("@(Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -ne '127.0.0.1' -and $_.AddressState -eq 'Preferred'} | Select-Object InterfaceAlias,IPAddress)|ConvertTo-Json -Compress")?;
+        let value: serde_json::Value = serde_json::from_str(raw.trim())
+            .map_err(|e| format!("parse Windows network information: {e}"))?;
+        let items = value.as_array().cloned().unwrap_or_default();
+        let devices = items
+            .into_iter()
+            .filter_map(|item| {
+                Some(QxNetworkDevice {
+                    name: item["InterfaceAlias"].as_str()?.to_string(),
+                    ip: item["IPAddress"].as_str()?.to_string(),
+                })
+            })
+            .collect::<Vec<_>>();
+        return Ok(QxNetworkInfo {
+            count: devices.len(),
+            devices,
+        });
+    }
+
     let stdout = command_output("/sbin/ifconfig", &[])?;
     let mut current_name = String::new();
     let mut devices = Vec::new();
@@ -369,6 +456,12 @@ pub fn qx_system_information_kill_process(pid: u32) -> Result<QxKillProcessResul
     if pid == 0 || pid == std::process::id() {
         return Err("Refusing to terminate this process".to_string());
     }
+    #[cfg(target_os = "windows")]
+    let status = Command::new("taskkill.exe")
+        .args(["/PID", &pid.to_string(), "/T"])
+        .status()
+        .map_err(|e| format!("run taskkill: {e}"))?;
+    #[cfg(not(target_os = "windows"))]
     let status = Command::new("/bin/kill")
         .arg(pid.to_string())
         .status()
