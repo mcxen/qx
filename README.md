@@ -1,14 +1,14 @@
-# Qx — macOS Productivity Launcher
+# Qx — macOS & Windows Productivity Launcher
 
 <img src="README.assets/%E5%B7%B2%E7%94%9F%E6%88%90%E5%9B%BE%E5%83%8F%202.png" alt="Qx app icon" width="160" />
 
-**English** | [中文](#qx--macos-效率启动器)
+**English** | [中文](#qx--macos--windows-效率启动器)
 
-Qx is a **menu-bar resident desktop launcher** for macOS, inspired by Raycast. It pops up with a global hotkey, giving you instant access to search, clipboard history, screen recording (GIF), RSS feeds, AI chat, V2EX browsing, macros, and more — all within a unified, keyboard-first interface.
+Qx is a **background-resident desktop launcher** for macOS and Windows, inspired by Raycast. It appears on demand through a global hotkey, giving you instant access to search, clipboard history, RSS feeds, system information, AI chat, utilities, and more — all within a unified, keyboard-first interface.
 
 
 
-Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the macOS native frosted-glass appearance, Mach kernel APIs for system stats, and vendored native search for fast file lookups.
+Built with **Tauri v2**, **React 19**, **TypeScript**, and a shared **Rust** core. Platform adapters provide native clipboard files and system information through AppKit/Mach on macOS and Win32 on Windows, while the frontend uses the same commands and data models on both systems.
 
 > **Status**: v0.5.0 — active development
 
@@ -19,7 +19,7 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the
 | Module | Description |
 |--------|-------------|
 | **Launcher** | Fuzzy-search installed apps, files, built-in commands, plugin actions, and user aliases/tags |
-| **Clipboard** | Persisted clipboard history with text/image support, pinning, filtering, inline preview |
+| **Clipboard** | Persisted text/image/file history, native file copy-out, pinning, filtering, metadata, and inline preview |
 | **Screen Recording** | Region-based GIF recording at 15fps (gifski), auto-saves to history |
 | **RSS Reader** | Add feeds, inline article reading, star/bookmark, OPML import/export, background auto-refresh |
 | **Weather** | Real-time weather display with location auto-detection, provider config, caching for instant launch, and background refresh |
@@ -33,7 +33,7 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the
 | **AI Agent Settings** | Configure AI agent mode, default provider/model, tool toggles (bash, grep, memory, MCP, background tasks), and bash/grep execution parameters |
 | **Weather Settings** | Configure weather provider (Open-Meteo / OpenWeatherMap), location override, and auto-refresh interval |
 | **OCR Settings** | Download and manage OCR recognition models (languages, versions) |
-| **Settings** | General, appearance (light/dark/system theme with Geist design system), keyboard shortcuts, macOS permissions, plugin management |
+| **Settings** | General, appearance (light/dark/system theme with Geist design system), keyboard shortcuts, platform permissions, plugin management |
 
 ---
 
@@ -41,7 +41,7 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the
 
 | Layer | Technology |
 |-------|-----------|
-| **Desktop Shell** | [Tauri v2](https://v2.tauri.app) (macOS private API, tray icon, frosted glass) |
+| **Desktop Shell** | [Tauri v2](https://v2.tauri.app) (macOS and Windows, tray/helper lifecycle, native window effects) |
 | **Frontend** | React 19 + TypeScript + Vite 7 |
 | **Styling** | Tailwind CSS v4 + CSS custom properties (Geist-inspired 10-step design tokens) |
 | **State** | Zustand (global, plugin registry, per-module stores) |
@@ -64,6 +64,12 @@ Built with **Tauri v2**, **React 19**, **TypeScript**, and **Rust**. It uses the
 | `rusqlite` | App data persistence |
 | `battery` | Battery / power status |
 | `objc2` / `core-graphics` | macOS native APIs |
+| `windows-sys` | Windows clipboard, CPU, memory, and native system APIs |
+
+On Windows, the installer includes the official Everything engine and ES client.
+Qx runs an isolated background index named `Qx`, caches hot queries asynchronously,
+and removes its indexing service during uninstall. Everything is distributed under
+its MIT license; the license text is included with the installed resources.
 | `window-vibrancy` | Frosted glass effect |
 | `ed25519-dalek` | Plugin signature verification |
 
@@ -138,7 +144,7 @@ The Dynamic Island is always centered via `position: absolute; left: 50%; transf
 
 ## Installation
 
-### Homebrew (recommended)
+### macOS — Homebrew (recommended)
 
 ```bash
 brew tap mcxen/qx
@@ -147,12 +153,18 @@ brew install --cask qx
 
 > **Note for users in China**: If GitHub is inaccessible, use SSH: `git clone git@github.com:mcxen/homebrew-qx.git /opt/homebrew/Library/Taps/mcxen/homebrew-qx`
 
-### Manual
+### Manual — macOS
 
 1. Download `qx_<version>_aarch64-apple-darwin.app.zip` from [Releases](https://github.com/mcxen/qx/releases)
 2. Unzip and move `Qx.app` to `/Applications`
 3. Right-click → Open (first launch needs Gatekeeper override)
 4. Qx lives in the menu bar — click the icon or press the global hotkey to open
+
+### Manual — Windows x64
+
+1. Download the Windows NSIS `.exe` installer from [Releases](https://github.com/mcxen/qx/releases).
+2. Run the installer and launch Qx once to finish first-run setup.
+3. After onboarding, Qx stays in the background until summoned by its configured global hotkey.
 
 ### Update
 
@@ -169,7 +181,7 @@ brew upgrade --cask qx
 
 | Action | Default Shortcut |
 |--------|-----------------|
-| Toggle Qx window | `⌘Space` (configurable in Settings → Shortcuts) |
+| Toggle Qx window | `Option+Space` on macOS; configurable platform shortcut on Windows |
 
 ### Launcher
 
@@ -195,7 +207,7 @@ Type anything into the search bar. Results include:
 
 ### Modules
 
-**Clipboard** — every copy is saved automatically. Open via `⌘⇧V` or search `clipboard`. Supports text, images, pinning, and type filtering.
+**Clipboard** — every copy is saved automatically. Open it from the launcher or its configured shortcut. It supports text, images, real file entries, native copy-out to Finder/Explorer, pinning, filtering, metadata, and inline file preview.
 
 **Screen Recording** — search `gif` / `screencap`. Region-select and record up to 180s. Output is auto-encoded to animated GIF via gifski.
 
@@ -269,7 +281,7 @@ Qx includes a conversion script (`scripts/convert-raycast-extension.mjs`) that t
 
 - [Rust](https://rustup.rs) (edition 2021)
 - Node.js ≥ 20
-- macOS 14+ (for Tauri v2 + macOS private APIs)
+- macOS 14+ with Xcode Command Line Tools, or Windows 10/11 x64 with MSVC Build Tools and WebView2
 
 ### Setup
 
@@ -421,11 +433,11 @@ Source-available — see [LICENSE](./LICENSE) for full terms.
 
 ---
 
-# Qx — macOS 效率启动器
+# Qx — macOS & Windows 效率启动器
 
-Qx 是一款常驻菜单栏的 macOS 桌面启动器，类 Raycast 风格，通过全局快捷键唤起。集搜索、剪贴板历史、GIF 录屏、RSS 阅读、天气、AI 聊天、V2EX 浏览、OCR、宏录制等功能于一体。
+Qx 是一款运行于 macOS 和 Windows 的后台桌面启动器，通过全局快捷键唤起。集搜索、剪贴板历史、RSS 阅读、系统信息、天气、AI 聊天、V2EX 浏览、OCR 和实用工具等功能于一体。
 
-基于 **Tauri v2** + **React 19** + **TypeScript** + **Rust**，使用 macOS 原生毛玻璃效果、Mach 内核 API 获取系统状态。
+基于 **Tauri v2** + **React 19** + **TypeScript** + 共享 **Rust** 核心。macOS 使用 AppKit/Mach，Windows 使用 Win32 平台适配层；两端共享相同的前端命令、剪贴板模型、RSS 和系统信息模型。
 
 > **版本**: v0.5.0 — 活跃开发中
 
@@ -433,8 +445,8 @@ Qx 是一款常驻菜单栏的 macOS 桌面启动器，类 Raycast 风格，通�
 
 | 模块 | 说明 |
 |------|------|
-| **启动器** | 模糊搜索应用、文件、内置命令、插件动作和用户别名/标签 |
-| **剪贴板** | 持久化历史记录，支持文本/图片、置顶、筛选和内联预览 |
+| **启动器** | 模糊搜索应用、文件、内置命令、插件动作和用户别名/标签；Windows 内置 Everything 全盘索引 |
+| **剪贴板** | 持久化文本/图片/真实文件记录，支持原生复制、置顶、筛选、元信息和内联预览 |
 | **录屏** | 选择区域录制为 GIF（15fps，gifski 编码），自动保存历史 |
 | **RSS 阅读器** | 添加订阅源、内联阅读、收藏、OPML 导入/导出、后台自动刷新 |
 | **天气** | 实时天气显示，支持自动定位、多 provider 切换、缓存秒开和后台刷新 |
@@ -448,11 +460,11 @@ Qx 是一款常驻菜单栏的 macOS 桌面启动器，类 Raycast 风格，通�
 | **AI Agent 设置** | 配置 AI Agent 模式、默认 provider/模型、工具开关（bash、grep、记忆、MCP、后台任务等） |
 | **天气设置** | 配置天气 provider（Open-Meteo / OpenWeatherMap）、位置覆盖和自动刷新间隔 |
 | **OCR 设置** | 下载和管理 OCR 识别模型（语言、版本） |
-| **设置** | 通用、外观（亮色/暗色/跟随系统，Geist 设计系统）、快捷键、macOS 权限、插件管理 |
+| **设置** | 通用、外观（亮色/暗色/跟随系统，Geist 设计系统）、快捷键、平台权限、插件管理 |
 
 ## 安装
 
-### Homebrew（推荐）
+### macOS — Homebrew（推荐）
 
 ```bash
 brew tap mcxen/qx
@@ -462,6 +474,8 @@ brew install --cask qx
 ### 手动安装
 
 从 [Releases](https://github.com/mcxen/qx/releases) 下载并安装。
+
+macOS 用户下载 `.app.zip`；Windows x64 用户下载 NSIS `.exe` 安装程序。首次启动完成引导后，Qx 将在后台等待配置的全局快捷键召回。
 
 ## 权限
 

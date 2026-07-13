@@ -59,10 +59,13 @@ fn entry_from_path_with_kind(path: &str, is_dir: bool) -> AppEntry {
 
 #[cfg(target_os = "windows")]
 fn resource_bin(name: &str) -> Option<PathBuf> {
-    RESOURCE_DIR
-        .get()
-        .map(|dir| dir.join("search").join(name))
-        .filter(|path| path.exists())
+    let dir = RESOURCE_DIR.get()?;
+    [
+        dir.join("search").join(name),
+        dir.join("resources").join("search").join(name),
+    ]
+    .into_iter()
+    .find(|path| path.exists())
 }
 
 #[cfg(target_os = "macos")]
@@ -198,30 +201,106 @@ mod platform {
 #[cfg(target_os = "windows")]
 mod platform {
     use super::*;
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
 
-    pub fn init_platform() {}
+    const EVERYTHING_INSTANCE: &str = "Qx";
+    const CACHE_TTL: Duration = Duration::from_secs(20);
+    static EVERYTHING_READY: AtomicBool = AtomicBool::new(false);
+    static QUERY_CACHE: OnceLock<Mutex<HashMap<String, (Instant, Vec<AppEntry>)>>> =
+        OnceLock::new();
+
+    pub fn init_platform() {
+        QUERY_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+        std::thread::Builder::new()
+            .name("qx-everything-cache".to_string())
+            .spawn(|| {
+                let Some(everything) = find_everything_engine() else {
+                    return;
+                };
+                let _ = Command::new(everything)
+                    .args([
+                        "-instance",
+                        EVERYTHING_INSTANCE,
+                        "-startup",
+                        "-app-data",
+                        "-no-update-notification",
+                    ])
+                    .spawn();
+
+                // Everything builds and persists its own filesystem database in
+                // the background. Probe IPC without holding up Tauri setup.
+                for _ in 0..60 {
+                    if query_everything("qx-ready-probe", 1).is_some() {
+                        EVERYTHING_READY.store(true, Ordering::Release);
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(250));
+                }
+            })
+            .ok();
+    }
 
     pub fn search_platform(query: &str, limit: usize) -> Vec<AppEntry> {
-        let Some(es) = find_everything_cli() else {
-            return Vec::new();
-        };
-        let output = Command::new(es)
-            .args(["-n", &limit.to_string(), query])
-            .output();
-
-        let Ok(output) = output else {
-            return Vec::new();
-        };
-        if !output.status.success() {
-            return Vec::new();
+        let cache_key = format!("{limit}\0{}", query.to_lowercase());
+        if EVERYTHING_READY.load(Ordering::Acquire) {
+            if let Some(cache) = QUERY_CACHE.get() {
+                let guard = cache
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                if let Some((created, results)) = guard.get(&cache_key) {
+                    if created.elapsed() <= CACHE_TTL {
+                        return results.clone();
+                    }
+                }
+            }
         }
 
-        String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .take(limit)
-            .map(super::entry_from_path)
-            .collect()
+        // A query can also make progress while the initial readiness probe is
+        // running. ES returns immediately when IPC is unavailable.
+        let results = query_everything(query, limit).unwrap_or_default();
+        if !results.is_empty() {
+            EVERYTHING_READY.store(true, Ordering::Release);
+        }
+        if EVERYTHING_READY.load(Ordering::Acquire) {
+            if let Some(cache) = QUERY_CACHE.get() {
+                let mut guard = cache
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                guard.retain(|_, (created, _)| created.elapsed() <= CACHE_TTL);
+                guard.insert(cache_key, (Instant::now(), results.clone()));
+            }
+        }
+        results
+    }
+
+    fn query_everything(query: &str, limit: usize) -> Option<Vec<AppEntry>> {
+        let es = find_everything_cli()?;
+        let output = Command::new(es)
+            .args([
+                "-instance",
+                EVERYTHING_INSTANCE,
+                "-n",
+                &limit.to_string(),
+                "-utf8",
+                query,
+            ])
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+
+        Some(
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .filter(|line| !line.trim().is_empty())
+                .take(limit)
+                .map(super::entry_from_path)
+                .collect(),
+        )
     }
 
     fn find_everything_cli() -> Option<PathBuf> {
@@ -236,6 +315,19 @@ mod platform {
             .iter()
             .map(PathBuf::from)
             .find(|path| path.exists())
+    }
+
+    fn find_everything_engine() -> Option<PathBuf> {
+        if let Some(path) = resource_bin("everything.exe") {
+            return Some(path);
+        }
+        [
+            r"C:\Program Files\Everything\Everything.exe",
+            r"C:\Program Files (x86)\Everything\Everything.exe",
+        ]
+        .iter()
+        .map(PathBuf::from)
+        .find(|path| path.exists())
     }
 }
 

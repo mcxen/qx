@@ -12,6 +12,7 @@ dist
 dist-ssr
 src-tauri/target
 src-tauri/target/
+src-tauri/resources/search/
 *.app
 *.dmg
 *.app.zip

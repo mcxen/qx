@@ -60,6 +60,12 @@
     "macOS": {
       "entitlements": "Entitlements.plist",
       "infoPlist": "Info.plist"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "installerHooks": "./windows/hooks.nsh"
+      }
     }
   }
 }
