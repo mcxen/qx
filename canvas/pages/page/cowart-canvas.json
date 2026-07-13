@@ -1,0 +1,90 @@
+{
+  "schema": {
+    "schemaVersion": 2,
+    "sequences": {
+      "com.tldraw.store": 5,
+      "com.tldraw.asset": 1,
+      "com.tldraw.camera": 1,
+      "com.tldraw.document": 2,
+      "com.tldraw.instance": 26,
+      "com.tldraw.instance_page_state": 5,
+      "com.tldraw.page": 1,
+      "com.tldraw.instance_presence": 6,
+      "com.tldraw.pointer": 1,
+      "com.tldraw.shape": 4,
+      "com.tldraw.user": 1,
+      "com.tldraw.asset.image": 6,
+      "com.tldraw.asset.video": 5,
+      "com.tldraw.asset.bookmark": 2,
+      "com.tldraw.shape.arrow": 8,
+      "com.tldraw.shape.bookmark": 2,
+      "com.tldraw.shape.draw": 4,
+      "com.tldraw.shape.embed": 4,
+      "com.tldraw.shape.frame": 1,
+      "com.tldraw.shape.geo": 11,
+      "com.tldraw.shape.group": 0,
+      "com.tldraw.shape.highlight": 3,
+      "com.tldraw.shape.image": 5,
+      "com.tldraw.shape.line": 5,
+      "com.tldraw.shape.note": 12,
+      "com.tldraw.shape.text": 4,
+      "com.tldraw.shape.video": 4,
+      "com.tldraw.binding.arrow": 1
+    }
+  },
+  "store": {
+    "page:page": {
+      "meta": {},
+      "id": "page:page",
+      "name": "Page 1",
+      "index": "a1",
+      "typeName": "page"
+    },
+    "asset:ig_0e541f45da04a153016a49e16808d881999e3f0f9af91647b9": {
+      "id": "asset:ig_0e541f45da04a153016a49e16808d881999e3f0f9af91647b9",
+      "typeName": "asset",
+      "type": "image",
+      "props": {
+        "name": "ig_0e541f45da04a153016a49e16808d881999e3f0f9af91647b9.png",
+        "src": "/page-assets/page/ig_0e541f45da04a153016a49e16808d881999e3f0f9af91647b9.png",
+        "w": 1563,
+        "h": 1006,
+        "fileSize": 893289,
+        "mimeType": "image/png",
+        "isAnimated": false
+      },
+      "meta": {
+        "source": "codex-imagegen",
+        "purpose": "settings-layout-draft"
+      }
+    },
+    "shape:ig_0e541f45da04a153016a49e16808d881999e3f0f9af91647b9": {
+      "x": 0,
+      "y": 0,
+      "rotation": 0,
+      "isLocked": false,
+      "opacity": 1,
+      "meta": {
+        "cowartGeneratedStandalone": true,
+        "kind": "settings-layout-draft",
+        "prompt": "Qx settings interface layout draft: top bar, settings navigation, content region, auxiliary context panel, centered bottom island"
+      },
+      "id": "shape:ig_0e541f45da04a153016a49e16808d881999e3f0f9af91647b9",
+      "type": "image",
+      "props": {
+        "w": 960,
+        "h": 599,
+        "assetId": "asset:ig_0e541f45da04a153016a49e16808d881999e3f0f9af91647b9",
+        "playing": true,
+        "url": "",
+        "crop": null,
+        "flipX": false,
+        "flipY": false,
+        "altText": "Qx settings interface layout draft wireframe"
+      },
+      "parentId": "page:page",
+      "index": "a0",
+      "typeName": "shape"
+    }
+  }
+}

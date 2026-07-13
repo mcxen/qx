@@ -1,23 +1,25 @@
 # Qx — Technical Architecture Document
 
-> 桌面启动器（Raycast 风格）| Tauri v2 + React + TypeScript + Rust  
-> 项目路径: `~/Documents/OpenSpring/Qx/`  
-> 作者: mcxen
+> 状态：Current · 适用版本：v0.4.61 · Owner：Core · 最后复核：2026-07-10
+>
+> 桌面启动器（Raycast 风格）| Tauri v2 + React + TypeScript + Rust
+>
+> 事实来源：`package.json`、`src/`、`src-tauri/src/`
 
 ---
 
 ## 1. 项目概述
 
-Qx 是一个跨平台桌面启动器，定位为 Raycast / Alfred 的开源替代。核心功能包括：应用搜索与启动、剪贴板历史、RSS 阅读器、屏幕录制 (GIF)、宏录制播放、插件市场。
+Qx 是一个以 macOS 为当前交付平台的桌面启动器，定位为 Raycast / Alfred 的开源替代。核心功能包括：应用搜索与启动、剪贴板历史、RSS 阅读器、AI、屏幕录制、宏录制、插件市场以及外接显示器控制。Windows/Linux 仍是方向性规划，不代表当前已具备可交付兼容性。
 
 ### 技术栈
 
 | 层 | 技术 | 版本 |
 |---|------|------|
 | 桌面框架 | Tauri v2 | 2.x |
-| 前端 | React + TypeScript | 18+ |
+| 前端 | React + TypeScript | React 19 / TypeScript 5.8 |
 | 构建 | Vite | 7.x |
-| 状态管理 | Zustand | 4.x |
+| 状态管理 | Zustand | 5.x |
 | CSS | 自定义 CSS Variables (Geist 风格) | — |
 | 后端 | Rust | — |
 | 音频/视频 | scrap (录屏) + gifski (GIF编码) | 最新 |
@@ -43,10 +45,12 @@ Qx/
 │   │   └── ui.tsx               # Kbd, LinkButton 等
 │   ├── modules/
 │   │   ├── clipboard/            # 剪贴板历史
-│   │   ├── scrrencap/            # 屏幕录制 (GIF)
+│   │   ├── screencap/            # 屏幕录制 (GIF)
 │   │   ├── rss/                  # RSS 阅读器
+│   │   ├── qx-ai/                # AI 对话、工具与设置
 │   │   ├── macros/               # 宏录制与回放
-│   │   └── settings/             # 设置界面
+│   │   ├── weather/              # 天气与定位
+│   │   └── settings/             # 设置、权限、外接显示器与扩展管理
 │   └── plugin/                   # 插件系统
 │       ├── types.ts              # 插件类型定义
 │       ├── registry.ts           # 插件注册中心 (Zustand)
@@ -61,6 +65,10 @@ Qx/
 │       ├── clipboard.rs          # 剪贴板监听 + SQLite 持久化
 │       ├── screencap.rs          # 屏幕录制 (scrap + gifski)
 │       ├── macro_recorder.rs     # 宏捕捉与回放 (rdev + enigo)
+│       ├── diagnostics.rs        # 诊断日志与日志路径
+│       ├── display_monitor.rs    # 显示器插拔监听
+│       ├── external_displays.rs  # DDC 驱动、显示器枚举与控制
+│       ├── updater.rs            # 更新检查与下载安装
 │       ├── settings/             # 设置读写 (JSON)
 │       │   ├── mod.rs
 │       │   └── ...

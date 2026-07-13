@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { QxShellAction } from "./ShellActionButton";
-import { Popover, PopoverAnchor, PopoverContent } from "./shadcn/popover";
+import { Popover, PopoverAnchor, PopoverContent } from "./ui";
 
 export default function ShellActionMenu({
   title,

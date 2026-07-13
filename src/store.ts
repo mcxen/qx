@@ -15,6 +15,7 @@ export interface ClipboardEntry {
   pinned: boolean;
   copy_count: number;
   image_path?: string | null;
+  file_path?: string | null;
 }
 
 /** History entry (launches) */

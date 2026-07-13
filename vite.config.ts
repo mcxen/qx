@@ -14,6 +14,27 @@ export default defineConfig(async () => ({
     },
   },
 
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return;
+          if (
+            id.includes("/react/") ||
+            id.includes("/react-dom/") ||
+            id.includes("/scheduler/") ||
+            id.includes("/zustand/")
+          ) {
+            return "vendor-react";
+          }
+          if (id.includes("/@radix-ui/")) return "vendor-radix";
+          if (id.includes("/lucide-react/")) return "vendor-icons";
+          if (id.includes("/@tauri-apps/")) return "vendor-tauri";
+        },
+      },
+    },
+  },
+
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent Vite from obscuring rust errors

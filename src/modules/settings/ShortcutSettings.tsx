@@ -51,7 +51,7 @@ export default function ShortcutSettings() {
                     {label}
                   </div>
                   {conflict && (
-                    <div style={{ fontSize: 11, color: "#dc2626", marginTop: 2 }}>
+                    <div style={{ fontSize: 11, color: "var(--qx-danger)", marginTop: 2 }}>
                       Conflict: this shortcut is used by another action.
                     </div>
                   )}

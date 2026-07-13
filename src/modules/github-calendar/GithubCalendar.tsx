@@ -13,11 +13,11 @@ interface ContributionCalendar {
 }
 
 const LEVEL_COLORS = [
-  "var(--qx-gh-level-0, #161b22)",
-  "var(--qx-gh-level-1, #0e4429)",
-  "var(--qx-gh-level-2, #006d32)",
-  "var(--qx-gh-level-3, #26a641)",
-  "var(--qx-gh-level-4, #39d353)",
+  "var(--qx-gh-level-0)",
+  "var(--qx-gh-level-1)",
+  "var(--qx-gh-level-2)",
+  "var(--qx-gh-level-3)",
+  "var(--qx-gh-level-4)",
 ];
 
 const DAY_LABELS = ["", "Mon", "", "Wed", "", "Fri", ""];
@@ -106,9 +106,9 @@ export default function GithubCalendar() {
             flex: 1,
             padding: "6px 10px",
             borderRadius: 6,
-            border: "1px solid var(--qx-border, #30363d)",
-            background: "var(--qx-bg-secondary, #0d1117)",
-            color: "var(--qx-text-primary, #e6edf3)",
+            border: "1px solid var(--qx-border-1)",
+            background: "var(--qx-bg-component-2)",
+            color: "var(--qx-text-primary)",
             fontSize: 13,
             outline: "none",
           }}
@@ -128,8 +128,8 @@ export default function GithubCalendar() {
           style={{
             padding: "8px 12px",
             borderRadius: 6,
-            background: "rgba(255, 60, 60, 0.1)",
-            color: "var(--qx-danger, #f85149)",
+            background: "color-mix(in srgb, var(--qx-danger) 10%, transparent)",
+            color: "var(--qx-danger)",
             fontSize: 12,
             marginBottom: 12,
           }}
@@ -266,14 +266,14 @@ export default function GithubCalendar() {
                 position: "absolute",
                 top: -28,
                 left: 38 + (hoveredDay.index % 7) * 15 + 4,
-                background: "var(--qx-tooltip-bg, #1c2128)",
-                color: "var(--qx-text-primary, #e6edf3)",
+                background: "var(--popover)",
+                color: "var(--popover-foreground)",
                 padding: "4px 8px",
                 borderRadius: 4,
                 fontSize: 11,
                 whiteSpace: "nowrap",
                 pointerEvents: "none",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+                boxShadow: "0 2px 8px color-mix(in srgb, var(--qx-shadow) 30%, transparent)",
               }}
             >
               {hoveredDay.level} contribution

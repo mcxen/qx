@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useShallow } from "zustand/react/shallow";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../components/QxShell";
 import { useEscBack } from "../hooks/useEscBack";
 import { usePluginRegistry } from "./registry";
@@ -7,7 +8,7 @@ import { useSettingsStore } from "../modules/settings/store";
 import { shouldIgnoreBareShortcut } from "../utils/keyboard";
 
 export function PluginHost() {
-  const { loaded } = usePluginRegistry();
+  const loaded = usePluginRegistry((state) => state.loaded);
 
   return (
     <div
@@ -37,9 +38,17 @@ function renderPluginStatus(
 }
 
 export function PluginPanelViewport() {
-  const { panels, commands, plugins } = usePluginRegistry();
   const tab = useStore((s) => s.tab);
   const setTab = useStore((s) => s.setTab);
+  const isPluginTab = tab.startsWith("plugin:");
+  const pluginId = isPluginTab ? tab.slice("plugin:".length) : "";
+  const panel = usePluginRegistry((state) => state.panels[pluginId]);
+  const pluginCommands = usePluginRegistry(useShallow(
+    (state) => isPluginTab ? state.commands.filter((command) => command.pluginId === pluginId) : [],
+  ));
+  const plugin = usePluginRegistry(
+    (state) => isPluginTab ? state.plugins.find((item) => item.id === pluginId) : undefined,
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [renderState, setRenderState] = useState<{
@@ -49,17 +58,7 @@ export function PluginPanelViewport() {
   const raycastActionPanel = useSettingsStore(
     (state) => state.settings.plugin_display.raycast_action_panel,
   );
-  const isPluginTab = tab.startsWith("plugin:");
-
-  const pluginId = isPluginTab ? tab.slice("plugin:".length) : "";
-  const panel = isPluginTab ? panels[pluginId] : undefined;
-  const plugin = isPluginTab ? plugins.find((p) => p.id === pluginId) : undefined;
-  const pluginCommands = useMemo(
-    () => (isPluginTab ? commands.filter((c) => c.pluginId === pluginId) : []),
-    [commands, isPluginTab, pluginId],
-  );
-
-  const goBack = () => setTab("launcher");
+  const goBack = useCallback(() => setTab("launcher"), [setTab]);
 
   const { onKeyDown: escKeyDown } = useEscBack({
     launcher: goBack,
@@ -83,19 +82,20 @@ export function PluginPanelViewport() {
   useEffect(() => {
     if (!containerRef.current || !isPluginTab) return;
     const container = containerRef.current;
-    const activePanel = panels[pluginId];
+    const activePanel = panel;
     if (!activePanel) {
       setRenderState({ kind: "error", detail: "Panel not registered" });
       return;
     }
 
     let disposed = false;
+    let timeout: number | null = null;
     setRenderState({ kind: "loading", detail: "Rendering panel" });
     renderPluginStatus(container, `Loading ${pluginId}...`);
 
     const renderTimer = window.setTimeout(() => {
       if (disposed) return;
-      const timeout = window.setTimeout(() => {
+      timeout = window.setTimeout(() => {
         if (!disposed) {
           renderPluginStatus(container, `Plugin ${pluginId} render timed out.`, "danger");
           setRenderState({ kind: "error", detail: "Render timed out" });
@@ -103,11 +103,13 @@ export function PluginPanelViewport() {
       }, 8500);
       void Promise.resolve(activePanel.render(container, undefined as never))
         .then(() => {
-          window.clearTimeout(timeout);
+          if (timeout !== null) window.clearTimeout(timeout);
+          timeout = null;
           if (!disposed) setRenderState({ kind: "idle" });
         })
         .catch((err: unknown) => {
-          window.clearTimeout(timeout);
+          if (timeout !== null) window.clearTimeout(timeout);
+          timeout = null;
           if (!disposed) {
             const detail = String(err).replace(/^Error:\s*/i, "").slice(0, 120);
             renderPluginStatus(container, `Plugin ${pluginId} render failed: ${detail}`, "danger");
@@ -119,13 +121,12 @@ export function PluginPanelViewport() {
     return () => {
       disposed = true;
       window.clearTimeout(renderTimer);
+      if (timeout !== null) window.clearTimeout(timeout);
       void Promise.resolve(activePanel.destroy?.(container)).catch(() => {});
       container.innerHTML = "";
       setRenderState({ kind: "idle" });
     };
-  }, [isPluginTab, pluginId, panels, refreshKey, raycastActionPanel]);
-
-  if (!isPluginTab) return null;
+  }, [isPluginTab, panel, pluginId, refreshKey, raycastActionPanel]);
 
   const shellTitle = panel?.title || plugin?.name || pluginId;
 
@@ -140,6 +141,8 @@ export function PluginPanelViewport() {
       onClick: () => void usePluginRegistry.getState().runCommand(cmd),
     })),
   ], [pluginCommands]);
+
+  if (!isPluginTab) return null;
 
   const island: BottomIslandContent = renderState.kind === "loading"
     ? {

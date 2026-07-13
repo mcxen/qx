@@ -1,5 +1,7 @@
 # Rust 后端模块导览
 
+> 状态：Current · 适用版本：v0.4.61 · Owner：Backend · 最后复核：2026-07-10
+
 `src-tauri/src/` 下每个模块的职责和依赖点。核心入口是 `lib.rs` 的 `run()`（`main.rs` 只转调）。启动顺序、模块初始化、Tauri 命令注册全部在 `lib.rs` 的 `setup(|app| { ... })` 里。
 
 ## 顶层
@@ -21,6 +23,7 @@
 | `system_stats.rs` | Mach APIs：`host_processor_info`（每核 CPU）、`host_statistics64`（内存），供 `HomeSystemIsland` 每 1.6s 轮询 |
 | `system_information.rs` | 主机名/芯片/内存/存储/网络/进程列表；`kill_process` 通过 `/bin/kill` 发 SIGTERM |
 | `display_monitor.rs` | 用 `xcap` 监听显示器插拔，接入外接屏时自动 `floating_show` |
+| `external_displays.rs` | 检测/安装 DDC CLI 驱动，枚举外接显示器并设置亮度、音量等控制项 |
 
 ## 数据模块
 
@@ -56,6 +59,8 @@
 | `permissions.rs` | macOS TCC：屏幕录制 / 辅助功能 / 输入监控 状态与请求 |
 | `storage.rs` | 分桶统计 `~/.qx` 磁盘占用；`clear_cache/clear_files/clear_clipboard` |
 | `settings/mod.rs` | `~/.qx/settings.json` 读写；写入后 re-register 全局快捷键 + 刷新托盘菜单 + emit `settings-updated` |
+| `updater.rs` | 读取 release manifest，比较版本并下载安装更新 |
+| `diagnostics.rs` | 结构化诊断事件与日志文件路径，供前端和异步任务定位问题 |
 
 ## 通用工具
 
@@ -82,7 +87,7 @@
 2. `mod <module>;` 加到 `lib.rs`
 3. `tauri::generate_handler![...]` 把新命令名追加进去
 4. `App.tsx` 或对应 module 用 `invoke("cmd_name", { args })` 调用
-5. 更新 [`docs/ipc-catalogue.md`](./ipc-catalogue.md)
+5. 更新 [`docs/ipc-catalogue.md`](./ipc-catalogue.md) 的领域说明和注册命令基线，并运行 `npm run docs:check`
 6. 如果需要 macOS 权限（TCC），把 id 加到 `permissions.rs::MacPermissionKind` 并在 UI 提示
 
 ## 常见坑

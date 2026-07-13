@@ -1,4 +1,4 @@
-import { Button } from "./shadcn/button";
+import { Button } from "./ui";
 
 export interface QxShellAction {
   label: string;

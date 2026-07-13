@@ -115,6 +115,11 @@
   --qx-stats-cpu: #22c55e;
   --qx-stats-mem: #3b82f6;
   --qx-stats-gpu: #a855f7;
+  --qx-gh-level-0: #ebedf0;
+  --qx-gh-level-1: #9be9a8;
+  --qx-gh-level-2: #40c463;
+  --qx-gh-level-3: #30a14e;
+  --qx-gh-level-4: #216e39;
 
   --color-canvas: var(--qx-bg-component-1);
   --color-surface: var(--qx-bg-component-1);
@@ -215,6 +220,11 @@
   --qx-text-on-accent: #ffffff;
   --qx-danger: #f04438;
   --qx-danger-border: rgba(240, 68, 56, 0.28);
+  --qx-gh-level-0: #161b22;
+  --qx-gh-level-1: #0e4429;
+  --qx-gh-level-2: #006d32;
+  --qx-gh-level-3: #26a641;
+  --qx-gh-level-4: #39d353;
 
   --qx-overlay-1: rgba(255, 255, 255, 0.06);
   --qx-overlay-2: rgba(255, 255, 255, 0.05);

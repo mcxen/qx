@@ -65,6 +65,40 @@ fn clipboard_change_count() -> Option<i64> {
 }
 
 #[cfg(target_os = "macos")]
+fn current_pasteboard_file_path() -> Option<String> {
+    use objc2::msg_send;
+    use objc2::runtime::{AnyClass, NSObject};
+    use std::ffi::{CStr, CString};
+
+    unsafe {
+        let pasteboard_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSPasteboard\0").ok()?)?;
+        let string_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSString\0").ok()?)?;
+        let pasteboard: *mut NSObject = msg_send![pasteboard_cls, generalPasteboard];
+        let type_name = CString::new("public.file-url").ok()?;
+        let pasteboard_type: *mut NSObject =
+            msg_send![string_cls, stringWithUTF8String: type_name.as_ptr()];
+        let value: *mut NSObject = msg_send![pasteboard, stringForType: pasteboard_type];
+        if value.is_null() {
+            return None;
+        }
+        let ptr: *const std::os::raw::c_char = msg_send![value, UTF8String];
+        if ptr.is_null() {
+            return None;
+        }
+        let url = CStr::from_ptr(ptr).to_string_lossy();
+        let raw = url.strip_prefix("file://")?;
+        let decoded = urlencoding::decode(raw).ok()?.into_owned();
+        let path = PathBuf::from(decoded);
+        path.exists().then(|| path.to_string_lossy().to_string())
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn current_pasteboard_file_path() -> Option<String> {
+    None
+}
+
+#[cfg(target_os = "macos")]
 fn should_snapshot_pasteboard_type(type_name: &str) -> bool {
     is_file_reference_pasteboard_type(type_name)
 }
@@ -284,6 +318,7 @@ pub struct ClipboardEntry {
     pub pinned: bool,
     pub copy_count: i64,
     pub image_path: Option<String>,
+    pub file_path: Option<String>,
 }
 
 pub struct ClipboardDb(pub Arc<Mutex<Option<Connection>>>);
@@ -615,6 +650,7 @@ fn init_db() -> rusqlite::Result<Connection> {
     ensure_column(&conn, "copy_count", "INTEGER NOT NULL DEFAULT 0")?;
     ensure_column(&conn, "image_path", "TEXT")?;
     ensure_column(&conn, "image_pasteboard_path", "TEXT")?;
+    ensure_column(&conn, "file_path", "TEXT")?;
 
     enforce_existing_image_limits(&conn);
     compact_existing_pasteboard_snapshots(&conn);
@@ -691,7 +727,7 @@ pub fn start_listener(app: &AppHandle) {
             if let Ok(text) = app_handle.clipboard().read_text() {
                 if !text.is_empty() {
                     last_text = text.clone();
-                    store(&db_clone, &text, None, None);
+                    store(&db_clone, &text, None, None, None);
                 }
             }
 
@@ -705,11 +741,16 @@ pub fn start_listener(app: &AppHandle) {
                     break;
                 }
 
-                // Check for new text
+                let current_file_path = current_pasteboard_file_path();
+
+                // Check for new text. File URLs are recorded as native file
+                // entries below, never duplicated as path-shaped text.
                 match app_handle.clipboard().read_text() {
-                    Ok(text) if !text.is_empty() && text != last_text => {
+                    Ok(text)
+                        if current_file_path.is_none() && !text.is_empty() && text != last_text =>
+                    {
                         last_text = text.clone();
-                        store(&db_clone, &text, None, None);
+                        store(&db_clone, &text, None, None, None);
                         let _ = app_handle.emit("clipboard-updated", ());
                     }
                     Ok(text) if text.is_empty() => {
@@ -737,6 +778,19 @@ pub fn start_listener(app: &AppHandle) {
                 };
 
                 if should_check_image {
+                    if let Some(file_path) = current_file_path {
+                        let snapshot_id = compute_id(&file_path);
+                        let pasteboard_path = snapshot_current_pasteboard(&snapshot_id);
+                        store(
+                            &db_clone,
+                            "",
+                            None,
+                            pasteboard_path.as_deref(),
+                            Some(&file_path),
+                        );
+                        let _ = app_handle.emit("clipboard-updated", ());
+                        continue;
+                    }
                     match app_handle.clipboard().read_image() {
                         Ok(image) => {
                             let width = image.width();
@@ -775,6 +829,7 @@ pub fn start_listener(app: &AppHandle) {
                                         "",
                                         Some(&path_str),
                                         pasteboard_path.as_deref(),
+                                        None,
                                     );
                                     let _ = app_handle.emit("clipboard-updated", ());
                                 }
@@ -795,6 +850,7 @@ fn store(
     text: &str,
     image_path: Option<&str>,
     image_pasteboard_path: Option<&str>,
+    file_path: Option<&str>,
 ) {
     if !text.is_empty() && text.as_bytes().len() > MAX_TEXT_BYTES {
         return;
@@ -804,7 +860,9 @@ fn store(
     let Ok(conn) = ensure_connection(&mut guard) else {
         return;
     };
-    let id = if !text.is_empty() {
+    let id = if let Some(path) = file_path {
+        compute_id(path)
+    } else if !text.is_empty() {
         compute_id(text)
     } else if let Some(path) = image_path {
         compute_image_id(path)
@@ -813,14 +871,15 @@ fn store(
     };
     let ts = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let _ = conn.execute(
-        "INSERT INTO clipboard_history (id, text, timestamp, image_path, image_pasteboard_path)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO clipboard_history (id, text, timestamp, image_path, image_pasteboard_path, file_path)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
          ON CONFLICT(id) DO UPDATE SET
             text = excluded.text,
             timestamp = excluded.timestamp,
             image_path = COALESCE(excluded.image_path, clipboard_history.image_path),
-            image_pasteboard_path = COALESCE(excluded.image_pasteboard_path, clipboard_history.image_pasteboard_path)",
-        params![id, text, ts, image_path, image_pasteboard_path],
+            image_pasteboard_path = COALESCE(excluded.image_pasteboard_path, clipboard_history.image_pasteboard_path),
+            file_path = COALESCE(excluded.file_path, clipboard_history.file_path)",
+        params![id, text, ts, image_path, image_pasteboard_path, file_path],
     );
     prune_clipboard_storage(conn);
 }
@@ -836,7 +895,7 @@ pub fn get_clipboard_history(
     let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, text, timestamp, pinned, copy_count, image_path
+            "SELECT id, text, timestamp, pinned, copy_count, image_path, file_path
              FROM clipboard_history
              ORDER BY pinned DESC, timestamp DESC
              LIMIT ?1",
@@ -851,6 +910,7 @@ pub fn get_clipboard_history(
                 pinned: row.get::<_, i64>(3)? != 0,
                 copy_count: row.get(4)?,
                 image_path: row.get(5)?,
+                file_path: row.get(6)?,
             })
         })
         .map_err(|e| format!("{e}"))?;
@@ -866,6 +926,9 @@ pub fn read_clipboard_image_now(
     db: tauri::State<'_, ClipboardDb>,
 ) -> Result<Option<String>, String> {
     use tauri_plugin_clipboard_manager::ClipboardExt;
+    if current_pasteboard_file_path().is_some() {
+        return Ok(None);
+    }
     match app.clipboard().read_image() {
         Ok(image) => {
             let width = image.width();
@@ -1047,6 +1110,400 @@ pub fn record_clipboard_copy(
     .map_err(|e| format!("{e}"))?;
     prune_clipboard_storage(conn);
     Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct ClipboardFileMetadata {
+    path: String,
+    name: String,
+    extension: String,
+    kind: String,
+    size: u64,
+    width: Option<u32>,
+    height: Option<u32>,
+    duration_seconds: Option<f64>,
+    preview_path: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ClipboardMediaProgress {
+    job_id: String,
+    operation: String,
+    progress: f64,
+    message: String,
+    output_path: Option<String>,
+    error: Option<String>,
+}
+
+fn media_kind(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tif" | "tiff" | "heic" => "image",
+        "mp4" | "mov" | "m4v" | "avi" | "mkv" | "webm" | "mpeg" | "mpg" => "video",
+        "mp3" | "m4a" | "wav" | "aac" | "flac" | "ogg" => "audio",
+        _ if path.is_dir() => "folder",
+        _ => "file",
+    }
+}
+
+fn media_tool(name: &str) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(macos_dir) = executable.parent() {
+            if let Some(contents_dir) = macos_dir.parent() {
+                candidates.push(contents_dir.join("Resources/resources/media").join(name));
+                candidates.push(contents_dir.join("Resources/resources/search").join(name));
+            }
+        }
+    }
+    if let Some(path) = std::env::var_os("PATH") {
+        candidates.extend(std::env::split_paths(&path).map(|dir| dir.join(name)));
+    }
+    candidates.push(PathBuf::from("/opt/homebrew/bin").join(name));
+    candidates.push(PathBuf::from("/usr/local/bin").join(name));
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+fn ffprobe_duration(path: &Path) -> Option<f64> {
+    let output = std::process::Command::new(media_tool("ffprobe")?)
+        .args([
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=nw=1:nk=1",
+        ])
+        .arg(path)
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().parse().ok())
+        .flatten()
+}
+
+fn video_preview(path: &Path) -> Option<String> {
+    let cache = get_image_dir().join("previews");
+    fs::create_dir_all(&cache).ok()?;
+    let key = compute_id(&path.to_string_lossy());
+    let output = cache.join(format!("{key}.jpg"));
+    if !output.exists() {
+        let status = std::process::Command::new(media_tool("ffmpeg")?)
+            .args(["-y", "-loglevel", "error", "-ss", "0.2", "-i"])
+            .arg(path)
+            .args(["-frames:v", "1", "-vf", "scale=960:-2", "-q:v", "3"])
+            .arg(&output)
+            .status()
+            .ok()?;
+        if !status.success() {
+            return None;
+        }
+    }
+    Some(output.to_string_lossy().to_string())
+}
+
+fn inspect_file(path: PathBuf) -> Result<ClipboardFileMetadata, String> {
+    let path = path
+        .canonicalize()
+        .map_err(|e| format!("file unavailable: {e}"))?;
+    let metadata = fs::metadata(&path).map_err(|e| format!("read file metadata: {e}"))?;
+    let kind = media_kind(&path).to_string();
+    let (width, height) = if kind == "image" {
+        image::image_dimensions(&path)
+            .map(|value| (Some(value.0), Some(value.1)))
+            .unwrap_or((None, None))
+    } else {
+        (None, None)
+    };
+    let duration_seconds = matches!(kind.as_str(), "video" | "audio")
+        .then(|| ffprobe_duration(&path))
+        .flatten();
+    let preview_path = if kind == "image" {
+        Some(path.to_string_lossy().to_string())
+    } else if kind == "video" {
+        video_preview(&path)
+    } else {
+        None
+    };
+    Ok(ClipboardFileMetadata {
+        path: path.to_string_lossy().to_string(),
+        name: path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("File")
+            .to_string(),
+        extension: path
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase(),
+        kind,
+        size: metadata.len(),
+        width,
+        height,
+        duration_seconds,
+        preview_path,
+    })
+}
+
+#[command]
+pub async fn clipboard_file_metadata(path: String) -> Result<ClipboardFileMetadata, String> {
+    tauri::async_runtime::spawn_blocking(move || inspect_file(PathBuf::from(path)))
+        .await
+        .map_err(|e| format!("metadata task failed: {e}"))?
+}
+
+#[cfg(target_os = "macos")]
+fn write_file_to_clipboard(path: &Path) -> Result<(), String> {
+    let script = "on run argv\nset the clipboard to POSIX file (item 1 of argv)\nend run";
+    let status = std::process::Command::new("osascript")
+        .args(["-e", script, "--"])
+        .arg(path)
+        .status()
+        .map_err(|e| format!("write file clipboard: {e}"))?;
+    status
+        .success()
+        .then_some(())
+        .ok_or_else(|| "write file clipboard failed".to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn write_file_to_clipboard(_path: &Path) -> Result<(), String> {
+    Err("file clipboard is currently supported on macOS".to_string())
+}
+
+#[command]
+pub fn write_clipboard_file_entry(
+    state: tauri::State<'_, ClipboardDb>,
+    id: String,
+) -> Result<(), String> {
+    let (path, snapshot): (String, Option<String>) = {
+        let mut guard = lock_db(&state.0);
+        let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+        conn.query_row(
+            "SELECT file_path, image_pasteboard_path FROM clipboard_history WHERE id = ?1 AND file_path IS NOT NULL",
+            params![id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).map_err(|e| format!("clipboard file entry not found: {e}"))?
+    };
+    if let Some(snapshot) = snapshot {
+        if restore_pasteboard_snapshot(&snapshot).is_ok() {
+            return Ok(());
+        }
+    }
+    let path = PathBuf::from(path);
+    if !path.exists() {
+        return Err("the original file no longer exists".to_string());
+    }
+    write_file_to_clipboard(&path)
+}
+
+fn generated_media_dir() -> PathBuf {
+    let base = dirs::picture_dir().unwrap_or_else(|| get_image_dir());
+    let dir = base.join("Qx");
+    let _ = fs::create_dir_all(&dir);
+    dir
+}
+
+fn insert_generated_file(app: &AppHandle, path: &Path) -> Result<(), String> {
+    write_file_to_clipboard(path)?;
+    let path_string = path.to_string_lossy().to_string();
+    let id = compute_id(&path_string);
+    let snapshot = snapshot_current_pasteboard(&id);
+    let state = app.state::<ClipboardDb>();
+    store(&state.0, "", None, snapshot.as_deref(), Some(&path_string));
+    let _ = app.emit("clipboard-updated", ());
+    Ok(())
+}
+
+fn emit_media_progress(app: &AppHandle, payload: ClipboardMediaProgress) {
+    let _ = app.emit("clipboard-media-progress", payload);
+}
+
+#[command]
+pub fn clipboard_compress_image(
+    app: AppHandle,
+    path: String,
+    quality: Option<u8>,
+) -> Result<String, String> {
+    let input = PathBuf::from(path)
+        .canonicalize()
+        .map_err(|e| format!("image unavailable: {e}"))?;
+    if media_kind(&input) != "image" {
+        return Err("selected file is not an image".to_string());
+    }
+    let job_id = format!("image-{}", chrono::Utc::now().timestamp_millis());
+    let thread_job_id = job_id.clone();
+    std::thread::spawn(move || {
+        emit_media_progress(
+            &app,
+            ClipboardMediaProgress {
+                job_id: thread_job_id.clone(),
+                operation: "compress-image".into(),
+                progress: 5.0,
+                message: "Reading image".into(),
+                output_path: None,
+                error: None,
+            },
+        );
+        let result = (|| -> Result<PathBuf, String> {
+            let image = image::open(&input).map_err(|e| format!("decode image: {e}"))?;
+            emit_media_progress(
+                &app,
+                ClipboardMediaProgress {
+                    job_id: thread_job_id.clone(),
+                    operation: "compress-image".into(),
+                    progress: 45.0,
+                    message: "Compressing image".into(),
+                    output_path: None,
+                    error: None,
+                },
+            );
+            let stem = input
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("image");
+            let output = generated_media_dir().join(format!("{stem}-qx-compressed.jpg"));
+            let file =
+                fs::File::create(&output).map_err(|e| format!("create compressed image: {e}"))?;
+            let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(
+                file,
+                quality.unwrap_or(78).clamp(20, 95),
+            );
+            encoder
+                .encode_image(&image)
+                .map_err(|e| format!("encode jpeg: {e}"))?;
+            insert_generated_file(&app, &output)?;
+            Ok(output)
+        })();
+        match result {
+            Ok(output) => emit_media_progress(
+                &app,
+                ClipboardMediaProgress {
+                    job_id: thread_job_id,
+                    operation: "compress-image".into(),
+                    progress: 100.0,
+                    message: "Compressed image copied".into(),
+                    output_path: Some(output.to_string_lossy().to_string()),
+                    error: None,
+                },
+            ),
+            Err(error) => emit_media_progress(
+                &app,
+                ClipboardMediaProgress {
+                    job_id: thread_job_id,
+                    operation: "compress-image".into(),
+                    progress: 0.0,
+                    message: "Compression failed".into(),
+                    output_path: None,
+                    error: Some(error),
+                },
+            ),
+        }
+    });
+    Ok(job_id)
+}
+
+#[command]
+pub fn clipboard_video_to_gif(app: AppHandle, path: String) -> Result<String, String> {
+    use std::io::{BufRead, BufReader};
+    use std::process::Stdio;
+    let input = PathBuf::from(path)
+        .canonicalize()
+        .map_err(|e| format!("video unavailable: {e}"))?;
+    if media_kind(&input) != "video" {
+        return Err("selected file is not a video".to_string());
+    }
+    let job_id = format!("video-{}", chrono::Utc::now().timestamp_millis());
+    let thread_job_id = job_id.clone();
+    std::thread::spawn(move || {
+        let result = (|| -> Result<PathBuf, String> {
+            let duration = ffprobe_duration(&input).unwrap_or(1.0).max(0.1);
+            let stem = input
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .unwrap_or("video");
+            let output = generated_media_dir().join(format!("{stem}-qx.gif"));
+            let ffmpeg = media_tool("ffmpeg").ok_or_else(|| {
+                "ffmpeg is required for video conversion; install it with Homebrew or bundle it in Qx resources".to_string()
+            })?;
+            let mut child = std::process::Command::new(ffmpeg)
+                .args(["-y", "-i"])
+                .arg(&input)
+                .args([
+                    "-vf",
+                    "fps=12,scale=720:-2:flags=lanczos",
+                    "-progress",
+                    "pipe:1",
+                    "-nostats",
+                ])
+                .arg(&output)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(|e| format!("start ffmpeg: {e}"))?;
+            if let Some(stdout) = child.stdout.take() {
+                for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                    if let Some(value) = line
+                        .strip_prefix("out_time_ms=")
+                        .and_then(|value| value.parse::<f64>().ok())
+                    {
+                        let progress = ((value / 1_000_000.0) / duration * 96.0).clamp(1.0, 96.0);
+                        emit_media_progress(
+                            &app,
+                            ClipboardMediaProgress {
+                                job_id: thread_job_id.clone(),
+                                operation: "video-to-gif".into(),
+                                progress,
+                                message: "Converting video to GIF".into(),
+                                output_path: None,
+                                error: None,
+                            },
+                        );
+                    }
+                }
+            }
+            let status = child.wait().map_err(|e| format!("wait for ffmpeg: {e}"))?;
+            if !status.success() {
+                return Err("ffmpeg conversion failed".to_string());
+            }
+            insert_generated_file(&app, &output)?;
+            Ok(output)
+        })();
+        match result {
+            Ok(output) => emit_media_progress(
+                &app,
+                ClipboardMediaProgress {
+                    job_id: thread_job_id,
+                    operation: "video-to-gif".into(),
+                    progress: 100.0,
+                    message: "GIF copied to clipboard".into(),
+                    output_path: Some(output.to_string_lossy().to_string()),
+                    error: None,
+                },
+            ),
+            Err(error) => emit_media_progress(
+                &app,
+                ClipboardMediaProgress {
+                    job_id: thread_job_id,
+                    operation: "video-to-gif".into(),
+                    progress: 0.0,
+                    message: "GIF conversion failed".into(),
+                    output_path: None,
+                    error: Some(error),
+                },
+            ),
+        }
+    });
+    Ok(job_id)
 }
 
 #[command]

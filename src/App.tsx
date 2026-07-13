@@ -303,6 +303,32 @@ function dedupeEntries(entries: AppEntry[]): AppEntry[] {
   return next;
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+function abortableInvoke<T>(command: string, args: Record<string, unknown>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const onAbort = () => reject(new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    invoke<T>(command, args)
+      .then((value) => {
+        signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) reject(new DOMException("Aborted", "AbortError"));
+        else resolve(value);
+      })
+      .catch((error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        if (signal.aborted) reject(new DOMException("Aborted", "AbortError"));
+        else reject(error);
+      });
+  });
+}
+
 function shouldLoadSlowSearchProviders(query: string, scope: SearchScope): boolean {
   const trimmed = query.trim();
   const shouldSearchFiles =
@@ -360,13 +386,14 @@ function App() {
   const recordSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const searchFadeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const searchSeqRef = useRef(0);
+  const searchAbortRef = useRef<AbortController | null>(null);
   const searchScopeRef = useRef<SearchScope>("all");
   const { settings, load: loadSettings, loaded: settingsLoaded } = useSettingsStore();
   const { load: loadPlugins, findCommands } = usePluginRegistry();
   const pluginCommandCount = usePluginRegistry((state) => state.commands.length);
   const pluginPanelCount = usePluginRegistry((state) => Object.keys(state.panels).length);
   const phase1Ref = useRef(false);
-  const startupWindowShownRef = useRef(false);
+  const startupWindowRestoredRef = useRef(false);
   const autoUpdateStartedRef = useRef(false);
   const resizeSaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const pendingWindowSizeRef = useRef<{ width: number; height: number } | null>(null);
@@ -677,13 +704,16 @@ function App() {
     settings.appearance.font_size,
   ]);
 
-  // Restore window size from saved settings; first launch derives size from the active monitor.
+  // A fresh install presents the launcher once. After that Qx starts as a
+  // background helper and the launcher is surfaced only by an explicit
+  // shortcut/tray action.
   useEffect(() => {
     if (!settingsLoaded || !isTauriRuntime()) return;
-    if (startupWindowShownRef.current) return;
-    const restoreAndShow = async () => {
+    if (startupWindowRestoredRef.current) return;
+    const restoreWindow = async () => {
       const win = getCurrentWindow();
-      const appearance = useSettingsStore.getState().settings.appearance;
+      const currentSettings = useSettingsStore.getState().settings;
+      const appearance = currentSettings.appearance;
       if (!appearance) return;
       const hasSavedSize = appearance.window_width > 0 && appearance.window_height > 0;
       const monitorSize = await getMonitorLogicalWorkSize();
@@ -702,12 +732,22 @@ function App() {
         await win.center().catch(() => {});
       }
 
-      startupWindowShownRef.current = true;
+      startupWindowRestoredRef.current = true;
       setTab("launcher");
-      await invoke("floating_show");
+      const shouldShowFirstLaunch = !currentSettings.general.has_shown_launcher && !hasSavedSize;
+      if (!currentSettings.general.has_shown_launcher) {
+        useSettingsStore.getState().patch("general", {
+          ...currentSettings.general,
+          has_shown_launcher: true,
+        });
+        await useSettingsStore.getState().flush();
+      }
+      if (shouldShowFirstLaunch) {
+        await invoke("floating_show");
+      }
     };
 
-    restoreAndShow().catch((e) => {
+    restoreWindow().catch((e) => {
       console.warn("window size restore failed:", e);
     });
   }, [settingsLoaded, setTab]);
@@ -836,13 +876,17 @@ function App() {
 
       if (!shouldSearchFiles && !shouldSearchClipboard) return;
 
+      const controller = searchAbortRef.current;
+      if (!controller) return;
+      const { signal } = controller;
+
       const [files, clipboardEntries] = await Promise.all([
         shouldSearchFiles
-          ? invoke<AppEntry[]>("search_files", { query: q })
-              .catch(() => [] as AppEntry[])
+          ? abortableInvoke<AppEntry[]>("search_files", { query: q }, signal)
+              .catch((error) => isAbortError(error) ? [] as AppEntry[] : [] as AppEntry[])
           : Promise.resolve([] as AppEntry[]),
         shouldSearchClipboard
-          ? invoke<{ id: string; text: string }[]>("get_clipboard_history", { limit: 80 })
+          ? abortableInvoke<{ id: string; text: string }[]>("get_clipboard_history", { limit: 80 }, signal)
               .then((history) => {
                 const lower = trimmed.toLowerCase();
                 return history
@@ -859,7 +903,7 @@ function App() {
           : Promise.resolve([] as AppEntry[]),
       ]);
 
-      if (seq !== searchSeqRef.current) return;
+      if (seq !== searchSeqRef.current || signal.aborted) return;
       applyResults([...baseEntries, ...files, ...clipboardEntries]);
     },
     [applyResults],
@@ -867,6 +911,10 @@ function App() {
 
   const doSearch = useCallback(
     async (q: string) => {
+      searchAbortRef.current?.abort();
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+      const { signal } = controller;
       const seq = searchSeqRef.current + 1;
       searchSeqRef.current = seq;
       const trimmed = q.trim();
@@ -979,13 +1027,13 @@ function App() {
 
       try {
         if (scope === "all" || scope === "apps") {
-          const res = await invoke<AppEntry[]>("search_apps", { query: q });
+          const res = await abortableInvoke<AppEntry[]>("search_apps", { query: q }, signal);
           if (seq !== searchSeqRef.current) return;
           entries.push(...res.map((item) => ({ ...item, kind: item.kind ?? "app" as const })));
           const metadataMatches = Object.entries(settingsState.search_metadata)
             .filter(([key, metadata]) => key.startsWith("app:") && metadataMatchesQuery(metadata, q));
           if (metadataMatches.length > 0) {
-            const allApps = await invoke<AppEntry[]>("search_apps", { query: "" }).catch(() => [] as AppEntry[]);
+            const allApps = await abortableInvoke<AppEntry[]>("search_apps", { query: "" }, signal).catch(() => [] as AppEntry[]);
             if (seq !== searchSeqRef.current) return;
             const matchingPaths = new Set(metadataMatches.map(([key]) => key.slice("app:".length)));
             entries.push(
@@ -995,9 +1043,11 @@ function App() {
             );
           }
         }
-      } catch {}
+      } catch (error) {
+        if (isAbortError(error)) return;
+      }
 
-      if (seq !== searchSeqRef.current) return;
+      if (seq !== searchSeqRef.current || signal.aborted) return;
       const baseEntries = dedupeEntries(entries);
       applyResults(baseEntries);
 
@@ -1034,6 +1084,7 @@ function App() {
       if (slowSearchDebounceRef.current) clearTimeout(slowSearchDebounceRef.current);
       if (recordSearchDebounceRef.current) clearTimeout(recordSearchDebounceRef.current);
       if (searchFadeTimerRef.current) clearTimeout(searchFadeTimerRef.current);
+      searchAbortRef.current?.abort();
     };
   }, [query, doSearch]);
 
@@ -1046,20 +1097,22 @@ function App() {
   }, [pluginCommandCount, pluginPanelCount, query, tab, doSearch]);
 
   useEffect(() => {
-    const onGlobalKeyDown = (event: KeyboardEvent) => {
+    const onUnhandledEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      // Capture now, decide after React/QxShell/window handlers have all had
+      // a chance to consume the event. This is only a focus-loss fallback for
+      // events targeting document/body, not a competing shortcut router.
       window.setTimeout(() => {
-        if (event.defaultPrevented) return;
-        performHostEscape();
+        if (!event.defaultPrevented) performHostEscape();
       }, 0);
     };
     const onHostEscape = () => {
       performHostEscape();
     };
-    window.addEventListener("keydown", onGlobalKeyDown, true);
+    window.addEventListener("keydown", onUnhandledEscape, true);
     window.addEventListener(HOST_ESCAPE_EVENT, onHostEscape);
     return () => {
-      window.removeEventListener("keydown", onGlobalKeyDown, true);
+      window.removeEventListener("keydown", onUnhandledEscape, true);
       window.removeEventListener(HOST_ESCAPE_EVENT, onHostEscape);
     };
   }, [performHostEscape]);
@@ -1101,7 +1154,7 @@ function App() {
     };
   }, [updateResultIcons]);
 
-  const openItem = async (item: AppEntry) => {
+  const openItem = useCallback(async (item: AppEntry) => {
     // Handle plugin command execution
     if (item.path.startsWith("__qx:cmd:")) {
       const commandKey = item.path.slice("__qx:cmd:".length);
@@ -1145,9 +1198,9 @@ function App() {
     // Record launch history (fire-and-forget)
     invoke("record_launch", { path: item.path, name: item.name }).catch(() => {});
     if (isTauriRuntime()) await getCurrentWindow().hide();
-  };
+  }, [setTab]);
 
-  const handleKeyDown = async (e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback(async (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -1174,7 +1227,7 @@ function App() {
         if (item) await openItem(item);
         break;
     }
-  };
+  }, [openItem, performHostEscape, results, selectedIndex, setSelectedIndex, tab]);
 
   const renderLauncher = () => (
     <Launcher
@@ -1233,10 +1286,7 @@ function App() {
       <div className="qx-canvas">
         {/* Hidden container for plugin iframes */}
         <PluginHost />
-        <div
-          style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}
-          onKeyDown={tab !== "launcher" ? handleKeyDown : undefined}
-        >
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
           <ModuleErrorBoundary
             tab={tab}
             onBack={() => {

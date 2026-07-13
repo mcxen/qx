@@ -119,6 +119,7 @@ export default function Launcher({
     <QxShell
       title="Launcher"
       className="launcher-shell"
+      onKeyDown={onKeyDown}
       search={<SearchBar onKeyDown={handleLauncherKeyDown} embedded />}
       trailing={
         <div className="qx-launcher-trailing">

@@ -1,6 +1,7 @@
 import type { ClipboardEntry } from "../../store";
 
-export function classify(item: ClipboardEntry): "pinned" | "links" | "code" | "long" | "frequent" | "image" | "text" {
+export function classify(item: ClipboardEntry): "pinned" | "links" | "code" | "long" | "frequent" | "image" | "file" | "text" {
+  if (item.file_path) return "file";
   if (item.image_path) return "image";
   const text = item.text.trim();
   if (/^https?:\/\/\S+$/i.test(text)) return "links";
@@ -47,6 +48,7 @@ export function formatCopied(timestamp: string): string {
 }
 
 export function formatMeta(item: ClipboardEntry): string {
+  if (item.file_path) return item.file_path;
   if (item.image_path) return "Image";
   const lines = item.text.split(/\r?\n/).length;
   const count = item.text.length;
@@ -65,11 +67,12 @@ export function contentType(item: ClipboardEntry): string {
   if (kind === "links") return "Link";
   if (kind === "code") return "Code";
   if (kind === "image") return "Image";
+  if (kind === "file") return "File";
   return "Text";
 }
 
 export function matchesQuery(item: ClipboardEntry, q: string): boolean {
   if (!q) return true;
-  const haystack = `${item.text} ${classify(item)} ${formatMeta(item)}`.toLowerCase();
+  const haystack = `${item.text} ${item.file_path ?? ""} ${classify(item)} ${formatMeta(item)}`.toLowerCase();
   return q.split(/\s+/).every((token) => haystack.includes(token));
 }

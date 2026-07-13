@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "source": "cowart",
+  "pages": [
+    {
+      "id": "page:page",
+      "name": "Page 1",
+      "index": "a1",
+      "path": "pages/page/cowart-canvas.json"
+    }
+  ]
+}

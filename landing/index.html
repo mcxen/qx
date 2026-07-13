@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Qx 是一款常驻菜单栏的 macOS 效率启动器，支持 Cardinal 全局文件搜索、应用启动、剪贴板、RSS、AI、插件与自动化。">
+<title>Qx — macOS 效率启动器</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #000000;
+    --muted: #666666;
+    --subtle: #8a8a8a;
+    --line: #eaeaea;
+    --line-strong: #d4d4d4;
+    --surface: #fafafa;
+    --surface-raised: #ffffff;
+    --invert: #ffffff;
+    --accent: #0070f3;
+    --success: #00a76f;
+    --warning: #f5a524;
+    --radius: 8px;
+    --max: 1200px;
+    --mono: "SF Mono", "Roboto Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace;
+    --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  a { color: inherit; text-decoration: none; }
+  .page {
+    min-height: 100vh;
+    background:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 48px 48px;
+    background-position: center top;
+  }
+  .container {
+    width: min(var(--max), calc(100% - 48px));
+    margin: 0 auto;
+  }
+
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    height: 64px;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: saturate(180%) blur(16px);
+  }
+  .nav-inner {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    letter-spacing: 0;
+  }
+  .brand-mark {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--fg);
+    border-radius: 7px;
+    background: var(--fg);
+    color: var(--invert);
+    font-size: 13px;
+    line-height: 1;
+  }
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--surface-raised);
+    padding: 3px;
+  }
+  .nav-links a {
+    display: inline-flex;
+    align-items: center;
+    height: 30px;
+    padding: 0 13px;
+    border-radius: 999px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .nav-links a:hover {
+    background: var(--surface);
+    color: var(--fg);
+  }
+  .nav-cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 999px;
+    background: var(--fg);
+    color: var(--invert);
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  .hero {
+    position: relative;
+    overflow: hidden;
+    border-bottom: 1px solid var(--line);
+  }
+  .hero-inner {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    gap: 22px;
+    min-height: calc(100svh - 64px);
+    padding: 48px 0 28px;
+  }
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
+  }
+  .eyebrow-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 0 4px rgba(0, 167, 111, 0.12);
+  }
+  h1 {
+    max-width: 940px;
+    margin: 0;
+    text-align: center;
+    font-size: clamp(46px, 7.4vw, 86px);
+    line-height: 0.95;
+    letter-spacing: 0;
+    font-weight: 700;
+  }
+  .hero-copy {
+    max-width: 720px;
+    margin: -8px 0 0;
+    color: var(--muted);
+    text-align: center;
+    font-size: clamp(17px, 2vw, 21px);
+    line-height: 1.65;
+  }
+  .actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 148px;
+    height: 44px;
+    padding: 0 18px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    background: var(--surface-raised);
+    color: var(--fg);
+    font-size: 14px;
+    font-weight: 600;
+    transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+  }
+  .button:hover {
+    border-color: var(--fg);
+    transform: translateY(-1px);
+  }
+  .button.primary {
+    border-color: var(--fg);
+    background: var(--fg);
+    color: var(--invert);
+  }
+  .button.primary:hover { background: #1a1a1a; }
+  .button code {
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .product-scene {
+    width: min(1040px, 100%);
+    border: 1px solid var(--line-strong);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow:
+      0 1px 0 rgba(0, 0, 0, 0.05),
+      0 34px 80px rgba(0, 0, 0, 0.14);
+    overflow: hidden;
+  }
+  .window-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 42px;
+    padding: 0 14px;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface);
+  }
+  .traffic {
+    display: flex;
+    gap: 7px;
+  }
+  .traffic span {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--line-strong);
+  }
+  .window-title {
+    color: var(--subtle);
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .shell {
+    display: grid;
+    grid-template-rows: 62px minmax(240px, 1fr) 52px;
+    min-height: 354px;
+    background: #fff;
+  }
+  .topbar,
+  .bottombar {
+    display: grid;
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+    background: rgba(250, 250, 250, 0.88);
+  }
+  .topbar {
+    grid-template-columns: 1fr auto;
+    gap: 16px;
+    padding: 0 18px;
+  }
+  .searchbox {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: 48px;
+    border: 1px solid #b7cdfd;
+    border-radius: 10px;
+    background: var(--surface-raised);
+    box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.12);
+    padding: 0 16px;
+    font-size: 22px;
+    font-weight: 500;
+  }
+  .magnify {
+    width: 15px;
+    height: 15px;
+    border: 2px solid var(--subtle);
+    border-radius: 50%;
+    position: relative;
+    flex: 0 0 auto;
+  }
+  .magnify::after {
+    content: "";
+    position: absolute;
+    width: 8px;
+    height: 2px;
+    right: -6px;
+    bottom: -4px;
+    background: var(--subtle);
+    transform: rotate(45deg);
+    border-radius: 1px;
+  }
+  .filter-pill {
+    height: 48px;
+    display: inline-flex;
+    align-items: center;
+    gap: 34px;
+    padding: 0 16px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .main-area {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 280px;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .results {
+    border-right: 1px solid var(--line);
+    padding: 16px 0;
+    overflow: hidden;
+  }
+  .section-label {
+    padding: 0 18px 8px;
+    color: var(--subtle);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .result-row {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px;
+    min-height: 60px;
+    padding: 0 18px;
+  }
+  .result-row.active { background: #f4f4f4; }
+  .result-icon {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid var(--line-strong);
+    border-radius: 7px;
+    background: var(--surface-raised);
+    color: var(--fg);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .result-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 16px;
+    font-weight: 650;
+  }
+  .result-meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 2px;
+    color: var(--subtle);
+    font-size: 13px;
+  }
+  .row-type {
+    color: var(--subtle);
+    font-size: 13px;
+  }
+  .context {
+    padding: 20px 18px;
+    background: #fbfbfb;
+    overflow: hidden;
+  }
+  .context-block + .context-block { margin-top: 22px; }
+  .context-card {
+    display: grid;
+    gap: 4px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--surface-raised);
+  }
+  .context-card strong { font-size: 15px; }
+  .context-card span {
+    color: var(--subtle);
+    font-size: 13px;
+  }
+  .bottombar {
+    position: relative;
+    grid-template-columns: auto 1fr auto;
+    border-top: 1px solid var(--line);
+    border-bottom: 0;
+    padding: 0 14px;
+  }
+  .key {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 34px;
+    min-width: 46px;
+    padding: 0 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: 9px;
+    background: #f1f1f1;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .island {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 34px;
+    min-width: min(360px, 42vw);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface-raised);
+    font-size: 13px;
+    font-weight: 650;
+  }
+  .bar-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-bottom: 1px solid var(--line);
+    background: #fff;
+  }
+  .metric {
+    min-height: 132px;
+    padding: 28px;
+    border-right: 1px solid var(--line);
+  }
+  .metric:last-child { border-right: 0; }
+  .metric strong {
+    display: block;
+    margin-bottom: 10px;
+    font-size: clamp(28px, 4vw, 42px);
+    line-height: 1;
+    letter-spacing: 0;
+  }
+  .metric span {
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  .section {
+    padding: 96px 0;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.92);
+  }
+  .section-head {
+    display: grid;
+    grid-template-columns: minmax(0, 0.9fr) minmax(280px, 0.55fr);
+    gap: 48px;
+    align-items: end;
+    margin-bottom: 46px;
+  }
+  .section-kicker {
+    margin: 0 0 12px;
+    color: var(--subtle);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  h2 {
+    margin: 0;
+    font-size: clamp(36px, 5.8vw, 64px);
+    line-height: 1;
+    letter-spacing: 0;
+  }
+  .section-copy {
+    margin: 0;
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1.8;
+  }
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--surface-raised);
+  }
+  .feature {
+    min-height: 220px;
+    padding: 26px;
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .feature:nth-child(3n) { border-right: 0; }
+  .feature:nth-last-child(-n + 3) { border-bottom: 0; }
+  .feature-icon {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    margin-bottom: 36px;
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: var(--surface);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .feature h3 {
+    margin: 0 0 10px;
+    font-size: 18px;
+    letter-spacing: 0;
+  }
+  .feature p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.75;
+  }
+
+  .flow {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: #fff;
+    overflow: hidden;
+  }
+  .flow-step {
+    padding: 28px;
+    border-right: 1px solid var(--line);
+  }
+  .flow-step:last-child { border-right: 0; }
+  .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    margin-bottom: 42px;
+    border-radius: 999px;
+    background: var(--fg);
+    color: var(--invert);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .flow-step h3 {
+    margin: 0 0 10px;
+    font-size: 17px;
+  }
+  .flow-step p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+
+  .download {
+    padding: 96px 0;
+    background: #000;
+    color: #fff;
+  }
+  .download-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 36px;
+    align-items: center;
+  }
+  .download h2 { color: #fff; }
+  .download p {
+    max-width: 620px;
+    margin: 18px 0 0;
+    color: #a1a1a1;
+    font-size: 16px;
+    line-height: 1.8;
+  }
+  .download .button {
+    border-color: #333;
+    background: #fff;
+    color: #000;
+  }
+  .download .button.secondary {
+    background: #111;
+    color: #fff;
+  }
+  .download .button:hover {
+    border-color: #fff;
+  }
+  .terminal {
+    width: min(420px, 100%);
+    border: 1px solid #333;
+    border-radius: 12px;
+    background: #0a0a0a;
+    overflow: hidden;
+  }
+  .terminal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 38px;
+    padding: 0 14px;
+    border-bottom: 1px solid #222;
+    color: #777;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .terminal-body {
+    padding: 18px;
+    color: #e5e5e5;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.9;
+  }
+  .terminal-muted { color: #777; }
+  .terminal-accent { color: #50e3c2; }
+
+  footer {
+    background: #000;
+    color: #777;
+    border-top: 1px solid #222;
+  }
+  .footer-inner {
+    display: flex;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 26px 0;
+    font-size: 13px;
+  }
+  footer a { color: #bdbdbd; }
+  footer a:hover { color: #fff; }
+
+  @media (max-width: 980px) {
+    .hero-inner { min-height: auto; padding-top: 58px; }
+    .shell {
+      grid-template-rows: 58px 230px 50px;
+      min-height: 338px;
+    }
+    .main-area { grid-template-columns: 1fr; }
+    .context { display: none; }
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .metric:nth-child(2) { border-right: 0; }
+    .metric:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
+    .section-head,
+    .download-panel {
+      grid-template-columns: 1fr;
+    }
+    .feature-grid { grid-template-columns: repeat(2, 1fr); }
+    .feature:nth-child(3n) { border-right: 1px solid var(--line); }
+    .feature:nth-child(2n) { border-right: 0; }
+    .feature:nth-last-child(-n + 3) { border-bottom: 1px solid var(--line); }
+    .feature:nth-last-child(-n + 2) { border-bottom: 0; }
+    .flow { grid-template-columns: repeat(2, 1fr); }
+    .flow-step:nth-child(2) { border-right: 0; }
+    .flow-step:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
+  }
+
+  @media (max-width: 720px) {
+    .container { width: min(100% - 32px, var(--max)); }
+    .nav-links { display: none; }
+    .nav-cta { height: 32px; padding: 0 12px; }
+    .hero-inner { gap: 18px; padding: 32px 0 24px; }
+    h1 { font-size: clamp(40px, 12.5vw, 52px); }
+    .hero-copy { font-size: 16px; line-height: 1.55; }
+    .actions,
+    .download .actions {
+      width: 100%;
+      flex-direction: column;
+    }
+    .button { width: 100%; }
+    .product-scene { border-radius: 10px; }
+    .shell {
+      grid-template-rows: 48px 120px 42px;
+      min-height: 210px;
+    }
+    .topbar { grid-template-columns: 1fr; padding: 0 12px; }
+    .filter-pill { display: none; }
+    .searchbox {
+      height: 38px;
+      font-size: 16px;
+    }
+    .result-row {
+      grid-template-columns: 28px minmax(0, 1fr);
+      min-height: 52px;
+    }
+    .row-type { display: none; }
+    .island {
+      min-width: min(260px, 62vw);
+      max-width: 62vw;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .bar-actions .key:first-child { display: none; }
+    .hero .actions .button:nth-child(3) { display: none; }
+    .hero .actions {
+      flex-direction: row;
+      flex-wrap: nowrap;
+    }
+    .hero .actions .button {
+      min-width: 0;
+      width: auto;
+      flex: 1 1 0;
+    }
+    .metrics,
+    .feature-grid,
+    .flow {
+      grid-template-columns: 1fr;
+    }
+    .metric,
+    .feature,
+    .flow-step {
+      border-right: 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .metric:last-child,
+    .feature:last-child,
+    .flow-step:last-child {
+      border-bottom: 0;
+    }
+    .section { padding: 68px 0; }
+    .footer-inner {
+      flex-direction: column;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+</style>
+</head>
+<body>
+<div class="page" id="top">
+  <nav class="nav">
+    <div class="container nav-inner">
+      <a class="brand" href="#top" aria-label="Qx 首页">
+        <span class="brand-mark">Qx</span>
+        <span>Qx</span>
+      </a>
+      <div class="nav-links" aria-label="页面导航">
+        <a href="#features">功能</a>
+        <a href="#workflow">工作流</a>
+        <a href="#download">下载</a>
+        <a href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">GitHub</a>
+      </div>
+      <a class="nav-cta" href="https://github.com/mcxen/qx/releases">下载</a>
+    </div>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-inner">
+        <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>v0.4.59 · Tauri v2 · macOS 14+</div>
+        <h1>键盘优先的 macOS 效率入口。</h1>
+        <p class="hero-copy">Qx 常驻菜单栏，用全局快捷键进入统一搜索。支持 Cardinal 全局文件搜索、应用启动、剪贴板历史、RSS、AI、插件、天气和自动化工具。</p>
+        <div class="actions">
+          <a class="button primary" href="https://github.com/mcxen/qx/releases">下载 Qx</a>
+          <a class="button" href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">查看源码</a>
+          <a class="button" href="#workflow"><code>⌘ Space</code> 呼出</a>
+        </div>
+
+        <div class="product-scene" aria-label="Qx 应用界面预览">
+          <div class="window-bar">
+            <div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>
+            <div class="window-title">Qx Launcher</div>
+            <div class="window-title">⌘K Actions</div>
+          </div>
+          <div class="shell">
+            <div class="topbar">
+              <div class="searchbox"><span class="magnify" aria-hidden="true"></span><span>Clash</span></div>
+              <div class="filter-pill">All <span aria-hidden="true">⌄</span></div>
+            </div>
+            <div class="main-area">
+              <div class="results">
+                <div class="section-label">Suggestions</div>
+                <div class="result-row active">
+                  <div class="result-icon">A</div>
+                  <div>
+                    <div class="result-title">Clash Verge</div>
+                    <div class="result-meta">Clash Verge.app</div>
+                  </div>
+                  <div class="row-type">Application</div>
+                </div>
+                <div class="result-row">
+                  <div class="result-icon">F</div>
+                  <div>
+                    <div class="result-title">Clash Verge-10f162fb20ebf367.png</div>
+                    <div class="result-meta">Cardinal global file search · /Users/mcx/.qx/icons</div>
+                  </div>
+                  <div class="row-type">File</div>
+                </div>
+                <div class="result-row">
+                  <div class="result-icon">P</div>
+                  <div>
+                    <div class="result-title">Raycast extension converter</div>
+                    <div class="result-meta">Install and run converted plugin commands</div>
+                  </div>
+                  <div class="row-type">Plugin</div>
+                </div>
+                <div class="section-label">Quick entries</div>
+                <div class="result-row">
+                  <div class="result-icon">C</div>
+                  <div>
+                    <div class="result-title">剪贴板历史</div>
+                    <div class="result-meta">置顶、常用、链接、图片和全文搜索</div>
+                  </div>
+                  <div class="row-type">Module</div>
+                </div>
+                <div class="result-row">
+                  <div class="result-icon">R</div>
+                  <div>
+                    <div class="result-title">RSS 阅读器</div>
+                    <div class="result-meta">订阅源、文章、收藏和后台刷新</div>
+                  </div>
+                  <div class="row-type">Module</div>
+                </div>
+              </div>
+              <aside class="context">
+                <div class="context-block">
+                  <div class="section-label">Context</div>
+                  <div class="context-card">
+                    <strong>快速入口</strong>
+                    <span>应用、文件和高频模块</span>
+                  </div>
+                </div>
+                <div class="context-block">
+                  <div class="context-card">
+                    <strong>剪贴板历史</strong>
+                    <span>置顶 · 常用 · 链接</span>
+                  </div>
+                  <div class="context-card">
+                    <strong>QxAI</strong>
+                    <span>多 provider · 流式响应</span>
+                  </div>
+                  <div class="context-card">
+                    <strong>设置</strong>
+                    <span>外观、权限、插件</span>
+                  </div>
+                </div>
+              </aside>
+            </div>
+            <div class="bottombar">
+              <span class="key">ESC</span>
+              <div class="island">搜索就绪 · 10 条结果</div>
+              <div class="bar-actions">
+                <span class="key">打开 ↵</span>
+                <span class="key">操作 ⌘K</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="metrics" aria-label="Qx 特性摘要">
+      <div class="metric"><strong>1</strong><span>统一入口覆盖 Cardinal 文件搜索、应用、插件、剪贴板和内置模块。</span></div>
+      <div class="metric"><strong>3</strong><span>Top Bar / Main Area / Bottom Bar 三层 Shell 保持稳定。</span></div>
+      <div class="metric"><strong>0</strong><span>无多余窗口切换，动作集中在键盘和底栏协议。</span></div>
+      <div class="metric"><strong>∞</strong><span>插件、Raycast 转换和脚本工具继续扩展。</span></div>
+    </section>
+
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Capabilities</p>
+            <h2>覆盖启动、搜索、阅读、AI 和插件的桌面入口。</h2>
+          </div>
+          <p class="section-copy">Qx 用稳定的三层 Shell 组织常用桌面任务：Top Bar 负责搜索，Main Area 展示结果与内容，Context Panel 放辅助信息，Bottom Island 反馈状态。</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature">
+            <div class="feature-icon">⌘</div>
+            <h3>Cardinal 全局文件搜索</h3>
+            <p>接入 Cardinal 搜索索引，支持全局文件检索、路径片段、类型/大小/日期过滤，并和应用、命令、插件结果一起排序。</p>
+          </article>
+          <article class="feature">
+            <div class="feature-icon">C</div>
+            <h3>剪贴板历史</h3>
+            <p>持久化文本、链接和图片记录，支持置顶、预览、类型过滤和快捷动作。</p>
+          </article>
+          <article class="feature">
+            <div class="feature-icon">R</div>
+            <h3>RSS 阅读器</h3>
+            <p>订阅源、文章列表、详情阅读和后台刷新，在同一套 Shell 中完成。</p>
+          </article>
+          <article class="feature">
+            <div class="feature-icon">AI</div>
+            <h3>QxAI</h3>
+            <p>内置多 provider AI 对话，支持流式响应、持久记忆和插件侧 Agent 设置。</p>
+          </article>
+          <article class="feature">
+            <div class="feature-icon">P</div>
+            <h3>插件系统</h3>
+            <p>沙箱 iframe 运行时、RPC 桥接、插件市场和 Raycast 扩展转换。</p>
+          </article>
+          <article class="feature">
+            <div class="feature-icon">M</div>
+            <h3>宏与工具</h3>
+            <p>录屏、OCR、天气、V2EX、GitHub 贡献图、文本工具和宏录制逐步集成。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="workflow">
+      <div class="container">
+        <div class="section-head">
+          <div>
+            <p class="section-kicker">Workflow</p>
+            <h2>从呼出到执行，保持一条直线。</h2>
+          </div>
+          <p class="section-copy">Vercel 风格的克制设计适合 Qx：高对比文本、细边框分区、少量动效、明确状态，让用户反复使用时不用重新理解界面。</p>
+        </div>
+        <div class="flow">
+          <article class="flow-step">
+            <span class="step-num">01</span>
+            <h3>快捷键呼出</h3>
+            <p>菜单栏常驻，全局快捷键打开主搜索，不打断当前工作上下文。</p>
+          </article>
+          <article class="flow-step">
+            <span class="step-num">02</span>
+            <h3>搜索定位</h3>
+            <p>应用、文件、插件和模块统一排序，结果区只保留可扫描信息。</p>
+          </article>
+          <article class="flow-step">
+            <span class="step-num">03</span>
+            <h3>上下文动作</h3>
+            <p>右侧面板只呈现辅助入口，真实操作进入底栏 Actions 协议。</p>
+          </article>
+          <article class="flow-step">
+            <span class="step-num">04</span>
+            <h3>状态反馈</h3>
+            <p>同步、下载、导入和错误进入 Bottom Island，完成后回到轻状态。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="download" id="download">
+      <div class="container download-panel">
+        <div>
+          <p class="section-kicker">Get Qx</p>
+          <h2>下载，放进 Applications，然后用键盘打开。</h2>
+          <p>适用于 macOS 14.0+。可从 GitHub Releases 下载，也可以使用 Homebrew 安装；源码可本地构建，插件和转换器随项目继续迭代。</p>
+          <div class="actions" style="justify-content:flex-start; margin-top:28px;">
+            <a class="button" href="https://github.com/mcxen/qx/releases">下载 Release</a>
+            <span class="button secondary"><code>brew install mcxen/qx/qx</code></span>
+            <a class="button secondary" href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">GitHub 仓库</a>
+          </div>
+        </div>
+        <div class="terminal" aria-label="安装提示">
+          <div class="terminal-head"><span>install</span><span>macOS</span></div>
+          <div class="terminal-body">
+            <div><span class="terminal-accent">$</span> brew install mcxen/qx/qx</div>
+            <div class="terminal-muted">或从 Releases 下载 Qx.app</div>
+            <div>&nbsp;</div>
+            <div><span class="terminal-accent">$</span> open Qx.app</div>
+            <div>menu bar · global search · plugins</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container footer-inner">
+      <span>Qx · macOS Productivity Launcher</span>
+      <span><a href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">GitHub</a> · <a href="https://mcxen.github.io" target="_blank" rel="noreferrer">MCXEN</a></span>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

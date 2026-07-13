@@ -1,5 +1,7 @@
 # Qx 开发者文档索引
 
+> 状态：Current · 适用版本：v0.4.61 · Owner：Core · 最后复核：2026-07-10
+
 面向核心贡献者。所有面向用户的说明在 [README.md](../README.md) 和 [`public/doc/`](../public/doc/) 下。
 
 ## 从这里开始
@@ -33,6 +35,7 @@
 | 文档 | 覆盖范围 |
 |---|---|
 | [release-and-versioning.md](./release-and-versioning.md) | 版本一致性、GitHub Actions release、Homebrew tap、pre-flight |
+| [`public/doc/release-workflow.md`](../public/doc/release-workflow.md) | commit、tag、发布和推送时使用的完整维护者流程 |
 
 ## 常用检索路径
 
@@ -40,7 +43,15 @@
 - 想加 Rust 命令 → `rust-backend.md` + `ipc-catalogue.md`
 - 想改插件 API → `plugin-architecture.md` + `plugin-system.md` + `rpcMethods.ts`
 - 想改 AI → `ai-agent-runtime.md`
-- 想发版 → `release-and-versioning.md` + `AGENTS.md` 的 Release 一节
+- 想发版 → `release-and-versioning.md` + `public/doc/release-workflow.md` + `AGENTS.md` 的 Release 一节
+
+## 维护规则
+
+- 修改 `src-tauri/src/lib.rs` 的 `generate_handler!` 后，同步 `ipc-catalogue.md` 并运行 `npm run docs:check`。
+- 修改依赖主版本、应用版本或平台支持范围后，同步顶层架构和 README。
+- 新增跨前后端功能时，至少更新前端/后端导览、IPC、权限与验证方式。
+- 当前实现、研究提案和未来规划必须在文档页头明确标记；不要把计划描述成已交付能力。
+- 每次 release 前复核本索引和所有标记为 Current 的文档。
 
 ## 计划中未写的
 

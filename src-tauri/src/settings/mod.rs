@@ -17,6 +17,8 @@ pub struct GeneralSettings {
     #[serde(default = "default_auto_hide_on_blur", rename = "autoHideOnBlur")]
     pub auto_hide_on_blur: bool,
     pub data_path: String,
+    #[serde(default)]
+    pub has_shown_launcher: bool,
 }
 
 fn default_auto_hide_on_blur() -> bool {
@@ -32,6 +34,7 @@ impl Default for GeneralSettings {
             auto_update: true,
             auto_hide_on_blur: true,
             data_path: format!("{}/Library/Application Support/qx", home),
+            has_shown_launcher: false,
         }
     }
 }

@@ -427,6 +427,10 @@ pub fn run() {
             clipboard::get_clipboard_history,
             clipboard::read_clipboard_image_now,
             clipboard::write_clipboard_image_entry,
+            clipboard::write_clipboard_file_entry,
+            clipboard::clipboard_file_metadata,
+            clipboard::clipboard_compress_image,
+            clipboard::clipboard_video_to_gif,
             clipboard::clear_clipboard_history,
             clipboard::delete_clipboard_entry,
             clipboard::toggle_clipboard_pin,
@@ -570,6 +574,19 @@ pub fn run() {
             g4f::qxai_get_custom_providers,
             g4f::qxai_save_custom_providers,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            // macOS sends Reopen when the helper is activated (for example by
+            // Login Items or `open -a Qx`). Qx is shortcut-first: activation
+            // keeps the helper alive but must never surface a hidden launcher.
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen {
+                has_visible_windows: false,
+                ..
+            } = event
+            {
+                floating_panel::hide(app);
+            }
+        });
 }

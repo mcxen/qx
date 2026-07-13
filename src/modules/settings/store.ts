@@ -37,6 +37,7 @@ export interface GeneralSettings {
   auto_update: boolean;
   autoHideOnBlur: boolean;
   data_path: string;
+  has_shown_launcher: boolean;
 }
 
 export interface AppearanceSettings {
@@ -182,6 +183,7 @@ export const DEFAULT_SETTINGS: Settings = {
     auto_update: true,
     autoHideOnBlur: true,
     data_path: "",
+    has_shown_launcher: false,
   },
   appearance: {
     theme: "light",

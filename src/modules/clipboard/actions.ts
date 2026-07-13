@@ -11,7 +11,9 @@ function isTauriRuntime(): boolean {
 }
 
 export async function writeClipboardEntry(item: ClipboardEntry): Promise<void> {
-  if (item.image_path) {
+  if (item.file_path) {
+    await invoke("write_clipboard_file_entry", { id: item.id });
+  } else if (item.image_path) {
     await invoke("write_clipboard_image_entry", { id: item.id });
   } else {
     await writeText(item.text);

@@ -1,6 +1,10 @@
 # IPC 命令目录
 
-Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。所有 `#[tauri::command]` 都在 `src-tauri/src/lib.rs` 的 `tauri::generate_handler!` 中注册（第 294–422 行）。当前共 127 个命令。
+> 状态：Current · 适用版本：v0.5.0 · Owner：Backend · 最后复核：2026-07-13
+>
+> 事实来源：`src-tauri/src/lib.rs` 中的 `tauri::generate_handler!`
+
+Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_handler!` 注册 **156 个命令**；不要引用易漂移的固定行号。本文按领域解释主要接口，文末“注册命令基线”必须与注册宏逐项一致。
 
 `capabilities/default.json` 只声明了 Tauri **插件**权限（`opener`、`global-shortcut`、`clipboard-manager`、`shell`、`core:window`、`core:path`）。自定义命令注册后即可从主 webview 直接调用，无需额外 capability 条目。
 
@@ -22,6 +26,10 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。所有 `#[tauri::command
 | `get_clipboard_history(limit?)` | 读取置顶 + 最近文本/图片剪贴板条目 |
 | `read_clipboard_image_now()` | 立即读当前剪贴板图片，落盘并触发 `clipboard-updated` |
 | `write_clipboard_image_entry(id)` | 将历史图片回写系统剪贴板 |
+| `write_clipboard_file_entry(id)` | 将历史文件作为真实文件对象回写系统剪贴板 |
+| `clipboard_file_metadata(path)` | 异步读取文件大小、图片尺寸、媒体时长与预览 |
+| `clipboard_compress_image(path, quality?)` | 启动后台图片压缩任务 |
+| `clipboard_video_to_gif(path)` | 启动后台视频转 GIF 任务 |
 | `clear_clipboard_history()` | 清空全部 |
 | `delete_clipboard_entry(id)` | 删单条 |
 | `toggle_clipboard_pin(id)` | 置顶开关 |
@@ -38,7 +46,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。所有 `#[tauri::command
 
 ## weather
 
-`detect_location()`（IP 定位）、`fetch_weather()`（Open-Meteo / OpenWeatherMap）。
+`detect_location()`（IP 定位）、`fetch_weather()` / `fetch_weather_for_location()`（Open-Meteo / OpenWeatherMap）、`get_cached_weather()` / `get_cached_weather_for_location()`（读取缓存）。
 
 ## screencap
 
@@ -83,6 +91,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。所有 `#[tauri::command
 ## system 相关
 
 - `get_system_stats()` — Mach APIs 读 CPU/内存
+- `qx_external_displays_driver/install_driver/list/set_control` — DDC 驱动状态、安装、外接显示器枚举与亮度/音量控制
 - `qx_system_information_check_system_info` — 主机名 / 芯片 / macOS 版本 / 内核 / 序列号
 - `qx_system_information_check_storage` — 通过 `df -k /` 读根卷
 - `qx_system_information_check_network` — `ifconfig` 枚举非 loopback IPv4
@@ -105,6 +114,14 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。所有 `#[tauri::command
 - `qx_permissions_status/request/open_settings` — macOS TCC
 - `github_contributions(username)` / `github_contributions_raw(username)`
 
+## 注册命令基线
+
+以下清单按 `src-tauri/src/lib.rs` 的注册顺序维护，供 `npm run docs:check` 自动核对：
+
+<!-- IPC_COMMANDS_START -->
+`get_file_size`, `qx_log_event`, `qx_log_path`, `search_apps`, `search_files`, `open_app`, `set_window_size`, `get_clipboard_history`, `read_clipboard_image_now`, `write_clipboard_image_entry`, `write_clipboard_file_entry`, `clipboard_file_metadata`, `clipboard_compress_image`, `clipboard_video_to_gif`, `clear_clipboard_history`, `delete_clipboard_entry`, `toggle_clipboard_pin`, `record_clipboard_copy`, `read_image_file`, `floating_show`, `floating_hide`, `floating_hide_restore_focus`, `floating_toggle`, `floating_request_key`, `rss_list_feeds`, `rss_add_feed`, `rss_update_feed`, `rss_remove_feed`, `rss_list_articles`, `rss_get_article`, `rss_mark_read`, `rss_mark_all_read`, `rss_toggle_star`, `rss_refresh_feed`, `rss_refresh_all`, `rss_import_opml`, `rss_export_opml`, `rss_clear_read_articles`, `rss_clear_all_articles`, `rss_fetch_original_content`, `get_settings`, `update_settings`, `reset_settings`, `import_settings`, `export_settings`, `qx_storage_overview`, `qx_storage_clear_cache`, `qx_storage_clear_files`, `qx_storage_clear_clipboard`, `qx_storage_clear_clipboard_history`, `qx_storage_clear_launcher_history`, `qx_storage_clear_rss_cache`, `qx_storage_clear_reclaimable`, `qx_system_information_check_system_info`, `qx_system_information_check_storage`, `qx_system_information_check_network`, `qx_system_information_list_processes`, `qx_system_information_kill_process`, `qx_system_monitor_network_counters`, `qx_system_monitor_power`, `get_system_stats`, `qx_external_displays_driver`, `qx_external_displays_install_driver`, `qx_external_displays_list`, `qx_external_displays_set_control`, `start_recording`, `stop_recording`, `save_gif`, `list_gif_history`, `get_screencap_history`, `delete_screencap`, `is_recording`, `fetch_plugin_index`, `download_plugin`, `install_plugin`, `install_plugin_from_url`, `install_raycast_extension_from_url`, `uninstall_plugin`, `list_installed_plugins`, `read_plugin_entry`, `set_plugin_enabled`, `plugin_storage_get`, `plugin_storage_set`, `plugin_storage_delete`, `plugin_preferences_get`, `plugin_preferences_set`, `sign_plugin`, `scaffold_plugin`, `plugin_clipboard_read`, `plugin_clipboard_write`, `plugin_perform_paste`, `plugin_perform_paste_at_cursor`, `plugin_run_applescript`, `plugin_file_read_base64`, `plugin_file_exists`, `plugin_file_ensure_dir`, `plugin_file_write_base64`, `plugin_file_empty_dir`, `plugin_file_list`, `plugin_ai_list_providers`, `plugin_ai_default_model`, `plugin_ai_agent_settings`, `plugin_ai_chat`, `plugin_ai_stream_chat`, `plugin_ai_run_bash`, `plugin_ai_grep_search`, `plugin_ai_memory_list`, `plugin_ai_memory_add`, `plugin_ai_memory_delete`, `plugin_http_fetch`, `plugin_notification_show`, `plugin_resolve_asset`, `qx_permissions_status`, `qx_permissions_request`, `qx_permissions_open_settings`, `qx_update_check`, `qx_update_download_and_install`, `download_ocr_model`, `check_ocr_models`, `macro_start_recording`, `macro_stop_recording`, `macro_save`, `macro_list`, `macro_delete`, `macro_play`, `record_launch`, `get_launch_history`, `clear_launch_history`, `record_search`, `get_search_history`, `clear_search_history`, `delete_search_entry`, `v2ex_fetch_topics`, `v2ex_search_topics`, `v2ex_fetch_node_topics`, `v2ex_fetch_topic_replies`, `v2ex_fetch_token_info`, `v2ex_fetch_notifications`, `github_contributions`, `github_contributions_raw`, `fetch_weather`, `fetch_weather_for_location`, `get_cached_weather`, `get_cached_weather_for_location`, `detect_location`, `g4f_chat`, `g4f_stream_chat`, `g4f_chat_custom`, `g4f_list_providers`, `qxai_stream_chat`, `qxai_stream_chat_events`, `qxai_chat_with_tools`, `qxai_list_providers`, `qxai_fetch_models`, `qxai_get_custom_providers`, `qxai_save_custom_providers`.
+<!-- IPC_COMMANDS_END -->
+
 ## 事件通道
 
 命令之外，后端还通过 `Emitter::emit` 发这些事件：
@@ -114,6 +131,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。所有 `#[tauri::command
 | `navigate` | 托盘菜单 quick_entry / `show_and_navigate` | `App.tsx` DOM `qx:navigate` |
 | `apps:updated` / `apps:icons-ready` | 后台索引 | `App.tsx` `doSearch` 重刷 |
 | `clipboard-updated` | 剪贴板轮询 / `read_clipboard_image_now` | `ClipboardPanel.tsx` |
+| `clipboard-media-progress` | 图片压缩 / 视频转 GIF 后台任务 | `ClipboardPanel.tsx` 灵动岛进度 |
 | `qxai://stream` | `qxai_stream_chat_events` 内部线程 | `modules/qx-ai/store.ts`、`react-agent.ts` |
 | `ocr:download-progress` | `download_ocr_model` | `modules/settings/OcrSettings.tsx` |
 | 显示器变化 | `display_monitor::start_display_monitor` | 内部 auto-show panel |

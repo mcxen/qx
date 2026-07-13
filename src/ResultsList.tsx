@@ -1,6 +1,6 @@
 import { useStore } from "./store";
 import type { AppEntry } from "./store";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -240,9 +240,9 @@ function AppIcon({ item, label }: { item: AppEntry; label: string }) {
   );
 }
 
-function ResultItem({ item, index, label }: { item: AppEntry; index: number; label: string }) {
-  const { selectedIndex, setSelectedIndex } = useStore();
-  const selected = index === selectedIndex;
+const ResultItem = memo(function ResultItem({ item, index, label }: { item: AppEntry; index: number; label: string }) {
+  const selected = useStore((state) => state.selectedIndex === index);
+  const setSelectedIndex = useStore((state) => state.setSelectedIndex);
 
   return (
     <div
@@ -263,7 +263,7 @@ function ResultItem({ item, index, label }: { item: AppEntry; index: number; lab
       </span>
     </div>
   );
-}
+});
 
 function ResultSkeletonRows() {
   return (

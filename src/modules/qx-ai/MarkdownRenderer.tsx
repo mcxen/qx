@@ -1,10 +1,9 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import mathml from "@webc.site/math";
-import { createHighlighter, type Highlighter } from "shiki/bundle/web";
 import { useTheme } from "../../ThemeProvider";
 
 const SHIKI_LANGS = [
@@ -36,20 +35,6 @@ const SHIKI_LANGS = [
   "yaml",
 ] as const;
 
-const SHIKI_THEMES = ["github-light", "github-dark"] as const;
-
-let highlighterPromise: Promise<Highlighter> | null = null;
-
-function getHighlighter(): Promise<Highlighter> {
-  if (!highlighterPromise) {
-    highlighterPromise = createHighlighter({
-      themes: SHIKI_THEMES.slice(),
-      langs: SHIKI_LANGS.slice(),
-    });
-  }
-  return highlighterPromise;
-}
-
 function normalizeLang(lang?: string): string {
   if (!lang) return "text";
   const lower = lang.toLowerCase();
@@ -74,6 +59,7 @@ function CodeBlock({
 }) {
   const [html, setHtml] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const lang = normalizeLang(language);
   const supported = SHIKI_LANGS.includes(lang as (typeof SHIKI_LANGS)[number]);
 
@@ -85,13 +71,10 @@ function CodeBlock({
         cancelled = true;
       };
     }
-    void getHighlighter()
-      .then((hi) => {
+    void import("./shikiHighlighter")
+      .then(({ codeToHtml }) => codeToHtml(code, lang, themeId))
+      .then((rendered) => {
         if (cancelled) return;
-        const rendered = hi.codeToHtml(code, {
-          lang,
-          theme: themeId,
-        });
         setHtml(rendered);
       })
       .catch(() => {
@@ -102,11 +85,22 @@ function CodeBlock({
     };
   }, [code, lang, supported, themeId]);
 
+  useEffect(() => () => {
+    if (copiedTimerRef.current) {
+      window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = null;
+    }
+  }, []);
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1200);
+      if (copiedTimerRef.current) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => {
+        setCopied(false);
+        copiedTimerRef.current = null;
+      }, 1200);
     } catch {
       // ignore
     }
@@ -200,7 +194,7 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
   const { resolvedTheme } = useTheme();
   const themeId = resolvedTheme === "dark" ? "github-dark" : "github-light";
 
-  const components: Components = {
+  const components: Components = useMemo(() => ({
     code({ className, children, ...props }) {
       const text = String(children ?? "");
       const match = /language-(\w+)/.exec(className ?? "");
@@ -253,7 +247,7 @@ const MarkdownRenderer = memo(function MarkdownRenderer({
         </div>
       );
     },
-  };
+  }), [themeId]);
 
   return (
     <div className="qx-md-body">

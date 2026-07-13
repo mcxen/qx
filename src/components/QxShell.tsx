@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import QxBottomIsland, { type BottomIslandContent } from "./QxBottomIsland";
 import ShellActionButton, { type QxShellAction } from "./ShellActionButton";
 import ShellActionMenu from "./ShellActionMenu";
+import { isNativeEditingShortcut, matchesQxShortcut, shouldIgnoreBareShortcut } from "../utils/keyboard";
 
 export type { BottomIslandContent } from "./QxBottomIsland";
 export type { QxShellAction } from "./ShellActionButton";
@@ -28,6 +29,14 @@ interface QxShellProps {
   style?: CSSProperties;
   onKeyDown?: (event: React.KeyboardEvent) => void;
   overlayBottom?: boolean;
+  navigation?: {
+    index: number;
+    count: number;
+    onChange: (index: number) => void;
+    onOpen?: () => void;
+    onClose?: () => void;
+    pageSize?: number;
+  };
 }
 
 const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
@@ -51,6 +60,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   style,
   onKeyDown,
   overlayBottom,
+  navigation,
 }, ref) {
   const fallbackEscapeAction: QxShellAction = onBack
     ? { label: backLabel, kbd: "Esc", onClick: onBack }
@@ -96,6 +106,8 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented) return;
+
     if (actionMenuOpen) {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -144,6 +156,51 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     }
 
     onKeyDown?.(event);
+    if (event.defaultPrevented) return;
+
+    if (navigation && navigation.count > 0) {
+      const last = navigation.count - 1;
+      const page = Math.max(1, navigation.pageSize ?? 8);
+      const editable = shouldIgnoreBareShortcut(event.nativeEvent);
+      let next: number | null = null;
+      if (event.key === "ArrowDown") next = Math.min(last, navigation.index + 1);
+      else if (event.key === "ArrowUp") next = Math.max(0, navigation.index - 1);
+      else if (event.key === "PageDown") next = Math.min(last, navigation.index + page);
+      else if (event.key === "PageUp") next = Math.max(0, navigation.index - page);
+      else if (!editable && event.key === "Home") next = 0;
+      else if (!editable && event.key === "End") next = last;
+      else if (!editable && event.key === "ArrowRight" && navigation.onOpen) navigation.onOpen();
+      else if (!editable && event.key === "ArrowLeft" && navigation.onClose) navigation.onClose();
+      if (next !== null || (!editable && (event.key === "ArrowRight" || event.key === "ArrowLeft"))) {
+        event.preventDefault();
+        event.stopPropagation();
+        if (next !== null) navigation.onChange(next);
+        return;
+      }
+    }
+
+    // Shell is the final keyboard fallback. Inner views, dialogs and search
+    // fields get first refusal through normal bubbling; an otherwise
+    // unhandled Esc always matches the visible bottom-bar action.
+    if (event.key === "Escape" && leftAction.onClick && !leftAction.disabled) {
+      event.preventDefault();
+      event.stopPropagation();
+      leftAction.onClick();
+      return;
+    }
+
+    const nativeEvent = event.nativeEvent;
+    const candidates = [visiblePrimaryAction, visibleSecondaryAction, ...menuActions];
+    const matchedAction = candidates.find((action) => {
+      if (!action || action.disabled || !matchesQxShortcut(nativeEvent, action.kbd)) return false;
+      if (isNativeEditingShortcut(nativeEvent)) return false;
+      return nativeEvent.metaKey || nativeEvent.ctrlKey || nativeEvent.altKey || !shouldIgnoreBareShortcut(nativeEvent);
+    });
+    if (matchedAction) {
+      event.preventDefault();
+      event.stopPropagation();
+      runMenuAction(matchedAction);
+    }
   };
 
   const handleInputCapture = (event: React.FormEvent<HTMLDivElement>) => {
@@ -167,7 +224,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       className={`qx-shell visual-${visual} ${context ? "has-context" : ""} ${overlayBottom ? "qx-shell-overlay-bottom" : ""} ${className}`}
       style={style}
       aria-label={title}
-      onKeyDownCapture={handleKeyDown}
+      onKeyDown={handleKeyDown}
       onInputCapture={handleInputCapture}
       tabIndex={0}
     >

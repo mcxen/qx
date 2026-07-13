@@ -1,7 +1,7 @@
-import { memo } from "react";
+import { Suspense, lazy, memo, useMemo } from "react";
 import { Brain, CheckCircle2, Loader2, Search, Wrench, XCircle } from "lucide-react";
 import type { AgentStep } from "./react-agent";
-import MarkdownRenderer from "./MarkdownRenderer";
+const MarkdownRenderer = lazy(() => import("./MarkdownRenderer"));
 
 type MessagePart =
   | { type: "text"; text: string }
@@ -155,16 +155,20 @@ export function AiMessageContent({
   streaming?: boolean;
   steps?: AgentStep[];
 }) {
+  const parts = useMemo(() => parseParts(content), [content]);
+
   return (
     <>
       {steps && steps.length > 0 && <AgentStepsView steps={steps} />}
-      {parseParts(content).map((part, index) =>
-        part.type === "tool" ? (
-          <ToolInvocation key={`tool-${index}-${part.name}`} part={part} />
-        ) : (
-          <MarkdownRenderer key={`text-${index}`} content={part.text} />
-        ),
-      )}
+      <Suspense fallback={<div className="qx-md-body">{content}</div>}>
+        {parts.map((part, index) =>
+          part.type === "tool" ? (
+            <ToolInvocation key={`tool-${index}-${part.name}`} part={part} />
+          ) : (
+            <MarkdownRenderer key={`text-${index}`} content={part.text} />
+          ),
+        )}
+      </Suspense>
       {streaming && <span className="qx-typing-cursor">|</span>}
     </>
   );

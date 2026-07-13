@@ -253,12 +253,17 @@ export function buildPluginRuntimeHtml(
 
       window.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape') return;
-        postToParent({
-          type: 'qx:host-keydown',
-          pluginId,
-          runtimeId,
-          key: 'Escape',
-        });
+        // Let the plugin's own dialog/detail handlers consume Esc first.
+        // Only an unhandled event crosses the iframe boundary to QxShell.
+        window.setTimeout(() => {
+          if (event.defaultPrevented) return;
+          postToParent({
+            type: 'qx:host-keydown',
+            pluginId,
+            runtimeId,
+            key: 'Escape',
+          });
+        }, 0);
       }, true);
 
       const context = {

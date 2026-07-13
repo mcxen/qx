@@ -1,0 +1,4 @@
+name = "q-xpai-uk"
+compatibility_date = "2026-07-06"
+
+pages_build_output_dir = "."

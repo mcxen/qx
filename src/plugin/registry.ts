@@ -18,7 +18,7 @@ import type {
   RegisteredPanel,
 } from "./types";
 
-const backgroundTimers = new Map<string, number[]>();
+const backgroundTimers = new Map<string, Set<number>>();
 const registryLogger = createQxLogger("plugin.registry");
 
 export interface CommandMatch {
@@ -101,8 +101,10 @@ function scheduleBackgroundCommand(command: RegisteredCommand): void {
   const savedNext = Number(window.localStorage.getItem(key) || 0);
   const now = Date.now();
   const delay = Math.max(0, (Number.isFinite(savedNext) && savedNext > 0 ? savedNext : now + intervalMs) - now);
-  const timers = backgroundTimers.get(command.pluginId) || [];
+  const timers = backgroundTimers.get(command.pluginId) || new Set<number>();
   const timer = window.setTimeout(() => {
+    timers.delete(timer);
+    if (timers.size === 0) backgroundTimers.delete(command.pluginId);
     registryLogger.info("Background plugin command triggered", {
       pluginId: command.pluginId,
       command: command.name,
@@ -119,7 +121,7 @@ function scheduleBackgroundCommand(command: RegisteredCommand): void {
     delayMs: delay,
     intervalMs,
   });
-  timers.push(timer);
+  timers.add(timer);
   backgroundTimers.set(command.pluginId, timers);
 }
 

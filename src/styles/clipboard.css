@@ -278,6 +278,51 @@
   transition: background-color 0.1s ease, border-color 0.1s ease;
 }
 
+.qx-clipboard-file-preview {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  flex: 1;
+  padding: 18px;
+  overflow: hidden;
+  background: var(--qx-bg-component-2);
+}
+
+.qx-clipboard-file-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--qx-text-secondary);
+}
+
+.qx-clipboard-file-placeholder strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--qx-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-inline-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-primary);
+  cursor: pointer;
+}
+
+.qx-inline-action:disabled {
+  color: var(--qx-text-tertiary);
+  cursor: default;
+}
+
 .qx-clipboard-detail-header {
   display: flex;
   align-items: center;
