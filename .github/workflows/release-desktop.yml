@@ -4,10 +4,6 @@ on:
   push:
     tags:
       - "v*"
-    branches:
-      - main
-    paths:
-      - ".github/workflows/release-desktop.yml"
   workflow_dispatch:
     inputs:
       tag:
@@ -48,9 +44,7 @@ jobs:
       - name: Resolve release tag
         shell: bash
         run: |
-          if [ "${GITHUB_REF_TYPE}" = "branch" ]; then
-            echo "RELEASE_TAG=v0.5.1" >> "${GITHUB_ENV}"
-          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             echo "RELEASE_TAG=${{ inputs.tag }}" >> "${GITHUB_ENV}"
           else
             echo "RELEASE_TAG=${GITHUB_REF_NAME}" >> "${GITHUB_ENV}"
@@ -121,10 +115,7 @@ jobs:
 
       - name: Resolve release metadata
         run: |
-          if [ "${GITHUB_REF_TYPE}" = "branch" ]; then
-            echo "RELEASE_TAG=v0.5.1" >> "${GITHUB_ENV}"
-            echo "PRERELEASE=false" >> "${GITHUB_ENV}"
-          elif [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+          if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
             echo "RELEASE_TAG=${{ inputs.tag }}" >> "${GITHUB_ENV}"
             echo "PRERELEASE=${{ inputs.prerelease }}" >> "${GITHUB_ENV}"
           else
@@ -143,6 +134,10 @@ jobs:
           find release-assets -type f -print0 | while IFS= read -r -d '' asset; do
             target="release-assets/$(basename "$asset")"
             if [ "$asset" != "$target" ]; then
+              if [ -e "$target" ]; then
+                echo "Duplicate release asset: $(basename "$asset")" >&2
+                exit 1
+              fi
               mv "$asset" "$target"
             fi
           done
