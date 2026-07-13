@@ -38,15 +38,7 @@ function download(url, dest) {
 
 function extract(zip, destination) {
   if (process.platform === "win32") {
-    execFileSync("powershell.exe", [
-      "-NoLogo",
-      "-NoProfile",
-      "-NonInteractive",
-      "-Command",
-      "Expand-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force",
-      zip,
-      destination,
-    ], { stdio: "inherit" });
+    execFileSync("tar.exe", ["-xf", zip, "-C", destination], { stdio: "inherit" });
     return;
   }
   execFileSync("unzip", ["-o", zip, "-d", destination], { stdio: "inherit" });
