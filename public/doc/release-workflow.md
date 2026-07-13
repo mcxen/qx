@@ -188,8 +188,10 @@ The release assets must include both:
 
 `latest.json` is the app updater manifest. It must point at the ARM64 app zip and
 include the matching SHA256 and size. The release workflow generates it before
-uploading `release-assets/*`; if it is missing, the app can still detect a newer
-release but will refuse automatic installation because it cannot verify the zip.
+uploading `release-assets/*`. The app checks it through the API-free stable URL
+`https://github.com/mcxen/qx/releases/latest/download/latest.json`, which GitHub
+redirects to the latest published release. If the manifest is missing or invalid,
+update discovery fails safely because the app cannot identify and verify the zip.
 
 ## Dirty Files After Push
 

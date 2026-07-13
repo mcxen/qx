@@ -1,5 +1,25 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Bugfix — 更新检查绕过 GitHub REST API 限流
+
+**状态**：已实现，Rust 静态验证与 updater 单测通过；等待真实网络手动验证。
+
+### 修复内容
+
+- 更新检查不再请求 `api.github.com/repos/mcxen/qx/releases/latest`，也不再先解析 Release 网页的 tag 重定向。
+- 直接请求 GitHub 的稳定 Release 资产入口 `releases/latest/download/latest.json`，由 GitHub 重定向到最新正式版本清单。
+- 从清单读取版本、macOS `.app.zip`、SHA256 与大小；清单省略资产 URL 时按 tag 和现有命名规则生成版本化下载地址。
+- 自动安装前限制资产必须来自 `https://github.com/mcxen/qx/releases/download/<tag>/<asset>`，并继续执行大小、SHA256、bundle id、版本与可执行文件校验。
+- macOS 自动更新继续使用 `.app.zip`；Windows `.exe` 仍为 Release 手动安装资产，当前 updater helper 不自动运行 Windows 安装器。
+
+### 验证
+
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo test --lib updater::tests -- --nocapture`（7 个 updater 测试通过）
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [ ] 真实网络请求：当前环境访问 `github.com` 时 `curl` 在 TLS/proxy 层失败，无法验证 GitHub 重定向和 v0.5.3 资产下载。
+- [ ] Windows Compatibility Action 与 macOS 打包应用内手动更新。
+
 ## QxAI — OpenRouter 默认供应商与 DeepSeek BYOK
 
 **状态**：已实现，已通过前端、Rust 与文档静态验证。
