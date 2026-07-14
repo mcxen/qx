@@ -326,6 +326,181 @@
   line-height: 1.45;
 }
 
+.qx-ai-context-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.qx-ai-context-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--qx-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-ai-context-meta {
+  font-size: 11px;
+  color: var(--qx-text-tertiary);
+  line-height: 1.4;
+}
+
+.qx-ai-simple-settings {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  color: var(--qx-text-primary);
+  font-size: 14px;
+}
+
+.qx-ai-simple-lead {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--qx-text-secondary);
+}
+
+.qx-ai-simple-advanced {
+  border-top: 1px solid var(--qx-border-1);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.qx-ai-system-prompt {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: var(--qx-control-radius);
+  border: 1px solid var(--qx-border-1);
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-primary);
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.qx-ai-config-block {
+  border-top: 1px solid var(--qx-border-1);
+  padding-top: 14px;
+  margin-top: 14px;
+}
+
+.qx-ai-config-block:first-child {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.qx-ai-config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.qx-ai-config-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--qx-text-primary);
+}
+
+.qx-ai-config-desc {
+  font-size: 12px;
+  color: var(--qx-text-secondary);
+  margin-bottom: 10px;
+  line-height: 1.45;
+}
+
+.qx-ai-config-field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--qx-text-primary);
+  margin-bottom: 6px;
+}
+
+.qx-ai-config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--qx-text-secondary);
+}
+
+.qx-ai-config-field .qx-inline-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.qx-ai-config-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qx-ai-config-card {
+  background: var(--qx-bg-component-2);
+  border-radius: var(--qx-card-radius);
+  padding: 12px;
+}
+
+.qx-ai-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.qx-ai-config-card-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 2px;
+  color: var(--qx-text-primary);
+}
+
+.qx-ai-config-card-meta {
+  font-size: 12px;
+  color: var(--qx-text-secondary);
+  margin-bottom: 2px;
+  word-break: break-word;
+}
+
+.qx-ai-config-card-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.qx-ai-config-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.qx-ai-config-row.is-end {
+  justify-content: flex-end;
+}
+
+.qx-ai-config-error {
+  color: var(--qx-danger);
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.qx-ai-config-muted {
+  font-size: 13px;
+  color: var(--qx-text-tertiary);
+}
+
 /* ====== Markdown renderer (react-markdown + remark-gfm + remark-math + shiki) ====== */
 .qx-md-body {
   font-size: 14px;

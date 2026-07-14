@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import QxShell, { type BottomIslandContent } from "../../components/QxShell";
+import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { WeatherWidget } from "@/components/tool-ui/weather-widget/runtime";
 import type { WeatherConditionCode } from "@/components/tool-ui/weather-widget/schema-runtime";
 import { useEscBack } from "../../hooks/useEscBack";
@@ -8,6 +8,7 @@ import { useStore } from "../../store";
 import { useSettingsStore } from "../settings/store";
 import { LoadingSpinner } from "../../components/ui";
 import { useT } from "../../i18n";
+import { getQxShortcutPreset } from "../../utils/keyboard";
 
 interface WeatherCurrent {
   temperature: number;
@@ -209,6 +210,11 @@ export default function WeatherPanel() {
   }, [loadWeather, settings.weather, weatherLocations]);
 
   const goBack = () => setTab("launcher");
+  const openWeatherSettings = () => {
+    useSettingsStore.getState().setActiveTab("weather");
+    setTab("settings");
+  };
+  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
 
   const { onKeyDown: escKeyDown } = useEscBack({
     launcher: goBack,
@@ -217,11 +223,32 @@ export default function WeatherPanel() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     escKeyDown(e);
     if (e.defaultPrevented) return;
-    if (e.key === "r" || e.key === "R") {
+    if ((e.key === "r" || e.key === "R") && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       void loadWeather();
     }
   };
+
+  const weatherActions = useMemo<QxShellAction[]>(
+    () => [
+      {
+        label: t("weather.refresh", "Refresh"),
+        kbd: "R",
+        disabled: loading,
+        onClick: () => void loadWeather(),
+      },
+      {
+        label: t("weather.openSettings", "Weather Settings"),
+        onClick: openWeatherSettings,
+      },
+      {
+        label: t("common.back", "Back"),
+        kbd: "Esc",
+        onClick: goBack,
+      },
+    ],
+    [loading, t],
+  );
 
   const units = settings.weather.units || "celsius";
   const tempUnit = units === "fahrenheit" ? "fahrenheit" : "celsius";
@@ -259,6 +286,16 @@ export default function WeatherPanel() {
       }
       island={island}
       onKeyDown={handleKeyDown}
+      primaryAction={{
+        label: t("weather.refresh", "Refresh"),
+        kbd: "R",
+        tone: "primary",
+        disabled: loading,
+        onClick: () => void loadWeather(),
+      }}
+      secondaryAction={{ label: t("launcher.actions", "Actions"), kbd: actionMenuShortcut }}
+      actionTitle={t("weather.actions", "Weather Actions")}
+      actions={weatherActions}
     >
       <div className={`qx-weather-stage${weatherItems.length > 1 ? " has-multiple" : ""}`}>
         {loading && weatherItems.length === 0 && (

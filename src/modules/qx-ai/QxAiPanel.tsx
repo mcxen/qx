@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import QxShell, { type BottomIslandContent } from "../../components/QxShell";
+import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { LoadingLabel, Skeleton } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
-import { useG4fStore } from "./store";
+import { formatQxShortcut, getQxShortcutPreset } from "../../utils/keyboard";
 import { useStore } from "../../store";
+import { openAgentSettingsTab } from "./AiProviderConfig";
+import { useG4fStore } from "./store";
 
 export default function QxAiPanel() {
   const setTab = useStore((state) => state.setTab);
@@ -19,6 +21,8 @@ export default function QxAiPanel() {
   } = useG4fStore();
 
   const [query, setQuery] = useState("");
+  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
+  const actionMenuLabel = formatQxShortcut(actionMenuShortcut) ?? "⌘K";
 
   useEffect(() => {
     void loadProviders();
@@ -35,10 +39,19 @@ export default function QxAiPanel() {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   useEffect(() => {
-    setSelectedIndex(0);
+    setSelectedIndex((index) => {
+      if (filtered.length === 0) return 0;
+      return Math.max(0, Math.min(index, filtered.length - 1));
+    });
   }, [filtered.length]);
 
   const selectedConv = filtered[selectedIndex];
+
+  const openSelected = () => {
+    if (!selectedConv) return;
+    selectConversation(selectedConv.id);
+    setView("chat");
+  };
 
   const { onKeyDown: escKeyDown } = useEscBack({
     query: { active: query.length > 0, clear: () => setQuery("") },
@@ -47,37 +60,45 @@ export default function QxAiPanel() {
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     escKeyDown(e);
-    if (e.key === "Escape") return;
-    switch (e.key) {
-      case "ArrowDown":
-        e.preventDefault();
-        setSelectedIndex(Math.min(selectedIndex + 1, filtered.length - 1));
-        break;
-      case "ArrowUp":
-        e.preventDefault();
-        setSelectedIndex(Math.max(selectedIndex - 1, 0));
-        break;
-      case "Enter":
-        e.preventDefault();
-        if (selectedConv) {
-          selectConversation(selectedConv.id);
-          setView("chat");
-        }
-        break;
-      case "n":
-        if (!e.metaKey && !e.ctrlKey) {
-          e.preventDefault();
-          createConversation();
-        }
-        break;
-      case "s":
-        if (!e.metaKey && !e.ctrlKey) {
-          e.preventDefault();
-          setView("settings");
-        }
-        break;
+    if (e.defaultPrevented) return;
+    // List open: Enter always selects the highlighted conversation (search field may be focused).
+    // Do not bind bare letter shortcuts — typing must stay free for search.
+    if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey && selectedConv) {
+      e.preventDefault();
+      openSelected();
     }
   };
+
+  const actions = useMemo<QxShellAction[]>(() => [
+    {
+      label: "Open Chat",
+      kbd: "↵",
+      disabled: !selectedConv,
+      onClick: openSelected,
+    },
+    {
+      label: "New Chat",
+      onClick: () => createConversation(),
+    },
+    {
+      label: "Chat Settings",
+      onClick: () => setView("settings"),
+    },
+    {
+      label: "Agent & Providers",
+      onClick: () => openAgentSettingsTab(),
+    },
+    {
+      label: "Delete",
+      tone: "danger",
+      disabled: !selectedConv,
+      onClick: () => {
+        if (selectedConv && window.confirm("Delete this conversation?")) {
+          deleteConversation(selectedConv.id);
+        }
+      },
+    },
+  ], [createConversation, deleteConversation, selectedConv, setView]);
 
   const island: BottomIslandContent = loading
     ? { label: "AI Chat", detail: "Loading providers...", progress: 42 }
@@ -93,6 +114,13 @@ export default function QxAiPanel() {
       title="QxAI Chat"
       className="qx-qxai-panel-shell"
       onKeyDown={onKeyDown}
+      navigation={{
+        index: selectedIndex,
+        count: filtered.length,
+        onChange: setSelectedIndex,
+        onOpen: openSelected,
+        pageSize: 8,
+      }}
       search={
         <div className="qx-search-wrap">
           <span className="qx-search-icon" aria-hidden="true" />
@@ -107,49 +135,35 @@ export default function QxAiPanel() {
         </div>
       }
       trailing={
-        <>
-          <button className="qx-command-button primary" onClick={() => createConversation()}>
-            New Chat
-          </button>
-          <button className="qx-command-button" onClick={() => setView("settings")}>
-            Settings
-          </button>
-        </>
+        <button className="qx-command-button primary" type="button" onClick={() => createConversation()}>
+          New Chat
+        </button>
       }
       context={
         <div className="qx-action-panel">
-          <div className="qx-action-title">Actions</div>
-          <button
-            className="qx-action-item"
-            onClick={() => {
-              if (selectedConv) {
-                selectConversation(selectedConv.id);
-                setView("chat");
-              }
-            }}
-            disabled={!selectedConv}
-          >
-            <span>Open Chat</span>
-            <kbd>↩</kbd>
-          </button>
-          <button className="qx-action-item" onClick={() => createConversation()}>
+          <div className="qx-action-title">Conversation</div>
+          {selectedConv ? (
+            <div className="qx-ai-context-summary">
+              <div className="qx-ai-context-name">{selectedConv.name}</div>
+              <div className="qx-ai-context-meta">
+                {selectedConv.provider} · {selectedConv.model}
+              </div>
+              <div className="qx-ai-context-meta">
+                {selectedConv.messages.filter((m) => m.role === "user").length} messages
+              </div>
+            </div>
+          ) : (
+            <div className="qx-ai-tool-hint">Select a conversation or create a new chat.</div>
+          )}
+          <div className="qx-action-title">Quick</div>
+          <button className="qx-action-item" type="button" onClick={() => createConversation()}>
             <span>New Chat</span>
-            <kbd>N</kbd>
           </button>
-          <button className="qx-action-item" onClick={() => setView("settings")}>
-            <span>Settings</span>
-            <kbd>S</kbd>
+          <button className="qx-action-item" type="button" onClick={() => setView("settings")}>
+            <span>Chat Settings</span>
           </button>
-          <button
-            className="qx-action-item danger"
-            onClick={() => {
-              if (selectedConv && window.confirm("Delete this conversation?")) {
-                deleteConversation(selectedConv.id);
-              }
-            }}
-            disabled={!selectedConv}
-          >
-            <span>Delete</span>
+          <button className="qx-action-item" type="button" onClick={() => openAgentSettingsTab()}>
+            <span>Agent & Providers</span>
           </button>
         </div>
       }
@@ -157,22 +171,19 @@ export default function QxAiPanel() {
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setTab("launcher") }}
       primaryAction={{
         label: selectedConv ? "Open Chat" : "New Chat",
-        kbd: selectedConv ? "↵" : "N",
+        kbd: selectedConv ? "↵" : undefined,
         tone: "primary",
         onClick: () => {
-          if (selectedConv) {
-            selectConversation(selectedConv.id);
-            setView("chat");
-          } else {
-            createConversation();
-          }
+          if (selectedConv) openSelected();
+          else createConversation();
         },
       }}
       secondaryAction={{
-        label: "Settings",
-        kbd: "S",
-        onClick: () => setView("settings"),
+        label: "Actions",
+        kbd: actionMenuShortcut,
       }}
+      actionTitle="AI Actions"
+      actions={actions}
     >
       <div className="qx-plugin-list">
         <div className="qx-section-header">
@@ -203,11 +214,13 @@ export default function QxAiPanel() {
                 setView("chat");
               }}
               className={`qx-list-row${active ? " is-active" : ""}`}
+              type="button"
             >
               <span className="qx-list-copy">
                 <span className="qx-list-title">{conv.name}</span>
                 <span className="qx-list-subtitle">
-                  {conv.provider} · {conv.messages.length} message{conv.messages.length !== 1 ? "s" : ""}
+                  {conv.provider} · {conv.messages.length} message
+                  {conv.messages.length !== 1 ? "s" : ""}
                 </span>
               </span>
             </button>
@@ -215,7 +228,14 @@ export default function QxAiPanel() {
         })}
         {filtered.length === 0 && (
           <div className="qx-empty-state">
-            {loading ? <LoadingLabel>Loading providers...</LoadingLabel> : "No conversations yet. Press N to start one."}
+            {loading ? (
+              <LoadingLabel>Loading providers...</LoadingLabel>
+            ) : query.trim() ? (
+              "No matching conversations."
+            ) : (
+              `No conversations yet. Use New Chat or Actions (${actionMenuLabel}).`
+            )}
+
           </div>
         )}
         {error && (

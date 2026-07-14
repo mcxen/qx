@@ -1,11 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useScreencapStore, type RecordArea } from "./store";
 import { useStore } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
 import { LinkButton } from "../../components/ui";
 import GifPreview from "./GifPreview";
 import GifHistory from "./GifHistory";
-import QxShell from "../../components/QxShell";
+import QxShell, { type QxShellAction } from "../../components/QxShell";
+import { getQxShortcutPreset } from "../../utils/keyboard";
 
 type SelectMode = "none" | "selecting";
 
@@ -115,6 +116,49 @@ export default function ScreenRecorder() {
     reset();
     setArea(null);
   };
+
+  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
+
+  const readyActions = useMemo<QxShellAction[]>(
+    () => [
+      { label: "Start Recording", kbd: "Enter", onClick: handleStart },
+      { label: "Select Area", onClick: beginAreaSelect },
+      {
+        label: "Clear Area",
+        disabled: !area,
+        onClick: () => setArea(null),
+      },
+    ],
+    [area],
+  );
+
+  const doneActions = useMemo<QxShellAction[]>(
+    () => [
+      { label: "New Recording", kbd: "Enter", onClick: handleNewRecording },
+      {
+        label: "Back to Launcher",
+        kbd: "Esc",
+        onClick: () => {
+          reset();
+          setTab("launcher");
+        },
+      },
+    ],
+    [reset, setTab],
+  );
+
+  const recordingActions = useMemo<QxShellAction[]>(
+    () => [
+      {
+        label: status === "processing" ? "Encoding…" : "Stop Recording",
+        kbd: "Enter",
+        disabled: status === "processing",
+        tone: status === "processing" ? "normal" : "danger",
+        onClick: handleStop,
+      },
+    ],
+    [status],
+  );
 
   const { onKeyDown: escKeyDown } = useEscBack({
     inner: {
@@ -233,7 +277,7 @@ export default function ScreenRecorder() {
       <QxShell
         title="Screen Recording"
         search={<div className="qx-rss-detail-title">Recording Complete</div>}
-        trailing={<button className="qx-command-button" onClick={handleNewRecording}>New</button>}
+        trailing={<button className="qx-command-button" onClick={handleNewRecording} type="button">New</button>}
         island={{ label: "GIF Ready", detail: lastGifPath.split("/").pop(), tone: "success" }}
         escapeAction={{
           label: "Esc",
@@ -244,7 +288,10 @@ export default function ScreenRecorder() {
             setTab("launcher");
           },
         }}
-        primaryAction={{ label: "New", onClick: handleNewRecording }}
+        primaryAction={{ label: "New", kbd: "Enter", tone: "primary", onClick: handleNewRecording }}
+        secondaryAction={{ label: "Actions", kbd: actionMenuShortcut }}
+        actionTitle="Recording Actions"
+        actions={doneActions}
         onKeyDown={handleKeyDown}
       >
         <GifPreview path={lastGifPath} onClose={handleNewRecording} />
@@ -279,6 +326,13 @@ export default function ScreenRecorder() {
           tone: status === "processing" ? "normal" : "danger",
           onClick: handleStop,
         }}
+        secondaryAction={
+          status === "processing"
+            ? undefined
+            : { label: "Actions", kbd: actionMenuShortcut }
+        }
+        actionTitle="Recording Actions"
+        actions={recordingActions}
       >
         <div className="qx-module-stage" style={{ alignItems: "center", justifyContent: "center", flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -374,8 +428,10 @@ export default function ScreenRecorder() {
           setTab("launcher");
         },
       }}
-      primaryAction={{ label: "Start", onClick: handleStart }}
-      secondaryAction={{ label: "Area", onClick: beginAreaSelect }}
+      primaryAction={{ label: "Start", kbd: "Enter", tone: "primary", onClick: handleStart }}
+      secondaryAction={{ label: "Actions", kbd: actionMenuShortcut }}
+      actionTitle="Recording Actions"
+      actions={readyActions}
     >
       <div className="qx-plugin-body two-pane">
         <div className="qx-plugin-detail" style={{ borderRight: "1px solid var(--qx-border-1)" }}>

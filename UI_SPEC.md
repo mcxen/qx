@@ -1,6 +1,6 @@
 # Qx UI Spec
 
-> 状态：Current · 适用版本：v0.5.6 · Owner：Frontend · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.5.7 · Owner：Frontend · 最后复核：2026-07-14
 >
 > 事实来源：`src/components/QxShell.tsx`、`src/hooks/useEscBack.ts`、`src/styles/shell.css`、`src/home-island/`、`src/modules/`、`src/i18n.ts`
 >
@@ -340,10 +340,17 @@ Context Panel：
 
 Actions Menu：
 
-- 点击 Actions 或 `Cmd+K`（Windows：`Ctrl+K`）打开。
+- 点击 Actions 或 `Cmd+K`（Windows：`Ctrl+K`）打开 / 关闭（Raycast Action Panel 语义）。
 - 锚定在底栏右侧按钮上方。
-- `Esc` 先关闭菜单；再次按 Esc 走 `escapeAction` / `useEscBack` 返回。
-- 菜单项来自当前选中对象。
+- 菜单打开后，键盘优先操作菜单本身（capture 阶段拦截，避免列表 / 搜索框抢走按键）：
+  - `ArrowUp` / `ArrowDown`：高亮上一项 / 下一项（跳过 disabled）。
+  - `Home` / `End`：第一项 / 最后一项。
+  - `Enter`：执行当前高亮项。
+  - 单字母 `kbd`：执行对应菜单项（仅菜单打开时）。
+  - `Esc` 或再次 `Cmd+K` / `Ctrl+K`：关闭菜单，并**恢复打开菜单前的焦点**（搜索框 / 列表 / region）；列表 `navigation` 选中项不得因菜单内上下键而改变。
+  - 关闭菜单后的下一次 `Esc` 才走 `escapeAction` / `useEscBack` 离开模块。
+- 菜单项来自模块传入的 `actions`（当前选中对象上下文）。
+- 模块不得在搜索框聚焦时用裸字母（如 `n` / `s`）强行拦截输入；裸快捷键仅在非编辑目标、或 Actions 菜单打开时由 Shell 协议处理。
 
 ## Bottom Island
 

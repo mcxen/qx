@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Hammer, UserRound } from "lucide-react";
-import QxShell, { type BottomIslandContent } from "../../components/QxShell";
+import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
+import { getQxShortcutPreset, isEditableTarget } from "../../utils/keyboard";
 import { useSettingsStore } from "../settings/store";
+import { openAgentSettingsTab } from "./AiProviderConfig";
 import { AiMessageContent } from "./message-rendering";
 import { useG4fStore } from "./store";
 
@@ -30,6 +32,7 @@ export default function QxAiChat() {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentSettings = useSettingsStore((state) => state.settings.agent);
+  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
 
   const conv = conversations.find((c) => c.id === currentConversationId);
   const isCurrentConversationStreaming = streaming && streamingConversationId === conv?.id;
@@ -70,8 +73,15 @@ export default function QxAiChat() {
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     escKeyDown(e);
-    if (e.key === "Escape") return;
-    if (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey) {
+    if (e.defaultPrevented || e.key === "Escape") return;
+    // Enter sends only from the chat field; never steal bare letters like N/S.
+    if (
+      e.key === "Enter"
+      && !e.shiftKey
+      && !e.metaKey
+      && !e.ctrlKey
+      && isEditableTarget(e.target)
+    ) {
       e.preventDefault();
       handleSend();
     }
@@ -92,6 +102,53 @@ export default function QxAiChat() {
     const provider = providers.find((p) => p.id === conv.provider) ?? providers[0];
     setConversationModel(conv.id, provider.id, provider.models[0]?.id ?? "");
   }, [conv, providers, canChat, setConversationModel]);
+
+  const actions = useMemo<QxShellAction[]>(() => [
+    {
+      label: isCurrentConversationStreaming ? "Sending..." : "Send",
+      kbd: "↵",
+      disabled: isCurrentConversationStreaming || !input.trim() || !canChat,
+      onClick: handleSend,
+    },
+    {
+      label: "New Chat",
+      onClick: () => createConversation(),
+    },
+    {
+      label: "Clear Messages",
+      disabled: !conv || conv.messages.length === 0,
+      onClick: () => clearMessages(),
+    },
+    {
+      label: "Chat Settings",
+      onClick: () => setView("settings"),
+    },
+    {
+      label: "Agent & Providers",
+      onClick: () => openAgentSettingsTab(),
+    },
+    {
+      label: "Delete Chat",
+      tone: "danger",
+      disabled: !conv,
+      onClick: () => {
+        if (currentConversationId && window.confirm("Delete this conversation?")) {
+          deleteConversation(currentConversationId);
+          setView("list");
+        }
+      },
+    },
+  ], [
+    canChat,
+    clearMessages,
+    conv,
+    createConversation,
+    currentConversationId,
+    deleteConversation,
+    input,
+    isCurrentConversationStreaming,
+    setView,
+  ]);
 
   const userMessageCount = conv?.messages.filter((m) => m.role === "user").length ?? 0;
 
@@ -132,7 +189,7 @@ export default function QxAiChat() {
         </div>
       }
       trailing={
-        <button className="qx-command-button" onClick={() => createConversation()}>
+        <button className="qx-command-button" type="button" onClick={() => createConversation()}>
           New Chat
         </button>
       }
@@ -170,53 +227,14 @@ export default function QxAiChat() {
                   className="qx-inline-select"
                 />
               ) : (
-                <div
-                  style={{
-                    color: "var(--qx-text-tertiary)",
-                    fontSize: 12,
-                    lineHeight: 1.4,
-                  }}
-                >
-                  No models available for this provider.
-                </div>
+                <div className="qx-ai-tool-hint">No models available for this provider.</div>
               )}
             </>
           ) : (
-            <div
-              style={{
-                color: "var(--qx-text-tertiary)",
-                fontSize: 12,
-                lineHeight: 1.4,
-              }}
-            >
-              Open Settings to load or add providers.
+            <div className="qx-ai-tool-hint">
+              Configure providers in Settings → AI Agent, or open Chat Settings for defaults.
             </div>
           )}
-
-          <div className="qx-action-title">Chat Actions</div>
-          <button
-            className="qx-action-item"
-            onClick={() => clearMessages()}
-            disabled={!conv || conv.messages.length === 0}
-          >
-            <span>Clear Messages</span>
-          </button>
-          <button className="qx-action-item" onClick={() => setView("settings")}>
-            <span>Settings</span>
-            <kbd>S</kbd>
-          </button>
-          <button
-            className="qx-action-item danger"
-            onClick={() => {
-              if (currentConversationId && window.confirm("Delete this conversation?")) {
-                deleteConversation(currentConversationId);
-                setView("list");
-              }
-            }}
-            disabled={!conv}
-          >
-            <span>Delete Chat</span>
-          </button>
 
           <div className="qx-action-title">Tools</div>
           <div className="qx-ai-tool-summary">
@@ -233,12 +251,20 @@ export default function QxAiChat() {
             ) : (
               <div className="qx-ai-tool-hint">
                 {!agentSettings.agent_mode_enabled
-                  ? "Enable Agent mode in Settings > Agent to let the AI call tools."
+                  ? "Enable Agent mode in Settings → AI Agent."
                   : !agentSettings.tools_enabled
-                    ? "Master tools switch is off. Enable it in Settings > Agent."
-                    : "No individual tools enabled. Turn some on in Settings > Agent."}
+                    ? "Master tools switch is off in Settings → AI Agent."
+                    : "No individual tools enabled. Configure them in Settings → AI Agent."}
               </div>
             )}
+            <button
+              className="qx-action-item"
+              type="button"
+              style={{ marginTop: 8 }}
+              onClick={() => openAgentSettingsTab()}
+            >
+              <span>Open Agent Settings</span>
+            </button>
           </div>
         </div>
       }
@@ -252,10 +278,11 @@ export default function QxAiChat() {
         onClick: handleSend,
       }}
       secondaryAction={{
-        label: "Settings",
-        kbd: "S",
-        onClick: () => setView("settings"),
+        label: "Actions",
+        kbd: actionMenuShortcut,
       }}
+      actionTitle="Chat Actions"
+      actions={actions}
     >
       <div className="qx-ai-conversation">
         <div className="qx-ai-message-list">
@@ -300,7 +327,7 @@ export default function QxAiChat() {
             <div className="qx-ai-empty-state">
               {conv.provider
                 ? `Chatting with ${conv.provider} (${conv.model}). Type a message below.`
-                : "No provider selected. Go to Settings to configure."}
+                : "No provider selected. Open Chat Settings or Settings → AI Agent."}
             </div>
           )}
 

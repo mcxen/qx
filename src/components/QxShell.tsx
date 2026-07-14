@@ -80,6 +80,8 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const [activeRegionId, setActiveRegionId] = useState<string | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const searchGlowTimers = useRef<WeakMap<HTMLElement, ReturnType<typeof setTimeout>>>(new WeakMap());
+  /** Focus target to restore when the Action menu closes (Raycast: Esc back to list). */
+  const actionMenuFocusRestoreRef = useRef<HTMLElement | null>(null);
   const menuActions = useMemo(() => actions ?? [], [actions]);
   const menuTitle = actionTitle ?? `${title} Actions`;
 
@@ -141,10 +143,57 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     setActionIndex((index) => Math.max(0, Math.min(index, menuActions.length - 1)));
   }, [menuActions.length]);
 
+  const captureActionMenuFocusRestore = useCallback(() => {
+    const root = shellRef.current;
+    const active = document.activeElement;
+    if (root && active instanceof HTMLElement && root.contains(active)) {
+      // Prefer the pre-menu focus (search field, list row, region).
+      actionMenuFocusRestoreRef.current = active;
+      return;
+    }
+    // Fallback: search input, then active region, then shell itself.
+    const searchInput = root?.querySelector<HTMLElement>(
+      ".qx-shell-search-slot input, .qx-shell-search-slot textarea, .qx-plugin-search",
+    );
+    if (searchInput) {
+      actionMenuFocusRestoreRef.current = searchInput;
+      return;
+    }
+    const region = activeRegionId
+      ? root?.querySelector<HTMLElement>(`[data-qx-region="${CSS.escape(activeRegionId)}"]`)
+      : null;
+    actionMenuFocusRestoreRef.current = region ?? root;
+  }, [activeRegionId]);
+
+  const restoreActionMenuFocus = useCallback(() => {
+    const target = actionMenuFocusRestoreRef.current;
+    actionMenuFocusRestoreRef.current = null;
+    if (!target) return;
+    // Defer so Popover unmount / menu close does not steal focus back.
+    requestAnimationFrame(() => {
+      const root = shellRef.current;
+      if (!root) return;
+      if (root.contains(target) && typeof target.focus === "function") {
+        target.focus({ preventScroll: true });
+        return;
+      }
+      // Target unmounted (e.g. list re-rendered): land on search or shell.
+      const searchInput = root.querySelector<HTMLElement>(
+        ".qx-shell-search-slot input, .qx-shell-search-slot textarea, .qx-plugin-search",
+      );
+      (searchInput ?? root).focus({ preventScroll: true });
+    });
+  }, []);
+
   const runMenuAction = (action: QxShellAction) => {
     if (action.disabled) return;
     setActionMenuOpen(false);
+    // Keep list selection; only restore focus if the action does not navigate away.
+    const focusTarget = actionMenuFocusRestoreRef.current;
     action.onClick?.();
+    // Restore focus after action so list/search remains usable (unless focus moved).
+    actionMenuFocusRestoreRef.current = focusTarget;
+    restoreActionMenuFocus();
   };
 
   const findNextActionIndex = (startIndex: number, direction: 1 | -1): number => {
@@ -156,54 +205,138 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     return Math.max(0, Math.min(startIndex, menuActions.length - 1));
   };
 
+  const findEdgeActionIndex = (direction: 1 | -1): number => {
+    if (menuActions.length === 0) return 0;
+    if (direction === 1) {
+      for (let index = menuActions.length - 1; index >= 0; index -= 1) {
+        if (!menuActions[index]?.disabled) return index;
+      }
+    } else {
+      for (let index = 0; index < menuActions.length; index += 1) {
+        if (!menuActions[index]?.disabled) return index;
+      }
+    }
+    return 0;
+  };
+
+  const closeActionMenu = (options?: { restoreFocus?: boolean }) => {
+    const restoreFocus = options?.restoreFocus ?? true;
+    setActionMenuOpen(false);
+    if (restoreFocus) restoreActionMenuFocus();
+    else actionMenuFocusRestoreRef.current = null;
+  };
+
   const openActionMenu = () => {
+    if (actionMenuOpen) {
+      // Toggle close (Cmd+K again): return to the list/search that was active.
+      closeActionMenu({ restoreFocus: true });
+      return;
+    }
+    captureActionMenuFocusRestore();
     const firstEnabled = menuActions.findIndex((action) => !action.disabled);
     setActionIndex(firstEnabled >= 0 ? firstEnabled : 0);
-    setActionMenuOpen((open) => !open);
+    setActionMenuOpen(true);
+  };
+
+  /**
+   * Raycast-style Action Panel: while open, capture Arrow/Enter/Esc/letters
+   * before feature views or focused inputs can consume them.
+   */
+  const handleActionMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): boolean => {
+    if (!actionMenuOpen || menuActions.length === 0) return false;
+
+    if (matchesQxShortcut(event.nativeEvent, getQxShortcutPreset().actionMenu)) {
+      event.preventDefault();
+      event.stopPropagation();
+      // Esc / Cmd+K close: back to the list selection & focus from before the menu.
+      closeActionMenu({ restoreFocus: true });
+      return true;
+    }
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      // Raycast: Esc dismisses Action Panel and returns to the prior list context.
+      closeActionMenu({ restoreFocus: true });
+      return true;
+    }
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      event.stopPropagation();
+      setActionIndex((index) => findNextActionIndex(index, 1));
+      return true;
+    }
+
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      setActionIndex((index) => findNextActionIndex(index, -1));
+      return true;
+    }
+
+    if (event.key === "Home") {
+      event.preventDefault();
+      event.stopPropagation();
+      setActionIndex(findEdgeActionIndex(-1));
+      return true;
+    }
+
+    if (event.key === "End") {
+      event.preventDefault();
+      event.stopPropagation();
+      setActionIndex(findEdgeActionIndex(1));
+      return true;
+    }
+
+    if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      const action = menuActions[actionIndex];
+      if (action) runMenuAction(action);
+      return true;
+    }
+
+    if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      const action = menuActions.find(
+        (item) => item.kbd?.length === 1 && item.kbd.toLowerCase() === event.key.toLowerCase() && !item.disabled,
+      );
+      event.preventDefault();
+      event.stopPropagation();
+      if (action) runMenuAction(action);
+      return true;
+    }
+
+    // Keep the menu as a modal keyboard responder (Raycast Action Panel).
+    // Do not leak navigation keys into list views or focused fields.
+    if (
+      event.key === "ArrowLeft"
+      || event.key === "ArrowRight"
+      || event.key === "PageUp"
+      || event.key === "PageDown"
+      || event.key === " "
+      || event.key === "Tab"
+      || event.key === "Backspace"
+      || event.key === "Delete"
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
+    }
+
+    return true;
+  };
+
+  const handleKeyDownCapture = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented) return;
+    handleActionMenuKeyDown(event);
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented) return;
 
-    if (actionMenuOpen) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        event.stopPropagation();
-        setActionMenuOpen(false);
-        return;
-      }
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        event.stopPropagation();
-        setActionIndex((index) => findNextActionIndex(index, 1));
-        return;
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        event.stopPropagation();
-        setActionIndex((index) => findNextActionIndex(index, -1));
-        return;
-      }
-      if (event.key === "Enter") {
-        event.preventDefault();
-        event.stopPropagation();
-        const action = menuActions[actionIndex];
-        if (action) runMenuAction(action);
-        return;
-      }
-      if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
-        const action = menuActions.find(
-          (item) => item.kbd?.length === 1 && item.kbd.toLowerCase() === event.key.toLowerCase(),
-        );
-        if (action) {
-          event.preventDefault();
-          event.stopPropagation();
-          runMenuAction(action);
-        }
-        return;
-      }
-      return;
-    }
+    // Bubble-phase safety net if capture was bypassed.
+    if (handleActionMenuKeyDown(event)) return;
 
     if (matchesQxShortcut(event.nativeEvent, getQxShortcutPreset().actionMenu) && menuActions.length > 0) {
       event.preventDefault();
@@ -340,6 +473,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       className={`qx-shell visual-${visual} ${context ? "has-context" : ""} ${overlayBottom ? "qx-shell-overlay-bottom" : ""} ${className}`}
       style={style}
       aria-label={title}
+      onKeyDownCapture={handleKeyDownCapture}
       onKeyDown={handleKeyDown}
       onInputCapture={handleInputCapture}
       onFocusCapture={handleRegionFocusCapture}

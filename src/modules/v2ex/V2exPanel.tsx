@@ -268,7 +268,7 @@ export default function V2exPanel() {
           else if (selectedTopic) openTopicAtIndex(selectedIndex);
         },
       }}
-      secondaryAction={{ label: "Actions", kbd: "Cmd K" }}
+      secondaryAction={{ label: "Actions", kbd: "CmdOrCtrl+K" }}
       actionTitle="V2EX Actions"
       actions={actions}
     >

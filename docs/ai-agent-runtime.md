@@ -110,5 +110,7 @@ await context.ai.soul.update(patch)
 - Streaming output should render incrementally in the module or plugin panel.
 - Background task progress should use QxShell island state while visible.
 - Completion/failure should use system notification when the user is outside Qx.
-- Agent runtime switches belong in Settings -> AI Agent using Qx custom controls, not native selects or checkboxes.
-- Memory and soul management belong in QxAI Settings using Qx custom controls, not native selects or checkboxes.
+- **Simple chat defaults** (default provider/model, system prompt) live in the AI module Chat Settings view.
+- **Complex AI configuration** belongs in Settings -> AI Agent: built-in API keys, custom providers (BYOK), memory, agent mode, tools, bash, grep, and background tasks.
+- Agent runtime switches use Qx custom controls, not native selects or checkboxes.
+- AI list/chat operations go through QxShell `actions` + `Cmd+K` / `Ctrl+K` (Raycast-style Action Panel). Do not bind bare letter keys that steal search/input typing.

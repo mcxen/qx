@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMacroStore } from "./store";
 import { Kbd } from "../../components/ui";
-import QxShell from "../../components/QxShell";
+import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { useStore } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
+import { getQxShortcutPreset } from "../../utils/keyboard";
 import SaveDialog from "./SaveDialog";
 
 function formatTime(ms: number): string {
@@ -115,6 +116,33 @@ export default function MacroRecorder() {
         : goLauncher,
   };
 
+  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
+
+  const macroActions = useMemo<QxShellAction[]>(() => {
+    if (isRecording) {
+      return [{ label: "Stop Recording", kbd: "Enter", tone: "danger", onClick: handleStop }];
+    }
+    if (lastRecordedSteps) {
+      return [
+        {
+          label: "Save Macro",
+          kbd: "Enter",
+          disabled: !name.trim(),
+          onClick: () => void handleSave(),
+        },
+        { label: "Discard", tone: "danger", onClick: handleDiscard },
+        { label: "Record Again", onClick: handleStart },
+      ];
+    }
+    return [
+      { label: "Start Recording", kbd: "Enter", onClick: handleStart },
+      {
+        label: "Refresh List",
+        onClick: () => void listMacros(),
+      },
+    ];
+  }, [isRecording, lastRecordedSteps, listMacros, name]);
+
   return (
     <QxShell
       ref={shellRef}
@@ -123,12 +151,12 @@ export default function MacroRecorder() {
       trailing={
         <>
           {!isRecording && !lastRecordedSteps && (
-            <button className="qx-command-button primary" onClick={handleStart}>
+            <button className="qx-command-button primary" onClick={handleStart} type="button">
               Start Recording
             </button>
           )}
           {isRecording && (
-            <button className="qx-command-button danger" onClick={handleStop}>
+            <button className="qx-command-button danger" onClick={handleStop} type="button">
               Stop
             </button>
           )}
@@ -148,14 +176,12 @@ export default function MacroRecorder() {
         isRecording
           ? { label: "Stop", tone: "danger", onClick: handleStop }
           : lastRecordedSteps
-            ? { label: "Save", kbd: "Enter", disabled: !name.trim(), onClick: handleSave }
-            : { label: "Record", onClick: handleStart }
+            ? { label: "Save", kbd: "Enter", disabled: !name.trim(), onClick: () => void handleSave() }
+            : { label: "Record", kbd: "Enter", tone: "primary", onClick: handleStart }
       }
-      secondaryAction={
-        lastRecordedSteps
-          ? { label: "Discard", onClick: handleDiscard }
-          : undefined
-      }
+      secondaryAction={{ label: "Actions", kbd: actionMenuShortcut }}
+      actionTitle="Macro Actions"
+      actions={macroActions}
       onKeyDown={handleKeyDown}
       className="qx-macro-shell"
     >

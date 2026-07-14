@@ -1,5 +1,10 @@
 import { useEffect, useMemo } from "react";
 import { LoadingLabel, Row, SegmentedControl, Select, SettingsCard, Slider, Toggle } from "../../components/ui";
+import {
+  BuiltInProviderKeys,
+  CustomProvidersSection,
+  MemorySection,
+} from "../qx-ai/AiProviderConfig";
 import { useG4fStore } from "../qx-ai/store";
 import { useT } from "../../i18n";
 import { useSettingsStore, type AgentSettings as AgentSettingsValue } from "./store";
@@ -11,12 +16,14 @@ export default function AgentSettings() {
   const {
     providers,
     builtInProviders,
+    builtInCredentials,
     customProviders,
     currentProvider,
     currentModel,
     loading,
     error,
     loadProviders,
+    saveBuiltInProviderKey,
     setCurrentProvider,
     setCurrentModel,
   } = useG4fStore();
@@ -100,6 +107,24 @@ export default function AgentSettings() {
 
   return (
     <div className="qx-settings-page">
+      <SettingsCard
+        title={t("agent.providers.title", "Providers & Keys")}
+        description={t(
+          "agent.providers.desc",
+          "API keys, custom OpenAI-compatible endpoints, and user memory. Chat defaults stay in the AI module.",
+        )}
+      >
+        <BuiltInProviderKeys
+          providers={builtInProviders}
+          credentials={builtInCredentials}
+          onSave={async (id, apiKey) => {
+            await saveBuiltInProviderKey(id, apiKey);
+          }}
+        />
+        <CustomProvidersSection />
+        <MemorySection />
+      </SettingsCard>
+
       <SettingsCard
         title={t("agent.basics.title", "Agent & Model")}
         description={t(

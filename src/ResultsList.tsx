@@ -1,6 +1,6 @@
 import { useStore } from "./store";
 import type { AppEntry } from "./store";
-import { memo, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -241,13 +241,22 @@ function AppIcon({ item, label }: { item: AppEntry; label: string }) {
   );
 }
 
-const ResultItem = memo(function ResultItem({ item, index, label }: { item: AppEntry; index: number; label: string }) {
+const ResultItem = memo(function ResultItem({
+  item,
+  index,
+  label,
+  onHoverSelect,
+}: {
+  item: AppEntry;
+  index: number;
+  label: string;
+  onHoverSelect: (index: number) => void;
+}) {
   const selected = useStore((state) => state.selectedIndex === index);
-  const setSelectedIndex = useStore((state) => state.setSelectedIndex);
 
   return (
     <div
-      onMouseEnter={() => setSelectedIndex(index)}
+      onMouseEnter={() => onHoverSelect(index)}
       className={`qx-list-row${selected ? " is-active" : ""}`}
     >
       <AppIcon item={item} label={label} />
@@ -283,6 +292,11 @@ function ResultSkeletonRows({ ariaLabel }: { ariaLabel: string }) {
   );
 }
 
+/**
+ * Raycast / Spotlight style: do not move the keyboard selection to the row under
+ * a stationary cursor when the list re-renders (query change, arrow keys, etc.).
+ * Hover selection arms only after the pointer actually moves.
+ */
 export default function ResultsList({
   items,
   onItemClick,
@@ -294,16 +308,77 @@ export default function ResultsList({
 }) {
   const t = useT();
   const getDisplayName = useDisplayName();
+  const setSelectedIndex = useStore((state) => state.setSelectedIndex);
   const loadingLabel = t("launcher.loadingApps", "Loading apps...");
+  const hoverArmedRef = useRef(false);
+  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    const disarmHover = (event: KeyboardEvent) => {
+      // Any intentional keyboard interaction owns selection until the mouse moves again.
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        hoverArmedRef.current = false;
+        return;
+      }
+      if (
+        event.key === "ArrowUp"
+        || event.key === "ArrowDown"
+        || event.key === "PageUp"
+        || event.key === "PageDown"
+        || event.key === "Home"
+        || event.key === "End"
+        || event.key === "Enter"
+        || event.key === "Tab"
+        || event.key === "Escape"
+        || event.key.length === 1
+      ) {
+        hoverArmedRef.current = false;
+      }
+    };
+    window.addEventListener("keydown", disarmHover, true);
+    return () => window.removeEventListener("keydown", disarmHover, true);
+  }, []);
+
+  // New result set (async search / filter): keep keyboard selection until the mouse moves.
+  const listSignature = useMemo(
+    () => items.map((item) => `${item.kind ?? "app"}:${item.path}:${item.name}`).join("\n"),
+    [items],
+  );
+  useEffect(() => {
+    hoverArmedRef.current = false;
+  }, [listSignature]);
+
+  const handlePointerMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const last = lastPointerRef.current;
+    if (!last || last.x !== event.clientX || last.y !== event.clientY) {
+      hoverArmedRef.current = true;
+      lastPointerRef.current = { x: event.clientX, y: event.clientY };
+    }
+  }, []);
+
+  const handleHoverSelect = useCallback((index: number) => {
+    if (!hoverArmedRef.current) return;
+    setSelectedIndex(index);
+  }, [setSelectedIndex]);
+
   return (
-    <div className="qx-plugin-list" style={{ flex: 1, borderRight: "none" }}>
+    <div
+      className="qx-plugin-list"
+      style={{ flex: 1, borderRight: "none" }}
+      onMouseMove={handlePointerMove}
+    >
       {items.length > 0 && (
         <div className="qx-section-header">{t("launcher.suggestions", "Suggestions")}</div>
       )}
       {items.map((item, i) => (
         <AppResultContextMenu item={item} key={`${item.kind}:${item.path}:${item.name}`}>
           <div onClick={() => onItemClick(item)}>
-            <ResultItem item={item} index={i} label={getDisplayName(item)} />
+            <ResultItem
+              item={item}
+              index={i}
+              label={getDisplayName(item)}
+              onHoverSelect={handleHoverSelect}
+            />
           </div>
         </AppResultContextMenu>
       ))}

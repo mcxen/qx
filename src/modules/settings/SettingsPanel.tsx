@@ -24,10 +24,11 @@ import OcrSettings from "./OcrSettings";
 import AgentSettings from "./AgentSettings";
 import WeatherSettings from "./WeatherSettings";
 import AboutPanel from "./AboutPanel";
-import QxShell from "../../components/QxShell";
+import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { Button, ScrollArea } from "../../components/ui";
 import { useT } from "../../i18n";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
+import { getQxShortcutPreset } from "../../utils/keyboard";
 
 interface NavItem {
   id: SettingsTab;
@@ -203,6 +204,24 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     </nav>
   );
 
+  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
+  const settingsActions = useMemo<QxShellAction[]>(() => {
+    const jump: QxShellAction[] = NAV_GROUPS.flatMap((group) =>
+      group.items.map((item) => ({
+        label: t(`nav.${item.id}`, item.label),
+        onClick: () => setActiveTab(item.id),
+      })),
+    );
+    return [
+      {
+        label: t("settings.close", "Close"),
+        kbd: "Esc",
+        onClick: onClose,
+      },
+      ...jump,
+    ];
+  }, [onClose, setActiveTab, t]);
+
   return (
     <QxShell
       title={t("launcher.settings", "Settings")}
@@ -213,6 +232,14 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       island={{ label: t("launcher.settings", "Settings"), detail: t(`nav.${activeTab}`, TAB_LABELS[activeTab]) }}
       escapeAction={{ label: t("settings.close", "Close"), kbd: "Esc", onClick: onClose }}
       onKeyDown={handleKeyDown}
+      primaryAction={{
+        label: t("settings.close", "Close"),
+        kbd: "Esc",
+        onClick: onClose,
+      }}
+      secondaryAction={{ label: t("launcher.actions", "Actions"), kbd: actionMenuShortcut }}
+      actionTitle={t("settings.actions", "Settings Actions")}
+      actions={settingsActions}
     >
       <section className="qx-settings-content">
         <div className="qx-settings-title">{t(`nav.${activeTab}`, TAB_LABELS[activeTab])}</div>

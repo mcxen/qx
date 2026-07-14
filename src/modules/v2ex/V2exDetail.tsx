@@ -130,7 +130,7 @@ export default function V2exDetail({ topic, onBack }: V2exDetailProps) {
         tone: "primary",
         onClick: () => void openUrl(topic.url),
       }}
-      secondaryAction={{ label: "Actions", kbd: "Cmd K" }}
+      secondaryAction={{ label: "Actions", kbd: "CmdOrCtrl+K" }}
       actionTitle="Topic Actions"
       actions={actions}
     >

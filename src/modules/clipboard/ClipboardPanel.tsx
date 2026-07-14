@@ -1,13 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { LucideIcon } from "lucide-react";
 import { AlignLeft, Code2, File, FileText, Image, Link, Pin, Shrink, Video } from "lucide-react";
 import { useStore, type ClipboardEntry } from "../../store";
-import QxShell from "../../components/QxShell";
+import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useLocale, useT } from "../../i18n";
+import { getQxShortcutPreset } from "../../utils/keyboard";
 import { pasteClipboardEntry, writeClipboardEntry } from "./actions";
 import {
   classify,
@@ -366,15 +369,30 @@ export default function ClipboardPanel() {
     }
   };
 
+  /** File clipboard image, or captured image blob path on disk. */
+  const compressSourcePath = useMemo(() => {
+    if (!selectedItem || mediaProgress) return null;
+    if (fileMetadata?.kind === "image" && selectedItem.file_path) return selectedItem.file_path;
+    if (selectedItem.image_path) return selectedItem.image_path;
+    return null;
+  }, [fileMetadata?.kind, mediaProgress, selectedItem]);
+
+  const gifSourcePath = useMemo(() => {
+    if (!selectedItem?.file_path || mediaProgress) return null;
+    if (fileMetadata?.kind === "video") return selectedItem.file_path;
+    return null;
+  }, [fileMetadata?.kind, mediaProgress, selectedItem]);
+
   const startMediaTask = async (operation: "compress" | "gif") => {
-    if (!selectedItem?.file_path || mediaProgress) return;
+    const path = operation === "compress" ? compressSourcePath : gifSourcePath;
+    if (!path || mediaProgress) return;
     const startMessage = operation === "compress"
       ? t("clipboard.startingCompress", "Starting compression")
       : t("clipboard.startingGif", "Starting GIF conversion");
     setStatus(startMessage);
     try {
       const jobId = await invoke<string>(operation === "compress" ? "clipboard_compress_image" : "clipboard_video_to_gif", {
-        path: selectedItem.file_path,
+        path,
         quality: operation === "compress" ? 78 : undefined,
       });
       setMediaProgress((current) => current?.jobId === jobId ? current : ({
@@ -387,6 +405,86 @@ export default function ClipboardPanel() {
       setStatus(String(error));
     }
   };
+
+  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
+
+  const clipboardActions = useMemo<QxShellAction[]>(() => {
+    const list: QxShellAction[] = [
+      {
+        label: t("clipboard.paste", "Paste"),
+        kbd: "Enter",
+        disabled: !selectedItem,
+        onClick: () => void pasteItem(selectedItem, { focusAtCursor: true }),
+      },
+      {
+        label: t("clipboard.copy", "Copy"),
+        kbd: "CmdOrCtrl+C",
+        disabled: !selectedItem,
+        onClick: () => void copyItem(selectedItem),
+      },
+      {
+        label: selectedItem?.pinned ? t("clipboard.unpin", "Unpin") : t("clipboard.pin", "Pin"),
+        kbd: "CmdOrCtrl+P",
+        disabled: !selectedItem,
+        onClick: () => void togglePin(selectedItem),
+      },
+      {
+        label: t("clipboard.delete", "Delete"),
+        kbd: "CmdOrCtrl+Backspace",
+        disabled: !selectedItem,
+        tone: "danger",
+        onClick: () => void deleteItem(selectedItem),
+      },
+    ];
+
+    // Context-sensitive media tools — only when the current item can run them.
+    if (compressSourcePath) {
+      list.push({
+        label: t("clipboard.compressImage", "Compress Image"),
+        kbd: "CmdOrCtrl+Shift+C",
+        disabled: Boolean(mediaProgress),
+        onClick: () => void startMediaTask("compress"),
+      });
+    }
+    if (gifSourcePath) {
+      list.push({
+        label: t("clipboard.videoToGif", "Video to GIF"),
+        kbd: "CmdOrCtrl+Shift+G",
+        disabled: Boolean(mediaProgress),
+        onClick: () => void startMediaTask("gif"),
+      });
+    }
+    if (selectedItem?.file_path) {
+      list.push({
+        label: t("clipboard.reveal", "Show in Finder"),
+        kbd: "CmdOrCtrl+Shift+R",
+        onClick: () => {
+          if (selectedItem.file_path) void revealItemInDir(selectedItem.file_path);
+        },
+      });
+      list.push({
+        label: t("clipboard.copyPath", "Copy Path"),
+        onClick: () => {
+          if (selectedItem.file_path) void writeText(selectedItem.file_path);
+        },
+      });
+    } else if (selectedItem?.image_path) {
+      list.push({
+        label: t("clipboard.reveal", "Show in Finder"),
+        onClick: () => {
+          if (selectedItem.image_path) void revealItemInDir(selectedItem.image_path);
+        },
+      });
+    }
+
+    return list;
+  }, [
+    compressSourcePath,
+    gifSourcePath,
+    mediaProgress,
+    selectedItem,
+    t,
+  ]);
 
   let flatIndex = 0;
 
@@ -457,46 +555,15 @@ export default function ClipboardPanel() {
         label: t("clipboard.paste", "Paste"),
         kbd: "Enter",
         disabled: !selectedItem,
-        onClick: () => pasteItem(selectedItem),
+        tone: "primary",
+        onClick: () => void pasteItem(selectedItem),
       }}
       secondaryAction={{
-        label: selectedItem?.pinned ? t("clipboard.unpin", "Unpin") : t("clipboard.pin", "Pin"),
-        kbd: "Cmd P",
-        disabled: !selectedItem,
-        onClick: () => togglePin(selectedItem),
+        label: t("clipboard.actions", "Actions"),
+        kbd: actionMenuShortcut,
       }}
-      actions={[
-        {
-          label: t("clipboard.copy", "Copy"),
-          kbd: "Cmd C",
-          disabled: !selectedItem,
-          onClick: () => copyItem(selectedItem),
-        },
-        {
-          label: selectedItem?.pinned ? t("clipboard.unpin", "Unpin") : t("clipboard.pin", "Pin"),
-          kbd: "Cmd P",
-          disabled: !selectedItem,
-          onClick: () => togglePin(selectedItem),
-        },
-        {
-          label: t("clipboard.delete", "Delete"),
-          kbd: "Cmd Delete",
-          disabled: !selectedItem,
-          onClick: () => deleteItem(selectedItem),
-        },
-        {
-          label: t("clipboard.compressImage", "Compress Image"),
-          kbd: "Cmd Shift C",
-          disabled: fileMetadata?.kind !== "image" || Boolean(mediaProgress),
-          onClick: () => void startMediaTask("compress"),
-        },
-        {
-          label: t("clipboard.videoToGif", "Video to GIF"),
-          kbd: "Cmd Shift G",
-          disabled: fileMetadata?.kind !== "video" || Boolean(mediaProgress),
-          onClick: () => void startMediaTask("gif"),
-        },
-      ]}
+      actionTitle={t("clipboard.actions", "Clipboard Actions")}
+      actions={clipboardActions}
     >
       <div className="qx-clipboard-body">
         <div ref={listRef} className="qx-clipboard-list" role="listbox" aria-label={t("clipboard.listAria", "Clipboard history")}>
@@ -618,6 +685,21 @@ export default function ClipboardPanel() {
                       {fileMetadata.kind === "image" && <div><dt>{t("clipboard.quickAction", "Quick action")}</dt><dd><button className="qx-inline-action" onClick={() => void startMediaTask("compress")} disabled={Boolean(mediaProgress)}><Shrink size={13} /> {t("clipboard.compress", "Compress")}</button></dd></div>}
                       {fileMetadata.kind === "video" && <div><dt>{t("clipboard.quickAction", "Quick action")}</dt><dd><button className="qx-inline-action" onClick={() => void startMediaTask("gif")} disabled={Boolean(mediaProgress)}><Video size={13} /> {t("clipboard.convertGif", "Convert to GIF")}</button></dd></div>}
                     </>
+                  )}
+                  {selectedItem.image_path && !selectedItem.file_path && (
+                    <div>
+                      <dt>{t("clipboard.quickAction", "Quick action")}</dt>
+                      <dd>
+                        <button
+                          className="qx-inline-action"
+                          onClick={() => void startMediaTask("compress")}
+                          disabled={Boolean(mediaProgress)}
+                          type="button"
+                        >
+                          <Shrink size={13} /> {t("clipboard.compress", "Compress")}
+                        </button>
+                      </dd>
+                    </div>
                   )}
                   <div>
                     <dt>{t("clipboard.copiedAt", "Copied")}</dt>

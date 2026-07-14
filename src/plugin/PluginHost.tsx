@@ -214,7 +214,7 @@ export function PluginPanelViewport() {
         tone: "primary",
         onClick: () => setRefreshKey((k) => k + 1),
       }}
-      secondaryAction={{ label: "Actions", kbd: "Cmd K" }}
+      secondaryAction={{ label: "Actions", kbd: "CmdOrCtrl+K" }}
       actionTitle="Plugin Actions"
       actions={actions}
     >

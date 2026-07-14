@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
-import QxShell from "../../components/QxShell";
+import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { SegmentedControl } from "../../components/ui";
 import { useStore } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
+import { getQxShortcutPreset } from "../../utils/keyboard";
 
 type Mode = "stats" | "markdown" | "json";
 
@@ -86,6 +87,46 @@ export default function DevTxtTool() {
     `${stats.lines.toLocaleString()} lines`,
   ].join(" \u00b7 ");
 
+  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
+
+  const documentActions = useMemo<QxShellAction[]>(() => {
+    const list: QxShellAction[] = [
+      {
+        label: showOutput ? "Copy Output" : "Copy All",
+        kbd: "Enter",
+        disabled: showOutput ? !output : !text,
+        onClick: showOutput
+          ? () => void copyOutput()
+          : async () => {
+              await writeText(text);
+              setMessage("Copied");
+              window.setTimeout(() => setMessage(""), 1200);
+            },
+      },
+      {
+        label: "Paste from Clipboard",
+        kbd: "CmdOrCtrl+V",
+        onClick: () => void pasteClipboard(),
+      },
+      {
+        label: "Clear Text",
+        disabled: !text,
+        tone: "danger",
+        onClick: () => {
+          setText("");
+          setShowOutput(false);
+        },
+      },
+    ];
+    if (output) {
+      list.splice(1, 0, {
+        label: showOutput ? "Show Editor" : "Show Output",
+        onClick: () => setShowOutput((v) => !v),
+      });
+    }
+    return list;
+  }, [output, showOutput, text]);
+
   const trailing = (
     <>
       <SegmentedControl
@@ -124,20 +165,20 @@ export default function DevTxtTool() {
       primaryAction={{
         label: showOutput ? "Copy Output" : "Copy All",
         kbd: "Enter",
-        disabled: !text,
+        disabled: showOutput ? !output : !text,
         tone: "primary",
-        onClick: showOutput ? copyOutput : async () => {
+        onClick: showOutput ? () => void copyOutput() : async () => {
           await writeText(text);
           setMessage("Copied");
           window.setTimeout(() => setMessage(""), 1200);
         },
       }}
       secondaryAction={{
-        label: "Paste",
-        kbd: "Cmd V",
-        disabled: false,
-        onClick: pasteClipboard,
+        label: "Actions",
+        kbd: actionMenuShortcut,
       }}
+      actionTitle="Document Actions"
+      actions={documentActions}
       island={{
         label: message || (showOutput ? "Output" : "DevTxtTool"),
         detail: islandDetail,
