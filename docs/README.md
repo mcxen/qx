@@ -1,6 +1,6 @@
 # Qx 开发者文档索引
 
-> 状态：Current · 适用版本：v0.5.11 · Owner：Core · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.5.12 · Owner：Core · 最后复核：2026-07-14
 
 面向核心贡献者。所有面向用户的说明在 [README.md](../README.md) 和 [`public/doc/`](../public/doc/) 下。
 

@@ -1,6 +1,6 @@
 # Shell、全局快捷键与托管 State
 
-> 状态：Current · 适用版本：v0.5.11 · Owner：Core · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.5.12 · Owner：Core · 最后复核：2026-07-14
 
 本文记录 **浮动主窗口 / 全局快捷键切换 / RSS·Clipboard 托管 State / 搜索框重聚焦** 的约定与坑。改这些行为前先读这里，避免全库搜一遍。
 
@@ -228,5 +228,5 @@ with_db / ensure_open:
 
 | 版本/提交 | 内容 |
 |-----------|------|
-| v0.5.11 | 模块快捷键同 route 再按 dismiss；`ACTIVE_ROUTE` + `set_active_route` |
+| v0.5.12 | 模块快捷键同 route 再按 dismiss；`ACTIVE_ROUTE` + `set_active_route` |
 | 后续 fix | `PANEL_OPEN` / `LAST_HIDE_AT` 防 blur 竞态；隐藏走 Rust；RSS 始终 manage + lazy open；SearchBar 重聚焦 |

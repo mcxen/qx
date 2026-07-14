@@ -57,8 +57,10 @@ export default function Launcher({
     () => createLauncherActions({ item: selectedItem, onItemClick, onNavigate, t }),
     [selectedItem, onItemClick, onNavigate, t],
   );
+  // History loads once on mount. Do not re-fetch when results briefly empty
+  // during search transitions — that doubled IPC during every summon.
   const { recentLaunches, recentSearches } = useLauncherHistory({
-    shouldRefreshWhenIdle: results.length === 0 && !loadingPhase,
+    shouldRefreshWhenIdle: false,
   });
 
   const quickEntries: QuickEntry[] = useMemo(() => {

@@ -28,6 +28,7 @@ export default function SearchBar({
     const el = inputRef.current;
     if (!el) return;
     // Key window first so typing lands in the webview (macOS NSPanel).
+    // requestPanelKeyWindow is debounced — safe to call from multiple paths.
     requestPanelKeyWindow();
     el.focus({ preventScroll: true });
   }, []);
@@ -38,15 +39,12 @@ export default function SearchBar({
   }, [focusInput]);
 
   // Re-show via Option+Space: component stays mounted, so remount effect does not run.
+  // One rAF is enough — the old rAF + 40ms double-focus stacked with App.tsx and
+  // made every summon feel sluggish.
   useEffect(() => {
     if (!visible) return;
-    // After global-shortcut show, key-window promotion is async — focus twice.
     const frame = window.requestAnimationFrame(() => focusInput());
-    const timer = window.setTimeout(focusInput, 40);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.clearTimeout(timer);
-    };
+    return () => window.cancelAnimationFrame(frame);
   }, [visible, focusInput]);
 
   useEffect(() => {

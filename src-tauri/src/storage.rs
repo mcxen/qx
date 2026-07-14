@@ -259,8 +259,12 @@ pub async fn qx_storage_overview() -> StorageOverview {
 fn build_storage_overview() -> StorageOverview {
     let mut warnings: Vec<String> = Vec::new();
 
-    // Cache: icons + OCR models + temp recordings (multi-path).
-    let mut cache_paths: Vec<PathBuf> = vec![icons_dir(), ocr_models_dir()];
+    // Cache: icons + OCR models + update staging + temp recordings (multi-path).
+    let mut cache_paths: Vec<PathBuf> = vec![
+        icons_dir(),
+        ocr_models_dir(),
+        qx_home_dir().join("cache").join("updates"),
+    ];
     cache_paths.extend(recording_temp_dirs());
     let (cache_bytes, cache_files) = measure_paths(&cache_paths, &mut warnings);
     let cache = StorageBucket {

@@ -463,11 +463,21 @@ pub fn run() {
             // Initialize app cache from DB (instant), then background re-scan
             safe_init("apps::ensure_cache", &|| apps::ensure_cache(Some(&handle)));
 
-            // Initialize fast platform file search backends.
-            safe_init("file_search::init", &|| file_search::init(&handle));
-
-            // Pre-convert app icons in background (keeps first search fast)
-            safe_init("apps::preload_icons", &|| apps::preload_icons(&handle));
+            // File search backends + icon preload: after a short delay so they
+            // never compete with tray/shortcut registration or first launcher paint.
+            let file_search_handle = handle.clone();
+            let icon_handle = handle.clone();
+            let _ = std::thread::Builder::new()
+                .name("qx-deferred-startup".to_string())
+                .spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(400));
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        file_search::init(&file_search_handle);
+                    }));
+                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        apps::preload_icons(&icon_handle);
+                    }));
+                });
 
             // Start external display monitor (polls every 2s, auto-shows on connect)
             display_monitor::start_display_monitor(handle.clone());

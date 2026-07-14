@@ -1,6 +1,6 @@
 # 前端子系统总览
 
-> 状态：Current · 适用版本：v0.5.11 · Owner：Frontend · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.5.12 · Owner：Frontend · 最后复核：2026-07-14
 
 Qx 前端是 React 19 + Zustand + Tauri v2 API + shadcn 组件。入口 `src/main.tsx` → `App.tsx`。本文件描述各子系统的边界与关键文件；组件视觉规范另见 [UI_SPEC.md](../UI_SPEC.md)、[docs/settings-panel.md](./settings-panel.md)。
 
@@ -64,6 +64,20 @@ Zustand 单 store（`store.ts`）保存 launcher 强共享状态：
 **与 Rust 同步**：`tab` 变化时 `invoke("set_active_route", { route: tab })`，供全局模块快捷键 `toggle_route` 判断「是否已在当前模块 → 再按隐藏」。细节见 [shell-and-shortcuts.md](./shell-and-shortcuts.md)。
 
 每个 module 面板通过 `React.lazy` 异步加载，加载中显示 `ModuleLoadingShell` skeleton。
+
+## 启动与后台任务（性能约束）
+
+首屏 / Option+Space 热路径**禁止**与下列重活抢 CPU/磁盘：
+
+| 阶段 | 做什么 | 不得做什么 |
+|------|--------|------------|
+| Rust setup | `apps::ensure_cache`（DB 冷读 ~1ms） | setup 线程内扫全盘、sips 图标、prune 更新缓存 |
+| Phase 1 | 一次 `search_apps("")` → 列表 | 空 query 重复 IPC；插件加载 |
+| 唤醒 show | 复用 8s 内缓存列表；单次 focus | 每次 focus 全量 reload；连发 `floating_request_key` |
+| 后台（延后） | 插件 ≥1.4s idle；图标 ≥1.5s；自动更新 ≥18s 且面板隐藏 | 启动 2s 内下载 zip |
+| 事件 | `apps:updated` / `icons-ready` debounce | 扫描完成立刻多次 `search_apps` 打爆列表 |
+
+空 query 的 `doSearch` 走 **fast path**：有新鲜 app 列表则直接 return，不跑插件/元数据管线。
 
 ## 搜索管线
 

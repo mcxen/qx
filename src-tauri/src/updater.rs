@@ -132,6 +132,11 @@ pub async fn qx_update_download_and_install(
 pub(crate) fn maybe_run_update_helper_from_args() -> bool {
     let args: Vec<String> = std::env::args().collect();
     if args.get(1).map(String::as_str) != Some(HELPER_FLAG) {
+        // Normal launches: prune off the UI thread so disk I/O never delays
+        // tray / shortcuts / first webview paint.
+        let _ = std::thread::Builder::new()
+            .name("qx-update-prune".to_string())
+            .spawn(|| prune_update_cache(None));
         return false;
     }
     let result = run_update_helper(&args);
@@ -144,6 +149,8 @@ pub(crate) fn maybe_run_update_helper_from_args() -> bool {
             message: err,
             target_app: target,
         });
+        // Keep the failed version dir for diagnosis; still drop other orphans.
+        prune_update_cache(arg_value(&args, "--version").as_deref());
     }
     true
 }
@@ -330,7 +337,11 @@ fn download_and_stage(
     expected_sha256: &str,
     expected_size: Option<u64>,
 ) -> Result<PathBuf, String> {
+    // Drop previous versions / helper binaries before downloading a new one.
+    prune_update_cache(Some(version));
     let update_dir = update_cache_dir().join(version);
+    // Fresh download: wipe this version dir too so we never reuse a partial zip.
+    let _ = fs::remove_dir_all(&update_dir);
     download_and_stage_in_dir(update_dir, asset_url, expected_sha256, expected_size)
 }
 
@@ -538,12 +549,24 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
             .map_err(|e| format!("restart Qx: {e}"))?;
     }
     let _ = fs::remove_dir_all(&backup_app);
+    // staged is .../updates/<ver>/staging/Qx.app — remove the whole version dir
+    // (zip + empty staging). Previously only Qx.app was deleted, leaving ~15–30MB
+    // zip + helper binaries forever under ~/.qx/cache/updates.
+    if let Some(version_dir) = staged_app.parent().and_then(|p| p.parent()) {
+        let _ = fs::remove_dir_all(version_dir);
+    }
     let _ = write_helper_status(HelperStatus {
         ok: true,
-        version,
+        version: version.clone(),
         message: "Update installed and Qx relaunched.".to_string(),
         target_app: target_app.display().to_string(),
     });
+    // Remove this helper binary and any other leftover helpers/zips.
+    prune_update_cache(None);
+    if let Ok(self_exe) = std::env::current_exe() {
+        // Safe on macOS: the running image stays mapped after unlink.
+        let _ = fs::remove_file(self_exe);
+    }
     Ok(())
 }
 
@@ -701,6 +724,36 @@ fn update_cache_dir() -> PathBuf {
     let dir = PathBuf::from(home).join(".qx/cache/updates");
     let _ = fs::create_dir_all(&dir);
     dir
+}
+
+/// Remove leftover update artifacts under `~/.qx/cache/updates`.
+///
+/// Keeps `last-update-status.json`. When `keep_version` is set, also keeps that
+/// version directory (useful while downloading / diagnosing a failed install).
+fn prune_update_cache(keep_version: Option<&str>) {
+    let root = update_cache_dir();
+    let Ok(entries) = fs::read_dir(&root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if name == STATUS_FILE {
+            continue;
+        }
+        if let Some(keep) = keep_version {
+            if name == keep {
+                continue;
+            }
+        }
+        let path = entry.path();
+        // Version dirs (0.5.2), helper copies (qx-update-helper-12345), backups.
+        if path.is_dir() {
+            let _ = fs::remove_dir_all(&path);
+        } else {
+            let _ = fs::remove_file(&path);
+        }
+    }
 }
 
 fn current_binary_name() -> Result<String, String> {

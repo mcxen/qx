@@ -41,6 +41,27 @@ Qx 使用自定义 macOS helper 更新，不依赖 Tauri signed updater：
 - `qx_update_download_and_install` 下载 zip、校验 SHA256 和 size、解压到 staging，然后复制当前可执行文件作为临时 helper。
 - 主程序退出后，helper 用 `ditto` 替换目标 `Qx.app`，清理 `com.apple.quarantine` xattr，确认主二进制可执行，再通过 `/usr/bin/open` 重启。
 
+### 更新缓存路径与清理
+
+工作目录：`~/.qx/cache/updates/`
+
+| 产物 | 说明 |
+|------|------|
+| `<version>/Qx.app.zip` | 下载的安装包 |
+| `<version>/staging/Qx.app` | 解压后的待替换 bundle |
+| `qx-update-helper-<pid>` | 从当前进程复制的 helper 二进制 |
+| `backup-Qx-<version>.app` | 替换时临时备份（成功后删除） |
+| `last-update-status.json` | 最近一次 helper 结果 |
+
+**历史问题**：旧逻辑成功后只删 `staging/Qx.app`，zip 与 helper 二进制会一直堆在磁盘上（每次约 15–30MB+）。
+
+**当前清理策略**（`updater.rs`）：
+
+1. 下载新版本前 `prune_update_cache`，去掉其它版本与 orphan helper  
+2. helper 成功替换后删除整个 `<version>/` 目录 + 删除自身 helper 文件  
+3. 普通启动时也会 prune orphan（保留 status 文件）  
+4. Settings 存储清理的 cache 桶包含 `~/.qx/cache/updates`
+
 用户在 Settings 里打开 `Automatically install updates` 后，启动时会后台检查并自动下载可安装版本；About 页面也可以手动检查和安装。
 
 ## 未做的事

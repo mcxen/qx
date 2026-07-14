@@ -754,6 +754,9 @@ pub fn preload_icons(app: &AppHandle) {
 
     let handle = app.clone();
     std::thread::spawn(move || {
+        // Let phase-1 DB load + first search_apps("") finish before sips/icon
+        // conversion saturates disk and CPU on cold start.
+        std::thread::sleep(std::time::Duration::from_millis(1500));
         let mut changed = false;
         for entry in apps.iter() {
             let app_path = PathBuf::from(&entry.path);

@@ -23,8 +23,9 @@ static PANEL_OPEN: AtomicBool = AtomicBool::new(false);
 /// When the panel was last hidden (blur-hide can race ahead of the hotkey).
 static LAST_HIDE_AT: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
 /// Ignore re-open for this long after a hide so the same keypress that caused
-/// blur→hide does not immediately re-show the panel.
-const HIDE_TOGGLE_GRACE: Duration = Duration::from_millis(280);
+/// blur→hide does not immediately re-show the panel. Keep short — longer grace
+/// made deliberate double-tap summon feel unresponsive (~0.3s+ dead).
+const HIDE_TOGGLE_GRACE: Duration = Duration::from_millis(160);
 
 fn previous_foreground_pid() -> &'static Mutex<Option<i32>> {
     PREVIOUS_FOREGROUND_PID.get_or_init(|| Mutex::new(None))
@@ -522,7 +523,8 @@ pub fn show_floating(app: &AppHandle) {
     }
     #[cfg(target_os = "macos")]
     {
-        macos::promote_main_to_panel(app);
+        // promote_main_to_panel is already done at install; re-running every
+        // Option+Space added measurable latency. Only order + activate + key.
         macos::order_front_without_activating(app);
         // With only NSWindow-safe flags (no NonactivatingPanel mask), the
         // accessory-policy app must be explicitly activated before the panel
@@ -591,8 +593,13 @@ pub fn toggle(app: &AppHandle) {
             return;
         }
         show_floating(app);
+        // Skip navigate when already on launcher — avoids remount/focus storm on
+        // every Option+Space open when the last tab was already home.
+        let need_nav = !routes_match(&active_route(), "launcher");
         remember_active_route("launcher");
-        let _ = tauri::Emitter::emit(&win, "navigate", "launcher");
+        if need_nav {
+            let _ = tauri::Emitter::emit(&win, "navigate", "launcher");
+        }
     }
 }
 
