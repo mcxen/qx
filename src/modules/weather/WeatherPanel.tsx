@@ -9,6 +9,7 @@ import { useSettingsStore } from "../settings/store";
 import { LoadingSpinner } from "../../components/ui";
 import { useT } from "../../i18n";
 import { getQxShortcutPreset } from "../../utils/keyboard";
+import BetaBadge from "../../components/BetaBadge";
 
 interface WeatherCurrent {
   temperature: number;
@@ -243,11 +244,10 @@ export default function WeatherPanel() {
       },
       {
         label: t("common.back", "Back"),
-        kbd: "Esc",
         onClick: goBack,
       },
     ],
-    [loading, t],
+    [goBack, loading, t],
   );
 
   const units = settings.weather.units || "celsius";
@@ -274,6 +274,12 @@ export default function WeatherPanel() {
       title="Weather"
       visual="solid"
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
+      search={
+        <div className="qx-rss-detail-title qx-module-title-with-badge">
+          <span>{t("launcher.weather", "Weather")}</span>
+          <BetaBadge />
+        </div>
+      }
       trailing={
         <button
           className="qx-command-button"

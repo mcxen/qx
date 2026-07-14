@@ -14,6 +14,7 @@ import {
   useSettingsStore,
 } from "../modules/settings/store";
 import { useG4fStore } from "../modules/qx-ai/store";
+import { isBuiltinModuleEnabled } from "../modules/moduleAvailability";
 
 export type ModuleLaunch = {
   tab: string;
@@ -68,6 +69,7 @@ export function parseModuleLaunchPath(path: string): ModuleLaunch | null {
 
 /** Whether a built-in module may appear in main search (static + dynamic). */
 export function isModuleSearchEnabled(moduleId: string): boolean {
+  if (!isBuiltinModuleEnabled(moduleId)) return false;
   const ms = useSettingsStore.getState().settings.module_search;
   if (!ms || ms.enabled === false) return false;
   const modules = ms.modules ?? {};

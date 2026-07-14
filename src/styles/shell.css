@@ -945,6 +945,7 @@
 }
 
 .qx-island-mode-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -973,6 +974,12 @@
     0 0 14px color-mix(in srgb, var(--qx-accent) 12%, transparent);
 }
 
+.qx-island-mode-card.is-primary {
+  background:
+    radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--qx-accent) 18%, transparent), transparent 55%),
+    var(--qx-bg-component-2);
+}
+
 .qx-island-mode-preview {
   font-family: var(--qx-font-mono);
   font-size: 13px;
@@ -983,14 +990,51 @@
 }
 
 .qx-island-mode-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   font-weight: 700;
+}
+
+.qx-island-mode-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--qx-bg-base, #0b0b0f);
+  background: var(--qx-accent);
 }
 
 .qx-island-mode-hint {
   font-size: 10px;
   line-height: 1.25;
   color: var(--qx-text-tertiary);
+}
+
+.qx-home-island-rotate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.qx-home-island-rotate input[type="range"] {
+  flex: 1 1 160px;
+  min-width: 120px;
+}
+
+.qx-home-island-rotate-value,
+.qx-home-island-rotate-count {
+  font-size: 11px;
+  color: var(--qx-text-secondary);
+  white-space: nowrap;
 }
 
 @media (max-width: 680px) {
@@ -1239,4 +1283,37 @@
   .qx-shell-actions {
     grid-column: 2;
   }
+}
+.qx-module-title-with-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.qx-module-title-with-badge > span:first-child:not(.qx-beta-badge) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-beta-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  height: 17px;
+  padding: 0 6px;
+  border: 1px dashed color-mix(in srgb, var(--qx-accent) 42%, var(--qx-border-2));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--qx-accent) 7%, transparent);
+  color: color-mix(in srgb, var(--qx-accent) 56%, var(--qx-text-secondary));
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: 0.015em;
+  text-transform: none;
+  vertical-align: middle;
 }

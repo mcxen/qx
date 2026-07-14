@@ -21,6 +21,8 @@ import { LoadingLabel, Skeleton } from "./components/ui";
 import AppResultContextMenu from "./launcher/AppResultContextMenu";
 import { useDisplayName } from "./search/appDisplay";
 import { useT } from "./i18n";
+import BetaBadge from "./components/BetaBadge";
+import { isBetaModule } from "./modules/catalog";
 
 const FILE_ICON_BY_EXTENSION: Record<string, string> = {
   pdf: "file-pdf",
@@ -261,8 +263,9 @@ const ResultItem = memo(function ResultItem({
     >
       <AppIcon item={item} label={label} />
       <div className="qx-list-copy">
-        <div className="qx-list-title" style={{ fontWeight: 500 }}>
-          {label}
+        <div className="qx-list-title qx-module-title-with-badge" style={{ fontWeight: 500 }}>
+          <span>{label}</span>
+          {isBetaModule(item.moduleId) && <BetaBadge />}
         </div>
         <div className="qx-list-subtitle">
           {item.subtitle

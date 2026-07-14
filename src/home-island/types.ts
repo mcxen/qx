@@ -8,7 +8,18 @@ export type Translate = (key: string, fallback: string) => string;
 
 /** Appearance fields the island system cares about. */
 export interface HomeIslandAppearance {
+  /**
+   * Primary / last-focused mode id (compat + settings highlight).
+   * Prefer `home_island_modes` for multi-select rotation.
+   */
   home_island_mode: string;
+  /**
+   * Modes shown on the idle home island. When length > 1, they auto-rotate
+   * every `home_island_rotate_secs` seconds.
+   */
+  home_island_modes?: string[];
+  /** Auto-rotate interval in seconds. 0 = pin first selected mode only. Default 8. */
+  home_island_rotate_secs?: number;
   home_island_cpu: boolean;
   home_island_gpu: boolean;
   home_island_memory: boolean;

@@ -1,20 +1,200 @@
-/* Documents (DevTxtTool): full-bleed editor inside QxShell content. */
+/* Text Toolbox — Notepad++ lite: file list + editor */
 
 .documents-shell .qx-shell-content {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* Editor owns the chrome; avoid double padding scroll traps. */
-  padding-top: var(--qx-topbar-h);
-  padding-bottom: var(--qx-bottom-bar-h);
+  min-height: 0;
 }
 
-.qx-documents-stage {
+.qx-docs-split {
   flex: 1;
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(200px, 260px) minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+}
+
+.qx-docs-file-list {
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--qx-border-1);
+  background: color-mix(in srgb, var(--qx-bg-component-1) 55%, transparent);
+}
+
+/* File row: progress underline sits inside the selection box bottom edge */
+.qx-docs-file-list .qx-docs-file-row {
+  position: relative;
+  overflow: hidden;
+  padding-bottom: 5px;
+  /* Single-column layout: list-copy spans; no icon column in this module */
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.qx-docs-file-list .qx-docs-file-row .qx-list-copy {
+  min-width: 0;
+}
+
+.qx-docs-save-bar {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 999px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 2;
+  background: color-mix(in srgb, var(--qx-accent, #3b82f6) 16%, transparent);
+}
+
+.qx-docs-save-bar-fill {
+  display: block;
+  height: 100%;
+  width: 36%;
+  border-radius: inherit;
+  background: var(--qx-accent, #3b82f6);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--qx-accent, #3b82f6) 50%, transparent);
+  will-change: transform, width, opacity;
+}
+
+/* Writing: sweep inside this row only (real wait until IPC returns) */
+.qx-docs-save-bar.is-writing .qx-docs-save-bar-fill {
+  animation: qx-docs-save-writing 0.85s ease-in-out infinite;
+}
+
+/* Disk done: line races to full width then fades — same row as writing */
+.qx-docs-save-bar.is-complete .qx-docs-save-bar-fill {
+  animation: qx-docs-save-complete 0.3s cubic-bezier(0.22, 0.9, 0.28, 1) forwards;
+}
+
+@keyframes qx-docs-save-writing {
+  0% {
+    width: 28%;
+    transform: translateX(-120%);
+    opacity: 0.75;
+  }
+  50% {
+    width: 48%;
+    opacity: 1;
+  }
+  100% {
+    width: 28%;
+    transform: translateX(320%);
+    opacity: 0.75;
+  }
+}
+
+@keyframes qx-docs-save-complete {
+  0% {
+    width: 42%;
+    transform: translateX(0);
+    opacity: 1;
+  }
+  55% {
+    width: 100%;
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    width: 100%;
+    transform: translateX(0);
+    opacity: 0;
+  }
+}
+
+.qx-docs-workspace {
+  min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+.qx-docs-workspace-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--qx-border-1);
+  background: color-mix(in srgb, var(--qx-bg-component-1) 70%, transparent);
+}
+
+.qx-docs-workspace-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--qx-text-secondary);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-docs-workspace-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--qx-text-tertiary);
+}
+
+.qx-docs-lang-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: var(--qx-text-secondary);
+  background: var(--qx-overlay-3);
+  border: 1px solid var(--qx-border-1);
+}
+
+.qx-docs-lang-hint {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--qx-text-tertiary);
+  margin: 0 0 8px;
+}
+
+.qx-docs-lang-chip {
+  appearance: none;
+  border: 1px solid var(--qx-border-1);
+  background: var(--qx-overlay-2);
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.qx-docs-lang-chip:hover {
+  color: var(--qx-text-primary);
+  border-color: var(--qx-border-2);
+}
+
+.qx-docs-lang-chip.is-active {
+  color: var(--qx-accent, #3b82f6);
+  border-color: color-mix(in srgb, var(--qx-accent, #3b82f6) 45%, transparent);
+  background: color-mix(in srgb, var(--qx-accent, #3b82f6) 12%, transparent);
+}
+
+.qx-docs-lang-badge.is-dirty {
+  color: var(--qx-warning, #f59e0b);
+  border-color: color-mix(in srgb, var(--qx-warning, #f59e0b) 45%, transparent);
+  background: color-mix(in srgb, var(--qx-warning, #f59e0b) 12%, transparent);
+}
+
+.qx-docs-rename-input {
   width: 100%;
+  height: 24px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 6px;
 }
 
 .qx-documents-textarea-full {
@@ -24,10 +204,11 @@
   resize: none;
   border: 0;
   outline: none;
-  padding: 14px 16px;
+  padding: 12px 14px;
   background: transparent;
   color: var(--qx-text-primary);
-  font: 13px/1.6 var(--qx-font-mono);
+  font: 13px/1.55 var(--qx-font-mono);
+  tab-size: 2;
   box-sizing: border-box;
 }
 
@@ -39,55 +220,12 @@
   outline: none;
 }
 
-.qx-documents-output-only {
-  flex: 1;
-  min-height: 0;
-  margin: 0;
-  padding: 14px 16px;
-  overflow: auto;
-  color: var(--qx-text-secondary);
-  font: 13px/1.6 var(--qx-font-mono);
-  white-space: pre-wrap;
-  word-break: break-word;
-  background: var(--qx-overlay-3);
-  box-sizing: border-box;
+.qx-documents-textarea-full:disabled {
+  opacity: 0.55;
 }
 
-.qx-documents-stats {
-  flex: 0 0 auto;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px 14px;
-  padding: 8px 16px;
-  border-top: 1px solid var(--qx-border-1);
-  background: color-mix(in srgb, var(--qx-bg-component-1) 88%, transparent);
-  color: var(--qx-text-tertiary);
-  font-size: 11px;
-  line-height: 1.2;
-}
-
-.qx-documents-stats-mode {
-  margin-left: auto;
-  text-transform: capitalize;
-  color: var(--qx-text-secondary);
-  font-weight: 600;
-}
-
-.qx-documents-stats-hint {
-  color: var(--qx-text-tertiary);
-  opacity: 0.85;
-}
-
-.documents-shell .qx-shell-trailing {
-  max-width: min(520px, 58vw);
-}
-
-.documents-shell .qx-shell-trailing .qx-clipboard-status {
-  max-width: 120px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 11px;
-  color: var(--qx-text-secondary);
+@media (max-width: 720px) {
+  .qx-docs-split {
+    grid-template-columns: minmax(150px, 190px) minmax(0, 1fr);
+  }
 }

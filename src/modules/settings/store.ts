@@ -1,5 +1,9 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  CONFIGURABLE_BUILTIN_MODULE_IDS,
+  type ConfigurableBuiltinModuleId,
+} from "../catalog";
 
 let saveSeq = 0;
 let saveInFlight = false;
@@ -49,6 +53,10 @@ export interface AppearanceSettings {
   font_size: number;
   /** Home island mode id — see `src/home-island` registry (free string for extensibility). */
   home_island_mode: string;
+  /** Multi-select set for idle home island rotation (empty → use home_island_mode). */
+  home_island_modes: string[];
+  /** Seconds between multi-mode rotation; 0 = no rotate. */
+  home_island_rotate_secs: number;
   home_island_cpu: boolean;
   home_island_gpu: boolean;
   home_island_memory: boolean;
@@ -176,7 +184,7 @@ export const MODULE_SEARCH_LABELS: Record<ModuleSearchModuleId, { title: string;
   rss: { title: "RSS Reader", hint: "Feeds, folders, open reader" },
   screencap: { title: "Screen Recording", hint: "GIF history and recorder" },
   macros: { title: "Macro Recorder", hint: "Saved macros" },
-  documents: { title: "Documents", hint: "Clean / Markdown / JSON tools" },
+  documents: { title: "Text Toolbox", hint: "Disk notepad · folder files" },
   weather: { title: "Weather", hint: "Locations and open weather" },
   v2ex: { title: "V2EX", hint: "Hot / Latest views" },
 };
@@ -186,6 +194,11 @@ export interface ModuleSearchSettings {
   enabled: boolean;
   /** Missing keys default to enabled. */
   modules: Partial<Record<ModuleSearchModuleId, boolean>>;
+}
+
+export interface BuiltinModulesSettings {
+  /** Missing keys default to enabled for backwards compatibility. */
+  modules: Partial<Record<ConfigurableBuiltinModuleId, boolean>>;
 }
 
 export interface Settings {
@@ -202,6 +215,7 @@ export interface Settings {
   weather: WeatherSettings;
   search_metadata: Record<string, SearchMetadataEntry>;
   module_search: ModuleSearchSettings;
+  builtin_modules: BuiltinModulesSettings;
   quick_entries: QuickEntryConfig[];
   tray_actions: TrayActionConfig[];
 }
@@ -235,6 +249,8 @@ export const DEFAULT_SETTINGS: Settings = {
     border_radius: 8,
     font_size: 14,
     home_island_mode: "system",
+    home_island_modes: ["system"],
+    home_island_rotate_secs: 8,
     home_island_cpu: true,
     home_island_gpu: true,
     home_island_memory: true,
@@ -317,6 +333,11 @@ export const DEFAULT_SETTINGS: Settings = {
       v2ex: true,
     },
   },
+  builtin_modules: {
+    modules: Object.fromEntries(
+      CONFIGURABLE_BUILTIN_MODULE_IDS.map((id) => [id, true]),
+    ) as Record<ConfigurableBuiltinModuleId, boolean>,
+  },
   quick_entries: [
     { id: "clipboard", title: "Clipboard History", subtitle: "Pinned, frequent, links", target: "clipboard", enabled: true },
     { id: "qx-ai", title: "QxAI", subtitle: "Chat and agent tasks", target: "qx-ai", enabled: true },
@@ -324,7 +345,7 @@ export const DEFAULT_SETTINGS: Settings = {
     { id: "screencap", title: "Screen Recording", subtitle: "GIF capture", target: "screencap", enabled: true },
     { id: "v2ex", title: "V2EX", subtitle: "Latest and hot topics", target: "v2ex", enabled: true },
     { id: "weather", title: "Weather", subtitle: "Current conditions and forecast", target: "weather", enabled: true },
-    { id: "documents", title: "Documents", subtitle: "Text, Markdown, JSON", target: "documents", enabled: true },
+    { id: "documents", title: "Text Toolbox", subtitle: "Disk notepad · folder files", target: "documents", enabled: true },
     { id: "macros", title: "Macro Recorder", subtitle: "Record and replay actions", target: "macros", enabled: true },
     { id: "settings", title: "Settings", subtitle: "Appearance and plugins", target: "settings", enabled: true },
   ],
@@ -431,6 +452,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
             modules: {
               ...DEFAULT_SETTINGS.module_search.modules,
               ...((s as Settings).module_search?.modules ?? {}),
+            },
+          },
+          builtin_modules: {
+            ...DEFAULT_SETTINGS.builtin_modules,
+            ...(s as Settings).builtin_modules,
+            modules: {
+              ...DEFAULT_SETTINGS.builtin_modules.modules,
+              ...((s as Settings).builtin_modules?.modules ?? {}),
             },
           },
           quick_entries: Array.isArray(s.quick_entries) && s.quick_entries.length > 0

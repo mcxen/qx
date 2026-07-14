@@ -1,5 +1,6 @@
 import { usePluginRegistry } from "./registry";
 import type { RegisteredCommand, RegisteredPanel, PluginContext, InstalledPlugin, PluginPreference } from "./types";
+import { isBuiltinModuleEnabled } from "../modules/moduleAvailability";
 
 // ---------------------------------------------------------------------------
 // Builtin module definitions
@@ -161,7 +162,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       title: "Document Tools",
       keywords: ["document", "documents", "doc", "markdown", "json", "word count", "文档", "字数", "文本"],
     },
-    description: "Document and text tools",
+    description: "Disk-backed text toolbox",
   },
   {
     id: "weather",
@@ -258,6 +259,7 @@ export const BUILTIN_SETTINGS_KEYS: Record<string, string> = Object.fromEntries(
 
 /** Dispatch the navigation custom event that the shell listens for. */
 function navigateToTab(tabId: string): void {
+  if (!isBuiltinModuleEnabled(tabId)) return;
   window.dispatchEvent(
     new CustomEvent("qx:navigate", { detail: tabId }),
   );

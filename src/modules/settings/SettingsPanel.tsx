@@ -29,6 +29,8 @@ import { Button, ScrollArea } from "../../components/ui";
 import { useT } from "../../i18n";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
 import { getQxShortcutPreset } from "../../utils/keyboard";
+import { homeIslandDataBus, useResolvedHomeIsland } from "../../home-island";
+import { isBuiltinModuleEnabled } from "../moduleAvailability";
 
 interface NavItem {
   id: SettingsTab;
@@ -88,10 +90,12 @@ const TAB_LABELS: Record<SettingsTab, string> = {
 };
 
 export default function SettingsPanel({ onClose }: { onClose: () => void }) {
-  const { activeTab, setActiveTab, load, loaded } = useSettingsStore();
+  const { activeTab, setActiveTab, load, loaded, settings } = useSettingsStore();
   const t = useT();
   const [filter, setFilter] = useState("");
   const [version, setVersion] = useState("");
+  /** Mode the user is hovering / focusing in Home Island settings. */
+  const [homePreviewMode, setHomePreviewMode] = useState<string | null>(null);
 
   useEffect(() => {
     if (!loaded) void load();
@@ -103,9 +107,44 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       .catch(() => setVersion("unknown"));
   }, []);
 
+  // Appearance tab: keep metrics bus warm so live preview has real data.
+  useEffect(() => {
+    if (activeTab !== "appearance") {
+      setHomePreviewMode(null);
+      return;
+    }
+    homeIslandDataBus.kick();
+    const id = window.setInterval(() => homeIslandDataBus.kick(), 4000);
+    return () => window.clearInterval(id);
+  }, [activeTab]);
+
+  const appearance = settings.appearance;
+  const homePreview = useResolvedHomeIsland(
+    {
+      home_island_mode: appearance.home_island_mode,
+      home_island_modes: appearance.home_island_modes,
+      home_island_rotate_secs: appearance.home_island_rotate_secs,
+      home_island_cpu: appearance.home_island_cpu,
+      home_island_gpu: appearance.home_island_gpu,
+      home_island_memory: appearance.home_island_memory,
+    },
+    t,
+    {
+      previewMode: homePreviewMode,
+      // While picking cards, pin the focused mode; still rotate if multi-select and no focus.
+      pauseRotate: Boolean(homePreviewMode),
+    },
+  );
+
   const navGroups = useMemo(() => {
-    if (!filter.trim()) return NAV_GROUPS;
-    return NAV_GROUPS
+    const availableGroups = NAV_GROUPS
+      .map((group) => ({
+        ...group,
+        items: group.items.filter((item) => item.id !== "weather" || isBuiltinModuleEnabled("weather", settings)),
+      }))
+      .filter((group) => group.items.length > 0);
+    if (!filter.trim()) return availableGroups;
+    return availableGroups
       .map((group) => ({
         ...group,
         items: group.items.filter((item) =>
@@ -113,7 +152,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         ),
       }))
       .filter((group) => group.items.length > 0);
-  }, [filter, t]);
+  }, [filter, settings, t]);
 
   const renderContent = () => {
     switch (activeTab) {
@@ -124,7 +163,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       case "permissions":
         return <PermissionSettings />;
       case "appearance":
-        return <AppearanceSettings />;
+        return <AppearanceSettings onHomeIslandPreview={setHomePreviewMode} />;
       case "agent":
         return <AgentSettings />;
       case "rss":
@@ -215,12 +254,20 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     return [
       {
         label: t("settings.close", "Close"),
-        kbd: "Esc",
         onClick: onClose,
       },
       ...jump,
     ];
   }, [onClose, setActiveTab, t]);
+
+  const showHomeIslandPreview = activeTab === "appearance";
+  const settingsIsland =
+    showHomeIslandPreview && homePreview.shellContent
+      ? homePreview.shellContent
+      : {
+          label: t("launcher.settings", "Settings"),
+          detail: t(`nav.${activeTab}`, TAB_LABELS[activeTab]),
+        };
 
   return (
     <QxShell
@@ -229,12 +276,14 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       search={settingsSearch}
       trailing={<span className="qx-shell-meta">Qx v{version || "..."}</span>}
       context={settingsContext}
-      island={{ label: t("launcher.settings", "Settings"), detail: t(`nav.${activeTab}`, TAB_LABELS[activeTab]) }}
-      escapeAction={{ label: t("settings.close", "Close"), kbd: "Esc", onClick: onClose }}
+      island={settingsIsland}
+      customIsland={
+        showHomeIslandPreview ? homePreview.customNode : undefined
+      }
+      escapeAction={{ label: "Esc", kbd: "Esc", onClick: onClose }}
       onKeyDown={handleKeyDown}
       primaryAction={{
         label: t("settings.close", "Close"),
-        kbd: "Esc",
         onClick: onClose,
       }}
       secondaryAction={{ label: t("launcher.actions", "Actions"), kbd: actionMenuShortcut }}

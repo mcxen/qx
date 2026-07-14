@@ -189,6 +189,23 @@ mod macos {
         }
     }
 
+    /// Space / fullscreen behavior for a Raycast-style launcher panel.
+    ///
+    /// Important: do **not** set `Stationary`. That flag pins the window to the
+    /// Space where it was created, so summoning while in another app's
+    /// fullscreen (TV/movie) leaves Qx on the previous desktop — exactly the
+    /// "appears on the left Space" bug. Raycast uses join-all + fullscreen
+    /// auxiliary so the panel rides the *active* Space, including fullscreen.
+    fn panel_collection_behavior() -> NSWindowCollectionBehavior {
+        NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::MoveToActiveSpace
+            | NSWindowCollectionBehavior::Transient
+            | NSWindowCollectionBehavior::FullScreenAuxiliary
+            | NSWindowCollectionBehavior::FullScreenDisallowsTiling
+            | NSWindowCollectionBehavior::IgnoresCycle
+            | NSWindowCollectionBehavior::CanJoinAllApplications
+    }
+
     /// Apply panel-like semantics to the main NSWindow.
     ///
     /// Tauri creates a plain NSWindow. NSPanel-specific bits such as
@@ -221,14 +238,27 @@ mod macos {
             let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
 
             // Float above regular windows. 3 == NSFloatingWindowLevel.
+            // FullScreenAuxiliary is what lets us layer over fullscreen apps;
+            // level alone is not enough.
             let _: () = msg_send![ns_window, setLevel: 3isize];
 
-            // Visible on every Space and inside other apps' fullscreen.
-            let behavior = NSWindowCollectionBehavior::CanJoinAllSpaces
-                | NSWindowCollectionBehavior::Stationary
-                | NSWindowCollectionBehavior::FullScreenAuxiliary
-                | NSWindowCollectionBehavior::IgnoresCycle;
-            let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+            let _: () = msg_send![ns_window, setCollectionBehavior: panel_collection_behavior()];
+        }
+    }
+
+    /// Re-assert Space membership right before showing.
+    ///
+    /// AppKit can "forget" join-all / fullscreen-auxiliary after the window
+    /// has lived on another Space; re-applying on every summon matches Raycast
+    /// and pulls the panel onto the *current* desktop (incl. fullscreen).
+    pub(super) fn reassert_space_behavior(app: &AppHandle) {
+        let Some(ns_window) = ns_window(app) else {
+            return;
+        };
+        unsafe {
+            let _: () = msg_send![ns_window, setLevel: 3isize];
+            let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
+            let _: () = msg_send![ns_window, setCollectionBehavior: panel_collection_behavior()];
         }
     }
 
@@ -239,6 +269,9 @@ mod macos {
             return;
         };
         unsafe {
+            // Re-apply before orderFront so the window is eligible for the
+            // active Space / fullscreen session at the moment of show.
+            let _: () = msg_send![ns_window, setCollectionBehavior: panel_collection_behavior()];
             let _: () = msg_send![ns_window, orderFrontRegardless];
         }
     }
@@ -515,21 +548,27 @@ pub fn install(app: &AppHandle) {
 /// Show the main window as a floating, non-activating panel.
 pub fn show_floating(app: &AppHandle) {
     mark_panel_open();
-    let _ = center_on_cursor(app);
     #[cfg(target_os = "macos")]
-    macos::remember_foreground_application();
+    {
+        // Must run *before* show/orderFront so AppKit places the window on the
+        // active Space (including another app's fullscreen), not the Space
+        // where the window last lived.
+        macos::reassert_space_behavior(app);
+        macos::remember_foreground_application();
+    }
+    let _ = center_on_cursor(app);
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         let _ = win.show();
     }
     #[cfg(target_os = "macos")]
     {
-        // promote_main_to_panel is already done at install; re-running every
-        // Option+Space added measurable latency. Only order + activate + key.
+        // orderFront re-applies collection behavior again, then fronts.
         macos::order_front_without_activating(app);
         // With only NSWindow-safe flags (no NonactivatingPanel mask), the
         // accessory-policy app must be explicitly activated before the panel
         // can become key window. Focus is restored to the previous foreground
         // app when the panel is hidden via hide_and_restore_focus.
+        // MoveToActiveSpace takes effect when the window is activated.
         macos::activate_app();
         // Make the panel key window on every show. Without this, the panel
         // loses key status after hide and keyboard events (Esc especially)

@@ -1,5 +1,27 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — Beta 内置模块标识与按需禁用
+
+**状态**：已实现，等待静态与手动验证。
+
+### 新增内容
+
+- Screen Recording、Weather、V2EX、Macro Recorder 统一登记为 Beta 模块，模块标题、Launcher 快捷入口/搜索结果和 Extensions 模块卡使用浅色虚线 `Beta` 标识。
+- Beta 标识 tooltip 和 Extensions 配置说明明确提示功能可能不稳定。
+- Settings → Extensions → Installed 的 Beta 内置模块配置 Dialog 可启停模块，设置持久化到 `builtin_modules.modules`；旧设置缺少字段时默认保持启用。
+- 禁用后 Quick Entries、静态命令、Module Surfaces、直接导航与录屏全局快捷键同时失效；App 在 lazy view 挂载前拦截，因此模块组件 effect 和 IPC 数据请求不会启动。
+- Settings 仍保留禁用模块卡作为重新启用入口；General → Module Search 对已禁用模块显示关闭且不可操作，避免出现“搜索已开启但模块不可用”的冲突状态。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `rustfmt --edition 2021 --check src-tauri/src/settings/mod.rs`
+- [x] `cargo check`（`src-tauri/`，通过；存在当前工作区既有 warning）
+- [x] `cargo test --lib settings::tests::beta_modules_stay_enabled_for_legacy_settings_until_user_disables_them -- --nocapture`
+- [ ] 完整 `cargo fmt --check`：被当前未提交的 `src-tauri/src/text_toolbox.rs` 既有格式差异阻塞，本功能改动文件已通过 rustfmt。
+- [ ] 手动验证四个 Beta 模块的浅色/深色/低透明度标识；逐一禁用后入口、搜索和直接导航消失且无数据请求，重新启用后恢复。
+
 ## Bugfix — 更新检查绕过 GitHub REST API 限流
 
 **状态**：已实现，Rust 静态验证与 updater 单测通过；等待真实网络手动验证。

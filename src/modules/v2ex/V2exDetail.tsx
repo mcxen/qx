@@ -82,7 +82,6 @@ export default function V2exDetail({ topic, onBack }: V2exDetailProps) {
     },
     {
       label: "Back to Topics",
-      kbd: "Esc",
       onClick: onBack,
     },
   ], [onBack, topic.url]);

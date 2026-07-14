@@ -10,9 +10,9 @@ import type {
 } from "./types";
 
 const INTERVAL_MS: Record<IslandDataChannel, number> = {
-  stats: 1600,
-  power: 4000,
-  net: 1200,
+  stats: 1500,
+  power: 3500,
+  net: 1000,
 };
 
 const emptyReady = (): Record<IslandDataChannel, boolean> => ({
@@ -47,8 +47,10 @@ function emptyInterest(): Interest {
  * Background island metrics bus.
  * - Never blocks React render: samples are scheduled idle / on timers.
  * - Interest-counted: only active channels are polled.
- * - Pauses while the document is hidden.
+ * - Pauses while the document is hidden (panel fully hidden).
+ * - On re-show / re-subscribe: kick samples immediately (timers alone can stall).
  * - Overlapping samples are skipped (in-flight guard).
+ * - CPU needs two host samples — first call warms the baseline.
  */
 class HomeIslandDataBus {
   private state: IslandDataState = createInitialState();
@@ -59,10 +61,40 @@ class HomeIslandDataBus {
   private generation = 0;
   private netPrev: { in: number; out: number; t: number } | null = null;
   private visibilityBound = false;
+  private focusBound = false;
   private idleHandle: number | null = null;
+  private kickTimers: ReturnType<typeof setTimeout>[] = [];
 
   getState(): IslandDataState {
     return this.state;
+  }
+
+  /** Force fresh samples for all interested channels (panel shown / settings open). */
+  kick(channels?: IslandDataChannel[]): void {
+    const list =
+      channels
+      ?? (Object.keys(this.interest) as IslandDataChannel[]).filter((ch) => this.interest[ch] > 0);
+    if (list.length === 0) return;
+    this.reconcilePollers();
+    for (const ch of list) {
+      void this.sample(ch, { force: true });
+    }
+    // Second wave: CPU / net rates need a follow-up delta after a short gap.
+    this.clearKickTimers();
+    this.kickTimers.push(
+      setTimeout(() => {
+        for (const ch of list) {
+          if (this.interest[ch] > 0) void this.sample(ch, { force: true });
+        }
+      }, 280),
+    );
+    this.kickTimers.push(
+      setTimeout(() => {
+        for (const ch of list) {
+          if (this.interest[ch] > 0) void this.sample(ch, { force: true });
+        }
+      }, 900),
+    );
   }
 
   subscribe(channels: IslandDataChannel[], listener: IslandDataListener): () => void {
@@ -70,8 +102,10 @@ class HomeIslandDataBus {
     this.listeners.add(listener);
     listener(this.state);
     this.ensureVisibilityHook();
+    this.ensureFocusHook();
     this.reconcilePollers();
-    // Kick samples off the critical path so mounting the island never stalls paint.
+    // Immediate path + idle path so first paint isn't stuck on "--" forever.
+    this.kick(channels);
     this.scheduleIdleSample(channels);
 
     return () => {
@@ -83,10 +117,24 @@ class HomeIslandDataBus {
     };
   }
 
+  private clearKickTimers(): void {
+    for (const t of this.kickTimers) clearTimeout(t);
+    this.kickTimers = [];
+  }
+
   private ensureVisibilityHook(): void {
     if (this.visibilityBound || typeof document === "undefined") return;
     this.visibilityBound = true;
     document.addEventListener("visibilitychange", this.onVisibility);
+  }
+
+  private ensureFocusHook(): void {
+    if (this.focusBound || typeof window === "undefined") return;
+    this.focusBound = true;
+    // Floating panel show often restores focus without a clean visibility flip
+    // after WebView timer throttling — kick metrics when we become active again.
+    window.addEventListener("focus", this.onWindowFocus);
+    document.addEventListener("focusin", this.onWindowFocus);
   }
 
   private onVisibility = (): void => {
@@ -95,8 +143,16 @@ class HomeIslandDataBus {
       const active = (Object.keys(this.interest) as IslandDataChannel[]).filter(
         (ch) => this.interest[ch] > 0,
       );
-      this.scheduleIdleSample(active);
+      this.kick(active);
     }
+  };
+
+  private onWindowFocus = (): void => {
+    if (typeof document !== "undefined" && document.hidden) return;
+    const active = (Object.keys(this.interest) as IslandDataChannel[]).filter(
+      (ch) => this.interest[ch] > 0,
+    );
+    if (active.length > 0) this.kick(active);
   };
 
   private reconcilePollers(): void {
@@ -138,11 +194,10 @@ class HomeIslandDataBus {
       if (this.idleHandle != null) {
         idleWindow.cancelIdleCallback?.(this.idleHandle);
       }
-      this.idleHandle = idleWindow.requestIdleCallback(run, { timeout: 600 });
+      this.idleHandle = idleWindow.requestIdleCallback(run, { timeout: 400 });
       return;
     }
 
-    // Fallback: defer past current frame so paint is never blocked.
     setTimeout(run, 0);
   }
 
@@ -160,7 +215,10 @@ class HomeIslandDataBus {
     this.emit();
   }
 
-  private async sample(channel: IslandDataChannel): Promise<void> {
+  private async sample(
+    channel: IslandDataChannel,
+    opts?: { force?: boolean },
+  ): Promise<void> {
     if (!isTauriRuntime()) {
       this.patch({
         error: { ...this.state.error, [channel]: "unavailable" },
@@ -168,22 +226,36 @@ class HomeIslandDataBus {
       });
       return;
     }
-    if (this.inFlight[channel]) return;
+    if (this.inFlight[channel] && !opts?.force) return;
     if (this.interest[channel] <= 0) return;
-    if (typeof document !== "undefined" && document.hidden) return;
+    // Still allow forced kick even if briefly hidden during space switch.
+    if (!opts?.force && typeof document !== "undefined" && document.hidden) return;
+    if (this.inFlight[channel]) return;
 
     this.inFlight[channel] = true;
     const gen = this.generation;
     try {
       if (channel === "stats") {
-        const raw = await invoke<{
-          cpu: number;
-          memory: number;
-          memory_used_gb: number;
-          memory_total_gb: number;
-          gpu: number | null;
-        }>("get_system_stats");
+        // First host_processor_info sample only seeds the baseline (often 0%).
+        // Always take a short follow-up so the UI gets a real delta quickly.
+        const read = () =>
+          invoke<{
+            cpu: number;
+            memory: number;
+            memory_used_gb: number;
+            memory_total_gb: number;
+            gpu: number | null;
+          }>("get_system_stats");
+
+        let raw = await read();
         if (gen !== this.generation || this.interest.stats <= 0) return;
+        // Warm baseline when cpu is still 0 and we have no prior sample.
+        if ((!this.state.stats || this.state.stats.cpu === 0) && raw.cpu === 0) {
+          await new Promise((r) => setTimeout(r, 220));
+          if (gen !== this.generation || this.interest.stats <= 0) return;
+          raw = await read();
+          if (gen !== this.generation || this.interest.stats <= 0) return;
+        }
         const stats: SystemStatsSnapshot = {
           cpu: raw.cpu,
           memory: raw.memory,
@@ -208,10 +280,10 @@ class HomeIslandDataBus {
         }>("qx_system_monitor_power");
         if (gen !== this.generation || this.interest.power <= 0) return;
         const power: PowerSnapshot = {
-          batteryLevel: raw.batteryLevel,
-          isCharging: raw.isCharging,
-          fullyCharged: raw.fullyCharged,
-          source: raw.source,
+          batteryLevel: raw.batteryLevel ?? null,
+          isCharging: Boolean(raw.isCharging),
+          fullyCharged: Boolean(raw.fullyCharged),
+          source: raw.source ?? "unknown",
         };
         this.patch({
           power,
@@ -221,14 +293,17 @@ class HomeIslandDataBus {
         return;
       }
 
-      // net
-      const counters = await invoke<{ totalBytesIn: number; totalBytesOut: number }>(
-        "qx_system_monitor_network_counters",
-      );
+      // net — counters are absolute; rate needs previous sample.
+      const counters = await invoke<{
+        totalBytesIn?: number;
+        totalBytesOut?: number;
+        total_bytes_in?: number;
+        total_bytes_out?: number;
+      }>("qx_system_monitor_network_counters");
       if (gen !== this.generation || this.interest.net <= 0) return;
       const now = performance.now();
-      const bytesIn = Number(counters.totalBytesIn) || 0;
-      const bytesOut = Number(counters.totalBytesOut) || 0;
+      const bytesIn = Number(counters.totalBytesIn ?? counters.total_bytes_in) || 0;
+      const bytesOut = Number(counters.totalBytesOut ?? counters.total_bytes_out) || 0;
       let net: NetSnapshot = this.state.net ?? {
         downRate: 0,
         upRate: 0,

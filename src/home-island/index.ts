@@ -17,10 +17,13 @@ export {
   getHomeIsland,
   listHomeIslands,
   normalizeHomeIslandMode,
+  normalizeHomeIslandModes,
   registerHomeIsland,
 } from "./registry";
 export { resolveHomeIsland } from "./resolve";
 export { default as HomeIslandSettings } from "./HomeIslandSettings";
+export { useResolvedHomeIsland } from "./useResolvedHomeIsland";
+export { homeIslandDataBus } from "./data/bus";
 export { useIslandData, useIslandNet, useIslandPower, useIslandStats } from "./data/hooks";
 export type {
   HomeIslandAppearance,

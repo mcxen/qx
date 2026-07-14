@@ -4,6 +4,7 @@ import QxShell, { type BottomIslandContent, type QxShellAction } from "../../com
 import { Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
+import { useT } from "../../i18n";
 import { getQxShortcutPreset, isEditableTarget } from "../../utils/keyboard";
 import { useSettingsStore } from "../settings/store";
 import { openAgentSettingsTab } from "./AiProviderConfig";
@@ -11,6 +12,7 @@ import { AiMessageContent } from "./message-rendering";
 import { useG4fStore } from "./store";
 
 export default function QxAiChat() {
+  const t = useT();
   const {
     conversations,
     currentConversationId,
@@ -105,34 +107,39 @@ export default function QxAiChat() {
 
   const actions = useMemo<QxShellAction[]>(() => [
     {
-      label: isCurrentConversationStreaming ? "Sending..." : "Send",
+      label: isCurrentConversationStreaming
+        ? t("qxai.sending", "Sending…")
+        : t("qxai.send", "Send"),
       kbd: "↵",
       disabled: isCurrentConversationStreaming || !input.trim() || !canChat,
       onClick: handleSend,
     },
     {
-      label: "New Chat",
+      label: t("qxai.newChat", "New Chat"),
       onClick: () => createConversation(),
     },
     {
-      label: "Clear Messages",
+      label: t("qxai.clearMessages", "Clear Messages"),
       disabled: !conv || conv.messages.length === 0,
       onClick: () => clearMessages(),
     },
     {
-      label: "Chat Settings",
+      label: t("qxai.chatSettings", "Chat Settings"),
       onClick: () => setView("settings"),
     },
     {
-      label: "Agent & Providers",
+      label: t("qxai.agentProviders", "Agent & Providers"),
       onClick: () => openAgentSettingsTab(),
     },
     {
-      label: "Delete Chat",
+      label: t("qxai.deleteChat", "Delete Chat"),
       tone: "danger",
       disabled: !conv,
       onClick: () => {
-        if (currentConversationId && window.confirm("Delete this conversation?")) {
+        if (
+          currentConversationId
+          && window.confirm(t("qxai.deleteConversation", "Delete this conversation?"))
+        ) {
           deleteConversation(currentConversationId);
           setView("list");
         }
@@ -148,29 +155,34 @@ export default function QxAiChat() {
     input,
     isCurrentConversationStreaming,
     setView,
+    t,
   ]);
 
   const userMessageCount = conv?.messages.filter((m) => m.role === "user").length ?? 0;
 
   const island: BottomIslandContent = isCurrentConversationStreaming
-    ? { label: "AI Chat", detail: "Streaming response...", progress: 55 }
+    ? {
+        label: t("qxai.title", "QxAI Chat"),
+        detail: t("qxai.streaming", "Streaming response…"),
+        progress: 55,
+      }
     : error
-      ? { label: "AI Chat", detail: error, tone: "danger" }
+      ? { label: t("qxai.title", "QxAI Chat"), detail: error, tone: "danger" }
       : {
-          label: "AI Chat",
+          label: t("qxai.title", "QxAI Chat"),
           detail:
             userMessageCount > 0
-              ? `${userMessageCount} message${userMessageCount !== 1 ? "s" : ""}`
+              ? t("qxai.messages", "{n} messages").replace("{n}", String(userMessageCount))
               : conv?.provider
                 ? `${conv.provider} · ${conv.model}`
-                : "No messages yet",
+                : t("qxai.noMessages", "No messages yet"),
         };
 
   const messages = conv?.messages.filter((m) => m.role !== "system") ?? [];
 
   return (
     <QxShell
-      title={conv?.name ?? "AI Chat"}
+      title={conv?.name ?? t("qxai.title", "QxAI Chat")}
       className="qx-qxai-chat-shell"
       onKeyDown={onKeyDown}
       search={
@@ -182,7 +194,11 @@ export default function QxAiChat() {
             autoFocus
             onFocus={requestPanelKeyWindow}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isCurrentConversationStreaming ? "Waiting for response..." : "Type a message... (Enter to send)"}
+            placeholder={
+              isCurrentConversationStreaming
+                ? t("qxai.waitingResponse", "Waiting for response…")
+                : t("qxai.typeMessage", "Type a message… (Enter to send)")
+            }
             className="qx-plugin-search"
             disabled={isCurrentConversationStreaming || !conv}
           />
@@ -190,12 +206,12 @@ export default function QxAiChat() {
       }
       trailing={
         <button className="qx-command-button" type="button" onClick={() => createConversation()}>
-          New Chat
+          {t("qxai.newChat", "New Chat")}
         </button>
       }
       context={
         <div className="qx-action-panel">
-          <div className="qx-action-title">Model</div>
+          <div className="qx-action-title">{t("qxai.model", "Model")}</div>
           {providers.length > 0 && conv ? (
             <>
               <Select
@@ -212,7 +228,7 @@ export default function QxAiChat() {
                     nextProvider?.models[0]?.id ?? "",
                   );
                 }}
-                ariaLabel="AI Provider"
+                ariaLabel={t("qxai.provider", "AI Provider")}
                 className="qx-inline-select"
               />
               {activeModels.length > 0 ? (
@@ -223,24 +239,36 @@ export default function QxAiChat() {
                     label: model.name,
                   }))}
                   onChange={(model) => setConversationModel(conv.id, conv.provider, model)}
-                  ariaLabel="AI Model"
+                  ariaLabel={t("qxai.model", "Model")}
                   className="qx-inline-select"
                 />
               ) : (
-                <div className="qx-ai-tool-hint">No models available for this provider.</div>
+                <div className="qx-ai-tool-hint">
+                  {t("qxai.noModels", "No models available for this provider")}
+                </div>
               )}
             </>
           ) : (
             <div className="qx-ai-tool-hint">
-              Configure providers in Settings → AI Agent, or open Chat Settings for defaults.
+              {t(
+                "qxai.configureProviders",
+                "Configure providers in Settings → AI Agent, or open Chat Settings for defaults.",
+              )}
             </div>
           )}
 
-          <div className="qx-action-title">Tools</div>
+          <div className="qx-action-title">{t("qxai.tools", "Tools")}</div>
           <div className="qx-ai-tool-summary">
             <div className="qx-ai-tool-summary-head">
               <Hammer size={14} />
-              <span>{enabledTools.length ? `${enabledTools.length} enabled` : "Disabled"}</span>
+              <span>
+                {enabledTools.length
+                  ? t("qxai.tools.enabled", "{n} enabled").replace(
+                      "{n}",
+                      String(enabledTools.length),
+                    )
+                  : t("qxai.tools.disabled", "Disabled")}
+              </span>
             </div>
             {enabledTools.length > 0 ? (
               <div className="qx-ai-tool-chips">
@@ -251,10 +279,13 @@ export default function QxAiChat() {
             ) : (
               <div className="qx-ai-tool-hint">
                 {!agentSettings.agent_mode_enabled
-                  ? "Enable Agent mode in Settings → AI Agent."
+                  ? t("qxai.tools.enableAgent", "Enable Agent mode in Settings → AI Agent.")
                   : !agentSettings.tools_enabled
-                    ? "Master tools switch is off in Settings → AI Agent."
-                    : "No individual tools enabled. Configure them in Settings → AI Agent."}
+                    ? t("qxai.tools.masterOff", "Master tools switch is off in Settings → AI Agent.")
+                    : t(
+                        "qxai.tools.none",
+                        "No individual tools enabled. Configure them in Settings → AI Agent.",
+                      )}
               </div>
             )}
             <button
@@ -263,7 +294,7 @@ export default function QxAiChat() {
               style={{ marginTop: 8 }}
               onClick={() => openAgentSettingsTab()}
             >
-              <span>Open Agent Settings</span>
+              <span>{t("qxai.openAgentSettingsShort", "Open Agent Settings")}</span>
             </button>
           </div>
         </div>
@@ -271,7 +302,7 @@ export default function QxAiChat() {
       island={island}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setView("list") }}
       primaryAction={{
-        label: isCurrentConversationStreaming ? "..." : "Send",
+        label: isCurrentConversationStreaming ? "…" : t("qxai.send", "Send"),
         kbd: "Enter",
         tone: "primary",
         disabled: isCurrentConversationStreaming || !input.trim() || !canChat,

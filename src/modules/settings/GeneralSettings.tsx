@@ -14,6 +14,7 @@ import {
   sanitizeTrayActions,
   createTrayAction,
 } from "./trayActions";
+import { isBuiltinModuleEnabled } from "../moduleAvailability";
 
 export default function GeneralSettings() {
   const { settings, patch, reset } = useSettingsStore();
@@ -101,6 +102,7 @@ export default function GeneralSettings() {
         {MODULE_SEARCH_MODULE_IDS.map((id) => {
           const meta = MODULE_SEARCH_LABELS[id];
           const on = moduleSearch.modules[id] !== false;
+          const moduleEnabled = isBuiltinModuleEnabled(id, settings);
           return (
             <Row
               key={id}
@@ -108,7 +110,8 @@ export default function GeneralSettings() {
               description={t(`general.moduleSearch.${id}.desc`, meta.hint)}
             >
               <Toggle
-                value={moduleSearch.enabled && on}
+                value={moduleSearch.enabled && moduleEnabled && on}
+                disabled={!moduleEnabled}
                 onChange={(value) =>
                   patch("module_search", {
                     ...moduleSearch,

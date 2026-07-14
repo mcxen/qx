@@ -266,6 +266,9 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   ): QxShellAction | undefined => {
     if (isReservedGlobalShortcutEvent(nativeEvent)) return undefined;
     if (isNativeEditingShortcut(nativeEvent)) return undefined;
+    // Esc belongs only to escapeAction / useEscBack. Never bind actions with kbd "Esc"
+    // (Chat Settings / Settings "Done" used to steal Esc via capture matching).
+    if (nativeEvent.key === "Escape") return undefined;
 
     const allowEnter = options?.allowEnter ?? true;
     const menuOpen = options?.menuOpen ?? false;
@@ -290,6 +293,9 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       }
 
       if (!action.kbd || isReservedGlobalShortcut(action.kbd)) return false;
+      // Never treat Esc as a product action chord (UI_SPEC: left escape only).
+      const kbdNorm = action.kbd.trim().toLowerCase();
+      if (kbdNorm === "esc" || kbdNorm === "escape") return false;
       if (!allowEnter && isEnterOnlyShortcut(action.kbd)) return false;
       if (!matchesQxShortcut(nativeEvent, action.kbd)) return false;
 

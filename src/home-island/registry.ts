@@ -26,6 +26,31 @@ export function normalizeHomeIslandMode(raw: string | null | undefined): HomeIsl
   return first?.id ?? "default";
 }
 
+/**
+ * Resolve multi-select mode list for rotation.
+ * Falls back to single `home_island_mode` when the array is empty/missing.
+ */
+export function normalizeHomeIslandModes(appearance: {
+  home_island_mode?: string | null;
+  home_island_modes?: string[] | null;
+}): HomeIslandModeId[] {
+  const fromList = (appearance.home_island_modes ?? [])
+    .map((id) => String(id || "").trim())
+    .filter((id) => id && modes.has(id));
+  if (fromList.length > 0) {
+    // de-dupe, preserve order
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const id of fromList) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+    }
+    return out;
+  }
+  return [normalizeHomeIslandMode(appearance.home_island_mode)];
+}
+
 /** Test helper / hot-reload hygiene. */
 export function clearHomeIslandRegistry(): void {
   modes.clear();

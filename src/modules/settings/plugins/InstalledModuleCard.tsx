@@ -1,6 +1,9 @@
 import type { InstalledPlugin } from "../../../plugin/types";
 import PluginAssetImage from "./PluginAssetImage";
 import { isBuiltin } from "./helpers";
+import BetaBadge from "../../../components/BetaBadge";
+import { isBetaModule } from "../../catalog";
+import { useT } from "../../../i18n";
 
 /**
  * Compact installed-module tile.
@@ -14,6 +17,7 @@ export default function InstalledModuleCard({
   plugin: InstalledPlugin;
   onOpen: () => void;
 }) {
+  const t = useT();
   const builtin = isBuiltin(plugin);
   const status = !plugin.enabled
     ? "Disabled"
@@ -26,7 +30,7 @@ export default function InstalledModuleCard({
       type="button"
       className={`qx-plugin-module-card${plugin.enabled ? "" : " is-disabled"}`}
       onClick={onOpen}
-      aria-label={`${plugin.name}. ${status}. Open settings.`}
+      aria-label={`${plugin.name}. ${isBetaModule(plugin.id) ? `${t("common.beta", "Beta")}. ` : ""}${status}. ${t("plugins.openSettings", "Open settings")}.`}
     >
       <PluginAssetImage
         plugin={plugin}
@@ -35,7 +39,10 @@ export default function InstalledModuleCard({
         fallback={plugin.name}
       />
       <div className="qx-plugin-module-card-copy">
-        <div className="qx-plugin-module-card-title">{plugin.name}</div>
+        <div className="qx-plugin-module-card-title qx-module-title-with-badge">
+          <span>{plugin.name}</span>
+          {isBetaModule(plugin.id) && <BetaBadge />}
+        </div>
         <div className="qx-plugin-module-card-meta">{status}</div>
       </div>
     </button>

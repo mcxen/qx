@@ -78,6 +78,14 @@ import type {
   PluginPreference,
 } from "../../../plugin/types";
 import InstalledModuleCard from "./InstalledModuleCard";
+import BetaBadge from "../../../components/BetaBadge";
+import {
+  isBetaModule,
+  isConfigurableBuiltinModule,
+  normalizeBuiltinModuleId,
+  type ConfigurableBuiltinModuleId,
+} from "../../catalog";
+import { isBuiltinModuleEnabled } from "../../moduleAvailability";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -510,7 +518,9 @@ function PluginDetail({
   onToggle: () => void;
   onUninstall: () => void;
 }) {
+  const t = useT();
   const builtin = isBuiltin(plugin);
+  const configurableBuiltin = isConfigurableBuiltinModule(plugin.id);
   const preferences = plugin.manifest?.preferences ?? [];
   const permissions = plugin.manifest?.permissions ?? plugin.permissions ?? [];
   const iconAsset = plugin.manifest?.icon;
@@ -625,6 +635,7 @@ function PluginDetail({
         <div className="qx-plugin-detail-heading">
           <div className="qx-plugin-detail-title">
             {plugin.name}
+            {isBetaModule(plugin.id) && <BetaBadge />}
           </div>
           {plugin.author && (
             <div className="qx-plugin-meta">
@@ -671,11 +682,15 @@ function PluginDetail({
       {!builtin && <RaycastCompatibilityReport plugin={plugin} />}
 
       <SettingsCard
-        title="Status"
-        description={builtin ? "Built-in modules are always enabled." : "Toggle this plugin on or off."}
+        title={t("modules.status.title", "Module Status")}
+        description={configurableBuiltin
+          ? t("modules.status.betaDesc", "When disabled, this Beta module is removed from Launcher, quick entries, and search. Its UI is not mounted and it does not request module data.")
+          : builtin
+            ? t("modules.status.stableDesc", "This core built-in module is always enabled.")
+            : t("plugins.status.desc", "Toggle this plugin on or off.")}
       >
-        <Row title="Enabled">
-          <Toggle value={plugin.enabled} onChange={onToggle} disabled={builtin} />
+        <Row title={t("modules.enabled", "Enable module")}>
+          <Toggle value={plugin.enabled} onChange={onToggle} disabled={builtin && !configurableBuiltin} />
         </Row>
       </SettingsCard>
 
@@ -1020,6 +1035,7 @@ export default function PluginManager() {
     usePluginRegistry();
   const searchMetadata = useSettingsStore((state) => state.settings.search_metadata);
   const pluginDisplay = useSettingsStore((state) => state.settings.plugin_display);
+  const builtinModules = useSettingsStore((state) => state.settings.builtin_modules);
   const patchSettings = useSettingsStore((state) => state.patch);
   const [tab, setTab] = useState<Tab>("installed");
   /** Open config dialog for this installed module id (null = closed). */
@@ -1103,6 +1119,17 @@ export default function PluginManager() {
   };
 
   const handleToggle = async (plugin: InstalledPlugin) => {
+    if (isConfigurableBuiltinModule(plugin.id)) {
+      const id = normalizeBuiltinModuleId(plugin.id) as ConfigurableBuiltinModuleId;
+      patchSettings("builtin_modules", {
+        ...builtinModules,
+        modules: {
+          ...builtinModules.modules,
+          [id]: !plugin.enabled,
+        },
+      });
+      return;
+    }
     try {
       await setEnabled(plugin.id, !plugin.enabled);
     } catch (err) {
@@ -1128,12 +1155,18 @@ export default function PluginManager() {
 
   /* ---- derived ---- */
 
-  const installedIds = new Set(plugins.map((p) => p.id));
+  const displayPlugins = useMemo(
+    () => plugins.map((plugin) => plugin.id.startsWith("builtin:")
+      ? { ...plugin, enabled: isBuiltinModuleEnabled(plugin.id) }
+      : plugin),
+    [builtinModules, plugins],
+  );
+  const installedIds = new Set(displayPlugins.map((p) => p.id));
   const filteredPlugins = useMemo(() => {
     const q = normalizeSearch(installedQuery);
-    return plugins.filter((plugin) => filterInstalledPlugin(plugin, installedFilter) && pluginMatchesQuery(plugin, q, searchMetadata));
-  }, [plugins, installedFilter, installedQuery, searchMetadata]);
-  const configPlugin = plugins.find((p) => p.id === configId) ?? null;
+    return displayPlugins.filter((plugin) => filterInstalledPlugin(plugin, installedFilter) && pluginMatchesQuery(plugin, q, searchMetadata));
+  }, [displayPlugins, installedFilter, installedQuery, searchMetadata]);
+  const configPlugin = displayPlugins.find((p) => p.id === configId) ?? null;
 
   /* ---- render ---- */
 
@@ -1277,7 +1310,7 @@ export default function PluginManager() {
           />
         </div>
 
-        {plugins.length === 0 ? (
+        {displayPlugins.length === 0 ? (
           <div className="qx-empty-state">{loading ? "Loading modules..." : "No modules installed"}</div>
         ) : filteredPlugins.length === 0 ? (
           <div className="qx-empty-state">
@@ -1300,7 +1333,10 @@ export default function PluginManager() {
             {configPlugin && (
               <>
                 <DialogHeader>
-                  <DialogTitle>{configPlugin.name}</DialogTitle>
+                  <DialogTitle className="qx-module-title-with-badge">
+                    <span>{configPlugin.name}</span>
+                    {isBetaModule(configPlugin.id) && <BetaBadge />}
+                  </DialogTitle>
                   <DialogDescription>
                     Module settings, shortcuts, aliases, and preferences.
                   </DialogDescription>

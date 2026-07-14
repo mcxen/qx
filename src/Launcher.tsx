@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import QxShell, { type BottomIslandContent } from "./components/QxShell";
 import ResultsList from "./ResultsList";
 import SearchBar from "./SearchBar";
@@ -11,7 +11,7 @@ import { toLauncherQuickEntries } from "./launcher/quickEntries";
 import { useLauncherHistory } from "./launcher/useLauncherHistory";
 import type { QuickEntry } from "./launcher/types";
 import { useT } from "./i18n";
-import { resolveHomeIsland } from "./home-island";
+import { homeIslandDataBus, useResolvedHomeIsland } from "./home-island";
 
 interface LauncherProps {
   results: AppEntry[];
@@ -69,24 +69,27 @@ export default function Launcher({
 
   const isSearchActivity = (isSearching || isSearchSettling) && !!query.trim();
   const idleHome = !isSearchActivity && !pluginIsland && results.length === 0;
-  const homeIsland = useMemo(
-    () => (idleHome
-      ? resolveHomeIsland({
-          home_island_mode: appearance.home_island_mode,
-          home_island_cpu: appearance.home_island_cpu,
-          home_island_gpu: appearance.home_island_gpu,
-          home_island_memory: appearance.home_island_memory,
-        }, t)
-      : null),
-    [
-      idleHome,
-      appearance.home_island_mode,
-      appearance.home_island_cpu,
-      appearance.home_island_gpu,
-      appearance.home_island_memory,
-      t,
-    ],
+
+  // Always resolve (hooks rules); only show when idle. Rotation + live metrics
+  // run for the idle home island (and stay warm while mounted).
+  const resolvedHome = useResolvedHomeIsland(
+    {
+      home_island_mode: appearance.home_island_mode,
+      home_island_modes: appearance.home_island_modes,
+      home_island_rotate_secs: appearance.home_island_rotate_secs,
+      home_island_cpu: appearance.home_island_cpu,
+      home_island_gpu: appearance.home_island_gpu,
+      home_island_memory: appearance.home_island_memory,
+    },
+    t,
   );
+  const homeIsland = idleHome ? resolvedHome : null;
+
+  // When idle home island is shown, kick metrics so numbers aren't stale.
+  useEffect(() => {
+    if (!idleHome) return;
+    homeIslandDataBus.kick();
+  }, [idleHome, appearance.home_island_mode, appearance.home_island_modes]);
 
   const island: BottomIslandContent | null = loadingPhase === "loading-apps"
     ? {

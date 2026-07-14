@@ -15,6 +15,7 @@ import GifHistory from "./GifHistory";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { getQxShortcutPreset } from "../../utils/keyboard";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
+import BetaBadge from "../../components/BetaBadge";
 
 type SelectMode = "none" | "selecting";
 
@@ -332,7 +333,6 @@ export default function ScreenRecorder() {
       { label: "New Recording", kbd: "Enter", onClick: handleNewRecording },
       {
         label: "Back to Launcher",
-        kbd: "Esc",
         onClick: () => {
           reset();
           setTab("launcher");
@@ -495,7 +495,12 @@ export default function ScreenRecorder() {
     return (
       <QxShell
         title="Screen Recording"
-        search={<div className="qx-rss-detail-title">Recording</div>}
+        search={
+          <div className="qx-rss-detail-title qx-module-title-with-badge">
+            <span>Recording</span>
+            <BetaBadge />
+          </div>
+        }
         onKeyDown={handleKeyDown}
         island={{
           label: status === "processing" ? "Encoding GIF" : "Recording",
@@ -583,8 +588,9 @@ export default function ScreenRecorder() {
     <QxShell
       title="Screen Recording"
       search={
-        <div className="qx-rss-detail-title">
-          {showingPreview ? "Recording Preview" : "Screen Recording"}
+        <div className="qx-rss-detail-title qx-module-title-with-badge">
+          <span>{showingPreview ? "Recording Preview" : "Screen Recording"}</span>
+          <BetaBadge />
         </div>
       }
       onKeyDown={handleKeyDown}

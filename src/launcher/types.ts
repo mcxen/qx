@@ -3,6 +3,7 @@ export interface QuickEntry {
   title: string;
   subtitle: string;
   target: string;
+  beta?: boolean;
   onClick: () => void;
 }
 

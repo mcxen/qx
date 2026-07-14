@@ -24,7 +24,12 @@ function parseDimensionDraft(value: string, fallback: number, min: number, max: 
   return clampDimension(parsed, min, max);
 }
 
-export default function AppearanceSettings() {
+export default function AppearanceSettings({
+  onHomeIslandPreview,
+}: {
+  /** Live-preview mode id for the settings shell island. */
+  onHomeIslandPreview?: (modeId: string | null) => void;
+} = {}) {
   const { settings, patch } = useSettingsStore();
   const { theme, setTheme } = useTheme();
   const t = useT();
@@ -192,6 +197,7 @@ export default function AppearanceSettings() {
         <HomeIslandSettings
           appearance={a}
           patch={(next) => patch("appearance", next)}
+          onPreviewModeChange={onHomeIslandPreview}
         />
       </SettingsCard>
     </div>

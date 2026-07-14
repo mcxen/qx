@@ -55,6 +55,12 @@ pub struct AppearanceSettings {
     pub font_size: u32,
     #[serde(default = "default_home_island_mode")]
     pub home_island_mode: String,
+    /// Multi-select home island modes (rotate when length > 1). Empty → use `home_island_mode`.
+    #[serde(default)]
+    pub home_island_modes: Vec<String>,
+    /// Auto-rotate interval in seconds (0 = off). Default 8.
+    #[serde(default = "default_home_island_rotate_secs")]
+    pub home_island_rotate_secs: u32,
     #[serde(default = "default_true")]
     pub home_island_cpu: bool,
     #[serde(default = "default_true")]
@@ -91,6 +97,10 @@ fn default_home_island_mode() -> String {
     "system".to_string()
 }
 
+fn default_home_island_rotate_secs() -> u32 {
+    8
+}
+
 fn default_true() -> bool {
     true
 }
@@ -105,6 +115,8 @@ impl Default for AppearanceSettings {
             border_radius: default_border_radius(),
             font_size: default_font_size(),
             home_island_mode: default_home_island_mode(),
+            home_island_modes: vec![default_home_island_mode()],
+            home_island_rotate_secs: default_home_island_rotate_secs(),
             home_island_cpu: true,
             home_island_gpu: true,
             home_island_memory: true,
@@ -392,6 +404,30 @@ impl Default for ModuleSearchSettings {
     }
 }
 
+/// User-controllable built-in modules. Missing keys stay enabled so existing
+/// settings files retain their previous behavior after an upgrade.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BuiltinModulesSettings {
+    #[serde(default)]
+    pub modules: BTreeMap<String, bool>,
+}
+
+impl BuiltinModulesSettings {
+    pub fn is_enabled(&self, id: &str) -> bool {
+        self.modules.get(id).copied().unwrap_or(true)
+    }
+}
+
+impl Default for BuiltinModulesSettings {
+    fn default() -> Self {
+        let modules = ["screencap", "v2ex", "weather", "macros"]
+            .into_iter()
+            .map(|id| (id.to_string(), true))
+            .collect();
+        Self { modules }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct V2exSettings {
     #[serde(default, rename = "token")]
@@ -540,6 +576,8 @@ pub struct Settings {
     pub search_metadata: BTreeMap<String, SearchMetadataEntry>,
     #[serde(default)]
     pub module_search: ModuleSearchSettings,
+    #[serde(default)]
+    pub builtin_modules: BuiltinModulesSettings,
     #[serde(default = "default_quick_entries")]
     pub quick_entries: Vec<QuickEntryConfig>,
     #[serde(default = "default_tray_actions")]
@@ -592,6 +630,7 @@ impl Default for Settings {
             weather: WeatherSettings::default(),
             search_metadata: BTreeMap::new(),
             module_search: ModuleSearchSettings::default(),
+            builtin_modules: BuiltinModulesSettings::default(),
             quick_entries: default_quick_entries(),
             tray_actions: default_tray_actions(),
         }
@@ -670,7 +709,8 @@ pub async fn update_settings(app: AppHandle, settings: Settings) -> Result<Setti
     let (shortcuts_changed, tray_changed) = settings_io(move || {
         let old = read_settings();
         let shortcuts_changed = old.shortcuts != settings_for_io.shortcuts
-            || old.app_shortcuts != settings_for_io.app_shortcuts;
+            || old.app_shortcuts != settings_for_io.app_shortcuts
+            || old.builtin_modules != settings_for_io.builtin_modules;
         let tray_changed = old.quick_entries != settings_for_io.quick_entries
             || old.tray_actions != settings_for_io.tray_actions
             || old.general.auto_hide_on_blur != settings_for_io.general.auto_hide_on_blur;
@@ -804,14 +844,16 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
         registered.insert(key);
     }
 
-    if let Some(key) = shortcut_for(settings, "record_gif") {
-        gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-            if event.state() == ShortcutState::Pressed {
-                toggle_route(app, "screencap");
-            }
-        })
-        .map_err(|e| format!("register record_gif shortcut: {e}"))?;
-        registered.insert(key);
+    if settings.builtin_modules.is_enabled("screencap") {
+        if let Some(key) = shortcut_for(settings, "record_gif") {
+            gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
+                if event.state() == ShortcutState::Pressed {
+                    toggle_route(app, "screencap");
+                }
+            })
+            .map_err(|e| format!("register record_gif shortcut: {e}"))?;
+            registered.insert(key);
+        }
     }
 
     for (id, binding) in &settings.app_shortcuts {
@@ -875,5 +917,19 @@ mod tests {
         let agent = AgentSettings::default();
         assert_eq!(agent.default_provider, "openrouter");
         assert_eq!(agent.default_model, "openrouter/auto");
+    }
+
+    #[test]
+    fn beta_modules_stay_enabled_for_legacy_settings_until_user_disables_them() {
+        let mut settings: Settings = serde_json::from_str("{}").expect("legacy settings");
+        for id in ["screencap", "v2ex", "weather", "macros"] {
+            assert!(settings.builtin_modules.is_enabled(id));
+        }
+        settings
+            .builtin_modules
+            .modules
+            .insert("weather".to_string(), false);
+        assert!(!settings.builtin_modules.is_enabled("weather"));
+        assert!(settings.builtin_modules.is_enabled("v2ex"));
     }
 }

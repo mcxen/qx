@@ -8,6 +8,7 @@ import { useStore } from "../../store";
 import { type V2exMode, type V2exReply, type V2exTopic, formatTime } from "./types";
 import { sanitizeTopicHtml } from "./V2exDetail";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
+import BetaBadge from "../../components/BetaBadge";
 
 export default function V2exPanel() {
   const setTab = useStore((state) => state.setTab);
@@ -212,6 +213,10 @@ export default function V2exPanel() {
       }
       trailing={
         <>
+          <div className="qx-module-title-with-badge">
+            <span>V2EX</span>
+            <BetaBadge />
+          </div>
           <SegmentedControl
             value={mode}
             onChange={(next) => setMode(next)}

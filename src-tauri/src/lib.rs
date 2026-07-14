@@ -22,6 +22,7 @@ mod settings;
 mod storage;
 mod system_information;
 mod system_stats;
+mod text_toolbox;
 mod updater;
 mod v2ex;
 mod weather;
@@ -601,6 +602,16 @@ pub fn run() {
             storage::qx_storage_clear_launcher_history,
             storage::qx_storage_clear_rss_cache,
             storage::qx_storage_clear_reclaimable,
+            text_toolbox::docs_workspace_path,
+            text_toolbox::docs_open_workspace,
+            text_toolbox::docs_list_files,
+            text_toolbox::docs_read_file,
+            text_toolbox::docs_write_file,
+            text_toolbox::docs_create_file,
+            text_toolbox::docs_rename_file,
+            text_toolbox::docs_delete_file,
+            text_toolbox::docs_set_language,
+            text_toolbox::docs_inspect_text,
             system_information::qx_system_information_check_system_info,
             system_information::qx_system_information_check_storage,
             system_information::qx_system_information_check_network,

@@ -130,6 +130,10 @@ Full rules live in `UI_SPEC.md` (Bottom Bar + Interaction). Summary for agents:
 
 - Visible return is **only** bottom-left Esc via `escapeAction`. Do not pass
   `onBack` to `QxShell` (that draws a legacy top-left chevron).
+- **Never** put `kbd: "Esc"` on `primaryAction`, `secondaryAction`, or `actions[]`.
+  Esc is reserved for `escapeAction` + `useEscBack` (Shell ignores Esc as an action chord).
+- Nested module views (e.g. QxAI Chat Settings → list): `escapeAction` / cascade
+  final step must go to the **parent view**, not always the launcher.
 - Keyboard cascade uses `useEscBack`:
 
 1. `inner`: close detail, preview, popover, output view, or other internal state.
@@ -153,6 +157,15 @@ const { onKeyDown } = useEscBack({
 
 Do not copy Esc listeners into modules. Add new sub-states to the `inner` layer.
 Do not use both `onBack` and `escapeAction` on the same shell.
+
+## i18n (required for all modules)
+
+- Every user-visible string in a module must use `useT("key", "English fallback")`.
+- Add Simplified Chinese entries to `src/i18n.ts` `zh` map for new keys.
+- Do not ship hard-coded Chinese-only or English-only UI in panels (titles, empty
+  states, actions, confirms, placeholders, islands).
+- Shortcut `kbd` labels stay platform glyphs via `formatQxShortcut` / `keyboard.ts`
+  and are not translated.
 
 ## QxShell Keyboard Protocol
 

@@ -8,6 +8,8 @@ export interface AppEntry {
   path: string;
   icon: string;
   kind?: "app" | "command" | "clipboard" | "file" | "folder" | "calculation";
+  /** Built-in module owner for availability/maturity presentation. */
+  moduleId?: string;
 }
 
 export interface ClipboardEntry {

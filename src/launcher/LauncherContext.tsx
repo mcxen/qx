@@ -19,6 +19,7 @@ import {
   sanitizeQuickEntries,
 } from "./quickEntries";
 import type { QuickEntry } from "./types";
+import BetaBadge from "../components/BetaBadge";
 
 function ContextSection({
   title,
@@ -43,14 +44,19 @@ function ContextEntry({
   title,
   subtitle,
   onClick,
+  beta = false,
 }: {
   title: string;
   subtitle: string;
   onClick: () => void;
+  beta?: boolean;
 }) {
   return (
     <button className="qx-context-entry" onClick={onClick} type="button">
-      <span className="qx-context-entry-title">{title}</span>
+      <span className="qx-context-entry-title qx-module-title-with-badge">
+        <span>{title}</span>
+        {beta && <BetaBadge />}
+      </span>
       <span className="qx-context-entry-subtitle">{subtitle}</span>
     </button>
   );
@@ -198,6 +204,7 @@ export default function LauncherContext({
                 key={entry.id}
                 title={labels.title}
                 subtitle={labels.subtitle}
+                beta={entry.beta}
                 onClick={entry.onClick}
               />
             );

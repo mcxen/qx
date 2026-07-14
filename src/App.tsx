@@ -35,6 +35,7 @@ import { useEscBack } from "./hooks/useEscBack";
 import { useT } from "./i18n";
 import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./lib/logger";
 import { getQxDesktopPlatform } from "./utils/keyboard";
+import { isBuiltinModuleEnabled } from "./modules/moduleAvailability";
 import "./App.css";
 
 const ClipboardPanel = lazy(() => import("./modules/clipboard/ClipboardPanel"));
@@ -207,7 +208,6 @@ function ModuleErrorShell({
       }}
       primaryAction={{
         label: t("common.back", "Back"),
-        kbd: "Esc",
         tone: "primary",
         onClick: onBack,
       }}
@@ -482,6 +482,15 @@ function App() {
   useEffect(() => {
     void invoke("set_active_route", { route: tab }).catch(() => {});
   }, [tab]);
+
+  // A module disabled from Settings must disappear immediately without ever
+  // mounting its lazy view (and therefore without starting its effects/data).
+  useEffect(() => {
+    if (tab !== "launcher" && tab !== "settings" && !tab.startsWith("plugin:")
+        && !isBuiltinModuleEnabled(tab, settings)) {
+      setTab("launcher");
+    }
+  }, [settings, setTab, tab]);
   const { load: loadPlugins, findCommands } = usePluginRegistry();
   const pluginCommandCount = usePluginRegistry((state) => state.commands.length);
   const pluginPanelCount = usePluginRegistry((state) => Object.keys(state.panels).length);
@@ -758,6 +767,7 @@ function App() {
       const tabId = (e as CustomEvent).detail as string;
       if (tabId === "clipboard" || tabId === "screencap"
           || tabId === "rss" || tabId === "v2ex" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "settings") {
+        if (tabId !== "settings" && !isBuiltinModuleEnabled(tabId)) return;
         setTab(tabId);
       } else if (tabId?.startsWith("plugin:")) {
         setTab(tabId);
@@ -1034,6 +1044,7 @@ function App() {
     const unlistenNav = listen<string>("navigate", (e) => {
       const next = e.payload;
       if (next === "clipboard" || next === "screencap" || next === "rss" || next === "v2ex" || next === "weather" || next === "qx-ai" || next === "macros" || next === "settings") {
+        if (next !== "settings" && !isBuiltinModuleEnabled(next)) return;
         setTab(next);
       } else if (next === "launcher") {
         const alreadyLauncher = useStore.getState().tab === "launcher";
@@ -1043,6 +1054,7 @@ function App() {
           window.requestAnimationFrame(() => requestLauncherSearchFocus());
         }
       } else if (next === "documents") {
+        if (!isBuiltinModuleEnabled(next)) return;
         setTab("documents");
       } else if (next.startsWith("plugin:")) {
         setTab(next);
@@ -1129,6 +1141,7 @@ function App() {
           path: encodeModuleLaunchPath(hit.launch),
           icon: hit.icon || "builtin:rss",
           kind: "command" as const,
+          moduleId: hit.moduleId,
         }));
         const current = useStore.getState().results;
         applyResults(dedupeEntries([...current, ...surfaceEntries]));
@@ -1225,6 +1238,7 @@ function App() {
               path: builtinModuleId ? `__qx:${builtinModuleId}` : `__qx:plugin:${pluginId}`,
               icon: panel.icon || `builtin:${pluginId}`,
               kind: "command",
+              moduleId: builtinModuleId ?? undefined,
             });
           }
         }
@@ -1258,6 +1272,9 @@ function App() {
           path: `__qx:cmd:${m.command.pluginId}:${m.command.name}`,
           icon: m.command.icon || m.command.pluginIcon || `builtin:${m.command.pluginId}`,
           kind: "command" as const,
+          moduleId: m.command.pluginId.startsWith("builtin:")
+            ? m.command.pluginId.slice("builtin:".length)
+            : undefined,
         })),
       );
 
@@ -1482,6 +1499,7 @@ function App() {
     // Module deep launch: open a tab and hand params to the module surface.
     const moduleLaunch = parseModuleLaunchPath(item.path);
     if (moduleLaunch) {
+      if (!isBuiltinModuleEnabled(moduleLaunch.tab)) return;
       setPendingModuleLaunch(moduleLaunch);
       setTab(moduleLaunch.tab);
       return;
@@ -1523,6 +1541,7 @@ function App() {
     // Handle __qx:<tabId> style paths (backward compat)
     const tabMatch = item.path.match(/^__qx:(clipboard|screencap|rss|v2ex|weather|qx-ai|macros|documents)$/);
     if (tabMatch) {
+      if (!isBuiltinModuleEnabled(tabMatch[1])) return;
       setTab(tabMatch[1] as any);
       return;
     }
@@ -1581,6 +1600,10 @@ function App() {
   );
 
   const renderBody = () => {
+    if (tab !== "launcher" && tab !== "settings" && !tab.startsWith("plugin:")
+        && !isBuiltinModuleEnabled(tab, settings)) {
+      return renderLauncher();
+    }
     if (tab !== mountedTab) {
       if (tab === "launcher") return renderLauncher();
       return <ModuleLoadingShell tab={tab} onBack={() => setTab("launcher")} />;

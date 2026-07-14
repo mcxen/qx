@@ -7,6 +7,7 @@ import { useEscBack } from "../../hooks/useEscBack";
 import { getQxShortcutPreset } from "../../utils/keyboard";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import SaveDialog from "./SaveDialog";
+import BetaBadge from "../../components/BetaBadge";
 
 function formatTime(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -159,7 +160,12 @@ export default function MacroRecorder() {
     <QxShell
       ref={shellRef}
       title="Macro Recorder"
-      search={<div className="qx-rss-detail-title">Macro Recorder</div>}
+      search={
+        <div className="qx-rss-detail-title qx-module-title-with-badge">
+          <span>Macro Recorder</span>
+          <BetaBadge />
+        </div>
+      }
       trailing={
         <>
           {!isRecording && !lastRecordedSteps && (

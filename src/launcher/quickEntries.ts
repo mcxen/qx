@@ -1,5 +1,7 @@
 import type { QuickEntryConfig } from "../modules/settings/store";
 import type { QuickEntry } from "./types";
+import { isBetaModule } from "../modules/catalog";
+import { isBuiltinModuleEnabled } from "../modules/moduleAvailability";
 
 type Translate = (key: string, fallback: string) => string;
 
@@ -10,7 +12,7 @@ export const QUICK_ENTRY_TARGETS = [
   { value: "screencap", label: "Screen Recording", subtitle: "GIF capture", titleKey: "launcher.screencap", subtitleKey: "launcher.screencap.desc" },
   { value: "v2ex", label: "V2EX", subtitle: "Latest and hot topics", titleKey: "launcher.v2ex", subtitleKey: "launcher.v2ex.desc" },
   { value: "weather", label: "Weather", subtitle: "Current conditions and forecast", titleKey: "launcher.weather", subtitleKey: "launcher.weather.desc" },
-  { value: "documents", label: "Documents", subtitle: "Text, Markdown, JSON", titleKey: "launcher.documents", subtitleKey: "launcher.documents.desc" },
+  { value: "documents", label: "Documents", subtitle: "Disk notepad · folder files", titleKey: "launcher.documents", subtitleKey: "launcher.documents.desc" },
   { value: "macros", label: "Macro Recorder", subtitle: "Record and replay actions", titleKey: "launcher.macros", subtitleKey: "launcher.macros.desc" },
   { value: "settings", label: "Settings", subtitle: "Appearance and plugins", titleKey: "launcher.settings", subtitleKey: "launcher.settings.desc" },
 ] as const;
@@ -70,7 +72,7 @@ export function toLauncherQuickEntries(
   t?: Translate,
 ): QuickEntry[] {
   return sanitizeQuickEntries(entries)
-    .filter((entry) => entry.enabled)
+    .filter((entry) => entry.enabled && isBuiltinModuleEnabled(entry.target))
     .map((entry) => {
       const labels = t ? localizeQuickEntry(entry, t) : { title: entry.title, subtitle: entry.subtitle };
       return {
@@ -78,6 +80,7 @@ export function toLauncherQuickEntries(
         title: labels.title,
         subtitle: labels.subtitle,
         target: entry.target,
+        beta: isBetaModule(entry.target),
         onClick: () => onNavigate(entry.target),
       };
     });

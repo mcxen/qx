@@ -56,10 +56,14 @@ registerHomeIsland(fooHomeIsland);
 
 | Consumer | API |
 |---|---|
-| Launcher | `resolveHomeIsland(appearance, t)` when idle |
-| Appearance settings | `<HomeIslandSettings appearance patch />` |
+| Launcher | `useResolvedHomeIsland(appearance, t)` when idle (supports multi-mode rotate) |
+| Appearance settings | `<HomeIslandSettings />` multi-select + live preview on settings shell island |
 
-`home_island_mode` in settings is a free `string`; unknown values normalize to the default registered mode.
+- `home_island_mode` — primary / last-focused mode (compat)
+- `home_island_modes` — multi-select list; length > 1 auto-rotates
+- `home_island_rotate_secs` — interval (0 = pin first only, default 8)
+
+Unknown mode ids fall back to the default registered mode.
 
 ## Async data (non-blocking)
 
