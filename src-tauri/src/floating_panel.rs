@@ -57,8 +57,16 @@ pub fn active_route() -> String {
 }
 
 fn routes_match(current: &str, target: &str) -> bool {
-    let c = if current.is_empty() { "launcher" } else { current };
-    let t = if target.is_empty() { "launcher" } else { target };
+    let c = if current.is_empty() {
+        "launcher"
+    } else {
+        current
+    };
+    let t = if target.is_empty() {
+        "launcher"
+    } else {
+        target
+    };
     c == t
 }
 
