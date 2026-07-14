@@ -76,7 +76,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       title: "Screen Recording",
       keywords: ["gif", "screencap", "screen record", "录屏"],
     },
-    description: "Screen recording and GIF capture",
+    description: "MP4/MOV screen recording with optional GIF conversion",
   },
   {
     id: "rss",
@@ -163,6 +163,23 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       keywords: ["document", "documents", "doc", "markdown", "json", "word count", "文档", "字数", "文本"],
     },
     description: "Disk-backed text toolbox",
+  },
+  {
+    id: "qx-tty",
+    name: "QxTTY",
+    keywords: ["terminal", "tty", "shell", "command line", "终端", "命令行"],
+    commands: [
+      {
+        name: "open-qx-tty",
+        title: "Open QxTTY",
+        keywords: ["terminal", "tty", "shell", "command line", "终端", "命令行", "open"],
+      },
+    ],
+    panel: {
+      title: "QxTTY",
+      keywords: ["terminal", "tty", "shell", "command line", "终端", "命令行"],
+    },
+    description: "Persistent local terminal sessions",
   },
   {
     id: "weather",

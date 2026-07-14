@@ -8,6 +8,7 @@ import {
   MessageCircle,
   MonitorPlay,
   Rss,
+  SquareTerminal,
 } from "lucide-react";
 import type { InstalledPlugin } from "../../../plugin/types";
 
@@ -22,6 +23,7 @@ export const BUILTIN_PLUGIN_ICONS: Record<string, LucideIcon> = {
   "builtin:macros": Keyboard,
   "builtin:documents": FileText,
   "builtin:weather": CloudSun,
+  "builtin:qx-tty": SquareTerminal,
 };
 
 export function fallbackLabel(label: string): string {

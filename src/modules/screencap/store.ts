@@ -18,16 +18,46 @@ export interface RecordArea {
   h: number;
 }
 
+export interface RecordingOptions {
+  outputFormat: "mp4" | "mov";
+  fps: 15 | 24 | 30;
+  quality: "compact" | "balanced" | "high";
+  resolution: "720p" | "1080p" | "native";
+}
+
+export const DEFAULT_RECORDING_OPTIONS: RecordingOptions = {
+  outputFormat: "mp4",
+  fps: 24,
+  quality: "balanced",
+  resolution: "1080p",
+};
+
 export type RecordingStatus = "idle" | "recording" | "processing" | "done" | "error";
+
+export interface RecordingSnapshot {
+  phase: RecordingStatus;
+  isRecording: boolean;
+  elapsedMs: number;
+  frameCount: number;
+  area: RecordArea | null;
+  outputPath: string | null;
+  error: string | null;
+  controlsVisible: boolean;
+}
 
 interface ScreencapStore {
   isRecording: boolean;
   status: RecordingStatus;
+  elapsedMs: number;
+  frameCount: number;
+  controlsVisible: boolean;
   lastGifPath: string | null;
   history: ScreencapEntry[];
   error: string | null;
-  startRecording: (area?: RecordArea | null) => Promise<void>;
+  startRecording: (area?: RecordArea | null, options?: RecordingOptions) => Promise<void>;
   stopRecording: () => Promise<void>;
+  syncRecordingStatus: () => Promise<RecordingSnapshot | null>;
+  showControls: () => Promise<void>;
   loadHistory: () => Promise<void>;
   deleteEntry: (id: number) => Promise<void>;
   clearHistory: () => Promise<void>;
@@ -38,15 +68,18 @@ interface ScreencapStore {
 export const useScreencapStore = create<ScreencapStore>((set, get) => ({
   isRecording: false,
   status: "idle",
+  elapsedMs: 0,
+  frameCount: 0,
+  controlsVisible: false,
   lastGifPath: null,
   history: [],
   error: null,
 
-  startRecording: async (area) => {
+  startRecording: async (area, options = DEFAULT_RECORDING_OPTIONS) => {
     set({ error: null });
     try {
-      await invoke("start_recording", { area: area ?? null });
-      set({ isRecording: true, status: "recording" });
+      await invoke("start_recording", { area: area ?? null, options });
+      await get().syncRecordingStatus();
     } catch (e) {
       set({ isRecording: false, status: "error", error: String(e) });
     }
@@ -56,10 +89,44 @@ export const useScreencapStore = create<ScreencapStore>((set, get) => ({
     set({ status: "processing", isRecording: true });
     try {
       const path = await invoke<string>("stop_recording");
-      set({ isRecording: false, status: "done", lastGifPath: path, error: null });
+      set({
+        isRecording: false,
+        status: "done",
+        elapsedMs: 0,
+        controlsVisible: false,
+        lastGifPath: path,
+        error: null,
+      });
       await get().loadHistory();
     } catch (e) {
       set({ isRecording: false, status: "error", error: String(e) });
+    }
+  },
+
+  syncRecordingStatus: async () => {
+    try {
+      const snapshot = await invoke<RecordingSnapshot>("recording_status");
+      set({
+        status: snapshot.phase,
+        isRecording: snapshot.isRecording,
+        elapsedMs: snapshot.elapsedMs,
+        frameCount: snapshot.frameCount,
+        controlsVisible: snapshot.controlsVisible,
+        lastGifPath: snapshot.outputPath ?? get().lastGifPath,
+        error: snapshot.error,
+      });
+      return snapshot;
+    } catch {
+      return null;
+    }
+  },
+
+  showControls: async () => {
+    try {
+      await invoke("screencap_show_controls");
+      await get().syncRecordingStatus();
+    } catch (e) {
+      set({ error: String(e) });
     }
   },
 
@@ -103,5 +170,15 @@ export const useScreencapStore = create<ScreencapStore>((set, get) => ({
   // Keep status usable for browsing history after a finished capture.
   setPreview: (path) => set({ lastGifPath: path, status: "done", error: null }),
 
-  reset: () => set({ status: "idle", error: null, lastGifPath: null }),
+  reset: () => {
+    if (get().isRecording) return;
+    set({
+      status: "idle",
+      elapsedMs: 0,
+      frameCount: 0,
+      controlsVisible: false,
+      error: null,
+      lastGifPath: null,
+    });
+  },
 }));

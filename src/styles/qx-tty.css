@@ -1,0 +1,165 @@
+.qx-tty-shell .qx-shell-content {
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.qx-tty-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  min-width: 0;
+  flex: 1;
+  min-height: 0;
+}
+
+.qx-tty-sidebar {
+  min-width: 0;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  background: var(--qx-bg-component-1);
+}
+
+.qx-tty-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 34px;
+  padding: 0 10px 0 12px;
+  border-bottom: 1px solid var(--border);
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.qx-tty-session-list {
+  height: calc(100% - 34px);
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.qx-tty-session {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 8px 26px;
+  gap: 7px;
+  align-items: center;
+  min-height: 46px;
+  padding: 4px 4px 4px 8px;
+  border-radius: var(--qx-control-radius);
+  color: var(--qx-text-secondary);
+  cursor: default;
+  outline: none;
+}
+
+.qx-tty-session:hover,
+.qx-tty-session:focus-visible {
+  background: var(--accent);
+}
+
+.qx-tty-session.is-active {
+  background: var(--qx-accent-soft);
+  color: var(--qx-text-primary);
+}
+
+.qx-tty-session-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qx-tty-session-copy strong,
+.qx-tty-session-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-tty-session-copy strong {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.qx-tty-session-copy span {
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+}
+
+.qx-tty-session-state {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--qx-text-tertiary);
+}
+
+.qx-tty-session-state.is-running {
+  background: var(--qx-accent);
+}
+
+.qx-tty-close {
+  width: 26px;
+  height: 26px;
+  opacity: 0;
+}
+
+.qx-tty-session:hover .qx-tty-close,
+.qx-tty-session:focus-within .qx-tty-close,
+.qx-tty-session.is-active .qx-tty-close {
+  opacity: 1;
+}
+
+.qx-tty-empty {
+  padding: 28px 12px;
+  color: var(--qx-text-tertiary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.qx-tty-terminal-pane {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--qx-terminal-background);
+}
+
+.qx-tty-terminal {
+  position: absolute;
+  inset: 10px 6px 8px 10px;
+  color: var(--qx-terminal-foreground);
+}
+
+.qx-tty-terminal .xterm,
+.qx-tty-terminal .xterm-viewport {
+  height: 100%;
+}
+
+.qx-tty-terminal .xterm-viewport {
+  background: transparent !important;
+}
+
+.qx-tty-error {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 12px;
+  max-width: min(420px, calc(100% - 24px));
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, var(--qx-danger) 35%, transparent);
+  border-radius: var(--qx-control-radius);
+  background: var(--popover);
+  color: var(--qx-danger);
+  font-size: 11px;
+}
+
+@media (max-width: 620px) {
+  .qx-tty-layout {
+    grid-template-columns: 168px minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qx-tty-close {
+    transition: none;
+  }
+}

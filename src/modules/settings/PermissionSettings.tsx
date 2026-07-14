@@ -117,7 +117,7 @@ export default function PermissionSettings() {
         title={t("permissions.title", "macOS Permissions")}
         description={t(
           "permissions.desc",
-          "Check the system permissions Qx needs for GIF recording and macros.",
+          "Check the system permissions Qx needs for screen recording and macros.",
         )}
         trailing={
           <div className="qx-permissions-score">

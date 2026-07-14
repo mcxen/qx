@@ -225,11 +225,11 @@ export default function AboutPanel() {
       title: t("about.storage.cleanup.files", "Generated Files"),
       description: t(
         "about.storage.cleanup.files.desc",
-        "Qx screenshots and GIF recordings in the output folder.",
+        "Qx screenshots, video recordings, and GIF files in the output folder.",
       ),
       confirm: t(
         "about.storage.confirmFiles",
-        "Delete Qx GIF recordings from the output folder?",
+        "Delete Qx screen recordings and GIF files from the output folder?",
       ),
       danger: true,
     },

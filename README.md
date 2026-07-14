@@ -25,7 +25,7 @@
 | Reuse what you just copied | Persistent clipboard history (text, image, files) |
 | Stay in flow | One shell: RSS, weather, QxAI, V2EX, macros, plugins |
 
-> **Status**: v0.5.15 — active development · [Releases](https://github.com/mcxen/qx/releases) · [Docs](./docs/README.md)
+> **Status**: v0.5.16 — active development · [Releases](https://github.com/mcxen/qx/releases) · [Docs](./docs/README.md)
 
 ---
 
@@ -211,7 +211,7 @@ Source-available — full terms in [LICENSE](./LICENSE).
 
 **Qx** 是后台常驻的效率启动器：全局快捷键唤起，搜索 → 执行 → 再按同一快捷键收起。灵感来自 Raycast，基于 **Tauri v2 + React 19 + Rust**，支持 macOS 与 Windows。
 
-> **版本**: v0.5.15 · [发布页](https://github.com/mcxen/qx/releases) · [开发者文档](./docs/README.md)
+> **版本**: v0.5.16 · [发布页](https://github.com/mcxen/qx/releases) · [开发者文档](./docs/README.md)
 
 ### 你能做什么
 
@@ -223,7 +223,7 @@ Source-available — full terms in [LICENSE](./LICENSE).
 | **QxAI** | 流式对话、OpenRouter / DeepSeek / 自定义 BYOK、记忆 |
 | **插件** | 沙盒 iframe、市场、Raycast 扩展转换、`context.ai` |
 
-另有：GIF 录屏 · 天气 · V2EX · 宏 · OCR · GitHub 贡献图 · 开发者文本工具。
+另有：MP4/MOV 录屏（可转 GIF）· 天气 · V2EX · 宏 · OCR · GitHub 贡献图 · 开发者文本工具。
 
 默认快捷键（可改）：**Option+Space** 切换主窗口；模块快捷键**再按一次关闭**。
 

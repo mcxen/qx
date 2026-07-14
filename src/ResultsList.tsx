@@ -16,6 +16,7 @@ import {
   Folder,
   Palette,
   Presentation,
+  SquareTerminal,
 } from "lucide-react";
 import { LoadingLabel, Skeleton } from "./components/ui";
 import AppResultContextMenu from "./launcher/AppResultContextMenu";
@@ -153,6 +154,7 @@ const LUCIDE_ICON_BY_KIND: Record<string, LucideIcon> = {
   "file-presentation": Presentation,
   "file-design": Palette,
   "file-font": FileType,
+  terminal: SquareTerminal,
 };
 
 function fileExtension(item: AppEntry): string {
@@ -178,6 +180,7 @@ function iconKind(item: AppEntry): string {
     if (value.includes("rss")) return "rss";
     if (value.includes("macro")) return "macro";
     if (value.includes("document") || value.includes("doc")) return "document";
+    if (value.includes("qx-tty") || value.includes("terminal")) return "terminal";
     if (value.includes("calculator") || value.includes("calc")) return "calculator";
     if (value.includes("settings")) return "settings";
     if (value.includes("folder")) return "folder";

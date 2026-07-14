@@ -21,6 +21,7 @@ import {
   RotateCcw,
   Rss,
   Search,
+  SquareTerminal,
   Trash2,
 } from "lucide-react";
 import { usePluginRegistry } from "../../../plugin/registry";
@@ -110,6 +111,7 @@ const BUILTIN_PLUGIN_ICONS: Record<string, LucideIcon> = {
   "builtin:macros": Keyboard,
   "builtin:documents": FileText,
   "builtin:weather": CloudSun,
+  "builtin:qx-tty": SquareTerminal,
 };
 const BUILTIN_PLUGIN_SHORTCUTS: Record<string, string[]> = {
   "builtin:clipboard": ["clipboard"],

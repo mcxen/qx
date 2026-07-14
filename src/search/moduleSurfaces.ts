@@ -305,8 +305,8 @@ async function searchScreencapSurfaces(query: string): Promise<ModuleSurfaceHit[
   if (!isModuleSearchEnabled("screencap") || !("__TAURI_INTERNALS__" in window)) return [];
   const hits: ModuleSurfaceHit[] = [];
   for (const item of [
-    { surface: "root", title: "Open Screen Recording", keys: ["gif", "record", "screen", "录屏"] },
-    { surface: "start", title: "Start Screen Recording", keys: ["start", "record", "gif", "录屏"] },
+    { surface: "root", title: "Open Screen Recording", keys: ["video", "mp4", "mov", "gif", "record", "screen", "录屏"] },
+    { surface: "start", title: "Start Screen Recording", keys: ["start", "video", "mp4", "mov", "record", "gif", "录屏"] },
   ] as const) {
     const score = scoreText(query, item.title, ...item.keys);
     if (score > 0) {
@@ -330,13 +330,13 @@ async function searchScreencapSurfaces(query: string): Promise<ModuleSurfaceHit[
     }>>("get_screencap_history");
     for (const entry of history) {
       const name = entry.path.split(/[/\\]/).pop() || entry.path;
-      const score = scoreText(query, name, "gif", "recording", "history");
+      const score = scoreText(query, name, "video", "mp4", "mov", "gif", "recording", "history");
       if (score <= 0) continue;
       hits.push(hit({
         id: `screencap:gif:${entry.id}`,
         moduleId: "screencap",
         title: name,
-        subtitle: "Screen Recording · GIF",
+        subtitle: "Screen Recording · Video / GIF",
         icon: "builtin:screencap",
         score,
         launch: { tab: "screencap", surface: "preview", params: { path: entry.path, id: entry.id } },
@@ -409,6 +409,21 @@ function searchWeatherSurfaces(query: string): ModuleSurfaceHit[] {
   return hits.sort((a, b) => b.score - a.score).slice(0, 8);
 }
 
+function searchQxTtySurfaces(query: string): ModuleSurfaceHit[] {
+  if (!isModuleSearchEnabled("qx-tty")) return [];
+  const score = scoreText(query, "QxTTY", "terminal", "tty", "shell", "command line", "终端", "命令行");
+  if (score <= 0) return [];
+  return [hit({
+    id: "qx-tty:root",
+    moduleId: "qx-tty",
+    title: "Open QxTTY",
+    subtitle: "QxTTY · terminal",
+    icon: "builtin:qx-tty",
+    score: Math.min(score, 72),
+    launch: { tab: "qx-tty", surface: "root" },
+  })];
+}
+
 function searchV2exSurfaces(query: string): ModuleSurfaceHit[] {
   if (!isModuleSearchEnabled("v2ex")) return [];
   const hits: ModuleSurfaceHit[] = [];
@@ -453,6 +468,7 @@ export async function searchModuleSurfaces(query: string): Promise<ModuleSurface
     Promise.resolve(searchDocumentsSurfaces(q)),
     Promise.resolve(searchWeatherSurfaces(q)),
     Promise.resolve(searchV2exSurfaces(q)),
+    Promise.resolve(searchQxTtySurfaces(q)),
   ]);
 
   return results

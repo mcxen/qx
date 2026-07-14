@@ -9,11 +9,12 @@ export const QUICK_ENTRY_TARGETS = [
   { value: "clipboard", label: "Clipboard History", subtitle: "Pinned, frequent, links", titleKey: "launcher.clipboard", subtitleKey: "launcher.clipboard.desc" },
   { value: "qx-ai", label: "QxAI", subtitle: "Chat and agent tasks", titleKey: "launcher.qx-ai", subtitleKey: "launcher.qx-ai.desc" },
   { value: "rss", label: "RSS Reader", subtitle: "Feeds and articles", titleKey: "launcher.rss", subtitleKey: "launcher.rss.desc" },
-  { value: "screencap", label: "Screen Recording", subtitle: "GIF capture", titleKey: "launcher.screencap", subtitleKey: "launcher.screencap.desc" },
+  { value: "screencap", label: "Screen Recording", subtitle: "MP4/MOV capture", titleKey: "launcher.screencap", subtitleKey: "launcher.screencap.desc" },
   { value: "v2ex", label: "V2EX", subtitle: "Latest and hot topics", titleKey: "launcher.v2ex", subtitleKey: "launcher.v2ex.desc" },
   { value: "weather", label: "Weather", subtitle: "Current conditions and forecast", titleKey: "launcher.weather", subtitleKey: "launcher.weather.desc" },
   { value: "documents", label: "Documents", subtitle: "Disk notepad · folder files", titleKey: "launcher.documents", subtitleKey: "launcher.documents.desc" },
   { value: "macros", label: "Macro Recorder", subtitle: "Record and replay actions", titleKey: "launcher.macros", subtitleKey: "launcher.macros.desc" },
+  { value: "qx-tty", label: "QxTTY", subtitle: "Persistent local terminal sessions", titleKey: "launcher.qx-tty", subtitleKey: "launcher.qx-tty.desc" },
   { value: "settings", label: "Settings", subtitle: "Appearance and plugins", titleKey: "launcher.settings", subtitleKey: "launcher.settings.desc" },
 ] as const;
 

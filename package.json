@@ -1,7 +1,7 @@
 {
   "name": "qx",
   "private": true,
-  "version": "0.5.15",
+  "version": "0.5.16",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -34,6 +34,8 @@
     "@tauri-apps/plugin-opener": "^2",
     "@tauri-apps/plugin-shell": "^2.3.5",
     "@webc.site/math": "^0.1.32",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.40.0",

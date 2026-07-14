@@ -91,6 +91,8 @@
   --qx-border-2: rgba(10, 10, 10, 0.16);
   --qx-border-3: rgba(10, 10, 10, 0.28);
   --qx-text-primary: #0a0a0a;
+  --qx-terminal-background: var(--qx-gray-100);
+  --qx-terminal-foreground: var(--qx-gray-1000);
   --qx-text-secondary: #525252;
   --qx-text-tertiary: #737373;
 
@@ -217,6 +219,8 @@
   --qx-border-2: #333333;
   --qx-border-3: #454545;
   --qx-text-primary: #ededed;
+  --qx-terminal-background: var(--qx-gray-100);
+  --qx-terminal-foreground: var(--qx-gray-1000);
   --qx-text-secondary: #b8b8b8;
   --qx-text-tertiary: #9a9a9a;
 

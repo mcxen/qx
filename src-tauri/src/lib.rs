@@ -22,6 +22,7 @@ mod settings;
 mod storage;
 mod system_information;
 mod system_stats;
+mod terminal;
 mod text_toolbox;
 mod updater;
 mod v2ex;
@@ -371,6 +372,7 @@ pub fn run() {
     }
 
     tauri::Builder::default()
+        .manage(terminal::TerminalManager::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -620,12 +622,24 @@ pub fn run() {
             system_information::qx_system_monitor_network_counters,
             system_information::qx_system_monitor_power,
             system_stats::get_system_stats,
+            terminal::terminal_create_session,
+            terminal::terminal_list_sessions,
+            terminal::terminal_snapshot,
+            terminal::terminal_write,
+            terminal::terminal_resize,
+            terminal::terminal_close_session,
+            terminal::terminal_clear_buffer,
             external_displays::qx_external_displays_driver,
             external_displays::qx_external_displays_install_driver,
             external_displays::qx_external_displays_list,
             external_displays::qx_external_displays_set_control,
             screencap::start_recording,
             screencap::stop_recording,
+            screencap::recording_status,
+            screencap::screencap_show_controls,
+            screencap::screencap_hide_controls,
+            screencap::screencap_return_to_main,
+            screencap::convert_recording_to_gif,
             screencap::save_gif,
             screencap::list_gif_history,
             screencap::get_screencap_history,

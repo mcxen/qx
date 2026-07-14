@@ -47,6 +47,7 @@ const V2exPanel = lazy(() => import("./modules/v2ex/V2exPanel"));
 const G4fReader = lazy(() => import("./modules/qx-ai"));
 const MacroRecorder = lazy(() => import("./modules/macros/MacroRecorder"));
 const WeatherPanel = lazy(() => import("./modules/weather/WeatherPanel"));
+const QxTTYPanel = lazy(() => import("./modules/qx-tty/QxTTYPanel"));
 
 const SETTINGS_KEYWORDS = ["settings", "preferences", "plugins", "shortcuts", "appearance", "advanced"];
 const MIN_WINDOW_WIDTH = 480;
@@ -83,6 +84,7 @@ const MODULE_LABEL_KEYS: Record<string, { key: string; fallback: string }> = {
   "qx-ai": { key: "module.qx-ai", fallback: "QxAI Chat" },
   macros: { key: "launcher.macros", fallback: "Macro Recorder" },
   documents: { key: "launcher.documents", fallback: "Documents" },
+  "qx-tty": { key: "launcher.qx-tty", fallback: "QxTTY" },
   settings: { key: "launcher.settings", fallback: "Settings" },
 };
 
@@ -766,7 +768,7 @@ function App() {
     const handler = (e: Event) => {
       const tabId = (e as CustomEvent).detail as string;
       if (tabId === "clipboard" || tabId === "screencap"
-          || tabId === "rss" || tabId === "v2ex" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "settings") {
+          || tabId === "rss" || tabId === "v2ex" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "qx-tty" || tabId === "settings") {
         if (tabId !== "settings" && !isBuiltinModuleEnabled(tabId)) return;
         setTab(tabId);
       } else if (tabId?.startsWith("plugin:")) {
@@ -1043,7 +1045,7 @@ function App() {
     });
     const unlistenNav = listen<string>("navigate", (e) => {
       const next = e.payload;
-      if (next === "clipboard" || next === "screencap" || next === "rss" || next === "v2ex" || next === "weather" || next === "qx-ai" || next === "macros" || next === "settings") {
+      if (next === "clipboard" || next === "screencap" || next === "rss" || next === "v2ex" || next === "weather" || next === "qx-ai" || next === "macros" || next === "qx-tty" || next === "settings") {
         if (next !== "settings" && !isBuiltinModuleEnabled(next)) return;
         setTab(next);
       } else if (next === "launcher") {
@@ -1539,7 +1541,7 @@ function App() {
       return;
     }
     // Handle __qx:<tabId> style paths (backward compat)
-    const tabMatch = item.path.match(/^__qx:(clipboard|screencap|rss|v2ex|weather|qx-ai|macros|documents)$/);
+    const tabMatch = item.path.match(/^__qx:(clipboard|screencap|rss|v2ex|weather|qx-ai|macros|documents|qx-tty)$/);
     if (tabMatch) {
       if (!isBuiltinModuleEnabled(tabMatch[1])) return;
       setTab(tabMatch[1] as any);
@@ -1635,6 +1637,8 @@ function App() {
         return <DevTxtTool />;
       case "weather":
         return <WeatherPanel />;
+      case "qx-tty":
+        return <QxTTYPanel />;
       case "settings":
         return <SettingsPanel onClose={() => setTab("launcher")} />;
       case "launcher":

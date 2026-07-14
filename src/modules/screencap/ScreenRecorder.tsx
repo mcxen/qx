@@ -6,16 +6,23 @@ import {
   currentMonitor,
   type Monitor,
 } from "@tauri-apps/api/window";
-import { useScreencapStore, type RecordArea } from "./store";
+import {
+  DEFAULT_RECORDING_OPTIONS,
+  useScreencapStore,
+  type RecordArea,
+  type RecordingOptions,
+} from "./store";
 import { useStore } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
-import { LinkButton } from "../../components/ui";
+import { LinkButton, Select } from "../../components/ui";
 import GifPreview from "./GifPreview";
 import GifHistory from "./GifHistory";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { getQxShortcutPreset } from "../../utils/keyboard";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import BetaBadge from "../../components/BetaBadge";
+import { useT } from "../../i18n";
+import RecordingTransport from "./RecordingTransport";
 
 type SelectMode = "none" | "selecting";
 
@@ -39,12 +46,13 @@ function formatTime(ms: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-function estimatePerMinute(area: RecordArea): string {
-  const pixels = area.w * area.h;
-  const bytesPerSec = pixels * 0.4 * 15;
-  const bytesPerMin = bytesPerSec * 60;
-  if (bytesPerMin < 1024 * 1024) return `${(bytesPerMin / 1024).toFixed(0)} KB/min`;
-  return `${(bytesPerMin / (1024 * 1024)).toFixed(1)} MB/min`;
+function loadRecordingOptions(): RecordingOptions {
+  try {
+    const stored = JSON.parse(localStorage.getItem("qx.screencap.options") ?? "null") as Partial<RecordingOptions> | null;
+    return { ...DEFAULT_RECORDING_OPTIONS, ...(stored ?? {}) };
+  } catch {
+    return DEFAULT_RECORDING_OPTIONS;
+  }
 }
 
 async function snapshotWindow(): Promise<WindowSnapshot | null> {
@@ -91,7 +99,7 @@ async function expandToPrimaryMonitor(): Promise<{ monitor: Monitor; scale: numb
   }
 }
 
-async function ensureScreenPermission(): Promise<string | null> {
+async function ensureScreenPermission(permissionError: string): Promise<string | null> {
   if (!isTauriRuntime()) return null;
   try {
     type Perm = { id: string; granted: boolean; available: boolean };
@@ -101,21 +109,26 @@ async function ensureScreenPermission(): Promise<string | null> {
     if (screen.granted) return null;
     const ok = await invoke<boolean>("qx_permissions_request", { id: "screen-recording" });
     if (ok) return null;
-    return "Screen Recording permission is required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx.";
+    return permissionError;
   } catch {
     return null;
   }
 }
 
 export default function ScreenRecorder() {
+  const t = useT();
   const {
     isRecording,
     status,
+    elapsedMs,
+    frameCount,
     lastGifPath,
     history,
     error,
     startRecording,
     stopRecording,
+    syncRecordingStatus,
+    showControls,
     loadHistory,
     setPreview,
     reset,
@@ -127,16 +140,16 @@ export default function ScreenRecorder() {
   const [area, setArea] = useState<RecordArea | null>(null);
   /** Physical-pixel crop used by scrap (Retina-aware). */
   const [areaPhysical, setAreaPhysical] = useState<RecordArea | null>(null);
-  const [elapsed, setElapsed] = useState(0);
+  const [recordingOptions, setRecordingOptions] = useState<RecordingOptions>(loadRecordingOptions);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [selectHint, setSelectHint] = useState("Drag on the primary display · Esc to cancel");
-  const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const [selectHint, setSelectHint] = useState(() =>
+    t("screencap.select.drag", "Drag on the primary display · Esc to cancel"),
+  );
   const overlayRef = useRef<HTMLDivElement>(null);
   const windowSnapRef = useRef<WindowSnapshot | null>(null);
   const selectScaleRef = useRef(1);
-  const hideAfterStartRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     if (selectMode === "selecting") {
@@ -146,19 +159,26 @@ export default function ScreenRecorder() {
 
   useEffect(() => {
     void loadHistory();
-  }, [loadHistory]);
+    void syncRecordingStatus();
+  }, [loadHistory, syncRecordingStatus]);
+
+  useEffect(() => {
+    localStorage.setItem("qx.screencap.options", JSON.stringify(recordingOptions));
+  }, [recordingOptions]);
 
   useEffect(() => {
     const launch = takePendingModuleLaunch("screencap");
     if (!launch) return;
     if (launch.surface === "start") {
       void (async () => {
-        const permErr = await ensureScreenPermission();
+        const permErr = await ensureScreenPermission(
+          t("screencap.permission", "Screen Recording permission is required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx."),
+        );
         if (permErr) {
           setLocalError(permErr);
           return;
         }
-        await startRecording(null);
+        await startRecording(null, recordingOptions);
       })();
       return;
     }
@@ -168,32 +188,16 @@ export default function ScreenRecorder() {
         void loadHistory().then(() => setPreview(path));
       }
     }
-  }, [loadHistory, setPreview, startRecording]);
+  }, [loadHistory, recordingOptions, setPreview, startRecording, t]);
 
   useEffect(() => {
-    if (isRecording) {
-      const start = Date.now();
-      timerRef.current = setInterval(() => setElapsed(Date.now() - start), 100);
-      // Hide the main panel so the GIF is not mostly the Qx chrome.
-      if (hideAfterStartRef.current) clearTimeout(hideAfterStartRef.current);
-      hideAfterStartRef.current = setTimeout(() => {
-        if (!isTauriRuntime()) return;
-        getCurrentWindow().hide().catch(() => {});
-      }, 450);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-      timerRef.current = undefined;
-      setElapsed(0);
-      if (hideAfterStartRef.current) {
-        clearTimeout(hideAfterStartRef.current);
-        hideAfterStartRef.current = undefined;
-      }
+    if (isRecording || status === "processing") {
+      const syncTimer = window.setInterval(() => void syncRecordingStatus(), 350);
+      return () => {
+        window.clearInterval(syncTimer);
+      };
     }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (hideAfterStartRef.current) clearTimeout(hideAfterStartRef.current);
-    };
-  }, [isRecording]);
+  }, [isRecording, status, syncRecordingStatus]);
 
   const cancelAreaSelect = useCallback(async () => {
     setSelectMode("none");
@@ -205,7 +209,9 @@ export default function ScreenRecorder() {
 
   const beginAreaSelect = useCallback(async () => {
     setLocalError(null);
-    const permErr = await ensureScreenPermission();
+    const permErr = await ensureScreenPermission(
+      t("screencap.permission", "Screen Recording permission is required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx."),
+    );
     if (permErr) {
       setLocalError(permErr);
       return;
@@ -215,16 +221,16 @@ export default function ScreenRecorder() {
     const expanded = await expandToPrimaryMonitor();
     if (expanded) {
       selectScaleRef.current = expanded.scale;
-      setSelectHint("Drag to select on the primary display · Esc to cancel");
+      setSelectHint(t("screencap.select.primary", "Drag to select on the primary display · Esc to cancel"));
     } else {
       // Browser / failed expand: still allow in-window select for dev, but warn.
       selectScaleRef.current = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-      setSelectHint("Drag to select (in-window fallback) · Esc to cancel");
+      setSelectHint(t("screencap.select.fallback", "Drag to select (in-window fallback) · Esc to cancel"));
     }
     setSelectMode("selecting");
     setDragStart(null);
     setDragEnd(null);
-  }, []);
+  }, [t]);
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (selectMode !== "selecting") return;
@@ -276,12 +282,23 @@ export default function ScreenRecorder() {
 
   const handleStart = async () => {
     setLocalError(null);
-    const permErr = await ensureScreenPermission();
+    const permErr = await ensureScreenPermission(
+      t("screencap.permission", "Screen Recording permission is required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx."),
+    );
     if (permErr) {
       setLocalError(permErr);
       return;
     }
-    await startRecording(areaPhysical ?? null);
+    await startRecording(areaPhysical ?? null, recordingOptions);
+  };
+
+  const handlePopOut = async () => {
+    await showControls();
+    if (!isTauriRuntime()) return;
+    const snapshot = await syncRecordingStatus();
+    if (snapshot?.controlsVisible) {
+      await invoke("floating_hide").catch(() => getCurrentWindow().hide());
+    }
   };
 
   const handleStop = async () => {
@@ -307,10 +324,10 @@ export default function ScreenRecorder() {
 
   const readyActions = useMemo<QxShellAction[]>(
     () => [
-      { label: "Start Recording", kbd: "Enter", onClick: () => void handleStart() },
-      { label: "Select Area", kbd: "CmdOrCtrl+Shift+A", onClick: () => void beginAreaSelect() },
+      { label: t("screencap.start", "Start Recording"), kbd: "Enter", onClick: () => void handleStart() },
+      { label: t("screencap.selectArea", "Select Area"), kbd: "CmdOrCtrl+Shift+A", onClick: () => void beginAreaSelect() },
       {
-        label: "Clear Area",
+        label: t("screencap.clearArea", "Clear Area"),
         disabled: !area,
         onClick: () => {
           setArea(null);
@@ -318,41 +335,48 @@ export default function ScreenRecorder() {
         },
       },
       {
-        label: "Full Screen (Primary)",
+        label: t("screencap.fullPrimary", "Full Screen (Primary)"),
         onClick: () => {
           setArea(null);
           setAreaPhysical(null);
         },
       },
     ],
-    [area, beginAreaSelect],
+    [area, beginAreaSelect, t],
   );
 
   const doneActions = useMemo<QxShellAction[]>(
     () => [
-      { label: "New Recording", kbd: "Enter", onClick: handleNewRecording },
+      { label: t("screencap.newRecording", "New Recording"), kbd: "Enter", onClick: handleNewRecording },
       {
-        label: "Back to Launcher",
+        label: t("screencap.backLauncher", "Back to Launcher"),
         onClick: () => {
           reset();
           setTab("launcher");
         },
       },
     ],
-    [reset, setTab],
+    [reset, setTab, t],
   );
 
   const recordingActions = useMemo<QxShellAction[]>(
     () => [
       {
-        label: status === "processing" ? "Encoding…" : "Stop Recording",
+        label: t("screencap.popOut", "Move to Floating Controls"),
+        disabled: status === "processing",
+        onClick: () => void handlePopOut(),
+      },
+      {
+        label: status === "processing"
+          ? t("screencap.saving", "Saving…")
+          : t("screencap.stop", "Stop Recording"),
         kbd: "Enter",
         disabled: status === "processing",
         tone: status === "processing" ? "normal" : "danger",
         onClick: () => void handleStop(),
       },
     ],
-    [status],
+    [status, t],
   );
 
   const { onKeyDown: escKeyDown } = useEscBack({
@@ -494,19 +518,24 @@ export default function ScreenRecorder() {
   if (isRecording || status === "processing") {
     return (
       <QxShell
-        title="Screen Recording"
+        title={t("screencap.title", "Screen Recording")}
         search={
           <div className="qx-rss-detail-title qx-module-title-with-badge">
-            <span>Recording</span>
+            <span>{t("screencap.recording", "Recording")}</span>
             <BetaBadge />
           </div>
         }
         onKeyDown={handleKeyDown}
-        island={{
-          label: status === "processing" ? "Encoding GIF" : "Recording",
-          detail: status === "processing" ? "Processing frames" : formatTime(elapsed),
-          tone: status === "processing" ? "warning" : "danger",
-        }}
+        customIsland={(
+          <RecordingTransport
+            host="main"
+            status={status}
+            elapsedMs={elapsedMs}
+            frameCount={frameCount}
+            onTransfer={handlePopOut}
+            onStop={handleStop}
+          />
+        )}
         escapeAction={{
           label: "Esc",
           kbd: "Esc",
@@ -519,7 +548,7 @@ export default function ScreenRecorder() {
           },
         }}
         primaryAction={{
-          label: status === "processing" ? "Encoding" : "Stop",
+          label: status === "processing" ? t("common.savingShort", "Saving") : t("common.stop", "Stop"),
           disabled: status === "processing",
           tone: status === "processing" ? "normal" : "danger",
           onClick: () => void handleStop(),
@@ -527,9 +556,9 @@ export default function ScreenRecorder() {
         secondaryAction={
           status === "processing"
             ? undefined
-            : { label: "Actions", kbd: actionMenuShortcut }
+            : { label: t("common.actions", "Actions"), kbd: actionMenuShortcut }
         }
-        actionTitle="Recording Actions"
+        actionTitle={t("screencap.actions", "Recording Actions")}
         actions={recordingActions}
       >
         <div className="qx-module-stage" style={{ alignItems: "center", justifyContent: "center", flex: 1, gap: 12 }}>
@@ -544,7 +573,11 @@ export default function ScreenRecorder() {
               }}
             />
             <span style={{ fontSize: 14, fontWeight: 600, color: "var(--qx-text-primary)" }}>
-              {status === "processing" ? "Processing" : "Recording"}
+              {status === "processing"
+                ? t("common.savingShort", "Saving")
+                : status === "error"
+                  ? t("screencap.recordingError", "Recording Error")
+                  : t("screencap.recording", "Recording")}
             </span>
           </div>
           <div
@@ -556,17 +589,19 @@ export default function ScreenRecorder() {
               letterSpacing: 1,
             }}
           >
-            {formatTime(elapsed)}
+            {formatTime(elapsedMs)}
           </div>
           {area && (
             <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
-              Region {area.w} × {area.h} (logical) · primary display
+              {t("screencap.regionSummary", "Region {width} × {height} (logical) · primary display")
+                .replace("{width}", String(area.w))
+                .replace("{height}", String(area.h))}
             </div>
           )}
           <p style={{ fontSize: 12, color: "var(--qx-text-tertiary)", maxWidth: 360, textAlign: "center", margin: 0 }}>
             {status === "processing"
-              ? "Encoding frames to GIF…"
-              : "Qx hid itself so the panel is not in the capture. Summon with your launcher shortcut, then press Stop."}
+              ? t("screencap.finalizingHint", "Finalizing the MP4/MOV container…")
+              : t("screencap.controllerHint", "The floating controller is excluded from capture. You can return here or move control back outside at any time.")}
           </p>
           <button
             onClick={() => void handleStop()}
@@ -574,7 +609,9 @@ export default function ScreenRecorder() {
             className={`qx-command-button${status === "processing" ? "" : " danger"}`}
             style={{ height: 28, padding: "0 12px" }}
           >
-            {status === "processing" ? "Encoding GIF…" : "Stop"}
+            {status === "processing"
+              ? t("screencap.savingVideoProgress", "Saving video…")
+              : t("common.stop", "Stop")}
           </button>
         </div>
       </QxShell>
@@ -586,10 +623,14 @@ export default function ScreenRecorder() {
 
   return (
     <QxShell
-      title="Screen Recording"
+      title={t("screencap.title", "Screen Recording")}
       search={
         <div className="qx-rss-detail-title qx-module-title-with-badge">
-          <span>{showingPreview ? "Recording Preview" : "Screen Recording"}</span>
+          <span>
+            {showingPreview
+              ? t("screencap.previewTitle", "Recording Preview")
+              : t("screencap.title", "Screen Recording")}
+          </span>
           <BetaBadge />
         </div>
       }
@@ -597,20 +638,24 @@ export default function ScreenRecorder() {
       trailing={
         <>
           <button className="qx-command-button primary" onClick={() => void handleStart()} type="button">
-            Start
+            {t("common.start", "Start")}
           </button>
           <button className="qx-command-button" onClick={() => void beginAreaSelect()} type="button">
-            Select Area
+            {t("screencap.selectArea", "Select Area")}
           </button>
         </>
       }
       island={{
-        label: showingPreview ? "GIF Ready" : "Ready to Record",
+        label: showingPreview
+          ? t("screencap.ready", "Recording Ready")
+          : t("screencap.readyToRecord", "Ready to Record"),
         detail: showingPreview
-          ? lastGifPath?.split("/").pop()
+            ? lastGifPath?.split(/[\\/]/).pop()
           : area
-            ? `${area.w}×${area.h} · ${estimatePerMinute(areaPhysical ?? area)}`
-            : "Full primary display",
+            ? `${area.w}×${area.h} · ${recordingOptions.outputFormat.toUpperCase()} · ${recordingOptions.fps} fps`
+            : t("screencap.fullSummary", "Full primary display · {format} · {fps} fps")
+                .replace("{format}", recordingOptions.outputFormat.toUpperCase())
+                .replace("{fps}", String(recordingOptions.fps)),
         tone: showingPreview ? "success" : displayError ? "danger" : "neutral",
       }}
       escapeAction={{
@@ -623,11 +668,11 @@ export default function ScreenRecorder() {
       }}
       primaryAction={
         showingPreview
-          ? { label: "New", kbd: "Enter", tone: "primary", onClick: handleNewRecording }
-          : { label: "Start", kbd: "Enter", tone: "primary", onClick: () => void handleStart() }
+          ? { label: t("common.new", "New"), kbd: "Enter", tone: "primary", onClick: handleNewRecording }
+          : { label: t("common.start", "Start"), kbd: "Enter", tone: "primary", onClick: () => void handleStart() }
       }
-      secondaryAction={{ label: "Actions", kbd: actionMenuShortcut }}
-      actionTitle="Recording Actions"
+      secondaryAction={{ label: t("common.actions", "Actions"), kbd: actionMenuShortcut }}
+      actionTitle={t("screencap.actions", "Recording Actions")}
       actions={showingPreview ? doneActions : readyActions}
     >
       <div
@@ -644,7 +689,7 @@ export default function ScreenRecorder() {
             borderRight: "1px solid var(--qx-border-1)",
           }}
           data-qx-region="screencap-history"
-          data-qx-region-label="Recording history"
+          data-qx-region-label={t("screencap.history.region", "Recording history")}
           data-qx-region-initial="true"
           tabIndex={-1}
         >
@@ -655,7 +700,7 @@ export default function ScreenRecorder() {
           className="qx-plugin-detail"
           style={{ minHeight: 0, overflow: "auto" }}
           data-qx-region="screencap-detail"
-          data-qx-region-label="Recording detail"
+          data-qx-region-label={t("screencap.detail.region", "Recording detail")}
           tabIndex={-1}
         >
           {lastGifPath && (status === "done" || status === "idle") ? (
@@ -663,16 +708,68 @@ export default function ScreenRecorder() {
           ) : (
             <div className="qx-module-stage" style={{ padding: 12, gap: 12 }}>
               <div className="qx-panel-card" style={{ padding: 12 }}>
-                <div className="qx-detail-title" style={{ marginBottom: 6 }}>Configuration</div>
+                <div className="qx-detail-title" style={{ marginBottom: 6 }}>
+                  {t("screencap.configuration", "Configuration")}
+                </div>
                 <div className="qx-detail-meta" style={{ marginBottom: 12 }}>
-                  Capture the primary display (or a region) and encode an animated GIF.
+                  {t("screencap.configurationHint", "Capture the primary display (or a region) directly to H.264 video. Convert to GIF only when you need it.")}
+                </div>
+                <div className="qx-screencap-options">
+                  <label>
+                    <span>{t("screencap.format", "Format")}</span>
+                    <Select
+                      value={recordingOptions.outputFormat}
+                      options={[{ value: "mp4", label: "MP4" }, { value: "mov", label: "MOV" }]}
+                      onChange={(outputFormat) => setRecordingOptions((value) => ({ ...value, outputFormat }))}
+                      ariaLabel={t("screencap.format", "Recording format")}
+                    />
+                  </label>
+                  <label>
+                    <span>{t("screencap.resolution", "Resolution")}</span>
+                    <Select
+                      value={recordingOptions.resolution}
+                      options={[
+                        { value: "720p", label: "720p" },
+                        { value: "1080p", label: "1080p" },
+                        { value: "native", label: t("screencap.native4k", "Native (up to 4K)") },
+                      ]}
+                      onChange={(resolution) => setRecordingOptions((value) => ({ ...value, resolution }))}
+                      ariaLabel={t("screencap.resolution", "Recording resolution")}
+                    />
+                  </label>
+                  <label>
+                    <span>{t("screencap.frameRate", "Frame rate")}</span>
+                    <Select
+                      value={String(recordingOptions.fps) as "15" | "24" | "30"}
+                      options={[
+                        { value: "15", label: "15 fps" },
+                        { value: "24", label: "24 fps" },
+                        { value: "30", label: "30 fps" },
+                      ]}
+                      onChange={(fps) => setRecordingOptions((value) => ({ ...value, fps: Number(fps) as RecordingOptions["fps"] }))}
+                      ariaLabel={t("screencap.frameRate", "Recording frame rate")}
+                    />
+                  </label>
+                  <label>
+                    <span>{t("screencap.quality", "Quality")}</span>
+                    <Select
+                      value={recordingOptions.quality}
+                      options={[
+                        { value: "compact", label: t("screencap.quality.compact", "Compact") },
+                        { value: "balanced", label: t("screencap.quality.balanced", "Balanced") },
+                        { value: "high", label: t("screencap.quality.high", "High") },
+                      ]}
+                      onChange={(quality) => setRecordingOptions((value) => ({ ...value, quality }))}
+                      ariaLabel={t("screencap.quality", "Recording quality")}
+                    />
+                  </label>
                 </div>
                 <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
                   <button onClick={() => void handleStart()} className="qx-command-button primary" type="button">
-                    Start Recording
+                    {t("screencap.start", "Start Recording")}
                   </button>
                   <button onClick={() => void beginAreaSelect()} className="qx-command-button" type="button">
-                    Select Area
+                    {t("screencap.selectArea", "Select Area")}
                   </button>
                   {area && (
                     <LinkButton
@@ -681,19 +778,21 @@ export default function ScreenRecorder() {
                         setAreaPhysical(null);
                       }}
                     >
-                      Clear Area
+                      {t("screencap.clearArea", "Clear Area")}
                     </LinkButton>
                   )}
                 </div>
                 {area ? (
                   <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
-                    Region: {area.w} × {area.h} px (logical)
-                    {areaPhysical ? ` · capture ${areaPhysical.w}×${areaPhysical.h}` : ""}
-                    {" · "}~{estimatePerMinute(areaPhysical ?? area)}
+                    {t("screencap.region", "Region")}: {area.w} × {area.h} px ({t("screencap.logical", "logical")})
+                    {areaPhysical
+                      ? ` · ${t("screencap.capture", "capture")} ${areaPhysical.w}×${areaPhysical.h}`
+                      : ""}
+                    {` · ${recordingOptions.outputFormat.toUpperCase()} · ${recordingOptions.fps} fps`}
                   </div>
                 ) : (
                   <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
-                    Full primary display · Select Area expands over the desktop for a real region pick
+                    {t("screencap.fullSelectHint", "Full primary display · Select Area expands over the desktop for a real region pick")}
                   </div>
                 )}
               </div>
@@ -708,11 +807,14 @@ export default function ScreenRecorder() {
               )}
 
               <div className="qx-panel-card" style={{ padding: 12, fontSize: 12, color: "var(--qx-text-tertiary)", lineHeight: 1.5 }}>
-                <strong style={{ color: "var(--qx-text-secondary)" }}>Tips</strong>
+                <strong style={{ color: "var(--qx-text-secondary)" }}>
+                  {t("screencap.tips", "Tips")}
+                </strong>
                 <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-                  <li>macOS: Screen Recording permission must be granted; restart Qx after enabling.</li>
-                  <li>Recording hides Qx so the panel is not burned into the GIF — summon to Stop.</li>
-                  <li>Click a history item on the left to preview past GIFs.</li>
+                  <li>{t("screencap.tip.permission", "macOS: Screen Recording permission must be granted; restart Qx after enabling.")}</li>
+                  <li>{t("screencap.tip.directVideo", "Recording is written directly to MP4 or MOV without temporary PNG frames.")}</li>
+                  <li>{t("screencap.tip.protected", "The floating controller and the Qx recording panel are excluded from capture.")}</li>
+                  <li>{t("screencap.tip.gif", "Open a completed video and choose Convert to GIF only when needed.")}</li>
                 </ul>
               </div>
             </div>

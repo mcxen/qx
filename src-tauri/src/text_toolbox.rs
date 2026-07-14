@@ -260,9 +260,7 @@ fn resolve_in_workspace(name: &str) -> Result<PathBuf, String> {
     let root = workspace_dir();
     let path = root.join(name.trim());
     // Path must stay under workspace
-    let root_canon = root
-        .canonicalize()
-        .unwrap_or(root.clone());
+    let root_canon = root.canonicalize().unwrap_or(root.clone());
     if let Ok(canon) = path.canonicalize() {
         if !canon.starts_with(&root_canon) {
             return Err("path escapes workspace".to_string());

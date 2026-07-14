@@ -1,6 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
+import { useScreencapStore } from "./store";
+import { Select } from "../../components/ui";
+import { useT } from "../../i18n";
 
 interface Props {
   path: string;
@@ -14,22 +17,34 @@ function formatBytes(n: number): string {
 }
 
 export default function GifPreview({ path, onClose }: Props) {
+  const t = useT();
+  const mediaRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(true);
   const [size, setSize] = useState<number | null>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState(false);
+  const [converting, setConverting] = useState(false);
+  const [gifWidth, setGifWidth] = useState(960);
+  const [gifFps, setGifFps] = useState(12);
+  const { loadHistory, setPreview } = useScreencapStore();
 
   const src = convertFileSrc(path);
-  const fileName = path.split("/").pop() ?? path;
-  const dir = path.substring(0, path.lastIndexOf("/"));
+  const fileName = path.split(/[\\/]/).pop() ?? path;
+  const extension = fileName.split(".").pop()?.toLowerCase() ?? "";
+  const isVideo = extension === "mp4" || extension === "mov";
+  const separatorIndex = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  const dir = path.substring(0, separatorIndex);
+  const pathSeparator = path.lastIndexOf("\\") > path.lastIndexOf("/") ? "\\" : "/";
 
   useEffect(() => {
     setPlaying(true);
     setSize(null);
     setDims(null);
     setStatusMsg(null);
+    setStatusError(false);
     setSaveName("");
     // Get file size via Tauri command — file:// fetch doesn't work in Tauri v2
     invoke<number>("get_file_size", { path })
@@ -41,29 +56,67 @@ export default function GifPreview({ path, onClose }: Props) {
     try {
       await revealItemInDir(path);
     } catch (e) {
-      setStatusMsg(`Reveal failed: ${String(e)}`);
+      setStatusError(true);
+      setStatusMsg(`${t("screencap.preview.revealFailed", "Show in folder failed")}: ${String(e)}`);
     }
   };
 
   const handleSaveAs = async () => {
-    const base = (
-      saveName.trim() ||
-      fileName.replace(/\.gif$/i, "") + "_copy"
-    ).replace(/\.gif$/i, "");
-    const dest = `${dir}/${base}.gif`;
+    const escapedExtension = extension.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const suffix = extension || "mp4";
+    const base = (saveName.trim() || fileName.replace(new RegExp(`\\.${escapedExtension}$`, "i"), "") + "_copy")
+      .replace(new RegExp(`\\.${escapedExtension}$`, "i"), "");
+    const dest = `${dir}${pathSeparator}${base}.${suffix}`;
     setSaving(true);
     setStatusMsg(null);
+    setStatusError(false);
     try {
       await invoke("save_gif", { sourcePath: path, destPath: dest });
-      setStatusMsg(`Saved to ${dest}`);
+      setStatusMsg(`${t("screencap.preview.savedTo", "Saved to")} ${dest}`);
     } catch (e) {
-      setStatusMsg(`Error: ${String(e)}`);
+      setStatusError(true);
+      setStatusMsg(`${t("common.error", "Error")}: ${String(e)}`);
     } finally {
       setSaving(false);
     }
   };
 
-  const isError = statusMsg?.startsWith("Error") || statusMsg?.startsWith("Reveal");
+  const handleConvertGif = async () => {
+    setConverting(true);
+    setStatusError(false);
+    setStatusMsg(t("screencap.preview.converting", "Converting video to GIF…"));
+    try {
+      const gif = await invoke<string>("convert_recording_to_gif", {
+        sourcePath: path,
+        maxWidth: gifWidth,
+        fps: gifFps,
+      });
+      await loadHistory();
+      setPreview(gif);
+      setStatusMsg(`${t("screencap.preview.gifSaved", "GIF saved to")} ${gif}`);
+    } catch (error) {
+      setStatusError(true);
+      setStatusMsg(`${t("common.error", "Error")}: ${String(error)}`);
+    } finally {
+      setConverting(false);
+    }
+  };
+
+  const togglePlayback = () => {
+    if (!isVideo) {
+      setPlaying((value) => !value);
+      return;
+    }
+    const media = mediaRef.current;
+    if (!media) return;
+    if (media.paused) {
+      void media.play();
+      setPlaying(true);
+    } else {
+      media.pause();
+      setPlaying(false);
+    }
+  };
 
   return (
     <div
@@ -87,10 +140,23 @@ export default function GifPreview({ path, onClose }: Props) {
           maxHeight: 240,
         }}
       >
-        {playing ? (
+        {isVideo ? (
+          <video
+            ref={mediaRef}
+            src={src}
+            autoPlay
+            loop
+            muted
+            playsInline
+            onLoadedMetadata={(event) => setDims({ w: event.currentTarget.videoWidth, h: event.currentTarget.videoHeight })}
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            style={{ maxWidth: "100%", maxHeight: 240, display: "block", objectFit: "contain" }}
+          />
+        ) : playing ? (
           <img
             src={src}
-            alt="GIF preview"
+            alt={t("screencap.preview.gifAlt", "GIF preview")}
             onLoad={(e) =>
               setDims({
                 w: e.currentTarget.naturalWidth,
@@ -116,7 +182,9 @@ export default function GifPreview({ path, onClose }: Props) {
               justifyContent: "center",
             }}
           >
-            <span style={{ fontSize: 12, fontWeight: 600 }}>Playback paused</span>
+            <span style={{ fontSize: 12, fontWeight: 600 }}>
+              {t("screencap.preview.paused", "Playback paused")}
+            </span>
           </div>
         )}
       </div>
@@ -130,8 +198,8 @@ export default function GifPreview({ path, onClose }: Props) {
           color: "var(--qx-text-secondary)",
         }}
       >
-        <button onClick={() => setPlaying((p) => !p)} style={toggleBtn}>
-          {playing ? "Pause" : "Play"}
+        <button onClick={togglePlayback} style={toggleBtn}>
+          {playing ? t("common.pause", "Pause") : t("common.play", "Play")}
         </button>
         <span>{dims ? `${dims.w} × ${dims.h} px` : "—"}</span>
         <span>{size !== null ? formatBytes(size) : "—"}</span>
@@ -148,12 +216,49 @@ export default function GifPreview({ path, onClose }: Props) {
         </span>
       </div>
 
+      {isVideo && (
+        <div className="qx-screencap-convert-row">
+          <strong>{t("screencap.preview.convert", "Convert to GIF")}</strong>
+          <label>
+            {t("screencap.preview.width", "Width")}
+            <Select
+              value={String(gifWidth) as "640" | "960" | "1280"}
+              options={[
+                { value: "640", label: "640 px" },
+                { value: "960", label: "960 px" },
+                { value: "1280", label: "1280 px" },
+              ]}
+              onChange={(value) => setGifWidth(Number(value))}
+              ariaLabel={t("screencap.preview.gifWidth", "GIF width")}
+            />
+          </label>
+          <label>
+            {t("screencap.preview.speed", "Speed")}
+            <Select
+              value={String(gifFps) as "8" | "12" | "15"}
+              options={[
+                { value: "8", label: "8 fps" },
+                { value: "12", label: "12 fps" },
+                { value: "15", label: "15 fps" },
+              ]}
+              onChange={(value) => setGifFps(Number(value))}
+              ariaLabel={t("screencap.preview.gifFps", "GIF frame rate")}
+            />
+          </label>
+          <button onClick={() => void handleConvertGif()} disabled={converting} style={primaryBtn}>
+            {converting
+              ? t("screencap.preview.convertingShort", "Converting…")
+              : t("screencap.preview.createGif", "Create GIF")}
+          </button>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <input
           type="text"
           value={saveName}
           onChange={(e) => setSaveName(e.target.value)}
-          placeholder="filename…"
+          placeholder={t("screencap.preview.filename", "filename…")}
           style={{
             flex: 1,
             height: 28,
@@ -167,13 +272,13 @@ export default function GifPreview({ path, onClose }: Props) {
           }}
         />
         <button onClick={handleSaveAs} disabled={saving} style={primaryBtn}>
-          {saving ? "Saving…" : "Save As…"}
+          {saving ? t("common.saving", "Saving…") : t("screencap.preview.saveAs", "Save As…")}
         </button>
         <button onClick={handleReveal} style={secondaryBtn}>
-          Reveal in Finder
+          {t("screencap.preview.showInFolder", "Show in Folder")}
         </button>
         <button onClick={onClose} style={ghostBtn}>
-          New
+          {t("common.new", "New")}
         </button>
       </div>
 
@@ -181,7 +286,7 @@ export default function GifPreview({ path, onClose }: Props) {
         <div
           style={{
             fontSize: 11,
-            color: isError ? "var(--qx-danger)" : "var(--qx-text-tertiary)",
+            color: statusError ? "var(--qx-danger)" : "var(--qx-text-tertiary)",
             wordBreak: "break-all",
           }}
         >

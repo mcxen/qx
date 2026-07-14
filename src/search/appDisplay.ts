@@ -10,6 +10,7 @@ const MODULE_LABELS_ZH: Record<string, string> = {
   "qx-ai": "QxAI",
   macros: "宏录制",
   documents: "文本工具箱",
+  "qx-tty": "QxTTY",
   settings: "设置",
 };
 
@@ -32,6 +33,7 @@ const MODULE_SURFACE_LABELS_ZH: Record<string, string> = {
   "documents:clean": "文本清理",
   "documents:markdown": "Markdown 摘要",
   "documents:json": "格式化 JSON",
+  "qx-tty:root": "QxTTY",
 };
 
 function moduleSurfaceForEntry(item: AppEntry): string | null {

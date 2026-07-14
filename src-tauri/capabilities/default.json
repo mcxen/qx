@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "description": "Capability for the main window and protected recording controller",
+  "windows": ["main", "recording-controls"],
   "permissions": [
     "core:default",
     "opener:default",
@@ -27,6 +27,7 @@
     "core:window:allow-inner-size",
     "core:window:allow-outer-position",
     "core:window:allow-scale-factor",
+    "core:window:allow-start-dragging",
     "core:window:allow-toggle-maximize",
     "core:path:default",
     "core:path:allow-resolve-directory",

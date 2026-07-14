@@ -70,7 +70,8 @@ export type BuiltinTab =
   | "weather"
   | "settings"
   | "macros"
-  | "documents";
+  | "documents"
+  | "qx-tty";
 export type Tab = BuiltinTab | string;
 export type SearchScope = "all" | "apps" | "files" | "clipboard";
 export type LoadingPhase = "loading-apps" | "ready" | "loading-background";

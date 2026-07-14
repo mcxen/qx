@@ -394,6 +394,7 @@ impl Default for ModuleSearchSettings {
             "documents",
             "weather",
             "v2ex",
+            "qx-tty",
         ] {
             modules.insert(id.to_string(), true);
         }
@@ -506,11 +507,16 @@ fn default_quick_entries() -> Vec<QuickEntryConfig> {
         ("clipboard", "Clipboard History", "Pinned, frequent, links"),
         ("qx-ai", "QxAI", "Chat and agent tasks"),
         ("rss", "RSS Reader", "Feeds and articles"),
-        ("screencap", "Screen Recording", "GIF capture"),
+        (
+            "screencap",
+            "Screen Recording",
+            "MP4/MOV capture with optional GIF conversion",
+        ),
         ("v2ex", "V2EX", "Latest and hot topics"),
         ("weather", "Weather", "Current conditions and forecast"),
         ("documents", "Documents", "Text, Markdown, JSON"),
         ("macros", "Macro Recorder", "Record and replay actions"),
+        ("qx-tty", "QxTTY", "Persistent local terminal sessions"),
         ("settings", "Settings", "Appearance and plugins"),
     ]
     .into_iter()

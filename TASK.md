@@ -1,5 +1,35 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Refactor — 直接视频录屏与受保护悬浮控制台
+
+**状态**：已实现，macOS 构建、核心编码测试与启动烟雾通过；等待 Windows CI 和双平台手动录屏验证。
+
+### 重构内容
+
+- 修复 `scrap` 帧缓冲行填充被当作紧密 RGBA 数据的问题；Retina / 高 DPI 帧现在按真实 stride 逐行转换。
+- 录屏不再逐帧写临时 PNG、停止后再集中编码 GIF；改为录制时由内置 OpenH264 直接编码 H.264，并持续封装为 MP4（默认）或 MOV。
+- 用户可设置输出格式、720p / 1080p / 原始分辨率、15 / 24 / 30 fps 和紧凑 / 均衡 / 高画质；设置保存在本机。
+- 录制时间轴使用真实帧间隔，即使编码负载导致掉帧也不会把视频快放。
+- 录制完成后的预览支持 MP4 / MOV 播放，并提供独立的 GIF 宽度与帧率转换选项；GIF 转换在阻塞工作线程执行。
+- 新增 Rust 共享录制状态、帧计数和 `screencap:state` 事件，主 QxShell 与独立 WebView 控制台读取同一状态。
+- 录制默认停留在主界面灵动岛；同一套 340×36 控制条可通过轻量收缩淡出在主界面与独立、置顶、跨 DPI 定位的悬浮窗口之间双向迁移，状态与操作位置保持一致。
+- 主窗口和悬浮控制台在录制期间启用 Tauri 内容保护（macOS `NSWindowSharingNone` / Windows capture exclusion），避免控制界面进入录制画面。
+- 录屏停止/封装保持在 `spawn_blocking` / 专用线程；主窗口、搜索与快捷键响应链不承担编码工作。
+- 输出清理、Launcher 文案、模块搜索关键词、权限说明和中英文 UI 已从“GIF 录制”更新为“视频录制，可选转 GIF”。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [x] `cargo test --lib`（34 个测试通过；新增 stride、偶数分辨率、AVCC/Annex-B 与真实 H.264→MP4 mux 测试）
+- [x] `npm run tauri -- build --debug --no-bundle`
+- [x] 本地 `target/debug/qx` 启动烟雾，Rust 后台进程保持运行、无启动闪退。
+- [x] 完整 `cargo fmt --check`（包含既有 `text_toolbox.rs` 格式修正）。
+- [x] `npm run tauri -- build --target aarch64-apple-darwin --bundles app`。
+- [ ] Windows Compatibility Action：`cargo check --target x86_64-pc-windows-msvc` 与 NSIS bundle build。
+- [ ] macOS / Windows 手动验证：全屏与选区录制、悬浮控制台不进入画面、返回 Qx / 再次悬浮、MP4/MOV 播放、GIF 转换与混合 DPI 定位。
+
 ## Feature — Beta 内置模块标识与按需禁用
 
 **状态**：已实现，等待静态与手动验证。

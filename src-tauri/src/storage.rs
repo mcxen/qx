@@ -276,7 +276,7 @@ fn build_storage_overview() -> StorageOverview {
         clearable: true,
     };
 
-    // Files: GIF/PNG output folder.
+    // Files: screenshot and screen-recording output folder.
     let files_path = output_files_dir();
     let (files_bytes, files_count) = measure(&files_path, &mut warnings);
     let files = StorageBucket {
@@ -420,7 +420,12 @@ fn clear_files_sync() -> Result<StorageClearResult, String> {
             let is_qx_file = path
                 .extension()
                 .and_then(|ext| ext.to_str())
-                .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "png" | "gif"))
+                .map(|ext| {
+                    matches!(
+                        ext.to_ascii_lowercase().as_str(),
+                        "png" | "gif" | "mp4" | "mov"
+                    )
+                })
                 .unwrap_or(false);
             if !is_qx_file || !path.is_file() {
                 continue;

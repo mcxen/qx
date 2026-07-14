@@ -1,4 +1,4 @@
-import { Row } from "../components/ui";
+import { Row, Slider } from "../components/ui";
 import { useT } from "../i18n";
 import type { AppearanceSettings } from "../modules/settings/store";
 import { ensureHomeIslandCatalog } from "./catalog";
@@ -128,18 +128,18 @@ export default function HomeIslandSettings({
           )}
         >
           <div className="qx-home-island-rotate">
-            <input
-              type="range"
+            <Slider
               min={0}
               max={30}
               step={1}
               value={rotateSecs}
-              onChange={(e) =>
+              onChange={(value) =>
                 patchAppearance({
-                  home_island_rotate_secs: Number(e.target.value) || 0,
+                  home_island_rotate_secs: value || 0,
                 })
               }
-              aria-label={t("appearance.homeIsland.rotate", "Auto rotate")}
+              ariaLabel={t("appearance.homeIsland.rotate", "Auto rotate")}
+              formatLabel={(value) => `${value}s`}
             />
             <span className="qx-home-island-rotate-value">
               {rotateSecs <= 0

@@ -7,6 +7,7 @@ export const BUILTIN_MODULE_CATALOG = {
   weather: { maturity: "beta", userDisableable: true },
   documents: { maturity: "stable", userDisableable: false },
   macros: { maturity: "beta", userDisableable: true },
+  "qx-tty": { maturity: "stable", userDisableable: false },
 } as const;
 
 export type BuiltinModuleId = keyof typeof BUILTIN_MODULE_CATALOG;

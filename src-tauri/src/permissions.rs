@@ -112,7 +112,7 @@ pub fn qx_permissions_status() -> Result<Vec<MacPermissionStatus>, String> {
             permission(
                 "screen-recording",
                 "Screen Recording",
-                "Required for GIF screen recording.",
+                "Required for MP4/MOV screen recording.",
                 screen_recording_granted(),
                 SCREEN_RECORDING_SETTINGS,
             ),

@@ -1,8 +1,9 @@
 import { useScreencapStore } from "./store";
+import { useLocale, useT } from "../../i18n";
 
-function formatTimestamp(ts: number): string {
+function formatTimestamp(ts: number, locale: string): string {
   const d = new Date(ts * 1000);
-  return d.toLocaleString(undefined, {
+  return d.toLocaleString(locale, {
     month: "short",
     day: "numeric",
     hour: "2-digit",
@@ -19,6 +20,8 @@ function formatDuration(ms: number): string {
 }
 
 export default function GifHistory() {
+  const t = useT();
+  const locale = useLocale();
   const { history, lastGifPath, setPreview, deleteEntry, clearHistory } =
     useScreencapStore();
 
@@ -33,7 +36,7 @@ export default function GifHistory() {
         }}
       >
         <div className="qx-section-header">
-          <span style={{ flex: 1 }}>History</span>
+          <span style={{ flex: 1 }}>{t("screencap.history", "History")}</span>
         </div>
         <div
           style={{
@@ -47,9 +50,9 @@ export default function GifHistory() {
           }}
         >
           <div style={{ color: "var(--color-text-tertiary)", fontSize: 13 }}>
-            No recordings yet.
+            {t("screencap.history.empty", "No recordings yet.")}
             <br />
-            Start a capture to see GIFs here.
+            {t("screencap.history.emptyHint", "Start a capture to see videos here.")}
           </div>
         </div>
       </div>
@@ -68,7 +71,7 @@ export default function GifHistory() {
       data-qx-region-scroll
     >
       <div className="qx-section-header">
-        <span style={{ flex: 1 }}>History</span>
+        <span style={{ flex: 1 }}>{t("screencap.history", "History")}</span>
         <span style={{ marginRight: 8 }}>{history.length}</span>
         <button
           type="button"
@@ -82,7 +85,7 @@ export default function GifHistory() {
             padding: 0,
           }}
         >
-          Clear All
+          {t("screencap.history.clear", "Clear All")}
         </button>
       </div>
       {history.map((entry) => {
@@ -126,7 +129,7 @@ export default function GifHistory() {
                 }}
               >
                 {entry.width}×{entry.height} · {formatDuration(entry.duration_ms)} ·{" "}
-                {formatTimestamp(entry.created_at)}
+                {formatTimestamp(entry.created_at, locale)}
               </div>
             </div>
             <span
@@ -142,7 +145,7 @@ export default function GifHistory() {
                   void deleteEntry(entry.id);
                 }
               }}
-              title="Delete"
+              title={t("common.delete", "Delete")}
               style={{
                 color: "var(--qx-text-tertiary)",
                 fontSize: 12,
@@ -150,7 +153,7 @@ export default function GifHistory() {
                 flexShrink: 0,
               }}
             >
-              Delete
+              {t("common.delete", "Delete")}
             </span>
           </button>
         );

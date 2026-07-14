@@ -1,6 +1,6 @@
 [package]
 name = "qx"
-version = "0.5.15"
+version = "0.5.16"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -39,6 +39,9 @@ tokio = { version = "1", features = ["rt", "macros"] }
 quick-xml = "0.36"
 scrap = "0.5"
 gifski = "1.34"
+openh264 = "0.9.7"
+mp4 = "0.14"
+bytes = "1"
 zip = "2"
 rdev = "0.5"
 enigo = { version = "0.2", features = ["wayland"] }
@@ -50,6 +53,7 @@ urlencoding = "2"
 pinyin = "0.10"
 base64 = "0.22"
 regex = "1"
+portable-pty = "0.9"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
