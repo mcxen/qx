@@ -1,4 +1,5 @@
 import type { AppEntry } from "../store";
+import { useT } from "../i18n";
 import { getLauncherActionTitle } from "./launcherActions";
 import type { LauncherAction } from "./types";
 
@@ -15,7 +16,8 @@ export default function LauncherActionPopover({
   onHover: (index: number) => void;
   onRun: (action: LauncherAction) => void;
 }) {
-  const title = getLauncherActionTitle(selectedItem);
+  const t = useT();
+  const title = getLauncherActionTitle(selectedItem, t);
 
   return (
     <div className="qx-actions-popover" role="menu" aria-label={title}>

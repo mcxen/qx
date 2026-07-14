@@ -551,7 +551,6 @@ export default function ArticleList() {
       className="qx-content-shell qx-rss-shell"
       style={shellStyle}
       onKeyDown={onKeyDown}
-      onBack={goBack}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
       search={
         <div className="qx-search-wrap">

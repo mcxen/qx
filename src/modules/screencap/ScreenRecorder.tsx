@@ -235,6 +235,15 @@ export default function ScreenRecorder() {
         search={<div className="qx-rss-detail-title">Recording Complete</div>}
         trailing={<button className="qx-command-button" onClick={handleNewRecording}>New</button>}
         island={{ label: "GIF Ready", detail: lastGifPath.split("/").pop(), tone: "success" }}
+        escapeAction={{
+          label: "Esc",
+          kbd: "Esc",
+          onClick: () => {
+            if (isRecording) void stopRecording();
+            reset();
+            setTab("launcher");
+          },
+        }}
         primaryAction={{ label: "New", onClick: handleNewRecording }}
         onKeyDown={handleKeyDown}
       >
@@ -254,6 +263,15 @@ export default function ScreenRecorder() {
           label: status === "processing" ? "Encoding GIF" : "Recording",
           detail: status === "processing" ? "Processing frames" : formatTime(elapsed),
           tone: status === "processing" ? "warning" : "danger",
+        }}
+        escapeAction={{
+          label: "Esc",
+          kbd: "Esc",
+          onClick: () => {
+            if (isRecording) void stopRecording();
+            reset();
+            setTab("launcher");
+          },
         }}
         primaryAction={{
           label: status === "processing" ? "Encoding" : "Stop",
@@ -346,6 +364,15 @@ export default function ScreenRecorder() {
       island={{
         label: "Ready to Record",
         detail: area ? `${area.w} x ${area.h} px · ${estimatePerMinute(area)}` : "Full screen",
+      }}
+      escapeAction={{
+        label: "Esc",
+        kbd: "Esc",
+        onClick: () => {
+          if (isRecording) void stopRecording();
+          reset();
+          setTab("launcher");
+        },
       }}
       primaryAction={{ label: "Start", onClick: handleStart }}
       secondaryAction={{ label: "Area", onClick: beginAreaSelect }}

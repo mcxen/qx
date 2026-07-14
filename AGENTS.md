@@ -120,23 +120,33 @@ dependencies. Provide a deliberate fallback for other targets when practical.
 
 ## Esc Protocol
 
-Every openable module must use `useEscBack` for cascading Esc:
+Full rules live in `UI_SPEC.md` (Bottom Bar + Interaction). Summary for agents:
+
+- Visible return is **only** bottom-left Esc via `escapeAction`. Do not pass
+  `onBack` to `QxShell` (that draws a legacy top-left chevron).
+- Keyboard cascade uses `useEscBack`:
 
 1. `inner`: close detail, preview, popover, output view, or other internal state.
 2. `query`: clear module-local search text.
-3. `launcher`: close current module and return to launcher.
+3. `launcher`: leave module / return to parent view (same target as `escapeAction.onClick`).
 
 Example:
 
 ```ts
+const goBack = () => setTab("launcher");
 const { onKeyDown } = useEscBack({
   inner: { active: showDetail, close: () => setShowDetail(false) },
   query: { active: !!localQuery, clear: () => setLocalQuery("") },
-  launcher: props.onBack,
+  launcher: goBack,
 });
+
+// on QxShell:
+// escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
+// onKeyDown={onKeyDown}
 ```
 
 Do not copy Esc listeners into modules. Add new sub-states to the `inner` layer.
+Do not use both `onBack` and `escapeAction` on the same shell.
 
 ## QxShell Keyboard Protocol
 

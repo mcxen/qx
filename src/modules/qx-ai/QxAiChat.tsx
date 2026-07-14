@@ -116,8 +116,6 @@ export default function QxAiChat() {
       title={conv?.name ?? "AI Chat"}
       className="qx-qxai-chat-shell"
       onKeyDown={onKeyDown}
-      onBack={() => setView("list")}
-      backLabel="Conversations"
       search={
         <div className="qx-search-wrap">
           <span className="qx-search-icon" aria-hidden="true" />

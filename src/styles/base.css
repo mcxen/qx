@@ -30,8 +30,12 @@
   --radius: var(--qx-control-radius);
   --qx-font-size: 14px;
   --qx-shell-gap: 16px;
-  --qx-topbar-h: clamp(64px, 11vh, 92px);
-  --qx-bottom-bar-h: clamp(46px, 5.8vh, 56px);
+  /* Shared horizontal inset for topbar + bottombar so chrome content lines up. */
+  --qx-shell-chrome-x: 14px;
+  --qx-shell-topbar-gap: 8px;
+  /* Top/bottom chrome share similar thickness (was up to 92px vs 56px bottom). */
+  --qx-topbar-h: clamp(48px, 6vh, 54px);
+  --qx-bottom-bar-h: clamp(46px, 5.8vh, 54px);
   --qx-context-w: clamp(240px, 28vw, 340px);
   --qx-search-min-w: 220px;
 

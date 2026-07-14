@@ -1,5 +1,7 @@
 # 前端子系统总览
 
+> 状态：Current · 适用版本：v0.5.6 · Owner：Frontend · 最后复核：2026-07-14
+
 Qx 前端是 React 19 + Zustand + Tauri v2 API + shadcn 组件。入口 `src/main.tsx` → `App.tsx`。本文件描述各子系统的边界与关键文件；组件视觉规范另见 [UI_SPEC.md](../UI_SPEC.md)、[docs/settings-panel.md](./settings-panel.md)。
 
 ## 目录结构
@@ -7,31 +9,33 @@ Qx 前端是 React 19 + Zustand + Tauri v2 API + shadcn 组件。入口 `src/mai
 ```
 src/
 ├─ App.tsx                # 顶层 shell、tab 切换、IPC 事件监听、doSearch orchestration
-├─ Launcher.tsx           # launcher shell（顶栏 + 结果 + 底部灵动岛）
+├─ Launcher.tsx           # launcher shell；空闲 island 只调 home-island.resolve
 ├─ SearchBar.tsx          # 顶部搜索框，controlled input
 ├─ ResultsList.tsx        # 结果列表（含 loading skeleton）
-├─ ThemeProvider.tsx      # data-theme + .dark 同步
+├─ ThemeProvider.tsx      # data-theme + .dark 同步；theme=system 跟 OS
 ├─ store.ts               # 全局 Zustand store：query、results、selectedIndex、loadingPhase、appsReady
-├─ i18n.ts                # useT + 键平铺字典
+├─ i18n.ts                # useT / useLocale / system 语言解析
+├─ home-island/           # Launcher 空闲灵动岛（注册表 + 异步数据总线）
+│  ├─ registry.ts / catalog.ts / resolve.ts
+│  ├─ HomeIslandSettings.tsx
+│  ├─ data/bus.ts + hooks.ts   # 非阻塞 metrics
+│  └─ modes/              # 各模式 UI + Definition
 ├─ components/            # 通用组件（ui.tsx 是 shadcn re-export）
 ├─ launcher/              # launcher 私有子系统
-│  ├─ LauncherContext.tsx # 右侧 context aside（Quick Entries、最近启动、最近搜索、alias tag 编辑）
-│  ├─ QuickEntryIcons.tsx # 顶栏右侧 quick entry 图标按钮（v0.4.42）
+│  ├─ LauncherContext.tsx # 右侧 context aside
 │  ├─ launcherActions.ts  # 结果项的 Actions Menu 内容
-│  ├─ useLauncherHistory.ts # 拉最近历史，去重后暴露给 context
-│  ├─ quickEntries.ts     # QUICK_ENTRY_TARGETS 静态表 + sanitize + toLauncherQuickEntries
+│  ├─ useLauncherHistory.ts
+│  ├─ quickEntries.ts
 │  └─ types.ts
 ├─ search/
-│  ├─ appDisplay.ts       # display_name / pinyin 显示 hook
-│  ├─ searchMetadata.ts   # alias / tag 存储（每个 app path 一份）
-│  └─ calculator.ts       # ":=" 前缀触发的即时计算
-├─ modules/               # 各功能面板；每个子目录是一个可懒加载模块
-│  ├─ clipboard/  qx-ai/  rss/  screencap/  macros/  v2ex/
-│  │  weather/  documents/  github-calendar/  settings/
+│  ├─ appDisplay.ts       # display_name hook（跟 useLocale）
+│  ├─ searchMetadata.ts
+│  └─ calculator.ts
+├─ modules/               # 可懒加载功能面板
 ├─ plugin/                # 插件运行时（见 docs/plugin-architecture.md）
 ├─ hooks/                 # useEscBack、usePanelKeyWindow
 ├─ utils/                 # keyboard、sanitize-html
-└─ styles/                # 全部 CSS；base.css 是 token；shell.css、select.css 是核心
+└─ styles/                # base.css token；shell.css chrome
 ```
 
 ## 状态管理
@@ -77,44 +81,84 @@ Zustand 单 store（`store.ts`）保存 launcher 强共享状态：
 
 ## Loading 与灵动岛
 
-`Launcher.tsx:69-94` 将 `loadingPhase` + `isSearching` + `pluginIsland` + `results.length` 综合为一个 `BottomIslandContent`：
+### 任务态 shell island
 
-- `loading-apps` → "Loading apps..." + bounce
-- 搜索中 → "Searching" + query + bounce + 3 点脉冲（v0.4.42）
-- 插件 status → 插件自己 emit 的 `pluginIsland`
-- 有结果 → "Search ready" + count + progress bar
-- 空态 + 用户选了 date/system island 模式 → 显示 `HomeDateIsland` / `HomeSystemIsland`
-- 其它空态 → "Qx Launcher / Type to search"
+`Launcher.tsx` 按优先级合成 `BottomIslandContent`（QxShell `island` prop）：
 
-`QxBottomIsland` 组件里 `activity` 只是给 label 加 pulse + 显示 curve/dots。progress 则完全独立的 2px 条。
+1. `loading-apps` → Loading apps + bounce
+2. 搜索中 / settling → Searching + query + bounce
+3. `pluginIsland` → 插件 status
+4. 有结果 → Search ready + count
+5. **空闲** → `resolveHomeIsland(...).shellContent`（仅 `kind: "shell"` 模式，如 default）
+
+空闲且模式为 `custom` 时，用 `customIsland={resolveHomeIsland(...).customNode}`。
+
+`QxBottomIsland`：`activity` 控制 pulse / curve；`progress` 是独立 2px 条。
+
+### Home Island 模块（`src/home-island/`）
+
+可插拔空闲 HUD。Launcher / Appearance **不得**硬编码模式列表。
+
+| API | 用途 |
+|---|---|
+| `registerHomeIsland(def)` | 注册模式 |
+| `listHomeIslands()` | 设置卡片 |
+| `normalizeHomeIslandMode(id)` | 未知 id → 默认 |
+| `resolveHomeIsland(appearance, t)` | idle 渲染决策 |
+| `HomeIslandSettings` | 外观页卡片 + 可选 Settings 行 |
+
+`HomeIslandDefinition`：`id`、`order`、文案 key、`preview`、`kind: "shell" | "custom"`、`Component?`、`Settings?`。
+
+内置：`default` · `system` · `date` · `pulse` · `core` · `orbit`。扩展步骤见 `src/home-island/README.md`。
+
+### 异步数据总线（强制非阻塞）
+
+路径：`src/home-island/data/bus.ts`。
+
+```text
+modes ──useIsland*──► bus（interest + cache）
+                         │
+            requestIdleCallback / interval
+                         │
+              invoke → Rust spawn_blocking
+```
+
+规则：
+
+- **禁止**在组件 render 中同步等待 IPC。
+- 首屏占位 `--`；数据到达后再更新。
+- 首次采样 idle 调度；`document.hidden` 暂停。
+- channel 兴趣计数 + in-flight 去重；`stats` 由 System/Orbit 共享。
+- Hooks：`useIslandStats` / `useIslandPower` / `useIslandNet` / `useIslandData`。
+- 样式 token：`--qx-system-island-*`、`--qx-stats-*`（跟主题 Light/Dark/System）。
+
+Rust 侧：`get_system_stats`、`qx_system_monitor_network_counters`、`qx_system_monitor_power` 均 `spawn_blocking`，不堵 async runtime。
 
 ## i18n
 
-`src/i18n.ts` 是一个平铺 key → { zh, en } 字典。用法：
+`src/i18n.ts`：
 
-```tsx
-const t = useT();
-<h1>{t("launcher.title", "Qx Launcher")}</h1>;
-```
+- `useT(key, englishFallback)` — zh 表覆盖，en 用 fallback
+- `useLocale()` — **已解析** `"en" | "zh-CN"`
+- `useLanguagePreference()` — 设置原值 `"system" | "en" | "zh-CN"`
+- `resolveLocale` / `detectSystemLocale` — system 仅简体中文 → zh-CN，其余 en
 
-第二个参数是英文 fallback，永远存在。语言由 `useSettingsStore().settings.language` 控制（`"zh" | "en" | "system"`）。
+快捷键 `kbd` / `formatQxShortcut` **不**经 `t()`。应用显示名用 `useDisplayName()`（zh-CN 优先 `display_name`）。
+
+## 主题
+
+`ThemeProvider`：`light | dark | system`。`system` 监听 `prefers-color-scheme`，同步 `data-theme` + `.dark`。灵动岛与 Shell 只用 CSS 变量，自动跟主题。
 
 ## 键盘协议
 
-Esc 处理有严格优先级，见 [AGENTS.md](../AGENTS.md) 的 Esc protocol 一节；`hooks/useEscBack.ts` 是唯一入口。
+Esc 处理见 [AGENTS.md](../AGENTS.md) / [UI_SPEC.md](../UI_SPEC.md)；`hooks/useEscBack.ts` + QxShell `escapeAction`。
 
-- 弹窗打开 → 关弹窗
-- 输入框有值 → 清空
-- 在 module tab → 回 launcher
-- 在 launcher → hide panel（Rust `floating_hide_restore_focus`）
+- 弹窗 / Actions 菜单优先
+- 模块 `useEscBack` 级联
+- Shell 兜底触发 `escapeAction.onClick`
+- Launcher 根视图无离开模块的 Esc；hide 走 Rust floating
 
-`Cmd+K` 打开 Actions Menu（仅由当前获得键盘事件的 `QxShell` 内部 handle，
-不会注册成系统全局快捷键）。Actions Menu 使用独立索引，不改变当前内容区域、
-列表选中项或阅读滚动位置。
-
-内容区用 `data-qx-region` 声明键盘区域：左右键切换列表、正文和操作区；
-`data-qx-region-scroll` 声明阅读滚动容器，由 QxShell 统一处理方向键、
-Page Up/Down、Space、Home 和 End。隐藏区域不参与切换。
+`Cmd/Ctrl+K` 仅当前 Shell 事件链。`data-qx-region` 区域导航。
 
 ## Plugin Runtime（简述）
 
@@ -131,10 +175,20 @@ Page Up/Down、Space、Home 和 End。隐藏区域不参与切换。
 `src/styles/` 下的 CSS 都是全局的（没有 CSS Modules）。命名规则 `qx-<component>-<part>-<state>`：
 
 - `qx-shell` / `qx-shell-topbar` / `qx-shell-bottombar`
-- `qx-bottom-island` / `qx-bottom-island-label` / `.is-activity-exiting`
-- `qx-shadcn-<component>` — 是从 shadcn primitives 映射来的样式，比如 `qx-shadcn-input`
+- `qx-bottom-island` / `qx-home-system-island` / `qx-home-sci-island`
+- `qx-shadcn-<component>`
 
-设计 token 全部在 `base.css`：`--qx-accent`、`--qx-border-1`、`--qx-bg-component-1/2/3`、`--qx-text-primary/secondary/tertiary`、`--qx-radius`、`--qx-card-radius`、`--qx-shell-*-opacity-effective` 等。改颜色/间距一定要用 token，别硬编码 hex。
+Chrome 尺寸（上下栏厚度接近）：
+
+```css
+--qx-shell-chrome-x: 14px;
+--qx-topbar-h: clamp(48px, 6vh, 54px);
+--qx-bottom-bar-h: clamp(46px, 5.8vh, 54px);
+```
+
+Top / Bottom 水平 inset 必须共用 `--qx-shell-chrome-x`。Topbar 内搜索约 36px 高。
+
+设计 token 在 `base.css`：`--qx-accent`、`--qx-border-*`、`--qx-bg-component-*`、`--qx-text-*`、`--qx-system-island-*`、`--qx-stats-*` 等。改颜色/间距用 token，禁止硬编码 hex。
 
 ## 与 Rust 的边界
 
@@ -149,8 +203,15 @@ Page Up/Down、Space、Home 和 End。隐藏区域不参与切换。
 
 1. `src/modules/<name>/` 建目录，至少：`store.ts`、`<Name>Panel.tsx`
 2. `store.ts` 用 zustand `create` 独立管理该模块状态
-3. Panel 用 `<QxShell>` 包裹，接入底部灵动岛
+3. Panel 用 `<QxShell>` + `escapeAction` + `useEscBack`；文案走 `useT`
 4. `App.tsx` 加入 `React.lazy` 引用和 tab 分支
-5. 若需要托盘 quick entry，`src/launcher/quickEntries.ts::QUICK_ENTRY_TARGETS` 加一行
-6. i18n key 补全 zh/en
-7. 更新 [`docs/technical-architecture.md`](./technical-architecture.md) 的 module 清单
+5. 若需要 quick entry，`quickEntries.ts` + i18n
+6. 更新 technical-architecture module 清单
+
+## 添加 Home Island 模式
+
+1. `src/home-island/modes/FooIsland.tsx` + `fooMode.tsx`
+2. `catalog.ts` → `registerHomeIsland(fooHomeIsland)`
+3. 需要系统指标时用 `useIsland*` 或扩展 `data/bus.ts` channel（禁止组件内阻塞轮询）
+4. i18n title/hint keys
+5. 详见 `src/home-island/README.md` 与 [UI_SPEC.md](../UI_SPEC.md) Home Island 节

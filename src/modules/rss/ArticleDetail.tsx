@@ -240,7 +240,6 @@ export default function ArticleDetail() {
       ref={shellRef}
       title={feed?.title || "RSS Detail"}
       onKeyDown={onKeyDown}
-      onBack={goBack}
       overlayBottom
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
       search={

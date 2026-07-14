@@ -1,24 +1,27 @@
 import { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 
-import { Matrix, digits, emptyFrame, type Frame } from "./Matrix";
+import { useLocale, type Locale } from "../../i18n";
+import { Matrix, digits, emptyFrame, type Frame } from "../../components/Matrix";
 
-function formatTime(date: Date): string {
-  return new Intl.DateTimeFormat("zh-CN", {
+function formatTime(date: Date, locale: Locale): string {
+  return new Intl.DateTimeFormat(locale, {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
   }).format(date);
 }
 
-function formatSolarDate(date: Date): string {
-  return new Intl.DateTimeFormat("zh-CN", {
+function formatSolarDate(date: Date, locale: Locale): string {
+  return new Intl.DateTimeFormat(locale, {
     month: "2-digit",
     day: "2-digit",
     weekday: "short",
   }).format(date);
 }
 
-function formatLunarDate(date: Date): string {
+function formatLunarDate(date: Date, locale: Locale): string {
+  // Lunar calendar is a Chinese-UI affordance only.
+  if (locale !== "zh-CN") return "";
   try {
     return new Intl.DateTimeFormat("zh-CN-u-ca-chinese", {
       month: "long",
@@ -71,6 +74,7 @@ function buildTimeFrame(hhmm: string, colonOn: boolean): { frame: Frame; cols: n
 }
 
 export default function HomeDateIsland() {
+  const locale = useLocale();
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
@@ -80,11 +84,11 @@ export default function HomeDateIsland() {
 
   const parts = useMemo(
     () => ({
-      time: formatTime(now),
-      solar: formatSolarDate(now),
-      lunar: formatLunarDate(now),
+      time: formatTime(now, locale),
+      solar: formatSolarDate(now, locale),
+      lunar: formatLunarDate(now, locale),
     }),
-    [now],
+    [now, locale],
   );
 
   const colonOn = now.getSeconds() % 2 === 0;

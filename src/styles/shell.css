@@ -67,7 +67,8 @@
   min-height: var(--qx-topbar-h);
   max-height: var(--qx-topbar-h);
   overflow: visible;
-  padding: 12px 16px;
+  /* Horizontal inset matches bottombar; keep vertical padding tight so bar stays slim. */
+  padding: 6px var(--qx-shell-chrome-x);
   border-bottom: 1px solid color-mix(in srgb, var(--qx-border-1) 72%, transparent);
   background: linear-gradient(
     180deg,
@@ -80,6 +81,11 @@
   backdrop-filter: blur(var(--qx-shell-chrome-blur)) saturate(var(--qx-shell-chrome-saturation));
   -webkit-backdrop-filter: blur(var(--qx-shell-chrome-blur)) saturate(var(--qx-shell-chrome-saturation));
   -webkit-app-region: drag;
+}
+
+/* Esc lives in the bottom bar; modules without a leading control use a 2-col topbar. */
+.qx-shell-topbar.no-leading {
+  grid-template-columns: minmax(var(--qx-search-min-w), 1fr) auto;
 }
 
 .qx-shell-topbar::after,
@@ -119,11 +125,13 @@
 }
 
 .qx-shell.launcher-shell .qx-shell-topbar {
-  /* Match the top-bar split to QxShell's main/context split. With 16px
-     horizontal padding and an 8px gap, subtract 24px from the context track
-     so the search card ends exactly on the Context Panel divider. */
-  grid-template-columns: minmax(0, 1fr) calc(var(--qx-context-w) - 24px);
-  gap: 8px;
+  /* Align search | trailing with main content | context.
+     trailing width = context-w - chrome-x - topbar-gap (see base.css tokens). */
+  --qx-shell-topbar-gap: 8px;
+  grid-template-columns:
+    minmax(0, 1fr)
+    calc(var(--qx-context-w) - var(--qx-shell-chrome-x) - var(--qx-shell-topbar-gap));
+  gap: var(--qx-shell-topbar-gap);
 }
 
 .qx-shell.launcher-shell .qx-shell-search-slot {
@@ -176,6 +184,10 @@
 .qx-shell-search-slot > .qx-search-wrap {
   width: 100%;
   flex: 1 1 auto;
+  /* Keep search control within the slim topbar chrome. */
+  height: 36px;
+  min-height: 36px;
+  max-height: 36px;
 }
 
 .qx-shell-trailing {
@@ -321,7 +333,7 @@
   min-height: var(--qx-bottom-bar-h);
   max-height: var(--qx-bottom-bar-h);
   overflow: visible;
-  padding: 5px 14px;
+  padding: 5px var(--qx-shell-chrome-x);
   border-top: 1px solid color-mix(in srgb, var(--qx-border-1) 72%, transparent);
   background: linear-gradient(
     0deg,
@@ -763,6 +775,209 @@
   animation-play-state: paused;
 }
 
+/* ====== Sci-fi home islands (Pulse / Core / Orbit) ====== */
+.qx-home-sci-island {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(100%, 400px);
+  height: 34px;
+  min-height: 34px;
+  max-height: 36px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--qx-accent) 22%, var(--qx-border-1));
+  border-radius: 8px;
+  background:
+    radial-gradient(circle, color-mix(in srgb, var(--qx-system-island-muted) 18%, transparent) 1px, transparent 1px),
+    var(--qx-system-island-bg);
+  background-size: 5px 5px, auto;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--qx-system-island-text) 8%, transparent),
+    0 0 12px color-mix(in srgb, var(--qx-accent) 10%, transparent),
+    0 2px 8px color-mix(in srgb, var(--qx-shadow) 12%, transparent);
+  color: var(--qx-system-island-text);
+  overflow: hidden;
+  font-family: var(--qx-font-mono);
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.qx-sci-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  color: var(--qx-system-island-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.qx-sci-beacon {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--qx-system-island-dim);
+  box-shadow: 0 0 0 0 transparent;
+}
+
+.qx-sci-beacon.is-live {
+  background: var(--qx-stats-cpu);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--qx-stats-cpu) 70%, transparent);
+  animation: qx-sci-pulse 1.4s ease-in-out infinite;
+}
+
+.qx-sci-beacon.is-steady {
+  background: var(--qx-stats-mem);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--qx-stats-mem) 50%, transparent);
+}
+
+@keyframes qx-sci-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.85); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qx-sci-beacon.is-live {
+    animation: none;
+  }
+}
+
+.qx-sci-channel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.qx-sci-dir {
+  font-size: 10px;
+  font-weight: 800;
+  opacity: 0.85;
+}
+
+.qx-sci-dir.down { color: var(--qx-stats-mem); }
+.qx-sci-dir.up { color: var(--qx-stats-cpu); }
+
+.qx-sci-rate {
+  min-width: 2.4em;
+  color: var(--qx-system-island-text);
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 6px color-mix(in srgb, var(--qx-accent) 20%, transparent);
+}
+
+.qx-sci-state {
+  flex: 0 0 auto;
+  color: var(--qx-system-island-muted);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.qx-sci-label {
+  color: var(--qx-system-island-muted);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.qx-sci-divider {
+  width: 1px;
+  height: 16px;
+  flex: 0 0 auto;
+  background: color-mix(in srgb, var(--qx-system-island-muted) 35%, transparent);
+}
+
+.qx-sci-matrix {
+  flex: 0 0 auto;
+  opacity: 0.95;
+}
+
+.qx-sci-orbit-block {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.qx-sci-orbit-meta {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Settings mode cards */
+.qx-island-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  max-width: 420px;
+}
+
+.qx-island-mode-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 72px;
+  padding: 8px 10px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 20% 20%, color-mix(in srgb, var(--qx-accent) 10%, transparent), transparent 55%),
+    var(--qx-bg-component-2);
+  color: var(--qx-text-primary);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.qx-island-mode-card:hover {
+  border-color: color-mix(in srgb, var(--qx-accent) 40%, var(--qx-border-1));
+}
+
+.qx-island-mode-card.is-selected {
+  border-color: color-mix(in srgb, var(--qx-accent) 65%, var(--qx-border-1));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--qx-accent) 25%, transparent),
+    0 0 14px color-mix(in srgb, var(--qx-accent) 12%, transparent);
+}
+
+.qx-island-mode-preview {
+  font-family: var(--qx-font-mono);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--qx-accent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--qx-accent) 30%, transparent);
+}
+
+.qx-island-mode-title {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.qx-island-mode-hint {
+  font-size: 10px;
+  line-height: 1.25;
+  color: var(--qx-text-tertiary);
+}
+
+@media (max-width: 680px) {
+  .qx-island-mode-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* ====== Home Date Island ====== */
 .qx-home-date-island {
   position: absolute;
@@ -917,9 +1132,17 @@
 }
 
 @media (max-width: 860px) {
+  :root {
+    --qx-shell-chrome-x: 10px;
+  }
+
   .qx-shell-topbar {
     grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 8px;
+  }
+
+  .qx-shell-topbar.no-leading {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .qx-shell-trailing {
@@ -942,7 +1165,6 @@
   .qx-shell-bottombar {
     grid-template-columns: auto 1fr auto;
     gap: 0;
-    padding: 5px 10px;
   }
 
   .qx-bottom-island-detail,
@@ -951,7 +1173,9 @@
   }
 
   .qx-bottom-island,
-  .qx-home-system-island {
+  .qx-home-system-island,
+  .qx-home-date-island,
+  .qx-home-sci-island {
     width: min(340px, calc(100% - 220px));
     min-width: 220px;
     min-height: 32px;
@@ -985,7 +1209,9 @@
   }
 
   .qx-bottom-island,
-  .qx-home-system-island {
+  .qx-home-system-island,
+  .qx-home-date-island,
+  .qx-home-sci-island {
     display: none;
   }
 

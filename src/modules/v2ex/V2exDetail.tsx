@@ -97,7 +97,6 @@ export default function V2exDetail({ topic, onBack }: V2exDetailProps) {
       title={topic.title}
       className="v2ex-shell"
       onKeyDown={onKeyDown}
-      onBack={onBack}
       overlayBottom
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: onBack }}
       search={

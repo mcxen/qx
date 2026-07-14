@@ -71,6 +71,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     ? { label: backLabel, kbd: "Esc", onClick: onBack }
     : { label: "Esc", kbd: "Esc" };
   const leftAction = escapeAction ?? fallbackEscapeAction;
+  const hasLeading = Boolean(onBack || leading);
   const visiblePrimaryAction = primaryAction?.disabled ? undefined : primaryAction;
   const visibleSecondaryAction = secondaryAction?.disabled ? undefined : secondaryAction;
   const hasRightActions = Boolean(visiblePrimaryAction || visibleSecondaryAction);
@@ -350,7 +351,10 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       <div className="qx-shell-drag-edge edge-bottom" data-tauri-drag-region aria-hidden="true" />
       <div className="qx-shell-drag-edge edge-left" data-tauri-drag-region aria-hidden="true" />
 
-      <div className="qx-shell-topbar" data-tauri-drag-region>
+      <div
+        className={`qx-shell-topbar${hasLeading ? "" : " no-leading"}`}
+        data-tauri-drag-region
+      >
         {onBack ? (
           <button
             className="qx-shell-back"

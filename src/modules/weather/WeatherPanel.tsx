@@ -246,8 +246,7 @@ export default function WeatherPanel() {
     <QxShell
       title="Weather"
       visual="solid"
-      onBack={goBack}
-      escapeAction={{ label: t("weather.back", "Back"), kbd: "Esc", onClick: goBack }}
+      escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
       trailing={
         <button
           className="qx-command-button"

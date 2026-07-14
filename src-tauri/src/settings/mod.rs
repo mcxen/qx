@@ -29,7 +29,8 @@ impl Default for GeneralSettings {
     fn default() -> Self {
         Self {
             launch_at_login: false,
-            language: "en".to_string(),
+            // "system" | "en" | "zh-CN" — frontend resolves system to zh-CN only for Simplified Chinese OS
+            language: "system".to_string(),
             auto_update: true,
             auto_hide_on_blur: true,
             data_path: crate::paths::data_dir().to_string_lossy().to_string(),

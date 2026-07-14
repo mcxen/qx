@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "./store";
 import { useTheme } from "../../ThemeProvider";
-import { Row, SegmentedControl, SettingsCard, Toggle, Slider } from "../../components/ui";
+import { Row, SegmentedControl, SettingsCard, Slider } from "../../components/ui";
 import { useT } from "../../i18n";
+import { HomeIslandSettings } from "../../home-island";
 
 const MIN_WINDOW_WIDTH = 480;
 const MIN_WINDOW_HEIGHT = 360;
@@ -186,50 +187,12 @@ export default function AppearanceSettings() {
 
       <SettingsCard
         title={t("appearance.homeIsland.title", "Home Island")}
-        description={t("appearance.homeIsland.cardDesc", "Configure the idle launcher island content and system metrics.")}
+        description={t("appearance.homeIsland.cardDesc", "Idle launcher island — pick a classic view or a sci-fi HUD.")}
       >
-        <Row
-          title={t("appearance.homeIsland", "Home Island")}
-          description={t("appearance.homeIsland.desc", "Content shown in the launcher island when search is idle.")}
-        >
-          <SegmentedControl
-            value={a.home_island_mode}
-            onChange={(v) => patch("appearance", { ...a, home_island_mode: v })}
-            options={[
-              { value: "default", label: t("appearance.homeIsland.default", "Default") },
-              { value: "system", label: t("appearance.homeIsland.system", "System Info") },
-              { value: "date", label: t("appearance.homeIsland.date", "Date Display") },
-            ]}
-          />
-        </Row>
-        <Row
-          title={t("appearance.systemCurves", "System Curves")}
-          description={t("appearance.systemCurves.desc", "Dotted GEEK-style metrics for the homepage island.")}
-        >
-          <div className="qx-home-island-settings">
-            <label>
-              <span>CPU</span>
-              <Toggle
-                value={a.home_island_cpu}
-                onChange={(v) => patch("appearance", { ...a, home_island_cpu: v })}
-              />
-            </label>
-            <label>
-              <span>GPU</span>
-              <Toggle
-                value={a.home_island_gpu}
-                onChange={(v) => patch("appearance", { ...a, home_island_gpu: v })}
-              />
-            </label>
-            <label>
-              <span>MEM</span>
-              <Toggle
-                value={a.home_island_memory}
-                onChange={(v) => patch("appearance", { ...a, home_island_memory: v })}
-              />
-            </label>
-          </div>
-        </Row>
+        <HomeIslandSettings
+          appearance={a}
+          patch={(next) => patch("appearance", next)}
+        />
       </SettingsCard>
     </div>
   );

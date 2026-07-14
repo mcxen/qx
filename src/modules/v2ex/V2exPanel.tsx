@@ -189,7 +189,6 @@ export default function V2exPanel() {
       title="V2EX"
       className="v2ex-shell qx-content-shell"
       onKeyDown={onKeyDown}
-      onBack={goBack}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
       search={
         <div className="qx-search-wrap">

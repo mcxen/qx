@@ -47,7 +47,8 @@ export interface AppearanceSettings {
   window_height: number;
   border_radius: number;
   font_size: number;
-  home_island_mode: "default" | "system" | "date";
+  /** Home island mode id — see `src/home-island` registry (free string for extensibility). */
+  home_island_mode: string;
   home_island_cpu: boolean;
   home_island_gpu: boolean;
   home_island_memory: boolean;
@@ -179,7 +180,7 @@ export type SettingsTab =
 export const DEFAULT_SETTINGS: Settings = {
   general: {
     launch_at_login: false,
-    language: "en",
+    language: "system",
     auto_update: true,
     autoHideOnBlur: true,
     data_path: "",

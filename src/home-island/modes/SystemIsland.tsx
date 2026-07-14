@@ -1,5 +1,5 @@
-import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useIslandStats } from "../data/hooks";
 
 interface HomeSystemIslandProps {
   showCpu: boolean;
@@ -7,19 +7,7 @@ interface HomeSystemIslandProps {
   showMemory: boolean;
 }
 
-interface SystemStats {
-  cpu: number;
-  memory: number;
-  memory_used_gb: number;
-  memory_total_gb: number;
-  gpu: number | null;
-}
-
 const POINT_COUNT = 24;
-
-function isTauriRuntime(): boolean {
-  return "__TAURI_INTERNALS__" in window;
-}
 
 function clamp(value: number): number {
   return Math.max(0, Math.min(100, value));
@@ -82,80 +70,35 @@ function MiniSparkline({ points, color }: { points: number[]; color: string }) {
   );
 }
 
+/**
+ * System metrics island — data comes from the async bus; first paint shows "--".
+ */
 export default function HomeSystemIsland({
   showCpu,
   showGpu,
   showMemory,
 }: HomeSystemIslandProps) {
-  const [stats, setStats] = useState<SystemStats | null>(null);
+  const { stats, ready } = useIslandStats();
   const [cpuPoints, setCpuPoints] = useState<number[]>(emptyPoints);
   const [memPoints, setMemPoints] = useState<number[]>(emptyPoints);
-  const [available, setAvailable] = useState(isTauriRuntime());
 
-  useEffect(() => {
-    let cancelled = false;
-    let sampling = false;
-    let timer: ReturnType<typeof setInterval> | undefined;
+  // Derive sparkline history without blocking — only when stats tick.
+  useLayoutEffect(() => {
+    if (!stats) return;
+    setCpuPoints((cur) => [...cur.slice(1), clamp(stats.cpu)]);
+    setMemPoints((cur) => [...cur.slice(1), clamp(stats.memory)]);
+  }, [stats]);
 
-    const sample = async () => {
-      if (sampling || cancelled) return;
-      if (!isTauriRuntime()) {
-        setAvailable(false);
-        return;
-      }
-      sampling = true;
-      try {
-        const next = await invoke<SystemStats>("get_system_stats");
-        if (cancelled) return;
-        setAvailable(true);
-        setStats((prev) => {
-          if (
-            prev &&
-            prev.cpu === next.cpu &&
-            prev.memory === next.memory &&
-            prev.memory_used_gb === next.memory_used_gb
-          ) {
-            return prev;
-          }
-          return next;
-        });
-        setCpuPoints((cur) => [...cur.slice(1), clamp(next.cpu)]);
-        setMemPoints((cur) => [...cur.slice(1), clamp(next.memory)]);
-      } catch {
-        if (!cancelled) setAvailable(false);
-      } finally {
-        sampling = false;
-      }
-    };
-
-    const onVisibility = () => {
-      if (document.hidden) {
-        if (timer !== undefined) {
-          clearInterval(timer);
-          timer = undefined;
-        }
-      } else {
-        if (timer === undefined) {
-          void sample();
-          timer = setInterval(sample, 1600);
-        }
-      }
-    };
-
-    void sample();
-    timer = setInterval(sample, 1600);
-    document.addEventListener("visibilitychange", onVisibility);
-
-    return () => {
-      cancelled = true;
-      if (timer !== undefined) clearInterval(timer);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, []);
-
-  const cpuText = stats && available ? `${Math.round(stats.cpu)}%` : "--";
-  const memText = stats && available ? `${Math.round(stats.memory)}%` : "--";
-  const gpuText = !showGpu ? null : !available ? "--" : stats?.gpu == null ? "N/A" : `${Math.round(stats.gpu)}%`;
+  const available = ready && !!stats;
+  const cpuText = available ? `${Math.round(stats.cpu)}%` : "--";
+  const memText = available ? `${Math.round(stats.memory)}%` : "--";
+  const gpuText = !showGpu
+    ? null
+    : !available
+      ? "--"
+      : stats.gpu == null
+        ? "N/A"
+        : `${Math.round(stats.gpu)}%`;
 
   const marqueeRef = useRef<HTMLDivElement>(null);
   const [overflowing, setOverflowing] = useState(false);

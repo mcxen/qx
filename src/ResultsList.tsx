@@ -20,6 +20,7 @@ import {
 import { LoadingLabel, Skeleton } from "./components/ui";
 import AppResultContextMenu from "./launcher/AppResultContextMenu";
 import { useDisplayName } from "./search/appDisplay";
+import { useT } from "./i18n";
 
 const FILE_ICON_BY_EXTENSION: Record<string, string> = {
   pdf: "file-pdf",
@@ -265,9 +266,9 @@ const ResultItem = memo(function ResultItem({ item, index, label }: { item: AppE
   );
 });
 
-function ResultSkeletonRows() {
+function ResultSkeletonRows({ ariaLabel }: { ariaLabel: string }) {
   return (
-    <div className="qx-skeleton-stack" aria-label="Loading apps">
+    <div className="qx-skeleton-stack" aria-label={ariaLabel}>
       {Array.from({ length: 7 }).map((_, index) => (
         <div className="qx-skeleton-row" key={index}>
           <Skeleton className="qx-skeleton-icon" />
@@ -291,11 +292,13 @@ export default function ResultsList({
   onItemClick: (item: AppEntry) => void;
   loadingPhase?: string;
 }) {
+  const t = useT();
   const getDisplayName = useDisplayName();
+  const loadingLabel = t("launcher.loadingApps", "Loading apps...");
   return (
     <div className="qx-plugin-list" style={{ flex: 1, borderRight: "none" }}>
       {items.length > 0 && (
-        <div className="qx-section-header">Suggestions</div>
+        <div className="qx-section-header">{t("launcher.suggestions", "Suggestions")}</div>
       )}
       {items.map((item, i) => (
         <AppResultContextMenu item={item} key={`${item.kind}:${item.path}:${item.name}`}>
@@ -306,9 +309,9 @@ export default function ResultsList({
       ))}
       {items.length === 0 && loadingPhase === "loading-apps" && (
         <>
-          <ResultSkeletonRows />
+          <ResultSkeletonRows ariaLabel={loadingLabel} />
           <div className="qx-empty-state">
-            <LoadingLabel>Loading apps...</LoadingLabel>
+            <LoadingLabel>{loadingLabel}</LoadingLabel>
           </div>
         </>
       )}
@@ -321,7 +324,7 @@ export default function ResultsList({
             fontSize: 13,
           }}
         >
-          No results found
+          {t("launcher.noResults", "No results found")}
         </div>
       )}
     </div>

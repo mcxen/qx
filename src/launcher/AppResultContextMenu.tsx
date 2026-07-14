@@ -16,6 +16,7 @@ import {
   DialogTitle,
   Kbd,
 } from "../components/ui";
+import { useT } from "../i18n";
 import { useSettingsStore } from "../modules/settings/store";
 import { useDisplayName } from "../search/appDisplay";
 import { metadataForKey, metadataKeyForEntry } from "../search/searchMetadata";
@@ -45,6 +46,7 @@ export default function AppResultContextMenu({
   item: AppEntry;
   children: ReactNode;
 }) {
+  const t = useT();
   const getDisplayName = useDisplayName();
   const { settings, patchAppShortcut, patchSearchMetadata } = useSettingsStore();
   const [aliasesOpen, setAliasesOpen] = useState(false);
@@ -73,11 +75,15 @@ export default function AppResultContextMenu({
         <ContextMenuContent alignOffset={-4} className="qx-app-context-menu">
           <ContextMenuItem onSelect={() => setAliasesOpen(true)}>
             <Pencil size={14} aria-hidden="true" />
-            <span>Edit aliases</span>
+            <span>{t("launcher.editAliases", "Edit aliases")}</span>
           </ContextMenuItem>
           <ContextMenuItem onSelect={() => setShortcutOpen(true)}>
             <Keyboard size={14} aria-hidden="true" />
-            <span>{hasShortcut ? "Edit shortcut" : "Record shortcut"}</span>
+            <span>
+              {hasShortcut
+                ? t("launcher.editShortcut", "Edit shortcut")
+                : t("launcher.recordShortcut", "Record shortcut")}
+            </span>
             {hasShortcut && <Kbd>{binding?.key}</Kbd>}
           </ContextMenuItem>
           {hasShortcut && (
@@ -88,7 +94,7 @@ export default function AppResultContextMenu({
                 onSelect={() => patchAppShortcut(metadataKey, { key: "", enabled: false })}
               >
                 <Trash2 size={14} aria-hidden="true" />
-                <span>Remove shortcut</span>
+                <span>{t("launcher.removeShortcut", "Remove shortcut")}</span>
               </ContextMenuItem>
             </>
           )}
@@ -98,7 +104,7 @@ export default function AppResultContextMenu({
       <Dialog open={aliasesOpen} onOpenChange={setAliasesOpen}>
         <DialogContent style={{ width: "min(420px, calc(100vw - 40px))" }}>
           <DialogHeader>
-            <DialogTitle>Edit aliases</DialogTitle>
+            <DialogTitle>{t("launcher.editAliases", "Edit aliases")}</DialogTitle>
             <DialogDescription>{appName}</DialogDescription>
           </DialogHeader>
           <SearchAliasTagEditor
@@ -107,7 +113,7 @@ export default function AppResultContextMenu({
           />
           <div className="qx-modal-actions">
             <Button type="button" variant="secondary" onClick={() => setAliasesOpen(false)}>
-              Done
+              {t("launcher.done", "Done")}
             </Button>
           </div>
         </DialogContent>
@@ -116,12 +122,12 @@ export default function AppResultContextMenu({
       <Dialog open={shortcutOpen} onOpenChange={setShortcutOpen}>
         <DialogContent style={{ width: "min(420px, calc(100vw - 40px))" }}>
           <DialogHeader>
-            <DialogTitle>Application shortcut</DialogTitle>
+            <DialogTitle>{t("launcher.appShortcut", "Application shortcut")}</DialogTitle>
             <DialogDescription>{appName}</DialogDescription>
           </DialogHeader>
           <div className="qx-app-shortcut-dialog">
             <div>
-              <div className="qx-modal-field-label">Shortcut</div>
+              <div className="qx-modal-field-label">{t("launcher.shortcut", "Shortcut")}</div>
               <ShortcutRecorder
                 initial={binding?.key ?? ""}
                 conflict={shortcutConflict}
@@ -130,7 +136,7 @@ export default function AppResultContextMenu({
               />
               {shortcutConflict && (
                 <div className="qx-modal-error">
-                  This shortcut is already used by another action.
+                  {t("launcher.shortcutConflict", "This shortcut is already used by another action.")}
                 </div>
               )}
             </div>
@@ -141,11 +147,11 @@ export default function AppResultContextMenu({
                   variant="ghost"
                   onClick={() => patchAppShortcut(metadataKey, { key: "", enabled: false })}
                 >
-                  Remove
+                  {t("launcher.remove", "Remove")}
                 </Button>
               )}
               <Button type="button" variant="secondary" onClick={() => setShortcutOpen(false)}>
-                Done
+                {t("launcher.done", "Done")}
               </Button>
             </div>
           </div>

@@ -1,4 +1,7 @@
 import type { ClipboardEntry } from "../../store";
+import type { Locale } from "../../i18n";
+
+type Translate = (key: string, fallback: string) => string;
 
 export function classify(item: ClipboardEntry): "pinned" | "links" | "code" | "long" | "frequent" | "image" | "file" | "text" {
   if (item.file_path) return "file";
@@ -15,36 +18,41 @@ export function classify(item: ClipboardEntry): "pinned" | "links" | "code" | "l
   return "text";
 }
 
-export function sectionName(timestamp: string): string {
+export function sectionName(timestamp: string, t: Translate): string {
   const date = new Date(timestamp.replace(" ", "T"));
-  if (Number.isNaN(date.getTime())) return "Recent";
+  if (Number.isNaN(date.getTime())) return t("clipboard.section.recent", "Recent");
   const now = new Date();
   const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startItem = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
   const diff = Math.round((startToday - startItem) / 86_400_000);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Yesterday";
-  if (diff < 7) return "This Week";
-  return "Older";
+  if (diff === 0) return t("clipboard.section.today", "Today");
+  if (diff === 1) return t("clipboard.section.yesterday", "Yesterday");
+  if (diff < 7) return t("clipboard.section.thisWeek", "This Week");
+  return t("clipboard.section.older", "Older");
 }
 
 export function preview(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-export function formatCopied(timestamp: string): string {
+export function formatCopied(timestamp: string, locale: Locale, t: Translate): string {
   const date = new Date(timestamp.replace(" ", "T"));
   if (Number.isNaN(date.getTime())) return "";
   const now = new Date();
   const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
   const startItem = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
-  const time = date.toLocaleTimeString([], {
+  const time = date.toLocaleTimeString(locale, {
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
   });
-  if (startToday === startItem) return `Today at ${time}`;
-  return `${date.getMonth() + 1}/${date.getDate()} at ${time}`;
+  if (startToday === startItem) {
+    return t("clipboard.copied.today", "Today at {time}").replace("{time}", time);
+  }
+  const day = date.toLocaleDateString(locale, { month: "numeric", day: "numeric" });
+  return t("clipboard.copied.on", "{date} at {time}")
+    .replace("{date}", day)
+    .replace("{time}", time);
 }
 
 export function formatMeta(item: ClipboardEntry): string {
@@ -62,13 +70,13 @@ export function wordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-export function contentType(item: ClipboardEntry): string {
+export function contentType(item: ClipboardEntry, t: Translate): string {
   const kind = classify(item);
-  if (kind === "links") return "Link";
-  if (kind === "code") return "Code";
-  if (kind === "image") return "Image";
-  if (kind === "file") return "File";
-  return "Text";
+  if (kind === "links") return t("clipboard.type.link", "Link");
+  if (kind === "code") return t("clipboard.type.code", "Code");
+  if (kind === "image") return t("clipboard.type.image", "Image");
+  if (kind === "file") return t("clipboard.type.file", "File");
+  return t("clipboard.type.text", "Text");
 }
 
 export function matchesQuery(item: ClipboardEntry, q: string): boolean {

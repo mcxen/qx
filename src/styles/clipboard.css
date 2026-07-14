@@ -1,6 +1,5 @@
 /* ====== Clipboard Panel ====== */
 .qx-clipboard-shell {
-  --qx-topbar-h: 56px;
   display: grid;
   flex: 1;
   min-height: 0;
@@ -10,11 +9,7 @@
 
 .qx-clipboard-shell .qx-shell-topbar {
   grid-template-columns: minmax(160px, 1fr) minmax(112px, auto);
-  height: 56px;
-  min-height: 56px;
-  max-height: 56px;
   overflow: visible;
-  padding: 8px 12px;
   gap: 10px;
   border-bottom: 1px solid var(--qx-border-1);
 }
@@ -36,8 +31,8 @@
 }
 
 .qx-clipboard-search-wrap {
-  height: 38px;
-  min-height: 38px;
+  height: 36px;
+  min-height: 36px;
   gap: 8px;
   padding: 0 10px;
 }
@@ -438,10 +433,6 @@
 @media (max-width: 860px) {
   .qx-clipboard-shell .qx-shell-topbar {
     grid-template-columns: minmax(0, 1fr) minmax(96px, 132px);
-    height: 56px;
-    min-height: 56px;
-    max-height: 56px;
-    padding: 8px;
   }
 
   .qx-clipboard-shell .qx-shell-trailing {

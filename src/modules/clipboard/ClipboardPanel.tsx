@@ -7,6 +7,7 @@ import { useStore, type ClipboardEntry } from "../../store";
 import QxShell from "../../components/QxShell";
 import { Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
+import { useLocale, useT } from "../../i18n";
 import { pasteClipboardEntry, writeClipboardEntry } from "./actions";
 import {
   classify,
@@ -20,15 +21,15 @@ import {
 
 type Filter = "all" | "pinned" | "links" | "code" | "long" | "frequent" | "image" | "file";
 
-const FILTER_LABELS: Record<Filter, string> = {
-  all: "All Types",
-  pinned: "Pinned",
-  links: "Links",
-  code: "Code",
-  long: "Long",
-  frequent: "Frequent",
-  image: "Images",
-  file: "Files",
+const FILTER_KEYS: Record<Filter, { key: string; fallback: string }> = {
+  all: { key: "clipboard.filter.all", fallback: "All Types" },
+  pinned: { key: "clipboard.filter.pinned", fallback: "Pinned" },
+  links: { key: "clipboard.filter.links", fallback: "Links" },
+  code: { key: "clipboard.filter.code", fallback: "Code" },
+  long: { key: "clipboard.filter.long", fallback: "Long" },
+  frequent: { key: "clipboard.filter.frequent", fallback: "Frequent" },
+  image: { key: "clipboard.filter.image", fallback: "Images" },
+  file: { key: "clipboard.filter.file", fallback: "Files" },
 };
 
 type ClipboardIconKind = ReturnType<typeof classify> | "pin";
@@ -155,6 +156,8 @@ function ClipboardTypeIcon({ item }: { item: ClipboardEntry }) {
 }
 
 export default function ClipboardPanel() {
+  const t = useT();
+  const locale = useLocale();
   const { clipboardHistory, setClipboardHistory, setTab } = useStore();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -165,6 +168,8 @@ export default function ClipboardPanel() {
   const [fileMetadata, setFileMetadata] = useState<FileMetadata | null>(null);
   const [mediaProgress, setMediaProgress] = useState<MediaProgress | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+
+  const filterLabel = (id: Filter) => t(FILTER_KEYS[id].key, FILTER_KEYS[id].fallback);
 
   const loadHistory = async () => {
     try {
@@ -287,7 +292,7 @@ export default function ClipboardPanel() {
   const grouped = useMemo(() => {
     const sections: { title: string; items: ClipboardEntry[] }[] = [];
     for (const item of filtered) {
-      const title = sectionName(item.timestamp);
+      const title = sectionName(item.timestamp, t);
       const last = sections[sections.length - 1];
       if (last?.title === title) {
         last.items.push(item);
@@ -296,14 +301,14 @@ export default function ClipboardPanel() {
       }
     }
     return sections;
-  }, [filtered]);
+  }, [filtered, t]);
 
   const copyItem = async (item?: ClipboardEntry) => {
     if (!item) return;
     try {
       await writeClipboardEntry(item);
       await loadHistory();
-      setStatus("Copied");
+      setStatus(t("clipboard.copied", "Copied"));
       window.setTimeout(() => setStatus(""), 1200);
     } catch {}
   };
@@ -311,12 +316,12 @@ export default function ClipboardPanel() {
   const pasteItem = async (item?: ClipboardEntry, options: { focusAtCursor?: boolean } = {}) => {
     if (!item) return;
     try {
-      setStatus("Pasting");
+      setStatus(t("clipboard.pasting", "Pasting"));
       await pasteClipboardEntry(item, options);
       await loadHistory();
       window.setTimeout(() => setStatus(""), 1200);
     } catch (err) {
-      setStatus(String(err || "Paste failed"));
+      setStatus(String(err || t("clipboard.pasteFailed", "Paste failed")));
       window.setTimeout(() => setStatus(""), 1600);
     }
   };
@@ -333,7 +338,7 @@ export default function ClipboardPanel() {
     if (!item) return;
     await invoke("toggle_clipboard_pin", { id: item.id });
     await loadHistory();
-    setStatus(item.pinned ? "Unpinned" : "Pinned");
+    setStatus(item.pinned ? t("clipboard.unpinned", "Unpinned") : t("clipboard.pinned", "Pinned"));
     window.setTimeout(() => setStatus(""), 1200);
   };
 
@@ -363,7 +368,10 @@ export default function ClipboardPanel() {
 
   const startMediaTask = async (operation: "compress" | "gif") => {
     if (!selectedItem?.file_path || mediaProgress) return;
-    setStatus(operation === "compress" ? "Starting compression" : "Starting GIF conversion");
+    const startMessage = operation === "compress"
+      ? t("clipboard.startingCompress", "Starting compression")
+      : t("clipboard.startingGif", "Starting GIF conversion");
+    setStatus(startMessage);
     try {
       const jobId = await invoke<string>(operation === "compress" ? "clipboard_compress_image" : "clipboard_video_to_gif", {
         path: selectedItem.file_path,
@@ -373,7 +381,7 @@ export default function ClipboardPanel() {
           jobId,
           operation,
           progress: 0,
-          message: operation === "compress" ? "Starting compression" : "Starting GIF conversion",
+          message: startMessage,
         }));
     } catch (error) {
       setStatus(String(error));
@@ -393,21 +401,23 @@ export default function ClipboardPanel() {
               setQuery(e.target.value);
               setSelected(0);
             }}
-            placeholder="Type to filter entries..."
+            placeholder={t("clipboard.placeholder", "Type to filter entries...")}
             className="qx-plugin-search qx-clipboard-search"
           />
         </div>
   );
 
+  const itemCountLabel = t("clipboard.items", "{n} items").replace("{n}", String(filtered.length));
+
   const trailing = (
     <>
       <Select
         value={filter}
-        options={(Object.keys(FILTER_LABELS) as Filter[]).map((id) => ({
+        options={(Object.keys(FILTER_KEYS) as Filter[]).map((id) => ({
           value: id,
-          label: FILTER_LABELS[id],
+          label: filterLabel(id),
         }))}
-        ariaLabel="Clipboard filter"
+        ariaLabel={t("clipboard.filter", "Clipboard filter")}
         className="qx-clipboard-filter"
         onChange={(next) => {
           setFilter(next);
@@ -422,7 +432,7 @@ export default function ClipboardPanel() {
 
   return (
     <QxShell
-      title="Clipboard History"
+      title={t("clipboard.title", "Clipboard History")}
       search={searchSlot}
       trailing={trailing}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setTab("launcher") }}
@@ -436,52 +446,52 @@ export default function ClipboardPanel() {
       }}
       className="qx-clipboard-shell"
       island={{
-        label: mediaProgress?.message || status || "Clipboard History",
+        label: mediaProgress?.message || status || t("clipboard.title", "Clipboard History"),
         detail: selectedItem
-          ? `${contentType(selectedItem)} · ${FILTER_LABELS[filter]} · ${filtered.length} items`
-          : `${FILTER_LABELS[filter]} · ${filtered.length} items`,
+          ? `${contentType(selectedItem, t)} · ${filterLabel(filter)} · ${itemCountLabel}`
+          : `${filterLabel(filter)} · ${itemCountLabel}`,
         progress: mediaProgress ? mediaProgress.progress : undefined,
         tone: mediaProgress?.error ? "danger" : status ? "success" : "neutral",
       }}
       primaryAction={{
-        label: "Paste",
+        label: t("clipboard.paste", "Paste"),
         kbd: "Enter",
         disabled: !selectedItem,
         onClick: () => pasteItem(selectedItem),
       }}
       secondaryAction={{
-        label: selectedItem?.pinned ? "Unpin" : "Pin",
+        label: selectedItem?.pinned ? t("clipboard.unpin", "Unpin") : t("clipboard.pin", "Pin"),
         kbd: "Cmd P",
         disabled: !selectedItem,
         onClick: () => togglePin(selectedItem),
       }}
       actions={[
         {
-          label: "Copy",
+          label: t("clipboard.copy", "Copy"),
           kbd: "Cmd C",
           disabled: !selectedItem,
           onClick: () => copyItem(selectedItem),
         },
         {
-          label: selectedItem?.pinned ? "Unpin" : "Pin",
+          label: selectedItem?.pinned ? t("clipboard.unpin", "Unpin") : t("clipboard.pin", "Pin"),
           kbd: "Cmd P",
           disabled: !selectedItem,
           onClick: () => togglePin(selectedItem),
         },
         {
-          label: "Delete",
+          label: t("clipboard.delete", "Delete"),
           kbd: "Cmd Delete",
           disabled: !selectedItem,
           onClick: () => deleteItem(selectedItem),
         },
         {
-          label: "Compress Image",
+          label: t("clipboard.compressImage", "Compress Image"),
           kbd: "Cmd Shift C",
           disabled: fileMetadata?.kind !== "image" || Boolean(mediaProgress),
           onClick: () => void startMediaTask("compress"),
         },
         {
-          label: "Video to GIF",
+          label: t("clipboard.videoToGif", "Video to GIF"),
           kbd: "Cmd Shift G",
           disabled: fileMetadata?.kind !== "video" || Boolean(mediaProgress),
           onClick: () => void startMediaTask("gif"),
@@ -489,7 +499,7 @@ export default function ClipboardPanel() {
       ]}
     >
       <div className="qx-clipboard-body">
-        <div ref={listRef} className="qx-clipboard-list" role="listbox" aria-label="Clipboard history">
+        <div ref={listRef} className="qx-clipboard-list" role="listbox" aria-label={t("clipboard.listAria", "Clipboard history")}>
           {grouped.map((section) => (
             <div key={section.title}>
               <div className="qx-section-header">
@@ -523,12 +533,12 @@ export default function ClipboardPanel() {
                           <img
                             className="qx-clipboard-thumb"
                             src={imageUrls[item.image_path!] || ""}
-                            alt="Clipboard image"
+                            alt={t("clipboard.imageAlt", "Clipboard image")}
                           />
                         ) : item.file_path ? (
                           item.file_path.split("/").pop() || item.file_path
                         ) : (
-                          preview(item.text) || "Empty Text"
+                          preview(item.text) || t("clipboard.emptyText", "Empty Text")
                         )}
                       </span>
                     </span>
@@ -539,7 +549,9 @@ export default function ClipboardPanel() {
           ))}
           {filtered.length === 0 && (
             <div className="qx-empty-state">
-              {clipboardHistory.length === 0 ? "No clipboard history yet" : "No matching items"}
+              {clipboardHistory.length === 0
+                ? t("clipboard.emptyHistory", "No clipboard history yet")
+                : t("clipboard.noMatch", "No matching items")}
             </div>
           )}
         </div>
@@ -558,7 +570,7 @@ export default function ClipboardPanel() {
                   ) : (
                     <div className="qx-clipboard-file-placeholder">
                       {fileMetadata?.kind === "video" ? <Video size={42} /> : <File size={42} />}
-                      <strong>{fileMetadata?.name ?? "Loading file…"}</strong>
+                      <strong>{fileMetadata?.name ?? t("clipboard.loadingFile", "Loading file…")}</strong>
                     </div>
                   )}
                 </div>
@@ -567,7 +579,7 @@ export default function ClipboardPanel() {
                   <img
                     className="qx-clipboard-image-preview"
                     src={imageUrls[selectedItem.image_path] || ""}
-                    alt="Clipboard image"
+                    alt={t("clipboard.imageAlt", "Clipboard image")}
                   />
                 </div>
               ) : (
@@ -578,44 +590,44 @@ export default function ClipboardPanel() {
                 </pre>
               )}
               <div className="qx-clipboard-info">
-                <h2>Information</h2>
+                <h2>{t("clipboard.info", "Information")}</h2>
                 <dl>
                   <div>
-                    <dt>Content type</dt>
-                    <dd>{contentType(selectedItem)}</dd>
+                    <dt>{t("clipboard.contentType", "Content type")}</dt>
+                    <dd>{contentType(selectedItem, t)}</dd>
                   </div>
                   {!selectedItem.image_path && !selectedItem.file_path && (
                     <>
                       <div>
-                        <dt>Characters</dt>
-                        <dd>{selectedItem.text.length.toLocaleString()}</dd>
+                        <dt>{t("clipboard.characters", "Characters")}</dt>
+                        <dd>{selectedItem.text.length.toLocaleString(locale)}</dd>
                       </div>
                       <div>
-                        <dt>Words</dt>
-                        <dd>{wordCount(selectedItem.text).toLocaleString()}</dd>
+                        <dt>{t("clipboard.words", "Words")}</dt>
+                        <dd>{wordCount(selectedItem.text).toLocaleString(locale)}</dd>
                       </div>
                     </>
                   )}
                   {selectedItem.file_path && fileMetadata && (
                     <>
-                      <div><dt>File</dt><dd title={fileMetadata.path}>{fileMetadata.name}</dd></div>
-                      <div><dt>Kind</dt><dd>{fileMetadata.kind}{fileMetadata.extension ? ` · ${fileMetadata.extension.toUpperCase()}` : ""}</dd></div>
-                      <div><dt>Size</dt><dd>{formatBytes(fileMetadata.size)}</dd></div>
-                      {fileMetadata.width && fileMetadata.height && <div><dt>Dimensions</dt><dd>{fileMetadata.width} × {fileMetadata.height}</dd></div>}
-                      {fileMetadata.duration_seconds && <div><dt>Duration</dt><dd>{formatDuration(fileMetadata.duration_seconds)}</dd></div>}
-                      {fileMetadata.kind === "image" && <div><dt>Quick action</dt><dd><button className="qx-inline-action" onClick={() => void startMediaTask("compress")} disabled={Boolean(mediaProgress)}><Shrink size={13} /> Compress</button></dd></div>}
-                      {fileMetadata.kind === "video" && <div><dt>Quick action</dt><dd><button className="qx-inline-action" onClick={() => void startMediaTask("gif")} disabled={Boolean(mediaProgress)}><Video size={13} /> Convert to GIF</button></dd></div>}
+                      <div><dt>{t("clipboard.file", "File")}</dt><dd title={fileMetadata.path}>{fileMetadata.name}</dd></div>
+                      <div><dt>{t("clipboard.kind", "Kind")}</dt><dd>{fileMetadata.kind}{fileMetadata.extension ? ` · ${fileMetadata.extension.toUpperCase()}` : ""}</dd></div>
+                      <div><dt>{t("clipboard.size", "Size")}</dt><dd>{formatBytes(fileMetadata.size)}</dd></div>
+                      {fileMetadata.width && fileMetadata.height && <div><dt>{t("clipboard.dimensions", "Dimensions")}</dt><dd>{fileMetadata.width} × {fileMetadata.height}</dd></div>}
+                      {fileMetadata.duration_seconds && <div><dt>{t("clipboard.duration", "Duration")}</dt><dd>{formatDuration(fileMetadata.duration_seconds)}</dd></div>}
+                      {fileMetadata.kind === "image" && <div><dt>{t("clipboard.quickAction", "Quick action")}</dt><dd><button className="qx-inline-action" onClick={() => void startMediaTask("compress")} disabled={Boolean(mediaProgress)}><Shrink size={13} /> {t("clipboard.compress", "Compress")}</button></dd></div>}
+                      {fileMetadata.kind === "video" && <div><dt>{t("clipboard.quickAction", "Quick action")}</dt><dd><button className="qx-inline-action" onClick={() => void startMediaTask("gif")} disabled={Boolean(mediaProgress)}><Video size={13} /> {t("clipboard.convertGif", "Convert to GIF")}</button></dd></div>}
                     </>
                   )}
                   <div>
-                    <dt>Copied</dt>
-                    <dd>{formatCopied(selectedItem.timestamp)}</dd>
+                    <dt>{t("clipboard.copiedAt", "Copied")}</dt>
+                    <dd>{formatCopied(selectedItem.timestamp, locale, t)}</dd>
                   </div>
                 </dl>
               </div>
             </>
           ) : (
-            <div className="qx-empty-state">Select an item to preview</div>
+            <div className="qx-empty-state">{t("clipboard.selectPreview", "Select an item to preview")}</div>
           )}
         </div>
       </div>

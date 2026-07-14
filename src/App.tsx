@@ -24,6 +24,7 @@ import {
 } from "./search/searchMetadata";
 import { loadClipboardEntryById, pasteClipboardEntryAtCursor } from "./modules/clipboard/actions";
 import { useEscBack } from "./hooks/useEscBack";
+import { useT } from "./i18n";
 import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./lib/logger";
 import { getQxDesktopPlatform } from "./utils/keyboard";
 import "./App.css";
@@ -56,25 +57,27 @@ interface QxUpdateInfo {
   can_install: boolean;
 }
 
-const MODULE_LABELS: Record<string, string> = {
-  clipboard: "Clipboard History",
-  screencap: "Screen Recording",
-  rss: "RSS Reader",
-  v2ex: "V2EX",
-  weather: "Weather",
-  "qx-ai": "QxAI Chat",
-  macros: "Macro Recorder",
-  documents: "Document Tools",
-  settings: "Settings",
+const MODULE_LABEL_KEYS: Record<string, { key: string; fallback: string }> = {
+  clipboard: { key: "clipboard.title", fallback: "Clipboard History" },
+  screencap: { key: "launcher.screencap", fallback: "Screen Recording" },
+  rss: { key: "launcher.rss", fallback: "RSS Reader" },
+  v2ex: { key: "launcher.v2ex", fallback: "V2EX" },
+  weather: { key: "launcher.weather", fallback: "Weather" },
+  "qx-ai": { key: "module.qx-ai", fallback: "QxAI Chat" },
+  macros: { key: "launcher.macros", fallback: "Macro Recorder" },
+  documents: { key: "launcher.documents", fallback: "Documents" },
+  settings: { key: "launcher.settings", fallback: "Settings" },
 };
 
-function getModuleLabel(tab: string): string {
+function getModuleLabel(tab: string, t: (key: string, fallback: string) => string): string {
   if (tab.startsWith("plugin:")) {
     const pluginId = tab.slice("plugin:".length);
     const panel = usePluginRegistry.getState().panels[pluginId];
     return panel?.title || panel?.pluginName || pluginId;
   }
-  return MODULE_LABELS[tab] ?? "Module";
+  const entry = MODULE_LABEL_KEYS[tab];
+  if (entry) return t(entry.key, entry.fallback);
+  return t("common.module", "Module");
 }
 
 function ModuleLoadingShell({
@@ -84,7 +87,8 @@ function ModuleLoadingShell({
   tab: string;
   onBack: () => void;
 }) {
-  const title = getModuleLabel(tab);
+  const t = useT();
+  const title = getModuleLabel(tab, t);
   const { onKeyDown } = useEscBack({
     launcher: onBack,
   });
@@ -93,7 +97,7 @@ function ModuleLoadingShell({
     <QxShell
       title={title}
       className="qx-module-loading-shell"
-      onBack={onBack}
+      escapeAction={{ label: "Esc", kbd: "Esc", onClick: onBack }}
       onKeyDown={onKeyDown}
       search={
         <div className="qx-search-wrap qx-module-loading-search" aria-hidden="true">
@@ -110,15 +114,18 @@ function ModuleLoadingShell({
       }
       island={{
         label: title,
-        detail: "Loading module",
+        detail: t("common.loadingModule", "Loading module"),
         activity: "bounce",
       }}
       primaryAction={{
-        label: "Loading",
+        label: t("common.loading", "Loading"),
         disabled: true,
       }}
     >
-      <div className="qx-module-loading-stage" aria-label={`Loading ${title}`}>
+      <div
+        className="qx-module-loading-stage"
+        aria-label={t("common.loadingNamed", "Loading {name}...").replace("{name}", title)}
+      >
         <div className="qx-skeleton-stack">
           {Array.from({ length: 6 }).map((_, index) => (
             <div className="qx-skeleton-row" key={index}>
@@ -132,7 +139,9 @@ function ModuleLoadingShell({
           ))}
         </div>
         <div className="qx-empty-state">
-          <LoadingLabel>Loading {title}...</LoadingLabel>
+          <LoadingLabel>
+            {t("common.loadingNamed", "Loading {name}...").replace("{name}", title)}
+          </LoadingLabel>
         </div>
       </div>
     </QxShell>
@@ -148,7 +157,8 @@ function ModuleErrorShell({
   error: string;
   onBack: () => void;
 }) {
-  const title = getModuleLabel(tab);
+  const t = useT();
+  const title = getModuleLabel(tab, t);
   const { onKeyDown } = useEscBack({
     launcher: onBack,
   });
@@ -157,7 +167,7 @@ function ModuleErrorShell({
     <QxShell
       title={title}
       className="qx-module-loading-shell"
-      onBack={onBack}
+      escapeAction={{ label: "Esc", kbd: "Esc", onClick: onBack }}
       onKeyDown={onKeyDown}
       search={
         <div className="qx-rss-detail-title">
@@ -166,28 +176,28 @@ function ModuleErrorShell({
       }
       context={
         <div className="qx-action-panel">
-          <div className="qx-action-title">Module Error</div>
+          <div className="qx-action-title">{t("common.moduleError", "Module Error")}</div>
           <div className="v2ex-context-copy">
             <span>{error}</span>
           </div>
         </div>
       }
       island={{
-        label: "Module error",
+        label: t("common.moduleError", "Module Error"),
         detail: title,
         tone: "danger",
-        actionLabel: "Back",
+        actionLabel: t("common.back", "Back"),
         onAction: onBack,
       }}
       primaryAction={{
-        label: "Back",
+        label: t("common.back", "Back"),
         kbd: "Esc",
         tone: "primary",
         onClick: onBack,
       }}
     >
       <div className="qx-empty-state">
-        {title} failed to render.
+        {t("common.failedRender", "{name} failed to render.").replace("{name}", title)}
       </div>
     </QxShell>
   );

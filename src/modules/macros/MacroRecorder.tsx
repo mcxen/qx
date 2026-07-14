@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useMacroStore } from "./store";
 import { Kbd } from "../../components/ui";
 import QxShell from "../../components/QxShell";
+import { useStore } from "../../store";
+import { useEscBack } from "../../hooks/useEscBack";
 import SaveDialog from "./SaveDialog";
 
 function formatTime(ms: number): string {
@@ -39,6 +41,7 @@ export default function MacroRecorder() {
     setError,
   } = useMacroStore();
 
+  const setTab = useStore((state) => state.setTab);
   const [elapsed, setElapsed] = useState(0);
   const [name, setName] = useState("");
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
@@ -85,15 +88,31 @@ export default function MacroRecorder() {
     setName("");
   };
 
+  const goLauncher = () => setTab("launcher");
+
+  const { onKeyDown: escKeyDown } = useEscBack({
+    inner: {
+      active: isRecording || Boolean(lastRecordedSteps),
+      close: () => {
+        if (isRecording) void stopRecording();
+        else handleDiscard();
+      },
+    },
+    launcher: goLauncher,
+  });
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (isRecording) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        void stopRecording();
-      }
-      return;
-    }
+    escKeyDown(e);
+  };
+
+  const escapeAction = {
+    label: "Esc",
+    kbd: "Esc",
+    onClick: isRecording
+      ? handleStop
+      : lastRecordedSteps
+        ? handleDiscard
+        : goLauncher,
   };
 
   return (
@@ -124,16 +143,17 @@ export default function MacroRecorder() {
             : `${savedMacros.length} saved macros`,
         tone: error ? "danger" : isRecording ? "danger" : lastRecordedSteps ? "success" : "neutral",
       }}
+      escapeAction={escapeAction}
       primaryAction={
         isRecording
-          ? { label: "Stop", kbd: "Esc", tone: "danger", onClick: handleStop }
+          ? { label: "Stop", tone: "danger", onClick: handleStop }
           : lastRecordedSteps
             ? { label: "Save", kbd: "Enter", disabled: !name.trim(), onClick: handleSave }
             : { label: "Record", onClick: handleStart }
       }
       secondaryAction={
         lastRecordedSteps
-          ? { label: "Discard", kbd: "Esc", onClick: handleDiscard }
+          ? { label: "Discard", onClick: handleDiscard }
           : undefined
       }
       onKeyDown={handleKeyDown}

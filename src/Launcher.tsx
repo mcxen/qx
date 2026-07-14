@@ -1,7 +1,5 @@
 import { useMemo, useState } from "react";
 import QxShell, { type BottomIslandContent } from "./components/QxShell";
-import HomeDateIsland from "./components/HomeDateIsland";
-import HomeSystemIsland from "./components/HomeSystemIsland";
 import ResultsList from "./ResultsList";
 import SearchBar from "./SearchBar";
 import { Select } from "./components/ui";
@@ -13,6 +11,7 @@ import { toLauncherQuickEntries } from "./launcher/quickEntries";
 import { useLauncherHistory } from "./launcher/useLauncherHistory";
 import type { QuickEntry } from "./launcher/types";
 import { useT } from "./i18n";
+import { resolveHomeIsland } from "./home-island";
 
 interface LauncherProps {
   results: AppEntry[];
@@ -48,25 +47,45 @@ export default function Launcher({
   const query = useStore((state) => state.query);
   const setQuery = useStore((state) => state.setQuery);
   const scopeOptions: { value: SearchScope; label: string }[] = [
-    { value: "all", label: "All" },
-    { value: "apps", label: "Apps" },
-    { value: "files", label: "Files" },
-    { value: "clipboard", label: "Clipboard" },
+    { value: "all", label: t("launcher.scope.all", "All") },
+    { value: "apps", label: t("launcher.scope.apps", "Apps") },
+    { value: "files", label: t("launcher.scope.files", "Files") },
+    { value: "clipboard", label: t("launcher.scope.clipboard", "Clipboard") },
   ];
   const selectedItem = results[selectedIndex] ?? null;
   const launcherActions = useMemo(
-    () => createLauncherActions({ item: selectedItem, onItemClick, onNavigate }),
-    [selectedItem, onItemClick, onNavigate],
+    () => createLauncherActions({ item: selectedItem, onItemClick, onNavigate, t }),
+    [selectedItem, onItemClick, onNavigate, t],
   );
   const { recentLaunches, recentSearches } = useLauncherHistory({
     shouldRefreshWhenIdle: results.length === 0 && !loadingPhase,
   });
 
   const quickEntries: QuickEntry[] = useMemo(() => {
-    return toLauncherQuickEntries(settings.quick_entries, onNavigate);
-  }, [settings.quick_entries, onNavigate]);
+    return toLauncherQuickEntries(settings.quick_entries, onNavigate, t);
+  }, [settings.quick_entries, onNavigate, t]);
 
   const isSearchActivity = (isSearching || isSearchSettling) && !!query.trim();
+  const idleHome = !isSearchActivity && !pluginIsland && results.length === 0;
+  const homeIsland = useMemo(
+    () => (idleHome
+      ? resolveHomeIsland({
+          home_island_mode: appearance.home_island_mode,
+          home_island_cpu: appearance.home_island_cpu,
+          home_island_gpu: appearance.home_island_gpu,
+          home_island_memory: appearance.home_island_memory,
+        }, t)
+      : null),
+    [
+      idleHome,
+      appearance.home_island_mode,
+      appearance.home_island_cpu,
+      appearance.home_island_gpu,
+      appearance.home_island_memory,
+      t,
+    ],
+  );
+
   const island: BottomIslandContent | null = loadingPhase === "loading-apps"
     ? {
         label: t("launcher.loading", "Loading apps..."),
@@ -84,25 +103,12 @@ export default function Launcher({
     : results.length
     ? {
         label: t("launcher.ready", "Search ready"),
-        detail: `${results.length} ${t("launcher.result", results.length === 1 ? "result" : "results")}`,
+        detail: t("launcher.resultCount", "{n} results").replace("{n}", String(results.length)),
         progress: Math.min(100, Math.max(12, results.length * 12)),
       }
-    : appearance.home_island_mode === "system" || appearance.home_island_mode === "date"
-      ? null
-      : {
-        label: t("launcher.title", "Qx Launcher"),
-        detail: t("launcher.idle", "Type to search apps and commands"),
-      };
+    : homeIsland?.shellContent ?? null;
 
-  const customIsland = !isSearchActivity && !pluginIsland && !results.length && appearance.home_island_mode === "date" ? (
-    <HomeDateIsland />
-  ) : !isSearchActivity && !pluginIsland && !results.length && appearance.home_island_mode === "system" ? (
-    <HomeSystemIsland
-      showCpu={appearance.home_island_cpu}
-      showGpu={appearance.home_island_gpu}
-      showMemory={appearance.home_island_memory}
-    />
-  ) : undefined;
+  const customIsland = homeIsland?.customNode;
 
   const handleLauncherKeyDown = (event: React.KeyboardEvent) => {
     if ((event.metaKey || event.ctrlKey) && event.key === ",") {
@@ -116,7 +122,7 @@ export default function Launcher({
 
   return (
     <QxShell
-      title="Launcher"
+      title={t("launcher.title", "Qx Launcher")}
       className="launcher-shell"
       onKeyDown={onKeyDown}
       search={<SearchBar onKeyDown={handleLauncherKeyDown} embedded />}
@@ -125,7 +131,7 @@ export default function Launcher({
           <Select
             value={scope}
             options={scopeOptions}
-            ariaLabel="Search scope"
+            ariaLabel={t("launcher.scope", "Search scope")}
             className="qx-launcher-scope"
             onChange={(next) => {
               setScope(next);
@@ -162,7 +168,7 @@ export default function Launcher({
         kbd: "⌘K",
         disabled: results.length === 0,
       }}
-      actionTitle={selectedItem ? getLauncherActionTitle(selectedItem) : t("launcher.actions", "Actions")}
+      actionTitle={selectedItem ? getLauncherActionTitle(selectedItem, t) : t("launcher.actions", "Actions")}
       actions={launcherActions.map((action) => ({
         label: action.label,
         kbd: action.kbd,

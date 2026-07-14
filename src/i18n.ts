@@ -1,7 +1,15 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSettingsStore } from "./modules/settings/store";
 
-type Locale = "en" | "zh-CN";
+/** Resolved UI locale after applying system preference. */
+export type Locale = "en" | "zh-CN";
+
+/**
+ * User-facing language preference stored in settings.
+ * - `system`: follow OS; only Simplified Chinese systems get `zh-CN`, else `en`
+ * - `en` / `zh-CN`: force that locale
+ */
+export type LanguagePreference = "system" | "en" | "zh-CN";
 
 const zh: Record<string, string> = {
   "nav.general": "通用",
@@ -33,7 +41,10 @@ const zh: Record<string, string> = {
   "general.launchAtLogin": "登录时启动",
   "general.launchAtLogin.desc": "登录后自动打开 Qx。",
   "general.language": "语言",
-  "general.language.desc": "界面显示语言。",
+  "general.language.desc": "界面显示语言。跟随系统时仅简体中文系统使用中文，其余系统使用英文。",
+  "general.language.system": "跟随系统",
+  "general.language.en": "English",
+  "general.language.zh-CN": "简体中文",
   "general.autoUpdates": "自动更新",
   "general.autoUpdates.desc": "自动检查并安装更新。",
   "general.autoHideOnBlur": "失焦时自动隐藏",
@@ -60,7 +71,7 @@ const zh: Record<string, string> = {
   "appearance.layout.title": "窗口与密度",
   "appearance.layout.desc": "调整启动器尺寸、圆角和基础字号。",
   "appearance.homeIsland.title": "主页灵动岛",
-  "appearance.homeIsland.cardDesc": "决定主页空闲时底部状态区域呈现的信息。",
+  "appearance.homeIsland.cardDesc": "搜索空闲时的底部灵动岛：经典视图或科幻 HUD。",
   "appearance.theme.light": "浅色",
   "appearance.theme.dark": "深色",
   "appearance.theme.system": "跟随系统",
@@ -73,12 +84,36 @@ const zh: Record<string, string> = {
   "appearance.fontSize": "字体大小",
   "appearance.fontSize.desc": "基础界面字号。",
   "appearance.homeIsland": "主页灵动岛",
-  "appearance.homeIsland.desc": "搜索空闲时，启动器灵动岛显示的内容。",
+  "appearance.homeIsland.desc": "搜索空闲时灵动岛显示的内容。",
   "appearance.homeIsland.default": "默认",
-  "appearance.homeIsland.system": "系统信息",
-  "appearance.homeIsland.date": "日期显示",
+  "appearance.homeIsland.default.hint": "状态文案",
+  "appearance.homeIsland.system": "系统",
+  "appearance.homeIsland.system.hint": "CPU · MEM · GPU",
+  "appearance.homeIsland.date": "日期",
+  "appearance.homeIsland.date.hint": "点阵时钟",
+  "appearance.homeIsland.pulse": "脉冲",
+  "appearance.homeIsland.pulse.hint": "网速上下行 VU",
+  "appearance.homeIsland.core": "核心",
+  "appearance.homeIsland.core.hint": "电池能量条",
+  "appearance.homeIsland.orbit": "轨道",
+  "appearance.homeIsland.orbit.hint": "任务时钟 + CPU 环",
   "appearance.systemCurves": "系统曲线",
-  "appearance.systemCurves.desc": "主页灵动岛中的点状 GEEK 风格指标。",
+  "appearance.systemCurves.desc": "在「系统」灵动岛上开关各项指标。",
+  "island.pulse.tag": "PULSE",
+  "island.pulse.aria": "网络脉冲",
+  "island.pulse.down": "下载速率",
+  "island.pulse.up": "上传速率",
+  "island.core.tag": "CORE",
+  "island.core.aria": "电源核心",
+  "island.core.bar": "电量",
+  "island.core.ac": "AC",
+  "island.core.chg": "CHG",
+  "island.core.bat": "BAT",
+  "island.core.external": "EXT",
+  "island.orbit.tag": "ORBIT",
+  "island.orbit.aria": "任务时钟",
+  "island.orbit.time": "当前时间",
+  "island.orbit.cpu": "CPU 轨道",
 
   "agent.mode": "Agent 模式",
   "agent.mode.desc": "允许 QxAI 和插件运行多步骤 Agent 任务，并使用统一的模型和工具配置。",
@@ -303,19 +338,152 @@ const zh: Record<string, string> = {
   "launcher.clipboard.desc": "置顶、常用、链接",
   "launcher.rss": "RSS 阅读器",
   "launcher.rss.desc": "订阅源和文章",
+  "launcher.v2ex": "V2EX",
   "launcher.v2ex.desc": "最新和热门帖子",
   "launcher.settings": "设置",
   "launcher.settings.desc": "外观和插件",
   "launcher.weather": "天气",
   "launcher.weather.desc": "当前天气和预报",
+  "launcher.qx-ai": "QxAI",
+  "launcher.qx-ai.desc": "对话与 Agent 任务",
+  "launcher.screencap": "屏幕录制",
+  "launcher.screencap.desc": "GIF 捕获",
+  "launcher.documents": "文档",
+  "launcher.documents.desc": "文本、Markdown、JSON",
+  "launcher.macros": "宏录制",
+  "launcher.macros.desc": "录制并回放操作",
   "launcher.ready": "搜索就绪",
   "launcher.searching": "搜索中",
   "launcher.result": "条结果",
+  "launcher.resultCount": "{n} 条结果",
   "launcher.title": "Qx 启动器",
   "launcher.idle": "输入以搜索应用和命令",
   "launcher.open": "打开",
   "launcher.search": "搜索",
   "launcher.actions": "操作",
+  "launcher.loading": "正在加载应用...",
+  "launcher.loading.detail": "正在准备应用缓存",
+  "launcher.loadingApps": "正在加载应用...",
+  "launcher.placeholder": "搜索应用和命令...",
+  "launcher.scope": "搜索范围",
+  "launcher.scope.all": "全部",
+  "launcher.scope.apps": "应用",
+  "launcher.scope.files": "文件",
+  "launcher.scope.clipboard": "剪贴板",
+  "launcher.suggestions": "建议",
+  "launcher.noResults": "未找到结果",
+  "launcher.recent": "最近",
+  "launcher.recentSearches": "最近搜索",
+  "launcher.aliasesTags": "别名与标签",
+  "launcher.editQuickEntries": "编辑快速入口",
+  "launcher.done": "完成",
+  "launcher.add": "添加",
+  "launcher.reset": "重置",
+  "launcher.enabled": "已启用",
+  "launcher.disabled": "已禁用",
+  "launcher.removeQuickEntry": "移除快速入口",
+  "launcher.quickEntryTitle": "快速入口标题",
+  "launcher.quickEntrySubtitle": "快速入口副标题",
+  "launcher.quickEntryTarget": "快速入口目标",
+  "launcher.quickEntry": "快速入口",
+  "launcher.action.fileActions": "文件操作",
+  "launcher.action.clipboardActions": "剪贴板操作",
+  "launcher.action.commandActions": "命令操作",
+  "launcher.action.appActions": "应用操作",
+  "launcher.action.copyText": "复制文本",
+  "launcher.action.openClipboard": "打开剪贴板历史",
+  "launcher.action.openSettings": "打开设置",
+  "launcher.action.runCommand": "运行命令",
+  "launcher.action.copyResult": "复制结果",
+  "launcher.action.openFile": "打开文件",
+  "launcher.action.openApp": "打开应用",
+  "launcher.action.showInFinder": "在 Finder 中显示",
+  "launcher.action.copyPath": "复制路径",
+  "launcher.action.showPackage": "显示包内容",
+  "launcher.editAliases": "编辑别名",
+  "launcher.editShortcut": "编辑快捷键",
+  "launcher.recordShortcut": "录制快捷键",
+  "launcher.removeShortcut": "移除快捷键",
+  "launcher.appShortcut": "应用快捷键",
+  "launcher.shortcut": "快捷键",
+  "launcher.shortcutConflict": "该快捷键已被其他操作占用。",
+  "launcher.remove": "移除",
+
+  "clipboard.title": "剪贴板历史",
+  "clipboard.filter": "剪贴板筛选",
+  "clipboard.placeholder": "输入以筛选条目...",
+  "clipboard.paste": "粘贴",
+  "clipboard.copy": "复制",
+  "clipboard.pin": "置顶",
+  "clipboard.unpin": "取消置顶",
+  "clipboard.delete": "删除",
+  "clipboard.compressImage": "压缩图片",
+  "clipboard.videoToGif": "视频转 GIF",
+  "clipboard.compress": "压缩",
+  "clipboard.convertGif": "转为 GIF",
+  "clipboard.copied": "已复制",
+  "clipboard.pasting": "正在粘贴",
+  "clipboard.pasteFailed": "粘贴失败",
+  "clipboard.pinned": "已置顶",
+  "clipboard.unpinned": "已取消置顶",
+  "clipboard.startingCompress": "开始压缩",
+  "clipboard.startingGif": "开始转换为 GIF",
+  "clipboard.emptyHistory": "暂无剪贴板历史",
+  "clipboard.noMatch": "没有匹配的条目",
+  "clipboard.selectPreview": "选择条目以预览",
+  "clipboard.emptyText": "空文本",
+  "clipboard.imageAlt": "剪贴板图片",
+  "clipboard.loadingFile": "正在加载文件…",
+  "clipboard.info": "信息",
+  "clipboard.contentType": "内容类型",
+  "clipboard.characters": "字符数",
+  "clipboard.words": "词数",
+  "clipboard.file": "文件",
+  "clipboard.kind": "类型",
+  "clipboard.size": "大小",
+  "clipboard.dimensions": "尺寸",
+  "clipboard.duration": "时长",
+  "clipboard.quickAction": "快捷操作",
+  "clipboard.copiedAt": "复制时间",
+  "clipboard.filter.all": "全部类型",
+  "clipboard.filter.pinned": "已置顶",
+  "clipboard.filter.links": "链接",
+  "clipboard.filter.code": "代码",
+  "clipboard.filter.long": "长文本",
+  "clipboard.filter.frequent": "常用",
+  "clipboard.filter.image": "图片",
+  "clipboard.filter.file": "文件",
+  "clipboard.section.recent": "最近",
+  "clipboard.section.today": "今天",
+  "clipboard.section.yesterday": "昨天",
+  "clipboard.section.thisWeek": "本周",
+  "clipboard.section.older": "更早",
+  "clipboard.type.link": "链接",
+  "clipboard.type.code": "代码",
+  "clipboard.type.image": "图片",
+  "clipboard.type.file": "文件",
+  "clipboard.type.text": "文本",
+  "clipboard.copied.today": "今天 {time}",
+  "clipboard.copied.on": "{date} {time}",
+  "clipboard.items": "{n} 项",
+  "clipboard.listAria": "剪贴板历史",
+
+  "common.module": "模块",
+  "common.loading": "加载中",
+  "common.loadingModule": "正在加载模块",
+  "common.loadingNamed": "正在加载 {name}...",
+  "common.moduleError": "模块错误",
+  "common.back": "返回",
+  "common.failedRender": "{name} 渲染失败。",
+  "module.clipboard": "剪贴板",
+  "module.qx-ai": "QxAI",
+  "module.rss": "RSS",
+  "module.screencap": "屏幕录制",
+  "module.v2ex": "V2EX",
+  "module.weather": "天气",
+  "module.documents": "文档",
+  "module.macros": "宏录制",
+  "module.settings": "设置",
 
   "ocr.capture.title": "识别",
   "ocr.capture.desc": "启用截图、剪贴板图片和插件会用到的 OCR 能力。",
@@ -359,11 +527,106 @@ const zh: Record<string, string> = {
   "weather.units.desc": "选择温度显示单位。",
 };
 
-export function useLocale(): Locale {
-  const language = useSettingsStore((state) => state.settings.general.language);
-  return language === "zh-CN" ? "zh-CN" : "en";
+/** Normalize stored preference; unknown / empty values mean follow system. */
+export function normalizeLanguagePreference(raw: string | null | undefined): LanguagePreference {
+  if (raw === "en" || raw === "zh-CN" || raw === "system") return raw;
+  return "system";
 }
 
+/**
+ * Whether a BCP 47 / POSIX-ish locale tag is Simplified Chinese.
+ * Traditional Chinese (zh-TW / zh-HK / zh-Hant / …) is NOT simplified.
+ */
+export function isSimplifiedChineseLocale(tag: string): boolean {
+  const n = tag.trim().toLowerCase().replace(/_/g, "-");
+  if (!n || n === "c" || n === "posix") return false;
+  // Strip encoding suffix: zh_CN.UTF-8 → handled after _ → -
+  const base = n.split(".")[0] ?? n;
+  if (!base.startsWith("zh")) return false;
+  if (
+    base.includes("hant")
+    || base === "zh-tw"
+    || base.startsWith("zh-tw-")
+    || base === "zh-hk"
+    || base.startsWith("zh-hk-")
+    || base === "zh-mo"
+    || base.startsWith("zh-mo-")
+  ) {
+    return false;
+  }
+  if (
+    base.includes("hans")
+    || base === "zh-cn"
+    || base.startsWith("zh-cn-")
+    || base === "zh-sg"
+    || base.startsWith("zh-sg-")
+    || base === "zh-my"
+    || base.startsWith("zh-my-")
+    || base === "zh"
+  ) {
+    return true;
+  }
+  // Other zh-* (rare) → not simplified under our product rule
+  return false;
+}
+
+/** OS language tags visible to the webview (primary first). */
+export function readSystemLocaleTags(): string[] {
+  if (typeof navigator === "undefined") return ["en"];
+  const tags: string[] = [];
+  if (Array.isArray(navigator.languages)) {
+    for (const tag of navigator.languages) {
+      if (tag) tags.push(tag);
+    }
+  }
+  if (navigator.language) tags.push(navigator.language);
+  return tags.length > 0 ? tags : ["en"];
+}
+
+/** Product rule: Simplified Chinese system → zh-CN, otherwise English. */
+export function detectSystemLocale(): Locale {
+  return readSystemLocaleTags().some(isSimplifiedChineseLocale) ? "zh-CN" : "en";
+}
+
+/** Map settings preference → effective UI locale. */
+export function resolveLocale(preference: string | null | undefined): Locale {
+  const pref = normalizeLanguagePreference(preference);
+  if (pref === "zh-CN") return "zh-CN";
+  if (pref === "en") return "en";
+  return detectSystemLocale();
+}
+
+export function useLanguagePreference(): LanguagePreference {
+  const language = useSettingsStore((state) => state.settings.general.language);
+  return normalizeLanguagePreference(language);
+}
+
+/**
+ * Effective UI locale. Re-resolves when settings change or the OS fires `languagechange`.
+ */
+export function useLocale(): Locale {
+  const preference = useLanguagePreference();
+  const [systemEpoch, setSystemEpoch] = useState(0);
+
+  useEffect(() => {
+    const onLanguageChange = () => setSystemEpoch((n) => n + 1);
+    window.addEventListener("languagechange", onLanguageChange);
+    return () => window.removeEventListener("languagechange", onLanguageChange);
+  }, []);
+
+  return useMemo(() => {
+    void systemEpoch;
+    return resolveLocale(preference);
+  }, [preference, systemEpoch]);
+}
+
+/**
+ * Translate UI copy. English strings live in call-site fallbacks;
+ * `zh` table overrides when locale is zh-CN.
+ *
+ * Do NOT pass keyboard chord labels through `t()` — keep `kbd` / shortcut
+ * glyphs platform-native via `formatQxShortcut` (Esc, ⌘, Ctrl, …).
+ */
 export function useT() {
   const locale = useLocale();
   return useCallback((key: string, fallback: string): string => {

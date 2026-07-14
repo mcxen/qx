@@ -12,7 +12,12 @@ import {
   metadataForKey,
   metadataKeyForEntry,
 } from "../search/searchMetadata";
-import { createQuickEntry, QUICK_ENTRY_TARGETS, sanitizeQuickEntries } from "./quickEntries";
+import {
+  createQuickEntry,
+  localizeQuickEntry,
+  QUICK_ENTRY_TARGETS,
+  sanitizeQuickEntries,
+} from "./quickEntries";
 import type { QuickEntry } from "./types";
 
 function ContextSection({
@@ -108,7 +113,11 @@ export default function LauncherContext({
             size="sm"
             variant="ghost"
             onClick={() => setEditingQuickEntries((value) => !value)}
-            title={editingQuickEntries ? "Done" : "Edit quick entries"}
+            title={
+              editingQuickEntries
+                ? t("launcher.done", "Done")
+                : t("launcher.editQuickEntries", "Edit quick entries")
+            }
           >
             {editingQuickEntries ? <Check size={14} /> : <Pencil size={14} />}
           </Button>
@@ -120,18 +129,21 @@ export default function LauncherContext({
                 <div className="qx-quick-entry-edit-fields">
                   <Input
                     value={entry.title}
-                    aria-label="Quick entry title"
+                    aria-label={t("launcher.quickEntryTitle", "Quick entry title")}
                     onChange={(event) => updateQuickEntry(entry.id, { title: event.target.value })}
                   />
                   <Input
                     value={entry.subtitle}
-                    aria-label="Quick entry subtitle"
+                    aria-label={t("launcher.quickEntrySubtitle", "Quick entry subtitle")}
                     onChange={(event) => updateQuickEntry(entry.id, { subtitle: event.target.value })}
                   />
                   <Select
                     value={entry.target}
-                    options={QUICK_ENTRY_TARGETS.map((target) => ({ value: target.value, label: target.label }))}
-                    ariaLabel="Quick entry target"
+                    options={QUICK_ENTRY_TARGETS.map((target) => ({
+                      value: target.value,
+                      label: t(target.titleKey, target.label),
+                    }))}
+                    ariaLabel={t("launcher.quickEntryTarget", "Quick entry target")}
                     onChange={(target) => updateQuickEntry(entry.id, { target })}
                   />
                 </div>
@@ -141,7 +153,7 @@ export default function LauncherContext({
                     size="icon"
                     variant={entry.enabled ? "secondary" : "ghost"}
                     onClick={() => updateQuickEntry(entry.id, { enabled: !entry.enabled })}
-                    title={entry.enabled ? "Enabled" : "Disabled"}
+                    title={entry.enabled ? t("launcher.enabled", "Enabled") : t("launcher.disabled", "Disabled")}
                   >
                     {entry.enabled ? <Check size={14} /> : <X size={14} />}
                   </Button>
@@ -150,7 +162,7 @@ export default function LauncherContext({
                     size="icon"
                     variant="ghost"
                     onClick={() => removeQuickEntry(entry.id)}
-                    title="Remove quick entry"
+                    title={t("launcher.removeQuickEntry", "Remove quick entry")}
                   >
                     <Trash2 size={14} />
                   </Button>
@@ -165,7 +177,7 @@ export default function LauncherContext({
                 onClick={() => patchQuickEntries([...quickEntryDrafts, createQuickEntry()])}
               >
                 <Plus size={14} />
-                Add
+                {t("launcher.add", "Add")}
               </Button>
               <Button
                 type="button"
@@ -174,19 +186,22 @@ export default function LauncherContext({
                 onClick={() => patchQuickEntries(DEFAULT_SETTINGS.quick_entries)}
               >
                 <RotateCcw size={14} />
-                Reset
+                {t("launcher.reset", "Reset")}
               </Button>
             </div>
           </div>
         ) : (
-          quickEntries.map((entry) => (
-            <ContextEntry
-              key={entry.id}
-              title={entry.title}
-              subtitle={entry.subtitle}
-              onClick={entry.onClick}
-            />
-          ))
+          quickEntries.map((entry) => {
+            const labels = localizeQuickEntry(entry, t);
+            return (
+              <ContextEntry
+                key={entry.id}
+                title={labels.title}
+                subtitle={labels.subtitle}
+                onClick={entry.onClick}
+              />
+            );
+          })
         )}
       </ContextSection>
 

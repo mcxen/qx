@@ -93,7 +93,6 @@ export default function QxAiPanel() {
       title="QxAI Chat"
       className="qx-qxai-panel-shell"
       onKeyDown={onKeyDown}
-      onBack={() => setTab("launcher")}
       search={
         <div className="qx-search-wrap">
           <span className="qx-search-icon" aria-hidden="true" />
@@ -155,7 +154,7 @@ export default function QxAiPanel() {
         </div>
       }
       island={island}
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setView("list") }}
+      escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setTab("launcher") }}
       primaryAction={{
         label: selectedConv ? "Open Chat" : "New Chat",
         kbd: selectedConv ? "↵" : "N",

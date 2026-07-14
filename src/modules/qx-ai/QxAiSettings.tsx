@@ -415,8 +415,6 @@ export default function QxAiSettings() {
       title="QxAI Settings"
       className="qx-qxai-settings-shell"
       onKeyDown={onKeyDown}
-      onBack={() => setView("list")}
-      backLabel="Back"
       island={island}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setView("list") }}
     >

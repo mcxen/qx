@@ -54,14 +54,18 @@ export default function GeneralSettings() {
         </Row>
         <Row
           title={t("general.language", "Language")}
-          description={t("general.language.desc", "Interface language.")}
+          description={t(
+            "general.language.desc",
+            "Interface language. System follows the OS: Simplified Chinese systems use Chinese; all others use English.",
+          )}
         >
           <Select
-            value={g.language}
+            value={g.language === "en" || g.language === "zh-CN" || g.language === "system" ? g.language : "system"}
             onChange={(v) => patch("general", { ...g, language: v })}
             options={[
-              { value: "en", label: "English" },
-              { value: "zh-CN", label: "简体中文" },
+              { value: "system", label: t("general.language.system", "System") },
+              { value: "en", label: t("general.language.en", "English") },
+              { value: "zh-CN", label: t("general.language.zh-CN", "简体中文") },
             ]}
           />
         </Row>

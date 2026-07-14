@@ -1,6 +1,6 @@
 # Qx — Technical Architecture Document
 
-> 状态：Current · 适用版本：v0.4.61 · Owner：Core · 最后复核：2026-07-10
+> 状态：Current · 适用版本：v0.5.6 · Owner：Core · 最后复核：2026-07-14
 >
 > 桌面启动器（Raycast 风格）| Tauri v2 + React + TypeScript + Rust
 >
@@ -36,27 +36,19 @@ Qx 是一个以 macOS 为当前交付平台的桌面启动器，定位为 Raycas
 Qx/
 ├── src/                          # React 前端
 │   ├── App.tsx                   # 主应用壳（路由、全局键盘、窗口管理）
-│   ├── App.css                   # 全局样式 + CSS 变量 (Geist 主题)
+│   ├── App.css                   # 全局样式 + CSS 变量
 │   ├── store.ts                  # 全局 Zustand store
-│   ├── ThemeProvider.tsx         # Geist 主题上下文
-│   ├── SearchBar.tsx             # Launcher 搜索栏
-│   ├── ResultsList.tsx           # Launcher 搜索结果列表
-│   ├── components/               # 公共 UI 组件
-│   │   └── ui.tsx               # Kbd, LinkButton 等
+│   ├── ThemeProvider.tsx         # light/dark/system 主题
+│   ├── i18n.ts                   # 语言解析 + useT
+│   ├── Launcher.tsx              # 搜索壳；idle island → home-island
+│   ├── home-island/              # 可插拔灵动岛 + 异步 metrics 总线
+│   ├── components/               # 公共 UI（QxShell、Matrix、ui）
+│   ├── launcher/                 # context、quick entries、actions
 │   ├── modules/
-│   │   ├── clipboard/            # 剪贴板历史
-│   │   ├── screencap/            # 屏幕录制 (GIF)
-│   │   ├── rss/                  # RSS 阅读器
-│   │   ├── qx-ai/                # AI 对话、工具与设置
-│   │   ├── macros/               # 宏录制与回放
-│   │   ├── weather/              # 天气与定位
-│   │   └── settings/             # 设置、权限、外接显示器与扩展管理
+│   │   ├── clipboard/  screencap/  rss/  qx-ai/
+│   │   ├── macros/  weather/  documents/  v2ex/
+│   │   └── settings/
 │   └── plugin/                   # 插件系统
-│       ├── types.ts              # 插件类型定义
-│       ├── registry.ts           # 插件注册中心 (Zustand)
-│       ├── builtin.ts            # 内置模块注册
-│       ├── runtime.ts            # 插件沙箱运行
-│       └── PluginHost.tsx        # 插件 iframe 容器
 ├── src-tauri/                    # Rust 后端
 │   └── src/
 │       ├── lib.rs                # Tauri App 启动 + 命令注册
@@ -147,31 +139,30 @@ tab = "plugin:*"   → PluginPanelViewport
 - 通过 `postMessage` RPC 与主进程通信
 - 支持 Tauri invoke、storage、toast 等 API
 
-### 3.4 主题系统 (Geist)
+### 3.4 主题系统
 
 **实现**:
-- `ThemeProvider.tsx` — React Context, `data-theme` 属性在 `<html>` 上
-- `App.css` — 两组 CSS 变量 (`[data-theme="light"]` 和 `[data-theme="dark"]`)
-- 引用 `Geist Variable` 字体
+- `ThemeProvider.tsx` — `light | dark | system`；system 跟 `prefers-color-scheme`
+- 同步 `data-theme` + `.dark` 到 `<html>`
+- token 在 `src/styles/base.css`（含 `--qx-system-island-*` 灵动岛）
 
-**变量体系**:
-```
---qx-bg-100/200/300         背景层级
---qx-border-1/2/3            边框层级
---qx-text-primary/secondary/tertiary  文字层级
---qx-accent / --qx-accent-soft        主题色
---qx-danger / --qx-warning / --qx-success  语义色
---qx-overlay-1/2              悬停/选中覆盖层
---qx-canvas-opacity           窗口透明度
---qx-radius                  圆角
---qx-font-size              字号
-```
+### 3.5 i18n 与显示语言
 
-### 3.5 CSS 结构
+- `src/i18n.ts`：`general.language` = `system | en | zh-CN`
+- system：仅 OS 简体中文 → `zh-CN`，否则 `en`
+- 快捷键符号不翻译；文案 `useT` + zh 表
 
-- 使用 CSS Variables（自定义属性），无 Tailwind/TailwindCSS
-- 类名命名约定: `qx-*` (如 `qx-list-row`, `qx-plugin-toolbar`, `qx-raycast`)
-- 无 CSS-in-JS，所有样式在 `App.css` 和模块级 CSS（若有）
+### 3.6 Home Island（灵动岛）
+
+- 包：`src/home-island/`（注册表 + resolve + 设置 UI + data bus）
+- **可扩展**：新模式只 register，不改 Launcher / Appearance 分支
+- **非阻塞数据**：`data/bus.ts` 兴趣采样；UI 只读 `useSyncExternalStore`；Rust 命令 `spawn_blocking`
+- 详细规范：[UI_SPEC.md](../UI_SPEC.md) Home Island 节、[frontend-architecture.md](./frontend-architecture.md)
+
+### 3.7 CSS 结构
+
+- CSS Variables + 全局 `qx-*` 类名；样式在 `src/styles/`
+- Shell chrome：`--qx-shell-chrome-x`、`--qx-topbar-h`、`--qx-bottom-bar-h`（上下栏厚度接近）
 
 ---
 
@@ -180,9 +171,9 @@ tab = "plugin:*"   → PluginPanelViewport
 ### 4.1 Launcher / 应用搜索
 
 - 输入搜索 → 100ms debounce → `doSearch()`
-- 同时搜索: 插件命令 + macOS 本地应用 (via `search_apps` Rust 命令)
-- plist 解析 → icon 缓存 (`~/.qx/icons/`, sips 转换 .icns → PNG)
-- 键盘: ↑↓ 导航, Enter 打开应用/切换 tab
+- 同时搜索: 插件命令 + 本地应用 (`search_apps`)
+- 空闲底部 HUD：`resolveHomeIsland`（`src/home-island`）
+- 键盘: ↑↓ 导航, Enter 打开 / 切换 tab, Esc 级联 / hide
 
 ### 4.2 剪贴板历史
 

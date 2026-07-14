@@ -118,7 +118,7 @@ export default function DevTxtTool() {
     <QxShell
       title="DevTxtTool"
       className="documents-shell"
-      onBack={() => setTab("launcher")}
+      escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setTab("launcher") }}
       onKeyDown={onKeyDown}
       trailing={trailing}
       primaryAction={{

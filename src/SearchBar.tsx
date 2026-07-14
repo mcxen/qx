@@ -1,6 +1,7 @@
 import { useRef, useEffect } from "react";
 import { useStore } from "./store";
 import { requestPanelKeyWindow } from "./hooks/usePanelKeyWindow";
+import { useT } from "./i18n";
 
 export default function SearchBar({
   onKeyDown,
@@ -9,6 +10,7 @@ export default function SearchBar({
   onKeyDown: (e: React.KeyboardEvent) => void;
   embedded?: boolean;
 }) {
+  const t = useT();
   const query = useStore((state) => state.query);
   const setQuery = useStore((state) => state.setQuery);
   const setSelectedIndex = useStore((state) => state.setSelectedIndex);
@@ -32,7 +34,7 @@ export default function SearchBar({
         }}
         onFocus={requestPanelKeyWindow}
         onKeyDown={onKeyDown}
-        placeholder="Search for apps and commands..."
+        placeholder={t("launcher.placeholder", "Search for apps and commands...")}
         className="qx-plugin-search"
       />
     </div>

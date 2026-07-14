@@ -168,7 +168,6 @@ export function PluginPanelViewport() {
       title={shellTitle}
       className="qx-plugin-shell"
       onKeyDown={onKeyDown}
-      onBack={goBack}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
       search={
         <div className="qx-rss-detail-title">
