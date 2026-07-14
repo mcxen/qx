@@ -6,6 +6,7 @@ import { listen } from "@tauri-apps/api/event";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { useStore, type AppEntry, type SearchScope } from "./store";
 import Launcher from "./Launcher";
+import { requestLauncherSearchFocus } from "./SearchBar";
 import { useSettingsStore } from "./modules/settings/store";
 import { ThemeProvider } from "./ThemeProvider";
 import { usePluginRegistry } from "./plugin/registry";
@@ -941,6 +942,8 @@ function App() {
         setSelectedIndex(0);
         // Always re-load the empty launcher list on show (not only after a focus edge).
         void loadEmptyLauncherApps(setResults, setLoadingPhase);
+        // Option+Space re-show keeps SearchBar mounted — re-focus for typing.
+        requestLauncherSearchFocus();
       }
     });
     const unlistenNav = listen<string>("navigate", (e) => {
@@ -949,6 +952,8 @@ function App() {
         setTab(next);
       } else if (next === "launcher") {
         setTab("launcher");
+        // After global toggle opens launcher, ensure search can accept input.
+        window.requestAnimationFrame(() => requestLauncherSearchFocus());
       } else if (next === "documents") {
         setTab("documents");
       } else if (next.startsWith("plugin:")) {

@@ -1,7 +1,14 @@
-import { useRef, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useStore } from "./store";
 import { requestPanelKeyWindow } from "./hooks/usePanelKeyWindow";
 import { useT } from "./i18n";
+
+/** Fired when the floating panel is shown / returns to launcher search. */
+export const FOCUS_LAUNCHER_SEARCH_EVENT = "qx:focus-launcher-search";
+
+export function requestLauncherSearchFocus(): void {
+  window.dispatchEvent(new CustomEvent(FOCUS_LAUNCHER_SEARCH_EVENT));
+}
 
 export default function SearchBar({
   onKeyDown,
@@ -14,12 +21,39 @@ export default function SearchBar({
   const query = useStore((state) => state.query);
   const setQuery = useStore((state) => state.setQuery);
   const setSelectedIndex = useStore((state) => state.setSelectedIndex);
+  const visible = useStore((state) => state.visible);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    inputRef.current?.focus();
+  const focusInput = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    // Key window first so typing lands in the webview (macOS NSPanel).
     requestPanelKeyWindow();
+    el.focus({ preventScroll: true });
   }, []);
+
+  // Mount (including remount when returning to launcher from another tab).
+  useEffect(() => {
+    focusInput();
+  }, [focusInput]);
+
+  // Re-show via Option+Space: component stays mounted, so remount effect does not run.
+  useEffect(() => {
+    if (!visible) return;
+    // After global-shortcut show, key-window promotion is async — focus twice.
+    const frame = window.requestAnimationFrame(() => focusInput());
+    const timer = window.setTimeout(focusInput, 40);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [visible, focusInput]);
+
+  useEffect(() => {
+    const onRequest = () => focusInput();
+    window.addEventListener(FOCUS_LAUNCHER_SEARCH_EVENT, onRequest);
+    return () => window.removeEventListener(FOCUS_LAUNCHER_SEARCH_EVENT, onRequest);
+  }, [focusInput]);
 
   const input = (
     <div className="qx-search-wrap">

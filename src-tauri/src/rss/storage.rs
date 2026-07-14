@@ -4,7 +4,18 @@ use std::sync::{Arc, Mutex};
 
 use super::types::{Article, Feed, Folder};
 
-pub struct RssDb(pub Arc<Mutex<Connection>>);
+/// Managed Tauri state. Connection may be `None` if the first open failed;
+/// callers reconnect lazily via `ensure_open`.
+pub struct RssDb(pub Arc<Mutex<Option<Connection>>>);
+
+/// Open (or re-open) the DB into `slot` if empty.
+pub fn ensure_open(slot: &mut Option<Connection>) -> Result<&Connection, String> {
+    if slot.is_none() {
+        *slot = Some(open().map_err(|e| format!("rss db open: {e}"))?);
+    }
+    slot.as_ref()
+        .ok_or_else(|| "rss db unavailable".to_string())
+}
 
 pub fn db_path() -> PathBuf {
     let dir = crate::paths::data_dir();

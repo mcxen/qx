@@ -11,18 +11,36 @@ use types::{Article, Feed, Folder};
 
 use crate::settings;
 
+/// Always register `RssDb` so invoke commands never hit "state not managed".
+/// If the first open fails (path/permissions/corrupt file), store `None` and
+/// retry lazily on the next command — same pattern as clipboard.
 pub fn init(app: &tauri::AppHandle) {
-    if let Ok(conn) = storage::open() {
-        app.manage(RssDb(Arc::new(std::sync::Mutex::new(conn))));
-    }
+    let conn = match storage::open() {
+        Ok(c) => Some(c),
+        Err(e) => {
+            eprintln!("[rss] DB init failed (will retry on demand): {e}");
+            crate::diagnostics::log(
+                crate::diagnostics::LogLevel::Error,
+                "rss.init",
+                "rss database open failed at startup",
+                serde_json::json!({ "error": e.to_string() }),
+            );
+            None
+        }
+    };
+    app.manage(RssDb(Arc::new(std::sync::Mutex::new(conn))));
 }
 
 fn with_db<F, R>(state: &State<RssDb>, f: F) -> Result<R, String>
 where
     F: FnOnce(&rusqlite::Connection) -> Result<R, String>,
 {
-    let guard = state.0.lock().map_err(|e| format!("db lock: {e}"))?;
-    f(&guard)
+    let mut guard = state
+        .0
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let conn = storage::ensure_open(&mut guard)?;
+    f(conn)
 }
 
 fn rss_settings() -> settings::RssSettings {
