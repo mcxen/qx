@@ -14,9 +14,39 @@ use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition};
 
 pub(crate) const MAIN_LABEL: &str = "main";
 static PREVIOUS_FOREGROUND_PID: OnceLock<Mutex<Option<i32>>> = OnceLock::new();
+/// Frontend tab / route last known to Rust (for global-shortcut toggle-to-close).
+static ACTIVE_ROUTE: OnceLock<Mutex<String>> = OnceLock::new();
 
 fn previous_foreground_pid() -> &'static Mutex<Option<i32>> {
     PREVIOUS_FOREGROUND_PID.get_or_init(|| Mutex::new(None))
+}
+
+fn active_route_lock() -> &'static Mutex<String> {
+    ACTIVE_ROUTE.get_or_init(|| Mutex::new("launcher".to_string()))
+}
+
+pub fn remember_active_route(route: &str) {
+    let route = if route.trim().is_empty() {
+        "launcher"
+    } else {
+        route.trim()
+    };
+    if let Ok(mut guard) = active_route_lock().lock() {
+        *guard = route.to_string();
+    }
+}
+
+pub fn active_route() -> String {
+    active_route_lock()
+        .lock()
+        .map(|guard| guard.clone())
+        .unwrap_or_else(|_| "launcher".to_string())
+}
+
+fn routes_match(current: &str, target: &str) -> bool {
+    let c = if current.is_empty() { "launcher" } else { current };
+    let t = if target.is_empty() { "launcher" } else { target };
+    c == t
 }
 
 #[cfg(target_os = "macos")]
@@ -496,12 +526,15 @@ pub fn hide_restore_focus_and_wait(app: &AppHandle, timeout: Duration) {
 }
 
 /// Toggle visibility — used by the toggle_launcher global shortcut.
+/// Same shortcut that opens the panel also closes it (and restores focus).
 pub fn toggle(app: &AppHandle) {
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         if win.is_visible().unwrap_or(false) {
-            let _ = win.hide();
+            hide_and_restore_focus(app);
         } else {
             show_floating(app);
+            remember_active_route("launcher");
+            let _ = tauri::Emitter::emit(&win, "navigate", "launcher");
         }
     }
 }
@@ -510,9 +543,24 @@ pub fn toggle(app: &AppHandle) {
 /// Mirrors the old `show_and_navigate` behavior but never steals focus.
 pub fn show_and_navigate(app: &AppHandle, route: &str) {
     show_floating(app);
+    remember_active_route(route);
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         let _ = tauri::Emitter::emit(&win, "navigate", route);
     }
+}
+
+/// Global module shortcut behavior:
+/// - hidden → show and open `route`
+/// - visible on `route` → close panel (same shortcut dismisses)
+/// - visible on another tab → switch to `route`
+pub fn toggle_route(app: &AppHandle, route: &str) {
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        if win.is_visible().unwrap_or(false) && routes_match(&active_route(), route) {
+            hide_and_restore_focus(app);
+            return;
+        }
+    }
+    show_and_navigate(app, route);
 }
 
 #[tauri::command]
@@ -533,6 +581,11 @@ pub fn floating_hide_restore_focus(app: AppHandle) {
 #[tauri::command]
 pub fn floating_toggle(app: AppHandle) {
     toggle(&app);
+}
+
+#[tauri::command]
+pub fn set_active_route(route: String) {
+    remember_active_route(&route);
 }
 
 /// Promote the panel to key window so keyboard input reaches the webview.

@@ -63,12 +63,12 @@ export default function ShortcutSettings() {
                   )}
                   {id === "toggle_launcher" && !issue && (
                     <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
-                      Summon or hide the main window from anywhere.
+                      Summon or dismiss the main window from anywhere (same key toggles).
                     </div>
                   )}
                   {id !== "toggle_launcher" && !issue && (
                     <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
-                      Optional deep-link. Off by default so it does not fight other apps.
+                      Open this module globally. Press again while it is open to dismiss Qx.
                     </div>
                   )}
                 </div>

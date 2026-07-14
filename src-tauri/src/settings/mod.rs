@@ -760,10 +760,11 @@ fn portable_shortcut_key(key: &str) -> String {
 }
 
 fn show_and_navigate(app: &AppHandle, route: &str) {
-    if let Some(win) = app.get_webview_window("main") {
-        crate::show_on_cursor_monitor(app, &win);
-        let _ = win.emit("navigate", route);
-    }
+    crate::floating_panel::show_and_navigate(app, route);
+}
+
+fn toggle_route(app: &AppHandle, route: &str) {
+    crate::floating_panel::toggle_route(app, route);
 }
 
 pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result<(), String> {
@@ -771,26 +772,22 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
     let _ = gs.unregister_all();
     let mut registered = BTreeSet::new();
 
+    // Same global chord opens and closes the panel (toggle).
     if let Some(key) = shortcut_for(settings, "toggle_launcher") {
         gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
-                if let Some(win) = app.get_webview_window("main") {
-                    if win.is_visible().unwrap_or(false) {
-                        let _ = win.hide();
-                    } else {
-                        crate::show_on_cursor_monitor(app, &win);
-                    }
-                }
+                crate::floating_panel::toggle(app);
             }
         })
         .map_err(|e| format!("register toggle_launcher shortcut: {e}"))?;
         registered.insert(key);
     }
 
+    // Feature chords: open module, or dismiss if already showing that module.
     if let Some(key) = shortcut_for(settings, "clipboard") {
         gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
-                show_and_navigate(app, "clipboard");
+                toggle_route(app, "clipboard");
             }
         })
         .map_err(|e| format!("register clipboard shortcut: {e}"))?;
@@ -800,7 +797,7 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
     if let Some(key) = shortcut_for(settings, "rss") {
         gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
-                show_and_navigate(app, "rss");
+                toggle_route(app, "rss");
             }
         })
         .map_err(|e| format!("register rss shortcut: {e}"))?;
@@ -810,7 +807,7 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
     if let Some(key) = shortcut_for(settings, "record_gif") {
         gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
-                show_and_navigate(app, "screencap");
+                toggle_route(app, "screencap");
             }
         })
         .map_err(|e| format!("register record_gif shortcut: {e}"))?;

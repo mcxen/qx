@@ -1,8 +1,8 @@
 # Qx UI Spec
 
-> 状态：Current · 适用版本：v0.5.8 · Owner：Frontend · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.5.10 · Owner：Frontend · 最后复核：2026-07-14
 >
-> 事实来源：`src/components/QxShell.tsx`、`src/hooks/useEscBack.ts`、`src/styles/shell.css`、`src/home-island/`、`src/modules/`、`src/i18n.ts`
+> 事实来源：`src/components/QxShell.tsx`、`src/hooks/useEscBack.ts`、`src/styles/shell.css`、`src/styles/settings-actions.css`、`src/home-island/`、`src/modules/settings/plugins/`、`src/i18n.ts`
 >
 > 本文件是 UI 布局与交互的单一事实来源。实现与本文冲突时，以代码为据并回写本文件。
 
@@ -486,15 +486,60 @@ Settings：
 - Esc / Close → 关闭设置面板。
 - 面板结构、设计令牌、Row/Card/SettingsCard 规范、响应式断点与新增 tab 步骤见 [docs/settings-panel.md](docs/settings-panel.md)。
 
-Plugin Manager：
+### Settings · Extensions / 已安装模块（成熟小卡片）
 
-- 使用 `Tabs` 切换 Installed / Browse，不使用 `SegmentedControl`。
-- 列表项禁用行内开关；启用/禁用、偏好配置统一放在右侧详情区。
-- 导入区、详情区分组使用 `Card` / `SettingsCard`。
-- 搜索和偏好输入使用 shadcn `Input`，不暴露原生 `<input>` 外观。
-- 安装、刷新、加载使用 Skeleton 或 spinner。
-- 响应式规则：`max-width: 760px` 下列表与详情上下堆叠，详情区隐藏，仅列表可点击展开详情。
-- 完整实现与扩展规范见 [docs/plugin-architecture.md](./docs/plugin-architecture.md) 和 [public/doc/plugin-system.md](./public/doc/plugin-system.md)。
+实现：`src/modules/settings/plugins/`（`PluginManager` → Installed / Browse）。视觉在 `settings-actions.css` 的 `.qx-plugin-module-card*`。
+
+**产品形态（对标 Raycast 扩展格 / 系统设置密度，不是后台管理大卡片）：**
+
+| 层 | 规则 |
+|---|---|
+| 列表 | 响应式 **小圆角 tile 网格**，`repeat(auto-fill, minmax(112px, 1fr))`，`gap: 8px` |
+| 卡片封面 | 只暴露 **图标 + 名称 + 一行弱状态**；点击打开配置 |
+| 二级配置 | **悬浮 Dialog**（带阴影 / 毛玻璃），承载启用、命令、快捷键、别名、偏好、卸载 |
+| 页级操作 | 导入归档、筛选搜索、Browse 市场留在页面，不塞进每张卡 |
+
+**卡片封面禁止：**
+
+- 双 Badge（On/Off + Built-in 同时堆在角上）
+- 封面上的长描述截断段落
+- 营销式大写 CTA（如 `CONFIGURE`）
+- 重阴影、抬升 translate、装饰渐变底
+- 行内开关（启用/禁用进 Dialog，不在 tile 上直接点）
+
+**卡片封面必须：**
+
+- 圆角 **8px**（`--qx-card-radius` 量级），小卡密度，不是 12px+ 大板
+- 无默认 box-shadow；hover 只换 **边框 / 背景**（`bg-component-1` → `2`）
+- 图标约 **36×36**、圆角 **8px**，居中偏上
+- 标题 **12px / semibold**，单行省略
+- 状态行 **10px / tertiary**：`Disabled` · `Built-in` · `vX.Y.Z` 三选一优先（禁用优先于版本）
+- 禁用模块：整卡 `opacity ≈ 0.55`，不另做大红 Badge
+- `focus-visible` 用 accent 描边，可键盘打开
+
+**配置 Dialog：**
+
+- 使用 shadcn `Dialog`（`.qx-shadcn-dialog-content` + `.qx-plugin-config-dialog`）
+- 宽约 `min(560px, 100vw - 40px)`，带清晰阴影与边框；内容区可滚动
+- 标题 = 模块名；说明一句即可（设置 / 快捷键 / 偏好）
+- 详情内分组仍用 `SettingsCard` + `Row`；快捷键 `ShortcutRecorder`；别名 `SearchAliasTagEditor`
+- Esc 先关 Dialog，再回 Settings 级联
+
+**Tabs：**
+
+- Installed / Browse 用 `Tabs`（不是顶栏 `SegmentedControl` 代替主切换）
+- 工具条：搜索已安装 + 过滤（All / Built-in / External / Enabled / Disabled）+ Rescan
+- 导入区、Display 开关用可折叠 `SettingsCard`，与模块网格分离
+
+**成熟度原则（写给后续设计）：**
+
+1. **封面极简，详情完整** — tile 只负责识别与入口；配置密度放在二级浮层。  
+2. **桌面工具，不是运营后台** — 避免徽章墙、彩色状态条、大按钮 CTA。  
+3. **与 Settings 其它页一致** — token / 圆角 / 字号阶梯对齐 `Row` + `SettingsCard`，不要另起一套视觉语言。  
+4. **可扫描** — 图标对齐、标题基线一致；网格宁可多空一列，不要挤成 200px 宽信息卡。
+
+参考实现：`InstalledModuleCard.tsx`、`.qx-plugin-card-grid`、`.qx-plugin-config-dialog`。  
+插件协议与运行时见 [docs/plugin-architecture.md](./docs/plugin-architecture.md)、[public/doc/plugin-system.md](./public/doc/plugin-system.md)。
 
 ## UI States
 

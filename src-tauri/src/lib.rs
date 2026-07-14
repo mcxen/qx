@@ -560,6 +560,7 @@ pub fn run() {
             floating_panel::floating_hide_restore_focus,
             floating_panel::floating_toggle,
             floating_panel::floating_request_key,
+            floating_panel::set_active_route,
             rss::rss_list_feeds,
             rss::rss_add_feed,
             rss::rss_update_feed,

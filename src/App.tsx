@@ -457,6 +457,11 @@ function App() {
   const searchAbortRef = useRef<AbortController | null>(null);
   const searchScopeRef = useRef<SearchScope>("all");
   const { settings, load: loadSettings, loaded: settingsLoaded } = useSettingsStore();
+
+  // Keep Rust global-shortcut toggle-to-close in sync with the active tab.
+  useEffect(() => {
+    void invoke("set_active_route", { route: tab }).catch(() => {});
+  }, [tab]);
   const { load: loadPlugins, findCommands } = usePluginRegistry();
   const pluginCommandCount = usePluginRegistry((state) => state.commands.length);
   const pluginPanelCount = usePluginRegistry((state) => Object.keys(state.panels).length);
