@@ -198,12 +198,8 @@ mod macos {
     /// auxiliary so the panel rides the *active* Space, including fullscreen.
     fn panel_collection_behavior() -> NSWindowCollectionBehavior {
         NSWindowCollectionBehavior::CanJoinAllSpaces
-            | NSWindowCollectionBehavior::MoveToActiveSpace
-            | NSWindowCollectionBehavior::Transient
             | NSWindowCollectionBehavior::FullScreenAuxiliary
-            | NSWindowCollectionBehavior::FullScreenDisallowsTiling
             | NSWindowCollectionBehavior::IgnoresCycle
-            | NSWindowCollectionBehavior::CanJoinAllApplications
     }
 
     /// Apply panel-like semantics to the main NSWindow.

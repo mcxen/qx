@@ -5,6 +5,7 @@ import ShellActionButton, { type QxShellAction } from "./ShellActionButton";
 import ShellActionMenu, { QX_ACTION_MENU_TRIGGER_ATTR } from "./ShellActionMenu";
 import {
   getQxShortcutPreset,
+  isImeCompositionEvent,
   isNativeEditingShortcut,
   isReservedGlobalShortcut,
   isReservedGlobalShortcutEvent,
@@ -315,6 +316,10 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const handleActionMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): boolean => {
     if (!actionMenuOpen || menuActions.length === 0) return false;
 
+    // Do not consume the Enter that confirms an IME candidate, even when the
+    // action menu is open and would otherwise handle bare Enter as navigation.
+    if (isImeCompositionEvent(event.nativeEvent)) return false;
+
     // Let host global chords pass through untouched.
     if (isReservedGlobalShortcutEvent(event.nativeEvent)) return false;
 
@@ -393,6 +398,8 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const handleKeyDownCapture = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented) return;
 
+    if (isImeCompositionEvent(event.nativeEvent)) return;
+
     // Never intercept launcher / Spotlight chords inside the shell.
     if (isReservedGlobalShortcutEvent(event.nativeEvent)) return;
 
@@ -423,6 +430,8 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented) return;
+
+    if (isImeCompositionEvent(event.nativeEvent)) return;
 
     if (isReservedGlobalShortcutEvent(event.nativeEvent)) return;
 

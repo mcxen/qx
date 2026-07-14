@@ -11,8 +11,22 @@ export function isEditableTarget(target: EventTarget | null): boolean {
   return true;
 }
 
-export function shouldIgnoreBareShortcut(event: Pick<KeyboardEvent, "isComposing" | "target">): boolean {
-  return event.isComposing || isEditableTarget(event.target);
+/**
+ * IME candidate confirmation is reported inconsistently by browsers: some
+ * expose `isComposing`, while others only emit the legacy keyCode 229. Treat
+ * both forms as composition input so Enter can reach the IME instead of a
+ * shell action (for example, opening the selected search result).
+ */
+export function isImeCompositionEvent(
+  event: Pick<KeyboardEvent, "isComposing" | "keyCode">,
+): boolean {
+  return event.isComposing || event.keyCode === 229;
+}
+
+export function shouldIgnoreBareShortcut(
+  event: Pick<KeyboardEvent, "isComposing" | "keyCode" | "target">,
+): boolean {
+  return isImeCompositionEvent(event) || isEditableTarget(event.target);
 }
 
 /**

@@ -34,7 +34,7 @@ import { loadClipboardEntryById, pasteClipboardEntryAtCursor } from "./modules/c
 import { useEscBack } from "./hooks/useEscBack";
 import { useT } from "./i18n";
 import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./lib/logger";
-import { getQxDesktopPlatform } from "./utils/keyboard";
+import { getQxDesktopPlatform, isImeCompositionEvent } from "./utils/keyboard";
 import { isBuiltinModuleEnabled } from "./modules/moduleAvailability";
 import "./App.css";
 
@@ -1555,6 +1555,10 @@ function App() {
   }, [setTab]);
 
   const handleKeyDown = useCallback(async (e: React.KeyboardEvent) => {
+    // Enter confirms an active IME candidate; it must not launch the selected
+    // result or trigger another shell action while composition is in progress.
+    if (isImeCompositionEvent(e.nativeEvent)) return;
+
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
