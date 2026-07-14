@@ -48,15 +48,15 @@ export const useScreencapStore = create<ScreencapStore>((set, get) => ({
       await invoke("start_recording", { area: area ?? null });
       set({ isRecording: true, status: "recording" });
     } catch (e) {
-      set({ status: "error", error: String(e) });
+      set({ isRecording: false, status: "error", error: String(e) });
     }
   },
 
   stopRecording: async () => {
-    set({ status: "processing" });
+    set({ status: "processing", isRecording: true });
     try {
       const path = await invoke<string>("stop_recording");
-      set({ isRecording: false, status: "done", lastGifPath: path });
+      set({ isRecording: false, status: "done", lastGifPath: path, error: null });
       await get().loadHistory();
     } catch (e) {
       set({ isRecording: false, status: "error", error: String(e) });
@@ -74,8 +74,17 @@ export const useScreencapStore = create<ScreencapStore>((set, get) => ({
 
   deleteEntry: async (id) => {
     try {
+      const removed = get().history.find((h) => h.id === id);
       await invoke("delete_screencap", { id });
-      set({ history: get().history.filter((h) => h.id !== id) });
+      const history = get().history.filter((h) => h.id !== id);
+      const wasPreviewing = Boolean(removed && get().lastGifPath === removed.path);
+      const lastGifPath = wasPreviewing ? (history[0]?.path ?? null) : get().lastGifPath;
+      const status = get().status === "recording" || get().status === "processing"
+        ? get().status
+        : lastGifPath
+          ? "done"
+          : "idle";
+      set({ history, lastGifPath, status });
     } catch (e) {
       set({ error: String(e) });
     }
@@ -85,13 +94,14 @@ export const useScreencapStore = create<ScreencapStore>((set, get) => ({
     const ids = get().history.map((h) => h.id);
     try {
       await Promise.all(ids.map((id) => invoke("delete_screencap", { id })));
-      set({ history: [] });
+      set({ history: [], lastGifPath: null, status: "idle" });
     } catch (e) {
       set({ error: String(e) });
     }
   },
 
-  setPreview: (path) => set({ lastGifPath: path, status: "done" }),
+  // Keep status usable for browsing history after a finished capture.
+  setPreview: (path) => set({ lastGifPath: path, status: "done", error: null }),
 
   reset: () => set({ status: "idle", error: null, lastGifPath: null }),
 }));

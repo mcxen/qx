@@ -353,11 +353,13 @@ Actions Menu：
 
 - 点击 Actions 或 `Cmd+K`（Windows：`Ctrl+K`）打开 / 关闭（Raycast Action Panel 语义）。
 - 锚定在底栏右侧按钮上方。
+- 点击 Qx 窗口内菜单以外区域关闭；关闭走 shadcn/Radix Popover 的 `data-state` 进出动画，不得瞬时卸载导致无动画。
 - 菜单打开后，键盘优先操作菜单本身（capture 阶段拦截，避免列表 / 搜索框抢走按键）：
   - `ArrowUp` / `ArrowDown`：高亮上一项 / 下一项（跳过 disabled）。
   - `Home` / `End`：第一项 / 最后一项。
   - `Enter`：执行当前高亮项。
   - 单字母 `kbd`：执行对应菜单项（仅菜单打开时）。
+  - 菜单项上标注的组合键（如 `Cmd+C` / `Cmd+P` / `Cmd+Backspace`）：菜单打开时同样直接执行对应项（Raycast Action Panel 语义）；裸 `Enter` 仍只执行当前高亮项。
   - `Esc` 或再次 `Cmd+K` / `Ctrl+K`：关闭菜单，并**恢复打开菜单前的焦点**（搜索框 / 列表 / region）；列表 `navigation` 选中项不得因菜单内上下键而改变。
   - 关闭菜单后的下一次 `Esc` 才走 `escapeAction` / `useEscBack` 离开模块。
 - 菜单项来自模块传入的 `actions`（当前选中对象上下文）。
@@ -449,7 +451,8 @@ Launcher：
 
 - 左侧搜索结果，右侧常用入口和最近项。
 - 搜索结果、右侧入口、底部动作都支持键盘操作。
-- 无模块级 Esc 返回（已是根视图）；底栏左侧可不提供离开 Launcher 的 Esc。
+- Esc 级联（根视图）：有搜索文字时 **清空 query**（可继续输入并用 Enter 打开结果）；query 已空时再 Esc 才隐藏窗口（host escape）。
+- 有搜索文字时底栏可显示 Esc 清空；无文字时可不提供离开 Launcher 的可见 Esc。
 - 空闲 Home Island 由 `resolveHomeIsland` 解析；搜索中 / 有结果 / 插件 status 优先占用 shell island。
 
 Clipboard：
@@ -584,6 +587,8 @@ useEscBack({
 
 - 快捷键标签必须反映当前平台（macOS 用 ⌘，Windows 用 Ctrl）；不要把 macOS 符号写死为唯一说明。
 - Shell 快捷键是窗口内响应链事件，不是进程级全局快捷键；唯一默认全局键是召唤 Launcher。
+- **禁止**把 `Alt+Space` / `Option+Space`（Launcher 召唤）或 `Cmd+Space` / `Ctrl+Space`（系统 Spotlight 等）绑成模块 Action；Shell 匹配层必须放行这些宿主级组合键，不得 `preventDefault`。
+- 剪贴板等模块的删除应使用 `Cmd/Ctrl+Backspace`（或 `Delete` 等价），不得使用 Space 系全局键。
 
 ## Responsive
 

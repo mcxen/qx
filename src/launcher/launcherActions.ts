@@ -48,13 +48,13 @@ export function createLauncherActions({
       {
         id: "copy-text",
         label: t("launcher.action.copyText", "Copy Text"),
-        kbd: "↵",
+        kbd: "Enter",
         run: async () => writeText(await readClipboardText(item)),
       },
       {
         id: "open-clipboard",
         label: t("launcher.action.openClipboard", "Open Clipboard History"),
-        kbd: "⌘ ↵",
+        kbd: "CmdOrCtrl+Enter",
         run: () => onNavigate("clipboard"),
       },
     ];
@@ -67,7 +67,7 @@ export function createLauncherActions({
         label: item.path === "__qx:settings"
           ? t("launcher.action.openSettings", "Open Settings")
           : t("launcher.action.runCommand", "Run Command"),
-        kbd: "↵",
+        kbd: "Enter",
         run: () => onItemClick(item),
       },
     ];
@@ -78,7 +78,7 @@ export function createLauncherActions({
       {
         id: "copy-result",
         label: t("launcher.action.copyResult", "Copy Result"),
-        kbd: "↵",
+        kbd: "Enter",
         run: () => onItemClick(item),
       },
     ];
@@ -90,19 +90,19 @@ export function createLauncherActions({
       label: kind === "file"
         ? t("launcher.action.openFile", "Open File")
         : t("launcher.action.openApp", "Open Application"),
-      kbd: "↵",
+      kbd: "Enter",
       run: () => onItemClick(item),
     },
     {
       id: "reveal",
       label: t("launcher.action.showInFinder", "Show in Finder"),
-      kbd: "⌘ ↵",
+      kbd: "CmdOrCtrl+Enter",
       run: () => revealItemInDir(item.path),
     },
     {
       id: "copy-path",
       label: t("launcher.action.copyPath", "Copy Path"),
-      kbd: "⌘ C",
+      kbd: "CmdOrCtrl+C",
       run: () => writeText(item.path),
     },
     ...(kind === "app"
@@ -110,7 +110,7 @@ export function createLauncherActions({
           {
             id: "show-package",
             label: t("launcher.action.showPackage", "Show Package Contents"),
-            kbd: "⌥ ⌘ ↵",
+            kbd: "Alt+CmdOrCtrl+Enter",
             run: () => openPath(`${item.path}/Contents`),
           },
         ]

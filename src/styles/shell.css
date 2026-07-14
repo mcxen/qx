@@ -517,11 +517,27 @@
   cursor: default;
 }
 
+.qx-actions-popover-kbds {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .qx-actions-popover-item kbd {
   flex-shrink: 0;
   color: var(--qx-text-tertiary);
   font-family: inherit;
   font-size: 11px;
+}
+
+.qx-actions-popover-item kbd.qx-actions-menu-key {
+  min-width: 1.1em;
+  padding: 0 4px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 4px;
+  color: var(--qx-text-secondary);
+  text-align: center;
 }
 
 .qx-bottom-island {

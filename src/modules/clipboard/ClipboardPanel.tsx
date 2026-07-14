@@ -376,18 +376,18 @@ export default function ClipboardPanel() {
   const handleKeyDown = async (e: React.KeyboardEvent) => {
     escKeyDown(e);
     if (e.key === "Escape") return;
-    if (e.key === "Enter" && e.metaKey) {
+    // Chord actions (⌘C / ⌘P / ⌘⌫ / …) are owned by QxShell action matching so
+    // they work both with the Actions panel open and while search is focused.
+    // Keep Enter here so paste still wins over shell chrome when typing in search.
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+      // Raycast-style alternate: ⌘↵ copies the selected item (detail is →).
       e.preventDefault();
-      setDetailOpen(true);
-    } else if (e.key === "Enter") {
+      await copyItem(selectedItem);
+      return;
+    }
+    if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
       e.preventDefault();
       await pasteItem(selectedItem, { focusAtCursor: true });
-    } else if (e.key.toLowerCase() === "p" && e.metaKey) {
-      e.preventDefault();
-      await togglePin(selectedItem);
-    } else if ((e.key === "Backspace" || e.key === "Delete") && e.metaKey) {
-      e.preventDefault();
-      await deleteItem(selectedItem);
     }
   };
 
@@ -431,6 +431,8 @@ export default function ClipboardPanel() {
   const actionMenuShortcut = getQxShortcutPreset().actionMenu;
 
   const clipboardActions = useMemo<QxShellAction[]>(() => {
+    // In-window only — never Alt+Space (launcher) or Cmd+Space (Spotlight).
+    // menuKey: single letters while Actions panel is open (Raycast-style).
     const list: QxShellAction[] = [
       {
         label: t("clipboard.paste", "Paste"),
@@ -441,18 +443,21 @@ export default function ClipboardPanel() {
       {
         label: t("clipboard.copy", "Copy"),
         kbd: "CmdOrCtrl+C",
+        menuKey: "c",
         disabled: !selectedItem,
         onClick: () => void copyItem(selectedItem),
       },
       {
         label: selectedItem?.pinned ? t("clipboard.unpin", "Unpin") : t("clipboard.pin", "Pin"),
         kbd: "CmdOrCtrl+P",
+        menuKey: "p",
         disabled: !selectedItem,
         onClick: () => void togglePin(selectedItem),
       },
       {
         label: t("clipboard.delete", "Delete"),
         kbd: "CmdOrCtrl+Backspace",
+        menuKey: "d",
         disabled: !selectedItem,
         tone: "danger",
         onClick: () => void deleteItem(selectedItem),
@@ -464,6 +469,7 @@ export default function ClipboardPanel() {
       list.push({
         label: t("clipboard.compressImage", "Compress Image"),
         kbd: "CmdOrCtrl+Shift+C",
+        menuKey: "m",
         disabled: Boolean(mediaProgress),
         onClick: () => void startMediaTask("compress"),
       });
@@ -472,6 +478,7 @@ export default function ClipboardPanel() {
       list.push({
         label: t("clipboard.videoToGif", "Video to GIF"),
         kbd: "CmdOrCtrl+Shift+G",
+        menuKey: "g",
         disabled: Boolean(mediaProgress),
         onClick: () => void startMediaTask("gif"),
       });
@@ -480,12 +487,15 @@ export default function ClipboardPanel() {
       list.push({
         label: t("clipboard.reveal", "Show in Finder"),
         kbd: "CmdOrCtrl+Shift+R",
+        menuKey: "r",
         onClick: () => {
           if (selectedItem.file_path) void revealItemInDir(selectedItem.file_path);
         },
       });
       list.push({
         label: t("clipboard.copyPath", "Copy Path"),
+        kbd: "CmdOrCtrl+Shift+P",
+        menuKey: "y",
         onClick: () => {
           if (selectedItem.file_path) void writeText(selectedItem.file_path);
         },
@@ -493,6 +503,8 @@ export default function ClipboardPanel() {
     } else if (selectedItem?.image_path) {
       list.push({
         label: t("clipboard.reveal", "Show in Finder"),
+        kbd: "CmdOrCtrl+Shift+R",
+        menuKey: "r",
         onClick: () => {
           if (selectedItem.image_path) void revealItemInDir(selectedItem.image_path);
         },

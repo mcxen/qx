@@ -21,23 +21,16 @@ import { useSettingsStore } from "../modules/settings/store";
 import { useDisplayName } from "../search/appDisplay";
 import { metadataForKey, metadataKeyForEntry } from "../search/searchMetadata";
 import type { AppEntry } from "../store";
+import {
+  countEnabledGlobalShortcuts,
+  globalShortcutHasConflict,
+} from "../utils/keyboard";
 
 function isApplicationEntry(item: AppEntry): boolean {
   return (item.kind ?? "app") === "app" && item.path.endsWith(".app");
 }
 
-function shortcutCounts(
-  shortcuts: Record<string, { key: string; enabled: boolean }>,
-  appShortcuts: Record<string, { key: string; enabled: boolean }>,
-): Record<string, number> {
-  const counts: Record<string, number> = {};
-  [...Object.values(shortcuts), ...Object.values(appShortcuts)].forEach((binding) => {
-    if (binding.enabled && binding.key) {
-      counts[binding.key] = (counts[binding.key] || 0) + 1;
-    }
-  });
-  return counts;
-}
+
 
 export default function AppResultContextMenu({
   item,
@@ -56,11 +49,11 @@ export default function AppResultContextMenu({
   const metadata = metadataForKey(settings, metadataKey);
   const binding = metadataKey ? settings.app_shortcuts[metadataKey] : undefined;
   const counts = useMemo(
-    () => shortcutCounts(settings.shortcuts, settings.app_shortcuts),
+    () => countEnabledGlobalShortcuts(settings.shortcuts, settings.app_shortcuts),
     [settings.shortcuts, settings.app_shortcuts],
   );
   const hasShortcut = Boolean(binding?.key);
-  const shortcutConflict = Boolean(binding?.enabled && binding.key && counts[binding.key] > 1);
+  const shortcutConflict = globalShortcutHasConflict(binding, counts);
 
   if (!isApplicationEntry(item) || !metadataKey) {
     return <>{children}</>;

@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import {
+  getCurrentWindow,
+  primaryMonitor,
+  currentMonitor,
+  type Monitor,
+} from "@tauri-apps/api/window";
 import { useScreencapStore, type RecordArea } from "./store";
 import { useStore } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
@@ -10,6 +17,19 @@ import { getQxShortcutPreset } from "../../utils/keyboard";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 
 type SelectMode = "none" | "selecting";
+
+interface WindowSnapshot {
+  /** Physical outer position */
+  x: number;
+  y: number;
+  /** Physical outer size */
+  width: number;
+  height: number;
+}
+
+function isTauriRuntime(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
 
 function formatTime(ms: number): string {
   const totalSec = Math.floor(ms / 1000);
@@ -26,11 +46,72 @@ function estimatePerMinute(area: RecordArea): string {
   return `${(bytesPerMin / (1024 * 1024)).toFixed(1)} MB/min`;
 }
 
+async function snapshotWindow(): Promise<WindowSnapshot | null> {
+  if (!isTauriRuntime()) return null;
+  try {
+    const win = getCurrentWindow();
+    const pos = await win.outerPosition();
+    const size = await win.outerSize();
+    return { x: pos.x, y: pos.y, width: size.width, height: size.height };
+  } catch {
+    return null;
+  }
+}
+
+async function restoreWindow(snap: WindowSnapshot | null) {
+  if (!isTauriRuntime() || !snap) return;
+  try {
+    const win = getCurrentWindow();
+    const { PhysicalPosition, PhysicalSize } = await import("@tauri-apps/api/window");
+    await win.setPosition(new PhysicalPosition(snap.x, snap.y));
+    await win.setSize(new PhysicalSize(snap.width, snap.height));
+    await win.show();
+    await win.setFocus().catch(() => {});
+  } catch {
+    // best-effort restore
+  }
+}
+
+async function expandToPrimaryMonitor(): Promise<{ monitor: Monitor; scale: number } | null> {
+  if (!isTauriRuntime()) return null;
+  try {
+    const win = getCurrentWindow();
+    const monitor = (await primaryMonitor()) ?? (await currentMonitor());
+    if (!monitor) return null;
+    const { PhysicalPosition, PhysicalSize } = await import("@tauri-apps/api/window");
+    await win.setAlwaysOnTop(true);
+    await win.setPosition(new PhysicalPosition(monitor.position.x, monitor.position.y));
+    await win.setSize(new PhysicalSize(monitor.size.width, monitor.size.height));
+    await win.show();
+    await win.setFocus().catch(() => {});
+    return { monitor, scale: monitor.scaleFactor };
+  } catch {
+    return null;
+  }
+}
+
+async function ensureScreenPermission(): Promise<string | null> {
+  if (!isTauriRuntime()) return null;
+  try {
+    type Perm = { id: string; granted: boolean; available: boolean };
+    const list = await invoke<Perm[]>("qx_permissions_status");
+    const screen = list.find((p) => p.id === "screen-recording");
+    if (!screen || !screen.available) return null;
+    if (screen.granted) return null;
+    const ok = await invoke<boolean>("qx_permissions_request", { id: "screen-recording" });
+    if (ok) return null;
+    return "Screen Recording permission is required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx.";
+  } catch {
+    return null;
+  }
+}
+
 export default function ScreenRecorder() {
   const {
     isRecording,
     status,
     lastGifPath,
+    history,
     error,
     startRecording,
     stopRecording,
@@ -43,11 +124,18 @@ export default function ScreenRecorder() {
 
   const [selectMode, setSelectMode] = useState<SelectMode>("none");
   const [area, setArea] = useState<RecordArea | null>(null);
+  /** Physical-pixel crop used by scrap (Retina-aware). */
+  const [areaPhysical, setAreaPhysical] = useState<RecordArea | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [selectHint, setSelectHint] = useState("Drag on the primary display · Esc to cancel");
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const windowSnapRef = useRef<WindowSnapshot | null>(null);
+  const selectScaleRef = useRef(1);
+  const hideAfterStartRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     if (selectMode === "selecting") {
@@ -63,7 +151,14 @@ export default function ScreenRecorder() {
     const launch = takePendingModuleLaunch("screencap");
     if (!launch) return;
     if (launch.surface === "start") {
-      void startRecording(null);
+      void (async () => {
+        const permErr = await ensureScreenPermission();
+        if (permErr) {
+          setLocalError(permErr);
+          return;
+        }
+        await startRecording(null);
+      })();
       return;
     }
     if (launch.surface === "preview") {
@@ -78,24 +173,61 @@ export default function ScreenRecorder() {
     if (isRecording) {
       const start = Date.now();
       timerRef.current = setInterval(() => setElapsed(Date.now() - start), 100);
+      // Hide the main panel so the GIF is not mostly the Qx chrome.
+      if (hideAfterStartRef.current) clearTimeout(hideAfterStartRef.current);
+      hideAfterStartRef.current = setTimeout(() => {
+        if (!isTauriRuntime()) return;
+        getCurrentWindow().hide().catch(() => {});
+      }, 450);
     } else {
       if (timerRef.current) clearInterval(timerRef.current);
       timerRef.current = undefined;
       setElapsed(0);
+      if (hideAfterStartRef.current) {
+        clearTimeout(hideAfterStartRef.current);
+        hideAfterStartRef.current = undefined;
+      }
     }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (hideAfterStartRef.current) clearTimeout(hideAfterStartRef.current);
     };
   }, [isRecording]);
 
-  const beginAreaSelect = () => {
+  const cancelAreaSelect = useCallback(async () => {
+    setSelectMode("none");
+    setDragStart(null);
+    setDragEnd(null);
+    await restoreWindow(windowSnapRef.current);
+    windowSnapRef.current = null;
+  }, []);
+
+  const beginAreaSelect = useCallback(async () => {
+    setLocalError(null);
+    const permErr = await ensureScreenPermission();
+    if (permErr) {
+      setLocalError(permErr);
+      return;
+    }
+
+    windowSnapRef.current = await snapshotWindow();
+    const expanded = await expandToPrimaryMonitor();
+    if (expanded) {
+      selectScaleRef.current = expanded.scale;
+      setSelectHint("Drag to select on the primary display · Esc to cancel");
+    } else {
+      // Browser / failed expand: still allow in-window select for dev, but warn.
+      selectScaleRef.current = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+      setSelectHint("Drag to select (in-window fallback) · Esc to cancel");
+    }
     setSelectMode("selecting");
     setDragStart(null);
     setDragEnd(null);
-  };
+  }, []);
 
   const onMouseDown = (e: React.MouseEvent) => {
     if (selectMode !== "selecting") return;
+    e.preventDefault();
     setDragStart({ x: e.clientX, y: e.clientY });
     setDragEnd({ x: e.clientX, y: e.clientY });
   };
@@ -105,48 +237,94 @@ export default function ScreenRecorder() {
     setDragEnd({ x: e.clientX, y: e.clientY });
   };
 
-  const onMouseUp = () => {
+  const onMouseUp = async () => {
     if (selectMode !== "selecting" || !dragStart || !dragEnd) {
-      setSelectMode("none");
+      await cancelAreaSelect();
       return;
     }
-    const x = Math.min(dragStart.x, dragEnd.x);
-    const y = Math.min(dragStart.y, dragEnd.y);
-    const w = Math.abs(dragEnd.x - dragStart.x);
-    const h = Math.abs(dragEnd.y - dragStart.y);
+    const scale = selectScaleRef.current || 1;
+    const lx = Math.min(dragStart.x, dragEnd.x);
+    const ly = Math.min(dragStart.y, dragEnd.y);
+    const lw = Math.abs(dragEnd.x - dragStart.x);
+    const lh = Math.abs(dragEnd.y - dragStart.y);
+
     setSelectMode("none");
     setDragStart(null);
     setDragEnd(null);
-    if (w < 8 || h < 8) return;
-    setArea({ x, y, w, h });
+    await restoreWindow(windowSnapRef.current);
+    windowSnapRef.current = null;
+
+    if (lw < 8 || lh < 8) return;
+
+    // Logical (CSS) size for UI labels; physical for scrap crop.
+    const logical: RecordArea = {
+      x: Math.round(lx),
+      y: Math.round(ly),
+      w: Math.round(lw),
+      h: Math.round(lh),
+    };
+    const physical: RecordArea = {
+      x: Math.max(0, Math.round(lx * scale)),
+      y: Math.max(0, Math.round(ly * scale)),
+      w: Math.max(1, Math.round(lw * scale)),
+      h: Math.max(1, Math.round(lh * scale)),
+    };
+    setArea(logical);
+    setAreaPhysical(physical);
   };
 
-  const handleStart = () => {
-    void startRecording(area);
+  const handleStart = async () => {
+    setLocalError(null);
+    const permErr = await ensureScreenPermission();
+    if (permErr) {
+      setLocalError(permErr);
+      return;
+    }
+    await startRecording(areaPhysical ?? null);
   };
 
-  const handleStop = () => {
-    void stopRecording();
+  const handleStop = async () => {
+    if (isTauriRuntime()) {
+      try {
+        const win = getCurrentWindow();
+        await win.show();
+        await win.setFocus().catch(() => {});
+      } catch {
+        // ignore
+      }
+    }
+    await stopRecording();
   };
 
   const handleNewRecording = () => {
     reset();
-    setArea(null);
+    // Keep history selection cleared; area can stay for re-record.
   };
 
   const actionMenuShortcut = getQxShortcutPreset().actionMenu;
+  const displayError = localError || error;
 
   const readyActions = useMemo<QxShellAction[]>(
     () => [
-      { label: "Start Recording", kbd: "Enter", onClick: handleStart },
-      { label: "Select Area", onClick: beginAreaSelect },
+      { label: "Start Recording", kbd: "Enter", onClick: () => void handleStart() },
+      { label: "Select Area", kbd: "CmdOrCtrl+Shift+A", onClick: () => void beginAreaSelect() },
       {
         label: "Clear Area",
         disabled: !area,
-        onClick: () => setArea(null),
+        onClick: () => {
+          setArea(null);
+          setAreaPhysical(null);
+        },
+      },
+      {
+        label: "Full Screen (Primary)",
+        onClick: () => {
+          setArea(null);
+          setAreaPhysical(null);
+        },
       },
     ],
-    [area],
+    [area, beginAreaSelect],
   );
 
   const doneActions = useMemo<QxShellAction[]>(
@@ -171,7 +349,7 @@ export default function ScreenRecorder() {
         kbd: "Enter",
         disabled: status === "processing",
         tone: status === "processing" ? "normal" : "danger",
-        onClick: handleStop,
+        onClick: () => void handleStop(),
       },
     ],
     [status],
@@ -181,13 +359,11 @@ export default function ScreenRecorder() {
     inner: {
       active: selectMode === "selecting",
       close: () => {
-        setSelectMode("none");
-        setDragStart(null);
-        setDragEnd(null);
+        void cancelAreaSelect();
       },
     },
     launcher: () => {
-      if (isRecording) void stopRecording();
+      if (isRecording) void handleStop();
       reset();
       setTab("launcher");
     },
@@ -196,11 +372,34 @@ export default function ScreenRecorder() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     escKeyDown(e);
     if (e.key === "Escape") return;
-    const state = useScreencapStore.getState();
-    const { history, lastGifPath, setPreview, deleteEntry } = state;
-    if (history.length === 0) {
+
+    if (selectMode === "selecting") return;
+
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      void beginAreaSelect();
       return;
     }
+
+    if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (isRecording || status === "processing") {
+        e.preventDefault();
+        void handleStop();
+        return;
+      }
+      if (status === "idle" || status === "error") {
+        e.preventDefault();
+        void handleStart();
+        return;
+      }
+      if (status === "done") {
+        e.preventDefault();
+        handleNewRecording();
+        return;
+      }
+    }
+
+    if (history.length === 0) return;
     const currentIndex = Math.max(
       0,
       history.findIndex((h) => h.path === lastGifPath),
@@ -208,6 +407,7 @@ export default function ScreenRecorder() {
     switch (e.key) {
       case "ArrowDown":
       case "j": {
+        if (e.metaKey || e.ctrlKey || e.altKey) break;
         e.preventDefault();
         const next = Math.min(currentIndex + 1, history.length - 1);
         setPreview(history[next].path);
@@ -215,27 +415,18 @@ export default function ScreenRecorder() {
       }
       case "ArrowUp":
       case "k": {
+        if (e.metaKey || e.ctrlKey || e.altKey) break;
         e.preventDefault();
         const prev = Math.max(currentIndex - 1, 0);
         setPreview(history[prev].path);
         break;
       }
-      case "Enter": {
-        e.preventDefault();
-        const entry = history[currentIndex];
-        if (entry) setPreview(entry.path);
+      default:
         break;
-      }
-      case "Delete":
-      case "Backspace": {
-        e.preventDefault();
-        const entry = history[currentIndex];
-        if (entry) void deleteEntry(entry.id);
-        break;
-      }
     }
   };
 
+  // ── Full-screen (monitor) region picker ─────────────────────────────
   if (selectMode === "selecting") {
     const selX = dragStart && dragEnd ? Math.min(dragStart.x, dragEnd.x) : 0;
     const selY = dragStart && dragEnd ? Math.min(dragStart.y, dragEnd.y) : 0;
@@ -245,20 +436,27 @@ export default function ScreenRecorder() {
       <div
         ref={overlayRef}
         tabIndex={-1}
-        onKeyDown={handleKeyDown}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            e.preventDefault();
+            void cancelAreaSelect();
+          }
+        }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
+        onMouseUp={() => void onMouseUp()}
         style={{
           position: "fixed",
           inset: 0,
-          background: "var(--qx-overlay-1)",
+          // Dim desktop under the transparent window so the drag rect is clear.
+          background: "rgba(0, 0, 0, 0.35)",
           cursor: "crosshair",
-          zIndex: 100,
+          zIndex: 1000,
           outline: "none",
+          userSelect: "none",
         }}
       >
-        {dragStart && dragEnd && (
+        {dragStart && dragEnd && selW > 0 && selH > 0 && (
           <div
             style={{
               position: "absolute",
@@ -266,57 +464,33 @@ export default function ScreenRecorder() {
               top: selY,
               width: selW,
               height: selH,
-              border: "2px solid var(--qx-accent)",
-              background: "var(--qx-accent-soft)",
+              border: "2px solid var(--qx-accent, #5b8cff)",
+              background: "transparent",
+              boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.35)",
             }}
           />
         )}
         <div
           style={{
             position: "absolute",
-            top: 16,
+            top: 24,
             left: 0,
             right: 0,
             textAlign: "center",
-            color: "var(--qx-text-on-accent)",
-            fontSize: 13,
+            color: "#fff",
+            fontSize: 14,
+            fontWeight: 600,
             pointerEvents: "none",
+            textShadow: "0 1px 4px rgba(0,0,0,0.6)",
           }}
         >
-          Drag to select recording area · Esc to cancel
+          {selectHint}
         </div>
       </div>
     );
   }
 
-  if (status === "done" && lastGifPath) {
-    return (
-      <QxShell
-        title="Screen Recording"
-        search={<div className="qx-rss-detail-title">Recording Complete</div>}
-        trailing={<button className="qx-command-button" onClick={handleNewRecording} type="button">New</button>}
-        island={{ label: "GIF Ready", detail: lastGifPath.split("/").pop(), tone: "success" }}
-        escapeAction={{
-          label: "Esc",
-          kbd: "Esc",
-          onClick: () => {
-            if (isRecording) void stopRecording();
-            reset();
-            setTab("launcher");
-          },
-        }}
-        primaryAction={{ label: "New", kbd: "Enter", tone: "primary", onClick: handleNewRecording }}
-        secondaryAction={{ label: "Actions", kbd: actionMenuShortcut }}
-        actionTitle="Recording Actions"
-        actions={doneActions}
-        onKeyDown={handleKeyDown}
-      >
-        <GifPreview path={lastGifPath} onClose={handleNewRecording} />
-        <GifHistory />
-      </QxShell>
-    );
-  }
-
+  // ── Recording / encoding HUD ────────────────────────────────────────
   if (isRecording || status === "processing") {
     return (
       <QxShell
@@ -332,16 +506,18 @@ export default function ScreenRecorder() {
           label: "Esc",
           kbd: "Esc",
           onClick: () => {
-            if (isRecording) void stopRecording();
-            reset();
-            setTab("launcher");
+            if (isRecording) void handleStop();
+            else {
+              reset();
+              setTab("launcher");
+            }
           },
         }}
         primaryAction={{
           label: status === "processing" ? "Encoding" : "Stop",
           disabled: status === "processing",
           tone: status === "processing" ? "normal" : "danger",
-          onClick: handleStop,
+          onClick: () => void handleStop(),
         }}
         secondaryAction={
           status === "processing"
@@ -351,7 +527,7 @@ export default function ScreenRecorder() {
         actionTitle="Recording Actions"
         actions={recordingActions}
       >
-        <div className="qx-module-stage" style={{ alignItems: "center", justifyContent: "center", flex: 1 }}>
+        <div className="qx-module-stage" style={{ alignItems: "center", justifyContent: "center", flex: 1, gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <span
               className="qx-rec-dot"
@@ -362,13 +538,7 @@ export default function ScreenRecorder() {
                 background: "var(--qx-danger)",
               }}
             />
-            <span
-              style={{
-                fontSize: 14,
-                fontWeight: 600,
-                color: "var(--qx-text-primary)",
-              }}
-            >
+            <span style={{ fontSize: 14, fontWeight: 600, color: "var(--qx-text-primary)" }}>
               {status === "processing" ? "Processing" : "Recording"}
             </span>
           </div>
@@ -385,11 +555,16 @@ export default function ScreenRecorder() {
           </div>
           {area && (
             <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
-              {area.w} × {area.h} px
+              Region {area.w} × {area.h} (logical) · primary display
             </div>
           )}
+          <p style={{ fontSize: 12, color: "var(--qx-text-tertiary)", maxWidth: 360, textAlign: "center", margin: 0 }}>
+            {status === "processing"
+              ? "Encoding frames to GIF…"
+              : "Qx hid itself so the panel is not in the capture. Summon with your launcher shortcut, then press Stop."}
+          </p>
           <button
-            onClick={handleStop}
+            onClick={() => void handleStop()}
             disabled={status === "processing"}
             className={`qx-command-button${status === "processing" ? "" : " danger"}`}
             style={{ height: 28, padding: "0 12px" }}
@@ -401,100 +576,141 @@ export default function ScreenRecorder() {
     );
   }
 
-  const context = (
-    <div className="qx-action-panel">
-      <div className="qx-action-title">Recording</div>
-      <button className="qx-action-item" onClick={handleStart}>
-        <span>Start Recording</span>
-      </button>
-      <button className="qx-action-item" onClick={beginAreaSelect}>
-        <span>Select Area</span>
-      </button>
-      <button className="qx-action-item" onClick={() => setArea(null)} disabled={!area}>
-        <span>Clear Area</span>
-      </button>
-    </div>
-  );
+  // ── Idle / done / error: history + config or preview ─────────────────
+  const showingPreview = Boolean(lastGifPath) && (status === "done" || status === "idle");
 
   return (
     <QxShell
       title="Screen Recording"
-      search={<div className="qx-rss-detail-title">Screen Recording</div>}
+      search={
+        <div className="qx-rss-detail-title">
+          {showingPreview ? "Recording Preview" : "Screen Recording"}
+        </div>
+      }
       onKeyDown={handleKeyDown}
       trailing={
         <>
-          <button className="qx-command-button primary" onClick={handleStart}>
-            Start Recording
+          <button className="qx-command-button primary" onClick={() => void handleStart()} type="button">
+            Start
           </button>
-          <button className="qx-command-button" onClick={beginAreaSelect}>
+          <button className="qx-command-button" onClick={() => void beginAreaSelect()} type="button">
             Select Area
           </button>
         </>
       }
-      context={context}
       island={{
-        label: "Ready to Record",
-        detail: area ? `${area.w} x ${area.h} px · ${estimatePerMinute(area)}` : "Full screen",
+        label: showingPreview ? "GIF Ready" : "Ready to Record",
+        detail: showingPreview
+          ? lastGifPath?.split("/").pop()
+          : area
+            ? `${area.w}×${area.h} · ${estimatePerMinute(areaPhysical ?? area)}`
+            : "Full primary display",
+        tone: showingPreview ? "success" : displayError ? "danger" : "neutral",
       }}
       escapeAction={{
         label: "Esc",
         kbd: "Esc",
         onClick: () => {
-          if (isRecording) void stopRecording();
           reset();
           setTab("launcher");
         },
       }}
-      primaryAction={{ label: "Start", kbd: "Enter", tone: "primary", onClick: handleStart }}
+      primaryAction={
+        showingPreview
+          ? { label: "New", kbd: "Enter", tone: "primary", onClick: handleNewRecording }
+          : { label: "Start", kbd: "Enter", tone: "primary", onClick: () => void handleStart() }
+      }
       secondaryAction={{ label: "Actions", kbd: actionMenuShortcut }}
       actionTitle="Recording Actions"
-      actions={readyActions}
+      actions={showingPreview ? doneActions : readyActions}
     >
-      <div className="qx-plugin-body two-pane">
-        <div className="qx-plugin-detail" style={{ borderRight: "1px solid var(--qx-border-1)" }}>
-          <div className="qx-detail-header">
-            <div>
-              <div className="qx-detail-title">Configuration</div>
-              <div className="qx-detail-meta">Capture a screen recording and save as GIF.</div>
-            </div>
-          </div>
-          <div className="qx-module-stage">
-            <div className="qx-panel-card" style={{ padding: 8 }}>
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <button onClick={handleStart} className="qx-command-button primary" style={{ flex: 1 }}>
-                  Start Recording
-                </button>
-                <button onClick={beginAreaSelect} className="qx-command-button" style={{ flex: 1 }}>
-                  Select Area
-                </button>
-              </div>
-          {area ? (
-            <div
-              style={{
-                fontSize: 12,
-                color: "var(--qx-text-tertiary)",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <span>
-                Area: {area.w} × {area.h} px · Est. ~{estimatePerMinute(area)}
-              </span>
-              <LinkButton onClick={() => setArea(null)}>Clear</LinkButton>
-            </div>
+      <div
+        className="qx-content-split has-detail"
+        style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "minmax(200px, 280px) 1fr" }}
+      >
+        <div
+          className="qx-content-list"
+          style={{
+            minHeight: 0,
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            borderRight: "1px solid var(--qx-border-1)",
+          }}
+          data-qx-region="screencap-history"
+          data-qx-region-label="Recording history"
+          data-qx-region-initial="true"
+          tabIndex={-1}
+        >
+          <GifHistory />
+        </div>
+
+        <div
+          className="qx-plugin-detail"
+          style={{ minHeight: 0, overflow: "auto" }}
+          data-qx-region="screencap-detail"
+          data-qx-region-label="Recording detail"
+          tabIndex={-1}
+        >
+          {lastGifPath && (status === "done" || status === "idle") ? (
+            <GifPreview path={lastGifPath} onClose={handleNewRecording} />
           ) : (
-            <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
-              Full screen · ~3–8 MB/min (varies by content)
+            <div className="qx-module-stage" style={{ padding: 12, gap: 12 }}>
+              <div className="qx-panel-card" style={{ padding: 12 }}>
+                <div className="qx-detail-title" style={{ marginBottom: 6 }}>Configuration</div>
+                <div className="qx-detail-meta" style={{ marginBottom: 12 }}>
+                  Capture the primary display (or a region) and encode an animated GIF.
+                </div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+                  <button onClick={() => void handleStart()} className="qx-command-button primary" type="button">
+                    Start Recording
+                  </button>
+                  <button onClick={() => void beginAreaSelect()} className="qx-command-button" type="button">
+                    Select Area
+                  </button>
+                  {area && (
+                    <LinkButton
+                      onClick={() => {
+                        setArea(null);
+                        setAreaPhysical(null);
+                      }}
+                    >
+                      Clear Area
+                    </LinkButton>
+                  )}
+                </div>
+                {area ? (
+                  <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
+                    Region: {area.w} × {area.h} px (logical)
+                    {areaPhysical ? ` · capture ${areaPhysical.w}×${areaPhysical.h}` : ""}
+                    {" · "}~{estimatePerMinute(areaPhysical ?? area)}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
+                    Full primary display · Select Area expands over the desktop for a real region pick
+                  </div>
+                )}
+              </div>
+
+              {displayError && (
+                <div
+                  className="qx-panel-card"
+                  style={{ padding: "8px 10px", fontSize: 12, color: "var(--qx-danger)", whiteSpace: "pre-wrap" }}
+                >
+                  {displayError}
+                </div>
+              )}
+
+              <div className="qx-panel-card" style={{ padding: 12, fontSize: 12, color: "var(--qx-text-tertiary)", lineHeight: 1.5 }}>
+                <strong style={{ color: "var(--qx-text-secondary)" }}>Tips</strong>
+                <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+                  <li>macOS: Screen Recording permission must be granted; restart Qx after enabling.</li>
+                  <li>Recording hides Qx so the panel is not burned into the GIF — summon to Stop.</li>
+                  <li>Click a history item on the left to preview past GIFs.</li>
+                </ul>
+              </div>
             </div>
           )}
-            </div>
-            {error && (
-              <div className="qx-panel-card" style={{ padding: "6px 8px", fontSize: 12, color: "var(--qx-danger)" }}>
-                {error}
-              </div>
-            )}
-          </div>
         </div>
       </div>
     </QxShell>

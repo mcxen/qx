@@ -39,9 +39,28 @@ struct RecordingState {
 }
 
 static RECORDING: OnceLock<Mutex<Option<RecordingState>>> = OnceLock::new();
+/// Last capture-thread failure (permission, display open, etc.). Cleared on start.
+static CAPTURE_ERROR: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
 fn recording_state() -> &'static Mutex<Option<RecordingState>> {
     RECORDING.get_or_init(|| Mutex::new(None))
+}
+
+fn capture_error_slot() -> &'static Mutex<Option<String>> {
+    CAPTURE_ERROR.get_or_init(|| Mutex::new(None))
+}
+
+fn set_capture_error(msg: impl Into<String>) {
+    if let Ok(mut slot) = capture_error_slot().lock() {
+        *slot = Some(msg.into());
+    }
+}
+
+fn take_capture_error() -> Option<String> {
+    capture_error_slot()
+        .lock()
+        .ok()
+        .and_then(|mut slot| slot.take())
 }
 
 fn gifs_dir() -> PathBuf {
@@ -109,19 +128,42 @@ fn recording_loop(
 
     let display = match Display::primary() {
         Ok(d) => d,
-        Err(_) => return,
+        Err(e) => {
+            set_capture_error(format!(
+                "Cannot open primary display: {e}. On macOS grant Screen Recording, then restart Qx."
+            ));
+            return;
+        }
     };
     let mut capturer = match Capturer::new(display) {
         Ok(c) => c,
-        Err(_) => return,
+        Err(e) => {
+            set_capture_error(format!(
+                "Screen capture failed: {e}. Enable Screen Recording for Qx in System Settings → Privacy & Security, then fully quit and reopen Qx."
+            ));
+            return;
+        }
     };
     let (full_w, full_h) = (capturer.width() as u32, capturer.height() as u32);
+
+    // Validate crop against the physical framebuffer (Retina = 2× logical).
+    let area = area.and_then(|a| {
+        if a.w == 0 || a.h == 0 {
+            return None;
+        }
+        let x = a.x.min(full_w.saturating_sub(1));
+        let y = a.y.min(full_h.saturating_sub(1));
+        let w = a.w.min(full_w.saturating_sub(x)).max(1);
+        let h = a.h.min(full_h.saturating_sub(y)).max(1);
+        Some(RecordArea { x, y, w, h })
+    });
 
     let delay = std::time::Duration::from_millis(1000 / FPS as u64);
 
     let mut frame_idx: u64 = 0;
     let mut temp_bytes: u64 = 0;
     let started_at = std::time::Instant::now();
+    let mut consecutive_errors: u32 = 0;
     while !stop_flag.load(Ordering::Relaxed) {
         if frame_idx >= MAX_FRAME_COUNT
             || temp_bytes >= MAX_TEMP_BYTES
@@ -132,16 +174,11 @@ fn recording_loop(
 
         match capturer.frame() {
             Ok(frame) => {
+                consecutive_errors = 0;
                 let rgba = bgra_to_rgba(&frame);
                 if let Some(img) = image::RgbaImage::from_raw(full_w, full_h, rgba) {
                     let final_img = if let Some(a) = &area {
-                        let cw = a.w.min(full_w.saturating_sub(a.x));
-                        let ch = a.h.min(full_h.saturating_sub(a.y));
-                        if cw == 0 || ch == 0 {
-                            img
-                        } else {
-                            image::imageops::crop_imm(&img, a.x, a.y, cw, ch).to_image()
-                        }
+                        image::imageops::crop_imm(&img, a.x, a.y, a.w, a.h).to_image()
                     } else {
                         img
                     };
@@ -150,26 +187,65 @@ fn recording_loop(
                         if let Ok(meta) = fs::metadata(&path) {
                             temp_bytes = temp_bytes.saturating_add(meta.len());
                         }
+                        frame_idx += 1;
                     }
                 }
-                frame_idx += 1;
             }
             Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 std::thread::sleep(delay);
                 continue;
             }
-            Err(_) => break,
+            Err(e) => {
+                consecutive_errors += 1;
+                if consecutive_errors >= 30 {
+                    set_capture_error(format!("Screen capture stopped: {e}"));
+                    break;
+                }
+                std::thread::sleep(delay);
+                continue;
+            }
         }
         std::thread::sleep(delay);
+    }
+
+    if frame_idx == 0 {
+        let has_error = capture_error_slot()
+            .lock()
+            .map(|slot| slot.is_some())
+            .unwrap_or(false);
+        if !has_error {
+            set_capture_error(
+                "No frames captured. Grant Screen Recording permission and restart Qx, or try a smaller region."
+                    .to_string(),
+            );
+        }
     }
 }
 
 #[command]
 pub fn start_recording(area: Option<RecordArea>) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        if !crate::permissions::screen_recording_granted() {
+            // Prompt the system dialog when possible; still fail closed if denied.
+            let _ = crate::permissions::qx_permissions_request("screen-recording".to_string());
+            if !crate::permissions::screen_recording_granted() {
+                return Err(
+                    "Screen Recording permission required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx."
+                        .to_string(),
+                );
+            }
+        }
+    }
+
     let mut guard = recording_state().lock().map_err(|e| format!("lock: {e}"))?;
     if guard.is_some() {
         return Err("Already recording".to_string());
     }
+    if let Ok(mut slot) = capture_error_slot().lock() {
+        *slot = None;
+    }
+
     let ts = Local::now().timestamp();
     let temp_dir = std::env::temp_dir().join(format!("qx_recording_{}", ts));
     fs::create_dir_all(&temp_dir).map_err(|e| format!("create temp dir: {e}"))?;
@@ -213,7 +289,12 @@ fn stop_recording_blocking() -> Result<String, String> {
 
     if frames.is_empty() {
         let _ = fs::remove_dir_all(&state.temp_dir);
-        return Err("No frames captured".to_string());
+        if let Some(err) = take_capture_error() {
+            return Err(err);
+        }
+        return Err(
+            "No frames captured. Grant Screen Recording permission and restart Qx.".to_string(),
+        );
     }
 
     let first = image::open(&frames[0]).map_err(|e| format!("open frame: {e}"))?;

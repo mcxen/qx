@@ -356,27 +356,77 @@ function shouldLoadSlowSearchProviders(query: string, scope: SearchScope): boole
   return shouldSearchFiles || shouldSearchClipboard;
 }
 
+function mapAppEntries(apps: AppEntry[]): AppEntry[] {
+  return apps.map((a) => ({ ...a, kind: a.kind ?? ("app" as const) }));
+}
+
+/**
+ * Load the empty-query launcher app list into the results store.
+ * Used on startup, first show, re-focus, and after background app scans.
+ */
+async function loadEmptyLauncherApps(
+  setResults: (entries: AppEntry[]) => void,
+  setLoadingPhase: (p: import("./store").LoadingPhase) => void,
+): Promise<number> {
+  if (!isTauriRuntime()) {
+    setLoadingPhase("ready");
+    return 0;
+  }
+  try {
+    const apps = await invoke<AppEntry[]>("search_apps", { query: "" });
+    const mapped = mapAppEntries(apps);
+    if (mapped.length > 0) {
+      setResults(mapped);
+      setLoadingPhase("ready");
+    }
+    return mapped.length;
+  } catch {
+    setLoadingPhase("ready");
+    return 0;
+  }
+}
+
 /**
  * Phased startup:
- *   Phase 1 (immediate): Load apps DB cache via search_apps("") — instant from memory
+ *   Phase 1 (immediate): Load apps DB cache via search_apps("") into results
  *   Phase 2 (background): Preload icons, scan for new apps (apps:updated event triggers refresh)
  *   Phase 3 (lazy): Settings, plugins, clipboard history
+ *
+ * Cold install: DB/cache is empty until the background scan finishes. Keep the
+ * loading skeleton and poll until apps arrive (or give up after a few seconds).
  */
-async function triggerPhase1Load(appsReady: boolean, setAppsReady: (r: boolean) => void, setLoadingPhase: (p: import("./store").LoadingPhase) => void) {
+async function triggerPhase1Load(
+  appsReady: boolean,
+  setAppsReady: (r: boolean) => void,
+  setLoadingPhase: (p: import("./store").LoadingPhase) => void,
+  setResults: (entries: AppEntry[]) => void,
+) {
   if (appsReady) return;
   if (!isTauriRuntime()) {
-    // Non-Tauri: just mark ready immediately
     setAppsReady(true);
     setLoadingPhase("ready");
     return;
   }
   try {
-    // Phase 1: warm the cache by doing one search (triggers DB load)
-    await invoke<AppEntry[]>("search_apps", { query: "" });
+    setLoadingPhase("loading-apps");
+    const count = await loadEmptyLauncherApps(setResults, setLoadingPhase);
     setAppsReady(true);
+    if (count > 0) return;
+
+    // Cold first launch: wait for background `apps:updated` scan, with a short poll fallback.
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      await new Promise((r) => window.setTimeout(r, 250));
+      const n = await loadEmptyLauncherApps(setResults, setLoadingPhase);
+      if (n > 0) return;
+      // Another path may have filled results (apps:updated listener).
+      if (useStore.getState().results.some((r) => (r.kind ?? "app") === "app")) {
+        setLoadingPhase("ready");
+        return;
+      }
+    }
+    // No apps after ~6s — stop the skeleton so the UI is usable.
     setLoadingPhase("ready");
   } catch {
-    // Fallback: mark ready anyway so UI isn't stuck
     setAppsReady(true);
     setLoadingPhase("ready");
   }
@@ -417,6 +467,8 @@ function App() {
   const pendingWindowSizeRef = useRef<{ width: number; height: number } | null>(null);
   const closeToBackgroundRef = useRef(false);
   const windowFocusedRef = useRef<boolean | null>(null);
+  /** Ignore blur-to-hide for a short window after first-launch show (focus can flicker). */
+  const ignoreBlurUntilRef = useRef(0);
   const pluginSearchVersionRef = useRef("");
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchSettling, setIsSearchSettling] = useState(false);
@@ -426,9 +478,16 @@ function App() {
   const [, startSearchTransition] = useTransition();
 
   const performHostEscape = useCallback(() => {
-    const currentTab = useStore.getState().tab;
-    if (currentTab !== "launcher") {
+    const state = useStore.getState();
+    if (state.tab !== "launcher") {
       setTab("launcher");
+      return;
+    }
+    // Launcher Esc cascade: clear search text first so the user can retype and
+    // search again. Only hide the window when the query is already empty.
+    if (state.query.length > 0) {
+      state.setQuery("");
+      state.setSelectedIndex(0);
       return;
     }
     if (isTauriRuntime()) {
@@ -502,12 +561,12 @@ function App() {
     };
   }, [mountedTab, tab]);
 
-  // Phase 1: Load app cache immediately — runs once on mount
+  // Phase 1: Load app cache into results immediately — runs once on mount
   useEffect(() => {
     if (phase1Ref.current) return;
     phase1Ref.current = true;
-    triggerPhase1Load(appsReady, setAppsReady, setLoadingPhase);
-  }, [appsReady, setAppsReady, setLoadingPhase]);
+    void triggerPhase1Load(appsReady, setAppsReady, setLoadingPhase, setResults);
+  }, [appsReady, setAppsReady, setLoadingPhase, setResults]);
 
   // Phase 3 (lazy): Load settings on first mount — deferred slightly
   useEffect(() => {
@@ -769,9 +828,6 @@ function App() {
           window_height: height,
         });
       }
-      if (!hasSavedSize) {
-        await win.center().catch(() => {});
-      }
 
       startupWindowRestoredRef.current = true;
       setTab("launcher");
@@ -784,14 +840,22 @@ function App() {
         await useSettingsStore.getState().flush();
       }
       if (shouldShowFirstLaunch) {
-        await invoke("floating_show");
+        // Let the size settle, then show via floating_show (centers on the
+        // cursor monitor — do not use win.center() which can land on the wrong display).
+        await new Promise((r) => window.setTimeout(r, 50));
+        ignoreBlurUntilRef.current = Date.now() + 2500;
+        await invoke("floating_show").catch(() => {});
+        // Ensure the onboarding window has app results even if focus events are flaky.
+        await loadEmptyLauncherApps(setResults, setLoadingPhase);
+        // Re-center once more after the panel is actually visible.
+        await invoke("floating_show").catch(() => {});
       }
     };
 
     restoreWindow().catch((e) => {
       console.warn("window size restore failed:", e);
     });
-  }, [settingsLoaded, setTab]);
+  }, [settingsLoaded, setTab, setResults, setLoadingPhase]);
 
   // Save window size on resize
   useEffect(() => {
@@ -860,6 +924,8 @@ function App() {
       windowFocusedRef.current = focused;
       setVisible(focused);
       if (!focused && settings.general.autoHideOnBlur) {
+        // First-launch / panel activation can briefly report blur; don't hide yet.
+        if (Date.now() < ignoreBlurUntilRef.current) return;
         win.hide().catch(() => {});
       }
       if (focused) {
@@ -868,13 +934,8 @@ function App() {
         setIsSearchSettling(false);
         setQuery("");
         setSelectedIndex(0);
-        // Kick off an immediate empty search so apps show right away
-        invoke<AppEntry[]>("search_apps", { query: "" })
-          .then((apps) => {
-            const mapped: AppEntry[] = apps.map((a) => ({ ...a, kind: a.kind ?? "app" }));
-            useStore.getState().setResults(mapped);
-          })
-          .catch(() => {});
+        // Always re-load the empty launcher list on show (not only after a focus edge).
+        void loadEmptyLauncherApps(setResults, setLoadingPhase);
       }
     });
     const unlistenNav = listen<string>("navigate", (e) => {
@@ -899,6 +960,7 @@ function App() {
     setSelectedIndex,
     setTab,
     setVisible,
+    setLoadingPhase,
     settings.general.autoHideOnBlur,
   ]);
 
@@ -1200,21 +1262,30 @@ function App() {
     };
   }, [performHostEscape]);
 
-  // Listen for apps:updated event (background scan completed)
+  // Listen for apps:updated event (background scan completed — critical on first install)
   useEffect(() => {
     if (!isTauriRuntime()) return;
     const unlisten = listen("apps:updated", async () => {
-      // Refresh search results with updated app list
-      const { query: currentQuery } = useStore.getState();
+      const { query: currentQuery, tab: currentTab } = useStore.getState();
       try {
-        const apps = await invoke<AppEntry[]>("search_apps", { query: currentQuery });
-        // Merge updated apps into existing results
-        const state = useStore.getState();
-        const nonApps = state.results.filter((r) => r.kind !== "app" && !(r.kind === undefined));
-        // Also keep apps that don't match kind "app" but are not in the app list
-        const updatedApps = apps.map((a) => ({ ...a, kind: a.kind ?? "app" as const }));
-        useStore.getState().setResults([...nonApps, ...updatedApps]);
-      } catch {}
+        if (currentTab !== "launcher" || currentQuery.trim()) {
+          // Non-empty search: replace only the app slice when possible.
+          const apps = await invoke<AppEntry[]>("search_apps", { query: currentQuery });
+          const updatedApps = mapAppEntries(apps);
+          const state = useStore.getState();
+          const nonApps = state.results.filter((r) => r.kind && r.kind !== "app");
+          useStore.getState().setResults([...updatedApps, ...nonApps]);
+          useStore.getState().setLoadingPhase("ready");
+          return;
+        }
+        // Empty launcher: full refresh of the default app list.
+        await loadEmptyLauncherApps(
+          (entries) => useStore.getState().setResults(entries),
+          (phase) => useStore.getState().setLoadingPhase(phase),
+        );
+      } catch {
+        // ignore
+      }
     });
     return () => {
       unlisten.then((f: () => void) => f());

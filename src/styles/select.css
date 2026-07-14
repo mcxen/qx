@@ -169,6 +169,42 @@
   -webkit-backdrop-filter: blur(18px) saturate(150%);
   box-shadow: 0 18px 42px color-mix(in srgb, var(--qx-shadow) 18%, transparent);
   overflow: hidden;
+  transform-origin: var(--radix-popper-transform-origin, var(--radix-popover-content-transform-origin, center));
+}
+
+/* shadcn-style enter/exit (Radix Presence waits for animationend on close). */
+.qx-shadcn-select-content[data-state="open"],
+.qx-shadcn-popover-content[data-state="open"],
+.qx-shadcn-dropdown-content[data-state="open"] {
+  animation: qx-popover-in 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.qx-shadcn-select-content[data-state="closed"],
+.qx-shadcn-popover-content[data-state="closed"],
+.qx-shadcn-dropdown-content[data-state="closed"] {
+  animation: qx-popover-out 120ms ease-in;
+}
+
+@keyframes qx-popover-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes qx-popover-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
 }
 
 .qx-shadcn-select-viewport {

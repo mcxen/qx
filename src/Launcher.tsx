@@ -120,6 +120,8 @@ export default function Launcher({
     onKeyDown(event);
   };
 
+  const hasQuery = query.length > 0;
+
   return (
     <QxShell
       title={t("launcher.title", "Qx Launcher")}
@@ -153,6 +155,19 @@ export default function Launcher({
       }
       island={island}
       customIsland={customIsland}
+      // Visible Esc: clear search when non-empty; empty query leaves hide to host keyboard Esc.
+      escapeAction={
+        hasQuery
+          ? {
+              label: "Esc",
+              kbd: "Esc",
+              onClick: () => {
+                setQuery("");
+                useStore.getState().setSelectedIndex(0);
+              },
+            }
+          : undefined
+      }
       primaryAction={{
         label: results[selectedIndex] ? t("launcher.open", "Open") : t("launcher.search", "Search"),
         kbd: "↵",
@@ -165,7 +180,7 @@ export default function Launcher({
       }}
       secondaryAction={{
         label: t("launcher.actions", "Actions"),
-        kbd: "⌘K",
+        kbd: "CmdOrCtrl+K",
         disabled: results.length === 0,
       }}
       actionTitle={selectedItem ? getLauncherActionTitle(selectedItem, t) : t("launcher.actions", "Actions")}

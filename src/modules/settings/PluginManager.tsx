@@ -35,7 +35,12 @@ import {
 } from "./store";
 import SearchAliasTagEditor from "../../components/SearchAliasTagEditor";
 import ShortcutRecorder from "../../components/ShortcutRecorder";
-import { formatQxShortcut } from "../../utils/keyboard";
+import {
+  countEnabledGlobalShortcuts,
+  formatQxShortcut,
+  globalShortcutHasConflict,
+  globalShortcutIssue,
+} from "../../utils/keyboard";
 import {
   Badge,
   Button,
@@ -304,21 +309,11 @@ function formatDate(value?: string) {
   return date.toLocaleDateString();
 }
 
-function shortcutCounts(
-  shortcuts: Record<string, ShortcutBinding>,
-  appShortcuts: Record<string, ShortcutBinding>,
+function shortcutHasConflict(
+  binding: ShortcutBinding | undefined,
+  counts: ReturnType<typeof countEnabledGlobalShortcuts>,
 ) {
-  const counts: Record<string, number> = {};
-  [...Object.values(shortcuts), ...Object.values(appShortcuts)].forEach((binding) => {
-    if (binding.enabled && binding.key) {
-      counts[binding.key] = (counts[binding.key] || 0) + 1;
-    }
-  });
-  return counts;
-}
-
-function shortcutHasConflict(binding: ShortcutBinding | undefined, counts: Record<string, number>) {
-  return Boolean(binding?.enabled && binding.key && counts[binding.key] > 1);
+  return globalShortcutHasConflict(binding, counts);
 }
 
 function ShortcutKey({ value }: { value?: string }) {
@@ -425,7 +420,7 @@ function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
   const builtinShortcutIds = BUILTIN_PLUGIN_SHORTCUTS[plugin.id] ?? [];
   const manifestShortcuts = plugin.manifest?.shortcuts ?? [];
   const counts = useMemo(
-    () => shortcutCounts(settings.shortcuts, settings.app_shortcuts),
+    () => countEnabledGlobalShortcuts(settings.shortcuts, settings.app_shortcuts),
     [settings.shortcuts, settings.app_shortcuts],
   );
 
@@ -441,12 +436,13 @@ function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
       {builtinShortcutIds.map((id) => {
         const binding = settings.shortcuts[id] ?? DEFAULT_SETTINGS.shortcuts[id] ?? { key: "", enabled: true };
         const conflict = shortcutHasConflict(binding, counts);
+        const issue = globalShortcutIssue(binding, counts);
         const defaultBinding = DEFAULT_SETTINGS.shortcuts[id] ?? { key: "", enabled: true };
         return (
           <Row
             key={id}
             title={SHORTCUT_LABELS[id] ?? id}
-            description={conflict ? "Conflict: this shortcut is used by another action." : "Available from anywhere in Qx."}
+            description={issue ?? "Available from anywhere when enabled (opt-in for modules)."}
           >
             <div className="qx-extension-shortcut-control">
               <Toggle

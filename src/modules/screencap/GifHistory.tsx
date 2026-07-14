@@ -28,23 +28,50 @@ export default function GifHistory() {
         style={{
           flex: 1,
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          minHeight: 80,
+          flexDirection: "column",
+          minHeight: 0,
         }}
       >
-        <div style={{ color: "var(--color-text-tertiary)", fontSize: 13 }}>
-          No recordings yet
+        <div className="qx-section-header">
+          <span style={{ flex: 1 }}>History</span>
+        </div>
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: 80,
+            padding: 16,
+            textAlign: "center",
+          }}
+        >
+          <div style={{ color: "var(--color-text-tertiary)", fontSize: 13 }}>
+            No recordings yet.
+            <br />
+            Start a capture to see GIFs here.
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div style={{ flex: 1, overflowY: "auto", minHeight: 0, paddingBottom: 8 }}>
+    <div
+      style={{
+        flex: 1,
+        overflowY: "auto",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "column",
+      }}
+      data-qx-region-scroll
+    >
       <div className="qx-section-header">
         <span style={{ flex: 1 }}>History</span>
+        <span style={{ marginRight: 8 }}>{history.length}</span>
         <button
+          type="button"
           onClick={() => void clearHistory()}
           style={{
             border: "none",
@@ -61,25 +88,32 @@ export default function GifHistory() {
       {history.map((entry) => {
         const active = entry.path === lastGifPath;
         return (
-          <div
+          <button
             key={entry.id}
+            type="button"
+            className={`qx-list-row${active ? " is-active" : ""}`}
             onClick={() => setPreview(entry.path)}
             style={{
+              width: "100%",
+              textAlign: "left",
+              border: "none",
+              background: active ? "var(--color-surface-active, var(--qx-bg-component-3))" : "transparent",
+              cursor: "pointer",
               display: "flex",
               alignItems: "center",
-              padding: "8px 16px",
-              cursor: "pointer",
-              background: active ? "var(--color-surface-active)" : "transparent",
+              padding: "8px 12px",
+              gap: 8,
             }}
           >
             <div style={{ flex: 1, minWidth: 0 }}>
               <div
                 style={{
                   fontSize: 13,
-                  color: "var(--color-text-primary)",
+                  color: "var(--qx-text-primary)",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
                   whiteSpace: "nowrap",
+                  fontWeight: active ? 600 : 500,
                 }}
               >
                 {entry.path.split("/").pop()}
@@ -87,7 +121,7 @@ export default function GifHistory() {
               <div
                 style={{
                   fontSize: 11,
-                  color: "var(--color-text-tertiary)",
+                  color: "var(--qx-text-tertiary)",
                   marginTop: 2,
                 }}
               >
@@ -95,25 +129,30 @@ export default function GifHistory() {
                 {formatTimestamp(entry.created_at)}
               </div>
             </div>
-            <button
+            <span
+              role="button"
+              tabIndex={0}
               onClick={(e) => {
                 e.stopPropagation();
                 void deleteEntry(entry.id);
               }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.stopPropagation();
+                  void deleteEntry(entry.id);
+                }
+              }}
               title="Delete"
               style={{
-                border: "none",
-                background: "transparent",
-                color: "var(--color-text-tertiary)",
-                fontSize: 14,
-                cursor: "pointer",
-                padding: "4px 8px",
-                lineHeight: 1,
+                color: "var(--qx-text-tertiary)",
+                fontSize: 12,
+                padding: "4px 6px",
+                flexShrink: 0,
               }}
             >
               Delete
-            </button>
-          </div>
+            </span>
+          </button>
         );
       })}
     </div>

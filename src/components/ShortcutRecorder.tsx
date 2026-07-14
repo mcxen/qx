@@ -5,18 +5,39 @@ import { formatQxShortcut, getQxDesktopPlatform } from "../utils/keyboard";
 function normalizeKey(event: KeyboardEvent): string | null {
   const key = event.key;
   if (key === "Meta" || key === "Control" || key === "Shift" || key === "Alt") return null;
-  if (key === "Tab" || key === "Enter" || key === " " || key === "Spacebar") return null;
+  if (key === "Tab" || key === "Enter" || key === "Escape") return null;
   if (key === "Unidentified" || key.length === 0) return null;
+  // Space is only valid with a modifier (e.g. Alt+Space launcher). Bare Space is not.
+  if (key === " " || key === "Spacebar") {
+    if (event.metaKey || event.ctrlKey || event.altKey) return "Space";
+    return null;
+  }
   if (key.startsWith("Arrow")) return key;
-  if (key === "Escape") return null;
-  if (key === "Backspace" || key === "Delete") return null;
+  if (key === "Backspace" || key === "Delete") {
+    if (event.metaKey || event.ctrlKey || event.altKey) {
+      return key === "Backspace" ? "Backspace" : "Delete";
+    }
+    return null;
+  }
   if (key.length === 1) return key.toUpperCase();
+  // Function keys etc.
+  if (/^F\d{1,2}$/i.test(key)) return key.toUpperCase();
   return key;
 }
 
+/**
+ * Build a process-global shortcut binding from a key event.
+ * Requires at least one of Cmd/Ctrl/Alt (or a function key) so bare letters
+ * cannot be registered as system-wide hotkeys.
+ */
 export function eventToBinding(event: KeyboardEvent): ShortcutBinding | null {
   const key = normalizeKey(event);
   if (!key) return null;
+
+  const hasNonShiftMod = event.metaKey || event.ctrlKey || event.altKey;
+  const isFunctionKey = /^F\d{1,2}$/i.test(key);
+  if (!hasNonShiftMod && !isFunctionKey) return null;
+
   const parts: string[] = [];
   if (event.metaKey) parts.push(getQxDesktopPlatform() === "macos" ? "CmdOrCtrl" : "Cmd");
   if (event.ctrlKey) parts.push(getQxDesktopPlatform() === "windows" ? "CmdOrCtrl" : "Ctrl");

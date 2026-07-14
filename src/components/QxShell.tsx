@@ -2,10 +2,12 @@ import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "r
 import type { CSSProperties, ReactNode } from "react";
 import QxBottomIsland, { type BottomIslandContent } from "./QxBottomIsland";
 import ShellActionButton, { type QxShellAction } from "./ShellActionButton";
-import ShellActionMenu from "./ShellActionMenu";
+import ShellActionMenu, { QX_ACTION_MENU_TRIGGER_ATTR } from "./ShellActionMenu";
 import {
   getQxShortcutPreset,
   isNativeEditingShortcut,
+  isReservedGlobalShortcut,
+  isReservedGlobalShortcutEvent,
   matchesQxShortcut,
   shouldIgnoreBareShortcut,
 } from "../utils/keyboard";
@@ -228,7 +230,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
 
   const openActionMenu = () => {
     if (actionMenuOpen) {
-      // Toggle close (Cmd+K again): return to the list/search that was active.
+      // Toggle close (Cmd+K again / Actions button): animate out via controlled open.
       closeActionMenu({ restoreFocus: true });
       return;
     }
@@ -238,102 +240,185 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     setActionMenuOpen(true);
   };
 
+  /** Radix/shadcn Popover dismiss (outside click) and controlled open sync. */
+  const handleActionMenuOpenChange = (next: boolean) => {
+    if (next) {
+      if (actionMenuOpen) return;
+      captureActionMenuFocusRestore();
+      const firstEnabled = menuActions.findIndex((action) => !action.disabled);
+      setActionIndex(firstEnabled >= 0 ? firstEnabled : 0);
+      setActionMenuOpen(true);
+      return;
+    }
+    closeActionMenu({ restoreFocus: true });
+  };
+
+  const isEnterOnlyShortcut = (kbd: string | undefined): boolean => {
+    if (!kbd) return false;
+    const normalized = kbd.trim().toLowerCase();
+    return normalized === "enter" || normalized === "return" || normalized === "↵";
+  };
+
+  /** Resolve a module/shell action for the current key event (never host globals). */
+  const findMatchingAction = (
+    nativeEvent: KeyboardEvent,
+    options?: { allowEnter?: boolean; menuOpen?: boolean },
+  ): QxShellAction | undefined => {
+    if (isReservedGlobalShortcutEvent(nativeEvent)) return undefined;
+    if (isNativeEditingShortcut(nativeEvent)) return undefined;
+
+    const allowEnter = options?.allowEnter ?? true;
+    const menuOpen = options?.menuOpen ?? false;
+    const candidates = [...menuActions, visiblePrimaryAction, visibleSecondaryAction];
+
+    return candidates.find((action) => {
+      if (!action || action.disabled || !action.onClick) return false;
+
+      // Raycast: single-letter menuKey only while the Actions panel is open.
+      if (
+        menuOpen
+        && action.menuKey
+        && action.menuKey.length === 1
+        && action.menuKey.toLowerCase() !== " "
+        && !nativeEvent.metaKey
+        && !nativeEvent.ctrlKey
+        && !nativeEvent.altKey
+        && !nativeEvent.shiftKey
+        && nativeEvent.key.toLowerCase() === action.menuKey.toLowerCase()
+      ) {
+        return true;
+      }
+
+      if (!action.kbd || isReservedGlobalShortcut(action.kbd)) return false;
+      if (!allowEnter && isEnterOnlyShortcut(action.kbd)) return false;
+      if (!matchesQxShortcut(nativeEvent, action.kbd)) return false;
+
+      // Bare keys (including Enter) only when not typing in a field.
+      if (!(nativeEvent.metaKey || nativeEvent.ctrlKey || nativeEvent.altKey || nativeEvent.shiftKey)) {
+        return !shouldIgnoreBareShortcut(nativeEvent);
+      }
+      return true;
+    });
+  };
+
   /**
-   * Raycast-style Action Panel: while open, capture Arrow/Enter/Esc/letters
-   * before feature views or focused inputs can consume them.
+   * Raycast-style Action Panel: while open, capture navigation, Enter, bare
+   * letters, and full action chords (⌘C / ⌘⌫ / …) before list/search handlers.
+   * Never steals Alt+Space / Cmd+Space (launcher / Spotlight).
    */
   const handleActionMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): boolean => {
     if (!actionMenuOpen || menuActions.length === 0) return false;
 
-    if (matchesQxShortcut(event.nativeEvent, getQxShortcutPreset().actionMenu)) {
+    // Let host global chords pass through untouched.
+    if (isReservedGlobalShortcutEvent(event.nativeEvent)) return false;
+
+    const consume = () => {
       event.preventDefault();
       event.stopPropagation();
+    };
+
+    if (matchesQxShortcut(event.nativeEvent, getQxShortcutPreset().actionMenu)) {
+      consume();
       // Esc / Cmd+K close: back to the list selection & focus from before the menu.
       closeActionMenu({ restoreFocus: true });
       return true;
     }
 
     if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
+      consume();
       // Raycast: Esc dismisses Action Panel and returns to the prior list context.
       closeActionMenu({ restoreFocus: true });
       return true;
     }
 
     if (event.key === "ArrowDown") {
-      event.preventDefault();
-      event.stopPropagation();
+      consume();
       setActionIndex((index) => findNextActionIndex(index, 1));
       return true;
     }
 
     if (event.key === "ArrowUp") {
-      event.preventDefault();
-      event.stopPropagation();
+      consume();
       setActionIndex((index) => findNextActionIndex(index, -1));
       return true;
     }
 
     if (event.key === "Home") {
-      event.preventDefault();
-      event.stopPropagation();
+      consume();
       setActionIndex(findEdgeActionIndex(-1));
       return true;
     }
 
     if (event.key === "End") {
-      event.preventDefault();
-      event.stopPropagation();
+      consume();
       setActionIndex(findEdgeActionIndex(1));
       return true;
     }
 
-    if (event.key === "Enter") {
-      event.preventDefault();
-      event.stopPropagation();
+    if (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
+      consume();
       const action = menuActions[actionIndex];
       if (action) runMenuAction(action);
       return true;
     }
 
-    if (event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
-      const action = menuActions.find(
-        (item) => item.kbd?.length === 1 && item.kbd.toLowerCase() === event.key.toLowerCase() && !item.disabled,
-      );
-      event.preventDefault();
-      event.stopPropagation();
-      if (action) runMenuAction(action);
+    // Chords (⌘C, ⌘⌫) + menuKey single letters while the panel is open.
+    // Bare Enter stays reserved for the highlighted row above.
+    const chordAction = findMatchingAction(event.nativeEvent, {
+      allowEnter: false,
+      menuOpen: true,
+    });
+    if (chordAction) {
+      consume();
+      runMenuAction(chordAction);
       return true;
     }
 
-    // Keep the menu as a modal keyboard responder (Raycast Action Panel).
-    // Do not leak navigation keys into list views or focused fields.
-    if (
-      event.key === "ArrowLeft"
-      || event.key === "ArrowRight"
-      || event.key === "PageUp"
-      || event.key === "PageDown"
-      || event.key === " "
-      || event.key === "Tab"
-      || event.key === "Backspace"
-      || event.key === "Delete"
-    ) {
-      event.preventDefault();
-      event.stopPropagation();
-      return true;
+    // Keep the menu as a modal keyboard responder (Raycast Action Panel),
+    // but never swallow Space with Alt/Cmd (already returned false above).
+    if (event.key === " " || event.code === "Space") {
+      return false;
     }
 
+    consume();
     return true;
   };
 
   const handleKeyDownCapture = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented) return;
-    handleActionMenuKeyDown(event);
+
+    // Never intercept launcher / Spotlight chords inside the shell.
+    if (isReservedGlobalShortcutEvent(event.nativeEvent)) return;
+
+    if (handleActionMenuKeyDown(event)) return;
+
+    // Match action chords in capture so search fields cannot eat ⌘⌫ / ⌘C / ⌘P.
+    if (actionMenuOpen) return;
+
+    if (matchesQxShortcut(event.nativeEvent, getQxShortcutPreset().actionMenu) && menuActions.length > 0) {
+      event.preventDefault();
+      event.stopPropagation();
+      openActionMenu();
+      return;
+    }
+
+    const matched = findMatchingAction(event.nativeEvent, { allowEnter: true, menuOpen: false });
+    // Capture only modified chords (and non-Enter bare keys when not editing).
+    // Enter paste stays on bubble so module onKeyDown can win for focus-at-cursor.
+    if (matched && matched.kbd && !isEnterOnlyShortcut(matched.kbd)) {
+      const hasMod = event.metaKey || event.ctrlKey || event.altKey || event.shiftKey;
+      if (hasMod || !shouldIgnoreBareShortcut(event.nativeEvent)) {
+        event.preventDefault();
+        event.stopPropagation();
+        matched.onClick?.();
+      }
+    }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented) return;
+
+    if (isReservedGlobalShortcutEvent(event.nativeEvent)) return;
 
     // Bubble-phase safety net if capture was bypassed.
     if (handleActionMenuKeyDown(event)) return;
@@ -427,16 +512,12 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       return;
     }
 
-    const candidates = [visiblePrimaryAction, visibleSecondaryAction, ...menuActions];
-    const matchedAction = candidates.find((action) => {
-      if (!action || action.disabled || !matchesQxShortcut(nativeEvent, action.kbd)) return false;
-      if (isNativeEditingShortcut(nativeEvent)) return false;
-      return nativeEvent.metaKey || nativeEvent.ctrlKey || nativeEvent.altKey || !shouldIgnoreBareShortcut(nativeEvent);
-    });
+    // Bubble fallback for Enter / bare keys not handled in capture.
+    const matchedAction = findMatchingAction(nativeEvent, { allowEnter: true, menuOpen: false });
     if (matchedAction) {
       event.preventDefault();
       event.stopPropagation();
-      runMenuAction(matchedAction);
+      matchedAction.onClick?.();
     }
   };
 
@@ -529,14 +610,22 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
                     }
                   : visibleSecondaryAction
               }
+              triggerAttrs={
+                visibleSecondaryAction && menuActions.length > 0 && !visibleSecondaryAction.onClick
+                  ? { [QX_ACTION_MENU_TRIGGER_ATTR]: true }
+                  : undefined
+              }
             />
           </div>
         ) : (
           <div className="qx-shell-actions is-empty" aria-hidden="true" />
         )}
       </div>
-      {actionMenuOpen && menuActions.length > 0 && (
+      {/* Keep mounted so Radix/shadcn can play open/close animations. */}
+      {menuActions.length > 0 && (
         <ShellActionMenu
+          open={actionMenuOpen}
+          onOpenChange={handleActionMenuOpenChange}
           title={menuTitle}
           actions={menuActions}
           activeIndex={actionIndex}

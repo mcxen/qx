@@ -5,24 +5,30 @@ import {
 } from "./store";
 import { LinkButton } from "../../components/ui";
 import ShortcutRecorder from "../../components/ShortcutRecorder";
+import {
+  countEnabledGlobalShortcuts,
+  globalShortcutIssue,
+} from "../../utils/keyboard";
+
+const DEFAULT_GLOBAL_KEYS: Record<string, string> = {
+  toggle_launcher: "Alt+Space",
+  clipboard: "Alt+V",
+  record_gif: "Alt+G",
+  rss: "Alt+R",
+};
 
 export default function ShortcutSettings() {
   const { settings, patchShortcut } = useSettingsStore();
   const shortcuts = settings.shortcuts;
-
-  const conflictMap: Record<string, boolean> = {};
-  const counts: Record<string, number> = {};
-  Object.entries(shortcuts).forEach(([_, b]) => {
-    if (b.enabled && b.key) {
-      counts[b.key] = (counts[b.key] || 0) + 1;
-    }
-  });
-  Object.entries(shortcuts).forEach(([_, b]) => {
-    if (b.enabled && b.key && counts[b.key] > 1) conflictMap[b.key] = true;
-  });
+  const counts = countEnabledGlobalShortcuts(shortcuts, settings.app_shortcuts);
 
   return (
     <div className="qx-settings-page">
+      <div className="qx-settings-hint" style={{ marginBottom: 12, fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.45 }}>
+        Global shortcuts are registered with the OS and work even when Qx is in the background.
+        Only <strong>Toggle Launcher</strong> is on by default. Module shortcuts (clipboard, RSS, GIF)
+        stay off until you enable them — they must not steal system keys like ⌘Space / Alt+Space.
+      </div>
       {SHORTCUT_GROUPS.map((group) => (
         <div key={group.group} style={{ marginBottom: 16 }}>
           <div
@@ -40,7 +46,7 @@ export default function ShortcutSettings() {
           {group.ids.map((id) => {
             const binding = shortcuts[id];
             const label = SHORTCUT_LABELS[id] ?? id;
-            const conflict = binding ? !!conflictMap[binding.key] : false;
+            const issue = globalShortcutIssue(binding, counts);
             return (
               <div
                 key={id}
@@ -50,9 +56,19 @@ export default function ShortcutSettings() {
                   <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>
                     {label}
                   </div>
-                  {conflict && (
+                  {issue && (
                     <div style={{ fontSize: 11, color: "var(--qx-danger)", marginTop: 2 }}>
-                      Conflict: this shortcut is used by another action.
+                      {issue}
+                    </div>
+                  )}
+                  {id === "toggle_launcher" && !issue && (
+                    <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
+                      Summon or hide the main window from anywhere.
+                    </div>
+                  )}
+                  {id !== "toggle_launcher" && !issue && (
+                    <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
+                      Optional deep-link. Off by default so it does not fight other apps.
                     </div>
                   )}
                 </div>
@@ -67,24 +83,19 @@ export default function ShortcutSettings() {
                   </button>
                   <ShortcutRecorder
                     initial={binding?.key ?? ""}
-                    conflict={conflict}
+                    conflict={Boolean(issue)}
                     onCommit={(b) => patchShortcut(id, b)}
                     onCancel={() => {}}
                   />
                   <LinkButton
                     onClick={() => {
-                      const defaults: Record<string, string> = {
-                        toggle_launcher: "Alt+Space",
-                        clipboard: "Alt+V",
-                        record_gif: "Alt+G",
-                        rss: "Alt+R",
-                      };
                       patchShortcut(id, {
-                        key: defaults[id] ?? "",
-                        enabled: true,
+                        key: DEFAULT_GLOBAL_KEYS[id] ?? "",
+                        // Only launcher is forced on by reset; modules stay user-chosen.
+                        enabled: id === "toggle_launcher" ? true : (binding?.enabled ?? false),
                       });
                     }}
-                    title="Reset to default"
+                    title="Reset to default key"
                   >
                     ↺
                   </LinkButton>

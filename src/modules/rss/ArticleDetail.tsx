@@ -267,7 +267,7 @@ export default function ArticleDetail() {
       island={island}
       primaryAction={{
         label: currentArticle.link ? "Open Original" : "Back",
-        kbd: currentArticle.link ? "⌘K O" : "Esc",
+        kbd: currentArticle.link ? "O" : "Esc",
         tone: "primary",
         onClick: () => {
           if (currentArticle.link) void openUrl(currentArticle.link);
@@ -276,7 +276,7 @@ export default function ArticleDetail() {
       }}
       secondaryAction={{
         label: "Actions",
-        kbd: "⌘K",
+        kbd: "CmdOrCtrl+K",
       }}
       actionTitle="Article Actions"
       actions={actions}
