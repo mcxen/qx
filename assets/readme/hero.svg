@@ -43,7 +43,7 @@
     <g transform="translate(0 230)">
       <rect width="150" height="36" rx="10" fill="#0f172a" stroke="#334155"/>
       <text x="75" y="23" text-anchor="middle" fill="#e2e8f0" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13">⌥ Space</text>
-      <text x="168" y="23" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13">toggle launcher · v0.5.12</text>
+      <text x="168" y="23" fill="#64748b" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="13">toggle launcher · v0.5.13</text>
     </g>
   </g>
 

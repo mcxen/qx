@@ -38,8 +38,12 @@ Qx 使用自定义 macOS helper 更新，不依赖 Tauri signed updater：
 - 前端通过 `qx_update_check` 读取 GitHub latest release。
 - Release 里优先使用 `latest.json`，fallback 到 `_aarch64-apple-darwin.app.zip` asset。
 - 只有 SHA256 存在且当前运行位置是 `.app` bundle 时才允许自动安装。
-- `qx_update_download_and_install` 下载 zip、校验 SHA256 和 size、解压到 staging，然后复制当前可执行文件作为临时 helper。
-- 主程序退出后，helper 用 `ditto` 替换目标 `Qx.app`，清理 `com.apple.quarantine` xattr，确认主二进制可执行，再通过 `/usr/bin/open` 重启。
+- `qx_update_download_and_install` 下载 zip、校验 SHA256 和 size、解压到 staging。
+- **签名策略（不买 Apple 开发者账号）**：
+  - CI 与本地均使用 **ad-hoc** `codesign --sign -`（免费，非公证）。
+  - 从 `Qx.app` 复制出的 update helper 必须再次：去 quarantine（`xattr -cr`）+ ad-hoc 重签，否则 Gatekeeper 会拦截 helper 进程。
+  - 解压后的 staging `Qx.app` 与替换后的目标 bundle 同样清理 xattr 并 ad-hoc 重签。
+- 主程序退出后，helper 用 `ditto` 替换目标 `Qx.app`，再通过 `/usr/bin/open` 重启。
 
 ### 更新缓存路径与清理
 
@@ -66,7 +70,7 @@ Qx 使用自定义 macOS helper 更新，不依赖 Tauri signed updater：
 
 ## 未做的事
 
-- **代码签名 / notarization**：未接入 Apple Developer ID。用户首次打开需要右键 → 打开绕过 Gatekeeper。
+- **Apple Developer ID / notarization**：故意不接入（不付费）。用 **ad-hoc 签名** 保证本地 helper 与覆盖安装可执行；用户从网上下载的首次打开仍可能要「右键 → 打开」。
 - **Intel + Linux + Windows**：暂无 runner，用户需自己 `git clone && npm run tauri build`。
 - **Prerelease channel**：`workflow_dispatch` 支持 `prerelease: true` 输入但流程没差别。
 - **CHANGELOG**：靠 `TASK.md` 追踪，未生成用户面向的 CHANGELOG.md。

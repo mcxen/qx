@@ -364,13 +364,15 @@ export default function ArticleList() {
       : undefined;
     switch (e.key) {
       case "ArrowDown":
-        if (region === "rss-reader" || region === "rss-actions") return;
+        // Only let the shell scroll when focus is in the article body.
+        // Side action panel (after ArrowLeft) must still move the article list.
+        if (region === "rss-reader") return;
         e.preventDefault();
         setSelectedIndex(articles.length > 0 ? Math.min(selectedIndex + 1, articles.length - 1) : 0);
         focusRegion("rss-list");
         break;
       case "ArrowUp":
-        if (region === "rss-reader" || region === "rss-actions") return;
+        if (region === "rss-reader") return;
         e.preventDefault();
         setSelectedIndex(Math.max(selectedIndex - 1, 0));
         focusRegion("rss-list");
@@ -380,15 +382,17 @@ export default function ArticleList() {
         e.preventDefault();
         if (currentArticle && next) void openArticleAtTop(next.id);
         else setSelectedIndex(articles.length > 0 ? Math.min(selectedIndex + 1, articles.length - 1) : 0);
+        focusRegion("rss-list");
         break;
       case "k":
         if (ignoreBare || e.metaKey || e.ctrlKey) return;
         e.preventDefault();
         if (currentArticle && prev) void openArticleAtTop(prev.id);
         else setSelectedIndex(Math.max(selectedIndex - 1, 0));
+        focusRegion("rss-list");
         break;
       case "Enter": {
-        if (region === "rss-reader" || region === "rss-actions") return;
+        if (region === "rss-reader") return;
         e.preventDefault();
         const a = articles[selectedIndex];
         if (a) void openArticleAtTop(a.id, true);

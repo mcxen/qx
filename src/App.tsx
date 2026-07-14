@@ -1011,14 +1011,17 @@ function App() {
           setQuery("");
           setSelectedIndex(0);
           const state = useStore.getState();
-          const hasAppRows = state.results.some((r) => (r.kind ?? "app") === "app");
+          const appRows = state.results.filter((r) => (r.kind ?? "app") === "app");
+          const hasAppRows = appRows.length > 0;
+          const missingIcons = appRows.some((r) => !r.icon);
           const stale = Date.now() - lastEmptyAppsFetchAt > EMPTY_LAUNCHER_CACHE_MS;
-          // Hot path: keep cached empty-launcher rows. Only refetch when empty/stale.
-          if ((!hasAppRows || stale) && !emptyLauncherLoadInFlightRef.current) {
+          // Hot path: keep cached rows. Force refresh when empty, stale, or icons blank
+          // (common after reinstall / scan-before-preload race).
+          if ((!hasAppRows || stale || missingIcons) && !emptyLauncherLoadInFlightRef.current) {
             emptyLauncherLoadInFlightRef.current = true;
             lastEmptyLauncherLoadAtRef.current = Date.now();
             void loadEmptyLauncherApps(setResults, setLoadingPhase, {
-              force: !hasAppRows,
+              force: !hasAppRows || missingIcons,
             }).finally(() => {
               emptyLauncherLoadInFlightRef.current = false;
             });
@@ -1448,19 +1451,22 @@ function App() {
     };
   }, []);
 
-  // apps:icons-ready — patch icons only; never replace the whole result list.
+  // apps:icons-ready — always patch store icons (even when panel is hidden),
+  // so the next Option+Space show is not stuck with empty icon paths for 8s.
   useEffect(() => {
     if (!isTauriRuntime()) return;
     let debounceTimer: ReturnType<typeof window.setTimeout> | undefined;
     const unlisten = listen("apps:icons-ready", () => {
       if (debounceTimer) window.clearTimeout(debounceTimer);
       debounceTimer = window.setTimeout(async () => {
-        const { query: q, visible, results: rows } = useStore.getState();
-        if (!visible || rows.length === 0) return;
+        const { query: q, results: rows } = useStore.getState();
+        if (rows.length === 0) return;
         try {
           const apps = await invoke<AppEntry[]>("search_apps", { query: q });
           const iconMap = new Map(apps.map((a) => [a.path, a.icon]));
           updateResultIcons((path) => iconMap.get(path));
+          // Allow empty-launcher cache to pick up healed icons on next show.
+          lastEmptyAppsFetchAt = 0;
         } catch {
           // ignore
         }

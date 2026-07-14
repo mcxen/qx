@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::collections::hash_map::DefaultHasher;
 use std::fs;
 use std::hash::{Hash, Hasher};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use std::sync::OnceLock;
@@ -122,7 +122,51 @@ fn load_from_db() -> Vec<AppEntry> {
     entries
 }
 
+/// Prefer on-disk PNG / previous DB path over wiping icons to empty.
+/// Fast scan never runs sips, so a rescan used to write `icon=""` and erase
+/// good paths from apps.db — after reinstall that looked like “all icons gone”.
+fn heal_entry_icon(entry: &mut AppEntry) {
+    if !entry.icon.is_empty() && Path::new(&entry.icon).is_file() {
+        return;
+    }
+    let app_path = PathBuf::from(&entry.path);
+    let current = icon_cache_path(&app_path, &entry.name);
+    if current.is_file() {
+        entry.icon = current.to_string_lossy().to_string();
+        return;
+    }
+    let legacy = legacy_icon_cache_path(&entry.name);
+    if legacy.is_file() {
+        entry.icon = legacy.to_string_lossy().to_string();
+        return;
+    }
+    // Keep a previous path only if the file still exists.
+    if !entry.icon.is_empty() && !Path::new(&entry.icon).is_file() {
+        entry.icon.clear();
+    }
+}
+
+fn preserve_icons_from_previous(mut fresh: Vec<AppEntry>, previous: &[AppEntry]) -> Vec<AppEntry> {
+    use std::collections::HashMap;
+    let prev: HashMap<&str, &AppEntry> = previous
+        .iter()
+        .map(|entry| (entry.path.as_str(), entry))
+        .collect();
+    for entry in &mut fresh {
+        if entry.icon.is_empty() {
+            if let Some(old) = prev.get(entry.path.as_str()) {
+                if !old.icon.is_empty() && Path::new(&old.icon).is_file() {
+                    entry.icon = old.icon.clone();
+                }
+            }
+        }
+        heal_entry_icon(entry);
+    }
+    fresh
+}
+
 /// Sync the provided app entries into the DB (upsert + delete stale).
+/// Never overwrite a good on-disk icon path with an empty string.
 fn sync_db(entries: &[AppEntry]) {
     let conn = match init_db() {
         Ok(c) => c,
@@ -143,7 +187,10 @@ fn sync_db(entries: &[AppEntry]) {
              ON CONFLICT(path) DO UPDATE SET
                 name = excluded.name,
                 display_name = excluded.display_name,
-                icon = excluded.icon,
+                icon = CASE
+                    WHEN excluded.icon = '' AND icon != '' THEN icon
+                    ELSE excluded.icon
+                END,
                 kind = excluded.kind,
                 aliases = excluded.aliases,
                 last_seen = datetime('now')",
@@ -704,8 +751,11 @@ fn scan_all_apps() -> Vec<AppEntry> {
 /// re-scan. The cold load from DB is ~1ms. The background scan eventually
 /// updates both DB and in-memory cache and emits 'apps:updated'.
 pub fn ensure_cache(app: Option<&AppHandle>) {
-    // Phase 1: Load from DB (instant)
-    let db_entries = load_from_db();
+    // Phase 1: Load from DB (instant) and heal broken icon paths against disk.
+    let mut db_entries = load_from_db();
+    for entry in &mut db_entries {
+        heal_entry_icon(entry);
+    }
     if let Some(mut cache) = app_cache_lock() {
         if !db_entries.is_empty() {
             *cache = db_entries;
@@ -721,14 +771,18 @@ pub fn ensure_cache(app: Option<&AppHandle>) {
         let _ = std::thread::Builder::new()
             .name("qx-app-scan".to_string())
             .spawn(move || {
-                let fresh = scan_all_apps();
-                // Update DB
+                let previous = app_cache_lock()
+                    .map(|cache| cache.clone())
+                    .unwrap_or_default();
+                let fresh = preserve_icons_from_previous(scan_all_apps(), &previous);
                 sync_db(&fresh);
-                // Update in-memory cache
                 if let Some(mut cache) = app_cache_lock() {
                     *cache = fresh;
                 }
                 let _ = app_handle.emit("apps:updated", ());
+                // Generate missing PNGs *after* scan so we never race a fast
+                // scan that would wipe icons we just wrote.
+                fill_missing_icons(&app_handle);
             });
     } else if app_cache_lock()
         .map(|cache| cache.is_empty())
@@ -736,7 +790,10 @@ pub fn ensure_cache(app: Option<&AppHandle>) {
     {
         // Recovery path used only from search_apps' spawn_blocking worker if
         // startup initialization was skipped or failed.
-        let fresh = scan_all_apps();
+        let previous = app_cache_lock()
+            .map(|cache| cache.clone())
+            .unwrap_or_default();
+        let fresh = preserve_icons_from_previous(scan_all_apps(), &previous);
         sync_db(&fresh);
         if let Some(mut cache) = app_cache_lock() {
             *cache = fresh;
@@ -744,54 +801,60 @@ pub fn ensure_cache(app: Option<&AppHandle>) {
     }
 }
 
-/// Background icon pre-conversion. Called once at startup so the first
-/// search is instant. Emits `apps:icons-ready` when done so the frontend
-/// can refresh results with icons.
-pub fn preload_icons(app: &AppHandle) {
+/// Convert missing app icons to PNG and update cache + DB.
+/// Emits `apps:icons-ready` when any icon changed.
+fn fill_missing_icons(app: &AppHandle) {
     let apps = app_cache_lock()
         .map(|cache| cache.clone())
         .unwrap_or_default();
+    let mut changed = false;
+    for entry in apps.iter() {
+        let app_path = PathBuf::from(&entry.path);
+        if has_current_cached_icon(&app_path, &entry.name, &entry.icon) {
+            continue;
+        }
+        let mut png = appkit_icon_to_png(&app_path, &entry.name);
+        if png.is_empty() {
+            if let Some(icon_path) = resolve_icon_path(&app_path, &entry.name) {
+                png = icon_to_png(&icon_path, &app_path, &entry.name);
+            }
+        }
+        if png.is_empty() {
+            continue;
+        }
+        if let Ok(mut cache) = APP_CACHE.lock() {
+            for c in cache.iter_mut() {
+                if c.path == entry.path {
+                    c.icon = png.clone();
+                    changed = true;
+                    break;
+                }
+            }
+        }
+        if let Ok(conn) = init_db() {
+            let _ = conn.execute(
+                "UPDATE apps SET icon = ?1 WHERE path = ?2",
+                params![png, entry.path],
+            );
+        }
+    }
+    if changed {
+        let _ = app.emit("apps:icons-ready", ());
+    }
+}
 
+/// Background icon pre-conversion entry point.
+/// Prefer the post-scan path inside `ensure_cache`; kept for manual/best-effort fill.
+#[allow(dead_code)]
+pub fn preload_icons(app: &AppHandle) {
     let handle = app.clone();
-    std::thread::spawn(move || {
-        // Let phase-1 DB load + first search_apps("") finish before sips/icon
-        // conversion saturates disk and CPU on cold start.
-        std::thread::sleep(std::time::Duration::from_millis(1500));
-        let mut changed = false;
-        for entry in apps.iter() {
-            let app_path = PathBuf::from(&entry.path);
-            if has_current_cached_icon(&app_path, &entry.name, &entry.icon) {
-                continue;
-            }
-            let mut png = appkit_icon_to_png(&app_path, &entry.name);
-            if png.is_empty() {
-                if let Some(icon_path) = resolve_icon_path(&app_path, &entry.name) {
-                    png = icon_to_png(&icon_path, &app_path, &entry.name);
-                }
-            }
-            if !png.is_empty() {
-                if let Ok(mut cache) = APP_CACHE.lock() {
-                    for c in cache.iter_mut() {
-                        if c.path == entry.path {
-                            c.icon = png.clone();
-                            changed = true;
-                            break;
-                        }
-                    }
-                }
-                // Also update DB
-                if let Ok(conn) = init_db() {
-                    let _ = conn.execute(
-                        "UPDATE apps SET icon = ?1 WHERE path = ?2",
-                        params![png, entry.path],
-                    );
-                }
-            }
-        }
-        if changed {
-            let _ = handle.emit("apps:icons-ready", ());
-        }
-    });
+    let _ = std::thread::Builder::new()
+        .name("qx-icon-preload".to_string())
+        .spawn(move || {
+            // Small delay so first search_apps can serve DB rows without sips contention.
+            std::thread::sleep(std::time::Duration::from_millis(800));
+            fill_missing_icons(&handle);
+        });
 }
 
 #[tauri::command]
@@ -802,9 +865,14 @@ pub async fn search_apps(query: String) -> Result<Vec<AppEntry>, String> {
             ensure_cache(None);
         }
 
-        let cache = APP_CACHE
+        let mut cache = APP_CACHE
             .lock()
             .map_err(|e| format!("lock poisoned: {e}"))?;
+
+        // Heal empty/broken icon fields against ~/.qx/icons without sips.
+        for entry in cache.iter_mut() {
+            heal_entry_icon(entry);
+        }
 
         if query.is_empty() {
             let results: Vec<AppEntry> = cache.iter().take(20).cloned().collect();

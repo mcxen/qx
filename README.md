@@ -23,7 +23,7 @@
 | Reuse what you just copied | Persistent clipboard history (text, image, files) |
 | Stay in flow | One shell: RSS, weather, QxAI, V2EX, macros, plugins |
 
-> **Status**: v0.5.12 — active development · [Releases](https://github.com/mcxen/qx/releases) · [Docs](./docs/README.md)
+> **Status**: v0.5.13 — active development · [Releases](https://github.com/mcxen/qx/releases) · [Docs](./docs/README.md)
 
 ---
 
@@ -209,7 +209,7 @@ Source-available — full terms in [LICENSE](./LICENSE).
 
 **Qx** 是后台常驻的效率启动器：全局快捷键唤起，搜索 → 执行 → 再按同一快捷键收起。灵感来自 Raycast，基于 **Tauri v2 + React 19 + Rust**，支持 macOS 与 Windows。
 
-> **版本**: v0.5.12 · [发布页](https://github.com/mcxen/qx/releases) · [开发者文档](./docs/README.md)
+> **版本**: v0.5.13 · [发布页](https://github.com/mcxen/qx/releases) · [开发者文档](./docs/README.md)
 
 ### 你能做什么
 

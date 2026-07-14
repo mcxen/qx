@@ -405,6 +405,9 @@ fn download_and_stage_in_dir(
     if !staged_app.exists() {
         return Err("update archive did not contain Qx.app".to_string());
     }
+    // GitHub zip always arrives quarantined; clear + ad-hoc re-sign free of charge
+    // so the helper can open the staged bundle after swap.
+    prepare_app_for_launch(&staged_app)?;
     Ok(staged_app)
 }
 
@@ -485,8 +488,14 @@ fn spawn_update_helper(
     target_app: &Path,
     version: &str,
 ) -> Result<PathBuf, String> {
+    // Prepare the staged replacement app before the main process exits so the
+    // helper only renames/ditto and does not fight Gatekeeper mid-flight.
+    prepare_app_for_launch(staged_app)?;
+
     let helper_path = update_cache_dir().join(format!("qx-update-helper-{}", std::process::id()));
     let current_exe = std::env::current_exe().map_err(|e| format!("resolve current exe: {e}"))?;
+    // Remove a previous copy so codesign never sees a broken half-file.
+    let _ = fs::remove_file(&helper_path);
     fs::copy(&current_exe, &helper_path).map_err(|e| {
         format!(
             "copy update helper from {} to {}: {e}",
@@ -494,14 +503,13 @@ fn spawn_update_helper(
             helper_path.display()
         )
     })?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let _ = fs::set_permissions(&helper_path, fs::Permissions::from_mode(0o755));
-    }
+    // Copying the binary out of Qx.app drops its seal and may inherit
+    // com.apple.quarantine — Gatekeeper then kills the helper ("process was
+    // intercepted"). Free ad-hoc re-sign + strip quarantine; no Apple paid cert.
+    prepare_detached_helper(&helper_path)?;
 
     let backup_app = update_cache_dir().join(format!("backup-Qx-{version}.app"));
-    Command::new(&helper_path)
+    let mut child = Command::new(&helper_path)
         .arg(HELPER_FLAG)
         .arg("--pid")
         .arg(std::process::id().to_string())
@@ -512,14 +520,101 @@ fn spawn_update_helper(
         .arg("--target-app")
         .arg(target_app)
         .arg("--backup-app")
-        .arg(backup_app)
+        .arg(&backup_app)
         .arg("--restart")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| format!("spawn update helper: {e}"))?;
+        .map_err(|e| {
+            format!(
+                "spawn update helper {} failed (often Gatekeeper): {e}. \
+                 Try: xattr -cr ~/.qx/cache/updates && codesign --force --sign - {}",
+                helper_path.display(),
+                helper_path.display()
+            )
+        })?;
+
+    // If Gatekeeper aborts immediately, surface a clear error instead of a silent no-op.
+    std::thread::sleep(Duration::from_millis(120));
+    match child.try_wait() {
+        Ok(Some(status)) => {
+            let mut err = String::new();
+            if let Some(mut stderr) = child.stderr.take() {
+                let _ = stderr.read_to_string(&mut err);
+            }
+            return Err(format!(
+                "update helper exited immediately with {status}{}",
+                if err.trim().is_empty() {
+                    String::new()
+                } else {
+                    format!(": {}", err.trim())
+                }
+            ));
+        }
+        Ok(None) => {}
+        Err(e) => return Err(format!("poll update helper: {e}")),
+    }
+
     Ok(helper_path)
+}
+
+/// Make a detached copy of the Qx binary launchable without a paid Apple cert.
+///
+/// - Strip quarantine / download xattrs (inherited from zip or the parent app)
+/// - Ensure +x
+/// - Ad-hoc codesign (`codesign -s -`) so the kernel accepts the new inode
+fn prepare_detached_helper(path: &Path) -> Result<(), String> {
+    clear_quarantine_xattr(path)?;
+    // Broader xattr wipe: some macOS builds flag com.apple.macl / provenance.
+    let _ = Command::new("/usr/bin/xattr")
+        .args(["-cr"])
+        .arg(path)
+        .status();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("set helper executable bit on {}: {e}", path.display()))?;
+    }
+    adhoc_codesign(path, false)?;
+    Ok(())
+}
+
+/// Free ad-hoc signature. Does **not** require an Apple Developer Program membership.
+/// Gatekeeper still prompts on first open of a downloaded .app; local helper
+/// copies re-signed this way should not be intercepted when replacing Qx.app.
+fn adhoc_codesign(path: &Path, deep: bool) -> Result<(), String> {
+    let mut cmd = Command::new("/usr/bin/codesign");
+    cmd.arg("--force").arg("--sign").arg("-");
+    // Stable id so Gatekeeper can track the free ad-hoc identity across updates.
+    cmd.arg("--identifier").arg("com.mcx.qx");
+    if deep {
+        cmd.arg("--deep");
+        let entitlements = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("entitlements.plist");
+        if entitlements.is_file() {
+            cmd.arg("--entitlements").arg(entitlements);
+        }
+    }
+    // Avoid network timestamp servers (would require a real identity).
+    cmd.arg("--timestamp=none");
+    cmd.arg(path);
+    let output = cmd
+        .output()
+        .map_err(|e| format!("run codesign on {}: {e}", path.display()))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(if stderr.is_empty() {
+        format!(
+            "codesign ad-hoc failed on {} with status {}",
+            path.display(),
+            output.status
+        )
+    } else {
+        format!("codesign ad-hoc failed on {}: {stderr}", path.display())
+    })
 }
 
 fn run_update_helper(args: &[String]) -> Result<(), String> {
@@ -620,8 +715,16 @@ fn replace_app_bundle(
 }
 
 fn prepare_app_for_launch(app: &Path) -> Result<(), String> {
+    // Recursively clear quarantine on the whole bundle (download provenance).
+    let _ = Command::new("/usr/bin/xattr")
+        .args(["-cr"])
+        .arg(app)
+        .status();
     clear_quarantine_xattr(app)?;
-    ensure_bundle_executable_permission(app)
+    ensure_bundle_executable_permission(app)?;
+    // Free ad-hoc re-sign after ditto/unzip invalidates the previous seal.
+    adhoc_codesign(app, true)?;
+    Ok(())
 }
 
 fn clear_quarantine_xattr(app: &Path) -> Result<(), String> {
@@ -634,6 +737,10 @@ fn clear_quarantine_xattr(app: &Path) -> Result<(), String> {
         return Ok(());
     }
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    // Already-clean trees often return non-zero if the attribute is missing — tolerate that.
+    if stderr.contains("No such xattr") || stderr.contains("No such file") {
+        return Ok(());
+    }
     Err(if stderr.is_empty() {
         format!(
             "xattr failed to clear quarantine on {} with status {}",

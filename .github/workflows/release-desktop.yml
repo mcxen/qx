@@ -76,13 +76,20 @@ jobs:
       - name: Build Tauri bundle
         run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
-      - name: Sign macOS app bundle
+      - name: Ad-hoc sign macOS app bundle (no Apple paid cert)
         if: runner.os == 'macOS'
         run: |
+          # Free local identity (`-`). Not notarized; first open may need
+          # right-click → Open. In-app helper re-signs its own copy the same way.
           codesign --force --deep --sign - \
+            --timestamp=none \
             --identifier "com.mcx.qx" \
             --entitlements src-tauri/entitlements.plist \
             src-tauri/target/${{ matrix.target }}/release/bundle/macos/Qx.app
+          codesign --verify --deep --strict \
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/Qx.app
+          # Strip quarantine if CI/tools attached it before zip.
+          xattr -cr src-tauri/target/${{ matrix.target }}/release/bundle/macos/Qx.app || true
 
       - name: Archive macOS app bundle
         if: runner.os == 'macOS'

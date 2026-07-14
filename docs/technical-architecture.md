@@ -1,6 +1,6 @@
 # Qx — Technical Architecture Document
 
-> 状态：Current · 适用版本：v0.5.12 · Owner：Core · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.5.13 · Owner：Core · 最后复核：2026-07-14
 >
 > 桌面启动器（Raycast 风格）| Tauri v2 + React + TypeScript + Rust
 >

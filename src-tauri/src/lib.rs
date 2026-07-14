@@ -463,19 +463,15 @@ pub fn run() {
             // Initialize app cache from DB (instant), then background re-scan
             safe_init("apps::ensure_cache", &|| apps::ensure_cache(Some(&handle)));
 
-            // File search backends + icon preload: after a short delay so they
-            // never compete with tray/shortcut registration or first launcher paint.
+            // File search backends: deferred. Icons are filled after the app
+            // scan inside `apps::ensure_cache` (avoids scan wiping empty icons).
             let file_search_handle = handle.clone();
-            let icon_handle = handle.clone();
             let _ = std::thread::Builder::new()
                 .name("qx-deferred-startup".to_string())
                 .spawn(move || {
                     std::thread::sleep(std::time::Duration::from_millis(400));
                     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         file_search::init(&file_search_handle);
-                    }));
-                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        apps::preload_icons(&icon_handle);
                     }));
                 });
 

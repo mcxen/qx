@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRssStore, type RssFeed } from "./store";
-import { LoadingLabel, Modal } from "../../components/ui";
+import { LoadingLabel, Modal, Select } from "../../components/ui";
+
+const UNGROUPED = "none";
 
 export default function EditFeedDialog({
   feed,
@@ -9,9 +11,12 @@ export default function EditFeedDialog({
   feed: RssFeed;
   onClose: () => void;
 }) {
-  const { updateFeed, loading } = useRssStore();
+  const { updateFeed, setFeedFolder, folders, loading } = useRssStore();
   const [url, setUrl] = useState(feed.url);
   const [title, setTitle] = useState(feed.title);
+  const [folderChoice, setFolderChoice] = useState(
+    feed.folder_id == null ? UNGROUPED : String(feed.folder_id),
+  );
   const [localError, setLocalError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -19,6 +24,14 @@ export default function EditFeedDialog({
     inputRef.current?.focus();
     inputRef.current?.select();
   }, []);
+
+  const folderOptions = useMemo(
+    () => [
+      { value: UNGROUPED, label: "Ungrouped" },
+      ...folders.map((f) => ({ value: String(f.id), label: f.name })),
+    ],
+    [folders],
+  );
 
   const submit = async () => {
     const trimmedUrl = url.trim();
@@ -33,6 +46,14 @@ export default function EditFeedDialog({
     setLocalError(null);
     try {
       await updateFeed(feed.id, trimmedUrl, title.trim());
+      const nextFolder =
+        folderChoice === UNGROUPED ? null : Number(folderChoice);
+      const prevFolder = feed.folder_id ?? null;
+      const nextId =
+        nextFolder != null && Number.isFinite(nextFolder) ? nextFolder : null;
+      if (nextId !== prevFolder) {
+        await setFeedFolder(feed.id, nextId);
+      }
       onClose();
     } catch (e) {
       setLocalError(String(e));
@@ -50,10 +71,7 @@ export default function EditFeedDialog({
   };
 
   return (
-    <Modal
-      title="Edit RSS Subscription"
-      onClose={onClose}
-    >
+    <Modal title="Edit subscription" subtitle="URL, title, and folder for this feed only." onClose={onClose}>
       <div className="qx-modal-field">
         <label className="qx-modal-field-label">Feed URL</label>
         <input
@@ -79,13 +97,23 @@ export default function EditFeedDialog({
           style={{ width: "100%" }}
         />
       </div>
+      <div className="qx-modal-field">
+        <label className="qx-modal-field-label">Folder</label>
+        <Select
+          value={folderChoice}
+          options={folderOptions}
+          onChange={setFolderChoice}
+          ariaLabel="Folder for this feed"
+        />
+      </div>
       {localError && <div className="qx-modal-error">{localError}</div>}
       <div className="qx-modal-actions">
-        <button className="qx-command-button" onClick={onClose}>
+        <button className="qx-command-button" type="button" onClick={onClose}>
           Cancel
         </button>
         <button
           className="qx-command-button primary"
+          type="button"
           onClick={() => void submit()}
           disabled={loading || !url.trim()}
         >
