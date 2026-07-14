@@ -1,148 +1,90 @@
+<p align="right">
+  <strong>English</strong> · <a href="#qx--macos--windows-效率启动器">简体中文</a>
+</p>
+
 # Qx — macOS & Windows Productivity Launcher
 
-<img src="README.assets/%E5%B7%B2%E7%94%9F%E6%88%90%E5%9B%BE%E5%83%8F%202.png" alt="Qx app icon" width="160" />
+<p align="center">
+  <img src="./assets/readme/hero.svg" width="100%" alt="Qx — keyboard-first desktop launcher for macOS and Windows. Summon with Option+Space.">
+</p>
 
-**English** | [中文](#qx--macos--windows-效率启动器)
+<p align="center">
+  <a href="https://github.com/mcxen/qx/releases"><img alt="Release" src="https://img.shields.io/github/v/release/mcxen/qx?style=flat-square&color=2563eb"></a>
+  <a href="./LICENSE"><img alt="License" src="https://img.shields.io/badge/license-source--available-0f172a?style=flat-square"></a>
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-1e293b?style=flat-square">
+  <img alt="Stack" src="https://img.shields.io/badge/Tauri%20v2%20·%20React%2019%20·%20Rust-0b0d12?style=flat-square">
+</p>
 
-Qx is a **background-resident desktop launcher** for macOS and Windows, inspired by Raycast. It appears on demand through a global hotkey, giving you instant access to search, clipboard history, RSS feeds, system information, AI chat, utilities, and more — all within a unified, keyboard-first interface.
+**Qx** is a background-resident productivity launcher. Press a global hotkey, search, act, dismiss — without leaving the keyboard. Inspired by Raycast, open-source, and built as a native floating panel on **macOS** and **Windows**.
 
+| You need… | Qx does… |
+| --- | --- |
+| Launch apps & files fast | Fuzzy search + native file backends (Spotlight / Everything) |
+| Reuse what you just copied | Persistent clipboard history (text, image, files) |
+| Stay in flow | One shell: RSS, weather, QxAI, V2EX, macros, plugins |
 
-
-Built with **Tauri v2**, **React 19**, **TypeScript**, and a shared **Rust** core. Platform adapters provide native clipboard files and system information through AppKit/Mach on macOS and Win32 on Windows, while the frontend uses the same commands and data models on both systems.
-
-> **Status**: v0.5.11 — active development
-
----
-
-## Features
-
-| Module | Description |
-|--------|-------------|
-| **Launcher** | Fuzzy-search installed apps, files, built-in commands, plugin actions, and user aliases/tags |
-| **Clipboard** | Persisted text/image/file history, native file copy-out, pinning, filtering, metadata, and inline preview |
-| **Screen Recording** | Region-based GIF recording at 15fps (gifski), auto-saves to history |
-| **RSS Reader** | Add feeds, inline article reading, star/bookmark, OPML import/export, background auto-refresh |
-| **Weather** | Real-time weather display with location auto-detection, provider config, caching for instant launch, and background refresh |
-| **QxAI** | Built-in AI chat assistant with OpenRouter (default), DeepSeek, and custom OpenAI-compatible BYOK providers, streaming responses, persistent memory, and per-conversation model switching |
-| **V2EX** | Browse and search v2ex.com topics (latest/hot), read articles inline with HTML sanitization, node-based filtering |
-| **Macros** | Record and replay keyboard/mouse macro sequences |
-| **Dev Tools** | Text / JSON / Markdown utility tools |
-| **GitHub Calendar** | View your GitHub contribution graph inline |
-| **OCR** | Optical character recognition model management for extracting text from images |
-| **Plugin System** | Sandboxed iframe-based plugin runtime with RPC bridge, marketplace, archive import, ed25519 signature verification, Raycast extension conversion, and `context.ai` SDK for plugin AI capabilities |
-| **AI Agent Settings** | Configure AI agent mode, default provider/model, tool toggles (bash, grep, memory, MCP, background tasks), and bash/grep execution parameters |
-| **Weather Settings** | Configure weather provider (Open-Meteo / OpenWeatherMap), location override, and auto-refresh interval |
-| **OCR Settings** | Download and manage OCR recognition models (languages, versions) |
-| **Settings** | General, appearance (light/dark/system theme with Geist design system), keyboard shortcuts, platform permissions, plugin management |
+> **Status**: v0.5.11 — active development · [Releases](https://github.com/mcxen/qx/releases) · [Docs](./docs/README.md)
 
 ---
 
-## Technology Stack
+<p align="center">
+  <img src="./assets/readme/section-proof.svg" width="100%" alt="01 · See it first">
+</p>
 
-| Layer | Technology |
-|-------|-----------|
-| **Desktop Shell** | [Tauri v2](https://v2.tauri.app) (macOS and Windows, tray/helper lifecycle, native window effects) |
-| **Frontend** | React 19 + TypeScript + Vite 7 |
-| **Styling** | Tailwind CSS v4 + CSS custom properties (Geist-inspired 10-step design tokens) |
-| **State** | Zustand (global, plugin registry, per-module stores) |
-| **Animation** | Framer Motion v12 |
-| **Backend** | Rust (async via tokio, Tauri commands) |
-| **Database** | SQLite via rusqlite (apps cache, clipboard history, RSS, plugin data) |
-| **AI Runtime** | Multi-provider chat (OpenRouter, DeepSeek, custom OpenAI-compatible), streaming, agent tool-calling with gating |
-| **i18n** | English / Simplified Chinese |
-| **Plugin Runtime** | Sandboxed iframe + postMessage RPC bridge with `context.ai` SDK |
+<p align="center">
+  <img src="./README.assets/PixPin_2026-06-25_22-57-00.png" width="92%" alt="Qx launcher searching apps and files with quick entries sidebar">
+</p>
 
-### Rust Dependencies (key)
+<p align="center">
+  <img src="./README.assets/PixPin_2026-06-25_22-57-25.png" width="46%" alt="Clipboard history panel">&nbsp;
+  <img src="./README.assets/PixPin_2026-06-25_22-57-39.png" width="46%" alt="RSS reader panel">
+</p>
 
-| Crate | Purpose |
-|-------|---------|
-| `xcap` | Display enumeration helpers |
-| `scrap` + `gifski` | Screen recording → GIF encoding |
-| `rdev` + `enigo` | Macro record/replay |
-| `feed-rs` | RSS/Atom parsing |
-| `reqwest` | HTTP client (RSS fetch, marketplace, GitHub API, AI provider requests) |
-| `rusqlite` | App data persistence |
-| `battery` | Battery / power status |
-| `objc2` / `core-graphics` | macOS native APIs |
-| `windows-sys` | Windows clipboard, CPU, memory, and native system APIs |
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/9bf6f32a-0bdf-4b3f-9b0f-3db180a8ab8a" width="92%" alt="Qx shell with home island and system metrics">
+</p>
 
-On Windows, the installer includes the official Everything engine and ES client.
-Qx runs an isolated background index named `Qx`, caches hot queries asynchronously,
-and removes its indexing service during uninstall. Everything is distributed under
-its MIT license; the license text is included with the installed resources.
-| `window-vibrancy` | Frosted glass effect |
-| `ed25519-dalek` | Plugin signature verification |
+<p align="center">
+  <img src="./assets/readme/workflow.svg" width="100%" alt="Summon → Search → Act → Dismiss workflow">
+</p>
 
 ---
 
-## Architecture
+<p align="center">
+  <img src="./assets/readme/section-features.svg" width="100%" alt="02 · What you can do">
+</p>
 
-```
-┌──────────────────────────────────────────────────────────┐
-│                    Tauri v2 Shell                         │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │              React 19 + TypeScript                  │  │
-│  │  ┌──────────┐ ┌──────────┐ ┌──────────────────┐   │  │
-│  │  │ Launcher │ │ Clipboard│ │ RSS / V2EX /      │   │  │
-│  │  │ (search) │ │ History  │ │ QxAI / Settings   │   │  │
-│  │  └──────────┘ └──────────┘ └──────────────────┘   │  │
-│  │  ┌──────────────────────────────────────────────┐  │  │
-│  │  │  Plugin System (iframe sandbox + RPC bridge) │  │  │
-│  │  │  + context.ai SDK (chat, stream, bash,       │  │  │
-│  │  │    memory, grep, background tasks)            │  │  │
-│  │  └──────────────────────────────────────────────┘  │  │
-│  └────────────────────────────────────────────────────┘  │
-│  ┌────────────────────────────────────────────────────┐  │
-│  │              Rust Backend (Tauri Commands)          │  │
-│  │  apps  |  clipboard  |  screencap   |  rss          │  │
-│  │  g4f   |  plugin_api |  settings    |  system_      │  │
-│  │        |             |              |  stats        │  │
-│  │  system_  |  weather  |  floating_ |  apps_zh_     │  │
-│  │  information  |       |  panel     |  dict         │  │
-│  │  macros | file_search | history | ocr | github_    │  │
-│  │        |             |         |     | calendar     │  │
-│  │  v2ex  | storage | permissions | http_client |     │  │
-│  └────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────┘
-```
+### Core
 
-### Shell Layout
+| Module | What it gives you |
+| --- | --- |
+| **Launcher** | Apps, files, commands, plugin actions, aliases/tags, inline calculator |
+| **Clipboard** | Text / image / file history, pin, filter, native paste-out, media tools |
+| **RSS** | Feeds, folders, OPML, inline reading, star, refresh |
+| **QxAI** | Streaming chat · OpenRouter / DeepSeek / custom BYOK · memory |
+| **Plugins** | Sandboxed iframe runtime, marketplace, Raycast extension conversion |
 
-```
-┌──────────────────────────────────────────────┐
-│ Top Bar: Back + Search + Quick Actions       │
-├──────────────────────────────────────────────┤
-│ Main Area (content)       │ Context Panel    │
-│                           │ (240–340px)      │
-├──────────────────────────────────────────────┤
-│ Esc      [ Dynamic Island ]          Actions │
-└──────────────────────────────────────────────┘
-```
+### Also built-in
 
-The Dynamic Island is always centered via `position: absolute; left: 50%; transform: translateX(-50%)`. Three visual styles are available: `solid`, `elevated`, and `glass`. The island supports idle modes (system info, date display with lunar calendar and LED matrix clock), notice, progress, activity, playback, and error states with marquee scrolling.
+**Screen GIF** · **Weather** · **V2EX** · **Macros** · **OCR** · **GitHub calendar** · **Dev text tools** · **Settings** (theme, shortcuts, permissions, agent tools)
+
+### Keyboard-first shell
+
+| Key | Action |
+| --- | --- |
+| `⌥ Space` (macOS default) | Toggle main window |
+| `↑` / `↓` · `Enter` | Navigate · open |
+| `Esc` | Cascade: detail → clear query → leave module / hide |
+| `⌘K` / `Ctrl+K` | Actions menu |
+| Module hotkeys | Optional; **same key opens and closes** that module |
+
+Shell layout is always **Top bar · Main · Bottom bar** with a centered Dynamic Island for status, progress, and idle system metrics.
 
 ---
 
-## Screenshots
-
-> *Screenshots to be added.*
-
-| View | Preview |
-|------|---------|
-| Launcher + Search Results | <img src="README.assets/PixPin_2026-06-25_22-57-00.png" alt="PixPin_2026-06-25_22-57-00" style="zoom: 25%;" /> |
-| Clipboard History | <img src="README.assets/PixPin_2026-06-25_22-57-25.png" alt="PixPin_2026-06-25_22-57-25" style="zoom:25%;" /> |
-| RSS Reader | <img src="README.assets/PixPin_2026-06-25_22-57-39.png" alt="PixPin_2026-06-25_22-57-39" style="zoom:25%;" /> |
-| Settings — Appearance | `<!-- screenshot -->` |
-
----
-
-<img width="1212" height="706" alt="截屏2026-07-03 08 19 11" src="https://github.com/user-attachments/assets/9bf6f32a-0bdf-4b3f-9b0f-3db180a8ab8a" />
-
-
-<img width="2424" height="1412" alt="image" src="https://github.com/user-attachments/assets/85f61b1e-1bd4-4bd3-85c5-0bc1193d4503" />
-
-
-## Installation
+<p align="center">
+  <img src="./assets/readme/section-install.svg" width="100%" alt="03 · Install in a minute">
+</p>
 
 ### macOS — Homebrew (recommended)
 
@@ -151,360 +93,157 @@ brew tap mcxen/qx
 brew install --cask qx
 ```
 
-> **Note for users in China**: If GitHub is inaccessible, use SSH: `git clone git@github.com:mcxen/homebrew-qx.git /opt/homebrew/Library/Taps/mcxen/homebrew-qx`
-
-### Manual — macOS
-
-1. Download `qx_<version>_aarch64-apple-darwin.app.zip` from [Releases](https://github.com/mcxen/qx/releases)
-2. Unzip and move `Qx.app` to `/Applications`
-3. Right-click → Open (first launch needs Gatekeeper override)
-4. Qx lives in the menu bar — click the icon or press the global hotkey to open
-
-### Manual — Windows x64
-
-1. Download the Windows NSIS `.exe` installer from [Releases](https://github.com/mcxen/qx/releases).
-2. Run the installer and launch Qx once to finish first-run setup.
-3. After onboarding, Qx stays in the background until summoned by its configured global hotkey.
-
-### Update
-
 ```bash
-brew update
-brew upgrade --cask qx
+brew upgrade --cask qx   # update
 ```
 
----
+> **China network tip**: if GitHub is slow, clone the tap over SSH:  
+> `git clone git@github.com:mcxen/homebrew-qx.git /opt/homebrew/Library/Taps/mcxen/homebrew-qx`
 
-## Usage
+### Manual
 
-### Global Hotkey
+| Platform | Download | Notes |
+| --- | --- | --- |
+| **macOS Apple Silicon** | [`*.app.zip` from Releases](https://github.com/mcxen/qx/releases) | Unzip → `/Applications` · first open: right-click → Open |
+| **Windows x64** | NSIS `.exe` from Releases | WebView2 required · Everything engine bundled for file search |
 
-| Action | Default Shortcut |
-|--------|-----------------|
-| Toggle Qx window | `Option+Space` on macOS; configurable platform shortcut on Windows |
-
-### Launcher
-
-Type anything into the search bar. Results include:
-
-- **Apps** — fuzzy-matched from LaunchServices DB
-- **Files** — native file search (kMDQuery)
-- **Commands** — `settings`, `clipboard`, `rss`, `gif`, `macro`, `qxai`, `v2ex`, `weather`, `ocr`
-- **Calculator** — inline expression evaluation (`42 * 3.14`, `sqrt(144)`)
-- **Plugin commands** — from installed plugins
-
-### Keyboard Navigation
-
-| Key | Action |
-|-----|--------|
-| `↑` / `↓` | Navigate results |
-| `Enter` | Select / confirm |
-| `Esc` | 3-level cascade: close detail → clear search → back to launcher |
-| `⌘K` | Open Actions menu for current selection |
-| `⌘,` | Open Settings |
-| `⌘P` | Toggle pin (clipboard) |
-| `⌘⌫` | Delete current entry |
-
-### Modules
-
-**Clipboard** — every copy is saved automatically. Open it from the launcher or its configured shortcut. It supports text, images, real file entries, native copy-out to Finder/Explorer, pinning, filtering, metadata, and inline file preview.
-
-**Screen Recording** — search `gif` / `screencap`. Region-select and record up to 180s. Output is auto-encoded to animated GIF via gifski.
-
-**RSS Reader** — search `rss`. Add feeds by URL, read articles inline with a detail pane, star to bookmark. Supports OPML import/export.
-
-**QxAI** — search `qxai`. Built-in AI chat assistant supporting multi-turn conversations with streaming responses. Configure providers in Settings → QxAI: add only your API key for the built-in OpenRouter (default) or DeepSeek provider, or add a custom OpenAI-compatible provider (BYOK) with auto-fetched model lists. Each conversation can switch provider/model independently. Persistent memory stores user preferences accessible to both QxAI and plugins.
-
-**V2EX** — search `v2ex`. Browse v2ex.com topics in latest or hot mode, search by keyword, and read articles with rendered HTML inline. Configure a V2EX API token and favorite nodes in the module preferences for extended features.
-
-**Weather** — search `weather`. Real-time weather display with provider config (Open-Meteo / OpenWeatherMap), location auto-detection, and caching for instant launch. Configure in Settings → Weather.
-
-**OCR** — search `ocr`. Download and manage OCR recognition models for extracting text from images. Configure languages and model versions in Settings → OCR.
-
-**Macros** — search `macro`. Record keyboard/mouse sequences and replay them. Saved macros persist in history.
-
-**Settings** — search `settings` or press `⌘,`. Configure theme, shortcuts, RSS, Weather, OCR, plugins, AI agent, and advanced options across 11 settings panels.
-
-**AI Agent** — open Settings → AI Agent to configure the AI agent runtime: enable/disable agent mode, set default provider and model, and toggle tool groups including bash execution, grep search, memory, app/file search, HTTP fetch, MCP, notifications, and background tasks. Bash and grep have additional configuration for working directory, timeout, search root, and result limits. These settings gate plugin `context.ai` tool access at runtime.
-
-**Permissions** — open Settings → Permissions to check macOS Screen Recording, Accessibility, and Input Monitoring access. Green means Qx already has access; red means the feature needs approval. Use Request/Open to jump to the right System Settings privacy pane, then refresh the status after changing access.
-
-**Plugins** — open Settings → Extensions to manage installed plugins, browse the marketplace, or import a plugin archive. Installed supports search and `All / Built-in / External / Enabled / Disabled` filtering, with details showing version, path, permissions, preferences, display options, and SHA256 on the right. Browse shows marketplace search results with metadata and install status. Qx accepts local `.zip` / `.qx-plugin` packages, GitHub repository URLs, direct GitHub archive URLs such as release assets or `https://github.com/<owner>/<repo>/archive/refs/heads/main.zip`, and Raycast extension tree URLs. Repository URLs are downloaded as the `main` branch archive. The archive may contain the plugin at the zip root or inside a GitHub-generated top-level folder; Qx locates `manifest.json`, installs that plugin root into `~/.qx/plugins/<plugin-id>`, verifies ed25519 signatures when present, and enables the plugin automatically. Converted Raycast ActionPanel buttons can be shown or hidden from Extensions → Installed → Display, and are hidden first when a plugin panel is narrow.
+After onboarding, Qx stays in the background (menu bar / tray) until the global hotkey summons it.
 
 ---
 
-## Plugin System
+<p align="center">
+  <img src="./assets/readme/section-build.svg" width="100%" alt="04 · Built for speed">
+</p>
 
-Plugins are sandboxed JavaScript modules running in iframes that communicate with the host via `postMessage` RPC. Each plugin declares its capabilities in a `manifest.json` and requests permissions for protected APIs.
+```text
+┌─────────────────────────────────────────────┐
+│  React 19 UI  ·  QxShell  ·  module panels  │
+│  Zustand · i18n (EN / 简体中文) · plugins    │
+├─────────────────────────────────────────────┤
+│  Tauri v2  ·  typed invoke + events         │
+├─────────────────────────────────────────────┤
+│  Rust core: apps · clipboard · rss · AI     │
+│  floating_panel · shortcuts · storage       │
+│  macOS AppKit/Mach  │  Windows Win32        │
+└─────────────────────────────────────────────┘
+```
 
-### Plugin AI SDK (`context.ai`)
+| Layer | Stack |
+| --- | --- |
+| Shell | Tauri v2, tray, frosted glass, global shortcuts |
+| Frontend | React 19, TypeScript, Vite, Tailwind v4, Zustand |
+| Native | SQLite, scrap/gifski, feed-rs, reqwest, platform adapters |
 
-Plugins declaring the `ai` permission gain access to a rich AI SDK:
-
-| API | Permission | Description |
-|-----|-----------|-------------|
-| `ai.providers()` | `ai` | List available AI providers |
-| `ai.models(provider?)` | `ai` | List models for a provider |
-| `ai.defaultModel()` | `ai` | Get user's default provider/model |
-| `ai.agentSettings()` | `ai` | Get agent runtime configuration |
-| `ai.chat(input, options?)` | `ai` | Synchronous AI completion (string, messages, or multimodal) |
-| `ai.stream(input, onChunk, options?)` | `ai` | Streaming AI output with chunk callback |
-| `ai.runBash(script, options?)` | `ai-bash` | Execute bash with cwd and timeout |
-| `ai.memory.list()` | `ai-memory` | List persistent memory entries |
-| `ai.memory.add(text, tags?)` | `ai-memory` | Add a memory entry |
-| `ai.memory.delete(id)` | `ai-memory` | Delete a memory entry |
-| `ai.search.grep(query, options?)` | `ai-tools` | Grep-style code/file search |
-| `ai.tasks.submit(input)` | `ai` + `ai-background` | Submit a background AI task |
-| `ai.tasks.list()` | `ai-background` | List plugin's background tasks |
-| `ai.tasks.get(id)` | `ai-background` | Get task status/result |
-| `ai.tasks.cancel(id)` | `ai-background` | Cancel a running task |
-
-AI chat supports string prompts, message arrays, OpenAI-compatible content parts, and `images` (base64 with detail control). Tool calls are gated by both plugin permissions and the AI Agent Settings toggles at runtime.
-
-### Plugin Security
-
-- Plugins run in sandboxed iframes (`allow-scripts` only, no `allow-same-origin`).
-- Permission-based access control — every RPC call is checked against the plugin's declared permissions.
-- Dangerous commands (file deletion, system modification, etc.) require exact `invoke:<command>` permission.
-- Agent tools (bash, memory, grep, background tasks) require both plugin permissions and runtime agent settings to be enabled.
-- Plugin packages may include `pubkey` and `signature` for ed25519 verification at install time.
-
-### Raycast Extension Compatibility
-
-Qx includes a conversion script (`scripts/convert-raycast-extension.mjs`) that transforms Raycast extension directories into Qx plugins. Paste a GitHub Raycast extension tree URL into the plugin manager to trigger automatic conversion and installation.
+Deep dives: [`docs/README.md`](./docs/README.md) · [`docs/shell-and-shortcuts.md`](./docs/shell-and-shortcuts.md) · [`UI_SPEC.md`](./UI_SPEC.md)
 
 ---
 
-## Development
+<p align="center">
+  <img src="./assets/readme/section-dev.svg" width="100%" alt="05 · Develop & extend">
+</p>
 
 ### Prerequisites
 
-- [Rust](https://rustup.rs) (edition 2021)
-- Node.js ≥ 20
-- macOS 14+ with Xcode Command Line Tools, or Windows 10/11 x64 with MSVC Build Tools and WebView2
-
-### Setup
+- Rust (edition 2021) · Node.js ≥ 20  
+- macOS 14+ **or** Windows 10/11 x64 + MSVC + WebView2  
 
 ```bash
 git clone https://github.com/mcxen/qx.git
 cd qx
 npm install
-```
-
-### Development
-
-```bash
 npm run tauri dev
 ```
 
-This starts a Vite dev server on `:1420` and opens a Tauri window.
-
-### Build for Distribution
-
 ```bash
+# ship macOS arm64 app bundle
 npm run tauri build -- --target aarch64-apple-darwin --bundles app
-```
 
-### Validation
-
-```bash
+# validate
 cd src-tauri && cargo check
 npx tsc --noEmit
+npm run docs:check
 ```
 
----
+### Plugins (short)
 
-## Project Structure
+Sandboxed iframes + `postMessage` RPC. Declare permissions in `manifest.json`. With `ai` permission, plugins use `context.ai` (chat, stream, optional bash/grep/memory/tasks — gated by Settings → AI Agent).
 
-```
-src/                          # Frontend (React + TypeScript)
-├── App.tsx                   # Root component + tab routing
-├── App.css                   # Global styles + CSS variable references
-├── store.ts                  # Global Zustand store
-├── ThemeProvider.tsx         # Light/dark/system theme provider
-├── i18n.ts                   # EN / zh-CN translations
-├── Launcher.tsx              # Main launcher with search + results
-├── modules/                  # Feature modules
-│   ├── clipboard/            # Clipboard history panel
-│   ├── rss/                  # RSS reader (list + detail + store)
-│   ├── qx-ai/               # AI chat assistant (chat + settings + store)
-│   ├── v2ex/                # V2EX forum viewer (panel + detail)
-│   ├── settings/            # Settings (11 sub-panels + store)
-│   ├── screencap/           # Screen recorder + GIF history
-│   ├── macros/              # Macro recorder + replayer
-│   ├── weather/             # Weather display panel
-│   ├── documents/           # Dev text/JSON/MD tools
-│   └── github-calendar/     # GitHub contributions viewer
-├── launcher/                 # Launcher sub-modules
-│   ├── LauncherContext.tsx   # Right-side context panel (quick entries, history)
-│   ├── LauncherActionPopover.tsx # Floating action menu for selected item
-│   ├── launcherActions.ts   # Context-sensitive action factory
-│   └── useLauncherHistory.ts # Launch + search history hook
-├── plugin/                   # Plugin system
-│   ├── types.ts              # Plugin manifest/command/panel/AI SDK types
-│   ├── registry.ts           # Zustand registry + topological sort
-│   ├── runtime.ts            # iframe sandbox + RPC bridge + context.ai
-│   ├── builtin.ts            # Built-in modules as pseudo-plugins
-│   └── PluginHost.tsx        # iframe container + panel viewport
-├── components/               # Shared components
-│   ├── QxShell.tsx           # Core 3-layer shell layout
-│   ├── QxBottomIsland.tsx    # Dynamic Island component (status, progress, marquee)
-│   ├── ShellActionButton.tsx # Shell action bar button
-│   ├── HomeSystemIsland.tsx  # CPU/MEM/GPU sparkline island
-│   ├── HomeDateIsland.tsx    # LED matrix time + date island
-│   ├── Matrix.tsx            # LED dot matrix renderer
-│   └── ui.tsx                # Toggle, Select, Slider, Modal, etc.
-├── hooks/
-│   └── useEscBack.ts         # 3-level cascading Esc hook
-├── search/
-│   └── calculator.ts         # Inline expression evaluator
-└── styles/                   # CSS files (base, shell, launcher, etc.)
+- Install from Settings → Extensions (marketplace, `.zip` / `.qx-plugin`, GitHub URL)
+- Convert Raycast extensions: paste a Raycast tree URL or use `scripts/convert-raycast-extension.mjs`
+- Whitepaper: [`public/doc/plugin-system.md`](./public/doc/plugin-system.md)
 
-src-tauri/                    # Rust backend
-├── Cargo.toml                # Rust dependencies
-├── tauri.conf.json           # Window/config (680×500, transparent, no-decor)
-├── src/
-│   ├── main.rs               # Binary entry
-│   ├── lib.rs                # Tauri app setup (plugins, tray, shortcuts)
-│   ├── apps.rs               # App scanning + fuzzy search
-│   ├── clipboard.rs          # Clipboard listener + SQLite history
-│   ├── screencap.rs          # Screen recording to GIF (scrap + gifski)
-│   ├── g4f.rs                # AI providers (OpenRouter + DeepSeek + custom BYOK)
-│   ├── plugin_api.rs         # Plugin AI runtime (bash, grep, memory, tasks)
-│   ├── rss/                  # RSS module (fetcher, storage, types)
-│   ├── settings/mod.rs       # TOML settings + global shortcuts + agent config
-│   ├── marketplace/mod.rs    # Plugin marketplace (index, download, verify)
-│   ├── system_stats.rs       # Mach kernel CPU/MEM/GPU stats
-│   ├── system_information.rs # Real system info (storage, network, processes)
-│   ├── macro_recorder.rs     # Keyboard/mouse macro record/replay
-│   ├── file_search.rs        # Native file search (vendored)
-│   ├── history.rs            # Launch + search history
-│   ├── display_monitor.rs    # External display monitor
-│   ├── ocr.rs                # OCR model management
-│   ├── weather.rs             # Weather fetch + caching
-│   ├── floating_panel.rs      # Floating overlay panel
-│   ├── apps_zh_dict.rs        # Apple system app Chinese name dictionary
-│   ├── http_client.rs         # HTTP client helper
-│   ├── github_calendar.rs    # GitHub contribution fetch
-│   ├── v2ex.rs               # V2EX topic fetch/search
-│   ├── storage.rs            # Plugin key-value storage
-│   └── permissions.rs        # macOS permission checks
-```
+### Contributing
 
----
+1. Read [`AGENTS.md`](./AGENTS.md) and [`UI_SPEC.md`](./UI_SPEC.md)  
+2. Branch → change → `cargo check` + `npx tsc --noEmit`  
+3. Open a PR  
 
-## Contributing
-
-Contributions are welcome under the [Qx Source-Available License](#license).
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feat/my-feature`)
-3. Make your changes
-4. Run validation: `cargo check` (in `src-tauri/`) and `npx tsc --noEmit`
-5. Commit and push
-6. Open a Pull Request
-
-### Coding Guidelines
-
-- Read `UI_SPEC.md` and `AGENTS.md` before making UI changes — they contain comprehensive design rules and technical constraints.
-- Follow the **Esc Cascading Protocol**: all openable modules must use `useEscBack` for 3-level back navigation (inner state → query → launcher).
-- Use CSS custom properties (`var(--qx-*)`) — never hardcode color values.
-- File paths must use `convertFileSrc()` — no `file://` URLs.
-- Custom Slider component (`src/components/ui.tsx`) — no `<input type="range">`.
-- System stats use Mach kernel APIs — no `sysinfo` crate.
+Esc cascade, CSS tokens (`var(--qx-*)`), and no raw native range/checkbox/select controls are enforced project rules.
 
 ---
 
 ## License
 
-Source-available — see [LICENSE](./LICENSE) for full terms.
+Source-available — full terms in [LICENSE](./LICENSE).
 
-- ✅ View, study, and modify source for **personal / non-commercial** use
-- ❌ Commercial use, redistribution, or SaaS requires **written permission**
-- Contributions are under the same license
+- ✅ Personal / non-commercial view, study, modify  
+- ❌ Commercial use, redistribution, or SaaS needs **written permission**  
 
 ---
 
 ## Acknowledgments
 
-- [Vercel Geist Design System](https://vercel.com/geist) for design inspiration
-- [Tauri](https://tauri.app) for the desktop framework
-- [Raycast](https://raycast.com) for the product concept
+[Raycast](https://raycast.com) (product pattern) · [Tauri](https://tauri.app) · [Vercel Geist](https://vercel.com/geist) · [Everything](https://www.voidtools.com/) (Windows file index, MIT)
+
+<p align="center">
+  <a href="https://github.com/oil-oil/beautify-github-readme"><img src="./assets/readme/made-with-beautify.svg" width="300" alt="README made with beautify-github-readme"></a>
+</p>
 
 ---
 
 # Qx — macOS & Windows 效率启动器
 
-Qx 是一款运行于 macOS 和 Windows 的后台桌面启动器，通过全局快捷键唤起。集搜索、剪贴板历史、RSS 阅读、系统信息、天气、AI 聊天、V2EX 浏览、OCR 和实用工具等功能于一体。
+<p align="right">
+  <a href="#qx--macos--windows-productivity-launcher"><strong>English</strong></a> · <strong>简体中文</strong>
+</p>
 
-基于 **Tauri v2** + **React 19** + **TypeScript** + 共享 **Rust** 核心。macOS 使用 AppKit/Mach，Windows 使用 Win32 平台适配层；两端共享相同的前端命令、剪贴板模型、RSS 和系统信息模型。
+**Qx** 是后台常驻的效率启动器：全局快捷键唤起，搜索 → 执行 → 再按同一快捷键收起。灵感来自 Raycast，基于 **Tauri v2 + React 19 + Rust**，支持 macOS 与 Windows。
 
-> **版本**: v0.5.11 — 活跃开发中
+> **版本**: v0.5.11 · [发布页](https://github.com/mcxen/qx/releases) · [开发者文档](./docs/README.md)
 
-## 功能特性
+### 你能做什么
 
 | 模块 | 说明 |
-|------|------|
-| **启动器** | 模糊搜索应用、文件、内置命令、插件动作和用户别名/标签；Windows 内置 Everything 全盘索引 |
-| **剪贴板** | 持久化文本/图片/真实文件记录，支持原生复制、置顶、筛选、元信息和内联预览 |
-| **录屏** | 选择区域录制为 GIF（15fps，gifski 编码），自动保存历史 |
-| **RSS 阅读器** | 添加订阅源、内联阅读、收藏、OPML 导入/导出、后台自动刷新 |
-| **天气** | 实时天气显示，支持自动定位、多 provider 切换、缓存秒开和后台刷新 |
-| **QxAI** | 内置 AI 聊天助手，支持 OpenRouter（默认）、DeepSeek 与自定义 BYOK、流式输出、持久记忆、会话内切换模型 |
-| **V2EX** | 浏览和搜索 v2ex.com 话题（最新/热门），内联阅读文章，节点过滤 |
-| **宏录制** | 录制和回放键盘/鼠标宏序列 |
-| **开发者工具** | 文本 / JSON / Markdown 实用工具 |
-| **GitHub 日历** | 内联查看 GitHub 贡献图 |
-| **OCR** | 光学字符识别模型管理，从图片中提取文字 |
-| **插件系统** | 基于沙盒 iframe 的插件运行时，含 RPC 桥接、市场、压缩包导入、ed25519 签名验证、Raycast 扩展转换和 `context.ai` AI SDK |
-| **AI Agent 设置** | 配置 AI Agent 模式、默认 provider/模型、工具开关（bash、grep、记忆、MCP、后台任务等） |
-| **天气设置** | 配置天气 provider（Open-Meteo / OpenWeatherMap）、位置覆盖和自动刷新间隔 |
-| **OCR 设置** | 下载和管理 OCR 识别模型（语言、版本） |
-| **设置** | 通用、外观（亮色/暗色/跟随系统，Geist 设计系统）、快捷键、平台权限、插件管理 |
+| --- | --- |
+| **启动器** | 应用 / 文件 / 命令 / 插件 / 别名；Windows 内置 Everything 索引 |
+| **剪贴板** | 文本、图片、真实文件；置顶、筛选、原生粘出 |
+| **RSS** | 订阅、文件夹、OPML、内联阅读 |
+| **QxAI** | 流式对话、OpenRouter / DeepSeek / 自定义 BYOK、记忆 |
+| **插件** | 沙盒 iframe、市场、Raycast 扩展转换、`context.ai` |
 
-## 安装
+另有：GIF 录屏 · 天气 · V2EX · 宏 · OCR · GitHub 贡献图 · 开发者文本工具。
 
-### macOS — Homebrew（推荐）
+默认快捷键（可改）：**Option+Space** 切换主窗口；模块快捷键**再按一次关闭**。
+
+### 安装
 
 ```bash
 brew tap mcxen/qx
 brew install --cask qx
 ```
 
-### 手动安装
+或从 [Releases](https://github.com/mcxen/qx/releases) 下载 macOS `.app.zip` / Windows NSIS 安装包。
 
-从 [Releases](https://github.com/mcxen/qx/releases) 下载并安装。
-
-macOS 用户下载 `.app.zip`；Windows x64 用户下载 NSIS `.exe` 安装程序。首次启动完成引导后，Qx 将在后台等待配置的全局快捷键召回。
-
-## 权限
-
-打开「设置 → 权限」可以查看 macOS 屏幕录制、辅助功能和输入监听授权状态。绿灯表示已授权，红灯表示相关功能还需要系统批准。点击「请求」或「打开」会跳转到对应系统设置面板，授权完成后回到 Qx 刷新状态即可。
-
-## 插件
-
-打开「设置 → 扩展」可以管理已安装插件、浏览插件市场，或直接导入插件压缩包。Installed 支持搜索和 `All / Built-in / External / Enabled / Disabled` 筛选，右侧详情展示版本、路径、权限、preferences、显示选项和 SHA256；Browse 支持市场搜索、详情查看、权限/元数据展示和安装状态反馈。转换后的 Raycast ActionPanel 行内按钮可在 Extensions → Installed → Display 显示或隐藏，插件面板左右缩窄时会优先隐藏。支持本地 `.zip` / `.qx-plugin` 文件，也支持 GitHub 仓库链接、Release 资源链接和源码压缩包链接，例如：
-
-```text
-https://github.com/<owner>/<repo>/archive/refs/heads/main.zip
-```
-
-直接粘贴 `https://github.com/<owner>/<repo>` 时，Qx 会下载该仓库 `main` 分支的源码压缩包。也可以粘贴 Raycast extension tree URL，Qx 会转换后安装为 Qx 插件。Qx 会在压缩包中定位 `manifest.json`，将对应插件根目录安装到 `~/.qx/plugins/<plugin-id>`。如果 manifest 中包含 `pubkey` 和 `signature`，安装时会进行 ed25519 签名校验。
-
-### 插件 AI SDK
-
-声明 `ai` 权限的插件可以使用 `context.ai` SDK，包括 AI 聊天（同步/流式）、多模态输入（文本+图片）、bash 执行、grep 搜索、持久记忆和后台任务等能力。工具调用受插件权限和 AI Agent 设置双重门控。
-
-## 开发
+### 开发
 
 ```bash
-git clone https://github.com/mcxen/qx.git
-cd qx
+git clone https://github.com/mcxen/qx.git && cd qx
 npm install
-npm run tauri dev      # 开发模式
-npm run tauri build -- --target aarch64-apple-darwin --bundles app  # 构建
+npm run tauri dev
 ```
 
-## 许可证
+架构与快捷键约定见 [`docs/shell-and-shortcuts.md`](./docs/shell-and-shortcuts.md)。
 
-源码可用许可证 — 个人/非商业用途可阅读、学习、修改源代码。商业用途需书面授权。
+### 许可证
+
+源码可用：个人/非商业可阅读与修改；商业用途需书面授权。详见 [LICENSE](./LICENSE)。

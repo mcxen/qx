@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="200" viewBox="0 0 1200 200" role="img" aria-labelledby="t d">
+  <title id="t">Qx summon workflow</title>
+  <desc id="d">Global hotkey summons the panel; search; act; same hotkey or Esc dismisses.</desc>
+  <rect width="1200" height="200" rx="20" fill="#0b0d12"/>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">
+    <!-- steps -->
+    <g transform="translate(40 48)">
+      <rect width="200" height="104" rx="14" fill="#12151c" stroke="#2a3344"/>
+      <text x="20" y="36" fill="#60a5fa" font-family="ui-monospace, Menlo, monospace" font-size="12">01</text>
+      <text x="20" y="64" fill="#f8fafc" font-size="18" font-weight="700">Summon</text>
+      <text x="20" y="88" fill="#94a3b8" font-size="13">⌥ Space / hotkey</text>
+    </g>
+    <path d="M255 100 H295" stroke="#334155" stroke-width="2" marker-end="url(#arrow)"/>
+    <g transform="translate(310 48)">
+      <rect width="200" height="104" rx="14" fill="#12151c" stroke="#2a3344"/>
+      <text x="20" y="36" fill="#60a5fa" font-family="ui-monospace, Menlo, monospace" font-size="12">02</text>
+      <text x="20" y="64" fill="#f8fafc" font-size="18" font-weight="700">Search</text>
+      <text x="20" y="88" fill="#94a3b8" font-size="13">apps · files · modules</text>
+    </g>
+    <path d="M525 100 H565" stroke="#334155" stroke-width="2"/>
+    <g transform="translate(580 48)">
+      <rect width="200" height="104" rx="14" fill="#12151c" stroke="#2a3344"/>
+      <text x="20" y="36" fill="#60a5fa" font-family="ui-monospace, Menlo, monospace" font-size="12">03</text>
+      <text x="20" y="64" fill="#f8fafc" font-size="18" font-weight="700">Act</text>
+      <text x="20" y="88" fill="#94a3b8" font-size="13">Enter · ⌘K actions</text>
+    </g>
+    <path d="M795 100 H835" stroke="#334155" stroke-width="2"/>
+    <g transform="translate(850 48)">
+      <rect width="300" height="104" rx="14" fill="#12151c" stroke="#3b82f6" stroke-opacity="0.5"/>
+      <text x="20" y="36" fill="#60a5fa" font-family="ui-monospace, Menlo, monospace" font-size="12">04</text>
+      <text x="20" y="64" fill="#f8fafc" font-size="18" font-weight="700">Dismiss</text>
+      <text x="20" y="88" fill="#94a3b8" font-size="13">same hotkey · Esc · blur hide</text>
+    </g>
+  </g>
+</svg>
