@@ -7,6 +7,7 @@ import { useEscBack } from "../../hooks/useEscBack";
 import { useStore } from "../../store";
 import { type V2exMode, type V2exReply, type V2exTopic, formatTime } from "./types";
 import { sanitizeTopicHtml } from "./V2exDetail";
+import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 
 export default function V2exPanel() {
   const setTab = useStore((state) => state.setTab);
@@ -43,7 +44,13 @@ export default function V2exPanel() {
   };
 
   useEffect(() => {
-    void loadTopics(mode, "");
+    const launch = takePendingModuleLaunch("v2ex");
+    const nextMode: V2exMode =
+      launch?.surface === "hot" ? "hot" : launch?.surface === "latest" ? "latest" : "latest";
+    if (launch?.surface === "hot" || launch?.surface === "latest") {
+      setMode(nextMode);
+    }
+    void loadTopics(nextMode, "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

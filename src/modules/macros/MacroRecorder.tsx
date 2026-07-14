@@ -5,6 +5,7 @@ import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { useStore } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
 import { getQxShortcutPreset } from "../../utils/keyboard";
+import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import SaveDialog from "./SaveDialog";
 
 function formatTime(ms: number): string {
@@ -51,6 +52,17 @@ export default function MacroRecorder() {
   useEffect(() => {
     void listMacros();
   }, [listMacros]);
+
+  useEffect(() => {
+    const launch = takePendingModuleLaunch("macros");
+    if (!launch) return;
+    if (launch.surface === "play") {
+      const id = Number(launch.params?.id);
+      if (Number.isFinite(id) && id > 0) {
+        void listMacros().then(() => playMacro(id));
+      }
+    }
+  }, [listMacros, playMacro]);
 
   useEffect(() => {
     if (isRecording) {

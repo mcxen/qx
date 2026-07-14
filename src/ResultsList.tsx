@@ -265,7 +265,14 @@ const ResultItem = memo(function ResultItem({
           {label}
         </div>
         <div className="qx-list-subtitle">
-          {item.path.replace("/Applications/", "").replace("/System/Applications/", "System/")}
+          {item.subtitle
+            || item.path
+              .replace("/Applications/", "")
+              .replace("/System/Applications/", "System/")
+              .replace(/^__qx:launch:.+$/, "Module")
+              .replace(/^__qx:cmd:.+$/, "Command")
+              .replace(/^__qx:rss:.+$/, "RSS")
+              .replace(/^__qx:/, "")}
         </div>
       </div>
       <span className="qx-list-time">

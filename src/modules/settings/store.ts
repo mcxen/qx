@@ -148,6 +148,46 @@ export interface PluginDisplaySettings {
   raycast_action_panel: boolean;
 }
 
+/** Built-in module ids that can contribute to main launcher search. */
+export type ModuleSearchModuleId =
+  | "clipboard"
+  | "qx-ai"
+  | "rss"
+  | "screencap"
+  | "macros"
+  | "documents"
+  | "weather"
+  | "v2ex";
+
+export const MODULE_SEARCH_MODULE_IDS: ModuleSearchModuleId[] = [
+  "clipboard",
+  "qx-ai",
+  "rss",
+  "screencap",
+  "macros",
+  "documents",
+  "weather",
+  "v2ex",
+];
+
+export const MODULE_SEARCH_LABELS: Record<ModuleSearchModuleId, { title: string; hint: string }> = {
+  clipboard: { title: "Clipboard", hint: "History items and open command" },
+  "qx-ai": { title: "QxAI", hint: "Conversations, new chat, settings" },
+  rss: { title: "RSS Reader", hint: "Feeds, folders, open reader" },
+  screencap: { title: "Screen Recording", hint: "GIF history and recorder" },
+  macros: { title: "Macro Recorder", hint: "Saved macros" },
+  documents: { title: "Documents", hint: "Clean / Markdown / JSON tools" },
+  weather: { title: "Weather", hint: "Locations and open weather" },
+  v2ex: { title: "V2EX", hint: "Hot / Latest views" },
+};
+
+export interface ModuleSearchSettings {
+  /** Master switch for all module search integration. */
+  enabled: boolean;
+  /** Missing keys default to enabled. */
+  modules: Partial<Record<ModuleSearchModuleId, boolean>>;
+}
+
 export interface Settings {
   general: GeneralSettings;
   appearance: AppearanceSettings;
@@ -161,6 +201,7 @@ export interface Settings {
   v2ex: V2exSettings;
   weather: WeatherSettings;
   search_metadata: Record<string, SearchMetadataEntry>;
+  module_search: ModuleSearchSettings;
   quick_entries: QuickEntryConfig[];
   tray_actions: TrayActionConfig[];
 }
@@ -263,6 +304,19 @@ export const DEFAULT_SETTINGS: Settings = {
     units: "celsius",
   },
   search_metadata: {},
+  module_search: {
+    enabled: true,
+    modules: {
+      clipboard: true,
+      "qx-ai": true,
+      rss: true,
+      screencap: true,
+      macros: true,
+      documents: true,
+      weather: true,
+      v2ex: true,
+    },
+  },
   quick_entries: [
     { id: "clipboard", title: "Clipboard History", subtitle: "Pinned, frequent, links", target: "clipboard", enabled: true },
     { id: "qx-ai", title: "QxAI", subtitle: "Chat and agent tasks", target: "qx-ai", enabled: true },
@@ -371,6 +425,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           shortcuts: { ...DEFAULT_SETTINGS.shortcuts, ...s.shortcuts },
           app_shortcuts: { ...DEFAULT_SETTINGS.app_shortcuts, ...s.app_shortcuts },
           search_metadata: { ...DEFAULT_SETTINGS.search_metadata, ...s.search_metadata },
+          module_search: {
+            ...DEFAULT_SETTINGS.module_search,
+            ...(s as Settings).module_search,
+            modules: {
+              ...DEFAULT_SETTINGS.module_search.modules,
+              ...((s as Settings).module_search?.modules ?? {}),
+            },
+          },
           quick_entries: Array.isArray(s.quick_entries) && s.quick_entries.length > 0
             ? s.quick_entries
             : DEFAULT_SETTINGS.quick_entries,

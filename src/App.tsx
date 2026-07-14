@@ -22,6 +22,13 @@ import {
   moduleMetadataKey,
   pluginMetadataKey,
 } from "./search/searchMetadata";
+import {
+  encodeModuleLaunchPath,
+  isModuleSearchEnabled,
+  parseModuleLaunchPath,
+  searchModuleSurfaces,
+  setPendingModuleLaunch,
+} from "./search/moduleSurfaces";
 import { loadClipboardEntryById, pasteClipboardEntryAtCursor } from "./modules/clipboard/actions";
 import { useEscBack } from "./hooks/useEscBack";
 import { useT } from "./i18n";
@@ -899,7 +906,7 @@ function App() {
     async (
       q: string,
       scope: SearchScope,
-      baseEntries: AppEntry[],
+      _baseEntries: AppEntry[],
       syntheticEntries: AppEntry[],
       seq: number,
     ) => {
@@ -937,7 +944,37 @@ function App() {
       ]);
 
       if (seq !== searchSeqRef.current || signal.aborted) return;
-      applyResults([...baseEntries, ...files, ...clipboardEntries]);
+      // Merge into *current* results so concurrent module-surface enrichment is not wiped.
+      const current = useStore.getState().results;
+      applyResults(dedupeEntries([...current, ...files, ...clipboardEntries]));
+    },
+    [applyResults],
+  );
+
+  /**
+   * Module surfaces (RSS feeds, macros, …) are async and must never gate apps/search.
+   * Fire-and-forget: merge when ready; discard if a newer search seq superseded us.
+   */
+  const loadModuleSurfaceProviders = useCallback(
+    async (q: string, scope: SearchScope, seq: number) => {
+      if (!(scope === "all" || scope === "apps")) return;
+      if (!q.trim()) return;
+      try {
+        const surfaces = await searchModuleSurfaces(q);
+        if (seq !== searchSeqRef.current) return;
+        if (surfaces.length === 0) return;
+        const surfaceEntries: AppEntry[] = surfaces.map((hit) => ({
+          name: hit.title,
+          subtitle: hit.subtitle,
+          path: encodeModuleLaunchPath(hit.launch),
+          icon: hit.icon || "builtin:rss",
+          kind: "command" as const,
+        }));
+        const current = useStore.getState().results;
+        applyResults(dedupeEntries([...current, ...surfaceEntries]));
+      } catch {
+        // Best-effort; never fail the search pipeline.
+      }
     },
     [applyResults],
   );
@@ -962,7 +999,11 @@ function App() {
       const scope = searchScopeRef.current;
       const entries: AppEntry[] = [];
 
-      const pluginMatches = findCommands(q);
+      const pluginMatches = findCommands(q).filter((match) => {
+        const pluginId = match.command.pluginId;
+        if (!pluginId.startsWith("builtin:")) return true;
+        return isModuleSearchEnabled(pluginId.slice("builtin:".length));
+      });
       const syntheticEntries: AppEntry[] = [];
       const settingsState = useSettingsStore.getState().settings;
 
@@ -975,6 +1016,7 @@ function App() {
           const titleSource = (panel.title || pluginId).toLowerCase();
           const kw = panel.keywords || [];
           const builtinModuleId = pluginId.startsWith("builtin:") ? pluginId.slice("builtin:".length) : null;
+          if (builtinModuleId && !isModuleSearchEnabled(builtinModuleId)) continue;
           if (
             nameSource.includes(lowerQuery) ||
             titleSource.includes(lowerQuery) ||
@@ -1022,6 +1064,8 @@ function App() {
           kind: "command" as const,
         })),
       );
+
+      // Module surfaces load off the critical path (see loadModuleSurfaceProviders).
 
       const calculation = calculateExpression(q);
       if (calculation && (scope === "all" || scope === "apps")) {
@@ -1082,7 +1126,13 @@ function App() {
 
       if (seq !== searchSeqRef.current || signal.aborted) return;
       const baseEntries = dedupeEntries(entries);
+      // Fast path: apps + sync synthetics only. Never await module surface IPC here.
       applyResults(baseEntries);
+
+      // Async enrichment: module surfaces (RSS/AI/macros/…) — non-blocking, seq-gated.
+      if (lowerQuery && (scope === "all" || scope === "apps")) {
+        void loadModuleSurfaceProviders(q, scope, seq);
+      }
 
       if (shouldLoadSlowSearchProviders(q, scope)) {
         slowSearchDebounceRef.current = setTimeout(() => {
@@ -1106,7 +1156,7 @@ function App() {
         }, 900);
       }
     },
-    [applyResults, findCommands, finishSearchActivity, loadSlowSearchProviders],
+    [applyResults, findCommands, finishSearchActivity, loadModuleSurfaceProviders, loadSlowSearchProviders],
   );
 
   useEffect(() => {
@@ -1188,6 +1238,13 @@ function App() {
   }, [updateResultIcons]);
 
   const openItem = useCallback(async (item: AppEntry) => {
+    // Module deep launch: open a tab and hand params to the module surface.
+    const moduleLaunch = parseModuleLaunchPath(item.path);
+    if (moduleLaunch) {
+      setPendingModuleLaunch(moduleLaunch);
+      setTab(moduleLaunch.tab);
+      return;
+    }
     // Handle plugin command execution
     if (item.path.startsWith("__qx:cmd:")) {
       const commandKey = item.path.slice("__qx:cmd:".length);

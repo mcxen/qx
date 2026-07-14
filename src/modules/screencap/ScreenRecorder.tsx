@@ -7,6 +7,7 @@ import GifPreview from "./GifPreview";
 import GifHistory from "./GifHistory";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { getQxShortcutPreset } from "../../utils/keyboard";
+import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 
 type SelectMode = "none" | "selecting";
 
@@ -34,6 +35,7 @@ export default function ScreenRecorder() {
     startRecording,
     stopRecording,
     loadHistory,
+    setPreview,
     reset,
   } = useScreencapStore();
 
@@ -56,6 +58,21 @@ export default function ScreenRecorder() {
   useEffect(() => {
     void loadHistory();
   }, [loadHistory]);
+
+  useEffect(() => {
+    const launch = takePendingModuleLaunch("screencap");
+    if (!launch) return;
+    if (launch.surface === "start") {
+      void startRecording(null);
+      return;
+    }
+    if (launch.surface === "preview") {
+      const path = String(launch.params?.path || "");
+      if (path) {
+        void loadHistory().then(() => setPreview(path));
+      }
+    }
+  }, [loadHistory, setPreview, startRecording]);
 
   useEffect(() => {
     if (isRecording) {

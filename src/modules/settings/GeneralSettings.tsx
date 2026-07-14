@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
-import { useSettingsStore } from "./store";
+import {
+  MODULE_SEARCH_LABELS,
+  MODULE_SEARCH_MODULE_IDS,
+  useSettingsStore,
+  type ModuleSearchModuleId,
+} from "./store";
 import { Input, Row, Toggle, Select, SettingsCard, Button } from "../../components/ui";
 import { useT } from "../../i18n";
 import {
@@ -14,6 +19,7 @@ export default function GeneralSettings() {
   const { settings, patch, reset } = useSettingsStore();
   const t = useT();
   const g = settings.general;
+  const moduleSearch = settings.module_search;
   const trayActions = sanitizeTrayActions(settings.tray_actions);
   const [addAction, setAddAction] = useState<string>(TRAY_ACTION_TYPES[0].value);
 
@@ -69,6 +75,53 @@ export default function GeneralSettings() {
             ]}
           />
         </Row>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t("general.moduleSearch.title", "Module Search")}
+        description={t(
+          "general.moduleSearch.desc",
+          "Control which modules contribute static commands and dynamic surfaces (feeds, chats, macros…) to the main launcher search. See docs/module-surfaces.md.",
+        )}
+      >
+        <Row
+          title={t("general.moduleSearch.enabled", "Enable module search")}
+          description={t(
+            "general.moduleSearch.enabled.desc",
+            "Master switch. When off, built-in modules no longer appear as search results or deep links.",
+          )}
+        >
+          <Toggle
+            value={moduleSearch.enabled}
+            onChange={(value) =>
+              patch("module_search", { ...moduleSearch, enabled: value })
+            }
+          />
+        </Row>
+        {MODULE_SEARCH_MODULE_IDS.map((id) => {
+          const meta = MODULE_SEARCH_LABELS[id];
+          const on = moduleSearch.modules[id] !== false;
+          return (
+            <Row
+              key={id}
+              title={t(`general.moduleSearch.${id}`, meta.title)}
+              description={t(`general.moduleSearch.${id}.desc`, meta.hint)}
+            >
+              <Toggle
+                value={moduleSearch.enabled && on}
+                onChange={(value) =>
+                  patch("module_search", {
+                    ...moduleSearch,
+                    modules: {
+                      ...moduleSearch.modules,
+                      [id]: value,
+                    } as Partial<Record<ModuleSearchModuleId, boolean>>,
+                  })
+                }
+              />
+            </Row>
+          );
+        })}
       </SettingsCard>
 
       <SettingsCard

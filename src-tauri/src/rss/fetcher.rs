@@ -3,7 +3,7 @@ use quick_xml::events::Event;
 use quick_xml::Reader;
 use std::io::Cursor;
 
-use super::types::{ParsedArticle, ParsedFeed};
+use super::types::{OpmlFeedEntry, ParsedArticle, ParsedFeed};
 
 const USER_AGENT: &str = "Qx/0.1 (RSS Reader; +https://github.com/mcx/qx)";
 
@@ -167,51 +167,121 @@ fn strip_html(s: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-pub fn parse_opml(content: &str) -> Vec<(String, String)> {
+fn outline_attrs(e: &quick_xml::events::BytesStart<'_>) -> (String, String) {
+    let mut url = String::new();
+    let mut title = String::new();
+    let mut text = String::new();
+    for attr in e.attributes().flatten() {
+        match attr.key.as_ref() {
+            b"xmlUrl" => url = attr.unescape_value().unwrap_or_default().to_string(),
+            b"title" => title = attr.unescape_value().unwrap_or_default().to_string(),
+            b"text" => text = attr.unescape_value().unwrap_or_default().to_string(),
+            _ => {}
+        }
+    }
+    let label = if !title.is_empty() { title } else { text };
+    (url, label)
+}
+
+/// Parse OPML into feeds. Nested folder outlines (no xmlUrl) become folder names.
+/// v1 keeps the **nearest parent folder name** only (flat folder list in Qx UI).
+pub fn parse_opml(content: &str) -> Vec<OpmlFeedEntry> {
     let mut reader = Reader::from_str(content);
     reader.config_mut().trim_text(true);
     let mut buf = Vec::new();
     let mut results = Vec::new();
+    // Stack of open folder names (outlines without xmlUrl).
+    let mut folder_stack: Vec<String> = Vec::new();
+    // Whether the matching Start was a folder (needs End pop).
+    let mut open_was_folder: Vec<bool> = Vec::new();
+
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(ref e)) if e.name().as_ref() == b"outline" => {
-                let mut url = String::new();
-                let mut title = String::new();
-                for attr in e.attributes().flatten() {
-                    match attr.key.as_ref() {
-                        b"xmlUrl" => url = attr.unescape_value().unwrap_or_default().to_string(),
-                        b"title" | b"text" => {
-                            title = attr.unescape_value().unwrap_or_default().to_string();
-                        }
-                        _ => {}
+                let (url, label) = outline_attrs(e);
+                if url.is_empty() {
+                    if !label.is_empty() {
+                        folder_stack.push(label);
+                        open_was_folder.push(true);
+                    } else {
+                        open_was_folder.push(false);
                     }
-                }
-                if !url.is_empty() {
-                    results.push((url, title));
+                } else {
+                    results.push(OpmlFeedEntry {
+                        url,
+                        title: label,
+                        folder: folder_stack.last().cloned(),
+                    });
+                    open_was_folder.push(false);
                 }
             }
-            _ => {}
-            Err(_) => break,
+            Ok(Event::Empty(ref e)) if e.name().as_ref() == b"outline" => {
+                let (url, label) = outline_attrs(e);
+                if !url.is_empty() {
+                    results.push(OpmlFeedEntry {
+                        url,
+                        title: label,
+                        folder: folder_stack.last().cloned(),
+                    });
+                }
+            }
+            Ok(Event::End(ref e)) if e.name().as_ref() == b"outline" => {
+                if open_was_folder.pop().unwrap_or(false) {
+                    let _ = folder_stack.pop();
+                }
+            }
             Ok(Event::Eof) => break,
+            Err(_) => break,
+            _ => {}
         }
         buf.clear();
     }
     results
 }
 
-pub fn build_opml(feeds: &[(i64, String, String)]) -> String {
+/// Build OPML. Feeds with the same folder name are nested under one outline group.
+pub fn build_opml(feeds: &[(String, String, Option<String>)]) -> String {
+    use std::collections::BTreeMap;
     let mut s = String::new();
     s.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     s.push_str(
         "<opml version=\"2.0\">\n  <head>\n    <title>Qx RSS Feeds</title>\n  </head>\n  <body>\n",
     );
-    for (_, url, title) in feeds {
-        let t = quick_xml::escape::escape(title);
+
+    let mut ungrouped: Vec<(&str, &str)> = Vec::new();
+    let mut groups: BTreeMap<String, Vec<(&str, &str)>> = BTreeMap::new();
+    for (url, title, folder) in feeds {
+        match folder.as_ref().map(|f| f.trim()).filter(|f| !f.is_empty()) {
+            Some(name) => groups
+                .entry(name.to_string())
+                .or_default()
+                .push((url.as_str(), title.as_str())),
+            None => ungrouped.push((url.as_str(), title.as_str())),
+        }
+    }
+
+    for (folder, items) in groups {
+        let fname = quick_xml::escape::escape(&folder);
         s.push_str(&format!(
-            "    <outline type=\"rss\" text=\"{}\" title=\"{}\" xmlUrl=\"{}\"/>\n",
-            t, t, url
+            "    <outline text=\"{fname}\" title=\"{fname}\">\n"
+        ));
+        for (url, title) in items {
+            let t = quick_xml::escape::escape(title);
+            let u = quick_xml::escape::escape(url);
+            s.push_str(&format!(
+                "      <outline type=\"rss\" text=\"{t}\" title=\"{t}\" xmlUrl=\"{u}\"/>\n"
+            ));
+        }
+        s.push_str("    </outline>\n");
+    }
+    for (url, title) in ungrouped {
+        let t = quick_xml::escape::escape(title);
+        let u = quick_xml::escape::escape(url);
+        s.push_str(&format!(
+            "    <outline type=\"rss\" text=\"{t}\" title=\"{t}\" xmlUrl=\"{u}\"/>\n"
         ));
     }
+
     s.push_str("  </body>\n</opml>\n");
     s
 }

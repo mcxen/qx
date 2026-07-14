@@ -35,6 +35,7 @@ QxShell (visual="elevated", has-context)
 | `src/modules/settings/SettingsPanel.tsx` | 顶层布局、tab 路由、ScrollArea 包裹 |
 | `src/modules/settings/AboutPanel.tsx` | 关于页：版本信息 + 存储详情 |
 | `src/modules/settings/AgentSettings.tsx` | AI Agent 设置，分 4 张 Card |
+| `src/modules/settings/GeneralSettings.tsx` | 通用设置 + **Module Search** 开关 |
 | `src/modules/settings/GeneralSettings.tsx` 等 | 其他 tab |
 | `src/modules/settings/PluginManager.tsx` | Extensions 页：Installed/Browse、扩展详情、Commands/Shortcuts/Preferences |
 | `src/components/ui.tsx` | `Row` / `SettingsCard` / `Toggle` / `Select` / `Slider` / `Input` 等 |

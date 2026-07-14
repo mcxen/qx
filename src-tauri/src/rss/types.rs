@@ -10,6 +10,28 @@ pub struct Feed {
     pub error_count: i64,
     pub unread_count: i64,
     pub created_at: i64,
+    /// Optional folder id for hierarchical feed management.
+    pub folder_id: Option<i64>,
+    /// Denormalized folder name for UI/search (null when ungrouped).
+    pub folder_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Folder {
+    pub id: i64,
+    pub name: String,
+    pub parent_id: Option<i64>,
+    pub sort_order: i64,
+    pub created_at: i64,
+    pub feed_count: i64,
+}
+
+/// One feed entry parsed from OPML (optionally under a top-level folder name).
+#[derive(Debug, Clone)]
+pub struct OpmlFeedEntry {
+    pub url: String,
+    pub title: String,
+    pub folder: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,3 +1,22 @@
+/* Documents (DevTxtTool): full-bleed editor inside QxShell content. */
+
+.documents-shell .qx-shell-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* Editor owns the chrome; avoid double padding scroll traps. */
+  padding-top: var(--qx-topbar-h);
+  padding-bottom: var(--qx-bottom-bar-h);
+}
+
+.qx-documents-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
 .qx-documents-textarea-full {
   flex: 1;
   min-height: 0;
@@ -5,25 +24,70 @@
   resize: none;
   border: 0;
   outline: none;
-  padding: 12px;
+  padding: 14px 16px;
   background: transparent;
   color: var(--qx-text-primary);
   font: 13px/1.6 var(--qx-font-mono);
+  box-sizing: border-box;
 }
 
 .qx-documents-textarea-full::placeholder {
   color: var(--qx-text-tertiary);
 }
 
+.qx-documents-textarea-full:focus {
+  outline: none;
+}
+
 .qx-documents-output-only {
   flex: 1;
   min-height: 0;
   margin: 0;
-  padding: 12px;
+  padding: 14px 16px;
   overflow: auto;
   color: var(--qx-text-secondary);
   font: 13px/1.6 var(--qx-font-mono);
   white-space: pre-wrap;
   word-break: break-word;
   background: var(--qx-overlay-3);
+  box-sizing: border-box;
+}
+
+.qx-documents-stats {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--qx-border-1);
+  background: color-mix(in srgb, var(--qx-bg-component-1) 88%, transparent);
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.qx-documents-stats-mode {
+  margin-left: auto;
+  text-transform: capitalize;
+  color: var(--qx-text-secondary);
+  font-weight: 600;
+}
+
+.qx-documents-stats-hint {
+  color: var(--qx-text-tertiary);
+  opacity: 0.85;
+}
+
+.documents-shell .qx-shell-trailing {
+  max-width: min(520px, 58vw);
+}
+
+.documents-shell .qx-shell-trailing .qx-clipboard-status {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--qx-text-secondary);
 }

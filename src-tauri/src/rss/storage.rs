@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use super::types::{Article, Feed};
+use super::types::{Article, Feed, Folder};
 
 pub struct RssDb(pub Arc<Mutex<Connection>>);
 
@@ -12,17 +12,45 @@ pub fn db_path() -> PathBuf {
     dir.join("rss.db")
 }
 
+fn ensure_column(
+    conn: &Connection,
+    table: &str,
+    name: &str,
+    definition: &str,
+) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({table})"))?;
+    let exists = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(Result::ok)
+        .any(|column| column == name);
+    if !exists {
+        conn.execute(
+            &format!("ALTER TABLE {table} ADD COLUMN {name} {definition}"),
+            [],
+        )?;
+    }
+    Ok(())
+}
+
 pub fn open() -> rusqlite::Result<Connection> {
     let conn = Connection::open(db_path())?;
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS rss_feeds (
+        "CREATE TABLE IF NOT EXISTS rss_folders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            parent_id INTEGER REFERENCES rss_folders(id) ON DELETE CASCADE,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS rss_feeds (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             url TEXT NOT NULL UNIQUE,
             title TEXT,
             icon TEXT,
             last_fetched INTEGER,
             error_count INTEGER DEFAULT 0,
-            created_at INTEGER NOT NULL
+            created_at INTEGER NOT NULL,
+            folder_id INTEGER REFERENCES rss_folders(id) ON DELETE SET NULL
         );
         CREATE TABLE IF NOT EXISTS rss_articles (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,17 +68,43 @@ pub fn open() -> rusqlite::Result<Connection> {
             created_at INTEGER NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_articles_feed ON rss_articles(feed_id);
-        CREATE INDEX IF NOT EXISTS idx_articles_read ON rss_articles(is_read);",
+        CREATE INDEX IF NOT EXISTS idx_articles_read ON rss_articles(is_read);
+        CREATE INDEX IF NOT EXISTS idx_feeds_folder ON rss_feeds(folder_id);",
+    )?;
+    // Migrate pre-folder databases.
+    ensure_column(
+        &conn,
+        "rss_feeds",
+        "folder_id",
+        "INTEGER REFERENCES rss_folders(id) ON DELETE SET NULL",
     )?;
     Ok(conn)
 }
 
 pub fn insert_feed(conn: &Connection, url: &str, title: &str, icon: &str) -> rusqlite::Result<i64> {
+    insert_feed_in_folder(conn, url, title, icon, None)
+}
+
+pub fn insert_feed_in_folder(
+    conn: &Connection,
+    url: &str,
+    title: &str,
+    icon: &str,
+    folder_id: Option<i64>,
+) -> rusqlite::Result<i64> {
     let now = chrono::Local::now().timestamp();
     conn.execute(
-        "INSERT OR IGNORE INTO rss_feeds (url, title, icon, last_fetched, created_at) VALUES (?1, ?2, ?3, 0, ?4)",
-        params![url, title, icon, now],
+        "INSERT OR IGNORE INTO rss_feeds (url, title, icon, last_fetched, created_at, folder_id)
+         VALUES (?1, ?2, ?3, 0, ?4, ?5)",
+        params![url, title, icon, now, folder_id],
     )?;
+    // Keep folder assignment if feed already existed.
+    if folder_id.is_some() {
+        let _ = conn.execute(
+            "UPDATE rss_feeds SET folder_id = COALESCE(folder_id, ?1) WHERE url = ?2",
+            params![folder_id, url],
+        );
+    }
     let id: i64 = conn.query_row(
         "SELECT id FROM rss_feeds WHERE url = ?1",
         params![url],
@@ -84,8 +138,16 @@ pub fn increment_feed_error(conn: &Connection, id: i64) -> rusqlite::Result<()> 
 pub fn list_feeds(conn: &Connection) -> rusqlite::Result<Vec<Feed>> {
     let mut stmt = conn.prepare(
         "SELECT f.id, f.url, f.title, f.icon, f.last_fetched, f.error_count, f.created_at,
-                (SELECT COUNT(*) FROM rss_articles a WHERE a.feed_id = f.id AND a.is_read = 0) AS unread
-         FROM rss_feeds f ORDER BY f.title ASC",
+                (SELECT COUNT(*) FROM rss_articles a WHERE a.feed_id = f.id AND a.is_read = 0) AS unread,
+                f.folder_id,
+                d.name AS folder_name
+         FROM rss_feeds f
+         LEFT JOIN rss_folders d ON d.id = f.folder_id
+         ORDER BY
+           CASE WHEN f.folder_id IS NULL THEN 1 ELSE 0 END,
+           COALESCE(d.sort_order, 0) ASC,
+           COALESCE(d.name, '') COLLATE NOCASE ASC,
+           f.title COLLATE NOCASE ASC",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(Feed {
@@ -97,6 +159,8 @@ pub fn list_feeds(conn: &Connection) -> rusqlite::Result<Vec<Feed>> {
             error_count: row.get::<_, Option<i64>>(5)?.unwrap_or(0),
             created_at: row.get(6)?,
             unread_count: row.get(7)?,
+            folder_id: row.get(8)?,
+            folder_name: row.get(9)?,
         })
     })?;
     let mut out = Vec::new();
@@ -104,6 +168,99 @@ pub fn list_feeds(conn: &Connection) -> rusqlite::Result<Vec<Feed>> {
         out.push(r?);
     }
     Ok(out)
+}
+
+pub fn list_folders(conn: &Connection) -> rusqlite::Result<Vec<Folder>> {
+    let mut stmt = conn.prepare(
+        "SELECT d.id, d.name, d.parent_id, d.sort_order, d.created_at,
+                (SELECT COUNT(*) FROM rss_feeds f WHERE f.folder_id = d.id) AS feed_count
+         FROM rss_folders d
+         ORDER BY d.sort_order ASC, d.name COLLATE NOCASE ASC",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(Folder {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            parent_id: row.get(2)?,
+            sort_order: row.get(3)?,
+            created_at: row.get(4)?,
+            feed_count: row.get(5)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+pub fn create_folder(
+    conn: &Connection,
+    name: &str,
+    parent_id: Option<i64>,
+) -> rusqlite::Result<i64> {
+    let now = chrono::Local::now().timestamp();
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "folder name empty"),
+        )));
+    }
+    // Reuse existing folder with same name under same parent.
+    if let Ok(id) = conn.query_row(
+        "SELECT id FROM rss_folders WHERE name = ?1 AND (
+            (?2 IS NULL AND parent_id IS NULL) OR parent_id = ?2
+         ) LIMIT 1",
+        params![trimmed, parent_id],
+        |row| row.get::<_, i64>(0),
+    ) {
+        return Ok(id);
+    }
+    conn.execute(
+        "INSERT INTO rss_folders (name, parent_id, sort_order, created_at) VALUES (?1, ?2, 0, ?3)",
+        params![trimmed, parent_id, now],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn rename_folder(conn: &Connection, id: i64, name: &str) -> rusqlite::Result<()> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err(rusqlite::Error::ToSqlConversionFailure(Box::new(
+            std::io::Error::new(std::io::ErrorKind::InvalidInput, "folder name empty"),
+        )));
+    }
+    conn.execute(
+        "UPDATE rss_folders SET name = ?1 WHERE id = ?2",
+        params![trimmed, id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_folder(conn: &Connection, id: i64) -> rusqlite::Result<()> {
+    // Feeds become ungrouped; child folders cascade via FK when present.
+    conn.execute(
+        "UPDATE rss_feeds SET folder_id = NULL WHERE folder_id = ?1",
+        params![id],
+    )?;
+    conn.execute("DELETE FROM rss_folders WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn set_feed_folder(
+    conn: &Connection,
+    feed_id: i64,
+    folder_id: Option<i64>,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE rss_feeds SET folder_id = ?1 WHERE id = ?2",
+        params![folder_id, feed_id],
+    )?;
+    Ok(())
+}
+
+pub fn get_or_create_folder_by_name(conn: &Connection, name: &str) -> rusqlite::Result<i64> {
+    create_folder(conn, name, None)
 }
 
 pub fn list_articles(

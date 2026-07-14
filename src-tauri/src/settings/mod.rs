@@ -359,6 +359,39 @@ impl Default for PluginDisplaySettings {
     }
 }
 
+/// Per-module contribution to the main launcher search (static commands + dynamic surfaces).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleSearchSettings {
+    /// Master switch for all module search integration.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// When a key is missing, treat as enabled (true).
+    #[serde(default)]
+    pub modules: BTreeMap<String, bool>,
+}
+
+impl Default for ModuleSearchSettings {
+    fn default() -> Self {
+        let mut modules = BTreeMap::new();
+        for id in [
+            "clipboard",
+            "qx-ai",
+            "rss",
+            "screencap",
+            "macros",
+            "documents",
+            "weather",
+            "v2ex",
+        ] {
+            modules.insert(id.to_string(), true);
+        }
+        Self {
+            enabled: true,
+            modules,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct V2exSettings {
     #[serde(default, rename = "token")]
@@ -505,6 +538,8 @@ pub struct Settings {
     pub weather: WeatherSettings,
     #[serde(default)]
     pub search_metadata: BTreeMap<String, SearchMetadataEntry>,
+    #[serde(default)]
+    pub module_search: ModuleSearchSettings,
     #[serde(default = "default_quick_entries")]
     pub quick_entries: Vec<QuickEntryConfig>,
     #[serde(default = "default_tray_actions")]
@@ -556,6 +591,7 @@ impl Default for Settings {
             v2ex: V2exSettings::default(),
             weather: WeatherSettings::default(),
             search_metadata: BTreeMap::new(),
+            module_search: ModuleSearchSettings::default(),
             quick_entries: default_quick_entries(),
             tray_actions: default_tray_actions(),
         }

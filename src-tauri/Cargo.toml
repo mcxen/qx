@@ -1,6 +1,6 @@
 [package]
 name = "qx"
-version = "0.5.7"
+version = "0.5.8"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"

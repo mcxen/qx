@@ -1,6 +1,6 @@
 # 前端子系统总览
 
-> 状态：Current · 适用版本：v0.5.6 · Owner：Frontend · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.5.8 · Owner：Frontend · 最后复核：2026-07-14
 
 Qx 前端是 React 19 + Zustand + Tauri v2 API + shadcn 组件。入口 `src/main.tsx` → `App.tsx`。本文件描述各子系统的边界与关键文件；组件视觉规范另见 [UI_SPEC.md](../UI_SPEC.md)、[docs/settings-panel.md](./settings-panel.md)。
 
@@ -30,6 +30,7 @@ src/
 ├─ search/
 │  ├─ appDisplay.ts       # display_name hook（跟 useLocale）
 │  ├─ searchMetadata.ts
+│  ├─ moduleSurfaces.ts   # 主搜索动态深链（RSS feed 等），见 docs/module-surfaces.md
 │  └─ calculator.ts
 ├─ modules/               # 可懒加载功能面板
 ├─ plugin/                # 插件运行时（见 docs/plugin-architecture.md）

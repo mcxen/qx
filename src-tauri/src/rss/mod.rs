@@ -7,7 +7,7 @@ use std::sync::Arc;
 use tauri::{command, Manager, State};
 
 use storage::RssDb;
-use types::{Article, Feed};
+use types::{Article, Feed, Folder};
 
 use crate::settings;
 
@@ -223,24 +223,40 @@ pub async fn rss_refresh_all(state: State<'_, RssDb>) -> Result<usize, String> {
 
 #[command]
 pub async fn rss_import_opml(state: State<'_, RssDb>, content: String) -> Result<usize, String> {
-    let feeds = fetcher::parse_opml(&content);
+    let entries = fetcher::parse_opml(&content);
     let mut count = 0usize;
-    for (url, title) in feeds {
-        let parsed = fetcher::fetch_and_parse(&url).await.ok();
+    for entry in entries {
+        let parsed = fetcher::fetch_and_parse(&entry.url).await.ok();
         let (t, icon, articles) = match parsed {
             Some(p) => (
                 if p.title.is_empty() {
-                    title.clone()
+                    entry.title.clone()
                 } else {
                     p.title
                 },
                 p.icon,
                 p.articles,
             ),
-            None => (title.clone(), String::new(), Vec::new()),
+            None => (entry.title.clone(), String::new(), Vec::new()),
         };
+        let folder_name = entry.folder.clone();
         let _ = with_db(&state, |conn| {
-            let id = storage::insert_feed(conn, &url, &t, &icon).map_err(|e| format!("{e}"))?;
+            let folder_id = match folder_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                Some(name) => Some(
+                    storage::get_or_create_folder_by_name(conn, name)
+                        .map_err(|e| format!("{e}"))?,
+                ),
+                None => None,
+            };
+            let id = storage::insert_feed_in_folder(conn, &entry.url, &t, &icon, folder_id)
+                .map_err(|e| format!("{e}"))?;
+            if let Some(fid) = folder_id {
+                let _ = storage::set_feed_folder(conn, id, Some(fid));
+            }
             for a in &articles {
                 let _ = store_article(conn, id, a);
             }
@@ -258,9 +274,64 @@ pub fn rss_export_opml(state: State<RssDb>) -> Result<String, String> {
     let feeds = with_db(&state, |conn| {
         storage::list_feeds(conn).map_err(|e| format!("{e}"))
     })?;
-    let triples: Vec<(i64, String, String)> =
-        feeds.into_iter().map(|f| (f.id, f.url, f.title)).collect();
-    Ok(fetcher::build_opml(&triples))
+    let rows: Vec<(String, String, Option<String>)> = feeds
+        .into_iter()
+        .map(|f| (f.url, f.title, f.folder_name))
+        .collect();
+    Ok(fetcher::build_opml(&rows))
+}
+
+#[command]
+pub fn rss_list_folders(state: State<RssDb>) -> Result<Vec<Folder>, String> {
+    with_db(&state, |conn| {
+        storage::list_folders(conn).map_err(|e| format!("{e}"))
+    })
+}
+
+#[command]
+pub fn rss_create_folder(
+    state: State<RssDb>,
+    name: String,
+    parent_id: Option<i64>,
+) -> Result<Folder, String> {
+    with_db(&state, |conn| {
+        let id = storage::create_folder(conn, &name, parent_id).map_err(|e| format!("{e}"))?;
+        storage::list_folders(conn)
+            .map_err(|e| format!("{e}"))?
+            .into_iter()
+            .find(|f| f.id == id)
+            .ok_or_else(|| "folder not found after create".to_string())
+    })
+}
+
+#[command]
+pub fn rss_rename_folder(state: State<RssDb>, id: i64, name: String) -> Result<(), String> {
+    with_db(&state, |conn| {
+        storage::rename_folder(conn, id, &name).map_err(|e| format!("{e}"))
+    })
+}
+
+#[command]
+pub fn rss_delete_folder(state: State<RssDb>, id: i64) -> Result<(), String> {
+    with_db(&state, |conn| {
+        storage::delete_folder(conn, id).map_err(|e| format!("{e}"))
+    })
+}
+
+#[command]
+pub fn rss_set_feed_folder(
+    state: State<RssDb>,
+    feed_id: i64,
+    folder_id: Option<i64>,
+) -> Result<Feed, String> {
+    with_db(&state, |conn| {
+        storage::set_feed_folder(conn, feed_id, folder_id).map_err(|e| format!("{e}"))?;
+        storage::list_feeds(conn)
+            .map_err(|e| format!("{e}"))?
+            .into_iter()
+            .find(|f| f.id == feed_id)
+            .ok_or_else(|| "feed not found".to_string())
+    })
 }
 
 #[command]

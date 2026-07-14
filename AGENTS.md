@@ -103,6 +103,11 @@ dependencies. Provide a deliberate fallback for other targets when practical.
 - Bottom Island must be centered relative to the window using `position: absolute; left: 50%; transform: translateX(-50%)`.
 - `.qx-shell-bottombar` must be `position: relative`.
 - Search is the primary entry point.
+- Built-in modules may expose **Module Surfaces** to the main launcher search
+  (deep links such as RSS feeds or AI chats). Implementation:
+  `src/search/moduleSurfaces.ts` + per-module `takePendingModuleLaunch`.
+  Users can disable per module under Settings → General → Module Search.
+  Design doc: `docs/module-surfaces.md`.
 - Context Panel is auxiliary; do not put a second main layout inside it.
 - Shell, panels, popovers, controls, text colors, borders, radius, and transparency must use CSS variables.
 - Do not hardcode component colors in business code.

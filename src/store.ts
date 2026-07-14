@@ -3,6 +3,8 @@ import { create } from "zustand";
 export interface AppEntry {
   name: string;
   display_name?: string;
+  /** Optional list subtitle (module surfaces, clipboard preview, etc.). */
+  subtitle?: string;
   path: string;
   icon: string;
   kind?: "app" | "command" | "clipboard" | "file" | "folder" | "calculation";

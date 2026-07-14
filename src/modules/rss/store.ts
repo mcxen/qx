@@ -10,6 +10,17 @@ export interface RssFeed {
   error_count: number;
   unread_count: number;
   created_at: number;
+  folder_id?: number | null;
+  folder_name?: string | null;
+}
+
+export interface RssFolder {
+  id: number;
+  name: string;
+  parent_id?: number | null;
+  sort_order: number;
+  created_at: number;
+  feed_count: number;
 }
 
 export interface RssArticle {
@@ -39,6 +50,7 @@ interface RssStore {
   selectedIndex: number;
 
   feeds: RssFeed[];
+  folders: RssFolder[];
   articles: RssArticle[];
   readingArticles: RssArticle[];
   currentArticle: RssArticle | null;
@@ -49,6 +61,7 @@ interface RssStore {
   loading: boolean;
   error: string | null;
   refreshingFeedId: number | null;
+  statusMessage: string | null;
 
   setView: (v: RssView) => void;
   setSelectedFeedId: (id: number | null) => void;
@@ -61,14 +74,22 @@ interface RssStore {
   setCurrentArticle: (a: RssArticle | null) => void;
   setError: (e: string | null) => void;
   setRefreshing: (id: number | null) => void;
+  setStatusMessage: (m: string | null) => void;
 
   loadFeeds: () => Promise<void>;
+  loadFolders: () => Promise<void>;
   openFeed: (id: number) => Promise<void>;
   refreshFeed: (id: number) => Promise<void>;
   refreshAll: () => Promise<void>;
   removeFeed: (id: number) => Promise<void>;
   addFeed: (url: string) => Promise<void>;
   updateFeed: (id: number, url: string, title: string) => Promise<void>;
+  setFeedFolder: (feedId: number, folderId: number | null) => Promise<void>;
+  createFolder: (name: string) => Promise<RssFolder | null>;
+  renameFolder: (id: number, name: string) => Promise<void>;
+  deleteFolder: (id: number) => Promise<void>;
+  importOpml: (content: string) => Promise<number>;
+  exportOpml: () => Promise<string>;
 
   loadArticles: () => Promise<void>;
   openArticle: (id: number) => Promise<void>;
@@ -91,6 +112,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
   selectedIndex: 0,
 
   feeds: [],
+  folders: [],
   articles: [],
   readingArticles: [],
   currentArticle: null,
@@ -101,6 +123,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
   loading: false,
   error: null,
   refreshingFeedId: null,
+  statusMessage: null,
 
   setView: (view) => set({ view }),
   setSelectedFeedId: (selectedFeedId) => set({ selectedFeedId }),
@@ -119,6 +142,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
   setCurrentArticle: (currentArticle) => set({ currentArticle }),
   setError: (error) => set({ error }),
   setRefreshing: (refreshingFeedId) => set({ refreshingFeedId }),
+  setStatusMessage: (statusMessage) => set({ statusMessage }),
 
   loadFeeds: async () => {
     if (!isTauriRuntime()) {
@@ -128,9 +152,20 @@ export const useRssStore = create<RssStore>((set, get) => ({
     set({ loading: true, error: null });
     try {
       const feeds = await invoke<RssFeed[]>("rss_list_feeds");
-      set({ feeds, loading: false });
+      const folders = await invoke<RssFolder[]>("rss_list_folders").catch(() => [] as RssFolder[]);
+      set({ feeds, folders, loading: false });
     } catch (e) {
       set({ loading: false, error: String(e) });
+    }
+  },
+
+  loadFolders: async () => {
+    if (!isTauriRuntime()) return;
+    try {
+      const folders = await invoke<RssFolder[]>("rss_list_folders");
+      set({ folders });
+    } catch (e) {
+      set({ error: String(e) });
     }
   },
 
@@ -205,6 +240,77 @@ export const useRssStore = create<RssStore>((set, get) => ({
     }
   },
 
+  setFeedFolder: async (feedId, folderId) => {
+    if (!isTauriRuntime()) return;
+    try {
+      await invoke<RssFeed>("rss_set_feed_folder", { feedId, folderId });
+      await get().loadFeeds();
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  createFolder: async (name) => {
+    if (!isTauriRuntime()) return null;
+    try {
+      const folder = await invoke<RssFolder>("rss_create_folder", {
+        name,
+        parentId: null,
+      });
+      await get().loadFolders();
+      return folder;
+    } catch (e) {
+      set({ error: String(e) });
+      return null;
+    }
+  },
+
+  renameFolder: async (id, name) => {
+    if (!isTauriRuntime()) return;
+    try {
+      await invoke("rss_rename_folder", { id, name });
+      await get().loadFeeds();
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  deleteFolder: async (id) => {
+    if (!isTauriRuntime()) return;
+    try {
+      await invoke("rss_delete_folder", { id });
+      await get().loadFeeds();
+    } catch (e) {
+      set({ error: String(e) });
+    }
+  },
+
+  importOpml: async (content) => {
+    if (!isTauriRuntime()) return 0;
+    set({ loading: true, error: null, statusMessage: "Importing OPML…" });
+    try {
+      const count = await invoke<number>("rss_import_opml", { content });
+      await get().loadFeeds();
+      set({
+        loading: false,
+        statusMessage: `Imported ${count} feed${count === 1 ? "" : "s"}`,
+      });
+      window.setTimeout(() => {
+        if (get().statusMessage?.startsWith("Imported")) set({ statusMessage: null });
+      }, 2200);
+      return count;
+    } catch (e) {
+      set({ loading: false, error: String(e), statusMessage: null });
+      throw e;
+    }
+  },
+
+  exportOpml: async () => {
+    if (!isTauriRuntime()) return "";
+    const content = await invoke<string>("rss_export_opml");
+    return content;
+  },
+
   loadArticles: async () => {
     const { selectedFeedId, filter, search } = get();
     if (!isTauriRuntime()) {
@@ -217,13 +323,15 @@ export const useRssStore = create<RssStore>((set, get) => ({
     }
     try {
       const onlyUnread = filter === "unread";
-      const list = await invoke<RssArticle[]>("rss_list_articles", {
+      let articles = await invoke<RssArticle[]>("rss_list_articles", {
         feedId: selectedFeedId,
         onlyUnread,
-        query: search || null,
+        query: search.trim() || null,
       });
-      const filtered = filter === "starred" ? list.filter((a) => a.is_starred) : list;
-      set({ articles: filtered });
+      if (filter === "starred") {
+        articles = articles.filter((a) => a.is_starred);
+      }
+      set({ articles, error: null });
     } catch (e) {
       set({ error: String(e) });
     }
@@ -313,14 +421,20 @@ export const useRssStore = create<RssStore>((set, get) => ({
     if (view === "detail") {
       set({ view: "articles", selectedArticleId: null, currentArticle: null, readingArticles: [] });
     } else if (view === "articles") {
-      set({ view: "feeds", selectedFeedId: null, articles: [], readingArticles: [], selectedIndex: 0 });
+      set({
+        view: "feeds",
+        selectedFeedId: null,
+        articles: [],
+        readingArticles: [],
+        selectedIndex: 0,
+      });
     }
   },
 
   moveSelection: (delta, length) => {
     if (length <= 0) return;
-    set((s) => ({
-      selectedIndex: Math.max(0, Math.min(s.selectedIndex + delta, length - 1)),
+    set((state) => ({
+      selectedIndex: Math.max(0, Math.min(length - 1, state.selectedIndex + delta)),
     }));
   },
 }));

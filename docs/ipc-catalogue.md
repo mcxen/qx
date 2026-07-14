@@ -38,7 +38,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 
 ## rss
 
-`rss_list_feeds`、`rss_add_feed(url)`、`rss_update_feed(id, url, title)`、`rss_remove_feed(id)`、`rss_list_articles(feed_id?, only_unread, query?)`、`rss_get_article(id)`、`rss_mark_read(id, is_read)`、`rss_mark_all_read(feed_id)`、`rss_toggle_star(id, is_starred)`、`rss_refresh_feed(id)`、`rss_refresh_all()`、`rss_import_opml(content)`、`rss_export_opml()`。
+`rss_list_feeds`、`rss_add_feed(url)`、`rss_update_feed(id, url, title)`、`rss_remove_feed(id)`、`rss_list_articles(feed_id?, only_unread, query?)`、`rss_get_article(id)`、`rss_mark_read(id, is_read)`、`rss_mark_all_read(feed_id)`、`rss_toggle_star(id, is_starred)`、`rss_refresh_feed(id)`、`rss_refresh_all()`、`rss_import_opml(content)`、`rss_export_opml()`、`rss_list_folders`、`rss_create_folder(name, parent_id?)`、`rss_rename_folder(id, name)`、`rss_delete_folder(id)`、`rss_set_feed_folder(feed_id, folder_id?)`。
 
 ## v2ex
 

@@ -11,6 +11,7 @@ import { Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useLocale, useT } from "../../i18n";
 import { getQxShortcutPreset } from "../../utils/keyboard";
+import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import { pasteClipboardEntry, writeClipboardEntry } from "./actions";
 import {
   classify,
@@ -197,6 +198,27 @@ export default function ClipboardPanel() {
       unlisten.then((f) => f());
     };
   }, []);
+
+  // Deep launch from main search: select a history item by id once list is ready.
+  const pendingClipboardId = useRef<string | null>(null);
+  useEffect(() => {
+    const launch = takePendingModuleLaunch("clipboard");
+    if (!launch || launch.surface !== "item") return;
+    const id = String(launch.params?.id || "");
+    if (id) pendingClipboardId.current = id;
+  }, []);
+
+  useEffect(() => {
+    const pendingId = pendingClipboardId.current;
+    if (!pendingId || clipboardHistory.length === 0) return;
+    const index = clipboardHistory.findIndex((item) => item.id === pendingId);
+    if (index >= 0) {
+      setSelected(index);
+      setFilter("all");
+      setQuery("");
+    }
+    pendingClipboardId.current = null;
+  }, [clipboardHistory]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
