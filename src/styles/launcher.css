@@ -160,3 +160,13 @@
   border-right: none;
   background: var(--qx-bg-component-1);
 }
+
+/* Full-bleed reader (ArticleDetail / overlay) reuses the same measure as split reader. */
+.qx-rss-detail-content > [data-qx-region-scroll] {
+  scroll-padding-block: 16px 28px;
+}
+
+.qx-shell.visual-glass.qx-rss-shell.is-reading .qx-shell-content {
+  /* Let the paper surface own the field; avoid competing dense chrome. */
+  background: transparent;
+}

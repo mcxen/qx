@@ -234,6 +234,7 @@
 }
 
 .qx-shell.has-context .qx-shell-main {
+  /* Right rail is a single shared track: never override --qx-context-w per module. */
   grid-template-columns: minmax(0, 1fr) var(--qx-context-w);
 }
 
@@ -257,6 +258,10 @@
 }
 
 .qx-shell-context {
+  /* Lock column width to the global token so Launcher / RSS / Settings / AI match. */
+  width: 100%;
+  max-width: var(--qx-context-w);
+  min-width: 0;
   border-left: 1px solid var(--qx-border-1);
   background: rgba(var(--qx-glass-bg), var(--qx-shell-region-opacity-effective));
   backdrop-filter: blur(10px) saturate(130%);

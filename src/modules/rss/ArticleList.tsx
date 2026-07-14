@@ -54,9 +54,7 @@ const SECTION_LABELS: Record<Section["key"], string> = {
 };
 
 const RSS_LIST_WIDTH_KEY = "qx:rss:list-width";
-const RSS_CONTEXT_WIDTH_KEY = "qx:rss:context-width";
 const DEFAULT_RSS_LIST_WIDTH = 340;
-const DEFAULT_RSS_CONTEXT_WIDTH = 300;
 
 function clampWidth(value: number, min: number, max: number): number {
   return Math.round(Math.max(min, Math.min(max, value)));
@@ -97,9 +95,6 @@ export default function ArticleList() {
   const [scrollPercent, setScrollPercent] = useState(0);
   const [listWidth, setListWidth] = useState(() =>
     readStoredWidth(RSS_LIST_WIDTH_KEY, DEFAULT_RSS_LIST_WIDTH),
-  );
-  const [contextWidth, setContextWidth] = useState(() =>
-    readStoredWidth(RSS_CONTEXT_WIDTH_KEY, DEFAULT_RSS_CONTEXT_WIDTH),
   );
   const shellRef = useRef<HTMLDivElement>(null);
   const splitRef = useRef<HTMLDivElement>(null);
@@ -176,9 +171,10 @@ export default function ArticleList() {
         display: "block",
         borderRadius: 4,
       };
+  // Only the in-content list/detail split is resizable. Shell context width
+  // must stay on global --qx-context-w so every module shares one sidebar size.
   const shellStyle = {
     "--qx-rss-list-w": `${listWidth}px`,
-    "--qx-context-w": `${contextWidth}px`,
   } as CSSProperties;
 
   const startListResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -211,36 +207,6 @@ export default function ArticleList() {
     window.addEventListener("pointerup", onUp, { once: true });
   }, []);
 
-  const startContextResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const main = shellRef.current?.querySelector(".qx-shell-main") as HTMLElement | null;
-    if (!main) return;
-    const rect = main.getBoundingClientRect();
-    const min = 220;
-    const max = Math.max(min, rect.width - 420);
-    const previousCursor = document.body.style.cursor;
-    const previousUserSelect = document.body.style.userSelect;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    const update = (clientX: number) => {
-      const next = clampWidth(rect.right - clientX, min, max);
-      setContextWidth(next);
-      window.localStorage.setItem(RSS_CONTEXT_WIDTH_KEY, String(next));
-    };
-    const onMove = (moveEvent: PointerEvent) => update(moveEvent.clientX);
-    const onUp = () => {
-      document.body.style.cursor = previousCursor;
-      document.body.style.userSelect = previousUserSelect;
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-
-    update(event.clientX);
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp, { once: true });
-  }, []);
-
   const nudgeListWidth = useCallback((delta: number) => {
     const split = splitRef.current;
     const rectWidth = split?.getBoundingClientRect().width ?? 980;
@@ -249,25 +215,11 @@ export default function ArticleList() {
     window.localStorage.setItem(RSS_LIST_WIDTH_KEY, String(next));
   }, [listWidth]);
 
-  const nudgeContextWidth = useCallback((delta: number) => {
-    const main = shellRef.current?.querySelector(".qx-shell-main") as HTMLElement | null;
-    const rectWidth = main?.getBoundingClientRect().width ?? 980;
-    const next = clampWidth(contextWidth + delta, 220, Math.max(220, rectWidth - 420));
-    setContextWidth(next);
-    window.localStorage.setItem(RSS_CONTEXT_WIDTH_KEY, String(next));
-  }, [contextWidth]);
-
   const onListResizeKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     event.preventDefault();
     nudgeListWidth(event.key === "ArrowLeft" ? -24 : 24);
   }, [nudgeListWidth]);
-
-  const onContextResizeKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    nudgeContextWidth(event.key === "ArrowLeft" ? 24 : -24);
-  }, [nudgeContextWidth]);
 
   const sections: Section[] = useMemo(() => {
     const groups: Record<string, RssArticle[]> = {
@@ -544,11 +496,15 @@ export default function ArticleList() {
         detail: `${articles.length} articles · ${unreadCount} unread · ${filter}`,
       };
 
+  const isReading = Boolean(currentArticle);
+
   return (
     <QxShell
       ref={shellRef}
       title={feed?.title || "RSS Articles"}
-      className="qx-content-shell qx-rss-shell"
+      // List browsing stays dense/solid; open article softens chrome for reading.
+      visual={isReading ? "glass" : "solid"}
+      className={`qx-content-shell qx-rss-shell${isReading ? " is-reading" : ""}`}
       style={shellStyle}
       onKeyDown={onKeyDown}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
@@ -558,7 +514,7 @@ export default function ArticleList() {
           <input
             type="text"
             value={localQuery}
-            autoFocus
+            autoFocus={!isReading}
             onChange={(e) => {
               setLocalQuery(e.target.value);
               setSearch(e.target.value);
@@ -579,41 +535,26 @@ export default function ArticleList() {
         />
       }
       context={
-        <div className="qx-rss-context-wrap">
-          <div
-            className="qx-rss-resize-handle qx-rss-context-resize"
-            role="separator"
-            aria-label="Resize RSS actions panel"
-            aria-orientation="vertical"
-            tabIndex={0}
-            onPointerDown={startContextResize}
-            onKeyDown={onContextResizeKeyDown}
-            onDoubleClick={() => {
-              setContextWidth(DEFAULT_RSS_CONTEXT_WIDTH);
-              window.localStorage.setItem(RSS_CONTEXT_WIDTH_KEY, String(DEFAULT_RSS_CONTEXT_WIDTH));
-            }}
-          />
-          <div
-            className="qx-action-panel qx-rss-context-content"
-            data-qx-region="rss-actions"
-            data-qx-region-label="Article actions"
-            data-qx-region-scroll
-            tabIndex={-1}
-          >
-            <div className="qx-action-title">Article Actions</div>
-            {actions.map((action, index) => (
-              <button
-                key={`${action.label}-${index}`}
-                className={`qx-action-item${action.tone === "danger" ? " danger" : ""}`}
-                onClick={action.onClick}
-                disabled={action.disabled}
-                type="button"
-              >
-                <span>{action.label}</span>
-                {action.kbd && <kbd>{action.kbd}</kbd>}
-              </button>
-            ))}
-          </div>
+        <div
+          className="qx-action-panel"
+          data-qx-region="rss-actions"
+          data-qx-region-label="Article actions"
+          data-qx-region-scroll
+          tabIndex={-1}
+        >
+          <div className="qx-action-title">Article Actions</div>
+          {actions.map((action, index) => (
+            <button
+              key={`${action.label}-${index}`}
+              className={`qx-action-item${action.tone === "danger" ? " danger" : ""}`}
+              onClick={action.onClick}
+              disabled={action.disabled}
+              type="button"
+            >
+              <span>{action.label}</span>
+              {action.kbd && <kbd>{action.kbd}</kbd>}
+            </button>
+          ))}
         </div>
       }
       island={island}
@@ -639,7 +580,7 @@ export default function ArticleList() {
           className="qx-content-list qx-plugin-list"
           data-qx-region="rss-list"
           data-qx-region-label="Article list"
-          data-qx-region-initial="true"
+          data-qx-region-initial={isReading ? undefined : "true"}
           data-qx-region-scroll
           tabIndex={-1}
         >
@@ -718,114 +659,123 @@ export default function ArticleList() {
         />
 
         <article
-          className="qx-content-detail qx-plugin-detail qx-rss-detail-content"
+          className="qx-content-detail qx-plugin-detail qx-rss-detail-content qx-rss-reader"
           data-qx-region="rss-reader"
           data-qx-region-label="Article reader"
+          data-qx-region-initial={isReading ? "true" : undefined}
           tabIndex={-1}
         >
           {currentArticle ? (
             <>
-              <div className="qx-detail-header">
-                <div style={{ minWidth: 0 }}>
+              <div className="qx-detail-header qx-rss-reader-chrome">
+                <div className="qx-rss-reader-chrome-copy">
                   <div className="qx-detail-title">{feed?.title || "Article"}</div>
                   <div className="qx-detail-meta">{formatDate(currentArticle.published_at)}</div>
                 </div>
-                <span className="qx-badge">{currentArticle.is_starred ? "Starred" : currentArticle.is_read ? "Read" : "Unread"}</span>
+                <span className="qx-badge">
+                  {currentArticle.is_starred ? "Starred" : currentArticle.is_read ? "Read" : "Unread"}
+                </span>
               </div>
-              <div ref={scrollRef} className="qx-content-detail-scroll" data-qx-region-scroll>
-                <h1
-                  style={{
-                    fontSize: Math.min(article_font_size + 4, 26),
-                    fontWeight: 600,
-                    fontFamily: article_font_family,
-                    color: "var(--qx-text-primary)",
-                    margin: "0 0 8px",
-                    lineHeight: 1.3,
-                  }}
-                >
-                  {currentArticle.title || "(untitled)"}
-                </h1>
-                <div className="qx-content-detail-meta">
-                  {currentArticle.author && <span>By {currentArticle.author}</span>}
-                  {currentArticle.is_starred && <span>Starred</span>}
-                  <span>{currentArticle.is_read ? "Read" : "Unread"}</span>
-                </div>
+              <div ref={scrollRef} className="qx-content-detail-scroll qx-rss-reader-scroll" data-qx-region-scroll>
+                <div className="qx-rss-reader-stage" style={articleContentStyle}>
+                  {/* Title keep original sizing/weight from Settings font vars — do not restyle. */}
+                  <h1
+                    style={{
+                      fontSize: Math.min(article_font_size + 4, 26),
+                      fontWeight: 600,
+                      fontFamily: article_font_family,
+                      color: "var(--qx-text-primary)",
+                      margin: "0 0 8px",
+                      lineHeight: 1.3,
+                    }}
+                  >
+                    {currentArticle.title || "(untitled)"}
+                  </h1>
+                  <div className="qx-content-detail-meta">
+                    {currentArticle.author && <span>By {currentArticle.author}</span>}
+                    {currentArticle.is_starred && <span>Starred</span>}
+                    <span>{currentArticle.is_read ? "Read" : "Unread"}</span>
+                  </div>
 
-                {currentArticle.image_url && (
-                  <img
-                    src={currentArticle.image_url}
-                    alt=""
-                    onClick={() => setLightbox(currentArticle.image_url)}
-                    className="qx-panel-card"
-                    style={heroImgStyle}
+                  {currentArticle.image_url && (
+                    <img
+                      src={currentArticle.image_url}
+                      alt=""
+                      onClick={() => setLightbox(currentArticle.image_url)}
+                      className="qx-rss-reader-hero"
+                      style={heroImgStyle}
+                    />
+                  )}
+
+                  <div
+                    id="rss-article-content"
+                    className="rss-article-content"
+                    data-image-mode={image_display_mode}
+                    dangerouslySetInnerHTML={{ __html: cleanContent }}
                   />
-                )}
 
-                <div
-                  id="rss-article-content"
-                  className="rss-article-content"
-                  data-image-mode={image_display_mode}
-                  dangerouslySetInnerHTML={{ __html: cleanContent }}
-                  style={articleContentStyle}
-                />
-
-                {v2exTopicId != null && (
-                  <div className="qx-rss-v2ex-comments">
-                    <div className="qx-rss-v2ex-header">
-                      V2EX Comments {v2exReplies.length > 0 && `(${v2exReplies.length})`}
-                    </div>
-                    {v2exLoading && (
-                      <div className="qx-rss-v2ex-loading">Loading comments...</div>
-                    )}
-                    {!v2exLoading && v2exReplies.length === 0 && (
-                      <div className="qx-rss-v2ex-empty">
-                        No comments loaded. Ensure a V2EX token is set in Settings.
+                  {v2exTopicId != null && (
+                    <div className="qx-rss-v2ex-comments">
+                      <div className="qx-rss-v2ex-header">
+                        V2EX Comments {v2exReplies.length > 0 && `(${v2exReplies.length})`}
                       </div>
-                    )}
-                    {v2exReplies.map((reply) => (
-                      <div key={reply.id} className="qx-rss-v2ex-reply">
-                        <div className="qx-rss-v2ex-reply-meta">
-                          <span className="qx-rss-v2ex-floor">#{reply.floor}</span>
-                          <strong>{reply.author}</strong>
-                          <span className="qx-rss-v2ex-time">{formatTime(reply.created)}</span>
+                      {v2exLoading && (
+                        <div className="qx-rss-v2ex-loading">Loading comments...</div>
+                      )}
+                      {!v2exLoading && v2exReplies.length === 0 && (
+                        <div className="qx-rss-v2ex-empty">
+                          No comments loaded. Ensure a V2EX token is set in Settings.
                         </div>
-                        <div
-                          className="qx-rss-v2ex-reply-body"
-                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(reply.content) }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      )}
+                      {v2exReplies.map((reply) => (
+                        <div key={reply.id} className="qx-rss-v2ex-reply">
+                          <div className="qx-rss-v2ex-reply-meta">
+                            <span className="qx-rss-v2ex-floor">#{reply.floor}</span>
+                            <strong>{reply.author}</strong>
+                            <span className="qx-rss-v2ex-time">{formatTime(reply.created)}</span>
+                          </div>
+                          <div
+                            className="qx-rss-v2ex-reply-body"
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(reply.content) }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-                {originalContent && (
-                  <div className="qx-rss-original-badge">Showing original page content</div>
-                )}
+                  {originalContent && (
+                    <div className="qx-rss-original-badge">Showing original page content</div>
+                  )}
 
-                {next && (
-                  <div className="qx-rss-next-article">
-                    <div className="qx-rss-next-label">Up Next</div>
-                    <button
-                      className="qx-rss-next-link"
-                      onClick={() => void openArticleAtTop(next.id)}
-                      title={next.title || "(untitled)"}
-                      type="button"
-                    >
-                      {next.title || "(untitled)"}
-                    </button>
-                    <span className="qx-rss-next-kbd">
-                      Press <kbd>J</kbd> or <kbd>⌘K</kbd>
-                    </span>
-                  </div>
-                )}
+                  {next && (
+                    <div className="qx-rss-next-article">
+                      <div className="qx-rss-next-label">Up Next</div>
+                      <button
+                        className="qx-rss-next-link"
+                        onClick={() => void openArticleAtTop(next.id)}
+                        title={next.title || "(untitled)"}
+                        type="button"
+                      >
+                        {next.title || "(untitled)"}
+                      </button>
+                      <span className="qx-rss-next-kbd">
+                        Press <kbd>J</kbd>
+                      </span>
+                    </div>
+                  )}
 
-                {currentArticle.link && (
-                  <div className="qx-content-detail-footer">
-                    <button className="qx-command-button" onClick={() => void openUrl(currentArticle.link)} type="button">
-                      Open original
-                    </button>
-                  </div>
-                )}
+                  {currentArticle.link && (
+                    <div className="qx-content-detail-footer">
+                      <button
+                        className="qx-command-button"
+                        onClick={() => void openUrl(currentArticle.link)}
+                        type="button"
+                      >
+                        Open original
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </>
           ) : (
