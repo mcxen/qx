@@ -1,6 +1,6 @@
 # Qx — Technical Architecture Document
 
-> 状态：Current · 适用版本：v0.5.6 · Owner：Core · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.5.11 · Owner：Core · 最后复核：2026-07-14
 >
 > 桌面启动器（Raycast 风格）| Tauri v2 + React + TypeScript + Rust
 >
@@ -253,9 +253,10 @@ updater::* (check/download_and_install/helper_replace)
 
 ### 5.3 后台服务
 
-- **剪贴板监听**: `clipboard::start_listener()` — Tauri 事件驱动
+- **剪贴板监听**: `clipboard::start_listener()` — 始终 `manage` ClipboardDb；轮询系统剪贴板
+- **RSS**: `rss::init` — 始终 `manage` RssDb（`Option` + lazy open）；见 [shell-and-shortcuts.md](./shell-and-shortcuts.md) §5
 - **Icon 预加载**: `apps::preload_icons()` — 后台 sips 转换
-- **全局快捷键**: `settings::register_shortcuts()` — `tauri-plugin-global-shortcut`
+- **全局快捷键**: `settings::register_shortcuts()` — **toggle** 开/关主窗口；细节见 [shell-and-shortcuts.md](./shell-and-shortcuts.md)
 
 ---
 

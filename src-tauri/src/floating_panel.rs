@@ -7,15 +7,24 @@
 //! current foreground app. Inputs that need keyboard focus explicitly
 //! request key-window status through `floating_request_key`.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition};
+use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, WebviewWindow};
 
 pub(crate) const MAIN_LABEL: &str = "main";
 static PREVIOUS_FOREGROUND_PID: OnceLock<Mutex<Option<i32>>> = OnceLock::new();
 /// Frontend tab / route last known to Rust (for global-shortcut toggle-to-close).
 static ACTIVE_ROUTE: OnceLock<Mutex<String>> = OnceLock::new();
+/// Our own open flag — more reliable than `is_visible()` alone for NSPanel /
+/// blur-hide races with global hotkeys.
+static PANEL_OPEN: AtomicBool = AtomicBool::new(false);
+/// When the panel was last hidden (blur-hide can race ahead of the hotkey).
+static LAST_HIDE_AT: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
+/// Ignore re-open for this long after a hide so the same keypress that caused
+/// blur→hide does not immediately re-show the panel.
+const HIDE_TOGGLE_GRACE: Duration = Duration::from_millis(280);
 
 fn previous_foreground_pid() -> &'static Mutex<Option<i32>> {
     PREVIOUS_FOREGROUND_PID.get_or_init(|| Mutex::new(None))
@@ -23,6 +32,10 @@ fn previous_foreground_pid() -> &'static Mutex<Option<i32>> {
 
 fn active_route_lock() -> &'static Mutex<String> {
     ACTIVE_ROUTE.get_or_init(|| Mutex::new("launcher".to_string()))
+}
+
+fn last_hide_lock() -> &'static Mutex<Option<Instant>> {
+    LAST_HIDE_AT.get_or_init(|| Mutex::new(None))
 }
 
 pub fn remember_active_route(route: &str) {
@@ -47,6 +60,35 @@ fn routes_match(current: &str, target: &str) -> bool {
     let c = if current.is_empty() { "launcher" } else { current };
     let t = if target.is_empty() { "launcher" } else { target };
     c == t
+}
+
+fn mark_panel_open() {
+    PANEL_OPEN.store(true, Ordering::SeqCst);
+    if let Ok(mut guard) = last_hide_lock().lock() {
+        *guard = None;
+    }
+}
+
+fn mark_panel_closed() {
+    PANEL_OPEN.store(false, Ordering::SeqCst);
+    if let Ok(mut guard) = last_hide_lock().lock() {
+        *guard = Some(Instant::now());
+    }
+}
+
+fn recently_closed() -> bool {
+    last_hide_lock()
+        .lock()
+        .ok()
+        .and_then(|guard| *guard)
+        .map(|at| at.elapsed() < HIDE_TOGGLE_GRACE)
+        .unwrap_or(false)
+}
+
+/// Prefer our open flag; fall back to OS visibility for paths that only called
+/// `Window::hide` without going through this module.
+fn panel_appears_open(win: &WebviewWindow) -> bool {
+    PANEL_OPEN.load(Ordering::SeqCst) || win.is_visible().unwrap_or(false)
 }
 
 #[cfg(target_os = "macos")]
@@ -463,6 +505,7 @@ pub fn install(app: &AppHandle) {
 
 /// Show the main window as a floating, non-activating panel.
 pub fn show_floating(app: &AppHandle) {
+    mark_panel_open();
     let _ = center_on_cursor(app);
     #[cfg(target_os = "macos")]
     macos::remember_foreground_application();
@@ -492,6 +535,7 @@ pub fn show_floating(app: &AppHandle) {
 
 /// Hide the main window. No-op if already hidden.
 pub fn hide(app: &AppHandle) {
+    mark_panel_closed();
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         let _ = win.hide();
     }
@@ -529,13 +573,18 @@ pub fn hide_restore_focus_and_wait(app: &AppHandle, timeout: Duration) {
 /// Same shortcut that opens the panel also closes it (and restores focus).
 pub fn toggle(app: &AppHandle) {
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
-        if win.is_visible().unwrap_or(false) {
+        // Open → close. Also absorb blur-hide races: hotkey fires after the
+        // window already hid, so "toggle" must stay closed, not re-open.
+        if panel_appears_open(&win) {
             hide_and_restore_focus(app);
-        } else {
-            show_floating(app);
-            remember_active_route("launcher");
-            let _ = tauri::Emitter::emit(&win, "navigate", "launcher");
+            return;
         }
+        if recently_closed() {
+            return;
+        }
+        show_floating(app);
+        remember_active_route("launcher");
+        let _ = tauri::Emitter::emit(&win, "navigate", "launcher");
     }
 }
 
@@ -549,14 +598,21 @@ pub fn show_and_navigate(app: &AppHandle, route: &str) {
     }
 }
 
-/// Global module shortcut behavior:
+/// Global module shortcut behavior (true toggle):
 /// - hidden → show and open `route`
-/// - visible on `route` → close panel (same shortcut dismisses)
-/// - visible on another tab → switch to `route`
+/// - open on `route` → hide panel (same shortcut dismisses)
+/// - open on another tab → switch to `route`
+/// - blur already hid on same route (hotkey race) → stay hidden
 pub fn toggle_route(app: &AppHandle, route: &str) {
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
-        if win.is_visible().unwrap_or(false) && routes_match(&active_route(), route) {
+        let same_route = routes_match(&active_route(), route);
+        if panel_appears_open(&win) && same_route {
             hide_and_restore_focus(app);
+            return;
+        }
+        // Hotkey often blurs the panel first (auto-hide-on-blur). That hide
+        // wins the race; without this guard we would re-open on the same press.
+        if !panel_appears_open(&win) && same_route && recently_closed() {
             return;
         }
     }

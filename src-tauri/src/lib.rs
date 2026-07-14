@@ -385,7 +385,7 @@ pub fn run() {
                 // WebView2 focus notifications can arrive after a topmost,
                 // transparent HWND has already consumed an outside click.
                 // Hide from the native event so the selected app can surface.
-                let _ = window.hide();
+                floating_panel::hide_and_restore_focus(&window.app_handle());
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Qx is a background helper. Closing the launcher must only
@@ -393,7 +393,7 @@ pub fn run() {
                 // tray process alive but makes later global shortcuts unable
                 // to surface the launcher again.
                 api.prevent_close();
-                let _ = window.hide();
+                floating_panel::hide(&window.app_handle());
             }
         })
         .setup(|app| {

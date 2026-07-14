@@ -63,12 +63,12 @@ export default function ShortcutSettings() {
                   )}
                   {id === "toggle_launcher" && !issue && (
                     <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
-                      Summon or dismiss the main window from anywhere (same key toggles).
+                      全局切换：再按一次打开/隐藏主窗口。
                     </div>
                   )}
                   {id !== "toggle_launcher" && !issue && (
                     <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
-                      Open this module globally. Press again while it is open to dismiss Qx.
+                      全局切换：打开该模块；在同一模块上再按一次隐藏窗口。
                     </div>
                   )}
                 </div>

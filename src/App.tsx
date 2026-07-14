@@ -497,7 +497,9 @@ function App() {
       return;
     }
     if (isTauriRuntime()) {
-      getCurrentWindow().hide().catch(() => {});
+      invoke("floating_hide_restore_focus").catch(() => {
+        getCurrentWindow().hide().catch(() => {});
+      });
     }
   }, [setTab]);
 
@@ -908,7 +910,7 @@ function App() {
       try {
         await flushSettingsBeforeExit();
       } finally {
-        await win.hide().catch(() => {});
+        await invoke("floating_hide").catch(() => win.hide());
         closeToBackgroundRef.current = false;
       }
     });
@@ -932,7 +934,11 @@ function App() {
       if (!focused && settings.general.autoHideOnBlur) {
         // First-launch / panel activation can briefly report blur; don't hide yet.
         if (Date.now() < ignoreBlurUntilRef.current) return;
-        win.hide().catch(() => {});
+        // Go through Rust hide so PANEL_OPEN / last-hide timestamps stay in
+        // sync with global-shortcut toggle (otherwise Alt+V re-opens after blur).
+        invoke("floating_hide_restore_focus").catch(() => {
+          win.hide().catch(() => {});
+        });
       }
       if (focused) {
         if (searchFadeTimerRef.current) clearTimeout(searchFadeTimerRef.current);
@@ -1355,7 +1361,9 @@ function App() {
     }
     if (item.path.startsWith("__qx:calc:")) {
       await writeText(decodeURIComponent(item.path.slice("__qx:calc:".length)));
-      if (isTauriRuntime()) await getCurrentWindow().hide();
+      if (isTauriRuntime()) {
+        await invoke("floating_hide_restore_focus").catch(() => getCurrentWindow().hide());
+      }
       return;
     }
     // Handle __qx:<tabId> style paths (backward compat)
@@ -1368,7 +1376,9 @@ function App() {
     await invoke("open_app", { path: item.path });
     // Record launch history (fire-and-forget)
     invoke("record_launch", { path: item.path, name: item.name }).catch(() => {});
-    if (isTauriRuntime()) await getCurrentWindow().hide();
+    if (isTauriRuntime()) {
+      await invoke("floating_hide_restore_focus").catch(() => getCurrentWindow().hide());
+    }
   }, [setTab]);
 
   const handleKeyDown = useCallback(async (e: React.KeyboardEvent) => {

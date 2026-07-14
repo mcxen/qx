@@ -7,6 +7,7 @@ Before any code or documentation edit, read:
 1. `UI_SPEC.md` — current UI, theme, layout, interaction, and validation rules.
 2. `TASK.md` — current project tasks and known verification status.
 3. `AGENTS.md` — this operating guide.
+4. For **global shortcuts, panel show/hide, or Tauri `State` / `.manage()`**: `docs/shell-and-shortcuts.md`.
 
 If the request is UI-related, treat `UI_SPEC.md` as the source of truth. Do not invent alternate layout systems or component conventions.
 

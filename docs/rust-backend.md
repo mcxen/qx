@@ -1,16 +1,18 @@
 # Rust 后端模块导览
 
-> 状态：Current · 适用版本：v0.4.61 · Owner：Backend · 最后复核：2026-07-10
+> 状态：Current · 适用版本：v0.5.11 · Owner：Backend · 最后复核：2026-07-14
 
 `src-tauri/src/` 下每个模块的职责和依赖点。核心入口是 `lib.rs` 的 `run()`（`main.rs` 只转调）。启动顺序、模块初始化、Tauri 命令注册全部在 `lib.rs` 的 `setup(|app| { ... })` 里。
+
+**浮动窗口 / 全局快捷键 toggle / managed State**：见专文 [shell-and-shortcuts.md](./shell-and-shortcuts.md)（优先读，勿整库反查）。
 
 ## 顶层
 
 | 文件 | 职责 |
 |---|---|
 | `main.rs` | thin wrapper，只调 `qx::run()` |
-| `lib.rs` | 应用装配：托盘、全局快捷键、`generate_handler!`、`ActivationPolicy::Accessory`、启动各模块的 background thread |
-| `floating_panel.rs` | 主窗口面板化（NSWindow + Accessory policy），非激活式显示、`show_on_cursor_monitor` |
+| `lib.rs` | 应用装配：托盘、全局快捷键、`generate_handler!`、`ActivationPolicy::Accessory`、`safe_init` 启动子系统 |
+| `floating_panel.rs` | 主窗口面板化；`PANEL_OPEN` / `ACTIVE_ROUTE`；`toggle` / `toggle_route`；hide 必须经此模块（见 shell-and-shortcuts） |
 
 ## 输入 / 索引
 
@@ -29,8 +31,8 @@
 
 | 文件 | 数据库 | 说明 |
 |---|---|---|
-| `clipboard.rs` | `~/.qx/clipboard.db` | 后台线程 100ms 轮询系统剪贴板；图片存 PNG 落盘、DB 存路径 |
-| `rss/mod.rs` + `fetcher.rs` + `storage.rs` + `types.rs` | `~/.qx/rss.db` | feed-rs 解析，OPML 导入导出，refresh 通过 `http_client` |
+| `clipboard.rs` | `Application Support/qx/clipboard.db` | 始终 `manage(ClipboardDb(Option<Connection>))`；失败可 lazy 重连；后台轮询系统剪贴板 |
+| `rss/mod.rs` + `fetcher.rs` + `storage.rs` + `types.rs` | `Application Support/qx/rss.db` | **始终** `manage(RssDb(Option<Connection>))` + `ensure_open`；feed-rs / OPML / folders |
 | `v2ex.rs` | 无 | 直接抓 v2ex.com HTML/JSON；hot/latest 无需 token，node/reply/notification 需 access token |
 | `weather.rs` | 无 | ipapi.co 定位 → Open-Meteo（默认）或 OpenWeatherMap（需 key） |
 | `github_calendar.rs` | 无 | 抓 GitHub profile 页面提取 `ContributionCalendar` |
@@ -71,29 +73,36 @@
 
 ## 启动顺序（lib.rs `run` → `setup`）
 
-1. `settings::load_settings()` 从 `~/.qx/settings.json` 读初始配置
-2. `ClipboardDb`、`RssDb`、`screencap history db`、`macro db` 分别初始化
-3. `apps::start_index_worker()` 在后台线程扫描 apps
-4. `file_search::init()` 起 Spotlight 观察线程
-5. `clipboard::start_polling_thread()` 剪贴板轮询
-6. `display_monitor::start_display_monitor()` 显示器监听
-7. `TrayIconBuilder` 挂载状态栏图标（`tray-template.png`）
-8. `floating_panel::install(app)` 设置 `ActivationPolicy::Accessory` + 面板化窗口
-9. `settings::register_global_shortcuts()` 注册用户自定义全局热键（默认 `Cmd+Space`）
+顺序随版本微调；核心是：
+
+1. 读 `~/.qx/settings.json`；`floating_panel::install`（Accessory + 面板化）
+2. `settings::register_shortcuts` — 默认 **Alt+Space** 切换启动器（非 Cmd+Space）
+3. `safe_init` 包裹子系统（panic 不拖垮 setup）：
+   - `clipboard::start_listener` — **始终 manage** ClipboardDb
+   - `rss::init` — **始终 manage** RssDb（open 失败存 `None`，命令路径 lazy open）
+   - settings / apps cache / file_search / icon preload 等
+4. 托盘、display monitor 等
+
+`safe_init` 只吞 **panic**；若 init 在 manage 之前就 panic，仍会缺 State——因此 init 应把 fallible IO 收成 `Result`，manage 放末尾且无条件。
 
 ## 添加新模块的推荐流程
 
 1. `src-tauri/src/<module>.rs` 定义 `#[tauri::command]` 函数（`Result<T, String>` 签名）
 2. `mod <module>;` 加到 `lib.rs`
 3. `tauri::generate_handler![...]` 把新命令名追加进去
-4. `App.tsx` 或对应 module 用 `invoke("cmd_name", { args })` 调用
-5. 更新 [`docs/ipc-catalogue.md`](./ipc-catalogue.md) 的领域说明和注册命令基线，并运行 `npm run docs:check`
-6. 如果需要 macOS 权限（TCC），把 id 加到 `permissions.rs::MacPermissionKind` 并在 UI 提示
+4. 若有 `State<T>`：**启动时无条件 `app.manage(T)`**（连接可 `Option` + lazy open）
+5. `App.tsx` 或对应 module 用 `invoke("cmd_name", { args })` 调用
+6. 更新 [`docs/ipc-catalogue.md`](./ipc-catalogue.md)，并运行 `npm run docs:check`
+7. 若挂全局快捷键：在 `register_shortcuts` 用 `toggle_route`，并更新 [shell-and-shortcuts.md](./shell-and-shortcuts.md)
+8. 如果需要 macOS 权限（TCC），把 id 加到 `permissions.rs::MacPermissionKind` 并在 UI 提示
 
 ## 常见坑
 
 - **不要在 command 里做长任务**：会阻塞 IPC 线程。用 `std::thread::spawn` + `Emitter::emit` 回传。
 - **不要在后台线程碰 UI**：Tauri v2 的 UI 只能主线程操作；从后台调 `app.get_webview_window(...).show()` 会 panic。用事件 + 前端消费。
+- **managed State 必须始终 manage**：`if let Ok(conn) = open() { manage }` 会在 open 失败时导致 *state not managed*。对照 RSS/Clipboard，见 shell-and-shortcuts §5。
+- **隐藏窗口不要只调 `Window::hide`**：应走 `floating_panel::hide*`，否则全局快捷键 toggle 与 `PANEL_OPEN` 不同步。见 shell-and-shortcuts §2–§4。
+- **全局快捷键是 toggle**：再按同一模块键应关窗，不是再 show 一次。
 - **NSPanel 相关的 selector**（`setBecomesKeyOnlyIfNeeded:`、`setFloatingPanel:`、`0x80` styleMask）**在纯 NSWindow 上会 abort**。Tauri 创建的是 NSWindow，所以 `floating_panel.rs` 只用 NSWindow-safe 的 API。见 v0.4.41 修复。
 - **objc2 0.6 的 `set_class`** 有 debug_assert 检查新旧类的 instance size 相等，NSPanel 464 vs NSWindow 456，会 panic。想真变 NSPanel 得用 `tauri-nspanel` 或自建窗口。
 - **命令重命名要同步搜前端** `Grep '"<old_name>"' src/`；漏改会导致运行时 `command not found` 报错。

@@ -1,6 +1,6 @@
 # Qx 开发者文档索引
 
-> 状态：Current · 适用版本：v0.5.10 · Owner：Core · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.5.11 · Owner：Core · 最后复核：2026-07-14
 
 面向核心贡献者。所有面向用户的说明在 [README.md](../README.md) 和 [`public/doc/`](../public/doc/) 下。
 
@@ -15,6 +15,7 @@
 |---|---|
 | [technical-architecture.md](./technical-architecture.md) | 顶层架构、状态、tab 路由、module 深潜、性能与安全笔记 |
 | [frontend-architecture.md](./frontend-architecture.md) | 前端子系统、状态管理、搜索管线、灵动岛、i18n、样式约定 |
+| [shell-and-shortcuts.md](./shell-and-shortcuts.md) | **浮动面板 / 全局快捷键 toggle / managed State / 搜索重聚焦**（优先查这份） |
 | [module-surfaces.md](./module-surfaces.md) | 主搜索直达模块子界面（Raycast 对照、RSS feed 深链、OPML/文件夹） |
 | [rust-backend.md](./rust-backend.md) | Rust 模块导览、启动顺序、添加新模块流程、常见坑 |
 | [ipc-catalogue.md](./ipc-catalogue.md) | 全部 127 个 Tauri 命令 + 事件通道；按模块分组 |
@@ -41,6 +42,7 @@
 ## 常用检索路径
 
 - 想改 UI → `UI_SPEC.md` + `frontend-architecture.md` + `settings-panel.md`
+- **想改全局快捷键 / 显示隐藏 / 缺 .manage()** → **`shell-and-shortcuts.md`**
 - 想加 Rust 命令 → `rust-backend.md` + `ipc-catalogue.md`
 - 想改插件 API → `plugin-architecture.md` + `plugin-system.md` + `rpcMethods.ts`
 - 想改 AI → `ai-agent-runtime.md`
