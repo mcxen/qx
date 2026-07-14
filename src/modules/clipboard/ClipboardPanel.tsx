@@ -425,7 +425,7 @@ export default function ClipboardPanel() {
       title="Clipboard History"
       search={searchSlot}
       trailing={trailing}
-      onBack={() => setTab("launcher")}
+      escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setTab("launcher") }}
       onKeyDown={handleKeyDown}
       navigation={{
         index: selected,
