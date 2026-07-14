@@ -3,6 +3,8 @@
 </p>
 
 # Qx — macOS & Windows Productivity Launcher
+<img width="544" height="544" alt="659091D1-A367-4CED-8832-F9BAE3D61B08_1_106_c" src="https://github.com/user-attachments/assets/20348da9-6269-4d01-bd6b-2b975e7a3533" />
+
 
 <p align="center">
   <img src="./assets/readme/hero.svg" width="100%" alt="Qx — keyboard-first desktop launcher for macOS and Windows. Summon with Option+Space.">
