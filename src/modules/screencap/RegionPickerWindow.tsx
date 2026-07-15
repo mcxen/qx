@@ -346,6 +346,9 @@ export default function RegionPickerWindow() {
   const rect = selection ?? draft;
   const display = picker?.monitorName ?? t("screencap.display", "display");
   const recordingActive = recording?.phase === "recording" || recording?.phase === "processing";
+  const visibleRect = recordingActive && rect
+    ? { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }
+    : rect;
 
   return (
     <div
@@ -392,17 +395,17 @@ export default function RegionPickerWindow() {
         </div>
       )}
 
-      {rect && (
+      {visibleRect && (
         <>
           {!recordingActive && <>
-            <div className="qx-region-picker-shade" style={{ left: 0, top: 0, right: 0, height: rect.y }} />
-            <div className="qx-region-picker-shade" style={{ left: 0, top: rect.y + rect.h, right: 0, bottom: 0 }} />
-            <div className="qx-region-picker-shade" style={{ left: 0, top: rect.y, width: rect.x, height: rect.h }} />
-            <div className="qx-region-picker-shade" style={{ left: rect.x + rect.w, top: rect.y, right: 0, height: rect.h }} />
+            <div className="qx-region-picker-shade" style={{ left: 0, top: 0, right: 0, height: visibleRect.y }} />
+            <div className="qx-region-picker-shade" style={{ left: 0, top: visibleRect.y + visibleRect.h, right: 0, bottom: 0 }} />
+            <div className="qx-region-picker-shade" style={{ left: 0, top: visibleRect.y, width: visibleRect.x, height: visibleRect.h }} />
+            <div className="qx-region-picker-shade" style={{ left: visibleRect.x + visibleRect.w, top: visibleRect.y, right: 0, height: visibleRect.h }} />
           </>}
           <div
             className={`qx-region-picker-rect${selection ? " is-selected" : ""}${tool ? ` is-tool-${tool}` : ""}${recordingActive ? " is-recording" : ""}`}
-            style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
+            style={{ left: visibleRect.x, top: visibleRect.y, width: visibleRect.w, height: visibleRect.h }}
             onMouseDown={onSelectionMouseDown}
           >
             {selection && !recordingActive && (
@@ -445,8 +448,8 @@ export default function RegionPickerWindow() {
               </>
             )}
           </div>
-          {!recordingActive && <div className="qx-region-picker-size" style={{ left: rect.x, top: Math.max(8, rect.y - 28) }}>
-            {Math.round(rect.w)} × {Math.round(rect.h)}
+          {!recordingActive && <div className="qx-region-picker-size" style={{ left: visibleRect.x, top: Math.max(8, visibleRect.y - 28) }}>
+            {Math.round(visibleRect.w)} × {Math.round(visibleRect.h)}
           </div>}
         </>
       )}

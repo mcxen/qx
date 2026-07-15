@@ -11,6 +11,7 @@ export default function RecordingControlWindow() {
   const t = useT();
   const [snapshot, setSnapshot] = useState<RecordingSnapshot | null>(null);
   const [stopping, setStopping] = useState(false);
+  const [launching, setLaunching] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -49,7 +50,16 @@ export default function RecordingControlWindow() {
   };
 
   const beginCapture = async (mode: CaptureMode) => {
-    await requestCaptureSelection(mode).catch(() => {});
+    if (launching) return;
+    setLaunching(true);
+    await invoke("screencap_hide_controls").catch(() => {});
+    try {
+      await requestCaptureSelection(mode);
+    } catch {
+      await invoke("screencap_show_controls").catch(() => {});
+    } finally {
+      setLaunching(false);
+    }
   };
 
   const closePinnedControls = async () => {
@@ -74,11 +84,11 @@ export default function RecordingControlWindow() {
           <strong className="qx-recording-transport-state" data-tauri-drag-region>
             {t("screencap.capture", "Capture")}
           </strong>
-          <button className="qx-recording-transport-launch" type="button" onClick={() => void beginCapture("screenshot")}>
+          <button className="qx-recording-transport-launch" type="button" disabled={launching} onClick={() => void beginCapture("screenshot")}>
             <Camera size={13} aria-hidden="true" />
             <span>{t("screencap.screenshot", "Screenshot")}</span>
           </button>
-          <button className="qx-recording-transport-launch is-record" type="button" onClick={() => void beginCapture("recording")}>
+          <button className="qx-recording-transport-launch is-record" type="button" disabled={launching} onClick={() => void beginCapture("recording")}>
             <Circle size={10} fill="currentColor" aria-hidden="true" />
             <span>{t("screencap.record", "Record")}</span>
           </button>

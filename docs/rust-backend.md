@@ -42,7 +42,8 @@
 
 | 文件 | 依赖 crate | 说明 |
 |---|---|---|
-| `screencap/` | `xcap` + OpenH264 + `gifski` | 消费 Qx 系统级显示器服务，按鼠标所在显示器（含外接屏）截图或区域/全屏录制，并支持显式切换捕获显示器；`mod.rs` 编排命令与窗口生命周期，`geometry.rs` 只处理选区约束、坐标缩放和图像裁剪，`types.rs` 复用数据模型，`storage.rs` 管理 PNG/MP4/MOV/GIF 共用历史库；区域边框和控制岛可跨连续录制保留。 |
+| `media/` | OpenH264 + `mp4` + `gifski` | Qx 根级媒体服务；统一负责 H.264 码流/MP4 封装、媒体尺寸约束和 GIF 转换，不依赖截图模块或其历史库，供截图、剪贴板、OCR、文件预览等能力复用。 |
+| `screencap/` | `xcap` | 消费 Qx 系统级显示器和媒体服务；`mod.rs` 只声明模块与稳定导出，`selection.rs` 管圈选工作流，`recording_session.rs` 管录制生命周期，`commands.rs` 适配控制/历史命令，其余状态、窗口、截图、录制引擎、几何和存储继续按职责拆分。 |
 | `ocr.rs` | 内建轻量 OCR (`~/.oar` 存模型) | PP-OCRv6 tiny/small/medium 下载 + 增量校验 |
 | `macro_recorder.rs` | `rdev` + `enigo` | 记录键鼠事件到 `~/.qx/macros.db`；replay 通过 `enigo` 模拟 |
 

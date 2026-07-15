@@ -96,6 +96,21 @@ impl CaptureMode {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::CaptureMode;
+
+    #[test]
+    fn capture_modes_are_explicit() {
+        assert_eq!(
+            CaptureMode::parse("screenshot"),
+            Ok(CaptureMode::Screenshot)
+        );
+        assert_eq!(CaptureMode::parse("recording"), Ok(CaptureMode::Recording));
+        assert!(CaptureMode::parse("video").is_err());
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(super) struct PickerSession {
     pub(super) mode: CaptureMode,

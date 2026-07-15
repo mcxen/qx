@@ -4,9 +4,7 @@
 //! v1: host-only show/hide; float flag defaults off in appearance settings.
 
 use serde::{Deserialize, Serialize};
-use tauri::{
-    AppHandle, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder,
-};
+use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder};
 
 const ISLAND_LABEL: &str = "island";
 const ISLAND_WIDTH: f64 = 400.0;
@@ -90,12 +88,8 @@ pub fn island_window_ensure(app: AppHandle, always_on_top: Option<bool>) -> Resu
 
 #[tauri::command]
 pub fn island_window_show(app: AppHandle, always_on_top: Option<bool>) -> Result<(), String> {
-    let aot = always_on_top.unwrap_or_else(|| {
-        SNAPSHOT
-            .lock()
-            .map(|s| s.always_on_top)
-            .unwrap_or(true)
-    });
+    let aot =
+        always_on_top.unwrap_or_else(|| SNAPSHOT.lock().map(|s| s.always_on_top).unwrap_or(true));
     ensure_island_window(&app, aot)?;
     let win = app
         .get_webview_window(ISLAND_LABEL)

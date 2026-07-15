@@ -53,16 +53,20 @@ one-off native fork. Fix the host or converter contract, then re-convert.
 
 ### Module Decomposition (required)
 
-- Prevent large, multi-purpose files during feature development. Split by stable
-  responsibility as the feature grows; do not wait until a file becomes a God
-  module before refactoring it.
-- A feature that contains more than one substantial concern should use a module
-  directory. Keep its public entry point or command facade small, and separate
-  reusable types, state, storage, platform/window integration, media/network
-  processing, and tests where those concerns exist.
-- Treat roughly 500 lines or three independent reasons to change as a mandatory
-  decomposition review signal. Line count alone is not the design goal, but new
-  behavior must not keep accumulating in an already oversized file.
+- Decompose by domain boundary and reason to change, not by line count alone.
+  Keep closely related implementation together when another file would only add
+  navigation overhead or a one-off wrapper.
+- Cap a source file at 1000 lines. Review its responsibilities before it reaches
+  that limit, but do not manufacture tiny files merely to reduce the count.
+- Promote capabilities used by multiple features, or capabilities that are part
+  of Qx's product foundation (for example display discovery, media processing,
+  storage, shortcuts, shell, and island sessions), into a root-level core/domain
+  service with a narrow stable interface. Feature modules consume that service
+  and retain only their own workflow and presentation semantics.
+- A feature that contains multiple coherent subdomains should use a module
+  directory. Prefer a small number of meaningful files such as domain service,
+  workflow/session, platform adapter, storage, and public command facade; do not
+  split every type, helper, or test into its own file by default.
 - Extract shared behavior into a focused service/helper and reuse it. Do not copy
   implementations between commands, views, platforms, or capture modes merely
   to keep work local.

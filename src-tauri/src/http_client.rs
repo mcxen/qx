@@ -33,9 +33,7 @@ pub fn resolve_proxy_mode(settings: &crate::settings::AdvancedSettings) -> Netwo
     }
 }
 
-fn apply_proxy(
-    mut builder: reqwest::ClientBuilder,
-) -> Result<reqwest::ClientBuilder, String> {
+fn apply_proxy(mut builder: reqwest::ClientBuilder) -> Result<reqwest::ClientBuilder, String> {
     let settings = crate::settings::read_settings();
     match resolve_proxy_mode(&settings.advanced) {
         NetworkProxyMode::Off => {

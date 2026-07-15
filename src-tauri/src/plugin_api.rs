@@ -889,10 +889,7 @@ pub async fn plugin_http_fetch(req: HttpFetchRequest) -> Result<HttpResponse, St
             if text_hint {
                 // Lossy only when the server claimed text; otherwise keep body empty
                 // so callers use body_base64 / arrayBuffer instead of corrupted data.
-                (
-                    String::from_utf8_lossy(err.as_bytes()).into_owned(),
-                    true,
-                )
+                (String::from_utf8_lossy(err.as_bytes()).into_owned(), true)
             } else {
                 (String::new(), true)
             }

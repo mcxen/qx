@@ -56,7 +56,8 @@ Qx/
 │       ├── apps.rs               # macOS 应用搜索
 │       ├── clipboard.rs          # 剪贴板监听 + SQLite 持久化
 │       ├── display.rs            # 系统级显示器识别、枚举与跨后端映射
-│       ├── screencap/            # 截图与屏幕录制（命令编排、几何、共享类型、历史存储）
+│       ├── media/                # Qx 核心媒体层：尺寸、H.264/MP4 与 GIF 转换
+│       ├── screencap/            # 捕获编排、状态、窗口、截图、录制与历史适配
 │       ├── macro_recorder.rs     # 宏捕捉与回放 (rdev + enigo)
 │       ├── diagnostics.rs        # 诊断日志与日志路径
 │       ├── display_monitor.rs    # 复用系统显示器服务的插拔监听
