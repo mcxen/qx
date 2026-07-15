@@ -194,13 +194,6 @@ export default function DevTxtTool() {
   const [renamingName, setRenamingName] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [focusRegion, setFocusRegion] = useState<FocusRegion>("docs-files");
-  /** Clipboard history insert picker (editor actions). */
-  const [clipPickerOpen, setClipPickerOpen] = useState(false);
-  const [clipPickerQuery, setClipPickerQuery] = useState("");
-  const [clipPickerItems, setClipPickerItems] = useState<ClipboardEntry[]>([]);
-  const [clipPickerLoading, setClipPickerLoading] = useState(false);
-  const [clipPickerIndex, setClipPickerIndex] = useState(0);
-  const clipSearchRef = useRef<HTMLInputElement>(null);
   /** File-name → save underline (stays on that row even if selection moves). */
   const [saveBars, setSaveBars] = useState<Record<string, SaveBarEntry>>({});
   /** Debounced inspect from Rust (serde_json for JSON). */
@@ -709,43 +702,6 @@ export default function DevTxtTool() {
     }
   };
 
-  const openClipPicker = useCallback(async () => {
-    if (!selectedNameRef.current) {
-      flash(t("docs.insertClipboard.needFile", "Open or create a file first"));
-      return;
-    }
-    setClipPickerOpen(true);
-    setClipPickerQuery("");
-    setClipPickerIndex(0);
-    setClipPickerLoading(true);
-    try {
-      const history = await invoke<ClipboardEntry[]>("get_clipboard_history", {
-        limit: CLIP_PICKER_LIMIT,
-      });
-      // Text only — images/files without text are not insertable.
-      const texts = history.filter((e) => Boolean(e.text?.trim()));
-      setClipPickerItems(texts);
-    } catch (err) {
-      setClipPickerItems([]);
-      flash(String(err));
-    } finally {
-      setClipPickerLoading(false);
-      window.requestAnimationFrame(() => clipSearchRef.current?.focus());
-    }
-  }, [flash, t]);
-
-  const filteredClipItems = useMemo(() => {
-    const q = clipPickerQuery.trim().toLowerCase();
-    if (!q) return clipPickerItems;
-    return clipPickerItems.filter((item) => item.text.toLowerCase().includes(q));
-  }, [clipPickerItems, clipPickerQuery]);
-
-  useEffect(() => {
-    setClipPickerIndex((i) =>
-      filteredClipItems.length === 0 ? 0 : Math.min(i, filteredClipItems.length - 1),
-    );
-  }, [filteredClipItems.length]);
-
   /** Insert clipboard text at caret (or append if no selection). */
   const insertClipText = useCallback(
     (text: string) => {
@@ -761,12 +717,7 @@ export default function DevTxtTool() {
       const body = contentRef.current;
       let next: string;
       let caret = 0;
-      if (ta && document.activeElement === ta) {
-        const start = ta.selectionStart ?? body.length;
-        const end = ta.selectionEnd ?? start;
-        next = body.slice(0, start) + text + body.slice(end);
-        caret = start + text.length;
-      } else if (ta) {
+      if (ta) {
         const start = ta.selectionStart ?? body.length;
         const end = ta.selectionEnd ?? start;
         next = body.slice(0, start) + text + body.slice(end);
@@ -781,7 +732,6 @@ export default function DevTxtTool() {
       }
       setContent(next);
       setDirty(true);
-      setClipPickerOpen(false);
       flash(t("docs.insertClipboard.inserted", "Inserted clipboard item"));
       window.requestAnimationFrame(() => {
         const el = editorRef.current;
@@ -796,6 +746,36 @@ export default function DevTxtTool() {
     },
     [flash, t],
   );
+
+  /** Raycast-style Actions submenu: last 50 text clipboard items + filter. */
+  const loadClipboardChildren = useCallback(async (): Promise<QxShellAction[]> => {
+    if (!selectedNameRef.current) {
+      flash(t("docs.insertClipboard.needFile", "Open or create a file first"));
+      return [];
+    }
+    try {
+      const history = await invoke<ClipboardEntry[]>("get_clipboard_history", {
+        limit: CLIP_PICKER_LIMIT,
+      });
+      const texts = history.filter((entry) => Boolean(entry.text?.trim()));
+      if (texts.length === 0) {
+        return [
+          {
+            label: t("docs.insertClipboard.empty", "No text clipboard items"),
+            disabled: true,
+          },
+        ];
+      }
+      return texts.map((entry) => ({
+        label: clipPreviewLine(entry.text),
+        detail: `${entry.text.length.toLocaleString()} ${t("docs.stat.chars", "chars")}`,
+        onClick: () => insertClipText(entry.text),
+      }));
+    } catch (err) {
+      flash(String(err));
+      return [];
+    }
+  }, [flash, insertClipText, t]);
 
   const copyAll = async () => {
     if (!content) return;
@@ -856,47 +836,14 @@ export default function DevTxtTool() {
 
   const { onKeyDown: escKeyDown } = useEscBack({
     inner: {
-      active: clipPickerOpen || renamingName !== null,
-      close: () => {
-        if (clipPickerOpen) {
-          setClipPickerOpen(false);
-          return;
-        }
-        setRenamingName(null);
-      },
+      active: renamingName !== null,
+      close: () => setRenamingName(null),
     },
-    query: { active: query.length > 0 && !clipPickerOpen, clear: () => setQuery("") },
+    query: { active: query.length > 0, clear: () => setQuery("") },
     launcher: goBack,
   });
 
   const onKeyDown = (e: React.KeyboardEvent) => {
-    // Clipboard history picker keyboard
-    if (clipPickerOpen) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setClipPickerOpen(false);
-        return;
-      }
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setClipPickerIndex((i) =>
-          filteredClipItems.length === 0 ? 0 : Math.min(i + 1, filteredClipItems.length - 1),
-        );
-        return;
-      }
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setClipPickerIndex((i) => Math.max(0, i - 1));
-        return;
-      }
-      if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) {
-        e.preventDefault();
-        const item = filteredClipItems[clipPickerIndex];
-        if (item?.text) insertClipText(item.text);
-        return;
-      }
-    }
-
     escKeyDown(e);
     if (e.defaultPrevented || e.key === "Escape") return;
     const region =
@@ -913,13 +860,6 @@ export default function DevTxtTool() {
         e.preventDefault();
         void createNewFile();
       }
-    }
-
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.key === "v" || e.key === "V")) {
-      e.preventDefault();
-      e.stopPropagation();
-      void openClipPicker();
-      return;
     }
 
     if ((e.metaKey || e.ctrlKey) && (e.key === "s" || e.key === "S")) {
@@ -980,6 +920,7 @@ export default function DevTxtTool() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [active, t],
   );
+  // Languages open as a nested Action Panel (children), not indented flat rows.
 
   const listActions = useMemo<QxShellAction[]>(
     () => [
@@ -1020,11 +961,14 @@ export default function DevTxtTool() {
         onClick: () => void pasteClipboard(),
       },
       {
+        // Nested Action Panel (Raycast ›): open → filterable last-50 list
         label: t("docs.insertClipboard", "Insert from Clipboard History"),
         kbd: "CmdOrCtrl+Shift+V",
         menuKey: "v",
         disabled: !active,
-        onClick: () => void openClipPicker(),
+        searchable: true,
+        searchPlaceholder: t("docs.insertClipboard.search", "Search clipboard…"),
+        loadChildren: loadClipboardChildren,
       },
       {
         label: t("docs.copyAll", "Copy All"),
@@ -1032,15 +976,13 @@ export default function DevTxtTool() {
         onClick: () => void copyAll(),
       },
       {
+        // Nested language picker (static children)
         label: t("docs.language", "Language"),
+        children: languageActions,
       },
-      ...languageActions.map((a) => ({
-        ...a,
-        label: `  ${a.label}`,
-      })),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [active, content, languageActions, openClipPicker, t],
+    [active, content, languageActions, loadClipboardChildren, t],
   );
 
   const documentActions = listFocused ? listActions : editorActions;
@@ -1283,15 +1225,6 @@ export default function DevTxtTool() {
           <button
             className="qx-action-item"
             type="button"
-            disabled={!active}
-            onClick={() => void openClipPicker()}
-          >
-            <span>{t("docs.insertClipboard", "Insert from Clipboard History")}</span>
-            <kbd>⌘⇧V</kbd>
-          </button>
-          <button
-            className="qx-action-item"
-            type="button"
             disabled={!content}
             onClick={() => void copyAll()}
           >
@@ -1447,15 +1380,6 @@ export default function DevTxtTool() {
               ) : null}
             </span>
             <span className="qx-docs-workspace-meta">
-              <button
-                type="button"
-                className="qx-docs-clip-trigger"
-                disabled={!active || loadingFile}
-                onClick={() => void openClipPicker()}
-                title={t("docs.insertClipboard.hint", "Last 50 · searchable")}
-              >
-                {t("docs.insertClipboard", "Insert from Clipboard History")}
-              </button>
               {loadingFile
                 ? "…"
                 : inspect
@@ -1463,104 +1387,37 @@ export default function DevTxtTool() {
                   : `${content.length} ${t("docs.stat.chars", "chars")}`}
             </span>
           </div>
-          <div className="qx-docs-editor-stack">
-            <textarea
-              ref={editorRef}
-              className="qx-documents-textarea-full"
-              data-language={active?.language ?? "plain"}
-              value={content}
-              autoFocus={false}
-              onFocus={() => {
-                setFocusRegion("docs-editor");
-                requestPanelKeyWindow();
-              }}
-              onChange={(e) => {
-                const next = e.target.value;
-                if (next.length > MAX_FILE_BYTES) {
-                  flash(t("docs.tooLarge", "File too large (max ~1.5 MB)"));
-                  return;
-                }
-                setContent(next);
-                setDirty(true);
-              }}
-              spellCheck={
-                !active
-                || active.language === "plain"
-                || active.language === "markdown"
+          <textarea
+            ref={editorRef}
+            className="qx-documents-textarea-full"
+            data-language={active?.language ?? "plain"}
+            value={content}
+            autoFocus={false}
+            onFocus={() => {
+              setFocusRegion("docs-editor");
+              requestPanelKeyWindow();
+            }}
+            onChange={(e) => {
+              const next = e.target.value;
+              if (next.length > MAX_FILE_BYTES) {
+                flash(t("docs.tooLarge", "File too large (max ~1.5 MB)"));
+                return;
               }
-              placeholder={t(
-                "docs.editor.placeholder",
-                "Disk-backed edit — files live in ~/Documents/Qx Text Toolbox",
-              )}
-              aria-label={t("docs.editor", "Editor")}
-              disabled={!active || loadingFile || (active != null && active.size > MAX_FILE_BYTES)}
-            />
-            {clipPickerOpen ? (
-              <div
-                className="qx-docs-clip-picker"
-                role="dialog"
-                aria-label={t("docs.insertClipboard", "Insert from Clipboard History")}
-              >
-                <div className="qx-docs-clip-picker-head">
-                  <strong>{t("docs.insertClipboard", "Insert from Clipboard History")}</strong>
-                  <span className="qx-docs-clip-picker-hint">
-                    {t("docs.insertClipboard.hint", "Last 50 · searchable")}
-                  </span>
-                  <button
-                    type="button"
-                    className="qx-docs-clip-picker-close"
-                    onClick={() => setClipPickerOpen(false)}
-                  >
-                    Esc
-                  </button>
-                </div>
-                <input
-                  ref={clipSearchRef}
-                  className="qx-docs-clip-picker-search"
-                  type="search"
-                  value={clipPickerQuery}
-                  onChange={(e) => {
-                    setClipPickerQuery(e.target.value);
-                    setClipPickerIndex(0);
-                  }}
-                  placeholder={t("docs.insertClipboard.search", "Search clipboard…")}
-                  autoFocus
-                />
-                <div className="qx-docs-clip-picker-list" role="listbox">
-                  {clipPickerLoading ? (
-                    <div className="qx-docs-clip-picker-empty">…</div>
-                  ) : filteredClipItems.length === 0 ? (
-                    <div className="qx-docs-clip-picker-empty">
-                      {clipPickerItems.length === 0
-                        ? t("docs.insertClipboard.empty", "No text clipboard items")
-                        : t("docs.insertClipboard.noMatch", "No matching items")}
-                    </div>
-                  ) : (
-                    filteredClipItems.map((item, index) => (
-                      <button
-                        key={item.id}
-                        type="button"
-                        role="option"
-                        aria-selected={index === clipPickerIndex}
-                        className={`qx-docs-clip-picker-item${
-                          index === clipPickerIndex ? " is-active" : ""
-                        }`}
-                        onMouseEnter={() => setClipPickerIndex(index)}
-                        onClick={() => insertClipText(item.text)}
-                      >
-                        <span className="qx-docs-clip-picker-preview">
-                          {clipPreviewLine(item.text)}
-                        </span>
-                        <span className="qx-docs-clip-picker-meta">
-                          {item.text.length.toLocaleString()} {t("docs.stat.chars", "chars")}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
+              setContent(next);
+              setDirty(true);
+            }}
+            spellCheck={
+              !active
+              || active.language === "plain"
+              || active.language === "markdown"
+            }
+            placeholder={t(
+              "docs.editor.placeholder",
+              "Disk-backed edit — files live in ~/Documents/Qx Text Toolbox",
+            )}
+            aria-label={t("docs.editor", "Editor")}
+            disabled={!active || loadingFile || (active != null && active.size > MAX_FILE_BYTES)}
+          />
         </div>
       </div>
     </QxShell>

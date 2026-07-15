@@ -2,7 +2,10 @@ import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "r
 import type { CSSProperties, ReactNode } from "react";
 import { type BottomIslandContent } from "./QxBottomIsland";
 import ShellActionButton, { type QxShellAction } from "./ShellActionButton";
-import ShellActionMenu, { QX_ACTION_MENU_TRIGGER_ATTR } from "./ShellActionMenu";
+import ShellActionMenu, {
+  QX_ACTION_MENU_TRIGGER_ATTR,
+  actionHasSubmenu,
+} from "./ShellActionMenu";
 import {
   useQxShellNavigation,
   type QxShellNavigation,
@@ -119,12 +122,37 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const hasRightActions = Boolean(visiblePrimaryAction || visibleSecondaryAction);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [actionIndex, setActionIndex] = useState(0);
+  /** Raycast nested Action Panel stack (root → submenu → …). */
+  const [menuStack, setMenuStack] = useState<
+    Array<{
+      title: string;
+      actions: QxShellAction[];
+      searchable?: boolean;
+      searchPlaceholder?: string;
+    }>
+  >([]);
+  const [menuQuery, setMenuQuery] = useState("");
+  const [submenuLoading, setSubmenuLoading] = useState(false);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const searchGlowTimers = useRef<WeakMap<HTMLElement, ReturnType<typeof setTimeout>>>(new WeakMap());
   /** Focus target to restore when the Action menu closes (Raycast: Esc back to list). */
   const actionMenuFocusRestoreRef = useRef<HTMLElement | null>(null);
   const menuActions = useMemo(() => actions ?? [], [actions]);
   const menuTitle = actionTitle ?? `${title} Actions`;
+
+  const currentMenuLevel = menuStack[menuStack.length - 1];
+  const rawLevelActions = currentMenuLevel?.actions ?? menuActions;
+  const activeMenuActions = useMemo(() => {
+    if (!currentMenuLevel?.searchable) return rawLevelActions;
+    const q = menuQuery.trim().toLowerCase();
+    if (!q) return rawLevelActions;
+    return rawLevelActions.filter(
+      (action) =>
+        action.label.toLowerCase().includes(q)
+        || (action.detail?.toLowerCase().includes(q) ?? false),
+    );
+  }, [currentMenuLevel?.searchable, menuQuery, rawLevelActions]);
+  const activeMenuTitle = currentMenuLevel?.title ?? menuTitle;
 
   const assignShellRef = useCallback((element: HTMLDivElement | null) => {
     shellRef.current = element;
@@ -143,10 +171,20 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     if (menuActions.length === 0) {
       setActionMenuOpen(false);
       setActionIndex(0);
+      setMenuStack([]);
+      setMenuQuery("");
       return;
     }
-    setActionIndex((index) => Math.max(0, Math.min(index, menuActions.length - 1)));
-  }, [menuActions.length]);
+    // Keep root in sync while open (parent re-render); don't clobber nested drill-in.
+    setMenuStack((stack) => {
+      if (!actionMenuOpen) return stack;
+      if (stack.length <= 1) {
+        return [{ title: menuTitle, actions: menuActions }];
+      }
+      return stack;
+    });
+    setActionIndex((index) => Math.max(0, Math.min(index, Math.max(0, activeMenuActions.length - 1))));
+  }, [menuActions, menuTitle, actionMenuOpen, activeMenuActions.length]);
 
   const captureActionMenuFocusRestore = useCallback(() => {
     const root = shellRef.current;
@@ -190,9 +228,53 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     });
   }, []);
 
+  const openSubmenu = useCallback(async (action: QxShellAction) => {
+    if (action.disabled || !actionHasSubmenu(action)) return;
+    setSubmenuLoading(true);
+    try {
+      let children = action.children ?? [];
+      if (action.loadChildren) {
+        children = await action.loadChildren();
+      }
+      setMenuStack((stack) => [
+        ...stack,
+        {
+          title: action.label,
+          actions: children,
+          searchable: action.searchable,
+          searchPlaceholder: action.searchPlaceholder,
+        },
+      ]);
+      setMenuQuery("");
+      const firstEnabled = children.findIndex((item) => !item.disabled);
+      setActionIndex(firstEnabled >= 0 ? firstEnabled : 0);
+    } catch {
+      // Keep parent level if load fails.
+    } finally {
+      setSubmenuLoading(false);
+    }
+  }, []);
+
+  const popMenuLevel = useCallback(() => {
+    setMenuStack((stack) => {
+      if (stack.length <= 1) return stack;
+      return stack.slice(0, -1);
+    });
+    setMenuQuery("");
+    setActionIndex(0);
+    setSubmenuLoading(false);
+  }, []);
+
   const runMenuAction = (action: QxShellAction) => {
     if (action.disabled) return;
+    // Nested panel: drill in instead of running (Raycast ›).
+    if (actionHasSubmenu(action)) {
+      void openSubmenu(action);
+      return;
+    }
     setActionMenuOpen(false);
+    setMenuStack([]);
+    setMenuQuery("");
     // Keep list selection; only restore focus if the action does not navigate away.
     const focusTarget = actionMenuFocusRestoreRef.current;
     action.onClick?.();
@@ -202,23 +284,25 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   };
 
   const findNextActionIndex = (startIndex: number, direction: 1 | -1): number => {
-    if (menuActions.length === 0) return 0;
-    for (let step = 1; step <= menuActions.length; step += 1) {
-      const index = (startIndex + step * direction + menuActions.length) % menuActions.length;
-      if (!menuActions[index]?.disabled) return index;
+    const list = activeMenuActions;
+    if (list.length === 0) return 0;
+    for (let step = 1; step <= list.length; step += 1) {
+      const index = (startIndex + step * direction + list.length) % list.length;
+      if (!list[index]?.disabled) return index;
     }
-    return Math.max(0, Math.min(startIndex, menuActions.length - 1));
+    return Math.max(0, Math.min(startIndex, list.length - 1));
   };
 
   const findEdgeActionIndex = (direction: 1 | -1): number => {
-    if (menuActions.length === 0) return 0;
+    const list = activeMenuActions;
+    if (list.length === 0) return 0;
     if (direction === 1) {
-      for (let index = menuActions.length - 1; index >= 0; index -= 1) {
-        if (!menuActions[index]?.disabled) return index;
+      for (let index = list.length - 1; index >= 0; index -= 1) {
+        if (!list[index]?.disabled) return index;
       }
     } else {
-      for (let index = 0; index < menuActions.length; index += 1) {
-        if (!menuActions[index]?.disabled) return index;
+      for (let index = 0; index < list.length; index += 1) {
+        if (!list[index]?.disabled) return index;
       }
     }
     return 0;
@@ -227,6 +311,9 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const closeActionMenu = (options?: { restoreFocus?: boolean }) => {
     const restoreFocus = options?.restoreFocus ?? true;
     setActionMenuOpen(false);
+    setMenuStack([]);
+    setMenuQuery("");
+    setSubmenuLoading(false);
     if (restoreFocus) restoreActionMenuFocus();
     else actionMenuFocusRestoreRef.current = null;
   };
@@ -240,6 +327,8 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     captureActionMenuFocusRestore();
     const firstEnabled = menuActions.findIndex((action) => !action.disabled);
     setActionIndex(firstEnabled >= 0 ? firstEnabled : 0);
+    setMenuStack([{ title: menuTitle, actions: menuActions }]);
+    setMenuQuery("");
     setActionMenuOpen(true);
   };
 
@@ -250,6 +339,8 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       captureActionMenuFocusRestore();
       const firstEnabled = menuActions.findIndex((action) => !action.disabled);
       setActionIndex(firstEnabled >= 0 ? firstEnabled : 0);
+      setMenuStack([{ title: menuTitle, actions: menuActions }]);
+      setMenuQuery("");
       setActionMenuOpen(true);
       return;
     }
@@ -275,10 +366,16 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
 
     const allowEnter = options?.allowEnter ?? true;
     const menuOpen = options?.menuOpen ?? false;
-    const candidates = [...menuActions, visiblePrimaryAction, visibleSecondaryAction];
+    // While nested, menuKey/chords apply to the *current* level only; root
+    // chords still match primary/secondary chrome when not in a submenu field.
+    const levelActions = menuOpen ? activeMenuActions : menuActions;
+    const candidates = [...levelActions, visiblePrimaryAction, visibleSecondaryAction];
 
     return candidates.find((action) => {
-      if (!action || action.disabled || !action.onClick) return false;
+      if (!action || action.disabled) return false;
+      // Submenu items may only have onClick; parents may only have children.
+      const runnable = Boolean(action.onClick) || actionHasSubmenu(action);
+      if (!runnable) return false;
 
       // Raycast: single-letter menuKey only while the Actions panel is open.
       if (
@@ -313,6 +410,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   /**
    * Raycast-style Action Panel: while open, capture navigation, Enter, bare
    * letters, and full action chords (⌘C / ⌘⌫ / …) before list/search handlers.
+   * Nested menus: → / Enter drill in, ← / Esc pop level.
    * Never steals Alt+Space / Cmd+Space (launcher / Spotlight).
    */
   const handleActionMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>): boolean => {
@@ -339,9 +437,28 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
 
     if (event.key === "Escape") {
       consume();
-      // Raycast: Esc dismisses Action Panel and returns to the prior list context.
+      // Raycast: Esc pops nested Action Panel first, then dismisses.
+      if (menuStack.length > 1) {
+        popMenuLevel();
+        return true;
+      }
       closeActionMenu({ restoreFocus: true });
       return true;
+    }
+
+    if (event.key === "ArrowLeft" && menuStack.length > 1) {
+      consume();
+      popMenuLevel();
+      return true;
+    }
+
+    if (event.key === "ArrowRight") {
+      const action = activeMenuActions[actionIndex];
+      if (action && actionHasSubmenu(action) && !action.disabled) {
+        consume();
+        void openSubmenu(action);
+        return true;
+      }
     }
 
     if (event.key === "ArrowDown") {
@@ -370,25 +487,36 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
 
     if (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
       consume();
-      const action = menuActions[actionIndex];
+      const action = activeMenuActions[actionIndex];
       if (action) runMenuAction(action);
       return true;
     }
 
     // Chords (⌘C, ⌘⌫) + menuKey single letters while the panel is open.
     // Bare Enter stays reserved for the highlighted row above.
-    const chordAction = findMatchingAction(event.nativeEvent, {
-      allowEnter: false,
-      menuOpen: true,
-    });
-    if (chordAction) {
-      consume();
-      runMenuAction(chordAction);
-      return true;
+    // When filtering a searchable submenu, ignore bare letters (typing).
+    const typingInFilter =
+      currentMenuLevel?.searchable
+      && event.target instanceof HTMLElement
+      && event.target.classList.contains("qx-actions-popover-search");
+    if (!typingInFilter) {
+      const chordAction = findMatchingAction(event.nativeEvent, {
+        allowEnter: false,
+        menuOpen: true,
+      });
+      if (chordAction) {
+        consume();
+        runMenuAction(chordAction);
+        return true;
+      }
     }
 
     // Keep the menu as a modal keyboard responder (Raycast Action Panel),
     // but never swallow Space with Alt/Cmd (already returned false above).
+    // Allow typing in the nested filter field.
+    if (typingInFilter) {
+      return false;
+    }
     if (event.key === " " || event.code === "Space") {
       return false;
     }
@@ -577,11 +705,23 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
         <ShellActionMenu
           open={actionMenuOpen}
           onOpenChange={handleActionMenuOpenChange}
-          title={menuTitle}
-          actions={menuActions}
+          title={activeMenuTitle}
+          actions={activeMenuActions}
           activeIndex={actionIndex}
           onHover={setActionIndex}
           onRun={runMenuAction}
+          canGoBack={menuStack.length > 1}
+          onBack={popMenuLevel}
+          searchable={Boolean(currentMenuLevel?.searchable)}
+          searchQuery={menuQuery}
+          onSearchQueryChange={(value) => {
+            setMenuQuery(value);
+            setActionIndex(0);
+          }}
+          searchPlaceholder={
+            currentMenuLevel?.searchPlaceholder ?? "Filter…"
+          }
+          loading={submenuLoading}
         />
       )}
     </div>
