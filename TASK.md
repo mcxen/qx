@@ -1,5 +1,65 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## UI polish — Extensions 管理区紧凑化
+
+**状态**：已实现并完成 macOS 视觉验证。
+
+### 调整内容
+
+- 移除 Installed 页首屏的大型 Display / 导入说明卡片，收敛为 Tabs、Raycast Actions、导入与重新扫描组成的单层工具栏。
+- 导入本地压缩包、GitHub archive 和 Raycast extension URL 改由独立 Dialog 承载，打开后自动聚焦第一个输入框。
+- 搜索、筛选与模块网格直接前置；工具栏在窄宽度下可换行，避免按钮和标签挤压。
+- 补齐 Extensions 管理器的中英文标签、空状态、筛选项与无障碍开关名称。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run tauri build`，安装并启动 `/Applications/Qx.app`。
+- [x] macOS 默认窗口宽度视觉检查：工具栏、搜索筛选、模块网格无重叠或截断。
+- [x] 导入 Dialog 视觉与键盘焦点检查；无输入时三个安装动作保持禁用。
+- [ ] Windows 手动验证：默认宽度、窗口缩窄换行与导入 Dialog。
+
+## Feature — Launcher 搜索与当前窗口显隐独立快捷键
+
+**状态**：已实现，待双平台手动验证。
+
+### 调整内容
+
+- 原 `toggle_launcher` 保留设置键以兼容旧配置，语义收敛为「召唤 Launcher 搜索」：显示 Qx、切到 Launcher 并聚焦搜索，已显示时不再切换为隐藏。
+- 新增 `toggle_window`：只切换主窗口显隐，隐藏后再显示保留当前模块、route 和子界面。
+- Launcher 搜索默认 `Alt+Space` 并启用；当前窗口切换预设 `Alt+Shift+Space` 但默认关闭，两者均可在 Settings → Shortcuts 单独录制和启停。
+- 快捷键设置补齐中英文标签、语义说明与按钮文案，并允许 Qx 自身注册默认 `Alt+Space`，仍拦截系统 `Cmd/Ctrl+Space`。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo check`（`src-tauri/`，通过；存在当前工作区既有 warning）
+- [x] `cargo test --lib settings::tests::default_global_shortcuts_only_enable_launcher_recall -- --nocapture`
+- [x] `npm run tauri build`，ad-hoc 重签后安装到 `/Applications/Qx.app` 并启动成功。
+- [ ] Windows Compatibility Action：`cargo check --target x86_64-pc-windows-msvc` 与 NSIS bundle build。
+- [ ] 手动验证：RSS / Clipboard / Settings 内纯显隐保留界面；Launcher 快捷键始终进入搜索并聚焦；快捷键冲突、重置、启停立即重注册。
+
+## UI polish — macOS / Windows 主窗口原生阴影
+
+**状态**：已实现，待双平台手动验证。
+
+### 调整内容
+
+- Tauri 主窗口启用 `shadow`，Windows 无边框窗口由 DWM/Tao 绘制阴影与 Windows 11 系统圆角。
+- macOS 浮动窗口恢复 AppKit 原生阴影，并在应用 borderless style mask 后重新计算阴影。
+- WebView 画布移除会被窗口边界裁剪的外阴影，只保留语义 token 控制的内高光，避免与系统阴影叠加成黑边。
+
+### 验证
+
+- [x] `npm run build`
+- [x] `cargo fmt --check`（`src-tauri/`）
+- [x] `cargo check`（`src-tauri/`，通过；存在当前工作区既有 warning）
+- [x] `npm run tauri -- build --debug --no-bundle`，本地 `target/debug/qx` 启动烟雾中进程保持运行。
+- [ ] Windows Compatibility Action：`cargo check --target x86_64-pc-windows-msvc` 与 NSIS bundle build。
+- [ ] macOS / Windows 手动验证：浅色/深色桌面上阴影层次、Windows 10/11 边框与圆角、点击阴影外部失焦隐藏、缩放与跨 DPI 显示器。
+
 ## Refactor — 直接视频录屏与受保护悬浮控制台
 
 **状态**：已实现，macOS 构建、核心编码测试与启动烟雾通过；等待 Windows CI 和双平台手动录屏验证。

@@ -1049,12 +1049,10 @@ function App() {
         if (next !== "settings" && !isBuiltinModuleEnabled(next)) return;
         setTab(next);
       } else if (next === "launcher") {
-        const alreadyLauncher = useStore.getState().tab === "launcher";
         setTab("launcher");
-        // Only re-focus when arriving from another module; toggle-open already focuses.
-        if (!alreadyLauncher) {
-          window.requestAnimationFrame(() => requestLauncherSearchFocus());
-        }
+        // Launcher recall is distinct from visibility-only toggling. Always
+        // return focus to search, including when Launcher is already visible.
+        window.requestAnimationFrame(() => requestLauncherSearchFocus());
       } else if (next === "documents") {
         if (!isBuiltinModuleEnabled(next)) return;
         setTab("documents");

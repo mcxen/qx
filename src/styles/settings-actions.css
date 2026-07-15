@@ -371,44 +371,6 @@
   color: var(--qx-danger);
 }
 
-.qx-plugin-import-header {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: none;
-  border-radius: var(--qx-control-radius);
-  background: transparent;
-  cursor: pointer;
-  color: var(--qx-text-tertiary);
-}
-
-.qx-plugin-display-card,
-.qx-plugin-import-card {
-  flex: 0 0 auto;
-  margin: 10px var(--qx-settings-gutter-x) 0;
-}
-
-.qx-plugin-import-card {
-  margin-top: 8px;
-}
-
-.qx-plugin-import-header:hover {
-  background: var(--qx-bg-component-2);
-  color: var(--qx-text-primary);
-}
-
-.qx-plugin-import-chevron {
-  flex-shrink: 0;
-  transition: transform 0.15s ease;
-}
-
-.qx-plugin-import-chevron.is-open {
-  transform: rotate(90deg);
-}
-
 .qx-plugin-import-stack {
   display: flex;
   flex-direction: column;
@@ -434,6 +396,10 @@
   color: var(--qx-text-tertiary);
 }
 
+.qx-plugin-import-dialog {
+  width: min(620px, calc(100vw - 40px));
+}
+
 .qx-plugin-manager {
   display: flex;
   flex: 1;
@@ -446,7 +412,7 @@
 
 .qx-plugin-manager-top {
   flex: 0 0 auto;
-  padding: 10px var(--qx-settings-gutter-x);
+  padding: 8px var(--qx-settings-gutter-x);
   border-bottom: 1px solid var(--qx-border-1);
 }
 
@@ -461,6 +427,27 @@
   justify-content: space-between;
 }
 
+.qx-plugin-manager-tools,
+.qx-plugin-display-toggle {
+  display: inline-flex;
+  align-items: center;
+}
+
+.qx-plugin-manager-tools {
+  gap: 6px;
+  min-width: 0;
+}
+
+.qx-plugin-display-toggle {
+  gap: 7px;
+  min-height: 30px;
+  padding: 0 4px 0 8px;
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
 .qx-marketplace {
   display: flex;
   flex: 1;
@@ -472,7 +459,7 @@
 
 .qx-plugin-list-toolbar {
   flex-shrink: 0;
-  padding: 10px var(--qx-settings-gutter-x);
+  padding: 8px var(--qx-settings-gutter-x);
   border-bottom: 1px solid var(--qx-border-1);
   background: var(--qx-overlay-1);
 }
@@ -985,6 +972,15 @@ span.qx-plugin-screenshot {
 }
 
 @media (max-width: 760px) {
+  .qx-plugin-manager-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .qx-plugin-manager-tools {
+    justify-content: flex-end;
+  }
+
   .qx-plugin-list-toolbar {
     align-items: stretch;
     flex-direction: column;

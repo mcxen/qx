@@ -260,6 +260,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   shortcuts: {
     toggle_launcher: { key: "Alt+Space", enabled: true },
+    toggle_window: { key: "Alt+Shift+Space", enabled: false },
     clipboard: { key: "Alt+V", enabled: false },
     record_gif: { key: "Alt+G", enabled: false },
     rss: { key: "Alt+R", enabled: false },
@@ -565,14 +566,15 @@ async function flushSettingsSave(get: () => SettingsStore) {
 }
 
 export const SHORTCUT_GROUPS: { group: string; ids: string[] }[] = [
-  { group: "Global", ids: ["toggle_launcher"] },
-  { group: "Clipboard", ids: ["clipboard"] },
-  { group: "RSS", ids: ["rss"] },
-  { group: "Recording", ids: ["record_gif"] },
+  { group: "global", ids: ["toggle_launcher", "toggle_window"] },
+  { group: "clipboard", ids: ["clipboard"] },
+  { group: "rss", ids: ["rss"] },
+  { group: "recording", ids: ["record_gif"] },
 ];
 
 export const SHORTCUT_LABELS: Record<string, string> = {
-  toggle_launcher: "Toggle Launcher",
+  toggle_launcher: "Show Launcher Search",
+  toggle_window: "Toggle Current Window",
   clipboard: "Open Clipboard",
   record_gif: "Start Screen Recording",
   rss: "Open RSS Reader",

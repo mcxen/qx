@@ -94,6 +94,21 @@ const RESERVED_GLOBAL_SHORTCUTS = new Set([
   "mod+space",
 ]);
 
+/** OS search chords that cannot be registered reliably as Qx globals. */
+const OS_RESERVED_GLOBAL_SHORTCUTS = new Set([
+  "cmd+space",
+  "command+space",
+  "meta+space",
+  "cmdorctrl+space",
+  "cmdorcontrol+space",
+  "commandorctrl+space",
+  "commandorcontrol+space",
+  "ctrl+space",
+  "control+space",
+  "primary+space",
+  "mod+space",
+]);
+
 function shortcutTokens(shortcut: string): string[] {
   return shortcut
     .replace(/⌘\s*/g, "Cmd+")
@@ -192,6 +207,11 @@ export function isReservedGlobalShortcut(shortcut: string | undefined): boolean 
     || part === "meta"
     || part === "cmd"
   );
+}
+
+function isOsReservedGlobalShortcut(shortcut: string | undefined): boolean {
+  const canonical = canonicalizeShortcut(shortcut);
+  return canonical ? OS_RESERVED_GLOBAL_SHORTCUTS.has(canonical) : false;
 }
 
 /**
@@ -351,25 +371,27 @@ export function globalShortcutHasConflict(
   counts: Map<string, number>,
 ): boolean {
   if (!binding?.enabled || !binding.key?.trim()) return false;
-  if (isReservedGlobalShortcut(binding.key)) return true;
+  if (isOsReservedGlobalShortcut(binding.key)) return true;
   const canonical = canonicalizeShortcut(binding.key);
   if (!canonical) return false;
   return (counts.get(canonical) ?? 0) > 1;
 }
 
-/** Human-readable reason when a global binding is invalid / conflicting. */
+export type GlobalShortcutIssue = "reserved" | "invalid" | "conflict";
+
+/** Stable issue code when a global binding is invalid / conflicting. */
 export function globalShortcutIssue(
   binding: ShortcutBindingLike | undefined,
   counts: Map<string, number>,
-): string | null {
+): GlobalShortcutIssue | null {
   if (!binding?.enabled || !binding.key?.trim()) return null;
-  if (isReservedGlobalShortcut(binding.key)) {
-    return "Reserved: used by the OS or Qx launcher (e.g. Alt+Space / Cmd+Space).";
+  if (isOsReservedGlobalShortcut(binding.key)) {
+    return "reserved";
   }
   const canonical = canonicalizeShortcut(binding.key);
-  if (!canonical) return "Invalid shortcut.";
+  if (!canonical) return "invalid";
   if ((counts.get(canonical) ?? 0) > 1) {
-    return "Conflict: this shortcut is already used by another global action.";
+    return "conflict";
   }
   return null;
 }

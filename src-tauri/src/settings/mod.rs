@@ -4,7 +4,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
-use tauri::{command, AppHandle, Emitter, Manager};
+use tauri::{command, AppHandle};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 static SETTINGS_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
@@ -601,6 +601,13 @@ impl Default for Settings {
             },
         );
         shortcuts.insert(
+            "toggle_window".to_string(),
+            ShortcutBinding {
+                key: "Alt+Shift+Space".to_string(),
+                enabled: false,
+            },
+        );
+        shortcuts.insert(
             "clipboard".to_string(),
             ShortcutBinding {
                 key: "Alt+V".to_string(),
@@ -805,10 +812,6 @@ fn portable_shortcut_key(key: &str) -> String {
         .join("+")
 }
 
-fn show_and_navigate(app: &AppHandle, route: &str) {
-    crate::floating_panel::show_and_navigate(app, route);
-}
-
 fn toggle_route(app: &AppHandle, route: &str) {
     crate::floating_panel::toggle_route(app, route);
 }
@@ -818,14 +821,25 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
     let _ = gs.unregister_all();
     let mut registered = BTreeSet::new();
 
-    // Same global chord opens and closes the panel (toggle).
+    // Launcher recall always shows Qx on the search route. It never hides an
+    // already-visible window; visibility-only toggling has a separate binding.
     if let Some(key) = shortcut_for(settings, "toggle_launcher") {
+        gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                crate::floating_panel::show_launcher(app);
+            }
+        })
+        .map_err(|e| format!("register toggle_launcher shortcut: {e}"))?;
+        registered.insert(key);
+    }
+
+    if let Some(key) = shortcut_for(settings, "toggle_window") {
         gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
                 crate::floating_panel::toggle(app);
             }
         })
-        .map_err(|e| format!("register toggle_launcher shortcut: {e}"))?;
+        .map_err(|e| format!("register toggle_window shortcut: {e}"))?;
         registered.insert(key);
     }
 
@@ -916,6 +930,13 @@ mod tests {
             .filter_map(|(id, binding)| binding.enabled.then_some(id.as_str()))
             .collect::<Vec<_>>();
         assert_eq!(enabled, vec!["toggle_launcher"]);
+        assert_eq!(
+            settings.shortcuts.get("toggle_window"),
+            Some(&super::ShortcutBinding {
+                key: "Alt+Shift+Space".to_string(),
+                enabled: false,
+            })
+        );
     }
 
     #[test]

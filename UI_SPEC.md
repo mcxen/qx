@@ -546,8 +546,10 @@ Settings：
 **Tabs：**
 
 - Installed / Browse 用 `Tabs`（不是顶栏 `SegmentedControl` 代替主切换）
-- 工具条：搜索已安装 + 过滤（All / Built-in / External / Enabled / Disabled）+ Rescan
-- 导入区、Display 开关用可折叠 `SettingsCard`，与模块网格分离
+- 首行保持单层紧凑工具条：Tabs 在左；Raycast Actions 开关、Import、Rescan 在右；窄宽度可换行但不得扩成说明卡片
+- Import 打开独立 `Dialog`，集中承载本地压缩包、GitHub archive 与 Raycast extension URL 三种入口
+- 搜索已安装 + 过滤（All / Built-in / External / Enabled / Disabled）紧随首行，模块网格无需经过大段说明内容即可到达
+- Raycast Actions 的完整说明使用 tooltip / accessible description，页面上只保留短标签和开关
 
 **成熟度原则（写给后续设计）：**
 
@@ -650,6 +652,7 @@ useEscBack({
 
 - 快捷键标签必须反映当前平台（macOS 用 ⌘，Windows 用 Ctrl）；不要把 macOS 符号写死为唯一说明。
 - Shell 快捷键是窗口内响应链事件，不是进程级全局快捷键；唯一默认全局键是召唤 Launcher。
+- 全局召唤分为两个可独立配置的动作：**Launcher Search** 显示 Qx、进入 Launcher 并聚焦搜索，不会因为窗口已显示而隐藏；**Toggle Current Window** 只切换窗口显隐，再次显示时必须保留原模块、route 和子界面。后者默认关闭，避免额外占用系统按键。
 - **禁止**把 `Alt+Space` / `Option+Space`（Launcher 召唤）或 `Cmd+Space` / `Ctrl+Space`（系统 Spotlight 等）绑成模块 Action；Shell 匹配层必须放行这些宿主级组合键，不得 `preventDefault`。
 - 剪贴板等模块的删除应使用 `Cmd/Ctrl+Backspace`（或 `Delete` 等价），不得使用 Space 系全局键。
 
@@ -745,6 +748,7 @@ new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date)
 
 - QxAI 内置供应商按 OpenRouter、DeepSeek 排序，OpenRouter 是默认供应商；内置供应商固定 API endpoint 和推荐模型，设置界面只要求用户填写对应 API Key。DuckDuckGo 不属于内置供应商目录。
 
+- 透明无边框主窗口在 macOS 和 Windows 上均使用系统原生窗口阴影；CSS 只保留画布内高光和边框，不在 WebView 边界内模拟窗口外阴影。Windows 由 Tauri/Tao 的 undecorated shadow 交给 DWM，macOS 由 AppKit `NSWindow` 绘制。
 - Tauri v2 通信使用 `@tauri-apps/api/core` 的 `invoke`。
 - 文件路径展示必须通过 `convertFileSrc()`，禁止直接拼 `file://`。
 - 系统监控使用 Mach 内核 API，不使用 `sysinfo` crate。

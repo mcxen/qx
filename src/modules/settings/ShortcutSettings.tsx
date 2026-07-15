@@ -5,6 +5,7 @@ import {
 } from "./store";
 import { LinkButton } from "../../components/ui";
 import ShortcutRecorder from "../../components/ShortcutRecorder";
+import { useT } from "../../i18n";
 import {
   countEnabledGlobalShortcuts,
   globalShortcutIssue,
@@ -12,12 +13,14 @@ import {
 
 const DEFAULT_GLOBAL_KEYS: Record<string, string> = {
   toggle_launcher: "Alt+Space",
+  toggle_window: "Alt+Shift+Space",
   clipboard: "Alt+V",
   record_gif: "Alt+G",
   rss: "Alt+R",
 };
 
 export default function ShortcutSettings() {
+  const t = useT();
   const { settings, patchShortcut } = useSettingsStore();
   const shortcuts = settings.shortcuts;
   const counts = countEnabledGlobalShortcuts(shortcuts, settings.app_shortcuts);
@@ -25,9 +28,10 @@ export default function ShortcutSettings() {
   return (
     <div className="qx-settings-page">
       <div className="qx-settings-hint" style={{ marginBottom: 12, fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.45 }}>
-        Global shortcuts are registered with the OS and work even when Qx is in the background.
-        Only <strong>Toggle Launcher</strong> is on by default. Module shortcuts (clipboard, RSS, GIF)
-        stay off until you enable them — they must not steal system keys like ⌘Space / Alt+Space.
+        {t(
+          "shortcuts.hint",
+          "Global shortcuts work while Qx is in the background. Launcher Search is enabled by default; Current Window and module shortcuts remain off until you enable them.",
+        )}
       </div>
       {SHORTCUT_GROUPS.map((group) => (
         <div key={group.group} style={{ marginBottom: 16 }}>
@@ -41,12 +45,22 @@ export default function ShortcutSettings() {
               padding: "8px 0 4px",
             }}
           >
-            {group.group}
+            {t(`shortcuts.group.${group.group}`, group.group)}
           </div>
           {group.ids.map((id) => {
             const binding = shortcuts[id];
-            const label = SHORTCUT_LABELS[id] ?? id;
-            const issue = globalShortcutIssue(binding, counts);
+            const label = t(`shortcuts.label.${id}`, SHORTCUT_LABELS[id] ?? id);
+            const issueCode = globalShortcutIssue(binding, counts);
+            const issue = issueCode
+              ? t(
+                `shortcuts.issue.${issueCode}`,
+                issueCode === "reserved"
+                  ? "Reserved by the operating system (for example Cmd/Ctrl+Space)."
+                  : issueCode === "invalid"
+                    ? "Invalid shortcut."
+                    : "This shortcut is already used by another global action.",
+              )
+              : null;
             return (
               <div
                 key={id}
@@ -63,12 +77,17 @@ export default function ShortcutSettings() {
                   )}
                   {id === "toggle_launcher" && !issue && (
                     <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
-                      全局切换：再按一次打开/隐藏主窗口。
+                      {t("shortcuts.desc.toggle_launcher", "Show Qx on Launcher and focus search; never hide the window.")}
                     </div>
                   )}
-                  {id !== "toggle_launcher" && !issue && (
+                  {id === "toggle_window" && !issue && (
                     <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
-                      全局切换：打开该模块；在同一模块上再按一次隐藏窗口。
+                      {t("shortcuts.desc.toggle_window", "Show or hide Qx while preserving the current module and view.")}
+                    </div>
+                  )}
+                  {id !== "toggle_launcher" && id !== "toggle_window" && !issue && (
+                    <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
+                      {t("shortcuts.desc.module", "Open this module; press again on the same module to hide Qx.")}
                     </div>
                   )}
                 </div>
@@ -77,9 +96,9 @@ export default function ShortcutSettings() {
                     onClick={() => patchShortcut(id, { enabled: !binding?.enabled })}
                     className="qx-command-button"
                     style={{ height: 26, color: binding?.enabled ? "var(--color-text-primary)" : "var(--color-text-tertiary)" }}
-                    title="Toggle enabled"
+                    title={t("shortcuts.toggleEnabled", "Toggle enabled")}
                   >
-                    {binding?.enabled ? "On" : "Off"}
+                    {binding?.enabled ? t("shortcuts.on", "On") : t("shortcuts.off", "Off")}
                   </button>
                   <ShortcutRecorder
                     initial={binding?.key ?? ""}
@@ -95,7 +114,7 @@ export default function ShortcutSettings() {
                         enabled: id === "toggle_launcher" ? true : (binding?.enabled ?? false),
                       });
                     }}
-                    title="Reset to default key"
+                    title={t("shortcuts.reset", "Reset to default key")}
                   >
                     ↺
                   </LinkButton>

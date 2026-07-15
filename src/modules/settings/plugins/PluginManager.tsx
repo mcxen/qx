@@ -4,7 +4,6 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import type { LucideIcon } from "lucide-react";
 import {
   Bot,
-  ChevronRight,
   Clipboard,
   CloudSun,
   Command,
@@ -432,6 +431,7 @@ function PreferenceField({
 }
 
 function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
+  const t = useT();
   const { settings, patchShortcut } = useSettingsStore();
   const builtinShortcutIds = BUILTIN_PLUGIN_SHORTCUTS[plugin.id] ?? [];
   const manifestShortcuts = plugin.manifest?.shortcuts ?? [];
@@ -444,21 +444,31 @@ function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
 
   return (
     <SettingsCard
-      title="Shortcuts"
+      title={t("shortcuts.extension.title", "Shortcuts")}
       description={isBuiltin(plugin)
-        ? "Global shortcuts for this built-in extension."
-        : "Shortcuts declared by this extension manifest."}
+        ? t("shortcuts.extension.builtinDesc", "Global shortcuts for this built-in extension.")
+        : t("shortcuts.extension.manifestDesc", "Shortcuts declared by this extension manifest.")}
     >
       {builtinShortcutIds.map((id) => {
         const binding = settings.shortcuts[id] ?? DEFAULT_SETTINGS.shortcuts[id] ?? { key: "", enabled: true };
         const conflict = shortcutHasConflict(binding, counts);
-        const issue = globalShortcutIssue(binding, counts);
+        const issueCode = globalShortcutIssue(binding, counts);
+        const issue = issueCode
+          ? t(
+            `shortcuts.issue.${issueCode}`,
+            issueCode === "reserved"
+              ? "Reserved by the operating system (for example Cmd/Ctrl+Space)."
+              : issueCode === "invalid"
+                ? "Invalid shortcut."
+                : "This shortcut is already used by another global action.",
+          )
+          : null;
         const defaultBinding = DEFAULT_SETTINGS.shortcuts[id] ?? { key: "", enabled: true };
         return (
           <Row
             key={id}
-            title={SHORTCUT_LABELS[id] ?? id}
-            description={issue ?? "Available from anywhere when enabled (opt-in for modules)."}
+            title={t(`shortcuts.label.${id}`, SHORTCUT_LABELS[id] ?? id)}
+            description={issue ?? t("shortcuts.extension.availableDesc", "Available from anywhere when enabled (opt-in for modules).")}
           >
             <div className="qx-extension-shortcut-control">
               <Toggle
@@ -1181,113 +1191,109 @@ export default function PluginManager() {
       <div className="qx-plugin-manager-top">
         <div className="qx-plugin-manager-actions">
           <TabsList>
-            <TabsTrigger value="installed">Installed</TabsTrigger>
-            <TabsTrigger value="browse">Browse</TabsTrigger>
+            <TabsTrigger value="installed">{t("plugins.tabs.installed", "Installed")}</TabsTrigger>
+            <TabsTrigger value="browse">{t("plugins.tabs.browse", "Browse")}</TabsTrigger>
           </TabsList>
-          <Button variant="outline" size="sm" onClick={handleRefresh} title="Rescan plugins">
-            <RefreshCw size={13} aria-hidden="true" />
-            Rescan
-          </Button>
+          <div className="qx-plugin-manager-tools">
+            {tab === "installed" && (
+              <div
+                className="qx-plugin-display-toggle"
+                title={t(
+                  "plugins.raycastActions.desc",
+                  "Show secondary actions on converted Raycast items. Narrow panels hide them automatically.",
+                )}
+              >
+                <span>{t("plugins.raycastActions", "Raycast Actions")}</span>
+                <Toggle
+                  value={pluginDisplay.raycast_action_panel}
+                  ariaLabel={t("plugins.raycastActions", "Raycast Actions")}
+                  onChange={(raycast_action_panel) => patchSettings("plugin_display", {
+                    ...pluginDisplay,
+                    raycast_action_panel,
+                  })}
+                />
+              </div>
+            )}
+            {tab === "installed" && (
+              <Button variant="outline" size="sm" onClick={() => setImportExpanded(true)}>
+                <PackagePlus size={13} aria-hidden="true" />
+                {t("plugins.import", "Import")}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={handleRefresh} title={t("plugins.rescan.desc", "Rescan plugins")}>
+              <RefreshCw size={13} aria-hidden="true" />
+              {t("plugins.rescan", "Rescan")}
+            </Button>
+          </div>
         </div>
       </div>
 
-      <TabsContent value="installed" className="qx-marketplace qx-plugin-installed-tab">
-        <SettingsCard
-          title="Display"
-          description="Controls how converted plugin interfaces expose secondary actions."
-          className="qx-plugin-display-card"
-        >
-          <Row
-            title="Show Raycast ActionPanel buttons"
-            description="Display converted Raycast item actions as compact buttons on the right. Narrow plugin panels hide them first to protect the list layout."
-          >
-            <Toggle
-              value={pluginDisplay.raycast_action_panel}
-              onChange={(raycast_action_panel) => patchSettings("plugin_display", {
-                ...pluginDisplay,
-                raycast_action_panel,
-              })}
-            />
-          </Row>
-        </SettingsCard>
-
-        <SettingsCard
-          title={t("plugins.importArchive", "Import Plugin Archive")}
-          description={t(
-            "plugins.importArchive.desc",
-            "Install a .zip or .qx-plugin package from disk, or paste a GitHub release/source archive URL.",
-          )}
-          className="qx-plugin-import-card"
-          trailing={
-            <button
-              type="button"
-              className="qx-plugin-import-header"
-              onClick={() => setImportExpanded((v) => !v)}
-              aria-expanded={importExpanded}
-            >
-              <ChevronRight
-                size={14}
-                className={`qx-plugin-import-chevron${importExpanded ? " is-open" : ""}`}
-                aria-hidden="true"
+      <Dialog open={importExpanded} onOpenChange={setImportExpanded}>
+        <DialogContent className="qx-plugin-import-dialog">
+          <DialogHeader>
+            <DialogTitle>{t("plugins.importArchive", "Import Plugin Archive")}</DialogTitle>
+            <DialogDescription>
+              {t(
+                "plugins.importArchive.desc",
+                "Install a .zip or .qx-plugin package from disk, or paste a GitHub release/source archive URL.",
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="qx-plugin-import-stack">
+            <div className="qx-plugin-import-row">
+              <Input
+                type="text"
+                value={archivePath}
+                onChange={(e) => setArchivePath(e.target.value)}
+                placeholder={t("plugins.localArchive.placeholder", "Local archive path, e.g. ~/Downloads/plugin.zip")}
               />
-            </button>
-          }
-        >
-          {importExpanded && (
-            <div className="qx-plugin-import-stack">
-              <div className="qx-plugin-import-row">
-                <Input
-                  type="text"
-                  value={archivePath}
-                  onChange={(e) => setArchivePath(e.target.value)}
-                  placeholder={t("plugins.localArchive.placeholder", "Local archive path, e.g. ~/Downloads/plugin.zip")}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleInstallFromPath}
-                  disabled={busy !== null || !archivePath.trim()}
-                >
-                  {busy === "path" ? t("plugins.installing", "Installing...") : t("plugins.installLocal", "Install Local")}
-                </Button>
-              </div>
-              <div className="qx-plugin-import-row">
-                <Input
-                  type="url"
-                  value={archiveUrl}
-                  onChange={(e) => setArchiveUrl(e.target.value)}
-                  placeholder={t("plugins.githubArchive.placeholder", "GitHub repo, release asset, or archive ZIP URL")}
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleInstallFromUrl}
-                  disabled={busy !== null || !archiveUrl.trim()}
-                >
-                  {busy === "url" ? t("plugins.downloading", "Downloading...") : t("plugins.installUrl", "Install URL")}
-                </Button>
-              </div>
-              <div className="qx-plugin-import-row">
-                <Input
-                  type="url"
-                  value={raycastUrl}
-                  onChange={(e) => setRaycastUrl(e.target.value)}
-                  placeholder="Raycast extension URL, e.g. https://github.com/raycast/extensions/tree/<ref>/extensions/system-information"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleInstallFromRaycast}
-                  disabled={busy !== null || !raycastUrl.trim()}
-                >
-                  {busy === "raycast" ? "Converting..." : "Install Raycast"}
-                </Button>
-              </div>
-              {installStatus && <div className="qx-plugin-import-status">{installStatus}</div>}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleInstallFromPath}
+                disabled={busy !== null || !archivePath.trim()}
+              >
+                {busy === "path" ? t("plugins.installing", "Installing...") : t("plugins.installLocal", "Install Local")}
+              </Button>
             </div>
-          )}
-        </SettingsCard>
+            <div className="qx-plugin-import-row">
+              <Input
+                type="url"
+                value={archiveUrl}
+                onChange={(e) => setArchiveUrl(e.target.value)}
+                placeholder={t("plugins.githubArchive.placeholder", "GitHub repo, release asset, or archive ZIP URL")}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleInstallFromUrl}
+                disabled={busy !== null || !archiveUrl.trim()}
+              >
+                {busy === "url" ? t("plugins.downloading", "Downloading...") : t("plugins.installUrl", "Install URL")}
+              </Button>
+            </div>
+            <div className="qx-plugin-import-row">
+              <Input
+                type="url"
+                value={raycastUrl}
+                onChange={(e) => setRaycastUrl(e.target.value)}
+                placeholder={t("plugins.raycastUrl.placeholder", "Raycast extension GitHub URL")}
+              />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleInstallFromRaycast}
+                disabled={busy !== null || !raycastUrl.trim()}
+              >
+                {busy === "raycast" ? t("plugins.converting", "Converting...") : t("plugins.installRaycast", "Install Raycast")}
+              </Button>
+            </div>
+            {installStatus && <div className="qx-plugin-import-status">{installStatus}</div>}
+          </div>
+        </DialogContent>
+      </Dialog>
 
+      <TabsContent value="installed" className="qx-marketplace qx-plugin-installed-tab">
         <div className="qx-plugin-list-toolbar">
           <div className="qx-plugin-search-wrap">
             <Search size={14} aria-hidden="true" />
@@ -1295,28 +1301,30 @@ export default function PluginManager() {
               type="text"
               value={installedQuery}
               onChange={(e) => setInstalledQuery(e.target.value)}
-              placeholder="Search installed modules..."
+              placeholder={t("plugins.searchInstalled", "Search installed modules...")}
               className="qx-plugin-search-input"
             />
           </div>
           <SegmentedControl
             value={installedFilter}
             options={[
-              { value: "all", label: "All" },
-              { value: "builtin", label: "Built-in" },
-              { value: "external", label: "External" },
-              { value: "enabled", label: "Enabled" },
-              { value: "disabled", label: "Disabled" },
+              { value: "all", label: t("plugins.filter.all", "All") },
+              { value: "builtin", label: t("plugins.filter.builtin", "Built-in") },
+              { value: "external", label: t("plugins.filter.external", "External") },
+              { value: "enabled", label: t("plugins.filter.enabled", "Enabled") },
+              { value: "disabled", label: t("plugins.filter.disabled", "Disabled") },
             ]}
             onChange={setInstalledFilter}
           />
         </div>
 
         {displayPlugins.length === 0 ? (
-          <div className="qx-empty-state">{loading ? "Loading modules..." : "No modules installed"}</div>
+          <div className="qx-empty-state">
+            {loading ? t("plugins.loadingModules", "Loading modules...") : t("plugins.noModules", "No modules installed")}
+          </div>
         ) : filteredPlugins.length === 0 ? (
           <div className="qx-empty-state">
-            No modules match "{installedQuery || installedFilter}"
+            {t("plugins.noMatches", "No modules match “{query}”").replace("{query}", installedQuery || installedFilter)}
           </div>
         ) : (
           <div className="qx-plugin-card-grid">

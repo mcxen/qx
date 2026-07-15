@@ -224,11 +224,12 @@ mod macos {
                 | NSWindowStyleMask::Resizable.0 as usize;
             let _: () = msg_send![ns_window, setStyleMask: next];
 
-            // Native shadows on transparent borderless windows create a
-            // larger AppKit hit-test region around the visual shell. Qx draws
-            // its own CSS shadows, so keep the platform shadow disabled to
-            // let outside clicks leave the panel cleanly.
-            let _: () = msg_send![ns_window, setHasShadow: false];
+            // Let AppKit draw the shadow outside the transparent borderless
+            // window. CSS shadows cannot escape the WebView bounds, so they
+            // cannot provide the same launcher-style separation from the
+            // desktop. Recompute once after changing the window style.
+            let _: () = msg_send![ns_window, setHasShadow: true];
+            let _: () = msg_send![ns_window, invalidateShadow];
 
             // Keep the panel visible when the user switches to another app.
             let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
@@ -614,8 +615,9 @@ pub fn hide_restore_focus_and_wait(app: &AppHandle, timeout: Duration) {
     let _ = timeout;
 }
 
-/// Toggle visibility — used by the toggle_launcher global shortcut.
-/// Same shortcut that opens the panel also closes it (and restores focus).
+/// Toggle visibility without changing the active route.
+/// Hidden panels reopen exactly where the user left them; visible panels hide
+/// and restore focus to the previously active application.
 pub fn toggle(app: &AppHandle) {
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         // Open → close. Also absorb blur-hide races: hotkey fires after the
@@ -628,14 +630,13 @@ pub fn toggle(app: &AppHandle) {
             return;
         }
         show_floating(app);
-        // Skip navigate when already on launcher — avoids remount/focus storm on
-        // every Option+Space open when the last tab was already home.
-        let need_nav = !routes_match(&active_route(), "launcher");
-        remember_active_route("launcher");
-        if need_nav {
-            let _ = tauri::Emitter::emit(&win, "navigate", "launcher");
-        }
     }
+}
+
+/// Show Qx on the launcher route and focus its search responder.
+/// Unlike `toggle`, invoking this while Qx is visible never hides the window.
+pub fn show_launcher(app: &AppHandle) {
+    show_and_navigate(app, "launcher");
 }
 
 /// Show + navigate to a route by emitting the existing `navigate` event.

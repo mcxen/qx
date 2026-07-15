@@ -112,10 +112,12 @@ export function Toggle({
   value,
   onChange,
   disabled,
+  ariaLabel,
 }: {
   value: boolean;
   onChange: (v: boolean) => void;
   disabled?: boolean;
+  ariaLabel?: string;
 }) {
   return (
     <Switch
@@ -123,6 +125,7 @@ export function Toggle({
       onCheckedChange={onChange}
       disabled={disabled}
       aria-pressed={value}
+      aria-label={ariaLabel}
     />
   );
 }
