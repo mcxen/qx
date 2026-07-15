@@ -123,16 +123,18 @@ const PLATFORM_LABELS: Record<PluginPlatform, string> = {
   linux: "Linux",
 };
 
-function compatibilityLabel(status: PluginCompatibilityStatus): string {
+type Translate = (key: string, fallback: string) => string;
+
+function compatibilityLabel(status: PluginCompatibilityStatus, t: Translate): string {
   switch (status) {
     case "supported":
-      return "Supported";
+      return t("plugins.compat.supported", "Supported");
     case "partial":
-      return "Partial";
+      return t("plugins.compat.partial", "Partial");
     case "mac-only":
-      return "Mac Only";
+      return t("plugins.compat.macOnly", "Mac Only");
     default:
-      return "Unsupported";
+      return t("plugins.compat.unsupported", "Unsupported");
   }
 }
 
@@ -225,28 +227,31 @@ function PlatformCompatibilityBlock({
   platform,
   compatibility,
   active,
+  t,
 }: {
   platform: PluginPlatform;
   compatibility: PluginPlatformCompatibility;
   active: boolean;
+  t: Translate;
 }) {
   return (
     <div className={`qx-plugin-compat-platform${active ? " is-active" : ""}`}>
       <div className="qx-plugin-compat-head">
         <div className="qx-plugin-compat-platform-name">{PLATFORM_LABELS[platform]}</div>
         <Badge variant={compatibilityBadgeVariant(compatibility.status)}>
-          {compatibilityLabel(compatibility.status)}
+          {compatibilityLabel(compatibility.status, t)}
         </Badge>
       </div>
-      <CompatibilityList title="Available" items={compatibility.features} />
-      <CompatibilityList title="Degraded" items={compatibility.degraded} />
-      <CompatibilityList title="Unavailable" items={compatibility.unsupported} />
-      <CompatibilityList title="Notes" items={compatibility.notes} />
+      <CompatibilityList title={t("plugins.compat.available", "Available")} items={compatibility.features} />
+      <CompatibilityList title={t("plugins.compat.degraded", "Degraded")} items={compatibility.degraded} />
+      <CompatibilityList title={t("plugins.compat.unavailable", "Unavailable")} items={compatibility.unsupported} />
+      <CompatibilityList title={t("plugins.compat.notes", "Notes")} items={compatibility.notes} />
     </div>
   );
 }
 
 function RaycastCompatibilityReport({ plugin }: { plugin: InstalledPlugin }) {
+  const t = useT();
   const report = plugin.manifest?.raycast?.platformCompatibility;
   if (!report) return null;
   const activePlatform = currentPlatform();
@@ -257,8 +262,11 @@ function RaycastCompatibilityReport({ plugin }: { plugin: InstalledPlugin }) {
   const active = report[activePlatform] ?? entries[0].compatibility;
   return (
     <SettingsCard
-      title="Raycast Compatibility"
-      description={`Current platform: ${compatibilityLabel(active.status)}. Converted Raycast extensions can be partially available when some macOS APIs do not map to this platform.`}
+      title={t("plugins.compat.title", "Raycast Compatibility")}
+      description={t(
+        "plugins.compat.desc",
+        "Current platform: {status}. Converted Raycast extensions can be partially available when some macOS APIs do not map to this platform.",
+      ).replace("{status}", compatibilityLabel(active.status, t))}
     >
       <div className="qx-plugin-compat-grid">
         {entries.map(({ platform, compatibility }) => (
@@ -267,6 +275,7 @@ function RaycastCompatibilityReport({ plugin }: { plugin: InstalledPlugin }) {
             platform={platform}
             compatibility={compatibility}
             active={platform === activePlatform}
+            t={t}
           />
         ))}
       </div>
@@ -332,16 +341,22 @@ function shortcutHasConflict(
 }
 
 function ShortcutKey({ value }: { value?: string }) {
-  return <span className="qx-extension-shortcut-key">{formatQxShortcut(value?.trim()) || "None"}</span>;
+  const t = useT();
+  return (
+    <span className="qx-extension-shortcut-key">
+      {formatQxShortcut(value?.trim()) || t("plugins.shortcut.none", "None")}
+    </span>
+  );
 }
 
 function ExtensionCommandsCard({ plugin }: { plugin: InstalledPlugin }) {
+  const t = useT();
   const commands = plugin.manifest?.commands ?? [];
   if (commands.length === 0) return null;
   return (
     <SettingsCard
-      title="Commands"
-      description="Launcher commands exposed by this extension."
+      title={t("plugins.commands", "Commands")}
+      description={t("plugins.commands.desc", "Launcher commands exposed by this extension.")}
     >
       <div className="qx-extension-command-list">
         {commands.map((command) => (
@@ -487,7 +502,7 @@ function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
                 size="icon"
                 className="qx-extension-shortcut-reset"
                 onClick={() => patchShortcut(id, defaultBinding)}
-                title="Reset shortcut"
+                title={t("plugins.shortcut.reset", "Reset shortcut")}
               >
                 <RotateCcw size={13} aria-hidden="true" />
               </Button>
@@ -502,11 +517,17 @@ function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
           <Row
             key={`${shortcut.command}-${shortcut.key}`}
             title={command?.title ?? shortcut.command}
-            description={shortcut.enabled === false ? "Declared by the plugin, currently disabled." : "Declared by the plugin manifest."}
+            description={
+              shortcut.enabled === false
+                ? t("plugins.shortcut.manifestDisabled", "Declared by the plugin, currently disabled.")
+                : t("plugins.shortcut.manifestEnabled", "Declared by the plugin manifest.")
+            }
           >
             <div className="qx-extension-shortcut-control">
               <Badge variant={shortcut.enabled === false ? "outline" : "secondary"}>
-                {shortcut.enabled === false ? "Disabled" : "Manifest"}
+                {shortcut.enabled === false
+                  ? t("plugins.badge.disabled", "Disabled")
+                  : t("plugins.shortcut.manifest", "Manifest")}
               </Badge>
               <ShortcutKey value={shortcut.key} />
             </div>
@@ -651,7 +672,7 @@ function PluginDetail({
           </div>
           {plugin.author && (
             <div className="qx-plugin-meta">
-              by {plugin.author}
+              {t("plugins.authorBy", "by {author}").replace("{author}", plugin.author)}
             </div>
           )}
         </div>
@@ -659,8 +680,14 @@ function PluginDetail({
 
       <div className="qx-plugin-badges">
         <Badge variant="secondary">v{plugin.version}</Badge>
-        {builtin ? <Badge variant="secondary">Built-in</Badge> : <Badge variant="secondary">External</Badge>}
-        <Badge variant={plugin.enabled ? "default" : "outline"}>{plugin.enabled ? "Enabled" : "Disabled"}</Badge>
+        {builtin
+          ? <Badge variant="secondary">{t("plugins.badge.builtin", "Built-in")}</Badge>
+          : <Badge variant="secondary">{t("plugins.badge.external", "External")}</Badge>}
+        <Badge variant={plugin.enabled ? "default" : "outline"}>
+          {plugin.enabled
+            ? t("plugins.badge.enabled", "Enabled")
+            : t("plugins.badge.disabled", "Disabled")}
+        </Badge>
       </div>
 
       {/* Description */}
@@ -676,7 +703,10 @@ function PluginDetail({
       </div>
 
       {!builtin && screenshots.length > 0 && (
-        <SettingsCard title="Screenshots" description="Preview images bundled with this plugin.">
+        <SettingsCard
+          title={t("plugins.screenshots", "Screenshots")}
+          description={t("plugins.screenshots.desc", "Preview images bundled with this plugin.")}
+        >
           <div className="qx-plugin-screenshot-grid">
             {screenshots.map((screenshot) => (
               <PluginAssetImage
@@ -684,7 +714,7 @@ function PluginDetail({
                 plugin={plugin}
                 asset={screenshot}
                 className="qx-plugin-screenshot"
-                fallback="Preview"
+                fallback={t("plugins.preview", "Preview")}
               />
             ))}
           </div>
@@ -711,8 +741,11 @@ function PluginDetail({
       <ExtensionShortcutsCard plugin={plugin} />
 
       <SettingsCard
-        title="Search Aliases & Tags"
-        description="Add names or tags that should make this module appear in Launcher search."
+        title={t("plugins.aliasesTags", "Search Aliases & Tags")}
+        description={t(
+          "plugins.aliasesTags.desc",
+          "Add names or tags that should make this module appear in Launcher search.",
+        )}
       >
         <SearchAliasTagEditor
           entry={aliasMetadata}
@@ -721,7 +754,10 @@ function PluginDetail({
       </SettingsCard>
 
       {permissions.length > 0 && (
-        <SettingsCard title="Permissions" description="Capabilities declared by this plugin.">
+        <SettingsCard
+          title={t("plugins.permissions", "Permissions")}
+          description={t("plugins.permissions.desc", "Capabilities declared by this plugin.")}
+        >
           <ul className="qx-plugin-permissions">
             {permissions.map((perm) => (
               <li key={perm}>{perm}</li>
@@ -732,8 +768,12 @@ function PluginDetail({
 
       {preferences.length > 0 && prefsLoaded && (
         <SettingsCard
-          title="Preferences"
-          description={prefsBusy ? "Saving…" : "Configure plugin-specific options."}
+          title={t("plugins.preferences", "Preferences")}
+          description={
+            prefsBusy
+              ? t("plugins.preferences.saving", "Saving…")
+              : t("plugins.preferences.desc", "Configure plugin-specific options.")
+          }
         >
           {preferences.map((pref) => (
             <Row
@@ -756,7 +796,7 @@ function PluginDetail({
               onClick={() => void openUrl("https://v2ex.com/settings/tokens")}
             >
               <ExternalLink size={13} aria-hidden="true" />
-              Get Token
+              {t("plugins.getToken", "Get Token")}
             </Button>
           )}
         </SettingsCard>
@@ -765,7 +805,7 @@ function PluginDetail({
       {!builtin && (
         <Button variant="destructive" size="sm" onClick={onUninstall}>
           <Trash2 size={13} aria-hidden="true" />
-          Uninstall
+          {t("plugins.uninstall", "Uninstall")}
         </Button>
       )}
     </div>
@@ -783,6 +823,7 @@ function MarketplaceTab({
   installedIds: Set<string>;
   onInstallComplete: () => void;
 }) {
+  const t = useT();
   const [entries, setEntries] = useState<PluginIndexEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -833,10 +874,16 @@ function MarketplaceTab({
       });
       await invoke("install_plugin", { path: result.path });
       onInstallComplete();
-      setInstallStatus({ tone: "success", message: `${entry.name} installed.` });
+      setInstallStatus({
+        tone: "success",
+        message: t("plugins.installedNamed", "{name} installed.").replace("{name}", entry.name),
+      });
     } catch (err) {
       console.error("Marketplace install failed", err);
-      setInstallStatus({ tone: "danger", message: `Install failed: ${String(err)}` });
+      setInstallStatus({
+        tone: "danger",
+        message: t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err)),
+      });
     } finally {
       setInstallingId(null);
     }
@@ -845,7 +892,7 @@ function MarketplaceTab({
   if (loading) {
     return (
       <div className="qx-marketplace">
-        <div className="qx-skeleton-stack" aria-label="Loading marketplace">
+        <div className="qx-skeleton-stack" aria-label={t("plugins.marketplace.loadingAria", "Loading marketplace")}>
           {Array.from({ length: 6 }).map((_, index) => (
             <div className="qx-skeleton-row" key={index}>
               <Skeleton className="qx-skeleton-icon" />
@@ -858,7 +905,7 @@ function MarketplaceTab({
           ))}
         </div>
         <div className="qx-empty-state">
-          <LoadingLabel>Loading marketplace...</LoadingLabel>
+          <LoadingLabel>{t("plugins.marketplace.loading", "Loading marketplace...")}</LoadingLabel>
         </div>
       </div>
     );
@@ -867,17 +914,21 @@ function MarketplaceTab({
   if (error) {
     return (
       <div className="qx-empty-state">
-        <div>Failed to load marketplace.</div>
+        <div>{t("plugins.marketplace.failed", "Failed to load marketplace.")}</div>
         <div style={{ fontSize: 11, marginTop: 4 }}>{error}</div>
         <Button variant="outline" size="sm" onClick={fetchIndex} style={{ marginTop: 8 }}>
-          Retry
+          {t("plugins.marketplace.retry", "Retry")}
         </Button>
       </div>
     );
   }
 
   if (entries.length === 0) {
-    return <div className="qx-empty-state">No plugins available in the marketplace.</div>;
+    return (
+      <div className="qx-empty-state">
+        {t("plugins.marketplace.empty", "No plugins available in the marketplace.")}
+      </div>
+    );
   }
 
   return (
@@ -888,17 +939,19 @@ function MarketplaceTab({
           <Search size={14} aria-hidden="true" />
           <Input
             type="text"
-            placeholder="Search marketplace plugins..."
+            placeholder={t("plugins.marketplace.search", "Search marketplace plugins...")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="qx-plugin-search-input"
           />
         </div>
         <Button variant="outline" size="sm" onClick={fetchIndex} disabled={loading}>
-          {loading ? <LoadingLabel>Refresh</LoadingLabel> : (
+          {loading ? (
+            <LoadingLabel>{t("plugins.marketplace.refresh", "Refresh")}</LoadingLabel>
+          ) : (
             <>
               <RefreshCw size={13} aria-hidden="true" />
-              Refresh
+              {t("plugins.marketplace.refresh", "Refresh")}
             </>
           )}
         </Button>
@@ -913,7 +966,12 @@ function MarketplaceTab({
       <div className="qx-plugin-library-body">
         <div className="qx-plugin-library-list">
           {filteredEntries.length === 0 && searchQuery.trim() ? (
-            <div className="qx-empty-state">No plugins match "{searchQuery}"</div>
+            <div className="qx-empty-state">
+              {t("plugins.marketplace.noMatch", "No plugins match “{query}”").replace(
+                "{query}",
+                searchQuery,
+              )}
+            </div>
           ) : (
             filteredEntries.map((entry) => {
               const active = entry.id === selectedEntry?.id;
@@ -938,8 +996,19 @@ function MarketplaceTab({
                       <div className="qx-plugin-list-desc">{entry.description}</div>
                     )}
                   </div>
-                  {alreadyInstalled && <PackageCheck size={14} aria-label="Installed" />}
-                  {installing && <Download className="qx-loading-spinner" size={14} aria-label="Installing" />}
+                  {alreadyInstalled && (
+                    <PackageCheck
+                      size={14}
+                      aria-label={t("plugins.marketplace.installed", "Installed")}
+                    />
+                  )}
+                  {installing && (
+                    <Download
+                      className="qx-loading-spinner"
+                      size={14}
+                      aria-label={t("plugins.marketplace.installing", "Installing")}
+                    />
+                  )}
                 </button>
               );
             })
@@ -958,7 +1027,7 @@ function MarketplaceTab({
               {selectedEntry.description && (
                 <div className="qx-plugin-description">{selectedEntry.description}</div>
               )}
-              <SettingsCard title="Install">
+              <SettingsCard title={t("plugins.marketplace.install", "Install")}>
                 <Button
                   variant={installedIds.has(selectedEntry.id) ? "outline" : "default"}
                   size="sm"
@@ -973,14 +1042,14 @@ function MarketplaceTab({
                     <PackagePlus size={13} aria-hidden="true" />
                   )}
                   {installedIds.has(selectedEntry.id)
-                    ? "Installed"
+                    ? t("plugins.marketplace.installed", "Installed")
                     : installingId === selectedEntry.id
-                      ? "Installing..."
-                      : "Install"}
+                      ? t("plugins.marketplace.installing", "Installing...")
+                      : t("plugins.marketplace.install", "Install")}
                 </Button>
               </SettingsCard>
               {selectedEntry.required_permissions && selectedEntry.required_permissions.length > 0 && (
-                <SettingsCard title="Required permissions">
+                <SettingsCard title={t("plugins.marketplace.requiredPerms", "Required permissions")}>
                   <div className="qx-plugin-badges">
                     {selectedEntry.required_permissions.map((p) => (
                       <Badge key={p} variant="secondary">{p}</Badge>
@@ -989,23 +1058,23 @@ function MarketplaceTab({
                 </SettingsCard>
               )}
               {(selectedEntry.updated_at || selectedEntry.min_app_version || selectedEntry.checksum_sha256) && (
-                <SettingsCard title="Metadata">
+                <SettingsCard title={t("plugins.marketplace.metadata", "Metadata")}>
                   <div className="qx-plugin-info-grid">
                     {selectedEntry.updated_at && (
                       <>
-                        <span>Updated</span>
+                        <span>{t("plugins.marketplace.updated", "Updated")}</span>
                         <span>{formatDate(selectedEntry.updated_at)}</span>
                       </>
                     )}
                     {selectedEntry.min_app_version && (
                       <>
-                        <span>Min Qx</span>
+                        <span>{t("plugins.marketplace.minQx", "Min Qx")}</span>
                         <span>{selectedEntry.min_app_version}</span>
                       </>
                     )}
                     {selectedEntry.checksum_sha256 && (
                       <>
-                        <span>SHA256</span>
+                        <span>{t("plugins.marketplace.sha256", "SHA256")}</span>
                         <span>{selectedEntry.checksum_sha256}</span>
                       </>
                     )}
@@ -1014,7 +1083,9 @@ function MarketplaceTab({
               )}
             </>
           ) : (
-            <div className="qx-empty-state">Select a plugin to view details</div>
+            <div className="qx-empty-state">
+              {t("plugins.marketplace.select", "Select a plugin to view details")}
+            </div>
           )}
         </div>
       </div>

@@ -56,8 +56,8 @@ export default function WeatherSettings() {
             value={w.provider}
             onChange={(v) => patchW({ provider: v })}
             options={[
-              { value: "open-meteo", label: "Open-Meteo (Free)" },
-              { value: "openweathermap", label: "OpenWeatherMap" },
+              { value: "open-meteo", label: t("weather.provider.openMeteo", "Open-Meteo (Free)") },
+              { value: "openweathermap", label: t("weather.provider.openWeatherMap", "OpenWeatherMap") },
             ]}
           />
         </Row>
@@ -72,7 +72,7 @@ export default function WeatherSettings() {
                 type="password"
                 value={w.api_key}
                 onChange={(e) => patchW({ api_key: e.target.value })}
-                placeholder="Enter API key..."
+                placeholder={t("weather.apiKey.placeholder", "Enter API key...")}
               />
             </div>
           </Row>
@@ -136,8 +136,8 @@ export default function WeatherSettings() {
             value={w.units}
             onChange={(v) => patchW({ units: v })}
             options={[
-              { value: "celsius", label: "Celsius (°C)" },
-              { value: "fahrenheit", label: "Fahrenheit (°F)" },
+              { value: "celsius", label: t("weather.units.celsius", "Celsius (°C)") },
+              { value: "fahrenheit", label: t("weather.units.fahrenheit", "Fahrenheit (°F)") },
             ]}
           />
         </Row>

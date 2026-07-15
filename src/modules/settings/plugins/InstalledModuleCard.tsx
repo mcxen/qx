@@ -20,9 +20,9 @@ export default function InstalledModuleCard({
   const t = useT();
   const builtin = isBuiltin(plugin);
   const status = !plugin.enabled
-    ? "Disabled"
+    ? t("plugins.badge.disabled", "Disabled")
     : builtin
-      ? "Built-in"
+      ? t("plugins.badge.builtin", "Built-in")
       : `v${plugin.version}`;
 
   return (

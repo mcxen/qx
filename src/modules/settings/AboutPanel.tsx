@@ -69,13 +69,13 @@ type ClearKind =
   | "reclaimable";
 type BusyKind = ClearKind | "refresh";
 
-const BUCKET_LABELS: Record<string, string> = {
-  cache: "Cache",
-  files: "Files",
-  databases: "Databases",
-  clipboard: "Clipboard",
-  plugins: "Plugins",
-  settings: "Settings",
+const BUCKET_LABEL_KEYS: Record<string, string> = {
+  cache: "about.storage.cache",
+  files: "about.storage.files",
+  databases: "about.storage.databases",
+  clipboard: "about.storage.clipboard",
+  plugins: "about.storage.plugins",
+  settings: "about.storage.settings",
 };
 
 interface CleanupAction {
@@ -148,15 +148,26 @@ export default function AboutPanel() {
       setLatestUrl(info.release_url || RELEASES_URL);
       if (visible) {
         if (!info.available) {
-          setStatus("You're on the latest version.");
+          setStatus(t("about.upToDate", "You're on the latest version."));
         } else if (info.can_install) {
-          setStatus(`Latest release is v${info.latest_version}. Ready to download and install.`);
+          setStatus(
+            t("about.latestReady", "Latest release is v{version}. Ready to download and install.")
+              .replace("{version}", String(info.latest_version ?? "")),
+          );
         } else {
-          setStatus(info.install_reason || `Latest release is v${info.latest_version}.`);
+          setStatus(
+            info.install_reason
+              || t("about.latestIs", "Latest release is v{version}.")
+                .replace("{version}", String(info.latest_version ?? "")),
+          );
         }
       }
     } catch (e) {
-      if (visible) setStatus(`Update check failed: ${String(e)}`);
+      if (visible) {
+        setStatus(
+          t("about.checkFailed", "Update check failed: {message}").replace("{message}", String(e)),
+        );
+      }
       setUpdateInfo(null);
       setLatest(null);
     } finally {
@@ -193,7 +204,9 @@ export default function AboutPanel() {
       const result = await invoke<QxUpdateInstallResult>("qx_update_download_and_install");
       setStatus(result.message);
     } catch (e) {
-      setStatus(`Update install failed: ${String(e)}`);
+      setStatus(
+        t("about.installFailed", "Update install failed: {message}").replace("{message}", String(e)),
+      );
     } finally {
       setInstalling(false);
     }
@@ -366,25 +379,37 @@ export default function AboutPanel() {
           "Version, release, and update status.",
         )}
       >
-        <Row title="Qx" description="A keyboard-driven productivity launcher for macOS.">
+        <Row
+          title={t("about.appName", "Qx")}
+          description={t(
+            "about.appTagline",
+            "A keyboard-driven productivity launcher for macOS.",
+          )}
+        >
           <span style={{ color: "var(--qx-text-secondary)" }}>v{version || "..."}</span>
         </Row>
 
         <Row
-          title="Latest Release"
-          description="Most recent version published on GitHub."
+          title={t("about.latestRelease", "Latest Release")}
+          description={t(
+            "about.latestRelease.desc",
+            "Most recent version published on GitHub.",
+          )}
         >
           <span style={{ color: "var(--qx-text-secondary)" }}>
-            {latest ?? "Unable to fetch"}
+            {latest ?? t("about.unableToFetch", "Unable to fetch")}
           </span>
         </Row>
 
         <Row
-          title="Check for Updates"
+          title={t("about.checkUpdates", "Check for Updates")}
           description={
             updateInfo?.available && updateInfo.can_install
-              ? `Download ${updateInfo.asset_name ?? "the latest release"} and restart Qx.`
-              : "Check the latest GitHub release."
+              ? t("about.checkUpdates.ready", "Download {name} and restart Qx.").replace(
+                "{name}",
+                updateInfo.asset_name ?? t("about.latestRelease", "the latest release"),
+              )
+              : t("about.checkUpdates.idle", "Check the latest GitHub release.")
           }
         >
           <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
@@ -393,7 +418,9 @@ export default function AboutPanel() {
               disabled={checking || installing}
               className="qx-command-button"
             >
-              {checking ? "Checking..." : "Check Now"}
+              {checking
+                ? t("about.checking", "Checking...")
+                : t("about.checkNow", "Check Now")}
             </button>
             {updateInfo?.available && updateInfo.can_install && (
               <button
@@ -401,21 +428,29 @@ export default function AboutPanel() {
                 disabled={checking || installing}
                 className="qx-command-button primary"
               >
-                {installing ? "Downloading..." : "Download & Install"}
+                {installing
+                  ? t("about.downloading", "Downloading...")
+                  : t("about.downloadInstall", "Download & Install")}
               </button>
             )}
           </div>
         </Row>
 
         {status && (
-          <Row title="Update Status" description={status}>
+          <Row title={t("about.updateStatus", "Update Status")} description={status}>
             <span />
           </Row>
         )}
 
-        <Row title="GitHub Releases" description="View all releases and release notes.">
+        <Row
+          title={t("about.githubReleases", "GitHub Releases")}
+          description={t(
+            "about.githubReleases.desc",
+            "View all releases and release notes.",
+          )}
+        >
           <button onClick={handleOpenReleases} className="qx-command-button">
-            Open Releases
+            {t("about.openReleases", "Open Releases")}
           </button>
         </Row>
       </SettingsCard>
@@ -489,7 +524,10 @@ export default function AboutPanel() {
 
           <div className="qx-storage-list">
             {(storage?.buckets ?? []).map((bucket) => {
-              const label = t(`about.storage.${bucket.id}`, BUCKET_LABELS[bucket.id] ?? bucket.label);
+              const label = t(
+                BUCKET_LABEL_KEYS[bucket.id] ?? `about.storage.${bucket.id}`,
+                bucket.label,
+              );
               return (
                 <div className="qx-storage-row" key={bucket.id}>
                   <span className={`qx-storage-dot bucket-${bucket.id}`} aria-hidden="true" />
