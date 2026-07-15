@@ -34,7 +34,7 @@ export default function QxIslandDockHost() {
           ? "date"
           : componentId.startsWith("home.system")
             ? "system"
-            : componentId.startsWith("home.")
+            : componentId.startsWith("home.") || componentId.startsWith("launcher.search")
               ? "sci"
               : "shell";
       return (

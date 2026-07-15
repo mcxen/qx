@@ -6,6 +6,7 @@ import HomeDateIsland from "../../home-island/modes/DateIsland";
 import HomePulseIsland from "../../home-island/modes/PulseIsland";
 import HomeCoreIsland from "../../home-island/modes/CoreIsland";
 import HomeOrbitIsland from "../../home-island/modes/OrbitIsland";
+import SearchProgressIsland from "../../launcher/SearchProgressIsland";
 import type { HomeIslandAppearance } from "../../home-island/types";
 
 let registered = false;
@@ -59,5 +60,10 @@ export function ensureHomeIslandComponents(): void {
   registerIslandComponent(
     "home.orbit",
     wrapHome(HomeOrbitIsland as ComponentType<{ appearance?: HomeIslandAppearance }>, "orbit"),
+  );
+
+  registerIslandComponent(
+    "launcher.search-progress",
+    SearchProgressIsland as ComponentType<IslandComponentProps>,
   );
 }

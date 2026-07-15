@@ -13,6 +13,12 @@ import { usePluginRegistry } from "./plugin/registry";
 import type { PluginRuntimeStatus } from "./plugin/types";
 import QxShell from "./components/QxShell";
 import { islandHost, showPluginIslandStatus, clearPluginIslandStatus } from "./island";
+import {
+  buildSearchTracks,
+  patchSearchTracks,
+  publishSearchProgress,
+  resetSearchProgress,
+} from "./launcher/searchProgress";
 import { LoadingLabel, Skeleton } from "./components/ui";
 import { registerAllBuiltins } from "./plugin/builtin";
 import { PluginHost, PluginPanelViewport } from "./plugin/PluginHost";
@@ -573,8 +579,19 @@ function App() {
     if (searchFadeTimerRef.current) clearTimeout(searchFadeTimerRef.current);
     setIsSearching(false);
     setIsSearchSettling(true);
+    patchSearchTracks(
+      {
+        apps: { status: "done" },
+        files: { status: "done" },
+        clipboard: { status: "done" },
+      },
+      { phase: "settling", seq },
+    );
     searchFadeTimerRef.current = setTimeout(() => {
-      if (seq === searchSeqRef.current) setIsSearchSettling(false);
+      if (seq === searchSeqRef.current) {
+        setIsSearchSettling(false);
+        resetSearchProgress();
+      }
       searchFadeTimerRef.current = undefined;
     }, 180);
   }, []);
@@ -1085,6 +1102,13 @@ function App() {
       if (!controller) return;
       const { signal } = controller;
 
+      if (shouldSearchFiles) {
+        patchSearchTracks({ files: { status: "running" } }, { phase: "searching", seq });
+      }
+      if (shouldSearchClipboard) {
+        patchSearchTracks({ clipboard: { status: "running" } }, { phase: "searching", seq });
+      }
+
       const [files, clipboardEntries] = await Promise.all([
         shouldSearchFiles
           ? abortableInvoke<AppEntry[]>("search_files", { query: q }, signal)
@@ -1112,6 +1136,17 @@ function App() {
       // Merge into *current* results so concurrent module-surface enrichment is not wiped.
       const current = useStore.getState().results;
       applyResults(dedupeEntries([...current, ...files, ...clipboardEntries]));
+      patchSearchTracks(
+        {
+          files: shouldSearchFiles
+            ? { status: "done", hits: files.length }
+            : { status: "skipped" },
+          clipboard: shouldSearchClipboard
+            ? { status: "done", hits: clipboardEntries.length }
+            : { status: "skipped" },
+        },
+        { phase: "searching", seq },
+      );
     },
     [applyResults],
   );
@@ -1169,6 +1204,7 @@ function App() {
       // cause of ~1s lag after Option+Space (doSearch re-ran when plugins
       // loaded / focus cleared query / phase1 raced).
       if (!trimmed) {
+        resetSearchProgress();
         if (scope === "files" || scope === "clipboard") {
           applyResults([]);
           setIsSearching(false);
@@ -1198,6 +1234,13 @@ function App() {
         }
         return;
       }
+
+      publishSearchProgress({
+        phase: "searching",
+        query: trimmed,
+        seq,
+        tracks: buildSearchTracks(scope, trimmed),
+      });
 
       const entries: AppEntry[] = [];
 
@@ -1335,6 +1378,17 @@ function App() {
       // Fast path: apps + sync synthetics only. Never await module surface IPC here.
       applyResults(baseEntries);
 
+      const appHits = baseEntries.filter((item) => {
+        const kind = item.kind ?? "app";
+        return kind === "app" || kind === "command" || kind === "calculation";
+      }).length;
+      if (scope === "all" || scope === "apps") {
+        patchSearchTracks(
+          { apps: { status: "done", hits: appHits } },
+          { phase: "searching", seq },
+        );
+      }
+
       // Async enrichment: module surfaces (RSS/AI/macros/…) — non-blocking, seq-gated.
       if (lowerQuery && (scope === "all" || scope === "apps")) {
         void loadModuleSurfaceProviders(q, scope, seq);
@@ -1352,6 +1406,7 @@ function App() {
       } else if (seq === searchSeqRef.current) {
         setIsSearching(false);
         setIsSearchSettling(false);
+        resetSearchProgress();
       }
 
       if (trimmed.length > 0) {

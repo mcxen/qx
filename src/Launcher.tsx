@@ -10,9 +10,11 @@ import { createLauncherActions, getLauncherActionTitle } from "./launcher/launch
 import { toLauncherQuickEntries } from "./launcher/quickEntries";
 import { useLauncherHistory } from "./launcher/useLauncherHistory";
 import type { QuickEntry } from "./launcher/types";
+import SearchProgressIsland from "./launcher/SearchProgressIsland";
+import type { SearchTrackId } from "./launcher/searchProgress";
 import { useT } from "./i18n";
 import { homeIslandDataBus, useResolvedHomeIsland } from "./home-island";
-import { islandHost, useHomeIslandContribution } from "./island";
+import { islandHost, useHomeIslandContribution, QxIslandSurface } from "./island";
 import { mapBottomIslandContent } from "./island/compat/mapBottomIslandContent";
 
 interface LauncherProps {
@@ -107,6 +109,25 @@ export default function Launcher({
     },
   );
 
+  const searchHits = useMemo(() => {
+    const hits: Partial<Record<SearchTrackId, number>> = {
+      apps: 0,
+      files: 0,
+      clipboard: 0,
+    };
+    for (const item of results) {
+      const kind = item.kind ?? "app";
+      if (kind === "app" || kind === "command" || kind === "calculation") {
+        hits.apps = (hits.apps ?? 0) + 1;
+      } else if (kind === "file" || kind === "folder") {
+        hits.files = (hits.files ?? 0) + 1;
+      } else if (kind === "clipboard") {
+        hits.clipboard = (hits.clipboard ?? 0) + 1;
+      }
+    }
+    return hits;
+  }, [results]);
+
   // Primary docked island content (props path — reliable).
   const island =
     loadingPhase === "loading-apps"
@@ -116,13 +137,7 @@ export default function Launcher({
           activity: "bounce" as const,
         }
       : isSearchActivity
-        ? {
-            label: t("launcher.searching", "Searching"),
-            detail: query.trim(),
-            activity: (isSearchSettling ? "bounce-exit" : "bounce") as
-              | "bounce"
-              | "bounce-exit",
-          }
+        ? null
         : results.length > 0
           ? {
               label: t("launcher.ready", "Search ready"),
@@ -136,7 +151,25 @@ export default function Launcher({
             ? (resolvedHome.shellContent ?? null)
             : null;
 
-  const customIsland = idleHome ? resolvedHome.customNode : undefined;
+  // Search uses a dedicated multi-track scan island (not the bounce wave).
+  const customIsland = isSearchActivity ? (
+    <QxIslandSurface
+      placement="docked"
+      variant="sci"
+      tone={isSearchSettling ? "success" : "neutral"}
+      aria-label={t("launcher.scan.aria", "Search progress")}
+    >
+      <SearchProgressIsland
+        query={query}
+        scope={scope}
+        isSearching={isSearching}
+        isSearchSettling={isSearchSettling}
+        hits={searchHits}
+      />
+    </QxIslandSurface>
+  ) : idleHome ? (
+    resolvedHome.customNode
+  ) : undefined;
 
   // Mirror shell statuses into the session store (optional consumers / float).
   useEffect(() => {
@@ -165,11 +198,18 @@ export default function Launcher({
         priority: "task",
         source: "shell",
         sticky: false,
-        content: mapBottomIslandContent({
-          label: t("launcher.searching", "Searching"),
-          detail: query.trim(),
-          activity: isSearchSettling ? "bounce-exit" : "bounce",
-        }),
+        content: {
+          primary: t("launcher.searching", "Searching"),
+          secondary: query.trim(),
+          componentId: "launcher.search-progress",
+          componentProps: {
+            query: query.trim(),
+            isSearching,
+            isSearchSettling,
+            hits: searchHits,
+          },
+          tone: "neutral",
+        },
       });
       islandHost.dismiss("launcher.loading");
       islandHost.dismiss("launcher.results");
@@ -206,9 +246,11 @@ export default function Launcher({
   }, [
     loadingPhase,
     isSearchActivity,
+    isSearching,
     isSearchSettling,
     query,
     results.length,
+    searchHits,
     t,
   ]);
 

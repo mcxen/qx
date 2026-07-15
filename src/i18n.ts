@@ -628,6 +628,8 @@ const zh: Record<string, string> = {
   "launcher.qx-tty.desc": "持续运行的本地终端会话",
   "launcher.ready": "搜索就绪",
   "launcher.searching": "搜索中",
+  "launcher.scan.tag": "扫描",
+  "launcher.scan.aria": "搜索进度",
   "launcher.result": "条结果",
   "launcher.resultCount": "{n} 条结果",
   "launcher.title": "Qx 启动器",
