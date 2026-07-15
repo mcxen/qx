@@ -795,7 +795,8 @@ fn default_method() -> String {
 }
 
 fn default_timeout_ms() -> u64 {
-    15000
+    // Wallpaper / asset downloads benefit from a longer default than API JSON calls.
+    30000
 }
 
 #[derive(Debug, Serialize)]
@@ -837,7 +838,7 @@ pub async fn plugin_http_fetch(req: HttpFetchRequest) -> Result<HttpResponse, St
 
     let client = crate::http_client::client(
         "Qx/0.1 (Plugin HTTP; +https://github.com/mcxen/qx)",
-        std::time::Duration::from_millis(req.timeout_ms.max(1000).min(60000)),
+        std::time::Duration::from_millis(req.timeout_ms.max(1000).min(120_000)),
         None,
     )?;
 

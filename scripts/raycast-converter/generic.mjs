@@ -297,6 +297,11 @@ export default {
       jsx: "automatic",
       mainFields: ["browser", "module", "main"],
       conditions: ["browser", "default"],
+      // Ensure Buffer exists before any Raycast source evaluates (many extensions
+      // call Buffer.from as a Node global when writing downloaded bytes).
+      banner: {
+        js: `if(typeof globalThis.Buffer==="undefined"){globalThis.Buffer={from(v){if(v instanceof ArrayBuffer)return new Uint8Array(v);if(ArrayBuffer.isView(v))return new Uint8Array(v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength));return new TextEncoder().encode(String(v||""));}};}`
+      },
       plugins: [
         sharedReactPlugin(),
         virtualModulePlugin({
