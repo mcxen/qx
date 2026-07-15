@@ -77,7 +77,7 @@ export default function ShortcutSettings() {
                   )}
                   {id === "toggle_launcher" && !issue && (
                     <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
-                      {t("shortcuts.desc.toggle_launcher", "Show Qx on Launcher and focus search; never hide the window.")}
+                      {t("shortcuts.desc.toggle_launcher", "Show Qx on Launcher and focus search; press again to hide.")}
                     </div>
                   )}
                   {id === "toggle_window" && !issue && (

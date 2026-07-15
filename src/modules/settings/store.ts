@@ -60,6 +60,13 @@ export interface AppearanceSettings {
   home_island_cpu: boolean;
   home_island_gpu: boolean;
   home_island_memory: boolean;
+  /** Floating island webview (default off — dogfood). */
+  island_float_enabled: boolean;
+  /** Promote sticky task when main window hides. */
+  island_float_when_main_hidden: boolean;
+  island_float_always_on_top: boolean;
+  /** Prefer docked when main is visible (no dual show). */
+  island_prefer_docked_when_main_visible: boolean;
 }
 
 export interface ShortcutBinding {
@@ -257,6 +264,10 @@ export const DEFAULT_SETTINGS: Settings = {
     home_island_cpu: true,
     home_island_gpu: true,
     home_island_memory: true,
+    island_float_enabled: false,
+    island_float_when_main_hidden: true,
+    island_float_always_on_top: true,
+    island_prefer_docked_when_main_visible: true,
   },
   shortcuts: {
     toggle_launcher: { key: "Alt+Space", enabled: true },
@@ -573,7 +584,7 @@ export const SHORTCUT_GROUPS: { group: string; ids: string[] }[] = [
 ];
 
 export const SHORTCUT_LABELS: Record<string, string> = {
-  toggle_launcher: "Show Launcher Search",
+  toggle_launcher: "Toggle Launcher Search",
   toggle_window: "Toggle Current Window",
   clipboard: "Open Clipboard",
   record_gif: "Start Screen Recording",

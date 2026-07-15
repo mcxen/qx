@@ -1,6 +1,6 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import QxBottomIsland, { type BottomIslandContent } from "./QxBottomIsland";
+import { type BottomIslandContent } from "./QxBottomIsland";
 import ShellActionButton, { type QxShellAction } from "./ShellActionButton";
 import ShellActionMenu, { QX_ACTION_MENU_TRIGGER_ATTR } from "./ShellActionMenu";
 import {
@@ -16,6 +16,9 @@ import {
   matchesQxShortcut,
   shouldIgnoreBareShortcut,
 } from "../utils/keyboard";
+import QxIslandDockSlot from "../island/surface/QxIslandDockSlot";
+import { useShellIslandShim } from "../island/compat/useShellIslandShim";
+import type { IslandPriority, IslandSource } from "../island/types";
 
 export type { BottomIslandContent } from "./QxBottomIsland";
 export type { QxShellAction } from "./ShellActionButton";
@@ -29,7 +32,24 @@ interface QxShellProps {
   children: ReactNode;
   context?: ReactNode;
   island?: BottomIslandContent | null;
+  /**
+   * Classified exception or transitional custom chrome (e.g. ScreenRecorder).
+   * Suppresses store docked winner while mounted.
+   */
   customIsland?: ReactNode;
+  /**
+   * Shim session key → module.${islandKey}.shell
+   * Defaults to a slug of title.
+   */
+  islandKey?: string;
+  islandSource?: IslandSource;
+  islandPriority?: IslandPriority;
+  islandSticky?: boolean;
+  /**
+   * When true, do not write island prop into the store (caller owns session,
+   * e.g. Launcher home/search via islandHost).
+   */
+  islandManagedExternally?: boolean;
   escapeAction?: QxShellAction;
   primaryAction?: QxShellAction;
   secondaryAction?: QxShellAction;
@@ -54,6 +74,11 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   context,
   island,
   customIsland,
+  islandKey,
+  islandSource = "module",
+  islandPriority = "location",
+  islandSticky = false,
+  islandManagedExternally = false,
   escapeAction,
   primaryAction,
   secondaryAction,
@@ -67,6 +92,22 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   overlayBottom,
   navigation,
 }, ref) {
+  const routeKey =
+    islandKey ??
+    (title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "active");
+
+  useShellIslandShim({
+    island: islandManagedExternally ? null : island,
+    routeKey,
+    source: islandSource,
+    priority: islandPriority,
+    sticky: islandSticky,
+    suppressed: Boolean(customIsland) || islandManagedExternally,
+  });
+
   const fallbackEscapeAction: QxShellAction = onBack
     ? { label: backLabel, kbd: "Esc", onClick: onBack }
     : { label: "Esc", kbd: "Esc" };
@@ -492,7 +533,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
         <div className="qx-shell-left">
           <ShellActionButton action={leftAction} variant="escape" />
         </div>
-        {customIsland ?? <QxBottomIsland content={island} />}
+        <QxIslandDockSlot exception={customIsland} />
         {hasRightActions ? (
           <div className="qx-shell-actions">
             <ShellActionButton action={visiblePrimaryAction} />

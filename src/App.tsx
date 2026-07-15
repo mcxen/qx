@@ -11,8 +11,8 @@ import { useSettingsStore } from "./modules/settings/store";
 import { ThemeProvider } from "./ThemeProvider";
 import { usePluginRegistry } from "./plugin/registry";
 import type { PluginRuntimeStatus } from "./plugin/types";
-import type { BottomIslandContent } from "./components/QxShell";
 import QxShell from "./components/QxShell";
+import { islandHost, showPluginIslandStatus, clearPluginIslandStatus } from "./island";
 import { LoadingLabel, Skeleton } from "./components/ui";
 import { registerAllBuiltins } from "./plugin/builtin";
 import { PluginHost, PluginPanelViewport } from "./plugin/PluginHost";
@@ -511,8 +511,6 @@ function App() {
   const pluginSearchVersionRef = useRef("");
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchSettling, setIsSearchSettling] = useState(false);
-  const [pluginIsland, setPluginIsland] = useState<BottomIslandContent | null>(null);
-  const pluginIslandTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
   const [mountedTab, setMountedTab] = useState(tab);
   const [, startSearchTransition] = useTransition();
 
@@ -660,11 +658,17 @@ function App() {
           if (cancelled || !info.available || !info.can_install) return;
 
           const versionLabel = info.latest_version ? `v${info.latest_version}` : "latest release";
-          setPluginIsland({
-            label: "Updating Qx",
-            detail: `Downloading ${versionLabel}`,
-            tone: "neutral",
-            activity: "bounce",
+          islandHost.show({
+            id: "system.update",
+            priority: "task",
+            source: "system",
+            sticky: true,
+            content: {
+              primary: "Updating Qx",
+              secondary: `Downloading ${versionLabel}`,
+              tone: "neutral",
+              meter: { kind: "activity", activity: "bounce" },
+            },
           });
 
           await invoke("qx_update_download_and_install");
@@ -672,11 +676,17 @@ function App() {
             latestVersion: info.latest_version,
           });
           if (!cancelled) {
-            setPluginIsland({
-              label: "Installing update",
-              detail: "Qx will restart.",
-              tone: "success",
-              activity: "bounce",
+            islandHost.show({
+              id: "system.update",
+              priority: "task",
+              source: "system",
+              sticky: true,
+              content: {
+                primary: "Installing update",
+                secondary: "Qx will restart.",
+                tone: "success",
+                meter: { kind: "activity", activity: "bounce" },
+              },
             });
           }
         } catch (error) {
@@ -699,23 +709,7 @@ function App() {
     if (!appsReady) return;
     let cancelled = false;
     const showPluginStatus = (status: PluginRuntimeStatus) => {
-      if (pluginIslandTimerRef.current) {
-        window.clearTimeout(pluginIslandTimerRef.current);
-        pluginIslandTimerRef.current = null;
-      }
-      const next: BottomIslandContent = {
-        label: status.label,
-        detail: status.detail,
-        tone: status.kind === "error" ? "danger" : status.kind === "success" ? "success" : "neutral",
-        activity: status.kind === "activity" ? "bounce" : undefined,
-      };
-      setPluginIsland(next);
-      if (status.kind !== "activity") {
-        pluginIslandTimerRef.current = window.setTimeout(() => {
-          setPluginIsland(null);
-          pluginIslandTimerRef.current = null;
-        }, status.kind === "error" ? 8000 : 2600);
-      }
+      showPluginIslandStatus(status);
     };
     const start = () => {
       if (cancelled) return;
@@ -756,10 +750,7 @@ function App() {
         ).cancelIdleCallback?.(idleId);
       }
       if (timerId !== undefined) window.clearTimeout(timerId);
-      if (pluginIslandTimerRef.current) {
-        window.clearTimeout(pluginIslandTimerRef.current);
-        pluginIslandTimerRef.current = null;
-      }
+      clearPluginIslandStatus();
     };
   }, [loadPlugins, appsReady]);
 
@@ -1599,7 +1590,7 @@ function App() {
       loadingPhase={loadingPhase}
       isSearching={isSearching}
       isSearchSettling={isSearchSettling}
-      pluginIsland={pluginIsland}
+
     />
   );
 

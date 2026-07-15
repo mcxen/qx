@@ -20,22 +20,28 @@ export function resolveHomeIsland(
   const def = getHomeIsland(id) ?? getHomeIsland("default");
 
   if (!def) {
-    return { shellContent: null, customNode: undefined };
+    return { modeId: id, shellContent: null, customNode: undefined };
   }
 
   if (def.kind === "shell") {
     return {
+      modeId: def.id,
       shellContent: def.resolveShellContent?.({ appearance, t }) ?? null,
       customNode: undefined,
+      chromeVariant: "shell",
     };
   }
 
   if (def.Component) {
+    const chromeVariant =
+      def.id === "system" ? "system" : def.id === "date" ? "date" : "sci";
     return {
+      modeId: def.id,
       shellContent: null,
       customNode: createElement(def.Component, { appearance }),
+      chromeVariant,
     };
   }
 
-  return { shellContent: null, customNode: undefined };
+  return { modeId: def.id, shellContent: null, customNode: undefined };
 }

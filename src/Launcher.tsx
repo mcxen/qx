@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import QxShell, { type BottomIslandContent } from "./components/QxShell";
+import QxShell from "./components/QxShell";
 import ResultsList from "./ResultsList";
 import SearchBar from "./SearchBar";
 import { Select } from "./components/ui";
@@ -12,6 +12,8 @@ import { useLauncherHistory } from "./launcher/useLauncherHistory";
 import type { QuickEntry } from "./launcher/types";
 import { useT } from "./i18n";
 import { homeIslandDataBus, useResolvedHomeIsland } from "./home-island";
+import { islandHost, useHomeIslandContribution } from "./island";
+import { mapBottomIslandContent } from "./island/compat/mapBottomIslandContent";
 
 interface LauncherProps {
   results: AppEntry[];
@@ -24,7 +26,8 @@ interface LauncherProps {
   loadingPhase?: string;
   isSearching?: boolean;
   isSearchSettling?: boolean;
-  pluginIsland?: BottomIslandContent | null;
+  /** @deprecated Plugin status now goes through islandHost bridge */
+  pluginIsland?: unknown;
 }
 
 export default function Launcher({
@@ -38,7 +41,6 @@ export default function Launcher({
   loadingPhase,
   isSearching = false,
   isSearchSettling = false,
-  pluginIsland = null,
 }: LauncherProps) {
   const { settings } = useSettingsStore();
   const t = useT();
@@ -68,7 +70,7 @@ export default function Launcher({
   }, [settings.quick_entries, onNavigate, t]);
 
   const isSearchActivity = (isSearching || isSearchSettling) && !!query.trim();
-  const idleHome = !isSearchActivity && !pluginIsland && results.length === 0;
+  const idleHome = !isSearchActivity && results.length === 0 && loadingPhase !== "loading-apps";
 
   // Always resolve (hooks rules); only show when idle. Rotation + live metrics
   // run for the idle home island (and stay warm while mounted).
@@ -83,7 +85,6 @@ export default function Launcher({
     },
     t,
   );
-  const homeIsland = idleHome ? resolvedHome : null;
 
   // When idle home island is shown, kick metrics so numbers aren't stale.
   useEffect(() => {
@@ -91,29 +92,93 @@ export default function Launcher({
     homeIslandDataBus.kick();
   }, [idleHome, appearance.home_island_mode, appearance.home_island_modes]);
 
-  const island: BottomIslandContent | null = loadingPhase === "loading-apps"
-    ? {
-        label: t("launcher.loading", "Loading apps..."),
-        detail: t("launcher.loading.detail", "Preparing application cache"),
-        activity: "bounce",
-      }
-    : isSearchActivity
-    ? {
-        label: t("launcher.searching", "Searching"),
-        detail: query.trim(),
-        activity: isSearchSettling ? "bounce-exit" : "bounce",
-      }
-    : pluginIsland
-    ? pluginIsland
-    : results.length
-    ? {
-        label: t("launcher.ready", "Search ready"),
-        detail: t("launcher.resultCount", "{n} results").replace("{n}", String(results.length)),
-        progress: Math.min(100, Math.max(12, results.length * 12)),
-      }
-    : homeIsland?.shellContent ?? null;
+  // Launcher single-writer for home session
+  useHomeIslandContribution(
+    idleHome,
+    idleHome ? resolvedHome : null,
+    {
+      home_island_mode: appearance.home_island_mode,
+      home_island_modes: appearance.home_island_modes,
+      home_island_rotate_secs: appearance.home_island_rotate_secs,
+      home_island_cpu: appearance.home_island_cpu,
+      home_island_gpu: appearance.home_island_gpu,
+      home_island_memory: appearance.home_island_memory,
+    },
+  );
 
-  const customIsland = homeIsland?.customNode;
+  // Launcher shell sessions: loading / searching / results (priority task/location)
+  useEffect(() => {
+    if (loadingPhase === "loading-apps") {
+      islandHost.show({
+        id: "launcher.loading",
+        priority: "task",
+        source: "shell",
+        sticky: false,
+        content: mapBottomIslandContent({
+          label: t("launcher.loading", "Loading apps..."),
+          detail: t("launcher.loading.detail", "Preparing application cache"),
+          activity: "bounce",
+        }),
+      });
+      islandHost.dismiss("launcher.search");
+      islandHost.dismiss("launcher.results");
+      return () => {
+        islandHost.dismiss("launcher.loading");
+      };
+    }
+
+    if (isSearchActivity) {
+      islandHost.show({
+        id: "launcher.search",
+        priority: "task",
+        source: "shell",
+        sticky: false,
+        content: mapBottomIslandContent({
+          label: t("launcher.searching", "Searching"),
+          detail: query.trim(),
+          activity: isSearchSettling ? "bounce-exit" : "bounce",
+        }),
+      });
+      islandHost.dismiss("launcher.loading");
+      islandHost.dismiss("launcher.results");
+      return () => {
+        islandHost.dismiss("launcher.search");
+      };
+    }
+
+    if (results.length > 0) {
+      islandHost.show({
+        id: "launcher.results",
+        priority: "location",
+        source: "shell",
+        sticky: false,
+        content: mapBottomIslandContent({
+          label: t("launcher.ready", "Search ready"),
+          detail: t("launcher.resultCount", "{n} results").replace(
+            "{n}",
+            String(results.length),
+          ),
+          progress: Math.min(100, Math.max(12, results.length * 12)),
+        }),
+      });
+      islandHost.dismiss("launcher.loading");
+      islandHost.dismiss("launcher.search");
+      return () => {
+        islandHost.dismiss("launcher.results");
+      };
+    }
+
+    islandHost.dismiss("launcher.loading");
+    islandHost.dismiss("launcher.search");
+    islandHost.dismiss("launcher.results");
+  }, [
+    loadingPhase,
+    isSearchActivity,
+    isSearchSettling,
+    query,
+    results.length,
+    t,
+  ]);
 
   const handleLauncherKeyDown = (event: React.KeyboardEvent) => {
     if ((event.metaKey || event.ctrlKey) && event.key === ",") {
@@ -131,6 +196,8 @@ export default function Launcher({
     <QxShell
       title={t("launcher.title", "Qx Launcher")}
       className="launcher-shell"
+      islandKey="launcher"
+      islandManagedExternally
       onKeyDown={onKeyDown}
       search={<SearchBar onKeyDown={handleLauncherKeyDown} embedded />}
       trailing={
@@ -158,8 +225,6 @@ export default function Launcher({
           onSearchSelect={setQuery}
         />
       }
-      island={island}
-      customIsland={customIsland}
       // Visible Esc: clear search when non-empty; empty query leaves hide to host keyboard Esc.
       escapeAction={
         hasQuery
@@ -188,7 +253,11 @@ export default function Launcher({
         kbd: "CmdOrCtrl+K",
         disabled: results.length === 0,
       }}
-      actionTitle={selectedItem ? getLauncherActionTitle(selectedItem, t) : t("launcher.actions", "Actions")}
+      actionTitle={
+        selectedItem
+          ? getLauncherActionTitle(selectedItem, t)
+          : t("launcher.actions", "Actions")
+      }
       actions={launcherActions.map((action) => ({
         label: action.label,
         kbd: action.kbd,

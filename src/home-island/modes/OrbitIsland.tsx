@@ -108,7 +108,7 @@ export default function HomeOrbitIsland() {
   );
 
   return (
-    <div className="qx-home-sci-island qx-home-orbit-island" aria-label={t("island.orbit.aria", "Mission clock")}>
+    <div className="qx-home-sci-island qx-home-orbit-island qx-island-content" aria-label={t("island.orbit.aria", "Mission clock")}>
       <span className="qx-sci-tag">
         <span className={`qx-sci-beacon${live ? " is-live" : ""}`} />
         {t("island.orbit.tag", "ORBIT")}

@@ -1,0 +1,99 @@
+/** QxIsland shared contracts — see docs/qx-island-architecture.md */
+
+export type IslandPlacement = "docked" | "floating";
+export type IslandTone = "neutral" | "success" | "warning" | "danger";
+export type IslandChromeVariant = "shell" | "system" | "sci" | "date";
+
+export type IslandPriority = "task" | "error" | "toast" | "location" | "home";
+
+/** v1 only — no dual */
+export type IslandPlacementMode = "docked" | "floating" | "docked-or-float";
+
+/** v1 only — queue does not exist */
+export type IslandReplacePolicy = "replace-same-id" | "reject-if-lower";
+
+export type IslandSource = "module" | "home" | "plugin" | "shell" | "system";
+
+export interface IslandSlotContent {
+  identity?: {
+    tag?: string;
+    beacon?: "live" | "steady" | "off";
+    iconName?: string;
+  };
+  primary: string;
+  secondary?: string;
+  meter?: {
+    kind: "progress" | "activity";
+    /** 0–100; never fake */
+    progress?: number;
+    activity?: "bounce" | "bounce-exit";
+  };
+  action?: {
+    /** Must exist in ActionRegistry for this session when clickable */
+    id: string;
+    label: string;
+  };
+  tone?: IslandTone;
+  /**
+   * Docked only in v1 float. Float ignores unknown componentId and falls
+   * back to slots when present.
+   */
+  componentId?: string;
+  /** JSON-serializable props for registered docked components */
+  componentProps?: Record<string, unknown>;
+}
+
+export interface IslandSession {
+  id: string;
+  /** Host-assigned monotonic per id; producers do not invent */
+  generation: number;
+  priority: IslandPriority;
+  /**
+   * Bumped only on show / priority / placement / sticky changes — NOT on
+   * progress/label-only updates. Winner comparator uses this, not updatedAt.
+   */
+  rankEpoch: number;
+  source: IslandSource;
+  createdAt: number;
+  /** Content/TTL bookkeeping; may change every progress tick */
+  contentUpdatedAt: number;
+  ttlMs?: number;
+  replacePolicy: IslandReplacePolicy;
+  placement: IslandPlacementMode;
+  content: IslandSlotContent;
+  sticky?: boolean;
+  /**
+   * When true, high-frequency content updates must not change rankEpoch
+   * (default true for meter.progress updates).
+   */
+  progressSilent?: boolean;
+}
+
+export type ActionHandler = () => void | Promise<void>;
+
+export interface IslandShowInput {
+  id: string;
+  priority: IslandPriority;
+  source?: IslandSource;
+  content: IslandSlotContent;
+  ttlMs?: number;
+  replacePolicy?: IslandReplacePolicy;
+  placement?: IslandPlacementMode;
+  sticky?: boolean;
+  progressSilent?: boolean;
+  /** Out-of-band: not in snapshot, not synced to float */
+  actions?: Record<string, ActionHandler>;
+}
+
+export interface IslandUpdateInput {
+  expectedGeneration?: number;
+  priority?: IslandPriority;
+  content?: Partial<IslandSlotContent> | IslandSlotContent;
+  ttlMs?: number | null;
+  placement?: IslandPlacementMode;
+  sticky?: boolean;
+  progressSilent?: boolean;
+  actions?: Record<string, ActionHandler>;
+}
+
+export type DockedRenderMode = "exception" | "store" | "empty";

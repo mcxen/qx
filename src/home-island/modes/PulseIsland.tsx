@@ -34,7 +34,7 @@ export default function HomePulseIsland() {
   );
 
   return (
-    <div className="qx-home-sci-island qx-home-pulse-island" aria-label={t("island.pulse.aria", "Network pulse")}>
+    <div className="qx-home-sci-island qx-home-pulse-island qx-island-content" aria-label={t("island.pulse.aria", "Network pulse")}>
       <span className="qx-sci-tag">
         <span className={`qx-sci-beacon${live ? " is-live" : ""}`} />
         {t("island.pulse.tag", "PULSE")}

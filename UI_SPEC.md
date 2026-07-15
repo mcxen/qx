@@ -344,12 +344,14 @@ Context Panel：
   - 录制等临时态可先停任务 / 丢弃草稿，再在级联下一层离开。
 - 禁止用右侧 `primaryAction` / `secondaryAction` 的 `kbd: "Esc"` 替代左下角 Esc；Esc 快捷键归属左侧。
 
-### 中间 · Bottom Island
+### 中间 · Bottom Island（QxIsland）
 
-- 由 `QxShell` 统一渲染（`island` 或 `customIsland`）。
-- 默认高度 `32px`，最大 `36px`。
-- 文本单行截断，不撑高底栏。
-- 为空时保持布局稳定。
+- 由 `QxIslandDockSlot` / `QxIslandSurface` 统一渲染（`docs/qx-island-architecture.md`）。
+- **统一高度 `34px`**（min 32 / max 36）；docked 宽 `min(400px, calc(100% - 260px))`。
+- Chrome（尺寸、居中、玻璃/border）只在 `.qx-island-surface`；内容不得自带 absolute 外轮廓。
+- 模块 `island` prop 经 shim 写入 session store；`customIsland` 为分类例外（如录屏 HUD），会抑制 store docked。
+- 文本单行截断，progress 为底边 overlay，不撑高底栏。
+- 为空时 `visibility: hidden` 保持布局稳定。
 
 ### 右侧 · Actions
 
@@ -376,7 +378,16 @@ Actions Menu：
 
 ## Bottom Island
 
-`island` 是轻量状态协议：
+权威模型为 `IslandSession` + `IslandSlotContent`（`src/island/`）。模块仍可传遗留 `BottomIslandContent`；shim 映射为：
+
+| 遗留字段 | slots |
+|---|---|
+| `label` | `primary` |
+| `detail` | `secondary` |
+| `progress` / `activity` | `meter` |
+| `actionLabel` / `onAction` | `action` + `bindActions` |
+
+遗留形状（仍支持）：
 
 ```ts
 {
@@ -408,21 +419,23 @@ Actions Menu：
 
 ### Launcher 空闲 · Home Island（可插拔）
 
-Launcher 在**无搜索活动、无结果、无插件 island** 时，显示 Appearance 中选择的 Home Island 模式。实现位于 `src/home-island/`，不得再把模式 if/else 写进 `Launcher.tsx` / `AppearanceSettings.tsx`。
+Launcher 在**无搜索活动、无结果**时，由 **Launcher 单写者**经 `islandHost` 发布 `priority: "home"` session。实现位于 `src/home-island/` + `src/island/`，不得再把模式 if/else 写进 `Launcher.tsx` / `AppearanceSettings.tsx`。
 
 | 角色 | 位置 | 职责 |
 |---|---|---|
-| 注册表 | `registry.ts` / `catalog.ts` | `registerHomeIsland` / `listHomeIslands` / `normalizeHomeIslandMode` |
-| 解析 | `resolveHomeIsland(appearance, t)` | idle → `shellContent` 或 `customNode` |
-| 设置 UI | `HomeIslandSettings` | 卡片网格完全由注册表驱动 |
+| 统一层 | `src/island/` | Surface / session store / host API / DockHost |
+| 注册表 | `home-island/registry.ts` / `catalog.ts` | `registerHomeIsland` / list / normalize |
+| 解析 | `resolveHomeIsland` | idle → slots 或 componentId |
+| 贡献 | `useHomeIslandContribution` | 仅 Launcher 写全局 `home` |
+| 设置 UI | `HomeIslandSettings` | 卡片网格；preview 用本地 Surface，不写全局 home |
 | 异步数据 | `data/bus.ts` + hooks | 指标采样；组件只读缓存 |
 
-内置模式（示例）：`default`（shell 文案）、`system`、`date`、`pulse`（网速）、`core`（电源）、`orbit`（任务时钟 + CPU）。`home_island_mode` 为自由字符串；未知 id normalize 到默认模式。
+内置模式（示例）：`default`（shell 文案）、`system`、`date`、`pulse`（网速）、`core`（电源）、`orbit`（任务时钟 + CPU）。`home_island_mode` 为自由字符串；未知 id normalize 到默认模式。富组件仅 docked；浮窗 v1 slots-only。
 
 **新增模式只需：**
 
-1. `modes/FooIsland.tsx` + `modes/fooMode.tsx`（`HomeIslandDefinition`）
-2. `catalog.ts` 中 `registerHomeIsland(...)`
+1. `modes/FooIsland.tsx`（content-only，无 absolute 尺寸）+ `modes/fooMode.tsx`
+2. `catalog.ts` 中 `registerHomeIsland(...)`；若 custom，在 `island/home/registerHomeComponents` 注册 `componentId`
 3. `i18n.ts` 补 title/hint 中文
 
 **不要**改 Launcher 或 Appearance 的分支表。
@@ -450,7 +463,7 @@ Launcher 在**无搜索活动、无结果、无插件 island** 时，显示 Appe
 
 Hooks：`useIslandStats` · `useIslandPower` · `useIslandNet` · `useIslandData([...])`。新指标优先扩展 bus，而不是在组件内私自 `setInterval + invoke`。
 
-自定义 island 尺寸：高度约 `34–36px`，宽度 `min(100%, ~400px)`，绝对居中；窄屏规则与 Bottom Island 一致。
+自定义 Home content 渲染在统一 Surface 内：高度 **34px**，宽 `min(400px, calc(100% - 260px))`，居中由 surface 负责；窄屏规则挂在 `.qx-island-surface`。
 
 ## Module Layouts
 

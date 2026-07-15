@@ -111,7 +111,7 @@ export default function HomeDateIsland() {
   }, [parts]);
 
   return (
-    <div className="qx-home-date-island" aria-label="Date display">
+    <div className="qx-home-date-island qx-island-content" aria-label="Date display">
       <div
         ref={marqueeRef}
         className={`qx-island-marquee${overflowing ? " is-overflowing" : ""}`}

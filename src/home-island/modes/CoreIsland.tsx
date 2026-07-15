@@ -87,7 +87,7 @@ export default function HomeCoreIsland() {
   }, [level, charging]);
 
   return (
-    <div className="qx-home-sci-island qx-home-core-island" aria-label={t("island.core.aria", "Power core")}>
+    <div className="qx-home-sci-island qx-home-core-island qx-island-content" aria-label={t("island.core.aria", "Power core")}>
       <span className="qx-sci-tag">
         <span className={`qx-sci-beacon${charging ? " is-live" : available ? " is-steady" : ""}`} />
         {t("island.core.tag", "CORE")}

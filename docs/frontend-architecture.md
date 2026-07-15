@@ -1,25 +1,31 @@
 # 前端子系统总览
 
-> 状态：Current · 适用版本：v0.5.13 · Owner：Frontend · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.5.17 · Owner：Frontend · 最后复核：2026-07-15
 
-Qx 前端是 React 19 + Zustand + Tauri v2 API + shadcn 组件。入口 `src/main.tsx` → `App.tsx`。本文件描述各子系统的边界与关键文件；组件视觉规范另见 [UI_SPEC.md](../UI_SPEC.md)、[docs/settings-panel.md](./settings-panel.md)。
+Qx 前端是 React 19 + Zustand + Tauri v2 API + shadcn 组件。入口 `src/main.tsx` → `App.tsx`（或 `surface=island` / `view=recording-controls`）。本文件描述各子系统的边界与关键文件；组件视觉规范另见 [UI_SPEC.md](../UI_SPEC.md)、[docs/settings-panel.md](./settings-panel.md)。灵动岛统一层见 [qx-island-architecture.md](./qx-island-architecture.md)。
 
 ## 目录结构
 
 ```
 src/
 ├─ App.tsx                # 顶层 shell、tab 切换、IPC 事件监听、doSearch orchestration
-├─ Launcher.tsx           # launcher shell；空闲 island 只调 home-island.resolve
+├─ Launcher.tsx           # launcher shell；idle home 经 islandHost 单写者贡献
 ├─ SearchBar.tsx          # 顶部搜索框；requestLauncherSearchFocus 重聚焦
 ├─ ResultsList.tsx        # 结果列表（含 loading skeleton）
 ├─ ThemeProvider.tsx      # data-theme + .dark 同步；theme=system 跟 OS
 ├─ store.ts               # 全局 Zustand store：query、results、selectedIndex、loadingPhase、appsReady
 ├─ i18n.ts                # useT / useLocale / system 语言解析
-├─ home-island/           # Launcher 空闲灵动岛（注册表 + 异步数据总线）
+├─ island/                # QxIsland 统一层（Surface / session / host / float）
+│  ├─ surface/            # QxIslandSurface、ShellContent、DockSlot/Host
+│  ├─ session/            # store、priority、actionRegistry、hostApi
+│  ├─ home/               # home component 注册 + Launcher contribution
+│  ├─ bridge/             # plugin island bridge
+│  └─ float/              # IslandFloatApp（slots-only）
+├─ home-island/           # Home 模式注册表 + metrics bus + content-only modes
 │  ├─ registry.ts / catalog.ts / resolve.ts
 │  ├─ HomeIslandSettings.tsx
 │  ├─ data/bus.ts + hooks.ts   # 非阻塞 metrics
-│  └─ modes/              # 各模式 UI + Definition
+│  └─ modes/              # 各模式 UI + Definition（无 chrome 尺寸）
 ├─ components/            # 通用组件（ui.tsx 是 shadcn re-export）
 ├─ launcher/              # launcher 私有子系统
 │  ├─ LauncherContext.tsx # 右侧 context aside
@@ -36,7 +42,7 @@ src/
 ├─ plugin/                # 插件运行时（见 docs/plugin-architecture.md）
 ├─ hooks/                 # useEscBack、usePanelKeyWindow
 ├─ utils/                 # keyboard、sanitize-html
-└─ styles/                # base.css token；shell.css chrome
+└─ styles/                # base.css token（含 --qx-island-*）；shell.css chrome
 ```
 
 ## 状态管理

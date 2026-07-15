@@ -633,10 +633,26 @@ pub fn toggle(app: &AppHandle) {
     }
 }
 
-/// Show Qx on the launcher route and focus its search responder.
-/// Unlike `toggle`, invoking this while Qx is visible never hides the window.
-pub fn show_launcher(app: &AppHandle) {
-    show_and_navigate(app, "launcher");
+/// Toggle the launcher shortcut:
+/// - visible -> hide and restore focus
+/// - hidden -> show on Launcher and focus search
+pub fn toggle_launcher(app: &AppHandle) {
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        if panel_appears_open(&win) {
+            hide_and_restore_focus(app);
+            return;
+        }
+        if recently_closed() {
+            return;
+        }
+
+        show_floating(app);
+        let need_nav = !routes_match(&active_route(), "launcher");
+        remember_active_route("launcher");
+        if need_nav {
+            let _ = tauri::Emitter::emit(&win, "navigate", "launcher");
+        }
+    }
 }
 
 /// Show + navigate to a route by emitting the existing `navigate` event.

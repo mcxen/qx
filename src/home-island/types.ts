@@ -67,8 +67,15 @@ export interface HomeIslandDefinition {
 }
 
 export interface ResolvedHomeIsland {
+  /** Active mode id (after multi-select rotation / preview). */
+  modeId: string;
   /** Content for QxShell `island` when idle. */
   shellContent: BottomIslandContent | null;
-  /** Node for QxShell `customIsland` when idle. */
+  /**
+   * Node for local preview (Settings). Docked runtime uses componentId via
+   * islandHost instead of customIsland.
+   */
   customNode: ReactNode | undefined;
+  /** Chrome variant for wrapping content-only modes. */
+  chromeVariant?: "shell" | "system" | "sci" | "date";
 }

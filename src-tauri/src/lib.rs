@@ -6,6 +6,7 @@ mod display_monitor;
 mod external_displays;
 mod file_search;
 mod floating_panel;
+mod island_window;
 mod g4f;
 mod github_calendar;
 mod history;
@@ -645,6 +646,12 @@ pub fn run() {
             screencap::get_screencap_history,
             screencap::delete_screencap,
             screencap::is_recording,
+            island_window::island_window_ensure,
+            island_window::island_window_show,
+            island_window::island_window_hide,
+            island_window::island_window_set_always_on_top,
+            island_window::island_window_get_snapshot,
+            island_window::island_sessions_publish,
             marketplace::fetch_plugin_index,
             marketplace::download_plugin,
             marketplace::install_plugin,

@@ -39,6 +39,21 @@
   --qx-context-w: clamp(240px, 28vw, 340px);
   --qx-search-min-w: 220px;
 
+  /* QxIsland unified chrome (docs/qx-island-architecture.md) */
+  --qx-island-height: 34px;
+  --qx-island-height-min: 32px;
+  --qx-island-height-max: 36px;
+  --qx-island-pad-x: 10px;
+  --qx-island-radius: 8px;
+  --qx-island-gap: 8px;
+  --qx-island-font-primary: 12px;
+  --qx-island-font-secondary: 11px;
+  --qx-island-font-tag: 9px;
+  --qx-island-docked-width: min(400px, calc(100% - 260px));
+  --qx-island-docked-min-width: 220px;
+  --qx-island-float-width: 400px;
+  --qx-island-float-height: 34px;
+
   --qx-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display",
     "Helvetica Neue", "PingFang SC", sans-serif;
   --qx-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco,

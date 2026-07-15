@@ -67,6 +67,16 @@ pub struct AppearanceSettings {
     pub home_island_gpu: bool,
     #[serde(default = "default_true")]
     pub home_island_memory: bool,
+    /// Floating QxIsland webview (default false for dogfood rollout).
+    #[serde(default)]
+    pub island_float_enabled: bool,
+    /// Auto-promote sticky task when main is hidden (only if float enabled).
+    #[serde(default = "default_true")]
+    pub island_float_when_main_hidden: bool,
+    #[serde(default = "default_true")]
+    pub island_float_always_on_top: bool,
+    #[serde(default = "default_true")]
+    pub island_prefer_docked_when_main_visible: bool,
 }
 
 fn default_theme() -> String {
@@ -120,6 +130,10 @@ impl Default for AppearanceSettings {
             home_island_cpu: true,
             home_island_gpu: true,
             home_island_memory: true,
+            island_float_enabled: false,
+            island_float_when_main_hidden: true,
+            island_float_always_on_top: true,
+            island_prefer_docked_when_main_visible: true,
         }
     }
 }
@@ -662,12 +676,19 @@ pub(crate) fn read_settings() -> Settings {
         Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
         Err(_) => Settings::default(),
     };
+    merge_missing_default_shortcuts(&mut settings);
     if settings.agent.default_provider.is_empty() || settings.agent.default_provider == "duckduckgo"
     {
         settings.agent.default_provider = "openrouter".to_string();
         settings.agent.default_model = "openrouter/auto".to_string();
     }
     settings
+}
+
+fn merge_missing_default_shortcuts(settings: &mut Settings) {
+    for (id, binding) in Settings::default().shortcuts {
+        settings.shortcuts.entry(id).or_insert(binding);
+    }
 }
 
 pub(crate) fn write_settings(settings: &Settings) -> Result<(), String> {
@@ -821,12 +842,12 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
     let _ = gs.unregister_all();
     let mut registered = BTreeSet::new();
 
-    // Launcher recall always shows Qx on the search route. It never hides an
-    // already-visible window; visibility-only toggling has a separate binding.
+    // Preserve the long-standing Alt+Space behavior: hidden -> Launcher search,
+    // visible -> hide. A separate binding toggles the current view in place.
     if let Some(key) = shortcut_for(settings, "toggle_launcher") {
         gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {
-                crate::floating_panel::show_launcher(app);
+                crate::floating_panel::toggle_launcher(app);
             }
         })
         .map_err(|e| format!("register toggle_launcher shortcut: {e}"))?;
@@ -930,6 +951,30 @@ mod tests {
             .filter_map(|(id, binding)| binding.enabled.then_some(id.as_str()))
             .collect::<Vec<_>>();
         assert_eq!(enabled, vec!["toggle_launcher"]);
+        assert_eq!(
+            settings.shortcuts.get("toggle_window"),
+            Some(&super::ShortcutBinding {
+                key: "Alt+Shift+Space".to_string(),
+                enabled: false,
+            })
+        );
+    }
+
+    #[test]
+    fn legacy_settings_gain_new_shortcuts_without_overwriting_user_bindings() {
+        let mut settings = Settings::default();
+        settings.shortcuts.remove("toggle_window");
+        settings.shortcuts.insert(
+            "toggle_launcher".to_string(),
+            super::ShortcutBinding {
+                key: "Alt+L".to_string(),
+                enabled: true,
+            },
+        );
+
+        super::merge_missing_default_shortcuts(&mut settings);
+
+        assert_eq!(settings.shortcuts["toggle_launcher"].key, "Alt+L");
         assert_eq!(
             settings.shortcuts.get("toggle_window"),
             Some(&super::ShortcutBinding {

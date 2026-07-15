@@ -30,6 +30,7 @@ import { useT } from "../../i18n";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
 import { getQxShortcutPreset } from "../../utils/keyboard";
 import { homeIslandDataBus, useResolvedHomeIsland } from "../../home-island";
+import { QxIslandSurface } from "../../island";
 import { isBuiltinModuleEnabled } from "../moduleAvailability";
 
 interface NavItem {
@@ -264,22 +265,35 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const settingsIsland =
     showHomeIslandPreview && homePreview.shellContent
       ? homePreview.shellContent
-      : {
-          label: t("launcher.settings", "Settings"),
-          detail: t(`nav.${activeTab}`, TAB_LABELS[activeTab]),
-        };
+      : showHomeIslandPreview
+        ? null
+        : {
+            label: t("launcher.settings", "Settings"),
+            detail: t(`nav.${activeTab}`, TAB_LABELS[activeTab]),
+          };
+
+  // Local Surface preview — does not write global `home` session.
+  const homePreviewIsland =
+    showHomeIslandPreview && homePreview.customNode ? (
+      <QxIslandSurface
+        placement="docked"
+        variant={homePreview.chromeVariant ?? "shell"}
+        aria-label={homePreview.modeId}
+      >
+        {homePreview.customNode}
+      </QxIslandSurface>
+    ) : undefined;
 
   return (
     <QxShell
       title={t("launcher.settings", "Settings")}
       visual="elevated"
+      islandKey="settings"
       search={settingsSearch}
       trailing={<span className="qx-shell-meta">Qx v{version || "..."}</span>}
       context={settingsContext}
       island={settingsIsland}
-      customIsland={
-        showHomeIslandPreview ? homePreview.customNode : undefined
-      }
+      customIsland={homePreviewIsland}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: onClose }}
       onKeyDown={handleKeyDown}
       primaryAction={{

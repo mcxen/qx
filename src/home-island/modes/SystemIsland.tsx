@@ -116,7 +116,7 @@ export default function HomeSystemIsland({
   if (!showCpu && !showGpu && !showMemory) return null;
 
   return (
-    <div className="qx-home-system-island" aria-label="System monitor">
+    <div className="qx-home-system-island qx-island-content" aria-label="System monitor">
       <div
         ref={marqueeRef}
         className={`qx-island-marquee${overflowing ? " is-overflowing" : ""}`}

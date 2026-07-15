@@ -21,7 +21,7 @@
 
 ## 1. 设计目标
 
-1. **Launcher 召唤与当前窗口显隐分离**：`toggle_launcher` 始终显示 Launcher 并聚焦搜索；`toggle_window` 只切换显隐，不改变当前 route / 子界面。
+1. **Launcher 召唤与当前窗口显隐分离**：`toggle_launcher` 隐藏时显示 Launcher 并聚焦搜索、显示时隐藏；`toggle_window` 只切换显隐，不改变当前 route / 子界面。
 2. **模块快捷键**（剪贴板 / RSS / GIF）：打开对应 tab；若已在该 tab 再按 → 隐藏窗口；若窗口开着但在别的 tab → 切到该模块。
 3. **所有关闭路径**应尽量走 Rust `floating_panel::hide*`，保证内部 `PANEL_OPEN` / `LAST_HIDE_AT` 一致。
 4. **Tauri managed state**（`RssDb`、`ClipboardDb`）在启动时**始终** `app.manage(...)`，不能因 DB open 失败而漏注册（否则前端会报 *state not managed* / 缺少 `.manage()`）。
@@ -51,7 +51,7 @@
 | `hide` | `mark_closed` + hide |
 | `hide_and_restore_focus` | hide + 恢复先前前台 App（粘贴/切换场景） |
 | `toggle` | **当前窗口快捷键**：开 → 关；关 → 开，保留当前 route |
-| `show_launcher` | 显示窗口并 navigate `launcher`；已显示时也不隐藏，用于重新聚焦搜索 |
+| `toggle_launcher` | 隐藏时显示窗口并 navigate `launcher`；显示时隐藏并恢复焦点 |
 | `toggle_route(route)` | **模块快捷键**（见下） |
 | `show_and_navigate(route)` | 显示并 `emit("navigate", route)`，同时 `remember_active_route` |
 | `set_active_route`（command） | 前端 tab 变化时同步 Rust 侧 route |
@@ -90,7 +90,7 @@ else                                   → show_and_navigate(route)
 
 1. `unregister_all`
 2. 按 settings 注册：
-   - `toggle_launcher` → `floating_panel::show_launcher`
+   - `toggle_launcher` → `floating_panel::toggle_launcher`
    - `toggle_window` → `floating_panel::toggle`
    - `clipboard` → `toggle_route(app, "clipboard")`
    - `rss` → `toggle_route(app, "rss")`
@@ -225,7 +225,7 @@ with_db / ensure_open:
 4. 破坏 `rss.db` 权限或路径后启动 → 命令应返回 open 错误，**不应** missing manage。
 5. Option+Space 隐藏再显示 → 可直接输入搜索。
 6. 在 RSS / Clipboard / Settings 内用 `toggle_window` 隐藏再显示 → 仍停留原 route 和子界面。
-7. 任意界面使用 `toggle_launcher` → 显示 Launcher 并聚焦搜索；Launcher 已显示时再按不应隐藏。
+7. 任意界面使用 `toggle_launcher` → 隐藏时显示 Launcher 并聚焦搜索；再次按下隐藏。
 
 ---
 
