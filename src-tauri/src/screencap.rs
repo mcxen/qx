@@ -6,7 +6,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tauri::{
-    command, AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder,
+    command, AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
+    WebviewWindowBuilder,
 };
 
 const DEFAULT_FPS: u32 = 24;
@@ -287,60 +288,62 @@ fn hide_recording_controls_internal(app: &AppHandle) {
 }
 
 fn hide_region_picker_internal(app: &AppHandle) {
+    // Hide only — do not destroy. Destroying the last *visible* surface while
+    // main is hidden has looked like a full app quit on some macOS builds.
     if let Some(picker) = app.get_webview_window(PICKER_LABEL) {
         let _ = picker.hide();
-        let _ = picker.close();
     }
 }
 
 fn show_region_picker_internal(app: &AppHandle) -> Result<(), String> {
-    hide_region_picker_internal(app);
-
     let monitor = app
         .primary_monitor()
         .map_err(|error| format!("primary monitor: {error}"))?
         .ok_or_else(|| "No primary display found".to_string())?;
     let position = monitor.position();
     let size = monitor.size();
+    let scale = monitor.scale_factor().max(1.0);
+    // Logical size of the primary display (matches CSS clientX/Y in the picker).
+    let logical_w = size.width as f64 / scale;
+    let logical_h = size.height as f64 / scale;
+    let logical_x = position.x as f64 / scale;
+    let logical_y = position.y as f64 / scale;
 
-    // Fresh window each pick — avoids stale size / opacity from a previous session.
-    WebviewWindowBuilder::new(
-        app,
-        PICKER_LABEL,
-        WebviewUrl::App("index.html?view=region-picker".into()),
-    )
-    .title("Qx Region Picker")
-    .inner_size(
-        size.width as f64 / monitor.scale_factor(),
-        size.height as f64 / monitor.scale_factor(),
-    )
-    .position(
-        position.x as f64 / monitor.scale_factor(),
-        position.y as f64 / monitor.scale_factor(),
-    )
-    .resizable(false)
-    .maximizable(false)
-    .minimizable(false)
-    .decorations(false)
-    .transparent(true)
-    .shadow(false)
-    .always_on_top(true)
-    .skip_taskbar(true)
-    .focused(true)
-    .accept_first_mouse(true)
-    // Picker must never end up in the recording itself.
-    .content_protected(true)
-    .build()
-    .map_err(|error| format!("open region picker: {error}"))?;
+    if app.get_webview_window(PICKER_LABEL).is_none() {
+        WebviewWindowBuilder::new(
+            app,
+            PICKER_LABEL,
+            WebviewUrl::App("index.html?view=region-picker".into()),
+        )
+        .title("Qx Region Picker")
+        .inner_size(logical_w, logical_h)
+        .position(logical_x, logical_y)
+        .resizable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(true)
+        .accept_first_mouse(true)
+        // Picker must never end up in the recording itself.
+        .content_protected(true)
+        .build()
+        .map_err(|error| format!("open region picker: {error}"))?;
+    }
 
     let picker = app
         .get_webview_window(PICKER_LABEL)
         .ok_or_else(|| "region picker window is unavailable".to_string())?;
     let _ = picker.set_content_protected(true);
     let _ = picker.set_always_on_top(true);
-    // Physical placement (Retina-correct).
+    // Cover the primary display exactly. Physical size/position matches the
+    // monitor framebuffer; CSS clientX/Y stay in logical points (DPR scaled).
     let _ = picker.set_position(PhysicalPosition::new(position.x, position.y));
-    let _ = picker.set_size(tauri::PhysicalSize::new(size.width, size.height));
+    let _ = picker.set_size(PhysicalSize::new(size.width, size.height));
+    let _ = (logical_w, logical_h, logical_x, logical_y);
     picker
         .show()
         .map_err(|error| format!("show region picker: {error}"))?;
@@ -507,18 +510,26 @@ fn clamp_logical_area(area: RecordArea, mon_w: u32, mon_h: u32) -> Option<Record
     Some(RecordArea { x, y, w, h })
 }
 
-/// Map a logical crop onto a physical-pixel framebuffer (AVCapture / Retina).
+/// Map a logical (points) crop onto a framebuffer using the frame's real
+/// pixel size vs the monitor's logical size (more reliable than scale_factor
+/// alone — AVCapture dimensions can disagree slightly with CGDisplayMode).
+#[cfg_attr(not(test), allow(dead_code))]
 fn crop_physical(
     frame: &image::RgbaImage,
     area: &RecordArea,
-    scale: f64,
+    mon_w: u32,
+    mon_h: u32,
 ) -> image::RgbaImage {
-    let fw = frame.width();
-    let fh = frame.height();
-    let mut x = ((area.x as f64) * scale).round() as u32;
-    let mut y = ((area.y as f64) * scale).round() as u32;
-    let mut w = ((area.w as f64) * scale).round() as u32;
-    let mut h = ((area.h as f64) * scale).round() as u32;
+    let fw = frame.width().max(1);
+    let fh = frame.height().max(1);
+    let mon_w = mon_w.max(1) as f64;
+    let mon_h = mon_h.max(1) as f64;
+    let sx = fw as f64 / mon_w;
+    let sy = fh as f64 / mon_h;
+    let mut x = ((area.x as f64) * sx).round() as u32;
+    let mut y = ((area.y as f64) * sy).round() as u32;
+    let mut w = ((area.w as f64) * sx).round() as u32;
+    let mut h = ((area.h as f64) * sy).round() as u32;
     x = x.min(fw.saturating_sub(2));
     y = y.min(fh.saturating_sub(2));
     w = w.min(fw.saturating_sub(x)).max(2) & !1;
@@ -619,10 +630,12 @@ fn recording_loop_inner(
     let mon_h = monitor
         .height()
         .map_err(|error| format!("display height: {error}"))?;
-    let scale = monitor.scale_factor().unwrap_or(1.0).max(1.0) as f64;
 
-    // Selection is in logical points (CSS px on the picker overlay).
+    // Selection is in logical points (CSS px on the picker overlay / primary).
     let area = area.and_then(|a| clamp_logical_area(a, mon_w, mon_h));
+    // Region capture: use capture_region (same coordinate space as the picker).
+    // Full-screen: prefer the continuous AVCapture stream for FPS.
+    let region_mode = area.is_some();
 
     let frame_duration = std::time::Duration::from_secs_f64(1.0 / options.fps as f64);
     let sample_duration = (1000 / options.fps).max(1);
@@ -653,88 +666,83 @@ fn recording_loop_inner(
     let started_at = std::time::Instant::now();
     let mut next_frame_at = std::time::Instant::now();
 
-    // ── Stream path (xcap VideoRecorder / AVCaptureScreenInput) ─────────
-    let stream_ok = match monitor.video_recorder() {
-        Ok((recorder, rx)) => {
-            if recorder.start().is_err() {
-                // Fall through to polled capture_image / capture_region.
-                false
-            } else {
-                let mut consecutive_empty: u32 = 0;
-                while !stop_flag.load(Ordering::Relaxed) {
-                    // Drop frames faster than the target fps.
-                    let now = std::time::Instant::now();
-                    if now < next_frame_at {
-                        // Still drain the channel so it does not back up.
-                        while rx.try_recv().is_ok() {}
-                        std::thread::sleep(
-                            (next_frame_at - now).min(std::time::Duration::from_millis(4)),
-                        );
-                        continue;
-                    }
-
-                    let frame = match rx.recv_timeout(std::time::Duration::from_millis(500)) {
-                        Ok(frame) => frame,
-                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                            consecutive_empty += 1;
-                            if consecutive_empty >= 10 {
-                                let _ = recorder.stop();
-                                return Err(
-                                    "Screen capture stream stalled. Grant Screen Recording permission and restart Qx."
-                                        .to_string(),
-                                );
-                            }
+    // ── Full-screen stream path (xcap VideoRecorder / AVCaptureScreenInput) ─
+    let stream_ok = if region_mode {
+        false
+    } else {
+        match monitor.video_recorder() {
+            Ok((recorder, rx)) => {
+                if recorder.start().is_err() {
+                    false
+                } else {
+                    let mut consecutive_empty: u32 = 0;
+                    while !stop_flag.load(Ordering::Relaxed) {
+                        let now = std::time::Instant::now();
+                        if now < next_frame_at {
+                            while rx.try_recv().is_ok() {}
+                            std::thread::sleep(
+                                (next_frame_at - now).min(std::time::Duration::from_millis(4)),
+                            );
                             continue;
                         }
-                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                            let _ = recorder.stop();
-                            return Err("Screen capture stream disconnected".to_string());
+
+                        let frame = match rx.recv_timeout(std::time::Duration::from_millis(500)) {
+                            Ok(frame) => frame,
+                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                                consecutive_empty += 1;
+                                if consecutive_empty >= 10 {
+                                    let _ = recorder.stop();
+                                    return Err(
+                                        "Screen capture stream stalled. Grant Screen Recording permission and restart Qx."
+                                            .to_string(),
+                                    );
+                                }
+                                continue;
+                            }
+                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                                let _ = recorder.stop();
+                                return Err("Screen capture stream disconnected".to_string());
+                            }
+                        };
+                        consecutive_empty = 0;
+
+                        let mut latest = frame;
+                        while let Ok(more) = rx.try_recv() {
+                            latest = more;
                         }
-                    };
-                    consecutive_empty = 0;
 
-                    // Keep only the freshest frame if the producer is ahead.
-                    let mut latest = frame;
-                    while let Ok(more) = rx.try_recv() {
-                        latest = more;
+                        let Some(img) =
+                            image::RgbaImage::from_raw(latest.width, latest.height, latest.raw)
+                        else {
+                            continue;
+                        };
+
+                        encode_rgba_frame(
+                            &mut encoder,
+                            &mut writer,
+                            &mut track_added,
+                            &mut dimensions,
+                            &mut pending_sample,
+                            &mut frame_idx,
+                            started_at,
+                            img,
+                            options.max_size,
+                        )?;
+
+                        next_frame_at += frame_duration;
+                        if next_frame_at + frame_duration < std::time::Instant::now() {
+                            next_frame_at = std::time::Instant::now() + frame_duration;
+                        }
                     }
-
-                    let Some(full) =
-                        image::RgbaImage::from_raw(latest.width, latest.height, latest.raw)
-                    else {
-                        continue;
-                    };
-                    let img = if let Some(ref a) = area {
-                        crop_physical(&full, a, scale)
-                    } else {
-                        full
-                    };
-
-                    encode_rgba_frame(
-                        &mut encoder,
-                        &mut writer,
-                        &mut track_added,
-                        &mut dimensions,
-                        &mut pending_sample,
-                        &mut frame_idx,
-                        started_at,
-                        img,
-                        options.max_size,
-                    )?;
-
-                    next_frame_at += frame_duration;
-                    if next_frame_at + frame_duration < std::time::Instant::now() {
-                        next_frame_at = std::time::Instant::now() + frame_duration;
-                    }
+                    let _ = recorder.stop();
+                    true
                 }
-                let _ = recorder.stop();
-                true
             }
+            Err(_) => false,
         }
-        Err(_) => false,
     };
 
-    // ── Poll fallback (xcap still capture) ──────────────────────────────
+    // ── Region / poll path: capture_region uses the same logical points as the picker ─
     if !stream_ok && !stop_flag.load(Ordering::Relaxed) {
         let mut consecutive_errors: u32 = 0;
         while !stop_flag.load(Ordering::Relaxed) {
@@ -743,7 +751,6 @@ fn recording_loop_inner(
                 std::thread::sleep((next_frame_at - now).min(std::time::Duration::from_millis(4)));
                 continue;
             }
-            // capture_region / capture_image expect **logical** points.
             let captured = if let Some(ref a) = area {
                 monitor.capture_region(a.x, a.y, a.w, a.h)
             } else {
@@ -916,6 +923,7 @@ pub async fn screencap_begin_region_select(app: AppHandle) -> Result<(), String>
 #[command]
 pub async fn screencap_cancel_region_select(app: AppHandle) -> Result<(), String> {
     hide_region_picker_internal(&app);
+    crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(800));
     crate::floating_panel::show_and_navigate(&app, "screencap");
     Ok(())
 }
@@ -929,13 +937,16 @@ pub async fn screencap_confirm_region_select(
 ) -> Result<(), String> {
     hide_region_picker_internal(&app);
     if area.w < 16 || area.h < 16 {
+        crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(800));
         crate::floating_panel::show_and_navigate(&app, "screencap");
         return Err("Selection too small — drag a larger region".to_string());
     }
-    // Area is already in logical points relative to the primary display.
+    // Area is CSS client points on a picker that fully covers the primary display
+    // (= xcap capture_region logical coordinates).
     match start_recording(app.clone(), Some(area), options).await {
         Ok(()) => Ok(()),
         Err(error) => {
+            crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(800));
             crate::floating_panel::show_and_navigate(&app, "screencap");
             Err(error)
         }
@@ -1004,6 +1015,8 @@ pub async fn stop_recording(app: AppHandle) -> Result<String, String> {
 
     set_recording_ui_protected(&app, false);
     hide_recording_controls_internal(&app);
+    // Stop button / focus handoff can fire Focused(false) immediately after show.
+    crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(1200));
     crate::floating_panel::show_and_navigate(&app, "screencap");
     emit_recording_status(&app);
     result
@@ -1030,6 +1043,7 @@ pub fn screencap_hide_controls(app: AppHandle) {
 pub fn screencap_return_to_main(app: AppHandle) {
     hide_recording_controls_internal(&app);
     set_recording_ui_protected(&app, true);
+    crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(800));
     crate::floating_panel::show_and_navigate(&app, "screencap");
     emit_recording_status(&app);
 }
@@ -1341,7 +1355,8 @@ mod tests {
             w: 40,
             h: 20,
         };
-        let cropped = crop_physical(&frame, &area, 2.0);
+        // Frame is 2× a 100×50 logical monitor.
+        let cropped = crop_physical(&frame, &area, 100, 50);
         assert_eq!(cropped.width(), 80);
         assert_eq!(cropped.height(), 40);
     }

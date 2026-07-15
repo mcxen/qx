@@ -379,15 +379,27 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| {
-            if window.label() != floating_panel::MAIN_LABEL {
+            let label = window.label();
+            // Secondary surfaces: hide instead of destroy (main may be hidden).
+            if label == "region-picker" || label == "recording-controls" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+                return;
+            }
+            if label != floating_panel::MAIN_LABEL {
                 return;
             }
             // Hide on focus loss when auto-hide is enabled.
             // - Windows: WebView2 outside-click focus can race; native event is required.
             // - macOS: accessory NSWindow focus notifications are not always delivered
             //   reliably to the webview `onFocusChanged` listener, so hide here too.
+            // Suppress right after screencap stop / programmatic show — otherwise
+            // a focus flicker hides the panel and feels like Qx quit.
             if matches!(event, tauri::WindowEvent::Focused(false))
                 && settings::read_settings().general.auto_hide_on_blur
+                && !floating_panel::auto_hide_suppressed()
             {
                 floating_panel::hide_and_restore_focus(&window.app_handle());
             }

@@ -26,6 +26,9 @@ static LAST_HIDE_AT: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
 /// blur→hide does not immediately re-show the panel. Keep short — longer grace
 /// made deliberate double-tap summon feel unresponsive (~0.3s+ dead).
 const HIDE_TOGGLE_GRACE: Duration = Duration::from_millis(160);
+/// Ignore Focused(false) auto-hide until this instant (e.g. after screencap
+/// stop: show main then focus flickers and would look like Qx "quit").
+static SUPPRESS_AUTO_HIDE_UNTIL: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
 
 fn previous_foreground_pid() -> &'static Mutex<Option<i32>> {
     PREVIOUS_FOREGROUND_PID.get_or_init(|| Mutex::new(None))
@@ -91,6 +94,28 @@ fn recently_closed() -> bool {
         .ok()
         .and_then(|guard| *guard)
         .map(|at| at.elapsed() < HIDE_TOGGLE_GRACE)
+        .unwrap_or(false)
+}
+
+fn suppress_auto_hide_lock() -> &'static Mutex<Option<Instant>> {
+    SUPPRESS_AUTO_HIDE_UNTIL.get_or_init(|| Mutex::new(None))
+}
+
+/// Block auto-hide-on-blur for a short period after programmatically showing
+/// the panel (recording stop, region cancel, etc.).
+pub fn suppress_auto_hide(duration: Duration) {
+    if let Ok(mut guard) = suppress_auto_hide_lock().lock() {
+        *guard = Some(Instant::now() + duration);
+    }
+}
+
+/// Whether Focused(false) should skip auto-hide right now.
+pub fn auto_hide_suppressed() -> bool {
+    suppress_auto_hide_lock()
+        .lock()
+        .ok()
+        .and_then(|guard| *guard)
+        .map(|until| Instant::now() < until)
         .unwrap_or(false)
 }
 
