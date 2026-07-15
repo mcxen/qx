@@ -1,5 +1,45 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Bugfix — 文本工具编辑键与 QxShell 导航抽象
+
+**状态**：已实现，等待发布包运行态复核。
+
+### 修复内容
+
+- 修复 QxShell 在 textarea 编辑焦点中仍用 ArrowUp / ArrowDown / PageUp / PageDown 切换文件的问题；编辑器完整保留原生光标、选区和内容滚动。
+- 抽出 `navigationModel` 纯逻辑层与 `useQxShellNavigation` DOM/React 适配层，统一负责区域激活、左右区域切换、列表移动和阅读内容滚动。
+- `QxShell.navigation` 新增 `regionId` 和 `editable` 策略；默认仅允许 Shell 搜索框用上下/Page 键驱动列表，普通 input、textarea、contenteditable 不被 Shell 抢键。
+- Documents 文件列表绑定 `docs-files` 区域，移除模块内重复的上下键索引代码；搜索框输入裸字母不再误触发 New File。
+- 新增无 DOM 的导航模型回归脚本，覆盖列表边界、Page/Home/End、编辑焦点保护和内容滚动步长。
+
+### 验证
+
+- [x] `npm run test:shell-navigation`。
+- [x] `npx tsc --noEmit`。
+- [x] `npm run build`。
+- [ ] macOS 发布包：编辑器上下键不换文件、列表上下键换文件、搜索框上下键仍导航。
+- [ ] Windows Compatibility Action 与 Windows 文本编辑键盘验证。
+
+## Bugfix — V2EX 系统代理与请求竞态
+
+**状态**：已修复并完成 macOS 联网验证。
+
+### 修复内容
+
+- `reqwest` 补启用 `system-proxy` feature：未配置 Qx 手动代理时自动读取 macOS System Configuration / Windows 系统代理；Qx 手动代理开启时仍优先使用用户填写的 URL。
+- 移除 V2EX 面板首次挂载时重复发出的主题请求，避免无意义地同时请求两次 API。
+- 为主题加载增加递增 request id；搜索或 Latest / Hot 快速切换时，过期请求的成功或失败结果都不能覆盖当前结果。
+
+### 验证
+
+- [x] V2EX `latest.json` / `hot.json` 实际联网返回 HTTP 200。
+- [x] `cargo tree -e features -i reqwest@0.12.28` 确认 `system-proxy` 已启用。
+- [x] `npx tsc --noEmit`。
+- [x] `cargo check`（通过，保留项目既有 2 个 warning）。
+- [x] `npm run tauri build`，ad-hoc 重签并安装至 `/Applications/Qx.app`。
+- [x] 新安装包实际验证：Latest 45 条、Hot 10 条；Latest / Hot 连续快速切换后最终模式与列表一致，无网络错误。
+- [ ] Windows Compatibility Action 与 Windows 系统代理环境手动验证。
+
 ## UI polish — Extensions 管理区紧凑化
 
 **状态**：已实现并完成 macOS 视觉验证。

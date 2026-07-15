@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
@@ -22,10 +22,12 @@ export default function V2exPanel() {
   const [replies, setReplies] = useState<V2exReply[]>([]);
   const [repliesLoading, setRepliesLoading] = useState(false);
   const [repliesError, setRepliesError] = useState("");
+  const topicsRequestId = useRef(0);
 
   const selectedTopic = topics[selectedIndex] ?? null;
 
   const loadTopics = async (nextMode = mode, nextQuery = query) => {
+    const requestId = ++topicsRequestId.current;
     setLoading(true);
     setError("");
     try {
@@ -33,14 +35,16 @@ export default function V2exPanel() {
       const result = trimmed
         ? await invoke<V2exTopic[]>("v2ex_search_topics", { query: trimmed })
         : await invoke<V2exTopic[]>("v2ex_fetch_topics", { mode: nextMode });
+      if (requestId !== topicsRequestId.current) return;
       setTopics(result);
       setSelectedIndex(0);
     } catch (err) {
+      if (requestId !== topicsRequestId.current) return;
       setError(String(err));
       setTopics([]);
       setSelectedIndex(0);
     } finally {
-      setLoading(false);
+      if (requestId === topicsRequestId.current) setLoading(false);
     }
   };
 
@@ -51,7 +55,6 @@ export default function V2exPanel() {
     if (launch?.surface === "hot" || launch?.surface === "latest") {
       setMode(nextMode);
     }
-    void loadTopics(nextMode, "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

@@ -4,6 +4,10 @@ import QxBottomIsland, { type BottomIslandContent } from "./QxBottomIsland";
 import ShellActionButton, { type QxShellAction } from "./ShellActionButton";
 import ShellActionMenu, { QX_ACTION_MENU_TRIGGER_ATTR } from "./ShellActionMenu";
 import {
+  useQxShellNavigation,
+  type QxShellNavigation,
+} from "../hooks/useQxShellNavigation";
+import {
   getQxShortcutPreset,
   isImeCompositionEvent,
   isNativeEditingShortcut,
@@ -37,14 +41,7 @@ interface QxShellProps {
   style?: CSSProperties;
   onKeyDown?: (event: React.KeyboardEvent) => void;
   overlayBottom?: boolean;
-  navigation?: {
-    index: number;
-    count: number;
-    onChange: (index: number) => void;
-    onOpen?: () => void;
-    onClose?: () => void;
-    pageSize?: number;
-  };
+  navigation?: QxShellNavigation;
 }
 
 const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
@@ -80,7 +77,6 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const hasRightActions = Boolean(visiblePrimaryAction || visibleSecondaryAction);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [actionIndex, setActionIndex] = useState(0);
-  const [activeRegionId, setActiveRegionId] = useState<string | null>(null);
   const shellRef = useRef<HTMLDivElement | null>(null);
   const searchGlowTimers = useRef<WeakMap<HTMLElement, ReturnType<typeof setTimeout>>>(new WeakMap());
   /** Focus target to restore when the Action menu closes (Raycast: Esc back to list). */
@@ -94,48 +90,12 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     else if (ref) ref.current = element;
   }, [ref]);
 
-  const getKeyboardRegions = useCallback((): HTMLElement[] => {
-    const root = shellRef.current;
-    if (!root) return [];
-    return Array.from(root.querySelectorAll<HTMLElement>("[data-qx-region]"))
-      .filter((region) =>
-        region.getAttribute("aria-hidden") !== "true"
-        && !region.hasAttribute("hidden")
-        && region.getClientRects().length > 0
-      );
-  }, []);
-
-  const activateRegion = useCallback((region: HTMLElement, focus = true) => {
-    const id = region.dataset.qxRegion;
-    if (!id) return;
-    setActiveRegionId(id);
-    if (focus) region.focus({ preventScroll: true });
-  }, []);
-
-  useEffect(() => {
-    const regions = getKeyboardRegions();
-    if (regions.length === 0) {
-      setActiveRegionId(null);
-      return;
-    }
-    const retained = activeRegionId
-      ? regions.find((region) => region.dataset.qxRegion === activeRegionId)
-      : null;
-    if (!retained) {
-      const preferred = regions.find((region) => region.dataset.qxRegionInitial === "true") ?? regions[0];
-      setActiveRegionId(preferred.dataset.qxRegion ?? null);
-    }
-  }, [activeRegionId, children, context, getKeyboardRegions]);
-
-  useEffect(() => {
-    const root = shellRef.current;
-    if (!root) return;
-    if (activeRegionId) root.dataset.qxActiveRegion = activeRegionId;
-    else delete root.dataset.qxActiveRegion;
-    for (const region of getKeyboardRegions()) {
-      region.classList.toggle("is-qx-region-active", region.dataset.qxRegion === activeRegionId);
-    }
-  }, [activeRegionId, getKeyboardRegions]);
+  const {
+    activeRegionId,
+    handleNavigationKeyDown,
+    handleRegionFocusCapture,
+    handleRegionPointerCapture,
+  } = useQxShellNavigation({ shellRef, content: children, context });
 
   useEffect(() => {
     if (menuActions.length === 0) {
@@ -449,73 +409,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     if (event.defaultPrevented) return;
 
     const nativeEvent = event.nativeEvent;
-    const editable = shouldIgnoreBareShortcut(nativeEvent);
-    const isBareRegionKey = !editable && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey;
-    if (isBareRegionKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
-      const regions = getKeyboardRegions();
-      if (regions.length > 1) {
-        const targetRegion = event.target instanceof Element
-          ? event.target.closest<HTMLElement>("[data-qx-region]")
-          : null;
-        const currentIndex = Math.max(0, regions.findIndex((region) =>
-          region === targetRegion || region.dataset.qxRegion === activeRegionId
-        ));
-        const delta = event.key === "ArrowRight" ? 1 : -1;
-        const nextIndex = Math.max(0, Math.min(regions.length - 1, currentIndex + delta));
-        event.preventDefault();
-        event.stopPropagation();
-        activateRegion(regions[nextIndex]);
-        return;
-      }
-    }
-
-    if (navigation && navigation.count > 0) {
-      const last = navigation.count - 1;
-      const page = Math.max(1, navigation.pageSize ?? 8);
-      let next: number | null = null;
-      if (event.key === "ArrowDown") next = Math.min(last, navigation.index + 1);
-      else if (event.key === "ArrowUp") next = Math.max(0, navigation.index - 1);
-      else if (event.key === "PageDown") next = Math.min(last, navigation.index + page);
-      else if (event.key === "PageUp") next = Math.max(0, navigation.index - page);
-      else if (!editable && event.key === "Home") next = 0;
-      else if (!editable && event.key === "End") next = last;
-      else if (!editable && event.key === "ArrowRight" && navigation.onOpen) navigation.onOpen();
-      else if (!editable && event.key === "ArrowLeft" && navigation.onClose) navigation.onClose();
-      if (next !== null || (!editable && (event.key === "ArrowRight" || event.key === "ArrowLeft"))) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (next !== null) navigation.onChange(next);
-        return;
-      }
-    }
-
-    if (!editable && !event.metaKey && !event.ctrlKey && !event.altKey) {
-      const targetRegion = event.target instanceof Element
-        ? event.target.closest<HTMLElement>("[data-qx-region]")
-        : null;
-      const activeRegion = targetRegion
-        ?? getKeyboardRegions().find((region) => region.dataset.qxRegion === activeRegionId)
-        ?? null;
-      const scrollTarget = activeRegion?.matches("[data-qx-region-scroll]")
-        ? activeRegion
-        : activeRegion?.querySelector<HTMLElement>("[data-qx-region-scroll]") ?? null;
-      if (scrollTarget && scrollTarget.scrollHeight > scrollTarget.clientHeight + 1) {
-        const page = Math.max(48, Math.round(scrollTarget.clientHeight * 0.82));
-        let top: number | null = null;
-        if (event.key === "ArrowDown") top = scrollTarget.scrollTop + 56;
-        else if (event.key === "ArrowUp") top = scrollTarget.scrollTop - 56;
-        else if (event.key === "PageDown" || (event.key === " " && !event.shiftKey)) top = scrollTarget.scrollTop + page;
-        else if (event.key === "PageUp" || (event.key === " " && event.shiftKey)) top = scrollTarget.scrollTop - page;
-        else if (event.key === "Home") top = 0;
-        else if (event.key === "End") top = scrollTarget.scrollHeight;
-        if (top !== null) {
-          event.preventDefault();
-          event.stopPropagation();
-          scrollTarget.scrollTo({ top, behavior: "auto" });
-          return;
-        }
-      }
-    }
+    if (handleNavigationKeyDown(event, navigation)) return;
 
     // Shell is the final keyboard fallback. Inner views, dialogs and search
     // fields get first refusal through normal bubbling; an otherwise
@@ -549,18 +443,6 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       searchGlowTimers.current.delete(wrap);
     }, 720);
     searchGlowTimers.current.set(wrap, nextTimer);
-  };
-
-  const handleRegionFocusCapture = (event: React.FocusEvent<HTMLDivElement>) => {
-    if (!(event.target instanceof Element)) return;
-    const region = event.target.closest<HTMLElement>("[data-qx-region]");
-    if (region && shellRef.current?.contains(region)) activateRegion(region, false);
-  };
-
-  const handleRegionPointerCapture = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!(event.target instanceof Element)) return;
-    const region = event.target.closest<HTMLElement>("[data-qx-region]");
-    if (region && shellRef.current?.contains(region)) activateRegion(region, false);
   };
 
   return (

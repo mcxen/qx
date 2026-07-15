@@ -1,6 +1,6 @@
 [package]
 name = "qx"
-version = "0.5.16"
+version = "0.5.17"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -34,7 +34,7 @@ chrono = "0.4"
 blake3 = "1"
 sha2 = "0.10"
 feed-rs = "2"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking", "json", "socks"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking", "json", "socks", "system-proxy"] }
 tokio = { version = "1", features = ["rt", "macros"] }
 quick-xml = "0.36"
 scrap = "0.5"

@@ -712,18 +712,10 @@ export default function DevTxtTool() {
       e.target instanceof Element
         ? e.target.closest<HTMLElement>("[data-qx-region]")?.dataset.qxRegion
         : undefined;
-    const editing = isEditableTarget(e.target) && region === "docs-editor";
+    const editing = isEditableTarget(e.target);
 
     if (!editing && (region === "docs-files" || region === "docs-actions" || !region)) {
-      if (e.key === "ArrowDown" && filtered.length > 0) {
-        e.preventDefault();
-        const next = Math.min(selectedIndex + 1, filtered.length - 1);
-        selectFile(filtered[next].name);
-      } else if (e.key === "ArrowUp" && filtered.length > 0) {
-        e.preventDefault();
-        const next = Math.max(selectedIndex - 1, 0);
-        selectFile(filtered[next].name);
-      } else if (e.key === "Enter" && region === "docs-files") {
+      if (e.key === "Enter" && region === "docs-files") {
         e.preventDefault();
         editorRef.current?.focus();
       } else if ((e.key === "n" || e.key === "N") && !e.metaKey && !e.ctrlKey && !e.altKey) {
@@ -1125,6 +1117,7 @@ export default function DevTxtTool() {
       navigation={{
         index: selectedIndex < 0 ? 0 : selectedIndex,
         count: filtered.length,
+        regionId: "docs-files",
         onChange: (i) => {
           const file = filtered[i];
           if (file) selectFile(file.name);
