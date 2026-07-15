@@ -117,6 +117,21 @@
 | 插件 | `plugin-architecture.md`, `public/doc/raycast-plugin-conversion.md` | O：host+converter 扩展；L：跨端 command 同形 |
 | 设置 / i18n | `settings-panel.md`, `src/i18n.ts` | I：按页拆分；D：文案依赖 key 而非组件内写死语言 |
 | IPC | `ipc-catalogue.md` | 契约单一事实来源 |
+| **系统能力** | `display.rs` · `desktop_windows.rs` · `media/` · `clipboard` · FE `src/system/*` | S：发现/媒体/剪贴板各管一责；D：feature 只依赖端口；禁止在 screencap/OCR 内复制 xcap 枚举 |
+
+### 系统能力提升规则（与 AGENTS Module Decomposition 对齐）
+
+凡属 **多功能复用** 或 **产品基础设施** 的能力，必须落在 `src-tauri/src/` 根级服务 + 可选 `src/system/` 前端端口，而不是功能模块私有实现：
+
+| 能力 | 根级服务 | 公共 IPC / 端口 |
+|---|---|---|
+| 显示器枚举与映射 | `display` | `display_list` / `src/system/display.ts` |
+| 顶层窗口清单与几何 | `desktop_windows` | `desktop_windows_list` / `src/system/desktopWindows.ts` |
+| 区域 still-frame 抓帧 | `display::capture_region` | 内部 API（工作流封装） |
+| 磁盘图写剪贴板 | `clipboard` | `clipboard_write_image_file` / `src/system/clipboard.ts` |
+| 视频/GIF 编解码 | `media/` | 既有 convert 命令 |
+
+Feature（如 `screencap`）只保留：**session / 工作流 / 历史 / UI 语义**。旧名 `screencap_list_*` 可作为薄门面保留，新代码必须走系统命令。
 
 ## 6. 反模式（禁止）
 

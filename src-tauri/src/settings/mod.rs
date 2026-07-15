@@ -8,6 +8,13 @@ use std::sync::{Mutex, OnceLock};
 use tauri::{command, AppHandle};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+mod entry_config;
+
+use entry_config::{
+    default_quick_entries, default_tray_actions, migrate_legacy_default_quick_entries,
+};
+pub use entry_config::{QuickEntryConfig, TrayActionConfig};
+
 static SETTINGS_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 /// While ShortcutRecorder is open, OS global hotkeys must not fire.
@@ -24,6 +31,9 @@ pub struct GeneralSettings {
     pub data_path: String,
     #[serde(default)]
     pub has_shown_launcher: bool,
+    /// macOS first-launch permission wizard completed (or skipped on non-macOS).
+    #[serde(default)]
+    pub has_completed_onboarding: bool,
 }
 
 fn default_auto_hide_on_blur() -> bool {
@@ -40,6 +50,7 @@ impl Default for GeneralSettings {
             auto_hide_on_blur: true,
             data_path: crate::paths::data_dir().to_string_lossy().to_string(),
             has_shown_launcher: false,
+            has_completed_onboarding: false,
         }
     }
 }
@@ -517,68 +528,6 @@ pub struct SearchMetadataEntry {
     pub tags: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct QuickEntryConfig {
-    pub id: String,
-    pub title: String,
-    pub subtitle: String,
-    pub target: String,
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-}
-
-fn default_quick_entries() -> Vec<QuickEntryConfig> {
-    [
-        ("clipboard", "Clipboard History", "Pinned, frequent, links"),
-        ("qx-ai", "QxAI", "Chat and agent tasks"),
-        ("rss", "RSS Reader", "Feeds and articles"),
-        (
-            "screencap",
-            "Screen Capture",
-            "Screenshots and MP4/MOV capture with optional GIF conversion",
-        ),
-        ("v2ex", "V2EX", "Latest and hot topics"),
-        ("weather", "Weather", "Current conditions and forecast"),
-        ("documents", "Documents", "Text, Markdown, JSON"),
-        ("macros", "Macro Recorder", "Record and replay actions"),
-        ("qx-tty", "QxTTY", "Persistent local terminal sessions"),
-        ("settings", "Settings", "Appearance and plugins"),
-    ]
-    .into_iter()
-    .map(|(id, title, subtitle)| QuickEntryConfig {
-        id: id.to_string(),
-        title: title.to_string(),
-        subtitle: subtitle.to_string(),
-        target: id.to_string(),
-        enabled: true,
-    })
-    .collect()
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct TrayActionConfig {
-    pub id: String,
-    pub title: String,
-    #[serde(default = "default_true")]
-    pub enabled: bool,
-}
-
-fn default_tray_actions() -> Vec<TrayActionConfig> {
-    [
-        ("open_main", "Open Main Window", true),
-        ("keep_visible", "Keep Window Visible", true),
-        ("settings", "Settings", true),
-        ("hide_main", "Hide Main Window", false),
-    ]
-    .into_iter()
-    .map(|(id, title, enabled)| TrayActionConfig {
-        id: id.to_string(),
-        title: title.to_string(),
-        enabled,
-    })
-    .collect()
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
@@ -698,10 +647,32 @@ fn settings_path() -> PathBuf {
 pub(crate) fn read_settings() -> Settings {
     let path = settings_path();
     let mut settings = match fs::read_to_string(&path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Ok(content) => {
+            let mut value: serde_json::Value =
+                serde_json::from_str(&content).unwrap_or(serde_json::Value::Null);
+            // Soft-migrate onboarding flag: installs that already showed the launcher
+            // before this field existed must not re-open the permission wizard.
+            if let Some(general) = value
+                .get_mut("general")
+                .and_then(|g| g.as_object_mut())
+            {
+                if !general.contains_key("has_completed_onboarding") {
+                    let shown = general
+                        .get("has_shown_launcher")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
+                    general.insert(
+                        "has_completed_onboarding".into(),
+                        serde_json::Value::Bool(shown),
+                    );
+                }
+            }
+            serde_json::from_value(value).unwrap_or_default()
+        }
         Err(_) => Settings::default(),
     };
     merge_missing_default_shortcuts(&mut settings);
+    migrate_legacy_default_quick_entries(&mut settings.quick_entries);
     if settings.agent.default_provider.is_empty() || settings.agent.default_provider == "duckduckgo"
     {
         settings.agent.default_provider = "openrouter".to_string();
@@ -1020,80 +991,4 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{portable_shortcut_key, AgentSettings, Settings};
-
-    #[test]
-    fn canonicalizes_primary_modifier_for_both_desktop_platforms() {
-        assert_eq!(portable_shortcut_key("Cmd+K"), "CmdOrCtrl+K");
-        assert_eq!(
-            portable_shortcut_key("Primary + Shift + P"),
-            "CmdOrCtrl+Shift+P"
-        );
-        assert_eq!(portable_shortcut_key("Super+K"), "Super+K");
-        assert_eq!(portable_shortcut_key("Ctrl+K"), "Ctrl+K");
-    }
-
-    #[test]
-    fn default_global_shortcuts_only_enable_launcher_recall() {
-        let settings = Settings::default();
-        let enabled = settings
-            .shortcuts
-            .iter()
-            .filter_map(|(id, binding)| binding.enabled.then_some(id.as_str()))
-            .collect::<Vec<_>>();
-        assert_eq!(enabled, vec!["toggle_launcher"]);
-        assert_eq!(
-            settings.shortcuts.get("toggle_window"),
-            Some(&super::ShortcutBinding {
-                key: "Alt+Shift+Space".to_string(),
-                enabled: false,
-            })
-        );
-    }
-
-    #[test]
-    fn legacy_settings_gain_new_shortcuts_without_overwriting_user_bindings() {
-        let mut settings = Settings::default();
-        settings.shortcuts.remove("toggle_window");
-        settings.shortcuts.insert(
-            "toggle_launcher".to_string(),
-            super::ShortcutBinding {
-                key: "Alt+L".to_string(),
-                enabled: true,
-            },
-        );
-
-        super::merge_missing_default_shortcuts(&mut settings);
-
-        assert_eq!(settings.shortcuts["toggle_launcher"].key, "Alt+L");
-        assert_eq!(
-            settings.shortcuts.get("toggle_window"),
-            Some(&super::ShortcutBinding {
-                key: "Alt+Shift+Space".to_string(),
-                enabled: false,
-            })
-        );
-    }
-
-    #[test]
-    fn default_agent_uses_openrouter_auto() {
-        let agent = AgentSettings::default();
-        assert_eq!(agent.default_provider, "openrouter");
-        assert_eq!(agent.default_model, "openrouter/auto");
-    }
-
-    #[test]
-    fn beta_modules_stay_enabled_for_legacy_settings_until_user_disables_them() {
-        let mut settings: Settings = serde_json::from_str("{}").expect("legacy settings");
-        for id in ["screencap", "v2ex", "weather", "macros"] {
-            assert!(settings.builtin_modules.is_enabled(id));
-        }
-        settings
-            .builtin_modules
-            .modules
-            .insert("weather".to_string(), false);
-        assert!(!settings.builtin_modules.is_enabled("weather"));
-        assert!(settings.builtin_modules.is_enabled("v2ex"));
-    }
-}
+mod tests;

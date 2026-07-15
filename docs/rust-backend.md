@@ -20,11 +20,12 @@
 |---|---|
 | `apps.rs` | 扫描 `/Applications`、`~/Applications`、系统内建 utilities，解析 `Info.plist`，`sips` 生成 icon PNG，中文 pinyin fuzzy 匹配 (`apps_zh_dict.rs`) |
 | `apps_zh_dict.rs` | 常见 macOS app 的中文别名 → pinyin 词典 |
-| `file_search.rs` | Spotlight / mdfind 包装 + 结果缓存 |
+| `file_search.rs` | Cardinal 多策略文件检索、去重与最近修改时间排序；Spotlight / `mdfind` 作为回退 |
 | `history.rs` | `launch_history` / `search_history` SQLite 表；`record_*` 命令后台写入，`get_*` 命令批量读取 |
 | `system_stats.rs` | Mach APIs：`host_processor_info`（每核 CPU）、`host_statistics64`（内存），供 `HomeSystemIsland` 每 1.6s 轮询 |
 | `system_information.rs` | 主机名/芯片/内存/存储/网络/进程列表；`kill_process` 通过 `/bin/kill` 发 SIGTERM |
-| `display.rs` | Qx 系统级显示器服务：统一枚举、稳定 ID、主屏/内置屏/外接屏识别、鼠标所在屏幕，以及 Tauri 窗口显示器与捕获后端显示器的映射；业务模块不得重复实现识别逻辑 |
+| `display.rs` | Qx 系统级显示器服务：统一枚举、稳定 ID、主屏/内置屏/外接屏识别、鼠标所在屏幕、Tauri↔捕获后端映射、区域 still-frame 捕获（`capture_region`）；公共 IPC `display_list`；业务模块不得重复实现识别或抓帧 |
+| `desktop_windows.rs` | Qx 系统级顶层窗口清单：可见窗枚举、几何、z 序、按显示器裁剪与逻辑坐标换算；公共 IPC `desktop_windows_list`；截图窗选等只消费该服务，禁止 feature 内直接 `xcap::Window` |
 | `display_monitor.rs` | 复用系统级显示器服务监听插拔并发出 `display:changed`，不得自行枚举或分类显示器 |
 | `external_displays.rs` | 检测/安装 DDC CLI 驱动并设置外接显示器亮度、音量等硬件控制项；只负责 DDC 设备与控制协议，不承担 Qx 通用显示器识别 |
 
@@ -43,7 +44,8 @@
 | 文件 | 依赖 crate | 说明 |
 |---|---|---|
 | `media/` | OpenH264 + `mp4` + `gifski` | Qx 根级媒体服务；统一负责 H.264 码流/MP4 封装、媒体尺寸约束和 GIF 转换，不依赖截图模块或其历史库，供截图、剪贴板、OCR、文件预览等能力复用。 |
-| `screencap/` | `xcap` | 消费 Qx 系统级显示器和媒体服务；`mod.rs` 只声明模块与稳定导出，`selection.rs` 管圈选工作流，`recording_session.rs` 管录制生命周期，`commands.rs` 适配控制/历史命令，其余状态、窗口、截图、录制引擎、几何和存储继续按职责拆分。 |
+| `clipboard.rs` | arboard + clipboard-manager | 系统剪贴板；公共 IPC `clipboard_write_image_file` 将磁盘图片发布到剪贴板，供捕获 toast / 历史回写等复用。 |
+| `screencap/` | 消费系统能力 | **仅捕获工作流**：圈选 session、录制生命周期、历史、控制岛、标注合成。显示器 / 窗列表 / 区域抓帧 / 剪贴板写图走 `display` · `desktop_windows` · `clipboard` · `media`；禁止模块内直接 `xcap::Window` 或重复显示器识别。 |
 | `ocr.rs` | 内建轻量 OCR (`~/.oar` 存模型) | PP-OCRv6 tiny/small/medium 下载 + 增量校验 |
 | `macro_recorder.rs` | `rdev` + `enigo` | 记录键鼠事件到 `~/.qx/macros.db`；replay 通过 `enigo` 模拟 |
 
@@ -63,6 +65,7 @@
 | `permissions.rs` | macOS TCC：屏幕录制 / 辅助功能 / 输入监控 状态与请求 |
 | `storage.rs` | 分桶统计 `~/.qx` 磁盘占用；`clear_cache/clear_files/clear_clipboard` |
 | `settings/mod.rs` | `~/.qx/settings.json` 读写；写入后 re-register 全局快捷键 + 刷新托盘菜单 + emit `settings-updated` |
+| `settings/entry_config.rs` | Launcher 快捷入口与托盘动作的默认配置；兼容识别旧版默认快捷入口，避免覆盖用户自定义 |
 | `updater.rs` | 读取 release manifest，比较版本并下载安装更新 |
 | `diagnostics.rs` | 结构化诊断事件与日志文件路径，供前端和异步任务定位问题 |
 
@@ -72,6 +75,7 @@
 |---|---|
 | `http_client.rs` | 见上 |
 | `vendor/cardinal/*` | 内嵌自研的 `search-cache` / `search-cancel` / `fswalk` 三个 crate（未上传 crates.io） |
+| `file_search.rs` | 规范化并拒绝空白查询；macOS 对普通关键词执行 Cardinal 精确名称、普通词和短语等多策略召回，按路径去重后综合名称相关性、文件/目录和修改时间排序，Cardinal 无结果时回落 `mdfind`。 |
 
 ## 启动顺序（lib.rs `run` → `setup`）
 

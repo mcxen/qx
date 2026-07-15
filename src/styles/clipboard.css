@@ -120,6 +120,83 @@
   color: var(--qx-text-secondary);
 }
 
+.qx-clipboard-date-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qx-clipboard-date-trigger:hover {
+  color: var(--qx-text-primary);
+}
+
+.qx-clipboard-date-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-clipboard-date-popover {
+  width: 230px;
+  padding: 10px;
+}
+
+.qx-clipboard-date-popover-title {
+  margin-bottom: 8px;
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.qx-clipboard-date-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--qx-border-2);
+  border-radius: var(--qx-control-radius);
+  outline: none;
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-primary);
+  font: inherit;
+  color-scheme: light dark;
+}
+
+.qx-clipboard-date-input:focus {
+  border-color: var(--qx-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--qx-accent) 18%, transparent);
+}
+
+.qx-clipboard-date-options {
+  display: grid;
+  max-height: 220px;
+  margin-top: 8px;
+  overflow: auto;
+}
+
+.qx-clipboard-date-options button {
+  min-height: 30px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--qx-control-radius);
+  background: transparent;
+  color: var(--qx-text-secondary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.qx-clipboard-date-options button:hover,
+.qx-clipboard-date-options button.is-active {
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-primary);
+}
+
 .qx-clipboard-list .qx-list-row {
   grid-template-columns: 22px minmax(0, 1fr);
   gap: 8px;
@@ -303,6 +380,22 @@
 .qx-clipboard-content.is-expanded {
   -webkit-line-clamp: unset;
   overflow: auto;
+}
+
+.qx-clipboard-editor {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  resize: none;
+  background: var(--qx-bg-component-1);
+  -webkit-line-clamp: unset;
+}
+
+.qx-clipboard-editor:focus {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--qx-accent) 42%, transparent);
 }
 
 .qx-clipboard-info {

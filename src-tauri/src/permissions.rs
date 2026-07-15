@@ -1,3 +1,9 @@
+//! macOS privacy permissions used by Qx (FDA, Accessibility, Screen Recording, Input Monitoring).
+//!
+//! Full Disk Access cannot be granted programmatically — we probe via a protected path
+//! (same approach as [inket/FullDiskAccess](https://github.com/inket/FullDiskAccess)) and
+//! open System Settings for the user to toggle Qx on.
+
 use serde::Serialize;
 use tauri::command;
 
@@ -10,8 +16,15 @@ pub struct MacPermissionStatus {
     pub available: bool,
     pub status: String,
     pub settings_url: String,
+    /// Whether this permission is required for core launcher features (file search, etc.).
+    pub required: bool,
+    /// Soft grouping for onboarding: "files" | "automation" | "capture" | "macros".
+    pub group: String,
 }
 
+#[cfg(target_os = "macos")]
+const FULL_DISK_ACCESS_SETTINGS: &str =
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles";
 #[cfg(target_os = "macos")]
 const SCREEN_RECORDING_SETTINGS: &str =
     "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
@@ -33,6 +46,25 @@ extern "C" {
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
     fn AXIsProcessTrusted() -> bool;
+    fn AXIsProcessTrustedWithOptions(options: *const std::ffi::c_void) -> bool;
+    static kAXTrustedCheckOptionPrompt: *const std::ffi::c_void;
+}
+
+#[cfg(target_os = "macos")]
+#[link(name = "CoreFoundation", kind = "framework")]
+extern "C" {
+    fn CFDictionaryCreate(
+        allocator: *const std::ffi::c_void,
+        keys: *const *const std::ffi::c_void,
+        values: *const *const std::ffi::c_void,
+        num_values: isize,
+        key_callbacks: *const std::ffi::c_void,
+        value_callbacks: *const std::ffi::c_void,
+    ) -> *const std::ffi::c_void;
+    fn CFRelease(cf: *const std::ffi::c_void);
+    static kCFBooleanTrue: *const std::ffi::c_void;
+    static kCFTypeDictionaryKeyCallBacks: std::ffi::c_void;
+    static kCFTypeDictionaryValueCallBacks: std::ffi::c_void;
 }
 
 #[cfg(target_os = "macos")]
@@ -63,6 +95,8 @@ fn permission(
     description: &str,
     granted: bool,
     settings_url: &str,
+    required: bool,
+    group: &str,
 ) -> MacPermissionStatus {
     MacPermissionStatus {
         id: id.to_string(),
@@ -72,6 +106,8 @@ fn permission(
         available: true,
         status: status_text(granted),
         settings_url: settings_url.to_string(),
+        required,
+        group: group.to_string(),
     }
 }
 
@@ -82,6 +118,26 @@ fn open_settings_url(url: &str) -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("open System Settings: {e}"))?;
     Ok(())
+}
+
+/// Probe Full Disk Access by listing a TCC-protected directory.
+/// Reading this path on 10.15+ also registers the app in the FDA list (unchecked).
+/// Approach mirrors [inket/FullDiskAccess](https://github.com/inket/FullDiskAccess).
+#[cfg(target_os = "macos")]
+pub(crate) fn full_disk_access_granted() -> bool {
+    let home = dirs::home_dir().unwrap_or_default();
+    // macOS 12+: Stocks container is a reliable FDA canary.
+    let primary = home.join("Library/Containers/com.apple.stocks");
+    // Older macOS / fallback when Stocks is missing.
+    let fallback = home.join("Library/Safari");
+    if primary.exists() {
+        return std::fs::read_dir(&primary).is_ok();
+    }
+    if fallback.exists() {
+        return std::fs::read_dir(&fallback).is_ok();
+    }
+    // Neither path exists — do not block onboarding on unusual layouts.
+    true
 }
 
 #[cfg(target_os = "macos")]
@@ -99,38 +155,86 @@ pub(crate) fn accessibility_granted() -> bool {
     unsafe { AXIsProcessTrusted() }
 }
 
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn accessibility_granted() -> bool {
+    true
+}
+
 #[cfg(target_os = "macos")]
 fn input_monitoring_granted() -> bool {
     unsafe { IOHIDCheckAccess(IOHID_REQUEST_TYPE_LISTEN_EVENT) == IOHID_ACCESS_TYPE_GRANTED }
+}
+
+/// Prompt the system Accessibility dialog (adds app to the list when possible).
+#[cfg(target_os = "macos")]
+fn request_accessibility_prompt() -> bool {
+    unsafe {
+        let keys = [kAXTrustedCheckOptionPrompt];
+        let values = [kCFBooleanTrue];
+        let dict = CFDictionaryCreate(
+            std::ptr::null(),
+            keys.as_ptr() as *const *const std::ffi::c_void,
+            values.as_ptr() as *const *const std::ffi::c_void,
+            1,
+            &kCFTypeDictionaryKeyCallBacks as *const _ as *const std::ffi::c_void,
+            &kCFTypeDictionaryValueCallBacks as *const _ as *const std::ffi::c_void,
+        );
+        if dict.is_null() {
+            return AXIsProcessTrusted();
+        }
+        let granted = AXIsProcessTrustedWithOptions(dict);
+        CFRelease(dict);
+        granted
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn all_permission_statuses() -> Vec<MacPermissionStatus> {
+    vec![
+        permission(
+            "full-disk-access",
+            "Full Disk Access",
+            "Required for complete file search across protected folders (Mail, Messages, Safari data, other app containers).",
+            full_disk_access_granted(),
+            FULL_DISK_ACCESS_SETTINGS,
+            true,
+            "files",
+        ),
+        permission(
+            "accessibility",
+            "Accessibility",
+            "Required for clipboard auto-paste, macro playback, and system automation (Cmd+V simulation).",
+            accessibility_granted(),
+            ACCESSIBILITY_SETTINGS,
+            false,
+            "automation",
+        ),
+        permission(
+            "screen-recording",
+            "Screen Recording",
+            "Required for MP4/MOV screen recording and region capture.",
+            screen_recording_granted(),
+            SCREEN_RECORDING_SETTINGS,
+            false,
+            "capture",
+        ),
+        permission(
+            "input-monitoring",
+            "Input Monitoring",
+            "Required for recording keyboard and mouse macro events.",
+            input_monitoring_granted(),
+            INPUT_MONITORING_SETTINGS,
+            false,
+            "macros",
+        ),
+    ]
 }
 
 #[command]
 pub fn qx_permissions_status() -> Result<Vec<MacPermissionStatus>, String> {
     #[cfg(target_os = "macos")]
     {
-        Ok(vec![
-            permission(
-                "screen-recording",
-                "Screen Recording",
-                "Required for MP4/MOV screen recording.",
-                screen_recording_granted(),
-                SCREEN_RECORDING_SETTINGS,
-            ),
-            permission(
-                "accessibility",
-                "Accessibility",
-                "Required for clipboard paste, macro playback, and system automation.",
-                accessibility_granted(),
-                ACCESSIBILITY_SETTINGS,
-            ),
-            permission(
-                "input-monitoring",
-                "Input Monitoring",
-                "Required for recording keyboard and mouse macro events.",
-                input_monitoring_granted(),
-                INPUT_MONITORING_SETTINGS,
-            ),
-        ])
+        Ok(all_permission_statuses())
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -143,6 +247,8 @@ pub fn qx_permissions_status() -> Result<Vec<MacPermissionStatus>, String> {
             available: false,
             status: "unsupported".to_string(),
             settings_url: String::new(),
+            required: false,
+            group: "none".to_string(),
         }])
     }
 }
@@ -152,6 +258,12 @@ pub fn qx_permissions_request(id: String) -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
         match id.as_str() {
+            "full-disk-access" => {
+                // Probe first so the app appears in the FDA list, then open Settings.
+                let _ = full_disk_access_granted();
+                open_settings_url(FULL_DISK_ACCESS_SETTINGS)?;
+                Ok(full_disk_access_granted())
+            }
             "screen-recording" => {
                 let granted = unsafe { CGRequestScreenCaptureAccess() };
                 if !granted {
@@ -160,8 +272,11 @@ pub fn qx_permissions_request(id: String) -> Result<bool, String> {
                 Ok(granted || screen_recording_granted())
             }
             "accessibility" => {
-                open_settings_url(ACCESSIBILITY_SETTINGS)?;
-                Ok(accessibility_granted())
+                let granted = request_accessibility_prompt();
+                if !granted {
+                    let _ = open_settings_url(ACCESSIBILITY_SETTINGS);
+                }
+                Ok(granted || accessibility_granted())
             }
             "input-monitoring" => {
                 let granted = unsafe { IOHIDRequestAccess(IOHID_REQUEST_TYPE_LISTEN_EVENT) };
@@ -181,11 +296,36 @@ pub fn qx_permissions_request(id: String) -> Result<bool, String> {
     }
 }
 
+/// Request several optional permissions in one shot (onboarding "enable all").
+/// Returns the latest status list after each request attempt.
+#[command]
+pub fn qx_permissions_request_all(ids: Vec<String>) -> Result<Vec<MacPermissionStatus>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        for id in ids {
+            let _ = qx_permissions_request(id);
+            // Brief gap so successive Settings panes / dialogs do not race.
+            std::thread::sleep(std::time::Duration::from_millis(350));
+        }
+        Ok(all_permission_statuses())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = ids;
+        qx_permissions_status()
+    }
+}
+
 #[command]
 pub fn qx_permissions_open_settings(id: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let url = match id.as_str() {
+            "full-disk-access" => {
+                let _ = full_disk_access_granted();
+                FULL_DISK_ACCESS_SETTINGS
+            }
             "screen-recording" => SCREEN_RECORDING_SETTINGS,
             "accessibility" => ACCESSIBILITY_SETTINGS,
             "input-monitoring" => INPUT_MONITORING_SETTINGS,
@@ -198,5 +338,22 @@ pub fn qx_permissions_open_settings(id: String) -> Result<(), String> {
     {
         let _ = id;
         Err("permission settings are only available on macOS".to_string())
+    }
+}
+
+/// Whether the current platform should run the macOS first-launch onboarding.
+#[command]
+pub fn qx_onboarding_platform() -> Result<String, String> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok("macos".to_string())
+    }
+    #[cfg(target_os = "windows")]
+    {
+        Ok("windows".to_string())
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        Ok("other".to_string())
     }
 }

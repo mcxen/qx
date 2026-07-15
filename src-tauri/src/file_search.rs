@@ -18,14 +18,18 @@ pub fn init(app: &tauri::AppHandle) {
 }
 
 pub async fn search(query: String, limit: usize) -> Vec<AppEntry> {
-    let q = query.trim().to_string();
-    if q.len() < 2 {
+    let Some(q) = normalize_query(&query) else {
         return Vec::new();
-    }
+    };
 
     tauri::async_runtime::spawn_blocking(move || search_platform(&q, limit))
         .await
         .unwrap_or_default()
+}
+
+fn normalize_query(query: &str) -> Option<String> {
+    let normalized = query.split_whitespace().collect::<Vec<_>>().join(" ");
+    (normalized.chars().count() >= 2).then_some(normalized)
 }
 
 fn entry_from_path(path: &str) -> AppEntry {
@@ -73,6 +77,8 @@ mod platform {
     use super::*;
     use search_cache::SearchCache;
     use search_cancel::CancellationToken;
+    use std::cmp::Reverse;
+    use std::collections::HashMap;
     use std::sync::atomic::AtomicBool;
 
     const IGNORE_PATH: &str = "/System/Volumes/Data";
@@ -81,7 +87,7 @@ mod platform {
         std::sync::atomic::AtomicBool::new(false);
     static NEVER_STOPPED: AtomicBool = AtomicBool::new(false);
 
-    fn cardinal_query(query: &str) -> String {
+    fn cardinal_queries(query: &str) -> Vec<String> {
         let lower = query.to_ascii_lowercase();
         let has_type_filter = [
             "file:",
@@ -92,17 +98,67 @@ mod platform {
             "directory:",
             "type:",
             "ext:",
+            "name:",
+            "path:",
             "parent:",
             "infolder:",
+            "size:",
+            "dm:",
+            "dc:",
+            "content:",
+            "regex:",
+            "tag:",
         ]
         .iter()
         .any(|prefix| lower.contains(prefix));
         if has_type_filter {
-            return query.to_string();
+            return vec![query.to_string()];
         }
 
         let quoted = query.replace('"', "\"\"");
-        format!(r#"{query} | folder:"{quoted}""#)
+        let mut queries = vec![format!(r#"name:"{quoted}""#), query.to_string()];
+        if query.contains(' ') {
+            queries.push(format!(r#""{quoted}""#));
+        }
+        queries.push(format!(r#"{query} | folder:"{quoted}""#));
+        queries.dedup();
+        queries
+    }
+
+    fn relevance_rank(path: &std::path::Path, query: &str) -> u8 {
+        let needle = query.to_ascii_lowercase();
+        let file_name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let stem = path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if file_name == needle {
+            0
+        } else if stem == needle {
+            1
+        } else if file_name.starts_with(&needle) {
+            2
+        } else if file_name
+            .split(|character: char| !character.is_alphanumeric())
+            .any(|part| part.starts_with(&needle))
+        {
+            3
+        } else if file_name.contains(&needle) {
+            4
+        } else if path
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .contains(&needle)
+        {
+            5
+        } else {
+            6
+        }
     }
 
     pub fn init_platform() {
@@ -151,17 +207,49 @@ mod platform {
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
                 if let Some(cache) = guard.as_mut() {
-                    let query = cardinal_query(query);
-                    if let Ok(Some(nodes)) = cache.query_files(&query, CancellationToken::noop()) {
-                        return nodes
-                            .into_iter()
-                            .filter_map(|node| {
-                                node.path.to_str().map(|path| {
-                                    super::entry_from_path_with_kind(
-                                        path,
-                                        node.metadata.file_type_hint() == NodeFileType::Dir,
-                                    )
+                    let mut candidates: HashMap<PathBuf, (bool, u64, usize)> = HashMap::new();
+                    let candidate_limit = limit.saturating_mul(100).max(200);
+                    for (strategy_rank, cardinal_query) in
+                        cardinal_queries(query).into_iter().enumerate()
+                    {
+                        let Ok(Some(nodes)) =
+                            cache.query_files(&cardinal_query, CancellationToken::noop())
+                        else {
+                            continue;
+                        };
+                        for node in nodes.into_iter().take(candidate_limit) {
+                            let is_dir = node.metadata.file_type_hint() == NodeFileType::Dir;
+                            let modified = node
+                                .metadata
+                                .as_ref()
+                                .and_then(|metadata| metadata.mtime())
+                                .map(|value| u64::from(value.get()))
+                                .unwrap_or(0);
+                            candidates
+                                .entry(node.path)
+                                .and_modify(|current| {
+                                    current.1 = current.1.max(modified);
+                                    current.2 = current.2.min(strategy_rank);
                                 })
+                                .or_insert((is_dir, modified, strategy_rank));
+                        }
+                    }
+                    if !candidates.is_empty() {
+                        let mut ranked = candidates.into_iter().collect::<Vec<_>>();
+                        ranked.sort_by_key(|(path, (is_dir, modified, strategy_rank))| {
+                            (
+                                relevance_rank(path, query),
+                                *is_dir as u8,
+                                Reverse(*modified),
+                                *strategy_rank,
+                                path.as_os_str().len(),
+                            )
+                        });
+                        return ranked
+                            .into_iter()
+                            .filter_map(|(path, (is_dir, _, _))| {
+                                path.to_str()
+                                    .map(|path| super::entry_from_path_with_kind(path, is_dir))
                             })
                             .take(limit)
                             .collect();
@@ -195,6 +283,30 @@ mod platform {
             .take(limit)
             .map(super::entry_from_path)
             .collect()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{cardinal_queries, relevance_rank};
+        use std::path::Path;
+
+        #[test]
+        fn cardinal_uses_multiple_recall_strategies_for_plain_queries() {
+            let queries = cardinal_queries("project notes");
+            assert!(queries.len() >= 3);
+            assert_eq!(
+                cardinal_queries("ext:pdf report"),
+                vec!["ext:pdf report".to_string()]
+            );
+        }
+
+        #[test]
+        fn exact_file_names_rank_before_fuzzy_paths() {
+            assert!(
+                relevance_rank(Path::new("/tmp/report.pdf"), "report.pdf")
+                    < relevance_rank(Path::new("/tmp/report-backup.pdf"), "report.pdf")
+            );
+        }
     }
 }
 
@@ -354,3 +466,18 @@ mod platform {
 }
 
 use platform::{init_platform, search_platform};
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_query;
+
+    #[test]
+    fn file_queries_ignore_blank_and_collapse_whitespace() {
+        assert_eq!(normalize_query("   "), None);
+        assert_eq!(normalize_query(" a "), None);
+        assert_eq!(
+            normalize_query("  project   notes  ").as_deref(),
+            Some("project notes")
+        );
+    }
+}

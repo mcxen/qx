@@ -1,3 +1,4 @@
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { Camera, Trash2, Video } from "lucide-react";
 import { useLocale, useT } from "../../i18n";
 import { useScreencapStore } from "./store";
@@ -15,6 +16,14 @@ function formatDuration(milliseconds: number): string {
   const seconds = Math.round(milliseconds / 1000);
   if (seconds < 60) return `${seconds}s`;
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+function isScreenshotPath(path: string, durationMs: number): boolean {
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp")) {
+    return true;
+  }
+  return durationMs === 0 && !lower.endsWith(".gif") && !lower.endsWith(".mp4") && !lower.endsWith(".mov");
 }
 
 export default function CaptureHistory() {
@@ -44,7 +53,10 @@ export default function CaptureHistory() {
         <div className="qx-capture-history-list" data-qx-region-scroll role="listbox">
           {history.map((entry) => {
             const active = entry.path === lastGifPath;
-            const screenshot = entry.duration_ms === 0;
+            const screenshot = isScreenshotPath(entry.path, entry.duration_ms);
+            const thumb = screenshot || entry.path.toLowerCase().endsWith(".gif")
+              ? convertFileSrc(entry.path)
+              : null;
             return (
               <div key={entry.id} className={`qx-capture-history-row${active ? " is-active" : ""}`}>
                 <button
@@ -54,9 +66,15 @@ export default function CaptureHistory() {
                   aria-selected={active}
                   onClick={() => setPreview(entry.path)}
                 >
-                  <span className="qx-capture-history-icon" aria-hidden="true">
-                    {screenshot ? <Camera size={15} /> : <Video size={15} />}
-                  </span>
+                  {thumb ? (
+                    <span className="qx-capture-history-thumb" aria-hidden="true">
+                      <img src={thumb} alt="" loading="lazy" />
+                    </span>
+                  ) : (
+                    <span className="qx-capture-history-icon" aria-hidden="true">
+                      {screenshot ? <Camera size={15} /> : <Video size={15} />}
+                    </span>
+                  )}
                   <span className="qx-capture-history-copy">
                     <strong>{entry.path.split(/[\\/]/).pop()}</strong>
                     <small>

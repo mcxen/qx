@@ -1010,6 +1010,42 @@ span.qx-plugin-screenshot {
   background: var(--qx-bg-component-2);
 }
 
+.qx-permissions-summary-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.qx-permission-required {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  border: 1px solid var(--qx-border-1);
+  background: var(--qx-overlay-1);
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.qx-permissions-message {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-radius: var(--qx-control-radius);
+  border: 1px solid var(--qx-border-1);
+  background: var(--qx-accent-soft);
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .qx-permissions-summary-title {
   font-size: 13px;
   font-weight: 600;

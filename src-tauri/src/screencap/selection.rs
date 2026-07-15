@@ -16,6 +16,7 @@ use super::state::{
 };
 use super::types::{CaptureMode, PickerSession};
 use super::{CaptureDisplay, PickerStatus, RecordArea, RecordingOptions};
+use crate::desktop_windows::{self, DesktopWindow};
 use crate::display::{
     capture_monitor, capture_monitor_for_tauri, cursor_monitor, displays, tauri_monitor_for_capture,
 };
@@ -46,7 +47,34 @@ pub(super) fn restore_picker_selection_internal(app: &AppHandle) -> bool {
     };
     crate::floating_panel::hide(app);
     hide_recording_controls_internal(app);
-    picker_window::restore_editable_selection(app, &session)
+    if !picker_window::restore_editable_selection(app, &session) {
+        return false;
+    }
+    // Push session geometry back to the picker webview so a remount or
+    // recording-frame shrink cannot leave an empty overlay.
+    if let Some(status) = screencap_region_select_status_with_restore(true) {
+        let _ = app.emit("screencap:picker", status);
+    }
+    true
+}
+
+fn picker_status_from_session(session: &PickerSession, restore_selection: bool) -> PickerStatus {
+    PickerStatus {
+        mode: session.mode.as_str().to_string(),
+        monitor_id: session.monitor_id,
+        monitor_name: session.monitor_name.clone(),
+        coordinate_scale: session.coordinate_scale,
+        logical_area: session.logical_area.clone(),
+        restore_selection,
+    }
+}
+
+fn screencap_region_select_status_with_restore(restore_selection: bool) -> Option<PickerStatus> {
+    picker_session()
+        .lock()
+        .ok()
+        .and_then(|session| session.clone())
+        .map(|session| picker_status_from_session(&session, restore_selection))
 }
 
 pub(super) fn show_picker_recording_frame_safely(app: &AppHandle) {
@@ -156,7 +184,7 @@ fn show_region_picker_internal(
         .map_err(|error| format!("show region picker: {error}"))?;
     let _ = picker.set_ignore_cursor_events(false);
     let _ = picker.set_focus();
-    if let Some(status) = screencap_region_select_status() {
+    if let Some(status) = screencap_region_select_status_with_restore(false) {
         let _ = app.emit("screencap:picker", status);
     }
     Ok(())
@@ -196,9 +224,37 @@ pub async fn screencap_begin_capture_select(app: AppHandle, mode: String) -> Res
     Ok(())
 }
 
+/// Compatibility facade — prefer system command `display_list`.
 #[command]
 pub fn screencap_list_displays() -> Result<Vec<CaptureDisplay>, String> {
     displays()
+}
+
+/// Capture workflow facade over the system desktop-window inventory.
+/// Prefer `desktop_windows_list` for non-capture features.
+#[command]
+pub fn screencap_list_windows() -> Result<Vec<DesktopWindow>, String> {
+    let session = picker_session()
+        .lock()
+        .ok()
+        .and_then(|session| session.clone())
+        .ok_or_else(|| "Capture selection session is unavailable".to_string())?;
+    desktop_windows::list_windows_for_capture(session.monitor_id, session.coordinate_scale)
+}
+
+/// Allow desktop interaction under the picker during countdown delays.
+#[command]
+pub fn screencap_set_picker_passthrough(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let picker = app
+        .get_webview_window(PICKER_LABEL)
+        .ok_or_else(|| "region picker window is unavailable".to_string())?;
+    picker
+        .set_ignore_cursor_events(enabled)
+        .map_err(|error| format!("picker passthrough: {error}"))?;
+    if !enabled {
+        let _ = picker.set_focus();
+    }
+    Ok(())
 }
 
 #[command]
@@ -213,15 +269,7 @@ pub fn screencap_select_display(app: AppHandle, monitor_id: u32) -> Result<(), S
 
 #[command]
 pub fn screencap_region_select_status() -> Option<PickerStatus> {
-    picker_session()
-        .lock()
-        .ok()
-        .and_then(|session| session.clone())
-        .map(|session| PickerStatus {
-            mode: session.mode.as_str().to_string(),
-            monitor_id: session.monitor_id,
-            monitor_name: session.monitor_name,
-        })
+    screencap_region_select_status_with_restore(false)
 }
 
 #[command]
@@ -280,7 +328,10 @@ pub async fn screencap_confirm_region_select(
         let copy_to_clipboard = copy_to_clipboard.unwrap_or(false);
         let clipboard_app = app.clone();
         hide_region_picker_internal(&app);
-        let result = tauri::async_runtime::spawn_blocking(move || {
+        // Convert a worker panic into the same recoverable error path as capture
+        // and filesystem failures. Returning early here would leave every Qx
+        // surface hidden and look indistinguishable from a process crash.
+        let result = match tauri::async_runtime::spawn_blocking(move || {
             let output = take_screenshot_blocking(area, annotation_overlay_base64)?;
             let clipboard_error = copy_to_clipboard
                 .then(|| {
@@ -291,14 +342,18 @@ pub async fn screencap_confirm_region_select(
             Ok::<_, String>((output, clipboard_error))
         })
         .await
-        .map_err(|error| format!("screenshot worker failed: {error}"))?;
+        {
+            Ok(result) => result,
+            Err(error) => Err(format!("screenshot worker failed: {error}")),
+        };
         match result {
             Ok((output, clipboard_error)) => {
+                let output_path = output.path.to_string_lossy().to_string();
                 if let Ok(mut status) = runtime_status().lock() {
                     status.phase = "done";
                     status.started_at = None;
                     status.area = None;
-                    status.output_path = Some(output.path.to_string_lossy().to_string());
+                    status.output_path = Some(output_path.clone());
                     status.error = clipboard_error;
                 }
                 if let Ok(mut session) = picker_session().lock() {
@@ -307,9 +362,27 @@ pub async fn screencap_confirm_region_select(
                 set_recording_ui_protected(&app, false);
                 restore_capture_surface(&app, 800)?;
                 recording_session::emit_recording_status(&app);
+                // Delay so the main screencap surface can mount listeners first.
+                let emit_app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                    let _ = emit_app.emit(
+                        "screencap:captured",
+                        serde_json::json!({
+                            "kind": "screenshot",
+                            "path": output_path,
+                        }),
+                    );
+                });
                 return Ok(());
             }
             Err(error) => {
+                crate::diagnostics::log(
+                    crate::diagnostics::LogLevel::Error,
+                    "screencap.screenshot",
+                    "screenshot capture failed; restoring selection surface",
+                    serde_json::json!({ "error": error }),
+                );
                 if let Ok(mut status) = runtime_status().lock() {
                     status.phase = "error";
                     status.started_at = None;

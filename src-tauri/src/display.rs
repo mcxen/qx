@@ -2,9 +2,10 @@
 //!
 //! Feature modules consume this service instead of independently deciding
 //! which monitor is primary, built-in, external, or under the pointer.
+//! Public IPC: [`display_list`]. Region still-frame capture: [`capture_region`].
 
 use serde::Serialize;
-use tauri::AppHandle;
+use tauri::{command, AppHandle};
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -306,6 +307,27 @@ pub(crate) fn displays() -> Result<Vec<DisplayDescriptor>, String> {
             })
         })
         .collect()
+}
+
+/// Public IPC: enumerate displays for any feature (capture, windows, layout).
+#[command]
+pub fn display_list() -> Result<Vec<DisplayDescriptor>, String> {
+    displays()
+}
+
+/// Capture a rectangular region from a capture-backend monitor (physical pixels).
+/// System foundation for screenshot, OCR region, clipboard grab, etc.
+pub fn capture_region(
+    monitor_id: Option<u32>,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+) -> Result<image::RgbaImage, String> {
+    let monitor = capture_monitor(monitor_id)?;
+    monitor
+        .capture_region(x, y, width, height)
+        .map_err(|error| format!("capture region: {error}"))
 }
 
 #[cfg(test)]

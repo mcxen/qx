@@ -4,10 +4,10 @@ import { listen } from "@tauri-apps/api/event";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { LucideIcon } from "lucide-react";
-import { AlignLeft, Code2, File, FileText, Image, Link, Pin, Shrink, Video } from "lucide-react";
+import { AlignLeft, CalendarDays, Code2, File, FileText, Image, Link, Pin, Shrink, Video } from "lucide-react";
 import { useStore, type ClipboardEntry } from "../../store";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
-import { Select } from "../../components/ui";
+import { Popover, PopoverContent, PopoverTrigger, Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useLocale, useT } from "../../i18n";
 import { getQxShortcutPreset } from "../../utils/keyboard";
@@ -15,6 +15,7 @@ import { setPendingModuleLaunch, takePendingModuleLaunch } from "../../search/mo
 import { pasteClipboardEntry, writeClipboardEntry } from "./actions";
 import {
   classify,
+  dateKey,
   sectionName,
   preview,
   formatCopied,
@@ -165,23 +166,32 @@ export default function ClipboardPanel() {
   const { clipboardHistory, setClipboardHistory, setTab } = useStore();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [dateFilter, setDateFilter] = useState<string | null>(null);
+  const [datePopoverSection, setDatePopoverSection] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [draftText, setDraftText] = useState("");
   const [status, setStatus] = useState("");
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [fileMetadata, setFileMetadata] = useState<FileMetadata | null>(null);
   const [mediaProgress, setMediaProgress] = useState<MediaProgress | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const preserveSelectionId = useRef<string | null>(null);
+  const rowClickTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   const filterLabel = (id: Filter) => t(FILTER_KEYS[id].key, FILTER_KEYS[id].fallback);
 
-  const loadHistory = async () => {
+  const loadHistory = async (): Promise<ClipboardEntry[]> => {
     try {
       const res = await invoke<ClipboardEntry[]>("get_clipboard_history", {
         limit: 200,
       });
       setClipboardHistory(res);
-    } catch {}
+      return res;
+    } catch {
+      return [];
+    }
   };
 
   useEffect(() => {
@@ -197,6 +207,10 @@ export default function ClipboardPanel() {
     return () => {
       unlisten.then((f) => f());
     };
+  }, []);
+
+  useEffect(() => () => {
+    if (rowClickTimer.current) window.clearTimeout(rowClickTimer.current);
   }, []);
 
   // Deep launch from main search: select a history item by id once list is ready.
@@ -229,7 +243,8 @@ export default function ClipboardPanel() {
         (filter === "pinned" && item.pinned) ||
         (filter === "frequent" && item.copy_count > 0) ||
         kind === filter;
-      return matchesFilter && matchesQuery(item, q);
+      const matchesDate = !dateFilter || dateKey(item.timestamp) === dateFilter;
+      return matchesFilter && matchesDate && matchesQuery(item, q);
     });
 
     if (filter === "frequent") {
@@ -240,11 +255,21 @@ export default function ClipboardPanel() {
     }
 
     return matches;
-  }, [clipboardHistory, filter, query]);
+  }, [clipboardHistory, dateFilter, filter, query]);
 
   useEffect(() => {
     setSelected((current) => Math.min(current, Math.max(filtered.length - 1, 0)));
   }, [filtered.length]);
+
+  useEffect(() => {
+    const id = preserveSelectionId.current;
+    if (!id) return;
+    const nextIndex = filtered.findIndex((item) => item.id === id);
+    if (nextIndex >= 0) {
+      setSelected(nextIndex);
+      preserveSelectionId.current = null;
+    }
+  }, [filtered]);
 
   useEffect(() => {
     listRef.current
@@ -281,6 +306,15 @@ export default function ClipboardPanel() {
   }, [clipboardHistory]);
 
   const selectedItem = filtered[selected];
+  const isEditing = Boolean(selectedItem && editingId === selectedItem.id);
+  const hasDraftChanges = isEditing && draftText !== selectedItem?.text;
+
+  useEffect(() => {
+    if (editingId && editingId !== selectedItem?.id) {
+      setEditingId(null);
+      setDraftText("");
+    }
+  }, [editingId, selectedItem?.id]);
 
   useEffect(() => {
     const path = selectedItem?.file_path;
@@ -328,6 +362,17 @@ export default function ClipboardPanel() {
     return sections;
   }, [filtered, t]);
 
+  const availableDates = useMemo(() => {
+    return [...new Set(clipboardHistory.map((item) => dateKey(item.timestamp)).filter(Boolean))]
+      .sort((a, b) => b.localeCompare(a));
+  }, [clipboardHistory]);
+
+  const formatDateChoice = (value: string) => {
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" });
+  };
+
   const copyItem = async (item?: ClipboardEntry) => {
     if (!item) return;
     try {
@@ -367,6 +412,48 @@ export default function ClipboardPanel() {
     window.setTimeout(() => setStatus(""), 1200);
   };
 
+  const beginTextEdit = (item?: ClipboardEntry) => {
+    if (!item || item.image_path || item.file_path) return;
+    setEditingId(item.id);
+    setDraftText(item.text);
+    setDetailOpen(true);
+  };
+
+  const discardTextEdit = () => {
+    setEditingId(null);
+    setDraftText("");
+  };
+
+  const saveTextEdit = async () => {
+    if (!selectedItem || !hasDraftChanges) return;
+    try {
+      await invoke("update_clipboard_text_entry", { id: selectedItem.id, text: draftText });
+      await loadHistory();
+      discardTextEdit();
+      setStatus(t("clipboard.edit.saved", "Changes saved"));
+      window.setTimeout(() => setStatus(""), 1400);
+    } catch (error) {
+      setStatus(String(error));
+    }
+  };
+
+  const saveTextEditAsNew = async () => {
+    if (!hasDraftChanges) return;
+    try {
+      const id = await invoke<string>("create_clipboard_text_entry", { text: draftText });
+      pendingClipboardId.current = id;
+      setFilter("all");
+      setDateFilter(null);
+      setQuery("");
+      discardTextEdit();
+      await loadHistory();
+      setStatus(t("clipboard.edit.savedAsNew", "Saved as a new item"));
+      window.setTimeout(() => setStatus(""), 1400);
+    } catch (error) {
+      setStatus(String(error));
+    }
+  };
+
   /** Create a new Text Toolbox file with this entry’s text and open documents. */
   const importToTextTool = async (item?: ClipboardEntry) => {
     if (!item?.text?.trim()) {
@@ -398,14 +485,29 @@ export default function ClipboardPanel() {
   };
 
   const { onKeyDown: escKeyDown } = useEscBack({
-    inner: { active: detailOpen, close: () => setDetailOpen(false) },
+    inner: {
+      active: Boolean(editingId) || detailOpen,
+      close: () => {
+        if (editingId) discardTextEdit();
+        else setDetailOpen(false);
+      },
+    },
     query: { active: query.length > 0, clear: () => setQuery("") },
     launcher: () => setTab("launcher"),
   });
 
   const handleKeyDown = async (e: React.KeyboardEvent) => {
     escKeyDown(e);
-    if (e.key === "Escape") return;
+    if (e.defaultPrevented || e.key === "Escape") return;
+    if (isEditing && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      if (e.shiftKey) await saveTextEditAsNew();
+      else await saveTextEdit();
+      return;
+    }
+    if (e.target instanceof HTMLTextAreaElement || (e.target as HTMLElement).isContentEditable) {
+      return;
+    }
     // Chord actions (⌘C / ⌘P / ⌘⌫ / …) are owned by QxShell action matching so
     // they work both with the Actions panel open and while search is focused.
     // Keep Enter here so paste still wins over shell chrome when typing in search.
@@ -616,21 +718,34 @@ export default function ClipboardPanel() {
       }}
       className="qx-clipboard-shell"
       island={{
-        label: mediaProgress?.message || status || t("clipboard.title", "Clipboard History"),
-        detail: selectedItem
-          ? `${contentType(selectedItem, t)} · ${filterLabel(filter)} · ${itemCountLabel}`
-          : `${filterLabel(filter)} · ${itemCountLabel}`,
+        label: hasDraftChanges
+          ? t("clipboard.edit.unsaved", "Unsaved clipboard edit")
+          : mediaProgress?.message || status || t("clipboard.title", "Clipboard History"),
+        detail: hasDraftChanges
+          ? t("clipboard.edit.unsavedDetail", "Save, save as new, or discard the draft")
+          : selectedItem
+            ? `${contentType(selectedItem, t)} · ${filterLabel(filter)} · ${itemCountLabel}`
+            : `${filterLabel(filter)} · ${itemCountLabel}`,
         progress: mediaProgress ? mediaProgress.progress : undefined,
-        tone: mediaProgress?.error ? "danger" : status ? "success" : "neutral",
+        tone: hasDraftChanges || mediaProgress?.error ? "danger" : status ? "success" : "neutral",
       }}
-      primaryAction={{
+      primaryAction={hasDraftChanges ? {
+        label: t("clipboard.edit.save", "Save"),
+        kbd: "CmdOrCtrl+S",
+        tone: "primary",
+        onClick: () => void saveTextEdit(),
+      } : {
         label: t("clipboard.paste", "Paste"),
         kbd: "Enter",
         disabled: !selectedItem,
         tone: "primary",
         onClick: () => void pasteItem(selectedItem),
       }}
-      secondaryAction={{
+      secondaryAction={hasDraftChanges ? {
+        label: t("clipboard.edit.saveAsNew", "Save as New"),
+        kbd: "CmdOrCtrl+Shift+S",
+        onClick: () => void saveTextEditAsNew(),
+      } : {
         label: t("clipboard.actions", "Actions"),
         kbd: actionMenuShortcut,
       }}
@@ -639,12 +754,67 @@ export default function ClipboardPanel() {
     >
       <div className="qx-clipboard-body">
         <div ref={listRef} className="qx-clipboard-list" role="listbox" aria-label={t("clipboard.listAria", "Clipboard history")}>
-          {grouped.map((section) => (
-            <div key={section.title}>
-              <div className="qx-section-header">
-                <span style={{ flex: 1 }}>{section.title}</span>
-                <span>{section.items.length}</span>
-              </div>
+          {grouped.map((section, sectionIndex) => {
+            const sectionKey = `${section.title}-${sectionIndex}`;
+            return (
+            <div key={sectionKey}>
+              <Popover
+                open={datePopoverSection === sectionKey}
+                onOpenChange={(open) => setDatePopoverSection(open ? sectionKey : null)}
+              >
+                <PopoverTrigger asChild>
+                  <button className="qx-section-header qx-clipboard-date-trigger" type="button">
+                    <CalendarDays size={13} aria-hidden="true" />
+                    <span className="qx-clipboard-date-title">
+                      {dateFilter ? formatDateChoice(dateFilter) : section.title}
+                    </span>
+                    <span>{section.items.length}</span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="qx-clipboard-date-popover" side="right" align="start">
+                  <div className="qx-clipboard-date-popover-title">
+                    {t("clipboard.dateFilter", "Filter by date")}
+                  </div>
+                  <input
+                    className="qx-clipboard-date-input"
+                    type="date"
+                    value={dateFilter ?? ""}
+                    aria-label={t("clipboard.chooseDate", "Choose a date")}
+                    onChange={(event) => {
+                      setDateFilter(event.target.value || null);
+                      setSelected(0);
+                      setDatePopoverSection(null);
+                    }}
+                  />
+                  <div className="qx-clipboard-date-options">
+                    <button
+                      className={!dateFilter ? "is-active" : ""}
+                      type="button"
+                      onClick={() => {
+                        setDateFilter(null);
+                        setSelected(0);
+                        setDatePopoverSection(null);
+                      }}
+                    >
+                      {t("clipboard.allDates", "All dates")}
+                    </button>
+                    {availableDates.slice(0, 14).map((value) => (
+                      <button
+                        key={value}
+                        className={dateFilter === value ? "is-active" : ""}
+                        type="button"
+                        onClick={() => {
+                          setDateFilter(value);
+                          setSelected(0);
+                          setDatePopoverSection(null);
+                        }}
+                      >
+                        {formatDateChoice(value)}
+                      </button>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
               {section.items.map((item) => {
                 const index = flatIndex++;
                 const active = index === selected;
@@ -655,10 +825,21 @@ export default function ClipboardPanel() {
                     key={item.id}
                     className={`qx-list-row${active ? " is-active" : ""}`}
                     onClick={() => {
+                      preserveSelectionId.current = item.id;
                       setSelected(index);
                       setDetailOpen(false);
+                      if (editingId && editingId !== item.id) discardTextEdit();
+                      if (rowClickTimer.current) window.clearTimeout(rowClickTimer.current);
+                      rowClickTimer.current = window.setTimeout(() => {
+                        rowClickTimer.current = null;
+                        void copyItem(item);
+                      }, 180);
                     }}
-                    onDoubleClick={() => pasteItem(item)}
+                    onDoubleClick={() => {
+                      if (rowClickTimer.current) window.clearTimeout(rowClickTimer.current);
+                      rowClickTimer.current = null;
+                      beginTextEdit(item);
+                    }}
                     role="option"
                     aria-selected={active}
                   >
@@ -685,7 +866,8 @@ export default function ClipboardPanel() {
                 );
               })}
             </div>
-          ))}
+            );
+          })}
           {filtered.length === 0 && (
             <div className="qx-empty-state">
               {clipboardHistory.length === 0
@@ -721,9 +903,19 @@ export default function ClipboardPanel() {
                     alt={t("clipboard.imageAlt", "Clipboard image")}
                   />
                 </div>
+              ) : isEditing ? (
+                <textarea
+                  className="qx-clipboard-content qx-clipboard-editor"
+                  value={draftText}
+                  autoFocus
+                  aria-label={t("clipboard.edit.editor", "Edit clipboard text")}
+                  onChange={(event) => setDraftText(event.target.value)}
+                />
               ) : (
                 <pre
                   className={`qx-clipboard-content${detailOpen ? " is-expanded" : ""}`}
+                  title={t("clipboard.edit.doubleClick", "Double-click to edit")}
+                  onDoubleClick={() => beginTextEdit(selectedItem)}
                 >
                   {selectedItem.text}
                 </pre>

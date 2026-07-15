@@ -3,7 +3,7 @@ import { useLocale } from "../i18n";
 
 const MODULE_LABELS_ZH: Record<string, string> = {
   clipboard: "剪贴板历史",
-  screencap: "屏幕录制",
+  screencap: "截图与录屏",
   rss: "RSS 阅读器",
   v2ex: "V2EX",
   weather: "天气",
@@ -22,8 +22,10 @@ const MODULE_SURFACE_LABELS_ZH: Record<string, string> = {
   "qx-ai:root": "QxAI",
   "qx-ai:new": "新建 AI 对话",
   "qx-ai:settings": "AI 对话设置",
-  "screencap:root": "屏幕录制",
+  "screencap:root": "截图与录屏",
   "screencap:start": "开始录屏",
+  "screencap:screenshot": "开始截图",
+  "screencap:record": "开始录屏",
   "v2ex:root": "V2EX",
   "v2ex:hot": "V2EX 热门",
   "v2ex:latest": "V2EX 最新",

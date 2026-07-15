@@ -96,7 +96,7 @@ Zustand 单 store（`store.ts`）保存 launcher 强共享状态：
    - `invoke("search_apps", { query })` — 主要
    - Plugin registry `findCommands(query)` — 内置命令 + 插件命令，同步打分
    - Calculator 前缀 `:=` 或数学表达式检测 → 立即塞一个结果
-5. 260ms 后二次 debounce 触发 `search_files`（Spotlight）和 `get_clipboard_history` 过滤
+5. 260ms 后二次 debounce 触发 `search_files`（macOS 优先 Cardinal、Spotlight 兜底）和 `get_clipboard_history` 过滤；空白/单字符文件查询在 Rust 边界直接拒绝
 6. 结果合并 → `startSearchTransition(() => setResults(merged))`
 7. 900ms 后 `record_search(query)`
 8. `finishSearchActivity()` 关 `isSearching` → 180ms 后关 `isSearchSettling`（用于底部灵动岛的收尾动画）

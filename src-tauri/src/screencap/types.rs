@@ -126,6 +126,14 @@ pub struct PickerStatus {
     pub(super) mode: String,
     pub(super) monitor_id: u32,
     pub(super) monitor_name: String,
+    /// Capture-pixel → picker logical scale for this session (from display service).
+    pub(super) coordinate_scale: f64,
+    /// Logical selection on the picker display, when one has been confirmed or restored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) logical_area: Option<RecordArea>,
+    /// When true, the frontend should rehydrate `logical_area` instead of clearing the canvas.
+    #[serde(default)]
+    pub(super) restore_selection: bool,
 }
 
 #[derive(Debug, Serialize)]

@@ -11,6 +11,8 @@ interface PermissionStatus {
   available: boolean;
   status: "granted" | "needed" | "unknown" | "unsupported" | string;
   settings_url: string;
+  required?: boolean;
+  group?: string;
 }
 
 const PERMISSION_CHECK_TIMEOUT_MS = 5000;
@@ -33,12 +35,14 @@ async function invokeWithTimeout<T>(command: string, args?: Record<string, unkno
 }
 
 const LABEL_KEYS: Record<string, string> = {
+  "full-disk-access": "permissions.fullDiskAccess",
   "screen-recording": "permissions.screenRecording",
   accessibility: "permissions.accessibility",
   "input-monitoring": "permissions.inputMonitoring",
 };
 
 const DESC_KEYS: Record<string, string> = {
+  "full-disk-access": "permissions.fullDiskAccess.desc",
   "screen-recording": "permissions.screenRecording.desc",
   accessibility: "permissions.accessibility.desc",
   "input-monitoring": "permissions.inputMonitoring.desc",
@@ -73,6 +77,14 @@ export default function PermissionSettings() {
 
   useEffect(() => {
     void loadPermissions();
+  }, [loadPermissions]);
+
+  // Live refresh while the settings page is open (user may toggle in System Settings).
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void loadPermissions();
+    }, 2500);
+    return () => window.clearInterval(id);
   }, [loadPermissions]);
 
   const grantedCount = useMemo(
@@ -111,13 +123,34 @@ export default function PermissionSettings() {
     }
   };
 
+  const requestAllNeeded = async () => {
+    const ids = items.filter((i) => i.available && !i.granted).map((i) => i.id);
+    if (ids.length === 0) return;
+    setBusyId("batch");
+    setMessage(null);
+    try {
+      const next = await invokeWithTimeout<PermissionStatus[]>("qx_permissions_request_all", { ids });
+      setItems(next);
+      setMessage(
+        t(
+          "permissions.requestedAll",
+          "Opened System Settings for remaining permissions. Toggle Qx on, then return here.",
+        ),
+      );
+    } catch (err) {
+      setMessage(t("permissions.error", "Permission check failed: {message}").replace("{message}", String(err)));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <div className="qx-settings-page">
       <SettingsCard
         title={t("permissions.title", "macOS Permissions")}
         description={t(
           "permissions.desc",
-          "Check the system permissions Qx needs for screen recording and macros.",
+          "Check the system permissions Qx needs for full file search, clipboard paste, screen recording, and macros.",
         )}
         trailing={
           <div className="qx-permissions-score">
@@ -135,13 +168,27 @@ export default function PermissionSettings() {
             <div className="qx-permissions-summary-desc">
               {t(
                 "permissions.summary.desc",
-                "Grant only the permissions needed by the modules you use. Refresh after changing macOS settings.",
+                "Full Disk Access unlocks complete file search. Grant optional permissions only for modules you use. Refresh after changing macOS settings.",
               )}
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={loadPermissions} disabled={loading}>
-            {loading ? t("permissions.checking", "Checking...") : t("permissions.refresh", "Refresh")}
-          </Button>
+          <div className="qx-permissions-summary-actions">
+            {items.some((i) => i.available && !i.granted) && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => void requestAllNeeded()}
+                disabled={busyId === "batch" || loading}
+              >
+                {busyId === "batch"
+                  ? t("permissions.opening", "Opening...")
+                  : t("permissions.requestAll", "Request all")}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={loadPermissions} disabled={loading}>
+              {loading ? t("permissions.checking", "Checking...") : t("permissions.refresh", "Refresh")}
+            </Button>
+          </div>
         </div>
       </SettingsCard>
 
@@ -162,7 +209,14 @@ export default function PermissionSettings() {
                     aria-hidden="true"
                   />
                   <div className="qx-permission-copy">
-                    <div className="qx-permission-title">{label}</div>
+                    <div className="qx-permission-title">
+                      {label}
+                      {item.required && (
+                        <span className="qx-permission-required">
+                          {t("permissions.required", "Core")}
+                        </span>
+                      )}
+                    </div>
                     <div className="qx-permission-desc">{description}</div>
                   </div>
                 </div>
@@ -175,7 +229,7 @@ export default function PermissionSettings() {
                       variant="secondary"
                       size="sm"
                       onClick={() => requestPermission(item.id)}
-                      disabled={busyId === item.id}
+                      disabled={busyId === item.id || busyId === "batch"}
                     >
                       {busyId === item.id
                         ? t("permissions.opening", "Opening...")
@@ -186,7 +240,7 @@ export default function PermissionSettings() {
                     variant="outline"
                     size="sm"
                     onClick={() => openPermissionSettings(item.id)}
-                    disabled={!item.available || busyId === item.id}
+                    disabled={!item.available || busyId === item.id || busyId === "batch"}
                   >
                     {t("permissions.openSettings", "Open")}
                   </Button>

@@ -4,6 +4,7 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useScreencapStore } from "./store";
 import { Select } from "../../components/ui";
 import { useT } from "../../i18n";
+import { writeImageFileToClipboard } from "../../system";
 
 interface Props {
   path: string;
@@ -36,6 +37,8 @@ export default function GifPreview({ path, onClose }: Props) {
   const extension = fileName.split(".").pop()?.toLowerCase() ?? "";
   const isVideo = extension === "mp4" || extension === "mov";
   const isAnimatedImage = extension === "gif";
+  const isStillImage = extension === "png" || extension === "jpg" || extension === "jpeg" || extension === "webp";
+  const canCopyImage = isStillImage || isAnimatedImage;
   const separatorIndex = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   const dir = path.substring(0, separatorIndex);
   const pathSeparator = path.lastIndexOf("\\") > path.lastIndexOf("/") ? "\\" : "/";
@@ -59,6 +62,18 @@ export default function GifPreview({ path, onClose }: Props) {
     } catch (e) {
       setStatusError(true);
       setStatusMsg(`${t("screencap.preview.revealFailed", "Show in folder failed")}: ${String(e)}`);
+    }
+  };
+
+  const handleCopyImage = async () => {
+    setStatusError(false);
+    setStatusMsg(null);
+    try {
+      await writeImageFileToClipboard(path);
+      setStatusMsg(t("screencap.toast.copied", "Copied"));
+    } catch (e) {
+      setStatusError(true);
+      setStatusMsg(`${t("common.error", "Error")}: ${String(e)}`);
     }
   };
 
@@ -157,7 +172,9 @@ export default function GifPreview({ path, onClose }: Props) {
         ) : playing || !isAnimatedImage ? (
           <img
             src={src}
-            alt={t("screencap.preview.gifAlt", "GIF preview")}
+            alt={isStillImage
+              ? t("screencap.preview.imageAlt", "Screenshot preview")
+              : t("screencap.preview.gifAlt", "GIF preview")}
             onLoad={(e) =>
               setDims({
                 w: e.currentTarget.naturalWidth,
@@ -277,6 +294,11 @@ export default function GifPreview({ path, onClose }: Props) {
         <button onClick={handleSaveAs} disabled={saving} style={primaryBtn}>
           {saving ? t("common.saving", "Saving…") : t("screencap.preview.saveAs", "Save As…")}
         </button>
+        {canCopyImage && (
+          <button onClick={() => void handleCopyImage()} style={secondaryBtn}>
+            {t("screencap.toast.copy", "Copy")}
+          </button>
+        )}
         <button onClick={handleReveal} style={secondaryBtn}>
           {t("screencap.preview.showInFolder", "Show in Folder")}
         </button>

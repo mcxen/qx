@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import QxShell from "./components/QxShell";
 import ResultsList from "./ResultsList";
-import SearchBar from "./SearchBar";
+import SearchBar, { requestLauncherSearchFocus } from "./SearchBar";
 import { Select } from "./components/ui";
 import { useStore, type AppEntry, type SearchScope } from "./store";
 import { useSettingsStore } from "./modules/settings/store";
@@ -68,8 +68,19 @@ export default function Launcher({
   });
 
   const quickEntries: QuickEntry[] = useMemo(() => {
-    return toLauncherQuickEntries(settings.quick_entries, onNavigate, t);
-  }, [settings.quick_entries, onNavigate, t]);
+    return toLauncherQuickEntries(settings.quick_entries, (target) => {
+      if (target === "file-search") {
+        setScope("files");
+        searchScopeRef.current = "files";
+        setQuery("");
+        useStore.getState().setSelectedIndex(0);
+        onScopeChange();
+        window.requestAnimationFrame(requestLauncherSearchFocus);
+        return;
+      }
+      onNavigate(target);
+    }, t);
+  }, [settings.quick_entries, onNavigate, onScopeChange, searchScopeRef, setQuery, t]);
 
   const isSearchActivity = (isSearching || isSearchSettling) && !!query.trim();
   const idleHome = !isSearchActivity && results.length === 0 && loadingPhase !== "loading-apps";

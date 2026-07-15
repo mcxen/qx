@@ -101,6 +101,17 @@ if (exists("src/island/index.ts") && !/QxIslandSurface|hostApi|session/i.test(re
   fail("src/island/index.ts should re-export surface/session host ports");
 }
 
+// --- 6. Every protected capture WebView must have an IPC capability ---
+if (exists("src-tauri/capabilities/default.json")) {
+  const capability = JSON.parse(read("src-tauri/capabilities/default.json"));
+  const windows = new Set(capability.windows ?? []);
+  for (const label of ["main", "recording-controls", "region-picker"]) {
+    if (!windows.has(label)) {
+      fail(`capture surface missing Tauri capability: ${label}`);
+    }
+  }
+}
+
 if (failures.length) {
   console.error("architecture check failed:\n");
   for (const item of failures) console.error(`  - ${item}`);
@@ -108,4 +119,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log("architecture: ok — SOLID doc linked, host binary port, converter Buffer, settings i18n import, island ports.");
+console.log("architecture: ok — SOLID doc linked, host binary port, converter Buffer, settings i18n import, island ports, capture capabilities.");

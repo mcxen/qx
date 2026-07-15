@@ -331,13 +331,27 @@ async function searchScreencapSurfaces(query: string): Promise<ModuleSurfaceHit[
     }>>("get_screencap_history");
     for (const entry of history) {
       const name = entry.path.split(/[/\\]/).pop() || entry.path;
-      const score = scoreText(query, name, "video", "mp4", "mov", "gif", "recording", "history");
+      const lower = entry.path.toLowerCase();
+      const isShot = lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp");
+      const score = scoreText(
+        query,
+        name,
+        isShot ? "screenshot" : "video",
+        "mp4",
+        "mov",
+        "gif",
+        "png",
+        "recording",
+        "history",
+        "截图",
+        "录屏",
+      );
       if (score <= 0) continue;
       hits.push(hit({
         id: `screencap:gif:${entry.id}`,
         moduleId: "screencap",
         title: name,
-        subtitle: "Screen Recording · Video / GIF",
+        subtitle: isShot ? "Screen Capture · Screenshot" : "Screen Capture · Video / GIF",
         icon: "builtin:screencap",
         score,
         launch: { tab: "screencap", surface: "preview", params: { path: entry.path, id: entry.id } },

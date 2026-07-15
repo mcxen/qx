@@ -43,12 +43,14 @@ import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./l
 import { getQxDesktopPlatform, isImeCompositionEvent } from "./utils/keyboard";
 import { isBuiltinModuleEnabled } from "./modules/moduleAvailability";
 import { captureControlsPinned } from "./modules/screencap/preferences";
+import { ensureCaptureToastListener } from "./modules/screencap/store";
 import "./App.css";
 
 const ClipboardPanel = lazy(() => import("./modules/clipboard/ClipboardPanel"));
 const ScreenRecorder = lazy(() => import("./modules/screencap/ScreenRecorder"));
 const DevTxtTool = lazy(() => import("./modules/documents/DevTxtTool"));
 const SettingsPanel = lazy(() => import("./modules/settings/SettingsPanel"));
+const OnboardingWizard = lazy(() => import("./modules/onboarding/OnboardingWizard"));
 const RssReader = lazy(() => import("./modules/rss"));
 const V2exPanel = lazy(() => import("./modules/v2ex/V2exPanel"));
 const G4fReader = lazy(() => import("./modules/qx-ai"));
@@ -519,6 +521,8 @@ function App() {
   const [isSearching, setIsSearching] = useState(false);
   const [isSearchSettling, setIsSearchSettling] = useState(false);
   const [mountedTab, setMountedTab] = useState(tab);
+  /** macOS first-launch permission wizard (FDA + optional paste/capture). */
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [, startSearchTransition] = useTransition();
 
   const performHostEscape = useCallback(() => {
@@ -632,6 +636,7 @@ function App() {
 
   useEffect(() => {
     if (!settingsLoaded || !isTauriRuntime()) return;
+    ensureCaptureToastListener();
     const pinned = captureControlsPinned()
       && settings.builtin_modules?.modules?.screencap !== false;
     void invoke("screencap_set_controls_pinned", { pinned }).catch(() => {});
@@ -896,9 +901,9 @@ function App() {
     settings.appearance.font_size,
   ]);
 
-  // A fresh install presents the launcher once. After that Qx starts as a
-  // background helper and the launcher is surfaced only by an explicit
-  // shortcut/tray action.
+  // A fresh install presents the launcher once (and macOS permission onboarding).
+  // After that Qx starts as a background helper; the launcher is surfaced only
+  // by an explicit shortcut/tray action.
   useEffect(() => {
     if (!settingsLoaded || !isTauriRuntime()) return;
     if (startupWindowRestoredRef.current) return;
@@ -923,7 +928,10 @@ function App() {
 
       startupWindowRestoredRef.current = true;
       setTab("launcher");
-      const shouldShowFirstLaunch = !currentSettings.general.has_shown_launcher && !hasSavedSize;
+      const needsOnboarding =
+        getQxDesktopPlatform() === "macos" && !currentSettings.general.has_completed_onboarding;
+      const shouldShowFirstLaunch =
+        (!currentSettings.general.has_shown_launcher && !hasSavedSize) || needsOnboarding;
       if (!currentSettings.general.has_shown_launcher) {
         useSettingsStore.getState().patch("general", {
           ...currentSettings.general,
@@ -931,16 +939,30 @@ function App() {
         });
         await useSettingsStore.getState().flush();
       }
+      // Non-macOS: mark onboarding complete so the flag stays meaningful.
+      if (getQxDesktopPlatform() !== "macos" && !currentSettings.general.has_completed_onboarding) {
+        const g = useSettingsStore.getState().settings.general;
+        useSettingsStore.getState().patch("general", {
+          ...g,
+          has_completed_onboarding: true,
+        });
+        await useSettingsStore.getState().flush();
+      }
       if (shouldShowFirstLaunch) {
         // Let the size settle, then show via floating_show (centers on the
         // cursor monitor — do not use win.center() which can land on the wrong display).
         await new Promise((r) => window.setTimeout(r, 50));
-        ignoreBlurUntilRef.current = Date.now() + 2500;
+        // Onboarding needs longer blur immunity while the user visits System Settings.
+        ignoreBlurUntilRef.current = Date.now() + (needsOnboarding ? 120_000 : 2500);
         await invoke("floating_show").catch(() => {});
         // Ensure the onboarding window has app results even if focus events are flaky.
         await loadEmptyLauncherApps(setResults, setLoadingPhase);
         // Re-center once more after the panel is actually visible.
         await invoke("floating_show").catch(() => {});
+        if (needsOnboarding) {
+          await invoke("floating_set_onboarding_active", { active: true }).catch(() => {});
+          setShowOnboarding(true);
+        }
       }
     };
 
@@ -1019,8 +1041,13 @@ function App() {
       // Prefer native hide (lib.rs on_window_event) as the source of truth.
       // Keep a webview fallback for environments where the native event is missed.
       if (!focused && settings.general.autoHideOnBlur) {
-        // First-launch / panel activation can briefly report blur; don't hide yet.
+        // First-launch / onboarding / panel activation can briefly report blur; don't hide yet.
         if (Date.now() < ignoreBlurUntilRef.current) return;
+        // Stay visible while the macOS permission wizard is open (user is in System Settings).
+        if (showOnboarding) {
+          ignoreBlurUntilRef.current = Date.now() + 60_000;
+          return;
+        }
         // Go through Rust hide so PANEL_OPEN / last-hide timestamps stay in
         // sync with global-shortcut toggle (otherwise Alt+V re-opens after blur).
         invoke("floating_hide_restore_focus").catch(() => {
@@ -1090,6 +1117,7 @@ function App() {
     setVisible,
     setLoadingPhase,
     settings.general.autoHideOnBlur,
+    showOnboarding,
   ]);
 
   const loadSlowSearchProviders = useCallback(
@@ -1701,6 +1729,19 @@ function App() {
     }
   };
 
+  const completeOnboarding = useCallback(async () => {
+    const general = useSettingsStore.getState().settings.general;
+    useSettingsStore.getState().patch("general", {
+      ...general,
+      has_completed_onboarding: true,
+    });
+    await useSettingsStore.getState().flush();
+    await invoke("floating_set_onboarding_active", { active: false }).catch(() => {});
+    setShowOnboarding(false);
+    // Resume normal blur-to-hide after the wizard closes.
+    ignoreBlurUntilRef.current = Date.now() + 800;
+  }, []);
+
   return (
     <ThemeProvider>
       <div className="qx-canvas">
@@ -1722,6 +1763,11 @@ function App() {
             </Suspense>
           </ModuleErrorBoundary>
         </div>
+        {showOnboarding && (
+          <Suspense fallback={null}>
+            <OnboardingWizard onComplete={() => void completeOnboarding()} />
+          </Suspense>
+        )}
       </div>
     </ThemeProvider>
   );

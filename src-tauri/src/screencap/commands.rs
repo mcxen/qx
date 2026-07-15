@@ -119,3 +119,9 @@ pub fn screencap_return_to_main(app: AppHandle) {
     crate::floating_panel::show_and_navigate(&app, "screencap");
     recording_session::emit_recording_status(&app);
 }
+
+/// Capture workflow facade — prefer system command `clipboard_write_image_file`.
+#[command]
+pub fn screencap_copy_image_to_clipboard(app: AppHandle, path: String) -> Result<(), String> {
+    crate::clipboard::write_image_file_to_clipboard(&app, std::path::Path::new(&path))
+}

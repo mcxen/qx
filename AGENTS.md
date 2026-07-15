@@ -137,6 +137,11 @@ dependencies. Provide a deliberate fallback for other targets when practical.
 ### Application Lifecycle
 
 - A newly installed version may show the main interface once for onboarding.
+- On macOS, first launch runs a permission wizard (`OnboardingWizard`): Full Disk
+  Access first (complete file search), then optional Accessibility (clipboard
+  auto-paste), Screen Recording, and Input Monitoring. Steps are skippable;
+  status is polled while System Settings is open. Blur auto-hide is suppressed
+  for the duration (`floating_set_onboarding_active`).
 - Normal helper startup, login-item activation, screen wake, and application
   activation must keep Qx in the background.
 - Only the configured global summon shortcut (default `Option+Space` on macOS;

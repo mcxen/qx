@@ -7,6 +7,7 @@ type Translate = (key: string, fallback: string) => string;
 
 export const QUICK_ENTRY_TARGETS = [
   { value: "clipboard", label: "Clipboard History", subtitle: "Pinned, frequent, links", titleKey: "launcher.clipboard", subtitleKey: "launcher.clipboard.desc" },
+  { value: "file-search", label: "File Search", subtitle: "Find recent files and folders", titleKey: "launcher.fileSearch", subtitleKey: "launcher.fileSearch.desc" },
   { value: "qx-ai", label: "QxAI", subtitle: "Chat and agent tasks", titleKey: "launcher.qx-ai", subtitleKey: "launcher.qx-ai.desc" },
   { value: "rss", label: "RSS Reader", subtitle: "Feeds and articles", titleKey: "launcher.rss", subtitleKey: "launcher.rss.desc" },
   { value: "screencap", label: "Screen Capture", subtitle: "Screenshots and MP4/MOV recording", titleKey: "launcher.screencap", subtitleKey: "launcher.screencap.desc" },
@@ -39,13 +40,18 @@ export function localizeQuickEntry(
   return { title, subtitle };
 }
 
-export const DEFAULT_QUICK_ENTRIES: QuickEntryConfig[] = QUICK_ENTRY_TARGETS.map((target) => ({
-  id: target.value,
-  title: target.label,
-  subtitle: target.subtitle,
-  target: target.value,
-  enabled: true,
-}));
+const DEFAULT_QUICK_ENTRY_TARGETS = ["clipboard", "rss", "settings", "file-search"];
+
+export const DEFAULT_QUICK_ENTRIES: QuickEntryConfig[] = DEFAULT_QUICK_ENTRY_TARGETS.map((value) => {
+  const target = QUICK_ENTRY_TARGETS.find((item) => item.value === value)!;
+  return {
+    id: target.value,
+    title: target.label,
+    subtitle: target.subtitle,
+    target: target.value,
+    enabled: true,
+  };
+});
 
 export function sanitizeQuickEntries(entries: QuickEntryConfig[] | undefined): QuickEntryConfig[] {
   const source = Array.isArray(entries) && entries.length > 0 ? entries : DEFAULT_QUICK_ENTRIES;

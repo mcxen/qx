@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
+  ensureCaptureToastListener,
   requestCaptureSelection,
+  takeScreenshotToast,
   useScreencapStore,
-  type RecordArea,
   type RecordingOptions,
 } from "./store";
 import { useStore } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
-import { LinkButton, Select } from "../../components/ui";
+import { Select } from "../../components/ui";
 import GifPreview from "./GifPreview";
 import CaptureHistory from "./CaptureHistory";
+import CaptureToast from "./CaptureToast";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { getQxShortcutPreset } from "../../utils/keyboard";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
@@ -21,11 +24,17 @@ import RecordingTransport from "./RecordingTransport";
 import {
   CAPTURE_CONTROLS_PINNED_KEY,
   captureControlsPinned,
+  loadCaptureConfirmMode,
+  loadCaptureDelaySeconds,
   loadRecordingOptions,
   loadScreenshotAfterCapture,
+  saveCaptureConfirmMode,
   saveCaptureControlsPinned,
+  saveCaptureDelaySeconds,
   saveRecordingOptions,
   saveScreenshotAfterCapture,
+  type CaptureConfirmMode,
+  type CaptureDelaySeconds,
   type ScreenshotAfterCapture,
 } from "./preferences";
 
@@ -40,6 +49,11 @@ function formatTime(ms: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+function isScreenshotPath(path: string | null | undefined): boolean {
+  if (!path) return false;
+  return path.toLowerCase().endsWith(".png");
+}
+
 export default function ScreenRecorder() {
   const t = useT();
   const {
@@ -50,7 +64,6 @@ export default function ScreenRecorder() {
     lastGifPath,
     history,
     error,
-    startRecording,
     stopRecording,
     syncRecordingStatus,
     showControls,
@@ -61,21 +74,51 @@ export default function ScreenRecorder() {
 
   const setTab = useStore((state) => state.setTab);
 
-  /** Logical crop in points (xcap / CGDisplayBounds space). */
-  const [area, setArea] = useState<RecordArea | null>(null);
   const [recordingOptions, setRecordingOptions] = useState<RecordingOptions>(loadRecordingOptions);
-  const [controlsPinned, setControlsPinned] = useState(
-    captureControlsPinned,
-  );
+  const [controlsPinned, setControlsPinned] = useState(captureControlsPinned);
   const [screenshotAfterCapture, setScreenshotAfterCapture] = useState<ScreenshotAfterCapture>(
     loadScreenshotAfterCapture,
   );
+  const [confirmMode, setConfirmMode] = useState<CaptureConfirmMode>(loadCaptureConfirmMode);
+  const [delaySeconds, setDelaySeconds] = useState<CaptureDelaySeconds>(loadCaptureDelaySeconds);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [toastPath, setToastPath] = useState<string | null>(null);
 
   useEffect(() => {
     void loadHistory();
     void syncRecordingStatus();
   }, [loadHistory, syncRecordingStatus]);
+
+  useEffect(() => {
+    ensureCaptureToastListener();
+    const pending = takeScreenshotToast();
+    if (pending) {
+      setToastPath(pending);
+      setPreview(pending);
+      void loadHistory();
+      void syncRecordingStatus();
+    }
+    if (!isTauriRuntime()) return;
+    const unlistenCaptured = listen<{ kind?: string; path?: string }>("screencap:captured", (event) => {
+      const path = event.payload?.path;
+      if (!path || !isScreenshotPath(path)) return;
+      void loadHistory();
+      void syncRecordingStatus();
+      setPreview(path);
+      setToastPath(path);
+    });
+    const unlistenState = listen<{ phase?: string; outputPath?: string | null }>("screencap:state", (event) => {
+      if (event.payload?.phase !== "done") return;
+      const path = event.payload.outputPath;
+      if (!path || !isScreenshotPath(path)) return;
+      void loadHistory();
+      setPreview(path);
+    });
+    return () => {
+      void unlistenCaptured.then((dispose) => dispose());
+      void unlistenState.then((dispose) => dispose());
+    };
+  }, [loadHistory, setPreview, syncRecordingStatus]);
 
   useEffect(() => {
     saveRecordingOptions(recordingOptions);
@@ -84,6 +127,14 @@ export default function ScreenRecorder() {
   useEffect(() => {
     saveScreenshotAfterCapture(screenshotAfterCapture);
   }, [screenshotAfterCapture]);
+
+  useEffect(() => {
+    saveCaptureConfirmMode(confirmMode);
+  }, [confirmMode]);
+
+  useEffect(() => {
+    saveCaptureDelaySeconds(delaySeconds);
+  }, [delaySeconds]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -142,7 +193,6 @@ export default function ScreenRecorder() {
     }
   }, [isRecording, status, syncRecordingStatus]);
 
-  // When region pick finishes, main is hidden and recording starts — poll so UI catches up on return.
   useEffect(() => {
     const onFocus = () => {
       void syncRecordingStatus();
@@ -169,15 +219,6 @@ export default function ScreenRecorder() {
       return next;
     });
   }, []);
-
-  const handleStart = async () => {
-    setLocalError(null);
-    if (!isTauriRuntime()) {
-      setLocalError(t("screencap.select.needsApp", "Screen capture requires the Qx desktop app."));
-      return;
-    }
-    await startRecording(area, recordingOptions);
-  };
 
   const handlePopOut = async () => {
     await showControls();
@@ -210,31 +251,21 @@ export default function ScreenRecorder() {
 
   const readyActions = useMemo<QxShellAction[]>(
     () => [
-      { label: t("screencap.start", "Start Recording"), kbd: "Enter", onClick: () => void handleStart() },
-      { label: t("screencap.screenshot", "Take Screenshot"), onClick: () => void beginScreenshot() },
-      { label: t("screencap.selectArea", "Select Area"), kbd: "CmdOrCtrl+Shift+A", onClick: () => void beginAreaSelect() },
+      { label: t("screencap.screenshot", "Take Screenshot"), kbd: "Enter", onClick: () => void beginScreenshot() },
+      { label: t("screencap.record", "Record"), onClick: () => void beginAreaSelect() },
       {
         label: controlsPinned
           ? t("screencap.controls.unpin", "Hide Persistent Capture Island")
           : t("screencap.controls.pin", "Keep Capture Island Visible"),
         onClick: togglePinnedControls,
       },
-      {
-        label: t("screencap.clearArea", "Clear Area"),
-        disabled: !area,
-        onClick: () => setArea(null),
-      },
-      {
-        label: t("screencap.fullPrimary", "Full Screen (Primary)"),
-        onClick: () => setArea(null),
-      },
     ],
-    [area, beginAreaSelect, beginScreenshot, controlsPinned, t, togglePinnedControls],
+    [beginAreaSelect, beginScreenshot, controlsPinned, t, togglePinnedControls],
   );
 
   const doneActions = useMemo<QxShellAction[]>(
     () => [
-      { label: t("screencap.newRecording", "New Recording"), kbd: "Enter", onClick: handleNewRecording },
+      { label: t("screencap.newRecording", "New Capture"), kbd: "Enter", onClick: handleNewRecording },
       {
         label: t("screencap.backLauncher", "Back to Launcher"),
         onClick: () => {
@@ -292,7 +323,7 @@ export default function ScreenRecorder() {
       }
       if (status === "idle" || status === "error") {
         e.preventDefault();
-        void handleStart();
+        void beginScreenshot();
         return;
       }
       if (status === "done") {
@@ -329,11 +360,10 @@ export default function ScreenRecorder() {
     }
   };
 
-  // ── Recording / encoding HUD ────────────────────────────────────────
   if (isRecording || status === "processing") {
     return (
       <QxShell
-        title={t("screencap.title", "Screen Recording")}
+        title={t("screencap.title", "Screen Capture")}
         search={
           <div className="qx-rss-detail-title qx-module-title-with-badge">
             <span>{t("screencap.recording", "Recording")}</span>
@@ -406,13 +436,6 @@ export default function ScreenRecorder() {
           >
             {formatTime(elapsedMs)}
           </div>
-          {area && (
-            <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
-              {t("screencap.regionSummary", "Region {width} × {height} (logical) · primary display")
-                .replace("{width}", String(area.w))
-                .replace("{height}", String(area.h))}
-            </div>
-          )}
           <p style={{ fontSize: 12, color: "var(--qx-text-tertiary)", maxWidth: 360, textAlign: "center", margin: 0 }}>
             {status === "processing"
               ? t("screencap.finalizingHint", "Finalizing the MP4/MOV container…")
@@ -433,18 +456,17 @@ export default function ScreenRecorder() {
     );
   }
 
-  // ── Idle / done / error: history + config or preview ─────────────────
   const showingPreview = Boolean(lastGifPath) && (status === "done" || status === "idle");
 
   return (
     <QxShell
-      title={t("screencap.title", "Screen Recording")}
+      title={t("screencap.title", "Screen Capture")}
       search={
         <div className="qx-rss-detail-title qx-module-title-with-badge">
           <span>
             {showingPreview
-              ? t("screencap.previewTitle", "Recording Preview")
-              : t("screencap.title", "Screen Recording")}
+              ? t("screencap.previewTitle", "Capture Preview")
+              : t("screencap.title", "Screen Capture")}
           </span>
           <BetaBadge />
         </div>
@@ -452,25 +474,21 @@ export default function ScreenRecorder() {
       onKeyDown={handleKeyDown}
       trailing={
         <>
-          <button className="qx-command-button primary" onClick={() => void handleStart()} type="button">
-            {t("common.start", "Start")}
+          <button className="qx-command-button primary" onClick={() => void beginScreenshot()} type="button">
+            {t("screencap.screenshot", "Screenshot")}
           </button>
           <button className="qx-command-button" onClick={() => void beginAreaSelect()} type="button">
-            {t("screencap.selectArea", "Select Area")}
+            {t("screencap.record", "Record")}
           </button>
         </>
       }
       island={{
         label: showingPreview
-          ? t("screencap.ready", "Recording Ready")
-          : t("screencap.readyToRecord", "Ready to Record"),
+          ? t("screencap.ready", "Capture Ready")
+          : t("screencap.readyToRecord", "Ready to Capture"),
         detail: showingPreview
           ? lastGifPath?.split(/[\\/]/).pop()
-          : area
-            ? `${area.w}×${area.h} · ${recordingOptions.outputFormat.toUpperCase()} · ${recordingOptions.fps} fps`
-            : t("screencap.fullSummary", "Full primary display · {format} · {fps} fps")
-                .replace("{format}", recordingOptions.outputFormat.toUpperCase())
-                .replace("{fps}", String(recordingOptions.fps)),
+          : `${recordingOptions.outputFormat.toUpperCase()} · ${recordingOptions.fps} fps · ${delaySeconds > 0 ? `${delaySeconds}s` : t("screencap.delay.none", "No delay")}`,
         tone: showingPreview ? "success" : displayError ? "danger" : "neutral",
       }}
       escapeAction={{
@@ -484,10 +502,10 @@ export default function ScreenRecorder() {
       primaryAction={
         showingPreview
           ? { label: t("common.new", "New"), kbd: "Enter", tone: "primary", onClick: handleNewRecording }
-          : { label: t("common.start", "Start"), kbd: "Enter", tone: "primary", onClick: () => void handleStart() }
+          : { label: t("screencap.screenshot", "Screenshot"), kbd: "Enter", tone: "primary", onClick: () => void beginScreenshot() }
       }
       secondaryAction={{ label: t("common.actions", "Actions"), kbd: actionMenuShortcut }}
-      actionTitle={t("screencap.actions", "Recording Actions")}
+      actionTitle={t("screencap.actions", "Capture Actions")}
       actions={showingPreview ? doneActions : readyActions}
     >
       <div
@@ -504,7 +522,7 @@ export default function ScreenRecorder() {
             borderRight: "1px solid var(--qx-border-1)",
           }}
           data-qx-region="screencap-history"
-          data-qx-region-label={t("screencap.history.region", "Recording history")}
+          data-qx-region-label={t("screencap.history.region", "Capture history")}
           data-qx-region-initial="true"
           tabIndex={-1}
         >
@@ -513,21 +531,44 @@ export default function ScreenRecorder() {
 
         <div
           className="qx-plugin-detail"
-          style={{ minHeight: 0, overflow: "auto" }}
+          style={{ minHeight: 0, overflow: "auto", position: "relative" }}
           data-qx-region="screencap-detail"
-          data-qx-region-label={t("screencap.detail.region", "Recording detail")}
+          data-qx-region-label={t("screencap.detail.region", "Capture detail")}
           tabIndex={-1}
         >
+          {toastPath && (
+            <CaptureToast
+              path={toastPath}
+              onOpen={() => {
+                setPreview(toastPath);
+                setToastPath(null);
+              }}
+              onDismiss={() => setToastPath(null)}
+            />
+          )}
           {lastGifPath && (status === "done" || status === "idle") ? (
             <GifPreview path={lastGifPath} onClose={handleNewRecording} />
           ) : (
             <div className="qx-module-stage" style={{ padding: 12, gap: 12 }}>
               <div className="qx-panel-card" style={{ padding: 12 }}>
                 <div className="qx-detail-title" style={{ marginBottom: 6 }}>
-                  {t("screencap.configuration", "Configuration")}
+                  {t("screencap.configuration", "Capture Settings")}
                 </div>
                 <div className="qx-detail-meta" style={{ marginBottom: 12 }}>
-                  {t("screencap.configurationHint", "Capture screenshots or record any display. Region selection follows the display under your pointer.")}
+                  {t("screencap.configurationHint", "Screenshot or record any display. Region selection follows the display under your pointer.")}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                  <button onClick={() => void beginScreenshot()} className="qx-command-button primary" type="button">
+                    {t("screencap.screenshot", "Screenshot")}
+                  </button>
+                  <button onClick={() => void beginAreaSelect()} className="qx-command-button" type="button">
+                    {t("screencap.record", "Record")}
+                  </button>
+                  <button onClick={togglePinnedControls} className="qx-command-button" type="button">
+                    {controlsPinned
+                      ? t("screencap.controls.unpinShort", "Hide Capture Island")
+                      : t("screencap.controls.pinShort", "Show Capture Island")}
+                  </button>
                 </div>
                 <div className="qx-screencap-options">
                   <label>
@@ -540,6 +581,31 @@ export default function ScreenRecorder() {
                       ]}
                       onChange={setScreenshotAfterCapture}
                       ariaLabel={t("screencap.afterScreenshot", "After screenshot")}
+                    />
+                  </label>
+                  <label>
+                    <span>{t("screencap.confirmMode", "Selection confirm")}</span>
+                    <Select
+                      value={confirmMode}
+                      options={[
+                        { value: "refine", label: t("screencap.confirmMode.refine", "Refine then capture") },
+                        { value: "release", label: t("screencap.confirmMode.release", "Capture on release") },
+                      ]}
+                      onChange={setConfirmMode}
+                      ariaLabel={t("screencap.confirmMode", "Selection confirm")}
+                    />
+                  </label>
+                  <label>
+                    <span>{t("screencap.delay", "Delay")}</span>
+                    <Select
+                      value={String(delaySeconds) as "0" | "3" | "5"}
+                      options={[
+                        { value: "0", label: t("screencap.delay.none", "None") },
+                        { value: "3", label: "3s" },
+                        { value: "5", label: "5s" },
+                      ]}
+                      onChange={(value) => setDelaySeconds(Number(value) as CaptureDelaySeconds)}
+                      ariaLabel={t("screencap.delay", "Delay")}
                     />
                   </label>
                   <label>
@@ -591,37 +657,9 @@ export default function ScreenRecorder() {
                     />
                   </label>
                 </div>
-                <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-                  <button onClick={() => void handleStart()} className="qx-command-button primary" type="button">
-                    {t("screencap.start", "Start Recording")}
-                  </button>
-                  <button onClick={() => void beginAreaSelect()} className="qx-command-button" type="button">
-                    {t("screencap.selectArea", "Select Area")}
-                  </button>
-                  <button onClick={() => void beginScreenshot()} className="qx-command-button" type="button">
-                    {t("screencap.screenshot", "Take Screenshot")}
-                  </button>
-                  <button onClick={togglePinnedControls} className="qx-command-button" type="button">
-                    {controlsPinned
-                      ? t("screencap.controls.unpinShort", "Hide Capture Island")
-                      : t("screencap.controls.pinShort", "Show Capture Island")}
-                  </button>
-                  {area && (
-                    <LinkButton onClick={() => setArea(null)}>
-                      {t("screencap.clearArea", "Clear Area")}
-                    </LinkButton>
-                  )}
+                <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)", marginTop: 10 }}>
+                  {t("screencap.fullSelectHint", "Region · Window · Full screen on built-in and external displays")}
                 </div>
-                {area ? (
-                  <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
-                    {t("screencap.region", "Region")}: {area.w} × {area.h} px ({t("screencap.logical", "logical")})
-                    {` · ${recordingOptions.outputFormat.toUpperCase()} · ${recordingOptions.fps} fps`}
-                  </div>
-                ) : (
-                  <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
-                    {t("screencap.fullSelectHint", "Full display under pointer · Select Area works on built-in and external displays")}
-                  </div>
-                )}
               </div>
 
               {displayError && (
@@ -639,6 +677,7 @@ export default function ScreenRecorder() {
                 </strong>
                 <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
                   <li>{t("screencap.tip.permission", "macOS: Screen Recording permission must be granted; restart Qx after enabling.")}</li>
+                  <li>{t("screencap.tip.keys", "Picker: Enter / double-click confirm · Space full screen · S/R intent · Tab region/window · 1–6 tools.")}</li>
                   <li>{t("screencap.tip.directVideo", "Recording is written directly to MP4 or MOV without temporary PNG frames.")}</li>
                   <li>{t("screencap.tip.protected", "The floating controller and the Qx recording panel are excluded from capture.")}</li>
                   <li>{t("screencap.tip.gif", "Open a completed video and choose Convert to GIF only when needed.")}</li>

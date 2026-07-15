@@ -31,6 +31,9 @@ const HIDE_TOGGLE_GRACE: Duration = Duration::from_millis(160);
 /// Ignore Focused(false) auto-hide until this instant (e.g. after screencap
 /// stop: show main then focus flickers and would look like Qx "quit").
 static SUPPRESS_AUTO_HIDE_UNTIL: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
+/// Sticky suppress while the macOS first-launch permission wizard is open
+/// (user spends time in System Settings without hiding Qx).
+static ONBOARDING_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 fn previous_foreground_pid() -> &'static Mutex<Option<i32>> {
     PREVIOUS_FOREGROUND_PID.get_or_init(|| Mutex::new(None))
@@ -113,12 +116,29 @@ pub fn suppress_auto_hide(duration: Duration) {
 
 /// Whether Focused(false) should skip auto-hide right now.
 pub fn auto_hide_suppressed() -> bool {
+    if ONBOARDING_ACTIVE.load(Ordering::SeqCst) {
+        return true;
+    }
     suppress_auto_hide_lock()
         .lock()
         .ok()
         .and_then(|guard| *guard)
         .map(|until| Instant::now() < until)
         .unwrap_or(false)
+}
+
+/// Keep the main panel visible while the user grants macOS permissions.
+pub fn set_onboarding_active(active: bool) {
+    ONBOARDING_ACTIVE.store(active, Ordering::SeqCst);
+    if active {
+        // Also refresh the timed suppress as a safety net.
+        suppress_auto_hide(Duration::from_secs(120));
+    }
+}
+
+#[tauri::command]
+pub fn floating_set_onboarding_active(active: bool) {
+    set_onboarding_active(active);
 }
 
 /// Prefer our open flag; fall back to OS visibility for paths that only called

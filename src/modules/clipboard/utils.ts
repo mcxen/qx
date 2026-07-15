@@ -3,6 +3,15 @@ import type { Locale } from "../../i18n";
 
 type Translate = (key: string, fallback: string) => string;
 
+export function dateKey(timestamp: string): string {
+  const date = new Date(timestamp.replace(" ", "T"));
+  if (Number.isNaN(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function classify(item: ClipboardEntry): "pinned" | "links" | "code" | "long" | "frequent" | "image" | "file" | "text" {
   if (item.file_path) return "file";
   if (item.image_path) return "image";

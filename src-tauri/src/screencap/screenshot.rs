@@ -4,7 +4,7 @@ use chrono::Local;
 use super::geometry::clamp_area;
 use super::storage::{captures_dir, insert_history};
 use super::types::{RecordArea, RecordingOutput};
-use crate::display::capture_monitor;
+use crate::display::{capture_monitor, capture_region};
 
 pub(super) fn capture(
     area: RecordArea,
@@ -21,9 +21,9 @@ pub(super) fn capture(
         .map_err(|error| format!("display height: {error}"))?;
     let area = clamp_area(area, mon_w, mon_h)
         .ok_or_else(|| "Selection is outside the selected display".to_string())?;
-    let mut image = monitor
-        .capture_region(area.x, area.y, area.w, area.h)
-        .map_err(|error| format!("capture screenshot: {error}"))?;
+    // Region still-frame is a display system capability; screencap only owns
+    // annotation composite + history persistence.
+    let mut image = capture_region(area.monitor_id, area.x, area.y, area.w, area.h)?;
     composite_annotation_overlay(&mut image, annotation_overlay_base64.as_deref())?;
     let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let output_path = captures_dir().join(format!("screenshot_{timestamp}.png"));

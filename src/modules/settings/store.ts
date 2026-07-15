@@ -42,6 +42,8 @@ export interface GeneralSettings {
   autoHideOnBlur: boolean;
   data_path: string;
   has_shown_launcher: boolean;
+  /** macOS first-launch permission wizard finished (or non-macOS auto-complete). */
+  has_completed_onboarding: boolean;
 }
 
 export interface AppearanceSettings {
@@ -256,6 +258,7 @@ export const DEFAULT_SETTINGS: Settings = {
     autoHideOnBlur: true,
     data_path: "",
     has_shown_launcher: false,
+    has_completed_onboarding: false,
   },
   appearance: {
     theme: "light",
@@ -365,15 +368,9 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   quick_entries: [
     { id: "clipboard", title: "Clipboard History", subtitle: "Pinned, frequent, links", target: "clipboard", enabled: true },
-    { id: "qx-ai", title: "QxAI", subtitle: "Chat and agent tasks", target: "qx-ai", enabled: true },
     { id: "rss", title: "RSS Reader", subtitle: "Feeds and articles", target: "rss", enabled: true },
-    { id: "screencap", title: "Screen Capture", subtitle: "Screenshots and video recording", target: "screencap", enabled: true },
-    { id: "v2ex", title: "V2EX", subtitle: "Latest and hot topics", target: "v2ex", enabled: true },
-    { id: "weather", title: "Weather", subtitle: "Current conditions and forecast", target: "weather", enabled: true },
-    { id: "documents", title: "Text Toolbox", subtitle: "Disk notepad · folder files", target: "documents", enabled: true },
-    { id: "macros", title: "Macro Recorder", subtitle: "Record and replay actions", target: "macros", enabled: true },
-    { id: "qx-tty", title: "QxTTY", subtitle: "Persistent local terminal sessions", target: "qx-tty", enabled: true },
     { id: "settings", title: "Settings", subtitle: "Appearance and plugins", target: "settings", enabled: true },
+    { id: "file-search", title: "File Search", subtitle: "Find recent files and folders", target: "file-search", enabled: true },
   ],
   tray_actions: [
     { id: "open_main", title: "Open Main Window", enabled: true },

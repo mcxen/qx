@@ -179,10 +179,10 @@ tab = "plugin:*"   → PluginPanelViewport
 
 ### 4.2 剪贴板历史
 
-- Rust 端: `clipboard.rs` — 基于 `tauri-plugin-clipboard-manager` 轮询
+- Rust 端: `clipboard.rs` 负责监听、数据库和存储约束；`clipboard/history.rs`、`editing.rs`、`media.rs` 分别承载历史命令、文本编辑和文件媒体操作
 - SQLite 持久化: `clipboard.db`
-- 支持: 分类(link/code/long)、搜索、固定、计数
-- 键盘: ↑↓ 导航, Enter 复制, ⌘P 固定, ⌘⌫ 删除, 类型 Filter 无键盘
+- 支持: 分类(link/code/long)、搜索、日期筛选、固定、计数、文本草稿编辑与另存
+- 交互: 单击条目写入系统剪贴板；双击文本进入草稿编辑；Enter 执行粘贴，⌘P 固定，⌘⌫ 删除
 
 ### 4.3 RSS 阅读器
 
@@ -243,6 +243,8 @@ macro_recorder::* (start/stop/save/list/delete/play)
 marketplace::* (fetch/download/install/uninstall/list/sign)
 updater::* (check/download_and_install/helper_replace)
 ```
+
+Tauri capability 是窗口级 IPC 边界。静态主窗口与动态创建的 `recording-controls`、`region-picker` 都必须在 `src-tauri/capabilities/default.json` 中显式登记；缺失的次级窗口不能调用显示器枚举、捕获确认或事件监听。`npm run check:architecture` 会校验这三个捕获 surface，避免窗口实现与 capability 配置再次漂移。
 
 ### 5.2 数据持久化
 

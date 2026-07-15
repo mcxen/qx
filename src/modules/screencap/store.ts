@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { DEFAULT_RECORDING_OPTIONS } from "./preferences";
 
 export interface ScreencapEntry {
@@ -32,6 +33,32 @@ export type CaptureMode = "screenshot" | "recording";
 /** Shared capture-selection port used by the main module and floating island. */
 export function requestCaptureSelection(mode: CaptureMode): Promise<void> {
   return invoke("screencap_begin_capture_select", { mode });
+}
+
+/** One-shot toast path so a late-mounted ScreenRecorder still shows post-capture UI. */
+let pendingScreenshotToastPath: string | null = null;
+let captureListenerStarted = false;
+
+export function queueScreenshotToast(path: string): void {
+  pendingScreenshotToastPath = path;
+}
+
+export function takeScreenshotToast(): string | null {
+  const path = pendingScreenshotToastPath;
+  pendingScreenshotToastPath = null;
+  return path;
+}
+
+/** Call once from the main webview so captures are queued even if the module is unmounted. */
+export function ensureCaptureToastListener(): void {
+  if (captureListenerStarted || typeof window === "undefined") return;
+  if (!("__TAURI_INTERNALS__" in window)) return;
+  captureListenerStarted = true;
+  void listen<{ kind?: string; path?: string }>("screencap:captured", (event) => {
+    const path = event.payload?.path;
+    if (!path || !path.toLowerCase().endsWith(".png")) return;
+    queueScreenshotToast(path);
+  });
 }
 
 export type RecordingStatus = "idle" | "recording" | "processing" | "done" | "error";

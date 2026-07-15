@@ -22,6 +22,7 @@
 | [rust-backend.md](./rust-backend.md) | Rust 模块导览、启动顺序、添加新模块流程、常见坑 |
 | [ipc-catalogue.md](./ipc-catalogue.md) | 全部 127 个 Tauri 命令 + 事件通道；按模块分组 |
 | [settings-panel.md](./settings-panel.md) | Settings/About 面板结构、Row/Card/SettingsCard 规范 |
+| [macos-onboarding.md](./macos-onboarding.md) | macOS 首次启动权限引导（FDA / 剪贴板粘贴 / 可选 TCC） |
 
 ## 插件
 
