@@ -24,6 +24,11 @@ If the request changes **public interfaces or layer boundaries**, update docs in
   and layer boundaries must update the matching file under `docs/` or
   `public/doc/` in the same change. Prefer intent and invariants over dumping
   implementation detail.
+- **Do not fix call sites one-by-one** when a port is wrong (host HTTP, i18n
+  dictionary, converter shim, shell Esc, island session). Fix the port once,
+  regenerate or re-convert consumers, then run `npm run check`.
+- Before finishing a multi-file change: `npm run check` (architecture + docs +
+  i18n + shell + island gates).
 - Use `rg` / `rg --files` for search.
 - Use `apply_patch` for manual edits.
 - Do not introduce generated build artifacts, secrets, temp files, or unrelated formatting churn.

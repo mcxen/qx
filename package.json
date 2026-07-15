@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "check": "node scripts/check-all.mjs",
+    "check:architecture": "node scripts/check-architecture.mjs",
+    "check:i18n": "node scripts/check-i18n.mjs",
     "test:shell-navigation": "node scripts/check-qx-shell-navigation.mjs",
     "test:island": "node scripts/check-qx-island.mjs",
     "docs:check": "node scripts/check-docs.mjs",

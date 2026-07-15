@@ -125,12 +125,36 @@
 - 文档只贴代码片段、不写不变量与边界  
 - 接口「先 any 再说」或 RPC 载荷无类型文档  
 
-## 7. 变更流程（摘要）
+## 7. 变更系统（禁止「一个一个单独改」）
 
-1. 先定契约（接口 + 权限 + 错误）  
-2. 再定文档段落（本文件 + 领域文档）  
-3. 再实现适配与 UI  
-4. 跑最小验证（`tsc` / `cargo check` / 相关 docs:check）  
-5. 发版时核对 `docs/README.md` 版本与 Current 文档头  
+问题要在**端口 / 注册表 / 字典 / 转换器**上一次性解决，再让消费者受益。
 
-Agent 与贡献者默认遵守：`AGENTS.md` 指向本文；评审时以契约与 SOLID 检查清单为准，而不是以「能跑」为唯一标准。
+| 错误做法 | 正确做法 |
+|---|---|
+| 每个 Raycast 插件手写一套下载壁纸 | 修 `plugin_http_fetch` + converter shim，重转插件 |
+| 设置页逐行硬编码中文 | `useT(key, enFallback)` + `src/i18n.ts` zh 表；`npm run check:i18n` |
+| 每个模块复制 Esc / 快捷键逻辑 | `useEscBack` / shortcut registry / shell ports |
+| 文档随口补一段、与代码脱节 | 契约与实现同 PR；`npm run check` |
+
+### 标准流水线
+
+```text
+1. 定位端口（host command / context / session / i18n key 前缀 / converter shim）
+2. 更新契约文档（本文件 + 领域 doc）
+3. 在端口实现一次
+4. npm run check          # architecture + docs + i18n + shell + island
+5. 需要时 tsc / cargo check
+6. 发版前 docs README 版本头
+```
+
+### 统一检查入口
+
+```bash
+npm run check                 # 全部闸门
+npm run check:architecture    # SOLID 文档链接、host 二进制 port、settings useT…
+npm run check:i18n            # 全 src 静态 t("key") 必须在 zh 字典
+npm run docs:check            # 版本一致、IPC baseline、链接、禁原生控件
+```
+
+Agent 与贡献者：**默认跑 `npm run check`**，不以「改了一个文件看起来好了」收工。  
+评审以契约与 SOLID 检查清单为准，而不是以「能跑」为唯一标准。

@@ -735,6 +735,9 @@ const zh: Record<string, string> = {
   "clipboard.copied.on": "{date} {time}",
   "clipboard.items": "{n} 项",
   "clipboard.listAria": "剪贴板历史",
+  "clipboard.actions": "剪贴板操作",
+  "clipboard.reveal": "在 Finder 中显示",
+  "clipboard.copyPath": "复制路径",
 
   "common.module": "模块",
   "common.loading": "加载中",
@@ -943,6 +946,9 @@ const zh: Record<string, string> = {
   "weather.location.placeholder": "自动检测或输入城市/纬度,经度",
   "weather.units": "温度单位",
   "weather.units.desc": "选择温度显示单位。",
+  "weather.actions": "天气操作",
+  "weather.openSettings": "天气设置",
+  "weather.partialError": "部分位置刷新失败。",
 };
 
 /** Normalize stored preference; unknown / empty values mean follow system. */

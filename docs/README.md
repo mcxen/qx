@@ -54,7 +54,9 @@
 ## 维护规则
 
 - **接口与抽象先契约、后实现**；公共 surface 变更必须同步文档（见 [architecture-principles.md](./architecture-principles.md)）。
+- **禁止逐文件打补丁式修复**：能力问题修 host/converter/注册表/i18n 字典一次；然后 `npm run check`。
 - 文档写**意图、边界、不变量**，避免只贴大段实现代码。
+- 统一闸门：`npm run check`（含 architecture / docs / i18n / shell / island）。
 - 修改 `src-tauri/src/lib.rs` 的 `generate_handler!` 后，同步 `ipc-catalogue.md` 并运行 `npm run docs:check`。
 - 修改依赖主版本、应用版本或平台支持范围后，同步顶层架构和 README。
 - 新增跨前后端功能时，至少更新前端/后端导览、IPC、权限与验证方式。
