@@ -16,7 +16,7 @@ pub(crate) fn start_display_monitor(handle: tauri::AppHandle) {
         .spawn(move || {
             // xcap can touch native display APIs. Take the initial snapshot on
             // this worker too, never on Tauri setup's event-loop thread.
-            if let Ok(monitors) = xcap::Monitor::all() {
+            if let Ok(monitors) = crate::display::all_capture_monitors() {
                 known_count.store(monitors.len(), Ordering::SeqCst);
             }
 
@@ -42,7 +42,7 @@ pub(crate) fn start_display_monitor(handle: tauri::AppHandle) {
 }
 
 fn poll_once(handle: &tauri::AppHandle, known_count: &Arc<AtomicUsize>) {
-    let Ok(monitors) = xcap::Monitor::all() else {
+    let Ok(monitors) = crate::display::all_capture_monitors() else {
         return;
     };
 

@@ -9,6 +9,9 @@ export const DEFAULT_RECORDING_OPTIONS: RecordingOptions = {
 
 const OPTIONS_KEY = "qx.screencap.options";
 export const CAPTURE_CONTROLS_PINNED_KEY = "qx.screencap.controlsPinned";
+const SCREENSHOT_AFTER_CAPTURE_KEY = "qx.screencap.screenshotAfterCapture";
+
+export type ScreenshotAfterCapture = "copy" | "none";
 
 export function loadRecordingOptions(): RecordingOptions {
   try {
@@ -29,4 +32,12 @@ export function captureControlsPinned(): boolean {
 
 export function saveCaptureControlsPinned(pinned: boolean): void {
   localStorage.setItem(CAPTURE_CONTROLS_PINNED_KEY, String(pinned));
+}
+
+export function loadScreenshotAfterCapture(): ScreenshotAfterCapture {
+  return localStorage.getItem(SCREENSHOT_AFTER_CAPTURE_KEY) === "none" ? "none" : "copy";
+}
+
+export function saveScreenshotAfterCapture(value: ScreenshotAfterCapture): void {
+  localStorage.setItem(SCREENSHOT_AFTER_CAPTURE_KEY, value);
 }

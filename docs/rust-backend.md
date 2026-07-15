@@ -24,8 +24,9 @@
 | `history.rs` | `launch_history` / `search_history` SQLite 表；`record_*` 命令后台写入，`get_*` 命令批量读取 |
 | `system_stats.rs` | Mach APIs：`host_processor_info`（每核 CPU）、`host_statistics64`（内存），供 `HomeSystemIsland` 每 1.6s 轮询 |
 | `system_information.rs` | 主机名/芯片/内存/存储/网络/进程列表；`kill_process` 通过 `/bin/kill` 发 SIGTERM |
-| `display_monitor.rs` | 用 `xcap` 监听显示器插拔，接入外接屏时自动 `floating_show` |
-| `external_displays.rs` | 检测/安装 DDC CLI 驱动，枚举外接显示器并设置亮度、音量等控制项 |
+| `display.rs` | Qx 系统级显示器服务：统一枚举、稳定 ID、主屏/内置屏/外接屏识别、鼠标所在屏幕，以及 Tauri 窗口显示器与捕获后端显示器的映射；业务模块不得重复实现识别逻辑 |
+| `display_monitor.rs` | 复用系统级显示器服务监听插拔并发出 `display:changed`，不得自行枚举或分类显示器 |
+| `external_displays.rs` | 检测/安装 DDC CLI 驱动并设置外接显示器亮度、音量等硬件控制项；只负责 DDC 设备与控制协议，不承担 Qx 通用显示器识别 |
 
 ## 数据模块
 
@@ -41,7 +42,7 @@
 
 | 文件 | 依赖 crate | 说明 |
 |---|---|---|
-| `screencap/` | `xcap` + OpenH264 + `gifski` | 按鼠标所在显示器（含外接屏）截图或区域/全屏录制；`mod.rs` 编排命令，`types.rs` 复用数据模型，`storage.rs` 管理 PNG/MP4/MOV/GIF 共用历史库；视频可按需转 GIF，空闲捕获控制条可常驻外显。 |
+| `screencap/` | `xcap` + OpenH264 + `gifski` | 消费 Qx 系统级显示器服务，按鼠标所在显示器（含外接屏）截图或区域/全屏录制，并支持显式切换捕获显示器；`mod.rs` 编排命令与窗口生命周期，`geometry.rs` 只处理选区约束、坐标缩放和图像裁剪，`types.rs` 复用数据模型，`storage.rs` 管理 PNG/MP4/MOV/GIF 共用历史库；区域边框和控制岛可跨连续录制保留。 |
 | `ocr.rs` | 内建轻量 OCR (`~/.oar` 存模型) | PP-OCRv6 tiny/small/medium 下载 + 增量校验 |
 | `macro_recorder.rs` | `rdev` + `enigo` | 记录键鼠事件到 `~/.qx/macros.db`；replay 通过 `enigo` 模拟 |
 

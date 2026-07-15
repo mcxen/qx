@@ -2,6 +2,7 @@ mod apps;
 mod apps_zh_dict;
 mod clipboard;
 mod diagnostics;
+mod display;
 mod display_monitor;
 mod external_displays;
 mod file_search;
@@ -653,10 +654,13 @@ pub fn run() {
             screencap::recording_status,
             screencap::screencap_begin_region_select,
             screencap::screencap_begin_capture_select,
+            screencap::screencap_list_displays,
+            screencap::screencap_select_display,
             screencap::screencap_cancel_region_select,
             screencap::screencap_confirm_region_select,
             screencap::screencap_region_select_status,
             screencap::screencap_show_controls,
+            screencap::screencap_toggle_controls,
             screencap::screencap_hide_controls,
             screencap::screencap_set_controls_pinned,
             screencap::screencap_return_to_main,

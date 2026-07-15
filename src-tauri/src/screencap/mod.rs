@@ -9,9 +9,18 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
+mod geometry;
 mod storage;
 mod types;
 
+pub use crate::display::DisplayDescriptor as CaptureDisplay;
+use crate::display::{
+    capture_monitor, capture_monitor_for_tauri, cursor_capture_monitor_id, cursor_monitor,
+    displays, tauri_monitor_for_capture,
+};
+#[cfg(test)]
+use geometry::crop_physical;
+use geometry::{capture_coordinate_scale, clamp_area};
 use storage::{captures_dir, insert_history};
 use types::{
     CaptureMode, NormalizedRecordingOptions, PickerSession, RecordingOutput,
@@ -135,60 +144,22 @@ fn set_recording_ui_protected(app: &AppHandle, protected: bool) {
 const CONTROLS_LOGICAL_W: f64 = 340.0;
 const CONTROLS_LOGICAL_H: f64 = 36.0;
 
-fn cursor_monitor(app: &AppHandle) -> Option<tauri::Monitor> {
-    let cursor = app.cursor_position().ok()?;
-    app.monitor_from_point(cursor.x, cursor.y).ok().flatten()
-}
-
-fn xcap_monitor_for_tauri(
-    app: &AppHandle,
-    target: &tauri::Monitor,
-) -> Result<xcap::Monitor, String> {
-    let monitors =
-        xcap::Monitor::all().map_err(|error| format!("Cannot list displays: {error}"))?;
-    if let Some(target_name) = target.name() {
-        if let Some(monitor) = monitors.iter().find(|monitor| {
-            monitor.friendly_name().ok().as_ref() == Some(target_name)
-                || monitor.name().ok().as_ref() == Some(target_name)
-        }) {
-            return Ok(monitor.clone());
-        }
-    }
-
-    let position = target.position();
-    let scale = target.scale_factor().max(1.0);
-    if let Some(monitor) = monitors.iter().find(|monitor| {
-        let Ok(x) = monitor.x() else { return false };
-        let Ok(y) = monitor.y() else { return false };
-        let physical_match = (x - position.x).abs() <= 2 && (y - position.y).abs() <= 2;
-        let logical_match = (x as f64 - position.x as f64 / scale).abs() <= 2.0
-            && (y as f64 - position.y as f64 / scale).abs() <= 2.0;
-        physical_match || logical_match
-    }) {
-        return Ok(monitor.clone());
-    }
-
-    let target_is_primary = app
-        .primary_monitor()
-        .ok()
-        .flatten()
-        .is_some_and(|primary| primary.position() == target.position());
-    monitors
-        .into_iter()
-        .find(|monitor| monitor.is_primary().unwrap_or(false) == target_is_primary)
-        .ok_or_else(|| "Cannot match the selected display to a capture source".to_string())
-}
-
-fn capture_coordinate_scale(capture_width: u32, picker_logical_width: f64) -> f64 {
-    (capture_width as f64 / picker_logical_width.max(1.0)).clamp(0.1, 8.0)
-}
-
-/// Bottom-center Dynamic Island style placement on the display under the pointer.
+/// Place the recording island beneath the selected region when possible.
+/// Full-screen/no-selection capture falls back to the display's bottom center.
 fn position_controls(app: &AppHandle) {
     let Some(controls) = app.get_webview_window(CONTROL_LABEL) else {
         return;
     };
-    let monitor = cursor_monitor(app)
+    let session = picker_session()
+        .lock()
+        .ok()
+        .and_then(|session| session.clone());
+    let session_monitor = session
+        .as_ref()
+        .and_then(|session| capture_monitor(Some(session.monitor_id)).ok())
+        .and_then(|monitor| tauri_monitor_for_capture(app, &monitor).ok());
+    let monitor = session_monitor
+        .or_else(|| cursor_monitor(app))
         .or_else(|| {
             app.get_webview_window(crate::floating_panel::MAIN_LABEL)
                 .and_then(|main| main.current_monitor().ok().flatten())
@@ -202,10 +173,37 @@ fn position_controls(app: &AppHandle) {
     let scale = monitor.scale_factor().max(1.0);
     let width = (CONTROLS_LOGICAL_W * scale).round() as i32;
     let height = (CONTROLS_LOGICAL_H * scale).round() as i32;
-    let margin = (20.0 * scale).round() as i32;
-    // Center-bottom of the usable work area (island control strip).
-    let x = work.position.x + (work.size.width as i32 - width) / 2;
-    let y = work.position.y + work.size.height as i32 - height - margin;
+    let margin = (10.0 * scale).round() as i32;
+    let logical_monitor_width = monitor.size().width as f64 / scale;
+    let logical_monitor_height = monitor.size().height as f64 / scale;
+    let selected_area = session
+        .and_then(|session| session.logical_area)
+        .filter(|area| {
+            area.w as f64 + 1.0 < logical_monitor_width
+                || area.h as f64 + 1.0 < logical_monitor_height
+        });
+    let (x, y) = if let Some(area) = selected_area {
+        let desired_x = monitor.position().x
+            + ((area.x as f64 + area.w as f64 / 2.0) * scale).round() as i32
+            - width / 2;
+        let below =
+            monitor.position().y + ((area.y + area.h) as f64 * scale).round() as i32 + margin;
+        let above = monitor.position().y + (area.y as f64 * scale).round() as i32 - height - margin;
+        let max_x = work.position.x + work.size.width as i32 - width;
+        let x = desired_x.clamp(work.position.x, max_x.max(work.position.x));
+        let max_y = work.position.y + work.size.height as i32 - height;
+        let y = if below <= max_y {
+            below
+        } else {
+            above.max(work.position.y)
+        };
+        (x, y)
+    } else {
+        (
+            work.position.x + (work.size.width as i32 - width) / 2,
+            work.position.y + work.size.height as i32 - height - (20.0 * scale) as i32,
+        )
+    };
     let _ = controls.set_size(PhysicalSize::new(width.max(1) as u32, height.max(1) as u32));
     let _ = controls.set_position(PhysicalPosition::new(x, y));
 }
@@ -296,6 +294,31 @@ fn restore_capture_surface(app: &AppHandle, suppress_ms: u64) -> Result<(), Stri
     }
 }
 
+fn restore_picker_selection_internal(app: &AppHandle) -> bool {
+    let has_selection = picker_session()
+        .lock()
+        .ok()
+        .and_then(|session| {
+            session
+                .as_ref()
+                .map(|session| session.logical_area.is_some())
+        })
+        .unwrap_or(false);
+    let Some(picker) = app.get_webview_window(PICKER_LABEL) else {
+        return false;
+    };
+    if !has_selection {
+        return false;
+    }
+    crate::floating_panel::hide(app);
+    hide_recording_controls_internal(app);
+    let _ = picker.set_content_protected(true);
+    let _ = picker.set_ignore_cursor_events(false);
+    let _ = picker.show();
+    let _ = picker.set_focus();
+    true
+}
+
 fn hide_region_picker_internal(app: &AppHandle) {
     // Hide only — do not destroy. Destroying the last *visible* surface while
     // main is hidden has looked like a full app quit on some macOS builds.
@@ -304,10 +327,21 @@ fn hide_region_picker_internal(app: &AppHandle) {
     }
 }
 
-fn show_region_picker_internal(app: &AppHandle, mode: CaptureMode) -> Result<(), String> {
-    let monitor = cursor_monitor(app)
-        .or_else(|| app.primary_monitor().ok().flatten())
-        .ok_or_else(|| "No display found".to_string())?;
+fn show_region_picker_internal(
+    app: &AppHandle,
+    mode: CaptureMode,
+    selected_monitor_id: Option<u32>,
+) -> Result<(), String> {
+    let capture_monitor = match selected_monitor_id {
+        Some(monitor_id) => capture_monitor(Some(monitor_id))?,
+        None => {
+            let monitor = cursor_monitor(app)
+                .or_else(|| app.primary_monitor().ok().flatten())
+                .ok_or_else(|| "No display found".to_string())?;
+            capture_monitor_for_tauri(app, &monitor)?
+        }
+    };
+    let monitor = tauri_monitor_for_capture(app, &capture_monitor)?;
     let position = monitor.position();
     let size = monitor.size();
     let scale = monitor.scale_factor().max(1.0);
@@ -316,7 +350,6 @@ fn show_region_picker_internal(app: &AppHandle, mode: CaptureMode) -> Result<(),
     let logical_h = size.height as f64 / scale;
     let logical_x = position.x as f64 / scale;
     let logical_y = position.y as f64 / scale;
-    let capture_monitor = xcap_monitor_for_tauri(app, &monitor)?;
     let monitor_id = capture_monitor
         .id()
         .map_err(|error| format!("display id: {error}"))?;
@@ -334,6 +367,7 @@ fn show_region_picker_internal(app: &AppHandle, mode: CaptureMode) -> Result<(),
             monitor_id,
             monitor_name,
             coordinate_scale,
+            logical_area: None,
         });
     }
     if app.get_webview_window(PICKER_LABEL).is_none() {
@@ -374,7 +408,11 @@ fn show_region_picker_internal(app: &AppHandle, mode: CaptureMode) -> Result<(),
     picker
         .show()
         .map_err(|error| format!("show region picker: {error}"))?;
+    let _ = picker.set_ignore_cursor_events(false);
     let _ = picker.set_focus();
+    if let Some(status) = screencap_region_select_status() {
+        let _ = app.emit("screencap:picker", status);
+    }
     Ok(())
 }
 
@@ -462,91 +500,6 @@ fn mp4_config(extension: &str) -> Result<mp4::Mp4Config, String> {
             .collect::<Result<Vec<_>, _>>()?,
         timescale: 1000,
     })
-}
-
-fn primary_monitor() -> Result<xcap::Monitor, String> {
-    let monitors = xcap::Monitor::all().map_err(|error| {
-        format!(
-            "Cannot list displays: {error}. Grant Screen Recording permission, then fully quit and reopen Qx."
-        )
-    })?;
-    monitors
-        .into_iter()
-        .find(|monitor| monitor.is_primary().unwrap_or(false))
-        .ok_or_else(|| {
-            "No primary display found. Grant Screen Recording permission, then restart Qx."
-                .to_string()
-        })
-}
-
-fn capture_monitor(monitor_id: Option<u32>) -> Result<xcap::Monitor, String> {
-    if let Some(target_id) = monitor_id {
-        let monitors =
-            xcap::Monitor::all().map_err(|error| format!("Cannot list displays: {error}"))?;
-        if let Some(monitor) = monitors
-            .into_iter()
-            .find(|monitor| monitor.id().ok() == Some(target_id))
-        {
-            return Ok(monitor);
-        }
-        return Err("The selected display is no longer available".to_string());
-    }
-    primary_monitor()
-}
-
-fn cursor_capture_monitor_id(app: &AppHandle) -> Option<u32> {
-    let monitor = cursor_monitor(app)?;
-    xcap_monitor_for_tauri(app, &monitor).ok()?.id().ok()
-}
-
-/// Clamp a crop expressed in the selected xcap monitor's coordinate space.
-/// Picker CSS coordinates are converted to this space before reaching here.
-fn clamp_logical_area(area: RecordArea, mon_w: u32, mon_h: u32) -> Option<RecordArea> {
-    if area.w < 2 || area.h < 2 || mon_w < 2 || mon_h < 2 {
-        return None;
-    }
-    let x = area.x.min(mon_w.saturating_sub(2));
-    let y = area.y.min(mon_h.saturating_sub(2));
-    let w = area.w.min(mon_w.saturating_sub(x)).max(2);
-    let h = area.h.min(mon_h.saturating_sub(y)).max(2);
-    Some(RecordArea {
-        x,
-        y,
-        w,
-        h,
-        monitor_id: area.monitor_id,
-    })
-}
-
-/// Map a logical (points) crop onto a framebuffer using the frame's real
-/// pixel size vs the monitor's logical size (more reliable than scale_factor
-/// alone — AVCapture dimensions can disagree slightly with CGDisplayMode).
-#[cfg_attr(not(test), allow(dead_code))]
-fn crop_physical(
-    frame: &image::RgbaImage,
-    area: &RecordArea,
-    mon_w: u32,
-    mon_h: u32,
-) -> image::RgbaImage {
-    let fw = frame.width().max(1);
-    let fh = frame.height().max(1);
-    let mon_w = mon_w.max(1) as f64;
-    let mon_h = mon_h.max(1) as f64;
-    let sx = fw as f64 / mon_w;
-    let sy = fh as f64 / mon_h;
-    let mut x = ((area.x as f64) * sx).round() as u32;
-    let mut y = ((area.y as f64) * sy).round() as u32;
-    let mut w = ((area.w as f64) * sx).round() as u32;
-    let mut h = ((area.h as f64) * sy).round() as u32;
-    x = x.min(fw.saturating_sub(2));
-    y = y.min(fh.saturating_sub(2));
-    w = w.min(fw.saturating_sub(x)).max(2) & !1;
-    h = h.min(fh.saturating_sub(y)).max(2) & !1;
-    if w == fw && h == fh && x == 0 && y == 0 {
-        frame.clone()
-    } else {
-        image::imageops::crop_imm(frame, x, y, w, h).to_image()
-    }
 }
 
 fn encode_rgba_frame(
@@ -643,7 +596,11 @@ fn recording_loop_inner(
         .map_err(|error| format!("display height: {error}"))?;
 
     // Picker selections have already been converted into this monitor's xcap coordinates.
-    let area = area.and_then(|a| clamp_logical_area(a, mon_w, mon_h));
+    let area = area.and_then(|a| clamp_area(a, mon_w, mon_h));
+    let full_display_selection = area.as_ref().is_some_and(|area| {
+        area.x <= 1 && area.y <= 1 && area.w + 1 >= mon_w && area.h + 1 >= mon_h
+    });
+    let area = if full_display_selection { None } else { area };
     // Region capture: use capture_region (same coordinate space as the picker).
     // Full-screen: prefer the continuous AVCapture stream for FPS.
     let region_mode = area.is_some();
@@ -849,6 +806,23 @@ fn recording_loop(
     result
 }
 
+fn abort_recording_start_blocking() {
+    let state = recording_state()
+        .lock()
+        .ok()
+        .and_then(|mut recording| recording.take());
+    let Some(mut state) = state else {
+        return;
+    };
+    state.stop_flag.store(true, Ordering::Relaxed);
+    if let Some(handle) = state.thread_handle.take() {
+        if let Ok(Ok(output)) = handle.join() {
+            let _ = fs::remove_file(output.path);
+        }
+    }
+    let _ = take_capture_error();
+}
+
 #[command]
 pub async fn start_recording(
     app: AppHandle,
@@ -857,38 +831,39 @@ pub async fn start_recording(
 ) -> Result<(), String> {
     ensure_screen_capture_permission()?;
 
-    let mut guard = recording_state().lock().map_err(|e| format!("lock: {e}"))?;
-    if guard.is_some() {
-        return Err("Already recording".to_string());
+    let started_at;
+    {
+        let mut guard = recording_state().lock().map_err(|e| format!("lock: {e}"))?;
+        if guard.is_some() {
+            return Err("Already recording".to_string());
+        }
+        if let Ok(mut slot) = capture_error_slot().lock() {
+            *slot = None;
+        }
+        FRAME_COUNT.store(0, Ordering::Relaxed);
+
+        let options = options.unwrap_or_default().normalize();
+        let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();
+        let output_path =
+            captures_dir().join(format!("recording_{timestamp}.{}", options.extension));
+        let stop_flag = std::sync::Arc::new(AtomicBool::new(false));
+        let stop_clone = stop_flag.clone();
+        let monitor_id = area
+            .as_ref()
+            .and_then(|value| value.monitor_id)
+            .or_else(|| cursor_capture_monitor_id(&app));
+        let capture_area = area.clone();
+        let handle = std::thread::spawn(move || {
+            recording_loop(output_path, capture_area, monitor_id, options, stop_clone)
+        });
+
+        started_at = std::time::Instant::now();
+        *guard = Some(RecordingState {
+            stop_flag,
+            thread_handle: Some(handle),
+            started_at,
+        });
     }
-    if let Ok(mut slot) = capture_error_slot().lock() {
-        *slot = None;
-    }
-    FRAME_COUNT.store(0, Ordering::Relaxed);
-
-    let options = options.unwrap_or_default().normalize();
-    let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();
-    let output_path = captures_dir().join(format!("recording_{timestamp}.{}", options.extension));
-
-    let stop_flag = std::sync::Arc::new(AtomicBool::new(false));
-    let stop_clone = stop_flag.clone();
-
-    let monitor_id = area
-        .as_ref()
-        .and_then(|value| value.monitor_id)
-        .or_else(|| cursor_capture_monitor_id(&app));
-    let capture_area = area.clone();
-    let handle = std::thread::spawn(move || {
-        recording_loop(output_path, capture_area, monitor_id, options, stop_clone)
-    });
-
-    let started_at = std::time::Instant::now();
-    *guard = Some(RecordingState {
-        stop_flag,
-        thread_handle: Some(handle),
-        started_at,
-    });
-    drop(guard);
 
     if let Ok(mut status) = runtime_status().lock() {
         status.phase = "recording";
@@ -897,16 +872,43 @@ pub async fn start_recording(
         status.output_path = None;
         status.error = None;
     }
-    // Hide picker + main shell so neither appears in the capture stream,
-    // then always surface the floating island control strip.
-    hide_region_picker_internal(&app);
+    // A protected picker remains as the visible recording boundary. It becomes
+    // click-through while recording so the captured application stays usable.
+    // Direct/full-screen starts without a picker keep the old hidden behavior.
+    let keep_selection_frame = picker_session()
+        .lock()
+        .ok()
+        .and_then(|session| {
+            session
+                .as_ref()
+                .map(|session| session.logical_area.is_some())
+        })
+        .unwrap_or(false);
+    if let Some(picker) = app.get_webview_window(PICKER_LABEL) {
+        if keep_selection_frame {
+            let _ = picker.set_content_protected(true);
+            let _ = picker.set_ignore_cursor_events(true);
+            let _ = picker.show();
+        } else {
+            let _ = picker.hide();
+        }
+    }
     set_recording_ui_protected(&app, true);
     crate::floating_panel::hide(&app);
     // Brief yield so hide + capture thread settle before the island window maps.
     std::thread::sleep(std::time::Duration::from_millis(40));
-    show_recording_controls_internal(&app).map_err(|error| {
-        format!("recording started but floating controls failed to open: {error}")
-    })?;
+    if let Err(error) = show_recording_controls_internal(&app) {
+        let error = format!("recording controls failed to open: {error}");
+        let _ = tauri::async_runtime::spawn_blocking(abort_recording_start_blocking).await;
+        if let Ok(mut status) = runtime_status().lock() {
+            status.phase = "error";
+            status.started_at = None;
+            status.error = Some(error.clone());
+        }
+        let _ = restore_picker_selection_internal(&app);
+        emit_recording_status(&app);
+        return Err(error);
+    }
     // Re-assert visibility once more (macOS Space / fullscreen races).
     if let Some(controls) = app.get_webview_window(CONTROL_LABEL) {
         position_controls(&app);
@@ -935,9 +937,37 @@ pub async fn screencap_begin_capture_select(app: AppHandle, mode: String) -> Res
         return Err("A screen recording is already in progress".to_string());
     }
     ensure_screen_capture_permission()?;
+    let mode = CaptureMode::parse(&mode)?;
+    // Map/show the picker before hiding every existing Qx surface. If display
+    // matching or window creation fails, the user must never be left with an
+    // apparently terminated app and no way to recover.
+    show_region_picker_internal(&app, mode, None).map_err(|error| {
+        crate::diagnostics::log(
+            crate::diagnostics::LogLevel::Error,
+            "screencap.picker",
+            "failed to open capture picker",
+            serde_json::json!({ "error": error, "mode": mode.as_str() }),
+        );
+        error
+    })?;
     hide_recording_controls_internal(&app);
     crate::floating_panel::hide(&app);
-    show_region_picker_internal(&app, CaptureMode::parse(&mode)?)
+    Ok(())
+}
+
+#[command]
+pub fn screencap_list_displays() -> Result<Vec<CaptureDisplay>, String> {
+    displays()
+}
+
+#[command]
+pub fn screencap_select_display(app: AppHandle, monitor_id: u32) -> Result<(), String> {
+    let mode = picker_session()
+        .lock()
+        .ok()
+        .and_then(|session| session.as_ref().map(|session| session.mode))
+        .ok_or_else(|| "Capture selection session is unavailable".to_string())?;
+    show_region_picker_internal(&app, mode, Some(monitor_id))
 }
 
 #[command]
@@ -956,6 +986,9 @@ pub fn screencap_region_select_status() -> Option<PickerStatus> {
 #[command]
 pub async fn screencap_cancel_region_select(app: AppHandle) -> Result<(), String> {
     hide_region_picker_internal(&app);
+    if let Ok(mut session) = picker_session().lock() {
+        *session = None;
+    }
     restore_capture_surface(&app, 800)
 }
 
@@ -972,7 +1005,7 @@ fn take_screenshot_blocking(
     let mon_h = monitor
         .height()
         .map_err(|error| format!("display height: {error}"))?;
-    let area = clamp_logical_area(area, mon_w, mon_h)
+    let area = clamp_area(area, mon_w, mon_h)
         .ok_or_else(|| "Selection is outside the selected display".to_string())?;
     let mut image = monitor
         .capture_region(area.x, area.y, area.w, area.h)
@@ -1029,13 +1062,22 @@ pub async fn screencap_confirm_region_select(
     options: Option<RecordingOptions>,
     action: Option<String>,
     annotation_overlay_base64: Option<String>,
+    copy_to_clipboard: Option<bool>,
 ) -> Result<(), String> {
-    hide_region_picker_internal(&app);
     let session = picker_session()
         .lock()
         .ok()
         .and_then(|session| session.clone())
         .ok_or_else(|| "Capture selection session is unavailable".to_string())?;
+    let logical_area = RecordArea {
+        monitor_id: Some(session.monitor_id),
+        ..area.clone()
+    };
+    if let Ok(mut current) = picker_session().lock() {
+        if let Some(current) = current.as_mut() {
+            current.logical_area = Some(logical_area);
+        }
+    }
     let scale = session.coordinate_scale;
     let area = RecordArea {
         x: (area.x as f64 * scale).round().max(0.0) as u32,
@@ -1045,7 +1087,6 @@ pub async fn screencap_confirm_region_select(
         monitor_id: Some(session.monitor_id),
     };
     if area.w < 16 || area.h < 16 {
-        restore_capture_surface(&app, 800)?;
         return Err("Selection too small — drag a larger region".to_string());
     }
     let action = action
@@ -1054,31 +1095,52 @@ pub async fn screencap_confirm_region_select(
         .transpose()?
         .unwrap_or(session.mode);
     if action == CaptureMode::Recording && annotation_overlay_base64.is_some() {
-        restore_capture_surface(&app, 800)?;
         return Err("Annotations can only be applied to screenshots".to_string());
     }
     if action == CaptureMode::Screenshot {
-        let output = tauri::async_runtime::spawn_blocking(move || {
-            take_screenshot_blocking(area, annotation_overlay_base64)
+        let copy_to_clipboard = copy_to_clipboard.unwrap_or(false);
+        let clipboard_app = app.clone();
+        let result = tauri::async_runtime::spawn_blocking(move || {
+            let output = take_screenshot_blocking(area, annotation_overlay_base64)?;
+            let clipboard_error = copy_to_clipboard
+                .then(|| {
+                    crate::clipboard::write_image_file_to_clipboard(&clipboard_app, &output.path)
+                })
+                .and_then(Result::err)
+                .map(|error| format!("Screenshot saved, but automatic copy failed: {error}"));
+            Ok::<_, String>((output, clipboard_error))
         })
         .await
-        .map_err(|error| format!("screenshot worker failed: {error}"))??;
-        if let Ok(mut status) = runtime_status().lock() {
-            status.phase = "done";
-            status.started_at = None;
-            status.area = None;
-            status.output_path = Some(output.path.to_string_lossy().to_string());
-            status.error = None;
+        .map_err(|error| format!("screenshot worker failed: {error}"))?;
+        match result {
+            Ok((output, clipboard_error)) => {
+                if let Ok(mut status) = runtime_status().lock() {
+                    status.phase = "done";
+                    status.started_at = None;
+                    status.area = None;
+                    status.output_path = Some(output.path.to_string_lossy().to_string());
+                    status.error = clipboard_error;
+                }
+                emit_recording_status(&app);
+                return Ok(());
+            }
+            Err(error) => {
+                if let Ok(mut status) = runtime_status().lock() {
+                    status.phase = "error";
+                    status.started_at = None;
+                    status.error = Some(error.clone());
+                }
+                emit_recording_status(&app);
+                return Err(error);
+            }
         }
-        restore_capture_surface(&app, 800)?;
-        emit_recording_status(&app);
-        return Ok(());
     }
     // Area is CSS client points on a picker that covers the chosen display.
     match start_recording(app.clone(), Some(area), options).await {
         Ok(()) => Ok(()),
         Err(error) => {
-            restore_capture_surface(&app, 800)?;
+            let _ = restore_picker_selection_internal(&app);
+            emit_recording_status(&app);
             Err(error)
         }
     }
@@ -1145,8 +1207,12 @@ pub async fn stop_recording(app: AppHandle) -> Result<String, String> {
     }
 
     set_recording_ui_protected(&app, false);
-    // Stop button / focus handoff can fire Focused(false) immediately after show.
-    restore_capture_surface(&app, 1200)?;
+    // A region capture returns to the same protected selection frame so the
+    // user can move/resize and record again. Captures started without a picker
+    // retain the normal main/pinned-island restoration behavior.
+    if !restore_picker_selection_internal(&app) {
+        restore_capture_surface(&app, 1200)?;
+    }
     emit_recording_status(&app);
     result
 }
@@ -1160,6 +1226,22 @@ pub fn recording_status(app: AppHandle) -> RecordingStatusSnapshot {
 pub async fn screencap_show_controls(app: AppHandle) -> Result<(), String> {
     set_recording_ui_protected(&app, true);
     show_recording_controls_internal(&app)
+}
+
+#[command]
+pub fn screencap_toggle_controls(app: AppHandle) -> Result<(), String> {
+    let visible = app
+        .get_webview_window(CONTROL_LABEL)
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false);
+    if visible {
+        hide_recording_controls_internal(&app);
+        emit_recording_status(&app);
+        Ok(())
+    } else {
+        set_recording_ui_protected(&app, true);
+        show_recording_controls_internal(&app)
+    }
 }
 
 #[command]
@@ -1434,7 +1516,7 @@ mod tests {
 
     #[test]
     fn logical_area_is_clamped_to_monitor() {
-        let area = clamp_logical_area(
+        let area = clamp_area(
             RecordArea {
                 x: 10,
                 y: 20,

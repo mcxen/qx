@@ -654,6 +654,13 @@ impl Default for Settings {
             },
         );
         shortcuts.insert(
+            "toggle_capture_controls".to_string(),
+            ShortcutBinding {
+                key: "Alt+Shift+C".to_string(),
+                enabled: false,
+            },
+        );
+        shortcuts.insert(
             "rss".to_string(),
             ShortcutBinding {
                 key: "Alt+R".to_string(),
@@ -969,6 +976,15 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
                 }
             })
             .map_err(|e| format!("register record_gif shortcut: {e}"))?;
+            registered.insert(key);
+        }
+        if let Some(key) = shortcut_for(settings, "toggle_capture_controls") {
+            gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
+                if event.state() == ShortcutState::Pressed {
+                    let _ = crate::screencap::screencap_toggle_controls(app.clone());
+                }
+            })
+            .map_err(|e| format!("register toggle_capture_controls shortcut: {e}"))?;
             registered.insert(key);
         }
     }

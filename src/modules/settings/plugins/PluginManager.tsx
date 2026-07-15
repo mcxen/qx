@@ -115,7 +115,7 @@ const BUILTIN_PLUGIN_ICONS: Record<string, LucideIcon> = {
 const BUILTIN_PLUGIN_SHORTCUTS: Record<string, string[]> = {
   "builtin:clipboard": ["clipboard"],
   "builtin:rss": ["rss"],
-  "builtin:screencap": ["record_gif"],
+  "builtin:screencap": ["capture_screenshot", "record_gif", "toggle_capture_controls"],
 };
 const PLATFORM_LABELS: Record<PluginPlatform, string> = {
   macos: "macOS",

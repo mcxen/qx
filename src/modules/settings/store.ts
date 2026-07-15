@@ -281,6 +281,7 @@ export const DEFAULT_SETTINGS: Settings = {
     clipboard: { key: "Alt+V", enabled: false },
     record_gif: { key: "Alt+G", enabled: false },
     capture_screenshot: { key: "Alt+Shift+S", enabled: false },
+    toggle_capture_controls: { key: "Alt+Shift+C", enabled: false },
     rss: { key: "Alt+R", enabled: false },
   },
   app_shortcuts: {},
@@ -588,7 +589,7 @@ export const SHORTCUT_GROUPS: { group: string; ids: string[] }[] = [
   { group: "global", ids: ["toggle_launcher", "toggle_window"] },
   { group: "clipboard", ids: ["clipboard"] },
   { group: "rss", ids: ["rss"] },
-  { group: "capture", ids: ["capture_screenshot", "record_gif"] },
+  { group: "capture", ids: ["capture_screenshot", "record_gif", "toggle_capture_controls"] },
 ];
 
 export const SHORTCUT_LABELS: Record<string, string> = {
@@ -597,5 +598,6 @@ export const SHORTCUT_LABELS: Record<string, string> = {
   clipboard: "Open Clipboard",
   record_gif: "Start Screen Recording",
   capture_screenshot: "Take Screenshot",
+  toggle_capture_controls: "Toggle Capture Island",
   rss: "Open RSS Reader",
 };

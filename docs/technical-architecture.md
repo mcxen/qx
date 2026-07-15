@@ -55,11 +55,12 @@ Qx/
 │       ├── main.rs               # 入口
 │       ├── apps.rs               # macOS 应用搜索
 │       ├── clipboard.rs          # 剪贴板监听 + SQLite 持久化
-│       ├── screencap/            # 截图与屏幕录制（命令编排、共享类型、历史存储）
+│       ├── display.rs            # 系统级显示器识别、枚举与跨后端映射
+│       ├── screencap/            # 截图与屏幕录制（命令编排、几何、共享类型、历史存储）
 │       ├── macro_recorder.rs     # 宏捕捉与回放 (rdev + enigo)
 │       ├── diagnostics.rs        # 诊断日志与日志路径
-│       ├── display_monitor.rs    # 显示器插拔监听
-│       ├── external_displays.rs  # DDC 驱动、显示器枚举与控制
+│       ├── display_monitor.rs    # 复用系统显示器服务的插拔监听
+│       ├── external_displays.rs  # DDC 驱动与外接屏硬件控制
 │       ├── updater.rs            # 更新检查与下载安装
 │       ├── settings/             # 设置读写 (JSON)
 │       │   ├── mod.rs

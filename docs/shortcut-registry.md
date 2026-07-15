@@ -61,6 +61,7 @@ scope: "in_app"     → 仅主窗 key window 且匹配上下文时；WebView key
 // module.open.rss
 // module.capture.screenshot      // current id: capture_screenshot
 // module.capture.recording       // legacy id: record_gif
+// module.capture.controls        // current id: toggle_capture_controls
 // plugin.<pluginId>.cmd.<commandName>
 // app.launch.<hashOrPathKey>
 // shell.action_menu              // in_app
@@ -129,6 +130,7 @@ interface ShortcutBinding {
 | `rss` | `module.open.rss` | global |
 | `capture_screenshot` | `module.capture.screenshot` | global |
 | `record_gif` | `module.capture.recording` | global |
+| `toggle_capture_controls` | `module.capture.controls` | global |
 | `app_shortcuts["app:…"]` | 同 id 或 `app.launch.…` | global |
 
 读 settings 时 **双读** legacy + namespaced；写时写 namespaced（可选同时写 legacy 一版迁移）。

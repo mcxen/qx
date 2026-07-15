@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { requestCaptureSelection, type CaptureMode, type RecordingSnapshot } from "./store";
 import RecordingTransport from "./RecordingTransport";
-import { Camera, Circle, PanelBottom, X } from "lucide-react";
+import { Camera, Circle, History, X } from "lucide-react";
 import { useT } from "../../i18n";
 import { saveCaptureControlsPinned } from "./preferences";
 
@@ -83,8 +83,8 @@ export default function RecordingControlWindow() {
             <span>{t("screencap.record", "Record")}</span>
           </button>
           <span className="qx-recording-transport-divider" aria-hidden="true" />
-          <button className="qx-recording-transport-icon" type="button" onClick={() => void returnToMain()} aria-label={t("screencap.controls.dock", "Move into Qx")}>
-            <PanelBottom size={14} />
+          <button className="qx-recording-transport-icon" type="button" onClick={() => void returnToMain()} aria-label={t("screencap.controls.history", "View Capture History")}>
+            <History size={14} />
           </button>
           <button className="qx-recording-transport-icon" type="button" onClick={() => void closePinnedControls()} aria-label={t("common.close", "Close")}>
             <X size={14} />

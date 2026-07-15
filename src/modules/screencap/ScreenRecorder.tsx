@@ -11,7 +11,7 @@ import { useStore } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
 import { LinkButton, Select } from "../../components/ui";
 import GifPreview from "./GifPreview";
-import GifHistory from "./GifHistory";
+import CaptureHistory from "./CaptureHistory";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { getQxShortcutPreset } from "../../utils/keyboard";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
@@ -22,8 +22,11 @@ import {
   CAPTURE_CONTROLS_PINNED_KEY,
   captureControlsPinned,
   loadRecordingOptions,
+  loadScreenshotAfterCapture,
   saveCaptureControlsPinned,
   saveRecordingOptions,
+  saveScreenshotAfterCapture,
+  type ScreenshotAfterCapture,
 } from "./preferences";
 
 function isTauriRuntime(): boolean {
@@ -64,6 +67,9 @@ export default function ScreenRecorder() {
   const [controlsPinned, setControlsPinned] = useState(
     captureControlsPinned,
   );
+  const [screenshotAfterCapture, setScreenshotAfterCapture] = useState<ScreenshotAfterCapture>(
+    loadScreenshotAfterCapture,
+  );
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -74,6 +80,10 @@ export default function ScreenRecorder() {
   useEffect(() => {
     saveRecordingOptions(recordingOptions);
   }, [recordingOptions]);
+
+  useEffect(() => {
+    saveScreenshotAfterCapture(screenshotAfterCapture);
+  }, [screenshotAfterCapture]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -498,7 +508,7 @@ export default function ScreenRecorder() {
           data-qx-region-initial="true"
           tabIndex={-1}
         >
-          <GifHistory />
+          <CaptureHistory />
         </div>
 
         <div
@@ -520,6 +530,18 @@ export default function ScreenRecorder() {
                   {t("screencap.configurationHint", "Capture screenshots or record any display. Region selection follows the display under your pointer.")}
                 </div>
                 <div className="qx-screencap-options">
+                  <label>
+                    <span>{t("screencap.afterScreenshot", "After screenshot")}</span>
+                    <Select
+                      value={screenshotAfterCapture}
+                      options={[
+                        { value: "copy", label: t("screencap.afterScreenshot.copy", "Copy to Clipboard") },
+                        { value: "none", label: t("screencap.afterScreenshot.none", "Save Only") },
+                      ]}
+                      onChange={setScreenshotAfterCapture}
+                      ariaLabel={t("screencap.afterScreenshot", "After screenshot")}
+                    />
+                  </label>
                   <label>
                     <span>{t("screencap.format", "Format")}</span>
                     <Select

@@ -339,6 +339,31 @@ fn write_rgba_image_to_clipboard(rgba: Vec<u8>, width: u32, height: u32) -> Resu
         .map_err(|e| format!("write clipboard image: {e}"))
 }
 
+pub(crate) fn write_image_file_to_clipboard(
+    app: &tauri::AppHandle,
+    path: &std::path::Path,
+) -> Result<(), String> {
+    let decoded = image::open(path)
+        .map_err(|error| format!("decode clipboard image: {error}"))?
+        .to_rgba8();
+    let (width, height) = decoded.dimensions();
+    if width > MAX_IMAGE_DIMENSION
+        || height > MAX_IMAGE_DIMENSION
+        || (width as u64).saturating_mul(height as u64) > MAX_IMAGE_PIXELS
+    {
+        return Err("clipboard image is too large".to_string());
+    }
+    let rgba = decoded.into_raw();
+    if let Err(arboard_error) = write_rgba_image_to_clipboard(rgba.clone(), width, height) {
+        let image = tauri::image::Image::new_owned(rgba, width, height);
+        use tauri_plugin_clipboard_manager::ClipboardExt;
+        app.clipboard().write_image(&image).map_err(|tauri_error| {
+            format!("write clipboard image: {arboard_error}; tauri fallback: {tauri_error}")
+        })?;
+    }
+    Ok(())
+}
+
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn clipboard_change_count() -> Option<i64> {
     None // format probing not available on this platform
@@ -1035,25 +1060,7 @@ pub fn write_clipboard_image_entry(
         }
     }
 
-    let decoded = image::open(&image_path)
-        .map_err(|e| format!("decode clipboard image: {e}"))?
-        .to_rgba8();
-    let (width, height) = decoded.dimensions();
-    if width > MAX_IMAGE_DIMENSION
-        || height > MAX_IMAGE_DIMENSION
-        || (width as u64).saturating_mul(height as u64) > MAX_IMAGE_PIXELS
-    {
-        return Err("clipboard image is too large".to_string());
-    }
-
-    let rgba = decoded.into_raw();
-    if let Err(arboard_error) = write_rgba_image_to_clipboard(rgba.clone(), width, height) {
-        let image = tauri::image::Image::new_owned(rgba, width, height);
-        app.clipboard().write_image(&image).map_err(|tauri_error| {
-            format!("write clipboard image: {arboard_error}; tauri fallback: {tauri_error}")
-        })?;
-    }
-    Ok(())
+    write_image_file_to_clipboard(&app, std::path::Path::new(&image_path))
 }
 
 #[command]

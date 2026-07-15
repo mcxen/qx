@@ -17,6 +17,7 @@ const DEFAULT_GLOBAL_KEYS: Record<string, string> = {
   clipboard: "Alt+V",
   record_gif: "Alt+G",
   capture_screenshot: "Alt+Shift+S",
+  toggle_capture_controls: "Alt+Shift+C",
   rss: "Alt+R",
 };
 
@@ -91,7 +92,12 @@ export default function ShortcutSettings() {
                       {t("shortcuts.desc.capture", "Start area selection immediately on the display under the pointer.")}
                     </div>
                   )}
-                  {id !== "toggle_launcher" && id !== "toggle_window" && id !== "capture_screenshot" && id !== "record_gif" && !issue && (
+                  {id === "toggle_capture_controls" && !issue && (
+                    <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
+                      {t("shortcuts.desc.captureIsland", "Show or hide the floating screenshot and recording toolbar.")}
+                    </div>
+                  )}
+                  {id !== "toggle_launcher" && id !== "toggle_window" && id !== "capture_screenshot" && id !== "record_gif" && id !== "toggle_capture_controls" && !issue && (
                     <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
                       {t("shortcuts.desc.module", "Open this module; press again on the same module to hide Qx.")}
                     </div>

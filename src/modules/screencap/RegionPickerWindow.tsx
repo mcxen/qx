@@ -1,14 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Camera, Circle, MoveUpRight, Type, X } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
+import { Camera, Circle, Maximize, Monitor, MoveUpRight, Type, X } from "lucide-react";
 import { useT } from "../../i18n";
-import { loadRecordingOptions } from "./preferences";
-import type { CaptureMode } from "./store";
+import { loadRecordingOptions, loadScreenshotAfterCapture } from "./preferences";
+import type { CaptureMode, RecordingSnapshot } from "./store";
 
 interface PickerStatus {
   mode: CaptureMode;
   monitorId: number;
   monitorName: string;
+}
+
+interface CaptureDisplay {
+  id: number;
+  name: string;
+  width: number;
+  height: number;
+  isPrimary: boolean;
+  isBuiltin: boolean;
 }
 
 interface Point {
@@ -66,6 +76,8 @@ function drawArrow(context: CanvasRenderingContext2D, x1: number, y1: number, x2
 export default function RegionPickerWindow() {
   const t = useT();
   const [picker, setPicker] = useState<PickerStatus | null>(null);
+  const [displays, setDisplays] = useState<CaptureDisplay[]>([]);
+  const [recording, setRecording] = useState<RecordingSnapshot | null>(null);
   const [drawStart, setDrawStart] = useState<Point | null>(null);
   const [drawEnd, setDrawEnd] = useState<Point | null>(null);
   const [selection, setSelection] = useState<Rect | null>(null);
@@ -75,16 +87,43 @@ export default function RegionPickerWindow() {
   const [arrowStart, setArrowStart] = useState<Point | null>(null);
   const [textDraft, setTextDraft] = useState<{ point: Point; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     document.body.classList.add("qx-region-picker-body");
     rootRef.current?.focus();
-    void invoke<PickerStatus | null>("screencap_region_select_status")
-      .then(setPicker)
-      .catch(() => {});
-    return () => document.body.classList.remove("qx-region-picker-body");
+    void Promise.all([
+      invoke<PickerStatus | null>("screencap_region_select_status"),
+      invoke<CaptureDisplay[]>("screencap_list_displays"),
+      invoke<RecordingSnapshot>("recording_status"),
+    ]).then(([status, availableDisplays, snapshot]) => {
+      setPicker(status);
+      setDisplays(availableDisplays);
+      setRecording(snapshot);
+    }).catch(() => {});
+    const pickerListener = listen<PickerStatus>("screencap:picker", (event) => {
+      setPicker(event.payload);
+      setSelection(null);
+      setDrawStart(null);
+      setDrawEnd(null);
+      setAnnotations([]);
+      setBusy(false);
+      setError(null);
+    });
+    const stateListener = listen<RecordingSnapshot>("screencap:state", (event) => {
+      setRecording(event.payload);
+      if (event.payload.phase !== "recording" && event.payload.phase !== "processing") {
+        setBusy(false);
+      }
+      setError(event.payload.error);
+    });
+    return () => {
+      document.body.classList.remove("qx-region-picker-body");
+      void pickerListener.then((dispose) => dispose());
+      void stateListener.then((dispose) => dispose());
+    };
   }, []);
 
   useEffect(() => {
@@ -149,11 +188,34 @@ export default function RegionPickerWindow() {
         options: loadRecordingOptions(),
         action,
         annotationOverlayBase64,
+        copyToClipboard: action === "screenshot" && loadScreenshotAfterCapture() === "copy",
       });
-    } catch {
+    } catch (captureError) {
       setBusy(false);
+      setError(String(captureError));
     }
   }, [annotations.length, busy, selection]);
+
+  const selectDisplay = useCallback(async (monitorId: number) => {
+    if (busy || monitorId === picker?.monitorId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await invoke("screencap_select_display", { monitorId });
+    } catch (displayError) {
+      setBusy(false);
+      setError(String(displayError));
+    }
+  }, [busy, picker?.monitorId]);
+
+  const selectFullScreen = useCallback(() => {
+    if (busy) return;
+    setSelection({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight });
+    setDrawStart(null);
+    setDrawEnd(null);
+    setAnnotations([]);
+    setError(null);
+  }, [busy]);
 
   const beginResize = (event: React.MouseEvent, handle: ResizeHandle) => {
     if (!selection || busy) return;
@@ -283,6 +345,7 @@ export default function RegionPickerWindow() {
   const draft = drawStart && drawEnd ? rectFromPoints(drawStart, drawEnd) : null;
   const rect = selection ?? draft;
   const display = picker?.monitorName ?? t("screencap.display", "display");
+  const recordingActive = recording?.phase === "recording" || recording?.phase === "processing";
 
   return (
     <div
@@ -304,18 +367,45 @@ export default function RegionPickerWindow() {
       onMouseMove={onRootMouseMove}
       onMouseUp={onRootMouseUp}
     >
+      {!recordingActive && (
+        <div className="qx-region-picker-displaybar" onMouseDown={(event) => event.stopPropagation()}>
+          {displays.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={item.id === picker?.monitorId ? "is-active" : ""}
+              disabled={busy}
+              onClick={() => void selectDisplay(item.id)}
+            >
+              <Monitor size={13} aria-hidden="true" />
+              <span>{item.isBuiltin
+                ? t("screencap.display.builtin", "Built-in Display")
+                : `${t("screencap.display.external", "External Display")} · ${item.name}`}</span>
+              {item.isPrimary && <small>{t("screencap.display.primary", "Primary")}</small>}
+            </button>
+          ))}
+          <span />
+          <button type="button" disabled={busy} onClick={selectFullScreen}>
+            <Maximize size={13} aria-hidden="true" />
+            {t("screencap.fullscreen", "Full Screen")}
+          </button>
+        </div>
+      )}
+
       {rect && (
         <>
-          <div className="qx-region-picker-shade" style={{ left: 0, top: 0, right: 0, height: rect.y }} />
-          <div className="qx-region-picker-shade" style={{ left: 0, top: rect.y + rect.h, right: 0, bottom: 0 }} />
-          <div className="qx-region-picker-shade" style={{ left: 0, top: rect.y, width: rect.x, height: rect.h }} />
-          <div className="qx-region-picker-shade" style={{ left: rect.x + rect.w, top: rect.y, right: 0, height: rect.h }} />
+          {!recordingActive && <>
+            <div className="qx-region-picker-shade" style={{ left: 0, top: 0, right: 0, height: rect.y }} />
+            <div className="qx-region-picker-shade" style={{ left: 0, top: rect.y + rect.h, right: 0, bottom: 0 }} />
+            <div className="qx-region-picker-shade" style={{ left: 0, top: rect.y, width: rect.x, height: rect.h }} />
+            <div className="qx-region-picker-shade" style={{ left: rect.x + rect.w, top: rect.y, right: 0, height: rect.h }} />
+          </>}
           <div
-            className={`qx-region-picker-rect${selection ? " is-selected" : ""}${tool ? ` is-tool-${tool}` : ""}`}
+            className={`qx-region-picker-rect${selection ? " is-selected" : ""}${tool ? ` is-tool-${tool}` : ""}${recordingActive ? " is-recording" : ""}`}
             style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h }}
             onMouseDown={onSelectionMouseDown}
           >
-            {selection && (
+            {selection && !recordingActive && (
               <>
                 <canvas
                   ref={canvasRef}
@@ -355,13 +445,13 @@ export default function RegionPickerWindow() {
               </>
             )}
           </div>
-          <div className="qx-region-picker-size" style={{ left: rect.x, top: Math.max(8, rect.y - 28) }}>
+          {!recordingActive && <div className="qx-region-picker-size" style={{ left: rect.x, top: Math.max(8, rect.y - 28) }}>
             {Math.round(rect.w)} × {Math.round(rect.h)}
-          </div>
+          </div>}
         </>
       )}
 
-      {selection && (
+      {selection && !recordingActive && (
         <div
           className="qx-region-picker-toolbar"
           style={{
@@ -391,7 +481,7 @@ export default function RegionPickerWindow() {
         </div>
       )}
 
-      {!rect && !busy && (
+      {!rect && !busy && !recordingActive && (
         <div className="qx-region-picker-hint">
           {t("screencap.picker.draw", "Drag on {display} to select an area")
             .replace("{display}", display)}
@@ -403,6 +493,9 @@ export default function RegionPickerWindow() {
             ? t("screencap.picker.textHint", "Click inside the selection to place text")
             : t("screencap.picker.arrowHint", "Drag inside the selection to draw an arrow")}
         </div>
+      )}
+      {error && !recordingActive && (
+        <div className="qx-region-picker-error">{error}</div>
       )}
     </div>
   );
