@@ -7,7 +7,7 @@
 | **Date** | 2026-07-15 |
 | **Status** | Implemented (v1 docked + host; float flag default off) · rev 3.1 |
 | **Repo path** | `docs/qx-island-architecture.md` |
-| **Related** | `UI_SPEC.md` Bottom Island / Home Island；`src/home-island/`；`src/components/QxBottomIsland.tsx`；`src-tauri/src/floating_panel.rs`；`src-tauri/src/screencap.rs`；`src/modules/screencap/ScreenRecorder.tsx` |
+| **Related** | `UI_SPEC.md` Bottom Island / Home Island；`src/home-island/`；`src/components/QxBottomIsland.tsx`；`src-tauri/src/floating_panel.rs`；`src-tauri/src/screencap/mod.rs`；`src/modules/screencap/ScreenRecorder.tsx` |
 
 ---
 
@@ -56,7 +56,7 @@ Qx 当前存在多套并行的「灵动岛」实现：Shell 文本岛（`QxBotto
 | `.qx-home-system-island` | 34px | `min(100%, 380px)` | 同上 |
 | `.qx-home-sci-island` | 34px | `min(100%, 400px)` | 同上 |
 | `.qx-home-date-island` | 34px | `min(100%, 360px)` | 同上 |
-| `recording-controls` 窗 | 逻辑 36px | 逻辑 340px | `screencap.rs` |
+| `recording-controls` 窗 | 逻辑 36px | 逻辑 340px | `screencap/mod.rs` |
 
 UI_SPEC（当前）：
 
@@ -76,7 +76,7 @@ UI_SPEC（当前）：
 ### 可复用资产
 
 - Metrics bus（interest / idle / hidden / in-flight）提升为 island-wide。
-- **`screencap.rs` `recording-controls`**：次级 webview **主蓝本**（`focused(false)`、`always_on_top`、透明、无 decorations、逻辑尺寸、物理定位）。
+- **`screencap/mod.rs` `recording-controls`**：次级 webview **主蓝本**（`focused(false)`、`always_on_top`、透明、无 decorations、逻辑尺寸、物理定位）。
 - `floating_panel.rs`：仅 **main** 的 macOS NSPanel；Windows `show_floating` 会 `set_focus`——**不得**当作 island 浮窗范式。
 - QxShell bottombar 居中：`position: relative` + island `left: 50%; transform: translateX(-50%)`。
 - Tauri 事件命名先例：纯字符串如 `"screencap:state"`、`"settings-updated"`、`"clipboard-updated"`（**不用** `qx://` URL 风格）。
@@ -687,7 +687,7 @@ export const islandHost = {
 
 #### 7.2 Rust `island_window.rs` — 蓝本 = recording-controls（Issue 5）
 
-**Primary blueprint**：`screencap.rs` `show_recording_controls_internal` 旗标，**不是** `floating_panel` NSPanel。
+**Primary blueprint**：`screencap/mod.rs` `show_recording_controls_internal` 旗标，**不是** `floating_panel` NSPanel。
 
 | 属性 | v1 值 |
 |---|---|
@@ -1037,7 +1037,7 @@ Rollback：关 float；DockHost 可回退 ShellContent props 路径。
 - `src/Launcher.tsx` cascade  
 - `src/modules/screencap/ScreenRecorder.tsx` customIsland RecordingTransport  
 - `src/modules/screencap/RecordingControlWindow.tsx`  
-- `src-tauri/src/screencap.rs` recording-controls  
+- `src-tauri/src/screencap/mod.rs` recording-controls
 - `src-tauri/src/floating_panel.rs` main-only；Win set_focus  
 - `docs/frontend-architecture.md`  
 

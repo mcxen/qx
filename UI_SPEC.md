@@ -492,10 +492,18 @@ RSS：
 - 详情阅读可隐藏 Context Panel 或使用 overlay bottom bar。
 - Esc 级联：详情 → 文章列表 → Feed 列表 → launcher。
 
-V2EX / Weather / DevTxt / Screen Recording / Macro / Plugin Host：
+V2EX / Weather / DevTxt / Screen Capture / Macro / Plugin Host：
 
 - 统一 `escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}`。
 - 录制类模块：Esc 可先停止录制或丢弃草稿，再在下一层离开；不要静默无出口。
+
+Screen Capture：
+
+- 截图与录屏共用一个模块、历史列表和显示器选择协议；截图保存 PNG，录屏保存 MP4/MOV 并可按需转 GIF。
+- 区域圈选覆盖鼠标所在显示器，捕获目标必须携带显示器 ID；不得把外接屏圈选错误映射回主屏。
+- 首次拖拽只建立选区，不立即捕获；选区可继续移动并从四角缩放。确认工具条提供截图、录制、文字和箭头，文字/箭头只进入截图 PNG，不进入录屏。
+- “开始截图”和“开始录制”是两个独立 Launcher command，也是默认关闭、可录入的全局快捷动作。
+- 用户可开启 340×36 常驻捕获灵动岛；空闲时提供截图/录制入口，录制中切换为时长、帧数和停止控制，控制窗始终启用内容保护。
 
 QxAI：
 

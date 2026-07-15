@@ -94,7 +94,8 @@ else                                   → show_and_navigate(route)
    - `toggle_window` → `floating_panel::toggle`
    - `clipboard` → `toggle_route(app, "clipboard")`
    - `rss` → `toggle_route(app, "rss")`
-   - `record_gif` → `toggle_route(app, "screencap")`
+   - `capture_screenshot` → 在鼠标所在显示器开始截图圈选
+   - `record_gif`（legacy id）→ 在鼠标所在显示器开始录屏圈选
    - `app_shortcuts` 启动本机 App（不走 toggle_route）
 3. 仅 `ShortcutState::Pressed` 触发一次
 
@@ -105,6 +106,7 @@ else                                   → show_and_navigate(route)
 | `toggle_launcher` | `Alt+Space` | true |
 | `toggle_window` | `Alt+Shift+Space` | false |
 | `clipboard` | `Alt+V` | false |
+| `capture_screenshot` | `Alt+Shift+S` | false |
 | `record_gif` | `Alt+G` | false |
 | `rss` | `Alt+R` | false |
 

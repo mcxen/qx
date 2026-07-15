@@ -1,6 +1,5 @@
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::Local;
-use rusqlite::{params, Connection};
-use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -10,140 +9,27 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
-const DEFAULT_FPS: u32 = 24;
+mod storage;
+mod types;
+
+use storage::{captures_dir, insert_history};
+use types::{
+    CaptureMode, NormalizedRecordingOptions, PickerSession, RecordingOutput,
+    RecordingRuntimeStatus, RecordingState,
+};
+pub use types::{GifEntry, PickerStatus, RecordArea, RecordingOptions, RecordingStatusSnapshot};
+
 const CONTROL_LABEL: &str = "recording-controls";
 /// Dedicated transparent fullscreen surface for region pick (not the main glass shell).
 const PICKER_LABEL: &str = "region-picker";
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RecordingOptions {
-    pub output_format: Option<String>,
-    pub fps: Option<u32>,
-    pub quality: Option<String>,
-    pub resolution: Option<String>,
-}
-
-impl Default for RecordingOptions {
-    fn default() -> Self {
-        Self {
-            output_format: Some("mp4".to_string()),
-            fps: Some(DEFAULT_FPS),
-            quality: Some("balanced".to_string()),
-            resolution: Some("1080p".to_string()),
-        }
-    }
-}
-
-#[derive(Debug)]
-struct NormalizedRecordingOptions {
-    extension: &'static str,
-    fps: u32,
-    bitrate: u32,
-    max_size: Option<(u32, u32)>,
-}
-
-impl RecordingOptions {
-    fn normalize(self) -> NormalizedRecordingOptions {
-        let extension = match self.output_format.as_deref() {
-            Some("mov") => "mov",
-            _ => "mp4",
-        };
-        let fps = match self.fps.unwrap_or(DEFAULT_FPS) {
-            15 => 15,
-            30 => 30,
-            _ => DEFAULT_FPS,
-        };
-        let bitrate = match self.quality.as_deref() {
-            Some("compact") => 2_500_000,
-            Some("high") => 8_000_000,
-            _ => 4_500_000,
-        };
-        let max_size = match self.resolution.as_deref() {
-            Some("720p") => Some((1280, 720)),
-            Some("native") => Some((3840, 2160)),
-            _ => Some((1920, 1080)),
-        };
-        NormalizedRecordingOptions {
-            extension,
-            fps,
-            bitrate,
-            max_size,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RecordArea {
-    pub x: u32,
-    pub y: u32,
-    pub w: u32,
-    pub h: u32,
-}
-
-#[derive(Debug, Serialize)]
-pub struct GifEntry {
-    pub id: i64,
-    pub path: String,
-    pub width: u32,
-    pub height: u32,
-    pub frame_count: u32,
-    pub duration_ms: u64,
-    pub created_at: i64,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RecordingStatusSnapshot {
-    pub phase: String,
-    pub is_recording: bool,
-    pub elapsed_ms: u64,
-    pub frame_count: u64,
-    pub area: Option<RecordArea>,
-    pub output_path: Option<String>,
-    pub error: Option<String>,
-    pub controls_visible: bool,
-}
-
-struct RecordingRuntimeStatus {
-    phase: &'static str,
-    started_at: Option<std::time::Instant>,
-    area: Option<RecordArea>,
-    output_path: Option<String>,
-    error: Option<String>,
-}
-
-impl Default for RecordingRuntimeStatus {
-    fn default() -> Self {
-        Self {
-            phase: "idle",
-            started_at: None,
-            area: None,
-            output_path: None,
-            error: None,
-        }
-    }
-}
-
-struct RecordingState {
-    stop_flag: std::sync::Arc<AtomicBool>,
-    thread_handle: Option<std::thread::JoinHandle<Result<RecordingOutput, String>>>,
-    started_at: std::time::Instant,
-}
-
-#[derive(Debug)]
-struct RecordingOutput {
-    path: PathBuf,
-    width: u32,
-    height: u32,
-    frame_count: u32,
-}
 
 static RECORDING: OnceLock<Mutex<Option<RecordingState>>> = OnceLock::new();
 /// Last capture-thread failure (permission, display open, etc.). Cleared on start.
 static CAPTURE_ERROR: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static RECORDING_STATUS: OnceLock<Mutex<RecordingRuntimeStatus>> = OnceLock::new();
+static PICKER_SESSION: OnceLock<Mutex<Option<PickerSession>>> = OnceLock::new();
 static FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
+static CONTROLS_PINNED: AtomicBool = AtomicBool::new(false);
 
 fn recording_state() -> &'static Mutex<Option<RecordingState>> {
     RECORDING.get_or_init(|| Mutex::new(None))
@@ -155,6 +41,26 @@ fn capture_error_slot() -> &'static Mutex<Option<String>> {
 
 fn runtime_status() -> &'static Mutex<RecordingRuntimeStatus> {
     RECORDING_STATUS.get_or_init(|| Mutex::new(RecordingRuntimeStatus::default()))
+}
+
+fn picker_session() -> &'static Mutex<Option<PickerSession>> {
+    PICKER_SESSION.get_or_init(|| Mutex::new(None))
+}
+
+fn ensure_screen_capture_permission() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        if !crate::permissions::screen_recording_granted() {
+            let _ = crate::permissions::qx_permissions_request("screen-recording".to_string());
+            if !crate::permissions::screen_recording_granted() {
+                return Err(
+                    "Screen Recording permission required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx."
+                        .to_string(),
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 fn set_capture_error(msg: impl Into<String>) {
@@ -190,6 +96,7 @@ fn recording_status_snapshot(app: &AppHandle) -> RecordingStatusSnapshot {
             output_path: None,
             error: Some("Recording status is unavailable".to_string()),
             controls_visible,
+            controls_pinned: CONTROLS_PINNED.load(Ordering::Relaxed),
         };
     };
     RecordingStatusSnapshot {
@@ -207,6 +114,7 @@ fn recording_status_snapshot(app: &AppHandle) -> RecordingStatusSnapshot {
         output_path: status.output_path.clone(),
         error: status.error.clone(),
         controls_visible,
+        controls_pinned: CONTROLS_PINNED.load(Ordering::Relaxed),
     }
 }
 
@@ -227,20 +135,66 @@ fn set_recording_ui_protected(app: &AppHandle, protected: bool) {
 const CONTROLS_LOGICAL_W: f64 = 340.0;
 const CONTROLS_LOGICAL_H: f64 = 36.0;
 
-/// Bottom-center Dynamic Island style placement on the primary work area.
+fn cursor_monitor(app: &AppHandle) -> Option<tauri::Monitor> {
+    let cursor = app.cursor_position().ok()?;
+    app.monitor_from_point(cursor.x, cursor.y).ok().flatten()
+}
+
+fn xcap_monitor_for_tauri(
+    app: &AppHandle,
+    target: &tauri::Monitor,
+) -> Result<xcap::Monitor, String> {
+    let monitors =
+        xcap::Monitor::all().map_err(|error| format!("Cannot list displays: {error}"))?;
+    if let Some(target_name) = target.name() {
+        if let Some(monitor) = monitors.iter().find(|monitor| {
+            monitor.friendly_name().ok().as_ref() == Some(target_name)
+                || monitor.name().ok().as_ref() == Some(target_name)
+        }) {
+            return Ok(monitor.clone());
+        }
+    }
+
+    let position = target.position();
+    let scale = target.scale_factor().max(1.0);
+    if let Some(monitor) = monitors.iter().find(|monitor| {
+        let Ok(x) = monitor.x() else { return false };
+        let Ok(y) = monitor.y() else { return false };
+        let physical_match = (x - position.x).abs() <= 2 && (y - position.y).abs() <= 2;
+        let logical_match = (x as f64 - position.x as f64 / scale).abs() <= 2.0
+            && (y as f64 - position.y as f64 / scale).abs() <= 2.0;
+        physical_match || logical_match
+    }) {
+        return Ok(monitor.clone());
+    }
+
+    let target_is_primary = app
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .is_some_and(|primary| primary.position() == target.position());
+    monitors
+        .into_iter()
+        .find(|monitor| monitor.is_primary().unwrap_or(false) == target_is_primary)
+        .ok_or_else(|| "Cannot match the selected display to a capture source".to_string())
+}
+
+fn capture_coordinate_scale(capture_width: u32, picker_logical_width: f64) -> f64 {
+    (capture_width as f64 / picker_logical_width.max(1.0)).clamp(0.1, 8.0)
+}
+
+/// Bottom-center Dynamic Island style placement on the display under the pointer.
 fn position_controls(app: &AppHandle) {
     let Some(controls) = app.get_webview_window(CONTROL_LABEL) else {
         return;
     };
-    let monitor = app
-        .primary_monitor()
-        .ok()
-        .flatten()
+    let monitor = cursor_monitor(app)
         .or_else(|| {
             app.get_webview_window(crate::floating_panel::MAIN_LABEL)
                 .and_then(|main| main.current_monitor().ok().flatten())
         })
-        .or_else(|| controls.current_monitor().ok().flatten());
+        .or_else(|| controls.current_monitor().ok().flatten())
+        .or_else(|| app.primary_monitor().ok().flatten());
     let Some(monitor) = monitor else {
         return;
     };
@@ -331,6 +285,17 @@ fn hide_recording_controls_internal(app: &AppHandle) {
     }
 }
 
+fn restore_capture_surface(app: &AppHandle, suppress_ms: u64) -> Result<(), String> {
+    if CONTROLS_PINNED.load(Ordering::Relaxed) {
+        show_recording_controls_internal(app)
+    } else {
+        hide_recording_controls_internal(app);
+        crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(suppress_ms));
+        crate::floating_panel::show_and_navigate(app, "screencap");
+        Ok(())
+    }
+}
+
 fn hide_region_picker_internal(app: &AppHandle) {
     // Hide only — do not destroy. Destroying the last *visible* surface while
     // main is hidden has looked like a full app quit on some macOS builds.
@@ -339,20 +304,38 @@ fn hide_region_picker_internal(app: &AppHandle) {
     }
 }
 
-fn show_region_picker_internal(app: &AppHandle) -> Result<(), String> {
-    let monitor = app
-        .primary_monitor()
-        .map_err(|error| format!("primary monitor: {error}"))?
-        .ok_or_else(|| "No primary display found".to_string())?;
+fn show_region_picker_internal(app: &AppHandle, mode: CaptureMode) -> Result<(), String> {
+    let monitor = cursor_monitor(app)
+        .or_else(|| app.primary_monitor().ok().flatten())
+        .ok_or_else(|| "No display found".to_string())?;
     let position = monitor.position();
     let size = monitor.size();
     let scale = monitor.scale_factor().max(1.0);
-    // Logical size of the primary display (matches CSS clientX/Y in the picker).
+    // Logical size of the selected display (matches CSS clientX/Y in the picker).
     let logical_w = size.width as f64 / scale;
     let logical_h = size.height as f64 / scale;
     let logical_x = position.x as f64 / scale;
     let logical_y = position.y as f64 / scale;
-
+    let capture_monitor = xcap_monitor_for_tauri(app, &monitor)?;
+    let monitor_id = capture_monitor
+        .id()
+        .map_err(|error| format!("display id: {error}"))?;
+    let monitor_name = capture_monitor
+        .friendly_name()
+        .or_else(|_| capture_monitor.name())
+        .unwrap_or_else(|_| "Display".to_string());
+    let capture_width = capture_monitor
+        .width()
+        .map_err(|error| format!("display width: {error}"))?;
+    let coordinate_scale = capture_coordinate_scale(capture_width, logical_w);
+    if let Ok(mut session) = picker_session().lock() {
+        *session = Some(PickerSession {
+            mode,
+            monitor_id,
+            monitor_name,
+            coordinate_scale,
+        });
+    }
     if app.get_webview_window(PICKER_LABEL).is_none() {
         WebviewWindowBuilder::new(
             app,
@@ -383,7 +366,7 @@ fn show_region_picker_internal(app: &AppHandle) -> Result<(), String> {
         .ok_or_else(|| "region picker window is unavailable".to_string())?;
     let _ = picker.set_content_protected(true);
     let _ = picker.set_always_on_top(true);
-    // Cover the primary display exactly. Physical size/position matches the
+    // Cover the selected display exactly. Physical size/position matches the
     // monitor framebuffer; CSS clientX/Y stay in logical points (DPR scaled).
     let _ = picker.set_position(PhysicalPosition::new(position.x, position.y));
     let _ = picker.set_size(PhysicalSize::new(size.width, size.height));
@@ -393,51 +376,6 @@ fn show_region_picker_internal(app: &AppHandle) -> Result<(), String> {
         .map_err(|error| format!("show region picker: {error}"))?;
     let _ = picker.set_focus();
     Ok(())
-}
-
-fn gifs_dir() -> PathBuf {
-    let base = crate::paths::pictures_dir();
-    let dir = base.join("Qx");
-    let _ = fs::create_dir_all(&dir);
-    dir
-}
-
-fn db_path() -> PathBuf {
-    let dir = crate::paths::data_dir();
-    let _ = fs::create_dir_all(&dir);
-    dir.join("screencap.db")
-}
-
-fn open_db() -> rusqlite::Result<Connection> {
-    let conn = Connection::open(db_path())?;
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS gif_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            file_path TEXT NOT NULL,
-            width INTEGER,
-            height INTEGER,
-            frame_count INTEGER,
-            duration_ms INTEGER,
-            created_at INTEGER NOT NULL
-        );",
-    )?;
-    Ok(conn)
-}
-
-fn insert_history(
-    path: &std::path::Path,
-    w: u32,
-    h: u32,
-    frames: u32,
-    duration_ms: u64,
-) -> rusqlite::Result<i64> {
-    let conn = open_db()?;
-    let now = Local::now().timestamp();
-    conn.execute(
-        "INSERT INTO gif_history (file_path, width, height, frame_count, duration_ms, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![path.to_string_lossy(), w, h, frames, duration_ms, now],
-    )?;
-    Ok(conn.last_insert_rowid())
 }
 
 fn constrain_video_size(image: image::RgbaImage, max_size: Option<(u32, u32)>) -> image::RgbaImage {
@@ -541,8 +479,28 @@ fn primary_monitor() -> Result<xcap::Monitor, String> {
         })
 }
 
-/// Clamp a logical (points) crop to the primary monitor. xcap's
-/// `capture_region` and CGDisplayBounds both use **points**, not pixels.
+fn capture_monitor(monitor_id: Option<u32>) -> Result<xcap::Monitor, String> {
+    if let Some(target_id) = monitor_id {
+        let monitors =
+            xcap::Monitor::all().map_err(|error| format!("Cannot list displays: {error}"))?;
+        if let Some(monitor) = monitors
+            .into_iter()
+            .find(|monitor| monitor.id().ok() == Some(target_id))
+        {
+            return Ok(monitor);
+        }
+        return Err("The selected display is no longer available".to_string());
+    }
+    primary_monitor()
+}
+
+fn cursor_capture_monitor_id(app: &AppHandle) -> Option<u32> {
+    let monitor = cursor_monitor(app)?;
+    xcap_monitor_for_tauri(app, &monitor).ok()?.id().ok()
+}
+
+/// Clamp a crop expressed in the selected xcap monitor's coordinate space.
+/// Picker CSS coordinates are converted to this space before reaching here.
 fn clamp_logical_area(area: RecordArea, mon_w: u32, mon_h: u32) -> Option<RecordArea> {
     if area.w < 2 || area.h < 2 || mon_w < 2 || mon_h < 2 {
         return None;
@@ -551,7 +509,13 @@ fn clamp_logical_area(area: RecordArea, mon_w: u32, mon_h: u32) -> Option<Record
     let y = area.y.min(mon_h.saturating_sub(2));
     let w = area.w.min(mon_w.saturating_sub(x)).max(2);
     let h = area.h.min(mon_h.saturating_sub(y)).max(2);
-    Some(RecordArea { x, y, w, h })
+    Some(RecordArea {
+        x,
+        y,
+        w,
+        h,
+        monitor_id: area.monitor_id,
+    })
 }
 
 /// Map a logical (points) crop onto a framebuffer using the frame's real
@@ -612,12 +576,10 @@ fn encode_rgba_frame(
         .map_err(|error| format!("encode H.264 frame: {error}"))?;
     let (sps, pps, sample, is_sync) = mp4_parts(&encoded);
     if !*track_added {
-        let sps = sps.ok_or_else(|| {
-            "H.264 stream has no SPS — capture may have failed".to_string()
-        })?;
-        let pps = pps.ok_or_else(|| {
-            "H.264 stream has no PPS — capture may have failed".to_string()
-        })?;
+        let sps =
+            sps.ok_or_else(|| "H.264 stream has no SPS — capture may have failed".to_string())?;
+        let pps =
+            pps.ok_or_else(|| "H.264 stream has no PPS — capture may have failed".to_string())?;
         writer
             .add_track(&mp4::TrackConfig::from(mp4::AvcConfig {
                 width: width as u16,
@@ -661,13 +623,18 @@ fn encode_rgba_frame(
 fn recording_loop_inner(
     output_path: &Path,
     area: Option<RecordArea>,
+    monitor_id: Option<u32>,
     options: NormalizedRecordingOptions,
     stop_flag: std::sync::Arc<AtomicBool>,
 ) -> Result<RecordingOutput, String> {
     // Let the picker / main shell finish hiding before the first sample.
     std::thread::sleep(std::time::Duration::from_millis(200));
 
-    let monitor = primary_monitor()?;
+    let monitor = capture_monitor(
+        area.as_ref()
+            .and_then(|value| value.monitor_id)
+            .or(monitor_id),
+    )?;
     let mon_w = monitor
         .width()
         .map_err(|error| format!("display width: {error}"))?;
@@ -675,7 +642,7 @@ fn recording_loop_inner(
         .height()
         .map_err(|error| format!("display height: {error}"))?;
 
-    // Selection is in logical points (CSS px on the picker overlay / primary).
+    // Picker selections have already been converted into this monitor's xcap coordinates.
     let area = area.and_then(|a| clamp_logical_area(a, mon_w, mon_h));
     // Region capture: use capture_region (same coordinate space as the picker).
     // Full-screen: prefer the continuous AVCapture stream for FPS.
@@ -870,10 +837,11 @@ fn recording_loop_inner(
 fn recording_loop(
     output_path: PathBuf,
     area: Option<RecordArea>,
+    monitor_id: Option<u32>,
     options: NormalizedRecordingOptions,
     stop_flag: std::sync::Arc<AtomicBool>,
 ) -> Result<RecordingOutput, String> {
-    let result = recording_loop_inner(&output_path, area, options, stop_flag);
+    let result = recording_loop_inner(&output_path, area, monitor_id, options, stop_flag);
     if let Err(error) = &result {
         let _ = fs::remove_file(&output_path);
         set_capture_error(error.clone());
@@ -887,19 +855,7 @@ pub async fn start_recording(
     area: Option<RecordArea>,
     options: Option<RecordingOptions>,
 ) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        if !crate::permissions::screen_recording_granted() {
-            // Prompt the system dialog when possible; still fail closed if denied.
-            let _ = crate::permissions::qx_permissions_request("screen-recording".to_string());
-            if !crate::permissions::screen_recording_granted() {
-                return Err(
-                    "Screen Recording permission required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx."
-                        .to_string(),
-                );
-            }
-        }
-    }
+    ensure_screen_capture_permission()?;
 
     let mut guard = recording_state().lock().map_err(|e| format!("lock: {e}"))?;
     if guard.is_some() {
@@ -912,14 +868,19 @@ pub async fn start_recording(
 
     let options = options.unwrap_or_default().normalize();
     let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();
-    let output_path = gifs_dir().join(format!("recording_{timestamp}.{}", options.extension));
+    let output_path = captures_dir().join(format!("recording_{timestamp}.{}", options.extension));
 
     let stop_flag = std::sync::Arc::new(AtomicBool::new(false));
     let stop_clone = stop_flag.clone();
 
+    let monitor_id = area
+        .as_ref()
+        .and_then(|value| value.monitor_id)
+        .or_else(|| cursor_capture_monitor_id(&app));
     let capture_area = area.clone();
-    let handle =
-        std::thread::spawn(move || recording_loop(output_path, capture_area, options, stop_clone));
+    let handle = std::thread::spawn(move || {
+        recording_loop(output_path, capture_area, monitor_id, options, stop_clone)
+    });
 
     let started_at = std::time::Instant::now();
     *guard = Some(RecordingState {
@@ -960,27 +921,103 @@ pub async fn start_recording(
 /// Open a dedicated transparent fullscreen picker (no main-window glass mask).
 #[command]
 pub async fn screencap_begin_region_select(app: AppHandle) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
+    screencap_begin_capture_select(app, "recording".to_string()).await
+}
+
+/// Start region selection on the display under the pointer.
+#[command]
+pub async fn screencap_begin_capture_select(app: AppHandle, mode: String) -> Result<(), String> {
+    if recording_state()
+        .lock()
+        .map(|recording| recording.is_some())
+        .unwrap_or(false)
     {
-        if !crate::permissions::screen_recording_granted() {
-            let _ = crate::permissions::qx_permissions_request("screen-recording".to_string());
-            if !crate::permissions::screen_recording_granted() {
-                return Err(
-                    "Screen Recording permission required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx."
-                        .to_string(),
-                );
-            }
-        }
+        return Err("A screen recording is already in progress".to_string());
     }
+    ensure_screen_capture_permission()?;
+    hide_recording_controls_internal(&app);
     crate::floating_panel::hide(&app);
-    show_region_picker_internal(&app)
+    show_region_picker_internal(&app, CaptureMode::parse(&mode)?)
+}
+
+#[command]
+pub fn screencap_region_select_status() -> Option<PickerStatus> {
+    picker_session()
+        .lock()
+        .ok()
+        .and_then(|session| session.clone())
+        .map(|session| PickerStatus {
+            mode: session.mode.as_str().to_string(),
+            monitor_id: session.monitor_id,
+            monitor_name: session.monitor_name,
+        })
 }
 
 #[command]
 pub async fn screencap_cancel_region_select(app: AppHandle) -> Result<(), String> {
     hide_region_picker_internal(&app);
-    crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(800));
-    crate::floating_panel::show_and_navigate(&app, "screencap");
+    restore_capture_surface(&app, 800)
+}
+
+fn take_screenshot_blocking(
+    area: RecordArea,
+    annotation_overlay_base64: Option<String>,
+) -> Result<RecordingOutput, String> {
+    // Allow the protected picker window to finish hiding before the still frame.
+    std::thread::sleep(std::time::Duration::from_millis(120));
+    let monitor = capture_monitor(area.monitor_id)?;
+    let mon_w = monitor
+        .width()
+        .map_err(|error| format!("display width: {error}"))?;
+    let mon_h = monitor
+        .height()
+        .map_err(|error| format!("display height: {error}"))?;
+    let area = clamp_logical_area(area, mon_w, mon_h)
+        .ok_or_else(|| "Selection is outside the selected display".to_string())?;
+    let mut image = monitor
+        .capture_region(area.x, area.y, area.w, area.h)
+        .map_err(|error| format!("capture screenshot: {error}"))?;
+    composite_annotation_overlay(&mut image, annotation_overlay_base64.as_deref())?;
+    let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();
+    let output_path = captures_dir().join(format!("screenshot_{timestamp}.png"));
+    image
+        .save(&output_path)
+        .map_err(|error| format!("save screenshot: {error}"))?;
+    let (width, height) = image.dimensions();
+    insert_history(&output_path, width, height, 1, 0)
+        .map_err(|error| format!("save screenshot history: {error}"))?;
+    Ok(RecordingOutput {
+        path: output_path,
+        width,
+        height,
+        frame_count: 1,
+    })
+}
+
+fn composite_annotation_overlay(
+    image: &mut image::RgbaImage,
+    annotation_overlay_base64: Option<&str>,
+) -> Result<(), String> {
+    let Some(encoded) = annotation_overlay_base64.filter(|value| !value.is_empty()) else {
+        return Ok(());
+    };
+    let bytes = BASE64
+        .decode(encoded)
+        .map_err(|error| format!("decode screenshot annotations: {error}"))?;
+    let overlay = image::load_from_memory(&bytes)
+        .map_err(|error| format!("read screenshot annotations: {error}"))?
+        .to_rgba8();
+    let overlay = if overlay.dimensions() == image.dimensions() {
+        overlay
+    } else {
+        image::imageops::resize(
+            &overlay,
+            image.width(),
+            image.height(),
+            image::imageops::FilterType::Lanczos3,
+        )
+    };
+    image::imageops::overlay(image, &overlay, 0, 0);
     Ok(())
 }
 
@@ -990,20 +1027,58 @@ pub async fn screencap_confirm_region_select(
     app: AppHandle,
     area: RecordArea,
     options: Option<RecordingOptions>,
+    action: Option<String>,
+    annotation_overlay_base64: Option<String>,
 ) -> Result<(), String> {
     hide_region_picker_internal(&app);
+    let session = picker_session()
+        .lock()
+        .ok()
+        .and_then(|session| session.clone())
+        .ok_or_else(|| "Capture selection session is unavailable".to_string())?;
+    let scale = session.coordinate_scale;
+    let area = RecordArea {
+        x: (area.x as f64 * scale).round().max(0.0) as u32,
+        y: (area.y as f64 * scale).round().max(0.0) as u32,
+        w: (area.w as f64 * scale).round().max(2.0) as u32,
+        h: (area.h as f64 * scale).round().max(2.0) as u32,
+        monitor_id: Some(session.monitor_id),
+    };
     if area.w < 16 || area.h < 16 {
-        crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(800));
-        crate::floating_panel::show_and_navigate(&app, "screencap");
+        restore_capture_surface(&app, 800)?;
         return Err("Selection too small — drag a larger region".to_string());
     }
-    // Area is CSS client points on a picker that fully covers the primary display
-    // (= xcap capture_region logical coordinates).
+    let action = action
+        .as_deref()
+        .map(CaptureMode::parse)
+        .transpose()?
+        .unwrap_or(session.mode);
+    if action == CaptureMode::Recording && annotation_overlay_base64.is_some() {
+        restore_capture_surface(&app, 800)?;
+        return Err("Annotations can only be applied to screenshots".to_string());
+    }
+    if action == CaptureMode::Screenshot {
+        let output = tauri::async_runtime::spawn_blocking(move || {
+            take_screenshot_blocking(area, annotation_overlay_base64)
+        })
+        .await
+        .map_err(|error| format!("screenshot worker failed: {error}"))??;
+        if let Ok(mut status) = runtime_status().lock() {
+            status.phase = "done";
+            status.started_at = None;
+            status.area = None;
+            status.output_path = Some(output.path.to_string_lossy().to_string());
+            status.error = None;
+        }
+        restore_capture_surface(&app, 800)?;
+        emit_recording_status(&app);
+        return Ok(());
+    }
+    // Area is CSS client points on a picker that covers the chosen display.
     match start_recording(app.clone(), Some(area), options).await {
         Ok(()) => Ok(()),
         Err(error) => {
-            crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(800));
-            crate::floating_panel::show_and_navigate(&app, "screencap");
+            restore_capture_surface(&app, 800)?;
             Err(error)
         }
     }
@@ -1070,10 +1145,8 @@ pub async fn stop_recording(app: AppHandle) -> Result<String, String> {
     }
 
     set_recording_ui_protected(&app, false);
-    hide_recording_controls_internal(&app);
     // Stop button / focus handoff can fire Focused(false) immediately after show.
-    crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(1200));
-    crate::floating_panel::show_and_navigate(&app, "screencap");
+    restore_capture_surface(&app, 1200)?;
     emit_recording_status(&app);
     result
 }
@@ -1093,6 +1166,22 @@ pub async fn screencap_show_controls(app: AppHandle) -> Result<(), String> {
 pub fn screencap_hide_controls(app: AppHandle) {
     hide_recording_controls_internal(&app);
     emit_recording_status(&app);
+}
+
+#[command]
+pub fn screencap_set_controls_pinned(app: AppHandle, pinned: bool) -> Result<(), String> {
+    CONTROLS_PINNED.store(pinned, Ordering::Relaxed);
+    if pinned {
+        show_recording_controls_internal(&app)?;
+    } else if recording_state()
+        .lock()
+        .map(|recording| recording.is_none())
+        .unwrap_or(false)
+    {
+        hide_recording_controls_internal(&app);
+    }
+    emit_recording_status(&app);
+    Ok(())
 }
 
 #[command]
@@ -1313,41 +1402,12 @@ pub async fn convert_recording_to_gif(
 
 #[command]
 pub fn save_gif(source_path: String, dest_path: String) -> Result<String, String> {
-    fs::copy(&source_path, &dest_path).map_err(|e| format!("copy: {e}"))?;
-    Ok(dest_path)
+    storage::save_capture(source_path, dest_path)
 }
 
 #[command]
 pub fn list_gif_history(limit: Option<u32>) -> Vec<GifEntry> {
-    let limit = limit.unwrap_or(50) as i64;
-    let conn = match open_db() {
-        Ok(c) => c,
-        Err(_) => return Vec::new(),
-    };
-    let mut stmt = match conn.prepare(
-        "SELECT id, file_path, width, height, frame_count, duration_ms, created_at FROM gif_history ORDER BY created_at DESC LIMIT ?1",
-    ) {
-        Ok(s) => s,
-        Err(_) => return Vec::new(),
-    };
-    let rows = stmt.query_map(params![limit], |row| {
-        Ok(GifEntry {
-            id: row.get(0)?,
-            path: row.get(1)?,
-            width: row.get::<_, Option<i64>>(2)?.unwrap_or(0) as u32,
-            height: row.get::<_, Option<i64>>(3)?.unwrap_or(0) as u32,
-            frame_count: row.get::<_, Option<i64>>(4)?.unwrap_or(0) as u32,
-            duration_ms: row.get::<_, Option<i64>>(5)?.unwrap_or(0) as u64,
-            created_at: row.get(6)?,
-        })
-    });
-    let mut out = Vec::new();
-    if let Ok(rows) = rows {
-        for r in rows.flatten() {
-            out.push(r);
-        }
-    }
-    out
+    storage::list_history(limit)
 }
 
 #[command]
@@ -1365,18 +1425,7 @@ pub fn get_screencap_history(limit: Option<u32>) -> Vec<GifEntry> {
 
 #[command]
 pub fn delete_screencap(id: i64) -> Result<(), String> {
-    let conn = open_db().map_err(|e| format!("db: {e}"))?;
-    let file_path: String = conn
-        .query_row(
-            "SELECT file_path FROM gif_history WHERE id = ?1",
-            params![id],
-            |row| row.get(0),
-        )
-        .map_err(|e| format!("not found: {e}"))?;
-    conn.execute("DELETE FROM gif_history WHERE id = ?1", params![id])
-        .map_err(|e| format!("delete: {e}"))?;
-    let _ = fs::remove_file(&file_path);
-    Ok(())
+    storage::delete_capture(id)
 }
 
 #[cfg(test)]
@@ -1391,6 +1440,7 @@ mod tests {
                 y: 20,
                 w: 9999,
                 h: 40,
+                monitor_id: Some(42),
             },
             800,
             600,
@@ -1400,6 +1450,7 @@ mod tests {
         assert_eq!(area.y, 20);
         assert_eq!(area.w, 790);
         assert_eq!(area.h, 40);
+        assert_eq!(area.monitor_id, Some(42));
     }
 
     #[test]
@@ -1410,11 +1461,41 @@ mod tests {
             y: 5,
             w: 40,
             h: 20,
+            monitor_id: None,
         };
         // Frame is 2× a 100×50 logical monitor.
         let cropped = crop_physical(&frame, &area, 100, 50);
         assert_eq!(cropped.width(), 80);
         assert_eq!(cropped.height(), 40);
+    }
+
+    #[test]
+    fn picker_coordinates_scale_to_each_capture_backend() {
+        assert_eq!(capture_coordinate_scale(1728, 1728.0), 1.0);
+        assert_eq!(capture_coordinate_scale(3840, 1920.0), 2.0);
+    }
+
+    #[test]
+    fn capture_modes_are_explicit() {
+        assert_eq!(
+            CaptureMode::parse("screenshot"),
+            Ok(CaptureMode::Screenshot)
+        );
+        assert_eq!(CaptureMode::parse("recording"), Ok(CaptureMode::Recording));
+        assert!(CaptureMode::parse("video").is_err());
+    }
+
+    #[test]
+    fn screenshot_annotations_are_composited() {
+        let mut base = image::RgbaImage::from_pixel(4, 4, image::Rgba([0, 0, 0, 255]));
+        let overlay = image::RgbaImage::from_pixel(2, 2, image::Rgba([255, 0, 0, 255]));
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(overlay)
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        let encoded = BASE64.encode(bytes.into_inner());
+        composite_annotation_overlay(&mut base, Some(&encoded)).unwrap();
+        assert_eq!(base.get_pixel(2, 2), &image::Rgba([255, 0, 0, 255]));
     }
 
     #[test]

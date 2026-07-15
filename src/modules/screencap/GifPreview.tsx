@@ -35,6 +35,7 @@ export default function GifPreview({ path, onClose }: Props) {
   const fileName = path.split(/[\\/]/).pop() ?? path;
   const extension = fileName.split(".").pop()?.toLowerCase() ?? "";
   const isVideo = extension === "mp4" || extension === "mov";
+  const isAnimatedImage = extension === "gif";
   const separatorIndex = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   const dir = path.substring(0, separatorIndex);
   const pathSeparator = path.lastIndexOf("\\") > path.lastIndexOf("/") ? "\\" : "/";
@@ -153,7 +154,7 @@ export default function GifPreview({ path, onClose }: Props) {
             onPause={() => setPlaying(false)}
             style={{ maxWidth: "100%", maxHeight: 240, display: "block", objectFit: "contain" }}
           />
-        ) : playing ? (
+        ) : playing || !isAnimatedImage ? (
           <img
             src={src}
             alt={t("screencap.preview.gifAlt", "GIF preview")}
@@ -198,9 +199,11 @@ export default function GifPreview({ path, onClose }: Props) {
           color: "var(--qx-text-secondary)",
         }}
       >
-        <button onClick={togglePlayback} style={toggleBtn}>
-          {playing ? t("common.pause", "Pause") : t("common.play", "Play")}
-        </button>
+        {(isVideo || isAnimatedImage) && (
+          <button onClick={togglePlayback} style={toggleBtn}>
+            {playing ? t("common.pause", "Pause") : t("common.play", "Play")}
+          </button>
+        )}
         <span>{dims ? `${dims.w} × ${dims.h} px` : "—"}</span>
         <span>{size !== null ? formatBytes(size) : "—"}</span>
         <span

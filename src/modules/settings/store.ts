@@ -196,7 +196,7 @@ export const MODULE_SEARCH_LABELS: Record<ModuleSearchModuleId, { title: string;
   clipboard: { title: "Clipboard", hint: "History items and open command" },
   "qx-ai": { title: "QxAI", hint: "Conversations, new chat, settings" },
   rss: { title: "RSS Reader", hint: "Feeds, folders, open reader" },
-  screencap: { title: "Screen Recording", hint: "MP4/MOV recorder and optional GIF conversion" },
+  screencap: { title: "Screen Capture", hint: "Screenshots, MP4/MOV recording, and optional GIF conversion" },
   macros: { title: "Macro Recorder", hint: "Saved macros" },
   documents: { title: "Text Toolbox", hint: "Disk notepad · folder files" },
   weather: { title: "Weather", hint: "Locations and open weather" },
@@ -280,6 +280,7 @@ export const DEFAULT_SETTINGS: Settings = {
     toggle_window: { key: "Alt+Shift+Space", enabled: false },
     clipboard: { key: "Alt+V", enabled: false },
     record_gif: { key: "Alt+G", enabled: false },
+    capture_screenshot: { key: "Alt+Shift+S", enabled: false },
     rss: { key: "Alt+R", enabled: false },
   },
   app_shortcuts: {},
@@ -365,7 +366,7 @@ export const DEFAULT_SETTINGS: Settings = {
     { id: "clipboard", title: "Clipboard History", subtitle: "Pinned, frequent, links", target: "clipboard", enabled: true },
     { id: "qx-ai", title: "QxAI", subtitle: "Chat and agent tasks", target: "qx-ai", enabled: true },
     { id: "rss", title: "RSS Reader", subtitle: "Feeds and articles", target: "rss", enabled: true },
-    { id: "screencap", title: "Screen Recording", subtitle: "Video capture", target: "screencap", enabled: true },
+    { id: "screencap", title: "Screen Capture", subtitle: "Screenshots and video recording", target: "screencap", enabled: true },
     { id: "v2ex", title: "V2EX", subtitle: "Latest and hot topics", target: "v2ex", enabled: true },
     { id: "weather", title: "Weather", subtitle: "Current conditions and forecast", target: "weather", enabled: true },
     { id: "documents", title: "Text Toolbox", subtitle: "Disk notepad · folder files", target: "documents", enabled: true },
@@ -587,7 +588,7 @@ export const SHORTCUT_GROUPS: { group: string; ids: string[] }[] = [
   { group: "global", ids: ["toggle_launcher", "toggle_window"] },
   { group: "clipboard", ids: ["clipboard"] },
   { group: "rss", ids: ["rss"] },
-  { group: "recording", ids: ["record_gif"] },
+  { group: "capture", ids: ["capture_screenshot", "record_gif"] },
 ];
 
 export const SHORTCUT_LABELS: Record<string, string> = {
@@ -595,5 +596,6 @@ export const SHORTCUT_LABELS: Record<string, string> = {
   toggle_window: "Toggle Current Window",
   clipboard: "Open Clipboard",
   record_gif: "Start Screen Recording",
+  capture_screenshot: "Take Screenshot",
   rss: "Open RSS Reader",
 };

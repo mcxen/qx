@@ -59,7 +59,8 @@ scope: "in_app"     → 仅主窗 key window 且匹配上下文时；WebView key
 // host.toggle_window
 // module.open.clipboard
 // module.open.rss
-// module.open.screencap          // legacy id: record_gif
+// module.capture.screenshot      // current id: capture_screenshot
+// module.capture.recording       // legacy id: record_gif
 // plugin.<pluginId>.cmd.<commandName>
 // app.launch.<hashOrPathKey>
 // shell.action_menu              // in_app
@@ -126,7 +127,8 @@ interface ShortcutBinding {
 | `toggle_window` | `host.toggle_window` | global |
 | `clipboard` | `module.open.clipboard` | global |
 | `rss` | `module.open.rss` | global |
-| `record_gif` | `module.open.screencap` | global |
+| `capture_screenshot` | `module.capture.screenshot` | global |
+| `record_gif` | `module.capture.recording` | global |
 | `app_shortcuts["app:…"]` | 同 id 或 `app.launch.…` | global |
 
 读 settings 时 **双读** legacy + namespaced；写时写 namespaced（可选同时写 legacy 一版迁移）。

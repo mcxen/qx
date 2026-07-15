@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
-  DEFAULT_RECORDING_OPTIONS,
+  requestCaptureSelection,
   useScreencapStore,
   type RecordArea,
   type RecordingOptions,
@@ -18,6 +18,13 @@ import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import BetaBadge from "../../components/BetaBadge";
 import { useT } from "../../i18n";
 import RecordingTransport from "./RecordingTransport";
+import {
+  CAPTURE_CONTROLS_PINNED_KEY,
+  captureControlsPinned,
+  loadRecordingOptions,
+  saveCaptureControlsPinned,
+  saveRecordingOptions,
+} from "./preferences";
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -28,31 +35,6 @@ function formatTime(ms: number): string {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-}
-
-function loadRecordingOptions(): RecordingOptions {
-  try {
-    const stored = JSON.parse(localStorage.getItem("qx.screencap.options") ?? "null") as Partial<RecordingOptions> | null;
-    return { ...DEFAULT_RECORDING_OPTIONS, ...(stored ?? {}) };
-  } catch {
-    return DEFAULT_RECORDING_OPTIONS;
-  }
-}
-
-async function ensureScreenPermission(permissionError: string): Promise<string | null> {
-  if (!isTauriRuntime()) return null;
-  try {
-    type Perm = { id: string; granted: boolean; available: boolean };
-    const list = await invoke<Perm[]>("qx_permissions_status");
-    const screen = list.find((p) => p.id === "screen-recording");
-    if (!screen || !screen.available) return null;
-    if (screen.granted) return null;
-    const ok = await invoke<boolean>("qx_permissions_request", { id: "screen-recording" });
-    if (ok) return null;
-    return permissionError;
-  } catch {
-    return null;
-  }
 }
 
 export default function ScreenRecorder() {
@@ -79,6 +61,9 @@ export default function ScreenRecorder() {
   /** Logical crop in points (xcap / CGDisplayBounds space). */
   const [area, setArea] = useState<RecordArea | null>(null);
   const [recordingOptions, setRecordingOptions] = useState<RecordingOptions>(loadRecordingOptions);
+  const [controlsPinned, setControlsPinned] = useState(
+    captureControlsPinned,
+  );
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -87,23 +72,47 @@ export default function ScreenRecorder() {
   }, [loadHistory, syncRecordingStatus]);
 
   useEffect(() => {
-    localStorage.setItem("qx.screencap.options", JSON.stringify(recordingOptions));
+    saveRecordingOptions(recordingOptions);
   }, [recordingOptions]);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    void invoke("screencap_set_controls_pinned", { pinned: controlsPinned });
+  }, [controlsPinned]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === CAPTURE_CONTROLS_PINNED_KEY) {
+        setControlsPinned(event.newValue === "true");
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  const beginCaptureSelection = useCallback(async (
+    mode: "screenshot" | "recording",
+  ) => {
+    setLocalError(null);
+    if (!isTauriRuntime()) {
+      setLocalError(t("screencap.select.needsApp", "Region select requires the Qx desktop app."));
+      return;
+    }
+    try {
+      saveRecordingOptions(recordingOptions);
+      await requestCaptureSelection(mode);
+    } catch (captureError) {
+      setLocalError(String(captureError));
+    }
+  }, [recordingOptions, t]);
 
   useEffect(() => {
     const launch = takePendingModuleLaunch("screencap");
     if (!launch) return;
-    if (launch.surface === "start") {
-      void (async () => {
-        const permErr = await ensureScreenPermission(
-          t("screencap.permission", "Screen Recording permission is required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx."),
-        );
-        if (permErr) {
-          setLocalError(permErr);
-          return;
-        }
-        await startRecording(null, recordingOptions);
-      })();
+    if (launch.surface === "start" || launch.surface === "record" || launch.surface === "screenshot") {
+      void beginCaptureSelection(
+        launch.surface === "screenshot" ? "screenshot" : "recording",
+      );
       return;
     }
     if (launch.surface === "preview") {
@@ -112,7 +121,7 @@ export default function ScreenRecorder() {
         void loadHistory().then(() => setPreview(path));
       }
     }
-  }, [loadHistory, recordingOptions, setPreview, startRecording, t]);
+  }, [beginCaptureSelection, loadHistory, setPreview]);
 
   useEffect(() => {
     if (isRecording || status === "processing") {
@@ -133,36 +142,28 @@ export default function ScreenRecorder() {
     return () => window.removeEventListener("focus", onFocus);
   }, [loadHistory, syncRecordingStatus]);
 
-  const beginAreaSelect = useCallback(async () => {
-    setLocalError(null);
-    const permErr = await ensureScreenPermission(
-      t("screencap.permission", "Screen Recording permission is required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx."),
-    );
-    if (permErr) {
-      setLocalError(permErr);
-      return;
-    }
-    if (!isTauriRuntime()) {
-      setLocalError(t("screencap.select.needsApp", "Region select requires the Qx desktop app."));
-      return;
-    }
-    try {
-      // Persist options so the picker confirm path can re-read if needed;
-      // confirm_region_select currently uses defaults unless we pass them later.
-      localStorage.setItem("qx.screencap.options", JSON.stringify(recordingOptions));
-      await invoke("screencap_begin_region_select");
-    } catch (e) {
-      setLocalError(String(e));
-    }
-  }, [recordingOptions, t]);
+  const beginAreaSelect = useCallback(
+    () => beginCaptureSelection("recording"),
+    [beginCaptureSelection],
+  );
+
+  const beginScreenshot = useCallback(
+    () => beginCaptureSelection("screenshot"),
+    [beginCaptureSelection],
+  );
+
+  const togglePinnedControls = useCallback(() => {
+    setControlsPinned((current) => {
+      const next = !current;
+      saveCaptureControlsPinned(next);
+      return next;
+    });
+  }, []);
 
   const handleStart = async () => {
     setLocalError(null);
-    const permErr = await ensureScreenPermission(
-      t("screencap.permission", "Screen Recording permission is required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx."),
-    );
-    if (permErr) {
-      setLocalError(permErr);
+    if (!isTauriRuntime()) {
+      setLocalError(t("screencap.select.needsApp", "Screen capture requires the Qx desktop app."));
       return;
     }
     await startRecording(area, recordingOptions);
@@ -200,7 +201,14 @@ export default function ScreenRecorder() {
   const readyActions = useMemo<QxShellAction[]>(
     () => [
       { label: t("screencap.start", "Start Recording"), kbd: "Enter", onClick: () => void handleStart() },
+      { label: t("screencap.screenshot", "Take Screenshot"), onClick: () => void beginScreenshot() },
       { label: t("screencap.selectArea", "Select Area"), kbd: "CmdOrCtrl+Shift+A", onClick: () => void beginAreaSelect() },
+      {
+        label: controlsPinned
+          ? t("screencap.controls.unpin", "Hide Persistent Capture Island")
+          : t("screencap.controls.pin", "Keep Capture Island Visible"),
+        onClick: togglePinnedControls,
+      },
       {
         label: t("screencap.clearArea", "Clear Area"),
         disabled: !area,
@@ -211,7 +219,7 @@ export default function ScreenRecorder() {
         onClick: () => setArea(null),
       },
     ],
-    [area, beginAreaSelect, t],
+    [area, beginAreaSelect, beginScreenshot, controlsPinned, t, togglePinnedControls],
   );
 
   const doneActions = useMemo<QxShellAction[]>(
@@ -509,7 +517,7 @@ export default function ScreenRecorder() {
                   {t("screencap.configuration", "Configuration")}
                 </div>
                 <div className="qx-detail-meta" style={{ marginBottom: 12 }}>
-                  {t("screencap.configurationHint", "Capture the primary display (or a region) directly to H.264 video. Convert to GIF only when you need it.")}
+                  {t("screencap.configurationHint", "Capture screenshots or record any display. Region selection follows the display under your pointer.")}
                 </div>
                 <div className="qx-screencap-options">
                   <label>
@@ -568,6 +576,14 @@ export default function ScreenRecorder() {
                   <button onClick={() => void beginAreaSelect()} className="qx-command-button" type="button">
                     {t("screencap.selectArea", "Select Area")}
                   </button>
+                  <button onClick={() => void beginScreenshot()} className="qx-command-button" type="button">
+                    {t("screencap.screenshot", "Take Screenshot")}
+                  </button>
+                  <button onClick={togglePinnedControls} className="qx-command-button" type="button">
+                    {controlsPinned
+                      ? t("screencap.controls.unpinShort", "Hide Capture Island")
+                      : t("screencap.controls.pinShort", "Show Capture Island")}
+                  </button>
                   {area && (
                     <LinkButton onClick={() => setArea(null)}>
                       {t("screencap.clearArea", "Clear Area")}
@@ -581,7 +597,7 @@ export default function ScreenRecorder() {
                   </div>
                 ) : (
                   <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
-                    {t("screencap.fullSelectHint", "Full primary display · Select Area opens a transparent overlay to draw a region in place")}
+                    {t("screencap.fullSelectHint", "Full display under pointer · Select Area works on built-in and external displays")}
                   </div>
                 )}
               </div>

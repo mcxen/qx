@@ -534,8 +534,8 @@ fn default_quick_entries() -> Vec<QuickEntryConfig> {
         ("rss", "RSS Reader", "Feeds and articles"),
         (
             "screencap",
-            "Screen Recording",
-            "MP4/MOV capture with optional GIF conversion",
+            "Screen Capture",
+            "Screenshots and MP4/MOV capture with optional GIF conversion",
         ),
         ("v2ex", "V2EX", "Latest and hot topics"),
         ("weather", "Weather", "Current conditions and forecast"),
@@ -643,6 +643,13 @@ impl Default for Settings {
             "record_gif".to_string(),
             ShortcutBinding {
                 key: "Alt+G".to_string(),
+                enabled: false,
+            },
+        );
+        shortcuts.insert(
+            "capture_screenshot".to_string(),
+            ShortcutBinding {
+                key: "Alt+Shift+S".to_string(),
                 enabled: false,
             },
         );
@@ -932,10 +939,33 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
     }
 
     if settings.builtin_modules.is_enabled("screencap") {
+        if let Some(key) = shortcut_for(settings, "capture_screenshot") {
+            gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
+                if event.state() == ShortcutState::Pressed {
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = crate::screencap::screencap_begin_capture_select(
+                            app,
+                            "screenshot".to_string(),
+                        )
+                        .await;
+                    });
+                }
+            })
+            .map_err(|e| format!("register capture_screenshot shortcut: {e}"))?;
+            registered.insert(key);
+        }
         if let Some(key) = shortcut_for(settings, "record_gif") {
             gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
                 if event.state() == ShortcutState::Pressed {
-                    toggle_route(app, "screencap");
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = crate::screencap::screencap_begin_capture_select(
+                            app,
+                            "recording".to_string(),
+                        )
+                        .await;
+                    });
                 }
             })
             .map_err(|e| format!("register record_gif shortcut: {e}"))?;

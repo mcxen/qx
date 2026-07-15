@@ -50,9 +50,9 @@ export default function GifHistory() {
           }}
         >
           <div style={{ color: "var(--color-text-tertiary)", fontSize: 13 }}>
-            {t("screencap.history.empty", "No recordings yet.")}
+            {t("screencap.history.empty", "No captures yet.")}
             <br />
-            {t("screencap.history.emptyHint", "Start a capture to see videos here.")}
+            {t("screencap.history.emptyHint", "Take a screenshot or start recording to see it here.")}
           </div>
         </div>
       </div>
@@ -128,7 +128,7 @@ export default function GifHistory() {
                   marginTop: 2,
                 }}
               >
-                {entry.width}×{entry.height} · {formatDuration(entry.duration_ms)} ·{" "}
+                {entry.width}×{entry.height} · {entry.duration_ms > 0 ? formatDuration(entry.duration_ms) : t("screencap.screenshot", "Screenshot")} ·{" "}
                 {formatTimestamp(entry.created_at, locale)}
               </div>
             </div>

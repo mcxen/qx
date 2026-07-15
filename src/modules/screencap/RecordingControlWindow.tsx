@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import type { RecordingSnapshot } from "./store";
+import { requestCaptureSelection, type CaptureMode, type RecordingSnapshot } from "./store";
 import RecordingTransport from "./RecordingTransport";
+import { Camera, Circle, PanelBottom, X } from "lucide-react";
+import { useT } from "../../i18n";
+import { saveCaptureControlsPinned } from "./preferences";
 
 export default function RecordingControlWindow() {
+  const t = useT();
   const [snapshot, setSnapshot] = useState<RecordingSnapshot | null>(null);
   const [stopping, setStopping] = useState(false);
 
@@ -44,15 +48,49 @@ export default function RecordingControlWindow() {
     await invoke<void>("screencap_return_to_main").catch(() => {});
   };
 
+  const beginCapture = async (mode: CaptureMode) => {
+    await requestCaptureSelection(mode).catch(() => {});
+  };
+
+  const closePinnedControls = async () => {
+    saveCaptureControlsPinned(false);
+    await invoke("screencap_set_controls_pinned", { pinned: false }).catch(() => {});
+  };
+
+  const recordingActive = Boolean(snapshot?.isRecording || snapshot?.phase === "processing");
+
   return (
     <main className="qx-recording-control-window" data-tauri-drag-region>
-      <RecordingTransport
-        host="floating"
-        snapshot={snapshot}
-        stopping={stopping}
-        onTransfer={returnToMain}
-        onStop={stop}
-      />
+      {recordingActive ? (
+        <RecordingTransport
+          host="floating"
+          snapshot={snapshot}
+          stopping={stopping}
+          onTransfer={returnToMain}
+          onStop={stop}
+        />
+      ) : (
+        <div className="qx-recording-transport is-floating is-capture-launcher" data-tauri-drag-region>
+          <strong className="qx-recording-transport-state" data-tauri-drag-region>
+            {t("screencap.capture", "Capture")}
+          </strong>
+          <button className="qx-recording-transport-launch" type="button" onClick={() => void beginCapture("screenshot")}>
+            <Camera size={13} aria-hidden="true" />
+            <span>{t("screencap.screenshot", "Screenshot")}</span>
+          </button>
+          <button className="qx-recording-transport-launch is-record" type="button" onClick={() => void beginCapture("recording")}>
+            <Circle size={10} fill="currentColor" aria-hidden="true" />
+            <span>{t("screencap.record", "Record")}</span>
+          </button>
+          <span className="qx-recording-transport-divider" aria-hidden="true" />
+          <button className="qx-recording-transport-icon" type="button" onClick={() => void returnToMain()} aria-label={t("screencap.controls.dock", "Move into Qx")}>
+            <PanelBottom size={14} />
+          </button>
+          <button className="qx-recording-transport-icon" type="button" onClick={() => void closePinnedControls()} aria-label={t("common.close", "Close")}>
+            <X size={14} />
+          </button>
+        </div>
+      )}
     </main>
   );
 }

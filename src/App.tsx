@@ -42,6 +42,7 @@ import { useT } from "./i18n";
 import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./lib/logger";
 import { getQxDesktopPlatform, isImeCompositionEvent } from "./utils/keyboard";
 import { isBuiltinModuleEnabled } from "./modules/moduleAvailability";
+import { captureControlsPinned } from "./modules/screencap/preferences";
 import "./App.css";
 
 const ClipboardPanel = lazy(() => import("./modules/clipboard/ClipboardPanel"));
@@ -83,7 +84,7 @@ interface QxUpdateInfo {
 
 const MODULE_LABEL_KEYS: Record<string, { key: string; fallback: string }> = {
   clipboard: { key: "clipboard.title", fallback: "Clipboard History" },
-  screencap: { key: "launcher.screencap", fallback: "Screen Recording" },
+  screencap: { key: "launcher.screencap", fallback: "Screen Capture" },
   rss: { key: "launcher.rss", fallback: "RSS Reader" },
   v2ex: { key: "launcher.v2ex", fallback: "V2EX" },
   weather: { key: "launcher.weather", fallback: "Weather" },
@@ -628,6 +629,13 @@ function App() {
   useEffect(() => {
     if (!settingsLoaded) void loadSettings();
   }, [settingsLoaded, loadSettings]);
+
+  useEffect(() => {
+    if (!settingsLoaded || !isTauriRuntime()) return;
+    const pinned = captureControlsPinned()
+      && settings.builtin_modules?.modules?.screencap !== false;
+    void invoke("screencap_set_controls_pinned", { pinned }).catch(() => {});
+  }, [settings.builtin_modules?.modules?.screencap, settingsLoaded]);
 
   useEffect(() => {
     configureQxLogger({

@@ -55,7 +55,7 @@ Qx/
 │       ├── main.rs               # 入口
 │       ├── apps.rs               # macOS 应用搜索
 │       ├── clipboard.rs          # 剪贴板监听 + SQLite 持久化
-│       ├── screencap.rs          # 屏幕录制 (scrap + gifski)
+│       ├── screencap/            # 截图与屏幕录制（命令编排、共享类型、历史存储）
 │       ├── macro_recorder.rs     # 宏捕捉与回放 (rdev + enigo)
 │       ├── diagnostics.rs        # 诊断日志与日志路径
 │       ├── display_monitor.rs    # 显示器插拔监听

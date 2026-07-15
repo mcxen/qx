@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import { DEFAULT_RECORDING_OPTIONS } from "./preferences";
 
 export interface ScreencapEntry {
   id: number;
@@ -16,6 +17,7 @@ export interface RecordArea {
   y: number;
   w: number;
   h: number;
+  monitorId?: number | null;
 }
 
 export interface RecordingOptions {
@@ -25,12 +27,12 @@ export interface RecordingOptions {
   resolution: "720p" | "1080p" | "native";
 }
 
-export const DEFAULT_RECORDING_OPTIONS: RecordingOptions = {
-  outputFormat: "mp4",
-  fps: 24,
-  quality: "balanced",
-  resolution: "1080p",
-};
+export type CaptureMode = "screenshot" | "recording";
+
+/** Shared capture-selection port used by the main module and floating island. */
+export function requestCaptureSelection(mode: CaptureMode): Promise<void> {
+  return invoke("screencap_begin_capture_select", { mode });
+}
 
 export type RecordingStatus = "idle" | "recording" | "processing" | "done" | "error";
 
@@ -43,6 +45,7 @@ export interface RecordingSnapshot {
   outputPath: string | null;
   error: string | null;
   controlsVisible: boolean;
+  controlsPinned: boolean;
 }
 
 interface ScreencapStore {

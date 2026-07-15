@@ -41,7 +41,7 @@
 
 | 文件 | 依赖 crate | 说明 |
 |---|---|---|
-| `screencap.rs` | `scrap` + `gifski` | 后台线程 BGRA 抓帧 → gifski 编码。停止时 flush 到 `~/.qx/gifs/`，写 `screencap_history.db` |
+| `screencap/` | `xcap` + OpenH264 + `gifski` | 按鼠标所在显示器（含外接屏）截图或区域/全屏录制；`mod.rs` 编排命令，`types.rs` 复用数据模型，`storage.rs` 管理 PNG/MP4/MOV/GIF 共用历史库；视频可按需转 GIF，空闲捕获控制条可常驻外显。 |
 | `ocr.rs` | 内建轻量 OCR (`~/.oar` 存模型) | PP-OCRv6 tiny/small/medium 下载 + 增量校验 |
 | `macro_recorder.rs` | `rdev` + `enigo` | 记录键鼠事件到 `~/.qx/macros.db`；replay 通过 `enigo` 模拟 |
 

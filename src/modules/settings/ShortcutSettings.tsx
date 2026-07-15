@@ -16,6 +16,7 @@ const DEFAULT_GLOBAL_KEYS: Record<string, string> = {
   toggle_window: "Alt+Shift+Space",
   clipboard: "Alt+V",
   record_gif: "Alt+G",
+  capture_screenshot: "Alt+Shift+S",
   rss: "Alt+R",
 };
 
@@ -85,7 +86,12 @@ export default function ShortcutSettings() {
                       {t("shortcuts.desc.toggle_window", "Show or hide Qx while preserving the current module and view.")}
                     </div>
                   )}
-                  {id !== "toggle_launcher" && id !== "toggle_window" && !issue && (
+                  {(id === "capture_screenshot" || id === "record_gif") && !issue && (
+                    <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
+                      {t("shortcuts.desc.capture", "Start area selection immediately on the display under the pointer.")}
+                    </div>
+                  )}
+                  {id !== "toggle_launcher" && id !== "toggle_window" && id !== "capture_screenshot" && id !== "record_gif" && !issue && (
                     <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
                       {t("shortcuts.desc.module", "Open this module; press again on the same module to hide Qx.")}
                     </div>

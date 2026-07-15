@@ -33,6 +33,66 @@
   pointer-events: none;
 }
 
+.qx-region-picker-rect.is-selected {
+  cursor: move;
+  pointer-events: auto;
+}
+
+.qx-region-picker-rect.is-tool-text,
+.qx-region-picker-rect.is-tool-arrow {
+  cursor: crosshair;
+}
+
+.qx-region-picker-annotations {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.qx-region-picker-rect.is-tool-text .qx-region-picker-annotations,
+.qx-region-picker-rect.is-tool-arrow .qx-region-picker-annotations {
+  pointer-events: auto;
+}
+
+.qx-region-picker-text-input {
+  position: absolute;
+  z-index: 3;
+  width: 180px;
+  height: 28px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 6px;
+  outline: none;
+  background: rgba(20, 20, 22, 0.9);
+  color: #fff;
+  padding: 0 8px;
+  font: 600 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  user-select: text;
+}
+
+.qx-region-picker-text-input:focus {
+  border-color: #5b8cff;
+  box-shadow: 0 0 0 2px rgba(91, 140, 255, 0.28);
+}
+
+.qx-region-picker-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #5b8cff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.32);
+}
+
+.qx-region-picker-handle.is-nw { left: -7px; top: -7px; cursor: nwse-resize; }
+.qx-region-picker-handle.is-ne { right: -7px; top: -7px; cursor: nesw-resize; }
+.qx-region-picker-handle.is-sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
+.qx-region-picker-handle.is-se { right: -7px; bottom: -7px; cursor: nwse-resize; }
+
 .qx-region-picker-size {
   position: absolute;
   padding: 2px 8px;
@@ -56,6 +116,69 @@
   font-weight: 600;
   pointer-events: none;
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.75);
+}
+
+.qx-region-picker-hint.is-tool-hint {
+  top: auto;
+  bottom: 28px;
+}
+
+.qx-region-picker-toolbar {
+  position: absolute;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 9px;
+  background: rgba(22, 22, 24, 0.9);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  transform: translateX(-50%);
+}
+
+.qx-region-picker-toolbar > span {
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.qx-region-picker-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.82);
+  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.qx-region-picker-toolbar button:hover,
+.qx-region-picker-toolbar button.is-active {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.qx-region-picker-toolbar button.is-record {
+  color: #ff6961;
+}
+
+.qx-region-picker-toolbar button.is-icon {
+  width: 28px;
+  padding: 0;
+}
+
+.qx-region-picker-toolbar button:disabled {
+  opacity: 0.38;
+  cursor: default;
 }
 
 .qx-recording-control-body {
@@ -169,7 +292,8 @@
 }
 
 .qx-recording-transport-icon,
-.qx-recording-transport-stop {
+.qx-recording-transport-stop,
+.qx-recording-transport-launch {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -182,6 +306,27 @@
   font: inherit;
   cursor: pointer;
   transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.qx-recording-transport.is-capture-launcher {
+  gap: 6px;
+  padding-left: 10px;
+}
+
+.qx-recording-transport.is-capture-launcher .qx-recording-transport-state {
+  margin-right: auto;
+}
+
+.qx-recording-transport-launch {
+  gap: 5px;
+  padding: 0 8px;
+  color: var(--qx-text-secondary);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.qx-recording-transport-launch.is-record {
+  color: var(--qx-danger);
 }
 
 .qx-recording-transport-icon {
@@ -202,7 +347,8 @@
 }
 
 .qx-recording-transport-icon:hover:not(:disabled),
-.qx-recording-transport-stop:hover:not(:disabled) {
+.qx-recording-transport-stop:hover:not(:disabled),
+.qx-recording-transport-launch:hover:not(:disabled) {
   background: var(--qx-bg-component-3);
   transform: translateY(-1px);
 }

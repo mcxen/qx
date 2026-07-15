@@ -6,11 +6,11 @@ mod display_monitor;
 mod external_displays;
 mod file_search;
 mod floating_panel;
-mod island_window;
 mod g4f;
 mod github_calendar;
 mod history;
 mod http_client;
+mod island_window;
 mod macro_recorder;
 mod marketplace;
 mod ocr;
@@ -652,10 +652,13 @@ pub fn run() {
             screencap::stop_recording,
             screencap::recording_status,
             screencap::screencap_begin_region_select,
+            screencap::screencap_begin_capture_select,
             screencap::screencap_cancel_region_select,
             screencap::screencap_confirm_region_select,
+            screencap::screencap_region_select_status,
             screencap::screencap_show_controls,
             screencap::screencap_hide_controls,
+            screencap::screencap_set_controls_pinned,
             screencap::screencap_return_to_main,
             screencap::convert_recording_to_gif,
             screencap::save_gif,

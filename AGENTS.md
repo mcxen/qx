@@ -51,6 +51,28 @@ becoming vague. Apply SOLID at the port boundary:
 **Do not** fix missing host capability by rewriting each external plugin as a
 one-off native fork. Fix the host or converter contract, then re-convert.
 
+### Module Decomposition (required)
+
+- Prevent large, multi-purpose files during feature development. Split by stable
+  responsibility as the feature grows; do not wait until a file becomes a God
+  module before refactoring it.
+- A feature that contains more than one substantial concern should use a module
+  directory. Keep its public entry point or command facade small, and separate
+  reusable types, state, storage, platform/window integration, media/network
+  processing, and tests where those concerns exist.
+- Treat roughly 500 lines or three independent reasons to change as a mandatory
+  decomposition review signal. Line count alone is not the design goal, but new
+  behavior must not keep accumulating in an already oversized file.
+- Extract shared behavior into a focused service/helper and reuse it. Do not copy
+  implementations between commands, views, platforms, or capture modes merely
+  to keep work local.
+- Preserve stable public interfaces while reorganizing internals. Tauri command
+  names, serialized models, frontend ports, and platform contracts should not
+  change solely because implementation files are split.
+- When modifying an oversized legacy file, do not add another unrelated concern.
+  Extract the concern being changed in the same task when it can be done safely,
+  and keep tests colocated with or clearly scoped to the extracted module.
+
 ## Architecture
 
 Qx is a Tauri desktop application with a React/TypeScript presentation layer and

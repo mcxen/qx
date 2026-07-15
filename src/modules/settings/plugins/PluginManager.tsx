@@ -869,10 +869,10 @@ function MarketplaceTab({
     setInstallingId(entry.id);
     setInstallStatus(null);
     try {
-      const result = await invoke<{ path: string }>("download_plugin", {
+      const path = await invoke<string>("download_plugin", {
         url: entry.download_url,
       });
-      await invoke("install_plugin", { path: result.path });
+      await invoke("install_plugin", { path });
       onInstallComplete();
       setInstallStatus({
         tone: "success",
