@@ -79,6 +79,8 @@ export const useScreencapStore = create<ScreencapStore>((set, get) => ({
     set({ error: null });
     try {
       await invoke("start_recording", { area: area ?? null, options });
+      // Ensure the floating island control strip is visible (backend also opens it).
+      await invoke("screencap_show_controls").catch(() => {});
       await get().syncRecordingStatus();
     } catch (e) {
       set({ isRecording: false, status: "error", error: String(e) });

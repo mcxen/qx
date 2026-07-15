@@ -224,24 +224,60 @@ fn set_recording_ui_protected(app: &AppHandle, protected: bool) {
     }
 }
 
+const CONTROLS_LOGICAL_W: f64 = 340.0;
+const CONTROLS_LOGICAL_H: f64 = 36.0;
+
+/// Bottom-center Dynamic Island style placement on the primary work area.
 fn position_controls(app: &AppHandle) {
     let Some(controls) = app.get_webview_window(CONTROL_LABEL) else {
         return;
     };
     let monitor = app
-        .get_webview_window(crate::floating_panel::MAIN_LABEL)
-        .and_then(|main| main.current_monitor().ok().flatten())
+        .primary_monitor()
+        .ok()
+        .flatten()
+        .or_else(|| {
+            app.get_webview_window(crate::floating_panel::MAIN_LABEL)
+                .and_then(|main| main.current_monitor().ok().flatten())
+        })
         .or_else(|| controls.current_monitor().ok().flatten());
     let Some(monitor) = monitor else {
         return;
     };
     let work = monitor.work_area();
     let scale = monitor.scale_factor().max(1.0);
-    let width = (340.0 * scale).round() as i32;
-    let margin = (24.0 * scale).round() as i32;
-    let x = work.position.x + work.size.width as i32 - width - margin;
-    let y = work.position.y + margin;
+    let width = (CONTROLS_LOGICAL_W * scale).round() as i32;
+    let height = (CONTROLS_LOGICAL_H * scale).round() as i32;
+    let margin = (20.0 * scale).round() as i32;
+    // Center-bottom of the usable work area (island control strip).
+    let x = work.position.x + (work.size.width as i32 - width) / 2;
+    let y = work.position.y + work.size.height as i32 - height - margin;
+    let _ = controls.set_size(PhysicalSize::new(width.max(1) as u32, height.max(1) as u32));
     let _ = controls.set_position(PhysicalPosition::new(x, y));
+}
+
+#[cfg(target_os = "macos")]
+fn promote_controls_window(controls: &tauri::WebviewWindow) {
+    use objc2::msg_send;
+    use objc2::runtime::AnyObject;
+    use objc2_app_kit::NSWindowCollectionBehavior;
+    let Ok(ptr) = controls.ns_window() else {
+        return;
+    };
+    let ns_window = ptr as *mut AnyObject;
+    if ns_window.is_null() {
+        return;
+    }
+    unsafe {
+        // 3 == NSFloatingWindowLevel — above normal app windows while recording.
+        let _: () = msg_send![ns_window, setLevel: 3isize];
+        let behavior = NSWindowCollectionBehavior::CanJoinAllSpaces
+            | NSWindowCollectionBehavior::FullScreenAuxiliary
+            | NSWindowCollectionBehavior::IgnoresCycle;
+        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+        let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
+        let _: () = msg_send![ns_window, orderFrontRegardless];
+    }
 }
 
 fn show_recording_controls_internal(app: &AppHandle) -> Result<(), String> {
@@ -252,8 +288,8 @@ fn show_recording_controls_internal(app: &AppHandle) -> Result<(), String> {
             WebviewUrl::App("index.html?view=recording-controls".into()),
         )
         .title("Qx Recording Controls")
-        .inner_size(340.0, 36.0)
-        .min_inner_size(340.0, 36.0)
+        .inner_size(CONTROLS_LOGICAL_W, CONTROLS_LOGICAL_H)
+        .min_inner_size(CONTROLS_LOGICAL_W, CONTROLS_LOGICAL_H)
         .resizable(false)
         .maximizable(false)
         .minimizable(false)
@@ -265,6 +301,7 @@ fn show_recording_controls_internal(app: &AppHandle) -> Result<(), String> {
         .focused(false)
         .accept_first_mouse(true)
         .content_protected(true)
+        .visible(true)
         .build()
         .map_err(|error| format!("open recording controls: {error}"))?;
     }
@@ -273,10 +310,17 @@ fn show_recording_controls_internal(app: &AppHandle) -> Result<(), String> {
         .ok_or_else(|| "recording controls window is unavailable".to_string())?;
     let _ = controls.set_content_protected(true);
     let _ = controls.set_always_on_top(true);
+    let _ = controls.set_ignore_cursor_events(false);
     position_controls(app);
     controls
         .show()
         .map_err(|error| format!("show recording controls: {error}"))?;
+    #[cfg(target_os = "macos")]
+    promote_controls_window(&controls);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = controls.set_focus();
+    }
     emit_recording_status(app);
     Ok(())
 }
@@ -892,11 +936,23 @@ pub async fn start_recording(
         status.output_path = None;
         status.error = None;
     }
-    // Hide picker + main shell so neither appears in the capture stream.
+    // Hide picker + main shell so neither appears in the capture stream,
+    // then always surface the floating island control strip.
     hide_region_picker_internal(&app);
     set_recording_ui_protected(&app, true);
     crate::floating_panel::hide(&app);
-    let _ = show_recording_controls_internal(&app);
+    // Brief yield so hide + capture thread settle before the island window maps.
+    std::thread::sleep(std::time::Duration::from_millis(40));
+    show_recording_controls_internal(&app).map_err(|error| {
+        format!("recording started but floating controls failed to open: {error}")
+    })?;
+    // Re-assert visibility once more (macOS Space / fullscreen races).
+    if let Some(controls) = app.get_webview_window(CONTROL_LABEL) {
+        position_controls(&app);
+        let _ = controls.show();
+        #[cfg(target_os = "macos")]
+        promote_controls_window(&controls);
+    }
     emit_recording_status(&app);
     Ok(())
 }
