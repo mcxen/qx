@@ -7,18 +7,44 @@ Before any code or documentation edit, read:
 1. `UI_SPEC.md` — current UI, theme, layout, interaction, and validation rules.
 2. `TASK.md` — current project tasks and known verification status.
 3. `AGENTS.md` — this operating guide.
-4. For **global shortcuts, panel show/hide, or Tauri `State` / `.manage()`**: `docs/shell-and-shortcuts.md`.
+4. `docs/architecture-principles.md` — SOLID, abstraction layers, interface contracts, doc duty.
+5. For **global shortcuts, panel show/hide, or Tauri `State` / `.manage()`**: `docs/shell-and-shortcuts.md`.
 
 If the request is UI-related, treat `UI_SPEC.md` as the source of truth. Do not invent alternate layout systems or component conventions.
+If the request changes **public interfaces or layer boundaries**, update docs in the same change.
 
 ## Working Rules
 
 - Preserve user or concurrent changes. Never revert unrelated dirty files.
-- Prefer existing patterns and local helper APIs over new abstractions.
+- Prefer existing patterns and local helper APIs over **new** abstractions.
+  When a new abstraction *is* required, design it as a narrow, stable port and
+  document it — see **Architecture Principles (SOLID)** below.
 - Keep edits scoped to the request.
+- **Maintain docs with the code.** Public interfaces, RPC/commands, permissions,
+  and layer boundaries must update the matching file under `docs/` or
+  `public/doc/` in the same change. Prefer intent and invariants over dumping
+  implementation detail.
 - Use `rg` / `rg --files` for search.
 - Use `apply_patch` for manual edits.
 - Do not introduce generated build artifacts, secrets, temp files, or unrelated formatting churn.
+
+## Architecture Principles (SOLID)
+
+Full write-up: [`docs/architecture-principles.md`](docs/architecture-principles.md).
+
+Qx interfaces and modules must stay **abstract enough to extend**, without
+becoming vague. Apply SOLID at the port boundary:
+
+| Letter | In this repo |
+|---|---|
+| **S** | One reason to change per module (`QxShell` = chrome; feature view = domain UI; Rust module = domain service). |
+| **O** | Extend via registration / adapters (builtin catalog, island modes, converter shims, host capabilities) — do not grow core `switch` forests for every feature. |
+| **L** | Same command / context / session shape on every platform and for real vs unavailable plugin contexts. |
+| **I** | Narrow surfaces: capability permissions, focused host APIs, per-package shims — no God context. |
+| **D** | Features depend on stable ports (`invoke`, plugin context, island hostApi, `useT`); OS and iframe details stay below the port. |
+
+**Do not** fix missing host capability by rewriting each external plugin as a
+one-off native fork. Fix the host or converter contract, then re-convert.
 
 ## Architecture
 

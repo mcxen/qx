@@ -65,6 +65,14 @@ must ship or embed the same pipeline for full parity.
 **Keep Raycast ports as external plugins. Fix missing behavior in the Qx host
 and converter shims — do not rewrite each port as a one-off native plugin.**
 
+This follows project SOLID ports (see `docs/architecture-principles.md`):
+
+- **O/D**: extend host capabilities and shims; plugins depend on stable context
+  methods, not OS details.
+- **I**: declare only needed permissions (`http`, `invoke:plugin_file_*`, …).
+- **L**: same fetch/file/AppleScript semantics across app versions within
+  `min_app_version`.
+
 | Layer | Responsibility |
 |-------|----------------|
 | Host (`plugin_http_fetch`, runtime `fetch`) | Text + **binary** HTTP (`bodyBase64`, `arrayBuffer`) |
