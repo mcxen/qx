@@ -11,7 +11,7 @@ import { Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useLocale, useT } from "../../i18n";
 import { getQxShortcutPreset } from "../../utils/keyboard";
-import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
+import { setPendingModuleLaunch, takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import { pasteClipboardEntry, writeClipboardEntry } from "./actions";
 import {
   classify,
@@ -367,6 +367,36 @@ export default function ClipboardPanel() {
     window.setTimeout(() => setStatus(""), 1200);
   };
 
+  /** Create a new Text Toolbox file with this entry’s text and open documents. */
+  const importToTextTool = async (item?: ClipboardEntry) => {
+    if (!item?.text?.trim()) {
+      setStatus(t("clipboard.importDocs.needText", "Only text clipboard items can be imported"));
+      window.setTimeout(() => setStatus(""), 1600);
+      return;
+    }
+    const text = item.text;
+    if (text.length > 1_500_000) {
+      setStatus(t("clipboard.importDocs.tooLarge", "Text too large for Text Toolbox (~1.5 MB max)"));
+      window.setTimeout(() => setStatus(""), 1600);
+      return;
+    }
+    try {
+      setStatus(t("clipboard.importDocs.working", "Opening Text Toolbox…"));
+      setPendingModuleLaunch({
+        tab: "documents",
+        surface: "import",
+        params: {
+          content: text,
+          title: text.split(/\r?\n/).find((line) => line.trim())?.trim().slice(0, 48) ?? "",
+        },
+      });
+      setTab("documents");
+    } catch (err) {
+      setStatus(String(err || t("clipboard.importDocs.failed", "Import failed")));
+      window.setTimeout(() => setStatus(""), 1600);
+    }
+  };
+
   const { onKeyDown: escKeyDown } = useEscBack({
     inner: { active: detailOpen, close: () => setDetailOpen(false) },
     query: { active: query.length > 0, clear: () => setQuery("") },
@@ -462,6 +492,13 @@ export default function ClipboardPanel() {
         tone: "danger",
         onClick: () => void deleteItem(selectedItem),
       },
+      {
+        label: t("clipboard.importDocs", "Import to Text Toolbox"),
+        kbd: "CmdOrCtrl+Shift+T",
+        menuKey: "t",
+        disabled: !selectedItem?.text?.trim(),
+        onClick: () => void importToTextTool(selectedItem),
+      },
     ];
 
     // Context-sensitive media tools — only when the current item can run them.
@@ -519,6 +556,7 @@ export default function ClipboardPanel() {
     selectedItem,
     t,
   ]);
+  // importToTextTool / paste / pin closed over selectedItem — intentional
 
   let flatIndex = 0;
 

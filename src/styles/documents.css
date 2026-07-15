@@ -229,3 +229,165 @@
     grid-template-columns: minmax(150px, 190px) minmax(0, 1fr);
   }
 }
+
+/* Clipboard history insert picker (editor) */
+.qx-docs-workspace-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.qx-docs-clip-trigger {
+  border: 1px solid var(--qx-border-1);
+  border-radius: 6px;
+  background: var(--qx-overlay-1);
+  color: var(--qx-text-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.qx-docs-clip-trigger:hover:not(:disabled) {
+  color: var(--qx-text-primary);
+  background: var(--qx-bg-component-3);
+}
+
+.qx-docs-clip-trigger:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.qx-docs-editor-stack {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.qx-docs-clip-picker {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: min(360px, calc(100% - 24px));
+  max-height: min(320px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--qx-bg-component-1) 96%, transparent);
+  box-shadow:
+    0 12px 32px color-mix(in srgb, var(--qx-shadow) 22%, transparent),
+    inset 0 1px 0 var(--qx-shell-chrome-highlight);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  overflow: hidden;
+}
+
+.qx-docs-clip-picker-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px 6px;
+  border-bottom: 1px solid var(--qx-border-1);
+}
+
+.qx-docs-clip-picker-head strong {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--qx-text-primary);
+}
+
+.qx-docs-clip-picker-hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+}
+
+.qx-docs-clip-picker-close {
+  border: 1px solid var(--qx-border-1);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--qx-text-tertiary);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  cursor: pointer;
+}
+
+.qx-docs-clip-picker-search {
+  margin: 8px 10px 6px;
+  height: 28px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 7px;
+  background: var(--qx-overlay-1);
+  color: var(--qx-text-primary);
+  font: inherit;
+  font-size: 12px;
+  padding: 0 10px;
+  outline: none;
+}
+
+.qx-docs-clip-picker-search:focus {
+  border-color: color-mix(in srgb, var(--qx-accent) 45%, var(--qx-border-1));
+}
+
+.qx-docs-clip-picker-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 6px 8px;
+}
+
+.qx-docs-clip-picker-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 7px 8px;
+  cursor: pointer;
+}
+
+.qx-docs-clip-picker-item:hover,
+.qx-docs-clip-picker-item.is-active {
+  background: color-mix(in srgb, var(--qx-accent) 12%, var(--qx-bg-component-2));
+}
+
+.qx-docs-clip-picker-preview {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.qx-docs-clip-picker-meta {
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.qx-docs-clip-picker-empty {
+  padding: 18px 10px;
+  text-align: center;
+  color: var(--qx-text-tertiary);
+  font-size: 12px;
+}
