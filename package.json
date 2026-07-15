@@ -1,12 +1,13 @@
 {
   "name": "qx",
   "private": true,
-  "version": "0.5.17",
+  "version": "0.5.18",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "test:shell-navigation": "node scripts/check-qx-shell-navigation.mjs",
+    "test:island": "node scripts/check-qx-island.mjs",
     "docs:check": "node scripts/check-docs.mjs",
     "convert:raycast": "node scripts/convert-raycast-extension.mjs",
     "prepare:search-tools": "node scripts/prepare-search-tools.mjs",
