@@ -991,6 +991,8 @@ function App() {
       const wasFocused = windowFocusedRef.current;
       windowFocusedRef.current = focused;
       setVisible(focused);
+      // Prefer native hide (lib.rs on_window_event) as the source of truth.
+      // Keep a webview fallback for environments where the native event is missed.
       if (!focused && settings.general.autoHideOnBlur) {
         // First-launch / panel activation can briefly report blur; don't hide yet.
         if (Date.now() < ignoreBlurUntilRef.current) return;
@@ -1003,7 +1005,7 @@ function App() {
       if (focused) {
         // activate_app + make_key_window cause focus flicker; ignore blur briefly
         // so we don't hide mid-summon (that felt like a 1s "dead" double-tap).
-        ignoreBlurUntilRef.current = Math.max(ignoreBlurUntilRef.current, Date.now() + 450);
+        ignoreBlurUntilRef.current = Math.max(ignoreBlurUntilRef.current, Date.now() + 280);
         if (searchFadeTimerRef.current) clearTimeout(searchFadeTimerRef.current);
         setIsSearching(false);
         setIsSearchSettling(false);

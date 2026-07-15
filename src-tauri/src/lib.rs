@@ -382,13 +382,13 @@ pub fn run() {
             if window.label() != floating_panel::MAIN_LABEL {
                 return;
             }
-            #[cfg(target_os = "windows")]
+            // Hide on focus loss when auto-hide is enabled.
+            // - Windows: WebView2 outside-click focus can race; native event is required.
+            // - macOS: accessory NSWindow focus notifications are not always delivered
+            //   reliably to the webview `onFocusChanged` listener, so hide here too.
             if matches!(event, tauri::WindowEvent::Focused(false))
                 && settings::read_settings().general.auto_hide_on_blur
             {
-                // WebView2 focus notifications can arrive after a topmost,
-                // transparent HWND has already consumed an outside click.
-                // Hide from the native event so the selected app can surface.
                 floating_panel::hide_and_restore_focus(&window.app_handle());
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

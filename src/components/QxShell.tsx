@@ -16,6 +16,7 @@ import {
   matchesQxShortcut,
   shouldIgnoreBareShortcut,
 } from "../utils/keyboard";
+import QxBottomIsland from "./QxBottomIsland";
 import QxIslandDockSlot from "../island/surface/QxIslandDockSlot";
 import { useShellIslandShim } from "../island/compat/useShellIslandShim";
 import type { IslandPriority, IslandSource } from "../island/types";
@@ -533,7 +534,19 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
         <div className="qx-shell-left">
           <ShellActionButton action={leftAction} variant="escape" />
         </div>
-        <QxIslandDockSlot exception={customIsland} />
+        {/*
+          Docked island render order (reliable over store-only):
+          1) classified customIsland exception (recorder transport, home custom modes)
+          2) legacy island prop (shell status) — always paints even if session store fails
+          3) session store winner via QxIslandDockSlot
+        */}
+        {customIsland ? (
+          customIsland
+        ) : island ? (
+          <QxBottomIsland content={island} />
+        ) : (
+          <QxIslandDockSlot />
+        )}
         {hasRightActions ? (
           <div className="qx-shell-actions">
             <ShellActionButton action={visiblePrimaryAction} />

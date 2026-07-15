@@ -92,7 +92,8 @@ export default function Launcher({
     homeIslandDataBus.kick();
   }, [idleHome, appearance.home_island_mode, appearance.home_island_modes]);
 
-  // Launcher single-writer for home session
+  // Keep session store in sync for float/host consumers, but paint via props
+  // (QxShell island/customIsland) so a store glitch cannot blank the shell.
   useHomeIslandContribution(
     idleHome,
     idleHome ? resolvedHome : null,
@@ -106,7 +107,38 @@ export default function Launcher({
     },
   );
 
-  // Launcher shell sessions: loading / searching / results (priority task/location)
+  // Primary docked island content (props path — reliable).
+  const island =
+    loadingPhase === "loading-apps"
+      ? {
+          label: t("launcher.loading", "Loading apps..."),
+          detail: t("launcher.loading.detail", "Preparing application cache"),
+          activity: "bounce" as const,
+        }
+      : isSearchActivity
+        ? {
+            label: t("launcher.searching", "Searching"),
+            detail: query.trim(),
+            activity: (isSearchSettling ? "bounce-exit" : "bounce") as
+              | "bounce"
+              | "bounce-exit",
+          }
+        : results.length > 0
+          ? {
+              label: t("launcher.ready", "Search ready"),
+              detail: t("launcher.resultCount", "{n} results").replace(
+                "{n}",
+                String(results.length),
+              ),
+              progress: Math.min(100, Math.max(12, results.length * 12)),
+            }
+          : idleHome
+            ? (resolvedHome.shellContent ?? null)
+            : null;
+
+  const customIsland = idleHome ? resolvedHome.customNode : undefined;
+
+  // Mirror shell statuses into the session store (optional consumers / float).
   useEffect(() => {
     if (loadingPhase === "loading-apps") {
       islandHost.show({
@@ -197,7 +229,11 @@ export default function Launcher({
       title={t("launcher.title", "Qx Launcher")}
       className="launcher-shell"
       islandKey="launcher"
+      // Session store is updated separately; paint docked island via props so the
+      // main shell never depends solely on the island session layer.
       islandManagedExternally
+      island={island}
+      customIsland={customIsland}
       onKeyDown={onKeyDown}
       search={<SearchBar onKeyDown={handleLauncherKeyDown} embedded />}
       trailing={
