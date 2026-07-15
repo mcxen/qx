@@ -12,7 +12,13 @@ import { useEscBack } from "../../hooks/useEscBack";
 import { useLocale, useT } from "../../i18n";
 import { getQxShortcutPreset } from "../../utils/keyboard";
 import { setPendingModuleLaunch, takePendingModuleLaunch } from "../../search/moduleSurfaces";
-import { pasteClipboardEntry, writeClipboardEntry } from "./actions";
+import {
+  clearClipboardRestore,
+  ensureClipboardRestoreOnHide,
+  pasteClipboardEntry,
+  queueClipboardRestore,
+  writeClipboardEntry,
+} from "./actions";
 import {
   classify,
   dateKey,
@@ -178,7 +184,6 @@ export default function ClipboardPanel() {
   const [mediaProgress, setMediaProgress] = useState<MediaProgress | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const preserveSelectionId = useRef<string | null>(null);
-  const rowClickTimer = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   const filterLabel = (id: Filter) => t(FILTER_KEYS[id].key, FILTER_KEYS[id].fallback);
 
@@ -195,6 +200,7 @@ export default function ClipboardPanel() {
   };
 
   useEffect(() => {
+    ensureClipboardRestoreOnHide();
     loadHistory();
     // Try to read any image currently on the clipboard
     invoke("read_clipboard_image_now")
@@ -207,10 +213,6 @@ export default function ClipboardPanel() {
     return () => {
       unlisten.then((f) => f());
     };
-  }, []);
-
-  useEffect(() => () => {
-    if (rowClickTimer.current) window.clearTimeout(rowClickTimer.current);
   }, []);
 
   // Deep launch from main search: select a history item by id once list is ready.
@@ -227,9 +229,12 @@ export default function ClipboardPanel() {
     if (!pendingId || clipboardHistory.length === 0) return;
     const index = clipboardHistory.findIndex((item) => item.id === pendingId);
     if (index >= 0) {
+      const item = clipboardHistory[index];
       setSelected(index);
       setFilter("all");
       setQuery("");
+      // Deep-link into a history row is an explicit pick — restore on hide.
+      if (item) queueClipboardRestore(item);
     }
     pendingClipboardId.current = null;
   }, [clipboardHistory]);
@@ -373,9 +378,23 @@ export default function ClipboardPanel() {
     return date.toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" });
   };
 
+  const selectItem = (item: ClipboardEntry, index: number) => {
+    preserveSelectionId.current = item.id;
+    setSelected(index);
+    setDetailOpen(false);
+    if (editingId && editingId !== item.id) discardTextEdit();
+    // Do not write the system pasteboard while the shell is open — that reloads
+    // history (timestamp / copy_count) and jumps the list under the selection.
+    // Queue restore; flush when the main window loses focus / hides.
+    queueClipboardRestore(item);
+  };
+
   const copyItem = async (item?: ClipboardEntry) => {
     if (!item) return;
     try {
+      // Explicit Copy is intentional: write now, skip deferred restore.
+      clearClipboardRestore();
+      preserveSelectionId.current = item.id;
       await writeClipboardEntry(item);
       await loadHistory();
       setStatus(t("clipboard.copied", "Copied"));
@@ -712,7 +731,12 @@ export default function ClipboardPanel() {
       navigation={{
         index: selected,
         count: filtered.length,
-        onChange: (index) => { setSelected(index); setDetailOpen(false); },
+        onChange: (index) => {
+          setSelected(index);
+          setDetailOpen(false);
+          const item = filtered[index];
+          if (item) queueClipboardRestore(item);
+        },
         onOpen: () => setDetailOpen(true),
         onClose: () => setDetailOpen(false),
       }}
@@ -824,22 +848,8 @@ export default function ClipboardPanel() {
                   <button
                     key={item.id}
                     className={`qx-list-row${active ? " is-active" : ""}`}
-                    onClick={() => {
-                      preserveSelectionId.current = item.id;
-                      setSelected(index);
-                      setDetailOpen(false);
-                      if (editingId && editingId !== item.id) discardTextEdit();
-                      if (rowClickTimer.current) window.clearTimeout(rowClickTimer.current);
-                      rowClickTimer.current = window.setTimeout(() => {
-                        rowClickTimer.current = null;
-                        void copyItem(item);
-                      }, 180);
-                    }}
-                    onDoubleClick={() => {
-                      if (rowClickTimer.current) window.clearTimeout(rowClickTimer.current);
-                      rowClickTimer.current = null;
-                      beginTextEdit(item);
-                    }}
+                    onClick={() => selectItem(item, index)}
+                    onDoubleClick={() => beginTextEdit(item)}
                     role="option"
                     aria-selected={active}
                   >

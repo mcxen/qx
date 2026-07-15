@@ -182,7 +182,7 @@ tab = "plugin:*"   → PluginPanelViewport
 - Rust 端: `clipboard.rs` 负责监听、数据库和存储约束；`clipboard/history.rs`、`editing.rs`、`media.rs` 分别承载历史命令、文本编辑和文件媒体操作
 - SQLite 持久化: `clipboard.db`
 - 支持: 分类(link/code/long)、搜索、日期筛选、固定、计数、文本草稿编辑与另存
-- 交互: 单击条目写入系统剪贴板；双击文本进入草稿编辑；Enter 执行粘贴，⌘P 固定，⌘⌫ 删除
+- 交互: 单击 / 键盘选中只排队恢复条目，**主窗口失焦隐藏后再写入系统剪贴板**（避免 `record_clipboard_copy` 改 timestamp 导致列表在窗口仍打开时跳动）；显式 ⌘C 立即复制；双击文本进入草稿编辑；Enter 粘贴；⌘P 固定；⌘⌫ 删除
 
 ### 4.3 RSS 阅读器
 

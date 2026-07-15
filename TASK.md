@@ -1,5 +1,27 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Bugfix — 剪贴板选中延后写入系统剪贴板
+
+**状态**：已实现，等待运行态复核。
+
+### 问题
+
+- 单击历史条目会在约 180ms 后立刻 `writeClipboardEntry` + `record_clipboard_copy`。
+- `record_clipboard_copy` 更新 `timestamp` / `copy_count`，历史重载后列表在主窗口仍打开时跳动，选中与预览视觉不稳定。
+
+### 修复内容
+
+- 单击 / 键盘选中 / 模块 deep-link 只 `queueClipboardRestore`，不写系统剪贴板。
+- 主窗口失焦（隐藏）时 `flushClipboardRestore` 再回写系统剪贴板并记次。
+- 显式 ⌘C 仍立即复制；Enter 粘贴仍立即写入后 `plugin_perform_paste`（并清除 pending，避免隐藏时二次写入）。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [ ] macOS：选中条目列表不跳动；隐藏 Qx 后系统剪贴板为所选条目；⌘C / Enter 行为不变。
+- [ ] Windows 手动验证同上。
+
+
 ## Bugfix — 文本工具编辑键与 QxShell 导航抽象
 
 **状态**：已实现，等待发布包运行态复核。
