@@ -194,15 +194,41 @@ export function buildPluginRuntimeHtml(
         });
       }
 
+      function decodeBase64ToBytes(text) {
+        const binary = atob(String(text || ''));
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+        return bytes;
+      }
+
       function createPluginResponse(value) {
         const body = String(value?.body ?? '');
+        const bodyBase64 = value?.bodyBase64 || value?.body_base64 || '';
+        const headers = value?.headers || {};
+        function responseBytes() {
+          if (bodyBase64) return decodeBase64ToBytes(bodyBase64);
+          return new TextEncoder().encode(body);
+        }
         return {
           status: Number(value?.status ?? 0),
           ok: Boolean(value?.ok),
-          headers: value?.headers || {},
+          headers,
           body,
-          text: async () => body,
-          json: async () => JSON.parse(body),
+          bodyBase64,
+          binary: Boolean(value?.binary),
+          text: async () => {
+            if (body) return body;
+            return new TextDecoder().decode(responseBytes());
+          },
+          json: async () => JSON.parse(body || new TextDecoder().decode(responseBytes())),
+          arrayBuffer: async () => {
+            const bytes = responseBytes();
+            return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+          },
+          blob: async () => {
+            const type = headers['content-type'] || headers['Content-Type'] || '';
+            return new Blob([responseBytes()], type ? { type } : undefined);
+          },
         };
       }
 

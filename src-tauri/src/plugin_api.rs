@@ -799,11 +799,32 @@ fn default_timeout_ms() -> u64 {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HttpResponse {
     pub status: u16,
     pub ok: bool,
     pub headers: std::collections::BTreeMap<String, String>,
+    /// UTF-8 text body when the payload is valid UTF-8; empty for binary.
     pub body: String,
+    /// Always present raw response bytes (base64). Use for images / arrayBuffer.
+    pub body_base64: String,
+    pub binary: bool,
+}
+
+fn content_type_is_text(headers: &std::collections::BTreeMap<String, String>) -> bool {
+    let Some(raw) = headers
+        .get("content-type")
+        .or_else(|| headers.get("Content-Type"))
+    else {
+        return false;
+    };
+    let lower = raw.to_ascii_lowercase();
+    lower.starts_with("text/")
+        || lower.contains("application/json")
+        || lower.contains("application/xml")
+        || lower.contains("application/javascript")
+        || lower.contains("+json")
+        || lower.contains("+xml")
 }
 
 #[tauri::command]
@@ -854,13 +875,36 @@ pub async fn plugin_http_fetch(req: HttpFetchRequest) -> Result<HttpResponse, St
         }
     }
 
-    let body = resp.text().await.map_err(|e| format!("read body: {e}"))?;
+    let bytes = resp
+        .bytes()
+        .await
+        .map_err(|e| format!("read body: {e}"))?
+        .to_vec();
+    let body_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    let text_hint = content_type_is_text(&headers);
+    let (body, binary) = match String::from_utf8(bytes) {
+        Ok(text) => (text, false),
+        Err(err) => {
+            if text_hint {
+                // Lossy only when the server claimed text; otherwise keep body empty
+                // so callers use body_base64 / arrayBuffer instead of corrupted data.
+                (
+                    String::from_utf8_lossy(err.as_bytes()).into_owned(),
+                    true,
+                )
+            } else {
+                (String::new(), true)
+            }
+        }
+    };
 
     Ok(HttpResponse {
         status,
         ok,
         headers,
         body,
+        body_base64,
+        binary,
     })
 }
 

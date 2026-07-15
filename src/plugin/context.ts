@@ -60,13 +60,39 @@ export function createPluginContext(
           ok: boolean;
           headers: Record<string, string>;
           body: string;
+          bodyBase64?: string;
+          body_base64?: string;
+          binary?: boolean;
         };
         const body = String(result.body ?? "");
+        const bodyBase64 = String(result.bodyBase64 || result.body_base64 || "");
+        const headers = result.headers || {};
+        const responseBytes = () => {
+          if (bodyBase64) {
+            const binary = atob(bodyBase64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+            return bytes;
+          }
+          return new TextEncoder().encode(body);
+        };
         return {
           ...result,
           body,
-          text: async () => body,
-          json: async () => JSON.parse(body) as unknown,
+          bodyBase64,
+          binary: Boolean(result.binary),
+          headers,
+          text: async () => (body ? body : new TextDecoder().decode(responseBytes())),
+          json: async () =>
+            JSON.parse(body || new TextDecoder().decode(responseBytes())) as unknown,
+          arrayBuffer: async () => {
+            const bytes = responseBytes();
+            return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+          },
+          blob: async () => {
+            const type = headers["content-type"] || headers["Content-Type"] || "";
+            return new Blob([responseBytes()], type ? { type } : undefined);
+          },
         };
       },
     },

@@ -430,7 +430,28 @@ export function nodeFetchShimModule() {
   return String.raw`
 export class AbortError extends Error {}
 export default async function fetch(url, options = {}) {
-  return globalThis.__qxRaycastRuntime.context.http.fetch(String(url), options);
+  const response = await globalThis.__qxRaycastRuntime.context.http.fetch(String(url), options);
+  // Host may already provide arrayBuffer; ensure Raycast-style Response shape.
+  if (response && typeof response.arrayBuffer !== "function") {
+    const body = String(response.body || "");
+    const bodyBase64 = response.bodyBase64 || response.body_base64 || "";
+    const bytes = () => {
+      if (bodyBase64) {
+        const binary = atob(String(bodyBase64));
+        const out = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+        return out;
+      }
+      return new TextEncoder().encode(body);
+    };
+    response.arrayBuffer = async () => {
+      const value = bytes();
+      return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+    };
+    if (typeof response.text !== "function") response.text = async () => body;
+    if (typeof response.json !== "function") response.json = async () => JSON.parse(body);
+  }
+  return response;
 }
 `;
 }
@@ -638,10 +659,11 @@ export function bufferShimModule() {
 export const Buffer = {
   from(value) {
     if (value instanceof ArrayBuffer) return new Uint8Array(value);
-    if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer);
+    if (ArrayBuffer.isView(value)) return new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
     return new TextEncoder().encode(String(value || ""));
   },
 };
+if (typeof globalThis.Buffer === "undefined") globalThis.Buffer = Buffer;
 export default { Buffer };
 `;
 }

@@ -185,6 +185,8 @@ export async function genericRaycastIndexJs(sourceDir, pkg, manifest) {
   await writeFile(entryPath, `
 import React from "react";
 import { createRoot } from "react-dom/client";
+import { Buffer as QxBuffer } from "buffer";
+if (typeof globalThis.Buffer === "undefined") globalThis.Buffer = QxBuffer;
 ${raycastShimStyles()}
 
 const commandLoaders = {
