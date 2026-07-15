@@ -1,3 +1,63 @@
+/* ── Region picker (dedicated transparent window; no glass shell) ─────── */
+.qx-region-picker-body,
+.qx-region-picker-body #root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+  user-select: none;
+}
+
+.qx-region-picker {
+  position: fixed;
+  inset: 0;
+  background: transparent;
+  cursor: crosshair;
+  outline: none;
+  user-select: none;
+}
+
+.qx-region-picker-shade {
+  position: absolute;
+  background: rgba(0, 0, 0, 0.22);
+  pointer-events: none;
+}
+
+.qx-region-picker-rect {
+  position: absolute;
+  border: 2px solid #5b8cff;
+  border-radius: 2px;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35) inset;
+  pointer-events: none;
+}
+
+.qx-region-picker-size {
+  position: absolute;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.qx-region-picker-hint {
+  position: absolute;
+  top: 28px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.75);
+}
+
 .qx-recording-control-body {
   background: transparent;
   user-select: none;

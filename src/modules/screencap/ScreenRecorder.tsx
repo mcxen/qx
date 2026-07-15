@@ -1,11 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  getCurrentWindow,
-  primaryMonitor,
-  currentMonitor,
-  type Monitor,
-} from "@tauri-apps/api/window";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   DEFAULT_RECORDING_OPTIONS,
   useScreencapStore,
@@ -24,17 +19,6 @@ import BetaBadge from "../../components/BetaBadge";
 import { useT } from "../../i18n";
 import RecordingTransport from "./RecordingTransport";
 
-type SelectMode = "none" | "selecting";
-
-interface WindowSnapshot {
-  /** Physical outer position */
-  x: number;
-  y: number;
-  /** Physical outer size */
-  width: number;
-  height: number;
-}
-
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
@@ -52,50 +36,6 @@ function loadRecordingOptions(): RecordingOptions {
     return { ...DEFAULT_RECORDING_OPTIONS, ...(stored ?? {}) };
   } catch {
     return DEFAULT_RECORDING_OPTIONS;
-  }
-}
-
-async function snapshotWindow(): Promise<WindowSnapshot | null> {
-  if (!isTauriRuntime()) return null;
-  try {
-    const win = getCurrentWindow();
-    const pos = await win.outerPosition();
-    const size = await win.outerSize();
-    return { x: pos.x, y: pos.y, width: size.width, height: size.height };
-  } catch {
-    return null;
-  }
-}
-
-async function restoreWindow(snap: WindowSnapshot | null) {
-  if (!isTauriRuntime() || !snap) return;
-  try {
-    const win = getCurrentWindow();
-    const { PhysicalPosition, PhysicalSize } = await import("@tauri-apps/api/window");
-    await win.setPosition(new PhysicalPosition(snap.x, snap.y));
-    await win.setSize(new PhysicalSize(snap.width, snap.height));
-    await win.show();
-    await win.setFocus().catch(() => {});
-  } catch {
-    // best-effort restore
-  }
-}
-
-async function expandToPrimaryMonitor(): Promise<{ monitor: Monitor; scale: number } | null> {
-  if (!isTauriRuntime()) return null;
-  try {
-    const win = getCurrentWindow();
-    const monitor = (await primaryMonitor()) ?? (await currentMonitor());
-    if (!monitor) return null;
-    const { PhysicalPosition, PhysicalSize } = await import("@tauri-apps/api/window");
-    await win.setAlwaysOnTop(true);
-    await win.setPosition(new PhysicalPosition(monitor.position.x, monitor.position.y));
-    await win.setSize(new PhysicalSize(monitor.size.width, monitor.size.height));
-    await win.show();
-    await win.setFocus().catch(() => {});
-    return { monitor, scale: monitor.scaleFactor };
-  } catch {
-    return null;
   }
 }
 
@@ -136,26 +76,10 @@ export default function ScreenRecorder() {
 
   const setTab = useStore((state) => state.setTab);
 
-  const [selectMode, setSelectMode] = useState<SelectMode>("none");
+  /** Logical crop in points (xcap / CGDisplayBounds space). */
   const [area, setArea] = useState<RecordArea | null>(null);
-  /** Physical-pixel crop used by scrap (Retina-aware). */
-  const [areaPhysical, setAreaPhysical] = useState<RecordArea | null>(null);
   const [recordingOptions, setRecordingOptions] = useState<RecordingOptions>(loadRecordingOptions);
-  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
-  const [dragEnd, setDragEnd] = useState<{ x: number; y: number } | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [selectHint, setSelectHint] = useState(() =>
-    t("screencap.select.drag", "Drag on the primary display · Esc to cancel"),
-  );
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const windowSnapRef = useRef<WindowSnapshot | null>(null);
-  const selectScaleRef = useRef(1);
-
-  useEffect(() => {
-    if (selectMode === "selecting") {
-      overlayRef.current?.focus();
-    }
-  }, [selectMode]);
 
   useEffect(() => {
     void loadHistory();
@@ -199,13 +123,15 @@ export default function ScreenRecorder() {
     }
   }, [isRecording, status, syncRecordingStatus]);
 
-  const cancelAreaSelect = useCallback(async () => {
-    setSelectMode("none");
-    setDragStart(null);
-    setDragEnd(null);
-    await restoreWindow(windowSnapRef.current);
-    windowSnapRef.current = null;
-  }, []);
+  // When region pick finishes, main is hidden and recording starts — poll so UI catches up on return.
+  useEffect(() => {
+    const onFocus = () => {
+      void syncRecordingStatus();
+      void loadHistory();
+    };
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [loadHistory, syncRecordingStatus]);
 
   const beginAreaSelect = useCallback(async () => {
     setLocalError(null);
@@ -216,69 +142,19 @@ export default function ScreenRecorder() {
       setLocalError(permErr);
       return;
     }
-
-    windowSnapRef.current = await snapshotWindow();
-    const expanded = await expandToPrimaryMonitor();
-    if (expanded) {
-      selectScaleRef.current = expanded.scale;
-      setSelectHint(t("screencap.select.primary", "Drag to select on the primary display · Esc to cancel"));
-    } else {
-      // Browser / failed expand: still allow in-window select for dev, but warn.
-      selectScaleRef.current = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-      setSelectHint(t("screencap.select.fallback", "Drag to select (in-window fallback) · Esc to cancel"));
-    }
-    setSelectMode("selecting");
-    setDragStart(null);
-    setDragEnd(null);
-  }, [t]);
-
-  const onMouseDown = (e: React.MouseEvent) => {
-    if (selectMode !== "selecting") return;
-    e.preventDefault();
-    setDragStart({ x: e.clientX, y: e.clientY });
-    setDragEnd({ x: e.clientX, y: e.clientY });
-  };
-
-  const onMouseMove = (e: React.MouseEvent) => {
-    if (selectMode !== "selecting" || !dragStart) return;
-    setDragEnd({ x: e.clientX, y: e.clientY });
-  };
-
-  const onMouseUp = async () => {
-    if (selectMode !== "selecting" || !dragStart || !dragEnd) {
-      await cancelAreaSelect();
+    if (!isTauriRuntime()) {
+      setLocalError(t("screencap.select.needsApp", "Region select requires the Qx desktop app."));
       return;
     }
-    const scale = selectScaleRef.current || 1;
-    const lx = Math.min(dragStart.x, dragEnd.x);
-    const ly = Math.min(dragStart.y, dragEnd.y);
-    const lw = Math.abs(dragEnd.x - dragStart.x);
-    const lh = Math.abs(dragEnd.y - dragStart.y);
-
-    setSelectMode("none");
-    setDragStart(null);
-    setDragEnd(null);
-    await restoreWindow(windowSnapRef.current);
-    windowSnapRef.current = null;
-
-    if (lw < 8 || lh < 8) return;
-
-    // Logical (CSS) size for UI labels; physical for scrap crop.
-    const logical: RecordArea = {
-      x: Math.round(lx),
-      y: Math.round(ly),
-      w: Math.round(lw),
-      h: Math.round(lh),
-    };
-    const physical: RecordArea = {
-      x: Math.max(0, Math.round(lx * scale)),
-      y: Math.max(0, Math.round(ly * scale)),
-      w: Math.max(1, Math.round(lw * scale)),
-      h: Math.max(1, Math.round(lh * scale)),
-    };
-    setArea(logical);
-    setAreaPhysical(physical);
-  };
+    try {
+      // Persist options so the picker confirm path can re-read if needed;
+      // confirm_region_select currently uses defaults unless we pass them later.
+      localStorage.setItem("qx.screencap.options", JSON.stringify(recordingOptions));
+      await invoke("screencap_begin_region_select");
+    } catch (e) {
+      setLocalError(String(e));
+    }
+  }, [recordingOptions, t]);
 
   const handleStart = async () => {
     setLocalError(null);
@@ -289,7 +165,7 @@ export default function ScreenRecorder() {
       setLocalError(permErr);
       return;
     }
-    await startRecording(areaPhysical ?? null, recordingOptions);
+    await startRecording(area, recordingOptions);
   };
 
   const handlePopOut = async () => {
@@ -316,7 +192,6 @@ export default function ScreenRecorder() {
 
   const handleNewRecording = () => {
     reset();
-    // Keep history selection cleared; area can stay for re-record.
   };
 
   const actionMenuShortcut = getQxShortcutPreset().actionMenu;
@@ -329,17 +204,11 @@ export default function ScreenRecorder() {
       {
         label: t("screencap.clearArea", "Clear Area"),
         disabled: !area,
-        onClick: () => {
-          setArea(null);
-          setAreaPhysical(null);
-        },
+        onClick: () => setArea(null),
       },
       {
         label: t("screencap.fullPrimary", "Full Screen (Primary)"),
-        onClick: () => {
-          setArea(null);
-          setAreaPhysical(null);
-        },
+        onClick: () => setArea(null),
       },
     ],
     [area, beginAreaSelect, t],
@@ -380,12 +249,6 @@ export default function ScreenRecorder() {
   );
 
   const { onKeyDown: escKeyDown } = useEscBack({
-    inner: {
-      active: selectMode === "selecting",
-      close: () => {
-        void cancelAreaSelect();
-      },
-    },
     launcher: () => {
       if (isRecording) void handleStop();
       reset();
@@ -396,8 +259,6 @@ export default function ScreenRecorder() {
   const handleKeyDown = (e: React.KeyboardEvent) => {
     escKeyDown(e);
     if (e.key === "Escape") return;
-
-    if (selectMode === "selecting") return;
 
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") {
       e.preventDefault();
@@ -449,70 +310,6 @@ export default function ScreenRecorder() {
         break;
     }
   };
-
-  // ── Full-screen (monitor) region picker ─────────────────────────────
-  if (selectMode === "selecting") {
-    const selX = dragStart && dragEnd ? Math.min(dragStart.x, dragEnd.x) : 0;
-    const selY = dragStart && dragEnd ? Math.min(dragStart.y, dragEnd.y) : 0;
-    const selW = dragStart && dragEnd ? Math.abs(dragEnd.x - dragStart.x) : 0;
-    const selH = dragStart && dragEnd ? Math.abs(dragEnd.y - dragStart.y) : 0;
-    return (
-      <div
-        ref={overlayRef}
-        tabIndex={-1}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            e.preventDefault();
-            void cancelAreaSelect();
-          }
-        }}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={() => void onMouseUp()}
-        style={{
-          position: "fixed",
-          inset: 0,
-          // Dim desktop under the transparent window so the drag rect is clear.
-          background: "rgba(0, 0, 0, 0.35)",
-          cursor: "crosshair",
-          zIndex: 1000,
-          outline: "none",
-          userSelect: "none",
-        }}
-      >
-        {dragStart && dragEnd && selW > 0 && selH > 0 && (
-          <div
-            style={{
-              position: "absolute",
-              left: selX,
-              top: selY,
-              width: selW,
-              height: selH,
-              border: "2px solid var(--qx-accent, #5b8cff)",
-              background: "transparent",
-              boxShadow: "0 0 0 9999px rgba(0, 0, 0, 0.35)",
-            }}
-          />
-        )}
-        <div
-          style={{
-            position: "absolute",
-            top: 24,
-            left: 0,
-            right: 0,
-            textAlign: "center",
-            color: "#fff",
-            fontSize: 14,
-            fontWeight: 600,
-            pointerEvents: "none",
-            textShadow: "0 1px 4px rgba(0,0,0,0.6)",
-          }}
-        >
-          {selectHint}
-        </div>
-      </div>
-    );
-  }
 
   // ── Recording / encoding HUD ────────────────────────────────────────
   if (isRecording || status === "processing") {
@@ -650,7 +447,7 @@ export default function ScreenRecorder() {
           ? t("screencap.ready", "Recording Ready")
           : t("screencap.readyToRecord", "Ready to Record"),
         detail: showingPreview
-            ? lastGifPath?.split(/[\\/]/).pop()
+          ? lastGifPath?.split(/[\\/]/).pop()
           : area
             ? `${area.w}×${area.h} · ${recordingOptions.outputFormat.toUpperCase()} · ${recordingOptions.fps} fps`
             : t("screencap.fullSummary", "Full primary display · {format} · {fps} fps")
@@ -772,12 +569,7 @@ export default function ScreenRecorder() {
                     {t("screencap.selectArea", "Select Area")}
                   </button>
                   {area && (
-                    <LinkButton
-                      onClick={() => {
-                        setArea(null);
-                        setAreaPhysical(null);
-                      }}
-                    >
+                    <LinkButton onClick={() => setArea(null)}>
                       {t("screencap.clearArea", "Clear Area")}
                     </LinkButton>
                   )}
@@ -785,14 +577,11 @@ export default function ScreenRecorder() {
                 {area ? (
                   <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
                     {t("screencap.region", "Region")}: {area.w} × {area.h} px ({t("screencap.logical", "logical")})
-                    {areaPhysical
-                      ? ` · ${t("screencap.capture", "capture")} ${areaPhysical.w}×${areaPhysical.h}`
-                      : ""}
                     {` · ${recordingOptions.outputFormat.toUpperCase()} · ${recordingOptions.fps} fps`}
                   </div>
                 ) : (
                   <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)" }}>
-                    {t("screencap.fullSelectHint", "Full primary display · Select Area expands over the desktop for a real region pick")}
+                    {t("screencap.fullSelectHint", "Full primary display · Select Area opens a transparent overlay to draw a region in place")}
                   </div>
                 )}
               </div>

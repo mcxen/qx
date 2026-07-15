@@ -11,6 +11,8 @@ use tauri::{
 
 const DEFAULT_FPS: u32 = 24;
 const CONTROL_LABEL: &str = "recording-controls";
+/// Dedicated transparent fullscreen surface for region pick (not the main glass shell).
+const PICKER_LABEL: &str = "region-picker";
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -284,6 +286,68 @@ fn hide_recording_controls_internal(app: &AppHandle) {
     }
 }
 
+fn hide_region_picker_internal(app: &AppHandle) {
+    if let Some(picker) = app.get_webview_window(PICKER_LABEL) {
+        let _ = picker.hide();
+        let _ = picker.close();
+    }
+}
+
+fn show_region_picker_internal(app: &AppHandle) -> Result<(), String> {
+    hide_region_picker_internal(app);
+
+    let monitor = app
+        .primary_monitor()
+        .map_err(|error| format!("primary monitor: {error}"))?
+        .ok_or_else(|| "No primary display found".to_string())?;
+    let position = monitor.position();
+    let size = monitor.size();
+
+    // Fresh window each pick — avoids stale size / opacity from a previous session.
+    WebviewWindowBuilder::new(
+        app,
+        PICKER_LABEL,
+        WebviewUrl::App("index.html?view=region-picker".into()),
+    )
+    .title("Qx Region Picker")
+    .inner_size(
+        size.width as f64 / monitor.scale_factor(),
+        size.height as f64 / monitor.scale_factor(),
+    )
+    .position(
+        position.x as f64 / monitor.scale_factor(),
+        position.y as f64 / monitor.scale_factor(),
+    )
+    .resizable(false)
+    .maximizable(false)
+    .minimizable(false)
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(true)
+    .accept_first_mouse(true)
+    // Picker must never end up in the recording itself.
+    .content_protected(true)
+    .build()
+    .map_err(|error| format!("open region picker: {error}"))?;
+
+    let picker = app
+        .get_webview_window(PICKER_LABEL)
+        .ok_or_else(|| "region picker window is unavailable".to_string())?;
+    let _ = picker.set_content_protected(true);
+    let _ = picker.set_always_on_top(true);
+    // Physical placement (Retina-correct).
+    let _ = picker.set_position(PhysicalPosition::new(position.x, position.y));
+    let _ = picker.set_size(tauri::PhysicalSize::new(size.width, size.height));
+    picker
+        .show()
+        .map_err(|error| format!("show region picker: {error}"))?;
+    let _ = picker.set_focus();
+    Ok(())
+}
+
 fn gifs_dir() -> PathBuf {
     let base = crate::paths::pictures_dir();
     let dir = base.join("Qx");
@@ -327,39 +391,6 @@ fn insert_history(
         params![path.to_string_lossy(), w, h, frames, duration_ms, now],
     )?;
     Ok(conn.last_insert_rowid())
-}
-
-fn bgra_frame_to_rgba(frame: &[u8], width: u32, height: u32) -> Option<Vec<u8>> {
-    let height = height as usize;
-    let row_bytes = width as usize * 4;
-    if height == 0 || row_bytes == 0 || frame.len() < row_bytes * height {
-        return None;
-    }
-
-    // `scrap` may pad each framebuffer row. Treating the whole buffer as a
-    // tightly packed image made RgbaImage::from_raw reject every frame on
-    // several Retina displays, which looked like a recorder that never ran.
-    let stride = frame.len() / height;
-    if stride < row_bytes {
-        return None;
-    }
-    let mut rgba = vec![0_u8; row_bytes * height];
-    for y in 0..height {
-        let source_start = y * stride;
-        let source_end = source_start + row_bytes;
-        if source_end > frame.len() {
-            return None;
-        }
-        let source = &frame[source_start..source_end];
-        let target = &mut rgba[y * row_bytes..(y + 1) * row_bytes];
-        for (src, dst) in source.chunks_exact(4).zip(target.chunks_exact_mut(4)) {
-            dst[0] = src[2];
-            dst[1] = src[1];
-            dst[2] = src[0];
-            dst[3] = 255;
-        }
-    }
-    Some(rgba)
 }
 
 fn constrain_video_size(image: image::RgbaImage, max_size: Option<(u32, u32)>) -> image::RgbaImage {
@@ -448,33 +479,150 @@ fn mp4_config(extension: &str) -> Result<mp4::Mp4Config, String> {
     })
 }
 
+fn primary_monitor() -> Result<xcap::Monitor, String> {
+    let monitors = xcap::Monitor::all().map_err(|error| {
+        format!(
+            "Cannot list displays: {error}. Grant Screen Recording permission, then fully quit and reopen Qx."
+        )
+    })?;
+    monitors
+        .into_iter()
+        .find(|monitor| monitor.is_primary().unwrap_or(false))
+        .ok_or_else(|| {
+            "No primary display found. Grant Screen Recording permission, then restart Qx."
+                .to_string()
+        })
+}
+
+/// Clamp a logical (points) crop to the primary monitor. xcap's
+/// `capture_region` and CGDisplayBounds both use **points**, not pixels.
+fn clamp_logical_area(area: RecordArea, mon_w: u32, mon_h: u32) -> Option<RecordArea> {
+    if area.w < 2 || area.h < 2 || mon_w < 2 || mon_h < 2 {
+        return None;
+    }
+    let x = area.x.min(mon_w.saturating_sub(2));
+    let y = area.y.min(mon_h.saturating_sub(2));
+    let w = area.w.min(mon_w.saturating_sub(x)).max(2);
+    let h = area.h.min(mon_h.saturating_sub(y)).max(2);
+    Some(RecordArea { x, y, w, h })
+}
+
+/// Map a logical crop onto a physical-pixel framebuffer (AVCapture / Retina).
+fn crop_physical(
+    frame: &image::RgbaImage,
+    area: &RecordArea,
+    scale: f64,
+) -> image::RgbaImage {
+    let fw = frame.width();
+    let fh = frame.height();
+    let mut x = ((area.x as f64) * scale).round() as u32;
+    let mut y = ((area.y as f64) * scale).round() as u32;
+    let mut w = ((area.w as f64) * scale).round() as u32;
+    let mut h = ((area.h as f64) * scale).round() as u32;
+    x = x.min(fw.saturating_sub(2));
+    y = y.min(fh.saturating_sub(2));
+    w = w.min(fw.saturating_sub(x)).max(2) & !1;
+    h = h.min(fh.saturating_sub(y)).max(2) & !1;
+    if w == fw && h == fh && x == 0 && y == 0 {
+        frame.clone()
+    } else {
+        image::imageops::crop_imm(frame, x, y, w, h).to_image()
+    }
+}
+
+fn encode_rgba_frame(
+    encoder: &mut openh264::encoder::Encoder,
+    writer: &mut mp4::Mp4Writer<fs::File>,
+    track_added: &mut bool,
+    dimensions: &mut Option<(u32, u32)>,
+    pending_sample: &mut Option<(Vec<u8>, u64, bool)>,
+    frame_idx: &mut u64,
+    started_at: std::time::Instant,
+    img: image::RgbaImage,
+    max_size: Option<(u32, u32)>,
+) -> Result<(), String> {
+    let final_img = constrain_video_size(img, max_size);
+    let (width, height) = final_img.dimensions();
+    if dimensions.is_some_and(|value| value != (width, height)) {
+        return Err("capture dimensions changed during recording".to_string());
+    }
+    *dimensions = Some((width, height));
+    let rgb = image::DynamicImage::ImageRgba8(final_img)
+        .to_rgb8()
+        .into_raw();
+    let rgb_source = openh264::formats::RgbSliceU8::new(&rgb, (width as usize, height as usize));
+    let yuv = openh264::formats::YUVBuffer::from_rgb8_source(rgb_source);
+    let encoded = encoder
+        .encode(&yuv)
+        .map_err(|error| format!("encode H.264 frame: {error}"))?;
+    let (sps, pps, sample, is_sync) = mp4_parts(&encoded);
+    if !*track_added {
+        let sps = sps.ok_or_else(|| {
+            "H.264 stream has no SPS — capture may have failed".to_string()
+        })?;
+        let pps = pps.ok_or_else(|| {
+            "H.264 stream has no PPS — capture may have failed".to_string()
+        })?;
+        writer
+            .add_track(&mp4::TrackConfig::from(mp4::AvcConfig {
+                width: width as u16,
+                height: height as u16,
+                seq_param_set: sps,
+                pic_param_set: pps,
+            }))
+            .map_err(|error| format!("create video track: {error}"))?;
+        *track_added = true;
+    }
+    if sample.is_empty() {
+        return Ok(());
+    }
+    let captured_at = started_at.elapsed().as_millis() as u64;
+    if let Some((previous, previous_at, previous_sync)) = pending_sample.take() {
+        let duration = captured_at
+            .saturating_sub(previous_at)
+            .max(1)
+            .clamp(1, u32::MAX as u64) as u32;
+        writer
+            .write_sample(
+                1,
+                &mp4::Mp4Sample {
+                    start_time: previous_at,
+                    duration,
+                    rendering_offset: 0,
+                    is_sync: previous_sync,
+                    bytes: bytes::Bytes::from(previous),
+                },
+            )
+            .map_err(|error| format!("write video frame: {error}"))?;
+        *frame_idx += 1;
+    }
+    *pending_sample = Some((sample, captured_at, is_sync));
+    FRAME_COUNT.store(*frame_idx + 1, Ordering::Relaxed);
+    Ok(())
+}
+
+/// Prefer xcap's AVFoundation `video_recorder` stream (continuous frames).
+/// Fall back to polled `capture_region` / `capture_image` if the stream fails.
 fn recording_loop_inner(
     output_path: &Path,
     area: Option<RecordArea>,
     options: NormalizedRecordingOptions,
     stop_flag: std::sync::Arc<AtomicBool>,
 ) -> Result<RecordingOutput, String> {
-    use scrap::{Capturer, Display};
+    // Let the picker / main shell finish hiding before the first sample.
+    std::thread::sleep(std::time::Duration::from_millis(200));
 
-    let display = Display::primary().map_err(|error| {
-        format!("Cannot open primary display: {error}. Grant Screen Recording permission, then restart Qx.")
-    })?;
-    let mut capturer = Capturer::new(display).map_err(|error| {
-        format!("Screen capture failed: {error}. Grant Screen Recording permission, then fully quit and reopen Qx.")
-    })?;
-    let (full_w, full_h) = (capturer.width() as u32, capturer.height() as u32);
+    let monitor = primary_monitor()?;
+    let mon_w = monitor
+        .width()
+        .map_err(|error| format!("display width: {error}"))?;
+    let mon_h = monitor
+        .height()
+        .map_err(|error| format!("display height: {error}"))?;
+    let scale = monitor.scale_factor().unwrap_or(1.0).max(1.0) as f64;
 
-    // Validate crop against the physical framebuffer (Retina = 2× logical).
-    let area = area.and_then(|a| {
-        if a.w == 0 || a.h == 0 {
-            return None;
-        }
-        let x = a.x.min(full_w.saturating_sub(1));
-        let y = a.y.min(full_h.saturating_sub(1));
-        let w = a.w.min(full_w.saturating_sub(x)).max(1);
-        let h = a.h.min(full_h.saturating_sub(y)).max(1);
-        Some(RecordArea { x, y, w, h })
-    });
+    // Selection is in logical points (CSS px on the picker overlay).
+    let area = area.and_then(|a| clamp_logical_area(a, mon_w, mon_h));
 
     let frame_duration = std::time::Duration::from_secs_f64(1.0 / options.fps as f64);
     let sample_duration = (1000 / options.fps).max(1);
@@ -483,9 +631,12 @@ fn recording_loop_inner(
         .max_frame_rate(openh264::encoder::FrameRate::from_hz(options.fps as f32))
         .rate_control_mode(openh264::encoder::RateControlMode::Bitrate)
         .usage_type(openh264::encoder::UsageType::ScreenContentRealTime)
-        .profile(openh264::encoder::Profile::High)
-        .complexity(openh264::encoder::Complexity::Medium)
-        .skip_frames(false);
+        .profile(openh264::encoder::Profile::Baseline)
+        .complexity(openh264::encoder::Complexity::Low)
+        .skip_frames(false)
+        .intra_frame_period(openh264::encoder::IntraFramePeriod::from_num_frames(
+            (options.fps * 2).max(1),
+        ));
     let mut encoder = openh264::encoder::Encoder::with_api_config(
         openh264::OpenH264API::from_source(),
         encoder_config,
@@ -500,104 +651,130 @@ fn recording_loop_inner(
     let mut frame_idx: u64 = 0;
     let mut pending_sample: Option<(Vec<u8>, u64, bool)> = None;
     let started_at = std::time::Instant::now();
-    let mut consecutive_errors: u32 = 0;
     let mut next_frame_at = std::time::Instant::now();
-    while !stop_flag.load(Ordering::Relaxed) {
-        let now = std::time::Instant::now();
-        if now < next_frame_at {
-            std::thread::sleep((next_frame_at - now).min(std::time::Duration::from_millis(4)));
-            continue;
-        }
 
-        match capturer.frame() {
-            Ok(frame) => {
-                consecutive_errors = 0;
-                if let Some(rgba) = bgra_frame_to_rgba(&frame, full_w, full_h) {
-                    let Some(img) = image::RgbaImage::from_raw(full_w, full_h, rgba) else {
-                        set_capture_error("Screen capture returned an invalid framebuffer");
-                        break;
-                    };
-                    let final_img = if let Some(a) = &area {
-                        image::imageops::crop_imm(&img, a.x, a.y, a.w, a.h).to_image()
-                    } else {
-                        img
-                    };
-                    let final_img = constrain_video_size(final_img, options.max_size);
-                    let (width, height) = final_img.dimensions();
-                    if dimensions.is_some_and(|value| value != (width, height)) {
-                        return Err("capture dimensions changed during recording".to_string());
+    // ── Stream path (xcap VideoRecorder / AVCaptureScreenInput) ─────────
+    let stream_ok = match monitor.video_recorder() {
+        Ok((recorder, rx)) => {
+            if recorder.start().is_err() {
+                // Fall through to polled capture_image / capture_region.
+                false
+            } else {
+                let mut consecutive_empty: u32 = 0;
+                while !stop_flag.load(Ordering::Relaxed) {
+                    // Drop frames faster than the target fps.
+                    let now = std::time::Instant::now();
+                    if now < next_frame_at {
+                        // Still drain the channel so it does not back up.
+                        while rx.try_recv().is_ok() {}
+                        std::thread::sleep(
+                            (next_frame_at - now).min(std::time::Duration::from_millis(4)),
+                        );
+                        continue;
                     }
-                    dimensions = Some((width, height));
-                    // OpenH264's packed RGB path uses its optimized RGB→YUV
-                    // conversion; feeding RGBA would fall back to a slow
-                    // per-pixel converter and miss real-time frame rates.
-                    let rgb = image::DynamicImage::ImageRgba8(final_img)
-                        .to_rgb8()
-                        .into_raw();
-                    let rgb_source =
-                        openh264::formats::RgbSliceU8::new(&rgb, (width as usize, height as usize));
-                    let yuv = openh264::formats::YUVBuffer::from_rgb8_source(rgb_source);
-                    let encoded = encoder
-                        .encode(&yuv)
-                        .map_err(|error| format!("encode H.264 frame: {error}"))?;
-                    let (sps, pps, sample, is_sync) = mp4_parts(&encoded);
-                    if !track_added {
-                        let sps = sps.ok_or_else(|| "H.264 stream has no SPS".to_string())?;
-                        let pps = pps.ok_or_else(|| "H.264 stream has no PPS".to_string())?;
-                        writer
-                            .add_track(&mp4::TrackConfig::from(mp4::AvcConfig {
-                                width: width as u16,
-                                height: height as u16,
-                                seq_param_set: sps,
-                                pic_param_set: pps,
-                            }))
-                            .map_err(|error| format!("create video track: {error}"))?;
-                        track_added = true;
-                    }
-                    if !sample.is_empty() {
-                        let captured_at = started_at.elapsed().as_millis() as u64;
-                        if let Some((previous, previous_at, previous_sync)) = pending_sample.take()
-                        {
-                            let duration = captured_at
-                                .saturating_sub(previous_at)
-                                .clamp(1, u32::MAX as u64)
-                                as u32;
-                            writer
-                                .write_sample(
-                                    1,
-                                    &mp4::Mp4Sample {
-                                        start_time: previous_at,
-                                        duration,
-                                        rendering_offset: 0,
-                                        is_sync: previous_sync,
-                                        bytes: bytes::Bytes::from(previous),
-                                    },
-                                )
-                                .map_err(|error| format!("write video frame: {error}"))?;
-                            frame_idx += 1;
+
+                    let frame = match rx.recv_timeout(std::time::Duration::from_millis(500)) {
+                        Ok(frame) => frame,
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            consecutive_empty += 1;
+                            if consecutive_empty >= 10 {
+                                let _ = recorder.stop();
+                                return Err(
+                                    "Screen capture stream stalled. Grant Screen Recording permission and restart Qx."
+                                        .to_string(),
+                                );
+                            }
+                            continue;
                         }
-                        pending_sample = Some((sample, captured_at, is_sync));
-                        FRAME_COUNT.store(frame_idx + 1, Ordering::Relaxed);
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                            let _ = recorder.stop();
+                            return Err("Screen capture stream disconnected".to_string());
+                        }
+                    };
+                    consecutive_empty = 0;
+
+                    // Keep only the freshest frame if the producer is ahead.
+                    let mut latest = frame;
+                    while let Ok(more) = rx.try_recv() {
+                        latest = more;
                     }
+
+                    let Some(full) =
+                        image::RgbaImage::from_raw(latest.width, latest.height, latest.raw)
+                    else {
+                        continue;
+                    };
+                    let img = if let Some(ref a) = area {
+                        crop_physical(&full, a, scale)
+                    } else {
+                        full
+                    };
+
+                    encode_rgba_frame(
+                        &mut encoder,
+                        &mut writer,
+                        &mut track_added,
+                        &mut dimensions,
+                        &mut pending_sample,
+                        &mut frame_idx,
+                        started_at,
+                        img,
+                        options.max_size,
+                    )?;
+
                     next_frame_at += frame_duration;
                     if next_frame_at + frame_duration < std::time::Instant::now() {
                         next_frame_at = std::time::Instant::now() + frame_duration;
                     }
-                } else {
-                    return Err("Screen capture returned unsupported row padding".to_string());
                 }
+                let _ = recorder.stop();
+                true
             }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        Err(_) => false,
+    };
+
+    // ── Poll fallback (xcap still capture) ──────────────────────────────
+    if !stream_ok && !stop_flag.load(Ordering::Relaxed) {
+        let mut consecutive_errors: u32 = 0;
+        while !stop_flag.load(Ordering::Relaxed) {
+            let now = std::time::Instant::now();
+            if now < next_frame_at {
+                std::thread::sleep((next_frame_at - now).min(std::time::Duration::from_millis(4)));
                 continue;
             }
-            Err(e) => {
-                consecutive_errors += 1;
-                if consecutive_errors >= 30 {
-                    return Err(format!("Screen capture stopped: {e}"));
+            // capture_region / capture_image expect **logical** points.
+            let captured = if let Some(ref a) = area {
+                monitor.capture_region(a.x, a.y, a.w, a.h)
+            } else {
+                monitor.capture_image()
+            };
+            match captured {
+                Ok(img) => {
+                    consecutive_errors = 0;
+                    encode_rgba_frame(
+                        &mut encoder,
+                        &mut writer,
+                        &mut track_added,
+                        &mut dimensions,
+                        &mut pending_sample,
+                        &mut frame_idx,
+                        started_at,
+                        img,
+                        options.max_size,
+                    )?;
+                    next_frame_at += frame_duration;
+                    if next_frame_at + frame_duration < std::time::Instant::now() {
+                        next_frame_at = std::time::Instant::now() + frame_duration;
+                    }
                 }
-                std::thread::sleep(std::time::Duration::from_millis(4));
-                continue;
+                Err(error) => {
+                    consecutive_errors += 1;
+                    if consecutive_errors >= 20 {
+                        return Err(format!("Screen capture stopped: {error}"));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(16));
+                }
             }
         }
     }
@@ -708,12 +885,61 @@ pub async fn start_recording(
         status.output_path = None;
         status.error = None;
     }
-    // Begin inside Qx. The user can explicitly hand the same transport control
-    // to the protected standalone window when they want the main panel hidden.
-    // Tauri maps this to NSWindowSharingNone / WDA_EXCLUDEFROMCAPTURE where supported.
+    // Hide picker + main shell so neither appears in the capture stream.
+    hide_region_picker_internal(&app);
     set_recording_ui_protected(&app, true);
+    crate::floating_panel::hide(&app);
+    let _ = show_recording_controls_internal(&app);
     emit_recording_status(&app);
     Ok(())
+}
+
+/// Open a dedicated transparent fullscreen picker (no main-window glass mask).
+#[command]
+pub async fn screencap_begin_region_select(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        if !crate::permissions::screen_recording_granted() {
+            let _ = crate::permissions::qx_permissions_request("screen-recording".to_string());
+            if !crate::permissions::screen_recording_granted() {
+                return Err(
+                    "Screen Recording permission required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx."
+                        .to_string(),
+                );
+            }
+        }
+    }
+    crate::floating_panel::hide(&app);
+    show_region_picker_internal(&app)
+}
+
+#[command]
+pub async fn screencap_cancel_region_select(app: AppHandle) -> Result<(), String> {
+    hide_region_picker_internal(&app);
+    crate::floating_panel::show_and_navigate(&app, "screencap");
+    Ok(())
+}
+
+/// Confirm a logical-point crop from the picker and start recording immediately.
+#[command]
+pub async fn screencap_confirm_region_select(
+    app: AppHandle,
+    area: RecordArea,
+    options: Option<RecordingOptions>,
+) -> Result<(), String> {
+    hide_region_picker_internal(&app);
+    if area.w < 16 || area.h < 16 {
+        crate::floating_panel::show_and_navigate(&app, "screencap");
+        return Err("Selection too small — drag a larger region".to_string());
+    }
+    // Area is already in logical points relative to the primary display.
+    match start_recording(app.clone(), Some(area), options).await {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            crate::floating_panel::show_and_navigate(&app, "screencap");
+            Err(error)
+        }
+    }
 }
 
 fn stop_recording_blocking() -> Result<String, String> {
@@ -1088,17 +1314,36 @@ mod tests {
     use super::*;
 
     #[test]
-    fn framebuffer_conversion_ignores_row_padding() {
-        // Two BGRA pixels plus four padding bytes per row.
-        let frame = [
-            1, 2, 3, 255, 4, 5, 6, 255, 99, 99, 99, 99, 7, 8, 9, 255, 10, 11, 12, 255, 88, 88, 88,
-            88,
-        ];
-        let rgba = bgra_frame_to_rgba(&frame, 2, 2).expect("valid padded framebuffer");
-        assert_eq!(
-            rgba,
-            vec![3, 2, 1, 255, 6, 5, 4, 255, 9, 8, 7, 255, 12, 11, 10, 255]
-        );
+    fn logical_area_is_clamped_to_monitor() {
+        let area = clamp_logical_area(
+            RecordArea {
+                x: 10,
+                y: 20,
+                w: 9999,
+                h: 40,
+            },
+            800,
+            600,
+        )
+        .expect("valid");
+        assert_eq!(area.x, 10);
+        assert_eq!(area.y, 20);
+        assert_eq!(area.w, 790);
+        assert_eq!(area.h, 40);
+    }
+
+    #[test]
+    fn crop_physical_scales_logical_points() {
+        let frame = image::RgbaImage::from_pixel(200, 100, image::Rgba([1, 2, 3, 255]));
+        let area = RecordArea {
+            x: 10,
+            y: 5,
+            w: 40,
+            h: 20,
+        };
+        let cropped = crop_physical(&frame, &area, 2.0);
+        assert_eq!(cropped.width(), 80);
+        assert_eq!(cropped.height(), 40);
     }
 
     #[test]
