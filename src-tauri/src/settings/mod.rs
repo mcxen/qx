@@ -148,6 +148,11 @@ pub struct ShortcutBinding {
 pub struct AdvancedSettings {
     pub log_level: String,
     pub dev_mode: bool,
+    /// Proxy mode: `"off"` | `"system"` | `"manual"`.
+    /// Empty string means “legacy”: derive from `network_proxy_enabled` + URL.
+    #[serde(default, rename = "network_proxy_mode")]
+    pub network_proxy_mode: String,
+    /// Legacy flag kept for older configs / readers. Prefer `network_proxy_mode`.
     #[serde(default, rename = "network_proxy_enabled")]
     pub network_proxy_enabled: bool,
     #[serde(default, rename = "network_proxy_url")]
@@ -177,6 +182,7 @@ impl Default for AdvancedSettings {
         Self {
             log_level: "info".to_string(),
             dev_mode: false,
+            network_proxy_mode: "off".to_string(),
             network_proxy_enabled: false,
             network_proxy_url: String::new(),
             ocr_enabled: false,

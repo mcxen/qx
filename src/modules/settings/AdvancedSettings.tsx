@@ -23,11 +23,25 @@ function formatBytes(bytes: number): string {
   return `${value >= 10 || unit === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[unit]}`;
 }
 
+function resolveProxyMode(adv: {
+  network_proxy_mode?: string;
+  network_proxy_enabled?: boolean;
+  network_proxy_url?: string;
+}): "off" | "system" | "manual" {
+  const mode = (adv.network_proxy_mode ?? "").trim().toLowerCase();
+  if (mode === "system" || mode === "manual" || mode === "off") return mode;
+  if (adv.network_proxy_enabled) {
+    return (adv.network_proxy_url ?? "").trim() ? "manual" : "system";
+  }
+  return "off";
+}
+
 export default function AdvancedSettings() {
   const { settings, patch, importFrom, exportTo } = useSettingsStore();
   const { devWatcherActive, startDevWatcher, stopDevWatcher, refresh } = usePluginRegistry();
   const t = useT();
   const adv = settings.advanced;
+  const proxyMode = resolveProxyMode(adv);
   const [busy, setBusy] = useState<string | null>(null);
   const [ioPath, setIoPath] = useState("");
   const [pluginName, setPluginName] = useState("");
@@ -152,21 +166,57 @@ export default function AdvancedSettings() {
       >
         <Row
           title={t("advanced.networkProxy", "Network Proxy")}
-          description={t("advanced.networkProxy.desc", "Route Qx network requests through an HTTP, HTTPS, or SOCKS proxy.")}
+          description={
+            proxyMode === "system"
+              ? t(
+                  "advanced.networkProxy.systemHint",
+                  "Use the OS system proxy and standard environment variables (HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, NO_PROXY).",
+                )
+              : proxyMode === "manual"
+                ? t(
+                    "advanced.networkProxy.manualHint",
+                    "Send all Qx HTTP(S) traffic through the proxy URL below (HTTP, HTTPS, or SOCKS5).",
+                  )
+                : t(
+                    "advanced.networkProxy.desc",
+                    "Choose direct access, follow the system proxy, or set a manual proxy URL.",
+                  )
+          }
         >
-          <Toggle
-            value={adv.network_proxy_enabled}
-            onChange={(v) => patch("advanced", { ...adv, network_proxy_enabled: v })}
+          <Select
+            value={proxyMode}
+            options={[
+              { value: "off", label: t("advanced.networkProxy.mode.off", "Direct (no proxy)") },
+              { value: "system", label: t("advanced.networkProxy.mode.system", "System proxy") },
+              { value: "manual", label: t("advanced.networkProxy.mode.manual", "Manual proxy") },
+            ]}
+            onChange={(mode) => {
+              const network_proxy_mode = mode as "off" | "system" | "manual";
+              patch("advanced", {
+                ...adv,
+                network_proxy_mode,
+                network_proxy_enabled: network_proxy_mode !== "off",
+              });
+            }}
+            ariaLabel={t("advanced.networkProxy", "Network Proxy")}
           />
-          <div className="qx-settings-input-wrap">
-            <Input
-              type="text"
-              value={adv.network_proxy_url}
-              onChange={(e) => patch("advanced", { ...adv, network_proxy_url: e.target.value })}
-              placeholder="http://127.0.0.1:7890"
-              disabled={!adv.network_proxy_enabled}
-            />
-          </div>
+          {proxyMode === "manual" && (
+            <div className="qx-settings-input-wrap">
+              <Input
+                type="text"
+                value={adv.network_proxy_url}
+                onChange={(e) =>
+                  patch("advanced", {
+                    ...adv,
+                    network_proxy_mode: "manual",
+                    network_proxy_enabled: true,
+                    network_proxy_url: e.target.value,
+                  })
+                }
+                placeholder="http://127.0.0.1:7890  or  socks5://127.0.0.1:1080"
+              />
+            </div>
+          )}
         </Row>
       </SettingsCard>
 

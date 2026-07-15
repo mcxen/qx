@@ -74,9 +74,14 @@ export interface ShortcutBinding {
   enabled: boolean;
 }
 
+export type NetworkProxyMode = "off" | "system" | "manual";
+
 export interface AdvancedSettings {
   log_level: string;
   dev_mode: boolean;
+  /** `"off"` | `"system"` | `"manual"`. Empty/missing: derived from legacy enabled flag. */
+  network_proxy_mode: NetworkProxyMode | string;
+  /** Legacy; kept in sync when mode changes. Prefer `network_proxy_mode`. */
   network_proxy_enabled: boolean;
   network_proxy_url: string;
   ocr_enabled: boolean;
@@ -284,6 +289,7 @@ export const DEFAULT_SETTINGS: Settings = {
   advanced: {
     log_level: "info",
     dev_mode: false,
+    network_proxy_mode: "off",
     network_proxy_enabled: false,
     network_proxy_url: "",
     ocr_enabled: false,
