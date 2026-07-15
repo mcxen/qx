@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useSyncExternalStore, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import {
   getSearchProgressSnapshot,
   subscribeSearchProgress,
@@ -12,38 +12,42 @@ const DOTS = 8;
 
 const TRACK_META: Record<
   SearchTrackId,
-  { labelKey: string; labelFallback: string; Icon: () => ReactElement }
+  { labelKey: string; labelFallback: string; verbKey: string; verbFallback: string; Icon: () => ReactElement }
 > = {
   apps: {
     labelKey: "launcher.scope.apps",
     labelFallback: "Apps",
+    verbKey: "launcher.scan.step.apps",
+    verbFallback: "Searching apps",
     Icon: IconApps,
   },
   files: {
     labelKey: "launcher.scope.files",
     labelFallback: "Files",
+    verbKey: "launcher.scan.step.files",
+    verbFallback: "Searching files",
     Icon: IconFiles,
   },
   clipboard: {
     labelKey: "launcher.scope.clipboard",
     labelFallback: "Clipboard",
+    verbKey: "launcher.scan.step.clipboard",
+    verbFallback: "Searching clipboard",
     Icon: IconClipboard,
   },
 };
 
 export interface SearchProgressIslandProps {
-  /** Fallback when bus not yet published (prop-driven path). */
   query?: string;
   scope?: SearchScope;
   isSearching?: boolean;
   isSearchSettling?: boolean;
-  /** Hit counts from current results (optional enrichment). */
   hits?: Partial<Record<SearchTrackId, number>>;
 }
 
 /**
- * Launcher Dynamic Island while searching:
- * multi-source scan rail with icons, 8-dot matrix progress, and L↔R sweep.
+ * Step-by-step search island: one track at a time, vertical flip to the next
+ * stage when the pipeline advances (apps → files → clipboard).
  */
 export default function SearchProgressIsland({
   query: queryProp = "",
@@ -85,7 +89,25 @@ export default function SearchProgressIsland({
       }));
   }, [snap.tracks, hits]);
 
-  // Continuous 0–1 phase for sweep + per-track fill while running.
+  const stepIndex = resolveActiveStep(tracks, phase);
+  const [displayIndex, setDisplayIndex] = useState(stepIndex);
+  const [slideDir, setSlideDir] = useState<"up" | "down">("up");
+  const prevIndexRef = useRef(stepIndex);
+
+  // Vertical step change: old exits up, new enters from below (or reverse).
+  useEffect(() => {
+    if (stepIndex === prevIndexRef.current) return;
+    setSlideDir(stepIndex > prevIndexRef.current ? "up" : "down");
+    prevIndexRef.current = stepIndex;
+    setDisplayIndex(stepIndex);
+  }, [stepIndex]);
+
+  // Keep displayIndex in range when track list shrinks.
+  useEffect(() => {
+    if (tracks.length === 0) return;
+    setDisplayIndex((i) => Math.min(i, tracks.length - 1));
+  }, [tracks.length]);
+
   const [clock, setClock] = useState(0);
   useEffect(() => {
     if (phase === "idle") return;
@@ -97,65 +119,103 @@ export default function SearchProgressIsland({
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [phase, snap.seq]);
+  }, [phase, snap.seq, displayIndex]);
 
-  // Triangle wave 0→1→0 for left-right sweep.
-  const sweep = triangleWave(clock * 0.55);
+  const active = tracks[displayIndex] ?? tracks[0];
+  const total = Math.max(1, tracks.length);
 
   return (
     <div
-      className={`qx-search-scan-island${phase === "settling" ? " is-settling" : ""}${
+      className={`qx-search-scan-island is-stepper${phase === "settling" ? " is-settling" : ""}${
         phase === "searching" ? " is-searching" : ""
       }`}
       aria-label={t("launcher.searching", "Searching")}
       role="status"
+      data-step={displayIndex + 1}
+      data-steps={total}
+      data-slide={slideDir}
     >
       <span className="qx-search-scan-tag">
         <i className="qx-search-scan-beacon" aria-hidden="true" />
         {t("launcher.scan.tag", "SCAN")}
       </span>
 
-      <div className="qx-search-scan-rail" aria-hidden={tracks.length === 0}>
+      {/* Pipeline step indicators (vertical) */}
+      <div className="qx-search-scan-steps" aria-hidden="true">
+        {tracks.map((track, i) => (
+          <i
+            key={track.id}
+            className={`qx-search-scan-step-dot${
+              i === displayIndex ? " is-current" : ""
+            }${track.status === "done" ? " is-done" : ""}${
+              track.status === "running" ? " is-live" : ""
+            }`}
+          />
+        ))}
+      </div>
+
+      <div className="qx-search-scan-viewport">
         <div
-          className="qx-search-scan-sweep"
-          style={{ ["--qx-scan-x" as string]: `${sweep * 100}%` }}
-        />
-        {tracks.map((track) => {
-          const meta = TRACK_META[track.id];
-          const fill = trackFill(track, clock, phase);
-          return (
-            <div
-              key={track.id}
-              className={`qx-search-scan-track is-${track.status}${
-                track.status === "running" ? " is-live" : ""
-              }`}
-              title={meta ? t(meta.labelKey, meta.labelFallback) : track.id}
-            >
-              <span className="qx-search-scan-icon" aria-hidden="true">
-                {meta ? <meta.Icon /> : null}
-              </span>
-              <span className="qx-search-scan-dots" data-fill={Math.round(fill * DOTS)}>
-                {Array.from({ length: DOTS }, (_, i) => {
-                  const on = i < fill * DOTS - 0.001;
-                  const head =
-                    track.status === "running" &&
-                    Math.abs(i + 0.5 - fill * DOTS) < 0.85;
-                  return (
-                    <i
-                      key={i}
-                      className={`qx-search-scan-dot${on ? " is-on" : ""}${
-                        head ? " is-head" : ""
-                      }`}
-                    />
-                  );
-                })}
-              </span>
-              {typeof track.hits === "number" && track.status === "done" && track.hits > 0 && (
-                <span className="qx-search-scan-hits">{track.hits > 99 ? "99+" : track.hits}</span>
-              )}
-            </div>
-          );
-        })}
+          className={`qx-search-scan-reel is-dir-${slideDir}`}
+          style={{ transform: `translateY(${-displayIndex * 100}%)` }}
+        >
+          {tracks.map((track, trackIndex) => {
+            const meta = TRACK_META[track.id];
+            const fill = trackFill(track, clock, phase, track.id === active?.id);
+            const label = meta
+              ? track.status === "done"
+                ? t(meta.labelKey, meta.labelFallback)
+                : t(meta.verbKey, meta.verbFallback)
+              : track.id;
+            return (
+              <div
+                key={track.id}
+                className={`qx-search-scan-step is-${track.status}${
+                  track.status === "running" ? " is-live" : ""
+                }`}
+              >
+                <span className="qx-search-scan-icon" aria-hidden="true">
+                  {meta ? <meta.Icon /> : null}
+                </span>
+                <span className="qx-search-scan-step-body">
+                  <span className="qx-search-scan-step-label">{label}</span>
+                  <span className="qx-search-scan-dots" data-fill={Math.round(fill * DOTS)}>
+                    {Array.from({ length: DOTS }, (_, i) => {
+                      const on = i < fill * DOTS - 0.001;
+                      const head =
+                        track.status === "running" &&
+                        track.id === active?.id &&
+                        Math.abs(i + 0.5 - fill * DOTS) < 0.85;
+                      return (
+                        <i
+                          key={i}
+                          className={`qx-search-scan-dot${on ? " is-on" : ""}${
+                            head ? " is-head" : ""
+                          }`}
+                        />
+                      );
+                    })}
+                  </span>
+                </span>
+                {typeof track.hits === "number" && track.status === "done" ? (
+                  <span className="qx-search-scan-hits">
+                    {track.hits > 99 ? "99+" : track.hits}
+                  </span>
+                ) : (
+                  <span className="qx-search-scan-step-index">
+                    {trackIndex + 1}/{total}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {/* Horizontal crawl only on the active step bar */}
+        {active?.status === "running" && (
+          <div className="qx-search-scan-bar">
+            <span style={{ width: `${Math.max(12, trackFill(active, clock, phase, true) * 100)}%` }} />
+          </div>
+        )}
       </div>
 
       {query ? (
@@ -167,23 +227,38 @@ export default function SearchProgressIsland({
   );
 }
 
-function triangleWave(t: number): number {
-  const x = t % 2;
-  return x < 1 ? x : 2 - x;
+/**
+ * Show the pipeline stage we are *on*:
+ * running → first pending (next up) → last done (settling) → 0.
+ */
+function resolveActiveStep(tracks: SearchTrackState[], phase: string): number {
+  if (tracks.length === 0) return 0;
+  if (phase === "settling") return tracks.length - 1;
+
+  const running = tracks.findIndex((t) => t.status === "running");
+  if (running >= 0) return running;
+
+  const pending = tracks.findIndex((t) => t.status === "pending");
+  if (pending >= 0) return pending;
+
+  for (let i = tracks.length - 1; i >= 0; i--) {
+    if (tracks[i].status === "done") return i;
+  }
+  return 0;
 }
 
-/** 0–1 fill for the dot matrix. */
 function trackFill(
   track: SearchTrackState,
   clock: number,
   phase: string,
+  isActive: boolean,
 ): number {
   if (track.status === "done" || phase === "settling") return 1;
   if (track.status === "pending" || track.status === "skipped") return 0;
-  // Running: ease toward ~0.72 then pulse so it never looks “stuck finished”.
-  const base = 0.18 + 0.55 * (0.5 + 0.5 * Math.sin(clock * 2.1));
-  const crawl = Math.min(0.85, (clock % 2.4) / 2.4);
-  return Math.max(base * 0.35, crawl);
+  if (!isActive) return 0.15;
+  const crawl = Math.min(0.88, (clock % 2.2) / 2.2);
+  const pulse = 0.12 + 0.08 * (0.5 + 0.5 * Math.sin(clock * 3.2));
+  return Math.max(pulse, crawl);
 }
 
 function IconApps() {
