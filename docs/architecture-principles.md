@@ -117,7 +117,8 @@
 | 插件 | `plugin-architecture.md`, `public/doc/raycast-plugin-conversion.md` | O：host+converter 扩展；L：跨端 command 同形 |
 | 设置 / i18n | `settings-panel.md`, `src/i18n.ts` | I：按页拆分；D：文案依赖 key 而非组件内写死语言 |
 | IPC | `ipc-catalogue.md` | 契约单一事实来源 |
-| **系统能力** | `display.rs` · `desktop_windows.rs` · `media/` · `clipboard` · FE `src/system/*` | S：发现/媒体/剪贴板各管一责；D：feature 只依赖端口；禁止在 screencap/OCR 内复制 xcap 枚举 |
+| **系统能力** | `display.rs` · `desktop_windows.rs` · `media/` · `clipboard` · `runtime/` · FE `src/system/*` | S：发现/媒体/剪贴板/线程调度各管一责；D：feature 只依赖端口；禁止在 screencap/OCR 内复制 xcap 枚举 |
+| **Runtime 线程** | [runtime-threading.md](./runtime-threading.md) | UI 只在主线程；重活 `blocking`；async command 用 `runtime::ui` 一次事务 |
 
 ### 系统能力提升规则（与 AGENTS Module Decomposition 对齐）
 
@@ -130,6 +131,7 @@
 | 区域 still-frame 抓帧 | `display::capture_region` | 内部 API（工作流封装） |
 | 磁盘图写剪贴板 | `clipboard` | `clipboard_write_image_file` / `src/system/clipboard.ts` |
 | 视频/GIF 编解码 | `media/` | 既有 convert 命令 |
+| 主线程 UI / 后台算力 | `runtime/` | `runtime::ui` · `runtime::blocking` · `runtime::install`（见 runtime-threading.md） |
 
 Feature（如 `screencap`）只保留：**session / 工作流 / 历史 / UI 语义**。旧名 `screencap_list_*` 可作为薄门面保留，新代码必须走系统命令。
 

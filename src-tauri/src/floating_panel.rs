@@ -442,7 +442,15 @@ pub fn install(app: &AppHandle) {
 }
 
 /// Show the main window as a floating, non-activating panel.
+///
+/// Safe from tokio async command workers: AppKit ordering is dispatched to the
+/// main thread (macOS aborts with SIGTRAP if orderFront runs off-main).
 pub fn show_floating(app: &AppHandle) {
+    let app = app.clone();
+    let _ = crate::main_thread::run_on_main(&app.clone(), move || show_floating_now(&app));
+}
+
+pub(crate) fn show_floating_now(app: &AppHandle) {
     mark_panel_open();
     #[cfg(target_os = "macos")]
     {
@@ -484,10 +492,13 @@ pub fn show_floating(app: &AppHandle) {
 
 /// Hide the main window. No-op if already hidden.
 pub fn hide(app: &AppHandle) {
-    mark_panel_closed();
-    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
-        let _ = win.hide();
-    }
+    let app = app.clone();
+    let _ = crate::main_thread::run_on_main(&app.clone(), move || {
+        mark_panel_closed();
+        if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+            let _ = win.hide();
+        }
+    });
 }
 
 /// Hide the main window and restore the app that was frontmost before Qx
@@ -561,7 +572,16 @@ pub fn toggle_launcher(app: &AppHandle) {
 /// Show + navigate to a route by emitting the existing `navigate` event.
 /// Mirrors the old `show_and_navigate` behavior but never steals focus.
 pub fn show_and_navigate(app: &AppHandle, route: &str) {
-    show_floating(app);
+    let app = app.clone();
+    let route = route.to_string();
+    let _ = crate::main_thread::run_on_main(&app.clone(), move || {
+        show_and_navigate_now(&app, &route);
+    });
+}
+
+/// Direct path when the caller is already on the main thread.
+pub(crate) fn show_and_navigate_now(app: &AppHandle, route: &str) {
+    show_floating_now(app);
     remember_active_route(route);
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
         let _ = tauri::Emitter::emit(&win, "navigate", route);

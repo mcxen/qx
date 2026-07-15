@@ -14,8 +14,10 @@ mod history;
 mod http_client;
 mod island_window;
 mod macro_recorder;
+mod main_thread;
 mod marketplace;
 mod media;
+mod runtime;
 mod ocr;
 mod paths;
 mod permissions;
@@ -417,6 +419,8 @@ pub fn run() {
         })
         .setup(|app| {
             let handle = app.handle().clone();
+            // Pin UI-thread identity before any window promotion / async command.
+            runtime::install(&handle);
             let Some(win) = app.get_webview_window("main") else {
                 diagnostics::log(
                     diagnostics::LogLevel::Error,

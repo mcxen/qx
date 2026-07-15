@@ -10,13 +10,16 @@ const CONTROLS_LOGICAL_W: f64 = 340.0;
 const CONTROLS_LOGICAL_H: f64 = 36.0;
 
 pub(super) fn set_ui_protected(app: &AppHandle, protected: bool) {
-    if let Some(main) = app.get_webview_window(crate::floating_panel::MAIN_LABEL) {
-        let _ = main.set_content_protected(protected);
-    }
-    if let Some(controls) = app.get_webview_window(CONTROL_LABEL) {
-        // The standalone controller must never appear in captured output.
-        let _ = controls.set_content_protected(true);
-    }
+    let app = app.clone();
+    let _ = crate::main_thread::run_on_main(&app.clone(), move || {
+        if let Some(main) = app.get_webview_window(crate::floating_panel::MAIN_LABEL) {
+            let _ = main.set_content_protected(protected);
+        }
+        if let Some(controls) = app.get_webview_window(CONTROL_LABEL) {
+            // The standalone controller must never appear in captured output.
+            let _ = controls.set_content_protected(true);
+        }
+    });
 }
 
 /// Place the recording island beneath the selected region when possible.
@@ -81,7 +84,7 @@ pub(super) fn position(app: &AppHandle) {
 }
 
 #[cfg(target_os = "macos")]
-fn promote(controls: &tauri::WebviewWindow) {
+fn promote_now(controls: &tauri::WebviewWindow) {
     use objc2::msg_send;
     use objc2::runtime::AnyObject;
     use objc2_app_kit::NSWindowCollectionBehavior;
@@ -103,7 +106,13 @@ fn promote(controls: &tauri::WebviewWindow) {
     }
 }
 
+/// Show the capture island. Must be safe when called from async (tokio) commands.
 pub(super) fn show(app: &AppHandle) -> Result<(), String> {
+    let app = app.clone();
+    crate::main_thread::run_on_main(&app.clone(), move || show_now(&app))?
+}
+
+fn show_now(app: &AppHandle) -> Result<(), String> {
     if app.get_webview_window(CONTROL_LABEL).is_none() {
         WebviewWindowBuilder::new(
             app,
@@ -139,7 +148,7 @@ pub(super) fn show(app: &AppHandle) -> Result<(), String> {
         .show()
         .map_err(|error| format!("show recording controls: {error}"))?;
     #[cfg(target_os = "macos")]
-    promote(&controls);
+    promote_now(&controls);
     #[cfg(not(target_os = "macos"))]
     let _ = controls.set_focus();
     super::recording_session::emit_recording_status(app);
@@ -147,28 +156,42 @@ pub(super) fn show(app: &AppHandle) -> Result<(), String> {
 }
 
 pub(super) fn hide(app: &AppHandle) {
-    if let Some(controls) = app.get_webview_window(CONTROL_LABEL) {
-        let _ = controls.hide();
-    }
+    let app = app.clone();
+    let _ = crate::main_thread::run_on_main(&app.clone(), move || {
+        if let Some(controls) = app.get_webview_window(CONTROL_LABEL) {
+            let _ = controls.hide();
+        }
+    });
 }
 
 pub(super) fn reassert(app: &AppHandle) {
-    let Some(controls) = app.get_webview_window(CONTROL_LABEL) else {
-        return;
-    };
-    position(app);
-    let _ = controls.show();
-    #[cfg(target_os = "macos")]
-    promote(&controls);
+    let app = app.clone();
+    let _ = crate::main_thread::run_on_main(&app.clone(), move || {
+        let Some(controls) = app.get_webview_window(CONTROL_LABEL) else {
+            return;
+        };
+        position(&app);
+        let _ = controls.show();
+        #[cfg(target_os = "macos")]
+        promote_now(&controls);
+    });
 }
 
+/// Restore pinned island or main screencap UI after capture. Main-thread only AppKit.
 pub(super) fn restore_surface(app: &AppHandle, suppress_ms: u64) -> Result<(), String> {
-    if CONTROLS_PINNED.load(Ordering::Relaxed) {
-        show(app)
-    } else {
-        hide(app);
-        crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(suppress_ms));
-        crate::floating_panel::show_and_navigate(app, "screencap");
-        Ok(())
-    }
+    let app = app.clone();
+    let pinned = CONTROLS_PINNED.load(Ordering::Relaxed);
+    crate::main_thread::run_on_main(&app.clone(), move || {
+        if pinned {
+            show_now(&app)
+        } else {
+            if let Some(controls) = app.get_webview_window(CONTROL_LABEL) {
+                let _ = controls.hide();
+            }
+            crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(suppress_ms));
+            // Already on the main thread — use the direct path to avoid re-entrancy.
+            crate::floating_panel::show_and_navigate_now(&app, "screencap");
+            Ok(())
+        }
+    })?
 }

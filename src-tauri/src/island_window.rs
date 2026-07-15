@@ -76,37 +76,43 @@ pub fn island_window_ensure(app: AppHandle, always_on_top: Option<bool>) -> Resu
     if let Ok(mut snap) = SNAPSHOT.lock() {
         snap.always_on_top = aot;
     }
-    ensure_island_window(&app, aot)?;
-    if let Some(win) = app.get_webview_window(ISLAND_LABEL) {
-        let _ = win.set_always_on_top(aot);
-        let _ = win.set_size(LogicalSize::new(ISLAND_WIDTH, ISLAND_HEIGHT));
-        position_island(&app);
-        let _ = win.hide();
-    }
-    Ok(())
+    crate::runtime::run_ui(&app.clone(), move || {
+        ensure_island_window(&app, aot)?;
+        if let Some(win) = app.get_webview_window(ISLAND_LABEL) {
+            let _ = win.set_always_on_top(aot);
+            let _ = win.set_size(LogicalSize::new(ISLAND_WIDTH, ISLAND_HEIGHT));
+            position_island(&app);
+            let _ = win.hide();
+        }
+        Ok::<(), String>(())
+    })?
 }
 
 #[tauri::command]
 pub fn island_window_show(app: AppHandle, always_on_top: Option<bool>) -> Result<(), String> {
     let aot =
         always_on_top.unwrap_or_else(|| SNAPSHOT.lock().map(|s| s.always_on_top).unwrap_or(true));
-    ensure_island_window(&app, aot)?;
-    let win = app
-        .get_webview_window(ISLAND_LABEL)
-        .ok_or_else(|| "island window unavailable".to_string())?;
-    let _ = win.set_always_on_top(aot);
-    position_island(&app);
-    win.show()
-        .map_err(|error| format!("show island window: {error}"))?;
-    Ok(())
+    crate::runtime::run_ui(&app.clone(), move || {
+        ensure_island_window(&app, aot)?;
+        let win = app
+            .get_webview_window(ISLAND_LABEL)
+            .ok_or_else(|| "island window unavailable".to_string())?;
+        let _ = win.set_always_on_top(aot);
+        position_island(&app);
+        win.show()
+            .map_err(|error| format!("show island window: {error}"))?;
+        Ok::<(), String>(())
+    })?
 }
 
 #[tauri::command]
 pub fn island_window_hide(app: AppHandle) -> Result<(), String> {
-    if let Some(win) = app.get_webview_window(ISLAND_LABEL) {
-        let _ = win.hide();
-    }
-    Ok(())
+    crate::runtime::run_ui(&app.clone(), move || {
+        if let Some(win) = app.get_webview_window(ISLAND_LABEL) {
+            let _ = win.hide();
+        }
+        Ok::<(), String>(())
+    })?
 }
 
 #[tauri::command]
@@ -114,10 +120,12 @@ pub fn island_window_set_always_on_top(app: AppHandle, always_on_top: bool) -> R
     if let Ok(mut snap) = SNAPSHOT.lock() {
         snap.always_on_top = always_on_top;
     }
-    if let Some(win) = app.get_webview_window(ISLAND_LABEL) {
-        let _ = win.set_always_on_top(always_on_top);
-    }
-    Ok(())
+    crate::runtime::run_ui(&app.clone(), move || {
+        if let Some(win) = app.get_webview_window(ISLAND_LABEL) {
+            let _ = win.set_always_on_top(always_on_top);
+        }
+        Ok::<(), String>(())
+    })?
 }
 
 #[tauri::command]

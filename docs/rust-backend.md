@@ -24,6 +24,7 @@
 | `history.rs` | `launch_history` / `search_history` SQLite 表；`record_*` 命令后台写入，`get_*` 命令批量读取 |
 | `system_stats.rs` | Mach APIs：`host_processor_info`（每核 CPU）、`host_statistics64`（内存），供 `HomeSystemIsland` 每 1.6s 轮询 |
 | `system_information.rs` | 主机名/芯片/内存/存储/网络/进程列表；`kill_process` 通过 `/bin/kill` 发 SIGTERM |
+| `runtime/` | **线程调度系统能力**：主线程 UI 事务（`ui`/`run_ui`）、blocking 算力池、跨平台主线程 id；所有窗口/剪贴板操作必须经此层。见 [runtime-threading.md](./runtime-threading.md) |
 | `display.rs` | Qx 系统级显示器服务：统一枚举、稳定 ID、主屏/内置屏/外接屏识别、鼠标所在屏幕、Tauri↔捕获后端映射、区域 still-frame 捕获（`capture_region`）；公共 IPC `display_list`；业务模块不得重复实现识别或抓帧 |
 | `desktop_windows.rs` | Qx 系统级顶层窗口清单：可见窗枚举、几何、z 序、按显示器裁剪与逻辑坐标换算；公共 IPC `desktop_windows_list`；截图窗选等只消费该服务，禁止 feature 内直接 `xcap::Window` |
 | `display_monitor.rs` | 复用系统级显示器服务监听插拔并发出 `display:changed`，不得自行枚举或分类显示器 |

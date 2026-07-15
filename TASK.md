@@ -21,7 +21,6 @@
 - [ ] macOS：选中条目列表不跳动；隐藏 Qx 后系统剪贴板为所选条目；⌘C / Enter 行为不变。
 - [ ] Windows 手动验证同上。
 
-
 ## Bugfix — 文本工具编辑键与 QxShell 导航抽象
 
 **状态**：已实现，等待发布包运行态复核。
@@ -132,6 +131,9 @@
 - **系统能力层（SOLID）**：窗列表提升为 `desktop_windows`（`desktop_windows_list`）；显示器公共 IPC `display_list` + `display::capture_region`；剪贴板 `clipboard_write_image_file`；前端端口 `src/system/*`；screencap 仅消费系统服务与保留工作流门面。
 - **截图闭环补齐**：录制停止后 `restore_selection` 回灌选区；预览支持复制图片；历史按扩展名识别截图；Esc 分层（草稿/选区/退出）；窗选在 session 就绪后刷新。
 - **截图标注增强**：序号标记（5）、马赛克遮盖（6）；历史缩略图；双击选区确认；记忆上次选区；搜索文案「截图与录屏」。
+- **修复截图后闪退（SIGTRAP）**：根因是 async 命令在 tokio worker 上调用 AppKit（`show_floating` / `setLevel` / 剪贴板）；新增 `main_thread::run_on_main`，浮窗/捕获岛/圈选窗/剪贴板写图一律回主线程。
+- **修复录制闪退**：崩溃栈为 `start_recording` → `controls::show` → `promote`（同样非主线程 AppKit）；`start_recording` UI 收拢到一次主线程事务，圈选窗打开/内容保护一并主线程化。
+- **通用 runtime 线程模型**：`src-tauri/src/runtime/`（`install` / `ui` / `run_ui` / `blocking` / `spawn_ui`）；setup 钉主线程 id；截图命令示范 `blocking→ui`；island 窗体 hop；文档 `docs/runtime-threading.md`。
 - 显示器枚举、稳定 ID、内置/外接/主屏判断、鼠标所在屏幕和 Tauri/捕获后端映射提升为 Qx 系统级服务；截图模块只保留圈选几何、裁剪与录制状态，热插拔监听复用系统服务。
 - 修复首次启动后第一次唤起落到隐藏窗口创建显示器或旧 macOS Space：标准化鼠标坐标优先、原生坐标仅兜底，窗口显示后重新按目标 DPI 校正，并使用 active-Space 窗口策略。
 - 截图以 PNG 接入现有捕获历史和预览，和 MP4/MOV/GIF 共用清理与文件输出目录。

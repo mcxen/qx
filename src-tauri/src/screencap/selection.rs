@@ -144,46 +144,54 @@ fn show_region_picker_internal(
             logical_area: None,
         });
     }
-    if app.get_webview_window(PICKER_LABEL).is_none() {
-        WebviewWindowBuilder::new(
-            app,
-            PICKER_LABEL,
-            WebviewUrl::App("index.html?view=region-picker".into()),
-        )
-        .title("Qx Region Picker")
-        .inner_size(logical_w, logical_h)
-        .position(logical_x, logical_y)
-        .resizable(false)
-        .maximizable(false)
-        .minimizable(false)
-        .decorations(false)
-        .transparent(true)
-        .shadow(false)
-        .always_on_top(true)
-        .skip_taskbar(true)
-        .focused(true)
-        .accept_first_mouse(true)
-        // Picker must never end up in the recording itself.
-        .content_protected(true)
-        .build()
-        .map_err(|error| format!("open region picker: {error}"))?;
-    }
+    // Window create/show/focus are AppKit main-thread only when reached from async commands.
+    let app_for_ui = app.clone();
+    let pos_x = position.x;
+    let pos_y = position.y;
+    let size_w = size.width;
+    let size_h = size.height;
+    crate::main_thread::run_on_main(&app_for_ui.clone(), move || {
+        if app_for_ui.get_webview_window(PICKER_LABEL).is_none() {
+            WebviewWindowBuilder::new(
+                &app_for_ui,
+                PICKER_LABEL,
+                WebviewUrl::App("index.html?view=region-picker".into()),
+            )
+            .title("Qx Region Picker")
+            .inner_size(logical_w, logical_h)
+            .position(logical_x, logical_y)
+            .resizable(false)
+            .maximizable(false)
+            .minimizable(false)
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .focused(true)
+            .accept_first_mouse(true)
+            // Picker must never end up in the recording itself.
+            .content_protected(true)
+            .build()
+            .map_err(|error| format!("open region picker: {error}"))?;
+        }
 
-    let picker = app
-        .get_webview_window(PICKER_LABEL)
-        .ok_or_else(|| "region picker window is unavailable".to_string())?;
-    let _ = picker.set_content_protected(true);
-    let _ = picker.set_always_on_top(true);
-    // Cover the selected display exactly. Physical size/position matches the
-    // monitor framebuffer; CSS clientX/Y stay in logical points (DPR scaled).
-    let _ = picker.set_position(PhysicalPosition::new(position.x, position.y));
-    let _ = picker.set_size(PhysicalSize::new(size.width, size.height));
-    let _ = (logical_w, logical_h, logical_x, logical_y);
-    picker
-        .show()
-        .map_err(|error| format!("show region picker: {error}"))?;
-    let _ = picker.set_ignore_cursor_events(false);
-    let _ = picker.set_focus();
+        let picker = app_for_ui
+            .get_webview_window(PICKER_LABEL)
+            .ok_or_else(|| "region picker window is unavailable".to_string())?;
+        let _ = picker.set_content_protected(true);
+        let _ = picker.set_always_on_top(true);
+        // Cover the selected display exactly. Physical size/position matches the
+        // monitor framebuffer; CSS clientX/Y stay in logical points (DPR scaled).
+        let _ = picker.set_position(PhysicalPosition::new(pos_x, pos_y));
+        let _ = picker.set_size(PhysicalSize::new(size_w, size_h));
+        picker
+            .show()
+            .map_err(|error| format!("show region picker: {error}"))?;
+        let _ = picker.set_ignore_cursor_events(false);
+        let _ = picker.set_focus();
+        Ok::<(), String>(())
+    })??;
     if let Some(status) = screencap_region_select_status_with_restore(false) {
         let _ = app.emit("screencap:picker", status);
     }
@@ -326,42 +334,52 @@ pub async fn screencap_confirm_region_select(
     }
     if action == CaptureMode::Screenshot {
         let copy_to_clipboard = copy_to_clipboard.unwrap_or(false);
-        let clipboard_app = app.clone();
         hide_region_picker_internal(&app);
         // Convert a worker panic into the same recoverable error path as capture
         // and filesystem failures. Returning early here would leave every Qx
         // surface hidden and look indistinguishable from a process crash.
-        let result = match tauri::async_runtime::spawn_blocking(move || {
-            let output = take_screenshot_blocking(area, annotation_overlay_base64)?;
-            let clipboard_error = copy_to_clipboard
-                .then(|| {
-                    crate::clipboard::write_image_file_to_clipboard(&clipboard_app, &output.path)
-                })
-                .and_then(Result::err)
-                .map(|error| format!("Screenshot saved, but automatic copy failed: {error}"));
-            Ok::<_, String>((output, clipboard_error))
+        //
+        // Pattern: runtime::blocking (capture) → runtime::ui (clipboard + restore).
+        let result = crate::runtime::blocking(move || {
+            take_screenshot_blocking(area, annotation_overlay_base64)
         })
         .await
-        {
-            Ok(result) => result,
-            Err(error) => Err(format!("screenshot worker failed: {error}")),
-        };
+        .map_err(|error| format!("screenshot worker failed: {error}"))
+        .and_then(|inner| inner);
         match result {
-            Ok((output, clipboard_error)) => {
+            Ok(output) => {
                 let output_path = output.path.to_string_lossy().to_string();
-                if let Ok(mut status) = runtime_status().lock() {
-                    status.phase = "done";
-                    status.started_at = None;
-                    status.area = None;
-                    status.output_path = Some(output_path.clone());
-                    status.error = clipboard_error;
-                }
-                if let Ok(mut session) = picker_session().lock() {
-                    *session = None;
-                }
-                set_recording_ui_protected(&app, false);
-                restore_capture_surface(&app, 800)?;
-                recording_session::emit_recording_status(&app);
+                let path_for_clip = output.path.clone();
+                let path_for_event = output_path.clone();
+                let app_ui = app.clone();
+                let clipboard_error = crate::runtime::ui(&app, move || {
+                    let clipboard_error = if copy_to_clipboard {
+                        crate::clipboard::write_image_file_to_clipboard(&app_ui, &path_for_clip)
+                            .err()
+                            .map(|error| {
+                                format!("Screenshot saved, but automatic copy failed: {error}")
+                            })
+                    } else {
+                        None
+                    };
+                    if let Ok(mut status) = runtime_status().lock() {
+                        status.phase = "done";
+                        status.started_at = None;
+                        status.area = None;
+                        status.output_path = Some(path_for_event.clone());
+                        status.error = clipboard_error.clone();
+                    }
+                    if let Ok(mut session) = picker_session().lock() {
+                        *session = None;
+                    }
+                    set_recording_ui_protected(&app_ui, false);
+                    restore_capture_surface(&app_ui, 800)?;
+                    recording_session::emit_recording_status(&app_ui);
+                    Ok::<Option<String>, String>(clipboard_error)
+                })
+                .await
+                .map_err(|error| error.to_string())??;
+                let _ = clipboard_error;
                 // Delay so the main screencap surface can mount listeners first.
                 let emit_app = app.clone();
                 tauri::async_runtime::spawn(async move {

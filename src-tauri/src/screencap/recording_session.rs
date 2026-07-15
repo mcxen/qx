@@ -126,8 +126,8 @@ pub async fn start_recording(
         status.output_path = None;
         status.error = None;
     }
-    // Hide the fullscreen picker first. A region recording later reuses the
-    // same WebView only after shrinking it to the selected rectangle.
+    // All AppKit window work (hide picker, protect surfaces, show island) must
+    // run on the main thread. Off-main orderFront/setLevel aborts with SIGTRAP.
     let keep_selection_frame = picker_session()
         .lock()
         .ok()
@@ -137,31 +137,52 @@ pub async fn start_recording(
                 .map(|session| session.logical_area.is_some())
         })
         .unwrap_or(false);
-    if let Some(picker) = app.get_webview_window(PICKER_LABEL) {
-        let _ = picker.hide();
-    }
-    set_recording_ui_protected(&app, true);
-    crate::floating_panel::hide(&app);
-    emit_recording_status(&app);
-    if keep_selection_frame {
-        selection::show_picker_recording_frame_safely(&app);
-    }
-    if let Err(error) = show_recording_controls_internal(&app) {
-        let error = format!("recording controls failed to open: {error}");
-        let _ = tauri::async_runtime::spawn_blocking(abort_recording_start_blocking).await;
-        if let Ok(mut status) = runtime_status().lock() {
-            status.phase = "error";
-            status.started_at = None;
-            status.error = Some(error.clone());
+
+    let ui_app = app.clone();
+    let ui_result = crate::main_thread::run_on_main(&ui_app.clone(), move || {
+        // Hide the fullscreen picker first. A region recording later reuses the
+        // same WebView only after shrinking it to the selected rectangle.
+        if let Some(picker) = ui_app.get_webview_window(PICKER_LABEL) {
+            let _ = picker.hide();
         }
-        emit_recording_status(&app);
-        let _ = selection::restore_picker_selection_internal(&app);
-        return Err(error);
+        if let Some(main) = ui_app.get_webview_window(crate::floating_panel::MAIN_LABEL) {
+            let _ = main.set_content_protected(true);
+        }
+        if let Some(controls) = ui_app.get_webview_window(CONTROL_LABEL) {
+            let _ = controls.set_content_protected(true);
+        }
+        crate::floating_panel::hide(&ui_app);
+        if keep_selection_frame {
+            selection::show_picker_recording_frame_safely(&ui_app);
+        }
+        show_recording_controls_internal(&ui_app)?;
+        // Re-assert visibility once more (macOS Space / fullscreen races).
+        controls::reassert(&ui_app);
+        Ok::<(), String>(())
+    });
+
+    match ui_result {
+        Ok(Ok(())) => {
+            emit_recording_status(&app);
+            Ok(())
+        }
+        Ok(Err(error)) | Err(error) => {
+            let error = if error.starts_with("recording controls") {
+                error
+            } else {
+                format!("recording controls failed to open: {error}")
+            };
+            let _ = tauri::async_runtime::spawn_blocking(abort_recording_start_blocking).await;
+            if let Ok(mut status) = runtime_status().lock() {
+                status.phase = "error";
+                status.started_at = None;
+                status.error = Some(error.clone());
+            }
+            emit_recording_status(&app);
+            let _ = selection::restore_picker_selection_internal(&app);
+            Err(error)
+        }
     }
-    // Re-assert visibility once more (macOS Space / fullscreen races).
-    controls::reassert(&app);
-    emit_recording_status(&app);
-    Ok(())
 }
 
 /// Open a dedicated transparent fullscreen picker (no main-window glass mask).
