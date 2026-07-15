@@ -3,11 +3,16 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tauri::{command, AppHandle};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 static SETTINGS_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+/// While ShortcutRecorder is open, OS global hotkeys must not fire.
+static GLOBAL_SHORTCUTS_PAUSED: AtomicBool = AtomicBool::new(false);
+static GLOBAL_SHORTCUTS_PAUSE_DEPTH: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneralSettings {
@@ -759,7 +764,7 @@ pub async fn update_settings(app: AppHandle, settings: Settings) -> Result<Setti
     })
     .await?;
 
-    if shortcuts_changed {
+    if shortcuts_changed && !global_shortcuts_are_paused() {
         register_shortcuts(&app, &settings)?;
     }
     if tray_changed {
@@ -843,9 +848,44 @@ fn toggle_route(app: &AppHandle, route: &str) {
     crate::floating_panel::toggle_route(app, route);
 }
 
+pub(crate) fn global_shortcuts_are_paused() -> bool {
+    GLOBAL_SHORTCUTS_PAUSED.load(Ordering::SeqCst)
+}
+
+/// Unregister all process-global shortcuts so the recorder can capture chords.
+#[command]
+pub fn shortcuts_pause_global(app: AppHandle) -> Result<(), String> {
+    let depth = GLOBAL_SHORTCUTS_PAUSE_DEPTH.fetch_add(1, Ordering::SeqCst) + 1;
+    GLOBAL_SHORTCUTS_PAUSED.store(true, Ordering::SeqCst);
+    if depth == 1 {
+        let _ = app.global_shortcut().unregister_all();
+    }
+    Ok(())
+}
+
+/// Re-register shortcuts from saved settings after the recorder closes.
+#[command]
+pub fn shortcuts_resume_global(app: AppHandle) -> Result<(), String> {
+    let prev = GLOBAL_SHORTCUTS_PAUSE_DEPTH.load(Ordering::SeqCst);
+    if prev == 0 {
+        GLOBAL_SHORTCUTS_PAUSED.store(false, Ordering::SeqCst);
+        return register_shortcuts(&app, &read_settings());
+    }
+    let depth = GLOBAL_SHORTCUTS_PAUSE_DEPTH.fetch_sub(1, Ordering::SeqCst) - 1;
+    if depth == 0 {
+        GLOBAL_SHORTCUTS_PAUSED.store(false, Ordering::SeqCst);
+        register_shortcuts(&app, &read_settings())?;
+    }
+    Ok(())
+}
+
 pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result<(), String> {
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
+    if global_shortcuts_are_paused() {
+        // Settings are saved while recording; apply OS bindings on resume.
+        return Ok(());
+    }
     let mut registered = BTreeSet::new();
 
     // Preserve the long-standing Alt+Space behavior: hidden -> Launcher search,

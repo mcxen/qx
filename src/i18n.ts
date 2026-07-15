@@ -42,7 +42,7 @@ const zh: Record<string, string> = {
   "settings.navGroup.modules": "模块",
   "settings.navGroup.system": "系统",
 
-  "shortcuts.hint": "全局快捷键在 Qx 后台运行时也生效。默认启用「召唤 Launcher 搜索」；「切换当前窗口」和模块快捷键需由用户手动开启。",
+  "shortcuts.hint": "全局快捷键在 Qx 后台运行时也生效。点击录入时会暂时停用已注册快捷键，便于重绑（如 ⌥Space）。组合键请按住修饰键再按主键（如 ⌥⇧G、⌘K）；冲突时仅提示，不会静默覆盖。默认启用「召唤 Launcher 搜索」；其它模块快捷键需手动开启。",
   "shortcuts.group.global": "全局",
   "shortcuts.group.clipboard": "剪贴板",
   "shortcuts.group.rss": "RSS",

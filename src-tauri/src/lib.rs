@@ -609,6 +609,8 @@ pub fn run() {
             settings::reset_settings,
             settings::import_settings,
             settings::export_settings,
+            settings::shortcuts_pause_global,
+            settings::shortcuts_resume_global,
             storage::qx_storage_overview,
             storage::qx_storage_clear_cache,
             storage::qx_storage_clear_files,
