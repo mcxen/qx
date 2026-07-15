@@ -5,6 +5,7 @@ import {
   Bot,
   CloudSun,
   Info,
+  Keyboard,
   Palette,
   Puzzle,
   Rss,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { useSettingsStore, type SettingsTab } from "./store";
 import GeneralSettings from "./GeneralSettings";
+import ShortcutSettings from "./ShortcutSettings";
 import PluginManager from "./PluginManager";
 import PermissionSettings from "./PermissionSettings";
 import AppearanceSettings from "./AppearanceSettings";
@@ -49,6 +51,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Core",
     items: [
       { id: "general", label: "General", icon: Settings2 },
+      { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
       { id: "appearance", label: "Appearance", icon: Palette },
       { id: "plugins", label: "Extensions", icon: Puzzle },
     ],
@@ -79,6 +82,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 const TAB_LABELS: Record<SettingsTab, string> = {
   general: "General",
+  shortcuts: "Shortcuts",
   plugins: "Extensions",
   permissions: "Permissions",
   appearance: "Appearance",
@@ -159,6 +163,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     switch (activeTab) {
       case "general":
         return <GeneralSettings />;
+      case "shortcuts":
+        return <ShortcutSettings />;
       case "plugins":
         return <PluginManager />;
       case "permissions":

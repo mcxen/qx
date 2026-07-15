@@ -237,6 +237,7 @@ export interface Settings {
 
 export type SettingsTab =
   | "general"
+  | "shortcuts"
   | "plugins"
   | "permissions"
   | "appearance"

@@ -151,7 +151,9 @@ export default function Launcher({
             ? (resolvedHome.shellContent ?? null)
             : null;
 
-  // Search uses a dedicated multi-track scan island (not the bounce wave).
+  // Search / home custom modes must wrap QxIslandSurface so docked chrome
+  // keeps absolute center (left 50% + translateX). Bare customNode sat in the
+  // bottom-bar grid middle column and looked left-of-center.
   const customIsland = isSearchActivity ? (
     <QxIslandSurface
       placement="docked"
@@ -167,8 +169,14 @@ export default function Launcher({
         hits={searchHits}
       />
     </QxIslandSurface>
-  ) : idleHome ? (
-    resolvedHome.customNode
+  ) : idleHome && resolvedHome.customNode ? (
+    <QxIslandSurface
+      placement="docked"
+      variant={resolvedHome.chromeVariant ?? "sci"}
+      aria-label={resolvedHome.modeId}
+    >
+      {resolvedHome.customNode}
+    </QxIslandSurface>
   ) : undefined;
 
   // Mirror shell statuses into the session store (optional consumers / float).
