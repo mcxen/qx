@@ -111,7 +111,13 @@ export function PluginPanelViewport() {
     const container = containerRef.current;
     const activePanel = panel;
     if (!activePanel) {
-      setRenderState({ kind: "error", detail: "Panel not registered" });
+      // Host only registers a panel when manifest.panel exists (see loadPlugin).
+      // Island-only / command-only plugins must still declare a panel if they open as a tab.
+      setRenderState({
+        kind: "error",
+        detail:
+          "Panel not registered — add manifest.panel + export default.panel (see plugin AGENTS.md)",
+      });
       return;
     }
 
