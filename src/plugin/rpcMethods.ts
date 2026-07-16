@@ -68,6 +68,8 @@ const COMMAND_CAPABILITIES: Record<string, string> = {
   list_gif_history: "automation",
   get_screencap_history: "automation",
   macro_list: "automation",
+  plugin_cli_run: "cli",
+  plugin_cli_which: "cli",
 };
 
 const DANGEROUS_INVOKE_COMMANDS = new Set([
@@ -80,6 +82,8 @@ const DANGEROUS_INVOKE_COMMANDS = new Set([
   "plugin_file_write_base64",
   "plugin_file_empty_dir",
   "plugin_file_list",
+  "plugin_cli_run",
+  "plugin_cli_which",
   "qx_system_information_kill_process",
   "qx_permissions_request",
   "qx_external_displays_set_control",
@@ -325,6 +329,34 @@ export const rpcHandlers: Record<string, RpcHandler> = {
       timeoutMs: payload.timeoutMs,
     });
     return invoke("plugin_ai_run_bash", { req: payload });
+  },
+
+  /** Stable plugin CLI port — argv style, not gated by Agent bash toggle. */
+  cliRun: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "cli");
+    qxLog("debug", "plugin.rpc.cli", "Plugin CLI run started", {
+      pluginId: plugin.id,
+      program: payload.program,
+      argCount: Array.isArray(payload.args) ? payload.args.length : 0,
+      cwd: payload.cwd,
+      timeoutMs: payload.timeoutMs,
+    });
+    return invoke("plugin_cli_run", {
+      req: {
+        program: String(payload.program || ""),
+        args: Array.isArray(payload.args) ? payload.args.map(String) : [],
+        cwd: payload.cwd,
+        env: payload.env,
+        timeoutMs: payload.timeoutMs,
+      },
+    });
+  },
+
+  cliWhich: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "cli");
+    return invoke("plugin_cli_which", {
+      req: { program: String(payload.program || "") },
+    });
   },
 
   aiGrepSearch: async (plugin, perms, payload) => {

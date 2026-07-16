@@ -216,6 +216,26 @@ export interface PluginAiTaskInput extends PluginAiChatOptions {
   notify?: boolean;
 }
 
+/** Argv-style CLI run request (`context.cli.run`). */
+export interface PluginCliRunRequest {
+  /** Absolute path or bare program name (resolved via PATH + known brew bins). */
+  program: string;
+  args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+  /** Default 60000, clamped 1000–600000. */
+  timeoutMs?: number;
+}
+
+export interface PluginCliRunResult {
+  status: number | null;
+  stdout: string;
+  stderr: string;
+  timedOut: boolean;
+  /** Resolved program path used for spawn. */
+  program: string;
+}
+
 export interface PluginContext {
   pluginId: string;
   display: {
@@ -251,6 +271,14 @@ export interface PluginContext {
       text: () => Promise<string>;
       json: () => Promise<unknown>;
     }>;
+  };
+  /**
+   * Plugin CLI port — preferred way to run local tools (brew, release-cli, …).
+   * Argv-style only (no shell). Requires permission `cli`. Not gated by AI Agent.
+   */
+  cli: {
+    run: (request: PluginCliRunRequest) => Promise<PluginCliRunResult>;
+    which: (program: string) => Promise<string | null>;
   };
   notification: {
     show: (input: { title: string; body?: string; subtitle?: string }) => Promise<void>;

@@ -13,6 +13,7 @@
 | `src/plugin/runtime.ts` | iframe 沙箱生命周期、postMessage 协议、面板渲染 |
 | `src/plugin/context.ts` | `createPluginContext` / `createUnavailableContext` |
 | `src/plugin/rpcMethods.ts` | 所有 `handlePluginRpc` 处理器映射 |
+| `plugin_cli_run` / `plugin_cli_which`（Rust） | **业务 CLI 端口** `context.cli`（权限 `cli`，argv，不门控 Agent） |
 | `src/plugin/aiRuntime.ts` | AI task 创建、状态维护、取消、权限门控 |
 | `src/plugin/PluginHost.tsx` | 插件 panel 视图容器 |
 | `src/components/PluginBackgroundBadge.tsx` | 搜索/Extensions/panel 共用后台标签（悬停最近执行时间） |

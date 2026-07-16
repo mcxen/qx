@@ -29,6 +29,8 @@
 
 | 文档 | 覆盖范围 |
 |---|---|
+| [`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md) | **业务开发上手**：脚手架、CLI/HTTP 场景（发布进度/重发）、权限与调试 |
+| [`public/doc/plugin-cli-protocol.md`](../public/doc/plugin-cli-protocol.md) | **`context.cli` 协议**：argv 运行本机命令、权限 `cli`、与 ai-bash 边界 |
 | [plugin-architecture.md](./plugin-architecture.md) | 前端 iframe runtime、RPC 分发、AI 任务链路、权限模型 |
 | [plugin-design-research.md](./plugin-design-research.md) | Raycast-like Rust 启动器插件设计调研 + Qx 落地建议 |
 | [ai-agent-runtime.md](./ai-agent-runtime.md) | QxAI 各层（provider / streaming / tools / MCP / memory / soul） |

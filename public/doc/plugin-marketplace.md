@@ -365,4 +365,8 @@ https://github.com/raycast/extensions/tree/<ref>/extensions/system-information
 
 ## 完整示例
 
-参见 [hello-world 示例](./plugin-system.md#十一、示例插件：hello-world) 和 [Raycast 转换文档](./raycast-plugin-conversion.md)。
+参见：
+
+- [插件开发指南（业务上手）](./plugin-development-guide.md)
+- [hello-world 示例](./plugin-system.md#十二、示例插件：hello-world)
+- [Raycast 转换文档](./raycast-plugin-conversion.md)

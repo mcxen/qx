@@ -89,6 +89,190 @@ fn default_ai_bash_timeout_ms() -> u64 {
     30_000
 }
 
+// ---------------------------------------------------------------------------
+// Plugin CLI port (argv-style, not gated by AI Agent bash toggle)
+// ---------------------------------------------------------------------------
+
+fn default_cli_timeout_ms() -> u64 {
+    60_000
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCliRunRequest {
+    /// Program path or bare name to resolve on PATH / known locations.
+    pub program: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    /// Extra env vars (merged over process env). Keys cannot be empty.
+    #[serde(default)]
+    pub env: Option<std::collections::HashMap<String, String>>,
+    #[serde(default = "default_cli_timeout_ms")]
+    pub timeout_ms: u64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCliRunResult {
+    pub status: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub timed_out: bool,
+    /// Resolved absolute (or original) program path used for spawn.
+    pub program: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCliWhichRequest {
+    pub program: String,
+}
+
+fn validate_cli_program_name(program: &str) -> Result<(), String> {
+    let program = program.trim();
+    if program.is_empty() {
+        return Err("cli program is empty".to_string());
+    }
+    if program.contains('\0') {
+        return Err("cli program must not contain NUL".to_string());
+    }
+    // Block shell metacharacters for bare names; absolute paths are fine.
+    if !program.contains('/') && !program.contains('\\') {
+        if program.chars().any(|c| "|&;<>$`(){}[]!*?\n\r\t".contains(c)) {
+            return Err("cli program name contains unsafe characters".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn resolve_cli_program(program: &str) -> Result<PathBuf, String> {
+    validate_cli_program_name(program)?;
+    let program = program.trim();
+    let candidate = PathBuf::from(program);
+    if candidate.is_absolute() || program.contains('/') || program.contains('\\') {
+        if candidate.is_file() {
+            return Ok(candidate);
+        }
+        return Err(format!("cli program not found: {program}"));
+    }
+
+    // Known macOS Homebrew locations first (PATH inside GUI apps is often incomplete).
+    #[cfg(target_os = "macos")]
+    {
+        for prefix in ["/opt/homebrew/bin", "/usr/local/bin"] {
+            let path = PathBuf::from(prefix).join(program);
+            if path.is_file() {
+                return Ok(path);
+            }
+        }
+    }
+
+    if let Ok(path_var) = std::env::var("PATH") {
+        for dir in std::env::split_paths(&path_var) {
+            let path = dir.join(program);
+            if path.is_file() {
+                return Ok(path);
+            }
+        }
+    }
+
+    // Last resort: common system bins.
+    for prefix in ["/usr/bin", "/bin", "/usr/sbin", "/sbin"] {
+        let path = PathBuf::from(prefix).join(program);
+        if path.is_file() {
+            return Ok(path);
+        }
+    }
+
+    Err(format!("cli program not found on PATH: {program}"))
+}
+
+/// Argv-style process run for plugins (`context.cli.run`).
+/// Not gated by Settings → AI Agent bash; requires plugin permission `cli`.
+#[tauri::command]
+pub async fn plugin_cli_run(req: PluginCliRunRequest) -> Result<PluginCliRunResult, String> {
+    let program = resolve_cli_program(&req.program)?;
+    let program_display = program.display().to_string();
+    let args = req.args;
+    let cwd = req
+        .cwd
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let env = req.env.unwrap_or_default();
+    let timeout_ms = req.timeout_ms.clamp(1_000, 600_000);
+
+    for (key, _) in &env {
+        if key.trim().is_empty() || key.contains('\0') {
+            return Err("cli env key is invalid".to_string());
+        }
+    }
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let timeout = Duration::from_millis(timeout_ms);
+        let mut cmd = std::process::Command::new(&program);
+        cmd.args(&args)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped());
+        if let Some(dir) = cwd.as_deref() {
+            cmd.current_dir(dir);
+        }
+        for (key, value) in &env {
+            cmd.env(key, value);
+        }
+
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("spawn {}: {e}", program.display()))?;
+        let start = std::time::Instant::now();
+
+        loop {
+            if let Some(status) = child.try_wait().map_err(|e| format!("wait cli: {e}"))? {
+                let output = child
+                    .wait_with_output()
+                    .map_err(|e| format!("read cli output: {e}"))?;
+                return Ok(PluginCliRunResult {
+                    status: status.code(),
+                    stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                    timed_out: false,
+                    program: program_display.clone(),
+                });
+            }
+
+            if start.elapsed() >= timeout {
+                let _ = child.kill();
+                let output = child
+                    .wait_with_output()
+                    .map_err(|e| format!("read killed cli output: {e}"))?;
+                return Ok(PluginCliRunResult {
+                    status: None,
+                    stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                    timed_out: true,
+                    program: program_display.clone(),
+                });
+            }
+
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    })
+    .await
+    .map_err(|e| format!("cli task failed: {e}"))?
+}
+
+/// Resolve a CLI program path without running it.
+#[tauri::command]
+pub async fn plugin_cli_which(req: PluginCliWhichRequest) -> Result<Option<String>, String> {
+    match resolve_cli_program(&req.program) {
+        Ok(path) => Ok(Some(path.display().to_string())),
+        Err(_) => Ok(None),
+    }
+}
+
 static AI_MEMORY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn plugin_files_dir(id: &str) -> Result<PathBuf, String> {

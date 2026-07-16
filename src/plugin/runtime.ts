@@ -345,6 +345,16 @@ export function buildPluginRuntimeHtml(
           read: () => rpc('clipboardRead'),
           write: (text) => rpc('clipboardWrite', { text }),
         },
+        cli: {
+          run: (request) => rpc('cliRun', {
+            program: request.program,
+            args: request.args,
+            cwd: request.cwd,
+            env: request.env,
+            timeoutMs: request.timeoutMs,
+          }),
+          which: (program) => rpc('cliWhich', { program: String(program || '') }),
+        },
         http: {
           fetch: async (url, options = {}) => createPluginResponse(await rpc('httpFetch', { url, options })),
         },

@@ -53,6 +53,18 @@ export function createPluginContext(
       read: () => rpc("clipboardRead") as Promise<string>,
       write: (text: string) => rpc("clipboardWrite", { text }) as Promise<void>,
     },
+    cli: {
+      run: (request) =>
+        rpc("cliRun", {
+          program: request.program,
+          args: request.args,
+          cwd: request.cwd,
+          env: request.env,
+          timeoutMs: request.timeoutMs,
+        }) as ReturnType<PluginContext["cli"]["run"]>,
+      which: (program) =>
+        rpc("cliWhich", { program }) as ReturnType<PluginContext["cli"]["which"]>,
+    },
     http: {
       fetch: async (url, options = {}) => {
         const result = (await rpc("httpFetch", { url, options })) as {
