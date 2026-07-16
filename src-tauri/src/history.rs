@@ -266,7 +266,10 @@ pub fn record_search_click(
 
 /// Top search-result clicks in the last `days` (default 30), ordered by count then recency.
 #[command]
-pub fn get_search_click_stats(limit: Option<u32>, days: Option<u32>) -> Result<Vec<SearchClickStat>, String> {
+pub fn get_search_click_stats(
+    limit: Option<u32>,
+    days: Option<u32>,
+) -> Result<Vec<SearchClickStat>, String> {
     let limit = limit.unwrap_or(40).clamp(1, 200) as i64;
     let days = days
         .unwrap_or(SEARCH_CLICK_RETENTION_DAYS as u32)

@@ -894,51 +894,76 @@ function App() {
   useEffect(() => {
     const shellRadius = Math.min(8, Math.max(4, settings.appearance.border_radius));
     const controlRadius = Math.min(6, Math.max(4, settings.appearance.border_radius));
-    const configuredOpacity = Math.min(0.4, Math.max(0.05, settings.appearance.blur_opacity));
-    const opacityScale = (configuredOpacity - 0.05) / 0.35;
+    const glassEnabled = settings.appearance.glass_enabled;
+    const configuredOpacity = Math.min(1, Math.max(0.05, settings.appearance.blur_opacity));
+    const configuredBlurRadius = Math.min(30, Math.max(0, settings.appearance.blur_radius));
+    const opacityScale = (configuredOpacity - 0.05) / 0.95;
     const configuredRegionOpacity = Math.min(0.35, Math.max(0.03, settings.appearance.shell_region_opacity));
     const configuredSurfaceOpacity = Math.min(0.85, Math.max(0.10, settings.appearance.surface_opacity));
     const configuredControlOpacity = Math.min(0.95, Math.max(0.30, settings.appearance.control_opacity));
     const configuredBottomBarOpacity = Math.min(0.35, Math.max(0.04, settings.appearance.bottom_bar_opacity));
     const isWindows = getQxDesktopPlatform() === "windows";
+    document.documentElement.dataset.glassEnabled = String(glassEnabled);
 
     // WebView2 does not reproduce macOS vibrancy from CSS backdrop-filter.
     // Keep Windows surfaces substantially more opaque while preserving the
     // full settings slider range; native Acrylic remains an optional backdrop.
-    const opacity = isWindows ? 0.82 + opacityScale * 0.14 : configuredOpacity;
-    const regionOpacity = isWindows
-      ? 0.76 + ((configuredRegionOpacity - 0.03) / 0.32) * 0.16
-      : configuredRegionOpacity;
-    const bottomBarOpacity = isWindows
-      ? 0.72 + ((configuredBottomBarOpacity - 0.04) / 0.31) * 0.20
-      : configuredBottomBarOpacity;
-    const elevatedRegionOpacity = isWindows
-      ? Math.min(0.98, regionOpacity + 0.08)
-      : Math.min(0.55, Math.max(regionOpacity, configuredSurfaceOpacity * 0.72));
-    const glassRegionOpacity = isWindows
-      ? Math.max(0.70, regionOpacity - 0.06)
-      : Math.max(0.025, regionOpacity * 0.72);
-    const overlayRegionOpacity = isWindows
-      ? Math.max(0.78, bottomBarOpacity)
-      : Math.max(0.05, bottomBarOpacity * 0.90);
+    const opacity = !glassEnabled
+      ? 1
+      : isWindows ? 0.82 + opacityScale * 0.18 : configuredOpacity;
+    const regionOpacity = !glassEnabled
+      ? 1
+      : isWindows
+        ? 0.76 + ((configuredRegionOpacity - 0.03) / 0.32) * 0.16
+        : configuredRegionOpacity;
+    const bottomBarOpacity = !glassEnabled
+      ? 1
+      : isWindows
+        ? 0.72 + ((configuredBottomBarOpacity - 0.04) / 0.31) * 0.20
+        : configuredBottomBarOpacity;
+    const elevatedRegionOpacity = !glassEnabled
+      ? 1
+      : isWindows
+        ? Math.min(0.98, regionOpacity + 0.08)
+        : Math.min(0.55, Math.max(regionOpacity, configuredSurfaceOpacity * 0.72));
+    const glassRegionOpacity = !glassEnabled
+      ? 1
+      : isWindows
+        ? Math.max(0.70, regionOpacity - 0.06)
+        : Math.max(0.025, regionOpacity * 0.72);
+    const overlayRegionOpacity = !glassEnabled
+      ? 1
+      : isWindows
+        ? Math.max(0.78, bottomBarOpacity)
+        : Math.max(0.05, bottomBarOpacity * 0.90);
     // Popovers share the actions/controls visual tier. The bottom bar is the
     // translucency floor so floating menus never become weaker than shell chrome.
-    const popoverOpacity = isWindows
-      ? Math.max(0.90, configuredControlOpacity, bottomBarOpacity)
-      : Math.min(0.96, Math.max(configuredControlOpacity, bottomBarOpacity + 0.20));
-    const surfaceOpacity1 = isWindows
-      ? 0.88 + ((configuredSurfaceOpacity - 0.10) / 0.75) * 0.10
-      : configuredSurfaceOpacity;
-    const surfaceOpacity2 = isWindows
-      ? Math.max(0.84, surfaceOpacity1 - 0.05)
-      : Math.max(0.08, configuredSurfaceOpacity * 0.82);
-    const surfaceOpacity3 = isWindows
-      ? Math.max(0.78, surfaceOpacity1 - 0.10)
-      : Math.max(0.06, configuredSurfaceOpacity * 0.68);
-    const windowBlur = isWindows ? 22 : 8 + opacityScale * 20;
-    const controlSurfaceOpacity = isWindows
-      ? Math.max(0.92, configuredControlOpacity)
-      : configuredControlOpacity;
+    const popoverOpacity = !glassEnabled
+      ? 1
+      : isWindows
+        ? Math.max(0.90, configuredControlOpacity, bottomBarOpacity)
+        : Math.min(0.96, Math.max(configuredControlOpacity, bottomBarOpacity + 0.20));
+    const surfaceOpacity1 = !glassEnabled
+      ? 1
+      : isWindows
+        ? 0.88 + ((configuredSurfaceOpacity - 0.10) / 0.75) * 0.10
+        : configuredSurfaceOpacity;
+    const surfaceOpacity2 = !glassEnabled
+      ? 1
+      : isWindows
+        ? Math.max(0.84, surfaceOpacity1 - 0.05)
+        : Math.max(0.08, configuredSurfaceOpacity * 0.82);
+    const surfaceOpacity3 = !glassEnabled
+      ? 1
+      : isWindows
+        ? Math.max(0.78, surfaceOpacity1 - 0.10)
+        : Math.max(0.06, configuredSurfaceOpacity * 0.68);
+    const windowBlur = glassEnabled ? configuredBlurRadius : 0;
+    const controlSurfaceOpacity = !glassEnabled
+      ? 1
+      : isWindows
+        ? Math.max(0.92, configuredControlOpacity)
+        : configuredControlOpacity;
     document.documentElement.style.setProperty(
       "--qx-canvas-opacity",
       String(opacity),
@@ -988,6 +1013,10 @@ function App() {
       `${windowBlur.toFixed(1)}px`,
     );
     document.documentElement.style.setProperty(
+      "--qx-shell-chrome-blur",
+      glassEnabled ? "24px" : "0px",
+    );
+    document.documentElement.style.setProperty(
       "--qx-control-surface-opacity",
       String(controlSurfaceOpacity),
     );
@@ -1012,7 +1041,9 @@ function App() {
       `${settings.appearance.font_size}px`,
     );
   }, [
+    settings.appearance.glass_enabled,
     settings.appearance.blur_opacity,
+    settings.appearance.blur_radius,
     settings.appearance.shell_region_opacity,
     settings.appearance.surface_opacity,
     settings.appearance.control_opacity,
@@ -1020,6 +1051,15 @@ function App() {
     settings.appearance.border_radius,
     settings.appearance.font_size,
   ]);
+
+  useEffect(() => {
+    if (!settingsLoaded || !isTauriRuntime()) return;
+    void invoke("set_window_glass_effect", {
+      enabled: settings.appearance.glass_enabled,
+    }).catch((error) => {
+      appLogger.warn("Failed to update native window material", { error });
+    });
+  }, [settings.appearance.glass_enabled, settingsLoaded]);
 
   // A fresh install presents the launcher once (and macOS permission onboarding).
   // After that Qx starts as a background helper; the launcher is surfaced only

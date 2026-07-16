@@ -42,7 +42,10 @@ QxShell (visual="elevated")
 | **About** | 版本与存储 |
 
 Appearance 的透明度不是单一全局 alpha。设置模型保留
-`appearance.blur_opacity` 作为窗口背景通透度，并分别持久化：
+`appearance.blur_opacity` 作为兼容字段承载窗口背景不透明度，并新增：
+
+- `glass_enabled`：统一启停 macOS Vibrancy / Windows Acrylic 与 CSS 毛玻璃；关闭时所有表面完全不透明，但不覆盖已保存的分区参数；
+- `blur_radius`：独立的 CSS 背景模糊半径（0–30px），不再由窗口不透明度推导；
 
 - `shell_region_opacity`：Top Bar 与 Context 区域；
 - `surface_opacity`：列表、卡片、设置行和内容面板；
@@ -52,6 +55,8 @@ Appearance 的透明度不是单一全局 alpha。设置模型保留
 旧配置缺少这些字段时由 Rust `serde(default)` 和前端默认设置共同补齐。
 Popover 跟随 `control_opacity`，同时以 Bottom Bar 的视觉强度为下限，
 不得退回普通内容表面透明度。
+
+窗口不透明度范围为 5%–100%。`100%` 只表示背景颜色完全覆盖；是否启用系统材质由 `glass_enabled` 独立控制。模糊设为 `0px` 时可得到“透明但清晰”的效果。
 
 ## 2. 线性分区规范（UI_SPEC）
 

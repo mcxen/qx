@@ -204,36 +204,61 @@ pub(crate) fn refresh_tray_menu(
 }
 
 #[cfg(target_os = "macos")]
-fn setup_frosted_glass(app: &tauri::App) {
+fn set_frosted_glass(app: &AppHandle, enabled: bool) -> Result<(), String> {
     use tauri::Manager;
     let Some(win) = app.get_webview_window("main") else {
-        diagnostics::log(
-            diagnostics::LogLevel::Warn,
-            "main.window",
-            "frosted glass skipped because main window was not found",
-            serde_json::json!({}),
-        );
-        return;
+        return Err("main window not found".to_string());
     };
-    use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial, NSVisualEffectState};
-    let _ = apply_vibrancy(
-        &win,
-        NSVisualEffectMaterial::HudWindow,
-        Some(NSVisualEffectState::Active),
-        Some(12.0),
-    );
+    use window_vibrancy::{
+        apply_vibrancy, clear_vibrancy, NSVisualEffectMaterial, NSVisualEffectState,
+    };
+    if enabled {
+        // The crate adds a tagged NSVisualEffectView on every apply. Clear the
+        // previous one first so settings hydration/re-apply cannot stack views.
+        let _ = clear_vibrancy(&win);
+        apply_vibrancy(
+            &win,
+            NSVisualEffectMaterial::HudWindow,
+            Some(NSVisualEffectState::Active),
+            Some(12.0),
+        )
+        .map_err(|error| format!("apply macOS vibrancy: {error}"))?;
+    } else {
+        clear_vibrancy(&win).map_err(|error| format!("clear macOS vibrancy: {error}"))?;
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "windows")]
-fn setup_frosted_glass(app: &tauri::App) {
+fn set_frosted_glass(app: &AppHandle, enabled: bool) -> Result<(), String> {
     use tauri::Manager;
     let Some(win) = app.get_webview_window("main") else {
-        return;
+        return Err("main window not found".to_string());
     };
     // Acrylic is the Windows counterpart to the macOS vibrancy material.
     // Remote Desktop and older Windows builds may reject it; the stronger CSS
     // surface opacity remains the deliberate fallback in that case.
-    let _ = window_vibrancy::apply_acrylic(&win, None);
+    if enabled {
+        window_vibrancy::apply_acrylic(&win, None)
+            .map_err(|error| format!("apply Windows acrylic: {error}"))?;
+    } else {
+        window_vibrancy::clear_acrylic(&win)
+            .map_err(|error| format!("clear Windows acrylic: {error}"))?;
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn set_frosted_glass(_app: &AppHandle, _enabled: bool) -> Result<(), String> {
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_window_glass_effect(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let handle = app.clone();
+    runtime::ui(&app, move || set_frosted_glass(&handle, enabled))
+        .await
+        .map_err(String::from)?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -331,7 +356,19 @@ pub fn run() {
             let _ = win.set_min_size(Some(LogicalSize::new(480, 360)));
 
             #[cfg(any(target_os = "macos", target_os = "windows"))]
-            setup_frosted_glass(app);
+            if let Err(error) =
+                set_frosted_glass(&handle, startup_settings.appearance.glass_enabled)
+            {
+                diagnostics::log(
+                    diagnostics::LogLevel::Warn,
+                    "main.window",
+                    "failed to apply configured window material",
+                    serde_json::json!({
+                        "enabled": startup_settings.appearance.glass_enabled,
+                        "error": error,
+                    }),
+                );
+            }
 
             // Hide from dock and promote the main window into a
             // non-activating NSPanel so global shortcuts never steal focus.
@@ -454,6 +491,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            set_window_glass_effect,
             get_file_size,
             diagnostics::qx_log_event,
             diagnostics::qx_log_path,

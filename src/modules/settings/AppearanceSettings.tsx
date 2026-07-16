@@ -98,15 +98,35 @@ export default function AppearanceSettings({
             ]}
           />
         </Row>
-        <Row title={t("appearance.opacity.window", "Window Background")} description={t("appearance.opacity.window.desc", "Controls the base window translucency and blur. Lower reveals more of the desktop.")}>
+        <Row title={t("appearance.glass", "System Glass")} description={t("appearance.glass.desc", "Use macOS Vibrancy or Windows Acrylic. Turning it off makes every window surface fully opaque while preserving your glass settings.")}>
+          <Toggle
+            value={a.glass_enabled}
+            onChange={(v) => patch("appearance", { ...a, glass_enabled: v })}
+            ariaLabel={t("appearance.glass", "System Glass")}
+          />
+        </Row>
+        <Row title={t("appearance.opacity.window", "Window Opacity")} description={t("appearance.opacity.window.desc", "Controls background opacity independently from blur. 100% is fully opaque.")}>
           <Slider
             value={a.blur_opacity}
             min={0.05}
-            max={0.40}
+            max={1}
             step={0.01}
+            disabled={!a.glass_enabled}
             onChange={(v) => patch("appearance", { ...a, blur_opacity: v })}
             ariaLabel={t("appearance.opacity.window", "Window Background")}
             formatLabel={(v) => `${Math.round(v * 100)}%`}
+          />
+        </Row>
+        <Row title={t("appearance.blur", "Blur Strength")} description={t("appearance.blur.desc", "Controls backdrop blur independently from opacity. Set to 0 for clear transparency.")}>
+          <Slider
+            value={a.blur_radius}
+            min={0}
+            max={30}
+            step={1}
+            disabled={!a.glass_enabled}
+            onChange={(v) => patch("appearance", { ...a, blur_radius: v })}
+            ariaLabel={t("appearance.blur", "Blur Strength")}
+            formatLabel={(v) => `${Math.round(v)}px`}
           />
         </Row>
         <Row title={t("appearance.opacity.chrome", "Top Bar & Context")} description={t("appearance.opacity.chrome.desc", "Controls shell chrome and context-region separation.")}>
@@ -115,6 +135,7 @@ export default function AppearanceSettings({
             min={0.03}
             max={0.35}
             step={0.01}
+            disabled={!a.glass_enabled}
             onChange={(v) => patch("appearance", { ...a, shell_region_opacity: v })}
             ariaLabel={t("appearance.opacity.chrome", "Top Bar & Context")}
             formatLabel={(v) => `${Math.round(v * 100)}%`}
@@ -126,6 +147,7 @@ export default function AppearanceSettings({
             min={0.10}
             max={0.85}
             step={0.01}
+            disabled={!a.glass_enabled}
             onChange={(v) => patch("appearance", { ...a, surface_opacity: v })}
             ariaLabel={t("appearance.opacity.surfaces", "Content Surfaces")}
             formatLabel={(v) => `${Math.round(v * 100)}%`}
@@ -137,6 +159,7 @@ export default function AppearanceSettings({
             min={0.30}
             max={0.95}
             step={0.01}
+            disabled={!a.glass_enabled}
             onChange={(v) => patch("appearance", { ...a, control_opacity: v })}
             ariaLabel={t("appearance.opacity.controls", "Actions & Controls")}
             formatLabel={(v) => `${Math.round(v * 100)}%`}
@@ -148,6 +171,7 @@ export default function AppearanceSettings({
             min={0.04}
             max={0.35}
             step={0.01}
+            disabled={!a.glass_enabled}
             onChange={(v) => patch("appearance", { ...a, bottom_bar_opacity: v })}
             ariaLabel={t("appearance.opacity.bottomBar", "Bottom Bar")}
             formatLabel={(v) => `${Math.round(v * 100)}%`}

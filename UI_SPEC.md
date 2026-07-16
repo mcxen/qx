@@ -129,6 +129,8 @@ return (
 - `src/App.css` 通过 `@theme inline` 暴露 shadcn 标准 token。
 - `src/styles/base.css` 负责把 Qx token 映射到 shadcn token。
 - 透明度只作用在 surface/background token 上，不使用组件整体 `opacity`。
+- 系统毛玻璃是独立开关：关闭时原生 Vibrancy/Acrylic 与 CSS backdrop blur 同时关闭，所有表面以不透明 token 渲染；重新开启恢复此前参数。
+- 窗口不透明度与模糊半径必须独立：不透明度允许 5%–100%，模糊允许 0–30px；不得再由不透明度推导模糊值。
 - Appearance 分别控制窗口背景、Top Bar/Context、内容表面、Action/控件和 Bottom Bar；禁止再由单一透明度滑块推算全部区域。
 - Popover 属于 Action/控件视觉层，并以 Bottom Bar 的磨砂强度为下限；它不得与普通内容背景使用相同 alpha。
 - 深色模式必须有可读性下限，避免低透明度把深色界面冲成灰白。

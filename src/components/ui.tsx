@@ -223,6 +223,7 @@ export function Slider({
   max,
   step = 1,
   onChange,
+  disabled,
   ariaLabel,
   formatLabel,
 }: {
@@ -231,6 +232,7 @@ export function Slider({
   max: number;
   step?: number;
   onChange: (v: number) => void;
+  disabled?: boolean;
   ariaLabel?: string;
   formatLabel?: (v: number) => string;
 }) {
@@ -241,6 +243,7 @@ export function Slider({
         min={min}
         max={max}
         step={step}
+        disabled={disabled}
         aria-label={ariaLabel ?? "Slider"}
         aria-valuetext={formatLabel ? formatLabel(value) : String(value)}
         onValueChange={(next) => {

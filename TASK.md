@@ -1,5 +1,13 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — 系统毛玻璃、窗口不透明度与模糊独立控制
+
+**状态**：已实现，等待运行态复核。
+
+- Appearance 新增系统毛玻璃开关与 0–30px 模糊强度；窗口不透明度扩展到 100%。
+- 关闭毛玻璃时所有 CSS 表面强制不透明、blur 归零，并通过主线程命令清除 macOS Vibrancy / Windows Acrylic；重新开启恢复保存值。
+- 原有 Top Bar、内容表面、控件和 Bottom Bar 分区透明度继续保留。
+
 ## Feature — 搜索结果 30 天点击量与异步高频召回
 
 **状态**：已实现，等待运行态复核。

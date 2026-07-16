@@ -550,7 +550,10 @@ fn clear_launcher_history_sync() -> Result<StorageClearResult, String> {
     let conn = open_storage_db(&db_path)?;
     let records = count_query(&conn, "SELECT COUNT(*) FROM launch_history")
         .saturating_add(count_query(&conn, "SELECT COUNT(*) FROM search_history"))
-        .saturating_add(count_query(&conn, "SELECT COUNT(*) FROM search_click_events"));
+        .saturating_add(count_query(
+            &conn,
+            "SELECT COUNT(*) FROM search_click_events",
+        ));
     if records == 0 {
         return Ok(total);
     }

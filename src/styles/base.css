@@ -368,6 +368,14 @@ body {
   transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
 }
 
+/* Opaque mode is a real material-off state, not merely alpha=1. Keep this
+   scoped to the main canvas so feature-owned image/SVG filters are untouched. */
+:root[data-glass-enabled="false"] .qx-canvas,
+:root[data-glass-enabled="false"] .qx-canvas * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 .qx-section-header {
   display: flex;
   align-items: center;

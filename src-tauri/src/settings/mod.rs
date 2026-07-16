@@ -59,8 +59,12 @@ impl Default for GeneralSettings {
 pub struct AppearanceSettings {
     #[serde(default = "default_theme")]
     pub theme: String,
+    #[serde(default = "default_true")]
+    pub glass_enabled: bool,
     #[serde(default = "default_blur_opacity")]
     pub blur_opacity: f64,
+    #[serde(default = "default_blur_radius")]
+    pub blur_radius: f64,
     #[serde(default = "default_shell_region_opacity")]
     pub shell_region_opacity: f64,
     #[serde(default = "default_surface_opacity")]
@@ -112,6 +116,10 @@ fn default_theme() -> String {
 
 fn default_blur_opacity() -> f64 {
     0.16
+}
+
+fn default_blur_radius() -> f64 {
+    14.0
 }
 
 fn default_shell_region_opacity() -> f64 {
@@ -166,7 +174,9 @@ impl Default for AppearanceSettings {
     fn default() -> Self {
         Self {
             theme: default_theme(),
+            glass_enabled: true,
             blur_opacity: default_blur_opacity(),
+            blur_radius: default_blur_radius(),
             shell_region_opacity: default_shell_region_opacity(),
             surface_opacity: default_surface_opacity(),
             control_opacity: default_control_opacity(),
