@@ -549,7 +549,8 @@ fn clear_launcher_history_sync() -> Result<StorageClearResult, String> {
 
     let conn = open_storage_db(&db_path)?;
     let records = count_query(&conn, "SELECT COUNT(*) FROM launch_history")
-        .saturating_add(count_query(&conn, "SELECT COUNT(*) FROM search_history"));
+        .saturating_add(count_query(&conn, "SELECT COUNT(*) FROM search_history"))
+        .saturating_add(count_query(&conn, "SELECT COUNT(*) FROM search_click_events"));
     if records == 0 {
         return Ok(total);
     }
@@ -559,6 +560,8 @@ fn clear_launcher_history_sync() -> Result<StorageClearResult, String> {
         .map_err(|e| format!("clear launch history: {e}"))?;
     conn.execute("DELETE FROM search_history", [])
         .map_err(|e| format!("clear search history: {e}"))?;
+    // Table may be absent on very old DBs that never ran the new migration path.
+    let _ = conn.execute("DELETE FROM search_click_events", []);
     total.cleared_records = records;
     optimize_database(&conn, &db_path, &mut total);
     total.cleared_bytes = db_bytes_reclaimed(before, &db_path);

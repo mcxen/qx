@@ -865,14 +865,9 @@ pub async fn search_apps(query: String) -> Result<Vec<AppEntry>, String> {
             ensure_cache(None);
         }
 
-        let mut cache = APP_CACHE
+        let cache = APP_CACHE
             .lock()
             .map_err(|e| format!("lock poisoned: {e}"))?;
-
-        // Heal empty/broken icon fields against ~/.qx/icons without sips.
-        for entry in cache.iter_mut() {
-            heal_entry_icon(entry);
-        }
 
         if query.is_empty() {
             let results: Vec<AppEntry> = cache.iter().take(20).cloned().collect();

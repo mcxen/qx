@@ -15,6 +15,7 @@ import {
 } from "../modules/settings/store";
 import { useG4fStore } from "../modules/qx-ai/store";
 import { isBuiltinModuleEnabled } from "../modules/moduleAvailability";
+import { scoreMatchDescending } from "./rankResults";
 
 export type ModuleLaunch = {
   tab: string;
@@ -80,24 +81,9 @@ export function isModuleSearchEnabled(moduleId: string): boolean {
   return true;
 }
 
+/** Higher = better. Delegates to shared short-query-safe matcher. */
 export function scoreText(query: string, ...parts: Array<string | null | undefined>): number {
-  const q = query.trim().toLowerCase();
-  if (!q) return 0;
-  let best = 0;
-  for (const part of parts) {
-    if (!part) continue;
-    const value = part.toLowerCase();
-    if (value === q) best = Math.max(best, 100);
-    else if (value.startsWith(q)) best = Math.max(best, 80);
-    else if (value.includes(q)) best = Math.max(best, 55);
-    else {
-      const tokens = q.split(/\s+/).filter(Boolean);
-      if (tokens.length > 1 && tokens.every((t) => value.includes(t))) {
-        best = Math.max(best, 45);
-      }
-    }
-  }
-  return best;
+  return scoreMatchDescending(query, ...parts);
 }
 
 function hit(

@@ -10,6 +10,17 @@ export interface AppEntry {
   kind?: "app" | "command" | "clipboard" | "file" | "folder" | "calculation";
   /** Built-in module owner for availability/maturity presentation. */
   moduleId?: string;
+  /**
+   * Optional precomputed match tier for launcher ranking (lower = better).
+   * Used when keywords matched but the visible title does not contain the query.
+   * See `search/rankResults.ts`.
+   */
+  matchScore?: number;
+  /**
+   * Rolling 30-day open count for this path (search recommendations).
+   * Advisory only — main match quality still wins in `rankSearchResults`.
+   */
+  clickCount?: number;
 }
 
 export interface ClipboardEntry {

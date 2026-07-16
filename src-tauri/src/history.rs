@@ -16,6 +16,9 @@ fn get_db_path() -> &'static PathBuf {
     })
 }
 
+/// Rolling window for search-result click aggregation (days).
+const SEARCH_CLICK_RETENTION_DAYS: i64 = 30;
+
 fn init_db() -> Result<Connection, rusqlite::Error> {
     let conn = Connection::open(get_db_path())?;
     conn.execute_batch(
@@ -30,10 +33,30 @@ fn init_db() -> Result<Connection, rusqlite::Error> {
             query TEXT NOT NULL,
             timestamp TEXT NOT NULL DEFAULT (datetime('now'))
         );
+        CREATE TABLE IF NOT EXISTS search_click_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT NOT NULL,
+            name TEXT NOT NULL,
+            kind TEXT,
+            icon TEXT,
+            timestamp TEXT NOT NULL DEFAULT (datetime('now'))
+        );
         CREATE INDEX IF NOT EXISTS idx_launch_ts ON launch_history(timestamp DESC);
-        CREATE INDEX IF NOT EXISTS idx_search_ts ON search_history(timestamp DESC);",
+        CREATE INDEX IF NOT EXISTS idx_search_ts ON search_history(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_search_click_ts ON search_click_events(timestamp DESC);
+        CREATE INDEX IF NOT EXISTS idx_search_click_path_ts ON search_click_events(path, timestamp DESC);",
     )?;
     Ok(conn)
+}
+
+fn prune_search_clicks(conn: &Connection) {
+    let _ = conn.execute(
+        &format!(
+            "DELETE FROM search_click_events
+             WHERE timestamp < datetime('now', '-{SEARCH_CLICK_RETENTION_DAYS} days')"
+        ),
+        [],
+    );
 }
 
 fn with_db<T>(f: impl FnOnce(&Connection) -> Result<T, String>) -> Result<T, String> {
@@ -200,6 +223,108 @@ pub fn delete_search_entry(id: i64) -> Result<(), String> {
     with_db(|conn| {
         conn.execute("DELETE FROM search_history WHERE id = ?1", params![id])
             .map_err(|e| format!("Failed to delete: {e}"))?;
+        Ok(())
+    })
+}
+
+/// Aggregated search-result click stats (rolling window).
+#[derive(Debug, Serialize)]
+pub struct SearchClickStat {
+    pub path: String,
+    pub name: String,
+    pub kind: Option<String>,
+    pub icon: Option<String>,
+    pub click_count: i64,
+    pub last_clicked: String,
+}
+
+/// Record that a launcher search result was opened/clicked.
+///
+/// Fire-and-forget from the frontend. Events older than 30 days are pruned on write.
+#[command]
+pub fn record_search_click(
+    path: String,
+    name: String,
+    kind: Option<String>,
+    icon: Option<String>,
+) -> Result<(), String> {
+    let path = path.trim();
+    let name = name.trim();
+    if path.is_empty() || name.is_empty() {
+        return Ok(());
+    }
+    with_db(|conn| {
+        conn.execute(
+            "INSERT INTO search_click_events (path, name, kind, icon) VALUES (?1, ?2, ?3, ?4)",
+            params![path, name, kind, icon],
+        )
+        .map_err(|e| format!("Failed to record search click: {e}"))?;
+        prune_search_clicks(conn);
+        Ok(())
+    })
+}
+
+/// Top search-result clicks in the last `days` (default 30), ordered by count then recency.
+#[command]
+pub fn get_search_click_stats(limit: Option<u32>, days: Option<u32>) -> Result<Vec<SearchClickStat>, String> {
+    let limit = limit.unwrap_or(40).clamp(1, 200) as i64;
+    let days = days
+        .unwrap_or(SEARCH_CLICK_RETENTION_DAYS as u32)
+        .clamp(1, 90) as i64;
+    with_db(|conn| {
+        // Opportunistic prune so idle installs still drop stale rows.
+        prune_search_clicks(conn);
+        // Aggregate by path, attach name/kind/icon from the most recent click row.
+        let mut stmt = conn
+            .prepare(
+                "SELECT c.path,
+                        COALESCE(e.name, c.path) AS name,
+                        e.kind,
+                        e.icon,
+                        c.click_count,
+                        c.last_clicked
+                 FROM (
+                   SELECT path,
+                          COUNT(*) AS click_count,
+                          MAX(timestamp) AS last_clicked
+                   FROM search_click_events
+                   WHERE timestamp >= datetime('now', ?1)
+                   GROUP BY path
+                 ) c
+                 LEFT JOIN search_click_events e
+                   ON e.path = c.path AND e.timestamp = c.last_clicked
+                 GROUP BY c.path
+                 ORDER BY c.click_count DESC, c.last_clicked DESC
+                 LIMIT ?2",
+            )
+            .map_err(|e| format!("Query prepare failed: {e}"))?;
+        let day_filter = format!("-{days} days");
+        let rows = stmt
+            .query_map(params![day_filter, limit], |row| {
+                Ok(SearchClickStat {
+                    path: row.get(0)?,
+                    name: row.get(1)?,
+                    kind: row.get(2)?,
+                    icon: row.get(3)?,
+                    click_count: row.get(4)?,
+                    last_clicked: row.get(5)?,
+                })
+            })
+            .map_err(|e| format!("Query failed: {e}"))?;
+        let mut out = Vec::new();
+        for row in rows.flatten() {
+            out.push(row);
+        }
+        Ok(out)
+    })
+}
+
+/// Drop all search-result click events (settings / storage reclaim).
+#[command]
+pub fn clear_search_click_stats() -> Result<(), String> {
+    with_db(|conn| {
+        conn.execute("DELETE FROM search_click_events", [])
+            .map_err(|e| format!("Failed to clear search clicks: {e}"))?;
         Ok(())
     })
 }

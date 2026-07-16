@@ -39,6 +39,13 @@ import {
   searchModuleSurfaces,
   setPendingModuleLaunch,
 } from "./search/moduleSurfaces";
+import { rankSearchResultsAsync } from "./search/rankResultsAsync";
+import {
+  frequentMatchingEntries,
+  recordSearchResultClick,
+  refreshSearchUsageCache,
+  stampUsage,
+} from "./search/searchUsage";
 import { loadClipboardEntryById, pasteClipboardEntryAtCursor } from "./modules/clipboard/actions";
 import { useEscBack } from "./hooks/useEscBack";
 import { useT } from "./i18n";
@@ -507,6 +514,8 @@ function App() {
   const recordSearchDebounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const searchFadeTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const searchSeqRef = useRef(0);
+  const rankRequestSeqRef = useRef(0);
+  const rankCandidatesRef = useRef<{ query: string; entries: AppEntry[] } | null>(null);
   const searchAbortRef = useRef<AbortController | null>(null);
   const searchScopeRef = useRef<SearchScope>("all");
   const { settings, load: loadSettings, loaded: settingsLoaded } = useSettingsStore();
@@ -568,12 +577,39 @@ function App() {
   }, [setTab]);
 
   const applyResults = useCallback(
-    (entries: AppEntry[]) => {
-      // Home list only: merge pinned plugins, hide user-hidden, pin-sort.
-      // Active search keeps backend/relevance order (no pin, no hide filter).
-      const isHomeList = !useStore.getState().query.trim();
-      const next = isHomeList ? mapAppEntries(entries) : entries;
-      startSearchTransition(() => setResults(next));
+    (entries: AppEntry[], options?: { merge?: boolean; prepend?: boolean }) => {
+      // Home list: merge pinned plugins, hide user-hidden, pin-sort.
+      // Active search: stamp 30-day click usage, merge frequent matches that
+      // still match the query, then rank (relevance first, usage as tie-break).
+      const activeQuery = useStore.getState().query.trim();
+      if (!activeQuery) {
+        rankRequestSeqRef.current += 1;
+        rankCandidatesRef.current = null;
+        startSearchTransition(() => setResults(mapAppEntries(entries)));
+        return;
+      }
+      const previous = rankCandidatesRef.current;
+      const candidates = options?.merge && previous?.query === activeQuery
+        ? dedupeEntries(options.prepend
+            ? [...entries, ...previous.entries]
+            : [...previous.entries, ...entries])
+        : entries;
+      rankCandidatesRef.current = { query: activeQuery, entries: candidates };
+
+      const stamped = stampUsage(candidates);
+      const frequent = frequentMatchingEntries(activeQuery);
+      const merged = frequent.length > 0
+        ? dedupeEntries([...frequent, ...stamped])
+        : stamped;
+      // Provider order is already useful enough for the first paint. Never
+      // make visible results wait for the ranking worker to start or respond.
+      startSearchTransition(() => setResults(merged));
+      const requestSeq = ++rankRequestSeqRef.current;
+      void rankSearchResultsAsync(merged, activeQuery).then((next) => {
+        if (requestSeq !== rankRequestSeqRef.current) return;
+        if (useStore.getState().query.trim() !== activeQuery) return;
+        startSearchTransition(() => setResults(next));
+      });
     },
     [setResults, startSearchTransition],
   );
@@ -1251,53 +1287,52 @@ function App() {
       const mergeFileBatch = (batch: AppEntry[]) => {
         if (seq !== searchSeqRef.current || signal.aborted || batch.length === 0) return;
         const current = useStore.getState().results;
-        applyResults(dedupeEntries([...current, ...batch]));
+        applyResults(dedupeEntries([...current, ...batch]), { merge: true });
       };
 
-      // Pass 0 starts immediately in doSearch for every query edit. This slow
-      // provider stage only adds clipboard and the broader file passes.
-      const clipboardEntries = await clipboardPromise;
-      const filesPass0: AppEntry[] = [];
-
-      if (seq !== searchSeqRef.current || signal.aborted) return;
-      {
-        const current = useStore.getState().results;
-        applyResults(dedupeEntries([...current, ...filesPass0, ...clipboardEntries]));
-      }
-      if (shouldSearchClipboard) {
-        patchSearchTracks(
-          { clipboard: { status: "done", hits: clipboardEntries.length } },
-          { phase: "searching", seq },
-        );
-      }
-
-      let totalFileHits = filesPass0.length;
-
-      if (shouldSearchFiles) {
-        // Chase passes 1 and 2 in order; each appends without blocking the UI.
-        for (const pass of [1, 2] as const) {
-          if (seq !== searchSeqRef.current || signal.aborted) return;
-          const batch = await abortableInvoke<AppEntry[]>(
-            "search_files",
-            { query: q, pass },
-            signal,
-          ).catch((error) => (isAbortError(error) ? ([] as AppEntry[]) : ([] as AppEntry[])));
-          if (seq !== searchSeqRef.current || signal.aborted) return;
-          mergeFileBatch(batch);
-          totalFileHits += batch.length;
-        }
+      const clipboardTask = clipboardPromise.then((clipboardEntries) => {
         if (seq !== searchSeqRef.current || signal.aborted) return;
-        // Report unique-ish hit count from current list (file kind only).
-        const fileHits = useStore.getState().results.filter(
-          (item) => item.kind === "file" || item.kind === "folder",
-        ).length;
-        patchSearchTracks(
-          { files: { status: "done", hits: fileHits || totalFileHits } },
-          { phase: "searching", seq },
-        );
-      } else {
-        patchSearchTracks({ files: { status: "skipped" } }, { phase: "searching", seq });
-      }
+        if (clipboardEntries.length > 0) {
+          applyResults(clipboardEntries, { merge: true });
+        }
+        if (shouldSearchClipboard) {
+          patchSearchTracks(
+            { clipboard: { status: "done", hits: clipboardEntries.length } },
+            { phase: "searching", seq },
+          );
+        }
+      });
+
+      const broaderFilesTask = shouldSearchFiles
+        ? (async () => {
+            let totalFileHits = 0;
+            // Passes within the same provider stay progressive, but this task
+            // runs concurrently with clipboard, apps, modules, and usage recall.
+            for (const pass of [1, 2] as const) {
+              if (seq !== searchSeqRef.current || signal.aborted) return;
+              const batch = await abortableInvoke<AppEntry[]>(
+                "search_files",
+                { query: q, pass },
+                signal,
+              ).catch(() => [] as AppEntry[]);
+              if (seq !== searchSeqRef.current || signal.aborted) return;
+              mergeFileBatch(batch);
+              totalFileHits += batch.length;
+            }
+            if (seq !== searchSeqRef.current || signal.aborted) return;
+            const fileHits = useStore.getState().results.filter(
+              (item) => item.kind === "file" || item.kind === "folder",
+            ).length;
+            patchSearchTracks(
+              { files: { status: "done", hits: fileHits || totalFileHits } },
+              { phase: "searching", seq },
+            );
+          })()
+        : Promise.resolve(
+            patchSearchTracks({ files: { status: "skipped" } }, { phase: "searching", seq }),
+          );
+
+      await Promise.allSettled([clipboardTask, broaderFilesTask]);
     },
     [applyResults],
   );
@@ -1322,8 +1357,7 @@ function App() {
           kind: "command" as const,
           moduleId: hit.moduleId,
         }));
-        const current = useStore.getState().results;
-        applyResults(dedupeEntries([...current, ...surfaceEntries]));
+        applyResults(surfaceEntries, { merge: true, prepend: true });
       } catch {
         // Best-effort; never fail the search pipeline.
       }
@@ -1509,65 +1543,81 @@ function App() {
         entries.push(...dedupeEntries(syntheticEntries));
       }
 
-      try {
-        if (scope === "all" || scope === "apps") {
-          const res = await abortableInvoke<AppEntry[]>("search_apps", { query: q }, signal);
-          if (seq !== searchSeqRef.current) return;
-          entries.push(...res.map((item) => ({ ...item, kind: item.kind ?? "app" as const })));
-          const metadataMatches = Object.entries(settingsState.search_metadata)
-            .filter(([key, metadata]) => key.startsWith("app:") && metadataMatchesQuery(metadata, q));
-          if (metadataMatches.length > 0) {
-            const allApps = await abortableInvoke<AppEntry[]>("search_apps", { query: "" }, signal).catch(() => [] as AppEntry[]);
-            if (seq !== searchSeqRef.current) return;
-            const matchingPaths = new Set(metadataMatches.map(([key]) => key.slice("app:".length)));
-            entries.push(
-              ...allApps
+      // Fixed, in-memory providers are visible in the same turn. Every IPC
+      // provider below starts independently and only merges its own batch.
+      const fixedEntries = dedupeEntries(entries);
+      applyResults(fixedEntries);
+
+      const appSearchTask = (scope === "all" || scope === "apps")
+        ? abortableInvoke<AppEntry[]>("search_apps", { query: q }, signal)
+            .then((rows) => {
+              if (seq !== searchSeqRef.current || signal.aborted) return;
+              const appEntries = rows.map((item) => ({
+                ...item,
+                kind: item.kind ?? "app" as const,
+              }));
+              applyResults(appEntries, { merge: true, prepend: true });
+              patchSearchTracks(
+                { apps: { status: "done", hits: appEntries.length } },
+                { phase: "searching", seq },
+              );
+            })
+            .catch((error) => {
+              if (isAbortError(error) || seq !== searchSeqRef.current) return;
+              patchSearchTracks({ apps: { status: "done", hits: 0 } }, { phase: "searching", seq });
+            })
+        : Promise.resolve();
+
+      // User aliases/tags are an independent app provider; they never delay
+      // the normal in-memory application search.
+      const metadataMatches = Object.entries(settingsState.search_metadata)
+        .filter(([key, metadata]) => key.startsWith("app:") && metadataMatchesQuery(metadata, q));
+      const metadataAppTask = metadataMatches.length > 0 && (scope === "all" || scope === "apps")
+        ? abortableInvoke<AppEntry[]>("search_apps", { query: "" }, signal)
+            .then((allApps) => {
+              if (seq !== searchSeqRef.current || signal.aborted) return;
+              const matchingPaths = new Set(metadataMatches.map(([key]) => key.slice("app:".length)));
+              const matches = allApps
                 .filter((item) => matchingPaths.has(item.path))
-                .map((item) => ({ ...item, kind: item.kind ?? "app" as const })),
-            );
-          }
-        }
-      } catch (error) {
-        if (isAbortError(error)) return;
-      }
+                .map((item) => ({ ...item, kind: item.kind ?? "app" as const }));
+              if (matches.length > 0) applyResults(matches, { merge: true, prepend: true });
+            })
+            .catch(() => {})
+        : Promise.resolve();
 
-      const filesPass0 = await filesPass0Promise;
-      if (seq !== searchSeqRef.current || signal.aborted) return;
-      entries.push(...filesPass0);
-      const baseEntries = dedupeEntries(entries);
-      // Fast path: apps + sync synthetics only. Never await module surface IPC here.
-      applyResults(baseEntries);
+      const filesPass0Task = filesPass0Promise.then((filesPass0) => {
+        if (seq !== searchSeqRef.current || signal.aborted || filesPass0.length === 0) return;
+        applyResults(filesPass0, { merge: true });
+      });
 
-      const appHits = baseEntries.filter((item) => {
-        const kind = item.kind ?? "app";
-        return kind === "app" || kind === "command" || kind === "calculation";
-      }).length;
-      if (scope === "all" || scope === "apps") {
-        patchSearchTracks(
-          { apps: { status: "done", hits: appHits } },
-          { phase: "searching", seq },
-        );
-      }
+      const moduleSurfaceTask = lowerQuery && (scope === "all" || scope === "apps")
+        ? loadModuleSurfaceProviders(q, scope, seq)
+        : Promise.resolve();
 
-      // Async enrichment: module surfaces (RSS/AI/macros/…) — non-blocking, seq-gated.
-      if (lowerQuery && (scope === "all" || scope === "apps")) {
-        void loadModuleSurfaceProviders(q, scope, seq);
-      }
+      const usageTask = refreshSearchUsageCache().then(() => {
+        if (seq !== searchSeqRef.current || signal.aborted) return;
+        if (useStore.getState().query.trim() !== trimmed) return;
+        const current = useStore.getState().results;
+        if (current.length > 0) applyResults(current, { merge: true });
+      });
 
-      if (shouldLoadSlowSearchProviders(q, scope)) {
-        slowSearchDebounceRef.current = setTimeout(() => {
-          void loadSlowSearchProviders(q, scope, baseEntries, syntheticEntries, seq)
-            .finally(() => {
-              finishSearchActivity(seq);
-            });
-        }, 0);
-      } else if (showSearchActivity) {
-        finishSearchActivity(seq);
-      } else if (seq === searchSeqRef.current) {
-        setIsSearching(false);
-        setIsSearchSettling(false);
-        resetSearchProgress();
-      }
+      const slowProvidersTask = shouldLoadSlowSearchProviders(q, scope)
+        ? new Promise<void>((resolve) => {
+            slowSearchDebounceRef.current = setTimeout(() => {
+              void loadSlowSearchProviders(q, scope, fixedEntries, syntheticEntries, seq)
+                .finally(resolve);
+            }, 0);
+          })
+        : Promise.resolve();
+
+      void Promise.allSettled([
+        appSearchTask,
+        metadataAppTask,
+        filesPass0Task,
+        moduleSurfaceTask,
+        usageTask,
+        slowProvidersTask,
+      ]).then(() => finishSearchActivity(seq));
 
       if (trimmed.length > 0) {
         recordSearchDebounceRef.current = setTimeout(() => {
@@ -1717,6 +1767,9 @@ function App() {
   }, [updateResultIcons]);
 
   const openItem = useCallback(async (item: AppEntry) => {
+    // Rolling 30-day search usage — fire-and-forget, never blocks open.
+    recordSearchResultClick(item);
+
     // Module deep launch: open a tab and hand params to the module surface.
     const moduleLaunch = parseModuleLaunchPath(item.path);
     if (moduleLaunch) {

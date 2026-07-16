@@ -1,5 +1,23 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — 搜索结果 30 天点击量与异步高频召回
+
+**状态**：已实现，等待运行态复核。
+
+### 内容
+
+- `history.db` 新增 `search_click_events`；打开任意启动器结果时 `record_search_click`（fire-and-forget），滚动保留 30 天。
+- `get_search_click_stats` 聚合 path 点击量；前端 `searchUsage` 缓存，主搜索先出相关结果，再异步 stamp / 合并仍匹配 query 的高频项并 `rankSearchResults`（相关度优先，点击量为同档 tie-break）。
+- 全局排序通过 `rankResultsAsync` 投递到独立 Web Worker；候选快照保证渐进 provider 不丢批次，`rankRequestSeqRef` + latest-wins 丢弃/终止旧排序，Worker 异常时保留 provider 顺序且不在 UI 线程补做同步排序。
+- 主搜索 provider 改为真正并发：固定模块/命令当轮先发布，应用内存搜索、文件、剪贴板、动态模块与使用召回独立合并；首批结果不等待 Worker。`search_apps` 非空查询热路径移除缓存锁内图标文件检查。
+- 设置「清除启动历史」一并清空点击事件。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `cargo check`（`src-tauri/`，通过；存在项目既有 warning）
+- [ ] 手动：多次打开同一结果后再次搜索，同匹配档位下高频项更靠前；输入过程不卡顿。
+
 ## Bugfix — 剪贴板选中延后写入系统剪贴板
 
 **状态**：已实现，等待运行态复核。

@@ -174,6 +174,8 @@ tab = "plugin:*"   → PluginPanelViewport
 
 - 输入搜索 → 100ms debounce → `doSearch()`
 - 同时搜索: 插件命令 + 本地应用 (`search_apps`)
+- 结果排序: `rankSearchResults`（匹配档位优先；同档按 30 天搜索点击量 `clickCount` 加权）
+- 点击落库: `record_search_click` → `history.db` 表 `search_click_events`（滚动 30 天）；`get_search_click_stats` 后台异步召回，不阻塞主搜索
 - 空闲底部 HUD：`resolveHomeIsland`（`src/home-island`）
 - 键盘: ↑↓ 导航, Enter 打开 / 切换 tab, Esc 级联 / hide
 

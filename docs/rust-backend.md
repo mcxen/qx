@@ -21,7 +21,7 @@
 | `apps.rs` | 扫描 `/Applications`、`~/Applications`、系统内建 utilities，解析 `Info.plist`，`sips` 生成 icon PNG，中文 pinyin fuzzy 匹配 (`apps_zh_dict.rs`) |
 | `apps_zh_dict.rs` | 常见 macOS app 的中文别名 → pinyin 词典 |
 | `file_search.rs` | Cardinal 多策略文件检索、去重与最近修改时间排序；Spotlight / `mdfind` 作为回退 |
-| `history.rs` | `launch_history` / `search_history` SQLite 表；`record_*` 命令后台写入，`get_*` 命令批量读取 |
+| `history.rs` | `launch_history` / `search_history` / `search_click_events` SQLite 表；`record_*` 后台写入，`get_*` 批量读取；搜索结果 30 天点击量聚合供推荐加权 |
 | `system_stats.rs` | Mach APIs：`host_processor_info`（每核 CPU）、`host_statistics64`（内存），供 `HomeSystemIsland` 每 1.6s 轮询 |
 | `system_information.rs` | 主机名/芯片/内存/存储/网络/进程列表；`kill_process` 通过 `/bin/kill` 发 SIGTERM |
 | `runtime/` | **线程调度系统能力**：主线程 UI 事务（`ui`/`run_ui`）、blocking 算力池、跨平台主线程 id；所有窗口/剪贴板操作必须经此层。见 [runtime-threading.md](./runtime-threading.md) |

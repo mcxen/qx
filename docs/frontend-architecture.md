@@ -36,6 +36,10 @@ src/
 ├─ search/
 │  ├─ appDisplay.ts       # display_name hook（跟 useLocale）
 │  ├─ searchMetadata.ts
+│  ├─ rankResults.ts      # 纯排序规则：相关度 → 使用信号 → 来源 → 稳定键
+│  ├─ rankResultsAsync.ts # 主线程异步端口、latest-wins 与 Worker 降级
+│  ├─ rankResults.worker.ts # 独立线程执行全局排序
+│  ├─ searchUsage.ts      # 30 天点击量缓存与高频匹配召回
 │  ├─ moduleSurfaces.ts   # 主搜索动态深链（RSS feed 等），见 docs/module-surfaces.md
 │  └─ calculator.ts
 ├─ modules/               # 可懒加载功能面板
@@ -91,17 +95,15 @@ Zustand 单 store（`store.ts`）保存 launcher 强共享状态：
 
 1. `setIsSearching(true)`；`searchSeqRef` 自增，用于丢弃过期结果
 2. 若 query 空 → `useLauncherHistory` 提供最近启动/搜索作为空态填充，直接 return
-3. 100ms debounce 后开始
-4. 并发发出：
-   - `invoke("search_apps", { query })` — 主要
-   - Plugin registry `findCommands(query)` — 内置命令 + 插件命令，同步打分
-   - Calculator 前缀 `:=` 或数学表达式检测 → 立即塞一个结果
-5. 260ms 后二次 debounce 触发 `search_files`（macOS 优先 Cardinal、Spotlight 兜底）和 `get_clipboard_history` 过滤；空白/单字符文件查询在 Rust 边界直接拒绝
-6. 结果合并 → `startSearchTransition(() => setResults(merged))`
-7. 900ms 后 `record_search(query)`
-8. `finishSearchActivity()` 关 `isSearching` → 180ms 后关 `isSearchSettling`（用于底部灵动岛的收尾动画）
+3. 下一事件循环立即开始；插件命令、内置模块、计算器等固定小集合在当前 turn 先发布，不等待 IPC
+4. 应用内存搜索、文件 pass 0、动态模块、使用记录、剪贴板和文件扩展 pass 分别启动独立 Promise；任何 provider 只合并自己的批次，不等待其他 provider
+5. `search_apps` 只在 Rust 内存缓存中评分；查询热路径不修复图标、不访问文件系统。文件 pass 1/2 在自己的 provider 内渐进执行，但与应用、剪贴板、模块保持并发
+6. 结果合并 → `applyResults`：先按 provider 顺序立即发布，保证输入后马上可见；同时维护当前 query 的候选快照，经 `rankResultsAsync` 投递给独立 Web Worker 执行全局重排，回传后再更新稳定顺序
+7. **不阻塞主路径**：`refreshSearchUsageCache()` 异步拉 `get_search_click_stats`；就绪后用同一 `seq` 再 `applyResults` 一次
+8. 900ms 后 `record_search(query)`；打开任一条结果时 `record_search_click`（fire-and-forget）
+9. `finishSearchActivity()` 关 `isSearching` → 180ms 后关 `isSearchSettling`（用于底部灵动岛的收尾动画）
 
-所有 async 回调都用 `if (seq !== searchSeqRef.current) return` 保护过期。
+所有 provider 回调用 `searchSeqRef`、排序回调用独立的 `rankRequestSeqRef` 保护过期。新排序请求采用 latest-wins：终止仍在执行的旧 Worker 请求；Worker 不可用或异常时保留未排序结果，禁止退回主线程同步排序。实现：`src/search/searchUsage.ts`、`src/search/rankResults.ts`、`src/search/rankResultsAsync.ts`、`src/search/rankResults.worker.ts`。
 
 ## Loading 与灵动岛
 
