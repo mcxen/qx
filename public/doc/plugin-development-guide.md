@@ -377,6 +377,7 @@ export default {
 | 插件 | 说明 |
 |------|------|
 | **brew** | 市场 macOS 插件：`context.cli` + Panel（list/search/outdated/upgrade） |
+| **unsplash** | 市场插件：`context.http` 搜图 + 下载/设壁纸（Access Key；无 OAuth 点赞） |
 | **v2ex** | 原生 Qx 插件：`invoke:` 专用后端命令 |
 | **raycast-*** | 转换插件：依赖 Raycast shim，适合 UI 型扩展 |
 
