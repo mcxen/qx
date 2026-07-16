@@ -312,6 +312,24 @@ export interface PluginNetworkCounters {
   interfaces?: Array<{ name: string; bytesIn: number; bytesOut: number }>;
 }
 
+export type PluginIslandTone = "neutral" | "success" | "warning" | "danger";
+
+/** Structured, host-rendered content for the optional external QxIsland surface. */
+export interface PluginIslandDisplayInput {
+  primary: string;
+  secondary?: string;
+  tone?: PluginIslandTone;
+  /** Real progress from 0–100. Omit for a non-progress display. */
+  progress?: number;
+  /** One manifest command that the user may run from the island. */
+  action?: {
+    label: string;
+    command: string;
+  };
+  /** Optional expiry. Omit for a standing data display. */
+  ttlMs?: number;
+}
+
 export interface PluginContext {
   pluginId: string;
   display: {
@@ -329,6 +347,12 @@ export interface PluginContext {
   clipboard: {
     read: () => Promise<string>;
     write: (text: string) => Promise<void>;
+  };
+  /** Requires manifest permission `island`. */
+  island: {
+    show: (input: PluginIslandDisplayInput) => Promise<void>;
+    update: (input: PluginIslandDisplayInput) => Promise<void>;
+    dismiss: () => Promise<void>;
   };
   http: {
     fetch: (

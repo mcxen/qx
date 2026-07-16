@@ -2,9 +2,10 @@
  * Non-blocking launcher ranking port.
  *
  * Sorting runs in a dedicated module worker so progressive provider merges and
- * rapid typing never execute an O(n log n) sort on the UI thread. Callers are
- * responsible for discarding stale responses because query state is owned by
- * the launcher.
+ * rapid typing never execute an O(n log n) sort on the UI thread. The worker
+ * stays alive, executes one request at a time, and retains only the newest
+ * queued request. Callers still discard stale responses because query state is
+ * owned by the launcher.
  */
 
 import type { AppEntry } from "../store";
@@ -19,13 +20,36 @@ interface PendingRank {
   resolve: (entries: AppEntry[]) => void;
 }
 
+interface QueuedRank extends PendingRank {
+  id: number;
+  entries: AppEntry[];
+  query: string;
+}
+
 let worker: Worker | null = null;
 let nextRequestId = 0;
 const pending = new Map<number, PendingRank>();
+let activeRequestId: number | null = null;
+let queuedLatest: QueuedRank | null = null;
 
 function settlePendingWithFallback(): void {
   for (const request of pending.values()) request.resolve(request.fallback);
   pending.clear();
+  queuedLatest?.resolve(queuedLatest.fallback);
+  queuedLatest = null;
+  activeRequestId = null;
+}
+
+function dispatchRankRequest(rankWorker: Worker, request: QueuedRank): void {
+  activeRequestId = request.id;
+  pending.set(request.id, request);
+  try {
+    rankWorker.postMessage({ id: request.id, entries: request.entries, query: request.query });
+  } catch {
+    pending.delete(request.id);
+    activeRequestId = null;
+    request.resolve(request.fallback);
+  }
 }
 
 function getWorker(): Worker | null {
@@ -43,6 +67,10 @@ function getWorker(): Worker | null {
       if (!request) return;
       pending.delete(event.data.id);
       request.resolve(event.data.entries);
+      if (activeRequestId === event.data.id) activeRequestId = null;
+      const next = queuedLatest;
+      queuedLatest = null;
+      if (next && worker === createdWorker) dispatchRankRequest(createdWorker, next);
     });
     createdWorker.addEventListener("error", () => {
       createdWorker.terminate();
@@ -65,24 +93,19 @@ export function rankSearchResultsAsync(
 ): Promise<AppEntry[]> {
   if (!query.trim() || entries.length <= 1) return Promise.resolve(entries);
 
-  // Search is latest-wins. Do not let an obsolete large sort make the newest
-  // keystroke wait in the worker queue.
-  if (pending.size > 0 && worker) {
-    worker.terminate();
-    worker = null;
-    settlePendingWithFallback();
-  }
   const rankWorker = getWorker();
   if (!rankWorker) return Promise.resolve(entries);
 
   const id = ++nextRequestId;
   return new Promise((resolve) => {
-    pending.set(id, { fallback: entries, resolve });
-    try {
-      rankWorker.postMessage({ id, entries, query });
-    } catch {
-      pending.delete(id);
-      resolve(entries);
+    const request: QueuedRank = { id, entries, query, fallback: entries, resolve };
+    if (activeRequestId !== null) {
+      // The worker stays alive. Keep only the newest waiting sort and resolve
+      // the superseded one with provider order so no caller is left pending.
+      queuedLatest?.resolve(queuedLatest.fallback);
+      queuedLatest = request;
+      return;
     }
+    dispatchRankRequest(rankWorker, request);
   });
 }

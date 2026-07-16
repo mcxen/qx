@@ -10,6 +10,21 @@ export function requestLauncherSearchFocus(): void {
   window.dispatchEvent(new CustomEvent(FOCUS_LAUNCHER_SEARCH_EVENT));
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return target instanceof HTMLInputElement
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement
+    || target.isContentEditable
+    || target.getAttribute("role") === "textbox";
+}
+
+function hasOpenKeyboardOverlay(): boolean {
+  return Boolean(document.querySelector(
+    '[role="dialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]',
+  ));
+}
+
 export default function SearchBar({
   onKeyDown,
   embedded = false,
@@ -53,11 +68,65 @@ export default function SearchBar({
     return () => window.removeEventListener(FOCUS_LAUNCHER_SEARCH_EVENT, onRequest);
   }, [focusInput]);
 
+  // Launcher typing owns focus unless the user is editing another field or an
+  // interactive overlay is open. This also preserves the first character when
+  // a button or non-focusable result briefly held keyboard focus.
+  useEffect(() => {
+    if (!visible) return;
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      const input = inputRef.current;
+      if (!input || event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (
+        event.isComposing
+        || event.key === "Process"
+        || event.key === "Dead"
+        || event.keyCode === 229
+      ) {
+        if (!isEditableTarget(document.activeElement) && !hasOpenKeyboardOverlay()) focusInput();
+        return;
+      }
+      if (document.activeElement === input || isEditableTarget(document.activeElement)) return;
+      if (hasOpenKeyboardOverlay()) return;
+      const isPrintable = Array.from(event.key).length === 1;
+      if (!(isPrintable || event.key === "Backspace" || event.key === "Delete")) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      focusInput();
+      const value = input.value;
+      const start = input.selectionStart ?? value.length;
+      const end = input.selectionEnd ?? start;
+      let next = value;
+      let caret = start;
+      if (isPrintable) {
+        next = `${value.slice(0, start)}${event.key}${value.slice(end)}`;
+        caret = start + event.key.length;
+      } else if (event.key === "Backspace" && start === end && start > 0) {
+        next = `${value.slice(0, start - 1)}${value.slice(end)}`;
+        caret = start - 1;
+      } else if (event.key === "Delete" && start === end) {
+        next = `${value.slice(0, start)}${value.slice(start + 1)}`;
+      } else {
+        next = `${value.slice(0, start)}${value.slice(end)}`;
+      }
+      setQuery(next);
+      setSelectedIndex(0);
+      window.requestAnimationFrame(() => inputRef.current?.setSelectionRange(caret, caret));
+    };
+
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [focusInput, setQuery, setSelectedIndex, visible]);
+
   const input = (
     <div className="qx-search-wrap">
       <span className="qx-search-icon" aria-hidden="true" />
       <input
         ref={inputRef}
+        data-qx-primary-search="true"
         type="text"
         value={query}
         onChange={(e) => {

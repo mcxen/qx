@@ -145,58 +145,143 @@
 }
 
 .qx-clipboard-date-popover {
-  width: 230px;
+  width: 284px;
   padding: 10px;
 }
 
-.qx-clipboard-date-popover-title {
-  margin-bottom: 8px;
+.qx-geist-calendar {
+  font-size: 12px;
+  user-select: none;
+}
+
+.qx-geist-calendar-head {
+  display: grid;
+  grid-template-columns: 28px 1fr 28px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.qx-geist-calendar-head strong {
   color: var(--qx-text-primary);
   font-size: 12px;
-  font-weight: 750;
+  font-weight: 600;
+  text-align: center;
 }
 
-.qx-clipboard-date-input {
-  box-sizing: border-box;
-  width: 100%;
-  height: 32px;
-  padding: 0 8px;
-  border: 1px solid var(--qx-border-2);
-  border-radius: var(--qx-control-radius);
-  outline: none;
-  background: var(--qx-bg-component-1);
+.qx-geist-calendar-head button,
+.qx-geist-calendar-grid button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
   color: var(--qx-text-primary);
   font: inherit;
-  color-scheme: light dark;
-}
-
-.qx-clipboard-date-input:focus {
-  border-color: var(--qx-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--qx-accent) 18%, transparent);
-}
-
-.qx-clipboard-date-options {
-  display: grid;
-  max-height: 220px;
-  margin-top: 8px;
-  overflow: auto;
-}
-
-.qx-clipboard-date-options button {
-  min-height: 30px;
-  padding: 0 8px;
-  border: 0;
-  border-radius: var(--qx-control-radius);
-  background: transparent;
-  color: var(--qx-text-secondary);
-  text-align: left;
   cursor: pointer;
 }
 
-.qx-clipboard-date-options button:hover,
-.qx-clipboard-date-options button.is-active {
+.qx-geist-calendar-head button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 6px;
+}
+
+.qx-geist-calendar-head button:hover,
+.qx-geist-calendar-grid button:hover:not(:disabled) {
+  background: var(--qx-bg-component-2);
+}
+
+.qx-geist-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px 0;
+}
+
+.qx-geist-calendar-weekday {
+  display: grid;
+  height: 24px;
+  place-items: center;
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.qx-geist-calendar-grid button {
+  position: relative;
+  height: 30px;
+  border-radius: 6px;
+}
+
+.qx-geist-calendar-grid button.is-outside {
+  color: var(--qx-text-tertiary);
+  opacity: 0.5;
+}
+
+.qx-geist-calendar-grid button.is-range {
+  border-radius: 0;
+  background: color-mix(in srgb, var(--qx-accent) 14%, transparent);
+  color: var(--qx-text-primary);
+}
+
+.qx-geist-calendar-grid button.is-start,
+.qx-geist-calendar-grid button.is-end {
+  background: var(--qx-accent);
+  color: var(--qx-accent-foreground, white);
+  font-weight: 650;
+}
+
+.qx-geist-calendar-grid button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--qx-accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.qx-geist-calendar-grid button:disabled {
+  color: var(--qx-text-tertiary);
+  cursor: not-allowed;
+  opacity: 0.25;
+}
+
+.qx-clipboard-date-presets {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--qx-border-1);
+}
+
+.qx-clipboard-date-presets button {
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 5px;
+  overflow: hidden;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--qx-text-secondary);
+  font: inherit;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.qx-clipboard-date-presets button:hover,
+.qx-clipboard-date-presets button.is-active {
   background: var(--qx-bg-component-2);
   color: var(--qx-text-primary);
+}
+
+.qx-clipboard-date-summary {
+  margin-top: 8px;
+  overflow: hidden;
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .qx-clipboard-list .qx-list-row {

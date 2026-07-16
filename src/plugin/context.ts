@@ -12,6 +12,7 @@ export interface PluginContextHooks {
   onToast: (msg: string) => void;
   onPrompt: (label: string, defaultValue?: string) => Promise<string | null>;
   onGetPreference: (pluginId: string, id: string) => Promise<unknown>;
+  onRunPluginCommand?: (pluginId: string, command: string) => Promise<void>;
 }
 
 function createAiChatPayload(
@@ -53,6 +54,11 @@ export function createPluginContext(
     clipboard: {
       read: () => rpc("clipboardRead") as Promise<string>,
       write: (text: string) => rpc("clipboardWrite", { text }) as Promise<void>,
+    },
+    island: {
+      show: (input) => rpc("islandShow", { input }) as Promise<void>,
+      update: (input) => rpc("islandUpdate", { input }) as Promise<void>,
+      dismiss: () => rpc("islandDismiss") as Promise<void>,
     },
     cli: enhancePluginCli({
       run: (request) =>

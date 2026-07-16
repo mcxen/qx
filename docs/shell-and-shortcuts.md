@@ -206,6 +206,16 @@ with_db / ensure_open:
 
 `focusInput` 在 `visible` 变化时也会 rAF + 短 timeout 再试（key window 异步）。
 
+所有带 Shell 搜索框的页面还遵循 persistent-search-focus：普通按钮、列表或空白区域的
+pointer 交互结束后，若没有文本编辑器、选中文本或打开的 Dialog/Menu/Listbox，焦点回到
+`.qx-shell-search-slot input.qx-plugin-search`。Launcher 另有 capture 级裸字符兜底，焦点意外
+落到非编辑控件时首字符与 Backspace/Delete 直接写入主搜索框；不得从真实编辑器或 IME
+候选窗口抢焦点。
+
+搜索 provider 不在 input 事件中直接运行：当前约 45ms 静默后启动，查询变化立即 abort 并
+提升 sequence；渐进结果提交按静默窗口合并，避免 Zustand 外部 store 的同步通知阻塞下一次
+按键。排序 Worker 保持常驻，同一时刻只执行一个任务并仅保留最新等待任务。
+
 ---
 
 ## 7. 改动检查清单

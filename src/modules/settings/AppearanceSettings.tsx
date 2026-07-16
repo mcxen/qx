@@ -285,6 +285,53 @@ export default function AppearanceSettings({
         />
       </SettingsCard>
 
+      <SettingsCard title={t("appearance.externalIsland.title", "External Island Display")}>
+        <Row
+          title={t("appearance.externalIsland.enabled", "Enable external display")}
+          description={t(
+            "appearance.externalIsland.enabled.desc",
+            "Show task and plugin data in a separate compact island window.",
+          )}
+        >
+          <Toggle
+            value={a.island_float_enabled}
+            onChange={(value) =>
+              patch("appearance", { ...a, island_float_enabled: value })
+            }
+          />
+        </Row>
+        <Row
+          title={t("appearance.externalIsland.whenHidden", "Show while Qx is hidden")}
+          description={t(
+            "appearance.externalIsland.whenHidden.desc",
+            "Keep the island available as a lightweight external data surface after the main window hides.",
+          )}
+        >
+          <Toggle
+            value={a.island_float_when_main_hidden}
+            disabled={!a.island_float_enabled}
+            onChange={(value) =>
+              patch("appearance", { ...a, island_float_when_main_hidden: value })
+            }
+          />
+        </Row>
+        <Row
+          title={t("appearance.externalIsland.alwaysOnTop", "Always on top")}
+          description={t(
+            "appearance.externalIsland.alwaysOnTop.desc",
+            "Keep the compact island above regular application windows.",
+          )}
+        >
+          <Toggle
+            value={a.island_float_always_on_top}
+            disabled={!a.island_float_enabled}
+            onChange={(value) =>
+              patch("appearance", { ...a, island_float_always_on_top: value })
+            }
+          />
+        </Row>
+      </SettingsCard>
+
       <SettingsCard title={t("appearance.moduleSearch.title", "Launcher Search Sources")}>
         <Row
           title={t("general.moduleSearch.enabled", "Enable module search")}

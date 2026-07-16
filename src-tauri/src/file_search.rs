@@ -90,8 +90,69 @@ fn is_hidden_path(path: &Path) -> bool {
     })
 }
 
-/// File search is **name-only**: the leaf file/folder name must contain the query.
-/// Parent-path and file-content hits are never accepted.
+fn search_tokens(value: &str) -> Vec<String> {
+    value
+        .to_lowercase()
+        .split(|character: char| !character.is_alphanumeric())
+        .filter(|token| !token.is_empty())
+        .map(ToString::to_string)
+        .collect()
+}
+
+fn compact_search_text(value: &str) -> String {
+    value
+        .to_lowercase()
+        .chars()
+        .filter(|character| character.is_alphanumeric())
+        .collect()
+}
+
+/// Returns a small gap penalty when every query character occurs in order.
+/// Short one/two-character queries stay literal to avoid flooding results.
+fn fuzzy_subsequence_penalty(needle: &str, haystack: &str) -> Option<u16> {
+    let needle_chars = needle.chars().collect::<Vec<_>>();
+    if needle_chars.len() < 3 {
+        return None;
+    }
+    let mut next = 0usize;
+    let mut first = None;
+    let mut last = 0usize;
+    let mut gaps = 0usize;
+    for (index, character) in haystack.chars().enumerate() {
+        if needle_chars.get(next) != Some(&character) {
+            continue;
+        }
+        if let Some(previous) = first.map(|_| last) {
+            gaps = gaps.saturating_add(index.saturating_sub(previous + 1));
+        } else {
+            first = Some(index);
+        }
+        last = index;
+        next += 1;
+        if next == needle_chars.len() {
+            return Some((first.unwrap_or(0).saturating_add(gaps)).min(220) as u16);
+        }
+    }
+    None
+}
+
+fn fuzzy_wildcard(value: &str) -> Option<String> {
+    let compact = compact_search_text(value);
+    if compact.chars().count() < 3 {
+        return None;
+    }
+    Some(format!(
+        "*{}*",
+        compact
+            .chars()
+            .map(|character| character.to_string())
+            .collect::<Vec<_>>()
+            .join("*")
+    ))
+}
+
+/// File search is **name-only**. Separators are weak boundaries and queries of
+/// at least three characters may match as an ordered fuzzy subsequence.
 fn name_matches_query(path: &Path, query: &str) -> bool {
     let q = query.trim();
     if q.is_empty() {
@@ -108,19 +169,19 @@ fn name_matches_query(path: &Path, query: &str) -> bool {
         return true;
     }
 
-    // Multi-token Latin: every token must appear in the *name* (AND).
-    let tokens: Vec<&str> = q_lower
-        .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.')
-        .filter(|t| !t.is_empty())
-        .collect();
-    if tokens.len() > 1 {
-        return tokens.iter().all(|token| name_lower.contains(token));
+    // Separators are interchangeable: spaces match `-`, `_`, `.`, etc.
+    let tokens = search_tokens(&q_lower);
+    if tokens.len() > 1 && tokens.iter().all(|token| name_lower.contains(token)) {
+        return true;
     }
 
-    false
+    let compact_query = compact_search_text(&q_lower);
+    let compact_name = compact_search_text(&name_lower);
+    (!compact_query.is_empty() && compact_name.contains(&compact_query))
+        || fuzzy_subsequence_penalty(&compact_query, &compact_name).is_some()
 }
 
-fn relevance_rank(path: &Path, query: &str) -> u8 {
+fn relevance_rank(path: &Path, query: &str) -> u16 {
     // Name-only ranking (Unicode lowercase for CJK).
     let needle = query.trim().to_lowercase();
     let file_name = path
@@ -133,6 +194,10 @@ fn relevance_rank(path: &Path, query: &str) -> u8 {
         .and_then(|value| value.to_str())
         .unwrap_or("")
         .to_lowercase();
+    let query_tokens = search_tokens(&needle);
+    let compact_query = compact_search_text(&needle);
+    let compact_name = compact_search_text(&file_name);
+    let compact_stem = compact_search_text(&stem);
     if file_name == needle {
         0
     } else if stem == needle {
@@ -146,9 +211,19 @@ fn relevance_rank(path: &Path, query: &str) -> u8 {
         3
     } else if file_name.contains(&needle) {
         4
+    } else if !compact_query.is_empty() && compact_stem == compact_query {
+        5
+    } else if !compact_query.is_empty() && compact_name.starts_with(&compact_query) {
+        6
+    } else if !compact_query.is_empty() && compact_name.contains(&compact_query) {
+        7
+    } else if query_tokens.len() > 1 && query_tokens.iter().all(|token| file_name.contains(token)) {
+        8
+    } else if let Some(penalty) = fuzzy_subsequence_penalty(&compact_query, &compact_name) {
+        20 + penalty
     } else {
         // Not a name match — should be filtered out before ranking.
-        5
+        u16::MAX
     }
 }
 
@@ -206,17 +281,42 @@ mod platform {
 
     /// Filename-only Cardinal strategies (never path/content).
     ///
-    /// Avoid bare words and ORs: bare CJK is often segmented into single
-    /// characters. Always post-filter with `name_matches_query`.
+    /// Cardinal's `name:` filter currently produces no candidates in the
+    /// embedded search-cache build. Use its normal filename index and keep the
+    /// strict leaf-name post-filter in `rank_candidates`; this preserves
+    /// filename-only semantics without making Spotlight the only working path.
     fn cardinal_queries(query: &str) -> Vec<String> {
         if has_advanced_cardinal_syntax(query) {
             // Even advanced syntax is user-controlled; we still name-filter results.
             return vec![query.to_string()];
         }
 
-        let quoted = query.replace('"', "\"\"");
-        // Only name: — no path: / content: / bare words.
-        vec![format!(r#"name:"{quoted}""#)]
+        let without_quotes = query.replace('"', "");
+        // Cardinal's default matcher is case-insensitive. Lead with a prefix
+        // query for relevance, then widen to contains and ordinary token forms.
+        let mut queries = vec![
+            format!("{without_quotes}*"),
+            format!("*{without_quotes}*"),
+            without_quotes.clone(),
+        ];
+        let tokens = super::search_tokens(&without_quotes);
+        if tokens.len() > 1 {
+            queries.push(
+                tokens
+                    .iter()
+                    .map(|token| format!("*{token}*"))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            );
+        }
+        if let Some(fuzzy) = super::fuzzy_wildcard(&without_quotes) {
+            queries.push(fuzzy);
+        }
+        if without_quotes.contains(' ') {
+            queries.push(format!(r#""{without_quotes}""#));
+        }
+        queries.dedup();
+        queries
     }
 
     pub fn init_platform() {
@@ -291,6 +391,28 @@ mod platform {
             .collect()
     }
 
+    fn merge_ranked_entries(
+        primary: Vec<AppEntry>,
+        supplemental: Vec<AppEntry>,
+        query: &str,
+        limit: usize,
+    ) -> Vec<AppEntry> {
+        let mut by_path = HashMap::<String, AppEntry>::new();
+        for entry in primary.into_iter().chain(supplemental) {
+            by_path.entry(entry.path.clone()).or_insert(entry);
+        }
+        let mut entries = by_path.into_values().collect::<Vec<_>>();
+        entries.sort_by_key(|entry| {
+            let path = PathBuf::from(&entry.path);
+            (
+                super::is_hidden_path(&path) as u8,
+                super::relevance_rank(&path, query),
+                path.as_os_str().len(),
+            )
+        });
+        entries.into_iter().take(limit).collect()
+    }
+
     fn query_cardinal_strategies(
         cache: &mut SearchCache,
         strategies: &[(usize, String)],
@@ -347,9 +469,14 @@ mod platform {
                             let candidates =
                                 query_cardinal_strategies(cache, &quick, candidate_limit);
                             let ranked = rank_candidates(candidates, query, limit);
-                            if !ranked.is_empty() {
-                                return ranked;
-                            }
+                            // Cardinal is the low-latency source, but its bounded
+                            // candidate window can be saturated by build artifacts
+                            // whose generated names happen to contain a short query
+                            // such as `spf`. Always merge a wider Spotlight name
+                            // sample so real user files are not hidden by that window.
+                            let spotlight =
+                                search_mdfind_name(query, limit.saturating_mul(8).max(80));
+                            return merge_ranked_entries(ranked, spotlight, query, limit);
                         }
                     }
                 }
@@ -402,7 +529,23 @@ mod platform {
     fn search_mdfind_display_name(query: &str, limit: usize) -> Vec<AppEntry> {
         // Leaf display name only (not path, not content).
         let escaped = query.replace('\\', "\\\\").replace('"', "\\\"");
-        let predicate = format!("kMDItemDisplayName == \"*{escaped}*\"cd");
+        let literal = format!("kMDItemDisplayName == \"*{escaped}*\"cd");
+        let tokens = super::search_tokens(query);
+        let token_predicate = (tokens.len() > 1).then(|| {
+            tokens
+                .iter()
+                .map(|token| format!("kMDItemDisplayName == \"*{token}*\"cd"))
+                .collect::<Vec<_>>()
+                .join(" && ")
+        });
+        let fuzzy_predicate = super::fuzzy_wildcard(query)
+            .map(|pattern| format!("kMDItemDisplayName == \"{pattern}\"cd"));
+        let predicate = [Some(literal), token_predicate, fuzzy_predicate]
+            .into_iter()
+            .flatten()
+            .map(|part| format!("({part})"))
+            .collect::<Vec<_>>()
+            .join(" || ");
         let output = Command::new("mdfind")
             .args(["-onlyin", &home_onlyin(), &predicate])
             .output();
@@ -414,14 +557,22 @@ mod platform {
 
     #[cfg(test)]
     mod tests {
-        use super::cardinal_queries;
-        use crate::file_search::{name_matches_query, relevance_rank};
+        use super::{cardinal_queries, merge_ranked_entries};
+        use crate::file_search::{entry_from_path, name_matches_query, relevance_rank};
         use std::path::Path;
 
         #[test]
         fn cardinal_is_name_only_for_plain_queries() {
             let queries = cardinal_queries("项目笔记");
-            assert_eq!(queries, vec![r#"name:"项目笔记""#.to_string()]);
+            assert_eq!(
+                queries,
+                vec![
+                    "项目笔记*".to_string(),
+                    "*项目笔记*".to_string(),
+                    "项目笔记".to_string(),
+                    "*项*目*笔*记*".to_string()
+                ]
+            );
             assert!(!queries
                 .iter()
                 .any(|q| q.contains("path:") || q.contains('|')));
@@ -429,6 +580,18 @@ mod platform {
                 cardinal_queries("ext:pdf report"),
                 vec!["ext:pdf report".to_string()]
             );
+            assert_eq!(
+                cardinal_queries("spf"),
+                vec![
+                    "spf*".to_string(),
+                    "*spf*".to_string(),
+                    "spf".to_string(),
+                    "*s*p*f*".to_string()
+                ]
+            );
+            let spaced = cardinal_queries("spf tow");
+            assert!(spaced.contains(&"*spf* *tow*".to_string()));
+            assert!(spaced.contains(&"*s*p*f*t*o*w*".to_string()));
         }
 
         #[test]
@@ -454,6 +617,15 @@ mod platform {
                 relevance_rank(Path::new("/tmp/report.pdf"), "report.pdf")
                     < relevance_rank(Path::new("/tmp/report-backup.pdf"), "report.pdf")
             );
+        }
+
+        #[test]
+        fn spotlight_supplement_beats_generated_short_query_noise() {
+            let generated =
+                entry_from_path("/Users/me/project/target/incremental/f4t2ivnv4spfnsekjzpdnhlgr.o");
+            let user_file = entry_from_path("/Users/me/Downloads/SPF-notes.mov");
+            let merged = merge_ranked_entries(vec![generated], vec![user_file], "spf", 1);
+            assert_eq!(merged[0].path, "/Users/me/Downloads/SPF-notes.mov");
         }
     }
 }
@@ -521,11 +693,26 @@ mod platform {
 
         let quoted = query.replace('"', "");
         // nopath: restricts match to the leaf name only.
-        vec![
+        let mut queries = vec![
             format!(r#"nopath:wfn:"{quoted}""#),
             format!(r#"nopath:startwith:{quoted}"#),
             format!(r#"nopath:"{quoted}""#),
-        ]
+        ];
+        let tokens = super::search_tokens(&quoted);
+        if tokens.len() > 1 {
+            queries.push(format!(
+                "nopath:{}",
+                tokens
+                    .iter()
+                    .map(|token| format!("*{token}*"))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ));
+        }
+        if let Some(fuzzy) = super::fuzzy_wildcard(&quoted) {
+            queries.push(format!("nopath:wildcards:{fuzzy}"));
+        }
+        queries
     }
 
     pub fn init_platform() {
@@ -795,5 +982,25 @@ mod tests {
             Path::new("/tmp/报告/readme.txt"),
             "报告"
         ));
+    }
+
+    #[test]
+    fn fuzzy_name_match_ignores_separators_and_keeps_character_order() {
+        let path = Path::new("/tmp/SPF-TOWERY_final.Report.pdf");
+        assert!(name_matches_query(path, "spf tow"));
+        assert!(name_matches_query(path, "spf_tow"));
+        assert!(name_matches_query(path, "spftow"));
+        assert!(name_matches_query(path, "sftwy"));
+        assert!(name_matches_query(path, "sf twy"));
+        assert!(!name_matches_query(path, "tow spf missing"));
+        assert!(!name_matches_query(path, "wot fps"));
+    }
+
+    #[test]
+    fn fuzzy_matches_rank_after_literal_name_matches() {
+        assert!(
+            relevance_rank(Path::new("/tmp/spftow.txt"), "spf tow")
+                < relevance_rank(Path::new("/tmp/SPF-TOWERY_final.txt"), "sftwy")
+        );
     }
 }

@@ -46,6 +46,7 @@ interface PluginRuntimeHooks {
   onPrompt: (label: string, defaultValue?: string) => Promise<string | null>;
   onGetPreference: (pluginId: string, id: string) => Promise<unknown>;
   onPluginStatus?: (status: PluginRuntimeStatus) => void;
+  onRunPluginCommand?: (pluginId: string, command: string) => Promise<void>;
 }
 
 interface PluginRegistryStore {
@@ -304,6 +305,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
             onPrompt: hooks.onPrompt,
             onGetPreference: hooks.onGetPreference,
             onPluginStatus: hooks.onPluginStatus,
+            onRunPluginCommand: hooks.onRunPluginCommand,
           });
           const rpcHandler = (event: MessageEvent) => {
             const data = event.data || {};

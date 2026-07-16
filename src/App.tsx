@@ -13,6 +13,7 @@ import { usePluginRegistry } from "./plugin/registry";
 import type { PluginRuntimeStatus } from "./plugin/types";
 import QxShell from "./components/QxShell";
 import { islandHost, showPluginIslandStatus, clearPluginIslandStatus } from "./island";
+import IslandFloatBridge from "./island/float/IslandFloatBridge";
 import {
   buildSearchTracks,
   patchSearchTracks,
@@ -516,9 +517,13 @@ function App() {
   const searchSeqRef = useRef(0);
   const rankRequestSeqRef = useRef(0);
   const rankCandidatesRef = useRef<{ query: string; entries: AppEntry[] } | null>(null);
+  const resultCommitTimerRef = useRef<ReturnType<typeof window.setTimeout> | undefined>(undefined);
+  const lastQueryEditAtRef = useRef(performance.now());
+  const previousQueryRef = useRef(query);
   const searchAbortRef = useRef<AbortController | null>(null);
   const searchScopeRef = useRef<SearchScope>("all");
   const { settings, load: loadSettings, loaded: settingsLoaded } = useSettingsStore();
+  const mainVisible = useStore((state) => state.visible);
 
   // Keep Rust global-shortcut toggle-to-close in sync with the active tab.
   useEffect(() => {
@@ -556,6 +561,11 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [, startSearchTransition] = useTransition();
 
+  if (previousQueryRef.current !== query) {
+    previousQueryRef.current = query;
+    lastQueryEditAtRef.current = performance.now();
+  }
+
   const performHostEscape = useCallback(() => {
     const state = useStore.getState();
     if (state.tab !== "launcher") {
@@ -576,6 +586,20 @@ function App() {
     }
   }, [setTab]);
 
+  const scheduleResultCommit = useCallback((entries: AppEntry[], expectedQuery: string) => {
+    if (resultCommitTimerRef.current) window.clearTimeout(resultCommitTimerRef.current);
+    // Zustand is an external store, so wrapping setResults in a React
+    // transition does not make the mutation non-blocking. Commit only after a
+    // short typing-quiet window and coalesce progressive provider batches.
+    const quietFor = performance.now() - lastQueryEditAtRef.current;
+    const delay = Math.max(8, 48 - quietFor);
+    resultCommitTimerRef.current = window.setTimeout(() => {
+      resultCommitTimerRef.current = undefined;
+      if (useStore.getState().query.trim() !== expectedQuery) return;
+      setResults(entries);
+    }, delay);
+  }, [setResults]);
+
   const applyResults = useCallback(
     (entries: AppEntry[], options?: { merge?: boolean; prepend?: boolean }) => {
       // Home list: merge pinned plugins, hide user-hidden, pin-sort.
@@ -585,7 +609,7 @@ function App() {
       if (!activeQuery) {
         rankRequestSeqRef.current += 1;
         rankCandidatesRef.current = null;
-        startSearchTransition(() => setResults(mapAppEntries(entries)));
+        scheduleResultCommit(mapAppEntries(entries), "");
         return;
       }
       const previous = rankCandidatesRef.current;
@@ -603,15 +627,15 @@ function App() {
         : stamped;
       // Provider order is already useful enough for the first paint. Never
       // make visible results wait for the ranking worker to start or respond.
-      startSearchTransition(() => setResults(merged));
+      scheduleResultCommit(merged, activeQuery);
       const requestSeq = ++rankRequestSeqRef.current;
       void rankSearchResultsAsync(merged, activeQuery).then((next) => {
         if (requestSeq !== rankRequestSeqRef.current) return;
         if (useStore.getState().query.trim() !== activeQuery) return;
-        startSearchTransition(() => setResults(next));
+        scheduleResultCommit(next, activeQuery);
       });
     },
-    [setResults, startSearchTransition],
+    [scheduleResultCommit],
   );
 
   const persistPendingWindowSize = useCallback(() => {
@@ -848,6 +872,14 @@ function App() {
           return plugin?.manifest?.preferences?.find((pref) => pref.id === id)?.default ?? null;
         },
         onPluginStatus: showPluginStatus,
+        onRunPluginCommand: async (pluginId, commandName) => {
+          const registry = usePluginRegistry.getState();
+          const command = registry.commands.find(
+            (item) => item.pluginId === pluginId && item.name === commandName,
+          );
+          if (!command) throw new Error(`Plugin command not found: ${pluginId}/${commandName}`);
+          await registry.runCommand(command, { launchType: "userInitiated" });
+        },
       });
     };
     let idleId: number | undefined;
@@ -1326,8 +1358,9 @@ function App() {
 
       const mergeFileBatch = (batch: AppEntry[]) => {
         if (seq !== searchSeqRef.current || signal.aborted || batch.length === 0) return;
-        const current = useStore.getState().results;
-        applyResults(dedupeEntries([...current, ...batch]), { merge: true });
+        // applyResults owns the per-query candidate set. Reading the visible
+        // store here can pull in the previous query while visual commits are deferred.
+        applyResults(batch, { merge: true });
       };
 
       const clipboardTask = clipboardPromise.then((clipboardEntries) => {
@@ -1360,7 +1393,10 @@ function App() {
               totalFileHits += batch.length;
             }
             if (seq !== searchSeqRef.current || signal.aborted) return;
-            const fileHits = useStore.getState().results.filter(
+            const currentCandidates = rankCandidatesRef.current?.query === trimmed
+              ? rankCandidatesRef.current.entries
+              : [];
+            const fileHits = currentCandidates.filter(
               (item) => item.kind === "file" || item.kind === "folder",
             ).length;
             patchSearchTracks(
@@ -1408,6 +1444,14 @@ function App() {
   const doSearch = useCallback(
     async (q: string) => {
       searchAbortRef.current?.abort();
+      if (resultCommitTimerRef.current) {
+        window.clearTimeout(resultCommitTimerRef.current);
+        resultCommitTimerRef.current = undefined;
+      }
+      // doSearch also runs directly when the scope changes. Invalidate the
+      // previous scope's rank/commit state even when the query text is equal.
+      rankRequestSeqRef.current += 1;
+      rankCandidatesRef.current = null;
       const controller = new AbortController();
       searchAbortRef.current = controller;
       const { signal } = controller;
@@ -1637,7 +1681,9 @@ function App() {
       const usageTask = refreshSearchUsageCache().then(() => {
         if (seq !== searchSeqRef.current || signal.aborted) return;
         if (useStore.getState().query.trim() !== trimmed) return;
-        const current = useStore.getState().results;
+        const current = rankCandidatesRef.current?.query === trimmed
+          ? rankCandidatesRef.current.entries
+          : [];
         if (current.length > 0) applyResults(current, { merge: true });
       });
 
@@ -1646,7 +1692,7 @@ function App() {
             slowSearchDebounceRef.current = setTimeout(() => {
               void loadSlowSearchProviders(q, scope, fixedEntries, syntheticEntries, seq)
                 .finally(resolve);
-            }, 0);
+            }, 80);
           })
         : Promise.resolve();
 
@@ -1672,9 +1718,17 @@ function App() {
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    // Invalidate every provider and ranking callback immediately on edit;
+    // do not wait for the debounced replacement search to start.
+    searchSeqRef.current += 1;
+    rankRequestSeqRef.current += 1;
+    rankCandidatesRef.current = null;
+    searchAbortRef.current?.abort();
     // Empty query: short delay, and skip if home list already warm (avoids
     // re-search when doSearch identity changes after plugins load).
-    const delay = 0;
+    // Let the controlled input paint first and collapse rapid edits into one
+    // provider run. Old in-flight work is aborted by the effect cleanup.
+    const delay = query.trim() ? 45 : 0;
     debounceRef.current = setTimeout(() => {
       if (!query.trim()) {
         const { results: rows, appsReady: ready } = useStore.getState();
@@ -1690,6 +1744,7 @@ function App() {
       if (slowSearchDebounceRef.current) clearTimeout(slowSearchDebounceRef.current);
       if (recordSearchDebounceRef.current) clearTimeout(recordSearchDebounceRef.current);
       if (searchFadeTimerRef.current) clearTimeout(searchFadeTimerRef.current);
+      if (resultCommitTimerRef.current) clearTimeout(resultCommitTimerRef.current);
       searchAbortRef.current?.abort();
     };
   }, [query, doSearch]);
@@ -1975,6 +2030,13 @@ function App() {
   return (
     <ThemeProvider>
       <div className="qx-canvas">
+        <IslandFloatBridge
+          enabled={settings.appearance.island_float_enabled}
+          mainVisible={mainVisible}
+          showWhenMainHidden={settings.appearance.island_float_when_main_hidden}
+          alwaysOnTop={settings.appearance.island_float_always_on_top}
+          preferDockedWhenMainVisible={settings.appearance.island_prefer_docked_when_main_visible}
+        />
         {/* Hidden container for plugin iframes */}
         <PluginHost />
         <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>

@@ -97,11 +97,15 @@ assertPermission(plugin, perms, "ai")  →  invoke("plugin_ai_chat", { req: payl
 
 插件 manifest `permissions` 是字符串数组，分三类：
 
-1. **能力组**：`clipboard`、`http`、`notifications`、`ai`、`ai-memory`、`ai-bash`、`ai-tools`、`ai-background`、`system-info`、`system-stats`、`processes`、`apps`、`files`、`permissions`、`automation`、`storage-management`、`open-url`、`storage`。
+1. **能力组**：`clipboard`、`http`、`notifications`、`ai`、`ai-memory`、`ai-bash`、`ai-tools`、`ai-background`、`system-info`、`system-stats`、`processes`、`apps`、`files`、`permissions`、`automation`、`storage-management`、`open-url`、`storage`、`island`。
 2. **精确命令**：`invoke:<cmd>`，用于危险或细粒度命令（如 `invoke:qx_system_information_kill_process`）。
 3. **通配**：`*`，允许所有，仅内部/调试插件使用。
 
 危险命令白名单 `DANGEROUS_INVOKE_COMMANDS` 中的命令，即使插件声明了能力组，也必须显式声明 `invoke:<cmd>` 才能调用。例如结束进程、申请权限、清空数据、宏回放、录屏启动等。
+
+`island` 只开放 `context.island.show/update/dismiss`。宿主把每个插件限制为一个
+`plugin-display` session，渲染结构化文本、真实进度和最多一个 manifest command
+动作；浮窗启用、主窗隐藏策略和置顶均由用户设置控制。
 
 ## 5. AI 任务链路
 

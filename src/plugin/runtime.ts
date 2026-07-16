@@ -38,6 +38,7 @@ export interface PluginRuntimeOptions {
     label: string;
     detail?: string;
   }) => void;
+  onRunPluginCommand?: (pluginId: string, command: string) => Promise<void>;
 }
 
 interface PanelRuntimeSession {
@@ -448,6 +449,11 @@ export function buildPluginRuntimeHtml(
         clipboard: {
           read: () => rpc('clipboardRead'),
           write: (text) => rpc('clipboardWrite', { text }),
+        },
+        island: {
+          show: (input) => rpc('islandShow', { input: input || {} }),
+          update: (input) => rpc('islandUpdate', { input: input || {} }),
+          dismiss: () => rpc('islandDismiss'),
         },
         cli: enhancePluginCli({
           run: (request) => rpc('cliRun', {

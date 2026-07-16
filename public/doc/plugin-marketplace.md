@@ -144,6 +144,7 @@ export default {
 | `context.getPreference(id)` | 读取用户偏好 | 无 |
 | `context.clipboard.read()` | 读取系统剪贴板文本 | `clipboard` |
 | `context.clipboard.write(text)` | 写入系统剪贴板文本 | `clipboard` |
+| `context.island.show/update/dismiss` | 结构化灵动岛数据、真实进度与一个 manifest command 动作 | `island` |
 | `context.http.fetch(url, opts)` | 通过 Rust 后端发起真实 HTTP/HTTPS 请求 | `http` |
 | `context.notification.show(input)` | 显示系统通知 | `notifications` |
 | `context.ai.providers()` | 读取 QxAI provider/model 目录，自定义 provider 优先通过 API `/models` 获取 | `ai` |
@@ -183,6 +184,7 @@ open-url           打开外部链接
 clipboard          读写系统剪贴板文本
 http               发起真实 HTTP/HTTPS 请求
 notifications      显示系统通知
+island             使用受限的灵动岛外接数据表面
 ai                 使用 QxAI provider 目录、模型选择、文本和图片多模态聊天能力
 ai-memory          读取、新增、删除用户可管理 AI 记忆
 ai-bash            允许 AI/插件执行真实 bash 脚本（危险能力，需谨慎授予）

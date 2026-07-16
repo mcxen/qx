@@ -13,6 +13,7 @@ import {
 import {
   getQxShortcutPreset,
   isImeCompositionEvent,
+  isEditableTarget,
   isNativeEditingShortcut,
   isReservedGlobalShortcut,
   isReservedGlobalShortcutEvent,
@@ -139,6 +140,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const actionMenuFocusRestoreRef = useRef<HTMLElement | null>(null);
   const menuActions = useMemo(() => actions ?? [], [actions]);
   const menuTitle = actionTitle ?? `${title} Actions`;
+  const hasSearch = Boolean(search);
 
   const currentMenuLevel = menuStack[menuStack.length - 1];
   const rawLevelActions = currentMenuLevel?.actions ?? menuActions;
@@ -166,6 +168,37 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     handleRegionFocusCapture,
     handleRegionPointerCapture,
   } = useQxShellNavigation({ shellRef, content: children, context });
+
+  // Search remains the keyboard home after ordinary pointer interactions.
+  // Real editors and open menus/dialogs keep focus until their interaction ends.
+  useEffect(() => {
+    if (!hasSearch) return;
+    let timer: ReturnType<typeof window.setTimeout> | undefined;
+    const onPointerUp = () => {
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const root = shellRef.current;
+        const searchInput = root?.querySelector<HTMLInputElement>(
+          ".qx-shell-search-slot input.qx-plugin-search",
+        );
+        if (!searchInput) return;
+        const overlayOpen = document.querySelector(
+          '[role="dialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]',
+        );
+        if (overlayOpen) return;
+        const active = document.activeElement;
+        if (active !== searchInput && isEditableTarget(active)) return;
+        const selection = window.getSelection();
+        if (selection && !selection.isCollapsed) return;
+        searchInput.focus({ preventScroll: true });
+      }, 40);
+    };
+    window.addEventListener("pointerup", onPointerUp, true);
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      window.removeEventListener("pointerup", onPointerUp, true);
+    };
+  }, [hasSearch]);
 
   useEffect(() => {
     if (menuActions.length === 0) {

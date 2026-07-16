@@ -37,6 +37,7 @@ import {
 export { Badge } from "./shadcn/badge";
 export { Button } from "./shadcn/button";
 export { Input } from "./shadcn/input";
+export { Calendar, type CalendarRange } from "./shadcn/calendar";
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./shadcn/popover";
 export { Card, CardContent, CardDescription, CardHeader, CardTitle };
 export { Separator };

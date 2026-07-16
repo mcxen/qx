@@ -7,7 +7,14 @@ import type { LucideIcon } from "lucide-react";
 import { AlignLeft, CalendarDays, Code2, File, FileText, Image, Link, Pin, Shrink, Video } from "lucide-react";
 import { useStore, type ClipboardEntry } from "../../store";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
-import { Popover, PopoverContent, PopoverTrigger, Select } from "../../components/ui";
+import {
+  Calendar,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Select,
+  type CalendarRange,
+} from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useLocale, useT } from "../../i18n";
 import { getQxShortcutPreset } from "../../utils/keyboard";
@@ -205,7 +212,7 @@ export default function ClipboardPanel() {
   const { clipboardHistory, setClipboardHistory, setTab } = useStore();
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
-  const [dateFilter, setDateFilter] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<CalendarRange>({ from: null, to: null });
   const [datePopoverSection, setDatePopoverSection] = useState<string | null>(null);
   const [selected, setSelected] = useState(0);
   const [detailOpen, setDetailOpen] = useState(false);
@@ -285,7 +292,10 @@ export default function ClipboardPanel() {
         (filter === "pinned" && item.pinned) ||
         (filter === "frequent" && item.copy_count > 0) ||
         kind === filter;
-      const matchesDate = !dateFilter || dateKey(item.timestamp) === dateFilter;
+      const itemDate = dateKey(item.timestamp);
+      const matchesDate =
+        (!dateFilter.from || itemDate >= dateFilter.from) &&
+        (!dateFilter.to || itemDate <= dateFilter.to);
       return matchesFilter && matchesDate && matchesQuery(item, q);
     });
 
@@ -487,15 +497,32 @@ export default function ClipboardPanel() {
     return sections;
   }, [filtered, t]);
 
-  const availableDates = useMemo(() => {
-    return [...new Set(clipboardHistory.map((item) => dateKey(item.timestamp)).filter(Boolean))]
-      .sort((a, b) => b.localeCompare(a));
+  const availableDateBounds = useMemo(() => {
+    const dates = clipboardHistory.map((item) => dateKey(item.timestamp)).filter(Boolean).sort();
+    return { min: dates[0] ?? null, max: dates[dates.length - 1] ?? null };
   }, [clipboardHistory]);
 
   const formatDateChoice = (value: string) => {
     const date = new Date(`${value}T00:00:00`);
     if (Number.isNaN(date.getTime())) return value;
     return date.toLocaleDateString(locale, { year: "numeric", month: "short", day: "numeric" });
+  };
+
+  const dateFilterLabel = useMemo(() => {
+    if (!dateFilter.from) return null;
+    if (!dateFilter.to || dateFilter.to === dateFilter.from) return formatDateChoice(dateFilter.from);
+    return `${formatDateChoice(dateFilter.from)} – ${formatDateChoice(dateFilter.to)}`;
+  }, [dateFilter, locale]);
+
+  const recentRange = (days: number): CalendarRange => {
+    const max = availableDateBounds.max ?? dateKey(new Date().toISOString());
+    const from = new Date(`${max}T00:00:00`);
+    from.setDate(from.getDate() - (days - 1));
+    const first = dateKey(from.toISOString());
+    return {
+      from: availableDateBounds.min && first < availableDateBounds.min ? availableDateBounds.min : first,
+      to: max,
+    };
   };
 
   const selectItem = (item: ClipboardEntry, index: number) => {
@@ -582,7 +609,7 @@ export default function ClipboardPanel() {
       const id = await invoke<string>("create_clipboard_text_entry", { text: draftText });
       pendingClipboardId.current = id;
       setFilter("all");
-      setDateFilter(null);
+      setDateFilter({ from: null, to: null });
       setQuery("");
       discardTextEdit();
       await loadHistory();
@@ -903,6 +930,7 @@ export default function ClipboardPanel() {
             return (
             <div key={sectionKey}>
               <Popover
+                modal
                 open={datePopoverSection === sectionKey}
                 onOpenChange={(open) => setDatePopoverSection(open ? sectionKey : null)}
               >
@@ -910,52 +938,51 @@ export default function ClipboardPanel() {
                   <button className="qx-section-header qx-clipboard-date-trigger" type="button">
                     <CalendarDays size={13} aria-hidden="true" />
                     <span className="qx-clipboard-date-title">
-                      {dateFilter ? formatDateChoice(dateFilter) : section.title}
+                      {dateFilterLabel ?? section.title}
                     </span>
                     <span>{section.items.length}</span>
                   </button>
                 </PopoverTrigger>
                 <PopoverContent className="qx-clipboard-date-popover" side="right" align="start">
-                  <div className="qx-clipboard-date-popover-title">
-                    {t("clipboard.dateFilter", "Filter by date")}
-                  </div>
-                  <input
-                    className="qx-clipboard-date-input"
-                    type="date"
-                    value={dateFilter ?? ""}
-                    aria-label={t("clipboard.chooseDate", "Choose a date")}
-                    onChange={(event) => {
-                      setDateFilter(event.target.value || null);
+                  <Calendar
+                    value={dateFilter}
+                    onChange={(range) => {
+                      setDateFilter(range);
                       setSelected(0);
-                      setDatePopoverSection(null);
                     }}
+                    locale={locale}
+                    min={availableDateBounds.min}
+                    max={availableDateBounds.max}
+                    rangeLabel={t("clipboard.dateFilter", "Filter by date range")}
+                    previousMonthLabel={t("clipboard.calendar.previousMonth", "Previous month")}
+                    nextMonthLabel={t("clipboard.calendar.nextMonth", "Next month")}
                   />
-                  <div className="qx-clipboard-date-options">
+                  <div className="qx-clipboard-date-presets">
                     <button
-                      className={!dateFilter ? "is-active" : ""}
+                      className={!dateFilter.from ? "is-active" : ""}
                       type="button"
                       onClick={() => {
-                        setDateFilter(null);
+                        setDateFilter({ from: null, to: null });
                         setSelected(0);
                         setDatePopoverSection(null);
                       }}
                     >
                       {t("clipboard.allDates", "All dates")}
                     </button>
-                    {availableDates.slice(0, 14).map((value) => (
-                      <button
-                        key={value}
-                        className={dateFilter === value ? "is-active" : ""}
-                        type="button"
-                        onClick={() => {
-                          setDateFilter(value);
-                          setSelected(0);
-                          setDatePopoverSection(null);
-                        }}
-                      >
-                        {formatDateChoice(value)}
+                    {[1, 7, 30].map((days) => (
+                      <button key={days} type="button" onClick={() => {
+                        setDateFilter(recentRange(days));
+                        setSelected(0);
+                        setDatePopoverSection(null);
+                      }}>
+                        {days === 1
+                          ? t("clipboard.calendar.today", "Today")
+                          : t("clipboard.calendar.lastDays", "Last {n} days").replace("{n}", String(days))}
                       </button>
                     ))}
+                  </div>
+                  <div className="qx-clipboard-date-summary" aria-live="polite">
+                    {dateFilterLabel ?? t("clipboard.allDates", "All dates")}
                   </div>
                 </PopoverContent>
               </Popover>

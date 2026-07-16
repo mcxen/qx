@@ -76,7 +76,7 @@
 |---|---|
 | `http_client.rs` | 见上 |
 | `vendor/cardinal/*` | 内嵌自研的 `search-cache` / `search-cancel` / `fswalk` 三个 crate（未上传 crates.io） |
-| `file_search.rs` | 规范化并拒绝空白查询；macOS 对普通关键词执行 Cardinal 精确名称、普通词和短语等多策略召回，按路径去重后综合名称相关性、文件/目录和修改时间排序，Cardinal 无结果时回落 `mdfind`。 |
+| `file_search.rs` | 规范化并拒绝空白查询；文件名匹配统一忽略大小写与空格/连字符/下划线/点号等弱分隔，并为至少三个字符的查询提供有序子序列模糊召回。macOS 使用 Cardinal token/wildcard + `mdfind`，Windows 使用 Everything `nopath:` token/wildcard；最终只接受 leaf-name 命中，并让精确结果排在模糊结果之前。 |
 
 ## 启动顺序（lib.rs `run` → `setup`）
 

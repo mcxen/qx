@@ -373,7 +373,31 @@ export default {
 
 对应 manifest：`"permissions": ["cli", "notifications"]`。
 
-### 6.6 发布进度 Panel 骨架（思路）
+### 6.6 灵动岛外接数据显示
+
+manifest 添加 `"island"` 权限后，插件可发布一个由宿主渲染的数据表面：
+
+```js
+await context.island.show({
+  primary: "Build #184",
+  secondary: "Uploading artifacts",
+  progress: 62,
+  action: { label: "Open", command: "open-build" },
+});
+
+await context.island.update({
+  primary: "Build #184",
+  secondary: "Complete",
+  progress: 100,
+  tone: "success",
+});
+```
+
+`action.command` 必须是当前插件 manifest 中声明的 command。插件不能控制窗口位置、
+置顶或任务优先级；用户在 Settings → Appearance → External Island Display 决定是否
+启用独立灵动岛、Qx 隐藏时是否保留以及是否置顶。
+
+### 6.7 发布进度 Panel 骨架（思路）
 
 1. `render`：工具栏 Refresh / Redeploy + 列表（**立即返回**；见下方超时规则）  
 2. `load`：`cli.run({ program, args: ["status", "--json"] })` → `JSON.parse`（在 `render` 里 `void load()`，不要 `await`）  
@@ -453,7 +477,7 @@ export default {
 检查 `manifest.panel` + `export.panel.render`；看是否 throw；开 Dev Hot Reload 后 Rescan。
 
 **`Plugin … renderPanel timeout`？**  
-`panel.render` 里不要 `await` 慢 CLI/HTTP。先画 loading，再 `void load()`；见 §6.6 超时规则。市场 **brew ≥ 1.0.1** 已按此修复。
+`panel.render` 里不要 `await` 慢 CLI/HTTP。先画 loading，再 `void load()`；见 §6.7 超时规则。市场 **brew ≥ 1.0.1** 已按此修复。
 
 **和内置模块的关系？**  
 内置模块走同一注册思路，但源码在主仓；**业务扩展一律外部插件**，不要改主仓塞业务。

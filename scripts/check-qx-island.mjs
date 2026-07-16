@@ -110,6 +110,24 @@ assert(!pluginAccepts("task"), "plugin task rejected");
 assert(!pluginAccepts("error"), "plugin error priority rejected (use tone danger)");
 assert(!pluginAccepts("home"), "plugin home rejected");
 
+// `plugin-display` is a separate permission-gated host contract. The host fixes
+// its priority/placement so a plugin cannot impersonate a task or own chrome.
+function normalizePluginDisplay(session) {
+  return {
+    ...session,
+    source: "plugin-display",
+    priority: "location",
+    placement: "docked-or-float",
+    sticky: true,
+  };
+}
+{
+  const display = normalizePluginDisplay({ priority: "task", placement: "floating" });
+  assert(display.priority === "location", "plugin display cannot claim task priority");
+  assert(display.placement === "docked-or-float", "plugin display uses host placement policy");
+  assert(display.sticky === true, "plugin display remains available as standing data");
+}
+
 // --- generation CAS sketch ---
 {
   let gen = 0;

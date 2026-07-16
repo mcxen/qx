@@ -12,7 +12,13 @@ export type IslandPlacementMode = "docked" | "floating" | "docked-or-float";
 /** v1 only — queue does not exist */
 export type IslandReplacePolicy = "replace-same-id" | "reject-if-lower";
 
-export type IslandSource = "module" | "home" | "plugin" | "shell" | "system";
+export type IslandSource =
+  | "module"
+  | "home"
+  | "plugin"
+  | "plugin-display"
+  | "shell"
+  | "system";
 
 export interface IslandSlotContent {
   identity?: {

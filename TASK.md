@@ -1,5 +1,51 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Search UX — 持久搜索焦点与非阻塞结果更新
+
+**状态**：已实现，等待最终输入手感复核。
+
+- 带搜索框的 QxShell 在普通 pointer 交互结束后自动回到搜索；真实输入/编辑器、选中文本及
+  打开的 Dialog/Menu/Listbox 保留焦点。Launcher 对非编辑焦点下的首字符与删除键做 capture
+  级转交，避免第一次输入丢失。
+- 输入变化立即废弃旧 sequence / AbortController，但延迟约 45ms 后才启动新 provider；文件
+  扩展 pass 再错峰 80ms，避免一次按键并发启动三轮索引查询。
+- 渐进结果在输入静默窗口后合并提交；排序 Worker 不再每批 terminate/recreate，只执行当前
+  任务并保留最新一个等待任务。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`、release app bundle、安装、签名验证与进程启动。
+- [ ] macOS：连续快速输入、删除、IME、点击列表/按钮后立即输入，以及编辑器不被抢焦点。
+
+## Bugfix / Feature — macOS 文件搜索与插件外接灵动岛
+
+**状态**：已实现并安装到本机；自动化构建与真实 Cardinal 索引查询已复核。
+
+- 修复 Cardinal 嵌入式索引使用 `name:` 过滤返回空候选的问题；普通查询改回索引原生
+  token / wildcard 召回，再由既有 leaf-name 后过滤保持“只匹配文件名”语义。
+- Cardinal 默认匹配端统一对普通词、路径分段与通配符执行 Unicode 不区分大小写匹配；
+  Qx 无需枚举大小写变体，小写 `spf` 可直接召回真实大写 `SPF-*` 文件。搜索仍合并
+  `mdfind -name` 补充样本，以降低结果窗口被噪声占满的影响。
+- 文件名匹配把空格、连字符、下划线、点号等视为弱分隔，并为至少三个字符的查询
+  提供有序子序列模糊召回；Cardinal、Spotlight 与 Everything 都生成对应的 token / wildcard
+  查询，最终仍由统一 leaf-name 匹配与相关性排序把精确结果放在模糊结果之前。
+- Appearance 新增 External Island Display 设置，控制独立灵动岛、主窗隐藏时显示和置顶。
+- 插件新增 permission-gated `context.island.show/update/dismiss`；每个插件只有一个
+  slots-only display session，可显示文本、真实进度与一个 manifest command 动作。
+- 插件不能声明 task/error 优先级、组件、自定义窗口位置或置顶策略。
+
+### 验证
+
+- [x] `cargo test --lib file_search:: -- --nocapture`
+- [x] `npx tsc --noEmit`
+- [x] `npm run test:island`
+- [x] `npm run check`
+- [x] release app build、安装、签名验证与进程启动。
+- [x] 使用本机持久化 Cardinal 缓存验证 `SPF*` 可召回 Downloads 中的真实 `SPF-*` 文件。
+- [ ] 最终 UI 视觉复核（自动化环境存在多个相同 bundle id 的窗口，窗口选择不稳定）。
+
 ## Feature — 系统毛玻璃、窗口不透明度与模糊独立控制
 
 **状态**：已实现，等待运行态复核。
@@ -282,7 +328,7 @@
 **状态**：已实现，等待双平台运行态验证。
 
 - 文本条目双击进入本地草稿编辑；修改默认不保存，未保存时灵动岛使用 danger 状态提醒，并提供保存原条目、另存为新条目和 Esc 放弃路径。
-- 日期分组标题改为 Popover 筛选入口，支持日期输入、最近存在内容的日期以及恢复全部日期。
+- 日期分组标题使用 Geist Calendar Popover，支持本地时区的单日/范围选择、月份与键盘导航、范围高亮，以及今天、最近 7 天、最近 30 天和全部日期预设。
 - 单击历史条目只写入系统剪贴板，方便用户手动粘贴；不会直接向其他应用发送粘贴键，原 Enter 粘贴动作保持不变。
 - Rust 文本持久化命令独立放入 `clipboard/editing.rs`，不继续扩大剪贴板监听主文件。
 

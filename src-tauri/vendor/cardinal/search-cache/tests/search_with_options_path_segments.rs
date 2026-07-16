@@ -572,7 +572,9 @@ fn globstar_case_sensitive_vs_insensitive_variants() {
     let mut cache = SearchCache::walk_fs(root);
     let sensitive = guard_indices(cache.search_with_options(
         "aa/**/file.txt",
-        SearchOptions::default(),
+        SearchOptions {
+            case_insensitive: false,
+        },
         CancellationToken::noop(),
     ));
     let sensitive_names = normalize(&mut cache, &sensitive);

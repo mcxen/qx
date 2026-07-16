@@ -1,9 +1,20 @@
 use query_segmentation::{Segment, SegmentConcrete};
 use regex::{Regex, RegexBuilder};
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct SearchOptions {
     pub case_insensitive: bool,
+}
+
+impl Default for SearchOptions {
+    fn default() -> Self {
+        Self {
+            // Desktop file search follows Finder / Spotlight expectations:
+            // ordinary queries ignore case unless a caller opts into strict
+            // matching with an explicit SearchOptions value.
+            case_insensitive: true,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

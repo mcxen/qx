@@ -71,6 +71,30 @@ function scheduleTtl(session: IslandSession): void {
 }
 
 function applyPluginCaps(input: IslandShowInput): IslandShowInput | null {
+  if (input.source === "plugin-display") {
+    const content: IslandSlotContent = {
+      ...input.content,
+      componentId: undefined,
+      componentProps: undefined,
+    };
+    content.primary = content.primary.slice(0, 80);
+    if (content.secondary) content.secondary = content.secondary.slice(0, 120);
+    if (content.meter?.kind === "progress") {
+      content.meter = {
+        kind: "progress",
+        progress: Math.max(0, Math.min(100, Number(content.meter.progress ?? 0))),
+      };
+    }
+    return {
+      ...input,
+      priority: "location",
+      placement: "docked-or-float",
+      sticky: true,
+      ttlMs: input.ttlMs == null ? undefined : Math.max(500, input.ttlMs),
+      content,
+    };
+  }
+
   if (input.source !== "plugin") return input;
 
   // §5.2: plugin may only show toast priority, non-sticky, docked, slots-only.
@@ -247,6 +271,11 @@ export function updateSession(
     if (patch.sticky) return { ok: false };
     if (patch.placement && patch.placement !== "docked") return { ok: false };
   }
+  if (current.source === "plugin-display") {
+    if (patch.priority != null && patch.priority !== "location") return { ok: false };
+    if (patch.sticky === false) return { ok: false };
+    if (patch.placement && patch.placement !== "docked-or-float") return { ok: false };
+  }
 
   const now = nowFn();
   let rankEpoch = current.rankEpoch;
@@ -262,7 +291,7 @@ export function updateSession(
   let content = current.content;
   if (patch.content) {
     content = mergeContent(current.content, patch.content);
-    if (current.source === "plugin") {
+    if (current.source === "plugin" || current.source === "plugin-display") {
       content = {
         ...content,
         componentId: undefined,
@@ -271,6 +300,12 @@ export function updateSession(
       if (content.primary.length > 80) content.primary = content.primary.slice(0, 80);
       if (content.secondary && content.secondary.length > 120) {
         content.secondary = content.secondary.slice(0, 120);
+      }
+      if (current.source === "plugin-display" && content.meter?.kind === "progress") {
+        content.meter = {
+          kind: "progress",
+          progress: Math.max(0, Math.min(100, Number(content.meter.progress ?? 0))),
+        };
       }
     }
   }

@@ -2918,6 +2918,23 @@ mod tests {
     }
 
     #[test]
+    fn query_files_is_case_insensitive_by_default() {
+        let temp_dir = TempDir::new("query_files_case_insensitive_default").unwrap();
+        let dir = temp_dir.path();
+
+        fs::File::create(dir.join("SPF-Towery.PDF")).unwrap();
+        let mut cache = SearchCache::walk_fs(dir);
+
+        let plain = guard_nodes(cache.query_files("spf-towery.pdf", CancellationToken::noop()));
+        assert_eq!(plain.len(), 1);
+        assert!(plain[0].path.ends_with("SPF-Towery.PDF"));
+
+        let wildcard = guard_nodes(cache.query_files("spf*", CancellationToken::noop()));
+        assert_eq!(wildcard.len(), 1);
+        assert!(wildcard[0].path.ends_with("SPF-Towery.PDF"));
+    }
+
+    #[test]
     fn test_wildcard_search_case_sensitivity() {
         let temp_dir = TempDir::new("test_wildcard_search_case_sensitivity").unwrap();
         let dir = temp_dir.path();

@@ -180,6 +180,7 @@ export default {
 | `context.display.raycastActionPanel` | 读取用户在 Settings -> Extensions -> Display 中配置的 Raycast ActionPanel 行内按钮显示偏好 |
 | `context.clipboard.read()` | 读取系统剪贴板文本（需 `clipboard` 权限） |
 | `context.clipboard.write(text)` | 写入系统剪贴板文本（需 `clipboard` 权限） |
+| `context.island.show(input)` / `update(input)` / `dismiss()` | 在宿主灵动岛显示结构化数据、真实进度与一个 command 动作（需 `island` 权限；是否浮出由用户设置决定） |
 | `context.cli.run({ program, args?, cwd?, env?, timeoutMs? })` | **业务 CLI 首选**：argv 同步执行（需 `cli`；**不**走 AI Agent Bash）。协议见 [plugin-cli-protocol.md](./plugin-cli-protocol.md) |
 | `context.cli.bash(script \| req)` | login-shell bash（需 `cli`） |
 | `context.cli.which(program)` | 解析 PATH / Homebrew 常见路径上的可执行文件（需 `cli`） |
@@ -303,6 +304,7 @@ const task = await context.ai.tasks.submit({
 clipboard          访问剪贴板相关命令
 http               发起真实 HTTP/HTTPS 请求
 notifications      显示通知 / toast
+island             使用受限的灵动岛数据表面（结构化文本、真实进度、一个 manifest command 动作）
 ai                 使用 QxAI provider 目录、模型选择、文本和图片多模态聊天能力
 ai-memory          读取、新增、删除用户可管理 AI 记忆
 cli                业务插件 CLI：`run`/`bash`/`which` + 异步 jobs（`start`/`poll`/`cancel`/`map`），不依赖 Agent Bash

@@ -359,6 +359,9 @@ Context Panel：
 - 模块 `island` prop 经 shim 写入 session store；`customIsland` 为分类例外（如录屏 HUD），会抑制 store docked。
 - 文本单行截断，progress 为底边 overlay，不撑高底栏。
 - 为空时 `visibility: hidden` 保持布局稳定。
+- Appearance 可启用独立的 External Island Display。它只显示 host task 或获 `island`
+  权限的插件结构化 slots；插件不能提供自定义 chrome、窗口坐标或置顶策略。主窗隐藏
+  显示与 always-on-top 均由用户设置决定，同一 session 默认不在 docked / floating 双显。
 
 ### 右侧 · Actions
 
@@ -480,6 +483,8 @@ Launcher：
 
 - 左侧搜索结果，右侧常用入口和最近项。
 - 搜索结果、右侧入口、底部动作都支持键盘操作。
+- Search 是默认键盘归宿：除文本输入、编辑器、IME 组合输入或打开的 Dialog/Menu/Listbox 外，普通点击结束后焦点回到当前 Shell 搜索框；焦点意外落在非编辑控件时，首个可打印字符或删除键必须转交 Launcher 搜索且不能丢字。
+- 查询输入与结果发布解耦：输入先绘制，约 45ms 静默窗口后再启动 latest-wins provider；旧请求立即失效，渐进批次合并后避开输入帧提交，排序 Worker 常驻且只保留最新等待任务。
 - Esc 级联（根视图）：有搜索文字时 **清空 query**（可继续输入并用 Enter 打开结果）；query 已空时再 Esc 才隐藏窗口（host escape）。
 - 有搜索文字时底栏可显示 Esc 清空；无文字时可不提供离开 Launcher 的可见 Esc。
 - 空闲 Home Island 由 `resolveHomeIsland` 解析；搜索中 / 有结果 / 插件 status 优先占用 shell island。
@@ -491,7 +496,7 @@ Clipboard：
 - 置顶、复制、删除等动作走 Bottom Bar / Actions。
 - 单击左侧条目必须把该条目写入系统剪贴板，供用户随后手动粘贴；不得在单击时自动向前台应用发送粘贴键。
 - 文本条目支持双击列表行或右侧预览进入编辑。编辑始终先进入本地草稿，默认不落库；草稿变化后灵动岛显示红色未保存提醒，并提供“保存”和“另存为新条目”。切换条目、按 Esc 退出编辑或离开模块时，未明确保存的修改直接丢弃。
-- 左侧日期分组标题是可点击的日期筛选入口；Popover 提供具体日期、最近存在数据的日期以及“全部日期”，选择后列表只显示当天内容。
+- 左侧日期分组标题是可点击的日期筛选入口；Popover 使用 Geist Calendar，支持本地时区下的单日或包含首尾日期的范围选择、月份与键盘导航，以及今天、最近 7 天、最近 30 天和全部日期预设。触发器在选择后保持显示已提交范围。
 - Esc → launcher；列表行不预留顶栏返回缩进。
 
 RSS：

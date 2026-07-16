@@ -81,10 +81,16 @@ export default function IslandFloatApp() {
 }
 
 function pickFloatSession(sessions: IslandSession[]): IslandSession | null {
-  // Prefer sticky task; else first task; else null (home never floats in v1)
+  // Prefer sticky host tasks, then plugin display sessions. Home never floats.
   const stickyTask = sessions.find(
-    (s) => s.priority === "task" && s.sticky,
+    (s) => s.priority === "task" && s.sticky && s.placement !== "docked",
   );
   if (stickyTask) return stickyTask;
-  return sessions.find((s) => s.priority === "task") ?? null;
+  const task = sessions.find(
+    (s) => s.priority === "task" && s.placement !== "docked",
+  );
+  if (task) return task;
+  return sessions.find(
+    (s) => s.source === "plugin-display" && s.placement !== "docked",
+  ) ?? null;
 }
