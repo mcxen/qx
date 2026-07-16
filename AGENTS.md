@@ -9,6 +9,8 @@ Before any code or documentation edit, read:
 3. `AGENTS.md` — this operating guide.
 4. `docs/architecture-principles.md` — SOLID, abstraction layers, interface contracts, doc duty.
 5. For **global shortcuts, panel show/hide, or Tauri `State` / `.manage()`**: `docs/shell-and-shortcuts.md`.
+6. For **new built-in modules, shell/Esc/list ports, or marketplace plugins**:
+   `docs/module-port-inventory.md` + `public/doc/plugin-development-guide.md`.
 
 If the request is UI-related, treat `UI_SPEC.md` as the source of truth. Do not invent alternate layout systems or component conventions.
 If the request changes **public interfaces or layer boundaries**, update docs in the same change.
@@ -28,7 +30,7 @@ If the request changes **public interfaces or layer boundaries**, update docs in
   dictionary, converter shim, shell Esc, island session). Fix the port once,
   regenerate or re-convert consumers, then run `npm run check`.
 - Before finishing a multi-file change: `npm run check` (architecture + docs +
-  i18n + shell + island gates).
+  i18n + shell + island + module-ports gates).
 - Use `rg` / `rg --files` for search.
 - Use `apply_patch` for manual edits.
 - Do not introduce generated build artifacts, secrets, temp files, or unrelated formatting churn.
@@ -211,6 +213,8 @@ Full rules live in `UI_SPEC.md` (Bottom Bar + Interaction). Summary for agents:
   (RSS articles → feeds) step before leaving the module. Do not jump straight to
   `setTab("launcher")` while a module handler is registered.
 - Prefer `useQxModuleShell` so button Esc and keyboard share `stepBack`.
+- Port map (built-in hooks vs plugin `context.*`): `docs/module-port-inventory.md`.
+  Pure helpers: `src/hooks/moduleShellPures.ts` (re-exported from `useQxModuleShell`).
 
 Example:
 

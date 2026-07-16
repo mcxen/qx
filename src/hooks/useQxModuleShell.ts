@@ -4,6 +4,11 @@ import type { BottomIslandContent } from "../components/QxBottomIsland";
 import type { QxShellAction } from "../components/ShellActionButton";
 import { getQxShortcutPreset } from "../utils/keyboard";
 import { registerModuleEscapeStep } from "./moduleEscapeHost";
+import {
+  buildModuleIsland as buildModuleIslandPure,
+  qxEscapeAction as qxEscapeActionPure,
+  type ModuleIslandState as PureModuleIslandState,
+} from "./moduleShellPures";
 import { useEscBack, type EscCascade } from "./useEscBack";
 
 /**
@@ -39,76 +44,19 @@ import { useEscBack, type EscCascade } from "./useEscBack";
  * ```
  */
 
-export type ModuleIslandState = {
-  /** Fallback label when idle label omitted (usually module title). */
-  title: string;
-  loading?: boolean;
-  loadingDetail?: string;
-  error?: string | null;
-  /** Idle label (defaults to title). */
-  label?: string;
-  detail?: string;
-  /** When `detail` omitted, renders as count string. */
-  count?: number;
-  progress?: number;
+export type ModuleIslandState = PureModuleIslandState & {
   activity?: BottomIslandContent["activity"];
   tone?: BottomIslandContent["tone"];
-  actionLabel?: string;
-  onAction?: () => void;
 };
 
-/**
- * Pure island builder: loading → error → idle.
- * Safe for plugins (no React hooks).
- */
+/** Pure island builder (re-export). Safe for non-React consumers / tests. */
 export function buildModuleIsland(state: ModuleIslandState): BottomIslandContent | null {
-  const title = state.title.trim() || "Module";
-  const error = state.error?.trim();
-  if (error) {
-    return {
-      label: title,
-      detail: error,
-      tone: "danger",
-      actionLabel: state.actionLabel,
-      onAction: state.onAction,
-    };
-  }
-  if (state.loading) {
-    return {
-      label: title,
-      detail: state.loadingDetail?.trim() || "Loading…",
-      progress: state.progress,
-      activity: state.activity ?? (state.progress == null ? "bounce" : undefined),
-      tone: state.tone,
-      actionLabel: state.actionLabel,
-      onAction: state.onAction,
-    };
-  }
-  const label = (state.label ?? title).trim();
-  const detail =
-    state.detail?.trim()
-    || (typeof state.count === "number" && Number.isFinite(state.count)
-      ? String(state.count)
-      : undefined);
-  if (!label && !detail) return null;
-  return {
-    label: label || title,
-    detail,
-    tone: state.tone,
-    progress: state.progress,
-    activity: state.activity,
-    actionLabel: state.actionLabel,
-    onAction: state.onAction,
-  };
+  return buildModuleIslandPure(state) as BottomIslandContent | null;
 }
 
-/** Visible bottom-left Esc capsule (never put Esc on primaryAction). */
+/** Visible bottom-left Esc capsule (re-export). */
 export function qxEscapeAction(leave: () => void): QxShellAction {
-  return {
-    label: "Esc",
-    kbd: "Esc",
-    onClick: leave,
-  };
+  return qxEscapeActionPure(leave) as QxShellAction;
 }
 
 export type UseQxModuleShellOptions = {

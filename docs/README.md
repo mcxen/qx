@@ -19,6 +19,7 @@
 | [frontend-architecture.md](./frontend-architecture.md) | 前端子系统、状态管理、搜索管线、灵动岛、i18n、样式约定 |
 | [shell-and-shortcuts.md](./shell-and-shortcuts.md) | **浮动面板 / 全局快捷键 toggle / managed State / 搜索重聚焦**（优先查这份） |
 | [module-surfaces.md](./module-surfaces.md) | 主搜索直达模块子界面（Raycast 对照、RSS feed 深链、OPML/文件夹） |
+| [module-port-inventory.md](./module-port-inventory.md) | **内置模块 + 市场插件端口对照**（shell/Esc/列表/缓存/http；写插件/新模块先看） |
 | [rust-backend.md](./rust-backend.md) | Rust 模块导览、启动顺序、添加新模块流程、常见坑 |
 | [runtime-threading.md](./runtime-threading.md) | **主线程 UI + blocking 多线程**：`runtime::ui` / `blocking`、模块命令模板、SIGTRAP 规避 |
 | [ipc-catalogue.md](./ipc-catalogue.md) | 全部 127 个 Tauri 命令 + 事件通道；按模块分组 |
@@ -60,7 +61,7 @@
 - 想改 UI → `UI_SPEC.md` + `frontend-architecture.md` + `settings-panel.md`
 - **想改全局快捷键 / 显示隐藏 / 缺 .manage()** → **`shell-and-shortcuts.md`**
 - 想加 Rust 命令 → `rust-backend.md` + `ipc-catalogue.md`
-- 想写/审插件 → **`public/doc/plugin-development-guide.md`** + `plugin-cli-protocol.md`
+- 想写/审插件或复用模块端口 → **`module-port-inventory.md`** + **`public/doc/plugin-development-guide.md`** + `plugin-cli-protocol.md`
 - 想改插件宿主 API → `plugin-architecture.md` + `rpcMethods.ts` + `plugin_api.rs`
 - 想改 AI → `ai-agent-runtime.md`
 - 想发版 → `release-and-versioning.md` + `public/doc/release-workflow.md` + `AGENTS.md` 的 Release 一节

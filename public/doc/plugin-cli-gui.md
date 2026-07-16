@@ -112,6 +112,16 @@ try {
 | `renderJson(value)` | 详情区 pretty JSON |
 | `renderKeyValue(record)` | 详情区键值表 |
 
+列表项可选字段（**business 模组**用这些即可，不必自绘）：
+
+| 字段 | 说明 |
+|------|------|
+| `icon` | 行首短标记（emoji 等） |
+| `badge` / `meta` | 右侧状态徽标 |
+| `tone` | `success` / `danger` / `warning` / `accent` / `run` |
+| `progress` | `0–100`，行内进度条（CI / 下载） |
+| `raw` | 业务对象，供 `onSelect` / 详情映射 |
+
 ### 最小 Panel 骨架（必读：render 要快返回）
 
 ```js

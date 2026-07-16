@@ -11,6 +11,7 @@
     "check:i18n": "node scripts/check-i18n.mjs",
     "test:shell-navigation": "node scripts/check-qx-shell-navigation.mjs",
     "test:island": "node scripts/check-qx-island.mjs",
+    "test:module-ports": "node scripts/check-module-ports.mjs",
     "docs:check": "node scripts/check-docs.mjs",
     "convert:raycast": "node scripts/convert-raycast-extension.mjs",
     "prepare:search-tools": "node scripts/prepare-search-tools.mjs",

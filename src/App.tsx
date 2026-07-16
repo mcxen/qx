@@ -49,8 +49,8 @@ import {
   stampUsage,
 } from "./search/searchUsage";
 import { loadClipboardEntryById, pasteClipboardEntryAtCursor } from "./modules/clipboard/actions";
-import { useEscBack } from "./hooks/useEscBack";
 import { tryModuleEscapeStep } from "./hooks/moduleEscapeHost";
+import { useQxModuleShell } from "./hooks/useQxModuleShell";
 import { useT } from "./i18n";
 import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./lib/logger";
 import { getQxDesktopPlatform, isImeCompositionEvent } from "./utils/keyboard";
@@ -149,16 +149,24 @@ function ModuleLoadingShell({
 }) {
   const t = useT();
   const title = getModuleLabel(tab, t);
-  const { onKeyDown } = useEscBack({
-    launcher: onBack,
+  // Same Esc / host-cascade registration path as real modules (moduleEscapeHost).
+  const shell = useQxModuleShell({
+    leave: onBack,
+    showActionsMenu: false,
+    islandState: {
+      title,
+      loading: true,
+      loadingDetail: t("common.loadingModule", "Loading module"),
+    },
+    t,
   });
 
   return (
     <QxShell
       title={title}
       className="qx-module-loading-shell"
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: onBack }}
-      onKeyDown={onKeyDown}
+      escapeAction={shell.escapeAction}
+      onKeyDown={shell.onKeyDown}
       search={
         <div className="qx-search-wrap qx-module-loading-search" aria-hidden="true">
           <span className="qx-search-icon" />
@@ -172,11 +180,7 @@ function ModuleLoadingShell({
           <Skeleton className="qx-skeleton-line short" />
         </div>
       }
-      island={{
-        label: title,
-        detail: t("common.loadingModule", "Loading module"),
-        activity: "bounce",
-      }}
+      island={shell.island}
       primaryAction={{
         label: t("common.loading", "Loading"),
         disabled: true,
@@ -219,16 +223,25 @@ function ModuleErrorShell({
 }) {
   const t = useT();
   const title = getModuleLabel(tab, t);
-  const { onKeyDown } = useEscBack({
-    launcher: onBack,
+  const shell = useQxModuleShell({
+    leave: onBack,
+    showActionsMenu: false,
+    island: {
+      label: t("common.moduleError", "Module Error"),
+      detail: title,
+      tone: "danger",
+      actionLabel: t("common.back", "Back"),
+      onAction: onBack,
+    },
+    t,
   });
 
   return (
     <QxShell
       title={title}
       className="qx-module-loading-shell"
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: onBack }}
-      onKeyDown={onKeyDown}
+      escapeAction={shell.escapeAction}
+      onKeyDown={shell.onKeyDown}
       search={
         <div className="qx-rss-detail-title">
           <span>{title}</span>
@@ -242,13 +255,7 @@ function ModuleErrorShell({
           </div>
         </div>
       }
-      island={{
-        label: t("common.moduleError", "Module Error"),
-        detail: title,
-        tone: "danger",
-        actionLabel: t("common.back", "Back"),
-        onAction: onBack,
-      }}
+      island={shell.island}
       primaryAction={{
         label: t("common.back", "Back"),
         tone: "primary",

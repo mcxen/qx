@@ -4,7 +4,10 @@
 > 写业务插件时优先读本文；需要字段级细节再下钻到协议专章。  
 > 宿主贡献者另见 [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md)。
 
-**状态**：Current · 适用：Qx ≥ 0.5.26（`context.cli`）· 读者：业务 / 第三方插件作者
+**状态**：Current · 适用：Qx ≥ 0.5.36（shell / Esc host cascade + storage SWR 约定）· 读者：业务 / 第三方插件作者
+
+**模块端口总表（内置 + 市场）** → [`docs/module-port-inventory.md`](../../docs/module-port-inventory.md)
+**市场仓库 Agent 地图** → `qx-plugins` 仓库根 [`AGENTS.md`](https://github.com/mcxen/qx-plugins/blob/main/AGENTS.md)（与本手册对照；**老包无 AGENTS.md 仍可安装**）
 
 ---
 
@@ -111,6 +114,49 @@ export default {
 | `commands[].run` | 短任务、打开面板提示、一次性 CLI | 长阻塞无反馈 |
 | `panel.render` | 持久 UI、列表、按钮 | 泄漏定时器；操作宿主 DOM |
 
+### 2.2.1 插件模组模式（多种模块）
+
+| 模式 | 开发者写什么 | UI | 代表 |
+|------|--------------|-----|------|
+| **business**（推荐默认） | 领域数据 + `commands` + 把列表项喂给 `context.ui.mountWorkbench` | **宿主统一**（tabs / list / detail / progress） | **gh**、cli-workbench |
+| **custom panel** | 自绘 `container` DOM/CSS（仍建议用 `--qx-*` 变量） | 作者自控 | weather 卡片、复杂可视化 |
+| **commands-only** | 仅 `commands[].run`（toast / 剪贴板 / 开 URL） | 无 panel | 一键工具 |
+| **island + panel** | 业务状态 + `context.island` | 岛由宿主画；panel 可用 business 或 custom | pomodoro |
+
+原则：**能 business 就 business**——只写业务映射（API → list items），不要复制壳 CSS。
+Workbench 列表项可带：`icon` · `badge` · `tone` · **`progress`（0–100）** · `raw`。
+
+### 2.3 面板注册（硬契约 — 避免 “Panel not registered”）
+
+宿主 **`loadPlugin` 只在 `manifest.panel` 存在时** 向 registry 写入 `RegisteredPanel`。
+仅有 `export default.panel` 而 **没有** manifest 字段 → 打开插件 tab 报 **Panel not registered**。
+
+| 必须同时满足 | 说明 |
+|--------------|------|
+| `manifest.panel: { title, keywords? }` | 注册用 |
+| `export default.panel.render(container, context)` | 渲染用 |
+| 可选 `panel.destroy` | 清 timer / DOM |
+
+**老包兼容**：纯 command / 纯 island、用户从不打开 panel tab 的包可以没有 `panel`；安装与跑 command 不受影响。
+若 UI 把插件当「可打开模块」，作者必须补 panel（番茄钟 1.1.0 即此修复）。
+
+### 2.4 缓存 / SWR 约定（网络型面板）
+
+慢网络面板（天气、V2EX、壁纸列表等）推荐：
+
+1. `render` **立刻**画出壳 + loading 或上次缓存
+2. `context.storage.persist` 读 `{ data, savedAt }`
+3. 未过 TTL → 先展示，后台刷新；过期失败 → 仍可展示 stale（grace）
+4. 能复用宿主磁盘缓存的走 `invoke:`（如 `v2ex_fetch_topics`、`fetch_weather_for_location`），http 作回退
+
+参考实现：**weather**、**v2ex** 市场插件 + 包内 `AGENTS.md`。
+
+### 2.5 Esc 与宿主阶梯（打开插件时）
+
+- 用户在插件 panel 内：iframe 先处理自己的 Esc（关详情等）
+- 焦点不在 shell / 未 preventDefault：宿主 `performHostEscape` → 当前模块 `tryModuleEscapeStep`（PluginHost 的 `useQxModuleShell`）→ 回 launcher → 清搜索 → 隐藏窗口
+- 插件**不要**再注册 process 级 Esc 监听抢宿主阶梯
+
 ---
 
 ## 3. 接口抽象：端口目录（Port Catalog）
@@ -125,14 +171,27 @@ export default {
 | 打开/揭示本地产物、读平台环境 | **`context.system`** | `system` | `env` / `openPath` / `revealPath`；与 `openUrl` 不同 |
 | 系统托盘菜单项 | **`context.tray`** | `tray` | `setItems` / `clear`；点选可跑本插件 `command` |
 | 调公司 HTTP API | **`context.http`** | `http` | 跨平台更稳 |
+| 复用宿主领域命令（V2EX/天气缓存等） | **`context.invoke("…")`** | 精确 `invoke:<cmd>` 或能力组 | 优先走已缓存的 host 命令，再 http 回退 |
 | 用户配置（路径、token） | **`context.getPreference`** | —（manifest.preferences） | 密钥用 `password` |
-| 跨重启缓存 | **`context.storage.persist`** | — | 落盘 `data/storage.json` |
+| 跨重启缓存 / SWR | **`context.storage.persist`** | — | 落盘 `data/storage.json`；**先画缓存再刷新** |
 | 本次进程缓存 | **`context.storage.session`** | — | 重启即失 |
+| 外部灵动岛 | **`context.island`** | `island` | show/update/dismiss；失败时 panel 仍须可用 |
 | Toast / 确认 | `showToast` / `prompt` | 可选 `notifications` | — |
 | 打开网页 / CI | **`context.openUrl`** | `open-url` | — |
 | 剪贴板 | **`context.clipboard`** | `clipboard` | — |
 | 任意 shell 脚本 | `context.ai.runBash` | `ai-bash` | **慎用**；受 Agent Bash 门控 |
 | LLM | `context.ai.*` | `ai` 等 | 见 AI 文档 |
+
+### 3.1.1 内置 React 端口 ↔ 插件端口（不要混用）
+
+| 内置（宿主 React 模块） | 插件 iframe | 关系 |
+|------------------------|-------------|------|
+| `useQxModuleShell` / `useEscBack` / `moduleEscapeHost` | 无 React hook；打开 panel 时 **PluginHost** 包一层 QxShell，Esc leave → launcher | 插件**不** import 宿主 hooks |
+| `useQxListSelection` / `useQxMasterDetail` | 自绘列表 + 键盘 | 可参考市场 **v2ex** 列表实现 |
+| `QxModuleSearch` / `QxListLoading` | 自绘 input / skeleton | — |
+| `invoke("fetch_weather…")` 等 | `context.invoke` 同名命令 | 宿主保留 API 给插件复用缓存 |
+
+完整对照表：[`docs/module-port-inventory.md`](../../docs/module-port-inventory.md)。
 
 ### 3.2 核心端口形状（摘要）
 
@@ -443,7 +502,10 @@ await context.island.update({
 ## 8. 清单：合并前自检
 
 - [ ] `manifest.id` / `commands` / `export` 名称一致  
-- [ ] `permissions` 覆盖所有 `context.*` 调用  
+- [ ] **若可打开面板**：`manifest.panel` **且** `export.panel.render` 都有
+- [ ] 包内建议带 **`AGENTS.md`**（Agent 维护用；老包可无，非安装门槛）
+- [ ] `permissions` 覆盖所有 `context.*` / `invoke:` 调用
+- [ ] 网络面板：persist 缓存或 host 缓存；`render` 不长时间 await
 - [ ] 使用 `cli` 而非无必要的 `ai-bash`  
 - [ ] CLI 用 argv；危险操作有 confirm  
 - [ ] 密钥只在 preferences / 环境，不进仓库  
@@ -459,7 +521,10 @@ await context.island.update({
 |------|------|
 | **brew** | 市场 macOS 插件：`context.cli` + Panel（list/search/outdated/upgrade） |
 | **unsplash** | 市场插件：`context.http` 搜图 + 下载/设壁纸（Access Key；无 OAuth 点赞） |
-| **v2ex** | 原生 Qx 插件：`invoke:` 专用后端命令 |
+| **v2ex** | `invoke:v2ex_*` + persist SWR + panel 详情；包内 AGENTS.md |
+| **weather** | `invoke:fetch_weather*` + Open-Meteo http 回退 + persist SWR |
+| **pomodoro-island** | panel 控制台 + `context.island`；**必须有 panel**（防注册失败） |
+| **gh** | **business-only**：Actions/Releases → `mountWorkbench`（icon/tone/progress）+ http SWR + island |
 | **raycast-*** | 转换插件：依赖 Raycast shim，适合 UI 型扩展 |
 
 ---
@@ -473,8 +538,11 @@ await context.island.update({
 `context.cli` 会合并 **login shell PATH** + Homebrew/系统 bin，子进程默认带该 PATH。  
 仍失败：preferences 填绝对路径，或用 `context.cli.bash`（`bash -lc`）。
 
-**Panel 打开是空白？**  
-检查 `manifest.panel` + `export.panel.render`；看是否 throw；开 Dev Hot Reload 后 Rescan。
+**Panel 打开是空白 / “Panel not registered”？**
+检查 **`manifest.panel` + `export.panel.render` 两者都有**（缺 manifest 字段就不会注册）。看是否 throw；Rescan / 重装 zip。包内见 `AGENTS.md`。
+
+**老插件没有 AGENTS.md / panel 还能装吗？**
+能。AGENTS 可选；无 panel 的包仍可跑 commands。仅当用户打开 panel tab 时才需要 panel 字段。
 
 **`Plugin … renderPanel timeout`？**  
 `panel.render` 里不要 `await` 慢 CLI/HTTP。先画 loading，再 `void load()`；见 §6.7 超时规则。市场 **brew ≥ 1.0.1** 已按此修复。

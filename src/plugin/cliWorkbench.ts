@@ -44,6 +44,12 @@ export type PluginUiListItem = {
   subtitle?: string;
   meta?: string;
   badge?: string;
+  /** Optional leading glyph (emoji / short mark). */
+  icon?: string;
+  /** 0–100 progress bar under the subtitle (CI / downloads). */
+  progress?: number;
+  /** Badge / accent tone for status. */
+  tone?: "neutral" | "success" | "danger" | "warning" | "accent" | string;
   raw?: unknown;
 };
 
@@ -244,12 +250,19 @@ const WORKBENCH_CSS = `
 @media (max-width:720px){.qx-wb-body{grid-template-columns:1fr}}
 .qx-wb-list,.qx-wb-detail{min-height:0;overflow:auto;border:1px solid var(--qx-border-1,#e5e5e5);border-radius:8px;background:var(--qx-bg-component-1,rgba(255,255,255,.55))}
 .qx-wb-list{display:flex;flex-direction:column;gap:2px;padding:4px}
-.qx-wb-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 10px;border:1px solid transparent;border-radius:7px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;width:100%}
+.qx-wb-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 10px;border:1px solid transparent;border-radius:7px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;width:100%}
 .qx-wb-row:hover{background:var(--qx-bg-component-2,#f3f4f6)}
 .qx-wb-row.is-sel{border-color:var(--qx-accent,#2563eb);background:color-mix(in srgb,var(--qx-accent,#2563eb) 10%,transparent)}
+.qx-wb-icon{width:1.4em;text-align:center;flex-shrink:0;font-size:14px;line-height:1.2}
 .qx-wb-row strong{display:block;font-weight:600}
 .qx-wb-row small{display:block;color:var(--qx-text-secondary,#666);margin-top:2px}
 .qx-wb-badge{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--qx-text-tertiary,#888);border:1px solid var(--qx-border-1,#ddd);border-radius:4px;padding:2px 6px;white-space:nowrap}
+.qx-wb-badge.tone-success{color:#15803d;border-color:color-mix(in srgb,#15803d 35%,var(--qx-border-1,#ddd))}
+.qx-wb-badge.tone-danger{color:var(--qx-danger,#b91c1c);border-color:color-mix(in srgb,var(--qx-danger,#b91c1c) 35%,var(--qx-border-1,#ddd))}
+.qx-wb-badge.tone-warning{color:#b45309;border-color:color-mix(in srgb,#b45309 35%,var(--qx-border-1,#ddd))}
+.qx-wb-badge.tone-accent,.qx-wb-badge.tone-run{color:var(--qx-accent,#2563eb);border-color:color-mix(in srgb,var(--qx-accent,#2563eb) 40%,var(--qx-border-1,#ddd))}
+.qx-wb-progress{height:4px;border-radius:2px;background:color-mix(in srgb,var(--qx-text-primary,#111) 10%,transparent);margin-top:6px;overflow:hidden}
+.qx-wb-progress>i{display:block;height:100%;border-radius:2px;background:var(--qx-accent,#2563eb);width:0}
 .qx-wb-detail{padding:10px 12px}
 .qx-wb-empty{padding:24px 12px;text-align:center;color:var(--qx-text-tertiary,#888);font-size:12px}
 .qx-wb-pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
@@ -258,6 +271,40 @@ const WORKBENCH_CSS = `
 .qx-wb-kv dd{margin:0;word-break:break-word}
 .qx-wb-loading{opacity:.7}
 `.trim();
+
+function clampProgress(value: unknown): number | null {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function toneClass(tone: unknown): string {
+  const t = String(tone || "").toLowerCase();
+  if (!t || t === "neutral") return "";
+  if (t === "success" || t === "danger" || t === "warning" || t === "accent" || t === "run") {
+    return ` tone-${t}`;
+  }
+  return "";
+}
+
+function renderListRowHtml(item: PluginUiListItem, selected: boolean, esc: (v: unknown) => string): string {
+  const id = String(item.id ?? item.title);
+  const progress = clampProgress(item.progress);
+  const icon = item.icon ? `<span class="qx-wb-icon">${esc(item.icon)}</span>` : `<span class="qx-wb-icon"></span>`;
+  const badgeText = item.badge || item.meta || "";
+  const badge = badgeText
+    ? `<span class="qx-wb-badge${toneClass(item.tone)}">${esc(badgeText)}</span>`
+    : "<span></span>";
+  const progressHtml =
+    progress != null
+      ? `<div class="qx-wb-progress" aria-hidden="true"><i style="width:${progress}%"></i></div>`
+      : "";
+  return `<button type="button" class="qx-wb-row${selected ? " is-sel" : ""}" data-id="${esc(id)}">
+    ${icon}
+    <span><strong>${esc(item.title)}</strong>${item.subtitle ? `<small>${esc(item.subtitle)}</small>` : ""}${progressHtml}</span>
+    ${badge}
+  </button>`;
+}
 
 /**
  * Inline JS for plugin iframes — keep in sync with enhancePluginCli / createPluginUiKit.
@@ -360,10 +407,7 @@ export function createPluginUiKit(): PluginContext["ui"] {
           .map((item) => {
             const id = String(item.id ?? item.title);
             const sel = state.selectedId != null && String(state.selectedId) === id;
-            return `<button type="button" class="qx-wb-row${sel ? " is-sel" : ""}" data-id="${esc(id)}">
-              <span><strong>${esc(item.title)}</strong>${item.subtitle ? `<small>${esc(item.subtitle)}</small>` : ""}</span>
-              ${item.badge || item.meta ? `<span class="qx-wb-badge">${esc(item.badge || item.meta || "")}</span>` : "<span></span>"}
-            </button>`;
+            return renderListRowHtml(item, sel, esc);
           })
           .join("")
       : `<div class="qx-wb-empty">${esc(state.emptyText || (state.loading ? "Loading…" : "No results"))}</div>`;
@@ -564,6 +608,22 @@ export const PLUGIN_WORKBENCH_RUNTIME_JS = [
   "    }",
   '    return [{ id: "value", title: String(value), raw: value }];',
   "  }",
+  "  function toneClass(tone) {",
+  '    const t = String(tone || "").toLowerCase();',
+  '    if (!t || t === "neutral") return "";',
+  '    if (t === "success" || t === "danger" || t === "warning" || t === "accent" || t === "run") return " tone-" + t;',
+  '    return "";',
+  "  }",
+  "  function renderListRow(item, selected) {",
+  "    const id = String(item.id != null ? item.id : item.title);",
+  "    var progress = typeof item.progress === 'number' ? item.progress : Number(item.progress);",
+  "    if (!isFinite(progress)) progress = null; else progress = Math.max(0, Math.min(100, Math.round(progress)));",
+  '    const icon = item.icon ? \'<span class="qx-wb-icon">\' + esc(item.icon) + "</span>" : \'<span class="qx-wb-icon"></span>\';',
+  '    const badgeText = item.badge || item.meta || "";',
+  '    const badge = badgeText ? \'<span class="qx-wb-badge\' + toneClass(item.tone) + \'">\' + esc(badgeText) + "</span>" : "<span></span>";',
+  '    const progressHtml = progress != null ? \'<div class="qx-wb-progress" aria-hidden="true"><i style="width:\' + progress + \'%"></i></div>\' : "";',
+  '    return \'<button type="button" class="qx-wb-row\' + (selected ? " is-sel" : "") + \'" data-id="\' + esc(id) + \'">\' + icon + "<span><strong>" + esc(item.title) + "</strong>" + (item.subtitle ? "<small>" + esc(item.subtitle) + "</small>" : "") + progressHtml + "</span>" + badge + "</button>";',
+  "  }",
   "  function mountWorkbench(container, state, handlers) {",
   "    state = state || {};",
   "    handlers = handlers || {};",
@@ -574,7 +634,7 @@ export const PLUGIN_WORKBENCH_RUNTIME_JS = [
   "      ? items.map(function (item) {",
   "          const id = String(item.id != null ? item.id : item.title);",
   "          const sel = state.selectedId != null && String(state.selectedId) === id;",
-  '          return \'<button type="button" class="qx-wb-row\' + (sel ? " is-sel" : "") + \'" data-id="\' + esc(id) + \'"><span><strong>\' + esc(item.title) + "</strong>" + (item.subtitle ? "<small>" + esc(item.subtitle) + "</small>" : "") + "</span>" + (item.badge || item.meta ? \'<span class="qx-wb-badge">\' + esc(item.badge || item.meta || "") + "</span>" : "<span></span>") + "</button>";',
+  "          return renderListRow(item, sel);",
   "        }).join(\"\")",
   '      : \'<div class="qx-wb-empty">\' + esc(state.emptyText || (state.loading ? "Loading…" : "No results")) + "</div>";',
   '    container.innerHTML = "<style>" + workbenchStyles() + \'</style><div class="qx-wb\' + (state.loading ? " qx-wb-loading" : "") + \'"><div class="qx-wb-head">\' +',

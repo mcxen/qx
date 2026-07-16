@@ -455,6 +455,9 @@ export interface PluginContext {
       subtitle?: string;
       meta?: string;
       badge?: string;
+      icon?: string;
+      progress?: number;
+      tone?: string;
       raw?: unknown;
     }>;
     mountWorkbench: (
@@ -474,6 +477,9 @@ export interface PluginContext {
           subtitle?: string;
           meta?: string;
           badge?: string;
+          icon?: string;
+          progress?: number;
+          tone?: string;
           raw?: unknown;
         }>;
         selectedId?: string | null;
@@ -492,6 +498,9 @@ export interface PluginContext {
             subtitle?: string;
             meta?: string;
             badge?: string;
+            icon?: string;
+            progress?: number;
+            tone?: string;
             raw?: unknown;
           },
         ) => void;

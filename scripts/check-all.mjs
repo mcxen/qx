@@ -14,6 +14,7 @@ const steps = [
   ["i18n", "scripts/check-i18n.mjs"],
   ["shell-navigation", "scripts/check-qx-shell-navigation.mjs"],
   ["island", "scripts/check-qx-island.mjs"],
+  ["module-ports", "scripts/check-module-ports.mjs"],
 ];
 
 let failed = 0;
