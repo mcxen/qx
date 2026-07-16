@@ -1,5 +1,5 @@
 <!-- language: en -->
-> **Version**: v0.5.34 — current development baseline
+> **Version**: v0.5.35 — current development baseline
 
 <a id="readme-en"></a>
 
