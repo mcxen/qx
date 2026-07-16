@@ -1,359 +1,101 @@
-# Qx 插件开发指南（业务场景上手）
+# Qx 插件开发文档（作者手册）
 
-面向**业务开发者**：在 Qx 里做一个自己的扩展（查发布进度、触发发布、打开流水线等），从零到可调试的最短路径。
+> **这是插件作者的主入口。**  
+> 写业务插件时优先读本文；需要字段级细节再下钻到协议专章。  
+> 宿主贡献者另见 [`docs/plugin-architecture.md`](../docs/plugin-architecture.md)。
 
-> 更完整的协议与 API 表见文末「文档地图」。本文偏「怎么开始做」。
+**状态**：Current · 适用：Qx ≥ 0.5.26（`context.cli`）· 读者：业务 / 第三方插件作者
 
 ---
 
-## 1. 文档在哪
-
-| 文档 | 路径 | 给谁看 |
-|------|------|--------|
-| **本指南（上手）** | `public/doc/plugin-development-guide.md` | 业务插件作者 |
-| 插件系统方案 | [`plugin-system.md`](./plugin-system.md) | manifest / context API / 权限 / 脚手架 |
-| 市场发布 | [`plugin-marketplace.md`](./plugin-marketplace.md) | 打包到 `qx-plugins` 市场 |
-| Raycast 转换 | [`raycast-plugin-conversion.md`](./raycast-plugin-conversion.md) | 把 Raycast 扩展转成 Qx 插件 |
-| 内部运行时 | [`docs/plugin-architecture.md`](../docs/plugin-architecture.md) | 贡献宿主 / RPC 的人 |
-
-应用内入口：
-
-1. **Settings → Advanced → Create Plugin (`qx init`)**：生成模板到 `~/.qx/plugins/<id>/`
-2. **Settings → Extensions → Rescan** / **Dev Mode Hot Reload**：改完代码立刻重载
-3. Launcher 搜索命令标题 / 打开插件 Panel
-
-插件落盘目录：
+## 0. 一分钟心智模型
 
 ```text
-~/.qx/plugins/<plugin-id>/
-├── manifest.json
-├── index.js          # ESM，export default { commands, panel }
-├── icon.png          # 可选
-├── README.md
-└── data/             # 运行时：storage / preferences（宿主创建）
+┌─────────────────────────────────────────────────────────┐
+│  Launcher 搜索 / Extensions 安装 / Panel 窗口            │  宿主 UI
+└───────────────────────────┬─────────────────────────────┘
+                            │ postMessage RPC
+┌───────────────────────────▼─────────────────────────────┐
+│  插件 iframe：index.js  export default { commands, panel }│  你的代码
+│       只依赖 context.* 端口，不碰 OS / Node / 文件路径细节   │
+└───────────────────────────┬─────────────────────────────┘
+                            │ permissions 白名单
+┌───────────────────────────▼─────────────────────────────┐
+│  Rust 能力：cli · http · storage · clipboard · ai · …     │  宿主实现
+└─────────────────────────────────────────────────────────┘
 ```
 
----
-
-## 2. 先选形态
-
-| 形态 | 适合 | 不适合 |
-|------|------|--------|
-| **命令 only** | 搜一下、跑一下 CLI、弹 toast | 要列表、多步操作 |
-| **Panel（推荐业务场景）** | 列表展示进度、按钮「重新发布」、详情 | 极简一次性动作 |
-| **Raycast 转换** | 已有 Raycast 扩展 | 全新业务、强依赖本机 CLI |
-
-**发布进度 / 重新发布** → 建议：**Panel + 若干 Launcher 命令**。
-
----
-
-## 3. 五分钟脚手架
-
-### 方式 A：应用内生成（推荐）
-
-1. 打开 Qx → Settings → Advanced  
-2. **Create Plugin**，例如 id：`release-board`  
-3. 打开 `~/.qx/plugins/release-board/`  
-4. 编辑 `manifest.json` / `index.js`  
-5. Settings → Extensions → **Rescan**（或开 Dev Hot Reload）
-
-### 方式 B：手写目录
-
-```bash
-mkdir -p ~/.qx/plugins/release-board
-# 写入 manifest.json + index.js（见下一节）
-# 在 Qx Extensions 里 Rescan
-```
-
-打包给别人：
-
-```bash
-cd ~/.qx/plugins/release-board
-zip -r ~/Desktop/release-board.qx-plugin manifest.json index.js icon.png README.md
-# Settings → Extensions → 导入本地 .qx-plugin
-```
-
----
-
-## 4. 业务场景：代码发布进度 + CLI 重发
-
-目标：
-
-- Launcher 搜「发布进度」打开面板  
-- 面板列出近期发布状态（读 CLI / HTTP）  
-- 选中一条可 **刷新**、**打开流水线**、**重新发布**（再调 CLI）
-
-### 4.1 `manifest.json`（声明能力）
-
-```json
-{
-  "id": "release-board",
-  "name": "Release Board",
-  "version": "0.1.0",
-  "description": "Query release progress and re-run publish via local CLI",
-  "author": "your-team",
-  "icon": "icon.png",
-  "platforms": ["macos", "windows"],
-  "keywords": ["release", "deploy", "ci", "发布", "流水线"],
-  "permissions": [
-    "notifications",
-    "open-url",
-    "cli"
-  ],
-  "preferences": [
-    {
-      "id": "cliPath",
-      "label": "Release CLI",
-      "type": "string",
-      "required": true,
-      "default": "release-cli",
-      "description": "CLI binary name or absolute path (must be on PATH or absolute)."
-    },
-    {
-      "id": "workdir",
-      "label": "Working directory",
-      "type": "string",
-      "required": false,
-      "default": "",
-      "description": "cwd for CLI; empty = host default."
-    },
-    {
-      "id": "statusArgs",
-      "label": "Status command args",
-      "type": "string",
-      "required": false,
-      "default": "status --json --limit 20",
-      "description": "Args after CLI path for listing releases."
-    },
-    {
-      "id": "redeployArgsTemplate",
-      "label": "Redeploy args template",
-      "type": "string",
-      "required": false,
-      "default": "redeploy --id {id}",
-      "description": "Use {id} placeholder for selected release id."
-    }
-  ],
-  "commands": [
-    {
-      "name": "open-board",
-      "title": "Release Board",
-      "description": "Open release progress board",
-      "keywords": ["release", "deploy", "发布"]
-    },
-    {
-      "name": "refresh-status",
-      "title": "Refresh Release Status",
-      "description": "Run status CLI once and toast summary",
-      "keywords": ["release", "status"]
-    }
-  ],
-  "panel": {
-    "title": "Release Board",
-    "keywords": ["release", "deploy", "发布"]
-  },
-  "min_app_version": "0.5.18"
-}
-```
-
-**权限说明（必读）**
-
-| 权限 | 用途 |
+| 原则 | 含义 |
 |------|------|
-| **`cli`** | **`context.cli.run` / `which`** 跑本机 CLI（argv，无 shell；业务首选） |
-| `open-url` | 打开 CI / 发布页 |
-| `notifications` | toast / 系统通知 |
+| **端口优先** | 业务只调 `context.cli` / `context.http` / `context.storage` 等稳定口 |
+| **权限显式** | 能用的能力必须在 `manifest.permissions` 声明 |
+| **沙箱** | 没有裸 `child_process`、没有任意 `file://`；CLI 用 `cli` 端口 |
+| **可分发** | 一个 **zip / `.qx-plugin`** 即可 Import 或上市场 |
 
-完整协议见 **[plugin-cli-protocol.md](./plugin-cli-protocol.md)**。
+---
 
-额外约束：
+## 1. 文档地图（按需下钻）
 
-1. 需要 Qx 版本支持 `context.cli`（见协议文档 `min_app_version`）。  
-2. 不要把密钥写进 `index.js`；用 `preferences` 的 `password` 类型或环境变量（由 CLI 自己读）。  
-3. 跨平台业务优先 **HTTP API**（权限 `http`），CLI 适合 macOS 工具链（如 brew、本机 release-cli）。
+| 顺序 | 文档 | 内容 |
+|:----:|------|------|
+| **①** | **本文** | 总览、端口、manifest、安装、调试、模式 |
+| ② | [`plugin-cli-protocol.md`](./plugin-cli-protocol.md) | **`context.cli` 完整协议**（argv、超时、安全） |
+| ③ | [`plugin-system.md`](./plugin-system.md) | manifest 全字段、context 全表、权限清单 |
+| ④ | [`plugin-marketplace.md`](./plugin-marketplace.md) | 打进 `qx-plugins` 市场、Import/Browse |
+| ⑤ | [`raycast-plugin-conversion.md`](./raycast-plugin-conversion.md) | Raycast 扩展转换（可选） |
+| — | [`docs/plugin-architecture.md`](../docs/plugin-architecture.md) | 宿主 iframe / RPC 实现（非作者必读） |
 
-> 仅当必须跑 shell 脚本时才用 `ai-bash` + `context.ai.runBash`（受 Agent 开关门控）。
+---
 
-### 4.2 `index.js`（最小可跑骨架）
+## 2. 插件长什么样
+
+### 2.1 目录与包
+
+开发时（推荐）：
+
+```text
+~/.qx/plugins/<id>/
+├── manifest.json      # 契约：id、权限、命令、面板、偏好
+├── index.js           # ESM：export default { commands, panel? }
+├── icon.png           # 可选
+├── README.md          # 可选
+└── data/              # 运行时生成：storage / preferences
+```
+
+分发时打成 **zip**（扩展名 `.qx-plugin` 或 `.zip` 均可）：
+
+```bash
+cd ~/.qx/plugins/my-plugin
+zip -r ~/Desktop/my-plugin.qx-plugin manifest.json index.js icon.png README.md
+```
+
+用户安装：
+
+1. **Settings → Extensions → Installed → Import**  
+2. 填本地路径（如 `~/Downloads/my-plugin.qx-plugin`）→ **Install Local**  
+3. 或填 GitHub / ZIP URL → **Install URL**  
+4. 或从 **Browse** 市场安装  
+
+宿主解压到 `~/.qx/plugins/<manifest.id>/`；同 id 覆盖安装。
+
+### 2.2 导出契约（插件主接口）
 
 ```js
-/** @param {import('../../src/plugin/types').PluginContext} context */
-async function runCli(context, args) {
-  const cli = String((await context.getPreference("cliPath")) || "release-cli").trim();
-  const workdir = String((await context.getPreference("workdir")) || "").trim();
-  const program = (await context.cli.which(cli)) || cli;
-  const result = await context.cli.run({
-    program,
-    args: Array.isArray(args) ? args : String(args || "").split(/\s+/).filter(Boolean),
-    cwd: workdir || undefined,
-    timeoutMs: 60_000,
-  });
-  if (result.timedOut) throw new Error("CLI timed out");
-  if (result.status !== 0) {
-    const err = (result.stderr || result.stdout || `exit ${result.status}`).slice(0, 400);
-    throw new Error(err);
-  }
-  return String(result.stdout || "");
-}
-
-function parseStatusOutput(stdout) {
-  // Prefer JSON CLI: [{ id, name, status, url, updatedAt }, ...]
-  try {
-    const data = JSON.parse(stdout);
-    return Array.isArray(data) ? data : data.items || [];
-  } catch {
-    // Fallback: one release id per line
-    return stdout
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((id) => ({ id, name: id, status: "unknown" }));
-  }
-}
-
-function renderBoard(container, context, state) {
-  const rows = (state.items || [])
-    .map((item, index) => {
-      const active = index === state.selected ? "is-active" : "";
-      return `<button type="button" class="row ${active}" data-index="${index}">
-        <strong>${escapeHtml(item.name || item.id)}</strong>
-        <span>${escapeHtml(item.status || "")}</span>
-      </button>`;
-    })
-    .join("");
-
-  container.innerHTML = `
-    <style>
-      .wrap { font: 13px system-ui; color: var(--qx-text-primary); padding: 12px; height: 100%; box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; }
-      .toolbar { display: flex; gap: 8px; flex-wrap: wrap; }
-      .toolbar button, .row { border: 1px solid var(--qx-border-1); background: var(--qx-bg-component-1); color: inherit; border-radius: 6px; padding: 6px 10px; cursor: pointer; font: inherit; }
-      .list { overflow: auto; display: flex; flex-direction: column; gap: 4px; min-height: 0; flex: 1; }
-      .row { text-align: left; display: flex; justify-content: space-between; gap: 12px; }
-      .row.is-active { outline: 1px solid var(--qx-accent); }
-      .err { color: var(--qx-danger); white-space: pre-wrap; }
-      .muted { color: var(--qx-text-secondary); }
-    </style>
-    <div class="wrap">
-      <div class="toolbar">
-        <button type="button" data-act="refresh">Refresh</button>
-        <button type="button" data-act="open">Open pipeline</button>
-        <button type="button" data-act="redeploy">Redeploy</button>
-      </div>
-      <div class="muted">${state.loading ? "Loading…" : `${(state.items || []).length} releases`}</div>
-      ${state.error ? `<div class="err">${escapeHtml(state.error)}</div>` : ""}
-      <div class="list">${rows || `<div class="muted">No releases</div>`}</div>
-    </div>
-  `;
-
-  container.querySelector('[data-act="refresh"]')?.addEventListener("click", () => state.onRefresh());
-  container.querySelector('[data-act="open"]')?.addEventListener("click", () => state.onOpen());
-  container.querySelector('[data-act="redeploy"]')?.addEventListener("click", () => state.onRedeploy());
-  container.querySelectorAll(".row").forEach((el) => {
-    el.addEventListener("click", () => {
-      state.selected = Number(el.getAttribute("data-index"));
-      renderBoard(container, context, state);
-    });
-  });
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-async function loadItems(context) {
-  const args = String((await context.getPreference("statusArgs")) || "status --json --limit 20")
-    .split(/\s+/)
-    .filter(Boolean);
-  const stdout = await runCli(context, args);
-  return parseStatusOutput(stdout);
-}
-
 export default {
+  // Launcher 可搜到的动作
   commands: [
     {
-      name: "open-board",
-      title: "Release Board",
-      async run(context) {
-        context.showToast("Open Release Board from the plugin panel (search Release Board).");
-      },
-    },
-    {
-      name: "refresh-status",
-      title: "Refresh Release Status",
-      async run(context) {
-        try {
-          const items = await loadItems(context);
-          const failed = items.filter((i) => /fail|error/i.test(String(i.status || ""))).length;
-          context.showToast(`Releases: ${items.length}, failed: ${failed}`);
-        } catch (error) {
-          context.showToast(`Status failed: ${error.message || error}`);
-        }
-      },
+      name: "open",           // 与 manifest.commands[].name 对齐
+      title: "Open My Board",
+      async run(context) { /* 无 UI 或 toast */ },
     },
   ],
 
+  // 可选：全屏 Panel（列表、设置、工作台）
   panel: {
-    title: "Release Board",
+    title: "My Board",
     async render(container, context) {
-      const state = {
-        items: [],
-        selected: 0,
-        loading: false,
-        error: "",
-        async onRefresh() {
-          state.loading = true;
-          state.error = "";
-          renderBoard(container, context, state);
-          try {
-            state.items = await loadItems(context);
-            state.selected = 0;
-          } catch (error) {
-            state.error = String(error.message || error);
-          } finally {
-            state.loading = false;
-            renderBoard(container, context, state);
-          }
-        },
-        async onOpen() {
-          const item = state.items[state.selected];
-          if (!item?.url) {
-            context.showToast("No pipeline URL on selected item");
-            return;
-          }
-          await context.openUrl(item.url);
-        },
-        async onRedeploy() {
-          const item = state.items[state.selected];
-          if (!item?.id) {
-            context.showToast("Select a release first");
-            return;
-          }
-          const ok = globalThis.confirm
-            ? globalThis.confirm(`Redeploy ${item.name || item.id}?`)
-            : true;
-          if (!ok) return;
-          try {
-            const tmpl = String(
-              (await context.getPreference("redeployArgsTemplate")) || "redeploy --id {id}",
-            );
-            const args = tmpl
-              .replaceAll("{id}", String(item.id))
-              .split(/\s+/)
-              .filter(Boolean);
-            await runCli(context, args);
-            context.showToast(`Redeploy started: ${item.id}`);
-            await state.onRefresh();
-          } catch (error) {
-            context.showToast(`Redeploy failed: ${error.message || error}`);
-          }
-        },
-      };
-
-      await state.onRefresh();
+      // 只改 container 内部 DOM；定时器用 context.setTimeout
     },
     destroy(container) {
       container.innerHTML = "";
@@ -362,102 +104,306 @@ export default {
 };
 ```
 
-### 4.3 约定你们的 CLI
+| 表面 | 职责 | 不要做 |
+|------|------|--------|
+| `commands[].run` | 短任务、打开面板提示、一次性 CLI | 长阻塞无反馈 |
+| `panel.render` | 持久 UI、列表、按钮 | 泄漏定时器；操作宿主 DOM |
 
-推荐 CLI 输出 **JSON**，宿主好解析：
+---
 
-```bash
-# 查询
-release-cli status --json --limit 20
-# => [{"id":"42","name":"web@1.2.3","status":"success","url":"https://ci/.../42"}]
+## 3. 接口抽象：端口目录（Port Catalog）
 
-# 重发
-release-cli redeploy --id 42
+作者**只依赖端口**。宿主可换实现；插件代码不应依赖路径硬编码、Agent 开关或未声明权限。
+
+### 3.1 选用哪条端口
+
+| 场景 | 端口 | 权限 | 备注 |
+|------|------|------|------|
+| 跑本机工具（brew、release-cli、git） | **`context.cli`** | `cli` | **业务首选**；argv，无 shell |
+| 调公司 HTTP API | **`context.http`** | `http` | 跨平台更稳 |
+| 用户配置（路径、token） | **`context.getPreference`** | —（manifest.preferences） | 密钥用 `password` |
+| 跨重启缓存 | **`context.storage.persist`** | — | 落盘 `data/storage.json` |
+| 本次进程缓存 | **`context.storage.session`** | — | 重启即失 |
+| Toast / 确认 | `showToast` / `prompt` | 可选 `notifications` | — |
+| 打开网页 / CI | **`context.openUrl`** | `open-url` | — |
+| 剪贴板 | **`context.clipboard`** | `clipboard` | — |
+| 任意 shell 脚本 | `context.ai.runBash` | `ai-bash` | **慎用**；受 Agent Bash 门控 |
+| LLM | `context.ai.*` | `ai` 等 | 见 AI 文档 |
+
+### 3.2 核心端口形状（摘要）
+
+#### UI / 会话
+
+```ts
+context.showToast(msg: string): void
+context.prompt(label: string, default?: string): Promise<string | null>
+context.getPreference(id: string): Promise<unknown>
+context.setTimeout / setInterval / clearTimeout / clearInterval  // 面板销毁自动清理
 ```
 
-在插件 Preferences 里改 `cliPath` / `workdir` / 参数模板，不必改代码。
+#### CLI（完整协议 → [`plugin-cli-protocol.md`](./plugin-cli-protocol.md)）
 
-### 4.4 更稳的替代：HTTP 而不是 bash
+```ts
+// 权限: "cli"
+await context.cli.which("brew")  // => "/opt/homebrew/bin/brew" | null
 
-若有发布中台 HTTP API：
-
-```json
-"permissions": ["http", "open-url", "notifications"]
+await context.cli.run({
+  program: "brew",                 // 或绝对路径
+  args: ["info", "--json=v2", "--installed"],
+  cwd: optional,
+  env: optional,                   // 合并进环境
+  timeoutMs: 120_000,              // 默认 60s，最大 600s
+})
+// => { status, stdout, stderr, timedOut, program }
 ```
 
-```js
-const res = await context.http.fetch("https://ci.example.com/api/releases", {
-  headers: { Authorization: `Bearer ${await context.getPreference("token")}` },
+**规则**：永远 `program` + `args[]`，不要把用户输入拼进一条 shell 字符串。
+
+#### HTTP
+
+```ts
+// 权限: "http"
+const res = await context.http.fetch(url, {
+  method: "GET",
+  headers: { Authorization: `Bearer ${token}` },
+  timeoutMs: 30_000,
 });
-const body = await res.json();
+const data = await res.json();
 ```
 
-跨 Windows / 无 bash 环境更可靠；密钥用 `preferences` 的 `password` 字段。
+#### 存储
 
----
+```ts
+await context.storage.persist.set("lastSync", Date.now())
+await context.storage.persist.get("lastSync")
+await context.storage.session.set("pageCache", items)  // 仅本次进程
+```
 
-## 5. 开发调试清单
-
-1. **Rescan** 或开启 **Dev Mode Hot Reload**  
-2. Launcher 搜插件名 / 命令标题  
-3. 打开 Panel：看列表、点 Refresh  
-4. 失败时看：  
-   - Panel 底部错误 / Retry  
-   - 灵动岛插件错误  
-   - Settings → 是否授予 `ai-bash`、Agent Bash 是否开启  
-5. CLI 先在系统终端验证同一 `cwd` 下可跑通，再接到插件  
-
-**不要**用同步死循环或超长阻塞；`runBash` 设合理 `timeoutMs`，UI 先显示 Loading。
-
----
-
-## 6. 安全与产品注意
-
-| 原则 | 做法 |
-|------|------|
-| 最小权限 | 能 HTTP 就别要 `ai-bash` |
-| 确认危险操作 | Redeploy / 删除前 `confirm` |
-| 不写死密钥 | preferences / 环境变量 / 系统钥匙串由 CLI 处理 |
-| 可审计 | toast / 日志带 release id，不把整段密钥打出来 |
-| 后台任务 | 需要周期刷新时可用 `mode: "no-view"` + `interval`（见 Bing）；默认不要过短 |
-
----
-
-## 7. 发布到市场（可选）
-
-1. 目录放进 [qx-plugins](https://github.com/mcxen/qx-plugins) 仓库 `src/<id>/`  
-2. `npm run package:plugins` 生成 `.qx-plugin` + `index.json`  
-3. 用户从 Qx → Extensions → Browse / 导入安装  
-
-细节见 [`plugin-marketplace.md`](./plugin-marketplace.md)。
-
----
-
-## 8. 文档地图（深入）
+### 3.3 端口分层（给架构读者）
 
 ```text
-上手（本文）
-  ├─ API / 权限 / hello-world     → plugin-system.md
-  ├─ 市场打包                      → plugin-marketplace.md
-  ├─ Raycast 扩展                  → raycast-plugin-conversion.md
-  └─ 宿主实现 / 后台 badge 端口    → docs/plugin-architecture.md
+表现层     commands / panel DOM
+    │
+业务层     你的 parse / 列表状态 / 确认文案
+    │
+端口层     context.cli | http | storage | openUrl | …
+    │
+宿主层     Rust spawn / reqwest / 文件 KV  （插件不可见）
 ```
+
+**反模式**：在插件里假设 Node、`require('fs')`、硬编码 `/Users/xxx`、用 `ai-bash` 代替 `cli`、在 `run` 里死循环。
 
 ---
 
-## 9. 常见问题
+## 4. Manifest 契约（最小够用）
 
-**Q: 命令搜得到，面板打不开？**  
-A: `manifest.panel` 与 `export default.panel.render` 都要有；Rescan 后看 Installed 是否 enabled。
+```json
+{
+  "id": "my-plugin",
+  "name": "My Plugin",
+  "version": "0.1.0",
+  "description": "…",
+  "author": "you",
+  "icon": "icon.png",
+  "platforms": ["macos", "windows"],
+  "keywords": ["demo"],
+  "permissions": ["cli", "notifications", "open-url"],
+  "preferences": [
+    {
+      "id": "cliPath",
+      "label": "CLI path",
+      "type": "string",
+      "default": "my-cli",
+      "description": "Binary name or absolute path"
+    }
+  ],
+  "commands": [
+    {
+      "name": "open",
+      "title": "Open My Plugin",
+      "description": "Open the panel",
+      "keywords": ["my", "plugin"]
+    }
+  ],
+  "panel": {
+    "title": "My Plugin",
+    "keywords": ["my plugin"]
+  },
+  "min_app_version": "0.5.26"
+}
+```
 
-**Q: `context.cli` 报缺权限 / 不存在？**  
-A: manifest 加 `cli`，`min_app_version` 覆盖提供该协议的 Qx；Rescan。
+| 字段 | 要点 |
+|------|------|
+| `id` | 目录名 / 安装键；小写+连字符 |
+| `permissions` | 与代码实际调用一致；宁少勿多 |
+| `commands[].name` | 与 `export default.commands[].name` 一致 |
+| `panel` | 需要工作台时声明；否则可省略 |
+| `platforms` | 如仅 macOS：`["macos"]`（例：Brew） |
+| `min_app_version` | 使用新端口时钉住（`cli` → ≥ 0.5.26） |
 
-**Q: Windows 上 CLI 跑不起来？**  
-A: `cli` 是 argv spawn，不依赖 bash；仍须程序在 PATH。跨平台业务优先 HTTP。
+权限全集见 [`plugin-system.md` §权限](./plugin-system.md)。
 
-**Q: 想和 Bing 一样后台自动刷？**  
-A: 给 command 加 `"mode": "no-view", "interval": "1h"`（不要过短）；宿主会调度并显示「后台」标签。
+---
 
-**Q: 必须用 TypeScript 吗？**  
-A: 不需要。iframe 里跑的是打包后的 ESM `index.js`；可用 TS 自己编成 JS 再放进插件目录。
+## 5. 从零到跑通
+
+### 5.1 脚手架
+
+**A. 应用内（推荐）**  
+Settings → Advanced → **Create Plugin** → 生成 `~/.qx/plugins/<id>/`
+
+**B. 手写**  
+创建同上目录结构，写好 `manifest.json` + `index.js`，**Rescan**。
+
+### 5.2 调试
+
+| 步骤 | 操作 |
+|------|------|
+| 重载 | Extensions → **Rescan**，或 Advanced → **Dev Mode Hot Reload** |
+| 打开 | Launcher 搜 `commands[].title` 或 panel 名 |
+| 导入测 | 打 zip 后 **Import → Install Local** |
+| 失败 | Panel 错误区 / 灵动岛 / toast；检查权限与 `min_app_version` |
+
+### 5.3 发布给别人
+
+1. `zip` → `.qx-plugin`  
+2. 同事 **Import** 路径安装，**或**  
+3. 提交到 [qx-plugins](https://github.com/mcxen/qx-plugins) 走市场（见 marketplace 文档）
+
+---
+
+## 6. 推荐实现模式
+
+### 6.1 模式 A — 本机 CLI 工作台（Brew / 发布板）
+
+```text
+preferences: cli 路径、cwd
+panel: 列表 + Refresh / 危险操作 confirm
+context.cli.run({ program, args })
+```
+
+参考市场插件：**`brew`**（macOS，`permissions: ["cli", …]`）。
+
+### 6.2 模式 B — HTTP 业务中台
+
+```text
+preferences: baseUrl、token (password)
+context.http.fetch
+跨 Windows / 无 bash 环境优先此模式
+```
+
+### 6.3 模式 C — 命令 only
+
+仅 `commands` + toast / 剪贴板；无 `panel`。适合「查一下状态」。
+
+### 6.4 模式 D — Raycast 转换
+
+已有 Raycast 扩展 → 转换器 / Import Raycast URL。  
+新业务且强依赖本机 CLI 时，**手写 + `context.cli` 通常更稳**。
+
+### 6.5 最小 CLI 命令示例
+
+```js
+export default {
+  commands: [
+    {
+      name: "cli-version",
+      title: "Show CLI Version",
+      async run(context) {
+        const name = String((await context.getPreference("cliPath")) || "brew");
+        const program = (await context.cli.which(name)) || name;
+        const r = await context.cli.run({
+          program,
+          args: ["--version"],
+          timeoutMs: 15_000,
+        });
+        if (r.timedOut) return context.showToast("Timed out");
+        if (r.status !== 0) return context.showToast(r.stderr || `exit ${r.status}`);
+        context.showToast((r.stdout || "").trim().slice(0, 120));
+      },
+    },
+  ],
+};
+```
+
+对应 manifest：`"permissions": ["cli", "notifications"]`。
+
+### 6.6 发布进度 Panel 骨架（思路）
+
+1. `render`：工具栏 Refresh / Redeploy + 列表  
+2. `load`：`cli.run({ program, args: ["status", "--json"] })` → `JSON.parse`  
+3. Redeploy：`confirm` → `cli.run({ args: ["redeploy", "--id", id] })` → 再 Refresh  
+4. 打开流水线：`openUrl(item.url)`  
+
+完整可复制示例见仓库历史版本或市场 `brew` 的 `index.js` 结构（列表状态机 + `context.cli`）。
+
+---
+
+## 7. 后台 interval（可选）
+
+仅当需要周期执行**无界面**任务时：
+
+```json
+{
+  "name": "sync",
+  "title": "Background Sync",
+  "mode": "no-view",
+  "interval": "1h"
+}
+```
+
+- 宿主调度；过短 interval 会被策略限制（见 Bing 日更经验）  
+- 搜索 / Extensions 可显示 **后台** 标签与最近执行时间  
+- 不要用 interval 做「每分钟改系统状态」类骚扰行为  
+
+---
+
+## 8. 清单：合并前自检
+
+- [ ] `manifest.id` / `commands` / `export` 名称一致  
+- [ ] `permissions` 覆盖所有 `context.*` 调用  
+- [ ] 使用 `cli` 而非无必要的 `ai-bash`  
+- [ ] CLI 用 argv；危险操作有 confirm  
+- [ ] 密钥只在 preferences / 环境，不进仓库  
+- [ ] `min_app_version` 覆盖所用端口  
+- [ ] `platforms` 与真实依赖一致（如 brew → `macos`）  
+- [ ] zip 导入一次、Rescan 一次、主路径手动点通  
+
+---
+
+## 9. 参考实现
+
+| 插件 | 说明 |
+|------|------|
+| **brew** | 市场 macOS 插件：`context.cli` + Panel（list/search/outdated/upgrade） |
+| **v2ex** | 原生 Qx 插件：`invoke:` 专用后端命令 |
+| **raycast-*** | 转换插件：依赖 Raycast shim，适合 UI 型扩展 |
+
+---
+
+## 10. FAQ
+
+**Import 支持哪些包？**  
+标准 zip；扩展名 `.qx-plugin` 或 `.zip`。内含 `manifest.json` + 入口 `index.js`。
+
+**为什么 GUI 里找不到 brew？**  
+`context.cli` 会查 `/opt/homebrew/bin` 与 `/usr/local/bin`；仍失败则在 preferences 填绝对路径。
+
+**Panel 打开是空白？**  
+检查 `manifest.panel` + `export.panel.render`；看是否 throw；开 Dev Hot Reload 后 Rescan。
+
+**和内置模块的关系？**  
+内置模块走同一注册思路，但源码在主仓；**业务扩展一律外部插件**，不要改主仓塞业务。
+
+---
+
+## 11. 变更与版本
+
+| 端口 / 能力 | 建议 `min_app_version` |
+|-------------|------------------------|
+| `context.cli` | **0.5.26+** |
+| 二进制 HTTP `arrayBuffer` | 0.5.18+ |
+| 基础 panel / storage | 按你目标发行版 |
+
+协议变更应：**扩展字段、不改成功路径语义**；破坏性变更提高 `min_app_version` 并更新本文与 `plugin-cli-protocol.md`。

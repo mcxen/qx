@@ -2,6 +2,9 @@
 
 本文档面向插件开发者，说明如何开发、打包、发布插件到 [github.com/mcxen/qx-plugins](https://github.com/mcxen/qx-plugins) 市场，以及用户如何从市场安装插件。
 
+> **写插件逻辑**请先读 [`plugin-development-guide.md`](./plugin-development-guide.md)。  
+> 本文侧重：**打包、Import zip、Browse、上架 `qx-plugins`**。
+
 ## 目录结构
 
 一个 Qx 插件是一个目录，包含以下文件：

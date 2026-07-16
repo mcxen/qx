@@ -1,5 +1,8 @@
 # Plugin CLI 接口协议（`context.cli`）
 
+> 作者总手册：[`plugin-development-guide.md`](./plugin-development-guide.md)  
+> 本文是 **`context.cli` 端口** 的完整契约（请求/响应/安全/版本）。
+
 稳定端口：插件跑本机命令行工具（Homebrew、发布 CLI、内部工具等）。  
 **默认 argv 模式（无 shell）**，不依赖 Settings → AI Agent 的 Bash 开关。
 

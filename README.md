@@ -75,11 +75,12 @@ node scripts/convert-raycast-extension.mjs
 
 | Doc | Audience |
 | --- | --- |
-| [`public/doc/plugin-development-guide.md`](public/doc/plugin-development-guide.md) | **Start here** — business plugins (CLI status / redeploy, panel, permissions) |
-| [`public/doc/plugin-cli-protocol.md`](public/doc/plugin-cli-protocol.md) | **`context.cli`** — argv local CLI port (preferred over ai-bash) |
-| [`public/doc/plugin-system.md`](public/doc/plugin-system.md) | Manifest, context API, permissions, hello-world |
-| [`public/doc/plugin-marketplace.md`](public/doc/plugin-marketplace.md) | Pack & publish to the marketplace |
+| [`public/doc/plugin-development-guide.md`](public/doc/plugin-development-guide.md) | **Plugin authors — start here** (ports, manifest, zip Import, patterns) |
+| [`public/doc/plugin-cli-protocol.md`](public/doc/plugin-cli-protocol.md) | **`context.cli`** contract (argv tools) |
+| [`public/doc/plugin-system.md`](public/doc/plugin-system.md) | Full system / API / permissions reference |
+| [`public/doc/plugin-marketplace.md`](public/doc/plugin-marketplace.md) | Pack, Import, marketplace publish |
 | [`public/doc/raycast-plugin-conversion.md`](public/doc/raycast-plugin-conversion.md) | Convert Raycast extensions |
+| [`public/doc/README.md`](public/doc/README.md) | Index of all `public/doc` guides |
 
 ## License
 
@@ -172,11 +173,12 @@ node scripts/convert-raycast-extension.mjs
 
 | Doc | Audience |
 | --- | --- |
-| [`public/doc/plugin-development-guide.md`](public/doc/plugin-development-guide.md) | **Start here** — business plugins (CLI status / redeploy, panel, permissions) |
-| [`public/doc/plugin-cli-protocol.md`](public/doc/plugin-cli-protocol.md) | **`context.cli`** — argv local CLI port (preferred over ai-bash) |
-| [`public/doc/plugin-system.md`](public/doc/plugin-system.md) | Manifest, context API, permissions, hello-world |
-| [`public/doc/plugin-marketplace.md`](public/doc/plugin-marketplace.md) | Pack & publish to the marketplace |
+| [`public/doc/plugin-development-guide.md`](public/doc/plugin-development-guide.md) | **Plugin authors — start here** (ports, manifest, zip Import, patterns) |
+| [`public/doc/plugin-cli-protocol.md`](public/doc/plugin-cli-protocol.md) | **`context.cli`** contract (argv tools) |
+| [`public/doc/plugin-system.md`](public/doc/plugin-system.md) | Full system / API / permissions reference |
+| [`public/doc/plugin-marketplace.md`](public/doc/plugin-marketplace.md) | Pack, Import, marketplace publish |
 | [`public/doc/raycast-plugin-conversion.md`](public/doc/raycast-plugin-conversion.md) | Convert Raycast extensions |
+| [`public/doc/README.md`](public/doc/README.md) | Index of all `public/doc` guides |
 
 ## License
 

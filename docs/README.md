@@ -29,14 +29,21 @@
 
 | 文档 | 覆盖范围 |
 |---|---|
-| [`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md) | **业务开发上手**：脚手架、CLI/HTTP 场景（发布进度/重发）、权限与调试 |
-| [`public/doc/plugin-cli-protocol.md`](../public/doc/plugin-cli-protocol.md) | **`context.cli` 协议**：argv 运行本机命令、权限 `cli`、与 ai-bash 边界 |
-| [plugin-architecture.md](./plugin-architecture.md) | 前端 iframe runtime、RPC 分发、AI 任务链路、权限模型 |
-| [plugin-design-research.md](./plugin-design-research.md) | Raycast-like Rust 启动器插件设计调研 + Qx 落地建议 |
-| [ai-agent-runtime.md](./ai-agent-runtime.md) | QxAI 各层（provider / streaming / tools / MCP / memory / soul） |
-| [`public/doc/plugin-system.md`](../public/doc/plugin-system.md) | 插件系统白皮书（提案、manifest schema、打包） |
-| [`public/doc/plugin-marketplace.md`](../public/doc/plugin-marketplace.md) | 插件市场发布 / 用户安装（面向作者） |
-| [`public/doc/raycast-plugin-conversion.md`](../public/doc/raycast-plugin-conversion.md) | Raycast → Qx 转换脚本 |
+| [`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md) | **作者总手册**：端口抽象、manifest、zip Import、调试、模式（**写插件从这里开始**） |
+| [`public/doc/plugin-cli-protocol.md`](../public/doc/plugin-cli-protocol.md) | **`context.cli` 契约**：argv、超时、安全、版本 |
+| [`public/doc/README.md`](../public/doc/README.md) | `public/doc` 目录索引 |
+| [plugin-architecture.md](./plugin-architecture.md) | 宿主 iframe runtime、RPC、后台 badge 端口（贡献宿主） |
+| [plugin-design-research.md](./plugin-design-research.md) | 设计调研（历史） |
+| [ai-agent-runtime.md](./ai-agent-runtime.md) | QxAI 各层 |
+| [`public/doc/plugin-system.md`](../public/doc/plugin-system.md) | 方案 + API/权限全表（参考） |
+| [`public/doc/plugin-marketplace.md`](../public/doc/plugin-marketplace.md) | 市场打包与安装 |
+| [`public/doc/raycast-plugin-conversion.md`](../public/doc/raycast-plugin-conversion.md) | Raycast → Qx |
+
+常用检索：
+
+- **写业务插件** → `public/doc/plugin-development-guide.md`
+- **跑本机 CLI** → `public/doc/plugin-cli-protocol.md`
+- **改宿主 RPC** → `plugin-architecture.md` + `src/plugin/rpcMethods.ts`
 
 ## 发布与运维
 
@@ -51,7 +58,8 @@
 - 想改 UI → `UI_SPEC.md` + `frontend-architecture.md` + `settings-panel.md`
 - **想改全局快捷键 / 显示隐藏 / 缺 .manage()** → **`shell-and-shortcuts.md`**
 - 想加 Rust 命令 → `rust-backend.md` + `ipc-catalogue.md`
-- 想改插件 API → `plugin-architecture.md` + `plugin-system.md` + `rpcMethods.ts`
+- 想写/审插件 → **`public/doc/plugin-development-guide.md`** + `plugin-cli-protocol.md`
+- 想改插件宿主 API → `plugin-architecture.md` + `rpcMethods.ts` + `plugin_api.rs`
 - 想改 AI → `ai-agent-runtime.md`
 - 想发版 → `release-and-versioning.md` + `public/doc/release-workflow.md` + `AGENTS.md` 的 Release 一节
 

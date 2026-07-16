@@ -11,7 +11,7 @@
 |---|---|
 | 新增/调整公共接口（TS type、Rust command、RPC method、plugin context） | 对应架构文档 + `ipc-catalogue` / plugin doc |
 | 新增抽象层（session store、host API、converter shim） | 本文件相关条目 + 领域文档（island / plugin / shell…） |
-| 权限、manifest、市场契约 | `plugin-architecture` + `public/doc/*` |
+| 权限、manifest、市场契约 | `public/doc/plugin-development-guide.md`（作者）+ `plugin-cli-protocol.md` + `plugin-architecture` |
 | 仅内部重构且接口不变 | 可不改文档；但不得悄悄扩大 public surface |
 
 原则：**接口是契约，文档是契约的可读副本。** 抽象要稳，文档要比实现更「意图清晰」，而不是堆实现细节。

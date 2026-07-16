@@ -1,5 +1,8 @@
 # Qx 插件系统方案
 
+> **插件作者请先读** [`plugin-development-guide.md`](./plugin-development-guide.md)（端口抽象、上手、Import）。  
+> 本文保留完整方案、字段表与权限清单，作参考手册。
+
 ## 一、现状
 
 当前所有模块（clipboard、rss、macros 等）都是硬编码在 `App.tsx` 中的：
