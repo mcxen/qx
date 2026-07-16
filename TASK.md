@@ -266,7 +266,7 @@
 
 - Launcher 右侧默认快捷入口收敛为剪贴板、RSS、设置和文件搜索；旧版完全未修改的十项默认配置自动迁移，用户自定义配置保持不动。
 - 文件搜索快捷入口直接切换到 Files scope、清空旧查询并重新聚焦搜索框。
-- Rust 文件搜索统一折叠多余空白并拒绝空白/单字符查询；Cardinal 对普通查询执行多种召回策略，合并去重后按名称相关性、文件优先和修改时间倒序比较，最近文件在同等匹配中优先。
+- Rust 文件搜索统一折叠多余空白并仅拒绝空白查询；单字符也进入快速 pass。Launcher 在 All / Files 下每次非空 query 增删都立即调用 pass 0，Cardinal 后续召回异步合并去重，并按名称相关性、文件优先和修改时间倒序比较。
 
 ## Bugfix — Windows 透明度与失焦隐藏
 
@@ -545,6 +545,9 @@
 - QxShell 根背景改为透明，由外层画布承载统一透明度，Top Bar / Context Panel / Bottom Bar / 灵动岛使用同一组透明度派生变量。
 - 移除 Clipboard 模块对 QxShell 根背景的私有不透明覆盖，遵循 Shell 背景语义由统一样式控制。
 - 外观设置文案从“画布透明度”调整为“界面透明度”，明确统一控制主壳、面板和灵动岛。
+- 2026-07-16 回归修复：降低透明度时同时降低窗口 CSS 模糊强度，使背景细节真正变得通透而不只是改变白/黑叠层亮度；表面 alpha 全范围跟随滑块，浅色 secondary/tertiary token 与列表/设置说明提升对比度。
+- 2026-07-16 分区设置：Appearance 将窗口背景、Top Bar/Context、内容表面、Action/控件和 Bottom Bar 拆为独立持久化透明度；Popover 跟随 Action/控件并以 Bottom Bar 的视觉强度为下限，旧设置通过默认字段兼容。
+- 2026-07-16 滚动统一：移除浏览器伪元素与 Radix 两套可见 scrollbar，所有宿主 overflow、ScrollArea 与插件 iframe 改用同一全局自绘浮层，停止滚动 720ms 后淡出。
 
 ### 验证
 

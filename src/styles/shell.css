@@ -111,17 +111,25 @@
   -webkit-backdrop-filter: blur(8px) saturate(135%);
 }
 
-.qx-shell.visual-elevated .qx-shell-topbar,
-.qx-shell.visual-elevated .qx-shell-bottombar {
+.qx-shell.visual-elevated .qx-shell-topbar {
   background: rgba(var(--qx-glass-bg), var(--qx-shell-elevated-region-opacity-effective));
 }
 
+.qx-shell.visual-elevated .qx-shell-bottombar {
+  background: rgba(var(--qx-glass-bg), var(--qx-bottom-bar-opacity));
+}
+
 .qx-shell.visual-glass .qx-shell-topbar,
-.qx-shell.visual-glass .qx-shell-bottombar,
 .qx-shell.visual-glass .qx-shell-context {
   background: rgba(var(--qx-glass-bg), var(--qx-shell-glass-region-opacity-effective));
   backdrop-filter: blur(28px) saturate(175%);
   -webkit-backdrop-filter: blur(28px) saturate(175%);
+}
+
+.qx-shell.visual-glass .qx-shell-bottombar {
+  background: rgba(var(--qx-glass-bg), var(--qx-bottom-bar-opacity));
+  backdrop-filter: blur(24px) saturate(170%);
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
 }
 
 .qx-shell.launcher-shell .qx-shell-topbar {
@@ -342,8 +350,8 @@
   border-top: 1px solid color-mix(in srgb, var(--qx-border-1) 72%, transparent);
   background: linear-gradient(
     0deg,
-    rgba(var(--qx-glass-bg), calc(var(--qx-shell-region-opacity-effective) + 0.08)),
-    rgba(var(--qx-glass-bg), var(--qx-shell-region-opacity-effective))
+    rgba(var(--qx-glass-bg), calc(var(--qx-bottom-bar-opacity) + 0.07)),
+    rgba(var(--qx-glass-bg), var(--qx-bottom-bar-opacity))
   );
   box-shadow:
     inset 0 -1px 0 var(--qx-shell-chrome-highlight),
@@ -410,13 +418,21 @@
   gap: 8px;
   height: 30px;
   padding: 0 10px;
-  border: 1px solid var(--qx-border-1);
+  border: 1px solid var(--qx-border-2);
   border-radius: var(--qx-control-radius);
-  background: var(--qx-bg-component-1);
+  background: rgba(var(--qx-surface-rgb-1), var(--qx-control-surface-opacity));
   color: var(--qx-text-primary);
   font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--qx-shadow) 10%, transparent);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+}
+
+.qx-shell-action:hover {
+  border-color: var(--qx-border-3);
+  background: rgba(var(--qx-surface-rgb-2), min(0.92, calc(var(--qx-control-surface-opacity) + 0.10)));
 }
 
 .qx-shell-action.variant-escape {
@@ -424,7 +440,7 @@
   padding: 0 9px;
   justify-content: center;
   border-color: var(--qx-border-2);
-  background: var(--qx-bg-component-3);
+  background: rgba(var(--qx-surface-rgb-2), var(--qx-control-surface-opacity));
   color: var(--qx-text-secondary);
 }
 

@@ -3,10 +3,13 @@
   --qx-canvas-opacity: 0.16;
   --qx-window-opacity: 0.16;
   --qx-shell-region-opacity: 0.05;
+  --qx-bottom-bar-opacity: 0.042;
   --qx-shell-elevated-region-opacity: 0.07;
   --qx-shell-glass-region-opacity: 0.03;
   --qx-shell-overlay-region-opacity: 0.06;
   --qx-shell-popover-opacity: 0.28;
+  --qx-window-blur: 14px;
+  --qx-control-surface-opacity: 0.54;
   --qx-shell-chrome-blur: 24px;
   --qx-shell-chrome-saturation: 165%;
   --qx-shell-scroll-edge-size: 18px;
@@ -92,15 +95,15 @@
   --qx-surface-rgb-3: 232, 232, 232;
   /* Floors keep text readable but must stay BELOW App.tsx opacity mapping
      so Settings → Interface Transparency actually moves shell + cards. */
-  --qx-window-opacity-effective: max(var(--qx-window-opacity), 0.12);
-  --qx-shell-region-opacity-effective: max(var(--qx-shell-region-opacity), 0.06);
-  --qx-shell-elevated-region-opacity-effective: max(var(--qx-shell-elevated-region-opacity), 0.10);
-  --qx-shell-glass-region-opacity-effective: max(var(--qx-shell-glass-region-opacity), 0.04);
-  --qx-shell-overlay-region-opacity-effective: max(var(--qx-shell-overlay-region-opacity), 0.08);
-  --qx-shell-popover-opacity-effective: max(var(--qx-shell-popover-opacity), 0.42);
-  --qx-surface-opacity-1-effective: max(var(--qx-surface-opacity-1), 0.28);
-  --qx-surface-opacity-2-effective: max(var(--qx-surface-opacity-2), 0.22);
-  --qx-surface-opacity-3-effective: max(var(--qx-surface-opacity-3), 0.18);
+  --qx-window-opacity-effective: max(var(--qx-window-opacity), 0.05);
+  --qx-shell-region-opacity-effective: max(var(--qx-shell-region-opacity), 0.02);
+  --qx-shell-elevated-region-opacity-effective: max(var(--qx-shell-elevated-region-opacity), 0.03);
+  --qx-shell-glass-region-opacity-effective: max(var(--qx-shell-glass-region-opacity), 0.015);
+  --qx-shell-overlay-region-opacity-effective: max(var(--qx-shell-overlay-region-opacity), 0.025);
+  --qx-shell-popover-opacity-effective: max(var(--qx-shell-popover-opacity), 0.16);
+  --qx-surface-opacity-1-effective: max(var(--qx-surface-opacity-1), 0.10);
+  --qx-surface-opacity-2-effective: max(var(--qx-surface-opacity-2), 0.08);
+  --qx-surface-opacity-3-effective: max(var(--qx-surface-opacity-3), 0.06);
   --qx-bg-component-1: rgba(var(--qx-surface-rgb-1), var(--qx-surface-opacity-1-effective));
   --qx-bg-component-2: rgba(var(--qx-surface-rgb-2), var(--qx-surface-opacity-2-effective));
   --qx-bg-component-3: rgba(var(--qx-surface-rgb-3), var(--qx-surface-opacity-3-effective));
@@ -110,8 +113,8 @@
   --qx-text-primary: #0a0a0a;
   --qx-terminal-background: var(--qx-gray-100);
   --qx-terminal-foreground: var(--qx-gray-1000);
-  --qx-text-secondary: #525252;
-  --qx-text-tertiary: #737373;
+  --qx-text-secondary: #343434;
+  --qx-text-tertiary: #555555;
 
   --qx-glass-bg: 250, 250, 250;
   --qx-glass-border: rgba(0, 0, 0, 0.06);
@@ -220,15 +223,15 @@
   --qx-surface-rgb-1: 26, 26, 26;
   --qx-surface-rgb-2: 31, 31, 31;
   --qx-surface-rgb-3: 41, 41, 41;
-  --qx-window-opacity-effective: max(var(--qx-window-opacity), 0.14);
-  --qx-shell-region-opacity-effective: max(var(--qx-shell-region-opacity), 0.08);
-  --qx-shell-elevated-region-opacity-effective: max(var(--qx-shell-elevated-region-opacity), 0.12);
-  --qx-shell-glass-region-opacity-effective: max(var(--qx-shell-glass-region-opacity), 0.05);
-  --qx-shell-overlay-region-opacity-effective: max(var(--qx-shell-overlay-region-opacity), 0.10);
-  --qx-shell-popover-opacity-effective: max(var(--qx-shell-popover-opacity), 0.48);
-  --qx-surface-opacity-1-effective: max(var(--qx-surface-opacity-1), 0.32);
-  --qx-surface-opacity-2-effective: max(var(--qx-surface-opacity-2), 0.26);
-  --qx-surface-opacity-3-effective: max(var(--qx-surface-opacity-3), 0.22);
+  --qx-window-opacity-effective: max(var(--qx-window-opacity), 0.08);
+  --qx-shell-region-opacity-effective: max(var(--qx-shell-region-opacity), 0.04);
+  --qx-shell-elevated-region-opacity-effective: max(var(--qx-shell-elevated-region-opacity), 0.06);
+  --qx-shell-glass-region-opacity-effective: max(var(--qx-shell-glass-region-opacity), 0.025);
+  --qx-shell-overlay-region-opacity-effective: max(var(--qx-shell-overlay-region-opacity), 0.05);
+  --qx-shell-popover-opacity-effective: max(var(--qx-shell-popover-opacity), 0.22);
+  --qx-surface-opacity-1-effective: max(var(--qx-surface-opacity-1), 0.14);
+  --qx-surface-opacity-2-effective: max(var(--qx-surface-opacity-2), 0.11);
+  --qx-surface-opacity-3-effective: max(var(--qx-surface-opacity-3), 0.09);
   --qx-bg-component-1: rgba(var(--qx-surface-rgb-1), var(--qx-surface-opacity-1-effective));
   --qx-bg-component-2: rgba(var(--qx-surface-rgb-2), var(--qx-surface-opacity-2-effective));
   --qx-bg-component-3: rgba(var(--qx-surface-rgb-3), var(--qx-surface-opacity-3-effective));
@@ -356,8 +359,8 @@ body {
   -webkit-mask-image: -webkit-radial-gradient(white, black);
   mask-image: radial-gradient(white, black);
   background: rgba(var(--qx-glass-bg), var(--qx-window-opacity-effective));
-  backdrop-filter: blur(24px) saturate(160%);
-  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  backdrop-filter: blur(var(--qx-window-blur)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--qx-window-blur)) saturate(160%);
   border-radius: var(--qx-effective-radius);
   border: 1px solid var(--qx-glass-border);
   box-shadow: inset 0 1px 0 0 var(--qx-shell-chrome-highlight);
@@ -384,41 +387,36 @@ body {
   min-height: 0;
 }
 
-/* ====== 滚动条：平时隐藏，滚动中才显现（线性专业风） ======
- * JS sets data-qx-scrolling on the active scroll target (see overlayScrollbar.ts).
- */
+/* ====== 全局自绘滚动条：原生 chrome 永久隐藏，滚动中显示浮层 ====== */
 * {
-  scrollbar-width: thin;
-  scrollbar-color: transparent transparent;
-}
-
-[data-qx-scrolling] {
-  scrollbar-color: var(--qx-scrollbar-thumb) transparent;
+  scrollbar-width: none;
 }
 
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 0;
+  height: 0;
+  display: none;
 }
 
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: transparent;
+.qx-global-scrollbar {
+  position: fixed;
+  z-index: 2147483646;
   border-radius: 999px;
-  border: 1px solid transparent;
-  background-clip: content-box;
-}
-
-/* 仅正在滚动的容器显示拇指 */
-[data-qx-scrolling]::-webkit-scrollbar-thumb {
   background: var(--qx-scrollbar-thumb);
-  background-clip: content-box;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease;
+  will-change: left, top, width, height, opacity;
 }
 
-[data-qx-scrolling]::-webkit-scrollbar-thumb:hover {
-  background: var(--qx-scrollbar-thumb-hover);
-  background-clip: content-box;
+.qx-global-scrollbar.is-visible {
+  opacity: 1;
+}
+
+.qx-global-scrollbar.is-vertical {
+  width: 3px;
+}
+
+.qx-global-scrollbar.is-horizontal {
+  height: 3px;
 }

@@ -373,7 +373,7 @@ function abortableInvoke<T>(command: string, args: Record<string, unknown>, sign
 function shouldLoadSlowSearchProviders(query: string, scope: SearchScope): boolean {
   const trimmed = query.trim();
   const shouldSearchFiles =
-    (scope === "files" && trimmed.length >= 2) || (scope === "all" && trimmed.length >= 3);
+    (scope === "files" || scope === "all") && trimmed.length > 0;
   const shouldSearchClipboard = (scope === "all" || scope === "clipboard") && trimmed.length > 0;
 
   return shouldSearchFiles || shouldSearchClipboard;
@@ -860,6 +860,10 @@ function App() {
     const controlRadius = Math.min(6, Math.max(4, settings.appearance.border_radius));
     const configuredOpacity = Math.min(0.4, Math.max(0.05, settings.appearance.blur_opacity));
     const opacityScale = (configuredOpacity - 0.05) / 0.35;
+    const configuredRegionOpacity = Math.min(0.35, Math.max(0.03, settings.appearance.shell_region_opacity));
+    const configuredSurfaceOpacity = Math.min(0.85, Math.max(0.10, settings.appearance.surface_opacity));
+    const configuredControlOpacity = Math.min(0.95, Math.max(0.30, settings.appearance.control_opacity));
+    const configuredBottomBarOpacity = Math.min(0.35, Math.max(0.04, settings.appearance.bottom_bar_opacity));
     const isWindows = getQxDesktopPlatform() === "windows";
 
     // WebView2 does not reproduce macOS vibrancy from CSS backdrop-filter.
@@ -867,29 +871,38 @@ function App() {
     // full settings slider range; native Acrylic remains an optional backdrop.
     const opacity = isWindows ? 0.82 + opacityScale * 0.14 : configuredOpacity;
     const regionOpacity = isWindows
-      ? 0.76 + opacityScale * 0.16
-      : Math.min(0.16, Math.max(0.02, opacity * 0.32));
+      ? 0.76 + ((configuredRegionOpacity - 0.03) / 0.32) * 0.16
+      : configuredRegionOpacity;
+    const bottomBarOpacity = isWindows
+      ? 0.72 + ((configuredBottomBarOpacity - 0.04) / 0.31) * 0.20
+      : configuredBottomBarOpacity;
     const elevatedRegionOpacity = isWindows
-      ? 0.82 + opacityScale * 0.14
-      : Math.min(0.20, Math.max(0.03, opacity * 0.46));
+      ? Math.min(0.98, regionOpacity + 0.08)
+      : Math.min(0.55, Math.max(regionOpacity, configuredSurfaceOpacity * 0.72));
     const glassRegionOpacity = isWindows
-      ? 0.70 + opacityScale * 0.18
-      : Math.min(0.12, Math.max(0.015, opacity * 0.24));
+      ? Math.max(0.70, regionOpacity - 0.06)
+      : Math.max(0.025, regionOpacity * 0.72);
     const overlayRegionOpacity = isWindows
-      ? 0.78 + opacityScale * 0.16
-      : Math.min(0.18, Math.max(0.025, opacity * 0.38));
+      ? Math.max(0.78, bottomBarOpacity)
+      : Math.max(0.05, bottomBarOpacity * 0.90);
+    // Popovers share the actions/controls visual tier. The bottom bar is the
+    // translucency floor so floating menus never become weaker than shell chrome.
     const popoverOpacity = isWindows
-      ? 0.90 + opacityScale * 0.08
-      : Math.min(0.54, Math.max(0.20, opacity + 0.14));
+      ? Math.max(0.90, configuredControlOpacity, bottomBarOpacity)
+      : Math.min(0.96, Math.max(configuredControlOpacity, bottomBarOpacity + 0.20));
     const surfaceOpacity1 = isWindows
-      ? 0.90 + opacityScale * 0.08
-      : Math.min(0.78, Math.max(0.28, opacity * 1.55));
+      ? 0.88 + ((configuredSurfaceOpacity - 0.10) / 0.75) * 0.10
+      : configuredSurfaceOpacity;
     const surfaceOpacity2 = isWindows
-      ? 0.84 + opacityScale * 0.12
-      : Math.min(0.66, Math.max(0.22, opacity * 1.28));
+      ? Math.max(0.84, surfaceOpacity1 - 0.05)
+      : Math.max(0.08, configuredSurfaceOpacity * 0.82);
     const surfaceOpacity3 = isWindows
-      ? 0.78 + opacityScale * 0.14
-      : Math.min(0.58, Math.max(0.18, opacity * 1.05));
+      ? Math.max(0.78, surfaceOpacity1 - 0.10)
+      : Math.max(0.06, configuredSurfaceOpacity * 0.68);
+    const windowBlur = isWindows ? 22 : 8 + opacityScale * 20;
+    const controlSurfaceOpacity = isWindows
+      ? Math.max(0.92, configuredControlOpacity)
+      : configuredControlOpacity;
     document.documentElement.style.setProperty(
       "--qx-canvas-opacity",
       String(opacity),
@@ -901,6 +914,10 @@ function App() {
     document.documentElement.style.setProperty(
       "--qx-shell-region-opacity",
       String(regionOpacity),
+    );
+    document.documentElement.style.setProperty(
+      "--qx-bottom-bar-opacity",
+      String(bottomBarOpacity),
     );
     document.documentElement.style.setProperty(
       "--qx-shell-elevated-region-opacity",
@@ -931,6 +948,14 @@ function App() {
       String(surfaceOpacity3),
     );
     document.documentElement.style.setProperty(
+      "--qx-window-blur",
+      `${windowBlur.toFixed(1)}px`,
+    );
+    document.documentElement.style.setProperty(
+      "--qx-control-surface-opacity",
+      String(controlSurfaceOpacity),
+    );
+    document.documentElement.style.setProperty(
       "--qx-radius",
       `${shellRadius}px`,
     );
@@ -952,6 +977,10 @@ function App() {
     );
   }, [
     settings.appearance.blur_opacity,
+    settings.appearance.shell_region_opacity,
+    settings.appearance.surface_opacity,
+    settings.appearance.control_opacity,
+    settings.appearance.bottom_bar_opacity,
     settings.appearance.border_radius,
     settings.appearance.font_size,
   ]);
@@ -1184,7 +1213,7 @@ function App() {
       seq: number,
     ) => {
       const trimmed = q.trim();
-      const shouldSearchFiles = (scope === "files" && trimmed.length >= 2) || (scope === "all" && trimmed.length >= 3);
+      const shouldSearchFiles = (scope === "files" || scope === "all") && trimmed.length > 0;
       const shouldSearchClipboard = (scope === "all" || scope === "clipboard") && trimmed.length > 0;
 
       if (!shouldSearchFiles && !shouldSearchClipboard) return;
@@ -1225,14 +1254,10 @@ function App() {
         applyResults(dedupeEntries([...current, ...batch]));
       };
 
-      // Pass 0: fast first paint (parallel with clipboard).
-      const [filesPass0, clipboardEntries] = await Promise.all([
-        shouldSearchFiles
-          ? abortableInvoke<AppEntry[]>("search_files", { query: q, pass: 0 }, signal)
-              .catch((error) => (isAbortError(error) ? ([] as AppEntry[]) : ([] as AppEntry[])))
-          : Promise.resolve([] as AppEntry[]),
-        clipboardPromise,
-      ]);
+      // Pass 0 starts immediately in doSearch for every query edit. This slow
+      // provider stage only adds clipboard and the broader file passes.
+      const clipboardEntries = await clipboardPromise;
+      const filesPass0: AppEntry[] = [];
 
       if (seq !== searchSeqRef.current || signal.aborted) return;
       {
@@ -1368,6 +1393,13 @@ function App() {
         tracks: buildSearchTracks(scope, trimmed),
       });
 
+      // File pass 0 is part of the immediate query path: every non-empty edit
+      // (typing, deleting, paste) reaches the backend before slower providers.
+      const filesPass0Promise = (scope === "all" || scope === "files")
+        ? abortableInvoke<AppEntry[]>("search_files", { query: q, pass: 0 }, signal)
+            .catch((error) => (isAbortError(error) ? ([] as AppEntry[]) : ([] as AppEntry[])))
+        : Promise.resolve([] as AppEntry[]);
+
       const entries: AppEntry[] = [];
 
       const pluginMatches = findCommands(q).filter((match) => {
@@ -1499,7 +1531,9 @@ function App() {
         if (isAbortError(error)) return;
       }
 
+      const filesPass0 = await filesPass0Promise;
       if (seq !== searchSeqRef.current || signal.aborted) return;
+      entries.push(...filesPass0);
       const baseEntries = dedupeEntries(entries);
       // Fast path: apps + sync synthetics only. Never await module surface IPC here.
       applyResults(baseEntries);
@@ -1526,7 +1560,7 @@ function App() {
             .finally(() => {
               finishSearchActivity(seq);
             });
-        }, scope === "files" ? 80 : 260);
+        }, 0);
       } else if (showSearchActivity) {
         finishSearchActivity(seq);
       } else if (seq === searchSeqRef.current) {
@@ -1550,7 +1584,7 @@ function App() {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     // Empty query: short delay, and skip if home list already warm (avoids
     // re-search when doSearch identity changes after plugins load).
-    const delay = query.trim() ? 100 : 0;
+    const delay = 0;
     debounceRef.current = setTimeout(() => {
       if (!query.trim()) {
         const { results: rows, appsReady: ready } = useStore.getState();

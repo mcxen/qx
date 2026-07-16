@@ -79,8 +79,7 @@ export function buildSearchTracks(
 ): SearchTrackState[] {
   const trimmed = query.trim();
   const shouldApps = scope === "all" || scope === "apps";
-  const shouldFiles =
-    (scope === "files" && trimmed.length >= 2) || (scope === "all" && trimmed.length >= 3);
+  const shouldFiles = (scope === "files" || scope === "all") && trimmed.length > 0;
   const shouldClipboard = (scope === "all" || scope === "clipboard") && trimmed.length > 0;
 
   const tracks: SearchTrackState[] = [];

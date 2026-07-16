@@ -32,7 +32,7 @@ QxShell (visual="elevated")
 | 页 | 分区 |
 |----|------|
 | **General** | 启动与行为（登录启动、失焦隐藏、语言、自动更新） |
-| **Appearance** | 主题与透明度 · 窗口与密度 · Home Island · 启动器搜索源 |
+| **Appearance** | 主题与分区透明度 · 窗口与密度 · Home Island · 启动器搜索源 |
 | **Shortcuts** | 全局 / 应用快捷键 |
 | **Extensions** | Installed / Browse（列表小卡，配置 Dialog） |
 | **AI Agent** | 供应商 · 模型 · 工具 · Bash · Grep |
@@ -40,6 +40,18 @@ QxShell (visual="elevated")
 | **Permissions** | macOS 权限 |
 | **Advanced** | 数据路径 · 托盘 · 诊断 · 网络 · 配置导入导出 · 清理 · 开发 · 重置 |
 | **About** | 版本与存储 |
+
+Appearance 的透明度不是单一全局 alpha。设置模型保留
+`appearance.blur_opacity` 作为窗口背景通透度，并分别持久化：
+
+- `shell_region_opacity`：Top Bar 与 Context 区域；
+- `surface_opacity`：列表、卡片、设置行和内容面板；
+- `control_opacity`：Action、按钮、菜单与 Popover 的高可视表面；
+- `bottom_bar_opacity`：Bottom Bar 的独立磨砂表面。
+
+旧配置缺少这些字段时由 Rust `serde(default)` 和前端默认设置共同补齐。
+Popover 跟随 `control_opacity`，同时以 Bottom Bar 的视觉强度为下限，
+不得退回普通内容表面透明度。
 
 ## 2. 线性分区规范（UI_SPEC）
 

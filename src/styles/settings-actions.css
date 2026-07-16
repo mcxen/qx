@@ -530,12 +530,12 @@ img.qx-ext-card-icon {
 
 .qx-settings-row-description {
   font-size: 12px;
-  color: var(--qx-text-tertiary);
+  color: var(--qx-text-secondary);
   margin-top: 2px;
 }
 
 .qx-settings-muted {
-  color: var(--qx-text-tertiary);
+  color: var(--qx-text-secondary);
   font-size: 12px;
 }
 

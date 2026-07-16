@@ -61,6 +61,14 @@ pub struct AppearanceSettings {
     pub theme: String,
     #[serde(default = "default_blur_opacity")]
     pub blur_opacity: f64,
+    #[serde(default = "default_shell_region_opacity")]
+    pub shell_region_opacity: f64,
+    #[serde(default = "default_surface_opacity")]
+    pub surface_opacity: f64,
+    #[serde(default = "default_control_opacity")]
+    pub control_opacity: f64,
+    #[serde(default = "default_bottom_bar_opacity")]
+    pub bottom_bar_opacity: f64,
     #[serde(default = "default_window_width")]
     pub window_width: u32,
     #[serde(default = "default_window_height")]
@@ -106,6 +114,22 @@ fn default_blur_opacity() -> f64 {
     0.16
 }
 
+fn default_shell_region_opacity() -> f64 {
+    0.10
+}
+
+fn default_surface_opacity() -> f64 {
+    0.36
+}
+
+fn default_control_opacity() -> f64 {
+    0.68
+}
+
+fn default_bottom_bar_opacity() -> f64 {
+    0.08
+}
+
 fn default_window_width() -> u32 {
     0
 }
@@ -143,6 +167,10 @@ impl Default for AppearanceSettings {
         Self {
             theme: default_theme(),
             blur_opacity: default_blur_opacity(),
+            shell_region_opacity: default_shell_region_opacity(),
+            surface_opacity: default_surface_opacity(),
+            control_opacity: default_control_opacity(),
+            bottom_bar_opacity: default_bottom_bar_opacity(),
             window_width: default_window_width(),
             window_height: default_window_height(),
             border_radius: default_border_radius(),

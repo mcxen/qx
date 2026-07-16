@@ -12,6 +12,7 @@ import {
 } from "../modules/settings/store";
 import { createQxLogger, qxLog } from "../lib/logger";
 import { PLUGIN_WORKBENCH_RUNTIME_JS } from "./cliWorkbench";
+import { PLUGIN_OVERLAY_SCROLLBAR_RUNTIME_JS } from "../utils/overlayScrollbar";
 
 let requestCounter = 0;
 function nextRequestId(): string {
@@ -199,9 +200,18 @@ export function buildPluginRuntimeHtml(
 ): string {
   const raycastActionPanel = pluginDisplay.raycast_action_panel !== false;
   const runtime = `
-    <style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}</style>
+    <style>
+      html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
+      *{scrollbar-width:none}
+      ::-webkit-scrollbar{width:0;height:0;display:none}
+      .qx-plugin-scrollbar{position:fixed;z-index:2147483646;border-radius:999px;background:rgba(127,127,127,.46);opacity:0;pointer-events:none;transition:opacity 160ms ease;will-change:left,top,width,height,opacity}
+      .qx-plugin-scrollbar.is-visible{opacity:1}
+      .qx-plugin-scrollbar.is-vertical{width:3px}
+      .qx-plugin-scrollbar.is-horizontal{height:3px}
+    </style>
     <script type="module">
       ${PLUGIN_WORKBENCH_RUNTIME_JS}
+      ${PLUGIN_OVERLAY_SCROLLBAR_RUNTIME_JS}
       const pluginId = ${JSON.stringify(pluginId)};
       const runtimeId = ${JSON.stringify(runtimeId)};
       globalThis.__qxPluginRuntimeId = runtimeId;

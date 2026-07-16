@@ -679,7 +679,7 @@
 .qx-list-subtitle,
 .qx-list-time {
   font-size: 12px;
-  color: var(--qx-text-tertiary);
+  color: var(--qx-text-secondary);
 }
 
 .qx-list-time {

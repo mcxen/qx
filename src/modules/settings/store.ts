@@ -51,6 +51,10 @@ export type LauncherResultDensity = "comfortable" | "compact";
 export interface AppearanceSettings {
   theme: string;
   blur_opacity: number;
+  shell_region_opacity: number;
+  surface_opacity: number;
+  control_opacity: number;
+  bottom_bar_opacity: number;
   window_width: number;
   window_height: number;
   border_radius: number;
@@ -280,6 +284,10 @@ export const DEFAULT_SETTINGS: Settings = {
   appearance: {
     theme: "light",
     blur_opacity: 0.16,
+    shell_region_opacity: 0.10,
+    surface_opacity: 0.36,
+    control_opacity: 0.68,
+    bottom_bar_opacity: 0.08,
     window_width: 0,
     window_height: 0,
     border_radius: 8,

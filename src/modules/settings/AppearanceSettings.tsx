@@ -98,21 +98,59 @@ export default function AppearanceSettings({
             ]}
           />
         </Row>
-        <Row
-          title={t("appearance.opacity", "Interface Transparency")}
-          description={`${t(
-            "appearance.opacity.desc",
-            "Shell glass, settings cards, panels, and the bottom island. Lower is more transparent.",
-          )} (${a.blur_opacity.toFixed(2)})`}
-        >
+        <Row title={t("appearance.opacity.window", "Window Background")} description={t("appearance.opacity.window.desc", "Controls the base window translucency and blur. Lower reveals more of the desktop.")}>
           <Slider
             value={a.blur_opacity}
             min={0.05}
             max={0.40}
             step={0.01}
             onChange={(v) => patch("appearance", { ...a, blur_opacity: v })}
-            ariaLabel="Frosted glass opacity"
-            formatLabel={(v) => v.toFixed(2)}
+            ariaLabel={t("appearance.opacity.window", "Window Background")}
+            formatLabel={(v) => `${Math.round(v * 100)}%`}
+          />
+        </Row>
+        <Row title={t("appearance.opacity.chrome", "Top Bar & Context")} description={t("appearance.opacity.chrome.desc", "Controls shell chrome and context-region separation.")}>
+          <Slider
+            value={a.shell_region_opacity}
+            min={0.03}
+            max={0.35}
+            step={0.01}
+            onChange={(v) => patch("appearance", { ...a, shell_region_opacity: v })}
+            ariaLabel={t("appearance.opacity.chrome", "Top Bar & Context")}
+            formatLabel={(v) => `${Math.round(v * 100)}%`}
+          />
+        </Row>
+        <Row title={t("appearance.opacity.surfaces", "Content Surfaces")} description={t("appearance.opacity.surfaces.desc", "Controls lists, cards, settings rows, and content panels.")}>
+          <Slider
+            value={a.surface_opacity}
+            min={0.10}
+            max={0.85}
+            step={0.01}
+            onChange={(v) => patch("appearance", { ...a, surface_opacity: v })}
+            ariaLabel={t("appearance.opacity.surfaces", "Content Surfaces")}
+            formatLabel={(v) => `${Math.round(v * 100)}%`}
+          />
+        </Row>
+        <Row title={t("appearance.opacity.controls", "Actions & Controls")} description={t("appearance.opacity.controls.desc", "Keeps buttons, actions, menus, and popovers distinct from content.")}>
+          <Slider
+            value={a.control_opacity}
+            min={0.30}
+            max={0.95}
+            step={0.01}
+            onChange={(v) => patch("appearance", { ...a, control_opacity: v })}
+            ariaLabel={t("appearance.opacity.controls", "Actions & Controls")}
+            formatLabel={(v) => `${Math.round(v * 100)}%`}
+          />
+        </Row>
+        <Row title={t("appearance.opacity.bottomBar", "Bottom Bar")} description={t("appearance.opacity.bottomBar.desc", "Controls the bottom bar separately while retaining its frosted separation.")}>
+          <Slider
+            value={a.bottom_bar_opacity}
+            min={0.04}
+            max={0.35}
+            step={0.01}
+            onChange={(v) => patch("appearance", { ...a, bottom_bar_opacity: v })}
+            ariaLabel={t("appearance.opacity.bottomBar", "Bottom Bar")}
+            formatLabel={(v) => `${Math.round(v * 100)}%`}
           />
         </Row>
       </SettingsCard>

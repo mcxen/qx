@@ -37,7 +37,7 @@ pub async fn search(query: String, limit: usize, pass: u32) -> Vec<AppEntry> {
 
 fn normalize_query(query: &str) -> Option<String> {
     let normalized = query.split_whitespace().collect::<Vec<_>>().join(" ");
-    (normalized.chars().count() >= 2).then_some(normalized)
+    (!normalized.is_empty()).then_some(normalized)
 }
 
 fn entry_from_path(path: &str) -> AppEntry {
@@ -761,7 +761,7 @@ mod tests {
     #[test]
     fn file_queries_ignore_blank_and_collapse_whitespace() {
         assert_eq!(normalize_query("   "), None);
-        assert_eq!(normalize_query(" a "), None);
+        assert_eq!(normalize_query(" a ").as_deref(), Some("a"));
         assert_eq!(
             normalize_query("  project   notes  ").as_deref(),
             Some("project notes")

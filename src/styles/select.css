@@ -33,9 +33,9 @@
   height: 32px;
   min-width: 0;
   padding: 0 11px;
-  border: 1px solid var(--qx-border-1);
+  border: 1px solid var(--qx-border-2);
   border-radius: var(--radius);
-  background: var(--qx-bg-component-1);
+  background: rgba(var(--qx-surface-rgb-1), var(--qx-control-surface-opacity));
   color: var(--qx-text-primary);
   font: inherit;
   font-size: 12px;
@@ -44,6 +44,9 @@
   white-space: nowrap;
   cursor: pointer;
   outline: none;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--qx-shadow) 9%, transparent);
+  backdrop-filter: blur(10px) saturate(135%);
+  -webkit-backdrop-filter: blur(10px) saturate(135%);
   -webkit-app-region: no-drag;
   transition:
     background-color 0.14s ease,
@@ -54,8 +57,8 @@
 }
 
 .qx-shadcn-button:hover {
-  border-color: var(--qx-border-2);
-  background: var(--qx-bg-component-2);
+  border-color: var(--qx-border-3);
+  background: rgba(var(--qx-surface-rgb-2), min(0.92, calc(var(--qx-control-surface-opacity) + 0.10)));
 }
 
 .qx-shadcn-button:active {
@@ -72,8 +75,8 @@
 }
 
 .qx-shadcn-button.variant-secondary {
-  background: var(--qx-bg-component-3);
-  color: var(--qx-text-secondary);
+  background: rgba(var(--qx-surface-rgb-2), var(--qx-control-surface-opacity));
+  color: var(--qx-text-primary);
 }
 
 .qx-shadcn-button.variant-outline {
@@ -561,32 +564,7 @@
 }
 
 .qx-shadcn-scrollbar {
-  display: flex;
-  width: 5px;
-  padding: 1px;
-  touch-action: none;
-  user-select: none;
-  opacity: 0;
-  transition: opacity 0.18s ease;
-  pointer-events: none;
-}
-
-/* Only while the viewport is actively scrolling (data-qx-scrolling from overlayScrollbar) */
-.qx-shadcn-scroll-area[data-qx-scrolling] .qx-shadcn-scrollbar {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.qx-shadcn-scrollbar.is-horizontal {
-  width: 100%;
-  height: 5px;
-}
-
-.qx-shadcn-scroll-thumb {
-  position: relative;
-  flex: 1;
-  border-radius: 999px;
-  background: var(--qx-scrollbar-thumb);
+  display: none;
 }
 
 .qx-shadcn-tooltip-content {
