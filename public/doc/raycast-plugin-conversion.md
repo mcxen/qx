@@ -123,8 +123,14 @@ Preferences map into Qx manifest preferences (`select`, `boolean`, `password`,
 `string`). Screenshots are discovered from Raycast `metadata/`, `screenshots/`,
 `media/`, and package fields.
 
-`ActionPanel` actions render as compact item-level buttons (hide via Settings →
-Extensions → Installed → Display, or automatically when the panel is narrow).
+`ActionPanel` actions are collected even when wrapped in custom action
+components (e.g. Bing’s `ActionsOnlineBingWallpaper`). Each item shows a compact
+action strip (Set / Download / Preview…); a bottom action dock mirrors the
+selected item. Keyboard: arrow keys select, Enter runs the primary action, and
+declared Raycast shortcuts still fire. `useNavigation` keeps a push/pop stack for
+Detail previews. Settings → Extensions → Display can hide the legacy inline
+`ActionPanel` row; item strips and the dock remain available.
+
 `mode: "no-view"` + `interval` becomes a Qx background timer with resume state
 in local storage.
 

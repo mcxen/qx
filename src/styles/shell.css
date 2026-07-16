@@ -1520,3 +1520,53 @@
   text-transform: none;
   vertical-align: middle;
 }
+
+/* Plugin no-view interval jobs (Bing auto-switch, etc.) */
+.qx-plugin-bg-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
+  height: 17px;
+  padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--qx-accent) 28%, var(--qx-border-1));
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--qx-accent) 10%, transparent);
+  color: color-mix(in srgb, var(--qx-accent) 72%, var(--qx-text-secondary));
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: default;
+}
+
+.qx-plugin-bg-badge.is-running {
+  border-color: color-mix(in srgb, var(--qx-success, #22c55e) 45%, var(--qx-border-1));
+  background: color-mix(in srgb, var(--qx-success, #22c55e) 12%, transparent);
+  color: color-mix(in srgb, var(--qx-success, #22c55e) 70%, var(--qx-text-primary));
+}
+
+.qx-plugin-bg-badge-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.85;
+}
+
+.qx-plugin-bg-badge.is-running .qx-plugin-bg-badge-dot {
+  animation: qx-plugin-bg-pulse 1.2s ease-in-out infinite;
+}
+
+.qx-plugin-bg-badge.is-compact .qx-plugin-bg-badge-label {
+  max-width: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes qx-plugin-bg-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.15); }
+}

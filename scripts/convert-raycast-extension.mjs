@@ -268,11 +268,42 @@ function raycastPreferences(pkg) {
   return result;
 }
 
+/**
+ * Qx product overrides for Raycast no-view intervals.
+ * Bing ships 5m/30m in upstream which thrash desktop wallpaper; daily matches
+ * Bing's publish cadence and Qx background stability policy.
+ */
+function qxBackgroundIntervalOverrides(pkgName) {
+  const id = String(pkgName || "").replace(/^raycast-/, "");
+  if (id === "bing-wallpaper") {
+    return {
+      "auto-random-bing-wallpaper": "1d",
+      "auto-switch-bing-wallpaper": "1d",
+    };
+  }
+  return null;
+}
+
+function applyQxPreferenceDefaults(preferences, pkgName) {
+  const id = String(pkgName || "").replace(/^raycast-/, "");
+  if (id !== "bing-wallpaper" || !Array.isArray(preferences)) return preferences;
+  return preferences.map((pref) => {
+    if (pref?.id !== "refreshInterval") return pref;
+    return {
+      ...pref,
+      // minutes; plugin canRefresh() uses parseInt(refreshInterval) * ONE_MINUTE
+      default: "1440",
+      description: pref.description || "Minimum minutes between random wallpaper changes.",
+    };
+  });
+}
+
 function buildManifest(pkg) {
   const id = (pkg.name || "raycast-extension").replace(/^raycast-/, "");
   const name = pkg.title || titleCase(id);
   const kind = adapterKind(pkg);
   const commands = [];
+  const intervalOverrides = qxBackgroundIntervalOverrides(pkg.name || id);
 
   commands.push(...(pkg.commands || []).map((command) => ({
     name: command.name || "index",
@@ -281,7 +312,7 @@ function buildManifest(pkg) {
     icon: normalizeIcon(command.icon || pkg.icon),
     keywords: pkg.keywords || [],
     mode: command.mode || "view",
-    interval: command.interval,
+    interval: (intervalOverrides && intervalOverrides[command.name]) || command.interval,
   })));
 
   for (const tool of pkg.tools || []) {
@@ -314,7 +345,7 @@ function buildManifest(pkg) {
     screenshots: packageScreenshots(pkg),
     platforms: raycastPlatforms(kind),
     keywords: pkg.keywords || [],
-    preferences: raycastPreferences(pkg),
+    preferences: applyQxPreferenceDefaults(raycastPreferences(pkg), pkg.name || id),
     permissions: kind === "generic"
       ? [
           "http",

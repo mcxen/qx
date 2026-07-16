@@ -385,6 +385,14 @@ App 启动
 
 > 内部实现细节（RPC 分发、AI 任务、权限模型、面板生命周期）见 [docs/plugin-architecture.md](../../docs/plugin-architecture.md)。
 
+### 后台 interval 命令与标签
+
+`mode: "no-view"` 且声明 `interval` 的命令（如 Bing Wallpaper 的 auto-switch）由宿主调度：
+
+- 调度与 **最近/下次执行时间** 写入 `src/plugin/backgroundActivity.ts` 端口（localStorage + Zustand），**不**散落在各 UI 组件。
+- Launcher 搜索结果、Extensions Installed 卡片/详情、插件 panel 顶栏共用 `PluginBackgroundBadge`：展示「后台 / 运行中」，悬停可见最近执行与下次计划。
+- UI 只依赖 `usePluginBackgroundStore` / badge 组件；禁止在 ResultsList 或 Settings 里直接读 timer Map。
+
 ---
 
 ## 八、核心改造点

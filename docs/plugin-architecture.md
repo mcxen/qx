@@ -9,13 +9,36 @@
 | `src/plugin/types.ts` | 插件 manifest、运行时、AI 相关 TypeScript 类型 |
 | `src/plugin/builtin.ts` | 内置模块注册（RSS、V2EX、Clipboard 等） |
 | `src/plugin/registry.ts` | Zustand store：加载/卸载/启用/禁用/搜索/快捷键 |
+| `src/plugin/backgroundActivity.ts` | **后台 interval 端口**：job 快照、last/next run、running；UI 标签唯一数据源 |
 | `src/plugin/runtime.ts` | iframe 沙箱生命周期、postMessage 协议、面板渲染 |
 | `src/plugin/context.ts` | `createPluginContext` / `createUnavailableContext` |
 | `src/plugin/rpcMethods.ts` | 所有 `handlePluginRpc` 处理器映射 |
 | `src/plugin/aiRuntime.ts` | AI task 创建、状态维护、取消、权限门控 |
 | `src/plugin/PluginHost.tsx` | 插件 panel 视图容器 |
+| `src/components/PluginBackgroundBadge.tsx` | 搜索/Extensions/panel 共用后台标签（悬停最近执行时间） |
 | `src/modules/settings/PluginManager.tsx` | Extensions 设置页 UI |
 | `src-tauri/src/` | Rust 后端：扫描、安装、存储、权限、AI 命令 |
+
+
+### Background interval port
+
+`mode: "no-view"` + `interval` 命令由 `registry.ts` 调度，但**所有**用户可见的调度元数据只经 `backgroundActivity`：
+
+| Op | 调用方 | 效果 |
+|---|---|---|
+| `markScheduled` | timer arm | 持久化 `nextRunAt`，标签显示已调度 |
+| `markRunning` / `markFinished` | `runCommand` | 持久化 `lastRunAt` / error；标签显示运行中 → 最近执行 |
+| `summarizePlugin` / `PluginBackgroundBadge` | ResultsList、Installed 卡片、PluginHost | 只读呈现 |
+
+禁止在 UI 层另写一套 localStorage key 或直接读 timer Map。
+
+**调度稳定性**（Bing 自动换壁纸 thrash 修复）：
+
+- 每个 `pluginId\\0command` **只保留一个** pending timer，禁止堆叠。
+- 过期 `nextRunAt` 不立刻连发：至少再等一个完整 `interval`。
+- 宿主侧用 `lastRunAt + interval` 做二次节流。
+- 后台 run 使用 `launchType: background` + 更长 timeout（120s），避免下载超时后并发 set wallpaper。
+- Raycast `Cache` 落盘到 `localStorage`（如 Bing `lastRefresh`），不再每次 invoke 新建空 Map。
 
 ## 2. 数据流
 

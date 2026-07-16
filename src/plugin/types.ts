@@ -353,11 +353,18 @@ export interface PluginModule {
   };
 }
 
+export interface PluginCommandRunOptions {
+  /** Raycast-compatible launch type. Interval jobs should use background. */
+  launchType?: "userInitiated" | "background";
+  /** Override worker request timeout (ms). Background network jobs need longer. */
+  timeoutMs?: number;
+}
+
 export interface RegisteredCommand extends PluginCommand {
   pluginId: string;
   pluginName: string;
   pluginIcon?: string;
-  run: (ctx: PluginContext) => Promise<void> | void;
+  run: (ctx: PluginContext, options?: PluginCommandRunOptions) => Promise<void> | void;
 }
 
 export interface RegisteredPanel {

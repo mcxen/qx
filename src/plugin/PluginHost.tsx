@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../components/QxShell";
+import PluginBackgroundBadge, {
+  usePluginBackgroundSummary,
+} from "../components/PluginBackgroundBadge";
 import { useEscBack } from "../hooks/useEscBack";
 import { usePluginRegistry } from "./registry";
 import { useStore } from "../store";
 import { useSettingsStore } from "../modules/settings/store";
 import { shouldIgnoreBareShortcut } from "../utils/keyboard";
+import { formatTimestamp } from "./backgroundActivity";
+import { useT } from "../i18n";
 
 export function PluginHost() {
   const loaded = usePluginRegistry((state) => state.loaded);
@@ -38,6 +43,7 @@ function renderPluginStatus(
 }
 
 export function PluginPanelViewport() {
+  const t = useT();
   const tab = useStore((s) => s.tab);
   const setTab = useStore((s) => s.setTab);
   const isPluginTab = tab.startsWith("plugin:");
@@ -49,6 +55,7 @@ export function PluginPanelViewport() {
   const plugin = usePluginRegistry(
     (state) => isPluginTab ? state.plugins.find((item) => item.id === pluginId) : undefined,
   );
+  const background = usePluginBackgroundSummary(isPluginTab ? pluginId : null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [renderState, setRenderState] = useState<{
@@ -144,6 +151,14 @@ export function PluginPanelViewport() {
 
   if (!isPluginTab) return null;
 
+  const backgroundDetail = background?.isRunning
+    ? t("plugins.background.running", "Background running")
+    : background?.lastRunAt
+      ? `${t("plugins.background.lastRun", "Last run")}: ${formatTimestamp(background.lastRunAt)}`
+      : background?.hasBackground
+        ? t("plugins.background.scheduled", "Background scheduled")
+        : undefined;
+
   const island: BottomIslandContent = renderState.kind === "loading"
     ? {
         label: "Plugin loading",
@@ -160,7 +175,8 @@ export function PluginPanelViewport() {
       }
     : {
         label: plugin?.name || shellTitle,
-        detail: plugin?.version ? `v${plugin.version}` : undefined,
+        detail: backgroundDetail || (plugin?.version ? `v${plugin.version}` : undefined),
+        activity: background?.isRunning ? "bounce" : undefined,
       };
 
   return (
@@ -170,8 +186,9 @@ export function PluginPanelViewport() {
       onKeyDown={onKeyDown}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
       search={
-        <div className="qx-rss-detail-title">
+        <div className="qx-rss-detail-title qx-module-title-with-badge">
           <span>{shellTitle}</span>
+          <PluginBackgroundBadge pluginId={pluginId} />
         </div>
       }
       context={
@@ -192,9 +209,44 @@ export function PluginPanelViewport() {
               onClick={() => void usePluginRegistry.getState().runCommand(cmd)}
               type="button"
             >
-              <span>{cmd.title}</span>
+              <span className="qx-module-title-with-badge">
+                <span>{cmd.title}</span>
+                {cmd.mode === "no-view" && cmd.interval ? (
+                  <PluginBackgroundBadge
+                    pluginId={pluginId}
+                    commandName={cmd.name}
+                    compact
+                  />
+                ) : null}
+              </span>
             </button>
           ))}
+          {background?.hasBackground && (
+            <>
+              <div className="qx-action-title">
+                {t("plugins.background.section", "Background")}
+              </div>
+              <div className="v2ex-context-copy">
+                {background.jobs.map((job) => (
+                  <div key={job.commandName} title={formatTimestamp(job.lastRunAt)}>
+                    <strong>{job.commandTitle}</strong>
+                    <span>
+                      {job.state === "running"
+                        ? t("plugins.background.running", "Background running")
+                        : job.lastRunAt
+                          ? `${t("plugins.background.lastRun", "Last run")}: ${formatTimestamp(job.lastRunAt)}`
+                          : t("plugins.background.never", "Never")}
+                    </span>
+                    {job.nextRunAt != null && job.state !== "running" && (
+                      <span>
+                        {t("plugins.background.nextRun", "Next run")}: {formatTimestamp(job.nextRunAt)}
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
           {plugin?.description && (
             <>
               <div className="qx-action-title">About</div>

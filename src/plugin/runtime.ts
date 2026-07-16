@@ -461,13 +461,18 @@ export function buildPluginRuntimeHtml(
         if (type === 'qx:runCommand') {
           if (data.pluginId !== pluginId || data.runtimeId !== runtimeId) return;
           const { name, requestId } = data;
+          const launchType = data.launchType === 'background' ? 'background' : 'userInitiated';
           try {
-            postPluginLog('debug', 'Run command started', { command: name });
+            postPluginLog('debug', 'Run command started', { command: name, launchType });
             const cmd = plugin?.commands?.find((c) => c.name === name);
             if (!cmd || typeof cmd.run !== 'function') {
               throw new Error('Command not found: ' + name);
             }
-            const result = await cmd.run(context);
+            // Surface to Raycast shims (environment.launchType / Cache throttle).
+            globalThis.__qxRaycastLaunchType = launchType;
+            const result = typeof cmd.run.length >= 2
+              ? await cmd.run(context, { launchType })
+              : await cmd.run(context);
             postPluginLog('debug', 'Run command completed', { command: name });
             postToParent({ type: 'qx:runCommand:response', pluginId, runtimeId, requestId, result });
           } catch (err) {
@@ -705,12 +710,21 @@ export async function loadPlugin(
         pluginId: plugin.id,
         pluginName: plugin.name,
         pluginIcon,
-        async run(_ctx) {
+        async run(_ctx, options) {
           const startedAt = performance.now();
+          const launchType = options?.launchType || "userInitiated";
+          const timeoutMs =
+            typeof options?.timeoutMs === "number" && options.timeoutMs > 0
+              ? options.timeoutMs
+              : launchType === "background"
+                ? 120_000
+                : 10_000;
           runtimeLogger.info("Plugin command started", {
             pluginId: plugin.id,
             runtimeId: workerRuntimeId,
             command: cmd.name,
+            launchType,
+            timeoutMs,
           });
           try {
             await sendRuntimeRequest(
@@ -719,8 +733,8 @@ export async function loadPlugin(
               workerRuntimeId,
               "qx:runCommand",
               "qx:runCommand:response",
-              { name: cmd.name },
-              10000,
+              { name: cmd.name, launchType },
+              timeoutMs,
             );
             runtimeLogger.info("Plugin command completed", {
               pluginId: plugin.id,

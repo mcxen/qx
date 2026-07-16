@@ -23,6 +23,11 @@ import AppResultContextMenu from "./launcher/AppResultContextMenu";
 import { useDisplayName } from "./search/appDisplay";
 import { useT } from "./i18n";
 import BetaBadge from "./components/BetaBadge";
+import PluginBackgroundBadge from "./components/PluginBackgroundBadge";
+import {
+  commandNameFromAppPath,
+  pluginIdFromAppPath,
+} from "./plugin/backgroundActivity";
 import { isBetaModule } from "./modules/catalog";
 
 const FILE_ICON_BY_EXTENSION: Record<string, string> = {
@@ -258,6 +263,8 @@ const ResultItem = memo(function ResultItem({
   onHoverSelect: (index: number) => void;
 }) {
   const selected = useStore((state) => state.selectedIndex === index);
+  const backgroundPluginId = pluginIdFromAppPath(item.path);
+  const backgroundCommandName = commandNameFromAppPath(item.path);
 
   return (
     <div
@@ -269,6 +276,11 @@ const ResultItem = memo(function ResultItem({
         <div className="qx-list-title qx-module-title-with-badge" style={{ fontWeight: 500 }}>
           <span>{label}</span>
           {isBetaModule(item.moduleId) && <BetaBadge />}
+          <PluginBackgroundBadge
+            pluginId={backgroundPluginId}
+            commandName={backgroundCommandName}
+            compact
+          />
         </div>
         <div className="qx-list-subtitle">
           {item.subtitle

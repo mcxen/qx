@@ -18,9 +18,23 @@ import type {
   RegisteredCommand,
   RegisteredPanel,
 } from "./types";
+import {
+  isBackgroundIntervalCommand,
+  parseIntervalMs,
+  peekLastRunAt,
+  peekNextRunAt,
+  usePluginBackgroundStore,
+} from "./backgroundActivity";
 
-const backgroundTimers = new Map<string, Set<number>>();
+/** One pending timer per plugin command — never stack duplicates. */
+const backgroundTimers = new Map<string, number>();
+/** In-flight background runs to prevent overlapping wallpaper sets. */
+const backgroundInFlight = new Set<string>();
 const registryLogger = createQxLogger("plugin.registry");
+
+function backgroundJobKey(pluginId: string, commandName: string): string {
+  return `${pluginId}\0${commandName}`;
+}
 
 export interface CommandMatch {
   command: RegisteredCommand;
@@ -53,7 +67,10 @@ interface PluginRegistryStore {
   refresh: () => Promise<void>;
   findCommands: (query: string) => CommandMatch[];
   getPanel: (id: string) => RegisteredPanel | undefined;
-  runCommand: (command: RegisteredCommand) => Promise<void>;
+  runCommand: (
+    command: RegisteredCommand,
+    options?: import("./types").PluginCommandRunOptions,
+  ) => Promise<void>;
   /** Start watching for plugin file changes (dev mode). */
   startDevWatcher: () => void;
   /** Stop watching for plugin file changes. */
@@ -71,59 +88,107 @@ function isBuiltinPluginId(id: string): boolean {
   return id.startsWith("builtin:");
 }
 
-function parseIntervalMs(interval?: string): number | null {
-  const match = String(interval || "").trim().match(/^(\d+)\s*(s|m|h|d)?$/i);
-  if (!match) return null;
-  const value = Number(match[1]);
-  const unit = (match[2] || "m").toLowerCase();
-  const multiplier = unit === "s" ? 1000 : unit === "h" ? 3_600_000 : unit === "d" ? 86_400_000 : 60_000;
-  return Math.max(1000, value * multiplier);
-}
-
-function backgroundStorageKey(pluginId: string, commandName: string): string {
-  return `qx:plugin-background:${pluginId}:${commandName}:nextRunAt`;
-}
-
 function clearBackgroundTimers(pluginId?: string): void {
-  const ids = pluginId ? [pluginId] : [...backgroundTimers.keys()];
-  for (const id of ids) {
-    for (const timer of backgroundTimers.get(id) || []) {
-      window.clearTimeout(timer);
+  if (pluginId) {
+    for (const [key, timer] of [...backgroundTimers.entries()]) {
+      if (key.startsWith(`${pluginId}\0`)) {
+        window.clearTimeout(timer);
+        backgroundTimers.delete(key);
+      }
     }
-    backgroundTimers.delete(id);
+    for (const key of [...backgroundInFlight]) {
+      if (key.startsWith(`${pluginId}\0`)) backgroundInFlight.delete(key);
+    }
+    usePluginBackgroundStore.getState().clearPlugin(pluginId);
+    return;
   }
+  for (const timer of backgroundTimers.values()) {
+    window.clearTimeout(timer);
+  }
+  backgroundTimers.clear();
+  backgroundInFlight.clear();
+  usePluginBackgroundStore.getState().clearAll();
 }
 
 function scheduleBackgroundCommand(command: RegisteredCommand): void {
-  if (command.mode !== "no-view") return;
+  if (!isBackgroundIntervalCommand(command)) return;
   const intervalMs = parseIntervalMs(command.interval);
   if (!intervalMs) return;
-  const key = backgroundStorageKey(command.pluginId, command.name);
-  const savedNext = Number(window.localStorage.getItem(key) || 0);
+  const jobKey = backgroundJobKey(command.pluginId, command.name);
+
+  // Replace any pending timer for this command (prevents stacked firings).
+  const existingTimer = backgroundTimers.get(jobKey);
+  if (existingTimer != null) {
+    window.clearTimeout(existingTimer);
+    backgroundTimers.delete(jobKey);
+  }
+
+  const bg = usePluginBackgroundStore.getState();
+  const existing = bg.getJob(command.pluginId, command.name);
+  const lastRunAt = existing?.lastRunAt ?? peekLastRunAt(command.pluginId, command.name);
   const now = Date.now();
-  const delay = Math.max(0, (Number.isFinite(savedNext) && savedNext > 0 ? savedNext : now + intervalMs) - now);
-  const timers = backgroundTimers.get(command.pluginId) || new Set<number>();
+  let nextRunAt =
+    existing?.nextRunAt != null && Number.isFinite(existing.nextRunAt) && existing.nextRunAt > 0
+      ? existing.nextRunAt
+      : peekNextRunAt(command.pluginId, command.name);
+
+  // Host-level throttle: never schedule sooner than a full interval after last run.
+  // Protects against ephemeral Cache bugs and delay=0 storm after sleep/wake.
+  if (lastRunAt != null && Number.isFinite(lastRunAt)) {
+    const earliest = lastRunAt + intervalMs;
+    if (nextRunAt == null || nextRunAt < earliest) nextRunAt = earliest;
+  }
+  if (nextRunAt == null || nextRunAt <= now) {
+    // First arm, or overdue: wait a full interval from now (do not fire immediately
+    // on every plugin load / resume — that made Bing wallpaper thrash).
+    nextRunAt = now + intervalMs;
+  }
+
+  const delay = Math.max(1000, nextRunAt - now);
+  bg.markScheduled(command, now + delay);
+
   const timer = window.setTimeout(() => {
-    timers.delete(timer);
-    if (timers.size === 0) backgroundTimers.delete(command.pluginId);
+    backgroundTimers.delete(jobKey);
+    if (backgroundInFlight.has(jobKey)) {
+      registryLogger.warn("Background plugin command skipped — previous run still in flight", {
+        pluginId: command.pluginId,
+        command: command.name,
+      });
+      const following = Date.now() + intervalMs;
+      usePluginBackgroundStore.getState().markScheduled(command, following);
+      scheduleBackgroundCommand(command);
+      return;
+    }
+
     registryLogger.info("Background plugin command triggered", {
       pluginId: command.pluginId,
       command: command.name,
       interval: command.interval,
     });
-    window.localStorage.setItem(key, String(Date.now() + intervalMs));
-    void usePluginRegistry.getState().runCommand(command).finally(() => {
-      scheduleBackgroundCommand(command);
-    });
+    backgroundInFlight.add(jobKey);
+    // Arm the following slot before the run so crash mid-run still has a next time.
+    const following = Date.now() + intervalMs;
+    usePluginBackgroundStore.getState().markScheduled(command, following);
+    void usePluginRegistry
+      .getState()
+      .runCommand(command, {
+        launchType: "background",
+        // Wallpaper download + AppleScript often exceeds the default 10s RPC timeout.
+        timeoutMs: 120_000,
+      })
+      .finally(() => {
+        backgroundInFlight.delete(jobKey);
+        scheduleBackgroundCommand(command);
+      });
   }, delay);
   registryLogger.debug("Background plugin command scheduled", {
     pluginId: command.pluginId,
     command: command.name,
     delayMs: delay,
     intervalMs,
+    nextRunAt: now + delay,
   });
-  timers.add(timer);
-  backgroundTimers.set(command.pluginId, timers);
+  backgroundTimers.set(jobKey, timer);
 }
 
 /** Topological sort of plugins based on declared dependencies. */
@@ -392,6 +457,10 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
           for (const command of result.commands) {
             scheduleBackgroundCommand(command);
           }
+          usePluginBackgroundStore.getState().syncFromCommands([
+            ...get().commands,
+            ...result.commands,
+          ]);
           hooks.onPluginStatus?.({
             kind: "success",
             pluginId: plugin.id,
@@ -534,35 +603,57 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
 
   getPanel: (id: string) => get().panels[id],
 
-  runCommand: async (command) => {
+  runCommand: async (command, options) => {
     const startedAt = performance.now();
+    const isBackgroundJob =
+      options?.launchType === "background" || isBackgroundIntervalCommand(command);
+    // Interval commands (manual or timer) update the background-activity port so
+    // launcher / settings badges show last execution without coupling to timers.
+    if (isBackgroundIntervalCommand(command)) {
+      usePluginBackgroundStore.getState().markRunning(command);
+    }
     registryLogger.info("Plugin command dispatch started", {
       pluginId: command.pluginId,
       command: command.name,
       mode: command.mode,
+      launchType: options?.launchType || (isBackgroundJob ? "background" : "userInitiated"),
     });
     try {
-      await command.run(createUnavailableContext(command.pluginId));
+      await command.run(createUnavailableContext(command.pluginId), {
+        launchType:
+          options?.launchType ||
+          (isBackgroundIntervalCommand(command) ? "background" : "userInitiated"),
+        timeoutMs: options?.timeoutMs,
+      });
+      if (isBackgroundIntervalCommand(command)) {
+        usePluginBackgroundStore.getState().markFinished(command, null);
+      }
       registryLogger.info("Plugin command dispatch completed", {
         pluginId: command.pluginId,
         command: command.name,
         durationMs: Math.round(performance.now() - startedAt),
       });
     } catch (error) {
+      if (isBackgroundIntervalCommand(command)) {
+        usePluginBackgroundStore.getState().markFinished(command, summarizeError(error));
+      }
       registryLogger.error("Plugin command dispatch failed", {
         pluginId: command.pluginId,
         command: command.name,
         durationMs: Math.round(performance.now() - startedAt),
         error,
       });
-      const message = `Plugin command failed: ${String(error)}`;
-      get().hooks?.onToast(message);
-      get().hooks?.onPluginStatus?.({
-        kind: "error",
-        pluginId: command.pluginId,
-        label: "Command failed",
-        detail: `${command.pluginName}: ${summarizeError(error)}`,
-      });
+      // Background interval failures stay quiet — toast spam made wallpaper thrash feel worse.
+      if (options?.launchType !== "background") {
+        const message = `Plugin command failed: ${String(error)}`;
+        get().hooks?.onToast(message);
+        get().hooks?.onPluginStatus?.({
+          kind: "error",
+          pluginId: command.pluginId,
+          label: "Command failed",
+          detail: `${command.pluginName}: ${summarizeError(error)}`,
+        });
+      }
     }
   },
 

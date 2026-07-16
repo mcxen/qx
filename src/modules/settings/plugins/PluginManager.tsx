@@ -79,6 +79,7 @@ import type {
 } from "../../../plugin/types";
 import InstalledModuleCard from "./InstalledModuleCard";
 import BetaBadge from "../../../components/BetaBadge";
+import PluginBackgroundBadge from "../../../components/PluginBackgroundBadge";
 import {
   isBetaModule,
   isConfigurableBuiltinModule,
@@ -365,10 +366,30 @@ function ExtensionCommandsCard({ plugin }: { plugin: InstalledPlugin }) {
               <Command size={14} strokeWidth={2} />
             </span>
             <div className="qx-extension-command-copy">
-              <div className="qx-extension-command-title">{command.title || command.name}</div>
-              {(command.description || command.keywords?.length) && (
+              <div className="qx-extension-command-title qx-module-title-with-badge">
+                <span>{command.title || command.name}</span>
+                {command.mode === "no-view" && command.interval ? (
+                  <PluginBackgroundBadge
+                    pluginId={plugin.id}
+                    commandName={command.name}
+                    compact
+                  />
+                ) : null}
+              </div>
+              {(command.description || command.keywords?.length || command.interval) && (
                 <div className="qx-extension-command-description">
-                  {command.description || command.keywords?.slice(0, 5).join(", ")}
+                  {[
+                    command.description,
+                    command.interval
+                      ? t("plugins.background.interval", "Interval {n}").replace(
+                          "{n}",
+                          String(command.interval),
+                        )
+                      : null,
+                    command.keywords?.slice(0, 5).join(", "),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </div>
               )}
             </div>
@@ -666,9 +687,10 @@ function PluginDetail({
           fallback={plugin.name}
         />
         <div className="qx-plugin-detail-heading">
-          <div className="qx-plugin-detail-title">
-            {plugin.name}
+          <div className="qx-plugin-detail-title qx-module-title-with-badge">
+            <span>{plugin.name}</span>
             {isBetaModule(plugin.id) && <BetaBadge />}
+            {plugin.enabled && <PluginBackgroundBadge pluginId={plugin.id} />}
           </div>
           {plugin.author && (
             <div className="qx-plugin-meta">

@@ -81,6 +81,12 @@ function preferencesObject(pkg) {
       result[pref.name] = pref.default ?? "";
     }
   }
+  // Bing: daily throttle for random wallpaper (minutes). Upstream default 30
+  // caused near-continuous desktop changes under Qx scheduling.
+  const pkgId = String(pkg.name || "").replace(/^raycast-/, "");
+  if (pkgId === "bing-wallpaper" && result.refreshInterval != null) {
+    result.refreshInterval = "1440";
+  }
   return result;
 }
 
@@ -201,7 +207,37 @@ const loadedCommandModules = new Map();
 function renderElement(container, element) {
   injectRaycastStyles();
   if (!root) root = createRoot(container);
+  if (globalThis.__qxRaycastRuntime) {
+    globalThis.__qxRaycastRuntime.currentElement = element;
+  }
   root.render(element || React.createElement("div", { className: "qx-raycast-empty" }, "No view"));
+}
+
+async function hydrateFilesystem(context, preferences) {
+  const dirs = new Set([
+    "/qx-plugin-files/" + ${JSON.stringify(manifest.id)},
+    "/qx-home/Downloads",
+  ]);
+  const downloadDirectory = String(preferences?.downloadDirectory || "");
+  if (downloadDirectory.startsWith("~/")) {
+    dirs.add("/qx-home/" + downloadDirectory.slice(2));
+  } else if (downloadDirectory.startsWith("/qx-home/") || downloadDirectory.startsWith("/qx-plugin-files/")) {
+    dirs.add(downloadDirectory);
+  } else if (downloadDirectory.startsWith("~")) {
+    dirs.add("/qx-home");
+  }
+  for (const dir of dirs) {
+    try {
+      const names = await context?.qx?.invokeRust?.("plugin_file_list", { path: dir });
+      if (typeof globalThis.__qxRaycastFsHydrate === "function") {
+        globalThis.__qxRaycastFsHydrate(dir, Array.isArray(names) ? names : []);
+      }
+    } catch {
+      if (typeof globalThis.__qxRaycastFsHydrate === "function") {
+        globalThis.__qxRaycastFsHydrate(dir, []);
+      }
+    }
+  }
 }
 
 async function loadPreferences(context) {
@@ -226,20 +262,36 @@ async function loadCommandModule(name) {
   return loadedCommandModules.get(key);
 }
 
-async function invokeCommand(name, container, context) {
+async function invokeCommand(name, container, context, options = {}) {
   const mode = commandModes[name] || "view";
-  const cache = new Map();
+  // Keep one in-memory Map for the plugin process; Cache also mirrors to
+  // localStorage so no-view interval commands (Bing lastRefresh) survive.
+  if (!globalThis.__qxRaycastSharedCache) globalThis.__qxRaycastSharedCache = new Map();
+  const cache = globalThis.__qxRaycastSharedCache;
+  const preferences = await loadPreferences(context);
+  const launchType = options.launchType
+    || globalThis.__qxRaycastLaunchType
+    || (mode === "no-view" ? "background" : "userInitiated");
+  globalThis.__qxRaycastLaunchType = launchType;
   globalThis.__qxRaycastRuntime = {
     context,
-    preferences: await loadPreferences(context),
+    preferences,
     activeCommand: name,
     cache,
+    launchType,
     supportPath: "/qx-plugin-files/" + ${JSON.stringify(manifest.id)},
     assetsPath: "",
     homeDirectory: "/qx-home",
+    navStack: [],
+    currentElement: null,
+    actionHandlers: new Map(),
+    actionMeta: new Map(),
     render: (element) => renderElement(container, element),
     setSearch: () => {},
   };
+  // Preload Downloads / support-path directory listings so readdirSync works
+  // for extensions that list downloaded wallpapers on first paint.
+  await hydrateFilesystem(context, preferences);
   const mod = await loadCommandModule(name);
   const component = mod.default || mod.Command || mod;
   if (mode === "view") {
@@ -258,13 +310,16 @@ async function invokeCommand(name, container, context) {
 export default {
   commands: manifestCommands.map((command) => ({
     ...command,
-    async run(context) {
+    async run(context, runOptions = {}) {
       const mode = commandModes[command.name] || "view";
       const hidden = document.createElement("div");
       hidden.style.display = "none";
       document.body.appendChild(hidden);
       try {
-        await invokeCommand(command.name, hidden, context);
+        await invokeCommand(command.name, hidden, context, {
+          launchType: runOptions.launchType
+            || (mode === "no-view" ? "background" : "userInitiated"),
+        });
         if (mode === "view") context.showToast("Open " + command.title + " from the plugin panel.");
       } finally {
         hidden.remove();
@@ -275,7 +330,7 @@ export default {
     title: ${JSON.stringify(manifest.panel.title)},
     render(container, context) {
       const firstView = manifestCommands.find((command) => (commandModes[command.name] || "view") === "view") || manifestCommands[0];
-      return invokeCommand(firstView.name, container, context);
+      return invokeCommand(firstView.name, container, context, { launchType: "userInitiated" });
     },
     destroy() {
       if (root) {
