@@ -89,17 +89,17 @@ fn quick_entry_migration_preserves_user_customization() {
 #[test]
 fn beta_modules_default_and_legacy_keys() {
     let mut settings: Settings = serde_json::from_str("{}").expect("legacy settings");
-    // Missing keys stay enabled (legacy upgrade safety).
-    assert!(settings.builtin_modules.is_enabled("screencap"));
-    assert!(settings.builtin_modules.is_enabled("weather"));
-    assert!(settings.builtin_modules.is_enabled("macros"));
-    // Empty {} uses Default for builtin_modules → v2ex off (marketplace plugin).
+    // Empty {} uses Default for builtin_modules.
     let defaults = BuiltinModulesSettings::default();
+    assert!(defaults.is_enabled("screencap"));
+    assert!(defaults.is_enabled("macros"));
+    // Marketplace-first: V2EX + Weather built-ins off by default.
     assert!(!defaults.is_enabled("v2ex"));
-    assert!(defaults.is_enabled("weather"));
+    assert!(!defaults.is_enabled("weather"));
+    // Explicit opt-in still works.
     settings
         .builtin_modules
         .modules
-        .insert("weather".to_string(), false);
-    assert!(!settings.builtin_modules.is_enabled("weather"));
+        .insert("weather".to_string(), true);
+    assert!(settings.builtin_modules.is_enabled("weather"));
 }
