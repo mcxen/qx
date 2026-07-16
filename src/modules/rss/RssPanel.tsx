@@ -1,11 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { useRssStore, type RssFeed } from "./store";
 import { useSettingsStore } from "../settings/store";
 import { useStore } from "../../store";
-import { useEscBack } from "../../hooks/useEscBack";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
-import { getQxShortcutPreset } from "../../utils/keyboard";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import AddFeedDialog from "./AddFeedDialog";
@@ -47,7 +46,6 @@ export default function RssPanel() {
   } = useRssStore();
   const setTab = useStore((state) => state.setTab);
   const showFeedIcons = useSettingsStore((s) => s.settings.rss.show_feed_icons);
-  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
 
   const [query, setQuery] = useState("");
   const [showAdd, setShowAdd] = useState(false);
@@ -147,20 +145,7 @@ export default function RssPanel() {
     || editFeed !== null
     || folderTargetFeed !== null;
 
-  const { onKeyDown: escKeyDown } = useEscBack({
-    inner: {
-      active: dialogOpen,
-      close: () => {
-        setShowAdd(false);
-        setShowImportOpml(false);
-        setShowNewFolder(false);
-        setEditFeed(null);
-        setFolderTargetFeed(null);
-      },
-    },
-    query: { active: query.length > 0, clear: () => setQuery("") },
-    launcher: () => setTab("launcher"),
-  });
+  const leave = useCallback(() => setTab("launcher"), [setTab]);
 
   const focusFeedList = () => {
     shellRef.current
@@ -168,9 +153,7 @@ export default function RssPanel() {
       ?.focus({ preventScroll: true });
   };
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    escKeyDown(e);
-    if (e.key === "Escape") return;
+  const handleModuleKeys = useCallback((e: React.KeyboardEvent) => {
     // ↑↓: QxShell.navigation + useQxListSelection (is-active + scroll follow).
     if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
@@ -183,7 +166,7 @@ export default function RssPanel() {
         setFolderTargetFeed(selectedFeed);
       }
     }
-  };
+  }, [openFeed, selectedFeed]);
 
   const handleDelete = (id: number) => {
     if (window.confirm("Remove this feed and all its articles?")) {
@@ -297,18 +280,35 @@ export default function RssPanel() {
     },
   ], [deleteFolder, openFeed, refreshAll, refreshFeed, selectedFeed, setFeedFolder]);
 
-  const island: BottomIslandContent = refreshingFeedId
-    ? {
-        label: "RSS Syncing",
-        detail: refreshingFeedId === -1 ? `${feeds.length} feeds` : selectedFeed?.title,
-        progress: refreshingFeedId === -1 ? 42 : 55,
-      }
-    : statusMessage
-      ? { label: "RSS", detail: statusMessage, tone: "success" }
-    : {
-        label: "RSS Reader",
-        detail: `${feeds.length} feeds · ${folders.length} folders · ${unreadCount} unread`,
-      };
+  const shell = useQxModuleShell({
+    leave,
+    esc: {
+      inner: {
+        active: dialogOpen,
+        close: () => {
+          setShowAdd(false);
+          setShowImportOpml(false);
+          setShowNewFolder(false);
+          setEditFeed(null);
+          setFolderTargetFeed(null);
+        },
+      },
+      query: { active: query.length > 0, clear: () => setQuery("") },
+    },
+    onKeyDown: handleModuleKeys,
+    island: refreshingFeedId
+      ? {
+          label: "RSS Syncing",
+          detail: refreshingFeedId === -1 ? `${feeds.length} feeds` : selectedFeed?.title,
+          progress: refreshingFeedId === -1 ? 42 : 55,
+        }
+      : statusMessage
+        ? { label: "RSS", detail: statusMessage, tone: "success" }
+        : {
+            label: "RSS Reader",
+            detail: `${feeds.length} feeds · ${folders.length} folders · ${unreadCount} unread`,
+          },
+  });
 
   let flatIndex = 0;
 
@@ -317,7 +317,7 @@ export default function RssPanel() {
       ref={shellRef}
       title="RSS Reader"
       className="qx-rss-shell"
-      onKeyDown={onKeyDown}
+      onKeyDown={shell.onKeyDown}
       navigation={{
         index: selectedIndex,
         count: flatFeeds.length,
@@ -449,8 +449,8 @@ export default function RssPanel() {
           </button>
         </div>
       }
-      island={island}
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setTab("launcher") }}
+      island={shell.island}
+      escapeAction={shell.escapeAction}
       primaryAction={{
         label: selectedFeed ? "View Articles" : "Add Feed",
         kbd: selectedFeed ? "↵" : "N",
@@ -460,7 +460,7 @@ export default function RssPanel() {
           else setShowAdd(true);
         },
       }}
-      secondaryAction={{ label: "Actions", kbd: actionMenuShortcut }}
+      secondaryAction={shell.secondaryAction}
       actionTitle="Feed Actions"
       actions={actions}
     >

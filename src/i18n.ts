@@ -302,6 +302,19 @@ const zh: Record<string, string> = {
   "rss.articleFontFamily.desc": "选择文章正文使用的字体。System 使用系统默认字体。",
   "rss.showFeedIcons": "显示订阅源图标",
   "rss.showFeedIcons.desc": "在订阅源列表显示来源图标。关闭后使用字母占位。",
+  "rss.about.title": "关于 RSS",
+  "rss.about.defaults": "默认订阅",
+  "rss.about.defaults.desc":
+    "新安装会预置「科技 / 新闻 / 资讯」示例订阅（IT之家、超能网、阮一峰、联合早报、知乎日报及若干 AnyFeeder 源）。可随时删除或改分组。",
+  "rss.about.defaults.folders": "科技 · 新闻 · 资讯",
+  "rss.about.anyfeeder": "AnyFeeder 致谢",
+  "rss.about.anyfeeder.desc":
+    "部分默认源来自 AnyFeeder（plink.anyfeeder.com）公共 RSS 桥接，便于订阅没有原生 RSS 的站点。感谢 AnyFeeder 提供的公开服务。",
+  "rss.about.anyfeeder.open": "打开 AnyFeeder",
+  "rss.about.anyfeeder.guide": "如何添加更多源",
+  "rss.about.anyfeeder.guide.desc":
+    "打开 https://plink.anyfeeder.com/ 浏览路由，复制完整订阅地址（https://plink.anyfeeder.com/…），在 RSS → 添加订阅 中粘贴即可。优先使用站点官方 RSS；AnyFeeder 仅作桥接。",
+  "rss.about.anyfeeder.copy": "复制链接",
 
   "nav.v2ex": "V2EX",
   "v2ex.token": "访问令牌",
@@ -542,6 +555,9 @@ const zh: Record<string, string> = {
   "plugins.builtin.desc": "核心模块",
   "plugins.refresh": "刷新",
   "plugins.reloadPanel": "重新加载面板",
+  "plugins.loading": "插件加载中",
+  "plugins.error": "插件错误",
+  "common.retry": "重试",
   "plugins.actions": "插件操作",
   "plugins.itemActions": "条目操作",
   "plugins.panelActions": "面板",

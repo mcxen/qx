@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -16,10 +16,9 @@ import {
   Select,
   type CalendarRange,
 } from "../../components/ui";
-import { useEscBack } from "../../hooks/useEscBack";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useLocale, useT } from "../../i18n";
-import { getQxShortcutPreset } from "../../utils/keyboard";
 import { setPendingModuleLaunch, takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import {
   clearClipboardRestore,
@@ -653,21 +652,9 @@ export default function ClipboardPanel() {
     }
   };
 
-  const { onKeyDown: escKeyDown } = useEscBack({
-    inner: {
-      active: Boolean(editingId) || detailOpen,
-      close: () => {
-        if (editingId) discardTextEdit();
-        else setDetailOpen(false);
-      },
-    },
-    query: { active: query.length > 0, clear: () => setQuery("") },
-    launcher: () => setTab("launcher"),
-  });
+  const leave = useCallback(() => setTab("launcher"), [setTab]);
 
-  const handleKeyDown = async (e: React.KeyboardEvent) => {
-    escKeyDown(e);
-    if (e.defaultPrevented || e.key === "Escape") return;
+  const handleModuleKeys = useCallback(async (e: React.KeyboardEvent) => {
     if (isEditing && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
       e.preventDefault();
       if (e.shiftKey) await saveTextEditAsNew();
@@ -690,7 +677,7 @@ export default function ClipboardPanel() {
       e.preventDefault();
       await pasteItem(selectedItem, { focusAtCursor: true });
     }
-  };
+  }, [copyItem, isEditing, pasteItem, saveTextEdit, saveTextEditAsNew, selectedItem]);
 
   /** File clipboard image, or captured image blob path on disk. */
   const compressSourcePath = useMemo(() => {
@@ -728,8 +715,6 @@ export default function ClipboardPanel() {
       setStatus(String(error));
     }
   };
-
-  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
 
   const clipboardActions = useMemo<QxShellAction[]>(() => {
     // In-window only — never Alt+Space (launcher) or Cmd+Space (Spotlight).
@@ -867,13 +852,44 @@ export default function ClipboardPanel() {
     </>
   );
 
+  const shell = useQxModuleShell({
+    leave,
+    esc: {
+      inner: {
+        active: Boolean(editingId) || detailOpen,
+        close: () => {
+          if (editingId) discardTextEdit();
+          else setDetailOpen(false);
+        },
+      },
+      query: { active: query.length > 0, clear: () => setQuery("") },
+    },
+    onKeyDown: (e) => {
+      void handleModuleKeys(e);
+    },
+    actionsLabel: t("clipboard.actions", "Actions"),
+    island: {
+      label: hasDraftChanges
+        ? t("clipboard.edit.unsaved", "Unsaved clipboard edit")
+        : mediaProgress?.message || status || t("clipboard.title", "Clipboard History"),
+      detail: hasDraftChanges
+        ? t("clipboard.edit.unsavedDetail", "Save, save as new, or discard the draft")
+        : selectedItem
+          ? `${contentType(selectedItem, t)} · ${filterLabel(filter)} · ${itemCountLabel}`
+          : `${filterLabel(filter)} · ${itemCountLabel}`,
+      progress: mediaProgress ? mediaProgress.progress : undefined,
+      tone: hasDraftChanges || mediaProgress?.error ? "danger" : status ? "success" : "neutral",
+    },
+    t,
+  });
+
   return (
     <QxShell
       title={t("clipboard.title", "Clipboard History")}
       search={searchSlot}
       trailing={trailing}
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setTab("launcher") }}
-      onKeyDown={handleKeyDown}
+      escapeAction={shell.escapeAction}
+      onKeyDown={shell.onKeyDown}
       navigation={{
         index: selected,
         count: filtered.length,
@@ -887,18 +903,7 @@ export default function ClipboardPanel() {
         onClose: () => setDetailOpen(false),
       }}
       className="qx-clipboard-shell"
-      island={{
-        label: hasDraftChanges
-          ? t("clipboard.edit.unsaved", "Unsaved clipboard edit")
-          : mediaProgress?.message || status || t("clipboard.title", "Clipboard History"),
-        detail: hasDraftChanges
-          ? t("clipboard.edit.unsavedDetail", "Save, save as new, or discard the draft")
-          : selectedItem
-            ? `${contentType(selectedItem, t)} · ${filterLabel(filter)} · ${itemCountLabel}`
-            : `${filterLabel(filter)} · ${itemCountLabel}`,
-        progress: mediaProgress ? mediaProgress.progress : undefined,
-        tone: hasDraftChanges || mediaProgress?.error ? "danger" : status ? "success" : "neutral",
-      }}
+      island={shell.island}
       primaryAction={hasDraftChanges ? {
         label: t("clipboard.edit.save", "Save"),
         kbd: "CmdOrCtrl+S",
@@ -915,10 +920,7 @@ export default function ClipboardPanel() {
         label: t("clipboard.edit.saveAsNew", "Save as New"),
         kbd: "CmdOrCtrl+Shift+S",
         onClick: () => void saveTextEditAsNew(),
-      } : {
-        label: t("clipboard.actions", "Actions"),
-        kbd: actionMenuShortcut,
-      }}
+      } : shell.secondaryAction}
       actionTitle={t("clipboard.actions", "Clipboard Actions")}
       actions={clipboardActions}
     >

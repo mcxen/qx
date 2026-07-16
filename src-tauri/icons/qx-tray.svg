@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" role="img" aria-labelledby="title desc">
+  <title id="title">Qx tray icon</title>
+  <desc id="desc">Three rounded tiles stepping upward inside a rounded rectangle.</desc>
+
+  <!-- Keep the mark monochrome so macOS can tint it as a menu-bar template icon. -->
+  <g fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.5" y="2.5" width="39" height="39" rx="10" stroke-width="2.5" />
+  </g>
+
+  <!-- The tiles intentionally overlap, then the mask cuts the white/transparent
+       stair-step channels back out between them, matching the source mark. -->
+  <mask id="tile-cutouts" maskUnits="userSpaceOnUse" x="0" y="0" width="44" height="44">
+    <rect width="44" height="44" fill="black" />
+    <rect x="7" y="28" width="11" height="10" rx="2.5" fill="white" />
+    <rect x="14" y="16" width="15" height="14" rx="3" fill="white" />
+    <rect x="22" y="7" width="15" height="17" rx="3" fill="white" />
+
+    <!-- negative space between the lower and middle tiles -->
+    <path d="M15.5 27.5H18.5V30.5H21.5V32.5H18.5C16.8431 32.5 15.5 31.1569 15.5 29.5Z" fill="black" />
+    <!-- negative space between the middle and upper tiles -->
+    <path d="M24 15H27V18H30V20H27C25.3431 20 24 18.6569 24 17Z" fill="black" />
+  </mask>
+
+  <rect width="44" height="44" fill="currentColor" mask="url(#tile-cutouts)" />
+</svg>

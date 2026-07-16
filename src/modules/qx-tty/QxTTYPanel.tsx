@@ -6,10 +6,9 @@ import { Terminal } from "@xterm/xterm";
 import { CircleStop, Plus, SquareTerminal, Trash2 } from "lucide-react";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { Button } from "../../components/ui";
-import { useEscBack } from "../../hooks/useEscBack";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
 import { useStore } from "../../store";
-import { getQxShortcutPreset } from "../../utils/keyboard";
 
 interface TerminalSession {
   id: string;
@@ -258,7 +257,19 @@ export default function QxTTYPanel() {
     },
   ], [activeId, clearTerminal, closeSession, createSession, t]);
 
-  const { onKeyDown } = useEscBack({ launcher: () => setTab("launcher") });
+  const leave = useCallback(() => setTab("launcher"), [setTab]);
+  const shell = useQxModuleShell({
+    leave,
+    actionsLabel: t("tty.actions", "Terminal Actions"),
+    island: {
+      label: activeSessionTitle,
+      detail: activeSession
+        ? `${activeSession.running ? t("tty.running", "Running") : t("tty.exited", "Exited")} · ${compactPath(activeSession.cwd)}`
+        : t("tty.noSessions", "No terminal sessions"),
+      tone: error ? "danger" : activeSession?.running ? "success" : "neutral",
+    },
+    t,
+  });
 
   return (
     <QxShell
@@ -270,16 +281,10 @@ export default function QxTTYPanel() {
           {t("tty.new", "New Terminal")}
         </Button>
       )}
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setTab("launcher") }}
-      onKeyDown={onKeyDown}
-      island={{
-        label: activeSessionTitle,
-        detail: activeSession
-          ? `${activeSession.running ? t("tty.running", "Running") : t("tty.exited", "Exited")} · ${compactPath(activeSession.cwd)}`
-          : t("tty.noSessions", "No terminal sessions"),
-        tone: error ? "danger" : activeSession?.running ? "success" : "neutral",
-      }}
-      secondaryAction={{ label: t("tty.actions", "Terminal Actions"), kbd: getQxShortcutPreset().actionMenu }}
+      escapeAction={shell.escapeAction}
+      onKeyDown={shell.onKeyDown}
+      island={shell.island}
+      secondaryAction={shell.secondaryAction}
       actionTitle={t("tty.actions", "Terminal Actions")}
       actions={actions}
     >

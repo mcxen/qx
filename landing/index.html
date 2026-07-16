@@ -42,12 +42,10 @@
       }
 
       html {
-        min-width: 1024px;
         scroll-behavior: smooth;
       }
 
       body {
-        min-width: 1024px;
         background: var(--bg);
         color: var(--text);
         font-family: "Inter Tight", "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -556,6 +554,370 @@
         border: 0;
       }
 
+      /* ------------------------------------------------------------------
+       * Long-form landing sections
+       * ------------------------------------------------------------------ */
+      .landing-section {
+        position: relative;
+        overflow: hidden;
+        padding: clamp(92px, 12vw, 168px) var(--page-pad);
+        scroll-margin-top: 24px;
+      }
+
+      .landing-section--light {
+        background:
+          radial-gradient(circle at 14% 18%, rgba(113, 179, 234, 0.1), transparent 30%),
+          linear-gradient(145deg, #1e1e1e 0%, #15191d 100%);
+        color: #fff;
+      }
+
+      .landing-section--ink {
+        background: #15191d;
+        color: #fff;
+      }
+
+      .landing-section--blue {
+        background:
+          radial-gradient(circle at 72% 28%, rgba(91, 169, 255, 0.24), transparent 34%),
+          linear-gradient(135deg, #112d47 0%, #0b1724 72%);
+        color: #fff;
+      }
+
+      .section__inner {
+        width: min(1180px, 100%);
+        margin: 0 auto;
+      }
+
+      .section__heading {
+        display: grid;
+        grid-template-columns: minmax(0, 0.7fr) minmax(320px, 1fr);
+        align-items: end;
+        gap: clamp(28px, 7vw, 120px);
+        margin-bottom: clamp(42px, 6vw, 82px);
+      }
+
+      .section__eyebrow {
+        margin-bottom: 18px;
+        color: #55718a;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+
+      .landing-section--ink .section__eyebrow,
+      .landing-section--blue .section__eyebrow,
+      .landing-section--light .section__eyebrow { color: #82bcf5; }
+
+      .section__title {
+        max-width: 760px;
+        font-size: clamp(38px, 5vw, 72px);
+        font-weight: 500;
+        letter-spacing: -0.055em;
+        line-height: 0.98;
+      }
+
+      .section__title em {
+        font-style: italic;
+        font-weight: 800;
+      }
+
+      .section__lede {
+        max-width: 460px;
+        color: #60717b;
+        font-size: clamp(16px, 1.55vw, 21px);
+        line-height: 1.55;
+      }
+
+      .landing-section--ink .section__lede,
+      .landing-section--blue .section__lede,
+      .landing-section--light .section__lede { color: rgba(255, 255, 255, 0.65); }
+
+      .section__kicker {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        margin-top: 22px;
+        color: #4f6e82;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .section__kicker::before {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #5aa8ed;
+        box-shadow: 0 0 0 5px rgba(90, 168, 237, 0.12);
+        content: "";
+      }
+
+      .landing-section--ink .section__kicker,
+      .landing-section--blue .section__kicker,
+      .landing-section--light .section__kicker { color: rgba(255, 255, 255, 0.75); }
+
+      .launcher-demo {
+        position: relative;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 250px;
+        min-height: 480px;
+        overflow: hidden;
+        border: 1px solid rgba(180, 219, 250, 0.2);
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.055);
+        box-shadow: 0 30px 90px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+      }
+
+      .launcher-demo__main { padding: 18px; }
+
+      .window-chrome {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        height: 28px;
+        padding: 0 8px;
+      }
+
+      .window-chrome span {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #bbc5cb;
+      }
+
+      .window-chrome span:nth-child(1) { background: #fb8f84; }
+      .window-chrome span:nth-child(2) { background: #f3c866; }
+      .window-chrome span:nth-child(3) { background: #75c88c; }
+
+      .launcher-demo__search {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 62px;
+        margin: 8px 0 18px;
+        padding: 0 20px;
+        border: 1px solid rgba(145, 196, 239, 0.72);
+        border-radius: 12px;
+        background: rgba(16, 28, 38, 0.82);
+        color: #f3f9ff;
+        box-shadow: 0 0 0 4px rgba(87, 153, 219, 0.12);
+        font-size: 19px;
+      }
+
+      .launcher-demo__search strong { font-weight: 500; }
+      .launcher-demo__search small { margin-left: auto; color: rgba(226, 242, 255, 0.5); font-size: 12px; }
+
+      .demo-search-icon {
+        width: 17px;
+        height: 17px;
+        border: 2px solid #8fc8f5;
+        border-radius: 50%;
+      }
+
+      .demo-search-icon::after {
+        display: block;
+        width: 7px;
+        height: 2px;
+        margin: 13px 0 0 11px;
+        background: #8fc8f5;
+        content: "";
+        transform: rotate(45deg);
+        transform-origin: left center;
+      }
+
+      .demo-result {
+        display: grid;
+        grid-template-columns: 42px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 13px;
+        min-height: 67px;
+        padding: 10px 14px;
+        border-bottom: 1px solid rgba(203, 231, 255, 0.1);
+      }
+
+      .demo-result--selected {
+        border: 1px solid #5e9ed8;
+        border-radius: 11px;
+        background: rgba(72, 136, 197, 0.2);
+      }
+
+      .demo-result__icon {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        border-radius: 10px;
+        background: rgba(109, 183, 239, 0.2);
+        color: #a7d8ff;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .demo-result__title { color: #f0f7fc; font-size: 15px; font-weight: 700; }
+      .demo-result__meta { margin-top: 4px; color: rgba(219, 238, 252, 0.55); font-size: 12px; }
+      .demo-result__type { color: rgba(219, 238, 252, 0.56); font-size: 12px; }
+
+      .launcher-demo__context {
+        padding: 30px 22px;
+        border-left: 1px solid rgba(203, 231, 255, 0.12);
+        background: rgba(4, 15, 27, 0.28);
+      }
+
+      .context-label { color: rgba(219, 238, 252, 0.56); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+      .context-title { margin-top: 18px; color: #f0f7fc; font-size: 24px; font-weight: 700; letter-spacing: -0.04em; }
+      .context-copy { margin-top: 10px; color: rgba(219, 238, 252, 0.62); font-size: 14px; line-height: 1.6; }
+      .context-line { height: 1px; margin: 26px 0; background: rgba(203, 231, 255, 0.15); }
+      .context-key { display: flex; justify-content: space-between; margin-top: 14px; color: rgba(219, 238, 252, 0.62); font-size: 12px; }
+      .context-key kbd { padding: 3px 7px; border: 1px solid rgba(178, 224, 255, 0.25); border-radius: 5px; background: rgba(255, 255, 255, 0.08); color: #c4e6ff; font-family: inherit; }
+
+      .module-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 14px;
+      }
+
+      .module-card {
+        min-height: 230px;
+        padding: 28px;
+        border: 1px solid rgba(180, 219, 250, 0.16);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.045);
+        transition: transform 0.28s ease, border-color 0.28s ease, box-shadow 0.28s ease;
+      }
+
+      .module-card:hover { border-color: #65a8de; box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28); transform: translateY(-5px); }
+      .module-card__number { color: rgba(190, 222, 246, 0.54); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; }
+      .module-card__icon { margin: 30px 0 18px; color: #2876b5; font-size: 26px; }
+      .module-card h3 { color: #f0f7fc; font-size: 23px; letter-spacing: -0.04em; }
+      .module-card p { margin-top: 10px; color: rgba(219, 238, 252, 0.6); font-size: 14px; line-height: 1.55; }
+
+      .module-card--wide { grid-column: span 2; min-height: 200px; }
+
+      .island-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr);
+        align-items: center;
+        gap: clamp(40px, 8vw, 130px);
+      }
+
+      .island-stage {
+        position: relative;
+        min-height: 420px;
+        padding: 40px;
+        border: 1px solid rgba(152, 205, 255, 0.2);
+        border-radius: 22px;
+        background: rgba(4, 15, 27, 0.42);
+        box-shadow: inset 0 0 70px rgba(69, 145, 211, 0.09), 0 26px 80px rgba(0, 0, 0, 0.2);
+      }
+
+      .island-stage::before,
+      .island-stage::after {
+        position: absolute;
+        width: 5px;
+        height: 5px;
+        border-radius: 50%;
+        background: #7ec7ff;
+        box-shadow: 0 0 18px #7ec7ff;
+        content: "";
+      }
+
+      .island-stage::before { top: 26px; left: 28px; }
+      .island-stage::after { right: 28px; bottom: 26px; opacity: 0.6; }
+
+      .monitor {
+        position: absolute;
+        right: 42px;
+        bottom: 46px;
+        left: 42px;
+        height: 220px;
+        overflow: hidden;
+        border: 1px solid rgba(194, 229, 255, 0.36);
+        border-radius: 13px;
+        background: linear-gradient(140deg, #263e50, #0e1d2a 70%);
+        box-shadow: 0 22px 48px rgba(0, 0, 0, 0.35);
+      }
+
+      .monitor__top { height: 34px; border-bottom: 1px solid rgba(217, 239, 255, 0.15); background: rgba(255, 255, 255, 0.06); }
+      .monitor__content { display: grid; grid-template-columns: 1.3fr 0.7fr; gap: 16px; padding: 22px; }
+      .monitor__lines span { display: block; height: 9px; margin-bottom: 13px; border-radius: 99px; background: rgba(198, 231, 255, 0.2); }
+      .monitor__lines span:nth-child(2) { width: 74%; }
+      .monitor__lines span:nth-child(3) { width: 52%; }
+      .monitor__stat { height: 80px; border: 1px solid rgba(154, 214, 255, 0.2); border-radius: 10px; background: rgba(88, 168, 238, 0.12); }
+
+      .island-float {
+        position: absolute;
+        top: 66px;
+        right: 84px;
+        display: grid;
+        grid-template-columns: 36px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+        width: min(360px, calc(100% - 80px));
+        padding: 14px 17px;
+        border: 1px solid rgba(183, 224, 255, 0.5);
+        border-radius: 18px;
+        background: rgba(9, 29, 47, 0.86);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38), 0 0 0 5px rgba(105, 189, 255, 0.08);
+        backdrop-filter: blur(16px);
+      }
+
+      .island-float__icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; background: #58aef0; color: #06203a; font-size: 15px; font-weight: 800; }
+      .island-float__title { color: #eef8ff; font-size: 14px; font-weight: 700; }
+      .island-float__copy { margin-top: 4px; color: rgba(227, 245, 255, 0.62); font-size: 11px; }
+      .island-float__action { padding: 7px 10px; border: 1px solid rgba(178, 224, 255, 0.3); border-radius: 8px; color: #bfe6ff; font-size: 11px; }
+
+      .island-points { display: grid; gap: 24px; margin-top: 36px; }
+      .island-point { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 14px; }
+      .island-point__dot { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid rgba(142, 207, 255, 0.42); border-radius: 50%; color: #a9ddff; font-size: 12px; }
+      .island-point h3 { font-size: 17px; font-weight: 700; }
+      .island-point p { margin-top: 5px; color: rgba(255, 255, 255, 0.58); font-size: 14px; line-height: 1.55; }
+
+      .plugin-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 0.8fr) minmax(420px, 1.2fr);
+        gap: clamp(32px, 8vw, 120px);
+        align-items: start;
+      }
+
+      .plugin-stack { display: grid; gap: 10px; }
+      .plugin-row { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 15px; padding: 15px 18px; border: 1px solid rgba(180, 219, 250, 0.16); border-radius: 12px; background: rgba(255, 255, 255, 0.045); }
+      .plugin-row__icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 11px; background: rgba(109, 183, 239, 0.2); color: #a7d8ff; font-size: 16px; font-weight: 800; }
+      .plugin-row h3 { color: #f0f7fc; font-size: 16px; }
+      .plugin-row p { margin-top: 4px; color: rgba(219, 238, 252, 0.56); font-size: 12px; }
+      .plugin-row__tag { padding: 5px 8px; border: 1px solid rgba(178, 224, 255, 0.35); border-radius: 7px; color: #b7e1ff; font-size: 11px; }
+
+      .plugin-code { overflow: hidden; border-radius: 17px; background: #11181d; box-shadow: 0 28px 72px rgba(20, 45, 59, 0.18); }
+      .plugin-code__bar { display: flex; gap: 7px; padding: 15px 17px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+      .plugin-code__bar i { width: 8px; height: 8px; border-radius: 50%; background: #45545c; }
+      .plugin-code__body { padding: 28px; color: #bdcfda; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.9; }
+      .code-blue { color: #8bc8ff; }
+      .code-green { color: #a4dfb1; }
+      .code-muted { color: #647782; }
+
+      .download-section { text-align: center; }
+      .download-section .section__title { margin: 0 auto; }
+      .download-section .section__lede { margin: 24px auto 0; }
+      .download-actions { display: flex; justify-content: center; gap: 12px; margin-top: 38px; }
+      .btn--outline { border: 1px solid rgba(255, 255, 255, 0.3); background: transparent; color: #fff; }
+      .btn--outline:hover { border-color: #fff; background: rgba(255, 255, 255, 0.08); }
+
+      .landing-footer { display: flex; justify-content: space-between; gap: 20px; padding: 25px var(--page-pad); background: #0d1114; color: rgba(255, 255, 255, 0.52); font-size: 12px; }
+      .landing-footer__links { display: flex; gap: 18px; }
+      .landing-footer a:hover { color: #fff; }
+
+      .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.75s ease, transform 0.75s ease; }
+      .reveal.is-visible { opacity: 1; transform: translateY(0); }
+
+      @media (max-width: 900px) {
+        .section__heading,
+        .island-layout,
+        .plugin-layout { grid-template-columns: 1fr; gap: 26px; }
+        .module-grid { grid-template-columns: repeat(2, 1fr); }
+        .module-card--wide { grid-column: auto; }
+        .launcher-demo { grid-template-columns: 1fr; }
+        .launcher-demo__context { display: none; }
+      }
+
       @media (max-width: 1360px) {
         .hero__heading { top: 21%; }
       }
@@ -569,6 +931,34 @@
       @media (max-width: 1100px) {
         .hero__heading { top: 17%; }
         .hero__blur { height: 31%; }
+      }
+
+      @media (max-width: 640px) {
+        :root { --page-pad: 20px; }
+        .hero { min-height: 680px; }
+        .hero__video { width: 100%; height: 100%; transform: translate(-50%, -50%) scale(1.45); }
+        .nav-pill { display: none; }
+        .header { padding-top: 16px; padding-bottom: 16px; }
+        .hero__heading { top: 21%; width: calc(100% - 40px); font-size: clamp(43px, 12vw, 66px); }
+        .hero__heading .hero__line-inner { white-space: normal; }
+        .side-nav { display: none; }
+        .hero__bottom { grid-template-columns: 1fr; }
+        .about-card { display: none; }
+        .hero__desc { max-width: 100%; }
+        .launcher-demo__main { padding: 10px; }
+        .launcher-demo__search { font-size: 15px; }
+        .launcher-demo__search small { display: none; }
+        .demo-result { grid-template-columns: 36px minmax(0, 1fr); }
+        .demo-result__type { display: none; }
+        .module-grid { grid-template-columns: 1fr; }
+        .island-stage { min-height: 360px; padding: 18px; }
+        .monitor { right: 18px; bottom: 28px; left: 18px; }
+        .island-float { top: 48px; right: 26px; width: calc(100% - 52px); }
+        .plugin-layout { grid-template-columns: 1fr; }
+        .plugin-code__body { padding: 20px; font-size: 11px; }
+        .download-actions, .landing-footer { flex-direction: column; align-items: stretch; }
+        .download-actions .btn { justify-content: center; }
+        .landing-footer__links { justify-content: space-between; }
       }
 
       @media (prefers-reduced-motion: reduce) {
@@ -621,13 +1011,13 @@
         </a>
 
         <nav class="nav-pill" aria-label="主导航">
-          <a class="nav-pill__link" href="https://github.com/mcxen/qx#features" target="_blank" rel="noreferrer">功能</a>
-          <a class="nav-pill__link" href="https://github.com/mcxen/qx/releases" target="_blank" rel="noreferrer">版本 <span class="nav-pill__badge">27</span></a>
-          <a class="nav-pill__link" href="https://github.com/mcxen/qx/tree/main/public/doc" target="_blank" rel="noreferrer">文档</a>
-          <a class="nav-pill__link" href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">GitHub</a>
+          <a class="nav-pill__link" href="#search">搜索</a>
+          <a class="nav-pill__link" href="#modules">模块 <span class="nav-pill__badge">6</span></a>
+          <a class="nav-pill__link" href="#island">灵动岛</a>
+          <a class="nav-pill__link" href="#plugins">插件</a>
         </nav>
 
-        <a class="btn btn--header" href="https://github.com/mcxen/qx/releases/latest" target="_blank" rel="noreferrer">
+        <a class="btn btn--header" href="#download">
           下载 Qx
           <svg class="btn__arrow" viewBox="0 0 8 8" fill="none" aria-hidden="true"><path d="M1 7L7 1M7 1H2M7 1V6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" /></svg>
         </a>
@@ -640,11 +1030,12 @@
       </h1>
 
       <nav class="side-nav" aria-label="页面导航">
-        <a class="side-nav__link side-nav__link--active" href="#home"><span class="side-nav__link-text">首页</span><span class="side-nav__line"></span></a>
-        <a class="side-nav__link" href="https://github.com/mcxen/qx#features" target="_blank" rel="noreferrer"><span class="side-nav__link-text">全局搜索</span></a>
-        <a class="side-nav__link" href="https://github.com/mcxen/qx#features" target="_blank" rel="noreferrer"><span class="side-nav__link-text">效率模块</span></a>
-        <a class="side-nav__link" href="https://github.com/mcxen/qx/tree/main/public/doc" target="_blank" rel="noreferrer"><span class="side-nav__link-text">开发文档</span></a>
-        <a class="side-nav__link" href="https://github.com/mcxen/qx/releases/latest" target="_blank" rel="noreferrer"><span class="side-nav__link-text">立即下载</span></a>
+        <a class="side-nav__link side-nav__link--active" href="#home" data-section="home"><span class="side-nav__link-text">首页</span><span class="side-nav__line"></span></a>
+        <a class="side-nav__link" href="#search" data-section="search"><span class="side-nav__link-text">全局搜索</span></a>
+        <a class="side-nav__link" href="#modules" data-section="modules"><span class="side-nav__link-text">效率模块</span></a>
+        <a class="side-nav__link" href="#island" data-section="island"><span class="side-nav__link-text">外接灵动岛</span></a>
+        <a class="side-nav__link" href="#plugins" data-section="plugins"><span class="side-nav__link-text">插件生态</span></a>
+        <a class="side-nav__link" href="#download" data-section="download"><span class="side-nav__link-text">立即下载</span></a>
       </nav>
 
       <div class="hero__blur-bar"></div>
@@ -660,19 +1051,19 @@
             下载最新版本
             <svg class="btn__arrow" viewBox="0 0 8 8" fill="none" aria-hidden="true"><path d="M1 7L7 1M7 1H2M7 1V6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" /></svg>
           </a>
-          <button class="scroll-down" id="scrollDown" type="button" aria-label="查看 Qx 源代码">
-            <span class="scroll-down__text">Explore Qx</span>
+          <button class="scroll-down" id="scrollDown" type="button" aria-label="继续浏览 Qx">
+            <span class="scroll-down__text">继续向下</span>
             <span class="scroll-down__circle">
               <svg viewBox="0 0 7.222 8.667" fill="none" aria-hidden="true"><path d="M3.611 1V7.667M3.611 7.667L1 5M3.611 7.667L6.222 5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" /></svg>
             </span>
           </button>
         </div>
 
-        <a class="about-card" href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">
+        <a class="about-card" href="#modules">
           <div class="about-card__image"><img src="https://qclay.design/lovable/kubric/card-image.png" alt="粉色郁金香特写" /></div>
           <div class="about-card__content">
             <div>
-              <h2 class="about-card__title">About Qx</h2>
+            <h2 class="about-card__title">About Qx</h2>
               <p class="about-card__text">一个开源、可扩展的桌面效率入口，为专注工作而设计。</p>
             </div>
             <svg class="about-card__arrow" viewBox="0 0 77 13" fill="none" aria-hidden="true"><path d="M1 6.5H75M75 6.5L70 1.5M75 6.5L70 11.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" /></svg>
@@ -682,6 +1073,143 @@
 
       <span class="visually-hidden">Qx v0.5.27，支持 macOS 与 Windows。</span>
     </main>
+
+    <section class="landing-section landing-section--light" id="search">
+      <div class="section__inner">
+        <div class="section__heading reveal">
+          <div>
+            <p class="section__eyebrow">02 — Find the thread</p>
+            <h2 class="section__title">先找到，<br /><em>再开始。</em></h2>
+          </div>
+          <div>
+            <p class="section__lede">Qx 把应用、文件、剪贴板、模块和插件放进同一个可预期的搜索入口。输入时结果异步更新，选中项会跟随滚动，手离开鼠标也不会丢失节奏。</p>
+            <span class="section__kicker">模糊匹配 · 异步召回 · 键盘优先</span>
+          </div>
+        </div>
+
+        <div class="launcher-demo reveal" aria-label="Qx 主搜索界面示意">
+          <div class="launcher-demo__main">
+            <div class="window-chrome" aria-hidden="true"><span></span><span></span><span></span></div>
+            <div class="launcher-demo__search">
+              <span class="demo-search-icon" aria-hidden="true"></span>
+              <strong>skill</strong>
+              <small>⌥ Space</small>
+            </div>
+            <div class="demo-result demo-result--selected">
+              <span class="demo-result__icon">▣</span>
+              <div><div class="demo-result__title">设置界面开发 Skill</div><div class="demo-result__meta">~/Library/CloudDocs/Skill/设置界面开发 skill/</div></div>
+              <span class="demo-result__type">Skill</span>
+            </div>
+            <div class="demo-result">
+              <span class="demo-result__icon">▧</span>
+              <div><div class="demo-result__title">plugin-creator Skill</div><div class="demo-result__meta">~/.codex/skills/.system/plugin-creator/</div></div>
+              <span class="demo-result__type">Folder</span>
+            </div>
+            <div class="demo-result">
+              <span class="demo-result__icon">⌘</span>
+              <div><div class="demo-result__title">skill-creator</div><div class="demo-result__meta">~/.codex/skills/.system/skill-creator/</div></div>
+              <span class="demo-result__type">Skill</span>
+            </div>
+            <div class="demo-result">
+              <span class="demo-result__icon">▤</span>
+              <div><div class="demo-result__title">设置界面开发 Skill · README</div><div class="demo-result__meta">最近打开 · Markdown</div></div>
+              <span class="demo-result__type">Clipboard</span>
+            </div>
+          </div>
+          <aside class="launcher-demo__context">
+            <div class="context-label">Selected item</div>
+            <div class="context-title">设置界面开发 Skill</div>
+            <p class="context-copy">Skill 名称、路径片段和内容关键词都能参与匹配。按 Enter 打开，⌘K 查看更多操作。</p>
+            <div class="context-line"></div>
+            <div class="context-key"><span>打开</span><kbd>↵</kbd></div>
+            <div class="context-key"><span>操作菜单</span><kbd>⌘K</kbd></div>
+            <div class="context-key"><span>隐藏 Qx</span><kbd>Esc</kbd></div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section class="landing-section landing-section--light" id="modules">
+      <div class="section__inner">
+        <div class="section__heading reveal">
+          <div>
+            <p class="section__eyebrow">03 — One place, many modes</p>
+            <h2 class="section__title">工作流入口，<br /><em>集中在一处。</em></h2>
+          </div>
+          <p class="section__lede">从一条快捷键进入，再按当前任务切换模块。Qx 保留每个模块自己的上下文，同时让搜索、动作和返回行为保持一致。</p>
+        </div>
+        <div class="module-grid">
+          <article class="module-card reveal"><div class="module-card__number">01</div><div class="module-card__icon">▣</div><h3>剪贴板</h3><p>文字、图片和文件历史统一保留，置顶、常用、链接与范围筛选随手可用。</p></article>
+          <article class="module-card reveal"><div class="module-card__number">02</div><div class="module-card__icon">◌</div><h3>文件搜索</h3><p>接入 macOS Spotlight / Cardinal 与 Windows 索引，模糊召回真实路径，让文件始终可达。</p></article>
+          <article class="module-card reveal"><div class="module-card__number">03</div><div class="module-card__icon">✦</div><h3>QxAI</h3><p>流式对话、Agent 任务和 BYOK 配置共享同一套窗口与快捷键。</p></article>
+          <article class="module-card reveal"><div class="module-card__number">04</div><div class="module-card__icon">◔</div><h3>RSS Reader</h3><p>订阅、文件夹、OPML 与文章阅读都可以从主搜直达，阅读位置不会被刷新打断。</p></article>
+          <article class="module-card module-card--wide reveal"><div class="module-card__number">05 — 06</div><div class="module-card__icon">⌁</div><h3>截图、录制与文本工具</h3><p>截取区域、录制 MP4/MOV、转换 GIF、编辑 Markdown / JSON。重任务在后台运行，进度会回到灵动岛。</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="landing-section landing-section--blue" id="island">
+      <div class="section__inner island-layout">
+        <div class="reveal">
+          <p class="section__eyebrow">04 — Keep the signal visible</p>
+          <h2 class="section__title">把进度放在<br /><em>你看得见的地方。</em></h2>
+          <p class="section__lede">外接显示器也能成为 Qx 的第二块工作面。任务进度、系统数据和简单交互以轻量悬浮岛呈现，不抢主窗口，也不打断当前应用。</p>
+          <div class="island-points">
+            <div class="island-point"><span class="island-point__dot">01</span><div><h3>外接屏独立显示</h3><p>主窗口隐藏时仍可保留数据，显示器位置与置顶策略由设置统一管理。</p></div></div>
+            <div class="island-point"><span class="island-point__dot">02</span><div><h3>插件可贡献状态</h3><p>插件通过受限 host API 更新文本、真实进度和一个明确动作。</p></div></div>
+            <div class="island-point"><span class="island-point__dot">03</span><div><h3>信息少，但能行动</h3><p>只保留当前需要知道的信号，点击按钮即可暂停、打开或继续任务。</p></div></div>
+          </div>
+        </div>
+        <div class="island-stage reveal" aria-label="外接灵动岛示意">
+          <div class="island-float"><span class="island-float__icon">Qx</span><div><div class="island-float__title">Screen Capture</div><div class="island-float__copy">正在导出 GIF · 68%</div></div><span class="island-float__action">暂停</span></div>
+          <div class="monitor"><div class="monitor__top"></div><div class="monitor__content"><div class="monitor__lines"><span></span><span></span><span></span></div><div class="monitor__stat"></div></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="landing-section landing-section--light" id="plugins">
+      <div class="section__inner">
+        <div class="section__heading reveal">
+          <div>
+            <p class="section__eyebrow">05 — Built to be extended</p>
+            <h2 class="section__title">你的快捷键，<br /><em>你的工具。</em></h2>
+          </div>
+          <div>
+            <p class="section__lede">插件共享 Qx 的搜索、权限、设置、动作菜单和灵动岛能力，也可以从 Raycast 扩展转换而来。</p>
+            <span class="section__kicker">沙盒运行 · 权限透明 · 市场可安装</span>
+          </div>
+        </div>
+        <div class="plugin-layout">
+          <div class="plugin-stack">
+            <div class="plugin-row reveal"><span class="plugin-row__icon">⌘</span><div><h3>Clipboard History</h3><p>置顶、常用、链接与文件语义</p></div><span class="plugin-row__tag">内置</span></div>
+            <div class="plugin-row reveal"><span class="plugin-row__icon">✦</span><div><h3>QxAI</h3><p>聊天与 Agent 任务</p></div><span class="plugin-row__tag">内置</span></div>
+            <div class="plugin-row reveal"><span class="plugin-row__icon">↗</span><div><h3>Raycast Converter</h3><p>把已有扩展带进 Qx 的端口</p></div><span class="plugin-row__tag">兼容</span></div>
+            <div class="plugin-row reveal"><span class="plugin-row__icon">+</span><div><h3>你的下一个插件</h3><p>manifest + index.js，从一个命令开始</p></div><span class="plugin-row__tag">开放</span></div>
+          </div>
+          <div class="plugin-code reveal" aria-label="插件 API 代码示意">
+            <div class="plugin-code__bar"><i></i><i></i><i></i></div>
+            <pre class="plugin-code__body"><span class="code-muted">// show useful signal, not another window</span><br /><span class="code-blue">await</span> qx.island.show({<br />  title: <span class="code-green">"Exporting GIF"</span>,<br />  progress: <span class="code-green">0.68</span>,<br />  action: <span class="code-green">"pause-export"</span><br />});</pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="landing-section landing-section--ink download-section" id="download">
+      <div class="section__inner reveal">
+        <p class="section__eyebrow">06 — Start with one shortcut</p>
+        <h2 class="section__title">桌面很复杂，<br /><em>入口可以很简单。</em></h2>
+        <p class="section__lede">Qx 支持 macOS 与 Windows。下载后按下 ⌥ Space（Windows 使用你的快捷键设置），从今天最常用的动作开始。</p>
+        <div class="download-actions">
+          <a class="btn" href="https://github.com/mcxen/qx/releases/latest" target="_blank" rel="noreferrer">下载最新版本 <svg class="btn__arrow" viewBox="0 0 8 8" fill="none" aria-hidden="true"><path d="M1 7L7 1M7 1H2M7 1V6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" /></svg></a>
+          <a class="btn btn--outline" href="https://github.com/mcxen/qx/tree/main/public/doc" target="_blank" rel="noreferrer">阅读插件文档</a>
+        </div>
+      </div>
+    </section>
+
+    <footer class="landing-footer">
+      <span>Qx — a quiet, keyboard-first desktop entrance.</span>
+      <nav class="landing-footer__links" aria-label="页脚链接"><a href="#home">返回顶部</a><a href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">源代码</a><a href="mailto:hello@qx.app">联系我们</a></nav>
+    </footer>
 
     <script>
       (() => {
@@ -732,8 +1260,8 @@
           video.play().catch(() => {});
         };
 
-        const openProject = () => window.open("https://github.com/mcxen/qx", "_blank", "noopener,noreferrer");
-        scrollDown?.addEventListener("click", openProject);
+        const scrollToSearch = () => document.querySelector("#search")?.scrollIntoView({ behavior: "smooth" });
+        scrollDown?.addEventListener("click", scrollToSearch);
         video?.addEventListener("timeupdate", rewindVideo);
         video?.addEventListener("canplaythrough", startAnimations, { once: true });
         video?.play().catch(() => {});
@@ -748,6 +1276,27 @@
             window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY, behavior: "smooth" });
           });
         });
+
+        const revealObserver = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) revealObserver.unobserve(entry.target);
+            entry.target.classList.toggle("is-visible", entry.isIntersecting);
+          });
+        }, { threshold: 0.16 });
+        document.querySelectorAll(".reveal").forEach((element) => revealObserver.observe(element));
+
+        const sectionLinks = [...document.querySelectorAll(".side-nav__link[data-section]")];
+        const sectionObserver = new IntersectionObserver((entries) => {
+          const visible = entries.filter((entry) => entry.isIntersecting).sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+          if (!visible) return;
+          sectionLinks.forEach((link) => {
+            const active = link.dataset.section === visible.target.id;
+            link.classList.toggle("side-nav__link--active", active);
+            if (active) link.setAttribute("aria-current", "page");
+            else link.removeAttribute("aria-current");
+          });
+        }, { rootMargin: "-18% 0px -58% 0px", threshold: [0.08, 0.24, 0.5] });
+        document.querySelectorAll(".landing-section, #home").forEach((section) => sectionObserver.observe(section));
 
         window.addEventListener("pagehide", () => {
           window.clearTimeout(fallback);

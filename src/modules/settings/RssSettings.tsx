@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useSettingsStore } from "./store";
 import { Row, Toggle, SegmentedControl, Select, Slider, SettingsCard } from "../../components/ui";
 import { useT } from "../../i18n";
+
+const ANYFEEDER_HOME = "https://plink.anyfeeder.com/";
 
 const FONT_OPTIONS: { value: string; label: string }[] = [
   { value: "system-ui", label: "System" },
@@ -187,6 +190,52 @@ export default function RssSettings() {
             onChange={(v) => patchR({ article_font_family: v })}
             options={FONT_OPTIONS}
           />
+        </Row>
+      </SettingsCard>
+
+      <SettingsCard title={t("rss.about.title", "About RSS")}>
+        <Row
+          title={t("rss.about.defaults", "Starter subscriptions")}
+          description={t(
+            "rss.about.defaults.desc",
+            "New installs include sample feeds in Tech, News, and Digest folders (IT Home, Expreview, Ruan Yifeng, Zaobao, Zhihu Daily, and several AnyFeeder sources). You can remove or regroup them anytime.",
+          )}
+        >
+          <span className="qx-settings-muted" style={{ fontSize: 12 }}>
+            {t("rss.about.defaults.folders", "科技 · 新闻 · 资讯")}
+          </span>
+        </Row>
+        <Row
+          title={t("rss.about.anyfeeder", "AnyFeeder")}
+          description={t(
+            "rss.about.anyfeeder.desc",
+            "Several starter feeds use AnyFeeder (plink.anyfeeder.com), a public RSS bridge for sites that do not publish a native feed. Thanks to AnyFeeder for making these sources available.",
+          )}
+        >
+          <button
+            type="button"
+            className="qx-command-button"
+            onClick={() => void openUrl(ANYFEEDER_HOME)}
+          >
+            {t("rss.about.anyfeeder.open", "Open AnyFeeder")}
+          </button>
+        </Row>
+        <Row
+          title={t("rss.about.anyfeeder.guide", "How to add more")}
+          description={t(
+            "rss.about.anyfeeder.guide.desc",
+            "Browse https://plink.anyfeeder.com/ for route paths, copy a full feed URL (https://plink.anyfeeder.com/…), then use RSS → Add Feed. Prefer official site RSS when available; use AnyFeeder only as a bridge.",
+          )}
+        >
+          <button
+            type="button"
+            className="qx-command-button"
+            onClick={() => {
+              void navigator.clipboard?.writeText(ANYFEEDER_HOME).catch(() => {});
+            }}
+          >
+            {t("rss.about.anyfeeder.copy", "Copy link")}
+          </button>
         </Row>
       </SettingsCard>
     </div>

@@ -417,16 +417,27 @@ export const useRssStore = create<RssStore>((set, get) => ({
   },
 
   goBack: () => {
-    const { view } = get();
-    if (view === "detail") {
-      set({ view: "articles", selectedArticleId: null, currentArticle: null, readingArticles: [] });
-    } else if (view === "articles") {
+    const { view, currentArticle } = get();
+    // Close open article first (detail view or master-detail reader still showing).
+    if (view === "detail" || currentArticle) {
+      set({
+        view: "articles",
+        selectedArticleId: null,
+        currentArticle: null,
+        readingArticles: [],
+      });
+      return;
+    }
+    if (view === "articles") {
       set({
         view: "feeds",
         selectedFeedId: null,
+        selectedArticleId: null,
+        currentArticle: null,
         articles: [],
         readingArticles: [],
         selectedIndex: 0,
+        search: "",
       });
     }
   },

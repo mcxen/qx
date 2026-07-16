@@ -1,11 +1,85 @@
 use feed_rs::parser;
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use reqwest::Url;
 use std::io::Cursor;
 
 use super::types::{OpmlFeedEntry, ParsedArticle, ParsedFeed};
 
 const USER_AGENT: &str = "Qx/0.1 (RSS Reader; +https://github.com/mcx/qx)";
+
+/// RSS bridge / aggregator hosts — not the real publisher; use article links for icons.
+fn is_feed_proxy_host(host: &str) -> bool {
+    let h = host.to_ascii_lowercase();
+    h == "plink.anyfeeder.com"
+        || h.ends_with(".anyfeeder.com")
+        || h == "rsshub.app"
+        || h.ends_with(".rsshub.app")
+        || h == "feedx.net"
+        || h.ends_with(".feedx.net")
+}
+
+fn absolutize_url(base: &str, maybe_relative: &str) -> Option<String> {
+    let value = maybe_relative.trim();
+    if value.is_empty() {
+        return None;
+    }
+    if value.starts_with("data:")
+        || value.starts_with("http://")
+        || value.starts_with("https://")
+    {
+        return Some(value.to_string());
+    }
+    let base_url = Url::parse(base).ok()?;
+    base_url.join(value).ok().map(|u| u.into())
+}
+
+fn host_from_url(url: &str) -> Option<String> {
+    let parsed = Url::parse(url.trim()).ok()?;
+    let host = parsed.host_str()?.to_string();
+    if host.is_empty() {
+        None
+    } else {
+        Some(host)
+    }
+}
+
+/// Prefer a real publisher host (from article links) over RSS bridge domains.
+fn publisher_host(feed_url: &str, article_links: &[&str]) -> Option<String> {
+    for link in article_links {
+        if let Some(host) = host_from_url(link) {
+            if !is_feed_proxy_host(&host) {
+                return Some(host);
+            }
+        }
+    }
+    if let Some(host) = host_from_url(feed_url) {
+        if !is_feed_proxy_host(&host) {
+            return Some(host);
+        }
+    }
+    // Last resort: proxy host still gets *some* icon.
+    host_from_url(feed_url)
+}
+
+/// Public favicon URL for a host (works as `<img src>` without local cache).
+fn favicon_url_for_host(host: &str) -> String {
+    // Google S2 is widely used by readers; sz=64 suits the 22px list tile on retina.
+    format!("https://www.google.com/s2/favicons?domain={host}&sz=64")
+}
+
+/// Resolve a displayable feed icon:
+/// 1) feed `<icon>` / `<logo>` (absolutized)
+/// 2) publisher favicon via well-known service
+pub fn resolve_feed_icon(feed_url: &str, feed_icon: &str, article_links: &[&str]) -> String {
+    if let Some(abs) = absolutize_url(feed_url, feed_icon) {
+        return abs;
+    }
+    if let Some(host) = publisher_host(feed_url, article_links) {
+        return favicon_url_for_host(&host);
+    }
+    String::new()
+}
 
 /// Build a shared async client lazily.
 fn http_client() -> Result<reqwest::Client, String> {
@@ -52,7 +126,7 @@ pub async fn fetch_and_parse(url: &str) -> Result<ParsedFeed, String> {
         .map(|t| t.content.clone())
         .unwrap_or_default();
 
-    let icon = feed
+    let icon_raw = feed
         .icon
         .as_ref()
         .map(|i| i.uri.clone())
@@ -130,6 +204,9 @@ pub async fn fetch_and_parse(url: &str) -> Result<ParsedFeed, String> {
         });
     }
 
+    let link_refs: Vec<&str> = articles.iter().map(|a| a.link.as_str()).collect();
+    let icon = resolve_feed_icon(url, &icon_raw, &link_refs);
+
     Ok(ParsedFeed {
         title,
         icon,
@@ -145,6 +222,50 @@ fn extract_image(html: &str) -> Option<String> {
     let after = &rest[src_idx + 5..];
     let end = after.find('"')?;
     Some(after[..end].to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{is_feed_proxy_host, resolve_feed_icon};
+
+    #[test]
+    fn prefers_feed_icon_when_absolute() {
+        let icon = resolve_feed_icon(
+            "https://www.ithome.com/rss/",
+            "https://img.ithome.com/favicon.ico",
+            &[],
+        );
+        assert_eq!(icon, "https://img.ithome.com/favicon.ico");
+    }
+
+    #[test]
+    fn absolutizes_relative_feed_icon() {
+        let icon = resolve_feed_icon("https://www.ithome.com/rss/", "/favicon.ico", &[]);
+        assert_eq!(icon, "https://www.ithome.com/favicon.ico");
+    }
+
+    #[test]
+    fn anyfeeder_uses_article_publisher_host() {
+        let icon = resolve_feed_icon(
+            "https://plink.anyfeeder.com/zhihu/daily",
+            "",
+            &["https://daily.zhihu.com/story/123"],
+        );
+        assert!(icon.contains("daily.zhihu.com"), "{icon}");
+        assert!(!icon.contains("anyfeeder"), "{icon}");
+    }
+
+    #[test]
+    fn direct_feed_host_favicon_when_no_icon() {
+        let icon = resolve_feed_icon("http://www.ithome.com/rss/", "", &[]);
+        assert!(icon.contains("ithome.com"), "{icon}");
+    }
+
+    #[test]
+    fn proxy_host_detection() {
+        assert!(is_feed_proxy_host("plink.anyfeeder.com"));
+        assert!(!is_feed_proxy_host("www.ithome.com"));
+    }
 }
 
 fn strip_html(s: &str) -> String {

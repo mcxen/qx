@@ -129,6 +129,25 @@ Zustand 单 store（`store.ts`）保存 launcher 强共享状态：
 `QxModuleSearch`：Shell `search` 槽统一滤框（wrap + icon + input）。
 Launcher `SearchBar` 负责召唤/聚焦语义，视觉委托给同一组件。
 
+### 主从布局键盘（左列表 + 中间内容）
+
+`useQxMasterDetail` / `qxRegionProps` / `qxMasterDetailNavigation`：
+
+- region：`{module}-list` | `{module}-detail` | `{module}-actions`
+- 列表内 ↑↓ 选中；detail 内 ↑↓ 滚动正文；←→ 切换 region
+- 空 detail 用 `aria-hidden`；打开后 `focusDetail`，关闭后 `focusList`
+
+### 模块壳 chrome（内置 + 扩展）
+
+`useQxModuleShell`：
+
+- `leave` + 可选 Esc 内层 / 清 query
+- `island` 或 `islandState`（`buildModuleIsland`）
+- 默认 `secondaryAction`（Actions 菜单）
+- `onKeyDown` 合并 Esc 与业务键
+
+`PluginPanelViewport`（扩展）与 Weather / Macros / QxAI 列表等内置模块共用此端口。
+
 ## Loading 与灵动岛
 
 ### 任务态 shell island

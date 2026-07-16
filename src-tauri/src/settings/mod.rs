@@ -475,11 +475,12 @@ impl Default for ModuleSearchSettings {
             "macros",
             "documents",
             "weather",
-            "v2ex",
             "qx-tty",
         ] {
             modules.insert(id.to_string(), true);
         }
+        // Prefer marketplace V2EX plugin; built-in is opt-in.
+        modules.insert("v2ex".to_string(), false);
         Self {
             enabled: true,
             modules,
@@ -503,10 +504,17 @@ impl BuiltinModulesSettings {
 
 impl Default for BuiltinModulesSettings {
     fn default() -> Self {
-        let modules = ["screencap", "v2ex", "weather", "macros"]
-            .into_iter()
-            .map(|id| (id.to_string(), true))
-            .collect();
+        // V2EX ships as the marketplace plugin (`v2ex`); built-in panel stays
+        // available but off by default so the external plugin is the primary UX.
+        let modules = [
+            ("screencap", true),
+            ("v2ex", false),
+            ("weather", true),
+            ("macros", true),
+        ]
+        .into_iter()
+        .map(|(id, on)| (id.to_string(), on))
+        .collect();
         Self { modules }
     }
 }

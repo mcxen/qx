@@ -10,13 +10,12 @@ import {
   type RecordingOptions,
 } from "./store";
 import { useStore } from "../../store";
-import { useEscBack } from "../../hooks/useEscBack";
 import { Select } from "../../components/ui";
 import GifPreview from "./GifPreview";
 import CaptureHistory from "./CaptureHistory";
 import CaptureToast from "./CaptureToast";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
-import { getQxShortcutPreset } from "../../utils/keyboard";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import BetaBadge from "../../components/BetaBadge";
 import { useT } from "../../i18n";
@@ -246,7 +245,6 @@ export default function ScreenRecorder() {
     reset();
   };
 
-  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
   const displayError = localError || error;
 
   const readyActions = useMemo<QxShellAction[]>(
@@ -297,18 +295,12 @@ export default function ScreenRecorder() {
     [status, t],
   );
 
-  const { onKeyDown: escKeyDown } = useEscBack({
-    launcher: () => {
-      if (isRecording) void handleStop();
-      reset();
-      setTab("launcher");
-    },
-  });
+  const showingPreview = Boolean(lastGifPath) && (status === "done" || status === "idle");
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    escKeyDown(e);
-    if (e.key === "Escape") return;
-
+  // Stepped Esc: stop recording / clear preview → leave to launcher.
+  // Host then continues: clear launcher query → hide panel.
+  // While finalizing (processing), leave is allowed — encode continues in Rust.
+  const handleModuleKeys = useCallback((e: React.KeyboardEvent) => {
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "a") {
       e.preventDefault();
       void beginAreaSelect();
@@ -358,7 +350,50 @@ export default function ScreenRecorder() {
       default:
         break;
     }
-  };
+  }, [beginAreaSelect, beginScreenshot, handleStop, history, isRecording, lastGifPath, setPreview, status]);
+
+  const leave = useCallback(() => {
+    reset();
+    setTab("launcher");
+  }, [reset, setTab]);
+
+  const shell = useQxModuleShell({
+    leave,
+    esc: {
+      inner: {
+        active: isRecording || showingPreview,
+        close: () => {
+          if (isRecording) {
+            void handleStop();
+            return;
+          }
+          reset();
+        },
+      },
+    },
+    onKeyDown: handleModuleKeys,
+    actionsLabel: t("common.actions", "Actions"),
+    island: {
+      label: isRecording || status === "processing"
+        ? t("screencap.recording", "Recording")
+        : showingPreview
+          ? t("screencap.ready", "Capture Ready")
+          : t("screencap.readyToRecord", "Ready to Capture"),
+      detail: isRecording || status === "processing"
+        ? formatTime(elapsedMs)
+        : showingPreview
+          ? lastGifPath?.split(/[\\/]/).pop()
+          : `${recordingOptions.outputFormat.toUpperCase()} · ${recordingOptions.fps} fps · ${delaySeconds > 0 ? `${delaySeconds}s` : t("screencap.delay.none", "No delay")}`,
+      tone: showingPreview
+        ? "success"
+        : displayError
+          ? "danger"
+          : isRecording
+            ? "danger"
+            : "neutral",
+    },
+    t,
+  });
 
   if (isRecording || status === "processing") {
     return (
@@ -370,7 +405,7 @@ export default function ScreenRecorder() {
             <BetaBadge />
           </div>
         }
-        onKeyDown={handleKeyDown}
+        onKeyDown={shell.onKeyDown}
         customIsland={(
           <RecordingTransport
             host="main"
@@ -381,28 +416,14 @@ export default function ScreenRecorder() {
             onStop={handleStop}
           />
         )}
-        escapeAction={{
-          label: "Esc",
-          kbd: "Esc",
-          onClick: () => {
-            if (isRecording) void handleStop();
-            else {
-              reset();
-              setTab("launcher");
-            }
-          },
-        }}
+        escapeAction={shell.escapeAction}
         primaryAction={{
           label: status === "processing" ? t("common.savingShort", "Saving") : t("common.stop", "Stop"),
           disabled: status === "processing",
           tone: status === "processing" ? "normal" : "danger",
           onClick: () => void handleStop(),
         }}
-        secondaryAction={
-          status === "processing"
-            ? undefined
-            : { label: t("common.actions", "Actions"), kbd: actionMenuShortcut }
-        }
+        secondaryAction={status === "processing" ? undefined : shell.secondaryAction}
         actionTitle={t("screencap.actions", "Recording Actions")}
         actions={recordingActions}
       >
@@ -456,8 +477,6 @@ export default function ScreenRecorder() {
     );
   }
 
-  const showingPreview = Boolean(lastGifPath) && (status === "done" || status === "idle");
-
   return (
     <QxShell
       title={t("screencap.title", "Screen Capture")}
@@ -471,7 +490,7 @@ export default function ScreenRecorder() {
           <BetaBadge />
         </div>
       }
-      onKeyDown={handleKeyDown}
+      onKeyDown={shell.onKeyDown}
       trailing={
         <>
           <button className="qx-command-button primary" onClick={() => void beginScreenshot()} type="button">
@@ -482,29 +501,14 @@ export default function ScreenRecorder() {
           </button>
         </>
       }
-      island={{
-        label: showingPreview
-          ? t("screencap.ready", "Capture Ready")
-          : t("screencap.readyToRecord", "Ready to Capture"),
-        detail: showingPreview
-          ? lastGifPath?.split(/[\\/]/).pop()
-          : `${recordingOptions.outputFormat.toUpperCase()} · ${recordingOptions.fps} fps · ${delaySeconds > 0 ? `${delaySeconds}s` : t("screencap.delay.none", "No delay")}`,
-        tone: showingPreview ? "success" : displayError ? "danger" : "neutral",
-      }}
-      escapeAction={{
-        label: "Esc",
-        kbd: "Esc",
-        onClick: () => {
-          reset();
-          setTab("launcher");
-        },
-      }}
+      island={shell.island}
+      escapeAction={shell.escapeAction}
       primaryAction={
         showingPreview
           ? { label: t("common.new", "New"), kbd: "Enter", tone: "primary", onClick: handleNewRecording }
           : { label: t("screencap.screenshot", "Screenshot"), kbd: "Enter", tone: "primary", onClick: () => void beginScreenshot() }
       }
-      secondaryAction={{ label: t("common.actions", "Actions"), kbd: actionMenuShortcut }}
+      secondaryAction={shell.secondaryAction}
       actionTitle={t("screencap.actions", "Capture Actions")}
       actions={showingPreview ? doneActions : readyActions}
     >
@@ -521,9 +525,10 @@ export default function ScreenRecorder() {
             flexDirection: "column",
             borderRight: "1px solid var(--qx-border-1)",
           }}
-          data-qx-region="screencap-history"
+          data-qx-region="screencap-list"
           data-qx-region-label={t("screencap.history.region", "Capture history")}
           data-qx-region-initial="true"
+          data-qx-region-scroll
           tabIndex={-1}
         >
           <CaptureHistory />
@@ -534,6 +539,7 @@ export default function ScreenRecorder() {
           style={{ minHeight: 0, overflow: "auto", position: "relative" }}
           data-qx-region="screencap-detail"
           data-qx-region-label={t("screencap.detail.region", "Capture detail")}
+          data-qx-region-scroll
           tabIndex={-1}
         >
           {toastPath && (

@@ -77,8 +77,9 @@ QxShell 的纵向结构高度不得因为窗口左右缩窄、文字变长、筛
 | 职责 | API / 机制 | 说明 |
 |---|---|---|
 | 可见 Esc | `escapeAction` | 左下角唯一返回入口；`variant="escape"` 只显示快捷键胶囊（通常 `Esc`） |
-| 键盘 Esc 级联 | `useEscBack` → `onKeyDown` | 处理 inner → query → launcher；命中后 `preventDefault` + `stopPropagation` |
-| Shell 最终兜底 | `QxShell` 内置 | 若模块 `onKeyDown` 未消费 Esc，则触发 `escapeAction.onClick` |
+| 键盘 Esc 级联 | `useEscBack` → `onKeyDown` / `stepBack` | 每按一次退一层：inner → query → leave module；命中后 `preventDefault` + `stopPropagation` |
+| Shell 最终兜底 | `QxShell` 内置 | 若模块 `onKeyDown` 未消费 Esc，则触发 `escapeAction.onClick`（应与 `stepBack` 同语义） |
+| Host 阶梯兜底 | `App.performHostEscape` + `moduleEscapeHost` | 焦点不在 Shell 内时仍生效：先 `tryModuleEscapeStep`（`useQxModuleShell` 注册的 `stepBack`，含 RSS 文章列表→源列表），再 leave module → 清空 launcher query → hide。模块已 `preventDefault` 时不二次步进。**禁止**非 launcher 时直接 `setTab("launcher")` 跳过模块内阶梯 |
 | 搜索 / trailing | `search` / `trailing` | 搜索在 Top Bar 主列；筛选与少量上下文操作在 trailing |
 | 状态 | `island` / `customIsland` | 轻量任务与位置信息，见 Bottom Island |
 | 主动作 | `primaryAction` / `secondaryAction` / `actions` | 当前上下文真实可执行动作 |
@@ -94,7 +95,7 @@ QxShell 的纵向结构高度不得因为窗口左右缩窄、文字变长、筛
 
 ```tsx
 const goBack = () => setTab("launcher"); // 或返回上一级视图
-const { onKeyDown } = useEscBack({
+const { onKeyDown, stepBack } = useEscBack({
   inner: { active: showDetail, close: () => setShowDetail(false) },
   query: { active: !!localQuery, clear: () => setLocalQuery("") },
   launcher: goBack,
@@ -104,7 +105,8 @@ return (
   <QxShell
     title="Module"
     search={/* search slot */}
-    escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
+    // 底栏 Esc 与键盘同一阶梯（stepBack），不要写成永远 jump 到 launcher
+    escapeAction={{ label: "Esc", kbd: "Esc", onClick: stepBack }}
     onKeyDown={onKeyDown}
     island={{ label: "Module", detail: "…" }}
     primaryAction={{ label: "Open", kbd: "↵", onClick: openSelected }}
@@ -113,6 +115,16 @@ return (
   </QxShell>
 );
 ```
+
+整窗 Esc 阶梯（Qx 前台时，每次 Esc 只退一层，直到隐藏）：
+
+1. 模块 inner（详情 / 预览 / 录制中停止…）
+2. 模块 local query
+3. 离开模块 → launcher（`setTab("launcher")` / 上一级视图）
+4. 清空 launcher 搜索词
+5. `floating_hide_restore_focus` 隐藏主界面
+
+Host 窗口 `keydown` 兜底覆盖第 3–5 步；第 1–2 步由模块 `useEscBack` 在 Shell 焦点链上完成。
 
 禁止：
 
@@ -345,7 +357,7 @@ Context Panel：
 
 - 只渲染 `escapeAction`（或兼容路径下由 `onBack` 推导的 fallback），通过 `ShellActionButton variant="escape"`。
 - escape 变体**只显示快捷键**（`kbd`，通常为 `Esc`），不重复显示模块名或图标。
-- `escapeAction.onClick` 必须与 `useEscBack` 的最终一级（`launcher` / 上一级视图）语义一致：
+- `escapeAction.onClick` 应与 `useEscBack.stepBack` 一致（每按一次退一层）。无 inner/query 时等价于最终 leave：
   - 模块根视图 → `setTab("launcher")` 或关闭 Settings 等。
   - 子视图（如 QxAI chat/settings、RSS detail）→ 回到模块内上一级列表。
   - 录制等临时态可先停任务 / 丢弃草稿，再在级联下一层离开。
@@ -488,6 +500,7 @@ Launcher：
 - Search 是默认键盘归宿：除文本输入、编辑器、IME 组合输入或打开的 Dialog/Menu/Listbox 外，普通点击结束后焦点回到当前 Shell 搜索框；焦点意外落在非编辑控件时，首个可打印字符或删除键必须转交 Launcher 搜索且不能丢字。
 - 查询输入与结果发布解耦：输入先绘制，约 45ms 静默窗口后再启动 latest-wins provider；旧请求立即失效，渐进批次合并后避开输入帧提交，排序 Worker 常驻且只保留最新等待任务。
 - Esc 级联（根视图）：有搜索文字时 **清空 query**（可继续输入并用 Enter 打开结果）；query 已空时再 Esc 才隐藏窗口（host escape）。
+- 从任意模块回到 launcher 后，继续 Esc 走同一 launcher 阶梯，最终隐藏 Qx；不要要求用户先点进搜索框。
 - 有搜索文字时底栏 Esc 清空；无文字时同一 Esc 动作隐藏 Launcher。可见动作与键盘行为必须一致，不得渲染无 `onClick` 的禁用式 Esc 占位。
 - 空闲 Home Island 由 `resolveHomeIsland` 解析；搜索中 / 有结果 / 插件 status 优先占用 shell island。
 
@@ -511,8 +524,9 @@ RSS：
 
 V2EX / Weather / DevTxt / Screen Capture / Macro / Plugin Host：
 
-- 统一 `escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}`。
-- 录制类模块：Esc 可先停止录制或丢弃草稿，再在下一层离开；不要静默无出口。
+- 统一 `escapeAction={{ label: "Esc", kbd: "Esc", onClick: stepBack }}`（或 `useQxModuleShell` 的 `shell.escapeAction`）。
+- 录制类模块：Esc 可先停止录制或丢弃草稿 / 清预览，再在下一层离开；不要静默无出口。
+- Screen Capture 无真实搜索框时焦点常落在 body：必须依赖 host Esc 兜底 leave → hide，不能只靠 Shell 内 keydown。
 
 Screen Capture：
 
@@ -730,6 +744,36 @@ search={
 - 业务逻辑（改选中、拉数据）留在父组件 `onChange`；不要再手写三层 div/input。
 - Launcher 主搜索仍用 `SearchBar`（召唤聚焦 / store），但其内部已复用 `QxModuleSearch` 同一套 chrome。
 - 顶栏若只是标题（Weather / Macro），不要硬塞假搜索框。
+
+**左列表 + 中间内容（master–detail）** 统一用 `useQxMasterDetail`（`src/hooks/useQxMasterDetail.ts`）：
+
+| 区域 | id 约定 | 焦点内按键 |
+|------|---------|------------|
+| 列表 | `{module}-list` | ↑↓ / Page / Home / End → 选中（`navigation.regionId`） |
+| 内容 | `{module}-detail` | ↑↓ / Page / Space → **滚动正文**（`data-qx-region-scroll`） |
+| 动作 | `{module}-actions` | 可选；←→ 与列表/内容切换 |
+
+交互约定：
+
+1. **← / →** 在可见 region 间移动焦点（Shell 已实现）。
+2. 列表上 **Enter** / `navigation.onOpen` 打开内容并 `focusDetail`。
+3. 内容为空时 `aria-hidden="true"`，←→ 跳过该 region。
+4. 打开后把 `data-qx-region-initial` 切到 detail；关闭后回到 list。
+5. 列表选中外观继续用 `useQxListSelection`；**禁止**在内容区仍用 ↑↓ 切列表。
+
+参考：`V2exPanel`、`ArticleList`（RSS）、`DevTxtTool`。
+
+**模块壳 chrome** 统一用 `useQxModuleShell`（`src/hooks/useQxModuleShell.ts`）：
+
+| 输出 | 用途 |
+|------|------|
+| `escapeAction` | 左下 Esc（`label/kbd: Esc`，`onClick: leave`） |
+| `onKeyDown` | Esc 级联 + 模块附加键 |
+| `island` | 来自 `island` 或 `islandState`（loading → error → idle） |
+| `secondaryAction` | 右下 Actions 菜单（可关） |
+
+内置与 **扩展 PluginHost** 共用。纯函数 `buildModuleIsland` / `qxEscapeAction` 可供非 React 适配层调用。  
+模块仍自管 `primaryAction` / `actions` / `navigation` / 内容区。
 
 标准映射：
 

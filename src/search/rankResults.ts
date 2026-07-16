@@ -5,7 +5,8 @@
  * - Relevance first (exact > prefix > word-prefix > contains).
  * - Short queries (length ≤ SHORT_QUERY_MAX) never match via mid-string contains
  *   (fixes `ip` ⊂ `clipboard` ranking above `iPhone…`).
- * - Same tier: shorter display name, then localeCompare (zh-aware).
+ * - Same tier: kind → clickCount → file type (office docs before source/logs)
+ *   → shorter display name → localeCompare (zh-aware).
  * - Empty query: caller must not use this (home list uses pin sort).
  */
 
@@ -163,6 +164,130 @@ function kindBias(kind: AppEntry["kind"] | undefined): number {
   }
 }
 
+/**
+ * Within the same match tier / kind, prefer office docs over source/logs.
+ * Lower = better. Non-files return a neutral mid bucket so they don't shift.
+ * Mirrors `document_type_rank` in `src-tauri/src/file_search.rs`.
+ */
+export function fileTypeBias(entry: AppEntry): number {
+  if (entry.kind !== "file") return 20;
+  const base = pathBasename(entry.path || entry.name || "");
+  const dot = base.lastIndexOf(".");
+  if (dot < 0 || dot === base.length - 1) return 28;
+  const ext = base.slice(dot + 1).toLowerCase();
+  switch (ext) {
+    case "pdf":
+      return 0;
+    case "doc":
+    case "docx":
+    case "dot":
+    case "dotx":
+    case "rtf":
+    case "odt":
+    case "pages":
+      return 1;
+    case "xls":
+    case "xlsx":
+    case "xlsm":
+    case "xlsb":
+    case "csv":
+    case "tsv":
+    case "ods":
+    case "numbers":
+      return 2;
+    case "ppt":
+    case "pptx":
+    case "pps":
+    case "ppsx":
+    case "key":
+    case "odp":
+      return 3;
+    case "txt":
+    case "md":
+    case "markdown":
+    case "text":
+      return 10;
+    case "png":
+    case "jpg":
+    case "jpeg":
+    case "gif":
+    case "webp":
+    case "heic":
+    case "heif":
+    case "tif":
+    case "tiff":
+    case "bmp":
+    case "svg":
+      return 12;
+    case "mp4":
+    case "mov":
+    case "m4v":
+    case "mkv":
+    case "avi":
+    case "webm":
+    case "mp3":
+    case "m4a":
+    case "wav":
+    case "aac":
+    case "flac":
+      return 14;
+    case "zip":
+    case "rar":
+    case "7z":
+    case "tar":
+    case "gz":
+    case "tgz":
+    case "dmg":
+    case "pkg":
+      return 18;
+    case "rs":
+    case "ts":
+    case "tsx":
+    case "js":
+    case "jsx":
+    case "mjs":
+    case "cjs":
+    case "py":
+    case "go":
+    case "java":
+    case "kt":
+    case "swift":
+    case "c":
+    case "cc":
+    case "cpp":
+    case "cxx":
+    case "h":
+    case "hpp":
+    case "m":
+    case "mm":
+    case "cs":
+    case "rb":
+    case "php":
+    case "vue":
+    case "svelte":
+    case "astro":
+    case "json":
+    case "jsonc":
+    case "yml":
+    case "yaml":
+    case "toml":
+    case "lock":
+    case "map":
+    case "wasm":
+    case "o":
+    case "a":
+    case "so":
+    case "dylib":
+    case "class":
+    case "pyc":
+    case "pyo":
+    case "log":
+      return 40;
+    default:
+      return 25;
+  }
+}
+
 function entryDisplayName(entry: AppEntry): string {
   return (entry.display_name || entry.name || "").trim();
 }
@@ -196,8 +321,9 @@ export function scoreEntryTier(entry: AppEntry, query: string): MatchTierValue {
 /**
  * Global sort for non-empty search. Stable, pure, no pin/hide logic.
  *
- * Order: match tier → kind bias → **usage (clickCount desc)** → name length → locale name.
- * Usage never outranks a stronger text match.
+ * Order: match tier → kind bias → **usage (clickCount desc)** → file type
+ * (office before source) → name length → locale name.
+ * Usage never outranks a stronger text match; type bias never outranks usage.
  */
 export function rankSearchResults(entries: AppEntry[], query: string): AppEntry[] {
   const q = query.trim();
@@ -215,6 +341,7 @@ export function rankSearchResults(entries: AppEntry[], query: string): AppEntry[
         tier: scoreEntryTier(entry, q),
         kind: kindBias(entry.kind),
         clicks,
+        fileType: fileTypeBias(entry),
         len: name.length || 999,
         nameKey: name.toLowerCase(),
       };
@@ -223,6 +350,7 @@ export function rankSearchResults(entries: AppEntry[], query: string): AppEntry[
       if (a.tier !== b.tier) return a.tier - b.tier;
       if (a.kind !== b.kind) return a.kind - b.kind;
       if (a.clicks !== b.clicks) return b.clicks - a.clicks;
+      if (a.fileType !== b.fileType) return a.fileType - b.fileType;
       if (a.len !== b.len) return a.len - b.len;
       const byName = a.nameKey.localeCompare(b.nameKey, "zh-Hans", { sensitivity: "base" });
       if (byName !== 0) return byName;

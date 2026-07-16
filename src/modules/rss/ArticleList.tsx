@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
+import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { useRssStore, type RssArticle } from "./store";
 import { classifyArticleTime, formatDate, sanitizeHtml } from "./article-utils";
-import { useEscBack } from "../../hooks/useEscBack";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
+import {
+  qxMasterDetailIds,
+  qxMasterDetailNavigation,
+  qxRegionProps,
+  useQxMasterDetailFocus,
+} from "../../hooks/useQxMasterDetail";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { shouldIgnoreBareShortcut } from "../../utils/keyboard";
 import { useSettingsStore } from "../settings/store";
 import ImageLightbox from "./ImageLightbox";
@@ -58,6 +64,7 @@ const SECTION_LABELS: Record<Section["key"], string> = {
 
 const RSS_LIST_WIDTH_KEY = "qx:rss:list-width";
 const DEFAULT_RSS_LIST_WIDTH = 340;
+const MD = qxMasterDetailIds("rss");
 
 function clampWidth(value: number, min: number, max: number): number {
   return Math.round(Math.max(min, Math.min(max, value)));
@@ -103,6 +110,7 @@ export default function ArticleList() {
   const splitRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const { focusList, focusDetail } = useQxMasterDetailFocus(shellRef, MD);
   const rss = useSettingsStore((s) => s.settings.rss);
   const { bottom_island_mode, image_display_mode, image_fixed_width, article_font_size, article_font_family } = rss;
 
@@ -284,12 +292,6 @@ export default function ArticleList() {
     setScrollPercent(0);
   }, []);
 
-  const focusRegion = useCallback((id: string) => {
-    shellRef.current
-      ?.querySelector<HTMLElement>(`[data-qx-region="${id}"]`)
-      ?.focus({ preventScroll: true });
-  }, []);
-
   const openArticleAtTop = useCallback(
     async (id: number, focusReader = false) => {
       const index = articles.findIndex((article) => article.id === id);
@@ -299,14 +301,14 @@ export default function ArticleList() {
       resetArticleScroll();
       window.requestAnimationFrame(() => {
         resetArticleScroll();
-        if (focusReader) focusRegion("rss-reader");
+        if (focusReader) focusDetail();
         window.requestAnimationFrame(() => {
           resetArticleScroll();
-          if (focusReader) focusRegion("rss-reader");
+          if (focusReader) focusDetail();
         });
       });
     },
-    [articles, focusRegion, openArticle, resetArticleScroll, setSelectedIndex],
+    [articles, focusDetail, openArticle, resetArticleScroll, setSelectedIndex],
   );
 
   useEffect(() => {
@@ -344,35 +346,12 @@ export default function ArticleList() {
     if (index >= 0 && index !== selectedIndex) setSelectedIndex(index);
   }, [articles, currentArticle, selectedIndex, setSelectedIndex]);
 
-  const { onKeyDown: escKeyDown } = useEscBack({
-    inner: {
-      active: currentArticle !== null || lightbox !== null,
-      close: () => {
-        if (lightbox) {
-          setLightbox(null);
-          return;
-        }
-        goBack();
-      },
-    },
-    query: {
-      active: localQuery.length > 0,
-      clear: () => {
-        setLocalQuery("");
-        setSearch("");
-      },
-    },
-    launcher: goBack,
-  });
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    escKeyDown(e);
-    if (e.key === "Escape") return;
+  const handleModuleKeys = useCallback((e: React.KeyboardEvent) => {
     const ignoreBare = shouldIgnoreBareShortcut(e.nativeEvent);
     const region = e.target instanceof Element
       ? e.target.closest<HTMLElement>("[data-qx-region]")?.dataset.qxRegion
       : undefined;
-    // ↑↓ / Page: QxShell.navigation (regionId rss-list) + useQxListSelection.
+    // ↑↓ / Page: QxShell.navigation (list region) + useQxListSelection.
     // j/k remain article-reader shortcuts (next/prev while reading).
     switch (e.key) {
       case "j":
@@ -380,24 +359,77 @@ export default function ArticleList() {
         e.preventDefault();
         if (currentArticle && next) void openArticleAtTop(next.id);
         else setSelectedIndex(articles.length > 0 ? Math.min(selectedIndex + 1, articles.length - 1) : 0);
-        focusRegion("rss-list");
+        focusList();
         break;
       case "k":
         if (ignoreBare || e.metaKey || e.ctrlKey) return;
         e.preventDefault();
         if (currentArticle && prev) void openArticleAtTop(prev.id);
         else setSelectedIndex(Math.max(selectedIndex - 1, 0));
-        focusRegion("rss-list");
+        focusList();
         break;
       case "Enter": {
-        if (region === "rss-reader") return;
+        if (region === MD.detail) return;
         e.preventDefault();
         const a = articles[selectedIndex];
         if (a) void openArticleAtTop(a.id, true);
         break;
       }
     }
-  };
+  }, [
+    articles,
+    currentArticle,
+    focusList,
+    next,
+    openArticleAtTop,
+    prev,
+    selectedIndex,
+    setSelectedIndex,
+  ]);
+
+  const shell = useQxModuleShell({
+    leave: goBack,
+    esc: {
+      inner: {
+        active: currentArticle !== null || lightbox !== null,
+        close: () => {
+          if (lightbox) {
+            setLightbox(null);
+            return;
+          }
+          goBack();
+        },
+      },
+      query: {
+        active: localQuery.length > 0,
+        clear: () => {
+          setLocalQuery("");
+          setSearch("");
+        },
+      },
+    },
+    onKeyDown: handleModuleKeys,
+    island: refreshingFeedId != null
+      ? {
+          label: "RSS Syncing",
+          detail: feed?.title,
+          progress: 55,
+          actionLabel: "Pause",
+        }
+      : currentArticle
+        ? {
+            label: "Reading RSS",
+            detail:
+              bottom_island_mode === "index"
+                ? `${currentIdx >= 0 ? currentIdx + 1 : 0}/${readingArticles.length || 1} articles`
+                : `${scrollPercent}%`,
+            progress: bottom_island_mode === "index" ? articleProgress : scrollPercent,
+          }
+        : {
+            label: feed?.title || "RSS Articles",
+            detail: `${articles.length} articles · ${unreadCount} unread · ${filter}`,
+          },
+  });
 
   const focusArticle = currentArticle ?? selectedArticle;
   const actions = useMemo<QxShellAction[]>(() => {
@@ -477,27 +509,6 @@ export default function ArticleList() {
     return list;
   }, [currentArticle, focusArticle, goBack, loadingOriginal, markRead, next, openArticleAtTop, originalContent, prev, refreshFeed, selectedFeedId, toggleStar]);
 
-  const island: BottomIslandContent = refreshingFeedId != null
-    ? {
-        label: "RSS Syncing",
-        detail: feed?.title,
-        progress: 55,
-        actionLabel: "Pause",
-      }
-    : currentArticle
-    ? {
-        label: "Reading RSS",
-        detail:
-          bottom_island_mode === "index"
-            ? `${currentIdx >= 0 ? currentIdx + 1 : 0}/${readingArticles.length || 1} articles`
-            : `${scrollPercent}%`,
-        progress: bottom_island_mode === "index" ? articleProgress : scrollPercent,
-      }
-    : {
-        label: feed?.title || "RSS Articles",
-        detail: `${articles.length} articles · ${unreadCount} unread · ${filter}`,
-      };
-
   const isReading = Boolean(currentArticle);
 
   return (
@@ -508,15 +519,12 @@ export default function ArticleList() {
       visual={isReading ? "glass" : "solid"}
       className={`qx-content-shell qx-rss-shell${isReading ? " is-reading" : ""}`}
       style={shellStyle}
-      onKeyDown={onKeyDown}
-      navigation={{
+      onKeyDown={shell.onKeyDown}
+      navigation={qxMasterDetailNavigation({
+        ids: MD,
         index: selectedIndex,
         count: articles.length,
-        regionId: "rss-list",
-        onChange: (index) => {
-          setSelectedIndex(index);
-          focusRegion("rss-list");
-        },
+        onChange: setSelectedIndex,
         onOpen: () => {
           const a = articles[selectedIndex];
           if (a) void openArticleAtTop(a.id, true);
@@ -525,8 +533,10 @@ export default function ArticleList() {
           if (currentArticle) goBack();
         },
         pageSize: 8,
-      }}
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
+        focusList,
+        focusDetail,
+      })}
+      escapeAction={shell.escapeAction}
       search={
         <QxModuleSearch
           value={localQuery}
@@ -551,10 +561,7 @@ export default function ArticleList() {
       context={
         <div
           className="qx-action-panel"
-          data-qx-region="rss-actions"
-          data-qx-region-label="Article actions"
-          data-qx-region-scroll
-          tabIndex={-1}
+          {...qxRegionProps(MD.actions, { label: "Article actions", scroll: true })}
         >
           <div className="qx-action-title">Article Actions</div>
           {actions.map((action, index) => (
@@ -571,7 +578,7 @@ export default function ArticleList() {
           ))}
         </div>
       }
-      island={island}
+      island={shell.island}
       primaryAction={{
         label: currentArticle?.link ? "Open Original" : selectedArticle ? "Read Article" : "Back",
         kbd: currentArticle?.link ? "O" : selectedArticle ? "↵" : "Esc",
@@ -582,7 +589,7 @@ export default function ArticleList() {
           else goBack();
         },
       }}
-      secondaryAction={{ label: "Actions", kbd: "⌘K" }}
+      secondaryAction={shell.secondaryAction}
       actionTitle="Article Actions"
       actions={actions}
     >
@@ -595,11 +602,11 @@ export default function ArticleList() {
           className="qx-content-list qx-plugin-list"
           role="listbox"
           aria-label="Article list"
-          data-qx-region="rss-list"
-          data-qx-region-label="Article list"
-          data-qx-region-initial={isReading ? undefined : "true"}
-          data-qx-region-scroll
-          tabIndex={-1}
+          {...qxRegionProps(MD.list, {
+            label: "Article list",
+            initial: !isReading,
+            scroll: true,
+          })}
         >
           {sections.map((section) => (
             <div key={section.key}>
@@ -670,10 +677,11 @@ export default function ArticleList() {
 
         <article
           className="qx-content-detail qx-plugin-detail qx-rss-detail-content qx-rss-reader"
-          data-qx-region="rss-reader"
-          data-qx-region-label="Article reader"
-          data-qx-region-initial={isReading ? "true" : undefined}
-          tabIndex={-1}
+          {...qxRegionProps(MD.detail, {
+            label: "Article reader",
+            initial: isReading,
+          })}
+          aria-hidden={!isReading}
         >
           {currentArticle ? (
             <>

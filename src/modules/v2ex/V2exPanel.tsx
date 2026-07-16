@@ -1,17 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
+import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { LoadingLabel, SegmentedControl } from "../../components/ui";
-import { useEscBack } from "../../hooks/useEscBack";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
+import {
+  qxMasterDetailIds,
+  qxMasterDetailNavigation,
+  qxRegionProps,
+  useQxMasterDetailFocus,
+} from "../../hooks/useQxMasterDetail";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useStore } from "../../store";
 import { type V2exMode, type V2exReply, type V2exTopic, formatTime } from "./types";
 import { sanitizeTopicHtml } from "./V2exDetail";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import BetaBadge from "../../components/BetaBadge";
+
+const MD = qxMasterDetailIds("v2ex");
 
 export default function V2exPanel() {
   const setTab = useStore((state) => state.setTab);
@@ -26,7 +34,9 @@ export default function V2exPanel() {
   const [repliesLoading, setRepliesLoading] = useState(false);
   const [repliesError, setRepliesError] = useState("");
   const topicsRequestId = useRef(0);
+  const shellRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const { focusList, focusDetail } = useQxMasterDetailFocus(shellRef, MD);
   const { getItemProps } = useQxListSelection({
     listRef,
     index: selectedIndex,
@@ -107,8 +117,8 @@ export default function V2exPanel() {
     return () => { cancelled = true; };
   }, [viewingTopic?.id]);
 
-  const goBack = () => setTab("launcher");
-  const openTopicAtIndex = (index: number) => {
+  const goBack = useCallback(() => setTab("launcher"), [setTab]);
+  const openTopicAtIndex = (index: number, focusReader = false) => {
     if (topics.length === 0) {
       setSelectedIndex(0);
       return;
@@ -116,7 +126,12 @@ export default function V2exPanel() {
     const nextIndex = Math.max(0, Math.min(index, topics.length - 1));
     const topic = topics[nextIndex];
     setSelectedIndex(nextIndex);
-    if (topic) setViewingTopic(topic);
+    if (topic) {
+      setViewingTopic(topic);
+      if (focusReader) {
+        window.requestAnimationFrame(() => focusDetail());
+      }
+    }
   };
   const detailTopic = viewingTopic;
   const contextTopic = detailTopic ?? selectedTopic;
@@ -125,26 +140,18 @@ export default function V2exPanel() {
     [detailTopic],
   );
 
-  const { onKeyDown: escKeyDown } = useEscBack({
-    inner: { active: viewingTopic !== null, close: () => setViewingTopic(null) },
-    query: { active: query.length > 0, clear: () => setQuery("") },
-    launcher: goBack,
-  });
-
-  const onKeyDown = (event: React.KeyboardEvent) => {
-    escKeyDown(event);
-    if (event.key === "Escape") return;
+  const handleModuleKeys = useCallback((event: React.KeyboardEvent) => {
     // ↑↓ / Page / Home / End: QxShell.navigation + useQxListSelection (paint/scroll).
     if (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.altKey) {
       event.preventDefault();
-      if (selectedTopic) openTopicAtIndex(selectedIndex);
+      if (selectedTopic) openTopicAtIndex(selectedIndex, true);
       return;
     }
     if ((event.key === "r" || event.key === "R") && !event.metaKey && !event.ctrlKey && !event.altKey) {
       event.preventDefault();
       void loadTopics(mode, query);
     }
-  };
+  }, [mode, query, selectedIndex, selectedTopic]);
 
   const actions = useMemo<QxShellAction[]>(() => [
     {
@@ -175,41 +182,47 @@ export default function V2exPanel() {
     },
   ], [detailTopic, mode, query, selectedIndex, selectedTopic]);
 
-  const island: BottomIslandContent = loading
-    ? {
-        label: "V2EX",
-        detail: query.trim() ? "Searching" : "Loading topics",
-      }
-    : error
-    ? {
-        label: "V2EX Error",
-        detail: error,
-        tone: "danger",
-      }
-    : {
-        label: "V2EX",
-        detail: `${topics.length} topics · ${mode}`,
-      };
+  const shell = useQxModuleShell({
+    leave: goBack,
+    esc: {
+      inner: { active: viewingTopic !== null, close: () => setViewingTopic(null) },
+      query: { active: query.length > 0, clear: () => setQuery("") },
+    },
+    onKeyDown: handleModuleKeys,
+    islandState: {
+      title: "V2EX",
+      loading,
+      loadingDetail: query.trim() ? "Searching" : "Loading topics",
+      error: error || null,
+      detail: `${topics.length} topics · ${mode}`,
+    },
+  });
+
+  const hasDetail = Boolean(detailTopic);
 
   return (
     <QxShell
+      ref={shellRef}
       title="V2EX"
       className="v2ex-shell qx-content-shell"
-      onKeyDown={onKeyDown}
-      navigation={{
+      onKeyDown={shell.onKeyDown}
+      navigation={qxMasterDetailNavigation({
+        ids: MD,
         index: selectedIndex,
         count: topics.length,
-        onChange: (index) => {
-          if (viewingTopic) openTopicAtIndex(index);
-          else setSelectedIndex(index);
-        },
+        // List keys only when list region is active — detail uses content scroll.
+        onChange: (index) => setSelectedIndex(index),
         onOpen: () => {
-          if (selectedTopic) openTopicAtIndex(selectedIndex);
+          if (selectedTopic) openTopicAtIndex(selectedIndex, true);
         },
-        onClose: () => setViewingTopic(null),
+        onClose: () => {
+          setViewingTopic(null);
+        },
         pageSize: 8,
-      }}
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
+        focusList,
+        focusDetail,
+      })}
+      escapeAction={shell.escapeAction}
       search={
         <QxModuleSearch
           value={query}
@@ -237,7 +250,10 @@ export default function V2exPanel() {
         </>
       }
       context={
-        <aside className="qx-action-panel">
+        <aside
+          className="qx-action-panel"
+          {...qxRegionProps(MD.actions, { label: "Topic actions", scroll: true })}
+        >
           <div className="qx-action-title">Topic Actions</div>
           <button
             className="qx-action-item"
@@ -275,7 +291,7 @@ export default function V2exPanel() {
           </div>
         </aside>
       }
-      island={island}
+      island={shell.island}
       primaryAction={{
         label: detailTopic?.url ? "Open Topic" : selectedTopic ? "View Topic" : "Open",
         kbd: detailTopic?.url ? "O" : "Enter",
@@ -286,12 +302,22 @@ export default function V2exPanel() {
           else if (selectedTopic) openTopicAtIndex(selectedIndex);
         },
       }}
-      secondaryAction={{ label: "Actions", kbd: "CmdOrCtrl+K" }}
+      secondaryAction={shell.secondaryAction}
       actionTitle="V2EX Actions"
       actions={actions}
     >
-      <div className={`qx-content-split${detailTopic ? " has-detail" : ""}`}>
-        <div ref={listRef} className="qx-content-list qx-plugin-list" role="listbox" aria-label="V2EX topics">
+      <div className={`qx-content-split${hasDetail ? " has-detail" : ""}`}>
+        <div
+          ref={listRef}
+          className="qx-content-list qx-plugin-list"
+          role="listbox"
+          aria-label="V2EX topics"
+          {...qxRegionProps(MD.list, {
+            label: "Topic list",
+            initial: !hasDetail,
+            scroll: true,
+          })}
+        >
           <div className="qx-section-header">
             <span style={{ flex: 1 }}>{query.trim() ? "Search Results" : mode === "hot" ? "Hot Topics" : "Latest Topics"}</span>
             <span>{loading ? "..." : topics.length}</span>
@@ -300,7 +326,7 @@ export default function V2exPanel() {
             <button
               key={topic.id}
               {...getItemProps(index, { className: "v2ex-topic-row" })}
-              onClick={() => openTopicAtIndex(index)}
+              onClick={() => openTopicAtIndex(index, false)}
               type="button"
             >
               <span className="qx-list-icon">{topic.node ? topic.node.slice(0, 1).toUpperCase() : "V"}</span>
@@ -326,7 +352,14 @@ export default function V2exPanel() {
           ) : null}
         </div>
 
-        <article className="qx-content-detail qx-plugin-detail qx-rss-detail-content">
+        <article
+          className="qx-content-detail qx-plugin-detail qx-rss-detail-content"
+          {...qxRegionProps(MD.detail, {
+            label: "Topic reader",
+            initial: hasDetail,
+          })}
+          aria-hidden={!hasDetail}
+        >
           {detailTopic ? (
             <>
               <div className="qx-detail-header">
@@ -338,7 +371,7 @@ export default function V2exPanel() {
                 </div>
                 <span className="qx-badge">{detailTopic.replies}</span>
               </div>
-              <div className="qx-content-detail-scroll">
+              <div className="qx-content-detail-scroll" data-qx-region-scroll>
                 <h1 className="qx-content-detail-heading">{detailTopic.title}</h1>
                 <div className="qx-content-detail-meta">
                   <span>{detailTopic.node || "V2EX"}</span>

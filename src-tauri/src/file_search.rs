@@ -90,6 +90,43 @@ fn is_hidden_path(path: &Path) -> bool {
     })
 }
 
+/// Lower = better. Prefer everyday office docs over code/junk when name match quality is equal.
+///
+/// Cardinal/Everything return many leaf-name hits; without a type prior, `.ts` / logs /
+/// build artifacts crowd out PDF / Word / Excel that users actually open.
+fn document_type_rank(path: &Path) -> u8 {
+    let Some(ext) = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .map(|value| value.to_ascii_lowercase())
+    else {
+        // No extension: treat as ordinary file (after office, before source).
+        return 28;
+    };
+    match ext.as_str() {
+        // Primary office / productivity documents
+        "pdf" => 0,
+        "doc" | "docx" | "dot" | "dotx" | "rtf" | "odt" | "pages" => 1,
+        "xls" | "xlsx" | "xlsm" | "xlsb" | "csv" | "tsv" | "ods" | "numbers" => 2,
+        "ppt" | "pptx" | "pps" | "ppsx" | "key" | "odp" => 3,
+        // Secondary user documents
+        "txt" | "md" | "markdown" | "text" => 10,
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "heic" | "heif" | "tif" | "tiff" | "bmp" | "svg" => {
+            12
+        }
+        "mp4" | "mov" | "m4v" | "mkv" | "avi" | "webm" | "mp3" | "m4a" | "wav" | "aac" | "flac" => 14,
+        // Packages / archives users still open from search
+        "zip" | "rar" | "7z" | "tar" | "gz" | "tgz" | "dmg" | "pkg" => 18,
+        // Source / build noise — demote hard
+        "rs" | "ts" | "tsx" | "js" | "jsx" | "mjs" | "cjs" | "py" | "go" | "java" | "kt"
+        | "swift" | "c" | "cc" | "cpp" | "cxx" | "h" | "hpp" | "m" | "mm" | "cs" | "rb" | "php"
+        | "vue" | "svelte" | "astro" | "json" | "jsonc" | "yml" | "yaml" | "toml" | "lock"
+        | "map" | "wasm" | "o" | "a" | "so" | "dylib" | "class" | "pyc" | "pyo" | "log" => 40,
+        // Everything else
+        _ => 25,
+    }
+}
+
 fn search_tokens(value: &str) -> Vec<String> {
     value
         .to_lowercase()
@@ -227,6 +264,32 @@ fn relevance_rank(path: &Path, query: &str) -> u16 {
     }
 }
 
+/// Composite sort key shared by Cardinal / mdfind / Everything ranking paths.
+/// Lower tuple = higher in the list. Name match still dominates type bias.
+fn file_sort_key(
+    path: &Path,
+    query: &str,
+    is_dir: bool,
+    modified: u64,
+    strategy_rank: usize,
+) -> (u8, u16, u8, u8, std::cmp::Reverse<u64>, usize, usize) {
+    (
+        is_hidden_path(path) as u8,
+        relevance_rank(path, query),
+        // Folders after files of the same name quality.
+        is_dir as u8,
+        // Office docs before code/logs when the leaf-name match is equal.
+        if is_dir {
+            50
+        } else {
+            document_type_rank(path)
+        },
+        std::cmp::Reverse(modified),
+        strategy_rank,
+        path.as_os_str().len(),
+    )
+}
+
 #[cfg(target_os = "windows")]
 fn resource_bin(name: &str) -> Option<PathBuf> {
     let dir = RESOURCE_DIR.get()?;
@@ -243,7 +306,6 @@ mod platform {
     use super::*;
     use search_cache::SearchCache;
     use search_cancel::CancellationToken;
-    use std::cmp::Reverse;
     use std::collections::HashMap;
     use std::sync::atomic::AtomicBool;
 
@@ -372,14 +434,7 @@ mod platform {
             .filter(|(path, _)| super::name_matches_query(path, query))
             .collect::<Vec<_>>();
         ranked.sort_by_key(|(path, (is_dir, modified, strategy_rank))| {
-            (
-                super::is_hidden_path(path) as u8,
-                super::relevance_rank(path, query),
-                *is_dir as u8,
-                Reverse(*modified),
-                *strategy_rank,
-                path.as_os_str().len(),
-            )
+            super::file_sort_key(path, query, *is_dir, *modified, *strategy_rank)
         });
         ranked
             .into_iter()
@@ -404,11 +459,8 @@ mod platform {
         let mut entries = by_path.into_values().collect::<Vec<_>>();
         entries.sort_by_key(|entry| {
             let path = PathBuf::from(&entry.path);
-            (
-                super::is_hidden_path(&path) as u8,
-                super::relevance_rank(&path, query),
-                path.as_os_str().len(),
-            )
+            let is_dir = entry.kind == "folder";
+            super::file_sort_key(&path, query, is_dir, 0, 0)
         });
         entries.into_iter().take(limit).collect()
     }
@@ -507,11 +559,8 @@ mod platform {
             .collect();
         entries.sort_by_key(|entry| {
             let path = PathBuf::from(&entry.path);
-            (
-                super::is_hidden_path(&path) as u8,
-                super::relevance_rank(&path, query),
-                path.as_os_str().len(),
-            )
+            let is_dir = entry.kind == "folder";
+            super::file_sort_key(&path, query, is_dir, 0, 0)
         });
         entries.into_iter().take(limit).collect()
     }
@@ -820,12 +869,8 @@ mod platform {
             .collect::<Vec<_>>();
         ranked.sort_by_key(|(path, strategy_rank)| {
             let path_buf = PathBuf::from(path);
-            (
-                super::is_hidden_path(&path_buf) as u8,
-                super::relevance_rank(&path_buf, query),
-                *strategy_rank,
-                path_buf.as_os_str().len(),
-            )
+            let is_dir = path_buf.is_dir();
+            super::file_sort_key(&path_buf, query, is_dir, 0, *strategy_rank)
         });
 
         ranked
@@ -942,7 +987,10 @@ use platform::{init_platform, search_platform};
 
 #[cfg(test)]
 mod tests {
-    use super::{is_hidden_path, name_matches_query, normalize_query, relevance_rank};
+    use super::{
+        document_type_rank, file_sort_key, is_hidden_path, name_matches_query, normalize_query,
+        relevance_rank,
+    };
     use std::path::Path;
 
     #[test]
@@ -963,6 +1011,19 @@ mod tests {
             relevance_rank(Path::new("/tmp/notes.txt"), "notes")
                 < relevance_rank(Path::new("/tmp/my-notes-backup.txt"), "notes")
         );
+    }
+
+    #[test]
+    fn office_documents_rank_before_source_when_name_match_equal() {
+        assert!(document_type_rank(Path::new("/tmp/report.pdf")) < document_type_rank(Path::new("/tmp/report.ts")));
+        assert!(document_type_rank(Path::new("/tmp/report.docx")) < document_type_rank(Path::new("/tmp/report.py")));
+        assert!(document_type_rank(Path::new("/tmp/report.xlsx")) < document_type_rank(Path::new("/tmp/report.log")));
+        assert!(document_type_rank(Path::new("/tmp/report.pdf")) < document_type_rank(Path::new("/tmp/report.docx")));
+        // Same name quality: PDF still ahead of code via composite key.
+        let q = "report";
+        let pdf = file_sort_key(Path::new("/tmp/report.pdf"), q, false, 0, 0);
+        let ts = file_sort_key(Path::new("/tmp/report.ts"), q, false, 0, 0);
+        assert!(pdf < ts);
     }
 
     #[test]

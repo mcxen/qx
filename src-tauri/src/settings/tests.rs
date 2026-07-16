@@ -1,4 +1,4 @@
-use super::{portable_shortcut_key, AgentSettings, Settings};
+use super::{portable_shortcut_key, AgentSettings, BuiltinModulesSettings, Settings};
 
 #[test]
 fn canonicalizes_primary_modifier_for_both_desktop_platforms() {
@@ -87,15 +87,19 @@ fn quick_entry_migration_preserves_user_customization() {
 }
 
 #[test]
-fn beta_modules_stay_enabled_for_legacy_settings_until_user_disables_them() {
+fn beta_modules_default_and_legacy_keys() {
     let mut settings: Settings = serde_json::from_str("{}").expect("legacy settings");
-    for id in ["screencap", "v2ex", "weather", "macros"] {
-        assert!(settings.builtin_modules.is_enabled(id));
-    }
+    // Missing keys stay enabled (legacy upgrade safety).
+    assert!(settings.builtin_modules.is_enabled("screencap"));
+    assert!(settings.builtin_modules.is_enabled("weather"));
+    assert!(settings.builtin_modules.is_enabled("macros"));
+    // Empty {} uses Default for builtin_modules → v2ex off (marketplace plugin).
+    let defaults = BuiltinModulesSettings::default();
+    assert!(!defaults.is_enabled("v2ex"));
+    assert!(defaults.is_enabled("weather"));
     settings
         .builtin_modules
         .modules
         .insert("weather".to_string(), false);
     assert!(!settings.builtin_modules.is_enabled("weather"));
-    assert!(settings.builtin_modules.is_enabled("v2ex"));
 }

@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Hammer, UserRound } from "lucide-react";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { Select } from "../../components/ui";
-import { useEscBack } from "../../hooks/useEscBack";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
-import { getQxShortcutPreset, isEditableTarget } from "../../utils/keyboard";
+import { isEditableTarget } from "../../utils/keyboard";
 import { useSettingsStore } from "../settings/store";
 import { openAgentSettingsTab } from "./AiProviderConfig";
 import { AiMessageContent } from "./message-rendering";
@@ -35,7 +35,6 @@ export default function QxAiChat() {
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentSettings = useSettingsStore((state) => state.settings.agent);
-  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
 
   const conv = conversations.find((c) => c.id === currentConversationId);
   const isCurrentConversationStreaming = streaming && streamingConversationId === conv?.id;
@@ -62,21 +61,16 @@ export default function QxAiChat() {
       activeModels.some((model) => model.id === conv.model),
   );
 
-  const { onKeyDown: escKeyDown } = useEscBack({
-    query: { active: input.length > 0, clear: () => setInput("") },
-    launcher: () => setView("list"),
-  });
+  const leave = useCallback(() => setView("list"), [setView]);
 
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     const trimmed = input.trim();
     if (!trimmed || isCurrentConversationStreaming || !canChat) return;
     setInput("");
     void sendMessage(trimmed);
-  };
+  }, [canChat, input, isCurrentConversationStreaming, sendMessage]);
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    escKeyDown(e);
-    if (e.defaultPrevented || e.key === "Escape") return;
+  const handleModuleKeys = useCallback((e: React.KeyboardEvent) => {
     // Enter sends only from the chat field; never steal bare letters like N/S.
     if (
       e.key === "Enter"
@@ -88,7 +82,7 @@ export default function QxAiChat() {
       e.preventDefault();
       handleSend();
     }
-  };
+  }, [handleSend]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -153,6 +147,7 @@ export default function QxAiChat() {
     createConversation,
     currentConversationId,
     deleteConversation,
+    handleSend,
     input,
     isCurrentConversationStreaming,
     setView,
@@ -179,13 +174,23 @@ export default function QxAiChat() {
                 : t("qxai.noMessages", "No messages yet"),
         };
 
+  const shell = useQxModuleShell({
+    leave,
+    esc: {
+      query: { active: input.length > 0, clear: () => setInput("") },
+    },
+    onKeyDown: handleModuleKeys,
+    island,
+    t,
+  });
+
   const messages = conv?.messages.filter((m) => m.role !== "system") ?? [];
 
   return (
     <QxShell
       title={conv?.name ?? t("qxai.title", "QxAI Chat")}
       className="qx-qxai-chat-shell"
-      onKeyDown={onKeyDown}
+      onKeyDown={shell.onKeyDown}
       search={
         <QxModuleSearch
           value={input}
@@ -294,8 +299,8 @@ export default function QxAiChat() {
           </div>
         </div>
       }
-      island={island}
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setView("list") }}
+      island={shell.island}
+      escapeAction={shell.escapeAction}
       primaryAction={{
         label: isCurrentConversationStreaming ? "…" : t("qxai.send", "Send"),
         kbd: "Enter",
@@ -303,10 +308,7 @@ export default function QxAiChat() {
         disabled: isCurrentConversationStreaming || !input.trim() || !canChat,
         onClick: handleSend,
       }}
-      secondaryAction={{
-        label: "Actions",
-        kbd: actionMenuShortcut,
-      }}
+      secondaryAction={shell.secondaryAction}
       actionTitle="Chat Actions"
       actions={actions}
     >

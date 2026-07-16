@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
-import { useEscBack } from "../../hooks/useEscBack";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
-import { formatQxShortcut, getQxShortcutPreset } from "../../utils/keyboard";
+import { formatQxShortcut } from "../../utils/keyboard";
 import { useStore } from "../../store";
 import { openAgentSettingsTab } from "./AiProviderConfig";
 import { useG4fStore } from "./store";
@@ -25,8 +25,6 @@ export default function QxAiPanel() {
   } = useG4fStore();
 
   const [query, setQuery] = useState("");
-  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
-  const actionMenuLabel = formatQxShortcut(actionMenuShortcut) ?? "⌘K";
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,19 +62,35 @@ export default function QxAiPanel() {
     setView("chat");
   };
 
-  const { onKeyDown: escKeyDown } = useEscBack({
-    query: { active: query.length > 0, clear: () => setQuery("") },
-    launcher: () => setTab("launcher"),
-  });
+  const leave = useCallback(() => setTab("launcher"), [setTab]);
 
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    escKeyDown(e);
-    if (e.defaultPrevented) return;
+  const handleModuleKeys = useCallback((e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey && selectedConv) {
       e.preventDefault();
       openSelected();
     }
-  };
+  }, [selectedConv]);
+
+  const shell = useQxModuleShell({
+    leave,
+    esc: {
+      query: { active: query.length > 0, clear: () => setQuery("") },
+    },
+    onKeyDown: handleModuleKeys,
+    islandState: {
+      title: t("qxai.title", "QxAI Chat"),
+      loading,
+      loadingDetail: t("qxai.island.loading", "Loading providers…"),
+      error,
+      detail: t("qxai.island.conversations", "{n} conversations").replace(
+        "{n}",
+        String(conversations.length),
+      ),
+    },
+    t,
+  });
+
+  const actionMenuLabel = formatQxShortcut(shell.actionMenuShortcut) ?? "⌘K";
 
   const actions = useMemo<QxShellAction[]>(
     () => [
@@ -115,27 +129,11 @@ export default function QxAiPanel() {
     [createConversation, deleteConversation, selectedConv, setView, t],
   );
 
-  const island: BottomIslandContent = loading
-    ? {
-        label: t("qxai.title", "QxAI Chat"),
-        detail: t("qxai.island.loading", "Loading providers…"),
-        progress: 42,
-      }
-    : error
-      ? { label: t("qxai.title", "QxAI Chat"), detail: error, tone: "danger" }
-      : {
-          label: t("qxai.title", "QxAI Chat"),
-          detail: t("qxai.island.conversations", "{n} conversations").replace(
-            "{n}",
-            String(conversations.length),
-          ),
-        };
-
   return (
     <QxShell
       title={t("qxai.title", "QxAI Chat")}
       className="qx-qxai-panel-shell"
-      onKeyDown={onKeyDown}
+      onKeyDown={shell.onKeyDown}
       navigation={{
         index: selectedIndex,
         count: filtered.length,
@@ -192,8 +190,8 @@ export default function QxAiPanel() {
           </button>
         </div>
       }
-      island={island}
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: () => setTab("launcher") }}
+      island={shell.island}
+      escapeAction={shell.escapeAction}
       primaryAction={{
         label: selectedConv ? t("qxai.openChat", "Open Chat") : t("qxai.newChat", "New Chat"),
         kbd: selectedConv ? "↵" : undefined,
@@ -203,10 +201,7 @@ export default function QxAiPanel() {
           else createConversation();
         },
       }}
-      secondaryAction={{
-        label: t("common.actions", "Actions"),
-        kbd: actionMenuShortcut,
-      }}
+      secondaryAction={shell.secondaryAction}
       actionTitle={t("qxai.actions", "AI Actions")}
       actions={actions}
     >

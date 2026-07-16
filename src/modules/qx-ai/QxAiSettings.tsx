@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { LoadingLabel, Row, Select, SettingsCard, Skeleton } from "../../components/ui";
-import { useEscBack } from "../../hooks/useEscBack";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
-import { getQxShortcutPreset } from "../../utils/keyboard";
 import { openAgentSettingsTab } from "./AiProviderConfig";
 import { useG4fStore } from "./store";
 
@@ -11,7 +10,7 @@ import { useG4fStore } from "./store";
  * Chat defaults inside the AI module (provider / model / system prompt).
  * Keys, custom endpoints, memory, and agent tools: Settings → AI Agent.
  *
- * Esc: useEscBack + escapeAction only — never put kbd:"Esc" on primaryAction.
+ * Esc: useQxModuleShell stepBack only — never put kbd:"Esc" on primaryAction.
  */
 export default function QxAiSettings() {
   const t = useT();
@@ -91,10 +90,6 @@ export default function QxAiSettings() {
     return prov?.models ?? [];
   }, [builtInProviders, customProviders, currentProvider]);
 
-  const { onKeyDown } = useEscBack({
-    launcher: goBack,
-  });
-
   useEffect(() => {
     if (builtInProviders.length === 0 && customProviders.length === 0) {
       void loadProviders();
@@ -121,7 +116,6 @@ export default function QxAiSettings() {
     }
   };
 
-  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
   const settingsActions = useMemo<QxShellAction[]>(
     () => [
       // No kbd Esc here — Esc is only bottom-left escapeAction (UI_SPEC).
@@ -134,23 +128,26 @@ export default function QxAiSettings() {
     [goBack, t],
   );
 
+  const shell = useQxModuleShell({
+    leave: goBack,
+    island,
+    t,
+  });
+
   return (
     <QxShell
       title={t("qxai.settings.title", "Chat Settings")}
       visual="elevated"
       className="qx-qxai-settings-shell"
-      onKeyDown={onKeyDown}
-      island={island}
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
+      onKeyDown={shell.onKeyDown}
+      island={shell.island}
+      escapeAction={shell.escapeAction}
       primaryAction={{
         label: t("qxai.settings.done", "Done"),
         tone: "primary",
         onClick: goBack,
       }}
-      secondaryAction={{
-        label: t("common.actions", "Actions"),
-        kbd: actionMenuShortcut,
-      }}
+      secondaryAction={shell.secondaryAction}
       actionTitle={t("qxai.settings.actions", "Chat Settings Actions")}
       actions={settingsActions}
     >

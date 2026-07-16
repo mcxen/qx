@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { RssFeed } from "./store";
 
 export function formatRelative(ts: number): string {
@@ -11,21 +12,14 @@ export function formatRelative(ts: number): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-export function FeedIcon({ feed, showImage = true }: { feed: RssFeed; showImage?: boolean }) {
-  if (showImage && feed.icon) {
-    return (
-      <img
-        src={feed.icon}
-        alt=""
-        style={{ width: 22, height: 22, borderRadius: 5, flexShrink: 0 }}
-        onError={(e) => {
-          (e.target as HTMLImageElement).style.visibility = "hidden";
-        }}
-      />
-    );
-  }
+function letterFor(feed: RssFeed): string {
+  return (feed.title || feed.url || "R").trim().slice(0, 1).toUpperCase() || "R";
+}
+
+function LetterAvatar({ feed }: { feed: RssFeed }) {
   return (
     <div
+      className="qx-rss-feed-icon-letter"
       style={{
         width: 22,
         height: 22,
@@ -39,8 +33,41 @@ export function FeedIcon({ feed, showImage = true }: { feed: RssFeed; showImage?
         justifyContent: "center",
         flexShrink: 0,
       }}
+      aria-hidden
     >
-      {(feed.title || "R").slice(0, 1).toUpperCase()}
+      {letterFor(feed)}
     </div>
+  );
+}
+
+/** Feed list avatar: remote favicon when available, letter fallback on error. */
+export function FeedIcon({ feed, showImage = true }: { feed: RssFeed; showImage?: boolean }) {
+  const [failed, setFailed] = useState(false);
+  const src = (feed.icon || "").trim();
+
+  if (!showImage || !src || failed) {
+    return <LetterAvatar feed={feed} />;
+  }
+
+  return (
+    <img
+      className="qx-rss-feed-icon"
+      src={src}
+      alt=""
+      width={22}
+      height={22}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      style={{
+        width: 22,
+        height: 22,
+        borderRadius: 5,
+        flexShrink: 0,
+        objectFit: "contain",
+        background: "var(--qx-overlay-1)",
+      }}
+      onError={() => setFailed(true)}
+    />
   );
 }

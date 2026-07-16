@@ -50,6 +50,7 @@ import {
 } from "./search/searchUsage";
 import { loadClipboardEntryById, pasteClipboardEntryAtCursor } from "./modules/clipboard/actions";
 import { useEscBack } from "./hooks/useEscBack";
+import { tryModuleEscapeStep } from "./hooks/moduleEscapeHost";
 import { useT } from "./i18n";
 import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./lib/logger";
 import { getQxDesktopPlatform, isImeCompositionEvent } from "./utils/keyboard";
@@ -601,9 +602,24 @@ function App() {
     lastQueryEditAtRef.current = performance.now();
   }
 
+  /**
+   * Host-level Esc staircase while Qx is the foreground UI:
+   *   active module stepBack (nested views, e.g. RSS articles → feeds)
+   *   then leave module → launcher (when no module handler, or module leave)
+   *   launcher with query → clear query
+   *   launcher empty → hide panel + restore focus
+   *
+   * Modules that handle Esc in QxShell call preventDefault so this does not
+   * double-step on the same keypress. When focus is outside the shell
+   * (body/document), only this path runs — it must still step module cascades
+   * via `tryModuleEscapeStep` (registered by useQxModuleShell).
+   */
   const performHostEscape = useCallback(() => {
     const state = useStore.getState();
     if (state.tab !== "launcher") {
+      // Nested module views first (RSS article list → feed list, etc.).
+      // Handlers call leave → setTab("launcher") when already at module root.
+      if (tryModuleEscapeStep()) return;
       setTab("launcher");
       return;
     }
@@ -1797,10 +1813,11 @@ function App() {
   useEffect(() => {
     const onUnhandledEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
-      // Bubble-phase, launcher-only fallback. React/Radix overlays get first
-      // refusal; this covers WebView body/document focus without becoming a
-      // process-global Esc monitor.
-      if (useStore.getState().tab !== "launcher") return;
+      // Bubble-phase host cascade for every tab while the panel is open.
+      // React/Radix overlays and module useEscBack get first refusal via
+      // preventDefault. Do NOT gate on tab===launcher — modules without a
+      // focused shell descendant (Screen Capture title slot, post-click body
+      // focus) would otherwise trap Esc until the user clicks inside QxShell.
       event.preventDefault();
       event.stopPropagation();
       performHostEscape();

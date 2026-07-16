@@ -4,11 +4,15 @@ import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { useStore, type ClipboardEntry } from "../../store";
-import { useEscBack } from "../../hooks/useEscBack";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
+import {
+  qxMasterDetailNavigation,
+  qxRegionProps,
+} from "../../hooks/useQxMasterDetail";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
-import { getQxShortcutPreset, isEditableTarget } from "../../utils/keyboard";
+import { isEditableTarget } from "../../utils/keyboard";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 
 const CLIP_PICKER_LIMIT = 50;
@@ -54,6 +58,13 @@ type TextFileEntry = {
 };
 
 type FocusRegion = "docs-files" | "docs-editor" | "docs-actions";
+
+/** Master–detail regions (list | editor | actions) — keep stable ids for keyboard. */
+const DOCS_MD = {
+  list: "docs-files",
+  detail: "docs-editor",
+  actions: "docs-actions",
+} as const;
 
 /** Progress underline pinned to a file row (by name, not selection index). */
 type SaveBarPhase = "writing" | "complete";
@@ -218,8 +229,6 @@ export default function DevTxtTool() {
   /** Explicit Cmd/Ctrl+S targets — show progress bar for these names only. */
   const indicateWritesRef = useRef(new Set<string>());
   const saveBarTimersRef = useRef(new Map<string, number>());
-  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
-
   contentRef.current = content;
   selectedNameRef.current = selectedName;
   dirtyRef.current = dirty;
@@ -833,27 +842,16 @@ export default function DevTxtTool() {
   };
 
   /** Leave immediately — do not wait for disk. */
-  const goBack = () => {
+  const goBack = useCallback(() => {
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
       saveTimer.current = null;
     }
     queueCurrentIfDirty();
     setTab("launcher");
-  };
+  }, [queueCurrentIfDirty, setTab]);
 
-  const { onKeyDown: escKeyDown } = useEscBack({
-    inner: {
-      active: renamingName !== null,
-      close: () => setRenamingName(null),
-    },
-    query: { active: query.length > 0, clear: () => setQuery("") },
-    launcher: goBack,
-  });
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    escKeyDown(e);
-    if (e.defaultPrevented || e.key === "Escape") return;
+  const handleModuleKeys = useCallback((e: React.KeyboardEvent) => {
     const region =
       e.target instanceof Element
         ? e.target.closest<HTMLElement>("[data-qx-region]")?.dataset.qxRegion
@@ -875,7 +873,7 @@ export default function DevTxtTool() {
       e.stopPropagation();
       saveExplicit();
     }
-  };
+  }, [createNewFile, saveExplicit]);
 
   const onFocusCapture = (e: React.FocusEvent) => {
     const region = (e.target as Element)
@@ -1070,13 +1068,27 @@ export default function DevTxtTool() {
     };
   }, [active, content, dirty, inspect, message, t, workspacePath]);
 
+  const shell = useQxModuleShell({
+    leave: goBack,
+    esc: {
+      inner: {
+        active: renamingName !== null,
+        close: () => setRenamingName(null),
+      },
+      query: { active: query.length > 0, clear: () => setQuery("") },
+    },
+    onKeyDown: handleModuleKeys,
+    island,
+    t,
+  });
+
   return (
     <QxShell
       title={t("docs.title", "Text Toolbox")}
       className="documents-shell"
       visual="solid"
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
-      onKeyDown={onKeyDown}
+      escapeAction={shell.escapeAction}
+      onKeyDown={shell.onKeyDown}
       search={
         <QxModuleSearch
           value={query}
@@ -1119,10 +1131,10 @@ export default function DevTxtTool() {
       context={
         <div
           className="qx-action-panel"
-          data-qx-region="docs-actions"
-          data-qx-region-label={t("docs.actions", "File actions")}
-          data-qx-region-scroll
-          tabIndex={-1}
+          {...qxRegionProps(DOCS_MD.actions, {
+            label: t("docs.actions", "File actions"),
+            scroll: true,
+          })}
         >
           <div className="qx-action-title">{t("docs.workspace", "Workspace")}</div>
           <div className="v2ex-context-copy" style={{ marginBottom: 8 }}>
@@ -1243,7 +1255,7 @@ export default function DevTxtTool() {
           </button>
         </div>
       }
-      island={island}
+      island={shell.island}
       primaryAction={
         listFocused
           ? {
@@ -1258,22 +1270,19 @@ export default function DevTxtTool() {
               onClick: () => void copyAll(),
             }
       }
-      secondaryAction={{
-        label: t("common.actions", "Actions"),
-        kbd: actionMenuShortcut,
-      }}
+      secondaryAction={shell.secondaryAction}
       actionTitle={actionTitle}
       actions={documentActions}
-      navigation={{
+      navigation={qxMasterDetailNavigation({
+        ids: DOCS_MD,
         index: selectedIndex < 0 ? 0 : selectedIndex,
         count: filtered.length,
-        regionId: "docs-files",
         onChange: (i) => {
           const file = filtered[i];
           if (file) selectFile(file.name);
         },
         pageSize: 10,
-      }}
+      })}
     >
       <div className="qx-content-split qx-docs-split" onFocusCapture={onFocusCapture}>
         <div
@@ -1281,11 +1290,11 @@ export default function DevTxtTool() {
           className="qx-plugin-list qx-docs-file-list"
           role="listbox"
           aria-label={t("docs.files", "Files")}
-          data-qx-region="docs-files"
-          data-qx-region-label={t("docs.files", "Files")}
-          data-qx-region-initial="true"
-          data-qx-region-scroll
-          tabIndex={-1}
+          {...qxRegionProps(DOCS_MD.list, {
+            label: t("docs.files", "Files"),
+            initial: true,
+            scroll: true,
+          })}
         >
           <div className="qx-section-header">
             <span style={{ flex: 1 }}>{t("docs.files", "Files")}</span>
@@ -1365,10 +1374,10 @@ export default function DevTxtTool() {
 
         <div
           className="qx-docs-workspace"
-          data-qx-region="docs-editor"
-          data-qx-region-label={t("docs.editor", "Editor")}
-          data-qx-region-scroll
-          tabIndex={-1}
+          {...qxRegionProps(DOCS_MD.detail, {
+            label: t("docs.editor", "Editor"),
+            scroll: true,
+          })}
         >
           <div className="qx-docs-workspace-head">
             <span className="qx-docs-workspace-title">

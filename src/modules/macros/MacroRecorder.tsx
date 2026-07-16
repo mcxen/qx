@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMacroStore } from "./store";
 import { Kbd } from "../../components/ui";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { useStore } from "../../store";
-import { useEscBack } from "../../hooks/useEscBack";
-import { getQxShortcutPreset } from "../../utils/keyboard";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import SaveDialog from "./SaveDialog";
 import BetaBadge from "../../components/BetaBadge";
@@ -102,34 +101,42 @@ export default function MacroRecorder() {
     setName("");
   };
 
-  const goLauncher = () => setTab("launcher");
+  const goLauncher = useCallback(() => setTab("launcher"), [setTab]);
 
-  const { onKeyDown: escKeyDown } = useEscBack({
-    inner: {
-      active: isRecording || Boolean(lastRecordedSteps),
-      close: () => {
-        if (isRecording) void stopRecording();
-        else handleDiscard();
+  // Bottom Esc matches cascade final leave; key Esc first stops recording / discards draft.
+  const leave = useCallback(() => {
+    if (isRecording) {
+      void stopRecording();
+      return;
+    }
+    if (lastRecordedSteps) {
+      handleDiscard();
+      return;
+    }
+    goLauncher();
+  }, [goLauncher, isRecording, lastRecordedSteps, stopRecording]);
+
+  const shell = useQxModuleShell({
+    leave,
+    esc: {
+      inner: {
+        active: isRecording || Boolean(lastRecordedSteps),
+        close: () => {
+          if (isRecording) void stopRecording();
+          else handleDiscard();
+        },
       },
     },
-    launcher: goLauncher,
+    island: {
+      label: isRecording ? "Recording Macro" : lastRecordedSteps ? "Macro Captured" : "Macro Recorder",
+      detail: isRecording
+        ? formatTime(elapsed)
+        : lastRecordedSteps
+          ? `${lastRecordedSteps.length} steps · ${formatTime(lastTotalDurationMs)}`
+          : `${savedMacros.length} saved macros`,
+      tone: error ? "danger" : isRecording ? "danger" : lastRecordedSteps ? "success" : "neutral",
+    },
   });
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    escKeyDown(e);
-  };
-
-  const escapeAction = {
-    label: "Esc",
-    kbd: "Esc",
-    onClick: isRecording
-      ? handleStop
-      : lastRecordedSteps
-        ? handleDiscard
-        : goLauncher,
-  };
-
-  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
 
   const macroActions = useMemo<QxShellAction[]>(() => {
     if (isRecording) {
@@ -180,16 +187,8 @@ export default function MacroRecorder() {
           )}
         </>
       }
-      island={{
-        label: isRecording ? "Recording Macro" : lastRecordedSteps ? "Macro Captured" : "Macro Recorder",
-        detail: isRecording
-          ? formatTime(elapsed)
-          : lastRecordedSteps
-            ? `${lastRecordedSteps.length} steps · ${formatTime(lastTotalDurationMs)}`
-            : `${savedMacros.length} saved macros`,
-        tone: error ? "danger" : isRecording ? "danger" : lastRecordedSteps ? "success" : "neutral",
-      }}
-      escapeAction={escapeAction}
+      island={shell.island}
+      escapeAction={shell.escapeAction}
       primaryAction={
         isRecording
           ? { label: "Stop", tone: "danger", onClick: handleStop }
@@ -197,10 +196,10 @@ export default function MacroRecorder() {
             ? { label: "Save", kbd: "Enter", disabled: !name.trim(), onClick: () => void handleSave() }
             : { label: "Record", kbd: "Enter", tone: "primary", onClick: handleStart }
       }
-      secondaryAction={{ label: "Actions", kbd: actionMenuShortcut }}
+      secondaryAction={shell.secondaryAction}
       actionTitle="Macro Actions"
       actions={macroActions}
-      onKeyDown={handleKeyDown}
+      onKeyDown={shell.onKeyDown}
       className="qx-macro-shell"
     >
       <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>

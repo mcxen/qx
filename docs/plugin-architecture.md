@@ -34,6 +34,12 @@
 
 禁止在 UI 层另写一套 localStorage key 或直接读 timer Map。
 
+**模块壳 chrome**（内置与扩展共用）：
+
+- 前端端口 `useQxModuleShell`（`src/hooks/useQxModuleShell.ts`）
+- 扩展宿主 `PluginPanelViewport` 使用同一 leave / Esc / Island / Actions 菜单装配
+- 列表导航、主从 region 仍由插件 UI / 内置面板自管；壳只保证 QxShell 外框协议一致
+
 **调度稳定性**（Bing 自动换壁纸 thrash 修复）：
 
 - 每个 `pluginId\\0command` **只保留一个** pending timer，禁止堆叠。

@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useState, useRef, useCallback, type CSSProperties } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
+import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { useRssStore } from "./store";
 import { useSettingsStore } from "../settings/store";
-import { useEscBack } from "../../hooks/useEscBack";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { shouldIgnoreBareShortcut } from "../../utils/keyboard";
 import ImageLightbox from "./ImageLightbox";
 import { formatDate, sanitizeHtml } from "./article-utils";
@@ -149,23 +149,9 @@ export default function ArticleDetail() {
     return list;
   }, [currentArticle, next, prev, openArticleAtTop, toggleStar, markRead]);
 
-  // Cascading Esc: close lightbox → go back. Shell handles Actions menu Esc.
-  const { onKeyDown: escKeyDown } = useEscBack({
-    inner: {
-      active: lightbox !== null,
-      close: () => {
-        setLightbox(null);
-      },
-    },
-    launcher: goBack,
-  });
-
-  const onKeyDown = (e: React.KeyboardEvent) => {
+  const handleModuleKeys = useCallback((e: React.KeyboardEvent) => {
     const ignoreBare = shouldIgnoreBareShortcut(e.nativeEvent);
     switch (e.key) {
-      case "Escape":
-        escKeyDown(e);
-        break;
       case "j":
         if (!ignoreBare && !e.metaKey && !e.ctrlKey) {
           e.preventDefault();
@@ -179,7 +165,28 @@ export default function ArticleDetail() {
         }
         break;
     }
-  };
+  }, [next, openArticleAtTop, prev]);
+
+  const shell = useQxModuleShell({
+    leave: goBack,
+    esc: {
+      inner: {
+        active: lightbox !== null,
+        close: () => setLightbox(null),
+      },
+    },
+    onKeyDown: handleModuleKeys,
+    island: currentArticle
+      ? {
+          label: "Reading RSS",
+          detail:
+            bottom_island_mode === "index"
+              ? `${currentIdx >= 0 ? currentIdx + 1 : 0}/${readingArticles.length || 1} articles`
+              : `${scrollPercent}%`,
+          progress: bottom_island_mode === "index" ? articleProgress : scrollPercent,
+        }
+      : null,
+  });
 
   if (!currentArticle) {
     return (
@@ -197,15 +204,6 @@ export default function ArticleDetail() {
       </div>
     );
   }
-
-  const island: BottomIslandContent = {
-    label: "Reading RSS",
-    detail:
-      bottom_island_mode === "index"
-        ? `${currentIdx >= 0 ? currentIdx + 1 : 0}/${readingArticles.length || 1} articles`
-        : `${scrollPercent}%`,
-    progress: bottom_island_mode === "index" ? articleProgress : scrollPercent,
-  };
 
   // Hero image style based on display mode
   const heroImgStyle: CSSProperties = image_display_mode === "fixed"
@@ -239,9 +237,9 @@ export default function ArticleDetail() {
     <QxShell
       ref={shellRef}
       title={feed?.title || "RSS Detail"}
-      onKeyDown={onKeyDown}
+      onKeyDown={shell.onKeyDown}
       overlayBottom
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
+      escapeAction={shell.escapeAction}
       search={
         <div className="qx-rss-detail-title">
           <span>{currentArticle.title || "(untitled)"}</span>
@@ -264,7 +262,7 @@ export default function ArticleDetail() {
           ))}
         </aside>
       }
-      island={island}
+      island={shell.island}
       primaryAction={{
         label: currentArticle.link ? "Open Original" : "Back",
         kbd: currentArticle.link ? "O" : "Esc",
@@ -274,10 +272,7 @@ export default function ArticleDetail() {
           else goBack();
         },
       }}
-      secondaryAction={{
-        label: "Actions",
-        kbd: "CmdOrCtrl+K",
-      }}
+      secondaryAction={shell.secondaryAction}
       actionTitle="Article Actions"
       actions={actions}
     >

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
-import { useEscBack } from "../../hooks/useEscBack";
+import QxShell, { type QxShellAction } from "../../components/QxShell";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { stripDangerousHtmlAttributes } from "../../utils/sanitize-html";
 import { type V2exTopic, formatTime } from "./types";
 
@@ -64,15 +64,15 @@ export function sanitizeTopicHtml(html: string): string {
 }
 
 export default function V2exDetail({ topic, onBack }: V2exDetailProps) {
-  const { onKeyDown: escKeyDown } = useEscBack({
-    launcher: onBack,
-  });
-
   const cleanContent = useMemo(() => sanitizeTopicHtml(topic.content), [topic.content]);
 
-  const onKeyDown = (event: React.KeyboardEvent) => {
-    escKeyDown(event);
-  };
+  const shell = useQxModuleShell({
+    leave: onBack,
+    island: {
+      label: "V2EX Detail",
+      detail: `${topic.replies} replies · ${topic.node || "V2EX"}`,
+    },
+  });
 
   const actions = useMemo<QxShellAction[]>(() => [
     {
@@ -86,18 +86,13 @@ export default function V2exDetail({ topic, onBack }: V2exDetailProps) {
     },
   ], [onBack, topic.url]);
 
-  const island: BottomIslandContent = {
-    label: "V2EX Detail",
-    detail: `${topic.replies} replies · ${topic.node || "V2EX"}`,
-  };
-
   return (
     <QxShell
       title={topic.title}
       className="v2ex-shell"
-      onKeyDown={onKeyDown}
+      onKeyDown={shell.onKeyDown}
       overlayBottom
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: onBack }}
+      escapeAction={shell.escapeAction}
       search={
         <div className="qx-rss-detail-title">
           <span>{topic.title}</span>
@@ -122,14 +117,14 @@ export default function V2exDetail({ topic, onBack }: V2exDetailProps) {
           </div>
         </aside>
       }
-      island={island}
+      island={shell.island}
       primaryAction={{
         label: "Open in Browser",
         kbd: "O",
         tone: "primary",
         onClick: () => void openUrl(topic.url),
       }}
-      secondaryAction={{ label: "Actions", kbd: "CmdOrCtrl+K" }}
+      secondaryAction={shell.secondaryAction}
       actionTitle="Topic Actions"
       actions={actions}
     >

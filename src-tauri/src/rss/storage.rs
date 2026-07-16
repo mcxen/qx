@@ -89,7 +89,172 @@ pub fn open() -> rusqlite::Result<Connection> {
         "folder_id",
         "INTEGER REFERENCES rss_folders(id) ON DELETE SET NULL",
     )?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS rss_meta (
+            key TEXT PRIMARY KEY NOT NULL,
+            value TEXT NOT NULL
+        );",
+    )?;
+    // First-open (or first upgrade) default catalog. INSERT OR IGNORE — safe if
+    // the user already added the same URL. Flag prevents re-adding after delete.
+    seed_default_catalog_if_needed(&conn)?;
+    // Existing installs often have empty icon columns; fill favicon URLs from
+    // the feed host without a network round-trip (proxy feeds improve after refresh).
+    let _ = backfill_empty_feed_icons(&conn);
     Ok(conn)
+}
+
+/// Built-in starter subscriptions. Folders are simple Chinese categories.
+/// Titles are placeholders until the next successful refresh rewrites feed meta.
+///
+/// Bump `DEFAULT_CATALOG_VERSION` when adding feeds so existing installs receive
+/// new URLs once (`INSERT OR IGNORE` — already-present or user-kept URLs stay).
+const DEFAULT_CATALOG_META_KEY: &str = "default_catalog_version";
+const DEFAULT_CATALOG_VERSION: &str = "3";
+
+struct DefaultFeed {
+    url: &'static str,
+    title: &'static str,
+}
+
+struct DefaultFolder {
+    name: &'static str,
+    sort_order: i64,
+    feeds: &'static [DefaultFeed],
+}
+
+const DEFAULT_CATALOG: &[DefaultFolder] = &[
+    DefaultFolder {
+        name: "科技",
+        sort_order: 0,
+        feeds: &[
+            DefaultFeed {
+                url: "http://www.ithome.com/rss/",
+                title: "IT之家",
+            },
+            DefaultFeed {
+                url: "https://www.expreview.com/rss.php",
+                title: "超能网",
+            },
+            DefaultFeed {
+                url: "https://www.ruanyifeng.com/blog/atom.xml",
+                title: "阮一峰的网络日志",
+            },
+        ],
+    },
+    DefaultFolder {
+        name: "新闻",
+        sort_order: 1,
+        feeds: &[
+            DefaultFeed {
+                url: "https://plink.anyfeeder.com/newscn/whxw",
+                title: "文海新闻",
+            },
+            DefaultFeed {
+                url: "https://plink.anyfeeder.com/zaobao/realtime/china",
+                title: "联合早报 · 中国",
+            },
+        ],
+    },
+    DefaultFolder {
+        name: "资讯",
+        sort_order: 2,
+        feeds: &[
+            DefaultFeed {
+                url: "https://plink.anyfeeder.com/pentitugua",
+                title: "喷嚏图卦",
+            },
+            DefaultFeed {
+                url: "https://plink.anyfeeder.com/zhihu/daily",
+                title: "知乎日报",
+            },
+            DefaultFeed {
+                url: "https://plink.anyfeeder.com/weixin/qnwzwx",
+                title: "青年文摘",
+            },
+        ],
+    },
+];
+
+fn meta_get(conn: &Connection, key: &str) -> rusqlite::Result<Option<String>> {
+    let mut stmt = conn.prepare("SELECT value FROM rss_meta WHERE key = ?1 LIMIT 1")?;
+    let mut rows = stmt.query(params![key])?;
+    if let Some(row) = rows.next()? {
+        Ok(Some(row.get(0)?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn meta_set(conn: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT INTO rss_meta (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![key, value],
+    )?;
+    Ok(())
+}
+
+/// URLs that were briefly in the starter catalog and should be removed on upgrade
+/// when they are still the default (user can re-add manually if desired).
+const DEFAULT_CATALOG_RETIRED_URLS: &[&str] = &["https://plink.anyfeeder.com/infzm/news"];
+
+/// Seed / upgrade starter folders + feeds (keyed by catalog version in `rss_meta`).
+pub fn seed_default_catalog_if_needed(conn: &Connection) -> rusqlite::Result<()> {
+    // Migrate legacy flag from the first catalog revision.
+    if meta_get(conn, "default_catalog_v1")?.as_deref() == Some("1")
+        && meta_get(conn, DEFAULT_CATALOG_META_KEY)?.is_none()
+    {
+        let _ = meta_set(conn, DEFAULT_CATALOG_META_KEY, "1");
+    }
+
+    if meta_get(conn, DEFAULT_CATALOG_META_KEY)?.as_deref() == Some(DEFAULT_CATALOG_VERSION) {
+        return Ok(());
+    }
+
+    for folder in DEFAULT_CATALOG {
+        let folder_id = create_folder(conn, folder.name, None)?;
+        let _ = conn.execute(
+            "UPDATE rss_folders SET sort_order = ?1 WHERE id = ?2",
+            params![folder.sort_order, folder_id],
+        );
+        for feed in folder.feeds {
+            // Prefill favicon from feed URL host (proxy feeds improve after first refresh
+            // once article links reveal the real publisher domain).
+            let icon = super::fetcher::resolve_feed_icon(feed.url, "", &[]);
+            let _ = insert_feed_in_folder(conn, feed.url, feed.title, &icon, Some(folder_id));
+        }
+    }
+
+    // Drop retired starter feeds (e.g. summary-only INFZM bridge).
+    for url in DEFAULT_CATALOG_RETIRED_URLS {
+        let _ = conn.execute("DELETE FROM rss_feeds WHERE url = ?1", params![url]);
+    }
+
+    meta_set(conn, DEFAULT_CATALOG_META_KEY, DEFAULT_CATALOG_VERSION)?;
+    Ok(())
+}
+
+/// Assign favicon service URLs for feeds that still have an empty `icon` column.
+fn backfill_empty_feed_icons(conn: &Connection) -> rusqlite::Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT id, url FROM rss_feeds
+         WHERE icon IS NULL OR TRIM(icon) = ''",
+    )?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    for (id, url) in rows {
+        let icon = super::fetcher::resolve_feed_icon(&url, "", &[]);
+        if icon.is_empty() {
+            continue;
+        }
+        conn.execute(
+            "UPDATE rss_feeds SET icon = ?1 WHERE id = ?2 AND (icon IS NULL OR TRIM(icon) = '')",
+            params![icon, id],
+        )?;
+    }
+    Ok(())
 }
 
 pub fn insert_feed(conn: &Connection, url: &str, title: &str, icon: &str) -> rusqlite::Result<i64> {
@@ -131,8 +296,14 @@ pub fn update_feed_meta(
     icon: &str,
 ) -> rusqlite::Result<()> {
     let now = chrono::Local::now().timestamp();
+    // Never wipe a good icon with an empty refresh payload.
     conn.execute(
-        "UPDATE rss_feeds SET title = ?1, icon = ?2, last_fetched = ?3, error_count = 0 WHERE id = ?4",
+        "UPDATE rss_feeds SET
+            title = CASE WHEN ?1 = '' THEN title ELSE ?1 END,
+            icon = CASE WHEN ?2 = '' THEN icon ELSE ?2 END,
+            last_fetched = ?3,
+            error_count = 0
+         WHERE id = ?4",
         params![title, icon, now, id],
     )?;
     Ok(())

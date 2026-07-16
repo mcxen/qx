@@ -194,31 +194,42 @@ Full rules live in `UI_SPEC.md` (Bottom Bar + Interaction). Summary for agents:
   `onBack` to `QxShell` (that draws a legacy top-left chevron).
 - **Never** put `kbd: "Esc"` on `primaryAction`, `secondaryAction`, or `actions[]`.
   Esc is reserved for `escapeAction` + `useEscBack` (Shell ignores Esc as an action chord).
-- Nested module views (e.g. QxAI Chat Settings → list): `escapeAction` / cascade
-  final step must go to the **parent view**, not always the launcher.
-- Keyboard cascade uses `useEscBack`:
+- Nested module views (e.g. QxAI Chat Settings → list): cascade final step goes to
+  the **parent view**, not always the launcher.
+- Each Esc press steps **one** layer. Full staircase until the panel hides:
 
-1. `inner`: close detail, preview, popover, output view, or other internal state.
+1. `inner`: close detail, preview, stop recording, etc.
 2. `query`: clear module-local search text.
-3. `launcher`: leave module / return to parent view (same target as `escapeAction.onClick`).
+3. `launcher`: leave module / return to parent view.
+4. Host: clear launcher query (if any).
+5. Host: `floating_hide_restore_focus`.
+
+- Module keyboard: `useEscBack` → `onKeyDown` + `stepBack` for `escapeAction.onClick`.
+- Host safety net: `App.performHostEscape` on window `keydown` for **every** tab
+  when the event is not already `defaultPrevented`. Non-launcher tabs first call
+  `tryModuleEscapeStep()` (registered by `useQxModuleShell`) so nested views
+  (RSS articles → feeds) step before leaving the module. Do not jump straight to
+  `setTab("launcher")` while a module handler is registered.
+- Prefer `useQxModuleShell` so button Esc and keyboard share `stepBack`.
 
 Example:
 
 ```ts
 const goBack = () => setTab("launcher");
-const { onKeyDown } = useEscBack({
+const { onKeyDown, stepBack } = useEscBack({
   inner: { active: showDetail, close: () => setShowDetail(false) },
   query: { active: !!localQuery, clear: () => setLocalQuery("") },
   launcher: goBack,
 });
 
 // on QxShell:
-// escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
+// escapeAction={{ label: "Esc", kbd: "Esc", onClick: stepBack }}
 // onKeyDown={onKeyDown}
 ```
 
 Do not copy Esc listeners into modules. Add new sub-states to the `inner` layer.
 Do not use both `onBack` and `escapeAction` on the same shell.
+Do not add a process-global Esc monitor outside the visible-panel host cascade.
 
 ## i18n (required for all modules)
 

@@ -31,7 +31,7 @@ import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { Button, ScrollArea } from "../../components/ui";
 import { useT } from "../../i18n";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
-import { getQxShortcutPreset } from "../../utils/keyboard";
+import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { homeIslandDataBus, useResolvedHomeIsland } from "../../home-island";
 import { QxIslandSurface } from "../../island";
 import { isBuiltinModuleEnabled } from "../moduleAvailability";
@@ -210,17 +210,6 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key !== "Escape") return;
-    e.preventDefault();
-    e.stopPropagation();
-    if (filter && navGroups.length > 0) {
-      setFilter("");
-    } else {
-      onClose();
-    }
-  };
-
   const settingsSearch = (
     <QxModuleSearch
       value={filter}
@@ -269,7 +258,6 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     </nav>
   );
 
-  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
   const settingsActions = useMemo<QxShellAction[]>(() => {
     const jump: QxShellAction[] = NAV_GROUPS.flatMap((group) =>
       group.items.map((item) => ({
@@ -309,6 +297,16 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       </QxIslandSurface>
     ) : undefined;
 
+  const shell = useQxModuleShell({
+    leave: onClose,
+    esc: {
+      query: { active: filter.length > 0, clear: () => setFilter("") },
+    },
+    actionsLabel: t("launcher.actions", "Actions"),
+    island: settingsIsland,
+    t,
+  });
+
   return (
     <QxShell
       title={t("launcher.settings", "Settings")}
@@ -317,15 +315,15 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       search={settingsSearch}
       trailing={<span className="qx-shell-meta">Qx v{version || "..."}</span>}
       context={settingsContext}
-      island={settingsIsland}
+      island={shell.island}
       customIsland={homePreviewIsland}
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: onClose }}
-      onKeyDown={handleKeyDown}
+      escapeAction={shell.escapeAction}
+      onKeyDown={shell.onKeyDown}
       primaryAction={{
         label: t("settings.close", "Close"),
         onClick: onClose,
       }}
-      secondaryAction={{ label: t("launcher.actions", "Actions"), kbd: actionMenuShortcut }}
+      secondaryAction={shell.secondaryAction}
       actionTitle={t("settings.actions", "Settings Actions")}
       actions={settingsActions}
     >

@@ -17,6 +17,7 @@ import { homeIslandDataBus, useResolvedHomeIsland } from "./home-island";
 import { islandHost, useHomeIslandContribution, QxIslandSurface } from "./island";
 import { mapBottomIslandContent } from "./island/compat/mapBottomIslandContent";
 import { usePluginRegistry } from "./plugin/registry";
+import { getQxShortcutPreset } from "./utils/keyboard";
 
 interface LauncherProps {
   results: AppEntry[];
@@ -361,7 +362,7 @@ export default function Launcher({
       }}
       secondaryAction={{
         label: t("launcher.actions", "Actions"),
-        kbd: "CmdOrCtrl+K",
+        kbd: getQxShortcutPreset().actionMenu,
         disabled: results.length === 0,
       }}
       actionTitle={

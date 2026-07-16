@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import QxShell, { type BottomIslandContent, type QxShellAction } from "../components/QxShell";
+import QxShell, { type QxShellAction } from "../components/QxShell";
 import PluginBackgroundBadge, {
   usePluginBackgroundSummary,
 } from "../components/PluginBackgroundBadge";
 import PluginBackgroundPanel from "../components/PluginBackgroundPanel";
-import { useEscBack } from "../hooks/useEscBack";
+import { useQxModuleShell } from "../hooks/useQxModuleShell";
 import { usePluginRegistry } from "./registry";
 import {
   runPluginItemAction,
@@ -76,13 +76,7 @@ export function PluginPanelViewport() {
   );
   const goBack = useCallback(() => setTab("launcher"), [setTab]);
 
-  const { onKeyDown: escKeyDown } = useEscBack({
-    launcher: goBack,
-  });
-
-  const onKeyDown = (event: React.KeyboardEvent) => {
-    escKeyDown(event);
-    if (event.key === "Escape") return;
+  const handlePluginKeys = useCallback((event: React.KeyboardEvent) => {
     // Do not bind bare R for panel remount — Raycast plugins (e.g. Bing Wallpaper)
     // use Cmd+R for item actions ("Set Random Wallpaper"). Host reload is ⌘⇧R /
     // Actions → Reload Panel only.
@@ -97,7 +91,7 @@ export function PluginPanelViewport() {
       event.preventDefault();
       setRefreshKey((k) => k + 1);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (!isPluginTab || !pluginId) {
@@ -221,32 +215,37 @@ export function PluginPanelViewport() {
     return t("plugins.background.scheduled", "Background scheduled");
   })();
 
-  const island: BottomIslandContent = renderState.kind === "loading"
-    ? {
-        label: "Plugin loading",
-        detail: plugin?.name || pluginId,
-        activity: "bounce",
-      }
-    : renderState.kind === "error"
-    ? {
-        label: "Plugin error",
-        detail: renderState.detail || plugin?.name || pluginId,
-        tone: "danger",
-        actionLabel: "Retry",
-        onAction: () => setRefreshKey((k) => k + 1),
-      }
-    : {
-        label: plugin?.name || shellTitle,
-        detail: backgroundDetail || (plugin?.version ? `v${plugin.version}` : undefined),
-        activity: background?.isRunning ? "bounce" : undefined,
-      };
+  const shell = useQxModuleShell({
+    leave: goBack,
+    onKeyDown: handlePluginKeys,
+    island: renderState.kind === "loading"
+      ? {
+          label: t("plugins.loading", "Plugin loading"),
+          detail: plugin?.name || pluginId,
+          activity: "bounce",
+        }
+      : renderState.kind === "error"
+        ? {
+            label: t("plugins.error", "Plugin error"),
+            detail: renderState.detail || plugin?.name || pluginId,
+            tone: "danger",
+            actionLabel: t("common.retry", "Retry"),
+            onAction: () => setRefreshKey((k) => k + 1),
+          }
+        : {
+            label: plugin?.name || shellTitle,
+            detail: backgroundDetail || (plugin?.version ? `v${plugin.version}` : undefined),
+            activity: background?.isRunning ? "bounce" : undefined,
+          },
+    t,
+  });
 
   return (
     <QxShell
       title={shellTitle}
       className="qx-plugin-shell"
-      onKeyDown={onKeyDown}
-      escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
+      onKeyDown={shell.onKeyDown}
+      escapeAction={shell.escapeAction}
       search={
         <div className="qx-rss-detail-title qx-module-title-with-badge">
           <span>{shellTitle}</span>
@@ -325,7 +324,7 @@ export function PluginPanelViewport() {
           )}
         </aside>
       }
-      island={island}
+      island={shell.island}
       primaryAction={
         primaryItem
           ? {
@@ -341,7 +340,7 @@ export function PluginPanelViewport() {
               onClick: () => setRefreshKey((k) => k + 1),
             }
       }
-      secondaryAction={{ label: t("common.actions", "Actions"), kbd: "CmdOrCtrl+K" }}
+      secondaryAction={shell.secondaryAction}
       actionTitle={
         selectionTitle
           ? `${t("common.actions", "Actions")} · ${selectionTitle}`
