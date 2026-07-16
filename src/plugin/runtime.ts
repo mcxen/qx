@@ -449,6 +449,8 @@ export function buildPluginRuntimeHtml(
             get: (key) => rpc('storageGet', { key }),
             set: (key, value) => rpc('storageSet', { key, value }),
             delete: (key) => rpc('storageDelete', { key }),
+            keys: () => rpc('storageList'),
+            clear: () => rpc('storageClear'),
           },
         },
       };

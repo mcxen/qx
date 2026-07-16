@@ -227,6 +227,9 @@ export function createPluginContext(
         get: (key: string) => rpc("storageGet", { key }),
         set: (key: string, value: unknown) => rpc("storageSet", { key, value }) as Promise<void>,
         delete: (key: string) => rpc("storageDelete", { key }) as Promise<void>,
+        keys: () =>
+          rpc("storageList") as Promise<Array<{ key: string; bytes: number }>>,
+        clear: () => rpc("storageClear") as Promise<void>,
       },
     },
   };

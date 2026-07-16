@@ -241,8 +241,28 @@ pub(crate) fn checked_plugin_dir(id: &str) -> Result<PathBuf, String> {
     Ok(plugin_dir(validate_plugin_id(id)?))
 }
 
-fn checked_plugin_data_dir(id: &str) -> Result<PathBuf, String> {
-    Ok(checked_plugin_dir(id)?.join("data"))
+/// Durable user data root for a plugin.
+///
+/// Prefer `~/.qx/plugin-data/<id>/` (survives package reinstall). Fall back to
+/// legacy `~/.qx/plugins/<id>/data` for reads until migration completes.
+fn plugin_data_root() -> PathBuf {
+    let dir = crate::paths::state_dir().join("plugin-data");
+    let _ = fs::create_dir_all(&dir);
+    dir
+}
+
+pub(crate) fn checked_plugin_data_dir(id: &str) -> Result<PathBuf, String> {
+    let id = validate_plugin_id(id)?;
+    let modern = plugin_data_root().join(id);
+    if modern.exists() {
+        return Ok(modern);
+    }
+    let legacy = checked_plugin_dir(id)?.join("data");
+    if legacy.exists() {
+        return Ok(legacy);
+    }
+    // Default new writes to the modern, package-separated tree.
+    Ok(modern)
 }
 
 fn checked_plugin_storage_path(id: &str) -> Result<PathBuf, String> {
@@ -251,6 +271,96 @@ fn checked_plugin_storage_path(id: &str) -> Result<PathBuf, String> {
 
 fn plugin_storage_lock() -> &'static Mutex<()> {
     PLUGIN_STORAGE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// Move package-local `plugins/<id>/data` to `plugin-data/<id>` when needed.
+fn ensure_plugin_data_migrated(id: &str) -> Result<PathBuf, String> {
+    let id = validate_plugin_id(id)?;
+    let modern = plugin_data_root().join(id);
+    let legacy = plugin_dir(id).join("data");
+    if modern.exists() {
+        return Ok(modern);
+    }
+    if legacy.exists() {
+        if let Some(parent) = modern.parent() {
+            fs::create_dir_all(parent).map_err(|e| format!("create plugin-data root: {e}"))?;
+        }
+        fs::rename(&legacy, &modern).map_err(|e| {
+            format!(
+                "migrate plugin data {} → {}: {e}",
+                legacy.display(),
+                modern.display()
+            )
+        })?;
+        return Ok(modern);
+    }
+    fs::create_dir_all(&modern).map_err(|e| format!("create plugin data dir: {e}"))?;
+    Ok(modern)
+}
+
+/// Preserve durable data across package reinstall: stash data dir, wipe package, restore.
+fn stash_plugin_data(id: &str) -> Result<Option<PathBuf>, String> {
+    let id = validate_plugin_id(id)?;
+    let _ = ensure_plugin_data_migrated(id);
+    let data = plugin_data_root().join(id);
+    if !data.exists() {
+        // Also catch data still only under package tree if migrate failed edge case
+        let legacy = plugin_dir(id).join("data");
+        if legacy.exists() {
+            let staging = std::env::temp_dir().join(format!("qx-plugin-data-stash-{id}"));
+            if staging.exists() {
+                fs::remove_dir_all(&staging).ok();
+            }
+            fs::rename(&legacy, &staging).map_err(|e| format!("stash legacy plugin data: {e}"))?;
+            return Ok(Some(staging));
+        }
+        return Ok(None);
+    }
+    let staging = std::env::temp_dir().join(format!("qx-plugin-data-stash-{id}"));
+    if staging.exists() {
+        fs::remove_dir_all(&staging).ok();
+    }
+    fs::rename(&data, &staging).map_err(|e| format!("stash plugin data: {e}"))?;
+    Ok(Some(staging))
+}
+
+fn restore_plugin_data(id: &str, staging: Option<PathBuf>) -> Result<(), String> {
+    let id = validate_plugin_id(id)?;
+    let Some(staging) = staging else {
+        fs::create_dir_all(plugin_data_root().join(id)).ok();
+        return Ok(());
+    };
+    let dest = plugin_data_root().join(id);
+    if dest.exists() {
+        fs::remove_dir_all(&dest).ok();
+    }
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent).ok();
+    }
+    fs::rename(&staging, &dest).map_err(|e| format!("restore plugin data: {e}"))?;
+    Ok(())
+}
+
+fn dir_size_bytes(path: &Path) -> u64 {
+    if !path.exists() {
+        return 0;
+    }
+    if path.is_file() {
+        return path.metadata().map(|m| m.len()).unwrap_or(0);
+    }
+    let mut total = 0u64;
+    let Ok(entries) = fs::read_dir(path) else {
+        return 0;
+    };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.is_dir() {
+            total = total.saturating_add(dir_size_bytes(&p));
+        } else {
+            total = total.saturating_add(entry.metadata().map(|m| m.len()).unwrap_or(0));
+        }
+    }
+    total
 }
 
 fn atomic_write(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
@@ -1174,6 +1284,10 @@ fn install_plugin_archive(
     }
     let plugin_id = validate_plugin_id(&manifest.id)?;
 
+    // Durable data lives outside the package tree when possible; always stash
+    // before wiping the install dir so upgrades do not erase preferences/KV/files.
+    let data_stash = stash_plugin_data(plugin_id)?;
+
     let dest = checked_plugin_dir(plugin_id)?;
     if dest.exists() {
         fs::remove_dir_all(&dest).map_err(|e| format!("clear existing: {e}"))?;
@@ -1191,6 +1305,10 @@ fn install_plugin_archive(
         let Some(rel) = archive_relative_to_manifest_root(&entry_name, &manifest_root) else {
             continue;
         };
+        // Never let package archives overwrite durable user data directories.
+        if rel == Path::new("data") || rel.starts_with("data/") || rel.starts_with("data\\") {
+            continue;
+        }
         let out = dest.join(rel);
         if let Some(parent) = out.parent() {
             fs::create_dir_all(parent).ok();
@@ -1202,6 +1320,7 @@ fn install_plugin_archive(
         fs::write(&out, &body).map_err(|e| format!("write {}: {e}", out.display()))?;
     }
 
+    restore_plugin_data(plugin_id, data_stash)?;
     fs::create_dir_all(checked_plugin_data_dir(plugin_id)?).ok();
 
     // Verify signature if present
@@ -1465,9 +1584,15 @@ fn safe_relative_path(rel: &str) -> Option<PathBuf> {
 
 #[command]
 pub fn uninstall_plugin(id: String) -> Result<(), String> {
+    let id = validate_plugin_id(&id)?.to_string();
     let dir = checked_plugin_dir(&id)?;
     if dir.exists() {
         fs::remove_dir_all(&dir).map_err(|e| format!("remove plugin dir: {e}"))?;
+    }
+    // Default uninstall removes durable data as well (clean slate).
+    let data = plugin_data_root().join(&id);
+    if data.exists() {
+        fs::remove_dir_all(&data).map_err(|e| format!("remove plugin data: {e}"))?;
     }
     Ok(())
 }
@@ -1558,15 +1683,25 @@ pub fn set_plugin_enabled(id: String, enabled: bool) -> Result<(), String> {
     set_plugin_enabled_fs(&id, enabled)
 }
 
-#[command]
-pub fn plugin_storage_get(id: String, key: String) -> Result<Option<serde_json::Value>, String> {
-    let path = checked_plugin_storage_path(&id)?;
+fn read_storage_map(id: &str) -> Result<BTreeMap<String, serde_json::Value>, String> {
+    let path = checked_plugin_storage_path(id)?;
     if !path.exists() {
-        return Ok(None);
+        return Ok(BTreeMap::new());
     }
     let content = fs::read_to_string(&path).map_err(|e| format!("read storage for {id}: {e}"))?;
-    let map: BTreeMap<String, serde_json::Value> =
-        serde_json::from_str(&content).map_err(|e| format!("parse storage for {id}: {e}"))?;
+    serde_json::from_str(&content).map_err(|e| format!("parse storage for {id}: {e}"))
+}
+
+fn write_storage_map(id: &str, map: &BTreeMap<String, serde_json::Value>) -> Result<(), String> {
+    let path = checked_plugin_storage_path(id)?;
+    fs::create_dir_all(checked_plugin_data_dir(id)?).ok();
+    let json = serde_json::to_string_pretty(map).map_err(|e| format!("serialize: {e}"))?;
+    atomic_write(&path, json.as_bytes()).map_err(|e| format!("write storage for {id}: {e}"))
+}
+
+#[command]
+pub fn plugin_storage_get(id: String, key: String) -> Result<Option<serde_json::Value>, String> {
+    let map = read_storage_map(&id)?;
     Ok(map.get(&key).cloned())
 }
 
@@ -1575,19 +1710,9 @@ pub fn plugin_storage_set(id: String, key: String, value: serde_json::Value) -> 
     let _guard = plugin_storage_lock()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let path = checked_plugin_storage_path(&id)?;
-    fs::create_dir_all(checked_plugin_data_dir(&id)?).ok();
-    let mut map: BTreeMap<String, serde_json::Value> = if path.exists() {
-        serde_json::from_str(
-            &fs::read_to_string(&path).map_err(|e| format!("read storage for {id}: {e}"))?,
-        )
-        .map_err(|e| format!("parse storage for {id}: {e}"))?
-    } else {
-        BTreeMap::new()
-    };
+    let mut map = read_storage_map(&id)?;
     map.insert(key, value);
-    let json = serde_json::to_string_pretty(&map).map_err(|e| format!("serialize: {e}"))?;
-    atomic_write(&path, json.as_bytes()).map_err(|e| format!("write storage for {id}: {e}"))
+    write_storage_map(&id, &map)
 }
 
 #[command]
@@ -1595,16 +1720,113 @@ pub fn plugin_storage_delete(id: String, key: String) -> Result<(), String> {
     let _guard = plugin_storage_lock()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let path = checked_plugin_storage_path(&id)?;
-    if !path.exists() {
-        return Ok(());
-    }
-    let content = fs::read_to_string(&path).map_err(|e| format!("read storage for {id}: {e}"))?;
-    let mut map: BTreeMap<String, serde_json::Value> =
-        serde_json::from_str(&content).map_err(|e| format!("parse storage for {id}: {e}"))?;
+    let mut map = read_storage_map(&id)?;
     map.remove(&key);
-    let json = serde_json::to_string_pretty(&map).map_err(|e| format!("serialize: {e}"))?;
-    atomic_write(&path, json.as_bytes()).map_err(|e| format!("write storage for {id}: {e}"))
+    write_storage_map(&id, &map)
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginStorageKeyInfo {
+    pub key: String,
+    /// Approximate UTF-8 JSON size of the value.
+    pub bytes: u64,
+}
+
+#[command]
+pub fn plugin_storage_list(id: String) -> Result<Vec<PluginStorageKeyInfo>, String> {
+    let map = read_storage_map(&id)?;
+    let mut out = Vec::with_capacity(map.len());
+    for (key, value) in map {
+        let bytes = serde_json::to_vec(&value)
+            .map(|v| v.len() as u64)
+            .unwrap_or(0);
+        out.push(PluginStorageKeyInfo { key, bytes });
+    }
+    out.sort_by(|a, b| a.key.cmp(&b.key));
+    Ok(out)
+}
+
+#[command]
+pub fn plugin_storage_clear(id: String) -> Result<(), String> {
+    let _guard = plugin_storage_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    write_storage_map(&id, &BTreeMap::new())
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginDataUsage {
+    pub plugin_id: String,
+    pub data_dir: String,
+    pub preferences_bytes: u64,
+    pub storage_bytes: u64,
+    pub files_bytes: u64,
+    pub total_bytes: u64,
+}
+
+#[command]
+pub fn plugin_data_usage(id: String) -> Result<PluginDataUsage, String> {
+    let id = validate_plugin_id(&id)?.to_string();
+    let dir = checked_plugin_data_dir(&id)?;
+    let preferences_bytes = dir_size_bytes(&dir.join("preferences.json"));
+    let storage_bytes = dir_size_bytes(&dir.join("storage.json"));
+    let files_bytes = dir_size_bytes(&dir.join("files"));
+    let total_bytes = preferences_bytes
+        .saturating_add(storage_bytes)
+        .saturating_add(files_bytes);
+    Ok(PluginDataUsage {
+        plugin_id: id,
+        data_dir: dir.to_string_lossy().to_string(),
+        preferences_bytes,
+        storage_bytes,
+        files_bytes,
+        total_bytes,
+    })
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginDataClearRequest {
+    pub id: String,
+    /// One or more of: preferences | persist | files | all
+    #[serde(default)]
+    pub scopes: Vec<String>,
+}
+
+#[command]
+pub fn plugin_data_clear(req: PluginDataClearRequest) -> Result<(), String> {
+    let id = validate_plugin_id(&req.id)?.to_string();
+    let scopes: Vec<String> = if req.scopes.is_empty() {
+        vec!["all".to_string()]
+    } else {
+        req.scopes
+    };
+    let all = scopes.iter().any(|s| s == "all");
+    let dir = checked_plugin_data_dir(&id)?;
+    fs::create_dir_all(&dir).ok();
+
+    if all || scopes.iter().any(|s| s == "persist" || s == "storage") {
+        let _guard = plugin_storage_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        write_storage_map(&id, &BTreeMap::new())?;
+    }
+    if all || scopes.iter().any(|s| s == "preferences") {
+        let path = dir.join("preferences.json");
+        if path.exists() {
+            fs::remove_file(&path).map_err(|e| format!("clear preferences: {e}"))?;
+        }
+    }
+    if all || scopes.iter().any(|s| s == "files") {
+        let files = dir.join("files");
+        if files.exists() {
+            fs::remove_dir_all(&files).map_err(|e| format!("clear files: {e}"))?;
+        }
+        fs::create_dir_all(&files).ok();
+    }
+    Ok(())
 }
 
 #[command]
@@ -1627,7 +1849,7 @@ pub fn plugin_preferences_set(
     fs::create_dir_all(&dir).ok();
     let path = dir.join("preferences.json");
     let json = serde_json::to_string_pretty(&values).map_err(|e| format!("serialize: {e}"))?;
-    fs::write(&path, json).map_err(|e| format!("write preferences for {id}: {e}"))
+    atomic_write(&path, json.as_bytes()).map_err(|e| format!("write preferences for {id}: {e}"))
 }
 
 #[command]

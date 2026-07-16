@@ -279,12 +279,8 @@ pub async fn plugin_cli_which(req: PluginCliWhichRequest) -> Result<Option<Strin
 static AI_MEMORY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn plugin_files_dir(id: &str) -> Result<PathBuf, String> {
-    let id = crate::marketplace::validate_plugin_id(id)?;
-    let dir = crate::paths::state_dir()
-        .join("plugins")
-        .join(id)
-        .join("data")
-        .join("files");
+    // Align with marketplace durable data root (`~/.qx/plugin-data/<id>/files`).
+    let dir = crate::marketplace::checked_plugin_data_dir(id)?.join("files");
     std::fs::create_dir_all(&dir).map_err(|e| format!("create plugin files dir: {e}"))?;
     Ok(dir)
 }

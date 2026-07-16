@@ -212,11 +212,13 @@ export default {
 | `context.files.search(query, limit?)` | 搜索文件（需 `files` 权限） |
 | `context.qx.invokeRust(cmd, args)` | 调用受控 Rust/Tauri 命令（需能力组、`invoke:<cmd>` 或 `*`） |
 | `context.setTimeout/setInterval` | 面板生命周期定时器，面板销毁/插件卸载时自动清理 |
-| `context.storage.get(key)` | 读取插件持久 KV（兼容旧 API，等同 `persist.get`） |
-| `context.storage.set(key, value)` | 写入插件持久 KV（兼容旧 API，等同 `persist.set`） |
-| `context.storage.delete(key)` | 删除插件持久 KV（兼容旧 API，等同 `persist.delete`） |
-| `context.storage.session.get/set/delete(key)` | 当前 Qx 进程内的临时 KV，适合首屏内存缓存 |
-| `context.storage.persist.get/set/delete(key)` | 落盘到插件 `data/storage.json` 的长期 KV，适合跨重启缓存 |
+| `context.storage.get/set/delete(key)` | 持久 KV 兼容别名（= `persist.*`） |
+| `context.storage.session.get/set/delete(key)` | 进程内临时 KV |
+| `context.storage.persist.get/set/delete(key)` | 跨重启 KV（`plugin-data/<id>/storage.json`，升级保留） |
+| `context.storage.persist.keys()` | 列举 persist 键与近似大小 |
+| `context.storage.persist.clear()` | 清空本插件 persist KV |
+
+存储布局与生命周期见 [`docs/plugin-storage.md`](../docs/plugin-storage.md)。
 
 AI 调用示例：
 

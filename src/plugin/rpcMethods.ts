@@ -432,6 +432,14 @@ export const rpcHandlers: Record<string, RpcHandler> = {
     });
   },
 
+  storageList: async (plugin) => {
+    return invoke("plugin_storage_list", { id: plugin.id });
+  },
+
+  storageClear: async (plugin) => {
+    return invoke("plugin_storage_clear", { id: plugin.id });
+  },
+
   sessionStorageGet: async (plugin, _perms, payload) => {
     const bucket = pluginSessionStorage.get(plugin.id);
     return bucket?.has(String(payload.key)) ? bucket.get(String(payload.key)) : null;

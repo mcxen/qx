@@ -171,13 +171,26 @@ const res = await context.http.fetch(url, {
 const data = await res.json();
 ```
 
-#### 存储
+#### 存储（详见宿主设计 [`docs/plugin-storage.md`](../docs/plugin-storage.md)）
+
+四个命名空间，**不要混用**：
+
+| 命名空间 | API | 生命周期 |
+|----------|-----|----------|
+| preferences | `getPreference` / Settings | 用户配置；升级保留 |
+| persist | `storage.persist.*` | 跨重启业务 KV；升级保留 |
+| session | `storage.session.*` | 进程内内存 |
+| files | `plugin_file_*` 虚拟路径 | 大文件 / 缓存 |
 
 ```ts
-await context.storage.persist.set("lastSync", Date.now())
-await context.storage.persist.get("lastSync")
+await context.storage.persist.set("sync.cursor", { page: 2 })
+await context.storage.persist.get("sync.cursor")
+await context.storage.persist.keys()      // [{ key, bytes }]
+await context.storage.persist.clear()     // 只清本插件 persist
 await context.storage.session.set("pageCache", items)  // 仅本次进程
 ```
+
+**升级/重装 zip 不会清空** preferences 与 persist / files；**卸载默认全删**。
 
 ### 3.3 端口分层（给架构读者）
 

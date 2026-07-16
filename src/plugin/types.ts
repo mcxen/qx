@@ -357,6 +357,10 @@ export interface PluginContext {
       get: (key: string) => Promise<unknown>;
       set: (key: string, value: unknown) => Promise<void>;
       delete: (key: string) => Promise<void>;
+      /** List keys with approximate value sizes (bytes). */
+      keys: () => Promise<Array<{ key: string; bytes: number }>>;
+      /** Clear all persist KV for this plugin. */
+      clear: () => Promise<void>;
     };
   };
 }
