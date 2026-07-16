@@ -46,26 +46,34 @@ interface NavGroup {
   items: NavItem[];
 }
 
+/**
+ * Settings navigation — grouped by user intent, not by implementation.
+ *
+ *  基础 (Basics)     app-wide prefs everyone uses
+ *  扩展 (Extensions)  installable / marketplace surface
+ *  功能 (Features)    built-in module prefs (AI, OCR, RSS, Weather)
+ *  系统 (System)      OS permissions, developer, about
+ */
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: "Core",
+    label: "Basics",
     items: [
       { id: "general", label: "General", icon: Settings2 },
-      { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
       { id: "appearance", label: "Appearance", icon: Palette },
+      { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
+    ],
+  },
+  {
+    label: "Extensions",
+    items: [
       { id: "plugins", label: "Extensions", icon: Puzzle },
     ],
   },
   {
-    label: "Intelligence",
+    label: "Features",
     items: [
       { id: "agent", label: "AI Agent", icon: Bot },
       { id: "ocr", label: "OCR", icon: ScanText },
-    ],
-  },
-  {
-    label: "Modules",
-    items: [
       { id: "rss", label: "RSS Reader", icon: Rss },
       { id: "weather", label: "Weather", icon: CloudSun },
     ],
@@ -219,7 +227,10 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       {navGroups.map((group) => (
         <div key={group.label} className="qx-settings-nav-group">
           <div className="qx-settings-nav-group-label">
-            {t(`settings.navGroup.${group.label.toLowerCase()}`, group.label)}
+            {t(
+              `settings.navGroup.${group.label.toLowerCase()}`,
+              group.label,
+            )}
           </div>
           {group.items.map((item) => {
             const active = item.id === activeTab;

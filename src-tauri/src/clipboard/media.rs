@@ -35,6 +35,7 @@ fn media_kind(path: &Path) -> &'static str {
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tif" | "tiff" | "heic" => "image",
         "mp4" | "mov" | "m4v" | "avi" | "mkv" | "webm" | "mpeg" | "mpg" => "video",
         "mp3" | "m4a" | "wav" | "aac" | "flac" | "ogg" => "audio",
+        "pdf" => "pdf",
         _ if path.is_dir() => "folder",
         _ => "file",
     }
@@ -78,9 +79,14 @@ fn ffprobe_duration(path: &Path) -> Option<f64> {
         .flatten()
 }
 
-fn video_preview(path: &Path) -> Option<String> {
+fn preview_cache_dir() -> Option<PathBuf> {
     let cache = get_image_dir().join("previews");
     fs::create_dir_all(&cache).ok()?;
+    Some(cache)
+}
+
+fn video_preview(path: &Path) -> Option<String> {
+    let cache = preview_cache_dir()?;
     let key = compute_id(&path.to_string_lossy());
     let output = cache.join(format!("{key}.jpg"));
     if !output.exists() {
@@ -98,47 +104,120 @@ fn video_preview(path: &Path) -> Option<String> {
     Some(output.to_string_lossy().to_string())
 }
 
-fn inspect_file(path: PathBuf) -> Result<ClipboardFileMetadata, String> {
-    let path = path
-        .canonicalize()
-        .map_err(|e| format!("file unavailable: {e}"))?;
-    let metadata = fs::metadata(&path).map_err(|e| format!("read file metadata: {e}"))?;
-    let kind = media_kind(&path).to_string();
-    let (width, height) = if kind == "image" {
-        image::image_dimensions(&path)
-            .map(|value| (Some(value.0), Some(value.1)))
-            .unwrap_or((None, None))
-    } else {
-        (None, None)
-    };
-    let duration_seconds = matches!(kind.as_str(), "video" | "audio")
-        .then(|| ffprobe_duration(&path))
-        .flatten();
-    let preview_path = if kind == "image" {
-        Some(path.to_string_lossy().to_string())
-    } else if kind == "video" {
-        video_preview(&path)
-    } else {
+/// First-page PDF thumbnail. macOS uses Quick Look (`qlmanage`); other platforms best-effort.
+fn pdf_preview(path: &Path) -> Option<String> {
+    let cache = preview_cache_dir()?;
+    let key = compute_id(&path.to_string_lossy());
+    let output = cache.join(format!("{key}.png"));
+    if output.exists() {
+        return Some(output.to_string_lossy().to_string());
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        // qlmanage -t writes "<basename>.png" into -o directory.
+        let status = std::process::Command::new("qlmanage")
+            .args(["-t", "-s", "960", "-o"])
+            .arg(&cache)
+            .arg(path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .ok()?;
+        if !status.success() {
+            return None;
+        }
+        let generated = cache.join(format!("{}.png", path.file_name()?.to_string_lossy()));
+        if generated.exists() {
+            if generated != output {
+                let _ = fs::rename(&generated, &output);
+            }
+            if output.exists() {
+                return Some(output.to_string_lossy().to_string());
+            }
+        }
+        // Some QL generators append extra suffixes — pick newest png matching basename.
+        if let Ok(entries) = fs::read_dir(&cache) {
+            let stem = path.file_stem()?.to_string_lossy().to_string();
+            let mut candidates: Vec<_> = entries
+                .flatten()
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.extension().and_then(|e| e.to_str()) == Some("png")
+                        && p.file_name()
+                            .and_then(|n| n.to_str())
+                            .is_some_and(|n| n.starts_with(&stem))
+                })
+                .collect();
+            candidates.sort_by_key(|p| {
+                std::cmp::Reverse(
+                    p.metadata()
+                        .and_then(|m| m.modified())
+                        .ok()
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH),
+                )
+            });
+            if let Some(found) = candidates.into_iter().next() {
+                let _ = fs::rename(&found, &output);
+                if output.exists() {
+                    return Some(output.to_string_lossy().to_string());
+                }
+            }
+        }
+        return None;
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (path, output);
         None
+    }
+}
+
+/// Heavy preview generation (video frame / PDF page). Call off the UI path.
+fn generate_file_preview(path: &Path) -> Option<String> {
+    match media_kind(path) {
+        "image" => Some(path.to_string_lossy().to_string()),
+        "video" => video_preview(path),
+        "pdf" => pdf_preview(path),
+        _ => None,
+    }
+}
+
+/// Fast metadata only — stat + kind. No image decode, ffmpeg, or Quick Look.
+fn inspect_file(path: PathBuf) -> Result<ClipboardFileMetadata, String> {
+    // Prefer the path as given so selection stays snappy on slow/network volumes;
+    // fall back to canonicalize only when the original cannot be statted.
+    let raw = path;
+    let (resolved, metadata) = match fs::metadata(&raw) {
+        Ok(meta) => (raw.canonicalize().unwrap_or_else(|_| raw.clone()), meta),
+        Err(_) => {
+            let canon = raw
+                .canonicalize()
+                .map_err(|e| format!("file unavailable: {e}"))?;
+            let meta = fs::metadata(&canon).map_err(|e| format!("read file metadata: {e}"))?;
+            (canon, meta)
+        }
     };
+    let kind = media_kind(&resolved).to_string();
     Ok(ClipboardFileMetadata {
-        path: path.to_string_lossy().to_string(),
-        name: path
+        path: resolved.to_string_lossy().to_string(),
+        name: resolved
             .file_name()
             .and_then(|value| value.to_str())
             .unwrap_or("File")
             .to_string(),
-        extension: path
+        extension: resolved
             .extension()
             .and_then(|value| value.to_str())
             .unwrap_or("")
             .to_ascii_lowercase(),
         kind,
         size: metadata.len(),
-        width,
-        height,
-        duration_seconds,
-        preview_path,
+        width: None,
+        height: None,
+        duration_seconds: None,
+        preview_path: None,
     })
 }
 
@@ -147,6 +226,57 @@ pub async fn clipboard_file_metadata(path: String) -> Result<ClipboardFileMetada
     tauri::async_runtime::spawn_blocking(move || inspect_file(PathBuf::from(path)))
         .await
         .map_err(|e| format!("metadata task failed: {e}"))?
+}
+
+/// Async preview path for image / video / PDF (cached under clipboard image dir).
+#[command]
+pub async fn clipboard_file_preview(path: String) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = PathBuf::from(path)
+            .canonicalize()
+            .map_err(|e| format!("file unavailable: {e}"))?;
+        Ok(generate_file_preview(&path))
+    })
+    .await
+    .map_err(|e| format!("preview task failed: {e}"))?
+}
+
+/// Optional media probe (dimensions / duration) — never blocks the info panel first paint.
+#[command]
+pub async fn clipboard_file_media_probe(
+    path: String,
+) -> Result<ClipboardFileMetadata, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut meta = inspect_file(PathBuf::from(&path))?;
+        let p = PathBuf::from(&meta.path);
+        if meta.kind == "image" {
+            if let Ok((w, h)) = image::image_dimensions(&p) {
+                meta.width = Some(w);
+                meta.height = Some(h);
+            }
+        }
+        if matches!(meta.kind.as_str(), "video" | "audio") {
+            meta.duration_seconds = ffprobe_duration(&p);
+        }
+        // Attach preview path if already cached (no generation).
+        let key = compute_id(&meta.path);
+        if let Some(cache) = preview_cache_dir() {
+            let jpg = cache.join(format!("{key}.jpg"));
+            let png = cache.join(format!("{key}.png"));
+            if meta.kind == "image" {
+                meta.preview_path = Some(meta.path.clone());
+            } else if jpg.exists() {
+                meta.preview_path = Some(jpg.to_string_lossy().to_string());
+            } else if png.exists() {
+                meta.preview_path = Some(png.to_string_lossy().to_string());
+            }
+        } else if meta.kind == "image" {
+            meta.preview_path = Some(meta.path.clone());
+        }
+        Ok(meta)
+    })
+    .await
+    .map_err(|e| format!("media probe failed: {e}"))?
 }
 
 #[cfg(target_os = "macos")]

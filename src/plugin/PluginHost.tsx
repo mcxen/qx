@@ -4,12 +4,18 @@ import QxShell, { type BottomIslandContent, type QxShellAction } from "../compon
 import PluginBackgroundBadge, {
   usePluginBackgroundSummary,
 } from "../components/PluginBackgroundBadge";
+import PluginBackgroundPanel from "../components/PluginBackgroundPanel";
 import { useEscBack } from "../hooks/useEscBack";
 import { usePluginRegistry } from "./registry";
+import {
+  runPluginItemAction,
+  subscribePluginItemActions,
+  type PluginItemActionDescriptor,
+} from "./runtime";
 import { useStore } from "../store";
 import { useSettingsStore } from "../modules/settings/store";
 import { shouldIgnoreBareShortcut } from "../utils/keyboard";
-import { formatTimestamp } from "./backgroundActivity";
+import { formatRelativeTime, formatTimestamp } from "./backgroundActivity";
 import { useT } from "../i18n";
 
 export function PluginHost() {
@@ -62,6 +68,9 @@ export function PluginPanelViewport() {
     kind: "idle" | "loading" | "error";
     detail?: string;
   }>({ kind: "idle" });
+  /** Selected Raycast item ActionPanel → QxShell actions. */
+  const [itemActions, setItemActions] = useState<PluginItemActionDescriptor[]>([]);
+  const [selectionTitle, setSelectionTitle] = useState<string>("");
   const raycastActionPanel = useSettingsStore(
     (state) => state.settings.plugin_display.raycast_action_panel,
   );
@@ -87,6 +96,19 @@ export function PluginPanelViewport() {
   };
 
   useEffect(() => {
+    if (!isPluginTab || !pluginId) {
+      setItemActions([]);
+      setSelectionTitle("");
+      return;
+    }
+    return subscribePluginItemActions((payload) => {
+      if (payload.pluginId !== pluginId) return;
+      setItemActions(payload.actions);
+      setSelectionTitle(payload.selectionTitle || "");
+    });
+  }, [isPluginTab, pluginId]);
+
+  useEffect(() => {
     if (!containerRef.current || !isPluginTab) return;
     const container = containerRef.current;
     const activePanel = panel;
@@ -97,6 +119,8 @@ export function PluginPanelViewport() {
 
     let disposed = false;
     let timeout: number | null = null;
+    setItemActions([]);
+    setSelectionTitle("");
     setRenderState({ kind: "loading", detail: "Rendering panel" });
     renderPluginStatus(container, `Loading ${pluginId}...`);
 
@@ -133,32 +157,63 @@ export function PluginPanelViewport() {
       void Promise.resolve(activePanel.destroy?.(container)).catch(() => {});
       container.innerHTML = "";
       setRenderState({ kind: "idle" });
+      setItemActions([]);
+      setSelectionTitle("");
     };
   }, [isPluginTab, panel, pluginId, refreshKey, raycastActionPanel]);
 
   const shellTitle = panel?.title || plugin?.name || pluginId;
 
-  const actions = useMemo<QxShellAction[]>(() => [
-    {
-      label: "Refresh",
-      kbd: "R",
-      onClick: () => setRefreshKey((k) => k + 1),
+  const runItem = useCallback(
+    (actionId: string) => {
+      runPluginItemAction(pluginId, actionId);
     },
-    ...pluginCommands.map((cmd) => ({
-      label: cmd.title,
-      onClick: () => void usePluginRegistry.getState().runCommand(cmd),
-    })),
-  ], [pluginCommands]);
+    [pluginId],
+  );
+
+  // Raycast ActionPanel[0] === Qx primaryAction; rest + same list for ⌘K.
+  const primaryItem = itemActions[0];
+
+  const actions = useMemo<QxShellAction[]>(() => {
+    // Full Raycast ActionPanel → Qx action menu (primary included so ⌘K is complete).
+    const raycastAsQx: QxShellAction[] = itemActions.map((action, index) => ({
+      label: action.title,
+      kbd: action.kbd || (index === 0 ? "Enter" : undefined),
+      onClick: () => runItem(action.id),
+    }));
+    const panelOps: QxShellAction[] = [
+      {
+        label: t("plugins.refresh", "Refresh"),
+        kbd: "R",
+        onClick: () => setRefreshKey((k) => k + 1),
+      },
+      ...pluginCommands.map((cmd) => ({
+        label: cmd.title,
+        onClick: () => void usePluginRegistry.getState().runCommand(cmd),
+      })),
+    ];
+    return [...raycastAsQx, ...panelOps];
+  }, [itemActions, pluginCommands, runItem, t]);
 
   if (!isPluginTab) return null;
 
-  const backgroundDetail = background?.isRunning
-    ? t("plugins.background.running", "Background running")
-    : background?.lastRunAt
-      ? `${t("plugins.background.lastRun", "Last run")}: ${formatTimestamp(background.lastRunAt)}`
-      : background?.hasBackground
-        ? t("plugins.background.scheduled", "Background scheduled")
-        : undefined;
+  const backgroundDetail = (() => {
+    if (!background?.hasBackground) return undefined;
+    if (background.isRunning) return t("plugins.background.running", "Background running");
+    const failed = background.jobs.some((job) => job.lastOutcome === "error" || job.lastError);
+    if (failed) return t("plugins.background.hasErrors", "Background · last run failed");
+    if (background.lastRunAt) {
+      const rel = formatRelativeTime(background.lastRunAt);
+      if (rel.kind === "just_now") {
+        return `${t("plugins.background.lastRun", "Last run")}: ${t("plugins.background.justNow", "Just now")}`;
+      }
+      if (rel.kind === "past" && rel.minutes != null) {
+        return `${t("plugins.background.lastRun", "Last run")}: ${t("plugins.background.minutesAgo", "{n}m ago").replace("{n}", String(rel.minutes))}`;
+      }
+      return `${t("plugins.background.lastRun", "Last run")}: ${formatTimestamp(background.lastRunAt)}`;
+    }
+    return t("plugins.background.scheduled", "Background scheduled");
+  })();
 
   const island: BottomIslandContent = renderState.kind === "loading"
     ? {
@@ -194,13 +249,40 @@ export function PluginPanelViewport() {
       }
       context={
         <aside className="qx-action-panel">
-          <div className="qx-action-title">Actions</div>
+          {/* Raycast ActionPanel ≡ Qx Actions (same list as bottom bar + ⌘K). */}
+          <div className="qx-action-title">{t("common.actions", "Actions")}</div>
+          {selectionTitle ? (
+            <div className="v2ex-context-copy" style={{ marginBottom: 6 }}>
+              <strong>{selectionTitle}</strong>
+            </div>
+          ) : null}
+          {itemActions.length > 0 ? (
+            itemActions.map((action, index) => {
+              const kbd = action.kbd || (index === 0 ? "Enter" : undefined);
+              return (
+                <button
+                  key={action.id}
+                  className="qx-action-item"
+                  type="button"
+                  onClick={() => runItem(action.id)}
+                >
+                  <span>{action.title}</span>
+                  {kbd ? <kbd>{kbd}</kbd> : null}
+                </button>
+              );
+            })
+          ) : (
+            <div className="v2ex-context-copy" style={{ opacity: 0.7 }}>
+              {t("plugins.selectForActions", "Select an item to load its actions")}
+            </div>
+          )}
+          <div className="qx-action-title">{t("plugins.panelActions", "Panel")}</div>
           <button
             className="qx-action-item"
             onClick={() => setRefreshKey((k) => k + 1)}
             type="button"
           >
-            <span>Refresh</span>
+            <span>{t("plugins.refresh", "Refresh")}</span>
             <kbd>R</kbd>
           </button>
           {pluginCommands.map((cmd) => (
@@ -223,30 +305,7 @@ export function PluginPanelViewport() {
             </button>
           ))}
           {background?.hasBackground && (
-            <>
-              <div className="qx-action-title">
-                {t("plugins.background.section", "Background")}
-              </div>
-              <div className="v2ex-context-copy">
-                {background.jobs.map((job) => (
-                  <div key={job.commandName} title={formatTimestamp(job.lastRunAt)}>
-                    <strong>{job.commandTitle}</strong>
-                    <span>
-                      {job.state === "running"
-                        ? t("plugins.background.running", "Background running")
-                        : job.lastRunAt
-                          ? `${t("plugins.background.lastRun", "Last run")}: ${formatTimestamp(job.lastRunAt)}`
-                          : t("plugins.background.never", "Never")}
-                    </span>
-                    {job.nextRunAt != null && job.state !== "running" && (
-                      <span>
-                        {t("plugins.background.nextRun", "Next run")}: {formatTimestamp(job.nextRunAt)}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </>
+            <PluginBackgroundPanel pluginId={pluginId} summary={background} />
           )}
           {plugin?.description && (
             <>
@@ -261,14 +320,27 @@ export function PluginPanelViewport() {
         </aside>
       }
       island={island}
-      primaryAction={{
-        label: "Refresh",
-        kbd: "R",
-        tone: "primary",
-        onClick: () => setRefreshKey((k) => k + 1),
-      }}
-      secondaryAction={{ label: "Actions", kbd: "CmdOrCtrl+K" }}
-      actionTitle="Plugin Actions"
+      primaryAction={
+        primaryItem
+          ? {
+              label: primaryItem.title,
+              kbd: primaryItem.kbd || "Enter",
+              tone: "primary",
+              onClick: () => runItem(primaryItem.id),
+            }
+          : {
+              label: t("plugins.refresh", "Refresh"),
+              kbd: "R",
+              tone: "primary",
+              onClick: () => setRefreshKey((k) => k + 1),
+            }
+      }
+      secondaryAction={{ label: t("common.actions", "Actions"), kbd: "CmdOrCtrl+K" }}
+      actionTitle={
+        selectionTitle
+          ? `${t("common.actions", "Actions")} · ${selectionTitle}`
+          : t("common.actions", "Actions")
+      }
       actions={actions}
     >
       <div

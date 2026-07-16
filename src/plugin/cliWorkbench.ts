@@ -8,8 +8,10 @@
 
 import type {
   PluginCliBashRequest,
+  PluginCliJobSnapshot,
   PluginCliRunRequest,
   PluginCliRunResult,
+  PluginCliStartRequest,
   PluginContext,
 } from "./types";
 
@@ -17,6 +19,10 @@ export type PluginCliCore = {
   run: (request: PluginCliRunRequest) => Promise<PluginCliRunResult>;
   bash: (request: PluginCliBashRequest | string) => Promise<PluginCliRunResult>;
   which: (program: string) => Promise<string | null>;
+  start: (request: PluginCliStartRequest) => Promise<PluginCliJobSnapshot>;
+  poll: (jobId: string) => Promise<PluginCliJobSnapshot>;
+  cancel: (jobId: string) => Promise<PluginCliJobSnapshot>;
+  listJobs: () => Promise<PluginCliJobSnapshot[]>;
 };
 
 export type PluginCliJsonOptions = PluginCliRunRequest & {
@@ -96,6 +102,26 @@ export function parseJsonLines(text: string): unknown[] {
   return out;
 }
 
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  worker: (item: T, index: number) => Promise<R>,
+  concurrency = 4,
+): Promise<R[]> {
+  const limit = Math.max(1, Math.min(32, Math.floor(concurrency) || 4));
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = next;
+      next += 1;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
 export function enhancePluginCli(core: PluginCliCore): PluginContext["cli"] {
   const ensure = async (request: PluginCliRunRequest): Promise<PluginCliRunResult> => {
     const result = await core.run(request);
@@ -150,10 +176,47 @@ export function enhancePluginCli(core: PluginCliCore): PluginContext["cli"] {
     return parseJsonLoose(result.stdout) as T;
   };
 
+  const wait = async (
+    jobId: string,
+    options?: {
+      pollMs?: number;
+      onUpdate?: (job: PluginCliJobSnapshot) => void;
+      signal?: AbortSignal;
+    },
+  ): Promise<PluginCliJobSnapshot> => {
+    const pollMs = Math.max(50, Math.min(5_000, options?.pollMs ?? 200));
+    for (;;) {
+      if (options?.signal?.aborted) {
+        throw new Error("cli wait aborted");
+      }
+      const snap = await core.poll(jobId);
+      options?.onUpdate?.(snap);
+      if (!snap.running) return snap;
+      await new Promise<void>((resolve, reject) => {
+        const timer = window.setTimeout(() => resolve(), pollMs);
+        options?.signal?.addEventListener(
+          "abort",
+          () => {
+            window.clearTimeout(timer);
+            reject(new Error("cli wait aborted"));
+          },
+          { once: true },
+        );
+      });
+    }
+  };
+
   return {
     run: core.run,
     bash: core.bash,
     which: core.which,
+    start: core.start,
+    poll: core.poll,
+    cancel: core.cancel,
+    listJobs: core.listJobs,
+    wait,
+    map: (items, worker, options) =>
+      mapWithConcurrency(items, worker, options?.concurrency ?? 4),
     ensure,
     json,
     lines,
@@ -376,6 +439,24 @@ export const PLUGIN_WORKBENCH_RUNTIME_JS = [
   "  for (const line of lines) { try { out.push(JSON.parse(line)); } catch (e) {} }",
   "  return out;",
   "}",
+  "function mapWithConcurrency(items, worker, concurrency) {",
+  "  concurrency = Math.max(1, Math.min(32, Math.floor(concurrency) || 4));",
+  "  const results = new Array(items.length);",
+  "  let next = 0;",
+  "  const runners = [];",
+  "  const n = Math.min(concurrency, items.length);",
+  "  for (let i = 0; i < n; i += 1) {",
+  "    runners.push((async function () {",
+  "      while (true) {",
+  "        const index = next;",
+  "        next += 1;",
+  "        if (index >= items.length) return;",
+  "        results[index] = await worker(items[index], index);",
+  "      }",
+  "    })());",
+  "  }",
+  "  return Promise.all(runners).then(function () { return results; });",
+  "}",
   "function enhancePluginCli(core) {",
   "  async function ensure(request) {",
   "    const result = await core.run(request);",
@@ -419,7 +500,28 @@ export const PLUGIN_WORKBENCH_RUNTIME_JS = [
   "    }",
   "    return options.jsonl ? parseJsonLines(result.stdout) : parseJsonLoose(result.stdout);",
   "  }",
-  "  return Object.assign({}, core, { ensure: ensure, json: json, lines: lines, text: text, jsonBash: jsonBash, parseJson: parseJsonLoose, parseJsonLines: parseJsonLines });",
+  "  async function wait(jobId, options) {",
+  "    options = options || {};",
+  "    const pollMs = Math.max(50, Math.min(5000, options.pollMs || 200));",
+  "    while (true) {",
+  "      if (options.signal && options.signal.aborted) throw new Error('cli wait aborted');",
+  "      const snap = await core.poll(jobId);",
+  "      if (options.onUpdate) options.onUpdate(snap);",
+  "      if (!snap.running) return snap;",
+  "      await new Promise(function (resolve, reject) {",
+  "        const timer = setTimeout(resolve, pollMs);",
+  "        if (options.signal) {",
+  "          options.signal.addEventListener('abort', function () { clearTimeout(timer); reject(new Error('cli wait aborted')); }, { once: true });",
+  "        }",
+  "      });",
+  "    }",
+  "  }",
+  "  return Object.assign({}, core, {",
+  "    wait: wait,",
+  "    map: function (items, worker, options) { return mapWithConcurrency(items, worker, (options && options.concurrency) || 4); },",
+  "    ensure: ensure, json: json, lines: lines, text: text, jsonBash: jsonBash,",
+  "    parseJson: parseJsonLoose, parseJsonLines: parseJsonLines",
+  "  });",
   "}",
   "function createPluginUiKit() {",
   "  const WORKBENCH_CSS = " + JSON.stringify(WORKBENCH_CSS) + ";",

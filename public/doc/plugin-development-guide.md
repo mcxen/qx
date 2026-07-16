@@ -41,6 +41,7 @@
 | **①** | **本文** | 总览、端口、manifest、安装、调试、模式 |
 | ② | [`plugin-cli-protocol.md`](./plugin-cli-protocol.md) | **`context.cli` 完整协议**（argv、超时、安全） |
 | ②b | [`plugin-cli-gui.md`](./plugin-cli-gui.md) | **CLI→GUI**：`cli.json` / `ui.mountWorkbench` 与示例 |
+| ②c | [`plugin-tray.md`](./plugin-tray.md) | **系统托盘能力**：`context.tray` + 指标拼实时标题 |
 | ③ | [`plugin-system.md`](./plugin-system.md) | manifest 全字段、context 全表、权限清单 |
 | ④ | [`plugin-marketplace.md`](./plugin-marketplace.md) | 打进 `qx-plugins` 市场、Import/Browse |
 | ⑤ | [`raycast-plugin-conversion.md`](./raycast-plugin-conversion.md) | Raycast 扩展转换（可选） |
@@ -120,7 +121,9 @@ export default {
 
 | 场景 | 端口 | 权限 | 备注 |
 |------|------|------|------|
-| 跑本机工具（brew、release-cli、git） | **`context.cli`** | `cli` | **业务首选**；`run`=argv，`bash`=完整 shell；GUI 下注入 login PATH |
+| 跑本机工具（brew、release-cli、git） | **`context.cli`** | `cli` | **业务首选**；`run`/`bash` 同步；`start`/`wait`/`cancel` 异步；`map` 有界并行；GUI 下 login PATH |
+| 打开/揭示本地产物、读平台环境 | **`context.system`** | `system` | `env` / `openPath` / `revealPath`；与 `openUrl` 不同 |
+| 系统托盘菜单项 | **`context.tray`** | `tray` | `setItems` / `clear`；点选可跑本插件 `command` |
 | 调公司 HTTP API | **`context.http`** | `http` | 跨平台更稳 |
 | 用户配置（路径、token） | **`context.getPreference`** | —（manifest.preferences） | 密钥用 `password` |
 | 跨重启缓存 | **`context.storage.persist`** | — | 落盘 `data/storage.json` |
@@ -147,6 +150,16 @@ context.setTimeout / setInterval / clearTimeout / clearInterval  // 面板销毁
 ```ts
 // 权限: "cli"
 await context.cli.which("brew")  // => "/opt/homebrew/bin/brew" | null（含 login PATH）
+// 长任务 / 可取消 / 流式日志：
+// const job = await context.cli.start({ kind: "run", program: "ffmpeg", args: [...] });
+// await context.cli.wait(job.id, { onUpdate: (s) => { /* s.stdout */ } });
+// 有界并行：await context.cli.map(items, async (x) => context.cli.run(...), { concurrency: 4 });
+// 权限: "system"
+// await context.system.openPath(outPath); await context.system.revealPath(outPath);
+// 权限: "tray" — 往系统托盘加菜单（可选 command 为本插件 commands[].name）
+// await context.tray.setItems([
+//   { id: "mem", title: "Open dashboard", command: "open" },
+// ]);
 
 await context.cli.run({
   program: "brew",                 // 或绝对路径

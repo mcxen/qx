@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useT } from "../i18n";
 import {
+  formatDurationMs,
   formatRelativeTime,
   formatTimestamp,
   usePluginBackgroundStore,
@@ -44,7 +45,9 @@ function buildTooltip(
   const lines: string[] = [
     summary.isRunning
       ? t("plugins.background.running", "Background running")
-      : t("plugins.background.scheduled", "Background scheduled"),
+      : summary.jobs.some((job) => job.lastOutcome === "error" || job.lastError)
+        ? t("plugins.background.hasErrors", "Background · last run failed")
+        : t("plugins.background.scheduled", "Background scheduled"),
   ];
   for (const job of summary.jobs) {
     const last = job.lastRunAt
@@ -53,9 +56,11 @@ function buildTooltip(
     const next = job.nextRunAt
       ? `${relativeLabel(job.nextRunAt, t)} · ${formatTimestamp(job.nextRunAt)}`
       : "—";
+    const duration =
+      job.lastDurationMs != null ? ` · ${formatDurationMs(job.lastDurationMs)}` : "";
     lines.push(
       `${job.commandTitle} (${job.interval})`,
-      `  ${t("plugins.background.lastRun", "Last run")}: ${last}`,
+      `  ${t("plugins.background.lastRun", "Last run")}: ${last}${duration}`,
       `  ${t("plugins.background.nextRun", "Next run")}: ${next}`,
     );
     if (job.lastError) {
@@ -89,7 +94,7 @@ export function usePluginBackgroundJob(
 
 /**
  * Compact badge for plugins/commands with no-view interval jobs.
- * Hover shows last / next execution times (and errors).
+ * Semantic tone follows open-source status badge practice (running / success / error).
  */
 export default function PluginBackgroundBadge({
   pluginId,
@@ -111,9 +116,18 @@ export default function PluginBackgroundBadge({
   if (commandName && !job) return null;
 
   const running = job ? job.state === "running" : summary.isRunning;
+  const failed = job
+    ? Boolean(job.lastOutcome === "error" || job.lastError)
+    : summary.jobs.some((item) => item.lastOutcome === "error" || item.lastError);
+  const ok = !running && !failed && (job ? job.lastOutcome === "success" : summary.jobs.some((item) => item.lastOutcome === "success"));
+
   const label = running
     ? t("plugins.background.badgeRunning", "Running")
-    : t("plugins.background.badge", "Background");
+    : failed
+      ? t("plugins.background.badgeFailed", "Failed")
+      : ok
+        ? t("plugins.background.badgeOk", "OK")
+        : t("plugins.background.badge", "Background");
 
   const tip = job
     ? buildTooltip(
@@ -128,9 +142,17 @@ export default function PluginBackgroundBadge({
       )
     : buildTooltip(summary, t);
 
+  const toneClass = running
+    ? " is-running"
+    : failed
+      ? " is-failed"
+      : ok
+        ? " is-ok"
+        : "";
+
   return (
     <span
-      className={`qx-plugin-bg-badge${running ? " is-running" : ""}${compact ? " is-compact" : ""}${className ? ` ${className}` : ""}`}
+      className={`qx-plugin-bg-badge${toneClass}${compact ? " is-compact" : ""}${className ? ` ${className}` : ""}`}
       title={tip}
       aria-label={tip.replace(/\n/g, "; ")}
     >

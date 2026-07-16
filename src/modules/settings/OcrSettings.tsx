@@ -52,9 +52,7 @@ export default function OcrSettings() {
   return (
     <div className="qx-settings-page">
       <SettingsCard
-        title={t("ocr.capture.title", "Recognition")}
-        description={t("ocr.capture.desc", "Enable OCR features used by screenshots, clipboard images, and plugins.")}
-      >
+        title={t("ocr.capture.title", "Recognition")}>
         <Row
           title={t("ocr.enable", "Enable OCR")}
           description={t("ocr.enable.desc", "Enable optical character recognition for images.")}
@@ -69,9 +67,7 @@ export default function OcrSettings() {
       {adv.ocr_enabled && (
         <>
           <SettingsCard
-            title={t("ocr.engine.title", "Engine")}
-            description={t("ocr.engine.cardDesc", "Choose the local OCR backend for recognition jobs.")}
-          >
+            title={t("ocr.engine.title", "Engine")}>
             <Row
               title={t("ocr.engine", "OCR Engine")}
               description={t("ocr.engine.desc", "Choose the OCR backend engine.")}
@@ -89,9 +85,7 @@ export default function OcrSettings() {
 
           {isOarOcr && (
             <SettingsCard
-              title={t("ocr.model.title", "OAR Model")}
-              description={t("ocr.model.desc", "Select and download the recognition model used by OAR-OCR.")}
-            >
+              title={t("ocr.model.title", "OAR Model")}>
               <Row
                 title={t("ocr.modelSize", "Model Size")}
                 description={t("ocr.modelSize.desc", "Larger models are more accurate but use more disk space and memory.")}

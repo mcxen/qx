@@ -275,6 +275,8 @@ async function invokeCommand(name, container, context, options = {}) {
   globalThis.__qxRaycastLaunchType = launchType;
   globalThis.__qxRaycastRuntime = {
     context,
+    pluginId: context?.pluginId || ${JSON.stringify(manifest.id)},
+    runtimeId: globalThis.__qxPluginRuntimeId || "",
     preferences,
     activeCommand: name,
     cache,

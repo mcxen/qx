@@ -245,6 +245,73 @@ export interface PluginCliRunResult {
   program: string;
 }
 
+/** Async CLI job kind. */
+export type PluginCliJobKind = "run" | "bash";
+
+export type PluginCliJobState =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "timedOut";
+
+/** Start an async CLI job (`context.cli.start`). */
+export type PluginCliStartRequest =
+  | (PluginCliRunRequest & { kind: "run" })
+  | (PluginCliBashRequest & { kind: "bash" });
+
+export interface PluginCliJobSnapshot {
+  id: string;
+  pluginId: string;
+  kind: string;
+  state: PluginCliJobState;
+  program: string;
+  stdout: string;
+  stderr: string;
+  status: number | null;
+  timedOut: boolean;
+  startedAt: number;
+  finishedAt: number | null;
+  error?: string | null;
+  running: boolean;
+}
+
+/** Host system info for CLI workbenches (`context.system.env`). */
+export interface PluginSystemEnv {
+  platform: "macos" | "windows" | "linux" | "unknown" | string;
+  arch: string;
+  homeDir: string;
+  tempDir: string;
+  pathSep: string;
+  exePath?: string | null;
+}
+
+/** One row a plugin contributes to the host system tray menu. */
+export interface PluginTrayItem {
+  id: string;
+  title: string;
+  enabled?: boolean;
+  /** Run this plugin command name when the user clicks the row. */
+  command?: string;
+}
+
+/** Live host metrics for tray labels / dashboards (`system-stats`). */
+export interface PluginSystemStats {
+  cpu: number;
+  memory: number;
+  memoryUsedGb: number;
+  memoryTotalGb: number;
+  gpu?: number | null;
+}
+
+/** Network byte counters (`system-info`); sample twice to derive rates. */
+export interface PluginNetworkCounters {
+  totalBytesIn: number;
+  totalBytesOut: number;
+  interfaces?: Array<{ name: string; bytesIn: number; bytesOut: number }>;
+}
+
 export interface PluginContext {
   pluginId: string;
   display: {
@@ -287,6 +354,8 @@ export interface PluginContext {
    *
    * - `run` / `which`: argv-style (safe default). Host injects a login-shell PATH.
    * - `bash`: full `bash -lc` when you need pipes / globs.
+   * - `start` / `poll` / `cancel` / `wait` / `listJobs`: async concurrent jobs.
+   * - `map`: bounded parallel fan-out over many argv runs.
    * - `ensure` / `json` / `lines` / `text` / `jsonBash`: CLI→GUI helpers (throw on failure).
    */
   cli: {
@@ -294,6 +363,38 @@ export interface PluginContext {
     /** Login-shell bash (`bash -lc`). Prefer `run` when a single program + args suffice. */
     bash: (request: PluginCliBashRequest | string) => Promise<PluginCliRunResult>;
     which: (program: string) => Promise<string | null>;
+    /**
+     * Start a background CLI job (returns immediately). Stream output via `poll` / `wait`.
+     * Host limits: 6 concurrent jobs per plugin, 32 global.
+     */
+    start: (request: PluginCliStartRequest) => Promise<PluginCliJobSnapshot>;
+    /** Snapshot of a job (partial stdout/stderr while running). */
+    poll: (jobId: string) => Promise<PluginCliJobSnapshot>;
+    /** Kill a running job. */
+    cancel: (jobId: string) => Promise<PluginCliJobSnapshot>;
+    /** List this plugin's recent jobs. */
+    listJobs: () => Promise<PluginCliJobSnapshot[]>;
+    /**
+     * Poll until the job finishes. Optional `onUpdate` for live UI.
+     * Throws only if cancelled wait via AbortSignal — job failure returns the snapshot.
+     */
+    wait: (
+      jobId: string,
+      options?: {
+        pollMs?: number;
+        onUpdate?: (job: PluginCliJobSnapshot) => void;
+        signal?: AbortSignal;
+      },
+    ) => Promise<PluginCliJobSnapshot>;
+    /**
+     * Run many argv jobs with bounded concurrency (default 4).
+     * Uses fire-and-wait `run` under the hood — safe for short tools.
+     */
+    map: <T, R>(
+      items: T[],
+      worker: (item: T, index: number) => Promise<R>,
+      options?: { concurrency?: number },
+    ) => Promise<R[]>;
     /** Like `run`, but throws on timeout / non-zero exit. */
     ensure: (request: PluginCliRunRequest) => Promise<PluginCliRunResult>;
     /** `ensure` + parse stdout as JSON (or JSONL when `jsonl: true`). */
@@ -412,8 +513,37 @@ export interface PluginContext {
       cancel: (id: string) => Promise<PluginAiTask>;
     };
   };
+  /**
+   * System tray port (permission `tray`) — host capability for plugins.
+   * Full contract: `public/doc/plugin-tray.md`.
+   *
+   * Plugins push menu rows; optional `command` maps to this plugin's `commands[].name`.
+   * Combine with `system.stats` / `system.networkCounters` to show live Memory / Net labels.
+   */
+  tray: {
+    /** Replace all tray items for this plugin (max 12). */
+    setItems: (items: PluginTrayItem[]) => Promise<void>;
+    /** Remove this plugin's tray items. */
+    clear: () => Promise<void>;
+    /** Read back items currently registered by this plugin. */
+    list: () => Promise<PluginTrayItem[]>;
+  };
+  /**
+   * System info + path helpers.
+   * - `env` / `openPath` / `revealPath`: permission `system`
+   * - `stats` / `networkCounters`: `system-stats` / `system-info` (for tray live labels, etc.)
+   */
   system: {
-    stats: () => Promise<unknown>;
+    /** Platform / home / temp (permission `system`). */
+    env: () => Promise<PluginSystemEnv>;
+    /** Open path with OS default app (permission `system`). */
+    openPath: (path: string) => Promise<void>;
+    /** Reveal path in Finder / Explorer (permission `system`). */
+    revealPath: (path: string) => Promise<void>;
+    /** CPU / memory snapshot (permission `system-stats`). */
+    stats: () => Promise<PluginSystemStats>;
+    /** Raw interface byte counters (permission `system-info`). Diff for rates. */
+    networkCounters: () => Promise<PluginNetworkCounters>;
     info: () => Promise<unknown>;
     storage: () => Promise<unknown>;
     network: () => Promise<unknown>;

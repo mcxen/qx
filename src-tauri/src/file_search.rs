@@ -90,18 +90,49 @@ fn is_hidden_path(path: &Path) -> bool {
     })
 }
 
+/// File search is **name-only**: the leaf file/folder name must contain the query.
+/// Parent-path and file-content hits are never accepted.
+fn name_matches_query(path: &Path, query: &str) -> bool {
+    let q = query.trim();
+    if q.is_empty() {
+        return false;
+    }
+    let name_lower = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    let q_lower = q.to_lowercase();
+
+    if name_lower.contains(&q_lower) {
+        return true;
+    }
+
+    // Multi-token Latin: every token must appear in the *name* (AND).
+    let tokens: Vec<&str> = q_lower
+        .split(|c: char| !c.is_alphanumeric() && c != '_' && c != '-' && c != '.')
+        .filter(|t| !t.is_empty())
+        .collect();
+    if tokens.len() > 1 {
+        return tokens.iter().all(|token| name_lower.contains(token));
+    }
+
+    false
+}
+
 fn relevance_rank(path: &Path, query: &str) -> u8 {
-    let needle = query.to_ascii_lowercase();
+    // Name-only ranking (Unicode lowercase for CJK).
+    let needle = query.trim().to_lowercase();
     let file_name = path
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("")
-        .to_ascii_lowercase();
+        .to_lowercase();
     let stem = path
         .file_stem()
         .and_then(|value| value.to_str())
         .unwrap_or("")
-        .to_ascii_lowercase();
+        .to_lowercase();
     if file_name == needle {
         0
     } else if stem == needle {
@@ -115,14 +146,9 @@ fn relevance_rank(path: &Path, query: &str) -> u8 {
         3
     } else if file_name.contains(&needle) {
         4
-    } else if path
-        .to_string_lossy()
-        .to_ascii_lowercase()
-        .contains(&needle)
-    {
-        5
     } else {
-        6
+        // Not a name match — should be filtered out before ranking.
+        5
     }
 }
 
@@ -152,9 +178,9 @@ mod platform {
         std::sync::atomic::AtomicBool::new(false);
     static NEVER_STOPPED: AtomicBool = AtomicBool::new(false);
 
-    fn cardinal_queries(query: &str) -> Vec<String> {
+    fn has_advanced_cardinal_syntax(query: &str) -> bool {
         let lower = query.to_ascii_lowercase();
-        let has_type_filter = [
+        [
             "file:",
             "files:",
             "folder:",
@@ -175,19 +201,22 @@ mod platform {
             "tag:",
         ]
         .iter()
-        .any(|prefix| lower.contains(prefix));
-        if has_type_filter {
+        .any(|prefix| lower.contains(prefix))
+    }
+
+    /// Filename-only Cardinal strategies (never path/content).
+    ///
+    /// Avoid bare words and ORs: bare CJK is often segmented into single
+    /// characters. Always post-filter with `name_matches_query`.
+    fn cardinal_queries(query: &str) -> Vec<String> {
+        if has_advanced_cardinal_syntax(query) {
+            // Even advanced syntax is user-controlled; we still name-filter results.
             return vec![query.to_string()];
         }
 
         let quoted = query.replace('"', "\"\"");
-        let mut queries = vec![format!(r#"name:"{quoted}""#), query.to_string()];
-        if query.contains(' ') {
-            queries.push(format!(r#""{quoted}""#));
-        }
-        queries.push(format!(r#"{query} | folder:"{quoted}""#));
-        queries.dedup();
-        queries
+        // Only name: — no path: / content: / bare words.
+        vec![format!(r#"name:"{quoted}""#)]
     }
 
     pub fn init_platform() {
@@ -237,7 +266,11 @@ mod platform {
         if candidates.is_empty() {
             return Vec::new();
         }
-        let mut ranked = candidates.into_iter().collect::<Vec<_>>();
+        let mut ranked = candidates
+            .into_iter()
+            // Hard gate: leaf name must contain the query (name-only search).
+            .filter(|(path, _)| super::name_matches_query(path, query))
+            .collect::<Vec<_>>();
         ranked.sort_by_key(|(path, (is_dir, modified, strategy_rank))| {
             (
                 super::is_hidden_path(path) as u8,
@@ -291,11 +324,12 @@ mod platform {
 
     pub fn search_platform(query: &str, limit: usize, pass: u32) -> Vec<AppEntry> {
         let all_queries = cardinal_queries(query);
-        let candidate_limit = limit.saturating_mul(100).max(200);
+        let candidate_limit = limit.saturating_mul(80).max(120);
 
-        // Pass 0: name-first strategies only — return ASAP for first paint.
-        // Pass 1: remaining Cardinal strategies.
-        // Pass 2: Spotlight mdfind variants (broader than the local index).
+        // All passes are filename-only (no path segment, no content).
+        // Pass 0: Cardinal name:"…" (or mdfind -name).
+        // Pass 1: Spotlight -name (overlap fill while index warms / more hits).
+        // Pass 2: Spotlight display-name predicate (still leaf name).
         match pass {
             0 => {
                 if CARDINAL_READY.load(std::sync::atomic::Ordering::Acquire) {
@@ -306,7 +340,6 @@ mod platform {
                         if let Some(cache) = guard.as_mut() {
                             let quick: Vec<(usize, String)> = all_queries
                                 .iter()
-                                .take(2)
                                 .cloned()
                                 .enumerate()
                                 .map(|(i, q)| (i, q))
@@ -320,65 +353,10 @@ mod platform {
                         }
                     }
                 }
-                // Index not ready / empty: fall back to fast mdfind -name.
                 search_mdfind_name(query, limit)
             }
-            1 => {
-                if !CARDINAL_READY.load(std::sync::atomic::Ordering::Acquire) {
-                    return Vec::new();
-                }
-                let Some(store) = CARDINAL_CACHE.get() else {
-                    return Vec::new();
-                };
-                let mut guard = store
-                    .lock()
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                let Some(cache) = guard.as_mut() else {
-                    return Vec::new();
-                };
-                // Skip the first two already covered by pass 0.
-                let rest: Vec<(usize, String)> = all_queries
-                    .into_iter()
-                    .enumerate()
-                    .skip(2)
-                    .map(|(i, q)| (i, q))
-                    .collect();
-                if rest.is_empty() {
-                    // Only 1–2 strategies total: re-run full set with higher limit.
-                    let full: Vec<(usize, String)> = cardinal_queries(query)
-                        .into_iter()
-                        .enumerate()
-                        .map(|(i, q)| (i, q))
-                        .collect();
-                    let candidates = query_cardinal_strategies(cache, &full, candidate_limit * 2);
-                    return rank_candidates(candidates, query, limit);
-                }
-                let candidates = query_cardinal_strategies(cache, &rest, candidate_limit);
-                rank_candidates(candidates, query, limit)
-            }
-            _ => {
-                // System Spotlight: name + general query + display-name predicate.
-                let mut merged: HashMap<String, AppEntry> = HashMap::new();
-                for entry in search_mdfind_name(query, limit) {
-                    merged.insert(entry.path.clone(), entry);
-                }
-                for entry in search_mdfind_general(query, limit) {
-                    merged.entry(entry.path.clone()).or_insert(entry);
-                }
-                for entry in search_mdfind_display_name(query, limit) {
-                    merged.entry(entry.path.clone()).or_insert(entry);
-                }
-                let mut entries: Vec<AppEntry> = merged.into_values().collect();
-                entries.sort_by_key(|entry| {
-                    let path = PathBuf::from(&entry.path);
-                    (
-                        super::is_hidden_path(&path) as u8,
-                        super::relevance_rank(&path, query),
-                        path.as_os_str().len(),
-                    )
-                });
-                entries.into_iter().take(limit).collect()
-            }
+            1 => search_mdfind_name(query, limit.saturating_mul(2).max(limit)),
+            _ => search_mdfind_display_name(query, limit),
         }
     }
 
@@ -398,6 +376,7 @@ mod platform {
             .lines()
             .filter(|line| !line.trim().is_empty())
             .map(super::entry_from_path)
+            .filter(|entry| super::name_matches_query(Path::new(&entry.path), query))
             .collect();
         entries.sort_by_key(|entry| {
             let path = PathBuf::from(&entry.path);
@@ -420,19 +399,8 @@ mod platform {
         collect_mdfind_output(output, query, limit)
     }
 
-    /// Broader Spotlight query (content / metadata, not name-only).
-    fn search_mdfind_general(query: &str, limit: usize) -> Vec<AppEntry> {
-        let output = Command::new("mdfind")
-            .args(["-onlyin", &home_onlyin(), query])
-            .output();
-        let Ok(output) = output else {
-            return Vec::new();
-        };
-        collect_mdfind_output(output, query, limit)
-    }
-
     fn search_mdfind_display_name(query: &str, limit: usize) -> Vec<AppEntry> {
-        // Case/diacritic-insensitive display name contains.
+        // Leaf display name only (not path, not content).
         let escaped = query.replace('\\', "\\\\").replace('"', "\\\"");
         let predicate = format!("kMDItemDisplayName == \"*{escaped}*\"cd");
         let output = Command::new("mdfind")
@@ -447,17 +415,37 @@ mod platform {
     #[cfg(test)]
     mod tests {
         use super::cardinal_queries;
-        use crate::file_search::relevance_rank;
+        use crate::file_search::{name_matches_query, relevance_rank};
         use std::path::Path;
 
         #[test]
-        fn cardinal_uses_multiple_recall_strategies_for_plain_queries() {
-            let queries = cardinal_queries("project notes");
-            assert!(queries.len() >= 3);
+        fn cardinal_is_name_only_for_plain_queries() {
+            let queries = cardinal_queries("项目笔记");
+            assert_eq!(queries, vec![r#"name:"项目笔记""#.to_string()]);
+            assert!(!queries
+                .iter()
+                .any(|q| q.contains("path:") || q.contains('|')));
             assert_eq!(
                 cardinal_queries("ext:pdf report"),
                 vec!["ext:pdf report".to_string()]
             );
+        }
+
+        #[test]
+        fn name_match_uses_leaf_only() {
+            assert!(name_matches_query(
+                Path::new("/Users/me/Documents/项目笔记.md"),
+                "项目笔记"
+            ));
+            // Parent folder matches must NOT count — name-only search.
+            assert!(!name_matches_query(
+                Path::new("/Users/me/项目笔记/readme.txt"),
+                "项目笔记"
+            ));
+            assert!(!name_matches_query(
+                Path::new("/Users/me/Documents/完全无关.txt"),
+                "项目笔记"
+            ));
         }
 
         #[test]
@@ -495,9 +483,7 @@ mod platform {
         command
     }
 
-    /// Cardinal-style multi-strategy recall for Everything.
-    /// Plain queries fan out to filename-first strategies; advanced syntax is
-    /// passed through as a single user query.
+    /// Filename-only Everything strategies (`nopath:`). No full-path / content.
     fn everything_queries(query: &str) -> Vec<String> {
         let lower = query.to_ascii_lowercase();
         let has_type_filter = [
@@ -534,22 +520,12 @@ mod platform {
         }
 
         let quoted = query.replace('"', "");
-        let mut queries = vec![
-            // Prefer whole-filename / filename-only hits first.
+        // nopath: restricts match to the leaf name only.
+        vec![
             format!(r#"nopath:wfn:"{quoted}""#),
             format!(r#"nopath:startwith:{quoted}"#),
             format!(r#"nopath:"{quoted}""#),
-            query.to_string(),
-        ];
-        if query.contains(' ') {
-            queries.push(format!(r#""{quoted}""#));
-            // Token AND across the path (Everything space = AND).
-            queries.push(quoted.clone());
-        }
-        // Folder name recall similar to Cardinal's folder: strategy.
-        queries.push(format!(r#"folder:"{quoted}""#));
-        queries.dedup();
-        queries
+        ]
     }
 
     pub fn init_platform() {
@@ -619,10 +595,11 @@ mod platform {
     fn search_everything_layered(query: &str, limit: usize, pass: u32) -> Vec<AppEntry> {
         let strategies = everything_queries(query);
         // Progressive passes: first strategies first, later passes chase broader recall.
+        // Progressive name-only strategies (all already nopath:).
         let selected: Vec<(usize, String)> = match pass {
-            0 => strategies.into_iter().enumerate().take(2).collect(),
-            1 => strategies.into_iter().enumerate().skip(2).take(3).collect(),
-            _ => strategies.into_iter().enumerate().skip(5).collect(),
+            0 => strategies.into_iter().enumerate().take(1).collect(),
+            1 => strategies.into_iter().enumerate().skip(1).take(1).collect(),
+            _ => strategies.into_iter().enumerate().skip(2).collect(),
         };
         if selected.is_empty() {
             return Vec::new();
@@ -650,7 +627,10 @@ mod platform {
             return Vec::new();
         }
 
-        let mut ranked = candidates.into_iter().collect::<Vec<_>>();
+        let mut ranked = candidates
+            .into_iter()
+            .filter(|(path, _)| super::name_matches_query(Path::new(path), query))
+            .collect::<Vec<_>>();
         ranked.sort_by_key(|(path, strategy_rank)| {
             let path_buf = PathBuf::from(path);
             (
@@ -775,7 +755,7 @@ use platform::{init_platform, search_platform};
 
 #[cfg(test)]
 mod tests {
-    use super::{is_hidden_path, normalize_query, relevance_rank};
+    use super::{is_hidden_path, name_matches_query, normalize_query, relevance_rank};
     use std::path::Path;
 
     #[test]
@@ -796,5 +776,24 @@ mod tests {
             relevance_rank(Path::new("/tmp/notes.txt"), "notes")
                 < relevance_rank(Path::new("/tmp/my-notes-backup.txt"), "notes")
         );
+    }
+
+    #[test]
+    fn name_match_is_leaf_only() {
+        assert!(name_matches_query(
+            Path::new("/tmp/HelloWorld.txt"),
+            "hello"
+        ));
+        assert!(name_matches_query(Path::new("/tmp/报告.pdf"), "报告"));
+        assert!(!name_matches_query(
+            Path::new("/tmp/HelloWorld.txt"),
+            "报告"
+        ));
+        assert!(!name_matches_query(Path::new("/tmp/foo.txt"), "bar"));
+        // Parent path must not count.
+        assert!(!name_matches_query(
+            Path::new("/tmp/报告/readme.txt"),
+            "报告"
+        ));
     }
 }

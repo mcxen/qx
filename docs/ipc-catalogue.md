@@ -92,7 +92,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 
 `plugin_clipboard_read/write`、`plugin_perform_paste`、`plugin_perform_paste_at_cursor`、`plugin_http_fetch(req)`（只允许 http/https + 超时）、`plugin_notification_show(req)`、`plugin_resolve_asset(id, asset_path)`。
 
-插件 CLI 端口（`cli` 权限，**不**受 AI Agent Bash 开关门控）：`plugin_cli_run`（argv + login PATH）、`plugin_cli_bash`（`bash -lc` 完整 shell）、`plugin_cli_which`。
+插件 CLI 端口（`cli` 权限，**不**受 AI Agent Bash 开关门控）：`plugin_cli_run` / `plugin_cli_bash` / `plugin_cli_which`（同步），`plugin_cli_start` / `plugin_cli_poll` / `plugin_cli_cancel` / `plugin_cli_list_jobs`（异步并发 job）。系统路径能力（`system` 权限）：`plugin_system_env` / `plugin_system_open_path` / `plugin_system_reveal_path`。
 
 ## marketplace
 

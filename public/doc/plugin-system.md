@@ -180,8 +180,13 @@ export default {
 | `context.display.raycastActionPanel` | 读取用户在 Settings -> Extensions -> Display 中配置的 Raycast ActionPanel 行内按钮显示偏好 |
 | `context.clipboard.read()` | 读取系统剪贴板文本（需 `clipboard` 权限） |
 | `context.clipboard.write(text)` | 写入系统剪贴板文本（需 `clipboard` 权限） |
-| `context.cli.run({ program, args?, cwd?, env?, timeoutMs? })` | **业务 CLI 首选**：argv 方式执行本机命令（需 `cli` 权限；**不**走 AI Agent Bash 开关）。协议见 [plugin-cli-protocol.md](./plugin-cli-protocol.md) |
+| `context.cli.run({ program, args?, cwd?, env?, timeoutMs? })` | **业务 CLI 首选**：argv 同步执行（需 `cli`；**不**走 AI Agent Bash）。协议见 [plugin-cli-protocol.md](./plugin-cli-protocol.md) |
+| `context.cli.bash(script \| req)` | login-shell bash（需 `cli`） |
 | `context.cli.which(program)` | 解析 PATH / Homebrew 常见路径上的可执行文件（需 `cli`） |
+| `context.cli.start` / `poll` / `cancel` / `wait` / `listJobs` | **异步 CLI job**：可取消、边跑边读 stdout/stderr、并发上限（需 `cli`） |
+| `context.cli.map(items, worker, { concurrency? })` | 有界并行 fan-out（需 `cli`） |
+| `context.system.env()` | 平台 / home / temp 等（需 `system`） |
+| `context.system.openPath(path)` / `revealPath(path)` | 系统打开或在文件管理器中揭示路径（需 `system`） |
 | `context.http.fetch(url, opts)` | 通过 Rust 后端发起真实 HTTP/HTTPS 请求（需 `http` 权限） |
 | `context.notification.show(input)` | 显示系统通知（需 `notifications` 权限） |
 | `context.ai.providers()` | 读取 QxAI 可用 provider 和模型列表（需 `ai` 权限；自定义 provider 优先通过 API `/models` 获取） |
@@ -300,7 +305,9 @@ http               发起真实 HTTP/HTTPS 请求
 notifications      显示通知 / toast
 ai                 使用 QxAI provider 目录、模型选择、文本和图片多模态聊天能力
 ai-memory          读取、新增、删除用户可管理 AI 记忆
-cli                业务插件 argv 式 CLI（`context.cli.run/which`，不依赖 Agent Bash）
+cli                业务插件 CLI：`run`/`bash`/`which` + 异步 jobs（`start`/`poll`/`cancel`/`map`），不依赖 Agent Bash
+system             系统能力：`context.system.env` / `openPath` / `revealPath`（本地路径与平台信息）
+tray               系统托盘菜单：`context.tray.setItems` / `clear`（可点项映射到插件 command）
 ai-bash            允许 AI/插件执行真实 bash 脚本（危险能力，需谨慎授予；业务优先用 cli）
 ai-tools           允许 AI/插件调用非危险工具，例如用户配置的 rg/grep 搜索
 ai-background      提交和管理 Qx 进程内后台 AI 任务

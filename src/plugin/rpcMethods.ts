@@ -71,6 +71,16 @@ const COMMAND_CAPABILITIES: Record<string, string> = {
   plugin_cli_run: "cli",
   plugin_cli_bash: "cli",
   plugin_cli_which: "cli",
+  plugin_cli_start: "cli",
+  plugin_cli_poll: "cli",
+  plugin_cli_cancel: "cli",
+  plugin_cli_list_jobs: "cli",
+  plugin_system_env: "system",
+  plugin_system_open_path: "system",
+  plugin_system_reveal_path: "system",
+  plugin_tray_set_items: "tray",
+  plugin_tray_clear: "tray",
+  plugin_tray_list: "tray",
 };
 
 const DANGEROUS_INVOKE_COMMANDS = new Set([
@@ -86,6 +96,15 @@ const DANGEROUS_INVOKE_COMMANDS = new Set([
   "plugin_cli_run",
   "plugin_cli_bash",
   "plugin_cli_which",
+  "plugin_cli_start",
+  "plugin_cli_poll",
+  "plugin_cli_cancel",
+  "plugin_cli_list_jobs",
+  "plugin_system_open_path",
+  "plugin_system_reveal_path",
+  "plugin_tray_set_items",
+  "plugin_tray_clear",
+  "plugin_tray_list",
   "qx_system_information_kill_process",
   "qx_permissions_request",
   "qx_external_displays_set_control",
@@ -378,6 +397,89 @@ export const rpcHandlers: Record<string, RpcHandler> = {
     return invoke("plugin_cli_which", {
       req: { program: String(payload.program || "") },
     });
+  },
+
+  /** Start async CLI job (concurrent, cancellable, streaming poll). */
+  cliStart: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "cli");
+    const kind = String(payload.kind || "run").toLowerCase();
+    qxLog("debug", "plugin.rpc.cli", "Plugin CLI job started", {
+      pluginId: plugin.id,
+      kind,
+      program: payload.program,
+      timeoutMs: payload.timeoutMs,
+    });
+    return invoke("plugin_cli_start", {
+      plugin_id: plugin.id,
+      req: {
+        kind,
+        program: payload.program,
+        args: Array.isArray(payload.args) ? payload.args.map(String) : [],
+        script: payload.script,
+        cwd: payload.cwd,
+        env: payload.env,
+        timeoutMs: payload.timeoutMs,
+      },
+    });
+  },
+
+  cliPoll: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "cli");
+    return invoke("plugin_cli_poll", {
+      plugin_id: plugin.id,
+      job_id: String(payload.jobId || payload.id || ""),
+    });
+  },
+
+  cliCancel: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "cli");
+    return invoke("plugin_cli_cancel", {
+      plugin_id: plugin.id,
+      job_id: String(payload.jobId || payload.id || ""),
+    });
+  },
+
+  cliListJobs: async (plugin, perms) => {
+    assertPermission(plugin, perms, "cli");
+    return invoke("plugin_cli_list_jobs", { plugin_id: plugin.id });
+  },
+
+  systemEnv: async (plugin, perms) => {
+    assertPermission(plugin, perms, "system");
+    return invoke("plugin_system_env");
+  },
+
+  systemOpenPath: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "system");
+    return invoke("plugin_system_open_path", { path: String(payload.path || "") });
+  },
+
+  systemRevealPath: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "system");
+    return invoke("plugin_system_reveal_path", { path: String(payload.path || "") });
+  },
+
+  /** Contribute items to the Qx system tray menu (live label + optional command). */
+  traySetItems: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "tray");
+    const raw = Array.isArray(payload.items) ? payload.items : [];
+    const items = raw.slice(0, 12).map((item: Record<string, unknown>) => ({
+      id: String(item.id || "").slice(0, 48),
+      title: String(item.title || item.id || "").slice(0, 64),
+      enabled: item.enabled !== false,
+      command: item.command != null ? String(item.command).slice(0, 64) : undefined,
+    }));
+    return invoke("plugin_tray_set_items", { plugin_id: plugin.id, items });
+  },
+
+  trayClear: async (plugin, perms) => {
+    assertPermission(plugin, perms, "tray");
+    return invoke("plugin_tray_clear", { plugin_id: plugin.id });
+  },
+
+  trayList: async (plugin, perms) => {
+    assertPermission(plugin, perms, "tray");
+    return invoke("plugin_tray_list", { plugin_id: plugin.id });
   },
 
   aiGrepSearch: async (plugin, perms, payload) => {

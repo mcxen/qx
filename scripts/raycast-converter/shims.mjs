@@ -130,6 +130,75 @@ function runAction(action) {
   }
 }
 
+function formatShortcutKbd(shortcut) {
+  if (!shortcut || !shortcut.key) return undefined;
+  const mods = (shortcut.modifiers || []).map((m) => {
+    const s = String(m).toLowerCase();
+    if (s === "cmd" || s === "command" || s === "meta" || s === "super") return "Cmd";
+    if (s === "ctrl" || s === "control") return "Ctrl";
+    if (s === "alt" || s === "option") return "Opt";
+    if (s === "shift") return "Shift";
+    return String(m);
+  });
+  const key = String(shortcut.key);
+  const keyLabel = key.length === 1 ? key.toUpperCase() : key;
+  return [...mods, keyLabel].join("+");
+}
+
+/**
+ * Raycast ActionPanel ≡ Qx Actions.
+ * Selected item actions are published to the host QxShell (primary / ⌘K / context).
+ * The iframe does not own a second action system.
+ */
+function ensureHostActionBridge() {
+  if (globalThis.__qxHostActionBridge) return;
+  globalThis.__qxHostActionBridge = true;
+  window.addEventListener("message", (event) => {
+    const data = event.data || {};
+    if (data.type !== "qx:run-item-action") return;
+    const actionId = String(data.actionId || "");
+    if (!actionId) return;
+    runtime()?.actionHandlers?.get(actionId)?.();
+  });
+}
+
+/** Publish current selection's ActionPanel to QxShell as the real Actions. */
+function publishItemActions(itemEl) {
+  ensureHostActionBridge();
+  const rt = runtime();
+  const ids = String(itemEl?.getAttribute("data-action-ids") || "")
+    .split(",")
+    .filter(Boolean);
+  const actions = [];
+  for (const id of ids) {
+    const meta = rt?.actionMeta?.get(id);
+    if (!meta) continue;
+    actions.push({
+      id,
+      title: meta.title || "Action",
+      kbd: formatShortcutKbd(meta.shortcut),
+    });
+  }
+  const selectionTitle =
+    itemEl?.querySelector?.("strong")?.textContent ||
+    itemEl?.getAttribute?.("data-qx-raycast-item") ||
+    "";
+  try {
+    parent.postMessage(
+      {
+        type: "qx:plugin:item-actions",
+        pluginId: rt?.context?.pluginId || rt?.pluginId || "",
+        runtimeId: rt?.runtimeId || globalThis.__qxPluginRuntimeId || "",
+        selectionTitle: String(selectionTitle || ""),
+        actions,
+      },
+      "*",
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
 function shortcutMatches(event, shortcut) {
   if (!shortcut || !shortcut.key) return false;
   const key = String(shortcut.key).toLowerCase();
@@ -231,33 +300,13 @@ function ensureKeyboardNav() {
 }
 
 function updateActionDock(itemEl) {
-  let dock = document.getElementById("qx-raycast-action-dock");
-  if (!dock) {
-    dock = document.createElement("div");
-    dock.id = "qx-raycast-action-dock";
-    dock.className = "qx-raycast-action-dock";
-    document.body.appendChild(dock);
-  }
-  const ids = String(itemEl?.getAttribute("data-action-ids") || "").split(",").filter(Boolean);
-  dock.innerHTML = "";
-  if (!ids.length) {
+  // Host QxShell is the only action surface (primary + ⌘K + context panel).
+  publishItemActions(itemEl);
+  // Never keep a second fixed dock in the iframe — that fights Qx bottom bar.
+  const dock = document.getElementById("qx-raycast-action-dock");
+  if (dock) {
+    dock.innerHTML = "";
     dock.classList.add("is-empty");
-    return;
-  }
-  dock.classList.remove("is-empty");
-  for (const id of ids) {
-    const meta = runtime()?.actionMeta?.get(id);
-    if (!meta) continue;
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "qx-raycast-action-button";
-    btn.textContent = meta.title || "Action";
-    btn.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      runtime()?.actionHandlers?.get(id)?.();
-    });
-    dock.appendChild(btn);
   }
 }
 
@@ -763,8 +812,8 @@ function ItemShell({ title, subtitle, icon, accessories, actions, children, imag
     "aria-selected": "false",
     className: "qx-raycast-item",
     onClick: (event) => {
-      // Selecting the card should run the primary action (Set Wallpaper).
-      // Nested action buttons stop propagation themselves.
+      // Select only — primary runs on Enter / host Action / explicit button.
+      // (Matches Raycast: select item → Actions panel / ↵.)
       if (event.target?.closest?.(".qx-raycast-action-button")) return;
       document.querySelectorAll("[data-qx-raycast-item].is-selected").forEach((el) => {
         el.classList.remove("is-selected");
@@ -773,7 +822,8 @@ function ItemShell({ title, subtitle, icon, accessories, actions, children, imag
       event.currentTarget.classList.add("is-selected");
       event.currentTarget.setAttribute("aria-selected", "true");
       updateActionDock(event.currentTarget);
-      runAction(primary);
+      // Double-click still runs primary for power users.
+      if (event.detail >= 2) runAction(primary);
     },
     onFocus: (event) => {
       document.querySelectorAll("[data-qx-raycast-item].is-selected").forEach((el) => {
@@ -801,9 +851,9 @@ function ItemShell({ title, subtitle, icon, accessories, actions, children, imag
       subtitle ? React.createElement("small", null, textOf(subtitle)) : null,
       children),
     accessories ? React.createElement("span", { className: "qx-raycast-accessory" }, textOf(Array.isArray(accessories) ? accessories[0] : accessories)) : null,
-    // Always keep a compact action strip for the card so Download/Preview work
-    // even when the global ActionPanel preference hides inline rows.
-    actionList.length
+    // Optional inline chips only when Settings → Raycast Actions is on.
+    // Default: actions live solely in QxShell (primary / ⌘K / context).
+    actionList.length && actionPanelVisible()
       ? React.createElement("div", {
           className: "qx-raycast-item-actions",
           onClick: (event) => event.stopPropagation(),
@@ -820,8 +870,7 @@ function ItemShell({ title, subtitle, icon, accessories, actions, children, imag
           }, actionTitle(resolved));
         }))
       : null,
-    // Keep original ActionPanel tree for compatibility, but hide visually if we
-    // already rendered item actions.
+    // ActionPanel is logic-only when host owns the UI; keep tree only if no handlers.
     actionList.length ? null : actions);
 }
 
@@ -866,9 +915,29 @@ function filterChildrenBySearch(children, query) {
   });
 }
 
+function selectFirstItemSoon() {
+  // After paint, select first row so Qx Actions show without an extra click.
+  requestAnimationFrame(() => {
+    const selected = document.querySelector("[data-qx-raycast-item].is-selected");
+    if (selected) {
+      updateActionDock(selected);
+      return;
+    }
+    const first = document.querySelector("[data-qx-raycast-item]");
+    if (!first) return;
+    first.classList.add("is-selected");
+    first.setAttribute("aria-selected", "true");
+    updateActionDock(first);
+  });
+}
+
 export function List(props) {
   const [query, setQuery] = React.useState("");
   React.useEffect(() => { ensureKeyboardNav(); }, []);
+  React.useEffect(() => {
+    if (props.isLoading) return;
+    selectFirstItemSoon();
+  }, [props.isLoading, props.children, query]);
   const children = filterChildrenBySearch(props.children, props.onSearchTextChange ? "" : query);
   return React.createElement("div", { className: "qx-raycast-view" },
     React.createElement(SearchInput, {
@@ -902,6 +971,10 @@ List.Item.Detail = function ListItemDetail(props) {
 export function Grid(props) {
   const [query, setQuery] = React.useState("");
   React.useEffect(() => { ensureKeyboardNav(); }, []);
+  React.useEffect(() => {
+    if (props.isLoading) return;
+    selectFirstItemSoon();
+  }, [props.isLoading, props.children, query]);
   const columns = Number(props.columns) > 0 ? Number(props.columns) : undefined;
   const children = filterChildrenBySearch(props.children, props.onSearchTextChange ? "" : query);
   return React.createElement("div", { className: "qx-raycast-view" },

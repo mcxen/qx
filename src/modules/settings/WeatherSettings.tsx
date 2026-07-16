@@ -45,9 +45,7 @@ export default function WeatherSettings() {
   return (
     <div className="qx-settings-page">
       <SettingsCard
-        title={t("weather.source.title", "Data Source")}
-        description={t("weather.source.desc", "Choose the weather provider and credentials used for requests.")}
-      >
+        title={t("weather.source.title", "Data Source")}>
         <Row
           title={t("weather.provider", "Provider")}
           description={t("weather.provider.desc", "Choose weather data source. Open-Meteo is free and requires no API key.")}
@@ -80,9 +78,7 @@ export default function WeatherSettings() {
       </SettingsCard>
 
       <SettingsCard
-        title={t("weather.display.title", "Location & Units")}
-        description={t("weather.display.desc", "Decide the forecast location and temperature format.")}
-      >
+        title={t("weather.display.title", "Location & Units")}>
         <Row
           title={t("weather.locations", "Locations")}
           description={t("weather.locations.desc", "Add one city or coordinate pair per row. Leave all rows empty for auto-detection via IP.")}

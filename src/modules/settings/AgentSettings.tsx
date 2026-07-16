@@ -108,12 +108,7 @@ export default function AgentSettings() {
   return (
     <div className="qx-settings-page">
       <SettingsCard
-        title={t("agent.providers.title", "Providers & Keys")}
-        description={t(
-          "agent.providers.desc",
-          "API keys, custom OpenAI-compatible endpoints, and user memory. Chat defaults stay in the AI module.",
-        )}
-      >
+        title={t("agent.providers.title", "Providers & Keys")}>
         <BuiltInProviderKeys
           providers={builtInProviders}
           credentials={builtInCredentials}
@@ -126,12 +121,7 @@ export default function AgentSettings() {
       </SettingsCard>
 
       <SettingsCard
-        title={t("agent.basics.title", "Agent & Model")}
-        description={t(
-          "agent.basics.desc",
-          "Master switch and the model used for agent tasks.",
-        )}
-      >
+        title={t("agent.basics.title", "Agent & Model")}>
         <Row
           title={t("agent.mode", "Agent Mode")}
           description={t("agent.mode.desc", "Allow QxAI and plugins to run multi-step agent tasks with model and tool settings.")}
@@ -203,12 +193,7 @@ export default function AgentSettings() {
       </SettingsCard>
 
       <SettingsCard
-        title={t("agent.tools", "Tools")}
-        description={t(
-          "agent.tools.desc",
-          "Tool groups the agent runtime can call. Driven by these switches.",
-        )}
-      >
+        title={t("agent.tools", "Tools")}>
         <Row
           title={t("agent.tools.enabled", "Enable Tools")}
           description={`${t("agent.tools.enabled.desc", "Master switch for agent tool execution.")} ${toolCount} tool groups selected.`}
@@ -282,12 +267,7 @@ export default function AgentSettings() {
       </SettingsCard>
 
       <SettingsCard
-        title={t("agent.bash", "Bash Tool")}
-        description={t(
-          "agent.bash.desc",
-          "Run real shell scripts through the AI runtime.",
-        )}
-      >
+        title={t("agent.bash", "Bash Tool")}>
         <Row
           title={t("agent.bash.enabled", "Enable Bash")}
           description={t("agent.bash.enabled.desc", "Allow permissioned plugins to run real /bin/bash scripts through the AI runtime.")}
@@ -325,12 +305,7 @@ export default function AgentSettings() {
       </SettingsCard>
 
       <SettingsCard
-        title={t("agent.grep", "Grep Search")}
-        description={t(
-          "agent.grep.desc",
-          "Expose a real text search tool for agent tasks.",
-        )}
-      >
+        title={t("agent.grep", "Grep Search")}>
         <Row
           title={t("agent.grep.enabled", "Enable Grep Search")}
           description={t("agent.grep.enabled.desc", "Expose a real rg/grep text search tool for agent tasks.")}

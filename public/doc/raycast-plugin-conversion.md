@@ -60,6 +60,31 @@ Inside Qx, Settings → Plugins can also accept a Raycast extension tree URL whe
 the converter is available in the build (dev/source trees). Packaged app builds
 must ship or embed the same pipeline for full parity.
 
+## Raycast Action ≡ Qx Action
+
+There is **one** action system for plugins: **QxShell Actions**.
+
+Raycast `actions={<ActionPanel>…}` on `List.Item` / `Grid.Item` is not a
+parallel UI — it is the data source for Qx:
+
+```text
+ActionPanel (plugin)
+    → collectActions (shim)
+    → postMessage qx:plugin:item-actions
+    → PluginHost
+    → QxShell primaryAction + actions[] + context panel
+```
+
+| Raycast | Qx |
+|---------|-----|
+| First `Action` in panel | Bottom-bar **primary** (Enter) |
+| All `Action`s | **⌘K** menu + right **Actions** panel |
+| Select item | Publish actions (do not auto-run) |
+| Run action | Host posts `qx:run-item-action` → iframe handler |
+
+Settings → “条目上显示操作按钮” only toggles **optional** in-card chips.
+Turning it off does **not** disable actions — they stay on QxShell.
+
 ## Architecture principle
 
 **Keep Raycast ports as external plugins. Fix missing behavior in the Qx host

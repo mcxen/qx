@@ -44,9 +44,7 @@ export default function RssSettings() {
   return (
     <div className="qx-settings-page">
       <SettingsCard
-        title={t("rss.library.title", "Library & Storage")}
-        description={t("rss.library.desc", "Control article retention and feed list metadata.")}
-      >
+        title={t("rss.library.title", "Library & Storage")}>
         <Row
           title={t("rss.offlineCache", "Offline Content Caching")}
           description={t("rss.offlineCache.desc", "Save full article content to local storage for offline reading. When disabled, only titles and summaries are stored.")}
@@ -119,9 +117,7 @@ export default function RssSettings() {
       </SettingsCard>
 
       <SettingsCard
-        title={t("rss.reader.title", "Reader View")}
-        description={t("rss.reader.desc", "Tune article navigation, image sizing, and bottom island behavior.")}
-      >
+        title={t("rss.reader.title", "Reader View")}>
         <Row
           title={t("rss.bottomIslandMode", "Bottom Island Mode")}
           description={t("rss.bottomIslandMode.desc", "Choose what to display in the bottom status island while reading articles.")}
@@ -167,9 +163,7 @@ export default function RssSettings() {
       </SettingsCard>
 
       <SettingsCard
-        title={t("rss.typography.title", "Typography")}
-        description={t("rss.typography.desc", "Set the article reading typeface and base size.")}
-      >
+        title={t("rss.typography.title", "Typography")}>
         <Row
           title={t("rss.articleFontSize", "Article Font Size")}
           description={t("rss.articleFontSize.desc", "Base font size for article content. Adjust for comfortable reading.")}

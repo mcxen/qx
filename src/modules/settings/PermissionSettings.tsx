@@ -148,10 +148,6 @@ export default function PermissionSettings() {
     <div className="qx-settings-page">
       <SettingsCard
         title={t("permissions.title", "macOS Permissions")}
-        description={t(
-          "permissions.desc",
-          "Check the system permissions Qx needs for full file search, clipboard paste, screen recording, and macros.",
-        )}
         trailing={
           <div className="qx-permissions-score">
             {loading ? t("permissions.checking", "Checking...") : `${grantedCount}/${availableCount}`}
@@ -193,9 +189,7 @@ export default function PermissionSettings() {
       </SettingsCard>
 
       <SettingsCard
-        title={t("permissions.requests.title", "Permission Requests")}
-        description={t("permissions.requests.desc", "Open macOS prompts and jump to the matching System Settings page.")}
-      >
+        title={t("permissions.requests.title", "Permission Requests")}>
         <div className="qx-permissions-list">
           {items.map((item) => {
             const granted = item.available && item.granted;

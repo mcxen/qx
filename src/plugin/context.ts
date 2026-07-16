@@ -77,6 +77,20 @@ export function createPluginContext(
       },
       which: (program) =>
         rpc("cliWhich", { program }) as ReturnType<PluginContext["cli"]["which"]>,
+      start: (request) =>
+        rpc("cliStart", {
+          kind: request.kind,
+          program: "program" in request ? request.program : undefined,
+          args: "args" in request ? request.args : undefined,
+          script: "script" in request ? request.script : undefined,
+          cwd: request.cwd,
+          env: request.env,
+          timeoutMs: request.timeoutMs,
+        }) as ReturnType<PluginContext["cli"]["start"]>,
+      poll: (jobId) => rpc("cliPoll", { jobId }) as ReturnType<PluginContext["cli"]["poll"]>,
+      cancel: (jobId) =>
+        rpc("cliCancel", { jobId }) as ReturnType<PluginContext["cli"]["cancel"]>,
+      listJobs: () => rpc("cliListJobs") as ReturnType<PluginContext["cli"]["listJobs"]>,
     }),
     ui: createPluginUiKit(),
     http: {
@@ -183,15 +197,56 @@ export function createPluginContext(
           rpc("aiTaskCancel", { id }) as ReturnType<PluginContext["ai"]["tasks"]["cancel"]>,
       },
     },
+    tray: {
+      setItems: (items) =>
+        rpc("traySetItems", { items }) as ReturnType<PluginContext["tray"]["setItems"]>,
+      clear: () => rpc("trayClear") as ReturnType<PluginContext["tray"]["clear"]>,
+      list: () => rpc("trayList") as ReturnType<PluginContext["tray"]["list"]>,
+    },
     system: {
-      stats: () => rpc("invoke", { cmd: "get_system_stats", args: {} }),
+      env: () => rpc("systemEnv") as ReturnType<PluginContext["system"]["env"]>,
+      openPath: (path) =>
+        rpc("systemOpenPath", { path }) as ReturnType<PluginContext["system"]["openPath"]>,
+      revealPath: (path) =>
+        rpc("systemRevealPath", { path }) as ReturnType<PluginContext["system"]["revealPath"]>,
+      stats: async () => {
+        const raw = (await rpc("invoke", {
+          cmd: "get_system_stats",
+          args: {},
+        })) as Record<string, number | null | undefined>;
+        return {
+          cpu: Number(raw.cpu ?? 0),
+          memory: Number(raw.memory ?? 0),
+          memoryUsedGb: Number(raw.memoryUsedGb ?? raw.memory_used_gb ?? 0),
+          memoryTotalGb: Number(raw.memoryTotalGb ?? raw.memory_total_gb ?? 0),
+          gpu: raw.gpu == null ? null : Number(raw.gpu),
+        };
+      },
+      networkCounters: async () => {
+        const raw = (await rpc("invoke", {
+          cmd: "qx_system_monitor_network_counters",
+          args: {},
+        })) as Record<string, unknown>;
+        const interfaces = Array.isArray(raw.interfaces)
+          ? (raw.interfaces as Array<Record<string, unknown>>).map((row) => ({
+              name: String(row.name ?? ""),
+              bytesIn: Number(row.bytesIn ?? row.bytes_in ?? 0),
+              bytesOut: Number(row.bytesOut ?? row.bytes_out ?? 0),
+            }))
+          : [];
+        return {
+          totalBytesIn: Number(raw.totalBytesIn ?? raw.total_bytes_in ?? 0),
+          totalBytesOut: Number(raw.totalBytesOut ?? raw.total_bytes_out ?? 0),
+          interfaces,
+        };
+      },
       info: () => rpc("invoke", { cmd: "qx_system_information_check_system_info", args: {} }),
       storage: () => rpc("invoke", { cmd: "qx_system_information_check_storage", args: {} }),
       network: () => rpc("invoke", { cmd: "qx_system_information_check_network", args: {} }),
       qxStorageOverview: () => rpc("invoke", { cmd: "qx_storage_overview", args: {} }),
       processes: {
         list: () => rpc("invoke", { cmd: "qx_system_information_list_processes", args: {} }),
-        kill: (pid) =>
+        kill: (pid: number) =>
           rpc("invoke", {
             cmd: "qx_system_information_kill_process",
             args: { pid },

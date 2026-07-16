@@ -232,19 +232,22 @@ mod platform {
     }
 }
 
+/// Synchronous sample for tray labels / short-lived callers (off UI thread preferred).
+pub fn platform_cpu_memory_sync() -> SystemStats {
+    let cpu = platform::cpu_usage();
+    let (memory, memory_used_gb, memory_total_gb) = platform::memory();
+    SystemStats {
+        cpu,
+        memory,
+        memory_used_gb,
+        memory_total_gb,
+        gpu: None,
+    }
+}
+
 #[tauri::command]
 pub async fn get_system_stats() -> Result<SystemStats, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        let cpu = platform::cpu_usage();
-        let (memory, memory_used_gb, memory_total_gb) = platform::memory();
-        SystemStats {
-            cpu,
-            memory,
-            memory_used_gb,
-            memory_total_gb,
-            gpu: None,
-        }
-    })
-    .await
-    .map_err(|error| format!("system stats worker failed: {error}"))
+    tauri::async_runtime::spawn_blocking(platform_cpu_memory_sync)
+        .await
+        .map_err(|error| format!("system stats worker failed: {error}"))
 }

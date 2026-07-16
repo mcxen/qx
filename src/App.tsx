@@ -688,6 +688,35 @@ function App() {
     };
   }, [loadSettings]);
 
+  // Plugin tray menu clicks → run the mapped plugin command (if any).
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    const unlisten = listen<{
+      pluginId?: string;
+      plugin_id?: string;
+      itemId?: string;
+      item_id?: string;
+      command?: string | null;
+    }>("plugin-tray-action", ({ payload }) => {
+      const pluginId = String(payload.pluginId || payload.plugin_id || "");
+      const commandName = String(payload.command || "").trim();
+      if (!pluginId || !commandName) return;
+      const command = usePluginRegistry
+        .getState()
+        .commands.find((c) => c.pluginId === pluginId && c.name === commandName);
+      if (!command) {
+        appLogger.warn("Plugin tray command not found", { pluginId, commandName });
+        return;
+      }
+      void usePluginRegistry.getState().runCommand(command).catch((error) => {
+        appLogger.error("Plugin tray command failed", { pluginId, commandName, error });
+      });
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
   useEffect(() => {
     if (!settingsLoaded || !appsReady || !settings.general.auto_update || !isTauriRuntime()) return;
     if (autoUpdateStartedRef.current) return;

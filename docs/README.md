@@ -31,6 +31,7 @@
 |---|---|
 | [`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md) | **作者总手册**：端口抽象、manifest、zip Import、调试、模式（**写插件从这里开始**） |
 | [`public/doc/plugin-cli-protocol.md`](../public/doc/plugin-cli-protocol.md) | **`context.cli` 契约**：argv、超时、安全、版本 |
+| [`public/doc/plugin-tray.md`](../public/doc/plugin-tray.md) | **托盘能力端口**：`context.tray` + 内存/网速指标 |
 | [`public/doc/README.md`](../public/doc/README.md) | `public/doc` 目录索引 |
 | [plugin-architecture.md](./plugin-architecture.md) | 宿主 iframe runtime、RPC、后台 badge 端口（贡献宿主） |
 | [plugin-storage.md](./plugin-storage.md) | **插件存储设计**：包/数据分离、生命周期、管理 API、分期 |

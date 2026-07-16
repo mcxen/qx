@@ -373,12 +373,7 @@ export default function AboutPanel() {
       </div>
 
       <SettingsCard
-        title={t("about.aboutCard.title", "About Qx")}
-        description={t(
-          "about.aboutCard.desc",
-          "Version, release, and update status.",
-        )}
-      >
+        title={t("about.aboutCard.title", "About Qx")}>
         <Row
           title={t("about.appName", "Qx")}
           description={t(
@@ -457,10 +452,6 @@ export default function AboutPanel() {
 
       <SettingsCard
         title={t("about.storage", "Storage")}
-        description={t(
-          "about.storage.desc",
-          "View Qx local storage and clear generated cache or files.",
-        )}
         trailing={<div className="qx-storage-total">{formatBytes(totalBytes)}</div>}
       >
         <div className="qx-storage-panel" aria-label={t("about.storage", "Storage")}>

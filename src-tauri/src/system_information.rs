@@ -548,6 +548,12 @@ pub async fn qx_system_information_check_network() -> Result<QxNetworkInfo, Stri
         .map_err(|e| format!("network information worker failed: {e}"))?
 }
 
+/// Sync totals for tray net-rate sampling.
+pub fn network_totals_sync() -> Result<(u64, u64), String> {
+    let counters = network_counters_blocking()?;
+    Ok((counters.total_bytes_in, counters.total_bytes_out))
+}
+
 #[tauri::command]
 pub async fn qx_system_monitor_network_counters() -> Result<QxNetworkCounters, String> {
     tauri::async_runtime::spawn_blocking(network_counters_blocking)

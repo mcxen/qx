@@ -1507,14 +1507,43 @@ export default function PluginManager() {
             {t("plugins.noMatches", "No modules match “{query}”").replace("{query}", installedQuery || installedFilter)}
           </div>
         ) : (
-          <div className="qx-plugin-card-grid">
-            {filteredPlugins.map((plugin) => (
-              <InstalledModuleCard
-                key={plugin.id}
-                plugin={plugin}
-                onOpen={() => setConfigId(plugin.id)}
-              />
-            ))}
+          <div className="qx-ext-card-list" role="list">
+            {(() => {
+              const builtins = filteredPlugins.filter((p) => isBuiltin(p));
+              const externals = filteredPlugins.filter((p) => !isBuiltin(p));
+              const sections: Array<{ key: string; label: string; items: typeof filteredPlugins }> = [];
+              if (builtins.length > 0) {
+                sections.push({
+                  key: "builtin",
+                  label: t("plugins.filter.builtin", "Built-in"),
+                  items: builtins,
+                });
+              }
+              if (externals.length > 0) {
+                sections.push({
+                  key: "external",
+                  label: t("plugins.filter.external", "External"),
+                  items: externals,
+                });
+              }
+              // Single section (e.g. filter=external only): skip noisy headings.
+              const showHeadings = sections.length > 1;
+              return sections.map((section) => (
+                <div key={section.key} className="qx-ext-card-group" role="group" aria-label={section.label}>
+                  {showHeadings && (
+                    <div className="qx-ext-card-section">{section.label}</div>
+                  )}
+                  {section.items.map((plugin) => (
+                    <div key={plugin.id} role="listitem">
+                      <InstalledModuleCard
+                        plugin={plugin}
+                        onOpen={() => setConfigId(plugin.id)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              ));
+            })()}
           </div>
         )}
 

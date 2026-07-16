@@ -66,6 +66,9 @@ pub(super) fn migrate_legacy_default_quick_entries(entries: &mut Vec<QuickEntryC
 
 pub(super) fn default_tray_actions() -> Vec<TrayActionConfig> {
     [
+        ("status_memory", "Memory", true),
+        ("status_network", "Network", true),
+        ("status_cpu", "CPU", false),
         ("open_main", "Open Main Window", true),
         ("keep_visible", "Keep Window Visible", true),
         ("settings", "Settings", true),

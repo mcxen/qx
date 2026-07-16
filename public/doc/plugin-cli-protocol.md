@@ -13,13 +13,14 @@
 
 | 权限 | 作用 |
 |------|------|
-| `cli` | 允许 `context.cli.run` / `context.cli.bash` / `context.cli.which` |
-| `invoke:plugin_cli_run` 等 | 若走 `context.qx.invokeRust(...)` 时的精确授权（危险命令集） |
+| `cli` | 允许 `context.cli.*`（run / bash / which / 异步 jobs / map） |
+| `system` | 允许 `context.system.env` / `openPath` / `revealPath` |
+| `invoke:plugin_cli_*` 等 | 若走 `context.invoke(...)` 时的精确授权（危险命令集） |
 
-manifest 示例：
+manifest 示例（CLI 工具 + 打开产物）：
 
 ```json
-"permissions": ["cli", "notifications", "open-url"]
+"permissions": ["cli", "system", "notifications", "open-url"]
 ```
 
 ---
@@ -84,6 +85,101 @@ await context.cli.bash({
 Promise<string | null>  // 解析到的绝对路径，找不到为 null
 ```
 
+### 异步任务（`start` / `poll` / `cancel` / `wait` / `listJobs`）
+
+长命令、需要**取消**或**边跑边刷 UI** 时用 job API。每个 job 在**独立 OS 线程**里跑子进程，stdout/stderr **边读边入快照**（每流上限约 4MB）。
+
+```ts
+type PluginCliStartRequest =
+  | ({ kind: "run" } & PluginCliRunRequest)
+  | ({ kind: "bash" } & PluginCliBashRequest);
+
+type PluginCliJobState =
+  | "queued" | "running" | "succeeded" | "failed" | "cancelled" | "timedOut";
+
+type PluginCliJobSnapshot = {
+  id: string;
+  pluginId: string;
+  kind: string;
+  state: PluginCliJobState;
+  program: string;
+  stdout: string;   // 运行中也会增长
+  stderr: string;
+  status: number | null;
+  timedOut: boolean;
+  startedAt: number;
+  finishedAt: number | null;
+  error?: string | null;
+  running: boolean;
+};
+
+// 立即返回 job，不阻塞 iframe
+const job = await context.cli.start({
+  kind: "run",
+  program: "ffmpeg",
+  args: ["-i", inPath, outPath],
+  timeoutMs: 300_000,
+});
+
+// 轮询 / 等待（onUpdate 可刷新日志面板）
+const done = await context.cli.wait(job.id, {
+  pollMs: 200,
+  onUpdate: (snap) => {
+    logEl.textContent = snap.stderr || snap.stdout;
+  },
+});
+if (done.state === "cancelled") { /* … */ }
+await context.cli.cancel(job.id); // 任意时刻可杀进程
+
+// 本插件最近任务
+const jobs = await context.cli.listJobs();
+```
+
+**并发上限**（宿主强制）：
+
+| 范围 | 上限 |
+|------|------|
+| 单插件同时 `running` | 6 |
+| 全局 job 表 | 32 |
+| 已完成 job 保留 | ~10 分钟 |
+
+超出上限时 `start` 抛错；请 `cancel` 或等完成后再开。
+
+### 有界并行 `cli.map`（多任务）
+
+对**短命令**做 fan-out（底层仍是 `run`，不是 job 表）：
+
+```ts
+const versions = await context.cli.map(
+  ["git", "node", "python3"],
+  async (bin) => {
+    const r = await context.cli.run({ program: bin, args: ["--version"], timeoutMs: 10_000 });
+    return { bin, out: r.stdout.trim() };
+  },
+  { concurrency: 3 },
+);
+```
+
+也可直接 `Promise.all([cli.run(...), cli.run(...)])` — 每次 `run`/`bash` 都在 `spawn_blocking` 线程池里执行，互不堵死 UI 线程。
+
+### 系统能力 `context.system`（权限 `system`）
+
+```ts
+const env = await context.system.env();
+// { platform, arch, homeDir, tempDir, pathSep, exePath? }
+
+await context.system.openPath("~/Downloads/out.mp4");  // 系统默认打开
+await context.system.revealPath(outPath);              // Finder / Explorer 选中
+```
+
+| 方法 | 说明 |
+|------|------|
+| `env()` | 平台、架构、home/temp、PATH 分隔符 |
+| `openPath(path)` | 用系统默认应用打开（支持 `~/`） |
+| `revealPath(path)` | 在文件管理器中显示 |
+
+与 `openUrl`（`open-url` 权限）不同：`system` 面向**本地路径**与环境信息。
+
 ### CLI→GUI 助手（宿主注入，无额外 RPC）
 
 在 iframe / 直接 context 上由宿主叠加（实现见 `src/plugin/cliWorkbench.ts`）：
@@ -96,6 +192,7 @@ Promise<string | null>  // 解析到的绝对路径，找不到为 null
 | `cli.text(req)` | `ensure` + 文本 |
 | `cli.jsonBash(script)` | `bash` + JSON |
 | `cli.parseJson` / `parseJsonLines` | 纯解析 |
+| `cli.wait` / `cli.map` | 异步等待与有界并行 |
 | `ui.mountWorkbench` / `itemsFromJson` / `renderJson` | 列表工作台 |
 
 完整产品化指南：[`plugin-cli-gui.md`](./plugin-cli-gui.md)。
@@ -107,8 +204,15 @@ Promise<string | null>  // 解析到的绝对路径，找不到为 null
 | `plugin_cli_run` | `cliRun` |
 | `plugin_cli_bash` | `cliBash` |
 | `plugin_cli_which` | `cliWhich` |
+| `plugin_cli_start` | `cliStart` |
+| `plugin_cli_poll` | `cliPoll` |
+| `plugin_cli_cancel` | `cliCancel` |
+| `plugin_cli_list_jobs` | `cliListJobs` |
+| `plugin_system_env` | `systemEnv` |
+| `plugin_system_open_path` | `systemOpenPath` |
+| `plugin_system_reveal_path` | `systemRevealPath` |
 
-字段使用 **camelCase** JSON。
+请求/响应字段使用 **camelCase** JSON；Tauri invoke 参数名与 Rust 一致（如 `plugin_id`、`job_id`）。
 
 ---
 
@@ -197,7 +301,8 @@ export default {
 | 能力 | `min_app_version` 建议 |
 |------|------------------------|
 | `context.cli.run` / `which` | `0.5.26` |
-| login PATH 增强 + `context.cli.bash` | 合入本协议的版本起 |
+| login PATH 增强 + `context.cli.bash` | `0.5.26+` |
+| `cli.start` / `poll` / `cancel` / `wait` / `map` + `context.system` | 合入本协议的版本起 |
 
 ---
 
@@ -209,10 +314,16 @@ export default {
 - [ ] 不存在的 program → `which` 为 null；`run` throw
 - [ ] 超时：短 `timeoutMs` + 慢命令 → `timedOut === true`
 - [ ] 插件 `env: { PATH: "..." }` 可覆盖宿主注入
+- [ ] `cli.start` + `wait` 期间 `onUpdate` 能看到 stdout 增长；`cancel` 后 `state === "cancelled"`
+- [ ] `cli.map` concurrency=2 跑 4 个短命令全部完成
+- [ ] 无 `system` 时 `openPath` 报权限错误；有权限时能打开目录
+- [ ] 超过 6 个并发 job 时 `start` 失败信息清晰
 
 ---
 
 ## 8. 相关文档
 
 - [`plugin-development-guide.md`](./plugin-development-guide.md)
+- [`plugin-cli-gui.md`](./plugin-cli-gui.md)
 - [`plugin-system.md`](./plugin-system.md)
+- [`docs/plugin-architecture.md`](../docs/plugin-architecture.md)

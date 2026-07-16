@@ -57,6 +57,10 @@ export {
   ContextMenuTrigger,
 } from "./shadcn/context-menu";
 
+/**
+ * Settings section — linear list (macOS / UI_SPEC density), not a boxed marketing card.
+ * Rows use hairline dividers; section title is a compact uppercase label.
+ */
 export function SettingsCard({
   title,
   description,
@@ -71,16 +75,18 @@ export function SettingsCard({
   className?: string;
 }) {
   return (
-    <Card className={`qx-card ${className}`.trim()}>
-      <CardHeader>
-        <div style={{ minWidth: 0 }}>
-          <CardTitle>{title}</CardTitle>
-          {description && <CardDescription>{description}</CardDescription>}
+    <section className={`qx-settings-section ${className}`.trim()}>
+      <header className="qx-settings-section-head">
+        <div className="qx-settings-section-head-text">
+          <h3 className="qx-settings-section-title">{title}</h3>
+          {description ? (
+            <p className="qx-settings-section-desc">{description}</p>
+          ) : null}
         </div>
-        {trailing}
-      </CardHeader>
-      <CardContent>{children}</CardContent>
-    </Card>
+        {trailing ? <div className="qx-settings-section-trailing">{trailing}</div> : null}
+      </header>
+      <div className="qx-settings-section-body">{children}</div>
+    </section>
   );
 }
 

@@ -21,6 +21,7 @@ mod ocr;
 mod paths;
 mod permissions;
 mod plugin_api;
+mod plugin_cli;
 mod rss;
 mod runtime;
 mod screencap;
@@ -30,18 +31,18 @@ mod system_information;
 mod system_stats;
 mod terminal;
 mod text_toolbox;
+mod tray_menu;
 mod updater;
 mod v2ex;
 mod weather;
 
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, LogicalSize, Manager,
 };
 
-const MAIN_TRAY_ID: &str = "qx-main-tray";
+use tray_menu::MAIN_TRAY_ID;
 
 #[tauri::command]
 fn get_file_size(path: String) -> Result<u64, String> {
@@ -195,129 +196,11 @@ fn show_and_navigate(app: &AppHandle, route: &str) {
     floating_panel::show_and_navigate(app, route);
 }
 
-fn tray_action_title(settings: &settings::Settings, action: &settings::TrayActionConfig) -> String {
-    let title = if action.title.trim().is_empty() {
-        action.id.trim()
-    } else {
-        action.title.trim()
-    };
-    if action.id == "keep_visible" {
-        let state = if settings.general.auto_hide_on_blur {
-            "Off"
-        } else {
-            "On"
-        };
-        return format!("{title}: {state}");
-    }
-    title.to_string()
-}
-
-fn build_tray_menu(
-    app: &AppHandle,
-    settings: &settings::Settings,
-) -> tauri::Result<Menu<tauri::Wry>> {
-    let menu = Menu::new(app)?;
-    for (index, entry) in settings
-        .quick_entries
-        .iter()
-        .filter(|entry| entry.enabled && !entry.target.trim().is_empty())
-        .enumerate()
-    {
-        let title = if entry.title.trim().is_empty() {
-            entry.target.trim()
-        } else {
-            entry.title.trim()
-        };
-        let item = MenuItem::with_id(
-            app,
-            format!("quick:{index}:{}", entry.target.trim()),
-            title,
-            true,
-            None::<&str>,
-        )?;
-        menu.append(&item)?;
-    }
-
-    if settings.quick_entries.iter().any(|entry| entry.enabled) {
-        menu.append(&PredefinedMenuItem::separator(app)?)?;
-    }
-
-    let mut appended_action = false;
-    for action in settings
-        .tray_actions
-        .iter()
-        .filter(|action| action.enabled && !action.id.trim().is_empty())
-    {
-        let item = MenuItem::with_id(
-            app,
-            format!("tray_action:{}", action.id.trim()),
-            tray_action_title(settings, action),
-            true,
-            None::<&str>,
-        )?;
-        menu.append(&item)?;
-        appended_action = true;
-    }
-
-    if !appended_action {
-        let show = MenuItem::with_id(app, "show", "Show/Hide", true, None::<&str>)?;
-        menu.append(&show)?;
-        appended_action = true;
-    }
-
-    if appended_action {
-        menu.append(&PredefinedMenuItem::separator(app)?)?;
-    }
-
-    let quit = MenuItem::with_id(app, "quit", "Quit Qx", true, Some("CmdOrCtrl+Q"))?;
-    menu.append(&quit)?;
-    Ok(menu)
-}
-
-fn handle_tray_action(app: &AppHandle, action_id: &str) {
-    match action_id {
-        "open_main" => floating_panel::show_floating(app),
-        "settings" => show_and_navigate(app, "settings"),
-        "hide_main" => floating_panel::hide(app),
-        "keep_visible" => {
-            let mut next = settings::read_settings();
-            next.general.auto_hide_on_blur = !next.general.auto_hide_on_blur;
-            if let Err(err) = settings::write_settings(&next) {
-                diagnostics::log(
-                    diagnostics::LogLevel::Error,
-                    "main.tray",
-                    "update keep_visible tray action failed",
-                    serde_json::json!({ "error": err.to_string() }),
-                );
-                return;
-            }
-            if let Err(err) = refresh_tray_menu(app, &next) {
-                diagnostics::log(
-                    diagnostics::LogLevel::Error,
-                    "main.tray",
-                    "refresh tray menu after keep_visible failed",
-                    serde_json::json!({ "error": err.to_string() }),
-                );
-            }
-            let _ = app.emit("settings-updated", next.clone());
-            if !next.general.auto_hide_on_blur {
-                floating_panel::show_floating(app);
-            }
-        }
-        _ => {}
-    }
-}
-
 pub(crate) fn refresh_tray_menu(
     app: &AppHandle,
     settings: &settings::Settings,
 ) -> Result<(), String> {
-    let menu = build_tray_menu(app, settings).map_err(|e| format!("build tray menu: {e}"))?;
-    if let Some(tray) = app.tray_by_id(MAIN_TRAY_ID) {
-        tray.set_menu(Some(menu))
-            .map_err(|e| format!("refresh tray menu: {e}"))?;
-    }
-    Ok(())
+    tray_menu::refresh_tray_menu(app, settings)
 }
 
 #[cfg(target_os = "macos")]
@@ -502,7 +385,7 @@ pub fn run() {
             display_monitor::start_display_monitor(handle.clone());
 
             let current_settings = settings::read_settings();
-            let menu = build_tray_menu(&handle, &current_settings)?;
+            let menu = tray_menu::build_tray_menu(&handle, &current_settings)?;
             let tray_rgba =
                 image::load_from_memory(include_bytes!("../icons/tray-template.png"))?.into_rgba8();
             let (tray_width, tray_height) = tray_rgba.dimensions();
@@ -522,7 +405,11 @@ pub fn run() {
                         return;
                     }
                     if let Some(action_id) = id.strip_prefix("tray_action:") {
-                        handle_tray_action(app, action_id);
+                        tray_menu::handle_tray_action(app, action_id);
+                        return;
+                    }
+                    if id.starts_with("plugin_tray:") {
+                        tray_menu::handle_plugin_tray_click(app, id);
                         return;
                     }
                     match id {
@@ -555,6 +442,8 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            tray_menu::ensure_status_refresh_loop(&handle);
+
             diagnostics::log(
                 diagnostics::LogLevel::Info,
                 "main.setup",
@@ -577,6 +466,8 @@ pub fn run() {
             clipboard::history::write_clipboard_image_entry,
             clipboard::media::write_clipboard_file_entry,
             clipboard::media::clipboard_file_metadata,
+            clipboard::media::clipboard_file_preview,
+            clipboard::media::clipboard_file_media_probe,
             clipboard::media::clipboard_compress_image,
             clipboard::media::clipboard_video_to_gif,
             clipboard::history::clear_clipboard_history,
@@ -711,6 +602,9 @@ pub fn run() {
             marketplace::plugin_preferences_set,
             marketplace::sign_plugin,
             marketplace::scaffold_plugin,
+            tray_menu::plugin_tray_set_items,
+            tray_menu::plugin_tray_clear,
+            tray_menu::plugin_tray_list,
             plugin_api::plugin_clipboard_read,
             plugin_api::plugin_clipboard_write,
             plugin_api::plugin_perform_paste,
@@ -728,9 +622,16 @@ pub fn run() {
             plugin_api::plugin_ai_chat,
             plugin_api::plugin_ai_stream_chat,
             plugin_api::plugin_ai_run_bash,
-            plugin_api::plugin_cli_run,
-            plugin_api::plugin_cli_bash,
-            plugin_api::plugin_cli_which,
+            plugin_cli::plugin_cli_run,
+            plugin_cli::plugin_cli_bash,
+            plugin_cli::plugin_cli_which,
+            plugin_cli::plugin_cli_start,
+            plugin_cli::plugin_cli_poll,
+            plugin_cli::plugin_cli_cancel,
+            plugin_cli::plugin_cli_list_jobs,
+            plugin_cli::plugin_system_env,
+            plugin_cli::plugin_system_open_path,
+            plugin_cli::plugin_system_reveal_path,
             plugin_api::plugin_ai_grep_search,
             plugin_api::plugin_ai_memory_list,
             plugin_api::plugin_ai_memory_add,

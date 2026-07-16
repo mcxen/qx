@@ -13,7 +13,8 @@
 | `src/plugin/runtime.ts` | iframe 沙箱生命周期、postMessage 协议、面板渲染 |
 | `src/plugin/context.ts` | `createPluginContext` / `createUnavailableContext` |
 | `src/plugin/rpcMethods.ts` | 所有 `handlePluginRpc` 处理器映射 |
-| `plugin_cli_run` / `plugin_cli_which`（Rust） | **业务 CLI 端口** `context.cli`（权限 `cli`，argv，不门控 Agent） |
+| `src-tauri/src/plugin_cli.rs` | **业务 CLI 端口**：`run`/`bash`/`which`、**异步 jobs**（start/poll/cancel）、**system** open/reveal/env |
+| `src/plugin/cliWorkbench.ts` | CLI→GUI helpers（ensure/json/map/wait）+ workbench kit |
 | `src/plugin/aiRuntime.ts` | AI task 创建、状态维护、取消、权限门控 |
 | `src/plugin/PluginHost.tsx` | 插件 panel 视图容器 |
 | `src/components/PluginBackgroundBadge.tsx` | 搜索/Extensions/panel 共用后台标签（悬停最近执行时间） |
@@ -192,9 +193,59 @@ iframe 内调用 plugin.panel.destroy(container)
 5. 更新 `public/doc/plugin-system.md` 的 context API 表格。
 6. 运行 `npx tsc --noEmit` 与 `npm run build`。
 
-## 9. 常见约束
+## 9. System tray
+
+Tray menu is built in `tray_menu.rs`:
+
+| Source | Content |
+|--------|---------|
+| `tray_actions` status ids | Live **Memory / Network / CPU** (≈3s refresh while enabled) |
+| `quick_entries` | Open modules |
+| `tray_actions` window ids | Open / Keep visible / Settings / Hide |
+| Plugin `context.tray` | Per-plugin items (`permission: tray`) |
+
+Plugin API: `tray.setItems([{ id, title, command? }])` / `tray.clear()`. Click emits `plugin-tray-action`; frontend runs the command.
+
+## 10. Raycast Action ≡ Qx Action
+
+转换插件里的 `ActionPanel` **不是**第二套操作 UI。选中条目后 shim 上报
+`qx:plugin:item-actions`，`PluginHost` 填入 `QxShell`：
+
+| Raycast | QxShell |
+|---------|---------|
+| 第一个 Action | `primaryAction`（底栏 / Enter） |
+| 全部 Action | `actions[]` + 右侧 Actions + ⌘K |
+| 执行 | 宿主 `qx:run-item-action` → iframe handler |
+
+可选「条目上显示操作按钮」只是卡片内 chips，关掉也不影响上述主路径。
+
+## 11. CLI 异步与系统能力
+
+```text
+context.cli.start({ kind: "run", program, args })
+        │
+        ▼
+plugin_cli_start(plugin_id, req)  →  JobRegistry + OS thread
+        │
+        ├─ stdout/stderr reader threads → JobSnapshot buffers
+        ├─ cancel flag / kill Child
+        └─ timeout → TimedOut
+
+context.cli.poll / wait / cancel   ←  同一 snapshot
+context.cli.map(items, worker, { concurrency })  ←  有界并行 run
+context.system.env | openPath | revealPath       ←  权限 system
+```
+
+约束：
+
+- 每插件最多 6 个 running job，全局 32；输出每流约 4MB 截断。
+- `run`/`bash` 仍走 `spawn_blocking`，可与 jobs 并行；长任务优先 `start`。
+- Job 按 `plugin_id` 隔离；poll/cancel 校验归属。
+
+## 12. 常见约束
 
 - **不要**在插件 iframe 内直接调用 `invoke`；所有后端调用必须通过 `postMessage` → `handlePluginRpc`。
 - **不要**在 `registry.ts` 中新增 RPC 处理逻辑；统一放到 `rpcMethods.ts`。
 - **不要**在 `runtime.ts` 中新增 AI task 状态逻辑；统一放到 `aiRuntime.ts`。
 - 新增 `context` API 时，同步更新 `createUnavailableContext`，否则命令执行时可能拿到过时的可用上下文。
+- CLI 逻辑放在 `plugin_cli.rs` / `cliWorkbench.ts`，不要把 job 表塞进 `plugin_api.rs`。

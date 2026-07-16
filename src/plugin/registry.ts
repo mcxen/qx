@@ -563,6 +563,11 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
 
   uninstall: async (id: string) => {
     registryLogger.info("Plugin uninstall started", { pluginId: id });
+    try {
+      await invoke("plugin_tray_clear", { plugin_id: id });
+    } catch {
+      /* tray contribution optional */
+    }
     await invoke("uninstall_plugin", { id });
     registryLogger.info("Plugin uninstall completed", { pluginId: id });
     await get().refresh();
@@ -570,6 +575,13 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
 
   setEnabled: async (id: string, enabled: boolean) => {
     registryLogger.info("Plugin enabled state change started", { pluginId: id, enabled });
+    if (!enabled) {
+      try {
+        await invoke("plugin_tray_clear", { plugin_id: id });
+      } catch {
+        /* optional */
+      }
+    }
     await invoke("set_plugin_enabled", { id, enabled });
     registryLogger.info("Plugin enabled state change completed", { pluginId: id, enabled });
     await get().refresh();

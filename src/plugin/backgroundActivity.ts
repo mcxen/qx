@@ -12,6 +12,15 @@ import { create } from "zustand";
 import type { RegisteredCommand } from "./types";
 
 export type PluginBackgroundJobState = "scheduled" | "running" | "idle";
+export type PluginBackgroundOutcome = "success" | "error";
+
+/** One finished execution (GitHub Actions / CI style activity row). */
+export interface PluginBackgroundRunRecord {
+  at: number;
+  ok: boolean;
+  error?: string;
+  durationMs?: number;
+}
 
 export interface PluginBackgroundJob {
   pluginId: string;
@@ -25,6 +34,11 @@ export interface PluginBackgroundJob {
   nextRunAt: number | null;
   state: PluginBackgroundJobState;
   lastError: string | null;
+  /** Last finished run outcome for status badges. */
+  lastOutcome: PluginBackgroundOutcome | null;
+  lastDurationMs: number | null;
+  /** Recent finished runs, newest first (durable, capped). */
+  history: PluginBackgroundRunRecord[];
 }
 
 export interface PluginBackgroundSummary {
@@ -44,8 +58,23 @@ function jobKey(pluginId: string, commandName: string): string {
   return `${pluginId}\0${commandName}`;
 }
 
-function storageKey(kind: "next" | "last" | "error", pluginId: string, commandName: string): string {
-  const suffix = kind === "next" ? "nextRunAt" : kind === "last" ? "lastRunAt" : "lastError";
+const HISTORY_LIMIT = 12;
+
+function storageKey(
+  kind: "next" | "last" | "error" | "history" | "started",
+  pluginId: string,
+  commandName: string,
+): string {
+  const suffix =
+    kind === "next"
+      ? "nextRunAt"
+      : kind === "last"
+        ? "lastRunAt"
+        : kind === "error"
+          ? "lastError"
+          : kind === "history"
+            ? "history"
+            : "startedAt";
   return `qx:plugin-background:${pluginId}:${commandName}:${suffix}`;
 }
 
@@ -112,6 +141,65 @@ function writeString(key: string, value: string | null): void {
   }
 }
 
+function readHistory(pluginId: string, commandName: string): PluginBackgroundRunRecord[] {
+  try {
+    const raw = window.localStorage.getItem(storageKey("history", pluginId, commandName));
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as PluginBackgroundRunRecord[];
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item) => item && typeof item.at === "number")
+      .slice(0, HISTORY_LIMIT)
+      .map((item) => ({
+        at: item.at,
+        ok: Boolean(item.ok),
+        error: item.error ? String(item.error).slice(0, 400) : undefined,
+        durationMs:
+          typeof item.durationMs === "number" && Number.isFinite(item.durationMs)
+            ? Math.max(0, Math.round(item.durationMs))
+            : undefined,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function writeHistory(
+  pluginId: string,
+  commandName: string,
+  history: PluginBackgroundRunRecord[],
+): void {
+  try {
+    window.localStorage.setItem(
+      storageKey("history", pluginId, commandName),
+      JSON.stringify(history.slice(0, HISTORY_LIMIT)),
+    );
+  } catch {
+    // ignore
+  }
+}
+
+function pushHistory(
+  pluginId: string,
+  commandName: string,
+  record: PluginBackgroundRunRecord,
+): PluginBackgroundRunRecord[] {
+  const next = [record, ...readHistory(pluginId, commandName)].slice(0, HISTORY_LIMIT);
+  writeHistory(pluginId, commandName, next);
+  return next;
+}
+
+function formatDurationMs(ms: number | null | undefined): string {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return "";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
+  const minutes = Math.floor(ms / 60_000);
+  const seconds = Math.round((ms % 60_000) / 1000);
+  return `${minutes}m ${seconds}s`;
+}
+
+export { formatDurationMs };
+
 function buildJobFromCommand(
   command: RegisteredCommand,
   running: Set<string>,
@@ -122,6 +210,13 @@ function buildJobFromCommand(
   const lastRunAt = readNumber(storageKey("last", command.pluginId, command.name));
   const nextRunAt = readNumber(storageKey("next", command.pluginId, command.name));
   const lastError = readString(storageKey("error", command.pluginId, command.name));
+  const history = readHistory(command.pluginId, command.name);
+  const lastOutcome: PluginBackgroundOutcome | null = lastRunAt == null
+    ? null
+    : lastError
+      ? "error"
+      : "success";
+  const lastDurationMs = history[0]?.durationMs ?? null;
   const state: PluginBackgroundJobState = running.has(key)
     ? "running"
     : nextRunAt != null
@@ -137,6 +232,9 @@ function buildJobFromCommand(
     nextRunAt,
     state,
     lastError,
+    lastOutcome,
+    lastDurationMs,
+    history,
   };
 }
 
@@ -228,6 +326,9 @@ export const usePluginBackgroundStore = create<PluginBackgroundStore>((set, get)
         nextRunAt,
         state: "scheduled" as const,
         lastError: null,
+        lastOutcome: null,
+        lastDurationMs: null,
+        history: [],
       } satisfies PluginBackgroundJob);
     set({
       jobs: {
@@ -245,6 +346,7 @@ export const usePluginBackgroundStore = create<PluginBackgroundStore>((set, get)
   markRunning: (command) => {
     if (!isBackgroundIntervalCommand(command)) return;
     const key = jobKey(command.pluginId, command.name);
+    writeNumber(storageKey("started", command.pluginId, command.name), Date.now());
     const runningKeys = get().runningKeys.includes(key)
       ? get().runningKeys
       : [...get().runningKeys, key];
@@ -261,6 +363,9 @@ export const usePluginBackgroundStore = create<PluginBackgroundStore>((set, get)
           nextRunAt: readNumber(storageKey("next", command.pluginId, command.name)),
           state: "running",
           lastError: null,
+          lastOutcome: null,
+          lastDurationMs: null,
+          history: readHistory(command.pluginId, command.name),
         };
     set({
       runningKeys,
@@ -273,8 +378,19 @@ export const usePluginBackgroundStore = create<PluginBackgroundStore>((set, get)
     if (!isBackgroundIntervalCommand(command)) return;
     const key = jobKey(command.pluginId, command.name);
     const now = Date.now();
+    const startedAt = readNumber(storageKey("started", command.pluginId, command.name));
+    writeNumber(storageKey("started", command.pluginId, command.name), null);
+    const durationMs =
+      startedAt != null && startedAt > 0 ? Math.max(0, now - startedAt) : undefined;
+    const ok = !error;
     writeNumber(storageKey("last", command.pluginId, command.name), now);
     writeString(storageKey("error", command.pluginId, command.name), error);
+    const history = pushHistory(command.pluginId, command.name, {
+      at: now,
+      ok,
+      error: error || undefined,
+      durationMs,
+    });
     const runningKeys = get().runningKeys.filter((item) => item !== key);
     const prior = get().jobs[key];
     const nextRunAt =
@@ -289,6 +405,9 @@ export const usePluginBackgroundStore = create<PluginBackgroundStore>((set, get)
       nextRunAt,
       state: nextRunAt != null ? "scheduled" : "idle",
       lastError: error,
+      lastOutcome: ok ? "success" : "error",
+      lastDurationMs: durationMs ?? null,
+      history,
     };
     set({
       runningKeys,

@@ -308,7 +308,8 @@ export const DEFAULT_SETTINGS: Settings = {
   app_shortcuts: {},
   plugins: [],
   plugin_display: {
-    raycast_action_panel: true,
+    // Optional in-iframe action chips. Real actions always use QxShell (⌘K / bottom bar).
+    raycast_action_panel: false,
   },
   advanced: {
     log_level: "info",
@@ -391,6 +392,9 @@ export const DEFAULT_SETTINGS: Settings = {
     { id: "file-search", title: "File Search", subtitle: "Find recent files and folders", target: "file-search", enabled: true },
   ],
   tray_actions: [
+    { id: "status_memory", title: "Memory", enabled: true },
+    { id: "status_network", title: "Network", enabled: true },
+    { id: "status_cpu", title: "CPU", enabled: false },
     { id: "open_main", title: "Open Main Window", enabled: true },
     { id: "keep_visible", title: "Keep Window Visible", enabled: true },
     { id: "settings", title: "Settings", enabled: true },

@@ -42,11 +42,89 @@ export interface PluginRuntimeOptions {
 interface PanelRuntimeSession {
   iframe: HTMLIFrameElement;
   runtimeId: string;
+  pluginId: string;
 }
 
 const panelSessions = new WeakMap<HTMLElement, PanelRuntimeSession>();
+/** Live panel sessions by plugin id (for host → iframe action dispatch). */
+const panelSessionsByPlugin = new Map<string, PanelRuntimeSession>();
 const runtimeSources = new Map<string, Map<string, Window>>();
 const runtimeLogger = createQxLogger("plugin.runtime");
+
+/** Raycast / plugin selected-item actions published to QxShell. */
+export type PluginItemActionDescriptor = {
+  id: string;
+  title: string;
+  kbd?: string;
+};
+
+export type PluginItemActionsPayload = {
+  pluginId: string;
+  runtimeId: string;
+  selectionTitle?: string;
+  actions: PluginItemActionDescriptor[];
+};
+
+type ItemActionsListener = (payload: PluginItemActionsPayload) => void;
+const itemActionsListeners = new Set<ItemActionsListener>();
+
+export function subscribePluginItemActions(listener: ItemActionsListener): () => void {
+  ensureItemActionsBridge();
+  itemActionsListeners.add(listener);
+  return () => {
+    itemActionsListeners.delete(listener);
+  };
+}
+
+/** Ask the active panel iframe to run a published item action by id. */
+export function runPluginItemAction(pluginId: string, actionId: string): void {
+  const session = panelSessionsByPlugin.get(pluginId);
+  if (!session?.iframe.contentWindow) return;
+  session.iframe.contentWindow.postMessage(
+    {
+      type: "qx:run-item-action",
+      pluginId,
+      runtimeId: session.runtimeId,
+      actionId,
+    },
+    "*",
+  );
+}
+
+function ensureItemActionsBridge(): void {
+  const g = globalThis as typeof globalThis & { __qxItemActionsBridge?: boolean };
+  if (g.__qxItemActionsBridge) return;
+  g.__qxItemActionsBridge = true;
+  window.addEventListener("message", (event: MessageEvent) => {
+    if (!isExpectedPluginMessageOrigin(event)) return;
+    const data = event.data || {};
+    if (data.type !== "qx:plugin:item-actions") return;
+    const pluginId = String(data.pluginId || "");
+    if (!pluginId) return;
+    const actions = Array.isArray(data.actions)
+      ? data.actions
+          .map((raw: { id?: string; title?: string; kbd?: string }) => ({
+            id: String(raw?.id || ""),
+            title: String(raw?.title || "Action"),
+            kbd: raw?.kbd ? String(raw.kbd) : undefined,
+          }))
+          .filter((a: PluginItemActionDescriptor) => Boolean(a.id))
+      : [];
+    const payload: PluginItemActionsPayload = {
+      pluginId,
+      runtimeId: String(data.runtimeId || ""),
+      selectionTitle: data.selectionTitle ? String(data.selectionTitle) : undefined,
+      actions,
+    };
+    for (const listener of itemActionsListeners) {
+      try {
+        listener(payload);
+      } catch {
+        /* ignore listener errors */
+      }
+    }
+  });
+}
 
 export function isExpectedPluginMessageOrigin(event: MessageEvent): boolean {
   return event.origin === window.location.origin || event.origin === "null";
@@ -113,6 +191,7 @@ export function buildPluginRuntimeHtml(
       ${PLUGIN_WORKBENCH_RUNTIME_JS}
       const pluginId = ${JSON.stringify(pluginId)};
       const runtimeId = ${JSON.stringify(runtimeId)};
+      globalThis.__qxPluginRuntimeId = runtimeId;
       const entrySource = ${serializeForInlineScript(entrySource)};
       const pluginDisplay = ${JSON.stringify({
         raycastActionPanel,
@@ -367,6 +446,18 @@ export function buildPluginRuntimeHtml(
             return rpc('cliBash', body);
           },
           which: (program) => rpc('cliWhich', { program: String(program || '') }),
+          start: (request) => rpc('cliStart', {
+            kind: request.kind,
+            program: request.program,
+            args: request.args,
+            script: request.script,
+            cwd: request.cwd,
+            env: request.env,
+            timeoutMs: request.timeoutMs,
+          }),
+          poll: (jobId) => rpc('cliPoll', { jobId: String(jobId || '') }),
+          cancel: (jobId) => rpc('cliCancel', { jobId: String(jobId || '') }),
+          listJobs: () => rpc('cliListJobs'),
         }),
         ui: createPluginUiKit(),
         http: {
@@ -422,8 +513,40 @@ export function buildPluginRuntimeHtml(
             cancel: (id) => rpc('aiTaskCancel', { id: String(id || '') }),
           },
         },
+        tray: {
+          setItems: (items) => rpc('traySetItems', { items: items || [] }),
+          clear: () => rpc('trayClear'),
+          list: () => rpc('trayList'),
+        },
         system: {
-          stats: () => rpc('invoke', { cmd: 'get_system_stats', args: {} }),
+          env: () => rpc('systemEnv'),
+          openPath: (path) => rpc('systemOpenPath', { path: String(path || '') }),
+          revealPath: (path) => rpc('systemRevealPath', { path: String(path || '') }),
+          stats: async () => {
+            const raw = await rpc('invoke', { cmd: 'get_system_stats', args: {} }) || {};
+            return {
+              cpu: Number(raw.cpu || 0),
+              memory: Number(raw.memory || 0),
+              memoryUsedGb: Number(raw.memoryUsedGb != null ? raw.memoryUsedGb : raw.memory_used_gb || 0),
+              memoryTotalGb: Number(raw.memoryTotalGb != null ? raw.memoryTotalGb : raw.memory_total_gb || 0),
+              gpu: raw.gpu == null ? null : Number(raw.gpu),
+            };
+          },
+          networkCounters: async () => {
+            const raw = await rpc('invoke', { cmd: 'qx_system_monitor_network_counters', args: {} }) || {};
+            const interfaces = Array.isArray(raw.interfaces)
+              ? raw.interfaces.map((row) => ({
+                  name: String(row.name || ''),
+                  bytesIn: Number(row.bytesIn != null ? row.bytesIn : row.bytes_in || 0),
+                  bytesOut: Number(row.bytesOut != null ? row.bytesOut : row.bytes_out || 0),
+                }))
+              : [];
+            return {
+              totalBytesIn: Number(raw.totalBytesIn != null ? raw.totalBytesIn : raw.total_bytes_in || 0),
+              totalBytesOut: Number(raw.totalBytesOut != null ? raw.totalBytesOut : raw.total_bytes_out || 0),
+              interfaces,
+            };
+          },
           info: () => rpc('invoke', { cmd: 'qx_system_information_check_system_info', args: {} }),
           storage: () => rpc('invoke', { cmd: 'qx_system_information_check_storage', args: {} }),
           network: () => rpc('invoke', { cmd: 'qx_system_information_check_network', args: {} }),
@@ -805,6 +928,9 @@ export async function loadPlugin(
           unloadPluginRuntime(plugin.id, existing.iframe, existing.runtimeId);
           existing.iframe.remove();
           panelSessions.delete(container);
+          if (panelSessionsByPlugin.get(plugin.id)?.runtimeId === existing.runtimeId) {
+            panelSessionsByPlugin.delete(plugin.id);
+          }
         }
         container.innerHTML = "";
         const panelRuntimeId = nextRequestId();
@@ -812,7 +938,14 @@ export async function loadPlugin(
         const panelIframe = createSandboxIframe(panelHtml, true);
         container.appendChild(panelIframe);
         registerPluginRuntime(plugin.id, panelRuntimeId, panelIframe);
-        panelSessions.set(container, { iframe: panelIframe, runtimeId: panelRuntimeId });
+        const session: PanelRuntimeSession = {
+          iframe: panelIframe,
+          runtimeId: panelRuntimeId,
+          pluginId: plugin.id,
+        };
+        panelSessions.set(container, session);
+        panelSessionsByPlugin.set(plugin.id, session);
+        ensureItemActionsBridge();
         try {
           // Load + first paint only. Plugins must not await long CLI/network in panel.render
           // (host tears down the iframe on timeout). See plugin-development-guide panel rules.
@@ -841,6 +974,9 @@ export async function loadPlugin(
           unregisterPluginRuntime(plugin.id, panelRuntimeId);
           panelIframe.remove();
           panelSessions.delete(container);
+          if (panelSessionsByPlugin.get(plugin.id)?.runtimeId === panelRuntimeId) {
+            panelSessionsByPlugin.delete(plugin.id);
+          }
           throw error;
         }
       },
@@ -848,6 +984,9 @@ export async function loadPlugin(
         const session = panelSessions.get(container);
         if (!session) return;
         panelSessions.delete(container);
+        if (panelSessionsByPlugin.get(plugin.id)?.runtimeId === session.runtimeId) {
+          panelSessionsByPlugin.delete(plugin.id);
+        }
         try {
           runtimeLogger.debug("Plugin panel destroy started", {
             pluginId: plugin.id,

@@ -1,9 +1,16 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useSettingsStore } from "./store";
 import { usePluginRegistry } from "../../plugin/registry";
 import { Button, Row, Toggle, Select, Input, SettingsCard } from "../../components/ui";
 import { useT } from "../../i18n";
+import {
+  TRAY_ACTION_TYPES,
+  DEFAULT_TRAY_ACTIONS,
+  sanitizeTrayActions,
+  createTrayAction,
+} from "./trayActions";
 
 interface StorageClearResult {
   cleared_bytes: number;
@@ -37,16 +44,30 @@ function resolveProxyMode(adv: {
 }
 
 export default function AdvancedSettings() {
-  const { settings, patch, importFrom, exportTo } = useSettingsStore();
+  const { settings, patch, importFrom, exportTo, reset } = useSettingsStore();
   const { devWatcherActive, startDevWatcher, stopDevWatcher, refresh } = usePluginRegistry();
   const t = useT();
   const adv = settings.advanced;
+  const g = settings.general;
   const proxyMode = resolveProxyMode(adv);
+  const trayActions = sanitizeTrayActions(settings.tray_actions);
   const [busy, setBusy] = useState<string | null>(null);
   const [ioPath, setIoPath] = useState("");
   const [pluginName, setPluginName] = useState("");
   const [scaffoldMsg, setScaffoldMsg] = useState("");
   const [clearMsg, setClearMsg] = useState("");
+  const [addAction, setAddAction] = useState<string>(TRAY_ACTION_TYPES[0].value);
+
+  const patchTrayActions = (actions: typeof trayActions) => patch("tray_actions", actions);
+  const updateAction = (id: string, changes: Partial<(typeof trayActions)[number]>) => {
+    patchTrayActions(trayActions.map((a) => (a.id === id ? { ...a, ...changes } : a)));
+  };
+  const removeAction = (id: string) => {
+    patchTrayActions(trayActions.filter((a) => a.id !== id));
+  };
+  const availableToAdd = TRAY_ACTION_TYPES.filter(
+    (type) => !trayActions.some((a) => a.id === type.value),
+  );
 
   const handleImport = async () => {
     if (!ioPath.trim()) return;
@@ -130,10 +151,101 @@ export default function AdvancedSettings() {
 
   return (
     <div className="qx-settings-page">
-      <SettingsCard
-        title={t("advanced.diagnostics.title", "Diagnostics")}
-        description={t("advanced.diagnostics.desc", "Tune logging and developer diagnostics for troubleshooting.")}
-      >
+      <SettingsCard title={t("advanced.data.title", "Data")}>
+        <Row
+          title={t("general.dataPath", "Data Path")}
+          description={t(
+            "general.dataPath.desc",
+            "Where Qx stores databases, recordings and history.",
+          )}
+        >
+          <div className="qx-settings-input-wrap">
+            <Input
+              type="text"
+              value={g.data_path}
+              onChange={(e) => patch("general", { ...g, data_path: e.target.value })}
+              placeholder="~/.qx"
+            />
+          </div>
+        </Row>
+      </SettingsCard>
+
+      <SettingsCard title={t("general.trayMenu", "Tray Menu")}>
+        <p className="qx-settings-section-desc" style={{ margin: "0 0 8px" }}>
+          {t(
+            "general.trayMenu.hint",
+            "Status rows show live Memory / Network / CPU. Plugins with permission “tray” can append their own items.",
+          )}
+        </p>
+        <div className="qx-tray-action-editor">
+          {trayActions.map((action) => (
+            <div className="qx-tray-action-edit-row" key={action.id}>
+              <div className="qx-tray-action-edit-fields">
+                <Input
+                  value={action.title}
+                  aria-label={t("general.trayMenu.title", "Action title")}
+                  onChange={(e) => updateAction(action.id, { title: e.target.value })}
+                />
+                <span className="qx-tray-action-edit-id">{action.id}</span>
+              </div>
+              <div className="qx-tray-action-edit-actions">
+                <Toggle
+                  value={action.enabled}
+                  onChange={(v) => updateAction(action.id, { enabled: v })}
+                />
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => removeAction(action.id)}
+                  title={t("general.trayMenu.remove", "Remove")}
+                >
+                  <Trash2 size={14} />
+                </Button>
+              </div>
+            </div>
+          ))}
+          <div className="qx-tray-action-editor-footer">
+            {availableToAdd.length > 0 && (
+              <>
+                <Select
+                  value={addAction}
+                  onChange={setAddAction}
+                  options={availableToAdd.map((type) => ({
+                    value: type.value,
+                    label: type.label,
+                  }))}
+                  ariaLabel={t("general.trayMenu.addAction", "Add action")}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    patchTrayActions([...trayActions, createTrayAction(addAction)]);
+                    const next = availableToAdd.filter((a) => a.value !== addAction);
+                    if (next.length > 0) setAddAction(next[0].value);
+                  }}
+                >
+                  <Plus size={14} />
+                  {t("general.trayMenu.add", "Add")}
+                </Button>
+              </>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => patchTrayActions(DEFAULT_TRAY_ACTIONS)}
+            >
+              <RotateCcw size={14} />
+              {t("general.trayMenu.reset", "Reset")}
+            </Button>
+          </div>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard title={t("advanced.diagnostics.title", "Diagnostics")}>
         <Row
           title={t("advanced.logLevel", "Log Level")}
           description={t("advanced.logLevel.desc", "Verbosity of the Qx diagnostic log.")}
@@ -160,10 +272,7 @@ export default function AdvancedSettings() {
         </Row>
       </SettingsCard>
 
-      <SettingsCard
-        title={t("advanced.network.title", "Network")}
-        description={t("advanced.network.desc", "Configure proxy access for marketplace, plugins, app updates, and network tools.")}
-      >
+      <SettingsCard title={t("advanced.network.title", "Network")}>
         <Row
           title={t("advanced.networkProxy", "Network Proxy")}
           description={
@@ -220,10 +329,7 @@ export default function AdvancedSettings() {
         </Row>
       </SettingsCard>
 
-      <SettingsCard
-        title={t("advanced.config.title", "Configuration Files")}
-        description={t("advanced.config.desc", "Import or export the current settings JSON from a trusted local path.")}
-      >
+      <SettingsCard title={t("advanced.config.title", "Configuration")}>
         <Row
           title={t("advanced.importExport", "Import / Export Configuration")}
           description={t("advanced.importExport.desc", "Enter an absolute path. Import loads settings from JSON; Export writes current settings to JSON.")}
@@ -257,10 +363,7 @@ export default function AdvancedSettings() {
         </Row>
       </SettingsCard>
 
-      <SettingsCard
-        title={t("advanced.maintenance.title", "Maintenance")}
-        description={t("advanced.maintenance.desc", "Clear generated state without removing plugins, files, or user settings.")}
-      >
+      <SettingsCard title={t("advanced.maintenance.title", "Maintenance")}>
         <Row
           title={t("advanced.clearCache", "Clear Cache & History")}
           description={t("advanced.clearCache.desc", "Wipe clipboard history and reusable caches.")}
@@ -281,10 +384,7 @@ export default function AdvancedSettings() {
         )}
       </SettingsCard>
 
-      <SettingsCard
-        title={t("advanced.developerTools", "Developer Tools")}
-        description={t("advanced.developerTools.desc", "Create, reload, and watch local plugin projects while building extensions.")}
-      >
+      <SettingsCard title={t("advanced.developerTools", "Developer")}>
         <Row
           title={t("advanced.createPlugin", "Create Plugin (qx init)")}
           description={t("advanced.createPlugin.desc", "Generate a new plugin scaffold with manifest.json, index.js, and README.")}
@@ -332,6 +432,20 @@ export default function AdvancedSettings() {
         >
           <Button type="button" variant="outline" size="sm" onClick={() => refresh()}>
             {t("advanced.reloadNow", "Reload Now")}
+          </Button>
+        </Row>
+      </SettingsCard>
+
+      <SettingsCard title={t("general.reset", "Reset")}>
+        <Row
+          title={t("general.reset.button", "Reset")}
+          description={t(
+            "general.reset.confirm.desc",
+            "Use this when settings feel inconsistent or you want a clean default layout.",
+          )}
+        >
+          <Button type="button" variant="destructive" size="sm" onClick={() => void reset()}>
+            {t("general.reset.button", "Reset")}
           </Button>
         </Row>
       </SettingsCard>

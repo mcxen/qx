@@ -64,7 +64,7 @@ interface FileMetadata {
   path: string;
   name: string;
   extension: string;
-  kind: "image" | "video" | "audio" | "folder" | "file";
+  kind: "image" | "video" | "audio" | "folder" | "file" | "pdf";
   size: number;
   width?: number | null;
   height?: number | null;
@@ -149,6 +149,39 @@ async function loadImageAsDataUrl(path: string): Promise<string> {
   return url;
 }
 
+function extensionOf(path: string): string {
+  const base = path.split(/[/\\]/).pop() || path;
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0) return "";
+  return base.slice(dot + 1).toLowerCase();
+}
+
+/** Optimistic kind from path only — paints Information immediately. */
+function guessFileKind(path: string): FileMetadata["kind"] {
+  const ext = extensionOf(path);
+  if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic"].includes(ext)) {
+    return "image";
+  }
+  if (["mp4", "mov", "m4v", "avi", "mkv", "webm", "mpeg", "mpg"].includes(ext)) {
+    return "video";
+  }
+  if (["mp3", "m4a", "wav", "aac", "flac", "ogg"].includes(ext)) return "audio";
+  if (ext === "pdf") return "pdf";
+  return "file";
+}
+
+function optimisticFileMeta(path: string): FileMetadata {
+  const name = path.split(/[/\\]/).pop() || path;
+  const extension = extensionOf(path);
+  return {
+    path,
+    name,
+    extension,
+    kind: guessFileKind(path),
+    size: 0,
+  };
+}
+
 function isTauriRuntime(): boolean {
   return "__TAURI_INTERNALS__" in window;
 }
@@ -181,6 +214,10 @@ export default function ClipboardPanel() {
   const [status, setStatus] = useState("");
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [fileMetadata, setFileMetadata] = useState<FileMetadata | null>(null);
+  /** Right-pane file/PDF/video preview — loaded async, independent of list selection. */
+  const [filePreviewUrl, setFilePreviewUrl] = useState<string | null>(null);
+  const [filePreviewLoading, setFilePreviewLoading] = useState(false);
+  const [filePreviewError, setFilePreviewError] = useState<string | null>(null);
   const [mediaProgress, setMediaProgress] = useState<MediaProgress | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const preserveSelectionId = useRef<string | null>(null);
@@ -321,24 +358,101 @@ export default function ClipboardPanel() {
     }
   }, [editingId, selectedItem?.id]);
 
+  // Information paints immediately from the path; size/dims/preview fill in async.
   useEffect(() => {
     const path = selectedItem?.file_path;
-    setFileMetadata(null);
-    if (!path) return;
-    let cancelled = false;
-    invoke<FileMetadata>("clipboard_file_metadata", { path })
-      .then((metadata) => { if (!cancelled) setFileMetadata(metadata); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [selectedItem?.file_path]);
+    setFilePreviewUrl(null);
+    setFilePreviewError(null);
+    setFilePreviewLoading(false);
+    if (!path) {
+      setFileMetadata(null);
+      return;
+    }
 
-  useEffect(() => {
-    const previewPath = fileMetadata?.preview_path;
-    if (!previewPath || imageUrls[previewPath]) return;
-    void loadImageAsDataUrl(previewPath)
-      .then((url) => setImageUrls((current) => ({ ...current, [previewPath]: url })))
+    let cancelled = false;
+    // 0) Sync optimistic row — Information never waits on IPC for name/kind.
+    setFileMetadata(optimisticFileMeta(path));
+
+    // 1) Fast stat (size + confirmed kind) — no image decode / ffmpeg / QL.
+    void invoke<FileMetadata>("clipboard_file_metadata", { path })
+      .then((metadata) => {
+        if (cancelled) return;
+        setFileMetadata((current) => ({
+          ...metadata,
+          // Keep any probe fields that arrived first (unlikely but safe).
+          width: current?.width ?? metadata.width,
+          height: current?.height ?? metadata.height,
+          duration_seconds: current?.duration_seconds ?? metadata.duration_seconds,
+          preview_path: current?.preview_path ?? metadata.preview_path,
+        }));
+      })
+      .catch(() => {
+        /* keep optimistic */
+      });
+
+    // 2) Preview thumbnail asynchronously (image / video frame / PDF page).
+    setFilePreviewLoading(true);
+    void invoke<string | null>("clipboard_file_preview", { path })
+      .then(async (previewPath) => {
+        if (cancelled) return;
+        if (!previewPath) {
+          setFilePreviewLoading(false);
+          return;
+        }
+        try {
+          const url = await loadImageAsDataUrl(previewPath);
+          if (cancelled) return;
+          setFilePreviewUrl(url);
+          setImageUrls((current) => ({ ...current, [previewPath]: url }));
+          setFileMetadata((current) =>
+            current ? { ...current, preview_path: previewPath } : current,
+          );
+        } catch {
+          if (!cancelled) {
+            setFilePreviewError(
+              t("clipboard.previewFailed", "Preview unavailable"),
+            );
+          }
+        } finally {
+          if (!cancelled) setFilePreviewLoading(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFilePreviewLoading(false);
+          setFilePreviewError(t("clipboard.previewFailed", "Preview unavailable"));
+        }
+      });
+
+    // 3) Dimensions / duration — slow path, never blocks Information.
+    void invoke<FileMetadata>("clipboard_file_media_probe", { path })
+      .then((probed) => {
+        if (cancelled) return;
+        setFileMetadata((current) => {
+          if (!current) return probed;
+          const same =
+            current.path === probed.path ||
+            current.path === path ||
+            probed.path.endsWith(current.name);
+          if (!same) return current;
+          return {
+            ...current,
+            ...probed,
+            // Prefer non-zero size already shown.
+            size: probed.size || current.size,
+            width: probed.width ?? current.width,
+            height: probed.height ?? current.height,
+            duration_seconds: probed.duration_seconds ?? current.duration_seconds,
+            preview_path: probed.preview_path ?? current.preview_path,
+          };
+        });
+      })
       .catch(() => {});
-  }, [fileMetadata?.preview_path, imageUrls]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedItem?.file_path, t]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -892,16 +1006,41 @@ export default function ClipboardPanel() {
             <>
               {selectedItem.file_path ? (
                 <div className="qx-clipboard-file-preview">
-                  {fileMetadata?.preview_path && imageUrls[fileMetadata.preview_path] ? (
+                  {filePreviewUrl ? (
                     <img
                       className="qx-clipboard-image-preview"
-                      src={imageUrls[fileMetadata.preview_path]}
-                      alt={fileMetadata.name}
+                      src={filePreviewUrl}
+                      alt={fileMetadata?.name || t("clipboard.filePreview", "File preview")}
                     />
                   ) : (
                     <div className="qx-clipboard-file-placeholder">
-                      {fileMetadata?.kind === "video" ? <Video size={42} /> : <File size={42} />}
-                      <strong>{fileMetadata?.name ?? t("clipboard.loadingFile", "Loading file…")}</strong>
+                      {fileMetadata?.kind === "video" ? (
+                        <Video size={42} />
+                      ) : fileMetadata?.kind === "pdf" ||
+                        selectedItem.file_path.toLowerCase().endsWith(".pdf") ? (
+                        <FileText size={42} />
+                      ) : (
+                        <File size={42} />
+                      )}
+                      <strong>
+                        {fileMetadata?.name ??
+                          selectedItem.file_path.split(/[/\\]/).pop() ??
+                          t("clipboard.loadingFile", "Loading file…")}
+                      </strong>
+                      {filePreviewLoading ? (
+                        <span className="qx-clipboard-preview-status" aria-live="polite">
+                          {t("clipboard.previewLoading", "Loading preview…")}
+                        </span>
+                      ) : filePreviewError ? (
+                        <span className="qx-clipboard-preview-status is-muted">
+                          {filePreviewError}
+                        </span>
+                      ) : fileMetadata &&
+                        !["image", "video", "pdf"].includes(fileMetadata.kind) ? (
+                        <span className="qx-clipboard-preview-status is-muted">
+                          {t("clipboard.previewUnsupported", "No visual preview for this type")}
+                        </span>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -949,15 +1088,77 @@ export default function ClipboardPanel() {
                       </div>
                     </>
                   )}
-                  {selectedItem.file_path && fileMetadata && (
+                  {selectedItem.file_path && (
                     <>
-                      <div><dt>{t("clipboard.file", "File")}</dt><dd title={fileMetadata.path}>{fileMetadata.name}</dd></div>
-                      <div><dt>{t("clipboard.kind", "Kind")}</dt><dd>{fileMetadata.kind}{fileMetadata.extension ? ` · ${fileMetadata.extension.toUpperCase()}` : ""}</dd></div>
-                      <div><dt>{t("clipboard.size", "Size")}</dt><dd>{formatBytes(fileMetadata.size)}</dd></div>
-                      {fileMetadata.width && fileMetadata.height && <div><dt>{t("clipboard.dimensions", "Dimensions")}</dt><dd>{fileMetadata.width} × {fileMetadata.height}</dd></div>}
-                      {fileMetadata.duration_seconds && <div><dt>{t("clipboard.duration", "Duration")}</dt><dd>{formatDuration(fileMetadata.duration_seconds)}</dd></div>}
-                      {fileMetadata.kind === "image" && <div><dt>{t("clipboard.quickAction", "Quick action")}</dt><dd><button className="qx-inline-action" onClick={() => void startMediaTask("compress")} disabled={Boolean(mediaProgress)}><Shrink size={13} /> {t("clipboard.compress", "Compress")}</button></dd></div>}
-                      {fileMetadata.kind === "video" && <div><dt>{t("clipboard.quickAction", "Quick action")}</dt><dd><button className="qx-inline-action" onClick={() => void startMediaTask("gif")} disabled={Boolean(mediaProgress)}><Video size={13} /> {t("clipboard.convertGif", "Convert to GIF")}</button></dd></div>}
+                      <div>
+                        <dt>{t("clipboard.file", "File")}</dt>
+                        <dd title={fileMetadata?.path || selectedItem.file_path}>
+                          {fileMetadata?.name ||
+                            selectedItem.file_path.split(/[/\\]/).pop() ||
+                            selectedItem.file_path}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{t("clipboard.kind", "Kind")}</dt>
+                        <dd>
+                          {(fileMetadata?.kind || guessFileKind(selectedItem.file_path))}
+                          {(fileMetadata?.extension || extensionOf(selectedItem.file_path))
+                            ? ` · ${(fileMetadata?.extension || extensionOf(selectedItem.file_path)).toUpperCase()}`
+                            : ""}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>{t("clipboard.size", "Size")}</dt>
+                        <dd>
+                          {fileMetadata && fileMetadata.size > 0
+                            ? formatBytes(fileMetadata.size)
+                            : t("clipboard.sizePending", "…")}
+                        </dd>
+                      </div>
+                      {fileMetadata?.width && fileMetadata?.height ? (
+                        <div>
+                          <dt>{t("clipboard.dimensions", "Dimensions")}</dt>
+                          <dd>
+                            {fileMetadata.width} × {fileMetadata.height}
+                          </dd>
+                        </div>
+                      ) : null}
+                      {fileMetadata?.duration_seconds ? (
+                        <div>
+                          <dt>{t("clipboard.duration", "Duration")}</dt>
+                          <dd>{formatDuration(fileMetadata.duration_seconds)}</dd>
+                        </div>
+                      ) : null}
+                      {fileMetadata?.kind === "image" ? (
+                        <div>
+                          <dt>{t("clipboard.quickAction", "Quick action")}</dt>
+                          <dd>
+                            <button
+                              className="qx-inline-action"
+                              onClick={() => void startMediaTask("compress")}
+                              disabled={Boolean(mediaProgress)}
+                              type="button"
+                            >
+                              <Shrink size={13} /> {t("clipboard.compress", "Compress")}
+                            </button>
+                          </dd>
+                        </div>
+                      ) : null}
+                      {fileMetadata?.kind === "video" ? (
+                        <div>
+                          <dt>{t("clipboard.quickAction", "Quick action")}</dt>
+                          <dd>
+                            <button
+                              className="qx-inline-action"
+                              onClick={() => void startMediaTask("gif")}
+                              disabled={Boolean(mediaProgress)}
+                              type="button"
+                            >
+                              <Video size={13} /> {t("clipboard.convertGif", "Convert to GIF")}
+                            </button>
+                          </dd>
+                        </div>
+                      ) : null}
                     </>
                   )}
                   {selectedItem.image_path && !selectedItem.file_path && (

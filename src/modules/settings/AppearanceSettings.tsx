@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { useSettingsStore } from "./store";
+import {
+  MODULE_SEARCH_LABELS,
+  MODULE_SEARCH_MODULE_IDS,
+  useSettingsStore,
+  type ModuleSearchModuleId,
+} from "./store";
 import { useTheme } from "../../ThemeProvider";
-import { Row, SegmentedControl, SettingsCard, Slider } from "../../components/ui";
+import { Row, SegmentedControl, SettingsCard, Slider, Toggle } from "../../components/ui";
 import { useT } from "../../i18n";
 import { HomeIslandSettings } from "../../home-island";
+import { isBuiltinModuleEnabled } from "../moduleAvailability";
 
 const MIN_WINDOW_WIDTH = 480;
 const MIN_WINDOW_HEIGHT = 360;
@@ -34,6 +40,7 @@ export default function AppearanceSettings({
   const { theme, setTheme } = useTheme();
   const t = useT();
   const a = settings.appearance;
+  const moduleSearch = settings.module_search;
   const radiusValue = String(clampDimension(a.border_radius, 4, 8));
   const [focusedDimension, setFocusedDimension] = useState<"width" | "height" | null>(null);
   const [widthDraft, setWidthDraft] = useState(String(a.window_width));
@@ -76,10 +83,7 @@ export default function AppearanceSettings({
 
   return (
     <div className="qx-settings-page">
-      <SettingsCard
-        title={t("appearance.surface.title", "Theme & Surface")}
-        description={t("appearance.surface.desc", "Choose the color mode and the transparent shell strength.")}
-      >
+      <SettingsCard title={t("appearance.surface.title", "Theme & Surface")}>
         <Row title={t("appearance.theme", "Theme")} description={t("appearance.theme.desc", "Choose the interface color scheme.")}>
           <SegmentedControl
             value={theme}
@@ -96,7 +100,10 @@ export default function AppearanceSettings({
         </Row>
         <Row
           title={t("appearance.opacity", "Interface Transparency")}
-          description={`${t("appearance.opacity.desc", "Controls the whole shell, panels, and bottom island")} (${a.blur_opacity.toFixed(2)})`}
+          description={`${t(
+            "appearance.opacity.desc",
+            "Shell glass, settings cards, panels, and the bottom island. Lower is more transparent.",
+          )} (${a.blur_opacity.toFixed(2)})`}
         >
           <Slider
             value={a.blur_opacity}
@@ -110,10 +117,7 @@ export default function AppearanceSettings({
         </Row>
       </SettingsCard>
 
-      <SettingsCard
-        title={t("appearance.layout.title", "Window & Density")}
-        description={t("appearance.layout.desc", "Tune the launcher footprint and compactness.")}
-      >
+      <SettingsCard title={t("appearance.layout.title", "Window & Density")}>
         <Row title={t("appearance.windowSize", "Window Size")} description={t("appearance.windowSize.desc", "Launcher window dimensions (min 400×300).")}>
           <div className="qx-window-size-group">
             <label className="qx-dimension-label">
@@ -211,15 +215,55 @@ export default function AppearanceSettings({
         </Row>
       </SettingsCard>
 
-      <SettingsCard
-        title={t("appearance.homeIsland.title", "Home Island")}
-        description={t("appearance.homeIsland.cardDesc", "Idle launcher island — pick a classic view or a sci-fi HUD.")}
-      >
+      <SettingsCard title={t("appearance.homeIsland.title", "Home Island")}>
         <HomeIslandSettings
           appearance={a}
           patch={(next) => patch("appearance", next)}
           onPreviewModeChange={onHomeIslandPreview}
         />
+      </SettingsCard>
+
+      <SettingsCard title={t("appearance.moduleSearch.title", "Launcher Search Sources")}>
+        <Row
+          title={t("general.moduleSearch.enabled", "Enable module search")}
+          description={t(
+            "general.moduleSearch.enabled.desc",
+            "Master switch. When off, built-in modules no longer appear as search results or deep links.",
+          )}
+        >
+          <Toggle
+            value={moduleSearch.enabled}
+            onChange={(value) =>
+              patch("module_search", { ...moduleSearch, enabled: value })
+            }
+          />
+        </Row>
+        {MODULE_SEARCH_MODULE_IDS.map((id) => {
+          const meta = MODULE_SEARCH_LABELS[id];
+          const on = moduleSearch.modules[id] !== false;
+          const moduleEnabled = isBuiltinModuleEnabled(id, settings);
+          return (
+            <Row
+              key={id}
+              title={t(`general.moduleSearch.${id}`, meta.title)}
+              description={t(`general.moduleSearch.${id}.desc`, meta.hint)}
+            >
+              <Toggle
+                value={moduleSearch.enabled && moduleEnabled && on}
+                disabled={!moduleEnabled}
+                onChange={(value) =>
+                  patch("module_search", {
+                    ...moduleSearch,
+                    modules: {
+                      ...moduleSearch.modules,
+                      [id]: value,
+                    } as Partial<Record<ModuleSearchModuleId, boolean>>,
+                  })
+                }
+              />
+            </Row>
+          );
+        })}
       </SettingsCard>
     </div>
   );
