@@ -560,6 +560,7 @@ pub fn run() {
             screencap::selection::screencap_list_displays,
             screencap::selection::screencap_list_windows,
             screencap::selection::screencap_set_picker_passthrough,
+            screencap::selection::screencap_set_pointer_follow,
             screencap::selection::screencap_select_display,
             screencap::selection::screencap_cancel_region_select,
             screencap::selection::screencap_confirm_region_select,

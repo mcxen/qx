@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, AtomicU64};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use super::types::{PickerSession, RecordingRuntimeStatus, RecordingState};
@@ -11,6 +11,31 @@ static PICKER_SESSION: OnceLock<Mutex<Option<PickerSession>>> = OnceLock::new();
 
 pub(super) static FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
 pub(super) static CONTROLS_PINNED: AtomicBool = AtomicBool::new(false);
+static PICKER_POINTER_FOLLOW: AtomicBool = AtomicBool::new(false);
+static PICKER_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+pub(super) fn begin_picker_session() -> u64 {
+    PICKER_POINTER_FOLLOW.store(true, Ordering::Release);
+    PICKER_GENERATION.fetch_add(1, Ordering::AcqRel) + 1
+}
+
+pub(super) fn end_picker_session() {
+    PICKER_POINTER_FOLLOW.store(false, Ordering::Release);
+    PICKER_GENERATION.fetch_add(1, Ordering::AcqRel);
+}
+
+pub(super) fn set_picker_pointer_follow(enabled: bool) {
+    PICKER_POINTER_FOLLOW.store(enabled, Ordering::Release);
+}
+
+pub(super) fn picker_pointer_following(generation: u64) -> bool {
+    PICKER_POINTER_FOLLOW.load(Ordering::Acquire)
+        && PICKER_GENERATION.load(Ordering::Acquire) == generation
+}
+
+pub(super) fn picker_session_is_current(generation: u64) -> bool {
+    PICKER_GENERATION.load(Ordering::Acquire) == generation
+}
 
 pub(super) fn recording() -> &'static Mutex<Option<RecordingState>> {
     RECORDING.get_or_init(|| Mutex::new(None))

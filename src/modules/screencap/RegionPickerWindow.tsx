@@ -207,6 +207,10 @@ export default function RegionPickerWindow() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cancelCountdownRef = useRef(false);
 
+  const setPointerFollow = useCallback((enabled: boolean) => {
+    void invoke("screencap_set_pointer_follow", { enabled }).catch(() => {});
+  }, []);
+
   const loadWindows = useCallback(async () => {
     if (picker?.monitorId == null || picker.coordinateScale == null || picker.coordinateScale <= 0) {
       setWindows([]);
@@ -312,6 +316,14 @@ export default function RegionPickerWindow() {
     if (picker?.monitorId == null) return;
     void loadWindows();
   }, [loadWindows, picker?.monitorId, picker?.coordinateScale]);
+
+  // Rust owns cross-display pointer tracking. Stop it as soon as the user has
+  // started an interaction so an in-progress selection can never move screens.
+  useEffect(() => {
+    if (selection || drawStart || interaction || busy || countdown !== null) {
+      setPointerFollow(false);
+    }
+  }, [busy, countdown, drawStart, interaction, selection, setPointerFollow]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -506,6 +518,7 @@ export default function RegionPickerWindow() {
 
   const selectDisplay = useCallback(async (monitorId: number) => {
     if (busy || monitorId === picker?.monitorId) return;
+    setPointerFollow(false);
     setBusy(true);
     setError(null);
     try {
@@ -514,10 +527,11 @@ export default function RegionPickerWindow() {
       setBusy(false);
       setError(String(displayError));
     }
-  }, [busy, picker?.monitorId]);
+  }, [busy, picker?.monitorId, setPointerFollow]);
 
   const selectFullScreen = useCallback(() => {
     if (busy) return;
+    setPointerFollow(false);
     setPickMode("fullscreen");
     setSelection({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight });
     setDrawStart(null);
@@ -526,7 +540,7 @@ export default function RegionPickerWindow() {
     setAnnotations([]);
     setRedoStack([]);
     setError(null);
-  }, [busy]);
+  }, [busy, setPointerFollow]);
 
   const switchPickMode = useCallback((mode: PickMode) => {
     if (busy) return;
@@ -575,6 +589,7 @@ export default function RegionPickerWindow() {
 
   const onRootMouseDown = (event: React.MouseEvent) => {
     if (busy || event.button !== 0 || countdown !== null) return;
+    setPointerFollow(false);
     if (pickMode === "window") {
       const hit = hitWindow({ x: event.clientX, y: event.clientY });
       if (hit) {
@@ -676,14 +691,17 @@ export default function RegionPickerWindow() {
     const next = rectFromPoints(drawStart, drawEnd);
     setDrawStart(null);
     setDrawEnd(null);
-    if (next.w < MIN_SIZE || next.h < MIN_SIZE) return false;
+    if (next.w < MIN_SIZE || next.h < MIN_SIZE) {
+      setPointerFollow(true);
+      return false;
+    }
     setSelection(next);
     const confirmMode = loadCaptureConfirmMode();
     if (confirmMode === "release" && !forceRefine) {
       void confirm(intent, next);
     }
     return true;
-  }, [confirm, drawEnd, drawStart, intent, selection]);
+  }, [confirm, drawEnd, drawStart, intent, selection, setPointerFollow]);
 
   const onRootMouseUp = (event: React.MouseEvent) => {
     if (drawStart && drawEnd && !selection) {
@@ -837,6 +855,7 @@ export default function RegionPickerWindow() {
           if (drawStart) {
             setDrawStart(null);
             setDrawEnd(null);
+            setPointerFollow(true);
             return;
           }
           if (selection) {
@@ -845,6 +864,7 @@ export default function RegionPickerWindow() {
             setRedoStack([]);
             setNextNumber(1);
             setTool(null);
+            setPointerFollow(true);
             return;
           }
           void cancel();

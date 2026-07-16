@@ -127,6 +127,7 @@
 
 ### 截图与多显示器统一捕获（2026-07-15）
 
+- **鼠标所在桌面默认跟随（2026-07-16）**：圈选启动默认落在鼠标所在显示器；尚未开始框选时由 Rust 后台复用统一 `display` 服务检测跨屏并迁移受保护圈选窗，开始交互、已有选区、倒计时或确认后立即停止跟随，session 结束时后台任务自动退出。
 - **P0–P1 交互重设计（2026-07-15）**：意图驱动主按钮（Enter/S/R）；模块双入口收敛；区域重画 + 八向手柄；延迟 0/3/5s 倒计时穿透；`confirmMode` 精修/松手即捕；窗口悬停选取；标注扩展（矩形/画笔/颜色/撤销重做）；截图 post-capture toast；无视频编辑。
 - **系统能力层（SOLID）**：窗列表提升为 `desktop_windows`（`desktop_windows_list`）；显示器公共 IPC `display_list` + `display::capture_region`；剪贴板 `clipboard_write_image_file`；前端端口 `src/system/*`；screencap 仅消费系统服务与保留工作流门面。
 - **截图闭环补齐**：录制停止后 `restore_selection` 回灌选区；预览支持复制图片；历史按扩展名识别截图；Esc 分层（草稿/选区/退出）；窗选在 session 就绪后刷新。

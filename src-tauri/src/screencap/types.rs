@@ -118,6 +118,8 @@ pub(super) struct PickerSession {
     pub(super) monitor_name: String,
     pub(super) coordinate_scale: f64,
     pub(super) logical_area: Option<RecordArea>,
+    pub(super) frame_x: i32,
+    pub(super) frame_y: i32,
 }
 
 #[derive(Debug, Clone, Serialize)]

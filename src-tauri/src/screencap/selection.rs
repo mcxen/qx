@@ -12,7 +12,9 @@ use super::picker_window::{self, PICKER_LABEL};
 use super::recording_session;
 use super::screenshot::capture as take_screenshot_blocking;
 use super::state::{
-    picker as picker_session, recording as recording_state, runtime as runtime_status,
+    begin_picker_session, end_picker_session, picker as picker_session, picker_pointer_following,
+    picker_session_is_current, recording as recording_state, runtime as runtime_status,
+    set_picker_pointer_follow,
 };
 use super::types::{CaptureMode, PickerSession};
 use super::{CaptureDisplay, PickerStatus, RecordArea, RecordingOptions};
@@ -142,6 +144,8 @@ fn show_region_picker_internal(
             monitor_name,
             coordinate_scale,
             logical_area: None,
+            frame_x: position.x,
+            frame_y: position.y,
         });
     }
     // Window create/show/focus are AppKit main-thread only when reached from async commands.
@@ -198,6 +202,52 @@ fn show_region_picker_internal(
     Ok(())
 }
 
+fn start_pointer_display_tracker(app: AppHandle, generation: u64) {
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+            if !picker_session_is_current(generation) {
+                break;
+            }
+            if !picker_pointer_following(generation) {
+                continue;
+            }
+            let Some(cursor_display) = cursor_monitor(&app) else {
+                continue;
+            };
+            let cursor_position = cursor_display.position();
+            let current = picker_session().lock().ok().and_then(|session| {
+                session
+                    .as_ref()
+                    .map(|session| (session.mode, session.frame_x, session.frame_y))
+            });
+            let Some((mode, frame_x, frame_y)) = current else {
+                break;
+            };
+            if cursor_position.x == frame_x && cursor_position.y == frame_y {
+                continue;
+            }
+            let Ok(capture) = capture_monitor_for_tauri(&app, &cursor_display) else {
+                continue;
+            };
+            let Ok(monitor_id) = capture.id() else {
+                continue;
+            };
+            if !picker_pointer_following(generation) {
+                continue;
+            }
+            if let Err(error) = show_region_picker_internal(&app, mode, Some(monitor_id)) {
+                crate::diagnostics::log(
+                    crate::diagnostics::LogLevel::Warn,
+                    "screencap.pointer_follow",
+                    "failed to move capture picker to pointer display",
+                    serde_json::json!({ "error": error, "monitorId": monitor_id }),
+                );
+            }
+        }
+    });
+}
+
 #[command]
 pub async fn screencap_begin_region_select(app: AppHandle) -> Result<(), String> {
     screencap_begin_capture_select(app, "recording".to_string()).await
@@ -215,6 +265,8 @@ pub async fn screencap_begin_capture_select(app: AppHandle, mode: String) -> Res
     }
     ensure_screen_capture_permission()?;
     let mode = CaptureMode::parse(&mode)?;
+    // Invalidate any stale picker tracker before replacing its session.
+    let generation = begin_picker_session();
     // Map/show the picker before hiding every existing Qx surface. If display
     // matching or window creation fails, the user must never be left with an
     // apparently terminated app and no way to recover.
@@ -225,8 +277,10 @@ pub async fn screencap_begin_capture_select(app: AppHandle, mode: String) -> Res
             "failed to open capture picker",
             serde_json::json!({ "error": error, "mode": mode.as_str() }),
         );
+        end_picker_session();
         error
     })?;
+    start_pointer_display_tracker(app.clone(), generation);
     hide_recording_controls_internal(&app);
     crate::floating_panel::hide(&app);
     Ok(())
@@ -265,8 +319,17 @@ pub fn screencap_set_picker_passthrough(app: AppHandle, enabled: bool) -> Result
     Ok(())
 }
 
+/// Follow the display under the pointer only while the picker is still idle.
+#[command]
+pub fn screencap_set_pointer_follow(enabled: bool) {
+    set_picker_pointer_follow(enabled);
+}
+
 #[command]
 pub fn screencap_select_display(app: AppHandle, monitor_id: u32) -> Result<(), String> {
+    // An explicit monitor choice is sticky until the user clears/restarts the
+    // selection; otherwise the pointer left on the old screen would snap back.
+    set_picker_pointer_follow(false);
     let mode = picker_session()
         .lock()
         .ok()
@@ -282,6 +345,7 @@ pub fn screencap_region_select_status() -> Option<PickerStatus> {
 
 #[command]
 pub async fn screencap_cancel_region_select(app: AppHandle) -> Result<(), String> {
+    end_picker_session();
     hide_region_picker_internal(&app);
     if let Ok(mut session) = picker_session().lock() {
         *session = None;
@@ -304,6 +368,7 @@ pub async fn screencap_confirm_region_select(
         .ok()
         .and_then(|session| session.clone())
         .ok_or_else(|| "Capture selection session is unavailable".to_string())?;
+    end_picker_session();
     let logical_area = RecordArea {
         monitor_id: Some(session.monitor_id),
         ..area.clone()
