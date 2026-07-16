@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import { AlignLeft, CalendarDays, Code2, File, FileText, Image, Link, Pin, Shrink, Video } from "lucide-react";
 import { useStore, type ClipboardEntry } from "../../store";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
+import { QxModuleSearch } from "../../components/QxModuleSearch";
 import {
   Calendar,
   Popover,
@@ -831,20 +832,16 @@ export default function ClipboardPanel() {
   let flatIndex = 0;
 
   const searchSlot = (
-        <div className="qx-search-wrap qx-clipboard-search-wrap">
-          <span className="qx-search-icon" aria-hidden="true" />
-          <input
-            type="text"
-            value={query}
-            autoFocus
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setSelected(0);
-            }}
-            placeholder={t("clipboard.placeholder", "Type to filter entries...")}
-            className="qx-plugin-search qx-clipboard-search"
-          />
-        </div>
+    <QxModuleSearch
+      className="qx-clipboard-search-wrap"
+      inputClassName="qx-clipboard-search"
+      value={query}
+      onChange={(next) => {
+        setQuery(next);
+        setSelected(0);
+      }}
+      placeholder={t("clipboard.placeholder", "Type to filter entries...")}
+    />
   );
 
   const itemCountLabel = t("clipboard.items", "{n} items").replace("{n}", String(filtered.length));

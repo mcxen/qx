@@ -541,6 +541,7 @@ const zh: Record<string, string> = {
   "plugins.badge.disabled": "已停用",
   "plugins.builtin.desc": "核心模块",
   "plugins.refresh": "刷新",
+  "plugins.reloadPanel": "重新加载面板",
   "plugins.actions": "插件操作",
   "plugins.itemActions": "条目操作",
   "plugins.panelActions": "面板",

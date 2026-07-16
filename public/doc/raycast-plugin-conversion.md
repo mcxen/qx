@@ -149,12 +149,18 @@ Preferences map into Qx manifest preferences (`select`, `boolean`, `password`,
 `media/`, and package fields.
 
 `ActionPanel` actions are collected even when wrapped in custom action
-components (e.g. Bing’s `ActionsOnlineBingWallpaper`). Each item shows a compact
-action strip (Set / Download / Preview…); a bottom action dock mirrors the
-selected item. Keyboard: arrow keys select, Enter runs the primary action, and
-declared Raycast shortcuts still fire. `useNavigation` keeps a push/pop stack for
-Detail previews. Settings → Extensions → Display can hide the legacy inline
-`ActionPanel` row; item strips and the dock remain available.
+components (e.g. Bing’s `ActionsOnlineBingWallpaper`). Selected item actions are
+published to **QxShell** (primary / ⌘K / context) as the real Action surface —
+not a second iframe dock. Keyboard: arrow keys select, Enter runs primary, and
+declared Raycast shortcuts (e.g. Bing `⌘R` random wallpaper, `⌘Y` preview) fire
+inside the plugin. Host panel reload is **`⌘⇧R` / Reload Panel** only (never bare
+`R`, which stole Bing’s random action UX).
+
+`open` / `showInFinder` route local paths through `system.openPath` /
+`system.revealPath` (converter grants `system` when Finder/file open is detected);
+http(s) still uses `open-url`. `openExtensionPreferences` opens Settings →
+Extensions. Settings → Extensions → Display can hide the legacy inline Action
+row chips; Shell Actions remain.
 
 `mode: "no-view"` + `interval` becomes a Qx background timer with resume state
 in local storage.

@@ -27,6 +27,7 @@ import AgentSettings from "./AgentSettings";
 import WeatherSettings from "./WeatherSettings";
 import AboutPanel from "./AboutPanel";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
+import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { Button, ScrollArea } from "../../components/ui";
 import { useT } from "../../i18n";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
@@ -113,6 +114,19 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     if (!loaded) void load();
   }, [loaded, load]);
+
+  // Raycast "Configure Extension" (and similar) land here via sessionStorage.
+  useEffect(() => {
+    try {
+      const pending = sessionStorage.getItem("qx.settings.pendingTab");
+      if (pending === "plugins") {
+        sessionStorage.removeItem("qx.settings.pendingTab");
+        setActiveTab("plugins");
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [setActiveTab]);
 
   useEffect(() => {
     void getVersion()
@@ -208,18 +222,12 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   };
 
   const settingsSearch = (
-    <div className="qx-search-wrap">
-      <span className="qx-search-icon" aria-hidden="true" />
-      <input
-        type="text"
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        onFocus={requestPanelKeyWindow}
-        placeholder={t("settings.search", "Search settings...")}
-        autoFocus
-        className="qx-plugin-search"
-      />
-    </div>
+    <QxModuleSearch
+      value={filter}
+      onChange={setFilter}
+      onFocus={requestPanelKeyWindow}
+      placeholder={t("settings.search", "Search settings...")}
+    />
   );
 
   const settingsContext = (

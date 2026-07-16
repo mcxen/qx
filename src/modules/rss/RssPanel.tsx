@@ -6,7 +6,8 @@ import { useStore } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { getQxShortcutPreset } from "../../utils/keyboard";
-import { LoadingLabel, Skeleton } from "../../components/ui";
+import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
+import { QxModuleSearch } from "../../components/QxModuleSearch";
 import AddFeedDialog from "./AddFeedDialog";
 import EditFeedDialog from "./EditFeedDialog";
 import {
@@ -331,17 +332,11 @@ export default function RssPanel() {
         pageSize: 8,
       }}
       search={
-        <div className="qx-search-wrap">
-          <span className="qx-search-icon" aria-hidden="true" />
-          <input
-            type="text"
-            value={query}
-            autoFocus
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search feeds or folders…"
-            className="qx-plugin-search"
-          />
-        </div>
+        <QxModuleSearch
+          value={query}
+          onChange={setQuery}
+          placeholder="Search feeds or folders…"
+        />
       }
       trailing={
         <>
@@ -484,18 +479,13 @@ export default function RssPanel() {
           <span style={{ flex: 1 }}>Subscriptions</span>
           <span>{filtered.length}</span>
         </div>
-        {loading && filtered.length === 0 && (
-          <div className="qx-skeleton-stack" aria-label="Loading feeds">
-            {Array.from({ length: 5 }).map((_, index) => (
-              <div className="qx-skeleton-row" key={index}>
-                <Skeleton className="qx-skeleton-icon" />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <Skeleton className="qx-skeleton-line long" />
-                  <Skeleton className="qx-skeleton-line medium" style={{ marginTop: 8 }} />
-                </div>
-              </div>
-            ))}
-          </div>
+        {shouldShowQxListLoading(loading, filtered.length) && (
+          <QxListLoading
+            ariaLabel="Loading feeds"
+            label="Loading feeds..."
+            rows={5}
+            showMeta={false}
+          />
         )}
         {sections.map((section) => (
           <div key={section.key}>
@@ -559,11 +549,9 @@ export default function RssPanel() {
             })}
           </div>
         ))}
-        {filtered.length === 0 && folders.length === 0 && (
+        {filtered.length === 0 && folders.length === 0 && !loading && (
           <div className="qx-empty-state">
-            {loading
-              ? <LoadingLabel>Loading feeds...</LoadingLabel>
-              : "No feeds yet. Add a subscription, New Folder, or Import OPML."}
+            No feeds yet. Add a subscription, New Folder, or Import OPML.
           </div>
         )}
         {filtered.length === 0 && folders.length > 0 && !loading && query.trim() === "" && (

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Hammer, UserRound } from "lucide-react";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
+import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { Select } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
@@ -186,23 +187,17 @@ export default function QxAiChat() {
       className="qx-qxai-chat-shell"
       onKeyDown={onKeyDown}
       search={
-        <div className="qx-search-wrap">
-          <span className="qx-search-icon" aria-hidden="true" />
-          <input
-            type="text"
-            value={input}
-            autoFocus
-            onFocus={requestPanelKeyWindow}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={
-              isCurrentConversationStreaming
-                ? t("qxai.waitingResponse", "Waiting for response…")
-                : t("qxai.typeMessage", "Type a message… (Enter to send)")
-            }
-            className="qx-plugin-search"
-            disabled={isCurrentConversationStreaming || !conv}
-          />
-        </div>
+        <QxModuleSearch
+          value={input}
+          onChange={setInput}
+          onFocus={requestPanelKeyWindow}
+          disabled={isCurrentConversationStreaming || !conv}
+          placeholder={
+            isCurrentConversationStreaming
+              ? t("qxai.waitingResponse", "Waiting for response…")
+              : t("qxai.typeMessage", "Type a message… (Enter to send)")
+          }
+        />
       }
       trailing={
         <button className="qx-command-button" type="button" onClick={() => createConversation()}>

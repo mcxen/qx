@@ -83,15 +83,19 @@ export function PluginPanelViewport() {
   const onKeyDown = (event: React.KeyboardEvent) => {
     escKeyDown(event);
     if (event.key === "Escape") return;
+    // Do not bind bare R for panel remount — Raycast plugins (e.g. Bing Wallpaper)
+    // use Cmd+R for item actions ("Set Random Wallpaper"). Host reload is ⌘⇧R /
+    // Actions → Reload Panel only.
     const ignoreBare = shouldIgnoreBareShortcut(event.nativeEvent);
-    switch (event.key) {
-      case "r":
-      case "R":
-        if (!ignoreBare && !event.metaKey && !event.ctrlKey && !event.altKey) {
-          event.preventDefault();
-          setRefreshKey((k) => k + 1);
-        }
-        break;
+    if (
+      !ignoreBare
+      && (event.key === "r" || event.key === "R")
+      && (event.metaKey || event.ctrlKey)
+      && event.shiftKey
+      && !event.altKey
+    ) {
+      event.preventDefault();
+      setRefreshKey((k) => k + 1);
     }
   };
 
@@ -171,20 +175,22 @@ export function PluginPanelViewport() {
     [pluginId],
   );
 
-  // Raycast ActionPanel[0] === Qx primaryAction; rest + same list for ⌘K.
+  // Raycast ActionPanel[0] === Qx primaryAction (Set Desktop Wallpaper, etc.).
+  // Host must not inject "Refresh" ahead of item actions — that made Bing look
+  // like Action support was broken (Enter remounted the panel instead of Set).
   const primaryItem = itemActions[0];
 
   const actions = useMemo<QxShellAction[]>(() => {
-    // Full Raycast ActionPanel → Qx action menu (primary included so ⌘K is complete).
     const raycastAsQx: QxShellAction[] = itemActions.map((action, index) => ({
       label: action.title,
       kbd: action.kbd || (index === 0 ? "Enter" : undefined),
       onClick: () => runItem(action.id),
     }));
+    // Panel-level ops stay after the selected item's ActionPanel (Raycast order).
     const panelOps: QxShellAction[] = [
       {
-        label: t("plugins.refresh", "Refresh"),
-        kbd: "R",
+        label: t("plugins.reloadPanel", "Reload Panel"),
+        kbd: "CmdOrCtrl+Shift+R",
         onClick: () => setRefreshKey((k) => k + 1),
       },
       ...pluginCommands.map((cmd) => ({
@@ -282,8 +288,8 @@ export function PluginPanelViewport() {
             onClick={() => setRefreshKey((k) => k + 1)}
             type="button"
           >
-            <span>{t("plugins.refresh", "Refresh")}</span>
-            <kbd>R</kbd>
+            <span>{t("plugins.reloadPanel", "Reload Panel")}</span>
+            <kbd>⇧⌘R</kbd>
           </button>
           {pluginCommands.map((cmd) => (
             <button
@@ -329,8 +335,8 @@ export function PluginPanelViewport() {
               onClick: () => runItem(primaryItem.id),
             }
           : {
-              label: t("plugins.refresh", "Refresh"),
-              kbd: "R",
+              label: t("plugins.reloadPanel", "Reload Panel"),
+              kbd: "CmdOrCtrl+Shift+R",
               tone: "primary",
               onClick: () => setRefreshKey((k) => k + 1),
             }

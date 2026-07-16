@@ -704,6 +704,33 @@ QxShell 的区域、列表与内容移动统一由 `useQxShellNavigation` +
 模块只维护 `selected` 状态并传入 `navigation={{ index, count, onChange }}`，
 不得再手写 `querySelector('[aria-selected]')` / 各自 `scrollIntoView`。
 
+**列表加载态**以 V2EX 为规范样例，统一用 `QxListLoading`（`src/components/QxListLoading.tsx`）：
+
+| 条件 | UI |
+|---|---|
+| `loading && count === 0` | 骨架行（icon + 双行文案 + 可选 meta）+ 下方 `LoadingLabel` |
+| `loading && count > 0` | **保留旧列表**（不闪白）；Island / 计数可显示 Searching / `...` |
+| `!loading && count === 0` | `qx-empty-state` 文案，不用骨架 |
+
+禁止在空列表时只转圈、或刷新时清空已有行再画骨架。
+
+**模块搜索框**统一用 `QxModuleSearch`（`src/components/QxModuleSearch.tsx`）：
+
+```tsx
+search={
+  <QxModuleSearch
+    value={query}
+    onChange={setQuery}
+    placeholder={t("…", "…")}
+  />
+}
+```
+
+- 结构固定：`.qx-search-wrap` + `.qx-search-icon` + `.qx-plugin-search`（样式在 `toolbar.css`）。
+- 业务逻辑（改选中、拉数据）留在父组件 `onChange`；不要再手写三层 div/input。
+- Launcher 主搜索仍用 `SearchBar`（召唤聚焦 / store），但其内部已复用 `QxModuleSearch` 同一套 chrome。
+- 顶栏若只是标题（Weather / Macro），不要硬塞假搜索框。
+
 标准映射：
 
 | 按键 | 行为 |

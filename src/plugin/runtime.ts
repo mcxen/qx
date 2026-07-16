@@ -100,6 +100,28 @@ function ensureItemActionsBridge(): void {
   window.addEventListener("message", (event: MessageEvent) => {
     if (!isExpectedPluginMessageOrigin(event)) return;
     const data = event.data || {};
+    if (data.type === "qx:plugin:open-preferences") {
+      const pluginId = String(data.pluginId || "");
+      const runtimeId = String(data.runtimeId || "");
+      if (!pluginId || !runtimeId || !event.source) return;
+      const panelSession = panelSessionsByPlugin.get(pluginId);
+      if (
+        !panelSession
+        || panelSession.runtimeId !== runtimeId
+        || panelSession.iframe.contentWindow !== event.source
+      ) {
+        return;
+      }
+      // Raycast "Configure Extension" → Settings → Extensions (focus plugin card).
+      try {
+        sessionStorage.setItem("qx.settings.pendingTab", "plugins");
+        sessionStorage.setItem("qx.settings.focusPluginId", pluginId);
+      } catch {
+        /* ignore */
+      }
+      window.dispatchEvent(new CustomEvent("qx:navigate", { detail: "settings" }));
+      return;
+    }
     if (data.type !== "qx:plugin:item-actions") return;
     const pluginId = String(data.pluginId || "");
     const runtimeId = String(data.runtimeId || "");

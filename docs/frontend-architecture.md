@@ -114,6 +114,21 @@ Zustand 单 store（`store.ts`）保存 launcher 强共享状态：
   行契约：`qx-list-row` + `is-active` + `data-qx-list-index`；滚动 `block: nearest`
   参考消费者：`ClipboardPanel`、`ResultsList`
 
+### 列表加载态（V2EX 规范）
+
+`QxListLoading`（`src/components/QxListLoading.tsx`）以 V2EX 为样例：
+
+- `loading && count === 0` → 骨架行 + `LoadingLabel`
+- `loading && count > 0` → **保留旧列表**，不闪白（Island/计数提示刷新即可）
+- `!loading && count === 0` → 空状态文案
+
+`shouldShowQxListLoading(loading, count)` 仅在前者为 true。
+
+### 模块搜索框
+
+`QxModuleSearch`：Shell `search` 槽统一滤框（wrap + icon + input）。
+Launcher `SearchBar` 负责召唤/聚焦语义，视觉委托给同一组件。
+
 ## Loading 与灵动岛
 
 ### 任务态 shell island

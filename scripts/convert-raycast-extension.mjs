@@ -211,6 +211,12 @@ function genericPermissionsForSource(sourceText) {
       "invoke:plugin_file_list",
     );
   }
+  // Bing / local media: open downloaded files and Show in Finder need system path APIs.
+  if (
+    hasPattern(sourceText, /\bshowInFinder\b|Action\.ShowInFinder|Action\.Open\b|open\s*\(\s*['"`]?\/|open\s*\(\s*path|open\s*\(\s*picturePath/i)
+  ) {
+    permissions.push("system");
+  }
   return permissions;
 }
 

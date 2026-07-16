@@ -1241,6 +1241,21 @@ export default function PluginManager() {
     }
   }, [plugins, configId]);
 
+  // Raycast "Configure Extension" can request the exact plugin card after
+  // navigation lands on Settings → Extensions.
+  useEffect(() => {
+    try {
+      const pendingPluginId = sessionStorage.getItem("qx.settings.focusPluginId");
+      if (!pendingPluginId) return;
+      sessionStorage.removeItem("qx.settings.focusPluginId");
+      if (plugins.some((plugin) => plugin.id === pendingPluginId)) {
+        setConfigId(pendingPluginId);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [plugins]);
+
   /* Trigger a load if the registry hasn't been populated yet. */
   useEffect(() => {
     if (!loaded && !loading) {

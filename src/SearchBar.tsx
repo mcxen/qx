@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import { QxModuleSearch } from "./components/QxModuleSearch";
 import { useStore } from "./store";
 import {
   cancelPendingPanelKeyWindowRequest,
@@ -156,24 +157,19 @@ export default function SearchBar({
   }, [focusInput, setQuery, setSelectedIndex, visible]);
 
   const input = (
-    <div className="qx-search-wrap">
-      <span className="qx-search-icon" aria-hidden="true" />
-      <input
-        ref={inputRef}
-        data-qx-primary-search="true"
-        autoFocus
-        type="text"
-        value={query}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setSelectedIndex(0);
-        }}
-        onFocus={requestPanelKeyWindow}
-        onKeyDown={onKeyDown}
-        placeholder={t("launcher.placeholder", "Search for apps and commands...")}
-        className="qx-plugin-search"
-      />
-    </div>
+    <QxModuleSearch
+      inputRef={inputRef}
+      value={query}
+      autoFocus
+      onChange={(next) => {
+        setQuery(next);
+        setSelectedIndex(0);
+      }}
+      onFocus={requestPanelKeyWindow}
+      onKeyDown={onKeyDown}
+      placeholder={t("launcher.placeholder", "Search for apps and commands...")}
+      inputProps={{ "data-qx-primary-search": "true" }}
+    />
   );
 
   if (embedded) return input;

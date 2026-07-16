@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
-import { LoadingLabel, Skeleton } from "../../components/ui";
+import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
+import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useT } from "../../i18n";
@@ -143,17 +144,11 @@ export default function QxAiPanel() {
         pageSize: 8,
       }}
       search={
-        <div className="qx-search-wrap">
-          <span className="qx-search-icon" aria-hidden="true" />
-          <input
-            type="text"
-            value={query}
-            autoFocus
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("qxai.searchConversations", "Search conversations…")}
-            className="qx-plugin-search"
-          />
-        </div>
+        <QxModuleSearch
+          value={query}
+          onChange={setQuery}
+          placeholder={t("qxai.searchConversations", "Search conversations…")}
+        />
       }
       trailing={
         <button
@@ -220,18 +215,14 @@ export default function QxAiPanel() {
           <span style={{ flex: 1 }}>{t("qxai.conversations", "Conversations")}</span>
           <span>{filtered.length}</span>
         </div>
-        {loading && filtered.length === 0 && (
-          <div className="qx-skeleton-stack" aria-label={t("qxai.loadingProviders", "Loading providers…")}>
-            {Array.from({ length: 5 }).map((_, index) => (
-              <div className="qx-skeleton-row" key={index}>
-                <Skeleton className="qx-skeleton-icon" />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <Skeleton className="qx-skeleton-line long" />
-                  <Skeleton className="qx-skeleton-line medium" style={{ marginTop: 8 }} />
-                </div>
-              </div>
-            ))}
-          </div>
+        {shouldShowQxListLoading(loading, filtered.length) && (
+          <QxListLoading
+            ariaLabel={t("qxai.loadingProviders", "Loading providers…")}
+            label={t("qxai.loadingProviders", "Loading providers…")}
+            rows={5}
+            showMeta={false}
+            showIcon={false}
+          />
         )}
         {filtered.map((conv, i) => {
           return (
@@ -258,18 +249,14 @@ export default function QxAiPanel() {
             </button>
           );
         })}
-        {filtered.length === 0 && (
+        {filtered.length === 0 && !loading && (
           <div className="qx-empty-state">
-            {loading ? (
-              <LoadingLabel>{t("qxai.loadingProviders", "Loading providers…")}</LoadingLabel>
-            ) : query.trim() ? (
-              t("qxai.noMatch", "No matching conversations.")
-            ) : (
-              t(
-                "qxai.emptyList",
-                "No conversations yet. Use New Chat or Actions ({menu}).",
-              ).replace("{menu}", actionMenuLabel)
-            )}
+            {query.trim()
+              ? t("qxai.noMatch", "No matching conversations.")
+              : t(
+                  "qxai.emptyList",
+                  "No conversations yet. Use New Chat or Actions ({menu}).",
+                ).replace("{menu}", actionMenuLabel)}
           </div>
         )}
         {error && (

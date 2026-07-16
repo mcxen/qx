@@ -9,7 +9,9 @@ import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { shouldIgnoreBareShortcut } from "../../utils/keyboard";
 import { useSettingsStore } from "../settings/store";
 import ImageLightbox from "./ImageLightbox";
-import { LoadingLabel, SegmentedControl, Skeleton } from "../../components/ui";
+import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
+import { QxModuleSearch } from "../../components/QxModuleSearch";
+import { SegmentedControl } from "../../components/ui";
 
 interface V2exReply {
   id: number;
@@ -526,20 +528,15 @@ export default function ArticleList() {
       }}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
       search={
-        <div className="qx-search-wrap">
-          <span className="qx-search-icon" aria-hidden="true" />
-          <input
-            type="text"
-            value={localQuery}
-            autoFocus={!isReading}
-            onChange={(e) => {
-              setLocalQuery(e.target.value);
-              setSearch(e.target.value);
-            }}
-            placeholder={feed ? `Search in ${feed.title}…` : "Search articles..."}
-            className="qx-plugin-search"
-          />
-        </div>
+        <QxModuleSearch
+          value={localQuery}
+          autoFocus={!isReading}
+          onChange={(next) => {
+            setLocalQuery(next);
+            setSearch(next);
+          }}
+          placeholder={feed ? `Search in ${feed.title}…` : "Search articles..."}
+        />
       }
       trailing={
         <SegmentedControl
@@ -645,24 +642,16 @@ export default function ArticleList() {
               })}
             </div>
           ))}
-          {articles.length === 0 && (
-            <div className="qx-empty-state">
-              {refreshingFeedId != null ? <LoadingLabel>Refreshing...</LoadingLabel> : "No articles in this feed."}
-            </div>
-          )}
-          {refreshingFeedId != null && articles.length === 0 && (
-            <div className="qx-skeleton-stack" aria-label="Refreshing articles">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div className="qx-skeleton-row" key={index}>
-                  <Skeleton className="qx-skeleton-line short" style={{ width: 8, height: 8, borderRadius: 999 }} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <Skeleton className="qx-skeleton-line long" />
-                    <Skeleton className="qx-skeleton-line medium" style={{ marginTop: 8 }} />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          {shouldShowQxListLoading(refreshingFeedId != null, articles.length) ? (
+            <QxListLoading
+              ariaLabel="Refreshing articles"
+              label="Refreshing..."
+              rows={4}
+              variant="tall"
+            />
+          ) : articles.length === 0 ? (
+            <div className="qx-empty-state">No articles in this feed.</div>
+          ) : null}
         </div>
 
         <div

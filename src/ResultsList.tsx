@@ -18,7 +18,8 @@ import {
   Presentation,
   SquareTerminal,
 } from "lucide-react";
-import { LoadingLabel, Skeleton, Kbd } from "./components/ui";
+import { QxListLoading } from "./components/QxListLoading";
+import { Kbd } from "./components/ui";
 import AppResultContextMenu from "./launcher/AppResultContextMenu";
 import { getQxListItemProps, useQxListSelection } from "./hooks/useQxListSelection";
 import { useDisplayName } from "./search/appDisplay";
@@ -356,23 +357,6 @@ const ResultItem = memo(function ResultItem({
   );
 });
 
-function ResultSkeletonRows({ ariaLabel }: { ariaLabel: string }) {
-  return (
-    <div className="qx-skeleton-stack" aria-label={ariaLabel}>
-      {Array.from({ length: 7 }).map((_, index) => (
-        <div className="qx-skeleton-row" key={index}>
-          <Skeleton className="qx-skeleton-icon" />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Skeleton className="qx-skeleton-line long" />
-            <Skeleton className="qx-skeleton-line medium" style={{ marginTop: 8 }} />
-          </div>
-          <Skeleton className="qx-skeleton-line short" style={{ width: 72 }} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 /**
  * Raycast / Spotlight style: do not move the keyboard selection to the row under
  * a stationary cursor when the list re-renders (query change, arrow keys, etc.).
@@ -475,12 +459,11 @@ export default function ResultsList({
         </AppResultContextMenu>
       ))}
       {items.length === 0 && loadingPhase === "loading-apps" && (
-        <>
-          <ResultSkeletonRows ariaLabel={loadingLabel} />
-          <div className="qx-empty-state">
-            <LoadingLabel>{loadingLabel}</LoadingLabel>
-          </div>
-        </>
+        <QxListLoading
+          ariaLabel={loadingLabel}
+          label={loadingLabel}
+          rows={7}
+        />
       )}
       {items.length === 0 && loadingPhase !== "loading-apps" && (
         <div

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
+import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { useStore, type ClipboardEntry } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
@@ -1077,18 +1078,13 @@ export default function DevTxtTool() {
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
       onKeyDown={onKeyDown}
       search={
-        <div className="qx-search-wrap">
-          <span className="qx-search-icon" aria-hidden="true" />
-          <input
-            type="text"
-            value={query}
-            autoFocus={false}
-            onChange={(e) => setQuery(e.target.value)}
-            onFocus={() => setFocusRegion("docs-files")}
-            placeholder={t("docs.searchFiles", "Search files…")}
-            className="qx-plugin-search"
-          />
-        </div>
+        <QxModuleSearch
+          value={query}
+          autoFocus={false}
+          onChange={setQuery}
+          onFocus={() => setFocusRegion("docs-files")}
+          placeholder={t("docs.searchFiles", "Search files…")}
+        />
       }
       trailing={
         <>

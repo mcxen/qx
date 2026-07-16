@@ -2,7 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
-import { LoadingLabel, SegmentedControl, Skeleton } from "../../components/ui";
+import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
+import { QxModuleSearch } from "../../components/QxModuleSearch";
+import { LoadingLabel, SegmentedControl } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useStore } from "../../store";
@@ -209,17 +211,11 @@ export default function V2exPanel() {
       }}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
       search={
-        <div className="qx-search-wrap">
-          <span className="qx-search-icon" aria-hidden="true" />
-          <input
-            type="text"
-            value={query}
-            autoFocus
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search V2EX topics..."
-            className="qx-plugin-search"
-          />
-        </div>
+        <QxModuleSearch
+          value={query}
+          onChange={setQuery}
+          placeholder="Search V2EX topics..."
+        />
       }
       trailing={
         <>
@@ -317,30 +313,17 @@ export default function V2exPanel() {
               <span className="qx-badge">{topic.replies}</span>
             </button>
           ))}
-          {!loading && topics.length === 0 && (
+          {shouldShowQxListLoading(loading, topics.length) ? (
+            <QxListLoading
+              ariaLabel="Loading V2EX topics"
+              label="Loading V2EX topics..."
+              rows={6}
+            />
+          ) : topics.length === 0 ? (
             <div className="qx-empty-state">
               {error || (query.trim() ? "No matching topics." : "No topics loaded.")}
             </div>
-          )}
-          {loading && topics.length === 0 && (
-            <>
-              <div className="qx-skeleton-stack" aria-label="Loading V2EX topics">
-                {Array.from({ length: 6 }).map((_, index) => (
-                  <div className="qx-skeleton-row" key={index}>
-                    <Skeleton className="qx-skeleton-icon" />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <Skeleton className="qx-skeleton-line long" />
-                      <Skeleton className="qx-skeleton-line medium" style={{ marginTop: 8 }} />
-                    </div>
-                    <Skeleton className="qx-skeleton-line short" style={{ width: 34 }} />
-                  </div>
-                ))}
-              </div>
-              <div className="qx-empty-state">
-                <LoadingLabel>Loading V2EX topics...</LoadingLabel>
-              </div>
-            </>
-          )}
+          ) : null}
         </div>
 
         <article className="qx-content-detail qx-plugin-detail qx-rss-detail-content">
