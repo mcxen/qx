@@ -1,6 +1,6 @@
 # Plugin Tray 能力端口（`context.tray`）
 
-> 给**插件作者**的宿主能力契约。  
+> 给**插件作者**的宿主能力契约。
 > 宿主托盘实现见 `src-tauri/src/tray_menu.rs`；前端桥接 `App.tsx` + `rpcMethods.ts`。
 
 ## 心智模型
@@ -15,7 +15,7 @@ context.system.networkCounters() → 字节计数（插件自己算速率）
                               →  运行本插件 commands[].name
 ```
 
-插件**不**直接操作 OS 托盘 API；只依赖 Qx 端口。  
+插件**不**直接操作 OS 托盘 API；只依赖 Qx 端口。
 用户设置里的「托盘菜单」控制**宿主内置**项（打开窗口、内置 Memory/Net 状态行等）；**插件项与内置项并列显示**。
 
 ## 权限
@@ -129,14 +129,14 @@ async function tick(context) {
 
 ## 与宿主内置状态行的关系
 
-设置 → **高级 → 托盘菜单** 里的 `Status · Memory / Network / CPU` 是**宿主内置**实现，不占插件配额。  
+设置 → **高级 → 托盘菜单** 里的 `Status · Memory / Network / CPU` 是**宿主内置**实现，不占插件配额。
 插件用 `context.tray` 做**自己的**状态/入口；两者可同时出现。
 
 ## 约束
 
-- 每插件最多 12 项；title/id 长度截断  
-- 不要高频 `setItems`（建议 ≥2–3s）；托盘重建有成本  
-- 禁用/卸载必须清托盘（宿主已做；插件 `destroy` 仍应 `clear`）  
+- 每插件最多 12 项；title/id 长度截断
+- 不要高频 `setItems`（建议 ≥2–3s）；托盘重建有成本
+- 禁用/卸载必须清托盘（宿主已做；插件 `destroy` 仍应 `clear`）
 - 不提供任意 NSStatusItem / 托盘图标替换（v1 仅共享 Qx 图标菜单）
 
 ## 版本

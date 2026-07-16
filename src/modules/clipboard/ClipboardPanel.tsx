@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -390,67 +390,73 @@ export default function ClipboardPanel() {
         /* keep optimistic */
       });
 
-    // 2) Preview thumbnail asynchronously (image / video frame / PDF page).
+    // Delay expensive preview/probe work until keyboard navigation settles. The
+    // Rust side also admits at most one preview/probe worker at a time.
     setFilePreviewLoading(true);
-    void invoke<string | null>("clipboard_file_preview", { path })
-      .then(async (previewPath) => {
-        if (cancelled) return;
-        if (!previewPath) {
-          setFilePreviewLoading(false);
-          return;
-        }
-        try {
-          const url = await loadImageAsDataUrl(previewPath);
+    let previewRetryTimer: number | null = null;
+    const loadFilePreview = (attempt: number) => {
+      // 2) Preview thumbnail asynchronously (image / video frame / PDF page).
+      void invoke<string | null>("clipboard_file_preview", { path })
+        .then((previewPath) => {
           if (cancelled) return;
-          setFilePreviewUrl(url);
-          setImageUrls((current) => ({ ...current, [previewPath]: url }));
+          if (!previewPath) {
+            setFilePreviewLoading(false);
+            return;
+          }
+          setFilePreviewUrl(convertFileSrc(previewPath));
           setFileMetadata((current) =>
             current ? { ...current, preview_path: previewPath } : current,
           );
-        } catch {
-          if (!cancelled) {
-            setFilePreviewError(
-              t("clipboard.previewFailed", "Preview unavailable"),
-            );
-          }
-        } finally {
-          if (!cancelled) setFilePreviewLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
           setFilePreviewLoading(false);
-          setFilePreviewError(t("clipboard.previewFailed", "Preview unavailable"));
-        }
-      });
-
-    // 3) Dimensions / duration — slow path, never blocks Information.
-    void invoke<FileMetadata>("clipboard_file_media_probe", { path })
-      .then((probed) => {
-        if (cancelled) return;
-        setFileMetadata((current) => {
-          if (!current) return probed;
-          const same =
-            current.path === probed.path ||
-            current.path === path ||
-            probed.path.endsWith(current.name);
-          if (!same) return current;
-          return {
-            ...current,
-            ...probed,
-            // Prefer non-zero size already shown.
-            size: probed.size || current.size,
-            width: probed.width ?? current.width,
-            height: probed.height ?? current.height,
-            duration_seconds: probed.duration_seconds ?? current.duration_seconds,
-            preview_path: probed.preview_path ?? current.preview_path,
-          };
+        })
+        .catch((error) => {
+          if (
+            !cancelled &&
+            String(error).includes("preview worker busy") &&
+            attempt < 12
+          ) {
+            previewRetryTimer = window.setTimeout(() => loadFilePreview(attempt + 1), 300);
+            return;
+          }
+          if (!cancelled) {
+            setFilePreviewLoading(false);
+            setFilePreviewError(t("clipboard.previewFailed", "Preview unavailable"));
+          }
         });
-      })
-      .catch(() => {});
+    };
+
+    const heavyTimer = window.setTimeout(() => {
+      loadFilePreview(0);
+
+      // 3) Dimensions / duration — slow path, never blocks Information.
+      void invoke<FileMetadata>("clipboard_file_media_probe", { path })
+        .then((probed) => {
+          if (cancelled) return;
+          setFileMetadata((current) => {
+            if (!current) return probed;
+            const same =
+              current.path === probed.path ||
+              current.path === path ||
+              probed.path.endsWith(current.name);
+            if (!same) return current;
+            return {
+              ...current,
+              ...probed,
+              size: probed.size || current.size,
+              width: probed.width ?? current.width,
+              height: probed.height ?? current.height,
+              duration_seconds: probed.duration_seconds ?? current.duration_seconds,
+              preview_path: probed.preview_path ?? current.preview_path,
+            };
+          });
+        })
+        .catch(() => {});
+    }, 160);
 
     return () => {
       cancelled = true;
+      window.clearTimeout(heavyTimer);
+      if (previewRetryTimer !== null) window.clearTimeout(previewRetryTimer);
     };
   }, [selectedItem?.file_path, t]);
 

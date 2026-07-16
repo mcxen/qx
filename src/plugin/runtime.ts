@@ -100,20 +100,33 @@ function ensureItemActionsBridge(): void {
     const data = event.data || {};
     if (data.type !== "qx:plugin:item-actions") return;
     const pluginId = String(data.pluginId || "");
-    if (!pluginId) return;
+    const runtimeId = String(data.runtimeId || "");
+    if (!pluginId || !runtimeId || !event.source) return;
+    const panelSession = panelSessionsByPlugin.get(pluginId);
+    if (
+      !panelSession ||
+      panelSession.runtimeId !== runtimeId ||
+      panelSession.iframe.contentWindow !== event.source ||
+      !isPluginRuntimeSource(pluginId, runtimeId, event.source as Window)
+    ) {
+      return;
+    }
     const actions = Array.isArray(data.actions)
       ? data.actions
+          .slice(0, 64)
           .map((raw: { id?: string; title?: string; kbd?: string }) => ({
-            id: String(raw?.id || ""),
-            title: String(raw?.title || "Action"),
-            kbd: raw?.kbd ? String(raw.kbd) : undefined,
+            id: String(raw?.id || "").slice(0, 128),
+            title: String(raw?.title || "Action").slice(0, 256),
+            kbd: raw?.kbd ? String(raw.kbd).slice(0, 64) : undefined,
           }))
           .filter((a: PluginItemActionDescriptor) => Boolean(a.id))
       : [];
     const payload: PluginItemActionsPayload = {
       pluginId,
-      runtimeId: String(data.runtimeId || ""),
-      selectionTitle: data.selectionTitle ? String(data.selectionTitle) : undefined,
+      runtimeId,
+      selectionTitle: data.selectionTitle
+        ? String(data.selectionTitle).slice(0, 256)
+        : undefined,
       actions,
     };
     for (const listener of itemActionsListeners) {

@@ -104,7 +104,11 @@ fn sample_status_titles(rt: &mut TrayRuntime) -> (String, String, String) {
                 bytes_in,
                 bytes_out,
             });
-            format!("Net  ↓ {}  ↑ {}", format_bytes_rate(down), format_bytes_rate(up))
+            format!(
+                "Net  ↓ {}  ↑ {}",
+                format_bytes_rate(down),
+                format_bytes_rate(up)
+            )
         }
         Err(_) => "Net  —".into(),
     };
@@ -154,10 +158,7 @@ pub fn needs_status_refresh(settings: &settings::Settings) -> bool {
         .any(|a| a.enabled && is_status_action(a.id.trim()))
 }
 
-pub fn build_tray_menu(
-    app: &AppHandle,
-    settings: &settings::Settings,
-) -> tauri::Result<Menu<Wry>> {
+pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri::Result<Menu<Wry>> {
     let mut rt = tray_runtime()
         .lock()
         .map_err(|_| tauri::Error::FailedToReceiveMessage)?;
@@ -243,7 +244,10 @@ pub fn build_tray_menu(
     // Plugin contributions
     let mut plugin_appended = false;
     for (plugin_id, items) in plugin_snapshot {
-        for item in items.into_iter().filter(|i| i.enabled && !i.id.trim().is_empty()) {
+        for item in items
+            .into_iter()
+            .filter(|i| i.enabled && !i.id.trim().is_empty())
+        {
             let menu_id = format!("plugin_tray:{}:{}", plugin_id, item.id.trim());
             let title = if item.title.trim().is_empty() {
                 item.id.trim()
@@ -310,17 +314,14 @@ pub fn handle_plugin_tray_click(app: &AppHandle, menu_id: &str) {
     {
         return;
     }
-    let command = tray_runtime()
-        .lock()
-        .ok()
-        .and_then(|rt| {
-            rt.plugin_items.get(&plugin_id).and_then(|items| {
-                items
-                    .iter()
-                    .find(|i| i.id == item_id)
-                    .and_then(|i| i.command.clone())
-            })
-        });
+    let command = tray_runtime().lock().ok().and_then(|rt| {
+        rt.plugin_items.get(&plugin_id).and_then(|items| {
+            items
+                .iter()
+                .find(|i| i.id == item_id)
+                .and_then(|i| i.command.clone())
+        })
+    });
     let _ = app.emit(
         "plugin-tray-action",
         PluginTrayClickEvent {
@@ -458,4 +459,3 @@ pub fn plugin_tray_list(plugin_id: String) -> Result<Vec<PluginTrayItem>, String
         .map_err(|_| "tray registry lock poisoned".to_string())?;
     Ok(rt.plugin_items.get(&plugin_id).cloned().unwrap_or_default())
 }
-

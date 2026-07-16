@@ -87,7 +87,7 @@ Promise<string | null>  // 解析到的绝对路径，找不到为 null
 
 ### 异步任务（`start` / `poll` / `cancel` / `wait` / `listJobs`）
 
-长命令、需要**取消**或**边跑边刷 UI** 时用 job API。每个 job 在**独立 OS 线程**里跑子进程，stdout/stderr **边读边入快照**（每流上限约 4MB）。
+长命令、需要**取消**或**边跑边刷 UI** 时用 job API。每个 job 在**独立 OS 线程**里跑子进程，stdout/stderr **边读边入快照**（每流上限 512 KiB，超出后继续排空管道但不再保留，并附加截断标记）。默认 `wait` 每 500ms 轮询，避免大日志快照造成无意义的 IPC 压力。
 
 ```ts
 type PluginCliStartRequest =
@@ -123,7 +123,7 @@ const job = await context.cli.start({
 
 // 轮询 / 等待（onUpdate 可刷新日志面板）
 const done = await context.cli.wait(job.id, {
-  pollMs: 200,
+  pollMs: 500,
   onUpdate: (snap) => {
     logEl.textContent = snap.stderr || snap.stdout;
   },
@@ -326,4 +326,4 @@ export default {
 - [`plugin-development-guide.md`](./plugin-development-guide.md)
 - [`plugin-cli-gui.md`](./plugin-cli-gui.md)
 - [`plugin-system.md`](./plugin-system.md)
-- [`docs/plugin-architecture.md`](../docs/plugin-architecture.md)
+- [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md)

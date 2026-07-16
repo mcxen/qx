@@ -212,7 +212,7 @@ fn login_shell_path() -> Option<String> {
             {
                 // Machine + User PATH from the registry is closer to an interactive shell
                 // than the truncated GUI process env.
-                let output = std::process::Command::new("powershell")
+                let mut child = std::process::Command::new("powershell")
                     .args([
                         "-NoProfile",
                         "-NonInteractive",
@@ -221,8 +221,24 @@ fn login_shell_path() -> Option<String> {
                     ])
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::null())
-                    .output()
+                    .stdin(std::process::Stdio::null())
+                    .spawn()
                     .ok()?;
+                let start = Instant::now();
+                let output = loop {
+                    match child.try_wait() {
+                        Ok(Some(_)) => break child.wait_with_output().ok()?,
+                        Ok(None) if start.elapsed() >= Duration::from_secs(3) => {
+                            kill_child_tree(&mut child);
+                            return None;
+                        }
+                        Ok(None) => std::thread::sleep(Duration::from_millis(20)),
+                        Err(_) => {
+                            kill_child_tree(&mut child);
+                            return None;
+                        }
+                    }
+                };
                 if !output.status.success() {
                     return None;
                 }
@@ -374,7 +390,9 @@ pub(crate) fn resolve_bash_binary() -> Result<PathBuf, String> {
     }
 }
 
-pub(crate) fn validate_cli_env(env: &std::collections::HashMap<String, String>) -> Result<(), String> {
+pub(crate) fn validate_cli_env(
+    env: &std::collections::HashMap<String, String>,
+) -> Result<(), String> {
     for (key, _) in env {
         if key.trim().is_empty() || key.contains('\0') {
             return Err("cli env key is invalid".to_string());
@@ -408,36 +426,23 @@ pub(crate) fn run_process_with_timeout(
     timeout_ms: u64,
     program_display: String,
 ) -> Result<PluginCliRunResult, String> {
-    use std::io::Read;
-
     let timeout = Duration::from_millis(timeout_ms);
+    configure_child_process_group(&mut cmd);
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("spawn {program_display}: {e}"))?;
-    let mut stdout_pipe = child.stdout.take();
-    let mut stderr_pipe = child.stderr.take();
+    let stdout_reader = child.stdout.take().and_then(spawn_capped_pipe_reader);
+    let stderr_reader = child.stderr.take().and_then(spawn_capped_pipe_reader);
     let start = std::time::Instant::now();
 
-    let read_pipes = |stdout_pipe: &mut Option<std::process::ChildStdout>,
-                      stderr_pipe: &mut Option<std::process::ChildStderr>|
-     -> (String, String) {
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-        if let Some(pipe) = stdout_pipe.as_mut() {
-            let _ = pipe.read_to_end(&mut stdout);
-        }
-        if let Some(pipe) = stderr_pipe.as_mut() {
-            let _ = pipe.read_to_end(&mut stderr);
-        }
-        (
-            String::from_utf8_lossy(&stdout).to_string(),
-            String::from_utf8_lossy(&stderr).to_string(),
-        )
-    };
-
     loop {
-        if let Some(status) = child.try_wait().map_err(|e| format!("wait cli: {e}"))? {
-            let (stdout, stderr) = read_pipes(&mut stdout_pipe, &mut stderr_pipe);
+        let wait = child.try_wait().map_err(|e| {
+            kill_child_tree(&mut child);
+            format!("wait cli: {e}")
+        })?;
+        if let Some(status) = wait {
+            let stdout = finish_pipe_reader(stdout_reader);
+            let stderr = finish_pipe_reader(stderr_reader);
             return Ok(PluginCliRunResult {
                 status: status.code(),
                 stdout,
@@ -448,9 +453,9 @@ pub(crate) fn run_process_with_timeout(
         }
 
         if start.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            let (stdout, stderr) = read_pipes(&mut stdout_pipe, &mut stderr_pipe);
+            kill_child_tree(&mut child);
+            let stdout = finish_pipe_reader(stdout_reader);
+            let stderr = finish_pipe_reader(stderr_reader);
             return Ok(PluginCliRunResult {
                 status: None,
                 stdout,
@@ -546,15 +551,13 @@ pub async fn plugin_cli_which(req: PluginCliWhichRequest) -> Result<Option<Strin
     }
 }
 
-
-
 // ---------------------------------------------------------------------------
 // Async / concurrent job registry
 // ---------------------------------------------------------------------------
 
 const MAX_JOBS_GLOBAL: usize = 32;
 const MAX_JOBS_PER_PLUGIN: usize = 6;
-const MAX_OUTPUT_CHARS: usize = 4 * 1024 * 1024; // per stream
+const MAX_OUTPUT_BYTES: usize = 512 * 1024; // per stream; readers still drain after the cap
 const JOB_RETENTION_MS: u128 = 10 * 60 * 1000;
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -602,7 +605,11 @@ struct JobRegistry {
 
 fn job_registry() -> &'static Mutex<JobRegistry> {
     static REG: OnceLock<Mutex<JobRegistry>> = OnceLock::new();
-    REG.get_or_init(|| Mutex::new(JobRegistry { jobs: HashMap::new() }))
+    REG.get_or_init(|| {
+        Mutex::new(JobRegistry {
+            jobs: HashMap::new(),
+        })
+    })
 }
 
 fn now_ms() -> i64 {
@@ -642,47 +649,117 @@ fn count_plugin_running(reg: &JobRegistry, plugin_id: &str) -> usize {
 }
 
 fn append_capped(buf: &mut String, chunk: &str) {
-    if buf.len() >= MAX_OUTPUT_CHARS {
+    if buf.len() >= MAX_OUTPUT_BYTES {
         return;
     }
-    let remain = MAX_OUTPUT_CHARS - buf.len();
+    let remain = MAX_OUTPUT_BYTES - buf.len();
     if chunk.len() <= remain {
         buf.push_str(chunk);
     } else {
-        buf.push_str(&chunk[..remain]);
+        let mut end = remain.min(chunk.len());
+        while end > 0 && !chunk.is_char_boundary(end) {
+            end -= 1;
+        }
+        buf.push_str(&chunk[..end]);
         buf.push_str("\n…[output truncated]");
     }
 }
 
-fn kill_child(child: &mut Child) {
+fn configure_child_process_group(cmd: &mut Command) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
+    }
+}
+
+fn kill_child_tree(child: &mut Child) {
+    let pid = child.id();
+    #[cfg(unix)]
+    unsafe {
+        let _ = libc::kill(-(pid as i32), libc::SIGKILL);
+    }
+    #[cfg(windows)]
+    {
+        let _ = Command::new("taskkill.exe")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
     let _ = child.kill();
     let _ = child.wait();
+}
+
+fn spawn_capped_pipe_reader(
+    mut pipe: impl Read + Send + 'static,
+) -> Option<std::thread::JoinHandle<String>> {
+    std::thread::Builder::new()
+        .name("qx-cli-pipe".into())
+        .spawn(move || {
+            let mut stored = Vec::with_capacity(MAX_OUTPUT_BYTES.min(64 * 1024));
+            let mut scratch = [0u8; 8192];
+            let mut truncated = false;
+            loop {
+                match pipe.read(&mut scratch) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let remain = MAX_OUTPUT_BYTES.saturating_sub(stored.len());
+                        stored.extend_from_slice(&scratch[..n.min(remain)]);
+                        truncated |= n > remain;
+                    }
+                    Err(_) => break,
+                }
+            }
+            let mut output = String::from_utf8_lossy(&stored).to_string();
+            if truncated {
+                output.push_str("\n…[output truncated]");
+            }
+            output
+        })
+        .ok()
+}
+
+fn finish_pipe_reader(reader: Option<std::thread::JoinHandle<String>>) -> String {
+    reader
+        .and_then(|handle| handle.join().ok())
+        .unwrap_or_default()
 }
 
 fn spawn_output_reader(
     mut pipe: impl Read + Send + 'static,
     job: Arc<Mutex<JobInner>>,
     is_stdout: bool,
-) {
-    std::thread::spawn(move || {
-        let mut buf = [0u8; 8192];
-        loop {
-            match pipe.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
-                    let text = String::from_utf8_lossy(&buf[..n]);
-                    if let Ok(mut guard) = job.lock() {
-                        if is_stdout {
-                            append_capped(&mut guard.snapshot.stdout, &text);
-                        } else {
-                            append_capped(&mut guard.snapshot.stderr, &text);
+) -> Result<(), String> {
+    std::thread::Builder::new()
+        .name("qx-cli-job-pipe".into())
+        .spawn(move || {
+            let mut buf = [0u8; 8192];
+            loop {
+                match pipe.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        let text = String::from_utf8_lossy(&buf[..n]);
+                        if let Ok(mut guard) = job.lock() {
+                            if is_stdout {
+                                append_capped(&mut guard.snapshot.stdout, &text);
+                            } else {
+                                append_capped(&mut guard.snapshot.stderr, &text);
+                            }
                         }
                     }
+                    Err(_) => break,
                 }
-                Err(_) => break,
             }
-        }
-    });
+        })
+        .map(|_| ())
+        .map_err(|error| format!("spawn CLI output reader: {error}"))
 }
 
 fn run_job_process(
@@ -692,16 +769,17 @@ fn run_job_process(
     program_display: String,
 ) {
     {
-        let mut guard = job.lock().expect("job lock");
+        let mut guard = job.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         guard.snapshot.state = PluginCliJobState::Running;
         guard.snapshot.program = program_display.clone();
     }
 
     let cancel = {
-        let guard = job.lock().expect("job lock");
+        let guard = job.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         guard.cancel.clone()
     };
 
+    configure_child_process_group(&mut cmd);
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
@@ -715,22 +793,40 @@ fn run_job_process(
         }
     };
 
-    if let Some(out) = child.stdout.take() {
-        spawn_output_reader(out, job.clone(), true);
-    }
-    if let Some(err) = child.stderr.take() {
-        spawn_output_reader(err, job.clone(), false);
+    let reader_error = child
+        .stdout
+        .take()
+        .map(|out| spawn_output_reader(out, job.clone(), true))
+        .or_else(|| Some(Ok(())))
+        .and_then(Result::err)
+        .or_else(|| {
+            child
+                .stderr
+                .take()
+                .map(|err| spawn_output_reader(err, job.clone(), false))
+                .or_else(|| Some(Ok(())))
+                .and_then(Result::err)
+        });
+    if let Some(error) = reader_error {
+        kill_child_tree(&mut child);
+        if let Ok(mut guard) = job.lock() {
+            guard.snapshot.state = PluginCliJobState::Failed;
+            guard.snapshot.running = false;
+            guard.snapshot.finished_at = Some(now_ms());
+            guard.snapshot.error = Some(error);
+        }
+        return;
     }
 
     {
-        let mut guard = job.lock().expect("job lock");
+        let mut guard = job.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         guard.pid = Some(child.id());
         // Keep child in job for cancel path; we'll wait on a moved local.
     }
 
     // Move child into local; cancel path uses kill via re-open is hard — store in job.
     {
-        let mut guard = job.lock().expect("job lock");
+        let mut guard = job.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         guard.child = Some(child);
     }
 
@@ -742,10 +838,11 @@ fn run_job_process(
         let timed_out = start.elapsed() >= timeout;
 
         if cancelled || timed_out {
+            let child = job.lock().ok().and_then(|mut guard| guard.child.take());
+            if let Some(mut child) = child {
+                kill_child_tree(&mut child);
+            }
             if let Ok(mut guard) = job.lock() {
-                if let Some(mut child) = guard.child.take() {
-                    kill_child(&mut child);
-                }
                 guard.snapshot.running = false;
                 guard.snapshot.finished_at = Some(now_ms());
                 if cancelled {
@@ -762,7 +859,7 @@ fn run_job_process(
 
         // try_wait needs &mut Child
         let wait_result = {
-            let mut guard = job.lock().expect("job lock");
+            let mut guard = job.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
             match guard.child.as_mut() {
                 Some(child) => child.try_wait().map_err(|e| e.to_string()),
                 None => Ok(None),
@@ -772,10 +869,11 @@ fn run_job_process(
         match wait_result {
             Ok(Some(status)) => {
                 // Drain: child finished; drop child
+                let child = job.lock().ok().and_then(|mut guard| guard.child.take());
+                if let Some(mut child) = child {
+                    let _ = child.wait();
+                }
                 if let Ok(mut guard) = job.lock() {
-                    if let Some(mut child) = guard.child.take() {
-                        let _ = child.wait();
-                    }
                     // Give reader threads a brief moment; output mostly drained by now
                     guard.snapshot.status = status.code();
                     guard.snapshot.running = false;
@@ -794,10 +892,11 @@ fn run_job_process(
                 std::thread::sleep(Duration::from_millis(40));
             }
             Err(e) => {
+                let child = job.lock().ok().and_then(|mut guard| guard.child.take());
+                if let Some(mut child) = child {
+                    kill_child_tree(&mut child);
+                }
                 if let Ok(mut guard) = job.lock() {
-                    if let Some(mut child) = guard.child.take() {
-                        kill_child(&mut child);
-                    }
                     guard.snapshot.running = false;
                     guard.snapshot.finished_at = Some(now_ms());
                     guard.snapshot.state = PluginCliJobState::Failed;
@@ -941,12 +1040,17 @@ pub async fn plugin_cli_start(
     }
 
     let job_for_thread = inner.clone();
-    std::thread::Builder::new()
+    if let Err(error) = std::thread::Builder::new()
         .name(format!("qx-cli-{job_id}"))
         .spawn(move || {
             run_job_process(cmd, job_for_thread, timeout_ms, program_display);
         })
-        .map_err(|e| format!("spawn cli job thread: {e}"))?;
+    {
+        if let Ok(mut registry) = job_registry().lock() {
+            registry.jobs.remove(&job_id);
+        }
+        return Err(format!("spawn cli job thread: {error}"));
+    }
 
     snapshot_of(&inner)
 }
@@ -995,20 +1099,21 @@ pub async fn plugin_cli_cancel(
     drop(reg);
     job_owned_by(&job, plugin_id.trim())?;
 
-    {
+    let child = {
         let mut guard = job
             .lock()
             .map_err(|_| "cli job lock poisoned".to_string())?;
         guard.cancel.store(true, Ordering::SeqCst);
-        if let Some(mut child) = guard.child.take() {
-            kill_child(&mut child);
+        guard.child.take()
+    };
+    if let Some(mut child) = child {
+        kill_child_tree(&mut child);
+        if let Ok(mut guard) = job.lock() {
             guard.snapshot.running = false;
             guard.snapshot.state = PluginCliJobState::Cancelled;
             guard.snapshot.finished_at = Some(now_ms());
         }
     }
-    // brief wait for thread to settle
-    std::thread::sleep(Duration::from_millis(20));
     snapshot_of(&job)
 }
 
@@ -1189,4 +1294,40 @@ pub async fn plugin_system_reveal_path(path: String) -> Result<(), String> {
     })
     .await
     .map_err(|e| format!("reveal path task failed: {e}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{append_capped, run_process_with_timeout, MAX_OUTPUT_BYTES};
+
+    #[test]
+    fn capped_output_never_slices_inside_utf8() {
+        let mut output = "a".repeat(MAX_OUTPUT_BYTES - 1);
+        append_capped(&mut output, "好");
+        assert!(output.ends_with("…[output truncated]"));
+        assert!(output.is_char_boundary(output.len()));
+    }
+
+    #[test]
+    fn capped_output_stops_growing_after_limit() {
+        let mut output = "a".repeat(MAX_OUTPUT_BYTES);
+        append_capped(&mut output, "ignored");
+        assert_eq!(output.len(), MAX_OUTPUT_BYTES);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn synchronous_cli_drains_large_output_while_process_runs() {
+        let mut command = std::process::Command::new("/bin/sh");
+        command
+            .args(["-c", "dd if=/dev/zero bs=1048576 count=2 2>/dev/null"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .stdin(std::process::Stdio::null());
+        let result = run_process_with_timeout(command, 5_000, "/bin/sh".to_string())
+            .expect("large-output command should finish");
+        assert_eq!(result.status, Some(0));
+        assert!(!result.timed_out);
+        assert!(result.stdout.ends_with("…[output truncated]"));
+    }
 }

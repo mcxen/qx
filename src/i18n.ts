@@ -109,6 +109,7 @@ const zh: Record<string, string> = {
   "appearance.surface.title": "主题与表面",
   "appearance.surface.desc": "设置整体色彩、透明度和窗口质感。",
   "appearance.layout.title": "窗口与密度",
+  "appearance.moduleSearch.title": "启动器搜索来源",
   "appearance.layout.desc": "调整启动器尺寸、圆角和基础字号。",
   "appearance.homeIsland.title": "主页灵动岛",
   "appearance.homeIsland.cardDesc": "搜索空闲时的底部灵动岛。可多选轮播；切换时底部实时预览。",
@@ -296,6 +297,7 @@ const zh: Record<string, string> = {
 
   "advanced.logLevel": "日志级别",
   "advanced.diagnostics.title": "诊断",
+  "advanced.data.title": "数据",
   "advanced.diagnostics.desc": "调整日志和开发诊断，用于排查问题。",
   "advanced.logLevel.desc": "Qx 诊断日志的详细程度。",
   "advanced.log.error": "错误",

@@ -85,6 +85,39 @@ fn preview_cache_dir() -> Option<PathBuf> {
     Some(cache)
 }
 
+const MAX_FILE_PREVIEW_BYTES: u64 = 128 * 1024 * 1024;
+const MAX_FILE_PREVIEW_PIXELS: u64 = 32_000_000;
+
+fn preview_worker_lock() -> &'static Mutex<()> {
+    static LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn media_probe_lock() -> &'static Mutex<()> {
+    static LOCK: std::sync::OnceLock<Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn image_preview(path: &Path) -> Option<String> {
+    let metadata = fs::metadata(path).ok()?;
+    if metadata.len() > MAX_FILE_PREVIEW_BYTES {
+        return None;
+    }
+    let (width, height) = image::image_dimensions(path).ok()?;
+    if u64::from(width).saturating_mul(u64::from(height)) > MAX_FILE_PREVIEW_PIXELS {
+        return None;
+    }
+
+    let cache = preview_cache_dir()?;
+    let key = compute_id(&path.to_string_lossy());
+    let output = cache.join(format!("{key}.png"));
+    if !output.exists() {
+        let decoded = image::open(path).ok()?;
+        decoded.thumbnail(1280, 1280).save(&output).ok()?;
+    }
+    Some(output.to_string_lossy().to_string())
+}
+
 fn video_preview(path: &Path) -> Option<String> {
     let cache = preview_cache_dir()?;
     let key = compute_id(&path.to_string_lossy());
@@ -177,7 +210,7 @@ fn pdf_preview(path: &Path) -> Option<String> {
 /// Heavy preview generation (video frame / PDF page). Call off the UI path.
 fn generate_file_preview(path: &Path) -> Option<String> {
     match media_kind(path) {
-        "image" => Some(path.to_string_lossy().to_string()),
+        "image" => image_preview(path),
         "video" => video_preview(path),
         "pdf" => pdf_preview(path),
         _ => None,
@@ -235,6 +268,13 @@ pub async fn clipboard_file_preview(path: String) -> Result<Option<String>, Stri
         let path = PathBuf::from(path)
             .canonicalize()
             .map_err(|e| format!("file unavailable: {e}"))?;
+        let _permit = match preview_worker_lock().try_lock() {
+            Ok(permit) => permit,
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => poisoned.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                return Err("preview worker busy".to_string());
+            }
+        };
         Ok(generate_file_preview(&path))
     })
     .await
@@ -243,20 +283,25 @@ pub async fn clipboard_file_preview(path: String) -> Result<Option<String>, Stri
 
 /// Optional media probe (dimensions / duration) — never blocks the info panel first paint.
 #[command]
-pub async fn clipboard_file_media_probe(
-    path: String,
-) -> Result<ClipboardFileMetadata, String> {
+pub async fn clipboard_file_media_probe(path: String) -> Result<ClipboardFileMetadata, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut meta = inspect_file(PathBuf::from(&path))?;
         let p = PathBuf::from(&meta.path);
-        if meta.kind == "image" {
-            if let Ok((w, h)) = image::image_dimensions(&p) {
-                meta.width = Some(w);
-                meta.height = Some(h);
+        let probe_permit = match media_probe_lock().try_lock() {
+            Ok(permit) => Some(permit),
+            Err(std::sync::TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+            Err(std::sync::TryLockError::WouldBlock) => None,
+        };
+        if let Some(_permit) = probe_permit {
+            if meta.kind == "image" {
+                if let Ok((w, h)) = image::image_dimensions(&p) {
+                    meta.width = Some(w);
+                    meta.height = Some(h);
+                }
             }
-        }
-        if matches!(meta.kind.as_str(), "video" | "audio") {
-            meta.duration_seconds = ffprobe_duration(&p);
+            if matches!(meta.kind.as_str(), "video" | "audio") {
+                meta.duration_seconds = ffprobe_duration(&p);
+            }
         }
         // Attach preview path if already cached (no generation).
         let key = compute_id(&meta.path);

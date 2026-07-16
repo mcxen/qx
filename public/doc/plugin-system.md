@@ -223,7 +223,7 @@ export default {
 | `context.storage.persist.keys()` | 列举 persist 键与近似大小 |
 | `context.storage.persist.clear()` | 清空本插件 persist KV |
 
-存储布局与生命周期见 [`docs/plugin-storage.md`](../docs/plugin-storage.md)。
+存储布局与生命周期见 [`docs/plugin-storage.md`](../../docs/plugin-storage.md)。
 
 AI 调用示例：
 

@@ -417,7 +417,8 @@ pub async fn plugin_ai_run_bash(req: PluginAiBashRequest) -> Result<PluginAiBash
         .to_string();
 
     tauri::async_runtime::spawn_blocking(move || {
-        let bash = crate::plugin_cli::resolve_bash_binary().unwrap_or_else(|_| PathBuf::from("/bin/bash"));
+        let bash =
+            crate::plugin_cli::resolve_bash_binary().unwrap_or_else(|_| PathBuf::from("/bin/bash"));
         let mut cmd = std::process::Command::new(&bash);
         cmd.arg("-lc")
             .arg(script)
@@ -428,7 +429,11 @@ pub async fn plugin_ai_run_bash(req: PluginAiBashRequest) -> Result<PluginAiBash
             cmd.current_dir(cwd);
         }
         crate::plugin_cli::apply_plugin_cli_env(&mut cmd, &std::collections::HashMap::new());
-        let result = crate::plugin_cli::run_process_with_timeout(cmd, timeout_ms, format!("{} -lc", bash.display()))?;
+        let result = crate::plugin_cli::run_process_with_timeout(
+            cmd,
+            timeout_ms,
+            format!("{} -lc", bash.display()),
+        )?;
         Ok(PluginAiBashResult {
             status: result.status,
             stdout: result.stdout,

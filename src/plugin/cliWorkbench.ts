@@ -184,7 +184,7 @@ export function enhancePluginCli(core: PluginCliCore): PluginContext["cli"] {
       signal?: AbortSignal;
     },
   ): Promise<PluginCliJobSnapshot> => {
-    const pollMs = Math.max(50, Math.min(5_000, options?.pollMs ?? 200));
+    const pollMs = Math.max(50, Math.min(5_000, options?.pollMs ?? 500));
     for (;;) {
       if (options?.signal?.aborted) {
         throw new Error("cli wait aborted");
@@ -502,7 +502,7 @@ export const PLUGIN_WORKBENCH_RUNTIME_JS = [
   "  }",
   "  async function wait(jobId, options) {",
   "    options = options || {};",
-  "    const pollMs = Math.max(50, Math.min(5000, options.pollMs || 200));",
+  "    const pollMs = Math.max(50, Math.min(5000, options.pollMs || 500));",
   "    while (true) {",
   "      if (options.signal && options.signal.aborted) throw new Error('cli wait aborted');",
   "      const snap = await core.poll(jobId);",

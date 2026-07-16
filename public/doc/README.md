@@ -1,7 +1,7 @@
 # Qx 用户 / 作者文档（`public/doc`）
 
 面向**插件作者、市场维护者、发版操作**。  
-核心贡献者架构说明见 [`docs/README.md`](../docs/README.md)。
+核心贡献者架构说明见 [`docs/README.md`](../../docs/README.md)。
 
 ## 插件开发（从这里开始）
 

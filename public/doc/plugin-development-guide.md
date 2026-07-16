@@ -2,7 +2,7 @@
 
 > **这是插件作者的主入口。**  
 > 写业务插件时优先读本文；需要字段级细节再下钻到协议专章。  
-> 宿主贡献者另见 [`docs/plugin-architecture.md`](../docs/plugin-architecture.md)。
+> 宿主贡献者另见 [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md)。
 
 **状态**：Current · 适用：Qx ≥ 0.5.26（`context.cli`）· 读者：业务 / 第三方插件作者
 
@@ -45,7 +45,7 @@
 | ③ | [`plugin-system.md`](./plugin-system.md) | manifest 全字段、context 全表、权限清单 |
 | ④ | [`plugin-marketplace.md`](./plugin-marketplace.md) | 打进 `qx-plugins` 市场、Import/Browse |
 | ⑤ | [`raycast-plugin-conversion.md`](./raycast-plugin-conversion.md) | Raycast 扩展转换（可选） |
-| — | [`docs/plugin-architecture.md`](../docs/plugin-architecture.md) | 宿主 iframe / RPC 实现（非作者必读） |
+| — | [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md) | 宿主 iframe / RPC 实现（非作者必读） |
 
 ---
 
@@ -202,7 +202,7 @@ const res = await context.http.fetch(url, {
 const data = await res.json();
 ```
 
-#### 存储（详见宿主设计 [`docs/plugin-storage.md`](../docs/plugin-storage.md)）
+#### 存储（详见宿主设计 [`docs/plugin-storage.md`](../../docs/plugin-storage.md)）
 
 四个命名空间，**不要混用**：
 

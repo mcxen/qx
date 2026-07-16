@@ -368,7 +368,7 @@ export interface PluginContext {
      * Host limits: 6 concurrent jobs per plugin, 32 global.
      */
     start: (request: PluginCliStartRequest) => Promise<PluginCliJobSnapshot>;
-    /** Snapshot of a job (partial stdout/stderr while running). */
+    /** Snapshot of a job (partial stdout/stderr while running; each stream is host-bounded). */
     poll: (jobId: string) => Promise<PluginCliJobSnapshot>;
     /** Kill a running job. */
     cancel: (jobId: string) => Promise<PluginCliJobSnapshot>;

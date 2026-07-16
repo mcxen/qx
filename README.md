@@ -1,4 +1,6 @@
 <!-- language: en -->
+> **Version**: v0.5.28 — current development baseline
+
 <a id="readme-en"></a>
 
 <div align="center">
