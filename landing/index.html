@@ -1,984 +1,759 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="Qx 是一款常驻菜单栏的 macOS 效率启动器，支持 Cardinal 全局文件搜索、应用启动、剪贴板、RSS、AI、插件与自动化。">
-<title>Qx — macOS 效率启动器</title>
-<style>
-  :root {
-    --bg: #ffffff;
-    --fg: #000000;
-    --muted: #666666;
-    --subtle: #8a8a8a;
-    --line: #eaeaea;
-    --line-strong: #d4d4d4;
-    --surface: #fafafa;
-    --surface-raised: #ffffff;
-    --invert: #ffffff;
-    --accent: #0070f3;
-    --success: #00a76f;
-    --warning: #f5a524;
-    --radius: 8px;
-    --max: 1200px;
-    --mono: "SF Mono", "Roboto Mono", "Fira Code", ui-monospace, Menlo, Consolas, monospace;
-    --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Qx — 一次快捷键，连接搜索、剪贴板、AI、RSS、插件与桌面自动化。"
+    />
+    <meta property="og:title" content="Qx — 桌面效率入口" />
+    <meta
+      property="og:description"
+      content="一次快捷键，连接搜索、剪贴板、AI、RSS、插件与桌面自动化。"
+    />
+    <meta name="theme-color" content="#1e1e1e" />
+    <title>Qx — 桌面效率入口</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231e1e1e'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-family='Arial' font-size='14' font-weight='700' fill='white'%3EQx%3C/text%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter+Tight:ital,wght@0,300;0,400;0,500;0,700;0,800;1,400;1,700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #1e1e1e;
+        --text: #fff;
+        --text-muted: rgba(255, 255, 255, 0.72);
+        --text-soft: rgba(255, 255, 255, 0.48);
+        --dark-text: #22282b;
+        --page-pad: clamp(24px, 3.4vw, 50px);
+        --button-radius: 10px;
+        --card-radius: 5px;
+      }
 
-  * { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--fg);
-    font-family: var(--sans);
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-  }
-  a { color: inherit; text-decoration: none; }
-  .page {
-    min-height: 100vh;
-    background:
-      linear-gradient(var(--line) 1px, transparent 1px),
-      linear-gradient(90deg, var(--line) 1px, transparent 1px);
-    background-size: 48px 48px;
-    background-position: center top;
-  }
-  .container {
-    width: min(var(--max), calc(100% - 48px));
-    margin: 0 auto;
-  }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
-  .nav {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    height: 64px;
-    border-bottom: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.82);
-    backdrop-filter: saturate(180%) blur(16px);
-  }
-  .nav-inner {
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .brand {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    font-weight: 600;
-    letter-spacing: 0;
-  }
-  .brand-mark {
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    border: 1px solid var(--fg);
-    border-radius: 7px;
-    background: var(--fg);
-    color: var(--invert);
-    font-size: 13px;
-    line-height: 1;
-  }
-  .nav-links {
-    display: flex;
-    align-items: center;
-    gap: 1px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: var(--surface-raised);
-    padding: 3px;
-  }
-  .nav-links a {
-    display: inline-flex;
-    align-items: center;
-    height: 30px;
-    padding: 0 13px;
-    border-radius: 999px;
-    color: var(--muted);
-    font-size: 13px;
-    font-weight: 500;
-  }
-  .nav-links a:hover {
-    background: var(--surface);
-    color: var(--fg);
-  }
-  .nav-cta {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    height: 34px;
-    padding: 0 14px;
-    border-radius: 999px;
-    background: var(--fg);
-    color: var(--invert);
-    font-size: 13px;
-    font-weight: 600;
-  }
+      html {
+        min-width: 1024px;
+        scroll-behavior: smooth;
+      }
 
-  .hero {
-    position: relative;
-    overflow: hidden;
-    border-bottom: 1px solid var(--line);
-  }
-  .hero-inner {
-    position: relative;
-    display: grid;
-    justify-items: center;
-    gap: 22px;
-    min-height: calc(100svh - 64px);
-    padding: 48px 0 28px;
-  }
-  .eyebrow {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    height: 32px;
-    padding: 0 12px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.82);
-    color: var(--muted);
-    font-size: 13px;
-    font-weight: 500;
-    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
-  }
-  .eyebrow-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--success);
-    box-shadow: 0 0 0 4px rgba(0, 167, 111, 0.12);
-  }
-  h1 {
-    max-width: 940px;
-    margin: 0;
-    text-align: center;
-    font-size: clamp(46px, 7.4vw, 86px);
-    line-height: 0.95;
-    letter-spacing: 0;
-    font-weight: 700;
-  }
-  .hero-copy {
-    max-width: 720px;
-    margin: -8px 0 0;
-    color: var(--muted);
-    text-align: center;
-    font-size: clamp(17px, 2vw, 21px);
-    line-height: 1.65;
-  }
-  .actions {
-    display: flex;
-    justify-content: center;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-  .button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-width: 148px;
-    height: 44px;
-    padding: 0 18px;
-    border: 1px solid var(--line-strong);
-    border-radius: var(--radius);
-    background: var(--surface-raised);
-    color: var(--fg);
-    font-size: 14px;
-    font-weight: 600;
-    transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
-  }
-  .button:hover {
-    border-color: var(--fg);
-    transform: translateY(-1px);
-  }
-  .button.primary {
-    border-color: var(--fg);
-    background: var(--fg);
-    color: var(--invert);
-  }
-  .button.primary:hover { background: #1a1a1a; }
-  .button code {
-    font-family: var(--mono);
-    font-size: 12px;
-  }
+      body {
+        min-width: 1024px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Inter Tight", "PingFang SC", "Microsoft YaHei", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
 
-  .product-scene {
-    width: min(1040px, 100%);
-    border: 1px solid var(--line-strong);
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow:
-      0 1px 0 rgba(0, 0, 0, 0.05),
-      0 34px 80px rgba(0, 0, 0, 0.14);
-    overflow: hidden;
-  }
-  .window-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 42px;
-    padding: 0 14px;
-    border-bottom: 1px solid var(--line);
-    background: var(--surface);
-  }
-  .traffic {
-    display: flex;
-    gap: 7px;
-  }
-  .traffic span {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--line-strong);
-  }
-  .window-title {
-    color: var(--subtle);
-    font-family: var(--mono);
-    font-size: 12px;
-  }
-  .shell {
-    display: grid;
-    grid-template-rows: 62px minmax(240px, 1fr) 52px;
-    min-height: 354px;
-    background: #fff;
-  }
-  .topbar,
-  .bottombar {
-    display: grid;
-    align-items: center;
-    border-bottom: 1px solid var(--line);
-    background: rgba(250, 250, 250, 0.88);
-  }
-  .topbar {
-    grid-template-columns: 1fr auto;
-    gap: 16px;
-    padding: 0 18px;
-  }
-  .searchbox {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    height: 48px;
-    border: 1px solid #b7cdfd;
-    border-radius: 10px;
-    background: var(--surface-raised);
-    box-shadow: 0 0 0 3px rgba(0, 112, 243, 0.12);
-    padding: 0 16px;
-    font-size: 22px;
-    font-weight: 500;
-  }
-  .magnify {
-    width: 15px;
-    height: 15px;
-    border: 2px solid var(--subtle);
-    border-radius: 50%;
-    position: relative;
-    flex: 0 0 auto;
-  }
-  .magnify::after {
-    content: "";
-    position: absolute;
-    width: 8px;
-    height: 2px;
-    right: -6px;
-    bottom: -4px;
-    background: var(--subtle);
-    transform: rotate(45deg);
-    border-radius: 1px;
-  }
-  .filter-pill {
-    height: 48px;
-    display: inline-flex;
-    align-items: center;
-    gap: 34px;
-    padding: 0 16px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    font-size: 15px;
-    font-weight: 600;
-  }
-  .main-area {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 280px;
-    min-height: 0;
-    overflow: hidden;
-  }
-  .results {
-    border-right: 1px solid var(--line);
-    padding: 16px 0;
-    overflow: hidden;
-  }
-  .section-label {
-    padding: 0 18px 8px;
-    color: var(--subtle);
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-  .result-row {
-    display: grid;
-    grid-template-columns: 28px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 14px;
-    min-height: 60px;
-    padding: 0 18px;
-  }
-  .result-row.active { background: #f4f4f4; }
-  .result-icon {
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    border: 1px solid var(--line-strong);
-    border-radius: 7px;
-    background: var(--surface-raised);
-    color: var(--fg);
-    font-family: var(--mono);
-    font-size: 11px;
-    font-weight: 700;
-  }
-  .result-title {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 16px;
-    font-weight: 650;
-  }
-  .result-meta {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    margin-top: 2px;
-    color: var(--subtle);
-    font-size: 13px;
-  }
-  .row-type {
-    color: var(--subtle);
-    font-size: 13px;
-  }
-  .context {
-    padding: 20px 18px;
-    background: #fbfbfb;
-    overflow: hidden;
-  }
-  .context-block + .context-block { margin-top: 22px; }
-  .context-card {
-    display: grid;
-    gap: 4px;
-    padding: 14px;
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    background: var(--surface-raised);
-  }
-  .context-card strong { font-size: 15px; }
-  .context-card span {
-    color: var(--subtle);
-    font-size: 13px;
-  }
-  .bottombar {
-    position: relative;
-    grid-template-columns: auto 1fr auto;
-    border-top: 1px solid var(--line);
-    border-bottom: 0;
-    padding: 0 14px;
-  }
-  .key {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    height: 34px;
-    min-width: 46px;
-    padding: 0 12px;
-    border: 1px solid var(--line-strong);
-    border-radius: 9px;
-    background: #f1f1f1;
-    color: var(--muted);
-    font-size: 13px;
-    font-weight: 700;
-  }
-  .island {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    height: 34px;
-    min-width: min(360px, 42vw);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: var(--surface-raised);
-    font-size: 13px;
-    font-weight: 650;
-  }
-  .bar-actions {
-    display: flex;
-    gap: 8px;
-  }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
 
-  .metrics {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    border-bottom: 1px solid var(--line);
-    background: #fff;
-  }
-  .metric {
-    min-height: 132px;
-    padding: 28px;
-    border-right: 1px solid var(--line);
-  }
-  .metric:last-child { border-right: 0; }
-  .metric strong {
-    display: block;
-    margin-bottom: 10px;
-    font-size: clamp(28px, 4vw, 42px);
-    line-height: 1;
-    letter-spacing: 0;
-  }
-  .metric span {
-    color: var(--muted);
-    font-size: 14px;
-    line-height: 1.6;
-  }
+      img {
+        display: block;
+        max-width: 100%;
+      }
 
-  .section {
-    padding: 96px 0;
-    border-bottom: 1px solid var(--line);
-    background: rgba(255, 255, 255, 0.92);
-  }
-  .section-head {
-    display: grid;
-    grid-template-columns: minmax(0, 0.9fr) minmax(280px, 0.55fr);
-    gap: 48px;
-    align-items: end;
-    margin-bottom: 46px;
-  }
-  .section-kicker {
-    margin: 0 0 12px;
-    color: var(--subtle);
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 700;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-  h2 {
-    margin: 0;
-    font-size: clamp(36px, 5.8vw, 64px);
-    line-height: 1;
-    letter-spacing: 0;
-  }
-  .section-copy {
-    margin: 0;
-    color: var(--muted);
-    font-size: 16px;
-    line-height: 1.8;
-  }
-  .feature-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    overflow: hidden;
-    background: var(--surface-raised);
-  }
-  .feature {
-    min-height: 220px;
-    padding: 26px;
-    border-right: 1px solid var(--line);
-    border-bottom: 1px solid var(--line);
-  }
-  .feature:nth-child(3n) { border-right: 0; }
-  .feature:nth-last-child(-n + 3) { border-bottom: 0; }
-  .feature-icon {
-    display: grid;
-    place-items: center;
-    width: 34px;
-    height: 34px;
-    margin-bottom: 36px;
-    border: 1px solid var(--line-strong);
-    border-radius: 8px;
-    background: var(--surface);
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 800;
-  }
-  .feature h3 {
-    margin: 0 0 10px;
-    font-size: 18px;
-    letter-spacing: 0;
-  }
-  .feature p {
-    margin: 0;
-    color: var(--muted);
-    font-size: 14px;
-    line-height: 1.75;
-  }
+      button {
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+      }
 
-  .flow {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    border: 1px solid var(--line);
-    border-radius: 12px;
-    background: #fff;
-    overflow: hidden;
-  }
-  .flow-step {
-    padding: 28px;
-    border-right: 1px solid var(--line);
-  }
-  .flow-step:last-child { border-right: 0; }
-  .step-num {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    margin-bottom: 42px;
-    border-radius: 999px;
-    background: var(--fg);
-    color: var(--invert);
-    font-family: var(--mono);
-    font-size: 12px;
-    font-weight: 700;
-  }
-  .flow-step h3 {
-    margin: 0 0 10px;
-    font-size: 17px;
-  }
-  .flow-step p {
-    margin: 0;
-    color: var(--muted);
-    font-size: 14px;
-    line-height: 1.7;
-  }
+      .hero {
+        position: relative;
+        width: 100%;
+        height: 100vh;
+        min-height: 700px;
+        overflow: hidden;
+        isolation: isolate;
+        background: var(--bg);
+      }
 
-  .download {
-    padding: 96px 0;
-    background: #000;
-    color: #fff;
-  }
-  .download-panel {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 36px;
-    align-items: center;
-  }
-  .download h2 { color: #fff; }
-  .download p {
-    max-width: 620px;
-    margin: 18px 0 0;
-    color: #a1a1a1;
-    font-size: 16px;
-    line-height: 1.8;
-  }
-  .download .button {
-    border-color: #333;
-    background: #fff;
-    color: #000;
-  }
-  .download .button.secondary {
-    background: #111;
-    color: #fff;
-  }
-  .download .button:hover {
-    border-color: #fff;
-  }
-  .terminal {
-    width: min(420px, 100%);
-    border: 1px solid #333;
-    border-radius: 12px;
-    background: #0a0a0a;
-    overflow: hidden;
-  }
-  .terminal-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 38px;
-    padding: 0 14px;
-    border-bottom: 1px solid #222;
-    color: #777;
-    font-family: var(--mono);
-    font-size: 12px;
-  }
-  .terminal-body {
-    padding: 18px;
-    color: #e5e5e5;
-    font-family: var(--mono);
-    font-size: 13px;
-    line-height: 1.9;
-  }
-  .terminal-muted { color: #777; }
-  .terminal-accent { color: #50e3c2; }
+      .hero__bg,
+      .hero__overlay,
+      .hero__grain {
+        position: absolute;
+        inset: 0;
+      }
 
-  footer {
-    background: #000;
-    color: #777;
-    border-top: 1px solid #222;
-  }
-  .footer-inner {
-    display: flex;
-    justify-content: space-between;
-    gap: 24px;
-    padding: 26px 0;
-    font-size: 13px;
-  }
-  footer a { color: #bdbdbd; }
-  footer a:hover { color: #fff; }
+      .hero__bg {
+        z-index: 0;
+        overflow: hidden;
+      }
 
-  @media (max-width: 980px) {
-    .hero-inner { min-height: auto; padding-top: 58px; }
-    .shell {
-      grid-template-rows: 58px 230px 50px;
-      min-height: 338px;
-    }
-    .main-area { grid-template-columns: 1fr; }
-    .context { display: none; }
-    .metrics { grid-template-columns: repeat(2, 1fr); }
-    .metric:nth-child(2) { border-right: 0; }
-    .metric:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
-    .section-head,
-    .download-panel {
-      grid-template-columns: 1fr;
-    }
-    .feature-grid { grid-template-columns: repeat(2, 1fr); }
-    .feature:nth-child(3n) { border-right: 1px solid var(--line); }
-    .feature:nth-child(2n) { border-right: 0; }
-    .feature:nth-last-child(-n + 3) { border-bottom: 1px solid var(--line); }
-    .feature:nth-last-child(-n + 2) { border-bottom: 0; }
-    .flow { grid-template-columns: repeat(2, 1fr); }
-    .flow-step:nth-child(2) { border-right: 0; }
-    .flow-step:nth-child(-n + 2) { border-bottom: 1px solid var(--line); }
-  }
+      .hero__video {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 60%;
+        height: 90%;
+        object-fit: cover;
+        transform: translate(-50%, -50%) scale(1.9);
+        filter: saturate(0.7) contrast(0.98) brightness(1.08) hue-rotate(-32deg);
+      }
 
-  @media (max-width: 720px) {
-    .container { width: min(100% - 32px, var(--max)); }
-    .nav-links { display: none; }
-    .nav-cta { height: 32px; padding: 0 12px; }
-    .hero-inner { gap: 18px; padding: 32px 0 24px; }
-    h1 { font-size: clamp(40px, 12.5vw, 52px); }
-    .hero-copy { font-size: 16px; line-height: 1.55; }
-    .actions,
-    .download .actions {
-      width: 100%;
-      flex-direction: column;
-    }
-    .button { width: 100%; }
-    .product-scene { border-radius: 10px; }
-    .shell {
-      grid-template-rows: 48px 120px 42px;
-      min-height: 210px;
-    }
-    .topbar { grid-template-columns: 1fr; padding: 0 12px; }
-    .filter-pill { display: none; }
-    .searchbox {
-      height: 38px;
-      font-size: 16px;
-    }
-    .result-row {
-      grid-template-columns: 28px minmax(0, 1fr);
-      min-height: 52px;
-    }
-    .row-type { display: none; }
-    .island {
-      min-width: min(260px, 62vw);
-      max-width: 62vw;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .bar-actions .key:first-child { display: none; }
-    .hero .actions .button:nth-child(3) { display: none; }
-    .hero .actions {
-      flex-direction: row;
-      flex-wrap: nowrap;
-    }
-    .hero .actions .button {
-      min-width: 0;
-      width: auto;
-      flex: 1 1 0;
-    }
-    .metrics,
-    .feature-grid,
-    .flow {
-      grid-template-columns: 1fr;
-    }
-    .metric,
-    .feature,
-    .flow-step {
-      border-right: 0;
-      border-bottom: 1px solid var(--line);
-    }
-    .metric:last-child,
-    .feature:last-child,
-    .flow-step:last-child {
-      border-bottom: 0;
-    }
-    .section { padding: 68px 0; }
-    .footer-inner {
-      flex-direction: column;
-    }
-  }
+      .hero__overlay {
+        z-index: 1;
+        pointer-events: none;
+        background:
+          radial-gradient(circle at 48% 38%, rgba(220, 242, 255, 0.12) 0%, transparent 42%),
+          linear-gradient(125deg, rgba(166, 216, 246, 0.3), rgba(82, 146, 198, 0.2)),
+          radial-gradient(circle at 48% 40%, transparent 10%, rgba(7, 19, 31, 0.18) 70%),
+          rgba(7, 18, 30, 0.2);
+      }
 
-  @media (prefers-reduced-motion: reduce) {
-    html { scroll-behavior: auto; }
-    *, *::before, *::after {
-      animation-duration: 0.01ms !important;
-      animation-iteration-count: 1 !important;
-      scroll-behavior: auto !important;
-      transition-duration: 0.01ms !important;
-    }
-  }
-</style>
-</head>
-<body>
-<div class="page" id="top">
-  <nav class="nav">
-    <div class="container nav-inner">
-      <a class="brand" href="#top" aria-label="Qx 首页">
-        <span class="brand-mark">Qx</span>
-        <span>Qx</span>
-      </a>
-      <div class="nav-links" aria-label="页面导航">
-        <a href="#features">功能</a>
-        <a href="#workflow">工作流</a>
-        <a href="#download">下载</a>
-        <a href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">GitHub</a>
+      .hero__grain {
+        z-index: 2;
+        pointer-events: none;
+        opacity: 0.12;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.22'/%3E%3C/svg%3E");
+        mix-blend-mode: soft-light;
+      }
+
+      .hero__gradient-top,
+      .hero__gradient-bottom {
+        display: none;
+      }
+
+      .hero__blur {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 3;
+        height: 28%;
+        pointer-events: none;
+      }
+
+      .hero__blur-layer {
+        position: absolute;
+        inset: 0;
+      }
+
+      .hero__blur-layer:nth-child(1) { backdrop-filter: blur(0.6px); mask-image: linear-gradient(to bottom, transparent 0%, black 12%); }
+      .hero__blur-layer:nth-child(2) { backdrop-filter: blur(1px); mask-image: linear-gradient(to bottom, transparent 12%, black 25%); }
+      .hero__blur-layer:nth-child(3) { backdrop-filter: blur(1.5px); mask-image: linear-gradient(to bottom, transparent 25%, black 37%); }
+      .hero__blur-layer:nth-child(4) { backdrop-filter: blur(2px); mask-image: linear-gradient(to bottom, transparent 37%, black 50%); }
+      .hero__blur-layer:nth-child(5) { backdrop-filter: blur(3px); mask-image: linear-gradient(to bottom, transparent 50%, black 62%); }
+      .hero__blur-layer:nth-child(6) { backdrop-filter: blur(4px); mask-image: linear-gradient(to bottom, transparent 62%, black 75%); }
+      .hero__blur-layer:nth-child(7) { backdrop-filter: blur(6px); mask-image: linear-gradient(to bottom, transparent 75%, black 87%); }
+      .hero__blur-layer:nth-child(8) { backdrop-filter: blur(8px); mask-image: linear-gradient(to bottom, transparent 87%, black 100%); }
+
+      .hero__blur::after {
+        position: absolute;
+        inset: 0;
+        content: "";
+        background: linear-gradient(to bottom, transparent, rgba(20, 20, 20, 0.42) 45%, rgba(20, 20, 20, 0.9));
+      }
+
+      .hero__blur-bar {
+        position: absolute;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 4;
+        height: calc(60px + clamp(20px, 3vh, 36px) + 24px);
+        pointer-events: none;
+        background: linear-gradient(0.8deg, rgba(255, 255, 255, 0.06) -51%, transparent 109%), rgba(255, 255, 255, 0.01);
+        mask-image: linear-gradient(to bottom, transparent, black 30%);
+      }
+
+      .header {
+        position: absolute;
+        top: 0;
+        right: 0;
+        left: 0;
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 20px var(--page-pad);
+      }
+
+      .logo {
+        display: inline-flex;
+        align-items: center;
+      }
+
+      .logo__icon {
+        display: block;
+        width: clamp(92px, 8.4vw, 122px);
+        height: clamp(23px, 2.08vw, 30px);
+        overflow: visible;
+      }
+
+      body:not(.is-ready) .logo__circle,
+      body:not(.is-ready) .logo__arc,
+      body:not(.is-ready) .logo__text-group,
+      body:not(.is-ready) .nav-pill,
+      body:not(.is-ready) .nav-pill__link,
+      body:not(.is-ready) .btn,
+      body:not(.is-ready) .side-nav__link-text,
+      body:not(.is-ready) .side-nav__line,
+      body:not(.is-ready) .about-card,
+      body:not(.is-ready) .scroll-down,
+      body:not(.is-ready) .hero__char {
+        animation-play-state: paused !important;
+      }
+
+      .logo__circle {
+        transform: scale(0);
+        transform-origin: 15px 15px;
+        opacity: 0;
+        animation: logo-circle 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s forwards;
+      }
+
+      .logo__arc {
+        stroke-dasharray: 100;
+        stroke-dashoffset: 100;
+        opacity: 0;
+        transform: translateX(-14px);
+        animation: logo-arc 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0.55s forwards;
+      }
+
+      .logo__arc--far { animation-delay: 1.15s; }
+
+      .logo__text-group {
+        opacity: 0;
+        filter: blur(10px);
+        transform: translateX(28px);
+        animation: logo-text 1.5s cubic-bezier(0.16, 1, 0.3, 1) 1.1s forwards;
+      }
+
+      @keyframes logo-circle { to { transform: scale(1); opacity: 1; } }
+      @keyframes logo-arc { to { stroke-dashoffset: 0; opacity: 1; transform: translateX(0); } }
+      @keyframes logo-text { to { opacity: 1; filter: blur(0); transform: translateX(0); } }
+
+      .nav-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: clamp(16px, 2.3vw, 33px);
+        padding: clamp(8px, 0.76vw, 11px) clamp(13px, 1.39vw, 20px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 999px;
+        background: linear-gradient(12deg, rgba(255, 255, 255, 0.06) -43%, transparent 104%), rgba(255, 255, 255, 0.01);
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.18);
+        backdrop-filter: blur(7px);
+        opacity: 0;
+        transform: scaleX(0);
+        transform-origin: center;
+        animation: reveal-pill 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.2s forwards;
+      }
+
+      @keyframes reveal-pill { to { opacity: 1; transform: scaleX(1); } }
+
+      .nav-pill__link {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--text-muted);
+        font-size: clamp(12px, 1.06vw, 15px);
+        font-weight: 500;
+        opacity: 0;
+        transform: translateY(14px);
+        transition: color 0.2s ease;
+        animation: reveal-up 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+
+      .nav-pill__link:hover { color: #fff; }
+      .nav-pill__link:nth-child(1) { animation-delay: 0.75s; }
+      .nav-pill__link:nth-child(2) { animation-delay: 0.83s; }
+      .nav-pill__link:nth-child(3) { animation-delay: 0.91s; }
+      .nav-pill__link:nth-child(4) { animation-delay: 0.99s; }
+
+      .nav-pill__badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 18px;
+        height: 18px;
+        padding: 0 5px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.09);
+        color: var(--text-muted);
+        font-size: 11px;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: clamp(7px, 0.7vw, 10px);
+        padding: clamp(8px, 0.76vw, 11px) clamp(18px, 2vw, 29px);
+        border-radius: var(--button-radius);
+        background: #fff;
+        color: #000;
+        font-size: clamp(13px, 1.11vw, 16px);
+        font-weight: 500;
+        opacity: 0;
+        transform: scale(0);
+        animation: bounce-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+      }
+
+      .btn--footer {
+        background: #fff;
+        color: var(--dark-text);
+        animation-delay: 0.7s;
+      }
+
+      .btn__arrow { width: 8px; height: 8px; }
+
+      @keyframes bounce-in {
+        0% { opacity: 0; transform: scale(0); }
+        60% { opacity: 1; transform: scale(1.1); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+
+      .hero__heading {
+        position: absolute;
+        top: 24%;
+        left: var(--page-pad);
+        z-index: 5;
+        width: clamp(520px, 64vw, 960px);
+        font-size: clamp(48px, 5.35vw, 82px);
+        font-weight: 500;
+        letter-spacing: -0.035em;
+        line-height: 1.02;
+      }
+
+      .hero__line {
+        display: block;
+        overflow: hidden;
+        line-height: 1.1;
+      }
+
+      .hero__line-inner {
+        display: inline-block;
+        white-space: nowrap;
+      }
+
+      .hero__heading em {
+        font-weight: 700;
+        font-style: italic;
+      }
+
+      .hero__char {
+        display: inline-block;
+        opacity: 0;
+        transform: translateY(110%);
+        animation: char-reveal 0.65s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+
+      @keyframes char-reveal { to { opacity: 1; transform: translateY(0); } }
+      @keyframes reveal-up { to { opacity: 1; transform: translateY(0); } }
+
+      .side-nav {
+        position: absolute;
+        top: 53%;
+        right: var(--page-pad);
+        z-index: 5;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: clamp(10px, 1.1vw, 16px);
+        transform: translateY(-50%);
+      }
+
+      .side-nav__link {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        color: rgba(255, 255, 255, 0.82);
+        font-size: clamp(13px, 1.1vw, 16px);
+        font-weight: 500;
+        transition: color 0.2s ease;
+      }
+
+      .side-nav__link:hover,
+      .side-nav__link--active { color: #fff; }
+
+      .side-nav__link-text {
+        display: inline-block;
+        opacity: 0;
+        transform: translateY(14px);
+        animation: reveal-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+
+      .side-nav__link:nth-child(1) .side-nav__link-text { animation-delay: 0.5s; }
+      .side-nav__link:nth-child(2) .side-nav__link-text { animation-delay: 0.7s; }
+      .side-nav__link:nth-child(3) .side-nav__link-text { animation-delay: 0.9s; }
+      .side-nav__link:nth-child(4) .side-nav__link-text { animation-delay: 1.1s; }
+      .side-nav__link:nth-child(5) .side-nav__link-text { animation-delay: 1.3s; }
+
+      .side-nav__line {
+        display: inline-block;
+        width: 14px;
+        height: 1px;
+        background: #fff;
+        opacity: 0;
+        animation: reveal-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.5s forwards;
+      }
+
+      .hero__bottom {
+        position: absolute;
+        right: var(--page-pad);
+        bottom: 0;
+        left: var(--page-pad);
+        z-index: 5;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        grid-template-rows: auto auto auto;
+        align-items: end;
+        gap: clamp(6px, 0.7vw, 10px) clamp(20px, 2.8vw, 40px);
+        padding-bottom: clamp(20px, 3vh, 36px);
+      }
+
+      .hero__label {
+        grid-row: 1;
+        grid-column: 1;
+        font-size: clamp(14px, 1.25vw, 18px);
+        font-weight: 500;
+      }
+
+      .hero__desc {
+        grid-row: 2;
+        grid-column: 1;
+        max-width: clamp(340px, 36vw, 520px);
+        color: var(--text-soft);
+        font-size: clamp(13px, 1.1vw, 17px);
+        line-height: 1.5;
+      }
+
+      .hero__actions {
+        grid-row: 3;
+        grid-column: 1;
+        display: flex;
+        align-items: center;
+        gap: clamp(14px, 1.67vw, 24px);
+      }
+
+      .scroll-down {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        opacity: 0;
+        transform: scale(0);
+        animation: bounce-in 0.9s cubic-bezier(0.16, 1, 0.3, 1) 1.4s forwards;
+      }
+
+      .scroll-down__text {
+        color: rgba(255, 255, 255, 0.88);
+        font-size: clamp(14px, 1.25vw, 18px);
+        font-weight: 700;
+      }
+
+      .scroll-down__circle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        transition: border-color 0.2s ease;
+      }
+
+      .scroll-down:hover .scroll-down__circle { border-color: #fff; }
+      .scroll-down__circle svg { width: 8px; height: 9px; animation: arrow-scroll 2.5s cubic-bezier(0.4, 0, 0.7, 1) infinite; }
+
+      @keyframes arrow-scroll {
+        0%, 100% { opacity: 1; transform: translateY(0); }
+        38% { opacity: 0; transform: translateY(9px); }
+        39% { opacity: 0; transform: translateY(-9px); }
+        60% { opacity: 1; transform: translateY(0); }
+      }
+
+      .about-card {
+        grid-row: 1 / span 3;
+        grid-column: 2;
+        align-self: end;
+        display: flex;
+        width: clamp(292px, 26.5vw, 390px);
+        overflow: hidden;
+        border-radius: var(--card-radius);
+        background: #fff;
+        opacity: 0;
+        transform: scale(0);
+        transition: box-shadow 0.25s ease;
+        animation: bounce-in-card 0.9s cubic-bezier(0.16, 1, 0.3, 1) 1.2s forwards;
+      }
+
+      @keyframes bounce-in-card {
+        0% { opacity: 0; transform: scale(0); }
+        60% { opacity: 1; transform: scale(1.04); }
+        100% { opacity: 1; transform: scale(1); }
+      }
+
+      .about-card:hover { box-shadow: 0 10px 34px rgba(0, 0, 0, 0.24); }
+
+      .about-card__image {
+        width: clamp(134px, 14vw, 190px);
+        flex: 0 0 auto;
+        padding: 7px;
+      }
+
+      .about-card__image img {
+        width: 100%;
+        height: 100%;
+        border-radius: var(--card-radius);
+        object-fit: cover;
+      }
+
+      .about-card__content {
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        justify-content: space-between;
+        padding: clamp(14px, 1.32vw, 19px) clamp(12px, 1.1vw, 16px) clamp(12px, 1.1vw, 16px) 7px;
+      }
+
+      .about-card__title {
+        margin-bottom: 6px;
+        color: #000;
+        font-size: clamp(12px, 0.97vw, 14px);
+        font-weight: 700;
+      }
+
+      .about-card__text {
+        color: rgba(0, 0, 0, 0.6);
+        font-size: clamp(10px, 0.83vw, 12px);
+        line-height: 1.45;
+      }
+
+      .about-card__arrow {
+        align-self: flex-end;
+        width: clamp(50px, 5.35vw, 77px);
+        height: 13px;
+        color: rgba(0, 0, 0, 0.24);
+        transition: color 0.2s ease, transform 0.2s ease;
+      }
+
+      .about-card:hover .about-card__arrow { color: rgba(0, 0, 0, 0.7); transform: translateX(3px); }
+
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+
+      @media (max-width: 1360px) {
+        .hero__heading { top: 21%; }
+      }
+
+      @media (max-width: 1200px) {
+        .header { padding-top: 16px; padding-bottom: 16px; }
+        .hero__heading { top: 19%; }
+        .side-nav { top: 50%; }
+      }
+
+      @media (max-width: 1100px) {
+        .hero__heading { top: 17%; }
+        .hero__blur { height: 31%; }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html { scroll-behavior: auto; }
+        *, *::before, *::after {
+          animation-duration: 0.01ms !important;
+          animation-delay: 0ms !important;
+          animation-iteration-count: 1 !important;
+          scroll-behavior: auto !important;
+          transition-duration: 0.01ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="hero" id="home">
+      <div class="hero__bg">
+        <video class="hero__video" autoplay muted loop playsinline preload="auto" aria-hidden="true">
+          <source src="https://qclay.design/lovable/kubric/body.mp4" type="video/mp4" />
+        </video>
       </div>
-      <a class="nav-cta" href="https://github.com/mcxen/qx/releases">下载</a>
-    </div>
-  </nav>
+      <div class="hero__overlay"></div>
+      <div class="hero__grain"></div>
+      <div class="hero__gradient-top"></div>
+      <div class="hero__gradient-bottom"></div>
+      <div class="hero__blur" aria-hidden="true">
+        <div class="hero__blur-layer"></div>
+        <div class="hero__blur-layer"></div>
+        <div class="hero__blur-layer"></div>
+        <div class="hero__blur-layer"></div>
+        <div class="hero__blur-layer"></div>
+        <div class="hero__blur-layer"></div>
+        <div class="hero__blur-layer"></div>
+        <div class="hero__blur-layer"></div>
+      </div>
 
-  <main>
-    <section class="hero">
-      <div class="container hero-inner">
-        <div class="eyebrow"><span class="eyebrow-dot" aria-hidden="true"></span>v0.4.59 · Tauri v2 · macOS 14+</div>
-        <h1>键盘优先的 macOS 效率入口。</h1>
-        <p class="hero-copy">Qx 常驻菜单栏，用全局快捷键进入统一搜索。支持 Cardinal 全局文件搜索、应用启动、剪贴板历史、RSS、AI、插件、天气和自动化工具。</p>
-        <div class="actions">
-          <a class="button primary" href="https://github.com/mcxen/qx/releases">下载 Qx</a>
-          <a class="button" href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">查看源码</a>
-          <a class="button" href="#workflow"><code>⌘ Space</code> 呼出</a>
+      <header class="header">
+        <a class="logo" href="#home" aria-label="Qx 首页">
+          <svg class="logo__icon" viewBox="0 0 122 30" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <circle class="logo__circle" cx="14.5" cy="15" r="7" stroke="#fff" stroke-width="3" />
+            <path class="logo__arc" pathLength="100" stroke="#fff" stroke-width="3" stroke-linecap="round" d="M28.7 14.7C28.6 10 26.2 5.7 22.2 3.2C18.2.8 13.2.8 9.2 3.1" />
+            <path class="logo__arc" pathLength="100" stroke="#fff" stroke-width="3" stroke-linecap="round" d="M28.7 14.7C28.8 19.4 26.4 23.9 22.4 26.4C18.4 28.9 13.4 29 9.3 26.7" />
+            <path class="logo__arc logo__arc--far" pathLength="100" stroke="#fff" stroke-width="3" stroke-linecap="round" d="M37.5 15C37.5 9.4 34 4.4 28.8 2.4" />
+            <path class="logo__arc logo__arc--far" pathLength="100" stroke="#fff" stroke-width="3" stroke-linecap="round" d="M37.5 15C37.5 20.6 34.1 25.6 28.9 27.6" />
+            <g class="logo__text-group" fill="#fff">
+              <text x="46" y="22" font-family="Inter Tight" font-size="22" font-weight="700" letter-spacing="-0.5">Qx</text>
+              <text x="72" y="10" font-family="Inter Tight" font-size="11">™</text>
+            </g>
+          </svg>
+        </a>
+
+        <nav class="nav-pill" aria-label="主导航">
+          <a class="nav-pill__link" href="https://github.com/mcxen/qx#features" target="_blank" rel="noreferrer">功能</a>
+          <a class="nav-pill__link" href="https://github.com/mcxen/qx/releases" target="_blank" rel="noreferrer">版本 <span class="nav-pill__badge">27</span></a>
+          <a class="nav-pill__link" href="https://github.com/mcxen/qx/tree/main/public/doc" target="_blank" rel="noreferrer">文档</a>
+          <a class="nav-pill__link" href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">GitHub</a>
+        </nav>
+
+        <a class="btn btn--header" href="https://github.com/mcxen/qx/releases/latest" target="_blank" rel="noreferrer">
+          下载 Qx
+          <svg class="btn__arrow" viewBox="0 0 8 8" fill="none" aria-hidden="true"><path d="M1 7L7 1M7 1H2M7 1V6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" /></svg>
+        </a>
+      </header>
+
+      <h1 class="hero__heading">
+        <span class="hero__line"><span class="hero__line-inner">Everything on your desktop</span></span>
+        <span class="hero__line"><span class="hero__line-inner">one shortcut —</span></span>
+        <span class="hero__line"><span class="hero__line-inner"><em>away.</em></span></span>
+      </h1>
+
+      <nav class="side-nav" aria-label="页面导航">
+        <a class="side-nav__link side-nav__link--active" href="#home"><span class="side-nav__link-text">首页</span><span class="side-nav__line"></span></a>
+        <a class="side-nav__link" href="https://github.com/mcxen/qx#features" target="_blank" rel="noreferrer"><span class="side-nav__link-text">全局搜索</span></a>
+        <a class="side-nav__link" href="https://github.com/mcxen/qx#features" target="_blank" rel="noreferrer"><span class="side-nav__link-text">效率模块</span></a>
+        <a class="side-nav__link" href="https://github.com/mcxen/qx/tree/main/public/doc" target="_blank" rel="noreferrer"><span class="side-nav__link-text">开发文档</span></a>
+        <a class="side-nav__link" href="https://github.com/mcxen/qx/releases/latest" target="_blank" rel="noreferrer"><span class="side-nav__link-text">立即下载</span></a>
+      </nav>
+
+      <div class="hero__blur-bar"></div>
+
+      <div class="hero__bottom">
+        <div class="hero__label"><span class="hero__line"><span class="hero__line-inner">01 — Our goal</span></span></div>
+        <p class="hero__desc">
+          <span class="hero__line"><span class="hero__line-inner">用一个安静、可靠、键盘优先的入口，连接文件、应用、</span></span>
+          <span class="hero__line"><span class="hero__line-inner">剪贴板、RSS、AI 与插件，让高频桌面工作自然发生。</span></span>
+        </p>
+        <div class="hero__actions">
+          <a class="btn btn--footer" href="https://github.com/mcxen/qx/releases/latest" target="_blank" rel="noreferrer">
+            下载最新版本
+            <svg class="btn__arrow" viewBox="0 0 8 8" fill="none" aria-hidden="true"><path d="M1 7L7 1M7 1H2M7 1V6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" /></svg>
+          </a>
+          <button class="scroll-down" id="scrollDown" type="button" aria-label="查看 Qx 源代码">
+            <span class="scroll-down__text">Explore Qx</span>
+            <span class="scroll-down__circle">
+              <svg viewBox="0 0 7.222 8.667" fill="none" aria-hidden="true"><path d="M3.611 1V7.667M3.611 7.667L1 5M3.611 7.667L6.222 5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            </span>
+          </button>
         </div>
 
-        <div class="product-scene" aria-label="Qx 应用界面预览">
-          <div class="window-bar">
-            <div class="traffic" aria-hidden="true"><span></span><span></span><span></span></div>
-            <div class="window-title">Qx Launcher</div>
-            <div class="window-title">⌘K Actions</div>
-          </div>
-          <div class="shell">
-            <div class="topbar">
-              <div class="searchbox"><span class="magnify" aria-hidden="true"></span><span>Clash</span></div>
-              <div class="filter-pill">All <span aria-hidden="true">⌄</span></div>
+        <a class="about-card" href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">
+          <div class="about-card__image"><img src="https://qclay.design/lovable/kubric/card-image.png" alt="粉色郁金香特写" /></div>
+          <div class="about-card__content">
+            <div>
+              <h2 class="about-card__title">About Qx</h2>
+              <p class="about-card__text">一个开源、可扩展的桌面效率入口，为专注工作而设计。</p>
             </div>
-            <div class="main-area">
-              <div class="results">
-                <div class="section-label">Suggestions</div>
-                <div class="result-row active">
-                  <div class="result-icon">A</div>
-                  <div>
-                    <div class="result-title">Clash Verge</div>
-                    <div class="result-meta">Clash Verge.app</div>
-                  </div>
-                  <div class="row-type">Application</div>
-                </div>
-                <div class="result-row">
-                  <div class="result-icon">F</div>
-                  <div>
-                    <div class="result-title">Clash Verge-10f162fb20ebf367.png</div>
-                    <div class="result-meta">Cardinal global file search · /Users/mcx/.qx/icons</div>
-                  </div>
-                  <div class="row-type">File</div>
-                </div>
-                <div class="result-row">
-                  <div class="result-icon">P</div>
-                  <div>
-                    <div class="result-title">Raycast extension converter</div>
-                    <div class="result-meta">Install and run converted plugin commands</div>
-                  </div>
-                  <div class="row-type">Plugin</div>
-                </div>
-                <div class="section-label">Quick entries</div>
-                <div class="result-row">
-                  <div class="result-icon">C</div>
-                  <div>
-                    <div class="result-title">剪贴板历史</div>
-                    <div class="result-meta">置顶、常用、链接、图片和全文搜索</div>
-                  </div>
-                  <div class="row-type">Module</div>
-                </div>
-                <div class="result-row">
-                  <div class="result-icon">R</div>
-                  <div>
-                    <div class="result-title">RSS 阅读器</div>
-                    <div class="result-meta">订阅源、文章、收藏和后台刷新</div>
-                  </div>
-                  <div class="row-type">Module</div>
-                </div>
-              </div>
-              <aside class="context">
-                <div class="context-block">
-                  <div class="section-label">Context</div>
-                  <div class="context-card">
-                    <strong>快速入口</strong>
-                    <span>应用、文件和高频模块</span>
-                  </div>
-                </div>
-                <div class="context-block">
-                  <div class="context-card">
-                    <strong>剪贴板历史</strong>
-                    <span>置顶 · 常用 · 链接</span>
-                  </div>
-                  <div class="context-card">
-                    <strong>QxAI</strong>
-                    <span>多 provider · 流式响应</span>
-                  </div>
-                  <div class="context-card">
-                    <strong>设置</strong>
-                    <span>外观、权限、插件</span>
-                  </div>
-                </div>
-              </aside>
-            </div>
-            <div class="bottombar">
-              <span class="key">ESC</span>
-              <div class="island">搜索就绪 · 10 条结果</div>
-              <div class="bar-actions">
-                <span class="key">打开 ↵</span>
-                <span class="key">操作 ⌘K</span>
-              </div>
-            </div>
+            <svg class="about-card__arrow" viewBox="0 0 77 13" fill="none" aria-hidden="true"><path d="M1 6.5H75M75 6.5L70 1.5M75 6.5L70 11.5" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" /></svg>
           </div>
-        </div>
+        </a>
       </div>
-    </section>
 
-    <section class="metrics" aria-label="Qx 特性摘要">
-      <div class="metric"><strong>1</strong><span>统一入口覆盖 Cardinal 文件搜索、应用、插件、剪贴板和内置模块。</span></div>
-      <div class="metric"><strong>3</strong><span>Top Bar / Main Area / Bottom Bar 三层 Shell 保持稳定。</span></div>
-      <div class="metric"><strong>0</strong><span>无多余窗口切换，动作集中在键盘和底栏协议。</span></div>
-      <div class="metric"><strong>∞</strong><span>插件、Raycast 转换和脚本工具继续扩展。</span></div>
-    </section>
+      <span class="visually-hidden">Qx v0.5.27，支持 macOS 与 Windows。</span>
+    </main>
 
-    <section class="section" id="features">
-      <div class="container">
-        <div class="section-head">
-          <div>
-            <p class="section-kicker">Capabilities</p>
-            <h2>覆盖启动、搜索、阅读、AI 和插件的桌面入口。</h2>
-          </div>
-          <p class="section-copy">Qx 用稳定的三层 Shell 组织常用桌面任务：Top Bar 负责搜索，Main Area 展示结果与内容，Context Panel 放辅助信息，Bottom Island 反馈状态。</p>
-        </div>
-        <div class="feature-grid">
-          <article class="feature">
-            <div class="feature-icon">⌘</div>
-            <h3>Cardinal 全局文件搜索</h3>
-            <p>接入 Cardinal 搜索索引，支持全局文件检索、路径片段、类型/大小/日期过滤，并和应用、命令、插件结果一起排序。</p>
-          </article>
-          <article class="feature">
-            <div class="feature-icon">C</div>
-            <h3>剪贴板历史</h3>
-            <p>持久化文本、链接和图片记录，支持置顶、预览、类型过滤和快捷动作。</p>
-          </article>
-          <article class="feature">
-            <div class="feature-icon">R</div>
-            <h3>RSS 阅读器</h3>
-            <p>订阅源、文章列表、详情阅读和后台刷新，在同一套 Shell 中完成。</p>
-          </article>
-          <article class="feature">
-            <div class="feature-icon">AI</div>
-            <h3>QxAI</h3>
-            <p>内置多 provider AI 对话，支持流式响应、持久记忆和插件侧 Agent 设置。</p>
-          </article>
-          <article class="feature">
-            <div class="feature-icon">P</div>
-            <h3>插件系统</h3>
-            <p>沙箱 iframe 运行时、RPC 桥接、插件市场和 Raycast 扩展转换。</p>
-          </article>
-          <article class="feature">
-            <div class="feature-icon">M</div>
-            <h3>宏与工具</h3>
-            <p>录屏、OCR、天气、V2EX、GitHub 贡献图、文本工具和宏录制逐步集成。</p>
-          </article>
-        </div>
-      </div>
-    </section>
+    <script>
+      (() => {
+        const hero = document.querySelector(".hero");
+        const video = document.querySelector(".hero__video");
+        const scrollDown = document.getElementById("scrollDown");
+        const CHAR_STEP = 0.038;
+        let started = false;
 
-    <section class="section" id="workflow">
-      <div class="container">
-        <div class="section-head">
-          <div>
-            <p class="section-kicker">Workflow</p>
-            <h2>从呼出到执行，保持一条直线。</h2>
-          </div>
-          <p class="section-copy">Vercel 风格的克制设计适合 Qx：高对比文本、细边框分区、少量动效、明确状态，让用户反复使用时不用重新理解界面。</p>
-        </div>
-        <div class="flow">
-          <article class="flow-step">
-            <span class="step-num">01</span>
-            <h3>快捷键呼出</h3>
-            <p>菜单栏常驻，全局快捷键打开主搜索，不打断当前工作上下文。</p>
-          </article>
-          <article class="flow-step">
-            <span class="step-num">02</span>
-            <h3>搜索定位</h3>
-            <p>应用、文件、插件和模块统一排序，结果区只保留可扫描信息。</p>
-          </article>
-          <article class="flow-step">
-            <span class="step-num">03</span>
-            <h3>上下文动作</h3>
-            <p>右侧面板只呈现辅助入口，真实操作进入底栏 Actions 协议。</p>
-          </article>
-          <article class="flow-step">
-            <span class="step-num">04</span>
-            <h3>状态反馈</h3>
-            <p>同步、下载、导入和错误进入 Bottom Island，完成后回到轻状态。</p>
-          </article>
-        </div>
-      </div>
-    </section>
+        const animateLines = (selector, baseDelay, lineGap) => {
+          document.querySelectorAll(selector).forEach((line, lineIndex) => {
+            let charCount = 0;
+            const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+            const textNodes = [];
+            while (walker.nextNode()) textNodes.push(walker.currentNode);
 
-    <section class="download" id="download">
-      <div class="container download-panel">
-        <div>
-          <p class="section-kicker">Get Qx</p>
-          <h2>下载，放进 Applications，然后用键盘打开。</h2>
-          <p>适用于 macOS 14.0+。可从 GitHub Releases 下载，也可以使用 Homebrew 安装；源码可本地构建，插件和转换器随项目继续迭代。</p>
-          <div class="actions" style="justify-content:flex-start; margin-top:28px;">
-            <a class="button" href="https://github.com/mcxen/qx/releases">下载 Release</a>
-            <span class="button secondary"><code>brew install mcxen/qx/qx</code></span>
-            <a class="button secondary" href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">GitHub 仓库</a>
-          </div>
-        </div>
-        <div class="terminal" aria-label="安装提示">
-          <div class="terminal-head"><span>install</span><span>macOS</span></div>
-          <div class="terminal-body">
-            <div><span class="terminal-accent">$</span> brew install mcxen/qx/qx</div>
-            <div class="terminal-muted">或从 Releases 下载 Qx.app</div>
-            <div>&nbsp;</div>
-            <div><span class="terminal-accent">$</span> open Qx.app</div>
-            <div>menu bar · global search · plugins</div>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
+            textNodes.forEach((node) => {
+              const fragment = document.createDocumentFragment();
+              Array.from(node.textContent || "").forEach((char) => {
+                if (/\s/.test(char)) {
+                  fragment.appendChild(document.createTextNode(char));
+                  return;
+                }
+                const span = document.createElement("span");
+                span.className = "hero__char";
+                span.textContent = char;
+                span.style.animationDelay = `${baseDelay + lineIndex * lineGap + charCount * CHAR_STEP}s`;
+                fragment.appendChild(span);
+                charCount += 1;
+              });
+              node.replaceWith(fragment);
+            });
+          });
+        };
 
-  <footer>
-    <div class="container footer-inner">
-      <span>Qx · macOS Productivity Launcher</span>
-      <span><a href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">GitHub</a> · <a href="https://mcxen.github.io" target="_blank" rel="noreferrer">MCXEN</a></span>
-    </div>
-  </footer>
-</div>
-</body>
+        const startAnimations = () => {
+          if (started) return;
+          started = true;
+          animateLines(".hero__heading .hero__line-inner", 0.3, 0.85);
+          animateLines(".hero__label .hero__line-inner", 0.3, 0.65);
+          animateLines(".hero__desc .hero__line-inner", 0.3, 0.65);
+          requestAnimationFrame(() => document.body.classList.add("is-ready"));
+        };
+
+        const rewindVideo = () => {
+          if (!video || video.currentTime < 10) return;
+          video.currentTime = 0;
+          video.play().catch(() => {});
+        };
+
+        const openProject = () => window.open("https://github.com/mcxen/qx", "_blank", "noopener,noreferrer");
+        scrollDown?.addEventListener("click", openProject);
+        video?.addEventListener("timeupdate", rewindVideo);
+        video?.addEventListener("canplaythrough", startAnimations, { once: true });
+        video?.play().catch(() => {});
+        if (video && video.readyState >= 4) startAnimations();
+        const fallback = window.setTimeout(startAnimations, 5000);
+
+        hero?.querySelectorAll('a[href^="#"]').forEach((link) => {
+          link.addEventListener("click", (event) => {
+            const target = document.querySelector(link.getAttribute("href"));
+            if (!target) return;
+            event.preventDefault();
+            window.scrollTo({ top: target.getBoundingClientRect().top + window.scrollY, behavior: "smooth" });
+          });
+        });
+
+        window.addEventListener("pagehide", () => {
+          window.clearTimeout(fallback);
+          document.body.classList.remove("is-ready");
+        }, { once: true });
+      })();
+    </script>
+  </body>
 </html>
