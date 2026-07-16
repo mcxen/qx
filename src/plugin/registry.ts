@@ -25,6 +25,7 @@ import {
   peekNextRunAt,
   usePluginBackgroundStore,
 } from "./backgroundActivity";
+import { scoreMatchDescending } from "../search/rankResults";
 
 /** One pending timer per plugin command — never stack duplicates. */
 const backgroundTimers = new Map<string, number>();
@@ -82,7 +83,7 @@ interface PluginRegistryStore {
 }
 
 function normalizeQuery(q: string): string {
-  return q.trim().toLowerCase();
+  return q.normalize("NFKC").trim().toLocaleLowerCase().replace(/\s+/g, " ");
 }
 
 function isBuiltinPluginId(id: string): boolean {
@@ -219,24 +220,15 @@ function topologicalSort(plugins: InstalledPlugin[]): InstalledPlugin[] {
 }
 
 function scoreCommand(command: RegisteredCommand, query: string): number {
-  if (!query) return 0;
-  const haystacks = [
+  const score = scoreMatchDescending(
+    query,
     command.title,
     command.name,
     command.description,
     command.pluginName,
     ...(command.keywords || []),
-  ]
-    .filter(Boolean)
-    .map((s) => s!.toLowerCase());
-
-  for (const text of haystacks) {
-    if (text === query) return 1;
-    if (text.startsWith(query + " ") || text.startsWith(query + ":")) return 0.95;
-    if (text.startsWith(query)) return 0.9;
-    if (text.includes(" " + query) || text.includes(query)) return 0.7;
-  }
-  return 0;
+  );
+  return score / 100;
 }
 
 function summarizeError(error: unknown): string {

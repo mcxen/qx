@@ -884,6 +884,12 @@ export async function loadPlugin(
       const commandIcon = await resolvePluginAssetUrl(plugin.id, cmd.icon);
       const registered: RegisteredCommand = {
         ...cmd,
+        keywords: Array.from(new Set([
+          plugin.name,
+          plugin.id,
+          ...(manifest.keywords || []),
+          ...(cmd.keywords || []),
+        ].map((keyword) => keyword.trim()).filter(Boolean))),
         icon: commandIcon || pluginIcon,
         pluginId: plugin.id,
         pluginName: plugin.name,
@@ -948,7 +954,12 @@ export async function loadPlugin(
       pluginIcon,
       title: manifest.panel.title || plugin.name,
       icon: panelIcon || pluginIcon,
-      keywords: manifest.panel.keywords || [plugin.name.toLowerCase(), plugin.id.toLowerCase()],
+      keywords: Array.from(new Set([
+        plugin.name,
+        plugin.id,
+        ...(manifest.keywords || []),
+        ...(manifest.panel.keywords || []),
+      ].map((keyword) => keyword.trim()).filter(Boolean))),
       async render(container, _ctx) {
         const startedAt = performance.now();
         runtimeLogger.info("Plugin panel render started", { pluginId: plugin.id });

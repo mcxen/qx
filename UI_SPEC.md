@@ -483,10 +483,12 @@ Launcher：
 
 - 左侧搜索结果，右侧常用入口和最近项。
 - 搜索结果、右侧入口、底部动作都支持键盘操作。
+- 主搜索选中行必须明显区别于普通 hover：使用弱 accent 混合背景与完整的浅蓝色细描边，不使用点阵、左侧实线或括号式轮廓，也不得仅依赖在浅色透明主题下难以辨认的 component 背景层级。键盘选中项越过可视区域时必须以 `block: nearest` 自动滚动跟随。
+- 内置模块命令必须同时匹配英文标识、当前中文名称与常用功能别名；例如“设置 / 偏好设置 / 扩展 / 快捷键 / 外观”都应召回 Qx Settings，并以命令自身的匹配档位参与排序，不能被同名系统应用或文件结果挤掉。
 - Search 是默认键盘归宿：除文本输入、编辑器、IME 组合输入或打开的 Dialog/Menu/Listbox 外，普通点击结束后焦点回到当前 Shell 搜索框；焦点意外落在非编辑控件时，首个可打印字符或删除键必须转交 Launcher 搜索且不能丢字。
 - 查询输入与结果发布解耦：输入先绘制，约 45ms 静默窗口后再启动 latest-wins provider；旧请求立即失效，渐进批次合并后避开输入帧提交，排序 Worker 常驻且只保留最新等待任务。
 - Esc 级联（根视图）：有搜索文字时 **清空 query**（可继续输入并用 Enter 打开结果）；query 已空时再 Esc 才隐藏窗口（host escape）。
-- 有搜索文字时底栏可显示 Esc 清空；无文字时可不提供离开 Launcher 的可见 Esc。
+- 有搜索文字时底栏 Esc 清空；无文字时同一 Esc 动作隐藏 Launcher。可见动作与键盘行为必须一致，不得渲染无 `onClick` 的禁用式 Esc 占位。
 - 空闲 Home Island 由 `resolveHomeIsland` 解析；搜索中 / 有结果 / 插件 status 优先占用 shell island。
 
 Clipboard：
@@ -688,6 +690,19 @@ QxShell 的区域、列表与内容移动统一由 `useQxShellNavigation` +
 列表移动限制在指定区域；`editable` 策略默认为 `search`：搜索框允许用
 上下键/Page 键移动结果，但 textarea、普通 input 和 contenteditable 保留
 原生光标、选区与滚动行为。只有明确的非编辑型自定义控件才能选择 `all`。
+
+**列表选中外观与滚动追随**（与按键分离）统一由 `useQxListSelection` /
+`getQxListItemProps`（`src/hooks/useQxListSelection.ts`）实现：
+
+| 职责 | 接口 |
+|---|---|
+| 上下键改 `index` | `QxShell.navigation` |
+| 浅色选中背景 | 行 class：`qx-list-row` + `is-active` → `var(--qx-bg-component-3)`（Launcher 可叠加 accent） |
+| 滚动追随 | `data-qx-list-index` + `scrollIntoView({ block: "nearest" })` |
+| 行 props | `getItemProps(i)` 或 `getQxListItemProps(i, selected)` |
+
+模块只维护 `selected` 状态并传入 `navigation={{ index, count, onChange }}`，
+不得再手写 `querySelector('[aria-selected]')` / 各自 `scrollIntoView`。
 
 标准映射：
 

@@ -28,7 +28,11 @@ export const MatchTier = {
 export type MatchTierValue = (typeof MatchTier)[keyof typeof MatchTier];
 
 export function normalizeSearchQuery(query: string): string {
-  return query.trim().toLowerCase();
+  return query.normalize("NFKC").trim().toLocaleLowerCase().replace(/\s+/g, " ");
+}
+
+function compactSearchSeparators(value: string): string {
+  return normalizeSearchQuery(value).replace(/[\s\-_.\/]+/g, "");
 }
 
 /**
@@ -72,6 +76,16 @@ export function classifyMatch(haystack: string, query: string): MatchTierValue {
   if (value.includes(q)) {
     if (q.length <= SHORT_QUERY_MAX) return MatchTier.none;
     return MatchTier.contains;
+  }
+
+  // Treat spaces and common name separators as optional. This makes `qx ai`,
+  // `qx-ai`, and `QxAI` equivalent while retaining the normal tier ordering.
+  const compactQuery = compactSearchSeparators(q);
+  const compactValue = compactSearchSeparators(value);
+  if (compactQuery.length >= 3 && compactValue && (compactQuery !== q || compactValue !== value)) {
+    if (compactValue === compactQuery) return MatchTier.exact;
+    if (compactValue.startsWith(compactQuery)) return MatchTier.prefix;
+    if (compactValue.includes(compactQuery)) return MatchTier.contains;
   }
 
   const tokens = q.split(/\s+/).filter(Boolean);

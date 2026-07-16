@@ -16,6 +16,7 @@ import {
   type CalendarRange,
 } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
+import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useLocale, useT } from "../../i18n";
 import { getQxShortcutPreset } from "../../utils/keyboard";
 import { setPendingModuleLaunch, takePendingModuleLaunch } from "../../search/moduleSurfaces";
@@ -323,11 +324,12 @@ export default function ClipboardPanel() {
     }
   }, [filtered]);
 
-  useEffect(() => {
-    listRef.current
-      ?.querySelector<HTMLElement>("[role='option'][aria-selected='true']")
-      ?.scrollIntoView({ block: "nearest" });
-  }, [selected]);
+  // Selection chrome (is-active) + keyboard scroll follow — shared with Launcher.
+  const { getItemProps } = useQxListSelection({
+    listRef,
+    index: selected,
+    listSignature: filtered.map((item) => item.id).join("\0"),
+  });
 
   // Load clipboard images as data URLs (avoids asset protocol issues)
   useEffect(() => {
@@ -988,17 +990,15 @@ export default function ClipboardPanel() {
               </Popover>
               {section.items.map((item) => {
                 const index = flatIndex++;
-                const active = index === selected;
                 const kind = classify(item);
                 const isImage = kind === "image";
+                const itemProps = getItemProps(index);
                 return (
                   <button
                     key={item.id}
-                    className={`qx-list-row${active ? " is-active" : ""}`}
+                    {...itemProps}
                     onClick={() => selectItem(item, index)}
                     onDoubleClick={() => beginTextEdit(item)}
-                    role="option"
-                    aria-selected={active}
                   >
                     <span className="qx-clipboard-row-icon" aria-hidden="true">
                       <ClipboardTypeIcon item={item} />

@@ -38,6 +38,8 @@ export default function SearchBar({
   const setSelectedIndex = useStore((state) => state.setSelectedIndex);
   const visible = useStore((state) => state.visible);
   const inputRef = useRef<HTMLInputElement>(null);
+  const focusFrameRef = useRef<number | null>(null);
+  const focusRetryRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
 
   const focusInput = useCallback(() => {
     const el = inputRef.current;
@@ -48,25 +50,45 @@ export default function SearchBar({
     el.focus({ preventScroll: true });
   }, []);
 
+  const focusInputAfterPanelActivation = useCallback(() => {
+    focusInput();
+    if (focusFrameRef.current != null) window.cancelAnimationFrame(focusFrameRef.current);
+    if (focusRetryRef.current != null) window.clearTimeout(focusRetryRef.current);
+    focusFrameRef.current = window.requestAnimationFrame(() => {
+      focusFrameRef.current = null;
+      focusInput();
+    });
+    // AppKit can report the panel focused before its WebView has restored first
+    // responder. One bounded retry keeps summon deterministic without polling.
+    focusRetryRef.current = window.setTimeout(() => {
+      focusRetryRef.current = null;
+      if (hasOpenKeyboardOverlay()) return;
+      const active = document.activeElement;
+      if (active !== inputRef.current && isEditableTarget(active)) return;
+      focusInput();
+    }, 120);
+  }, [focusInput]);
+
   // Mount (including remount when returning to launcher from another tab).
   useEffect(() => {
-    focusInput();
-  }, [focusInput]);
+    focusInputAfterPanelActivation();
+  }, [focusInputAfterPanelActivation]);
 
   // Re-show via Option+Space: component stays mounted, so remount effect does not run.
-  // One rAF is enough — the old rAF + 40ms double-focus stacked with App.tsx and
-  // made every summon feel sluggish.
   useEffect(() => {
     if (!visible) return;
-    const frame = window.requestAnimationFrame(() => focusInput());
-    return () => window.cancelAnimationFrame(frame);
-  }, [visible, focusInput]);
+    focusInputAfterPanelActivation();
+  }, [visible, focusInputAfterPanelActivation]);
 
   useEffect(() => {
-    const onRequest = () => focusInput();
+    const onRequest = () => focusInputAfterPanelActivation();
     window.addEventListener(FOCUS_LAUNCHER_SEARCH_EVENT, onRequest);
-    return () => window.removeEventListener(FOCUS_LAUNCHER_SEARCH_EVENT, onRequest);
-  }, [focusInput]);
+    return () => {
+      window.removeEventListener(FOCUS_LAUNCHER_SEARCH_EVENT, onRequest);
+      if (focusFrameRef.current != null) window.cancelAnimationFrame(focusFrameRef.current);
+      if (focusRetryRef.current != null) window.clearTimeout(focusRetryRef.current);
+    };
+  }, [focusInputAfterPanelActivation]);
 
   // Launcher typing owns focus unless the user is editing another field or an
   // interactive overlay is open. This also preserves the first character when
@@ -127,6 +149,7 @@ export default function SearchBar({
       <input
         ref={inputRef}
         data-qx-primary-search="true"
+        autoFocus
         type="text"
         value={query}
         onChange={(e) => {

@@ -215,6 +215,7 @@
 
 /* Launcher rows: comfortable (two-line) is default; compact is opt-in density. */
 .qx-launcher-results .qx-launcher-row {
+  position: relative;
   grid-template-columns: 32px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
@@ -247,6 +248,7 @@
 
 .qx-launcher-results .qx-launcher-row .qx-list-title {
   font-size: 13.5px;
+  font-weight: 500;
   line-height: 18px;
 }
 
@@ -302,6 +304,16 @@
 
 .qx-list-row.is-active {
   background: var(--qx-bg-component-3);
+}
+
+/* Launcher selection must remain distinct from hover on translucent themes. */
+.qx-launcher-results .qx-launcher-row.is-active {
+  background: color-mix(in srgb, var(--qx-accent) 9%, var(--qx-bg-component-3));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--qx-accent) 48%, transparent);
+}
+
+.qx-launcher-results .qx-launcher-row.is-active .qx-list-title {
+  font-weight: 650;
 }
 
 .qx-list-icon {

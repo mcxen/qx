@@ -3,6 +3,12 @@ import {
   resolveQxContentScroll,
   resolveQxListNavigation,
 } from "../src/components/qx-shell/navigationModel.ts";
+import {
+  MatchTier,
+  classifyMatch,
+  normalizeSearchQuery,
+  textMatchesQuery,
+} from "../src/search/rankResults.ts";
 
 const list = (overrides = {}) => resolveQxListNavigation({
   key: "ArrowDown",
@@ -49,5 +55,12 @@ assert.equal(scroll({ key: " ", shiftKey: true }), -310);
 assert.equal(scroll({ key: "Home" }), 0);
 assert.equal(scroll({ key: "End" }), 1200);
 assert.equal(scroll({ scrollHeight: 500 }), null);
+
+// Launcher text matching is case-insensitive, Unicode-normalized, and tolerant
+// of spaces/common separators across apps, built-ins, and extension keywords.
+assert.equal(normalizeSearchQuery("  Ｑx   AI  "), "qx ai");
+assert.equal(classifyMatch("QxAI", "qx ai"), MatchTier.exact);
+assert.equal(classifyMatch("screen-recording", "screen recording"), MatchTier.exact);
+assert.equal(textMatchesQuery("Cardinal", "cardinal file search"), true);
 
 console.log("QxShell navigation checks passed");

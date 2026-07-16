@@ -34,7 +34,7 @@ QxShell (visual="elevated")
 | **General** | 启动与行为（登录启动、失焦隐藏、语言、自动更新） |
 | **Appearance** | 主题与分区透明度 · 窗口与密度 · Home Island · 启动器搜索源 |
 | **Shortcuts** | 全局 / 应用快捷键 |
-| **Extensions** | Installed / Browse（列表小卡，配置 Dialog） |
+| **Extensions** | Installed 使用分组连续列表，Browse 使用主从列表，配置走 Dialog |
 | **AI Agent** | 供应商 · 模型 · 工具 · Bash · Grep |
 | **OCR / RSS / Weather** | 各自模块设置 |
 | **Permissions** | macOS 权限 |
@@ -90,6 +90,8 @@ Popover 跟随 `control_opacity`，同时以 Bottom Bar 的视觉强度为下限
 Dialog 内（扩展配置）同样用 `SettingsCard` + `Row`，保持同一套线性语言。
 
 真正需要「面板容器」时才用 shadcn `Card` / `.qx-card`（例如扩展市场 tile 封面）。
+
+Extensions → Installed 也遵循线性语言：Built-in / External 是分组标签，每组只保留一个外框，模块之间用 hairline 分隔；单个模块不得各自渲染成大圆角卡片。图标使用紧凑尺寸，状态 chips 固定在尾部列，整行点击打开配置 Dialog。
 
 ## 3. 关键文件
 

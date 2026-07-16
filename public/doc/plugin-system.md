@@ -127,7 +127,7 @@ Tauri 生产环境前端是 `tauri://localhost`（或 `asset://`），`~/.qx/plu
 - `icon`：相对路径
 - `screenshots`：相对路径数组，用于 Installed 详情页预览图
 - `platforms`：插件声明支持的平台，可选值为 `macos`、`windows`、`linux`
-- `keywords`：全局搜索关键词
+- `keywords`：全局搜索关键词；插件级关键词会自动合并进该插件的每条命令与 Panel。主搜索统一忽略大小写、Unicode 全/半角差异，并容忍空格、连字符、下划线、点号和斜杠等常见名称分隔符。
 - `permissions`：插件可申请的能力，具体见权限表
 - `entry`：入口文件，默认 `index.js`
 - `dependencies`：依赖的其他插件 id（预留，用于加载顺序）

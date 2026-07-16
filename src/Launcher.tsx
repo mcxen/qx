@@ -23,6 +23,7 @@ interface LauncherProps {
   selectedIndex: number;
   onItemClick: (item: AppEntry) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
+  onEscape: () => void;
   onNavigate: (tab: string) => void;
   searchScopeRef: React.MutableRefObject<SearchScope>;
   onScopeChange: () => void;
@@ -38,6 +39,7 @@ export default function Launcher({
   selectedIndex,
   onItemClick,
   onKeyDown,
+  onEscape,
   onNavigate,
   searchScopeRef,
   onScopeChange,
@@ -303,7 +305,7 @@ export default function Launcher({
       islandManagedExternally
       island={island}
       customIsland={customIsland}
-      onKeyDown={onKeyDown}
+      onKeyDown={handleLauncherKeyDown}
       search={<SearchBar onKeyDown={handleLauncherKeyDown} embedded />}
       trailing={
         <div className="qx-launcher-trailing">
@@ -341,7 +343,11 @@ export default function Launcher({
                 useStore.getState().setSelectedIndex(0);
               },
             }
-          : undefined
+          : {
+              label: "Esc",
+              kbd: "Esc",
+              onClick: onEscape,
+            }
       }
       primaryAction={{
         label: results[selectedIndex] ? t("launcher.open", "Open") : t("launcher.search", "Search"),

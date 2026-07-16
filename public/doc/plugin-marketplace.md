@@ -86,7 +86,7 @@ zip -r ../my-plugin.qx-plugin manifest.json index.js icon.png
 | `icon` | 否 | 图标文件名，相对路径 |
 | `screenshots` | 否 | 截图文件名数组，相对路径 |
 | `platforms` | 否 | 支持平台数组：`macos`、`windows`、`linux` |
-| `keywords` | 否 | 全局搜索关键词 |
+| `keywords` | 否 | 全局搜索关键词；会自动合并进插件的命令与 Panel，匹配忽略大小写、全/半角和常见名称分隔符 |
 | `permissions` | 否 | 需要的能力权限 |
 | `entry` | 否 | 入口文件，默认 `index.js` |
 | `preferences` | 否 | 用户可配置的偏好项 |

@@ -30,7 +30,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
   {
     id: "clipboard",
     name: "Clipboard",
-    keywords: ["clipboard", "paste", "history", "剪贴板", "粘贴"],
+    keywords: ["clipboard", "paste", "copy", "history", "剪贴板", "剪切板", "粘贴", "复制", "历史"],
     commands: [
       {
         name: "open-clipboard",
@@ -47,7 +47,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
   {
     id: "qx-ai",
     name: "QxAI",
-    keywords: ["ai", "chat", "gpt", "qxai", "llm", "人工智能", "聊天"],
+    keywords: ["ai", "chat", "gpt", "qxai", "qx ai", "llm", "agent", "人工智能", "聊天", "助手", "智能体"],
     commands: [
       {
         name: "open-qxai",
@@ -64,7 +64,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
   {
     id: "screencap",
     name: "Screen Capture",
-    keywords: ["screenshot", "gif", "screencap", "screen record", "截图", "录屏"],
+    keywords: ["screenshot", "screen capture", "gif", "screencap", "screen record", "recording", "截图", "截屏", "录屏", "屏幕录制"],
     commands: [
       {
         name: "open-screencap",
@@ -81,7 +81,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
   {
     id: "rss",
     name: "RSS Reader",
-    keywords: ["rss", "feeds", "feed", "articles", "订阅"],
+    keywords: ["rss", "reader", "feeds", "feed", "articles", "atom", "订阅", "阅读器", "文章", "资讯"],
     commands: [
       {
         name: "open-rss",
@@ -98,7 +98,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
   {
     id: "v2ex",
     name: "V2EX",
-    keywords: ["v2ex", "topics", "forum", "社区", "帖子", "热门"],
+    keywords: ["v2ex", "topics", "forum", "node", "社区", "帖子", "主题", "节点", "热门"],
     commands: [
       {
         name: "open-v2ex",
@@ -133,7 +133,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
   {
     id: "macros",
     name: "Macro Recorder",
-    keywords: ["macro", "macros", "recording", "宏", "录制"],
+    keywords: ["macro", "macros", "recording", "automation", "宏", "宏录制", "录制", "自动化"],
     commands: [
       {
         name: "open-macros",
@@ -150,7 +150,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
   {
     id: "documents",
     name: "Documents",
-    keywords: ["document", "documents", "doc", "markdown", "json", "word count", "文档", "字数", "文本"],
+    keywords: ["document", "documents", "doc", "markdown", "json", "text", "toolbox", "word count", "文档", "字数", "文本", "文本工具箱", "工具箱"],
     commands: [
       {
         name: "open-documents",
@@ -167,7 +167,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
   {
     id: "qx-tty",
     name: "QxTTY",
-    keywords: ["terminal", "tty", "shell", "command line", "终端", "命令行"],
+    keywords: ["terminal", "tty", "shell", "command line", "command", "console", "终端", "命令行", "命令", "控制台"],
     commands: [
       {
         name: "open-qx-tty",
@@ -184,7 +184,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
   {
     id: "weather",
     name: "Weather",
-    keywords: ["weather", "forecast", "temperature", "天气", "气温", "预报"],
+    keywords: ["weather", "forecast", "temperature", "climate", "天气", "气温", "温度", "预报", "天气预报"],
     commands: [
       {
         name: "open-weather",

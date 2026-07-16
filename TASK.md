@@ -1,5 +1,37 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Bugfix — 中文“设置”召回 Qx Settings
+
+**状态**：已实现，等待运行态复核。
+
+- Settings 内置命令搜索词补齐中英文别名：设置、偏好设置、插件、扩展、快捷键、外观、高级及 Qx 组合词。
+- Settings 结果统一带 `moduleId: settings`、中文 `display_name`、Qx subtitle 与预计算匹配档位；中文精确查询优先于系统设置应用和同名文件。
+- 自定义搜索元数据仍复用同一 Settings entry 工厂，避免两条路径的显示和排序语义漂移。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [ ] macOS：输入“设置”“偏好设置”“扩展”“qx settings”均可打开 Qx Settings。
+
+## UI Polish — 扩展连续列表与主搜选中态
+
+**状态**：已实现，等待运行态视觉复核。
+
+- Settings → Extensions → Installed 从逐项大卡片改为 Built-in / External 分组连续列表：组内共享外框、hairline 分隔，图标由 44px 收紧至 34px，行高由 60px 收紧至 52px。
+- Launcher 选中行使用弱 accent 混合背景、完整浅蓝细描边与稍强标题字重，在透明浅色主题下与 hover 保持可辨识；不使用点阵、左侧实线或括号式连续轮廓。
+- Launcher 重新获得焦点时对主搜索框执行有限重试聚焦；空白 WebView 焦点下的 Esc 由窗口内 bubble fallback 收口，空 query 可稳定隐藏。
+- 内置模块关键词补齐常用中英文别名；外部扩展的 manifest 级关键词合并进入每条命令和 panel，并统一使用大小写、Unicode 与空格/常见分隔符不敏感匹配。
+- 结果行暴露稳定索引；键盘或 hover 改变选中项后调用 `scrollIntoView({ block: "nearest" })`，向下越过可视区域时列表自动跟随且不强制居中。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [ ] macOS 浅色 / 深色与低透明度视觉复核。
+
 ## Search UX — 持久搜索焦点与非阻塞结果更新
 
 **状态**：已实现，等待最终输入手感复核。

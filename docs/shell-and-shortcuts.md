@@ -204,7 +204,7 @@ with_db / ensure_open:
 | 监听 + `focusInput` | `SearchBar` | 先 `requestPanelKeyWindow` 再 `input.focus` |
 | 调用点 | `App.tsx` | 窗口 show/focus、`navigate` → `launcher` |
 
-`focusInput` 在 `visible` 变化时也会 rAF + 短 timeout 再试（key window 异步）。
+`focusInput` 在 `visible` 变化与 Launcher 再次获得 key focus 时都会 immediate + rAF + 一次短 timeout 有限重试（key window / WebView first responder 异步）；重试不得形成轮询，也不得从已聚焦的其他文本编辑器或打开的键盘弹层抢焦点。Launcher 空 query 的 Esc 另有 window bubble fallback，仅在 React/Radix 未消费事件时隐藏窗口，不使用进程级键盘 monitor。
 
 所有带 Shell 搜索框的页面还遵循 persistent-search-focus：普通按钮、列表或空白区域的
 pointer 交互结束后，若没有文本编辑器、选中文本或打开的 Dialog/Menu/Listbox，焦点回到

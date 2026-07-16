@@ -41,6 +41,7 @@ import {
   setPendingModuleLaunch,
 } from "./search/moduleSurfaces";
 import { rankSearchResultsAsync } from "./search/rankResultsAsync";
+import { bestMatchTier, MatchTier, textMatchesQuery, type MatchTierValue } from "./search/rankResults";
 import {
   frequentMatchingEntries,
   recordSearchResultClick,
@@ -69,7 +70,26 @@ const MacroRecorder = lazy(() => import("./modules/macros/MacroRecorder"));
 const WeatherPanel = lazy(() => import("./modules/weather/WeatherPanel"));
 const QxTTYPanel = lazy(() => import("./modules/qx-tty/QxTTYPanel"));
 
-const SETTINGS_KEYWORDS = ["settings", "preferences", "plugins", "shortcuts", "appearance", "advanced"];
+const SETTINGS_SEARCH_TERMS = [
+  "settings",
+  "preferences",
+  "plugins",
+  "extensions",
+  "shortcuts",
+  "appearance",
+  "advanced",
+  "qx settings",
+  "qx preferences",
+  "设置",
+  "偏好设置",
+  "插件",
+  "扩展",
+  "快捷键",
+  "外观",
+  "高级",
+  "qx设置",
+  "qx 设置",
+];
 const MIN_WINDOW_WIDTH = 480;
 const MIN_WINDOW_HEIGHT = 360;
 const MAX_WINDOW_WIDTH = 1500;
@@ -334,10 +354,25 @@ function isTauriRuntime(): boolean {
   return "__TAURI_INTERNALS__" in window;
 }
 
+function settingsMatchTier(query: string): MatchTierValue {
+  return bestMatchTier(query, ...SETTINGS_SEARCH_TERMS, SETTINGS_SEARCH_TERMS.join(" "));
+}
+
 function matchesSettings(query: string): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return false;
-  return SETTINGS_KEYWORDS.some((k) => k === q || k.startsWith(q) || q.startsWith(k));
+  return settingsMatchTier(query) < MatchTier.none;
+}
+
+function createSettingsSearchEntry(matchScore?: MatchTierValue): AppEntry {
+  return {
+    name: "Settings",
+    display_name: "设置",
+    subtitle: "Qx",
+    path: "__qx:settings",
+    icon: "builtin:settings",
+    kind: "command",
+    moduleId: "settings",
+    matchScore,
+  };
 }
 
 function dedupeEntries(entries: AppEntry[]): AppEntry[] {
@@ -1275,9 +1310,11 @@ function App() {
               emptyLauncherLoadInFlightRef.current = false;
             });
           }
-          // One focus request — SearchBar also reacts to `visible`; avoid stacking.
-          requestLauncherSearchFocus();
         }
+        // Focus every time the launcher becomes key, not only when the native
+        // focus edge is classified as a re-summon. AppKit may emit a micro edge
+        // after show, and SearchBar coalesces these into one bounded retry.
+        if (useStore.getState().tab === "launcher") requestLauncherSearchFocus();
       }
     });
     const unlistenNav = listen<string>("navigate", (e) => {
@@ -1530,18 +1567,15 @@ function App() {
 
       // Also match installed plugin panel names/keywords as navigation entries
       const pluginState = usePluginRegistry.getState();
-      const lowerQuery = q.trim().toLowerCase();
-      if (lowerQuery) {
+      if (q.trim()) {
         for (const [pluginId, panel] of Object.entries(pluginState.panels)) {
-          const nameSource = (panel.pluginName || pluginId).toLowerCase();
-          const titleSource = (panel.title || pluginId).toLowerCase();
+          const nameSource = panel.pluginName || pluginId;
+          const titleSource = panel.title || pluginId;
           const kw = panel.keywords || [];
           const builtinModuleId = pluginId.startsWith("builtin:") ? pluginId.slice("builtin:".length) : null;
           if (builtinModuleId && !isModuleSearchEnabled(builtinModuleId)) continue;
           if (
-            nameSource.includes(lowerQuery) ||
-            titleSource.includes(lowerQuery) ||
-            kw.some((k) => k.toLowerCase().includes(lowerQuery)) ||
+            textMatchesQuery(q, nameSource, titleSource, ...kw) ||
             itemMatchesSearchMetadata(settingsState, pluginMetadataKey(pluginId), q) ||
             (builtinModuleId ? itemMatchesSearchMetadata(settingsState, moduleMetadataKey(builtinModuleId), q) : false)
           ) {
@@ -1559,13 +1593,11 @@ function App() {
           if (p.id.startsWith("builtin:")) continue;
           if (pluginState.panels[p.id]) continue;
           if (!p.enabled) continue;
-          const nameSource = p.name.toLowerCase();
-          const descSource = (p.description || "").toLowerCase();
+          const nameSource = p.name;
+          const descSource = p.description || "";
           const manifestKw = p.manifest?.keywords || [];
           if (
-            nameSource.includes(lowerQuery) ||
-            descSource.includes(lowerQuery) ||
-            manifestKw.some((k) => k.toLowerCase().includes(lowerQuery)) ||
+            textMatchesQuery(q, p.id, nameSource, descSource, ...manifestKw) ||
             itemMatchesSearchMetadata(settingsState, pluginMetadataKey(p.id), q)
           ) {
             syntheticEntries.push({
@@ -1603,24 +1635,14 @@ function App() {
       }
 
       if ((scope === "all" || scope === "apps") && matchesSettings(q)) {
-        syntheticEntries.unshift({
-          name: "Settings",
-          path: "__qx:settings",
-          icon: "builtin:settings",
-          kind: "command",
-        });
+        syntheticEntries.unshift(createSettingsSearchEntry(settingsMatchTier(q)));
       }
 
       if (
         (scope === "all" || scope === "apps") &&
         itemMatchesSearchMetadata(settingsState, moduleMetadataKey("settings"), q)
       ) {
-        syntheticEntries.unshift({
-          name: "Settings",
-          path: "__qx:settings",
-          icon: "builtin:settings",
-          kind: "command",
-        });
+        syntheticEntries.unshift(createSettingsSearchEntry());
       }
 
       if (scope === "all" || scope === "apps") {
@@ -1674,7 +1696,7 @@ function App() {
         applyResults(filesPass0, { merge: true });
       });
 
-      const moduleSurfaceTask = lowerQuery && (scope === "all" || scope === "apps")
+      const moduleSurfaceTask = trimmed && (scope === "all" || scope === "apps")
         ? loadModuleSurfaceProviders(q, scope, seq)
         : Promise.resolve();
 
@@ -1774,21 +1796,22 @@ function App() {
 
   useEffect(() => {
     const onUnhandledEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      // Capture now, decide after React/QxShell/window handlers have all had
-      // a chance to consume the event. This is only a focus-loss fallback for
-      // events targeting document/body, not a competing shortcut router.
-      window.setTimeout(() => {
-        if (!event.defaultPrevented) performHostEscape();
-      }, 0);
+      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+      // Bubble-phase, launcher-only fallback. React/Radix overlays get first
+      // refusal; this covers WebView body/document focus without becoming a
+      // process-global Esc monitor.
+      if (useStore.getState().tab !== "launcher") return;
+      event.preventDefault();
+      event.stopPropagation();
+      performHostEscape();
     };
     const onHostEscape = () => {
       performHostEscape();
     };
-    window.addEventListener("keydown", onUnhandledEscape, true);
+    window.addEventListener("keydown", onUnhandledEscape);
     window.addEventListener(HOST_ESCAPE_EVENT, onHostEscape);
     return () => {
-      window.removeEventListener("keydown", onUnhandledEscape, true);
+      window.removeEventListener("keydown", onUnhandledEscape);
       window.removeEventListener(HOST_ESCAPE_EVENT, onHostEscape);
     };
   }, [performHostEscape]);
@@ -1962,6 +1985,7 @@ function App() {
       selectedIndex={selectedIndex}
       onItemClick={openItem}
       onKeyDown={handleKeyDown}
+      onEscape={performHostEscape}
       onNavigate={setTab}
       searchScopeRef={searchScopeRef}
       onScopeChange={() => doSearch(useStore.getState().query)}

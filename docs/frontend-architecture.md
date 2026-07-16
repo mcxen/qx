@@ -105,6 +105,15 @@ Zustand 单 store（`store.ts`）保存 launcher 强共享状态：
 
 所有 provider 回调用 `searchSeqRef`、排序回调用独立的 `rankRequestSeqRef` 保护过期。新排序请求采用 latest-wins：终止仍在执行的旧 Worker 请求；Worker 不可用或异常时保留未排序结果，禁止退回主线程同步排序。实现：`src/search/searchUsage.ts`、`src/search/rankResults.ts`、`src/search/rankResultsAsync.ts`、`src/search/rankResults.worker.ts`。
 
+### 列表选中与键盘滚动
+
+按键与绘制分离：
+
+- **移动**：`QxShell.navigation` + `navigationModel`（模块不复制 ↑↓ 算法）
+- **浅色背景 + 滚动追随**：`useQxListSelection` / `getQxListItemProps`
+  行契约：`qx-list-row` + `is-active` + `data-qx-list-index`；滚动 `block: nearest`
+  参考消费者：`ClipboardPanel`、`ResultsList`
+
 ## Loading 与灵动岛
 
 ### 任务态 shell island

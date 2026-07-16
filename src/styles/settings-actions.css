@@ -171,16 +171,37 @@
 .qx-ext-card-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 14px;
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 2px 1px 12px;
+  padding: 12px var(--qx-settings-gutter-x) 18px;
 }
 
 .qx-ext-card-list [role="listitem"] {
   width: 100%;
   min-width: 0;
+  border-right: 1px solid var(--qx-border-1);
+  border-bottom: 1px solid var(--qx-border-1);
+  border-left: 1px solid var(--qx-border-1);
+  background: var(--qx-bg-component-1);
+  overflow: hidden;
+}
+
+.qx-ext-card-group > [role="listitem"]:first-child,
+.qx-ext-card-section + [role="listitem"] {
+  border-top: 1px solid var(--qx-border-1);
+  border-start-start-radius: var(--qx-card-radius, 8px);
+  border-start-end-radius: var(--qx-card-radius, 8px);
+}
+
+.qx-ext-card-group > [role="listitem"]:last-child {
+  border-end-start-radius: var(--qx-card-radius, 8px);
+  border-end-end-radius: var(--qx-card-radius, 8px);
+}
+
+.qx-ext-card-group > [role="listitem"]:only-child {
+  border-radius: var(--qx-card-radius, 8px);
 }
 
 /* ── Extension card (Settings → Extensions → Installed) ─────────────
@@ -190,16 +211,16 @@
 .qx-ext-card {
   display: grid;
   /* Fixed tracks so icon / title / meta / chevron share the same X across rows. */
-  grid-template-columns: 44px minmax(0, 1fr) 8.5rem 16px;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(5.5rem, auto) 16px;
   align-items: center;
-  column-gap: 12px;
+  column-gap: 10px;
   row-gap: 0;
   width: 100%;
-  min-height: 60px;
-  padding: 10px 12px;
-  border: 1px solid var(--qx-border-1);
-  border-radius: var(--qx-card-radius, 8px);
-  background: var(--qx-bg-component-1);
+  min-height: 52px;
+  padding: 7px 11px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
   color: var(--qx-text-primary);
   text-align: left;
   cursor: pointer;
@@ -210,7 +231,6 @@
 }
 
 .qx-ext-card:hover {
-  border-color: color-mix(in srgb, var(--qx-border-2, var(--qx-border-1)) 55%, var(--qx-accent) 45%);
   background: var(--qx-bg-component-2);
 }
 
@@ -219,8 +239,10 @@
 }
 
 .qx-ext-card:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--qx-accent) 55%, transparent);
-  outline-offset: 1px;
+  outline: none;
+  box-shadow:
+    inset 3px 0 0 var(--qx-accent),
+    inset 0 0 0 1px color-mix(in srgb, var(--qx-accent) 40%, transparent);
 }
 
 .qx-ext-card.is-disabled {
@@ -236,10 +258,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 34px;
+  height: 34px;
   border: 1px solid var(--qx-border-1);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--qx-bg-component-2);
   overflow: hidden;
 }
@@ -384,11 +406,11 @@ img.qx-ext-card-icon {
 .qx-ext-card-group {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
 }
 
 .qx-ext-card-section {
-  margin: 6px 4px 2px;
+  margin: 0 3px 6px;
   color: var(--qx-text-tertiary);
   font-size: 10px;
   font-weight: 700;
@@ -397,7 +419,7 @@ img.qx-ext-card-icon {
 }
 
 .qx-ext-card-group + .qx-ext-card-group {
-  margin-top: 6px;
+  margin-top: 0;
 }
 
 .qx-plugin-config-dialog {

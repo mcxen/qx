@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { LoadingLabel, Skeleton, Kbd } from "./components/ui";
 import AppResultContextMenu from "./launcher/AppResultContextMenu";
+import { getQxListItemProps, useQxListSelection } from "./hooks/useQxListSelection";
 import { useDisplayName } from "./search/appDisplay";
 import { useT } from "./i18n";
 import BetaBadge from "./components/BetaBadge";
@@ -273,15 +274,16 @@ function resultSubtitle(item: AppEntry): string {
 const ResultItem = memo(function ResultItem({
   item,
   index,
+  selectedIndex,
   label,
   onHoverSelect,
 }: {
   item: AppEntry;
   index: number;
+  selectedIndex: number;
   label: string;
   onHoverSelect: (index: number) => void;
 }) {
-  const selected = useStore((state) => state.selectedIndex === index);
   const settings = useSettingsStore((state) => state.settings);
   const metadataKey = metadataKeyForEntry(item);
   const pinned = isEntryPinned(settings, metadataKey);
@@ -297,12 +299,21 @@ const ResultItem = memo(function ResultItem({
 
   return (
     <div
+      {...getQxListItemProps(index, selectedIndex, {
+        className: [
+          "qx-launcher-row",
+          `density-${density}`,
+          pinned ? "is-pinned" : "",
+          hidden ? "is-hidden-app" : "",
+        ].filter(Boolean).join(" "),
+        role: "option",
+      })}
+      data-qx-result-index={index}
       onMouseEnter={() => onHoverSelect(index)}
-      className={`qx-list-row qx-launcher-row density-${density}${selected ? " is-active" : ""}${pinned ? " is-pinned" : ""}${hidden ? " is-hidden-app" : ""}`}
     >
       <AppIcon item={item} label={label} />
       <div className="qx-list-copy">
-        <div className="qx-list-title qx-module-title-with-badge" style={{ fontWeight: 500 }}>
+        <div className="qx-list-title qx-module-title-with-badge">
           <span>{label}</span>
           {pinned && (
             <Pin
@@ -378,8 +389,10 @@ export default function ResultsList({
 }) {
   const t = useT();
   const getDisplayName = useDisplayName();
+  const selectedIndex = useStore((state) => state.selectedIndex);
   const setSelectedIndex = useStore((state) => state.setSelectedIndex);
   const loadingLabel = t("launcher.loadingApps", "Loading apps...");
+  const listRef = useRef<HTMLDivElement>(null);
   const hoverArmedRef = useRef(false);
   const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
 
@@ -418,6 +431,13 @@ export default function ResultsList({
     hoverArmedRef.current = false;
   }, [listSignature]);
 
+  // Shared selection paint + nearest scroll follow (same contract as Clipboard).
+  useQxListSelection({
+    listRef,
+    index: selectedIndex,
+    listSignature,
+  });
+
   const handlePointerMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     const last = lastPointerRef.current;
     if (!last || last.x !== event.clientX || last.y !== event.clientY) {
@@ -433,6 +453,7 @@ export default function ResultsList({
 
   return (
     <div
+      ref={listRef}
       className="qx-plugin-list qx-launcher-results"
       style={{ flex: 1, borderRight: "none" }}
       onMouseMove={handlePointerMove}
@@ -446,6 +467,7 @@ export default function ResultsList({
             <ResultItem
               item={item}
               index={i}
+              selectedIndex={selectedIndex}
               label={getDisplayName(item)}
               onHoverSelect={handleHoverSelect}
             />
