@@ -4,6 +4,7 @@ import { useRssStore, type RssFeed } from "./store";
 import { useSettingsStore } from "../settings/store";
 import { useStore } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
+import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { getQxShortcutPreset } from "../../utils/keyboard";
 import { LoadingLabel, Skeleton } from "../../components/ui";
 import AddFeedDialog from "./AddFeedDialog";
@@ -123,10 +124,17 @@ export default function RssPanel() {
   }, [filtered, folders, query]);
 
   const flatFeeds = useMemo(() => sections.flatMap((s) => s.items), [sections]);
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSelectedIndex(0);
   }, [filtered.length, setSelectedIndex]);
+
+  const { getItemProps } = useQxListSelection({
+    listRef,
+    index: selectedIndex,
+    listSignature: flatFeeds.map((f) => f.id).join("\0"),
+  });
 
   const selectedFeed = flatFeeds[selectedIndex];
   const unreadCount = feeds.reduce((sum, feed) => sum + feed.unread_count, 0);
@@ -162,31 +170,17 @@ export default function RssPanel() {
   const onKeyDown = (e: React.KeyboardEvent) => {
     escKeyDown(e);
     if (e.key === "Escape") return;
-    // Side actions (ArrowLeft) must still change selection — do not bail on
-    // rss-feed-actions the way we used to (shell then only scrolled the panel).
-    switch (e.key) {
-      case "ArrowDown":
+    // ↑↓: QxShell.navigation + useQxListSelection (is-active + scroll follow).
+    if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault();
+      if (selectedFeed) void openFeed(selectedFeed.id);
+      return;
+    }
+    if ((e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (selectedFeed) {
         e.preventDefault();
-        setSelectedIndex(flatFeeds.length > 0 ? Math.min(selectedIndex + 1, flatFeeds.length - 1) : 0);
-        focusFeedList();
-        break;
-      case "ArrowUp":
-        e.preventDefault();
-        setSelectedIndex(Math.max(selectedIndex - 1, 0));
-        focusFeedList();
-        break;
-      case "Enter":
-        e.preventDefault();
-        if (selectedFeed) void openFeed(selectedFeed.id);
-        break;
-      case "f":
-      case "F":
-        if (e.metaKey || e.ctrlKey || e.altKey) return;
-        if (selectedFeed) {
-          e.preventDefault();
-          setFolderTargetFeed(selectedFeed);
-        }
-        break;
+        setFolderTargetFeed(selectedFeed);
+      }
     }
   };
 
@@ -323,6 +317,19 @@ export default function RssPanel() {
       title="RSS Reader"
       className="qx-rss-shell"
       onKeyDown={onKeyDown}
+      navigation={{
+        index: selectedIndex,
+        count: flatFeeds.length,
+        regionId: "rss-feeds",
+        onChange: (index) => {
+          setSelectedIndex(index);
+          focusFeedList();
+        },
+        onOpen: () => {
+          if (selectedFeed) void openFeed(selectedFeed.id);
+        },
+        pageSize: 8,
+      }}
       search={
         <div className="qx-search-wrap">
           <span className="qx-search-icon" aria-hidden="true" />
@@ -463,7 +470,10 @@ export default function RssPanel() {
       actions={actions}
     >
       <div
+        ref={listRef}
         className="qx-plugin-list qx-rss-feed-list"
+        role="listbox"
+        aria-label="Feed list"
         data-qx-region="rss-feeds"
         data-qx-region-label="Feed list"
         data-qx-region-initial="true"
@@ -522,15 +532,14 @@ export default function RssPanel() {
             )}
             {section.items.map((feed) => {
               const index = flatIndex++;
-              const active = index === selectedIndex;
               const refreshing = refreshingFeedId === feed.id;
               return (
                 <button
                   key={feed.id}
                   type="button"
+                  {...getItemProps(index)}
                   onClick={() => setSelectedIndex(index)}
                   onDoubleClick={() => void openFeed(feed.id)}
-                  className={`qx-list-row${active ? " is-active" : ""}`}
                 >
                   <FeedIcon feed={feed} showImage={showFeedIcons} />
                   <span className="qx-list-copy">

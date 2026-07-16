@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { LoadingLabel, Skeleton } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
+import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useT } from "../../i18n";
 import { formatQxShortcut, getQxShortcutPreset } from "../../utils/keyboard";
 import { useStore } from "../../store";
@@ -25,6 +26,7 @@ export default function QxAiPanel() {
   const [query, setQuery] = useState("");
   const actionMenuShortcut = getQxShortcutPreset().actionMenu;
   const actionMenuLabel = formatQxShortcut(actionMenuShortcut) ?? "⌘K";
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void loadProviders();
@@ -46,6 +48,12 @@ export default function QxAiPanel() {
       return Math.max(0, Math.min(index, filtered.length - 1));
     });
   }, [filtered.length]);
+
+  const { getItemProps } = useQxListSelection({
+    listRef,
+    index: selectedIndex,
+    listSignature: filtered.map((c) => c.id).join("\0"),
+  });
 
   const selectedConv = filtered[selectedIndex];
 
@@ -207,7 +215,7 @@ export default function QxAiPanel() {
       actionTitle={t("qxai.actions", "AI Actions")}
       actions={actions}
     >
-      <div className="qx-plugin-list">
+      <div ref={listRef} className="qx-plugin-list" role="listbox" aria-label={t("qxai.conversations", "Conversations")}>
         <div className="qx-section-header">
           <span style={{ flex: 1 }}>{t("qxai.conversations", "Conversations")}</span>
           <span>{filtered.length}</span>
@@ -226,16 +234,15 @@ export default function QxAiPanel() {
           </div>
         )}
         {filtered.map((conv, i) => {
-          const active = i === selectedIndex;
           return (
             <button
               key={conv.id}
+              {...getItemProps(i)}
               onClick={() => setSelectedIndex(i)}
               onDoubleClick={() => {
                 selectConversation(conv.id);
                 setView("chat");
               }}
-              className={`qx-list-row${active ? " is-active" : ""}`}
               type="button"
             >
               <span className="qx-list-copy">

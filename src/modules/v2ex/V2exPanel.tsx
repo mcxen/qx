@@ -4,6 +4,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { LoadingLabel, SegmentedControl, Skeleton } from "../../components/ui";
 import { useEscBack } from "../../hooks/useEscBack";
+import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useStore } from "../../store";
 import { type V2exMode, type V2exReply, type V2exTopic, formatTime } from "./types";
 import { sanitizeTopicHtml } from "./V2exDetail";
@@ -23,6 +24,12 @@ export default function V2exPanel() {
   const [repliesLoading, setRepliesLoading] = useState(false);
   const [repliesError, setRepliesError] = useState("");
   const topicsRequestId = useRef(0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const { getItemProps } = useQxListSelection({
+    listRef,
+    index: selectedIndex,
+    listSignature: topics.map((t) => t.id).join("\0"),
+  });
 
   const selectedTopic = topics[selectedIndex] ?? null;
 
@@ -125,28 +132,15 @@ export default function V2exPanel() {
   const onKeyDown = (event: React.KeyboardEvent) => {
     escKeyDown(event);
     if (event.key === "Escape") return;
-    switch (event.key) {
-      case "ArrowDown":
-        event.preventDefault();
-        if (viewingTopic) openTopicAtIndex(selectedIndex + 1);
-        else setSelectedIndex(topics.length > 0 ? Math.min(selectedIndex + 1, topics.length - 1) : 0);
-        break;
-      case "ArrowUp":
-        event.preventDefault();
-        if (viewingTopic) openTopicAtIndex(selectedIndex - 1);
-        else setSelectedIndex(Math.max(selectedIndex - 1, 0));
-        break;
-      case "Enter":
-        event.preventDefault();
-        if (selectedTopic) openTopicAtIndex(selectedIndex);
-        break;
-      case "r":
-      case "R":
-        if (!event.metaKey && !event.ctrlKey && !event.altKey) {
-          event.preventDefault();
-          void loadTopics(mode, query);
-        }
-        break;
+    // ↑↓ / Page / Home / End: QxShell.navigation + useQxListSelection (paint/scroll).
+    if (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      if (selectedTopic) openTopicAtIndex(selectedIndex);
+      return;
+    }
+    if ((event.key === "r" || event.key === "R") && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault();
+      void loadTopics(mode, query);
     }
   };
 
@@ -200,6 +194,19 @@ export default function V2exPanel() {
       title="V2EX"
       className="v2ex-shell qx-content-shell"
       onKeyDown={onKeyDown}
+      navigation={{
+        index: selectedIndex,
+        count: topics.length,
+        onChange: (index) => {
+          if (viewingTopic) openTopicAtIndex(index);
+          else setSelectedIndex(index);
+        },
+        onOpen: () => {
+          if (selectedTopic) openTopicAtIndex(selectedIndex);
+        },
+        onClose: () => setViewingTopic(null),
+        pageSize: 8,
+      }}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
       search={
         <div className="qx-search-wrap">
@@ -288,7 +295,7 @@ export default function V2exPanel() {
       actions={actions}
     >
       <div className={`qx-content-split${detailTopic ? " has-detail" : ""}`}>
-        <div className="qx-content-list qx-plugin-list">
+        <div ref={listRef} className="qx-content-list qx-plugin-list" role="listbox" aria-label="V2EX topics">
           <div className="qx-section-header">
             <span style={{ flex: 1 }}>{query.trim() ? "Search Results" : mode === "hot" ? "Hot Topics" : "Latest Topics"}</span>
             <span>{loading ? "..." : topics.length}</span>
@@ -296,7 +303,7 @@ export default function V2exPanel() {
           {topics.map((topic, index) => (
             <button
               key={topic.id}
-              className={`qx-list-row v2ex-topic-row${index === selectedIndex ? " is-active" : ""}`}
+              {...getItemProps(index, { className: "v2ex-topic-row" })}
               onClick={() => openTopicAtIndex(index)}
               type="button"
             >

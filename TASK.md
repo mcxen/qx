@@ -1,5 +1,21 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — 统一列表选中浅色背景 + 键盘滚动追随
+
+**状态**：已实现。
+
+### 内容
+
+- `useQxListSelection` / `getQxListItemProps`：`qx-list-row` + `is-active` + `data-qx-list-index`，`scrollIntoView({ block: "nearest" })`。
+- 按键仍归 `QxShell.navigation`；绘制与滚动不再由各模块手写。
+- 已接入：Clipboard、Launcher ResultsList、RSS feeds/articles、V2EX、QxAI 会话列表、Documents 文件列表。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [ ] 手动：各模块 ↑↓ 浅色选中 + 越界自动滚入视口。
+
+
 ## Bugfix — outside click 自动隐藏被聚焦重试复活
 
 **状态**：已实现，等待运行态复核。

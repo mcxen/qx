@@ -5,6 +5,7 @@ import QxShell, { type BottomIslandContent, type QxShellAction } from "../../com
 import { useStore, type ClipboardEntry } from "../../store";
 import { useEscBack } from "../../hooks/useEscBack";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
+import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useT } from "../../i18n";
 import { getQxShortcutPreset, isEditableTarget } from "../../utils/keyboard";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
@@ -583,6 +584,12 @@ export default function DevTxtTool() {
     0,
     filtered.findIndex((f) => f.name === selectedName),
   );
+  const filesListRef = useRef<HTMLDivElement>(null);
+  const { getItemProps } = useQxListSelection({
+    listRef: filesListRef,
+    index: selectedIndex,
+    listSignature: filtered.map((f) => f.name).join("\0"),
+  });
   const active = files.find((f) => f.name === selectedName) ?? null;
   const listFocused = focusRegion === "docs-files" || focusRegion === "docs-actions";
 
@@ -1274,7 +1281,10 @@ export default function DevTxtTool() {
     >
       <div className="qx-content-split qx-docs-split" onFocusCapture={onFocusCapture}>
         <div
+          ref={filesListRef}
           className="qx-plugin-list qx-docs-file-list"
+          role="listbox"
+          aria-label={t("docs.files", "Files")}
           data-qx-region="docs-files"
           data-qx-region-label={t("docs.files", "Files")}
           data-qx-region-initial="true"
@@ -1285,8 +1295,7 @@ export default function DevTxtTool() {
             <span style={{ flex: 1 }}>{t("docs.files", "Files")}</span>
             <span>{loadingList ? "…" : filtered.length}</span>
           </div>
-          {filtered.map((file) => {
-            const activeRow = file.name === selectedName;
+          {filtered.map((file, fileIndex) => {
             const renaming = renamingName === file.name;
             const oversized = file.size > MAX_FILE_BYTES;
             const saveBar = saveBars[file.name];
@@ -1294,9 +1303,9 @@ export default function DevTxtTool() {
               <button
                 key={file.name}
                 type="button"
-                className={`qx-list-row qx-docs-file-row${activeRow ? " is-active" : ""}${
-                  saveBar ? " is-saving" : ""
-                }`}
+                {...getItemProps(fileIndex, {
+                  className: `qx-docs-file-row${saveBar ? " is-saving" : ""}`,
+                })}
                 onClick={() => selectFile(file.name)}
                 onDoubleClick={() => !oversized && startRename(file)}
                 onFocus={() => setFocusRegion("docs-files")}

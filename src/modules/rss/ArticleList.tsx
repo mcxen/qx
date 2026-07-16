@@ -5,6 +5,7 @@ import QxShell, { type BottomIslandContent, type QxShellAction } from "../../com
 import { useRssStore, type RssArticle } from "./store";
 import { classifyArticleTime, formatDate, sanitizeHtml } from "./article-utils";
 import { useEscBack } from "../../hooks/useEscBack";
+import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { shouldIgnoreBareShortcut } from "../../utils/keyboard";
 import { useSettingsStore } from "../settings/store";
 import ImageLightbox from "./ImageLightbox";
@@ -99,6 +100,7 @@ export default function ArticleList() {
   const shellRef = useRef<HTMLDivElement>(null);
   const splitRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const rss = useSettingsStore((s) => s.settings.rss);
   const { bottom_island_mode, image_display_mode, image_fixed_width, article_font_size, article_font_family } = rss;
 
@@ -242,6 +244,12 @@ export default function ArticleList() {
     setSelectedIndex(0);
   }, [articles.length, setSelectedIndex]);
 
+  const { getItemProps } = useQxListSelection({
+    listRef,
+    index: selectedIndex,
+    listSignature: articles.map((a) => a.id).join("\0"),
+  });
+
   const filterChips: { key: typeof filter; label: string }[] = [
     { key: "all", label: "All" },
     { key: "unread", label: "Unread" },
@@ -362,21 +370,9 @@ export default function ArticleList() {
     const region = e.target instanceof Element
       ? e.target.closest<HTMLElement>("[data-qx-region]")?.dataset.qxRegion
       : undefined;
+    // ↑↓ / Page: QxShell.navigation (regionId rss-list) + useQxListSelection.
+    // j/k remain article-reader shortcuts (next/prev while reading).
     switch (e.key) {
-      case "ArrowDown":
-        // Only let the shell scroll when focus is in the article body.
-        // Side action panel (after ArrowLeft) must still move the article list.
-        if (region === "rss-reader") return;
-        e.preventDefault();
-        setSelectedIndex(articles.length > 0 ? Math.min(selectedIndex + 1, articles.length - 1) : 0);
-        focusRegion("rss-list");
-        break;
-      case "ArrowUp":
-        if (region === "rss-reader") return;
-        e.preventDefault();
-        setSelectedIndex(Math.max(selectedIndex - 1, 0));
-        focusRegion("rss-list");
-        break;
       case "j":
         if (ignoreBare || e.metaKey || e.ctrlKey) return;
         e.preventDefault();
@@ -511,6 +507,23 @@ export default function ArticleList() {
       className={`qx-content-shell qx-rss-shell${isReading ? " is-reading" : ""}`}
       style={shellStyle}
       onKeyDown={onKeyDown}
+      navigation={{
+        index: selectedIndex,
+        count: articles.length,
+        regionId: "rss-list",
+        onChange: (index) => {
+          setSelectedIndex(index);
+          focusRegion("rss-list");
+        },
+        onOpen: () => {
+          const a = articles[selectedIndex];
+          if (a) void openArticleAtTop(a.id, true);
+        },
+        onClose: () => {
+          if (currentArticle) goBack();
+        },
+        pageSize: 8,
+      }}
       escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
       search={
         <div className="qx-search-wrap">
@@ -581,7 +594,10 @@ export default function ArticleList() {
         className={`qx-content-split qx-rss-article-split${currentArticle ? " has-detail" : ""}`}
       >
         <div
+          ref={listRef}
           className="qx-content-list qx-plugin-list"
+          role="listbox"
+          aria-label="Article list"
           data-qx-region="rss-list"
           data-qx-region-label="Article list"
           data-qx-region-initial={isReading ? undefined : "true"}
@@ -601,15 +617,16 @@ export default function ArticleList() {
               </div>
               {section.items.map((a) => {
                 const idx = flatIndex(a);
-                const active = idx === selectedIndex;
                 return (
                   <button
                     key={a.id}
+                    {...getItemProps(idx, {
+                      className: `tall${a.is_read ? " is-read" : " is-unread"}`,
+                    })}
                     onClick={() => {
                       setSelectedIndex(idx);
                       void openArticleAtTop(a.id);
                     }}
-                    className={`qx-list-row tall${active ? " is-active" : ""}${a.is_read ? " is-read" : " is-unread"}`}
                     type="button"
                   >
                     <span className={`qx-rss-dot${a.is_read ? " is-read" : ""}`} />
