@@ -107,7 +107,9 @@ pub fn list_windows(query: DesktopWindowQuery) -> Result<Vec<DesktopWindow>, Str
             continue;
         }
         let Ok(width) = window.width() else { continue };
-        let Ok(height) = window.height() else { continue };
+        let Ok(height) = window.height() else {
+            continue;
+        };
         if width < 2 || height < 2 {
             continue;
         }
@@ -120,7 +122,10 @@ pub fn list_windows(query: DesktopWindowQuery) -> Result<Vec<DesktopWindow>, Str
         let title_l = title.to_ascii_lowercase();
         let app_l = app_name.to_ascii_lowercase();
 
-        if exclude.iter().any(|needle| app_l.contains(needle) || title_l.contains(needle)) {
+        if exclude
+            .iter()
+            .any(|needle| app_l.contains(needle) || title_l.contains(needle))
+        {
             continue;
         }
 
@@ -141,7 +146,8 @@ pub fn list_windows(query: DesktopWindowQuery) -> Result<Vec<DesktopWindow>, Str
             }
             // Prefer windows that report the same monitor when available.
             if let Some(window_monitor) = monitor_id {
-                if window_monitor != expected_id && intersect_w * intersect_h < (mon_w * mon_h) / 4 {
+                if window_monitor != expected_id && intersect_w * intersect_h < (mon_w * mon_h) / 4
+                {
                     // Keep large intersections even if monitor id mapping is noisy.
                 }
             }
@@ -218,7 +224,9 @@ pub fn list_windows_for_capture(
 
 /// Public IPC: list desktop windows for any feature.
 #[command]
-pub fn desktop_windows_list(query: Option<DesktopWindowQuery>) -> Result<Vec<DesktopWindow>, String> {
+pub fn desktop_windows_list(
+    query: Option<DesktopWindowQuery>,
+) -> Result<Vec<DesktopWindow>, String> {
     list_windows(query.unwrap_or_default())
 }
 

@@ -140,7 +140,10 @@ fn validate_cli_program_name(program: &str) -> Result<(), String> {
     }
     // Block shell metacharacters for bare names; absolute paths are fine.
     if !program.contains('/') && !program.contains('\\') {
-        if program.chars().any(|c| "|&;<>$`(){}[]!*?\n\r\t".contains(c)) {
+        if program
+            .chars()
+            .any(|c| "|&;<>$`(){}[]!*?\n\r\t".contains(c))
+        {
             return Err("cli program name contains unsafe characters".to_string());
         }
     }

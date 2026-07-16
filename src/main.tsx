@@ -6,8 +6,10 @@ import RecordingControlWindow from "./modules/screencap/RecordingControlWindow";
 import RegionPickerWindow from "./modules/screencap/RegionPickerWindow";
 import IslandFloatApp from "./island/float/IslandFloatApp";
 import { ThemeProvider } from "./ThemeProvider";
+import { installOverlayScrollbars } from "./utils/overlayScrollbar";
 
 installGlobalQxLogging();
+installOverlayScrollbars();
 
 const params = new URLSearchParams(window.location.search);
 const surface = params.get("surface") ?? params.get("view");

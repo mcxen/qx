@@ -101,9 +101,9 @@ where
     .map_err(|error| RuntimeError(format!("schedule UI work: {error}")))?;
     match rx.recv_timeout(timeout) {
         Ok(value) => Ok(value),
-        Err(RecvTimeoutError::Timeout) => Err(RuntimeError(format!(
-            "UI work timed out after {timeout:?}"
-        ))),
+        Err(RecvTimeoutError::Timeout) => {
+            Err(RuntimeError(format!("UI work timed out after {timeout:?}")))
+        }
         Err(RecvTimeoutError::Disconnected) => {
             Err(RuntimeError("UI work channel disconnected".into()))
         }

@@ -188,7 +188,9 @@ pub(super) fn restore_surface(app: &AppHandle, suppress_ms: u64) -> Result<(), S
             if let Some(controls) = app.get_webview_window(CONTROL_LABEL) {
                 let _ = controls.hide();
             }
-            crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(suppress_ms));
+            crate::floating_panel::suppress_auto_hide(std::time::Duration::from_millis(
+                suppress_ms,
+            ));
             // Already on the main thread — use the direct path to avoid re-entrancy.
             crate::floating_panel::show_and_navigate_now(&app, "screencap");
             Ok(())

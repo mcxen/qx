@@ -382,10 +382,21 @@ body {
   min-height: 0;
 }
 
-/* ====== 自定义滚动条（沉浸式毛玻璃风格） ====== */
+/* ====== 滚动条：平时隐藏，滚动中才显现（线性专业风） ======
+ * JS sets data-qx-scrolling on the active scroll target (see overlayScrollbar.ts).
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+[data-qx-scrolling] {
+  scrollbar-color: var(--qx-scrollbar-thumb) transparent;
+}
+
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -393,13 +404,19 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--qx-scrollbar-thumb);
+  background: transparent;
   border-radius: 999px;
-  border: 2px solid transparent;
+  border: 1px solid transparent;
   background-clip: content-box;
 }
 
-::-webkit-scrollbar-thumb:hover {
+/* 仅正在滚动的容器显示拇指 */
+[data-qx-scrolling]::-webkit-scrollbar-thumb {
+  background: var(--qx-scrollbar-thumb);
+  background-clip: content-box;
+}
+
+[data-qx-scrolling]::-webkit-scrollbar-thumb:hover {
   background: var(--qx-scrollbar-thumb-hover);
   background-clip: content-box;
 }

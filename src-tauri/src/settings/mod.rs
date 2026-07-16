@@ -652,10 +652,7 @@ pub(crate) fn read_settings() -> Settings {
                 serde_json::from_str(&content).unwrap_or(serde_json::Value::Null);
             // Soft-migrate onboarding flag: installs that already showed the launcher
             // before this field existed must not re-open the permission wizard.
-            if let Some(general) = value
-                .get_mut("general")
-                .and_then(|g| g.as_object_mut())
-            {
+            if let Some(general) = value.get_mut("general").and_then(|g| g.as_object_mut()) {
                 if !general.contains_key("has_completed_onboarding") {
                     let shown = general
                         .get("has_shown_launcher")
