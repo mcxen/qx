@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useStore } from "./store";
-import { requestPanelKeyWindow } from "./hooks/usePanelKeyWindow";
+import {
+  cancelPendingPanelKeyWindowRequest,
+  requestPanelKeyWindow,
+} from "./hooks/usePanelKeyWindow";
 import { useT } from "./i18n";
 
 /** Fired when the floating panel is shown / returns to launcher search. */
@@ -43,17 +46,29 @@ export default function SearchBar({
 
   const focusInput = useCallback(() => {
     const el = inputRef.current;
-    if (!el) return;
+    if (!el || !useStore.getState().visible) return;
     // Key window first so typing lands in the webview (macOS NSPanel).
     // requestPanelKeyWindow is debounced — safe to call from multiple paths.
     requestPanelKeyWindow();
     el.focus({ preventScroll: true });
   }, []);
 
+  const cancelFocusRetry = useCallback(() => {
+    if (focusFrameRef.current != null) {
+      window.cancelAnimationFrame(focusFrameRef.current);
+      focusFrameRef.current = null;
+    }
+    if (focusRetryRef.current != null) {
+      window.clearTimeout(focusRetryRef.current);
+      focusRetryRef.current = null;
+    }
+    cancelPendingPanelKeyWindowRequest();
+  }, []);
+
   const focusInputAfterPanelActivation = useCallback(() => {
+    if (!useStore.getState().visible) return;
+    cancelFocusRetry();
     focusInput();
-    if (focusFrameRef.current != null) window.cancelAnimationFrame(focusFrameRef.current);
-    if (focusRetryRef.current != null) window.clearTimeout(focusRetryRef.current);
     focusFrameRef.current = window.requestAnimationFrame(() => {
       focusFrameRef.current = null;
       focusInput();
@@ -67,28 +82,25 @@ export default function SearchBar({
       if (active !== inputRef.current && isEditableTarget(active)) return;
       focusInput();
     }, 120);
-  }, [focusInput]);
+  }, [cancelFocusRetry, focusInput]);
 
-  // Mount (including remount when returning to launcher from another tab).
+  // Mount/remount and re-show via Option+Space share the same visibility path.
   useEffect(() => {
+    if (!visible) {
+      cancelFocusRetry();
+      return;
+    }
     focusInputAfterPanelActivation();
-  }, [focusInputAfterPanelActivation]);
-
-  // Re-show via Option+Space: component stays mounted, so remount effect does not run.
-  useEffect(() => {
-    if (!visible) return;
-    focusInputAfterPanelActivation();
-  }, [visible, focusInputAfterPanelActivation]);
+  }, [cancelFocusRetry, visible, focusInputAfterPanelActivation]);
 
   useEffect(() => {
     const onRequest = () => focusInputAfterPanelActivation();
     window.addEventListener(FOCUS_LAUNCHER_SEARCH_EVENT, onRequest);
     return () => {
       window.removeEventListener(FOCUS_LAUNCHER_SEARCH_EVENT, onRequest);
-      if (focusFrameRef.current != null) window.cancelAnimationFrame(focusFrameRef.current);
-      if (focusRetryRef.current != null) window.clearTimeout(focusRetryRef.current);
+      cancelFocusRetry();
     };
-  }, [focusInputAfterPanelActivation]);
+  }, [cancelFocusRetry, focusInputAfterPanelActivation]);
 
   // Launcher typing owns focus unless the user is editing another field or an
   // interactive overlay is open. This also preserves the first character when

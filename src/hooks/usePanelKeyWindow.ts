@@ -37,6 +37,13 @@ export function requestPanelKeyWindow(): void {
   }, KEY_WINDOW_MIN_INTERVAL_MS - elapsed);
 }
 
+/** Cancel a debounced request when the panel loses focus or is hidden. */
+export function cancelPendingPanelKeyWindowRequest(): void {
+  if (pendingKeyWindowTimer == null) return;
+  clearTimeout(pendingKeyWindowTimer);
+  pendingKeyWindowTimer = null;
+}
+
 /**
  * Hook variant: requests key-window status once when the component mounts.
  * Useful for components that auto-focus a search input on render (Launcher,

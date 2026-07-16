@@ -147,6 +147,10 @@ fn panel_appears_open(win: &WebviewWindow) -> bool {
     PANEL_OPEN.load(Ordering::SeqCst) || win.is_visible().unwrap_or(false)
 }
 
+fn accepts_key_window_request(panel_open: bool, native_visible: bool) -> bool {
+    panel_open && native_visible
+}
+
 #[cfg(target_os = "macos")]
 mod macos {
     use super::previous_foreground_pid;
@@ -640,18 +644,40 @@ pub fn set_active_route(route: String) {
 /// foreground app keeps key-window status.
 #[tauri::command]
 pub fn floating_request_key(app: AppHandle) {
-    #[cfg(target_os = "macos")]
-    macos::make_key_window(&app);
-    #[cfg(not(target_os = "macos"))]
-    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+    // A debounced frontend focus request may arrive just after an outside click
+    // has hidden the panel. Never let `makeKeyAndOrderFront` resurrect a closed
+    // launcher; re-check both our lifecycle flag and native visibility on the
+    // UI thread immediately before touching the window.
+    let app_for_ui = app.clone();
+    let _ = crate::main_thread::run_on_main(&app, move || {
+        let Some(win) = app_for_ui.get_webview_window(MAIN_LABEL) else {
+            return;
+        };
+        if !accepts_key_window_request(
+            PANEL_OPEN.load(Ordering::SeqCst),
+            win.is_visible().unwrap_or(false),
+        ) {
+            return;
+        }
+        #[cfg(target_os = "macos")]
+        macos::make_key_window(&app_for_ui);
+        #[cfg(not(target_os = "macos"))]
         let _ = win.set_focus();
-    }
+    });
 }
 
 #[cfg(test)]
 mod tests {
-    use super::destination_geometry;
+    use super::{accepts_key_window_request, destination_geometry};
     use crate::display::DisplayArea;
+
+    #[test]
+    fn key_window_request_never_resurrects_closed_or_hidden_panel() {
+        assert!(accepts_key_window_request(true, true));
+        assert!(!accepts_key_window_request(false, true));
+        assert!(!accepts_key_window_request(true, false));
+        assert!(!accepts_key_window_request(false, false));
+    }
 
     fn scaled_area(scale_factor: f64, frame_x: i32, frame_width: u32) -> DisplayArea {
         DisplayArea {

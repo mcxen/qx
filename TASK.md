@@ -1,5 +1,13 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Bugfix — outside click 自动隐藏被聚焦重试复活
+
+**状态**：已实现，等待运行态复核。
+
+- Launcher 失焦或隐藏时立即取消搜索框的 rAF、timeout 与 key-window debounce。
+- `floating_request_key` 收口到主线程，并在调用 AppKit 前重新确认面板仍为 open 且 native visible；迟到的 `makeKeyAndOrderFront` 不再复活已隐藏窗口。
+- 搜索框 mount/focus event 只在 store `visible` 为真时申请 key window，保留默认聚焦同时恢复 outside click 自动隐藏。
+
 ## Bugfix — 中文“设置”召回 Qx Settings
 
 **状态**：已实现，等待运行态复核。
