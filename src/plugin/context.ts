@@ -6,6 +6,7 @@ import type {
 } from "./types";
 import { handlePluginRpc } from "./rpcMethods";
 import { DEFAULT_SETTINGS, useSettingsStore } from "../modules/settings/store";
+import { createPluginUiKit, enhancePluginCli } from "./cliWorkbench";
 
 export interface PluginContextHooks {
   onToast: (msg: string) => void;
@@ -53,7 +54,7 @@ export function createPluginContext(
       read: () => rpc("clipboardRead") as Promise<string>,
       write: (text: string) => rpc("clipboardWrite", { text }) as Promise<void>,
     },
-    cli: {
+    cli: enhancePluginCli({
       run: (request) =>
         rpc("cliRun", {
           program: request.program,
@@ -62,9 +63,22 @@ export function createPluginContext(
           env: request.env,
           timeoutMs: request.timeoutMs,
         }) as ReturnType<PluginContext["cli"]["run"]>,
+      bash: (request) => {
+        const body =
+          typeof request === "string"
+            ? { script: request }
+            : {
+                script: request.script,
+                cwd: request.cwd,
+                env: request.env,
+                timeoutMs: request.timeoutMs,
+              };
+        return rpc("cliBash", body) as ReturnType<PluginContext["cli"]["bash"]>;
+      },
       which: (program) =>
         rpc("cliWhich", { program }) as ReturnType<PluginContext["cli"]["which"]>,
-    },
+    }),
+    ui: createPluginUiKit(),
     http: {
       fetch: async (url, options = {}) => {
         const result = (await rpc("httpFetch", { url, options })) as {

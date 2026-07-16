@@ -40,6 +40,7 @@
 |:----:|------|------|
 | **①** | **本文** | 总览、端口、manifest、安装、调试、模式 |
 | ② | [`plugin-cli-protocol.md`](./plugin-cli-protocol.md) | **`context.cli` 完整协议**（argv、超时、安全） |
+| ②b | [`plugin-cli-gui.md`](./plugin-cli-gui.md) | **CLI→GUI**：`cli.json` / `ui.mountWorkbench` 与示例 |
 | ③ | [`plugin-system.md`](./plugin-system.md) | manifest 全字段、context 全表、权限清单 |
 | ④ | [`plugin-marketplace.md`](./plugin-marketplace.md) | 打进 `qx-plugins` 市场、Import/Browse |
 | ⑤ | [`raycast-plugin-conversion.md`](./raycast-plugin-conversion.md) | Raycast 扩展转换（可选） |
@@ -119,7 +120,7 @@ export default {
 
 | 场景 | 端口 | 权限 | 备注 |
 |------|------|------|------|
-| 跑本机工具（brew、release-cli、git） | **`context.cli`** | `cli` | **业务首选**；argv，无 shell |
+| 跑本机工具（brew、release-cli、git） | **`context.cli`** | `cli` | **业务首选**；`run`=argv，`bash`=完整 shell；GUI 下注入 login PATH |
 | 调公司 HTTP API | **`context.http`** | `http` | 跨平台更稳 |
 | 用户配置（路径、token） | **`context.getPreference`** | —（manifest.preferences） | 密钥用 `password` |
 | 跨重启缓存 | **`context.storage.persist`** | — | 落盘 `data/storage.json` |
@@ -145,19 +146,36 @@ context.setTimeout / setInterval / clearTimeout / clearInterval  // 面板销毁
 
 ```ts
 // 权限: "cli"
-await context.cli.which("brew")  // => "/opt/homebrew/bin/brew" | null
+await context.cli.which("brew")  // => "/opt/homebrew/bin/brew" | null（含 login PATH）
 
 await context.cli.run({
   program: "brew",                 // 或绝对路径
   args: ["info", "--json=v2", "--installed"],
   cwd: optional,
-  env: optional,                   // 合并进环境
+  env: optional,                   // 合并进环境；默认已注入增强 PATH
   timeoutMs: 120_000,              // 默认 60s，最大 600s
 })
 // => { status, stdout, stderr, timedOut, program }
+
+// 需要管道 / 通配符 / 完整 shell 时：
+await context.cli.bash("brew list --formula | head -20")
+await context.cli.bash({ script: "make release", cwd: "/path/to/proj" })
+
+// CLI→GUI 助手（宿主注入，throw on failure）
+const data = await context.cli.json({ program: "my-cli", args: ["list", "--json"] })
+const rows = await context.cli.lines({ program: "my-cli", args: ["names"] })
+const jobs = await context.cli.jsonBash("my-cli events --jsonl", { jsonl: true })
+
+// 列表工作台 UI
+context.ui.mountWorkbench(container, {
+  title: "My CLI",
+  items: context.ui.itemsFromJson(data),
+  detailHtml: context.ui.renderJson(data),
+}, { onSelect: (id, item) => { /* … */ } })
 ```
 
-**规则**：永远 `program` + `args[]`，不要把用户输入拼进一条 shell 字符串。
+**规则**：优先 `program` + `args[]`；仅在需要 shell 语法时用 `cli.bash`。不要把不受信用户原文拼进 `script`。  
+**CLI 产品化**：见 [`plugin-cli-gui.md`](./plugin-cli-gui.md) 与示例 `public/plugins/cli-workbench`。
 
 #### HTTP
 
@@ -344,12 +362,25 @@ export default {
 
 ### 6.6 发布进度 Panel 骨架（思路）
 
-1. `render`：工具栏 Refresh / Redeploy + 列表  
-2. `load`：`cli.run({ program, args: ["status", "--json"] })` → `JSON.parse`  
+1. `render`：工具栏 Refresh / Redeploy + 列表（**立即返回**；见下方超时规则）  
+2. `load`：`cli.run({ program, args: ["status", "--json"] })` → `JSON.parse`（在 `render` 里 `void load()`，不要 `await`）  
 3. Redeploy：`confirm` → `cli.run({ args: ["redeploy", "--id", id] })` → 再 Refresh  
 4. 打开流水线：`openUrl(item.url)`  
 
-完整可复制示例见仓库历史版本或市场 `brew` 的 `index.js` 结构（列表状态机 + `context.cli`）。
+完整可复制示例见市场 **`brew`** 的 `index.js`（列表状态机 + `context.cli`）。
+
+#### Panel `render` 超时规则（必读）
+
+宿主对 `panel.render` 有 **renderPanel 超时**（约 15s，仅覆盖首次挂载）。超时会 **拆掉 iframe** 并显示  
+`Plugin <id> render failed: Plugin <id> renderPanel timeout`。
+
+| 正确 | 错误 |
+|------|------|
+| `render` 里画出 loading UI，然后 `void state.reload()` | `await state.reload()` / `await context.cli.run(...)` 再返回 |
+| 慢操作在后台跑，完成后二次 `render` | 等 `brew info` / HTTP 搜图完成才 resolve `render` |
+| `destroy` 里标记 `state.dead`、清 timer，避免卸载后写 DOM | 忽略并发 reload / 面板已关仍 `innerHTML` |
+
+命令 `run()` 可以长时间 `await`（用户命令默认 10s，可 `timeoutMs`；后台 120s）。**只有 panel 的 `render` 必须快返回。**
 
 ---
 
@@ -402,10 +433,14 @@ export default {
 标准 zip；扩展名 `.qx-plugin` 或 `.zip`。内含 `manifest.json` + 入口 `index.js`。
 
 **为什么 GUI 里找不到 brew？**  
-`context.cli` 会查 `/opt/homebrew/bin` 与 `/usr/local/bin`；仍失败则在 preferences 填绝对路径。
+`context.cli` 会合并 **login shell PATH** + Homebrew/系统 bin，子进程默认带该 PATH。  
+仍失败：preferences 填绝对路径，或用 `context.cli.bash`（`bash -lc`）。
 
 **Panel 打开是空白？**  
 检查 `manifest.panel` + `export.panel.render`；看是否 throw；开 Dev Hot Reload 后 Rescan。
+
+**`Plugin … renderPanel timeout`？**  
+`panel.render` 里不要 `await` 慢 CLI/HTTP。先画 loading，再 `void load()`；见 §6.6 超时规则。市场 **brew ≥ 1.0.1** 已按此修复。
 
 **和内置模块的关系？**  
 内置模块走同一注册思路，但源码在主仓；**业务扩展一律外部插件**，不要改主仓塞业务。

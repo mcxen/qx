@@ -1289,6 +1289,12 @@ fn install_plugin_archive(
     let data_stash = stash_plugin_data(plugin_id)?;
 
     let dest = checked_plugin_dir(plugin_id)?;
+    // Preserve enable/disable across package upgrades (default true for first install).
+    let previous_enabled = if dest.exists() {
+        is_plugin_enabled(plugin_id)
+    } else {
+        true
+    };
     if dest.exists() {
         fs::remove_dir_all(&dest).map_err(|e| format!("clear existing: {e}"))?;
     }
@@ -1335,7 +1341,8 @@ fn install_plugin_archive(
     if let Some(path) = cleanup_path {
         let _ = fs::remove_file(path);
     }
-    atomic_write(&checked_plugin_enabled_path(plugin_id)?, b"true")
+    let enabled_flag: &[u8] = if previous_enabled { b"true" } else { b"false" };
+    atomic_write(&checked_plugin_enabled_path(plugin_id)?, enabled_flag)
         .map_err(|e| format!("write enabled flag: {e}"))?;
 
     Ok(InstalledPlugin {
@@ -1344,7 +1351,7 @@ fn install_plugin_archive(
         version: manifest.version.clone(),
         description: manifest.description.clone(),
         path: dest.to_string_lossy().to_string(),
-        enabled: true,
+        enabled: previous_enabled,
         permissions: manifest.permissions.clone(),
         author: manifest.author.clone(),
         manifest: Some(manifest),

@@ -188,6 +188,27 @@ export default function AppearanceSettings({
             ]}
           />
         </Row>
+        <Row
+          title={t("appearance.launcherDensity", "Launcher Results")}
+          description={t(
+            "appearance.launcherDensity.desc",
+            "Comfortable uses two-line Spotlight-style rows; Compact is denser and single-line.",
+          )}
+        >
+          <SegmentedControl
+            value={a.launcher_result_density === "compact" ? "compact" : "comfortable"}
+            onChange={(v) =>
+              patch("appearance", {
+                ...a,
+                launcher_result_density: v === "compact" ? "compact" : "comfortable",
+              })
+            }
+            options={[
+              { value: "comfortable", label: t("appearance.launcherDensity.comfortable", "Comfortable") },
+              { value: "compact", label: t("appearance.launcherDensity.compact", "Compact") },
+            ]}
+          />
+        </Row>
       </SettingsCard>
 
       <SettingsCard

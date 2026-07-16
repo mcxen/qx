@@ -16,6 +16,7 @@ import { useT } from "./i18n";
 import { homeIslandDataBus, useResolvedHomeIsland } from "./home-island";
 import { islandHost, useHomeIslandContribution, QxIslandSurface } from "./island";
 import { mapBottomIslandContent } from "./island/compat/mapBottomIslandContent";
+import { usePluginRegistry } from "./plugin/registry";
 
 interface LauncherProps {
   results: AppEntry[];
@@ -67,20 +68,27 @@ export default function Launcher({
     shouldRefreshWhenIdle: false,
   });
 
+  const plugins = usePluginRegistry((state) => state.plugins);
   const quickEntries: QuickEntry[] = useMemo(() => {
-    return toLauncherQuickEntries(settings.quick_entries, (target) => {
-      if (target === "file-search") {
-        setScope("files");
-        searchScopeRef.current = "files";
-        setQuery("");
-        useStore.getState().setSelectedIndex(0);
-        onScopeChange();
-        window.requestAnimationFrame(requestLauncherSearchFocus);
-        return;
-      }
-      onNavigate(target);
-    }, t);
-  }, [settings.quick_entries, onNavigate, onScopeChange, searchScopeRef, setQuery, t]);
+    return toLauncherQuickEntries(
+      settings.quick_entries,
+      (target) => {
+        if (target === "file-search") {
+          setScope("files");
+          searchScopeRef.current = "files";
+          setQuery("");
+          useStore.getState().setSelectedIndex(0);
+          onScopeChange();
+          window.requestAnimationFrame(requestLauncherSearchFocus);
+          return;
+        }
+        // plugin:<id> opens the plugin panel tab (same as launcher openItem).
+        onNavigate(target);
+      },
+      t,
+      plugins,
+    );
+  }, [settings.quick_entries, plugins, onNavigate, onScopeChange, searchScopeRef, setQuery, t]);
 
   const isSearchActivity = (isSearching || isSearchSettling) && !!query.trim();
   const idleHome = !isSearchActivity && results.length === 0 && loadingPhase !== "loading-apps";

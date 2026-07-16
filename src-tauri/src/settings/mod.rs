@@ -69,6 +69,9 @@ pub struct AppearanceSettings {
     pub border_radius: u32,
     #[serde(default = "default_font_size")]
     pub font_size: u32,
+    /// `comfortable` (two-line rows) or `compact` (dense single-line).
+    #[serde(default = "default_launcher_result_density")]
+    pub launcher_result_density: String,
     #[serde(default = "default_home_island_mode")]
     pub home_island_mode: String,
     /// Multi-select home island modes (rotate when length > 1). Empty → use `home_island_mode`.
@@ -119,6 +122,10 @@ fn default_font_size() -> u32 {
     14
 }
 
+fn default_launcher_result_density() -> String {
+    "comfortable".to_string()
+}
+
 fn default_home_island_mode() -> String {
     "system".to_string()
 }
@@ -140,6 +147,7 @@ impl Default for AppearanceSettings {
             window_height: default_window_height(),
             border_radius: default_border_radius(),
             font_size: default_font_size(),
+            launcher_result_density: default_launcher_result_density(),
             home_island_mode: default_home_island_mode(),
             home_island_modes: vec![default_home_island_mode()],
             home_island_rotate_secs: default_home_island_rotate_secs(),
@@ -526,6 +534,15 @@ pub struct SearchMetadataEntry {
     pub aliases: Vec<String>,
     #[serde(default)]
     pub tags: Vec<String>,
+    /// Spotlight-style pin: float app to the top of the empty launcher.
+    #[serde(default)]
+    pub pinned: bool,
+    /// Lower values rank first among pinned apps.
+    #[serde(default)]
+    pub pin_order: u64,
+    /// Omit from empty home Suggestions; still searchable so the user can unhide.
+    #[serde(default)]
+    pub hidden: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -1,0 +1,45 @@
+{
+  "id": "cli-workbench",
+  "name": "CLI Workbench",
+  "version": "0.1.0",
+  "description": "Reference plugin: turn CLI JSON / lines into a list+detail GUI using context.cli helpers and context.ui.",
+  "author": "Qx",
+  "icon": "icon.txt",
+  "platforms": ["macos", "windows", "linux"],
+  "keywords": ["cli", "json", "workbench", "demo", "shell"],
+  "permissions": ["cli", "notifications", "clipboard"],
+  "min_app_version": "0.5.26",
+  "preferences": [
+    {
+      "id": "customProgram",
+      "label": "Custom program",
+      "type": "string",
+      "default": "uname",
+      "description": "Bare name or absolute path for the Custom tab."
+    },
+    {
+      "id": "customArgs",
+      "label": "Custom args (space-separated)",
+      "type": "string",
+      "default": "-a",
+      "description": "Arguments passed to custom program when not using JSON mode."
+    }
+  ],
+  "commands": [
+    {
+      "name": "open-workbench",
+      "title": "CLI Workbench",
+      "description": "Open the CLI→GUI demo panel",
+      "mode": "view"
+    },
+    {
+      "name": "demo-json-toast",
+      "title": "Demo: CLI JSON toast",
+      "description": "Run a sample bash script that prints JSON and toast the count"
+    }
+  ],
+  "panel": {
+    "title": "CLI Workbench",
+    "keywords": ["cli", "json", "workbench"]
+  }
+}

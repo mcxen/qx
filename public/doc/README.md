@@ -9,6 +9,7 @@
 |------|------|
 | **[plugin-development-guide.md](./plugin-development-guide.md)** | **作者手册总入口**：端口抽象、manifest、Import zip、调试、模式 |
 | [plugin-cli-protocol.md](./plugin-cli-protocol.md) | `context.cli` 完整协议 |
+| [plugin-cli-gui.md](./plugin-cli-gui.md) | CLI→GUI 抽象、`cli.json` / `ui` workbench、示例 |
 | [plugin-system.md](./plugin-system.md) | 系统方案 + API/权限全表 + hello-world |
 | [plugin-marketplace.md](./plugin-marketplace.md) | 市场打包、Browse、本地 Import |
 | [raycast-plugin-conversion.md](./raycast-plugin-conversion.md) | Raycast → Qx 转换 |

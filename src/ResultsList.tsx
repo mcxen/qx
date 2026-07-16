@@ -18,7 +18,7 @@ import {
   Presentation,
   SquareTerminal,
 } from "lucide-react";
-import { LoadingLabel, Skeleton } from "./components/ui";
+import { LoadingLabel, Skeleton, Kbd } from "./components/ui";
 import AppResultContextMenu from "./launcher/AppResultContextMenu";
 import { useDisplayName } from "./search/appDisplay";
 import { useT } from "./i18n";
@@ -29,6 +29,14 @@ import {
   pluginIdFromAppPath,
 } from "./plugin/backgroundActivity";
 import { isBetaModule } from "./modules/catalog";
+import { useSettingsStore } from "./modules/settings/store";
+import {
+  isEntryHidden,
+  isEntryPinned,
+  metadataKeyForEntry,
+} from "./search/searchMetadata";
+import { formatQxShortcut } from "./utils/keyboard";
+import { EyeOff, Pin } from "lucide-react";
 
 const FILE_ICON_BY_EXTENSION: Record<string, string> = {
   pdf: "file-pdf",
@@ -251,6 +259,17 @@ function AppIcon({ item, label }: { item: AppEntry; label: string }) {
   );
 }
 
+function resultSubtitle(item: AppEntry): string {
+  if (item.subtitle) return item.subtitle;
+  return item.path
+    .replace("/Applications/", "")
+    .replace("/System/Applications/", "System/")
+    .replace(/^__qx:launch:.+$/, "Module")
+    .replace(/^__qx:cmd:.+$/, "Command")
+    .replace(/^__qx:rss:.+$/, "RSS")
+    .replace(/^__qx:/, "");
+}
+
 const ResultItem = memo(function ResultItem({
   item,
   index,
@@ -263,18 +282,44 @@ const ResultItem = memo(function ResultItem({
   onHoverSelect: (index: number) => void;
 }) {
   const selected = useStore((state) => state.selectedIndex === index);
+  const settings = useSettingsStore((state) => state.settings);
+  const metadataKey = metadataKeyForEntry(item);
+  const pinned = isEntryPinned(settings, metadataKey);
+  const hidden = isEntryHidden(settings, metadataKey);
+  const shortcutKey = metadataKey ? settings.app_shortcuts[metadataKey]?.key : undefined;
+  const shortcutLabel = shortcutKey && settings.app_shortcuts[metadataKey!]?.enabled !== false
+    ? formatQxShortcut(shortcutKey)
+    : undefined;
   const backgroundPluginId = pluginIdFromAppPath(item.path);
   const backgroundCommandName = commandNameFromAppPath(item.path);
+  const subtitle = resultSubtitle(item);
+  const density = settings.appearance.launcher_result_density === "compact" ? "compact" : "comfortable";
 
   return (
     <div
       onMouseEnter={() => onHoverSelect(index)}
-      className={`qx-list-row${selected ? " is-active" : ""}`}
+      className={`qx-list-row qx-launcher-row density-${density}${selected ? " is-active" : ""}${pinned ? " is-pinned" : ""}${hidden ? " is-hidden-app" : ""}`}
     >
       <AppIcon item={item} label={label} />
       <div className="qx-list-copy">
         <div className="qx-list-title qx-module-title-with-badge" style={{ fontWeight: 500 }}>
           <span>{label}</span>
+          {pinned && (
+            <Pin
+              className="qx-launcher-pin-mark"
+              size={11}
+              strokeWidth={2.4}
+              aria-hidden="true"
+            />
+          )}
+          {hidden && (
+            <EyeOff
+              className="qx-launcher-hidden-mark"
+              size={11}
+              strokeWidth={2.4}
+              aria-hidden="true"
+            />
+          )}
           {isBetaModule(item.moduleId) && <BetaBadge />}
           <PluginBackgroundBadge
             pluginId={backgroundPluginId}
@@ -282,19 +327,19 @@ const ResultItem = memo(function ResultItem({
             compact
           />
         </div>
-        <div className="qx-list-subtitle">
-          {item.subtitle
-            || item.path
-              .replace("/Applications/", "")
-              .replace("/System/Applications/", "System/")
-              .replace(/^__qx:launch:.+$/, "Module")
-              .replace(/^__qx:cmd:.+$/, "Command")
-              .replace(/^__qx:rss:.+$/, "RSS")
-              .replace(/^__qx:/, "")}
-        </div>
+        {density === "comfortable" && (
+          <div className="qx-list-subtitle" title={subtitle}>
+            {subtitle}
+          </div>
+        )}
       </div>
-      <span className="qx-list-time">
-        {sourceLabel(item)}
+      <span className="qx-list-meta">
+        {shortcutLabel && (
+          <span className="qx-launcher-shortcut-kbd">
+            <Kbd>{shortcutLabel}</Kbd>
+          </span>
+        )}
+        <span className="qx-list-time">{sourceLabel(item)}</span>
       </span>
     </div>
   );
@@ -388,7 +433,7 @@ export default function ResultsList({
 
   return (
     <div
-      className="qx-plugin-list"
+      className="qx-plugin-list qx-launcher-results"
       style={{ flex: 1, borderRight: "none" }}
       onMouseMove={handlePointerMove}
     >

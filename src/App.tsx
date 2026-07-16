@@ -25,9 +25,12 @@ import { PluginHost, PluginPanelViewport } from "./plugin/PluginHost";
 import { calculateExpression } from "./search/calculator";
 import {
   itemMatchesSearchMetadata,
+  metadataKeyForEntry,
   metadataMatchesQuery,
   moduleMetadataKey,
+  pinnedPortEntriesFromSettings,
   pluginMetadataKey,
+  prepareHomeAppList,
 } from "./search/searchMetadata";
 import {
   encodeModuleLaunchPath,
@@ -376,8 +379,27 @@ function shouldLoadSlowSearchProviders(query: string, scope: SearchScope): boole
   return shouldSearchFiles || shouldSearchClipboard;
 }
 
+/** Map + merge pinned plugins/modules + home-list prep. Only for empty launcher. */
 function mapAppEntries(apps: AppEntry[]): AppEntry[] {
-  return apps.map((a) => ({ ...a, kind: a.kind ?? ("app" as const) }));
+  const settings = useSettingsStore.getState().settings;
+  const plugins = usePluginRegistry.getState().plugins;
+  const mapped: AppEntry[] = apps.map((a) => ({ ...a, kind: a.kind ?? ("app" as const) }));
+  const pinnedPorts: AppEntry[] = pinnedPortEntriesFromSettings(settings, plugins).map((entry) => ({
+    name: entry.name,
+    display_name: entry.display_name || entry.name,
+    path: entry.path,
+    icon: entry.icon,
+    kind: (entry.kind || "command") as AppEntry["kind"],
+    subtitle: entry.subtitle,
+  }));
+  // Prefer explicit pinned port rows; drop OS-app duplicates by path.
+  const seen = new Set(pinnedPorts.map((entry) => entry.path));
+  for (const entry of mapped) {
+    if (seen.has(entry.path)) continue;
+    seen.add(entry.path);
+    pinnedPorts.push(entry);
+  }
+  return prepareHomeAppList(pinnedPorts, settings, metadataKeyForEntry);
 }
 
 /**
@@ -547,7 +569,11 @@ function App() {
 
   const applyResults = useCallback(
     (entries: AppEntry[]) => {
-      startSearchTransition(() => setResults(entries));
+      // Home list only: merge pinned plugins, hide user-hidden, pin-sort.
+      // Active search keeps backend/relevance order (no pin, no hide filter).
+      const isHomeList = !useStore.getState().query.trim();
+      const next = isHomeList ? mapAppEntries(entries) : entries;
+      startSearchTransition(() => setResults(next));
     },
     [setResults, startSearchTransition],
   );
@@ -1145,44 +1171,79 @@ function App() {
         patchSearchTracks({ clipboard: { status: "running" } }, { phase: "searching", seq });
       }
 
-      const [files, clipboardEntries] = await Promise.all([
+      // Clipboard once; files run multi-pass (0 quick → 1 expand → 2 system) and
+      // each pass merges into the live list so later hits "chase" behind the first paint.
+      const clipboardPromise = shouldSearchClipboard
+        ? abortableInvoke<{ id: string; text: string }[]>("get_clipboard_history", { limit: 80 }, signal)
+            .then((history) => {
+              const lower = trimmed.toLowerCase();
+              return history
+                .filter((item) => item.text.toLowerCase().includes(lower))
+                .slice(0, 8)
+                .map((item) => ({
+                  name: item.text.replace(/\s+/g, " ").trim().slice(0, 80) || "Clipboard Item",
+                  path: `__qx:clipboard:${item.id}`,
+                  icon: "builtin:clipboard",
+                  kind: "clipboard" as const,
+                }));
+            })
+            .catch(() => syntheticEntries.filter((item) => item.path.includes("clipboard")))
+        : Promise.resolve([] as AppEntry[]);
+
+      const mergeFileBatch = (batch: AppEntry[]) => {
+        if (seq !== searchSeqRef.current || signal.aborted || batch.length === 0) return;
+        const current = useStore.getState().results;
+        applyResults(dedupeEntries([...current, ...batch]));
+      };
+
+      // Pass 0: fast first paint (parallel with clipboard).
+      const [filesPass0, clipboardEntries] = await Promise.all([
         shouldSearchFiles
-          ? abortableInvoke<AppEntry[]>("search_files", { query: q }, signal)
-              .catch((error) => isAbortError(error) ? [] as AppEntry[] : [] as AppEntry[])
+          ? abortableInvoke<AppEntry[]>("search_files", { query: q, pass: 0 }, signal)
+              .catch((error) => (isAbortError(error) ? ([] as AppEntry[]) : ([] as AppEntry[])))
           : Promise.resolve([] as AppEntry[]),
-        shouldSearchClipboard
-          ? abortableInvoke<{ id: string; text: string }[]>("get_clipboard_history", { limit: 80 }, signal)
-              .then((history) => {
-                const lower = trimmed.toLowerCase();
-                return history
-                  .filter((item) => item.text.toLowerCase().includes(lower))
-                  .slice(0, 8)
-                  .map((item) => ({
-                    name: item.text.replace(/\s+/g, " ").trim().slice(0, 80) || "Clipboard Item",
-                    path: `__qx:clipboard:${item.id}`,
-                    icon: "builtin:clipboard",
-                    kind: "clipboard" as const,
-                  }));
-              })
-              .catch(() => syntheticEntries.filter((item) => item.path.includes("clipboard")))
-          : Promise.resolve([] as AppEntry[]),
+        clipboardPromise,
       ]);
 
       if (seq !== searchSeqRef.current || signal.aborted) return;
-      // Merge into *current* results so concurrent module-surface enrichment is not wiped.
-      const current = useStore.getState().results;
-      applyResults(dedupeEntries([...current, ...files, ...clipboardEntries]));
-      patchSearchTracks(
-        {
-          files: shouldSearchFiles
-            ? { status: "done", hits: files.length }
-            : { status: "skipped" },
-          clipboard: shouldSearchClipboard
-            ? { status: "done", hits: clipboardEntries.length }
-            : { status: "skipped" },
-        },
-        { phase: "searching", seq },
-      );
+      {
+        const current = useStore.getState().results;
+        applyResults(dedupeEntries([...current, ...filesPass0, ...clipboardEntries]));
+      }
+      if (shouldSearchClipboard) {
+        patchSearchTracks(
+          { clipboard: { status: "done", hits: clipboardEntries.length } },
+          { phase: "searching", seq },
+        );
+      }
+
+      let totalFileHits = filesPass0.length;
+
+      if (shouldSearchFiles) {
+        // Chase passes 1 and 2 in order; each appends without blocking the UI.
+        for (const pass of [1, 2] as const) {
+          if (seq !== searchSeqRef.current || signal.aborted) return;
+          const batch = await abortableInvoke<AppEntry[]>(
+            "search_files",
+            { query: q, pass },
+            signal,
+          ).catch((error) => (isAbortError(error) ? ([] as AppEntry[]) : ([] as AppEntry[])));
+          if (seq !== searchSeqRef.current || signal.aborted) return;
+          mergeFileBatch(batch);
+          totalFileHits += batch.length;
+        }
+        if (seq !== searchSeqRef.current || signal.aborted) return;
+        // Report unique-ish hit count from current list (file kind only).
+        const fileHits = useStore.getState().results.filter(
+          (item) => item.kind === "file" || item.kind === "folder",
+        ).length;
+        patchSearchTracks(
+          { files: { status: "done", hits: fileHits || totalFileHits } },
+          { phase: "searching", seq },
+        );
+      } else {
+        patchSearchTracks({ files: { status: "skipped" } }, { phase: "searching", seq });
+      }
     },
     [applyResults],
   );
@@ -1479,6 +1540,19 @@ function App() {
       searchAbortRef.current?.abort();
     };
   }, [query, doSearch]);
+
+  // Re-apply home list prep when the user pins/unpins/hides (only while query is empty).
+  useEffect(() => {
+    if (query.trim()) return;
+    const { results: rows } = useStore.getState();
+    if (rows.length === 0) return;
+    const ranked = prepareHomeAppList(rows, settings, metadataKeyForEntry);
+    const same = ranked.length === rows.length
+      && ranked.every((entry, index) => entry.path === rows[index]?.path && entry.kind === rows[index]?.kind);
+    if (!same) {
+      startSearchTransition(() => setResults(ranked));
+    }
+  }, [query, settings.search_metadata, setResults, startSearchTransition]);
 
   useEffect(() => {
     const version = `${pluginCommandCount}:${pluginPanelCount}`;

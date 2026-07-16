@@ -213,6 +213,89 @@
   transition: background-color 0.08s ease, color 0.08s ease;
 }
 
+/* Launcher rows: comfortable (two-line) is default; compact is opt-in density. */
+.qx-launcher-results .qx-launcher-row {
+  grid-template-columns: 32px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 10px;
+  border-radius: var(--qx-control-radius);
+}
+
+.qx-launcher-results .qx-launcher-row.density-compact {
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 8px;
+  min-height: 28px;
+  padding: 3px 8px;
+  border-radius: 0;
+}
+
+.qx-launcher-results .qx-launcher-row .qx-list-icon,
+.qx-launcher-results .qx-launcher-row .qx-app-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+.qx-launcher-results .qx-launcher-row.density-compact .qx-list-icon,
+.qx-launcher-results .qx-launcher-row.density-compact .qx-app-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: var(--qx-control-radius);
+}
+
+.qx-launcher-results .qx-launcher-row .qx-list-title {
+  font-size: 13.5px;
+  line-height: 18px;
+}
+
+.qx-launcher-results .qx-launcher-row.density-compact .qx-list-title {
+  font-size: 13px;
+  line-height: 16px;
+}
+
+.qx-launcher-results .qx-launcher-row .qx-list-subtitle {
+  margin-top: 1px;
+  font-size: 11.5px;
+  line-height: 15px;
+}
+
+.qx-launcher-results .qx-list-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: end;
+  min-width: 0;
+}
+
+.qx-launcher-results .qx-launcher-pin-mark,
+.qx-launcher-results .qx-launcher-hidden-mark {
+  flex: 0 0 auto;
+  opacity: 0.85;
+}
+
+.qx-launcher-results .qx-launcher-pin-mark {
+  color: var(--qx-accent, var(--qx-text-secondary));
+}
+
+.qx-launcher-results .qx-launcher-hidden-mark {
+  color: var(--qx-text-tertiary);
+}
+
+.qx-launcher-results .qx-launcher-shortcut-kbd {
+  flex: 0 0 auto;
+  opacity: 0.9;
+}
+
+.qx-launcher-results .qx-launcher-row.is-pinned.is-active .qx-launcher-pin-mark {
+  opacity: 1;
+}
+
+.qx-launcher-results .qx-launcher-row.is-hidden-app .qx-list-title {
+  color: var(--qx-text-secondary);
+}
+
 .qx-list-row:hover {
   background: var(--qx-bg-component-2);
 }

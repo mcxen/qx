@@ -909,6 +909,14 @@ pub async fn search_apps(query: String) -> Result<Vec<AppEntry>, String> {
 }
 
 #[tauri::command]
-pub async fn search_files(query: String) -> Vec<AppEntry> {
-    crate::file_search::search(query, 12).await
+pub async fn search_files(query: String, pass: Option<u32>) -> Vec<AppEntry> {
+    // Progressive passes: 0 quick, 1 expanded, 2+ system/broader.
+    // Frontend merges asynchronously so later hits chase onto the list.
+    let pass = pass.unwrap_or(0);
+    let limit = match pass {
+        0 => 16,
+        1 => 24,
+        _ => 32,
+    };
+    crate::file_search::search(query, limit, pass).await
 }

@@ -46,6 +46,8 @@ export interface GeneralSettings {
   has_completed_onboarding: boolean;
 }
 
+export type LauncherResultDensity = "comfortable" | "compact";
+
 export interface AppearanceSettings {
   theme: string;
   blur_opacity: number;
@@ -53,6 +55,12 @@ export interface AppearanceSettings {
   window_height: number;
   border_radius: number;
   font_size: number;
+  /**
+   * Launcher result row density.
+   * - `comfortable`: Spotlight-style two-line rows (default)
+   * - `compact`: single-line dense rows
+   */
+  launcher_result_density: LauncherResultDensity;
   /** Home island mode id — see `src/home-island` registry (free string for extensibility). */
   home_island_mode: string;
   /** Multi-select set for idle home island rotation (empty → use home_island_mode). */
@@ -142,6 +150,15 @@ export interface WeatherSettings {
 export interface SearchMetadataEntry {
   aliases: string[];
   tags: string[];
+  /** When true, app floats to the top of the empty launcher (Spotlight-style pin). */
+  pinned?: boolean;
+  /** Lower values appear first among pinned apps. */
+  pin_order?: number;
+  /**
+   * When true, app is omitted from the empty home Suggestions list.
+   * Still findable via search so the user can unhide from the context menu.
+   */
+  hidden?: boolean;
 }
 
 export interface QuickEntryConfig {
@@ -267,6 +284,7 @@ export const DEFAULT_SETTINGS: Settings = {
     window_height: 0,
     border_radius: 8,
     font_size: 14,
+    launcher_result_density: "comfortable",
     home_island_mode: "system",
     home_island_modes: ["system"],
     home_island_rotate_secs: 8,
@@ -432,13 +450,29 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     void get().save();
   },
   patchSearchMetadata: (id, value) => {
-    const nextEntry = {
-      aliases: Array.from(new Set(value.aliases.map((item) => item.trim()).filter(Boolean))),
-      tags: Array.from(new Set(value.tags.map((item) => item.trim()).filter(Boolean))),
+    const aliases = Array.from(new Set(value.aliases.map((item) => item.trim()).filter(Boolean)));
+    const tags = Array.from(new Set(value.tags.map((item) => item.trim()).filter(Boolean)));
+    const pinned = Boolean(value.pinned);
+    const hidden = Boolean(value.hidden);
+    const pin_order = pinned
+      ? (typeof value.pin_order === "number" && Number.isFinite(value.pin_order)
+        ? value.pin_order
+        : Date.now())
+      : undefined;
+    const nextEntry: SearchMetadataEntry = {
+      aliases,
+      tags,
+      ...(pinned ? { pinned: true, pin_order } : {}),
+      ...(hidden ? { hidden: true } : {}),
     };
     const current = get().settings.search_metadata;
     const nextMetadata = { ...current };
-    if (nextEntry.aliases.length === 0 && nextEntry.tags.length === 0) {
+    const isEmpty =
+      nextEntry.aliases.length === 0
+      && nextEntry.tags.length === 0
+      && !nextEntry.pinned
+      && !nextEntry.hidden;
+    if (isEmpty) {
       delete nextMetadata[id];
     } else {
       nextMetadata[id] = nextEntry;

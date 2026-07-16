@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Check, Pencil, Plus, RotateCcw, Trash2, X } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { Check, Pencil, Plus, RotateCcw, Star, Trash2, X } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
 import SearchAliasTagEditor from "../components/SearchAliasTagEditor";
 import { Button, Input, Select } from "../components/ui";
 import { useT } from "../i18n";
@@ -12,9 +12,15 @@ import {
   metadataForKey,
   metadataKeyForEntry,
 } from "../search/searchMetadata";
+import { usePluginRegistry } from "../plugin/registry";
 import {
+  buildQuickEntryTargetOptions,
   createQuickEntry,
+  isQuickEntryAlreadyAdded,
   localizeQuickEntry,
+  parsePluginQuickEntryTarget,
+  pluginQuickEntryTarget,
+  quickEntryFromAppEntry,
   QUICK_ENTRY_TARGETS,
   sanitizeQuickEntries,
 } from "./quickEntries";
@@ -80,34 +86,94 @@ export default function LauncherContext({
   const t = useT();
   const getDisplayName = useDisplayName();
   const { settings, patch, patchSearchMetadata } = useSettingsStore();
+  const plugins = usePluginRegistry((state) => state.plugins);
   const [editingQuickEntries, setEditingQuickEntries] = useState(false);
   const selectedMetadataKey = metadataKeyForEntry(selectedItem ?? { name: "", path: "", icon: "" });
   const selectedMetadata = metadataForKey(settings, selectedMetadataKey);
   const canEditMetadata = Boolean(selectedItem && selectedMetadataKey);
   const quickEntryDrafts = sanitizeQuickEntries(settings.quick_entries);
+  const targetOptions = useMemo(
+    () => buildQuickEntryTargetOptions(plugins, t),
+    [plugins, t],
+  );
+  const selectOptions = useMemo(() => {
+    const options: { value: string; label: string; disabled?: boolean }[] = [];
+    let lastGroup = "";
+    for (const option of targetOptions) {
+      const group = option.group || "";
+      if (group && group !== lastGroup) {
+        if (options.length > 0) {
+          options.push({ value: `---divider---${group}`, label: group, disabled: true });
+        }
+        lastGroup = group;
+      }
+      const isPlugin = Boolean(parsePluginQuickEntryTarget(option.value));
+      options.push({
+        value: option.value,
+        label: isPlugin ? `🔌 ${option.label}` : option.label,
+      });
+    }
+    // Ensure current draft targets remain selectable even if plugin was disabled mid-edit.
+    for (const entry of quickEntryDrafts) {
+      if (!options.some((option) => option.value === entry.target && !option.disabled)) {
+        options.push({
+          value: entry.target,
+          label: entry.title || entry.target,
+        });
+      }
+    }
+    return options;
+  }, [targetOptions, quickEntryDrafts]);
+
   const patchQuickEntries = (entries: QuickEntryConfig[]) => patch("quick_entries", entries);
   const updateQuickEntry = (id: string, changes: Partial<QuickEntryConfig>) => {
     patchQuickEntries(
       quickEntryDrafts.map((entry) => {
         if (entry.id !== id) return entry;
-        const target = changes.target
-          ? QUICK_ENTRY_TARGETS.find((item) => item.value === changes.target)
-          : null;
+        const nextTarget = changes.target ?? entry.target;
+        const targetMeta = targetOptions.find((item) => item.value === nextTarget);
+        const prevMeta = targetOptions.find((item) => item.value === entry.target);
+        const titleLockedToDefault =
+          !entry.title
+          || entry.title === prevMeta?.label
+          || QUICK_ENTRY_TARGETS.some((item) => item.value === entry.target && item.label === entry.title);
+        const subtitleLockedToDefault =
+          !entry.subtitle
+          || entry.subtitle === prevMeta?.subtitle
+          || QUICK_ENTRY_TARGETS.some((item) => item.value === entry.target && item.subtitle === entry.subtitle);
         return {
           ...entry,
           ...changes,
-          title: changes.target && target && entry.title === QUICK_ENTRY_TARGETS.find((item) => item.value === entry.target)?.label
-            ? target.label
-            : changes.title ?? entry.title,
-          subtitle: changes.target && target && entry.subtitle === QUICK_ENTRY_TARGETS.find((item) => item.value === entry.target)?.subtitle
-            ? target.subtitle
-            : changes.subtitle ?? entry.subtitle,
+          title:
+            changes.target && targetMeta && titleLockedToDefault
+              ? targetMeta.label
+              : changes.title ?? entry.title,
+          subtitle:
+            changes.target && targetMeta && subtitleLockedToDefault
+              ? targetMeta.subtitle
+              : changes.subtitle ?? entry.subtitle,
         };
       }),
     );
   };
   const removeQuickEntry = (id: string) => {
     patchQuickEntries(quickEntryDrafts.filter((entry) => entry.id !== id));
+  };
+
+  const selectedQuickTarget = selectedItem
+    ? quickEntryFromAppEntry(selectedItem, plugins)?.target
+    : null;
+  const canAddSelectedQuick =
+    Boolean(selectedQuickTarget)
+    && !isQuickEntryAlreadyAdded(settings.quick_entries, selectedQuickTarget!);
+
+  const addSelectedAsQuickEntry = () => {
+    if (!selectedItem) return;
+    const entry = quickEntryFromAppEntry(selectedItem, plugins);
+    if (!entry) return;
+    if (isQuickEntryAlreadyAdded(settings.quick_entries, entry.target)) return;
+    patchQuickEntries([...quickEntryDrafts, entry]);
+    setEditingQuickEntries(true);
   };
 
   return (
@@ -145,10 +211,7 @@ export default function LauncherContext({
                   />
                   <Select
                     value={entry.target}
-                    options={QUICK_ENTRY_TARGETS.map((target) => ({
-                      value: target.value,
-                      label: t(target.titleKey, target.label),
-                    }))}
+                    options={selectOptions}
                     ariaLabel={t("launcher.quickEntryTarget", "Quick entry target")}
                     onChange={(target) => updateQuickEntry(entry.id, { target })}
                   />
@@ -180,7 +243,15 @@ export default function LauncherContext({
                 type="button"
                 size="sm"
                 variant="secondary"
-                onClick={() => patchQuickEntries([...quickEntryDrafts, createQuickEntry()])}
+                onClick={() => {
+                  const firstPlugin = plugins.find(
+                    (plugin) => plugin.enabled && !plugin.id.startsWith("builtin:"),
+                  );
+                  const target = firstPlugin
+                    ? pluginQuickEntryTarget(firstPlugin.id)
+                    : QUICK_ENTRY_TARGETS[0].value;
+                  patchQuickEntries([...quickEntryDrafts, createQuickEntry(target, plugins)]);
+                }}
               >
                 <Plus size={14} />
                 {t("launcher.add", "Add")}
@@ -195,10 +266,25 @@ export default function LauncherContext({
                 {t("launcher.reset", "Reset")}
               </Button>
             </div>
+            {plugins.some((plugin) => plugin.enabled && !plugin.id.startsWith("builtin:")) ? (
+              <div className="qx-context-editor-title" style={{ marginTop: 4, opacity: 0.75 }}>
+                {t(
+                  "launcher.quickEntries.pluginsHint",
+                  "Installed plugins appear in the target list — pick one after Import / marketplace install.",
+                )}
+              </div>
+            ) : (
+              <div className="qx-context-editor-title" style={{ marginTop: 4, opacity: 0.75 }}>
+                {t(
+                  "launcher.quickEntries.noPluginsHint",
+                  "Install a plugin under Settings → Extensions to pin it here as a quick app.",
+                )}
+              </div>
+            )}
           </div>
         ) : (
           quickEntries.map((entry) => {
-            const labels = localizeQuickEntry(entry, t);
+            const labels = localizeQuickEntry(entry, t, plugins);
             return (
               <ContextEntry
                 key={entry.id}
@@ -209,6 +295,19 @@ export default function LauncherContext({
               />
             );
           })
+        )}
+        {canAddSelectedQuick && selectedItem && (
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            style={{ marginTop: 8, width: "100%" }}
+            onClick={addSelectedAsQuickEntry}
+          >
+            <Star size={14} />
+            {t("launcher.addSelectedQuickEntry", "Add “{name}” to Quick Entries")
+              .replace("{name}", getDisplayName(selectedItem))}
+          </Button>
         )}
       </ContextSection>
 

@@ -102,12 +102,13 @@ export function PluginPanelViewport() {
 
     const renderTimer = window.setTimeout(() => {
       if (disposed) return;
+      // Must exceed host panel renderPanel budget (15s) + iframe load headroom.
       timeout = window.setTimeout(() => {
         if (!disposed) {
           renderPluginStatus(container, `Plugin ${pluginId} render timed out.`, "danger");
           setRenderState({ kind: "error", detail: "Render timed out" });
         }
-      }, 8500);
+      }, 20_000);
       void Promise.resolve(activePanel.render(container, undefined as never))
         .then(() => {
           if (timeout !== null) window.clearTimeout(timeout);

@@ -8,6 +8,7 @@ import ShortcutRecorder from "../../components/ShortcutRecorder";
 import { useT } from "../../i18n";
 import {
   countEnabledGlobalShortcuts,
+  formatQxShortcut,
   globalShortcutIssue,
 } from "../../utils/keyboard";
 
@@ -21,11 +22,23 @@ const DEFAULT_GLOBAL_KEYS: Record<string, string> = {
   rss: "Alt+R",
 };
 
+function appShortcutLabel(id: string): string {
+  if (id.startsWith("app:")) {
+    const path = id.slice("app:".length);
+    const leaf = path.split(/[\\/]/).pop() || path;
+    return leaf.replace(/\.app$/i, "");
+  }
+  return id;
+}
+
 export default function ShortcutSettings() {
   const t = useT();
-  const { settings, patchShortcut } = useSettingsStore();
+  const { settings, patchShortcut, patchAppShortcut } = useSettingsStore();
   const shortcuts = settings.shortcuts;
   const counts = countEnabledGlobalShortcuts(shortcuts, settings.app_shortcuts);
+  const appShortcutEntries = Object.entries(settings.app_shortcuts)
+    .filter(([, binding]) => Boolean(binding?.key?.trim()))
+    .sort(([a], [b]) => appShortcutLabel(a).localeCompare(appShortcutLabel(b)));
 
   return (
     <div className="qx-settings-page">
@@ -136,6 +149,88 @@ export default function ShortcutSettings() {
           })}
         </div>
       ))}
+
+      <div style={{ marginBottom: 16 }}>
+        <div
+          style={{
+            fontSize: 11,
+            fontWeight: 600,
+            letterSpacing: "0.06em",
+            color: "var(--color-text-tertiary)",
+            textTransform: "uppercase",
+            padding: "8px 0 4px",
+          }}
+        >
+          {t("shortcuts.group.apps", "Applications")}
+        </div>
+        {appShortcutEntries.length === 0 ? (
+          <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.45, padding: "4px 0 8px" }}>
+            {t(
+              "shortcuts.apps.empty",
+              "Right-click an app in the launcher and choose Record shortcut to launch it from anywhere.",
+            )}
+          </div>
+        ) : (
+          appShortcutEntries.map(([id, binding]) => {
+            const issueCode = globalShortcutIssue(binding, counts);
+            const issue = issueCode
+              ? t(
+                `shortcuts.issue.${issueCode}`,
+                issueCode === "reserved"
+                  ? "Reserved by the operating system (for example Cmd/Ctrl+Space)."
+                  : issueCode === "invalid"
+                    ? "Invalid shortcut."
+                    : "This shortcut is already used by another global action.",
+              )
+              : null;
+            return (
+              <div key={id} className="qx-settings-row">
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: "var(--color-text-primary)" }}>
+                    {appShortcutLabel(id)}
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--color-text-tertiary)", marginTop: 2 }}>
+                    {t("shortcuts.desc.app", "Global shortcut to launch this application.")}
+                    {binding.key ? ` · ${formatQxShortcut(binding.key)}` : ""}
+                  </div>
+                  {issue && (
+                    <div style={{ fontSize: 11, color: "var(--qx-danger)", marginTop: 2 }}>
+                      {issue}
+                    </div>
+                  )}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  <button
+                    onClick={() => patchAppShortcut(id, { enabled: !binding.enabled })}
+                    className="qx-command-button"
+                    style={{ height: 26, color: binding.enabled ? "var(--color-text-primary)" : "var(--color-text-tertiary)" }}
+                    title={t("shortcuts.toggleEnabled", "Toggle enabled")}
+                  >
+                    {binding.enabled ? t("shortcuts.on", "On") : t("shortcuts.off", "Off")}
+                  </button>
+                  <ShortcutRecorder
+                    initial={binding.key ?? ""}
+                    conflict={Boolean(issue)}
+                    onCommit={(b) =>
+                      patchAppShortcut(id, {
+                        ...b,
+                        enabled: b.key.trim() ? (b.enabled ?? true) : false,
+                      })
+                    }
+                    onCancel={() => {}}
+                  />
+                  <LinkButton
+                    onClick={() => patchAppShortcut(id, { key: "", enabled: false })}
+                    title={t("launcher.removeShortcut", "Remove shortcut")}
+                  >
+                    ×
+                  </LinkButton>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
     </div>
   );
 }

@@ -729,6 +729,7 @@ pub fn run() {
             plugin_api::plugin_ai_stream_chat,
             plugin_api::plugin_ai_run_bash,
             plugin_api::plugin_cli_run,
+            plugin_api::plugin_cli_bash,
             plugin_api::plugin_cli_which,
             plugin_api::plugin_ai_grep_search,
             plugin_api::plugin_ai_memory_list,

@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { LucideIcon } from "lucide-react";
 import {
+  ArrowUpCircle,
   Bot,
   Clipboard,
   CloudSun,
@@ -78,6 +79,7 @@ import type {
   PluginPreference,
 } from "../../../plugin/types";
 import InstalledModuleCard from "./InstalledModuleCard";
+import { isPluginUpdateAvailable } from "./helpers";
 import BetaBadge from "../../../components/BetaBadge";
 import PluginBackgroundBadge from "../../../components/PluginBackgroundBadge";
 import {
@@ -839,11 +841,11 @@ function PluginDetail({
 /* ------------------------------------------------------------------ */
 
 function MarketplaceTab({
-  installedIds,
+  installedVersions,
   onInstallComplete,
 }: {
-  installedIds: Set<string>;
-  onInstallComplete: () => void;
+  installedVersions: Map<string, string>;
+  onInstallComplete: () => void | Promise<void>;
 }) {
   const t = useT();
   const [entries, setEntries] = useState<PluginIndexEntry[]>([]);
@@ -887,7 +889,7 @@ function MarketplaceTab({
     void fetchIndex();
   }, [fetchIndex]);
 
-  const handleInstall = async (entry: PluginIndexEntry) => {
+  const handleInstall = async (entry: PluginIndexEntry, mode: "install" | "upgrade" | "reinstall") => {
     setInstallingId(entry.id);
     setInstallStatus(null);
     try {
@@ -895,10 +897,24 @@ function MarketplaceTab({
         url: entry.download_url,
       });
       await invoke("install_plugin", { path });
-      onInstallComplete();
+      await onInstallComplete();
+      const messageKey =
+        mode === "upgrade"
+          ? "plugins.upgradedNamed"
+          : mode === "reinstall"
+            ? "plugins.reinstalledNamed"
+            : "plugins.installedNamed";
+      const fallback =
+        mode === "upgrade"
+          ? "{name} updated to v{version}."
+          : mode === "reinstall"
+            ? "{name} reinstalled."
+            : "{name} installed.";
       setInstallStatus({
         tone: "success",
-        message: t("plugins.installedNamed", "{name} installed.").replace("{name}", entry.name),
+        message: t(messageKey, fallback)
+          .replace("{name}", entry.name)
+          .replace("{version}", entry.version),
       });
     } catch (err) {
       console.error("Marketplace install failed", err);
@@ -997,7 +1013,9 @@ function MarketplaceTab({
           ) : (
             filteredEntries.map((entry) => {
               const active = entry.id === selectedEntry?.id;
-              const alreadyInstalled = installedIds.has(entry.id);
+              const installedVersion = installedVersions.get(entry.id);
+              const alreadyInstalled = installedVersion != null;
+              const updateAvailable = isPluginUpdateAvailable(installedVersion, entry.version);
               const installing = installingId === entry.id;
 
               return (
@@ -1011,6 +1029,9 @@ function MarketplaceTab({
                     <div className="qx-plugin-list-title">{entry.name}</div>
                     <div className="qx-plugin-list-meta">
                       v{entry.version}
+                      {alreadyInstalled && installedVersion !== entry.version
+                        ? ` · ${t("plugins.marketplace.localVersion", "local v{version}").replace("{version}", installedVersion)}`
+                        : ""}
                       {entry.author ? ` · ${entry.author}` : ""}
                       {entry.size_bytes ? ` · ${formatBytes(entry.size_bytes)}` : ""}
                     </div>
@@ -1018,7 +1039,13 @@ function MarketplaceTab({
                       <div className="qx-plugin-list-desc">{entry.description}</div>
                     )}
                   </div>
-                  {alreadyInstalled && (
+                  {updateAvailable && !installing && (
+                    <ArrowUpCircle
+                      size={14}
+                      aria-label={t("plugins.marketplace.updateAvailable", "Update available")}
+                    />
+                  )}
+                  {alreadyInstalled && !updateAvailable && !installing && (
                     <PackageCheck
                       size={14}
                       aria-label={t("plugins.marketplace.installed", "Installed")}
@@ -1045,30 +1072,83 @@ function MarketplaceTab({
                 <Badge variant="secondary">v{selectedEntry.version}</Badge>
                 {selectedEntry.author && <Badge variant="secondary">{selectedEntry.author}</Badge>}
                 {selectedEntry.size_bytes && <Badge variant="secondary">{formatBytes(selectedEntry.size_bytes)}</Badge>}
+                {isPluginUpdateAvailable(installedVersions.get(selectedEntry.id), selectedEntry.version) && (
+                  <Badge variant="default">
+                    {t("plugins.marketplace.updateAvailable", "Update available")}
+                  </Badge>
+                )}
               </div>
               {selectedEntry.description && (
                 <div className="qx-plugin-description">{selectedEntry.description}</div>
               )}
               <SettingsCard title={t("plugins.marketplace.install", "Install")}>
-                <Button
-                  variant={installedIds.has(selectedEntry.id) ? "outline" : "default"}
-                  size="sm"
-                  disabled={installedIds.has(selectedEntry.id) || installingId === selectedEntry.id}
-                  onClick={() => handleInstall(selectedEntry)}
-                >
-                  {installedIds.has(selectedEntry.id) ? (
-                    <PackageCheck size={13} aria-hidden="true" />
-                  ) : installingId === selectedEntry.id ? (
-                    <Download className="qx-loading-spinner" size={13} aria-hidden="true" />
-                  ) : (
-                    <PackagePlus size={13} aria-hidden="true" />
-                  )}
-                  {installedIds.has(selectedEntry.id)
-                    ? t("plugins.marketplace.installed", "Installed")
-                    : installingId === selectedEntry.id
-                      ? t("plugins.marketplace.installing", "Installing...")
-                      : t("plugins.marketplace.install", "Install")}
-                </Button>
+                {(() => {
+                  const installedVersion = installedVersions.get(selectedEntry.id);
+                  const alreadyInstalled = installedVersion != null;
+                  const updateAvailable = isPluginUpdateAvailable(installedVersion, selectedEntry.version);
+                  const installing = installingId === selectedEntry.id;
+                  const busyLabel = updateAvailable
+                    ? t("plugins.marketplace.updating", "Updating...")
+                    : alreadyInstalled
+                      ? t("plugins.marketplace.reinstalling", "Reinstalling...")
+                      : t("plugins.marketplace.installing", "Installing...");
+                  const actionLabel = updateAvailable
+                    ? t("plugins.marketplace.update", "Update to v{version}").replace(
+                        "{version}",
+                        selectedEntry.version,
+                      )
+                    : alreadyInstalled
+                      ? t("plugins.marketplace.reinstall", "Reinstall")
+                      : t("plugins.marketplace.install", "Install");
+                  const mode: "install" | "upgrade" | "reinstall" = updateAvailable
+                    ? "upgrade"
+                    : alreadyInstalled
+                      ? "reinstall"
+                      : "install";
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {alreadyInstalled && (
+                        <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.4 }}>
+                          {updateAvailable
+                            ? t(
+                                "plugins.marketplace.updateHint",
+                                "Installed v{local} → marketplace v{market}. Preferences and plugin data are kept.",
+                              )
+                                .replace("{local}", installedVersion ?? "")
+                                .replace("{market}", selectedEntry.version)
+                            : t(
+                                "plugins.marketplace.reinstallHint",
+                                "Installed v{version}. Reinstall replaces the package and keeps preferences/data.",
+                              ).replace("{version}", installedVersion ?? selectedEntry.version)}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                        <Button
+                          variant={alreadyInstalled && !updateAvailable ? "outline" : "default"}
+                          size="sm"
+                          disabled={installing}
+                          onClick={() => void handleInstall(selectedEntry, mode)}
+                        >
+                          {installing ? (
+                            <Download className="qx-loading-spinner" size={13} aria-hidden="true" />
+                          ) : updateAvailable ? (
+                            <ArrowUpCircle size={13} aria-hidden="true" />
+                          ) : alreadyInstalled ? (
+                            <RotateCcw size={13} aria-hidden="true" />
+                          ) : (
+                            <PackagePlus size={13} aria-hidden="true" />
+                          )}
+                          {installing ? busyLabel : actionLabel}
+                        </Button>
+                        {alreadyInstalled && !updateAvailable && (
+                          <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+                            {t("plugins.marketplace.installed", "Installed")}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </SettingsCard>
               {selectedEntry.required_permissions && selectedEntry.required_permissions.length > 0 && (
                 <SettingsCard title={t("plugins.marketplace.requiredPerms", "Required permissions")}>
@@ -1266,7 +1346,14 @@ export default function PluginManager() {
       : plugin),
     [builtinModules, plugins],
   );
-  const installedIds = new Set(displayPlugins.map((p) => p.id));
+  const installedVersions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const plugin of displayPlugins) {
+      if (plugin.id.startsWith("builtin:")) continue;
+      map.set(plugin.id, plugin.version || "0.0.0");
+    }
+    return map;
+  }, [displayPlugins]);
   const filteredPlugins = useMemo(() => {
     const q = normalizeSearch(installedQuery);
     return displayPlugins.filter((plugin) => filterInstalledPlugin(plugin, installedFilter) && pluginMatchesQuery(plugin, q, searchMetadata));
@@ -1460,7 +1547,7 @@ export default function PluginManager() {
 
       <TabsContent value="browse" className="qx-marketplace">
         <MarketplaceTab
-          installedIds={installedIds}
+          installedVersions={installedVersions}
           onInstallComplete={handleRefresh}
         />
       </TabsContent>

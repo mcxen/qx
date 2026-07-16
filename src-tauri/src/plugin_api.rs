@@ -90,7 +90,11 @@ fn default_ai_bash_timeout_ms() -> u64 {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin CLI port (argv-style, not gated by AI Agent bash toggle)
+// Plugin CLI port (argv + full bash; not gated by AI Agent bash toggle)
+//
+// GUI-launched apps inherit a thin PATH. Plugins therefore resolve programs
+// against a *user login-shell PATH* plus known brew/system bins, and child
+// processes always receive that enriched PATH unless the plugin overrides it.
 // ---------------------------------------------------------------------------
 
 fn default_cli_timeout_ms() -> u64 {
@@ -130,6 +134,19 @@ pub struct PluginCliWhichRequest {
     pub program: String,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCliBashRequest {
+    /// Full shell script executed with `bash -lc` (login-interactive PATH).
+    pub script: String,
+    #[serde(default)]
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub env: Option<std::collections::HashMap<String, String>>,
+    #[serde(default = "default_cli_timeout_ms")]
+    pub timeout_ms: u64,
+}
+
 fn validate_cli_program_name(program: &str) -> Result<(), String> {
     let program = program.trim();
     if program.is_empty() {
@@ -138,7 +155,7 @@ fn validate_cli_program_name(program: &str) -> Result<(), String> {
     if program.contains('\0') {
         return Err("cli program must not contain NUL".to_string());
     }
-    // Block shell metacharacters for bare names; absolute paths are fine.
+    // Block shell metacharacters for bare names; absolute/relative paths are fine.
     if !program.contains('/') && !program.contains('\\') {
         if program
             .chars()
@@ -150,46 +167,377 @@ fn validate_cli_program_name(program: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn path_sep() -> char {
+    if cfg!(windows) {
+        ';'
+    } else {
+        ':'
+    }
+}
+
+/// Directories that GUI apps almost never inherit but interactive shells do.
+fn known_cli_bin_dirs() -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    #[cfg(target_os = "macos")]
+    {
+        dirs.extend(
+            [
+                "/opt/homebrew/bin",
+                "/opt/homebrew/sbin",
+                "/usr/local/bin",
+                "/usr/local/sbin",
+                "/usr/bin",
+                "/bin",
+                "/usr/sbin",
+                "/sbin",
+            ]
+            .map(PathBuf::from),
+        );
+        if let Ok(home) = std::env::var("HOME") {
+            dirs.push(PathBuf::from(&home).join(".local/bin"));
+            dirs.push(PathBuf::from(&home).join("bin"));
+            // fnm / nvm / cargo common shims
+            dirs.push(PathBuf::from(&home).join(".cargo/bin"));
+            dirs.push(PathBuf::from(&home).join(".fnm"));
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        dirs.extend(
+            [
+                "/usr/local/bin",
+                "/usr/bin",
+                "/bin",
+                "/usr/sbin",
+                "/sbin",
+                "/snap/bin",
+            ]
+            .map(PathBuf::from),
+        );
+        if let Ok(home) = std::env::var("HOME") {
+            dirs.push(PathBuf::from(&home).join(".local/bin"));
+            dirs.push(PathBuf::from(&home).join(".cargo/bin"));
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(pf) = std::env::var("ProgramFiles") {
+            dirs.push(PathBuf::from(&pf).join("Git\\cmd"));
+            dirs.push(PathBuf::from(&pf).join("Git\\bin"));
+            dirs.push(PathBuf::from(&pf).join("Git\\usr\\bin"));
+        }
+        if let Ok(pf86) = std::env::var("ProgramFiles(x86)") {
+            dirs.push(PathBuf::from(&pf86).join("Git\\cmd"));
+            dirs.push(PathBuf::from(&pf86).join("Git\\bin"));
+        }
+        if let Ok(local) = std::env::var("LOCALAPPDATA") {
+            dirs.push(PathBuf::from(&local).join("Programs\\Git\\cmd"));
+            dirs.push(PathBuf::from(&local).join("Microsoft\\WindowsApps"));
+        }
+        if let Ok(user) = std::env::var("USERPROFILE") {
+            dirs.push(PathBuf::from(&user).join("bin"));
+            dirs.push(PathBuf::from(&user).join(".cargo\\bin"));
+            dirs.push(PathBuf::from(&user).join("scoop\\shims"));
+            dirs.push(PathBuf::from(&user).join("AppData\\Roaming\\npm"));
+        }
+        dirs.push(PathBuf::from(r"C:\Windows\System32"));
+        dirs.push(PathBuf::from(r"C:\Windows"));
+    }
+    dirs
+}
+
+/// Read PATH as a login shell would see it (cached). Best-effort; never blocks forever.
+fn login_shell_path() -> Option<String> {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<Option<String>> = OnceLock::new();
+    CACHE
+        .get_or_init(|| {
+            #[cfg(unix)]
+            {
+                // Prefer the user shell for rbenv/nvm/fnm hooks; fall back to bash -lc.
+                let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
+                let mut cmd = std::process::Command::new(&shell);
+                // -l: login (loads profile); -c: run and exit. Avoid -i (prompts / job control).
+                cmd.args(["-lc", "printf %s \"$PATH\""])
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::null())
+                    .stdin(std::process::Stdio::null());
+                let Ok(mut child) = cmd.spawn() else {
+                    return None;
+                };
+                let start = std::time::Instant::now();
+                loop {
+                    match child.try_wait() {
+                        Ok(Some(status)) if status.success() => {
+                            let output = child.wait_with_output().ok()?;
+                            let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                            return (!path.is_empty()).then_some(path);
+                        }
+                        Ok(Some(_)) => return None,
+                        Ok(None) if start.elapsed() > Duration::from_secs(3) => {
+                            let _ = child.kill();
+                            let _ = child.wait();
+                            return None;
+                        }
+                        Ok(None) => std::thread::sleep(Duration::from_millis(20)),
+                        Err(_) => return None,
+                    }
+                }
+            }
+            #[cfg(windows)]
+            {
+                // Machine + User PATH from the registry is closer to an interactive shell
+                // than the truncated GUI process env.
+                let output = std::process::Command::new("powershell")
+                    .args([
+                        "-NoProfile",
+                        "-NonInteractive",
+                        "-Command",
+                        "[Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')",
+                    ])
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::null())
+                    .output()
+                    .ok()?;
+                if !output.status.success() {
+                    return None;
+                }
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                (!path.is_empty()).then_some(path)
+            }
+            #[cfg(not(any(unix, windows)))]
+            {
+                None
+            }
+        })
+        .clone()
+}
+
+/// Enriched PATH for plugin CLI resolution and child processes.
+fn plugin_cli_path_env() -> String {
+    use std::collections::HashSet;
+    let mut seen = HashSet::new();
+    let mut ordered: Vec<String> = Vec::new();
+    let push = |value: &str, ordered: &mut Vec<String>, seen: &mut HashSet<String>| {
+        let trimmed = value.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        if seen.insert(trimmed.to_string()) {
+            ordered.push(trimmed.to_string());
+        }
+    };
+
+    for dir in known_cli_bin_dirs() {
+        push(&dir.to_string_lossy(), &mut ordered, &mut seen);
+    }
+    if let Some(login) = login_shell_path() {
+        for part in login.split(path_sep()) {
+            push(part, &mut ordered, &mut seen);
+        }
+    }
+    if let Ok(process_path) = std::env::var("PATH") {
+        for part in std::env::split_paths(&process_path) {
+            push(&part.to_string_lossy(), &mut ordered, &mut seen);
+        }
+    }
+    ordered.join(&path_sep().to_string())
+}
+
+fn is_executable_file(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        path.metadata()
+            .map(|m| m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(true)
+    }
+    #[cfg(not(unix))]
+    {
+        true
+    }
+}
+
+fn candidate_program_names(program: &str) -> Vec<String> {
+    #[cfg(windows)]
+    {
+        let mut names = vec![program.to_string()];
+        let lower = program.to_ascii_lowercase();
+        if !lower.ends_with(".exe")
+            && !lower.ends_with(".cmd")
+            && !lower.ends_with(".bat")
+            && !lower.ends_with(".com")
+        {
+            names.push(format!("{program}.exe"));
+            names.push(format!("{program}.cmd"));
+            names.push(format!("{program}.bat"));
+        }
+        return names;
+    }
+    #[cfg(not(windows))]
+    {
+        vec![program.to_string()]
+    }
+}
+
 fn resolve_cli_program(program: &str) -> Result<PathBuf, String> {
     validate_cli_program_name(program)?;
     let program = program.trim();
     let candidate = PathBuf::from(program);
     if candidate.is_absolute() || program.contains('/') || program.contains('\\') {
-        if candidate.is_file() {
+        if is_executable_file(&candidate) {
             return Ok(candidate);
+        }
+        // Expand ~ for author convenience.
+        if let Some(rest) = program
+            .strip_prefix("~/")
+            .or_else(|| program.strip_prefix("~\\"))
+        {
+            if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+                let expanded = PathBuf::from(home).join(rest);
+                if is_executable_file(&expanded) {
+                    return Ok(expanded);
+                }
+            }
         }
         return Err(format!("cli program not found: {program}"));
     }
 
-    // Known macOS Homebrew locations first (PATH inside GUI apps is often incomplete).
-    #[cfg(target_os = "macos")]
+    let names = candidate_program_names(program);
+    let path_env = plugin_cli_path_env();
+    for dir in std::env::split_paths(&path_env) {
+        for name in &names {
+            let path = dir.join(name);
+            if is_executable_file(&path) {
+                return Ok(path);
+            }
+        }
+    }
+
+    Err(format!(
+        "cli program not found on PATH: {program} (GUI PATH is thin; host uses login-shell PATH + brew bins)"
+    ))
+}
+
+fn resolve_bash_binary() -> Result<PathBuf, String> {
+    #[cfg(unix)]
     {
-        for prefix in ["/opt/homebrew/bin", "/usr/local/bin"] {
-            let path = PathBuf::from(prefix).join(program);
-            if path.is_file() {
+        for candidate in ["/bin/bash", "/usr/bin/bash", "/opt/homebrew/bin/bash"] {
+            let path = PathBuf::from(candidate);
+            if is_executable_file(&path) {
                 return Ok(path);
             }
         }
+        resolve_cli_program("bash")
     }
-
-    if let Ok(path_var) = std::env::var("PATH") {
-        for dir in std::env::split_paths(&path_var) {
-            let path = dir.join(program);
-            if path.is_file() {
-                return Ok(path);
-            }
-        }
-    }
-
-    // Last resort: common system bins.
-    for prefix in ["/usr/bin", "/bin", "/usr/sbin", "/sbin"] {
-        let path = PathBuf::from(prefix).join(program);
-        if path.is_file() {
+    #[cfg(windows)]
+    {
+        // Git for Windows ships a real bash; prefer that over WSL for speed.
+        if let Ok(path) = resolve_cli_program("bash") {
             return Ok(path);
         }
+        Err(
+            "bash not found — install Git for Windows or add bash to PATH for context.cli.bash"
+                .to_string(),
+        )
     }
+    #[cfg(not(any(unix, windows)))]
+    {
+        Err("bash is not supported on this platform".to_string())
+    }
+}
 
-    Err(format!("cli program not found on PATH: {program}"))
+fn validate_cli_env(env: &std::collections::HashMap<String, String>) -> Result<(), String> {
+    for (key, _) in env {
+        if key.trim().is_empty() || key.contains('\0') {
+            return Err("cli env key is invalid".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn apply_plugin_cli_env(
+    cmd: &mut std::process::Command,
+    extra: &std::collections::HashMap<String, String>,
+) {
+    // Always inject the enriched PATH first so nested tools (git hooks, brew, node)
+    // resolve like a normal terminal — unless the plugin overrides PATH explicitly.
+    if !extra.keys().any(|k| k.eq_ignore_ascii_case("PATH")) {
+        cmd.env("PATH", plugin_cli_path_env());
+    }
+    // Ensure HOME/USERPROFILE exist for tools that expand ~
+    if std::env::var_os("HOME").is_none() {
+        if let Ok(user) = std::env::var("USERPROFILE") {
+            cmd.env("HOME", user);
+        }
+    }
+    for (key, value) in extra {
+        cmd.env(key, value);
+    }
+}
+
+fn run_process_with_timeout(
+    mut cmd: std::process::Command,
+    timeout_ms: u64,
+    program_display: String,
+) -> Result<PluginCliRunResult, String> {
+    use std::io::Read;
+
+    let timeout = Duration::from_millis(timeout_ms);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("spawn {program_display}: {e}"))?;
+    let mut stdout_pipe = child.stdout.take();
+    let mut stderr_pipe = child.stderr.take();
+    let start = std::time::Instant::now();
+
+    let read_pipes = |stdout_pipe: &mut Option<std::process::ChildStdout>,
+                      stderr_pipe: &mut Option<std::process::ChildStderr>|
+     -> (String, String) {
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        if let Some(pipe) = stdout_pipe.as_mut() {
+            let _ = pipe.read_to_end(&mut stdout);
+        }
+        if let Some(pipe) = stderr_pipe.as_mut() {
+            let _ = pipe.read_to_end(&mut stderr);
+        }
+        (
+            String::from_utf8_lossy(&stdout).to_string(),
+            String::from_utf8_lossy(&stderr).to_string(),
+        )
+    };
+
+    loop {
+        if let Some(status) = child.try_wait().map_err(|e| format!("wait cli: {e}"))? {
+            let (stdout, stderr) = read_pipes(&mut stdout_pipe, &mut stderr_pipe);
+            return Ok(PluginCliRunResult {
+                status: status.code(),
+                stdout,
+                stderr,
+                timed_out: false,
+                program: program_display,
+            });
+        }
+
+        if start.elapsed() >= timeout {
+            let _ = child.kill();
+            let _ = child.wait();
+            let (stdout, stderr) = read_pipes(&mut stdout_pipe, &mut stderr_pipe);
+            return Ok(PluginCliRunResult {
+                status: None,
+                stdout,
+                stderr,
+                timed_out: true,
+                program: program_display,
+            });
+        }
+
+        std::thread::sleep(Duration::from_millis(50));
+    }
 }
 
 /// Argv-style process run for plugins (`context.cli.run`).
@@ -207,64 +555,62 @@ pub async fn plugin_cli_run(req: PluginCliRunRequest) -> Result<PluginCliRunResu
         .map(|s| s.to_string());
     let env = req.env.unwrap_or_default();
     let timeout_ms = req.timeout_ms.clamp(1_000, 600_000);
-
-    for (key, _) in &env {
-        if key.trim().is_empty() || key.contains('\0') {
-            return Err("cli env key is invalid".to_string());
-        }
-    }
+    validate_cli_env(&env)?;
 
     tauri::async_runtime::spawn_blocking(move || {
-        let timeout = Duration::from_millis(timeout_ms);
         let mut cmd = std::process::Command::new(&program);
         cmd.args(&args)
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
+            .stderr(std::process::Stdio::piped())
+            .stdin(std::process::Stdio::null());
         if let Some(dir) = cwd.as_deref() {
             cmd.current_dir(dir);
         }
-        for (key, value) in &env {
-            cmd.env(key, value);
-        }
-
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| format!("spawn {}: {e}", program.display()))?;
-        let start = std::time::Instant::now();
-
-        loop {
-            if let Some(status) = child.try_wait().map_err(|e| format!("wait cli: {e}"))? {
-                let output = child
-                    .wait_with_output()
-                    .map_err(|e| format!("read cli output: {e}"))?;
-                return Ok(PluginCliRunResult {
-                    status: status.code(),
-                    stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                    timed_out: false,
-                    program: program_display.clone(),
-                });
-            }
-
-            if start.elapsed() >= timeout {
-                let _ = child.kill();
-                let output = child
-                    .wait_with_output()
-                    .map_err(|e| format!("read killed cli output: {e}"))?;
-                return Ok(PluginCliRunResult {
-                    status: None,
-                    stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                    timed_out: true,
-                    program: program_display.clone(),
-                });
-            }
-
-            std::thread::sleep(Duration::from_millis(50));
-        }
+        apply_plugin_cli_env(&mut cmd, &env);
+        run_process_with_timeout(cmd, timeout_ms, program_display)
     })
     .await
     .map_err(|e| format!("cli task failed: {e}"))?
+}
+
+/// Full bash script for plugins (`context.cli.bash`) — login shell PATH, no AI gate.
+#[tauri::command]
+pub async fn plugin_cli_bash(req: PluginCliBashRequest) -> Result<PluginCliRunResult, String> {
+    let script = req.script;
+    if script.trim().is_empty() {
+        return Err("cli bash script is empty".to_string());
+    }
+    if script.contains('\0') {
+        return Err("cli bash script must not contain NUL".to_string());
+    }
+    let bash = resolve_bash_binary()?;
+    let program_display = format!("{} -lc", bash.display());
+    let cwd = req
+        .cwd
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let env = req.env.unwrap_or_default();
+    let timeout_ms = req.timeout_ms.clamp(1_000, 600_000);
+    validate_cli_env(&env)?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut cmd = std::process::Command::new(&bash);
+        // -l: load profile/PATH like Terminal; -c: run the script string.
+        cmd.arg("-lc")
+            .arg(script)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .stdin(std::process::Stdio::null());
+        if let Some(dir) = cwd.as_deref() {
+            cmd.current_dir(dir);
+        }
+        apply_plugin_cli_env(&mut cmd, &env);
+        run_process_with_timeout(cmd, timeout_ms, program_display)
+    })
+    .await
+    .map_err(|e| format!("cli bash task failed: {e}"))?
 }
 
 /// Resolve a CLI program path without running it.
@@ -604,47 +950,24 @@ pub async fn plugin_ai_run_bash(req: PluginAiBashRequest) -> Result<PluginAiBash
         .to_string();
 
     tauri::async_runtime::spawn_blocking(move || {
-        let timeout = Duration::from_millis(timeout_ms);
-        let mut cmd = std::process::Command::new("/bin/bash");
+        let bash = resolve_bash_binary().unwrap_or_else(|_| PathBuf::from("/bin/bash"));
+        let mut cmd = std::process::Command::new(&bash);
         cmd.arg("-lc")
             .arg(script)
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
+            .stderr(std::process::Stdio::piped())
+            .stdin(std::process::Stdio::null());
         if !cwd.is_empty() {
             cmd.current_dir(cwd);
         }
-
-        let mut child = cmd.spawn().map_err(|e| format!("spawn bash: {e}"))?;
-        let start = std::time::Instant::now();
-
-        loop {
-            if let Some(status) = child.try_wait().map_err(|e| format!("wait bash: {e}"))? {
-                let output = child
-                    .wait_with_output()
-                    .map_err(|e| format!("read bash output: {e}"))?;
-                return Ok(PluginAiBashResult {
-                    status: status.code(),
-                    stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                    timed_out: false,
-                });
-            }
-
-            if start.elapsed() >= timeout {
-                let _ = child.kill();
-                let output = child
-                    .wait_with_output()
-                    .map_err(|e| format!("read killed bash output: {e}"))?;
-                return Ok(PluginAiBashResult {
-                    status: None,
-                    stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                    stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                    timed_out: true,
-                });
-            }
-
-            std::thread::sleep(Duration::from_millis(50));
-        }
+        apply_plugin_cli_env(&mut cmd, &std::collections::HashMap::new());
+        let result = run_process_with_timeout(cmd, timeout_ms, format!("{} -lc", bash.display()))?;
+        Ok(PluginAiBashResult {
+            status: result.status,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            timed_out: result.timed_out,
+        })
     })
     .await
     .map_err(|e| format!("bash task failed: {e}"))?

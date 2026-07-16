@@ -69,6 +69,7 @@ const COMMAND_CAPABILITIES: Record<string, string> = {
   get_screencap_history: "automation",
   macro_list: "automation",
   plugin_cli_run: "cli",
+  plugin_cli_bash: "cli",
   plugin_cli_which: "cli",
 };
 
@@ -83,6 +84,7 @@ const DANGEROUS_INVOKE_COMMANDS = new Set([
   "plugin_file_empty_dir",
   "plugin_file_list",
   "plugin_cli_run",
+  "plugin_cli_bash",
   "plugin_cli_which",
   "qx_system_information_kill_process",
   "qx_permissions_request",
@@ -345,6 +347,25 @@ export const rpcHandlers: Record<string, RpcHandler> = {
       req: {
         program: String(payload.program || ""),
         args: Array.isArray(payload.args) ? payload.args.map(String) : [],
+        cwd: payload.cwd,
+        env: payload.env,
+        timeoutMs: payload.timeoutMs,
+      },
+    });
+  },
+
+  /** Full login-shell bash script — still permission `cli`, not AI Agent gated. */
+  cliBash: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "cli");
+    qxLog("debug", "plugin.rpc.cli", "Plugin CLI bash started", {
+      pluginId: plugin.id,
+      cwd: payload.cwd,
+      timeoutMs: payload.timeoutMs,
+      scriptLength: String(payload.script || "").length,
+    });
+    return invoke("plugin_cli_bash", {
+      req: {
+        script: String(payload.script || ""),
         cwd: payload.cwd,
         env: payload.env,
         timeoutMs: payload.timeoutMs,

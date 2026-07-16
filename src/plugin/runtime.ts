@@ -11,6 +11,7 @@ import {
   type PluginDisplaySettings,
 } from "../modules/settings/store";
 import { createQxLogger, qxLog } from "../lib/logger";
+import { PLUGIN_WORKBENCH_RUNTIME_JS } from "./cliWorkbench";
 
 let requestCounter = 0;
 function nextRequestId(): string {
@@ -109,6 +110,7 @@ export function buildPluginRuntimeHtml(
   const runtime = `
     <style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}</style>
     <script type="module">
+      ${PLUGIN_WORKBENCH_RUNTIME_JS}
       const pluginId = ${JSON.stringify(pluginId)};
       const runtimeId = ${JSON.stringify(runtimeId)};
       const entrySource = ${serializeForInlineScript(entrySource)};
@@ -345,7 +347,7 @@ export function buildPluginRuntimeHtml(
           read: () => rpc('clipboardRead'),
           write: (text) => rpc('clipboardWrite', { text }),
         },
-        cli: {
+        cli: enhancePluginCli({
           run: (request) => rpc('cliRun', {
             program: request.program,
             args: request.args,
@@ -353,8 +355,20 @@ export function buildPluginRuntimeHtml(
             env: request.env,
             timeoutMs: request.timeoutMs,
           }),
+          bash: (request) => {
+            const body = typeof request === 'string'
+              ? { script: request }
+              : {
+                  script: request.script,
+                  cwd: request.cwd,
+                  env: request.env,
+                  timeoutMs: request.timeoutMs,
+                };
+            return rpc('cliBash', body);
+          },
           which: (program) => rpc('cliWhich', { program: String(program || '') }),
-        },
+        }),
+        ui: createPluginUiKit(),
         http: {
           fetch: async (url, options = {}) => createPluginResponse(await rpc('httpFetch', { url, options })),
         },
@@ -800,7 +814,9 @@ export async function loadPlugin(
         registerPluginRuntime(plugin.id, panelRuntimeId, panelIframe);
         panelSessions.set(container, { iframe: panelIframe, runtimeId: panelRuntimeId });
         try {
-          await waitForPluginRuntime(plugin, panelIframe, panelRuntimeId, 2500, false);
+          // Load + first paint only. Plugins must not await long CLI/network in panel.render
+          // (host tears down the iframe on timeout). See plugin-development-guide panel rules.
+          await waitForPluginRuntime(plugin, panelIframe, panelRuntimeId, 5000, false);
           await sendRuntimeRequest(
             plugin,
             panelIframe,
@@ -808,7 +824,7 @@ export async function loadPlugin(
             "qx:renderPanel",
             "qx:renderPanel:response",
             {},
-            5000,
+            15_000,
           );
           runtimeLogger.info("Plugin panel render completed", {
             pluginId: plugin.id,

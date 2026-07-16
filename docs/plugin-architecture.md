@@ -151,7 +151,12 @@ postMessage({ type: "qx:renderPanel" })
     │
     ▼
 iframe 内调用 plugin.panel.render(container, context)
+    │
+    ▼
+宿主等待 `qx:renderPanel:response`（预算约 15s；超时拆 iframe）
 ```
+
+**契约**：`panel.render` 只负责首次挂载与首帧 UI，**不得** `await` 长时间 CLI/网络。慢数据用 `void load()` 在后台更新 DOM。作者说明见 `public/doc/plugin-development-guide.md` §6.6。
 
 销毁：
 

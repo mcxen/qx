@@ -218,9 +218,18 @@ export interface PluginAiTaskInput extends PluginAiChatOptions {
 
 /** Argv-style CLI run request (`context.cli.run`). */
 export interface PluginCliRunRequest {
-  /** Absolute path or bare program name (resolved via PATH + known brew bins). */
+  /** Absolute path or bare program name (resolved via login-shell PATH + brew bins). */
   program: string;
   args?: string[];
+  cwd?: string;
+  env?: Record<string, string>;
+  /** Default 60000, clamped 1000–600000. */
+  timeoutMs?: number;
+}
+
+/** Full bash script request (`context.cli.bash`) — `bash -lc`, login PATH. */
+export interface PluginCliBashRequest {
+  script: string;
   cwd?: string;
   env?: Record<string, string>;
   /** Default 60000, clamped 1000–600000. */
@@ -232,7 +241,7 @@ export interface PluginCliRunResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
-  /** Resolved program path used for spawn. */
+  /** Resolved program path used for spawn (or `bash -lc` label). */
   program: string;
 }
 
@@ -274,11 +283,95 @@ export interface PluginContext {
   };
   /**
    * Plugin CLI port — preferred way to run local tools (brew, release-cli, …).
-   * Argv-style only (no shell). Requires permission `cli`. Not gated by AI Agent.
+   * Requires permission `cli`. Not gated by AI Agent bash toggle.
+   *
+   * - `run` / `which`: argv-style (safe default). Host injects a login-shell PATH.
+   * - `bash`: full `bash -lc` when you need pipes / globs.
+   * - `ensure` / `json` / `lines` / `text` / `jsonBash`: CLI→GUI helpers (throw on failure).
    */
   cli: {
     run: (request: PluginCliRunRequest) => Promise<PluginCliRunResult>;
+    /** Login-shell bash (`bash -lc`). Prefer `run` when a single program + args suffice. */
+    bash: (request: PluginCliBashRequest | string) => Promise<PluginCliRunResult>;
     which: (program: string) => Promise<string | null>;
+    /** Like `run`, but throws on timeout / non-zero exit. */
+    ensure: (request: PluginCliRunRequest) => Promise<PluginCliRunResult>;
+    /** `ensure` + parse stdout as JSON (or JSONL when `jsonl: true`). */
+    json: <T = unknown>(
+      request: PluginCliRunRequest & { allowNonZero?: boolean; jsonl?: boolean },
+    ) => Promise<T>;
+    /** `ensure` + split stdout into lines. */
+    lines: (
+      request: PluginCliRunRequest & { allowNonZero?: boolean; trimEmpty?: boolean },
+    ) => Promise<string[]>;
+    /** `ensure` + trimmed stdout text. */
+    text: (request: PluginCliRunRequest) => Promise<string>;
+    /** `bash` + parse stdout as JSON. */
+    jsonBash: <T = unknown>(
+      script: string | PluginCliBashRequest,
+      options?: { allowNonZero?: boolean; jsonl?: boolean },
+    ) => Promise<T>;
+    /** Parse helpers (no spawn). */
+    parseJson: (text: string) => unknown;
+    parseJsonLines: (text: string) => unknown[];
+  };
+  /**
+   * Lightweight panel kit for CLI→GUI workbenches (list + detail + tabs).
+   * No extra permission. Uses Qx CSS variables.
+   */
+  ui: {
+    esc: (value: unknown) => string;
+    styles: { workbench: string };
+    renderJson: (value: unknown, pretty?: boolean) => string;
+    renderKeyValue: (record: Record<string, unknown>) => string;
+    itemsFromJson: (value: unknown) => Array<{
+      id?: string;
+      title: string;
+      subtitle?: string;
+      meta?: string;
+      badge?: string;
+      raw?: unknown;
+    }>;
+    mountWorkbench: (
+      container: HTMLElement,
+      state: {
+        title?: string;
+        meta?: string;
+        error?: string | null;
+        loading?: boolean;
+        query?: string;
+        queryPlaceholder?: string;
+        tabs?: Array<{ id: string; label: string; active?: boolean }>;
+        toolbar?: Array<{ id: string; label: string; primary?: boolean; danger?: boolean }>;
+        items?: Array<{
+          id?: string;
+          title: string;
+          subtitle?: string;
+          meta?: string;
+          badge?: string;
+          raw?: unknown;
+        }>;
+        selectedId?: string | null;
+        detailHtml?: string;
+        emptyText?: string;
+      },
+      handlers?: {
+        onTab?: (id: string) => void;
+        onToolbar?: (id: string) => void;
+        onQuery?: (value: string) => void;
+        onSelect?: (
+          id: string,
+          item: {
+            id?: string;
+            title: string;
+            subtitle?: string;
+            meta?: string;
+            badge?: string;
+            raw?: unknown;
+          },
+        ) => void;
+      },
+    ) => void;
   };
   notification: {
     show: (input: { title: string; body?: string; subtitle?: string }) => Promise<void>;
