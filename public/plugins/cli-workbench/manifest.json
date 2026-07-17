@@ -1,14 +1,14 @@
 {
   "id": "cli-workbench",
   "name": "CLI Workbench",
-  "version": "0.1.0",
-  "description": "Reference plugin: turn CLI JSON / lines into a list+detail GUI using context.cli helpers and context.ui.",
+  "version": "0.2.0",
+  "description": "Reference plugin: publish CLI JSON or lines as a Qx-rendered declarative Workbench.",
   "author": "Qx",
   "icon": "icon.txt",
   "platforms": ["macos", "windows", "linux"],
   "keywords": ["cli", "json", "workbench", "demo", "shell"],
   "permissions": ["cli", "notifications", "clipboard"],
-  "min_app_version": "0.5.26",
+  "min_app_version": "0.5.37",
   "preferences": [
     {
       "id": "customProgram",

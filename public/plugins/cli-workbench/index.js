@@ -3,7 +3,7 @@
  *
  * Host ports used:
  *   context.cli.json / lines / text / jsonBash / ensure / which
- *   context.ui.mountWorkbench / itemsFromJson / renderJson / renderKeyValue
+ *   context.ui.mountWorkbench / itemsFromJson
  *
  * Panel render returns immediately (loading UI), then reloads data async.
  */
@@ -163,20 +163,27 @@ function filteredItems(state) {
   );
 }
 
-function detailFor(context, state, item) {
-  if (!item) return `<div class="qx-wb-empty">Select an item</div>`;
+function detailFor(item) {
+  if (!item) return undefined;
   if (item.raw && typeof item.raw === "object" && !Array.isArray(item.raw)) {
-    return (
-      context.ui.renderKeyValue(/** @type {Record<string, unknown>} */ (item.raw)) +
-      "<hr style='border:none;border-top:1px solid var(--qx-border-1,#ddd);margin:12px 0' />" +
-      context.ui.renderJson(item.raw)
-    );
+    return {
+      title: item.title,
+      subtitle: item.subtitle,
+      fields: Object.entries(item.raw).map(([label, value]) => ({
+        label,
+        value: value != null && typeof value === "object" ? JSON.stringify(value) : value,
+      })),
+      body: JSON.stringify(item.raw, null, 2),
+    };
   }
-  if (item.raw !== undefined) return context.ui.renderJson(item.raw);
-  return context.ui.renderJson(item);
+  return {
+    title: item.title,
+    subtitle: item.subtitle,
+    body: JSON.stringify(item.raw !== undefined ? item.raw : item, null, 2),
+  };
 }
 
-function paint(container, context, state) {
+function paint(context, state) {
   if (state.dead) return;
   const items = filteredItems(state);
   const selected =
@@ -186,7 +193,6 @@ function paint(container, context, state) {
   if (selected) state.selectedId = String(selected.id ?? selected.title);
 
   context.ui.mountWorkbench(
-    container,
     {
       title: "CLI Workbench",
       meta: state.meta || "Turn CLI stdout into list + detail",
@@ -195,23 +201,22 @@ function paint(container, context, state) {
       query: state.query,
       queryPlaceholder: "Filter items…",
       tabs: TABS.map((tab) => ({ ...tab, active: tab.id === state.tab })),
-      toolbar: [
-        { id: "reload", label: state.loading ? "Loading…" : "Reload", primary: true },
-        { id: "copy", label: "Copy JSON" },
+      actions: [
+        { id: "reload", label: state.loading ? "Loading…" : "Reload", primary: true, disabled: state.loading },
+        { id: "copy", label: "Copy JSON", disabled: !selected && state.data == null },
       ],
-      items,
+      items: items.map((item) => ({ ...item, detail: detailFor(item) })),
       selectedId: state.selectedId,
-      detailHtml: detailFor(context, state, selected),
       emptyText: state.loading ? "Running CLI…" : "No rows — try another tab or Reload",
     },
     {
       onTab: (id) => {
         state.tab = id;
         state.selectedId = null;
-        void reload(container, context, state);
+        void reload(context, state);
       },
-      onToolbar: (id) => {
-        if (id === "reload") void reload(container, context, state);
+      onAction: (id) => {
+        if (id === "reload") void reload(context, state);
         if (id === "copy") {
           const payload = selected?.raw ?? state.data;
           void context.clipboard.write(JSON.stringify(payload, null, 2)).then(() => {
@@ -221,21 +226,21 @@ function paint(container, context, state) {
       },
       onQuery: (value) => {
         state.query = value;
-        paint(container, context, state);
+        paint(context, state);
       },
       onSelect: (id) => {
         state.selectedId = id;
-        paint(container, context, state);
+        paint(context, state);
       },
     },
   );
 }
 
-async function reload(container, context, state) {
+async function reload(context, state) {
   if (state.dead) return;
   state.loading = true;
   state.error = null;
-  paint(container, context, state);
+  paint(context, state);
   try {
     const result = await loadDataset(context, state.tab);
     if (state.dead) return;
@@ -253,7 +258,7 @@ async function reload(container, context, state) {
   } finally {
     if (!state.dead) {
       state.loading = false;
-      paint(container, context, state);
+      paint(context, state);
     }
   }
 }
@@ -290,8 +295,8 @@ export default {
       const state = createState();
       container.__qxCliWorkbench = state;
       // Critical: paint loading shell and return immediately (renderPanel timeout).
-      paint(container, context, state);
-      void reload(container, context, state);
+      paint(context, state);
+      void reload(context, state);
     },
     destroy(container) {
       if (container.__qxCliWorkbench) {

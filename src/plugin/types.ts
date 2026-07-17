@@ -1,3 +1,5 @@
+import type { PluginWorkbenchItem, PluginWorkbenchState } from "./workbenchTypes";
+
 export interface PluginPreference {
   id: string;
   label: string;
@@ -321,6 +323,7 @@ export interface PluginNetworkCounters {
 }
 
 export type PluginIslandTone = "neutral" | "success" | "warning" | "danger";
+export type PluginIslandActionIcon = "pause" | "play" | "stop" | "open";
 
 /** Structured, host-rendered content for the optional external QxIsland surface. */
 export interface PluginIslandDisplayInput {
@@ -329,10 +332,19 @@ export interface PluginIslandDisplayInput {
   tone?: PluginIslandTone;
   /** Real progress from 0–100. Omit for a non-progress display. */
   progress?: number;
+  /** Host-rendered real-time countdown; use endsAt while running. */
+  countdown?: {
+    endsAt?: number;
+    remainingMs?: number;
+    durationMs?: number;
+    paused?: boolean;
+  };
   /** One manifest command that the user may run from the island. */
   action?: {
     label: string;
     command: string;
+    icon?: PluginIslandActionIcon;
+    variant?: "default" | "danger";
   };
   /** Optional expiry. Omit for a standing data display. */
   ttlMs?: number;
@@ -448,15 +460,8 @@ export interface PluginContext {
     parseJson: (text: string) => unknown;
     parseJsonLines: (text: string) => unknown[];
   };
-  /**
-   * Lightweight panel kit for CLI→GUI workbenches (list + detail + tabs).
-   * No extra permission. Uses Qx CSS variables.
-   */
+  /** Declarative list/detail/action/island data rendered by Qx. */
   ui: {
-    esc: (value: unknown) => string;
-    styles: { workbench: string };
-    renderJson: (value: unknown, pretty?: boolean) => string;
-    renderKeyValue: (record: Record<string, unknown>) => string;
     itemsFromJson: (value: unknown) => Array<{
       id?: string;
       title: string;
@@ -469,49 +474,18 @@ export interface PluginContext {
       raw?: unknown;
     }>;
     mountWorkbench: (
-      container: HTMLElement,
-      state: {
-        title?: string;
-        meta?: string;
-        error?: string | null;
-        loading?: boolean;
-        query?: string;
-        queryPlaceholder?: string;
-        tabs?: Array<{ id: string; label: string; active?: boolean }>;
-        toolbar?: Array<{ id: string; label: string; primary?: boolean; danger?: boolean }>;
-        items?: Array<{
-          id?: string;
-          title: string;
-          subtitle?: string;
-          meta?: string;
-          badge?: string;
-          icon?: string;
-          progress?: number;
-          tone?: string;
-          raw?: unknown;
-        }>;
-        selectedId?: string | null;
-        detailHtml?: string;
-        emptyText?: string;
-      },
+      state: PluginWorkbenchState,
       handlers?: {
         onTab?: (id: string) => void;
-        onToolbar?: (id: string) => void;
+        onAction?: (id: string, item?: PluginWorkbenchItem) => void;
+        onBackgroundPoll?: (event: {
+          command: string;
+          at: number;
+          ok: boolean;
+          error?: string;
+        }) => void;
         onQuery?: (value: string) => void;
-        onSelect?: (
-          id: string,
-          item: {
-            id?: string;
-            title: string;
-            subtitle?: string;
-            meta?: string;
-            badge?: string;
-            icon?: string;
-            progress?: number;
-            tone?: string;
-            raw?: unknown;
-          },
-        ) => void;
+        onSelect?: (id: string, item: PluginWorkbenchItem) => void;
       },
     ) => void;
   };

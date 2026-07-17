@@ -13,6 +13,11 @@ import {
 import { createQxLogger, qxLog } from "../lib/logger";
 import { PLUGIN_WORKBENCH_RUNTIME_JS } from "./cliWorkbench";
 import { PLUGIN_OVERLAY_SCROLLBAR_RUNTIME_JS } from "../utils/overlayScrollbar";
+import {
+  normalizePluginWorkbenchState,
+  type PluginWorkbenchEvent,
+  type PluginWorkbenchPayload,
+} from "./workbenchTypes";
 
 let requestCounter = 0;
 function nextRequestId(): string {
@@ -53,6 +58,19 @@ const panelSessionsByPlugin = new Map<string, PanelRuntimeSession>();
 const runtimeSources = new Map<string, Map<string, Window>>();
 const runtimeLogger = createQxLogger("plugin.runtime");
 
+function currentPluginTheme(): "light" | "dark" {
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+}
+
+function broadcastPluginTheme(): void {
+  const theme = currentPluginTheme();
+  for (const runtimes of runtimeSources.values()) {
+    for (const source of runtimes.values()) {
+      source.postMessage({ type: "qx:theme", theme }, "*");
+    }
+  }
+}
+
 /** Raycast / plugin selected-item actions published to QxShell. */
 export type PluginItemActionDescriptor = {
   id: string;
@@ -89,6 +107,8 @@ const itemActionsListeners = new Set<ItemActionsListener>();
 
 type ChromeListener = (payload: PluginChromePayload) => void;
 const chromeListeners = new Set<ChromeListener>();
+type WorkbenchListener = (payload: PluginWorkbenchPayload) => void;
+const workbenchListeners = new Set<WorkbenchListener>();
 
 export function subscribePluginItemActions(listener: ItemActionsListener): () => void {
   ensurePluginShellBridge();
@@ -103,6 +123,14 @@ export function subscribePluginChrome(listener: ChromeListener): () => void {
   chromeListeners.add(listener);
   return () => {
     chromeListeners.delete(listener);
+  };
+}
+
+export function subscribePluginWorkbench(listener: WorkbenchListener): () => void {
+  ensurePluginShellBridge();
+  workbenchListeners.add(listener);
+  return () => {
+    workbenchListeners.delete(listener);
   };
 }
 
@@ -149,6 +177,10 @@ export function postPluginChromeKey(pluginId: string, key: string): void {
   postToPluginPanel(pluginId, { type: "qx:chrome:key", key: String(key ?? "") });
 }
 
+export function postPluginWorkbenchEvent(pluginId: string, event: PluginWorkbenchEvent): void {
+  postToPluginPanel(pluginId, { type: "qx:workbench:event", event });
+}
+
 function isPanelRuntimeSource(
   pluginId: string,
   runtimeId: string,
@@ -168,9 +200,31 @@ function ensurePluginShellBridge(): void {
   const g = globalThis as typeof globalThis & { __qxPluginShellBridge?: boolean };
   if (g.__qxPluginShellBridge) return;
   g.__qxPluginShellBridge = true;
+  const themeObserver = new MutationObserver(broadcastPluginTheme);
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
   window.addEventListener("message", (event: MessageEvent) => {
     if (!isExpectedPluginMessageOrigin(event)) return;
     const data = event.data || {};
+    if (data.type === "qx:plugin:workbench") {
+      const pluginId = String(data.pluginId || "");
+      const runtimeId = String(data.runtimeId || "");
+      if (!pluginId || !runtimeId || !isPanelRuntimeSource(pluginId, runtimeId, event.source)) {
+        return;
+      }
+      const payload: PluginWorkbenchPayload = {
+        pluginId,
+        runtimeId,
+        state: normalizePluginWorkbenchState(data.state),
+      };
+      for (const listener of workbenchListeners) {
+        try {
+          listener(payload);
+        } catch {
+          /* ignore */
+        }
+      }
+      return;
+    }
     if (data.type === "qx:plugin:chrome") {
       const pluginId = String(data.pluginId || "");
       const runtimeId = String(data.runtimeId || "");
@@ -349,6 +403,7 @@ export function buildPluginRuntimeHtml(
       const pluginDisplay = ${JSON.stringify({
         raycastActionPanel,
       })};
+      document.documentElement.dataset.theme = ${JSON.stringify(currentPluginTheme())};
       let plugin = null;
       const pending = new Map();
       const contextTimers = new Map();
@@ -552,6 +607,34 @@ export function buildPluginRuntimeHtml(
         }, 0);
       }, true);
 
+      function serializeWorkbenchState(state) {
+        return JSON.parse(JSON.stringify(state || {}, (key, value) => {
+          if (key === 'raw' || typeof value === 'function') return undefined;
+          return value;
+        }));
+      }
+
+      globalThis.__qxPluginUiBridge = {
+        publishWorkbench: (state) => {
+          try {
+            postToParent({
+              type: 'qx:plugin:workbench',
+              pluginId,
+              runtimeId,
+              state: serializeWorkbenchState(state),
+            });
+          } catch (error) {
+            postPluginLog('error', 'Workbench data is not serializable', {
+              error: summarizeLogValue(error),
+            });
+          }
+        },
+        updateIsland: (input) => {
+          if (input == null) return rpc('islandDismiss');
+          return rpc('islandUpdate', { input }).catch(() => rpc('islandShow', { input }));
+        },
+      };
+
       const context = {
         pluginId,
         display: pluginDisplay,
@@ -749,6 +832,12 @@ export function buildPluginRuntimeHtml(
         if (event.source !== parent) return;
         const data = event.data || {};
         const { type } = data;
+        if (type === 'qx:theme') {
+          if (data.theme !== 'light' && data.theme !== 'dark') return;
+          document.documentElement.dataset.theme = data.theme;
+          document.documentElement.classList.toggle('dark', data.theme === 'dark');
+          return;
+        }
         if (type === 'qx:rpc:response') {
           if (data.pluginId !== pluginId || data.runtimeId !== runtimeId) return;
           const { requestId, result, error } = data;

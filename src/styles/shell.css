@@ -189,6 +189,28 @@
   width: 100%;
 }
 
+.qx-plugin-chrome {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  width: 100%;
+  gap: 8px;
+}
+
+.qx-plugin-chrome > .qx-search-wrap {
+  flex: 1 1 auto;
+  min-width: var(--qx-search-min-w);
+}
+
+.qx-plugin-chrome-tabs {
+  flex: 0 1 auto;
+  max-width: 52%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.qx-plugin-chrome-tabs::-webkit-scrollbar { display: none; }
+
 .qx-shell-search-slot > .qx-search-wrap {
   width: 100%;
   flex: 1 1 auto;
@@ -809,6 +831,23 @@
   flex: 0 0 auto;
 }
 
+.qx-island-shell-countdown {
+  min-width: 4.7ch;
+  color: var(--qx-text-primary);
+  font-family: var(--qx-font-mono);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 720;
+  line-height: 1;
+  letter-spacing: 0.015em;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.qx-island-shell-countdown[data-paused="true"] {
+  color: color-mix(in srgb, #d97706 78%, var(--qx-text-primary));
+}
+
 .qx-island-meter-progress {
   position: absolute;
   left: 8px;
@@ -912,13 +951,59 @@
   animation: qx-bottom-island-wave 0.72s linear infinite;
 }
 
-.qx-island-shell-action {
-  border: none;
-  background: transparent;
+.qx-island-surface .qx-shadcn-button.qx-island-shell-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--qx-accent) 28%, var(--qx-border-1));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--qx-accent) 10%, transparent);
   color: var(--qx-accent);
   font-size: 11px;
   font-weight: 700;
+  line-height: 1;
   cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease,
+    color 120ms ease,
+    transform 80ms ease;
+}
+
+.qx-island-surface .qx-shadcn-button.qx-island-shell-action:hover {
+  border-color: color-mix(in srgb, var(--qx-accent) 44%, var(--qx-border-1));
+  background: color-mix(in srgb, var(--qx-accent) 17%, transparent);
+}
+
+.qx-island-surface .qx-shadcn-button.qx-island-shell-action:active {
+  transform: scale(0.96);
+}
+
+.qx-island-surface .qx-shadcn-button.qx-island-shell-action:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--qx-accent) 58%, transparent);
+  outline-offset: 1px;
+}
+
+.qx-island-surface .qx-shadcn-button.qx-island-shell-action[data-variant="danger"] {
+  border-color: color-mix(in srgb, var(--qx-danger) 30%, var(--qx-border-1));
+  background: color-mix(in srgb, var(--qx-danger) 10%, transparent);
+  color: var(--qx-danger);
+}
+
+.qx-island-surface .qx-shadcn-button.qx-island-shell-action[data-variant="danger"]:hover {
+  border-color: color-mix(in srgb, var(--qx-danger) 48%, var(--qx-border-1));
+  background: color-mix(in srgb, var(--qx-danger) 17%, transparent);
+}
+
+.qx-island-shell-action-icon {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  fill: currentColor;
 }
 
 .qx-island-shell-placeholder {

@@ -144,7 +144,7 @@ export default {
 | `context.getPreference(id)` | 读取用户偏好 | 无 |
 | `context.clipboard.read()` | 读取系统剪贴板文本 | `clipboard` |
 | `context.clipboard.write(text)` | 写入系统剪贴板文本 | `clipboard` |
-| `context.island.show/update/dismiss` | 结构化灵动岛数据、真实进度与一个 manifest command 动作 | `island` |
+| `context.island.show/update/dismiss` | 结构化灵动岛数据、真实进度/宿主倒计时与一个统一样式 manifest command 动作 | `island` |
 | `context.http.fetch(url, opts)` | 通过 Rust 后端发起真实 HTTP/HTTPS 请求 | `http` |
 | `context.notification.show(input)` | 显示系统通知 | `notifications` |
 | `context.ai.providers()` | 读取 QxAI provider/model 目录，自定义 provider 优先通过 API `/models` 获取 | `ai` |

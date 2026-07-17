@@ -370,6 +370,8 @@ Context Panel：
 - Chrome（尺寸、居中、玻璃/border）只在 `.qx-island-surface`；内容不得自带 absolute 外轮廓。
 - 模块 `island` prop 经 shim 写入 session store；`customIsland` 为分类例外（如录屏 HUD），会抑制 store docked。
 - 文本单行截断，progress 为底边 overlay，不撑高底栏。
+- `countdown` 使用绝对 `endsAt` 或暂停态 `remainingMs`；宿主以等宽 tabular 数字实时渲染，docked / floating 不依赖生产者每秒推送文本。
+- Island action 使用统一 22px 胶囊按钮：受限 `pause/play/stop/open` 图标、可见 hover/active/focus 状态，永远位于 trailing 最右；插件不得注入自定义按钮 DOM/CSS。
 - 为空时 `visibility: hidden` 保持布局稳定。
 - Appearance 可启用独立的 External Island Display。它只显示 host task 或获 `island`
   权限的插件结构化 slots；插件不能提供自定义 chrome、窗口坐标或置顶策略。主窗隐藏
@@ -773,7 +775,7 @@ search={
 | `secondaryAction` | 右下 Actions 菜单（可关） |
 
 内置与 **扩展 PluginHost** 共用。纯函数 `buildModuleIsland` / `qxEscapeAction` 可供非 React 适配层调用。  
-模块仍自管 `primaryAction` / `actions` / `navigation` / 内容区。
+内置模块与 custom panel 仍自管 `primaryAction` / `actions` / `navigation` / 内容区；声明式插件 Workbench 只发布纯数据，由 PluginHost 按同一 QxShell 契约渲染列表、详情、导航和 Actions。Workbench 的 Context Panel 只呈现动作，不复制详情。
 
 标准映射：
 

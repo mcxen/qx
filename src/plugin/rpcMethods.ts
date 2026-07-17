@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl as openerOpenUrl } from "@tauri-apps/plugin-opener";
 import type {
   InstalledPlugin,
+  PluginIslandActionIcon,
   PluginIslandDisplayInput,
   PluginRuntimeStatus,
 } from "./types";
@@ -49,10 +50,39 @@ function normalizePluginIslandInput(payload: Record<string, unknown>): PluginIsl
       ? raw.tone
       : "neutral";
   const actionRaw = raw.action as Record<string, unknown> | undefined;
+  const actionIcon: PluginIslandActionIcon | undefined = actionRaw?.icon === "pause" || actionRaw?.icon === "play"
+    || actionRaw?.icon === "stop" || actionRaw?.icon === "open"
+    ? actionRaw.icon
+    : undefined;
   const action = actionRaw
     ? {
         label: String(actionRaw.label || "").trim().slice(0, 40),
         command: String(actionRaw.command || "").trim().slice(0, 128),
+        icon: actionIcon,
+        variant: actionRaw.variant === "danger" ? "danger" as const : "default" as const,
+      }
+    : undefined;
+  const countdownRaw = raw.countdown && typeof raw.countdown === "object"
+    ? raw.countdown as Record<string, unknown>
+    : null;
+  const durationMs = typeof countdownRaw?.durationMs === "number" ? countdownRaw.durationMs : Number.NaN;
+  const endsAt = typeof countdownRaw?.endsAt === "number" ? countdownRaw.endsAt : Number.NaN;
+  const remainingMs = typeof countdownRaw?.remainingMs === "number" ? countdownRaw.remainingMs : Number.NaN;
+  const normalizedDuration = Number.isFinite(durationMs)
+    ? Math.max(1_000, Math.min(30 * 86_400_000, durationMs))
+    : undefined;
+  const normalizedRemaining = Number.isFinite(remainingMs)
+    ? Math.max(0, Math.min(normalizedDuration ?? 30 * 86_400_000, remainingMs))
+    : undefined;
+  const normalizedEndsAt = Number.isFinite(endsAt) && endsAt > 0
+    ? Math.min(Date.now() + 30 * 86_400_000, endsAt)
+    : undefined;
+  const countdown = countdownRaw && (normalizedEndsAt != null || normalizedRemaining != null)
+    ? {
+        endsAt: normalizedEndsAt,
+        remainingMs: normalizedRemaining,
+        durationMs: normalizedDuration,
+        paused: countdownRaw.paused === true,
       }
     : undefined;
   return {
@@ -63,6 +93,7 @@ function normalizePluginIslandInput(payload: Record<string, unknown>): PluginIsl
       typeof raw.progress === "number"
         ? Math.max(0, Math.min(100, raw.progress))
         : undefined,
+    countdown,
     action: action?.label && action.command ? action : undefined,
     ttlMs:
       typeof raw.ttlMs === "number" && Number.isFinite(raw.ttlMs)
@@ -98,9 +129,15 @@ function pluginIslandShowInput(
         input.progress == null
           ? undefined
           : { kind: "progress" as const, progress: input.progress },
+      countdown: input.countdown,
       action:
         input.action && actionId
-          ? { id: actionId, label: input.action.label }
+          ? {
+              id: actionId,
+              label: input.action.label,
+              icon: input.action.icon,
+              variant: input.action.variant,
+            }
           : undefined,
     },
     actions:

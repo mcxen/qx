@@ -59,7 +59,7 @@
 
 | 插件 id | panel 注册 | AGENTS.md | 主要端口 | 缓存 | 缺口 |
 |---------|------------|-----------|----------|------|------|
-| **pomodoro-island** | ✅ manifest + export | ✅ | island, notifications, panel UI | 状态内存 | 无 |
+| **pomodoro-island** | ✅ manifest + export | ✅ | **host Workbench** + background heartbeat + host countdown/action island + notifications | persist state/history/deadline | 声明式 list/detail/actions/island/backgroundPoll 样板；关闭面板继续计时；docked/float 同款暂停按钮 |
 | **weather** | ✅ | ✅ | http + invoke weather* | persist SWR | 无 |
 | **v2ex** | ✅ | ✅ | http + invoke v2ex* | persist SWR + host disk | 无 |
 | **brew** | ✅ | ✅ | **cli**, panel | — | `panel.render` 须快返回 |
@@ -67,7 +67,7 @@
 | **external-display-control** | ✅ | ✅ | invoke external-displays | — | 无 |
 | **raycast-bing-wallpaper** | ✅ | ✅ | Raycast shim + storage | storage | 转换插件 |
 | **raycast-calendar** | ✅ | ✅ | Raycast shim | — | 转换插件 |
-| **qxgh** (QxGH) | ✅ | ✅ | **business**：`ui.mountWorkbench` + 公开 HTML + island | persist SWR | 不用 api.github.com；解析 actions/releases 网页 |
+| **qxgh** (QxGH) | ✅ | ✅ | **host Workbench**：结构化 detail/actions + 公开 HTML + island | persist SWR | 不用 api.github.com；解析 actions/releases 网页 |
 
 **老包兼容**：无 `AGENTS.md` 仍可安装；无 `panel` 的纯 command 包仍可跑命令，但**不能**作为 panel tab 打开（宿主不注册 panel）——这是原有契约，不是新门槛。
 
@@ -87,7 +87,8 @@
 1. `src/<id>/{manifest.json,index.js,README.md,AGENTS.md}`
 2. 用户能打开面板 → **同时**写 `manifest.panel` 与 `export default.panel`
 3. 慢数据 → `context.storage.persist` SWR；能复用宿主命令则 `invoke:` 保留 host 磁盘缓存
-4. `npm run package:plugins`；zip 内自带 AGENTS.md 方便后续 Agent 维护
+4. 列表/详情型插件优先 `mountWorkbench(state, handlers)`；仅复杂可视化使用 custom panel
+5. `npm run package:plugins`；zip 内自带 AGENTS.md 方便后续 Agent 维护
 
 ### 明确不要复用的
 

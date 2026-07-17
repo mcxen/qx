@@ -15,6 +15,8 @@
 | `src/plugin/rpcMethods.ts` | 所有 `handlePluginRpc` 处理器映射 |
 | `src-tauri/src/plugin_cli.rs` | **业务 CLI 端口**：`run`/`bash`/`which`、**异步 jobs**（start/poll/cancel）、**system** open/reveal/env |
 | `src/plugin/cliWorkbench.ts` | CLI→GUI helpers（ensure/json/map/wait）+ workbench kit |
+| `src/plugin/workbenchTypes.ts` | 声明式 Workbench 数据契约 + iframe 信任边界归一化 |
+| `src/plugin/PluginWorkbenchView.tsx` | Qx 原生 list/detail/progress 呈现；不含插件业务逻辑 |
 | `src/plugin/aiRuntime.ts` | AI task 创建、状态维护、取消、权限门控 |
 | `src/plugin/PluginHost.tsx` | 插件 panel 视图容器 |
 | `src/components/PluginBackgroundBadge.tsx` | 搜索/Extensions/panel 共用后台标签（悬停最近执行时间） |
@@ -38,7 +40,22 @@
 
 - 前端端口 `useQxModuleShell`（`src/hooks/useQxModuleShell.ts`）
 - 扩展宿主 `PluginPanelViewport` 使用同一 leave / Esc / Island / Actions 菜单装配
-- 列表导航、主从 region 仍由插件 UI / 内置面板自管；壳只保证 QxShell 外框协议一致
+- Workbench 的列表导航、主从 region、Actions 由宿主管；custom panel 仍由插件自管
+
+### 声明式 Workbench 端口
+
+```text
+plugin business state
+  └─ context.ui.mountWorkbench({ items, detail, actions, island }, handlers)
+       ├─ qx:plugin:workbench → normalizePluginWorkbenchState → PluginWorkbenchView
+       ├─ QxShell search/tabs/navigation/Actions → qx:workbench:event → panel handlers
+       ├─ action.command → registry.runCommand（同插件 manifest 校验）
+       ├─ backgroundPoll.command → no-view interval scheduler → persisted snapshot
+       │    └─ completion → qx:workbench:event/backgroundPoll → panel reload
+       └─ island → permission-gated island RPC → docked-or-float session
+```
+
+不变量：iframe 只发布可序列化纯数据；`raw` 不跨信任边界；宿主限制列表/字段/动作数量和文本长度。Workbench 没有 DOM/HTML 兼容分支；复杂自绘内容走独立 custom panel。后台轮询只能绑定本插件已注册的 `no-view + interval` command，panel 回调不拥有后台生命周期。
 
 **调度稳定性**（Bing 自动换壁纸 thrash 修复）：
 
@@ -110,8 +127,9 @@ assertPermission(plugin, perms, "ai")  →  invoke("plugin_ai_chat", { req: payl
 危险命令白名单 `DANGEROUS_INVOKE_COMMANDS` 中的命令，即使插件声明了能力组，也必须显式声明 `invoke:<cmd>` 才能调用。例如结束进程、申请权限、清空数据、宏回放、录屏启动等。
 
 `island` 只开放 `context.island.show/update/dismiss`。宿主把每个插件限制为一个
-`plugin-display` session，渲染结构化文本、真实进度和最多一个 manifest command
-动作；浮窗启用、主窗隐藏策略和置顶均由用户设置控制。
+`plugin-display` session，渲染结构化文本、真实进度/宿主倒计时和最多一个 manifest
+command 动作。动作图标与胶囊按钮 chrome 来自宿主受限集合；浮窗启用、主窗隐藏
+策略和置顶均由用户设置控制。
 
 ## 5. AI 任务链路
 
@@ -228,6 +246,8 @@ Plugin API: `tray.setItems([{ id, title, command? }])` / `tray.clear()`. Click e
 | 执行 | 宿主 `qx:run-item-action` → iframe handler |
 
 可选「条目上显示操作按钮」只是卡片内 chips，关掉也不影响上述主路径。
+
+声明式 Workbench 复用同一原则：item `actions[]` 对应 Raycast `List.Item actions`，第一个/`primary` 对应 Enter 与底栏主动作，完整集合进入右侧 Actions 和 Cmd/Ctrl+K。区别只在执行适配器：Raycast 走 shim handler id，Workbench 走 panel `onAction` 或 manifest `command`。
 
 ## 11. CLI 异步与系统能力
 

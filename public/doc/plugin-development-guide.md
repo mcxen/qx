@@ -4,7 +4,7 @@
 > 写业务插件时优先读本文；需要字段级细节再下钻到协议专章。  
 > 宿主贡献者另见 [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md)。
 
-**状态**：Current · 适用：Qx ≥ 0.5.36（shell / Esc host cascade + storage SWR 约定）· 读者：业务 / 第三方插件作者
+**状态**：Current · 适用：Qx ≥ 0.5.37（声明式 Workbench + shell / Esc + storage / island）· 读者：业务 / 第三方插件作者
 
 **模块端口总表（内置 + 市场）** → [`docs/module-port-inventory.md`](../../docs/module-port-inventory.md)
 **市场仓库 Agent 地图** → `qx-plugins` 仓库根 [`AGENTS.md`](https://github.com/mcxen/qx-plugins/blob/main/AGENTS.md)（与本手册对照；**老包无 AGENTS.md 仍可安装**）
@@ -112,19 +112,78 @@ export default {
 | 表面 | 职责 | 不要做 |
 |------|------|--------|
 | `commands[].run` | 短任务、打开面板提示、一次性 CLI | 长阻塞无反馈 |
-| `panel.render` | 持久 UI、列表、按钮 | 泄漏定时器；操作宿主 DOM |
+| `panel.render` | 发布 Workbench 业务数据，或在确有需要时挂自定义 UI | 泄漏定时器；把可结构化的列表/详情重新手写 DOM |
 
 ### 2.2.1 插件模组模式（多种模块）
 
+Qx 当前可运行 **5 条入口/执行链路**；它们可以组合在同一个插件包中：
+
+| 链路 | Manifest / 入口 | 适合场景 |
+|------|-----------------|----------|
+| **Command** | `commands[]` → `commands[].run` | 一次性工具、toast、剪贴板、打开 URL |
+| **Declarative Workbench** | `panel` → `panel.render` → `mountWorkbench(state, handlers)` | 标准列表、详情、搜索、Actions、Island；可订阅后台轮询 |
+| **Custom panel** | `panel` → `panel.render(container, context)` | 画布、图表、媒体等无法结构化的复杂 UI |
+| **Background interval** | `commands[].mode: "no-view"` + `interval` | 定时同步、壁纸、轮询任务；复用 command runtime |
+| **Raycast conversion** | 导入/转换 Raycast extension | 运行已有 Raycast List/Form/ActionPanel 扩展 |
+
+`context.island`、Workbench `island`、`context.tray` 和通知属于输出表面/宿主能力，不单独算执行链路。CLI、HTTP、AI、storage 等属于业务数据能力，也不形成另一套 UI runtime。
+
 | 模式 | 开发者写什么 | UI | 代表 |
 |------|--------------|-----|------|
-| **business**（推荐默认） | 领域数据 + `commands` + 把列表项喂给 `context.ui.mountWorkbench` | **宿主统一**（tabs / list / detail / progress） | **QxGH**、cli-workbench |
+| **business**（推荐默认） | `mountWorkbench(state, handlers)` 发布列表、详情、Actions、Island 纯数据 | **宿主统一**（Qx 主题 / tabs / list / detail / Actions / island） | **Pomodoro**、**QxGH** |
 | **custom panel** | 自绘 `container` DOM/CSS（仍建议用 `--qx-*` 变量） | 作者自控 | weather 卡片、复杂可视化 |
 | **commands-only** | 仅 `commands[].run`（toast / 剪贴板 / 开 URL） | 无 panel | 一键工具 |
-| **island + panel** | 业务状态 + `context.island` | 岛由宿主画；panel 可用 business 或 custom | pomodoro |
+| **island + panel** | Workbench `island` 字段，或 panel 关闭时调用 `context.island` | 停靠/浮出策略由用户设置和宿主决定 | pomodoro |
 
 原则：**能 business 就 business**——只写业务映射（API → list items），不要复制壳 CSS。
-Workbench 列表项可带：`icon` · `badge` · `tone` · **`progress`（0–100）** · `raw`。
+Workbench 列表项可带：`icon` · `badge` · `tone` · **`progress`（0–100）** · `detail` · `actions` · `raw`。`detail` 必须是结构化数据；Workbench 不接受 HTML。
+
+### 2.2.2 声明式 Workbench（推荐）
+
+```js
+context.ui.mountWorkbench({
+  query,
+  tabs: [{ id: "all", label: "All", active: true }],
+  items: rows.map((row) => ({
+    id: row.id,
+    title: row.name,
+    subtitle: row.summary,
+    badge: row.status,
+    tone: row.ok ? "success" : "danger",
+    detail: {
+      title: row.name,
+      fields: [
+        { label: "Status", value: row.status },
+        { label: "Updated", value: row.updatedAt },
+      ],
+    },
+    actions: [{ id: "open", label: "Open", primary: true }],
+  })),
+  selectedId,
+  actions: [{ id: "refresh", label: "Refresh", primary: !selectedId }],
+  island: activeTask ? {
+    primary: activeTask.name,
+    secondary: activeTask.status,
+    progress: activeTask.progress,
+    countdown: { endsAt: activeTask.endsAt, durationMs: activeTask.durationMs },
+    action: { label: "Pause", command: "pause-task", icon: "pause" },
+  } : null,
+  backgroundPoll: { command: "background-sync" },
+}, {
+  onSelect: (id) => { selectedId = id; paint(); },
+  onAction: (id, item) => { /* local panel action */ },
+  onBackgroundPoll: () => void loadPersistedSnapshot(),
+});
+```
+
+宿主负责：Qx 明暗主题、搜索/tabs、列表与详情、键盘选择/滚动、底栏主动作、右侧 Actions、Cmd/Ctrl+K，以及灵动岛停靠/浮出。插件负责：获取业务数据、选择 id、动作处理和状态持久化。
+
+Action 有两条执行路径：
+
+- `command: "manifest-command"`：宿主校验后在 command runtime 执行，适合计时器、下载等跨 panel 生命周期任务。
+- 无 `command`：回调 `handlers.onAction`，适合当前 panel 的刷新、清筛选、清历史等局部操作。
+
+command 与 panel 是不同 iframe runtime，不能用模块全局变量假装共享状态；跨 runtime 数据必须走 `context.storage.persist`。完整样板见市场插件 `pomodoro-island`。
 
 ### 2.3 面板注册（硬契约 — 避免 “Panel not registered”）
 
@@ -239,11 +298,13 @@ const rows = await context.cli.lines({ program: "my-cli", args: ["names"] })
 const jobs = await context.cli.jsonBash("my-cli events --jsonl", { jsonl: true })
 
 // 列表工作台 UI
-context.ui.mountWorkbench(container, {
+context.ui.mountWorkbench({
   title: "My CLI",
-  items: context.ui.itemsFromJson(data),
-  detailHtml: context.ui.renderJson(data),
-}, { onSelect: (id, item) => { /* … */ } })
+  items: context.ui.itemsFromJson(data).map((item) => ({
+    ...item,
+    detail: { title: item.title, fields: [{ label: "Value", value: String(item.raw) }] },
+  })),
+}, { onSelect: (id, item) => { /* update selectedId + repaint */ } })
 ```
 
 **规则**：优先 `program` + `args[]`；仅在需要 shell 语法时用 `cli.bash`。不要把不受信用户原文拼进 `script`。  
@@ -450,7 +511,7 @@ await context.island.show({
   primary: "Build #184",
   secondary: "Uploading artifacts",
   progress: 62,
-  action: { label: "Open", command: "open-build" },
+  action: { label: "Open", command: "open-build", icon: "open" },
 });
 
 await context.island.update({
@@ -464,6 +525,11 @@ await context.island.update({
 `action.command` 必须是当前插件 manifest 中声明的 command。插件不能控制窗口位置、
 置顶或任务优先级；用户在 Settings → Appearance → External Island Display 决定是否
 启用独立灵动岛、Qx 隐藏时是否保留以及是否置顶。
+
+倒计时不要每秒重发 `secondary`。运行时发布绝对 `countdown.endsAt` 和可选
+`durationMs`，暂停时发布固定 `remainingMs + paused: true`。Qx 会在 docked / floating
+两种表面本地刷新 `MM:SS` 和进度条。Action 只使用宿主图标
+`pause/play/stop/open` 与统一胶囊按钮；危险动作可加 `variant: "danger"`。
 
 ### 6.7 发布进度 Panel 骨架（思路）
 
@@ -505,6 +571,27 @@ await context.island.update({
 - 宿主调度；过短 interval 会被策略限制（见 Bing 日更经验）  
 - 搜索 / Extensions 可显示 **后台** 标签与最近执行时间  
 - 不要用 interval 做「每分钟改系统状态」类骚扰行为  
+
+### 7.1 Workbench 后台轮询
+
+Workbench 视图会随 panel 关闭而销毁，因此后台工作必须绑定命令，而不是绑定视图回调：
+
+```js
+// manifest: { name: "background-sync", mode: "no-view", interval: "1m" }
+// command: fetch/advance state, then context.storage.persist.set(...)
+context.ui.mountWorkbench({
+  items,
+  backgroundPoll: { command: "background-sync" },
+}, {
+  onBackgroundPoll: () => void loadPersistedSnapshot(),
+});
+```
+
+- 宿主校验该命令属于当前插件且确实是 interval/no-view 命令。
+- panel 关闭、切回 Launcher 或 Qx 隐藏后，命令仍由插件后台 runtime 调度。
+- Workbench 重新打开时必须先读持久化快照，不能等待下一次 poll。
+- 计时器持久化绝对 `startedAt` / `endsAt`；不能依赖每秒累加变量。睡眠或进程重启后由后台 heartbeat 按时间戳结算。
+- `onBackgroundPoll` 只通知当前打开的 Workbench 重读结果，不承担后台工作本身。
 
 ---
 

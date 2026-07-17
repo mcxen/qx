@@ -3,6 +3,8 @@
 export type {
   IslandPlacement,
   IslandTone,
+  IslandActionIcon,
+  IslandActionVariant,
   IslandChromeVariant,
   IslandPriority,
   IslandPlacementMode,

@@ -101,16 +101,12 @@ try {
 
 ## 3. 宿主注入的 UI kit（`context.ui`）
 
-无额外权限。样式使用 Qx CSS 变量（`--qx-text-primary`、`--qx-accent`…）。
+无额外权限。Workbench 只接受纯数据，样式与交互全部由 Qx 宿主提供。
 
 | 方法 | 用途 |
 |------|------|
-| `esc(value)` | HTML 转义 |
-| `styles.workbench` | 工作台 CSS 字符串（可自挂） |
-| **`mountWorkbench(container, state, handlers)`** | 一键：标题 / tabs / 搜索 / 工具栏 / 列表 / 详情 |
+| **`mountWorkbench(state, handlers)`** | 发布纯数据：tabs / 搜索 / 列表 / 结构化详情 / Actions / Island |
 | `itemsFromJson(value)` | 数组或对象 → 列表项 `{ title, subtitle, badge, raw }` |
-| `renderJson(value)` | 详情区 pretty JSON |
-| `renderKeyValue(record)` | 详情区键值表 |
 
 列表项可选字段（**business 模组**用这些即可，不必自绘）：
 
@@ -120,9 +116,46 @@ try {
 | `badge` / `meta` | 右侧状态徽标 |
 | `tone` | `success` / `danger` / `warning` / `accent` / `run` |
 | `progress` | `0–100`，行内进度条（CI / 下载） |
+| `detail` | `{ title, subtitle, body, fields, sections }`；由 Qx React 渲染，禁止 HTML |
+| `actions` | 条目动作；可用 `command` 映射 manifest command，或交给 `onAction` |
 | `raw` | 业务对象，供 `onSelect` / 详情映射 |
 
 **键盘（宿主 workbench 内置）**：`↑` / `↓` 移动选中，`PageUp` / `PageDown` 跳 8 行，`Home` / `End` 首尾（过滤框内 Home/End 仍走光标）。业务插件只要在 `onSelect` 里更新 `selectedId` 再 `mountWorkbench` 即可；**不要**自己绑全局上下键。
+
+Qx 会渲染明暗主题、列表/详情、选择滚动、顶栏搜索/tabs、底栏主动作、右侧 Actions 和 Cmd/Ctrl+K。`state.island` 使用与 `context.island` 相同的数据形状；声明 `island` 权限后，同一份数据会按用户设置停靠或浮出。Workbench 不提供 iframe DOM/HTML 模式；复杂自绘界面应明确使用 custom panel。
+
+```ts
+type WorkbenchState = {
+  tabs?: { id: string; label: string; active?: boolean }[]
+  query?: string
+  items: {
+    id: string; title: string; subtitle?: string; badge?: string
+    progress?: number; tone?: "neutral" | "success" | "warning" | "danger" | "accent"
+    detail?: { title?: string; subtitle?: string; body?: string; fields?: { label: string; value: string | number | boolean | null }[]; sections?: object[] }
+    actions?: { id: string; label: string; command?: string; primary?: boolean; kbd?: string }[]
+  }[]
+  actions?: { id: string; label: string; command?: string; primary?: boolean; tone?: string }[]
+  island?: {
+    primary: string; secondary?: string; progress?: number; tone?: string
+    countdown?: { endsAt?: number; remainingMs?: number; durationMs?: number; paused?: boolean }
+    action?: { label: string; command: string; icon?: "pause" | "play" | "stop" | "open"; variant?: "default" | "danger" }
+  } | null
+  backgroundPoll?: { command: string }
+}
+```
+
+`command` 只能引用当前插件 manifest 中声明的命令，宿主会校验后在长期存活的 command runtime 执行；不写 `command` 时，事件回到当前 panel 的 `handlers.onAction(id, selectedItem)`。
+
+`backgroundPoll.command` 必须引用当前插件 manifest 中 `mode: "no-view"` 且带 `interval` 的命令。该命令由宿主在 Workbench 关闭后继续调度，并把结果写入 `context.storage.persist`；Workbench 打开时先读取持久化快照，后台命令完成后再通过 `handlers.onBackgroundPoll(event)` 重载。不要把需要持续存在的计时器或轮询器放在 `panel.render`。
+
+```js
+context.ui.mountWorkbench({
+  items,
+  backgroundPoll: { command: "background-refresh" },
+}, {
+  onBackgroundPoll: () => void loadPersistedSnapshot(),
+});
+```
 
 ### 最小 Panel 骨架（必读：render 要快返回）
 
@@ -130,23 +163,34 @@ try {
 export default {
   panel: {
     render(container, context) {
-      const state = { tab: "list", items: [], loading: true, dead: false };
+      const state = { tab: "list", items: [], loading: true, dead: false, selectedId: null };
 
       const paint = () => {
         if (state.dead) return;
-        context.ui.mountWorkbench(container, {
+        context.ui.mountWorkbench({
           title: "My CLI",
           loading: state.loading,
           error: state.error,
-          items: state.items,
+          items: state.items.map((item) => ({
+            ...item,
+            detail: {
+              title: item.title,
+              fields: Object.entries(item.raw || {}).map(([label, value]) => ({ label, value })),
+            },
+            actions: [{ id: "inspect", label: "Inspect", primary: true }],
+          })),
           selectedId: state.selectedId,
-          detailHtml: state.detailHtml,
-          toolbar: [{ id: "reload", label: "Reload", primary: true }],
+          actions: [{ id: "reload", label: "Reload", primary: true }],
+          island: state.loading
+            ? { primary: "My CLI", secondary: "Refreshing", tone: "neutral" }
+            : null,
         }, {
-          onToolbar: (id) => { if (id === "reload") void load(); },
+          onAction: (id, item) => {
+            if (id === "reload") void load();
+            if (id === "inspect") context.showToast(item?.title || "Selected");
+          },
           onSelect: (id, item) => {
             state.selectedId = id;
-            state.detailHtml = context.ui.renderJson(item.raw);
             paint();
           },
         });

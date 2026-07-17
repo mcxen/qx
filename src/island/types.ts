@@ -2,6 +2,8 @@
 
 export type IslandPlacement = "docked" | "floating";
 export type IslandTone = "neutral" | "success" | "warning" | "danger";
+export type IslandActionIcon = "pause" | "play" | "stop" | "open";
+export type IslandActionVariant = "default" | "danger";
 export type IslandChromeVariant = "shell" | "system" | "sci" | "date";
 
 export type IslandPriority = "task" | "error" | "toast" | "location" | "home";
@@ -38,6 +40,19 @@ export interface IslandSlotContent {
     /** Must exist in ActionRegistry for this session when clickable */
     id: string;
     label: string;
+    /** Host-owned icon set keeps docked and floating controls consistent. */
+    icon?: IslandActionIcon;
+    variant?: IslandActionVariant;
+  };
+  /** Host-rendered wall-clock countdown; never requires per-second session updates. */
+  countdown?: {
+    /** Absolute Unix milliseconds while running. */
+    endsAt?: number;
+    /** Frozen value while paused, or fallback when endsAt is absent. */
+    remainingMs?: number;
+    /** Enables host-derived progress. */
+    durationMs?: number;
+    paused?: boolean;
   };
   tone?: IslandTone;
   /**
