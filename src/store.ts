@@ -21,6 +21,8 @@ export interface AppEntry {
    * Advisory only — main match quality still wins in `rankSearchResults`.
    */
   clickCount?: number;
+  /** Unix modification time in seconds for file/folder search results. */
+  modified_at?: number;
 }
 
 export interface ClipboardEntry {

@@ -180,7 +180,7 @@ export default {
 | `context.display.raycastActionPanel` | 读取用户在 Settings -> Extensions -> Display 中配置的 Raycast ActionPanel 行内按钮显示偏好 |
 | `context.clipboard.read()` | 读取系统剪贴板文本（需 `clipboard` 权限） |
 | `context.clipboard.write(text)` | 写入系统剪贴板文本（需 `clipboard` 权限） |
-| `context.ui.mountWorkbench(state, handlers)` | 声明式 panel：Qx 渲染 tabs、列表、结构化详情、Actions 与 island；`backgroundPoll` 可绑定后台 interval command；只接受纯数据 |
+| `context.ui.mountWorkbench(state, handlers)` | 声明式受控 panel：Qx 渲染 tabs、列表或 Gallery、结构化详情、Actions 与 island；宿主即时处理 query/tab/selection，插件 handler 同步回画业务状态；`backgroundPoll` 可绑定后台 interval command；只接受纯数据 |
 | `context.island.show(input)` / `update(input)` / `dismiss()` | 在宿主灵动岛显示结构化数据、真实进度/宿主倒计时与一个统一样式 command 动作（需 `island` 权限；是否浮出由用户设置决定） |
 | `context.cli.run({ program, args?, cwd?, env?, timeoutMs? })` | **业务 CLI 首选**：argv 同步执行（需 `cli`；**不**走 AI Agent Bash）。协议见 [plugin-cli-protocol.md](./plugin-cli-protocol.md) |
 | `context.cli.bash(script \| req)` | login-shell bash（需 `cli`） |

@@ -41,6 +41,12 @@ export interface PluginWorkbenchItem {
   meta?: string;
   badge?: string;
   icon?: string;
+  /** Remote/data image rendered by the host in gallery mode. */
+  image?: {
+    url: string;
+    alt?: string;
+    fit?: "cover" | "contain";
+  };
   progress?: number;
   tone?: PluginWorkbenchTone | string;
   /** Structured detail rendered by the host. */
@@ -58,6 +64,13 @@ export interface PluginWorkbenchState {
   loading?: boolean;
   query?: string;
   queryPlaceholder?: string;
+  /** Host-rendered collection layout. List remains the backwards-compatible default. */
+  layout?: {
+    kind: "list" | "gallery";
+    /** Gallery column hint; the host still collapses columns responsively. */
+    columns?: number;
+    aspectRatio?: "landscape" | "square" | "portrait";
+  };
   tabs?: Array<{ id: string; label: string; active?: boolean }>;
   actions?: PluginWorkbenchAction[];
   items?: PluginWorkbenchItem[];
@@ -79,7 +92,7 @@ export type PluginWorkbenchEvent =
   | { kind: "query"; value: string }
   | { kind: "tab"; id: string }
   | { kind: "select"; id: string }
-  | { kind: "action"; id: string }
+  | { kind: "action"; id: string; selectedId?: string }
   | { kind: "backgroundPoll"; command: string; at: number; ok: boolean; error?: string };
 
 export interface PluginWorkbenchPayload {
@@ -155,6 +168,18 @@ function normalizeActions(value: unknown): PluginWorkbenchAction[] {
   }).filter((action) => Boolean(action.id));
 }
 
+function normalizeImage(value: unknown): PluginWorkbenchItem["image"] {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const url = shortText(raw.url, 4_000);
+  if (!url || (!/^https:\/\//i.test(url) && !/^data:image\//i.test(url))) return undefined;
+  return {
+    url,
+    alt: shortText(raw.alt, 500),
+    fit: raw.fit === "contain" ? "contain" : "cover",
+  };
+}
+
 /** Trust boundary for iframe → React workbench data. */
 export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchState {
   const raw = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
@@ -169,6 +194,7 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
           meta: shortText(item.meta, 240),
           badge: shortText(item.badge, 120),
           icon: shortText(item.icon, 24),
+          image: normalizeImage(item.image),
           progress: Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : undefined,
           tone: normalizeTone(item.tone),
           detail: normalizeDetail(item.detail),
@@ -187,6 +213,21 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
       }).filter((tab) => Boolean(tab.id))
     : [];
   const hasIsland = Object.prototype.hasOwnProperty.call(raw, "island");
+  const layoutRaw = raw.layout && typeof raw.layout === "object"
+    ? raw.layout as Record<string, unknown>
+    : null;
+  const galleryColumns = Number(layoutRaw?.columns);
+  const layout: NonNullable<PluginWorkbenchState["layout"]> = layoutRaw?.kind === "gallery"
+    ? {
+        kind: "gallery" as const,
+        columns: Number.isFinite(galleryColumns)
+          ? Math.max(2, Math.min(8, Math.round(galleryColumns)))
+          : undefined,
+        aspectRatio: layoutRaw.aspectRatio === "square" || layoutRaw.aspectRatio === "portrait"
+          ? layoutRaw.aspectRatio
+          : "landscape",
+      }
+    : { kind: "list" as const };
   const backgroundPollRaw = raw.backgroundPoll && typeof raw.backgroundPoll === "object"
     ? raw.backgroundPoll as Record<string, unknown>
     : null;
@@ -248,6 +289,7 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
     loading: raw.loading === true,
     query: shortText(raw.query, 500) || "",
     queryPlaceholder: shortText(raw.queryPlaceholder, 120),
+    layout,
     tabs,
     actions: normalizeActions(raw.actions),
     items,

@@ -75,6 +75,7 @@ pub fn open() -> rusqlite::Result<Connection> {
             image_url TEXT,
             is_read INTEGER DEFAULT 0,
             is_starred INTEGER DEFAULT 0,
+            reading_progress REAL NOT NULL DEFAULT 0,
             published_at INTEGER,
             created_at INTEGER NOT NULL
         );
@@ -88,6 +89,12 @@ pub fn open() -> rusqlite::Result<Connection> {
         "rss_feeds",
         "folder_id",
         "INTEGER REFERENCES rss_folders(id) ON DELETE SET NULL",
+    )?;
+    ensure_column(
+        &conn,
+        "rss_articles",
+        "reading_progress",
+        "REAL NOT NULL DEFAULT 0",
     )?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS rss_meta (
@@ -454,7 +461,7 @@ pub fn list_articles(
     query: Option<&str>,
 ) -> rusqlite::Result<Vec<Article>> {
     let mut sql = String::from(
-        "SELECT id, feed_id, guid, title, summary, content, author, link, image_url, is_read, is_starred, published_at, created_at FROM rss_articles WHERE 1=1",
+        "SELECT id, feed_id, guid, title, summary, content, author, link, image_url, is_read, is_starred, reading_progress, published_at, created_at FROM rss_articles WHERE 1=1",
     );
     let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
     if let Some(fid) = feed_id {
@@ -488,8 +495,9 @@ pub fn list_articles(
             image_url: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
             is_read: row.get::<_, i64>(9)? != 0,
             is_starred: row.get::<_, i64>(10)? != 0,
-            published_at: row.get::<_, Option<i64>>(11)?.unwrap_or(0),
-            created_at: row.get(12)?,
+            reading_progress: row.get::<_, f64>(11)?.clamp(0.0, 100.0),
+            published_at: row.get::<_, Option<i64>>(12)?.unwrap_or(0),
+            created_at: row.get(13)?,
         })
     })?;
     let mut out = Vec::new();
@@ -501,7 +509,7 @@ pub fn list_articles(
 
 pub fn get_article(conn: &Connection, id: i64) -> rusqlite::Result<Option<Article>> {
     let mut stmt = conn.prepare(
-        "SELECT id, feed_id, guid, title, summary, content, author, link, image_url, is_read, is_starred, published_at, created_at FROM rss_articles WHERE id = ?1",
+        "SELECT id, feed_id, guid, title, summary, content, author, link, image_url, is_read, is_starred, reading_progress, published_at, created_at FROM rss_articles WHERE id = ?1",
     )?;
     let mut rows = stmt.query(params![id])?;
     if let Ok(Some(row)) = rows.next() {
@@ -517,8 +525,9 @@ pub fn get_article(conn: &Connection, id: i64) -> rusqlite::Result<Option<Articl
             image_url: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
             is_read: row.get::<_, i64>(9)? != 0,
             is_starred: row.get::<_, i64>(10)? != 0,
-            published_at: row.get::<_, Option<i64>>(11)?.unwrap_or(0),
-            created_at: row.get(12)?,
+            reading_progress: row.get::<_, f64>(11)?.clamp(0.0, 100.0),
+            published_at: row.get::<_, Option<i64>>(12)?.unwrap_or(0),
+            created_at: row.get(13)?,
         }));
     }
     Ok(None)
@@ -528,6 +537,14 @@ pub fn set_read(conn: &Connection, id: i64, is_read: bool) -> rusqlite::Result<(
     conn.execute(
         "UPDATE rss_articles SET is_read = ?1 WHERE id = ?2",
         params![if is_read { 1 } else { 0 }, id],
+    )?;
+    Ok(())
+}
+
+pub fn set_reading_progress(conn: &Connection, id: i64, progress: f64) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE rss_articles SET reading_progress = ?1 WHERE id = ?2",
+        params![progress.clamp(0.0, 100.0), id],
     )?;
     Ok(())
 }
@@ -627,4 +644,42 @@ pub fn delete_read_articles(conn: &Connection) -> rusqlite::Result<usize> {
 
 pub fn delete_all_articles(conn: &Connection) -> rusqlite::Result<usize> {
     conn.execute("DELETE FROM rss_articles", [])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reading_progress_is_clamped_and_persisted() {
+        let conn = Connection::open_in_memory().expect("open in-memory rss db");
+        conn.execute_batch(
+            "CREATE TABLE rss_articles (
+                id INTEGER PRIMARY KEY,
+                reading_progress REAL NOT NULL DEFAULT 0
+            );
+            INSERT INTO rss_articles (id) VALUES (1);",
+        )
+        .expect("create article");
+
+        set_reading_progress(&conn, 1, 42.0).expect("save progress");
+        let saved: f64 = conn
+            .query_row(
+                "SELECT reading_progress FROM rss_articles WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read progress");
+        assert_eq!(saved, 42.0);
+
+        set_reading_progress(&conn, 1, 140.0).expect("clamp progress");
+        let clamped: f64 = conn
+            .query_row(
+                "SELECT reading_progress FROM rss_articles WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read clamped progress");
+        assert_eq!(clamped, 100.0);
+    }
 }

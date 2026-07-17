@@ -13,6 +13,7 @@ const SCREENSHOT_AFTER_CAPTURE_KEY = "qx.screencap.screenshotAfterCapture";
 const CONFIRM_MODE_KEY = "qx.screencap.confirmMode";
 const DELAY_SECONDS_KEY = "qx.screencap.delaySeconds";
 const LAST_SELECTION_KEY = "qx.screencap.lastSelection";
+const HISTORY_LAYOUT_KEY = "qx.screencap.historyLayout";
 
 export interface LastCaptureSelection {
   x: number;
@@ -26,6 +27,7 @@ export type ScreenshotAfterCapture = "copy" | "none";
 /** refine: release only builds selection; release: release captures immediately (Alt forces refine). */
 export type CaptureConfirmMode = "refine" | "release";
 export type CaptureDelaySeconds = 0 | 3 | 5;
+export type CaptureHistoryLayout = "list" | "gallery";
 
 export function loadRecordingOptions(): RecordingOptions {
   try {
@@ -72,6 +74,14 @@ export function loadCaptureDelaySeconds(): CaptureDelaySeconds {
 
 export function saveCaptureDelaySeconds(value: CaptureDelaySeconds): void {
   localStorage.setItem(DELAY_SECONDS_KEY, String(value));
+}
+
+export function loadCaptureHistoryLayout(): CaptureHistoryLayout {
+  return localStorage.getItem(HISTORY_LAYOUT_KEY) === "gallery" ? "gallery" : "list";
+}
+
+export function saveCaptureHistoryLayout(value: CaptureHistoryLayout): void {
+  localStorage.setItem(HISTORY_LAYOUT_KEY, value);
 }
 
 export function loadLastCaptureSelection(): LastCaptureSelection | null {

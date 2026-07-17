@@ -16,6 +16,8 @@ pub struct AppEntry {
     pub path: String,
     pub icon: String,
     pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub modified_at: Option<u64>,
     #[serde(skip_serializing)]
     pub aliases: String,
 }
@@ -105,6 +107,7 @@ fn load_from_db() -> Vec<AppEntry> {
             display_name,
             icon: row.get(3)?,
             kind: row.get(4)?,
+            modified_at: None,
             aliases: row.get(5)?,
         })
     }) {
@@ -650,6 +653,7 @@ fn scan_dir_fast(dir: &PathBuf, results: &mut Vec<AppEntry>) {
                     path: path.to_string_lossy().to_string(),
                     icon,
                     kind: "app".to_string(),
+                    modified_at: None,
                     aliases,
                 });
             }
@@ -707,6 +711,7 @@ fn scan_all_apps() -> Vec<AppEntry> {
                     path: path.to_string_lossy().to_string(),
                     icon: String::new(),
                     kind: "app".to_string(),
+                    modified_at: None,
                     aliases: String::new(),
                 });
             }
@@ -904,7 +909,13 @@ pub async fn search_apps(query: String) -> Result<Vec<AppEntry>, String> {
 }
 
 #[tauri::command]
-pub async fn search_files(query: String, pass: Option<u32>) -> Vec<AppEntry> {
+pub async fn search_files(
+    query: String,
+    pass: Option<u32>,
+    categories: Option<Vec<crate::settings::FileSearchCategory>>,
+    category_id: Option<String>,
+    request_id: Option<u64>,
+) -> Vec<AppEntry> {
     // Progressive passes: 0 quick, 1 expanded, 2+ system/broader.
     // Frontend merges asynchronously so later hits chase onto the list.
     let pass = pass.unwrap_or(0);
@@ -913,5 +924,13 @@ pub async fn search_files(query: String, pass: Option<u32>) -> Vec<AppEntry> {
         1 => 24,
         _ => 32,
     };
-    crate::file_search::search(query, limit, pass).await
+    crate::file_search::search(
+        query,
+        limit,
+        pass,
+        categories.unwrap_or_default(),
+        category_id,
+        request_id,
+    )
+    .await
 }

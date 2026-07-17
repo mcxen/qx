@@ -18,9 +18,9 @@
 | 壳 chrome（Esc 胶囊、Actions 菜单 kbd、Island 文案） | **`useQxModuleShell`** | 无 1:1 壳；Panel 自绘 DOM，宿主 `PluginHost` 仍包一层 QxShell | 内置必走 shell；插件 panel 打开时宿主 shell 提供 Esc leave → launcher |
 | Esc 阶梯（inner → query → leave） | `useEscBack` / `shell.stepBack` | 插件 iframe 内自理；宿主 window Esc → `tryModuleEscapeStep` 再 leave 模块 | 见 UI_SPEC Esc |
 | Host Esc 跨焦点 | **`moduleEscapeHost`** + `App.performHostEscape` | 同左（打开的是插件 tab 时，PluginHost 的 shell 注册 stepBack） | 禁止非 launcher 直接 `setTab` 跳过模块阶梯 |
-| 列表选中 / 滚入视口 | **`useQxListSelection`** | 插件自绘列表；可抄 v2ex 面板模式 | DOM：`qx-list-row` + `is-active` |
+| 列表选中 / 滚入视口 | **`useQxListSelection`** | 声明式 Workbench List/Gallery 由宿主处理；custom panel 自理 | DOM：`qx-list-row` + `is-active`；宿主乐观选择后通知插件；隐藏 Workbench iframe 的集合导航键转交宿主 Shell |
 | 主从键盘区域 | **`useQxMasterDetail`** | 插件可选自实现 region | 与 QxShell.navigation 配合 |
-| 模块搜索框 | **`QxModuleSearch`** | 插件自绘 input | Launcher 搜索另见 SearchBar |
+| 模块搜索框 | **`QxModuleSearch`** | Workbench 由宿主渲染受控 query；custom panel 自绘 input | Workbench handler 必须同步回画；Launcher 搜索另见 SearchBar |
 | 列表 loading | **`QxListLoading`** | 插件自绘 skeleton | — |
 | 网络 | `invoke` 领域命令 / 直接 provider | **`context.http.fetch`** 或 **`invoke:cmd`** | 插件需 `http` 或精确 `invoke:` |
 | 跨会话缓存 | localStorage / Rust 磁盘缓存 | **`context.storage.persist`** | SWR：先画缓存再刷新 |
@@ -38,9 +38,9 @@
 | 模块 | 表面 | Shell / Esc | 列表 / 主从 | 搜索 loading | 数据 / 缓存 | 缺口 / 备注 |
 |------|------|-------------|-------------|--------------|-------------|-------------|
 | **clipboard** | 全屏面板 | `useQxModuleShell` + stepBack | `useQxListSelection` | `QxModuleSearch` | Rust clipboard DB | 无重大缺口 |
-| **rss** | feeds / articles / detail | shell 各层；`goBack` 嵌套 | list selection + master-detail（文章） | `QxModuleSearch` + `QxListLoading` | `rss.db` + 默认目录 seed | 嵌套 leave 已对齐 host Esc |
+| **rss** | feeds / articles / detail | shell 各层；`goBack` 嵌套 | `useQxListSelection` + `useQxMasterDetail`（文章） | `QxModuleSearch` + `QxListLoading` | `rss.db` + 默认目录 seed + 阅读进度 | 嵌套 leave 已对齐 host Esc；进度节流持久化 |
 | **documents** | 文件列表 + 编辑 | shell | list + master-detail | `QxModuleSearch` | 本地文件 invoke | 无重大缺口 |
-| **screencap** | 录制 / 预览 | shell + 录制 inner Esc | 历史列表局部 | 标题槽（非搜索） | Rust capture | 双 QxShell 分支仍可接受 |
+| **screencap** | 录制 / 预览 | shell + 录制 inner Esc | `useQxListSelection` + list/gallery + detail | 标题槽（非搜索） | Rust capture | 布局选择持久化；双 QxShell 分支仍可接受 |
 | **macros** | 录制器 | shell | — | — | macro store | 无重大缺口 |
 | **qx-tty** | 终端 | shell | 侧栏 session 自管 | — | PTY invoke | 可选将来 `useQxSelectableList` |
 | **qx-ai** | list / chat / settings | shell（含 chat/settings leave 父级） | list selection（会话） | `QxModuleSearch` + loading | AI store | 无重大缺口 |
@@ -62,10 +62,10 @@
 | **pomodoro-island** | ✅ manifest + export | ✅ | **host Workbench** + background heartbeat + host countdown/action island + notifications | persist state/history/deadline | 声明式 list/detail/actions/island/backgroundPoll 样板；关闭面板继续计时；docked/float 同款暂停按钮 |
 | **weather** | ✅ | ✅ | http + invoke weather* | persist SWR | 无 |
 | **v2ex** | ✅ | ✅ | http + invoke v2ex* | persist SWR + host disk | 无 |
-| **brew** | ✅ | ✅ | **cli**, panel | — | `panel.render` 须快返回 |
-| **unsplash** | ✅ | ✅ | http, 文件 invoke | 部分 storage | 无 |
+| **brew** | ✅ | ✅ | **host Workbench List** + cli/open-url | — | 原生 tabs/list/detail/Actions；`panel.render` 快返回 |
+| **unsplash** | ✅ | ✅ | **host Workbench Gallery** + http/system/cli/file ports | persist last search | 原生 Gallery + item/panel Actions |
 | **external-display-control** | ✅ | ✅ | invoke external-displays | — | 无 |
-| **raycast-bing-wallpaper** | ✅ | ✅ | Raycast shim + storage | storage | 转换插件 |
+| **qx-bing-wallpaper** | ✅ | ✅ | **host Workbench Gallery** + http/system/cli/file ports | persist SWR | Qx 原生 Gallery + item/panel Actions；无 Raycast shim |
 | **raycast-calendar** | ✅ | ✅ | Raycast shim | — | 转换插件 |
 | **qxgh** (QxGH) | ✅ | ✅ | **host Workbench**：结构化 detail/actions + 公开 HTML + island | persist SWR | 不用 api.github.com；解析 actions/releases 网页 |
 

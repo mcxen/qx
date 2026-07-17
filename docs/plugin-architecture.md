@@ -16,6 +16,7 @@
 | `src-tauri/src/plugin_cli.rs` | **业务 CLI 端口**：`run`/`bash`/`which`、**异步 jobs**（start/poll/cancel）、**system** open/reveal/env |
 | `src/plugin/cliWorkbench.ts` | CLI→GUI helpers（ensure/json/map/wait）+ workbench kit |
 | `src/plugin/workbenchTypes.ts` | 声明式 Workbench 数据契约 + iframe 信任边界归一化 |
+| `src/plugin/workbenchKeyboard.ts` | 隐藏 iframe 键盘转交策略 + Gallery 二维索引纯函数 |
 | `src/plugin/PluginWorkbenchView.tsx` | Qx 原生 list/detail/progress 呈现；不含插件业务逻辑 |
 | `src/plugin/aiRuntime.ts` | AI task 创建、状态维护、取消、权限门控 |
 | `src/plugin/PluginHost.tsx` | 插件 panel 视图容器 |
@@ -46,7 +47,7 @@
 
 ```text
 plugin business state
-  └─ context.ui.mountWorkbench({ items, detail, actions, island }, handlers)
+  └─ context.ui.mountWorkbench({ layout, items, detail, actions, island }, handlers)
        ├─ qx:plugin:workbench → normalizePluginWorkbenchState → PluginWorkbenchView
        ├─ QxShell search/tabs/navigation/Actions → qx:workbench:event → panel handlers
        ├─ action.command → registry.runCommand（同插件 manifest 校验）
@@ -55,7 +56,35 @@ plugin business state
        └─ island → permission-gated island RPC → docked-or-float session
 ```
 
-不变量：iframe 只发布可序列化纯数据；`raw` 不跨信任边界；宿主限制列表/字段/动作数量和文本长度。Workbench 没有 DOM/HTML 兼容分支；复杂自绘内容走独立 custom panel。后台轮询只能绑定本插件已注册的 `no-view + interval` command，panel 回调不拥有后台生命周期。
+不变量：iframe 只发布可序列化纯数据；`raw` 不跨信任边界；宿主限制列表/字段/动作数量和文本长度。`layout.kind` 可选 `list`（默认）或 `gallery`；Gallery 图片只接受 `https://` / `data:image/`，列数与比例由宿主归一化，选中与 Actions 仍走相同 Workbench 事件。Workbench 没有 DOM/HTML 兼容分支；复杂自绘内容走独立 custom panel。后台轮询只能绑定本插件已注册的 `no-view + interval` command，panel 回调不拥有后台生命周期。
+
+#### 状态所有权与事件一致性
+
+| 层 | 拥有内容 | 约束 |
+|---|---|---|
+| 插件业务状态 | 原始数据、过滤结果、业务选中项、loading/error、动作副作用 | `mountWorkbench` 是受控发布；handler 收到 query/tab/select 后必须先同步更新本地状态并重新发布，慢网络/CLI 另起异步任务 |
+| 宿主交互状态 | 当前可见 query、active tab、pointer/keyboard selection、焦点与滚动 | query/tab/select 先乐观更新 React，再按顺序发给 iframe，保证 iframe 忙时仍有即时反馈 |
+| 宿主安全边界 | runtime 身份、数据归一化、命令归属、图片协议、数量/长度上限 | 仅接受 `panelSessionsByPlugin` 当前 `pluginId + runtimeId + contentWindow` 的消息；旧 iframe 发布会被丢弃 |
+
+宿主到插件的事件为 `query(value)`、`tab(id)`、`select(id)`、`action(id, selectedId)`、`backgroundPoll(...)`。`action.selectedId` 是用户触发动作瞬间的宿主选择快照，插件 kit 必须优先用它解析 item，不能依赖可能尚未完成回画的旧 `state.selectedId`。Manifest `command` 动作由宿主校验为当前插件命令后在长期 runtime 执行；其余动作回到 panel handler。
+
+插件 handler 不得在回写 query/tab/select 前等待网络、CLI 或数据库。推荐顺序：同步更新 state → `paint()` → debounce/cancel 旧任务 → 后台加载 → generation 校验 → 再 `paint()`。这样受控搜索不会回跳，慢旧结果也不会覆盖新查询。
+
+#### 指针、焦点与键盘
+
+```text
+pointer click / host keydown / hidden iframe forwarded key
+  → PluginHost responder
+  → List: linear navigation | Gallery: rendered-column 2D navigation
+  → optimistic selectedId + scrollIntoView
+  → qx:workbench:event/select
+  → plugin handler updates business state and republishes
+```
+
+- Workbench 可见时，业务 iframe 保留运行但使用 `display:none` 退出布局与 pointer hit-testing；鼠标只能命中宿主 List/Gallery。
+- iframe 若在首次发布前暂时持有焦点，集合键通过 `qx:host-keydown` 重新派发到所属 iframe 元素，只进入当前 QxShell；后台 worker 无法劫持可见面板按键。
+- List 使用上下/Page/Home/End；Gallery 使用实际 CSS 网格列数做左右/上下二维移动。搜索框有文字时左右保留 caret，空查询时左右浏览 Gallery；IME 与带修饰键事件始终让给编辑器/系统。
+- Enter 使用同一 primary action；Cmd/Ctrl+K 使用同一 QxShell Actions；自定义 panel 仍自管其 DOM 内交互，但不得注册进程级集合键或 Esc。
 
 **调度稳定性**（Bing 自动换壁纸 thrash 修复）：
 

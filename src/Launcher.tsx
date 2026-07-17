@@ -18,10 +18,14 @@ import { islandHost, useHomeIslandContribution, QxIslandSurface } from "./island
 import { mapBottomIslandContent } from "./island/compat/mapBottomIslandContent";
 import { usePluginRegistry } from "./plugin/registry";
 import { getQxShortcutPreset } from "./utils/keyboard";
+import type { LauncherResultRow } from "./launcher/resultRows";
 
 interface LauncherProps {
   results: AppEntry[];
-  selectedIndex: number;
+  resultRows: LauncherResultRow[];
+  selectedItem: AppEntry | null;
+  onToggleCategory: (categoryId: string) => void;
+  onSelectResultRow: (index: number) => void;
   onItemClick: (item: AppEntry) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   onEscape: () => void;
@@ -37,7 +41,10 @@ interface LauncherProps {
 
 export default function Launcher({
   results,
-  selectedIndex,
+  resultRows,
+  selectedItem,
+  onToggleCategory,
+  onSelectResultRow,
   onItemClick,
   onKeyDown,
   onEscape,
@@ -54,13 +61,15 @@ export default function Launcher({
   const [scope, setScope] = useState<SearchScope>(searchScopeRef.current);
   const query = useStore((state) => state.query);
   const setQuery = useStore((state) => state.setQuery);
+  const selectedIndex = useStore((state) => state.selectedIndex);
+  const selectedRow = resultRows[selectedIndex];
+  const selectedCategory = selectedRow?.kind === "category" ? selectedRow : null;
   const scopeOptions: { value: SearchScope; label: string }[] = [
     { value: "all", label: t("launcher.scope.all", "All") },
     { value: "apps", label: t("launcher.scope.apps", "Apps") },
     { value: "files", label: t("launcher.scope.files", "Files") },
     { value: "clipboard", label: t("launcher.scope.clipboard", "Clipboard") },
   ];
-  const selectedItem = results[selectedIndex] ?? null;
   const launcherActions = useMemo(
     () => createLauncherActions({ item: selectedItem, onItemClick, onNavigate, t }),
     [selectedItem, onItemClick, onNavigate, t],
@@ -351,19 +360,25 @@ export default function Launcher({
             }
       }
       primaryAction={{
-        label: results[selectedIndex] ? t("launcher.open", "Open") : t("launcher.search", "Search"),
+        label: selectedCategory
+          ? selectedCategory.collapsed
+            ? t("launcher.expandCategory", "Expand")
+            : t("launcher.collapseCategory", "Collapse")
+          : selectedItem
+            ? t("launcher.open", "Open")
+            : t("launcher.search", "Search"),
         kbd: "↵",
-        disabled: results.length === 0,
+        disabled: !selectedItem && !selectedCategory,
         tone: "primary",
         onClick: () => {
-          const item = results[selectedIndex];
-          if (item) onItemClick(item);
+          if (selectedCategory) onToggleCategory(selectedCategory.categoryId);
+          else if (selectedItem) onItemClick(selectedItem);
         },
       }}
       secondaryAction={{
         label: t("launcher.actions", "Actions"),
         kbd: getQxShortcutPreset().actionMenu,
-        disabled: results.length === 0,
+        disabled: !selectedItem,
       }}
       actionTitle={
         selectedItem
@@ -378,7 +393,14 @@ export default function Launcher({
         onClick: () => void action.run(),
       }))}
     >
-      <ResultsList items={results} onItemClick={onItemClick} loadingPhase={loadingPhase} />
+      <ResultsList
+        items={results}
+        rows={resultRows}
+        onItemClick={onItemClick}
+        onToggleCategory={onToggleCategory}
+        onSelectRow={onSelectResultRow}
+        loadingPhase={loadingPhase}
+      />
     </QxShell>
   );
 }

@@ -32,6 +32,7 @@ QxShell (visual="elevated")
 | 页 | 分区 |
 |----|------|
 | **General** | 启动与行为（登录启动、失焦隐藏、语言、自动更新） |
+| **File Search** | 文件类型分类 · Cardinal/Everything 优先级 · 拖动排序 · 新增/编辑/删除 |
 | **Appearance** | 主题与分区透明度 · 窗口与密度 · Home Island · 启动器搜索源 |
 | **Shortcuts** | 全局 / 应用快捷键 |
 | **Extensions** | Installed 使用分组连续列表，Browse 使用主从列表，配置走 Dialog |

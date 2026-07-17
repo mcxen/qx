@@ -10,7 +10,7 @@ import {
   type RecordingOptions,
 } from "./store";
 import { useStore } from "../../store";
-import { Select } from "../../components/ui";
+import { SegmentedControl, Select } from "../../components/ui";
 import GifPreview from "./GifPreview";
 import CaptureHistory from "./CaptureHistory";
 import CaptureToast from "./CaptureToast";
@@ -25,15 +25,18 @@ import {
   captureControlsPinned,
   loadCaptureConfirmMode,
   loadCaptureDelaySeconds,
+  loadCaptureHistoryLayout,
   loadRecordingOptions,
   loadScreenshotAfterCapture,
   saveCaptureConfirmMode,
   saveCaptureControlsPinned,
   saveCaptureDelaySeconds,
+  saveCaptureHistoryLayout,
   saveRecordingOptions,
   saveScreenshotAfterCapture,
   type CaptureConfirmMode,
   type CaptureDelaySeconds,
+  type CaptureHistoryLayout,
   type ScreenshotAfterCapture,
 } from "./preferences";
 
@@ -82,6 +85,7 @@ export default function ScreenRecorder() {
   const [delaySeconds, setDelaySeconds] = useState<CaptureDelaySeconds>(loadCaptureDelaySeconds);
   const [localError, setLocalError] = useState<string | null>(null);
   const [toastPath, setToastPath] = useState<string | null>(null);
+  const [historyLayout, setHistoryLayout] = useState<CaptureHistoryLayout>(loadCaptureHistoryLayout);
 
   useEffect(() => {
     void loadHistory();
@@ -134,6 +138,10 @@ export default function ScreenRecorder() {
   useEffect(() => {
     saveCaptureDelaySeconds(delaySeconds);
   }, [delaySeconds]);
+
+  useEffect(() => {
+    saveCaptureHistoryLayout(historyLayout);
+  }, [historyLayout]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -325,32 +333,7 @@ export default function ScreenRecorder() {
       }
     }
 
-    if (history.length === 0) return;
-    const currentIndex = Math.max(
-      0,
-      history.findIndex((h) => h.path === lastGifPath),
-    );
-    switch (e.key) {
-      case "ArrowDown":
-      case "j": {
-        if (e.metaKey || e.ctrlKey || e.altKey) break;
-        e.preventDefault();
-        const next = Math.min(currentIndex + 1, history.length - 1);
-        setPreview(history[next].path);
-        break;
-      }
-      case "ArrowUp":
-      case "k": {
-        if (e.metaKey || e.ctrlKey || e.altKey) break;
-        e.preventDefault();
-        const prev = Math.max(currentIndex - 1, 0);
-        setPreview(history[prev].path);
-        break;
-      }
-      default:
-        break;
-    }
-  }, [beginAreaSelect, beginScreenshot, handleStop, history, isRecording, lastGifPath, setPreview, status]);
+  }, [beginAreaSelect, beginScreenshot, handleStop, isRecording, status]);
 
   const leave = useCallback(() => {
     reset();
@@ -394,6 +377,10 @@ export default function ScreenRecorder() {
     },
     t,
   });
+
+  const selectedHistoryIndex = history.length
+    ? Math.max(0, history.findIndex((entry) => entry.path === lastGifPath))
+    : -1;
 
   if (isRecording || status === "processing") {
     return (
@@ -491,8 +478,27 @@ export default function ScreenRecorder() {
         </div>
       }
       onKeyDown={shell.onKeyDown}
+      navigation={history.length ? {
+        index: selectedHistoryIndex,
+        count: history.length,
+        pageSize: historyLayout === "gallery" ? 8 : 6,
+        regionId: "screencap-history",
+        editable: "search",
+        onChange: (index) => setPreview(history[index].path),
+        onOpen: selectedHistoryIndex >= 0
+          ? () => setPreview(history[selectedHistoryIndex].path)
+          : undefined,
+      } : undefined}
       trailing={
         <>
+          <SegmentedControl
+            value={historyLayout}
+            options={[
+              { value: "list", label: t("screencap.history.list", "List") },
+              { value: "gallery", label: t("screencap.history.gallery", "Gallery") },
+            ]}
+            onChange={setHistoryLayout}
+          />
           <button className="qx-command-button primary" onClick={() => void beginScreenshot()} type="button">
             {t("screencap.screenshot", "Screenshot")}
           </button>
@@ -513,30 +519,21 @@ export default function ScreenRecorder() {
       actions={showingPreview ? doneActions : readyActions}
     >
       <div
-        className="qx-content-split has-detail"
-        style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "minmax(200px, 280px) 1fr" }}
+        className={`qx-screencap-browser is-${historyLayout}`}
       >
         <div
-          className="qx-content-list"
-          style={{
-            minHeight: 0,
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
-            borderRight: "1px solid var(--qx-border-1)",
-          }}
-          data-qx-region="screencap-list"
+          className="qx-content-list qx-screencap-history-pane"
+          data-qx-region="screencap-history"
           data-qx-region-label={t("screencap.history.region", "Capture history")}
           data-qx-region-initial="true"
           data-qx-region-scroll
           tabIndex={-1}
         >
-          <CaptureHistory />
+          <CaptureHistory layout={historyLayout} />
         </div>
 
         <div
-          className="qx-plugin-detail"
-          style={{ minHeight: 0, overflow: "auto", position: "relative" }}
+          className="qx-plugin-detail qx-screencap-detail-pane"
           data-qx-region="screencap-detail"
           data-qx-region-label={t("screencap.detail.region", "Capture detail")}
           data-qx-region-scroll

@@ -879,7 +879,12 @@ function PluginDetail({
       )}
 
       {!builtin && (
-        <Button variant="destructive" size="sm" onClick={onUninstall}>
+        <Button
+          variant="destructive"
+          size="sm"
+          className="qx-plugin-uninstall-button"
+          onClick={onUninstall}
+        >
           <Trash2 size={13} aria-hidden="true" />
           {t("plugins.uninstall", "Uninstall")}
         </Button>

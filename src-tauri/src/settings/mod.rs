@@ -453,6 +453,57 @@ impl Default for PluginDisplaySettings {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FileSearchCategory {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub extensions: Vec<String>,
+    #[serde(default)]
+    pub include_folders: bool,
+    #[serde(default)]
+    pub catch_all: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileSearchSettings {
+    #[serde(default = "default_file_search_categories")]
+    pub categories: Vec<FileSearchCategory>,
+}
+
+pub fn default_file_search_categories() -> Vec<FileSearchCategory> {
+    [
+        ("folders", "Folders", "", true, false),
+        ("media", "Multimedia", "mp4;mov;m4v;mkv;avi;webm;mp3;m4a;wav;aac;flac;ogg", false, false),
+        ("code", "Code", "rs;ts;tsx;js;jsx;mjs;cjs;py;go;java;kt;swift;c;cc;cpp;h;hpp;cs;rb;php;vue;svelte;astro;json;yml;yaml;toml;html;css;scss;sql", false, false),
+        ("office", "Office", "doc;docx;dot;dotx;rtf;odt;pages;xls;xlsx;xlsm;xlsb;csv;tsv;ods;numbers;ppt;pptx;pps;ppsx;key;odp;pdf", false, false),
+        ("images", "Images", "png;jpg;jpeg;gif;webp;avif;heic;heif;tif;tiff;bmp;svg", false, false),
+        ("archives", "Archives", "zip;rar;7z;tar;gz;tgz;bz2;xz;dmg;pkg", false, false),
+        ("other", "Other Files", "", false, true),
+    ]
+    .into_iter()
+    .map(|(id, label, extensions, include_folders, catch_all)| FileSearchCategory {
+        id: id.to_string(),
+        label: label.to_string(),
+        extensions: extensions
+            .split(';')
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+            .collect(),
+        include_folders,
+        catch_all,
+    })
+    .collect()
+}
+
+impl Default for FileSearchSettings {
+    fn default() -> Self {
+        Self {
+            categories: default_file_search_categories(),
+        }
+    }
+}
+
 /// Per-module contribution to the main launcher search (static commands + dynamic surfaces).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleSearchSettings {
@@ -606,6 +657,8 @@ pub struct Settings {
     #[serde(default)]
     pub plugin_display: PluginDisplaySettings,
     #[serde(default)]
+    pub file_search: FileSearchSettings,
+    #[serde(default)]
     pub advanced: AdvancedSettings,
     #[serde(default)]
     pub agent: AgentSettings,
@@ -689,6 +742,7 @@ impl Default for Settings {
             app_shortcuts: BTreeMap::new(),
             plugins: Vec::new(),
             plugin_display: PluginDisplaySettings::default(),
+            file_search: FileSearchSettings::default(),
             advanced: AdvancedSettings::default(),
             agent: AgentSettings::default(),
             rss: RssSettings::default(),

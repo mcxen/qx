@@ -105,14 +105,15 @@ try {
 
 | 方法 | 用途 |
 |------|------|
-| **`mountWorkbench(state, handlers)`** | 发布纯数据：tabs / 搜索 / 列表 / 结构化详情 / Actions / Island |
+| **`mountWorkbench(state, handlers)`** | 发布纯数据：tabs / 搜索 / 列表或 Gallery / 结构化详情 / Actions / Island |
 | `itemsFromJson(value)` | 数组或对象 → 列表项 `{ title, subtitle, badge, raw }` |
 
-列表项可选字段（**business 模组**用这些即可，不必自绘）：
+条目可选字段（**business 模组**用这些即可，不必自绘）：
 
 | 字段 | 说明 |
 |------|------|
 | `icon` | 行首短标记（emoji 等） |
+| `image` | Gallery 图片 `{ url, alt?, fit? }`；只接受 HTTPS / data image |
 | `badge` / `meta` | 右侧状态徽标 |
 | `tone` | `success` / `danger` / `warning` / `accent` / `run` |
 | `progress` | `0–100`，行内进度条（CI / 下载） |
@@ -120,16 +121,22 @@ try {
 | `actions` | 条目动作；可用 `command` 映射 manifest command，或交给 `onAction` |
 | `raw` | 业务对象，供 `onSelect` / 详情映射 |
 
-**键盘（宿主 workbench 内置）**：`↑` / `↓` 移动选中，`PageUp` / `PageDown` 跳 8 行，`Home` / `End` 首尾（过滤框内 Home/End 仍走光标）。业务插件只要在 `onSelect` 里更新 `selectedId` 再 `mountWorkbench` 即可；**不要**自己绑全局上下键。
+**指针与键盘（宿主 workbench 内置）**：点击 List / Gallery 条目时宿主会立即显示新选中态，再异步调用插件 `onSelect`。List 由 `↑` / `↓` 线性移动；Gallery 由 `←` / `→` 同行移动、`↑` / `↓` 按当前响应式列数跨行移动。焦点在过滤框时，上下键继续浏览集合；Gallery 空查询的左右键也浏览网格，有查询文字时才保留左右光标。两种布局都支持 `PageUp` / `PageDown`、`Home` / `End` 与 `Enter` 主动作。即使发布 Workbench 的隐藏 iframe 暂时保留焦点，宿主也会接管集合导航键。业务插件仍应在 `onSelect` 里更新 `selectedId` 再 `mountWorkbench`；**不要**自己绑全局方向键。
+
+**受控状态契约**：`query`、tabs 的 `active`、`selectedId` 由插件业务状态最终确认，但宿主会先即时呈现用户输入/点击。`onQuery`、`onTab`、`onSelect` 必须同步修改本地 state 并调用一次 `paint()`；不要先 `await` 网络或 CLI。慢加载应在回画之后 debounce/cancel，并用 generation 防止旧查询覆盖新结果。条目 `id` 与 action `id` 在当前发布中必须稳定且唯一。
+
+动作事件带有用户触发时的 `selectedId` 快照，宿主 UI kit 会据此把正确的 `selectedItem` 传给 `onAction(id, selectedItem)`；即便选择回画还在排队，快速“点击条目 → Enter”也不会作用到上一条。插件不要自行缓存另一份“Actions 当前项”。
 
 Qx 会渲染明暗主题、列表/详情、选择滚动、顶栏搜索/tabs、底栏主动作、右侧 Actions 和 Cmd/Ctrl+K。`state.island` 使用与 `context.island` 相同的数据形状；声明 `island` 权限后，同一份数据会按用户设置停靠或浮出。Workbench 不提供 iframe DOM/HTML 模式；复杂自绘界面应明确使用 custom panel。
 
 ```ts
 type WorkbenchState = {
+  layout?: { kind: "list" | "gallery"; columns?: number; aspectRatio?: "landscape" | "square" | "portrait" }
   tabs?: { id: string; label: string; active?: boolean }[]
   query?: string
   items: {
     id: string; title: string; subtitle?: string; badge?: string
+    image?: { url: string; alt?: string; fit?: "cover" | "contain" }
     progress?: number; tone?: "neutral" | "success" | "warning" | "danger" | "accent"
     detail?: { title?: string; subtitle?: string; body?: string; fields?: { label: string; value: string | number | boolean | null }[]; sections?: object[] }
     actions?: { id: string; label: string; command?: string; primary?: boolean; kbd?: string }[]

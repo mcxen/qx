@@ -1,5 +1,110 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Fix — Workbench 受控交互、List / Gallery 与插件事件协议
+
+**状态**：已完成代码与协议审计，等待最终人工视觉复核。
+
+- Workbench Top Bar 统一由 QxShell 组合 search + trailing tabs/background；插件不再自绘第二层顶栏。
+- List 使用 Raycast 式三轨行布局；Gallery 使用宿主响应式网格。鼠标点击先在宿主即时选中，隐藏 iframe 退出 pointer hit-testing。
+- List 支持上下/Page/Home/End/Enter；Gallery 按实际 CSS 列数支持二维方向键。空搜索时左右浏览 Gallery，有查询文字时左右保留 caret；隐藏 iframe 持有焦点时集合键转交当前 Shell。
+- query、active tab、selectedId 使用宿主乐观反馈 + 插件受控回画；action 事件携带触发瞬间 selectedId，避免快速选择后执行落到旧条目。
+- iframe → host 发布只接受当前 panel 的 pluginId/runtimeId/contentWindow；数据在 `normalizePluginWorkbenchState` 信任边界限制协议、数量和文本长度。
+- 内部架构、端口清单、公开 CLI→GUI / 插件开发 / plugin system 文档已同步维护。
+
+### 验证
+
+- [x] `npm run test:shell-navigation`
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [x] `cargo fmt --check` / `cargo check` / `cargo test --lib`（73 tests）
+- [ ] macOS：Brew List、Bing/Unsplash Gallery 的鼠标、四向键、搜索、Tabs、Enter 与 Cmd+K 连续人工验收。
+
+## Feature — Launcher 文件类型分组与 Cardinal 分类优先级
+
+**状态**：已实现，等待真实文件集运行态复核。
+
+- 文件结果按用户可配置的类型分类顺序呈现；默认顺序为文件夹、多媒体、代码、Office、图片、压缩包、其他文件，分类行采用 hairline 线性分隔，不使用卡片容器。
+- 分类行和文件行进入同一键盘选择序列；↑/↓ 可选中分类，Enter 切换该分类的展开/折叠。
+- Settings → File Search 支持拖动排序、键盘上移/下移、新增、编辑和删除分类；兜底“其他文件”始终保留。
+- 每个分类可选择多个扩展名；前端每个 pass 只发起一次可淘汰的 `search_files`，后端在同一 blocking 任务内按分类优先查询并平衡结果，再由前端渐进合并多 pass。新 query 会使旧 Cardinal 工作失效，Spotlight 子进程不持有 Cardinal 锁，避免快速输入堆积分类任务或阻塞后续搜索。
+- 后端返回文件 `modified_at`；每个分类内默认按修改时间倒序。
+- 非文件结果固定分为 Qx 内置、应用程序、外置插件三个线性可折叠组；Qx 内置命令/模块使用启动时同步注册的本地目录优先进入候选，不等待应用、文件或外置插件 IPC。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `cargo test --lib file_search:: -- --nocapture`
+- [x] `npm run check` / `npm run build` / `cargo check`
+- [ ] macOS：真实 Cardinal 索引下分类优先、折叠键盘连续性和设置拖动持久化。
+
+## Feature — RSS 标准主从列表 + 阅读进度恢复
+
+**状态**：已实现，等待真实长文章运行态复核。
+
+- RSS 详情页左栏确认并收口到 `useQxListSelection` + `useQxMasterDetail`，继续使用 Qx 标准列表选择、区域焦点和键盘导航。
+- `rss_articles.reading_progress` 按文章保存 0–100 归一化位置；滚动停止 600ms 后写入，切换或离开文章时立即收口。
+- 打开文章时等待正文布局并在图片加载引起尺寸变化时重算恢复位置；左侧列表显示未完成文章的百分比。
+- 每篇文章拥有独立阅读会话快照、定时器和恢复生命周期；切换时不从复用后的新文章 DOM 回写旧文章，后台落库也不会触发二次恢复。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `cargo fmt --check`
+- [x] `cargo check`
+- [x] Rust 阅读进度内存数据库测试
+- [x] `npm run check`
+- [x] `npm run build`
+- [ ] macOS：长文章滚动后退出、重启 Qx、调整栏宽/字体后恢复位置。
+
+## Feature — 录屏历史 List / Gallery 切换
+
+**状态**：已实现，等待运行态视觉与真实媒体复核。
+
+- 捕获历史新增持久化的列表 / 图库切换；列表保持左侧连续列表 + 详情，图库使用响应式媒体缩略图 + 详情。
+- 截图/GIF 使用图片缩略图，MP4/MOV 使用视频首帧；两种布局共享选择、预览、删除与 QxShell 键盘导航。
+- 移除模块内重复的上下键监听，统一走 Shell navigation + `useQxListSelection` 滚动追随。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [ ] macOS：真实截图/录屏、布局记忆、键盘选择、预览与删除。
+
+## Refactor — 市场模块统一 Gallery / 左侧 List
+
+**状态**：已实现第一批，等待运行态视觉复核。
+
+- `unsplash` 1.1.0：移除自绘 iframe 网格、工具栏和底部按钮，改用 Workbench Gallery、宿主搜索、图片详情与 item/panel Actions；补齐最近搜索缓存和 Windows 实际壁纸路径。
+- `brew` 1.1.0：移除自绘列表与操作条，改用 Workbench 左侧 List + 右侧 Detail、Installed/Outdated/Search tabs、结构化状态和确认式 Actions。
+- 保留专用布局：Weather（预报卡）、External Display Control（滑杆）、Calendar（月历）；QxGH 与 Pomodoro 已是 Workbench。
+
+### 验证
+
+- [x] 两个插件 `node --check` + manifest 版本检查
+- [x] 模拟宿主发布验证：Unsplash = Gallery + 5 item Actions；Brew = List + Detail + 3 item Actions
+- [x] `npm run package:plugins` + `unzip -t` + 本地覆盖安装与入口语法检查
+- [x] 本机真实 `brew info --json=v2 --installed`：成功解析 78 条已安装记录
+- [ ] Qx 运行态：搜索、键盘选择、Actions、缓存与真实 CLI/HTTP 主路径
+
+## Feature — Workbench Gallery + Qx Bing Wallpaper
+
+**状态**：已实现，等待运行态视觉与真实桌面壁纸复核。
+
+- Workbench 新增声明式 `layout.kind: "gallery"`、安全图片字段、响应式列数与横/方/竖比例。
+- Gallery 复用宿主键盘选择、滚动追随、QxShell 主动作、右侧 Actions 与 Cmd/Ctrl+K。
+- 市场 `raycast-bing-wallpaper` 迁移为原生 `qx-bing-wallpaper` / **Qx Bing Wallpaper**：直接使用 Qx http/storage/system/cli/file 端口，不再包含 Raycast shim 或转换元数据。
+- 插件提供 16 张 Bing 每日壁纸图库、搜索、缓存/stale fallback、设为壁纸、下载、复制链接、打开来源、随机设置、刷新与日更后台命令。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [x] `npm run package:plugins`（市场仓库）+ `unzip -t` + 本地安装与入口/manifest 语法检查
+- [ ] macOS / Windows：Gallery 键盘选择、所有 Actions、真实设壁纸。
+
 ## Feature — 统一列表选中浅色背景 + 键盘滚动追随
 
 **状态**：已实现。

@@ -469,6 +469,11 @@ export interface PluginContext {
       meta?: string;
       badge?: string;
       icon?: string;
+      image?: {
+        url: string;
+        alt?: string;
+        fit?: "cover" | "contain";
+      };
       progress?: number;
       tone?: string;
       raw?: unknown;

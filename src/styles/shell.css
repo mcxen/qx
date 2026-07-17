@@ -189,24 +189,24 @@
   width: 100%;
 }
 
-.qx-plugin-chrome {
+.qx-plugin-topbar-trailing {
   display: flex;
   align-items: center;
   min-width: 0;
-  width: 100%;
   gap: 8px;
-}
-
-.qx-plugin-chrome > .qx-search-wrap {
-  flex: 1 1 auto;
-  min-width: var(--qx-search-min-w);
 }
 
 .qx-plugin-chrome-tabs {
   flex: 0 1 auto;
-  max-width: 52%;
+  max-width: min(44vw, 100%);
   overflow-x: auto;
   scrollbar-width: none;
+  white-space: nowrap;
+}
+
+.qx-plugin-shell .qx-shell-search-slot > .qx-search-wrap {
+  width: 100%;
+  min-width: 0;
 }
 
 .qx-plugin-chrome-tabs::-webkit-scrollbar { display: none; }

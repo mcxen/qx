@@ -9,6 +9,11 @@ import {
   normalizeSearchQuery,
   textMatchesQuery,
 } from "../src/search/rankResults.ts";
+import {
+  resolvePluginWorkbenchGalleryIndex,
+  shouldForwardPluginWorkbenchHostKey,
+  shouldHandlePluginWorkbenchGalleryKey,
+} from "../src/plugin/workbenchKeyboard.ts";
 
 const list = (overrides = {}) => resolveQxListNavigation({
   key: "ArrowDown",
@@ -35,6 +40,38 @@ assert.equal(list({ editable: true, allowEditable: false }), null);
 assert.equal(list({ key: "PageDown", editable: true, allowEditable: false }), null);
 assert.equal(list({ key: "Home", editable: true, allowEditable: true }), null);
 assert.equal(list({ modified: true }), null);
+
+// A hidden plugin iframe may retain focus after publishing a host-rendered
+// Workbench. Navigation keys must cross that boundary for both List/Gallery.
+assert.equal(shouldForwardPluginWorkbenchHostKey({ mounted: true, key: "ArrowDown" }), true);
+assert.equal(shouldForwardPluginWorkbenchHostKey({ mounted: true, key: "PageUp" }), true);
+assert.equal(shouldForwardPluginWorkbenchHostKey({ mounted: true, key: "Enter" }), true);
+assert.equal(shouldForwardPluginWorkbenchHostKey({ mounted: false, key: "ArrowDown" }), false);
+assert.equal(shouldForwardPluginWorkbenchHostKey({ mounted: true, key: "ArrowDown", metaKey: true }), false);
+assert.equal(shouldForwardPluginWorkbenchHostKey({ mounted: true, key: "a" }), false);
+
+const galleryKey = (overrides = {}) => shouldHandlePluginWorkbenchGalleryKey({
+  key: "ArrowRight",
+  query: "",
+  editable: true,
+  fromSearch: true,
+  modified: false,
+  ...overrides,
+});
+assert.equal(galleryKey(), true);
+assert.equal(galleryKey({ key: "ArrowLeft" }), true);
+assert.equal(galleryKey({ key: "ArrowDown", query: "wallpaper" }), true);
+assert.equal(galleryKey({ key: "ArrowRight", query: "wallpaper" }), false);
+assert.equal(galleryKey({ fromSearch: false }), false);
+assert.equal(galleryKey({ editable: false, fromSearch: false }), true);
+assert.equal(galleryKey({ modified: true }), false);
+
+assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "ArrowRight", index: 1, count: 10, columns: 4 }), 2);
+assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "ArrowLeft", index: 4, count: 10, columns: 4 }), 4);
+assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "ArrowDown", index: 2, count: 10, columns: 4 }), 6);
+assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "ArrowDown", index: 6, count: 10, columns: 4 }), 9);
+assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "ArrowUp", index: 6, count: 10, columns: 4 }), 2);
+assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "Enter", index: 2, count: 10, columns: 4 }), null);
 
 // Search inputs may opt into list arrows/pages without losing native Home/End.
 assert.deepEqual(list({ editable: true, allowEditable: true }), { type: "change", index: 3 });

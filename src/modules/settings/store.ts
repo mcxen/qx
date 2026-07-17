@@ -4,6 +4,10 @@ import {
   CONFIGURABLE_BUILTIN_MODULE_IDS,
   type ConfigurableBuiltinModuleId,
 } from "../catalog";
+import {
+  DEFAULT_FILE_SEARCH_CATEGORIES,
+  normalizeFileSearchCategories,
+} from "../../search/fileCategories";
 
 let saveSeq = 0;
 let saveInFlight = false;
@@ -193,6 +197,21 @@ export interface PluginDisplaySettings {
   raycast_action_panel: boolean;
 }
 
+export interface FileSearchCategory {
+  id: string;
+  label: string;
+  /** Lowercase extensions without a leading dot. */
+  extensions: string[];
+  /** Match directory results instead of file extensions. */
+  include_folders?: boolean;
+  /** Final fallback for every file not claimed by an earlier category. */
+  catch_all?: boolean;
+}
+
+export interface FileSearchSettings {
+  categories: FileSearchCategory[];
+}
+
 /** Built-in module ids that can contribute to main launcher search. */
 export type ModuleSearchModuleId =
   | "clipboard"
@@ -248,6 +267,7 @@ export interface Settings {
   app_shortcuts: Record<string, ShortcutBinding>;
   plugins: PluginConfig[];
   plugin_display: PluginDisplaySettings;
+  file_search: FileSearchSettings;
   advanced: AdvancedSettings;
   agent: AgentSettings;
   rss: RssSettings;
@@ -262,6 +282,7 @@ export interface Settings {
 
 export type SettingsTab =
   | "general"
+  | "file-search"
   | "shortcuts"
   | "plugins"
   | "permissions"
@@ -323,6 +344,9 @@ export const DEFAULT_SETTINGS: Settings = {
   plugin_display: {
     // Optional in-iframe action chips. Real actions always use QxShell (⌘K / bottom bar).
     raycast_action_panel: false,
+  },
+  file_search: {
+    categories: DEFAULT_FILE_SEARCH_CATEGORIES,
   },
   advanced: {
     log_level: "info",
@@ -508,6 +532,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           general: { ...DEFAULT_SETTINGS.general, ...s.general },
           appearance: { ...DEFAULT_SETTINGS.appearance, ...s.appearance },
           plugin_display: { ...DEFAULT_SETTINGS.plugin_display, ...s.plugin_display },
+          file_search: {
+            ...DEFAULT_SETTINGS.file_search,
+            ...(s as Settings).file_search,
+            categories: normalizeFileSearchCategories((s as Settings).file_search?.categories),
+          },
           advanced: { ...DEFAULT_SETTINGS.advanced, ...s.advanced },
           agent: { ...DEFAULT_SETTINGS.agent, ...s.agent },
           rss: { ...DEFAULT_SETTINGS.rss, ...s.rss },

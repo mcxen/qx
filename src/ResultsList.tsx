@@ -17,6 +17,7 @@ import {
   Palette,
   Presentation,
   SquareTerminal,
+  ChevronRight,
 } from "lucide-react";
 import { QxListLoading } from "./components/QxListLoading";
 import { Kbd } from "./components/ui";
@@ -39,6 +40,7 @@ import {
 } from "./search/searchMetadata";
 import { formatQxShortcut } from "./utils/keyboard";
 import { EyeOff, Pin } from "lucide-react";
+import type { LauncherResultRow } from "./launcher/resultRows";
 
 const FILE_ICON_BY_EXTENSION: Record<string, string> = {
   pdf: "file-pdf",
@@ -364,17 +366,22 @@ const ResultItem = memo(function ResultItem({
  */
 export default function ResultsList({
   items,
+  rows,
   onItemClick,
+  onToggleCategory,
+  onSelectRow,
   loadingPhase,
 }: {
   items: AppEntry[];
+  rows: LauncherResultRow[];
   onItemClick: (item: AppEntry) => void;
+  onToggleCategory: (categoryId: string) => void;
+  onSelectRow: (index: number) => void;
   loadingPhase?: string;
 }) {
   const t = useT();
   const getDisplayName = useDisplayName();
   const selectedIndex = useStore((state) => state.selectedIndex);
-  const setSelectedIndex = useStore((state) => state.setSelectedIndex);
   const loadingLabel = t("launcher.loadingApps", "Loading apps...");
   const listRef = useRef<HTMLDivElement>(null);
   const hoverArmedRef = useRef(false);
@@ -408,8 +415,8 @@ export default function ResultsList({
 
   // New result set (async search / filter): keep keyboard selection until the mouse moves.
   const listSignature = useMemo(
-    () => items.map((item) => `${item.kind ?? "app"}:${item.path}:${item.name}`).join("\n"),
-    [items],
+    () => rows.map((row) => row.key).join("\n"),
+    [rows],
   );
   useEffect(() => {
     hoverArmedRef.current = false;
@@ -432,8 +439,8 @@ export default function ResultsList({
 
   const handleHoverSelect = useCallback((index: number) => {
     if (!hoverArmedRef.current) return;
-    setSelectedIndex(index);
-  }, [setSelectedIndex]);
+    onSelectRow(index);
+  }, [onSelectRow]);
 
   return (
     <div
@@ -442,22 +449,50 @@ export default function ResultsList({
       style={{ flex: 1, borderRight: "none" }}
       onMouseMove={handlePointerMove}
     >
-      {items.length > 0 && (
-        <div className="qx-section-header">{t("launcher.suggestions", "Suggestions")}</div>
-      )}
-      {items.map((item, i) => (
-        <AppResultContextMenu item={item} key={`${item.kind}:${item.path}:${item.name}`}>
-          <div onClick={() => onItemClick(item)}>
-            <ResultItem
-              item={item}
-              index={i}
-              selectedIndex={selectedIndex}
-              label={getDisplayName(item)}
-              onHoverSelect={handleHoverSelect}
-            />
-          </div>
-        </AppResultContextMenu>
-      ))}
+      {rows.map((row, rowIndex) => {
+        if (row.kind === "category") {
+          return (
+            <div
+              {...getQxListItemProps(rowIndex, selectedIndex, {
+                className: "qx-file-category-row",
+                role: "option",
+              })}
+              key={row.key}
+              aria-expanded={!row.collapsed}
+              onMouseEnter={() => handleHoverSelect(rowIndex)}
+              onClick={() => {
+                onSelectRow(rowIndex);
+                onToggleCategory(row.categoryId);
+              }}
+            >
+              <ChevronRight
+                className={`qx-file-category-chevron${row.collapsed ? "" : " is-expanded"}`}
+                size={13}
+                strokeWidth={2.1}
+                aria-hidden="true"
+              />
+              <span className="qx-file-category-label">
+                {t(row.translationKey, row.label)}
+              </span>
+              <span className="qx-file-category-count">{row.count}</span>
+            </div>
+          );
+        }
+        const item = row.item;
+        return (
+          <AppResultContextMenu item={item} key={row.key}>
+            <div onClick={() => onItemClick(item)}>
+              <ResultItem
+                item={item}
+                index={rowIndex}
+                selectedIndex={selectedIndex}
+                label={getDisplayName(item)}
+                onHoverSelect={handleHoverSelect}
+              />
+            </div>
+          </AppResultContextMenu>
+        );
+      })}
       {items.length === 0 && loadingPhase === "loading-apps" && (
         <QxListLoading
           ariaLabel={loadingLabel}

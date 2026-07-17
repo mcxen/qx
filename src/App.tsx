@@ -1,4 +1,4 @@
-import { Component, Suspense, lazy, useEffect, useCallback, useRef, useState, useTransition } from "react";
+import { Component, Suspense, lazy, useEffect, useCallback, useMemo, useRef, useState, useTransition } from "react";
 import type { ErrorInfo, ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { currentMonitor, getCurrentWindow, LogicalSize, primaryMonitor } from "@tauri-apps/api/window";
@@ -41,6 +41,11 @@ import {
   setPendingModuleLaunch,
 } from "./search/moduleSurfaces";
 import { rankSearchResultsAsync } from "./search/rankResultsAsync";
+import { normalizeFileSearchCategories } from "./search/fileCategories";
+import {
+  buildLauncherResultRows,
+  selectedLauncherItem,
+} from "./launcher/resultRows";
 import { bestMatchTier, MatchTier, textMatchesQuery, type MatchTierValue } from "./search/rankResults";
 import {
   frequentMatchingEntries,
@@ -565,6 +570,7 @@ function App() {
   const previousQueryRef = useRef(query);
   const searchAbortRef = useRef<AbortController | null>(null);
   const searchScopeRef = useRef<SearchScope>("all");
+  const selectedLauncherRowKeyRef = useRef<string | null>(null);
   const { settings, load: loadSettings, loaded: settingsLoaded } = useSettingsStore();
   const mainVisible = useStore((state) => state.visible);
 
@@ -602,7 +608,61 @@ function App() {
   const [mountedTab, setMountedTab] = useState(tab);
   /** macOS first-launch permission wizard (FDA + optional paste/capture). */
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [collapsedLauncherCategoryIds, setCollapsedLauncherCategoryIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [, startSearchTransition] = useTransition();
+  const launcherRows = useMemo(
+    () => buildLauncherResultRows(
+      results,
+      settings.file_search.categories,
+      collapsedLauncherCategoryIds,
+    ),
+    [collapsedLauncherCategoryIds, results, settings.file_search.categories],
+  );
+
+  const toggleLauncherCategory = useCallback((categoryId: string) => {
+    setCollapsedLauncherCategoryIds((current) => {
+      const next = new Set(current);
+      if (next.has(categoryId)) next.delete(categoryId);
+      else next.add(categoryId);
+      return next;
+    });
+  }, []);
+
+  const selectLauncherRow = useCallback((index: number) => {
+    const safeIndex = launcherRows.length > 0
+      ? Math.max(0, Math.min(index, launcherRows.length - 1))
+      : 0;
+    selectedLauncherRowKeyRef.current = launcherRows[safeIndex]?.key ?? null;
+    setSelectedIndex(safeIndex);
+  }, [launcherRows, setSelectedIndex]);
+
+  useEffect(() => {
+    const stableKey = selectedLauncherRowKeyRef.current;
+    if (stableKey) {
+      const stableIndex = launcherRows.findIndex((row) => row.key === stableKey);
+      if (stableIndex >= 0) {
+        if (stableIndex !== selectedIndex) setSelectedIndex(stableIndex);
+        return;
+      }
+    }
+    if (launcherRows.length === 0) {
+      if (selectedIndex !== 0) setSelectedIndex(0);
+      selectedLauncherRowKeyRef.current = null;
+      return;
+    }
+    if (selectedIndex >= launcherRows.length) {
+      setSelectedIndex(launcherRows.length - 1);
+      selectedLauncherRowKeyRef.current = launcherRows[launcherRows.length - 1]?.key ?? null;
+      return;
+    }
+    selectedLauncherRowKeyRef.current = launcherRows[selectedIndex]?.key ?? null;
+  }, [launcherRows, selectedIndex, setSelectedIndex]);
+
+  useEffect(() => {
+    selectedLauncherRowKeyRef.current = null;
+  }, [query]);
 
   if (previousQueryRef.current !== query) {
     previousQueryRef.current = query;
@@ -1372,6 +1432,28 @@ function App() {
     showOnboarding,
   ]);
 
+  const searchFilePass = useCallback(
+    async (
+      q: string,
+      pass: number,
+      requestId: number,
+      signal: AbortSignal,
+      onBatch?: (batch: AppEntry[]) => void,
+    ): Promise<AppEntry[]> => {
+      const categories = normalizeFileSearchCategories(
+        useSettingsStore.getState().settings.file_search.categories,
+      );
+      const batch = await abortableInvoke<AppEntry[]>(
+        "search_files",
+        { query: q, pass, categories, requestId },
+        signal,
+      );
+      if (!signal.aborted && batch.length > 0) onBatch?.(batch);
+      return signal.aborted ? [] : dedupeEntries(batch);
+    },
+    [],
+  );
+
   const loadSlowSearchProviders = useCallback(
     async (
       q: string,
@@ -1443,13 +1525,15 @@ function App() {
             // runs concurrently with clipboard, apps, modules, and usage recall.
             for (const pass of [1, 2] as const) {
               if (seq !== searchSeqRef.current || signal.aborted) return;
-              const batch = await abortableInvoke<AppEntry[]>(
-                "search_files",
-                { query: q, pass },
+              const batch = await searchFilePass(
+                q,
+                pass,
+                seq,
                 signal,
-              ).catch(() => [] as AppEntry[]);
+                mergeFileBatch,
+              )
+                .catch(() => [] as AppEntry[]);
               if (seq !== searchSeqRef.current || signal.aborted) return;
-              mergeFileBatch(batch);
               totalFileHits += batch.length;
             }
             if (seq !== searchSeqRef.current || signal.aborted) return;
@@ -1470,7 +1554,7 @@ function App() {
 
       await Promise.allSettled([clipboardTask, broaderFilesTask]);
     },
-    [applyResults],
+    [applyResults, searchFilePass],
   );
 
   /**
@@ -1574,7 +1658,10 @@ function App() {
       // File pass 0 is part of the immediate query path: every non-empty edit
       // (typing, deleting, paste) reaches the backend before slower providers.
       const filesPass0Promise = (scope === "all" || scope === "files")
-        ? abortableInvoke<AppEntry[]>("search_files", { query: q, pass: 0 }, signal)
+        ? searchFilePass(q, 0, seq, signal, (batch) => {
+            if (seq !== searchSeqRef.current || signal.aborted) return;
+            applyResults(batch, { merge: true });
+          })
             .catch((error) => (isAbortError(error) ? ([] as AppEntry[]) : ([] as AppEntry[])))
         : Promise.resolve([] as AppEntry[]);
 
@@ -1716,7 +1803,6 @@ function App() {
 
       const filesPass0Task = filesPass0Promise.then((filesPass0) => {
         if (seq !== searchSeqRef.current || signal.aborted || filesPass0.length === 0) return;
-        applyResults(filesPass0, { merge: true });
       });
 
       const moduleSurfaceTask = trimmed && (scope === "all" || scope === "apps")
@@ -1758,7 +1844,7 @@ function App() {
         }, 900);
       }
     },
-    [applyResults, findCommands, finishSearchActivity, loadModuleSurfaceProviders, loadSlowSearchProviders],
+    [applyResults, findCommands, finishSearchActivity, loadModuleSurfaceProviders, loadSlowSearchProviders, searchFilePass],
   );
 
   useEffect(() => {
@@ -1986,27 +2072,51 @@ function App() {
       return;
     }
 
-    const item = results[selectedIndex];
+    const row = launcherRows[selectedIndex];
+    const item = row?.kind === "item" ? row.item : null;
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        setSelectedIndex(Math.min(selectedIndex + 1, results.length - 1));
+        selectLauncherRow(selectedIndex + 1);
         break;
       case "ArrowUp":
         e.preventDefault();
-        setSelectedIndex(Math.max(selectedIndex - 1, 0));
+        selectLauncherRow(selectedIndex - 1);
+        break;
+      case "PageDown":
+        e.preventDefault();
+        selectLauncherRow(selectedIndex + 8);
+        break;
+      case "PageUp":
+        e.preventDefault();
+        selectLauncherRow(selectedIndex - 8);
+        break;
+      case "Home":
+        e.preventDefault();
+        selectLauncherRow(0);
+        break;
+      case "End":
+        e.preventDefault();
+        selectLauncherRow(launcherRows.length - 1);
         break;
       case "Enter":
         e.preventDefault();
-        if (item) await openItem(item);
+        if (row?.kind === "category") {
+          toggleLauncherCategory(row.categoryId);
+        } else if (item) {
+          await openItem(item);
+        }
         break;
     }
-  }, [openItem, performHostEscape, results, selectedIndex, setSelectedIndex, tab]);
+  }, [launcherRows, openItem, performHostEscape, selectLauncherRow, selectedIndex, tab, toggleLauncherCategory]);
 
   const renderLauncher = () => (
     <Launcher
       results={results}
-      selectedIndex={selectedIndex}
+      resultRows={launcherRows}
+      selectedItem={selectedLauncherItem(launcherRows, selectedIndex)}
+      onToggleCategory={toggleLauncherCategory}
+      onSelectResultRow={selectLauncherRow}
       onItemClick={openItem}
       onKeyDown={handleKeyDown}
       onEscape={performHostEscape}

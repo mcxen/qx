@@ -167,6 +167,25 @@ pub fn rss_mark_read(state: State<RssDb>, id: i64, is_read: bool) -> Result<(), 
 }
 
 #[command]
+pub async fn rss_set_reading_progress(
+    state: State<'_, RssDb>,
+    id: i64,
+    progress: f64,
+) -> Result<(), String> {
+    if !progress.is_finite() {
+        return Err("reading progress must be finite".to_string());
+    }
+    let db = state.0.clone();
+    crate::runtime::blocking(move || {
+        let mut guard = db.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let conn = storage::ensure_open(&mut guard)?;
+        storage::set_reading_progress(conn, id, progress).map_err(|e| format!("{e}"))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[command]
 pub fn rss_mark_all_read(state: State<RssDb>, feed_id: i64) -> Result<(), String> {
     with_db(&state, |conn| {
         storage::mark_all_read(conn, feed_id).map_err(|e| format!("{e}"))

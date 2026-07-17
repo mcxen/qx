@@ -1,7 +1,10 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Camera, Trash2, Video } from "lucide-react";
+import { useRef } from "react";
 import { useLocale, useT } from "../../i18n";
+import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useScreencapStore } from "./store";
+import type { CaptureHistoryLayout } from "./preferences";
 
 function formatTimestamp(timestamp: number, locale: string): string {
   return new Date(timestamp * 1000).toLocaleString(locale, {
@@ -26,10 +29,20 @@ function isScreenshotPath(path: string, durationMs: number): boolean {
   return durationMs === 0 && !lower.endsWith(".gif") && !lower.endsWith(".mp4") && !lower.endsWith(".mov");
 }
 
-export default function CaptureHistory() {
+export default function CaptureHistory({ layout }: { layout: CaptureHistoryLayout }) {
   const t = useT();
   const locale = useLocale();
   const { history, lastGifPath, setPreview, deleteEntry, clearHistory } = useScreencapStore();
+  const selectedIndex = history.length
+    ? Math.max(0, history.findIndex((entry) => entry.path === lastGifPath))
+    : -1;
+  const listRef = useRef<HTMLDivElement>(null);
+  const { getItemProps } = useQxListSelection({
+    listRef,
+    index: selectedIndex,
+    listSignature: `${layout}:${history.map((entry) => entry.id).join(",")}`,
+    enabled: selectedIndex >= 0,
+  });
 
   return (
     <section className="qx-capture-history" aria-label={t("screencap.history", "History")}>
@@ -50,25 +63,68 @@ export default function CaptureHistory() {
           <span>{t("screencap.history.emptyHint", "Take a screenshot or start recording to see it here.")}</span>
         </div>
       ) : (
-        <div className="qx-capture-history-list" data-qx-region-scroll role="listbox">
-          {history.map((entry) => {
+        <div
+          ref={listRef}
+          className={layout === "gallery" ? "qx-capture-history-gallery" : "qx-capture-history-list"}
+          data-qx-region-scroll
+          role="listbox"
+        >
+          {history.map((entry, index) => {
             const active = entry.path === lastGifPath;
             const screenshot = isScreenshotPath(entry.path, entry.duration_ms);
-            const thumb = screenshot || entry.path.toLowerCase().endsWith(".gif")
-              ? convertFileSrc(entry.path)
-              : null;
+            const image = screenshot || entry.path.toLowerCase().endsWith(".gif");
+            const mediaSrc = convertFileSrc(entry.path);
+            if (layout === "gallery") {
+              return (
+                <article
+                  key={entry.id}
+                  className={`qx-capture-gallery-card${active ? " is-active" : ""}`}
+                >
+                  <button
+                    type="button"
+                    {...getItemProps(index, { className: "qx-capture-gallery-main", baseClass: false })}
+                    onClick={() => setPreview(entry.path)}
+                  >
+                    <span className="qx-capture-gallery-media" aria-hidden="true">
+                      {image ? (
+                        <img src={mediaSrc} alt="" loading="lazy" />
+                      ) : (
+                        <video src={mediaSrc} muted preload="metadata" playsInline />
+                      )}
+                      {!image ? <span className="qx-capture-gallery-video"><Video size={13} /></span> : null}
+                    </span>
+                    <span className="qx-capture-gallery-copy">
+                      <strong>{entry.path.split(/[\\/]/).pop()}</strong>
+                      <small>
+                        {entry.width}×{entry.height} · {screenshot
+                          ? t("screencap.screenshot", "Screenshot")
+                          : formatDuration(entry.duration_ms)}
+                      </small>
+                      <small>{formatTimestamp(entry.created_at, locale)}</small>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="qx-capture-gallery-delete"
+                    title={t("common.delete", "Delete")}
+                    aria-label={t("common.delete", "Delete")}
+                    onClick={() => void deleteEntry(entry.id)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </article>
+              );
+            }
             return (
               <div key={entry.id} className={`qx-capture-history-row${active ? " is-active" : ""}`}>
                 <button
                   type="button"
-                  className="qx-capture-history-main"
-                  role="option"
-                  aria-selected={active}
+                  {...getItemProps(index, { className: "qx-capture-history-main", baseClass: false })}
                   onClick={() => setPreview(entry.path)}
                 >
-                  {thumb ? (
+                  {image ? (
                     <span className="qx-capture-history-thumb" aria-hidden="true">
-                      <img src={thumb} alt="" loading="lazy" />
+                      <img src={mediaSrc} alt="" loading="lazy" />
                     </span>
                   ) : (
                     <span className="qx-capture-history-icon" aria-hidden="true">

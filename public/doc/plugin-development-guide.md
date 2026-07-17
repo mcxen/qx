@@ -4,7 +4,7 @@
 > 写业务插件时优先读本文；需要字段级细节再下钻到协议专章。  
 > 宿主贡献者另见 [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md)。
 
-**状态**：Current · 适用：Qx ≥ 0.5.38（声明式 Workbench + shell / Esc + storage / island）· 读者：业务 / 第三方插件作者
+**状态**：Current · 适用：Qx ≥ 0.5.39（声明式 Workbench + Gallery + shell / Esc + storage / island）· 读者：业务 / 第三方插件作者
 
 **模块端口总表（内置 + 市场）** → [`docs/module-port-inventory.md`](../../docs/module-port-inventory.md)
 **市场仓库 Agent 地图** → `qx-plugins` 仓库根 [`AGENTS.md`](https://github.com/mcxen/qx-plugins/blob/main/AGENTS.md)（与本手册对照；**老包无 AGENTS.md 仍可安装**）
@@ -121,7 +121,7 @@ Qx 当前可运行 **5 条入口/执行链路**；它们可以组合在同一个
 | 链路 | Manifest / 入口 | 适合场景 |
 |------|-----------------|----------|
 | **Command** | `commands[]` → `commands[].run` | 一次性工具、toast、剪贴板、打开 URL |
-| **Declarative Workbench** | `panel` → `panel.render` → `mountWorkbench(state, handlers)` | 标准列表、详情、搜索、Actions、Island；可订阅后台轮询 |
+| **Declarative Workbench** | `panel` → `panel.render` → `mountWorkbench(state, handlers)` | 标准列表 / Gallery、详情、搜索、Actions、Island；可订阅后台轮询 |
 | **Custom panel** | `panel` → `panel.render(container, context)` | 画布、图表、媒体等无法结构化的复杂 UI |
 | **Background interval** | `commands[].mode: "no-view"` + `interval` | 定时同步、壁纸、轮询任务；复用 command runtime |
 | **Raycast conversion** | 导入/转换 Raycast extension | 运行已有 Raycast List/Form/ActionPanel 扩展 |
@@ -136,12 +136,15 @@ Qx 当前可运行 **5 条入口/执行链路**；它们可以组合在同一个
 | **island + panel** | Workbench `island` 字段，或 panel 关闭时调用 `context.island` | 停靠/浮出策略由用户设置和宿主决定 | pomodoro |
 
 原则：**能 business 就 business**——只写业务映射（API → list items），不要复制壳 CSS。
-Workbench 列表项可带：`icon` · `badge` · `tone` · **`progress`（0–100）** · `detail` · `actions` · `raw`。`detail` 必须是结构化数据；Workbench 不接受 HTML。
+Workbench 条目可带：`icon` · `image` · `badge` · `tone` · **`progress`（0–100）** · `detail` · `actions` · `raw`。`detail` 必须是结构化数据；Workbench 不接受 HTML。
+
+Workbench 是受控业务端口：插件拥有最终业务 state，宿主拥有即时的输入、tab、选择、焦点和滚动反馈。`onQuery` / `onTab` / `onSelect` 先同步改 state + `paint()`，再启动可取消的慢任务；不要在回画前 `await`。`id` 必须稳定唯一，`onAction` 直接使用宿主传入的 `selectedItem`，不要从可能滞后的闭包另猜当前项。完整事件与信任边界见 [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md#声明式-workbench-端口)。
 
 ### 2.2.2 声明式 Workbench（推荐）
 
 ```js
 context.ui.mountWorkbench({
+  layout: { kind: "gallery", columns: 4, aspectRatio: "landscape" }, // 可省略，默认 list
   query,
   tabs: [{ id: "all", label: "All", active: true }],
   items: rows.map((row) => ({

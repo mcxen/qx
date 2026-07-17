@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, type CSSProperties } from "react";
 import { useQxListSelection } from "../hooks/useQxListSelection";
 import type {
   PluginWorkbenchDetail,
@@ -68,6 +68,10 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
     enabled: selectedIndex >= 0,
   });
   const detail = selected?.detail || state.detail;
+  const gallery = state.layout?.kind === "gallery";
+  const galleryStyle = gallery
+    ? { "--qx-workbench-gallery-columns": state.layout?.columns || 4 } as CSSProperties
+    : undefined;
 
   return (
     <div className="qx-host-workbench" aria-busy={state.loading || undefined}>
@@ -77,7 +81,57 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
           {state.error ? <span className="is-danger">{state.error}</span> : null}
         </div>
       )}
-      <div className="qx-content-split qx-host-workbench-split">
+      {gallery ? (
+        <div
+          ref={listRef}
+          className={`qx-host-workbench-gallery aspect-${state.layout?.aspectRatio || "landscape"}`}
+          style={galleryStyle}
+          role="listbox"
+          tabIndex={0}
+          data-qx-region="plugin-workbench-list"
+          data-qx-region-initial="true"
+        >
+          {items.length ? items.map((item, index) => {
+            const id = String(item.id ?? item.title);
+            return (
+              <button
+                key={id}
+                type="button"
+                {...getItemProps(index, { className: "qx-host-workbench-gallery-card", baseClass: false })}
+                onClick={() => onSelect(id)}
+              >
+                <span className="qx-host-workbench-gallery-image">
+                  {item.image?.url ? (
+                    <img
+                      src={item.image.url}
+                      alt={item.image.alt || ""}
+                      loading="lazy"
+                      style={{ objectFit: item.image.fit || "cover" }}
+                    />
+                  ) : (
+                    <span aria-hidden="true">{item.icon || "•"}</span>
+                  )}
+                </span>
+                <span className="qx-host-workbench-gallery-copy">
+                  <strong>{item.title}</strong>
+                  {item.subtitle ? <small>{item.subtitle}</small> : null}
+                </span>
+                {(item.badge || item.meta) ? (
+                  <span className={`qx-host-workbench-gallery-badge${toneClass(item.tone)}`}>
+                    {item.badge || item.meta}
+                  </span>
+                ) : null}
+              </button>
+            );
+          }) : (
+            <div className="qx-content-detail-empty">
+              {state.emptyText || (state.loading
+                ? t("plugins.workbench.loading", "Loading…")
+                : t("plugins.workbench.empty", "No results"))}
+            </div>
+          )}
+        </div>
+      ) : <div className="qx-content-split qx-host-workbench-split">
         <div
           ref={listRef}
           className="qx-content-list qx-plugin-list"
@@ -96,7 +150,7 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
                 onClick={() => onSelect(id)}
               >
                 <span className="qx-host-workbench-icon" aria-hidden="true">{item.icon || "•"}</span>
-                <span className="qx-list-main">
+                <span className="qx-list-copy">
                   <strong className="qx-list-title">{item.title}</strong>
                   {item.subtitle ? <small>{item.subtitle}</small> : null}
                   {item.progress != null ? (
@@ -106,10 +160,10 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
                   ) : null}
                 </span>
                 {(item.badge || item.meta) ? (
-                  <span className={`qx-host-workbench-badge${toneClass(item.tone)}`}>
+                  <span className={`qx-host-workbench-accessory qx-host-workbench-badge${toneClass(item.tone)}`}>
                     {item.badge || item.meta}
                   </span>
-                ) : <span />}
+                ) : null}
               </button>
             );
           }) : (
@@ -130,7 +184,7 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
             emptyText={t("plugins.workbench.select", "Select an item")}
           />
         </section>
-      </div>
+      </div>}
     </div>
   );
 }

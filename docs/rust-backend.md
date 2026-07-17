@@ -20,7 +20,7 @@
 |---|---|
 | `apps.rs` | 扫描 `/Applications`、`~/Applications`、系统内建 utilities，解析 `Info.plist`，`sips` 生成 icon PNG，中文 pinyin fuzzy 匹配 (`apps_zh_dict.rs`) |
 | `apps_zh_dict.rs` | 常见 macOS app 的中文别名 → pinyin 词典 |
-| `file_search.rs` | Cardinal 多策略文件检索、去重与最近修改时间排序；Spotlight / `mdfind` 作为回退 |
+| `file_search.rs` + `file_search/platform_{macos,windows}.rs` | 共享文件分类、去重、排序与 latest-wins 调度；macOS Cardinal/Spotlight 和 Windows Everything 分别封装在平台适配器中 |
 | `history.rs` | `launch_history` / `search_history` / `search_click_events` SQLite 表；`record_*` 后台写入，`get_*` 批量读取；搜索结果 30 天点击量聚合供推荐加权 |
 | `system_stats.rs` | Mach APIs：`host_processor_info`（每核 CPU）、`host_statistics64`（内存），供 `HomeSystemIsland` 每 1.6s 轮询 |
 | `system_information.rs` | 主机名/芯片/内存/存储/网络/进程列表；`kill_process` 通过 `/bin/kill` 发 SIGTERM |
@@ -35,7 +35,7 @@
 | 文件 | 数据库 | 说明 |
 |---|---|---|
 | `clipboard.rs` | `Application Support/qx/clipboard.db` | 始终 `manage(ClipboardDb(Option<Connection>))`；失败可 lazy 重连；后台轮询系统剪贴板 |
-| `rss/mod.rs` + `fetcher.rs` + `storage.rs` + `types.rs` | `Application Support/qx/rss.db` | **始终** `manage(RssDb(Option<Connection>))` + `ensure_open`；feed-rs / OPML / folders；首次打开写入 `rss_meta.default_catalog_v1` 默认订阅（科技/新闻/资讯）；订阅图标：feed icon/logo → 站点 favicon（Google S2，AnyFeeder 等桥接源用文章域名） |
+| `rss/mod.rs` + `fetcher.rs` + `storage.rs` + `types.rs` | `Application Support/qx/rss.db` | **始终** `manage(RssDb(Option<Connection>))` + `ensure_open`；feed-rs / OPML / folders；文章 `reading_progress` 归一化持久化；首次打开写入默认订阅目录；订阅图标：feed icon/logo → 站点 favicon（Google S2，AnyFeeder 等桥接源用文章域名） |
 | `v2ex.rs` | `cache/v2ex/*.json` | 抓 v2ex.com JSON；**内存 + 磁盘 TTL 缓存**（topics ~3min，replies ~2min，失败可回退 stale）；hot/latest 无需 token，node/notification 需 token（命令可接收插件 preference 的 `token` 覆盖）；市场插件 `v2ex` 走 `invoke:v2ex_*` + 插件 persist SWR |
 | `weather.rs` (host API for marketplace **Weather** plugin + optional built-in) | 无 | ipapi.co 定位 → Open-Meteo（默认）或 OpenWeatherMap（需 key） |
 | `github_calendar.rs` | 无 | 抓 GitHub profile 页面提取 `ContributionCalendar` |
@@ -76,7 +76,7 @@
 |---|---|
 | `http_client.rs` | 见上 |
 | `vendor/cardinal/*` | 内嵌自研的 `search-cache` / `search-cancel` / `fswalk` 三个 crate（未上传 crates.io） |
-| `file_search.rs` | 规范化并拒绝空白查询；文件名匹配统一忽略大小写与空格/连字符/下划线/点号等弱分隔，并为至少三个字符的查询提供有序子序列模糊召回。macOS 使用 Cardinal token/wildcard + `mdfind`，Windows 使用 Everything `nopath:` token/wildcard；最终只接受 leaf-name 命中，精确结果优先，同匹配档位下 **办公文档（PDF / Word / Excel / PPT 等）优先于源码与日志**。 |
+| `file_search.rs` | 规范化并拒绝空白查询；文件名匹配统一忽略大小写与空格/连字符/下划线/点号等弱分隔，并为至少三个字符的查询提供有序子序列模糊召回。macOS 使用 Cardinal token/wildcard，Windows 使用 Everything `nopath:` token/wildcard；每个 pass 只占一个 blocking 任务，并在任务内按用户分类优先召回与平衡结果。`request_id` 提供 latest-wins 淘汰，Cardinal 锁只保护内存索引且不跨 `mdfind` 等待；前端渐进合并多 pass。两端最终只接受 leaf-name 命中，按用户分类排序，分类内默认按 `modified_at` 倒序。 |
 
 ## 启动顺序（lib.rs `run` → `setup`）
 

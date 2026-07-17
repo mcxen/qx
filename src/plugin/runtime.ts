@@ -18,6 +18,7 @@ import {
   type PluginWorkbenchEvent,
   type PluginWorkbenchPayload,
 } from "./workbenchTypes";
+import { PLUGIN_WORKBENCH_HOST_KEYS } from "./workbenchKeyboard";
 
 let requestCounter = 0;
 function nextRequestId(): string {
@@ -408,6 +409,8 @@ export function buildPluginRuntimeHtml(
       const pending = new Map();
       const contextTimers = new Map();
       let timerCounter = 0;
+      let workbenchMounted = false;
+      const workbenchHostKeys = new Set(${JSON.stringify(PLUGIN_WORKBENCH_HOST_KEYS)});
 
       function generateId() {
         return 'req-' + Date.now() + '-' + Math.random().toString(36).slice(2);
@@ -593,6 +596,25 @@ export function buildPluginRuntimeHtml(
           return;
         }
 
+        const isWorkbenchHostKey = workbenchMounted
+          && !event.metaKey
+          && !event.ctrlKey
+          && !event.altKey
+          && !event.shiftKey
+          && workbenchHostKeys.has(event.key);
+        if (isWorkbenchHostKey) {
+          event.preventDefault();
+          event.stopPropagation();
+          postToParent({
+            type: 'qx:host-keydown',
+            pluginId,
+            runtimeId,
+            key: event.key,
+            code: event.code,
+          });
+          return;
+        }
+
         if (event.key !== 'Escape') return;
         // Let the plugin's own dialog/detail handlers consume Esc first.
         // Only an unhandled event crosses the iframe boundary to QxShell.
@@ -617,6 +639,7 @@ export function buildPluginRuntimeHtml(
       globalThis.__qxPluginUiBridge = {
         publishWorkbench: (state) => {
           try {
+            workbenchMounted = true;
             postToParent({
               type: 'qx:plugin:workbench',
               pluginId,
@@ -878,6 +901,7 @@ export function buildPluginRuntimeHtml(
           const { requestId } = data;
           try {
             postPluginLog('debug', 'Render panel started');
+            workbenchMounted = false;
             const container = document.getElementById('root') || document.body;
             container.innerHTML = '';
             if (plugin?.panel && typeof plugin.panel.render === 'function') {
@@ -897,6 +921,7 @@ export function buildPluginRuntimeHtml(
           const { requestId } = data;
           try {
             postPluginLog('debug', 'Destroy panel started');
+            workbenchMounted = false;
             const container = document.getElementById('root') || document.body;
             if (plugin?.panel && typeof plugin.panel.destroy === 'function') {
               await plugin.panel.destroy(container);
@@ -915,6 +940,7 @@ export function buildPluginRuntimeHtml(
         if (type === 'qx:unload') {
           if (data.pluginId !== pluginId || data.runtimeId !== runtimeId) return;
           try {
+            workbenchMounted = false;
             const container = document.getElementById('root') || document.body;
             if (plugin?.panel && typeof plugin.panel.destroy === 'function') {
               await plugin.panel.destroy(container);

@@ -241,7 +241,8 @@ export function createPluginUiKit(): PluginContext["ui"] {
         if (item) handlers.onSelect?.(id, item);
       } else if (workbenchEvent.kind === "action") {
         const id = String(workbenchEvent.id ?? "");
-        const item = (state.items || []).find((candidate) => itemId(candidate) === String(state.selectedId ?? ""));
+        const selectedId = String(workbenchEvent.selectedId ?? state.selectedId ?? "");
+        const item = (state.items || []).find((candidate) => itemId(candidate) === selectedId);
         handlers.onAction?.(id, item);
       } else if (workbenchEvent.kind === "backgroundPoll") {
         handlers.onBackgroundPoll?.({
@@ -384,7 +385,8 @@ function createPluginUiKit() {
         if (item) handlers.onSelect(id, item);
       } else if (workbenchEvent.kind === 'action' && handlers.onAction) {
         const id = String(workbenchEvent.id == null ? '' : workbenchEvent.id);
-        const item = (state.items || []).find((candidate) => itemId(candidate) === String(state.selectedId == null ? '' : state.selectedId));
+        const selectedId = String(workbenchEvent.selectedId == null ? (state.selectedId == null ? '' : state.selectedId) : workbenchEvent.selectedId);
+        const item = (state.items || []).find((candidate) => itemId(candidate) === selectedId);
         handlers.onAction(id, item);
       } else if (workbenchEvent.kind === 'backgroundPoll' && handlers.onBackgroundPoll) {
         handlers.onBackgroundPoll({ command: String(workbenchEvent.command == null ? '' : workbenchEvent.command), at: Number(workbenchEvent.at) || Date.now(), ok: workbenchEvent.ok === true, error: workbenchEvent.error == null ? undefined : String(workbenchEvent.error) });

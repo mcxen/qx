@@ -532,6 +532,7 @@ pub fn run() {
             rss::rss_list_articles,
             rss::rss_get_article,
             rss::rss_mark_read,
+            rss::rss_set_reading_progress,
             rss::rss_mark_all_read,
             rss::rss_toggle_star,
             rss::rss_refresh_feed,

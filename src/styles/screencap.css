@@ -440,6 +440,34 @@
 }
 
 /* ── Qx-standard capture history sidebar ───────────────────────────── */
+.qx-screencap-browser {
+  display: grid;
+  flex: 1;
+  min-height: 0;
+}
+
+.qx-screencap-browser.is-list {
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+}
+
+.qx-screencap-browser.is-gallery {
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 38%);
+}
+
+.qx-screencap-history-pane {
+  display: flex;
+  min-height: 0;
+  overflow: hidden;
+  flex-direction: column;
+  border-right: 1px solid var(--qx-border-1);
+}
+
+.qx-screencap-detail-pane {
+  position: relative;
+  min-height: 0;
+  overflow: auto;
+}
+
 .qx-capture-history {
   display: flex;
   flex: 1;
@@ -476,6 +504,132 @@
   min-height: 0;
   overflow-y: auto;
   padding: 4px 6px 8px;
+}
+
+.qx-capture-history-gallery {
+  display: grid;
+  min-height: 0;
+  padding: 10px;
+  overflow-y: auto;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  align-content: start;
+  gap: 10px;
+}
+
+.qx-capture-gallery-card {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-secondary);
+}
+
+.qx-capture-gallery-card:hover,
+.qx-capture-gallery-card.is-active {
+  border-color: color-mix(in srgb, var(--qx-accent) 42%, var(--qx-border-1));
+  background: var(--qx-bg-component-3);
+  color: var(--qx-text-primary);
+}
+
+.qx-capture-gallery-main {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  flex-direction: column;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qx-capture-gallery-media {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  border-bottom: 1px solid var(--qx-border-1);
+  background: var(--qx-bg-component-2);
+}
+
+.qx-capture-gallery-media img,
+.qx-capture-gallery-media video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.qx-capture-gallery-video {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  display: grid;
+  width: 24px;
+  height: 20px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 5px;
+  background: var(--qx-overlay-2);
+  color: var(--qx-text-primary);
+  place-items: center;
+}
+
+.qx-capture-gallery-copy {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 30px 9px 9px;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.qx-capture-gallery-copy strong,
+.qx-capture-gallery-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-capture-gallery-copy strong {
+  color: var(--qx-text-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.qx-capture-gallery-copy small {
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+}
+
+.qx-capture-gallery-delete {
+  position: absolute;
+  right: 6px;
+  bottom: 7px;
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: transparent;
+  place-items: center;
+  cursor: pointer;
+}
+
+.qx-capture-gallery-card:hover .qx-capture-gallery-delete,
+.qx-capture-gallery-card.is-active .qx-capture-gallery-delete,
+.qx-capture-gallery-delete:focus-visible {
+  color: var(--qx-text-tertiary);
+}
+
+.qx-capture-gallery-delete:hover {
+  background: var(--qx-bg-component-2);
+  color: var(--qx-danger);
 }
 
 .qx-capture-history-row {

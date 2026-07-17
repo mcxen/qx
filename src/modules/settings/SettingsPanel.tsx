@@ -13,6 +13,7 @@ import {
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
+  Files,
 } from "lucide-react";
 import { useSettingsStore, type SettingsTab } from "./store";
 import GeneralSettings from "./GeneralSettings";
@@ -26,6 +27,7 @@ import OcrSettings from "./OcrSettings";
 import AgentSettings from "./AgentSettings";
 import WeatherSettings from "./WeatherSettings";
 import AboutPanel from "./AboutPanel";
+import FileSearchSettings from "./FileSearchSettings";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { Button, ScrollArea } from "../../components/ui";
@@ -60,6 +62,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Basics",
     items: [
       { id: "general", label: "General", icon: Settings2 },
+      { id: "file-search", label: "File Search", icon: Files },
       { id: "appearance", label: "Appearance", icon: Palette },
       { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
     ],
@@ -91,6 +94,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 const TAB_LABELS: Record<SettingsTab, string> = {
   general: "General",
+  "file-search": "File Search",
   shortcuts: "Shortcuts",
   plugins: "Extensions",
   permissions: "Permissions",
@@ -185,6 +189,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     switch (activeTab) {
       case "general":
         return <GeneralSettings />;
+      case "file-search":
+        return <FileSearchSettings />;
       case "shortcuts":
         return <ShortcutSettings />;
       case "plugins":

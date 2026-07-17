@@ -47,6 +47,7 @@ pub struct Article {
     pub image_url: String,
     pub is_read: bool,
     pub is_starred: bool,
+    pub reading_progress: f64,
     pub published_at: i64,
     pub created_at: i64,
 }

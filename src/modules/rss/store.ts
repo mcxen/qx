@@ -35,6 +35,7 @@ export interface RssArticle {
   image_url: string;
   is_read: boolean;
   is_starred: boolean;
+  reading_progress: number;
   published_at: number;
   created_at: number;
 }
@@ -96,6 +97,7 @@ interface RssStore {
   markRead: (id: number, isRead: boolean) => Promise<void>;
   markAllRead: (feedId: number) => Promise<void>;
   toggleStar: (id: number, isStarred: boolean) => Promise<void>;
+  saveReadingProgress: (id: number, progress: number) => Promise<void>;
 
   goBack: () => void;
   moveSelection: (delta: number, length: number) => void;
@@ -413,6 +415,26 @@ export const useRssStore = create<RssStore>((set, get) => ({
       }));
     } catch (e) {
       set({ error: String(e) });
+    }
+  },
+
+  saveReadingProgress: async (id, progress) => {
+    if (!isTauriRuntime()) return;
+    const normalized = Math.max(0, Math.min(100, Math.round(progress)));
+    try {
+      await invoke("rss_set_reading_progress", { id, progress: normalized });
+      set((s) => ({
+        articles: s.articles.map((a) => (a.id === id ? { ...a, reading_progress: normalized } : a)),
+        readingArticles: s.readingArticles.map((a) =>
+          a.id === id ? { ...a, reading_progress: normalized } : a,
+        ),
+        currentArticle:
+          s.currentArticle?.id === id
+            ? { ...s.currentArticle, reading_progress: normalized }
+            : s.currentArticle,
+      }));
+    } catch {
+      // Reading-position persistence is best-effort and must not interrupt reading.
     }
   },
 

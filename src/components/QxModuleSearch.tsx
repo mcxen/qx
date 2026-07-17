@@ -40,7 +40,7 @@ export interface QxModuleSearchProps {
   /** Defaults to placeholder when omitted. */
   "aria-label"?: string;
   /**
-   * Extra native input attributes (`data-qx-primary-search`, `spellCheck`, …).
+   * Extra native input attributes (`data-qx-primary-search`, `enterKeyHint`, …).
    * Controlled fields (`value` / `onChange` / `className` / …) stay on the props above.
    */
   inputProps?: Omit<
@@ -50,6 +50,10 @@ export interface QxModuleSearchProps {
     | "placeholder"
     | "className"
     | "type"
+    | "autoComplete"
+    | "autoCorrect"
+    | "autoCapitalize"
+    | "spellCheck"
     | "autoFocus"
     | "disabled"
     | "onKeyDown"
@@ -86,6 +90,10 @@ export function QxModuleSearch({
         id={id}
         name={name}
         type="text"
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="none"
+        spellCheck={false}
         value={value}
         autoFocus={autoFocus}
         disabled={disabled}

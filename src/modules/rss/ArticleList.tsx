@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
@@ -18,6 +18,7 @@ import ImageLightbox from "./ImageLightbox";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { SegmentedControl } from "../../components/ui";
+import { useArticleReadingProgress } from "./useArticleReadingProgress";
 
 interface V2exReply {
   id: number;
@@ -96,13 +97,13 @@ export default function ArticleList() {
     markRead,
     markAllRead,
     toggleStar,
+    saveReadingProgress,
     refreshFeed,
     goBack,
   } = useRssStore();
 
   const [localQuery, setLocalQuery] = useState("");
   const [lightbox, setLightbox] = useState<string | null>(null);
-  const [scrollPercent, setScrollPercent] = useState(0);
   const [listWidth, setListWidth] = useState(() =>
     readStoredWidth(RSS_LIST_WIDTH_KEY, DEFAULT_RSS_LIST_WIDTH),
   );
@@ -274,41 +275,26 @@ export default function ArticleList() {
     ? Math.round(((currentIdx + 1) / readingArticles.length) * 100)
     : 0;
 
-  const updateScrollProgress = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const { scrollTop, scrollHeight, clientHeight } = el;
-    if (scrollHeight <= clientHeight) {
-      setScrollPercent(currentArticle ? 100 : 0);
-      return;
-    }
-    setScrollPercent(Math.round((scrollTop / (scrollHeight - clientHeight)) * 100));
-  }, [currentArticle]);
+  const scrollPercent = useArticleReadingProgress({
+    articleId: currentArticle?.id ?? null,
+    storedProgress: currentArticle?.reading_progress ?? 0,
+    scrollRef,
+    saveProgress: saveReadingProgress,
+  });
 
-  const resetArticleScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    setScrollPercent(0);
-  }, []);
-
-  const openArticleAtTop = useCallback(
+  const openArticleForReading = useCallback(
     async (id: number, focusReader = false) => {
       const index = articles.findIndex((article) => article.id === id);
       if (index >= 0) setSelectedIndex(index);
-      resetArticleScroll();
       await openArticle(id);
-      resetArticleScroll();
       window.requestAnimationFrame(() => {
-        resetArticleScroll();
         if (focusReader) focusDetail();
         window.requestAnimationFrame(() => {
-          resetArticleScroll();
           if (focusReader) focusDetail();
         });
       });
     },
-    [articles, focusDetail, openArticle, resetArticleScroll, setSelectedIndex],
+    [articles, focusDetail, openArticle, setSelectedIndex],
   );
 
   useEffect(() => {
@@ -324,21 +310,6 @@ export default function ArticleList() {
     root.addEventListener("click", onClick);
     return () => root.removeEventListener("click", onClick);
   }, [cleanContent]);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.addEventListener("scroll", updateScrollProgress);
-    updateScrollProgress();
-    return () => el.removeEventListener("scroll", updateScrollProgress);
-  }, [updateScrollProgress]);
-
-  useLayoutEffect(() => {
-    if (!scrollRef.current) return;
-    resetArticleScroll();
-    const frame = window.requestAnimationFrame(updateScrollProgress);
-    return () => window.cancelAnimationFrame(frame);
-  }, [currentArticle?.id, cleanContent, resetArticleScroll, updateScrollProgress]);
 
   useEffect(() => {
     if (!currentArticle) return;
@@ -357,14 +328,14 @@ export default function ArticleList() {
       case "j":
         if (ignoreBare || e.metaKey || e.ctrlKey) return;
         e.preventDefault();
-        if (currentArticle && next) void openArticleAtTop(next.id);
+        if (currentArticle && next) void openArticleForReading(next.id);
         else setSelectedIndex(articles.length > 0 ? Math.min(selectedIndex + 1, articles.length - 1) : 0);
         focusList();
         break;
       case "k":
         if (ignoreBare || e.metaKey || e.ctrlKey) return;
         e.preventDefault();
-        if (currentArticle && prev) void openArticleAtTop(prev.id);
+        if (currentArticle && prev) void openArticleForReading(prev.id);
         else setSelectedIndex(Math.max(selectedIndex - 1, 0));
         focusList();
         break;
@@ -372,7 +343,7 @@ export default function ArticleList() {
         if (region === MD.detail) return;
         e.preventDefault();
         const a = articles[selectedIndex];
-        if (a) void openArticleAtTop(a.id, true);
+        if (a) void openArticleForReading(a.id, true);
         break;
       }
     }
@@ -381,7 +352,7 @@ export default function ArticleList() {
     currentArticle,
     focusList,
     next,
-    openArticleAtTop,
+    openArticleForReading,
     prev,
     selectedIndex,
     setSelectedIndex,
@@ -440,7 +411,7 @@ export default function ArticleList() {
         disabled: !focusArticle,
         onClick: () => {
           if (currentArticle) goBack();
-          else if (focusArticle) void openArticleAtTop(focusArticle.id);
+          else if (focusArticle) void openArticleForReading(focusArticle.id);
         },
       },
       {
@@ -496,18 +467,18 @@ export default function ArticleList() {
       list.push({
         label: `Next: ${next.title?.slice(0, 40) || "(untitled)"}`,
         kbd: "J",
-        onClick: () => void openArticleAtTop(next.id),
+        onClick: () => void openArticleForReading(next.id),
       });
     }
     if (prev) {
       list.push({
         label: `Prev: ${prev.title?.slice(0, 40) || "(untitled)"}`,
         kbd: "K",
-        onClick: () => void openArticleAtTop(prev.id),
+        onClick: () => void openArticleForReading(prev.id),
       });
     }
     return list;
-  }, [currentArticle, focusArticle, goBack, loadingOriginal, markRead, next, openArticleAtTop, originalContent, prev, refreshFeed, selectedFeedId, toggleStar]);
+  }, [currentArticle, focusArticle, goBack, loadingOriginal, markRead, next, openArticleForReading, originalContent, prev, refreshFeed, selectedFeedId, toggleStar]);
 
   const isReading = Boolean(currentArticle);
 
@@ -527,7 +498,7 @@ export default function ArticleList() {
         onChange: setSelectedIndex,
         onOpen: () => {
           const a = articles[selectedIndex];
-          if (a) void openArticleAtTop(a.id, true);
+          if (a) void openArticleForReading(a.id, true);
         },
         onClose: () => {
           if (currentArticle) goBack();
@@ -585,7 +556,7 @@ export default function ArticleList() {
         tone: "primary",
         onClick: () => {
           if (currentArticle?.link) void openUrl(currentArticle.link);
-          else if (selectedArticle) void openArticleAtTop(selectedArticle.id);
+          else if (selectedArticle) void openArticleForReading(selectedArticle.id);
           else goBack();
         },
       }}
@@ -629,7 +600,7 @@ export default function ArticleList() {
                     })}
                     onClick={() => {
                       setSelectedIndex(idx);
-                      void openArticleAtTop(a.id);
+                      void openArticleForReading(a.id);
                     }}
                     type="button"
                   >
@@ -641,6 +612,9 @@ export default function ArticleList() {
                       <span className="qx-list-subtitle">{stripHtml(a.summary).slice(0, 120)}</span>
                     </span>
                     <span className="qx-list-time">
+                      {a.reading_progress > 0 && a.reading_progress < 100
+                        ? `${Math.round(a.reading_progress)}% · `
+                        : ""}
                       {formatTime(a.published_at)}
                       {a.is_starred ? " ★" : ""}
                     </span>
@@ -770,7 +744,7 @@ export default function ArticleList() {
                       <div className="qx-rss-next-label">Up Next</div>
                       <button
                         className="qx-rss-next-link"
-                        onClick={() => void openArticleAtTop(next.id)}
+                        onClick={() => void openArticleForReading(next.id)}
                         title={next.title || "(untitled)"}
                         type="button"
                       >
