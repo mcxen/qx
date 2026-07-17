@@ -111,10 +111,11 @@ fn document_type_rank(path: &Path) -> u8 {
         "ppt" | "pptx" | "pps" | "ppsx" | "key" | "odp" => 3,
         // Secondary user documents
         "txt" | "md" | "markdown" | "text" => 10,
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "heic" | "heif" | "tif" | "tiff" | "bmp" | "svg" => {
-            12
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "heic" | "heif" | "tif" | "tiff" | "bmp"
+        | "svg" => 12,
+        "mp4" | "mov" | "m4v" | "mkv" | "avi" | "webm" | "mp3" | "m4a" | "wav" | "aac" | "flac" => {
+            14
         }
-        "mp4" | "mov" | "m4v" | "mkv" | "avi" | "webm" | "mp3" | "m4a" | "wav" | "aac" | "flac" => 14,
         // Packages / archives users still open from search
         "zip" | "rar" | "7z" | "tar" | "gz" | "tgz" | "dmg" | "pkg" => 18,
         // Source / build noise — demote hard
@@ -279,11 +280,7 @@ fn file_sort_key(
         // Folders after files of the same name quality.
         is_dir as u8,
         // Office docs before code/logs when the leaf-name match is equal.
-        if is_dir {
-            50
-        } else {
-            document_type_rank(path)
-        },
+        if is_dir { 50 } else { document_type_rank(path) },
         std::cmp::Reverse(modified),
         strategy_rank,
         path.as_os_str().len(),
@@ -1015,10 +1012,22 @@ mod tests {
 
     #[test]
     fn office_documents_rank_before_source_when_name_match_equal() {
-        assert!(document_type_rank(Path::new("/tmp/report.pdf")) < document_type_rank(Path::new("/tmp/report.ts")));
-        assert!(document_type_rank(Path::new("/tmp/report.docx")) < document_type_rank(Path::new("/tmp/report.py")));
-        assert!(document_type_rank(Path::new("/tmp/report.xlsx")) < document_type_rank(Path::new("/tmp/report.log")));
-        assert!(document_type_rank(Path::new("/tmp/report.pdf")) < document_type_rank(Path::new("/tmp/report.docx")));
+        assert!(
+            document_type_rank(Path::new("/tmp/report.pdf"))
+                < document_type_rank(Path::new("/tmp/report.ts"))
+        );
+        assert!(
+            document_type_rank(Path::new("/tmp/report.docx"))
+                < document_type_rank(Path::new("/tmp/report.py"))
+        );
+        assert!(
+            document_type_rank(Path::new("/tmp/report.xlsx"))
+                < document_type_rank(Path::new("/tmp/report.log"))
+        );
+        assert!(
+            document_type_rank(Path::new("/tmp/report.pdf"))
+                < document_type_rank(Path::new("/tmp/report.docx"))
+        );
         // Same name quality: PDF still ahead of code via composite key.
         let q = "report";
         let pdf = file_sort_key(Path::new("/tmp/report.pdf"), q, false, 0, 0);

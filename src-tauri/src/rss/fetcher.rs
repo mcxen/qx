@@ -24,10 +24,7 @@ fn absolutize_url(base: &str, maybe_relative: &str) -> Option<String> {
     if value.is_empty() {
         return None;
     }
-    if value.starts_with("data:")
-        || value.starts_with("http://")
-        || value.starts_with("https://")
-    {
+    if value.starts_with("data:") || value.starts_with("http://") || value.starts_with("https://") {
         return Some(value.to_string());
     }
     let base_url = Url::parse(base).ok()?;

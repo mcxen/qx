@@ -124,10 +124,13 @@ fn cache_get(key: &str, ttl_secs: u64) -> Option<String> {
     let entry = disk_read(key)?;
     if now.saturating_sub(entry.written_at) <= ttl_secs {
         if let Ok(mut guard) = memory_cache().lock() {
-            guard.insert(key.to_string(), CacheEntry {
-                body: entry.body.clone(),
-                written_at: entry.written_at,
-            });
+            guard.insert(
+                key.to_string(),
+                CacheEntry {
+                    body: entry.body.clone(),
+                    written_at: entry.written_at,
+                },
+            );
         }
         return Some(entry.body);
     }
@@ -458,10 +461,7 @@ pub async fn v2ex_fetch_node_topics(
         if node.is_empty() {
             return Err("Node name is empty".to_string());
         }
-        let json = v2ex_get_authed(
-            &format!("/api/v2/nodes/{node}/topics"),
-            token.as_deref(),
-        )?;
+        let json = v2ex_get_authed(&format!("/api/v2/nodes/{node}/topics"), token.as_deref())?;
         parse_v2_topics(&json)
     })
     .await

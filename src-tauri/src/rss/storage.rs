@@ -242,7 +242,9 @@ fn backfill_empty_feed_icons(conn: &Connection) -> rusqlite::Result<()> {
          WHERE icon IS NULL OR TRIM(icon) = ''",
     )?;
     let rows = stmt
-        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?
         .collect::<Result<Vec<_>, _>>()?;
     for (id, url) in rows {
         let icon = super::fetcher::resolve_feed_icon(&url, "", &[]);

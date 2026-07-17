@@ -4,7 +4,7 @@
 > 写业务插件时优先读本文；需要字段级细节再下钻到协议专章。  
 > 宿主贡献者另见 [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md)。
 
-**状态**：Current · 适用：Qx ≥ 0.5.37（声明式 Workbench + shell / Esc + storage / island）· 读者：业务 / 第三方插件作者
+**状态**：Current · 适用：Qx ≥ 0.5.38（声明式 Workbench + shell / Esc + storage / island）· 读者：业务 / 第三方插件作者
 
 **模块端口总表（内置 + 市场）** → [`docs/module-port-inventory.md`](../../docs/module-port-inventory.md)
 **市场仓库 Agent 地图** → `qx-plugins` 仓库根 [`AGENTS.md`](https://github.com/mcxen/qx-plugins/blob/main/AGENTS.md)（与本手册对照；**老包无 AGENTS.md 仍可安装**）
@@ -652,6 +652,7 @@ context.ui.mountWorkbench({
 
 | 端口 / 能力 | 建议 `min_app_version` |
 |-------------|------------------------|
+| 声明式 Workbench、后台轮询与统一灵动岛动作 | **0.5.38+** |
 | `context.cli` | **0.5.26+** |
 | 二进制 HTTP `arrayBuffer` | 0.5.18+ |
 | 基础 panel / storage | 按你目标发行版 |

@@ -8,7 +8,7 @@
   "platforms": ["macos", "windows", "linux"],
   "keywords": ["cli", "json", "workbench", "demo", "shell"],
   "permissions": ["cli", "notifications", "clipboard"],
-  "min_app_version": "0.5.37",
+  "min_app_version": "0.5.38",
   "preferences": [
     {
       "id": "customProgram",
