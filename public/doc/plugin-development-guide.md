@@ -118,7 +118,7 @@ export default {
 
 | 模式 | 开发者写什么 | UI | 代表 |
 |------|--------------|-----|------|
-| **business**（推荐默认） | 领域数据 + `commands` + 把列表项喂给 `context.ui.mountWorkbench` | **宿主统一**（tabs / list / detail / progress） | **gh**、cli-workbench |
+| **business**（推荐默认） | 领域数据 + `commands` + 把列表项喂给 `context.ui.mountWorkbench` | **宿主统一**（tabs / list / detail / progress） | **QxGH**、cli-workbench |
 | **custom panel** | 自绘 `container` DOM/CSS（仍建议用 `--qx-*` 变量） | 作者自控 | weather 卡片、复杂可视化 |
 | **commands-only** | 仅 `commands[].run`（toast / 剪贴板 / 开 URL） | 无 panel | 一键工具 |
 | **island + panel** | 业务状态 + `context.island` | 岛由宿主画；panel 可用 business 或 custom | pomodoro |
@@ -318,6 +318,14 @@ await context.storage.session.set("pageCache", items)  // 仅本次进程
       "type": "string",
       "default": "my-cli",
       "description": "Binary name or absolute path"
+    },
+    {
+      "id": "repos",
+      "label": "Repositories",
+      "type": "textarea",
+      "default": "owner/repo",
+      "rows": 4,
+      "description": "owner/repo — one per line"
     }
   ],
   "commands": [
@@ -342,6 +350,7 @@ await context.storage.session.set("pageCache", items)  // 仅本次进程
 | `permissions` | 与代码实际调用一致；宁少勿多 |
 | `commands[].name` | 与 `export default.commands[].name` 一致 |
 | `panel` | 需要工作台时声明；否则可省略 |
+| `preferences[].type` | `string` / **`textarea`（多行）** / `password` / `number` / `boolean` / `select` |
 | `platforms` | 如仅 macOS：`["macos"]`（例：Brew） |
 | `min_app_version` | 使用新端口时钉住（`cli` → ≥ 0.5.26） |
 
@@ -524,7 +533,7 @@ await context.island.update({
 | **v2ex** | `invoke:v2ex_*` + persist SWR + panel 详情；包内 AGENTS.md |
 | **weather** | `invoke:fetch_weather*` + Open-Meteo http 回退 + persist SWR |
 | **pomodoro-island** | panel 控制台 + `context.island`；**必须有 panel**（防注册失败） |
-| **gh** | **business-only**：Actions/Releases → `mountWorkbench`（icon/tone/progress）+ http SWR + island |
+| **QxGH** (`qxgh`) | **business-only**：公开 `github.com` **HTML 页**解析 Actions/Releases → `mountWorkbench`（不用 REST API） |
 | **raycast-*** | 转换插件：依赖 Raycast shim，适合 UI 型扩展 |
 
 ---

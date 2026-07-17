@@ -13,8 +13,8 @@ import {
 } from "../../utils/keyboard";
 
 const DEFAULT_GLOBAL_KEYS: Record<string, string> = {
-  toggle_launcher: "Alt+Space",
-  toggle_window: "Alt+Shift+Space",
+  toggle_launcher: "Alt+Shift+Space",
+  toggle_window: "Alt+Space",
   clipboard: "Alt+V",
   record_gif: "Alt+G",
   capture_screenshot: "Alt+Shift+S",
@@ -135,8 +135,8 @@ export default function ShortcutSettings() {
                     onClick={() => {
                       patchShortcut(id, {
                         key: DEFAULT_GLOBAL_KEYS[id] ?? "",
-                        // Only launcher is forced on by reset; modules stay user-chosen.
-                        enabled: id === "toggle_launcher" ? true : (binding?.enabled ?? false),
+                        // Primary window toggle is forced on by reset; modules stay user-chosen.
+                        enabled: id === "toggle_window" ? true : (binding?.enabled ?? false),
                       });
                     }}
                     title={t("shortcuts.reset", "Reset to default key")}

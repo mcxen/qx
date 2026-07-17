@@ -216,7 +216,7 @@
 
 - 原 `toggle_launcher` 保留设置键与既有切换语义：隐藏时显示 Qx、切到 Launcher 并聚焦搜索，已显示时再次按下隐藏。
 - 新增 `toggle_window`：只切换主窗口显隐，隐藏后再显示保留当前模块、route 和子界面。
-- Launcher 搜索切换默认 `Alt+Space` 并启用；当前窗口切换预设 `Alt+Shift+Space` 但默认关闭，两者均可在 Settings → Shortcuts 单独录制和启停。旧设置会自动补齐新增快捷键项，同时保留用户已有绑定。
+- 当前窗口切换默认 `Alt+Space` 并启用；Launcher 搜索切换预设 `Alt+Shift+Space` 但默认关闭，两者均可在 Settings → Shortcuts 单独录制和启停。旧设置会自动补齐新增快捷键项，同时保留用户已有绑定。
 - 快捷键设置补齐中英文标签、语义说明与按钮文案，并允许 Qx 自身注册默认 `Alt+Space`，仍拦截系统 `Cmd/Ctrl+Space`。
 
 ### 验证
@@ -225,7 +225,7 @@
 - [x] `npm run build`
 - [x] `cargo fmt --check`（`src-tauri/`）
 - [x] `cargo check`（`src-tauri/`，通过；存在当前工作区既有 warning）
-- [x] `cargo test --lib settings::tests::default_global_shortcuts_only_enable_launcher_recall -- --nocapture`
+- [x] `cargo test --lib settings::tests::default_global_shortcuts_only_enable_window_toggle -- --nocapture`
 - [x] `npm run tauri build`，ad-hoc 重签后安装到 `/Applications/Qx.app` 并启动成功。
 - [ ] Windows Compatibility Action：`cargo check --target x86_64-pc-windows-msvc` 与 NSIS bundle build。
 - [ ] 手动验证：RSS / Clipboard / Settings 内纯显隐保留界面；Launcher 快捷键始终进入搜索并聚焦；快捷键冲突、重置、启停立即重注册。

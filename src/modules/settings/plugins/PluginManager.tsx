@@ -407,6 +407,21 @@ function ExtensionCommandsCard({ plugin }: { plugin: InstalledPlugin }) {
 /*  Preference form field                                              */
 /* ------------------------------------------------------------------ */
 
+/** Multi-line prefs: explicit `textarea`, or string lists described as one-per-line. */
+function isMultilinePreference(pref: PluginPreference): boolean {
+  if (pref.type === "textarea") return true;
+  if (pref.type !== "string") return false;
+  if (typeof pref.default === "string" && pref.default.includes("\n")) return true;
+  const desc = `${pref.description ?? ""} ${pref.label ?? ""}`.toLowerCase();
+  return (
+    desc.includes("one per line")
+    || desc.includes("per line")
+    || desc.includes("每行")
+    || desc.includes("一行一个")
+    || desc.includes("newline")
+  );
+}
+
 function PreferenceField({
   pref,
   value,
@@ -438,32 +453,68 @@ function PreferenceField({
 
     case "number":
       return (
-        <Input
-          type="number"
-          value={String(value ?? 0)}
-          onChange={(e) => onChange(Number(e.target.value))}
-          style={{ maxWidth: 120 }}
-        />
+        <div className="qx-settings-input-wrap qx-settings-input-wrap--narrow">
+          <Input
+            type="number"
+            value={String(value ?? 0)}
+            onChange={(e) => onChange(Number(e.target.value))}
+          />
+        </div>
       );
 
     case "password":
       return (
-        <Input
-          type="password"
-          value={String(value ?? "")}
-          onChange={(e) => onChange(e.target.value)}
-          style={{ maxWidth: 240 }}
-        />
+        <div className="qx-settings-input-wrap">
+          <Input
+            type="password"
+            value={String(value ?? "")}
+            onChange={(e) => onChange(e.target.value)}
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </div>
       );
 
-    default: // "string"
+    case "textarea":
       return (
-        <Input
-          type="text"
-          value={String(value ?? "")}
-          onChange={(e) => onChange(e.target.value)}
-          style={{ maxWidth: 240 }}
-        />
+        <div className="qx-settings-textarea-wrap">
+          <textarea
+            className="qx-shadcn-textarea"
+            value={String(value ?? "")}
+            rows={typeof pref.rows === "number" && pref.rows > 0 ? pref.rows : 4}
+            placeholder={pref.placeholder || undefined}
+            spellCheck={false}
+            onChange={(e) => onChange(e.target.value)}
+            aria-label={pref.label}
+          />
+        </div>
+      );
+
+    default: // "string" — promote list-like strings to textarea
+      if (isMultilinePreference(pref)) {
+        return (
+          <div className="qx-settings-textarea-wrap">
+            <textarea
+              className="qx-shadcn-textarea"
+              value={String(value ?? "")}
+              rows={typeof pref.rows === "number" && pref.rows > 0 ? pref.rows : 4}
+              placeholder={pref.placeholder || undefined}
+              spellCheck={false}
+              onChange={(e) => onChange(e.target.value)}
+              aria-label={pref.label}
+            />
+          </div>
+        );
+      }
+      return (
+        <div className="qx-settings-input-wrap">
+          <Input
+            type="text"
+            value={String(value ?? "")}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={pref.placeholder || undefined}
+          />
+        </div>
       );
   }
 }
@@ -804,6 +855,7 @@ function PluginDetail({
               key={pref.id}
               title={pref.label}
               description={pref.description}
+              stacked={isMultilinePreference(pref) || pref.type === "textarea"}
             >
               <PreferenceField
                 pref={pref}

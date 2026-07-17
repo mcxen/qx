@@ -67,14 +67,42 @@ export type PluginItemActionsPayload = {
   actions: PluginItemActionDescriptor[];
 };
 
+/** Plugin panel chrome published into QxShell TopBar (search + segmented tabs). */
+export type PluginChromeTab = {
+  id: string;
+  label: string;
+  active?: boolean;
+};
+
+export type PluginChromePayload = {
+  pluginId: string;
+  runtimeId: string;
+  query?: string;
+  queryPlaceholder?: string;
+  showSearch?: boolean;
+  tabs?: PluginChromeTab[];
+  showTabs?: boolean;
+};
+
 type ItemActionsListener = (payload: PluginItemActionsPayload) => void;
 const itemActionsListeners = new Set<ItemActionsListener>();
 
+type ChromeListener = (payload: PluginChromePayload) => void;
+const chromeListeners = new Set<ChromeListener>();
+
 export function subscribePluginItemActions(listener: ItemActionsListener): () => void {
-  ensureItemActionsBridge();
+  ensurePluginShellBridge();
   itemActionsListeners.add(listener);
   return () => {
     itemActionsListeners.delete(listener);
+  };
+}
+
+export function subscribePluginChrome(listener: ChromeListener): () => void {
+  ensurePluginShellBridge();
+  chromeListeners.add(listener);
+  return () => {
+    chromeListeners.delete(listener);
   };
 }
 
@@ -93,13 +121,92 @@ export function runPluginItemAction(pluginId: string, actionId: string): void {
   );
 }
 
-function ensureItemActionsBridge(): void {
-  const g = globalThis as typeof globalThis & { __qxItemActionsBridge?: boolean };
-  if (g.__qxItemActionsBridge) return;
-  g.__qxItemActionsBridge = true;
+function postToPluginPanel(pluginId: string, message: Record<string, unknown>): void {
+  const session = panelSessionsByPlugin.get(pluginId);
+  if (!session?.iframe.contentWindow) return;
+  session.iframe.contentWindow.postMessage(
+    {
+      ...message,
+      pluginId,
+      runtimeId: session.runtimeId,
+    },
+    "*",
+  );
+}
+
+/** TopBar search → plugin workbench filter. */
+export function postPluginChromeQuery(pluginId: string, query: string): void {
+  postToPluginPanel(pluginId, { type: "qx:chrome:query", query: String(query ?? "") });
+}
+
+/** TopBar segmented control → plugin workbench tab. */
+export function postPluginChromeTab(pluginId: string, tabId: string): void {
+  postToPluginPanel(pluginId, { type: "qx:chrome:tab", tabId: String(tabId ?? "") });
+}
+
+/** Forward list navigation keys from TopBar search into the plugin iframe. */
+export function postPluginChromeKey(pluginId: string, key: string): void {
+  postToPluginPanel(pluginId, { type: "qx:chrome:key", key: String(key ?? "") });
+}
+
+function isPanelRuntimeSource(
+  pluginId: string,
+  runtimeId: string,
+  source: MessageEventSource | null,
+): boolean {
+  if (!source) return false;
+  const panelSession = panelSessionsByPlugin.get(pluginId);
+  return Boolean(
+    panelSession
+    && panelSession.runtimeId === runtimeId
+    && panelSession.iframe.contentWindow === source
+    && isPluginRuntimeSource(pluginId, runtimeId, source as Window),
+  );
+}
+
+function ensurePluginShellBridge(): void {
+  const g = globalThis as typeof globalThis & { __qxPluginShellBridge?: boolean };
+  if (g.__qxPluginShellBridge) return;
+  g.__qxPluginShellBridge = true;
   window.addEventListener("message", (event: MessageEvent) => {
     if (!isExpectedPluginMessageOrigin(event)) return;
     const data = event.data || {};
+    if (data.type === "qx:plugin:chrome") {
+      const pluginId = String(data.pluginId || "");
+      const runtimeId = String(data.runtimeId || "");
+      if (!pluginId || !runtimeId || !isPanelRuntimeSource(pluginId, runtimeId, event.source)) {
+        return;
+      }
+      const tabs = Array.isArray(data.tabs)
+        ? data.tabs
+            .slice(0, 16)
+            .map((raw: { id?: string; label?: string; active?: boolean }) => ({
+              id: String(raw?.id || "").slice(0, 64),
+              label: String(raw?.label || raw?.id || "").slice(0, 64),
+              active: Boolean(raw?.active),
+            }))
+            .filter((tab: PluginChromeTab) => Boolean(tab.id))
+        : [];
+      const payload: PluginChromePayload = {
+        pluginId,
+        runtimeId,
+        query: data.query != null ? String(data.query).slice(0, 500) : "",
+        queryPlaceholder: data.queryPlaceholder
+          ? String(data.queryPlaceholder).slice(0, 120)
+          : undefined,
+        showSearch: data.showSearch !== false,
+        tabs,
+        showTabs: data.showTabs !== false && tabs.length > 0,
+      };
+      for (const listener of chromeListeners) {
+        try {
+          listener(payload);
+        } catch {
+          /* ignore */
+        }
+      }
+      return;
+    }
     if (data.type === "qx:plugin:open-preferences") {
       const pluginId = String(data.pluginId || "");
       const runtimeId = String(data.runtimeId || "");
@@ -405,13 +512,8 @@ export function buildPluginRuntimeHtml(
       }
 
       window.addEventListener('keydown', (event) => {
-        const desktopIdentity = String(navigator.platform || '') + ' ' + String(navigator.userAgent || '');
-        const isMacDesktop = desktopIdentity.toLowerCase().includes('mac');
-        const hasPrimaryModifier = isMacDesktop
-          ? event.metaKey && !event.ctrlKey
-          : event.ctrlKey && !event.metaKey;
         const isHostActionMenu = event.key.toLowerCase() === 'k'
-          && hasPrimaryModifier
+          && (event.metaKey || event.ctrlKey)
           && !event.altKey
           && !event.shiftKey;
         if (isHostActionMenu) {
@@ -1007,7 +1109,7 @@ export async function loadPlugin(
         };
         panelSessions.set(container, session);
         panelSessionsByPlugin.set(plugin.id, session);
-        ensureItemActionsBridge();
+        ensurePluginShellBridge();
         try {
           // Load + first paint only. Plugins must not await long CLI/network in panel.render
           // (host tears down the iframe on timeout). See plugin-development-guide panel rules.

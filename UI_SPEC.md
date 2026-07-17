@@ -793,7 +793,7 @@ search={
 - 快捷键标签必须反映当前平台（macOS 用 ⌘，Windows 用 Ctrl）；不要把 macOS 符号写死为唯一说明。
 - Shell 快捷键是窗口内响应链事件，不是进程级全局快捷键；唯一默认全局键是召唤 Launcher。
 - 全局召唤分为两个可独立配置的动作：**Launcher Search** 显示 Qx、进入 Launcher 并聚焦搜索，不会因为窗口已显示而隐藏；**Toggle Current Window** 只切换窗口显隐，再次显示时必须保留原模块、route 和子界面。后者默认关闭，避免额外占用系统按键。
-- **禁止**把 `Alt+Space` / `Option+Space`（Launcher 召唤）或 `Cmd+Space` / `Ctrl+Space`（系统 Spotlight 等）绑成模块 Action；Shell 匹配层必须放行这些宿主级组合键，不得 `preventDefault`。
+- **禁止**把 `Alt+Space` / `Option+Space`（默认窗口召唤）或 `Cmd+Space` / `Ctrl+Space`（系统 Spotlight 等）绑成模块 Action；Shell 匹配层必须放行这些宿主级组合键，不得 `preventDefault`。
 - 剪贴板等模块的删除应使用 `Cmd/Ctrl+Backspace`（或 `Delete` 等价），不得使用 Space 系全局键。
 - 多栏编辑模块应给列表、编辑器、动作面板设置稳定 `data-qx-region`；列表的
   `navigation.regionId` 指向列表区域。编辑器获得焦点后，方向键、PageUp/PageDown、

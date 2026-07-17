@@ -104,8 +104,8 @@ else                                   → show_and_navigate(route)
 
 | id | 默认键 | 默认 enabled |
 |----|--------|--------------|
-| `toggle_launcher` | `Alt+Space` | true |
-| `toggle_window` | `Alt+Shift+Space` | false |
+| `toggle_window` | `Alt+Space` | true |
+| `toggle_launcher` | `Alt+Shift+Space` | false |
 | `clipboard` | `Alt+V` | false |
 | `capture_screenshot` | `Alt+Shift+S` | false |
 | `record_gif` | `Alt+G` | false |

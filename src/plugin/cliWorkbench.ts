@@ -66,6 +66,11 @@ export type PluginUiWorkbenchState = {
   selectedId?: string | null;
   detailHtml?: string;
   emptyText?: string;
+  /**
+   * When true (default if a host chrome bridge is available), filter + tabs
+   * render in QxShell TopBar instead of inside the iframe workbench.
+   */
+  hostChrome?: boolean;
 };
 
 function isCliRunRequest(value: PluginCliRunRequest | PluginCliBashRequest | string): value is PluginCliRunRequest {
@@ -253,6 +258,9 @@ const WORKBENCH_CSS = `
 .qx-wb-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 10px;border:1px solid transparent;border-radius:7px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;width:100%}
 .qx-wb-row:hover{background:var(--qx-bg-component-2,#f3f4f6)}
 .qx-wb-row.is-sel{border-color:var(--qx-accent,#2563eb);background:color-mix(in srgb,var(--qx-accent,#2563eb) 10%,transparent)}
+.qx-wb-row:focus{outline:none}
+.qx-wb-row:focus-visible{outline:2px solid var(--qx-accent,#2563eb);outline-offset:1px}
+.qx-wb-list{outline:none}
 .qx-wb-icon{width:1.4em;text-align:center;flex-shrink:0;font-size:14px;line-height:1.2}
 .qx-wb-row strong{display:block;font-weight:600}
 .qx-wb-row small{display:block;color:var(--qx-text-secondary,#666);margin-top:2px}
@@ -299,11 +307,20 @@ function renderListRowHtml(item: PluginUiListItem, selected: boolean, esc: (v: u
     progress != null
       ? `<div class="qx-wb-progress" aria-hidden="true"><i style="width:${progress}%"></i></div>`
       : "";
-  return `<button type="button" class="qx-wb-row${selected ? " is-sel" : ""}" data-id="${esc(id)}">
+  return `<button type="button" class="qx-wb-row${selected ? " is-sel" : ""}" data-id="${esc(id)}" role="option" aria-selected="${selected ? "true" : "false"}">
     ${icon}
     <span><strong>${esc(item.title)}</strong>${item.subtitle ? `<small>${esc(item.subtitle)}</small>` : ""}${progressHtml}</span>
     ${badge}
   </button>`;
+}
+
+function activeIsListLike(doc: Document, container: HTMLElement): boolean {
+  const active = doc.activeElement as HTMLElement | null;
+  if (!active || active === doc.body || active === doc.documentElement) return true;
+  if (!container.contains(active)) return false;
+  if (active.matches("[data-query], input, textarea, select, [contenteditable=true]")) return false;
+  if (active.matches("[data-tool], [data-tab]")) return false;
+  return true;
 }
 
 /**
@@ -440,18 +457,179 @@ export function createPluginUiKit(): PluginContext["ui"] {
     });
     const queryInput = container.querySelector<HTMLInputElement>("[data-query]");
     if (queryInput) {
-      queryInput.addEventListener("input", () => handlers?.onQuery?.(queryInput.value));
-      queryInput.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") handlers?.onQuery?.(queryInput.value);
+      queryInput.addEventListener("focus", () => {
+        try {
+          container.dataset.qxWbFocus = "query";
+        } catch {
+          /* ignore */
+        }
+      });
+      queryInput.addEventListener("input", () => {
+        try {
+          container.dataset.qxWbFocus = "query";
+        } catch {
+          /* ignore */
+        }
+        handlers?.onQuery?.(queryInput.value);
       });
     }
     container.querySelectorAll<HTMLButtonElement>("[data-id]").forEach((el) => {
       el.addEventListener("click", () => {
         const id = el.dataset.id || "";
         const item = items.find((row) => String(row.id ?? row.title) === id);
+        try {
+          container.dataset.qxWbFocus = "list";
+        } catch {
+          /* ignore */
+        }
         if (item) handlers?.onSelect?.(id, item);
       });
     });
+
+    // Keyboard list navigation (ArrowUp/Down/Home/End). Document-level so it
+    // still works after remount when focus falls back to body inside the iframe.
+    const listEl = container.querySelector<HTMLElement>("[data-list]");
+    if (listEl) {
+      listEl.setAttribute("role", "listbox");
+      listEl.tabIndex = -1;
+    }
+    const itemId = (item: PluginUiListItem) => String(item.id ?? item.title);
+    const currentIndex = () => {
+      if (state.selectedId == null || state.selectedId === "") return -1;
+      const sel = String(state.selectedId);
+      return items.findIndex((row) => itemId(row) === sel);
+    };
+    const selectIndex = (index: number) => {
+      if (!items.length) return;
+      const next = Math.max(0, Math.min(items.length - 1, index));
+      const item = items[next];
+      if (!item) return;
+      const id = itemId(item);
+      try {
+        container.dataset.qxWbFocus = "list";
+      } catch {
+        /* ignore */
+      }
+      handlers?.onSelect?.(id, item);
+    };
+    const move = (delta: number) => {
+      if (!items.length) return;
+      let idx = currentIndex();
+      if (idx < 0) idx = delta > 0 ? 0 : items.length - 1;
+      else idx = Math.max(0, Math.min(items.length - 1, idx + delta));
+      selectIndex(idx);
+    };
+    const isEditableTarget = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      if (!el || typeof el.matches !== "function") return false;
+      // Keep arrows free on the filter input; block only true multi-line editors.
+      return el.matches("textarea, select, [contenteditable=true]");
+    };
+    const onWorkbenchKey = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const ownerDoc = container.ownerDocument;
+      const active = ownerDoc.activeElement as HTMLElement | null;
+      if (
+        active
+        && active !== ownerDoc.body
+        && active !== ownerDoc.documentElement
+        && !container.contains(active)
+      ) {
+        return;
+      }
+      if (isEditableTarget(event.target)) return;
+
+      const key = event.key;
+      if (key === "ArrowDown") {
+        event.preventDefault();
+        event.stopPropagation();
+        move(1);
+        return;
+      }
+      if (key === "ArrowUp") {
+        event.preventDefault();
+        event.stopPropagation();
+        move(-1);
+        return;
+      }
+      if (key === "Home" && !active?.matches?.("[data-query]")) {
+        event.preventDefault();
+        event.stopPropagation();
+        selectIndex(0);
+        return;
+      }
+      if (key === "End" && !active?.matches?.("[data-query]")) {
+        event.preventDefault();
+        event.stopPropagation();
+        selectIndex(items.length - 1);
+        return;
+      }
+      if (key === "PageDown") {
+        event.preventDefault();
+        event.stopPropagation();
+        const idx = currentIndex();
+        selectIndex((idx < 0 ? 0 : idx) + 8);
+        return;
+      }
+      if (key === "PageUp") {
+        event.preventDefault();
+        event.stopPropagation();
+        const idx = currentIndex();
+        selectIndex((idx < 0 ? 0 : idx) - 8);
+        return;
+      }
+      if (key === "Enter" && active?.matches?.("[data-query]")) {
+        // Leave query filter as-is (already live); do not block.
+        return;
+      }
+    };
+
+    const doc = container.ownerDocument;
+    type WbHost = HTMLElement & { __qxWbKeyHandler?: (event: KeyboardEvent) => void };
+    const host = container as WbHost;
+    if (host.__qxWbKeyHandler) {
+      doc.removeEventListener("keydown", host.__qxWbKeyHandler, true);
+    }
+    host.__qxWbKeyHandler = onWorkbenchKey;
+    doc.addEventListener("keydown", onWorkbenchKey, true);
+
+    // Restore focus after remount (filter typing vs list keyboard nav).
+    const focusMode = container.dataset.qxWbFocus || "";
+    const selectedBtn =
+      container.querySelector<HTMLButtonElement>(".qx-wb-row.is-sel")
+      || (state.selectedId != null
+        ? container.querySelector<HTMLButtonElement>(
+          `[data-id="${CSS.escape(String(state.selectedId))}"]`,
+        )
+        : null);
+    if (selectedBtn) {
+      selectedBtn.scrollIntoView({ block: "nearest" });
+    }
+    if (focusMode === "list") {
+      const target = selectedBtn || listEl;
+      if (target) {
+        try {
+          target.focus({ preventScroll: true });
+        } catch {
+          /* ignore */
+        }
+      }
+    } else if (focusMode === "query" && queryInput) {
+      try {
+        queryInput.focus({ preventScroll: true });
+        const len = queryInput.value.length;
+        queryInput.setSelectionRange(len, len);
+      } catch {
+        /* ignore */
+      }
+    } else if (selectedBtn && activeIsListLike(doc, container)) {
+      try {
+        selectedBtn.focus({ preventScroll: true });
+      } catch {
+        /* ignore */
+      }
+    }
   };
 
   return {
@@ -622,7 +800,7 @@ export const PLUGIN_WORKBENCH_RUNTIME_JS = [
   '    const badgeText = item.badge || item.meta || "";',
   '    const badge = badgeText ? \'<span class="qx-wb-badge\' + toneClass(item.tone) + \'">\' + esc(badgeText) + "</span>" : "<span></span>";',
   '    const progressHtml = progress != null ? \'<div class="qx-wb-progress" aria-hidden="true"><i style="width:\' + progress + \'%"></i></div>\' : "";',
-  '    return \'<button type="button" class="qx-wb-row\' + (selected ? " is-sel" : "") + \'" data-id="\' + esc(id) + \'">\' + icon + "<span><strong>" + esc(item.title) + "</strong>" + (item.subtitle ? "<small>" + esc(item.subtitle) + "</small>" : "") + progressHtml + "</span>" + badge + "</button>";',
+  '    return \'<button type="button" class="qx-wb-row\' + (selected ? " is-sel" : "") + \'" data-id="\' + esc(id) + \'" role="option" aria-selected="\' + (selected ? "true" : "false") + \'">\' + icon + "<span><strong>" + esc(item.title) + "</strong>" + (item.subtitle ? "<small>" + esc(item.subtitle) + "</small>" : "") + progressHtml + "</span>" + badge + "</button>";',
   "  }",
   "  function mountWorkbench(container, state, handlers) {",
   "    state = state || {};",
@@ -643,21 +821,73 @@ export const PLUGIN_WORKBENCH_RUNTIME_JS = [
   '      (tabs ? \'<div class="qx-wb-tabs">\' + tabs + "</div>" : "") +',
   '      \'<div class="qx-wb-bar"><input type="text" data-query placeholder="\' + esc(state.queryPlaceholder || "Filter…") + \'" value="\' + esc(state.query || "") + \'" />\' + toolbar + "</div>" +',
   '      (state.error ? \'<div class="qx-wb-err">\' + esc(state.error) + "</div>" : "") +',
-  '      \'</div><div class="qx-wb-body"><div class="qx-wb-list" data-list>\' + rows + \'</div><div class="qx-wb-detail" data-detail>\' +',
+  '      \'</div><div class="qx-wb-body"><div class="qx-wb-list" data-list role="listbox" tabindex="-1">\' + rows + \'</div><div class="qx-wb-detail" data-detail>\' +',
   '      (state.detailHtml || \'<div class="qx-wb-empty">Select an item</div>\') +',
   '      "</div></div></div>";',
   '    container.querySelectorAll("[data-tab]").forEach(function (el) { el.addEventListener("click", function () { if (handlers.onTab) handlers.onTab(el.dataset.tab || ""); }); });',
   '    container.querySelectorAll("[data-tool]").forEach(function (el) { el.addEventListener("click", function () { if (handlers.onToolbar) handlers.onToolbar(el.dataset.tool || ""); }); });',
   '    const queryInput = container.querySelector("[data-query]");',
   "    if (queryInput) {",
-  '      queryInput.addEventListener("input", function () { if (handlers.onQuery) handlers.onQuery(queryInput.value); });',
-  '      queryInput.addEventListener("keydown", function (event) { if (event.key === "Enter" && handlers.onQuery) handlers.onQuery(queryInput.value); });',
+  '      queryInput.addEventListener("focus", function () { try { container.dataset.qxWbFocus = "query"; } catch (e) {} });',
+  '      queryInput.addEventListener("input", function () { try { container.dataset.qxWbFocus = "query"; } catch (e) {} if (handlers.onQuery) handlers.onQuery(queryInput.value); });',
   "    }",
   '    container.querySelectorAll("[data-id]").forEach(function (el) { el.addEventListener("click", function () {',
   '      const id = el.dataset.id || "";',
   "      const item = items.find(function (row) { return String(row.id != null ? row.id : row.title) === id; });",
+  '      try { container.dataset.qxWbFocus = "list"; } catch (e) {}',
   "      if (item && handlers.onSelect) handlers.onSelect(id, item);",
   "    }); });",
+  '    const listEl = container.querySelector("[data-list]");',
+  "    function itemId(item) { return String(item.id != null ? item.id : item.title); }",
+  "    function currentIndex() {",
+  '      if (state.selectedId == null || state.selectedId === "") return -1;',
+  "      const sel = String(state.selectedId);",
+  "      for (let i = 0; i < items.length; i++) { if (itemId(items[i]) === sel) return i; }",
+  "      return -1;",
+  "    }",
+  "    function selectIndex(index) {",
+  "      if (!items.length) return;",
+  "      const next = Math.max(0, Math.min(items.length - 1, index));",
+  "      const item = items[next];",
+  "      if (!item) return;",
+  '      try { container.dataset.qxWbFocus = "list"; } catch (e) {}',
+  "      if (handlers.onSelect) handlers.onSelect(itemId(item), item);",
+  "    }",
+  "    function move(delta) {",
+  "      if (!items.length) return;",
+  "      let idx = currentIndex();",
+  "      if (idx < 0) idx = delta > 0 ? 0 : items.length - 1;",
+  "      else idx = Math.max(0, Math.min(items.length - 1, idx + delta));",
+  "      selectIndex(idx);",
+  "    }",
+  "    function onWorkbenchKey(event) {",
+  "      if (event.defaultPrevented) return;",
+  "      if (event.metaKey || event.ctrlKey || event.altKey) return;",
+  "      const ownerDoc = container.ownerDocument;",
+  "      const active = ownerDoc.activeElement;",
+  "      if (active && active !== ownerDoc.body && active !== ownerDoc.documentElement && !container.contains(active)) return;",
+  '      if (active && active.matches && active.matches("textarea, select, [contenteditable=true]")) return;',
+  "      const key = event.key;",
+  '      if (key === "ArrowDown") { event.preventDefault(); event.stopPropagation(); move(1); return; }',
+  '      if (key === "ArrowUp") { event.preventDefault(); event.stopPropagation(); move(-1); return; }',
+  '      if (key === "Home" && !(active && active.matches && active.matches("[data-query]"))) { event.preventDefault(); event.stopPropagation(); selectIndex(0); return; }',
+  '      if (key === "End" && !(active && active.matches && active.matches("[data-query]"))) { event.preventDefault(); event.stopPropagation(); selectIndex(items.length - 1); return; }',
+  '      if (key === "PageDown") { event.preventDefault(); event.stopPropagation(); var i1 = currentIndex(); selectIndex((i1 < 0 ? 0 : i1) + 8); return; }',
+  '      if (key === "PageUp") { event.preventDefault(); event.stopPropagation(); var i2 = currentIndex(); selectIndex((i2 < 0 ? 0 : i2) - 8); return; }',
+  "    }",
+  "    const doc = container.ownerDocument;",
+  "    if (container.__qxWbKeyHandler) doc.removeEventListener(\"keydown\", container.__qxWbKeyHandler, true);",
+  "    container.__qxWbKeyHandler = onWorkbenchKey;",
+  '    doc.addEventListener("keydown", onWorkbenchKey, true);',
+  '    const focusMode = container.dataset.qxWbFocus || "";',
+  '    const selectedBtn = container.querySelector(".qx-wb-row.is-sel");',
+  "    if (selectedBtn && selectedBtn.scrollIntoView) selectedBtn.scrollIntoView({ block: \"nearest\" });",
+  '    if (focusMode === "list") {',
+  "      const target = selectedBtn || listEl;",
+  "      if (target && target.focus) try { target.focus({ preventScroll: true }); } catch (e) {}",
+  '    } else if (focusMode === "query" && queryInput) {',
+  "      try { queryInput.focus({ preventScroll: true }); var len = queryInput.value.length; queryInput.setSelectionRange(len, len); } catch (e) {}",
+  "    }",
   "  }",
   "  return { esc: esc, styles: { workbench: workbenchStyles() }, renderJson: renderJson, renderKeyValue: renderKeyValue, itemsFromJson: itemsFromJson, mountWorkbench: mountWorkbench };",
   "}",

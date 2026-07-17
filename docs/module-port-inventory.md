@@ -67,7 +67,7 @@
 | **external-display-control** | ✅ | ✅ | invoke external-displays | — | 无 |
 | **raycast-bing-wallpaper** | ✅ | ✅ | Raycast shim + storage | storage | 转换插件 |
 | **raycast-calendar** | ✅ | ✅ | Raycast shim | — | 转换插件 |
-| **gh** | ✅ | ✅ | **business**：`ui.mountWorkbench` + http + island | persist SWR | 只写 GitHub 领域；UI 走宿主 workbench |
+| **qxgh** (QxGH) | ✅ | ✅ | **business**：`ui.mountWorkbench` + 公开 HTML + island | persist SWR | 不用 api.github.com；解析 actions/releases 网页 |
 
 **老包兼容**：无 `AGENTS.md` 仍可安装；无 `panel` 的纯 command 包仍可跑命令，但**不能**作为 panel tab 打开（宿主不注册 panel）——这是原有契约，不是新门槛。
 

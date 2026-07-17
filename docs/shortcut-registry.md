@@ -40,7 +40,7 @@ scope: "in_app"     → 仅主窗 key window 且匹配上下文时；WebView key
 |---|---|---|
 | 生效条件 | 进程存活即可 | 主窗可见 + 成为 key window + 非编辑抢键（或 action menu 打开） |
 | 注册 API | `tauri-plugin-global-shortcut` | 不注册 OS 热键；读 settings → 匹配 `KeyboardEvent` |
-| 默认策略 | **默认关**（仅 `toggle_launcher` 默认开） | 可默认开（如 Actions Menu） |
+| 默认策略 | **默认关**（仅 `toggle_window` 默认开） | 可默认开（如 Actions Menu） |
 | 推荐修饰键 | `Alt`/`Option` + 键 | `Cmd`/`Ctrl` + 键（Primary） |
 | 禁止 | OS 保留（`Cmd/Ctrl+Space`）；慎用 `Cmd/Ctrl+V` | **禁止**绑定全局召唤键（`Alt+Space` 等 `isReservedGlobalShortcut`） |
 | 冲突池 | 所有 global 键 **全集互斥** | 同 context 内互斥；可与 global 同物理键（不推荐但允许不同 scope） |

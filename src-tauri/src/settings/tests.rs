@@ -12,19 +12,26 @@ fn canonicalizes_primary_modifier_for_both_desktop_platforms() {
 }
 
 #[test]
-fn default_global_shortcuts_only_enable_launcher_recall() {
+fn default_global_shortcuts_only_enable_window_toggle() {
     let settings = Settings::default();
     let enabled = settings
         .shortcuts
         .iter()
         .filter_map(|(id, binding)| binding.enabled.then_some(id.as_str()))
         .collect::<Vec<_>>();
-    assert_eq!(enabled, vec!["toggle_launcher"]);
+    assert_eq!(enabled, vec!["toggle_window"]);
     assert_eq!(
-        settings.shortcuts.get("toggle_window"),
+        settings.shortcuts.get("toggle_launcher"),
         Some(&super::ShortcutBinding {
             key: "Alt+Shift+Space".to_string(),
             enabled: false,
+        })
+    );
+    assert_eq!(
+        settings.shortcuts.get("toggle_window"),
+        Some(&super::ShortcutBinding {
+            key: "Alt+Space".to_string(),
+            enabled: true,
         })
     );
 }
@@ -47,10 +54,69 @@ fn legacy_settings_gain_new_shortcuts_without_overwriting_user_bindings() {
     assert_eq!(
         settings.shortcuts.get("toggle_window"),
         Some(&super::ShortcutBinding {
+            key: "Alt+Space".to_string(),
+            enabled: true,
+        })
+    );
+}
+
+#[test]
+fn migrates_pre_swap_window_launcher_factory_defaults() {
+    let mut settings = Settings::default();
+    settings.shortcuts.insert(
+        "toggle_launcher".to_string(),
+        super::ShortcutBinding {
+            key: "Alt+Space".to_string(),
+            enabled: true,
+        },
+    );
+    settings.shortcuts.insert(
+        "toggle_window".to_string(),
+        super::ShortcutBinding {
+            key: "Alt+Shift+Space".to_string(),
+            enabled: false,
+        },
+    );
+
+    super::migrate_swapped_window_launcher_defaults(&mut settings);
+
+    assert_eq!(
+        settings.shortcuts.get("toggle_window"),
+        Some(&super::ShortcutBinding {
+            key: "Alt+Space".to_string(),
+            enabled: true,
+        })
+    );
+    assert_eq!(
+        settings.shortcuts.get("toggle_launcher"),
+        Some(&super::ShortcutBinding {
             key: "Alt+Shift+Space".to_string(),
             enabled: false,
         })
     );
+}
+
+#[test]
+fn does_not_migrate_customized_window_launcher_shortcuts() {
+    let mut settings = Settings::default();
+    settings.shortcuts.insert(
+        "toggle_launcher".to_string(),
+        super::ShortcutBinding {
+            key: "Alt+L".to_string(),
+            enabled: true,
+        },
+    );
+    settings.shortcuts.insert(
+        "toggle_window".to_string(),
+        super::ShortcutBinding {
+            key: "Alt+Shift+Space".to_string(),
+            enabled: false,
+        },
+    );
+
+    super::migrate_swapped_window_launcher_defaults(&mut settings);
+
+    assert_eq!(settings.shortcuts["toggle_launcher"].key, "Alt+L");
 }
 
 #[test]

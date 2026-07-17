@@ -146,7 +146,7 @@ dependencies. Provide a deliberate fallback for other targets when practical.
   for the duration (`floating_set_onboarding_active`).
 - Normal helper startup, login-item activation, screen wake, and application
   activation must keep Qx in the background.
-- Only the configured global summon shortcut (default `Option+Space` on macOS;
+- Only the configured global summon shortcut (default `Option+Space` = toggle current window on macOS;
   use the corresponding configurable Windows shortcut) may summon the main UI
   after onboarding.
 - Treat lifecycle activation and an explicit summon as different events. Do not

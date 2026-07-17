@@ -630,18 +630,20 @@ pub struct Settings {
 impl Default for Settings {
     fn default() -> Self {
         let mut shortcuts = BTreeMap::new();
+        // Primary Alt+Space toggles current window (preserve module/view).
+        // Launcher search recall defaults to Alt+Shift+Space (opt-in).
         shortcuts.insert(
             "toggle_launcher".to_string(),
             ShortcutBinding {
-                key: "Alt+Space".to_string(),
-                enabled: true,
+                key: "Alt+Shift+Space".to_string(),
+                enabled: false,
             },
         );
         shortcuts.insert(
             "toggle_window".to_string(),
             ShortcutBinding {
-                key: "Alt+Shift+Space".to_string(),
-                enabled: false,
+                key: "Alt+Space".to_string(),
+                enabled: true,
             },
         );
         shortcuts.insert(
@@ -732,6 +734,7 @@ pub(crate) fn read_settings() -> Settings {
         Err(_) => Settings::default(),
     };
     merge_missing_default_shortcuts(&mut settings);
+    migrate_swapped_window_launcher_defaults(&mut settings);
     migrate_legacy_default_quick_entries(&mut settings.quick_entries);
     if settings.agent.default_provider.is_empty() || settings.agent.default_provider == "duckduckgo"
     {
@@ -745,6 +748,36 @@ fn merge_missing_default_shortcuts(settings: &mut Settings) {
     for (id, binding) in Settings::default().shortcuts {
         settings.shortcuts.entry(id).or_insert(binding);
     }
+}
+
+/// One-time flip for installs that still have the pre-swap factory defaults:
+/// launcher=`Alt+Space` on, window=`Alt+Shift+Space` off.
+fn migrate_swapped_window_launcher_defaults(settings: &mut Settings) {
+    let Some(launcher) = settings.shortcuts.get("toggle_launcher").cloned() else {
+        return;
+    };
+    let Some(window) = settings.shortcuts.get("toggle_window").cloned() else {
+        return;
+    };
+    let launcher_is_old = launcher.key.eq_ignore_ascii_case("Alt+Space") && launcher.enabled;
+    let window_is_old = window.key.eq_ignore_ascii_case("Alt+Shift+Space") && !window.enabled;
+    if !(launcher_is_old && window_is_old) {
+        return;
+    }
+    settings.shortcuts.insert(
+        "toggle_launcher".to_string(),
+        ShortcutBinding {
+            key: "Alt+Shift+Space".to_string(),
+            enabled: false,
+        },
+    );
+    settings.shortcuts.insert(
+        "toggle_window".to_string(),
+        ShortcutBinding {
+            key: "Alt+Space".to_string(),
+            enabled: true,
+        },
+    );
 }
 
 pub(crate) fn write_settings(settings: &Settings) -> Result<(), String> {
@@ -933,8 +966,8 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
     }
     let mut registered = BTreeSet::new();
 
-    // Preserve the long-standing Alt+Space behavior: hidden -> Launcher search,
-    // visible -> hide. A separate binding toggles the current view in place.
+    // Default Alt+Space toggles current window (preserve module/view).
+    // Optional Alt+Shift+Space recalls Launcher search (toggle_launcher).
     if let Some(key) = shortcut_for(settings, "toggle_launcher") {
         gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
             if event.state() == ShortcutState::Pressed {

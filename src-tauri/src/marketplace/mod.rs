@@ -44,6 +44,7 @@ pub struct PluginPanel {
 pub struct PluginPreference {
     pub id: String,
     pub label: String,
+    /// `string` | `textarea` | `password` | `number` | `boolean` | `select`
     #[serde(rename = "type")]
     pub pref_type: String,
     #[serde(default)]
@@ -54,6 +55,11 @@ pub struct PluginPreference {
     pub options: Vec<serde_json::Value>,
     #[serde(default)]
     pub description: String,
+    /// Hint for multi-line editors (`textarea`).
+    #[serde(default)]
+    pub rows: Option<u32>,
+    #[serde(default)]
+    pub placeholder: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

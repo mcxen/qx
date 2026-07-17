@@ -538,6 +538,22 @@ img.qx-ext-card-icon {
   min-width: 0;
 }
 
+/* Multi-line preference fields: label on top, full-width editor below */
+.qx-settings-row--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 0;
+}
+
+.qx-settings-row--stacked .qx-settings-row-control {
+  width: 100%;
+  max-width: none;
+  flex-shrink: 1;
+  justify-content: stretch;
+  align-items: stretch;
+}
+
 @media (max-width: 520px) {
   .qx-settings-row {
     flex-wrap: wrap;
@@ -2050,6 +2066,42 @@ span.qx-plugin-screenshot {
 .qx-settings-input-wrap .qx-shadcn-input,
 .qx-settings-input-wrap input {
   width: 100%;
+}
+
+.qx-settings-textarea-wrap {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.qx-shadcn-textarea {
+  display: block;
+  width: 100%;
+  min-height: 88px;
+  max-height: 240px;
+  padding: 8px 10px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--radius);
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-primary);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  -webkit-app-region: no-drag;
+  field-sizing: content;
+}
+
+.qx-shadcn-textarea:focus {
+  border-color: color-mix(in srgb, var(--qx-accent) 48%, var(--qx-border-1));
+  box-shadow: 0 0 0 2px var(--qx-accent-soft);
+}
+
+.qx-shadcn-textarea::placeholder {
+  color: var(--qx-text-tertiary);
 }
 
 /* ====== Tray Action Editor ====== */

@@ -1,11 +1,19 @@
 export interface PluginPreference {
   id: string;
   label: string;
-  type: "string" | "password" | "number" | "boolean" | "select";
+  /**
+   * - `string` — single-line
+   * - `textarea` — multi-line (repos, path lists, JSON snippets)
+   * - `password` | `number` | `boolean` | `select`
+   */
+  type: "string" | "textarea" | "password" | "number" | "boolean" | "select";
   required?: boolean;
   default?: string | number | boolean;
   options?: { label: string; value: string }[];
   description?: string;
+  /** Optional rows for `textarea` (default 4). */
+  rows?: number;
+  placeholder?: string;
 }
 
 export interface PluginCommand {

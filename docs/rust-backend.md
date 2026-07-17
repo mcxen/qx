@@ -83,7 +83,7 @@
 顺序随版本微调；核心是：
 
 1. 读 `~/.qx/settings.json`；`floating_panel::install`（Accessory + 面板化）
-2. `settings::register_shortcuts` — 默认 **Alt+Space** 切换启动器（非 Cmd+Space）
+2. `settings::register_shortcuts` — 默认 **Alt+Space** 切换当前窗口显隐；**Alt+Shift+Space** 为 Launcher 搜索（默认关）
 3. `safe_init` 包裹子系统（panic 不拖垮 setup）：
    - `clipboard::start_listener` — **始终 manage** ClipboardDb
    - `rss::init` — **始终 manage** RssDb（open 失败存 `None`，命令路径 lazy open）

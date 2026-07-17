@@ -122,6 +122,8 @@ try {
 | `progress` | `0–100`，行内进度条（CI / 下载） |
 | `raw` | 业务对象，供 `onSelect` / 详情映射 |
 
+**键盘（宿主 workbench 内置）**：`↑` / `↓` 移动选中，`PageUp` / `PageDown` 跳 8 行，`Home` / `End` 首尾（过滤框内 Home/End 仍走光标）。业务插件只要在 `onSelect` 里更新 `selectedId` 再 `mountWorkbench` 即可；**不要**自己绑全局上下键。
+
 ### 最小 Panel 骨架（必读：render 要快返回）
 
 ```js

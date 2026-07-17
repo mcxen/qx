@@ -95,14 +95,17 @@ export function Row({
   title,
   description,
   children,
+  stacked = false,
 }: {
   title: string;
   description?: string;
   children: ReactNode;
+  /** Full-width control under the label (multi-line preferences). */
+  stacked?: boolean;
 }) {
   return (
-    <div className="qx-settings-row">
-      <div style={{ flex: 1, minWidth: 0 }}>
+    <div className={`qx-settings-row${stacked ? " qx-settings-row--stacked" : ""}`.trim()}>
+      <div className="qx-settings-row-copy" style={{ flex: 1, minWidth: 0 }}>
         <div className="qx-settings-row-title">{title}</div>
         {description && (
           <div className="qx-settings-row-description">{description}</div>

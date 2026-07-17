@@ -309,8 +309,9 @@ export const DEFAULT_SETTINGS: Settings = {
     island_prefer_docked_when_main_visible: true,
   },
   shortcuts: {
-    toggle_launcher: { key: "Alt+Space", enabled: true },
-    toggle_window: { key: "Alt+Shift+Space", enabled: false },
+    // Swapped defaults: primary Alt+Space preserves current view; launcher recall is Alt+Shift+Space.
+    toggle_launcher: { key: "Alt+Shift+Space", enabled: false },
+    toggle_window: { key: "Alt+Space", enabled: true },
     clipboard: { key: "Alt+V", enabled: false },
     record_gif: { key: "Alt+G", enabled: false },
     capture_screenshot: { key: "Alt+Shift+S", enabled: false },
