@@ -42,7 +42,6 @@ export function useHomeIslandContribution(
           componentId,
           componentProps: {
             showCpu: appearance.home_island_cpu,
-            showGpu: appearance.home_island_gpu,
             showMemory: appearance.home_island_memory,
             appearance: {
               ...appearance,

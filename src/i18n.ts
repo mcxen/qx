@@ -34,7 +34,7 @@ const zh: Record<string, string> = {
 
   "settings.search": "搜索设置...",
   "settings.noMatches": "没有匹配的设置",
-  "nav.file-search": "文件搜索",
+  "nav.file-search": "搜索设置",
   "launcher.category.qx": "Qx 内置",
   "launcher.category.apps": "应用程序",
   "launcher.category.plugins": "外置插件",
@@ -183,7 +183,7 @@ const zh: Record<string, string> = {
   "appearance.homeIsland.default": "默认",
   "appearance.homeIsland.default.hint": "状态文案",
   "appearance.homeIsland.system": "系统",
-  "appearance.homeIsland.system.hint": "CPU · MEM · GPU",
+  "appearance.homeIsland.system.hint": "CPU · MEM",
   "appearance.homeIsland.date": "日期",
   "appearance.homeIsland.date.hint": "点阵时钟",
   "appearance.homeIsland.pulse": "脉冲",

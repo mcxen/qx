@@ -15,7 +15,6 @@ function wrapHome(
   Component: ComponentType<{
     appearance?: HomeIslandAppearance;
     showCpu?: boolean;
-    showGpu?: boolean;
     showMemory?: boolean;
   }>,
   mode: "system" | "date" | "pulse" | "core" | "orbit",
@@ -25,7 +24,6 @@ function wrapHome(
       return (
         <HomeSystemIsland
           showCpu={props.showCpu !== false}
-          showGpu={props.showGpu !== false}
           showMemory={props.showMemory !== false}
         />
       );

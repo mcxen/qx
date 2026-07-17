@@ -13,7 +13,7 @@ import {
   Settings2,
   ShieldCheck,
   SlidersHorizontal,
-  Files,
+  Search,
 } from "lucide-react";
 import { useSettingsStore, type SettingsTab } from "./store";
 import GeneralSettings from "./GeneralSettings";
@@ -62,7 +62,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Basics",
     items: [
       { id: "general", label: "General", icon: Settings2 },
-      { id: "file-search", label: "File Search", icon: Files },
+      { id: "file-search", label: "Search Settings", icon: Search },
       { id: "appearance", label: "Appearance", icon: Palette },
       { id: "shortcuts", label: "Shortcuts", icon: Keyboard },
     ],
@@ -94,7 +94,7 @@ const NAV_GROUPS: NavGroup[] = [
 
 const TAB_LABELS: Record<SettingsTab, string> = {
   general: "General",
-  "file-search": "File Search",
+  "file-search": "Search Settings",
   shortcuts: "Shortcuts",
   plugins: "Extensions",
   permissions: "Permissions",

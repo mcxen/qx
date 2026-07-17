@@ -78,6 +78,7 @@ export interface AppearanceSettings {
   /** Seconds between multi-mode rotation; 0 = no rotate. */
   home_island_rotate_secs: number;
   home_island_cpu: boolean;
+  /** @deprecated Retained for imported settings compatibility; System island no longer renders GPU. */
   home_island_gpu: boolean;
   home_island_memory: boolean;
   /** Floating island webview (default off — dogfood). */

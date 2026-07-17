@@ -15,13 +15,6 @@ function SystemIslandSettings({ appearance, patchAppearance }: HomeIslandSetting
         />
       </label>
       <label>
-        <span>GPU</span>
-        <Toggle
-          value={appearance.home_island_gpu}
-          onChange={(v) => patchAppearance({ home_island_gpu: v })}
-        />
-      </label>
-      <label>
         <span>MEM</span>
         <Toggle
           value={appearance.home_island_memory}
@@ -38,13 +31,12 @@ export const systemHomeIsland: HomeIslandDefinition = {
   titleKey: "appearance.homeIsland.system",
   titleFallback: "System",
   hintKey: "appearance.homeIsland.system.hint",
-  hintFallback: "CPU · MEM · GPU",
+  hintFallback: "CPU · MEM",
   preview: "SYS",
   kind: "custom",
   Component: ({ appearance }) => (
     <SystemIsland
       showCpu={appearance.home_island_cpu}
-      showGpu={appearance.home_island_gpu}
       showMemory={appearance.home_island_memory}
     />
   ),

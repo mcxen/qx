@@ -1,5 +1,17 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Fix — Search Settings ownership and Home System Island metrics
+
+**状态**：已完成代码修复，等待本地运行态复核。
+
+- 侧栏将原 `File Search` 显示名统一为 `Search Settings` / `搜索设置`，保留 `file-search` 内部 id 以兼容既有深链与快捷入口。
+- 启动器模块搜索源设置迁移到 Search Settings，与文件分类设置集中维护；Appearance 只保留主题、布局和 Home Island 外观职责。
+- Home System Island 去除重复 marquee 数据和 GPU 展示，保留 CPU / MEM 的异步采样与曲线，旧 `home_island_gpu` 配置字段继续兼容读取但不再渲染。
+
+### 验证
+
+- [ ] macOS：浅色/深色设置页检查 Search Settings 入口、模块开关与底部 CPU/MEM 岛视觉。
+
 ## Fix — Workbench 受控交互、List / Gallery 与插件事件协议
 
 **状态**：已完成代码与协议审计，等待最终人工视觉复核。
@@ -1003,7 +1015,7 @@
 ### 新增内容
 
 - 主页灵动岛模式新增 `日期显示`，用点阵屏风格显示当前时间、公历日期和农历日期。
-- 原 `系统` 模式文案改为 `系统信息`，保留 CPU / GPU / MEM 老样式监控。
+- 原 `系统` 模式文案改为 `系统信息`，保留 CPU / MEM 异步监控；旧 GPU 配置字段仅为兼容保留，不再渲染。
 - `UI_SPEC.md` 补充灵动岛可承载消息通知、动态进度、播放进度，以及主页空闲样式说明。
 
 ### 验证

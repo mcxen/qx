@@ -1,9 +1,8 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import { useIslandStats } from "../data/hooks";
 
 interface HomeSystemIslandProps {
   showCpu: boolean;
-  showGpu: boolean;
   showMemory: boolean;
 }
 
@@ -75,7 +74,6 @@ function MiniSparkline({ points, color }: { points: number[]; color: string }) {
  */
 export default function HomeSystemIsland({
   showCpu,
-  showGpu,
   showMemory,
 }: HomeSystemIslandProps) {
   const { stats, ready } = useIslandStats();
@@ -92,62 +90,29 @@ export default function HomeSystemIsland({
   const available = ready && !!stats;
   const cpuText = available ? `${Math.round(stats.cpu)}%` : "--";
   const memText = available ? `${Math.round(stats.memory)}%` : "--";
-  const gpuText = !showGpu
-    ? null
-    : !available
-      ? "--"
-      : stats.gpu == null
-        ? "N/A"
-        : `${Math.round(stats.gpu)}%`;
-
-  const marqueeRef = useRef<HTMLDivElement>(null);
-  const [overflowing, setOverflowing] = useState(false);
-
-  useLayoutEffect(() => {
-    const el = marqueeRef.current;
-    if (el) {
-      const group = el.firstElementChild;
-      if (group) {
-        setOverflowing(group.scrollWidth > el.clientWidth);
-      }
-    }
-  }, [cpuText, memText, gpuText, showCpu, showGpu, showMemory]);
-
-  if (!showCpu && !showGpu && !showMemory) return null;
+  if (!showCpu && !showMemory) return null;
 
   return (
     <div className="qx-home-system-island qx-island-content" aria-label="System monitor">
-      <div
-        ref={marqueeRef}
-        className={`qx-island-marquee${overflowing ? " is-overflowing" : ""}`}
-      >
-        {[0, 1].map((copy) => (
-          <div className="qx-island-marquee-group" aria-hidden={copy === 1} key={copy}>
-            {showCpu && (
-              <span className="qx-si-item">
-                <span className="qx-si-dot cpu" />
-                <span className="qx-si-label">CPU</span>
-                <strong className="qx-si-value">{cpuText}</strong>
-                <MiniSparkline points={cpuPoints} color="var(--qx-stats-cpu)" />
-              </span>
-            )}
-            {showMemory && (
-              <span className="qx-si-item">
-                <span className="qx-si-dot mem" />
-                <span className="qx-si-label">MEM</span>
-                <strong className="qx-si-value">{memText}</strong>
-                <MiniSparkline points={memPoints} color="var(--qx-stats-mem)" />
-              </span>
-            )}
-            {showGpu && gpuText !== null && (
-              <span className="qx-si-item">
-                <span className="qx-si-dot gpu" />
-                <span className="qx-si-label">GPU</span>
-                <strong className="qx-si-value">{gpuText}</strong>
-              </span>
-            )}
-          </div>
-        ))}
+      <div className="qx-island-marquee">
+        <div className="qx-island-marquee-group">
+          {showCpu && (
+            <span className="qx-si-item">
+              <span className="qx-si-dot cpu" />
+              <span className="qx-si-label">CPU</span>
+              <strong className="qx-si-value">{cpuText}</strong>
+              <MiniSparkline points={cpuPoints} color="var(--qx-stats-cpu)" />
+            </span>
+          )}
+          {showMemory && (
+            <span className="qx-si-item">
+              <span className="qx-si-dot mem" />
+              <span className="qx-si-label">MEM</span>
+              <strong className="qx-si-value">{memText}</strong>
+              <MiniSparkline points={memPoints} color="var(--qx-stats-mem)" />
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

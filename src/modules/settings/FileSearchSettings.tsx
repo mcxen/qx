@@ -8,12 +8,20 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  Row,
   SettingsCard,
   Toggle,
 } from "../../components/ui";
 import { useT } from "../../i18n";
 import { normalizeFileSearchCategories } from "../../search/fileCategories";
-import { useSettingsStore, type FileSearchCategory } from "./store";
+import {
+  MODULE_SEARCH_LABELS,
+  MODULE_SEARCH_MODULE_IDS,
+  useSettingsStore,
+  type FileSearchCategory,
+  type ModuleSearchModuleId,
+} from "./store";
+import { isBuiltinModuleEnabled } from "../moduleAvailability";
 
 function newCategory(): FileSearchCategory {
   return {
@@ -28,6 +36,7 @@ function newCategory(): FileSearchCategory {
 export default function FileSearchSettings() {
   const t = useT();
   const { settings, patch } = useSettingsStore();
+  const moduleSearch = settings.module_search;
   const categories = useMemo(
     () => normalizeFileSearchCategories(settings.file_search.categories),
     [settings.file_search.categories],
@@ -85,6 +94,55 @@ export default function FileSearchSettings() {
 
   return (
     <div className="qx-settings-page">
+      <SettingsCard
+        title={t("appearance.moduleSearch.title", "Launcher Search Sources")}
+        description={t(
+          "general.moduleSearch.desc",
+          "Choose which built-in modules contribute commands and dynamic results to launcher search.",
+        )}
+      >
+        <Row
+          title={t("general.moduleSearch.enabled", "Enable module search")}
+          description={t(
+            "general.moduleSearch.enabled.desc",
+            "Master switch. When off, built-in modules no longer appear as search results or deep links.",
+          )}
+        >
+          <Toggle
+            value={moduleSearch.enabled}
+            onChange={(value) =>
+              patch("module_search", { ...moduleSearch, enabled: value })
+            }
+          />
+        </Row>
+        {MODULE_SEARCH_MODULE_IDS.map((id) => {
+          const meta = MODULE_SEARCH_LABELS[id];
+          const on = moduleSearch.modules[id] !== false;
+          const moduleEnabled = isBuiltinModuleEnabled(id, settings);
+          return (
+            <Row
+              key={id}
+              title={t(`general.moduleSearch.${id}`, meta.title)}
+              description={t(`general.moduleSearch.${id}.desc`, meta.hint)}
+            >
+              <Toggle
+                value={moduleSearch.enabled && moduleEnabled && on}
+                disabled={!moduleEnabled}
+                onChange={(value) =>
+                  patch("module_search", {
+                    ...moduleSearch,
+                    modules: {
+                      ...moduleSearch.modules,
+                      [id]: value,
+                    } as Partial<Record<ModuleSearchModuleId, boolean>>,
+                  })
+                }
+              />
+            </Row>
+          );
+        })}
+      </SettingsCard>
+
       <SettingsCard
         title={t("fileSearch.categories.title", "File Type Order")}
         description={t(
