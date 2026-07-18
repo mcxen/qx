@@ -5,7 +5,18 @@
 //! Public IPC: [`display_list`]. Region still-frame capture: [`capture_region`].
 
 use serde::Serialize;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tauri::{command, AppHandle};
+
+const DISPLAY_CACHE_TTL: Duration = Duration::from_millis(750);
+
+struct CaptureMonitorCache {
+    refreshed_at: Instant,
+    monitors: Vec<xcap::Monitor>,
+}
+
+static CAPTURE_MONITOR_CACHE: OnceLock<Mutex<Option<CaptureMonitorCache>>> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -253,7 +264,32 @@ pub(crate) fn tauri_monitor_for_capture(
 }
 
 pub(crate) fn all_capture_monitors() -> Result<Vec<xcap::Monitor>, String> {
-    xcap::Monitor::all().map_err(|error| format!("Cannot list displays: {error}"))
+    let cache = CAPTURE_MONITOR_CACHE.get_or_init(|| Mutex::new(None));
+    if let Ok(snapshot) = cache.lock() {
+        if let Some(snapshot) = snapshot.as_ref() {
+            if snapshot.refreshed_at.elapsed() < DISPLAY_CACHE_TTL {
+                return Ok(snapshot.monitors.clone());
+            }
+        }
+    }
+    refresh_capture_monitor_cache()
+}
+
+/// Refresh the native display inventory before a capture action is requested.
+/// The next picker transition can then reuse the already-resolved xcap objects.
+pub(crate) fn refresh_capture_monitor_cache() -> Result<Vec<xcap::Monitor>, String> {
+    let monitors =
+        xcap::Monitor::all().map_err(|error| format!("Cannot list displays: {error}"))?;
+    if let Ok(mut cache) = CAPTURE_MONITOR_CACHE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+    {
+        *cache = Some(CaptureMonitorCache {
+            refreshed_at: Instant::now(),
+            monitors: monitors.clone(),
+        });
+    }
+    Ok(monitors)
 }
 
 pub(crate) fn capture_monitor(id: Option<u32>) -> Result<xcap::Monitor, String> {
@@ -311,8 +347,10 @@ pub(crate) fn displays() -> Result<Vec<DisplayDescriptor>, String> {
 
 /// Public IPC: enumerate displays for any feature (capture, windows, layout).
 #[command]
-pub fn display_list() -> Result<Vec<DisplayDescriptor>, String> {
-    displays()
+pub async fn display_list() -> Result<Vec<DisplayDescriptor>, String> {
+    crate::runtime::blocking(displays)
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 /// Capture a rectangular region from a capture-backend monitor (physical pixels).

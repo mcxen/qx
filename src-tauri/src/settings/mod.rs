@@ -99,6 +99,9 @@ pub struct AppearanceSettings {
     /// Floating QxIsland webview (default false for dogfood rollout).
     #[serde(default)]
     pub island_float_enabled: bool,
+    /// Auto-rotate standing module/plugin sessions. Default 8 seconds.
+    #[serde(default = "default_island_float_rotate_secs")]
+    pub island_float_rotate_secs: u32,
     /// Auto-promote sticky task when main is hidden (only if float enabled).
     #[serde(default = "default_true")]
     pub island_float_when_main_hidden: bool,
@@ -164,6 +167,10 @@ fn default_home_island_rotate_secs() -> u32 {
     8
 }
 
+fn default_island_float_rotate_secs() -> u32 {
+    8
+}
+
 fn default_true() -> bool {
     true
 }
@@ -190,6 +197,7 @@ impl Default for AppearanceSettings {
             home_island_cpu: true,
             home_island_memory: true,
             island_float_enabled: false,
+            island_float_rotate_secs: default_island_float_rotate_secs(),
             island_float_when_main_hidden: true,
             island_float_always_on_top: true,
             island_prefer_docked_when_main_visible: true,
@@ -508,7 +516,7 @@ fn default_screencap_confirm_mode() -> String {
     "refine".to_string()
 }
 fn default_screencap_history_layout() -> String {
-    "list".to_string()
+    "gallery".to_string()
 }
 
 impl Default for ScreencapSettings {
@@ -918,6 +926,23 @@ pub(crate) fn write_settings(settings: &Settings) -> Result<(), String> {
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let path = settings_path();
     let json = serde_json::to_string_pretty(settings).map_err(|e| format!("serialize: {e}"))?;
+    atomic_write(&path, json.as_bytes()).map_err(|e| format!("write {}: {e}", path.display()))
+}
+
+/// Focused persistence port for the standalone capture-controls webview.
+/// It cannot depend on the main React settings store being mounted or visible.
+pub(crate) fn set_screencap_controls_pinned(pinned: bool) -> Result<(), String> {
+    let _guard = SETTINGS_WRITE_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut settings = read_settings();
+    if settings.screencap.controls_pinned == pinned {
+        return Ok(());
+    }
+    settings.screencap.controls_pinned = pinned;
+    let path = settings_path();
+    let json = serde_json::to_string_pretty(&settings).map_err(|e| format!("serialize: {e}"))?;
     atomic_write(&path, json.as_bytes()).map_err(|e| format!("write {}: {e}", path.display()))
 }
 

@@ -150,6 +150,7 @@ function createState() {
     items: [],
     data: null,
     selectedId: null,
+    reloadGeneration: 0,
   };
 }
 
@@ -187,7 +188,7 @@ function paint(context, state) {
   if (state.dead) return;
   const items = filteredItems(state);
   const selected =
-    items.find((item) => String(item.id ?? item.title) === String(state.selectedId)) ||
+    items.find((item) => String(item.id) === String(state.selectedId)) ||
     items[0] ||
     null;
   if (selected) state.selectedId = String(selected.id ?? selected.title);
@@ -238,12 +239,13 @@ function paint(context, state) {
 
 async function reload(context, state) {
   if (state.dead) return;
+  const generation = ++state.reloadGeneration;
   state.loading = true;
   state.error = null;
   paint(context, state);
   try {
     const result = await loadDataset(context, state.tab);
-    if (state.dead) return;
+    if (state.dead || generation !== state.reloadGeneration) return;
     state.meta = result.meta;
     state.data = result.data;
     state.items = result.items;
@@ -251,12 +253,12 @@ async function reload(context, state) {
       state.selectedId = String(state.items[0].id ?? state.items[0].title);
     }
   } catch (error) {
-    if (state.dead) return;
+    if (state.dead || generation !== state.reloadGeneration) return;
     state.error = String(error?.message || error);
     state.items = [];
     state.data = null;
   } finally {
-    if (!state.dead) {
+    if (!state.dead && generation === state.reloadGeneration) {
       state.loading = false;
       paint(context, state);
     }

@@ -784,7 +784,7 @@ function renderMarkdown(markdown) {
     }
 
     const trimmed = line.trim();
-    // Inline HTML images used by Bing Wallpaper preview / list detail.
+    // Inline HTML images used by converted preview / list detail surfaces.
     const htmlImg = trimmed.match(/^<img\s+[^>]*src=["']([^"']+)["'][^>]*\/?\s*>$/i);
     if (htmlImg) {
       blocks.push(React.createElement(LocalImage, {

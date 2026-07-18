@@ -14,15 +14,28 @@ export const PRIORITY_RANK: Record<IslandPriority, number> = {
  * Within band: sticky task/error > higher rankEpoch > newer createdAt > id.
  */
 export function resolveDockedWinner(sessions: IslandSession[]): string | null {
-  if (sessions.length === 0) return null;
+  return resolveRotatingWinner(sessions, 0);
+}
 
-  let best: IslandSession | null = null;
-  for (const session of sessions) {
-    if (!best || compareSessions(session, best) < 0) {
-      best = session;
-    }
-  }
-  return best?.id ?? null;
+/**
+ * Resolve one visible session. Important events keep strict priority; standing
+ * module/plugin location sessions share the surface with fair time rotation.
+ */
+export function resolveRotatingWinner(
+  sessions: IslandSession[],
+  rotationIndex: number,
+): string | null {
+  if (sessions.length === 0) return null;
+  const ordered = [...sessions].sort(compareSessions);
+  const best = ordered[0];
+  if (best.priority !== "location") return best.id;
+  const standing = ordered.filter((session) => session.priority === "location");
+  const index = Math.abs(Math.trunc(rotationIndex)) % standing.length;
+  return standing[index]?.id ?? best.id;
+}
+
+export function countRotatingSessions(sessions: IslandSession[]): number {
+  return sessions.filter((session) => session.priority === "location").length;
 }
 
 /** Returns negative if a should rank above b. */

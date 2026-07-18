@@ -10,6 +10,10 @@ mod state;
 mod storage;
 mod types;
 
+pub(crate) fn is_picker_surface(label: &str) -> bool {
+    picker_window::is_picker_surface(label)
+}
+
 pub use crate::display::DisplayDescriptor as CaptureDisplay;
 pub use commands::screencap_toggle_controls;
 pub use selection::screencap_begin_capture_select;

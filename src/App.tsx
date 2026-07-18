@@ -14,6 +14,7 @@ import type { PluginRuntimeStatus } from "./plugin/types";
 import QxShell from "./components/QxShell";
 import { islandHost, showPluginIslandStatus, clearPluginIslandStatus } from "./island";
 import IslandFloatBridge from "./island/float/IslandFloatBridge";
+import { resolveIslandSurfaceOpacity } from "./island/appearance";
 import {
   buildSearchTracks,
   patchSearchTracks,
@@ -846,6 +847,22 @@ function App() {
   }, [settings.builtin_modules?.modules?.screencap, settings.screencap.controls_pinned, settingsLoaded]);
 
   useEffect(() => {
+    if (!isTauriRuntime()) return;
+    const unlisten = listen<{ pinned?: boolean }>("screencap:controls-pinned", ({ payload }) => {
+      const pinned = Boolean(payload.pinned);
+      const store = useSettingsStore.getState();
+      if (store.settings.screencap.controls_pinned === pinned) return;
+      store.patch("screencap", {
+        ...store.settings.screencap,
+        controls_pinned: pinned,
+      });
+    }).catch(() => () => {});
+    return () => {
+      void unlisten.then((dispose) => dispose());
+    };
+  }, []);
+
+  useEffect(() => {
     configureQxLogger({
       level: settings.advanced.log_level,
       devMode: settings.advanced.dev_mode,
@@ -1087,11 +1104,7 @@ function App() {
         : Math.max(0.05, bottomBarOpacity * 0.90);
     // Popovers share the actions/controls visual tier. The bottom bar is the
     // translucency floor so floating menus never become weaker than shell chrome.
-    const popoverOpacity = !glassEnabled
-      ? 1
-      : isWindows
-        ? Math.max(0.90, configuredControlOpacity, bottomBarOpacity)
-        : Math.min(0.96, Math.max(configuredControlOpacity, bottomBarOpacity + 0.20));
+    const popoverOpacity = resolveIslandSurfaceOpacity(settings.appearance);
     const surfaceOpacity1 = !glassEnabled
       ? 1
       : isWindows
@@ -2188,11 +2201,13 @@ function App() {
     <ThemeProvider>
       <div className="qx-canvas">
         <IslandFloatBridge
+          appearance={settings.appearance}
           enabled={settings.appearance.island_float_enabled}
           mainVisible={mainVisible}
           showWhenMainHidden={settings.appearance.island_float_when_main_hidden}
           alwaysOnTop={settings.appearance.island_float_always_on_top}
           preferDockedWhenMainVisible={settings.appearance.island_prefer_docked_when_main_visible}
+          rotationSeconds={settings.appearance.island_float_rotate_secs}
         />
         {/* Hidden container for plugin iframes */}
         <PluginHost />

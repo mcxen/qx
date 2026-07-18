@@ -1,6 +1,6 @@
 <!-- language: en -->
 
-> **Version**: v0.5.42 — current development baseline
+> **Version**: v0.5.43 — current development baseline
 
 <a id="readme-en"></a>
 
@@ -170,7 +170,7 @@ Prefer host **ports** over OS details: `context.cli`, `context.http`,
 `context.storage`, with permissions declared in the manifest. See the
 [plugin development guide](./public/doc/plugin-development-guide.md).
 
-Marketplace examples: **Brew** (macOS CLI), **Unsplash**, Bing Wallpaper,
+Marketplace examples: **Brew** (macOS CLI), **Unsplash**, **Qx Bing Wallpaper**,
 Calendar, V2EX.
 
 ***

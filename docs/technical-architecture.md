@@ -249,7 +249,7 @@ marketplace::* (fetch/download/install/uninstall/list/sign)
 updater::* (check/download_and_install/helper_replace)
 ```
 
-Tauri capability 是窗口级 IPC 边界。静态主窗口与动态创建的 `recording-controls`、`region-picker` 都必须在 `src-tauri/capabilities/default.json` 中显式登记；缺失的次级窗口不能调用显示器枚举、捕获确认或事件监听。`npm run check:architecture` 会校验这三个捕获 surface，避免窗口实现与 capability 配置再次漂移。
+ Tauri capability 是窗口级 IPC 边界。静态主窗口与动态创建的 `recording-controls`、`region-picker` 都必须在 `src-tauri/capabilities/default.json` 中显式登记；圈选期间按显示器动态创建的 `region-picker-shade-*` 仅渲染鼠标穿透遮罩，不调用 IPC，因此不扩大 capability。缺失的次级窗口不能调用显示器枚举、捕获确认或事件监听。`npm run check:architecture` 会校验交互捕获 surface，避免窗口实现与 capability 配置再次漂移。
 
 ### 5.2 数据持久化
 

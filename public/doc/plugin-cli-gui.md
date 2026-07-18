@@ -155,11 +155,14 @@ type WorkbenchState = {
 
 `backgroundPoll.command` 必须引用当前插件 manifest 中 `mode: "no-view"` 且带 `interval` 的命令。该命令由宿主在 Workbench 关闭后继续调度，并把结果写入 `context.storage.persist`；Workbench 打开时先读取持久化快照，后台命令完成后再通过 `handlers.onBackgroundPoll(event)` 重载。不要把需要持续存在的计时器或轮询器放在 `panel.render`。
 
+Workbench action 引用普通 manifest command 时，命令完成后宿主调用 `handlers.onCommandComplete({ command, at })`。使用它立即重读持久化状态；不要用亚秒级 `storage.persist.get` 轮询等待暂停、继续或删除等动作完成。
+
 ```js
 context.ui.mountWorkbench({
   items,
   backgroundPoll: { command: "background-refresh" },
 }, {
+  onCommandComplete: () => void loadPersistedSnapshot(),
   onBackgroundPoll: () => void loadPersistedSnapshot(),
 });
 ```

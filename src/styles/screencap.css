@@ -27,7 +27,7 @@
   pointer-events: none;
 }
 
-.qx-region-picker-displaybar {
+.qx-region-picker-modebar {
   position: absolute;
   z-index: 6;
   top: 18px;
@@ -35,7 +35,6 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  max-width: calc(100vw - 32px);
   padding: 4px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 10px;
@@ -44,13 +43,7 @@
   transform: translateX(-50%);
 }
 
-.qx-region-picker-displaybar > span {
-  width: 1px;
-  height: 20px;
-  background: rgba(255, 255, 255, 0.16);
-}
-
-.qx-region-picker-displaybar button {
+.qx-region-picker-modebar button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -65,25 +58,29 @@
   cursor: pointer;
 }
 
-.qx-region-picker-displaybar button:hover,
-.qx-region-picker-displaybar button.is-active {
+.qx-region-picker-modebar button:hover,
+.qx-region-picker-modebar button.is-active {
   background: rgba(255, 255, 255, 0.15);
   color: #fff;
 }
 
-.qx-region-picker-displaybar button:disabled {
+.qx-region-picker-modebar button:disabled {
   opacity: 0.45;
   cursor: default;
 }
 
-.qx-region-picker-displaybar small {
-  color: rgba(255, 255, 255, 0.52);
-  font-size: 9px;
-}
-
 .qx-region-picker-shade {
   position: absolute;
-  background: rgba(0, 0, 0, 0.22);
+  background: var(--qx-screencap-shade, rgb(0 0 0 / 0.16));
+  pointer-events: none;
+}
+
+/* One subtle black layer per non-active display; the picker webview itself
+   remains transparent and owns the interactive selection on the active one. */
+.qx-region-picker-shade-window {
+  position: fixed;
+  inset: 0;
+  background: var(--qx-screencap-shade, rgb(0 0 0 / 0.16));
   pointer-events: none;
 }
 
@@ -441,17 +438,22 @@
 
 /* ── Qx-standard capture history sidebar ───────────────────────────── */
 .qx-screencap-browser {
+  position: relative;
   display: grid;
   flex: 1;
   min-height: 0;
 }
 
 .qx-screencap-browser.is-list {
-  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .qx-screencap-browser.is-gallery {
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 38%);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.qx-screencap-browser.is-gallery .qx-screencap-history-pane {
+  border-right: 0;
 }
 
 .qx-screencap-history-pane {
@@ -459,11 +461,13 @@
   min-height: 0;
   overflow: hidden;
   flex-direction: column;
-  border-right: 1px solid var(--qx-border-1);
+  border-right: 0;
 }
 
-.qx-screencap-detail-pane {
+.qx-screencap-preview-pane {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   overflow: auto;
 }

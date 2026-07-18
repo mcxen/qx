@@ -22,6 +22,8 @@ export { islandHost } from "./session/hostApi";
 export { actionRegistry } from "./session/actionRegistry";
 export {
   resolveDockedWinner,
+  resolveRotatingWinner,
+  countRotatingSessions,
   resolveDockedRenderMode,
   compareSessions,
   PRIORITY_RANK,

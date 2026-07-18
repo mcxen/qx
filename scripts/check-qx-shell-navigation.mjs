@@ -14,6 +14,7 @@ import {
   shouldForwardPluginWorkbenchHostKey,
   shouldHandlePluginWorkbenchGalleryKey,
 } from "../src/plugin/workbenchKeyboard.ts";
+import { normalizePluginWorkbenchState } from "../src/plugin/workbenchTypes.ts";
 
 const list = (overrides = {}) => resolveQxListNavigation({
   key: "ArrowDown",
@@ -72,6 +73,31 @@ assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "ArrowDown", index: 2, co
 assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "ArrowDown", index: 6, count: 10, columns: 4 }), 9);
 assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "ArrowUp", index: 6, count: 10, columns: 4 }), 2);
 assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "Enter", index: 2, count: 10, columns: 4 }), null);
+
+// Workbench trust boundary: optional ids must stay addressable by the iframe
+// event bridge, duplicate React keys are removed, and tab state is singular.
+const dataImage = `data:image/png;base64,${"a".repeat(5_000)}`;
+const normalizedWorkbench = normalizePluginWorkbenchState({
+  items: [
+    { title: "Missing id is rejected" },
+    { id: "image", title: "Image", image: { url: dataImage }, detail: {} },
+    { id: "duplicate", title: "First duplicate" },
+    { id: "duplicate", title: "Second duplicate" },
+  ],
+  tabs: [
+    { id: "one", label: "One", active: true },
+    { id: "one", label: "Duplicate one", active: false },
+    { id: "two", label: "Two", active: true },
+  ],
+});
+assert.equal(normalizedWorkbench.items?.[0]?.id, "image");
+assert.equal(normalizedWorkbench.items?.[0]?.image?.url, dataImage);
+assert.equal(normalizedWorkbench.items?.[0]?.detail, undefined);
+assert.equal(normalizedWorkbench.items?.length, 2);
+assert.deepEqual(normalizedWorkbench.tabs?.map((tab) => [tab.id, tab.active]), [
+  ["one", true],
+  ["two", false],
+]);
 
 // Search inputs may opt into list arrows/pages without losing native Home/End.
 assert.deepEqual(list({ editable: true, allowEditable: true }), { type: "change", index: 3 });

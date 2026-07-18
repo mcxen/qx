@@ -1505,6 +1505,12 @@ export default function PluginManager() {
                 {busy === "raycast" ? t("plugins.converting", "Converting...") : t("plugins.installRaycast", "Install Raycast")}
               </Button>
             </div>
+            <div className="qx-plugin-import-status">
+              {t(
+                "plugins.raycastFrozen",
+                "Legacy converter · maintenance paused. Maintained plugins should be rebuilt from source against Qx protocols.",
+              )}
+            </div>
             {installStatus && <div className="qx-plugin-import-status">{installStatus}</div>}
           </div>
         </DialogContent>

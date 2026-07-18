@@ -2125,35 +2125,35 @@ mod tests {
     #[test]
     fn builds_generic_manifest_for_raycast_package() {
         let package = serde_json::json!({
-            "name": "bing-wallpaper",
-            "title": "Bing Wallpaper",
-            "description": "Get, set, auto-switch Bing wallpapers to explore the world.",
+            "name": "sample-gallery",
+            "title": "Sample Gallery",
+            "description": "Generic converted gallery fixture.",
             "icon": "extension-icon.png",
             "commands": [
                 {
-                    "name": "set-bing-wallpaper",
-                    "title": "Set Bing Wallpaper",
-                    "description": "Get, set, auto-download Bing wallpapers to explore the world."
+                    "name": "open-gallery",
+                    "title": "Open Gallery",
+                    "description": "Open the sample gallery."
                 },
                 {
-                    "name": "auto-switch-bing-wallpaper",
-                    "title": "Auto Switch Bing Wallpaper",
+                    "name": "refresh-gallery",
+                    "title": "Refresh Gallery",
                     "mode": "no-view",
                     "interval": "30m"
                 }
             ]
         });
         let manifest =
-            build_raycast_plugin_manifest(&package, raycast_adapter_kind("bing-wallpaper"));
-        assert_eq!(manifest.id, "raycast-bing-wallpaper");
-        assert_eq!(manifest.name, "Bing Wallpaper");
+            build_raycast_plugin_manifest(&package, raycast_adapter_kind("sample-gallery"));
+        assert_eq!(manifest.id, "raycast-sample-gallery");
+        assert_eq!(manifest.name, "Sample Gallery");
         assert!(manifest.permissions.contains(&"http".to_string()));
         assert!(manifest
             .permissions
             .contains(&"invoke:plugin_file_write_base64".to_string()));
         assert_eq!(manifest.commands.len(), 2);
-        assert_eq!(manifest.commands[0].name, "set-bing-wallpaper");
-        assert_eq!(manifest.commands[1].name, "auto-switch-bing-wallpaper");
+        assert_eq!(manifest.commands[0].name, "open-gallery");
+        assert_eq!(manifest.commands[1].name, "refresh-gallery");
         assert_eq!(manifest.commands[1].mode, "no-view");
         assert_eq!(manifest.commands[1].interval, "30m");
     }

@@ -714,6 +714,10 @@
   min-width: 0;
 }
 
+.qx-island-float-root[data-compact="true"] .qx-island-surface[data-placement="floating"] {
+  width: var(--qx-island-float-compact-width);
+}
+
 .qx-island-surface.is-empty {
   visibility: hidden;
 }
@@ -1075,6 +1079,51 @@
   place-items: center;
   background: transparent;
   overflow: hidden;
+}
+
+.qx-island-float-surface {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.qx-island-float-content {
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.qx-island-float-controls {
+  position: relative;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 4px;
+}
+
+.qx-island-surface .qx-shadcn-button.qx-island-float-control {
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--qx-text-secondary);
+}
+
+.qx-island-surface .qx-shadcn-button.qx-island-float-control:hover {
+  border-color: var(--qx-border-1);
+  background: color-mix(in srgb, var(--qx-bg-300) 72%, transparent);
+  color: var(--qx-text-primary);
+}
+
+.qx-island-surface .qx-shadcn-button.qx-island-float-control:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--qx-accent) 58%, transparent);
+  outline-offset: 0;
+}
+
+.qx-island-float-root[data-compact="true"] .qx-island-shell-copy {
+  padding-left: 8px;
 }
 
 /* ====== Home System Island (content-only; chrome on surface) ====== */

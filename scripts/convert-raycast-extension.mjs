@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// FROZEN LEGACY TOOL: retained for reference and one-off experiments only.
+// Maintained plugins must be rebuilt from source against native Qx protocols.
 import { copyFile, mkdir, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -422,6 +424,7 @@ function packagePlugin(pluginDir) {
 
 async function main() {
   const { source, out, shouldPackage } = parseArgs(process.argv.slice(2));
+  console.warn("[Qx] Raycast converter maintenance is paused. Rebuild maintained plugins from source against Qx protocols.");
   const packageJsonPath = path.join(source, "package.json");
   const pkg = JSON.parse(await readFile(packageJsonPath, "utf8"));
   const manifest = buildManifest(pkg);

@@ -1,4 +1,5 @@
 import { useMemo, useRef, type CSSProperties } from "react";
+import { QxListLoading, shouldShowQxListLoading } from "../components/QxListLoading";
 import { useQxListSelection } from "../hooks/useQxListSelection";
 import type {
   PluginWorkbenchDetail,
@@ -56,7 +57,7 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
   const items = state.items || [];
   const selectedIndex = useMemo(() => {
     if (!items.length) return -1;
-    const index = items.findIndex((item) => String(item.id ?? item.title) === String(state.selectedId ?? ""));
+    const index = items.findIndex((item) => item.id === String(state.selectedId ?? ""));
     return index >= 0 ? index : 0;
   }, [items, state.selectedId]);
   const selected = selectedIndex >= 0 ? items[selectedIndex] : undefined;
@@ -64,11 +65,21 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
   const { getItemProps } = useQxListSelection({
     listRef,
     index: selectedIndex,
-    listSignature: `${state.query || ""}:${items.map((item) => item.id ?? item.title).join("\0")}`,
+    listSignature: `${state.query || ""}:${items.map((item) => item.id).join("\0")}`,
     enabled: selectedIndex >= 0,
   });
   const detail = selected?.detail || state.detail;
   const gallery = state.layout?.kind === "gallery";
+  const loadingText = state.emptyText || t("plugins.workbench.loading", "Loading…");
+  const activeTabLabel = state.tabs?.find((tab) => tab.active)?.label;
+  const listTitle = state.query?.trim()
+    ? t("plugins.workbench.searchResults", "Search Results")
+    : activeTabLabel || state.title || t("plugins.workbench.items", "Items");
+  const densityClass = items.length === 0
+    ? " is-empty"
+    : items.length <= (state.layout?.columns || 4)
+      ? " is-sparse"
+      : "";
   const galleryStyle = gallery
     ? { "--qx-workbench-gallery-columns": state.layout?.columns || 4 } as CSSProperties
     : undefined;
@@ -84,7 +95,7 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
       {gallery ? (
         <div
           ref={listRef}
-          className={`qx-host-workbench-gallery aspect-${state.layout?.aspectRatio || "landscape"}`}
+          className={`qx-host-workbench-gallery aspect-${state.layout?.aspectRatio || "landscape"}${densityClass}`}
           style={galleryStyle}
           role="listbox"
           tabIndex={0}
@@ -92,7 +103,7 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
           data-qx-region-initial="true"
         >
           {items.length ? items.map((item, index) => {
-            const id = String(item.id ?? item.title);
+            const id = item.id;
             return (
               <button
                 key={id}
@@ -124,14 +135,14 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
               </button>
             );
           }) : (
-            <div className="qx-content-detail-empty">
+            <div className="qx-content-detail-empty qx-host-workbench-empty">
               {state.emptyText || (state.loading
                 ? t("plugins.workbench.loading", "Loading…")
                 : t("plugins.workbench.empty", "No results"))}
             </div>
           )}
         </div>
-      ) : <div className="qx-content-split qx-host-workbench-split">
+      ) : <div className={`qx-content-split qx-host-workbench-split${densityClass}`}>
         <div
           ref={listRef}
           className="qx-content-list qx-plugin-list"
@@ -140,8 +151,12 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
           data-qx-region="plugin-workbench-list"
           data-qx-region-initial="true"
         >
+          <div className="qx-section-header qx-host-workbench-list-header">
+            <span>{listTitle}</span>
+            <span>{state.loading ? "…" : items.length}</span>
+          </div>
           {items.length ? items.map((item, index) => {
-            const id = String(item.id ?? item.title);
+            const id = item.id;
             return (
               <button
                 key={id}
@@ -166,11 +181,16 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
                 ) : null}
               </button>
             );
-          }) : (
-            <div className="qx-content-detail-empty">
-              {state.emptyText || (state.loading
-                ? t("plugins.workbench.loading", "Loading…")
-                : t("plugins.workbench.empty", "No results"))}
+          }) : shouldShowQxListLoading(Boolean(state.loading), items.length) ? (
+            <QxListLoading
+              ariaLabel={loadingText}
+              label={loadingText}
+              rows={6}
+              variant="tall"
+            />
+          ) : (
+            <div className="qx-content-detail-empty qx-host-workbench-empty">
+              {state.emptyText || t("plugins.workbench.empty", "No results")}
             </div>
           )}
         </div>

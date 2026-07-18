@@ -35,7 +35,8 @@ export interface PluginWorkbenchAction {
 }
 
 export interface PluginWorkbenchItem {
-  id?: string;
+  /** Stable, unique business identifier. Required for selection and Actions. */
+  id: string;
   title: string;
   subtitle?: string;
   meta?: string;
@@ -93,6 +94,7 @@ export type PluginWorkbenchEvent =
   | { kind: "tab"; id: string }
   | { kind: "select"; id: string }
   | { kind: "action"; id: string; selectedId?: string }
+  | { kind: "commandComplete"; command: string; at: number }
   | { kind: "backgroundPoll"; command: string; at: number; ok: boolean; error?: string };
 
 export interface PluginWorkbenchPayload {
@@ -143,13 +145,16 @@ function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
         };
       })
     : [];
-  return {
+  const detail = {
     title: shortText(raw.title, 240),
     subtitle: shortText(raw.subtitle, 500),
     body: shortText(raw.body, 12_000),
     fields: normalizeFields(raw.fields),
     sections,
   };
+  return detail.title || detail.subtitle || detail.body || detail.fields.length || detail.sections.length
+    ? detail
+    : undefined;
 }
 
 function normalizeActions(value: unknown): PluginWorkbenchAction[] {
@@ -171,8 +176,14 @@ function normalizeActions(value: unknown): PluginWorkbenchAction[] {
 function normalizeImage(value: unknown): PluginWorkbenchItem["image"] {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
-  const url = shortText(raw.url, 4_000);
-  if (!url || (!/^https:\/\//i.test(url) && !/^data:image\//i.test(url))) return undefined;
+  if (typeof raw.url !== "string") return undefined;
+  const url = raw.url.trim();
+  const isHttps = /^https:\/\//i.test(url);
+  const isDataImage = /^data:image\//i.test(url);
+  // Reject oversized URLs instead of truncating them into invalid images.
+  if ((!isHttps && !isDataImage) || (isHttps && url.length > 4_000) || url.length > 2_000_000) {
+    return undefined;
+  }
   return {
     url,
     alt: shortText(raw.alt, 500),
@@ -183,13 +194,15 @@ function normalizeImage(value: unknown): PluginWorkbenchItem["image"] {
 /** Trust boundary for iframe → React workbench data. */
 export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchState {
   const raw = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const seenItemIds = new Set<string>();
   const items = Array.isArray(raw.items)
     ? raw.items.slice(0, 500).map((entry, index) => {
         const item = (entry || {}) as Record<string, unknown>;
         const progress = Number(item.progress);
+        const title = shortText(item.title, 500) || `Item ${index + 1}`;
         return {
-          id: shortText(item.id, 256) || String(index),
-          title: shortText(item.title, 500) || `Item ${index + 1}`,
+          id: shortText(item.id, 256) || "",
+          title,
           subtitle: shortText(item.subtitle, 1_000),
           meta: shortText(item.meta, 240),
           badge: shortText(item.badge, 120),
@@ -200,18 +213,32 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
           detail: normalizeDetail(item.detail),
           actions: normalizeActions(item.actions),
         } satisfies PluginWorkbenchItem;
+      }).filter((item) => {
+        const id = String(item.id);
+        if (!id || seenItemIds.has(id)) return false;
+        seenItemIds.add(id);
+        return true;
       })
     : [];
+  const seenTabIds = new Set<string>();
+  let activeTabSeen = false;
   const tabs = Array.isArray(raw.tabs)
     ? raw.tabs.slice(0, 16).map((entry) => {
         const tab = (entry || {}) as Record<string, unknown>;
+        const active = tab.active === true && !activeTabSeen;
+        if (active) activeTabSeen = true;
         return {
           id: shortText(tab.id, 64) || "",
           label: shortText(tab.label, 120) || shortText(tab.id, 64) || "Tab",
-          active: tab.active === true,
+          active,
         };
-      }).filter((tab) => Boolean(tab.id))
+      }).filter((tab) => {
+        if (!tab.id || seenTabIds.has(tab.id)) return false;
+        seenTabIds.add(tab.id);
+        return true;
+      })
     : [];
+  if (tabs.length && !tabs.some((tab) => tab.active)) tabs[0].active = true;
   const hasIsland = Object.prototype.hasOwnProperty.call(raw, "island");
   const layoutRaw = raw.layout && typeof raw.layout === "object"
     ? raw.layout as Record<string, unknown>

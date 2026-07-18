@@ -35,12 +35,16 @@ function compareSessions(a, b) {
 }
 
 function resolveDockedWinner(sessions) {
+  return resolveRotatingWinner(sessions, 0);
+}
+
+function resolveRotatingWinner(sessions, rotationIndex) {
   if (sessions.length === 0) return null;
-  let best = null;
-  for (const session of sessions) {
-    if (!best || compareSessions(session, best) < 0) best = session;
-  }
-  return best?.id ?? null;
+  const ordered = [...sessions].sort(compareSessions);
+  const best = ordered[0];
+  if (best.priority !== "location") return best.id;
+  const standing = ordered.filter((session) => session.priority === "location");
+  return standing[Math.abs(Math.trunc(rotationIndex)) % standing.length]?.id ?? best.id;
 }
 
 function resolveDockedRenderMode({ exception, winnerId }) {
@@ -67,6 +71,21 @@ function assert(cond, msg) {
     { id: "task", priority: "task", sticky: false, rankEpoch: 1, createdAt: 1 },
   ];
   assert(resolveDockedWinner(sessions) === "task", "task beats toast and home");
+}
+
+// --- standing module/plugin sessions rotate, important events preempt ---
+{
+  const standing = [
+    { id: "calendar", priority: "location", sticky: true, rankEpoch: 1, createdAt: 1 },
+    { id: "pomodoro", priority: "location", sticky: true, rankEpoch: 2, createdAt: 2 },
+  ];
+  assert(resolveRotatingWinner(standing, 0) === "pomodoro", "rotation starts with current standing session");
+  assert(resolveRotatingWinner(standing, 1) === "calendar", "rotation fairly advances to next session");
+  const important = [
+    ...standing,
+    { id: "download", priority: "task", sticky: true, rankEpoch: 1, createdAt: 3 },
+  ];
+  assert(resolveRotatingWinner(important, 1) === "download", "important task preempts standing rotation");
 }
 
 // --- sticky within task band ---

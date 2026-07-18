@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering;
 
-use tauri::{command, AppHandle, Manager};
+use tauri::{command, AppHandle, Emitter, Manager};
 
 use super::controls::{
     hide as hide_recording_controls_internal, set_ui_protected as set_recording_ui_protected,
@@ -96,7 +96,14 @@ pub fn screencap_hide_controls(app: AppHandle) {
 }
 
 #[command]
-pub fn screencap_set_controls_pinned(app: AppHandle, pinned: bool) -> Result<(), String> {
+pub async fn screencap_set_controls_pinned(app: AppHandle, pinned: bool) -> Result<(), String> {
+    // Persist before hiding the controller webview. A command initiated by that
+    // webview must not depend on work scheduled after its own surface disappears.
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::settings::set_screencap_controls_pinned(pinned)
+    })
+    .await
+    .map_err(|error| format!("persist capture controls setting: {error}"))??;
     CONTROLS_PINNED.store(pinned, Ordering::Relaxed);
     if pinned {
         show_recording_controls_internal(&app)?;
@@ -107,6 +114,13 @@ pub fn screencap_set_controls_pinned(app: AppHandle, pinned: bool) -> Result<(),
     {
         hide_recording_controls_internal(&app);
     }
+    // The controller is a separate webview and cannot mutate the main React
+    // settings store directly. Mirror close/unpin intent back to main so the
+    // persisted preference cannot resurrect the idle island later.
+    let _ = app.emit(
+        "screencap:controls-pinned",
+        serde_json::json!({ "pinned": pinned }),
+    );
     recording_session::emit_recording_status(&app);
     Ok(())
 }

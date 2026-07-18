@@ -8,7 +8,6 @@ import {
   Grid3x3,
   Hash,
   Maximize,
-  Monitor,
   MoveUpRight,
   Pencil,
   Square,
@@ -18,9 +17,7 @@ import {
 import { useT } from "../../i18n";
 import {
   listDesktopWindowsForCapture,
-  listDisplays,
   type DesktopWindow,
-  type DisplayDescriptor,
 } from "../../system";
 import { loadLastCaptureSelection, saveLastCaptureSelection } from "./preferences";
 import { DEFAULT_SETTINGS, type ScreencapSettings } from "../settings/store";
@@ -175,7 +172,6 @@ function sleep(ms: number): Promise<void> {
 export default function RegionPickerWindow() {
   const t = useT();
   const [picker, setPicker] = useState<PickerStatus | null>(null);
-  const [displays, setDisplays] = useState<DisplayDescriptor[]>([]);
   const [windows, setWindows] = useState<DesktopWindow[]>([]);
   const [recording, setRecording] = useState<RecordingSnapshot | null>(null);
   const [captureSettings, setCaptureSettings] = useState<ScreencapSettings>(DEFAULT_SETTINGS.screencap);
@@ -225,10 +221,9 @@ export default function RegionPickerWindow() {
     rootRef.current?.focus();
     void Promise.all([
       invoke<PickerStatus | null>("screencap_region_select_status"),
-      listDisplays(),
       invoke<RecordingSnapshot>("recording_status"),
       invoke<{ screencap: ScreencapSettings }>("get_settings"),
-    ]).then(([status, availableDisplays, snapshot, settings]) => {
+    ]).then(([status, snapshot, settings]) => {
       setPicker(status);
       setCaptureSettings(settings.screencap);
       if (status?.mode === "recording" || status?.mode === "screenshot") {
@@ -253,7 +248,6 @@ export default function RegionPickerWindow() {
           setSelection(next);
         }
       }
-      setDisplays(availableDisplays);
       setRecording(snapshot);
     }).catch((loadError) => {
       setError(String(loadError));
@@ -517,19 +511,6 @@ export default function RegionPickerWindow() {
       setError(String(captureError));
     }
   }, [annotations.length, busy, captureSettings, countdown, picker?.monitorId, selection, t]);
-
-  const selectDisplay = useCallback(async (monitorId: number) => {
-    if (busy || monitorId === picker?.monitorId) return;
-    setPointerFollow(false);
-    setBusy(true);
-    setError(null);
-    try {
-      await invoke("screencap_select_display", { monitorId });
-    } catch (displayError) {
-      setBusy(false);
-      setError(String(displayError));
-    }
-  }, [busy, picker?.monitorId, setPointerFollow]);
 
   const selectFullScreen = useCallback(() => {
     if (busy) return;
@@ -906,15 +887,6 @@ export default function RegionPickerWindow() {
           else if (key === "4") setTool("pen");
           else if (key === "5") setTool("number");
           else if (key === "6") setTool("mosaic");
-          else if (key === "arrowleft" || key === "arrowright") {
-            if (displays.length < 2) return;
-            event.preventDefault();
-            const index = Math.max(0, displays.findIndex((item) => item.id === picker?.monitorId));
-            const next = key === "arrowleft"
-              ? displays[(index - 1 + displays.length) % displays.length]
-              : displays[(index + 1) % displays.length];
-            void selectDisplay(next.id);
-          }
         }
       }}
       onMouseDown={onRootMouseDown}
@@ -922,7 +894,7 @@ export default function RegionPickerWindow() {
       onMouseUp={onRootMouseUp}
     >
       {!recordingActive && countdown === null && (
-        <div className="qx-region-picker-displaybar" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="qx-region-picker-modebar" onMouseDown={(event) => event.stopPropagation()}>
           <button type="button" className={pickMode === "region" ? "is-active" : ""} disabled={busy} onClick={() => switchPickMode("region")}>
             {t("screencap.pick.region", "Region")}
           </button>
@@ -934,22 +906,6 @@ export default function RegionPickerWindow() {
             <Maximize size={13} aria-hidden="true" />
             {t("screencap.fullscreen", "Full Screen")}
           </button>
-          <span />
-          {displays.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={item.id === picker?.monitorId ? "is-active" : ""}
-              disabled={busy}
-              onClick={() => void selectDisplay(item.id)}
-            >
-              <Monitor size={13} aria-hidden="true" />
-              <span>{item.isBuiltin
-                ? t("screencap.display.builtin", "Built-in Display")
-                : `${t("screencap.display.external", "External Display")} · ${item.name}`}</span>
-              {item.isPrimary && <small>{t("screencap.display.primary", "Primary")}</small>}
-            </button>
-          ))}
         </div>
       )}
 

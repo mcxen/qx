@@ -21,6 +21,11 @@ function formatDuration(milliseconds: number): string {
   return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
+function formatMeasuredFps(frameCount: number, durationMs: number): string | null {
+  if (frameCount <= 0 || durationMs <= 0) return null;
+  return (frameCount * 1000 / durationMs).toFixed(1);
+}
+
 function isScreenshotPath(path: string, durationMs: number): boolean {
   const lower = path.toLowerCase();
   if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp")) {
@@ -74,6 +79,7 @@ export default function CaptureHistory({ layout }: { layout: CaptureHistoryLayou
             const screenshot = isScreenshotPath(entry.path, entry.duration_ms);
             const image = screenshot || entry.path.toLowerCase().endsWith(".gif");
             const mediaSrc = convertFileSrc(entry.path);
+            const measuredFps = formatMeasuredFps(entry.frame_count, entry.duration_ms);
             if (layout === "gallery") {
               return (
                 <article
@@ -98,7 +104,7 @@ export default function CaptureHistory({ layout }: { layout: CaptureHistoryLayou
                       <small>
                         {entry.width}×{entry.height} · {screenshot
                           ? t("screencap.screenshot", "Screenshot")
-                          : formatDuration(entry.duration_ms)}
+                          : `${formatDuration(entry.duration_ms)}${measuredFps ? ` · ${measuredFps} fps` : ""}`}
                       </small>
                       <small>{formatTimestamp(entry.created_at, locale)}</small>
                     </span>
@@ -136,7 +142,7 @@ export default function CaptureHistory({ layout }: { layout: CaptureHistoryLayou
                     <small>
                       {entry.width}×{entry.height} · {screenshot
                         ? t("screencap.screenshot", "Screenshot")
-                        : formatDuration(entry.duration_ms)} · {formatTimestamp(entry.created_at, locale)}
+                        : `${formatDuration(entry.duration_ms)}${measuredFps ? ` · ${measuredFps} fps` : ""}`} · {formatTimestamp(entry.created_at, locale)}
                     </small>
                   </span>
                 </button>

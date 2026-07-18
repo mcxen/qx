@@ -55,6 +55,7 @@
   --qx-island-docked-width: min(400px, calc(100% - 260px));
   --qx-island-docked-min-width: 220px;
   --qx-island-float-width: 400px;
+  --qx-island-float-compact-width: 240px;
   --qx-island-float-height: 34px;
 
   --qx-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display",

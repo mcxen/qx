@@ -7,7 +7,7 @@ import type {
   IslandSource,
 } from "../types";
 import { actionRegistry } from "./actionRegistry";
-import { resolveDockedWinner } from "./priority";
+import { resolveDockedWinner, resolveRotatingWinner } from "./priority";
 import { createQxLogger } from "../../lib/logger";
 
 const log = createQxLogger("island.store");
@@ -21,6 +21,7 @@ const ERROR_DEFAULT_MS = 8_000;
 
 let nowFn: IslandClock = () => Date.now();
 let sessions = new Map<string, IslandSession>();
+let snapshotCache: IslandSession[] = [];
 let generationCounters = new Map<string, number>();
 let rankEpochCounter = 0;
 const listeners = new Set<() => void>();
@@ -38,6 +39,7 @@ function bumpRankEpoch(): number {
 }
 
 function notify(): void {
+  snapshotCache = Array.from(sessions.values());
   for (const listener of listeners) {
     try {
       listener();
@@ -358,15 +360,18 @@ export function dismissSession(id: string): void {
 }
 
 export function getSnapshot(): IslandSession[] {
-  return Array.from(sessions.values());
+  return snapshotCache;
 }
 
 export function getSession(id: string): IslandSession | undefined {
   return sessions.get(id);
 }
 
-export function getDockedWinner(): IslandSession | null {
-  const id = resolveDockedWinner(getSnapshot());
+export function getDockedWinner(rotationIndex = 0): IslandSession | null {
+  const snapshot = getSnapshot();
+  const id = rotationIndex === 0
+    ? resolveDockedWinner(snapshot)
+    : resolveRotatingWinner(snapshot, rotationIndex);
   return id ? sessions.get(id) ?? null : null;
 }
 
@@ -389,6 +394,7 @@ export function __resetIslandStoreForTests(): void {
   }
   for (const id of Array.from(ttlTimers.keys())) clearTtl(id);
   sessions = new Map();
+  snapshotCache = [];
   generationCounters = new Map();
   rankEpochCounter = 0;
   listeners.clear();

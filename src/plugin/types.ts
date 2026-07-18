@@ -483,6 +483,7 @@ export interface PluginContext {
       handlers?: {
         onTab?: (id: string) => void;
         onAction?: (id: string, item?: PluginWorkbenchItem) => void;
+        onCommandComplete?: (event: { command: string; at: number }) => void;
         onBackgroundPoll?: (event: {
           command: string;
           at: number;

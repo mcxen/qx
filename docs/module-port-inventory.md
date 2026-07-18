@@ -53,7 +53,7 @@
 | **clipboard** | 全屏面板 | `useQxModuleShell` + stepBack | `useQxListSelection` | `QxModuleSearch` | Rust clipboard DB | 无重大缺口 |
 | **rss** | feeds / articles / detail | shell 各层；`goBack` 嵌套 | `useQxListSelection` + `useQxMasterDetail`（文章） | `QxModuleSearch` + `QxListLoading` | `rss.db` + 默认目录 seed + 阅读进度 | 嵌套 leave 已对齐 host Esc；进度节流持久化 |
 | **documents** | 文件列表 + 编辑 | shell | list + master-detail | `QxModuleSearch` | 本地文件 invoke | 无重大缺口 |
-| **screencap** | 录制 / 预览 | shell + 录制 inner Esc | `useQxListSelection` + list/gallery + detail | 标题槽（非搜索） | Rust capture | 布局选择持久化；双 QxShell 分支仍可接受 |
+| **screencap** | 录制 / 全宽历史预览 | shell + 录制 inner Esc | `useQxListSelection` + list/gallery + full-width preview | 标题槽（非搜索） | Rust capture | 布局选择持久化；权限动作统一由捕获灵动岛承载 |
 | **macros** | 录制器 | shell | — | — | macro store | 无重大缺口 |
 | **qx-tty** | 终端 | shell | 侧栏 session 自管 | — | PTY invoke | 可选将来 `useQxSelectableList` |
 | **qx-ai** | list / chat / settings | shell（含 chat/settings leave 父级） | list selection（会话） | `QxModuleSearch` + loading | AI store | 无重大缺口 |
@@ -72,7 +72,7 @@
 
 | 插件 id | panel 注册 | AGENTS.md | 主要端口 | 缓存 | 缺口 |
 |---------|------------|-----------|----------|------|------|
-| **pomodoro-island** | ✅ manifest + export | ✅ | **host Workbench** + background heartbeat + host countdown/action island + notifications | persist state/history/deadline | 声明式 list/detail/actions/island/backgroundPoll 样板；关闭面板继续计时；docked/float 同款暂停按钮 |
+| **pomodoro-island** | ✅ manifest + export | ✅ | **host Workbench** + background heartbeat + host countdown/action island + notifications | persist state/history/deadline | 只发布计时状态与动作；悬浮开关、右上定位、轮播/抢占和透明 chrome 全部由 Qx 宿主管理 |
 | **weather** | ✅ | ✅ | http + invoke weather* | persist SWR | 无 |
 | **v2ex** | ✅ | ✅ | http + invoke v2ex* | persist SWR + host disk | 无 |
 | **brew** | ✅ | ✅ | **host Workbench List** + cli/open-url | — | 原生 tabs/list/detail/Actions；`panel.render` 快返回 |

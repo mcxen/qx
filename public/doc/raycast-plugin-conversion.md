@@ -1,5 +1,7 @@
 # Raycast Extension Conversion
 
+> **状态：Frozen / 暂停维护。** 转换器代码与入口暂时保留，仅用于历史研究和一次性实验，不承诺适配新的 Raycast API。所有正式维护的插件应阅读上游源代码，直接使用 Qx `context.*`、Workbench、Actions 与 Island 协议重新开发；不要把转换产物作为发布基线。
+
 Qx does not run Raycast extensions directly. Raycast view commands depend on
 `@raycast/api`, React rendering, Node modules, and in some cases Raycast's Swift
 bridge. Qx plugins run inside an iframe sandbox and communicate with the app by
@@ -26,7 +28,7 @@ code ship **inside** the archive that was previously converted and published.
 | `scripts/raycast-converter/adapters.mjs` | Hand-written adapters (e.g. system-information) |
 | `mcxen/qx-plugins` packaging | `npm run package:plugins` → `index.json` |
 
-Local usage (from the **qx-plugins** repo, preferred for marketplace publish):
+以下命令仅供历史调试，不是市场插件的推荐发布流程：
 
 ```bash
 npm ci
@@ -87,8 +89,8 @@ Turning it off does **not** disable actions — they stay on QxShell.
 
 ## Architecture principle
 
-**Keep Raycast ports as external plugins. Fix missing behavior in the Qx host
-and converter shims — do not rewrite each port as a one-off native plugin.**
+**从上游源代码理解业务，再按 Qx 原生插件协议重新实现。** 共享能力缺失时先补
+Qx host port，再让第一方插件直接消费该端口；不要继续扩展转换 shim 来承载正式产品。
 
 This follows project SOLID ports (see `docs/architecture-principles.md`):
 
@@ -107,16 +109,15 @@ This follows project SOLID ports (see `docs/architecture-principles.md`):
 
 ### Binary HTTP (Qx ≥ 0.5.18)
 
-Older hosts returned only UTF-8 `body` strings. Image downloads used by
-extensions such as Bing Wallpaper were corrupted and `arrayBuffer()` was
-missing. From **0.5.18**:
+Older hosts returned only UTF-8 `body` strings. Binary downloads used by
+image-heavy extensions were corrupted and `arrayBuffer()` was missing. From
+**0.5.18**:
 
 - Rust `plugin_http_fetch` returns `body`, `bodyBase64`, and `binary`
 - Plugin runtime / context expose `arrayBuffer()` and `blob()`
 - Default HTTP timeout is 30s (max 120s) for large assets
 
-Set `min_app_version` on plugins that download binary assets (e.g. Bing
-Wallpaper → `0.5.18`).
+Set `min_app_version` on plugins that download binary assets.
 
 ### Buffer polyfill
 
@@ -191,14 +192,13 @@ capability permissions (`system-info`, `processes`, …) and exact
 
 All system access goes through permissioned Rust commands.
 
-## Marketplace maintenance checklist
+## Legacy experiment checklist
 
-1. Convert or update plugin under `mcxen/qx-plugins` `src/<id>/`
-2. Set `version` and `min_app_version` for required host APIs
-3. `npm run package:plugins` → verify `index.json` checksums
-4. Push `main` (CI may re-package; keep converter/shims in sync with Qx)
-5. Users install/update from Qx Marketplace (GitHub raw download)
+1. 在临时目录运行转换器，不直接写入市场 `src/`
+2. 仅用于评估上游业务与所需 Qx ports
+3. 正式实现从源代码重新设计，移除 Raycast runtime/shims
+4. 使用 Workbench / Actions / Island 和精确 `context.*` permissions
+5. 按常规 Qx 插件流程测试、打包和发布
 
-When something is broken for all Raycast ports (binary fetch, Buffer, actions),
-**fix the host or converter first**, then re-convert affected plugins if the
-bundle must pick up shim changes.
+共享能力缺失时修 Qx host port，再迁移所有第一方插件；不要把扩展 converter shim
+作为正式修复或升级路径。

@@ -27,8 +27,8 @@ If the request changes **public interfaces or layer boundaries**, update docs in
   `public/doc/` in the same change. Prefer intent and invariants over dumping
   implementation detail.
 - **Do not fix call sites one-by-one** when a port is wrong (host HTTP, i18n
-  dictionary, converter shim, shell Esc, island session). Fix the port once,
-  regenerate or re-convert consumers, then run `npm run check`.
+  dictionary, shell Esc, island session). Fix the port once, migrate all
+  first-party consumers to the corrected Qx protocol, then run `npm run check`.
 - Before finishing a multi-file change: `npm run check` (architecture + docs +
   i18n + shell + island + module-ports gates).
 - Use `rg` / `rg --files` for search.
@@ -45,13 +45,16 @@ becoming vague. Apply SOLID at the port boundary:
 | Letter | In this repo |
 |---|---|
 | **S** | One reason to change per module (`QxShell` = chrome; feature view = domain UI; Rust module = domain service). |
-| **O** | Extend via registration / adapters (builtin catalog, island modes, converter shims, host capabilities) — do not grow core `switch` forests for every feature. |
+| **O** | Extend via registration / adapters (builtin catalog, island modes, host capabilities) — do not grow core `switch` forests for every feature. |
 | **L** | Same command / context / session shape on every platform and for real vs unavailable plugin contexts. |
 | **I** | Narrow surfaces: capability permissions, focused host APIs, per-package shims — no God context. |
 | **D** | Features depend on stable ports (`invoke`, plugin context, island hostApi, `useT`); OS and iframe details stay below the port. |
 
-**Do not** fix missing host capability by rewriting each external plugin as a
-one-off native fork. Fix the host or converter contract, then re-convert.
+The Raycast converter is frozen and retained only for historical experiments.
+For maintained plugins, read the upstream source and reimplement its business
+intent against Qx `context.*`, Workbench, Actions, and Island protocols. When a
+shared capability is missing, fix the host port once and migrate every
+first-party plugin; do not extend converter shims as the production path.
 
 ### Module Decomposition (required)
 

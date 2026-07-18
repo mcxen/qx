@@ -45,6 +45,8 @@ function IslandActionGlyph({ icon }: { icon?: IslandActionIcon }) {
 export interface ShellContentProps {
   content?: IslandSlotContent | null;
   sessionId?: string;
+  /** Floating island contraction keeps only essential status and countdown. */
+  compact?: boolean;
   /** Fallback for legacy BottomIsland onAction when no sessionId */
   onAction?: (actionId: string) => void;
 }
@@ -56,6 +58,7 @@ export interface ShellContentProps {
 export default function ShellContent({
   content,
   sessionId,
+  compact = false,
   onAction,
 }: ShellContentProps) {
   const [now, setNow] = useState(() => Date.now());
@@ -140,7 +143,7 @@ export default function ShellContent({
           >
             {content.primary}
           </span>
-          {content.secondary && (
+          {!compact && content.secondary && (
             <span className="qx-island-shell-secondary">{content.secondary}</span>
           )}
         </div>
@@ -172,7 +175,7 @@ export default function ShellContent({
               {formatCountdown(countdownMs)}
             </time>
           )}
-          {trailingActions.length > 0 && (
+          {!compact && trailingActions.length > 0 && (
             <span className="qx-island-shell-actions">
               {trailingActions.map((action) => (
                 <Button

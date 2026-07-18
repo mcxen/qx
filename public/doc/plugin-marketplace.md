@@ -316,7 +316,9 @@ Qx 会自动下载 `.qx-plugin` 包并安装到 `~/.qx/plugins/<id>/`。
 
 ### 从 Raycast 扩展安装
 
-输入 Raycast extension tree URL，然后点击 Install Raycast。Qx 会自动下载、转换并安装为 Qx 插件。例如：
+> **Legacy / Frozen：** 此入口暂时保留但不维护，仅用于一次性实验，不建议安装为长期使用的插件。正式市场插件应基于上游源代码按 Qx 协议重新开发。
+
+输入 Raycast extension tree URL 后，Qx 仍可尝试下载、转换并安装。例如：
 
 ```
 https://github.com/raycast/extensions/tree/<ref>/extensions/system-information
@@ -373,5 +375,5 @@ https://github.com/raycast/extensions/tree/<ref>/extensions/system-information
 参见：
 
 - [插件开发指南（业务上手）](./plugin-development-guide.md)
-- [hello-world 示例](./plugin-system.md#十二、示例插件：hello-world)
+- [CLI Workbench 示例](./plugin-cli-gui.md)
 - [Raycast 转换文档](./raycast-plugin-conversion.md)

@@ -180,7 +180,7 @@ export default {
 | `context.display.raycastActionPanel` | 读取用户在 Settings -> Extensions -> Display 中配置的 Raycast ActionPanel 行内按钮显示偏好 |
 | `context.clipboard.read()` | 读取系统剪贴板文本（需 `clipboard` 权限） |
 | `context.clipboard.write(text)` | 写入系统剪贴板文本（需 `clipboard` 权限） |
-| `context.ui.mountWorkbench(state, handlers)` | 声明式受控 panel：Qx 渲染 tabs、列表或 Gallery、结构化详情、Actions 与 island；宿主即时处理 query/tab/selection，插件 handler 同步回画业务状态；`backgroundPoll` 可绑定后台 interval command；只接受纯数据 |
+| `context.ui.mountWorkbench(state, handlers)` | 声明式受控 panel：Qx 渲染 tabs、稳定的 List/Gallery 空态画布、结构化详情、Actions 与 island；宿主即时处理 query/tab/selection，manifest command 完成后回调 `onCommandComplete`；`backgroundPoll` 可绑定后台 interval command；只接受纯数据 |
 | `context.island.show(input)` / `update(input)` / `dismiss()` | 在宿主灵动岛显示结构化数据、真实进度/宿主倒计时与一个统一样式 command 动作（需 `island` 权限；是否浮出由用户设置决定） |
 | `context.cli.run({ program, args?, cwd?, env?, timeoutMs? })` | **业务 CLI 首选**：argv 同步执行（需 `cli`；**不**走 AI Agent Bash）。协议见 [plugin-cli-protocol.md](./plugin-cli-protocol.md) |
 | `context.cli.bash(script \| req)` | login-shell bash（需 `cli`） |
@@ -437,7 +437,7 @@ App 启动
 - [x] 基础 context：`invoke`、`showToast`、`openUrl`、`prompt`、`storage`
 - [x] `Tab` 类型改为 `string`，`App.tsx` 支持动态插件 tab
 - [ ] 内置模块渲染迁移到同一注册接口
-- [x] hello-world 示例插件
+- [x] CLI Workbench 协议示例（见 `plugin-cli-gui.md`）
 
 ### 第二期：面板插件 + 偏好设置
 
@@ -454,7 +454,7 @@ App 启动
 - [x] 业务向开发上手指南：[`plugin-development-guide.md`](./plugin-development-guide.md)
 - [x] 插件市场 UI
 - [x] 依赖加载顺序（拓扑排序）
-- [x] Raycast 扩展转换器：`scripts/convert-raycast-extension.mjs`
+- [x] Raycast 扩展转换器代码保留：`scripts/convert-raycast-extension.mjs`（Frozen / 暂停维护，仅历史实验）
 
 ---
 
@@ -480,7 +480,7 @@ App 启动
 | `fetch_plugin_index()` | 拉取远程插件索引 |
 | `download_plugin(url)` | 下载插件包到临时目录 |
 | `install_plugin_from_url(url)` | 从 GitHub repo、release asset 或 archive ZIP URL 下载并安装插件 |
-| `install_raycast_extension_from_url(url)` | 下载 Raycast extension tree URL，转换并安装为 Qx 插件 |
+| `install_raycast_extension_from_url(url)` | Legacy/Frozen：尝试转换 Raycast tree URL；正式插件不使用此发布路径 |
 | `scaffold_plugin(name, outputDir)` | 在指定目录生成插件脚手架（manifest.json、index.js、README） |
 
 ---
@@ -517,68 +517,11 @@ my-plugin/
 
 ---
 
-## 十二、示例插件：hello-world
+## 十二、当前协议示例：CLI Workbench
 
-目录结构：
-
-```
-hello-world/
-├── manifest.json
-├── index.js
-└── icon.png
-```
-
-`manifest.json`：
-
-```json
-{
-  "id": "hello-world",
-  "name": "Hello World",
-  "version": "1.0.0",
-  "description": "A minimal Qx plugin",
-  "icon": "icon.png",
-  "keywords": ["hello", "world"],
-  "permissions": ["notifications"],
-  "commands": [
-    {
-      "name": "hello",
-      "title": "Say Hello",
-      "description": "Display a greeting",
-      "keywords": ["hi", "greet"]
-    }
-  ]
-}
-```
-
-`index.js`：
-
-```js
-export default {
-  commands: [
-    {
-      name: "hello",
-      title: "Say Hello",
-      async run(context) {
-        const name = await context.prompt("What's your name?");
-        context.showToast(`Hello, ${name || "World"}!`);
-      }
-    }
-  ]
-};
-```
-
-打包：
-
-```bash
-cd hello-world
-zip -r ../hello-world.qx-plugin manifest.json index.js icon.png
-```
-
-安装：
-
-```bash
-# 在 Qx 的 PluginManager 中选择本地 .qx-plugin 文件安装
-```
+旧的入门示例已经移除，不再作为当前 Qx 插件开发参考。
+当前可运行的协议示例是 [`public/plugins/cli-workbench`](../plugins/cli-workbench)，
+完整说明见 [`plugin-cli-gui.md`](./plugin-cli-gui.md)。
 
 ---
 

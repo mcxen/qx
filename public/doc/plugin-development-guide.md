@@ -124,7 +124,7 @@ Qx 当前可运行 **5 条入口/执行链路**；它们可以组合在同一个
 | **Declarative Workbench** | `panel` → `panel.render` → `mountWorkbench(state, handlers)` | 标准列表 / Gallery、详情、搜索、Actions、Island；可订阅后台轮询 |
 | **Custom panel** | `panel` → `panel.render(container, context)` | 画布、图表、媒体等无法结构化的复杂 UI |
 | **Background interval** | `commands[].mode: "no-view"` + `interval` | 定时同步、壁纸、轮询任务；复用 command runtime |
-| **Raycast conversion** | 导入/转换 Raycast extension | 运行已有 Raycast List/Form/ActionPanel 扩展 |
+| **Raycast conversion（Frozen）** | 保留的历史转换入口 | 仅研究/一次性实验；正式插件必须按 Qx 协议重写 |
 
 `context.island`、Workbench `island`、`context.tray` 和通知属于输出表面/宿主能力，不单独算执行链路。CLI、HTTP、AI、storage 等属于业务数据能力，也不形成另一套 UI runtime。
 
@@ -133,12 +133,12 @@ Qx 当前可运行 **5 条入口/执行链路**；它们可以组合在同一个
 | **business**（推荐默认） | `mountWorkbench(state, handlers)` 发布列表、详情、Actions、Island 纯数据 | **宿主统一**（Qx 主题 / tabs / list / detail / Actions / island） | **Pomodoro**、**QxGH** |
 | **custom panel** | 自绘 `container` DOM/CSS（仍建议用 `--qx-*` 变量） | 作者自控 | weather 卡片、复杂可视化 |
 | **commands-only** | 仅 `commands[].run`（toast / 剪贴板 / 开 URL） | 无 panel | 一键工具 |
-| **island + panel** | Workbench `island` 字段，或 panel 关闭时调用 `context.island` | 停靠/浮出策略由用户设置和宿主决定 | pomodoro |
+| **island + panel** | Workbench `island` 字段，或 panel 关闭时调用 `context.island` | 停靠/浮出、右上定位、轮播与重点事件抢占均由 Qx 设置和宿主决定 | pomodoro |
 
 原则：**能 business 就 business**——只写业务映射（API → list items），不要复制壳 CSS。
 Workbench 条目可带：`icon` · `image` · `badge` · `tone` · **`progress`（0–100）** · `detail` · `actions` · `raw`。`detail` 必须是结构化数据；Workbench 不接受 HTML。
 
-Workbench 是受控业务端口：插件拥有最终业务 state，宿主拥有即时的输入、tab、选择、焦点和滚动反馈。`onQuery` / `onTab` / `onSelect` 先同步改 state + `paint()`，再启动可取消的慢任务；不要在回画前 `await`。`id` 必须稳定唯一，`onAction` 直接使用宿主传入的 `selectedItem`，不要从可能滞后的闭包另猜当前项。完整事件与信任边界见 [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md#声明式-workbench-端口)。
+Workbench 是受控业务端口：插件拥有最终业务 state，宿主拥有即时的输入、tab、选择、焦点和滚动反馈。`onQuery` / `onTab` / `onSelect` 先同步改 state + `paint()`，再启动可取消的慢任务；不要在回画前 `await`。每个 item 都必须提供稳定、唯一、非空的 `id`；宿主会直接拒绝缺失或重复项，不提供 title/index 兼容回退。`onAction` 直接使用宿主传入的 `selectedItem`，不要从可能滞后的闭包另猜当前项。完整事件与信任边界见 [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md#声明式-workbench-端口)。
 
 ### 2.2.2 声明式 Workbench（推荐）
 
@@ -175,11 +175,16 @@ context.ui.mountWorkbench({
 }, {
   onSelect: (id) => { selectedId = id; paint(); },
   onAction: (id, item) => { /* local panel action */ },
+  onCommandComplete: () => void reloadPersistedState(),
   onBackgroundPoll: () => void loadPersistedSnapshot(),
 });
 ```
 
 宿主负责：Qx 明暗主题、搜索/tabs、列表与详情、键盘选择/滚动、底栏主动作、右侧 Actions、Cmd/Ctrl+K，以及灵动岛停靠/浮出。插件负责：获取业务数据、选择 id、动作处理和状态持久化。
+
+List / Gallery 的画布由宿主稳定保留：`items: []` 或少量结果不会折叠列表轨、详情分隔或 Gallery 区域。插件只需提供 `emptyText`，不要用占位假条目或自定义 CSS 撑开布局。
+
+List 的 loading 反馈也由宿主管理：`loading: true` 且没有条目时显示标准骨架与 LoadingLabel；已有条目时继续呈现旧数据并在栏头显示 `…`。插件不要在刷新前清空仍然有效的缓存列表。
 
 Action 有两条执行路径：
 
@@ -187,6 +192,7 @@ Action 有两条执行路径：
 - 无 `command`：回调 `handlers.onAction`，适合当前 panel 的刷新、清筛选、清历史等局部操作。
 
 command 与 panel 是不同 iframe runtime，不能用模块全局变量假装共享状态；跨 runtime 数据必须走 `context.storage.persist`。完整样板见市场插件 `pomodoro-island`。
+Workbench 中带 `command` 的 action 完成后，宿主会调用 `onCommandComplete`；面板应在此读取一次持久化状态并回画，不要为了等待命令结果高频轮询磁盘。
 
 ### 2.3 面板注册（硬契约 — 避免 “Panel not registered”）
 
@@ -475,8 +481,7 @@ context.http.fetch
 
 ### 6.4 模式 D — Raycast 转换
 
-已有 Raycast 扩展 → 转换器 / Import Raycast URL。  
-新业务且强依赖本机 CLI 时，**手写 + `context.cli` 通常更稳**。
+**暂停维护，不作为正式插件开发方式。** 转换器 / Import Raycast URL 仅为历史研究入口，不承诺适配新的 Raycast API。正式插件必须阅读上游源代码，使用 Qx `context.*`、Workbench、Actions 与 Island 协议重新实现。
 
 ### 6.5 最小 CLI 命令示例
 
@@ -533,6 +538,8 @@ await context.island.update({
 `durationMs`，暂停时发布固定 `remainingMs + paused: true`。Qx 会在 docked / floating
 两种表面本地刷新 `MM:SS` 和进度条。Action 只使用宿主图标
 `pause/play/stop/open` 与统一胶囊按钮；危险动作可加 `variant: "danger"`。
+桌面悬浮态右侧的“缩小 / 展开”和“打开 Qx”属于宿主窗口控制：缩小后 Qx 会隐藏
+插件 Action、保留核心状态与倒计时，展开后自动恢复。插件不需要也不能重复发布这些按钮。
 
 ### 6.7 发布进度 Panel 骨架（思路）
 

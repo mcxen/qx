@@ -8,7 +8,7 @@ use super::controls::{
     set_ui_protected as set_recording_ui_protected, show as show_recording_controls_internal,
     CONTROL_LABEL,
 };
-use super::picker_window::PICKER_LABEL;
+use super::picker_window;
 use super::recording_engine::run as recording_loop;
 use super::selection;
 use super::state;
@@ -142,8 +142,12 @@ pub async fn start_recording(
     let ui_result = crate::main_thread::run_on_main(&ui_app.clone(), move || {
         // Hide the fullscreen picker first. A region recording later reuses the
         // same WebView only after shrinking it to the selected rectangle.
-        if let Some(picker) = ui_app.get_webview_window(PICKER_LABEL) {
-            let _ = picker.hide();
+        // Hide the active picker and every passive per-display shade before
+        // recording. A region recording may re-show only its protected frame.
+        for window in ui_app.webview_windows().into_values() {
+            if picker_window::is_picker_surface(window.label()) {
+                let _ = window.hide();
+            }
         }
         if let Some(main) = ui_app.get_webview_window(crate::floating_panel::MAIN_LABEL) {
             let _ = main.set_content_protected(true);

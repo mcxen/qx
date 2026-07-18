@@ -41,6 +41,9 @@ export default function RecordingTransport({
   const frames = snapshot?.frameCount ?? frameCount ?? 0;
   const processing = phase === "processing" || stopping;
   const failed = phase === "error";
+  const measuredFps = elapsed >= 1000 && frames > 0
+    ? (frames * 1000 / elapsed).toFixed(1)
+    : null;
   const transferLabel = host === "main"
     ? t("screencap.popOut", "Move to Floating Controls")
     : t("screencap.controls.dock", "Move into Qx");
@@ -77,7 +80,7 @@ export default function RecordingTransport({
         {formatTime(elapsed)}
       </span>
       <span className="qx-recording-transport-frames" data-tauri-drag-region={host === "floating" ? true : undefined}>
-        {frames} {t("screencap.framesShort", "frames")}
+        {frames} {t("screencap.framesShort", "frames")}{measuredFps ? ` · ${measuredFps} fps` : ""}
       </span>
       <span className="qx-recording-transport-divider" aria-hidden="true" />
       <button

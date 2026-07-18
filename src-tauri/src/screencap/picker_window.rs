@@ -1,18 +1,117 @@
-use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize};
+use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 
 use super::geometry::{covers_full_display, physical_frame};
 use super::types::PickerSession;
-use crate::display::{capture_monitor, tauri_monitor_for_capture};
+use crate::display::{all_capture_monitors, capture_monitor, tauri_monitor_for_capture};
 
 pub(super) const PICKER_LABEL: &str = "region-picker";
+const SHADE_PREFIX: &str = "region-picker-shade-";
+
+pub(super) fn shade_label(monitor_id: u32) -> String {
+    format!("{SHADE_PREFIX}{monitor_id}")
+}
+
+pub(crate) fn is_picker_surface(label: &str) -> bool {
+    label == PICKER_LABEL || label.starts_with(SHADE_PREFIX)
+}
+
+/// Show click-through shades on every non-active display. Callers invoke this
+/// from the AppKit/Tauri main-thread hop because window geometry is native UI.
+pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(), String> {
+    let shade_displays = all_capture_monitors()?
+        .into_iter()
+        .filter_map(|capture| {
+            let id = capture.id().ok()?;
+            let monitor = tauri_monitor_for_capture(app, &capture).ok()?;
+            let scale = monitor.scale_factor().max(1.0);
+            Some((
+                id,
+                monitor.position().x,
+                monitor.position().y,
+                monitor.size().width,
+                monitor.size().height,
+                scale,
+            ))
+        })
+        .collect::<Vec<_>>();
+    let desired_shades = shade_displays
+        .iter()
+        .filter(|(id, ..)| *id != active_monitor_id)
+        .map(|(id, ..)| shade_label(*id))
+        .collect::<std::collections::HashSet<_>>();
+
+    for window in app.webview_windows().into_values() {
+        if window.label().starts_with(SHADE_PREFIX) && !desired_shades.contains(window.label()) {
+            let _ = window.hide();
+        }
+    }
+
+    for (shade_id, shade_x, shade_y, shade_w, shade_h, shade_scale) in &shade_displays {
+        let label = shade_label(*shade_id);
+        if *shade_id == active_monitor_id {
+            if let Some(active_shade) = app.get_webview_window(&label) {
+                let _ = active_shade.hide();
+            }
+            continue;
+        }
+        let logical_width = *shade_w as f64 / *shade_scale;
+        let logical_height = *shade_h as f64 / *shade_scale;
+        let logical_x = *shade_x as f64 / *shade_scale;
+        let logical_y = *shade_y as f64 / *shade_scale;
+        let shade = if let Some(existing) = app.get_webview_window(&label) {
+            existing
+        } else {
+            WebviewWindowBuilder::new(
+                app,
+                &label,
+                WebviewUrl::App("index.html?view=region-picker-shade".into()),
+            )
+            .title("Qx Capture Shade")
+            .inner_size(logical_width, logical_height)
+            .position(logical_x, logical_y)
+            .resizable(false)
+            .maximizable(false)
+            .minimizable(false)
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .always_on_top(true)
+            .skip_taskbar(true)
+            .focused(false)
+            .accept_first_mouse(false)
+            .content_protected(true)
+            .build()
+            .map_err(|error| format!("open capture shade: {error}"))?
+        };
+        let _ = shade.set_content_protected(true);
+        let _ = shade.set_always_on_top(true);
+        shade
+            .set_position(PhysicalPosition::new(*shade_x, *shade_y))
+            .map_err(|error| format!("position capture shade: {error}"))?;
+        shade
+            .set_size(PhysicalSize::new(*shade_w, *shade_h))
+            .map_err(|error| format!("size capture shade: {error}"))?;
+        shade
+            .set_ignore_cursor_events(true)
+            .map_err(|error| format!("enable capture shade passthrough: {error}"))?;
+        if !shade.is_visible().unwrap_or(false) {
+            shade
+                .show()
+                .map_err(|error| format!("show capture shade: {error}"))?;
+        }
+    }
+    Ok(())
+}
 
 pub(super) fn hide(app: &AppHandle) {
     // Keep the reusable WebView alive; destroying the final visible surface
     // while main is hidden can make the background app look terminated.
     let app = app.clone();
     let _ = crate::main_thread::run_on_main(&app.clone(), move || {
-        if let Some(picker) = app.get_webview_window(PICKER_LABEL) {
-            let _ = picker.hide();
+        for window in app.webview_windows().into_values() {
+            if is_picker_surface(window.label()) {
+                let _ = window.hide();
+            }
         }
     });
 }
@@ -34,6 +133,9 @@ pub(super) fn restore_editable_selection(app: &AppHandle, session: &PickerSessio
             return false;
         };
         let _ = area; // presence already validated before hop
+        if show_shades(&app, monitor_id).is_err() {
+            return false;
+        }
         let _ = picker.hide();
         let _ = picker.set_content_protected(true);
         if picker.set_ignore_cursor_events(false).is_err()

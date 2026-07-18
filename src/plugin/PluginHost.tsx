@@ -133,8 +133,8 @@ export function PluginPanelViewport() {
   }, [pluginId]);
 
   const handlePluginKeys = useCallback((event: React.KeyboardEvent) => {
-    // Do not bind bare R for panel remount — Raycast plugins (e.g. Bing Wallpaper)
-    // use Cmd+R for item actions ("Set Random Wallpaper"). Host reload is ⌘⇧R /
+    // Do not bind bare R for panel remount — plugins may use Cmd+R for item
+    // actions. Host reload is ⌘⇧R /
     // Actions → Reload Panel only.
     const ignoreBare = shouldIgnoreBareShortcut(event.nativeEvent);
     if (
@@ -166,7 +166,7 @@ export function PluginPanelViewport() {
     const items = workbench.items || [];
     const selectedIndex = items.length
       ? Math.max(0, items.findIndex((item) =>
-          String(item.id ?? item.title) === String(workbench.selectedId ?? "")
+          item.id === String(workbench.selectedId ?? "")
         ))
       : -1;
     const gallery = containerRef.current
@@ -186,7 +186,7 @@ export function PluginPanelViewport() {
     event.stopPropagation();
     const item = items[nextIndex];
     if (item) {
-      selectWorkbenchItem(String(item.id ?? item.title));
+      selectWorkbenchItem(item.id);
     }
   }, [selectWorkbenchItem, workbench]);
 
@@ -336,7 +336,7 @@ export function PluginPanelViewport() {
 
   const selectedWorkbenchItem = useMemo(() => {
     if (!workbench?.items?.length) return undefined;
-    return workbench.items.find((item) => String(item.id ?? item.title) === String(workbench.selectedId ?? ""))
+    return workbench.items.find((item) => item.id === String(workbench.selectedId ?? ""))
       || workbench.items[0];
   }, [workbench]);
 
@@ -357,7 +357,13 @@ export function PluginPanelViewport() {
     if (descriptor?.command) {
       const command = pluginCommands.find((candidate) => candidate.name === descriptor.command);
       if (command) {
-        void usePluginRegistry.getState().runCommand(command);
+        void usePluginRegistry.getState().runCommand(command).then(() => {
+          postPluginWorkbenchEvent(pluginId, {
+            kind: "commandComplete",
+            command: command.name,
+            at: Date.now(),
+          });
+        });
         return;
       }
     }
@@ -365,7 +371,7 @@ export function PluginPanelViewport() {
       kind: "action",
       id: actionId,
       selectedId: selectedWorkbenchItem
-        ? String(selectedWorkbenchItem.id ?? selectedWorkbenchItem.title)
+          ? selectedWorkbenchItem.id
         : undefined,
     });
   }, [pluginCommands, pluginId, selectedWorkbenchItem, workbenchActionDescriptors]);
@@ -464,7 +470,7 @@ export function PluginPanelViewport() {
     : pluginChrome;
   const workbenchSelectedIndex = workbench?.items?.length
     ? Math.max(0, workbench.items.findIndex((item) =>
-        String(item.id ?? item.title) === String(workbench.selectedId ?? "")
+        item.id === String(workbench.selectedId ?? "")
       ))
     : -1;
   const workbenchNavigation = workbench?.items?.length
@@ -476,7 +482,7 @@ export function PluginPanelViewport() {
         editable: "search" as const,
         onChange: (index: number) => {
           const item = workbench.items?.[index];
-          if (item) selectWorkbenchItem(String(item.id ?? item.title));
+          if (item) selectWorkbenchItem(item.id);
         },
         onOpen: primaryItem
           ? () => runWorkbenchAction(primaryItem.id)
@@ -612,7 +618,7 @@ export function PluginPanelViewport() {
           )}
           {plugin?.description && (
             <>
-              <div className="qx-action-title">About</div>
+              <div className="qx-action-title">{t("common.about", "About")}</div>
               <div className="v2ex-context-copy">
                 <strong>{plugin.name}</strong>
                 {plugin.author && <span>{plugin.author}</span>}

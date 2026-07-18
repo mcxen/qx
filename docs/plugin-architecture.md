@@ -2,6 +2,8 @@
 
 > 面向核心贡献者的内部文档。描述前端插件运行时、RPC 分发、AI 任务、权限模型和面板生命周期。
 
+> 当前开发阶段兼容策略：Qx 尚无外部用户，插件均由 mcxen 维护。Workbench / plugin port 演进优先采用清晰的强契约，并在同一变更中迁移全部第一方插件；不要为尚不存在的第三方存量增加旧协议兼容层、别名或双实现。进入有外部用户阶段后必须显式重审本策略。
+
 ## 1. 目录结构
 
 | 文件 | 职责 |
@@ -56,7 +58,7 @@ plugin business state
        └─ island → permission-gated island RPC → docked-or-float session
 ```
 
-不变量：iframe 只发布可序列化纯数据；`raw` 不跨信任边界；宿主限制列表/字段/动作数量和文本长度。`layout.kind` 可选 `list`（默认）或 `gallery`；Gallery 图片只接受 `https://` / `data:image/`，列数与比例由宿主归一化，选中与 Actions 仍走相同 Workbench 事件。Workbench 没有 DOM/HTML 兼容分支；复杂自绘内容走独立 custom panel。后台轮询只能绑定本插件已注册的 `no-view + interval` command，panel 回调不拥有后台生命周期。
+不变量：iframe 只发布可序列化纯数据；`raw` 不跨信任边界；宿主限制列表/字段/动作数量和文本长度。item `id` 是强制、稳定、唯一的业务键；缺失或重复 item/tab id 在信任边界直接拒绝，tabs 至多一个 active，不保留 title/index 回退。`layout.kind` 可选 `list`（默认）或 `gallery`；Gallery 图片只接受 `https://` / `data:image/`，URL 超限整体拒绝而非截断，列数与比例由宿主归一化，选中与 Actions 仍走相同 Workbench 事件。Workbench 没有 DOM/HTML 兼容分支；复杂自绘内容走独立 custom panel。后台轮询只能绑定本插件已注册的 `no-view + interval` command，panel 回调不拥有后台生命周期。
 
 #### 状态所有权与事件一致性
 
@@ -66,7 +68,7 @@ plugin business state
 | 宿主交互状态 | 当前可见 query、active tab、pointer/keyboard selection、焦点与滚动 | query/tab/select 先乐观更新 React，再按顺序发给 iframe，保证 iframe 忙时仍有即时反馈 |
 | 宿主安全边界 | runtime 身份、数据归一化、命令归属、图片协议、数量/长度上限 | 仅接受 `panelSessionsByPlugin` 当前 `pluginId + runtimeId + contentWindow` 的消息；旧 iframe 发布会被丢弃 |
 
-宿主到插件的事件为 `query(value)`、`tab(id)`、`select(id)`、`action(id, selectedId)`、`backgroundPoll(...)`。`action.selectedId` 是用户触发动作瞬间的宿主选择快照，插件 kit 必须优先用它解析 item，不能依赖可能尚未完成回画的旧 `state.selectedId`。Manifest `command` 动作由宿主校验为当前插件命令后在长期 runtime 执行；其余动作回到 panel handler。
+宿主到插件的事件为 `query(value)`、`tab(id)`、`select(id)`、`action(id, selectedId)`、`commandComplete(command, at)`、`backgroundPoll(...)`。`action.selectedId` 是用户触发动作瞬间的宿主选择快照，插件 kit 必须优先用它解析 item，不能依赖可能尚未完成回画的旧 `state.selectedId`。Manifest `command` 动作由宿主校验为当前插件命令后在长期 runtime 执行，完成后以 `commandComplete` 通知 panel 单次重读共享状态；其余动作回到 panel handler。
 
 插件 handler 不得在回写 query/tab/select 前等待网络、CLI 或数据库。推荐顺序：同步更新 state → `paint()` → debounce/cancel 旧任务 → 后台加载 → generation 校验 → 再 `paint()`。这样受控搜索不会回跳，慢旧结果也不会覆盖新查询。
 

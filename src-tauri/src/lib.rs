@@ -294,7 +294,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             let label = window.label();
             // Secondary surfaces: hide instead of destroy (main may be hidden).
-            if label == "region-picker" || label == "recording-controls" {
+            if screencap::is_picker_surface(label) || label == "recording-controls" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = window.hide();
@@ -620,6 +620,7 @@ pub fn run() {
             island_window::island_window_ensure,
             island_window::island_window_show,
             island_window::island_window_hide,
+            island_window::island_window_set_compact,
             island_window::island_window_set_always_on_top,
             island_window::island_window_get_snapshot,
             island_window::island_sessions_publish,

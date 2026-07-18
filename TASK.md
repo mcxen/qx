@@ -1,5 +1,33 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — Qx 桌面悬浮灵动岛轮播与事件抢占
+
+**状态**：已完成代码实现，等待 macOS / Windows 桌面运行态复核。
+
+- 悬浮灵动岛改为 Qx 级开关与策略；番茄钟等插件只发布结构化状态和动作。
+- 默认锚定主显示器工作区右上角，不抢焦点；macOS 可跨 Space 保持置顶。
+- 普通模块 / 插件 `location` session 按 5 / 8 / 15 秒可选间隔轮播；task、error、toast 严格抢占，结束后恢复轮播。
+- 浮窗从 Qx appearance 同步主题、透明度、圆角和字号，与 docked 灵动岛使用同一 Surface chrome。
+- 悬浮 Surface 提供宿主统一的缩小 / 展开与打开 Qx 按钮；缩小后真实窗口收至 240px，番茄钟等插件无需自绘窗口控制。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [x] `cargo fmt --check` / `cargo check`
+- [ ] macOS：主屏右上、多 Space、不抢当前输入焦点、番茄钟暂停动作与多插件轮播。
+- [ ] Windows：主屏工作区右上、任务栏避让、always-on-top 与前台输入焦点。
+
+## Fix — Workbench 稀疏 List / Gallery 稳定画布
+
+**状态**：已完成宿主修复，等待插件运行态视觉复核。
+
+- 空 List 继续保留左侧列表轨、右边界和详情区，不因零条或少量条目视觉消失。
+- 空 Gallery 的空态跨满整个画布，不再只占第一个网格单元；少量卡片时仍显示完整 Gallery 表面。
+- 修复位于宿主 Workbench 端口，所有声明式插件共享，不要求插件各自补 CSS。
+- Workbench List 空载与刷新状态改用 V2EX 同款宿主协议：左栏 header/计数始终存在，首次加载显示 skeleton + LoadingLabel，已有数据刷新保持旧条目并显示 `…`。
+
 ## Fix — Search Settings ownership and Home System Island metrics
 
 **状态**：已完成代码修复，等待本地运行态复核。
@@ -30,6 +58,8 @@
 - List 支持上下/Page/Home/End/Enter；Gallery 按实际 CSS 列数支持二维方向键。空搜索时左右浏览 Gallery，有查询文字时左右保留 caret；隐藏 iframe 持有焦点时集合键转交当前 Shell。
 - query、active tab、selectedId 使用宿主乐观反馈 + 插件受控回画；action 事件携带触发瞬间 selectedId，避免快速选择后执行落到旧条目。
 - iframe → host 发布只接受当前 panel 的 pluginId/runtimeId/contentWindow；数据在 `normalizePluginWorkbenchState` 信任边界限制协议、数量和文本长度。
+- Workbench 信任边界收紧为强制稳定唯一 item id：缺失/重复 item/tab id 直接拒绝，并补齐单 active tab、空 detail 清理与完整 `data:image/` 校验，避免不可寻址选择、重复 React key 或内嵌图被截断。
+- Workbench 重构插件异步审计：Brew/Unsplash/QxGH 已有 generation，Pomodoro 读取同一持久化快照；补齐 CLI Workbench 示例和 Qx Bing Wallpaper 的请求代次检查，防止连续刷新时旧响应覆盖新结果。
 - 内部架构、端口清单、公开 CLI→GUI / 插件开发 / plugin system 文档已同步维护。
 
 ### 验证
@@ -82,9 +112,14 @@
 
 **状态**：已实现，等待运行态视觉与真实媒体复核。
 
-- 捕获历史新增持久化的列表 / 图库切换；列表保持左侧连续列表 + 详情，图库使用响应式媒体缩略图 + 详情。
+- 捕获历史新增持久化的列表 / 图库切换；列表和图库均占满主内容区，选择后在同一主内容区进入全宽预览，不再渲染固定右侧详情。
 - 截图/GIF 使用图片缩略图，MP4/MOV 使用视频首帧；两种布局共享选择、预览、删除与 QxShell 键盘导航。
 - 移除模块内重复的上下键监听，统一走 Shell navigation + `useQxListSelection` 滚动追随。
+- Gallery 改为默认浏览面，网格占满 Main Area；点击后进入独立预览，Esc 返回网格，List 保留为可选紧凑视图。
+- Rust 录屏统一优先使用原生连续视频流，区域录制在流帧上裁剪；修复慢帧后额外等待完整帧间隔导致的实际 FPS 腰斩。
+- 录制控制岛与历史媒体卡片显示实测 fps，便于区分“目标 30fps”和实际编码吞吐。
+- 捕获岛关闭 / 取消常驻会回传并持久化 `controls_pinned=false`，后台恢复与重启不再复活空闲岛。
+- Release capability 明确允许 core event listen/unlisten/emit，主窗口可接收独立捕获窗的 pin 状态同步，不再因 ACL 拒绝保留旧内存值。
 
 ### 验证
 
@@ -115,7 +150,7 @@
 
 - Workbench 新增声明式 `layout.kind: "gallery"`、安全图片字段、响应式列数与横/方/竖比例。
 - Gallery 复用宿主键盘选择、滚动追随、QxShell 主动作、右侧 Actions 与 Cmd/Ctrl+K。
-- 市场 `raycast-bing-wallpaper` 迁移为原生 `qx-bing-wallpaper` / **Qx Bing Wallpaper**：直接使用 Qx http/storage/system/cli/file 端口，不再包含 Raycast shim 或转换元数据。
+- 市场只保留原生 `qx-bing-wallpaper` / **Qx Bing Wallpaper**：直接使用 Qx http/storage/system/cli/file 端口，不包含 Raycast shim、旧包别名或转换元数据。
 - 插件提供 16 张 Bing 每日壁纸图库、搜索、缓存/stale fallback、设为壁纸、下载、复制链接、打开来源、随机设置、刷新与日更后台命令。
 
 ### 验证
@@ -392,11 +427,13 @@
 - 显示器枚举、稳定 ID、内置/外接/主屏判断、鼠标所在屏幕和 Tauri/捕获后端映射提升为 Qx 系统级服务；截图模块只保留圈选几何、裁剪与录制状态，热插拔监听复用系统服务。
 - 修复首次启动后第一次唤起落到隐藏窗口创建显示器或旧 macOS Space：标准化鼠标坐标优先、原生坐标仅兜底，窗口显示后重新按目标 DPI 校正，并使用 active-Space 窗口策略。
 - 截图以 PNG 接入现有捕获历史和预览，和 MP4/MOV/GIF 共用清理与文件输出目录。
-- 区域圈选初始按鼠标所在显示器解析捕获源，并提供内置屏/外接屏显式切换和全屏入口；记录 xcap 显示器 ID，避免外接屏错误回落到主屏。
+- 区域圈选初始按鼠标所在显示器解析捕获源；圈选层为每个显示器创建浅黑色鼠标穿透遮罩，鼠标所在显示器自动成为交互目标，移除内置屏/外接屏显式切换控件，仅保留区域/窗口/全屏模式入口；记录 xcap 显示器 ID，避免外接屏错误回落到主屏。
+- 截图模块进入时通过 `display_list` 异步预热原生显示器缓存，快捷键触发沿用后台显示器监视器的热缓存；圈选首帧不再重复支付完整 xcap 枚举成本。
+- 圈选显示器跟随改为立即首检 + 40ms 高频轮询，避免进入截图后鼠标移动到外接显示器时出现明显等待。
 - Launcher 新增“开始截图 / 开始录制”独立 command；Shortcuts 新增默认关闭的截图快捷键，录屏快捷键改为直接开始圈选。
 - Shortcuts 新增默认关闭的“显示/隐藏捕获灵动岛”（`Alt+Shift+C`）动作；截图完成动作可选自动复制到剪贴板或仅保存，复制失败不回滚已保存历史。
 - 原录制控制条扩展为空闲捕获灵动岛，可由用户选择长期置顶外显；空闲提供截图/录制，录制时保持原停止与状态能力。
-- 捕获岛新增历史入口；历史区重构为 Qx 标准左侧行列表（类型图标、主信息、元信息、行内删除）与右侧预览/配置分栏，移除嵌套交互按钮和大段行内样式。
+- 捕获岛新增历史入口；历史区重构为 Qx 标准单栏列表/图库（类型图标、主信息、元信息、行内删除）与全宽预览，移除右侧详情配置和嵌套交互按钮。
 - 圈选改为两阶段确认：首次框选后可移动、四角缩放，再选择截图或录制；截图可添加文字和箭头，浏览器生成透明标注层，Rust 按捕获实际像素缩放并合成进 PNG。
 - 修复捕获入口先隐藏全部 Qx 窗口、选区打开失败后看似整应用闪退的问题：选区成功映射后才隐藏来源窗口，失败时保留原界面并记录诊断。
 - 区域录制期间保留受保护、鼠标穿透的录制边框，录制岛定位到边框下方；停止后恢复原选区的拖动、缩放和重复捕获，不再强制丢弃选区返回主界面。
@@ -596,7 +633,7 @@
 - Raycast `Detail` shim 会渲染 `props.actions`，详情型扩展可继续提供复制、切换和设置入口。
 - 转换器支持安装扩展生产 npm 依赖（禁用 lifecycle scripts），并强制 React / React DOM 解析到 Qx converter 依赖，避免扩展目录依赖带来双 React hooks 错误。
 - Raycast preferences 映射到 Qx manifest preferences：dropdown -> select、checkbox -> boolean、password -> password、文本类 -> string。
-- 主仓与 `qx-plugins` 转换器已同步该协议，`raycast-bing-wallpaper` 已重新转换并重新打包。
+- 主仓与 `qx-plugins` 转换器已同步该协议，通用转换能力由中性 fixture 验证。
 - 验证 Raycast `calendar`（commit `186d955eda64f9e956b25a3fdf5566b1d38f57f2`）：依赖 `calendar` / `weeknumber`，转换为 `raycast-calendar` 后可显示日历、切换月份、复制当前视图，并带 3 个 preferences 与 2 张截图。
 - 更新 `README.md`、`public/doc/plugin-system.md`、`public/doc/plugin-marketplace.md`、`public/doc/raycast-plugin-conversion.md` 和 `qx-plugins` README。
 
@@ -608,12 +645,10 @@
 - [x] `cargo fmt --check`（`src-tauri/`）
 - [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
 - [x] Native control scan：仅命中 Markdown 内容样式 `src/styles/qx-ai.css:.qx-md-body li input[type="checkbox"]`，非产品控件。
-- [x] `qx-plugins`：`node --check scripts/convert-raycast-extension.mjs`、`node --check src/raycast-bing-wallpaper/index.js`、`unzip -t raycast-bing-wallpaper.qx-plugin`。
-- [x] `qx-plugins` Bing Wallpaper happy-dom 抽样：`context.display.raycastActionPanel=false` 时 15 个 ActionPanel 均带 `is-hidden`，动作按钮仍存在。
 - [x] `qx-plugins` Calendar：`node --check src/raycast-calendar/index.js`、`unzip -t raycast-calendar.qx-plugin`。
 - [x] `qx-plugins` Calendar happy-dom 抽样：显示 `# July 2026`，点击 `Next Month` 后变成 `# August 2026`，`Copy` 写入 clipboard bridge 且内容匹配当前视图。
 - [x] 本机安装 `raycast-calendar.qx-plugin` 到 `~/.qx/plugins/raycast-calendar`，manifest、`index.js` 语法、`.enabled`、1 个命令、3 个 preferences、2 张截图验证通过。
-- [ ] 手动验证：Settings -> Extensions -> Installed -> Display 开关保存；Bing Wallpaper 在宽面板显示动作按钮，窄面板先隐藏；关闭开关后重新打开插件不显示动作按钮。
+- [ ] 手动验证：Settings -> Extensions -> Installed -> Display 开关保存；转换插件在宽面板显示动作按钮，窄面板先隐藏；关闭开关后重新打开插件不显示动作按钮。
 
 ## Feature — 应用内自动更新与 helper 覆盖安装
 
@@ -664,14 +699,15 @@
 
 ## Bugfix — Raycast 转换器未适配扩展稳定性
 
-**状态**：进行中，已完成 CLI 通用 shim 原型。
+**状态**：Frozen / 暂停维护。代码与入口保留用于历史研究；正式插件统一基于上游源代码按 Qx 协议重新开发。
+
+- CLI 运行时和 Extensions 导入界面均显示冻结提示；主仓、市场仓与开发文档不再把 re-convert 作为维护或发布路径。
 
 ### 修复内容
 
-- 验证 Raycast `bing-wallpaper`（commit `870667fc671801a467deb7c4c7fc72992efe3820`）：它依赖 `@raycast/api` React view、Node fetch/fs 下载、AppleScript 设置壁纸和 Raycast background command runtime。
+- 使用中性 Gallery fixture 验证 `@raycast/api` React view、Node fetch/fs、后台 command runtime 等通用转换能力。
 - CLI 转换器新增 generic Raycast shim：使用 esbuild 打包 Raycast TS/TSX command，虚拟替换 `@raycast/api`、`node-fetch`、`file-url`、`fs-extra`、`run-applescript`、`os`、`path`、`buffer`。
 - Shim 覆盖 `List` / `Grid` / `Detail` / `ActionPanel` / `Action` / `Toast` / `showToast` / `showHUD` / `LocalStorage` / `Cache` / `getPreferenceValues` / `open` / `showInFinder` / `Clipboard` / `useNavigation` 等常用 Raycast API。
-- `bing-wallpaper` 通过 CLI 转换后生成 `raycast-bing-wallpaper.qx-plugin`：manifest 保留 3 个 Raycast commands，`index.js` 为 bundled runtime，不再是 placeholder。
 - 转换器会复制 Raycast 图标资源，并自动识别 `screenshots` / `media` / `gallery` / `metadata/` 图片写入 manifest；Settings -> Plugins Installed 列表和详情页可显示插件图标与截图。
 - Raycast 转换产物新增 `platforms` 与 `raycast.platformCompatibility` 兼容报告；CLI 会静态分析 Raycast UI、HTTP、Clipboard、LocalStorage/Cache、fs-extra、showInFinder、run-applescript、no-view interval 和 menu bar command，Installed 详情页显示 macOS / Windows 的 Supported、Partial 或 Unsupported 状态，以及可用/降级/不可用能力。
 - 转换产物保留 `mode` / `interval`，Qx 插件 registry 根据 no-view command interval 做持久化后台调度；next run 写入 `localStorage`，插件重载或 Qx 重启后恢复。
@@ -684,16 +720,11 @@
 ### 验证
 
 - [x] `node --check scripts/convert-raycast-extension.mjs`
-- [x] `node scripts/convert-raycast-extension.mjs /private/tmp/qx-raycast-bing/extensions/extensions/bing-wallpaper --out /private/tmp/qx-raycast-bing/qx-generic --package`
-- [x] `node --check /private/tmp/qx-raycast-bing/qx-generic/raycast-bing-wallpaper/index.js`
-- [x] 产物检查：`raycast-bing-wallpaper.qx-plugin` 带 3 张 Raycast metadata 截图后约 11 MB；bundled `index.js` 约 637 KB；包含 `HPImageArchive`、`plugin_run_applescript`、`plugin_file_read_base64`、`/qx-home`、`qx-raycast-grid`、截图资源和 no-view interval metadata。
 - [x] `cargo test marketplace::tests -- --nocapture`（`src-tauri/`，含 generic manifest 测试）
 - [x] `npx tsc --noEmit`
 - [x] `cargo fmt --check`（`src-tauri/`）
 - [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
 - [x] `npm run build`
-- [x] 安装转换出的 `/private/tmp/qx-raycast-bing/qx-generic/raycast-bing-wallpaper.qx-plugin` 到 `~/.qx/plugins/raycast-bing-wallpaper`，真实安装目录 manifest、图标、3 张截图资源和 `index.js` 语法检查通过。
-- [ ] UI 点击验证：打开 Bing Wallpaper 面板显示 Bing 图片、Action 能下载/设置壁纸、no-view interval 可恢复。
 
 ## Feature — 应用搜索中文名与拼音匹配
 

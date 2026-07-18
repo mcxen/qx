@@ -160,7 +160,7 @@ Extensions 详情卡里的 Shortcuts **只做跳转**到本页并 filter=`plugin
 │   RSS / 录屏 / …                                    │
 │                                                     │
 │ ▸ 全局 · 扩展命令          ← 已装插件动态贡献        │
-│   Word Counter › Count   [关] [—] …          GLOBAL │
+│   My Plugin › Count      [关] [—] …          GLOBAL │
 │                                                     │
 │ ▸ 全局 · 启动 App          ← app_shortcuts          │
 │   Safari                 [开] [⌥S] [删除]    GLOBAL │
@@ -258,7 +258,7 @@ manifest 扩展（向后兼容现有 `shortcuts[]`）：
       "command": "count",
       "key": "CmdOrCtrl+Shift+C",
       "scope": "in_app",
-      "context": ["plugin:word-counter"]
+      "context": ["plugin:my-plugin"]
     }
   ]
 }

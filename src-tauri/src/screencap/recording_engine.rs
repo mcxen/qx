@@ -2,12 +2,25 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use super::geometry::clamp_area;
+use super::geometry::{clamp_area, crop_physical};
 use super::state::{set_capture_error, FRAME_COUNT};
 use super::types::{NormalizedRecordingOptions, RecordArea, RecordingOutput};
 use crate::display::capture_monitor;
 use crate::media::h264::{mp4_config, mp4_parts};
 use crate::media::image::constrain_video_size;
+
+fn advance_frame_deadline(
+    next_frame_at: &mut std::time::Instant,
+    frame_duration: std::time::Duration,
+    after_encode: std::time::Instant,
+) {
+    *next_frame_at += frame_duration;
+    if *next_frame_at < after_encode {
+        // The encoder already consumed the next slot. Resume immediately so
+        // capture is encoder-limited instead of adding another full interval.
+        *next_frame_at = after_encode;
+    }
+}
 
 fn encode_rgba_frame(
     encoder: &mut openh264::encoder::Encoder,
@@ -108,10 +121,6 @@ fn recording_loop_inner(
         area.x <= 1 && area.y <= 1 && area.w + 1 >= mon_w && area.h + 1 >= mon_h
     });
     let area = if full_display_selection { None } else { area };
-    // Region capture: use capture_region (same coordinate space as the picker).
-    // Full-screen: prefer the continuous AVCapture stream for FPS.
-    let region_mode = area.is_some();
-
     let frame_duration = std::time::Duration::from_secs_f64(1.0 / options.fps as f64);
     let sample_duration = (1000 / options.fps).max(1);
     let encoder_config = openh264::encoder::EncoderConfig::new()
@@ -141,83 +150,77 @@ fn recording_loop_inner(
     let started_at = std::time::Instant::now();
     let mut next_frame_at = std::time::Instant::now();
 
-    // ── Full-screen stream path (xcap VideoRecorder / AVCaptureScreenInput) ─
-    let stream_ok = if region_mode {
-        false
-    } else {
-        match monitor.video_recorder() {
-            Ok((recorder, rx)) => {
-                if recorder.start().is_err() {
-                    false
-                } else {
-                    let mut consecutive_empty: u32 = 0;
-                    while !stop_flag.load(Ordering::Relaxed) {
-                        let now = std::time::Instant::now();
-                        if now < next_frame_at {
-                            while rx.try_recv().is_ok() {}
-                            std::thread::sleep(
-                                (next_frame_at - now).min(std::time::Duration::from_millis(4)),
-                            );
-                            continue;
-                        }
+    // ── Native continuous stream (region selections crop each stream frame) ─
+    let stream_ok = match monitor.video_recorder() {
+        Ok((recorder, rx)) => {
+            if recorder.start().is_err() {
+                false
+            } else {
+                let mut consecutive_empty: u32 = 0;
+                while !stop_flag.load(Ordering::Relaxed) {
+                    let now = std::time::Instant::now();
+                    if now < next_frame_at {
+                        while rx.try_recv().is_ok() {}
+                        std::thread::sleep(
+                            (next_frame_at - now).min(std::time::Duration::from_millis(4)),
+                        );
+                        continue;
+                    }
 
-                        let frame = match rx.recv_timeout(std::time::Duration::from_millis(500)) {
-                            Ok(frame) => frame,
-                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                                consecutive_empty += 1;
-                                if consecutive_empty >= 10 {
-                                    let _ = recorder.stop();
-                                    return Err(
+                    let frame = match rx.recv_timeout(std::time::Duration::from_millis(500)) {
+                        Ok(frame) => frame,
+                        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                            consecutive_empty += 1;
+                            if consecutive_empty >= 10 {
+                                let _ = recorder.stop();
+                                return Err(
                                         "Screen capture stream stalled. Grant Screen Recording permission and restart Qx."
                                             .to_string(),
                                     );
-                                }
-                                continue;
                             }
-                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                                let _ = recorder.stop();
-                                return Err("Screen capture stream disconnected".to_string());
-                            }
-                        };
-                        consecutive_empty = 0;
-
-                        let mut latest = frame;
-                        while let Ok(more) = rx.try_recv() {
-                            latest = more;
-                        }
-
-                        let Some(img) =
-                            image::RgbaImage::from_raw(latest.width, latest.height, latest.raw)
-                        else {
                             continue;
-                        };
-
-                        encode_rgba_frame(
-                            &mut encoder,
-                            &mut writer,
-                            &mut track_added,
-                            &mut dimensions,
-                            &mut pending_sample,
-                            &mut frame_idx,
-                            started_at,
-                            img,
-                            options.max_size,
-                        )?;
-
-                        next_frame_at += frame_duration;
-                        let after_encode = std::time::Instant::now();
-                        if next_frame_at <= after_encode {
-                            // Screen recording should drop missed deadlines,
-                            // not spin to catch up and starve desktop input.
-                            next_frame_at = after_encode + frame_duration;
                         }
+                        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                            let _ = recorder.stop();
+                            return Err("Screen capture stream disconnected".to_string());
+                        }
+                    };
+                    consecutive_empty = 0;
+
+                    let mut latest = frame;
+                    while let Ok(more) = rx.try_recv() {
+                        latest = more;
                     }
-                    let _ = recorder.stop();
-                    true
+
+                    let Some(mut img) =
+                        image::RgbaImage::from_raw(latest.width, latest.height, latest.raw)
+                    else {
+                        continue;
+                    };
+                    if let Some(ref capture_area) = area {
+                        img = crop_physical(&img, capture_area, mon_w, mon_h);
+                    }
+
+                    encode_rgba_frame(
+                        &mut encoder,
+                        &mut writer,
+                        &mut track_added,
+                        &mut dimensions,
+                        &mut pending_sample,
+                        &mut frame_idx,
+                        started_at,
+                        img,
+                        options.max_size,
+                    )?;
+
+                    let after_encode = std::time::Instant::now();
+                    advance_frame_deadline(&mut next_frame_at, frame_duration, after_encode);
                 }
+                let _ = recorder.stop();
+                true
             }
-            Err(_) => false,
         }
+        Err(_) => false,
     };
 
     // ── Region / poll path: capture_region uses the same logical points as the picker ─
@@ -248,11 +251,8 @@ fn recording_loop_inner(
                         img,
                         options.max_size,
                     )?;
-                    next_frame_at += frame_duration;
                     let after_encode = std::time::Instant::now();
-                    if next_frame_at <= after_encode {
-                        next_frame_at = after_encode + frame_duration;
-                    }
+                    advance_frame_deadline(&mut next_frame_at, frame_duration, after_encode);
                 }
                 Err(error) => {
                     consecutive_errors += 1;
@@ -300,6 +300,31 @@ fn recording_loop_inner(
         height,
         frame_count: frame_idx as u32,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::advance_frame_deadline;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn frame_deadline_does_not_add_an_interval_after_slow_encode() {
+        let start = Instant::now();
+        let interval = Duration::from_millis(33);
+        let mut deadline = start;
+        let encoded_at = start + Duration::from_millis(52);
+        advance_frame_deadline(&mut deadline, interval, encoded_at);
+        assert_eq!(deadline, encoded_at);
+    }
+
+    #[test]
+    fn frame_deadline_preserves_requested_interval_when_encoder_is_fast() {
+        let start = Instant::now();
+        let interval = Duration::from_millis(33);
+        let mut deadline = start;
+        advance_frame_deadline(&mut deadline, interval, start + Duration::from_millis(8));
+        assert_eq!(deadline, start + interval);
+    }
 }
 
 pub(super) fn run(

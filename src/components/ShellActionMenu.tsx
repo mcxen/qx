@@ -95,8 +95,12 @@ export default function ShellActionMenu({
           }
         }}
         onEscapeKeyDown={(event) => {
-          // Esc is handled by QxShell action-menu keyboard protocol (focus restore / pop).
+          // Radix renders the content in a portal and marks Escape handled
+          // before the event can reach QxShell's root keydown responder. Close
+          // here explicitly, while preserving nested-panel back behavior.
           event.preventDefault();
+          if (canGoBack) onBack?.();
+          else onOpenChange(false);
         }}
       >
         <div className="qx-actions-popover-title">

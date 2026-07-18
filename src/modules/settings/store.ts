@@ -81,6 +81,8 @@ export interface AppearanceSettings {
   home_island_memory: boolean;
   /** Floating island webview (default off — dogfood). */
   island_float_enabled: boolean;
+  /** Seconds between standing module/plugin sessions in the shared island. */
+  island_float_rotate_secs: number;
   /** Promote sticky task when main window hides. */
   island_float_when_main_hidden: boolean;
   island_float_always_on_top: boolean;
@@ -337,6 +339,7 @@ export const DEFAULT_SETTINGS: Settings = {
     home_island_cpu: true,
     home_island_memory: true,
     island_float_enabled: false,
+    island_float_rotate_secs: 8,
     island_float_when_main_hidden: true,
     island_float_always_on_top: true,
     island_prefer_docked_when_main_visible: true,
@@ -376,7 +379,7 @@ export const DEFAULT_SETTINGS: Settings = {
     capture_delay_seconds: 0,
     auto_hide_after_capture: true,
     auto_copy_to_clipboard: true,
-    history_layout: "list",
+    history_layout: "gallery",
     controls_pinned: false,
   },
   advanced: {

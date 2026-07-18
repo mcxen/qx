@@ -169,6 +169,7 @@ export function enhancePluginCli(core: PluginCliCore): PluginContext["cli"] {
 type WorkbenchHandlers = {
   onTab?: (id: string) => void;
   onAction?: (id: string, item?: PluginWorkbenchItem) => void;
+  onCommandComplete?: (event: { command: string; at: number }) => void;
   onBackgroundPoll?: (event: { command: string; at: number; ok: boolean; error?: string }) => void;
   onQuery?: (value: string) => void;
   onSelect?: (id: string, item: PluginWorkbenchItem) => void;
@@ -183,7 +184,7 @@ type WorkbenchWindow = Window & {
 };
 
 function itemId(item: PluginWorkbenchItem): string {
-  return String(item.id ?? item.title);
+  return item.id;
 }
 
 export function createPluginUiKit(): PluginContext["ui"] {
@@ -244,6 +245,11 @@ export function createPluginUiKit(): PluginContext["ui"] {
         const selectedId = String(workbenchEvent.selectedId ?? state.selectedId ?? "");
         const item = (state.items || []).find((candidate) => itemId(candidate) === selectedId);
         handlers.onAction?.(id, item);
+      } else if (workbenchEvent.kind === "commandComplete") {
+        handlers.onCommandComplete?.({
+          command: String(workbenchEvent.command ?? ""),
+          at: Number(workbenchEvent.at) || Date.now(),
+        });
       } else if (workbenchEvent.kind === "backgroundPoll") {
         handlers.onBackgroundPoll?.({
           command: String(workbenchEvent.command ?? ""),
@@ -352,7 +358,7 @@ function enhancePluginCli(core) {
   });
 }
 function createPluginUiKit() {
-  function itemId(item) { return String(item.id != null ? item.id : item.title); }
+  function itemId(item) { return String(item.id || ''); }
   function itemsFromJson(value) {
     if (Array.isArray(value)) return value.map((entry, index) => {
       if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
@@ -388,6 +394,8 @@ function createPluginUiKit() {
         const selectedId = String(workbenchEvent.selectedId == null ? (state.selectedId == null ? '' : state.selectedId) : workbenchEvent.selectedId);
         const item = (state.items || []).find((candidate) => itemId(candidate) === selectedId);
         handlers.onAction(id, item);
+      } else if (workbenchEvent.kind === 'commandComplete' && handlers.onCommandComplete) {
+        handlers.onCommandComplete({ command: String(workbenchEvent.command == null ? '' : workbenchEvent.command), at: Number(workbenchEvent.at) || Date.now() });
       } else if (workbenchEvent.kind === 'backgroundPoll' && handlers.onBackgroundPoll) {
         handlers.onBackgroundPoll({ command: String(workbenchEvent.command == null ? '' : workbenchEvent.command), at: Number(workbenchEvent.at) || Date.now(), ok: workbenchEvent.ok === true, error: workbenchEvent.error == null ? undefined : String(workbenchEvent.error) });
       }

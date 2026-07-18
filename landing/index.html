@@ -14,7 +14,7 @@
     />
     <meta name="theme-color" content="#1e1e1e" />
     <title>Qx — 桌面效率入口</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231e1e1e'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-family='Arial' font-size='14' font-weight='700' fill='white'%3EQx%3C/text%3E%3C/svg%3E" />
+    <link rel="icon" type="image/svg+xml" href="./qx-tray.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -554,368 +554,89 @@
         border: 0;
       }
 
-      /* ------------------------------------------------------------------
-       * Long-form landing sections
-       * ------------------------------------------------------------------ */
-      .landing-section {
-        position: relative;
-        overflow: hidden;
-        padding: clamp(92px, 12vw, 168px) var(--page-pad);
-        scroll-margin-top: 24px;
-      }
-
-      .landing-section--light {
-        background:
-          radial-gradient(circle at 14% 18%, rgba(113, 179, 234, 0.1), transparent 30%),
-          linear-gradient(145deg, #1e1e1e 0%, #15191d 100%);
-        color: #fff;
-      }
-
-      .landing-section--ink {
-        background: #15191d;
-        color: #fff;
-      }
-
-      .landing-section--blue {
-        background:
-          radial-gradient(circle at 72% 28%, rgba(91, 169, 255, 0.24), transparent 34%),
-          linear-gradient(135deg, #112d47 0%, #0b1724 72%);
-        color: #fff;
-      }
-
-      .section__inner {
-        width: min(1180px, 100%);
-        margin: 0 auto;
-      }
-
-      .section__heading {
-        display: grid;
-        grid-template-columns: minmax(0, 0.7fr) minmax(320px, 1fr);
-        align-items: end;
-        gap: clamp(28px, 7vw, 120px);
-        margin-bottom: clamp(42px, 6vw, 82px);
-      }
-
-      .section__eyebrow {
-        margin-bottom: 18px;
-        color: #55718a;
-        font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-      }
-
-      .landing-section--ink .section__eyebrow,
-      .landing-section--blue .section__eyebrow,
-      .landing-section--light .section__eyebrow { color: #82bcf5; }
-
-      .section__title {
-        max-width: 760px;
-        font-size: clamp(38px, 5vw, 72px);
-        font-weight: 500;
-        letter-spacing: -0.055em;
-        line-height: 0.98;
-      }
-
-      .section__title em {
-        font-style: italic;
-        font-weight: 800;
-      }
-
-      .section__lede {
-        max-width: 460px;
-        color: #60717b;
-        font-size: clamp(16px, 1.55vw, 21px);
-        line-height: 1.55;
-      }
-
-      .landing-section--ink .section__lede,
-      .landing-section--blue .section__lede,
-      .landing-section--light .section__lede { color: rgba(255, 255, 255, 0.65); }
-
-      .section__kicker {
-        display: inline-flex;
-        align-items: center;
-        gap: 9px;
-        margin-top: 22px;
-        color: #4f6e82;
-        font-size: 13px;
-        font-weight: 700;
-      }
-
-      .section__kicker::before {
-        width: 7px;
-        height: 7px;
-        border-radius: 50%;
-        background: #5aa8ed;
-        box-shadow: 0 0 0 5px rgba(90, 168, 237, 0.12);
-        content: "";
-      }
-
-      .landing-section--ink .section__kicker,
-      .landing-section--blue .section__kicker,
-      .landing-section--light .section__kicker { color: rgba(255, 255, 255, 0.75); }
-
-      .launcher-demo {
-        position: relative;
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) 250px;
-        min-height: 480px;
-        overflow: hidden;
-        border: 1px solid rgba(180, 219, 250, 0.2);
-        border-radius: 18px;
-        background: rgba(255, 255, 255, 0.055);
-        box-shadow: 0 30px 90px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-      }
-
-      .launcher-demo__main { padding: 18px; }
-
-      .window-chrome {
-        display: flex;
-        align-items: center;
-        gap: 7px;
-        height: 28px;
-        padding: 0 8px;
-      }
-
-      .window-chrome span {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #bbc5cb;
-      }
-
-      .window-chrome span:nth-child(1) { background: #fb8f84; }
-      .window-chrome span:nth-child(2) { background: #f3c866; }
-      .window-chrome span:nth-child(3) { background: #75c88c; }
-
-      .launcher-demo__search {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-        height: 62px;
-        margin: 8px 0 18px;
-        padding: 0 20px;
-        border: 1px solid rgba(145, 196, 239, 0.72);
-        border-radius: 12px;
-        background: rgba(16, 28, 38, 0.82);
-        color: #f3f9ff;
-        box-shadow: 0 0 0 4px rgba(87, 153, 219, 0.12);
-        font-size: 19px;
-      }
-
-      .launcher-demo__search strong { font-weight: 500; }
-      .launcher-demo__search small { margin-left: auto; color: rgba(226, 242, 255, 0.5); font-size: 12px; }
-
-      .demo-search-icon {
-        width: 17px;
-        height: 17px;
-        border: 2px solid #8fc8f5;
-        border-radius: 50%;
-      }
-
-      .demo-search-icon::after {
-        display: block;
-        width: 7px;
-        height: 2px;
-        margin: 13px 0 0 11px;
-        background: #8fc8f5;
-        content: "";
-        transform: rotate(45deg);
-        transform-origin: left center;
-      }
-
-      .demo-result {
-        display: grid;
-        grid-template-columns: 42px minmax(0, 1fr) auto;
-        align-items: center;
-        gap: 13px;
-        min-height: 67px;
-        padding: 10px 14px;
-        border-bottom: 1px solid rgba(203, 231, 255, 0.1);
-      }
-
-      .demo-result--selected {
-        border: 1px solid #5e9ed8;
-        border-radius: 11px;
-        background: rgba(72, 136, 197, 0.2);
-      }
-
-      .demo-result__icon {
-        display: grid;
-        width: 38px;
-        height: 38px;
-        place-items: center;
-        border-radius: 10px;
-        background: rgba(109, 183, 239, 0.2);
-        color: #a7d8ff;
-        font-size: 18px;
-        font-weight: 700;
-      }
-
-      .demo-result__title { color: #f0f7fc; font-size: 15px; font-weight: 700; }
-      .demo-result__meta { margin-top: 4px; color: rgba(219, 238, 252, 0.55); font-size: 12px; }
-      .demo-result__type { color: rgba(219, 238, 252, 0.56); font-size: 12px; }
-
-      .launcher-demo__context {
-        padding: 30px 22px;
-        border-left: 1px solid rgba(203, 231, 255, 0.12);
-        background: rgba(4, 15, 27, 0.28);
-      }
-
-      .context-label { color: rgba(219, 238, 252, 0.56); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
-      .context-title { margin-top: 18px; color: #f0f7fc; font-size: 24px; font-weight: 700; letter-spacing: -0.04em; }
-      .context-copy { margin-top: 10px; color: rgba(219, 238, 252, 0.62); font-size: 14px; line-height: 1.6; }
-      .context-line { height: 1px; margin: 26px 0; background: rgba(203, 231, 255, 0.15); }
-      .context-key { display: flex; justify-content: space-between; margin-top: 14px; color: rgba(219, 238, 252, 0.62); font-size: 12px; }
-      .context-key kbd { padding: 3px 7px; border: 1px solid rgba(178, 224, 255, 0.25); border-radius: 5px; background: rgba(255, 255, 255, 0.08); color: #c4e6ff; font-family: inherit; }
-
-      .module-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 14px;
-      }
-
-      .module-card {
-        min-height: 230px;
-        padding: 28px;
-        border: 1px solid rgba(180, 219, 250, 0.16);
-        border-radius: 14px;
-        background: rgba(255, 255, 255, 0.045);
-        transition: transform 0.28s ease, border-color 0.28s ease, box-shadow 0.28s ease;
-      }
-
-      .module-card:hover { border-color: #65a8de; box-shadow: 0 16px 42px rgba(0, 0, 0, 0.28); transform: translateY(-5px); }
-      .module-card__number { color: rgba(190, 222, 246, 0.54); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; }
-      .module-card__icon { margin: 30px 0 18px; color: #2876b5; font-size: 26px; }
-      .module-card h3 { color: #f0f7fc; font-size: 23px; letter-spacing: -0.04em; }
-      .module-card p { margin-top: 10px; color: rgba(219, 238, 252, 0.6); font-size: 14px; line-height: 1.55; }
-
-      .module-card--wide { grid-column: span 2; min-height: 200px; }
-
-      .island-layout {
-        display: grid;
-        grid-template-columns: minmax(0, 0.9fr) minmax(420px, 1.1fr);
-        align-items: center;
-        gap: clamp(40px, 8vw, 130px);
-      }
-
-      .island-stage {
-        position: relative;
-        min-height: 420px;
-        padding: 40px;
-        border: 1px solid rgba(152, 205, 255, 0.2);
-        border-radius: 22px;
-        background: rgba(4, 15, 27, 0.42);
-        box-shadow: inset 0 0 70px rgba(69, 145, 211, 0.09), 0 26px 80px rgba(0, 0, 0, 0.2);
-      }
-
-      .island-stage::before,
-      .island-stage::after {
-        position: absolute;
-        width: 5px;
-        height: 5px;
-        border-radius: 50%;
-        background: #7ec7ff;
-        box-shadow: 0 0 18px #7ec7ff;
-        content: "";
-      }
-
-      .island-stage::before { top: 26px; left: 28px; }
-      .island-stage::after { right: 28px; bottom: 26px; opacity: 0.6; }
-
-      .monitor {
-        position: absolute;
-        right: 42px;
-        bottom: 46px;
-        left: 42px;
-        height: 220px;
-        overflow: hidden;
-        border: 1px solid rgba(194, 229, 255, 0.36);
-        border-radius: 13px;
-        background: linear-gradient(140deg, #263e50, #0e1d2a 70%);
-        box-shadow: 0 22px 48px rgba(0, 0, 0, 0.35);
-      }
-
-      .monitor__top { height: 34px; border-bottom: 1px solid rgba(217, 239, 255, 0.15); background: rgba(255, 255, 255, 0.06); }
-      .monitor__content { display: grid; grid-template-columns: 1.3fr 0.7fr; gap: 16px; padding: 22px; }
-      .monitor__lines span { display: block; height: 9px; margin-bottom: 13px; border-radius: 99px; background: rgba(198, 231, 255, 0.2); }
-      .monitor__lines span:nth-child(2) { width: 74%; }
-      .monitor__lines span:nth-child(3) { width: 52%; }
-      .monitor__stat { height: 80px; border: 1px solid rgba(154, 214, 255, 0.2); border-radius: 10px; background: rgba(88, 168, 238, 0.12); }
-
-      .island-float {
-        position: absolute;
-        top: 66px;
-        right: 84px;
-        display: grid;
-        grid-template-columns: 36px minmax(0, 1fr) auto;
-        align-items: center;
-        gap: 12px;
-        width: min(360px, calc(100% - 80px));
-        padding: 14px 17px;
-        border: 1px solid rgba(183, 224, 255, 0.5);
-        border-radius: 18px;
-        background: rgba(9, 29, 47, 0.86);
-        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38), 0 0 0 5px rgba(105, 189, 255, 0.08);
-        backdrop-filter: blur(16px);
-      }
-
-      .island-float__icon { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; background: #58aef0; color: #06203a; font-size: 15px; font-weight: 800; }
-      .island-float__title { color: #eef8ff; font-size: 14px; font-weight: 700; }
-      .island-float__copy { margin-top: 4px; color: rgba(227, 245, 255, 0.62); font-size: 11px; }
-      .island-float__action { padding: 7px 10px; border: 1px solid rgba(178, 224, 255, 0.3); border-radius: 8px; color: #bfe6ff; font-size: 11px; }
-
-      .island-points { display: grid; gap: 24px; margin-top: 36px; }
-      .island-point { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 14px; }
-      .island-point__dot { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid rgba(142, 207, 255, 0.42); border-radius: 50%; color: #a9ddff; font-size: 12px; }
-      .island-point h3 { font-size: 17px; font-weight: 700; }
-      .island-point p { margin-top: 5px; color: rgba(255, 255, 255, 0.58); font-size: 14px; line-height: 1.55; }
-
-      .plugin-layout {
-        display: grid;
-        grid-template-columns: minmax(0, 0.8fr) minmax(420px, 1.2fr);
-        gap: clamp(32px, 8vw, 120px);
-        align-items: start;
-      }
-
-      .plugin-stack { display: grid; gap: 10px; }
-      .plugin-row { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 15px; padding: 15px 18px; border: 1px solid rgba(180, 219, 250, 0.16); border-radius: 12px; background: rgba(255, 255, 255, 0.045); }
-      .plugin-row__icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 11px; background: rgba(109, 183, 239, 0.2); color: #a7d8ff; font-size: 16px; font-weight: 800; }
-      .plugin-row h3 { color: #f0f7fc; font-size: 16px; }
-      .plugin-row p { margin-top: 4px; color: rgba(219, 238, 252, 0.56); font-size: 12px; }
-      .plugin-row__tag { padding: 5px 8px; border: 1px solid rgba(178, 224, 255, 0.35); border-radius: 7px; color: #b7e1ff; font-size: 11px; }
-
-      .plugin-code { overflow: hidden; border-radius: 17px; background: #11181d; box-shadow: 0 28px 72px rgba(20, 45, 59, 0.18); }
-      .plugin-code__bar { display: flex; gap: 7px; padding: 15px 17px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
-      .plugin-code__bar i { width: 8px; height: 8px; border-radius: 50%; background: #45545c; }
-      .plugin-code__body { padding: 28px; color: #bdcfda; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.9; }
-      .code-blue { color: #8bc8ff; }
-      .code-green { color: #a4dfb1; }
-      .code-muted { color: #647782; }
-
-      .download-section { text-align: center; }
-      .download-section .section__title { margin: 0 auto; }
-      .download-section .section__lede { margin: 24px auto 0; }
-      .download-actions { display: flex; justify-content: center; gap: 12px; margin-top: 38px; }
-      .btn--outline { border: 1px solid rgba(255, 255, 255, 0.3); background: transparent; color: #fff; }
-      .btn--outline:hover { border-color: #fff; background: rgba(255, 255, 255, 0.08); }
-
-      .landing-footer { display: flex; justify-content: space-between; gap: 20px; padding: 25px var(--page-pad); background: #0d1114; color: rgba(255, 255, 255, 0.52); font-size: 12px; }
-      .landing-footer__links { display: flex; gap: 18px; }
-      .landing-footer a:hover { color: #fff; }
-
-      .reveal { opacity: 0; transform: translateY(24px); transition: opacity 0.75s ease, transform 0.75s ease; }
+      /* Mise-inspired continuation: a restrained feature plate and origin page. */
+      .mise-page { position: relative; overflow: hidden; scroll-margin-top: 20px; }
+      .mise-features { background: #f7f4ef; color: #272522; }
+      .mise-feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(1360px, calc(100% - 40px)); margin: 0 auto; padding: 64px 0; }
+      .mise-feature { min-height: 493px; padding: 38px 40px 40px 0; border-top: 1px solid #dfd9d2; }
+      .mise-feature:nth-child(1), .mise-feature:nth-child(2) { border-top: 0; }
+      .mise-feature:nth-child(even) { padding-right: 0; padding-left: 40px; border-left: 1px solid #dfd9d2; }
+      .mise-feature__title { font-size: clamp(24px, 2vw, 30px); font-weight: 700; letter-spacing: -0.045em; line-height: 1.08; }
+      .mise-feature__copy { max-width: 430px; margin-top: 14px; color: #77716b; font-size: 14px; line-height: 1.6; }
+      .mise-demo { height: 290px; margin-top: 34px; overflow: hidden; border: 1px solid #ded9d3; border-radius: 12px; background: rgba(255,255,255,.7); box-shadow: 0 8px 26px rgba(52,45,38,.06); }
+      .demo-toolbar { display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 14px; border-bottom: 1px solid #e5e0db; }
+      .demo-toolbar__mark { color: #24211f; font-size: 17px; font-weight: 800; letter-spacing: -.07em; }
+      .demo-toolbar__search { display: flex; align-items: center; flex: 1; gap: 8px; height: 30px; margin-left: 10px; padding: 0 10px; border: 1px solid #d8d3cd; border-radius: 7px; background: #fff; color: #77716b; font-size: 11px; }
+      .demo-toolbar__key, .demo-tag { margin-left: auto; padding: 3px 6px; border: 1px solid #ded9d3; border-radius: 5px; background: #faf9f7; color: #8c857d; font-size: 9px; }
+      .search-results { padding: 8px; }
+      .search-row { display: grid; grid-template-columns: 30px 1fr auto; align-items: center; gap: 10px; min-height: 52px; padding: 6px 9px; border-radius: 8px; color: #5e5954; font-size: 11px; }
+      .search-row { width: 100%; text-align: left; }
+      .search-row + .search-row { border-top: 1px solid #eeeae6; border-radius: 0; }
+      .search-row.is-active { border: 1px solid #94bddd; background: #edf6fc; color: #1f425c; }
+      .search-row__icon { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 7px; background: #ece9e5; color: #4e5960; font-weight: 800; }
+      .search-row.is-active .search-row__icon { background: #d6e9f7; }
+      .search-row strong { display: block; color: #282522; font-size: 12px; font-weight: 600; }
+      .search-row small { display: block; margin-top: 3px; color: #9a938c; font-size: 9px; }
+      .island-demo { position: relative; display: grid; place-items: center; background: linear-gradient(155deg,#16232d,#0b1116); }
+      .island-demo::before { position: absolute; inset: 20px; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; background: linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px); background-size: 32px 32px; content: ""; }
+      .island-pill { position: relative; display: grid; grid-template-columns: 28px 1fr auto; align-items: center; gap: 10px; width: min(390px, calc(100% - 54px)); min-height: 56px; padding: 10px 13px; border: 1px solid rgba(173,217,248,.34); border-radius: 18px; background: rgba(22,41,56,.88); color: #eff8ff; box-shadow: 0 18px 45px rgba(0,0,0,.34),0 0 0 4px rgba(120,193,241,.06); backdrop-filter: blur(14px); }
+      .island-pill__icon { display: grid; width: 28px; height: 28px; place-items: center; border-radius: 8px; background: #75bce9; color: #102736; font-size: 10px; font-weight: 800; }
+      .island-pill strong { display: block; font-size: 11px; }
+      .island-pill small { display: block; margin-top: 3px; color: rgba(225,242,253,.62); font-size: 9px; }
+      .island-pill button { padding: 5px 8px; border: 1px solid rgba(196,230,252,.22); border-radius: 7px; color: #cceaff; font-size: 9px; }
+      .island-progress { position: absolute; right: 17px; bottom: 0; left: 17px; height: 2px; overflow: hidden; border-radius: 2px; background: rgba(255,255,255,.08); }
+      .island-progress span { display: block; width: 68%; height: 100%; background: #72c2f5; animation: demo-progress 7s ease-in-out infinite alternate; }
+      .island-pill.is-paused .island-progress span { animation-play-state: paused; }
+      @keyframes demo-progress { from { width: 42%; } to { width: 92%; } }
+      .workbench-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 14px; border-bottom: 1px solid #e5e0db; }
+      .workbench-head strong { font-size: 12px; }
+      .workbench-tabs { display: flex; gap: 4px; padding: 3px; border-radius: 6px; background: #eeebe7; color: #88817a; font-size: 9px; }
+      .workbench-tabs span { padding: 4px 8px; border-radius: 4px; }
+      .workbench-tabs .is-current { background: #fff; color: #292623; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+      .workbench-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; }
+      .workbench-card { min-height: 82px; padding: 11px; border: 1px solid #e2ddd8; border-radius: 8px; background: #fff; }
+      .workbench-card__top { display: flex; align-items: center; justify-content: space-between; color: #858078; font-size: 9px; }
+      .workbench-card strong { display: block; margin-top: 9px; font-size: 11px; font-weight: 600; }
+      .workbench-card small { display: block; margin-top: 5px; color: #9a938c; font-size: 9px; }
+      .calendar-demo { padding: 14px; }
+      .calendar-head { display: flex; align-items: center; justify-content: space-between; color: #79736c; font-size: 10px; }
+      .calendar-week { display: grid; grid-template-columns: repeat(5,1fr); gap: 6px; margin-top: 14px; }
+      .calendar-day { min-width: 0; }
+      .calendar-day > span { display: block; margin-bottom: 7px; color: #a19a93; font-size: 8px; text-align: center; }
+      .calendar-event { margin-bottom: 5px; padding: 6px; overflow: hidden; border-left: 2px solid #7bb8e2; border-radius: 4px; background: #edf4f8; color: #59636a; font-size: 7px; white-space: nowrap; text-overflow: ellipsis; }
+      .calendar-event:nth-child(3) { border-left-color: #b7a2d7; background: #f2eef7; }
+      .mise-origin { min-height: 1230px; background: #f1ece5; color: #272522; isolation: isolate; }
+      .mise-origin::before, .mise-origin::after { position: absolute; z-index: -1; content: ""; }
+      .mise-origin::before { right: -80px; bottom: 95px; width: 370px; height: 470px; border-radius: 26px 26px 0 0; background: linear-gradient(145deg,#c5b9a6,#8e806b); box-shadow: -20px 18px 45px rgba(62,49,35,.18); transform: rotate(7deg); }
+      .mise-origin::after { bottom: 42px; left: -60px; width: 360px; height: 130px; border: 1px solid rgba(97,80,60,.28); background: repeating-linear-gradient(90deg,transparent 0 17px,rgba(78,67,53,.22) 18px 19px); transform: rotate(11deg); }
+      .origin-wrap { width: min(1360px, calc(100% - 40px)); margin: 0 auto; padding: 108px 0 38px; }
+      .origin-letter { width: min(672px, 100%); margin: 0 auto; padding: 64px; border: 1px solid rgba(51,43,36,.06); border-radius: 28px; background: rgba(255,253,249,.95); box-shadow: 0 25px 50px -12px rgba(46,38,31,.14); backdrop-filter: blur(5px); }
+      .origin-letter__hello, .origin-letter__sign { font-size: 18px; }
+      .origin-letter h2 { margin-top: 28px; font-size: 21px; font-weight: 700; line-height: 1.3; }
+      .origin-letter__body { display: grid; gap: 20px; margin-top: 28px; color: #706a64; font-size: 17px; line-height: 1.65; }
+      .origin-letter__sign { margin-top: 30px; line-height: 1.45; }
+      .origin-letter__footer { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-top: 25px; }
+      .team-dots { display: flex; padding-left: 8px; }
+      .team-dot { display: grid; width: 42px; height: 42px; margin-left: -8px; place-items: center; border: 2px solid #fffdfa; border-radius: 50%; background: linear-gradient(145deg,#d9d4ce,#9f9890); color: #fff; font-size: 10px; font-weight: 700; }
+      .origin-link { padding-bottom: 4px; border-bottom: 1px solid #4f4a45; font-size: 14px; }
+      .origin-cta { display: grid; min-height: 360px; place-items: center; padding: 80px 20px; text-align: center; }
+      .origin-cta h2 { font-size: clamp(34px,4vw,49px); letter-spacing: -.045em; }
+      .origin-cta p { margin-top: 14px; color: #77716b; font-size: 15px; }
+      .origin-actions { display: flex; justify-content: center; gap: 12px; margin-top: 28px; }
+      .origin-button { display: inline-flex; min-width: 205px; min-height: 36px; align-items: center; justify-content: center; gap: 8px; padding: 8px 16px; border: 1px solid #d8d2cb; border-radius: 8px; background: rgba(255,255,255,.78); color: #37332f; box-shadow: 0 4px 14px rgba(46,38,31,.06); font-size: 13px; transition: transform .2s ease, box-shadow .2s ease; }
+      .origin-button:hover { box-shadow: 0 8px 22px rgba(46,38,31,.12); transform: translateY(-2px); }
+      .origin-button--primary { border-color: #242321; background: #242321; color: #fff; }
+      .landing-footer { display: flex; justify-content: space-between; gap: 20px; width: min(1200px,calc(100% - 40px)); min-height: 72px; margin: 0 auto; align-items: center; color: #89827b; font-size: 12px; }
+      .landing-footer__links { display: flex; gap: 20px; }
+      .landing-footer a:hover { color: #2b2825; }
+      .reveal { opacity: .12; transform: translateY(18px); transition: opacity .65s ease, transform .65s ease; }
       .reveal.is-visible { opacity: 1; transform: translateY(0); }
 
       @media (max-width: 900px) {
-        .section__heading,
-        .island-layout,
-        .plugin-layout { grid-template-columns: 1fr; gap: 26px; }
-        .module-grid { grid-template-columns: repeat(2, 1fr); }
-        .module-card--wide { grid-column: auto; }
-        .launcher-demo { grid-template-columns: 1fr; }
-        .launcher-demo__context { display: none; }
+        .mise-feature-grid { grid-template-columns: 1fr; }
+        .mise-feature, .mise-feature:nth-child(even) { min-height: auto; padding: 38px 0; border-top: 1px solid #dfd9d2; border-left: 0; }
+        .mise-feature:first-child { border-top: 0; }
+        .mise-demo { max-width: 680px; }
       }
 
       @media (max-width: 1360px) {
@@ -945,19 +666,16 @@
         .hero__bottom { grid-template-columns: 1fr; }
         .about-card { display: none; }
         .hero__desc { max-width: 100%; }
-        .launcher-demo__main { padding: 10px; }
-        .launcher-demo__search { font-size: 15px; }
-        .launcher-demo__search small { display: none; }
-        .demo-result { grid-template-columns: 36px minmax(0, 1fr); }
-        .demo-result__type { display: none; }
-        .module-grid { grid-template-columns: 1fr; }
-        .island-stage { min-height: 360px; padding: 18px; }
-        .monitor { right: 18px; bottom: 28px; left: 18px; }
-        .island-float { top: 48px; right: 26px; width: calc(100% - 52px); }
-        .plugin-layout { grid-template-columns: 1fr; }
-        .plugin-code__body { padding: 20px; font-size: 11px; }
-        .download-actions, .landing-footer { flex-direction: column; align-items: stretch; }
-        .download-actions .btn { justify-content: center; }
+        .mise-feature-grid { grid-template-columns: 1fr; width: calc(100% - 40px); padding: 36px 0; }
+        .mise-feature, .mise-feature:nth-child(even) { min-height: auto; padding: 34px 0; border-top: 1px solid #dfd9d2; border-left: 0; }
+        .mise-feature:first-child { border-top: 0; }
+        .mise-demo { height: 270px; }
+        .origin-wrap { padding-top: 58px; }
+        .origin-letter { padding: 36px 26px; border-radius: 20px; }
+        .origin-letter__body { font-size: 15px; }
+        .origin-letter__footer, .origin-actions, .landing-footer { flex-direction: column; align-items: stretch; }
+        .origin-link { align-self: flex-start; }
+        .landing-footer { padding: 22px 0; }
         .landing-footer__links { justify-content: space-between; }
       }
 
@@ -1011,8 +729,8 @@
         </a>
 
         <nav class="nav-pill" aria-label="主导航">
-          <a class="nav-pill__link" href="#search">搜索</a>
-          <a class="nav-pill__link" href="#modules">模块 <span class="nav-pill__badge">6</span></a>
+          <a class="nav-pill__link" href="#search">能力</a>
+          <a class="nav-pill__link" href="#modules">搜索</a>
           <a class="nav-pill__link" href="#island">灵动岛</a>
           <a class="nav-pill__link" href="#plugins">插件</a>
         </nav>
@@ -1031,11 +749,8 @@
 
       <nav class="side-nav" aria-label="页面导航">
         <a class="side-nav__link side-nav__link--active" href="#home" data-section="home"><span class="side-nav__link-text">首页</span><span class="side-nav__line"></span></a>
-        <a class="side-nav__link" href="#search" data-section="search"><span class="side-nav__link-text">全局搜索</span></a>
-        <a class="side-nav__link" href="#modules" data-section="modules"><span class="side-nav__link-text">效率模块</span></a>
-        <a class="side-nav__link" href="#island" data-section="island"><span class="side-nav__link-text">外接灵动岛</span></a>
-        <a class="side-nav__link" href="#plugins" data-section="plugins"><span class="side-nav__link-text">插件生态</span></a>
-        <a class="side-nav__link" href="#download" data-section="download"><span class="side-nav__link-text">立即下载</span></a>
+        <a class="side-nav__link" href="#search" data-section="search"><span class="side-nav__link-text">产品能力</span></a>
+        <a class="side-nav__link" href="#download" data-section="download"><span class="side-nav__link-text">关于 Qx</span></a>
       </nav>
 
       <div class="hero__blur-bar"></div>
@@ -1074,142 +789,85 @@
       <span class="visually-hidden">Qx v0.5.27，支持 macOS 与 Windows。</span>
     </main>
 
-    <section class="landing-section landing-section--light" id="search">
-      <div class="section__inner">
-        <div class="section__heading reveal">
-          <div>
-            <p class="section__eyebrow">02 — Find the thread</p>
-            <h2 class="section__title">先找到，<br /><em>再开始。</em></h2>
+    <section class="mise-page mise-features" id="search" aria-label="Qx 核心能力">
+      <div class="mise-feature-grid">
+        <article class="mise-feature reveal" id="modules">
+          <h2 class="mise-feature__title">找到信号，不等结果。</h2>
+          <p class="mise-feature__copy">应用、文件、剪贴板、模块和插件并发召回。输入先绘制，旧请求自动失效，键盘选择始终跟得上。</p>
+          <div class="mise-demo" aria-label="Qx 搜索结果示意">
+            <div class="demo-toolbar"><strong class="demo-toolbar__mark">Qx</strong><div class="demo-toolbar__search"><span>⌕</span><span>设置</span><span class="demo-toolbar__key">⌥ Space</span></div></div>
+            <div class="search-results">
+              <button class="search-row is-active" type="button"><span class="search-row__icon">⚙</span><span><strong>Qx 设置</strong><small>外观、快捷键、扩展与搜索</small></span><span class="demo-tag">内置</span></button>
+              <button class="search-row" type="button"><span class="search-row__icon">▣</span><span><strong>设置界面开发 Skill</strong><small>~/Library/CloudDocs/Skill/</small></span><span class="demo-tag">文件</span></button>
+              <button class="search-row" type="button"><span class="search-row__icon">⌘</span><span><strong>Appearance Settings</strong><small>最近复制 · 12 分钟前</small></span><span class="demo-tag">剪贴板</span></button>
+              <button class="search-row" type="button"><span class="search-row__icon">✦</span><span><strong>打开 QxAI</strong><small>继续最近的 Agent 任务</small></span><span class="demo-tag">模块</span></button>
+            </div>
           </div>
-          <div>
-            <p class="section__lede">Qx 把应用、文件、剪贴板、模块和插件放进同一个可预期的搜索入口。输入时结果异步更新，选中项会跟随滚动，手离开鼠标也不会丢失节奏。</p>
-            <span class="section__kicker">模糊匹配 · 异步召回 · 键盘优先</span>
-          </div>
-        </div>
+        </article>
 
-        <div class="launcher-demo reveal" aria-label="Qx 主搜索界面示意">
-          <div class="launcher-demo__main">
-            <div class="window-chrome" aria-hidden="true"><span></span><span></span><span></span></div>
-            <div class="launcher-demo__search">
-              <span class="demo-search-icon" aria-hidden="true"></span>
-              <strong>skill</strong>
-              <small>⌥ Space</small>
-            </div>
-            <div class="demo-result demo-result--selected">
-              <span class="demo-result__icon">▣</span>
-              <div><div class="demo-result__title">设置界面开发 Skill</div><div class="demo-result__meta">~/Library/CloudDocs/Skill/设置界面开发 skill/</div></div>
-              <span class="demo-result__type">Skill</span>
-            </div>
-            <div class="demo-result">
-              <span class="demo-result__icon">▧</span>
-              <div><div class="demo-result__title">plugin-creator Skill</div><div class="demo-result__meta">~/.codex/skills/.system/plugin-creator/</div></div>
-              <span class="demo-result__type">Folder</span>
-            </div>
-            <div class="demo-result">
-              <span class="demo-result__icon">⌘</span>
-              <div><div class="demo-result__title">skill-creator</div><div class="demo-result__meta">~/.codex/skills/.system/skill-creator/</div></div>
-              <span class="demo-result__type">Skill</span>
-            </div>
-            <div class="demo-result">
-              <span class="demo-result__icon">▤</span>
-              <div><div class="demo-result__title">设置界面开发 Skill · README</div><div class="demo-result__meta">最近打开 · Markdown</div></div>
-              <span class="demo-result__type">Clipboard</span>
+        <article class="mise-feature reveal" id="island">
+          <h2 class="mise-feature__title">进度，留在眼前。</h2>
+          <p class="mise-feature__copy">下载、录制、转换和插件任务进入同一灵动岛。真实进度会抢占，结束后再回到安静的系统状态。</p>
+          <div class="mise-demo island-demo" aria-label="Qx 灵动岛任务示意">
+            <div class="island-pill"><span class="island-pill__icon">Qx</span><div><strong>正在导出录屏</strong><small>MP4 → GIF · 68% · 剩余约 12 秒</small></div><button type="button" aria-label="暂停演示任务">暂停</button><span class="island-progress"><span></span></span></div>
+          </div>
+        </article>
+
+        <article class="mise-feature reveal" id="plugins">
+          <h2 class="mise-feature__title">模块，共用一套动作。</h2>
+          <p class="mise-feature__copy">内置功能和扩展都遵循 QxShell：同一个搜索栏、选择模型、Action 菜单和逐层 Esc 返回。</p>
+          <div class="mise-demo" aria-label="Qx 插件工作台示意">
+            <div class="workbench-head"><strong>Extensions</strong><div class="workbench-tabs"><span class="is-current">已安装</span><span>浏览</span></div><span class="demo-tag">⌘ K 操作</span></div>
+            <div class="workbench-list">
+              <div class="workbench-card"><div class="workbench-card__top"><span>✦ 内置</span><span>启用</span></div><strong>QxAI</strong><small>流式聊天与 Agent 任务</small></div>
+              <div class="workbench-card"><div class="workbench-card__top"><span>▣ 内置</span><span>启用</span></div><strong>Clipboard</strong><small>文本、图片与文件历史</small></div>
+              <div class="workbench-card"><div class="workbench-card__top"><span>◌ 插件</span><span>v1.1</span></div><strong>Bing Wallpaper</strong><small>声明式 Gallery 工作台</small></div>
+              <div class="workbench-card"><div class="workbench-card__top"><span>＋ SDK</span><span>开放</span></div><strong>你的下一个插件</strong><small>从一个 manifest command 开始</small></div>
             </div>
           </div>
-          <aside class="launcher-demo__context">
-            <div class="context-label">Selected item</div>
-            <div class="context-title">设置界面开发 Skill</div>
-            <p class="context-copy">Skill 名称、路径片段和内容关键词都能参与匹配。按 Enter 打开，⌘K 查看更多操作。</p>
-            <div class="context-line"></div>
-            <div class="context-key"><span>打开</span><kbd>↵</kbd></div>
-            <div class="context-key"><span>操作菜单</span><kbd>⌘K</kbd></div>
-            <div class="context-key"><span>隐藏 Qx</span><kbd>Esc</kbd></div>
-          </aside>
-        </div>
+        </article>
+
+        <article class="mise-feature reveal">
+          <h2 class="mise-feature__title">日期，自然落位。</h2>
+          <p class="mise-feature__copy">RSS 阅读、截图历史、后台任务和插件会话都保留自己的上下文；返回 Qx 时，你仍在离开的地方。</p>
+          <div class="mise-demo calendar-demo" aria-label="Qx 一周任务示意">
+            <div class="calendar-head"><strong>本周工作</strong><span>‹　今天　›</span></div>
+            <div class="calendar-week">
+              <div class="calendar-day"><span>周一 · 6</span><div class="calendar-event">整理剪贴板</div><div class="calendar-event">阅读 RSS</div></div>
+              <div class="calendar-day"><span>周二 · 7</span><div class="calendar-event">插件复核</div><div class="calendar-event">录制演示</div></div>
+              <div class="calendar-day"><span>周三 · 8</span><div class="calendar-event">QxAI 会话</div><div class="calendar-event">文件索引</div></div>
+              <div class="calendar-day"><span>周四 · 9</span><div class="calendar-event">发布检查</div><div class="calendar-event">Windows 构建</div></div>
+              <div class="calendar-day"><span>周五 · 10</span><div class="calendar-event">v0.5.27</div><div class="calendar-event">更新文档</div></div>
+            </div>
+          </div>
+        </article>
       </div>
     </section>
 
-    <section class="landing-section landing-section--light" id="modules">
-      <div class="section__inner">
-        <div class="section__heading reveal">
-          <div>
-            <p class="section__eyebrow">03 — One place, many modes</p>
-            <h2 class="section__title">工作流入口，<br /><em>集中在一处。</em></h2>
+    <section class="mise-page mise-origin" id="download" aria-label="Qx 的来由与下载">
+      <div class="origin-wrap">
+        <article class="origin-letter reveal">
+          <p class="origin-letter__hello">致每一个不想被工具打断的人：</p>
+          <h2>我们做 Qx，是因为桌面上的入口从来没有真正安静过。</h2>
+          <div class="origin-letter__body">
+            <p>应用、文件、剪贴板、AI 和自动化散落在不同窗口里。我们想要的不是再加一个面板，而是一个按下快捷键就能抵达的可靠入口。</p>
+            <p>Qx 从搜索开始，逐渐长出剪贴板、RSS、截图录制、AI Agent、插件工作台和灵动岛。每一部分都来自真实桌面工作：先让高频动作更短，再让后台任务不打断前台。</p>
+            <p>它仍在每天被使用、被修正，也始终保持开源。把 Qx 交给更多人，只是希望复杂的电脑工作可以重新变得从容。</p>
           </div>
-          <p class="section__lede">从一条快捷键进入，再按当前任务切换模块。Qx 保留每个模块自己的上下文，同时让搜索、动作和返回行为保持一致。</p>
-        </div>
-        <div class="module-grid">
-          <article class="module-card reveal"><div class="module-card__number">01</div><div class="module-card__icon">▣</div><h3>剪贴板</h3><p>文字、图片和文件历史统一保留，置顶、常用、链接与范围筛选随手可用。</p></article>
-          <article class="module-card reveal"><div class="module-card__number">02</div><div class="module-card__icon">◌</div><h3>文件搜索</h3><p>接入 macOS Spotlight / Cardinal 与 Windows 索引，模糊召回真实路径，让文件始终可达。</p></article>
-          <article class="module-card reveal"><div class="module-card__number">03</div><div class="module-card__icon">✦</div><h3>QxAI</h3><p>流式对话、Agent 任务和 BYOK 配置共享同一套窗口与快捷键。</p></article>
-          <article class="module-card reveal"><div class="module-card__number">04</div><div class="module-card__icon">◔</div><h3>RSS Reader</h3><p>订阅、文件夹、OPML 与文章阅读都可以从主搜直达，阅读位置不会被刷新打断。</p></article>
-          <article class="module-card module-card--wide reveal"><div class="module-card__number">05 — 06</div><div class="module-card__icon">⌁</div><h3>截图、录制与文本工具</h3><p>截取区域、录制 MP4/MOV、转换 GIF、编辑 Markdown / JSON。重任务在后台运行，进度会回到灵动岛。</p></article>
-        </div>
+          <p class="origin-letter__sign">保持专注，<br />Qx 开发团队</p>
+          <footer class="origin-letter__footer">
+            <div class="team-dots" aria-label="Qx 能力"><span class="team-dot">⌕</span><span class="team-dot">⌘</span><span class="team-dot">AI</span><span class="team-dot">RSS</span><span class="team-dot">▣</span><span class="team-dot">＋</span></div>
+            <a class="origin-link" href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">阅读 Qx 源代码 ↗</a>
+          </footer>
+        </article>
       </div>
-    </section>
 
-    <section class="landing-section landing-section--blue" id="island">
-      <div class="section__inner island-layout">
-        <div class="reveal">
-          <p class="section__eyebrow">04 — Keep the signal visible</p>
-          <h2 class="section__title">把进度放在<br /><em>你看得见的地方。</em></h2>
-          <p class="section__lede">外接显示器也能成为 Qx 的第二块工作面。任务进度、系统数据和简单交互以轻量悬浮岛呈现，不抢主窗口，也不打断当前应用。</p>
-          <div class="island-points">
-            <div class="island-point"><span class="island-point__dot">01</span><div><h3>外接屏独立显示</h3><p>主窗口隐藏时仍可保留数据，显示器位置与置顶策略由设置统一管理。</p></div></div>
-            <div class="island-point"><span class="island-point__dot">02</span><div><h3>插件可贡献状态</h3><p>插件通过受限 host API 更新文本、真实进度和一个明确动作。</p></div></div>
-            <div class="island-point"><span class="island-point__dot">03</span><div><h3>信息少，但能行动</h3><p>只保留当前需要知道的信号，点击按钮即可暂停、打开或继续任务。</p></div></div>
-          </div>
-        </div>
-        <div class="island-stage reveal" aria-label="外接灵动岛示意">
-          <div class="island-float"><span class="island-float__icon">Qx</span><div><div class="island-float__title">Screen Capture</div><div class="island-float__copy">正在导出 GIF · 68%</div></div><span class="island-float__action">暂停</span></div>
-          <div class="monitor"><div class="monitor__top"></div><div class="monitor__content"><div class="monitor__lines"><span></span><span></span><span></span></div><div class="monitor__stat"></div></div></div>
-        </div>
+      <div class="origin-cta reveal">
+        <div><h2>让桌面重新井然有序。</h2><p>设置一次快捷键，之后每次都更快一步。</p><div class="origin-actions"><a class="origin-button origin-button--primary" href="https://github.com/mcxen/qx/releases/latest" target="_blank" rel="noreferrer">↓ 下载最新版本</a><a class="origin-button" href="https://github.com/mcxen/qx/tree/main/public/doc" target="_blank" rel="noreferrer">阅读插件文档 ↗</a></div></div>
       </div>
-    </section>
 
-    <section class="landing-section landing-section--light" id="plugins">
-      <div class="section__inner">
-        <div class="section__heading reveal">
-          <div>
-            <p class="section__eyebrow">05 — Built to be extended</p>
-            <h2 class="section__title">你的快捷键，<br /><em>你的工具。</em></h2>
-          </div>
-          <div>
-            <p class="section__lede">插件共享 Qx 的搜索、权限、设置、动作菜单和灵动岛能力，也可以从 Raycast 扩展转换而来。</p>
-            <span class="section__kicker">沙盒运行 · 权限透明 · 市场可安装</span>
-          </div>
-        </div>
-        <div class="plugin-layout">
-          <div class="plugin-stack">
-            <div class="plugin-row reveal"><span class="plugin-row__icon">⌘</span><div><h3>Clipboard History</h3><p>置顶、常用、链接与文件语义</p></div><span class="plugin-row__tag">内置</span></div>
-            <div class="plugin-row reveal"><span class="plugin-row__icon">✦</span><div><h3>QxAI</h3><p>聊天与 Agent 任务</p></div><span class="plugin-row__tag">内置</span></div>
-            <div class="plugin-row reveal"><span class="plugin-row__icon">↗</span><div><h3>Raycast Converter</h3><p>把已有扩展带进 Qx 的端口</p></div><span class="plugin-row__tag">兼容</span></div>
-            <div class="plugin-row reveal"><span class="plugin-row__icon">+</span><div><h3>你的下一个插件</h3><p>manifest + index.js，从一个命令开始</p></div><span class="plugin-row__tag">开放</span></div>
-          </div>
-          <div class="plugin-code reveal" aria-label="插件 API 代码示意">
-            <div class="plugin-code__bar"><i></i><i></i><i></i></div>
-            <pre class="plugin-code__body"><span class="code-muted">// show useful signal, not another window</span><br /><span class="code-blue">await</span> qx.island.show({<br />  title: <span class="code-green">"Exporting GIF"</span>,<br />  progress: <span class="code-green">0.68</span>,<br />  action: <span class="code-green">"pause-export"</span><br />});</pre>
-          </div>
-        </div>
-      </div>
+      <footer class="landing-footer"><span>© 2026 Qx. 一个安静、键盘优先的桌面入口。</span><nav class="landing-footer__links" aria-label="页脚链接"><a href="#home">返回顶部</a><a href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">GitHub</a><a href="https://github.com/mcxen/qx/releases/latest" target="_blank" rel="noreferrer">下载</a></nav></footer>
     </section>
-
-    <section class="landing-section landing-section--ink download-section" id="download">
-      <div class="section__inner reveal">
-        <p class="section__eyebrow">06 — Start with one shortcut</p>
-        <h2 class="section__title">桌面很复杂，<br /><em>入口可以很简单。</em></h2>
-        <p class="section__lede">Qx 支持 macOS 与 Windows。下载后按下 ⌥ Space（Windows 使用你的快捷键设置），从今天最常用的动作开始。</p>
-        <div class="download-actions">
-          <a class="btn" href="https://github.com/mcxen/qx/releases/latest" target="_blank" rel="noreferrer">下载最新版本 <svg class="btn__arrow" viewBox="0 0 8 8" fill="none" aria-hidden="true"><path d="M1 7L7 1M7 1H2M7 1V6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" /></svg></a>
-          <a class="btn btn--outline" href="https://github.com/mcxen/qx/tree/main/public/doc" target="_blank" rel="noreferrer">阅读插件文档</a>
-        </div>
-      </div>
-    </section>
-
-    <footer class="landing-footer">
-      <span>Qx — a quiet, keyboard-first desktop entrance.</span>
-      <nav class="landing-footer__links" aria-label="页脚链接"><a href="#home">返回顶部</a><a href="https://github.com/mcxen/qx" target="_blank" rel="noreferrer">源代码</a><a href="mailto:hello@qx.app">联系我们</a></nav>
-    </footer>
 
     <script>
       (() => {
@@ -1262,6 +920,21 @@
 
         const scrollToSearch = () => document.querySelector("#search")?.scrollIntoView({ behavior: "smooth" });
         scrollDown?.addEventListener("click", scrollToSearch);
+
+        document.querySelectorAll(".search-row").forEach((row) => {
+          row.addEventListener("click", () => {
+            document.querySelectorAll(".search-row").forEach((item) => item.classList.toggle("is-active", item === row));
+          });
+        });
+
+        const islandPause = document.querySelector(".island-pill button");
+        islandPause?.addEventListener("click", () => {
+          const island = islandPause.closest(".island-pill");
+          const paused = island?.classList.toggle("is-paused") ?? false;
+          islandPause.textContent = paused ? "继续" : "暂停";
+          islandPause.setAttribute("aria-label", paused ? "继续演示任务" : "暂停演示任务");
+        });
+
         video?.addEventListener("timeupdate", rewindVideo);
         video?.addEventListener("canplaythrough", startAnimations, { once: true });
         video?.play().catch(() => {});
@@ -1296,7 +969,7 @@
             else link.removeAttribute("aria-current");
           });
         }, { rootMargin: "-18% 0px -58% 0px", threshold: [0.08, 0.24, 0.5] });
-        document.querySelectorAll(".landing-section, #home").forEach((section) => sectionObserver.observe(section));
+        document.querySelectorAll(".mise-page, #home").forEach((section) => sectionObserver.observe(section));
 
         window.addEventListener("pagehide", () => {
           window.clearTimeout(fallback);

@@ -294,6 +294,28 @@ export default function AppearanceSettings({
           />
         </Row>
         <Row
+          title={t("appearance.externalIsland.rotation", "Module rotation")}
+          description={t(
+            "appearance.externalIsland.rotation.desc",
+            "Rotate normal module and plugin status by time. Tasks, errors, and important events take over immediately.",
+          )}
+        >
+          <SegmentedControl
+            value={String(a.island_float_rotate_secs)}
+            onChange={(value) =>
+              patch("appearance", {
+                ...a,
+                island_float_rotate_secs: Number.parseInt(value, 10),
+              })
+            }
+            options={[
+              { value: "5", label: "5s" },
+              { value: "8", label: "8s" },
+              { value: "15", label: "15s" },
+            ]}
+          />
+        </Row>
+        <Row
           title={t("appearance.externalIsland.whenHidden", "Show while Qx is hidden")}
           description={t(
             "appearance.externalIsland.whenHidden.desc",

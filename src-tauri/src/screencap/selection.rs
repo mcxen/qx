@@ -108,7 +108,7 @@ fn show_region_picker_internal(
     mode: CaptureMode,
     selected_monitor_id: Option<u32>,
 ) -> Result<(), String> {
-    let capture_monitor = match selected_monitor_id {
+    let selected_capture = match selected_monitor_id {
         Some(monitor_id) => capture_monitor(Some(monitor_id))?,
         None => {
             let monitor = cursor_monitor(app)
@@ -117,7 +117,7 @@ fn show_region_picker_internal(
             capture_monitor_for_tauri(app, &monitor)?
         }
     };
-    let monitor = tauri_monitor_for_capture(app, &capture_monitor)?;
+    let monitor = tauri_monitor_for_capture(app, &selected_capture)?;
     let position = monitor.position();
     let size = monitor.size();
     let scale = monitor.scale_factor().max(1.0);
@@ -126,14 +126,14 @@ fn show_region_picker_internal(
     let logical_h = size.height as f64 / scale;
     let logical_x = position.x as f64 / scale;
     let logical_y = position.y as f64 / scale;
-    let monitor_id = capture_monitor
+    let monitor_id = selected_capture
         .id()
         .map_err(|error| format!("display id: {error}"))?;
-    let monitor_name = capture_monitor
+    let monitor_name = selected_capture
         .friendly_name()
-        .or_else(|_| capture_monitor.name())
+        .or_else(|_| selected_capture.name())
         .unwrap_or_else(|_| "Display".to_string());
-    let capture_width = capture_monitor
+    let capture_width = selected_capture
         .width()
         .map_err(|error| format!("display width: {error}"))?;
     let coordinate_scale = capture_coordinate_scale(capture_width, logical_w);
@@ -155,6 +155,11 @@ fn show_region_picker_internal(
     let size_w = size.width;
     let size_h = size.height;
     crate::main_thread::run_on_main(&app_for_ui.clone(), move || {
+        // Passive shades are intentionally click-through and never receive
+        // focus. The active picker is shown after them so its selection frame
+        // remains the topmost interactive surface on the current display.
+        picker_window::show_shades(&app_for_ui, monitor_id)?;
+
         if app_for_ui.get_webview_window(PICKER_LABEL).is_none() {
             WebviewWindowBuilder::new(
                 &app_for_ui,
@@ -204,8 +209,15 @@ fn show_region_picker_internal(
 
 fn start_pointer_display_tracker(app: AppHandle, generation: u64) {
     tauri::async_runtime::spawn(async move {
+        let mut ticker = tokio::time::interval(std::time::Duration::from_millis(40));
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
-            tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+            // `interval` ticks immediately on the first iteration, so the
+            // picker is placed on the current pointer display as soon as the
+            // shortcut/entry action opens it. Subsequent checks stay at 25Hz
+            // for responsive cross-display handoff without polling native
+            // monitor geometry more often than needed.
+            ticker.tick().await;
             if !picker_session_is_current(generation) {
                 break;
             }
