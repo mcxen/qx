@@ -888,6 +888,16 @@ export default function ClipboardPanel() {
           : `${filterLabel(filter)} · ${itemCountLabel}`,
       progress: mediaProgress ? mediaProgress.progress : undefined,
       tone: hasDraftChanges || mediaProgress?.error ? "danger" : status ? "success" : "neutral",
+      actionLabel: hasDraftChanges
+        ? t("clipboard.edit.save", "Save")
+        : editingId || !selectedItem
+          ? undefined
+          : t("clipboard.paste", "Paste"),
+      onAction: hasDraftChanges
+        ? () => void saveTextEdit()
+        : editingId || !selectedItem
+          ? undefined
+          : () => void pasteItem(selectedItem),
     },
     t,
   });
@@ -913,18 +923,6 @@ export default function ClipboardPanel() {
       }}
       className="qx-clipboard-shell"
       island={shell.island}
-      primaryAction={hasDraftChanges ? {
-        label: t("clipboard.edit.save", "Save"),
-        kbd: "CmdOrCtrl+S",
-        tone: "primary",
-        onClick: () => void saveTextEdit(),
-      } : {
-        label: t("clipboard.paste", "Paste"),
-        kbd: "Enter",
-        disabled: !selectedItem,
-        tone: "primary",
-        onClick: () => void pasteItem(selectedItem),
-      }}
       secondaryAction={shell.secondaryAction}
       actionTitle={t("clipboard.actions", "Clipboard Actions")}
       actions={clipboardActions}

@@ -38,6 +38,8 @@
 底栏 Action 入口属于宿主 chrome，不属于模块文案：所有模块固定显示“操作”
 （英文 `Action`）以及平台化的 `Cmd/Ctrl+K` 提示。窄窗口可以省略 Island
 次要信息，但不得隐藏 Action 快捷键提示或让它参与文本截断。
+剪贴板的当前主动作（粘贴 / 保存）使用 Island trailing action；次级动作仍由
+统一 Action 菜单承载。
 
 ---
 
