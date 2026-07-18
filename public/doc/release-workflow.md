@@ -186,6 +186,16 @@ The release assets must include both:
 - `qx_vX.Y.Z_aarch64-apple-darwin.app.zip`
 - `latest.json`
 
+### Windows in-place upgrades
+
+The bundled Everything engine is a long-running Qx-specific instance and can
+hold `resources/search/everything.exe` open while an installer upgrades the app.
+`src-tauri/windows/hooks.nsh` must stop only the `Qx` instance and remove its
+indexing service in `NSIS_HOOK_PREINSTALL` before NSIS copies files. The
+post-install hook reinstalls the service. Keep the same cleanup in
+`NSIS_HOOK_PREUNINSTALL`; never use a broad `taskkill` that would terminate a
+user's unrelated Everything installation.
+
 `latest.json` is the app updater manifest. It must point at the ARM64 app zip and
 include the matching SHA256 and size. The release workflow generates it before
 uploading `release-assets/*`. The app checks it through the API-free stable URL
