@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -374,14 +374,17 @@ export default function ClipboardPanel() {
   }, [filtered]);
 
   useEffect(() => {
-    const activePaths = new Set(clipboardHistory.map((entry) => entry.image_path).filter(Boolean));
+    const activePaths = new Set([
+      ...clipboardHistory.map((entry) => entry.image_path).filter(Boolean),
+      fileMetadata?.preview_path,
+    ].filter(Boolean));
     for (const [path, url] of IMAGE_CACHE) {
       if (!activePaths.has(path)) {
         URL.revokeObjectURL(url);
         IMAGE_CACHE.delete(path);
       }
     }
-  }, [clipboardHistory]);
+  }, [clipboardHistory, fileMetadata?.preview_path]);
 
   const selectedItem = filtered[selected];
   const isEditing = Boolean(selectedItem && editingId === selectedItem.id);
@@ -433,13 +436,15 @@ export default function ClipboardPanel() {
     const loadFilePreview = (attempt: number) => {
       // 2) Preview thumbnail asynchronously (image / video frame / PDF page).
       void invoke<string | null>("clipboard_file_preview", { path })
-        .then((previewPath) => {
+        .then(async (previewPath) => {
           if (cancelled) return;
           if (!previewPath) {
             setFilePreviewLoading(false);
             return;
           }
-          setFilePreviewUrl(convertFileSrc(previewPath));
+          const previewUrl = await loadImageAsDataUrl(previewPath);
+          if (cancelled) return;
+          setFilePreviewUrl(previewUrl);
           setFileMetadata((current) =>
             current ? { ...current, preview_path: previewPath } : current,
           );
@@ -922,15 +927,7 @@ export default function ClipboardPanel() {
               onAction: () => void saveTextEditAsNew(),
             },
           ]
-        : editingId || !selectedItem
-          ? undefined
-          : [
-              {
-                id: "paste",
-                label: pasteActionLabel,
-                onAction: () => void pasteItem(selectedItem),
-              },
-            ],
+        : undefined,
       effect: islandEffectNonce > 0
         ? { kind: "orbit", nonce: islandEffectNonce }
         : undefined,
@@ -959,6 +956,11 @@ export default function ClipboardPanel() {
       }}
       className="qx-clipboard-shell"
       island={shell.island}
+      primaryAction={!editingId && selectedItem ? {
+        label: pasteActionLabel,
+        kbd: "Enter",
+        onClick: () => void pasteItem(selectedItem, { focusAtCursor: true }),
+      } : undefined}
       secondaryAction={shell.secondaryAction}
       actionTitle={t("clipboard.actions", "Clipboard Actions")}
       actions={clipboardActions}
