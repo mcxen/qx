@@ -11,7 +11,7 @@ import {
 } from "./store";
 import { useStore } from "../../store";
 import { useSettingsStore } from "../settings/store";
-import { LinkButton, SegmentedControl } from "../../components/ui";
+import { Button, LinkButton, SegmentedControl } from "../../components/ui";
 import GifPreview from "./GifPreview";
 import CaptureHistory from "./CaptureHistory";
 import CaptureToast from "./CaptureToast";
@@ -37,6 +37,10 @@ function formatTime(ms: number): string {
 function isScreenshotPath(path: string | null | undefined): boolean {
   if (!path) return false;
   return path.toLowerCase().endsWith(".png");
+}
+
+function isScreenRecordingPermissionError(value: string | null): boolean {
+  return Boolean(value && /screen recording permission required/i.test(value));
 }
 
 export default function ScreenRecorder() {
@@ -210,6 +214,16 @@ export default function ScreenRecorder() {
   };
 
   const displayError = localError || error;
+  const needsScreenRecordingPermission = isScreenRecordingPermissionError(displayError);
+
+  const openScreenRecordingPermission = useCallback(async () => {
+    if (!isTauriRuntime()) return;
+    try {
+      await invoke("qx_permissions_open_settings", { id: "screen-recording" });
+    } catch (permissionError) {
+      setLocalError(String(permissionError));
+    }
+  }, []);
 
   const openCaptureSettings = useCallback(() => {
     sessionStorage.setItem("qx.settings.pendingTab", "plugins");
@@ -581,9 +595,26 @@ export default function ScreenRecorder() {
               {displayError && (
                 <div
                   className="qx-panel-card"
-                  style={{ padding: "8px 10px", fontSize: 12, color: "var(--qx-danger)", whiteSpace: "pre-wrap" }}
+                  style={{ padding: "10px 12px", fontSize: 12, color: "var(--qx-danger)", whiteSpace: "pre-wrap" }}
                 >
-                  {displayError}
+                  {needsScreenRecordingPermission ? (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <span style={{ color: "var(--qx-text-secondary)" }}>
+                        {t(
+                          "screencap.permission.restartHint",
+                          "Enable Screen Recording for Qx, then fully quit and reopen the app.",
+                        )}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void openScreenRecordingPermission()}
+                      >
+                        {t("screencap.permission.openSettings", "Open Screen Recording Settings")}
+                      </Button>
+                    </div>
+                  ) : displayError}
                 </div>
               )}
 

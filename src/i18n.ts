@@ -821,6 +821,8 @@ const zh: Record<string, string> = {
   "common.dismiss": "关闭",
   "screencap.tips": "提示",
   "screencap.tip.permission": "macOS：需要授予屏幕录制权限；开启后请重新启动 Qx。",
+  "screencap.permission.restartHint": "为 Qx 启用屏幕录制权限，然后完全退出并重新打开应用。",
+  "screencap.permission.openSettings": "打开屏幕录制设置",
   "screencap.tip.directVideo": "录制会直接写入 MP4 或 MOV，不生成临时 PNG 帧。",
   "screencap.tip.protected": "悬浮控制台和 Qx 录屏面板不会进入录屏画面。",
   "screencap.tip.gif": "打开已完成的视频，仅在需要时选择转换为 GIF。",
