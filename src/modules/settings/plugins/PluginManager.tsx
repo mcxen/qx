@@ -758,6 +758,9 @@ function PluginDetail({
           )}
         </div>
         <div className="qx-plugin-detail-header-actions">
+          <span className="qx-plugin-detail-toggle-label">
+            {t("modules.enabled", "Enable module")}
+          </span>
           <Toggle
             value={plugin.enabled}
             onChange={onToggle}

@@ -853,8 +853,15 @@ img.qx-plugin-detail-icon {
 .qx-plugin-detail-header-actions {
   display: flex;
   align-items: center;
+  gap: 8px;
   margin-left: auto;
   flex: 0 0 auto;
+}
+
+.qx-plugin-detail-toggle-label {
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .qx-plugin-detail-heading {
