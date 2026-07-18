@@ -1,27 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { LucideIcon } from "lucide-react";
 import {
   ArrowUpCircle,
-  Bot,
-  Clipboard,
-  CloudSun,
   Command,
   Download,
   ExternalLink,
-  FileText,
-  Keyboard,
-  MessageCircle,
-  MonitorPlay,
   PackageCheck,
   PackagePlus,
   Puzzle,
   RefreshCw,
   RotateCcw,
-  Rss,
   Search,
-  SquareTerminal,
   Trash2,
 } from "lucide-react";
 import { usePluginRegistry } from "../../../plugin/registry";
@@ -79,7 +69,7 @@ import type {
   PluginPreference,
 } from "../../../plugin/types";
 import InstalledModuleCard from "./InstalledModuleCard";
-import { isPluginUpdateAvailable } from "./helpers";
+import { BUILTIN_PLUGIN_ICONS, isPluginUpdateAvailable } from "./helpers";
 import BetaBadge from "../../../components/BetaBadge";
 import PluginBackgroundBadge from "../../../components/PluginBackgroundBadge";
 import {
@@ -104,17 +94,6 @@ type StatusTone = "success" | "danger" | "neutral";
 
 const isBuiltin = (p: InstalledPlugin) => p.id.startsWith("builtin:");
 const normalizeSearch = (value: string) => value.trim().toLowerCase();
-const BUILTIN_PLUGIN_ICONS: Record<string, LucideIcon> = {
-  "builtin:clipboard": Clipboard,
-  "builtin:qx-ai": Bot,
-  "builtin:screencap": MonitorPlay,
-  "builtin:rss": Rss,
-  "builtin:v2ex": MessageCircle,
-  "builtin:macros": Keyboard,
-  "builtin:documents": FileText,
-  "builtin:weather": CloudSun,
-  "builtin:qx-tty": SquareTerminal,
-};
 const BUILTIN_PLUGIN_SHORTCUTS: Record<string, string[]> = {
   "builtin:clipboard": ["clipboard"],
   "builtin:rss": ["rss"],

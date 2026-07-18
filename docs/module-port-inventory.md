@@ -11,6 +11,10 @@
 - 插件作者入口：[`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md)
 - 市场仓库 Agent 地图：`qx-plugins/AGENTS.md`（与本表对照）
 
+内置模块图标由 `src/modules/builtinIcons.ts` 统一注册，Launcher 与 Settings
+插件界面共同消费。图标必须按 `builtin:<module-id>` 精确解析；命令标题与路径
+只是可见内容，不能用于猜测模块图标。
+
 ## 抽象层一览（宿主 React vs 插件 iframe）
 
 | 能力 | 内置 React 端口 | 插件 `context.*` 端口 | 权限 / 备注 |

@@ -41,6 +41,7 @@ import {
 import { formatQxShortcut } from "./utils/keyboard";
 import { EyeOff, Pin } from "lucide-react";
 import type { LauncherResultRow } from "./launcher/resultRows";
+import { builtinModuleIcon, builtinModuleIconKind } from "./modules/builtinIcons";
 
 const FILE_ICON_BY_EXTENSION: Record<string, string> = {
   pdf: "file-pdf",
@@ -191,17 +192,7 @@ function iconKind(item: AppEntry): string {
   if (item.kind === "clipboard") return "clipboard";
   if (item.kind === "calculation") return "calculator";
   if (item.icon.startsWith("builtin:")) {
-    const value = `${item.icon} ${item.path}`.toLowerCase();
-    if (value.includes("clipboard")) return "clipboard";
-    if (value.includes("screencap")) return "record";
-    if (value.includes("rss")) return "rss";
-    if (value.includes("macro")) return "macro";
-    if (value.includes("document") || value.includes("doc")) return "document";
-    if (value.includes("qx-tty") || value.includes("terminal")) return "terminal";
-    if (value.includes("calculator") || value.includes("calc")) return "calculator";
-    if (value.includes("settings")) return "settings";
-    if (value.includes("folder")) return "folder";
-    return "command";
+    return builtinModuleIconKind(item.icon);
   }
   return "app";
 }
@@ -232,8 +223,8 @@ function lucideIconForKind(kind: string): LucideIcon | null {
 function AppIcon({ item, label }: { item: AppEntry; label: string }) {
   const [failed, setFailed] = useState(false);
   const kind = iconKind(item);
-  const LucideIcon = lucideIconForKind(kind);
   const builtin = item.icon.startsWith("builtin:");
+  const LucideIcon = builtinModuleIcon(item.icon) ?? lucideIconForKind(kind);
   const canUseImage =
     item.icon &&
     !failed &&
