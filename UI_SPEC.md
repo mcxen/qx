@@ -378,7 +378,7 @@ Context Panel：
 - 模块 `island` prop 经 shim 写入 session store；`customIsland` 为分类例外（如录屏 HUD），会抑制 store docked。
 - 文本单行截断，progress 为底边 overlay，不撑高底栏。
 - `countdown` 使用绝对 `endsAt` 或暂停态 `remainingMs`；宿主以等宽 tabular 数字实时渲染，docked / floating 不依赖生产者每秒推送文本。
-- Island action 使用统一 22px 胶囊按钮：受限 `pause/play/stop/open` 图标、可见 hover/active/focus 状态，永远位于 trailing 最右；插件不得注入自定义按钮 DOM/CSS。
+- Island action 使用统一 22px 胶囊按钮：受限 `pause/play/stop/open` 图标、可见 hover/active/focus 状态，永远位于 trailing 最右；宿主模块最多可并列两个紧凑动作，插件仍只允许一个；插件不得注入自定义按钮 DOM/CSS。
 - 为空时 `visibility: hidden` 保持布局稳定。
 - Appearance 可启用独立的 External Island Display。它只显示 host task 或获 `island`
   权限的插件结构化 slots；插件不能提供自定义 chrome、窗口坐标或置顶策略。主窗隐藏
@@ -524,9 +524,10 @@ Clipboard：
 - 左侧历史列表，右侧预览和信息。
 - 列表、预览、信息区独立滚动。
 - 置顶、复制、删除等动作走 Bottom Bar / Actions。
-- 剪贴板当前主动作使用 Bottom Island 的 trailing action：浏览态为“粘贴”，文本
-  编辑且有改动时为“保存”。“另存为新条目”等次级动作留在统一 Action 菜单；
-  右下角不再为剪贴板单独占用一个领域主动作按钮。
+- 剪贴板当前主动作使用 Bottom Island 的 trailing actions：浏览态为“粘贴”，文本
+  编辑且有改动时并列“保存 / 另存为新条目”；右下角不再为剪贴板单独占用领域
+  主动作按钮。动作组以短 enter 动画出现；保存成功后由宿主 effect 在岛边缘快速
+  绕行一圈，不得用延迟业务完成或伪造 progress 来表现反馈。
 - 单击左侧条目必须把该条目写入系统剪贴板，供用户随后手动粘贴；不得在单击时自动向前台应用发送粘贴键。
 - 文本条目支持双击列表行或右侧预览进入编辑。编辑始终先进入本地草稿，默认不落库；草稿变化后灵动岛显示红色未保存提醒，并提供“保存”和“另存为新条目”。切换条目、按 Esc 退出编辑或离开模块时，未明确保存的修改直接丢弃。
 - 左侧日期分组标题是可点击的日期筛选入口；Popover 使用 Geist Calendar，支持本地时区下的单日或包含首尾日期的范围选择、月份与键盘导航，以及今天、最近 7 天、最近 30 天和全部日期预设。触发器在选择后保持显示已提交范围。

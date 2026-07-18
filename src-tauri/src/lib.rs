@@ -521,6 +521,7 @@ pub fn run() {
             floating_panel::floating_show,
             floating_panel::floating_hide,
             floating_panel::floating_hide_restore_focus,
+            floating_panel::floating_previous_app_name,
             floating_panel::floating_set_onboarding_active,
             floating_panel::floating_toggle,
             floating_panel::floating_request_key,

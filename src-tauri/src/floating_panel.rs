@@ -202,6 +202,31 @@ mod macos {
         }
     }
 
+    pub(super) fn previous_foreground_application_name() -> Option<String> {
+        let pid = previous_foreground_pid()
+            .lock()
+            .ok()
+            .and_then(|previous| *previous)?;
+        unsafe {
+            let app_cls =
+                AnyClass::get(CStr::from_bytes_with_nul(b"NSRunningApplication\0").ok()?)?;
+            let running_app: *mut AnyObject =
+                msg_send![app_cls, runningApplicationWithProcessIdentifier: pid];
+            if running_app.is_null() {
+                return None;
+            }
+            let name: *mut AnyObject = msg_send![running_app, localizedName];
+            if name.is_null() {
+                return None;
+            }
+            let ptr: *const std::os::raw::c_char = msg_send![name, UTF8String];
+            if ptr.is_null() {
+                return None;
+            }
+            Some(CStr::from_ptr(ptr).to_string_lossy().into_owned())
+        }
+    }
+
     pub(super) fn restore_foreground_application() {
         let pid = previous_foreground_pid()
             .lock()
@@ -363,6 +388,18 @@ mod macos {
             let y = core_graphics::display::CGDisplay::main().pixels_high() as f64 - point.y;
             Some((point.x, y))
         }
+    }
+}
+
+#[tauri::command]
+pub fn floating_previous_app_name() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos::previous_foreground_application_name()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
     }
 }
 

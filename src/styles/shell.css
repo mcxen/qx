@@ -782,6 +782,8 @@
 }
 
 .qx-island-shell-row {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--qx-island-gap);
@@ -831,6 +833,57 @@
   align-items: center;
   gap: 6px;
   flex: 0 0 auto;
+}
+
+.qx-island-shell-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  animation: qx-island-actions-enter 180ms ease-out both;
+}
+
+.qx-island-shell-actions .qx-island-shell-action:nth-child(2) {
+  animation: qx-island-action-enter 210ms 35ms ease-out both;
+}
+
+.qx-island-shell-orbit {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  pointer-events: none;
+}
+
+.qx-island-shell-orbit::before {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--qx-accent);
+  box-shadow:
+    0 0 5px color-mix(in srgb, var(--qx-accent) 82%, transparent),
+    0 0 10px color-mix(in srgb, var(--qx-accent) 52%, transparent);
+  content: "";
+  offset-path: inset(2px round calc(var(--qx-island-radius) - 2px));
+  offset-distance: 0%;
+  offset-rotate: 0deg;
+  animation: qx-island-orbit-once 560ms cubic-bezier(0.22, 0.72, 0.26, 1) both;
+}
+
+@keyframes qx-island-actions-enter {
+  from { opacity: 0; transform: translateX(5px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes qx-island-action-enter {
+  from { opacity: 0; transform: translateX(4px) scale(0.94); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes qx-island-orbit-once {
+  0% { opacity: 0; offset-distance: 0%; transform: scale(0.7); }
+  12% { opacity: 1; }
+  82% { opacity: 1; }
+  100% { opacity: 0; offset-distance: 100%; transform: scale(1); }
 }
 
 .qx-island-shell-countdown {
@@ -1500,6 +1553,16 @@
   .qx-bottom-island-activity-dots i,
   .qx-island-shell-primary[data-pulse="true"] {
     animation: none;
+  }
+
+  .qx-island-shell-actions,
+  .qx-island-shell-actions .qx-island-shell-action,
+  .qx-island-shell-orbit::before {
+    animation: none;
+  }
+
+  .qx-island-shell-orbit {
+    display: none;
   }
 
   .qx-bottom-island-activity-curve {

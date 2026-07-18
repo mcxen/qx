@@ -63,13 +63,13 @@ export default function IslandFloatApp() {
           <ShellContent
             content={content}
             sessionId={session?.id}
-            onAction={() => {
-              if (!session?.content.action) return;
+            onAction={(actionId) => {
+              if (!session) return;
               void import("@tauri-apps/api/event").then(({ emit }) =>
                 emit("island:intent", {
                   type: "action",
                   sessionId: session.id,
-                  actionId: session.content.action?.id ?? "default",
+                  actionId,
                 }),
               );
             }}

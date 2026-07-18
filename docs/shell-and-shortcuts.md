@@ -78,6 +78,7 @@ else                                   → show_and_navigate(route)
 正确做法：
 
 - 关闭统一走 `invoke("floating_hide_restore_focus")`（或 `floating_hide`），写 `PANEL_OPEN=false` + `LAST_HIDE_AT`
+- 剪贴板等需要说明动作目标的模块通过 `floating_previous_app_name` 读取召唤面板前的应用名；它只用于“粘贴到 …”反馈，实际还原焦点仍统一走 `floating_hide_restore_focus`。
 - `toggle` / `toggle_route` 在 grace 内对同一 route **保持关闭**
 
 前端失焦隐藏（`App.tsx` focus listener）必须用 Rust hide，不要裸 `getCurrentWindow().hide()`。

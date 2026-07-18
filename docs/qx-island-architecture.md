@@ -287,6 +287,13 @@ export interface IslandSlotContent {
     icon?: "pause" | "play" | "stop" | "open";
     variant?: "default" | "danger";
   };
+  actions?: Array<{
+    id: string;
+    label: string;
+    icon?: "pause" | "play" | "stop" | "open";
+    variant?: "default" | "danger";
+  }>; // host modules: max 2; plugins remain max 1
+  effect?: { kind: "orbit"; nonce: number };
   countdown?: {
     endsAt?: number;      // running: Unix ms, host updates text locally
     remainingMs?: number; // paused/fallback
@@ -306,6 +313,8 @@ export interface IslandSlotContent {
 | `detail` | `secondary` |
 | `progress` / `activity` | `meter` |
 | `actionLabel` / `onAction` | `action` + **`bindActions`（§3.5）** |
+| `actions[]` | `actions[]` + **`bindActions`（§3.5）** |
+| `effect` | host-rendered one-shot `effect` |
 | `tone` | `tone` |
 
 #### 3.4 ShellContent 固定高度内布局（Issue 8）
@@ -314,18 +323,19 @@ Chrome **固定 34px**。`ShellContent` 使用 **单层网格**，progress **不
 
 ```text
 ┌────────────────────────────────────────────────────────────┐
-│ [identity] primary … secondary [activity?][countdown?][action?] │  ← 一行，align center
+│ [identity] primary … secondary [activity?][countdown?][actions?] │  ← 一行，align center
 │ ▓▓▓▓▓▓▓░░░░ progress 2px overlay along bottom edge         │  ← absolute bottom inset
 └────────────────────────────────────────────────────────────┘
 height: 34px; overflow: hidden;
-trailing pack (right):  [activity][countdown][action]  — action always rightmost when present
+trailing pack (right):  [activity][countdown][actions]  — actions always rightmost when present
 ```
 
 **Trailing 锁定规则（PR1 唯一解释）**：
 
 - 右侧为 **inline pack**：`activity`（若有）在左，`countdown` 使用等宽 tabular 数字居中，`action`（若有）**永远最右**。
 - `countdown.endsAt` 是绝对 wall-clock deadline；docked 与 floating 的 `ShellContent` 各自在本地刷新，不要求 session store 每秒 update。暂停时使用固定 `remainingMs`。
-- `action` 只使用宿主受限图标集与统一 22px capsule（default/danger），包含 hover/active/focus-visible；producer 不能提供 DOM/CSS。
+- `action` / `actions` 只使用宿主受限图标集与统一 22px capsule（default/danger），包含 hover/active/focus-visible；宿主模块最多发布两个，插件仍限制为一个；producer 不能提供 DOM/CSS。
+- `effect: { kind: "orbit", nonce }` 是宿主渲染的一次性完成反馈；`nonce` 变化才重播，且 `prefers-reduced-motion` 下禁用。
 - 两者可同时存在（非互斥）；不换行；空间不足时 primary/secondary ellipsis，trailing 优先保留 action 再保留 activity。
 - `progress` 与 `activity`：progress 始终底边 overlay；activity 在 trailing pack（对齐现 `QxBottomIsland`：progress 与 activity 不同时抢同一 meter 语义——若同时传入，**优先渲染 progress overlay，仍可保留 activity 动画**仅当 `meter.kind === "activity"`；`kind === "progress"` 时不渲染 activity 条）。
 

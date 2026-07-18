@@ -27,6 +27,13 @@ export function mapBottomIslandContent(
       content.actionLabel != null
         ? { id: "default", label: content.actionLabel }
         : undefined,
+    actions: (content.actions ?? []).slice(0, 2).map(({ id, label, icon, variant }) => ({
+      id,
+      label,
+      icon,
+      variant,
+    })),
+    effect: content.effect,
   };
 }
 
@@ -43,5 +50,6 @@ export function mapSlotToBottomIsland(
       content.meter?.kind === "activity" ? content.meter.activity : undefined,
     tone: content.tone,
     actionLabel: content.action?.label,
+    effect: content.effect,
   };
 }

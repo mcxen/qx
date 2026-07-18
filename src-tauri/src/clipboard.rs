@@ -47,6 +47,19 @@ fn is_file_reference_pasteboard_type(type_name: &str) -> bool {
     lower.contains("file-url") || lower.contains("filename")
 }
 
+fn decode_file_reference_path(value: &str) -> Option<PathBuf> {
+    let value = value.trim();
+    if value.is_empty() {
+        return None;
+    }
+    let raw = value
+        .strip_prefix("file://localhost")
+        .or_else(|| value.strip_prefix("file://"))
+        .unwrap_or(value);
+    let decoded = urlencoding::decode(raw).ok()?.into_owned();
+    Some(PathBuf::from(decoded))
+}
+
 // --- macOS clipboard change count (lightweight content-change detection) ---
 /// Returns the current `NSPasteboard` changeCount on macOS, or `None` on
 /// other platforms.  Reading this integer is **orders of magnitude cheaper**
@@ -74,26 +87,93 @@ fn current_pasteboard_file_path() -> Option<String> {
     use objc2::runtime::{AnyClass, NSObject};
     use std::ffi::{CStr, CString};
 
+    unsafe fn string_value(value: *mut NSObject) -> Option<String> {
+        if value.is_null() {
+            return None;
+        }
+        let ptr: *const std::os::raw::c_char = unsafe { msg_send![value, UTF8String] };
+        if ptr.is_null() {
+            return None;
+        }
+        Some(
+            unsafe { CStr::from_ptr(ptr) }
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
+
+    fn existing_file_path(value: &str) -> Option<String> {
+        let path = decode_file_reference_path(value)?;
+        path.exists().then(|| path.to_string_lossy().to_string())
+    }
+
     unsafe {
         let pasteboard_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSPasteboard\0").ok()?)?;
         let string_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSString\0").ok()?)?;
         let pasteboard: *mut NSObject = msg_send![pasteboard_cls, generalPasteboard];
+        if pasteboard.is_null() {
+            return None;
+        }
+
+        // Fast path used by Finder and most native apps.
         let type_name = CString::new("public.file-url").ok()?;
         let pasteboard_type: *mut NSObject =
             msg_send![string_cls, stringWithUTF8String: type_name.as_ptr()];
         let value: *mut NSObject = msg_send![pasteboard, stringForType: pasteboard_type];
-        if value.is_null() {
-            return None;
+        if let Some(path) = string_value(value).and_then(|value| existing_file_path(&value)) {
+            return Some(path);
         }
-        let ptr: *const std::os::raw::c_char = msg_send![value, UTF8String];
-        if ptr.is_null() {
-            return None;
+
+        // Some capture tools put the file URL on an individual pasteboard item
+        // while also publishing a bitmap preview. Prefer the file reference so
+        // an MP4 is not accidentally persisted as an image.
+        let items: *mut NSObject = msg_send![pasteboard, pasteboardItems];
+        if !items.is_null() {
+            let item_count: usize = msg_send![items, count];
+            for item_index in 0..item_count {
+                let item: *mut NSObject = msg_send![items, objectAtIndex: item_index];
+                if item.is_null() {
+                    continue;
+                }
+                let types: *mut NSObject = msg_send![item, types];
+                if types.is_null() {
+                    continue;
+                }
+                let type_count: usize = msg_send![types, count];
+                for type_index in 0..type_count {
+                    let item_type: *mut NSObject = msg_send![types, objectAtIndex: type_index];
+                    let Some(item_type_name) = string_value(item_type) else {
+                        continue;
+                    };
+                    if !is_file_reference_pasteboard_type(&item_type_name) {
+                        continue;
+                    }
+                    let item_value: *mut NSObject = msg_send![item, stringForType: item_type];
+                    if let Some(path) =
+                        string_value(item_value).and_then(|value| existing_file_path(&value))
+                    {
+                        return Some(path);
+                    }
+                }
+            }
         }
-        let url = CStr::from_ptr(ptr).to_string_lossy();
-        let raw = url.strip_prefix("file://")?;
-        let decoded = urlencoding::decode(raw).ok()?.into_owned();
-        let path = PathBuf::from(decoded);
-        path.exists().then(|| path.to_string_lossy().to_string())
+
+        // Legacy Cocoa clients still expose NSFilenamesPboardType as an array.
+        let legacy_name = CString::new("NSFilenamesPboardType").ok()?;
+        let legacy_type: *mut NSObject =
+            msg_send![string_cls, stringWithUTF8String: legacy_name.as_ptr()];
+        let file_names: *mut NSObject = msg_send![pasteboard, propertyListForType: legacy_type];
+        if !file_names.is_null() {
+            let count: usize = msg_send![file_names, count];
+            if count > 0 {
+                let first: *mut NSObject = msg_send![file_names, objectAtIndex: 0usize];
+                if let Some(path) = string_value(first).and_then(|value| existing_file_path(&value))
+                {
+                    return Some(path);
+                }
+            }
+        }
+        None
     }
 }
 

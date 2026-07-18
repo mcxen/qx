@@ -79,12 +79,32 @@ export function wordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+export type ClipboardFileKind = "image" | "video" | "audio" | "pdf" | "file";
+
+export function clipboardFileKind(path: string): ClipboardFileKind {
+  const base = path.split(/[/\\]/).pop() || path;
+  const dot = base.lastIndexOf(".");
+  const ext = dot > 0 ? base.slice(dot + 1).toLowerCase() : "";
+  if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic"].includes(ext)) return "image";
+  if (["mp4", "mov", "m4v", "avi", "mkv", "webm", "mpeg", "mpg"].includes(ext)) return "video";
+  if (["mp3", "m4a", "wav", "aac", "flac", "ogg"].includes(ext)) return "audio";
+  if (ext === "pdf") return "pdf";
+  return "file";
+}
+
 export function contentType(item: ClipboardEntry, t: Translate): string {
   const kind = classify(item);
   if (kind === "links") return t("clipboard.type.link", "Link");
   if (kind === "code") return t("clipboard.type.code", "Code");
   if (kind === "image") return t("clipboard.type.image", "Image");
-  if (kind === "file") return t("clipboard.type.file", "File");
+  if (kind === "file" && item.file_path) {
+    const fileKind = clipboardFileKind(item.file_path);
+    if (fileKind === "image") return t("clipboard.type.image", "Image");
+    if (fileKind === "video") return t("clipboard.type.video", "Video");
+    if (fileKind === "audio") return t("clipboard.type.audio", "Audio");
+    if (fileKind === "pdf") return t("clipboard.type.pdf", "PDF");
+    return t("clipboard.type.file", "File");
+  }
   return t("clipboard.type.text", "Text");
 }
 

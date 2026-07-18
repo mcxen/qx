@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "../../components/ui";
-import type { IslandActionIcon, IslandSlotContent, IslandTone } from "../types";
+import type { IslandActionIcon, IslandContentAction, IslandSlotContent, IslandTone } from "../types";
 import { actionRegistry } from "../session/actionRegistry";
 
 function clampProgress(value?: number): number | null {
@@ -46,12 +46,12 @@ export interface ShellContentProps {
   content?: IslandSlotContent | null;
   sessionId?: string;
   /** Fallback for legacy BottomIsland onAction when no sessionId */
-  onAction?: () => void;
+  onAction?: (actionId: string) => void;
 }
 
 /**
  * Fixed-height shell layout: single row + progress as bottom overlay.
- * Trailing pack: [activity?][action?] with action always rightmost.
+ * Trailing pack: [activity?][actions?] with actions always rightmost.
  */
 export default function ShellContent({
   content,
@@ -95,12 +95,17 @@ export default function ShellContent({
   const activityExiting = activityKind === "bounce-exit";
   const tone: IslandTone = content.tone ?? "neutral";
 
-  const handleAction = () => {
-    if (sessionId && content.action?.id) {
-      if (actionRegistry.dispatch(sessionId, content.action.id)) return;
+  const handleAction = (action: IslandContentAction) => {
+    if (sessionId) {
+      if (actionRegistry.dispatch(sessionId, action.id)) return;
     }
-    onAction?.();
+    onAction?.(action.id);
   };
+  const trailingActions = (content.actions?.length
+    ? content.actions
+    : content.action
+      ? [content.action]
+      : []).slice(0, 2);
 
   return (
     <div
@@ -109,6 +114,13 @@ export default function ShellContent({
       }`}
       data-tone={tone}
     >
+      {content.effect?.kind === "orbit" && (
+        <span
+          key={content.effect.nonce}
+          className="qx-island-shell-orbit"
+          aria-hidden="true"
+        />
+      )}
       <div className="qx-island-shell-row">
         <div className="qx-island-shell-copy">
           {content.identity?.tag && (
@@ -160,19 +172,24 @@ export default function ShellContent({
               {formatCountdown(countdownMs)}
             </time>
           )}
-          {content.action && (
-            <Button
-              className="qx-island-shell-action"
-              type="button"
-              variant={content.action.variant === "danger" ? "destructive" : "ghost"}
-              size="sm"
-              onClick={handleAction}
-              data-variant={content.action.variant ?? "default"}
-              aria-label={content.action.label}
-            >
-              <IslandActionGlyph icon={content.action.icon} />
-              {content.action.label}
-            </Button>
+          {trailingActions.length > 0 && (
+            <span className="qx-island-shell-actions">
+              {trailingActions.map((action) => (
+                <Button
+                  key={action.id}
+                  className="qx-island-shell-action"
+                  type="button"
+                  variant={action.variant === "danger" ? "destructive" : "ghost"}
+                  size="sm"
+                  onClick={() => handleAction(action)}
+                  data-variant={action.variant ?? "default"}
+                  aria-label={action.label}
+                >
+                  <IslandActionGlyph icon={action.icon} />
+                  {action.label}
+                </Button>
+              ))}
+            </span>
           )}
         </div>
       </div>

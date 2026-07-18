@@ -5,6 +5,15 @@
 import ShellContent from "../island/surface/ShellContent";
 import QxIslandSurface from "../island/surface/QxIslandSurface";
 import { mapBottomIslandContent } from "../island/compat/mapBottomIslandContent";
+import type { IslandActionIcon, IslandActionVariant } from "../island/types";
+
+export interface BottomIslandAction {
+  id: string;
+  label: string;
+  onAction: () => void;
+  icon?: IslandActionIcon;
+  variant?: IslandActionVariant;
+}
 
 export interface BottomIslandContent {
   label: string;
@@ -14,6 +23,8 @@ export interface BottomIslandContent {
   tone?: "neutral" | "success" | "warning" | "danger";
   actionLabel?: string;
   onAction?: () => void;
+  actions?: BottomIslandAction[];
+  effect?: { kind: "orbit"; nonce: number };
 }
 
 export default function QxBottomIsland({
@@ -31,7 +42,11 @@ export default function QxBottomIsland({
     >
       <ShellContent
         content={slot}
-        onAction={content?.onAction}
+        onAction={(actionId) => {
+          const action = content?.actions?.find((item) => item.id === actionId);
+          if (action) action.onAction();
+          else content?.onAction?.();
+        }}
       />
     </QxIslandSurface>
   );

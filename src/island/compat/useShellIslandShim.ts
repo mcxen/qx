@@ -39,10 +39,10 @@ export function useShellIslandShim({
     }
 
     const content = mapBottomIslandContent(island);
-    const actions =
-      island.onAction != null
-        ? { default: island.onAction }
-        : undefined;
+    const actions = Object.fromEntries([
+      ...(island.onAction != null ? [["default", island.onAction] as const] : []),
+      ...(island.actions ?? []).slice(0, 2).map((action) => [action.id, action.onAction] as const),
+    ]);
 
     if (generationRef.current === 0) {
       const result = islandHost.show({
@@ -87,6 +87,8 @@ export function useShellIslandShim({
     island?.tone,
     island?.actionLabel,
     island?.onAction,
+    island?.actions,
+    island?.effect,
     sessionId,
     source,
     priority,

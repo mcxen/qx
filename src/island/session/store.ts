@@ -167,6 +167,8 @@ function mergeContent(
       identity: patch.identity !== undefined ? patch.identity : base.identity,
       meter: patch.meter !== undefined ? patch.meter : base.meter,
       action: patch.action !== undefined ? patch.action : base.action,
+      actions: patch.actions !== undefined ? patch.actions : base.actions,
+      effect: patch.effect !== undefined ? patch.effect : base.effect,
     };
   }
   return {
@@ -178,6 +180,8 @@ function mergeContent(
         : base.identity,
     meter: patch.meter !== undefined ? { ...base.meter, ...patch.meter } : base.meter,
     action: patch.action !== undefined ? patch.action : base.action,
+    actions: patch.actions !== undefined ? patch.actions : base.actions,
+    effect: patch.effect !== undefined ? patch.effect : base.effect,
   };
 }
 
@@ -226,8 +230,11 @@ export function showSession(input: IslandShowInput): { id: string; generation: n
   };
 
   sessions.set(session.id, session);
-  if (capped.actions) {
-    actionRegistry.bind(session.id, capped.actions);
+  if (capped.actions !== undefined) {
+    actionRegistry.unbind(session.id);
+    if (Object.keys(capped.actions).length > 0) {
+      actionRegistry.bind(session.id, capped.actions);
+    }
   }
   scheduleTtl(session);
   log.debug("island show", {
@@ -335,8 +342,11 @@ export function updateSession(
   };
 
   sessions.set(id, next);
-  if (patch.actions) {
-    actionRegistry.bind(id, patch.actions);
+  if (patch.actions !== undefined) {
+    actionRegistry.unbind(id);
+    if (Object.keys(patch.actions).length > 0) {
+      actionRegistry.bind(id, patch.actions);
+    }
   }
   scheduleTtl(next);
   notify();

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { LucideIcon } from "lucide-react";
-import { AlignLeft, CalendarDays, Code2, File, FileText, Image, Link, Pin, Shrink, Video } from "lucide-react";
+import { AlignLeft, AudioLines, CalendarDays, Code2, File, FileText, Image, Link, Pin, Shrink, Video } from "lucide-react";
 import { useStore, type ClipboardEntry } from "../../store";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
@@ -29,6 +30,7 @@ import {
 } from "./actions";
 import {
   classify,
+  clipboardFileKind,
   dateKey,
   sectionName,
   preview,
@@ -51,7 +53,7 @@ const FILTER_KEYS: Record<Filter, { key: string; fallback: string }> = {
   file: { key: "clipboard.filter.file", fallback: "Files" },
 };
 
-type ClipboardIconKind = ReturnType<typeof classify> | "pin";
+type ClipboardIconKind = ReturnType<typeof classify> | "pin" | "video" | "audio" | "pdf";
 
 const CLIPBOARD_TYPE_ICONS: Record<ClipboardIconKind, LucideIcon> = {
   pinned: Pin,
@@ -61,6 +63,9 @@ const CLIPBOARD_TYPE_ICONS: Record<ClipboardIconKind, LucideIcon> = {
   long: AlignLeft,
   frequent: FileText,
   image: Image,
+  video: Video,
+  audio: AudioLines,
+  pdf: FileText,
   file: File,
   text: FileText,
 };
@@ -166,16 +171,7 @@ function extensionOf(path: string): string {
 
 /** Optimistic kind from path only — paints Information immediately. */
 function guessFileKind(path: string): FileMetadata["kind"] {
-  const ext = extensionOf(path);
-  if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "tif", "tiff", "heic"].includes(ext)) {
-    return "image";
-  }
-  if (["mp4", "mov", "m4v", "avi", "mkv", "webm", "mpeg", "mpg"].includes(ext)) {
-    return "video";
-  }
-  if (["mp3", "m4a", "wav", "aac", "flac", "ogg"].includes(ext)) return "audio";
-  if (ext === "pdf") return "pdf";
-  return "file";
+  return clipboardFileKind(path);
 }
 
 function optimisticFileMeta(path: string): FileMetadata {
@@ -195,7 +191,11 @@ function isTauriRuntime(): boolean {
 }
 
 function ClipboardTypeIcon({ item }: { item: ClipboardEntry }) {
-  const kind: ClipboardIconKind = item.pinned ? "pin" : classify(item);
+  const kind: ClipboardIconKind = item.pinned
+    ? "pin"
+    : item.file_path
+      ? clipboardFileKind(item.file_path)
+      : classify(item);
   const Icon = CLIPBOARD_TYPE_ICONS[kind] ?? FileText;
   return (
     <Icon
@@ -220,6 +220,8 @@ export default function ClipboardPanel() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftText, setDraftText] = useState("");
   const [status, setStatus] = useState("");
+  const [islandEffectNonce, setIslandEffectNonce] = useState(0);
+  const [pasteTargetName, setPasteTargetName] = useState("");
   const [imageUrls, setImageUrls] = useState<Record<string, string>>({});
   const [fileMetadata, setFileMetadata] = useState<FileMetadata | null>(null);
   /** Right-pane file/PDF/video preview — loaded async, independent of list selection. */
@@ -257,6 +259,28 @@ export default function ClipboardPanel() {
     const unlisten = listen("clipboard-updated", () => loadHistory());
     return () => {
       unlisten.then((f) => f());
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let cancelled = false;
+    const refreshTarget = () => {
+      void invoke<string | null>("floating_previous_app_name")
+        .then((name) => {
+          if (!cancelled) setPasteTargetName(name?.trim() || "");
+        })
+        .catch(() => {
+          if (!cancelled) setPasteTargetName("");
+        });
+    };
+    refreshTarget();
+    const unlisten = getCurrentWindow().onFocusChanged(({ payload }) => {
+      if (payload) refreshTarget();
+    });
+    return () => {
+      cancelled = true;
+      void unlisten.then((dispose) => dispose());
     };
   }, []);
 
@@ -598,6 +622,7 @@ export default function ClipboardPanel() {
       await invoke("update_clipboard_text_entry", { id: selectedItem.id, text: draftText });
       await loadHistory();
       discardTextEdit();
+      setIslandEffectNonce((value) => value + 1);
       setStatus(t("clipboard.edit.saved", "Changes saved"));
       window.setTimeout(() => setStatus(""), 1400);
     } catch (error) {
@@ -615,6 +640,7 @@ export default function ClipboardPanel() {
       setQuery("");
       discardTextEdit();
       await loadHistory();
+      setIslandEffectNonce((value) => value + 1);
       setStatus(t("clipboard.edit.savedAsNew", "Saved as a new item"));
       window.setTimeout(() => setStatus(""), 1400);
     } catch (error) {
@@ -693,6 +719,10 @@ export default function ClipboardPanel() {
     return null;
   }, [fileMetadata?.kind, mediaProgress, selectedItem]);
 
+  const pasteActionLabel = pasteTargetName
+    ? t("clipboard.pasteTo", "Paste to {app}").replace("{app}", pasteTargetName)
+    : t("clipboard.paste", "Paste");
+
   const startMediaTask = async (operation: "compress" | "gif") => {
     const path = operation === "compress" ? compressSourcePath : gifSourcePath;
     if (!path || mediaProgress) return;
@@ -721,7 +751,7 @@ export default function ClipboardPanel() {
     // menuKey: single letters while Actions panel is open (Raycast-style).
     const list: QxShellAction[] = [
       {
-        label: t("clipboard.paste", "Paste"),
+        label: pasteActionLabel,
         kbd: "Enter",
         disabled: !selectedItem,
         onClick: () => void pasteItem(selectedItem, { focusAtCursor: true }),
@@ -756,14 +786,6 @@ export default function ClipboardPanel() {
         onClick: () => void importToTextTool(selectedItem),
       },
     ];
-
-    if (hasDraftChanges) {
-      list.unshift({
-        label: t("clipboard.edit.saveAsNew", "Save as New"),
-        kbd: "CmdOrCtrl+Shift+S",
-        onClick: () => void saveTextEditAsNew(),
-      });
-    }
 
     // Context-sensitive media tools — only when the current item can run them.
     if (compressSourcePath) {
@@ -815,10 +837,9 @@ export default function ClipboardPanel() {
     return list;
   }, [
     compressSourcePath,
-    draftText,
     gifSourcePath,
-    hasDraftChanges,
     mediaProgress,
+    pasteActionLabel,
     selectedItem,
     t,
   ]);
@@ -888,16 +909,31 @@ export default function ClipboardPanel() {
           : `${filterLabel(filter)} · ${itemCountLabel}`,
       progress: mediaProgress ? mediaProgress.progress : undefined,
       tone: hasDraftChanges || mediaProgress?.error ? "danger" : status ? "success" : "neutral",
-      actionLabel: hasDraftChanges
-        ? t("clipboard.edit.save", "Save")
+      actions: hasDraftChanges
+        ? [
+            {
+              id: "save",
+              label: t("clipboard.edit.save", "Save"),
+              onAction: () => void saveTextEdit(),
+            },
+            {
+              id: "save-as-new",
+              label: t("clipboard.edit.saveAsNew", "Save as New"),
+              onAction: () => void saveTextEditAsNew(),
+            },
+          ]
         : editingId || !selectedItem
           ? undefined
-          : t("clipboard.paste", "Paste"),
-      onAction: hasDraftChanges
-        ? () => void saveTextEdit()
-        : editingId || !selectedItem
-          ? undefined
-          : () => void pasteItem(selectedItem),
+          : [
+              {
+                id: "paste",
+                label: pasteActionLabel,
+                onAction: () => void pasteItem(selectedItem),
+              },
+            ],
+      effect: islandEffectNonce > 0
+        ? { kind: "orbit", nonce: islandEffectNonce }
+        : undefined,
     },
     t,
   });

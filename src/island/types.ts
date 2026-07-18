@@ -22,6 +22,15 @@ export type IslandSource =
   | "shell"
   | "system";
 
+export interface IslandContentAction {
+  /** Must exist in ActionRegistry for this session when clickable. */
+  id: string;
+  label: string;
+  /** Host-owned icon set keeps docked and floating controls consistent. */
+  icon?: IslandActionIcon;
+  variant?: IslandActionVariant;
+}
+
 export interface IslandSlotContent {
   identity?: {
     tag?: string;
@@ -36,14 +45,11 @@ export interface IslandSlotContent {
     progress?: number;
     activity?: "bounce" | "bounce-exit";
   };
-  action?: {
-    /** Must exist in ActionRegistry for this session when clickable */
-    id: string;
-    label: string;
-    /** Host-owned icon set keeps docked and floating controls consistent. */
-    icon?: IslandActionIcon;
-    variant?: IslandActionVariant;
-  };
+  action?: IslandContentAction;
+  /** Compact trailing action pack; host renders at most the first two. */
+  actions?: IslandContentAction[];
+  /** Short, replayable host-owned feedback effect. */
+  effect?: { kind: "orbit"; nonce: number };
   /** Host-rendered wall-clock countdown; never requires per-second session updates. */
   countdown?: {
     /** Absolute Unix milliseconds while running. */
