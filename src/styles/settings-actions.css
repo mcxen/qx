@@ -850,6 +850,13 @@ img.qx-plugin-detail-icon {
   min-width: 0;
 }
 
+.qx-plugin-detail-header-actions {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
 .qx-plugin-detail-heading {
   min-width: 0;
 }

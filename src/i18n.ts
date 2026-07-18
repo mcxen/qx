@@ -663,6 +663,7 @@ const zh: Record<string, string> = {
   "plugins.preferences.saving": "保存中…",
   "plugins.commands": "命令",
   "plugins.commands.desc": "此扩展暴露给启动器的命令。",
+  "plugins.configureDialog.description": "配置此模块。",
   "plugins.compat.title": "Raycast 兼容性",
   "plugins.compat.desc": "当前平台：{status}。转换后的 Raycast 扩展在部分 macOS API 无法映射时可能仅部分可用。",
   "plugins.compat.available": "可用",

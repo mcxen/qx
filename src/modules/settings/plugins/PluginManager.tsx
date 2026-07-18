@@ -359,7 +359,6 @@ function ExtensionCommandsCard({ plugin }: { plugin: InstalledPlugin }) {
   return (
     <SettingsCard
       title={t("plugins.commands", "Commands")}
-      description={t("plugins.commands.desc", "Launcher commands exposed by this extension.")}
     >
       <div className="qx-extension-command-list">
         {commands.map((command) => (
@@ -378,22 +377,14 @@ function ExtensionCommandsCard({ plugin }: { plugin: InstalledPlugin }) {
                   />
                 ) : null}
               </div>
-              {(command.description || command.keywords?.length || command.interval) && (
+              {command.interval ? (
                 <div className="qx-extension-command-description">
-                  {[
-                    command.description,
-                    command.interval
-                      ? t("plugins.background.interval", "Interval {n}").replace(
-                          "{n}",
-                          String(command.interval),
-                        )
-                      : null,
-                    command.keywords?.slice(0, 5).join(", "),
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
+                  {t("plugins.background.interval", "Interval {n}").replace(
+                    "{n}",
+                    String(command.interval),
+                  )}
                 </div>
-              )}
+              ) : null}
             </div>
             {command.mode && <Badge variant="outline">{command.mode}</Badge>}
           </div>
@@ -552,9 +543,6 @@ function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
   return (
     <SettingsCard
       title={t("shortcuts.extension.title", "Shortcuts")}
-      description={isBuiltin(plugin)
-        ? t("shortcuts.extension.builtinDesc", "Global shortcuts for this built-in extension.")
-        : t("shortcuts.extension.manifestDesc", "Shortcuts declared by this extension manifest.")}
     >
       {builtinShortcutIds.map((id) => {
         const binding = settings.shortcuts[id] ?? DEFAULT_SETTINGS.shortcuts[id] ?? { key: "", enabled: true };
@@ -575,7 +563,7 @@ function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
           <Row
             key={id}
             title={t(`shortcuts.label.${id}`, SHORTCUT_LABELS[id] ?? id)}
-            description={issue ?? t("shortcuts.extension.availableDesc", "Available from anywhere when enabled (opt-in for modules).")}
+            description={issue ?? undefined}
           >
             <div className="qx-extension-shortcut-control">
               <Toggle
@@ -609,11 +597,7 @@ function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
           <Row
             key={`${shortcut.command}-${shortcut.key}`}
             title={command?.title ?? shortcut.command}
-            description={
-              shortcut.enabled === false
-                ? t("plugins.shortcut.manifestDisabled", "Declared by the plugin, currently disabled.")
-                : t("plugins.shortcut.manifestEnabled", "Declared by the plugin manifest.")
-            }
+            description={undefined}
           >
             <div className="qx-extension-shortcut-control">
               <Badge variant={shortcut.enabled === false ? "outline" : "secondary"}>
@@ -773,6 +757,14 @@ function PluginDetail({
             </div>
           )}
         </div>
+        <div className="qx-plugin-detail-header-actions">
+          <Toggle
+            value={plugin.enabled}
+            onChange={onToggle}
+            disabled={builtin && !configurableBuiltin}
+            ariaLabel={t("modules.enabled", "Enable module")}
+          />
+        </div>
       </div>
 
       <div className="qx-plugin-badges">
@@ -785,18 +777,6 @@ function PluginDetail({
             ? t("plugins.badge.enabled", "Enabled")
             : t("plugins.badge.disabled", "Disabled")}
         </Badge>
-      </div>
-
-      {/* Description */}
-      {plugin.description && (
-        <div className="qx-plugin-description">
-          {plugin.description}
-        </div>
-      )}
-
-      {/* Path */}
-      <div className="qx-plugin-path">
-        {plugin.path}
       </div>
 
       {!builtin && screenshots.length > 0 && (
@@ -820,29 +800,10 @@ function PluginDetail({
 
       {!builtin && <RaycastCompatibilityReport plugin={plugin} />}
 
-      <SettingsCard
-        title={t("modules.status.title", "Module Status")}
-        description={configurableBuiltin
-          ? t("modules.status.betaDesc", "When disabled, this Beta module is removed from Launcher, quick entries, and search. Its UI is not mounted and it does not request module data.")
-          : builtin
-            ? t("modules.status.stableDesc", "This core built-in module is always enabled.")
-            : t("plugins.status.desc", "Toggle this plugin on or off.")}
-      >
-        <Row title={t("modules.enabled", "Enable module")}>
-          <Toggle value={plugin.enabled} onChange={onToggle} disabled={builtin && !configurableBuiltin} />
-        </Row>
-      </SettingsCard>
-
-      <ExtensionCommandsCard plugin={plugin} />
-
       <ExtensionShortcutsCard plugin={plugin} />
 
       <SettingsCard
         title={t("plugins.aliasesTags", "Search Aliases & Tags")}
-        description={t(
-          "plugins.aliasesTags.desc",
-          "Add names or tags that should make this module appear in Launcher search.",
-        )}
       >
         <SearchAliasTagEditor
           entry={aliasMetadata}
@@ -853,7 +814,6 @@ function PluginDetail({
       {permissions.length > 0 && (
         <SettingsCard
           title={t("plugins.permissions", "Permissions")}
-          description={t("plugins.permissions.desc", "Capabilities declared by this plugin.")}
         >
           <ul className="qx-plugin-permissions">
             {permissions.map((perm) => (
@@ -866,11 +826,7 @@ function PluginDetail({
       {preferences.length > 0 && prefsLoaded && (
         <SettingsCard
           title={t("plugins.preferences", "Preferences")}
-          description={
-            prefsBusy
-              ? t("plugins.preferences.saving", "Saving…")
-              : t("plugins.preferences.desc", "Configure plugin-specific options.")
-          }
+          description={prefsBusy ? t("plugins.preferences.saving", "Saving…") : undefined}
         >
           {preferences.map((pref) => {
             const localizedPref = localizePreference(plugin, pref, t);
@@ -902,6 +858,8 @@ function PluginDetail({
           )}
         </SettingsCard>
       )}
+
+      <ExtensionCommandsCard plugin={plugin} />
 
       {!builtin && (
         <Button
@@ -1653,8 +1611,8 @@ export default function PluginManager() {
                     <span>{configPlugin.name}</span>
                     {isBetaModule(configPlugin.id) && <BetaBadge />}
                   </DialogTitle>
-                  <DialogDescription>
-                    Module settings, shortcuts, aliases, and preferences.
+                  <DialogDescription className="sr-only">
+                    {t("plugins.configureDialog.description", "Configure this module.")}
                   </DialogDescription>
                 </DialogHeader>
                 <PluginDetail
