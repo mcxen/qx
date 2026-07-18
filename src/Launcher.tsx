@@ -113,7 +113,6 @@ export default function Launcher({
       home_island_modes: appearance.home_island_modes,
       home_island_rotate_secs: appearance.home_island_rotate_secs,
       home_island_cpu: appearance.home_island_cpu,
-      home_island_gpu: appearance.home_island_gpu,
       home_island_memory: appearance.home_island_memory,
     },
     t,
@@ -135,7 +134,6 @@ export default function Launcher({
       home_island_modes: appearance.home_island_modes,
       home_island_rotate_secs: appearance.home_island_rotate_secs,
       home_island_cpu: appearance.home_island_cpu,
-      home_island_gpu: appearance.home_island_gpu,
       home_island_memory: appearance.home_island_memory,
     },
   );

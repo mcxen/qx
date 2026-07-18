@@ -6,11 +6,20 @@
 
 - 侧栏将原 `File Search` 显示名统一为 `Search Settings` / `搜索设置`，保留 `file-search` 内部 id 以兼容既有深链与快捷入口。
 - 启动器模块搜索源设置迁移到 Search Settings，与文件分类设置集中维护；Appearance 只保留主题、布局和 Home Island 外观职责。
-- Home System Island 去除重复 marquee 数据和 GPU 展示，保留 CPU / MEM 的异步采样与曲线，旧 `home_island_gpu` 配置字段继续兼容读取但不再渲染。
+- Home System Island 去除重复 marquee 数据和 GPU 展示，保留 CPU / MEM 的异步采样与曲线。
 
 ### 验证
 
 - [ ] macOS：浅色/深色设置页检查 Search Settings 入口、模块开关与底部 CPU/MEM 岛视觉。
+
+## Feature — Screen Capture module settings and tray actions
+
+**状态**：已完成代码实现，等待本地捕获流程复核。
+
+- 截图/录屏设置统一进入 Settings → Extensions → Installed → Screen Capture，主模块提供直接跳转链接。
+- 录屏格式、帧率、质量、分辨率、延迟、圈选确认、录制/截图后自动隐藏和自动复制到剪贴板均使用全局 `screencap` 设置。
+- QxShell 操作菜单补充已启用的托盘操作；托盘操作在 Shortcuts 设置中拥有独立的全局快捷键绑定。
+- 录屏文件使用原生文件剪贴板语义复制；截图继续使用图片剪贴板语义。
 
 ## Fix — Workbench 受控交互、List / Gallery 与插件事件协议
 

@@ -60,7 +60,6 @@ import { useT } from "./i18n";
 import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./lib/logger";
 import { getQxDesktopPlatform, isImeCompositionEvent } from "./utils/keyboard";
 import { isBuiltinModuleEnabled } from "./modules/moduleAvailability";
-import { captureControlsPinned } from "./modules/screencap/preferences";
 import { ensureCaptureToastListener } from "./modules/screencap/store";
 import "./App.css";
 
@@ -841,10 +840,10 @@ function App() {
   useEffect(() => {
     if (!settingsLoaded || !isTauriRuntime()) return;
     ensureCaptureToastListener();
-    const pinned = captureControlsPinned()
+    const pinned = settings.screencap.controls_pinned
       && settings.builtin_modules?.modules?.screencap !== false;
     void invoke("screencap_set_controls_pinned", { pinned }).catch(() => {});
-  }, [settings.builtin_modules?.modules?.screencap, settingsLoaded]);
+  }, [settings.builtin_modules?.modules?.screencap, settings.screencap.controls_pinned, settingsLoaded]);
 
   useEffect(() => {
     configureQxLogger({

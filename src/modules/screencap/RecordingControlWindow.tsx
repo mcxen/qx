@@ -5,7 +5,6 @@ import { requestCaptureSelection, type CaptureMode, type RecordingSnapshot } fro
 import RecordingTransport from "./RecordingTransport";
 import { Camera, Circle, History, X } from "lucide-react";
 import { useT } from "../../i18n";
-import { saveCaptureControlsPinned } from "./preferences";
 
 export default function RecordingControlWindow() {
   const t = useT();
@@ -63,7 +62,6 @@ export default function RecordingControlWindow() {
   };
 
   const closePinnedControls = async () => {
-    saveCaptureControlsPinned(false);
     await invoke("screencap_set_controls_pinned", { pinned: false }).catch(() => {});
   };
 

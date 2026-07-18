@@ -95,8 +95,6 @@ pub struct AppearanceSettings {
     #[serde(default = "default_true")]
     pub home_island_cpu: bool,
     #[serde(default = "default_true")]
-    pub home_island_gpu: bool,
-    #[serde(default = "default_true")]
     pub home_island_memory: bool,
     /// Floating QxIsland webview (default false for dogfood rollout).
     #[serde(default)]
@@ -190,7 +188,6 @@ impl Default for AppearanceSettings {
             home_island_modes: vec![default_home_island_mode()],
             home_island_rotate_secs: default_home_island_rotate_secs(),
             home_island_cpu: true,
-            home_island_gpu: true,
             home_island_memory: true,
             island_float_enabled: false,
             island_float_when_main_hidden: true,
@@ -471,6 +468,66 @@ pub struct FileSearchSettings {
     pub categories: Vec<FileSearchCategory>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScreencapSettings {
+    #[serde(default = "default_screencap_format")]
+    pub output_format: String,
+    #[serde(default = "default_screencap_fps")]
+    pub fps: u32,
+    #[serde(default = "default_screencap_quality")]
+    pub quality: String,
+    #[serde(default = "default_screencap_resolution")]
+    pub resolution: String,
+    #[serde(default = "default_screencap_confirm_mode")]
+    pub capture_confirm_mode: String,
+    #[serde(default)]
+    pub capture_delay_seconds: u32,
+    #[serde(default = "default_true")]
+    pub auto_hide_after_capture: bool,
+    #[serde(default = "default_true")]
+    pub auto_copy_to_clipboard: bool,
+    #[serde(default = "default_screencap_history_layout")]
+    pub history_layout: String,
+    #[serde(default)]
+    pub controls_pinned: bool,
+}
+
+fn default_screencap_format() -> String {
+    "mp4".to_string()
+}
+fn default_screencap_fps() -> u32 {
+    24
+}
+fn default_screencap_quality() -> String {
+    "balanced".to_string()
+}
+fn default_screencap_resolution() -> String {
+    "1080p".to_string()
+}
+fn default_screencap_confirm_mode() -> String {
+    "refine".to_string()
+}
+fn default_screencap_history_layout() -> String {
+    "list".to_string()
+}
+
+impl Default for ScreencapSettings {
+    fn default() -> Self {
+        Self {
+            output_format: default_screencap_format(),
+            fps: default_screencap_fps(),
+            quality: default_screencap_quality(),
+            resolution: default_screencap_resolution(),
+            capture_confirm_mode: default_screencap_confirm_mode(),
+            capture_delay_seconds: 0,
+            auto_hide_after_capture: true,
+            auto_copy_to_clipboard: true,
+            history_layout: default_screencap_history_layout(),
+            controls_pinned: false,
+        }
+    }
+}
+
 pub fn default_file_search_categories() -> Vec<FileSearchCategory> {
     [
         ("folders", "Folders", "", true, false),
@@ -659,6 +716,8 @@ pub struct Settings {
     #[serde(default)]
     pub file_search: FileSearchSettings,
     #[serde(default)]
+    pub screencap: ScreencapSettings,
+    #[serde(default)]
     pub advanced: AdvancedSettings,
     #[serde(default)]
     pub agent: AgentSettings,
@@ -734,6 +793,23 @@ impl Default for Settings {
                 enabled: false,
             },
         );
+        for (id, key) in [
+            ("tray_open_main", "Alt+Shift+O"),
+            ("tray_keep_visible", "Alt+Shift+K"),
+            ("tray_settings", "Alt+Shift+,"),
+            ("tray_hide_main", "Alt+Shift+H"),
+            ("tray_status_memory", ""),
+            ("tray_status_network", ""),
+            ("tray_status_cpu", ""),
+        ] {
+            shortcuts.insert(
+                id.to_string(),
+                ShortcutBinding {
+                    key: key.to_string(),
+                    enabled: false,
+                },
+            );
+        }
 
         Self {
             general: GeneralSettings::default(),
@@ -743,6 +819,7 @@ impl Default for Settings {
             plugins: Vec::new(),
             plugin_display: PluginDisplaySettings::default(),
             file_search: FileSearchSettings::default(),
+            screencap: ScreencapSettings::default(),
             advanced: AdvancedSettings::default(),
             agent: AgentSettings::default(),
             rss: RssSettings::default(),
@@ -1061,6 +1138,27 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
         })
         .map_err(|e| format!("register rss shortcut: {e}"))?;
         registered.insert(key);
+    }
+
+    for (shortcut_id, action_id) in [
+        ("tray_open_main", "open_main"),
+        ("tray_keep_visible", "keep_visible"),
+        ("tray_settings", "settings"),
+        ("tray_hide_main", "hide_main"),
+        ("tray_status_memory", "status_memory"),
+        ("tray_status_network", "status_network"),
+        ("tray_status_cpu", "status_cpu"),
+    ] {
+        if let Some(key) = shortcut_for(settings, shortcut_id) {
+            let action_id = action_id.to_string();
+            gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
+                if event.state() == ShortcutState::Pressed {
+                    crate::tray_menu::handle_tray_action(app, &action_id);
+                }
+            })
+            .map_err(|e| format!("register {shortcut_id} shortcut: {e}"))?;
+            registered.insert(key);
+        }
     }
 
     if settings.builtin_modules.is_enabled("screencap") {

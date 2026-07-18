@@ -131,6 +131,8 @@ interface ShortcutBinding {
 | `capture_screenshot` | `module.capture.screenshot` | global |
 | `record_gif` | `module.capture.recording` | global |
 | `toggle_capture_controls` | `module.capture.controls` | global |
+| `tray_open_main` / `tray_keep_visible` / `tray_settings` / `tray_hide_main` | `tray.*` | global |
+| `tray_status_memory` / `tray_status_network` / `tray_status_cpu` | `tray.status.*` | global |
 | `app_shortcuts["app:…"]` | 同 id 或 `app.launch.…` | global |
 
 读 settings 时 **双读** legacy + namespaced；写时写 namespaced（可选同时写 legacy 一版迁移）。

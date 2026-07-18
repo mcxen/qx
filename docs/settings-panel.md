@@ -42,6 +42,10 @@ QxShell (visual="elevated")
 | **Advanced** | 数据路径 · 托盘 · 诊断 · 网络 · 配置导入导出 · 清理 · 开发 · 重置 |
 | **About** | 版本与存储 |
 
+内置模块的专属选项统一放在 **Extensions → Installed → 模块配置**。Screen Capture
+的格式、帧率、质量、分辨率、圈选确认、延迟、录制后隐藏、自动复制和捕获岛常驻
+都由 `screencap` 设置段集中保存；模块主界面只提供进入该配置的直接链接。
+
 Appearance 的透明度不是单一全局 alpha。设置模型保留
 `appearance.blur_opacity` 作为兼容字段承载窗口背景不透明度，并新增：
 

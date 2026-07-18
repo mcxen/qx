@@ -417,6 +417,9 @@ pub async fn screencap_confirm_region_select(
                 let path_for_clip = output.path.clone();
                 let path_for_event = output_path.clone();
                 let app_ui = app.clone();
+                let auto_hide_after_capture = crate::settings::read_settings()
+                    .screencap
+                    .auto_hide_after_capture;
                 let clipboard_error = crate::runtime::ui(&app, move || {
                     let clipboard_error = if copy_to_clipboard {
                         crate::clipboard::write_image_file_to_clipboard(&app_ui, &path_for_clip)
@@ -439,6 +442,9 @@ pub async fn screencap_confirm_region_select(
                     }
                     set_recording_ui_protected(&app_ui, false);
                     restore_capture_surface(&app_ui, 800)?;
+                    if auto_hide_after_capture {
+                        hide_recording_controls_internal(&app_ui);
+                    }
                     recording_session::emit_recording_status(&app_ui);
                     Ok::<Option<String>, String>(clipboard_error)
                 })

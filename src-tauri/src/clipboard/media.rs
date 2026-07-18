@@ -338,6 +338,15 @@ fn write_file_to_clipboard(path: &Path) -> Result<(), String> {
         .ok_or_else(|| "write file clipboard failed".to_string())
 }
 
+/// Copy a generated media file as a native file reference without creating a
+/// second history entry. Used by screenshot/recording post-capture actions.
+pub(crate) fn write_file_path_to_clipboard(path: &Path) -> Result<(), String> {
+    if !path.exists() {
+        return Err("the generated file no longer exists".to_string());
+    }
+    write_file_to_clipboard(path)
+}
+
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn write_file_to_clipboard(_path: &Path) -> Result<(), String> {
     Err("file clipboard is currently supported on macOS".to_string())

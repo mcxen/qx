@@ -75,7 +75,6 @@ export function useHomeIslandContribution(
     resolved?.modeId,
     resolved?.shellContent,
     appearance.home_island_cpu,
-    appearance.home_island_gpu,
     appearance.home_island_memory,
     appearance,
   ]);

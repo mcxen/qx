@@ -422,6 +422,24 @@ function isMultilinePreference(pref: PluginPreference): boolean {
   );
 }
 
+function localizePreference(
+  plugin: InstalledPlugin,
+  pref: PluginPreference,
+  t: Translate,
+): PluginPreference {
+  if (plugin.id !== "builtin:screencap") return pref;
+  const key = `plugins.screencap.preference.${pref.id}`;
+  return {
+    ...pref,
+    label: t(`${key}.label`, pref.label),
+    description: pref.description ? t(`${key}.desc`, pref.description) : pref.description,
+    options: pref.options?.map((option) => ({
+      ...option,
+      label: t(`${key}.option.${option.value}`, option.label),
+    })),
+  };
+}
+
 function PreferenceField({
   pref,
   value,
@@ -704,7 +722,11 @@ function PluginDetail({
 
   const handlePrefChange = useCallback(
     async (prefId: string, value: string | number | boolean) => {
-      const next = { ...prefValuesRef.current, [prefId]: value };
+      const normalizedValue = settingsKey === "screencap"
+        && (prefId === "fps" || prefId === "capture_delay_seconds")
+        ? Number(value)
+        : value;
+      const next = { ...prefValuesRef.current, [prefId]: normalizedValue };
       prefValuesRef.current = next;
       setPrefValues(next);
       setPrefsBusy(true);
@@ -712,7 +734,7 @@ function PluginDetail({
       if (settingsKey) {
         // Built-in module: write to global settings store.
         const storeSection = (settings as unknown as Record<string, Record<string, unknown>>)[settingsKey] ?? {};
-        patch(settingsKey as any, { ...storeSection, [prefId]: value });
+        patch(settingsKey as any, { ...storeSection, [prefId]: normalizedValue });
         setPrefsBusy(false);
         return;
       }
@@ -850,20 +872,23 @@ function PluginDetail({
               : t("plugins.preferences.desc", "Configure plugin-specific options.")
           }
         >
-          {preferences.map((pref) => (
-            <Row
-              key={pref.id}
-              title={pref.label}
-              description={pref.description}
-              stacked={isMultilinePreference(pref) || pref.type === "textarea"}
-            >
-              <PreferenceField
-                pref={pref}
-                value={prefValues[pref.id] ?? pref.default ?? ""}
-                onChange={(v) => handlePrefChange(pref.id, v)}
-              />
-            </Row>
-          ))}
+          {preferences.map((pref) => {
+            const localizedPref = localizePreference(plugin, pref, t);
+            return (
+              <Row
+                key={pref.id}
+                title={localizedPref.label}
+                description={localizedPref.description}
+                stacked={isMultilinePreference(localizedPref) || localizedPref.type === "textarea"}
+              >
+                <PreferenceField
+                  pref={localizedPref}
+                  value={prefValues[pref.id] ?? pref.default ?? ""}
+                  onChange={(v) => handlePrefChange(pref.id, v)}
+                />
+              </Row>
+            );
+          })}
 
           {settingsKey === "v2ex" && (
             <Button

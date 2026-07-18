@@ -20,6 +20,13 @@ const DEFAULT_GLOBAL_KEYS: Record<string, string> = {
   capture_screenshot: "Alt+Shift+S",
   toggle_capture_controls: "Alt+Shift+C",
   rss: "Alt+R",
+  tray_open_main: "Alt+Shift+O",
+  tray_keep_visible: "Alt+Shift+K",
+  tray_settings: "Alt+Shift+,",
+  tray_hide_main: "Alt+Shift+H",
+  tray_status_memory: "",
+  tray_status_network: "",
+  tray_status_cpu: "",
 };
 
 function appShortcutLabel(id: string): string {

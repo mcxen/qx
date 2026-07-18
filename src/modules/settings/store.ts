@@ -78,8 +78,6 @@ export interface AppearanceSettings {
   /** Seconds between multi-mode rotation; 0 = no rotate. */
   home_island_rotate_secs: number;
   home_island_cpu: boolean;
-  /** @deprecated Retained for imported settings compatibility; System island no longer renders GPU. */
-  home_island_gpu: boolean;
   home_island_memory: boolean;
   /** Floating island webview (default off — dogfood). */
   island_float_enabled: boolean;
@@ -213,6 +211,19 @@ export interface FileSearchSettings {
   categories: FileSearchCategory[];
 }
 
+export interface ScreencapSettings {
+  output_format: "mp4" | "mov";
+  fps: 15 | 24 | 30;
+  quality: "compact" | "balanced" | "high";
+  resolution: "720p" | "1080p" | "native";
+  capture_confirm_mode: "refine" | "release";
+  capture_delay_seconds: 0 | 3 | 5;
+  auto_hide_after_capture: boolean;
+  auto_copy_to_clipboard: boolean;
+  history_layout: "list" | "gallery";
+  controls_pinned: boolean;
+}
+
 /** Built-in module ids that can contribute to main launcher search. */
 export type ModuleSearchModuleId =
   | "clipboard"
@@ -269,6 +280,7 @@ export interface Settings {
   plugins: PluginConfig[];
   plugin_display: PluginDisplaySettings;
   file_search: FileSearchSettings;
+  screencap: ScreencapSettings;
   advanced: AdvancedSettings;
   agent: AgentSettings;
   rss: RssSettings;
@@ -323,7 +335,6 @@ export const DEFAULT_SETTINGS: Settings = {
     home_island_modes: ["system"],
     home_island_rotate_secs: 8,
     home_island_cpu: true,
-    home_island_gpu: true,
     home_island_memory: true,
     island_float_enabled: false,
     island_float_when_main_hidden: true,
@@ -339,6 +350,13 @@ export const DEFAULT_SETTINGS: Settings = {
     capture_screenshot: { key: "Alt+Shift+S", enabled: false },
     toggle_capture_controls: { key: "Alt+Shift+C", enabled: false },
     rss: { key: "Alt+R", enabled: false },
+    tray_open_main: { key: "Alt+Shift+O", enabled: false },
+    tray_keep_visible: { key: "Alt+Shift+K", enabled: false },
+    tray_settings: { key: "Alt+Shift+,", enabled: false },
+    tray_hide_main: { key: "Alt+Shift+H", enabled: false },
+    tray_status_memory: { key: "", enabled: false },
+    tray_status_network: { key: "", enabled: false },
+    tray_status_cpu: { key: "", enabled: false },
   },
   app_shortcuts: {},
   plugins: [],
@@ -348,6 +366,18 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   file_search: {
     categories: DEFAULT_FILE_SEARCH_CATEGORIES,
+  },
+  screencap: {
+    output_format: "mp4",
+    fps: 24,
+    quality: "balanced",
+    resolution: "1080p",
+    capture_confirm_mode: "refine",
+    capture_delay_seconds: 0,
+    auto_hide_after_capture: true,
+    auto_copy_to_clipboard: true,
+    history_layout: "list",
+    controls_pinned: false,
   },
   advanced: {
     log_level: "info",
@@ -538,6 +568,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
             ...(s as Settings).file_search,
             categories: normalizeFileSearchCategories((s as Settings).file_search?.categories),
           },
+          screencap: { ...DEFAULT_SETTINGS.screencap, ...s.screencap },
           advanced: { ...DEFAULT_SETTINGS.advanced, ...s.advanced },
           agent: { ...DEFAULT_SETTINGS.agent, ...s.agent },
           rss: { ...DEFAULT_SETTINGS.rss, ...s.rss },
@@ -668,6 +699,7 @@ export const SHORTCUT_GROUPS: { group: string; ids: string[] }[] = [
   { group: "clipboard", ids: ["clipboard"] },
   { group: "rss", ids: ["rss"] },
   { group: "capture", ids: ["capture_screenshot", "record_gif", "toggle_capture_controls"] },
+  { group: "tray", ids: ["tray_open_main", "tray_keep_visible", "tray_settings", "tray_hide_main", "tray_status_memory", "tray_status_network", "tray_status_cpu"] },
 ];
 
 export const SHORTCUT_LABELS: Record<string, string> = {
@@ -678,4 +710,11 @@ export const SHORTCUT_LABELS: Record<string, string> = {
   capture_screenshot: "Take Screenshot",
   toggle_capture_controls: "Toggle Capture Island",
   rss: "Open RSS Reader",
+  tray_open_main: "Tray · Open Main Window",
+  tray_keep_visible: "Tray · Keep Window Visible",
+  tray_settings: "Tray · Settings",
+  tray_hide_main: "Tray · Hide Main Window",
+  tray_status_memory: "Tray · Memory Status",
+  tray_status_network: "Tray · Network Status",
+  tray_status_cpu: "Tray · CPU Status",
 };

@@ -230,11 +230,28 @@ pub async fn stop_recording(app: AppHandle) -> Result<String, String> {
 
     match &result {
         Ok(path) => {
+            let capture_settings = crate::settings::read_settings().screencap;
+            let copy_error = if capture_settings.auto_copy_to_clipboard {
+                let path_for_clipboard = std::path::PathBuf::from(path);
+                let copy_result = match crate::runtime::ui(&app, move || {
+                    crate::clipboard::media::write_file_path_to_clipboard(&path_for_clipboard)
+                })
+                .await
+                {
+                    Ok(result) => result,
+                    Err(error) => Err(error.to_string()),
+                };
+                copy_result
+                    .err()
+                    .map(|error| format!("Recording saved, but automatic copy failed: {error}"))
+            } else {
+                None
+            };
             if let Ok(mut status) = runtime_status().lock() {
                 status.phase = "done";
                 status.started_at = None;
                 status.output_path = Some(path.clone());
-                status.error = None;
+                status.error = copy_error;
             }
         }
         Err(error) => {
@@ -255,6 +272,12 @@ pub async fn stop_recording(app: AppHandle) -> Result<String, String> {
     // retain the normal main/pinned-island restoration behavior.
     if !selection::restore_picker_selection_internal(&app) {
         restore_capture_surface(&app, 1200)?;
+    }
+    if crate::settings::read_settings()
+        .screencap
+        .auto_hide_after_capture
+    {
+        controls::hide(&app);
     }
     emit_recording_status(&app);
     result

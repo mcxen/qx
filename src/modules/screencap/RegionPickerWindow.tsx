@@ -22,15 +22,9 @@ import {
   type DesktopWindow,
   type DisplayDescriptor,
 } from "../../system";
-import {
-  loadCaptureConfirmMode,
-  loadCaptureDelaySeconds,
-  loadLastCaptureSelection,
-  loadRecordingOptions,
-  loadScreenshotAfterCapture,
-  saveLastCaptureSelection,
-} from "./preferences";
-import type { CaptureMode, RecordingSnapshot } from "./store";
+import { loadLastCaptureSelection, saveLastCaptureSelection } from "./preferences";
+import { DEFAULT_SETTINGS, type ScreencapSettings } from "../settings/store";
+import type { CaptureMode, RecordingSnapshot, RecordingOptions } from "./store";
 
 interface LogicalArea {
   x: number;
@@ -184,6 +178,7 @@ export default function RegionPickerWindow() {
   const [displays, setDisplays] = useState<DisplayDescriptor[]>([]);
   const [windows, setWindows] = useState<DesktopWindow[]>([]);
   const [recording, setRecording] = useState<RecordingSnapshot | null>(null);
+  const [captureSettings, setCaptureSettings] = useState<ScreencapSettings>(DEFAULT_SETTINGS.screencap);
   const [intent, setIntent] = useState<CaptureMode>("screenshot");
   const [pickMode, setPickMode] = useState<PickMode>("region");
   const [drawStart, setDrawStart] = useState<Point | null>(null);
@@ -232,8 +227,10 @@ export default function RegionPickerWindow() {
       invoke<PickerStatus | null>("screencap_region_select_status"),
       listDisplays(),
       invoke<RecordingSnapshot>("recording_status"),
-    ]).then(([status, availableDisplays, snapshot]) => {
+      invoke<{ screencap: ScreencapSettings }>("get_settings"),
+    ]).then(([status, availableDisplays, snapshot, settings]) => {
       setPicker(status);
+      setCaptureSettings(settings.screencap);
       if (status?.mode === "recording" || status?.mode === "screenshot") {
         setIntent(status.mode);
       }
@@ -465,7 +462,7 @@ export default function RegionPickerWindow() {
       ? canvas.toDataURL("image/png").split(",")[1]
       : undefined;
 
-    const delay = loadCaptureDelaySeconds();
+    const delay = captureSettings.capture_delay_seconds;
     if (delay > 0) {
       try {
         await invoke("screencap_set_picker_passthrough", { enabled: true });
@@ -505,16 +502,21 @@ export default function RegionPickerWindow() {
           w: Math.round(target.w),
           h: Math.round(target.h),
         },
-        options: loadRecordingOptions(),
+        options: {
+          outputFormat: captureSettings.output_format,
+          fps: captureSettings.fps,
+          quality: captureSettings.quality,
+          resolution: captureSettings.resolution,
+        } satisfies RecordingOptions,
         action,
         annotationOverlayBase64,
-        copyToClipboard: action === "screenshot" && loadScreenshotAfterCapture() === "copy",
+        copyToClipboard: action === "screenshot" && captureSettings.auto_copy_to_clipboard,
       });
     } catch (captureError) {
       setBusy(false);
       setError(String(captureError));
     }
-  }, [annotations.length, busy, countdown, picker?.monitorId, selection, t]);
+  }, [annotations.length, busy, captureSettings, countdown, picker?.monitorId, selection, t]);
 
   const selectDisplay = useCallback(async (monitorId: number) => {
     if (busy || monitorId === picker?.monitorId) return;
@@ -696,12 +698,12 @@ export default function RegionPickerWindow() {
       return false;
     }
     setSelection(next);
-    const confirmMode = loadCaptureConfirmMode();
+    const confirmMode = captureSettings.capture_confirm_mode;
     if (confirmMode === "release" && !forceRefine) {
       void confirm(intent, next);
     }
     return true;
-  }, [confirm, drawEnd, drawStart, intent, selection, setPointerFollow]);
+  }, [captureSettings.capture_confirm_mode, confirm, drawEnd, drawStart, intent, selection, setPointerFollow]);
 
   const onRootMouseUp = (event: React.MouseEvent) => {
     if (drawStart && drawEnd && !selection) {

@@ -10,7 +10,8 @@ import {
   type RecordingOptions,
 } from "./store";
 import { useStore } from "../../store";
-import { SegmentedControl, Select } from "../../components/ui";
+import { useSettingsStore } from "../settings/store";
+import { LinkButton, SegmentedControl } from "../../components/ui";
 import GifPreview from "./GifPreview";
 import CaptureHistory from "./CaptureHistory";
 import CaptureToast from "./CaptureToast";
@@ -20,25 +21,7 @@ import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import BetaBadge from "../../components/BetaBadge";
 import { useT } from "../../i18n";
 import RecordingTransport from "./RecordingTransport";
-import {
-  CAPTURE_CONTROLS_PINNED_KEY,
-  captureControlsPinned,
-  loadCaptureConfirmMode,
-  loadCaptureDelaySeconds,
-  loadCaptureHistoryLayout,
-  loadRecordingOptions,
-  loadScreenshotAfterCapture,
-  saveCaptureConfirmMode,
-  saveCaptureControlsPinned,
-  saveCaptureDelaySeconds,
-  saveCaptureHistoryLayout,
-  saveRecordingOptions,
-  saveScreenshotAfterCapture,
-  type CaptureConfirmMode,
-  type CaptureDelaySeconds,
-  type CaptureHistoryLayout,
-  type ScreenshotAfterCapture,
-} from "./preferences";
+import type { CaptureHistoryLayout } from "./preferences";
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -75,17 +58,25 @@ export default function ScreenRecorder() {
   } = useScreencapStore();
 
   const setTab = useStore((state) => state.setTab);
-
-  const [recordingOptions, setRecordingOptions] = useState<RecordingOptions>(loadRecordingOptions);
-  const [controlsPinned, setControlsPinned] = useState(captureControlsPinned);
-  const [screenshotAfterCapture, setScreenshotAfterCapture] = useState<ScreenshotAfterCapture>(
-    loadScreenshotAfterCapture,
+  const { settings, patch: patchSettings } = useSettingsStore();
+  const captureSettings = settings.screencap;
+  const recordingOptions: RecordingOptions = {
+    outputFormat: captureSettings.output_format,
+    fps: captureSettings.fps,
+    quality: captureSettings.quality,
+    resolution: captureSettings.resolution,
+  };
+  const controlsPinned = captureSettings.controls_pinned;
+  const delaySeconds = captureSettings.capture_delay_seconds;
+  const historyLayout = captureSettings.history_layout as CaptureHistoryLayout;
+  const updateCaptureSettings = useCallback(
+    (changes: Partial<typeof captureSettings>) => {
+      patchSettings("screencap", { ...captureSettings, ...changes });
+    },
+    [captureSettings, patchSettings],
   );
-  const [confirmMode, setConfirmMode] = useState<CaptureConfirmMode>(loadCaptureConfirmMode);
-  const [delaySeconds, setDelaySeconds] = useState<CaptureDelaySeconds>(loadCaptureDelaySeconds);
   const [localError, setLocalError] = useState<string | null>(null);
   const [toastPath, setToastPath] = useState<string | null>(null);
-  const [historyLayout, setHistoryLayout] = useState<CaptureHistoryLayout>(loadCaptureHistoryLayout);
 
   useEffect(() => {
     void loadHistory();
@@ -124,39 +115,9 @@ export default function ScreenRecorder() {
   }, [loadHistory, setPreview, syncRecordingStatus]);
 
   useEffect(() => {
-    saveRecordingOptions(recordingOptions);
-  }, [recordingOptions]);
-
-  useEffect(() => {
-    saveScreenshotAfterCapture(screenshotAfterCapture);
-  }, [screenshotAfterCapture]);
-
-  useEffect(() => {
-    saveCaptureConfirmMode(confirmMode);
-  }, [confirmMode]);
-
-  useEffect(() => {
-    saveCaptureDelaySeconds(delaySeconds);
-  }, [delaySeconds]);
-
-  useEffect(() => {
-    saveCaptureHistoryLayout(historyLayout);
-  }, [historyLayout]);
-
-  useEffect(() => {
     if (!isTauriRuntime()) return;
     void invoke("screencap_set_controls_pinned", { pinned: controlsPinned });
   }, [controlsPinned]);
-
-  useEffect(() => {
-    const onStorage = (event: StorageEvent) => {
-      if (event.key === CAPTURE_CONTROLS_PINNED_KEY) {
-        setControlsPinned(event.newValue === "true");
-      }
-    };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
 
   const beginCaptureSelection = useCallback(async (
     mode: "screenshot" | "recording",
@@ -167,12 +128,11 @@ export default function ScreenRecorder() {
       return;
     }
     try {
-      saveRecordingOptions(recordingOptions);
       await requestCaptureSelection(mode);
     } catch (captureError) {
       setLocalError(String(captureError));
     }
-  }, [recordingOptions, t]);
+  }, [t]);
 
   useEffect(() => {
     const launch = takePendingModuleLaunch("screencap");
@@ -220,12 +180,8 @@ export default function ScreenRecorder() {
   );
 
   const togglePinnedControls = useCallback(() => {
-    setControlsPinned((current) => {
-      const next = !current;
-      saveCaptureControlsPinned(next);
-      return next;
-    });
-  }, []);
+    updateCaptureSettings({ controls_pinned: !controlsPinned });
+  }, [controlsPinned, updateCaptureSettings]);
 
   const handlePopOut = async () => {
     await showControls();
@@ -255,6 +211,35 @@ export default function ScreenRecorder() {
 
   const displayError = localError || error;
 
+  const openCaptureSettings = useCallback(() => {
+    sessionStorage.setItem("qx.settings.pendingTab", "plugins");
+    sessionStorage.setItem("qx.settings.focusPluginId", "builtin:screencap");
+    setTab("settings");
+  }, [setTab]);
+
+  const runTrayAction = useCallback((id: string) => {
+    switch (id) {
+      case "open_main":
+        void invoke("floating_show");
+        break;
+      case "hide_main":
+        void invoke("floating_hide");
+        break;
+      case "settings":
+        openCaptureSettings();
+        break;
+      case "keep_visible":
+        patchSettings("general", {
+          ...settings.general,
+          autoHideOnBlur: !settings.general.autoHideOnBlur,
+        });
+        break;
+      default:
+        void invoke("get_system_stats");
+        break;
+    }
+  }, [openCaptureSettings, patchSettings, settings]);
+
   const readyActions = useMemo<QxShellAction[]>(
     () => [
       { label: t("screencap.screenshot", "Take Screenshot"), kbd: "Enter", onClick: () => void beginScreenshot() },
@@ -265,8 +250,17 @@ export default function ScreenRecorder() {
           : t("screencap.controls.pin", "Keep Capture Island Visible"),
         onClick: togglePinnedControls,
       },
+      ...settings.tray_actions
+        .filter((action) => action.enabled)
+        .map((action) => ({
+          label: action.title,
+          kbd: settings.shortcuts[`tray_${action.id}`]?.enabled
+            ? settings.shortcuts[`tray_${action.id}`]?.key
+            : undefined,
+          onClick: () => runTrayAction(action.id),
+        })),
     ],
-    [beginAreaSelect, beginScreenshot, controlsPinned, t, togglePinnedControls],
+    [beginAreaSelect, beginScreenshot, controlsPinned, runTrayAction, settings.shortcuts, settings.tray_actions, t, togglePinnedControls],
   );
 
   const doneActions = useMemo<QxShellAction[]>(
@@ -497,7 +491,7 @@ export default function ScreenRecorder() {
               { value: "list", label: t("screencap.history.list", "List") },
               { value: "gallery", label: t("screencap.history.gallery", "Gallery") },
             ]}
-            onChange={setHistoryLayout}
+            onChange={(value) => updateCaptureSettings({ history_layout: value as CaptureHistoryLayout })}
           />
           <button className="qx-command-button primary" onClick={() => void beginScreenshot()} type="button">
             {t("screencap.screenshot", "Screenshot")}
@@ -573,92 +567,11 @@ export default function ScreenRecorder() {
                       : t("screencap.controls.pinShort", "Show Capture Island")}
                   </button>
                 </div>
-                <div className="qx-screencap-options">
-                  <label>
-                    <span>{t("screencap.afterScreenshot", "After screenshot")}</span>
-                    <Select
-                      value={screenshotAfterCapture}
-                      options={[
-                        { value: "copy", label: t("screencap.afterScreenshot.copy", "Copy to Clipboard") },
-                        { value: "none", label: t("screencap.afterScreenshot.none", "Save Only") },
-                      ]}
-                      onChange={setScreenshotAfterCapture}
-                      ariaLabel={t("screencap.afterScreenshot", "After screenshot")}
-                    />
-                  </label>
-                  <label>
-                    <span>{t("screencap.confirmMode", "Selection confirm")}</span>
-                    <Select
-                      value={confirmMode}
-                      options={[
-                        { value: "refine", label: t("screencap.confirmMode.refine", "Refine then capture") },
-                        { value: "release", label: t("screencap.confirmMode.release", "Capture on release") },
-                      ]}
-                      onChange={setConfirmMode}
-                      ariaLabel={t("screencap.confirmMode", "Selection confirm")}
-                    />
-                  </label>
-                  <label>
-                    <span>{t("screencap.delay", "Delay")}</span>
-                    <Select
-                      value={String(delaySeconds) as "0" | "3" | "5"}
-                      options={[
-                        { value: "0", label: t("screencap.delay.none", "None") },
-                        { value: "3", label: "3s" },
-                        { value: "5", label: "5s" },
-                      ]}
-                      onChange={(value) => setDelaySeconds(Number(value) as CaptureDelaySeconds)}
-                      ariaLabel={t("screencap.delay", "Delay")}
-                    />
-                  </label>
-                  <label>
-                    <span>{t("screencap.format", "Format")}</span>
-                    <Select
-                      value={recordingOptions.outputFormat}
-                      options={[{ value: "mp4", label: "MP4" }, { value: "mov", label: "MOV" }]}
-                      onChange={(outputFormat) => setRecordingOptions((value) => ({ ...value, outputFormat }))}
-                      ariaLabel={t("screencap.format", "Recording format")}
-                    />
-                  </label>
-                  <label>
-                    <span>{t("screencap.resolution", "Resolution")}</span>
-                    <Select
-                      value={recordingOptions.resolution}
-                      options={[
-                        { value: "720p", label: "720p" },
-                        { value: "1080p", label: "1080p" },
-                        { value: "native", label: t("screencap.native4k", "Native (up to 4K)") },
-                      ]}
-                      onChange={(resolution) => setRecordingOptions((value) => ({ ...value, resolution }))}
-                      ariaLabel={t("screencap.resolution", "Recording resolution")}
-                    />
-                  </label>
-                  <label>
-                    <span>{t("screencap.frameRate", "Frame rate")}</span>
-                    <Select
-                      value={String(recordingOptions.fps) as "15" | "24" | "30"}
-                      options={[
-                        { value: "15", label: "15 fps" },
-                        { value: "24", label: "24 fps" },
-                        { value: "30", label: "30 fps" },
-                      ]}
-                      onChange={(fps) => setRecordingOptions((value) => ({ ...value, fps: Number(fps) as RecordingOptions["fps"] }))}
-                      ariaLabel={t("screencap.frameRate", "Recording frame rate")}
-                    />
-                  </label>
-                  <label>
-                    <span>{t("screencap.quality", "Quality")}</span>
-                    <Select
-                      value={recordingOptions.quality}
-                      options={[
-                        { value: "compact", label: t("screencap.quality.compact", "Compact") },
-                        { value: "balanced", label: t("screencap.quality.balanced", "Balanced") },
-                        { value: "high", label: t("screencap.quality.high", "High") },
-                      ]}
-                      onChange={(quality) => setRecordingOptions((value) => ({ ...value, quality }))}
-                      ariaLabel={t("screencap.quality", "Recording quality")}
-                    />
-                  </label>
+                <div className="qx-screencap-settings-link">
+                  <span>{t("screencap.configurationMoved", "Capture and recording options are managed in the Screen Capture module settings.")}</span>
+                  <LinkButton onClick={openCaptureSettings}>
+                    {t("screencap.openSettings", "Open module settings")}
+                  </LinkButton>
                 </div>
                 <div style={{ fontSize: 12, color: "var(--qx-text-tertiary)", marginTop: 10 }}>
                   {t("screencap.fullSelectHint", "Region · Window · Full screen on built-in and external displays")}

@@ -21,8 +21,6 @@ export interface HomeIslandAppearance {
   /** Auto-rotate interval in seconds. 0 = pin first selected mode only. Default 8. */
   home_island_rotate_secs?: number;
   home_island_cpu: boolean;
-  /** @deprecated Retained for imported settings compatibility; System island no longer renders GPU. */
-  home_island_gpu: boolean;
   home_island_memory: boolean;
 }
 
