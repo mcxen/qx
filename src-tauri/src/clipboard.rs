@@ -475,6 +475,7 @@ pub struct ClipboardEntry {
     pub copy_count: i64,
     pub image_path: Option<String>,
     pub file_path: Option<String>,
+    pub file_kind: Option<String>,
 }
 
 pub struct ClipboardDb(pub Arc<Mutex<Option<Connection>>>);
@@ -799,6 +800,7 @@ fn init_db() -> rusqlite::Result<Connection> {
     ensure_column(&conn, "image_path", "TEXT")?;
     ensure_column(&conn, "image_pasteboard_path", "TEXT")?;
     ensure_column(&conn, "file_path", "TEXT")?;
+    ensure_column(&conn, "file_kind", "TEXT")?;
 
     enforce_existing_image_limits(&conn);
     compact_existing_pasteboard_snapshots(&conn);
@@ -836,6 +838,25 @@ fn compute_image_id(image_path: &str) -> String {
         .unwrap_or_else(|| compute_id(image_path))
 }
 
+fn clipboard_file_kind(path: &Path) -> &'static str {
+    if path.is_dir() {
+        return "folder";
+    }
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tif" | "tiff" | "heic" => "image",
+        "mp4" | "mov" | "m4v" | "avi" | "mkv" | "webm" | "mpeg" | "mpg" => "video",
+        "mp3" | "m4a" | "wav" | "aac" | "flac" | "ogg" => "audio",
+        "pdf" => "pdf",
+        _ => "file",
+    }
+}
+
 fn lock_db(db: &Arc<Mutex<Option<Connection>>>) -> MutexGuard<'_, Option<Connection>> {
     db.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
@@ -845,6 +866,49 @@ fn ensure_connection(guard: &mut Option<Connection>) -> rusqlite::Result<&Connec
         *guard = Some(init_db()?);
     }
     Ok(guard.as_ref().expect("clipboard connection initialized"))
+}
+
+fn backfill_clipboard_file_kinds(db: &Arc<Mutex<Option<Connection>>>) {
+    let candidates: Vec<(String, String)> = {
+        let mut guard = lock_db(db);
+        let Ok(conn) = ensure_connection(&mut guard) else {
+            return;
+        };
+        let Ok(mut stmt) = conn.prepare(
+            "SELECT id, file_path FROM clipboard_history
+             WHERE file_path IS NOT NULL AND file_kind IS NULL
+             ORDER BY timestamp DESC LIMIT 300",
+        ) else {
+            return;
+        };
+        let Ok(rows) = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?))) else {
+            return;
+        };
+        rows.flatten().collect()
+    };
+    if candidates.is_empty() {
+        return;
+    }
+
+    // Filesystem metadata is resolved without holding the database lock.
+    let resolved: Vec<_> = candidates
+        .into_iter()
+        .map(|(id, path)| {
+            let kind = clipboard_file_kind(Path::new(&path));
+            (id, kind)
+        })
+        .collect();
+
+    let mut guard = lock_db(db);
+    let Ok(conn) = ensure_connection(&mut guard) else {
+        return;
+    };
+    for (id, kind) in resolved {
+        let _ = conn.execute(
+            "UPDATE clipboard_history SET file_kind = ?1 WHERE id = ?2 AND file_kind IS NULL",
+            params![kind, id],
+        );
+    }
 }
 
 pub fn start_listener(app: &AppHandle) {
@@ -867,6 +931,8 @@ pub fn start_listener(app: &AppHandle) {
     std::thread::Builder::new()
         .name("qx-clipboard".to_string())
         .spawn(move || {
+            backfill_clipboard_file_kinds(&db_clone);
+            let _ = app_handle.emit("clipboard-updated", ());
             let mut last_text = String::new();
             let mut last_image_hash = String::new();
             let mut last_change_count: Option<i64> = None;
@@ -1018,16 +1084,18 @@ fn store(
         return; // nothing to store
     };
     let ts = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
+    let file_kind = file_path.map(|path| clipboard_file_kind(Path::new(path)));
     let _ = conn.execute(
-        "INSERT INTO clipboard_history (id, text, timestamp, image_path, image_pasteboard_path, file_path)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "INSERT INTO clipboard_history (id, text, timestamp, image_path, image_pasteboard_path, file_path, file_kind)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
          ON CONFLICT(id) DO UPDATE SET
             text = excluded.text,
             timestamp = excluded.timestamp,
             image_path = COALESCE(excluded.image_path, clipboard_history.image_path),
             image_pasteboard_path = COALESCE(excluded.image_pasteboard_path, clipboard_history.image_pasteboard_path),
-            file_path = COALESCE(excluded.file_path, clipboard_history.file_path)",
-        params![id, text, ts, image_path, image_pasteboard_path, file_path],
+            file_path = COALESCE(excluded.file_path, clipboard_history.file_path),
+            file_kind = COALESCE(excluded.file_kind, clipboard_history.file_kind)",
+        params![id, text, ts, image_path, image_pasteboard_path, file_path, file_kind],
     );
     prune_clipboard_storage(conn);
 }

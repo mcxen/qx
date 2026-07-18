@@ -41,6 +41,8 @@
 剪贴板浏览态以 Bottom Bar `primaryAction` 显示“粘贴到 {前台应用} ↵”，位置固定
 在 Action 左侧；编辑态使用 Island trailing actions 显示“保存 / 另存为新条目”，
 保存成功使用宿主 `orbit` effect 提供一次性反馈。
+剪贴板文件条目必须保留 `file_kind`（含 `folder`）；列表和详情消费该字段，不得以
+“是否有扩展名”猜测文件夹。旧条目缺少字段时才允许以路径扩展名作展示回退。
 
 ---
 

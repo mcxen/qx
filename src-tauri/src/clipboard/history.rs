@@ -11,7 +11,7 @@ pub fn get_clipboard_history(
     let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, text, timestamp, pinned, copy_count, image_path, file_path
+            "SELECT id, text, timestamp, pinned, copy_count, image_path, file_path, file_kind
              FROM clipboard_history
              ORDER BY pinned DESC, timestamp DESC
              LIMIT ?1",
@@ -27,6 +27,7 @@ pub fn get_clipboard_history(
                 copy_count: row.get(4)?,
                 image_path: row.get(5)?,
                 file_path: row.get(6)?,
+                file_kind: row.get(7)?,
             })
         })
         .map_err(|e| format!("{e}"))?;

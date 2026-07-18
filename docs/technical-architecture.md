@@ -94,6 +94,9 @@ useStore:
   - clipboardHistory: ClipboardEntry[]
 ```
 
+`ClipboardEntry` 对文件类条目同时保留 `file_path` 与稳定的 `file_kind`；`folder`
+不是普通文件的展示别名，必须从原生文件引用语义捕获并跨数据库/API 边界保留。
+
 **插件注册中心 (`src/plugin/registry.ts`)**
 ```
 usePluginRegistry:

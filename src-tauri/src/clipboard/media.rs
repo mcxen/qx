@@ -25,20 +25,7 @@ struct ClipboardMediaProgress {
 }
 
 fn media_kind(path: &Path) -> &'static str {
-    match path
-        .extension()
-        .and_then(|value| value.to_str())
-        .unwrap_or("")
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "tif" | "tiff" | "heic" => "image",
-        "mp4" | "mov" | "m4v" | "avi" | "mkv" | "webm" | "mpeg" | "mpg" => "video",
-        "mp3" | "m4a" | "wav" | "aac" | "flac" | "ogg" => "audio",
-        "pdf" => "pdf",
-        _ if path.is_dir() => "folder",
-        _ => "file",
-    }
+    clipboard_file_kind(path)
 }
 
 fn media_tool(name: &str) -> Option<PathBuf> {

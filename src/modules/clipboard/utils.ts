@@ -79,7 +79,7 @@ export function wordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-export type ClipboardFileKind = "image" | "video" | "audio" | "pdf" | "file";
+export type ClipboardFileKind = "image" | "video" | "audio" | "pdf" | "folder" | "file";
 
 export function clipboardFileKind(path: string): ClipboardFileKind {
   const base = path.split(/[/\\]/).pop() || path;
@@ -98,11 +98,12 @@ export function contentType(item: ClipboardEntry, t: Translate): string {
   if (kind === "code") return t("clipboard.type.code", "Code");
   if (kind === "image") return t("clipboard.type.image", "Image");
   if (kind === "file" && item.file_path) {
-    const fileKind = clipboardFileKind(item.file_path);
+    const fileKind = item.file_kind || clipboardFileKind(item.file_path);
     if (fileKind === "image") return t("clipboard.type.image", "Image");
     if (fileKind === "video") return t("clipboard.type.video", "Video");
     if (fileKind === "audio") return t("clipboard.type.audio", "Audio");
     if (fileKind === "pdf") return t("clipboard.type.pdf", "PDF");
+    if (fileKind === "folder") return t("clipboard.type.folder", "Folder");
     return t("clipboard.type.file", "File");
   }
   return t("clipboard.type.text", "Text");

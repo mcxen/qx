@@ -1023,6 +1023,7 @@ const zh: Record<string, string> = {
   "clipboard.type.video": "视频",
   "clipboard.type.audio": "音频",
   "clipboard.type.pdf": "PDF",
+  "clipboard.type.folder": "文件夹",
   "clipboard.type.text": "文本",
   "clipboard.copied.today": "今天 {time}",
   "clipboard.copied.on": "{date} {time}",

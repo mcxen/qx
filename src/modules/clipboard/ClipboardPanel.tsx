@@ -5,7 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { LucideIcon } from "lucide-react";
-import { AlignLeft, AudioLines, CalendarDays, Code2, File, FileText, Image, Link, Pin, Shrink, Video } from "lucide-react";
+import { AlignLeft, AudioLines, CalendarDays, Code2, File, FileText, Folder, Image, Link, Pin, Shrink, Video } from "lucide-react";
 import { useStore, type ClipboardEntry } from "../../store";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
@@ -53,7 +53,7 @@ const FILTER_KEYS: Record<Filter, { key: string; fallback: string }> = {
   file: { key: "clipboard.filter.file", fallback: "Files" },
 };
 
-type ClipboardIconKind = ReturnType<typeof classify> | "pin" | "video" | "audio" | "pdf";
+type ClipboardIconKind = ReturnType<typeof classify> | "pin" | "video" | "audio" | "pdf" | "folder";
 
 const CLIPBOARD_TYPE_ICONS: Record<ClipboardIconKind, LucideIcon> = {
   pinned: Pin,
@@ -66,6 +66,7 @@ const CLIPBOARD_TYPE_ICONS: Record<ClipboardIconKind, LucideIcon> = {
   video: Video,
   audio: AudioLines,
   pdf: FileText,
+  folder: Folder,
   file: File,
   text: FileText,
 };
@@ -194,7 +195,7 @@ function ClipboardTypeIcon({ item }: { item: ClipboardEntry }) {
   const kind: ClipboardIconKind = item.pinned
     ? "pin"
     : item.file_path
-      ? clipboardFileKind(item.file_path)
+      ? item.file_kind || clipboardFileKind(item.file_path)
       : classify(item);
   const Icon = CLIPBOARD_TYPE_ICONS[kind] ?? FileText;
   return (
@@ -1089,6 +1090,8 @@ export default function ClipboardPanel() {
                     <div className="qx-clipboard-file-placeholder">
                       {fileMetadata?.kind === "video" ? (
                         <Video size={42} />
+                      ) : fileMetadata?.kind === "folder" || selectedItem.file_kind === "folder" ? (
+                        <Folder size={42} />
                       ) : fileMetadata?.kind === "pdf" ||
                         selectedItem.file_path.toLowerCase().endsWith(".pdf") ? (
                         <FileText size={42} />

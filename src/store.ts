@@ -33,6 +33,8 @@ export interface ClipboardEntry {
   copy_count: number;
   image_path?: string | null;
   file_path?: string | null;
+  /** Stable kind captured with file clipboard semantics; avoids guessing folders from extensions. */
+  file_kind?: "image" | "video" | "audio" | "pdf" | "folder" | "file" | null;
 }
 
 /** History entry (launches) */
