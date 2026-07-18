@@ -260,7 +260,6 @@ export default function QxTTYPanel() {
   const leave = useCallback(() => setTab("launcher"), [setTab]);
   const shell = useQxModuleShell({
     leave,
-    actionsLabel: t("tty.actions", "Terminal Actions"),
     island: {
       label: activeSessionTitle,
       detail: activeSession

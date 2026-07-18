@@ -388,7 +388,11 @@ Context Panel：
 
 - 只显示当前上下文真实可执行动作（`primaryAction` / `secondaryAction` / `actions`）。
 - 无可用动作时不渲染按钮。
-- `Actions` 打开临时菜单，不把菜单内容塞进 Context Panel。
+- 菜单入口文案由 Shell 固定为中文“操作”、英文 `Action`，快捷键固定为平台化的
+  `Cmd/Ctrl+K`；模块不得覆盖为“终端操作”等领域名称。
+- 窄窗口可压缩主动作或隐藏 Island 次要信息，但不得隐藏 Action 的快捷键提示；
+  Action 文案可截断，快捷键本身必须保持完整且不参与收缩。
+- `Action` 打开临时菜单，不把菜单内容塞进 Context Panel。
 - 不得在 QxShell Bottom Bar 下方叠加第二条控制栏、快捷键提示栏或全局 Settings/Hide footer；这些入口必须合并进 QxShell 的 escape/action/island 协议。
 
 Actions Menu：

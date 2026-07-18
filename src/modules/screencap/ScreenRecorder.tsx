@@ -363,7 +363,6 @@ export default function ScreenRecorder() {
       },
     },
     onKeyDown: handleModuleKeys,
-    actionsLabel: t("common.actions", "Actions"),
     island: {
       label: isRecording || status === "processing"
         ? t("screencap.recording", "Recording")

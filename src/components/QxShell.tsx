@@ -24,6 +24,7 @@ import QxBottomIsland from "./QxBottomIsland";
 import QxIslandDockSlot from "../island/surface/QxIslandDockSlot";
 import { useShellIslandShim } from "../island/compat/useShellIslandShim";
 import type { IslandPriority, IslandSource } from "../island/types";
+import { useT } from "../i18n";
 
 export type { BottomIslandContent } from "./QxBottomIsland";
 export type { QxShellAction } from "./ShellActionButton";
@@ -97,6 +98,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   overlayBottom,
   navigation,
 }, ref) {
+  const t = useT();
   const routeKey =
     islandKey ??
     (title
@@ -119,7 +121,14 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const leftAction = escapeAction ?? fallbackEscapeAction;
   const hasLeading = Boolean(onBack || leading);
   const visiblePrimaryAction = primaryAction?.disabled ? undefined : primaryAction;
-  const visibleSecondaryAction = secondaryAction?.disabled ? undefined : secondaryAction;
+  const rawSecondaryAction = secondaryAction?.disabled ? undefined : secondaryAction;
+  const visibleSecondaryAction = rawSecondaryAction && (actions?.length ?? 0) > 0 && !rawSecondaryAction.onClick
+    ? {
+        ...rawSecondaryAction,
+        label: t("common.actions", "Action"),
+        kbd: getQxShortcutPreset().actionMenu,
+      }
+    : rawSecondaryAction;
   const hasRightActions = Boolean(visiblePrimaryAction || visibleSecondaryAction);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [actionIndex, setActionIndex] = useState(0);

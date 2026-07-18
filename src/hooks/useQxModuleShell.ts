@@ -82,8 +82,6 @@ export type UseQxModuleShellOptions = {
   island?: BottomIslandContent | null;
   /** Declarative loading / error / idle island. */
   islandState?: ModuleIslandState;
-  /** Bottom-right Actions menu label. */
-  actionsLabel?: string;
   /** Default true — pass false for modules without an actions menu. */
   showActionsMenu?: boolean;
   /**
@@ -114,7 +112,6 @@ export function useQxModuleShell(options: UseQxModuleShellOptions): QxModuleShel
     onKeyDown: extraKeyDown,
     island: islandOverride,
     islandState,
-    actionsLabel,
     showActionsMenu = true,
     t = (_key, fallback) => fallback,
   } = options;
@@ -153,10 +150,10 @@ export function useQxModuleShell(options: UseQxModuleShellOptions): QxModuleShel
   const secondaryAction = useMemo(() => {
     if (!showActionsMenu) return undefined;
     return {
-      label: actionsLabel ?? t("common.actions", "Actions"),
+      label: t("common.actions", "Action"),
       kbd: actionMenuShortcut,
     } satisfies QxShellAction;
-  }, [actionMenuShortcut, actionsLabel, showActionsMenu, t]);
+  }, [actionMenuShortcut, showActionsMenu, t]);
 
   return {
     escapeAction,

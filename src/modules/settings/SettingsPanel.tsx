@@ -307,7 +307,6 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     esc: {
       query: { active: filter.length > 0, clear: () => setFilter("") },
     },
-    actionsLabel: t("launcher.actions", "Actions"),
     island: settingsIsland,
     t,
   });

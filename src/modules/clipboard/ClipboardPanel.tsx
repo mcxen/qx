@@ -757,6 +757,14 @@ export default function ClipboardPanel() {
       },
     ];
 
+    if (hasDraftChanges) {
+      list.unshift({
+        label: t("clipboard.edit.saveAsNew", "Save as New"),
+        kbd: "CmdOrCtrl+Shift+S",
+        onClick: () => void saveTextEditAsNew(),
+      });
+    }
+
     // Context-sensitive media tools — only when the current item can run them.
     if (compressSourcePath) {
       list.push({
@@ -807,7 +815,9 @@ export default function ClipboardPanel() {
     return list;
   }, [
     compressSourcePath,
+    draftText,
     gifSourcePath,
+    hasDraftChanges,
     mediaProgress,
     selectedItem,
     t,
@@ -867,7 +877,6 @@ export default function ClipboardPanel() {
     onKeyDown: (e) => {
       void handleModuleKeys(e);
     },
-    actionsLabel: t("clipboard.actions", "Actions"),
     island: {
       label: hasDraftChanges
         ? t("clipboard.edit.unsaved", "Unsaved clipboard edit")
@@ -916,11 +925,7 @@ export default function ClipboardPanel() {
         tone: "primary",
         onClick: () => void pasteItem(selectedItem),
       }}
-      secondaryAction={hasDraftChanges ? {
-        label: t("clipboard.edit.saveAsNew", "Save as New"),
-        kbd: "CmdOrCtrl+Shift+S",
-        onClick: () => void saveTextEditAsNew(),
-      } : shell.secondaryAction}
+      secondaryAction={shell.secondaryAction}
       actionTitle={t("clipboard.actions", "Clipboard Actions")}
       actions={clipboardActions}
     >
