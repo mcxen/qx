@@ -194,7 +194,10 @@ hold `resources/search/everything.exe` open while an installer upgrades the app.
 indexing service in `NSIS_HOOK_PREINSTALL` before NSIS copies files. The
 post-install hook reinstalls the service. Keep the same cleanup in
 `NSIS_HOOK_PREUNINSTALL`; never use a broad `taskkill` that would terminate a
-user's unrelated Everything installation.
+user's unrelated Everything installation. Runtime file search must likewise use
+only Qx's bundled `everything.exe` and `es.exe`; a missing bundle is an
+unavailable Qx search engine, not permission to fall back to binaries under the
+user's system-wide Everything installation.
 
 `latest.json` is the app updater manifest. It must point at the ARM64 app zip and
 include the matching SHA256 and size. The release workflow generates it before

@@ -249,30 +249,13 @@ fn query_everything_raw(query: &str, limit: usize) -> Option<Vec<String>> {
 }
 
 fn find_everything_cli() -> Option<PathBuf> {
-    if let Some(path) = resource_bin("es.exe") {
-        return Some(path);
-    }
-    let candidates = [
-        r"C:\Program Files\Everything\es.exe",
-        r"C:\Program Files (x86)\Everything\es.exe",
-    ];
-    candidates
-        .iter()
-        .map(PathBuf::from)
-        .find(|path| path.exists())
+    // Qx owns a bundled, named Everything instance. Falling back to a user's
+    // installation would couple Qx lifecycle and upgrades to unrelated files.
+    resource_bin("es.exe")
 }
 
 fn find_everything_engine() -> Option<PathBuf> {
-    if let Some(path) = resource_bin("everything.exe") {
-        return Some(path);
-    }
-    [
-        r"C:\Program Files\Everything\Everything.exe",
-        r"C:\Program Files (x86)\Everything\Everything.exe",
-    ]
-    .iter()
-    .map(PathBuf::from)
-    .find(|path| path.exists())
+    resource_bin("everything.exe")
 }
 
 #[cfg(test)]
