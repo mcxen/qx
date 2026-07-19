@@ -138,6 +138,21 @@ fn shortcut_for(settings: &Settings, id: &str) -> Option<String> {
         .map(|binding| portable_shortcut_key(binding.key.trim()))
 }
 
+fn begin_capture_from_shortcut(app: AppHandle, mode: &'static str) {
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) =
+            crate::screencap::screencap_begin_capture_select(app, mode.to_string()).await
+        {
+            crate::diagnostics::log(
+                crate::diagnostics::LogLevel::Error,
+                "screencap.shortcut",
+                "capture shortcut failed",
+                serde_json::json!({ "mode": mode, "error": error }),
+            );
+        }
+    });
+}
+
 fn enabled_shortcut_key(binding: &ShortcutBinding) -> Option<String> {
     if binding.enabled && !binding.key.trim().is_empty() {
         Some(portable_shortcut_key(binding.key.trim()))
@@ -301,14 +316,7 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
                 "register capture_screenshot shortcut",
                 gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        let app = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let _ = crate::screencap::screencap_begin_capture_select(
-                                app,
-                                "screenshot".to_string(),
-                            )
-                            .await;
-                        });
+                        begin_capture_from_shortcut(app.clone(), "screenshot");
                     }
                 })
             ) {
@@ -320,14 +328,7 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
                 "register record_gif shortcut",
                 gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
-                        let app = app.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let _ = crate::screencap::screencap_begin_capture_select(
-                                app,
-                                "recording".to_string(),
-                            )
-                            .await;
-                        });
+                        begin_capture_from_shortcut(app.clone(), "recording");
                     }
                 })
             ) {

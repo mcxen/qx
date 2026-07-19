@@ -381,9 +381,74 @@ pub fn capture_region(
     height: u32,
 ) -> Result<image::RgbaImage, String> {
     let monitor = capture_monitor(monitor_id)?;
-    monitor
-        .capture_region(x, y, width, height)
-        .map_err(|error| format!("capture region: {error}"))
+    capture_region_from_monitor(&monitor, x, y, width, height)
+}
+
+/// Capture from an already-resolved monitor so high-frequency consumers do not
+/// re-enumerate native display handles for every frame.
+pub(crate) fn capture_region_from_monitor(
+    monitor: &xcap::Monitor,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+) -> Result<image::RgbaImage, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let monitor_x = monitor.x().map_err(|error| format!("display x: {error}"))?;
+        let monitor_y = monitor.y().map_err(|error| format!("display y: {error}"))?;
+        if crate::display_windows::should_try_wgc() {
+            let modern = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                monitor.capture_region(x, y, width, height)
+            }));
+            match modern {
+                Ok(Ok(image)) => return Ok(image),
+                Ok(Err(error)) => {
+                    crate::display_windows::disable_wgc();
+                    crate::diagnostics::log(
+                        crate::diagnostics::LogLevel::Warn,
+                        "display.capture.windows",
+                        "Windows Graphics Capture failed; using GDI fallback",
+                        serde_json::json!({ "error": error.to_string(), "monitorId": monitor.id().ok() }),
+                    );
+                }
+                Err(_) => {
+                    crate::display_windows::disable_wgc();
+                    crate::diagnostics::log(
+                        crate::diagnostics::LogLevel::Warn,
+                        "display.capture.windows",
+                        "Windows Graphics Capture panicked; using GDI fallback",
+                        serde_json::json!({ "monitorId": monitor.id().ok() }),
+                    );
+                }
+            }
+        }
+        return crate::display_windows::capture_region_gdi(
+            monitor_x.saturating_add(x as i32),
+            monitor_y.saturating_add(y as i32),
+            width,
+            height,
+        );
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        monitor
+            .capture_region(x, y, width, height)
+            .map_err(|error| format!("capture region: {error}"))
+    }
+}
+
+pub(crate) fn capture_image_from_monitor(
+    monitor: &xcap::Monitor,
+) -> Result<image::RgbaImage, String> {
+    let width = monitor
+        .width()
+        .map_err(|error| format!("display width: {error}"))?;
+    let height = monitor
+        .height()
+        .map_err(|error| format!("display height: {error}"))?;
+    capture_region_from_monitor(monitor, 0, 0, width, height)
 }
 
 #[cfg(test)]

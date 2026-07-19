@@ -128,7 +128,7 @@
 |---|---|---|
 | 显示器枚举与映射 | `display` | `display_list` / `src/system/display.ts` |
 | 顶层窗口清单与几何 | `desktop_windows` | `desktop_windows_list` / `src/system/desktopWindows.ts` |
-| 区域 still-frame 抓帧 | `display::capture_region` | 内部 API（工作流封装） |
+| 区域 still-frame 抓帧 | `display::capture_region` | 内部 API（工作流封装；Windows 后端降级只在 `display_windows`） |
 | 磁盘图写剪贴板 | `clipboard` | `clipboard_write_image_file` / `src/system/clipboard.ts` |
 | 视频/GIF 编解码 | `media/` | 既有 convert 命令 |
 | 主线程 UI / 后台算力 | `runtime/` | `runtime::ui` · `runtime::blocking` · `runtime::install`（见 runtime-threading.md） |

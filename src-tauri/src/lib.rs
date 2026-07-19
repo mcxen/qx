@@ -5,6 +5,8 @@ mod desktop_windows;
 mod diagnostics;
 mod display;
 mod display_monitor;
+#[cfg(target_os = "windows")]
+mod display_windows;
 mod external_displays;
 mod file_search;
 mod floating_panel;

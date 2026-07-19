@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use super::geometry::{clamp_area, crop_physical};
 use super::state::{set_capture_error, FRAME_COUNT};
 use super::types::{NormalizedRecordingOptions, RecordArea, RecordingOutput};
-use crate::display::capture_monitor;
+use crate::display::{capture_image_from_monitor, capture_monitor, capture_region_from_monitor};
 use crate::media::h264::{mp4_config, mp4_parts};
 use crate::media::image::constrain_video_size;
 
@@ -91,8 +91,8 @@ fn encode_rgba_frame(
     Ok(())
 }
 
-/// Prefer xcap's AVFoundation `video_recorder` stream (continuous frames).
-/// Fall back to polled `capture_region` / `capture_image` if the stream fails.
+/// Prefer xcap's native continuous stream. Fall back to the root display
+/// service's polled frames if initialization fails or the stream stalls.
 fn recording_loop_inner(
     output_path: &Path,
     area: Option<RecordArea>,
@@ -151,12 +151,18 @@ fn recording_loop_inner(
     let mut next_frame_at = std::time::Instant::now();
 
     // ── Native continuous stream (region selections crop each stream frame) ─
-    let stream_ok = match monitor.video_recorder() {
-        Ok((recorder, rx)) => {
-            if recorder.start().is_err() {
+    let recorder_result =
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| monitor.video_recorder()));
+    let stream_ok = match recorder_result {
+        Ok(Ok((recorder, rx))) => {
+            let started =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| recorder.start()))
+                    .is_ok_and(|result| result.is_ok());
+            if !started {
                 false
             } else {
                 let mut consecutive_empty: u32 = 0;
+                let mut stream_healthy = true;
                 while !stop_flag.load(Ordering::Relaxed) {
                     let now = std::time::Instant::now();
                     if now < next_frame_at {
@@ -173,16 +179,15 @@ fn recording_loop_inner(
                             consecutive_empty += 1;
                             if consecutive_empty >= 10 {
                                 let _ = recorder.stop();
-                                return Err(
-                                        "Screen capture stream stalled. Grant Screen Recording permission and restart Qx."
-                                            .to_string(),
-                                    );
+                                stream_healthy = false;
+                                break;
                             }
                             continue;
                         }
                         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                             let _ = recorder.stop();
-                            return Err("Screen capture stream disconnected".to_string());
+                            stream_healthy = false;
+                            break;
                         }
                     };
                     consecutive_empty = 0;
@@ -217,10 +222,10 @@ fn recording_loop_inner(
                     advance_frame_deadline(&mut next_frame_at, frame_duration, after_encode);
                 }
                 let _ = recorder.stop();
-                true
+                stream_healthy
             }
         }
-        Err(_) => false,
+        Ok(Err(_)) | Err(_) => false,
     };
 
     // ── Region / poll path: capture_region uses the same logical points as the picker ─
@@ -233,9 +238,9 @@ fn recording_loop_inner(
                 continue;
             }
             let captured = if let Some(ref a) = area {
-                monitor.capture_region(a.x, a.y, a.w, a.h)
+                capture_region_from_monitor(&monitor, a.x, a.y, a.w, a.h)
             } else {
-                monitor.capture_image()
+                capture_image_from_monitor(&monitor)
             };
             match captured {
                 Ok(img) => {
