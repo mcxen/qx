@@ -1,3 +1,4 @@
+use tauri::utils::config::Color;
 use tauri::{
     command, AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
     WebviewWindowBuilder,
@@ -174,6 +175,10 @@ fn show_region_picker_internal(
             .minimizable(false)
             .decorations(false)
             .transparent(true)
+            // WebView2 defaults to an opaque black controller background even
+            // when the native window is transparent. Alpha=0 is the explicit
+            // Windows 8+ transparent WebView contract in Tauri.
+            .background_color(Color(0, 0, 0, 0))
             .shadow(false)
             .always_on_top(true)
             .skip_taskbar(true)
@@ -188,6 +193,7 @@ fn show_region_picker_internal(
         let picker = app_for_ui
             .get_webview_window(PICKER_LABEL)
             .ok_or_else(|| "region picker window is unavailable".to_string())?;
+        let _ = picker.set_background_color(Some(Color(0, 0, 0, 0)));
         let _ = picker.set_content_protected(true);
         let _ = picker.set_always_on_top(true);
         // Cover the selected display exactly. Physical size/position matches the

@@ -559,7 +559,7 @@
 
 ### 截图与多显示器统一捕获（2026-07-15）
 
-- **Windows xcap 兼容层（2026-07-19）**：Windows 构建启用 xcap 0.9 的 WGC still-frame/recording 后端；根级 `display` 服务捕获 WGC 失败或 panic 时自动降级到 GDI，并修正 compatible bitmap 的透明 alpha；录屏原生流初始化失败、断开或连续无帧时改走同一系统捕获端口轮询，不再由 screencap 私自选择后端；全局截图/录屏快捷键失败写入诊断日志。远程桌面/虚拟显示驱动仍需 Windows 真机 smoke test。
+- **Windows xcap 与圈选兼容层（2026-07-19）**：Windows 构建启用 xcap 0.9 的 WGC still-frame/recording 后端；根级 `display` 服务捕获 WGC 失败或 panic 时自动降级到 GDI，并修正 compatible bitmap 的透明 alpha；录屏原生流初始化失败、断开或连续无帧时改走同一系统捕获端口轮询，不再由 screencap 私自选择后端；全局截图/录屏快捷键失败写入诊断日志。圈选 picker 与多屏 shade 同时显式设置 WebView2 alpha=0 背景，避免 Windows 只透明化原生窗口、WebView 控制器仍以不透明黑底覆盖桌面。远程桌面/虚拟显示驱动仍需 Windows 真机 smoke test。
 - **鼠标所在桌面默认跟随（2026-07-16）**：圈选启动默认落在鼠标所在显示器；尚未开始框选时由 Rust 后台复用统一 `display` 服务检测跨屏并迁移受保护圈选窗，开始交互、已有选区、倒计时或确认后立即停止跟随，session 结束时后台任务自动退出。
 - **P0–P1 交互重设计（2026-07-15）**：意图驱动主按钮（Enter/S/R）；模块双入口收敛；区域重画 + 八向手柄；延迟 0/3/5s 倒计时穿透；`confirmMode` 精修/松手即捕；窗口悬停选取；标注扩展（矩形/画笔/颜色/撤销重做）；截图 post-capture toast；无视频编辑。
 - **系统能力层（SOLID）**：窗列表提升为 `desktop_windows`（`desktop_windows_list`）；显示器公共 IPC `display_list` + `display::capture_region`；剪贴板 `clipboard_write_image_file`；前端端口 `src/system/*`；screencap 仅消费系统服务与保留工作流门面。
