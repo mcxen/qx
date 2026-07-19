@@ -215,6 +215,10 @@ export function createPluginContext(
         rpc("systemOpenPath", { path }) as ReturnType<PluginContext["system"]["openPath"]>,
       revealPath: (path) =>
         rpc("systemRevealPath", { path }) as ReturnType<PluginContext["system"]["revealPath"]>,
+      setWallpaper: (path, options = {}) =>
+        rpc("systemSetWallpaper", { path, scope: options.scope }) as ReturnType<
+          PluginContext["system"]["setWallpaper"]
+        >,
       stats: async () => {
         const raw = (await rpc("invoke", {
           cmd: "get_system_stats",

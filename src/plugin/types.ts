@@ -554,7 +554,7 @@ export interface PluginContext {
   };
   /**
    * System info + path helpers.
-   * - `env` / `openPath` / `revealPath`: permission `system`
+   * - `env` / `openPath` / `revealPath` / `setWallpaper`: permission `system`
    * - `stats` / `networkCounters`: `system-stats` / `system-info` (for tray live labels, etc.)
    */
   system: {
@@ -564,6 +564,8 @@ export interface PluginContext {
     openPath: (path: string) => Promise<void>;
     /** Reveal path in Finder / Explorer (permission `system`). */
     revealPath: (path: string) => Promise<void>;
+    /** Set one local image as wallpaper through the host platform adapter. */
+    setWallpaper: (path: string, options?: { scope?: "current" | "every" }) => Promise<void>;
     /** CPU / memory snapshot (permission `system-stats`). */
     stats: () => Promise<PluginSystemStats>;
     /** Raw interface byte counters (permission `system-info`). Diff for rates. */

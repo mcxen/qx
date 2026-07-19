@@ -188,6 +188,7 @@ export default {
 | `context.cli.start` / `poll` / `cancel` / `wait` / `listJobs` | **异步 CLI job**：可取消、边跑边读 stdout/stderr、并发上限（需 `cli`） |
 | `context.cli.map(items, worker, { concurrency? })` | 有界并行 fan-out（需 `cli`） |
 | `context.system.env()` | 平台 / home / temp 等（需 `system`） |
+| `context.system.setWallpaper(path, options?)` | 通过宿主原生适配器设置 macOS / Windows 壁纸（需 `system`） |
 | `context.system.openPath(path)` / `revealPath(path)` | 系统打开或在文件管理器中揭示路径（需 `system`） |
 | `context.http.fetch(url, opts)` | 通过 Rust 后端发起真实 HTTP/HTTPS 请求（需 `http` 权限） |
 | `context.notification.show(input)` | 显示系统通知（需 `notifications` 权限） |

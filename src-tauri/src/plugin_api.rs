@@ -126,7 +126,7 @@ fn clean_path(path: &Path) -> PathBuf {
     cleaned
 }
 
-fn plugin_file_path(id: &str, path: &str) -> Result<PathBuf, String> {
+pub(crate) fn plugin_file_path(id: &str, path: &str) -> Result<PathBuf, String> {
     let base = plugin_files_dir(id)?;
     let prefix = plugin_virtual_prefix(id);
     let raw = path.trim();

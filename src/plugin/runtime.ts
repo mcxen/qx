@@ -44,7 +44,6 @@ export {
 } from "./pluginShellBridge";
 
 export { resolvePluginAssetUrl } from "./pluginRuntimeTransport";
-
 let requestCounter = 0;
 const runtimeLogger = createQxLogger("plugin.runtime");
 function nextRequestId(): string {
@@ -494,6 +493,7 @@ export function buildPluginRuntimeHtml(
           env: () => rpc('systemEnv'),
           openPath: (path) => rpc('systemOpenPath', { path: String(path || '') }),
           revealPath: (path) => rpc('systemRevealPath', { path: String(path || '') }),
+          setWallpaper: (path, options = {}) => rpc('systemSetWallpaper', { path: String(path || ''), scope: options && options.scope }),
           stats: async () => {
             const raw = await rpc('invoke', { cmd: 'get_system_stats', args: {} }) || {};
             return {

@@ -238,7 +238,7 @@ Workbench 中带 `command` 的 action 完成后，宿主会调用 `onCommandComp
 | 场景 | 端口 | 权限 | 备注 |
 |------|------|------|------|
 | 跑本机工具（brew、release-cli、git） | **`context.cli`** | `cli` | **业务首选**；`run`/`bash` 同步；`start`/`wait`/`cancel` 异步；`map` 有界并行；GUI 下 login PATH |
-| 打开/揭示本地产物、读平台环境 | **`context.system`** | `system` | `env` / `openPath` / `revealPath`；与 `openUrl` 不同 |
+| 打开/揭示本地产物、读平台环境、设置壁纸 | **`context.system`** | `system` | `env` / `openPath` / `revealPath` / `setWallpaper`；与 `openUrl` 不同 |
 | 系统托盘菜单项 | **`context.tray`** | `tray` | `setItems` / `clear`；点选可跑本插件 `command` |
 | 调公司 HTTP API | **`context.http`** | `http` | 跨平台更稳 |
 | 复用宿主领域命令（V2EX/天气缓存等） | **`context.invoke("…")`** | 精确 `invoke:<cmd>` 或能力组 | 优先走已缓存的 host 命令，再 http 回退 |
@@ -285,6 +285,7 @@ await context.cli.which("brew")  // => "/opt/homebrew/bin/brew" | null（含 log
 // 有界并行：await context.cli.map(items, async (x) => context.cli.run(...), { concurrency: 4 });
 // 权限: "system"
 // await context.system.openPath(outPath); await context.system.revealPath(outPath);
+// await context.system.setWallpaper(outPath, { scope: "every" });
 // 权限: "tray" — 往系统托盘加菜单（可选 command 为本插件 commands[].name）
 // await context.tray.setItems([
 //   { id: "mem", title: "Open dashboard", command: "open" },
@@ -673,6 +674,7 @@ context.ui.mountWorkbench({
 | 端口 / 能力 | 建议 `min_app_version` |
 |-------------|------------------------|
 | 声明式 Workbench、后台轮询与统一灵动岛动作 | **0.5.38+** |
+| `context.system.setWallpaper` | **0.5.44+** |
 | `context.cli` | **0.5.26+** |
 | 二进制 HTTP `arrayBuffer` | 0.5.18+ |
 | 基础 panel / storage | 按你目标发行版 |

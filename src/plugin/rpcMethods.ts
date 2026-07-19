@@ -88,6 +88,7 @@ const COMMAND_CAPABILITIES: Record<string, string> = {
   plugin_system_env: "system",
   plugin_system_open_path: "system",
   plugin_system_reveal_path: "system",
+  plugin_system_set_wallpaper: "system",
   plugin_tray_set_items: "tray",
   plugin_tray_clear: "tray",
   plugin_tray_list: "tray",
@@ -112,6 +113,7 @@ const DANGEROUS_INVOKE_COMMANDS = new Set([
   "plugin_cli_list_jobs",
   "plugin_system_open_path",
   "plugin_system_reveal_path",
+  "plugin_system_set_wallpaper",
   "plugin_tray_set_items",
   "plugin_tray_clear",
   "plugin_tray_list",
@@ -487,6 +489,15 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   systemRevealPath: async (plugin, perms, payload) => {
     assertPermission(plugin, perms, "system");
     return invoke("plugin_system_reveal_path", { path: String(payload.path || "") });
+  },
+
+  systemSetWallpaper: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "system");
+    return invoke("plugin_system_set_wallpaper", {
+      plugin_id: plugin.id,
+      path: String(payload.path || ""),
+      scope: payload.scope == null ? null : String(payload.scope),
+    });
   },
 
   /** Contribute items to the Qx system tray menu (live label + optional command). */

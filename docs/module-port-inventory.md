@@ -81,9 +81,9 @@
 | **weather** | ✅ | ✅ | http + invoke weather* | persist SWR | 无 |
 | **v2ex** | ✅ | ✅ | http + invoke v2ex* | persist SWR + host disk | 无 |
 | **brew** | ✅ | ✅ | **host Workbench List** + cli/open-url | — | 原生 tabs/list/detail/Actions；`panel.render` 快返回 |
-| **unsplash** | ✅ | ✅ | **host Workbench Gallery** + http/system/cli/file ports | persist last search | 原生 Gallery + item/panel Actions |
+| **unsplash** | ✅ | ✅ | **host Workbench Gallery** + http/system wallpaper/file ports | persist last search | 原生 Gallery + item/panel Actions；与 Bing 复用宿主壁纸端口 |
 | **external-display-control** | ✅ | ✅ | invoke external-displays | — | 无 |
-| **qx-bing-wallpaper** | ✅ | ✅ | **host Workbench Gallery** + http/system/cli/file ports | persist SWR | Qx 原生 Gallery + item/panel Actions；无 Raycast shim |
+| **qx-bing-wallpaper** | ✅ | ✅ | **host Workbench Gallery** + http/system wallpaper/file ports | persist SWR | Qx 原生 Gallery + item/panel Actions；壁纸系统差异由 host port 适配；无 Raycast shim |
 | **raycast-calendar** | ✅ | ✅ | Raycast shim | — | 转换插件 |
 | **qxgh** (QxGH) | ✅ | ✅ | **host Workbench**：结构化 detail/actions + 公开 HTML + island | persist SWR | 不用 api.github.com；解析 actions/releases 网页 |
 

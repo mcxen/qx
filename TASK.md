@@ -1,5 +1,28 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Fix — Qx Bing Wallpaper Windows 原生壁纸端口
+
+**状态**：代码已收口，等待 Windows 10/11 真实桌面运行态复核。
+
+- 新增稳定的 `context.system.setWallpaper(path, { scope })` 插件端口；插件只提交已下载的
+  本地图片路径，macOS / Windows 平台差异统一留在 Rust 系统适配层。
+- Windows 不再由 Bing / Unsplash 各自拼 PowerShell + C#；宿主直接调用
+  `SystemParametersInfoW(SPI_SETDESKWALLPAPER)`，检查 Win32 返回值并保留 UTF-16 路径，
+  可明确报告系统策略、路径或 API 失败。
+- macOS 既有 AppleScript 壁纸设置也迁入同一宿主端口；Bing 与 Unsplash 两个第一方消费方
+  已同时迁移，移除重复实现和不必要的 `cli` / `plugin_run_applescript` 权限。
+- `plugin_system` 从超过 1000 行的 `plugin_cli.rs` 中拆为独立领域模块，CLI 与系统能力不再
+  混在同一个 Rust 文件；公开端口、权限、IPC 和模块清单文档同步更新。
+
+### 验证
+
+- [x] macOS `cargo check`；Win32 函数签名与 `windows-sys 0.59` 本地定义核对。
+- [x] `npm run check` / `npm run build` / `cargo check` / `cargo test --lib`（84 tests）/
+  Bing 2.0.2 与 Unsplash 1.1.1 重新打包并覆盖本机开发安装。
+- [ ] Windows Compatibility：MSVC target check + NSIS bundle。
+- [ ] Windows 10/11：Bing Gallery 的 Set、Random、Latest 三条入口均能换壁纸；中文/空格
+  用户目录可用，失败时显示 Win32 错误而不是静默成功。
+
 ## Bugfix — Windows 文件与文件夹剪贴板完整链路
 
 **状态**：代码与跨平台协议已修复，等待 Windows Explorer / RDP 运行态复核。
@@ -20,7 +43,7 @@
 
 - [x] `npx tsc --noEmit`、`npm run check` / `npm run build`、`cargo fmt --check`、
   `cargo check`、`cargo test --lib`（82 tests，其中剪贴板定向 7 tests）。
-- [ ] Windows Compatibility：MSVC target check + NSIS bundle。
+- [x] Windows Compatibility：run `29674203293`，MSVC target check + NSIS bundle 均通过。
 - [ ] Windows 10/11/RDP：Explorer 分别复制文件、文件夹、多选、中文/空格路径、UNC 或
   重定向盘路径；Qx 在 1 秒内显示，关闭 Qx 后粘贴到 Explorer 仍保留完整列表。
 
@@ -41,7 +64,7 @@
 
 - [x] `npm run check` / `npm run build` / `cargo fmt --check` / `cargo check` /
   `cargo test --lib`（76 tests）。
-- [ ] Windows Compatibility：MSVC target check 与真实 NSIS bundle。
+- [x] Windows Compatibility：run `29674203293`，MSVC target check 与真实 NSIS bundle 均通过。
 - [ ] Windows 10/11/RDP：窗口无矩形黑边；任务管理器可见 Qx 私有 Everything 后台进程，
   但没有搜索窗口、控制台或托盘图标；All / Files 输入短词和中文文件名均能返回结果。
 

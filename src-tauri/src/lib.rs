@@ -22,6 +22,7 @@ mod paths;
 mod permissions;
 mod plugin_api;
 mod plugin_cli;
+mod plugin_system;
 mod rss;
 mod runtime;
 mod screencap;
@@ -683,9 +684,9 @@ pub fn run() {
             plugin_cli::plugin_cli_poll,
             plugin_cli::plugin_cli_cancel,
             plugin_cli::plugin_cli_list_jobs,
-            plugin_cli::plugin_system_env,
-            plugin_cli::plugin_system_open_path,
-            plugin_cli::plugin_system_reveal_path,
+            plugin_system::plugin_system_env,
+            plugin_system::plugin_system_open_path,
+            plugin_system::plugin_system_reveal_path,
             plugin_api::plugin_ai_grep_search,
             plugin_api::plugin_ai_memory_list,
             plugin_api::plugin_ai_memory_add,
@@ -744,6 +745,7 @@ pub fn run() {
             g4f::qxai_save_builtin_provider_credentials,
             g4f::qxai_get_custom_providers,
             g4f::qxai_save_custom_providers,
+            plugin_system::plugin_system_set_wallpaper,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
