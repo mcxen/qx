@@ -163,11 +163,49 @@ fn replace_plugin_virtual_paths(id: &str, script: &str) -> Result<String, String
 
 fn is_dangerous_empty_dir(path: &Path) -> bool {
     let cleaned = clean_path(path);
-    cleaned == Path::new("/")
-        || cleaned == home_dir()
-        || cleaned == Path::new("/Users")
-        || cleaned == Path::new("/tmp")
-        || cleaned == Path::new("/private/tmp")
+    if cleaned == home_dir() {
+        return true;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        fn is_volume_root(path: &Path) -> bool {
+            let mut components = path.components();
+            matches!(
+                (components.next(), components.next(), components.next()),
+                (Some(Component::Prefix(_)), Some(Component::RootDir), None)
+            )
+        }
+
+        // Covers drive roots and UNC share roots without relying on a specific
+        // separator spelling or drive letter.
+        if is_volume_root(&cleaned) {
+            return true;
+        }
+        return cleaned
+            .parent()
+            .filter(|parent| is_volume_root(parent))
+            .and_then(|_| cleaned.file_name())
+            .map(|name| name.to_string_lossy().to_lowercase())
+            .is_some_and(|name| {
+                matches!(
+                    name.as_str(),
+                    "users"
+                        | "windows"
+                        | "program files"
+                        | "program files (x86)"
+                        | "programdata"
+                        | "$recycle.bin"
+                        | "system volume information"
+                )
+            });
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        cleaned == Path::new("/")
+            || cleaned == Path::new("/Users")
+            || cleaned == Path::new("/tmp")
+            || cleaned == Path::new("/private/tmp")
+    }
 }
 
 #[tauri::command]
@@ -177,34 +215,45 @@ pub fn plugin_ai_list_providers() -> Result<Vec<crate::g4f::ProviderInfo>, Strin
 
 #[tauri::command]
 pub fn plugin_run_applescript(id: String, script: String) -> Result<String, String> {
-    let expanded = replace_plugin_virtual_paths(&id, &script)?;
-    let trimmed = expanded.trim();
-    if trimmed.is_empty() {
-        return Err("AppleScript is empty".to_string());
-    }
-    let mut child = std::process::Command::new("osascript")
-        .arg("-")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("spawn osascript: {e}"))?;
+    #[cfg(not(target_os = "macos"))]
     {
-        let stdin = child
-            .stdin
-            .as_mut()
-            .ok_or_else(|| "open osascript stdin failed".to_string())?;
-        stdin
-            .write_all(trimmed.as_bytes())
-            .map_err(|e| format!("write osascript: {e}"))?;
+        let _ = (&id, &script);
+        return Err(
+            "AppleScript is only supported on macOS. Use context.cli.run with PowerShell on Windows."
+                .to_string(),
+        );
     }
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("wait osascript: {e}"))?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    #[cfg(target_os = "macos")]
+    {
+        let expanded = replace_plugin_virtual_paths(&id, &script)?;
+        let trimmed = expanded.trim();
+        if trimmed.is_empty() {
+            return Err("AppleScript is empty".to_string());
+        }
+        let mut child = std::process::Command::new("osascript")
+            .arg("-")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("spawn osascript: {e}"))?;
+        {
+            let stdin = child
+                .stdin
+                .as_mut()
+                .ok_or_else(|| "open osascript stdin failed".to_string())?;
+            stdin
+                .write_all(trimmed.as_bytes())
+                .map_err(|e| format!("write osascript: {e}"))?;
+        }
+        let output = child
+            .wait_with_output()
+            .map_err(|e| format!("wait osascript: {e}"))?;
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+        }
     }
 }
 
@@ -460,7 +509,7 @@ pub async fn plugin_ai_grep_search(
         return Err("grep search query is empty".to_string());
     }
 
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let home = home_dir().to_string_lossy().to_string();
     let root = req
         .root
         .as_deref()
@@ -600,8 +649,7 @@ fn parse_grep_output(output: &str, max_results: u32) -> Vec<PluginAiGrepResult> 
 }
 
 fn ai_memory_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(format!("{}/.qx", home));
+    let dir = home_dir().join(".qx");
     let _ = std::fs::create_dir_all(&dir);
     dir.join("qxai-memory.json")
 }
@@ -716,13 +764,17 @@ pub fn plugin_perform_paste(app: AppHandle) -> Result<(), String> {
     }
     crate::floating_panel::hide_restore_focus_and_wait(&app, Duration::from_millis(700));
     let mut enigo = Enigo::new(&Settings::default()).map_err(|e| format!("enigo init: {e}"))?;
+    #[cfg(target_os = "macos")]
+    let modifier = Key::Meta;
+    #[cfg(not(target_os = "macos"))]
+    let modifier = Key::Control;
     enigo
-        .key(Key::Meta, Direction::Press)
-        .map_err(|e| format!("press command: {e}"))?;
+        .key(modifier, Direction::Press)
+        .map_err(|e| format!("press modifier: {e}"))?;
     let key_result = enigo.key(Key::Unicode('v'), Direction::Click);
-    let release_result = enigo.key(Key::Meta, Direction::Release);
+    let release_result = enigo.key(modifier, Direction::Release);
     key_result.map_err(|e| format!("press v: {e}"))?;
-    release_result.map_err(|e| format!("release command: {e}"))?;
+    release_result.map_err(|e| format!("release modifier: {e}"))?;
     Ok(())
 }
 
@@ -741,13 +793,17 @@ pub fn plugin_perform_paste_at_cursor() -> Result<(), String> {
         .button(Button::Left, Direction::Click)
         .map_err(|e| format!("click target: {e}"))?;
     std::thread::sleep(std::time::Duration::from_millis(35));
+    #[cfg(target_os = "macos")]
+    let modifier = Key::Meta;
+    #[cfg(not(target_os = "macos"))]
+    let modifier = Key::Control;
     enigo
-        .key(Key::Meta, Direction::Press)
-        .map_err(|e| format!("press command: {e}"))?;
+        .key(modifier, Direction::Press)
+        .map_err(|e| format!("press modifier: {e}"))?;
     let key_result = enigo.key(Key::Unicode('v'), Direction::Click);
-    let release_result = enigo.key(Key::Meta, Direction::Release);
+    let release_result = enigo.key(modifier, Direction::Release);
     key_result.map_err(|e| format!("press v: {e}"))?;
-    release_result.map_err(|e| format!("release command: {e}"))?;
+    release_result.map_err(|e| format!("release modifier: {e}"))?;
     Ok(())
 }
 
@@ -943,17 +999,35 @@ pub struct NotificationRequest {
 }
 
 #[tauri::command]
-pub fn plugin_notification_show(_app: AppHandle, req: NotificationRequest) -> Result<(), String> {
-    // Use macOS NSUserNotification via objc2
+pub async fn plugin_notification_show(
+    app: AppHandle,
+    req: NotificationRequest,
+) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        send_macos_notification(&req.title, &req.body, &req.subtitle)?;
+        let title = req.title;
+        let body = req.body;
+        let subtitle = req.subtitle;
+        crate::runtime::ui(&app, move || {
+            send_macos_notification(&title, &body, &subtitle)
+        })
+        .await
+        .map_err(|error| error.to_string())??;
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "windows")]
     {
-        let _ = req;
-        return Err("notifications are only supported on macOS".to_string());
+        let title = req.title;
+        let body = req.body;
+        crate::runtime::blocking(move || send_windows_notification(&title, &body))
+            .await
+            .map_err(|error| error.to_string())??;
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let _ = (app, req);
+        return Err("notifications are not supported on this platform".to_string());
     }
 
     Ok(())
@@ -1012,4 +1086,61 @@ fn send_macos_notification(title: &str, body: &str, subtitle: &str) -> Result<()
     }
 
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn send_windows_notification(title: &str, body: &str) -> Result<(), String> {
+    let escaped_title = powershell_xml_text(title);
+    let escaped_body = powershell_xml_text(body);
+    let script = format!(
+        "[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null; \
+         [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom, ContentType = WindowsRuntime] | Out-Null; \
+         $xml = New-Object Windows.Data.Xml.Dom.XmlDocument; \
+         $xml.LoadXml('<toast><visual><binding template=\"ToastText02\"><text id=\"1\">{title}</text><text id=\"2\">{body}</text></binding></visual></toast>'); \
+         $toast = [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Qx'); \
+         $toast.Show([Windows.UI.Notifications.ToastNotification]::new($xml))",
+        title = escaped_title,
+        body = escaped_body,
+    );
+    let output = std::process::Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+        .map_err(|e| format!("spawn powershell: {e}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "windows notification failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ))
+    }
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn powershell_xml_text(value: &str) -> String {
+    // Escape the XML text boundary first. Entity output has no literal quote,
+    // so it is also safe inside PowerShell's single-quoted LoadXml argument.
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::powershell_xml_text;
+
+    #[test]
+    fn windows_notification_text_cannot_break_toast_xml() {
+        assert_eq!(
+            powershell_xml_text("Qx's <capture> & \"toast\""),
+            "Qx&apos;s &lt;capture&gt; &amp; &quot;toast&quot;"
+        );
+        assert_eq!(
+            powershell_xml_text("</text><action content='run'/>"),
+            "&lt;/text&gt;&lt;action content=&apos;run&apos;/&gt;"
+        );
+    }
 }

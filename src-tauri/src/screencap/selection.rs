@@ -193,7 +193,6 @@ fn show_region_picker_internal(
         let picker = app_for_ui
             .get_webview_window(PICKER_LABEL)
             .ok_or_else(|| "region picker window is unavailable".to_string())?;
-        let _ = picker.set_background_color(Some(Color(0, 0, 0, 0)));
         let _ = picker.set_content_protected(true);
         let _ = picker.set_always_on_top(true);
         // Cover the selected display exactly. Physical size/position matches the

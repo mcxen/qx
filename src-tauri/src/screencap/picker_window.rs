@@ -85,7 +85,6 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
             .build()
             .map_err(|error| format!("open capture shade: {error}"))?
         };
-        let _ = shade.set_background_color(Some(Color(0, 0, 0, 0)));
         let _ = shade.set_content_protected(true);
         let _ = shade.set_always_on_top(true);
         shade
