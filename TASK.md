@@ -1,5 +1,37 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Bugfix — Windows Everything 中文路径乱码
+
+**状态**：已完成代码修复，等待 Windows 10/11 安装包运行态复核。
+
+- 根因是 `es.exe` 的控制台管道输出受 Windows 当前代码页影响，Qx 却固定按 UTF-8
+  解码，中文路径因此被替换为 `�`。
+- Windows 文件搜索改用 ES 官方 `-export-txt` UTF-8 输出，临时文件位于 Qx 缓存目录、
+  每次查询使用唯一名称并在读取后自动删除；不经过 shell，也不依赖系统代码页。
+- 解码改为严格 UTF-8，保留 BOM 兼容以及中文、日文和 emoji 路径回归测试；诊断只记录
+  导出字节数与 BOM 状态，不记录查询词或文件路径。
+
+### 验证
+
+- [x] `npm run check` / `npm run build` / `cargo fmt --check` / macOS `cargo check` /
+  `cargo test --lib`（88 tests）。
+- [ ] Windows Compatibility（本机未安装 `x86_64-pc-windows-msvc` 标准库，需由 GitHub
+  Windows runner 编译并运行 Windows 专属回归测试）。
+- [ ] Windows 10/11：中文查询、中文文件名/目录、日文与 emoji 路径均正常显示并可打开。
+
+## Feature — 可选应用图标
+
+**状态**：已完成代码与资源接入，等待 macOS / Windows 桌面运行态复核。
+
+- 从用户提供的云月图中提取圆角图形并生成透明 1024×1024 应用图标资源；原版图标继续保留。
+- Appearance 新增原版 / 云月选择，配置持久化，并在启动、保存、导入与重置时统一应用。
+- 运行时应用/窗口图标与 tray 端口彻底隔离，`tray-template.png` 和菜单栏 / 系统托盘图标不变。
+
+### 验证
+
+- [x] `npm run check` / `npm run build` / `cargo fmt --check` / `cargo check` / `cargo test --lib`（88 tests）
+- [ ] macOS / Windows：切换与重启恢复正确；托盘图标保持不变。
+
 ## Fix — Qx Bing Wallpaper Windows 原生壁纸端口
 
 **状态**：代码与 Windows 安装包构建均已通过，等待 Windows 10/11 真实桌面运行态复核。

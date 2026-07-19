@@ -33,7 +33,7 @@ QxShell (visual="elevated")
 |----|------|
 | **General** | 启动与行为（登录启动、失焦隐藏、语言、自动更新） |
 | **Search Settings** | 文件类型分类 · Cardinal/Everything 优先级 · 拖动排序 · 新增/编辑/删除 · 启动器模块搜索源 |
-| **Appearance** | 主题与分区透明度 · 窗口与密度 · Home Island |
+| **Appearance** | 应用图标 · 主题与分区透明度 · 窗口与密度 · Home Island |
 | **Shortcuts** | 全局 / 应用快捷键 |
 | **Extensions** | Installed 使用分组连续列表，Browse 使用主从列表，配置走 Dialog |
 | **AI Agent** | 供应商 · 模型 · 工具 · Bash · Grep |
@@ -60,6 +60,10 @@ Appearance 的透明度不是单一全局 alpha。设置模型保留
 旧配置缺少这些字段时由 Rust `serde(default)` 和前端默认设置共同补齐。
 Popover 跟随 `control_opacity`，同时以 Bottom Bar 的视觉强度为下限，
 不得退回普通内容表面透明度。
+
+`appearance.app_icon` 保存应用图标 id（`original` / `cloud`）。启动、设置保存、
+配置导入与重置都通过根级 `app_icon` 服务应用到 macOS 进程图标和桌面窗口图标；
+该设置不得改写 `tray-template.png` 或运行中的系统托盘 / 菜单栏图标。
 
 窗口不透明度范围为 5%–100%。`100%` 只表示背景颜色完全覆盖；是否启用系统材质由 `glass_enabled` 独立控制。模糊设为 `0px` 时可得到“透明但清晰”的效果。
 

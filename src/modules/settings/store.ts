@@ -57,6 +57,8 @@ export type LauncherResultDensity = "comfortable" | "compact";
 
 export interface AppearanceSettings {
   theme: string;
+  /** Runtime application icon. The tray icon stays unchanged. */
+  app_icon: "original" | "cloud";
   glass_enabled: boolean;
   blur_opacity: number;
   blur_radius: number;
@@ -328,6 +330,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   appearance: {
     theme: "light",
+    app_icon: "original",
     glass_enabled: true,
     blur_opacity: 0.16,
     blur_radius: 14,

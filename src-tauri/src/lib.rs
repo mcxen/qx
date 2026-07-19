@@ -1,3 +1,4 @@
+mod app_icon;
 mod apps;
 mod apps_zh_dict;
 mod clipboard;
@@ -352,6 +353,15 @@ pub fn run() {
                     "logLevel": startup_settings.advanced.log_level,
                 }),
             );
+
+            if let Err(error) = app_icon::apply(&handle, &startup_settings.appearance.app_icon) {
+                diagnostics::log(
+                    diagnostics::LogLevel::Warn,
+                    "main.app_icon",
+                    "failed to apply configured application icon",
+                    serde_json::json!({ "error": error }),
+                );
+            }
 
             // Keep the configured resizable window behavior and enforce minimum size.
             // Product dimensions are logical pixels. Using PhysicalSize here

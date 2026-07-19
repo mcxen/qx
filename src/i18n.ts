@@ -155,6 +155,10 @@ const zh: Record<string, string> = {
 
   "appearance.theme": "主题",
   "appearance.theme.desc": "选择界面配色方案。",
+  "appearance.appIcon": "应用图标",
+  "appearance.appIcon.desc": "选择 Qx 的应用图标；菜单栏或系统托盘图标不会改变。",
+  "appearance.appIcon.original": "原版",
+  "appearance.appIcon.cloud": "云月",
   "appearance.surface.title": "主题与表面",
   "appearance.surface.desc": "设置整体色彩、透明度和窗口质感。",
   "appearance.layout.title": "窗口与密度",

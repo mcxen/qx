@@ -20,7 +20,7 @@
 |---|---|
 | `apps.rs` | 扫描 `/Applications`、`~/Applications`、系统内建 utilities，解析 `Info.plist`，`sips` 生成 icon PNG，中文 pinyin fuzzy 匹配 (`apps_zh_dict.rs`) |
 | `apps_zh_dict.rs` | 常见 macOS app 的中文别名 → pinyin 词典 |
-| `file_search.rs` + `file_search/platform_{macos,windows}.rs` | 共享文件分类、去重、排序与 latest-wins 调度；macOS Cardinal/Spotlight 和 Windows Everything 分别封装在平台适配器中。Windows 使用 Qx 私有命名实例与 LocalAppData 下的私有后台配置，不读取或拉起用户 Everything 界面 |
+| `file_search.rs` + `file_search/platform_{macos,windows}.rs` | 共享文件分类、去重、排序与 latest-wins 调度；macOS Cardinal/Spotlight 和 Windows Everything 分别封装在平台适配器中。Windows 使用 Qx 私有命名实例与 LocalAppData 下的私有后台配置，不读取或拉起用户 Everything 界面；ES 结果通过 UTF-8 文本导出读取，不依赖控制台代码页 |
 | `history.rs` | `launch_history` / `search_history` / `search_click_events` SQLite 表；`record_*` 后台写入，`get_*` 批量读取；搜索结果 30 天点击量聚合供推荐加权 |
 | `system_stats.rs` | Mach APIs：`host_processor_info`（每核 CPU）、`host_statistics64`（内存），供 `HomeSystemIsland` 每 1.6s 轮询 |
 | `system_information.rs` | 主机名/芯片/内存/存储/网络/进程列表；`kill_process` 通过 `/bin/kill` 发 SIGTERM |
@@ -76,7 +76,7 @@
 |---|---|
 | `http_client.rs` | 见上 |
 | `vendor/cardinal/*` | 内嵌自研的 `search-cache` / `search-cancel` / `fswalk` 三个 crate（未上传 crates.io） |
-| `file_search.rs` | 规范化并拒绝空白查询；文件名匹配统一忽略大小写与空格/连字符/下划线/点号等弱分隔，并为至少三个字符的查询提供有序子序列模糊召回。macOS 使用 Cardinal token/wildcard，Windows 只使用 Qx 随包提供的 Everything/ES 二进制和命名实例 `Qx`，不回退或操作用户安装的 Everything；Qx 在 `%LOCALAPPDATA%/Qx/search/Everything-Qx.ini` 固定后台、无托盘、无更新提示语义，启动后以带 timeout 的 ES IPC 探针确认实例可用并写结构化诊断。查询使用 `nopath:` token/wildcard。每个 pass 只占一个 blocking 任务，并在任务内按用户分类优先召回与平衡结果。`request_id` 提供 latest-wins 淘汰，Cardinal 锁只保护内存索引且不跨 `mdfind` 等待；前端渐进合并多 pass。两端最终只接受 leaf-name 命中，按用户分类排序，分类内默认按 `modified_at` 倒序。 |
+| `file_search.rs` | 规范化并拒绝空白查询；文件名匹配统一忽略大小写与空格/连字符/下划线/点号等弱分隔，并为至少三个字符的查询提供有序子序列模糊召回。macOS 使用 Cardinal token/wildcard，Windows 只使用 Qx 随包提供的 Everything/ES 二进制和命名实例 `Qx`，不回退或操作用户安装的 Everything；Qx 在 `%LOCALAPPDATA%/Qx/search/Everything-Qx.ini` 固定后台、无托盘、无更新提示语义，启动后以带 timeout 的 ES IPC 探针确认实例可用并写结构化诊断。查询使用 `nopath:` token/wildcard；结果由 ES `-export-txt` 写入 Qx 缓存中的单次临时文件，Rust 严格按 UTF-8 读取并在完成后删除，避免控制台 OEM/ANSI 代码页损坏中文与其他 Unicode 路径。每个 pass 只占一个 blocking 任务，并在任务内按用户分类优先召回与平衡结果。`request_id` 提供 latest-wins 淘汰，Cardinal 锁只保护内存索引且不跨 `mdfind` 等待；前端渐进合并多 pass。两端最终只接受 leaf-name 命中，按用户分类排序，分类内默认按 `modified_at` 倒序。 |
 
 ## 启动顺序（lib.rs `run` → `setup`）
 

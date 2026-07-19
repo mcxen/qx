@@ -5,6 +5,9 @@ import { useTheme } from "../../ThemeProvider";
 import { Row, SegmentedControl, SettingsCard, Slider, Toggle } from "../../components/ui";
 import { useT } from "../../i18n";
 import { HomeIslandSettings } from "../../home-island";
+import { ToggleGroup, ToggleGroupItem } from "../../components/shadcn/toggle-group";
+import originalAppIconUrl from "../../../src-tauri/icons/128x128.png";
+import cloudAppIconUrl from "../../assets/app-icon-cloud-preview.png";
 
 const MIN_WINDOW_WIDTH = 480;
 const MIN_WINDOW_HEIGHT = 360;
@@ -77,6 +80,43 @@ export default function AppearanceSettings({
   return (
     <div className="qx-settings-page">
       <SettingsCard title={t("appearance.surface.title", "Theme & Surface")}>
+        <Row
+          title={t("appearance.appIcon", "Application Icon")}
+          description={t(
+            "appearance.appIcon.desc",
+            "Choose the Qx application icon. The menu bar or system tray icon is unchanged.",
+          )}
+        >
+          <ToggleGroup
+            type="single"
+            value={a.app_icon}
+            className="qx-app-icon-picker"
+            onValueChange={(value) => {
+              if (value === "original" || value === "cloud") {
+                patch("appearance", { ...a, app_icon: value });
+              }
+            }}
+          >
+            <ToggleGroupItem
+              value="original"
+              className="qx-app-icon-choice"
+              aria-label={t("appearance.appIcon.original", "Original")}
+              title={t("appearance.appIcon.original", "Original")}
+            >
+              <img src={originalAppIconUrl} alt="" className="qx-app-icon-preview" />
+              <span>{t("appearance.appIcon.original", "Original")}</span>
+            </ToggleGroupItem>
+            <ToggleGroupItem
+              value="cloud"
+              className="qx-app-icon-choice"
+              aria-label={t("appearance.appIcon.cloud", "Cloud & Moon")}
+              title={t("appearance.appIcon.cloud", "Cloud & Moon")}
+            >
+              <img src={cloudAppIconUrl} alt="" className="qx-app-icon-preview" />
+              <span>{t("appearance.appIcon.cloud", "Cloud & Moon")}</span>
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </Row>
         <Row title={t("appearance.theme", "Theme")} description={t("appearance.theme.desc", "Choose the interface color scheme.")}>
           <SegmentedControl
             value={theme}

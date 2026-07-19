@@ -1,9 +1,9 @@
 use super::*;
 use std::collections::HashMap;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::os::windows::process::CommandExt;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
@@ -14,6 +14,7 @@ const EVERYTHING_IPC_TIMEOUT_MS: &str = "1500";
 const CACHE_TTL: Duration = Duration::from_secs(20);
 static EVERYTHING_READY: AtomicBool = AtomicBool::new(false);
 static EVERYTHING_FAILURE_LOGGED: AtomicBool = AtomicBool::new(false);
+static QUERY_EXPORT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 static QUERY_CACHE: OnceLock<Mutex<HashMap<String, (Instant, Vec<AppEntry>)>>> = OnceLock::new();
 
 const EVERYTHING_BACKGROUND_CONFIG: &str = r#"[Everything]
@@ -30,6 +31,7 @@ enum EverythingQueryError {
     CliMissing,
     Launch(String),
     Exit { code: Option<i32>, stderr: String },
+    Export(String),
 }
 
 impl EverythingQueryError {
@@ -37,6 +39,7 @@ impl EverythingQueryError {
         match self {
             Self::CliMissing => "bundled es.exe is missing".to_string(),
             Self::Launch(error) => format!("could not launch bundled es.exe: {error}"),
+            Self::Export(error) => format!("could not read bundled es.exe UTF-8 export: {error}"),
             Self::Exit { code, stderr } => {
                 let hint = match code {
                     Some(6) => " (ES rejected a command-line switch)",
@@ -55,6 +58,29 @@ impl EverythingQueryError {
                 }
             }
         }
+    }
+}
+
+struct EverythingUtf8Export {
+    path: PathBuf,
+}
+
+impl EverythingUtf8Export {
+    fn create() -> Result<Self, EverythingQueryError> {
+        let directory = crate::paths::cache_dir()
+            .join("search")
+            .join("everything-exports");
+        std::fs::create_dir_all(&directory)
+            .map_err(|error| EverythingQueryError::Export(error.to_string()))?;
+        let sequence = QUERY_EXPORT_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let path = directory.join(format!("qx-es-{}-{sequence}.txt", std::process::id()));
+        Ok(Self { path })
+    }
+}
+
+impl Drop for EverythingUtf8Export {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
     }
 }
 
@@ -394,9 +420,10 @@ fn search_everything_layered(
 
 fn query_everything_raw(query: &str, limit: usize) -> Result<Vec<String>, EverythingQueryError> {
     let es = find_everything_cli().ok_or(EverythingQueryError::CliMissing)?;
+    let export = EverythingUtf8Export::create()?;
     let started = Instant::now();
     let output = background_command(es)
-        .args(everything_cli_args(query, limit))
+        .args(everything_cli_args(query, limit, &export.path))
         .output()
         .map_err(|error| EverythingQueryError::Launch(error.to_string()))?;
     if !output.status.success() {
@@ -406,14 +433,9 @@ fn query_everything_raw(query: &str, limit: usize) -> Result<Vec<String>, Everyt
         });
     }
 
-    let decoded = String::from_utf8_lossy(&output.stdout);
-    let replacement_count = decoded.matches('\u{fffd}').count();
-    let results = decoded
-        .lines()
-        .map(str::trim)
-        .filter(|line| !line.is_empty())
-        .map(str::to_string)
-        .collect::<Vec<_>>();
+    let export_bytes = std::fs::read(&export.path)
+        .map_err(|error| EverythingQueryError::Export(error.to_string()))?;
+    let results = decode_everything_utf8_export(&export_bytes)?;
     crate::diagnostics::log(
         crate::diagnostics::LogLevel::Debug,
         "file_search.everything.ipc",
@@ -422,23 +444,37 @@ fn query_everything_raw(query: &str, limit: usize) -> Result<Vec<String>, Everyt
             "queryChars": query.chars().count(),
             "limit": limit,
             "resultCount": results.len(),
-            "stdoutBytes": output.stdout.len(),
-            "decodeReplacementCount": replacement_count,
+            "exportBytes": export_bytes.len(),
+            "utf8Bom": export_bytes.starts_with(&[0xef, 0xbb, 0xbf]),
             "elapsedMs": started.elapsed().as_millis() as u64,
         }),
     );
     Ok(results)
 }
 
-fn everything_cli_args(query: &str, limit: usize) -> Vec<String> {
+fn decode_everything_utf8_export(bytes: &[u8]) -> Result<Vec<String>, EverythingQueryError> {
+    let decoded = std::str::from_utf8(bytes)
+        .map_err(|error| EverythingQueryError::Export(format!("invalid UTF-8: {error}")))?;
+    let decoded = decoded.strip_prefix('\u{feff}').unwrap_or(decoded);
+    Ok(decoded
+        .lines()
+        .map(|line| line.trim_end_matches('\r'))
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect())
+}
+
+fn everything_cli_args(query: &str, limit: usize, export_path: &Path) -> Vec<OsString> {
     vec![
-        "-instance".to_string(),
-        EVERYTHING_INSTANCE.to_string(),
-        "-timeout".to_string(),
-        EVERYTHING_IPC_TIMEOUT_MS.to_string(),
-        "-n".to_string(),
-        limit.to_string(),
-        query.to_string(),
+        OsString::from("-instance"),
+        OsString::from(EVERYTHING_INSTANCE),
+        OsString::from("-timeout"),
+        OsString::from(EVERYTHING_IPC_TIMEOUT_MS),
+        OsString::from("-n"),
+        OsString::from(limit.to_string()),
+        OsString::from("-export-txt"),
+        export_path.as_os_str().to_os_string(),
+        OsString::from(query),
     ]
 }
 
@@ -454,7 +490,10 @@ fn find_everything_engine() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{everything_cli_args, everything_queries, EVERYTHING_BACKGROUND_CONFIG};
+    use super::{
+        decode_everything_utf8_export, everything_cli_args, everything_queries,
+        EVERYTHING_BACKGROUND_CONFIG,
+    };
     use crate::file_search::{is_hidden_path, relevance_rank};
     use std::path::Path;
 
@@ -479,11 +518,33 @@ mod tests {
 
     #[test]
     fn es_query_uses_only_supported_cli_switches() {
-        let args = everything_cli_args("report", 20);
-        assert_eq!(args[0..2], ["-instance", "Qx"]);
-        assert!(args.windows(2).any(|pair| pair == ["-timeout", "1500"]));
-        assert!(!args.iter().any(|arg| arg == "-utf8"));
-        assert_eq!(args.last().map(String::as_str), Some("report"));
+        let export = Path::new(r"C:\Temp\qx-results.txt");
+        let args = everything_cli_args("报告", 20, export);
+        let text = args
+            .iter()
+            .map(|value| value.to_string_lossy())
+            .collect::<Vec<_>>();
+        assert_eq!(text[0..2], ["-instance", "Qx"]);
+        assert!(text.windows(2).any(|pair| pair == ["-timeout", "1500"]));
+        assert!(text
+            .windows(2)
+            .any(|pair| { pair[0] == "-export-txt" && pair[1] == r"C:\Temp\qx-results.txt" }));
+        assert!(!text.iter().any(|arg| arg == "-utf8"));
+        assert_eq!(text.last().map(|value| value.as_ref()), Some("报告"));
+    }
+
+    #[test]
+    fn es_utf8_export_preserves_non_ascii_windows_paths() {
+        let bytes = concat!(
+            "\u{feff}C:\\用户\\文档\\年度报告.docx\r\n",
+            "D:\\资料\\日本語\\月次📊.xlsx\r\n",
+        )
+        .as_bytes();
+        assert_eq!(
+            decode_everything_utf8_export(bytes).expect("valid UTF-8 export"),
+            vec![r"C:\用户\文档\年度报告.docx", r"D:\资料\日本語\月次📊.xlsx",]
+        );
+        assert!(decode_everything_utf8_export(&[0x81, 0x82]).is_err());
     }
 
     #[test]

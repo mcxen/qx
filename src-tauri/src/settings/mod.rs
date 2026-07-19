@@ -63,6 +63,9 @@ impl Default for GeneralSettings {
 pub struct AppearanceSettings {
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// Runtime application icon id. This never changes the tray icon.
+    #[serde(default = "default_app_icon")]
+    pub app_icon: String,
     #[serde(default = "default_true")]
     pub glass_enabled: bool,
     #[serde(default = "default_blur_opacity")]
@@ -123,6 +126,10 @@ pub struct AppearanceSettings {
 
 fn default_theme() -> String {
     "light".to_string()
+}
+
+fn default_app_icon() -> String {
+    crate::app_icon::ORIGINAL_ICON_ID.to_string()
 }
 
 fn default_blur_opacity() -> f64 {
@@ -189,6 +196,7 @@ impl Default for AppearanceSettings {
     fn default() -> Self {
         Self {
             theme: default_theme(),
+            app_icon: default_app_icon(),
             glass_enabled: true,
             blur_opacity: default_blur_opacity(),
             blur_radius: default_blur_radius(),
@@ -821,6 +829,8 @@ pub(crate) fn read_settings() -> Settings {
     shortcuts::migrate_swapped_window_launcher_defaults(&mut settings);
     shortcuts::migrate_windows_factory_host_shortcuts(&mut settings);
     migrate_legacy_default_quick_entries(&mut settings.quick_entries);
+    settings.appearance.app_icon =
+        crate::app_icon::normalize_id(&settings.appearance.app_icon).to_string();
     if settings.agent.default_provider.is_empty() || settings.agent.default_provider == "duckduckgo"
     {
         settings.agent.default_provider = "openrouter".to_string();
@@ -893,9 +903,11 @@ pub async fn get_settings() -> Settings {
 }
 
 #[command]
-pub async fn update_settings(app: AppHandle, settings: Settings) -> Result<Settings, String> {
+pub async fn update_settings(app: AppHandle, mut settings: Settings) -> Result<Settings, String> {
+    settings.appearance.app_icon =
+        crate::app_icon::normalize_id(&settings.appearance.app_icon).to_string();
     let settings_for_io = settings.clone();
-    let (shortcuts_changed, tray_changed) = settings_io(move || {
+    let (shortcuts_changed, tray_changed, app_icon_changed) = settings_io(move || {
         let old = read_settings();
         let shortcuts_changed = old.shortcuts != settings_for_io.shortcuts
             || old.app_shortcuts != settings_for_io.app_shortcuts
@@ -903,10 +915,19 @@ pub async fn update_settings(app: AppHandle, settings: Settings) -> Result<Setti
         let tray_changed = old.quick_entries != settings_for_io.quick_entries
             || old.tray_actions != settings_for_io.tray_actions
             || old.general.auto_hide_on_blur != settings_for_io.general.auto_hide_on_blur;
+        let app_icon_changed = old.appearance.app_icon != settings_for_io.appearance.app_icon;
         write_settings(&settings_for_io)?;
-        Ok((shortcuts_changed, tray_changed))
+        Ok((shortcuts_changed, tray_changed, app_icon_changed))
     })
     .await?;
+
+    if app_icon_changed {
+        let icon_id = settings.appearance.app_icon.clone();
+        let icon_app = app.clone();
+        crate::runtime::ui(&app, move || crate::app_icon::apply(&icon_app, &icon_id))
+            .await
+            .map_err(String::from)??;
+    }
 
     if shortcuts_changed && !global_shortcuts_are_paused() {
         register_shortcuts(&app, &settings)?;
@@ -922,6 +943,11 @@ pub async fn reset_settings(app: AppHandle) -> Result<Settings, String> {
     let default = Settings::default();
     let default_for_io = default.clone();
     settings_io(move || write_settings(&default_for_io)).await?;
+    let icon_id = default.appearance.app_icon.clone();
+    let icon_app = app.clone();
+    crate::runtime::ui(&app, move || crate::app_icon::apply(&icon_app, &icon_id))
+        .await
+        .map_err(String::from)??;
     register_shortcuts(&app, &default)?;
     crate::refresh_tray_menu(&app, &default)?;
     Ok(default)
@@ -931,12 +957,19 @@ pub async fn reset_settings(app: AppHandle) -> Result<Settings, String> {
 pub async fn import_settings(app: AppHandle, path: String) -> Result<Settings, String> {
     let settings = settings_io(move || {
         let content = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path))?;
-        let settings: Settings =
+        let mut settings: Settings =
             serde_json::from_str(&content).map_err(|e| format!("parse: {e}"))?;
+        settings.appearance.app_icon =
+            crate::app_icon::normalize_id(&settings.appearance.app_icon).to_string();
         write_settings(&settings)?;
         Ok(settings)
     })
     .await?;
+    let icon_id = settings.appearance.app_icon.clone();
+    let icon_app = app.clone();
+    crate::runtime::ui(&app, move || crate::app_icon::apply(&icon_app, &icon_id))
+        .await
+        .map_err(String::from)??;
     register_shortcuts(&app, &settings)?;
     crate::refresh_tray_menu(&app, &settings)?;
     Ok(settings)

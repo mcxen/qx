@@ -638,6 +638,7 @@ Settings：
 
 - 使用 `visual="elevated"`。
 - Esc / Close → 关闭设置面板。
+- Appearance 的应用图标选择保留原版与云月两个内置选项；切换只影响应用/窗口图标，菜单栏与系统托盘图标始终保持独立。
 - 面板结构、设计令牌、**线性分区**（`SettingsCard` 实为 section + hairline `Row`，非营销大卡片）、响应式与新增页步骤见 [docs/settings-panel.md](docs/settings-panel.md)。
 
 ### Settings · Extensions / 已安装模块（成熟小卡片）

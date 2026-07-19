@@ -2313,3 +2313,21 @@ span.qx-plugin-screenshot {
 .qx-tray-action-editor-footer .qx-shadcn-button {
   gap: 6px;
 }
+.qx-app-icon-picker {
+  gap: 6px;
+}
+
+.qx-app-icon-choice {
+  min-width: 88px;
+  height: 48px;
+  gap: 7px;
+  padding-inline: 8px;
+}
+
+.qx-app-icon-preview {
+  display: block;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  object-fit: contain;
+}
