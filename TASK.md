@@ -2,7 +2,7 @@
 
 ## Fix — Qx Bing Wallpaper Windows 原生壁纸端口
 
-**状态**：代码已收口，等待 Windows 10/11 真实桌面运行态复核。
+**状态**：代码与 Windows 安装包构建均已通过，等待 Windows 10/11 真实桌面运行态复核。
 
 - 新增稳定的 `context.system.setWallpaper(path, { scope })` 插件端口；插件只提交已下载的
   本地图片路径，macOS / Windows 平台差异统一留在 Rust 系统适配层。
@@ -19,7 +19,8 @@
 - [x] macOS `cargo check`；Win32 函数签名与 `windows-sys 0.59` 本地定义核对。
 - [x] `npm run check` / `npm run build` / `cargo check` / `cargo test --lib`（84 tests）/
   Bing 2.0.2 与 Unsplash 1.1.1 重新打包并覆盖本机开发安装。
-- [ ] Windows Compatibility：MSVC target check + NSIS bundle。
+- [x] Windows Compatibility：run `29675005371`，MSVC target check + NSIS bundle +
+  installer artifact upload 均通过。
 - [ ] Windows 10/11：Bing Gallery 的 Set、Random、Latest 三条入口均能换壁纸；中文/空格
   用户目录可用，失败时显示 Win32 错误而不是静默成功。
 
