@@ -157,14 +157,23 @@ jobs:
         shell: bash
         run: |
           ZIP=$(ls release-assets/*_aarch64-apple-darwin.app.zip 2>/dev/null | head -1)
+          WINDOWS_INSTALLER=$(ls release-assets/*setup.exe 2>/dev/null | head -1)
           if [ -z "$ZIP" ]; then
-            echo "No ARM64 app.zip found, skipping updater manifest"
-            exit 0
+            echo "No ARM64 app.zip found; updater manifest cannot be published" >&2
+            exit 1
+          fi
+          if [ -z "$WINDOWS_INSTALLER" ]; then
+            echo "No Windows NSIS installer found; updater manifest cannot be published" >&2
+            exit 1
           fi
           ZIP_NAME=$(basename "$ZIP")
+          WINDOWS_NAME=$(basename "$WINDOWS_INSTALLER")
           SHA256_ARM=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
+          SHA256_WINDOWS=$(shasum -a 256 "$WINDOWS_INSTALLER" | cut -d' ' -f1)
           SIZE_ARM=$(wc -c < "$ZIP" | tr -d ' ')
+          SIZE_WINDOWS=$(wc -c < "$WINDOWS_INSTALLER" | tr -d ' ')
           ASSET_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${ZIP_NAME}"
+          WINDOWS_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${RELEASE_TAG}/${WINDOWS_NAME}"
           cat > release-assets/latest.json <<EOF
           {
             "version": "${RELEASE_TAG#v}",
@@ -174,7 +183,25 @@ jobs:
             "asset_name": "${ZIP_NAME}",
             "asset_url": "${ASSET_URL}",
             "sha256": "${SHA256_ARM}",
-            "size": ${SIZE_ARM}
+            "size": ${SIZE_ARM},
+            "artifacts": [
+              {
+                "platform": "macos",
+                "target": "aarch64-apple-darwin",
+                "asset_name": "${ZIP_NAME}",
+                "asset_url": "${ASSET_URL}",
+                "sha256": "${SHA256_ARM}",
+                "size": ${SIZE_ARM}
+              },
+              {
+                "platform": "windows",
+                "target": "x86_64-pc-windows-msvc",
+                "asset_name": "${WINDOWS_NAME}",
+                "asset_url": "${WINDOWS_URL}",
+                "sha256": "${SHA256_WINDOWS}",
+                "size": ${SIZE_WINDOWS}
+              }
+            ]
           }
           EOF
 

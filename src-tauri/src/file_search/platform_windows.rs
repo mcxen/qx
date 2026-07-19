@@ -38,11 +38,20 @@ impl EverythingQueryError {
             Self::CliMissing => "bundled es.exe is missing".to_string(),
             Self::Launch(error) => format!("could not launch bundled es.exe: {error}"),
             Self::Exit { code, stderr } => {
-                let detail = stderr.trim();
-                if detail.is_empty() {
-                    format!("es.exe exited with status {}", code.unwrap_or(-1))
+                let hint = match code {
+                    Some(6) => " (ES rejected a command-line switch)",
+                    Some(7) => " (ES could not send the IPC query)",
+                    Some(8) => " (the named Everything IPC window was not found)",
+                    _ => "",
+                };
+                let stderr_chars = stderr.trim().chars().count();
+                if stderr_chars == 0 {
+                    format!("es.exe exited with status {}{hint}", code.unwrap_or(-1))
                 } else {
-                    format!("es.exe exited with status {}: {detail}", code.unwrap_or(-1))
+                    format!(
+                        "es.exe exited with status {}{hint}; stderrChars={stderr_chars}",
+                        code.unwrap_or(-1),
+                    )
                 }
             }
         }
@@ -171,17 +180,31 @@ pub fn init_platform() {
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null());
-            if let Err(error) = command.spawn() {
-                log_everything_failure_once(format!(
-                    "could not start the bundled Everything background instance: {error}"
-                ));
-                return;
-            }
+            let child = match command.spawn() {
+                Ok(child) => child,
+                Err(error) => {
+                    log_everything_failure_once(format!(
+                        "could not start the bundled Everything background instance: {error}"
+                    ));
+                    return;
+                }
+            };
+            crate::diagnostics::log(
+                crate::diagnostics::LogLevel::Debug,
+                "file_search.everything",
+                "Everything background instance started",
+                serde_json::json!({
+                    "instance": EVERYTHING_INSTANCE,
+                    "pid": child.id(),
+                    "configFile": EVERYTHING_CONFIG,
+                }),
+            );
 
             // Everything builds and persists its own filesystem database in
             // the background. Probe IPC without holding up Tauri setup.
             let mut last_error = None;
-            for _ in 0..60 {
+            let started = Instant::now();
+            for attempt in 1..=60 {
                 match query_everything_raw("qx-ready-probe", 1) {
                     Ok(_) => {
                         EVERYTHING_READY.store(true, Ordering::Release);
@@ -192,8 +215,8 @@ pub fn init_platform() {
                             "Everything background instance is ready",
                             serde_json::json!({
                                 "instance": EVERYTHING_INSTANCE,
-                                "engine": everything.to_string_lossy(),
-                                "config": config.to_string_lossy(),
+                                "attempt": attempt,
+                                "elapsedMs": started.elapsed().as_millis() as u64,
                             }),
                         );
                         return;
@@ -220,6 +243,7 @@ pub fn search_platform(
     category_id: Option<&str>,
     cancellation: FileSearchCancellation,
 ) -> Vec<AppEntry> {
+    let started = Instant::now();
     if cancellation.is_cancelled() {
         return Vec::new();
     }
@@ -235,6 +259,18 @@ pub fn search_platform(
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             if let Some((created, results)) = guard.get(&cache_key) {
                 if created.elapsed() <= CACHE_TTL {
+                    crate::diagnostics::log(
+                        crate::diagnostics::LogLevel::Debug,
+                        "file_search.everything.query",
+                        "Everything query served from cache",
+                        serde_json::json!({
+                            "pass": pass,
+                            "limit": limit,
+                            "queryChars": query.chars().count(),
+                            "queryTokens": super::search_tokens(query).len(),
+                            "resultCount": results.len(),
+                        }),
+                    );
                     return results.clone();
                 }
             }
@@ -260,6 +296,21 @@ pub fn search_platform(
             guard.insert(cache_key, (Instant::now(), results.clone()));
         }
     }
+    crate::diagnostics::log(
+        crate::diagnostics::LogLevel::Debug,
+        "file_search.everything.query",
+        "Everything query pass completed",
+        serde_json::json!({
+            "pass": pass,
+            "limit": limit,
+            "queryChars": query.chars().count(),
+            "queryTokens": super::search_tokens(query).len(),
+            "categorySelected": category_id.is_some(),
+            "ready": EVERYTHING_READY.load(Ordering::Acquire),
+            "resultCount": results.len(),
+            "elapsedMs": started.elapsed().as_millis() as u64,
+        }),
+    );
     results
 }
 
@@ -295,6 +346,16 @@ fn search_everything_layered(
         let paths = match query_everything_raw(&strategy_query, per_strategy) {
             Ok(paths) => paths,
             Err(error) => {
+                crate::diagnostics::log(
+                    crate::diagnostics::LogLevel::Debug,
+                    "file_search.everything.query",
+                    "Everything query strategy failed",
+                    serde_json::json!({
+                        "pass": pass,
+                        "strategyRank": strategy_rank,
+                        "error": error.message(),
+                    }),
+                );
                 log_everything_failure_once(format!(
                     "Everything query is unavailable: {}",
                     error.message()
@@ -333,17 +394,9 @@ fn search_everything_layered(
 
 fn query_everything_raw(query: &str, limit: usize) -> Result<Vec<String>, EverythingQueryError> {
     let es = find_everything_cli().ok_or(EverythingQueryError::CliMissing)?;
+    let started = Instant::now();
     let output = background_command(es)
-        .args([
-            "-instance",
-            EVERYTHING_INSTANCE,
-            "-timeout",
-            EVERYTHING_IPC_TIMEOUT_MS,
-            "-n",
-            &limit.to_string(),
-            "-utf8",
-            query,
-        ])
+        .args(everything_cli_args(query, limit))
         .output()
         .map_err(|error| EverythingQueryError::Launch(error.to_string()))?;
     if !output.status.success() {
@@ -353,12 +406,40 @@ fn query_everything_raw(query: &str, limit: usize) -> Result<Vec<String>, Everyt
         });
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout)
+    let decoded = String::from_utf8_lossy(&output.stdout);
+    let replacement_count = decoded.matches('\u{fffd}').count();
+    let results = decoded
         .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .map(str::to_string)
-        .collect())
+        .collect::<Vec<_>>();
+    crate::diagnostics::log(
+        crate::diagnostics::LogLevel::Debug,
+        "file_search.everything.ipc",
+        "ES IPC query completed",
+        serde_json::json!({
+            "queryChars": query.chars().count(),
+            "limit": limit,
+            "resultCount": results.len(),
+            "stdoutBytes": output.stdout.len(),
+            "decodeReplacementCount": replacement_count,
+            "elapsedMs": started.elapsed().as_millis() as u64,
+        }),
+    );
+    Ok(results)
+}
+
+fn everything_cli_args(query: &str, limit: usize) -> Vec<String> {
+    vec![
+        "-instance".to_string(),
+        EVERYTHING_INSTANCE.to_string(),
+        "-timeout".to_string(),
+        EVERYTHING_IPC_TIMEOUT_MS.to_string(),
+        "-n".to_string(),
+        limit.to_string(),
+        query.to_string(),
+    ]
 }
 
 fn find_everything_cli() -> Option<PathBuf> {
@@ -373,7 +454,7 @@ fn find_everything_engine() -> Option<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{everything_queries, EVERYTHING_BACKGROUND_CONFIG};
+    use super::{everything_cli_args, everything_queries, EVERYTHING_BACKGROUND_CONFIG};
     use crate::file_search::{is_hidden_path, relevance_rank};
     use std::path::Path;
 
@@ -394,6 +475,15 @@ mod tests {
         assert!(EVERYTHING_BACKGROUND_CONFIG.contains("show_tray_icon=0"));
         assert!(EVERYTHING_BACKGROUND_CONFIG.contains("run_as_admin=0"));
         assert!(EVERYTHING_BACKGROUND_CONFIG.contains("check_for_updates_on_startup=0"));
+    }
+
+    #[test]
+    fn es_query_uses_only_supported_cli_switches() {
+        let args = everything_cli_args("report", 20);
+        assert_eq!(args[0..2], ["-instance", "Qx"]);
+        assert!(args.windows(2).any(|pair| pair == ["-timeout", "1500"]));
+        assert!(!args.iter().any(|arg| arg == "-utf8"));
+        assert_eq!(args.last().map(String::as_str), Some("report"));
     }
 
     #[test]

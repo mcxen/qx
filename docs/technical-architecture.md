@@ -62,7 +62,8 @@ Qx/
 │       ├── diagnostics.rs        # 诊断日志与日志路径
 │       ├── display_monitor.rs    # 复用系统显示器服务的插拔监听
 │       ├── external_displays.rs  # DDC 驱动与外接屏硬件控制
-│       ├── updater.rs            # 更新检查与下载安装
+│       ├── updater.rs            # 跨平台更新检查、验证与 helper 编排
+│       ├── updater/              # Windows NSIS 适配、缓存支持与 updater 测试
 │       ├── settings/             # 设置读写 (JSON)
 │       │   ├── mod.rs
 │       │   └── ...
@@ -326,7 +327,7 @@ updater::* (check/download_and_install/helper_replace)
 **打包**:
 - [x] GitHub Actions release workflow
 - [ ] 代码签名 (macOS notarization)
-- [x] 自动更新（自定义 macOS helper + GitHub Release manifest + quarantine xattr cleanup）
+- [x] 自动更新（macOS bundle replacement / Windows NSIS helper + per-target GitHub Release manifest）
 - [ ] 增量更新
 
 ### 7.3 安全

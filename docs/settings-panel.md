@@ -39,7 +39,7 @@ QxShell (visual="elevated")
 | **AI Agent** | 供应商 · 模型 · 工具 · Bash · Grep |
 | **OCR / RSS / Weather** | 各自模块设置 |
 | **Permissions** | macOS 权限 |
-| **Advanced** | 数据路径 · 托盘 · 诊断 · 网络 · 配置导入导出 · 清理 · 开发 · 重置 |
+| **Advanced** | 数据路径 · 托盘 · 诊断日志开关/级别/文件入口 · 网络 · 配置导入导出 · 清理 · 开发 · 重置 |
 | **About** | 版本与存储 |
 
 内置模块的专属选项统一放在 **Extensions → Installed → 模块配置**。Screen Capture

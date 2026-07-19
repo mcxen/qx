@@ -872,13 +872,18 @@ function App() {
 
   useEffect(() => {
     configureQxLogger({
+      enabled: settings.advanced.logging_enabled,
       level: settings.advanced.log_level,
       devMode: settings.advanced.dev_mode,
     });
     if (settings.advanced.dev_mode) {
       installDevConsoleCapture();
     }
-  }, [settings.advanced.dev_mode, settings.advanced.log_level]);
+  }, [
+    settings.advanced.dev_mode,
+    settings.advanced.log_level,
+    settings.advanced.logging_enabled,
+  ]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;

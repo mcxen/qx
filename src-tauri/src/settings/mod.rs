@@ -225,6 +225,8 @@ pub struct ShortcutBinding {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AdvancedSettings {
+    #[serde(default)]
+    pub logging_enabled: bool,
     pub log_level: String,
     pub dev_mode: bool,
     /// Proxy mode: `"off"` | `"system"` | `"manual"`.
@@ -259,6 +261,7 @@ fn default_ocr_model_size() -> String {
 impl Default for AdvancedSettings {
     fn default() -> Self {
         Self {
+            logging_enabled: false,
             log_level: "info".to_string(),
             dev_mode: false,
             network_proxy_mode: "off".to_string(),

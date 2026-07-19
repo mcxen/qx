@@ -7,11 +7,30 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
+#[path = "updater/support.rs"]
+mod support;
+#[cfg(target_os = "windows")]
+#[path = "updater/windows.rs"]
+mod windows;
+
+use support::{compare_versions, current_binary_name, prune_update_cache, update_cache_dir};
+
 const GITHUB_LATEST_MANIFEST: &str =
     "https://github.com/mcxen/qx/releases/latest/download/latest.json";
 const GITHUB_RELEASE_DOWNLOAD_BASE: &str = "https://github.com/mcxen/qx/releases/download";
 const GITHUB_RELEASE_TAG_BASE: &str = "https://github.com/mcxen/qx/releases/tag";
+#[cfg(target_os = "macos")]
+const UPDATE_PLATFORM: &str = "macos";
+#[cfg(target_os = "macos")]
 const UPDATE_TARGET: &str = "aarch64-apple-darwin";
+#[cfg(target_os = "windows")]
+const UPDATE_PLATFORM: &str = "windows";
+#[cfg(target_os = "windows")]
+const UPDATE_TARGET: &str = "x86_64-pc-windows-msvc";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const UPDATE_PLATFORM: &str = "unsupported";
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+const UPDATE_TARGET: &str = "unsupported";
 const HELPER_FLAG: &str = "--qx-update-helper";
 const STATUS_FILE: &str = "last-update-status.json";
 
@@ -49,6 +68,21 @@ struct QxUpdateManifest {
     #[serde(default)]
     target: String,
     #[serde(default)]
+    asset_name: String,
+    #[serde(default)]
+    asset_url: String,
+    #[serde(default)]
+    sha256: String,
+    #[serde(default)]
+    size: Option<u64>,
+    #[serde(default)]
+    artifacts: Vec<QxUpdateArtifact>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct QxUpdateArtifact {
+    platform: String,
+    target: String,
     asset_name: String,
     #[serde(default)]
     asset_url: String,
@@ -103,18 +137,14 @@ pub async fn qx_update_download_and_install(
             .clone()
             .ok_or_else(|| "latest version missing".to_string())?;
 
-        let target_app = current_app_bundle()?;
-        let staged = download_and_stage(&latest_version, &asset_url, &expected_sha, update.size)?;
-        validate_staged_app(&staged, &target_app, &latest_version)?;
-        let helper = spawn_update_helper(&staged, &target_app, &latest_version)?;
+        let plan = prepare_install(&latest_version, &asset_url, &expected_sha, update.size)?;
 
         Ok(QxUpdateInstallResult {
             version: latest_version,
-            staged_app: staged.display().to_string(),
-            target_app: target_app.display().to_string(),
-            helper_path: helper.display().to_string(),
-            message: "Update staged. Qx will quit, replace the app bundle, and relaunch."
-                .to_string(),
+            staged_app: plan.payload.display().to_string(),
+            target_app: plan.target.display().to_string(),
+            helper_path: plan.helper.display().to_string(),
+            message: plan.message,
         })
     })
     .await
@@ -191,27 +221,44 @@ fn update_info_from_manifest(
         ));
     }
 
-    let target_matches =
-        manifest.target.trim().is_empty() || manifest.target.trim() == UPDATE_TARGET;
-    let platform_matches =
-        manifest.platform.trim().is_empty() || manifest.platform.trim() == "macos";
-    let (asset_name, asset_url, sha256, size) = if target_matches && platform_matches {
-        let asset_name = if manifest.asset_name.trim().is_empty() {
-            format!("qx_v{}_{}.app.zip", latest_version, UPDATE_TARGET)
+    let selected = manifest
+        .artifacts
+        .iter()
+        .find(|artifact| {
+            artifact.platform.trim() == UPDATE_PLATFORM && artifact.target.trim() == UPDATE_TARGET
+        })
+        .cloned()
+        .or_else(|| {
+            let target_matches =
+                manifest.target.trim().is_empty() || manifest.target.trim() == UPDATE_TARGET;
+            let platform_matches =
+                manifest.platform.trim().is_empty() || manifest.platform.trim() == UPDATE_PLATFORM;
+            (target_matches && platform_matches).then(|| QxUpdateArtifact {
+                platform: manifest.platform.clone(),
+                target: manifest.target.clone(),
+                asset_name: manifest.asset_name.clone(),
+                asset_url: manifest.asset_url.clone(),
+                sha256: manifest.sha256.clone(),
+                size: manifest.size,
+            })
+        });
+    let (asset_name, asset_url, sha256, size) = if let Some(artifact) = selected {
+        let asset_name = if artifact.asset_name.trim().is_empty() {
+            default_asset_name(&latest_version)
         } else {
-            manifest.asset_name.trim().to_string()
+            artifact.asset_name.trim().to_string()
         };
-        let asset_url = if manifest.asset_url.trim().is_empty() {
+        let asset_url = if artifact.asset_url.trim().is_empty() {
             format!("{GITHUB_RELEASE_DOWNLOAD_BASE}/{tag}/{asset_name}")
         } else {
-            manifest.asset_url.trim().to_string()
+            artifact.asset_url.trim().to_string()
         };
         validate_release_asset_url(&asset_url, &tag, &asset_name)?;
         (
             Some(asset_name),
             Some(asset_url),
-            Some(normalize_sha256(&manifest.sha256)).filter(|value| !value.trim().is_empty()),
-            manifest.size,
+            Some(normalize_sha256(&artifact.sha256)).filter(|value| !value.trim().is_empty()),
+            artifact.size,
         )
     } else {
         (None, None, None, None)
@@ -227,6 +274,15 @@ fn update_info_from_manifest(
         size,
         None,
     ))
+}
+
+fn default_asset_name(version: &str) -> String {
+    #[cfg(target_os = "macos")]
+    return format!("qx_v{version}_{UPDATE_TARGET}.app.zip");
+    #[cfg(target_os = "windows")]
+    return format!("Qx_{version}_x64-setup.exe");
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    String::new()
 }
 
 fn validate_release_asset_url(url: &str, tag: &str, asset_name: &str) -> Result<(), String> {
@@ -283,15 +339,17 @@ fn install_state(
 ) -> (bool, Option<String>) {
     if !available {
         (false, Some("No newer release is available.".to_string()))
-    } else if cfg!(not(target_os = "macos")) {
+    } else if cfg!(not(any(target_os = "macos", target_os = "windows"))) {
         (
             false,
-            Some("Automatic app replacement is currently supported on macOS only.".to_string()),
+            Some("Automatic updates are not supported on this platform.".to_string()),
         )
     } else if asset_url.is_none() {
         (
             false,
-            Some("No macOS app zip asset was found on the latest release.".to_string()),
+            Some(format!(
+                "No {UPDATE_PLATFORM} update asset was found on the latest release."
+            )),
         )
     } else if sha256.map(String::as_str).unwrap_or_default().len() != 64 {
         (
@@ -301,14 +359,8 @@ fn install_state(
                     .to_string(),
             ),
         )
-    } else if current_app_bundle().is_err() {
-        (
-            false,
-            Some(
-                "Automatic replacement only works when Qx is running from a .app bundle."
-                    .to_string(),
-            ),
-        )
+    } else if install_location().is_err() {
+        (false, Some(install_location_error()))
     } else {
         (true, None)
     }
@@ -329,6 +381,52 @@ fn http_client() -> Result<reqwest::blocking::Client, String> {
         Some(Duration::from_secs(15)),
     )
     .map_err(|e| format!("build update HTTP client: {e}"))
+}
+
+struct InstallPlan {
+    payload: PathBuf,
+    target: PathBuf,
+    helper: PathBuf,
+    message: String,
+}
+
+#[cfg(target_os = "macos")]
+fn prepare_install(
+    version: &str,
+    asset_url: &str,
+    expected_sha256: &str,
+    expected_size: Option<u64>,
+) -> Result<InstallPlan, String> {
+    let target = current_app_bundle()?;
+    let payload = download_and_stage(version, asset_url, expected_sha256, expected_size)?;
+    validate_staged_app(&payload, &target, version)?;
+    let helper = spawn_update_helper(&payload, &target, version)?;
+    Ok(InstallPlan {
+        payload,
+        target,
+        helper,
+        message: "Update staged. Qx will quit, replace the app bundle, and relaunch.".to_string(),
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn prepare_install(
+    version: &str,
+    asset_url: &str,
+    expected_sha256: &str,
+    expected_size: Option<u64>,
+) -> Result<InstallPlan, String> {
+    windows::prepare_install(version, asset_url, expected_sha256, expected_size)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn prepare_install(
+    _version: &str,
+    _asset_url: &str,
+    _expected_sha256: &str,
+    _expected_size: Option<u64>,
+) -> Result<InstallPlan, String> {
+    Err("Automatic updates are not supported on this platform.".to_string())
 }
 
 fn download_and_stage(
@@ -356,14 +454,32 @@ fn download_and_stage_in_dir(
     let _ = fs::remove_dir_all(&staging_root);
     fs::create_dir_all(&update_dir).map_err(|e| format!("create update dir: {e}"))?;
 
+    download_verified_file(asset_url, &download_path, expected_sha256, expected_size)?;
+
+    unzip_app(&download_path, &staging_root)?;
+    let staged_app = staging_root.join("Qx.app");
+    if !staged_app.exists() {
+        return Err("update archive did not contain Qx.app".to_string());
+    }
+    // GitHub zip always arrives quarantined; clear + ad-hoc re-sign free of charge
+    // so the helper can open the staged bundle after swap.
+    prepare_app_for_launch(&staged_app)?;
+    Ok(staged_app)
+}
+
+fn download_verified_file(
+    asset_url: &str,
+    download_path: &Path,
+    expected_sha256: &str,
+    expected_size: Option<u64>,
+) -> Result<(), String> {
     let mut response = http_client()?
         .get(asset_url)
         .send()
         .map_err(|e| format!("download update: {e}"))?
         .error_for_status()
         .map_err(|e| format!("download update: {e}"))?;
-
-    let mut file = fs::File::create(&download_path)
+    let mut file = fs::File::create(download_path)
         .map_err(|e| format!("create {}: {e}", download_path.display()))?;
     let mut hasher = Sha256::new();
     let mut downloaded = 0u64;
@@ -400,15 +516,7 @@ fn download_and_stage_in_dir(
         ));
     }
 
-    unzip_app(&download_path, &staging_root)?;
-    let staged_app = staging_root.join("Qx.app");
-    if !staged_app.exists() {
-        return Err("update archive did not contain Qx.app".to_string());
-    }
-    // GitHub zip always arrives quarantined; clear + ad-hoc re-sign free of charge
-    // so the helper can open the staged bundle after swap.
-    prepare_app_for_launch(&staged_app)?;
-    Ok(staged_app)
+    Ok(())
 }
 
 fn unzip_app(zip_path: &Path, dest: &Path) -> Result<(), String> {
@@ -623,6 +731,19 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
         .parse::<i32>()
         .map_err(|e| format!("invalid --pid: {e}"))?;
     let version = arg_value(args, "--version");
+    #[cfg(target_os = "windows")]
+    if let Some(installer) = arg_value(args, "--windows-installer") {
+        let target_exe = PathBuf::from(
+            arg_value(args, "--target-app").ok_or_else(|| "missing --target-app".to_string())?,
+        );
+        return windows::run_update_helper(
+            pid,
+            version,
+            &PathBuf::from(installer),
+            &target_exe,
+            args.iter().any(|arg| arg == "--restart"),
+        );
+    }
     let staged_app = PathBuf::from(
         arg_value(args, "--staged-app").ok_or_else(|| "missing --staged-app".to_string())?,
     );
@@ -806,7 +927,12 @@ fn process_exists(pid: i32) -> bool {
     std::io::Error::last_os_error().raw_os_error() != Some(libc::ESRCH)
 }
 
-#[cfg(not(unix))]
+#[cfg(target_os = "windows")]
+fn process_exists(pid: i32) -> bool {
+    windows::process_exists(pid)
+}
+
+#[cfg(not(any(unix, target_os = "windows")))]
 fn process_exists(_pid: i32) -> bool {
     false
 }
@@ -826,52 +952,6 @@ fn write_helper_status(status: HelperStatus) -> Result<(), String> {
     fs::write(&path, json).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
-fn update_cache_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    let dir = PathBuf::from(home).join(".qx/cache/updates");
-    let _ = fs::create_dir_all(&dir);
-    dir
-}
-
-/// Remove leftover update artifacts under `~/.qx/cache/updates`.
-///
-/// Keeps `last-update-status.json`. When `keep_version` is set, also keeps that
-/// version directory (useful while downloading / diagnosing a failed install).
-fn prune_update_cache(keep_version: Option<&str>) {
-    let root = update_cache_dir();
-    let Ok(entries) = fs::read_dir(&root) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name == STATUS_FILE {
-            continue;
-        }
-        if let Some(keep) = keep_version {
-            if name == keep {
-                continue;
-            }
-        }
-        let path = entry.path();
-        // Version dirs (0.5.2), helper copies (qx-update-helper-12345), backups.
-        if path.is_dir() {
-            let _ = fs::remove_dir_all(&path);
-        } else {
-            let _ = fs::remove_file(&path);
-        }
-    }
-}
-
-fn current_binary_name() -> Result<String, String> {
-    std::env::current_exe()
-        .map_err(|e| format!("resolve current exe: {e}"))?
-        .file_name()
-        .and_then(|value| value.to_str())
-        .map(|value| value.to_string())
-        .ok_or_else(|| "current executable has no valid filename".to_string())
-}
-
 fn current_app_bundle() -> Result<PathBuf, String> {
     let exe = std::env::current_exe().map_err(|e| format!("resolve current exe: {e}"))?;
     for ancestor in exe.ancestors() {
@@ -884,270 +964,31 @@ fn current_app_bundle() -> Result<PathBuf, String> {
     Err("Qx is not running from a .app bundle".to_string())
 }
 
-fn compare_versions(left: &str, right: &str) -> i32 {
-    let a = version_parts(left);
-    let b = version_parts(right);
-    let len = a.len().max(b.len());
-    for index in 0..len {
-        let diff =
-            a.get(index).copied().unwrap_or(0) as i32 - b.get(index).copied().unwrap_or(0) as i32;
-        if diff != 0 {
-            return diff;
-        }
-    }
-    0
+#[cfg(target_os = "macos")]
+fn install_location() -> Result<PathBuf, String> {
+    current_app_bundle()
 }
 
-fn version_parts(version: &str) -> Vec<u32> {
-    version
-        .trim()
-        .trim_start_matches('v')
-        .split('.')
-        .map(|part| part.parse::<u32>().unwrap_or(0))
-        .collect()
+#[cfg(target_os = "windows")]
+fn install_location() -> Result<PathBuf, String> {
+    windows::install_location()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn install_location() -> Result<PathBuf, String> {
+    Err("unsupported platform".to_string())
+}
+
+fn install_location_error() -> String {
+    #[cfg(target_os = "macos")]
+    return "Automatic replacement only works when Qx is running from a .app bundle.".to_string();
+    #[cfg(target_os = "windows")]
+    return "Automatic updates only work when Qx is running from the installed NSIS package."
+        .to_string();
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    "Automatic updates are not supported on this platform.".to_string()
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use std::net::TcpListener;
-    use std::thread;
-
-    #[test]
-    fn compares_semver_like_versions() {
-        assert!(compare_versions("0.4.49", "0.4.48") > 0);
-        assert!(compare_versions("v0.5.0", "0.4.99") > 0);
-        assert_eq!(compare_versions("0.4.48", "v0.4.48"), 0);
-        assert!(compare_versions("0.4.8", "0.4.48") < 0);
-    }
-
-    #[test]
-    fn resolves_release_asset_from_latest_manifest() {
-        let info = update_info_from_manifest(
-            "0.4.48",
-            QxUpdateManifest {
-                version: "0.5.3".to_string(),
-                tag: "v0.5.3".to_string(),
-                platform: "macos".to_string(),
-                target: UPDATE_TARGET.to_string(),
-                asset_name: "qx_v0.5.3_aarch64-apple-darwin.app.zip".to_string(),
-                asset_url: "https://github.com/mcxen/qx/releases/download/v0.5.3/qx_v0.5.3_aarch64-apple-darwin.app.zip".to_string(),
-                sha256:
-                    "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
-                        .to_string(),
-                size: Some(200),
-            },
-        )
-        .expect("manifest should resolve");
-
-        assert!(info.available);
-        assert_eq!(info.latest_version.as_deref(), Some("0.5.3"));
-        assert_eq!(
-            info.asset_name.as_deref(),
-            Some("qx_v0.5.3_aarch64-apple-darwin.app.zip")
-        );
-        assert_eq!(
-            info.asset_url.as_deref(),
-            Some("https://github.com/mcxen/qx/releases/download/v0.5.3/qx_v0.5.3_aarch64-apple-darwin.app.zip")
-        );
-        assert_eq!(info.size, Some(200));
-    }
-
-    #[test]
-    fn constructs_versioned_asset_url_when_manifest_omits_it() {
-        let info = update_info_from_manifest(
-            "0.5.3",
-            QxUpdateManifest {
-                version: "0.5.3".to_string(),
-                tag: String::new(),
-                platform: "macos".to_string(),
-                target: UPDATE_TARGET.to_string(),
-                asset_name: String::new(),
-                asset_url: String::new(),
-                sha256: String::new(),
-                size: None,
-            },
-        )
-        .expect("manifest defaults should resolve");
-
-        assert_eq!(
-            info.asset_url.as_deref(),
-            Some("https://github.com/mcxen/qx/releases/download/v0.5.3/qx_v0.5.3_aarch64-apple-darwin.app.zip")
-        );
-    }
-
-    #[test]
-    fn rejects_non_qx_release_asset_url() {
-        let error = validate_release_asset_url(
-            "https://example.com/qx.zip",
-            "v0.5.3",
-            "qx_v0.5.3_aarch64-apple-darwin.app.zip",
-        )
-        .expect_err("foreign asset URL must be rejected");
-        assert!(error.contains("not an allowed Qx release asset"));
-    }
-
-    #[test]
-    fn prepares_app_bundle_for_launch() {
-        let root = unique_temp_dir("qx-updater-test");
-        let app = root.join("Qx.app");
-        let executable = write_fake_app_bundle(&app, b"#!/bin/sh\n");
-
-        let _ = Command::new("/usr/bin/xattr")
-            .args(["-w", "com.apple.quarantine", "0081;00000000;Qx;"])
-            .arg(&app)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-
-        prepare_app_for_launch(&app).expect("prepare app");
-
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = fs::metadata(&executable)
-                .expect("metadata")
-                .permissions()
-                .mode();
-            assert_ne!(mode & 0o111, 0, "main executable should be executable");
-        }
-        let has_quarantine = Command::new("/usr/bin/xattr")
-            .args(["-p", "com.apple.quarantine"])
-            .arg(&app)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|status| status.success())
-            .unwrap_or(false);
-        assert!(!has_quarantine, "quarantine xattr should be absent");
-
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn replaces_app_bundle_and_prepares_target_for_launch() {
-        let root = unique_temp_dir("qx-updater-replace-test");
-        let staged = root.join("staged/Qx.app");
-        let target = root.join("Applications/Qx.app");
-        let backup = root.join("backup/Qx.app");
-        write_fake_app_bundle(&target, b"old");
-        let staged_executable = write_fake_app_bundle(&staged, b"new");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            fs::set_permissions(&staged_executable, fs::Permissions::from_mode(0o644))
-                .expect("make staged executable non-executable");
-        }
-        let _ = Command::new("/usr/bin/xattr")
-            .args(["-w", "com.apple.quarantine", "0081;00000000;Qx;"])
-            .arg(&staged)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-
-        replace_app_bundle(&staged, &target, &backup).expect("replace app");
-
-        assert!(!staged.exists(), "staged app should be removed");
-        assert!(backup.exists(), "previous app should be kept as backup");
-        let target_executable = target.join("Contents/MacOS/Qx");
-        assert_eq!(fs::read(&target_executable).expect("read target"), b"new");
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mode = fs::metadata(&target_executable)
-                .expect("metadata")
-                .permissions()
-                .mode();
-            assert_ne!(mode & 0o111, 0, "target executable should be executable");
-        }
-        let has_quarantine = Command::new("/usr/bin/xattr")
-            .args(["-p", "com.apple.quarantine"])
-            .arg(&target)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|status| status.success())
-            .unwrap_or(false);
-        assert!(!has_quarantine, "target quarantine xattr should be absent");
-
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn downloads_verifies_and_stages_app_zip() {
-        let root = unique_temp_dir("qx-updater-download-test");
-        let source_app = root.join("source/Qx.app");
-        write_fake_app_bundle(&source_app, b"downloaded");
-        let zip_path = root.join("Qx.app.zip");
-        let status = Command::new("/usr/bin/ditto")
-            .args(["-c", "-k", "--sequesterRsrc", "--keepParent"])
-            .arg(&source_app)
-            .arg(&zip_path)
-            .status()
-            .expect("run ditto zip");
-        assert!(status.success(), "ditto should create test zip");
-        let zip_bytes = fs::read(&zip_path).expect("read zip");
-        let sha256 = hex::encode(Sha256::digest(&zip_bytes));
-        let size = zip_bytes.len() as u64;
-        let url = serve_once(zip_bytes);
-
-        let staged =
-            download_and_stage_in_dir(root.join("cache/0.0.test"), &url, &sha256, Some(size))
-                .expect("download and stage");
-
-        assert!(staged.ends_with("Qx.app"));
-        assert_eq!(
-            fs::read(staged.join("Contents/MacOS/Qx")).expect("read staged executable"),
-            b"downloaded"
-        );
-
-        let _ = fs::remove_dir_all(root);
-    }
-
-    fn write_fake_app_bundle(app: &Path, executable_contents: &[u8]) -> PathBuf {
-        let macos_dir = app.join("Contents/MacOS");
-        fs::create_dir_all(&macos_dir).expect("create app dirs");
-        fs::write(
-            app.join("Contents/Info.plist"),
-            r#"<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key>
-  <string>Qx</string>
-</dict>
-</plist>
-"#,
-        )
-        .expect("write Info.plist");
-        let executable = macos_dir.join("Qx");
-        fs::write(&executable, executable_contents).expect("write executable");
-        executable
-    }
-
-    fn serve_once(body: Vec<u8>) -> String {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
-        let addr = listener.local_addr().expect("local addr");
-        thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buffer = [0; 1024];
-                let _ = stream.read(&mut buffer);
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
-                    body.len()
-                );
-                let _ = stream.write_all(response.as_bytes());
-                let _ = stream.write_all(&body);
-            }
-        });
-        format!("http://{addr}/Qx.app.zip")
-    }
-
-    fn unique_temp_dir(prefix: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("{prefix}-{}", std::process::id()));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).expect("create temp dir");
-        dir
-    }
-}
+#[path = "updater/tests.rs"]
+mod tests;

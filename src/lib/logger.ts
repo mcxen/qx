@@ -22,6 +22,7 @@ const LEVEL_WEIGHT: Record<QxLogLevel, number> = {
 
 let configuredLevel: QxLogLevel = "debug";
 let devMode = false;
+let loggingEnabled = false;
 let consoleCaptureInstalled = false;
 let globalCaptureInstalled = false;
 let flushScheduled = false;
@@ -41,6 +42,7 @@ function normalizeLevel(level: string | undefined): QxLogLevel {
 }
 
 function shouldSend(level: QxLogLevel): boolean {
+  if (!loggingEnabled && !devMode) return false;
   const threshold = devMode ? "debug" : configuredLevel;
   return LEVEL_WEIGHT[level] <= LEVEL_WEIGHT[threshold];
 }
@@ -98,9 +100,11 @@ function enqueue(level: QxLogLevel, target: string, message: string, fields?: Qx
 }
 
 export function configureQxLogger(options: {
+  enabled?: boolean;
   level?: string;
   devMode?: boolean;
 }): void {
+  loggingEnabled = Boolean(options.enabled);
   configuredLevel = normalizeLevel(options.level);
   devMode = Boolean(options.devMode);
 }

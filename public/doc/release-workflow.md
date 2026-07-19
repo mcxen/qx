@@ -181,9 +181,10 @@ the check, report that the branch and tag were confirmed by `git ls-remote` and
 that Actions/Release artifact confirmation could not be completed from the
 current environment.
 
-The release assets must include both:
+The release assets must include all of:
 
 - `qx_vX.Y.Z_aarch64-apple-darwin.app.zip`
+- `Qx_X.Y.Z_x64-setup.exe`
 - `latest.json`
 
 ### Windows in-place upgrades
@@ -204,12 +205,22 @@ only Qx's bundled `everything.exe` and `es.exe`; a missing bundle is an
 unavailable Qx search engine, not permission to fall back to binaries under the
 user's system-wide Everything installation.
 
-`latest.json` is the app updater manifest. It must point at the ARM64 app zip and
-include the matching SHA256 and size. The release workflow generates it before
-uploading `release-assets/*`. The app checks it through the API-free stable URL
+`latest.json` is the app updater manifest. Its legacy top-level fields continue
+to point at the ARM64 app zip for older macOS clients. Its `artifacts[]` must also
+contain both the ARM64 app zip and Windows x64 NSIS installer, each with matching
+target, SHA256, and size. The release workflow generates it before uploading
+`release-assets/*`. The app checks it through the API-free stable URL
 `https://github.com/mcxen/qx/releases/latest/download/latest.json`, which GitHub
-redirects to the latest published release. If the manifest is missing or invalid,
-update discovery fails safely because the app cannot identify and verify the zip.
+redirects to the latest published release. The updater selects only the artifact
+for its compiled target. If that artifact is missing or invalid, update discovery
+fails safely because the app cannot identify and verify the platform package.
+
+On Windows, the detached updater helper waits for Qx to exit and starts the NSIS
+installer silently through the native elevation verb. A per-machine install can
+show UAC; cancellation is treated as a failed update. The helper relaunches Qx
+only after NSIS exits successfully. Do not bypass the existing NSIS hooks: they
+stop only Qx's private Everything instance and protect in-place replacement from
+Windows file locks.
 
 ## Dirty Files After Push
 

@@ -67,8 +67,8 @@
 | `storage.rs` | 分桶统计 `~/.qx` 磁盘占用；`clear_cache/clear_files/clear_clipboard` |
 | `settings/mod.rs` | `~/.qx/settings.json` 读写；写入后 re-register 全局快捷键 + 刷新托盘菜单 + emit `settings-updated` |
 | `settings/entry_config.rs` | Launcher 快捷入口与托盘动作的默认配置；兼容识别旧版默认快捷入口，避免覆盖用户自定义 |
-| `updater.rs` | 读取 release manifest，比较版本并下载安装更新 |
-| `diagnostics.rs` | 结构化诊断事件与日志文件路径，供前端和异步任务定位问题 |
+| `updater.rs` + `updater/` | 读取 per-target release manifest，校验资产，并编排 macOS bundle / Windows NSIS helper 更新 |
+| `diagnostics.rs` | 结构化诊断事件与日志文件路径；仅在 Advanced 日志开关或 Developer Mode 启用时落盘 |
 
 ## 通用工具
 

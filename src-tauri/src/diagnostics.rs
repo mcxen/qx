@@ -63,17 +63,19 @@ pub fn log_file_path() -> PathBuf {
     log_dir().join("qx.log")
 }
 
-fn threshold() -> LogLevel {
+fn logging_config() -> Option<LogLevel> {
     let settings = crate::settings::read_settings();
     if settings.advanced.dev_mode {
-        LogLevel::Debug
+        Some(LogLevel::Debug)
+    } else if settings.advanced.logging_enabled {
+        Some(LogLevel::from_settings(&settings.advanced.log_level))
     } else {
-        LogLevel::from_settings(&settings.advanced.log_level)
+        None
     }
 }
 
 fn enabled(level: LogLevel) -> bool {
-    level <= threshold()
+    logging_config().is_some_and(|threshold| level <= threshold)
 }
 
 fn log_sender() -> &'static mpsc::Sender<LogEventInput> {
@@ -154,5 +156,10 @@ pub fn qx_log_event(level: LogLevel, target: String, message: String, fields: Va
 
 #[tauri::command]
 pub fn qx_log_path() -> String {
-    log_file_path().to_string_lossy().to_string()
+    let path = log_file_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = OpenOptions::new().create(true).append(true).open(&path);
+    path.to_string_lossy().to_string()
 }

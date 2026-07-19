@@ -69,6 +69,27 @@
 - [ ] Windows 10/11/RDP：窗口无矩形黑边；任务管理器可见 Qx 私有 Everything 后台进程，
   但没有搜索窗口、控制台或托盘图标；All / Files 输入短词和中文文件名均能返回结果。
 
+## Bugfix — Windows Everything 查询与可控诊断日志
+
+**状态**：已修复代码并补齐诊断入口，等待 Windows Compatibility 与 Windows 10/11 运行态复核。
+
+- 根因是 Qx 给 ES 1.1.0.30 传入了其不支持的 `-utf8` 开关；ES 对每次查询返回 errorlevel 6，
+  后端将其折叠为空数组，所以界面只会一直等待后显示无结果。查询参数现已移除该开关，
+  并保留 `-instance Qx`、IPC timeout 和结果上限。
+- Advanced → Diagnostics 新增默认关闭的 Diagnostic Logging 总开关和日志文件定位按钮；
+  日志级别不再等价于“始终记录”，Developer Mode 仍自动启用 debug 日志。
+- Windows 文件搜索新增隐私收敛后的 debug 事件：Everything 启动 PID、ready probe 次数/耗时、
+  ES exit code、各 pass/strategy 耗时与结果计数、UTF-8 解码替换计数；不记录搜索词或结果路径。
+- Windows 系统信息的 PowerShell 子进程统一使用 `CREATE_NO_WINDOW`，避免后台指标采样弹出控制台。
+
+### 验证
+
+- [x] `npm run check` / `npm run build` / `cargo fmt --check` / `cargo check`；settings legacy
+  测试 1 个、file-search 定向测试 8 个通过。
+- [ ] Windows Compatibility：MSVC target check + NSIS bundle。
+- [ ] Windows 10/11：开启 debug 日志后搜索英文/中文文件名，确认三阶段返回结果；Everything、
+  ES 和 PowerShell 均不弹窗口；关闭日志后不再追加运行事件。
+
 ## Bugfix — Windows RSS 旧数据库升级顺序
 
 **状态**：已修复，等待 Windows 旧库运行态复核。
@@ -655,6 +676,29 @@
 - [ ] 真实网络请求：当前环境访问 `github.com` 时 `curl` 在 TLS/proxy 层失败，无法验证 GitHub 重定向和 v0.5.3 资产下载。
 - [ ] Windows Compatibility Action 与 macOS 打包应用内手动更新。
 
+## Bugfix — Windows 应用内自动更新
+
+**状态**：已实现本地代码与 macOS 回归验证，等待 Windows Compatibility 与真实 UAC/NSIS 运行态复核。
+
+### 修复内容
+
+- `latest.json` 从 macOS 单资产清单扩展为按 target 选择的 `artifacts[]`，同时保留旧版
+  macOS 客户端依赖的顶层字段；Release workflow 现在强制同时生成 macOS zip 与 Windows
+  x64 NSIS 的 URL、SHA256 和 size，缺任一产物即停止发布。
+- Windows updater 不再返回 “Automatic app replacement is currently supported on macOS only.”；
+  正式 NSIS 安装下可下载对应 `.exe`，校验大小、SHA256 与 PE 头后复制独立 helper。
+- Windows helper 使用真实进程句柄等待 Qx 退出，再经 `ShellExecuteExW(runas)` 提权执行
+  NSIS `/S /UPDATE`，复用既有 Everything 文件锁 hooks，安装成功后从原路径重启 Qx。
+- updater 缓存统一走跨平台 `paths::cache_dir()`；Windows 不再错误依赖 `HOME/.qx`。
+
+### 验证
+
+- [x] macOS `cargo check` 与 updater 单测（8 tests）。
+- [x] `git diff --check`。
+- [ ] 本机未安装 MSVC Rust target，无法本地交叉 `cargo check`；需 Windows Compatibility Action。
+- [ ] Windows 10/11：已安装 vN 启用自动更新后升级 vN+1，确认 UAC、静默 NSIS、Everything
+  锁释放、重启与版本号；取消 UAC 时旧版本保持可用且不误报成功。
+
 ## QxAI — OpenRouter 默认供应商与 DeepSeek BYOK
 
 **状态**：已实现，已通过前端、Rust 与文档静态验证。
@@ -800,8 +844,8 @@
 
 ### 新增内容
 
-- 新增自定义 updater 后端命令 `qx_update_check` / `qx_update_download_and_install`，读取 GitHub latest release，优先使用 release asset `latest.json`，fallback 到 ARM64 `.app.zip` asset。
-- Release workflow 生成并上传 `latest.json`，包含版本、ARM64 zip URL、SHA256 和 size；应用只有在 SHA256 可用、当前运行于 `.app` bundle、目标为 macOS ARM64 时才允许自动安装。
+- 新增自定义 updater 后端命令 `qx_update_check` / `qx_update_download_and_install`，读取 GitHub latest release 的 `latest.json`。（此处记录的是最初的 macOS-only 实现；当前跨平台清单与 Windows NSIS helper 见上方 “Windows 应用内自动更新”。）
+- Release workflow 最初只写入 ARM64 zip；当前已扩展为保留该兼容字段并新增按 target 的 `artifacts[]`。
 - 下载流程写入 `~/.qx/cache/updates/<version>/`，流式计算 SHA256，校验 size，然后用 `/usr/bin/ditto -x -k` 解压 staging app。
 - 安装流程复制当前可执行文件为临时 helper；主进程退出后 helper 等待 PID 消失，用 `ditto` 替换 `Qx.app`，清理 `com.apple.quarantine` xattr，确认主二进制可执行，并通过 `/usr/bin/open` 重启。
 - Settings -> General 的 `auto_update` 会在启动后后台检查并自动下载安装可安装版本；About 页面支持手动检查和 `Download & Install`。

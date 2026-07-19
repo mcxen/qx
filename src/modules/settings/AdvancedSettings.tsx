@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useSettingsStore } from "./store";
 import { usePluginRegistry } from "../../plugin/registry";
@@ -131,6 +132,11 @@ export default function AdvancedSettings() {
     }
   };
 
+  const revealDiagnosticLog = async () => {
+    const path = await invoke<string>("qx_log_path");
+    await revealItemInDir(path);
+  };
+
   const handleScaffold = async () => {
     if (!pluginName.trim()) return;
     try {
@@ -247,6 +253,18 @@ export default function AdvancedSettings() {
 
       <SettingsCard title={t("advanced.diagnostics.title", "Diagnostics")}>
         <Row
+          title={t("advanced.loggingEnabled", "Diagnostic Logging")}
+          description={t(
+            "advanced.loggingEnabled.desc",
+            "Write runtime diagnostics to a local log file for troubleshooting. Search terms and result paths are not recorded.",
+          )}
+        >
+          <Toggle
+            value={adv.logging_enabled}
+            onChange={(v) => patch("advanced", { ...adv, logging_enabled: v })}
+          />
+        </Row>
+        <Row
           title={t("advanced.logLevel", "Log Level")}
           description={t("advanced.logLevel.desc", "Verbosity of the Qx diagnostic log.")}
         >
@@ -260,6 +278,17 @@ export default function AdvancedSettings() {
               { value: "debug", label: t("advanced.log.debug", "Debug") },
             ]}
           />
+        </Row>
+        <Row
+          title={t("advanced.logFile", "Log File")}
+          description={t(
+            "advanced.logFile.desc",
+            "Reveal the local Qx diagnostic log for sharing during troubleshooting.",
+          )}
+        >
+          <Button type="button" size="sm" variant="secondary" onClick={revealDiagnosticLog}>
+            {t("advanced.logFile.reveal", "Show in Folder")}
+          </Button>
         </Row>
         <Row
           title={t("advanced.devMode", "Developer Mode")}

@@ -234,6 +234,11 @@ Shell 基础设施可以直接消费 shadcn primitive，但应限制在 `src/com
 
 允许文本、数字、密码输入使用原生 input 能力，但必须用 Qx/shadcn 样式重绘外观。
 
+Advanced → Diagnostics 提供独立的 **Diagnostic Logging** 开关，默认关闭。开启后才将
+运行诊断写入本地 `qx.log`；Developer Mode 仍可隐式启用 debug 日志。日志级别只控制
+已启用日志的详细程度。诊断页必须提供日志文件定位入口；文件搜索诊断只能记录耗时、
+阶段、计数和错误码，不记录完整搜索词或结果路径。
+
 组件规则：
 
 - `Select` 使用 Radix Select；分隔项约定 `value: "---divider---"`，只渲染分隔线，不可选。

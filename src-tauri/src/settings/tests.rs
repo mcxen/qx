@@ -1,7 +1,16 @@
 use super::{
     default_toggle_launcher_shortcut, default_toggle_window_shortcut, portable_shortcut_key,
-    AgentSettings, BuiltinModulesSettings, Settings,
+    AdvancedSettings, AgentSettings, BuiltinModulesSettings, Settings,
 };
+
+#[test]
+fn legacy_advanced_settings_keep_diagnostic_logging_disabled() {
+    let advanced: AdvancedSettings =
+        serde_json::from_str(r#"{"log_level":"debug","dev_mode":false}"#)
+            .expect("legacy advanced settings");
+    assert!(!advanced.logging_enabled);
+    assert_eq!(advanced.log_level, "debug");
+}
 
 #[test]
 fn canonicalizes_primary_modifier_for_both_desktop_platforms() {

@@ -387,6 +387,11 @@ const zh: Record<string, string> = {
   "v2ex.hint": "最新和热门主题无需令牌。通知、节点主题和回复需要 v2ex.com/settings/tokens 的访问令牌。",
 
   "advanced.logLevel": "日志级别",
+  "advanced.loggingEnabled": "诊断日志",
+  "advanced.loggingEnabled.desc": "将运行诊断写入本地日志文件，用于排查问题。不会记录搜索词和结果文件路径。",
+  "advanced.logFile": "日志文件",
+  "advanced.logFile.desc": "在文件夹中显示 Qx 本地诊断日志，便于排查时提供。",
+  "advanced.logFile.reveal": "在文件夹中显示",
   "advanced.diagnostics.title": "诊断",
   "advanced.data.title": "数据",
   "advanced.diagnostics.desc": "调整日志和开发诊断，用于排查问题。",

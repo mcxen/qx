@@ -104,6 +104,7 @@ export interface ShortcutBinding {
 export type NetworkProxyMode = "off" | "system" | "manual";
 
 export interface AdvancedSettings {
+  logging_enabled: boolean;
   log_level: string;
   dev_mode: boolean;
   /** `"off"` | `"system"` | `"manual"`. Empty/missing: derived from legacy enabled flag. */
@@ -391,6 +392,7 @@ export const DEFAULT_SETTINGS: Settings = {
     controls_pinned: false,
   },
   advanced: {
+    logging_enabled: false,
     log_level: "info",
     dev_mode: false,
     network_proxy_mode: "off",
