@@ -16,6 +16,7 @@ import { shouldIgnoreBareShortcut } from "../../utils/keyboard";
 import { useSettingsStore } from "../settings/store";
 import ImageLightbox from "./ImageLightbox";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
+import { QxActionPanel } from "../../components/QxActionPanel";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { SegmentedControl } from "../../components/ui";
 import { useArticleReadingProgress } from "./useArticleReadingProgress";
@@ -486,6 +487,7 @@ export default function ArticleList() {
     <QxShell
       ref={shellRef}
       title={feed?.title || "RSS Articles"}
+      islandKey="rss.article-list"
       // List browsing stays dense/solid; open article softens chrome for reading.
       visual={isReading ? "glass" : "solid"}
       className={`qx-content-shell qx-rss-shell${isReading ? " is-reading" : ""}`}
@@ -530,24 +532,11 @@ export default function ArticleList() {
         />
       }
       context={
-        <div
-          className="qx-action-panel"
+        <QxActionPanel
+          title="Article Actions"
+          actions={actions}
           {...qxRegionProps(MD.actions, { label: "Article actions", scroll: true })}
-        >
-          <div className="qx-action-title">Article Actions</div>
-          {actions.map((action, index) => (
-            <button
-              key={`${action.label}-${index}`}
-              className={`qx-action-item${action.tone === "danger" ? " danger" : ""}`}
-              onClick={action.onClick}
-              disabled={action.disabled}
-              type="button"
-            >
-              <span>{action.label}</span>
-              {action.kbd && <kbd>{action.kbd}</kbd>}
-            </button>
-          ))}
-        </div>
+        />
       }
       island={shell.island}
       primaryAction={{

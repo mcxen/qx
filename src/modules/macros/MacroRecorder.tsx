@@ -167,6 +167,7 @@ export default function MacroRecorder() {
     <QxShell
       ref={shellRef}
       title="Macro Recorder"
+      islandKey="macros"
       search={
         <div className="qx-rss-detail-title qx-module-title-with-badge">
           <span>Macro Recorder</span>

@@ -939,6 +939,7 @@ export default function ClipboardPanel() {
   return (
     <QxShell
       title={t("clipboard.title", "Clipboard History")}
+      islandKey="clipboard"
       search={searchSlot}
       trailing={trailing}
       escapeAction={shell.escapeAction}

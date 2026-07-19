@@ -485,6 +485,7 @@ export default function ScreenRecorder() {
     return (
       <QxShell
         title={t("screencap.title", "Screen Capture")}
+        islandKey="screencap.recording"
         search={
           <div className="qx-rss-detail-title qx-module-title-with-badge">
             <span>{t("screencap.recording", "Recording")}</span>
@@ -566,6 +567,7 @@ export default function ScreenRecorder() {
   return (
     <QxShell
       title={t("screencap.title", "Screen Capture")}
+      islandKey="screencap"
       search={
         <div className="qx-rss-detail-title qx-module-title-with-badge">
           <span>

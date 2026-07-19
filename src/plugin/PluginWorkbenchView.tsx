@@ -7,6 +7,9 @@ import type {
   PluginWorkbenchState,
 } from "./workbenchTypes";
 import { useT } from "../i18n";
+import { qxMasterDetailIds, qxRegionProps } from "../hooks/useQxMasterDetail";
+
+export const PLUGIN_WORKBENCH_REGIONS = qxMasterDetailIds("plugin-workbench");
 
 interface PluginWorkbenchViewProps {
   state: PluginWorkbenchState;
@@ -98,9 +101,7 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
           className={`qx-host-workbench-gallery aspect-${state.layout?.aspectRatio || "landscape"}${densityClass}`}
           style={galleryStyle}
           role="listbox"
-          tabIndex={0}
-          data-qx-region="plugin-workbench-list"
-          data-qx-region-initial="true"
+          {...qxRegionProps(PLUGIN_WORKBENCH_REGIONS.list, { initial: true, label: listTitle })}
         >
           {items.length ? items.map((item, index) => {
             const id = item.id;
@@ -147,9 +148,7 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
           ref={listRef}
           className="qx-content-list qx-plugin-list"
           role="listbox"
-          tabIndex={0}
-          data-qx-region="plugin-workbench-list"
-          data-qx-region-initial="true"
+          {...qxRegionProps(PLUGIN_WORKBENCH_REGIONS.list, { initial: true, label: listTitle })}
         >
           <div className="qx-section-header qx-host-workbench-list-header">
             <span>{listTitle}</span>
@@ -196,8 +195,10 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
         </div>
         <section
           className="qx-content-detail qx-plugin-detail"
-          tabIndex={0}
-          data-qx-region="plugin-workbench-detail"
+          {...qxRegionProps(PLUGIN_WORKBENCH_REGIONS.detail, {
+            label: t("plugins.workbench.detail", "Detail"),
+            scroll: true,
+          })}
         >
           <WorkbenchDetail
             detail={detail}

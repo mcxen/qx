@@ -10,10 +10,12 @@ import {
   textMatchesQuery,
 } from "../src/search/rankResults.ts";
 import {
-  resolvePluginWorkbenchGalleryIndex,
   shouldForwardPluginWorkbenchHostKey,
-  shouldHandlePluginWorkbenchGalleryKey,
 } from "../src/plugin/workbenchKeyboard.ts";
+import {
+  resolveQxGridIndex,
+  shouldHandleQxGridKey,
+} from "../src/hooks/qxGridNavigation.ts";
 import { normalizePluginWorkbenchState } from "../src/plugin/workbenchTypes.ts";
 
 const list = (overrides = {}) => resolveQxListNavigation({
@@ -51,7 +53,7 @@ assert.equal(shouldForwardPluginWorkbenchHostKey({ mounted: false, key: "ArrowDo
 assert.equal(shouldForwardPluginWorkbenchHostKey({ mounted: true, key: "ArrowDown", metaKey: true }), false);
 assert.equal(shouldForwardPluginWorkbenchHostKey({ mounted: true, key: "a" }), false);
 
-const galleryKey = (overrides = {}) => shouldHandlePluginWorkbenchGalleryKey({
+const galleryKey = (overrides = {}) => shouldHandleQxGridKey({
   key: "ArrowRight",
   query: "",
   editable: true,
@@ -67,12 +69,12 @@ assert.equal(galleryKey({ fromSearch: false }), false);
 assert.equal(galleryKey({ editable: false, fromSearch: false }), true);
 assert.equal(galleryKey({ modified: true }), false);
 
-assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "ArrowRight", index: 1, count: 10, columns: 4 }), 2);
-assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "ArrowLeft", index: 4, count: 10, columns: 4 }), 4);
-assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "ArrowDown", index: 2, count: 10, columns: 4 }), 6);
-assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "ArrowDown", index: 6, count: 10, columns: 4 }), 9);
-assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "ArrowUp", index: 6, count: 10, columns: 4 }), 2);
-assert.equal(resolvePluginWorkbenchGalleryIndex({ key: "Enter", index: 2, count: 10, columns: 4 }), null);
+assert.equal(resolveQxGridIndex({ key: "ArrowRight", index: 1, count: 10, columns: 4 }), 2);
+assert.equal(resolveQxGridIndex({ key: "ArrowLeft", index: 4, count: 10, columns: 4 }), 4);
+assert.equal(resolveQxGridIndex({ key: "ArrowDown", index: 2, count: 10, columns: 4 }), 6);
+assert.equal(resolveQxGridIndex({ key: "ArrowDown", index: 6, count: 10, columns: 4 }), 9);
+assert.equal(resolveQxGridIndex({ key: "ArrowUp", index: 6, count: 10, columns: 4 }), 2);
+assert.equal(resolveQxGridIndex({ key: "Enter", index: 2, count: 10, columns: 4 }), null);
 
 // Workbench trust boundary: optional ids must stay addressable by the iframe
 // event bridge, duplicate React keys are removed, and tab state is singular.

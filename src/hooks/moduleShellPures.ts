@@ -3,8 +3,10 @@
  * Used by `useQxModuleShell` and by `scripts/check-module-ports.mjs` unit tests.
  */
 
-export type ModuleIslandTone = "neutral" | "success" | "warning" | "danger" | "accent" | undefined;
-export type ModuleIslandActivity = "bounce" | "pulse" | undefined;
+import type { IslandActivity, IslandTone } from "../island/types";
+
+export type ModuleIslandTone = IslandTone | undefined;
+export type ModuleIslandActivity = IslandActivity | undefined;
 
 export type ModuleIslandState = {
   title: string;
@@ -15,8 +17,8 @@ export type ModuleIslandState = {
   detail?: string;
   count?: number;
   progress?: number;
-  activity?: ModuleIslandActivity | "bounce" | string;
-  tone?: ModuleIslandTone | string;
+  activity?: ModuleIslandActivity;
+  tone?: ModuleIslandTone;
   actionLabel?: string;
   onAction?: () => void;
 };
@@ -24,9 +26,9 @@ export type ModuleIslandState = {
 export type ModuleIslandContent = {
   label: string;
   detail?: string;
-  tone?: string;
+  tone?: IslandTone;
   progress?: number;
-  activity?: string;
+  activity?: IslandActivity;
   actionLabel?: string;
   onAction?: () => void;
 };
@@ -49,7 +51,7 @@ export function buildModuleIsland(state: ModuleIslandState): ModuleIslandContent
       label: title,
       detail: state.loadingDetail?.trim() || "Loading…",
       progress: state.progress,
-      activity: state.activity ?? (state.progress == null ? "bounce" : undefined),
+      activity: state.activity ?? (state.progress == null ? "wave" : undefined),
       tone: state.tone,
       actionLabel: state.actionLabel,
       onAction: state.onAction,

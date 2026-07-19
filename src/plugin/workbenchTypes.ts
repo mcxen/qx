@@ -272,6 +272,9 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
         progress: Number.isFinite(Number(islandRaw.progress))
           ? Math.max(0, Math.min(100, Number(islandRaw.progress)))
           : undefined,
+        activity: islandRaw.activity === "wave" || islandRaw.activity === "dots" || islandRaw.activity === "spinner" || islandRaw.activity === "pulse"
+          ? islandRaw.activity
+          : undefined,
         action: islandRaw.action && typeof islandRaw.action === "object"
           ? {
               label: shortText((islandRaw.action as Record<string, unknown>).label, 40) || "",

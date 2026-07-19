@@ -273,6 +273,7 @@ export default function QxTTYPanel() {
   return (
     <QxShell
       title={t("tty.title", "QxTTY")}
+      islandKey="qx-tty"
       className="qx-tty-shell"
       trailing={(
         <Button size="sm" onClick={() => void createSession()}>

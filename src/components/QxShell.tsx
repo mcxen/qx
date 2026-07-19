@@ -20,10 +20,15 @@ import {
   matchesQxShortcut,
   shouldIgnoreBareShortcut,
 } from "../utils/keyboard";
-import QxBottomIsland from "./QxBottomIsland";
 import QxIslandDockSlot from "../island/surface/QxIslandDockSlot";
 import { useShellIslandShim } from "../island/compat/useShellIslandShim";
-import type { IslandPriority, IslandSource } from "../island/types";
+import type {
+  IslandOpenTarget,
+  IslandPlacementMode,
+  IslandPriority,
+  IslandSource,
+} from "../island/types";
+import { defaultIslandOpenTarget } from "../island/session/openTarget";
 import { useT } from "../i18n";
 
 export type { BottomIslandContent } from "./QxBottomIsland";
@@ -44,13 +49,15 @@ interface QxShellProps {
    */
   customIsland?: ReactNode;
   /**
-   * Shim session key → module.${islandKey}.shell
-   * Defaults to a slug of title.
+   * Stable, non-localized identity for the shell island session.
+   * Visible titles must never be used as protocol identity.
    */
-  islandKey?: string;
+  islandKey: string;
   islandSource?: IslandSource;
   islandPriority?: IslandPriority;
   islandSticky?: boolean;
+  islandPlacement?: IslandPlacementMode;
+  islandOpenTarget?: IslandOpenTarget;
   /**
    * When true, do not write island prop into the store (caller owns session,
    * e.g. Launcher home/search via islandHost).
@@ -84,6 +91,8 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   islandSource = "module",
   islandPriority = "location",
   islandSticky = false,
+  islandPlacement = "docked-or-float",
+  islandOpenTarget,
   islandManagedExternally = false,
   escapeAction,
   primaryAction,
@@ -99,19 +108,18 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   navigation,
 }, ref) {
   const t = useT();
-  const routeKey =
-    islandKey ??
-    (title
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "") || "active");
-
+  const resolvedIslandOpenTarget = useMemo(
+    () => islandOpenTarget ?? defaultIslandOpenTarget(islandKey, islandSource),
+    [islandKey, islandOpenTarget, islandSource],
+  );
   useShellIslandShim({
     island: islandManagedExternally ? null : island,
-    routeKey,
+    routeKey: islandKey,
     source: islandSource,
     priority: islandPriority,
     sticky: islandSticky,
+    placement: islandPlacement,
+    openTarget: resolvedIslandOpenTarget,
     suppressed: Boolean(customIsland) || islandManagedExternally,
   });
 
@@ -704,19 +712,9 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
         <div className="qx-shell-left">
           <ShellActionButton action={leftAction} variant="escape" />
         </div>
-        {/*
-          Docked island render order (reliable over store-only):
-          1) classified customIsland exception (recorder transport, home custom modes)
-          2) legacy island prop (shell status) — always paints even if session store fails
-          3) session store winner via QxIslandDockSlot
-        */}
-        {customIsland ? (
-          customIsland
-        ) : island ? (
-          <QxBottomIsland content={island} />
-        ) : (
-          <QxIslandDockSlot />
-        )}
+        {/* Ordinary island content always resolves through the session store.
+            Only classified custom HUDs may suppress the docked winner. */}
+        <QxIslandDockSlot exception={customIsland} />
         {hasRightActions ? (
           <div className="qx-shell-actions">
             <ShellActionButton action={visiblePrimaryAction} />

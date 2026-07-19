@@ -1085,6 +1085,7 @@ export default function DevTxtTool() {
   return (
     <QxShell
       title={t("docs.title", "Text Toolbox")}
+      islandKey="documents"
       className="documents-shell"
       visual="solid"
       escapeAction={shell.escapeAction}

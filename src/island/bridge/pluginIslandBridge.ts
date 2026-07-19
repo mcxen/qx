@@ -21,7 +21,7 @@ export function showPluginIslandStatus(status: PluginRuntimeStatus): void {
         primary: status.label,
         secondary: status.detail,
         tone: "neutral",
-        meter: { kind: "activity", activity: "bounce" },
+        meter: { kind: "activity", activity: "wave" },
       },
       ttlMs: 8000,
     });
@@ -52,7 +52,7 @@ export function showPluginIslandStatus(status: PluginRuntimeStatus): void {
       tone,
       meter:
         status.kind === "activity"
-          ? { kind: "activity", activity: "bounce" }
+          ? { kind: "activity", activity: "wave" }
           : undefined,
     },
   });

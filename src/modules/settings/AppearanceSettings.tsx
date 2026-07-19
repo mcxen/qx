@@ -283,7 +283,7 @@ export default function AppearanceSettings({
           title={t("appearance.externalIsland.enabled", "Enable external display")}
           description={t(
             "appearance.externalIsland.enabled.desc",
-            "Show task and plugin data in a separate compact island window.",
+            "Allow the docked Qx Island to be floated manually and dragged anywhere. It never opens automatically.",
           )}
         >
           <Toggle
@@ -319,7 +319,7 @@ export default function AppearanceSettings({
           title={t("appearance.externalIsland.whenHidden", "Show while Qx is hidden")}
           description={t(
             "appearance.externalIsland.whenHidden.desc",
-            "Keep the island available as a lightweight external data surface after the main window hides.",
+            "Keep an island that you already floated manually visible after the main window hides.",
           )}
         >
           <Toggle

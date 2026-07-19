@@ -25,6 +25,7 @@ import {
   peekNextRunAt,
   usePluginBackgroundStore,
 } from "./backgroundActivity";
+import { clearPluginIcons } from "./pluginIconRegistry";
 import { scoreMatchDescending } from "../search/rankResults";
 
 /** One pending timer per plugin command — never stack duplicates. */
@@ -510,6 +511,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       shortcuts: Object.values(shortcuts).flat().length,
     });
     clearBackgroundTimers();
+    clearPluginIcons();
     Object.values(shortcuts).flat().forEach((shortcut) => {
       void unregister(shortcut).catch(() => {});
     });

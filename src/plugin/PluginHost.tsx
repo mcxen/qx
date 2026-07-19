@@ -1,6 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useShallow } from "zustand/react/shallow";
 import QxShell, { type QxShellAction } from "../components/QxShell";
+import { QxActionList } from "../components/QxActionPanel";
 import PluginBackgroundBadge, {
   usePluginBackgroundJob,
   usePluginBackgroundSummary,
@@ -21,7 +30,7 @@ import {
   type PluginItemActionDescriptor,
 } from "./runtime";
 import QxModuleSearch from "../components/QxModuleSearch";
-import PluginWorkbenchView from "./PluginWorkbenchView";
+import PluginWorkbenchView, { PLUGIN_WORKBENCH_REGIONS } from "./PluginWorkbenchView";
 import type { PluginWorkbenchAction, PluginWorkbenchState } from "./workbenchTypes";
 import { useStore } from "../store";
 import { useSettingsStore } from "../modules/settings/store";
@@ -32,10 +41,13 @@ import {
 } from "../utils/keyboard";
 import { formatRelativeTime, formatTimestamp } from "./backgroundActivity";
 import { useT } from "../i18n";
+import { resolveQxGridIndex, shouldHandleQxGridKey } from "../hooks/qxGridNavigation";
+import { qxMasterDetailNavigation } from "../hooks/useQxMasterDetail";
 import {
-  resolvePluginWorkbenchGalleryIndex,
-  shouldHandlePluginWorkbenchGalleryKey,
-} from "./workbenchKeyboard";
+  hasPluginIslandSession,
+  syncPluginWorkbenchIsland,
+} from "./pluginIsland";
+import { islandHost } from "../island";
 
 export function PluginHost() {
   const loaded = usePluginRegistry((state) => state.loaded);
@@ -92,6 +104,12 @@ export function PluginPanelViewport() {
   const [selectionTitle, setSelectionTitle] = useState<string>("");
   const [pluginChrome, setPluginChrome] = useState<PluginChromePayload | null>(null);
   const [workbench, setWorkbench] = useState<PluginWorkbenchState | null>(null);
+  const [workbenchIslandManaged, setWorkbenchIslandManaged] = useState(false);
+  const pluginIslandSessionActive = useSyncExternalStore(
+    islandHost.subscribe,
+    () => Boolean(pluginId && hasPluginIslandSession(pluginId)),
+    () => false,
+  );
   const hasWorkbench = Boolean(workbench);
   const backgroundPollJob = usePluginBackgroundJob(
     isPluginTab ? pluginId : null,
@@ -105,6 +123,13 @@ export function PluginPanelViewport() {
     (state) => state.settings.plugin_display.raycast_action_panel,
   );
   const goBack = useCallback(() => setTab("launcher"), [setTab]);
+  const runPluginIslandCommand = useCallback(async (targetPluginId: string, commandName: string) => {
+    const command = usePluginRegistry.getState().commands.find(
+      (candidate) => candidate.pluginId === targetPluginId && candidate.name === commandName,
+    );
+    if (!command) throw new Error(`Plugin island command is not registered: ${commandName}`);
+    await usePluginRegistry.getState().runCommand(command);
+  }, []);
   const selectWorkbenchItem = useCallback((id: string) => {
     // Keep pointer and keyboard selection responsive even when the plugin iframe
     // is busy. The plugin still receives the event and remains the source of
@@ -154,7 +179,7 @@ export function PluginPanelViewport() {
     if (
       workbench?.layout?.kind !== "gallery"
       || isImeCompositionEvent(event.nativeEvent)
-      || !shouldHandlePluginWorkbenchGalleryKey({
+      || !shouldHandleQxGridKey({
         key: event.key,
         query: workbench.query || "",
         editable: isEditableTarget(event.target),
@@ -175,7 +200,7 @@ export function PluginPanelViewport() {
     const renderedColumns = gallery
       ? window.getComputedStyle(gallery).gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length
       : 0;
-    const nextIndex = resolvePluginWorkbenchGalleryIndex({
+    const nextIndex = resolveQxGridIndex({
       key: event.key,
       index: selectedIndex,
       count: items.length,
@@ -196,6 +221,7 @@ export function PluginPanelViewport() {
       setSelectionTitle("");
       setPluginChrome(null);
       setWorkbench(null);
+      setWorkbenchIslandManaged(false);
       return;
     }
     const unsubscribeActions = subscribePluginItemActions((payload) => {
@@ -217,6 +243,27 @@ export function PluginPanelViewport() {
       unsubscribeWorkbench();
     };
   }, [isPluginTab, pluginId]);
+
+  useLayoutEffect(() => {
+    const hasIslandField = Boolean(
+      workbench && Object.prototype.hasOwnProperty.call(workbench, "island"),
+    );
+    if (!isPluginTab || !pluginId || !plugin) {
+      setWorkbenchIslandManaged(false);
+      return;
+    }
+    if (!hasIslandField) {
+      setWorkbenchIslandManaged(false);
+      return;
+    }
+    try {
+      setWorkbenchIslandManaged(
+        syncPluginWorkbenchIsland(plugin, workbench?.island, runPluginIslandCommand),
+      );
+    } catch {
+      setWorkbenchIslandManaged(false);
+    }
+  }, [isPluginTab, plugin, pluginId, runPluginIslandCommand, workbench]);
 
   useEffect(() => {
     if (!hasWorkbench) return;
@@ -383,20 +430,21 @@ export function PluginPanelViewport() {
       || workbenchActionDescriptors.find((action) => !action.disabled)
     : itemActions[0];
 
+  const contextualActions = useMemo<QxShellAction[]>(() => workbench
+    ? workbenchActionDescriptors.map((action, index) => ({
+        label: action.label,
+        kbd: action.kbd || (index === 0 ? "Enter" : undefined),
+        disabled: action.disabled,
+        tone: action.tone === "danger" ? "danger" : action.primary ? "primary" : "normal",
+        onClick: () => runWorkbenchAction(action.id),
+      }))
+    : itemActions.map((action, index) => ({
+        label: action.title,
+        kbd: action.kbd || (index === 0 ? "Enter" : undefined),
+        onClick: () => runItem(action.id),
+      })), [itemActions, runItem, runWorkbenchAction, workbench, workbenchActionDescriptors]);
+
   const actions = useMemo<QxShellAction[]>(() => {
-    const pluginAsQx: QxShellAction[] = workbench
-      ? workbenchActionDescriptors.map((action, index) => ({
-          label: action.label,
-          kbd: action.kbd || (index === 0 ? "Enter" : undefined),
-          disabled: action.disabled,
-          tone: action.tone === "danger" ? "danger" : action.primary ? "primary" : "normal",
-          onClick: () => runWorkbenchAction(action.id),
-        }))
-      : itemActions.map((action, index) => ({
-          label: action.title,
-          kbd: action.kbd || (index === 0 ? "Enter" : undefined),
-          onClick: () => runItem(action.id),
-        }));
     // Panel-level ops stay after the selected item's ActionPanel (Raycast order).
     const panelOps: QxShellAction[] = [
       {
@@ -409,8 +457,8 @@ export function PluginPanelViewport() {
         onClick: () => void usePluginRegistry.getState().runCommand(cmd),
       })),
     ];
-    return [...pluginAsQx, ...panelOps];
-  }, [itemActions, pluginCommands, runItem, runWorkbenchAction, t, workbench, workbenchActionDescriptors]);
+    return [...contextualActions, ...panelOps];
+  }, [contextualActions, pluginCommands, t]);
 
   if (!isPluginTab) return null;
 
@@ -439,7 +487,7 @@ export function PluginPanelViewport() {
       ? {
           label: t("plugins.loading", "Plugin loading"),
           detail: plugin?.name || pluginId,
-          activity: "bounce",
+          activity: "wave",
         }
       : renderState.kind === "error"
         ? {
@@ -452,7 +500,7 @@ export function PluginPanelViewport() {
         : {
             label: plugin?.name || shellTitle,
             detail: backgroundDetail || (plugin?.version ? `v${plugin.version}` : undefined),
-            activity: background?.isRunning ? "bounce" : undefined,
+            activity: background?.isRunning ? "pulse" : undefined,
           },
     t,
   });
@@ -475,40 +523,30 @@ export function PluginPanelViewport() {
     : -1;
   const workbenchNavigation = workbench?.items?.length
     ? {
-        index: workbenchSelectedIndex,
-        count: workbench.items.length,
-        pageSize: 8,
-        regionId: "plugin-workbench-list",
+        ...qxMasterDetailNavigation({
+          ids: PLUGIN_WORKBENCH_REGIONS,
+          index: workbenchSelectedIndex,
+          count: workbench.items.length,
+          pageSize: 8,
+          focusDetailOnOpen: false,
+          onChange: (index: number) => {
+            const item = workbench.items?.[index];
+            if (item) selectWorkbenchItem(item.id);
+          },
+          onOpen: primaryItem
+            ? () => runWorkbenchAction(primaryItem.id)
+            : undefined,
+        }),
         editable: "search" as const,
-        onChange: (index: number) => {
-          const item = workbench.items?.[index];
-          if (item) selectWorkbenchItem(item.id);
-        },
-        onOpen: primaryItem
-          ? () => runWorkbenchAction(primaryItem.id)
-          : undefined,
       }
     : undefined;
   const actionSelectionTitle = workbench ? selectedWorkbenchItem?.title || "" : selectionTitle;
-  const contextualActions = workbench
-    ? workbenchActionDescriptors.map((action) => ({
-        id: action.id,
-        title: action.label,
-        kbd: action.kbd,
-        disabled: action.disabled,
-        run: () => runWorkbenchAction(action.id),
-      }))
-    : itemActions.map((action) => ({
-        id: action.id,
-        title: action.title,
-        kbd: action.kbd,
-        disabled: false,
-        run: () => runItem(action.id),
-      }));
 
   return (
     <QxShell
       title={shellTitle}
+      islandKey={`plugin.${pluginId}`}
+      islandOpenTarget={{ kind: "plugin", id: pluginId }}
       className="qx-plugin-shell"
       onKeyDown={shell.onKeyDown}
       navigation={workbenchNavigation}
@@ -565,35 +603,18 @@ export function PluginPanelViewport() {
             </div>
           ) : null}
           {contextualActions.length > 0 ? (
-            contextualActions.map((action, index) => {
-              const kbd = action.kbd || (index === 0 ? "Enter" : undefined);
-              return (
-                <button
-                  key={action.id}
-                  className="qx-action-item"
-                  type="button"
-                  onClick={action.run}
-                  disabled={action.disabled}
-                >
-                  <span>{action.title}</span>
-                  {kbd ? <kbd>{kbd}</kbd> : null}
-                </button>
-              );
-            })
+            <QxActionList actions={contextualActions} />
           ) : (
             <div className="v2ex-context-copy" style={{ opacity: 0.7 }}>
               {t("plugins.selectForActions", "Select an item to load its actions")}
             </div>
           )}
           <div className="qx-action-title">{t("plugins.panelActions", "Panel")}</div>
-          <button
-            className="qx-action-item"
-            onClick={() => setRefreshKey((k) => k + 1)}
-            type="button"
-          >
-            <span>{t("plugins.reloadPanel", "Reload Panel")}</span>
-            <kbd>⇧⌘R</kbd>
-          </button>
+          <QxActionList actions={[{
+            label: t("plugins.reloadPanel", "Reload Panel"),
+            kbd: "CmdOrCtrl+Shift+R",
+            onClick: () => setRefreshKey((k) => k + 1),
+          }]} />
           {pluginCommands.map((cmd) => (
             <button
               key={cmd.name}
@@ -629,7 +650,7 @@ export function PluginPanelViewport() {
         </aside>
       }
       island={shell.island}
-      islandManagedExternally={Boolean(workbench && Object.prototype.hasOwnProperty.call(workbench, "island"))}
+      islandManagedExternally={workbenchIslandManaged || pluginIslandSessionActive}
       primaryAction={
         primaryItem
           ? {

@@ -492,6 +492,10 @@ pub fn show_floating(app: &AppHandle) {
 }
 
 pub(crate) fn show_floating_now(app: &AppHandle) {
+    // Windows/WebView2 and macOS panel activation can emit a transient
+    // Focused(false) while show + focus settle. The native window listener is
+    // broader than the frontend's focus guard, so protect every summon here.
+    suppress_auto_hide(Duration::from_millis(500));
     mark_panel_open();
     #[cfg(target_os = "macos")]
     {

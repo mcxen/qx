@@ -192,7 +192,12 @@ The bundled Everything engine is a long-running Qx-specific instance and can
 hold `resources/search/everything.exe` open while an installer upgrades the app.
 `src-tauri/windows/hooks.nsh` must stop only the `Qx` instance and remove its
 indexing service in `NSIS_HOOK_PREINSTALL` before NSIS copies files. The
-post-install hook reinstalls the service. Keep the same cleanup in
+pre-install hook explains that this is Qx's private search engine, asks the
+service to stop, and probes write access to the executable for up to 65 seconds;
+Everything service removal can return before Windows releases the image. If the
+file is still locked, abort with a clear retry message instead of leaving a
+partially upgraded installation. The post-install hook reinstalls the service.
+Keep the same cleanup in
 `NSIS_HOOK_PREUNINSTALL`; never use a broad `taskkill` that would terminate a
 user's unrelated Everything installation. Runtime file search must likewise use
 only Qx's bundled `everything.exe` and `es.exe`; a missing bundle is an

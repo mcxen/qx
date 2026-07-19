@@ -169,6 +169,10 @@ function ModuleLoadingShell({
   return (
     <QxShell
       title={title}
+      islandKey={`loading.${tab}`}
+      islandOpenTarget={tab.startsWith("plugin:")
+        ? { kind: "plugin", id: tab.slice("plugin:".length) }
+        : { kind: "module", id: tab }}
       className="qx-module-loading-shell"
       escapeAction={shell.escapeAction}
       onKeyDown={shell.onKeyDown}
@@ -244,6 +248,10 @@ function ModuleErrorShell({
   return (
     <QxShell
       title={title}
+      islandKey={`error.${tab}`}
+      islandOpenTarget={tab.startsWith("plugin:")
+        ? { kind: "plugin", id: tab.slice("plugin:".length) }
+        : { kind: "module", id: tab }}
       className="qx-module-loading-shell"
       escapeAction={shell.escapeAction}
       onKeyDown={shell.onKeyDown}
@@ -946,7 +954,7 @@ function App() {
               primary: "Updating Qx",
               secondary: `Downloading ${versionLabel}`,
               tone: "neutral",
-              meter: { kind: "activity", activity: "bounce" },
+              meter: { kind: "activity", activity: "wave" },
             },
           });
 
@@ -964,7 +972,7 @@ function App() {
                 primary: "Installing update",
                 secondary: "Qx will restart.",
                 tone: "success",
-                meter: { kind: "activity", activity: "bounce" },
+                meter: { kind: "activity", activity: "wave" },
               },
             });
           }
@@ -1045,7 +1053,9 @@ function App() {
   useEffect(() => {
     const handler = (e: Event) => {
       const tabId = (e as CustomEvent).detail as string;
-      if (tabId === "clipboard" || tabId === "screencap"
+      if (tabId === "launcher") {
+        setTab("launcher");
+      } else if (tabId === "clipboard" || tabId === "screencap"
           || tabId === "rss" || tabId === "v2ex" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "qx-tty" || tabId === "settings") {
         if (tabId !== "settings" && !isBuiltinModuleEnabled(tabId)) return;
         setTab(tabId);
@@ -2206,7 +2216,6 @@ function App() {
           mainVisible={mainVisible}
           showWhenMainHidden={settings.appearance.island_float_when_main_hidden}
           alwaysOnTop={settings.appearance.island_float_always_on_top}
-          preferDockedWhenMainVisible={settings.appearance.island_prefer_docked_when_main_visible}
           rotationSeconds={settings.appearance.island_float_rotate_secs}
         />
         {/* Hidden container for plugin iframes */}

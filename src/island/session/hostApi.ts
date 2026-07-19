@@ -16,6 +16,8 @@ import { createQxLogger } from "../../lib/logger";
 
 const log = createQxLogger("island.host");
 
+export const ISLAND_FLOAT_REQUEST_EVENT = "qx:island-request-float";
+
 /**
  * Module-facing island host. Sole public entry for show/update/dismiss.
  * Producers never pass generation on show (ignored if passed).
@@ -44,12 +46,22 @@ export const islandHost = {
     return actionRegistry.bind(id, handlers);
   },
 
-  /**
-   * v1: no-op when main is visible (see §7.3 / KD16).
-   * Float promote is wired in PR4; host remains stable for call sites.
-   */
   requestFloat(id: string): void {
-    log.debug("island requestFloat (v1 no-op until float surface)", { id });
+    const session = getSnapshot().find((candidate) => candidate.id === id);
+    if (
+      !session ||
+      session.placement === "docked" ||
+      session.priority === "home"
+    ) {
+      log.debug("island requestFloat ignored for ineligible session", { id });
+      return;
+    }
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent(ISLAND_FLOAT_REQUEST_EVENT, {
+        detail: { sessionId: id },
+      }),
+    );
   },
 
   getSnapshot(): IslandSession[] {

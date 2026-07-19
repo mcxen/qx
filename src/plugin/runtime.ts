@@ -1,9 +1,10 @@
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import type {
   InstalledPlugin,
   RegisteredCommand,
   RegisteredPanel,
 } from "./types";
+import { setPluginIcon } from "./pluginIconRegistry";
 import { handlePluginRpc } from "./rpcMethods";
 import {
   DEFAULT_SETTINGS,
@@ -13,14 +14,39 @@ import {
 import { createQxLogger, qxLog } from "../lib/logger";
 import { PLUGIN_WORKBENCH_RUNTIME_JS } from "./cliWorkbench";
 import { PLUGIN_OVERLAY_SCROLLBAR_RUNTIME_JS } from "../utils/overlayScrollbar";
-import {
-  normalizePluginWorkbenchState,
-  type PluginWorkbenchEvent,
-  type PluginWorkbenchPayload,
-} from "./workbenchTypes";
 import { PLUGIN_WORKBENCH_HOST_KEYS } from "./workbenchKeyboard";
+import {
+  currentPluginTheme,
+  deletePanelRuntimeSession,
+  ensurePluginShellBridge,
+  isExpectedPluginMessageOrigin,
+  panelSessions,
+  registerPluginRuntime,
+  setPanelRuntimeSession,
+  unregisterPluginRuntime,
+  type PanelRuntimeSession,
+} from "./pluginShellBridge";
+import { createSandboxIframe, resolvePluginAssetUrl } from "./pluginRuntimeTransport";
+
+export {
+  isExpectedPluginMessageOrigin,
+  isPluginRuntimeSource,
+  postPluginChromeKey,
+  postPluginChromeQuery,
+  postPluginChromeTab,
+  postPluginWorkbenchEvent,
+  runPluginItemAction,
+  subscribePluginChrome,
+  subscribePluginItemActions,
+  subscribePluginWorkbench,
+  type PluginChromePayload,
+  type PluginItemActionDescriptor,
+} from "./pluginShellBridge";
+
+export { resolvePluginAssetUrl } from "./pluginRuntimeTransport";
 
 let requestCounter = 0;
+const runtimeLogger = createQxLogger("plugin.runtime");
 function nextRequestId(): string {
   requestCounter += 1;
   return `rpc-${Date.now()}-${requestCounter}`;
@@ -45,315 +71,6 @@ export interface PluginRuntimeOptions {
     detail?: string;
   }) => void;
   onRunPluginCommand?: (pluginId: string, command: string) => Promise<void>;
-}
-
-interface PanelRuntimeSession {
-  iframe: HTMLIFrameElement;
-  runtimeId: string;
-  pluginId: string;
-}
-
-const panelSessions = new WeakMap<HTMLElement, PanelRuntimeSession>();
-/** Live panel sessions by plugin id (for host → iframe action dispatch). */
-const panelSessionsByPlugin = new Map<string, PanelRuntimeSession>();
-const runtimeSources = new Map<string, Map<string, Window>>();
-const runtimeLogger = createQxLogger("plugin.runtime");
-
-function currentPluginTheme(): "light" | "dark" {
-  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-}
-
-function broadcastPluginTheme(): void {
-  const theme = currentPluginTheme();
-  for (const runtimes of runtimeSources.values()) {
-    for (const source of runtimes.values()) {
-      source.postMessage({ type: "qx:theme", theme }, "*");
-    }
-  }
-}
-
-/** Raycast / plugin selected-item actions published to QxShell. */
-export type PluginItemActionDescriptor = {
-  id: string;
-  title: string;
-  kbd?: string;
-};
-
-export type PluginItemActionsPayload = {
-  pluginId: string;
-  runtimeId: string;
-  selectionTitle?: string;
-  actions: PluginItemActionDescriptor[];
-};
-
-/** Plugin panel chrome published into QxShell TopBar (search + segmented tabs). */
-export type PluginChromeTab = {
-  id: string;
-  label: string;
-  active?: boolean;
-};
-
-export type PluginChromePayload = {
-  pluginId: string;
-  runtimeId: string;
-  query?: string;
-  queryPlaceholder?: string;
-  showSearch?: boolean;
-  tabs?: PluginChromeTab[];
-  showTabs?: boolean;
-};
-
-type ItemActionsListener = (payload: PluginItemActionsPayload) => void;
-const itemActionsListeners = new Set<ItemActionsListener>();
-
-type ChromeListener = (payload: PluginChromePayload) => void;
-const chromeListeners = new Set<ChromeListener>();
-type WorkbenchListener = (payload: PluginWorkbenchPayload) => void;
-const workbenchListeners = new Set<WorkbenchListener>();
-
-export function subscribePluginItemActions(listener: ItemActionsListener): () => void {
-  ensurePluginShellBridge();
-  itemActionsListeners.add(listener);
-  return () => {
-    itemActionsListeners.delete(listener);
-  };
-}
-
-export function subscribePluginChrome(listener: ChromeListener): () => void {
-  ensurePluginShellBridge();
-  chromeListeners.add(listener);
-  return () => {
-    chromeListeners.delete(listener);
-  };
-}
-
-export function subscribePluginWorkbench(listener: WorkbenchListener): () => void {
-  ensurePluginShellBridge();
-  workbenchListeners.add(listener);
-  return () => {
-    workbenchListeners.delete(listener);
-  };
-}
-
-/** Ask the active panel iframe to run a published item action by id. */
-export function runPluginItemAction(pluginId: string, actionId: string): void {
-  const session = panelSessionsByPlugin.get(pluginId);
-  if (!session?.iframe.contentWindow) return;
-  session.iframe.contentWindow.postMessage(
-    {
-      type: "qx:run-item-action",
-      pluginId,
-      runtimeId: session.runtimeId,
-      actionId,
-    },
-    "*",
-  );
-}
-
-function postToPluginPanel(pluginId: string, message: Record<string, unknown>): void {
-  const session = panelSessionsByPlugin.get(pluginId);
-  if (!session?.iframe.contentWindow) return;
-  session.iframe.contentWindow.postMessage(
-    {
-      ...message,
-      pluginId,
-      runtimeId: session.runtimeId,
-    },
-    "*",
-  );
-}
-
-/** TopBar search → plugin workbench filter. */
-export function postPluginChromeQuery(pluginId: string, query: string): void {
-  postToPluginPanel(pluginId, { type: "qx:chrome:query", query: String(query ?? "") });
-}
-
-/** TopBar segmented control → plugin workbench tab. */
-export function postPluginChromeTab(pluginId: string, tabId: string): void {
-  postToPluginPanel(pluginId, { type: "qx:chrome:tab", tabId: String(tabId ?? "") });
-}
-
-/** Forward list navigation keys from TopBar search into the plugin iframe. */
-export function postPluginChromeKey(pluginId: string, key: string): void {
-  postToPluginPanel(pluginId, { type: "qx:chrome:key", key: String(key ?? "") });
-}
-
-export function postPluginWorkbenchEvent(pluginId: string, event: PluginWorkbenchEvent): void {
-  postToPluginPanel(pluginId, { type: "qx:workbench:event", event });
-}
-
-function isPanelRuntimeSource(
-  pluginId: string,
-  runtimeId: string,
-  source: MessageEventSource | null,
-): boolean {
-  if (!source) return false;
-  const panelSession = panelSessionsByPlugin.get(pluginId);
-  return Boolean(
-    panelSession
-    && panelSession.runtimeId === runtimeId
-    && panelSession.iframe.contentWindow === source
-    && isPluginRuntimeSource(pluginId, runtimeId, source as Window),
-  );
-}
-
-function ensurePluginShellBridge(): void {
-  const g = globalThis as typeof globalThis & { __qxPluginShellBridge?: boolean };
-  if (g.__qxPluginShellBridge) return;
-  g.__qxPluginShellBridge = true;
-  const themeObserver = new MutationObserver(broadcastPluginTheme);
-  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
-  window.addEventListener("message", (event: MessageEvent) => {
-    if (!isExpectedPluginMessageOrigin(event)) return;
-    const data = event.data || {};
-    if (data.type === "qx:plugin:workbench") {
-      const pluginId = String(data.pluginId || "");
-      const runtimeId = String(data.runtimeId || "");
-      if (!pluginId || !runtimeId || !isPanelRuntimeSource(pluginId, runtimeId, event.source)) {
-        return;
-      }
-      const payload: PluginWorkbenchPayload = {
-        pluginId,
-        runtimeId,
-        state: normalizePluginWorkbenchState(data.state),
-      };
-      for (const listener of workbenchListeners) {
-        try {
-          listener(payload);
-        } catch {
-          /* ignore */
-        }
-      }
-      return;
-    }
-    if (data.type === "qx:plugin:chrome") {
-      const pluginId = String(data.pluginId || "");
-      const runtimeId = String(data.runtimeId || "");
-      if (!pluginId || !runtimeId || !isPanelRuntimeSource(pluginId, runtimeId, event.source)) {
-        return;
-      }
-      const tabs = Array.isArray(data.tabs)
-        ? data.tabs
-            .slice(0, 16)
-            .map((raw: { id?: string; label?: string; active?: boolean }) => ({
-              id: String(raw?.id || "").slice(0, 64),
-              label: String(raw?.label || raw?.id || "").slice(0, 64),
-              active: Boolean(raw?.active),
-            }))
-            .filter((tab: PluginChromeTab) => Boolean(tab.id))
-        : [];
-      const payload: PluginChromePayload = {
-        pluginId,
-        runtimeId,
-        query: data.query != null ? String(data.query).slice(0, 500) : "",
-        queryPlaceholder: data.queryPlaceholder
-          ? String(data.queryPlaceholder).slice(0, 120)
-          : undefined,
-        showSearch: data.showSearch !== false,
-        tabs,
-        showTabs: data.showTabs !== false && tabs.length > 0,
-      };
-      for (const listener of chromeListeners) {
-        try {
-          listener(payload);
-        } catch {
-          /* ignore */
-        }
-      }
-      return;
-    }
-    if (data.type === "qx:plugin:open-preferences") {
-      const pluginId = String(data.pluginId || "");
-      const runtimeId = String(data.runtimeId || "");
-      if (!pluginId || !runtimeId || !event.source) return;
-      const panelSession = panelSessionsByPlugin.get(pluginId);
-      if (
-        !panelSession
-        || panelSession.runtimeId !== runtimeId
-        || panelSession.iframe.contentWindow !== event.source
-      ) {
-        return;
-      }
-      // Raycast "Configure Extension" → Settings → Extensions (focus plugin card).
-      try {
-        sessionStorage.setItem("qx.settings.pendingTab", "plugins");
-        sessionStorage.setItem("qx.settings.focusPluginId", pluginId);
-      } catch {
-        /* ignore */
-      }
-      window.dispatchEvent(new CustomEvent("qx:navigate", { detail: "settings" }));
-      return;
-    }
-    if (data.type !== "qx:plugin:item-actions") return;
-    const pluginId = String(data.pluginId || "");
-    const runtimeId = String(data.runtimeId || "");
-    if (!pluginId || !runtimeId || !event.source) return;
-    const panelSession = panelSessionsByPlugin.get(pluginId);
-    if (
-      !panelSession ||
-      panelSession.runtimeId !== runtimeId ||
-      panelSession.iframe.contentWindow !== event.source ||
-      !isPluginRuntimeSource(pluginId, runtimeId, event.source as Window)
-    ) {
-      return;
-    }
-    const actions = Array.isArray(data.actions)
-      ? data.actions
-          .slice(0, 64)
-          .map((raw: { id?: string; title?: string; kbd?: string }) => ({
-            id: String(raw?.id || "").slice(0, 128),
-            title: String(raw?.title || "Action").slice(0, 256),
-            kbd: raw?.kbd ? String(raw.kbd).slice(0, 64) : undefined,
-          }))
-          .filter((a: PluginItemActionDescriptor) => Boolean(a.id))
-      : [];
-    const payload: PluginItemActionsPayload = {
-      pluginId,
-      runtimeId,
-      selectionTitle: data.selectionTitle
-        ? String(data.selectionTitle).slice(0, 256)
-        : undefined,
-      actions,
-    };
-    for (const listener of itemActionsListeners) {
-      try {
-        listener(payload);
-      } catch {
-        /* ignore listener errors */
-      }
-    }
-  });
-}
-
-export function isExpectedPluginMessageOrigin(event: MessageEvent): boolean {
-  return event.origin === window.location.origin || event.origin === "null";
-}
-
-function registerPluginRuntime(
-  pluginId: string,
-  runtimeId: string,
-  iframe: HTMLIFrameElement,
-): void {
-  const source = iframe.contentWindow;
-  if (!source) return;
-  const runtimes = runtimeSources.get(pluginId) ?? new Map<string, Window>();
-  runtimes.set(runtimeId, source);
-  runtimeSources.set(pluginId, runtimes);
-}
-
-function unregisterPluginRuntime(pluginId: string, runtimeId: string): void {
-  const runtimes = runtimeSources.get(pluginId);
-  if (!runtimes) return;
-  runtimes.delete(runtimeId);
-  if (runtimes.size === 0) runtimeSources.delete(pluginId);
-}
-
-export function isPluginRuntimeSource(
-  pluginId: string,
-  runtimeId: string,
-  source: Window,
-): boolean {
-  return runtimeSources.get(pluginId)?.get(runtimeId) === source;
 }
 
 export function unloadPluginRuntime(
@@ -651,10 +368,6 @@ export function buildPluginRuntimeHtml(
               error: summarizeLogValue(error),
             });
           }
-        },
-        updateIsland: (input) => {
-          if (input == null) return rpc('islandDismiss');
-          return rpc('islandUpdate', { input }).catch(() => rpc('islandShow', { input }));
         },
       };
 
@@ -974,16 +687,6 @@ export function buildPluginRuntimeHtml(
   return runtime;
 }
 
-function createSandboxIframe(html: string, visible: boolean): HTMLIFrameElement {
-  const iframe = document.createElement("iframe");
-  iframe.sandbox.add("allow-scripts");
-  iframe.style.cssText = visible
-    ? "position:absolute;inset:0;width:100%;height:100%;border:0;visibility:visible;pointer-events:auto;z-index:1;"
-    : "position:absolute;inset:0;width:100%;height:100%;border:0;visibility:hidden;pointer-events:none;z-index:-1;";
-  iframe.srcdoc = html;
-  return iframe;
-}
-
 function waitForPluginRuntime(
   plugin: InstalledPlugin,
   iframe: HTMLIFrameElement,
@@ -1071,25 +774,6 @@ function sendRuntimeRequest(
   });
 }
 
-export async function resolvePluginAssetUrl(
-  pluginId: string,
-  assetPath?: string,
-): Promise<string | undefined> {
-  const trimmed = assetPath?.trim();
-  if (!trimmed) return undefined;
-  if (/^(https?:|data:|asset:|blob:)/i.test(trimmed)) return trimmed;
-  try {
-    const result = await invoke<{ path: string }>("plugin_resolve_asset", {
-      id: pluginId,
-      assetPath: trimmed,
-    });
-    return convertFileSrc(result.path);
-  } catch (error) {
-    console.warn(`Failed to resolve plugin asset ${pluginId}/${trimmed}:`, error);
-    return undefined;
-  }
-}
-
 export async function loadPlugin(
   plugin: InstalledPlugin,
   _options: PluginRuntimeOptions,
@@ -1117,6 +801,7 @@ export async function loadPlugin(
 
   const manifest = plugin.manifest;
   const pluginIcon = await resolvePluginAssetUrl(plugin.id, manifest?.icon);
+  setPluginIcon(plugin.id, pluginIcon);
 
   if (manifest?.commands) {
     for (const cmd of manifest.commands) {
@@ -1187,6 +872,7 @@ export async function loadPlugin(
       plugin.id,
       manifest.panel.icon || manifest.icon,
     );
+    setPluginIcon(plugin.id, panelIcon || pluginIcon);
     result.panel = {
       pluginId: plugin.id,
       pluginName: plugin.name,
@@ -1207,9 +893,7 @@ export async function loadPlugin(
           unloadPluginRuntime(plugin.id, existing.iframe, existing.runtimeId);
           existing.iframe.remove();
           panelSessions.delete(container);
-          if (panelSessionsByPlugin.get(plugin.id)?.runtimeId === existing.runtimeId) {
-            panelSessionsByPlugin.delete(plugin.id);
-          }
+          deletePanelRuntimeSession(plugin.id, existing.runtimeId);
         }
         container.innerHTML = "";
         const panelRuntimeId = nextRequestId();
@@ -1223,7 +907,7 @@ export async function loadPlugin(
           pluginId: plugin.id,
         };
         panelSessions.set(container, session);
-        panelSessionsByPlugin.set(plugin.id, session);
+        setPanelRuntimeSession(session);
         ensurePluginShellBridge();
         try {
           // Load + first paint only. Plugins must not await long CLI/network in panel.render
@@ -1253,9 +937,7 @@ export async function loadPlugin(
           unregisterPluginRuntime(plugin.id, panelRuntimeId);
           panelIframe.remove();
           panelSessions.delete(container);
-          if (panelSessionsByPlugin.get(plugin.id)?.runtimeId === panelRuntimeId) {
-            panelSessionsByPlugin.delete(plugin.id);
-          }
+          deletePanelRuntimeSession(plugin.id, panelRuntimeId);
           throw error;
         }
       },
@@ -1263,9 +945,7 @@ export async function loadPlugin(
         const session = panelSessions.get(container);
         if (!session) return;
         panelSessions.delete(container);
-        if (panelSessionsByPlugin.get(plugin.id)?.runtimeId === session.runtimeId) {
-          panelSessionsByPlugin.delete(plugin.id);
-        }
+        deletePanelRuntimeSession(plugin.id, session.runtimeId);
         try {
           runtimeLogger.debug("Plugin panel destroy started", {
             pluginId: plugin.id,

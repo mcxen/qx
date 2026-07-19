@@ -20,6 +20,27 @@ const fail = (m) => failures.push(m);
 
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
 const exists = (rel) => fs.existsSync(path.join(root, rel));
+const esbuildBinary = path.join(
+  root,
+  "node_modules",
+  ".bin",
+  process.platform === "win32" ? "esbuild.cmd" : "esbuild",
+);
+
+function bundleProductionModule(entry, outfile) {
+  const result = spawnSync(esbuildBinary, [
+    entry,
+    "--bundle",
+    "--platform=node",
+    "--format=esm",
+    `--outfile=${outfile}`,
+  ], { cwd: root, encoding: "utf8" });
+  if (result.status !== 0 || !fs.existsSync(outfile)) {
+    fail(`bundle ${entry} failed: ${result.stderr || result.stdout}`);
+    return false;
+  }
+  return true;
+}
 
 // --- Built-in panel modules must register Esc via useQxModuleShell ----------
 const MODULE_PANELS = [
@@ -63,11 +84,23 @@ if (!exists("docs/module-port-inventory.md")) {
     "v2ex",
     "pomodoro-island",
     "useQxModuleShell",
+    "qxGridNavigation",
+    "QxActionList",
     "context.storage.persist",
     "manifest.panel",
   ]) {
     if (!inv.includes(token)) fail(`inventory missing mention of ${token}`);
   }
+}
+
+const runtimeLines = read("src/plugin/runtime.ts").split(/\r?\n/).length;
+if (runtimeLines > 1000) fail(`src/plugin/runtime.ts exceeds 1000 lines (${runtimeLines})`);
+const cliWorkbench = read("src/plugin/cliWorkbench.ts");
+if (!cliWorkbench.includes("createPluginSdkRuntime.toString()")) {
+  fail("plugin iframe SDK must serialize the canonical createPluginSdkRuntime factory");
+}
+if (cliWorkbench.includes("function parseJsonLoose")) {
+  fail("cliWorkbench must not keep a second inline SDK implementation");
 }
 
 const guide = read("public/doc/plugin-development-guide.md");
@@ -118,31 +151,7 @@ const scratch =
   || path.join(root, "node_modules", ".cache", "qx-port-check");
 fs.mkdirSync(scratch, { recursive: true });
 const bundleOut = path.join(scratch, "moduleEscapeHost.mjs");
-const esbuild = spawnSync(
-  process.execPath,
-  [
-    path.join(root, "node_modules/esbuild/bin/esbuild"),
-    path.join(root, "src/hooks/moduleEscapeHost.ts"),
-    "--bundle",
-    "--platform=node",
-    "--format=esm",
-    `--outfile=${bundleOut}`,
-  ],
-  { encoding: "utf8" },
-);
-// fallback: npx esbuild if local missing
-let bundleOk = esbuild.status === 0 && fs.existsSync(bundleOut);
-if (!bundleOk) {
-  const npx = spawnSync(
-    "npx",
-    ["--yes", "esbuild", "src/hooks/moduleEscapeHost.ts", "--bundle", "--platform=node", "--format=esm", `--outfile=${bundleOut}`],
-    { cwd: root, encoding: "utf8", shell: true },
-  );
-  bundleOk = npx.status === 0 && fs.existsSync(bundleOut);
-  if (!bundleOk) {
-    fail(`esbuild moduleEscapeHost failed: ${npx.stderr || esbuild.stderr}`);
-  }
-}
+const bundleOk = bundleProductionModule("src/hooks/moduleEscapeHost.ts", bundleOut);
 
 if (bundleOk) {
   try {
@@ -190,34 +199,13 @@ if (!fs.existsSync(pureModule)) {
   fail("src/hooks/moduleShellPures.ts missing — pure shell helpers for tests");
 } else {
   const pureOut = path.join(scratch, "moduleShellPures.mjs");
-  const b = spawnSync(
-    process.execPath,
-    [
-      path.join(root, "node_modules/esbuild/bin/esbuild"),
-      pureModule,
-      "--bundle",
-      "--platform=node",
-      "--format=esm",
-      `--outfile=${pureOut}`,
-    ],
-    { cwd: root, encoding: "utf8" },
-  );
-  let pureOk = b.status === 0 && fs.existsSync(pureOut);
-  if (!pureOk) {
-    const npx = spawnSync(
-      "npx",
-      ["--yes", "esbuild", pureModule, "--bundle", "--platform=node", "--format=esm", `--outfile=${pureOut}`],
-      { cwd: root, encoding: "utf8", shell: true },
-    );
-    pureOk = npx.status === 0 && fs.existsSync(pureOut);
-    if (!pureOk) fail(`bundle moduleShellPures failed: ${npx.stderr || b.stderr}`);
-  }
+  const pureOk = bundleProductionModule(pureModule, pureOut);
   if (pureOk) {
     const pures = await import(pathToFileURL(pureOut).href + `?t=${Date.now()}`);
     const loading = pures.buildModuleIsland({ title: "Wx", loading: true });
     if (!loading || loading.label !== "Wx") fail(`buildModuleIsland loading label: ${JSON.stringify(loading)}`);
     if (loading.detail !== "Loading…") fail(`buildModuleIsland loading detail: ${loading.detail}`);
-    if (loading.activity !== "bounce") fail("buildModuleIsland should bounce when loading without progress");
+    if (loading.activity !== "wave") fail("buildModuleIsland should use the canonical wave activity when loading without progress");
     const errIsland = pures.buildModuleIsland({ title: "Wx", error: " nope " });
     if (errIsland?.tone !== "danger" || errIsland.detail !== "nope") fail("buildModuleIsland error branch");
     let left = false;
@@ -227,6 +215,23 @@ if (!fs.existsSync(pureModule)) {
     if (esc.label !== "Esc" || esc.kbd !== "Esc") fail("qxEscapeAction shape");
     esc.onClick();
     if (!left) fail("qxEscapeAction onClick");
+  }
+}
+
+// Host and iframe must execute the same self-contained plugin SDK factory.
+const sdkOut = path.join(scratch, "pluginSdkFactory.mjs");
+if (bundleProductionModule("src/plugin/pluginSdkFactory.ts", sdkOut)) {
+  try {
+    const sdkModule = await import(pathToFileURL(sdkOut).href + `?t=${Date.now()}`);
+    const hostSdk = sdkModule.createPluginSdkRuntime();
+    const iframeSdk = Function(`return (${sdkModule.createPluginSdkRuntime.toString()})()`)();
+    const noisyJson = "plugin log\n{\"ok\":true}";
+    if (hostSdk.parseJsonLoose(noisyJson).ok !== true) fail("host SDK loose JSON parser");
+    if (iframeSdk.parseJsonLoose(noisyJson).ok !== true) fail("serialized iframe SDK loose JSON parser");
+    const mapped = await iframeSdk.mapWithConcurrency([1, 2, 3], async (value) => value * 2, 2);
+    if (mapped.join(",") !== "2,4,6") fail("serialized iframe SDK concurrency mapper");
+  } catch (e) {
+    fail(`plugin SDK shared factory runtime test: ${e}`);
   }
 }
 

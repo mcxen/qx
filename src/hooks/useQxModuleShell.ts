@@ -51,12 +51,12 @@ export type ModuleIslandState = PureModuleIslandState & {
 
 /** Pure island builder (re-export). Safe for non-React consumers / tests. */
 export function buildModuleIsland(state: ModuleIslandState): BottomIslandContent | null {
-  return buildModuleIslandPure(state) as BottomIslandContent | null;
+  return buildModuleIslandPure(state);
 }
 
 /** Visible bottom-left Esc capsule (re-export). */
 export function qxEscapeAction(leave: () => void): QxShellAction {
-  return qxEscapeActionPure(leave) as QxShellAction;
+  return qxEscapeActionPure(leave);
 }
 
 export type UseQxModuleShellOptions = {

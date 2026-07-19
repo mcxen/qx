@@ -74,6 +74,10 @@ function scheduleTtl(session: IslandSession): void {
 
 function applyPluginCaps(input: IslandShowInput): IslandShowInput | null {
   if (input.source === "plugin-display") {
+    const pluginPrefix = "plugin.display.";
+    const pluginId = input.id.startsWith(pluginPrefix)
+      ? input.id.slice(pluginPrefix.length).trim()
+      : "";
     const content: IslandSlotContent = {
       ...input.content,
       componentId: undefined,
@@ -93,6 +97,7 @@ function applyPluginCaps(input: IslandShowInput): IslandShowInput | null {
       placement: "docked-or-float",
       sticky: true,
       ttlMs: input.ttlMs == null ? undefined : Math.max(500, input.ttlMs),
+      openTarget: pluginId ? { kind: "plugin", id: pluginId } : undefined,
       content,
     };
   }
@@ -132,6 +137,7 @@ function applyPluginCaps(input: IslandShowInput): IslandShowInput | null {
   return {
     ...input,
     content,
+    openTarget: undefined,
     sticky: false,
     placement: "docked",
     ttlMs,
@@ -227,6 +233,7 @@ export function showSession(input: IslandShowInput): { id: string; generation: n
     replacePolicy,
     placement: capped.placement ?? "docked",
     content: capped.content,
+    openTarget: capped.openTarget,
     sticky: capped.sticky,
     progressSilent: capped.progressSilent ?? true,
   };
@@ -330,12 +337,20 @@ export function updateSession(
   }
 
   const generation = nextGeneration(id);
+  const requestedOpenTarget =
+    patch.openTarget === null
+      ? undefined
+      : patch.openTarget ?? current.openTarget;
   const next: IslandSession = {
     ...current,
     generation,
     rankEpoch,
     contentUpdatedAt: now,
     content,
+    openTarget:
+      current.source === "plugin" || current.source === "plugin-display"
+        ? current.openTarget
+        : requestedOpenTarget,
     priority: patch.priority ?? current.priority,
     placement: patch.placement ?? current.placement,
     sticky: patch.sticky ?? current.sticky,

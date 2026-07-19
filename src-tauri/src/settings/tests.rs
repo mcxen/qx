@@ -1,4 +1,7 @@
-use super::{portable_shortcut_key, AgentSettings, BuiltinModulesSettings, Settings};
+use super::{
+    default_toggle_launcher_shortcut, default_toggle_window_shortcut, portable_shortcut_key,
+    AgentSettings, BuiltinModulesSettings, Settings,
+};
 
 #[test]
 fn canonicalizes_primary_modifier_for_both_desktop_platforms() {
@@ -23,14 +26,14 @@ fn default_global_shortcuts_only_enable_window_toggle() {
     assert_eq!(
         settings.shortcuts.get("toggle_launcher"),
         Some(&super::ShortcutBinding {
-            key: "Alt+Shift+Space".to_string(),
+            key: default_toggle_launcher_shortcut().to_string(),
             enabled: false,
         })
     );
     assert_eq!(
         settings.shortcuts.get("toggle_window"),
         Some(&super::ShortcutBinding {
-            key: "Alt+Space".to_string(),
+            key: default_toggle_window_shortcut().to_string(),
             enabled: true,
         })
     );
@@ -54,7 +57,7 @@ fn legacy_settings_gain_new_shortcuts_without_overwriting_user_bindings() {
     assert_eq!(
         settings.shortcuts.get("toggle_window"),
         Some(&super::ShortcutBinding {
-            key: "Alt+Space".to_string(),
+            key: default_toggle_window_shortcut().to_string(),
             enabled: true,
         })
     );
@@ -83,14 +86,14 @@ fn migrates_pre_swap_window_launcher_factory_defaults() {
     assert_eq!(
         settings.shortcuts.get("toggle_window"),
         Some(&super::ShortcutBinding {
-            key: "Alt+Space".to_string(),
+            key: default_toggle_window_shortcut().to_string(),
             enabled: true,
         })
     );
     assert_eq!(
         settings.shortcuts.get("toggle_launcher"),
         Some(&super::ShortcutBinding {
-            key: "Alt+Shift+Space".to_string(),
+            key: default_toggle_launcher_shortcut().to_string(),
             enabled: false,
         })
     );
@@ -117,6 +120,34 @@ fn does_not_migrate_customized_window_launcher_shortcuts() {
     super::migrate_swapped_window_launcher_defaults(&mut settings);
 
     assert_eq!(settings.shortcuts["toggle_launcher"].key, "Alt+L");
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+fn migrates_untouched_windows_alt_space_factory_bindings() {
+    let mut settings = Settings::default();
+    settings.shortcuts.insert(
+        "toggle_launcher".to_string(),
+        super::ShortcutBinding {
+            key: "Alt+Shift+Space".to_string(),
+            enabled: false,
+        },
+    );
+    settings.shortcuts.insert(
+        "toggle_window".to_string(),
+        super::ShortcutBinding {
+            key: "Alt+Space".to_string(),
+            enabled: true,
+        },
+    );
+
+    super::migrate_windows_factory_host_shortcuts(&mut settings);
+
+    assert_eq!(
+        settings.shortcuts["toggle_launcher"].key,
+        "Ctrl+Alt+Shift+Space"
+    );
+    assert_eq!(settings.shortcuts["toggle_window"].key, "Ctrl+Alt+Space");
 }
 
 #[test]

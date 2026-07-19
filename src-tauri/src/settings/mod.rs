@@ -1,25 +1,29 @@
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tauri::{command, AppHandle};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 mod entry_config;
+pub(crate) mod shortcuts;
 
 use entry_config::{
     default_quick_entries, default_tray_actions, migrate_legacy_default_quick_entries,
 };
 pub use entry_config::{QuickEntryConfig, TrayActionConfig};
+#[cfg(all(test, target_os = "windows"))]
+use shortcuts::migrate_windows_factory_host_shortcuts;
+#[cfg(test)]
+use shortcuts::{
+    default_toggle_launcher_shortcut, default_toggle_window_shortcut,
+    merge_missing_default_shortcuts, migrate_swapped_window_launcher_defaults,
+    portable_shortcut_key,
+};
+pub(crate) use shortcuts::{global_shortcuts_are_paused, register_shortcuts};
 
 static SETTINGS_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-
-/// While ShortcutRecorder is open, OS global hotkeys must not fire.
-static GLOBAL_SHORTCUTS_PAUSED: AtomicBool = AtomicBool::new(false);
-static GLOBAL_SHORTCUTS_PAUSE_DEPTH: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneralSettings {
@@ -102,13 +106,19 @@ pub struct AppearanceSettings {
     /// Auto-rotate standing module/plugin sessions. Default 8 seconds.
     #[serde(default = "default_island_float_rotate_secs")]
     pub island_float_rotate_secs: u32,
-    /// Auto-promote sticky task when main is hidden (only if float enabled).
+    /// Keep an already manually floated island visible while main is hidden.
     #[serde(default = "default_true")]
     pub island_float_when_main_hidden: bool,
     #[serde(default = "default_true")]
     pub island_float_always_on_top: bool,
     #[serde(default = "default_true")]
+    /// Legacy persisted preference; manual float requests now override it.
     pub island_prefer_docked_when_main_visible: bool,
+    /// Persisted physical desktop coordinates after the user drags the island.
+    #[serde(default)]
+    pub island_float_x: Option<i32>,
+    #[serde(default)]
+    pub island_float_y: Option<i32>,
 }
 
 fn default_theme() -> String {
@@ -201,6 +211,8 @@ impl Default for AppearanceSettings {
             island_float_when_main_hidden: true,
             island_float_always_on_top: true,
             island_prefer_docked_when_main_visible: true,
+            island_float_x: None,
+            island_float_y: None,
         }
     }
 }
@@ -749,80 +761,10 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        let mut shortcuts = BTreeMap::new();
-        // Primary Alt+Space toggles current window (preserve module/view).
-        // Launcher search recall defaults to Alt+Shift+Space (opt-in).
-        shortcuts.insert(
-            "toggle_launcher".to_string(),
-            ShortcutBinding {
-                key: "Alt+Shift+Space".to_string(),
-                enabled: false,
-            },
-        );
-        shortcuts.insert(
-            "toggle_window".to_string(),
-            ShortcutBinding {
-                key: "Alt+Space".to_string(),
-                enabled: true,
-            },
-        );
-        shortcuts.insert(
-            "clipboard".to_string(),
-            ShortcutBinding {
-                key: "Alt+V".to_string(),
-                enabled: false,
-            },
-        );
-        shortcuts.insert(
-            "record_gif".to_string(),
-            ShortcutBinding {
-                key: "Alt+G".to_string(),
-                enabled: false,
-            },
-        );
-        shortcuts.insert(
-            "capture_screenshot".to_string(),
-            ShortcutBinding {
-                key: "Alt+Shift+S".to_string(),
-                enabled: false,
-            },
-        );
-        shortcuts.insert(
-            "toggle_capture_controls".to_string(),
-            ShortcutBinding {
-                key: "Alt+Shift+C".to_string(),
-                enabled: false,
-            },
-        );
-        shortcuts.insert(
-            "rss".to_string(),
-            ShortcutBinding {
-                key: "Alt+R".to_string(),
-                enabled: false,
-            },
-        );
-        for (id, key) in [
-            ("tray_open_main", "Alt+Shift+O"),
-            ("tray_keep_visible", "Alt+Shift+K"),
-            ("tray_settings", "Alt+Shift+,"),
-            ("tray_hide_main", "Alt+Shift+H"),
-            ("tray_status_memory", ""),
-            ("tray_status_network", ""),
-            ("tray_status_cpu", ""),
-        ] {
-            shortcuts.insert(
-                id.to_string(),
-                ShortcutBinding {
-                    key: key.to_string(),
-                    enabled: false,
-                },
-            );
-        }
-
         Self {
             general: GeneralSettings::default(),
             appearance: AppearanceSettings::default(),
-            shortcuts,
+            shortcuts: shortcuts::default_shortcut_bindings(),
             app_shortcuts: BTreeMap::new(),
             plugins: Vec::new(),
             plugin_display: PluginDisplaySettings::default(),
@@ -872,8 +814,9 @@ pub(crate) fn read_settings() -> Settings {
         }
         Err(_) => Settings::default(),
     };
-    merge_missing_default_shortcuts(&mut settings);
-    migrate_swapped_window_launcher_defaults(&mut settings);
+    shortcuts::merge_missing_default_shortcuts(&mut settings);
+    shortcuts::migrate_swapped_window_launcher_defaults(&mut settings);
+    shortcuts::migrate_windows_factory_host_shortcuts(&mut settings);
     migrate_legacy_default_quick_entries(&mut settings.quick_entries);
     if settings.agent.default_provider.is_empty() || settings.agent.default_provider == "duckduckgo"
     {
@@ -881,42 +824,6 @@ pub(crate) fn read_settings() -> Settings {
         settings.agent.default_model = "openrouter/auto".to_string();
     }
     settings
-}
-
-fn merge_missing_default_shortcuts(settings: &mut Settings) {
-    for (id, binding) in Settings::default().shortcuts {
-        settings.shortcuts.entry(id).or_insert(binding);
-    }
-}
-
-/// One-time flip for installs that still have the pre-swap factory defaults:
-/// launcher=`Alt+Space` on, window=`Alt+Shift+Space` off.
-fn migrate_swapped_window_launcher_defaults(settings: &mut Settings) {
-    let Some(launcher) = settings.shortcuts.get("toggle_launcher").cloned() else {
-        return;
-    };
-    let Some(window) = settings.shortcuts.get("toggle_window").cloned() else {
-        return;
-    };
-    let launcher_is_old = launcher.key.eq_ignore_ascii_case("Alt+Space") && launcher.enabled;
-    let window_is_old = window.key.eq_ignore_ascii_case("Alt+Shift+Space") && !window.enabled;
-    if !(launcher_is_old && window_is_old) {
-        return;
-    }
-    settings.shortcuts.insert(
-        "toggle_launcher".to_string(),
-        ShortcutBinding {
-            key: "Alt+Shift+Space".to_string(),
-            enabled: false,
-        },
-    );
-    settings.shortcuts.insert(
-        "toggle_window".to_string(),
-        ShortcutBinding {
-            key: "Alt+Space".to_string(),
-            enabled: true,
-        },
-    );
 }
 
 pub(crate) fn write_settings(settings: &Settings) -> Result<(), String> {
@@ -1046,218 +953,6 @@ pub async fn export_settings(path: String) -> Result<(), String> {
 
 pub fn init() {
     let _ = read_settings();
-}
-
-fn shortcut_for(settings: &Settings, id: &str) -> Option<String> {
-    settings
-        .shortcuts
-        .get(id)
-        .filter(|binding| binding.enabled && !binding.key.trim().is_empty())
-        .map(|binding| portable_shortcut_key(binding.key.trim()))
-}
-
-fn enabled_shortcut_key(binding: &ShortcutBinding) -> Option<String> {
-    if binding.enabled && !binding.key.trim().is_empty() {
-        Some(portable_shortcut_key(binding.key.trim()))
-    } else {
-        None
-    }
-}
-
-/// Canonical cross-platform modifier understood by Tauri's global-hotkey
-/// parser. `CmdOrCtrl` becomes Super/Command on macOS and Control on Windows.
-/// `Super` remains available when a user explicitly wants the Windows key.
-fn portable_shortcut_key(key: &str) -> String {
-    key.split('+')
-        .map(str::trim)
-        .map(|token| match token.to_ascii_lowercase().as_str() {
-            "cmd" | "command" | "meta" | "primary" | "mod" => "CmdOrCtrl".to_string(),
-            _ => token.to_string(),
-        })
-        .collect::<Vec<_>>()
-        .join("+")
-}
-
-fn toggle_route(app: &AppHandle, route: &str) {
-    crate::floating_panel::toggle_route(app, route);
-}
-
-pub(crate) fn global_shortcuts_are_paused() -> bool {
-    GLOBAL_SHORTCUTS_PAUSED.load(Ordering::SeqCst)
-}
-
-/// Unregister all process-global shortcuts so the recorder can capture chords.
-#[command]
-pub fn shortcuts_pause_global(app: AppHandle) -> Result<(), String> {
-    let depth = GLOBAL_SHORTCUTS_PAUSE_DEPTH.fetch_add(1, Ordering::SeqCst) + 1;
-    GLOBAL_SHORTCUTS_PAUSED.store(true, Ordering::SeqCst);
-    if depth == 1 {
-        let _ = app.global_shortcut().unregister_all();
-    }
-    Ok(())
-}
-
-/// Re-register shortcuts from saved settings after the recorder closes.
-#[command]
-pub fn shortcuts_resume_global(app: AppHandle) -> Result<(), String> {
-    let prev = GLOBAL_SHORTCUTS_PAUSE_DEPTH.load(Ordering::SeqCst);
-    if prev == 0 {
-        GLOBAL_SHORTCUTS_PAUSED.store(false, Ordering::SeqCst);
-        return register_shortcuts(&app, &read_settings());
-    }
-    let depth = GLOBAL_SHORTCUTS_PAUSE_DEPTH.fetch_sub(1, Ordering::SeqCst) - 1;
-    if depth == 0 {
-        GLOBAL_SHORTCUTS_PAUSED.store(false, Ordering::SeqCst);
-        register_shortcuts(&app, &read_settings())?;
-    }
-    Ok(())
-}
-
-pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result<(), String> {
-    let gs = app.global_shortcut();
-    let _ = gs.unregister_all();
-    if global_shortcuts_are_paused() {
-        // Settings are saved while recording; apply OS bindings on resume.
-        return Ok(());
-    }
-    let mut registered = BTreeSet::new();
-
-    // Default Alt+Space toggles current window (preserve module/view).
-    // Optional Alt+Shift+Space recalls Launcher search (toggle_launcher).
-    if let Some(key) = shortcut_for(settings, "toggle_launcher") {
-        gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-            if event.state() == ShortcutState::Pressed {
-                crate::floating_panel::toggle_launcher(app);
-            }
-        })
-        .map_err(|e| format!("register toggle_launcher shortcut: {e}"))?;
-        registered.insert(key);
-    }
-
-    if let Some(key) = shortcut_for(settings, "toggle_window") {
-        gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-            if event.state() == ShortcutState::Pressed {
-                crate::floating_panel::toggle(app);
-            }
-        })
-        .map_err(|e| format!("register toggle_window shortcut: {e}"))?;
-        registered.insert(key);
-    }
-
-    // Feature chords: open module, or dismiss if already showing that module.
-    if let Some(key) = shortcut_for(settings, "clipboard") {
-        gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-            if event.state() == ShortcutState::Pressed {
-                toggle_route(app, "clipboard");
-            }
-        })
-        .map_err(|e| format!("register clipboard shortcut: {e}"))?;
-        registered.insert(key);
-    }
-
-    if let Some(key) = shortcut_for(settings, "rss") {
-        gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-            if event.state() == ShortcutState::Pressed {
-                toggle_route(app, "rss");
-            }
-        })
-        .map_err(|e| format!("register rss shortcut: {e}"))?;
-        registered.insert(key);
-    }
-
-    for (shortcut_id, action_id) in [
-        ("tray_open_main", "open_main"),
-        ("tray_keep_visible", "keep_visible"),
-        ("tray_settings", "settings"),
-        ("tray_hide_main", "hide_main"),
-        ("tray_status_memory", "status_memory"),
-        ("tray_status_network", "status_network"),
-        ("tray_status_cpu", "status_cpu"),
-    ] {
-        if let Some(key) = shortcut_for(settings, shortcut_id) {
-            let action_id = action_id.to_string();
-            gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-                if event.state() == ShortcutState::Pressed {
-                    crate::tray_menu::handle_tray_action(app, &action_id);
-                }
-            })
-            .map_err(|e| format!("register {shortcut_id} shortcut: {e}"))?;
-            registered.insert(key);
-        }
-    }
-
-    if settings.builtin_modules.is_enabled("screencap") {
-        if let Some(key) = shortcut_for(settings, "capture_screenshot") {
-            gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-                if event.state() == ShortcutState::Pressed {
-                    let app = app.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let _ = crate::screencap::screencap_begin_capture_select(
-                            app,
-                            "screenshot".to_string(),
-                        )
-                        .await;
-                    });
-                }
-            })
-            .map_err(|e| format!("register capture_screenshot shortcut: {e}"))?;
-            registered.insert(key);
-        }
-        if let Some(key) = shortcut_for(settings, "record_gif") {
-            gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-                if event.state() == ShortcutState::Pressed {
-                    let app = app.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let _ = crate::screencap::screencap_begin_capture_select(
-                            app,
-                            "recording".to_string(),
-                        )
-                        .await;
-                    });
-                }
-            })
-            .map_err(|e| format!("register record_gif shortcut: {e}"))?;
-            registered.insert(key);
-        }
-        if let Some(key) = shortcut_for(settings, "toggle_capture_controls") {
-            gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-                if event.state() == ShortcutState::Pressed {
-                    let _ = crate::screencap::screencap_toggle_controls(app.clone());
-                }
-            })
-            .map_err(|e| format!("register toggle_capture_controls shortcut: {e}"))?;
-            registered.insert(key);
-        }
-    }
-
-    for (id, binding) in &settings.app_shortcuts {
-        let Some(key) = enabled_shortcut_key(binding) else {
-            continue;
-        };
-        if !registered.insert(key.clone()) {
-            eprintln!("skip duplicate app shortcut {key} for {id}");
-            continue;
-        }
-        let Some(path) = id.strip_prefix("app:") else {
-            eprintln!("skip invalid app shortcut id {id}");
-            continue;
-        };
-        let app_path = match crate::validate_open_app_path(path) {
-            Ok(path) => path,
-            Err(error) => {
-                eprintln!("skip app shortcut {id}: {error}");
-                continue;
-            }
-        };
-        gs.on_shortcut(key.as_str(), move |_app, _shortcut, event| {
-            if event.state() == ShortcutState::Pressed {
-                let _ = crate::launch_app_path(&app_path);
-            }
-        })
-        .map_err(|e| format!("register app shortcut {id}: {e}"))?;
-    }
-
-    Ok(())
 }
 
 #[cfg(test)]

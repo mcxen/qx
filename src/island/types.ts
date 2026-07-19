@@ -4,6 +4,11 @@ export type IslandPlacement = "docked" | "floating";
 export type IslandTone = "neutral" | "success" | "warning" | "danger";
 export type IslandActionIcon = "pause" | "play" | "stop" | "open";
 export type IslandActionVariant = "default" | "danger";
+export type IslandActivity =
+  | "wave"
+  | "dots"
+  | "spinner"
+  | "pulse";
 export type IslandChromeVariant = "shell" | "system" | "sci" | "date";
 
 export type IslandPriority = "task" | "error" | "toast" | "location" | "home";
@@ -21,6 +26,16 @@ export type IslandSource =
   | "plugin-display"
   | "shell"
   | "system";
+
+/**
+ * Serializable destination used by the host-owned floating "Open Qx" control.
+ * Plugin producers never choose this directly; the plugin bridge binds it to
+ * the current plugin panel.
+ */
+export type IslandOpenTarget =
+  | { kind: "launcher" }
+  | { kind: "module"; id: string }
+  | { kind: "plugin"; id: string };
 
 export interface IslandContentAction {
   /** Must exist in ActionRegistry for this session when clickable. */
@@ -43,7 +58,8 @@ export interface IslandSlotContent {
     kind: "progress" | "activity";
     /** 0–100; never fake */
     progress?: number;
-    activity?: "bounce" | "bounce-exit";
+    /** Host-owned indeterminate animation. */
+    activity?: IslandActivity;
   };
   action?: IslandContentAction;
   /** Compact trailing action pack; host renders at most the first two. */
@@ -88,6 +104,8 @@ export interface IslandSession {
   replacePolicy: IslandReplacePolicy;
   placement: IslandPlacementMode;
   content: IslandSlotContent;
+  /** Host-owned destination for the floating surface open control. */
+  openTarget?: IslandOpenTarget;
   sticky?: boolean;
   /**
    * When true, high-frequency content updates must not change rankEpoch
@@ -103,6 +121,7 @@ export interface IslandShowInput {
   priority: IslandPriority;
   source?: IslandSource;
   content: IslandSlotContent;
+  openTarget?: IslandOpenTarget;
   ttlMs?: number;
   replacePolicy?: IslandReplacePolicy;
   placement?: IslandPlacementMode;
@@ -116,6 +135,7 @@ export interface IslandUpdateInput {
   expectedGeneration?: number;
   priority?: IslandPriority;
   content?: Partial<IslandSlotContent> | IslandSlotContent;
+  openTarget?: IslandOpenTarget | null;
   ttlMs?: number | null;
   placement?: IslandPlacementMode;
   sticky?: boolean;

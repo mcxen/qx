@@ -8,6 +8,9 @@ import {
   DEFAULT_FILE_SEARCH_CATEGORIES,
   normalizeFileSearchCategories,
 } from "../../search/fileCategories";
+import { getDefaultQxHostShortcuts } from "../../utils/keyboard";
+
+const DEFAULT_HOST_SHORTCUTS = getDefaultQxHostShortcuts();
 
 let saveSeq = 0;
 let saveInFlight = false;
@@ -83,11 +86,14 @@ export interface AppearanceSettings {
   island_float_enabled: boolean;
   /** Seconds between standing module/plugin sessions in the shared island. */
   island_float_rotate_secs: number;
-  /** Promote sticky task when main window hides. */
+  /** Keep an already manually floated island visible when main hides. */
   island_float_when_main_hidden: boolean;
   island_float_always_on_top: boolean;
-  /** Prefer docked when main is visible (no dual show). */
+  /** Legacy persisted preference; manual float requests override it. */
   island_prefer_docked_when_main_visible: boolean;
+  /** Persisted physical desktop coordinates; null keeps the default top-right anchor. */
+  island_float_x: number | null;
+  island_float_y: number | null;
 }
 
 export interface ShortcutBinding {
@@ -343,11 +349,13 @@ export const DEFAULT_SETTINGS: Settings = {
     island_float_when_main_hidden: true,
     island_float_always_on_top: true,
     island_prefer_docked_when_main_visible: true,
+    island_float_x: null,
+    island_float_y: null,
   },
   shortcuts: {
-    // Swapped defaults: primary Alt+Space preserves current view; launcher recall is Alt+Shift+Space.
-    toggle_launcher: { key: "Alt+Shift+Space", enabled: false },
-    toggle_window: { key: "Alt+Space", enabled: true },
+    // macOS keeps Option+Space; Windows avoids its system-menu/PowerToys chord.
+    toggle_launcher: { key: DEFAULT_HOST_SHORTCUTS.toggleLauncher, enabled: false },
+    toggle_window: { key: DEFAULT_HOST_SHORTCUTS.toggleWindow, enabled: true },
     clipboard: { key: "Alt+V", enabled: false },
     record_gif: { key: "Alt+G", enabled: false },
     capture_screenshot: { key: "Alt+Shift+S", enabled: false },

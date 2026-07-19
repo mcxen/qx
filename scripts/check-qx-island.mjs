@@ -1,171 +1,203 @@
 /**
- * Pure unit checks for QxIsland session priority / render mode / plugin caps.
- * No DOM — run with: node scripts/check-qx-island.mjs
- *
- * Mirrors logic in src/island/session/* so refactors stay honest.
- * Keep in sync with docs/qx-island-architecture.md §4.3 / §3.6 / §5.2.
+ * Production-module checks for QxIsland priority, store caps and Shell wiring.
+ * No copied resolver implementation: this script imports the shipped TS ports.
  */
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+import {
+  resolveDockedRenderMode,
+  resolveDockedWinner,
+  resolveRotatingWinner,
+} from "../src/island/session/priority.ts";
+import {
+  defaultIslandOpenTarget,
+  islandRouteForTarget,
+} from "../src/island/session/openTarget.ts";
+import { visibleIslandActivity } from "../src/island/surface/contentPolicy.ts";
 
-const PRIORITY_RANK = {
-  task: 0,
-  error: 1,
-  toast: 2,
-  location: 3,
-  home: 4,
-};
-
-function stickyBoost(session) {
-  if (!session.sticky) return 0;
-  if (session.priority === "task" || session.priority === "error") return 1;
-  return 0;
+// store/logger run in a WebView in production; provide only the timer surface
+// needed by the store before importing it in Node.
+if (!globalThis.window) {
+  globalThis.window = {
+    setTimeout: globalThis.setTimeout.bind(globalThis),
+    clearTimeout: globalThis.clearTimeout.bind(globalThis),
+  };
 }
 
-function compareSessions(a, b) {
-  const rankA = PRIORITY_RANK[a.priority];
-  const rankB = PRIORITY_RANK[b.priority];
-  if (rankA !== rankB) return rankA - rankB;
-  const stickyA = stickyBoost(a);
-  const stickyB = stickyBoost(b);
-  if (stickyA !== stickyB) return stickyB - stickyA;
-  if (a.rankEpoch !== b.rankEpoch) return b.rankEpoch - a.rankEpoch;
-  if (a.createdAt !== b.createdAt) return b.createdAt - a.createdAt;
-  if (a.id < b.id) return -1;
-  if (a.id > b.id) return 1;
-  return 0;
-}
+const rootDir = process.cwd();
+const cacheDir = path.join(rootDir, "node_modules", ".cache", "qx-island-check");
+const storeBundle = path.join(cacheDir, "store.mjs");
+const esbuild = path.join(
+  rootDir,
+  "node_modules",
+  ".bin",
+  process.platform === "win32" ? "esbuild.cmd" : "esbuild",
+);
+fs.mkdirSync(cacheDir, { recursive: true });
+const bundleResult = spawnSync(esbuild, [
+  "src/island/session/store.ts",
+  "--bundle",
+  "--platform=node",
+  "--format=esm",
+  `--outfile=${storeBundle}`,
+], {
+  cwd: rootDir,
+  encoding: "utf8",
+});
+assert.equal(
+  bundleResult.status,
+  0,
+  `Failed to bundle production Island store:\n${bundleResult.stderr || bundleResult.stdout}`,
+);
 
-function resolveDockedWinner(sessions) {
-  return resolveRotatingWinner(sessions, 0);
-}
+const {
+  __resetIslandStoreForTests,
+  getSession,
+  showSession,
+  updateSession,
+} = await import(`${pathToFileURL(storeBundle).href}?check=${Date.now()}`);
 
-function resolveRotatingWinner(sessions, rotationIndex) {
-  if (sessions.length === 0) return null;
-  const ordered = [...sessions].sort(compareSessions);
-  const best = ordered[0];
-  if (best.priority !== "location") return best.id;
-  const standing = ordered.filter((session) => session.priority === "location");
-  return standing[Math.abs(Math.trunc(rotationIndex)) % standing.length]?.id ?? best.id;
-}
+const session = (overrides = {}) => ({
+  id: "session",
+  generation: 1,
+  priority: "location",
+  rankEpoch: 1,
+  source: "module",
+  createdAt: 1,
+  contentUpdatedAt: 1,
+  replacePolicy: "replace-same-id",
+  placement: "docked-or-float",
+  content: { primary: "Session" },
+  ...overrides,
+});
 
-function resolveDockedRenderMode({ exception, winnerId }) {
-  if (exception) return "exception";
-  if (winnerId) return "store";
-  return "empty";
-}
+const prioritySessions = [
+  session({ id: "home", priority: "home", rankEpoch: 9, createdAt: 9 }),
+  session({ id: "toast", priority: "toast", rankEpoch: 8, createdAt: 8 }),
+  session({ id: "task", priority: "task", rankEpoch: 1, createdAt: 1 }),
+];
+assert.equal(resolveDockedWinner(prioritySessions), "task");
 
-let failures = 0;
-function assert(cond, msg) {
-  if (!cond) {
-    failures += 1;
-    console.error("FAIL:", msg);
-  } else {
-    console.log("ok:", msg);
-  }
-}
-
-// --- priority bands ---
-{
-  const sessions = [
-    { id: "home", priority: "home", sticky: false, rankEpoch: 9, createdAt: 9 },
-    { id: "toast", priority: "toast", sticky: false, rankEpoch: 8, createdAt: 8 },
-    { id: "task", priority: "task", sticky: false, rankEpoch: 1, createdAt: 1 },
-  ];
-  assert(resolveDockedWinner(sessions) === "task", "task beats toast and home");
-}
-
-// --- standing module/plugin sessions rotate, important events preempt ---
-{
-  const standing = [
-    { id: "calendar", priority: "location", sticky: true, rankEpoch: 1, createdAt: 1 },
-    { id: "pomodoro", priority: "location", sticky: true, rankEpoch: 2, createdAt: 2 },
-  ];
-  assert(resolveRotatingWinner(standing, 0) === "pomodoro", "rotation starts with current standing session");
-  assert(resolveRotatingWinner(standing, 1) === "calendar", "rotation fairly advances to next session");
-  const important = [
+const standing = [
+  session({ id: "calendar", sticky: true, rankEpoch: 1, createdAt: 1 }),
+  session({ id: "pomodoro", sticky: true, rankEpoch: 2, createdAt: 2 }),
+];
+assert.equal(resolveRotatingWinner(standing, 0), "pomodoro");
+assert.equal(resolveRotatingWinner(standing, 1), "calendar");
+assert.equal(
+  resolveRotatingWinner([
     ...standing,
-    { id: "download", priority: "task", sticky: true, rankEpoch: 1, createdAt: 3 },
-  ];
-  assert(resolveRotatingWinner(important, 1) === "download", "important task preempts standing rotation");
-}
-
-// --- sticky within task band ---
-{
-  const sessions = [
-    { id: "search", priority: "task", sticky: false, rankEpoch: 5, createdAt: 5 },
-    { id: "compress", priority: "task", sticky: true, rankEpoch: 2, createdAt: 2 },
-  ];
-  assert(resolveDockedWinner(sessions) === "compress", "sticky task wins over non-sticky");
-}
-
-// --- rankEpoch within band (progress must not steal via contentUpdatedAt) ---
-{
-  const sessions = [
-    { id: "a", priority: "task", sticky: false, rankEpoch: 1, createdAt: 1 },
-    { id: "b", priority: "task", sticky: false, rankEpoch: 3, createdAt: 0 },
-  ];
-  assert(resolveDockedWinner(sessions) === "b", "higher rankEpoch wins within band");
-}
-
-// --- render mode exception ---
-assert(
-  resolveDockedRenderMode({ exception: true, winnerId: "task-1" }) === "exception",
-  "exception suppresses store winner",
+    session({ id: "rss", sticky: false, rankEpoch: 1, createdAt: 3 }),
+  ], 1),
+  "rss",
 );
-assert(
-  resolveDockedRenderMode({ exception: false, winnerId: "task-1" }) === "store",
-  "store mode when winner present",
+assert.equal(
+  resolveRotatingWinner([
+    ...standing,
+    session({ id: "download", priority: "task", rankEpoch: 1, createdAt: 3 }),
+  ], 1),
+  "download",
 );
-assert(
-  resolveDockedRenderMode({ exception: false, winnerId: null }) === "empty",
-  "empty when no winner",
+assert.equal(resolveDockedRenderMode({ exception: true, winnerId: "task" }), "exception");
+assert.equal(resolveDockedRenderMode({ exception: false, winnerId: "task" }), "store");
+assert.equal(resolveDockedRenderMode({ exception: false, winnerId: null }), "empty");
+assert.deepEqual(defaultIslandOpenTarget("rss.article-detail", "module"), {
+  kind: "module",
+  id: "rss",
+});
+assert.equal(defaultIslandOpenTarget("rss.article-detail", "shell"), undefined);
+assert.equal(islandRouteForTarget({ kind: "launcher" }), "launcher");
+assert.equal(islandRouteForTarget({ kind: "plugin", id: "pomodoro-island" }), "plugin:pomodoro-island");
+assert.equal(
+  visibleIslandActivity({
+    primary: "Focus session",
+    meter: { kind: "activity", activity: "pulse" },
+    countdown: { remainingMs: 60_000, paused: true },
+  }),
+  undefined,
+);
+assert.equal(
+  visibleIslandActivity({
+    primary: "Focus session",
+    meter: { kind: "activity", activity: "pulse" },
+    countdown: { endsAt: Date.now() + 60_000, paused: false },
+  }),
+  "pulse",
 );
 
-// --- plugin priority policy (table) ---
-function pluginAccepts(priority) {
-  return priority === "toast";
-}
-assert(pluginAccepts("toast"), "plugin toast allowed");
-assert(!pluginAccepts("task"), "plugin task rejected");
-assert(!pluginAccepts("error"), "plugin error priority rejected (use tone danger)");
-assert(!pluginAccepts("home"), "plugin home rejected");
+__resetIslandStoreForTests();
+const display = showSession({
+  id: "plugin.display.pomodoro-island",
+  priority: "task",
+  source: "plugin-display",
+  placement: "floating",
+  sticky: false,
+  content: {
+    primary: "Pomodoro",
+    componentId: "forbidden.component",
+  },
+});
+assert.ok(display);
+const normalizedDisplay = getSession("plugin.display.pomodoro-island");
+assert.equal(normalizedDisplay?.priority, "location");
+assert.equal(normalizedDisplay?.placement, "docked-or-float");
+assert.equal(normalizedDisplay?.sticky, true);
+assert.deepEqual(normalizedDisplay?.openTarget, {
+  kind: "plugin",
+  id: "pomodoro-island",
+});
+assert.equal(normalizedDisplay?.content.componentId, undefined);
 
-// `plugin-display` is a separate permission-gated host contract. The host fixes
-// its priority/placement so a plugin cannot impersonate a task or own chrome.
-function normalizePluginDisplay(session) {
-  return {
-    ...session,
-    source: "plugin-display",
-    priority: "location",
-    placement: "docked-or-float",
-    sticky: true,
-  };
-}
-{
-  const display = normalizePluginDisplay({ priority: "task", placement: "floating" });
-  assert(display.priority === "location", "plugin display cannot claim task priority");
-  assert(display.placement === "docked-or-float", "plugin display uses host placement policy");
-  assert(display.sticky === true, "plugin display remains available as standing data");
-}
+const generation = normalizedDisplay?.generation;
+assert.equal(updateSession("plugin.display.pomodoro-island", {
+  expectedGeneration: generation,
+  content: { secondary: "Running" },
+}).ok, true);
+assert.equal(updateSession("plugin.display.pomodoro-island", {
+  expectedGeneration: generation,
+  content: { secondary: "Stale" },
+}).ok, false);
 
-// --- generation CAS sketch ---
-{
-  let gen = 0;
-  const show = () => {
-    gen += 1;
-    return gen;
-  };
-  const update = (expected) => {
-    if (expected !== gen) return false;
-    gen += 1;
-    return true;
-  };
-  const g1 = show();
-  assert(update(g1) === true, "CAS update matches generation");
-  assert(update(g1) === false, "stale generation dropped");
-}
+// Integration invariants that pure priority checks cannot prove.
+const shellSource = fs.readFileSync("src/components/QxShell.tsx", "utf8");
+assert.match(shellSource, /islandKey:\s*string/);
+assert.doesNotMatch(shellSource, /title\s*\.toLowerCase\(\)/);
+assert.match(shellSource, /<QxIslandDockSlot exception=\{customIsland\}\s*\/>/);
+assert.doesNotMatch(shellSource, /<QxBottomIsland/);
 
-if (failures > 0) {
-  console.error(`\n${failures} island check(s) failed`);
-  process.exit(1);
+const launcherSource = fs.readFileSync("src/Launcher.tsx", "utf8");
+assert.doesNotMatch(launcherSource, /\bisland=\{island\}/);
+assert.doesNotMatch(launcherSource, /\bcustomIsland=\{customIsland\}/);
+
+const workbenchKitSource = fs.readFileSync("src/plugin/cliWorkbench.ts", "utf8");
+assert.doesNotMatch(workbenchKitSource, /__qxPluginUiBridge\?\.updateIsland/);
+assert.doesNotMatch(workbenchKitSource, /__qxPluginUiBridge\.updateIsland/);
+
+const pluginHostSource = fs.readFileSync("src/plugin/PluginHost.tsx", "utf8");
+assert.match(pluginHostSource, /syncPluginWorkbenchIsland/);
+assert.match(pluginHostSource, /islandManagedExternally=\{workbenchIslandManaged \|\| pluginIslandSessionActive\}/);
+
+const islandTypesSource = fs.readFileSync("src/island/types.ts", "utf8");
+for (const activity of ["wave", "dots", "spinner", "pulse"]) {
+  assert.match(islandTypesSource, new RegExp(`\\| "${activity}"`));
 }
-console.log("\nall island checks passed");
+assert.doesNotMatch(islandTypesSource, /"bounce(?:-exit)?"/);
+
+const pluginIslandSource = fs.readFileSync("src/plugin/pluginIsland.ts", "utf8");
+assert.match(pluginIslandSource, /workbenchProjectionSignatures/);
+assert.match(pluginIslandSource, /hasPluginIslandSession\(plugin\.id\)/);
+assert.match(pluginIslandSource, /getPluginIcon\(plugin\.id\)/);
+
+const shellContentSource = fs.readFileSync("src/island/surface/ShellContent.tsx", "utf8");
+assert.match(shellContentSource, /qx-island-module-button/);
+assert.match(shellContentSource, /visibleIslandActivity\(content\)/);
+
+const cliWorkbenchSource = fs.readFileSync("src/plugin/cliWorkbench.ts", "utf8");
+assert.match(cliWorkbenchSource, /createPluginSdkRuntime\.toString\(\)/);
+assert.doesNotMatch(cliWorkbenchSource, /function parseJsonLoose/);
+
+__resetIslandStoreForTests();
+console.log("QxIsland production port and Shell integration checks passed");

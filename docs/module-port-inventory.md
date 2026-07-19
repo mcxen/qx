@@ -6,7 +6,8 @@
 相关：
 
 - 宿主模块 shell：`src/hooks/useQxModuleShell.ts`、`useEscBack.ts`、`moduleEscapeHost.ts`
-- 列表 / 主从：`useQxListSelection.ts`、`useQxMasterDetail.ts`
+- 列表 / 主从 / 网格：`useQxListSelection.ts`、`useQxMasterDetail.ts`、`qxGridNavigation.ts`
+- Actions：`src/components/QxActionPanel.tsx`（消费统一 `QxShellAction`）
 - 搜索 / loading UI：`src/components/QxModuleSearch.tsx`、`QxListLoading.tsx`
 - 插件作者入口：[`public/doc/plugin-development-guide.md`](../public/doc/plugin-development-guide.md)
 - 市场仓库 Agent 地图：`qx-plugins/AGENTS.md`（与本表对照）
@@ -24,12 +25,14 @@
 | Host Esc 跨焦点 | **`moduleEscapeHost`** + `App.performHostEscape` | 同左（打开的是插件 tab 时，PluginHost 的 shell 注册 stepBack） | 禁止非 launcher 直接 `setTab` 跳过模块阶梯 |
 | 列表选中 / 滚入视口 | **`useQxListSelection`** | 声明式 Workbench List/Gallery 由宿主处理；custom panel 自理 | DOM：`qx-list-row` + `is-active`；宿主乐观选择后通知插件；隐藏 Workbench iframe 的集合导航键转交宿主 Shell |
 | 主从键盘区域 | **`useQxMasterDetail`** | 插件可选自实现 region | 与 QxShell.navigation 配合 |
+| 二维网格索引 | **`qxGridNavigation`** | Workbench Gallery 由宿主处理 | 通用纯函数；不得放回 PluginHost 专用算法 |
+| Actions 数据 / 右栏渲染 | **`QxShellAction` + `QxActionList`** | Workbench 发布纯 action descriptor，宿主映射一次 | Bottom Bar、Cmd/Ctrl+K、Context 使用同一动作数据；快捷键统一平台化 |
 | 模块搜索框 | **`QxModuleSearch`** | Workbench 由宿主渲染受控 query；custom panel 自绘 input | Workbench handler 必须同步回画；Launcher 搜索另见 SearchBar |
 | 列表 loading | **`QxListLoading`** | 插件自绘 skeleton | — |
 | 网络 | `invoke` 领域命令 / 直接 provider | **`context.http.fetch`** 或 **`invoke:cmd`** | 插件需 `http` 或精确 `invoke:` |
 | 跨会话缓存 | localStorage / Rust 磁盘缓存 | **`context.storage.persist`** | SWR：先画缓存再刷新 |
 | 进程内缓存 | React state / ref | **`context.storage.session`** | — |
-| 灵动岛 | `island` prop / islandHost | **`context.island`** | 权限 `island` |
+| 灵动岛 | `island` prop / **`islandHost`** | **`context.island`** | 权限 `island`；`QxShell.islandKey` 必须稳定并由 Shell 绑定内置模块 `openTarget`；插件目标由 bridge 绑定；store 单写、DockSlot 单渲染；前台非粘性 location 高于后台粘性轮播；桌面浮窗只由用户从 Qx 手动浮出并可关闭 |
 | CLI | 不暴露给模块业务（走 Rust） | **`context.cli`** | 权限 `cli` |
 | 打开外链 | `@tauri-apps/plugin-opener` | **`context.openUrl`** | `open-url` |
 
@@ -72,7 +75,7 @@
 
 | 插件 id | panel 注册 | AGENTS.md | 主要端口 | 缓存 | 缺口 |
 |---------|------------|-----------|----------|------|------|
-| **pomodoro-island** | ✅ manifest + export | ✅ | **host Workbench** + background heartbeat + host countdown/action island + notifications | persist state/history/deadline | 只发布计时状态与动作；悬浮开关、右上定位、轮播/抢占和透明 chrome 全部由 Qx 宿主管理 |
+| **pomodoro-island** | ✅ manifest + export | ✅ | **host Workbench** + background heartbeat + host countdown/activity/action island + notifications | persist state/history/deadline | **QxIsland 首个规范样板**：running=`pulse + endsAt`、paused=冻结 countdown、complete=100%；插件不能自动弹窗，用户手动浮出后可关闭，打开目标由 host 固定回插件 Panel |
 | **weather** | ✅ | ✅ | http + invoke weather* | persist SWR | 无 |
 | **v2ex** | ✅ | ✅ | http + invoke v2ex* | persist SWR + host disk | 无 |
 | **brew** | ✅ | ✅ | **host Workbench List** + cli/open-url | — | 原生 tabs/list/detail/Actions；`panel.render` 快返回 |
@@ -91,9 +94,10 @@
 ### 新内置模块
 
 1. `useQxModuleShell({ leave, esc, islandState, onKeyDown, t })`
-2. 列表 → `useQxListSelection` + 可选 `useQxMasterDetail`
+2. 列表 → `useQxListSelection` + 可选 `useQxMasterDetail`；网格索引 → `qxGridNavigation`
 3. 搜索 → `QxModuleSearch`；loading → `QxListLoading`
-4. 不要手写 `useEscBack` + 自定义 `kbd: CmdOrCtrl+K`（用 `shell.secondaryAction`）
+4. Context Actions → `QxActionList`，并把同一 `QxShellAction[]` 交给 Shell
+5. 不要手写 `useEscBack` + 自定义 `kbd: CmdOrCtrl+K`（用 `shell.secondaryAction`）
 
 ### 新市场插件
 

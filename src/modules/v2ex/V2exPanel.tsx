@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
+import { QxActionList } from "../../components/QxActionPanel";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { LoadingLabel, SegmentedControl } from "../../components/ui";
@@ -204,6 +205,7 @@ export default function V2exPanel() {
     <QxShell
       ref={shellRef}
       title="V2EX"
+      islandKey="v2ex"
       className="v2ex-shell qx-content-shell"
       onKeyDown={shell.onKeyDown}
       navigation={qxMasterDetailNavigation({
@@ -255,28 +257,7 @@ export default function V2exPanel() {
           {...qxRegionProps(MD.actions, { label: "Topic actions", scroll: true })}
         >
           <div className="qx-action-title">Topic Actions</div>
-          <button
-            className="qx-action-item"
-            disabled={!selectedTopic}
-            onClick={() => selectedTopic && openTopicAtIndex(selectedIndex)}
-            type="button"
-          >
-            <span>View Topic</span>
-            <kbd>Enter</kbd>
-          </button>
-          <button
-            className="qx-action-item"
-            disabled={!selectedTopic}
-            onClick={() => selectedTopic && void openUrl(selectedTopic.url)}
-            type="button"
-          >
-            <span>Open in Browser</span>
-            <kbd>O</kbd>
-          </button>
-          <button className="qx-action-item" onClick={() => void loadTopics(mode, query)} type="button">
-            <span>Refresh</span>
-            <kbd>R</kbd>
-          </button>
+          <QxActionList actions={actions.slice(0, 3)} />
           <div className="qx-action-title">Selected</div>
           <div className="v2ex-context-copy">
             {contextTopic ? (

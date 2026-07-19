@@ -9,12 +9,14 @@ import { useT } from "../../i18n";
 import {
   countEnabledGlobalShortcuts,
   formatQxShortcut,
+  getDefaultQxHostShortcuts,
   globalShortcutIssue,
 } from "../../utils/keyboard";
 
+const DEFAULT_HOST_SHORTCUTS = getDefaultQxHostShortcuts();
 const DEFAULT_GLOBAL_KEYS: Record<string, string> = {
-  toggle_launcher: "Alt+Shift+Space",
-  toggle_window: "Alt+Space",
+  toggle_launcher: DEFAULT_HOST_SHORTCUTS.toggleLauncher,
+  toggle_window: DEFAULT_HOST_SHORTCUTS.toggleWindow,
   clipboard: "Alt+V",
   record_gif: "Alt+G",
   capture_screenshot: "Alt+Shift+S",
@@ -52,7 +54,7 @@ export default function ShortcutSettings() {
       <div className="qx-settings-hint" style={{ marginBottom: 12, fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.45 }}>
         {t(
           "shortcuts.hint",
-          "Global shortcuts work while Qx is in the background. Launcher Search is enabled by default; Current Window and module shortcuts remain off until you enable them.",
+          "Global shortcuts work while Qx is in the background. Current Window is enabled by default; Launcher Search and module shortcuts remain off until you enable them.",
         )}
       </div>
       {SHORTCUT_GROUPS.map((group) => (

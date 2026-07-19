@@ -6,6 +6,7 @@ import { useSettingsStore } from "../settings/store";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { shouldIgnoreBareShortcut } from "../../utils/keyboard";
 import ImageLightbox from "./ImageLightbox";
+import { QxActionPanel } from "../../components/QxActionPanel";
 import { formatDate, sanitizeHtml } from "./article-utils";
 
 export default function ArticleDetail() {
@@ -237,6 +238,7 @@ export default function ArticleDetail() {
     <QxShell
       ref={shellRef}
       title={feed?.title || "RSS Detail"}
+      islandKey="rss.article-detail"
       onKeyDown={shell.onKeyDown}
       overlayBottom
       escapeAction={shell.escapeAction}
@@ -246,21 +248,14 @@ export default function ArticleDetail() {
         </div>
       }
       context={
-        <aside
-          className="qx-action-panel"
+        <QxActionPanel
+          title="Detail Nav"
+          actions={actions}
           data-qx-region="rss-actions"
           data-qx-region-label="Article actions"
           data-qx-region-scroll
           tabIndex={-1}
-        >
-          <div className="qx-action-title">Detail Nav</div>
-          {actions.map((a, i) => (
-            <button key={i} className="qx-action-item" onClick={a.onClick} disabled={a.disabled}>
-              <span>{a.label}</span>
-              {a.kbd && <kbd>{a.kbd}</kbd>}
-            </button>
-          ))}
-        </aside>
+        />
       }
       island={shell.island}
       primaryAction={{

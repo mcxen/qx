@@ -5,17 +5,22 @@
 //! Public IPC: [`display_list`]. Region still-frame capture: [`capture_region`].
 
 use serde::Serialize;
+#[cfg(target_os = "macos")]
 use std::sync::{Mutex, OnceLock};
+#[cfg(target_os = "macos")]
 use std::time::{Duration, Instant};
 use tauri::{command, AppHandle};
 
+#[cfg(target_os = "macos")]
 const DISPLAY_CACHE_TTL: Duration = Duration::from_millis(750);
 
+#[cfg(target_os = "macos")]
 struct CaptureMonitorCache {
     refreshed_at: Instant,
     monitors: Vec<xcap::Monitor>,
 }
 
+#[cfg(target_os = "macos")]
 static CAPTURE_MONITOR_CACHE: OnceLock<Mutex<Option<CaptureMonitorCache>>> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize)]
@@ -264,15 +269,27 @@ pub(crate) fn tauri_monitor_for_capture(
 }
 
 pub(crate) fn all_capture_monitors() -> Result<Vec<xcap::Monitor>, String> {
-    let cache = CAPTURE_MONITOR_CACHE.get_or_init(|| Mutex::new(None));
-    if let Ok(snapshot) = cache.lock() {
-        if let Some(snapshot) = snapshot.as_ref() {
-            if snapshot.refreshed_at.elapsed() < DISPLAY_CACHE_TTL {
-                return Ok(snapshot.monitors.clone());
+    // xcap's Windows monitor handle contains a raw HMONITOR and is deliberately
+    // !Send. Keeping it in a process-global Mutex makes the whole static fail
+    // Sync and prevents the Windows target from compiling. Cache native monitor
+    // objects only on macOS; Windows re-enumerates them on the calling thread.
+    #[cfg(not(target_os = "macos"))]
+    {
+        return xcap::Monitor::all().map_err(|error| format!("Cannot list displays: {error}"));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let cache = CAPTURE_MONITOR_CACHE.get_or_init(|| Mutex::new(None));
+        if let Ok(snapshot) = cache.lock() {
+            if let Some(snapshot) = snapshot.as_ref() {
+                if snapshot.refreshed_at.elapsed() < DISPLAY_CACHE_TTL {
+                    return Ok(snapshot.monitors.clone());
+                }
             }
         }
+        refresh_capture_monitor_cache()
     }
-    refresh_capture_monitor_cache()
 }
 
 /// Refresh the native display inventory before a capture action is requested.
@@ -280,6 +297,7 @@ pub(crate) fn all_capture_monitors() -> Result<Vec<xcap::Monitor>, String> {
 pub(crate) fn refresh_capture_monitor_cache() -> Result<Vec<xcap::Monitor>, String> {
     let monitors =
         xcap::Monitor::all().map_err(|error| format!("Cannot list displays: {error}"))?;
+    #[cfg(target_os = "macos")]
     if let Ok(mut cache) = CAPTURE_MONITOR_CACHE
         .get_or_init(|| Mutex::new(None))
         .lock()

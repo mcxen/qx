@@ -316,6 +316,7 @@ export default function RssPanel() {
     <QxShell
       ref={shellRef}
       title="RSS Reader"
+      islandKey="rss.feeds"
       className="qx-rss-shell"
       onKeyDown={shell.onKeyDown}
       navigation={{

@@ -271,6 +271,7 @@ export default function WeatherPanel() {
   return (
     <QxShell
       title="Weather"
+      islandKey="weather"
       visual="solid"
       escapeAction={shell.escapeAction}
       search={

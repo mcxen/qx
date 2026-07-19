@@ -76,7 +76,8 @@ const MODIFIER_TOKENS = new Set([
 
 /**
  * Global host chords that must never be bound as in-app action shortcuts.
- * Alt/Option+Space summons Qx; Cmd/Ctrl+Space is Spotlight / OS search.
+ * macOS uses Option+Space and Windows uses Ctrl+Alt+Space; Cmd/Ctrl+Space
+ * remains reserved for Spotlight / OS input switching.
  */
 const RESERVED_GLOBAL_SHORTCUTS = new Set([
   "alt+space",
@@ -223,10 +224,9 @@ export function isReservedGlobalShortcutEvent(
 ): boolean {
   const key = normalizeEventKey(event);
   if (key !== "space") return false;
-  // Alt/Option+Space → Qx launcher (default). Cmd/Ctrl+Space → OS search.
-  if (event.altKey && !event.metaKey && !event.ctrlKey) return true;
-  if ((event.metaKey || event.ctrlKey) && !event.altKey) return true;
-  return false;
+  // Any host/OS modifier around Space belongs to the global responder chain.
+  // In particular Windows' Qx default uses Ctrl+Alt+Space.
+  return event.altKey || event.metaKey || event.ctrlKey;
 }
 
 export function matchesQxShortcut(
@@ -291,6 +291,19 @@ export function getQxDesktopPlatform(): QxDesktopPlatform {
   if (typeof navigator === "undefined") return "windows";
   const identity = `${navigator.platform || ""} ${navigator.userAgent || ""}`.toLowerCase();
   return identity.includes("mac") ? "macos" : "windows";
+}
+
+export function defaultQxHostShortcutsForPlatform(platform: QxDesktopPlatform): {
+  toggleLauncher: string;
+  toggleWindow: string;
+} {
+  return platform === "windows"
+    ? { toggleLauncher: "Ctrl+Alt+Shift+Space", toggleWindow: "Ctrl+Alt+Space" }
+    : { toggleLauncher: "Alt+Shift+Space", toggleWindow: "Alt+Space" };
+}
+
+export function getDefaultQxHostShortcuts() {
+  return defaultQxHostShortcutsForPlatform(getQxDesktopPlatform());
 }
 
 export function getQxShortcutPreset(): QxShortcutPreset {

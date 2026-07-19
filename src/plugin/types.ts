@@ -324,6 +324,7 @@ export interface PluginNetworkCounters {
 
 export type PluginIslandTone = "neutral" | "success" | "warning" | "danger";
 export type PluginIslandActionIcon = "pause" | "play" | "stop" | "open";
+export type PluginIslandActivity = "wave" | "dots" | "spinner" | "pulse";
 
 /** Structured, host-rendered content for the optional external QxIsland surface. */
 export interface PluginIslandDisplayInput {
@@ -332,6 +333,8 @@ export interface PluginIslandDisplayInput {
   tone?: PluginIslandTone;
   /** Real progress from 0–100. Omit for a non-progress display. */
   progress?: number;
+  /** Host-rendered indeterminate loading animation. Ignored when progress is set. */
+  activity?: PluginIslandActivity;
   /** Host-rendered real-time countdown; use endsAt while running. */
   countdown?: {
     endsAt?: number;

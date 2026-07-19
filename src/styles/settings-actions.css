@@ -633,6 +633,21 @@ img.qx-ext-card-icon {
   color: var(--qx-danger);
 }
 
+.qx-action-item-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.qx-action-item-detail {
+  overflow: hidden;
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .qx-plugin-import-stack {
   display: flex;
   flex-direction: column;

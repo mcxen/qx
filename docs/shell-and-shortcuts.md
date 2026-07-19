@@ -78,6 +78,8 @@ else                                   → show_and_navigate(route)
 正确做法：
 
 - 关闭统一走 `invoke("floating_hide_restore_focus")`（或 `floating_hide`），写 `PANEL_OPEN=false` + `LAST_HIDE_AT`
+- `show_floating_now` 在原生层统一设置 500ms auto-hide grace，吸收 Windows WebView2
+  与 macOS panel 在 `show + focus` 期间的瞬时 `Focused(false)`；模块不得各自复制延时
 - 剪贴板等需要说明动作目标的模块通过 `floating_previous_app_name` 读取召唤面板前的应用名；它只用于“粘贴到 …”反馈，实际还原焦点仍统一走 `floating_hide_restore_focus`。
 - `toggle` / `toggle_route` 在 grace 内对同一 route **保持关闭**
 
@@ -101,17 +103,22 @@ else                                   → show_and_navigate(route)
    - `app_shortcuts` 启动本机 App（不走 toggle_route）
 3. 仅 `ShortcutState::Pressed` 触发一次
 
-默认键（`Settings::default`）：
+默认键（`Settings::default`）。Windows 避开系统窗口菜单及 PowerToys Run 常用的
+`Alt+Space`；macOS 继续使用对应的 `Option+Space`：
 
-| id | 默认键 | 默认 enabled |
-|----|--------|--------------|
-| `toggle_window` | `Alt+Space` | true |
-| `toggle_launcher` | `Alt+Shift+Space` | false |
-| `clipboard` | `Alt+V` | false |
-| `capture_screenshot` | `Alt+Shift+S` | false |
-| `record_gif` | `Alt+G` | false |
-| `toggle_capture_controls` | `Alt+Shift+C` | false |
-| `rss` | `Alt+R` | false |
+| id | macOS 默认键 | Windows 默认键 | 默认 enabled |
+|----|---------------|-----------------|--------------|
+| `toggle_window` | `Alt+Space` | `Ctrl+Alt+Space` | true |
+| `toggle_launcher` | `Alt+Shift+Space` | `Ctrl+Alt+Shift+Space` | false |
+| `clipboard` | `Alt+V` | `Alt+V` | false |
+| `capture_screenshot` | `Alt+Shift+S` | `Alt+Shift+S` | false |
+| `record_gif` | `Alt+G` | `Alt+G` | false |
+| `toggle_capture_controls` | `Alt+Shift+C` | `Alt+Shift+C` | false |
+| `rss` | `Alt+R` | `Alt+R` | false |
+
+启动时单个全局键若被系统或第三方程序占用，只记录诊断并继续创建托盘和首启界面；
+不得因为快捷键注册失败中止 `setup`，否则初始隐藏窗口会表现成 Qx 完全无法启动。
+设置保存仍把注册错误返回给用户，以便更换冲突按键。
 
 用户配置：`~/.qx/settings.json` → `shortcuts`。
 
@@ -241,6 +248,8 @@ pointer 交互结束后，若没有文本编辑器、选中文本或打开的 Di
 5. Option+Space 隐藏再显示 → 可直接输入搜索。
 6. 在 RSS / Clipboard / Settings 内用 `toggle_window` 隐藏再显示 → 仍停留原 route 和子界面。
 7. 任意界面使用 `toggle_launcher` → 隐藏时显示 Launcher 并聚焦搜索；再次按下隐藏。
+8. Windows 开启 PowerToys Run 后启动 Qx → Qx 仍有托盘与首启界面；默认
+   `Ctrl+Alt+Space` 可召唤窗口。
 
 ---
 

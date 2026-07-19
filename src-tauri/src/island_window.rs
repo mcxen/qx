@@ -5,7 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use tauri::{
-    AppHandle, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
+    AppHandle, LogicalSize, Manager, Monitor, PhysicalPosition, PhysicalSize, WebviewUrl,
     WebviewWindowBuilder,
 };
 
@@ -21,6 +21,8 @@ pub struct IslandWindowSnapshot {
     pub sessions_json: Option<String>,
     pub always_on_top: bool,
     pub compact: bool,
+    pub position_x: Option<i32>,
+    pub position_y: Option<i32>,
 }
 
 use std::sync::Mutex;
@@ -29,13 +31,36 @@ static SNAPSHOT: Mutex<IslandWindowSnapshot> = Mutex::new(IslandWindowSnapshot {
     sessions_json: None,
     always_on_top: true,
     compact: false,
+    position_x: None,
+    position_y: None,
 });
+
+fn monitor_for_point(app: &AppHandle, x: i32, y: i32) -> Option<Monitor> {
+    app.available_monitors().ok()?.into_iter().find(|monitor| {
+        let work = monitor.work_area();
+        let right = work.position.x.saturating_add(work.size.width as i32);
+        let bottom = work.position.y.saturating_add(work.size.height as i32);
+        x >= work.position.x && x < right && y >= work.position.y && y < bottom
+    })
+}
 
 fn position_island(app: &AppHandle, compact: bool) {
     let Some(island) = app.get_webview_window(ISLAND_LABEL) else {
         return;
     };
-    let Ok(Some(monitor)) = app.primary_monitor() else {
+    let saved_position = SNAPSHOT
+        .lock()
+        .ok()
+        .and_then(|snapshot| snapshot.position_x.zip(snapshot.position_y));
+    let monitor_and_position = saved_position
+        .and_then(|(x, y)| monitor_for_point(app, x, y).map(|monitor| (monitor, Some((x, y)))))
+        .or_else(|| {
+            app.primary_monitor()
+                .ok()
+                .flatten()
+                .map(|monitor| (monitor, None))
+        });
+    let Some((monitor, visible_saved_position)) = monitor_and_position else {
         return;
     };
     let work = monitor.work_area();
@@ -47,10 +72,21 @@ fn position_island(app: &AppHandle, compact: bool) {
     };
     let width = (logical_width * scale).round() as i32;
     let height = (ISLAND_HEIGHT * scale).round() as i32;
-    let right_margin = (RIGHT_MARGIN * scale).round() as i32;
-    let top_margin = (TOP_MARGIN * scale).round() as i32;
-    let x = (work.position.x + work.size.width as i32 - width - right_margin).max(work.position.x);
-    let y = work.position.y + top_margin;
+    let work_right = work.position.x.saturating_add(work.size.width as i32);
+    let work_bottom = work.position.y.saturating_add(work.size.height as i32);
+    let (x, y) = if let Some((saved_x, saved_y)) = visible_saved_position {
+        (
+            saved_x.clamp(work.position.x, (work_right - width).max(work.position.x)),
+            saved_y.clamp(work.position.y, (work_bottom - height).max(work.position.y)),
+        )
+    } else {
+        let right_margin = (RIGHT_MARGIN * scale).round() as i32;
+        let top_margin = (TOP_MARGIN * scale).round() as i32;
+        (
+            (work_right - width - right_margin).max(work.position.x),
+            work.position.y + top_margin,
+        )
+    };
     let _ = island.set_size(PhysicalSize::new(width.max(1) as u32, height.max(1) as u32));
     let _ = island.set_position(PhysicalPosition::new(x, y));
 }
@@ -131,9 +167,26 @@ pub fn island_window_ensure(app: AppHandle, always_on_top: Option<bool>) -> Resu
 }
 
 #[tauri::command]
-pub fn island_window_show(app: AppHandle, always_on_top: Option<bool>) -> Result<(), String> {
+pub fn island_window_show(
+    app: AppHandle,
+    always_on_top: Option<bool>,
+    position_x: Option<i32>,
+    position_y: Option<i32>,
+    has_saved_position: Option<bool>,
+) -> Result<(), String> {
     let aot =
         always_on_top.unwrap_or_else(|| SNAPSHOT.lock().map(|s| s.always_on_top).unwrap_or(true));
+    if let Ok(mut snapshot) = SNAPSHOT.lock() {
+        if has_saved_position.unwrap_or(false) {
+            if let Some((x, y)) = position_x.zip(position_y) {
+                snapshot.position_x = Some(x);
+                snapshot.position_y = Some(y);
+            }
+        } else {
+            snapshot.position_x = None;
+            snapshot.position_y = None;
+        }
+    }
     crate::runtime::run_ui(&app.clone(), move || {
         ensure_island_window(&app, aot)?;
         let win = app
@@ -148,6 +201,16 @@ pub fn island_window_show(app: AppHandle, always_on_top: Option<bool>) -> Result
         promote_without_focus(&win);
         Ok::<(), String>(())
     })?
+}
+
+#[tauri::command]
+pub fn island_window_remember_position(x: i32, y: i32) -> Result<(), String> {
+    let mut snapshot = SNAPSHOT
+        .lock()
+        .map_err(|_| "island window snapshot unavailable".to_string())?;
+    snapshot.position_x = Some(x);
+    snapshot.position_y = Some(y);
+    Ok(())
 }
 
 #[tauri::command]

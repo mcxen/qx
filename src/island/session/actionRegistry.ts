@@ -7,6 +7,7 @@ interface ActionRegistry {
   bind(sessionId: string, handlers: Record<string, ActionHandler>): () => void;
   unbind(sessionId: string): void;
   dispatch(sessionId: string, actionId: string): boolean;
+  run(sessionId: string, actionId: string): Promise<boolean>;
 }
 
 const handlersBySession = new Map<string, Map<string, ActionHandler>>();
@@ -42,11 +43,30 @@ export const actionRegistry: ActionRegistry = {
       return false;
     }
     try {
-      void handler();
+      void Promise.resolve(handler()).catch((error) => {
+        log.debug("island action error", { sessionId, actionId, error });
+      });
       return true;
     } catch (error) {
       log.debug("island action error", { sessionId, actionId, error });
+      // The action existed and was accepted; callers must not fall through to
+      // a compatibility handler and execute the intent twice.
+      return true;
+    }
+  },
+
+  async run(sessionId, actionId) {
+    const handler = handlersBySession.get(sessionId)?.get(actionId);
+    if (!handler) {
+      log.debug("island action miss", { sessionId, actionId });
       return false;
+    }
+    try {
+      await handler();
+      return true;
+    } catch (error) {
+      log.debug("island action error", { sessionId, actionId, error });
+      return true;
     }
   },
 };

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
+import { QxActionList } from "../../components/QxActionPanel";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { stripDangerousHtmlAttributes } from "../../utils/sanitize-html";
 import { type V2exTopic, formatTime } from "./types";
@@ -89,6 +90,7 @@ export default function V2exDetail({ topic, onBack }: V2exDetailProps) {
   return (
     <QxShell
       title={topic.title}
+      islandKey="v2ex.detail"
       className="v2ex-shell"
       onKeyDown={shell.onKeyDown}
       overlayBottom
@@ -101,14 +103,7 @@ export default function V2exDetail({ topic, onBack }: V2exDetailProps) {
       context={
         <aside className="qx-action-panel">
           <div className="qx-action-title">Topic Actions</div>
-          <button className="qx-action-item" onClick={() => void openUrl(topic.url)} type="button">
-            <span>Open in Browser</span>
-            <kbd>O</kbd>
-          </button>
-          <button className="qx-action-item" onClick={onBack} type="button">
-            <span>Back to Topics</span>
-            <kbd>Esc</kbd>
-          </button>
+          <QxActionList actions={actions} />
           <div className="qx-action-title">Info</div>
           <div className="v2ex-context-copy">
             <strong>{topic.node || "V2EX"}</strong>

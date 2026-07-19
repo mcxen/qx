@@ -83,7 +83,9 @@
 顺序随版本微调；核心是：
 
 1. 读 `~/.qx/settings.json`；`floating_panel::install`（Accessory + 面板化）
-2. `settings::register_shortcuts` — 默认 **Alt+Space** 切换当前窗口显隐；**Alt+Shift+Space** 为 Launcher 搜索（默认关）
+2. `settings::register_shortcuts` — macOS 默认 **Alt+Space**、Windows 默认
+   **Ctrl+Alt+Space** 切换当前窗口显隐；对应 Shift 组合为 Launcher 搜索（默认关）。
+   单个系统级组合键注册失败会记录诊断但不再终止隐藏窗口、托盘和首启 UI 的初始化
 3. `safe_init` 包裹子系统（panic 不拖垮 setup）：
    - `clipboard::start_listener` — **始终 manage** ClipboardDb
    - `rss::init` — **始终 manage** RssDb（open 失败存 `None`，命令路径 lazy open）

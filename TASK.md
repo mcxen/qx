@@ -1,14 +1,72 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Fix — Windows 安装文件锁与主界面启动兼容性
+
+**状态**：已完成代码修复，等待 Windows 安装/升级运行态复核。
+
+- NSIS 升级先退出 Qx 命名实例、停止并移除 Qx 专属 Everything 服务，再轮询
+  `resources/search/everything.exe` 写权限最多 65 秒；日志解释 Windows 服务释放文件
+  可能延迟，超时则给出明确原因并安全中止，不影响用户单独安装的 Everything。
+- Windows 默认窗口召唤改为 `Ctrl+Alt+Space`，避开系统窗口菜单和 PowerToys Run 常用的
+  `Alt+Space`；未修改的旧 Windows 出厂绑定会迁移，自定义绑定保持不变。
+- 单个全局快捷键被占用时不再中止 Tauri `setup`，Qx 仍会创建托盘和首启界面；设置
+  保存路径仍返回注册错误，方便用户更换按键。
+- 主窗口每次 `show + focus` 都在 Rust 原生窗口层获得 500ms 防失焦保护，吸收
+  Windows WebView2 首次显示时的瞬时 `Focused(false)`，避免刚出现就被自动隐藏。
+- Windows 不再把含原生 `HMONITOR` 的 `xcap::Monitor` 放进全局静态缓存，修复
+  `v0.5.43` Windows Release 的 `Send` / `Sync` 编译失败。
+- `Windows Compatibility` 在 `main` push 时也执行 Windows target check 与真实 NSIS
+  bundle，避免只在打 release tag 后才发现平台编译错误。
+
+### 验证
+
+- [x] `npm run check` / `npm run build`。
+- [x] `cargo fmt --check` / macOS `cargo check` / `cargo test --lib`（75 tests）。
+- [ ] `cargo check --target x86_64-pc-windows-msvc` 与 Windows NSIS bundle build。
+- [ ] Windows：覆盖安装时等待旧搜索服务释放；安装完成后首启、托盘和
+  `Ctrl+Alt+Space` 均可打开主界面；开启 PowerToys Run 时仍正常。
+
+## Feature — QxIsland 动态显示、加载动画、按钮与浮窗打开协议
+
+**状态**：已完成代码与协议收口，等待桌面运行态视觉复核。
+
+- 在既有 `islandHost + IslandSession + QxIslandSurface` 上形成类似 Workbench 的稳定
+  结构化端口，不新增平行灵动岛实现。
+- 不确定进度由宿主统一绘制 `wave / dots / spinner / pulse` 四套动画；旧
+  `bounce / bounce-exit` 已从公开类型和 renderer 移除，winner 切换有短过渡，普通进度更新不重复入场。
+- `IslandActionButton` 统一业务按钮的尺寸、受限图标、危险态、焦点与异步防重复点击；
+  插件仍最多一个 action，模块最多两个。
+- session 新增 host-owned `openTarget`；插件 bridge 固定回当前插件 Panel，旧 session
+  无目标时仅显示主窗作为安全回退。
+- slots 岛左侧新增宿主统一的圆角矩形模块图标；内置模块从稳定 `islandKey` 绑定目标，
+  插件使用宿主已解析图标资产并沿用可信 `openTarget`，docked / floating 点击均可快速打开发布模块。
+- 前台非粘性 `location` 优先于后台粘性轮播，RSS 阅读进度不再被番茄时钟周期替换；
+  离开 RSS 后番茄常驻 session 自动恢复。
+- 暂停 countdown 由宿主强制抑制 activity，旧插件即使误传 `pulse` 也不会继续播放加载动画。
+- 桌面浮窗改为用户显式生命周期：只能从 Qx 底部灵动岛手动浮出，浮窗关闭后清除
+  本次意图，计时或 session 更新不会自动重新弹出。
+- 市场 `pomodoro-island` 1.6.0 作为首个接入样板：运行态 `pulse + endsAt`、暂停态
+  冻结倒计时、完成态真实 100%，已打包并覆盖本机开发安装。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [ ] macOS / Windows：四套 activity、reduced motion、按钮 busy、浮窗回插件 Panel。
+
 ## Feature — Qx 桌面悬浮灵动岛轮播与事件抢占
 
 **状态**：已完成代码实现，等待 macOS / Windows 桌面运行态复核。
 
-- 悬浮灵动岛改为 Qx 级开关与策略；番茄钟等插件只发布结构化状态和动作。
-- 默认锚定主显示器工作区右上角，不抢焦点；macOS 可跨 Space 保持置顶。
+- 悬浮灵动岛改为 Qx 级开关与手动浮出策略；番茄钟等插件只发布结构化状态和动作，
+  不能自动弹出窗口。
+- 首次默认锚定主显示器工作区右上角，不抢焦点；浮出后可从内容区拖到任意显示器，
+  坐标持久化并在隐藏/显示、缩小/展开和重启后恢复；macOS 可跨 Space 保持置顶。
 - 普通模块 / 插件 `location` session 按 5 / 8 / 15 秒可选间隔轮播；task、error、toast 严格抢占，结束后恢复轮播。
 - 浮窗从 Qx appearance 同步主题、透明度、圆角和字号，与 docked 灵动岛使用同一 Surface chrome。
-- 悬浮 Surface 提供宿主统一的缩小 / 展开与打开 Qx 按钮；缩小后真实窗口收至 240px，番茄钟等插件无需自绘窗口控制。
+- Docked Surface 提供宿主“悬浮到桌面”按钮；悬浮 Surface 提供缩小 / 展开、打开 Qx
+  与关闭按钮。缩小后真实窗口收至 240px，番茄钟等插件无需自绘窗口控制。
 
 ### 验证
 
@@ -248,7 +306,8 @@
 - 文件名匹配把空格、连字符、下划线、点号等视为弱分隔，并为至少三个字符的查询
   提供有序子序列模糊召回；Cardinal、Spotlight 与 Everything 都生成对应的 token / wildcard
   查询，最终仍由统一 leaf-name 匹配与相关性排序把精确结果放在模糊结果之前。
-- Appearance 新增 External Island Display 设置，控制独立灵动岛、主窗隐藏时显示和置顶。
+- Appearance 新增 External Island Display 设置，控制是否允许手动浮出、已浮出窗口在
+  主窗隐藏时是否保留以及是否置顶。
 - 插件新增 permission-gated `context.island.show/update/dismiss`；每个插件只有一个
   slots-only display session，可显示文本、真实进度与一个 manifest command 动作。
 - 插件不能声明 task/error 优先级、组件、自定义窗口位置或置顶策略。

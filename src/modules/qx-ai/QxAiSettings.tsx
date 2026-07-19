@@ -137,6 +137,7 @@ export default function QxAiSettings() {
   return (
     <QxShell
       title={t("qxai.settings.title", "Chat Settings")}
+      islandKey="qx-ai.settings"
       visual="elevated"
       className="qx-qxai-settings-shell"
       onKeyDown={shell.onKeyDown}

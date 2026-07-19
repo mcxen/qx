@@ -10,11 +10,10 @@ import { createLauncherActions, getLauncherActionTitle } from "./launcher/launch
 import { toLauncherQuickEntries } from "./launcher/quickEntries";
 import { useLauncherHistory } from "./launcher/useLauncherHistory";
 import type { QuickEntry } from "./launcher/types";
-import SearchProgressIsland from "./launcher/SearchProgressIsland";
 import type { SearchTrackId } from "./launcher/searchProgress";
 import { useT } from "./i18n";
 import { homeIslandDataBus, useResolvedHomeIsland } from "./home-island";
-import { islandHost, useHomeIslandContribution, QxIslandSurface } from "./island";
+import { islandHost, useHomeIslandContribution } from "./island";
 import { mapBottomIslandContent } from "./island/compat/mapBottomIslandContent";
 import { usePluginRegistry } from "./plugin/registry";
 import { getQxShortcutPreset } from "./utils/keyboard";
@@ -124,8 +123,7 @@ export default function Launcher({
     homeIslandDataBus.kick();
   }, [idleHome, appearance.home_island_mode, appearance.home_island_modes]);
 
-  // Keep session store in sync for float/host consumers, but paint via props
-  // (QxShell island/customIsland) so a store glitch cannot blank the shell.
+  // Launcher is the single writer for the global home session.
   useHomeIslandContribution(
     idleHome,
     idleHome ? resolvedHome : null,
@@ -157,58 +155,8 @@ export default function Launcher({
     return hits;
   }, [results]);
 
-  // Primary docked island content (props path — reliable).
-  const island =
-    loadingPhase === "loading-apps"
-      ? {
-          label: t("launcher.loading", "Loading apps..."),
-          detail: t("launcher.loading.detail", "Preparing application cache"),
-          activity: "bounce" as const,
-        }
-      : isSearchActivity
-        ? null
-        : results.length > 0
-          ? {
-              label: t("launcher.ready", "Search ready"),
-              detail: t("launcher.resultCount", "{n} results").replace(
-                "{n}",
-                String(results.length),
-              ),
-              progress: Math.min(100, Math.max(12, results.length * 12)),
-            }
-          : idleHome
-            ? (resolvedHome.shellContent ?? null)
-            : null;
-
-  // Search / home custom modes must wrap QxIslandSurface so docked chrome
-  // keeps absolute center (left 50% + translateX). Bare customNode sat in the
-  // bottom-bar grid middle column and looked left-of-center.
-  const customIsland = isSearchActivity ? (
-    <QxIslandSurface
-      placement="docked"
-      variant="sci"
-      tone={isSearchSettling ? "success" : "neutral"}
-      aria-label={t("launcher.scan.aria", "Search progress")}
-    >
-      <SearchProgressIsland
-        query={query}
-        scope={scope}
-        isSearching={isSearching}
-        isSearchSettling={isSearchSettling}
-        hits={searchHits}
-      />
-    </QxIslandSurface>
-  ) : idleHome && resolvedHome.customNode ? (
-    <QxIslandSurface
-      placement="docked"
-      variant={resolvedHome.chromeVariant ?? "sci"}
-      aria-label={resolvedHome.modeId}
-    >
-      {resolvedHome.customNode}
-    </QxIslandSurface>
-  ) : undefined;
-
-  // Mirror shell statuses into the session store (optional consumers / float).
+  // Search/result/loading statuses are ordinary sessions. Docked and floating
+  // surfaces consume the same winner and action registry.
   useEffect(() => {
     if (loadingPhase === "loading-apps") {
       islandHost.show({
@@ -219,7 +167,7 @@ export default function Launcher({
         content: mapBottomIslandContent({
           label: t("launcher.loading", "Loading apps..."),
           detail: t("launcher.loading.detail", "Preparing application cache"),
-          activity: "bounce",
+          activity: "wave",
         }),
       });
       islandHost.dismiss("launcher.search");
@@ -308,11 +256,7 @@ export default function Launcher({
       title={t("launcher.title", "Qx Launcher")}
       className="launcher-shell"
       islandKey="launcher"
-      // Session store is updated separately; paint docked island via props so the
-      // main shell never depends solely on the island session layer.
       islandManagedExternally
-      island={island}
-      customIsland={customIsland}
       onKeyDown={handleLauncherKeyDown}
       search={<SearchBar onKeyDown={handleLauncherKeyDown} embedded />}
       trailing={

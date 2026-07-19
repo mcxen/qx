@@ -374,7 +374,18 @@ pub fn run() {
             // non-activating NSPanel so global shortcuts never steal focus.
             floating_panel::install(&handle);
 
-            settings::register_shortcuts(&handle, &settings::read_settings())?;
+            // A system-owned or third-party global chord (PowerToys commonly
+            // owns Alt+Space on Windows) must not abort setup while the main
+            // window is still hidden. Keep the tray and first-launch UI alive;
+            // settings updates still surface the registration error to users.
+            if let Err(error) = settings::register_shortcuts(&handle, &startup_settings) {
+                diagnostics::log(
+                    diagnostics::LogLevel::Warn,
+                    "main.shortcuts",
+                    "one or more global shortcuts are unavailable; Qx will continue",
+                    serde_json::json!({ "error": error }),
+                );
+            }
 
             // Subsystems that touch FFI / external state are panic-guarded so
             // a panic in one initializer does not abort the whole app.
@@ -553,8 +564,8 @@ pub fn run() {
             settings::reset_settings,
             settings::import_settings,
             settings::export_settings,
-            settings::shortcuts_pause_global,
-            settings::shortcuts_resume_global,
+            settings::shortcuts::shortcuts_pause_global,
+            settings::shortcuts::shortcuts_resume_global,
             storage::qx_storage_overview,
             storage::qx_storage_clear_cache,
             storage::qx_storage_clear_files,
@@ -620,6 +631,7 @@ pub fn run() {
             island_window::island_window_ensure,
             island_window::island_window_show,
             island_window::island_window_hide,
+            island_window::island_window_remember_position,
             island_window::island_window_set_compact,
             island_window::island_window_set_always_on_top,
             island_window::island_window_get_snapshot,

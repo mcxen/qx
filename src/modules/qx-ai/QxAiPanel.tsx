@@ -132,6 +132,7 @@ export default function QxAiPanel() {
   return (
     <QxShell
       title={t("qxai.title", "QxAI Chat")}
+      islandKey="qx-ai.conversations"
       className="qx-qxai-panel-shell"
       onKeyDown={shell.onKeyDown}
       navigation={{

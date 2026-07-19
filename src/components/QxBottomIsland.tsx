@@ -5,7 +5,7 @@
 import ShellContent from "../island/surface/ShellContent";
 import QxIslandSurface from "../island/surface/QxIslandSurface";
 import { mapBottomIslandContent } from "../island/compat/mapBottomIslandContent";
-import type { IslandActionIcon, IslandActionVariant } from "../island/types";
+import type { IslandActionIcon, IslandActionVariant, IslandActivity } from "../island/types";
 
 export interface BottomIslandAction {
   id: string;
@@ -19,7 +19,7 @@ export interface BottomIslandContent {
   label: string;
   detail?: string;
   progress?: number;
-  activity?: "bounce" | "bounce-exit";
+  activity?: IslandActivity;
   tone?: "neutral" | "success" | "warning" | "danger";
   actionLabel?: string;
   onAction?: () => void;

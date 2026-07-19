@@ -189,6 +189,7 @@ export default function QxAiChat() {
   return (
     <QxShell
       title={conv?.name ?? t("qxai.title", "QxAI Chat")}
+      islandKey="qx-ai.chat"
       className="qx-qxai-chat-shell"
       onKeyDown={shell.onKeyDown}
       search={

@@ -18,8 +18,9 @@ export function resolveDockedWinner(sessions: IslandSession[]): string | null {
 }
 
 /**
- * Resolve one visible session. Important events keep strict priority; standing
- * module/plugin location sessions share the surface with fair time rotation.
+ * Resolve one visible session. Important events keep strict priority; the
+ * current module's non-sticky location wins over background sticky locations,
+ * which share the surface with fair time rotation.
  */
 export function resolveRotatingWinner(
   sessions: IslandSession[],
@@ -29,13 +30,21 @@ export function resolveRotatingWinner(
   const ordered = [...sessions].sort(compareSessions);
   const best = ordered[0];
   if (best.priority !== "location") return best.id;
-  const standing = ordered.filter((session) => session.priority === "location");
+  const foreground = ordered.filter(
+    (session) => session.priority === "location" && !session.sticky,
+  );
+  if (foreground.length > 0) return foreground[0].id;
+  const standing = ordered.filter(
+    (session) => session.priority === "location" && session.sticky,
+  );
   const index = Math.abs(Math.trunc(rotationIndex)) % standing.length;
   return standing[index]?.id ?? best.id;
 }
 
 export function countRotatingSessions(sessions: IslandSession[]): number {
-  return sessions.filter((session) => session.priority === "location").length;
+  return sessions.filter(
+    (session) => session.priority === "location" && session.sticky,
+  ).length;
 }
 
 /** Returns negative if a should rank above b. */

@@ -13,12 +13,17 @@
 | `src/plugin/registry.ts` | Zustand store：加载/卸载/启用/禁用/搜索/快捷键 |
 | `src/plugin/backgroundActivity.ts` | **后台 interval 端口**：job 快照、last/next run、running；UI 标签唯一数据源 |
 | `src/plugin/runtime.ts` | iframe 沙箱生命周期、postMessage 协议、面板渲染 |
+| `src/plugin/pluginShellBridge.ts` | panel session registry、Workbench/Chrome/Actions 消息信任边界与宿主订阅 |
+| `src/plugin/pluginRuntimeTransport.ts` | sandbox iframe 创建与插件 asset URL 解析 |
+| `src/plugin/pluginIsland.ts` | Workbench/RPC 共用的 island 权限、command、session 投影 |
 | `src/plugin/context.ts` | `createPluginContext` / `createUnavailableContext` |
 | `src/plugin/rpcMethods.ts` | 所有 `handlePluginRpc` 处理器映射 |
 | `src-tauri/src/plugin_cli.rs` | **业务 CLI 端口**：`run`/`bash`/`which`、**异步 jobs**（start/poll/cancel）、**system** open/reveal/env |
-| `src/plugin/cliWorkbench.ts` | CLI→GUI helpers（ensure/json/map/wait）+ workbench kit |
+| `src/plugin/pluginSdkFactory.ts` | CLI→GUI helpers + Workbench kit 的单一、自包含实现；host 调用并序列化进 iframe |
+| `src/plugin/cliWorkbench.ts` | SDK factory 的类型化 host wrapper + iframe bootstrap 字符串 |
 | `src/plugin/workbenchTypes.ts` | 声明式 Workbench 数据契约 + iframe 信任边界归一化 |
-| `src/plugin/workbenchKeyboard.ts` | 隐藏 iframe 键盘转交策略 + Gallery 二维索引纯函数 |
+| `src/plugin/workbenchKeyboard.ts` | 隐藏 iframe 键盘转交策略 |
+| `src/hooks/qxGridNavigation.ts` | Workbench 与内置网格共用的二维索引纯函数 |
 | `src/plugin/PluginWorkbenchView.tsx` | Qx 原生 list/detail/progress 呈现；不含插件业务逻辑 |
 | `src/plugin/aiRuntime.ts` | AI task 创建、状态维护、取消、权限门控 |
 | `src/plugin/PluginHost.tsx` | 插件 panel 视图容器 |
@@ -55,10 +60,12 @@ plugin business state
        ├─ action.command → registry.runCommand（同插件 manifest 校验）
        ├─ backgroundPoll.command → no-view interval scheduler → persisted snapshot
        │    └─ completion → qx:workbench:event/backgroundPoll → panel reload
-       └─ island → permission-gated island RPC → docked-or-float session
+       └─ island → PluginHost permission/command validation → shared IslandSession store
 ```
 
 不变量：iframe 只发布可序列化纯数据；`raw` 不跨信任边界；宿主限制列表/字段/动作数量和文本长度。item `id` 是强制、稳定、唯一的业务键；缺失或重复 item/tab id 在信任边界直接拒绝，tabs 至多一个 active，不保留 title/index 回退。`layout.kind` 可选 `list`（默认）或 `gallery`；Gallery 图片只接受 `https://` / `data:image/`，URL 超限整体拒绝而非截断，列数与比例由宿主归一化，选中与 Actions 仍走相同 Workbench 事件。Workbench 没有 DOM/HTML 兼容分支；复杂自绘内容走独立 custom panel。后台轮询只能绑定本插件已注册的 `no-view + interval` command，panel 回调不拥有后台生命周期。
+
+SDK 不维护 host/iframe 两份实现：`createPluginSdkRuntime` 是无外部闭包的自包含 factory，可信 context 直接调用，sandbox bootstrap 通过 `Function#toString` 注入同一实现。Workbench `island` 不再由 kit 额外调用 `context.island`；PluginHost 接受同一 state 后统一投影，避免 state 与 island 两条消息竞态。
 
 #### 状态所有权与事件一致性
 

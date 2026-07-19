@@ -2,8 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl as openerOpenUrl } from "@tauri-apps/plugin-opener";
 import type {
   InstalledPlugin,
-  PluginIslandActionIcon,
-  PluginIslandDisplayInput,
   PluginRuntimeStatus,
 } from "./types";
 import {
@@ -16,7 +14,12 @@ import {
   type AgentRuntimeSettings,
 } from "./aiRuntime";
 import { qxLog, type QxLogLevel } from "../lib/logger";
-import { islandHost } from "../island";
+import {
+  dismissPluginIsland,
+  normalizePluginIslandInput,
+  showPluginIsland,
+  updatePluginIsland,
+} from "./pluginIsland";
 
 const pluginSessionStorage = new Map<string, Map<string, unknown>>();
 
@@ -35,119 +38,6 @@ export interface PluginRuntimeOptions {
   onGetPreference: (pluginId: string, id: string) => Promise<unknown>;
   onPluginStatus?: (status: PluginRuntimeStatus) => void;
   onRunPluginCommand?: (pluginId: string, command: string) => Promise<void>;
-}
-
-function pluginIslandSessionId(pluginId: string): string {
-  return `plugin.display.${pluginId}`;
-}
-
-function normalizePluginIslandInput(payload: Record<string, unknown>): PluginIslandDisplayInput {
-  const raw = (payload.input || {}) as Record<string, unknown>;
-  const primary = String(raw.primary || "").trim().slice(0, 80);
-  if (!primary) throw new Error("Plugin island primary text is required");
-  const tone =
-    raw.tone === "success" || raw.tone === "warning" || raw.tone === "danger"
-      ? raw.tone
-      : "neutral";
-  const actionRaw = raw.action as Record<string, unknown> | undefined;
-  const actionIcon: PluginIslandActionIcon | undefined = actionRaw?.icon === "pause" || actionRaw?.icon === "play"
-    || actionRaw?.icon === "stop" || actionRaw?.icon === "open"
-    ? actionRaw.icon
-    : undefined;
-  const action = actionRaw
-    ? {
-        label: String(actionRaw.label || "").trim().slice(0, 40),
-        command: String(actionRaw.command || "").trim().slice(0, 128),
-        icon: actionIcon,
-        variant: actionRaw.variant === "danger" ? "danger" as const : "default" as const,
-      }
-    : undefined;
-  const countdownRaw = raw.countdown && typeof raw.countdown === "object"
-    ? raw.countdown as Record<string, unknown>
-    : null;
-  const durationMs = typeof countdownRaw?.durationMs === "number" ? countdownRaw.durationMs : Number.NaN;
-  const endsAt = typeof countdownRaw?.endsAt === "number" ? countdownRaw.endsAt : Number.NaN;
-  const remainingMs = typeof countdownRaw?.remainingMs === "number" ? countdownRaw.remainingMs : Number.NaN;
-  const normalizedDuration = Number.isFinite(durationMs)
-    ? Math.max(1_000, Math.min(30 * 86_400_000, durationMs))
-    : undefined;
-  const normalizedRemaining = Number.isFinite(remainingMs)
-    ? Math.max(0, Math.min(normalizedDuration ?? 30 * 86_400_000, remainingMs))
-    : undefined;
-  const normalizedEndsAt = Number.isFinite(endsAt) && endsAt > 0
-    ? Math.min(Date.now() + 30 * 86_400_000, endsAt)
-    : undefined;
-  const countdown = countdownRaw && (normalizedEndsAt != null || normalizedRemaining != null)
-    ? {
-        endsAt: normalizedEndsAt,
-        remainingMs: normalizedRemaining,
-        durationMs: normalizedDuration,
-        paused: countdownRaw.paused === true,
-      }
-    : undefined;
-  return {
-    primary,
-    secondary: raw.secondary == null ? undefined : String(raw.secondary).slice(0, 120),
-    tone,
-    progress:
-      typeof raw.progress === "number"
-        ? Math.max(0, Math.min(100, raw.progress))
-        : undefined,
-    countdown,
-    action: action?.label && action.command ? action : undefined,
-    ttlMs:
-      typeof raw.ttlMs === "number" && Number.isFinite(raw.ttlMs)
-        ? Math.max(500, Math.floor(raw.ttlMs))
-        : undefined,
-  };
-}
-
-function pluginIslandShowInput(
-  plugin: InstalledPlugin,
-  input: PluginIslandDisplayInput,
-  options: PluginRuntimeOptions,
-) {
-  if (
-    input.action &&
-    !plugin.manifest?.commands?.some((command) => command.name === input.action?.command)
-  ) {
-    throw new Error(`Plugin island action is not a manifest command: ${input.action.command}`);
-  }
-  const actionId = input.action ? "plugin-command" : undefined;
-  return {
-    id: pluginIslandSessionId(plugin.id),
-    priority: "location" as const,
-    source: "plugin-display" as const,
-    placement: "docked-or-float" as const,
-    sticky: true,
-    ttlMs: input.ttlMs,
-    content: {
-      primary: input.primary,
-      secondary: input.secondary,
-      tone: input.tone,
-      meter:
-        input.progress == null
-          ? undefined
-          : { kind: "progress" as const, progress: input.progress },
-      countdown: input.countdown,
-      action:
-        input.action && actionId
-          ? {
-              id: actionId,
-              label: input.action.label,
-              icon: input.action.icon,
-              variant: input.action.variant,
-            }
-          : undefined,
-    },
-    actions:
-      input.action && actionId
-        ? {
-            [actionId]: () =>
-              options.onRunPluginCommand?.(plugin.id, input.action!.command),
-          }
-        : undefined,
-  };
 }
 
 const COMMAND_CAPABILITIES: Record<string, string> = {
@@ -366,27 +256,20 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   islandShow: async (plugin, perms, payload, options) => {
     assertPermission(plugin, perms, "island");
     const input = normalizePluginIslandInput(payload);
-    islandHost.show(pluginIslandShowInput(plugin, input, options));
+    showPluginIsland(plugin, input, options.onRunPluginCommand);
     return undefined;
   },
 
   islandUpdate: async (plugin, perms, payload, options) => {
     assertPermission(plugin, perms, "island");
     const input = normalizePluginIslandInput(payload);
-    const id = pluginIslandSessionId(plugin.id);
-    const next = pluginIslandShowInput(plugin, input, options);
-    const result = islandHost.update(id, {
-      content: next.content,
-      ttlMs: next.ttlMs ?? null,
-      actions: next.actions,
-    });
-    if (!result.ok) islandHost.show(next);
+    updatePluginIsland(plugin, input, options.onRunPluginCommand);
     return undefined;
   },
 
   islandDismiss: async (plugin, perms) => {
     assertPermission(plugin, perms, "island");
-    islandHost.dismiss(pluginIslandSessionId(plugin.id));
+    dismissPluginIsland(plugin.id);
     return undefined;
   },
 

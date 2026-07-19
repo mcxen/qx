@@ -181,7 +181,7 @@ export default {
 | `context.clipboard.read()` | 读取系统剪贴板文本（需 `clipboard` 权限） |
 | `context.clipboard.write(text)` | 写入系统剪贴板文本（需 `clipboard` 权限） |
 | `context.ui.mountWorkbench(state, handlers)` | 声明式受控 panel：Qx 渲染 tabs、稳定的 List/Gallery 空态画布、结构化详情、Actions 与 island；宿主即时处理 query/tab/selection，manifest command 完成后回调 `onCommandComplete`；`backgroundPoll` 可绑定后台 interval command；只接受纯数据 |
-| `context.island.show(input)` / `update(input)` / `dismiss()` | 在宿主灵动岛显示结构化数据、真实进度/宿主倒计时与一个统一样式 command 动作（需 `island` 权限；是否浮出由用户设置决定） |
+| `context.island.show(input)` / `update(input)` / `dismiss()` | 在宿主灵动岛显示结构化数据、真实进度或 `wave/dots/spinner/pulse` activity、宿主倒计时与一个统一样式 command 动作（需 `island` 权限；桌面浮窗只能由用户从 Qx 手动浮出并可关闭；浮窗打开目标由宿主固定为当前插件 Panel） |
 | `context.cli.run({ program, args?, cwd?, env?, timeoutMs? })` | **业务 CLI 首选**：argv 同步执行（需 `cli`；**不**走 AI Agent Bash）。协议见 [plugin-cli-protocol.md](./plugin-cli-protocol.md) |
 | `context.cli.bash(script \| req)` | login-shell bash（需 `cli`） |
 | `context.cli.which(program)` | 解析 PATH / Homebrew 常见路径上的可执行文件（需 `cli`） |

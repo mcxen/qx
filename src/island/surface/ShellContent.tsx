@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
-import { Button } from "../../components/ui";
-import type { IslandActionIcon, IslandContentAction, IslandSlotContent, IslandTone } from "../types";
+import { Blocks, LayoutGrid, Search } from "lucide-react";
+import type {
+  IslandContentAction,
+  IslandOpenTarget,
+  IslandSlotContent,
+  IslandTone,
+} from "../types";
 import { actionRegistry } from "../session/actionRegistry";
+import IslandActionButton from "./IslandActionButton";
+import { visibleIslandActivity } from "./contentPolicy";
+import { builtinModuleIcon } from "../../modules/builtinIcons";
+import { Button } from "../../components/ui";
+import { useT } from "../../i18n";
 
 function clampProgress(value?: number): number | null {
   if (typeof value !== "number" || Number.isNaN(value)) return null;
@@ -30,25 +40,16 @@ function formatCountdown(value: number): string {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-function IslandActionGlyph({ icon }: { icon?: IslandActionIcon }) {
-  if (!icon) return null;
-  return (
-    <svg className="qx-island-shell-action-icon" viewBox="0 0 12 12" aria-hidden="true">
-      {icon === "pause" && <><rect x="2.25" y="2" width="2.25" height="8" rx="0.7" /><rect x="7.5" y="2" width="2.25" height="8" rx="0.7" /></>}
-      {icon === "play" && <path d="M3.1 1.9 10 6 3.1 10.1Z" />}
-      {icon === "stop" && <rect x="2.2" y="2.2" width="7.6" height="7.6" rx="1.4" />}
-      {icon === "open" && <path d="M4 2h6v6H8.5V4.55L3.1 9.95 2.05 8.9 7.45 3.5H4V2Z" />}
-    </svg>
-  );
-}
-
 export interface ShellContentProps {
   content?: IslandSlotContent | null;
   sessionId?: string;
   /** Floating island contraction keeps only essential status and countdown. */
   compact?: boolean;
+  /** Host-owned module/plugin destination represented by the leading icon. */
+  openTarget?: IslandOpenTarget;
+  onOpenTarget?: () => void;
   /** Fallback for legacy BottomIsland onAction when no sessionId */
-  onAction?: (actionId: string) => void;
+  onAction?: (actionId: string) => void | Promise<void>;
 }
 
 /**
@@ -59,8 +60,11 @@ export default function ShellContent({
   content,
   sessionId,
   compact = false,
+  openTarget,
+  onOpenTarget,
   onAction,
 }: ShellContentProps) {
+  const t = useT();
   const [now, setNow] = useState(() => Date.now());
   const countdownRunning = Boolean(
     content?.countdown
@@ -91,18 +95,26 @@ export default function ShellContent({
       ? clampProgress(content.meter.progress)
       : null
   );
-  const activityKind =
-    content.meter?.kind === "activity" ? content.meter.activity : undefined;
-  const activity =
-    activityKind === "bounce" || activityKind === "bounce-exit";
-  const activityExiting = activityKind === "bounce-exit";
+  const activityKind = visibleIslandActivity(content);
+  const activity = Boolean(activityKind);
+  const canOpenTarget = Boolean(openTarget && onOpenTarget);
+  const TargetIcon = openTarget?.kind === "module"
+    ? builtinModuleIcon(openTarget.id) ?? LayoutGrid
+    : openTarget?.kind === "plugin"
+      ? Blocks
+      : Search;
+  const identityIconUrl = content.identity?.iconName?.trim();
+  const openTargetLabel = t("island.openModule", "Open {name}").replace(
+    "{name}",
+    content.primary,
+  );
   const tone: IslandTone = content.tone ?? "neutral";
 
-  const handleAction = (action: IslandContentAction) => {
+  const handleAction = async (action: IslandContentAction) => {
     if (sessionId) {
-      if (actionRegistry.dispatch(sessionId, action.id)) return;
+      if (await actionRegistry.run(sessionId, action.id)) return;
     }
-    onAction?.(action.id);
+    await onAction?.(action.id);
   };
   const trailingActions = (content.actions?.length
     ? content.actions
@@ -112,9 +124,7 @@ export default function ShellContent({
 
   return (
     <div
-      className={`qx-island-shell-content${activity ? " is-activity" : ""}${
-        activityExiting ? " is-activity-exiting" : ""
-      }`}
+      className={`qx-island-shell-content${activity ? " is-activity" : ""}`}
       data-tone={tone}
     >
       {content.effect?.kind === "orbit" && (
@@ -124,7 +134,25 @@ export default function ShellContent({
           aria-hidden="true"
         />
       )}
-      <div className="qx-island-shell-row">
+      <div className={`qx-island-shell-row${canOpenTarget ? " has-module-icon" : ""}`}>
+        {canOpenTarget && (
+          <Button
+            className="qx-island-module-button"
+            type="button"
+            variant="ghost"
+            size="sm"
+            data-qx-no-drag
+            onClick={onOpenTarget}
+            aria-label={openTargetLabel}
+            title={openTargetLabel}
+          >
+            {identityIconUrl ? (
+              <img src={identityIconUrl} alt="" aria-hidden="true" />
+            ) : (
+              <TargetIcon size={14} strokeWidth={2.1} aria-hidden="true" />
+            )}
+          </Button>
+        )}
         <div className="qx-island-shell-copy">
           {content.identity?.tag && (
             <span className="qx-island-shell-tag">
@@ -137,10 +165,7 @@ export default function ShellContent({
               {content.identity.tag}
             </span>
           )}
-          <span
-            className="qx-island-shell-primary"
-            data-pulse={activity && !activityExiting ? "true" : undefined}
-          >
+          <span className="qx-island-shell-primary">
             {content.primary}
           </span>
           {!compact && content.secondary && (
@@ -151,17 +176,22 @@ export default function ShellContent({
           {activity && (
             <div
               className="qx-island-meter-activity"
+              data-activity={activityKind}
               aria-label={content.secondary ?? content.primary}
             >
-              <span className="qx-bottom-island-activity-curve">
+              <span className="qx-island-activity-wave" aria-hidden="true">
                 <svg viewBox="0 0 84 12" aria-hidden="true" focusable="false">
                   <path d="M1 6 C 8 1, 14 1, 21 6 S 34 11, 42 6 S 56 1, 63 6 S 76 11, 83 6" />
                 </svg>
               </span>
-              <span className="qx-bottom-island-activity-dots" aria-hidden="true">
+              <span className="qx-island-activity-dots" aria-hidden="true">
                 <i />
                 <i />
                 <i />
+              </span>
+              <span className="qx-island-activity-spinner" aria-hidden="true" />
+              <span className="qx-island-activity-pulse" aria-hidden="true">
+                <i /><i /><i /><i />
               </span>
             </div>
           )}
@@ -178,19 +208,11 @@ export default function ShellContent({
           {!compact && trailingActions.length > 0 && (
             <span className="qx-island-shell-actions">
               {trailingActions.map((action) => (
-                <Button
+                <IslandActionButton
                   key={action.id}
-                  className="qx-island-shell-action"
-                  type="button"
-                  variant={action.variant === "danger" ? "destructive" : "ghost"}
-                  size="sm"
-                  onClick={() => handleAction(action)}
-                  data-variant={action.variant ?? "default"}
-                  aria-label={action.label}
-                >
-                  <IslandActionGlyph icon={action.icon} />
-                  {action.label}
-                </Button>
+                  action={action}
+                  onInvoke={handleAction}
+                />
               ))}
             </span>
           )}

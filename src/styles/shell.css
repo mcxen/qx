@@ -783,6 +783,12 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
+  animation: qx-island-content-enter 160ms cubic-bezier(0.22, 0.72, 0.26, 1) both;
+}
+
+@keyframes qx-island-content-enter {
+  from { opacity: 0; transform: translateY(3px) scale(0.99); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .qx-island-shell-row {
@@ -794,6 +800,44 @@
   min-height: 0;
   align-items: center;
   padding: 0 var(--qx-island-pad-x);
+}
+
+.qx-island-shell-row.has-module-icon {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
+}
+
+.qx-island-surface .qx-shadcn-button.qx-island-module-button {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--qx-bg-component-3) 86%, transparent);
+  color: var(--qx-text-secondary);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--qx-text-primary) 6%, transparent);
+}
+
+.qx-island-surface .qx-shadcn-button.qx-island-module-button:hover {
+  border-color: color-mix(in srgb, var(--qx-accent) 42%, var(--qx-border-1));
+  background: color-mix(in srgb, var(--qx-accent) 14%, var(--qx-bg-component-3));
+  color: var(--qx-text-primary);
+}
+
+.qx-island-surface .qx-shadcn-button.qx-island-module-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--qx-accent) 58%, transparent);
+  outline-offset: 0;
+}
+
+.qx-island-module-button img {
+  display: block;
+  width: 16px;
+  height: 16px;
+  object-fit: cover;
+  border-radius: 4px;
 }
 
 .qx-island-shell-copy {
@@ -949,28 +993,37 @@
   background: transparent;
 }
 
-.qx-island-shell-content.is-activity-exiting .qx-island-meter-activity {
-  animation: qx-bottom-island-activity-exit 180ms ease-out forwards;
+.qx-island-activity-wave,
+.qx-island-activity-dots,
+.qx-island-activity-spinner,
+.qx-island-activity-pulse {
+  display: none;
 }
 
-.qx-bottom-island-activity-curve {
+.qx-island-meter-activity[data-activity="wave"] .qx-island-activity-wave,
+.qx-island-meter-activity[data-activity="dots"] .qx-island-activity-dots,
+.qx-island-meter-activity[data-activity="spinner"] .qx-island-activity-spinner,
+.qx-island-meter-activity[data-activity="pulse"] .qx-island-activity-pulse {
+  display: inline-flex;
+}
+
+.qx-island-activity-wave {
   position: absolute;
   top: 2px;
-  right: 18px;
+  right: 4px;
   width: 36px;
   height: 12px;
   color: var(--qx-accent);
   animation: qx-bottom-island-bounce-mini 0.92s cubic-bezier(0.42, 0, 0.28, 1) infinite alternate;
 }
 
-.qx-bottom-island-activity-dots {
-  display: inline-flex;
+.qx-island-activity-dots {
   align-items: center;
   gap: 3px;
   margin-left: auto;
 }
 
-.qx-bottom-island-activity-dots i {
+.qx-island-activity-dots i {
   display: inline-block;
   width: 4px;
   height: 4px;
@@ -980,26 +1033,22 @@
   animation: qx-bottom-island-dot 0.9s ease-in-out infinite;
 }
 
-.qx-bottom-island-activity-dots i:nth-child(2) {
+.qx-island-activity-dots i:nth-child(2) {
   animation-delay: 0.15s;
 }
 
-.qx-bottom-island-activity-dots i:nth-child(3) {
+.qx-island-activity-dots i:nth-child(3) {
   animation-delay: 0.3s;
 }
 
-.qx-island-shell-primary[data-pulse="true"] {
-  animation: qx-bottom-island-label-pulse 1.4s ease-in-out infinite;
-}
-
-.qx-bottom-island-activity-curve svg {
+.qx-island-activity-wave svg {
   display: block;
   width: 100%;
   height: 100%;
   overflow: visible;
 }
 
-.qx-bottom-island-activity-curve path {
+.qx-island-activity-wave path {
   fill: none;
   stroke: currentColor;
   stroke-width: 2.4;
@@ -1008,6 +1057,43 @@
   stroke-dasharray: 12 8;
   filter: drop-shadow(0 0 4px color-mix(in srgb, var(--qx-accent) 54%, transparent));
   animation: qx-bottom-island-wave 0.72s linear infinite;
+}
+
+.qx-island-activity-spinner {
+  width: 13px;
+  height: 13px;
+  margin-right: 2px;
+  border: 2px solid color-mix(in srgb, var(--qx-accent) 22%, transparent);
+  border-top-color: var(--qx-accent);
+  border-radius: 50%;
+  animation: qx-island-spin 0.72s linear infinite;
+}
+
+.qx-island-activity-pulse {
+  align-items: center;
+  gap: 2px;
+  height: 14px;
+}
+
+.qx-island-activity-pulse i {
+  width: 2px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--qx-accent);
+  animation: qx-island-pulse-bar 0.8s ease-in-out infinite alternate;
+}
+
+.qx-island-activity-pulse i:nth-child(2) { animation-delay: 90ms; }
+.qx-island-activity-pulse i:nth-child(3) { animation-delay: 180ms; }
+.qx-island-activity-pulse i:nth-child(4) { animation-delay: 270ms; }
+
+@keyframes qx-island-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes qx-island-pulse-bar {
+  from { height: 4px; opacity: 0.45; }
+  to { height: 13px; opacity: 1; }
 }
 
 .qx-island-surface .qx-shadcn-button.qx-island-shell-action {
@@ -1042,6 +1128,11 @@
   transform: scale(0.96);
 }
 
+.qx-island-surface .qx-shadcn-button.qx-island-shell-action:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
 .qx-island-surface .qx-shadcn-button.qx-island-shell-action:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--qx-accent) 58%, transparent);
   outline-offset: 1px;
@@ -1062,7 +1153,11 @@
   width: 10px;
   height: 10px;
   flex: 0 0 auto;
-  fill: currentColor;
+  stroke-width: 2;
+}
+
+.qx-island-shell-action-icon.is-spinning {
+  animation: qx-island-spin 0.72s linear infinite;
 }
 
 .qx-island-shell-placeholder {
@@ -1085,13 +1180,25 @@
   grid-template-columns: minmax(0, 1fr) auto;
 }
 
-.qx-island-float-content {
+.qx-island-dock-popout {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.qx-island-dock-content {
   min-width: 0;
   height: 100%;
   overflow: hidden;
 }
 
-.qx-island-float-controls {
+.qx-island-float-content {
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  cursor: grab;
+}
+
+.qx-island-float-controls,
+.qx-island-dock-controls {
   position: relative;
   z-index: 3;
   display: inline-flex;
@@ -1100,7 +1207,7 @@
   padding-right: 4px;
 }
 
-.qx-island-surface .qx-shadcn-button.qx-island-float-control {
+.qx-island-surface .qx-shadcn-button.qx-island-host-control {
   width: 22px;
   min-width: 22px;
   height: 22px;
@@ -1111,18 +1218,18 @@
   color: var(--qx-text-secondary);
 }
 
-.qx-island-surface .qx-shadcn-button.qx-island-float-control:hover {
+.qx-island-surface .qx-shadcn-button.qx-island-host-control:hover {
   border-color: var(--qx-border-1);
   background: color-mix(in srgb, var(--qx-bg-300) 72%, transparent);
   color: var(--qx-text-primary);
 }
 
-.qx-island-surface .qx-shadcn-button.qx-island-float-control:focus-visible {
+.qx-island-surface .qx-shadcn-button.qx-island-host-control:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--qx-accent) 58%, transparent);
   outline-offset: 0;
 }
 
-.qx-island-float-root[data-compact="true"] .qx-island-shell-copy {
+.qx-island-float-root[data-compact="true"] .qx-island-shell-row:not(.has-module-icon) .qx-island-shell-copy {
   padding-left: 8px;
 }
 
@@ -1532,20 +1639,6 @@
   }
 }
 
-@keyframes qx-bottom-island-bounce {
-  from {
-    left: 4px;
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-1px);
-  }
-  to {
-    left: calc(100% - 88px);
-    transform: translateY(0);
-  }
-}
-
 @keyframes qx-bottom-island-bounce-mini {
   from {
     transform: translateY(0);
@@ -1569,25 +1662,9 @@
   }
 }
 
-@keyframes qx-bottom-island-label-pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
-}
-
 @keyframes qx-bottom-island-wave {
   to {
     stroke-dashoffset: -20;
-  }
-}
-
-@keyframes qx-bottom-island-activity-exit {
-  to {
-    opacity: 0;
-    transform: scaleX(0.72);
   }
 }
 
@@ -1596,11 +1673,13 @@
     animation: none;
   }
 
-  .qx-island-shell-content.is-activity-exiting .qx-island-meter-activity,
-  .qx-bottom-island-activity-curve,
-  .qx-bottom-island-activity-curve path,
-  .qx-bottom-island-activity-dots i,
-  .qx-island-shell-primary[data-pulse="true"] {
+  .qx-island-shell-content,
+  .qx-island-activity-wave,
+  .qx-island-activity-wave path,
+  .qx-island-activity-dots i,
+  .qx-island-activity-spinner,
+  .qx-island-activity-pulse i,
+  .qx-island-shell-action-icon.is-spinning {
     animation: none;
   }
 
@@ -1614,7 +1693,7 @@
     display: none;
   }
 
-  .qx-bottom-island-activity-curve {
+  .qx-island-activity-wave {
     right: 8px;
   }
 }
