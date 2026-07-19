@@ -30,7 +30,9 @@ import {
 } from "./actions";
 import {
   classify,
+  clipboardFileLabel,
   clipboardFileKind,
+  clipboardFilePaths,
   dateKey,
   sectionName,
   preview,
@@ -388,6 +390,7 @@ export default function ClipboardPanel() {
   }, [clipboardHistory, fileMetadata?.preview_path]);
 
   const selectedItem = filtered[selected];
+  const selectedFilePaths = selectedItem ? clipboardFilePaths(selectedItem) : [];
   const isEditing = Boolean(selectedItem && editingId === selectedItem.id);
   const hasDraftChanges = isEditing && draftText !== selectedItem?.text;
 
@@ -1055,7 +1058,7 @@ export default function ClipboardPanel() {
                             alt={t("clipboard.imageAlt", "Clipboard image")}
                           />
                         ) : item.file_path ? (
-                          item.file_path.split("/").pop() || item.file_path
+                          clipboardFileLabel(item, t)
                         ) : (
                           preview(item.text) || t("clipboard.emptyText", "Empty Text")
                         )}
@@ -1099,11 +1102,7 @@ export default function ClipboardPanel() {
                       ) : (
                         <File size={42} />
                       )}
-                      <strong>
-                        {fileMetadata?.name ??
-                          selectedItem.file_path.split(/[/\\]/).pop() ??
-                          t("clipboard.loadingFile", "Loading file…")}
-                      </strong>
+                      <strong>{clipboardFileLabel(selectedItem, t)}</strong>
                       {filePreviewLoading ? (
                         <span className="qx-clipboard-preview-status" aria-live="polite">
                           {t("clipboard.previewLoading", "Loading preview…")}
@@ -1168,14 +1167,16 @@ export default function ClipboardPanel() {
                   {selectedItem.file_path && (
                     <>
                       <div>
-                        <dt>{t("clipboard.file", "File")}</dt>
-                        <dd title={fileMetadata?.path || selectedItem.file_path}>
-                          {fileMetadata?.name ||
-                            selectedItem.file_path.split(/[/\\]/).pop() ||
-                            selectedItem.file_path}
+                        <dt>
+                          {selectedFilePaths.length > 1
+                            ? t("clipboard.filter.file", "Files")
+                            : t("clipboard.file", "File")}
+                        </dt>
+                        <dd title={selectedFilePaths.join("\n") || selectedItem.file_path}>
+                          {clipboardFileLabel(selectedItem, t)}
                         </dd>
                       </div>
-                      <div>
+                      {selectedFilePaths.length <= 1 ? <div>
                         <dt>{t("clipboard.kind", "Kind")}</dt>
                         <dd>
                           {(fileMetadata?.kind || guessFileKind(selectedItem.file_path))}
@@ -1183,16 +1184,16 @@ export default function ClipboardPanel() {
                             ? ` · ${(fileMetadata?.extension || extensionOf(selectedItem.file_path)).toUpperCase()}`
                             : ""}
                         </dd>
-                      </div>
-                      <div>
+                      </div> : null}
+                      {selectedFilePaths.length <= 1 ? <div>
                         <dt>{t("clipboard.size", "Size")}</dt>
                         <dd>
                           {fileMetadata && fileMetadata.size > 0
                             ? formatBytes(fileMetadata.size)
                             : t("clipboard.sizePending", "…")}
                         </dd>
-                      </div>
-                      {fileMetadata?.width && fileMetadata?.height ? (
+                      </div> : null}
+                      {selectedFilePaths.length <= 1 && fileMetadata?.width && fileMetadata?.height ? (
                         <div>
                           <dt>{t("clipboard.dimensions", "Dimensions")}</dt>
                           <dd>
@@ -1200,7 +1201,7 @@ export default function ClipboardPanel() {
                           </dd>
                         </div>
                       ) : null}
-                      {fileMetadata?.duration_seconds ? (
+                      {selectedFilePaths.length <= 1 && fileMetadata?.duration_seconds ? (
                         <div>
                           <dt>{t("clipboard.duration", "Duration")}</dt>
                           <dd>{formatDuration(fileMetadata.duration_seconds)}</dd>

@@ -23,10 +23,10 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 
 | 命令 | 用途 |
 |---|---|
-| `get_clipboard_history(limit?)` | 读取置顶 + 最近文本/图片剪贴板条目 |
+| `get_clipboard_history(limit?)` | 读取置顶 + 最近文本/图片/原生文件列表条目；文件返回主项 `file_path`、有序 `file_paths` 与 `file_kind` |
 | `read_clipboard_image_now()` | 立即读当前剪贴板图片，落盘并触发 `clipboard-updated` |
 | `write_clipboard_image_entry(id)` | 将历史图片回写系统剪贴板 |
-| `write_clipboard_file_entry(id)` | 将历史文件作为真实文件对象回写系统剪贴板 |
+| `write_clipboard_file_entry(id)` | 使用原有顺序将历史文件列表作为真实文件对象整体回写系统剪贴板，使用时逐项校验存在性 |
 | `clipboard_write_image_file(path)` | **系统能力**：把磁盘上的图片文件写入系统剪贴板（捕获 toast、导出等） |
 | `clipboard_file_metadata(path)` | 异步读取文件大小、图片尺寸、媒体时长与预览 |
 | `clipboard_compress_image(path, quality?)` | 启动后台图片压缩任务 |

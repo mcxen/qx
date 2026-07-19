@@ -171,16 +171,26 @@ async function searchClipboardSurfaces(query: string): Promise<ModuleSurfaceHit[
       pinned: boolean;
       image_path?: string | null;
       file_path?: string | null;
+      file_paths?: string[];
     }>>("get_clipboard_history", { limit: 80 });
     for (const item of history) {
+      const filePaths = item.file_paths?.length
+        ? item.file_paths
+        : item.file_path
+          ? [item.file_path]
+          : [];
+      const primaryFileLabel = filePaths[0]
+        ? (filePaths[0].split(/[/\\]/).pop() || filePaths[0])
+        : "";
       const label = item.file_path
-        ? (item.file_path.split(/[/\\]/).pop() || item.file_path)
+        ? (filePaths.length > 1 ? `${primaryFileLabel} · ${filePaths.length} items` : primaryFileLabel)
         : item.image_path
           ? "Image"
           : item.text.replace(/\s+/g, " ").trim().slice(0, 80) || "Clipboard Item";
       const score = scoreText(
         query,
         label,
+        filePaths.join(" "),
         item.text?.slice(0, 200),
         item.pinned ? "pinned" : "",
         "clipboard",

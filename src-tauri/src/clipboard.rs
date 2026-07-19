@@ -15,9 +15,20 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use tauri::{command, AppHandle, Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
 
+mod capture;
 pub(crate) mod editing;
+mod file_list;
 pub(crate) mod history;
 pub(crate) mod media;
+mod native;
+#[cfg(test)]
+mod tests;
+
+use capture::CaptureCursor;
+use file_list::{
+    decode as decode_stored_file_paths, identity_seed, normalize as normalize_file_paths,
+};
+use native::{change_count as clipboard_change_count, is_file_reference_type};
 
 // --- Image safety limits ---
 /// Maximum allowed image dimension in pixels (width or height).
@@ -42,183 +53,9 @@ struct PasteboardSnapshotEntry {
     file_name: String,
 }
 
-fn is_file_reference_pasteboard_type(type_name: &str) -> bool {
-    let lower = type_name.to_ascii_lowercase();
-    lower.contains("file-url") || lower.contains("filename")
-}
-
-fn decode_file_reference_path(value: &str) -> Option<PathBuf> {
-    let value = value.trim();
-    if value.is_empty() {
-        return None;
-    }
-    let raw = value
-        .strip_prefix("file://localhost")
-        .or_else(|| value.strip_prefix("file://"))
-        .unwrap_or(value);
-    let decoded = urlencoding::decode(raw).ok()?.into_owned();
-    Some(PathBuf::from(decoded))
-}
-
-// --- macOS clipboard change count (lightweight content-change detection) ---
-/// Returns the current `NSPasteboard` changeCount on macOS, or `None` on
-/// other platforms.  Reading this integer is **orders of magnitude cheaper**
-/// than decoding a full RGBA image from the clipboard.
-#[cfg(target_os = "macos")]
-fn clipboard_change_count() -> Option<i64> {
-    use objc2::msg_send;
-    use objc2::runtime::AnyClass;
-
-    use std::ffi::CStr;
-    let cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSPasteboard\0").ok()?)?;
-    unsafe {
-        let pasteboard: *mut objc2::runtime::NSObject = msg_send![cls, generalPasteboard];
-        if pasteboard.is_null() {
-            return None;
-        }
-        let count: i64 = msg_send![pasteboard, changeCount];
-        Some(count)
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn current_pasteboard_file_path() -> Option<String> {
-    use objc2::msg_send;
-    use objc2::runtime::{AnyClass, NSObject};
-    use std::ffi::{CStr, CString};
-
-    unsafe fn string_value(value: *mut NSObject) -> Option<String> {
-        if value.is_null() {
-            return None;
-        }
-        let ptr: *const std::os::raw::c_char = unsafe { msg_send![value, UTF8String] };
-        if ptr.is_null() {
-            return None;
-        }
-        Some(
-            unsafe { CStr::from_ptr(ptr) }
-                .to_string_lossy()
-                .into_owned(),
-        )
-    }
-
-    fn existing_file_path(value: &str) -> Option<String> {
-        let path = decode_file_reference_path(value)?;
-        path.exists().then(|| path.to_string_lossy().to_string())
-    }
-
-    unsafe {
-        let pasteboard_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSPasteboard\0").ok()?)?;
-        let string_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSString\0").ok()?)?;
-        let pasteboard: *mut NSObject = msg_send![pasteboard_cls, generalPasteboard];
-        if pasteboard.is_null() {
-            return None;
-        }
-
-        // Fast path used by Finder and most native apps.
-        let type_name = CString::new("public.file-url").ok()?;
-        let pasteboard_type: *mut NSObject =
-            msg_send![string_cls, stringWithUTF8String: type_name.as_ptr()];
-        let value: *mut NSObject = msg_send![pasteboard, stringForType: pasteboard_type];
-        if let Some(path) = string_value(value).and_then(|value| existing_file_path(&value)) {
-            return Some(path);
-        }
-
-        // Some capture tools put the file URL on an individual pasteboard item
-        // while also publishing a bitmap preview. Prefer the file reference so
-        // an MP4 is not accidentally persisted as an image.
-        let items: *mut NSObject = msg_send![pasteboard, pasteboardItems];
-        if !items.is_null() {
-            let item_count: usize = msg_send![items, count];
-            for item_index in 0..item_count {
-                let item: *mut NSObject = msg_send![items, objectAtIndex: item_index];
-                if item.is_null() {
-                    continue;
-                }
-                let types: *mut NSObject = msg_send![item, types];
-                if types.is_null() {
-                    continue;
-                }
-                let type_count: usize = msg_send![types, count];
-                for type_index in 0..type_count {
-                    let item_type: *mut NSObject = msg_send![types, objectAtIndex: type_index];
-                    let Some(item_type_name) = string_value(item_type) else {
-                        continue;
-                    };
-                    if !is_file_reference_pasteboard_type(&item_type_name) {
-                        continue;
-                    }
-                    let item_value: *mut NSObject = msg_send![item, stringForType: item_type];
-                    if let Some(path) =
-                        string_value(item_value).and_then(|value| existing_file_path(&value))
-                    {
-                        return Some(path);
-                    }
-                }
-            }
-        }
-
-        // Legacy Cocoa clients still expose NSFilenamesPboardType as an array.
-        let legacy_name = CString::new("NSFilenamesPboardType").ok()?;
-        let legacy_type: *mut NSObject =
-            msg_send![string_cls, stringWithUTF8String: legacy_name.as_ptr()];
-        let file_names: *mut NSObject = msg_send![pasteboard, propertyListForType: legacy_type];
-        if !file_names.is_null() {
-            let count: usize = msg_send![file_names, count];
-            if count > 0 {
-                let first: *mut NSObject = msg_send![file_names, objectAtIndex: 0usize];
-                if let Some(path) = string_value(first).and_then(|value| existing_file_path(&value))
-                {
-                    return Some(path);
-                }
-            }
-        }
-        None
-    }
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn current_pasteboard_file_path() -> Option<String> {
-    None
-}
-
-#[cfg(target_os = "windows")]
-fn current_pasteboard_file_path() -> Option<String> {
-    use windows_sys::Win32::System::DataExchange::{
-        CloseClipboard, GetClipboardData, OpenClipboard,
-    };
-    use windows_sys::Win32::UI::Shell::DragQueryFileW;
-
-    const CF_HDROP: u32 = 15;
-    unsafe {
-        if OpenClipboard(std::ptr::null_mut()) == 0 {
-            return None;
-        }
-        let handle = GetClipboardData(CF_HDROP);
-        if handle.is_null() {
-            CloseClipboard();
-            return None;
-        }
-        let length = DragQueryFileW(handle, 0, std::ptr::null_mut(), 0);
-        if length == 0 {
-            CloseClipboard();
-            return None;
-        }
-        let mut buffer = vec![0u16; length as usize + 1];
-        let copied = DragQueryFileW(handle, 0, buffer.as_mut_ptr(), buffer.len() as u32);
-        CloseClipboard();
-        if copied == 0 {
-            return None;
-        }
-        buffer.truncate(copied as usize);
-        let path = PathBuf::from(String::from_utf16_lossy(&buffer));
-        path.exists().then(|| path.to_string_lossy().to_string())
-    }
-}
-
 #[cfg(target_os = "macos")]
 fn should_snapshot_pasteboard_type(type_name: &str) -> bool {
-    is_file_reference_pasteboard_type(type_name)
+    is_file_reference_type(type_name)
 }
 
 #[cfg(target_os = "macos")]
@@ -455,17 +292,6 @@ pub fn clipboard_write_image_file(app: AppHandle, path: String) -> Result<(), St
     write_image_file_to_clipboard(&app, Path::new(&path))
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn clipboard_change_count() -> Option<i64> {
-    None // format probing not available on this platform
-}
-
-#[cfg(target_os = "windows")]
-fn clipboard_change_count() -> Option<i64> {
-    let value = unsafe { windows_sys::Win32::System::DataExchange::GetClipboardSequenceNumber() };
-    (value != 0).then_some(i64::from(value))
-}
-
 #[derive(Debug, Serialize, Clone)]
 pub struct ClipboardEntry {
     pub id: String,
@@ -475,6 +301,9 @@ pub struct ClipboardEntry {
     pub copy_count: i64,
     pub image_path: Option<String>,
     pub file_path: Option<String>,
+    /// Ordered native file-list payload. `file_path` remains the primary item
+    /// for compatibility, preview and old databases.
+    pub file_paths: Vec<String>,
     pub file_kind: Option<String>,
 }
 
@@ -607,7 +436,7 @@ fn compact_pasteboard_snapshot(manifest_path: &str) -> Option<String> {
 
     for entry in std::mem::take(&mut snapshot.entries) {
         let file_path = base_dir.join(&entry.file_name);
-        if !is_file_reference_pasteboard_type(&entry.type_name) {
+        if !is_file_reference_type(&entry.type_name) {
             let _ = fs::remove_file(file_path);
             continue;
         }
@@ -788,6 +617,16 @@ fn ensure_clipboard_png_file(
 fn init_db() -> rusqlite::Result<Connection> {
     let path = get_db_path();
     let conn = Connection::open(&path)?;
+    ensure_clipboard_schema(&conn)?;
+
+    enforce_existing_image_limits(&conn);
+    compact_existing_pasteboard_snapshots(&conn);
+    prune_clipboard_storage(&conn);
+    cleanup_orphan_clipboard_artifacts(&conn);
+    Ok(conn)
+}
+
+fn ensure_clipboard_schema(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS clipboard_history (
             id TEXT PRIMARY KEY,
@@ -800,13 +639,9 @@ fn init_db() -> rusqlite::Result<Connection> {
     ensure_column(&conn, "image_path", "TEXT")?;
     ensure_column(&conn, "image_pasteboard_path", "TEXT")?;
     ensure_column(&conn, "file_path", "TEXT")?;
+    ensure_column(&conn, "file_paths", "TEXT")?;
     ensure_column(&conn, "file_kind", "TEXT")?;
-
-    enforce_existing_image_limits(&conn);
-    compact_existing_pasteboard_snapshots(&conn);
-    prune_clipboard_storage(&conn);
-    cleanup_orphan_clipboard_artifacts(&conn);
-    Ok(conn)
+    Ok(())
 }
 
 fn ensure_column(conn: &Connection, name: &str, definition: &str) -> rusqlite::Result<()> {
@@ -836,6 +671,10 @@ fn compute_image_id(image_path: &str) -> String {
         .filter(|stem| !stem.is_empty())
         .map(ToString::to_string)
         .unwrap_or_else(|| compute_id(image_path))
+}
+
+fn compute_file_list_id(paths: &[String]) -> Option<String> {
+    identity_seed(paths).map(|seed| compute_id(&seed))
 }
 
 fn clipboard_file_kind(path: &Path) -> &'static str {
@@ -935,125 +774,154 @@ pub fn start_listener(app: &AppHandle) {
             let _ = app_handle.emit("clipboard-updated", ());
             let mut last_text = String::new();
             let mut last_image_hash = String::new();
-            let mut last_change_count: Option<i64> = None;
-
-            // Initialize with current clipboard via Tauri plugin API
-            if let Ok(text) = app_handle.clipboard().read_text() {
-                if !text.is_empty() {
-                    last_text = text.clone();
-                    store(&db_clone, &text, None, None, None);
-                }
-            }
+            let mut capture_cursor = CaptureCursor::default();
+            let mut last_native_error_change: Option<i64> = None;
 
             loop {
                 if shutdown_clone.load(Ordering::Relaxed) {
                     break;
                 }
-                std::thread::sleep(std::time::Duration::from_millis(1000));
-
-                if shutdown_clone.load(Ordering::Relaxed) {
-                    break;
+                let current_change = clipboard_change_count();
+                if !capture_cursor.should_attempt(current_change) {
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    continue;
                 }
 
-                let current_file_path = current_pasteboard_file_path();
-
-                // Check for new text. File URLs are recorded as native file
-                // entries below, never duplicated as path-shaped text.
-                match app_handle.clipboard().read_text() {
-                    Ok(text)
-                        if current_file_path.is_none() && !text.is_empty() && text != last_text =>
-                    {
-                        last_text = text.clone();
-                        store(&db_clone, &text, None, None, None);
-                        let _ = app_handle.emit("clipboard-updated", ());
-                    }
-                    Ok(text) if text.is_empty() => {
-                        last_text.clear();
-                    }
-                    Err(e) => {
-                        last_text.clear();
-                        eprintln!("clipboard read text error: {e}");
-                    }
-                    _ => {}
-                }
-
-                // Check for new image
-                //
-                // On macOS we use NSPasteboard::changeCount to skip the
-                // expensive read_image() when clipboard content hasn't
-                // actually changed (the common case — nothing to do).
-                let should_check_image = match clipboard_change_count() {
-                    Some(current) => {
-                        let changed = last_change_count.map_or(true, |prev| prev != current);
-                        last_change_count = Some(current);
-                        changed
-                    }
-                    None => true, // non-macOS: always check
-                };
-
-                if should_check_image {
-                    if let Some(file_path) = current_file_path {
-                        let snapshot_id = compute_id(&file_path);
-                        let pasteboard_path = snapshot_current_pasteboard(&snapshot_id);
-                        store(
-                            &db_clone,
-                            "",
-                            None,
-                            pasteboard_path.as_deref(),
-                            Some(&file_path),
-                        );
-                        let _ = app_handle.emit("clipboard-updated", ());
+                // CF_HDROP / file URLs win over text and bitmap previews. A
+                // transient OpenClipboard failure must not consume the sequence:
+                // Explorer and RDP commonly keep the clipboard locked briefly.
+                let file_paths = match native::read_file_paths() {
+                    Ok(paths) => paths,
+                    Err(error) => {
+                        if current_change != last_native_error_change {
+                            last_native_error_change = current_change;
+                            crate::diagnostics::log(
+                                crate::diagnostics::LogLevel::Warn,
+                                "clipboard.capture",
+                                "native file clipboard read will be retried",
+                                serde_json::json!({
+                                    "sequence": current_change,
+                                    "error": error,
+                                }),
+                            );
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(250));
                         continue;
                     }
-                    match app_handle.clipboard().read_image() {
-                        Ok(image) => {
-                            let width = image.width();
-                            let height = image.height();
+                };
 
-                            // --- Safety guard: reject oversized images ---
-                            if width > MAX_IMAGE_DIMENSION
-                                || height > MAX_IMAGE_DIMENSION
-                                || (width as u64).saturating_mul(height as u64) > MAX_IMAGE_PIXELS
-                            {
-                                continue;
+                if !file_paths.is_empty() {
+                    let snapshot_id = compute_file_list_id(&file_paths)
+                        .unwrap_or_else(|| compute_id(&file_paths.join("\0")));
+                    let pasteboard_path = snapshot_current_pasteboard(&snapshot_id);
+                    match store_file_list(
+                        &db_clone,
+                        "",
+                        None,
+                        pasteboard_path.as_deref(),
+                        Some(&file_paths),
+                    ) {
+                        Ok(()) => {
+                            last_text.clear();
+                            last_image_hash.clear();
+                            capture_cursor.commit(current_change);
+                            last_native_error_change = None;
+                            let _ = app_handle.emit("clipboard-updated", ());
+                        }
+                        Err(error) => {
+                            if current_change != last_native_error_change {
+                                last_native_error_change = current_change;
+                                crate::diagnostics::log(
+                                    crate::diagnostics::LogLevel::Error,
+                                    "clipboard.capture",
+                                    "failed to store native file clipboard entry; capture will retry",
+                                    serde_json::json!({
+                                        "sequence": current_change,
+                                        "error": error,
+                                    }),
+                                );
                             }
+                        }
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    continue;
+                }
 
-                            // Borrow the RGBA slice — no heap copy.
-                            let rgba = image.rgba();
+                let mut readable_format = false;
+                let mut stored_entry = false;
+                let mut storage_error = None;
 
-                            let hash = blake3::hash(rgba);
-                            let hash_hex = hash.to_hex()[..16].to_string();
+                // Text and bitmap formats may coexist. Capture both while the
+                // same sequence is open, but never turn a native file list into
+                // path-shaped text.
+                if let Ok(text) = app_handle.clipboard().read_text() {
+                    readable_format = true;
+                    if !text.is_empty() && (current_change.is_some() || text != last_text) {
+                        match store(&db_clone, &text, None, None, None) {
+                            Ok(()) => stored_entry = true,
+                            Err(error) => storage_error = Some(error),
+                        }
+                    }
+                    last_text = text;
+                }
 
-                            if !rgba.is_empty() && hash_hex != last_image_hash {
-                                last_image_hash = hash_hex.clone();
-
-                                let filename = format!("{}.png", hash_hex);
-                                let image_dir = get_image_dir();
-                                let image_path = image_dir.join(&filename);
-
-                                // Encode directly from the borrowed slice and
-                                // skip unusually large PNG outputs.
-                                if ensure_clipboard_png_file(&image_path, rgba, width, height)
-                                    .is_ok()
-                                {
-                                    let path_str = image_path.to_string_lossy().to_string();
-                                    let pasteboard_path = snapshot_current_pasteboard(&hash_hex);
-                                    store(
-                                        &db_clone,
-                                        "",
-                                        Some(&path_str),
-                                        pasteboard_path.as_deref(),
-                                        None,
-                                    );
-                                    let _ = app_handle.emit("clipboard-updated", ());
+                if let Ok(image) = app_handle.clipboard().read_image() {
+                    readable_format = true;
+                    let width = image.width();
+                    let height = image.height();
+                    if width <= MAX_IMAGE_DIMENSION
+                        && height <= MAX_IMAGE_DIMENSION
+                        && (width as u64).saturating_mul(height as u64) <= MAX_IMAGE_PIXELS
+                    {
+                        let rgba = image.rgba();
+                        let hash_hex = blake3::hash(rgba).to_hex()[..16].to_string();
+                        if !rgba.is_empty()
+                            && (current_change.is_some() || hash_hex != last_image_hash)
+                        {
+                            let image_path = get_image_dir().join(format!("{hash_hex}.png"));
+                            if ensure_clipboard_png_file(&image_path, rgba, width, height).is_ok() {
+                                let path_str = image_path.to_string_lossy().to_string();
+                                let pasteboard_path = snapshot_current_pasteboard(&hash_hex);
+                                match store(
+                                    &db_clone,
+                                    "",
+                                    Some(&path_str),
+                                    pasteboard_path.as_deref(),
+                                    None,
+                                ) {
+                                    Ok(()) => stored_entry = true,
+                                    Err(error) => storage_error = Some(error),
                                 }
                             }
                         }
-                        Err(e) => {
-                            eprintln!("clipboard read_image: {e}");
-                        }
+                        last_image_hash = hash_hex;
                     }
                 }
+
+                if let Some(error) = storage_error {
+                    if current_change != last_native_error_change {
+                        last_native_error_change = current_change;
+                        crate::diagnostics::log(
+                            crate::diagnostics::LogLevel::Error,
+                            "clipboard.capture",
+                            "failed to store clipboard entry; capture will retry",
+                            serde_json::json!({
+                                "sequence": current_change,
+                                "error": error,
+                            }),
+                        );
+                    }
+                // Commit the sequence only after at least one format was read
+                // and every storable payload was persisted. If another process
+                // owned the clipboard or SQLite failed, retry the same sequence.
+                } else if readable_format {
+                    capture_cursor.commit(current_change);
+                    last_native_error_change = None;
+                }
+                if stored_entry {
+                    let _ = app_handle.emit("clipboard-updated", ());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(250));
             }
         })
         .ok();
@@ -1065,37 +933,73 @@ fn store(
     image_path: Option<&str>,
     image_pasteboard_path: Option<&str>,
     file_path: Option<&str>,
-) {
+) -> Result<(), String> {
+    let file_paths = file_path.map(|path| vec![path.to_string()]);
+    store_file_list(
+        db,
+        text,
+        image_path,
+        image_pasteboard_path,
+        file_paths.as_deref(),
+    )
+}
+
+fn store_file_list(
+    db: &Arc<Mutex<Option<Connection>>>,
+    text: &str,
+    image_path: Option<&str>,
+    image_pasteboard_path: Option<&str>,
+    file_paths: Option<&[String]>,
+) -> Result<(), String> {
     if !text.is_empty() && text.as_bytes().len() > MAX_TEXT_BYTES {
-        return;
+        return Err("clipboard text exceeds storage limit".to_string());
     }
 
+    let file_paths = normalize_file_paths(file_paths.unwrap_or_default().iter().cloned());
+    let file_path = file_paths.first().map(String::as_str);
+    let file_paths_json = (!file_paths.is_empty())
+        .then(|| serde_json::to_string(&file_paths).ok())
+        .flatten();
+
     let mut guard = lock_db(db);
-    let Ok(conn) = ensure_connection(&mut guard) else {
-        return;
-    };
-    let id = if let Some(path) = file_path {
-        compute_id(path)
+    let conn = ensure_connection(&mut guard).map_err(|error| error.to_string())?;
+    let id = if !file_paths.is_empty() {
+        let Some(id) = compute_file_list_id(&file_paths) else {
+            return Err("clipboard file list is empty".to_string());
+        };
+        id
     } else if !text.is_empty() {
         compute_id(text)
     } else if let Some(path) = image_path {
         compute_image_id(path)
     } else {
-        return; // nothing to store
+        return Err("clipboard entry has no supported content".to_string());
     };
     let ts = Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let file_kind = file_path.map(|path| clipboard_file_kind(Path::new(path)));
-    let _ = conn.execute(
-        "INSERT INTO clipboard_history (id, text, timestamp, image_path, image_pasteboard_path, file_path, file_kind)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+    conn.execute(
+        "INSERT INTO clipboard_history (id, text, timestamp, image_path, image_pasteboard_path, file_path, file_paths, file_kind)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT(id) DO UPDATE SET
             text = excluded.text,
             timestamp = excluded.timestamp,
             image_path = COALESCE(excluded.image_path, clipboard_history.image_path),
             image_pasteboard_path = COALESCE(excluded.image_pasteboard_path, clipboard_history.image_pasteboard_path),
             file_path = COALESCE(excluded.file_path, clipboard_history.file_path),
+            file_paths = COALESCE(excluded.file_paths, clipboard_history.file_paths),
             file_kind = COALESCE(excluded.file_kind, clipboard_history.file_kind)",
-        params![id, text, ts, image_path, image_pasteboard_path, file_path, file_kind],
-    );
+        params![
+            id,
+            text,
+            ts,
+            image_path,
+            image_pasteboard_path,
+            file_path,
+            file_paths_json,
+            file_kind
+        ],
+    )
+    .map_err(|error| format!("store clipboard entry: {error}"))?;
     prune_clipboard_storage(conn);
+    Ok(())
 }

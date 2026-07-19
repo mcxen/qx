@@ -571,6 +571,9 @@ Clipboard：
   Island 动作组以短 enter 动画出现；保存成功后由宿主 effect 在岛边缘快速绕行
   一圈，不得用延迟业务完成或伪造 progress 来表现反馈。
 - 单击左侧条目必须把该条目写入系统剪贴板，供用户随后手动粘贴；不得在单击时自动向前台应用发送粘贴键。
+- 文件剪贴板必须按一个有序 file-list 条目保存和展示：单个文件、文件夹、多选文件、
+  Windows UNC / 重定向路径均保留原生路径语义；捕获时不得因暂时不可访问而丢弃，
+  用户执行复制/粘贴时再逐项校验。多选条目显示首项名称与总数量，并整体写回系统剪贴板。
 - 文本条目支持双击列表行或右侧预览进入编辑。编辑始终先进入本地草稿，默认不落库；草稿变化后灵动岛显示红色未保存提醒，并提供“保存”和“另存为新条目”。切换条目、按 Esc 退出编辑或离开模块时，未明确保存的修改直接丢弃。
 - 左侧日期分组标题是可点击的日期筛选入口；Popover 使用 Geist Calendar，支持本地时区下的单日或包含首尾日期的范围选择、月份与键盘导航，以及今天、最近 7 天、最近 30 天和全部日期预设。触发器在选择后保持显示已提交范围。
 - Esc → launcher；列表行不预留顶栏返回缩进。
@@ -960,7 +963,10 @@ new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date)
 
 - QxAI 内置供应商按 OpenRouter、DeepSeek 排序，OpenRouter 是默认供应商；内置供应商固定 API endpoint 和推荐模型，设置界面只要求用户填写对应 API Key。DuckDuckGo 不属于内置供应商目录。
 
-- 透明无边框主窗口在 macOS 和 Windows 上均使用系统原生窗口阴影；CSS 只保留画布内高光和边框，不在 WebView 边界内模拟窗口外阴影。Windows 由 Tauri/Tao 的 undecorated shadow 交给 DWM，macOS 由 AppKit `NSWindow` 绘制。
+- 透明无边框主窗口只在 macOS 使用 AppKit `NSWindow` 原生阴影。Windows 的 DWM
+  无边框阴影在 Windows 10、远程桌面及部分显卡环境会退化为不透明矩形黑边，因此宿主
+  必须关闭 Windows 原生 shadow，并由 WebView 画布的语义 border + inset highlight 保持
+  边界可辨；不得在 WebView 边界内模拟会被裁切的外阴影。
 - Tauri v2 通信使用 `@tauri-apps/api/core` 的 `invoke`。
 - 文件路径展示必须通过 `convertFileSrc()`，禁止直接拼 `file://`。
 - 系统监控使用 Mach 内核 API，不使用 `sysinfo` crate。

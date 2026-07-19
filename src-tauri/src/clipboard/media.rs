@@ -312,11 +312,16 @@ pub async fn clipboard_file_media_probe(path: String) -> Result<ClipboardFileMet
 }
 
 #[cfg(target_os = "macos")]
-fn write_file_to_clipboard(path: &Path) -> Result<(), String> {
-    let script = "on run argv\nset the clipboard to POSIX file (item 1 of argv)\nend run";
+fn write_file_paths_to_clipboard(paths: &[PathBuf]) -> Result<(), String> {
+    let script = if paths.len() == 1 {
+        // Preserve the established Finder-compatible single-file path.
+        "on run argv\nset the clipboard to POSIX file (item 1 of argv)\nend run"
+    } else {
+        "on run argv\nset fileList to {}\nrepeat with itemPath in argv\nset end of fileList to POSIX file (itemPath as text)\nend repeat\nset the clipboard to fileList\nend run"
+    };
     let status = std::process::Command::new("osascript")
         .args(["-e", script, "--"])
-        .arg(path)
+        .args(paths)
         .status()
         .map_err(|e| format!("write file clipboard: {e}"))?;
     status
@@ -331,17 +336,29 @@ pub(crate) fn write_file_path_to_clipboard(path: &Path) -> Result<(), String> {
     if !path.exists() {
         return Err("the generated file no longer exists".to_string());
     }
-    write_file_to_clipboard(path)
+    write_file_paths_to_clipboard(&[path.to_path_buf()])
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn write_file_to_clipboard(_path: &Path) -> Result<(), String> {
+fn write_file_paths_to_clipboard(_paths: &[PathBuf]) -> Result<(), String> {
     Err("file clipboard is currently supported on macOS".to_string())
 }
 
 #[cfg(target_os = "windows")]
-fn write_file_to_clipboard(path: &Path) -> Result<(), String> {
+fn encode_windows_file_list(paths: &[PathBuf]) -> Vec<u16> {
     use std::os::windows::ffi::OsStrExt;
+
+    let mut wide = Vec::<u16>::new();
+    for path in paths {
+        wide.extend(path.as_os_str().encode_wide());
+        wide.push(0);
+    }
+    wide.push(0);
+    wide
+}
+
+#[cfg(target_os = "windows")]
+fn write_file_paths_to_clipboard(paths: &[PathBuf]) -> Result<(), String> {
     use windows_sys::Win32::Foundation::GlobalFree;
     use windows_sys::Win32::System::DataExchange::{
         CloseClipboard, EmptyClipboard, OpenClipboard, SetClipboardData,
@@ -352,9 +369,10 @@ fn write_file_to_clipboard(path: &Path) -> Result<(), String> {
     use windows_sys::Win32::UI::Shell::DROPFILES;
 
     const CF_HDROP: u32 = 15;
-    let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
-    wide.push(0);
-    wide.push(0);
+    if paths.is_empty() {
+        return Err("Windows file clipboard list is empty".to_string());
+    }
+    let wide = encode_windows_file_list(paths);
     let header_size = std::mem::size_of::<DROPFILES>();
     let total_size = header_size + wide.len() * std::mem::size_of::<u16>();
 
@@ -382,7 +400,15 @@ fn write_file_to_clipboard(path: &Path) -> Result<(), String> {
         );
         GlobalUnlock(allocation);
 
-        if OpenClipboard(std::ptr::null_mut()) == 0 {
+        let mut opened = false;
+        for _ in 0..10 {
+            if OpenClipboard(std::ptr::null_mut()) != 0 {
+                opened = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        if !opened {
             GlobalFree(allocation);
             return Err("open Windows clipboard failed".to_string());
         }
@@ -402,13 +428,13 @@ pub fn write_clipboard_file_entry(
     state: tauri::State<'_, ClipboardDb>,
     id: String,
 ) -> Result<(), String> {
-    let (path, snapshot): (String, Option<String>) = {
+    let (primary, paths_json, snapshot): (String, Option<String>, Option<String>) = {
         let mut guard = lock_db(&state.0);
         let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
         conn.query_row(
-            "SELECT file_path, image_pasteboard_path FROM clipboard_history WHERE id = ?1 AND file_path IS NOT NULL",
+            "SELECT file_path, file_paths, image_pasteboard_path FROM clipboard_history WHERE id = ?1 AND file_path IS NOT NULL",
             params![id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         ).map_err(|e| format!("clipboard file entry not found: {e}"))?
     };
     if let Some(snapshot) = snapshot {
@@ -416,11 +442,18 @@ pub fn write_clipboard_file_entry(
             return Ok(());
         }
     }
-    let path = PathBuf::from(path);
-    if !path.exists() {
-        return Err("the original file no longer exists".to_string());
+    let paths = decode_stored_file_paths(paths_json.as_deref(), Some(&primary))
+        .into_iter()
+        .map(PathBuf::from)
+        .collect::<Vec<_>>();
+    let missing = paths.iter().find(|path| !path.exists());
+    if let Some(path) = missing {
+        return Err(format!(
+            "the original clipboard file no longer exists: {}",
+            path.to_string_lossy()
+        ));
     }
-    write_file_to_clipboard(&path)
+    write_file_paths_to_clipboard(&paths)
 }
 
 fn generated_media_dir() -> PathBuf {
@@ -431,12 +464,12 @@ fn generated_media_dir() -> PathBuf {
 }
 
 fn insert_generated_file(app: &AppHandle, path: &Path) -> Result<(), String> {
-    write_file_to_clipboard(path)?;
+    write_file_paths_to_clipboard(&[path.to_path_buf()])?;
     let path_string = path.to_string_lossy().to_string();
     let id = compute_id(&path_string);
     let snapshot = snapshot_current_pasteboard(&id);
     let state = app.state::<ClipboardDb>();
-    store(&state.0, "", None, snapshot.as_deref(), Some(&path_string));
+    store(&state.0, "", None, snapshot.as_deref(), Some(&path_string))?;
     let _ = app.emit("clipboard-updated", ());
     Ok(())
 }
@@ -640,4 +673,26 @@ fn is_supported_image_bytes(bytes: &[u8]) -> bool {
         || bytes.starts_with(b"GIF87a")
         || bytes.starts_with(b"GIF89a")
         || (bytes.len() >= 12 && &bytes[0..4] == b"RIFF" && &bytes[8..12] == b"WEBP")
+}
+
+#[cfg(all(test, target_os = "windows"))]
+mod windows_tests {
+    use super::encode_windows_file_list;
+    use std::path::PathBuf;
+
+    #[test]
+    fn hdrop_payload_keeps_every_path_and_ends_with_double_nul() {
+        let paths = [
+            PathBuf::from(r"C:\work\one.txt"),
+            PathBuf::from(r"D:\共享 folder\two.txt"),
+        ];
+        let encoded = encode_windows_file_list(&paths);
+        assert_eq!(encoded[encoded.len() - 2..], [0, 0]);
+        let decoded = encoded[..encoded.len() - 1]
+            .split(|value| *value == 0)
+            .filter(|part| !part.is_empty())
+            .map(String::from_utf16_lossy)
+            .collect::<Vec<_>>();
+        assert_eq!(decoded, [r"C:\work\one.txt", r"D:\共享 folder\two.txt"]);
+    }
 }

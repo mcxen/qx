@@ -26,6 +26,11 @@
 3. **所有关闭路径**应尽量走 Rust `floating_panel::hide*`，保证内部 `PANEL_OPEN` / `LAST_HIDE_AT` 一致。
 4. **Tauri managed state**（`RssDb`、`ClipboardDb`）在启动时**始终** `app.manage(...)`，不能因 DB open 失败而漏注册（否则前端会报 *state not managed* / 缺少 `.manage()`）。
 
+Windows 的透明无边框主窗口不使用 DWM 原生 shadow：它在 Windows 10、远程桌面和
+部分显卡组合下会退化成不透明矩形黑边。`floating_panel::install` 只在 Windows 调用
+`set_shadow(false)`；Qx WebView 自己的语义边框与内高光继续负责窗口边界，macOS 仍由
+AppKit 绘制 launcher 外阴影。
+
 ---
 
 ## 2. 浮动面板状态机（`floating_panel.rs`）

@@ -65,7 +65,7 @@ export function formatCopied(timestamp: string, locale: Locale, t: Translate): s
 }
 
 export function formatMeta(item: ClipboardEntry): string {
-  if (item.file_path) return item.file_path;
+  if (item.file_path) return clipboardFilePaths(item).join(" · ");
   if (item.image_path) return "Image";
   const lines = item.text.split(/\r?\n/).length;
   const count = item.text.length;
@@ -80,6 +80,22 @@ export function wordCount(text: string): number {
 }
 
 export type ClipboardFileKind = "image" | "video" | "audio" | "pdf" | "folder" | "file";
+
+export function clipboardFilePaths(item: ClipboardEntry): string[] {
+  if (item.file_paths?.length) return item.file_paths;
+  return item.file_path ? [item.file_path] : [];
+}
+
+export function clipboardPathName(path: string): string {
+  return path.split(/[/\\]/).pop() || path;
+}
+
+export function clipboardFileLabel(item: ClipboardEntry, t: Translate): string {
+  const paths = clipboardFilePaths(item);
+  const primary = clipboardPathName(paths[0] || item.file_path || "");
+  if (paths.length <= 1) return primary;
+  return `${primary} · ${t("clipboard.items", "{n} items").replace("{n}", String(paths.length))}`;
+}
 
 export function clipboardFileKind(path: string): ClipboardFileKind {
   const base = path.split(/[/\\]/).pop() || path;
@@ -98,6 +114,7 @@ export function contentType(item: ClipboardEntry, t: Translate): string {
   if (kind === "code") return t("clipboard.type.code", "Code");
   if (kind === "image") return t("clipboard.type.image", "Image");
   if (kind === "file" && item.file_path) {
+    if (clipboardFilePaths(item).length > 1) return t("clipboard.filter.file", "Files");
     const fileKind = item.file_kind || clipboardFileKind(item.file_path);
     if (fileKind === "image") return t("clipboard.type.image", "Image");
     if (fileKind === "video") return t("clipboard.type.video", "Video");
@@ -111,6 +128,6 @@ export function contentType(item: ClipboardEntry, t: Translate): string {
 
 export function matchesQuery(item: ClipboardEntry, q: string): boolean {
   if (!q) return true;
-  const haystack = `${item.text} ${item.file_path ?? ""} ${classify(item)} ${formatMeta(item)}`.toLowerCase();
+  const haystack = `${item.text} ${clipboardFilePaths(item).join(" ")} ${classify(item)} ${formatMeta(item)}`.toLowerCase();
   return q.split(/\s+/).every((token) => haystack.includes(token));
 }

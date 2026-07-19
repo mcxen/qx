@@ -479,6 +479,21 @@ pub fn install(app: &AppHandle) {
         let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
         macos::promote_main_to_panel(app);
     }
+    #[cfg(target_os = "windows")]
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        // DWM renders an opaque rectangular shadow for transparent,
+        // undecorated windows on some Windows / RDP combinations. Qx already
+        // owns its launcher outline and inset highlight in the WebView, so the
+        // native shadow only creates a second, mismatched frame.
+        if let Err(error) = win.set_shadow(false) {
+            crate::diagnostics::log(
+                crate::diagnostics::LogLevel::Warn,
+                "floating_panel",
+                "failed to disable the Windows native launcher shadow",
+                serde_json::json!({ "error": error.to_string() }),
+            );
+        }
+    }
     let _ = app; // suppress unused on non-macos
 }
 

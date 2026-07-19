@@ -94,8 +94,10 @@ useStore:
   - clipboardHistory: ClipboardEntry[]
 ```
 
-`ClipboardEntry` 对文件类条目同时保留 `file_path` 与稳定的 `file_kind`；`folder`
-不是普通文件的展示别名，必须从原生文件引用语义捕获并跨数据库/API 边界保留。
+`ClipboardEntry` 对文件类条目同时保留主项 `file_path`、有序 `file_paths` 与稳定的
+`file_kind`；`folder` 不是普通文件的展示别名，必须从原生文件引用语义捕获并跨
+数据库/API 边界保留。多选文件作为一个 file-list 条目保存和回写；旧库缺少
+`file_paths` 时由 `file_path` 在读取边界补齐。
 
 **插件注册中心 (`src/plugin/registry.ts`)**
 ```
@@ -184,7 +186,10 @@ tab = "plugin:*"   → PluginPanelViewport
 
 ### 4.2 剪贴板历史
 
-- Rust 端: `clipboard.rs` 负责监听、数据库和存储约束；`clipboard/history.rs`、`editing.rs`、`media.rs` 分别承载历史命令、文本编辑和文件媒体操作
+- Rust 端: `clipboard.rs` 负责监听、数据库和存储约束；`clipboard/native.rs` 隔离
+  NSPasteboard / Windows `CF_HDROP` 读取，`capture.rs` 负责“成功后提交序号”的重试游标，
+  `file_list.rs` 负责跨平台文件列表不变量；`history.rs`、`editing.rs`、`media.rs` 分别承载
+  历史命令、文本编辑和文件媒体/原生回写
 - SQLite 持久化: `clipboard.db`
 - 支持: 分类(link/code/long)、搜索、日期筛选、固定、计数、文本草稿编辑与另存
 - 交互: 单击 / 键盘选中只排队恢复条目，**主窗口失焦隐藏后再写入系统剪贴板**（避免 `record_clipboard_copy` 改 timestamp 导致列表在窗口仍打开时跳动）；显式 ⌘C 立即复制；双击文本进入草稿编辑；Enter 粘贴；⌘P 固定；⌘⌫ 删除

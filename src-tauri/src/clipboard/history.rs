@@ -11,7 +11,7 @@ pub fn get_clipboard_history(
     let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, text, timestamp, pinned, copy_count, image_path, file_path, file_kind
+            "SELECT id, text, timestamp, pinned, copy_count, image_path, file_path, file_paths, file_kind
              FROM clipboard_history
              ORDER BY pinned DESC, timestamp DESC
              LIMIT ?1",
@@ -19,6 +19,8 @@ pub fn get_clipboard_history(
         .map_err(|e| format!("{e}"))?;
     let rows = stmt
         .query_map(params![limit], |row| {
+            let file_path: Option<String> = row.get(6)?;
+            let file_paths_json: Option<String> = row.get(7)?;
             Ok(ClipboardEntry {
                 id: row.get(0)?,
                 text: row.get(1)?,
@@ -26,8 +28,12 @@ pub fn get_clipboard_history(
                 pinned: row.get::<_, i64>(3)? != 0,
                 copy_count: row.get(4)?,
                 image_path: row.get(5)?,
-                file_path: row.get(6)?,
-                file_kind: row.get(7)?,
+                file_paths: decode_stored_file_paths(
+                    file_paths_json.as_deref(),
+                    file_path.as_deref(),
+                ),
+                file_path,
+                file_kind: row.get(8)?,
             })
         })
         .map_err(|e| format!("{e}"))?;
@@ -43,8 +49,10 @@ pub fn read_clipboard_image_now(
     db: tauri::State<'_, ClipboardDb>,
 ) -> Result<Option<String>, String> {
     use tauri_plugin_clipboard_manager::ClipboardExt;
-    if current_pasteboard_file_path().is_some() {
-        return Ok(None);
+    match native::read_file_paths() {
+        Ok(paths) if !paths.is_empty() => return Ok(None),
+        Err(_) => return Ok(None),
+        Ok(_) => {}
     }
     match app.clipboard().read_image() {
         Ok(image) => {

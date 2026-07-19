@@ -33,6 +33,8 @@ export interface ClipboardEntry {
   copy_count: number;
   image_path?: string | null;
   file_path?: string | null;
+  /** Ordered native file clipboard payload; legacy rows fall back to file_path. */
+  file_paths?: string[];
   /** Stable kind captured with file clipboard semantics; avoids guessing folders from extensions. */
   file_kind?: "image" | "video" | "audio" | "pdf" | "folder" | "file" | null;
 }

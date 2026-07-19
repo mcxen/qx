@@ -1,5 +1,65 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Bugfix — Windows 文件与文件夹剪贴板完整链路
+
+**状态**：代码与跨平台协议已修复，等待 Windows Explorer / RDP 运行态复核。
+
+- Windows 原生读取从剪贴板核心拆到 `clipboard/native.rs`，一次枚举完整 `CF_HDROP`
+  文件列表并保留 UTF-16、UNC、空格与非 ASCII 路径；捕获时不再用 `exists()` 丢弃
+  重定向盘或暂时不可访问路径，文件夹由真实文件系统类型写入 `file_kind`。
+- 监听改为 250ms、当前剪贴板立即首读，并以 `CaptureCursor` 在读取/入库成功后才提交
+  `GetClipboardSequenceNumber`；Explorer、RDP 或安全软件短暂占用剪贴板时，同一个复制
+  事件会继续重试，不再失败一次后永久跳过。
+- 数据库新增兼容性 `file_paths` JSON 列；单文件保留原 ID 与 `file_path`，多选文件作为
+  一个有序历史项保存，前端显示首项与数量、搜索覆盖全部路径，重新复制时整体写回
+  Windows `CF_HDROP` / macOS 文件列表，并在使用时逐项验证是否仍存在。
+- 剪贴板核心已降到 1000 行以内；平台读取、重试游标、file-list 领域规则分别收口，
+  没有在前端或各命令重复解析 Win32 数据。
+
+### 验证
+
+- [x] `npx tsc --noEmit`、`npm run check` / `npm run build`、`cargo fmt --check`、
+  `cargo check`、`cargo test --lib`（82 tests，其中剪贴板定向 7 tests）。
+- [ ] Windows Compatibility：MSVC target check + NSIS bundle。
+- [ ] Windows 10/11/RDP：Explorer 分别复制文件、文件夹、多选、中文/空格路径、UNC 或
+  重定向盘路径；Qx 在 1 秒内显示，关闭 Qx 后粘贴到 Explorer 仍保留完整列表。
+
+## Bugfix — Windows 主窗口黑边与 Everything 后台搜索
+
+**状态**：已完成代码修复，等待 Windows 安装包运行态复核。
+
+- Windows 透明无边框主窗口关闭 DWM undecorated shadow，避免 Windows 10、远程桌面
+  和部分显卡环境出现右侧/底部不透明矩形黑边；Qx 语义边框和内高光继续保留。
+- Qx 随包 Everything 改用 `%LOCALAPPDATA%/Qx/search/Everything-Qx.ini` 私有配置，固定
+  后台运行、隐藏托盘、禁用启动更新检查且不请求管理员模式；移除会进入安装配置语义的
+  `-app-data`，不再把 Everything 搜索界面带到前台。
+- Qx 启动后主动探测命名实例 `Qx` 的 ES IPC；查询增加 1.5 秒 IPC timeout，成功的空结果
+  也会确认实例已就绪，缺少二进制、进程启动失败和 IPC 失败写入一次结构化诊断，避免
+  Launcher 只显示“未找到结果”却没有可定位原因。
+
+### 验证
+
+- [x] `npm run check` / `npm run build` / `cargo fmt --check` / `cargo check` /
+  `cargo test --lib`（76 tests）。
+- [ ] Windows Compatibility：MSVC target check 与真实 NSIS bundle。
+- [ ] Windows 10/11/RDP：窗口无矩形黑边；任务管理器可见 Qx 私有 Everything 后台进程，
+  但没有搜索窗口、控制台或托盘图标；All / Files 输入短词和中文文件名均能返回结果。
+
+## Bugfix — Windows RSS 旧数据库升级顺序
+
+**状态**：已修复，等待 Windows 旧库运行态复核。
+
+- RSS schema 迁移改为事务内先创建基础表、再为旧 `rss_feeds` / `rss_articles` 补齐
+  `folder_id` / `reading_progress`，最后创建依赖索引，避免旧库启动时
+  `idx_feeds_folder` 提前引用不存在的列。
+- 新增 legacy schema 回归测试，覆盖旧数据保留、缺失列补齐、索引创建和重复迁移幂等。
+
+### 验证
+
+- [x] `cargo fmt --check`
+- [x] RSS storage 单元测试 + `cargo test --lib`（76 tests）+ `cargo check` + `npm run check`
+- [ ] Windows 使用报错旧 `rss.db` 启动并确认订阅、文章和目录保留。
+
 ## Fix — Windows 安装文件锁与主界面启动兼容性
 
 **状态**：已完成代码修复，等待 Windows 安装/升级运行态复核。

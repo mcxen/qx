@@ -43,9 +43,9 @@ fn ensure_column(
     Ok(())
 }
 
-pub fn open() -> rusqlite::Result<Connection> {
-    let conn = Connection::open(db_path())?;
-    conn.execute_batch(
+fn migrate_schema(conn: &mut Connection) -> rusqlite::Result<()> {
+    let transaction = conn.transaction()?;
+    transaction.execute_batch(
         "CREATE TABLE IF NOT EXISTS rss_folders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
@@ -78,30 +78,37 @@ pub fn open() -> rusqlite::Result<Connection> {
             reading_progress REAL NOT NULL DEFAULT 0,
             published_at INTEGER,
             created_at INTEGER NOT NULL
-        );
-        CREATE INDEX IF NOT EXISTS idx_articles_feed ON rss_articles(feed_id);
-        CREATE INDEX IF NOT EXISTS idx_articles_read ON rss_articles(is_read);
-        CREATE INDEX IF NOT EXISTS idx_feeds_folder ON rss_feeds(folder_id);",
+        );",
     )?;
-    // Migrate pre-folder databases.
+    // Old databases must gain columns before any index or query references them.
+    // CREATE TABLE IF NOT EXISTS does not alter an existing table.
     ensure_column(
-        &conn,
+        &transaction,
         "rss_feeds",
         "folder_id",
         "INTEGER REFERENCES rss_folders(id) ON DELETE SET NULL",
     )?;
     ensure_column(
-        &conn,
+        &transaction,
         "rss_articles",
         "reading_progress",
         "REAL NOT NULL DEFAULT 0",
     )?;
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS rss_meta (
+    transaction.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_articles_feed ON rss_articles(feed_id);
+        CREATE INDEX IF NOT EXISTS idx_articles_read ON rss_articles(is_read);
+        CREATE INDEX IF NOT EXISTS idx_feeds_folder ON rss_feeds(folder_id);
+        CREATE TABLE IF NOT EXISTS rss_meta (
             key TEXT PRIMARY KEY NOT NULL,
             value TEXT NOT NULL
         );",
     )?;
+    transaction.commit()
+}
+
+pub fn open() -> rusqlite::Result<Connection> {
+    let mut conn = Connection::open(db_path())?;
+    migrate_schema(&mut conn)?;
     // First-open (or first upgrade) default catalog. INSERT OR IGNORE — safe if
     // the user already added the same URL. Flag prevents re-adding after delete.
     seed_default_catalog_if_needed(&conn)?;
@@ -649,6 +656,72 @@ pub fn delete_all_articles(conn: &Connection) -> rusqlite::Result<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_schema_adds_columns_before_dependent_indexes() {
+        let mut conn = Connection::open_in_memory().expect("open legacy rss db");
+        conn.execute_batch(
+            "CREATE TABLE rss_feeds (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT NOT NULL UNIQUE,
+                title TEXT,
+                icon TEXT,
+                last_fetched INTEGER,
+                error_count INTEGER DEFAULT 0,
+                created_at INTEGER NOT NULL
+            );
+            CREATE TABLE rss_articles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                feed_id INTEGER NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE,
+                guid TEXT NOT NULL UNIQUE,
+                title TEXT,
+                summary TEXT,
+                content TEXT,
+                author TEXT,
+                link TEXT,
+                image_url TEXT,
+                is_read INTEGER DEFAULT 0,
+                is_starred INTEGER DEFAULT 0,
+                published_at INTEGER,
+                created_at INTEGER NOT NULL
+            );
+            INSERT INTO rss_feeds (url, title, created_at)
+            VALUES ('https://example.com/feed.xml', 'Legacy feed', 1);
+            INSERT INTO rss_articles (feed_id, guid, title, created_at)
+            VALUES (1, 'legacy-guid', 'Legacy article', 1);",
+        )
+        .expect("create legacy schema");
+
+        migrate_schema(&mut conn).expect("upgrade legacy schema");
+        // Re-running startup migrations must also remain safe.
+        migrate_schema(&mut conn).expect("repeat schema migration");
+
+        let folder_id: Option<i64> = conn
+            .query_row("SELECT folder_id FROM rss_feeds WHERE id = 1", [], |row| {
+                row.get(0)
+            })
+            .expect("read migrated folder column");
+        assert_eq!(folder_id, None);
+
+        let reading_progress: f64 = conn
+            .query_row(
+                "SELECT reading_progress FROM rss_articles WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read migrated progress column");
+        assert_eq!(reading_progress, 0.0);
+
+        let folder_index_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master
+                 WHERE type = 'index' AND name = 'idx_feeds_folder'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read migrated folder index");
+        assert_eq!(folder_index_count, 1);
+    }
 
     #[test]
     fn reading_progress_is_clamped_and_persisted() {
