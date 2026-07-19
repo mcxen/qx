@@ -385,18 +385,24 @@ Run the smallest useful verification set for the change:
 - Frontend build/theme/bundling: `npm run build`.
 - Rust formatting: `cargo fmt --check` in `src-tauri/`.
 - Rust compile: `cargo check` in `src-tauri/`.
-- Windows-sensitive Rust changes: confirm the `Windows Compatibility` Action
-  passes both `cargo check --target x86_64-pc-windows-msvc` and the real Tauri
-  NSIS bundle build. A local macOS `cargo check` is not Windows verification.
+- Windows-sensitive Rust changes: push the change and confirm once that the
+  `Windows Compatibility` Action was triggered; it covers both
+  `cargo check --target x86_64-pc-windows-msvc` and the real Tauri NSIS bundle
+  build. A local macOS `cargo check` is not Windows verification, and an
+  in-progress Action must be reported as pending rather than passing.
 - Native control scan when UI controls change: `rg '<select|type="range"|type="checkbox"|type="radio"' src`.
 
 Record any skipped validation and why.
 
-When a push touches Rust, Tauri configuration, dependencies, clipboard behavior,
-system information, RSS, filesystem handling, or workflows, inspect the Windows
-Action through completion. If it fails, read the failing job logs, fix the first
-root compiler/packager error, push, and monitor the replacement run. Do not report
-Windows compatibility based only on workflow dispatch or an in-progress job.
+**Do not wait for GitHub Windows builds.** After a push, inspect at most one
+status snapshot to confirm the workflow URL and current state, then return
+control to the user. Never run `gh run watch`, repeated `gh run view/list`
+polling, sleep loops, or any equivalent synchronous monitoring for Windows
+compilation or NSIS packaging. If the user later asks about a completed failure,
+read that run's logs, fix the first root compiler/packager error, push, and again
+take only one status snapshot. This no-watching rule also applies to replacement
+runs and release workflows; do not claim success until a later snapshot actually
+shows completion.
 
 ## Release Checklist
 
