@@ -2,7 +2,7 @@
 
 ## Release fix — Windows quality-gate esbuild invocation
 
-**状态**：两层 Windows runner 根因已修复，准备随 v0.6.2 发布。
+**状态**：三层 Windows runner 根因已修复，准备随 v0.6.3 发布。
 
 - v0.6.0 的 macOS bundle 已成功，但 Windows runner 在进入 Rust / NSIS 前被
   `npm run check` 阻断：两个检查器把 `node_modules/.bin/esbuild.cmd` 直接交给
@@ -16,12 +16,18 @@
   平台假设：字符串切片只匹配 LF，而 GitHub Windows checkout 使用 CRLF，导致
   `runtime.ts` 的 iframe context 被误报为不存在。所有结构检查现在统一从 `read`
   文本端口接收规范化 LF，并以同一 runtime source 的 LF/CRLF 结果做等价回归。
+- v0.6.2 已在 Windows 通过架构门禁、前端构建、Rust 格式与 MSVC `cargo check`；
+  真实 `cargo test` 随后发现 updater tests 把 macOS `.app` / `ditto` / `xattr`
+  文件操作无条件放到 Windows 执行，并让 legacy manifest fixture 只声明 macOS 资源。
+  manifest 选择测试现按当前 `UPDATE_PLATFORM` / `UPDATE_TARGET` 在双端执行；只有三个
+  真实 macOS bundle 文件操作测试使用 `cfg(target_os = "macos")`，Windows updater 与
+  其余跨平台测试继续在 runner 真实运行。
 
 ### 验证
 
 - [x] `npm run check` / `npx tsc --noEmit` / `npm run build`
-- [x] `cargo fmt --check` / `cargo check` / `cargo test --lib`（100 tests）
-- [ ] Windows Compatibility / v0.6.2 release workflow
+- [x] `cargo fmt --check` / `cargo check` / `cargo test --lib`（macOS 100 tests）
+- [ ] Windows Compatibility / v0.6.3 release workflow
 
 ## Audit/Fix — 插件跨平台端口、屏幕捕获性能与 Windows 主窗口缩放
 

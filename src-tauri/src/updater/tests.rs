@@ -1,6 +1,9 @@
 use super::*;
+#[cfg(target_os = "macos")]
 use std::fs;
+#[cfg(target_os = "macos")]
 use std::net::TcpListener;
+#[cfg(target_os = "macos")]
 use std::thread;
 
 #[test]
@@ -13,18 +16,18 @@ fn compares_semver_like_versions() {
 
 #[test]
 fn resolves_release_asset_from_latest_manifest() {
+    let asset_name = default_asset_name("0.5.3");
+    let asset_url = format!("https://github.com/mcxen/qx/releases/download/v0.5.3/{asset_name}");
     let info = update_info_from_manifest(
         "0.4.48",
         QxUpdateManifest {
             version: "0.5.3".to_string(),
             tag: "v0.5.3".to_string(),
-            platform: "macos".to_string(),
+            platform: UPDATE_PLATFORM.to_string(),
             target: UPDATE_TARGET.to_string(),
-            asset_name: "qx_v0.5.3_aarch64-apple-darwin.app.zip".to_string(),
-            asset_url: "https://github.com/mcxen/qx/releases/download/v0.5.3/qx_v0.5.3_aarch64-apple-darwin.app.zip".to_string(),
-            sha256:
-                "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
-                    .to_string(),
+            asset_name: asset_name.clone(),
+            asset_url: asset_url.clone(),
+            sha256: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string(),
             size: Some(200),
             artifacts: Vec::new(),
         },
@@ -33,25 +36,21 @@ fn resolves_release_asset_from_latest_manifest() {
 
     assert!(info.available);
     assert_eq!(info.latest_version.as_deref(), Some("0.5.3"));
-    assert_eq!(
-        info.asset_name.as_deref(),
-        Some("qx_v0.5.3_aarch64-apple-darwin.app.zip")
-    );
-    assert_eq!(
-        info.asset_url.as_deref(),
-        Some("https://github.com/mcxen/qx/releases/download/v0.5.3/qx_v0.5.3_aarch64-apple-darwin.app.zip")
-    );
+    assert_eq!(info.asset_name.as_deref(), Some(asset_name.as_str()));
+    assert_eq!(info.asset_url.as_deref(), Some(asset_url.as_str()));
     assert_eq!(info.size, Some(200));
 }
 
 #[test]
 fn constructs_versioned_asset_url_when_manifest_omits_it() {
+    let asset_name = default_asset_name("0.5.3");
+    let expected_url = format!("https://github.com/mcxen/qx/releases/download/v0.5.3/{asset_name}");
     let info = update_info_from_manifest(
         "0.5.3",
         QxUpdateManifest {
             version: "0.5.3".to_string(),
             tag: String::new(),
-            platform: "macos".to_string(),
+            platform: UPDATE_PLATFORM.to_string(),
             target: UPDATE_TARGET.to_string(),
             asset_name: String::new(),
             asset_url: String::new(),
@@ -62,10 +61,7 @@ fn constructs_versioned_asset_url_when_manifest_omits_it() {
     )
     .expect("manifest defaults should resolve");
 
-    assert_eq!(
-        info.asset_url.as_deref(),
-        Some("https://github.com/mcxen/qx/releases/download/v0.5.3/qx_v0.5.3_aarch64-apple-darwin.app.zip")
-    );
+    assert_eq!(info.asset_url.as_deref(), Some(expected_url.as_str()));
 }
 
 #[test]
@@ -128,6 +124,7 @@ fn rejects_non_qx_release_asset_url() {
 }
 
 #[test]
+#[cfg(target_os = "macos")]
 fn prepares_app_bundle_for_launch() {
     let root = unique_temp_dir("qx-updater-test");
     let app = root.join("Qx.app");
@@ -165,6 +162,7 @@ fn prepares_app_bundle_for_launch() {
 }
 
 #[test]
+#[cfg(target_os = "macos")]
 fn replaces_app_bundle_and_prepares_target_for_launch() {
     let root = unique_temp_dir("qx-updater-replace-test");
     let staged = root.join("staged/Qx.app");
@@ -214,6 +212,7 @@ fn replaces_app_bundle_and_prepares_target_for_launch() {
 }
 
 #[test]
+#[cfg(target_os = "macos")]
 fn downloads_verifies_and_stages_app_zip() {
     let root = unique_temp_dir("qx-updater-download-test");
     let source_app = root.join("source/Qx.app");
@@ -243,6 +242,7 @@ fn downloads_verifies_and_stages_app_zip() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[cfg(target_os = "macos")]
 fn write_fake_app_bundle(app: &Path, executable_contents: &[u8]) -> PathBuf {
     let macos_dir = app.join("Contents/MacOS");
     fs::create_dir_all(&macos_dir).expect("create app dirs");
@@ -264,6 +264,7 @@ fn write_fake_app_bundle(app: &Path, executable_contents: &[u8]) -> PathBuf {
     executable
 }
 
+#[cfg(target_os = "macos")]
 fn serve_once(body: Vec<u8>) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
     let addr = listener.local_addr().expect("local addr");
@@ -282,6 +283,7 @@ fn serve_once(body: Vec<u8>) -> String {
     format!("http://{addr}/Qx.app.zip")
 }
 
+#[cfg(target_os = "macos")]
 fn unique_temp_dir(prefix: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("{prefix}-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
