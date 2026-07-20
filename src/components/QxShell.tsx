@@ -1,5 +1,6 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { type BottomIslandContent } from "./QxBottomIsland";
 import ShellActionButton, { type QxShellAction } from "./ShellActionButton";
 import ShellActionMenu, {
@@ -11,6 +12,7 @@ import {
   type QxShellNavigation,
 } from "../hooks/useQxShellNavigation";
 import {
+  getQxDesktopPlatform,
   getQxShortcutPreset,
   isImeCompositionEvent,
   isEditableTarget,
@@ -33,6 +35,35 @@ import { useT } from "../i18n";
 
 export type { BottomIslandContent } from "./QxBottomIsland";
 export type { QxShellAction } from "./ShellActionButton";
+
+type ResizeDirection =
+  | "East"
+  | "North"
+  | "NorthEast"
+  | "NorthWest"
+  | "South"
+  | "SouthEast"
+  | "SouthWest"
+  | "West";
+
+const WINDOW_RESIZE_HANDLES: Array<{
+  direction: ResizeDirection;
+  className: string;
+}> = [
+  { direction: "North", className: "edge-top" },
+  { direction: "NorthEast", className: "corner-top-right" },
+  { direction: "East", className: "edge-right" },
+  { direction: "SouthEast", className: "corner-bottom-right" },
+  { direction: "South", className: "edge-bottom" },
+  { direction: "SouthWest", className: "corner-bottom-left" },
+  { direction: "West", className: "edge-left" },
+  { direction: "NorthWest", className: "corner-top-left" },
+];
+
+// Tauri/tao maps this API to WM_NCLBUTTONDOWN on Windows. macOS explicitly
+// reports it as unsupported, so Cocoa/NSPanel must retain its native resizable
+// edge hit testing instead of having a WebView overlay consume the pointer.
+const USE_EXPLICIT_WINDOW_RESIZE_HANDLES = getQxDesktopPlatform() === "windows";
 
 interface QxShellProps {
   title: string;
@@ -191,7 +222,16 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   useEffect(() => {
     if (!hasSearch) return;
     let timer: ReturnType<typeof window.setTimeout> | undefined;
-    const onPointerUp = () => {
+    const onPointerUp = (event: PointerEvent) => {
+      // Some controls temporarily own keyboard input (for example the global
+      // shortcut recorder). Their click must not schedule the ordinary
+      // "search is home" restore after the control has focused itself.
+      const preservesFocus = event.composedPath().some(
+        (target) =>
+          target instanceof Element
+          && target.matches('[data-qx-search-focus="preserve"]'),
+      );
+      if (preservesFocus) return;
       if (timer) window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         const root = shellRef.current;
@@ -665,6 +705,16 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     searchGlowTimers.current.set(wrap, nextTimer);
   };
 
+  const startWindowResize = (
+    event: React.PointerEvent<HTMLDivElement>,
+    direction: ResizeDirection,
+  ) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void getCurrentWindow().startResizeDragging(direction).catch(() => {});
+  };
+
   return (
     <div
       ref={assignShellRef}
@@ -678,10 +728,16 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       onPointerDownCapture={handleRegionPointerCapture}
       tabIndex={0}
     >
-      <div className="qx-shell-drag-edge edge-top" data-tauri-drag-region aria-hidden="true" />
-      <div className="qx-shell-drag-edge edge-right" data-tauri-drag-region aria-hidden="true" />
-      <div className="qx-shell-drag-edge edge-bottom" data-tauri-drag-region aria-hidden="true" />
-      <div className="qx-shell-drag-edge edge-left" data-tauri-drag-region aria-hidden="true" />
+      {USE_EXPLICIT_WINDOW_RESIZE_HANDLES
+        ? WINDOW_RESIZE_HANDLES.map(({ direction, className: handleClass }) => (
+            <div
+              key={direction}
+              className={`qx-shell-resize-handle ${handleClass}`}
+              aria-hidden="true"
+              onPointerDown={(event) => startWindowResize(event, direction)}
+            />
+          ))
+        : null}
 
       <div
         className={`qx-shell-topbar${hasLeading ? "" : " no-leading"}`}

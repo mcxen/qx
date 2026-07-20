@@ -142,6 +142,7 @@ pub struct PickerStatus {
 pub struct GifEntry {
     pub id: i64,
     pub path: String,
+    pub thumbnail_path: Option<String>,
     pub width: u32,
     pub height: u32,
     pub frame_count: u32,
@@ -192,6 +193,7 @@ pub(super) struct RecordingState {
 #[derive(Debug)]
 pub(super) struct RecordingOutput {
     pub(super) path: PathBuf,
+    pub(super) thumbnail_path: Option<PathBuf>,
     pub(super) width: u32,
     pub(super) height: u32,
     pub(super) frame_count: u32,

@@ -91,9 +91,12 @@ pub(crate) fn validate_cli_program_name(program: &str) -> Result<(), String> {
 }
 
 fn path_sep() -> char {
-    if cfg!(windows) {
-        ';'
-    } else {
+    #[cfg(windows)]
+    {
+        return ';';
+    }
+    #[cfg(not(windows))]
+    {
         ':'
     }
 }
@@ -144,6 +147,11 @@ fn known_cli_bin_dirs() -> Vec<PathBuf> {
     }
     #[cfg(target_os = "windows")]
     {
+        if let Some(system_root) = crate::windows_process::system_root() {
+            dirs.push(system_root.join("System32"));
+            dirs.push(system_root.join("System32\\WindowsPowerShell\\v1.0"));
+            dirs.push(system_root);
+        }
         if let Ok(pf) = std::env::var("ProgramFiles") {
             dirs.push(PathBuf::from(&pf).join("Git\\cmd"));
             dirs.push(PathBuf::from(&pf).join("Git\\bin"));
@@ -163,8 +171,6 @@ fn known_cli_bin_dirs() -> Vec<PathBuf> {
             dirs.push(PathBuf::from(&user).join("scoop\\shims"));
             dirs.push(PathBuf::from(&user).join("AppData\\Roaming\\npm"));
         }
-        dirs.push(PathBuf::from(r"C:\Windows\System32"));
-        dirs.push(PathBuf::from(r"C:\Windows"));
     }
     dirs
 }
@@ -210,17 +216,23 @@ fn login_shell_path() -> Option<String> {
             #[cfg(windows)]
             {
                 // Machine + User PATH from the registry is closer to an interactive shell
-                // than the truncated GUI process env.
-                let mut child = std::process::Command::new("powershell")
+                // than the truncated GUI process env. Resolve Windows PowerShell
+                // from SystemRoot first because the very PATH being repaired may
+                // not yet contain its standard installation directory.
+                let mut command =
+                    std::process::Command::new(crate::windows_process::powershell_binary());
+                command
                     .args([
                         "-NoProfile",
                         "-NonInteractive",
                         "-Command",
-                        "[Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')",
+                        "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')",
                     ])
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::null())
-                    .stdin(std::process::Stdio::null())
+                    .stdin(std::process::Stdio::null());
+                configure_child_process_group(&mut command);
+                let mut child = command
                     .spawn()
                     .ok()?;
                 let start = Instant::now();
@@ -241,7 +253,7 @@ fn login_shell_path() -> Option<String> {
                 if !output.status.success() {
                     return None;
                 }
-                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let path = String::from_utf8(output.stdout).ok()?.trim().to_string();
                 (!path.is_empty()).then_some(path)
             }
             #[cfg(not(any(unix, windows)))]
@@ -379,7 +391,7 @@ pub(crate) fn resolve_bash_binary() -> Result<PathBuf, String> {
             return Ok(path);
         }
         Err(
-            "bash not found — install Git for Windows or add bash to PATH for context.cli.bash"
+            "Git Bash was not found. Install Git for Windows with `winget install --id Git.Git -e`, or download it from https://gitforwindows.org/. Then restart Qx so the GUI process receives the updated PATH. Plugins that do not require POSIX syntax should use context.cli.run with argv instead."
                 .to_string(),
         )
     }
@@ -673,8 +685,8 @@ fn configure_child_process_group(cmd: &mut Command) {
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP);
+        use windows_sys::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW};
+        cmd.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
     }
 }
 
@@ -686,11 +698,15 @@ fn kill_child_tree(child: &mut Child) {
     }
     #[cfg(windows)]
     {
-        let _ = Command::new("taskkill.exe")
+        use std::os::windows::process::CommandExt;
+        use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+        let mut taskkill = Command::new(crate::windows_process::taskkill_binary());
+        taskkill
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .status();
+            .creation_flags(CREATE_NO_WINDOW);
+        let _ = taskkill.status();
     }
     let _ = child.kill();
     let _ = child.wait();

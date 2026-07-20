@@ -82,20 +82,27 @@ export function eventToBinding(event: KeyboardEvent): ShortcutBinding | null {
   return { key: parts.join("+"), enabled: true };
 }
 
-async function pauseGlobalShortcuts() {
-  try {
-    await invoke("shortcuts_pause_global");
-  } catch {
-    // best-effort (browser / tests)
-  }
+let shortcutRegistrationQueue: Promise<void> = Promise.resolve();
+
+function queueShortcutRegistration(command: "shortcuts_pause_global" | "shortcuts_resume_global") {
+  const next = shortcutRegistrationQueue.then(async () => {
+    try {
+      await invoke(command);
+    } catch {
+      // Best effort in browser/tests. Keep the queue alive so a later resume
+      // cannot be skipped after one unavailable invoke.
+    }
+  });
+  shortcutRegistrationQueue = next.catch(() => {});
+  return next;
 }
 
-async function resumeGlobalShortcuts() {
-  try {
-    await invoke("shortcuts_resume_global");
-  } catch {
-    // best-effort
-  }
+function pauseGlobalShortcuts() {
+  return queueShortcutRegistration("shortcuts_pause_global");
+}
+
+function resumeGlobalShortcuts() {
+  return queueShortcutRegistration("shortcuts_resume_global");
 }
 
 export default function ShortcutRecorder({
@@ -178,11 +185,27 @@ export default function ShortcutRecorder({
       }
     };
 
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && !containerRef.current?.contains(target)) {
+        stopRecording(true);
+      }
+    };
+
+    // Cancel only when the whole WebView loses focus. A child button blur is
+    // not sufficient on Windows because pressing Alt can move DOM focus while
+    // the user is still entering a valid global chord.
+    const onWindowBlur = () => stopRecording(true);
+
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("keyup", onKeyUp, true);
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("blur", onWindowBlur);
     return () => {
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("keyup", onKeyUp, true);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("blur", onWindowBlur);
       // If unmounted mid-record (navigate away), restore hotkeys.
       if (recordingRef.current) {
         recordingRef.current = false;
@@ -193,24 +216,18 @@ export default function ShortcutRecorder({
   }, [recording]);
 
   return (
-    <div ref={containerRef} className="qx-shortcut-recorder">
+    <div
+      ref={containerRef}
+      className="qx-shortcut-recorder"
+      data-qx-search-focus="preserve"
+      data-qx-shortcut-recording={recording ? "true" : undefined}
+    >
       <button
         type="button"
         className={`qx-shortcut-recorder-button${recording ? " is-recording" : ""}${conflict ? " has-conflict" : ""}`}
         onClick={() => {
           if (recording) return;
           startRecording();
-        }}
-        onBlur={(event) => {
-          // Don't cancel when focus moves to the cancel (x) control.
-          const next = event.relatedTarget;
-          if (next instanceof Node && containerRef.current?.contains(next)) return;
-          // Delay slightly so key chords that briefly steal focus still commit.
-          window.setTimeout(() => {
-            if (recordingRef.current && !containerRef.current?.contains(document.activeElement)) {
-              stopRecording(true);
-            }
-          }, 120);
         }}
       >
         {recording ? heldPreview : formatQxShortcut(initial) || "None"}

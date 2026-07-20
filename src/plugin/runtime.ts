@@ -27,7 +27,6 @@ import {
   type PanelRuntimeSession,
 } from "./pluginShellBridge";
 import { createSandboxIframe, resolvePluginAssetUrl } from "./pluginRuntimeTransport";
-
 export {
   isExpectedPluginMessageOrigin,
   isPluginRuntimeSource,
@@ -42,7 +41,6 @@ export {
   type PluginChromePayload,
   type PluginItemActionDescriptor,
 } from "./pluginShellBridge";
-
 export { resolvePluginAssetUrl } from "./pluginRuntimeTransport";
 let requestCounter = 0;
 const runtimeLogger = createQxLogger("plugin.runtime");
@@ -493,6 +491,7 @@ export function buildPluginRuntimeHtml(
           env: () => rpc('systemEnv'),
           openPath: (path) => rpc('systemOpenPath', { path: String(path || '') }),
           revealPath: (path) => rpc('systemRevealPath', { path: String(path || '') }),
+          openSettings: (section) => rpc('systemOpenSettings', { section: String(section || '') }),
           setWallpaper: (path, options = {}) => rpc('systemSetWallpaper', { path: String(path || ''), scope: options && options.scope }),
           stats: async () => {
             const raw = await rpc('invoke', { cmd: 'get_system_stats', args: {} }) || {};
@@ -522,6 +521,7 @@ export function buildPluginRuntimeHtml(
           info: () => rpc('invoke', { cmd: 'qx_system_information_check_system_info', args: {} }),
           storage: () => rpc('invoke', { cmd: 'qx_system_information_check_storage', args: {} }),
           network: () => rpc('invoke', { cmd: 'qx_system_information_check_network', args: {} }),
+          power: () => rpc('invoke', { cmd: 'qx_system_monitor_power', args: {} }),
           qxStorageOverview: () => rpc('invoke', { cmd: 'qx_storage_overview', args: {} }),
           processes: {
             list: () => rpc('invoke', { cmd: 'qx_system_information_list_processes', args: {} }),

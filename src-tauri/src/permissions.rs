@@ -113,11 +113,16 @@ fn permission(
 
 #[cfg(target_os = "macos")]
 fn open_settings_url(url: &str) -> Result<(), String> {
-    std::process::Command::new("open")
+    crate::floating_panel::set_external_interaction_active(true);
+    let result = std::process::Command::new("open")
         .arg(url)
         .spawn()
-        .map_err(|e| format!("open System Settings: {e}"))?;
-    Ok(())
+        .map(|_| ())
+        .map_err(|e| format!("open System Settings: {e}"));
+    if result.is_err() {
+        crate::floating_panel::set_external_interaction_active(false);
+    }
+    result
 }
 
 /// Probe Full Disk Access by listing a TCC-protected directory.
@@ -234,7 +239,17 @@ fn all_permission_statuses() -> Vec<MacPermissionStatus> {
 pub fn qx_permissions_status() -> Result<Vec<MacPermissionStatus>, String> {
     #[cfg(target_os = "macos")]
     {
-        Ok(all_permission_statuses())
+        let statuses = all_permission_statuses();
+        if statuses
+            .iter()
+            .any(|status| status.id == "full-disk-access" && status.granted)
+        {
+            // The startup index deliberately stays Spotlight-only until FDA is
+            // available. A successful poll is the stable hand-off that starts
+            // the complete Home index without requiring an app restart.
+            crate::file_search::refresh_platform_permissions();
+        }
+        Ok(statuses)
     }
 
     #[cfg(not(target_os = "macos"))]

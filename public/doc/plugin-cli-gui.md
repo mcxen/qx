@@ -1,10 +1,12 @@
-# CLI → GUI：把命令行产品化成 Qx 插件
+# Workbench：把结构化业务能力产品化成 Qx 插件
 
 > 配套：[`plugin-cli-protocol.md`](./plugin-cli-protocol.md)（spawn 协议）·
 > [`plugin-development-guide.md`](./plugin-development-guide.md)（作者手册）·
 > 示例插件：`public/plugins/cli-workbench`
 
-目标：用户在 Terminal 里用的工具（`brew`、`kubectl`、内部 release-cli、`jq` 管道…）在 Qx 里变成 **可搜索、可点选、可确认** 的界面，而不是再开黑窗。
+目标：把 CLI、HTTP 或宿主系统 API 返回的结构化数据变成 **可搜索、可点选、可确认**
+的 Qx 界面。Workbench 不是 CLI 专用壳；CLI 只是其中一种数据源。Sysinfo 这类完全不
+依赖 shell 的模块同样复用 List / Detail / tabs / Actions。
 
 ---
 
@@ -20,18 +22,18 @@
 └──────────────────────┬──────────────────────┘
                        │ context.cli.json / lines / ensure
 ┌──────────────────────▼──────────────────────┐
-│  CLI 解析层：JSON / 行 / 失败即抛              │  宿主注入
+│  数据适配层：CLI / HTTP / context.system       │  宿主端口
 └──────────────────────┬──────────────────────┘
                        │ context.cli.run / bash / which
 ┌──────────────────────▼──────────────────────┐
-│  进程层：login PATH · timeout · argv/bash     │  Rust
+│  平台层：进程 / 网络 / macOS·Windows API       │  Rust
 └─────────────────────────────────────────────┘
 ```
 
 | 层 | 职责 | 不要做 |
 |----|------|--------|
-| **进程** | 找到二进制、跑起来、超时 | 在插件里猜 OS 路径 |
-| **解析** | stdout → JSON / 行 / 文本，统一错误 | 到处 `JSON.parse` + 手写 exit 检查 |
+| **平台** | 进程、网络、系统信息、设置入口的 OS 适配 | 在插件里猜 OS 路径、PowerShell 或 AppKit URL |
+| **数据** | CLI stdout、HTTP 或 typed system model → 领域数据 | 到处 `JSON.parse` + 手写 exit 检查 |
 | **UI kit** | 列表 + 详情壳、转义、KV/JSON 展示 | 每插件复制 200 行 CSS |
 | **业务** | 领域模型、危险操作 confirm、偏好 | 阻塞 `panel.render` |
 
@@ -262,16 +264,20 @@ await context.cli.ensure({ program: "brew", args: ["upgrade", name] });
 
 | Tab | 展示 |
 |-----|------|
-| JSON demo | `jsonBash` 产出对象数组 → 列表 + KV/JSON 详情 |
-| JSONL | 多行 JSON → 列表 |
-| Lines | 纯文本行 |
-| System | `which` + `text` 看 PATH 是否找得到 brew/node |
-| Custom | 读 preferences 里的 program/args，自动尝试 JSON 否则按行 |
+| JSON demo | `cli.json` 通过 argv 进程产出对象数组 → 列表 + KV/JSON 详情 |
+| JSONL | `cli.json({ jsonl: true })` 解析多行 JSON |
+| Lines | `cli.lines` 解析纯文本行 |
+| System | `which` + `text` 看 PATH 是否找得到 PowerShell/bash/brew/node |
+| Custom | 读 preferences 里的 program/args；留空时按 Windows / POSIX 选择平台默认命令，自动尝试 JSON 否则按行 |
 
 命令：
 
-- **Demo: CLI JSON toast** — 无界面，验证 `jsonBash` 链路
+- **Demo: CLI JSON toast** — 无界面，验证跨平台 `cli.json` argv 链路
 - **CLI Workbench** — 引导打开 panel
+
+示例本身不要求 Bash：Windows 使用 PATH 中的 PowerShell，macOS/Linux 使用
+`printf`。`jsonBash` 仍适合明确依赖 Git Bash 或 POSIX shell 的插件，但不应成为
+声明 Windows 支持的入门示例的必需条件。
 
 本地试跑：把目录拷到 `~/.qx/plugins/cli-workbench/` 或 zip 后 **Import**。
 
@@ -289,10 +295,14 @@ await context.cli.ensure({ program: "brew", args: ["upgrade", name] });
 
 ---
 
-## 7. 与 Brew 市场插件的关系
+## 7. 市场插件参考
 
-- **brew**：完整业务（install/upgrade/search），自绘 CSS
-- **cli-workbench**：教学向，演示 **宿主 kit** 如何少写样板
-- 新业务插件建议：**解析用 `cli.json/ensure`，UI 用 `ui.mountWorkbench`，业务状态自己管**
+- **brew**：CLI 数据源，使用宿主 Workbench List + Detail 呈现
+- **sysinfo**：`context.system.*` typed 数据源，复用 Overview / Storage / Network /
+  Processes tabs、List / Detail 与确认式 Actions；证明 Workbench 不依赖 CLI
+- **cli-workbench**：教学向，演示 argv / JSON / JSONL / Lines 与宿主 UI kit
+- 新业务插件建议：**数据源走最窄的 `context.*` 端口，UI 用
+  `ui.mountWorkbench`，业务状态由插件持有**
 
-市场级复杂插件仍可自绘；kit 保证「十分钟可跑通」的下限体验一致。
+复杂图表、地图、画布等确有自定义布局需求时仍可使用 custom panel；标准列表、
+Gallery、详情和 Actions 应优先复用 Workbench，避免重复实现 shell、焦点和跨平台样式。

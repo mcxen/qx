@@ -69,6 +69,7 @@ const ScreenRecorder = lazy(() => import("./modules/screencap/ScreenRecorder"));
 const DevTxtTool = lazy(() => import("./modules/documents/DevTxtTool"));
 const SettingsPanel = lazy(() => import("./modules/settings/SettingsPanel"));
 const OnboardingWizard = lazy(() => import("./modules/onboarding/OnboardingWizard"));
+const MACOS_PERMISSION_ONBOARDING_VERSION = 1;
 const RssReader = lazy(() => import("./modules/rss"));
 const V2exPanel = lazy(() => import("./modules/v2ex/V2exPanel"));
 const G4fReader = lazy(() => import("./modules/qx-ai"));
@@ -1266,7 +1267,12 @@ function App() {
       startupWindowRestoredRef.current = true;
       setTab("launcher");
       const needsOnboarding =
-        getQxDesktopPlatform() === "macos" && !currentSettings.general.has_completed_onboarding;
+        getQxDesktopPlatform() === "macos"
+        && (
+          !currentSettings.general.has_completed_onboarding
+          || currentSettings.general.permission_onboarding_version
+            < MACOS_PERMISSION_ONBOARDING_VERSION
+        );
       const shouldShowFirstLaunch =
         (!currentSettings.general.has_shown_launcher && !hasSavedSize) || needsOnboarding;
       if (!currentSettings.general.has_shown_launcher) {
@@ -1277,11 +1283,19 @@ function App() {
         await useSettingsStore.getState().flush();
       }
       // Non-macOS: mark onboarding complete so the flag stays meaningful.
-      if (getQxDesktopPlatform() !== "macos" && !currentSettings.general.has_completed_onboarding) {
+      if (
+        getQxDesktopPlatform() !== "macos"
+        && (
+          !currentSettings.general.has_completed_onboarding
+          || currentSettings.general.permission_onboarding_version
+            < MACOS_PERMISSION_ONBOARDING_VERSION
+        )
+      ) {
         const g = useSettingsStore.getState().settings.general;
         useSettingsStore.getState().patch("general", {
           ...g,
           has_completed_onboarding: true,
+          permission_onboarding_version: MACOS_PERMISSION_ONBOARDING_VERSION,
         });
         await useSettingsStore.getState().flush();
       }
@@ -2204,6 +2218,7 @@ function App() {
     useSettingsStore.getState().patch("general", {
       ...general,
       has_completed_onboarding: true,
+      permission_onboarding_version: MACOS_PERMISSION_ONBOARDING_VERSION,
     });
     await useSettingsStore.getState().flush();
     await invoke("floating_set_onboarding_active", { active: false }).catch(() => {});

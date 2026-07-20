@@ -64,6 +64,20 @@ pub(super) fn crop_physical(
     monitor_width: u32,
     monitor_height: u32,
 ) -> image::RgbaImage {
+    let (x, y, width, height) = physical_crop_bounds(frame, area, monitor_width, monitor_height);
+    if width == frame.width() && height == frame.height() && x == 0 && y == 0 {
+        frame.clone()
+    } else {
+        image::imageops::crop_imm(frame, x, y, width, height).to_image()
+    }
+}
+
+fn physical_crop_bounds(
+    frame: &image::RgbaImage,
+    area: &RecordArea,
+    monitor_width: u32,
+    monitor_height: u32,
+) -> (u32, u32, u32, u32) {
     let frame_width = frame.width().max(1);
     let frame_height = frame.height().max(1);
     let scale_x = frame_width as f64 / monitor_width.max(1) as f64;
@@ -76,17 +90,41 @@ pub(super) fn crop_physical(
     y = y.min(frame_height.saturating_sub(2));
     width = width.min(frame_width.saturating_sub(x)).max(2) & !1;
     height = height.min(frame_height.saturating_sub(y)).max(2) & !1;
-    if width == frame_width && height == frame_height && x == 0 && y == 0 {
-        frame.clone()
-    } else {
-        image::imageops::crop_imm(frame, x, y, width, height).to_image()
+    (x, y, width, height)
+}
+
+/// Copy a stream-frame crop into one session-owned image. WGC and the macOS
+/// recorder deliver full-display RGBA frames even for a selected region; this
+/// avoids allocating and freeing the region buffer at the requested frame rate.
+pub(super) fn crop_physical_into<'a>(
+    scratch: &'a mut image::RgbaImage,
+    frame: &image::RgbaImage,
+    area: &RecordArea,
+    monitor_width: u32,
+    monitor_height: u32,
+) -> &'a image::RgbaImage {
+    let (x, y, width, height) = physical_crop_bounds(frame, area, monitor_width, monitor_height);
+    if scratch.dimensions() != (width, height) {
+        *scratch = image::RgbaImage::new(width, height);
     }
+    let source_stride = frame.width() as usize * 4;
+    let target_stride = width as usize * 4;
+    let source = frame.as_raw();
+    let target = scratch.as_mut();
+    for row in 0..height as usize {
+        let source_start = (y as usize + row) * source_stride + x as usize * 4;
+        let target_start = row * target_stride;
+        target[target_start..target_start + target_stride]
+            .copy_from_slice(&source[source_start..source_start + target_stride]);
+    }
+    scratch
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        capture_coordinate_scale, clamp_area, covers_full_display, crop_physical, physical_frame,
+        capture_coordinate_scale, clamp_area, covers_full_display, crop_physical,
+        crop_physical_into, physical_frame,
     };
     use crate::screencap::RecordArea;
 
@@ -146,6 +184,27 @@ mod tests {
         };
         let cropped = crop_physical(&frame, &area, 100, 50);
         assert_eq!((cropped.width(), cropped.height()), (80, 40));
+    }
+
+    #[test]
+    fn recording_crop_reuses_its_session_buffer() {
+        let mut frame = image::RgbaImage::from_pixel(8, 4, image::Rgba([1, 2, 3, 255]));
+        frame.put_pixel(2, 0, image::Rgba([9, 8, 7, 255]));
+        let area = RecordArea {
+            x: 2,
+            y: 0,
+            w: 4,
+            h: 4,
+            monitor_id: None,
+        };
+        let mut scratch = image::RgbaImage::new(0, 0);
+        let first = crop_physical_into(&mut scratch, &frame, &area, 8, 4);
+        assert_eq!(first.dimensions(), (4, 4));
+        assert_eq!(first.get_pixel(0, 0), &image::Rgba([9, 8, 7, 255]));
+        let allocation = first.as_raw().as_ptr();
+
+        let second = crop_physical_into(&mut scratch, &frame, &area, 8, 4);
+        assert_eq!(second.as_raw().as_ptr(), allocation);
     }
 
     #[test]

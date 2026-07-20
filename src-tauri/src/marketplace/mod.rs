@@ -150,6 +150,17 @@ fn default_entry() -> String {
     "index.js".to_string()
 }
 
+fn validate_manifest_platforms(platforms: &[String]) -> Result<(), String> {
+    for platform in platforms {
+        if !matches!(platform.as_str(), "macos" | "windows" | "linux") {
+            return Err(format!(
+                "unsupported manifest platform: {platform}; expected macos, windows, or linux"
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginIndexEntry {
     pub id: String,
@@ -1289,6 +1300,7 @@ fn install_plugin_archive(
         return Err("manifest.id is empty".to_string());
     }
     let plugin_id = validate_plugin_id(&manifest.id)?;
+    validate_manifest_platforms(&manifest.platforms)?;
 
     // Durable data lives outside the package tree when possible; always stash
     // before wiping the install dir so upgrades do not erase preferences/KV/files.
@@ -1981,6 +1993,14 @@ mod tests {
     use super::*;
 
     const RAYCAST_SYSTEM_INFORMATION_URL: &str = "https://github.com/raycast/extensions/tree/888d04008da11340e0a0fa98b32dde4465a33e72/extensions/system-information";
+
+    #[test]
+    fn manifest_platforms_are_closed_and_portable() {
+        assert!(validate_manifest_platforms(&[]).is_ok());
+        assert!(validate_manifest_platforms(&["macos".to_string(), "windows".to_string()]).is_ok());
+        assert!(validate_manifest_platforms(&["darwin".to_string()]).is_err());
+        assert!(validate_manifest_platforms(&["win32".to_string()]).is_err());
+    }
 
     #[test]
     fn parses_raycast_tree_url() {

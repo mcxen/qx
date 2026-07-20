@@ -14,11 +14,43 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{
+    image::Image,
     menu::{Menu, MenuItem, PredefinedMenuItem},
     AppHandle, Emitter, Wry,
 };
 
 pub const MAIN_TRAY_ID: &str = "qx-main-tray";
+
+/// Platform-specific tray artwork.
+///
+/// macOS recolors an alpha template for the current menu-bar appearance.
+/// Windows does not implement template tinting, so feeding it the dark
+/// monochrome asset makes Qx disappear on a dark taskbar. Use the colored
+/// application artwork there and scale it once to the notification-area size.
+pub fn tray_icon() -> Result<Image<'static>, String> {
+    #[cfg(target_os = "windows")]
+    let bytes = include_bytes!("../icons/icon.png").as_slice();
+    #[cfg(not(target_os = "windows"))]
+    let bytes = include_bytes!("../icons/tray-template.png").as_slice();
+
+    let rgba = image::load_from_memory(bytes)
+        .map_err(|error| format!("decode tray icon: {error}"))?
+        .into_rgba8();
+    #[cfg(target_os = "windows")]
+    let rgba = image::imageops::resize(&rgba, 32, 32, image::imageops::FilterType::Lanczos3);
+    let (width, height) = rgba.dimensions();
+    Ok(Image::new_owned(rgba.into_raw(), width, height))
+}
+
+#[cfg(target_os = "macos")]
+pub const fn tray_icon_is_template() -> bool {
+    true
+}
+
+#[cfg(not(target_os = "macos"))]
+pub const fn tray_icon_is_template() -> bool {
+    false
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

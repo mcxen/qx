@@ -14,15 +14,15 @@
       "id": "customProgram",
       "label": "Custom program",
       "type": "string",
-      "default": "uname",
-      "description": "Bare name or absolute path for the Custom tab."
+      "default": "",
+      "description": "Bare name or absolute path for the Custom tab. Leave blank for the platform default."
     },
     {
       "id": "customArgs",
       "label": "Custom args (space-separated)",
       "type": "string",
-      "default": "-a",
-      "description": "Arguments passed to custom program when not using JSON mode."
+      "default": "",
+      "description": "Arguments passed to the custom program. Leave blank with the platform default."
     }
   ],
   "commands": [
@@ -35,7 +35,7 @@
     {
       "name": "demo-json-toast",
       "title": "Demo: CLI JSON toast",
-      "description": "Run a sample bash script that prints JSON and toast the count"
+      "description": "Run a portable argv command that prints JSON and toast the count"
     }
   ],
   "panel": {

@@ -1,5 +1,109 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Audit/Fix — 插件跨平台端口、屏幕捕获性能与 Windows 主窗口缩放
+
+**状态**：宿主端口审计与根因修复完成，macOS release 已实测，等待 Windows 运行态复核。
+
+- `manifest.platforms` 从展示元数据提升为运行时执行边界：运行态以 Rust
+  `plugin_system_env` 返回的原生平台为准，bridge 失败时对声明了平台的插件
+  fail-closed；不匹配当前宿主的平台仍在 Settings 可管理，但不再加载 iframe、
+  commands/panel、后台 interval 或全局快捷键。
+- `min_app_version` 改为 fail-closed：宿主版本 bridge 失败时不会放行声明了最低版本的
+  插件；正式 / unavailable / iframe 三套 `context.*` 方法叶子新增自动同构门禁，HTTP
+  二进制响应类型补齐 `arrayBuffer()` / `blob()`。
+- 已逐项审计 `qx-plugins-clone` 的 9 个第一方市场插件：macOS / Windows 平台声明、
+  顶层 `context.*` 权限和字面量 Rust invoke 权限均与实现匹配；模块端口门禁现会持续
+  核对 direct / unavailable / iframe / RPC 方法集合、RPC handler、Tauri command
+  注册、manifest/export command 与 panel 同构、市场插件 invoke wrapper 权限和
+  mac-only command 平台约束。`public/plugins` 参考实现也纳入同一门禁。
+- CLI Workbench 参考插件不再声明 Windows 支持却强制依赖 Bash：Windows 使用
+  PowerShell argv，macOS/Linux 使用 `printf`，JSON/JSONL/Lines 均走跨平台
+  `cli.json` / `cli.lines`。插件文件端口同时识别 `/` 与 `\` 虚拟路径分隔符，
+  `~\Pictures\...` 不再在 macOS/Windows 间产生不同语义。
+- `context.system.env()` 新增语义明确的 `dirSep` 与 `pathListSep`，旧 `pathSep`
+  保留为 PATH 列表分隔符兼容别名，避免 Windows 插件把 `;` 错当成目录分隔符。
+  Windows CLI 从 `SystemRoot` 解析系统 PowerShell 和 system bins，不再依赖 GUI
+  进程恰好继承完整 PATH，也不再假设系统安装在 `C:\Windows`。
+- Windows `context.system.openPath` 不再经过 `cmd /C start`，改用 UTF-16
+  `ShellExecuteW`，避免空格、中文与 shell 特殊字符被命令解释；AI Bash 缺少 Git Bash
+  时明确给出 `winget install --id Git.Git -e`、官网下载和重启 Qx 的处理方法，不再
+  错误回退到 `/bin/bash`。AI `rg` / `grep` 也统一复用 CLI PATH、
+  超时、进程树清理与 Windows `CREATE_NO_WINDOW`，Machine+User PATH 固定按 UTF-8 读取。
+- Windows PowerShell、Explorer 与 taskkill 统一收口到 `windows_process.rs`，从
+  `SystemRoot` 解析 inbox executable；通知、CLI、系统信息、路径揭示和文本工具箱不再
+  各自依赖 GUI PATH 或硬编码系统目录。新增 `context.system.openSettings(section)`
+  语义端口，macOS / Windows 的设置 URL 与 Shell API 继续留在 Rust 平台适配层。
+- `context.system.info/storage/network/networkCounters/power/processes` 补齐 typed
+  TypeScript model；系统信息统一返回 platform / architecture / os / total memory，
+  并保留旧 `macOS` 字段兼容。市场仓库新增 Sysinfo 插件，使用宿主 Workbench
+  Overview / Storage / Network / Processes，不依赖 Bash、自绘 DOM 或平台路径；
+  结束进程仍需精确 invoke 权限与输入 `YES` 确认。
+- 录屏 H.264 路径复用 RGB/YUV 整帧转换缓冲，消除每帧约两次大内存分配；截图在 picker
+  同步隐藏后只等待一个 compositor frame，并使用快速 PNG 压缩/固定 Sub filter。录屏
+  worker 改由 UI 隐藏完成后显式放行，移除 200ms 固定等待；帧率节流保留最新帧，Windows
+  连续流不可用时直接走 GDI 高频降级，并在整段录制中复用同一个 DC、DIB 与 RGBA
+  缓冲，避免每帧重建 WGC/D3D still-frame session 或 GDI 资源。WGC 初始化/流失败后
+  本进程后续 still-frame 直接走 GDI，MP4 时间轴从第一帧而非 WGC 初始化开始，避免
+  降级成功的视频仍带数秒空白开头。区域录制现复用 session-owned 裁剪图像，不再
+  每帧分配 region buffer；停止原生流前先释放 xcap 的零容量帧 receiver，使已阻塞的
+  WGC/AVCapture callback 能立即退出。Windows 原生流首帧等待从最坏 5 秒降到 2 秒，
+  已经收到过帧后的瞬时 stall 仍保留原有容错窗口。
+- 视频历史不再依赖 `<video preload="metadata">` 偶然绘制首帧：录制 worker 从首个
+  编码帧保留 640×400 以内的 PNG sidecar，历史数据库持久化 `thumbnail_path`，
+  Gallery/List/预览优先使用封面；旧视频再以 seek 兼容，删除时同步清理 sidecar。
+- macOS 未获 Full Disk Access 前文件搜索保持 Spotlight-only，不再后台遍历
+  Documents/Desktop 触发零散 TCC 授权；权限轮询首次确认 FDA 后无需重启即可启动完整
+  索引。权限引导增加 `permission_onboarding_version`，新安装或引导协议升级后只展示
+  一次；FDA 仍只能由用户在系统设置授予，且不绕过 SIP / 系统只读卷。
+- 系统权限页和原生文件/文件夹选择器进入统一 external-interaction 生命周期：操作期间
+  Qx 不因 blur、Esc 或点击窗口外隐藏，回到 Qx 后恢复正常 Esc 阶梯。RSS OPML 导入
+  在选取、取消和文件读取完成路径上均成对释放该状态。
+- Windows tray 看不清的根因是把 macOS 单色 template 图标及 template 标记复用于
+  Windows；现 Windows 使用 32×32 彩色非 template 图标，macOS 继续使用系统自动着色的
+  template 图标。
+- Workbench 架构复核结论：List / Gallery 是可扩展的结构化业务表面，不绑定 CLI；
+  市场 Sysinfo 已验证 typed 系统 API 数据源可直接复用 tabs/list/detail/Actions。
+  内置复杂 React 模块继续复用 `useQxListSelection` / `useQxMasterDetail` /
+  `QxShellAction`，不为“统一”而绕进 iframe RPC。
+- macOS 快捷键录制被 Settings 搜索框抢回焦点的根因是 QxShell 的 pointer-up
+  “搜索是键盘 home”策略晚于录制按钮聚焦执行；ShortcutRecorder 现通过统一
+  `data-qx-search-focus="preserve"` 临时持有焦点，录制期间不再强制聚焦搜索框，
+  完成/取消后仍恢复原 Shell 行为，并加入 shell-navigation 静态门禁。
+- Windows 无边框主窗口无法缩放的根因是 Shell 四条边缘被标记成 drag region，抢走
+  resize hit；同时 capability 只允许窗口移动，未允许 `start_resize_dragging` IPC。
+  现改为上下左右和四角八方向 `startResizeDragging` 手柄、显式授予
+  `core:window:allow-start-resize-dragging`，Top Bar 继续只负责移动。该 IPC 在
+  Tauri/tao macOS 后端明确 unsupported，因此手柄只在 Windows 渲染；macOS 继续使用
+  已实测可用的 Cocoa/NSPanel 原生窗口边缘，避免 WebView 覆盖层反而阻断缩放。
+
+### 验证
+
+- [x] `npm run check` / `npm run build`
+- [x] `cargo fmt --check` / `cargo check` / `cargo test --lib`（100 tests）
+- [x] 当前源码 macOS release：右下角拖动将无边框窗口从 882×508 调整到
+  1034×656，证明移除 macOS WebView IPC 手柄后 Cocoa/NSPanel 原生边缘仍可缩放；
+  2940×1912 PNG（1.81 MB）截图可正常保存。1660×1080、目标 24fps 的最终时间轴
+  回归生成 500 帧 / 20.985s（平均 23.82fps），运行中 UI 采样 23.2fps；Computer
+  Use 的停止点击到 picker 恢复完整观测上限为 1.37s（含 UI 状态捕获等待）。
+  `ffprobe` 确认 `start_time=0` 且文件可正常读取。
+- [x] Windows MSVC 源码检查：使用隔离的 Rust 1.96.0 工具链与 `cargo-xwin`
+  完成 `cargo xwin check --target x86_64-pc-windows-msvc`，并通过
+  `cargo xwin test --target x86_64-pc-windows-msvc --lib --no-run` 生成 Windows
+  单元测试可执行文件；Win32 依赖、Windows `cfg(test)` 与 Qx 本体均已完成 MSVC 链接。
+- [x] macOS 最新 Debug 包使用隔离配置实测“设置 → 快捷键 → 开始屏幕录制”：点击后
+  焦点稳定留在录制按钮，成功录入 `⌥⇧F12`，搜索框未获得焦点或写入字符；测试结束
+  已关闭隔离实例，不改动安装版快捷键。
+- [x] Sysinfo 1.0.0 通过 JS 语法与市场打包校验；归档只包含 manifest、入口、图标、
+  README、AGENTS.md，SHA-256 为
+  `e7b20c9ecd51b3eae8e0278e8ce700f820f0627b6f22d5c79f0efe462f1d4e37`。
+- [x] `Windows Compatibility` / release workflow 已加入 `npm run check`；Windows
+  runner 会额外检出公开的 `mcxen/qx-plugins` 第一方插件目录、真实执行
+  `cargo test --lib` 后再构建 NSIS，避免端口门禁只在本机运行或只检查 Qx 仓库内示例。
+- [ ] Windows Compatibility Action：真实 Windows runner 的 NSIS bundle build。
+- [ ] Windows 10/11：八个方向缩放主窗口；中文、空格、`&` 路径 `openPath`；mac-only
+  插件不创建 runtime/快捷键。
+- [ ] Windows：1080p 24/30fps 区域与全屏录制，截图首帧不含 picker，停止后文件可播放。
+
 ## Bugfix — Windows Everything 中文路径乱码
 
 **状态**：已完成代码修复，等待 Windows 10/11 安装包运行态复核。
@@ -26,10 +130,14 @@
 - 从用户提供的云月图中提取圆角图形并生成透明 1024×1024 应用图标资源；原版图标继续保留。
 - Appearance 新增原版 / 云月选择，配置持久化，并在启动、保存、导入与重置时统一应用。
 - 运行时应用/窗口图标与 tray 端口彻底隔离，`tray-template.png` 和菜单栏 / 系统托盘图标不变。
+- Windows 修正为同步写入窗口小图标与任务栏 / Alt+Tab 使用的大图标；此前仅设置
+  `ICON_SMALL` 且 Windows 进程分支为空实现，导致设置已保存但可见软件图标仍回退到安装包图标。
 
 ### 验证
 
 - [x] `npm run check` / `npm run build` / `cargo fmt --check` / `cargo check` / `cargo test --lib`（88 tests）
+- [x] 核对 Tauri 2.11 / tao 0.35 Windows 实现与 Win32 `WM_GETICON` / `WM_SETICON` 签名；
+  大图标复用 tao 持有的 `HICON`，避免悬空句柄。
 - [ ] macOS / Windows：切换与重启恢复正确；托盘图标保持不变。
 
 ## Fix — Qx Bing Wallpaper Windows 原生壁纸端口

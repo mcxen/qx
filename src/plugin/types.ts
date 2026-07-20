@@ -293,7 +293,12 @@ export interface PluginSystemEnv {
   arch: string;
   homeDir: string;
   tempDir: string;
+  /** @deprecated Compatibility alias for pathListSep. */
   pathSep: string;
+  /** Separator between entries in PATH-like environment variables (`;` or `:`). */
+  pathListSep: string;
+  /** Native directory separator (`\\` on Windows, `/` elsewhere). */
+  dirSep: string;
   exePath?: string | null;
 }
 
@@ -320,6 +325,68 @@ export interface PluginNetworkCounters {
   totalBytesIn: number;
   totalBytesOut: number;
   interfaces?: Array<{ name: string; bytesIn: number; bytesOut: number }>;
+}
+
+export type PluginSystemSettingsSection =
+  | "about"
+  | "display"
+  | "storage"
+  | "network"
+  | "power"
+  | "privacy"
+  | "apps";
+
+/** Cross-platform host identity. Legacy field names remain stable for plugins. */
+export interface PluginSystemInfo {
+  hostname: string;
+  chip: string;
+  memory: string;
+  memoryTotalBytes?: number;
+  platform?: string;
+  architecture?: string;
+  os?: string;
+  /** OS display label; older hosts serialize this property as `macOS` on both platforms. */
+  macOS: string;
+  kernel: string;
+  serialNumber: string;
+}
+
+export interface PluginStorageInfo {
+  total: string;
+  used: string;
+  free: string;
+  percentUsed: string;
+  summary: string;
+}
+
+export interface PluginNetworkInfo {
+  devices: Array<{ name: string; ip: string }>;
+  count: number;
+}
+
+export interface PluginPowerInfo {
+  batteryLevel: number | null;
+  isCharging: boolean;
+  fullyCharged: boolean;
+  source: string;
+  summary: string;
+}
+
+export interface PluginProcessInfo {
+  pid: number;
+  name: string;
+  cpu: number;
+  mem: number;
+}
+
+export interface PluginProcessList {
+  processes: PluginProcessInfo[];
+  count: number;
+}
+
+export interface PluginKillProcessResult {
+  success: boolean;
+  message: string;
 }
 
 export type PluginIslandTone = "neutral" | "success" | "warning" | "danger";
@@ -360,6 +427,12 @@ export interface PluginContext {
   };
   invoke: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;
   showToast: (msg: string) => void;
+  log: {
+    error: (message: string, fields?: Record<string, unknown>) => void;
+    warn: (message: string, fields?: Record<string, unknown>) => void;
+    info: (message: string, fields?: Record<string, unknown>) => void;
+    debug: (message: string, fields?: Record<string, unknown>) => void;
+  };
   prompt: (label: string, defaultValue?: string) => Promise<string | null>;
   openUrl: (url: string) => Promise<void>;
   getPreference: (id: string) => Promise<unknown>;
@@ -391,8 +464,13 @@ export interface PluginContext {
       ok: boolean;
       headers: Record<string, string>;
       body: string;
+      /** Raw response bytes encoded by the host; present for text and binary bodies. */
+      bodyBase64: string;
+      binary: boolean;
       text: () => Promise<string>;
       json: () => Promise<unknown>;
+      arrayBuffer: () => Promise<ArrayBuffer>;
+      blob: () => Promise<Blob>;
     }>;
   };
   /**
@@ -564,19 +642,22 @@ export interface PluginContext {
     openPath: (path: string) => Promise<void>;
     /** Reveal path in Finder / Explorer (permission `system`). */
     revealPath: (path: string) => Promise<void>;
+    /** Open a semantic System Settings destination without platform URI knowledge. */
+    openSettings: (section: PluginSystemSettingsSection) => Promise<void>;
     /** Set one local image as wallpaper through the host platform adapter. */
     setWallpaper: (path: string, options?: { scope?: "current" | "every" }) => Promise<void>;
     /** CPU / memory snapshot (permission `system-stats`). */
     stats: () => Promise<PluginSystemStats>;
     /** Raw interface byte counters (permission `system-info`). Diff for rates. */
     networkCounters: () => Promise<PluginNetworkCounters>;
-    info: () => Promise<unknown>;
-    storage: () => Promise<unknown>;
-    network: () => Promise<unknown>;
+    info: () => Promise<PluginSystemInfo>;
+    storage: () => Promise<PluginStorageInfo>;
+    network: () => Promise<PluginNetworkInfo>;
+    power: () => Promise<PluginPowerInfo>;
     qxStorageOverview: () => Promise<unknown>;
     processes: {
-      list: () => Promise<unknown>;
-      kill: (pid: number) => Promise<unknown>;
+      list: () => Promise<PluginProcessList>;
+      kill: (pid: number) => Promise<PluginKillProcessResult>;
     };
   };
   permissions: {

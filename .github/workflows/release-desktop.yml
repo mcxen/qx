@@ -41,6 +41,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout first-party plugin catalog
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/qx-plugins
+          path: qx-plugins-clone
+
       - name: Resolve release tag
         shell: bash
         run: |
@@ -69,6 +75,9 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm ci
+
+      - name: Check architecture and plugin ports
+        run: npm run check
 
       - name: Prepare bundled search tools
         run: npm run prepare:search-tools

@@ -52,6 +52,13 @@
 
 - 前后端：同一 Tauri command 在 macOS / Windows 返回**同一 JSON 形状**；差异收敛在 adapter 内部。
 - 插件 context：真实 context 与 `createUnavailableContext` 在方法集上对齐；不可用实现失败方式可预期（throw / reject），不默默 no-op 关键契约。
+- 插件 iframe context 与直接 / unavailable context 的全部方法叶子由
+  `check-module-ports` 做结构化对照；新增端口必须同时更新两条 runtime，不能只补类型。
+- 插件平台声明：`manifest.platforms` 是运行时执行边界，不只是市场展示信息。不匹配
+  当前宿主的平台仍可在 Settings 中管理，但不得创建 iframe、后台任务、全局快捷键、
+  command 或 panel。
+- `min_app_version` 同样是 fail-closed 执行边界：宿主版本读取失败时，仅未声明最低版本
+  的旧插件可以继续运行，不得把 bridge 异常当成放行新端口代码的理由。
 - Island Surface：`docked` / float 消费同一 `IslandSession` 语义，不因 placement 改变 action 含义。
 - HTTP / file / AppleScript 等 host 能力：版本升级只**扩展**字段（如 `bodyBase64`），不悄悄改成功路径语义。
 
@@ -118,6 +125,7 @@
 | 设置 / i18n | `settings-panel.md`, `src/i18n.ts` | I：按页拆分；D：文案依赖 key 而非组件内写死语言 |
 | IPC | `ipc-catalogue.md` | 契约单一事实来源 |
 | **系统能力** | `display.rs` · `desktop_windows.rs` · `media/` · `clipboard` · `runtime/` · FE `src/system/*` | S：发现/媒体/剪贴板/线程调度各管一责；D：feature 只依赖端口；禁止在 screencap/OCR 内复制 xcap 枚举 |
+| **Windows inbox 程序** | `windows_process.rs` | 从 `SystemRoot` 解析 PowerShell / Explorer / taskkill；GUI PATH 过薄时仍可用，feature 禁止各自硬编码 `C:\Windows` 或裸程序名 |
 | **Runtime 线程** | [runtime-threading.md](./runtime-threading.md) | UI 只在主线程；重活 `blocking`；async command 用 `runtime::ui` 一次事务 |
 
 ### 系统能力提升规则（与 AGENTS Module Decomposition 对齐）
@@ -128,12 +136,40 @@
 |---|---|---|
 | 显示器枚举与映射 | `display` | `display_list` / `src/system/display.ts` |
 | 顶层窗口清单与几何 | `desktop_windows` | `desktop_windows_list` / `src/system/desktopWindows.ts` |
-| 区域 still-frame 抓帧 | `display::capture_region` | 内部 API（工作流封装；Windows 后端降级只在 `display_windows`） |
+| 区域 still-frame / 录制降级抓帧 | `display::capture_region*` | 内部 API（工作流封装；Windows WGC still-frame 失败走 GDI，原生连续流失败后的高频轮询复用一个 GDI DC/DIB/RGBA session，避免逐帧重建 WGC/D3D 或 GDI 资源） |
 | 磁盘图写剪贴板 | `clipboard` | `clipboard_write_image_file` / `src/system/clipboard.ts` |
 | 视频/GIF 编解码 | `media/` | 既有 convert 命令 |
 | 主线程 UI / 后台算力 | `runtime/` | `runtime::ui` · `runtime::blocking` · `runtime::install`（见 runtime-threading.md） |
+| 系统信息 / 设置目的地 | `system_information` · `plugin_system` | `context.system.info/storage/network/power/stats/processes/openSettings`；插件只见同形数据和语义 section，不见 PowerShell / AppKit / `ms-settings:` |
 
 Feature（如 `screencap`）只保留：**session / 工作流 / 历史 / UI 语义**。旧名 `screencap_list_*` 可作为薄门面保留，新代码必须走系统命令。
+
+高频录屏路径必须复用固定尺寸的捕获与颜色转换缓冲区；禁止为每一帧重复分配 GDI
+bitmap、RGBA、RGB + YUV 整帧内存。按目标 FPS 等待时保留队列中的最新帧，不得先清空再等待下一次显示刷新；
+捕获 worker 由主线程完成 picker 隐藏后显式放行，禁止用固定启动 sleep 猜测 UI 时序。
+截图隐藏 picker 后只保留一个 compositor frame 的收敛窗口，并使用快速 PNG 编码设置；
+平台捕获与编码重活继续留在 blocking worker。
+录屏历史封面在捕获 worker 已持有首帧像素时一次性生成并持久化；History 不得依赖
+WebKit/WebView2 对本地 `<video preload="metadata">` 自动绘制首帧。旧记录可以保留
+浏览器 seek 降级，但新记录以 sidecar PNG 为稳定契约。
+
+### Workbench 的复用边界
+
+Workbench 是 **宿主呈现端口**，不是 CLI 专属控件。任何能表达为受控
+List/Gallery + Detail + Actions + tabs/search 的市场模块都应发布纯数据并复用它；
+Sysinfo、Brew、Unsplash 等业务只负责领域状态。插件信任边界仍留在
+`workbenchTypes.normalizePluginWorkbenchState`，宿主 Shell 负责样式、焦点、导航与
+Esc。内置 React 模块若需要更深的多层工作流，继续复用
+`useQxListSelection` / `useQxMasterDetail` / `QxShellAction`，不应为了“统一”绕进
+iframe RPC；两条路径共享的是端口语义和视觉令牌，而不是强制同一 runtime。
+
+### OS 模态交互
+
+系统隐私面板与文件选择器会暂时把焦点交给 OS。进入前通过
+`floating_set_external_interaction_active(true)` 挂起 blur auto-hide，主窗口重新
+获得焦点时由 native window event 自动清除；这比固定延时可靠，也保证操作完成后
+Esc / 外部点击恢复正常。macOS 未获 Full Disk Access 时文件索引保持 Spotlight-only，
+不得从后台遍历 Home 触发 Documents/Desktop 的零散 TCC 对话框。
 
 ## 6. 反模式（禁止）
 

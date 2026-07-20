@@ -31,6 +31,16 @@ Windows 的透明无边框主窗口不使用 DWM 原生 shadow：它在 Windows 
 `set_shadow(false)`；Qx WebView 自己的语义边框与内高光继续负责窗口边界，macOS 仍由
 AppKit 绘制 launcher 外阴影。
 
+无边框窗口的移动与缩放必须分开：Top Bar 的 `data-tauri-drag-region` 只负责移动。
+Windows 下，`QxShell` 最外沿由八方向 `startResizeDragging` 手柄负责缩放；不得把
+四条边缘再次标成 drag region，否则 WebView2 会优先开始移动窗口，表现为
+`resizable: true` 但鼠标无法拖动改变大小。Tauri/tao 在 macOS 对该 API 返回
+unsupported，因此 macOS 不渲染 WebView 手柄，继续使用 Cocoa/NSPanel 的原生可调整
+大小边缘，避免覆盖层吞掉原生命中。
+该调用还必须由 `src-tauri/capabilities/default.json` 显式授予
+`core:window:allow-start-resize-dragging`；`core:window:default` 和
+`allow-start-dragging` 都不包含缩放 IPC。
+
 ---
 
 ## 2. 浮动面板状态机（`floating_panel.rs`）
@@ -146,6 +156,14 @@ useEffect(() => {
 
 `navigate` 事件把 Rust emit 的 payload 设为 tab。**toggle_route 依赖 `ACTIVE_ROUTE` 与 UI tab 一致**；改 tab 名时两边一起改。
 
+### 3.3 快捷键录制器
+
+- 录制期间以 `Esc`、取消按钮或点击录制器外部作为取消入口；不得用录制按钮的
+  DOM `blur` 取消。Windows 按下 `Alt` 时可能短暂转移控件焦点，而截图/录屏默认键
+  正是 `Alt+Shift+S` / `Alt+G`，把 blur 当取消会导致主键永远无法录入。
+- `shortcuts_pause_global` 与 `shortcuts_resume_global` 必须严格串行。快速按键时也必须
+  保证先完成注销、再恢复注册，禁止异步竞态把所有全局热键留在注销状态。
+
 ---
 
 ## 4. 隐藏窗口的正确入口
@@ -255,6 +273,8 @@ pointer 交互结束后，若没有文本编辑器、选中文本或打开的 Di
 7. 任意界面使用 `toggle_launcher` → 隐藏时显示 Launcher 并聚焦搜索；再次按下隐藏。
 8. Windows 开启 PowerToys Run 后启动 Qx → Qx 仍有托盘与首启界面；默认
    `Ctrl+Alt+Space` 可召唤窗口。
+9. Windows 打开快捷键录制器，分别录入 `Alt+G`、`Alt+Shift+S` → 按下 Alt 时录制器
+   不取消，完整组合键可保存；保存后从其他应用触发应进入录屏/截图圈选。
 
 ---
 

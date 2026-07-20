@@ -11,7 +11,12 @@ pub struct QxSystemInfo {
     hostname: String,
     chip: String,
     memory: String,
+    memory_total_bytes: u64,
+    platform: String,
+    architecture: String,
+    os: String,
     #[serde(rename = "macOS")]
+    /// Deprecated display-name alias retained for existing plugins.
     mac_os: String,
     kernel: String,
     serial_number: String,
@@ -85,6 +90,7 @@ pub struct QxKillProcessResult {
     message: String,
 }
 
+#[cfg(not(target_os = "windows"))]
 fn command_output(program: &str, args: &[&str]) -> Result<String, String> {
     let mut command = Command::new(program);
     command.args(args);
@@ -104,16 +110,19 @@ fn command_output(program: &str, args: &[&str]) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+#[cfg(not(target_os = "windows"))]
 fn trim_local_hostname(hostname: String) -> String {
     hostname.trim().trim_end_matches(".local").to_string()
 }
 
+#[cfg(not(target_os = "windows"))]
 fn hostname() -> String {
     command_output("/bin/hostname", &[])
         .map(trim_local_hostname)
         .unwrap_or_else(|_| "Unknown".to_string())
 }
 
+#[cfg(not(target_os = "windows"))]
 fn sysctl_string(name: &str) -> Option<String> {
     command_output("/usr/sbin/sysctl", &["-n", name])
         .ok()
@@ -121,6 +130,7 @@ fn sysctl_string(name: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
+#[cfg(not(target_os = "windows"))]
 fn total_memory_bytes() -> u64 {
     sysctl_string("hw.memsize")
         .and_then(|s| s.parse::<u64>().ok())
@@ -131,12 +141,14 @@ fn format_gb(bytes: u64) -> String {
     format!("{:.2} GB", bytes as f64 / 1024.0 / 1024.0 / 1024.0)
 }
 
+#[cfg(not(target_os = "windows"))]
 fn macos_version() -> String {
     command_output("/usr/bin/sw_vers", &["-productVersion"])
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| "Unknown".to_string())
 }
 
+#[cfg(not(target_os = "windows"))]
 fn macos_name(version: &str) -> &'static str {
     match version.split('.').next().unwrap_or("") {
         "15" => "Sequoia",
@@ -149,6 +161,7 @@ fn macos_name(version: &str) -> &'static str {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 fn serial_number() -> String {
     let Ok(stdout) = command_output("/usr/sbin/system_profiler", &["SPHardwareDataType"]) else {
         return "Unable to retrieve".to_string();
@@ -165,16 +178,33 @@ fn serial_number() -> String {
 
 #[cfg(target_os = "windows")]
 fn powershell(script: &str) -> Result<String, String> {
-    command_output(
-        "powershell.exe",
-        &[
+    let program = crate::windows_process::powershell_binary();
+    let script = format!(
+        "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); {script}"
+    );
+    let mut command = Command::new(&program);
+    command
+        .args([
             "-NoLogo",
             "-NoProfile",
             "-NonInteractive",
             "-Command",
-            script,
-        ],
-    )
+            &script,
+        ])
+        .creation_flags(CREATE_NO_WINDOW);
+    let output = command
+        .output()
+        .map_err(|error| format!("run {}: {error}", program.display()))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!("{} exited with {}", program.display(), output.status)
+        } else {
+            stderr
+        });
+    }
+    String::from_utf8(output.stdout)
+        .map_err(|error| format!("decode Windows PowerShell output as UTF-8: {error}"))
 }
 
 fn check_system_info_blocking() -> Result<QxSystemInfo, String> {
@@ -183,6 +213,12 @@ fn check_system_info_blocking() -> Result<QxSystemInfo, String> {
         let raw = powershell("$cpu=(Get-CimInstance Win32_Processor|Select-Object -First 1 -ExpandProperty Name);$os=Get-CimInstance Win32_OperatingSystem;$bios=Get-CimInstance Win32_BIOS;[pscustomobject]@{chip=$cpu;memory=[uint64]$os.TotalVisibleMemorySize*1024;caption=$os.Caption;version=$os.Version;serial=$bios.SerialNumber}|ConvertTo-Json -Compress")?;
         let value: serde_json::Value = serde_json::from_str(raw.trim())
             .map_err(|e| format!("parse Windows system information: {e}"))?;
+        let memory_total_bytes = value["memory"].as_u64().unwrap_or(0);
+        let os = format!(
+            "{} ({})",
+            value["caption"].as_str().unwrap_or("Windows"),
+            value["version"].as_str().unwrap_or("Unknown")
+        );
         return Ok(QxSystemInfo {
             hostname: std::env::var("COMPUTERNAME").unwrap_or_else(|_| "Unknown".to_string()),
             chip: value["chip"]
@@ -190,12 +226,12 @@ fn check_system_info_blocking() -> Result<QxSystemInfo, String> {
                 .unwrap_or("Unknown")
                 .trim()
                 .to_string(),
-            memory: format_gb(value["memory"].as_u64().unwrap_or(0)),
-            mac_os: format!(
-                "{} ({})",
-                value["caption"].as_str().unwrap_or("Windows"),
-                value["version"].as_str().unwrap_or("Unknown")
-            ),
+            memory: format_gb(memory_total_bytes),
+            memory_total_bytes,
+            platform: "windows".to_string(),
+            architecture: std::env::consts::ARCH.to_string(),
+            os: os.clone(),
+            mac_os: os,
             kernel: value["version"].as_str().unwrap_or("Unknown").to_string(),
             serial_number: value["serial"]
                 .as_str()
@@ -205,22 +241,31 @@ fn check_system_info_blocking() -> Result<QxSystemInfo, String> {
         });
     }
 
-    let version = macos_version();
-    let kernel = command_output("/usr/bin/uname", &["-r"])
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|_| "Unknown".to_string());
-    let chip = sysctl_string("machdep.cpu.brand_string")
-        .or_else(|| sysctl_string("hw.model"))
-        .unwrap_or_else(|| "Unknown".to_string());
+    #[cfg(not(target_os = "windows"))]
+    {
+        let version = macos_version();
+        let kernel = command_output("/usr/bin/uname", &["-r"])
+            .map(|s| s.trim().to_string())
+            .unwrap_or_else(|_| "Unknown".to_string());
+        let chip = sysctl_string("machdep.cpu.brand_string")
+            .or_else(|| sysctl_string("hw.model"))
+            .unwrap_or_else(|| "Unknown".to_string());
 
-    Ok(QxSystemInfo {
-        hostname: hostname(),
-        chip,
-        memory: format_gb(total_memory_bytes()),
-        mac_os: format!("macOS {} ({})", macos_name(&version), version),
-        kernel,
-        serial_number: serial_number(),
-    })
+        let memory_total_bytes = total_memory_bytes();
+        let os = format!("macOS {} ({})", macos_name(&version), version);
+        Ok(QxSystemInfo {
+            hostname: hostname(),
+            chip,
+            memory: format_gb(memory_total_bytes),
+            memory_total_bytes,
+            platform: "macos".to_string(),
+            architecture: std::env::consts::ARCH.to_string(),
+            os: os.clone(),
+            mac_os: os,
+            kernel,
+            serial_number: serial_number(),
+        })
+    }
 }
 
 fn check_storage_blocking() -> Result<QxStorageInfo, String> {
@@ -249,43 +294,46 @@ fn check_storage_blocking() -> Result<QxStorageInfo, String> {
         });
     }
 
-    let stdout = command_output("/bin/df", &["-k", "/"])?;
-    let line = stdout
-        .lines()
-        .nth(1)
-        .ok_or_else(|| "df output did not include root volume".to_string())?;
-    let cols: Vec<&str> = line.split_whitespace().collect();
-    if cols.len() < 4 {
-        return Err("df output did not include storage columns".to_string());
-    }
-    let total = cols[1]
-        .parse::<u64>()
-        .map_err(|e| format!("parse total storage: {e}"))?
-        * 1024;
-    let used = cols[2]
-        .parse::<u64>()
-        .map_err(|e| format!("parse used storage: {e}"))?
-        * 1024;
-    let free = cols[3]
-        .parse::<u64>()
-        .map_err(|e| format!("parse free storage: {e}"))?
-        * 1024;
-    let percent = if total > 0 {
-        used as f64 / total as f64 * 100.0
-    } else {
-        0.0
-    };
-    let total_s = format_gb(total);
-    let used_s = format_gb(used);
-    let free_s = format_gb(free);
+    #[cfg(not(target_os = "windows"))]
+    {
+        let stdout = command_output("/bin/df", &["-k", "/"])?;
+        let line = stdout
+            .lines()
+            .nth(1)
+            .ok_or_else(|| "df output did not include root volume".to_string())?;
+        let cols: Vec<&str> = line.split_whitespace().collect();
+        if cols.len() < 4 {
+            return Err("df output did not include storage columns".to_string());
+        }
+        let total = cols[1]
+            .parse::<u64>()
+            .map_err(|e| format!("parse total storage: {e}"))?
+            * 1024;
+        let used = cols[2]
+            .parse::<u64>()
+            .map_err(|e| format!("parse used storage: {e}"))?
+            * 1024;
+        let free = cols[3]
+            .parse::<u64>()
+            .map_err(|e| format!("parse free storage: {e}"))?
+            * 1024;
+        let percent = if total > 0 {
+            used as f64 / total as f64 * 100.0
+        } else {
+            0.0
+        };
+        let total_s = format_gb(total);
+        let used_s = format_gb(used);
+        let free_s = format_gb(free);
 
-    Ok(QxStorageInfo {
-        total: total_s.clone(),
-        used: used_s.clone(),
-        free: free_s.clone(),
-        percent_used: format!("{percent:.2}%"),
-        summary: format!("{used_s} used of {total_s} ({free_s} available)"),
-    })
+        Ok(QxStorageInfo {
+            total: total_s.clone(),
+            used: used_s.clone(),
+            free: free_s.clone(),
+            percent_used: format!("{percent:.2}%"),
+            summary: format!("{used_s} used of {total_s} ({free_s} available)"),
+        })
+    }
 }
 
 fn check_network_blocking() -> Result<QxNetworkInfo, String> {
@@ -310,34 +358,37 @@ fn check_network_blocking() -> Result<QxNetworkInfo, String> {
         });
     }
 
-    let stdout = command_output("/sbin/ifconfig", &[])?;
-    let mut current_name = String::new();
-    let mut devices = Vec::new();
+    #[cfg(not(target_os = "windows"))]
+    {
+        let stdout = command_output("/sbin/ifconfig", &[])?;
+        let mut current_name = String::new();
+        let mut devices = Vec::new();
 
-    for line in stdout.lines() {
-        if !line.starts_with('\t') && !line.starts_with(' ') {
-            if let Some((name, _)) = line.split_once(':') {
-                current_name = name.to_string();
+        for line in stdout.lines() {
+            if !line.starts_with('\t') && !line.starts_with(' ') {
+                if let Some((name, _)) = line.split_once(':') {
+                    current_name = name.to_string();
+                }
+                continue;
             }
-            continue;
+            let trimmed = line.trim();
+            if !trimmed.starts_with("inet ") || current_name == "lo0" {
+                continue;
+            }
+            let parts: Vec<&str> = trimmed.split_whitespace().collect();
+            if parts.len() >= 2 && parts[1] != "127.0.0.1" {
+                devices.push(QxNetworkDevice {
+                    name: current_name.clone(),
+                    ip: parts[1].to_string(),
+                });
+            }
         }
-        let trimmed = line.trim();
-        if !trimmed.starts_with("inet ") || current_name == "lo0" {
-            continue;
-        }
-        let parts: Vec<&str> = trimmed.split_whitespace().collect();
-        if parts.len() >= 2 && parts[1] != "127.0.0.1" {
-            devices.push(QxNetworkDevice {
-                name: current_name.clone(),
-                ip: parts[1].to_string(),
-            });
-        }
-    }
 
-    Ok(QxNetworkInfo {
-        count: devices.len(),
-        devices,
-    })
+        Ok(QxNetworkInfo {
+            count: devices.len(),
+            devices,
+        })
+    }
 }
 
 fn network_counters_blocking() -> Result<QxNetworkCounters, String> {
@@ -371,39 +422,42 @@ fn network_counters_blocking() -> Result<QxNetworkCounters, String> {
         });
     }
 
-    let stdout = command_output("/usr/sbin/netstat", &["-ibn"])?;
-    let mut interfaces = Vec::new();
+    #[cfg(not(target_os = "windows"))]
+    {
+        let stdout = command_output("/usr/sbin/netstat", &["-ibn"])?;
+        let mut interfaces = Vec::new();
 
-    for line in stdout.lines().skip(1) {
-        let cols: Vec<&str> = line.split_whitespace().collect();
-        if cols.len() < 10 || cols[0] == "lo0" || cols[2] != "<Link#>" {
-            continue;
+        for line in stdout.lines().skip(1) {
+            let cols: Vec<&str> = line.split_whitespace().collect();
+            if cols.len() < 10 || cols[0] == "lo0" || cols[2] != "<Link#>" {
+                continue;
+            }
+            let bytes_in = cols.get(6).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+            let bytes_out = cols.get(9).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
+            if bytes_in == 0 && bytes_out == 0 {
+                continue;
+            }
+            interfaces.push(QxNetworkCounter {
+                name: cols[0].to_string(),
+                bytes_in,
+                bytes_out,
+            });
         }
-        let bytes_in = cols.get(6).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
-        let bytes_out = cols.get(9).and_then(|s| s.parse::<u64>().ok()).unwrap_or(0);
-        if bytes_in == 0 && bytes_out == 0 {
-            continue;
-        }
-        interfaces.push(QxNetworkCounter {
-            name: cols[0].to_string(),
-            bytes_in,
-            bytes_out,
+
+        interfaces.sort_by(|a, b| {
+            let a_total = a.bytes_in.saturating_add(a.bytes_out);
+            let b_total = b.bytes_in.saturating_add(b.bytes_out);
+            b_total.cmp(&a_total)
         });
+        let total_bytes_in = interfaces.iter().map(|item| item.bytes_in).sum();
+        let total_bytes_out = interfaces.iter().map(|item| item.bytes_out).sum();
+
+        Ok(QxNetworkCounters {
+            interfaces,
+            total_bytes_in,
+            total_bytes_out,
+        })
     }
-
-    interfaces.sort_by(|a, b| {
-        let a_total = a.bytes_in.saturating_add(a.bytes_out);
-        let b_total = b.bytes_in.saturating_add(b.bytes_out);
-        b_total.cmp(&a_total)
-    });
-    let total_bytes_in = interfaces.iter().map(|item| item.bytes_in).sum();
-    let total_bytes_out = interfaces.iter().map(|item| item.bytes_out).sum();
-
-    Ok(QxNetworkCounters {
-        interfaces,
-        total_bytes_in,
-        total_bytes_out,
-    })
 }
 
 fn power_blocking() -> Result<QxPowerInfo, String> {
@@ -477,37 +531,40 @@ fn list_processes_blocking() -> Result<QxProcessList, String> {
         });
     }
 
-    let stdout = command_output("/bin/ps", &["-axo", "pid=,pcpu=,pmem=,comm="])?;
-    let mut processes = Vec::new();
-    for line in stdout.lines() {
-        let mut parts = line.trim().split_whitespace();
-        let Some(pid) = parts.next().and_then(|s| s.parse::<u32>().ok()) else {
-            continue;
-        };
-        let cpu = parts
-            .next()
-            .and_then(|s| s.parse::<f32>().ok())
-            .unwrap_or(0.0);
-        let mem = parts
-            .next()
-            .and_then(|s| s.parse::<f32>().ok())
-            .unwrap_or(0.0);
-        let name = parts.collect::<Vec<_>>().join(" ");
-        if name.is_empty() {
-            continue;
+    #[cfg(not(target_os = "windows"))]
+    {
+        let stdout = command_output("/bin/ps", &["-axo", "pid=,pcpu=,pmem=,comm="])?;
+        let mut processes = Vec::new();
+        for line in stdout.lines() {
+            let mut parts = line.trim().split_whitespace();
+            let Some(pid) = parts.next().and_then(|s| s.parse::<u32>().ok()) else {
+                continue;
+            };
+            let cpu = parts
+                .next()
+                .and_then(|s| s.parse::<f32>().ok())
+                .unwrap_or(0.0);
+            let mem = parts
+                .next()
+                .and_then(|s| s.parse::<f32>().ok())
+                .unwrap_or(0.0);
+            let name = parts.collect::<Vec<_>>().join(" ");
+            if name.is_empty() {
+                continue;
+            }
+            processes.push(QxProcessInfo {
+                pid,
+                name,
+                cpu,
+                mem,
+            });
         }
-        processes.push(QxProcessInfo {
-            pid,
-            name,
-            cpu,
-            mem,
-        });
-    }
 
-    Ok(QxProcessList {
-        count: processes.len(),
-        processes,
-    })
+        Ok(QxProcessList {
+            count: processes.len(),
+            processes,
+        })
+    }
 }
 
 fn kill_process_blocking(pid: u32) -> Result<QxKillProcessResult, String> {
@@ -515,10 +572,13 @@ fn kill_process_blocking(pid: u32) -> Result<QxKillProcessResult, String> {
         return Err("Refusing to terminate this process".to_string());
     }
     #[cfg(target_os = "windows")]
-    let status = Command::new("taskkill.exe")
-        .args(["/PID", &pid.to_string(), "/T"])
-        .status()
-        .map_err(|e| format!("run taskkill: {e}"))?;
+    let status = {
+        let mut command = Command::new(crate::windows_process::taskkill_binary());
+        command
+            .args(["/PID", &pid.to_string(), "/T"])
+            .creation_flags(CREATE_NO_WINDOW);
+        command.status().map_err(|e| format!("run taskkill: {e}"))?
+    };
     #[cfg(not(target_os = "windows"))]
     let status = Command::new("/bin/kill")
         .arg(pid.to_string())

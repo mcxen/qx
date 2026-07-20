@@ -126,6 +126,16 @@ fn clean_path(path: &Path) -> PathBuf {
     cleaned
 }
 
+fn plugin_virtual_relative_path(path: &str) -> PathBuf {
+    let mut relative = PathBuf::new();
+    for component in path.split(['/', '\\']) {
+        if !component.is_empty() {
+            relative.push(component);
+        }
+    }
+    relative
+}
+
 pub(crate) fn plugin_file_path(id: &str, path: &str) -> Result<PathBuf, String> {
     let base = plugin_files_dir(id)?;
     let prefix = plugin_virtual_prefix(id);
@@ -133,18 +143,24 @@ pub(crate) fn plugin_file_path(id: &str, path: &str) -> Result<PathBuf, String> 
     if raw.is_empty() || raw == prefix {
         return Ok(base);
     }
-    if let Some(rest) = raw.strip_prefix(&(prefix.clone() + "/")) {
-        return Ok(clean_path(&base.join(rest)));
+    if let Some(rest) = raw
+        .strip_prefix(&(prefix.clone() + "/"))
+        .or_else(|| raw.strip_prefix(&(prefix.clone() + "\\")))
+    {
+        return Ok(clean_path(&base.join(plugin_virtual_relative_path(rest))));
     }
     let home = home_dir();
     if raw == "~" || raw == qx_home_alias() {
         return Ok(home);
     }
-    if let Some(rest) = raw.strip_prefix("~/") {
-        return Ok(clean_path(&home.join(rest)));
+    if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
+        return Ok(clean_path(&home.join(plugin_virtual_relative_path(rest))));
     }
-    if let Some(rest) = raw.strip_prefix(&(qx_home_alias().to_string() + "/")) {
-        return Ok(clean_path(&home.join(rest)));
+    if let Some(rest) = raw
+        .strip_prefix(&(qx_home_alias().to_string() + "/"))
+        .or_else(|| raw.strip_prefix(&(qx_home_alias().to_string() + "\\")))
+    {
+        return Ok(clean_path(&home.join(plugin_virtual_relative_path(rest))));
     }
     let candidate = PathBuf::from(raw);
     if candidate.is_absolute() {
@@ -466,8 +482,7 @@ pub async fn plugin_ai_run_bash(req: PluginAiBashRequest) -> Result<PluginAiBash
         .to_string();
 
     tauri::async_runtime::spawn_blocking(move || {
-        let bash =
-            crate::plugin_cli::resolve_bash_binary().unwrap_or_else(|_| PathBuf::from("/bin/bash"));
+        let bash = crate::plugin_cli::resolve_bash_binary()?;
         let mut cmd = std::process::Command::new(&bash);
         cmd.arg("-lc")
             .arg(script)
@@ -570,7 +585,9 @@ fn run_single_grep_command(
     root: &str,
     max_results: u32,
 ) -> Result<String, String> {
-    let mut cmd = std::process::Command::new(command);
+    let program = crate::plugin_cli::resolve_cli_program(command)?;
+    let program_display = program.display().to_string();
+    let mut cmd = std::process::Command::new(&program);
     if command == "grep" {
         cmd.arg("-RIn")
             .arg("-m")
@@ -590,39 +607,17 @@ fn run_single_grep_command(
             .arg(root);
     }
     cmd.stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-
-    let mut child = cmd.spawn().map_err(|e| {
-        if e.kind() == std::io::ErrorKind::NotFound {
-            format!("{command} search executable not found")
-        } else {
-            format!("spawn {command} search: {e}")
-        }
-    })?;
-    let start = std::time::Instant::now();
-    let timeout = Duration::from_secs(20);
-    loop {
-        if let Some(status) = child
-            .try_wait()
-            .map_err(|e| format!("wait {command} search: {e}"))?
-        {
-            let output = child
-                .wait_with_output()
-                .map_err(|e| format!("read {command} output: {e}"))?;
-            if status.success() || status.code() == Some(1) {
-                return Ok(String::from_utf8_lossy(&output.stdout).to_string());
-            }
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("{command} search failed: {stderr}"));
-        }
-
-        if start.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!("{command} search timed out"));
-        }
-
-        std::thread::sleep(Duration::from_millis(50));
+        .stderr(std::process::Stdio::piped())
+        .stdin(std::process::Stdio::null());
+    crate::plugin_cli::apply_plugin_cli_env(&mut cmd, &std::collections::HashMap::new());
+    let result = crate::plugin_cli::run_process_with_timeout(cmd, 20_000, program_display)?;
+    if result.timed_out {
+        return Err(format!("{command} search timed out"));
+    }
+    if result.status == Some(0) || result.status == Some(1) {
+        Ok(result.stdout)
+    } else {
+        Err(format!("{command} search failed: {}", result.stderr.trim()))
     }
 }
 
@@ -1017,8 +1012,16 @@ pub async fn plugin_notification_show(
 
     #[cfg(target_os = "windows")]
     {
-        let title = req.title;
-        let body = req.body;
+        let _ = app;
+        let NotificationRequest {
+            title,
+            body,
+            subtitle,
+        } = req;
+        // Windows toast XML has no separate subtitle slot; consuming it here
+        // keeps the serialized request shape substitutable with macOS without
+        // pretending the field has Windows rendering semantics.
+        drop(subtitle);
         crate::runtime::blocking(move || send_windows_notification(&title, &body))
             .await
             .map_err(|error| error.to_string())??;
@@ -1090,6 +1093,9 @@ fn send_macos_notification(title: &str, body: &str, subtitle: &str) -> Result<()
 
 #[cfg(target_os = "windows")]
 fn send_windows_notification(title: &str, body: &str) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+
     let escaped_title = powershell_xml_text(title);
     let escaped_body = powershell_xml_text(body);
     let script = format!(
@@ -1102,8 +1108,11 @@ fn send_windows_notification(title: &str, body: &str) -> Result<(), String> {
         title = escaped_title,
         body = escaped_body,
     );
-    let output = std::process::Command::new("powershell")
+    let mut command = std::process::Command::new(crate::windows_process::powershell_binary());
+    command
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .creation_flags(CREATE_NO_WINDOW);
+    let output = command
         .output()
         .map_err(|e| format!("spawn powershell: {e}"))?;
     if output.status.success() {
@@ -1130,7 +1139,20 @@ fn powershell_xml_text(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::powershell_xml_text;
+    use super::{plugin_virtual_relative_path, powershell_xml_text};
+    use std::path::PathBuf;
+
+    #[test]
+    fn plugin_virtual_paths_accept_both_desktop_separators() {
+        assert_eq!(
+            plugin_virtual_relative_path("Pictures/Qx/capture.png"),
+            PathBuf::from("Pictures").join("Qx").join("capture.png")
+        );
+        assert_eq!(
+            plugin_virtual_relative_path(r"Pictures\Qx\capture.png"),
+            PathBuf::from("Pictures").join("Qx").join("capture.png")
+        );
+    }
 
     #[test]
     fn windows_notification_text_cannot_break_toast_xml() {

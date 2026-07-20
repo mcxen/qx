@@ -14,7 +14,7 @@
 | 权限 | 作用 |
 |------|------|
 | `cli` | 允许 `context.cli.*`（run / bash / which / 异步 jobs / map） |
-| `system` | 允许 `context.system.env` / `openPath` / `revealPath` |
+| `system` | 允许 `context.system.env` / `openPath` / `revealPath` / `openSettings` / `setWallpaper` |
 | `invoke:plugin_cli_*` 等 | 若走 `context.invoke(...)` 时的精确授权（危险命令集） |
 
 manifest 示例（CLI 工具 + 打开产物）：
@@ -166,19 +166,40 @@ const versions = await context.cli.map(
 
 ```ts
 const env = await context.system.env();
-// { platform, arch, homeDir, tempDir, pathSep, exePath? }
+// {
+//   platform, arch, homeDir, tempDir,
+//   dirSep,       // "\\" on Windows, "/" elsewhere
+//   pathListSep,  // ";" on Windows, ":" elsewhere
+//   pathSep,      // compatibility alias for pathListSep
+//   exePath?
+// }
 
 await context.system.openPath("~/Downloads/out.mp4");  // 系统默认打开
 await context.system.revealPath(outPath);              // Finder / Explorer 选中
 await context.system.setWallpaper(outPath, { scope: "every" }); // macOS / Windows
+await context.system.openSettings("storage");          // 系统设置的语义分区
 ```
 
 | 方法 | 说明 |
 |------|------|
-| `env()` | 平台、架构、home/temp、PATH 分隔符 |
+| `env()` | 平台、架构、home/temp、目录分隔符与 PATH 列表分隔符 |
 | `openPath(path)` | 用系统默认应用打开（支持 `~/`） |
 | `revealPath(path)` | 在文件管理器中显示 |
 | `setWallpaper(path, { scope? })` | 用宿主平台适配器设置本地图片（支持插件虚拟路径）；`scope` 为 `current` / `every`，Windows 忽略桌面范围 |
+| `openSettings(section)` | 打开 `about` / `display` / `storage` / `network` / `power` / `privacy` / `apps` 对应的 macOS 或 Windows 系统设置 |
+
+Windows 的 `openPath` 由宿主直接调用 Shell API，路径不会经过 `cmd /C start` 解释；
+空格、非 ASCII 与 shell 特殊字符保持原样。PowerShell、Explorer 和 taskkill 等
+Windows inbox 程序统一从 `SystemRoot` 的宿主适配器解析，插件不得猜
+`C:\Windows`，也不依赖 GUI 进程 PATH。
+
+Windows 的 Bash 能力要求 Git for Windows 或 PATH 中可解析的 Bash，缺失时返回明确的
+unavailable error，不回退 Unix 路径。可运行
+`winget install --id Git.Git -e`，或从
+[Git for Windows](https://gitforwindows.org/) 安装，随后重启 Qx 让 GUI PATH 生效。
+不需要 POSIX 管道/语法时优先改用 `context.cli.run({ program, args })`。
+拼接展示路径时使用 `dirSep`；拆分 `PATH` 等列表变量时使用 `pathListSep`。旧字段
+`pathSep` 保留兼容，但其语义是 PATH 列表分隔符，不是目录分隔符。
 
 与 `openUrl`（`open-url` 权限）不同：`system` 面向**本地路径**与环境信息。
 
@@ -214,6 +235,7 @@ await context.system.setWallpaper(outPath, { scope: "every" }); // macOS / Windo
 | `plugin_system_open_path` | `systemOpenPath` |
 | `plugin_system_reveal_path` | `systemRevealPath` |
 | `plugin_system_set_wallpaper` | `systemSetWallpaper` |
+| `plugin_system_open_settings` | `systemOpenSettings` |
 
 请求/响应字段使用 **camelCase** JSON；Tauri invoke 参数名与 Rust 一致（如 `plugin_id`、`job_id`）。
 
@@ -228,7 +250,8 @@ GUI 启动的 Qx **没有** Terminal 的完整 PATH。宿主对 `run` / `which` 
 3. **进程 PATH**：Qx 自身环境
 4. 子进程默认注入合并后的 `PATH`（插件 `env.PATH` 可覆盖）
 5. `~/…` 绝对路径会展开 `HOME` / `USERPROFILE`
-6. Windows 额外尝试 `.exe` / `.cmd` / `.bat`，并合并 Machine+User Path
+6. Windows 额外尝试 `.exe` / `.cmd` / `.bat`，并以显式 UTF-8 读取、合并
+   Machine+User Path，中文用户名与安装目录不会经过当前控制台代码页损坏
 
 因此：
 
@@ -237,7 +260,9 @@ await context.cli.which("brew");   // GUI 下也应能解析到 brew
 await context.cli.run({ program: "git", args: ["--version"] });
 ```
 
-仍失败时：在 preferences 填**绝对路径**，或改用 `cli.bash`（login 脚本可 `source` profile）。
+仍失败时：在 preferences 填**绝对路径**。Windows 若明确需要 Bash，请安装 Git for
+Windows 并重启 Qx；否则使用 argv 形式的 `cli.run`。macOS/Linux 可用 `cli.bash`
+让 login 脚本读取 profile。
 
 ---
 
@@ -246,7 +271,7 @@ await context.cli.run({ program: "git", args: ["--version"] });
 | 规则 | 说明 |
 |------|------|
 | argv 默认 | `run` 不经过 shell；参数按 argv 传递 |
-| bash 显式 | 仅 `bash` API 走 `/bin/bash -lc`（Windows 需 Git Bash 等） |
+| bash 显式 | 仅 `bash` API 走 login Bash（Windows 需 Git for Windows） |
 | 禁止空 program / 空 script | 空串 / NUL 拒绝 |
 | 裸名安全字符 | 非路径名禁止 `|&;$` 等元字符（`bash` 的 script 除外） |
 | 超时 | 超时 kill 子进程，返回 `timedOut: true`、`status: null` |
@@ -306,6 +331,7 @@ export default {
 | `context.cli.run` / `which` | `0.5.26` |
 | login PATH 增强 + `context.cli.bash` | `0.5.26+` |
 | `cli.start` / `poll` / `cancel` / `wait` / `map` + `context.system` | 合入本协议的版本起 |
+| `context.system.openSettings` + 跨平台 typed Sysinfo 模型 | `0.6.0+` |
 
 ---
 
@@ -320,6 +346,8 @@ export default {
 - [ ] `cli.start` + `wait` 期间 `onUpdate` 能看到 stdout 增长；`cancel` 后 `state === "cancelled"`
 - [ ] `cli.map` concurrency=2 跑 4 个短命令全部完成
 - [ ] 无 `system` 时 `openPath` 报权限错误；有权限时能打开目录
+- [ ] `openSettings("storage")` 在 macOS / Windows 打开对应系统设置；未知 section 明确失败
+- [ ] Windows 缺 Git Bash 时错误包含 winget、官方下载地址与“重启 Qx”提示
 - [ ] 超过 6 个并发 job 时 `start` 失败信息清晰
 
 ---

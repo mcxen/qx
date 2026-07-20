@@ -1,17 +1,21 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::Local;
+use image::ImageEncoder;
+use std::io::BufWriter;
 
 use super::geometry::clamp_area;
 use super::storage::{captures_dir, insert_history};
 use super::types::{RecordArea, RecordingOutput};
-use crate::display::{capture_monitor, capture_region};
+use crate::display::{capture_monitor, capture_region_from_monitor};
 
 pub(super) fn capture(
     area: RecordArea,
     annotation_overlay_base64: Option<String>,
 ) -> Result<RecordingOutput, String> {
-    // Allow the protected picker window to finish hiding before the still frame.
-    std::thread::sleep(std::time::Duration::from_millis(120));
+    // The picker hide is dispatched synchronously to the UI thread. Keep one
+    // compositor-frame grace period for Windows DWM / macOS WindowServer
+    // without imposing the old fixed 120 ms latency on every screenshot.
+    std::thread::sleep(std::time::Duration::from_millis(24));
     let monitor = capture_monitor(area.monitor_id)?;
     let mon_w = monitor
         .width()
@@ -23,18 +27,30 @@ pub(super) fn capture(
         .ok_or_else(|| "Selection is outside the selected display".to_string())?;
     // Region still-frame is a display system capability; screencap only owns
     // annotation composite + history persistence.
-    let mut image = capture_region(area.monitor_id, area.x, area.y, area.w, area.h)?;
+    let mut image = capture_region_from_monitor(&monitor, area.x, area.y, area.w, area.h)?;
     composite_annotation_overlay(&mut image, annotation_overlay_base64.as_deref())?;
     let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let output_path = captures_dir().join(format!("screenshot_{timestamp}.png"));
-    image
-        .save(&output_path)
-        .map_err(|error| format!("save screenshot: {error}"))?;
     let (width, height) = image.dimensions();
+    let file = std::fs::File::create(&output_path)
+        .map_err(|error| format!("create screenshot: {error}"))?;
+    image::codecs::png::PngEncoder::new_with_quality(
+        BufWriter::new(file),
+        image::codecs::png::CompressionType::Fast,
+        image::codecs::png::FilterType::Sub,
+    )
+    .write_image(
+        image.as_raw(),
+        width,
+        height,
+        image::ExtendedColorType::Rgba8,
+    )
+    .map_err(|error| format!("save screenshot: {error}"))?;
     insert_history(&output_path, width, height, 1, 0)
         .map_err(|error| format!("save screenshot history: {error}"))?;
     Ok(RecordingOutput {
         path: output_path,
+        thumbnail_path: None,
         width,
         height,
         frame_count: 1,

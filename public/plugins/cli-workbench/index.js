@@ -2,7 +2,7 @@
  * CLI Workbench — reference plugin for CLI → GUI.
  *
  * Host ports used:
- *   context.cli.json / lines / text / jsonBash / ensure / which
+ *   context.cli.json / lines / text / ensure / which
  *   context.ui.mountWorkbench / itemsFromJson
  *
  * Panel render returns immediately (loading UI), then reloads data async.
@@ -22,53 +22,80 @@ function splitArgs(text) {
     ?.map((part) => part.replace(/^"|"$/g, "")) || [];
 }
 
+async function findPowerShell(context) {
+  for (const candidate of ["powershell.exe", "pwsh.exe", "pwsh"]) {
+    const hit = await context.cli.which(candidate);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+async function portableOutputRequest(context, lines) {
+  const powershell = await findPowerShell(context);
+  if (powershell) {
+    const values = lines
+      .map((line) => `'${String(line).replaceAll("'", "''")}'`)
+      .join(", ");
+    return {
+      program: powershell,
+      args: [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); @(${values}) | ForEach-Object { [Console]::Out.WriteLine($_) }`,
+      ],
+      timeoutMs: 10_000,
+    };
+  }
+  return {
+    program: (await context.cli.which("printf")) || "printf",
+    args: ["%s\n", ...lines],
+    timeoutMs: 10_000,
+  };
+}
+
 async function loadDataset(context, tab) {
   if (tab === "json") {
-    // Pure demo payload — no external tool required.
-    const data = await context.cli.jsonBash(`
-      python3 - <<'PY'
-import json
-print(json.dumps([
-  {"id":"alpha","name":"Alpha Service","desc":"Healthy","kind":"svc","version":"1.2.0"},
-  {"id":"beta","name":"Beta Worker","desc":"Degraded","kind":"worker","version":"0.9.1","badge":"warn"},
-  {"id":"gamma","name":"Gamma DB","desc":"Primary","kind":"db","version":"15.3"}
-], indent=2))
-PY
-    `).catch(async () => {
-      // Fallback if python3 is missing: bash printf JSON
-      return context.cli.jsonBash(
-        `printf '%s' '[{"id":"alpha","name":"Alpha Service","desc":"Healthy","kind":"svc","version":"1.2.0"},{"id":"beta","name":"Beta Worker","desc":"Degraded","kind":"worker","version":"0.9.1","badge":"warn"},{"id":"gamma","name":"Gamma DB","desc":"Primary","kind":"db","version":"15.3"}]'`,
-      );
-    });
+    const sample = [
+      { id: "alpha", name: "Alpha Service", desc: "Healthy", kind: "svc", version: "1.2.0" },
+      { id: "beta", name: "Beta Worker", desc: "Degraded", kind: "worker", version: "0.9.1", badge: "warn" },
+      { id: "gamma", name: "Gamma DB", desc: "Primary", kind: "db", version: "15.3" },
+    ];
+    const data = await context.cli.json(
+      await portableOutputRequest(context, [JSON.stringify(sample)]),
+    );
     return {
-      meta: "context.cli.jsonBash → array of objects → list + JSON detail",
+      meta: "context.cli.json → portable argv process → list + JSON detail",
       data,
       items: context.ui.itemsFromJson(data),
     };
   }
 
   if (tab === "jsonl") {
-    const rows = await context.cli.jsonBash(
-      `printf '%s\\n' '{"name":"job-1","status":"ok"}' '{"name":"job-2","status":"fail"}' '{"name":"job-3","status":"ok"}'`,
-      { jsonl: true },
-    );
+    const rows = await context.cli.json({
+      ...await portableOutputRequest(context, [
+        JSON.stringify({ name: "job-1", status: "ok" }),
+        JSON.stringify({ name: "job-2", status: "fail" }),
+        JSON.stringify({ name: "job-3", status: "ok" }),
+      ]),
+      jsonl: true,
+    });
     return {
-      meta: "JSON Lines (one object per line) via jsonBash({ jsonl: true })",
+      meta: "JSON Lines (one object per line) via cli.json({ jsonl: true })",
       data: rows,
       items: context.ui.itemsFromJson(rows),
     };
   }
 
   if (tab === "lines") {
-    const lines = await context.cli.lines({
-      program: "bash",
-      args: ["-lc", "printf '%s\\n' 'README.md' 'package.json' 'src/main.ts' 'public/plugins/cli-workbench'"],
-      timeoutMs: 10_000,
-    }).catch(async () =>
-      context.cli.lines({
-        program: "printf",
-        args: ["%s\\n", "README.md", "package.json", "src/main.ts"],
-      }),
+    const lines = await context.cli.lines(
+      await portableOutputRequest(context, [
+        "README.md",
+        "package.json",
+        "src/main.ts",
+        "public/plugins/cli-workbench",
+      ]),
     );
     const items = lines.map((line, index) => ({
       id: String(index),
@@ -85,15 +112,29 @@ PY
   }
 
   if (tab === "system") {
-    const uname = await context.cli.text({
-      program: (await context.cli.which("uname")) || "uname",
-      args: ["-a"],
-      timeoutMs: 10_000,
-    }).catch(() => "uname unavailable");
+    const powershell = await findPowerShell(context);
+    const uname = await context.cli.which("uname");
+    const osSummary = powershell
+      ? await context.cli.text({
+          program: powershell,
+          args: [
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); [Environment]::OSVersion.VersionString",
+          ],
+          timeoutMs: 10_000,
+        }).catch(() => "Windows version unavailable")
+      : await context.cli.text({
+          program: uname || "uname",
+          args: ["-a"],
+          timeoutMs: 10_000,
+        }).catch(() => "uname unavailable");
     const entries = {
-      uname,
+      os: osSummary,
       platform: String(context.pluginId ? "plugin" : "host"),
-      pathSample: (await context.cli.which("bash")) || "(bash not found)",
+      shell: powershell || (await context.cli.which("bash")) || "(shell not found)",
       brew: (await context.cli.which("brew")) || "(brew not found)",
       node: (await context.cli.which("node")) || "(node not found)",
     };
@@ -105,10 +146,30 @@ PY
   }
 
   // custom
-  const programPref = String((await context.getPreference("customProgram")) || "uname").trim();
-  const argsPref = String((await context.getPreference("customArgs")) || "-a");
-  const program = (await context.cli.which(programPref)) || programPref;
-  const args = splitArgs(argsPref);
+  let programPref = String((await context.getPreference("customProgram")) || "").trim();
+  let args = splitArgs(await context.getPreference("customArgs"));
+  let program = programPref ? await context.cli.which(programPref) : null;
+  if (!program) {
+    const uname = await context.cli.which("uname");
+    const powershell = await findPowerShell(context);
+    if (!programPref || (programPref === "uname" && !uname)) {
+      program = uname || powershell || programPref || "uname";
+      args = uname
+        ? ["-a"]
+        : powershell
+          ? [
+              "-NoLogo",
+              "-NoProfile",
+              "-NonInteractive",
+              "-Command",
+              "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); [Environment]::OSVersion.VersionString",
+            ]
+          : args;
+      programPref = program;
+    } else {
+      program = programPref;
+    }
+  }
   const result = await context.cli.ensure({
     program,
     args,
@@ -280,8 +341,10 @@ export default {
       title: "Demo: CLI JSON toast",
       async run(context) {
         try {
-          const data = await context.cli.jsonBash(
-            `printf '%s' '{"ok":true,"count":3,"items":["a","b","c"]}'`,
+          const data = await context.cli.json(
+            await portableOutputRequest(context, [
+              JSON.stringify({ ok: true, count: 3, items: ["a", "b", "c"] }),
+            ]),
           );
           const count = Array.isArray(data.items) ? data.items.length : data.count;
           context.showToast(`JSON ok — count ${count}`);

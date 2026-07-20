@@ -38,6 +38,10 @@ pub struct GeneralSettings {
     /// macOS first-launch permission wizard completed (or skipped on non-macOS).
     #[serde(default)]
     pub has_completed_onboarding: bool,
+    /// Versioned macOS privacy walkthrough. Raising the host version reopens
+    /// onboarding once after an update when permission guidance changes.
+    #[serde(default)]
+    pub permission_onboarding_version: u32,
 }
 
 fn default_auto_hide_on_blur() -> bool {
@@ -55,6 +59,7 @@ impl Default for GeneralSettings {
             data_path: crate::paths::data_dir().to_string_lossy().to_string(),
             has_shown_launcher: false,
             has_completed_onboarding: false,
+            permission_onboarding_version: 0,
         }
     }
 }
@@ -129,7 +134,7 @@ fn default_theme() -> String {
 }
 
 fn default_app_icon() -> String {
-    crate::app_icon::ORIGINAL_ICON_ID.to_string()
+    crate::app_icon::CLOUD_ICON_ID.to_string()
 }
 
 fn default_blur_opacity() -> f64 {

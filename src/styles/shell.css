@@ -10,40 +10,73 @@
   color: var(--qx-text-primary);
 }
 
-.qx-shell-drag-edge {
+.qx-shell-resize-handle {
   position: absolute;
   z-index: 60;
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
+  touch-action: none;
 }
 
-.qx-shell-drag-edge.edge-top,
-.qx-shell-drag-edge.edge-bottom {
-  left: 0;
-  right: 0;
+.qx-shell-resize-handle.edge-top,
+.qx-shell-resize-handle.edge-bottom {
+  left: 10px;
+  right: 10px;
   height: 8px;
+  cursor: ns-resize;
 }
 
-.qx-shell-drag-edge.edge-top {
+.qx-shell-resize-handle.edge-top {
   top: 0;
 }
 
-.qx-shell-drag-edge.edge-bottom {
+.qx-shell-resize-handle.edge-bottom {
   bottom: 0;
 }
 
-.qx-shell-drag-edge.edge-left,
-.qx-shell-drag-edge.edge-right {
-  top: 0;
-  bottom: 0;
+.qx-shell-resize-handle.edge-left,
+.qx-shell-resize-handle.edge-right {
+  top: 10px;
+  bottom: 10px;
   width: 8px;
+  cursor: ew-resize;
 }
 
-.qx-shell-drag-edge.edge-left {
+.qx-shell-resize-handle.edge-left {
   left: 0;
 }
 
-.qx-shell-drag-edge.edge-right {
+.qx-shell-resize-handle.edge-right {
   right: 0;
+}
+
+.qx-shell-resize-handle[class*="corner-"] {
+  z-index: 61;
+  width: 12px;
+  height: 12px;
+}
+
+.qx-shell-resize-handle.corner-top-left {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+
+.qx-shell-resize-handle.corner-top-right {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+
+.qx-shell-resize-handle.corner-bottom-right {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+.qx-shell-resize-handle.corner-bottom-left {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
 }
 
 .qx-shell.visual-elevated {

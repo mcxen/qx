@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   resolveQxContentScroll,
   resolveQxListNavigation,
@@ -17,6 +18,20 @@ import {
   shouldHandleQxGridKey,
 } from "../src/hooks/qxGridNavigation.ts";
 import { normalizePluginWorkbenchState } from "../src/plugin/workbenchTypes.ts";
+
+const qxShellSource = readFileSync(
+  new URL("../src/components/QxShell.tsx", import.meta.url),
+  "utf8",
+);
+const shortcutRecorderSource = readFileSync(
+  new URL("../src/components/ShortcutRecorder.tsx", import.meta.url),
+  "utf8",
+);
+
+// Shortcut recording owns keyboard focus. The shell's normal pointer-up
+// search restore must recognize the shared focus-preservation marker.
+assert.match(qxShellSource, /data-qx-search-focus="preserve"/);
+assert.match(shortcutRecorderSource, /data-qx-search-focus="preserve"/);
 
 const list = (overrides = {}) => resolveQxListNavigation({
   key: "ArrowDown",

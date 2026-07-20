@@ -4,7 +4,7 @@
 > 写业务插件时优先读本文；需要字段级细节再下钻到协议专章。  
 > 宿主贡献者另见 [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md)。
 
-**状态**：Current · 适用：Qx ≥ 0.5.39（声明式 Workbench + Gallery + shell / Esc + storage / island）· 读者：业务 / 第三方插件作者
+**状态**：Current · 适用：Qx ≥ 0.6.0（声明式 Workbench + Gallery + shell / Esc + storage / island + typed system APIs）· 读者：业务 / 第三方插件作者
 
 **模块端口总表（内置 + 市场）** → [`docs/module-port-inventory.md`](../../docs/module-port-inventory.md)
 **市场仓库 Agent 地图** → `qx-plugins` 仓库根 [`AGENTS.md`](https://github.com/mcxen/qx-plugins/blob/main/AGENTS.md)（与本手册对照；**老包无 AGENTS.md 仍可安装**）
@@ -238,7 +238,9 @@ Workbench 中带 `command` 的 action 完成后，宿主会调用 `onCommandComp
 | 场景 | 端口 | 权限 | 备注 |
 |------|------|------|------|
 | 跑本机工具（brew、release-cli、git） | **`context.cli`** | `cli` | **业务首选**；`run`/`bash` 同步；`start`/`wait`/`cancel` 异步；`map` 有界并行；GUI 下 login PATH |
-| 打开/揭示本地产物、读平台环境、设置壁纸 | **`context.system`** | `system` | `env` / `openPath` / `revealPath` / `setWallpaper`；与 `openUrl` 不同 |
+| 打开/揭示本地产物、读平台环境、系统设置、设置壁纸 | **`context.system`** | `system` | `env` / `openPath` / `revealPath` / `openSettings` / `setWallpaper`；与 `openUrl` 不同 |
+| 读取系统、存储、网络、电源 | **`context.system`** | `system-info` | `info` / `storage` / `network` / `networkCounters` / `power`；macOS / Windows 返回同一 typed model |
+| 读取/结束进程 | **`context.system.processes`** | `processes` + 结束时精确 invoke | `list()`；`kill(pid)` 还需 `invoke:qx_system_information_kill_process` |
 | 系统托盘菜单项 | **`context.tray`** | `tray` | `setItems` / `clear`；点选可跑本插件 `command` |
 | 调公司 HTTP API | **`context.http`** | `http` | 跨平台更稳 |
 | 复用宿主领域命令（V2EX/天气缓存等） | **`context.invoke("…")`** | 精确 `invoke:<cmd>` 或能力组 | 优先走已缓存的 host 命令，再 http 回退 |
@@ -269,6 +271,7 @@ Workbench 中带 `command` 的 action 完成后，宿主会调用 `onCommandComp
 
 ```ts
 context.showToast(msg: string): void
+context.log.error|warn|info|debug(message: string, fields?: object): void
 context.prompt(label: string, default?: string): Promise<string | null>
 context.getPreference(id: string): Promise<unknown>
 context.setTimeout / setInterval / clearTimeout / clearInterval  // 面板销毁自动清理
@@ -286,6 +289,10 @@ await context.cli.which("brew")  // => "/opt/homebrew/bin/brew" | null（含 log
 // 权限: "system"
 // await context.system.openPath(outPath); await context.system.revealPath(outPath);
 // await context.system.setWallpaper(outPath, { scope: "every" });
+// await context.system.openSettings("storage");
+// const [info, disks, power] = await Promise.all([
+//   context.system.info(), context.system.storage(), context.system.power(),
+// ]);
 // 权限: "tray" — 往系统托盘加菜单（可选 command 为本插件 commands[].name）
 // await context.tray.setItems([
 //   { id: "mem", title: "Open dashboard", command: "open" },
@@ -320,6 +327,9 @@ context.ui.mountWorkbench({
 ```
 
 **规则**：优先 `program` + `args[]`；仅在需要 shell 语法时用 `cli.bash`。不要把不受信用户原文拼进 `script`。  
+Windows 的 `cli.bash` / `ai.runBash` 需要可解析的 Git for Windows Bash；缺失时端口会
+明确失败，不会把 Unix `/bin/bash` 当作 Windows 回退。跨平台插件优先使用 argv
+`context.cli.run`。
 **CLI 产品化**：见 [`plugin-cli-gui.md`](./plugin-cli-gui.md) 与示例 `public/plugins/cli-workbench`。
 
 #### HTTP
@@ -424,8 +434,8 @@ await context.storage.session.set("pageCache", items)  // 仅本次进程
 | `commands[].name` | 与 `export default.commands[].name` 一致 |
 | `panel` | 需要工作台时声明；否则可省略 |
 | `preferences[].type` | `string` / **`textarea`（多行）** / `password` / `number` / `boolean` / `select` |
-| `platforms` | 如仅 macOS：`["macos"]`（例：Brew） |
-| `min_app_version` | 使用新端口时钉住（`cli` → ≥ 0.5.26） |
+| `platforms` | 运行时执行边界；如仅 macOS：`["macos"]`（例：Brew）。宿主以 Rust 原生平台标识判定；不匹配当前系统或平台 bridge 不可用时插件仍在 Settings 可管理，但宿主不会创建 iframe、command/panel、后台任务或全局快捷键 |
+| `min_app_version` | 使用新端口时钉住（`cli` → ≥ 0.5.26）；按 SemVer 比较（同版本 prerelease 低于正式版），宿主版本不足时不启动该插件 runtime、后台任务或快捷键。宿主版本 bridge 不可用时按 fail-closed 处理声明了最低版本的插件 |
 
 权限全集见 [`plugin-system.md` §权限](./plugin-system.md)。
 
@@ -642,6 +652,7 @@ context.ui.mountWorkbench({
 | **weather** | `invoke:fetch_weather*` + Open-Meteo http 回退 + persist SWR |
 | **pomodoro-island** | panel 控制台 + `context.island`；**必须有 panel**（防注册失败） |
 | **QxGH** (`qxgh`) | **business-only**：公开 `github.com` **HTML 页**解析 Actions/Releases → `mountWorkbench`（不用 REST API） |
+| **Sysinfo** (`sysinfo`) | **business-only**：typed `context.system.*` → Overview / Storage / Network / Processes Workbench；无 shell、无自绘 DOM |
 | **raycast-*** | 转换插件：依赖 Raycast shim，适合 UI 型扩展 |
 
 ---
@@ -654,6 +665,12 @@ context.ui.mountWorkbench({
 **为什么 GUI 里找不到 brew？**  
 `context.cli` 会合并 **login shell PATH** + Homebrew/系统 bin，子进程默认带该 PATH。  
 仍失败：preferences 填绝对路径，或用 `context.cli.bash`（`bash -lc`）。
+
+**Windows 提示缺少 Git Bash？**
+只有使用 `context.cli.bash` / POSIX 语法时才需要。运行
+`winget install --id Git.Git -e`，或从
+[Git for Windows](https://gitforwindows.org/) 安装，完成后重启 Qx。普通命令优先用
+`context.cli.run({ program, args })`，无需 Bash。
 
 **Panel 打开是空白 / “Panel not registered”？**
 检查 **`manifest.panel` + `export.panel.render` 两者都有**（缺 manifest 字段就不会注册）。看是否 throw；Rescan / 重装 zip。包内见 `AGENTS.md`。
@@ -675,6 +692,7 @@ context.ui.mountWorkbench({
 |-------------|------------------------|
 | 声明式 Workbench、后台轮询与统一灵动岛动作 | **0.5.38+** |
 | `context.system.setWallpaper` | **0.5.44+** |
+| `context.system.openSettings` + typed Sysinfo 模型 | **0.6.0+** |
 | `context.cli` | **0.5.26+** |
 | 二进制 HTTP `arrayBuffer` | 0.5.18+ |
 | 基础 panel / storage | 按你目标发行版 |

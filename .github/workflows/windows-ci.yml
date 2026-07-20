@@ -20,6 +20,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout first-party plugin catalog
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/qx-plugins
+          path: qx-plugins-clone
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -40,6 +46,9 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
+      - name: Check architecture and plugin ports
+        run: npm run check
+
       - name: Check frontend
         run: npm run build
 
@@ -48,6 +57,9 @@ jobs:
 
       - name: Check Windows Rust target
         run: cargo check --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
+
+      - name: Test Windows Rust library
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib --target x86_64-pc-windows-msvc
 
       - name: Build Windows NSIS installer
         run: npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis

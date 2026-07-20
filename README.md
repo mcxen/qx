@@ -1,12 +1,12 @@
 <!-- language: en -->
 
-> **Version**: v0.5.47 — current development baseline
+> **Version**: v0.6.0 — current release
 
 <a id="readme-en"></a>
 
 <div align="center">
 
-<img src="./src-tauri/icons/128x128.png" alt="Qx" width="96">
+<img src="./src-tauri/icons/app-icon-cloud.png" alt="Qx Cloud & Moon" width="96">
 
 # Qx
 
@@ -200,7 +200,7 @@ Source-available — see [`LICENSE`](./LICENSE)
 
 <div align="center">
 
-<img src="./src-tauri/icons/128x128.png" alt="Qx" width="96">
+<img src="./src-tauri/icons/app-icon-cloud.png" alt="Qx 云月图标" width="96">
 
 # Qx — 效率启动器
 

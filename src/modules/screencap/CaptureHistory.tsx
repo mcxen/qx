@@ -1,6 +1,6 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Camera, Trash2, Video } from "lucide-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useLocale, useT } from "../../i18n";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useScreencapStore } from "./store";
@@ -32,6 +32,34 @@ function isScreenshotPath(path: string, durationMs: number): boolean {
     return true;
   }
   return durationMs === 0 && !lower.endsWith(".gif") && !lower.endsWith(".mp4") && !lower.endsWith(".mov");
+}
+
+function RecordingThumbnail({ entry }: { entry: { path: string; thumbnail_path?: string | null } }) {
+  const [coverFailed, setCoverFailed] = useState(false);
+  if (entry.thumbnail_path && !coverFailed) {
+    return (
+      <img
+        src={convertFileSrc(entry.thumbnail_path)}
+        alt=""
+        loading="lazy"
+        onError={() => setCoverFailed(true)}
+      />
+    );
+  }
+  return (
+    <video
+      src={convertFileSrc(entry.path)}
+      muted
+      preload="auto"
+      playsInline
+      onLoadedMetadata={(event) => {
+        const media = event.currentTarget;
+        if (Number.isFinite(media.duration) && media.duration > 0) {
+          media.currentTime = Math.min(0.08, media.duration / 2);
+        }
+      }}
+    />
+  );
 }
 
 export default function CaptureHistory({ layout }: { layout: CaptureHistoryLayout }) {
@@ -95,7 +123,7 @@ export default function CaptureHistory({ layout }: { layout: CaptureHistoryLayou
                       {image ? (
                         <img src={mediaSrc} alt="" loading="lazy" />
                       ) : (
-                        <video src={mediaSrc} muted preload="metadata" playsInline />
+                        <RecordingThumbnail entry={entry} />
                       )}
                       {!image ? <span className="qx-capture-gallery-video"><Video size={13} /></span> : null}
                     </span>
@@ -128,9 +156,13 @@ export default function CaptureHistory({ layout }: { layout: CaptureHistoryLayou
                   {...getItemProps(index, { className: "qx-capture-history-main", baseClass: false })}
                   onClick={() => setPreview(entry.path)}
                 >
-                  {image ? (
+                  {image || entry.thumbnail_path ? (
                     <span className="qx-capture-history-thumb" aria-hidden="true">
-                      <img src={mediaSrc} alt="" loading="lazy" />
+                      {image ? (
+                        <img src={mediaSrc} alt="" loading="lazy" />
+                      ) : (
+                        <RecordingThumbnail entry={entry} />
+                      )}
                     </span>
                   ) : (
                     <span className="qx-capture-history-icon" aria-hidden="true">

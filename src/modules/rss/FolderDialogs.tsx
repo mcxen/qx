@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { LoadingLabel, Modal, Select } from "../../components/ui";
 import { useRssStore, type RssFeed, type RssFolder } from "./store";
 
@@ -221,6 +222,21 @@ export function ImportOpmlDialog({ onClose }: { onClose: () => void }) {
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const endExternalInteraction = () => {
+    void invoke("floating_set_external_interaction_active", { active: false }).catch(() => {});
+  };
+
+  useEffect(() => {
+    const input = fileRef.current;
+    if (!input) return;
+    const handleCancel = () => endExternalInteraction();
+    input.addEventListener("cancel", handleCancel);
+    return () => {
+      input.removeEventListener("cancel", handleCancel);
+      endExternalInteraction();
+    };
+  }, []);
+
   const runImport = async (content: string) => {
     const trimmed = content.trim();
     if (!trimmed) {
@@ -239,21 +255,32 @@ export function ImportOpmlDialog({ onClose }: { onClose: () => void }) {
   };
 
   const onFile = async (file: File | null) => {
-    if (!file) return;
     try {
+      if (!file) return;
       const content = await file.text();
       setText(content);
       await runImport(content);
     } catch (e) {
       setError(String(e));
+    } finally {
+      endExternalInteraction();
     }
+  };
+
+  const chooseFile = async () => {
+    await invoke("floating_set_external_interaction_active", { active: true }).catch(() => {});
+    fileRef.current?.click();
   };
 
   return (
     <Modal
       title="Import OPML"
       subtitle="OPML folders become feed groups; each outline is one subscription."
-      onClose={onClose}
+      onClose={() => {
+        if (busy) return;
+        endExternalInteraction();
+        onClose();
+      }}
     >
       <input
         ref={fileRef}
@@ -266,7 +293,7 @@ export function ImportOpmlDialog({ onClose }: { onClose: () => void }) {
         className="qx-command-button"
         type="button"
         style={{ width: "100%", marginBottom: 10 }}
-        onClick={() => fileRef.current?.click()}
+        onClick={() => void chooseFile()}
         disabled={busy}
       >
         Choose OPML file…

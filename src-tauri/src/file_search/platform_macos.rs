@@ -7,6 +7,8 @@ use std::sync::atomic::AtomicBool;
 const IGNORE_PATH: &str = "/System/Volumes/Data";
 static CARDINAL_CACHE: OnceLock<Mutex<Option<SearchCache>>> = OnceLock::new();
 static CARDINAL_READY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static CARDINAL_INIT_STARTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 static NEVER_STOPPED: AtomicBool = AtomicBool::new(false);
 
 fn has_advanced_cardinal_syntax(query: &str) -> bool {
@@ -77,6 +79,25 @@ fn cardinal_queries(query: &str) -> Vec<String> {
 
 pub fn init_platform() {
     CARDINAL_CACHE.get_or_init(|| Mutex::new(None));
+    // Walking Home before Full Disk Access is granted causes macOS to raise
+    // separate Documents/Desktop TCC prompts from a background thread. That
+    // steals focus from Qx and still produces an incomplete index. Until the
+    // guided FDA flow succeeds, use Spotlight-only search and do not trigger
+    // piecemeal folder prompts.
+    if !crate::permissions::full_disk_access_granted() {
+        return;
+    }
+    if CARDINAL_INIT_STARTED
+        .compare_exchange(
+            false,
+            true,
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+        )
+        .is_err()
+    {
+        return;
+    }
     std::thread::Builder::new()
         .name("qx-cardinal-cache".to_string())
         .spawn(|| {

@@ -6,7 +6,7 @@ import { Row, SegmentedControl, SettingsCard, Slider, Toggle } from "../../compo
 import { useT } from "../../i18n";
 import { HomeIslandSettings } from "../../home-island";
 import { ToggleGroup, ToggleGroupItem } from "../../components/shadcn/toggle-group";
-import originalAppIconUrl from "../../../src-tauri/icons/128x128.png";
+import originalAppIconUrl from "../../../src-tauri/icons/logo-1024.png";
 import cloudAppIconUrl from "../../assets/app-icon-cloud-preview.png";
 
 const MIN_WINDOW_WIDTH = 480;

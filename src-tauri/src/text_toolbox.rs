@@ -301,9 +301,9 @@ pub fn docs_open_workspace() -> Result<String, String> {
     }
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer")
+        std::process::Command::new(crate::windows_process::explorer_binary())
             .arg(&dir)
-            .status()
+            .spawn()
             .map_err(|e| format!("open workspace: {e}"))?;
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]

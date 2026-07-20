@@ -48,6 +48,11 @@ pub fn init(app: &tauri::AppHandle) {
     init_platform();
 }
 
+#[cfg(target_os = "macos")]
+pub(crate) fn refresh_platform_permissions() {
+    init_platform();
+}
+
 /// Progressive file search.
 ///
 /// - `pass = 0`: fast first paint (name-focused / first strategies)

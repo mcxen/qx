@@ -373,6 +373,7 @@ pub async fn display_list() -> Result<Vec<DisplayDescriptor>, String> {
 
 /// Capture a rectangular region from a capture-backend monitor (physical pixels).
 /// System foundation for screenshot, OCR region, clipboard grab, etc.
+#[allow(dead_code)]
 pub fn capture_region(
     monitor_id: Option<u32>,
     x: u32,
@@ -439,16 +440,71 @@ pub(crate) fn capture_region_from_monitor(
     }
 }
 
-pub(crate) fn capture_image_from_monitor(
-    monitor: &xcap::Monitor,
-) -> Result<image::RgbaImage, String> {
-    let width = monitor
-        .width()
-        .map_err(|error| format!("display width: {error}"))?;
-    let height = monitor
-        .height()
-        .map_err(|error| format!("display height: {error}"))?;
-    capture_region_from_monitor(monitor, 0, 0, width, height)
+/// Reusable fallback after the native continuous stream proved unavailable.
+/// Windows holds one GDI DC/bitmap/RGBA buffer for the recording rather than
+/// rebuilding those resources for every frame. Other platforms retain their
+/// native still-frame path behind the same session contract.
+pub(crate) struct PollingCaptureSession {
+    #[cfg(target_os = "windows")]
+    native: crate::display_windows::GdiCaptureSession,
+    #[cfg(not(target_os = "windows"))]
+    monitor: xcap::Monitor,
+    #[cfg(not(target_os = "windows"))]
+    x: u32,
+    #[cfg(not(target_os = "windows"))]
+    y: u32,
+    #[cfg(not(target_os = "windows"))]
+    width: u32,
+    #[cfg(not(target_os = "windows"))]
+    height: u32,
+}
+
+impl PollingCaptureSession {
+    pub(crate) fn new(
+        monitor: &xcap::Monitor,
+        x: u32,
+        y: u32,
+        width: u32,
+        height: u32,
+    ) -> Result<Self, String> {
+        #[cfg(target_os = "windows")]
+        {
+            let monitor_x = monitor.x().map_err(|error| format!("display x: {error}"))?;
+            let monitor_y = monitor.y().map_err(|error| format!("display y: {error}"))?;
+            return Ok(Self {
+                native: crate::display_windows::GdiCaptureSession::new(
+                    monitor_x.saturating_add(x as i32),
+                    monitor_y.saturating_add(y as i32),
+                    width,
+                    height,
+                )?,
+            });
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            Ok(Self {
+                monitor: monitor.clone(),
+                x,
+                y,
+                width,
+                height,
+            })
+        }
+    }
+
+    pub(crate) fn capture(&mut self) -> Result<std::borrow::Cow<'_, image::RgbaImage>, String> {
+        #[cfg(target_os = "windows")]
+        {
+            return self.native.capture().map(std::borrow::Cow::Borrowed);
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        {
+            capture_region_from_monitor(&self.monitor, self.x, self.y, self.width, self.height)
+                .map(std::borrow::Cow::Owned)
+        }
+    }
 }
 
 #[cfg(test)]

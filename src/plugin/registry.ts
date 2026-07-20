@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
+import { getVersion } from "@tauri-apps/api/app";
 import { toPortableGlobalShortcut } from "../utils/keyboard";
 import {
   handlePluginRpc,
@@ -15,6 +16,7 @@ import { createQxLogger, qxLog } from "../lib/logger";
 import type {
   InstalledPlugin,
   PluginRuntimeStatus,
+  PluginSystemEnv,
   RegisteredCommand,
   RegisteredPanel,
 } from "./types";
@@ -27,6 +29,11 @@ import {
 } from "./backgroundActivity";
 import { clearPluginIcons } from "./pluginIconRegistry";
 import { scoreMatchDescending } from "../search/rankResults";
+import {
+  parsePluginPlatform,
+  pluginSupportsAppVersion,
+  pluginSupportsPlatform,
+} from "./platform";
 
 /** One pending timer per plugin command — never stack duplicates. */
 const backgroundTimers = new Map<string, number>();
@@ -264,13 +271,34 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       const builtinPanels = Object.fromEntries(
         Object.entries(get().panels).filter(([id]) => isBuiltinPluginId(id)),
       );
-      const plugins = await invoke<InstalledPlugin[]>("list_installed_plugins");
-      const enabled = plugins.filter((p) => p.enabled);
+      const [plugins, hostVersion, hostEnv] = await Promise.all([
+        invoke<InstalledPlugin[]>("list_installed_plugins"),
+        getVersion().catch(() => null),
+        invoke<PluginSystemEnv>("plugin_system_env").catch(() => null),
+      ]);
+      const hostPlatform = parsePluginPlatform(hostEnv?.platform);
+      // Keep incompatible plugins visible in Settings, but never create their
+      // iframe, background timers, global shortcuts, commands, or panel on the
+      // wrong host OS or an app older than min_app_version. These manifest
+      // fields are execution boundaries, not only marketplace badges.
+      const runtimeCompatible = (plugin: InstalledPlugin) =>
+        pluginSupportsPlatform(plugin, hostPlatform)
+        // Fail closed only for plugins that declare min_app_version when the
+        // native host version is unavailable. A bridge failure must not turn a
+        // compatibility boundary into permission to execute newer runtime code.
+        && pluginSupportsAppVersion(plugin, hostVersion ?? "");
+      const enabled = plugins.filter((plugin) => plugin.enabled && runtimeCompatible(plugin));
+      const incompatibleEnabled = plugins.filter(
+        (plugin) => plugin.enabled && !runtimeCompatible(plugin),
+      );
       // Topological sort: load dependencies first
       const sorted = topologicalSort(enabled);
       registryLogger.info("Installed plugins listed", {
         total: plugins.length,
         enabled: enabled.length,
+        incompatibleEnabled: incompatibleEnabled.length,
+        hostPlatform,
+        hostVersion,
         builtin: BUILTIN_PLUGINS.length,
       });
       set({

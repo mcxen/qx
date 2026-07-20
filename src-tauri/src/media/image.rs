@@ -1,7 +1,7 @@
 pub(crate) fn constrain_video_size(
-    image: image::RgbaImage,
+    image: &image::RgbaImage,
     max_size: Option<(u32, u32)>,
-) -> image::RgbaImage {
+) -> std::borrow::Cow<'_, image::RgbaImage> {
     let (max_width, max_height) = max_size.unwrap_or((3840, 2160));
     let width_ratio = max_width as f64 / image.width().max(1) as f64;
     let height_ratio = max_height as f64 / image.height().max(1) as f64;
@@ -10,9 +10,14 @@ pub(crate) fn constrain_video_size(
     let width = ((image.width() as f64 * ratio).floor() as u32).max(2) & !1;
     let height = ((image.height() as f64 * ratio).floor() as u32).max(2) & !1;
     if width == image.width() && height == image.height() {
-        image
+        std::borrow::Cow::Borrowed(image)
     } else {
-        image::imageops::resize(&image, width, height, image::imageops::FilterType::Triangle)
+        std::borrow::Cow::Owned(image::imageops::resize(
+            image,
+            width,
+            height,
+            image::imageops::FilterType::Triangle,
+        ))
     }
 }
 
@@ -23,10 +28,18 @@ mod tests {
     #[test]
     fn video_dimensions_are_even_and_bounded() {
         let source = image::RgbaImage::new(2559, 1439);
-        let output = constrain_video_size(source, Some((1920, 1080)));
+        let output = constrain_video_size(&source, Some((1920, 1080)));
         assert!(output.width() <= 1920);
         assert!(output.height() <= 1080);
         assert_eq!(output.width() % 2, 0);
         assert_eq!(output.height() % 2, 0);
+    }
+
+    #[test]
+    fn in_bounds_frame_reuses_capture_pixels() {
+        let source = image::RgbaImage::new(1920, 1080);
+        let output = constrain_video_size(&source, Some((1920, 1080)));
+        assert!(matches!(output, std::borrow::Cow::Borrowed(_)));
+        assert_eq!(output.as_raw().as_ptr(), source.as_raw().as_ptr());
     }
 }

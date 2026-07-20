@@ -6,6 +6,7 @@ import { DEFAULT_RECORDING_OPTIONS } from "./preferences";
 export interface ScreencapEntry {
   id: number;
   path: string;
+  thumbnail_path?: string | null;
   width: number;
   height: number;
   frame_count: number;

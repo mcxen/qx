@@ -9,6 +9,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
+#[cfg(target_os = "macos")]
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, WebviewWindow};
@@ -34,6 +35,10 @@ static SUPPRESS_AUTO_HIDE_UNTIL: OnceLock<Mutex<Option<Instant>>> = OnceLock::ne
 /// Sticky suppress while the macOS first-launch permission wizard is open
 /// (user spends time in System Settings without hiding Qx).
 static ONBOARDING_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// Sticky while Qx has opened an OS-owned picker or privacy pane. The main
+/// window must survive the temporary focus transfer; focus returning to Qx
+/// ends the interaction and restores the normal Esc / outside-click lifecycle.
+static EXTERNAL_INTERACTION_ACTIVE: AtomicBool = AtomicBool::new(false);
 
 fn previous_foreground_pid() -> &'static Mutex<Option<i32>> {
     PREVIOUS_FOREGROUND_PID.get_or_init(|| Mutex::new(None))
@@ -116,7 +121,9 @@ pub fn suppress_auto_hide(duration: Duration) {
 
 /// Whether Focused(false) should skip auto-hide right now.
 pub fn auto_hide_suppressed() -> bool {
-    if ONBOARDING_ACTIVE.load(Ordering::SeqCst) {
+    if ONBOARDING_ACTIVE.load(Ordering::SeqCst)
+        || EXTERNAL_INTERACTION_ACTIVE.load(Ordering::SeqCst)
+    {
         return true;
     }
     suppress_auto_hide_lock()
@@ -139,6 +146,18 @@ pub fn set_onboarding_active(active: bool) {
 #[tauri::command]
 pub fn floating_set_onboarding_active(active: bool) {
     set_onboarding_active(active);
+}
+
+pub fn set_external_interaction_active(active: bool) {
+    EXTERNAL_INTERACTION_ACTIVE.store(active, Ordering::SeqCst);
+    if active {
+        suppress_auto_hide(Duration::from_secs(120));
+    }
+}
+
+#[tauri::command]
+pub fn floating_set_external_interaction_active(active: bool) {
+    set_external_interaction_active(active);
 }
 
 /// Prefer our open flag; fall back to OS visibility for paths that only called

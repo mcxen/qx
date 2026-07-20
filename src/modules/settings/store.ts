@@ -51,6 +51,8 @@ export interface GeneralSettings {
   has_shown_launcher: boolean;
   /** macOS first-launch permission wizard finished (or non-macOS auto-complete). */
   has_completed_onboarding: boolean;
+  /** Version of the macOS privacy walkthrough last completed. */
+  permission_onboarding_version: number;
 }
 
 export type LauncherResultDensity = "comfortable" | "compact";
@@ -327,10 +329,11 @@ export const DEFAULT_SETTINGS: Settings = {
     data_path: "",
     has_shown_launcher: false,
     has_completed_onboarding: false,
+    permission_onboarding_version: 0,
   },
   appearance: {
     theme: "light",
-    app_icon: "original",
+    app_icon: "cloud",
     glass_enabled: true,
     blur_opacity: 0.16,
     blur_radius: 14,

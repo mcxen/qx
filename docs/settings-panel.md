@@ -63,6 +63,10 @@ Popover 跟随 `control_opacity`，同时以 Bottom Bar 的视觉强度为下限
 
 `appearance.app_icon` 保存应用图标 id（`original` / `cloud`）。启动、设置保存、
 配置导入与重置都通过根级 `app_icon` 服务应用到 macOS 进程图标和桌面窗口图标；
+Windows 必须同时设置 `ICON_SMALL` 与任务栏 / Alt+Tab 使用的 `ICON_BIG`，不得在
+仅更新小窗口图标后静默返回成功；
+新安装、缺失配置与重置默认使用 `cloud`（云月），已明确保存为 `original` 的用户
+继续保留原版图标；
 该设置不得改写 `tray-template.png` 或运行中的系统托盘 / 菜单栏图标。
 
 窗口不透明度范围为 5%–100%。`100%` 只表示背景颜色完全覆盖；是否启用系统材质由 `glass_enabled` 独立控制。模糊设为 `0px` 时可得到“透明但清晰”的效果。

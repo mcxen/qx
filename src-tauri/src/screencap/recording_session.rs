@@ -16,7 +16,7 @@ use super::state::{
     picker as picker_session, recording as recording_state, runtime as runtime_status,
     take_capture_error, CONTROLS_PINNED, FRAME_COUNT,
 };
-use super::storage::{captures_dir, insert_history};
+use super::storage::{captures_dir, insert_history_with_thumbnail};
 use super::types::RecordingState;
 use super::{RecordArea, RecordingOptions, RecordingStatusSnapshot};
 use crate::display::cursor_capture_monitor_id;
@@ -74,6 +74,9 @@ fn abort_recording_start_blocking() {
     if let Some(handle) = state.thread_handle.take() {
         if let Ok(Ok(output)) = handle.join() {
             let _ = fs::remove_file(output.path);
+            if let Some(thumbnail_path) = output.thumbnail_path {
+                let _ = fs::remove_file(thumbnail_path);
+            }
         }
     }
     let _ = take_capture_error();
@@ -88,6 +91,7 @@ pub async fn start_recording(
     selection::ensure_screen_capture_permission()?;
 
     let started_at;
+    let capture_start;
     {
         let mut guard = recording_state().lock().map_err(|e| format!("lock: {e}"))?;
         if guard.is_some() {
@@ -107,9 +111,18 @@ pub async fn start_recording(
             .and_then(|value| value.monitor_id)
             .or_else(|| cursor_capture_monitor_id(&app));
         let capture_area = area.clone();
+        // The worker is installed in shared state immediately so stop/error
+        // cleanup stays race-safe, but native capture starts only after the UI
+        // thread has synchronously hidden every picker surface. This removes
+        // the former fixed 200 ms sleep without recording Qx's own overlay.
+        let (start_sender, start_receiver) = std::sync::mpsc::channel();
         let handle = std::thread::spawn(move || {
+            start_receiver
+                .recv()
+                .map_err(|_| "Recording start was cancelled".to_string())?;
             recording_loop(output_path, capture_area, monitor_id, options, stop_clone)
         });
+        capture_start = start_sender;
 
         started_at = std::time::Instant::now();
         *guard = Some(RecordingState {
@@ -167,10 +180,24 @@ pub async fn start_recording(
 
     match ui_result {
         Ok(Ok(())) => {
+            if capture_start.send(()).is_err() {
+                let error = "recording worker stopped before capture started".to_string();
+                let _ = tauri::async_runtime::spawn_blocking(abort_recording_start_blocking).await;
+                if let Ok(mut status) = runtime_status().lock() {
+                    status.phase = "error";
+                    status.started_at = None;
+                    status.error = Some(error.clone());
+                }
+                emit_recording_status(&app);
+                let _ = selection::restore_picker_selection_internal(&app);
+                return Err(error);
+            }
             emit_recording_status(&app);
             Ok(())
         }
         Ok(Err(error)) | Err(error) => {
+            // Unblock the installed worker so cleanup can join it.
+            drop(capture_start);
             let error = if error.starts_with("recording controls") {
                 error
             } else {
@@ -207,8 +234,9 @@ fn stop_recording_blocking() -> Result<String, String> {
         let _ = fs::remove_file(&output.path);
         return Err(error);
     }
-    insert_history(
+    insert_history_with_thumbnail(
         &output.path,
+        output.thumbnail_path.as_deref(),
         output.width,
         output.height,
         output.frame_count,
@@ -304,6 +332,9 @@ fn reap_failed_recording_worker(app: &AppHandle) {
     let worker_error = match state.thread_handle.take().map(|handle| handle.join()) {
         Some(Ok(Ok(output))) => {
             let _ = fs::remove_file(output.path);
+            if let Some(thumbnail_path) = output.thumbnail_path {
+                let _ = fs::remove_file(thumbnail_path);
+            }
             "Recording worker ended unexpectedly".to_string()
         }
         Some(Ok(Err(error))) => error,

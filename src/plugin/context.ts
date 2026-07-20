@@ -43,6 +43,20 @@ export function createPluginContext(
     showToast: (msg: string) => {
       void rpc("showToast", { msg });
     },
+    log: {
+      error: (message, fields = {}) => {
+        void rpc("log", { level: "error", message, fields });
+      },
+      warn: (message, fields = {}) => {
+        void rpc("log", { level: "warn", message, fields });
+      },
+      info: (message, fields = {}) => {
+        void rpc("log", { level: "info", message, fields });
+      },
+      debug: (message, fields = {}) => {
+        void rpc("log", { level: "debug", message, fields });
+      },
+    },
     prompt: (label: string, defaultValue?: string) =>
       rpc("prompt", { label, defaultValue }) as Promise<string | null>,
     openUrl: (url: string) => rpc("openUrl", { url }) as Promise<void>,
@@ -215,6 +229,10 @@ export function createPluginContext(
         rpc("systemOpenPath", { path }) as ReturnType<PluginContext["system"]["openPath"]>,
       revealPath: (path) =>
         rpc("systemRevealPath", { path }) as ReturnType<PluginContext["system"]["revealPath"]>,
+      openSettings: (section) =>
+        rpc("systemOpenSettings", { section }) as ReturnType<
+          PluginContext["system"]["openSettings"]
+        >,
       setWallpaper: (path, options = {}) =>
         rpc("systemSetWallpaper", { path, scope: options.scope }) as ReturnType<
           PluginContext["system"]["setWallpaper"]
@@ -250,17 +268,33 @@ export function createPluginContext(
           interfaces,
         };
       },
-      info: () => rpc("invoke", { cmd: "qx_system_information_check_system_info", args: {} }),
-      storage: () => rpc("invoke", { cmd: "qx_system_information_check_storage", args: {} }),
-      network: () => rpc("invoke", { cmd: "qx_system_information_check_network", args: {} }),
+      info: () => rpc("invoke", {
+        cmd: "qx_system_information_check_system_info",
+        args: {},
+      }) as ReturnType<PluginContext["system"]["info"]>,
+      storage: () => rpc("invoke", {
+        cmd: "qx_system_information_check_storage",
+        args: {},
+      }) as ReturnType<PluginContext["system"]["storage"]>,
+      network: () => rpc("invoke", {
+        cmd: "qx_system_information_check_network",
+        args: {},
+      }) as ReturnType<PluginContext["system"]["network"]>,
+      power: () => rpc("invoke", {
+        cmd: "qx_system_monitor_power",
+        args: {},
+      }) as ReturnType<PluginContext["system"]["power"]>,
       qxStorageOverview: () => rpc("invoke", { cmd: "qx_storage_overview", args: {} }),
       processes: {
-        list: () => rpc("invoke", { cmd: "qx_system_information_list_processes", args: {} }),
+        list: () => rpc("invoke", {
+          cmd: "qx_system_information_list_processes",
+          args: {},
+        }) as ReturnType<PluginContext["system"]["processes"]["list"]>,
         kill: (pid: number) =>
           rpc("invoke", {
             cmd: "qx_system_information_kill_process",
             args: { pid },
-          }),
+          }) as ReturnType<PluginContext["system"]["processes"]["kill"]>,
       },
     },
     permissions: {

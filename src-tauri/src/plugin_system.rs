@@ -14,28 +14,55 @@ pub struct PluginSystemEnv {
     pub arch: String,
     pub home_dir: String,
     pub temp_dir: String,
+    /// Backward-compatible alias for `path_list_sep`.
     pub path_sep: String,
+    /// Separator between entries in PATH-like environment variables.
+    pub path_list_sep: String,
+    /// Native directory separator for display/building platform paths.
+    pub dir_sep: String,
     pub exe_path: Option<String>,
 }
 
+#[cfg(target_os = "macos")]
+fn plugin_platform() -> &'static str {
+    "macos"
+}
+
+#[cfg(target_os = "windows")]
+fn plugin_platform() -> &'static str {
+    "windows"
+}
+
+#[cfg(target_os = "linux")]
+fn plugin_platform() -> &'static str {
+    "linux"
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+fn plugin_platform() -> &'static str {
+    "unknown"
+}
+
+#[cfg(windows)]
+const PATH_LIST_SEPARATOR: &str = ";";
+#[cfg(not(windows))]
+const PATH_LIST_SEPARATOR: &str = ":";
+
+#[cfg(windows)]
+const DIRECTORY_SEPARATOR: &str = "\\";
+#[cfg(not(windows))]
+const DIRECTORY_SEPARATOR: &str = "/";
+
 #[tauri::command]
 pub fn plugin_system_env() -> PluginSystemEnv {
-    let platform = if cfg!(target_os = "macos") {
-        "macos"
-    } else if cfg!(target_os = "windows") {
-        "windows"
-    } else if cfg!(target_os = "linux") {
-        "linux"
-    } else {
-        "unknown"
-    }
-    .to_string();
     PluginSystemEnv {
-        platform,
+        platform: plugin_platform().to_string(),
         arch: std::env::consts::ARCH.to_string(),
         home_dir: crate::paths::home_dir().display().to_string(),
         temp_dir: std::env::temp_dir().display().to_string(),
-        path_sep: if cfg!(windows) { ";" } else { ":" }.to_string(),
+        path_sep: PATH_LIST_SEPARATOR.to_string(),
+        path_list_sep: PATH_LIST_SEPARATOR.to_string(),
+        dir_sep: DIRECTORY_SEPARATOR.to_string(),
         exe_path: std::env::current_exe()
             .ok()
             .map(|path| path.display().to_string()),
@@ -54,7 +81,11 @@ fn validate_user_path(path: &str) -> Result<PathBuf, String> {
         return Ok(crate::paths::home_dir());
     }
     if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
-        return Ok(crate::paths::home_dir().join(rest));
+        let relative = rest
+            .split(['/', '\\'])
+            .filter(|component| !component.is_empty())
+            .fold(PathBuf::new(), |path, component| path.join(component));
+        return Ok(crate::paths::home_dir().join(relative));
     }
     Ok(PathBuf::from(raw))
 }
@@ -78,9 +109,46 @@ fn validate_wallpaper_scope(scope: Option<&str>) -> Result<&str, String> {
     }
 }
 
+#[cfg(target_os = "windows")]
+fn shell_execute_windows(target: &std::ffi::OsStr, operation_name: &str) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::UI::Shell::ShellExecuteW;
+    use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+
+    let operation = "open\0".encode_utf16().collect::<Vec<_>>();
+    let target = target
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            operation.as_ptr(),
+            target.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    };
+    if result as isize > 32 {
+        Ok(())
+    } else {
+        Err(format!(
+            "{operation_name} with Windows ShellExecuteW failed (code {})",
+            result as isize
+        ))
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn open_path_windows(path: &Path) -> Result<(), String> {
+    shell_execute_windows(path.as_os_str(), "open path")
+}
+
 #[tauri::command]
 pub async fn plugin_system_open_path(path: String) -> Result<(), String> {
     let path = validate_user_path(&path)?;
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let display = path.display().to_string();
     tauri::async_runtime::spawn_blocking(move || {
         #[cfg(target_os = "macos")]
@@ -89,13 +157,7 @@ pub async fn plugin_system_open_path(path: String) -> Result<(), String> {
         }
         #[cfg(target_os = "windows")]
         {
-            check_status(
-                Command::new("cmd")
-                    .args(["/C", "start", "", &display])
-                    .status(),
-                "open",
-                &display,
-            )
+            open_path_windows(&path)
         }
         #[cfg(target_os = "linux")]
         {
@@ -115,6 +177,7 @@ pub async fn plugin_system_open_path(path: String) -> Result<(), String> {
     .map_err(|e| format!("open path task failed: {e}"))?
 }
 
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn check_status(
     status: std::io::Result<std::process::ExitStatus>,
     operation: &str,
@@ -131,6 +194,7 @@ fn check_status(
 #[tauri::command]
 pub async fn plugin_system_reveal_path(path: String) -> Result<(), String> {
     let path = validate_user_path(&path)?;
+    #[cfg(not(target_os = "windows"))]
     let display = path.display().to_string();
     tauri::async_runtime::spawn_blocking(move || {
         #[cfg(target_os = "macos")]
@@ -143,11 +207,23 @@ pub async fn plugin_system_reveal_path(path: String) -> Result<(), String> {
         }
         #[cfg(target_os = "windows")]
         {
-            Command::new("explorer")
-                .arg(format!("/select,{}", display))
-                .status()
+            use std::os::windows::ffi::{OsStrExt, OsStringExt};
+            use std::os::windows::process::CommandExt;
+            use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
+
+            // Build Explorer's `/select,PATH` argument as native UTF-16. Going
+            // through Path::display() would replace unpaired UTF-16 code units
+            // and make revealPath less faithful than openPath's ShellExecuteW.
+            let mut argument = "/select,".encode_utf16().collect::<Vec<_>>();
+            argument.extend(path.as_os_str().encode_wide());
+            let mut command = Command::new(crate::windows_process::explorer_binary());
+            command
+                .arg(std::ffi::OsString::from_wide(&argument))
+                .creation_flags(CREATE_NO_WINDOW);
+            command
+                .spawn()
                 .map(|_| ())
-                .map_err(|e| format!("reveal {display}: {e}"))
+                .map_err(|e| format!("reveal {}: {e}", path.display()))
         }
         #[cfg(target_os = "linux")]
         {
@@ -166,6 +242,74 @@ pub async fn plugin_system_reveal_path(path: String) -> Result<(), String> {
     })
     .await
     .map_err(|e| format!("reveal path task failed: {e}"))?
+}
+
+fn validate_settings_section(section: &str) -> Result<&str, String> {
+    match section.trim() {
+        "about" | "display" | "storage" | "network" | "power" | "privacy" | "apps" => {
+            Ok(section.trim())
+        }
+        _ => Err(
+            "settings section must be about, display, storage, network, power, privacy, or apps"
+                .to_string(),
+        ),
+    }
+}
+
+/// Open one stable semantic settings destination. Plugins do not need to know
+/// `ms-settings:` identifiers or version-specific macOS preference URLs.
+#[tauri::command]
+pub async fn plugin_system_open_settings(section: String) -> Result<(), String> {
+    let section = validate_settings_section(&section)?.to_string();
+    crate::floating_panel::set_external_interaction_active(true);
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        #[cfg(target_os = "macos")]
+        {
+            let url = match section.as_str() {
+                "about" => "x-apple.systempreferences:com.apple.SystemProfiler.AboutExtension",
+                "display" => "x-apple.systempreferences:com.apple.Displays-Settings.extension",
+                "storage" => "x-apple.systempreferences:com.apple.settings.Storage",
+                "network" => "x-apple.systempreferences:com.apple.Network-Settings.extension",
+                "power" => "x-apple.systempreferences:com.apple.Battery-Settings.extension",
+                "privacy" => {
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles"
+                }
+                "apps" => "x-apple.systempreferences:com.apple.LoginItems-Settings.extension",
+                _ => unreachable!("validated settings section"),
+            };
+            Command::new("open")
+                .arg(url)
+                .spawn()
+                .map(|_| ())
+                .map_err(|error| format!("open macOS settings: {error}"))
+        }
+        #[cfg(target_os = "windows")]
+        {
+            let uri = match section.as_str() {
+                "about" => "ms-settings:about",
+                "display" => "ms-settings:display",
+                "storage" => "ms-settings:storagesense",
+                "network" => "ms-settings:network-status",
+                "power" => "ms-settings:powersleep",
+                "privacy" => "ms-settings:privacy",
+                "apps" => "ms-settings:appsfeatures",
+                _ => unreachable!("validated settings section"),
+            };
+            shell_execute_windows(std::ffi::OsStr::new(uri), "open Windows settings")
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let _ = section;
+            Err("openSettings is only supported on macOS and Windows".to_string())
+        }
+    })
+    .await
+    .map_err(|error| format!("open settings task failed: {error}"))
+    .and_then(|result| result);
+    if result.is_err() {
+        crate::floating_panel::set_external_interaction_active(false);
+    }
+    result
 }
 
 #[cfg(target_os = "macos")]
@@ -240,7 +384,26 @@ pub async fn plugin_system_set_wallpaper(
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_user_path, validate_wallpaper_scope};
+    use super::{
+        plugin_system_env, validate_settings_section, validate_user_path, validate_wallpaper_scope,
+    };
+
+    #[test]
+    fn system_env_distinguishes_directory_and_path_list_separators() {
+        let env = plugin_system_env();
+        assert_eq!(env.path_sep, env.path_list_sep);
+        #[cfg(windows)]
+        {
+            assert_eq!(env.platform, "windows");
+            assert_eq!(env.path_list_sep, ";");
+            assert_eq!(env.dir_sep, "\\");
+        }
+        #[cfg(not(windows))]
+        {
+            assert_eq!(env.path_list_sep, ":");
+            assert_eq!(env.dir_sep, "/");
+        }
+    }
 
     #[test]
     fn wallpaper_scope_is_narrow_and_stable() {
@@ -250,8 +413,32 @@ mod tests {
     }
 
     #[test]
+    fn settings_sections_are_semantic_and_bounded() {
+        for section in [
+            "about", "display", "storage", "network", "power", "privacy", "apps",
+        ] {
+            assert_eq!(validate_settings_section(section), Ok(section));
+        }
+        assert!(validate_settings_section("shell:payload").is_err());
+    }
+
+    #[test]
     fn system_paths_reject_empty_and_nul() {
         assert!(validate_user_path(" ").is_err());
         assert!(validate_user_path("bad\0path").is_err());
+    }
+
+    #[test]
+    fn home_paths_accept_both_desktop_separators_at_every_level() {
+        let path = validate_user_path(r"~\Pictures/Qx\capture.png").expect("home path");
+        let relative = path
+            .strip_prefix(crate::paths::home_dir())
+            .expect("path remains under home");
+        assert_eq!(
+            relative,
+            std::path::Path::new("Pictures")
+                .join("Qx")
+                .join("capture.png")
+        );
     }
 }

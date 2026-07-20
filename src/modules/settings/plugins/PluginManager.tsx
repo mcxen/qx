@@ -68,6 +68,7 @@ import type {
   PluginPlatformCompatibility,
   PluginPreference,
 } from "../../../plugin/types";
+import { currentPluginPlatform } from "../../../plugin/platform";
 import InstalledModuleCard from "./InstalledModuleCard";
 import { BUILTIN_PLUGIN_ICONS, isPluginUpdateAvailable } from "./helpers";
 import BetaBadge from "../../../components/BetaBadge";
@@ -125,13 +126,6 @@ function compatibilityBadgeVariant(status: PluginCompatibilityStatus): "default"
   if (status === "partial") return "secondary";
   if (status === "mac-only") return "outline";
   return "destructive";
-}
-
-function currentPlatform(): PluginPlatform {
-  const platform = navigator.platform.toLowerCase();
-  if (platform.includes("mac")) return "macos";
-  if (platform.includes("win")) return "windows";
-  return "linux";
 }
 
 function fallbackLabel(label: string): string {
@@ -236,7 +230,7 @@ function RaycastCompatibilityReport({ plugin }: { plugin: InstalledPlugin }) {
   const t = useT();
   const report = plugin.manifest?.raycast?.platformCompatibility;
   if (!report) return null;
-  const activePlatform = currentPlatform();
+  const activePlatform = currentPluginPlatform();
   const entries = (["macos", "windows", "linux"] as PluginPlatform[])
     .map((platform) => ({ platform, compatibility: report[platform] }))
     .filter((entry): entry is { platform: PluginPlatform; compatibility: PluginPlatformCompatibility } => Boolean(entry.compatibility));

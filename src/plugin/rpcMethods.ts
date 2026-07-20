@@ -88,6 +88,7 @@ const COMMAND_CAPABILITIES: Record<string, string> = {
   plugin_system_env: "system",
   plugin_system_open_path: "system",
   plugin_system_reveal_path: "system",
+  plugin_system_open_settings: "system",
   plugin_system_set_wallpaper: "system",
   plugin_tray_set_items: "tray",
   plugin_tray_clear: "tray",
@@ -113,6 +114,7 @@ const DANGEROUS_INVOKE_COMMANDS = new Set([
   "plugin_cli_list_jobs",
   "plugin_system_open_path",
   "plugin_system_reveal_path",
+  "plugin_system_open_settings",
   "plugin_system_set_wallpaper",
   "plugin_tray_set_items",
   "plugin_tray_clear",
@@ -489,6 +491,13 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   systemRevealPath: async (plugin, perms, payload) => {
     assertPermission(plugin, perms, "system");
     return invoke("plugin_system_reveal_path", { path: String(payload.path || "") });
+  },
+
+  systemOpenSettings: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "system");
+    return invoke("plugin_system_open_settings", {
+      section: String(payload.section || ""),
+    });
   },
 
   systemSetWallpaper: async (plugin, perms, payload) => {

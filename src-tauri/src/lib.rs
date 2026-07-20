@@ -39,9 +39,10 @@ mod tray_menu;
 mod updater;
 mod v2ex;
 mod weather;
+#[cfg(target_os = "windows")]
+mod windows_process;
 
 use tauri::{
-    image::Image,
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     AppHandle, Emitter, LogicalSize, Manager,
 };
@@ -308,6 +309,12 @@ pub fn run() {
             if label != floating_panel::MAIN_LABEL {
                 return;
             }
+            if matches!(event, tauri::WindowEvent::Focused(true)) {
+                // OS-owned privacy panels and file pickers temporarily take
+                // focus. Once Qx becomes key again, normal outside-click and
+                // Esc behavior resumes.
+                floating_panel::set_external_interaction_active(false);
+            }
             // Hide on focus loss when auto-hide is enabled.
             // - Windows: WebView2 outside-click focus can race; native event is required.
             // - macOS: accessory NSWindow focus notifications are not always delivered
@@ -447,15 +454,13 @@ pub fn run() {
 
             let current_settings = settings::read_settings();
             let menu = tray_menu::build_tray_menu(&handle, &current_settings)?;
-            let tray_rgba =
-                image::load_from_memory(include_bytes!("../icons/tray-template.png"))?.into_rgba8();
-            let (tray_width, tray_height) = tray_rgba.dimensions();
-            let tray_icon = Image::new_owned(tray_rgba.into_raw(), tray_width, tray_height);
+            let tray_icon = tray_menu::tray_icon()
+                .map_err(|error| Box::<dyn std::error::Error>::from(error))?;
 
             TrayIconBuilder::with_id(MAIN_TRAY_ID)
                 .menu(&menu)
                 .icon(tray_icon)
-                .icon_as_template(true)
+                .icon_as_template(tray_menu::tray_icon_is_template())
                 .on_menu_event(|app, event| {
                     let id = event.id().as_ref();
                     if let Some(route) = id
@@ -547,6 +552,7 @@ pub fn run() {
             floating_panel::floating_hide_restore_focus,
             floating_panel::floating_previous_app_name,
             floating_panel::floating_set_onboarding_active,
+            floating_panel::floating_set_external_interaction_active,
             floating_panel::floating_toggle,
             floating_panel::floating_request_key,
             floating_panel::set_active_route,
@@ -699,6 +705,7 @@ pub fn run() {
             plugin_system::plugin_system_env,
             plugin_system::plugin_system_open_path,
             plugin_system::plugin_system_reveal_path,
+            plugin_system::plugin_system_open_settings,
             plugin_api::plugin_ai_grep_search,
             plugin_api::plugin_ai_memory_list,
             plugin_api::plugin_ai_memory_add,
@@ -761,7 +768,7 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app, event| {
+        .run(|_app, _event| {
             // macOS sends Reopen when the helper is activated (for example by
             // Login Items or `open -a Qx`). Qx is shortcut-first: activation
             // keeps the helper alive but must never surface a hidden launcher.
@@ -769,9 +776,9 @@ pub fn run() {
             if let tauri::RunEvent::Reopen {
                 has_visible_windows: false,
                 ..
-            } = event
+            } = _event
             {
-                floating_panel::hide(app);
+                floating_panel::hide(_app);
             }
         });
 }
