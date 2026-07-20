@@ -19,7 +19,10 @@ const root = process.cwd();
 const failures = [];
 const fail = (m) => failures.push(m);
 
-const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
+// Git may check text out as CRLF on Windows. Structural contracts must consume
+// one canonical source shape instead of making line-ending style observable.
+const normalizeSourceText = (source) => source.replace(/\r\n?/g, "\n");
+const read = (rel) => normalizeSourceText(fs.readFileSync(path.join(root, rel), "utf8"));
 const exists = (rel) => fs.existsSync(path.join(root, rel));
 function bundleProductionModule(entry, outfile) {
   const result = bundleNodeModule({ root, entry, outfile });
@@ -632,8 +635,16 @@ if (bundleProductionModule("src/plugin/context.ts", contextOut)) {
     const contextModule = await import(pathToFileURL(contextOut).href + `?t=${Date.now()}`);
     const directPaths = objectFunctionPaths(contextModule.createUnavailableContext("contract-test"))
       .filter((name) => !name.startsWith("cli.") && !name.startsWith("ui."));
-    const iframePaths = runtimeContextFunctionPaths(read("src/plugin/runtime.ts"))
+    const runtimeSource = read("src/plugin/runtime.ts");
+    const iframePaths = runtimeContextFunctionPaths(runtimeSource)
       .filter((name) => !name.startsWith("cli.") && !name.startsWith("ui."));
+    const crlfIframePaths = runtimeContextFunctionPaths(
+      normalizeSourceText(runtimeSource.replace(/\n/g, "\r\n")),
+    )
+      .filter((name) => !name.startsWith("cli.") && !name.startsWith("ui."));
+    if (iframePaths.join("\n") !== crlfIframePaths.join("\n")) {
+      fail("iframe context contract must be invariant across LF and CRLF checkouts");
+    }
     const missingFromIframe = directPaths.filter((name) => !iframePaths.includes(name));
     const missingFromDirect = iframePaths.filter((name) => !directPaths.includes(name));
     if (missingFromIframe.length || missingFromDirect.length) {

@@ -2,7 +2,7 @@
 
 ## Release fix — Windows quality-gate esbuild invocation
 
-**状态**：根因已修复，准备随 v0.6.1 发布。
+**状态**：两层 Windows runner 根因已修复，准备随 v0.6.2 发布。
 
 - v0.6.0 的 macOS bundle 已成功，但 Windows runner 在进入 Rust / NSIS 前被
   `npm run check` 阻断：两个检查器把 `node_modules/.bin/esbuild.cmd` 直接交给
@@ -12,12 +12,16 @@
   JavaScript API，不再依赖平台 shell、`.cmd` shim 或 PATH；真实 bundling 错误也会
   保留 stack/message。
 - esbuild 现在是质量门禁的显式 devDependency，不再只依赖 Vite 的传递依赖。
+- v0.6.1 已证明上述 esbuild 端口在 Windows 正常工作；随后 module-port 门禁暴露第二个
+  平台假设：字符串切片只匹配 LF，而 GitHub Windows checkout 使用 CRLF，导致
+  `runtime.ts` 的 iframe context 被误报为不存在。所有结构检查现在统一从 `read`
+  文本端口接收规范化 LF，并以同一 runtime source 的 LF/CRLF 结果做等价回归。
 
 ### 验证
 
 - [x] `npm run check` / `npx tsc --noEmit` / `npm run build`
 - [x] `cargo fmt --check` / `cargo check` / `cargo test --lib`（100 tests）
-- [ ] Windows Compatibility / v0.6.1 release workflow
+- [ ] Windows Compatibility / v0.6.2 release workflow
 
 ## Audit/Fix — 插件跨平台端口、屏幕捕获性能与 Windows 主窗口缩放
 
