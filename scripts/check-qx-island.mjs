@@ -3,10 +3,10 @@
  * No copied resolver implementation: this script imports the shipped TS ports.
  */
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { bundleNodeModule } from "./esbuild-port.mjs";
 import {
   resolveDockedRenderMode,
   resolveDockedWinner,
@@ -30,27 +30,16 @@ if (!globalThis.window) {
 const rootDir = process.cwd();
 const cacheDir = path.join(rootDir, "node_modules", ".cache", "qx-island-check");
 const storeBundle = path.join(cacheDir, "store.mjs");
-const esbuild = path.join(
-  rootDir,
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "esbuild.cmd" : "esbuild",
-);
 fs.mkdirSync(cacheDir, { recursive: true });
-const bundleResult = spawnSync(esbuild, [
-  "src/island/session/store.ts",
-  "--bundle",
-  "--platform=node",
-  "--format=esm",
-  `--outfile=${storeBundle}`,
-], {
-  cwd: rootDir,
-  encoding: "utf8",
+const bundleResult = bundleNodeModule({
+  root: rootDir,
+  entry: "src/island/session/store.ts",
+  outfile: storeBundle,
 });
 assert.equal(
-  bundleResult.status,
-  0,
-  `Failed to bundle production Island store:\n${bundleResult.stderr || bundleResult.stdout}`,
+  bundleResult.ok,
+  true,
+  `Failed to bundle production Island store:\n${bundleResult.error}`,
 );
 
 const {

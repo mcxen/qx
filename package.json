@@ -1,7 +1,7 @@
 {
   "name": "qx",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.6.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -63,6 +63,7 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
+    "esbuild": "^0.27.7",
     "typescript": "~5.8.3",
     "vite": "^7.0.4"
   }

@@ -1,5 +1,24 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Release fix — Windows quality-gate esbuild invocation
+
+**状态**：根因已修复，准备随 v0.6.1 发布。
+
+- v0.6.0 的 macOS bundle 已成功，但 Windows runner 在进入 Rust / NSIS 前被
+  `npm run check` 阻断：两个检查器把 `node_modules/.bin/esbuild.cmd` 直接交给
+  `spawnSync`，Windows 不会像 Unix 可执行文件一样直接启动 `.cmd`，因此返回
+  `status = null` 且没有 stderr。
+- Island 与 module-port 检查统一通过 `scripts/esbuild-port.mjs` 调用 esbuild
+  JavaScript API，不再依赖平台 shell、`.cmd` shim 或 PATH；真实 bundling 错误也会
+  保留 stack/message。
+- esbuild 现在是质量门禁的显式 devDependency，不再只依赖 Vite 的传递依赖。
+
+### 验证
+
+- [x] `npm run check` / `npx tsc --noEmit` / `npm run build`
+- [x] `cargo fmt --check` / `cargo check` / `cargo test --lib`（100 tests）
+- [ ] Windows Compatibility / v0.6.1 release workflow
+
 ## Audit/Fix — 插件跨平台端口、屏幕捕获性能与 Windows 主窗口缩放
 
 **状态**：宿主端口审计与根因修复完成，macOS release 已实测，等待 Windows 运行态复核。

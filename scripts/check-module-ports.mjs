@@ -8,12 +8,12 @@
  * Run: node scripts/check-module-ports.mjs
  * Also invoked from npm run check.
  */
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import ts from "typescript";
 import { pathToFileURL } from "node:url";
+import { bundleNodeModule } from "./esbuild-port.mjs";
 
 const root = process.cwd();
 const failures = [];
@@ -21,23 +21,10 @@ const fail = (m) => failures.push(m);
 
 const read = (rel) => fs.readFileSync(path.join(root, rel), "utf8");
 const exists = (rel) => fs.existsSync(path.join(root, rel));
-const esbuildBinary = path.join(
-  root,
-  "node_modules",
-  ".bin",
-  process.platform === "win32" ? "esbuild.cmd" : "esbuild",
-);
-
 function bundleProductionModule(entry, outfile) {
-  const result = spawnSync(esbuildBinary, [
-    entry,
-    "--bundle",
-    "--platform=node",
-    "--format=esm",
-    `--outfile=${outfile}`,
-  ], { cwd: root, encoding: "utf8" });
-  if (result.status !== 0 || !fs.existsSync(outfile)) {
-    fail(`bundle ${entry} failed: ${result.stderr || result.stdout}`);
+  const result = bundleNodeModule({ root, entry, outfile });
+  if (!result.ok || !fs.existsSync(outfile)) {
+    fail(`bundle ${entry} failed: ${result.error}`);
     return false;
   }
   return true;
