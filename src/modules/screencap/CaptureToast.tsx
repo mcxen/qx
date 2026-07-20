@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useT } from "../../i18n";
-import { writeImageFileToClipboard } from "../../system";
+import { revealSystemPath, writeImageFileToClipboard } from "../../system";
 
 interface Props {
   path: string;
@@ -35,7 +34,7 @@ export default function CaptureToast({ path, onOpen, onDismiss }: Props) {
 
   const reveal = async () => {
     try {
-      await revealItemInDir(path);
+      await revealSystemPath(path);
     } catch (revealError) {
       setError(String(revealError));
     }

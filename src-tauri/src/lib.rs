@@ -306,10 +306,19 @@ pub fn run() {
                 }
                 return;
             }
+            if label == "island" {
+                if matches!(event, tauri::WindowEvent::Focused(true)) {
+                    floating_panel::cancel_pending_auto_hide();
+                } else if matches!(event, tauri::WindowEvent::Focused(false)) {
+                    floating_panel::request_auto_hide_after_focus_settles(&window.app_handle());
+                }
+                return;
+            }
             if label != floating_panel::MAIN_LABEL {
                 return;
             }
             if matches!(event, tauri::WindowEvent::Focused(true)) {
+                floating_panel::cancel_pending_auto_hide();
                 // OS-owned privacy panels and file pickers temporarily take
                 // focus. Once Qx becomes key again, normal outside-click and
                 // Esc behavior resumes.
@@ -321,11 +330,8 @@ pub fn run() {
             //   reliably to the webview `onFocusChanged` listener, so hide here too.
             // Suppress right after screencap stop / programmatic show — otherwise
             // a focus flicker hides the panel and feels like Qx quit.
-            if matches!(event, tauri::WindowEvent::Focused(false))
-                && settings::read_settings().general.auto_hide_on_blur
-                && !floating_panel::auto_hide_suppressed()
-            {
-                floating_panel::hide_and_restore_focus(&window.app_handle());
+            if matches!(event, tauri::WindowEvent::Focused(false)) {
+                floating_panel::request_auto_hide_after_focus_settles(&window.app_handle());
             }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Qx is a background helper. Closing the launcher must only

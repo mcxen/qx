@@ -3,6 +3,7 @@ import {
   type PluginWorkbenchEvent,
   type PluginWorkbenchPayload,
 } from "./workbenchTypes";
+import { currentPluginThemePayload } from "./pluginTheme";
 
 export interface PanelRuntimeSession {
   iframe: HTMLIFrameElement;
@@ -55,15 +56,11 @@ export function isPluginRuntimeSource(
   return runtimeSources.get(pluginId)?.get(runtimeId) === source;
 }
 
-export function currentPluginTheme(): "light" | "dark" {
-  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
-}
-
 function broadcastPluginTheme(): void {
-  const theme = currentPluginTheme();
+  const payload = currentPluginThemePayload();
   for (const runtimes of runtimeSources.values()) {
     for (const source of runtimes.values()) {
-      source.postMessage({ type: "qx:theme", theme }, "*");
+      source.postMessage({ type: "qx:theme", ...payload }, "*");
     }
   }
 }
@@ -190,7 +187,7 @@ export function ensurePluginShellBridge(): void {
   const themeObserver = new MutationObserver(broadcastPluginTheme);
   themeObserver.observe(document.documentElement, {
     attributes: true,
-    attributeFilter: ["data-theme", "class"],
+    attributeFilter: ["data-theme", "class", "style"],
   });
   window.addEventListener("message", (event: MessageEvent) => {
     if (!isExpectedPluginMessageOrigin(event)) return;

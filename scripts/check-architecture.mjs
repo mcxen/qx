@@ -112,6 +112,23 @@ if (exists("src-tauri/capabilities/default.json")) {
   }
 }
 
+// --- 7. Local paths use the semantic system port, not WebView opener ACLs ---
+const sourceFiles = [];
+const collectSourceFiles = (dir) => {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) collectSourceFiles(file);
+    else if (/\.(?:ts|tsx)$/.test(entry.name)) sourceFiles.push(file);
+  }
+};
+collectSourceFiles(path.join(root, "src"));
+for (const file of sourceFiles) {
+  const content = fs.readFileSync(file, "utf8");
+  if (content.includes("revealItemInDir")) {
+    fail(`${path.relative(root, file)} must use src/system/pathActions.ts instead of WebView revealItemInDir`);
+  }
+}
+
 if (failures.length) {
   console.error("architecture check failed:\n");
   for (const item of failures) console.error(`  - ${item}`);
@@ -119,4 +136,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log("architecture: ok — SOLID doc linked, host binary port, converter Buffer, settings i18n import, island ports, capture capabilities.");
+console.log("architecture: ok — SOLID doc linked, host binary/path ports, converter Buffer, settings i18n import, island ports, capture capabilities.");

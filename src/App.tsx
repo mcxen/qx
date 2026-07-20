@@ -1384,26 +1384,25 @@ function App() {
   useEffect(() => {
     if (!isTauriRuntime()) return;
     const win = getCurrentWindow();
+    let focusVisibilityTimer: number | null = null;
     const unlistenFocus = win.onFocusChanged(({ payload: focused }) => {
       if (windowFocusedRef.current === focused) return;
       const wasFocused = windowFocusedRef.current;
       windowFocusedRef.current = focused;
-      setVisible(focused);
-      // Prefer native hide (lib.rs on_window_event) as the source of truth.
-      // Keep a webview fallback for environments where the native event is missed.
-      if (!focused && settings.general.autoHideOnBlur) {
-        // First-launch / onboarding / panel activation can briefly report blur; don't hide yet.
-        if (Date.now() < ignoreBlurUntilRef.current) return;
-        // Stay visible while the macOS permission wizard is open (user is in System Settings).
-        if (showOnboarding) {
-          ignoreBlurUntilRef.current = Date.now() + 60_000;
-          return;
-        }
-        // Go through Rust hide so PANEL_OPEN / last-hide timestamps stay in
-        // sync with global-shortcut toggle (otherwise Alt+V re-opens after blur).
-        invoke("floating_hide_restore_focus").catch(() => {
-          win.hide().catch(() => {});
-        });
+      // `visible` describes the reusable panel, not key-window ownership. The
+      // native focus-group handler decides whether blur means "island" or an
+      // external app; marking the panel hidden here made the island able to
+      // disable the still-visible main UI.
+      if (focusVisibilityTimer !== null) window.clearTimeout(focusVisibilityTimer);
+      if (focused) {
+        setVisible(true);
+      } else {
+        // Let Rust settle the main/island focus group first, then mirror the
+        // actual native visibility back into the frontend store.
+        focusVisibilityTimer = window.setTimeout(() => {
+          if (windowFocusedRef.current) return;
+          void win.isVisible().then(setVisible).catch(() => {});
+        }, 140);
       }
       if (focused) {
         // activate_app + make_key_window cause focus flicker; ignore blur briefly
@@ -1459,6 +1458,7 @@ function App() {
       }
     });
     return () => {
+      if (focusVisibilityTimer !== null) window.clearTimeout(focusVisibilityTimer);
       unlistenFocus.then((f: () => void) => f());
       unlistenNav.then((f: () => void) => f());
     };
@@ -1469,8 +1469,6 @@ function App() {
     setTab,
     setVisible,
     setLoadingPhase,
-    settings.general.autoHideOnBlur,
-    showOnboarding,
   ]);
 
   const searchFilePass = useCallback(

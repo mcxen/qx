@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import { revealItemInDir, openPath } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { AppEntry } from "../store";
+import { openSystemPath, revealSystemPath } from "../system";
 import type { LauncherAction } from "./types";
 
 type LauncherItemKind = NonNullable<AppEntry["kind"]>;
@@ -97,7 +97,7 @@ export function createLauncherActions({
       id: "reveal",
       label: t("launcher.action.showInFinder", "Show in Finder"),
       kbd: "CmdOrCtrl+Enter",
-      run: () => revealItemInDir(item.path),
+      run: () => revealSystemPath(item.path),
     },
     {
       id: "copy-path",
@@ -111,7 +111,7 @@ export function createLauncherActions({
             id: "show-package",
             label: t("launcher.action.showPackage", "Show Package Contents"),
             kbd: "Alt+CmdOrCtrl+Enter",
-            run: () => openPath(`${item.path}/Contents`),
+            run: () => openSystemPath(`${item.path}/Contents`),
           },
         ]
       : []),

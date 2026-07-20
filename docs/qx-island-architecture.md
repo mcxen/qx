@@ -820,6 +820,9 @@ export const islandHost = {
   仅在 expanded 恢复，避免紧凑态误触与文本挤压。compact 状态保存在 Rust mirror，
   浮窗 hide/show 不会回弹到展开态。
 - **无**进程级 Esc 监听。  
+- `main` 与 `island` 作为同一 Qx 焦点组参与 blur 判定：原生窗口事件短暂等待焦点稳定，
+  组内切换不隐藏主窗；焦点从任一窗口离开 Qx 后才执行主窗 auto-hide。前端不得用
+  `Focused(false)` 直接把仍显示的主窗标记为 hidden。
 - 仅当 island 浮窗为 key window 时：本地 keydown Esc → 若 winner priority 为 `toast` 则 `dismiss`；`task/error` **不** Esc 取消（避免误杀长任务；取消走 action 按钮）。  
 - 不把按键送进主窗 Esc 级联。  
 - `accept_first_mouse`：文档化“有的平台第一击只激活”；action 仍应在一次有效 click 触发。

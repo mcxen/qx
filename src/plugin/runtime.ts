@@ -16,7 +16,6 @@ import { PLUGIN_WORKBENCH_RUNTIME_JS } from "./cliWorkbench";
 import { PLUGIN_OVERLAY_SCROLLBAR_RUNTIME_JS } from "../utils/overlayScrollbar";
 import { PLUGIN_WORKBENCH_HOST_KEYS } from "./workbenchKeyboard";
 import {
-  currentPluginTheme,
   deletePanelRuntimeSession,
   ensurePluginShellBridge,
   isExpectedPluginMessageOrigin,
@@ -26,6 +25,7 @@ import {
   unregisterPluginRuntime,
   type PanelRuntimeSession,
 } from "./pluginShellBridge";
+import { currentPluginThemePayload, PLUGIN_THEME_RUNTIME_JS } from "./pluginTheme";
 import { createSandboxIframe, resolvePluginAssetUrl } from "./pluginRuntimeTransport";
 export {
   isExpectedPluginMessageOrigin,
@@ -98,6 +98,7 @@ export function buildPluginRuntimeHtml(
   pluginDisplay: PluginDisplaySettings = pluginDisplaySettingsSnapshot(),
 ): string {
   const raycastActionPanel = pluginDisplay.raycast_action_panel !== false;
+  const initialTheme = currentPluginThemePayload();
   const runtime = `
     <style>
       html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
@@ -118,7 +119,8 @@ export function buildPluginRuntimeHtml(
       const pluginDisplay = ${JSON.stringify({
         raycastActionPanel,
       })};
-      document.documentElement.dataset.theme = ${JSON.stringify(currentPluginTheme())};
+      ${PLUGIN_THEME_RUNTIME_JS}
+      const initialTheme = JSON.parse(${serializeForInlineScript(JSON.stringify(initialTheme))}); applyPluginTheme(initialTheme.theme, initialTheme.tokens);
       let plugin = null;
       const pending = new Map();
       const contextTimers = new Map();
@@ -569,9 +571,7 @@ export function buildPluginRuntimeHtml(
         const data = event.data || {};
         const { type } = data;
         if (type === 'qx:theme') {
-          if (data.theme !== 'light' && data.theme !== 'dark') return;
-          document.documentElement.dataset.theme = data.theme;
-          document.documentElement.classList.toggle('dark', data.theme === 'dark');
+          applyPluginTheme(data.theme, data.tokens);
           return;
         }
         if (type === 'qx:rpc:response') {

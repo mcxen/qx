@@ -31,6 +31,7 @@ export interface PluginWorkbenchAction {
   kbd?: string;
   primary?: boolean;
   disabled?: boolean;
+  /** Action chrome only distinguishes default/primary/danger; other tones are item status semantics. */
   tone?: PluginWorkbenchTone;
 }
 
@@ -161,11 +162,12 @@ function normalizeActions(value: unknown): PluginWorkbenchAction[] {
   if (!Array.isArray(value)) return [];
   return value.slice(0, 32).map((entry) => {
     const raw = (entry || {}) as Record<string, unknown>;
+    const shortcut = shortText(raw.kbd, 64)?.trim();
     return {
       id: shortText(raw.id, 128) || "",
       label: shortText(raw.label, 180) || shortText(raw.id, 128) || "Action",
       command: shortText(raw.command, 128),
-      kbd: shortText(raw.kbd, 64),
+      kbd: shortcut && !/^esc(?:ape)?$/i.test(shortcut) ? shortcut : undefined,
       primary: raw.primary === true,
       disabled: raw.disabled === true,
       tone: normalizeTone(raw.tone),

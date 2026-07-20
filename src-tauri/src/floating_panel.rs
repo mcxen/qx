@@ -7,7 +7,7 @@
 //! current foreground app. Inputs that need keyboard focus explicitly
 //! request key-window status through `floating_request_key`.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 #[cfg(target_os = "macos")]
 use std::thread;
@@ -39,6 +39,11 @@ static ONBOARDING_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// window must survive the temporary focus transfer; focus returning to Qx
 /// ends the interaction and restores the normal Esc / outside-click lifecycle.
 static EXTERNAL_INTERACTION_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// Invalidates delayed blur decisions when focus moves between Qx-owned
+/// windows. A short settlement delay is required because macOS reports the
+/// main panel losing key status before the island becomes key.
+static AUTO_HIDE_BLUR_GENERATION: AtomicU64 = AtomicU64::new(0);
+const AUTO_HIDE_FOCUS_SETTLE: Duration = Duration::from_millis(80);
 
 fn previous_foreground_pid() -> &'static Mutex<Option<i32>> {
     PREVIOUS_FOREGROUND_PID.get_or_init(|| Mutex::new(None))
@@ -132,6 +137,72 @@ pub fn auto_hide_suppressed() -> bool {
         .and_then(|guard| *guard)
         .map(|until| Instant::now() < until)
         .unwrap_or(false)
+}
+
+fn should_hide_after_focus_settles(
+    auto_hide_enabled: bool,
+    suppressed: bool,
+    main_visible: bool,
+    main_focused: bool,
+    island_focused: bool,
+) -> bool {
+    auto_hide_enabled && !suppressed && main_visible && !main_focused && !island_focused
+}
+
+/// Cancel a pending outside-Qx blur decision. Call whenever either Qx-owned
+/// interactive window becomes focused.
+pub fn cancel_pending_auto_hide() {
+    AUTO_HIDE_BLUR_GENERATION.fetch_add(1, Ordering::SeqCst);
+}
+
+/// Defer auto-hide until the OS has finished moving focus. The main panel and
+/// the floating island form one focus group: moving between them must not hide
+/// the main panel, while leaving both still follows the user's auto-hide rule.
+pub fn request_auto_hide_after_focus_settles(app: &AppHandle) {
+    let generation = AUTO_HIDE_BLUR_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(AUTO_HIDE_FOCUS_SETTLE).await;
+        if AUTO_HIDE_BLUR_GENERATION.load(Ordering::SeqCst) != generation {
+            return;
+        }
+
+        let auto_hide_enabled = crate::settings::read_settings().general.auto_hide_on_blur;
+        let suppressed = auto_hide_suppressed();
+        let app_for_ui = app.clone();
+        let focus = crate::main_thread::ui(&app, move || {
+            let main = app_for_ui.get_webview_window(MAIN_LABEL);
+            let island = app_for_ui.get_webview_window("island");
+            (
+                main.as_ref()
+                    .and_then(|window| window.is_visible().ok())
+                    .unwrap_or(false),
+                main.as_ref()
+                    .and_then(|window| window.is_focused().ok())
+                    .unwrap_or(false),
+                island
+                    .as_ref()
+                    .and_then(|window| window.is_focused().ok())
+                    .unwrap_or(false),
+            )
+        })
+        .await;
+
+        let Ok((main_visible, main_focused, island_focused)) = focus else {
+            return;
+        };
+        if AUTO_HIDE_BLUR_GENERATION.load(Ordering::SeqCst) == generation
+            && should_hide_after_focus_settles(
+                auto_hide_enabled,
+                suppressed,
+                main_visible,
+                main_focused,
+                island_focused,
+            )
+        {
+            hide_and_restore_focus(&app);
+        }
+    });
 }
 
 /// Keep the main panel visible while the user grants macOS permissions.
@@ -743,7 +814,9 @@ pub fn floating_request_key(app: AppHandle) {
 
 #[cfg(test)]
 mod tests {
-    use super::{accepts_key_window_request, destination_geometry};
+    use super::{
+        accepts_key_window_request, destination_geometry, should_hide_after_focus_settles,
+    };
     use crate::display::DisplayArea;
 
     #[test]
@@ -752,6 +825,28 @@ mod tests {
         assert!(!accepts_key_window_request(false, true));
         assert!(!accepts_key_window_request(true, false));
         assert!(!accepts_key_window_request(false, false));
+    }
+
+    #[test]
+    fn auto_hide_treats_main_and_island_as_one_focus_group() {
+        assert!(should_hide_after_focus_settles(
+            true, false, true, false, false
+        ));
+        assert!(!should_hide_after_focus_settles(
+            true, false, true, true, false
+        ));
+        assert!(!should_hide_after_focus_settles(
+            true, false, true, false, true
+        ));
+        assert!(!should_hide_after_focus_settles(
+            false, false, true, false, false
+        ));
+        assert!(!should_hide_after_focus_settles(
+            true, true, true, false, false
+        ));
+        assert!(!should_hide_after_focus_settles(
+            true, false, false, false, false
+        ));
     }
 
     fn scaled_area(scale_factor: f64, frame_x: i32, frame_width: u32) -> DisplayArea {

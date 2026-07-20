@@ -132,7 +132,9 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 | `island_window_get_snapshot` | float 冷启动读 mirror |
 | `island_sessions_publish` | main → Rust mirror JSON |
 
-事件：`island:sessions`、`island:intent`（字符串名）。设计见 `docs/qx-island-architecture.md`。
+事件：`island:sessions`、`island:intent`（字符串名）。`main` 与 `island` 共享 Qx 焦点组；
+两者之间切换焦点不会触发主窗自动隐藏，焦点离开两者后才按设置隐藏。设计见
+`docs/qx-island-architecture.md`。
 
 Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 取消常驻意图
 回传主 webview，由设置 store 持久化，避免后台恢复旧的 pinned 状态。

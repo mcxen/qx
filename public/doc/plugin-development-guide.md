@@ -42,6 +42,7 @@
 | 顺序 | 文档 | 内容 |
 |:----:|------|------|
 | **①** | **本文** | 总览、端口、manifest、安装、调试、模式 |
+| **①b** | [`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md) | **插件 UI / 明暗度 / Actions**：Workbench 优先、Custom Panel token、对比度与键盘规则 |
 | ② | [`plugin-cli-protocol.md`](./plugin-cli-protocol.md) | **`context.cli` 完整协议**（argv、超时、安全） |
 | ②b | [`plugin-cli-gui.md`](./plugin-cli-gui.md) | **CLI→GUI**：`cli.json` / `ui.mountWorkbench` 与示例 |
 | ②c | [`plugin-tray.md`](./plugin-tray.md) | **系统托盘能力**：`context.tray` + 指标拼实时标题 |
@@ -131,12 +132,14 @@ Qx 当前可运行 **5 条入口/执行链路**；它们可以组合在同一个
 | 模式 | 开发者写什么 | UI | 代表 |
 |------|--------------|-----|------|
 | **business**（推荐默认） | `mountWorkbench(state, handlers)` 发布列表、详情、Actions、Island 纯数据 | **宿主统一**（Qx 主题 / tabs / list / detail / Actions / island） | **Pomodoro**、**QxGH** |
-| **custom panel** | 自绘 `container` DOM/CSS（仍建议用 `--qx-*` 变量） | 作者自控 | weather 卡片、复杂可视化 |
+| **custom panel** | 自绘 `container` DOM/CSS（必须使用宿主注入的语义 token） | 作者自控；仍须通过明暗度、键盘与可访问性验收 | weather 卡片、复杂可视化 |
 | **commands-only** | 仅 `commands[].run`（toast / 剪贴板 / 开 URL） | 无 panel | 一键工具 |
 | **island + panel** | Workbench `island` 字段，或 panel 关闭时调用 `context.island` | 停靠由宿主呈现；桌面浮窗只由用户从 Qx 手动浮出并可关闭，右上定位、轮播与抢占由宿主决定 | pomodoro |
 
 原则：**能 business 就 business**——只写业务映射（API → list items），不要复制壳 CSS。
 Workbench 条目可带：`icon` · `image` · `badge` · `tone` · **`progress`（0–100）** · `detail` · `actions` · `raw`。`detail` 必须是结构化数据；Workbench 不接受 HTML。
+完整的布局、Light/Dark 对比度、Custom Panel token 与 Action 层级见
+[`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md)。
 
 Workbench 是受控业务端口：插件拥有最终业务 state，宿主拥有即时的输入、tab、选择、焦点和滚动反馈。`onQuery` / `onTab` / `onSelect` 先同步改 state + `paint()`，再启动可取消的慢任务；不要在回画前 `await`。每个 item 都必须提供稳定、唯一、非空的 `id`；宿主会直接拒绝缺失或重复项，不提供 title/index 兼容回退。`onAction` 直接使用宿主传入的 `selectedItem`，不要从可能滞后的闭包另猜当前项。完整事件与信任边界见 [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md#声明式-workbench-端口)。
 
@@ -193,6 +196,11 @@ Action 有两条执行路径：
 - `command: "manifest-command"`：宿主校验后在 command runtime 执行，适合计时器、下载等跨 panel 生命周期任务。
 - 无 `command`：回调 `handlers.onAction`，适合当前 panel 的刷新、清筛选、清历史等局部操作。
 
+每个上下文最多一个可用 `primary: true`；宿主以同一个 Primary 同步生成底栏按钮和
+Actions 菜单的默认 `Enter`。`Esc` 保留给返回阶梯，不能作为 Workbench Action 快捷键；
+危险动作使用 `tone: "danger"` 并在不可逆时确认。完整规则见
+[`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md#5-actions)。
+
 command 与 panel 是不同 iframe runtime，不能用模块全局变量假装共享状态；跨 runtime 数据必须走 `context.storage.persist`。完整样板见市场插件 `pomodoro-island`。
 Workbench 中带 `command` 的 action 完成后，宿主会调用 `onCommandComplete`；面板应在此读取一次持久化状态并回画，不要为了等待命令结果高频轮询磁盘。
 
@@ -239,7 +247,7 @@ Workbench 中带 `command` 的 action 完成后，宿主会调用 `onCommandComp
 |------|------|------|------|
 | 跑本机工具（brew、release-cli、git） | **`context.cli`** | `cli` | **业务首选**；`run`/`bash` 同步；`start`/`wait`/`cancel` 异步；`map` 有界并行；GUI 下 login PATH |
 | 打开/揭示本地产物、读平台环境、系统设置、设置壁纸 | **`context.system`** | `system` | `env` / `openPath` / `revealPath` / `openSettings` / `setWallpaper`；与 `openUrl` 不同 |
-| 读取系统、存储、网络、电源 | **`context.system`** | `system-info` | `info` / `storage` / `network` / `networkCounters` / `power`；macOS / Windows 返回同一 typed model |
+| 读取系统、存储、网络、电源 | **`context.system`** | `system-info` | `info` / `storage` / `network` / `networkCounters` / `power`；macOS / Windows 返回同一 typed model。电池存在、外接电源、充电、充满状态彼此独立，健康/容量字段按硬件能力可选 |
 | 读取/结束进程 | **`context.system.processes`** | `processes` + 结束时精确 invoke | `list()`；`kill(pid)` 还需 `invoke:qx_system_information_kill_process` |
 | 系统托盘菜单项 | **`context.tray`** | `tray` | `setItems` / `clear`；点选可跑本插件 `command` |
 | 调公司 HTTP API | **`context.http`** | `http` | 跨平台更稳 |
@@ -293,6 +301,9 @@ await context.cli.which("brew")  // => "/opt/homebrew/bin/brew" | null（含 log
 // const [info, disks, power] = await Promise.all([
 //   context.system.info(), context.system.storage(), context.system.power(),
 // ]);
+// power 将 macOS 与 Windows 适配为同一模型。batteryPresent、
+// externalConnected、isCharging、fullyCharged 是互相独立的状态；
+// 容量值须搭配 capacityUnit 使用，未被系统/硬件提供的字段为 null。
 // 权限: "tray" — 往系统托盘加菜单（可选 command 为本插件 commands[].name）
 // await context.tray.setItems([
 //   { id: "mem", title: "Open dashboard", command: "open" },
@@ -633,6 +644,7 @@ context.ui.mountWorkbench({
 - [ ] 包内建议带 **`AGENTS.md`**（Agent 维护用；老包可无，非安装门槛）
 - [ ] `permissions` 覆盖所有 `context.*` / `invoke:` 调用
 - [ ] 网络面板：persist 缓存或 host 缓存；`render` 不长时间 await
+- [ ] UI 按 [`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md) 验证 Light/Dark、对比度、键盘与 Actions
 - [ ] 使用 `cli` 而非无必要的 `ai-bash`  
 - [ ] CLI 用 argv；危险操作有 confirm  
 - [ ] 密钥只在 preferences / 环境，不进仓库  

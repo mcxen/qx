@@ -399,6 +399,11 @@ export function PluginPanelViewport() {
     });
   }, [selectedWorkbenchItem, workbench]);
 
+  const primaryWorkbenchAction = workbench
+    ? workbenchActionDescriptors.find((action) => action.primary && !action.disabled)
+      || workbenchActionDescriptors.find((action) => !action.disabled)
+    : undefined;
+
   const runWorkbenchAction = useCallback((actionId: string) => {
     const descriptor = workbenchActionDescriptors.find((action) => action.id === actionId);
     if (descriptor?.command) {
@@ -426,14 +431,13 @@ export function PluginPanelViewport() {
   // Raycast ActionPanel[0] and declarative Workbench primary both map to the
   // same QxShell primary/action surfaces.
   const primaryItem = workbench
-    ? workbenchActionDescriptors.find((action) => action.primary && !action.disabled)
-      || workbenchActionDescriptors.find((action) => !action.disabled)
+    ? primaryWorkbenchAction
     : itemActions[0];
 
   const contextualActions = useMemo<QxShellAction[]>(() => workbench
-    ? workbenchActionDescriptors.map((action, index) => ({
+    ? workbenchActionDescriptors.map((action) => ({
         label: action.label,
-        kbd: action.kbd || (index === 0 ? "Enter" : undefined),
+        kbd: action.kbd || (action.id === primaryWorkbenchAction?.id ? "Enter" : undefined),
         disabled: action.disabled,
         tone: action.tone === "danger" ? "danger" : action.primary ? "primary" : "normal",
         onClick: () => runWorkbenchAction(action.id),
@@ -442,7 +446,14 @@ export function PluginPanelViewport() {
         label: action.title,
         kbd: action.kbd || (index === 0 ? "Enter" : undefined),
         onClick: () => runItem(action.id),
-      })), [itemActions, runItem, runWorkbenchAction, workbench, workbenchActionDescriptors]);
+      })), [
+        itemActions,
+        primaryWorkbenchAction?.id,
+        runItem,
+        runWorkbenchAction,
+        workbench,
+        workbenchActionDescriptors,
+      ]);
 
   const actions = useMemo<QxShellAction[]>(() => {
     // Panel-level ops stay after the selected item's ActionPanel (Raycast order).

@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useSettingsStore } from "./store";
 import { usePluginRegistry } from "../../plugin/registry";
 import { Button, Row, Toggle, Select, Input, SettingsCard } from "../../components/ui";
 import { useT } from "../../i18n";
+import { revealSystemPath } from "../../system";
 import {
   TRAY_ACTION_TYPES,
   DEFAULT_TRAY_ACTIONS,
@@ -134,7 +134,7 @@ export default function AdvancedSettings() {
 
   const revealDiagnosticLog = async () => {
     const path = await invoke<string>("qx_log_path");
-    await revealItemInDir(path);
+    await revealSystemPath(path);
   };
 
   const handleScaffold = async () => {

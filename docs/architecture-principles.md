@@ -140,7 +140,8 @@
 | 磁盘图写剪贴板 | `clipboard` | `clipboard_write_image_file` / `src/system/clipboard.ts` |
 | 视频/GIF 编解码 | `media/` | 既有 convert 命令 |
 | 主线程 UI / 后台算力 | `runtime/` | `runtime::ui` · `runtime::blocking` · `runtime::install`（见 runtime-threading.md） |
-| 系统信息 / 设置目的地 | `system_information` · `plugin_system` | `context.system.info/storage/network/power/stats/processes/openSettings`；插件只见同形数据和语义 section，不见 PowerShell / AppKit / `ms-settings:` |
+| 系统信息 / 设置目的地 | `system_information` · `plugin_system` | `context.system.info/storage/network/power/stats/processes/openSettings`；插件只见同形数据和语义 section，不见 PowerShell / AppKit / `ms-settings:`；Power 模型将电池存在、外接电源、充电与充满拆成独立状态，健康/容量字段按硬件能力可选 |
+| 本地路径打开 / 揭示 | `plugin_system` | `src/system/pathActions.ts` · `context.system.openPath/revealPath`；内置模块与插件共享平台语义，不直接依赖 WebView opener 的路径 ACL / canonicalize |
 
 Feature（如 `screencap`）只保留：**session / 工作流 / 历史 / UI 语义**。旧名 `screencap_list_*` 可作为薄门面保留，新代码必须走系统命令。
 
@@ -162,6 +163,9 @@ Sysinfo、Brew、Unsplash 等业务只负责领域状态。插件信任边界仍
 Esc。内置 React 模块若需要更深的多层工作流，继续复用
 `useQxListSelection` / `useQxMasterDetail` / `QxShellAction`，不应为了“统一”绕进
 iframe RPC；两条路径共享的是端口语义和视觉令牌，而不是强制同一 runtime。
+Custom Panel 的视觉令牌由 `src/plugin/pluginTheme.ts` 作为单一投影端口同步到 iframe；
+`runtime.ts` 只负责组装该自包含 apply runtime，`pluginShellBridge.ts` 只负责在宿主主题
+或外观 style 变化时广播。不得让插件各自复制 Light/Dark 色板或依赖深色 fallback。
 
 ### OS 模态交互
 

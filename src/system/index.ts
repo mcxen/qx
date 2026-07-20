@@ -14,3 +14,4 @@
 export * from "./display";
 export * from "./desktopWindows";
 export * from "./clipboard";
+export * from "./pathActions";

@@ -5,6 +5,9 @@ use std::process::Command;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
+mod power;
+pub use power::QxPowerInfo;
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct QxSystemInfo {
@@ -61,16 +64,6 @@ pub struct QxNetworkCounters {
 }
 
 #[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct QxPowerInfo {
-    battery_level: Option<u8>,
-    is_charging: bool,
-    fully_charged: bool,
-    source: String,
-    summary: String,
-}
-
-#[derive(Debug, Serialize)]
 pub struct QxProcessInfo {
     pid: u32,
     name: String,
@@ -91,7 +84,7 @@ pub struct QxKillProcessResult {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn command_output(program: &str, args: &[&str]) -> Result<String, String> {
+pub(super) fn command_output(program: &str, args: &[&str]) -> Result<String, String> {
     let mut command = Command::new(program);
     command.args(args);
     #[cfg(target_os = "windows")]
@@ -177,7 +170,7 @@ fn serial_number() -> String {
 }
 
 #[cfg(target_os = "windows")]
-fn powershell(script: &str) -> Result<String, String> {
+pub(super) fn powershell(script: &str) -> Result<String, String> {
     let program = crate::windows_process::powershell_binary();
     let script = format!(
         "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); {script}"
@@ -460,48 +453,6 @@ fn network_counters_blocking() -> Result<QxNetworkCounters, String> {
     }
 }
 
-fn power_blocking() -> Result<QxPowerInfo, String> {
-    use battery::units::ratio::percent;
-
-    let manager = battery::Manager::new().map_err(|e| format!("battery manager: {e}"))?;
-    let battery = manager
-        .batteries()
-        .map_err(|e| format!("list batteries: {e}"))?
-        .next()
-        .transpose()
-        .map_err(|e| format!("read battery: {e}"))?;
-
-    let Some(battery) = battery else {
-        return Ok(QxPowerInfo {
-            battery_level: None,
-            is_charging: false,
-            fully_charged: false,
-            source: "No battery".to_string(),
-            summary: "No battery detected".to_string(),
-        });
-    };
-
-    let level = battery.state_of_charge().get::<percent>().round() as u8;
-    let state = battery.state();
-    let is_charging = matches!(state, battery::State::Charging | battery::State::Full);
-    let fully_charged = matches!(state, battery::State::Full);
-    let source = if is_charging {
-        "AC Power"
-    } else {
-        "Battery Power"
-    }
-    .to_string();
-    let summary = format!("{source}: {level}% ({state})");
-
-    Ok(QxPowerInfo {
-        battery_level: Some(level.min(100)),
-        is_charging,
-        fully_charged,
-        source,
-        summary,
-    })
-}
-
 fn list_processes_blocking() -> Result<QxProcessList, String> {
     #[cfg(target_os = "windows")]
     {
@@ -630,7 +581,7 @@ pub async fn qx_system_monitor_network_counters() -> Result<QxNetworkCounters, S
 
 #[tauri::command]
 pub async fn qx_system_monitor_power() -> Result<QxPowerInfo, String> {
-    tauri::async_runtime::spawn_blocking(power_blocking)
+    tauri::async_runtime::spawn_blocking(power::collect)
         .await
         .map_err(|e| format!("power information worker failed: {e}"))?
 }

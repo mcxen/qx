@@ -14,6 +14,7 @@
 | `src/plugin/backgroundActivity.ts` | **后台 interval 端口**：job 快照、last/next run、running；UI 标签唯一数据源 |
 | `src/plugin/runtime.ts` | iframe 沙箱生命周期、postMessage 协议、面板渲染 |
 | `src/plugin/pluginShellBridge.ts` | panel session registry、Workbench/Chrome/Actions 消息信任边界与宿主订阅 |
+| `src/plugin/pluginTheme.ts` | Custom Panel 主题 payload、公开语义 token 白名单与 iframe apply runtime |
 | `src/plugin/pluginRuntimeTransport.ts` | sandbox iframe 创建与插件 asset URL 解析 |
 | `src/plugin/pluginIsland.ts` | Workbench/RPC 共用的 island 权限、command、session 投影 |
 | `src/plugin/context.ts` | `createPluginContext` / `createUnavailableContext` |
@@ -49,6 +50,9 @@
 - 前端端口 `useQxModuleShell`（`src/hooks/useQxModuleShell.ts`）
 - 扩展宿主 `PluginPanelViewport` 使用同一 leave / Esc / Island / Actions 菜单装配
 - Workbench 的列表导航、主从 region、Actions 由宿主管；custom panel 仍由插件自管
+- Custom panel 的 resolved Light/Dark、`.dark` 和公开语义/Qx 兼容 token 由
+  `pluginTheme` 统一投影；主题 class 或宿主外观 style token 变化时经 Shell bridge
+  广播，插件不得用单一主题 fallback 猜测宿主颜色
 
 ### 声明式 Workbench 端口
 

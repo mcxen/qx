@@ -1,5 +1,42 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Bugfix — 悬浮灵动岛与主窗口焦点互锁
+
+**状态**：实现完成，待双窗口手动复核。
+
+- 主窗口与 `island` 浮窗收口为同一 Qx 焦点组；原生 blur 延迟 80ms 等待 AppKit 焦点
+  稳定，组内焦点切换不再错误隐藏主窗。
+- 灵动岛失焦到外部应用时重新执行同一组判定，保留“失焦时自动隐藏”的原有语义。
+- 前端不再把主窗失焦等同于不可见；原生判定后读取真实窗口可见性同步 store，避免
+  悬浮岛与主窗同时打开时主界面被 hidden 状态屏蔽全部操作。
+- 新增纯判定回归测试，覆盖外部失焦、主窗聚焦、灵动岛聚焦、关闭自动隐藏、抑制期与
+  主窗已隐藏六种分支。
+
+### 验证
+
+- [x] `cargo test --manifest-path src-tauri/Cargo.toml --lib floating_panel::tests::auto_hide_treats_main_and_island_as_one_focus_group`
+- [x] `npx tsc --noEmit`
+- [ ] macOS 手动验证：悬浮灵动岛 → 打开 Qx → 两窗交替点击均可操作；点击外部应用后主窗按设置隐藏。
+
+## Spec/Runtime — 插件 UI、明暗度与 Actions 基础规范
+
+**状态**：实现完成，待 Custom Panel 运行态视觉复核。
+
+- 新增独立插件作者 UI 规范，明确 Workbench 优先、Custom Panel 例外、三层 Shell
+  边界、WCAG 对比度、语义 token、状态、响应式、键盘、Esc 与 Actions 层级。
+- Custom Panel iframe 从只同步 `data-theme` 提升为同步 resolved Light/Dark、`.dark`
+  与公开语义/Qx 兼容 token；主题或外观变量变化时实时刷新，不再要求插件使用深色
+  fallback 猜测宿主颜色。
+- Workbench 底栏 Primary 与 Actions 菜单共用同一个动作解析结果；非法 Esc Action
+  快捷键在 iframe 信任边界移除。
+
+### 验证
+
+- [x] `npm run check`
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [ ] Light / Dark 切换与透明度变化时 Custom Panel token 实时同步。
+
 ## Release fix — Windows quality-gate esbuild invocation
 
 **状态**：三层 Windows runner 根因已修复，准备随 v0.6.3 发布。

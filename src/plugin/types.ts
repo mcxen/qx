@@ -365,9 +365,22 @@ export interface PluginNetworkInfo {
 }
 
 export interface PluginPowerInfo {
+  batteryPresent: boolean;
   batteryLevel: number | null;
   isCharging: boolean;
   fullyCharged: boolean;
+  externalConnected?: boolean | null;
+  cycleCount?: number | null;
+  condition?: string | null;
+  maximumCapacityPercent?: number | null;
+  temperatureCelsius?: number | null;
+  timeRemainingMinutes?: number | null;
+  timeToFullMinutes?: number | null;
+  designCapacity?: number | null;
+  fullChargeCapacity?: number | null;
+  remainingCapacity?: number | null;
+  capacityUnit?: "mAh" | "mWh" | null;
+  powerWatts?: number | null;
   source: string;
   summary: string;
 }

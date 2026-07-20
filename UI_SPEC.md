@@ -437,6 +437,9 @@ Context Panel：
   后番茄时钟仍在 store 中恢复显示。`task > error > toast` 会立即抢占，结束后恢复前台或轮播。
   插件不能提供自定义 chrome、窗口坐标、轮播周期或置顶
   策略。已手动浮出的窗口在主窗隐藏时是否保留、是否 always-on-top 均由用户设置决定。
+- 主窗与桌面悬浮灵动岛同时可见时属于同一 Qx 焦点组；点击灵动岛不得让主窗进入不可操作
+  或前端 hidden 状态，焦点在二者之间切换不触发“失焦时自动隐藏”。只有焦点真正离开
+  两个 Qx 窗口后才执行自动隐藏，且灵动岛保持可交互。
 - 悬浮 Surface 最右侧固定提供宿主级“缩小 / 展开”、“打开 Qx”和“关闭”图标按钮。关闭会
   清除本次手动浮出意图；后续 session / 倒计时更新不得把窗口重新打开。展开宽度
   为 400px，缩小后真实窗口收至 240px，只保留阶段、倒计时和宿主按钮；插件动作在
@@ -881,6 +884,10 @@ search={
 内置与 **扩展 PluginHost** 共用。纯函数 `buildModuleIsland` / `qxEscapeAction` 可供非 React 适配层调用。  
 `QxShell.islandKey` 必须是稳定、非本地化的 route identity，禁止从可见标题推导。普通 `island` prop 只由 shim 写入 session store，底栏只由 `QxIslandDockSlot` 读取并渲染 winner；模块不得同时直接渲染 props 和写 store。`customIsland` 仅保留录屏 HUD 等分类例外，并抑制普通 docked winner。
 内置模块与 custom panel 仍自管 `primaryAction` / `actions` / `navigation` / 内容区；声明式插件 Workbench 只发布纯数据，由 PluginHost 按同一 QxShell 契约渲染列表、Gallery、详情、导航和 Actions。List 使用 Raycast 式图标 / 两行文字 / trailing accessory 三轨布局，选中态为带内边距的圆角整行高亮；标题与副标题只能在文字轨内省略，badge / meta 不得覆盖正文。Gallery 使用宿主网格、图片懒加载、同一选中/滚动协议与 item Actions，不允许插件复制自绘图库 chrome。Workbench 的 Context Panel 只呈现动作，不复制详情。
+第三方插件作者的最小布局、明暗对比度、Custom Panel token 与 Action 层级规范见
+[`public/doc/plugin-ui-guidelines.md`](public/doc/plugin-ui-guidelines.md)。插件 iframe 必须由
+宿主同步 resolved Light/Dark、`.dark` 与公开语义 token；Custom Panel 不得依赖只适合
+单一主题的硬编码 fallback。
 
 标准映射：
 

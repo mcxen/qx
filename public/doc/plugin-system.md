@@ -218,7 +218,7 @@ export default {
 | `context.system.storage()` | 读取磁盘存储信息（需 `system-info` 权限） |
 | `context.system.network()` | 读取网络设备信息（需 `system-info` 权限） |
 | `context.system.networkCounters()` | 读取统一的收发字节计数（需 `system-info` 权限） |
-| `context.system.power()` | 读取跨平台电源/电池信息（需 `system-info` 权限） |
+| `context.system.power()` | 读取跨平台电源/电池信息（需 `system-info` 权限）。稳定核心字段：`batteryPresent`、`batteryLevel`、`externalConnected`、`isCharging`、`fullyCharged`、`source`、`summary`；可选健康字段：`cycleCount`、`condition`、`maximumCapacityPercent`、`temperatureCelsius`、`timeRemainingMinutes`、`timeToFullMinutes`、`designCapacity`、`fullChargeCapacity`、`remainingCapacity`、`capacityUnit`、`powerWatts`。容量单位由 `capacityUnit` 明示（macOS 通常为 `mAh`，Windows WMI 通常为 `mWh`），不得跨平台假定。存在电池、连接外部电源、正在充电、已充满是四个独立状态，插件不得互相推导；硬件未提供的可选字段为 `null`。 |
 | `context.invoke("qx_external_displays_driver/list")` | 读取外接显示器 DDC/CI 驱动与显示器参数（需 `external-displays` 权限） |
 | `context.invoke("qx_external_displays_set_control")` | 调节外接显示器亮度/对比度/音量（需精确 `invoke:qx_external_displays_set_control` 权限） |
 | `context.system.processes.list()` | 读取进程列表（需 `processes` 权限） |

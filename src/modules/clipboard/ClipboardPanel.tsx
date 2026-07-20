@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { LucideIcon } from "lucide-react";
 import { AlignLeft, AudioLines, CalendarDays, Code2, File, FileText, Folder, Image, Link, Pin, Shrink, Video } from "lucide-react";
@@ -21,6 +20,7 @@ import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useLocale, useT } from "../../i18n";
 import { setPendingModuleLaunch, takePendingModuleLaunch } from "../../search/moduleSurfaces";
+import { revealSystemPath } from "../../system";
 import {
   clearClipboardRestore,
   ensureClipboardRestoreOnHide,
@@ -821,7 +821,7 @@ export default function ClipboardPanel() {
         kbd: "CmdOrCtrl+Shift+R",
         menuKey: "r",
         onClick: () => {
-          if (selectedItem.file_path) void revealItemInDir(selectedItem.file_path);
+          if (selectedItem.file_path) void revealSystemPath(selectedItem.file_path);
         },
       });
       list.push({
@@ -838,7 +838,7 @@ export default function ClipboardPanel() {
         kbd: "CmdOrCtrl+Shift+R",
         menuKey: "r",
         onClick: () => {
-          if (selectedItem.image_path) void revealItemInDir(selectedItem.image_path);
+          if (selectedItem.image_path) void revealSystemPath(selectedItem.image_path);
         },
       });
     }

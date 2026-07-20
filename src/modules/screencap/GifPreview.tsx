@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useScreencapStore } from "./store";
 import { Select } from "../../components/ui";
 import { useT } from "../../i18n";
-import { writeImageFileToClipboard } from "../../system";
+import { revealSystemPath, writeImageFileToClipboard } from "../../system";
 
 interface Props {
   path: string;
@@ -58,7 +57,7 @@ export default function GifPreview({ path, onClose }: Props) {
 
   const handleReveal = async () => {
     try {
-      await revealItemInDir(path);
+      await revealSystemPath(path);
     } catch (e) {
       setStatusError(true);
       setStatusMsg(`${t("screencap.preview.revealFailed", "Show in folder failed")}: ${String(e)}`);

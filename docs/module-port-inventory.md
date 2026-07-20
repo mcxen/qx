@@ -33,8 +33,10 @@
 | 跨会话缓存 | localStorage / Rust 磁盘缓存 | **`context.storage.persist`** | SWR：先画缓存再刷新 |
 | 进程内缓存 | React state / ref | **`context.storage.session`** | — |
 | 灵动岛 | `island` prop / **`islandHost`** | **`context.island`** | 权限 `island`；`QxShell.islandKey` 必须稳定并由 Shell 绑定内置模块 `openTarget`；插件目标由 bridge 绑定；store 单写、DockSlot 单渲染；前台非粘性 location 高于后台粘性轮播；桌面浮窗只由用户从 Qx 手动浮出并可关闭 |
+| 主题 / 语义 token | `ThemeProvider` + `base.css` | Workbench 由 host 渲染；Custom Panel 由 `pluginTheme` 注入 | 同步 resolved Light/Dark、`.dark`、公开 shadcn/Qx token；插件 UI 规范见 `public/doc/plugin-ui-guidelines.md` |
 | CLI | 不暴露给模块业务（走 Rust） | **`context.cli`** | 权限 `cli` |
 | 系统信息 / 设置 | Rust `qx_system_information_*` 领域命令 | **`context.system.info/storage/network/networkCounters/power/processes/openSettings`** | typed 跨平台 model；OS API、PowerShell/AppKit URL 只存在于宿主 adapter |
+| 本地路径打开 / 揭示 | **`src/system/pathActions.ts`** | **`context.system.openPath/revealPath`** | 共用 Rust 语义端口；macOS 不先 canonicalize Spotlight 路径，Windows 不经过 WebView opener ACL |
 | 打开外链 | `@tauri-apps/plugin-opener` | **`context.openUrl`** | `open-url` |
 
 **原则（与 architecture-principles 一致）**：缺口修**端口一次**，不要在每个模块/插件里 fork 一套 Esc 或缓存。
@@ -87,7 +89,7 @@
 | **qx-bing-wallpaper** | ✅ | ✅ | **host Workbench Gallery** + http/system wallpaper/file ports | persist SWR | Qx 原生 Gallery + item/panel Actions；壁纸系统差异由 host port 适配；无 Raycast shim |
 | **raycast-calendar** | ✅ | ✅ | Raycast shim | — | 转换插件 |
 | **qxgh** (QxGH) | ✅ | ✅ | **host Workbench**：结构化 detail/actions + 公开 HTML + island | persist SWR | 不用 api.github.com；解析 actions/releases 网页 |
-| **sysinfo** | ✅ | ✅ | **host Workbench List** + typed system/info/storage/network/power/process ports | — | macOS / Windows 同一业务 UI；结束进程需精确 invoke + `YES` 确认；无 shell 与自绘 DOM |
+| **sysinfo** | ✅ | ✅ | **host Workbench List** + typed system/info/storage/network/power/process ports | — | QxPlugin 重写 Raycast System Monitor 业务意图；macOS / Windows 同一业务 UI；Power 端口独立表达 battery present / external power / charging / full 与可选健康容量指标；结束进程需精确 invoke + `YES` 确认；无 shell 与自绘 DOM |
 
 **老包兼容**：无 `AGENTS.md` 仍可安装；无 `panel` 的纯 command 包仍可跑命令，但**不能**作为 panel tab 打开（宿主不注册 panel）——这是原有契约，不是新门槛。
 

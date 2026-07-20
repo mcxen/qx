@@ -97,8 +97,12 @@ else                                   → show_and_navigate(route)
   与 macOS panel 在 `show + focus` 期间的瞬时 `Focused(false)`；模块不得各自复制延时
 - 剪贴板等需要说明动作目标的模块通过 `floating_previous_app_name` 读取召唤面板前的应用名；它只用于“粘贴到 …”反馈，实际还原焦点仍统一走 `floating_hide_restore_focus`。
 - `toggle` / `toggle_route` 在 grace 内对同一 route **保持关闭**
+- 主窗口与 `island` 浮窗属于同一 Qx 焦点组。原生层收到任一窗口 `Focused(false)` 后
+  等待 80ms 再检查两窗焦点；主窗 → 灵动岛的切换不得触发自动隐藏，只有两窗都未聚焦
+  才按设置隐藏主窗。灵动岛再失焦到外部应用时也必须重新执行同一判定。
 
-前端失焦隐藏（`App.tsx` focus listener）必须用 Rust hide，不要裸 `getCurrentWindow().hide()`。
+前端 `App.tsx` focus listener 不自行决定 blur 是否隐藏，只在原生判定完成后同步真实窗口
+可见性；所有显式关闭仍必须走 Rust hide，不要裸 `getCurrentWindow().hide()`。
 
 ---
 
