@@ -56,6 +56,10 @@ fn poll_once(handle: &tauri::AppHandle, known_count: &Arc<AtomicUsize>) {
     known_count.store(curr, Ordering::SeqCst);
     let attached = curr > prev;
 
+    // Keep an open capture picker in sync (single ↔ multi-display fast path).
+    // Inventory was just force-refreshed above — no need to re-enumerate.
+    crate::screencap::on_display_topology_changed(handle, false);
+
     // Emit event so the frontend can react too.
     if let Err(e) = handle.emit(
         "display:changed",

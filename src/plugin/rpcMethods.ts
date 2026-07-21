@@ -93,6 +93,16 @@ const COMMAND_CAPABILITIES: Record<string, string> = {
   plugin_tray_set_items: "tray",
   plugin_tray_clear: "tray",
   plugin_tray_list: "tray",
+  // System OCR — also usable from background no-view + interval commands.
+  ocr_recognize_path: "ocr",
+  ocr_recognize_clipboard_image: "ocr",
+  ocr_list_history: "ocr",
+  ocr_delete_history: "ocr",
+  ocr_clear_history: "ocr",
+  ocr_copy_result_text: "ocr",
+  ocr_status: "ocr",
+  check_ocr_models: "ocr",
+  clipboard_ocr_pending: "ocr",
 };
 
 const DANGEROUS_INVOKE_COMMANDS = new Set([
@@ -309,6 +319,54 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   clipboardWrite: async (plugin, perms, payload) => {
     assertPermission(plugin, perms, "clipboard");
     return invoke("plugin_clipboard_write", { text: String(payload.text ?? "") });
+  },
+
+  ocrStatus: async (plugin, perms) => {
+    assertPermission(plugin, perms, "ocr");
+    return invoke("ocr_status");
+  },
+
+  ocrRecognizePath: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "ocr");
+    const path = String(payload.path ?? "").trim();
+    if (!path) throw new Error("ocr.recognizePath requires path");
+    const source = typeof payload.source === "string" ? payload.source : "file";
+    qxLog("debug", "plugin.rpc.ocr", "Plugin OCR path started", {
+      pluginId: plugin.id,
+      source,
+    });
+    return invoke("ocr_recognize_path", { path, source });
+  },
+
+  ocrRecognizeClipboardImage: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "ocr");
+    const id = String(payload.id ?? "").trim();
+    if (!id) throw new Error("ocr.recognizeClipboardImage requires id");
+    qxLog("debug", "plugin.rpc.ocr", "Plugin OCR clipboard image started", {
+      pluginId: plugin.id,
+    });
+    return invoke("ocr_recognize_clipboard_image", { id });
+  },
+
+  ocrListHistory: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "ocr");
+    const limit = typeof payload.limit === "number" ? payload.limit : undefined;
+    return invoke("ocr_list_history", { limit });
+  },
+
+  ocrDeleteHistory: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "ocr");
+    return invoke("ocr_delete_history", { id: String(payload.id ?? "") });
+  },
+
+  ocrClearHistory: async (plugin, perms) => {
+    assertPermission(plugin, perms, "ocr");
+    return invoke("ocr_clear_history");
+  },
+
+  ocrCopyText: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "ocr");
+    return invoke("ocr_copy_result_text", { text: String(payload.text ?? "") });
   },
 
   httpFetch: async (plugin, perms, payload) => {

@@ -11,14 +11,13 @@ import {
   useSettingsStore,
   type PluginDisplaySettings,
 } from "../modules/settings/store";
-import { createQxLogger, qxLog } from "../lib/logger";
+import { createQxLogger } from "../lib/logger";
 import { PLUGIN_WORKBENCH_RUNTIME_JS } from "./cliWorkbench";
 import { PLUGIN_OVERLAY_SCROLLBAR_RUNTIME_JS } from "../utils/overlayScrollbar";
 import { PLUGIN_WORKBENCH_HOST_KEYS } from "./workbenchKeyboard";
 import {
   deletePanelRuntimeSession,
   ensurePluginShellBridge,
-  isExpectedPluginMessageOrigin,
   panelSessions,
   registerPluginRuntime,
   setPanelRuntimeSession,
@@ -27,6 +26,11 @@ import {
 } from "./pluginShellBridge";
 import { currentPluginThemePayload, PLUGIN_THEME_RUNTIME_JS } from "./pluginTheme";
 import { createSandboxIframe, resolvePluginAssetUrl } from "./pluginRuntimeTransport";
+import {
+  nextRequestId,
+  sendRuntimeRequest,
+  waitForPluginRuntime,
+} from "./pluginRuntimeIpc";
 export {
   isExpectedPluginMessageOrigin,
   isPluginRuntimeSource,
@@ -42,12 +46,7 @@ export {
   type PluginItemActionDescriptor,
 } from "./pluginShellBridge";
 export { resolvePluginAssetUrl } from "./pluginRuntimeTransport";
-let requestCounter = 0;
 const runtimeLogger = createQxLogger("plugin.runtime");
-function nextRequestId(): string {
-  requestCounter += 1;
-  return `rpc-${Date.now()}-${requestCounter}`;
-}
 
 export interface PluginLoadResult {
   plugin: InstalledPlugin;
@@ -332,8 +331,7 @@ export function buildPluginRuntimeHtml(
         }
 
         if (event.key !== 'Escape') return;
-        // Let the plugin's own dialog/detail handlers consume Esc first.
-        // Only an unhandled event crosses the iframe boundary to QxShell.
+        // Esc: let plugin handlers run first, then bubble to host.
         window.setTimeout(() => {
           if (event.defaultPrevented) return;
           postToParent({
@@ -391,6 +389,15 @@ export function buildPluginRuntimeHtml(
         clipboard: {
           read: () => rpc('clipboardRead'),
           write: (text) => rpc('clipboardWrite', { text }),
+        },
+        ocr: {
+          status: () => rpc('ocrStatus'),
+          recognizePath: (path, options) => rpc('ocrRecognizePath', { path, source: options && options.source }),
+          recognizeClipboardImage: (id) => rpc('ocrRecognizeClipboardImage', { id }),
+          listHistory: (limit) => rpc('ocrListHistory', { limit }),
+          deleteHistory: (id) => rpc('ocrDeleteHistory', { id }),
+          clearHistory: () => rpc('ocrClearHistory'),
+          copyText: (text) => rpc('ocrCopyText', { text }),
         },
         island: {
           show: (input) => rpc('islandShow', { input: input || {} }),
@@ -685,93 +692,6 @@ export function buildPluginRuntimeHtml(
     <div id="root" style="width:100%;height:100%;"></div>
   `;
   return runtime;
-}
-
-function waitForPluginRuntime(
-  plugin: InstalledPlugin,
-  iframe: HTMLIFrameElement,
-  runtimeId: string,
-  timeoutMs: number,
-  captureLogs = true,
-): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const handler = (event: MessageEvent) => {
-      const data = event.data || {};
-      if (!isExpectedPluginMessageOrigin(event)) return;
-      if (event.source !== iframe.contentWindow) return;
-      if (data.pluginId !== plugin.id || data.runtimeId !== runtimeId) return;
-      if (captureLogs && data.type === "qx:plugin-log") {
-        qxLog(data.level === "error" || data.level === "warn" || data.level === "debug" ? data.level : "info", "plugin.iframe", String(data.message || ""), {
-          pluginId: plugin.id,
-          runtimeId,
-          ...(data.fields || {}),
-        });
-        return;
-      }
-      if (data.type === "qx:plugin:loaded") {
-        settled = true;
-        clearTimeout(timeout);
-        window.removeEventListener("message", handler);
-        resolve();
-      } else if (data.type === "qx:plugin:error") {
-        settled = true;
-        clearTimeout(timeout);
-        window.removeEventListener("message", handler);
-        reject(new Error(data.error || "unknown plugin error"));
-      }
-    };
-    const timeout = setTimeout(() => {
-      if (settled) return;
-      window.removeEventListener("message", handler);
-      reject(new Error(`Plugin ${plugin.id} load timeout`));
-    }, timeoutMs);
-    window.addEventListener("message", handler);
-  });
-}
-
-function sendRuntimeRequest(
-  plugin: InstalledPlugin,
-  iframe: HTMLIFrameElement,
-  runtimeId: string,
-  type: "qx:runCommand" | "qx:renderPanel" | "qx:destroyPanel",
-  responseType: "qx:runCommand:response" | "qx:renderPanel:response" | "qx:destroyPanel:response",
-  payload: Record<string, unknown>,
-  timeoutMs: number,
-): Promise<void> {
-  const requestId = nextRequestId();
-  return new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const handler = (event: MessageEvent) => {
-      const data = event.data || {};
-      if (!isExpectedPluginMessageOrigin(event)) return;
-      if (event.source !== iframe.contentWindow) return;
-      if (data.pluginId !== plugin.id || data.runtimeId !== runtimeId) return;
-      if (data.type !== responseType || data.requestId !== requestId) return;
-      settled = true;
-      clearTimeout(timeout);
-      window.removeEventListener("message", handler);
-      if (data.error) reject(new Error(data.error));
-      else resolve();
-    };
-    const timeout = setTimeout(() => {
-      if (settled) return;
-      window.removeEventListener("message", handler);
-      reject(new Error(`Plugin ${plugin.id} ${type.replace("qx:", "")} timeout`));
-    }, timeoutMs);
-    window.addEventListener("message", handler);
-    const target = iframe.contentWindow;
-    if (!target) {
-      clearTimeout(timeout);
-      window.removeEventListener("message", handler);
-      reject(new Error(`Plugin ${plugin.id} runtime is not available`));
-      return;
-    }
-    target.postMessage(
-      { type, pluginId: plugin.id, runtimeId, requestId, ...payload },
-      "*",
-    );
-  });
 }
 
 export async function loadPlugin(

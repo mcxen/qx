@@ -47,7 +47,7 @@
 | `media/` | OpenH264 + `mp4` + `gifski` | Qx 根级媒体服务；统一负责 H.264 码流/MP4 封装、媒体尺寸约束和 GIF 转换，不依赖截图模块或其历史库，供截图、剪贴板、OCR、文件预览等能力复用。 |
 | `clipboard.rs` | arboard + clipboard-manager | 系统剪贴板；公共 IPC `clipboard_write_image_file` 将磁盘图片发布到剪贴板，供捕获 toast / 历史回写等复用。 |
 | `screencap/` | 消费系统能力 | **仅捕获工作流**：圈选 session、录制生命周期、历史、控制岛、标注合成。显示器 / 窗列表 / 区域抓帧 / 剪贴板写图走 `display` · `desktop_windows` · `clipboard` · `media`；禁止模块内直接 `xcap::Window` 或重复显示器识别。 |
-| `ocr.rs` | 内建轻量 OCR (`~/.oar` 存模型) | PP-OCRv6 tiny/small/medium 下载 + 增量校验 |
+| `ocr.rs` | 系统 OCR 能力 + 历史 | 平台引擎（macOS Vision / Windows.Media.Ocr）、OAR 模型下载、`ocr_history.db` 历史 |
 | `macro_recorder.rs` | `rdev` + `enigo` | 记录键鼠事件到 `~/.qx/macros.db`；replay 通过 `enigo` 模拟 |
 
 ## AI

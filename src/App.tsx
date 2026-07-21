@@ -1743,18 +1743,55 @@ function App() {
       // Clipboard once; files run multi-pass (0 quick → 1 expand → 2 system) and
       // each pass merges into the live list so later hits "chase" behind the first paint.
       const clipboardPromise = shouldSearchClipboard
-        ? abortableInvoke<{ id: string; text: string }[]>("get_clipboard_history", { limit: 80 }, signal)
+        ? abortableInvoke<Array<{
+            id: string;
+            text: string;
+            ocr_text?: string | null;
+            image_path?: string | null;
+            file_path?: string | null;
+            file_paths?: string[];
+            file_kind?: string | null;
+          }>>("get_clipboard_history", { limit: 120 }, signal)
             .then((history) => {
               const lower = trimmed.toLowerCase();
+              const tokens = lower.split(/\s+/).filter(Boolean);
               return history
-                .filter((item) => item.text.toLowerCase().includes(lower))
-                .slice(0, 8)
-                .map((item) => ({
-                  name: item.text.replace(/\s+/g, " ").trim().slice(0, 80) || "Clipboard Item",
-                  path: `__qx:clipboard:${item.id}`,
-                  icon: "builtin:clipboard",
-                  kind: "clipboard" as const,
-                }));
+                .filter((item) => {
+                  const names = [
+                    item.text,
+                    item.ocr_text || "",
+                    item.image_path || "",
+                    item.file_path || "",
+                    ...(item.file_paths || []),
+                    item.file_kind || "",
+                  ]
+                    .join(" ")
+                    .toLowerCase();
+                  return tokens.every((token) => names.includes(token));
+                })
+                .slice(0, 12)
+                .map((item) => {
+                  const fileLabel = (item.file_paths?.[0] || item.file_path || "")
+                    .split(/[/\\]/)
+                    .pop();
+                  const isImage = Boolean(item.image_path)
+                    || item.file_kind === "image"
+                    || /\.(png|jpe?g|gif|webp|bmp|heic|tiff?)$/i.test(item.file_path || "");
+                  const nameFromOcr = item.ocr_text?.replace(/\s+/g, " ").trim().slice(0, 80);
+                  const name = nameFromOcr
+                    || item.text.replace(/\s+/g, " ").trim().slice(0, 80)
+                    || fileLabel
+                    || (isImage ? "Image" : "Clipboard Item");
+                  return {
+                    name,
+                    path: `__qx:clipboard:${item.id}`,
+                    icon: isImage ? "builtin:clipboard" : "builtin:clipboard",
+                    kind: "clipboard" as const,
+                    subtitle: isImage
+                      ? (nameFromOcr ? "Clipboard · Image · OCR" : "Clipboard · Image")
+                      : "Clipboard",
+                  };
+                });
             })
             .catch(() => syntheticEntries.filter((item) => item.path.includes("clipboard")))
         : Promise.resolve([] as AppEntry[]);

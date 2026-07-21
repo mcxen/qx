@@ -4,7 +4,7 @@ use dirs;
 use image::codecs::png::{CompressionType, FilterType, PngEncoder};
 use image::ExtendedColorType;
 use image::ImageEncoder;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
 use std::collections::HashSet;
@@ -305,6 +305,9 @@ pub struct ClipboardEntry {
     /// for compatibility, preview and old databases.
     pub file_paths: Vec<String>,
     pub file_kind: Option<String>,
+    /// Cached OCR text for images (searchable). Empty / null means not recognized yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ocr_text: Option<String>,
 }
 
 pub struct ClipboardDb(pub Arc<Mutex<Option<Connection>>>);
@@ -641,6 +644,7 @@ fn ensure_clipboard_schema(conn: &Connection) -> rusqlite::Result<()> {
     ensure_column(&conn, "file_path", "TEXT")?;
     ensure_column(&conn, "file_paths", "TEXT")?;
     ensure_column(&conn, "file_kind", "TEXT")?;
+    ensure_column(&conn, "ocr_text", "TEXT")?;
     Ok(())
 }
 
@@ -694,6 +698,178 @@ fn clipboard_file_kind(path: &Path) -> &'static str {
         "pdf" => "pdf",
         _ => "file",
     }
+}
+
+/// Lookup a clipboard history image/file path by id for system OCR and friends.
+pub(crate) fn image_path_for_entry(db: &ClipboardDb, id: &str) -> Result<Option<String>, String> {
+    let mut guard = lock_db(&db.0);
+    let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+    conn.query_row(
+        "SELECT image_path, file_path, file_paths, file_kind FROM clipboard_history WHERE id = ?1",
+        rusqlite::params![id],
+        |row| {
+            let image_path: Option<String> = row.get(0)?;
+            let file_path: Option<String> = row.get(1)?;
+            let file_paths_json: Option<String> = row.get(2)?;
+            let file_kind: Option<String> = row.get(3)?;
+            Ok((image_path, file_path, file_paths_json, file_kind))
+        },
+    )
+    .optional()
+    .map_err(|e| format!("clipboard lookup: {e}"))
+    .map(|row| {
+        let Some((image_path, file_path, file_paths_json, file_kind)) = row else {
+            return None;
+        };
+        if let Some(path) = image_path.filter(|p| !p.is_empty()) {
+            return Some(path);
+        }
+        let paths = decode_stored_file_paths(file_paths_json.as_deref(), file_path.as_deref());
+        for path in &paths {
+            if is_image_extension(path) {
+                return Some(path.clone());
+            }
+        }
+        let path = file_path.filter(|p| !p.is_empty())?;
+        let kind = file_kind.unwrap_or_default();
+        if kind == "image" || is_image_extension(&path) {
+            Some(path)
+        } else {
+            None
+        }
+    })
+}
+
+/// Persist OCR text on a clipboard row so launcher/module search can find images by content.
+pub(crate) fn set_entry_ocr_text(db: &ClipboardDb, id: &str, ocr_text: &str) -> Result<(), String> {
+    let mut guard = lock_db(&db.0);
+    let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+    let changed = conn
+        .execute(
+            "UPDATE clipboard_history SET ocr_text = ?1 WHERE id = ?2",
+            rusqlite::params![ocr_text, id],
+        )
+        .map_err(|e| format!("store clipboard ocr_text: {e}"))?;
+    if changed == 0 {
+        return Err("clipboard entry not found".to_string());
+    }
+    Ok(())
+}
+
+/// Image clipboard rows that still need OCR (for batch / background fill).
+pub(crate) fn list_entries_needing_ocr(
+    db: &ClipboardDb,
+    limit: u32,
+) -> Result<Vec<(String, String)>, String> {
+    let mut guard = lock_db(&db.0);
+    let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, image_path, file_path, file_paths, file_kind, ocr_text
+             FROM clipboard_history
+             ORDER BY pinned DESC, timestamp DESC
+             LIMIT 400",
+        )
+        .map_err(|e| format!("list ocr candidates: {e}"))?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+            ))
+        })
+        .map_err(|e| format!("list ocr candidates rows: {e}"))?;
+    let mut out = Vec::new();
+    for row in rows {
+        let (id, image_path, file_path, file_paths_json, file_kind, ocr_text) =
+            row.map_err(|e| format!("ocr candidate: {e}"))?;
+        if ocr_text.as_ref().is_some_and(|t| !t.trim().is_empty()) {
+            continue;
+        }
+        if let Some(path) = image_path.filter(|p| !p.is_empty()) {
+            out.push((id, path));
+        } else {
+            let paths = decode_stored_file_paths(file_paths_json.as_deref(), file_path.as_deref());
+            let path = paths
+                .into_iter()
+                .find(|p| is_image_extension(p))
+                .or_else(|| {
+                    let path = file_path.filter(|p| !p.is_empty())?;
+                    let kind = file_kind.unwrap_or_default();
+                    if kind == "image" || is_image_extension(&path) {
+                        Some(path)
+                    } else {
+                        None
+                    }
+                });
+            if let Some(path) = path {
+                out.push((id, path));
+            }
+        }
+        if out.len() as u32 >= limit {
+            break;
+        }
+    }
+    Ok(out)
+}
+
+fn is_image_extension(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    lower.ends_with(".png")
+        || lower.ends_with(".jpg")
+        || lower.ends_with(".jpeg")
+        || lower.ends_with(".webp")
+        || lower.ends_with(".gif")
+        || lower.ends_with(".bmp")
+        || lower.ends_with(".heic")
+        || lower.ends_with(".tif")
+        || lower.ends_with(".tiff")
+}
+
+/// After an image lands in history, optionally OCR it in the background when enabled.
+pub(crate) fn queue_auto_ocr_for_entry(app: &AppHandle, entry_id: String, image_path: String) {
+    if image_path.trim().is_empty() {
+        return;
+    }
+    let settings = crate::settings::read_settings();
+    if !settings.advanced.ocr_enabled {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = crate::runtime::blocking(move || {
+            crate::ocr::recognize_image_path(std::path::Path::new(&image_path), "clipboard")
+        })
+        .await;
+        match result {
+            Ok(Ok(ocr)) => {
+                if let Some(db) = app.try_state::<ClipboardDb>() {
+                    let _ = set_entry_ocr_text(&db, &entry_id, &ocr.text);
+                    let _ = app.emit("clipboard-updated", ());
+                }
+            }
+            Ok(Err(error)) => {
+                crate::diagnostics::log(
+                    crate::diagnostics::LogLevel::Debug,
+                    "clipboard.ocr",
+                    "auto OCR skipped/failed",
+                    serde_json::json!({ "id": entry_id, "error": error }),
+                );
+            }
+            Err(error) => {
+                crate::diagnostics::log(
+                    crate::diagnostics::LogLevel::Debug,
+                    "clipboard.ocr",
+                    "auto OCR worker failed",
+                    serde_json::json!({ "id": entry_id, "error": error.to_string() }),
+                );
+            }
+        }
+    });
 }
 
 fn lock_db(db: &Arc<Mutex<Option<Connection>>>) -> MutexGuard<'_, Option<Connection>> {
@@ -821,11 +997,18 @@ pub fn start_listener(app: &AppHandle) {
                         pasteboard_path.as_deref(),
                         Some(&file_paths),
                     ) {
-                        Ok(()) => {
+                        Ok(entry_id) => {
                             last_text.clear();
                             last_image_hash.clear();
                             capture_cursor.commit(current_change);
                             last_native_error_change = None;
+                            if let Some(image) = file_paths.iter().find(|p| is_image_extension(p)) {
+                                queue_auto_ocr_for_entry(
+                                    &app_handle,
+                                    entry_id,
+                                    image.clone(),
+                                );
+                            }
                             let _ = app_handle.emit("clipboard-updated", ());
                         }
                         Err(error) => {
@@ -858,7 +1041,7 @@ pub fn start_listener(app: &AppHandle) {
                     readable_format = true;
                     if !text.is_empty() && (current_change.is_some() || text != last_text) {
                         match store(&db_clone, &text, None, None, None) {
-                            Ok(()) => stored_entry = true,
+                            Ok(_) => stored_entry = true,
                             Err(error) => storage_error = Some(error),
                         }
                     }
@@ -889,7 +1072,14 @@ pub fn start_listener(app: &AppHandle) {
                                     pasteboard_path.as_deref(),
                                     None,
                                 ) {
-                                    Ok(()) => stored_entry = true,
+                                    Ok(entry_id) => {
+                                        stored_entry = true;
+                                        queue_auto_ocr_for_entry(
+                                            &app_handle,
+                                            entry_id,
+                                            path_str.clone(),
+                                        );
+                                    }
                                     Err(error) => storage_error = Some(error),
                                 }
                             }
@@ -933,7 +1123,7 @@ fn store(
     image_path: Option<&str>,
     image_pasteboard_path: Option<&str>,
     file_path: Option<&str>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let file_paths = file_path.map(|path| vec![path.to_string()]);
     store_file_list(
         db,
@@ -950,7 +1140,7 @@ fn store_file_list(
     image_path: Option<&str>,
     image_pasteboard_path: Option<&str>,
     file_paths: Option<&[String]>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     if !text.is_empty() && text.as_bytes().len() > MAX_TEXT_BYTES {
         return Err("clipboard text exceeds storage limit".to_string());
     }
@@ -1001,5 +1191,5 @@ fn store_file_list(
     )
     .map_err(|error| format!("store clipboard entry: {error}"))?;
     prune_clipboard_storage(conn);
-    Ok(())
+    Ok(id)
 }

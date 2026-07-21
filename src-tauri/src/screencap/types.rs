@@ -120,6 +120,8 @@ pub(super) struct PickerSession {
     pub(super) logical_area: Option<RecordArea>,
     pub(super) frame_x: i32,
     pub(super) frame_y: i32,
+    /// Cached at session open: skip outer shades + pointer-follow when false.
+    pub(super) multi_display: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -136,6 +138,9 @@ pub struct PickerStatus {
     /// When true, the frontend should rehydrate `logical_area` instead of clearing the canvas.
     #[serde(default)]
     pub(super) restore_selection: bool,
+    /// Two or more displays — enables outer shades and cross-display pointer follow.
+    #[serde(default)]
+    pub(super) multi_display: bool,
 }
 
 #[derive(Debug, Serialize)]

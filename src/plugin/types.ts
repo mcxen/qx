@@ -481,6 +481,56 @@ export interface PluginContext {
     read: () => Promise<string>;
     write: (text: string) => Promise<void>;
   };
+  /**
+   * System OCR port. Requires manifest permission `ocr` and Settings → OCR enabled.
+   * Safe from user commands and `mode: "no-view"` + `interval` background jobs.
+   */
+  ocr: {
+    /** Host OCR status (enabled flag, engine, model pack). */
+    status: () => Promise<{
+      enabled: boolean;
+      engine: string;
+      modelSize: string;
+      models: { downloaded?: boolean };
+      platform: string;
+    }>;
+    /** Recognize text from a local image path (png/jpg/…). */
+    recognizePath: (
+      path: string,
+      options?: { source?: "clipboard" | "screenshot" | "file" | string },
+    ) => Promise<{
+      id: string;
+      text: string;
+      engine: string;
+      source: string;
+      sourcePath?: string | null;
+      charCount: number;
+      createdAt: string;
+    }>;
+    /** Recognize text from a clipboard history image item id. */
+    recognizeClipboardImage: (id: string) => Promise<{
+      id: string;
+      text: string;
+      engine: string;
+      source: string;
+      sourcePath?: string | null;
+      charCount: number;
+      createdAt: string;
+    }>;
+    listHistory: (limit?: number) => Promise<Array<{
+      id: string;
+      text: string;
+      source: string;
+      sourcePath?: string | null;
+      engine: string;
+      createdAt: string;
+      charCount: number;
+    }>>;
+    deleteHistory: (id: string) => Promise<void>;
+    clearHistory: () => Promise<void>;
+    /** Copy recognized text to the system clipboard. */
+    copyText: (text: string) => Promise<void>;
+  };
   /** Requires manifest permission `island`. */
   island: {
     show: (input: PluginIslandDisplayInput) => Promise<void>;

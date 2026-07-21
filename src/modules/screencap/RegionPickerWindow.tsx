@@ -38,6 +38,8 @@ interface PickerStatus {
   coordinateScale: number;
   logicalArea?: LogicalArea | null;
   restoreSelection?: boolean;
+  /** When false (single display), skip cross-display pointer-follow IPC. */
+  multiDisplay?: boolean;
 }
 
 interface Point {
@@ -197,9 +199,41 @@ export default function RegionPickerWindow() {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cancelCountdownRef = useRef(false);
+  /** Latest draw points while dragging — refs stay valid before React commits. */
+  const drawStartRef = useRef<Point | null>(null);
+  const drawEndRef = useRef<Point | null>(null);
+  const drawRafRef = useRef<number | null>(null);
+  const interactionRef = useRef<RectInteraction | null>(null);
+  const interactionRafRef = useRef<number | null>(null);
+  const interactionPointRef = useRef<Point | null>(null);
+  const drawingRef = useRef(false);
+
+  const multiDisplay = picker?.multiDisplay === true;
+  const multiDisplayRef = useRef(false);
+  multiDisplayRef.current = multiDisplay;
 
   const setPointerFollow = useCallback((enabled: boolean) => {
+    // Single-display: no outer shades / handoff tracker — skip the IPC.
+    if (!multiDisplayRef.current) return;
     void invoke("screencap_set_pointer_follow", { enabled }).catch(() => {});
+  }, []);
+
+  /** Pin display handoff in Rust *before* any drag moves (sync with follow off). */
+  const setInteractionLock = useCallback((locked: boolean) => {
+    void invoke("screencap_set_picker_interaction_lock", { locked }).catch(() => {});
+    if (locked) setPointerFollow(false);
+  }, [setPointerFollow]);
+
+  const clearDrawDraft = useCallback(() => {
+    drawingRef.current = false;
+    drawStartRef.current = null;
+    drawEndRef.current = null;
+    if (drawRafRef.current != null) {
+      window.cancelAnimationFrame(drawRafRef.current);
+      drawRafRef.current = null;
+    }
+    setDrawStart(null);
+    setDrawEnd(null);
   }, []);
 
   const loadWindows = useCallback(async () => {
@@ -254,12 +288,26 @@ export default function RegionPickerWindow() {
     });
     const pickerListener = listen<PickerStatus>("screencap:picker", (event) => {
       const payload = event.payload;
+      // Windows multi-display handoff can re-emit picker while the pointer is
+      // still down. Never wipe an in-progress draft/resize — that is the main
+      // cause of the selection rectangle vanishing mid-drag.
+      if (drawingRef.current || interactionRef.current) {
+        setPicker((current) => ({
+          ...(current ?? payload),
+          ...payload,
+          // Keep any local multiDisplay patch if the payload omits it.
+          multiDisplay: payload.multiDisplay ?? current?.multiDisplay,
+        }));
+        if (payload.mode === "recording" || payload.mode === "screenshot") {
+          setIntent(payload.mode);
+        }
+        return;
+      }
       setPicker(payload);
       if (payload.mode === "recording" || payload.mode === "screenshot") {
         setIntent(payload.mode);
       }
-      setDrawStart(null);
-      setDrawEnd(null);
+      clearDrawDraft();
       setTool(null);
       setHoverWindow(null);
       setBusy(false);
@@ -279,6 +327,12 @@ export default function RegionPickerWindow() {
         setNextNumber(1);
       }
     });
+    // Hot-plug only: flip multiDisplay without wiping an in-progress draft/selection.
+    const topologyListener = listen<{ multiDisplay?: boolean }>("screencap:multi-display", (event) => {
+      const multi = Boolean(event.payload?.multiDisplay);
+      multiDisplayRef.current = multi;
+      setPicker((current) => (current ? { ...current, multiDisplay: multi } : current));
+    });
     const stateListener = listen<RecordingSnapshot>("screencap:state", (event) => {
       setRecording(event.payload);
       if (event.payload.phase !== "recording" && event.payload.phase !== "processing") {
@@ -287,10 +341,12 @@ export default function RegionPickerWindow() {
       setError(event.payload.error);
     });
     void pickerListener.catch((listenError) => setError(String(listenError)));
+    void topologyListener.catch((listenError) => setError(String(listenError)));
     void stateListener.catch((listenError) => setError(String(listenError)));
     return () => {
       document.body.classList.remove("qx-region-picker-body");
       void pickerListener.then((dispose) => dispose()).catch(() => {});
+      void topologyListener.then((dispose) => dispose()).catch(() => {});
       void stateListener.then((dispose) => dispose()).catch(() => {});
     };
   }, []);
@@ -310,11 +366,19 @@ export default function RegionPickerWindow() {
 
   // Rust owns cross-display pointer tracking. Stop it as soon as the user has
   // started an interaction so an in-progress selection can never move screens.
+  // When multi-display becomes true mid-session (hot-plug), re-arm follow only
+  // while the picker is idle.
   useEffect(() => {
+    if (!multiDisplay) {
+      setPointerFollow(false);
+      return;
+    }
     if (selection || drawStart || interaction || busy || countdown !== null) {
       setPointerFollow(false);
+    } else {
+      setPointerFollow(true);
     }
-  }, [busy, countdown, drawStart, interaction, selection, setPointerFollow]);
+  }, [busy, countdown, drawStart, interaction, multiDisplay, selection, setPointerFollow]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -440,7 +504,11 @@ export default function RegionPickerWindow() {
     });
   }, []);
 
-  const confirm = useCallback(async (action: CaptureMode, areaOverride?: Rect) => {
+  const confirm = useCallback(async (
+    action: CaptureMode,
+    areaOverride?: Rect,
+    ocrDestination?: "clipboard" | "editor" | null,
+  ) => {
     const target = areaOverride ?? selection;
     if (busy || !target || countdown !== null) return;
     if (action === "recording" && annotations.length > 0) {
@@ -503,6 +571,7 @@ export default function RegionPickerWindow() {
           resolution: captureSettings.resolution,
         } satisfies RecordingOptions,
         action,
+        ocrDestination: action === "screenshot" ? (ocrDestination ?? null) : null,
         annotationOverlayBase64,
         copyToClipboard: action === "screenshot" && captureSettings.auto_copy_to_clipboard,
       });
@@ -514,23 +583,23 @@ export default function RegionPickerWindow() {
 
   const selectFullScreen = useCallback(() => {
     if (busy) return;
+    setInteractionLock(false);
     setPointerFollow(false);
     setPickMode("fullscreen");
     setSelection({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight });
-    setDrawStart(null);
-    setDrawEnd(null);
+    clearDrawDraft();
     setHoverWindow(null);
     setAnnotations([]);
     setRedoStack([]);
     setError(null);
-  }, [busy, setPointerFollow]);
+  }, [busy, clearDrawDraft, setInteractionLock, setPointerFollow]);
 
   const switchPickMode = useCallback((mode: PickMode) => {
     if (busy) return;
     setPickMode(mode);
     setHoverWindow(null);
-    setDrawStart(null);
-    setDrawEnd(null);
+    clearDrawDraft();
+    setInteractionLock(false);
     setTool(null);
     if (mode === "fullscreen") {
       selectFullScreen();
@@ -542,18 +611,26 @@ export default function RegionPickerWindow() {
       return;
     }
     // region: keep current selection if any
-  }, [busy, loadWindows, selectFullScreen]);
+  }, [busy, clearDrawDraft, loadWindows, selectFullScreen, setInteractionLock]);
 
-  const beginResize = (event: React.MouseEvent, handle: ResizeHandle) => {
+  const beginResize = (event: React.PointerEvent, handle: ResizeHandle) => {
     if (!selection || busy) return;
     event.preventDefault();
     event.stopPropagation();
-    setInteraction({
+    setInteractionLock(true);
+    const next: RectInteraction = {
       kind: "resize",
       handle,
       start: { x: event.clientX, y: event.clientY },
       origin: selection,
-    });
+    };
+    interactionRef.current = next;
+    setInteraction(next);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      /* ignore */
+    }
   };
 
   const hitWindow = useCallback((point: Point): DesktopWindow | null => {
@@ -570,86 +647,25 @@ export default function RegionPickerWindow() {
     return null;
   }, [windows]);
 
-  const onRootMouseDown = (event: React.MouseEvent) => {
-    if (busy || event.button !== 0 || countdown !== null) return;
-    setPointerFollow(false);
-    if (pickMode === "window") {
-      const hit = hitWindow({ x: event.clientX, y: event.clientY });
-      if (hit) {
-        event.preventDefault();
-        const next = clampRectToViewport({ x: hit.x, y: hit.y, w: hit.w, h: hit.h });
-        setSelection(next);
-        setHoverWindow(null);
-        setAnnotations([]);
-        setRedoStack([]);
-        setPickMode("region");
-      }
-      return;
-    }
-    if (pickMode === "fullscreen") return;
-    // Region mode: allow redraw by dragging on dimmed area (or always start new drag when no tool).
-    if (tool) return;
-    if (selection) {
-      // Click outside selection → clear and start new drag.
-      const inside = event.clientX >= selection.x
-        && event.clientY >= selection.y
-        && event.clientX <= selection.x + selection.w
-        && event.clientY <= selection.y + selection.h;
-      if (inside) return;
-      setSelection(null);
-      setAnnotations([]);
-      setRedoStack([]);
-    }
-    event.preventDefault();
-    const point = { x: event.clientX, y: event.clientY };
-    setDrawStart(point);
-    setDrawEnd(point);
-  };
+  const flushDrawEnd = useCallback(() => {
+    drawRafRef.current = null;
+    const end = drawEndRef.current;
+    if (end) setDrawEnd(end);
+  }, []);
 
-  const onSelectionMouseDown = (event: React.MouseEvent) => {
-    if (!selection || tool || busy || event.button !== 0 || countdown !== null) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const now = Date.now();
-    const prev = lastClickRef.current;
-    if (
-      prev
-      && now - prev.at < 320
-      && Math.hypot(event.clientX - prev.x, event.clientY - prev.y) < 8
-    ) {
-      lastClickRef.current = null;
-      void confirm(intent);
-      return;
-    }
-    lastClickRef.current = { at: now, x: event.clientX, y: event.clientY };
-    setInteraction({
-      kind: "move",
-      start: { x: event.clientX, y: event.clientY },
-      origin: selection,
-    });
-  };
+  const scheduleDrawEnd = useCallback((end: Point) => {
+    drawEndRef.current = end;
+    if (drawRafRef.current != null) return;
+    drawRafRef.current = window.requestAnimationFrame(flushDrawEnd);
+  }, [flushDrawEnd]);
 
-  const onRootMouseMove = (event: React.MouseEvent) => {
-    if (pickMode === "window" && !selection && !busy) {
-      setHoverWindow(hitWindow({ x: event.clientX, y: event.clientY }));
-    }
-    if (drawStart && !selection) {
-      let end = { x: event.clientX, y: event.clientY };
-      if (event.shiftKey) {
-        const size = Math.max(Math.abs(end.x - drawStart.x), Math.abs(end.y - drawStart.y));
-        end = {
-          x: drawStart.x + Math.sign(end.x - drawStart.x || 1) * size,
-          y: drawStart.y + Math.sign(end.y - drawStart.y || 1) * size,
-        };
-      }
-      setDrawEnd(end);
-      return;
-    }
-    if (!interaction) return;
-    const dx = event.clientX - interaction.start.x;
-    const dy = event.clientY - interaction.start.y;
-    const origin = interaction.origin;
-    if (interaction.kind === "move") {
+  const applyInteractionPoint = useCallback((clientX: number, clientY: number) => {
+    const active = interactionRef.current;
+    if (!active) return;
+    const dx = clientX - active.start.x;
+    const dy = clientY - active.start.y;
+    const origin = active.origin;
+    if (active.kind === "move") {
       setSelection({
         ...origin,
         x: clamp(origin.x + dx, 0, window.innerWidth - origin.w),
@@ -661,20 +677,158 @@ export default function RegionPickerWindow() {
     let top = origin.y;
     let right = origin.x + origin.w;
     let bottom = origin.y + origin.h;
-    const handle = interaction.handle ?? "se";
+    const handle = active.handle ?? "se";
     if (handle.includes("w")) left = clamp(origin.x + dx, 0, right - MIN_SIZE);
     if (handle.includes("e")) right = clamp(origin.x + origin.w + dx, left + MIN_SIZE, window.innerWidth);
     if (handle.includes("n")) top = clamp(origin.y + dy, 0, bottom - MIN_SIZE);
     if (handle.includes("s")) bottom = clamp(origin.y + origin.h + dy, top + MIN_SIZE, window.innerHeight);
     setSelection({ x: left, y: top, w: right - left, h: bottom - top });
+  }, []);
+
+  const scheduleInteraction = useCallback((clientX: number, clientY: number) => {
+    interactionPointRef.current = { x: clientX, y: clientY };
+    if (interactionRafRef.current != null) return;
+    interactionRafRef.current = window.requestAnimationFrame(() => {
+      interactionRafRef.current = null;
+      const point = interactionPointRef.current;
+      if (!point) return;
+      applyInteractionPoint(point.x, point.y);
+    });
+  }, [applyInteractionPoint]);
+
+  const onRootPointerDown = (event: React.PointerEvent) => {
+    if (busy || event.button !== 0 || countdown !== null) return;
+    // Pin display immediately (Rust atomic) — do not wait for React or follow IPC.
+    setInteractionLock(true);
+    if (pickMode === "window") {
+      const hit = hitWindow({ x: event.clientX, y: event.clientY });
+      if (hit) {
+        event.preventDefault();
+        const next = clampRectToViewport({ x: hit.x, y: hit.y, w: hit.w, h: hit.h });
+        setSelection(next);
+        setHoverWindow(null);
+        setAnnotations([]);
+        setRedoStack([]);
+        setPickMode("region");
+        setInteractionLock(false);
+      }
+      return;
+    }
+    if (pickMode === "fullscreen") {
+      setInteractionLock(false);
+      return;
+    }
+    // Region mode: allow redraw by dragging on dimmed area (or always start new drag when no tool).
+    if (tool) {
+      setInteractionLock(false);
+      return;
+    }
+    if (selection) {
+      // Click outside selection → clear and start new drag.
+      const inside = event.clientX >= selection.x
+        && event.clientY >= selection.y
+        && event.clientX <= selection.x + selection.w
+        && event.clientY <= selection.y + selection.h;
+      if (inside) {
+        setInteractionLock(false);
+        return;
+      }
+      setSelection(null);
+      setAnnotations([]);
+      setRedoStack([]);
+    }
+    event.preventDefault();
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      /* capture is best-effort on some hosts */
+    }
+    const point = { x: event.clientX, y: event.clientY };
+    drawingRef.current = true;
+    drawStartRef.current = point;
+    drawEndRef.current = point;
+    setDrawStart(point);
+    setDrawEnd(point);
+  };
+
+  const onSelectionPointerDown = (event: React.PointerEvent) => {
+    if (!selection || tool || busy || event.button !== 0 || countdown !== null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setInteractionLock(true);
+    const now = Date.now();
+    const prev = lastClickRef.current;
+    if (
+      prev
+      && now - prev.at < 320
+      && Math.hypot(event.clientX - prev.x, event.clientY - prev.y) < 8
+    ) {
+      lastClickRef.current = null;
+      setInteractionLock(false);
+      void confirm(intent);
+      return;
+    }
+    lastClickRef.current = { at: now, x: event.clientX, y: event.clientY };
+    const next: RectInteraction = {
+      kind: "move",
+      start: { x: event.clientX, y: event.clientY },
+      origin: selection,
+    };
+    interactionRef.current = next;
+    setInteraction(next);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const onRootPointerMove = (event: React.PointerEvent) => {
+    if (pickMode === "window" && !selection && !busy && !drawingRef.current) {
+      setHoverWindow(hitWindow({ x: event.clientX, y: event.clientY }));
+    }
+    // Use refs so the first moves after pointerdown work before React re-renders
+    // (critical on Windows WebView2 high-rate mouse events).
+    const start = drawStartRef.current;
+    if (drawingRef.current && start) {
+      let end = { x: event.clientX, y: event.clientY };
+      if (event.shiftKey) {
+        const size = Math.max(Math.abs(end.x - start.x), Math.abs(end.y - start.y));
+        end = {
+          x: start.x + Math.sign(end.x - start.x || 1) * size,
+          y: start.y + Math.sign(end.y - start.y || 1) * size,
+        };
+      }
+      // One React commit per frame keeps the rect following the pointer without
+      // flooding the reconciler on high-rate mouse/trackpad streams.
+      scheduleDrawEnd(end);
+      return;
+    }
+    if (!interactionRef.current) return;
+    scheduleInteraction(event.clientX, event.clientY);
   };
 
   const finishDrawSelection = useCallback((forceRefine: boolean) => {
-    if (!drawStart || !drawEnd || selection) return false;
-    const next = rectFromPoints(drawStart, drawEnd);
+    if (drawRafRef.current != null) {
+      window.cancelAnimationFrame(drawRafRef.current);
+      drawRafRef.current = null;
+    }
+    // Prefer refs: React state for drawStart/selection can still be a frame behind
+    // on Windows when pointerup races the commit from pointerdown.
+    const start = drawStartRef.current;
+    const end = drawEndRef.current;
+    drawingRef.current = false;
+    drawStartRef.current = null;
+    drawEndRef.current = null;
     setDrawStart(null);
     setDrawEnd(null);
+    setInteractionLock(false);
+    if (!start || !end) {
+      return false;
+    }
+    const next = rectFromPoints(start, end);
     if (next.w < MIN_SIZE || next.h < MIN_SIZE) {
+      // Too small — drop draft, re-arm follow when multi-display.
       setPointerFollow(true);
       return false;
     }
@@ -684,14 +838,37 @@ export default function RegionPickerWindow() {
       void confirm(intent, next);
     }
     return true;
-  }, [captureSettings.capture_confirm_mode, confirm, drawEnd, drawStart, intent, selection, setPointerFollow]);
+  }, [captureSettings.capture_confirm_mode, confirm, intent, setInteractionLock, setPointerFollow]);
 
-  const onRootMouseUp = (event: React.MouseEvent) => {
-    if (drawStart && drawEnd && !selection) {
-      finishDrawSelection(event.altKey);
+  const onRootPointerUp = (event: React.PointerEvent) => {
+    if (drawingRef.current || drawStartRef.current) {
+      // Flush any pending rAF sample so mouseup uses the latest point.
+      if (drawRafRef.current != null) {
+        window.cancelAnimationFrame(drawRafRef.current);
+        drawRafRef.current = null;
+      }
+      if (event.type !== "pointercancel" || (drawStartRef.current && drawEndRef.current)) {
+        // pointercancel on Windows can fire during DWM focus churn — still
+        // commit if the draft is already large enough via finishDrawSelection.
+        finishDrawSelection(event.altKey && event.type === "pointerup");
+      } else {
+        clearDrawDraft();
+        setInteractionLock(false);
+      }
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        /* ignore */
+      }
       return;
     }
+    if (interactionRafRef.current != null) {
+      window.cancelAnimationFrame(interactionRafRef.current);
+      interactionRafRef.current = null;
+    }
+    interactionRef.current = null;
     setInteraction(null);
+    setInteractionLock(false);
   };
 
   const canvasPoint = (event: React.MouseEvent<HTMLCanvasElement>): Point | null => {
@@ -835,9 +1012,9 @@ export default function RegionPickerWindow() {
             setPenDraft(null);
             return;
           }
-          if (drawStart) {
-            setDrawStart(null);
-            setDrawEnd(null);
+          if (drawStart || drawingRef.current) {
+            clearDrawDraft();
+            setInteractionLock(false);
             setPointerFollow(true);
             return;
           }
@@ -889,12 +1066,13 @@ export default function RegionPickerWindow() {
           else if (key === "6") setTool("mosaic");
         }
       }}
-      onMouseDown={onRootMouseDown}
-      onMouseMove={onRootMouseMove}
-      onMouseUp={onRootMouseUp}
+      onPointerDown={onRootPointerDown}
+      onPointerMove={onRootPointerMove}
+      onPointerUp={onRootPointerUp}
+      onPointerCancel={onRootPointerUp}
     >
       {!recordingActive && countdown === null && (
-        <div className="qx-region-picker-modebar" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="qx-region-picker-modebar" onPointerDown={(event) => event.stopPropagation()}>
           <button type="button" className={pickMode === "region" ? "is-active" : ""} disabled={busy} onClick={() => switchPickMode("region")}>
             {t("screencap.pick.region", "Region")}
           </button>
@@ -909,6 +1087,12 @@ export default function RegionPickerWindow() {
         </div>
       )}
 
+      {/* Dim the active display immediately so multi-monitor capture reads as a
+          single capture session; cutout shades replace this once a rect exists. */}
+      {!recordingActive && countdown === null && !visibleRect && (
+        <div className="qx-region-picker-shade is-full" aria-hidden="true" />
+      )}
+
       {visibleRect && (
         <>
           {!recordingActive && countdown === null && <>
@@ -920,7 +1104,7 @@ export default function RegionPickerWindow() {
           <div
             className={`qx-region-picker-rect${selection ? " is-selected" : ""}${tool ? ` is-tool-${tool}` : ""}${recordingActive ? " is-recording" : ""}${!selection && hoverWindow ? " is-hover-window" : ""}`}
             style={{ left: visibleRect.x, top: visibleRect.y, width: visibleRect.w, height: visibleRect.h }}
-            onMouseDown={onSelectionMouseDown}
+            onPointerDown={onSelectionPointerDown}
           >
             {selection && !recordingActive && countdown === null && (
               <>
@@ -963,7 +1147,7 @@ export default function RegionPickerWindow() {
                     type="button"
                     className={`qx-region-picker-handle is-${handle}`}
                     aria-label={t("screencap.picker.resize", "Resize selection")}
-                    onMouseDown={(event) => beginResize(event, handle)}
+                    onPointerDown={(event) => beginResize(event, handle)}
                   />
                 ))}
               </>
@@ -997,6 +1181,26 @@ export default function RegionPickerWindow() {
           >
             <Camera size={14} /> {t("screencap.screenshot", "Screenshot")}
           </button>
+          {showAnnotationTools && (
+            <>
+              <button
+                type="button"
+                onClick={() => void confirm("screenshot", undefined, "clipboard")}
+                disabled={busy}
+                title={t("screencap.ocrClipboard", "OCR to clipboard")}
+              >
+                {t("screencap.ocrClipboard", "OCR Copy")}
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirm("screenshot", undefined, "editor")}
+                disabled={busy}
+                title={t("screencap.ocrEditor", "OCR to Text Toolbox")}
+              >
+                {t("screencap.ocrEditor", "OCR Editor")}
+              </button>
+            </>
+          )}
           <button
             type="button"
             className={`is-record${intent === "recording" ? " is-primary" : ""}`}

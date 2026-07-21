@@ -16,8 +16,18 @@ pub(crate) fn is_picker_surface(label: &str) -> bool {
     label == PICKER_LABEL || label.starts_with(SHADE_PREFIX)
 }
 
-/// Show click-through shades on every non-active display. Callers invoke this
-/// from the AppKit/Tauri main-thread hop because window geometry is native UI.
+/// Hide every outer multi-display shade surface (kept alive for reuse).
+pub(super) fn hide_shades(app: &AppHandle) {
+    for window in app.webview_windows().into_values() {
+        if window.label().starts_with(SHADE_PREFIX) {
+            let _ = window.hide();
+        }
+    }
+}
+
+/// Show outer shades on every non-active display. No-op on a single-display
+/// machine (the expensive path multi-monitor capture must not pay). Callers
+/// invoke this from the AppKit/Tauri main-thread hop.
 pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(), String> {
     let shade_displays = all_capture_monitors()?
         .into_iter()
@@ -35,6 +45,12 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
             ))
         })
         .collect::<Vec<_>>();
+    // Single display: nothing to shade, nothing to follow. Drop any leftover
+    // outer webs from a previous multi-display session and return immediately.
+    if shade_displays.len() <= 1 {
+        hide_shades(app);
+        return Ok(());
+    }
     let desired_shades = shade_displays
         .iter()
         .filter(|(id, ..)| *id != active_monitor_id)
@@ -65,7 +81,11 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
             WebviewWindowBuilder::new(
                 app,
                 &label,
-                WebviewUrl::App("index.html?view=region-picker-shade".into()),
+                // monitorId lets the shade webview request a handoff without a
+                // second IPC to discover which display it covers.
+                WebviewUrl::App(
+                    format!("index.html?view=region-picker-shade&monitorId={shade_id}").into(),
+                ),
             )
             .title("Qx Capture Shade")
             .inner_size(logical_width, logical_height)
@@ -80,7 +100,8 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
             .always_on_top(true)
             .skip_taskbar(true)
             .focused(false)
-            .accept_first_mouse(false)
+            // First click on an outer display must activate that picker surface.
+            .accept_first_mouse(true)
             .content_protected(true)
             .build()
             .map_err(|error| format!("open capture shade: {error}"))?
@@ -93,9 +114,11 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
         shade
             .set_size(PhysicalSize::new(*shade_w, *shade_h))
             .map_err(|error| format!("size capture shade: {error}"))?;
+        // Outer shades own the pointer so desktop apps underneath cannot steal
+        // the first click while multi-display capture is active.
         shade
-            .set_ignore_cursor_events(true)
-            .map_err(|error| format!("enable capture shade passthrough: {error}"))?;
+            .set_ignore_cursor_events(false)
+            .map_err(|error| format!("capture shade input: {error}"))?;
         if !shade.is_visible().unwrap_or(false) {
             shade
                 .show()

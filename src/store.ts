@@ -37,6 +37,8 @@ export interface ClipboardEntry {
   file_paths?: string[];
   /** Stable kind captured with file clipboard semantics; avoids guessing folders from extensions. */
   file_kind?: "image" | "video" | "audio" | "pdf" | "folder" | "file" | null;
+  /** Cached OCR text for images — used by launcher / module search. */
+  ocr_text?: string | null;
 }
 
 /** History entry (launches) */

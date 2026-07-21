@@ -20,7 +20,7 @@ import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useLocale, useT } from "../../i18n";
 import { setPendingModuleLaunch, takePendingModuleLaunch } from "../../search/moduleSurfaces";
-import { revealSystemPath } from "../../system";
+import { ocrRecognizeClipboardImage, revealSystemPath } from "../../system";
 import {
   clearClipboardRestore,
   ensureClipboardRestoreOnHide,
@@ -44,6 +44,7 @@ import {
   wordCount,
   contentType,
   matchesQuery,
+  isClipboardImageItem,
 } from "./utils";
 
 type Filter = "all" | "pinned" | "links" | "code" | "long" | "frequent" | "image" | "file";
@@ -647,6 +648,61 @@ export default function ClipboardPanel() {
     }
   };
 
+  const runOcrOnItem = async (item: ClipboardEntry | undefined, dest: "clipboard" | "editor") => {
+    if (!item) return;
+    if (!isClipboardImageItem(item)) {
+      setStatus(t("ocr.failed", "OCR failed") + ": no image");
+      window.setTimeout(() => setStatus(""), 1600);
+      return;
+    }
+    try {
+      setStatus(t("ocr.running", "Recognizing…"));
+      const result = await ocrRecognizeClipboardImage(item.id);
+      await refreshClipboardHistory();
+      if (dest === "clipboard") {
+        await writeText(result.text);
+        setStatus(t("ocr.copied", "OCR text copied"));
+      } else {
+        setPendingModuleLaunch({
+          tab: "documents",
+          surface: "import",
+          params: {
+            content: result.text,
+            title: result.text.split(/\r?\n/).find((line) => line.trim())?.trim().slice(0, 48) || "OCR",
+          },
+        });
+        setTab("documents");
+        setStatus("");
+        return;
+      }
+      window.setTimeout(() => setStatus(""), 1600);
+    } catch (error) {
+      setStatus(String(error || t("ocr.failed", "OCR failed")));
+      window.setTimeout(() => setStatus(""), 2200);
+    }
+  };
+
+  const ocrAllPendingImages = async () => {
+    try {
+      setStatus(t("clipboard.ocrAll.running", "OCR-ing clipboard images…"));
+      const result = await invoke<{ total: number; done: number; failed: number }>(
+        "clipboard_ocr_pending",
+        { limit: 30 },
+      );
+      await refreshClipboardHistory();
+      setStatus(
+        t("clipboard.ocrAll.done", "OCR finished: {done}/{total} (failed {failed})")
+          .replace("{done}", String(result.done))
+          .replace("{total}", String(result.total))
+          .replace("{failed}", String(result.failed)),
+      );
+      window.setTimeout(() => setStatus(""), 2200);
+    } catch (error) {
+      setStatus(String(error || t("ocr.failed", "OCR failed")));
+      window.setTimeout(() => setStatus(""), 2200);
+    }
+  };
+
   /** Create a new Text Toolbox file with this entry’s text and open documents. */
   const importToTextTool = async (item?: ClipboardEntry) => {
     if (!item?.text?.trim()) {
@@ -785,6 +841,29 @@ export default function ClipboardPanel() {
         onClick: () => void importToTextTool(selectedItem),
       },
     ];
+
+    // OCR for every image-shaped clipboard item (bitmap paste + image files).
+    if (selectedItem && isClipboardImageItem(selectedItem)) {
+      list.push({
+        label: t("clipboard.ocrCopy", "OCR and Copy"),
+        kbd: "CmdOrCtrl+Shift+O",
+        menuKey: "o",
+        onClick: () => void runOcrOnItem(selectedItem, "clipboard"),
+      });
+      list.push({
+        label: t("clipboard.ocrEditor", "OCR to Text Toolbox"),
+        kbd: "CmdOrCtrl+Shift+E",
+        menuKey: "e",
+        onClick: () => void runOcrOnItem(selectedItem, "editor"),
+      });
+    }
+    if (clipboardHistory.some((item) => isClipboardImageItem(item) && !item.ocr_text?.trim())) {
+      list.push({
+        label: t("clipboard.ocrAll", "OCR All Images"),
+        menuKey: "a",
+        onClick: () => void ocrAllPendingImages(),
+      });
+    }
 
     // Context-sensitive media tools — only when the current item can run them.
     if (compressSourcePath) {

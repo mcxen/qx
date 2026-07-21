@@ -69,6 +69,25 @@ export function createPluginContext(
       read: () => rpc("clipboardRead") as Promise<string>,
       write: (text: string) => rpc("clipboardWrite", { text }) as Promise<void>,
     },
+    ocr: {
+      status: () =>
+        rpc("ocrStatus") as ReturnType<PluginContext["ocr"]["status"]>,
+      recognizePath: (path, options) =>
+        rpc("ocrRecognizePath", {
+          path,
+          source: options?.source,
+        }) as ReturnType<PluginContext["ocr"]["recognizePath"]>,
+      recognizeClipboardImage: (id) =>
+        rpc("ocrRecognizeClipboardImage", { id }) as ReturnType<
+          PluginContext["ocr"]["recognizeClipboardImage"]
+        >,
+      listHistory: (limit) =>
+        rpc("ocrListHistory", { limit }) as ReturnType<PluginContext["ocr"]["listHistory"]>,
+      deleteHistory: (id) =>
+        rpc("ocrDeleteHistory", { id }) as Promise<void>,
+      clearHistory: () => rpc("ocrClearHistory") as Promise<void>,
+      copyText: (text) => rpc("ocrCopyText", { text }) as Promise<void>,
+    },
     island: {
       show: (input) => rpc("islandShow", { input }) as Promise<void>,
       update: (input) => rpc("islandUpdate", { input }) as Promise<void>,

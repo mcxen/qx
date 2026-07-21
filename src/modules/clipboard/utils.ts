@@ -126,8 +126,25 @@ export function contentType(item: ClipboardEntry, t: Translate): string {
   return t("clipboard.type.text", "Text");
 }
 
+/** True when the entry is (or contains) a raster image OCR can read. */
+export function isClipboardImageItem(item: ClipboardEntry): boolean {
+  if (item.image_path) return true;
+  if (item.file_kind === "image") return true;
+  const paths = clipboardFilePaths(item);
+  return paths.some((path) => clipboardFileKind(path) === "image");
+}
+
 export function matchesQuery(item: ClipboardEntry, q: string): boolean {
   if (!q) return true;
-  const haystack = `${item.text} ${clipboardFilePaths(item).join(" ")} ${classify(item)} ${formatMeta(item)}`.toLowerCase();
+  const haystack = [
+    item.text,
+    item.ocr_text || "",
+    clipboardFilePaths(item).join(" "),
+    item.image_path || "",
+    classify(item),
+    formatMeta(item),
+  ]
+    .join(" ")
+    .toLowerCase();
   return q.split(/\s+/).every((token) => haystack.includes(token));
 }

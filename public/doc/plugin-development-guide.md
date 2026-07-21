@@ -259,6 +259,7 @@ Workbench 中带 `command` 的 action 完成后，宿主会调用 `onCommandComp
 | Toast / 确认 | `showToast` / `prompt` | 可选 `notifications` | — |
 | 打开网页 / CI | **`context.openUrl`** | `open-url` | — |
 | 剪贴板 | **`context.clipboard`** | `clipboard` | — |
+| OCR 识别 | **`context.ocr`** | `ocr` | 需 Settings → OCR 启用；支持后台 interval |
 | 任意 shell 脚本 | `context.ai.runBash` | `ai-bash` | **慎用**；受 Agent Bash 门控 |
 | LLM | `context.ai.*` | `ai` 等 | 见 AI 文档 |
 
@@ -640,6 +641,79 @@ context.ui.mountWorkbench({
 - Workbench 重新打开时必须先读持久化快照，不能等待下一次 poll。
 - 计时器持久化绝对 `startedAt` / `endsAt`；不能依赖每秒累加变量。睡眠或进程重启后由后台 heartbeat 按时间戳结算。
 - `onBackgroundPoll` 只通知当前打开的 Workbench 重读结果，不承担后台工作本身。
+
+### 7.2 OCR（识别 + 后台定时）
+
+权限：`ocr`。宿主设置 **Settings → OCR → Enable** 必须打开，否则识别会失败。
+
+```json
+{
+  "permissions": ["ocr", "notifications", "clipboard"]
+}
+```
+
+#### 调用 API
+
+```js
+// 状态（是否启用、引擎、模型包）
+const status = await context.ocr.status();
+if (!status.enabled) {
+  context.showToast("Enable OCR in Settings first");
+  return;
+}
+
+// 识别本地图片路径（截图输出、文件等）
+const result = await context.ocr.recognizePath("/path/to/image.png", {
+  source: "file", // clipboard | screenshot | file
+});
+context.showToast(result.text.slice(0, 80));
+
+// 识别剪贴板历史中的图片条目（传 history id）
+const fromClip = await context.ocr.recognizeClipboardImage(itemId);
+
+// 历史 / 复制
+const history = await context.ocr.listHistory(40);
+await context.ocr.copyText(result.text);
+```
+
+也可使用精确 invoke（需 `ocr` 或 `invoke:ocr_recognize_path`）：
+
+```js
+await context.invoke("ocr_recognize_path", { path, source: "file" });
+```
+
+#### 后台定时 OCR
+
+用 **`mode: "no-view"` + `interval`** 调度（与壁纸同步同一路径）。命令里直接 `await context.ocr.*`：
+
+```json
+{
+  "name": "ocr-inbox",
+  "title": "OCR Inbox Watch",
+  "mode": "no-view",
+  "interval": "15m"
+}
+```
+
+```js
+// commands/ocr-inbox.js
+export default async function (context) {
+  const last = (await context.storage.persist.get("lastOcrPath")) || "";
+  const path = await discoverNewImagePath(context); // 插件自己的来源逻辑
+  if (!path || path === last) return;
+  const result = await context.ocr.recognizePath(path, { source: "file" });
+  await context.storage.persist.set("lastOcrPath", path);
+  await context.storage.persist.set("lastOcrText", result.text);
+  // 可选：通知用户
+  // context.showToast(`OCR: ${result.charCount} chars`);
+}
+```
+
+约束：
+
+- 后台 job 超时约 **120s**；OCR 应在单次识别内完成。
+- 不要用过短 interval 狂扫磁盘（建议 ≥ 5m）。
+- 识别结果进宿主 OCR 历史（Settings → OCR → History），插件侧应用 `storage.persist` 存自己的游标/状态。
 
 ---
 

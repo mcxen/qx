@@ -71,17 +71,34 @@
 
 .qx-region-picker-shade {
   position: absolute;
-  background: var(--qx-screencap-shade, rgb(0 0 0 / 0.16));
+  /* Active-display cutout dim — dark enough to read the selection hole. */
+  background: var(--qx-screencap-shade, rgb(0 0 0 / 0.48));
   pointer-events: none;
 }
 
-/* One subtle black layer per non-active display; the picker webview itself
-   remains transparent and owns the interactive selection on the active one. */
+.qx-region-picker-shade.is-full {
+  inset: 0;
+}
+
+/* Outer multi-display shade: darker than the active picker dim so non-active
+   screens read as blocked, and pointer events are owned by the shade layer. */
 .qx-region-picker-shade-window {
   position: fixed;
   inset: 0;
-  background: var(--qx-screencap-shade, rgb(0 0 0 / 0.16));
-  pointer-events: none;
+  background: var(--qx-screencap-outer-shade, rgb(0 0 0 / 0.62));
+  cursor: crosshair;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.qx-region-picker-shade-window-body,
+.qx-region-picker-shade-window-body #root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+  user-select: none;
 }
 
 .qx-region-picker-rect {

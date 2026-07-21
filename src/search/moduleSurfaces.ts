@@ -172,7 +172,9 @@ async function searchClipboardSurfaces(query: string): Promise<ModuleSurfaceHit[
       image_path?: string | null;
       file_path?: string | null;
       file_paths?: string[];
-    }>>("get_clipboard_history", { limit: 80 });
+      file_kind?: string | null;
+      ocr_text?: string | null;
+    }>>("get_clipboard_history", { limit: 120 });
     for (const item of history) {
       const filePaths = item.file_paths?.length
         ? item.file_paths
@@ -182,16 +184,23 @@ async function searchClipboardSurfaces(query: string): Promise<ModuleSurfaceHit[
       const primaryFileLabel = filePaths[0]
         ? (filePaths[0].split(/[/\\]/).pop() || filePaths[0])
         : "";
+      const isImage = Boolean(item.image_path)
+        || item.file_kind === "image"
+        || filePaths.some((p) => /\.(png|jpe?g|gif|webp|bmp|heic|tiff?)$/i.test(p));
+      const ocrPreview = item.ocr_text?.replace(/\s+/g, " ").trim().slice(0, 80) || "";
       const label = item.file_path
         ? (filePaths.length > 1 ? `${primaryFileLabel} · ${filePaths.length} items` : primaryFileLabel)
         : item.image_path
-          ? "Image"
+          ? (ocrPreview || "Image")
           : item.text.replace(/\s+/g, " ").trim().slice(0, 80) || "Clipboard Item";
       const score = scoreText(
         query,
         label,
         filePaths.join(" "),
         item.text?.slice(0, 200),
+        item.ocr_text?.slice(0, 400) || "",
+        item.image_path || "",
+        isImage ? "image picture photo 图片 截图" : "",
         item.pinned ? "pinned" : "",
         "clipboard",
       );
@@ -200,7 +209,11 @@ async function searchClipboardSurfaces(query: string): Promise<ModuleSurfaceHit[
         id: `clipboard:item:${item.id}`,
         moduleId: "clipboard",
         title: label,
-        subtitle: ["Clipboard", item.pinned ? "Pinned" : null, item.file_path ? "File" : item.image_path ? "Image" : "Text"]
+        subtitle: [
+          "Clipboard",
+          item.pinned ? "Pinned" : null,
+          isImage ? (ocrPreview ? "Image · OCR" : "Image") : item.file_path ? "File" : "Text",
+        ]
           .filter(Boolean)
           .join(" · "),
         icon: "builtin:clipboard",

@@ -60,6 +60,32 @@ export function ensureCaptureToastListener(): void {
     if (!path || !path.toLowerCase().endsWith(".png")) return;
     queueScreenshotToast(path);
   });
+  // Screenshot → OCR → Text Toolbox (editor destination). Clipboard destination
+  // is handled natively in Rust; editor needs a main-webview tab switch.
+  void listen<{
+    destination?: string;
+    text?: string;
+    error?: string;
+  }>("screencap:ocr", async (event) => {
+    const { destination, text, error } = event.payload ?? {};
+    if (error || !text?.trim()) return;
+    if (destination !== "editor") return;
+    try {
+      const { setPendingModuleLaunch } = await import("../../search/moduleSurfaces");
+      const { useStore } = await import("../../store");
+      setPendingModuleLaunch({
+        tab: "documents",
+        surface: "import",
+        params: {
+          content: text,
+          title: text.split(/\r?\n/).find((line) => line.trim())?.trim().slice(0, 48) || "OCR",
+        },
+      });
+      useStore.getState().setTab("documents");
+    } catch {
+      /* best-effort */
+    }
+  });
 }
 
 export type RecordingStatus = "idle" | "recording" | "processing" | "done" | "error";

@@ -12,14 +12,19 @@ static PICKER_SESSION: OnceLock<Mutex<Option<PickerSession>>> = OnceLock::new();
 pub(super) static FRAME_COUNT: AtomicU64 = AtomicU64::new(0);
 pub(super) static CONTROLS_PINNED: AtomicBool = AtomicBool::new(false);
 static PICKER_POINTER_FOLLOW: AtomicBool = AtomicBool::new(false);
+/// True while the webview is mid drag/resize. Blocks cross-display handoff even
+/// if a stale `pointer_follow=true` has not been cleared yet (Windows IPC race).
+static PICKER_INTERACTION_LOCK: AtomicBool = AtomicBool::new(false);
 static PICKER_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 pub(super) fn begin_picker_session() -> u64 {
+    PICKER_INTERACTION_LOCK.store(false, Ordering::Release);
     PICKER_POINTER_FOLLOW.store(true, Ordering::Release);
     PICKER_GENERATION.fetch_add(1, Ordering::AcqRel) + 1
 }
 
 pub(super) fn end_picker_session() {
+    PICKER_INTERACTION_LOCK.store(false, Ordering::Release);
     PICKER_POINTER_FOLLOW.store(false, Ordering::Release);
     PICKER_GENERATION.fetch_add(1, Ordering::AcqRel);
 }
@@ -28,8 +33,17 @@ pub(super) fn set_picker_pointer_follow(enabled: bool) {
     PICKER_POINTER_FOLLOW.store(enabled, Ordering::Release);
 }
 
+pub(super) fn set_picker_interaction_lock(locked: bool) {
+    PICKER_INTERACTION_LOCK.store(locked, Ordering::Release);
+    if locked {
+        // Drag/resize must pin the current display immediately.
+        PICKER_POINTER_FOLLOW.store(false, Ordering::Release);
+    }
+}
+
 pub(super) fn picker_pointer_following(generation: u64) -> bool {
-    PICKER_POINTER_FOLLOW.load(Ordering::Acquire)
+    !PICKER_INTERACTION_LOCK.load(Ordering::Acquire)
+        && PICKER_POINTER_FOLLOW.load(Ordering::Acquire)
         && PICKER_GENERATION.load(Ordering::Acquire) == generation
 }
 

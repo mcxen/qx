@@ -38,6 +38,7 @@
 | 系统信息 / 设置 | Rust `qx_system_information_*` 领域命令 | **`context.system.info/storage/network/networkCounters/power/processes/openSettings`** | typed 跨平台 model；OS API、PowerShell/AppKit URL 只存在于宿主 adapter |
 | 本地路径打开 / 揭示 | **`src/system/pathActions.ts`** | **`context.system.openPath/revealPath`** | 共用 Rust 语义端口；macOS 不先 canonicalize Spotlight 路径，Windows 不经过 WebView opener ACL |
 | 打开外链 | `@tauri-apps/plugin-opener` | **`context.openUrl`** | `open-url` |
+| OCR 识别 / 历史 | `src/system/ocr.ts` + 设置历史 | **`context.ocr.*`**（`recognizePath` / `recognizeClipboardImage` / `listHistory` / …） | 权限 `ocr`；宿主 Settings → OCR 启用；支持 `no-view`+`interval` 后台定时 |
 | 打开宿主 Settings（带回程） | **`openSettings` / `closeSettings`**（`modules/settings/openSettings.ts`） | 插件 panel：`qx:plugin:open-preferences` → 同端口 | 禁止 `setTab("settings")` + 手写 sessionStorage；Esc leave 回调用方模块/插件 |
 
 **原则（与 architecture-principles 一致）**：缺口修**端口一次**，不要在每个模块/插件里 fork 一套 Esc 或缓存。

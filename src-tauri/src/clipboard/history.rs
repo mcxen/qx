@@ -11,7 +11,7 @@ pub fn get_clipboard_history(
     let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, text, timestamp, pinned, copy_count, image_path, file_path, file_paths, file_kind
+            "SELECT id, text, timestamp, pinned, copy_count, image_path, file_path, file_paths, file_kind, ocr_text
              FROM clipboard_history
              ORDER BY pinned DESC, timestamp DESC
              LIMIT ?1",
@@ -34,6 +34,7 @@ pub fn get_clipboard_history(
                 ),
                 file_path,
                 file_kind: row.get(8)?,
+                ocr_text: row.get(9)?,
             })
         })
         .map_err(|e| format!("{e}"))?;
@@ -91,6 +92,8 @@ pub fn read_clipboard_image_now(
                 rusqlite::params![hash_hex, "", ts, path_str, pasteboard_path],
             );
             prune_clipboard_storage(conn);
+            drop(guard);
+            queue_auto_ocr_for_entry(&app, hash_hex.clone(), path_str.clone());
             let _ = app.emit("clipboard-updated", ());
             Ok(Some(path_str))
         }

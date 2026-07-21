@@ -15,7 +15,7 @@ use super::screenshot::capture as take_screenshot_blocking;
 use super::state::{
     begin_picker_session, end_picker_session, picker as picker_session, picker_pointer_following,
     picker_session_is_current, recording as recording_state, runtime as runtime_status,
-    set_picker_pointer_follow,
+    set_picker_interaction_lock, set_picker_pointer_follow,
 };
 use super::types::{CaptureMode, PickerSession};
 use super::{CaptureDisplay, PickerStatus, RecordArea, RecordingOptions};
@@ -69,7 +69,78 @@ fn picker_status_from_session(session: &PickerSession, restore_selection: bool) 
         coordinate_scale: session.coordinate_scale,
         logical_area: session.logical_area.clone(),
         restore_selection,
+        multi_display: session.multi_display,
     }
+}
+
+/// True when the host has two or more capture displays.
+/// `force_refresh` bypasses the macOS inventory TTL so hot-plug is visible.
+fn host_is_multi_display(force_refresh: bool) -> bool {
+    let monitors = if force_refresh {
+        crate::display::refresh_capture_monitor_cache()
+    } else {
+        crate::display::all_capture_monitors()
+    };
+    monitors.map(|list| list.len() > 1).unwrap_or(false)
+}
+
+/// Apply a multi-display flag change to the live picker session (shades + follow
+/// + frontend). No-op when the picker is closed or the flag is unchanged.
+///
+/// Called from the display-monitor poll (hot-plug) and the picker topology
+/// revalidation loop so a newly attached external monitor is never stuck in the
+/// single-display fast path.
+///
+/// `force_refresh` should be true when the caller has not just refreshed the
+/// display inventory; false when `refresh_capture_monitor_cache` already ran.
+pub(crate) fn on_display_topology_changed(app: &AppHandle, force_refresh: bool) {
+    let multi = host_is_multi_display(force_refresh);
+    let monitor_id = {
+        let Ok(mut guard) = picker_session().lock() else {
+            return;
+        };
+        let Some(session) = guard.as_mut() else {
+            return;
+        };
+        if session.multi_display == multi {
+            return;
+        }
+        session.multi_display = multi;
+        session.monitor_id
+    };
+
+    if multi {
+        // Do not force follow=true here — an in-progress drag must keep the
+        // picker pinned. Frontend re-arms follow when idle after multiDisplay
+        // flips true; outer shade clicks still hand off immediately.
+        let app_ui = app.clone();
+        let mid = monitor_id;
+        let _ = crate::main_thread::run_on_main(&app_ui.clone(), move || {
+            let _ = picker_window::show_shades(&app_ui, mid);
+        });
+    } else {
+        set_picker_pointer_follow(false);
+        let app_ui = app.clone();
+        let _ = crate::main_thread::run_on_main(&app_ui.clone(), move || {
+            picker_window::hide_shades(&app_ui);
+        });
+    }
+
+    // Lightweight event — do not re-emit screencap:picker (that clears drafts).
+    let _ = app.emit(
+        "screencap:multi-display",
+        serde_json::json!({ "multiDisplay": multi }),
+    );
+    crate::diagnostics::log(
+        crate::diagnostics::LogLevel::Info,
+        "screencap.display_topology",
+        if multi {
+            "picker upgraded to multi-display mode after topology change"
+        } else {
+            "picker demoted to single-display mode after topology change"
+        },
+        serde_json::json!({ "multiDisplay": multi, "monitorId": monitor_id }),
+    );
 }
 
 fn screencap_region_select_status_with_restore(restore_selection: bool) -> Option<PickerStatus> {
@@ -138,6 +209,18 @@ fn show_region_picker_internal(
         .width()
         .map_err(|error| format!("display width: {error}"))?;
     let coordinate_scale = capture_coordinate_scale(capture_width, logical_w);
+    // Fresh open always force-refreshes inventory (hot-plug since last open).
+    // Relocations reuse the session flag; topology revalidation / display
+    // monitor may flip it while the picker stays open.
+    let multi_display = if selected_monitor_id.is_none() {
+        host_is_multi_display(true)
+    } else {
+        picker_session()
+            .lock()
+            .ok()
+            .and_then(|session| session.as_ref().map(|session| session.multi_display))
+            .unwrap_or_else(|| host_is_multi_display(false))
+    };
     if let Ok(mut session) = picker_session().lock() {
         *session = Some(PickerSession {
             mode,
@@ -147,6 +230,7 @@ fn show_region_picker_internal(
             logical_area: None,
             frame_x: position.x,
             frame_y: position.y,
+            multi_display,
         });
     }
     // Window create/show/focus are AppKit main-thread only when reached from async commands.
@@ -156,10 +240,14 @@ fn show_region_picker_internal(
     let size_w = size.width;
     let size_h = size.height;
     crate::main_thread::run_on_main(&app_for_ui.clone(), move || {
-        // Passive shades are intentionally click-through and never receive
-        // focus. The active picker is shown after them so its selection frame
-        // remains the topmost interactive surface on the current display.
-        picker_window::show_shades(&app_for_ui, monitor_id)?;
+        // Multi-display only: outer shades on non-active screens. Single-display
+        // skips this entirely (no shade windows, no extra monitor enumeration
+        // beyond the early count already cached on macOS).
+        if multi_display {
+            picker_window::show_shades(&app_for_ui, monitor_id)?;
+        } else {
+            picker_window::hide_shades(&app_for_ui);
+        }
 
         if app_for_ui.get_webview_window(PICKER_LABEL).is_none() {
             WebviewWindowBuilder::new(
@@ -212,35 +300,75 @@ fn show_region_picker_internal(
     Ok(())
 }
 
+fn session_is_multi_display() -> bool {
+    picker_session()
+        .lock()
+        .ok()
+        .and_then(|session| session.as_ref().map(|session| session.multi_display))
+        .unwrap_or(false)
+}
+
 fn start_pointer_display_tracker(app: AppHandle, generation: u64) {
+    // Always spawn: single-display stays on a slow topology watch so plugging
+    // an external monitor mid-session can promote into multi-display mode.
+    // Multi-display uses the fast 12ms cursor handoff loop.
+    if !session_is_multi_display() {
+        set_picker_pointer_follow(false);
+    }
     tauri::async_runtime::spawn(async move {
-        let mut ticker = tokio::time::interval(std::time::Duration::from_millis(40));
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut fast = tokio::time::interval(std::time::Duration::from_millis(12));
+        fast.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        let mut last_topology = std::time::Instant::now()
+            .checked_sub(std::time::Duration::from_secs(1))
+            .unwrap_or_else(std::time::Instant::now);
+
         loop {
-            // `interval` ticks immediately on the first iteration, so the
-            // picker is placed on the current pointer display as soon as the
-            // shortcut/entry action opens it. Subsequent checks stay at 25Hz
-            // for responsive cross-display handoff without polling native
-            // monitor geometry more often than needed.
-            ticker.tick().await;
+            if !picker_session_is_current(generation) {
+                break;
+            }
+
+            // Hot-plug revalidation (~2Hz while open). display_monitor also
+            // calls on_display_topology_changed; this covers the case where
+            // the picker opened single-display and a monitor appears before
+            // the next 2s poll, or the OS report lags the first attach.
+            if last_topology.elapsed() >= std::time::Duration::from_millis(500) {
+                last_topology = std::time::Instant::now();
+                // Force refresh so attach between display_monitor's 2s polls is seen.
+                on_display_topology_changed(&app, true);
+            }
+
+            if !session_is_multi_display() {
+                // Single-display: no cursor handoff work — just wait for topology.
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                continue;
+            }
+
+            fast.tick().await;
             if !picker_session_is_current(generation) {
                 break;
             }
             if !picker_pointer_following(generation) {
                 continue;
             }
+            // Light path: only cursor position + monitor geometry (no xcap).
             let Some(cursor_display) = cursor_monitor(&app) else {
                 continue;
             };
             let cursor_position = cursor_display.position();
             let current = picker_session().lock().ok().and_then(|session| {
-                session
-                    .as_ref()
-                    .map(|session| (session.mode, session.frame_x, session.frame_y))
+                session.as_ref().map(|session| {
+                    (
+                        session.mode,
+                        session.monitor_id,
+                        session.frame_x,
+                        session.frame_y,
+                    )
+                })
             });
-            let Some((mode, frame_x, frame_y)) = current else {
+            let Some((mode, current_monitor_id, frame_x, frame_y)) = current else {
                 break;
             };
+            // Same physical origin ⇒ still on the active display (cheap reject).
             if cursor_position.x == frame_x && cursor_position.y == frame_y {
                 continue;
             }
@@ -250,6 +378,11 @@ fn start_pointer_display_tracker(app: AppHandle, generation: u64) {
             let Ok(monitor_id) = capture.id() else {
                 continue;
             };
+            // Matching capture id is authoritative when origins differ slightly
+            // across DPI / origin rounding (common on Windows mixed-DPI).
+            if monitor_id == current_monitor_id {
+                continue;
+            }
             if !picker_pointer_following(generation) {
                 continue;
             }
@@ -297,6 +430,7 @@ pub async fn screencap_begin_capture_select(app: AppHandle, mode: String) -> Res
         end_picker_session();
         error
     })?;
+    // Only multi-display sessions pay for the pointer-follow task.
     start_pointer_display_tracker(app.clone(), generation);
     hide_recording_controls_internal(&app);
     crate::floating_panel::hide(&app);
@@ -342,6 +476,14 @@ pub fn screencap_set_pointer_follow(enabled: bool) {
     set_picker_pointer_follow(enabled);
 }
 
+/// Pin the picker to the current display for the duration of a drag/resize.
+/// Must be set true on pointerdown *before* the first move (Windows WebView2
+/// can otherwise lose the draft when a late handoff emits screencap:picker).
+#[command]
+pub fn screencap_set_picker_interaction_lock(locked: bool) {
+    set_picker_interaction_lock(locked);
+}
+
 #[command]
 pub fn screencap_select_display(app: AppHandle, monitor_id: u32) -> Result<(), String> {
     // An explicit monitor choice is sticky until the user clears/restarts the
@@ -379,6 +521,8 @@ pub async fn screencap_confirm_region_select(
     action: Option<String>,
     annotation_overlay_base64: Option<String>,
     copy_to_clipboard: Option<bool>,
+    // After a screenshot: "clipboard" copies OCR text; "editor" opens Text Toolbox.
+    ocr_destination: Option<String>,
 ) -> Result<(), String> {
     let session = picker_session()
         .lock()
@@ -416,6 +560,10 @@ pub async fn screencap_confirm_region_select(
     }
     if action == CaptureMode::Screenshot {
         let copy_to_clipboard = copy_to_clipboard.unwrap_or(false);
+        let ocr_destination = ocr_destination
+            .as_deref()
+            .map(|value| value.trim().to_ascii_lowercase())
+            .filter(|value| value == "clipboard" || value == "editor");
         hide_region_picker_internal(&app);
         // Convert a worker panic into the same recoverable error path as capture
         // and filesystem failures. Returning early here would leave every Qx
@@ -437,8 +585,26 @@ pub async fn screencap_confirm_region_select(
                 let auto_hide_after_capture = crate::settings::read_settings()
                     .screencap
                     .auto_hide_after_capture;
+
+                // OCR off the UI thread after the shot is on disk.
+                let ocr_result = if let Some(dest) = ocr_destination.clone() {
+                    let path = output.path.clone();
+                    match crate::runtime::blocking(move || {
+                        crate::ocr::recognize_image_path(&path, "screenshot")
+                    })
+                    .await
+                    {
+                        Ok(Ok(result)) => Some(Ok((dest, result))),
+                        Ok(Err(error)) => Some(Err(error)),
+                        Err(error) => Some(Err(format!("OCR worker: {error}"))),
+                    }
+                } else {
+                    None
+                };
+
                 let clipboard_error = crate::runtime::ui(&app, move || {
-                    let clipboard_error = if copy_to_clipboard {
+                    use tauri_plugin_clipboard_manager::ClipboardExt;
+                    let mut clipboard_error = if copy_to_clipboard {
                         crate::clipboard::write_image_file_to_clipboard(&app_ui, &path_for_clip)
                             .err()
                             .map(|error| {
@@ -447,6 +613,46 @@ pub async fn screencap_confirm_region_select(
                     } else {
                         None
                     };
+
+                    if let Some(outcome) = ocr_result {
+                        match outcome {
+                            Ok((dest, result)) => {
+                                if dest == "clipboard" {
+                                    if let Err(error) =
+                                        app_ui.clipboard().write_text(result.text.clone())
+                                    {
+                                        clipboard_error = Some(format!(
+                                            "Screenshot saved, but OCR copy failed: {error}"
+                                        ));
+                                    }
+                                }
+                                let _ = app_ui.emit(
+                                    "screencap:ocr",
+                                    serde_json::json!({
+                                        "destination": dest,
+                                        "text": result.text,
+                                        "engine": result.engine,
+                                        "path": path_for_event,
+                                        "charCount": result.char_count,
+                                        "id": result.id,
+                                    }),
+                                );
+                            }
+                            Err(error) => {
+                                clipboard_error =
+                                    Some(format!("Screenshot saved, but OCR failed: {error}"));
+                                let _ = app_ui.emit(
+                                    "screencap:ocr",
+                                    serde_json::json!({
+                                        "destination": ocr_destination.clone(),
+                                        "error": error,
+                                        "path": path_for_event,
+                                    }),
+                                );
+                            }
+                        }
+                    }
+
                     if let Ok(mut status) = runtime_status().lock() {
                         status.phase = "done";
                         status.started_at = None;
