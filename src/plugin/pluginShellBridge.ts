@@ -4,6 +4,7 @@ import {
   type PluginWorkbenchPayload,
 } from "./workbenchTypes";
 import { currentPluginThemePayload } from "./pluginTheme";
+import { openSettings } from "../modules/settings/openSettings";
 
 export interface PanelRuntimeSession {
   iframe: HTMLIFrameElement;
@@ -230,13 +231,8 @@ export function ensurePluginShellBridge(): void {
 
     if (data.type === "qx:plugin:open-preferences") {
       if (!pluginId || !runtimeId || !isPanelRuntimeSource(pluginId, runtimeId, event.source)) return;
-      try {
-        sessionStorage.setItem("qx.settings.pendingTab", "plugins");
-        sessionStorage.setItem("qx.settings.focusPluginId", pluginId);
-      } catch {
-        // Settings still opens if storage is unavailable.
-      }
-      window.dispatchEvent(new CustomEvent("qx:navigate", { detail: "settings" }));
+      // returnTo defaults to current `plugin:<id>` tab so Esc restores the panel.
+      openSettings({ focusPluginId: pluginId });
       return;
     }
 

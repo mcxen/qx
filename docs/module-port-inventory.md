@@ -38,6 +38,7 @@
 | 系统信息 / 设置 | Rust `qx_system_information_*` 领域命令 | **`context.system.info/storage/network/networkCounters/power/processes/openSettings`** | typed 跨平台 model；OS API、PowerShell/AppKit URL 只存在于宿主 adapter |
 | 本地路径打开 / 揭示 | **`src/system/pathActions.ts`** | **`context.system.openPath/revealPath`** | 共用 Rust 语义端口；macOS 不先 canonicalize Spotlight 路径，Windows 不经过 WebView opener ACL |
 | 打开外链 | `@tauri-apps/plugin-opener` | **`context.openUrl`** | `open-url` |
+| 打开宿主 Settings（带回程） | **`openSettings` / `closeSettings`**（`modules/settings/openSettings.ts`） | 插件 panel：`qx:plugin:open-preferences` → 同端口 | 禁止 `setTab("settings")` + 手写 sessionStorage；Esc leave 回调用方模块/插件 |
 
 **原则（与 architecture-principles 一致）**：缺口修**端口一次**，不要在每个模块/插件里 fork 一套 Esc 或缓存。
 
@@ -65,7 +66,7 @@
 | **macros** | 录制器 | shell | — | — | macro store | 无重大缺口 |
 | **qx-tty** | 终端 | shell | 侧栏 session 自管 | — | PTY invoke | 可选将来 `useQxSelectableList` |
 | **qx-ai** | list / chat / settings | shell（含 chat/settings leave 父级） | list selection（会话） | `QxModuleSearch` + loading | AI store | 无重大缺口 |
-| **settings** | 设置壳 | shell（query=筛选） | — | `QxModuleSearch` | settings store | 无重大缺口 |
+| **settings** | 设置壳 | shell（query=筛选）；leave=`closeSettings` | — | `QxModuleSearch` | settings store + **`openSettings` returnTo** | 模块深链进设置后 Esc 回调用方，不再一律 launcher |
 | **v2ex**（内置） | 面板 | shell | list + master-detail | search + loading | `invoke:v2ex_*`（宿主磁盘缓存） | **默认关闭**；市场插件为主 |
 | **weather**（内置） | 面板 | shell | — | — | `fetch_weather*` + localStorage | **默认关闭**；市场插件为主 |
 | **onboarding** | 向导 | 专用 UI | — | — | permissions | 非 QxShell 业务面板，合理例外 |

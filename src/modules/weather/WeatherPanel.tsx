@@ -6,6 +6,7 @@ import type { WeatherConditionCode } from "@/components/tool-ui/weather-widget/s
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useStore } from "../../store";
 import { useSettingsStore } from "../settings/store";
+import { openSettings } from "../settings/openSettings";
 import { LoadingSpinner } from "../../components/ui";
 import { useT } from "../../i18n";
 import BetaBadge from "../../components/BetaBadge";
@@ -211,9 +212,8 @@ export default function WeatherPanel() {
 
   const goBack = useCallback(() => setTab("launcher"), [setTab]);
   const openWeatherSettings = useCallback(() => {
-    useSettingsStore.getState().setActiveTab("weather");
-    setTab("settings");
-  }, [setTab]);
+    openSettings({ section: "weather" });
+  }, []);
 
   const handleModuleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if ((e.key === "r" || e.key === "R") && !e.metaKey && !e.ctrlKey && !e.altKey) {

@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { LoadingLabel } from "../../components/ui";
 import { useT } from "../../i18n";
-import { useStore } from "../../store";
-import { useSettingsStore } from "../settings/store";
+import { openSettings } from "../settings/openSettings";
 import {
   useG4fStore,
   type BuiltInProviderCredential,
@@ -460,7 +459,7 @@ export function MemorySection({ onSaved }: { onSaved?: (detail: string) => void 
   );
 }
 
+/** Open host Settings → AI Agent, returning to the current QxAI tab on Esc. */
 export function openAgentSettingsTab() {
-  useSettingsStore.getState().setActiveTab("agent");
-  useStore.getState().setTab("settings");
+  openSettings({ section: "agent" });
 }

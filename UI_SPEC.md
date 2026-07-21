@@ -130,7 +130,7 @@ return (
 
 1. 模块 inner（详情 / 预览 / 录制中停止…）
 2. 模块 local query
-3. 离开模块 → launcher（`setTab("launcher")` / 上一级视图）
+3. 离开模块 → launcher（`setTab("launcher")` / 上一级视图）；**Settings** 则 `closeSettings()` → `returnTo`（模块/插件/launcher）
 4. 清空 launcher 搜索词
 5. `floating_hide_restore_focus` 隐藏主界面
 
@@ -402,7 +402,8 @@ Context Panel：
 - 只渲染 `escapeAction`（或兼容路径下由 `onBack` 推导的 fallback），通过 `ShellActionButton variant="escape"`。
 - escape 变体**只显示快捷键**（`kbd`，通常为 `Esc`），不重复显示模块名或图标。
 - `escapeAction.onClick` 应与 `useEscBack.stepBack` 一致（每按一次退一层）。无 inner/query 时等价于最终 leave：
-  - 模块根视图 → `setTab("launcher")` 或关闭 Settings 等。
+  - 模块根视图 → `setTab("launcher")`。
+  - **Settings** → `closeSettings()`（`openSettings` 记录的一层 `returnTo`：调用方模块/插件，否则 launcher）。禁止 Settings leave 写死 `setTab("launcher")`。
   - 子视图（如 QxAI chat/settings、RSS detail）→ 回到模块内上一级列表。
   - 录制等临时态可先停任务 / 丢弃草稿，再在级联下一层离开。
 - 禁止用右侧 `primaryAction` / `secondaryAction` 的 `kbd: "Esc"` 替代左下角 Esc；Esc 快捷键归属左侧。

@@ -11,6 +11,7 @@ import {
 } from "./store";
 import { useStore } from "../../store";
 import { useSettingsStore } from "../settings/store";
+import { openSettings } from "../settings/openSettings";
 import { SegmentedControl } from "../../components/ui";
 import GifPreview from "./GifPreview";
 import CaptureHistory from "./CaptureHistory";
@@ -262,10 +263,8 @@ export default function ScreenRecorder() {
   }, []);
 
   const openCaptureSettings = useCallback(() => {
-    sessionStorage.setItem("qx.settings.pendingTab", "plugins");
-    sessionStorage.setItem("qx.settings.focusPluginId", "builtin:screencap");
-    setTab("settings");
-  }, [setTab]);
+    openSettings({ focusPluginId: "builtin:screencap" });
+  }, []);
 
   const captureIsland = useMemo<BottomIslandContent>(() => {
     if (capturePermissionMissing) {

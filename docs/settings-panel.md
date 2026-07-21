@@ -2,6 +2,39 @@
 
 > 开发者文档。Settings 使用 **线性分区（liner）**，不是营销式大卡片。
 
+## 0. 打开 / 关闭端口（必读）
+
+模块与插件**不得**直接 `setTab("settings")` 或手写 `sessionStorage` 拼装跳转。
+统一走：
+
+| API | 路径 | 作用 |
+|-----|------|------|
+| `openSettings(options?)` | `src/modules/settings/openSettings.ts` | 打开设置；记录一层 `returnTo` |
+| `closeSettings()` | 同上 | Esc 最终 leave / Close；回到 `returnTo` |
+
+```ts
+import { openSettings } from "../settings/openSettings";
+
+// 从天气模块进天气页：Esc 回天气
+openSettings({ section: "weather" });
+
+// 打开某插件/内置模块配置卡：Esc 回当前 panel
+openSettings({ focusPluginId: "builtin:screencap" });
+
+// 主页搜索进设置：显式回 launcher
+openSettings({ returnTo: "launcher" });
+```
+
+`returnTo` 规则：
+
+- 省略：当前 tab 为模块/插件 → 记该 tab；已是 settings → 保留旧值；launcher → `launcher`
+- `"launcher"`：强制主页
+- `null`：保留已记录的返回目标（同一会话内再 refine section）
+- 无效 / 已禁用内置模块 → fallback `launcher`
+
+`App` 挂载：`<SettingsPanel onClose={closeSettings} />`。`navigate` / `qx:navigate`
+的 `"settings"` 载荷同样走 `openSettings()`。
+
 ## 1. 结构
 
 ```

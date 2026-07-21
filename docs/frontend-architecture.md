@@ -71,6 +71,10 @@ Zustand 单 store（`store.ts`）保存 launcher 强共享状态：
 - 全局 DOM 事件 `qx:navigate`（部分托盘/插件路径）
 - URL hash 不使用（Tauri 不走浏览器 history）
 
+**Settings 例外**：进入 Settings 必须走 `openSettings()`（`src/modules/settings/openSettings.ts`），
+leave 走 `closeSettings()`。该端口维护一层 `returnTo`，使「模块 → 设置 → Esc」回到
+调用方，而不是一律 launcher。详见 [settings-panel.md](./settings-panel.md)。
+
 **与 Rust 同步**：`tab` 变化时 `invoke("set_active_route", { route: tab })`，供全局模块快捷键 `toggle_route` 判断「是否已在当前模块 → 再按隐藏」。细节见 [shell-and-shortcuts.md](./shell-and-shortcuts.md)。
 
 每个 module 面板通过 `React.lazy` 异步加载，加载中显示 `ModuleLoadingShell` skeleton。

@@ -63,6 +63,7 @@ import { useT } from "./i18n";
 import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./lib/logger";
 import { getQxDesktopPlatform, isImeCompositionEvent } from "./utils/keyboard";
 import { isBuiltinModuleEnabled } from "./modules/moduleAvailability";
+import { closeSettings, openSettings } from "./modules/settings/openSettings";
 import { ensureCaptureToastListener } from "./modules/screencap/store";
 import "./App.css";
 
@@ -1239,9 +1240,11 @@ function App() {
         if (useStore.getState().results.length === 0 && lastHomeAppResults.length > 0) {
           setResults(lastHomeAppResults);
         }
+      } else if (tabId === "settings") {
+        openSettings();
       } else if (tabId === "clipboard" || tabId === "screencap"
-          || tabId === "rss" || tabId === "v2ex" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "qx-tty" || tabId === "settings") {
-        if (tabId !== "settings" && !isBuiltinModuleEnabled(tabId)) return;
+          || tabId === "rss" || tabId === "v2ex" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "qx-tty") {
+        if (!isBuiltinModuleEnabled(tabId)) return;
         if (tabId === "clipboard") {
           void prefetchClipboardOpen({ captureLiveImage: true });
         }
@@ -1642,8 +1645,10 @@ function App() {
     });
     const unlistenNav = listen<string>("navigate", (e) => {
       const next = e.payload;
-      if (next === "clipboard" || next === "screencap" || next === "rss" || next === "v2ex" || next === "weather" || next === "qx-ai" || next === "macros" || next === "qx-tty" || next === "settings") {
-        if (next !== "settings" && !isBuiltinModuleEnabled(next)) return;
+      if (next === "settings") {
+        openSettings();
+      } else if (next === "clipboard" || next === "screencap" || next === "rss" || next === "v2ex" || next === "weather" || next === "qx-ai" || next === "macros" || next === "qx-tty") {
+        if (!isBuiltinModuleEnabled(next)) return;
         // Start clipboard open work before React commits the tab switch.
         if (next === "clipboard") {
           void prefetchClipboardOpen({ captureLiveImage: true });
@@ -2294,7 +2299,7 @@ function App() {
     }
     // Handle built-in tab navigation
     if (item.path === "__qx:settings") {
-      setTab("settings");
+      openSettings({ returnTo: "launcher" });
       return;
     }
     if (item.path.startsWith("__qx:clipboard:")) {
@@ -2390,7 +2395,10 @@ function App() {
       onItemClick={openItem}
       onKeyDown={handleKeyDown}
       onEscape={performHostEscape}
-      onNavigate={setTab}
+      onNavigate={(next) => {
+        if (next === "settings") openSettings();
+        else setTab(next);
+      }}
       searchScopeRef={searchScopeRef}
       onScopeChange={() => doSearch(useStore.getState().query)}
       loadingPhase={loadingPhase}
@@ -2407,7 +2415,12 @@ function App() {
     }
     if (tab !== mountedTab) {
       if (tab === "launcher") return renderLauncher();
-      return <ModuleLoadingShell tab={tab} onBack={() => setTab("launcher")} />;
+      return (
+        <ModuleLoadingShell
+          tab={tab}
+          onBack={() => (tab === "settings" ? closeSettings() : setTab("launcher"))}
+        />
+      );
     }
 
     // Handle external plugin panels (tabs like "plugin:<id>")
@@ -2435,7 +2448,7 @@ function App() {
       case "qx-tty":
         return <QxTTYPanel />;
       case "settings":
-        return <SettingsPanel onClose={() => setTab("launcher")} />;
+        return <SettingsPanel onClose={closeSettings} />;
       case "launcher":
       default:
         return renderLauncher();
@@ -2473,14 +2486,24 @@ function App() {
           <ModuleErrorBoundary
             tab={tab}
             onBack={() => {
-              if (useStore.getState().tab !== "launcher") {
+              const current = useStore.getState().tab;
+              if (current === "settings") {
+                closeSettings();
+              } else if (current !== "launcher") {
                 setTab("launcher");
               } else {
                 performHostEscape();
               }
             }}
           >
-            <Suspense fallback={<ModuleLoadingShell tab={tab} onBack={() => setTab("launcher")} />}>
+            <Suspense
+              fallback={(
+                <ModuleLoadingShell
+                  tab={tab}
+                  onBack={() => (tab === "settings" ? closeSettings() : setTab("launcher"))}
+                />
+              )}
+            >
               {renderBody()}
             </Suspense>
           </ModuleErrorBoundary>
