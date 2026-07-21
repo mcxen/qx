@@ -1,4 +1,5 @@
 mod app_icon;
+mod app_quit;
 mod apps;
 mod apps_zh_dict;
 mod clipboard;
@@ -486,10 +487,8 @@ pub fn run() {
                     }
                     match id {
                         "quit" => {
-                            if let Some(flag) = app.try_state::<clipboard::ClipboardShutdown>() {
-                                flag.0.store(true, std::sync::atomic::Ordering::SeqCst);
-                            }
-                            app.exit(0);
+                            // macOS: first ⌘Q / Quit only confirms; second fully exits.
+                            let _ = app_quit::request_quit(app);
                         }
                         "show" => {
                             if let Some(win) = app.get_webview_window("main") {
@@ -774,17 +773,31 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app, _event| {
+        .run(|app, event| {
             // macOS sends Reopen when the helper is activated (for example by
             // Login Items or `open -a Qx`). Qx is shortcut-first: activation
             // keeps the helper alive but must never surface a hidden launcher.
             #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen {
-                has_visible_windows: false,
-                ..
-            } = _event
+            match event {
+                tauri::RunEvent::Reopen {
+                    has_visible_windows: false,
+                    ..
+                } => {
+                    floating_panel::hide(app);
+                }
+                // System ⌘Q / termination may arrive as ExitRequested instead of
+                // the tray menu accelerator. Apply the same double-confirm policy.
+                tauri::RunEvent::ExitRequested { api, .. } => {
+                    if !app_quit::allow_exit_event(app) {
+                        api.prevent_exit();
+                    }
+                }
+                _ => {}
+            }
+
+            #[cfg(not(target_os = "macos"))]
             {
-                floating_panel::hide(_app);
+                let _ = (app, event);
             }
         });
 }

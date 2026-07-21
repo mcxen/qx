@@ -58,7 +58,7 @@
 
 | 模块 | 表面 | Shell / Esc | 列表 / 主从 | 搜索 loading | 数据 / 缓存 | 缺口 / 备注 |
 |------|------|-------------|-------------|--------------|-------------|-------------|
-| **clipboard** | 全屏面板 | `useQxModuleShell` + stepBack | `useQxListSelection` | `QxModuleSearch` | Rust clipboard DB | 无重大缺口 |
+| **clipboard** | 全屏面板（**核心**，eager import） | `useQxModuleShell` + stepBack | `useQxListSelection` | `QxModuleSearch` | Rust clipboard DB；**打开端口** `openSession.prefetchClipboardOpen`（history 并发；idle warm；SWR 先画 store） | 快捷键打开：navigate 即预取 history，面板非 lazy |
 | **rss** | feeds / articles / detail | shell 各层；`goBack` 嵌套 | `useQxListSelection` + `useQxMasterDetail`（文章） | `QxModuleSearch` + `QxListLoading` | `rss.db` + 默认目录 seed + 阅读进度 | 嵌套 leave 已对齐 host Esc；进度节流持久化 |
 | **documents** | 文件列表 + 编辑 | shell | list + master-detail | `QxModuleSearch` | 本地文件 invoke | 无重大缺口 |
 | **screencap** | 录制 / 全宽历史预览 | shell + 录制 inner Esc | `useQxListSelection` + list/gallery + full-width preview | 标题槽（非搜索） | Rust capture | 布局选择持久化；权限动作统一由捕获灵动岛承载 |

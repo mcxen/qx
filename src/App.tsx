@@ -55,6 +55,8 @@ import {
   stampUsage,
 } from "./search/searchUsage";
 import { loadClipboardEntryById, pasteClipboardEntryAtCursor } from "./modules/clipboard/actions";
+import ClipboardPanel from "./modules/clipboard/ClipboardPanel";
+import { prefetchClipboardOpen } from "./modules/clipboard/openSession";
 import { tryModuleEscapeStep } from "./hooks/moduleEscapeHost";
 import { useQxModuleShell } from "./hooks/useQxModuleShell";
 import { useT } from "./i18n";
@@ -64,7 +66,8 @@ import { isBuiltinModuleEnabled } from "./modules/moduleAvailability";
 import { ensureCaptureToastListener } from "./modules/screencap/store";
 import "./App.css";
 
-const ClipboardPanel = lazy(() => import("./modules/clipboard/ClipboardPanel"));
+// Clipboard is a core module: eager import (no React.lazy) so shortcut open never
+// waits on a secondary chunk. History IPC still prefetches in openSession.
 const ScreenRecorder = lazy(() => import("./modules/screencap/ScreenRecorder"));
 const DevTxtTool = lazy(() => import("./modules/documents/DevTxtTool"));
 const SettingsPanel = lazy(() => import("./modules/settings/SettingsPanel"));
@@ -508,7 +511,8 @@ async function loadEmptyLauncherApps(
  * Phased startup:
  *   Phase 1 (immediate): Load apps DB cache via search_apps("") into results
  *   Phase 2 (background): Preload icons, scan for new apps (apps:updated event triggers refresh)
- *   Phase 3 (lazy): Settings, plugins, clipboard history
+ *   Phase 3 (lazy): Settings, plugins
+ *   Clipboard: idle-warm chunk + history via openSession (shortcut-critical)
  *
  * Cold install: DB/cache is empty until the background scan finishes. Keep the
  * loading skeleton and poll until apps arrive (or give up after a few seconds).
@@ -582,6 +586,7 @@ function App() {
   const selectedLauncherRowKeyRef = useRef<string | null>(null);
   const { settings, load: loadSettings, loaded: settingsLoaded } = useSettingsStore();
   const mainVisible = useStore((state) => state.visible);
+  const t = useT();
 
   // Keep Rust global-shortcut toggle-to-close in sync with the active tab.
   useEffect(() => {
@@ -816,7 +821,9 @@ function App() {
 
   useEffect(() => {
     if (tab === mountedTab) return;
-    if (tab === "launcher") {
+    // Launcher and clipboard must mount immediately: clipboard open is on a
+    // global shortcut critical path (chunk + history prefetch run in parallel).
+    if (tab === "launcher" || tab === "clipboard") {
       setMountedTab(tab);
       return;
     }
@@ -834,6 +841,70 @@ function App() {
       if (timerId !== undefined) window.clearTimeout(timerId);
     };
   }, [mountedTab, tab]);
+
+  // Clipboard open: start chunk + history the moment the tab is requested, not
+  // after ModuleLoadingShell / Suspense / panel mount (serial path felt empty).
+  useEffect(() => {
+    if (tab !== "clipboard") return;
+    void prefetchClipboardOpen({ captureLiveImage: true });
+  }, [tab]);
+
+  // After apps are ready, warm clipboard history on idle so the first shortcut
+  // open already has rows in the store (panel is eagerly bundled).
+  useEffect(() => {
+    if (!appsReady) return;
+    let cancelled = false;
+    let idleId: number | undefined;
+    let timerId: ReturnType<typeof window.setTimeout> | undefined;
+    const warm = () => {
+      if (cancelled) return;
+      void prefetchClipboardOpen({ captureLiveImage: false });
+    };
+    const ric = (
+      window as Window & {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+        cancelIdleCallback?: (id: number) => void;
+      }
+    ).requestIdleCallback;
+    if (typeof ric === "function") {
+      idleId = ric(warm, { timeout: 4_000 });
+    } else {
+      timerId = window.setTimeout(warm, 1_200);
+    }
+    return () => {
+      cancelled = true;
+      if (idleId !== undefined) {
+        (
+          window as Window & { cancelIdleCallback?: (id: number) => void }
+        ).cancelIdleCallback?.(idleId);
+      }
+      if (timerId !== undefined) window.clearTimeout(timerId);
+    };
+  }, [appsReady]);
+
+  // macOS double-⌘Q: first press only confirms; show a short host toast.
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    const unlisten = listen("qx:quit-confirm", () => {
+      islandHost.show({
+        id: "host.quit-confirm",
+        priority: "toast",
+        source: "system",
+        sticky: false,
+        content: {
+          primary: t("host.quitConfirm.title", "Press ⌘Q again to quit"),
+          secondary: t(
+            "host.quitConfirm.detail",
+            "Qx stays running in the background. Press ⌘Q twice to fully quit.",
+          ),
+          tone: "neutral",
+        },
+      });
+    });
+    return () => {
+      void unlisten.then((dispose) => dispose());
+    };
+  }, [t]);
 
   // Phase 1: Load app cache into results immediately — runs once on mount
   useEffect(() => {
@@ -1064,6 +1135,9 @@ function App() {
       } else if (tabId === "clipboard" || tabId === "screencap"
           || tabId === "rss" || tabId === "v2ex" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "qx-tty" || tabId === "settings") {
         if (tabId !== "settings" && !isBuiltinModuleEnabled(tabId)) return;
+        if (tabId === "clipboard") {
+          void prefetchClipboardOpen({ captureLiveImage: true });
+        }
         setTab(tabId);
       } else if (tabId?.startsWith("plugin:")) {
         setTab(tabId);
@@ -1444,6 +1518,10 @@ function App() {
       const next = e.payload;
       if (next === "clipboard" || next === "screencap" || next === "rss" || next === "v2ex" || next === "weather" || next === "qx-ai" || next === "macros" || next === "qx-tty" || next === "settings") {
         if (next !== "settings" && !isBuiltinModuleEnabled(next)) return;
+        // Start clipboard open work before React commits the tab switch.
+        if (next === "clipboard") {
+          void prefetchClipboardOpen({ captureLiveImage: true });
+        }
         setTab(next);
       } else if (next === "launcher") {
         setTab("launcher");

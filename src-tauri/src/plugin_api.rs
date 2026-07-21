@@ -1036,6 +1036,16 @@ pub async fn plugin_notification_show(
     Ok(())
 }
 
+/// Host-owned notification helper (quit confirm, system prompts). Not a plugin RPC.
+#[cfg(target_os = "macos")]
+pub(crate) fn send_host_notification(
+    title: &str,
+    body: &str,
+    subtitle: &str,
+) -> Result<(), String> {
+    send_macos_notification(title, body, subtitle)
+}
+
 #[cfg(target_os = "macos")]
 fn send_macos_notification(title: &str, body: &str, subtitle: &str) -> Result<(), String> {
     use objc2::msg_send;

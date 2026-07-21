@@ -29,6 +29,10 @@ import {
   writeClipboardEntry,
 } from "./actions";
 import {
+  prefetchClipboardOpen,
+  refreshClipboardHistory,
+} from "./openSession";
+import {
   classify,
   clipboardFileLabel,
   clipboardFileKind,
@@ -237,29 +241,15 @@ export default function ClipboardPanel() {
 
   const filterLabel = (id: Filter) => t(FILTER_KEYS[id].key, FILTER_KEYS[id].fallback);
 
-  const loadHistory = async (): Promise<ClipboardEntry[]> => {
-    try {
-      const res = await invoke<ClipboardEntry[]>("get_clipboard_history", {
-        limit: 200,
-      });
-      setClipboardHistory(res);
-      return res;
-    } catch {
-      return [];
-    }
-  };
-
   useEffect(() => {
     ensureClipboardRestoreOnHide();
-    loadHistory();
-    // Try to read any image currently on the clipboard
-    invoke("read_clipboard_image_now")
-      .then((saved: unknown) => {
-        if (saved) loadHistory();
-      })
-      .catch(() => {});
+    // Chunk + history (+ optional live image) are started in parallel by the
+    // host open path; join the same in-flight work if already running.
+    void prefetchClipboardOpen({ captureLiveImage: true });
     if (!isTauriRuntime()) return;
-    const unlisten = listen("clipboard-updated", () => loadHistory());
+    const unlisten = listen("clipboard-updated", () => {
+      void refreshClipboardHistory();
+    });
     return () => {
       unlisten.then((f) => f());
     };
@@ -511,7 +501,7 @@ export default function ClipboardPanel() {
       setMediaProgress(payload);
       setStatus(payload.error ? payload.error : payload.message);
       if (payload.progress >= 100 || payload.error) {
-        void loadHistory();
+        void refreshClipboardHistory();
         window.setTimeout(() => setMediaProgress(null), 1800);
       }
     });
@@ -578,7 +568,7 @@ export default function ClipboardPanel() {
       clearClipboardRestore();
       preserveSelectionId.current = item.id;
       await writeClipboardEntry(item);
-      await loadHistory();
+      await refreshClipboardHistory();
       setStatus(t("clipboard.copied", "Copied"));
       window.setTimeout(() => setStatus(""), 1200);
     } catch {}
@@ -589,7 +579,7 @@ export default function ClipboardPanel() {
     try {
       setStatus(t("clipboard.pasting", "Pasting"));
       await pasteClipboardEntry(item, options);
-      await loadHistory();
+      await refreshClipboardHistory();
       window.setTimeout(() => setStatus(""), 1200);
     } catch (err) {
       setStatus(String(err || t("clipboard.pasteFailed", "Paste failed")));
@@ -608,7 +598,7 @@ export default function ClipboardPanel() {
   const togglePin = async (item?: ClipboardEntry) => {
     if (!item) return;
     await invoke("toggle_clipboard_pin", { id: item.id });
-    await loadHistory();
+    await refreshClipboardHistory();
     setStatus(item.pinned ? t("clipboard.unpinned", "Unpinned") : t("clipboard.pinned", "Pinned"));
     window.setTimeout(() => setStatus(""), 1200);
   };
@@ -629,7 +619,7 @@ export default function ClipboardPanel() {
     if (!selectedItem || !hasDraftChanges) return;
     try {
       await invoke("update_clipboard_text_entry", { id: selectedItem.id, text: draftText });
-      await loadHistory();
+      await refreshClipboardHistory();
       discardTextEdit();
       setIslandEffectNonce((value) => value + 1);
       setStatus(t("clipboard.edit.saved", "Changes saved"));
@@ -648,7 +638,7 @@ export default function ClipboardPanel() {
       setDateFilter({ from: null, to: null });
       setQuery("");
       discardTextEdit();
-      await loadHistory();
+      await refreshClipboardHistory();
       setIslandEffectNonce((value) => value + 1);
       setStatus(t("clipboard.edit.savedAsNew", "Saved as a new item"));
       window.setTimeout(() => setStatus(""), 1400);

@@ -58,7 +58,10 @@ export default function GeneralSettings() {
         </Row>
         <Row
           title={t("general.autoUpdates", "Automatic Updates")}
-          description={t("general.autoUpdates.desc", "Check for and install updates automatically.")}
+          description={t(
+            "general.autoUpdates.desc",
+            "Off by default. When enabled, Qx checks for and installs updates automatically. On Windows a failed update can quit the app — prefer manual update from About if installs are unreliable.",
+          )}
         >
           <Toggle
             value={g.auto_update}

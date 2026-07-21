@@ -296,6 +296,8 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
         menu.append(&PredefinedMenuItem::separator(app)?)?;
     }
 
+    // macOS: accelerator still ⌘Q, but app_quit requires two presses within ~2.5s.
+    // Windows: single Ctrl+Q / menu click quits immediately.
     let quit = MenuItem::with_id(app, "quit", "Quit Qx", true, Some("CmdOrCtrl+Q"))?;
     menu.append(&quit)?;
     Ok(menu)
