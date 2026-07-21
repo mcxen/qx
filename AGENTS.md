@@ -434,9 +434,9 @@ post-push dirty-worktree handling, follow `public/doc/release-workflow.md`.
    - `git diff --cached --check`
    - `git commit -m "vX.Y.Z: <summary>"`
    - `git tag vX.Y.Z`
-6. Push:
-   - `git push origin main`
-   - `git push origin vX.Y.Z`
+6. Push (use SSH via port 443 if port 22 is blocked by proxy):
+   - Ensure remote is `ssh://git@ssh.github.com:443/mcxen/qx.git`
+   - `git push origin main --tags`
 7. Confirm GitHub Actions release workflow and GitHub Release artifact.
 
 Do not move an already-pushed release tag unless the user explicitly asks to rewrite release history.
