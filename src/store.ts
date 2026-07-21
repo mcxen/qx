@@ -131,10 +131,19 @@ export const useStore = create<AppStore>((set) => ({
     set((state) => (state.selectedIndex === selectedIndex ? state : { selectedIndex })),
   setTab: (tab) =>
     set((state) => {
-      if (state.tab === tab && state.query === "" && state.results.length === 0 && state.selectedIndex === 0) {
+      if (state.tab === tab) {
+        // Same tab: clear search text when re-entering launcher, but never wipe
+        // the home list. Wiping results made Option+Space / Esc return flash empty.
+        if (tab === "launcher" && (state.query !== "" || state.selectedIndex !== 0)) {
+          return { query: "", selectedIndex: 0 };
+        }
         return state;
       }
-      return { tab, query: "", results: [], selectedIndex: 0 };
+      // Tab switch: reset query/selection for the destination module, but keep
+      // `results` so returning to the launcher is instant (no empty flash while
+      // search_apps reloads). Empty-query doSearch / loadEmptyLauncherApps own
+      // replacing the list when the home path is actually stale.
+      return { tab, query: "", selectedIndex: 0 };
     }),
   setClipboardHistory: (clipboardHistory) =>
     set((state) => (state.clipboardHistory === clipboardHistory ? state : { clipboardHistory })),

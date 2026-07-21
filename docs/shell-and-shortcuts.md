@@ -22,6 +22,7 @@
 ## 1. 设计目标
 
 1. **Launcher 召唤与当前窗口显隐分离**：`toggle_launcher` 隐藏时显示 Launcher 并聚焦搜索、显示时隐藏；`toggle_window` 只切换显隐，不改变当前 route / 子界面。
+   前端 `setTab` **不得**清空 launcher `results`；Option+Space 重开应先 paint 缓存首页，再后台刷新（见 `docs/frontend-architecture.md`）。
 2. **模块快捷键**（剪贴板 / RSS / GIF）：打开对应 tab；若已在该 tab 再按 → 隐藏窗口；若窗口开着但在别的 tab → 切到该模块。
 3. **所有关闭路径**应尽量走 Rust `floating_panel::hide*`，保证内部 `PANEL_OPEN` / `LAST_HIDE_AT` 一致。
 4. **Tauri managed state**（`RssDb`、`ClipboardDb`）在启动时**始终** `app.manage(...)`，不能因 DB open 失败而漏注册（否则前端会报 *state not managed* / 缺少 `.manage()`）。

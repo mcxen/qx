@@ -111,13 +111,34 @@ const HOST_ESCAPE_EVENT = "qx:host-escape";
 /** Auto-update must never compete with first paint / first summon. */
 const AUTO_UPDATE_START_DELAY_MS = 18_000;
 /** Reuse empty launcher list without another search_apps("") for this long. */
-const EMPTY_LAUNCHER_CACHE_MS = 8_000;
+const EMPTY_LAUNCHER_CACHE_MS = 12_000;
 /** External plugins load after apps are ready — keep off the critical path. */
 const PLUGIN_LOAD_DELAY_MS = 1_400;
+/** Warm lazy module chunks after first paint so first open is not a network/parse stall. */
+const MODULE_PRELOAD_DELAY_MS = 2_800;
 const appLogger = createQxLogger("main.app");
 
 /** Module-level: shared by phase1, focus, apps:updated, and doSearch empty path. */
 let lastEmptyAppsFetchAt = 0;
+/**
+ * Last successful empty-query home list. Survives tab switches and brief store
+ * empties so Option+Space can paint instantly while a background refresh runs.
+ */
+let lastHomeAppResults: AppEntry[] = [];
+
+function rememberHomeAppResults(entries: AppEntry[]): void {
+  if (entries.length === 0) return;
+  lastHomeAppResults = entries;
+}
+
+function paintHomeAppResults(
+  setResults: (entries: AppEntry[]) => void,
+  entries: AppEntry[],
+): void {
+  if (entries.length === 0) return;
+  rememberHomeAppResults(entries);
+  setResults(entries);
+}
 
 interface QxUpdateInfo {
   available: boolean;
@@ -473,6 +494,9 @@ function mapAppEntries(apps: AppEntry[]): AppEntry[] {
 /**
  * Load the empty-query launcher app list into the results store.
  * Used on startup, first show, re-focus, and after background app scans.
+ *
+ * Never clears existing rows first — paint memory/snapshot immediately, then
+ * replace when IPC returns so Option+Space never flashes empty.
  */
 async function loadEmptyLauncherApps(
   setResults: (entries: AppEntry[]) => void,
@@ -485,11 +509,27 @@ async function loadEmptyLauncherApps(
   }
   const force = options?.force === true;
   const now = Date.now();
+  const storeRows = useStore.getState().results;
+  const existing = storeRows.filter((r) => {
+    const kind = r.kind ?? "app";
+    return kind === "app" || kind === "command";
+  });
+
+  // Instant paint from store or process-lifetime snapshot before any IPC.
+  if (existing.length === 0 && lastHomeAppResults.length > 0) {
+    setResults(lastHomeAppResults);
+  } else if (existing.length > 0) {
+    rememberHomeAppResults(existing.length === storeRows.length ? storeRows : existing);
+  }
+
   if (!force && now - lastEmptyAppsFetchAt < EMPTY_LAUNCHER_CACHE_MS) {
-    const existing = useStore.getState().results.filter((r) => (r.kind ?? "app") === "app");
-    if (existing.length > 0) {
+    const rows = useStore.getState().results.filter((r) => {
+      const kind = r.kind ?? "app";
+      return kind === "app" || kind === "command";
+    });
+    if (rows.length > 0) {
       setLoadingPhase("ready");
-      return existing.length;
+      return rows.length;
     }
   }
   try {
@@ -497,13 +537,20 @@ async function loadEmptyLauncherApps(
     const mapped = mapAppEntries(apps);
     lastEmptyAppsFetchAt = Date.now();
     if (mapped.length > 0) {
-      setResults(mapped);
+      paintHomeAppResults(setResults, mapped);
+      setLoadingPhase("ready");
+    } else if (lastHomeAppResults.length > 0) {
+      // Keep last good list rather than showing empty during a transient scan gap.
+      setResults(lastHomeAppResults);
       setLoadingPhase("ready");
     }
-    return mapped.length;
+    return mapped.length > 0 ? mapped.length : lastHomeAppResults.length;
   } catch {
+    if (lastHomeAppResults.length > 0) {
+      setResults(lastHomeAppResults);
+    }
     setLoadingPhase("ready");
-    return 0;
+    return lastHomeAppResults.length;
   }
 }
 
@@ -741,7 +788,13 @@ function App() {
       if (!activeQuery) {
         rankRequestSeqRef.current += 1;
         rankCandidatesRef.current = null;
-        scheduleResultCommit(mapAppEntries(entries), "");
+        // Home list must paint immediately — the typing-quiet commit delay is
+        // for progressive search only and made Option+Space feel empty.
+        if (resultCommitTimerRef.current) {
+          window.clearTimeout(resultCommitTimerRef.current);
+          resultCommitTimerRef.current = undefined;
+        }
+        paintHomeAppResults(setResults, mapAppEntries(entries));
         return;
       }
       const previous = rankCandidatesRef.current;
@@ -767,7 +820,7 @@ function App() {
         scheduleResultCommit(next, activeQuery);
       });
     },
-    [scheduleResultCommit],
+    [scheduleResultCommit, setResults],
   );
 
   const persistPendingWindowSize = useCallback(() => {
@@ -882,6 +935,49 @@ function App() {
     };
   }, [appsReady]);
 
+  // Prefetch lazy module chunks off the critical path so first open after
+  // summon does not wait on chunk parse/compile (still mounted on demand).
+  useEffect(() => {
+    if (!appsReady) return;
+    let cancelled = false;
+    let idleId: number | undefined;
+    let timerId: ReturnType<typeof window.setTimeout> | undefined;
+    const preload = () => {
+      if (cancelled) return;
+      void Promise.allSettled([
+        import("./modules/screencap/ScreenRecorder"),
+        import("./modules/documents/DevTxtTool"),
+        import("./modules/settings/SettingsPanel"),
+        import("./modules/rss"),
+        import("./modules/v2ex/V2exPanel"),
+        import("./modules/qx-ai"),
+        import("./modules/macros/MacroRecorder"),
+        import("./modules/weather/WeatherPanel"),
+        import("./modules/qx-tty/QxTTYPanel"),
+      ]);
+    };
+    const ric = (
+      window as Window & {
+        requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+        cancelIdleCallback?: (id: number) => void;
+      }
+    ).requestIdleCallback;
+    if (typeof ric === "function") {
+      idleId = ric(preload, { timeout: MODULE_PRELOAD_DELAY_MS });
+    } else {
+      timerId = window.setTimeout(preload, MODULE_PRELOAD_DELAY_MS);
+    }
+    return () => {
+      cancelled = true;
+      if (idleId !== undefined) {
+        (
+          window as Window & { cancelIdleCallback?: (id: number) => void }
+        ).cancelIdleCallback?.(idleId);
+      }
+      if (timerId !== undefined) window.clearTimeout(timerId);
+    };
+  }, [appsReady]);
+
   // macOS double-⌘Q: first press only confirms; show a short host toast.
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -906,14 +1002,22 @@ function App() {
     };
   }, [t]);
 
-  // Phase 1: Load app cache into results immediately — runs once on mount
+  // Phase 1 + settings in parallel on first mount — do not serialize home list
+  // behind settings JSON, or settings behind apps IPC.
   useEffect(() => {
     if (phase1Ref.current) return;
     phase1Ref.current = true;
+    // Paint last-session snapshot if any (usually empty on cold process start).
+    if (lastHomeAppResults.length > 0 && useStore.getState().results.length === 0) {
+      setResults(lastHomeAppResults);
+    }
     void triggerPhase1Load(appsReady, setAppsReady, setLoadingPhase, setResults);
-  }, [appsReady, setAppsReady, setLoadingPhase, setResults]);
+    if (!useSettingsStore.getState().loaded) {
+      void loadSettings();
+    }
+  }, [appsReady, loadSettings, setAppsReady, setLoadingPhase, setResults]);
 
-  // Settings: start as soon as we can — small JSON; needed for theme before plugins.
+  // Settings: also kick if phase1 effect already ran before loadSettings was stable.
   useEffect(() => {
     if (!settingsLoaded) void loadSettings();
   }, [settingsLoaded, loadSettings]);
@@ -1132,6 +1236,9 @@ function App() {
       const tabId = (e as CustomEvent).detail as string;
       if (tabId === "launcher") {
         setTab("launcher");
+        if (useStore.getState().results.length === 0 && lastHomeAppResults.length > 0) {
+          setResults(lastHomeAppResults);
+        }
       } else if (tabId === "clipboard" || tabId === "screencap"
           || tabId === "rss" || tabId === "v2ex" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "qx-tty" || tabId === "settings") {
         if (tabId !== "settings" && !isBuiltinModuleEnabled(tabId)) return;
@@ -1145,7 +1252,7 @@ function App() {
     };
     window.addEventListener("qx:navigate", handler);
     return () => window.removeEventListener("qx:navigate", handler);
-  }, [setTab]);
+  }, [setResults, setTab]);
 
   useEffect(() => {
     const shellRadius = Math.min(8, Math.max(4, settings.appearance.border_radius));
@@ -1489,16 +1596,35 @@ function App() {
         // True re-summon only (hidden → shown). Ignore micro focus edges while open.
         const isResummon = wasFocused !== true;
         if (isResummon) {
-          setQuery("");
-          setSelectedIndex(0);
           const state = useStore.getState();
-          const appRows = state.results.filter((r) => (r.kind ?? "app") === "app");
+          // toggle_window keeps the current route; only refresh launcher home when
+          // the launcher is (or becomes) the active tab.
+          const onLauncher = state.tab === "launcher";
+          if (onLauncher) {
+            // Avoid redundant setQuery when already empty (skips doSearch invalidation).
+            if (state.query !== "") setQuery("");
+            if (state.selectedIndex !== 0) setSelectedIndex(0);
+          }
+
+          let appRows = state.results.filter((r) => {
+            const kind = r.kind ?? "app";
+            return kind === "app" || kind === "command";
+          });
+          // Instant snapshot paint before any IPC — fixes "content vanished" flash.
+          if (appRows.length === 0 && lastHomeAppResults.length > 0) {
+            setResults(lastHomeAppResults);
+            appRows = lastHomeAppResults;
+          }
           const hasAppRows = appRows.length > 0;
           const missingIcons = appRows.some((r) => !r.icon);
           const stale = Date.now() - lastEmptyAppsFetchAt > EMPTY_LAUNCHER_CACHE_MS;
-          // Hot path: keep cached rows. Force refresh when empty, stale, or icons blank
-          // (common after reinstall / scan-before-preload race).
-          if ((!hasAppRows || stale || missingIcons) && !emptyLauncherLoadInFlightRef.current) {
+          // Hot path: keep cached rows. Background-refresh when empty, stale, or icons blank
+          // (common after reinstall / scan-before-preload race). Never block paint.
+          if (
+            onLauncher
+            && (!hasAppRows || stale || missingIcons)
+            && !emptyLauncherLoadInFlightRef.current
+          ) {
             emptyLauncherLoadInFlightRef.current = true;
             lastEmptyLauncherLoadAtRef.current = Date.now();
             void loadEmptyLauncherApps(setResults, setLoadingPhase, {
@@ -1525,6 +1651,18 @@ function App() {
         setTab(next);
       } else if (next === "launcher") {
         setTab("launcher");
+        // Paint home list immediately when returning from a module (setTab no
+        // longer clears results, but first launch / empty store still needs this).
+        const rows = useStore.getState().results;
+        if (rows.length === 0 && lastHomeAppResults.length > 0) {
+          setResults(lastHomeAppResults);
+        } else if (rows.length === 0 && !emptyLauncherLoadInFlightRef.current) {
+          emptyLauncherLoadInFlightRef.current = true;
+          void loadEmptyLauncherApps(setResults, setLoadingPhase, { force: true })
+            .finally(() => {
+              emptyLauncherLoadInFlightRef.current = false;
+            });
+        }
         // Launcher recall is distinct from visibility-only toggling. Always
         // return focus to search, including when Launcher is already visible.
         window.requestAnimationFrame(() => requestLauncherSearchFocus());
@@ -1548,6 +1686,7 @@ function App() {
     setVisible,
     setLoadingPhase,
   ]);
+
 
   const searchFilePass = useCallback(
     async (
@@ -1742,10 +1881,20 @@ function App() {
           return;
         }
         const current = useStore.getState().results;
-        const appOnly = current.filter((r) => (r.kind ?? "app") === "app");
+        const homeRows = current.filter((r) => {
+          const kind = r.kind ?? "app";
+          return kind === "app" || kind === "command";
+        });
+        const hasNonHome = homeRows.length !== current.length;
         const cacheFresh = Date.now() - lastEmptyAppsFetchAt < EMPTY_LAUNCHER_CACHE_MS;
-        if (appOnly.length > 0 && cacheFresh) {
-          if (appOnly.length !== current.length) applyResults(appOnly);
+        // After a non-empty search, `current` only holds matches — restore the
+        // last full home snapshot instead of collapsing to a partial app subset.
+        if (lastHomeAppResults.length > 0 && (homeRows.length === 0 || hasNonHome)) {
+          paintHomeAppResults(setResults, lastHomeAppResults);
+        } else if (homeRows.length > 0) {
+          rememberHomeAppResults(homeRows.length === current.length ? current : homeRows);
+        }
+        if ((lastHomeAppResults.length > 0 || homeRows.length > 0) && cacheFresh) {
           setIsSearching(false);
           setIsSearchSettling(false);
           return;
@@ -1754,9 +1903,13 @@ function App() {
           const res = await abortableInvoke<AppEntry[]>("search_apps", { query: "" }, signal);
           if (seq !== searchSeqRef.current || signal.aborted) return;
           lastEmptyAppsFetchAt = Date.now();
-          applyResults(mapAppEntries(res));
+          // applyResults mapAppEntries once (not double).
+          applyResults(res);
         } catch (error) {
           if (isAbortError(error)) return;
+          if (lastHomeAppResults.length > 0) {
+            paintHomeAppResults(setResults, lastHomeAppResults);
+          }
         }
         if (seq === searchSeqRef.current) {
           setIsSearching(false);
@@ -1961,7 +2114,7 @@ function App() {
         }, 900);
       }
     },
-    [applyResults, findCommands, finishSearchActivity, loadModuleSurfaceProviders, loadSlowSearchProviders, searchFilePass],
+    [applyResults, findCommands, finishSearchActivity, loadModuleSurfaceProviders, loadSlowSearchProviders, searchFilePass, setResults],
   );
 
   useEffect(() => {

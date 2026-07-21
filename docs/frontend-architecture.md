@@ -74,6 +74,17 @@ Zustand 单 store（`store.ts`）保存 launcher 强共享状态：
 **与 Rust 同步**：`tab` 变化时 `invoke("set_active_route", { route: tab })`，供全局模块快捷键 `toggle_route` 判断「是否已在当前模块 → 再按隐藏」。细节见 [shell-and-shortcuts.md](./shell-and-shortcuts.md)。
 
 每个 module 面板通过 `React.lazy` 异步加载，加载中显示 `ModuleLoadingShell` skeleton。
+`appsReady` 后 idle 预取各模块 chunk（不挂载），避免首次打开时再卡解析。
+
+### Tab 切换与 `results` 缓存
+
+`store.setTab` **只**改 `tab` / 清 `query` / 重置 `selectedIndex`，**不得**清空
+`results`。Launcher 首页列表是进程内缓存：从剪贴板/模块 Esc 返回、或 Option+Space
+重新召唤时必须立刻有行可画，再在后台 `search_apps("")` 刷新。
+
+进程级 `lastHomeAppResults`（`App.tsx`）在每次成功写入首页列表时更新；store 短暂
+为空时先 paint 该快照。空 query 的 `applyResults` **同步** `setResults`（不走
+搜索用的 typing-quiet 延迟）。
 
 ## 启动与后台任务（性能约束）
 
@@ -82,9 +93,9 @@ Zustand 单 store（`store.ts`）保存 launcher 强共享状态：
 | 阶段 | 做什么 | 不得做什么 |
 |------|--------|------------|
 | Rust setup | `apps::ensure_cache`（DB 冷读 ~1ms） | setup 线程内扫全盘、sips 图标、prune 更新缓存 |
-| Phase 1 | 一次 `search_apps("")` → 列表 | 空 query 重复 IPC；插件加载 |
-| 唤醒 show | 复用 8s 内缓存列表；单次 focus | 每次 focus 全量 reload；连发 `floating_request_key` |
-| 后台（延后） | 插件 ≥1.4s idle；图标 ≥1.5s；自动更新 ≥18s 且面板隐藏 | 启动 2s 内下载 zip |
+| Phase 1 | `search_apps("")` 与 `loadSettings` **并行** | 把首页 IPC 串在 settings 之后；插件加载 |
+| 唤醒 show | 复用 12s 内缓存 + `lastHomeAppResults` 快照；单次 focus | 每次 focus 全量 reload；`setTab` 清空 results；连发 `floating_request_key` |
+| 后台（延后） | 插件 ≥1.4s idle；模块 chunk idle 预取；自动更新 ≥18s 且面板隐藏 | 启动 2s 内下载 zip |
 | 事件 | `apps:updated` / `icons-ready` debounce | 扫描完成立刻多次 `search_apps` 打爆列表 |
 
 空 query 的 `doSearch` 走 **fast path**：有新鲜 app 列表则直接 return，不跑插件/元数据管线。
