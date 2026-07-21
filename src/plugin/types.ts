@@ -337,9 +337,24 @@ export type PluginSystemSettingsSection =
   | "apps";
 
 /** Cross-platform host identity. Legacy field names remain stable for plugins. */
+export interface PluginCpuCacheInfo {
+  level: number;
+  kind: "data" | "instruction" | "unified" | string;
+  sizeBytes: number;
+  /** macOS core class (`performance`/`efficiency`/`shared`) or Linux shared CPU list. */
+  scope?: string | null;
+}
+
 export interface PluginSystemInfo {
   hostname: string;
   chip: string;
+  cpuPhysicalCores?: number | null;
+  cpuLogicalCores?: number | null;
+  cpuPerformanceCores?: number | null;
+  cpuEfficiencyCores?: number | null;
+  cpuMaxFrequencyMhz?: number | null;
+  cpuCacheLineBytes?: number | null;
+  cpuCaches?: PluginCpuCacheInfo[];
   memory: string;
   memoryTotalBytes?: number;
   platform?: string;
@@ -348,6 +363,8 @@ export interface PluginSystemInfo {
   /** OS display label; older hosts serialize this property as `macOS` on both platforms. */
   macOS: string;
   kernel: string;
+  kernelName?: string;
+  kernelVersion?: string;
   serialNumber: string;
 }
 

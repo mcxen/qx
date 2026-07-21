@@ -3,6 +3,8 @@ import type { FocusEvent, KeyboardEvent, PointerEvent, ReactNode, RefObject } fr
 import {
   resolveQxContentScroll,
   resolveQxListNavigation,
+  shouldProxySearchReadingKey,
+  shouldSwitchRegionFromSearch,
   type QxEditableNavigationPolicy,
   type QxShellNavigation,
 } from "../components/qx-shell/navigationModel";
@@ -83,10 +85,31 @@ export function useQxShellNavigation({ shellRef, content, context }: UseQxShellN
     const fromSearch = Boolean(target?.closest(".qx-shell-search-slot"));
     const editable = isEditableTarget(event.target);
     const hasAnyModifier = event.metaKey || event.ctrlKey || event.altKey || event.shiftKey;
+    const proxySearchToReadingRegion = shouldProxySearchReadingKey({
+      key: event.key,
+      fromSearch,
+      activeRegionId,
+      navigationRegionId: navigation?.regionId,
+      modified: hasAnyModifier,
+    });
 
-    // Left/right selects visible Shell regions only outside native editors.
-    if (!editable && !hasAnyModifier && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
-      const regions = getKeyboardRegions();
+    // Left/right selects visible Shell regions outside native editors. An empty
+    // Workbench search is the deliberate exception: it acts as the keyboard
+    // launch point for list/detail, while a non-empty query keeps caret arrows.
+    const regions = getKeyboardRegions();
+    const switchFromEmptySearch = fromSearch
+      && target instanceof HTMLInputElement
+      && shouldSwitchRegionFromSearch({
+        key: event.key,
+        query: target.value,
+        regionCount: regions.length,
+        modified: hasAnyModifier,
+      });
+    if (
+      (!editable || switchFromEmptySearch)
+      && !hasAnyModifier
+      && (event.key === "ArrowLeft" || event.key === "ArrowRight")
+    ) {
       if (regions.length > 1) {
         const currentIndex = Math.max(0, regions.findIndex((region) =>
           region === targetRegion || region.dataset.qxRegion === activeRegionId
@@ -103,7 +126,7 @@ export function useQxShellNavigation({ shellRef, content, context }: UseQxShellN
     if (navigation) {
       const policy = navigation.editable ?? "search";
       const inNavigationRegion = !navigation.regionId
-        || fromSearch
+        || (fromSearch && !proxySearchToReadingRegion)
         || targetRegionId === navigation.regionId
         || (!targetRegion && !fromSearch && activeRegionId === navigation.regionId);
       const command = inNavigationRegion
@@ -130,9 +153,10 @@ export function useQxShellNavigation({ shellRef, content, context }: UseQxShellN
       }
     }
 
-    // Reading movement is a fallback for the active region. Editable targets
-    // (textarea/contenteditable/input) always retain their native caret/scroll.
-    if (!editable && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    // Reading movement is a fallback for the active region. Native editors
+    // retain caret/scroll, except a search field may proxy vertical reading
+    // keys after pointer interaction explicitly activates the detail pane.
+    if ((!editable || proxySearchToReadingRegion) && !event.metaKey && !event.ctrlKey && !event.altKey) {
       const activeRegion = targetRegion
         ?? getKeyboardRegions().find((region) => region.dataset.qxRegion === activeRegionId)
         ?? null;

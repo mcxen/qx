@@ -195,6 +195,16 @@ pub fn island_window_show(
         let _ = win.set_always_on_top(aot);
         let compact = SNAPSHOT.lock().map(|snap| snap.compact).unwrap_or(false);
         position_island(&app, compact);
+
+        // Session snapshots can update for every launcher query/progress tick.
+        // Re-showing an already visible auxiliary window on each snapshot can
+        // reorder AppKit's key window, leaving the main search field with a
+        // caret but sending subsequent key events to the island. Visibility is
+        // a transition here: content updates travel over `island:sessions` and
+        // must never re-front an island that is already on screen.
+        if win.is_visible().unwrap_or(false) {
+            return Ok::<(), String>(());
+        }
         win.show()
             .map_err(|error| format!("show island window: {error}"))?;
         #[cfg(target_os = "macos")]

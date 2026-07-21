@@ -10,9 +10,25 @@ pub use power::QxPowerInfo;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct QxCpuCacheInfo {
+    level: u8,
+    kind: String,
+    size_bytes: u64,
+    scope: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct QxSystemInfo {
     hostname: String,
     chip: String,
+    cpu_physical_cores: Option<u32>,
+    cpu_logical_cores: Option<u32>,
+    cpu_performance_cores: Option<u32>,
+    cpu_efficiency_cores: Option<u32>,
+    cpu_max_frequency_mhz: Option<u32>,
+    cpu_cache_line_bytes: Option<u64>,
+    cpu_caches: Vec<QxCpuCacheInfo>,
     memory: String,
     memory_total_bytes: u64,
     platform: String,
@@ -22,6 +38,8 @@ pub struct QxSystemInfo {
     /// Deprecated display-name alias retained for existing plugins.
     mac_os: String,
     kernel: String,
+    kernel_name: String,
+    kernel_version: String,
     serial_number: String,
 }
 
@@ -116,6 +134,17 @@ fn hostname() -> String {
 }
 
 #[cfg(not(target_os = "windows"))]
+fn uname_identity() -> (String, String, String) {
+    let output = command_output("/usr/bin/uname", &["-srm"]).unwrap_or_default();
+    let mut parts = output.split_whitespace();
+    (
+        parts.next().unwrap_or("Unknown").to_string(),
+        parts.next().unwrap_or("Unknown").to_string(),
+        parts.next().unwrap_or(std::env::consts::ARCH).to_string(),
+    )
+}
+
+#[cfg(target_os = "macos")]
 fn sysctl_string(name: &str) -> Option<String> {
     command_output("/usr/sbin/sysctl", &["-n", name])
         .ok()
@@ -123,7 +152,17 @@ fn sysctl_string(name: &str) -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
+fn sysctl_u32(name: &str) -> Option<u32> {
+    sysctl_string(name)?.parse().ok()
+}
+
+#[cfg(target_os = "macos")]
+fn sysctl_u64(name: &str) -> Option<u64> {
+    sysctl_string(name)?.parse().ok()
+}
+
+#[cfg(target_os = "macos")]
 fn total_memory_bytes() -> u64 {
     sysctl_string("hw.memsize")
         .and_then(|s| s.parse::<u64>().ok())
@@ -134,14 +173,14 @@ fn format_gb(bytes: u64) -> String {
     format!("{:.2} GB", bytes as f64 / 1024.0 / 1024.0 / 1024.0)
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn macos_version() -> String {
     command_output("/usr/bin/sw_vers", &["-productVersion"])
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|_| "Unknown".to_string())
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn macos_name(version: &str) -> &'static str {
     match version.split('.').next().unwrap_or("") {
         "15" => "Sequoia",
@@ -154,7 +193,7 @@ fn macos_name(version: &str) -> &'static str {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "macos")]
 fn serial_number() -> String {
     let Ok(stdout) = command_output("/usr/sbin/system_profiler", &["SPHardwareDataType"]) else {
         return "Unable to retrieve".to_string();
@@ -167,6 +206,189 @@ fn serial_number() -> String {
         })
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "Not available".to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn macos_cpu_caches() -> Vec<QxCpuCacheInfo> {
+    let mut caches = Vec::new();
+    for (index, scope) in [(0, "performance"), (1, "efficiency")] {
+        let prefix = format!("hw.perflevel{index}");
+        for (level, kind, key) in [
+            (1, "instruction", "l1icachesize"),
+            (1, "data", "l1dcachesize"),
+            (2, "unified", "l2cachesize"),
+        ] {
+            if let Some(size_bytes) = sysctl_u64(&format!("{prefix}.{key}")) {
+                caches.push(QxCpuCacheInfo {
+                    level,
+                    kind: kind.to_string(),
+                    size_bytes,
+                    scope: Some(scope.to_string()),
+                });
+            }
+        }
+    }
+
+    // Intel Macs do not expose performance levels. Use the common cache keys
+    // there, while avoiding the misleading global values on heterogeneous
+    // Apple Silicon (they commonly describe only one core class).
+    if caches.is_empty() {
+        for (level, kind, key) in [
+            (1, "instruction", "hw.l1icachesize"),
+            (1, "data", "hw.l1dcachesize"),
+            (2, "unified", "hw.l2cachesize"),
+        ] {
+            if let Some(size_bytes) = sysctl_u64(key) {
+                caches.push(QxCpuCacheInfo {
+                    level,
+                    kind: kind.to_string(),
+                    size_bytes,
+                    scope: None,
+                });
+            }
+        }
+    }
+    if let Some(size_bytes) = sysctl_u64("hw.l3cachesize").filter(|value| *value > 0) {
+        caches.push(QxCpuCacheInfo {
+            level: 3,
+            kind: "unified".to_string(),
+            size_bytes,
+            scope: Some("shared".to_string()),
+        });
+    }
+    caches
+}
+
+#[cfg(target_os = "linux")]
+fn linux_os_name() -> String {
+    let release = std::fs::read_to_string("/etc/os-release")
+        .or_else(|_| std::fs::read_to_string("/usr/lib/os-release"))
+        .unwrap_or_default();
+    for key in ["PRETTY_NAME", "NAME"] {
+        if let Some(value) = release.lines().find_map(|line| {
+            let (candidate, value) = line.split_once('=')?;
+            (candidate == key).then(|| value.trim_matches('"').to_string())
+        }) {
+            return value;
+        }
+    }
+    "Linux".to_string()
+}
+
+#[cfg(target_os = "linux")]
+fn linux_cpu_name() -> String {
+    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").unwrap_or_default();
+    cpuinfo
+        .lines()
+        .find_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            matches!(key.trim(), "model name" | "Hardware" | "Processor")
+                .then(|| value.trim().to_string())
+        })
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "Unknown".to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn linux_total_memory_bytes() -> u64 {
+    std::fs::read_to_string("/proc/meminfo")
+        .ok()
+        .and_then(|contents| {
+            contents.lines().find_map(|line| {
+                let value = line.strip_prefix("MemTotal:")?;
+                value.split_whitespace().next()?.parse::<u64>().ok()
+            })
+        })
+        .unwrap_or(0)
+        .saturating_mul(1024)
+}
+
+#[cfg(target_os = "linux")]
+fn linux_physical_cores() -> Option<u32> {
+    let cpuinfo = std::fs::read_to_string("/proc/cpuinfo").ok()?;
+    let cores = cpuinfo
+        .split("\n\n")
+        .filter_map(|processor| {
+            let mut package = None;
+            let mut core = None;
+            for line in processor.lines() {
+                let Some((key, value)) = line.split_once(':') else {
+                    continue;
+                };
+                match key.trim() {
+                    "physical id" => package = Some(value.trim().to_string()),
+                    "core id" => core = Some(value.trim().to_string()),
+                    _ => {}
+                }
+            }
+            Some((package?, core?))
+        })
+        .collect::<std::collections::HashSet<_>>();
+    (!cores.is_empty())
+        .then(|| u32::try_from(cores.len()).ok())
+        .flatten()
+}
+
+#[cfg(target_os = "linux")]
+fn parse_linux_cache_size(value: &str) -> Option<u64> {
+    let value = value.trim();
+    let split = value.find(|character: char| !character.is_ascii_digit())?;
+    let amount = value[..split].parse::<u64>().ok()?;
+    match value[split..].trim().to_ascii_uppercase().as_str() {
+        "K" | "KB" => amount.checked_mul(1024),
+        "M" | "MB" => amount.checked_mul(1024 * 1024),
+        "G" | "GB" => amount.checked_mul(1024 * 1024 * 1024),
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn linux_cpu_caches() -> Vec<QxCpuCacheInfo> {
+    let Ok(entries) = std::fs::read_dir("/sys/devices/system/cpu/cpu0/cache") else {
+        return Vec::new();
+    };
+    let mut caches = entries
+        .flatten()
+        .filter_map(|entry| {
+            let path = entry.path();
+            let level = std::fs::read_to_string(path.join("level"))
+                .ok()?
+                .trim()
+                .parse::<u8>()
+                .ok()?;
+            let kind = std::fs::read_to_string(path.join("type"))
+                .ok()?
+                .trim()
+                .to_ascii_lowercase();
+            let size_bytes =
+                parse_linux_cache_size(&std::fs::read_to_string(path.join("size")).ok()?)?;
+            let scope = std::fs::read_to_string(path.join("shared_cpu_list"))
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty());
+            Some(QxCpuCacheInfo {
+                level,
+                kind,
+                size_bytes,
+                scope,
+            })
+        })
+        .collect::<Vec<_>>();
+    caches.sort_by(|left, right| {
+        left.level
+            .cmp(&right.level)
+            .then_with(|| left.kind.cmp(&right.kind))
+    });
+    caches
+}
+
+#[cfg(target_os = "linux")]
+fn linux_cache_line_bytes() -> Option<u64> {
+    std::fs::read_to_string("/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size")
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
 }
 
 #[cfg(target_os = "windows")]
@@ -203,7 +425,7 @@ pub(super) fn powershell(script: &str) -> Result<String, String> {
 fn check_system_info_blocking() -> Result<QxSystemInfo, String> {
     #[cfg(target_os = "windows")]
     {
-        let raw = powershell("$cpu=(Get-CimInstance Win32_Processor|Select-Object -First 1 -ExpandProperty Name);$os=Get-CimInstance Win32_OperatingSystem;$bios=Get-CimInstance Win32_BIOS;[pscustomobject]@{chip=$cpu;memory=[uint64]$os.TotalVisibleMemorySize*1024;caption=$os.Caption;version=$os.Version;serial=$bios.SerialNumber}|ConvertTo-Json -Compress")?;
+        let raw = powershell("$cpu=Get-CimInstance Win32_Processor|Select-Object -First 1;$os=Get-CimInstance Win32_OperatingSystem;$bios=Get-CimInstance Win32_BIOS;[pscustomobject]@{chip=$cpu.Name;physicalCores=[uint32]$cpu.NumberOfCores;logicalCores=[uint32]$cpu.NumberOfLogicalProcessors;maxMHz=[uint32]$cpu.MaxClockSpeed;memory=[uint64]$os.TotalVisibleMemorySize*1024;caption=$os.Caption;version=$os.Version;serial=$bios.SerialNumber}|ConvertTo-Json -Compress")?;
         let value: serde_json::Value = serde_json::from_str(raw.trim())
             .map_err(|e| format!("parse Windows system information: {e}"))?;
         let memory_total_bytes = value["memory"].as_u64().unwrap_or(0);
@@ -219,13 +441,25 @@ fn check_system_info_blocking() -> Result<QxSystemInfo, String> {
                 .unwrap_or("Unknown")
                 .trim()
                 .to_string(),
+            cpu_physical_cores: value["physicalCores"].as_u64().map(|value| value as u32),
+            cpu_logical_cores: value["logicalCores"].as_u64().map(|value| value as u32),
+            cpu_performance_cores: None,
+            cpu_efficiency_cores: None,
+            cpu_max_frequency_mhz: value["maxMHz"].as_u64().map(|value| value as u32),
+            cpu_cache_line_bytes: None,
+            cpu_caches: Vec::new(),
             memory: format_gb(memory_total_bytes),
             memory_total_bytes,
             platform: "windows".to_string(),
             architecture: std::env::consts::ARCH.to_string(),
             os: os.clone(),
             mac_os: os,
-            kernel: value["version"].as_str().unwrap_or("Unknown").to_string(),
+            kernel: format!(
+                "Windows NT {}",
+                value["version"].as_str().unwrap_or("Unknown")
+            ),
+            kernel_name: "Windows NT".to_string(),
+            kernel_version: value["version"].as_str().unwrap_or("Unknown").to_string(),
             serial_number: value["serial"]
                 .as_str()
                 .unwrap_or("Not available")
@@ -234,12 +468,13 @@ fn check_system_info_blocking() -> Result<QxSystemInfo, String> {
         });
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
         let version = macos_version();
-        let kernel = command_output("/usr/bin/uname", &["-r"])
-            .map(|s| s.trim().to_string())
-            .unwrap_or_else(|_| "Unknown".to_string());
+        // Same low-cost source as neofetch: one cached-style `uname -srm`
+        // snapshot supplies kernel family, release, and machine architecture.
+        let (kernel_name, kernel_version, kernel_architecture) = uname_identity();
+        let kernel = format!("{kernel_name} {kernel_version}");
         let chip = sysctl_string("machdep.cpu.brand_string")
             .or_else(|| sysctl_string("hw.model"))
             .unwrap_or_else(|| "Unknown".to_string());
@@ -249,14 +484,90 @@ fn check_system_info_blocking() -> Result<QxSystemInfo, String> {
         Ok(QxSystemInfo {
             hostname: hostname(),
             chip,
+            cpu_physical_cores: sysctl_u32("hw.physicalcpu"),
+            cpu_logical_cores: sysctl_u32("hw.logicalcpu"),
+            cpu_performance_cores: sysctl_u32("hw.perflevel0.physicalcpu"),
+            cpu_efficiency_cores: sysctl_u32("hw.perflevel1.physicalcpu"),
+            cpu_max_frequency_mhz: sysctl_u64("hw.cpufrequency_max")
+                .map(|hz| (hz / 1_000_000).min(u64::from(u32::MAX)) as u32),
+            cpu_cache_line_bytes: sysctl_u64("hw.cachelinesize"),
+            cpu_caches: macos_cpu_caches(),
             memory: format_gb(memory_total_bytes),
             memory_total_bytes,
             platform: "macos".to_string(),
-            architecture: std::env::consts::ARCH.to_string(),
+            architecture: kernel_architecture,
             os: os.clone(),
             mac_os: os,
             kernel,
+            kernel_name,
+            kernel_version,
             serial_number: serial_number(),
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let (kernel_name, kernel_version, kernel_architecture) = uname_identity();
+        let os = linux_os_name();
+        let memory_total_bytes = linux_total_memory_bytes();
+        Ok(QxSystemInfo {
+            hostname: hostname(),
+            chip: linux_cpu_name(),
+            cpu_physical_cores: linux_physical_cores(),
+            cpu_logical_cores: std::thread::available_parallelism()
+                .ok()
+                .and_then(|count| u32::try_from(count.get()).ok()),
+            cpu_performance_cores: None,
+            cpu_efficiency_cores: None,
+            cpu_max_frequency_mhz: std::fs::read_to_string(
+                "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq",
+            )
+            .ok()
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .map(|khz| (khz / 1000).min(u64::from(u32::MAX)) as u32),
+            cpu_cache_line_bytes: linux_cache_line_bytes(),
+            cpu_caches: linux_cpu_caches(),
+            memory: format_gb(memory_total_bytes),
+            memory_total_bytes,
+            platform: "linux".to_string(),
+            architecture: kernel_architecture,
+            os: os.clone(),
+            mac_os: os,
+            kernel: format!("{kernel_name} {kernel_version}"),
+            kernel_name,
+            kernel_version,
+            serial_number: std::fs::read_to_string("/sys/class/dmi/id/product_serial")
+                .map(|value| value.trim().to_string())
+                .unwrap_or_else(|_| "Not available".to_string()),
+        })
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        let (kernel_name, kernel_version, kernel_architecture) = uname_identity();
+        let os = kernel_name.clone();
+        Ok(QxSystemInfo {
+            hostname: hostname(),
+            chip: "Unknown".to_string(),
+            cpu_physical_cores: None,
+            cpu_logical_cores: std::thread::available_parallelism()
+                .ok()
+                .and_then(|count| u32::try_from(count.get()).ok()),
+            cpu_performance_cores: None,
+            cpu_efficiency_cores: None,
+            cpu_max_frequency_mhz: None,
+            cpu_cache_line_bytes: None,
+            cpu_caches: Vec::new(),
+            memory: format_gb(0),
+            memory_total_bytes: 0,
+            platform: kernel_name.to_ascii_lowercase(),
+            architecture: kernel_architecture,
+            os: os.clone(),
+            mac_os: os,
+            kernel: format!("{kernel_name} {kernel_version}"),
+            kernel_name,
+            kernel_version,
+            serial_number: "Not available".to_string(),
         })
     }
 }
@@ -289,7 +600,19 @@ fn check_storage_blocking() -> Result<QxStorageInfo, String> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        let stdout = command_output("/bin/df", &["-k", "/"])?;
+        // On modern macOS `/` is the small read-only system snapshot. User
+        // files and applications live on the paired Data volume; reporting the
+        // snapshot made Sysinfo claim only a few GB were used on a nearly full
+        // disk. Other Unix targets keep the root mount fallback.
+        #[cfg(target_os = "macos")]
+        let mount_path = if std::path::Path::new("/System/Volumes/Data").is_dir() {
+            "/System/Volumes/Data"
+        } else {
+            "/"
+        };
+        #[cfg(not(target_os = "macos"))]
+        let mount_path = "/";
+        let stdout = command_output("/bin/df", &["-k", mount_path])?;
         let line = stdout
             .lines()
             .nth(1)
@@ -598,4 +921,20 @@ pub async fn qx_system_information_kill_process(pid: u32) -> Result<QxKillProces
     tauri::async_runtime::spawn_blocking(move || kill_process_blocking(pid))
         .await
         .map_err(|e| format!("kill process worker failed: {e}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_static_snapshot_reports_real_kernel_and_cache_hierarchy() {
+        let info = super::check_system_info_blocking().expect("collect macOS system information");
+        assert_eq!(info.kernel_name, "Darwin");
+        assert_ne!(info.kernel_version, "Unknown");
+        assert!(info.kernel.starts_with("Darwin "));
+        assert!(info.cpu_cache_line_bytes.is_some_and(|size| size > 0));
+        assert!(info.cpu_caches.iter().any(|cache| cache.level == 1));
+        assert!(info.cpu_caches.iter().any(|cache| cache.level >= 2));
+        assert!(info.cpu_caches.iter().all(|cache| cache.size_bytes > 0));
+    }
 }

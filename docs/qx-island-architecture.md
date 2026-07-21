@@ -764,6 +764,9 @@ export const islandHost = {
 
 - 不要求将 `island` 升为 macOS NSPanel。  
 - 不调用 main 路径上的 `set_focus()`（Windows `floating_panel::show_floating` 会 focus——island **禁止**复制该分支）。  
+- `island_window_show` 是幂等的可见性转换：session/query/progress 更新只经
+  `island:sessions` 刷新内容；已显示的浮窗不得再次 `show` / `orderFront`，否则 macOS
+  会重排 key window，主界面文本框可能只收到首个字符。
 - 点击按钮后允许短暂 focus 浮窗（系统行为）；松手/dismiss 不强制 activate 主窗。
 
 验收（PR4）：

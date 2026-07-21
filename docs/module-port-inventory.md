@@ -23,7 +23,7 @@
 | 壳 chrome（Esc 胶囊、Actions 菜单 kbd、Island 文案） | **`useQxModuleShell`** | 无 1:1 壳；Panel 自绘 DOM，宿主 `PluginHost` 仍包一层 QxShell | 内置必走 shell；插件 panel 打开时宿主 shell 提供 Esc leave → launcher |
 | Esc 阶梯（inner → query → leave） | `useEscBack` / `shell.stepBack` | 插件 iframe 内自理；宿主 window Esc → `tryModuleEscapeStep` 再 leave 模块 | 见 UI_SPEC Esc |
 | Host Esc 跨焦点 | **`moduleEscapeHost`** + `App.performHostEscape` | 同左（打开的是插件 tab 时，PluginHost 的 shell 注册 stepBack） | 禁止非 launcher 直接 `setTab` 跳过模块阶梯 |
-| 列表选中 / 滚入视口 | **`useQxListSelection`** | 声明式 Workbench List/Gallery 由宿主处理；custom panel 自理 | DOM：`qx-list-row` + `is-active`；宿主乐观选择后通知插件；隐藏 Workbench iframe 的集合导航键转交宿主 Shell |
+| 列表选中 / 滚入视口 | **`useQxListSelection`** | 声明式 Workbench List/Gallery 由宿主处理；custom panel 自理 | DOM：`qx-list-row` + `is-active`；宿主乐观选择后通知插件；隐藏 Workbench iframe 的集合导航键转交宿主 Shell；搜索为空时 ←/→ 切换 List/Detail 活动区域，垂直键驱动当前区域；搜索非空时保留原生 caret |
 | 主从键盘区域 | **`useQxMasterDetail`** | 插件可选自实现 region | 与 QxShell.navigation 配合 |
 | 二维网格索引 | **`qxGridNavigation`** | Workbench Gallery 由宿主处理 | 通用纯函数；不得放回 PluginHost 专用算法 |
 | Actions 数据 / 右栏渲染 | **`QxShellAction` + `QxActionList`** | Workbench 发布纯 action descriptor，宿主映射一次 | Bottom Bar、Cmd/Ctrl+K、Context 使用同一动作数据；快捷键统一平台化 |
@@ -89,7 +89,7 @@
 | **qx-bing-wallpaper** | ✅ | ✅ | **host Workbench Gallery** + http/system wallpaper/file ports | persist SWR | Qx 原生 Gallery + item/panel Actions；壁纸系统差异由 host port 适配；无 Raycast shim |
 | **raycast-calendar** | ✅ | ✅ | Raycast shim | — | 转换插件 |
 | **qxgh** (QxGH) | ✅ | ✅ | **host Workbench**：结构化 detail/actions + 公开 HTML + island | persist SWR | 不用 api.github.com；解析 actions/releases 网页 |
-| **sysinfo** | ✅ | ✅ | **host Workbench List** + typed system/info/storage/network/power/process ports | — | QxPlugin 重写 Raycast System Monitor 业务意图；macOS / Windows 同一业务 UI；Power 端口独立表达 battery present / external power / charging / full 与可选健康容量指标；结束进程需精确 invoke + `YES` 确认；无 shell 与自绘 DOM |
+| **sysinfo** | ✅ | ✅ | **host Workbench List** + typed system/info/storage/network/power/process ports | — | Hardware 视图以左侧 List 区分 System/CPU/Memory/Power/Storage/Network，中间详情随选择切换；Processes 保持独立视图和可操作进程行。静态 CPU 规格含可选物理/逻辑/性能/能效核心、最高频率、缓存行及原生 L1/L2/L3 记录，内核 family/release 按一次性 `uname -srm` 快照提供，实时负载单独采样；结束进程需精确 invoke + `YES` 确认；无 shell 与自绘 DOM |
 
 **老包兼容**：无 `AGENTS.md` 仍可安装；无 `panel` 的纯 command 包仍可跑命令，但**不能**作为 panel tab 打开（宿主不注册 panel）——这是原有契约，不是新门槛。
 

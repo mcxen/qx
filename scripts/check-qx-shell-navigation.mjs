@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import {
   resolveQxContentScroll,
   resolveQxListNavigation,
+  shouldProxySearchReadingKey,
+  shouldSwitchRegionFromSearch,
 } from "../src/components/qx-shell/navigationModel.ts";
 import {
   MatchTier,
@@ -119,6 +121,36 @@ assert.deepEqual(normalizedWorkbench.tabs?.map((tab) => [tab.id, tab.active]), [
 // Search inputs may opt into list arrows/pages without losing native Home/End.
 assert.deepEqual(list({ editable: true, allowEditable: true }), { type: "change", index: 3 });
 assert.deepEqual(list({ key: "PageUp", editable: true, allowEditable: true }), { type: "change", index: 0 });
+
+const searchReading = (overrides = {}) => shouldProxySearchReadingKey({
+  key: "ArrowDown",
+  fromSearch: true,
+  activeRegionId: "plugin-workbench-detail",
+  navigationRegionId: "plugin-workbench-list",
+  modified: false,
+  ...overrides,
+});
+assert.equal(searchReading(), true);
+assert.equal(searchReading({ key: "PageUp" }), true);
+assert.equal(searchReading({ activeRegionId: "plugin-workbench-list" }), false);
+assert.equal(searchReading({ key: "ArrowLeft" }), false);
+assert.equal(searchReading({ key: "Home" }), false);
+assert.equal(searchReading({ key: " " }), false);
+assert.equal(searchReading({ modified: true }), false);
+
+const searchRegionSwitch = (overrides = {}) => shouldSwitchRegionFromSearch({
+  key: "ArrowRight",
+  query: "",
+  regionCount: 2,
+  modified: false,
+  ...overrides,
+});
+assert.equal(searchRegionSwitch(), true);
+assert.equal(searchRegionSwitch({ key: "ArrowLeft" }), true);
+assert.equal(searchRegionSwitch({ query: "cpu" }), false);
+assert.equal(searchRegionSwitch({ regionCount: 1 }), false);
+assert.equal(searchRegionSwitch({ modified: true }), false);
+assert.equal(searchRegionSwitch({ key: "ArrowDown" }), false);
 
 const scroll = (overrides = {}) => resolveQxContentScroll({
   key: "ArrowDown",

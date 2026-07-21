@@ -12,68 +12,55 @@ pub struct SystemStats {
 #[cfg(target_os = "macos")]
 mod platform {
     use std::sync::Mutex;
+    use std::time::{Duration, Instant};
 
-    #[repr(C)]
-    #[derive(Default)]
-    struct VmStatistics {
-        free_count: u32,
-        active_count: u32,
-        inactive_count: u32,
-        wire_count: u32,
-        zero_fill_count: u64,
-        reactivations: u64,
-        pageins: u64,
-        pageouts: u64,
-        faults: u64,
-        cow_faults: u64,
-        lookups: u64,
-        hits: u64,
-        purges: u64,
-        purgable_count: u32,
-        speculative_count: u32,
-        page_size: u32,
-    }
-
-    const HOST_VM_INFO64: i32 = 4;
-    const PROCESSOR_CPU_LOAD_INFO: i32 = 2;
-    type MachPort = libc::c_uint;
-    type MachMsgTypeNumber = libc::c_uint;
-    type NaturalT = libc::c_uint;
+    // Multiple consumers (Home Island, tray, and plugins) can request the same
+    // process-wide Mach CPU counter at almost the same instant. A second read a
+    // few milliseconds later is quantized noise, not a new utilization sample.
+    const MIN_CPU_SAMPLE_INTERVAL: Duration = Duration::from_millis(750);
 
     unsafe extern "C" {
-        fn mach_host_self() -> MachPort;
-        fn host_statistics64(
-            host: MachPort,
-            flavor: i32,
-            info: *mut VmStatistics,
-            count: *mut MachMsgTypeNumber,
-        ) -> libc::c_int;
-        fn host_processor_info(
-            host: MachPort,
-            flavor: i32,
-            out_processor_count: *mut NaturalT,
-            out_processor_info: *mut *mut i32,
-            out_processor_info_cnt: *mut MachMsgTypeNumber,
-        ) -> libc::c_int;
-        fn vm_deallocate(task: MachPort, addr: *mut libc::c_void, size: usize) -> libc::c_int;
+        fn mach_host_self() -> libc::mach_port_t;
+        static mach_task_self_: libc::mach_port_t;
     }
 
     #[derive(Default)]
     struct CpuSample {
         total: u64,
         idle: u64,
+        usage: f32,
+        sampled_at: Option<Instant>,
     }
 
-    static CPU_SAMPLE: Mutex<CpuSample> = Mutex::new(CpuSample { total: 0, idle: 0 });
+    static CPU_SAMPLE: Mutex<CpuSample> = Mutex::new(CpuSample {
+        total: 0,
+        idle: 0,
+        usage: 0.0,
+        sampled_at: None,
+    });
+
+    fn usage_from_ticks(
+        previous_total: u64,
+        previous_idle: u64,
+        total: u64,
+        idle: u64,
+    ) -> Option<f32> {
+        let delta_total = total.checked_sub(previous_total)?;
+        let delta_idle = idle.checked_sub(previous_idle)?;
+        if delta_total == 0 || delta_idle > delta_total {
+            return None;
+        }
+        Some(((delta_total - delta_idle) as f32 / delta_total as f32 * 100.0).clamp(0.0, 100.0))
+    }
 
     pub fn cpu_usage() -> f32 {
         let mut processor_count = 0;
         let mut info = std::ptr::null_mut();
         let mut info_count = 0;
         let result = unsafe {
-            host_processor_info(
+            libc::host_processor_info(
                 mach_host_self(),
-                PROCESSOR_CPU_LOAD_INFO,
+                libc::PROCESSOR_CPU_LOAD_INFO,
                 &mut processor_count,
                 &mut info,
                 &mut info_count,
@@ -94,31 +81,44 @@ mod platform {
             idle = idle.saturating_add(ticks[base + 2] as u64);
         }
         unsafe {
-            vm_deallocate(
-                mach_host_self(),
-                info.cast(),
+            libc::vm_deallocate(
+                mach_task_self_,
+                info as libc::vm_address_t,
                 count * 4 * std::mem::size_of::<i32>(),
             );
         }
         let mut previous = CPU_SAMPLE.lock().unwrap_or_else(|value| value.into_inner());
-        let delta_total = total.saturating_sub(previous.total);
-        let delta_idle = idle.saturating_sub(previous.idle);
+        let now = Instant::now();
+        if previous
+            .sampled_at
+            .is_some_and(|sampled_at| now.duration_since(sampled_at) < MIN_CPU_SAMPLE_INTERVAL)
+        {
+            return previous.usage;
+        }
+        let usage =
+            usage_from_ticks(previous.total, previous.idle, total, idle).unwrap_or(previous.usage);
         previous.total = total;
         previous.idle = idle;
-        if delta_total == 0 {
-            0.0
-        } else {
-            ((delta_total.saturating_sub(delta_idle)) as f32 / delta_total as f32 * 100.0)
-                .clamp(0.0, 100.0)
-        }
+        previous.usage = usage;
+        previous.sampled_at = Some(now);
+        usage
     }
 
     pub fn memory() -> (f32, f32, f32) {
-        let mut stats = VmStatistics::default();
-        let mut count = (std::mem::size_of::<VmStatistics>() / 4) as MachMsgTypeNumber;
-        if unsafe { host_statistics64(mach_host_self(), HOST_VM_INFO64, &mut stats, &mut count) }
-            != 0
-        {
+        // Use libc's SDK-matched definition. The old hand-written struct had
+        // speculative/purgeable fields in the wrong order and invented a
+        // page_size tail field, so every value after wire_count was misread.
+        let mut stats: libc::vm_statistics64 = unsafe { std::mem::zeroed() };
+        let mut count = libc::HOST_VM_INFO64_COUNT;
+        let result = unsafe {
+            libc::host_statistics64(
+                mach_host_self(),
+                libc::HOST_VM_INFO64,
+                (&mut stats as *mut libc::vm_statistics64).cast(),
+                &mut count,
+            )
+        };
+        if result != 0 {
             return (0.0, 0.0, 0.0);
         }
         let mut mib = [libc::CTL_HW, libc::HW_MEMSIZE];
@@ -134,8 +134,31 @@ mod platform {
                 0,
             );
         }
-        let page_size = u64::from(stats.page_size.max(4096));
-        let used = u64::from(stats.active_count.saturating_add(stats.wire_count)) * page_size;
+        let mut page_size = 0i32;
+        let mut page_size_len = std::mem::size_of::<i32>() as libc::size_t;
+        let mut page_size_mib = [libc::CTL_HW, libc::HW_PAGESIZE];
+        let page_size_result = unsafe {
+            libc::sysctl(
+                page_size_mib.as_mut_ptr(),
+                2,
+                (&mut page_size as *mut i32).cast(),
+                &mut page_size_len,
+                std::ptr::null_mut(),
+                0,
+            )
+        };
+        if page_size_result != 0 || page_size <= 0 {
+            return (0.0, 0.0, 0.0);
+        }
+        let used_pages = u64::from(stats.active_count)
+            .saturating_add(u64::from(stats.inactive_count))
+            .saturating_add(u64::from(stats.wire_count))
+            .saturating_add(u64::from(stats.compressor_page_count));
+        values_from_pages(used_pages, page_size as u64, total)
+    }
+
+    fn values_from_pages(used_pages: u64, page_size: u64, total: u64) -> (f32, f32, f32) {
+        let used = used_pages.saturating_mul(page_size).min(total);
         values(used, total)
     }
 
@@ -151,6 +174,31 @@ mod platform {
             used as f32 / gib,
             total as f32 / gib,
         )
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{usage_from_ticks, values_from_pages};
+
+        #[test]
+        fn cpu_usage_uses_only_the_latest_tick_delta() {
+            assert_eq!(usage_from_ticks(1_000, 800, 1_100, 850), Some(50.0));
+            assert_eq!(usage_from_ticks(1_100, 850, 1_100, 850), None);
+            assert_eq!(usage_from_ticks(1_100, 850, 1_000, 800), None);
+        }
+
+        #[test]
+        fn memory_pages_use_the_real_page_size_and_clamp_to_physical_ram() {
+            let (percent, used_gib, total_gib) =
+                values_from_pages(768, 16 * 1024, 16 * 1024 * 1024);
+            assert_eq!(percent, 75.0);
+            assert!((used_gib - 0.01171875).abs() < f32::EPSILON);
+            assert!((total_gib - 0.015625).abs() < f32::EPSILON);
+
+            let (clamped_percent, clamped_used, _) = values_from_pages(2_000, 16_384, 16_384);
+            assert_eq!(clamped_percent, 100.0);
+            assert_eq!(clamped_used, 16_384.0 / 1024.0 / 1024.0 / 1024.0);
+        }
     }
 }
 

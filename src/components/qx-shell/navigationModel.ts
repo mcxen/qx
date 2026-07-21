@@ -1,5 +1,40 @@
 export type QxEditableNavigationPolicy = "none" | "search" | "all";
 
+const SEARCH_READING_PROXY_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown"]);
+
+/** Empty Workbench search is a keyboard launch point for master/detail regions. */
+export function shouldSwitchRegionFromSearch(input: {
+  key: string;
+  query: string;
+  regionCount: number;
+  modified: boolean;
+}): boolean {
+  return input.query.length === 0
+    && input.regionCount > 1
+    && !input.modified
+    && (input.key === "ArrowLeft" || input.key === "ArrowRight");
+}
+
+/**
+ * A search input can retain DOM focus while pointer interaction activates a
+ * reading region. In that state, vertical reading keys belong to the active
+ * detail pane; text, horizontal caret movement, Home/End, and modified
+ * selections remain native input behavior.
+ */
+export function shouldProxySearchReadingKey(input: {
+  key: string;
+  fromSearch: boolean;
+  activeRegionId: string | null;
+  navigationRegionId?: string;
+  modified: boolean;
+}): boolean {
+  return input.fromSearch
+    && Boolean(input.activeRegionId)
+    && input.activeRegionId !== input.navigationRegionId
+    && !input.modified
+    && SEARCH_READING_PROXY_KEYS.has(input.key);
+}
+
 /** Shared list-navigation contract consumed by every QxShell module. */
 export interface QxShellNavigation {
   index: number;
