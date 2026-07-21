@@ -74,8 +74,10 @@ Tauri 生产环境前端是 `tauri://localhost`（或 `asset://`），`~/.qx/plu
 {
   "id": "my-plugin",
   "name": "My Plugin",
+  "names": { "zh-CN": "我的插件", "en": "My Plugin" },
   "version": "1.0.0",
   "description": "A custom plugin for Qx",
+  "descriptions": { "zh-CN": "一个 Qx 自定义插件", "en": "A custom plugin for Qx" },
   "author": "Your Name",
   "icon": "icon.png",
   "screenshots": ["screenshot-1.png", "screenshot-2.png"],

@@ -15,8 +15,12 @@ import PluginBackgroundBadge, {
   usePluginBackgroundSummary,
 } from "../../../components/PluginBackgroundBadge";
 import { isBetaModule } from "../../catalog";
-import { useT } from "../../../i18n";
+import { useLocale, useT } from "../../../i18n";
 import { formatRelativeTime, formatTimestamp } from "../../../plugin/backgroundActivity";
+import {
+  localizePluginDescription,
+  localizePluginName,
+} from "../../../plugin/pluginLabels";
 import { ChevronRight } from "lucide-react";
 
 export type ExtensionCardBadgeTone = "neutral" | "accent" | "success" | "danger" | "warning";
@@ -82,9 +86,12 @@ export default function InstalledModuleCard({
   className = "",
 }: ExtensionCardProps) {
   const t = useT();
+  const locale = useLocale();
   const builtin = isBuiltin(plugin);
   const background = usePluginBackgroundSummary(plugin.enabled ? plugin.id : null);
   const beta = isBetaModule(plugin.id);
+  const displayName = localizePluginName(plugin, t, locale);
+  const displayDescription = localizePluginDescription(plugin, t, locale);
 
   const chips: ExtensionCardBadge[] = [];
   if (!plugin.enabled) {
@@ -112,8 +119,8 @@ export default function InstalledModuleCard({
 
   const lastRel = relativeLastRun(background?.lastRunAt, t);
   const subtitleParts: string[] = [];
-  if (plugin.description?.trim()) {
-    subtitleParts.push(plugin.description.trim());
+  if (displayDescription) {
+    subtitleParts.push(displayDescription);
   } else if (builtin) {
     subtitleParts.push(t("plugins.builtin.desc", "Core module"));
   } else if (plugin.author) {
@@ -151,20 +158,20 @@ export default function InstalledModuleCard({
         .filter(Boolean)
         .join(" ")}
       onClick={onOpen}
-      title={lastHint || plugin.description || undefined}
-      aria-label={`${plugin.name}. ${beta ? `${t("common.beta", "Beta")}. ` : ""}${subtitle}. ${t("plugins.openSettings", "Open settings")}.`}
+      title={lastHint || displayDescription || undefined}
+      aria-label={`${displayName}. ${beta ? `${t("common.beta", "Beta")}. ` : ""}${subtitle}. ${t("plugins.openSettings", "Open settings")}.`}
     >
       <span className="qx-ext-card-icon-well" aria-hidden="true">
         <PluginAssetImage
           plugin={plugin}
           asset={plugin.manifest?.icon}
           className="qx-ext-card-icon"
-          fallback={plugin.name}
+          fallback={displayName}
         />
       </span>
 
       <span className="qx-ext-card-body">
-        <span className="qx-ext-card-title">{plugin.name}</span>
+        <span className="qx-ext-card-title">{displayName}</span>
         {subtitle ? (
           <span className="qx-ext-card-subtitle">{subtitle}</span>
         ) : null}

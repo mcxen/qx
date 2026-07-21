@@ -64,6 +64,13 @@ export interface PluginManifest {
   name: string;
   version: string;
   description?: string;
+  /**
+   * Optional locale → display name map (e.g. `{ "zh-CN": "天气", "en": "Weather" }`).
+   * Host UI resolves via `localizePluginName` before falling back to `name`.
+   */
+  names?: Record<string, string>;
+  /** Optional locale → description map; same resolution as `names`. */
+  descriptions?: Record<string, string>;
   author?: string;
   icon?: string;
   screenshots?: string[];

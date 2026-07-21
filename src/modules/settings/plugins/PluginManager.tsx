@@ -53,7 +53,7 @@ import {
   TabsTrigger,
   Toggle,
 } from "../../../components/ui";
-import { useT } from "../../../i18n";
+import { useLocale, useT, type Locale } from "../../../i18n";
 import {
   metadataForKey,
   metadataMatchesQuery,
@@ -69,6 +69,13 @@ import type {
   PluginPreference,
 } from "../../../plugin/types";
 import { currentPluginPlatform } from "../../../plugin/platform";
+import {
+  localizeMarketplaceEntryDescription,
+  localizeMarketplaceEntryName,
+  localizePluginDescription,
+  localizePluginName,
+  type TranslateFn,
+} from "../../../plugin/pluginLabels";
 import InstalledModuleCard from "./InstalledModuleCard";
 import { BUILTIN_PLUGIN_ICONS, isPluginUpdateAvailable } from "./helpers";
 import BetaBadge from "../../../components/BetaBadge";
@@ -263,15 +270,19 @@ function pluginMatchesQuery(
   plugin: InstalledPlugin,
   query: string,
   searchMetadata: Record<string, SearchMetadataEntry>,
+  t: TranslateFn,
+  locale: Locale,
 ) {
   if (!query) return true;
   const builtinModuleId = plugin.id.startsWith("builtin:") ? plugin.id.slice("builtin:".length) : null;
   return [
     plugin.id,
     plugin.name,
+    localizePluginName(plugin, t, locale),
     plugin.version,
     plugin.author,
     plugin.description,
+    localizePluginDescription(plugin, t, locale),
     ...(plugin.manifest?.keywords ?? []),
     ...(plugin.manifest?.permissions ?? plugin.permissions ?? []),
   ]
@@ -281,14 +292,20 @@ function pluginMatchesQuery(
     (builtinModuleId ? metadataMatchesQuery(searchMetadata[moduleMetadataKey(builtinModuleId)], query) : false);
 }
 
-function marketplaceEntryMatchesQuery(entry: PluginIndexEntry, query: string) {
+function marketplaceEntryMatchesQuery(
+  entry: PluginIndexEntry,
+  query: string,
+  t: TranslateFn,
+) {
   if (!query) return true;
   return [
     entry.id,
     entry.name,
+    localizeMarketplaceEntryName(entry, t),
     entry.version,
     entry.author,
     entry.description,
+    localizeMarketplaceEntryDescription(entry, t),
     entry.min_app_version,
     ...(entry.required_permissions ?? []),
   ]
@@ -601,6 +618,7 @@ function PluginDetail({
   onUninstall: () => void;
 }) {
   const t = useT();
+  const locale = useLocale();
   const builtin = isBuiltin(plugin);
   const configurableBuiltin = isConfigurableBuiltinModule(plugin.id);
   const preferences = plugin.manifest?.preferences ?? [];
@@ -612,6 +630,8 @@ function PluginDetail({
   const builtinModuleId = builtin ? plugin.id.slice("builtin:".length) : null;
   const aliasMetadataKey = builtinModuleId ? moduleMetadataKey(builtinModuleId) : pluginMetadataKey(plugin.id);
   const aliasMetadata = metadataForKey(settings, aliasMetadataKey);
+  const displayName = localizePluginName(plugin, t, locale);
+  const displayDescription = localizePluginDescription(plugin, t, locale);
 
   /* ---- preference values ---- */
   const [prefValues, setPrefValues] = useState<Record<string, string | number | boolean>>({});
@@ -716,11 +736,11 @@ function PluginDetail({
           plugin={plugin}
           asset={iconAsset}
           className="qx-plugin-detail-icon"
-          fallback={plugin.name}
+          fallback={displayName}
         />
         <div className="qx-plugin-detail-heading">
           <div className="qx-plugin-detail-title qx-module-title-with-badge">
-            <span>{plugin.name}</span>
+            <span>{displayName}</span>
             {isBetaModule(plugin.id) && <BetaBadge />}
             {plugin.enabled && <PluginBackgroundBadge pluginId={plugin.id} />}
           </div>
@@ -754,6 +774,10 @@ function PluginDetail({
             : t("plugins.badge.disabled", "Disabled")}
         </Badge>
       </div>
+
+      {displayDescription ? (
+        <div className="qx-plugin-description">{displayDescription}</div>
+      ) : null}
 
       {!builtin && screenshots.length > 0 && (
         <SettingsCard
@@ -874,8 +898,8 @@ function MarketplaceTab({
 
   const filteredEntries = useMemo(() => {
     const q = normalizeSearch(searchQuery);
-    return entries.filter((entry) => marketplaceEntryMatchesQuery(entry, q));
-  }, [entries, searchQuery]);
+    return entries.filter((entry) => marketplaceEntryMatchesQuery(entry, q, t));
+  }, [entries, searchQuery, t]);
 
   const selectedEntry = useMemo(() => {
     if (selectedId) {
@@ -929,7 +953,7 @@ function MarketplaceTab({
       setInstallStatus({
         tone: "success",
         message: t(messageKey, fallback)
-          .replace("{name}", entry.name)
+          .replace("{name}", localizeMarketplaceEntryName(entry, t))
           .replace("{version}", entry.version),
       });
     } catch (err) {
@@ -1042,7 +1066,9 @@ function MarketplaceTab({
                   type="button"
                 >
                   <div className="qx-plugin-list-main">
-                    <div className="qx-plugin-list-title">{entry.name}</div>
+                    <div className="qx-plugin-list-title">
+                      {localizeMarketplaceEntryName(entry, t)}
+                    </div>
                     <div className="qx-plugin-list-meta">
                       v{entry.version}
                       {alreadyInstalled && installedVersion !== entry.version
@@ -1051,9 +1077,10 @@ function MarketplaceTab({
                       {entry.author ? ` · ${entry.author}` : ""}
                       {entry.size_bytes ? ` · ${formatBytes(entry.size_bytes)}` : ""}
                     </div>
-                    {entry.description && (
-                      <div className="qx-plugin-list-desc">{entry.description}</div>
-                    )}
+                    {(() => {
+                      const desc = localizeMarketplaceEntryDescription(entry, t);
+                      return desc ? <div className="qx-plugin-list-desc">{desc}</div> : null;
+                    })()}
                   </div>
                   {updateAvailable && !installing && (
                     <ArrowUpCircle
@@ -1083,7 +1110,9 @@ function MarketplaceTab({
         <div className="qx-plugin-library-detail">
           {selectedEntry ? (
             <>
-              <div className="qx-plugin-detail-title">{selectedEntry.name}</div>
+              <div className="qx-plugin-detail-title">
+                {localizeMarketplaceEntryName(selectedEntry, t)}
+              </div>
               <div className="qx-plugin-badges">
                 <Badge variant="secondary">v{selectedEntry.version}</Badge>
                 {selectedEntry.author && <Badge variant="secondary">{selectedEntry.author}</Badge>}
@@ -1094,9 +1123,10 @@ function MarketplaceTab({
                   </Badge>
                 )}
               </div>
-              {selectedEntry.description && (
-                <div className="qx-plugin-description">{selectedEntry.description}</div>
-              )}
+              {(() => {
+                const desc = localizeMarketplaceEntryDescription(selectedEntry, t);
+                return desc ? <div className="qx-plugin-description">{desc}</div> : null;
+              })()}
               <SettingsCard title={t("plugins.marketplace.install", "Install")}>
                 {(() => {
                   const installedVersion = installedVersions.get(selectedEntry.id);
@@ -1232,6 +1262,7 @@ function filterInstalledPlugin(plugin: InstalledPlugin, filter: InstalledFilter)
 
 export default function PluginManager() {
   const t = useT();
+  const locale = useLocale();
   const { plugins, install, uninstall, setEnabled, refresh, loaded, loading } =
     usePluginRegistry();
   const searchMetadata = useSettingsStore((state) => state.settings.search_metadata);
@@ -1387,8 +1418,13 @@ export default function PluginManager() {
   }, [displayPlugins]);
   const filteredPlugins = useMemo(() => {
     const q = normalizeSearch(installedQuery);
-    return displayPlugins.filter((plugin) => filterInstalledPlugin(plugin, installedFilter) && pluginMatchesQuery(plugin, q, searchMetadata));
-  }, [displayPlugins, installedFilter, installedQuery, searchMetadata]);
+    return displayPlugins
+      .filter((plugin) => filterInstalledPlugin(plugin, installedFilter)
+        && pluginMatchesQuery(plugin, q, searchMetadata, t, locale))
+      .slice()
+      .sort((a, b) => localizePluginName(a, t, locale)
+        .localeCompare(localizePluginName(b, t, locale), locale === "zh-CN" ? "zh-CN" : "en"));
+  }, [displayPlugins, installedFilter, installedQuery, locale, searchMetadata, t]);
   const configPlugin = displayPlugins.find((p) => p.id === configId) ?? null;
 
   /* ---- render ---- */

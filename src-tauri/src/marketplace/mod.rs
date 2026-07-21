@@ -112,6 +112,12 @@ pub struct PluginManifest {
     pub version: String,
     #[serde(default)]
     pub description: String,
+    /// Optional locale → display name (`zh-CN`, `en`, …). Host UI localizes via this map.
+    #[serde(default)]
+    pub names: std::collections::HashMap<String, String>,
+    /// Optional locale → description map.
+    #[serde(default)]
+    pub descriptions: std::collections::HashMap<String, String>,
     #[serde(default)]
     pub author: String,
     #[serde(default)]
@@ -1009,6 +1015,8 @@ fn build_raycast_plugin_manifest(
             .map(|_| json_string(package, "version"))
             .unwrap_or_else(|| "1.0.0".to_string()),
         description: json_string(package, "description"),
+        names: std::collections::HashMap::new(),
+        descriptions: std::collections::HashMap::new(),
         author: json_string(package, "author"),
         icon: icon.clone(),
         screenshots: Vec::new(),

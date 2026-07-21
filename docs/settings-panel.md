@@ -75,6 +75,22 @@ QxShell (visual="elevated")
 | **Advanced** | 数据路径 · 托盘 · 诊断日志开关/级别/文件入口 · 网络 · 配置导入导出 · 清理 · 开发 · 重置 |
 | **About** | 版本与存储 |
 
+### 扩展列表显示名（i18n）
+
+Settings → Extensions 的插件/模块标题与描述必须走
+`src/plugin/pluginLabels.ts`（`localizePluginName` / `localizePluginDescription`），
+**禁止**直接渲染英文 `plugin.name`：
+
+| 来源 | 解析顺序 |
+|------|----------|
+| 内置 `builtin:<id>` | manifest `names` → `launcher.<id>` → `module.<id>` → `name` |
+| 外置插件 | manifest `names` → `plugins.ext.<id>.name` → `name` |
+| 市场 Browse | `plugins.ext.<id>.name` → 索引 `name` |
+
+描述同理（`descriptions` / `launcher.<id>.desc` / `plugins.ext.<id>.desc`）。
+插件可在 `manifest.json` 自带 `names` / `descriptions` 多语言 map；第一方市场插件
+亦可在宿主 `src/i18n.ts` 的 `plugins.ext.*` 表补中文。
+
 内置模块的专属选项统一放在 **Extensions → Installed → 模块配置**。Screen Capture
 的格式、帧率、质量、分辨率、圈选确认、延迟、录制后隐藏、自动复制和捕获岛常驻
 都由 `screencap` 设置段集中保存；模块主界面只提供进入该配置的直接链接。

@@ -394,12 +394,18 @@ await context.storage.session.set("pageCache", items)  // 仅本次进程
 
 ## 4. Manifest 契约（最小够用）
 
+`name` / `description` 为英文默认。可选 `names` / `descriptions` 按 locale
+（`zh-CN`、`en`…）覆盖；宿主 Settings → Extensions 通过
+`src/plugin/pluginLabels.ts` 解析显示名，勿假设 UI 只读英文字段。
+
 ```json
 {
   "id": "my-plugin",
   "name": "My Plugin",
+  "names": { "zh-CN": "我的插件", "en": "My Plugin" },
   "version": "0.1.0",
   "description": "…",
+  "descriptions": { "zh-CN": "……", "en": "…" },
   "author": "you",
   "icon": "icon.png",
   "platforms": ["macos", "windows"],
