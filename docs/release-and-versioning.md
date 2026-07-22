@@ -71,7 +71,7 @@ Qx 使用自定义跨平台 helper 更新，不依赖 Tauri signed updater：
 1. 下载新版本前 `prune_update_cache`，去掉其它版本与 orphan helper  
 2. helper 成功替换后删除整个 `<version>/` 目录 + 删除自身 helper 文件  
 3. 普通启动时也会 prune orphan（保留 status 文件）  
-4. Settings 存储清理的 cache 桶包含 `~/.qx/cache/updates`
+4. Settings 存储清理通过统一缓存注册表包含 `paths::cache_dir()/updates`；macOS 当前为 `~/.qx/cache/updates`，其他平台使用各自系统缓存根
 
 用户在 Settings 里打开 `Automatically install updates` 后，启动时会后台检查并自动下载可安装版本；About 页面也可以手动检查和安装。
 

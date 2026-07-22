@@ -42,7 +42,7 @@ import {
 import { formatRelativeTime, formatTimestamp } from "./backgroundActivity";
 import { useT } from "../i18n";
 import { resolveQxGridIndex, shouldHandleQxGridKey } from "../hooks/qxGridNavigation";
-import { qxMasterDetailNavigation } from "../hooks/useQxMasterDetail";
+import { focusQxRegion, qxMasterDetailNavigation } from "../hooks/useQxMasterDetail";
 import {
   hasPluginIslandSession,
   syncPluginWorkbenchIsland,
@@ -104,6 +104,7 @@ export function PluginPanelViewport() {
   const [selectionTitle, setSelectionTitle] = useState<string>("");
   const [pluginChrome, setPluginChrome] = useState<PluginChromePayload | null>(null);
   const [workbench, setWorkbench] = useState<PluginWorkbenchState | null>(null);
+  const [workbenchDetailOpen, setWorkbenchDetailOpen] = useState(false);
   const [workbenchIslandManaged, setWorkbenchIslandManaged] = useState(false);
   const pluginIslandSessionActive = useSyncExternalStore(
     islandHost.subscribe,
@@ -141,10 +142,12 @@ export function PluginPanelViewport() {
     postPluginWorkbenchEvent(pluginId, { kind: "select", id });
   }, [pluginId]);
   const updateWorkbenchQuery = useCallback((value: string) => {
+    setWorkbenchDetailOpen(false);
     setWorkbench((current) => current ? { ...current, query: value } : current);
     postPluginWorkbenchEvent(pluginId, { kind: "query", value });
   }, [pluginId]);
   const selectWorkbenchTab = useCallback((id: string) => {
+    setWorkbenchDetailOpen(false);
     setWorkbench((current) => current
       ? {
           ...current,
@@ -176,8 +179,12 @@ export function PluginPanelViewport() {
 
     const target = event.target instanceof Element ? event.target : null;
     const fromSearch = Boolean(target?.closest(".qx-shell-search-slot"));
+    const fromDetail = Boolean(target?.closest(
+      `[data-qx-region="${PLUGIN_WORKBENCH_REGIONS.detail}"]`,
+    ));
     if (
       workbench?.layout?.kind !== "gallery"
+      || (workbenchDetailOpen && fromDetail)
       || isImeCompositionEvent(event.nativeEvent)
       || !shouldHandleQxGridKey({
         key: event.key,
@@ -213,7 +220,7 @@ export function PluginPanelViewport() {
     if (item) {
       selectWorkbenchItem(item.id);
     }
-  }, [selectWorkbenchItem, workbench]);
+  }, [selectWorkbenchItem, workbench, workbenchDetailOpen]);
 
   useEffect(() => {
     if (!isPluginTab || !pluginId) {
@@ -221,6 +228,7 @@ export function PluginPanelViewport() {
       setSelectionTitle("");
       setPluginChrome(null);
       setWorkbench(null);
+      setWorkbenchDetailOpen(false);
       setWorkbenchIslandManaged(false);
       return;
     }
@@ -330,6 +338,7 @@ export function PluginPanelViewport() {
     setItemActions([]);
     setSelectionTitle("");
     setWorkbench(null);
+    setWorkbenchDetailOpen(false);
     setRenderState({ kind: "loading", detail: "Rendering panel" });
     renderPluginStatus(container, `Loading ${pluginId}...`);
 
@@ -369,6 +378,7 @@ export function PluginPanelViewport() {
       setItemActions([]);
       setSelectionTitle("");
       setWorkbench(null);
+      setWorkbenchDetailOpen(false);
     };
   }, [isPluginTab, panel, pluginId, refreshKey, raycastActionPanel]);
 
@@ -386,6 +396,37 @@ export function PluginPanelViewport() {
     return workbench.items.find((item) => item.id === String(workbench.selectedId ?? ""))
       || workbench.items[0];
   }, [workbench]);
+
+  const selectedWorkbenchDetail = selectedWorkbenchItem?.detail || workbench?.detail;
+
+  useEffect(() => {
+    if (workbenchDetailOpen && !selectedWorkbenchDetail) {
+      setWorkbenchDetailOpen(false);
+    }
+  }, [selectedWorkbenchDetail, workbenchDetailOpen]);
+
+  const closeWorkbenchDetail = useCallback(() => {
+    setWorkbenchDetailOpen(false);
+    window.requestAnimationFrame(() => {
+      focusQxRegion(
+        PLUGIN_WORKBENCH_REGIONS.list,
+        containerRef.current?.closest<HTMLElement>(".qx-shell"),
+      );
+    });
+  }, []);
+
+  const activateWorkbenchItem = useCallback((id: string) => {
+    selectWorkbenchItem(id);
+    const item = workbench?.items?.find((candidate) => candidate.id === id);
+    if (!item?.detail && !workbench?.detail) return;
+    setWorkbenchDetailOpen(true);
+    window.requestAnimationFrame(() => {
+      focusQxRegion(
+        PLUGIN_WORKBENCH_REGIONS.detail,
+        containerRef.current?.closest<HTMLElement>(".qx-shell"),
+      );
+    });
+  }, [selectWorkbenchItem, workbench]);
 
   const workbenchActionDescriptors = useMemo<PluginWorkbenchAction[]>(() => {
     if (!workbench) return [];
@@ -493,6 +534,16 @@ export function PluginPanelViewport() {
 
   const shell = useQxModuleShell({
     leave: goBack,
+    esc: {
+      inner: {
+        active: workbenchDetailOpen,
+        close: closeWorkbenchDetail,
+      },
+      query: {
+        active: Boolean(workbench?.query),
+        clear: () => updateWorkbenchQuery(""),
+      },
+    },
     onKeyDown: handlePluginKeys,
     island: renderState.kind === "loading"
       ? {
@@ -544,9 +595,11 @@ export function PluginPanelViewport() {
             const item = workbench.items?.[index];
             if (item) selectWorkbenchItem(item.id);
           },
-          onOpen: primaryItem
-            ? () => runWorkbenchAction(primaryItem.id)
-            : undefined,
+          onOpen: selectedWorkbenchItem && selectedWorkbenchDetail
+            ? () => activateWorkbenchItem(selectedWorkbenchItem.id)
+            : primaryItem
+              ? () => runWorkbenchAction(primaryItem.id)
+              : undefined,
         }),
         editable: "search" as const,
       }
@@ -710,7 +763,8 @@ export function PluginPanelViewport() {
         {workbench ? (
           <PluginWorkbenchView
             state={workbench}
-            onSelect={selectWorkbenchItem}
+            detailOpen={workbenchDetailOpen}
+            onActivate={activateWorkbenchItem}
           />
         ) : null}
         {!panel && (

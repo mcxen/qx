@@ -456,21 +456,16 @@
 /* ── Qx-standard capture history sidebar ───────────────────────────── */
 .qx-screencap-browser {
   position: relative;
-  display: grid;
   flex: 1;
   min-height: 0;
 }
 
-.qx-screencap-browser.is-list {
+.qx-screencap-browser:not(.has-detail) {
   grid-template-columns: minmax(0, 1fr);
 }
 
-.qx-screencap-browser.is-gallery {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.qx-screencap-browser.is-gallery .qx-screencap-history-pane {
-  border-right: 0;
+.qx-screencap-browser.has-detail {
+  grid-template-columns: minmax(280px, 44%) minmax(0, 1fr);
 }
 
 .qx-screencap-history-pane {
@@ -478,7 +473,17 @@
   min-height: 0;
   overflow: hidden;
   flex-direction: column;
-  border-right: 0;
+}
+
+.qx-screencap-browser.has-detail .qx-screencap-history-pane {
+  border-right: 1px solid var(--qx-border-1);
+}
+
+/* The selected row/card already provides keyboard focus feedback. Avoid a
+   pane-sized blue inset whose bottom edge looks like a row-count divider when
+   the history collection does not fill the available height. */
+.qx-screencap-history-pane.is-qx-region-active:focus-visible {
+  box-shadow: none;
 }
 
 .qx-screencap-preview-pane {

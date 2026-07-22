@@ -42,6 +42,7 @@ Shell、明暗主题、焦点、滚动、选择、响应式布局、Esc、Action
 - 空、加载、错误和少量数据都保留稳定画布，不用假条目撑布局。
 - 已有内容刷新时保留旧内容并标记 loading，不先清空列表。
 - 选择、焦点、滚动和键盘导航不能等待慢 I/O 才更新。
+- 浏览态由 List / Gallery 占满 Main Area；激活带 `detail` 的条目后，宿主自动保留左侧集合并在右侧打开详情。插件不要自建 split view，也不要把详情复制进 Context Panel。
 
 ## 3. 主题、明暗度与颜色
 
@@ -156,7 +157,7 @@ actions: [
 - 每次 Esc 只退一层：overlay/detail → 本地 query → launcher → 清 launcher query →
   隐藏 Qx。
 - Actions 菜单打开时，Esc 先关闭菜单并恢复此前焦点；下一次 Esc 才进入返回阶梯。
-- List 使用 ↑/↓、Page、Home/End；Gallery 使用二维方向键；Enter 执行 Primary。
+- List 使用 ↑/↓、Page、Home/End；Gallery 使用二维方向键；Enter 对带详情条目先打开详情，无详情时执行 Primary。
 - 打开 Actions 菜单、刷新或回画不得重置选中项、活动区域或滚动位置。
 - Custom Panel 只处理自身内部 overlay/detail；不得注册进程级 Esc 或系统级快捷键抢占
   宿主响应链。

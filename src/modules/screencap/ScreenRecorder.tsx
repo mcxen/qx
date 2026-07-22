@@ -578,7 +578,7 @@ export default function ScreenRecorder() {
         </div>
       }
       onKeyDown={shell.onKeyDown}
-      navigation={history.length && !showingPreview ? {
+      navigation={history.length ? {
         index: selectedHistoryIndex,
         count: history.length,
         pageSize: historyLayout === "gallery" ? 8 : 6,
@@ -618,7 +618,7 @@ export default function ScreenRecorder() {
       actionTitle={t("screencap.actions", "Capture Actions")}
       actions={showingPreview ? doneActions : readyActions}
     >
-      <div className={`qx-screencap-browser is-${historyLayout}`}>
+      <div className={`qx-content-split qx-screencap-browser is-${historyLayout}${showingPreview ? " has-detail" : ""}`}>
         {toastPath && (
           <CaptureToast
             path={toastPath}
@@ -629,9 +629,18 @@ export default function ScreenRecorder() {
             onDismiss={() => setToastPath(null)}
           />
         )}
+        <div
+          className="qx-content-list qx-screencap-history-pane"
+          data-qx-region="screencap-history"
+          data-qx-region-label={t("screencap.history.region", "Capture history")}
+          data-qx-region-initial="true"
+          tabIndex={-1}
+        >
+          <CaptureHistory layout={historyLayout} />
+        </div>
         {showingPreview ? (
           <div
-            className="qx-screencap-preview-pane"
+            className="qx-content-detail qx-screencap-preview-pane"
             data-qx-region="screencap-preview"
             data-qx-region-label={t("screencap.previewTitle", "Capture Preview")}
             data-qx-region-scroll
@@ -639,18 +648,7 @@ export default function ScreenRecorder() {
           >
             <GifPreview path={lastGifPath!} onClose={handleNewRecording} />
           </div>
-        ) : (
-          <div
-            className="qx-content-list qx-screencap-history-pane"
-            data-qx-region="screencap-history"
-            data-qx-region-label={t("screencap.history.region", "Capture history")}
-            data-qx-region-initial="true"
-            data-qx-region-scroll
-            tabIndex={-1}
-          >
-            <CaptureHistory layout={historyLayout} />
-          </div>
-        )}
+        ) : null}
       </div>
     </QxShell>
   );

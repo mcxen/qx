@@ -123,7 +123,7 @@ try {
 | `actions` | 条目动作；可用 `command` 映射 manifest command，或交给 `onAction` |
 | `raw` | 业务对象，供 `onSelect` / 详情映射 |
 
-**指针与键盘（宿主 workbench 内置）**：点击 List / Gallery 条目时宿主会立即显示新选中态，再异步调用插件 `onSelect`。List 由 `↑` / `↓` 线性移动；Gallery 由 `←` / `→` 同行移动、`↑` / `↓` 按当前响应式列数跨行移动。焦点在过滤框时，上下键继续浏览集合；Gallery 空查询的左右键也浏览网格，有查询文字时才保留左右光标。两种布局都支持 `PageUp` / `PageDown`、`Home` / `End` 与 `Enter` 主动作。即使发布 Workbench 的隐藏 iframe 暂时保留焦点，宿主也会接管集合导航键。业务插件仍应在 `onSelect` 里更新 `selectedId` 再 `mountWorkbench`；**不要**自己绑全局方向键。
+**指针与键盘（宿主 workbench 内置）**：List / Gallery 默认占满 Main Area；点击带详情的条目时宿主会立即显示新选中态，并切换为左侧保留当前集合、右侧打开详情，再异步调用插件 `onSelect`。List 由 `↑` / `↓` 线性移动；Gallery 由 `←` / `→` 同行移动、`↑` / `↓` 按当前响应式列数跨行移动。焦点在过滤框时，上下键继续浏览集合；Gallery 空查询的左右键也浏览网格，有查询文字时才保留左右光标。两种布局都支持 `PageUp` / `PageDown`、`Home` / `End`；Enter 对带详情条目先打开详情，无详情时才执行 Primary。Esc 先关闭详情并恢复全宽集合。即使发布 Workbench 的隐藏 iframe 暂时保留焦点，宿主也会接管集合导航键。业务插件仍应在 `onSelect` 里更新 `selectedId` 再 `mountWorkbench`；**不要**自己绑全局方向键或复制 split view。
 
 **受控状态契约**：`query`、tabs 的 `active`、`selectedId` 由插件业务状态最终确认，但宿主会先即时呈现用户输入/点击。`onQuery`、`onTab`、`onSelect` 必须同步修改本地 state 并调用一次 `paint()`；不要先 `await` 网络或 CLI。慢加载应在回画之后 debounce/cancel，并用 generation 防止旧查询覆盖新结果。条目 `id` 与 action `id` 在当前发布中必须稳定且唯一。
 

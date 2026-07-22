@@ -142,6 +142,7 @@
 | 主线程 UI / 后台算力 | `runtime/` | `runtime::ui` · `runtime::blocking` · `runtime::install`（见 runtime-threading.md） |
 | 系统信息 / 设置目的地 | `system_information` · `plugin_system` | `context.system.info/storage/network/power/stats/processes/openSettings`；插件只见同形数据和语义 section，不见 PowerShell / AppKit / `ms-settings:`；静态 CPU 拓扑/缓存和内核 family/release 只进一次性信息快照，缺失的缓存层级不猜测，实时负载独立采样；Power 模型将电池存在、外接电源、充电与充满拆成独立状态，健康/容量字段按硬件能力可选；macOS 内存必须使用 SDK 匹配的 `vm_statistics64` 布局与真实页大小，CPU 累计 tick 的近同时多消费者读取复用稳定样本，APFS 存储统计读取 Data volume 而非只读系统快照 |
 | 本地路径打开 / 揭示 | `plugin_system` | `src/system/pathActions.ts` · `context.system.openPath/revealPath`；内置模块与插件共享平台语义，不直接依赖 WebView opener 的路径 ACL / canonicalize |
+| Qx 磁盘占用 / 缓存清理 | `storage` | `qx_storage_overview` · `qx_storage_clear_cache_target`；统计和删除共用注册表，只删除可重建目标，历史、生成文件和 `plugin-data` 保持独立语义 |
 
 Feature（如 `screencap`）只保留：**session / 工作流 / 历史 / UI 语义**。旧名 `screencap_list_*` 可作为薄门面保留，新代码必须走系统命令。
 

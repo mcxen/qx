@@ -13,7 +13,8 @@ export const PLUGIN_WORKBENCH_REGIONS = qxMasterDetailIds("plugin-workbench");
 
 interface PluginWorkbenchViewProps {
   state: PluginWorkbenchState;
-  onSelect: (id: string) => void;
+  detailOpen: boolean;
+  onActivate: (id: string) => void;
 }
 
 function toneClass(tone: string | undefined): string {
@@ -55,7 +56,11 @@ function WorkbenchDetail({ detail, emptyText }: { detail?: PluginWorkbenchDetail
   );
 }
 
-export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbenchViewProps) {
+export default function PluginWorkbenchView({
+  state,
+  detailOpen,
+  onActivate,
+}: PluginWorkbenchViewProps) {
   const t = useT();
   const items = state.items || [];
   const selectedIndex = useMemo(() => {
@@ -86,6 +91,107 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
   const galleryStyle = gallery
     ? { "--qx-workbench-gallery-columns": state.layout?.columns || 4 } as CSSProperties
     : undefined;
+  const detailOnly = items.length === 0 && Boolean(state.detail);
+
+  const collection = gallery ? (
+    <div
+      ref={listRef}
+      className={`qx-content-list qx-host-workbench-gallery aspect-${state.layout?.aspectRatio || "landscape"}${densityClass}`}
+      style={galleryStyle}
+      role="listbox"
+      {...qxRegionProps(PLUGIN_WORKBENCH_REGIONS.list, { initial: true, label: listTitle })}
+    >
+      {items.length ? items.map((item, index) => {
+        const id = item.id;
+        return (
+          <button
+            key={id}
+            type="button"
+            {...getItemProps(index, { className: "qx-host-workbench-gallery-card", baseClass: false })}
+            onClick={() => onActivate(id)}
+          >
+            <span className="qx-host-workbench-gallery-image">
+              {item.image?.url ? (
+                <img
+                  src={item.image.url}
+                  alt={item.image.alt || ""}
+                  loading="lazy"
+                  style={{ objectFit: item.image.fit || "cover" }}
+                />
+              ) : (
+                <span aria-hidden="true">{item.icon || "•"}</span>
+              )}
+            </span>
+            <span className="qx-host-workbench-gallery-copy">
+              <strong>{item.title}</strong>
+              {item.subtitle ? <small>{item.subtitle}</small> : null}
+            </span>
+            {(item.badge || item.meta) ? (
+              <span className={`qx-host-workbench-gallery-badge${toneClass(item.tone)}`}>
+                {item.badge || item.meta}
+              </span>
+            ) : null}
+          </button>
+        );
+      }) : (
+        <div className="qx-content-detail-empty qx-host-workbench-empty">
+          {state.emptyText || (state.loading
+            ? t("plugins.workbench.loading", "Loading…")
+            : t("plugins.workbench.empty", "No results"))}
+        </div>
+      )}
+    </div>
+  ) : (
+    <div
+      ref={listRef}
+      className="qx-content-list qx-plugin-list qx-host-workbench-list"
+      role="listbox"
+      {...qxRegionProps(PLUGIN_WORKBENCH_REGIONS.list, { initial: true, label: listTitle })}
+    >
+      <div className="qx-section-header qx-host-workbench-list-header">
+        <span>{listTitle}</span>
+        <span>{state.loading ? "…" : items.length}</span>
+      </div>
+      {items.length ? items.map((item, index) => {
+        const id = item.id;
+        return (
+          <button
+            key={id}
+            type="button"
+            {...getItemProps(index, { className: "tall qx-host-workbench-row" })}
+            onClick={() => onActivate(id)}
+          >
+            <span className="qx-host-workbench-icon" aria-hidden="true">{item.icon || "•"}</span>
+            <span className="qx-list-copy">
+              <strong className="qx-list-title">{item.title}</strong>
+              {item.subtitle ? <small>{item.subtitle}</small> : null}
+              {item.progress != null ? (
+                <span className="qx-host-workbench-progress" aria-label={`${Math.round(item.progress)}%`}>
+                  <i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }} />
+                </span>
+              ) : null}
+            </span>
+            {(item.badge || item.meta) ? (
+              <span className={`qx-host-workbench-accessory qx-host-workbench-badge${toneClass(item.tone)}`}>
+                {item.badge || item.meta}
+              </span>
+            ) : null}
+          </button>
+        );
+      }) : shouldShowQxListLoading(Boolean(state.loading), items.length) ? (
+        <QxListLoading
+          ariaLabel={loadingText}
+          label={loadingText}
+          rows={6}
+          variant="tall"
+        />
+      ) : (
+        <div className="qx-content-detail-empty qx-host-workbench-empty">
+          {state.emptyText || t("plugins.workbench.empty", "No results")}
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className="qx-host-workbench" aria-busy={state.loading || undefined}>
@@ -95,117 +201,37 @@ export default function PluginWorkbenchView({ state, onSelect }: PluginWorkbench
           {state.error ? <span className="is-danger">{state.error}</span> : null}
         </div>
       )}
-      {gallery ? (
+      {detailOnly ? (
         <div
-          ref={listRef}
-          className={`qx-host-workbench-gallery aspect-${state.layout?.aspectRatio || "landscape"}${densityClass}`}
-          style={galleryStyle}
-          role="listbox"
-          {...qxRegionProps(PLUGIN_WORKBENCH_REGIONS.list, { initial: true, label: listTitle })}
-        >
-          {items.length ? items.map((item, index) => {
-            const id = item.id;
-            return (
-              <button
-                key={id}
-                type="button"
-                {...getItemProps(index, { className: "qx-host-workbench-gallery-card", baseClass: false })}
-                onClick={() => onSelect(id)}
-              >
-                <span className="qx-host-workbench-gallery-image">
-                  {item.image?.url ? (
-                    <img
-                      src={item.image.url}
-                      alt={item.image.alt || ""}
-                      loading="lazy"
-                      style={{ objectFit: item.image.fit || "cover" }}
-                    />
-                  ) : (
-                    <span aria-hidden="true">{item.icon || "•"}</span>
-                  )}
-                </span>
-                <span className="qx-host-workbench-gallery-copy">
-                  <strong>{item.title}</strong>
-                  {item.subtitle ? <small>{item.subtitle}</small> : null}
-                </span>
-                {(item.badge || item.meta) ? (
-                  <span className={`qx-host-workbench-gallery-badge${toneClass(item.tone)}`}>
-                    {item.badge || item.meta}
-                  </span>
-                ) : null}
-              </button>
-            );
-          }) : (
-            <div className="qx-content-detail-empty qx-host-workbench-empty">
-              {state.emptyText || (state.loading
-                ? t("plugins.workbench.loading", "Loading…")
-                : t("plugins.workbench.empty", "No results"))}
-            </div>
-          )}
-        </div>
-      ) : <div className={`qx-content-split qx-host-workbench-split${densityClass}`}>
-        <div
-          ref={listRef}
-          className="qx-content-list qx-plugin-list"
-          role="listbox"
-          {...qxRegionProps(PLUGIN_WORKBENCH_REGIONS.list, { initial: true, label: listTitle })}
-        >
-          <div className="qx-section-header qx-host-workbench-list-header">
-            <span>{listTitle}</span>
-            <span>{state.loading ? "…" : items.length}</span>
-          </div>
-          {items.length ? items.map((item, index) => {
-            const id = item.id;
-            return (
-              <button
-                key={id}
-                type="button"
-                {...getItemProps(index, { className: "tall qx-host-workbench-row" })}
-                onClick={() => onSelect(id)}
-              >
-                <span className="qx-host-workbench-icon" aria-hidden="true">{item.icon || "•"}</span>
-                <span className="qx-list-copy">
-                  <strong className="qx-list-title">{item.title}</strong>
-                  {item.subtitle ? <small>{item.subtitle}</small> : null}
-                  {item.progress != null ? (
-                    <span className="qx-host-workbench-progress" aria-label={`${Math.round(item.progress)}%`}>
-                      <i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }} />
-                    </span>
-                  ) : null}
-                </span>
-                {(item.badge || item.meta) ? (
-                  <span className={`qx-host-workbench-accessory qx-host-workbench-badge${toneClass(item.tone)}`}>
-                    {item.badge || item.meta}
-                  </span>
-                ) : null}
-              </button>
-            );
-          }) : shouldShowQxListLoading(Boolean(state.loading), items.length) ? (
-            <QxListLoading
-              ariaLabel={loadingText}
-              label={loadingText}
-              rows={6}
-              variant="tall"
-            />
-          ) : (
-            <div className="qx-content-detail-empty qx-host-workbench-empty">
-              {state.emptyText || t("plugins.workbench.empty", "No results")}
-            </div>
-          )}
-        </div>
-        <section
-          className="qx-content-detail qx-plugin-detail"
+          className="qx-content-detail qx-plugin-detail qx-host-workbench-detail-only"
           {...qxRegionProps(PLUGIN_WORKBENCH_REGIONS.detail, {
+            initial: true,
             label: t("plugins.workbench.detail", "Detail"),
             scroll: true,
           })}
         >
           <WorkbenchDetail
-            detail={detail}
+            detail={state.detail}
             emptyText={t("plugins.workbench.select", "Select an item")}
           />
-        </section>
-      </div>}
+        </div>
+      ) : detailOpen ? (
+        <div className={`qx-content-split qx-host-workbench-split has-detail${gallery ? " is-gallery" : ""}${densityClass}`}>
+          {collection}
+          <div
+            className="qx-content-detail qx-plugin-detail"
+            {...qxRegionProps(PLUGIN_WORKBENCH_REGIONS.detail, {
+              label: t("plugins.workbench.detail", "Detail"),
+              scroll: true,
+            })}
+          >
+            <WorkbenchDetail
+              detail={detail}
+              emptyText={t("plugins.workbench.select", "Select an item")}
+            />
+          </div>
+        </div>
+      ) : collection}
     </div>
   );
 }

@@ -73,7 +73,7 @@ QxShell (visual="elevated")
 | **OCR / RSS / Weather** | 各自模块设置 |
 | **Permissions** | macOS 权限 |
 | **Advanced** | 数据路径 · 托盘 · 诊断日志开关/级别/文件入口 · 网络 · 配置导入导出 · 清理 · 开发 · 重置 |
-| **About** | 版本与存储 |
+| **About** | 版本与存储；Storage 按模块列出可重建缓存并与历史、生成文件、插件持久数据分区 |
 
 ### 扩展列表显示名（i18n）
 

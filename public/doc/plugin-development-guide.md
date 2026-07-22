@@ -187,7 +187,7 @@ context.ui.mountWorkbench({
 
 宿主负责：Qx 明暗主题、搜索/tabs、列表与详情、键盘选择/滚动、底栏主动作、右侧 Actions、Cmd/Ctrl+K，以及灵动岛停靠/浮出。插件负责：获取业务数据、选择 id、动作处理和状态持久化。
 
-List / Gallery 的画布由宿主稳定保留：`items: []` 或少量结果不会折叠列表轨、详情分隔或 Gallery 区域。插件只需提供 `emptyText`，不要用占位假条目或自定义 CSS 撑开布局。
+List / Gallery 默认占满 Main Area；点击条目或对带 `detail` 的条目按 Enter 后，宿主自动切换为左侧保留当前集合、右侧打开详情，Esc 先关闭详情再返回全宽集合。Bing、Unsplash、Brew 等插件不需要各自实现 split view。`items: []` 或少量结果也不会折叠当前画布；无条目但存在面板级 `detail` 时详情直接全宽显示。插件只需提供 `emptyText` 和结构化 `detail`，不要用占位假条目或自定义 CSS 撑开布局。
 
 List 的 loading 反馈也由宿主管理：`loading: true` 且没有条目时显示标准骨架与 LoadingLabel；已有条目时继续呈现旧数据并在栏头显示 `…`。插件不要在刷新前清空仍然有效的缓存列表。
 
@@ -376,6 +376,8 @@ await context.storage.session.set("pageCache", items)  // 仅本次进程
 ```
 
 **升级/重装 zip 不会清空** preferences 与 persist / files；**卸载默认全删**。
+
+插件的 `persist` 与 `files` 是持久业务数据，Settings → Storage 的“清理全部缓存”不会删除它们。插件若把可重建响应放入 persist，应提供自己的明确清理 Action；宿主不会猜测某个 storage key 是否属于缓存，也不会把插件设置、历史或下载文件冒充成安全缓存。
 
 ### 3.3 端口分层（给架构读者）
 

@@ -6,6 +6,7 @@ use super::types::{Article, Feed, Folder};
 
 /// Managed Tauri state. Connection may be `None` if the first open failed;
 /// callers reconnect lazily via `ensure_open`.
+#[derive(Clone)]
 pub struct RssDb(pub Arc<Mutex<Option<Connection>>>);
 
 /// Open (or re-open) the DB into `slot` if empty.
@@ -321,6 +322,22 @@ pub fn update_feed_meta(
             error_count = 0
          WHERE id = ?4",
         params![title, icon, now, id],
+    )?;
+    Ok(())
+}
+
+pub fn all_feed_icons(conn: &Connection) -> rusqlite::Result<Vec<(i64, String, String)>> {
+    let mut stmt = conn.prepare("SELECT id, url, COALESCE(icon, '') FROM rss_feeds")?;
+    let rows = stmt
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .collect();
+    rows
+}
+
+pub fn update_feed_icon(conn: &Connection, id: i64, icon: &str) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE rss_feeds SET icon = ?1 WHERE id = ?2",
+        params![icon, id],
     )?;
     Ok(())
 }

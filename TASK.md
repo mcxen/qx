@@ -388,14 +388,61 @@
 - [ ] macOS：主屏右上、多 Space、不抢当前输入焦点、番茄钟暂停动作与多插件轮播。
 - [ ] Windows：主屏工作区右上、任务栏避让、always-on-top 与前台输入焦点。
 
+## Performance — RSS 与 Launcher 图标缓存收口
+
+**状态**：已完成代码实现，等待真实订阅和应用目录运行态复核。
+
+- RSS 订阅图标首次解析后下载到本地，解码并收缩为最长边 64px PNG；启动时后台补齐旧数据库中的远程图标，30 天内直接复用磁盘缓存，网络失败继续使用过期缓存或字母占位。
+- RSS Feed 列表与 Launcher Module Surface 同时识别 macOS、Windows 本地缓存路径，不再因路径格式差异回退或重复请求远程 favicon。
+- Launcher 应用图标缓存统一限制为最长边 128px PNG；macOS 使用系统 `sips` 转换/压缩，并在后台预加载时迁移既有超尺寸缓存，其他平台使用共享图片解码降采样。
+- Storage 的 Cache 统计与清理范围纳入 RSS 图标缓存。
+
+### 验证
+
+- [x] `cargo check`
+- [x] `cargo test --lib rss::icon_cache::tests::cached_feed_icons_are_bounded`
+- [x] `cargo test --lib apps::tests::cached_application_icons_are_compacted`
+- [x] `npx tsc --noEmit` / `npm run check` / `npm run build`
+- [ ] macOS：连续两次打开 RSS，第二次无 favicon 网络请求；抽查应用缓存图标尺寸不超过 128px。
+
+## Refactor — Settings Storage 模块缓存注册表与精确清理
+
+**状态**：已完成代码、接口与规范同步，等待发布后跨平台运行态复核。
+
+- Storage 从 About 大组件拆为独立设置表面，区分可重建模块缓存、历史/离线内容、生成文件和受保护数据位置；每个缓存目标显示真实模块、路径、大小和文件数，可逐项清理或一次清理全部缓存。
+- Rust 端以单一缓存目标注册表同时驱动统计与清理，覆盖 Launcher 应用图标、RSS 图标、剪贴板派生预览、V2EX、Weather、Marketplace、Updater、OCR、文件搜索索引和录屏临时目录；修复原统计了更新目录却未实际清理、Windows 应用图标路径不一致及多个模块缓存漏统的问题。
+- 新增 `qx_storage_clear_cache_target(target_id)`；只接受注册 id，并拒绝 Home、Qx state/data/cache 根目录、输出目录及非绝对路径。清理目录时不跟随根符号链接，避免缓存路径被替换后穿透删除。
+- `plugin-data` 作为持久数据独立统计，不计入可重建缓存；清理全部缓存明确保留设置、插件、插件数据、历史和已保存截图/录屏。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `cargo test --lib storage::tests` / `cargo check` / `cargo fmt --check`
+- [x] `npm run check` / `npm run build`
+- [ ] macOS / Windows：逐项清理模块缓存、清理全部缓存、受保护数据保持不变。
+
 ## Fix — Workbench 稀疏 List / Gallery 稳定画布
 
 **状态**：已完成宿主修复，等待插件运行态视觉复核。
 
-- 空 List 继续保留左侧列表轨、右边界和详情区，不因零条或少量条目视觉消失。
+- List / Gallery 默认占满 Main Area；打开条目后才进入左侧集合 + 右侧详情，不因零条或少量条目视觉塌缩。
 - 空 Gallery 的空态跨满整个画布，不再只占第一个网格单元；少量卡片时仍显示完整 Gallery 表面。
 - 修复位于宿主 Workbench 端口，所有声明式插件共享，不要求插件各自补 CSS。
 - Workbench List 空载与刷新状态改用 V2EX 同款宿主协议：左栏 header/计数始终存在，首次加载显示 skeleton + LoadingLabel，已有数据刷新保持旧条目并显示 `…`。
+
+## Fix — Workbench List / Gallery 统一详情开启布局
+
+**状态**：已完成宿主实现与规范同步，等待市场插件运行态视觉复核。
+
+- `PluginHost` 统一持有详情开启状态；List / Gallery 浏览态均为全宽集合，点击条目或对带详情条目按 Enter 后切换为左侧保留当前集合、右侧显示结构化详情。
+- Esc 阶梯统一为详情 → Workbench query → launcher；切换 tab 或修改 query 会关闭旧详情并返回集合，关闭详情后焦点恢复到集合区域。
+- Qx Bing Wallpaper、Unsplash、Brew、QxGH、Sysinfo、Pomodoro 等所有 `mountWorkbench` 消费者共享宿主行为，无需修改插件业务代码；无条目但存在面板级 detail 时直接全宽显示详情。
+- Gallery 详情打开后仍按实际响应式列数导航；详情区域获得焦点时方向键保留给详情阅读，不被网格处理器截获。
+
+### 验证
+
+- [x] `npx tsc --noEmit` / `npm run test:shell-navigation` / `npm run check` / `npm run build`
+- [ ] macOS：Qx Bing / Unsplash Gallery、Brew / Sysinfo List 连续验证全宽浏览、打开详情、Esc 返回、query/tab 重置。
 
 ## Fix — Search Settings ownership and Home System Island metrics
 
@@ -481,10 +528,10 @@
 
 **状态**：已实现，等待运行态视觉与真实媒体复核。
 
-- 捕获历史新增持久化的列表 / 图库切换；列表和图库均占满主内容区，选择后在同一主内容区进入全宽预览，不再渲染固定右侧详情。
+- 捕获历史新增持久化的列表 / 图库切换；未打开条目时列表和图库均占满主内容区，选择后进入标准 Workbench 主从布局，左侧保留当前集合、右侧显示详情。
 - 截图/GIF 使用图片缩略图，MP4/MOV 使用视频首帧；两种布局共享选择、预览、删除与 QxShell 键盘导航。
 - 移除模块内重复的上下键监听，统一走 Shell navigation + `useQxListSelection` 滚动追随。
-- Gallery 改为默认浏览面，网格占满 Main Area；点击后进入独立预览，Esc 返回网格，List 保留为可选紧凑视图。
+- Gallery 改为默认浏览面，网格占满 Main Area；点击后保留左侧网格并在右侧显示详情，Esc 关闭详情并返回全宽网格，List 保留为可选紧凑视图并遵循同一主从布局。
 - Rust 录屏统一优先使用原生连续视频流，区域录制在流帧上裁剪；修复慢帧后额外等待完整帧间隔导致的实际 FPS 腰斩。
 - 录制控制岛与历史媒体卡片显示实测 fps，便于区分“目标 30fps”和实际编码吞吐。
 - 捕获岛关闭 / 取消常驻会回传并持久化 `controls_pinned=false`，后台恢复与重启不再复活空闲岛。
@@ -804,7 +851,7 @@
 - Launcher 新增“开始截图 / 开始录制”独立 command；Shortcuts 新增默认关闭的截图快捷键，录屏快捷键改为直接开始圈选。
 - Shortcuts 新增默认关闭的“显示/隐藏捕获灵动岛”（`Alt+Shift+C`）动作；截图完成动作可选自动复制到剪贴板或仅保存，复制失败不回滚已保存历史。
 - 原录制控制条扩展为空闲捕获灵动岛，可由用户选择长期置顶外显；空闲提供截图/录制，录制时保持原停止与状态能力。
-- 捕获岛新增历史入口；历史区重构为 Qx 标准单栏列表/图库（类型图标、主信息、元信息、行内删除）与全宽预览，移除右侧详情配置和嵌套交互按钮。
+- 捕获岛新增历史入口；历史区重构为 Qx 标准列表/图库集合（类型图标、主信息、元信息、行内删除），未打开条目时全宽浏览，打开后左侧保留集合、右侧呈现详情，并移除旧的详情配置入口和嵌套交互按钮。
 - 圈选改为两阶段确认：首次框选后可移动、四角缩放，再选择截图或录制；截图可添加文字和箭头，浏览器生成透明标注层，Rust 按捕获实际像素缩放并合成进 PNG。
 - 修复捕获入口先隐藏全部 Qx 窗口、选区打开失败后看似整应用闪退的问题：选区成功映射后才隐藏来源窗口，失败时保留原界面并记录诊断。
 - 区域录制期间保留受保护、鼠标穿透的录制边框，录制岛定位到边框下方；停止后恢复原选区的拖动、缩放和重复捕获，不再强制丢弃选区返回主界面。

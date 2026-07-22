@@ -18,7 +18,7 @@
 
 | 文件 | 职责 |
 |---|---|
-| `apps.rs` | 扫描 `/Applications`、`~/Applications`、系统内建 utilities，解析 `Info.plist`，`sips` 生成 icon PNG，中文 pinyin fuzzy 匹配 (`apps_zh_dict.rs`) |
+| `apps.rs` | 扫描 `/Applications`、`~/Applications`、系统内建 utilities，解析 `Info.plist`，macOS 用 `sips` 生成最长边 128px 的紧凑 icon PNG（并迁移旧超尺寸缓存），中文 pinyin fuzzy 匹配 (`apps_zh_dict.rs`) |
 | `apps_zh_dict.rs` | 常见 macOS app 的中文别名 → pinyin 词典 |
 | `file_search.rs` + `file_search/platform_{macos,windows}.rs` | 共享文件分类、去重、排序与 latest-wins 调度；macOS Cardinal/Spotlight 和 Windows Everything 分别封装在平台适配器中。Windows 使用 Qx 私有命名实例与 LocalAppData 下的私有后台配置，不读取或拉起用户 Everything 界面；ES 结果通过 UTF-8 文本导出读取，不依赖控制台代码页 |
 | `history.rs` | `launch_history` / `search_history` / `search_click_events` SQLite 表；`record_*` 后台写入，`get_*` 批量读取；搜索结果 30 天点击量聚合供推荐加权 |
@@ -35,7 +35,7 @@
 | 文件 | 数据库 | 说明 |
 |---|---|---|
 | `clipboard.rs` + `clipboard/{native,capture,file_list}.rs` | `Application Support/qx/clipboard.db` | 始终 `manage(ClipboardDb(Option<Connection>))`；失败可 lazy 重连；后台按系统序号轮询，读取成功后才提交游标；Windows `CF_HDROP` / macOS file URL 统一为有序 file-list，捕获时不因 UNC/离线路径暂不可达而丢弃 |
-| `rss/mod.rs` + `fetcher.rs` + `storage.rs` + `types.rs` | `Application Support/qx/rss.db` | **始终** `manage(RssDb(Option<Connection>))` + `ensure_open`；schema 升级在事务内先补旧库列、再创建依赖索引；feed-rs / OPML / folders；文章 `reading_progress` 归一化持久化；首次打开写入默认订阅目录；订阅图标：feed icon/logo → 站点 favicon（Google S2，AnyFeeder 等桥接源用文章域名） |
+| `rss/mod.rs` + `fetcher.rs` + `icon_cache.rs` + `storage.rs` + `types.rs` | `Application Support/qx/rss.db` + `cache/rss-icons` | **始终** `manage(RssDb(Option<Connection>))` + `ensure_open`；schema 升级在事务内先补旧库列、再创建依赖索引；feed-rs / OPML / folders；文章 `reading_progress` 归一化持久化；首次打开写入默认订阅目录；订阅图标按 feed icon/logo → 站点 favicon 解析后压为最长边 64px 的本地 PNG，30 天内直接复用并以 stale cache 抵御网络失败 |
 | `v2ex.rs` | `cache/v2ex/*.json` | 抓 v2ex.com JSON；**内存 + 磁盘 TTL 缓存**（topics ~3min，replies ~2min，失败可回退 stale）；hot/latest 无需 token，node/notification 需 token（命令可接收插件 preference 的 `token` 覆盖）；市场插件 `v2ex` 走 `invoke:v2ex_*` + 插件 persist SWR |
 | `weather.rs` (host API for marketplace **Weather** plugin + optional built-in) | 无 | ipapi.co 定位 → Open-Meteo（默认）或 OpenWeatherMap（需 key） |
 | `github_calendar.rs` | 无 | 抓 GitHub profile 页面提取 `ContributionCalendar` |
@@ -64,7 +64,7 @@
 |---|---|
 | `marketplace/mod.rs` | `.qx-plugin` 安装、签名（ed25519）、`~/.qx/plugins/<id>/` 落盘、`index.json` 抓取、Raycast extension 转换、开发脚手架 |
 | `permissions.rs` | macOS TCC：屏幕录制 / 辅助功能 / 输入监控 状态与请求 |
-| `storage.rs` | 分桶统计 `~/.qx` 磁盘占用；`clear_cache/clear_files/clear_clipboard` |
+| `storage.rs` | 统一缓存目标注册表驱动存储统计与精确清理；逐模块 `clear_cache_target` 只接受注册目标并保护 state/data/cache 根目录，历史、生成文件和插件持久数据使用独立语义 |
 | `settings/mod.rs` | `~/.qx/settings.json` 读写；写入后 re-register 全局快捷键 + 刷新托盘菜单 + emit `settings-updated` |
 | `settings/entry_config.rs` | Launcher 快捷入口与托盘动作的默认配置；兼容识别旧版默认快捷入口，避免覆盖用户自定义 |
 | `updater.rs` + `updater/` | 读取 per-target release manifest，校验资产，并编排 macOS bundle / Windows NSIS helper 更新 |

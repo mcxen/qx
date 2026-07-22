@@ -49,7 +49,7 @@
 
 - 前端端口 `useQxModuleShell`（`src/hooks/useQxModuleShell.ts`）
 - 扩展宿主 `PluginPanelViewport` 使用同一 leave / Esc / Island / Actions 菜单装配
-- Workbench 的列表导航、主从 region、Actions 由宿主管；custom panel 仍由插件自管
+- Workbench 的全宽集合浏览、详情开启状态、主从 region、Esc 与 Actions 由宿主管；custom panel 仍由插件自管
 - Custom panel 的 resolved Light/Dark、`.dark` 和公开语义/Qx 兼容 token 由
   `pluginTheme` 统一投影；主题 class 或宿主外观 style token 变化时经 Shell bridge
   广播，插件不得用单一主题 fallback 猜测宿主颜色
@@ -97,7 +97,8 @@ pointer click / host keydown / hidden iframe forwarded key
 - Workbench 可见时，业务 iframe 保留运行但使用 `display:none` 退出布局与 pointer hit-testing；鼠标只能命中宿主 List/Gallery。
 - iframe 若在首次发布前暂时持有焦点，集合键通过 `qx:host-keydown` 重新派发到所属 iframe 元素，只进入当前 QxShell；后台 worker 无法劫持可见面板按键。
 - List 使用上下/Page/Home/End；Gallery 使用实际 CSS 网格列数做左右/上下二维移动。搜索框有文字时左右保留 caret，空查询时左右浏览 Gallery；IME 与带修饰键事件始终让给编辑器/系统。
-- Enter 使用同一 primary action；Cmd/Ctrl+K 使用同一 QxShell Actions；自定义 panel 仍自管其 DOM 内交互，但不得注册进程级集合键或 Esc。
+- List / Gallery 浏览态占满 Main Area；pointer 激活或 Enter 打开带详情条目后，宿主挂载左集合 + 右详情并把焦点交给 detail region。Esc 卸载详情并恢复集合焦点；query/tab 变化也关闭旧详情。无条目但存在面板级 detail 时直接使用全宽详情。
+- Enter 对带详情条目优先打开详情，无详情时使用同一 primary action；Cmd/Ctrl+K 使用同一 QxShell Actions；自定义 panel 仍自管其 DOM 内交互，但不得注册进程级集合键或 Esc。
 
 **调度稳定性**（Bing 自动换壁纸 thrash 修复）：
 

@@ -1,8 +1,10 @@
 pub mod fetcher;
+mod icon_cache;
 pub mod storage;
 pub mod types;
 
 use rusqlite::params;
+use std::path::Path;
 use std::sync::Arc;
 use tauri::{command, Manager, State};
 
@@ -28,7 +30,30 @@ pub fn init(app: &tauri::AppHandle) {
             None
         }
     };
-    app.manage(RssDb(Arc::new(std::sync::Mutex::new(conn))));
+    let db = RssDb(Arc::new(std::sync::Mutex::new(conn)));
+    app.manage(db.clone());
+    tauri::async_runtime::spawn(warm_feed_icon_cache(db));
+}
+
+async fn warm_feed_icon_cache(db: RssDb) {
+    let feeds = {
+        let mut guard = db.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let Ok(conn) = storage::ensure_open(&mut guard) else {
+            return;
+        };
+        storage::all_feed_icons(conn).unwrap_or_default()
+    };
+
+    for (id, url, source) in feeds {
+        let cached = icon_cache::resolve(&url, &source).await;
+        if cached == source || cached.is_empty() {
+            continue;
+        }
+        let mut guard = db.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Ok(conn) = storage::ensure_open(&mut guard) {
+            let _ = storage::update_feed_icon(conn, id, &cached);
+        }
+    }
 }
 
 fn with_db<F, R>(state: &State<RssDb>, f: F) -> Result<R, String>
@@ -87,13 +112,24 @@ fn prune_feed(conn: &rusqlite::Connection, feed_id: i64) -> rusqlite::Result<()>
 #[command]
 pub fn rss_list_feeds(state: State<RssDb>) -> Result<Vec<Feed>, String> {
     with_db(&state, |conn| {
-        storage::list_feeds(conn).map_err(|e| format!("{e}"))
+        let mut feeds = storage::list_feeds(conn).map_err(|e| format!("{e}"))?;
+        for feed in &mut feeds {
+            let icon = feed.icon.trim();
+            if !icon.is_empty()
+                && !(icon.starts_with("https://") || icon.starts_with("http://"))
+                && !Path::new(icon).is_file()
+            {
+                feed.icon = fetcher::resolve_feed_icon(&feed.url, "", &[]);
+            }
+        }
+        Ok(feeds)
     })
 }
 
 #[command]
 pub async fn rss_add_feed(state: State<'_, RssDb>, url: String) -> Result<Feed, String> {
-    let parsed = fetcher::fetch_and_parse(&url).await?;
+    let mut parsed = fetcher::fetch_and_parse(&url).await?;
+    parsed.icon = icon_cache::resolve(&url, &parsed.icon).await;
     with_db(&state, |conn| {
         let id = storage::insert_feed(conn, &url, &parsed.title, &parsed.icon)
             .map_err(|e| format!("{e}"))?;
@@ -203,7 +239,8 @@ pub fn rss_toggle_star(state: State<RssDb>, id: i64, is_starred: bool) -> Result
 pub async fn rss_refresh_feed(state: State<'_, RssDb>, id: i64) -> Result<usize, String> {
     let url = with_db(&state, |conn| Ok(storage::feed_url_by_id(conn, id)))?;
     let url = url.ok_or_else(|| "feed not found".to_string())?;
-    let parsed = fetcher::fetch_and_parse(&url).await?;
+    let mut parsed = fetcher::fetch_and_parse(&url).await?;
+    parsed.icon = icon_cache::resolve(&url, &parsed.icon).await;
     let count = parsed.articles.len();
     with_db(&state, |conn| {
         for a in &parsed.articles {
@@ -230,7 +267,8 @@ pub async fn rss_refresh_all(state: State<'_, RssDb>) -> Result<usize, String> {
     let mut total = 0usize;
     for (id, url) in feeds {
         match fetcher::fetch_and_parse(&url).await {
-            Ok(parsed) => {
+            Ok(mut parsed) => {
+                parsed.icon = icon_cache::resolve(&url, &parsed.icon).await;
                 total += parsed.articles.len();
                 let _ = with_db(&state, |conn| {
                     for a in &parsed.articles {
@@ -265,15 +303,18 @@ pub async fn rss_import_opml(state: State<'_, RssDb>, content: String) -> Result
     for entry in entries {
         let parsed = fetcher::fetch_and_parse(&entry.url).await.ok();
         let (t, icon, articles) = match parsed {
-            Some(p) => (
-                if p.title.is_empty() {
-                    entry.title.clone()
-                } else {
-                    p.title
-                },
-                p.icon,
-                p.articles,
-            ),
+            Some(mut p) => {
+                p.icon = icon_cache::resolve(&entry.url, &p.icon).await;
+                (
+                    if p.title.is_empty() {
+                        entry.title.clone()
+                    } else {
+                        p.title
+                    },
+                    p.icon,
+                    p.articles,
+                )
+            }
             None => (entry.title.clone(), String::new(), Vec::new()),
         };
         let folder_name = entry.folder.clone();

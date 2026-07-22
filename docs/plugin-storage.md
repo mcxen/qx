@@ -107,6 +107,8 @@
 | **卸载** | 删除 | **默认删除**；高级选项「保留数据」可后续做 |
 | **清除数据** | 不动 | 按 scope 清空（UI / API） |
 
+Settings → About → Storage 会把 `plugin-data/` 作为**受保护的持久数据**单独统计；“清理全部缓存”和逐模块缓存清理都不会删除这里的 preferences、persist KV 或 files。需要清除插件数据时必须走 `plugin_data_clear` 的显式 scope 与独立确认，不能把插件持久数据注册成宿主可重建缓存。
+
 ### 升级算法（必须）
 
 ```text

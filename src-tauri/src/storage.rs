@@ -23,8 +23,20 @@ pub struct StoragePath {
 #[derive(Debug, Serialize)]
 pub struct StorageOverview {
     pub total_bytes: u64,
+    pub reclaimable_bytes: u64,
+    pub cache_targets: Vec<StorageCacheTarget>,
     pub buckets: Vec<StorageBucket>,
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Default)]
+pub struct StorageCacheTarget {
+    pub id: String,
+    pub module: String,
+    pub label: String,
+    pub paths: Vec<StoragePath>,
+    pub bytes: u64,
+    pub files: u64,
 }
 
 #[derive(Debug, Serialize, Default)]
@@ -48,11 +60,26 @@ fn qx_home_dir() -> PathBuf {
 }
 
 fn icons_dir() -> PathBuf {
-    qx_home_dir().join("icons")
+    #[cfg(target_os = "macos")]
+    {
+        return qx_home_dir().join("icons");
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        crate::paths::cache_dir().join("icons")
+    }
+}
+
+fn rss_icons_dir() -> PathBuf {
+    crate::paths::cache_dir().join("rss-icons")
 }
 
 fn plugins_dir() -> PathBuf {
     qx_home_dir().join("plugins")
+}
+
+fn plugin_data_dir() -> PathBuf {
+    qx_home_dir().join("plugin-data")
 }
 
 fn ocr_models_dir() -> PathBuf {
@@ -83,6 +110,26 @@ fn clipboard_images_dir() -> PathBuf {
     app_support_dir().join("clipboard_images")
 }
 
+fn file_search_cache_paths() -> Vec<PathBuf> {
+    #[cfg(target_os = "macos")]
+    {
+        return vec![dirs::cache_dir()
+            .unwrap_or_else(std::env::temp_dir)
+            .join("qx")
+            .join("cardinal-search-cache.zstd")];
+    }
+    #[cfg(target_os = "windows")]
+    {
+        return vec![crate::paths::cache_dir()
+            .join("search")
+            .join("everything-exports")];
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        Vec::new()
+    }
+}
+
 const DATABASE_FILES: &[&str] = &[
     "apps.db",
     "clipboard.db",
@@ -107,6 +154,108 @@ fn recording_temp_dirs() -> Vec<PathBuf> {
                     .unwrap_or(false)
         })
         .collect()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CacheClearMode {
+    Contents,
+    File,
+    RemoveDirectory,
+}
+
+#[derive(Debug, Clone)]
+struct CacheTargetDefinition {
+    id: &'static str,
+    module: &'static str,
+    label: &'static str,
+    paths: Vec<PathBuf>,
+    mode: CacheClearMode,
+}
+
+fn cache_target_definitions() -> Vec<CacheTargetDefinition> {
+    let mut targets = vec![
+        CacheTargetDefinition {
+            id: "application-icons",
+            module: "launcher",
+            label: "Application Icons",
+            paths: vec![icons_dir()],
+            mode: CacheClearMode::Contents,
+        },
+        CacheTargetDefinition {
+            id: "rss-icons",
+            module: "rss",
+            label: "RSS Feed Icons",
+            paths: vec![rss_icons_dir()],
+            mode: CacheClearMode::Contents,
+        },
+        CacheTargetDefinition {
+            id: "clipboard-previews",
+            module: "clipboard",
+            label: "Clipboard Previews",
+            paths: vec![clipboard_images_dir().join("previews")],
+            mode: CacheClearMode::Contents,
+        },
+        CacheTargetDefinition {
+            id: "v2ex-responses",
+            module: "v2ex",
+            label: "V2EX Responses",
+            paths: vec![crate::paths::cache_dir().join("v2ex")],
+            mode: CacheClearMode::Contents,
+        },
+        CacheTargetDefinition {
+            id: "weather-response",
+            module: "weather",
+            label: "Weather Response",
+            paths: vec![crate::paths::cache_dir().join("weather-cache.json")],
+            mode: CacheClearMode::File,
+        },
+        CacheTargetDefinition {
+            id: "marketplace-archives",
+            module: "extensions",
+            label: "Marketplace Archives",
+            paths: vec![crate::paths::cache_dir().join("marketplace-repos")],
+            mode: CacheClearMode::Contents,
+        },
+        CacheTargetDefinition {
+            id: "update-packages",
+            module: "updater",
+            label: "Update Packages",
+            paths: vec![crate::paths::cache_dir().join("updates")],
+            mode: CacheClearMode::Contents,
+        },
+        CacheTargetDefinition {
+            id: "ocr-models",
+            module: "ocr",
+            label: "OCR Models",
+            paths: vec![ocr_models_dir()],
+            mode: CacheClearMode::Contents,
+        },
+    ];
+
+    let search_paths = file_search_cache_paths();
+    if !search_paths.is_empty() {
+        targets.push(CacheTargetDefinition {
+            id: "file-search-index",
+            module: "file-search",
+            label: "File Search Index",
+            paths: search_paths,
+            mode: if cfg!(target_os = "macos") {
+                CacheClearMode::File
+            } else {
+                CacheClearMode::Contents
+            },
+        });
+    }
+
+    let recording_paths = recording_temp_dirs();
+    targets.push(CacheTargetDefinition {
+        id: "screen-capture-temp",
+        module: "screen-capture",
+        label: "Screen Capture Temporary Files",
+        paths: recording_paths,
+        mode: CacheClearMode::RemoveDirectory,
+    });
+    targets
 }
 
 fn measure(path: &Path, warnings: &mut Vec<String>) -> (u64, u64) {
@@ -166,6 +315,37 @@ fn measure_paths(paths: &[PathBuf], warnings: &mut Vec<String>) -> (u64, u64) {
         let (b, f) = measure(p, warnings);
         bytes = bytes.saturating_add(b);
         files = files.saturating_add(f);
+    }
+    (bytes, files)
+}
+
+fn measure_children_excluding(
+    dir: &Path,
+    excluded_names: &[&str],
+    warnings: &mut Vec<String>,
+) -> (u64, u64) {
+    let entries = match fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return (0, 0),
+        Err(error) => {
+            warnings.push(format!("read {}: {error}", dir.display()));
+            return (0, 0);
+        }
+    };
+    let mut bytes = 0_u64;
+    let mut files = 0_u64;
+    for entry in entries.flatten() {
+        if entry
+            .file_name()
+            .to_str()
+            .map(|name| excluded_names.contains(&name))
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let (entry_bytes, entry_files) = measure(&entry.path(), warnings);
+        bytes = bytes.saturating_add(entry_bytes);
+        files = files.saturating_add(entry_files);
     }
     (bytes, files)
 }
@@ -251,6 +431,8 @@ pub async fn qx_storage_overview() -> StorageOverview {
         .await
         .unwrap_or_else(|err| StorageOverview {
             total_bytes: 0,
+            reclaimable_bytes: 0,
+            cache_targets: Vec::new(),
             buckets: Vec::new(),
             warnings: vec![err],
         })
@@ -259,14 +441,27 @@ pub async fn qx_storage_overview() -> StorageOverview {
 fn build_storage_overview() -> StorageOverview {
     let mut warnings: Vec<String> = Vec::new();
 
-    // Cache: icons + OCR models + update staging + temp recordings (multi-path).
-    let mut cache_paths: Vec<PathBuf> = vec![
-        icons_dir(),
-        ocr_models_dir(),
-        qx_home_dir().join("cache").join("updates"),
-    ];
-    cache_paths.extend(recording_temp_dirs());
-    let (cache_bytes, cache_files) = measure_paths(&cache_paths, &mut warnings);
+    let definitions = cache_target_definitions();
+    let cache_targets: Vec<StorageCacheTarget> = definitions
+        .iter()
+        .map(|target| {
+            let (bytes, files) = measure_paths(&target.paths, &mut warnings);
+            StorageCacheTarget {
+                id: target.id.into(),
+                module: target.module.into(),
+                label: target.label.into(),
+                paths: target.paths.iter().cloned().map(path_entry).collect(),
+                bytes,
+                files,
+            }
+        })
+        .collect();
+    let cache_bytes = cache_targets.iter().map(|target| target.bytes).sum();
+    let cache_files = cache_targets.iter().map(|target| target.files).sum();
+    let cache_paths = definitions
+        .iter()
+        .flat_map(|target| target.paths.iter().cloned())
+        .collect::<Vec<_>>();
     let cache = StorageBucket {
         id: "cache".into(),
         label: "Cache".into(),
@@ -306,7 +501,8 @@ fn build_storage_overview() -> StorageOverview {
 
     // Clipboard: images cache directory (separate from databases).
     let clip_dir = clipboard_images_dir();
-    let (clip_bytes, clip_files) = measure(&clip_dir, &mut warnings);
+    let (clip_bytes, clip_files) =
+        measure_children_excluding(&clip_dir, &["previews"], &mut warnings);
     let clipboard = StorageBucket {
         id: "clipboard".into(),
         label: "Clipboard".into(),
@@ -328,6 +524,19 @@ fn build_storage_overview() -> StorageOverview {
         clearable: false,
     };
 
+    // Plugin state is durable user/plugin data, not a cache. Report it
+    // separately so the cache total never hides or deletes it.
+    let plugin_data_path = plugin_data_dir();
+    let (plugin_data_bytes, plugin_data_files) = measure(&plugin_data_path, &mut warnings);
+    let plugin_data = StorageBucket {
+        id: "plugin-data".into(),
+        label: "Plugin Data".into(),
+        paths: vec![path_entry(plugin_data_path)],
+        bytes: plugin_data_bytes,
+        files: plugin_data_files,
+        clearable: false,
+    };
+
     // Settings: only top-level files inside ~/.qx (avoids double counting subdirs).
     let qx_home = qx_home_dir();
     let (settings_bytes, settings_files) = settings_top_level_size(&qx_home, &mut warnings);
@@ -340,11 +549,21 @@ fn build_storage_overview() -> StorageOverview {
         clearable: false,
     };
 
-    let buckets = vec![cache, files, databases, clipboard, plugins, settings];
+    let buckets = vec![
+        cache,
+        files,
+        databases,
+        clipboard,
+        plugins,
+        plugin_data,
+        settings,
+    ];
     let total_bytes = buckets.iter().map(|b| b.bytes).sum();
 
     StorageOverview {
         total_bytes,
+        reclaimable_bytes: cache_bytes,
+        cache_targets,
         buckets,
         warnings,
     }
@@ -356,6 +575,17 @@ fn clear_dir_contents(path: &Path) -> Result<StorageClearResult, String> {
     }
     let mut warnings: Vec<String> = Vec::new();
     let (cleared_bytes, cleared_files) = measure(path, &mut warnings);
+    let root_meta =
+        fs::symlink_metadata(path).map_err(|e| format!("stat {}: {e}", path.display()))?;
+    if root_meta.file_type().is_symlink() || root_meta.is_file() {
+        fs::remove_file(path).map_err(|e| format!("remove {}: {e}", path.display()))?;
+        return Ok(StorageClearResult {
+            cleared_bytes,
+            cleared_files: cleared_files.max(1),
+            warnings,
+            ..StorageClearResult::default()
+        });
+    }
 
     for entry in fs::read_dir(path).map_err(|e| format!("read {}: {e}", path.display()))? {
         let entry = entry.map_err(|e| format!("entry {}: {e}", path.display()))?;
@@ -376,6 +606,98 @@ fn clear_dir_contents(path: &Path) -> Result<StorageClearResult, String> {
     })
 }
 
+fn clear_file(path: &Path) -> Result<StorageClearResult, String> {
+    let meta = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(StorageClearResult::default())
+        }
+        Err(error) => return Err(format!("stat {}: {error}", path.display())),
+    };
+    if meta.is_dir() && !meta.file_type().is_symlink() {
+        return Err(format!(
+            "refusing to remove directory as a cache file: {}",
+            path.display()
+        ));
+    }
+    let bytes = meta.len();
+    fs::remove_file(path).map_err(|error| format!("remove {}: {error}", path.display()))?;
+    Ok(StorageClearResult {
+        cleared_bytes: bytes,
+        cleared_files: 1,
+        ..StorageClearResult::default()
+    })
+}
+
+fn remove_cache_directory(path: &Path) -> Result<StorageClearResult, String> {
+    let meta = match fs::symlink_metadata(path) {
+        Ok(meta) => meta,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(StorageClearResult::default())
+        }
+        Err(error) => return Err(format!("stat {}: {error}", path.display())),
+    };
+    let mut warnings = Vec::new();
+    let (bytes, files) = measure(path, &mut warnings);
+    if meta.file_type().is_symlink() || meta.is_file() {
+        fs::remove_file(path).map_err(|error| format!("remove {}: {error}", path.display()))?;
+    } else {
+        fs::remove_dir_all(path).map_err(|error| format!("remove {}: {error}", path.display()))?;
+    }
+    Ok(StorageClearResult {
+        cleared_bytes: bytes,
+        cleared_files: files.max(1),
+        warnings,
+        ..StorageClearResult::default()
+    })
+}
+
+fn validate_cache_target_path(path: &Path) -> Result<(), String> {
+    let protected_roots = [
+        PathBuf::from(std::path::MAIN_SEPARATOR.to_string()),
+        home_dir(),
+        qx_home_dir(),
+        app_support_dir(),
+        crate::paths::cache_dir(),
+        output_files_dir(),
+    ];
+    if !path.is_absolute() || protected_roots.iter().any(|root| root == path) {
+        return Err(format!("refusing unsafe cache target: {}", path.display()));
+    }
+    Ok(())
+}
+
+fn clear_cache_target_definition(
+    target: &CacheTargetDefinition,
+) -> Result<StorageClearResult, String> {
+    let mut total = StorageClearResult::default();
+    for path in &target.paths {
+        validate_cache_target_path(path)?;
+        let result = match target.mode {
+            CacheClearMode::Contents => clear_dir_contents(path),
+            CacheClearMode::File => clear_file(path),
+            CacheClearMode::RemoveDirectory => remove_cache_directory(path),
+        }?;
+        merge_clear_result(&mut total, result);
+    }
+    Ok(total)
+}
+
+#[command]
+pub async fn qx_storage_clear_cache_target(
+    target_id: String,
+) -> Result<StorageClearResult, String> {
+    storage_io(move || {
+        let targets = cache_target_definitions();
+        let target = targets
+            .iter()
+            .find(|target| target.id == target_id)
+            .ok_or_else(|| format!("unknown cache target: {target_id}"))?;
+        clear_cache_target_definition(target)
+    })
+    .await
+}
+
 #[command]
 pub async fn qx_storage_clear_cache() -> Result<StorageClearResult, String> {
     storage_io(clear_cache_sync).await
@@ -383,22 +705,8 @@ pub async fn qx_storage_clear_cache() -> Result<StorageClearResult, String> {
 
 fn clear_cache_sync() -> Result<StorageClearResult, String> {
     let mut total = StorageClearResult::default();
-
-    for path in [icons_dir(), ocr_models_dir()] {
-        let r = clear_dir_contents(&path)?;
-        total.cleared_bytes = total.cleared_bytes.saturating_add(r.cleared_bytes);
-        total.cleared_files = total.cleared_files.saturating_add(r.cleared_files);
-        total.warnings.extend(r.warnings);
-    }
-    for path in recording_temp_dirs() {
-        let mut warnings: Vec<String> = Vec::new();
-        let (b, f) = measure(&path, &mut warnings);
-        if path.exists() {
-            fs::remove_dir_all(&path).map_err(|e| format!("remove {}: {e}", path.display()))?;
-        }
-        total.cleared_bytes = total.cleared_bytes.saturating_add(b);
-        total.cleared_files = total.cleared_files.saturating_add(f);
-        total.warnings.extend(warnings);
+    for target in cache_target_definitions() {
+        merge_clear_result(&mut total, clear_cache_target_definition(&target)?);
     }
     Ok(total)
 }
@@ -613,4 +921,57 @@ fn clear_reclaimable_sync() -> Result<StorageClearResult, String> {
     merge_clear_result(&mut total, clear_launcher_history_sync()?);
     merge_clear_result(&mut total, clear_rss_cache_sync()?);
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashSet;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn cache_catalog_has_unique_scoped_targets() {
+        let targets = cache_target_definitions();
+        let mut ids = HashSet::new();
+        assert!(!targets.is_empty());
+        for target in targets {
+            assert!(
+                ids.insert(target.id),
+                "duplicate cache target {}",
+                target.id
+            );
+            for path in target.paths {
+                validate_cache_target_path(&path).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn directory_cleanup_preserves_registered_root() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("qx-storage-test-{}-{nonce}", std::process::id()));
+        fs::create_dir_all(root.join("nested")).unwrap();
+        fs::write(root.join("nested/cache.bin"), b"cache").unwrap();
+        let result = clear_dir_contents(&root).unwrap();
+        assert_eq!(result.cleared_files, 1);
+        assert!(root.is_dir());
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
+        fs::remove_dir(&root).unwrap();
+    }
+
+    #[test]
+    fn protected_storage_roots_are_never_cache_targets() {
+        for root in [
+            home_dir(),
+            qx_home_dir(),
+            app_support_dir(),
+            crate::paths::cache_dir(),
+        ] {
+            assert!(validate_cache_target_path(&root).is_err());
+        }
+    }
 }

@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { useEffect, useState } from "react";
 import type { RssFeed } from "./store";
 
 export function formatRelative(ts: number): string {
@@ -44,6 +45,9 @@ function LetterAvatar({ feed }: { feed: RssFeed }) {
 export function FeedIcon({ feed, showImage = true }: { feed: RssFeed; showImage?: boolean }) {
   const [failed, setFailed] = useState(false);
   const src = (feed.icon || "").trim();
+  const imageSrc = /^(?:[a-zA-Z]:[\\/]|\\\\|\/)/.test(src) ? convertFileSrc(src) : src;
+
+  useEffect(() => setFailed(false), [src]);
 
   if (!showImage || !src || failed) {
     return <LetterAvatar feed={feed} />;
@@ -52,7 +56,7 @@ export function FeedIcon({ feed, showImage = true }: { feed: RssFeed; showImage?
   return (
     <img
       className="qx-rss-feed-icon"
-      src={src}
+      src={imageSrc}
       alt=""
       width={22}
       height={22}

@@ -230,6 +230,9 @@ function AppIcon({ item, label }: { item: AppEntry; label: string }) {
     !failed &&
     !builtin &&
     !item.icon.startsWith("plugin:");
+  const imageSrc = /^(?:[a-zA-Z]:[\\/]|\\\\|\/)/.test(item.icon)
+    ? convertFileSrc(item.icon)
+    : item.icon;
 
   useEffect(() => {
     setFailed(false);
@@ -239,7 +242,7 @@ function AppIcon({ item, label }: { item: AppEntry; label: string }) {
     <span className={`qx-list-icon qx-app-icon kind-${kind}`} aria-hidden="true">
       {canUseImage ? (
         <img
-          src={item.icon.startsWith("/") ? convertFileSrc(item.icon) : item.icon}
+          src={imageSrc}
           alt=""
           onError={() => setFailed(true)}
         />

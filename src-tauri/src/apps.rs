@@ -25,6 +25,7 @@ pub struct AppEntry {
 static APP_CACHE: Mutex<Vec<AppEntry>> = Mutex::new(Vec::new());
 static DB_PATH: OnceLock<PathBuf> = OnceLock::new();
 static CACHE_INITIALIZED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+const CACHED_ICON_EDGE: u32 = 128;
 
 fn app_cache_lock() -> Option<std::sync::MutexGuard<'static, Vec<AppEntry>>> {
     match APP_CACHE.lock() {
@@ -275,7 +276,59 @@ fn has_current_cached_icon(app_path: &PathBuf, app_name: &str, icon: &str) -> bo
         return false;
     }
     let current_path = icon_cache_path(app_path, app_name);
-    icon == current_path.to_string_lossy() && current_path.exists()
+    icon == current_path.to_string_lossy()
+        && current_path.exists()
+        && compact_cached_icon(&current_path)
+}
+
+#[cfg(target_os = "macos")]
+fn compact_cached_icon(path: &Path) -> bool {
+    let Ok((width, height)) = image::image_dimensions(path) else {
+        return false;
+    };
+    if width <= CACHED_ICON_EDGE && height <= CACHED_ICON_EDGE {
+        return true;
+    }
+    let temp = path.with_extension("compact.png");
+    let output = Command::new("sips")
+        .args([
+            "-Z",
+            "128",
+            path.to_str().unwrap_or(""),
+            "--out",
+            temp.to_str().unwrap_or(""),
+        ])
+        .output();
+    match output {
+        Ok(result) if result.status.success() && temp.is_file() => {
+            let replaced = fs::rename(&temp, path).is_ok();
+            if !replaced {
+                let _ = fs::remove_file(&temp);
+            }
+            replaced
+        }
+        _ => {
+            let _ = fs::remove_file(temp);
+            false
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn compact_cached_icon(path: &Path) -> bool {
+    let Ok((width, height)) = image::image_dimensions(path) else {
+        return false;
+    };
+    if width <= CACHED_ICON_EDGE && height <= CACHED_ICON_EDGE {
+        return true;
+    }
+    let Ok(decoded) = image::open(path) else {
+        return false;
+    };
+    decoded
+        .thumbnail(CACHED_ICON_EDGE, CACHED_ICON_EDGE)
+        .save_with_format(path, image::ImageFormat::Png)
+        .is_ok()
 }
 
 /// Convert .icns to .png using macOS built-in `sips` tool, cache results.
@@ -287,7 +340,7 @@ fn icon_to_png(icns_path: &PathBuf, app_path: &PathBuf, app_name: &str) -> Strin
         let png_modified = fs::metadata(&png_path).ok().and_then(|m| m.modified().ok());
         let icns_modified = fs::metadata(icns_path).ok().and_then(|m| m.modified().ok());
         if let (Some(png_m), Some(icns_m)) = (png_modified, icns_modified) {
-            if png_m >= icns_m {
+            if png_m >= icns_m && compact_cached_icon(&png_path) {
                 return png_path.to_string_lossy().to_string();
             }
         }
@@ -298,6 +351,8 @@ fn icon_to_png(icns_path: &PathBuf, app_path: &PathBuf, app_name: &str) -> Strin
             "-s",
             "format",
             "png",
+            "-Z",
+            "128",
             icns_path.to_str().unwrap_or(""),
             "--out",
             png_path.to_str().unwrap_or(""),
@@ -305,7 +360,9 @@ fn icon_to_png(icns_path: &PathBuf, app_path: &PathBuf, app_name: &str) -> Strin
         .output();
 
     match output {
-        Ok(o) if o.status.success() && png_path.exists() => png_path.to_string_lossy().to_string(),
+        Ok(o) if o.status.success() && png_path.exists() && compact_cached_icon(&png_path) => {
+            png_path.to_string_lossy().to_string()
+        }
         _ => String::new(),
     }
 }
@@ -317,7 +374,7 @@ fn appkit_icon_to_png(app_path: &PathBuf, app_name: &str) -> String {
     use objc2_foundation::{NSDictionary, NSSize, NSString};
 
     let png_path = icon_cache_path(app_path, app_name);
-    if png_path.exists() {
+    if png_path.exists() && compact_cached_icon(&png_path) {
         return png_path.to_string_lossy().to_string();
     }
 
@@ -328,7 +385,10 @@ fn appkit_icon_to_png(app_path: &PathBuf, app_name: &str) -> String {
     let write_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let workspace = NSWorkspace::sharedWorkspace();
         let image = workspace.iconForFile(&ns_path);
-        image.setSize(NSSize::new(256.0, 256.0));
+        image.setSize(NSSize::new(
+            CACHED_ICON_EDGE as f64,
+            CACHED_ICON_EDGE as f64,
+        ));
         let tiff = image.TIFFRepresentation()?;
         let bitmap = NSBitmapImageRep::initWithData(NSBitmapImageRep::alloc(), &tiff)?;
         let png = unsafe {
@@ -339,7 +399,9 @@ fn appkit_icon_to_png(app_path: &PathBuf, app_name: &str) -> String {
     }));
 
     match write_result {
-        Ok(Some(())) if png_path.exists() => png_path.to_string_lossy().to_string(),
+        Ok(Some(())) if png_path.exists() && compact_cached_icon(&png_path) => {
+            png_path.to_string_lossy().to_string()
+        }
         _ => String::new(),
     }
 }
@@ -933,4 +995,26 @@ pub async fn search_files(
         request_id,
     )
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{compact_cached_icon, CACHED_ICON_EDGE};
+
+    #[test]
+    fn cached_application_icons_are_compacted() {
+        let path = std::env::temp_dir().join(format!(
+            "qx-app-icon-test-{}-{}.png",
+            std::process::id(),
+            CACHED_ICON_EDGE
+        ));
+        image::DynamicImage::new_rgba8(512, 384)
+            .save_with_format(&path, image::ImageFormat::Png)
+            .expect("write icon fixture");
+        assert!(compact_cached_icon(&path));
+        let (width, height) = image::image_dimensions(&path).expect("compacted dimensions");
+        let _ = std::fs::remove_file(path);
+        assert!(width <= CACHED_ICON_EDGE);
+        assert!(height <= CACHED_ICON_EDGE);
+    }
 }

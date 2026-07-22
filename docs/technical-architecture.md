@@ -172,6 +172,12 @@ tab = "plugin:*"   → PluginPanelViewport
 - CSS Variables + 全局 `qx-*` 类名；样式在 `src/styles/`
 - Shell chrome：`--qx-shell-chrome-x`、`--qx-topbar-h`、`--qx-bottom-bar-h`（上下栏厚度接近）
 
+### 3.8 Storage 管理
+
+- `src-tauri/src/storage.rs` 维护唯一缓存目标注册表，`qx_storage_overview` 与逐项/全部缓存清理共用同一批目标，避免“界面统计到但清理遗漏”或平台路径漂移。
+- 可重建缓存、历史/离线记录、生成文件、数据库、插件包、`plugin-data` 与设置分别统计；只有注册为可重建缓存的目标可走 `qx_storage_clear_cache_target`。
+- 前端 `StorageSettingsCard` 只消费后端模型，不拼接平台路径，也不把插件持久数据或已保存媒体标成缓存。
+
 ---
 
 ## 4. 模块详解
@@ -270,7 +276,7 @@ updater::* (check/download_and_install/helper_replace)
 
 - **剪贴板监听**: `clipboard::start_listener()` — 始终 `manage` ClipboardDb；轮询系统剪贴板
 - **RSS**: `rss::init` — 始终 `manage` RssDb（`Option` + lazy open）；见 [shell-and-shortcuts.md](./shell-and-shortcuts.md) §5
-- **Icon 预加载**: `apps::preload_icons()` — 后台 sips 转换
+- **Icon 预加载**: `apps::preload_icons()` — 后台用 sips 转换并限制应用图标最长边为 128px；RSS 启动任务把远程 favicon 压为 64px 本地缓存
 - **全局快捷键**: `settings::register_shortcuts()` — **toggle** 开/关主窗口；细节见 [shell-and-shortcuts.md](./shell-and-shortcuts.md)
 
 ---
@@ -313,7 +319,7 @@ updater::* (check/download_and_install/helper_replace)
 
 **前端**:
 - [x] 搜索 debounce (100ms)
-- [x] 图标缓存 (sips + `~/.qx/icons/`)
+- [x] 图标缓存（应用：sips + `~/.qx/icons/`，最长边 128px；RSS：`cache/rss-icons`，最长边 64px + 30 天复用）
 - [ ] 虚拟列表 (react-window / tanstack-virtual) — 剪贴板、文章列表大数量时
 - [ ] 模块懒加载 (`React.lazy` + Suspense)
 - [ ] 大型模块 (PluginManager 935 行) 拆分为子组件

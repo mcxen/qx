@@ -1733,13 +1733,6 @@ span.qx-plugin-screenshot {
   padding: 12px 0 4px;
 }
 
-.qx-storage-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 12px;
-}
-
 .qx-storage-total {
   color: var(--qx-text-primary);
   font-size: 20px;
@@ -1748,19 +1741,33 @@ span.qx-plugin-screenshot {
   white-space: nowrap;
 }
 
-.qx-storage-rainbow {
+.qx-storage-summary {
   display: flex;
-  width: 100%;
-  height: 10px;
-  overflow: hidden;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px;
   border: 1px solid var(--qx-border-1);
   border-radius: var(--qx-control-radius);
   background: var(--qx-bg-component-2);
 }
 
-.qx-storage-slice {
+.qx-storage-summary > div:first-child {
+  display: flex;
   min-width: 0;
-  height: 100%;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qx-storage-summary strong {
+  color: var(--qx-text-primary);
+  font-size: 18px;
+  line-height: 1.1;
+}
+
+.qx-storage-summary span {
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
 }
 
 .qx-storage-dot {
@@ -1771,32 +1778,30 @@ span.qx-plugin-screenshot {
   background: var(--qx-text-tertiary);
 }
 
-.qx-storage-slice.bucket-cache,
 .qx-storage-dot.bucket-cache {
   background: var(--qx-accent);
 }
 
-.qx-storage-slice.bucket-files,
 .qx-storage-dot.bucket-files {
   background: var(--qx-stats-cpu);
 }
 
-.qx-storage-slice.bucket-databases,
 .qx-storage-dot.bucket-databases {
   background: var(--qx-stats-gpu);
 }
 
-.qx-storage-slice.bucket-clipboard,
 .qx-storage-dot.bucket-clipboard {
   background: var(--qx-stats-net, var(--qx-accent));
 }
 
-.qx-storage-slice.bucket-plugins,
 .qx-storage-dot.bucket-plugins {
   background: var(--qx-danger);
 }
 
-.qx-storage-slice.bucket-settings,
+.qx-storage-dot.bucket-plugin-data {
+  background: var(--qx-warning, #b7791f);
+}
+
 .qx-storage-dot.bucket-settings {
   background: var(--qx-stats-mem);
 }
@@ -1877,6 +1882,83 @@ span.qx-plugin-screenshot {
   font-size: 12px;
 }
 
+.qx-storage-status.is-danger {
+  border-color: color-mix(in srgb, var(--qx-danger) 30%, var(--qx-border-1));
+  background: color-mix(in srgb, var(--qx-danger) 9%, transparent);
+  color: var(--qx-danger);
+}
+
+.qx-storage-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 2px;
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.qx-module-cache-list {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--qx-border-1);
+}
+
+.qx-module-cache-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 60px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--qx-border-1);
+}
+
+.qx-module-cache-main {
+  min-width: 0;
+}
+
+.qx-module-cache-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.qx-module-cache-title strong {
+  overflow: hidden;
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-module-cache-title span {
+  flex: 0 0 auto;
+  padding: 1px 5px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 999px;
+  color: var(--qx-text-tertiary);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.qx-module-cache-description {
+  margin-top: 2px;
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.qx-module-cache-side {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .qx-settings-inline-status {
   padding: 8px 10px;
   border: 1px solid var(--qx-border-1);
@@ -1953,6 +2035,20 @@ span.qx-plugin-screenshot {
   .qx-cleanup-item .qx-shadcn-button {
     grid-column: 2;
     justify-self: flex-start;
+  }
+  .qx-storage-summary,
+  .qx-module-cache-row,
+  .qx-module-cache-side {
+    align-items: flex-start;
+  }
+  .qx-storage-summary,
+  .qx-module-cache-row {
+    display: flex;
+    flex-direction: column;
+  }
+  .qx-module-cache-side {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 

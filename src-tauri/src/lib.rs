@@ -592,6 +592,7 @@ pub fn run() {
             settings::shortcuts::shortcuts_resume_global,
             storage::qx_storage_overview,
             storage::qx_storage_clear_cache,
+            storage::qx_storage_clear_cache_target,
             storage::qx_storage_clear_files,
             storage::qx_storage_clear_clipboard,
             storage::qx_storage_clear_clipboard_history,
