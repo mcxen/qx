@@ -110,11 +110,14 @@ export default function ShortcutRecorder({
   conflict,
   onCommit,
   onCancel,
+  autoStart = false,
 }: {
   initial: string;
   conflict: boolean;
   onCommit: (binding: ShortcutBinding) => void;
   onCancel: () => void;
+  /** When true, enter recording mode on mount (settings add-app flow). */
+  autoStart?: boolean;
 }) {
   const [recording, setRecording] = useState(false);
   const [heldPreview, setHeldPreview] = useState("Press shortcut…");
@@ -122,6 +125,7 @@ export default function ShortcutRecorder({
   const onCommitRef = useRef(onCommit);
   const onCancelRef = useRef(onCancel);
   const recordingRef = useRef(false);
+  const autoStartedRef = useRef(false);
   onCommitRef.current = onCommit;
   onCancelRef.current = onCancel;
 
@@ -143,6 +147,13 @@ export default function ShortcutRecorder({
     // Keep focus so key events land here even after OS blur races.
     window.requestAnimationFrame(() => containerRef.current?.querySelector("button")?.focus());
   };
+
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    startRecording();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart]);
 
   useEffect(() => {
     if (!recording) return;

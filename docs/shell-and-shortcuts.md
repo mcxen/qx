@@ -123,6 +123,12 @@ else                                   → show_and_navigate(route)
    - `app_shortcuts` 启动本机 App（不走 toggle_route）
 3. 仅 `ShortcutState::Pressed` 触发一次
 
+应用启动快捷键可在 **设置 → 快捷键 → 应用启动** 用「添加应用」打开可搜索 Popover
+（`search_apps`）选择本机 App 后录制；也可在启动器结果右键录制。绑定键存
+`settings.app_shortcuts`（id 形如 `app:<path>`）。添加/录制全程留在 Settings，
+不得唤起目标 App 或因 Esc 误关主窗（Popover Esc 只关选择器；录制时
+`shortcuts_pause_global`）。
+
 默认键（`Settings::default`）。Windows 避开系统窗口菜单及 PowerToys Run 常用的
 `Alt+Space`；macOS 继续使用对应的 `Option+Space`：
 
