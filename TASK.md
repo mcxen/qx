@@ -1,5 +1,24 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Bugfix — Cardinal 短词伪相关结果
+
+**状态**：实现完成，Cardinal 真实索引回归已通过。
+
+- 根因是普通四字符查询 `Siri` 被扩展为 `*s*i*r*i*`，统一后置匹配也接受任意跨度的
+  有序子序列，因此 `PersistentOriginTrials`、`SignalStorageConfigDB` 和构建目录名称被
+  当成相关结果；分类内修改时间又先于相关性，使新近噪声排在字面量结果前面。
+- 短 ASCII 查询现只做字面量/弱分隔匹配；更长 ASCII 缩写与至少三字符的非 ASCII
+  查询仍保留密集有序子序列能力，跨度过散的候选会被拒绝。Cardinal 不再为 `Siri`
+  生成逐字符 wildcard，Spotlight / Everything 候选也经过同一规则。
+- 分类边界保持不变，分类内改为名称相关性优先、修改时间次之。
+
+### 验证
+
+- [x] 实际构建 Cardinal `SearchCache` 临时索引并执行策略查询：只保留 `Siri Notes`、
+  `group.com.apple.siri.recorded-audio`，排除截图中的四类伪命中。
+- [x] `cargo test --lib file_search::`（15 tests）
+- [x] `cargo test --lib`（115 tests）/ `cargo fmt --check` / `cargo check` / `npm run check`
+
 ## Bugfix — 悬浮灵动岛与主窗口焦点互锁
 
 **状态**：实现完成，待双窗口手动复核。

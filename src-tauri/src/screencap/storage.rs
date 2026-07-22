@@ -78,6 +78,32 @@ pub(super) fn save_capture(source_path: String, dest_path: String) -> Result<Str
     Ok(dest_path)
 }
 
+/// Logical last-region file used by silent recapture (global shortcut).
+/// Coordinates match picker CSS client points on the chosen display.
+fn last_region_path() -> PathBuf {
+    let dir = crate::paths::data_dir();
+    let _ = fs::create_dir_all(&dir);
+    dir.join("screencap-last-region.json")
+}
+
+pub(super) fn save_last_region(area: &super::RecordArea) -> Result<(), String> {
+    if area.w < 16 || area.h < 16 {
+        return Err("Selection too small to remember".to_string());
+    }
+    let json = serde_json::to_vec_pretty(area)
+        .map_err(|error| format!("serialize last region: {error}"))?;
+    fs::write(last_region_path(), json).map_err(|error| format!("write last region: {error}"))
+}
+
+pub(super) fn load_last_region() -> Option<super::RecordArea> {
+    let bytes = fs::read(last_region_path()).ok()?;
+    let area: super::RecordArea = serde_json::from_slice(&bytes).ok()?;
+    if area.w < 16 || area.h < 16 {
+        return None;
+    }
+    Some(area)
+}
+
 pub(super) fn list_history(limit: Option<u32>) -> Vec<GifEntry> {
     let limit = limit.unwrap_or(50) as i64;
     let conn = match open_db() {

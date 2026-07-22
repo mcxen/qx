@@ -740,15 +740,7 @@ export function PluginPanelViewport() {
       }
       actions={actions}
     >
-      <div
-        className="qx-plugin-runtime-stage"
-        style={{
-          flex: 1,
-          minHeight: 0,
-          position: "relative",
-          overflow: "hidden",
-        }}
-      >
+      <div className="qx-plugin-runtime-stage">
         <div
           ref={containerRef}
           aria-hidden={workbench ? "true" : undefined}

@@ -39,6 +39,7 @@ pub(super) fn default_shortcut_bindings() -> BTreeMap<String, ShortcutBinding> {
         ("clipboard", "Alt+V", false),
         ("record_gif", "Alt+G", false),
         ("capture_screenshot", "Alt+Shift+S", false),
+        ("recapture_last_region", "Alt+Shift+R", false),
         ("toggle_capture_controls", "Alt+Shift+C", false),
         ("rss", "Alt+R", false),
         ("tray_open_main", "Alt+Shift+O", false),
@@ -148,6 +149,20 @@ fn begin_capture_from_shortcut(app: AppHandle, mode: &'static str) {
                 "screencap.shortcut",
                 "capture shortcut failed",
                 serde_json::json!({ "mode": mode, "error": error }),
+            );
+        }
+    });
+}
+
+fn recapture_last_region_from_shortcut(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = crate::screencap::selection::screencap_recapture_last_region(app).await
+        {
+            crate::diagnostics::log(
+                crate::diagnostics::LogLevel::Warn,
+                "screencap.shortcut",
+                "recapture last region failed",
+                serde_json::json!({ "error": error }),
             );
         }
     });
@@ -317,6 +332,18 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
                 gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
                     if event.state() == ShortcutState::Pressed {
                         begin_capture_from_shortcut(app.clone(), "screenshot");
+                    }
+                })
+            ) {
+                registered.insert(key);
+            }
+        }
+        if let Some(key) = shortcut_for(settings, "recapture_last_region") {
+            if collect_registration!(
+                "register recapture_last_region shortcut",
+                gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
+                    if event.state() == ShortcutState::Pressed {
+                        recapture_last_region_from_shortcut(app.clone());
                     }
                 })
             ) {

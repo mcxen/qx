@@ -17,6 +17,7 @@ use super::state::{
     picker_session_is_current, recording as recording_state, runtime as runtime_status,
     set_picker_interaction_lock, set_picker_pointer_follow,
 };
+use super::storage::{load_last_region, save_last_region};
 use super::types::{CaptureMode, PickerSession};
 use super::{CaptureDisplay, PickerStatus, RecordArea, RecordingOptions};
 use crate::desktop_windows::{self, DesktopWindow};
@@ -534,6 +535,8 @@ pub async fn screencap_confirm_region_select(
         monitor_id: Some(session.monitor_id),
         ..area.clone()
     };
+    // Persist for silent recapture (global shortcut) even if the picker webview dies.
+    let _ = save_last_region(&logical_area);
     if let Ok(mut current) = picker_session().lock() {
         if let Some(current) = current.as_mut() {
             current.logical_area = Some(logical_area);
@@ -714,6 +717,136 @@ pub async fn screencap_confirm_region_select(
         Err(error) => {
             let _ = restore_picker_selection_internal(&app);
             recording_session::emit_recording_status(&app);
+            Err(error)
+        }
+    }
+}
+
+/// Scale picker-logical points on a monitor into capture-backend pixels.
+fn physical_area_from_logical(
+    app: &AppHandle,
+    logical: &RecordArea,
+) -> Result<RecordArea, String> {
+    let monitor = capture_monitor(logical.monitor_id)?;
+    let tauri_monitor = tauri_monitor_for_capture(app, &monitor)?;
+    let size = tauri_monitor.size();
+    let scale_factor = tauri_monitor.scale_factor().max(1.0);
+    let logical_w = size.width as f64 / scale_factor;
+    let capture_width = monitor
+        .width()
+        .map_err(|error| format!("display width: {error}"))?;
+    let scale = capture_coordinate_scale(capture_width, logical_w);
+    let monitor_id = monitor
+        .id()
+        .map_err(|error| format!("display id: {error}"))?;
+    Ok(RecordArea {
+        x: (logical.x as f64 * scale).round().max(0.0) as u32,
+        y: (logical.y as f64 * scale).round().max(0.0) as u32,
+        w: (logical.w as f64 * scale).round().max(2.0) as u32,
+        h: (logical.h as f64 * scale).round().max(2.0) as u32,
+        monitor_id: Some(monitor_id),
+    })
+}
+
+/// Silent re-shot of the last confirmed region — no picker UI.
+#[command]
+pub async fn screencap_recapture_last_region(app: AppHandle) -> Result<(), String> {
+    if recording_state()
+        .lock()
+        .map(|recording| recording.is_some())
+        .unwrap_or(false)
+    {
+        return Err("A screen recording is already in progress".to_string());
+    }
+    ensure_screen_capture_permission()?;
+    let logical = load_last_region().ok_or_else(|| {
+        "No previous capture region. Take a screenshot first.".to_string()
+    })?;
+    let physical = physical_area_from_logical(&app, &logical)?;
+    if physical.w < 16 || physical.h < 16 {
+        return Err("Selection too small — drag a larger region".to_string());
+    }
+
+    // Leave the desktop clear so Qx chrome is not in the frame.
+    hide_recording_controls_internal(&app);
+    crate::floating_panel::hide(&app);
+    hide_region_picker_internal(&app);
+    // Brief compositor grace (same order of magnitude as screenshot::capture).
+    tokio::time::sleep(std::time::Duration::from_millis(40)).await;
+
+    let copy_to_clipboard = crate::settings::read_settings()
+        .screencap
+        .auto_copy_to_clipboard;
+    let auto_hide_after_capture = crate::settings::read_settings()
+        .screencap
+        .auto_hide_after_capture;
+
+    let result = crate::runtime::blocking(move || take_screenshot_blocking(physical, None))
+        .await
+        .map_err(|error| format!("screenshot worker failed: {error}"))
+        .and_then(|inner| inner);
+
+    match result {
+        Ok(output) => {
+            let output_path = output.path.to_string_lossy().to_string();
+            let path_for_clip = output.path.clone();
+            let path_for_event = output_path.clone();
+            let app_ui = app.clone();
+            let clipboard_error = crate::runtime::ui(&app, move || {
+                let clipboard_error = if copy_to_clipboard {
+                    crate::clipboard::write_image_file_to_clipboard(&app_ui, &path_for_clip)
+                        .err()
+                        .map(|error| {
+                            format!("Screenshot saved, but automatic copy failed: {error}")
+                        })
+                } else {
+                    None
+                };
+                if let Ok(mut status) = runtime_status().lock() {
+                    status.phase = "done";
+                    status.started_at = None;
+                    status.area = None;
+                    status.output_path = Some(path_for_event.clone());
+                    status.error = clipboard_error.clone();
+                }
+                set_recording_ui_protected(&app_ui, false);
+                restore_capture_surface(&app_ui, 800)?;
+                if auto_hide_after_capture {
+                    hide_recording_controls_internal(&app_ui);
+                }
+                recording_session::emit_recording_status(&app_ui);
+                Ok::<Option<String>, String>(clipboard_error)
+            })
+            .await
+            .map_err(|error| error.to_string())??;
+            let _ = clipboard_error;
+            let emit_app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                let _ = emit_app.emit(
+                    "screencap:captured",
+                    serde_json::json!({
+                        "kind": "screenshot",
+                        "path": output_path,
+                    }),
+                );
+            });
+            Ok(())
+        }
+        Err(error) => {
+            crate::diagnostics::log(
+                crate::diagnostics::LogLevel::Error,
+                "screencap.screenshot",
+                "silent recapture failed; restoring capture surface",
+                serde_json::json!({ "error": error }),
+            );
+            if let Ok(mut status) = runtime_status().lock() {
+                status.phase = "error";
+                status.started_at = None;
+                status.error = Some(error.clone());
+            }
+            recording_session::emit_recording_status(&app);
+            let _ = restore_capture_surface(&app, 800);
             Err(error)
         }
     }

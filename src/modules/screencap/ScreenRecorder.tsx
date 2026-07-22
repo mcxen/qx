@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ensureCaptureToastListener,
+  recaptureLastRegion,
   requestCaptureSelection,
   takeScreenshotToast,
   useScreencapStore,
@@ -365,9 +366,31 @@ export default function ScreenRecorder() {
     }
   }, [openCaptureSettings, patchSettings, settings]);
 
+  const handleRecaptureLast = useCallback(async () => {
+    setLocalError(null);
+    if (!isTauriRuntime()) {
+      setLocalError(t("screencap.select.needsApp", "Region select requires the Qx desktop app."));
+      return;
+    }
+    try {
+      await recaptureLastRegion();
+    } catch (captureError) {
+      const message = String(captureError);
+      setLocalError(message);
+      if (isScreenRecordingPermissionError(message)) setCapturePermissionGranted(false);
+    }
+  }, [t]);
+
   const readyActions = useMemo<QxShellAction[]>(
     () => [
       { label: t("screencap.screenshot", "Take Screenshot"), kbd: "Enter", onClick: () => void beginScreenshot() },
+      {
+        label: t("screencap.recaptureLast", "Recapture Last Region"),
+        kbd: settings.shortcuts.recapture_last_region?.enabled
+          ? settings.shortcuts.recapture_last_region.key
+          : undefined,
+        onClick: () => void handleRecaptureLast(),
+      },
       { label: t("screencap.record", "Record"), onClick: () => void beginAreaSelect() },
       {
         label: controlsPinned
@@ -385,7 +408,17 @@ export default function ScreenRecorder() {
           onClick: () => runTrayAction(action.id),
         })),
     ],
-    [beginAreaSelect, beginScreenshot, controlsPinned, runTrayAction, settings.shortcuts, settings.tray_actions, t, togglePinnedControls],
+    [
+      beginAreaSelect,
+      beginScreenshot,
+      controlsPinned,
+      handleRecaptureLast,
+      runTrayAction,
+      settings.shortcuts,
+      settings.tray_actions,
+      t,
+      togglePinnedControls,
+    ],
   );
 
   const doneActions = useMemo<QxShellAction[]>(

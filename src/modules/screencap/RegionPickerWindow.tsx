@@ -207,6 +207,8 @@ export default function RegionPickerWindow() {
   const interactionRafRef = useRef<number | null>(null);
   const interactionPointRef = useRef<Point | null>(null);
   const drawingRef = useRef(false);
+  /** Ctrl/Cmd held at drag start → release confirms screenshot + copy (Lightshot-style). */
+  const instantCopyDragRef = useRef(false);
 
   const multiDisplay = picker?.multiDisplay === true;
   const multiDisplayRef = useRef(false);
@@ -508,6 +510,7 @@ export default function RegionPickerWindow() {
     action: CaptureMode,
     areaOverride?: Rect,
     ocrDestination?: "clipboard" | "editor" | null,
+    options?: { forceCopy?: boolean; skipDelay?: boolean },
   ) => {
     const target = areaOverride ?? selection;
     if (busy || !target || countdown !== null) return;
@@ -524,7 +527,7 @@ export default function RegionPickerWindow() {
       ? canvas.toDataURL("image/png").split(",")[1]
       : undefined;
 
-    const delay = captureSettings.capture_delay_seconds;
+    const delay = options?.skipDelay ? 0 : captureSettings.capture_delay_seconds;
     if (delay > 0) {
       try {
         await invoke("screencap_set_picker_passthrough", { enabled: true });
@@ -557,6 +560,8 @@ export default function RegionPickerWindow() {
         h: Math.round(target.h),
         monitorId: picker?.monitorId ?? null,
       });
+      const shouldCopy = action === "screenshot"
+        && (options?.forceCopy === true || captureSettings.auto_copy_to_clipboard);
       await invoke("screencap_confirm_region_select", {
         area: {
           x: Math.round(target.x),
@@ -573,7 +578,7 @@ export default function RegionPickerWindow() {
         action,
         ocrDestination: action === "screenshot" ? (ocrDestination ?? null) : null,
         annotationOverlayBase64,
-        copyToClipboard: action === "screenshot" && captureSettings.auto_copy_to_clipboard,
+        copyToClipboard: shouldCopy,
       });
     } catch (captureError) {
       setBusy(false);
@@ -744,6 +749,8 @@ export default function RegionPickerWindow() {
       /* capture is best-effort on some hosts */
     }
     const point = { x: event.clientX, y: event.clientY };
+    // Lightshot-style: hold Ctrl/Cmd when starting the drag → release captures + copies.
+    instantCopyDragRef.current = event.ctrlKey || event.metaKey;
     drawingRef.current = true;
     drawStartRef.current = point;
     drawEndRef.current = point;
@@ -808,7 +815,10 @@ export default function RegionPickerWindow() {
     scheduleInteraction(event.clientX, event.clientY);
   };
 
-  const finishDrawSelection = useCallback((forceRefine: boolean) => {
+  const finishDrawSelection = useCallback((opts?: {
+    forceRefine?: boolean;
+    instantCopy?: boolean;
+  }) => {
     if (drawRafRef.current != null) {
       window.cancelAnimationFrame(drawRafRef.current);
       drawRafRef.current = null;
@@ -817,6 +827,8 @@ export default function RegionPickerWindow() {
     // on Windows when pointerup races the commit from pointerdown.
     const start = drawStartRef.current;
     const end = drawEndRef.current;
+    const instantCopy = Boolean(opts?.instantCopy || instantCopyDragRef.current);
+    instantCopyDragRef.current = false;
     drawingRef.current = false;
     drawStartRef.current = null;
     drawEndRef.current = null;
@@ -834,7 +846,12 @@ export default function RegionPickerWindow() {
     }
     setSelection(next);
     const confirmMode = captureSettings.capture_confirm_mode;
-    if (confirmMode === "release" && !forceRefine) {
+    // Ctrl/Cmd drag → screenshot + clipboard immediately (skip refine toolbar).
+    if (instantCopy && !opts?.forceRefine) {
+      void confirm("screenshot", next, null, { forceCopy: true, skipDelay: true });
+      return true;
+    }
+    if (confirmMode === "release" && !opts?.forceRefine) {
       void confirm(intent, next);
     }
     return true;
@@ -850,9 +867,13 @@ export default function RegionPickerWindow() {
       if (event.type !== "pointercancel" || (drawStartRef.current && drawEndRef.current)) {
         // pointercancel on Windows can fire during DWM focus churn — still
         // commit if the draft is already large enough via finishDrawSelection.
-        finishDrawSelection(event.altKey && event.type === "pointerup");
+        const forceRefine = event.altKey && event.type === "pointerup";
+        const instantCopy = event.type === "pointerup"
+          && (event.ctrlKey || event.metaKey || instantCopyDragRef.current);
+        finishDrawSelection({ forceRefine, instantCopy });
       } else {
         clearDrawDraft();
+        instantCopyDragRef.current = false;
         setInteractionLock(false);
       }
       try {
@@ -1052,6 +1073,40 @@ export default function RegionPickerWindow() {
             event.preventDefault();
             setIntent("screenshot");
           } else if (key === "r") {
+            // Xnip-style: re-apply last confirmed region on this display.
+            event.preventDefault();
+            if (busy || countdown !== null) return;
+            const remembered = loadLastCaptureSelection();
+            if (
+              !remembered
+              || (remembered.monitorId != null
+                && picker?.monitorId != null
+                && remembered.monitorId !== picker.monitorId)
+            ) {
+              setError(t(
+                "screencap.picker.noLastRegion",
+                "No previous region on this display. Drag to select first.",
+              ));
+              return;
+            }
+            const next = clampRectToViewport({
+              x: remembered.x,
+              y: remembered.y,
+              w: remembered.w,
+              h: remembered.h,
+            });
+            setSelection(next);
+            setPickMode("region");
+            setTool(null);
+            setHoverWindow(null);
+            setAnnotations([]);
+            setRedoStack([]);
+            setNextNumber(1);
+            setError(null);
+            clearDrawDraft();
+            setInteractionLock(false);
+            setPointerFollow(false);
+          } else if (key === "v") {
             event.preventDefault();
             setIntent("recording");
             setTool(null);
@@ -1171,12 +1226,16 @@ export default function RegionPickerWindow() {
               ? selection.y + selection.h + 10
               : Math.max(10, selection.y - 44),
           }}
+          /* Root listens for pointerdown (not only mousedown). Stopping mouse
+             alone still let the root clear selection and start a new drag
+             before Screenshot/Record click handlers ran. */
+          onPointerDown={(event) => event.stopPropagation()}
           onMouseDown={(event) => event.stopPropagation()}
         >
           <button
             type="button"
             className={intent === "screenshot" ? "is-primary" : ""}
-            onClick={() => void confirm("screenshot")}
+            onClick={() => void confirm("screenshot", selection)}
             disabled={busy}
           >
             <Camera size={14} /> {t("screencap.screenshot", "Screenshot")}
@@ -1185,7 +1244,7 @@ export default function RegionPickerWindow() {
             <>
               <button
                 type="button"
-                onClick={() => void confirm("screenshot", undefined, "clipboard")}
+                onClick={() => void confirm("screenshot", selection, "clipboard")}
                 disabled={busy}
                 title={t("screencap.ocrClipboard", "OCR to clipboard")}
               >
@@ -1193,7 +1252,7 @@ export default function RegionPickerWindow() {
               </button>
               <button
                 type="button"
-                onClick={() => void confirm("screenshot", undefined, "editor")}
+                onClick={() => void confirm("screenshot", selection, "editor")}
                 disabled={busy}
                 title={t("screencap.ocrEditor", "OCR to Text Toolbox")}
               >
@@ -1204,7 +1263,7 @@ export default function RegionPickerWindow() {
           <button
             type="button"
             className={`is-record${intent === "recording" ? " is-primary" : ""}`}
-            onClick={() => void confirm("recording")}
+            onClick={() => void confirm("recording", selection)}
             disabled={busy || annotations.length > 0}
             title={annotations.length > 0
               ? t("screencap.picker.annotationsBlockRecord", "Clear annotations before recording.")
@@ -1256,8 +1315,10 @@ export default function RegionPickerWindow() {
         <div className="qx-region-picker-hint">
           {pickMode === "window"
             ? t("screencap.picker.windowHint", "Hover a window and click to select · Esc to cancel")
-            : t("screencap.picker.draw", "Drag on {display} to select an area")
-                .replace("{display}", display)}
+            : t(
+              "screencap.picker.draw",
+              "Drag on {display} · Ctrl/⌘+drag copies · R last region · Esc cancel",
+            ).replace("{display}", display)}
         </div>
       )}
       {selection && tool && countdown === null && (

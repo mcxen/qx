@@ -641,6 +641,7 @@ pub fn run() {
             screencap::selection::screencap_select_display,
             screencap::selection::screencap_cancel_region_select,
             screencap::selection::screencap_confirm_region_select,
+            screencap::selection::screencap_recapture_last_region,
             screencap::selection::screencap_region_select_status,
             screencap::commands::screencap_show_controls,
             screencap::commands::screencap_toggle_controls,

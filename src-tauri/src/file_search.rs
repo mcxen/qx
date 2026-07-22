@@ -279,11 +279,22 @@ fn compact_search_text(value: &str) -> String {
         .collect()
 }
 
-/// Returns a small gap penalty when every query character occurs in order.
-/// Short one/two-character queries stay literal to avoid flooding results.
+fn fuzzy_query_is_long_enough(value: &str) -> bool {
+    let chars = value.chars().collect::<Vec<_>>();
+    let minimum = if chars.iter().all(|character| character.is_ascii()) {
+        5
+    } else {
+        3
+    };
+    chars.len() >= minimum
+}
+
+/// Returns a small gap penalty when every query character occurs in order and
+/// the match remains dense. Short names such as "Siri" must stay literal:
+/// treating them as `s*i*r*i` floods results with unrelated long filenames.
 fn fuzzy_subsequence_penalty(needle: &str, haystack: &str) -> Option<u16> {
     let needle_chars = needle.chars().collect::<Vec<_>>();
-    if needle_chars.len() < 3 {
+    if !fuzzy_query_is_long_enough(needle) {
         return None;
     }
     let mut next = 0usize;
@@ -302,6 +313,12 @@ fn fuzzy_subsequence_penalty(needle: &str, haystack: &str) -> Option<u16> {
         last = index;
         next += 1;
         if next == needle_chars.len() {
+            // At most one skipped character per query transition. This still
+            // supports compact abbreviations such as `sftwy` → `spftowery`,
+            // but rejects `siri` scattered across `PersistentOriginTrials`.
+            if gaps > needle_chars.len().saturating_sub(1) {
+                return None;
+            }
             return Some((first.unwrap_or(0).saturating_add(gaps)).min(220) as u16);
         }
     }
@@ -310,7 +327,7 @@ fn fuzzy_subsequence_penalty(needle: &str, haystack: &str) -> Option<u16> {
 
 fn fuzzy_wildcard(value: &str) -> Option<String> {
     let compact = compact_search_text(value);
-    if compact.chars().count() < 3 {
+    if !fuzzy_query_is_long_enough(&compact) {
         return None;
     }
     Some(format!(
@@ -323,8 +340,8 @@ fn fuzzy_wildcard(value: &str) -> Option<String> {
     ))
 }
 
-/// File search is **name-only**. Separators are weak boundaries and queries of
-/// at least three characters may match as an ordered fuzzy subsequence.
+/// File search is **name-only**. Separators are weak boundaries; only longer,
+/// dense abbreviations may match as an ordered fuzzy subsequence.
 fn name_matches_query(path: &Path, query: &str) -> bool {
     let q = query.trim();
     if q.is_empty() {
@@ -408,13 +425,13 @@ fn file_sort_key(
     modified: u64,
     strategy_rank: usize,
     categories: &[FileSearchCategory],
-) -> (u8, usize, std::cmp::Reverse<u64>, u16, u8, usize, usize) {
+) -> (u8, usize, u16, std::cmp::Reverse<u64>, u8, usize, usize) {
     (
         is_hidden_path(path) as u8,
         file_category_rank(path, is_dir, categories),
-        // Category rows are recent-first by default.
-        std::cmp::Reverse(modified),
+        // Active search is relevance-first inside each visible category.
         relevance_rank(path, query),
+        std::cmp::Reverse(modified),
         // Preserve the old type bias only as a final tie-break inside custom groups.
         if is_dir { 50 } else { document_type_rank(path) },
         strategy_rank,
@@ -700,6 +717,47 @@ mod tests {
         assert!(name_matches_query(path, "sf twy"));
         assert!(!name_matches_query(path, "tow spf missing"));
         assert!(!name_matches_query(path, "wot fps"));
+    }
+
+    #[test]
+    fn short_queries_do_not_match_scattered_subsequences() {
+        for unrelated in [
+            "/tmp/system-configuration-sys-11792c09e4c9fc6b",
+            "/tmp/PersistentOriginTrials",
+            "/tmp/SignalStorageConfigDB",
+            "/tmp/Site Characteristics Database",
+        ] {
+            assert!(
+                !name_matches_query(Path::new(unrelated), "Siri"),
+                "unrelated short fuzzy match: {unrelated}"
+            );
+        }
+        assert!(name_matches_query(
+            Path::new("/tmp/group.com.apple.siri.recorded-audio"),
+            "Siri"
+        ));
+    }
+
+    #[test]
+    fn relevance_precedes_recency_inside_a_category() {
+        let categories = default_file_search_categories();
+        let literal = file_sort_key(
+            Path::new("/tmp/Siri Notes"),
+            "Siri",
+            true,
+            10,
+            0,
+            &categories,
+        );
+        let weak = file_sort_key(
+            Path::new("/tmp/group.com.apple.siri.recorded-audio"),
+            "Siri",
+            true,
+            9_999,
+            0,
+            &categories,
+        );
+        assert!(literal < weak);
     }
 
     #[test]

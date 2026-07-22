@@ -23,4 +23,5 @@ pub(crate) fn on_display_topology_changed(app: &tauri::AppHandle, force_refresh:
 pub use crate::display::DisplayDescriptor as CaptureDisplay;
 pub use commands::screencap_toggle_controls;
 pub use selection::screencap_begin_capture_select;
+pub use selection::screencap_recapture_last_region;
 pub use types::{GifEntry, PickerStatus, RecordArea, RecordingOptions, RecordingStatusSnapshot};

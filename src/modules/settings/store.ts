@@ -367,6 +367,7 @@ export const DEFAULT_SETTINGS: Settings = {
     clipboard: { key: "Alt+V", enabled: false },
     record_gif: { key: "Alt+G", enabled: false },
     capture_screenshot: { key: "Alt+Shift+S", enabled: false },
+    recapture_last_region: { key: "Alt+Shift+R", enabled: false },
     toggle_capture_controls: { key: "Alt+Shift+C", enabled: false },
     rss: { key: "Alt+R", enabled: false },
     tray_open_main: { key: "Alt+Shift+O", enabled: false },
@@ -718,7 +719,7 @@ export const SHORTCUT_GROUPS: { group: string; ids: string[] }[] = [
   { group: "global", ids: ["toggle_launcher", "toggle_window"] },
   { group: "clipboard", ids: ["clipboard"] },
   { group: "rss", ids: ["rss"] },
-  { group: "capture", ids: ["capture_screenshot", "record_gif", "toggle_capture_controls"] },
+  { group: "capture", ids: ["capture_screenshot", "recapture_last_region", "record_gif", "toggle_capture_controls"] },
   { group: "tray", ids: ["tray_open_main", "tray_keep_visible", "tray_settings", "tray_hide_main", "tray_status_memory", "tray_status_network", "tray_status_cpu"] },
 ];
 
@@ -728,6 +729,7 @@ export const SHORTCUT_LABELS: Record<string, string> = {
   clipboard: "Open Clipboard",
   record_gif: "Start Screen Recording",
   capture_screenshot: "Take Screenshot",
+  recapture_last_region: "Recapture Last Region",
   toggle_capture_controls: "Toggle Capture Island",
   rss: "Open RSS Reader",
   tray_open_main: "Tray · Open Main Window",

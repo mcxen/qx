@@ -36,6 +36,11 @@ export function requestCaptureSelection(mode: CaptureMode): Promise<void> {
   return invoke("screencap_begin_capture_select", { mode });
 }
 
+/** Re-shot the last confirmed region without opening the picker (global shortcut path). */
+export function recaptureLastRegion(): Promise<void> {
+  return invoke("screencap_recapture_last_region");
+}
+
 /** One-shot toast path so a late-mounted ScreenRecorder still shows post-capture UI. */
 let pendingScreenshotToastPath: string | null = null;
 let captureListenerStarted = false;

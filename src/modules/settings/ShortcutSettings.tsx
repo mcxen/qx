@@ -20,6 +20,7 @@ const DEFAULT_GLOBAL_KEYS: Record<string, string> = {
   clipboard: "Alt+V",
   record_gif: "Alt+G",
   capture_screenshot: "Alt+Shift+S",
+  recapture_last_region: "Alt+Shift+R",
   toggle_capture_controls: "Alt+Shift+C",
   rss: "Alt+R",
   tray_open_main: "Alt+Shift+O",

@@ -76,7 +76,7 @@
 |---|---|
 | `http_client.rs` | 见上 |
 | `vendor/cardinal/*` | 内嵌自研的 `search-cache` / `search-cancel` / `fswalk` 三个 crate（未上传 crates.io） |
-| `file_search.rs` | 规范化并拒绝空白查询；文件名匹配统一忽略大小写与空格/连字符/下划线/点号等弱分隔，并为至少三个字符的查询提供有序子序列模糊召回。macOS 使用 Cardinal token/wildcard，Windows 只使用 Qx 随包提供的 Everything/ES 二进制和命名实例 `Qx`，不回退或操作用户安装的 Everything；Qx 在 `%LOCALAPPDATA%/Qx/search/Everything-Qx.ini` 固定后台、无托盘、无更新提示语义，启动后以带 timeout 的 ES IPC 探针确认实例可用并写结构化诊断。查询使用 `nopath:` token/wildcard；结果由 ES `-export-txt` 写入 Qx 缓存中的单次临时文件，Rust 严格按 UTF-8 读取并在完成后删除，避免控制台 OEM/ANSI 代码页损坏中文与其他 Unicode 路径。每个 pass 只占一个 blocking 任务，并在任务内按用户分类优先召回与平衡结果。`request_id` 提供 latest-wins 淘汰，Cardinal 锁只保护内存索引且不跨 `mdfind` 等待；前端渐进合并多 pass。两端最终只接受 leaf-name 命中，按用户分类排序，分类内默认按 `modified_at` 倒序。 |
+| `file_search.rs` | 规范化并拒绝空白查询；文件名匹配统一忽略大小写与空格/连字符/下划线/点号等弱分隔。短 ASCII 查询（四字符及以下）只做字面量匹配，较长 ASCII 缩写及至少三字符的非 ASCII 查询可做密集有序子序列召回，跳字符过散则拒绝。macOS 使用 Cardinal token/wildcard，Windows 只使用 Qx 随包提供的 Everything/ES 二进制和命名实例 `Qx`，不回退或操作用户安装的 Everything；Qx 在 `%LOCALAPPDATA%/Qx/search/Everything-Qx.ini` 固定后台、无托盘、无更新提示语义，启动后以带 timeout 的 ES IPC 探针确认实例可用并写结构化诊断。查询使用 `nopath:` token/wildcard；结果由 ES `-export-txt` 写入 Qx 缓存中的单次临时文件，Rust 严格按 UTF-8 读取并在完成后删除，避免控制台 OEM/ANSI 代码页损坏中文与其他 Unicode 路径。每个 pass 只占一个 blocking 任务，并在任务内按用户分类优先召回与平衡结果。`request_id` 提供 latest-wins 淘汰，Cardinal 锁只保护内存索引且不跨 `mdfind` 等待；前端渐进合并多 pass。两端最终只接受 leaf-name 命中，按用户分类排序，分类内先按名称相关性、再按 `modified_at` 倒序。 |
 
 ## 启动顺序（lib.rs `run` → `setup`）
 

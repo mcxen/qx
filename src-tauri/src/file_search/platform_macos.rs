@@ -437,7 +437,10 @@ fn search_mdfind_display_name(
 #[cfg(test)]
 mod tests {
     use super::{cardinal_queries, merge_ranked_entries};
-    use crate::file_search::{entry_from_path, name_matches_query, relevance_rank};
+    use crate::file_search::{
+        entry_from_path, name_matches_query, relevance_rank, FileSearchCancellation,
+    };
+    use search_cache::SearchCache;
     use std::path::Path;
 
     #[test]
@@ -461,11 +464,14 @@ mod tests {
         );
         assert_eq!(
             cardinal_queries("spf"),
+            vec!["spf*".to_string(), "*spf*".to_string(), "spf".to_string()]
+        );
+        assert_eq!(
+            cardinal_queries("Siri"),
             vec![
-                "spf*".to_string(),
-                "*spf*".to_string(),
-                "spf".to_string(),
-                "*s*p*f*".to_string()
+                "Siri*".to_string(),
+                "*Siri*".to_string(),
+                "Siri".to_string()
             ]
         );
         let spaced = cardinal_queries("spf tow");
@@ -513,5 +519,50 @@ mod tests {
             None,
         );
         assert_eq!(merged[0].path, "/Users/me/Downloads/SPF-notes.mov");
+    }
+
+    #[test]
+    fn cardinal_siri_query_excludes_unrelated_names() {
+        let root =
+            std::env::temp_dir().join(format!("qx-cardinal-siri-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for name in [
+            "Siri Notes",
+            "group.com.apple.siri.recorded-audio",
+            "PersistentOriginTrials",
+            "SignalStorageConfigDB",
+            "Site Characteristics Database",
+            "system-configuration-sys-11792c09e4c9fc6b",
+        ] {
+            std::fs::create_dir_all(root.join(name)).unwrap();
+        }
+
+        let mut cache = SearchCache::walk_fs_with_ignore(&root, &[]);
+        let strategies = cardinal_queries("Siri")
+            .into_iter()
+            .enumerate()
+            .collect::<Vec<_>>();
+        let categories = crate::settings::default_file_search_categories();
+        let candidates = super::query_cardinal_strategies(
+            &mut cache,
+            &strategies,
+            200,
+            &categories,
+            None,
+            FileSearchCancellation { version: None },
+        );
+        let results = super::rank_candidates(candidates, "Siri", 20, &categories, None);
+        let names = results
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(names.contains(&"Siri Notes"));
+        assert!(names.contains(&"group.com.apple.siri.recorded-audio"));
+        assert!(!names.contains(&"PersistentOriginTrials"));
+        assert!(!names.contains(&"SignalStorageConfigDB"));
+        assert!(!names.contains(&"Site Characteristics Database"));
+        assert!(!names.contains(&"system-configuration-sys-11792c09e4c9fc6b"));
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
