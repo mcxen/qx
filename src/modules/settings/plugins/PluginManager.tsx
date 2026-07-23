@@ -5,8 +5,8 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowUpCircle,
   Command,
-  Download,
   ExternalLink,
+  LoaderCircle,
   PackagePlus,
   Puzzle,
   RefreshCw,
@@ -1407,7 +1407,7 @@ function MarketplaceTab({
                       </PluginBadge>
                     ) : installing ? (
                       <PluginBadge compact tone="accent">
-                        <Download className="qx-loading-spinner" size={11} aria-hidden="true" />
+                        <LoaderCircle className="qx-loading-spinner" size={11} aria-hidden="true" />
                         {t("plugins.marketplace.installing", "Installing")}
                       </PluginBadge>
                     ) : updateAvailable ? (
@@ -1529,7 +1529,7 @@ function MarketplaceTab({
                           onClick={() => void handleInstall(selectedEntry, mode)}
                         >
                           {installing ? (
-                            <Download className="qx-loading-spinner" size={13} aria-hidden="true" />
+                            <LoaderCircle className="qx-loading-spinner" size={13} aria-hidden="true" />
                           ) : updateAvailable ? (
                             <ArrowUpCircle size={13} aria-hidden="true" />
                           ) : alreadyInstalled ? (
