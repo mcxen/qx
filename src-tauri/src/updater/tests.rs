@@ -124,6 +124,85 @@ fn rejects_non_qx_release_asset_url() {
 }
 
 #[test]
+fn accepts_asset_from_configured_mirror_origin_and_path() {
+    let asset_name = default_asset_name("0.5.4");
+    let mirror_manifest = "https://download.example.cn/qx/latest.json";
+    let mirror_asset = format!("https://download.example.cn/qx/releases/{asset_name}");
+    let info = update_info_from_manifest_source(
+        "0.5.3",
+        QxUpdateManifest {
+            version: "0.5.4".to_string(),
+            tag: "v0.5.4".to_string(),
+            platform: UPDATE_PLATFORM.to_string(),
+            target: UPDATE_TARGET.to_string(),
+            asset_name: asset_name.clone(),
+            asset_url: mirror_asset.clone(),
+            sha256: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string(),
+            size: Some(500),
+            artifacts: Vec::new(),
+        },
+        mirror_manifest,
+    )
+    .expect("configured mirror asset should resolve");
+
+    assert_eq!(info.asset_url.as_deref(), Some(mirror_asset.as_str()));
+}
+
+#[test]
+fn constructs_mirror_asset_url_when_manifest_omits_it() {
+    let asset_name = default_asset_name("0.5.4");
+    let info = update_info_from_manifest_source(
+        "0.5.3",
+        QxUpdateManifest {
+            version: "0.5.4".to_string(),
+            tag: "v0.5.4".to_string(),
+            platform: UPDATE_PLATFORM.to_string(),
+            target: UPDATE_TARGET.to_string(),
+            asset_name: asset_name.clone(),
+            asset_url: String::new(),
+            sha256: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string(),
+            size: Some(500),
+            artifacts: Vec::new(),
+        },
+        "https://download.example.cn/qx/latest.json",
+    )
+    .expect("mirror asset URL should be derived from the manifest URL");
+
+    assert_eq!(
+        info.asset_url.as_deref(),
+        Some(format!("https://download.example.cn/qx/releases/{asset_name}").as_str())
+    );
+}
+
+#[test]
+fn rejects_asset_outside_configured_mirror_path() {
+    let asset_name = default_asset_name("0.5.4");
+    let error = validate_release_asset_url_from_manifest(
+        &format!("https://download.example.cn/other/{asset_name}"),
+        "v0.5.4",
+        &asset_name,
+        "https://download.example.cn/qx/latest.json",
+    )
+    .expect_err("mirror asset outside the release directory must be rejected");
+
+    assert!(error.contains("not an allowed Qx release asset"));
+}
+
+#[test]
+fn rejects_asset_from_different_mirror_origin() {
+    let asset_name = default_asset_name("0.5.4");
+    let error = validate_release_asset_url_from_manifest(
+        &format!("https://evil.example/qx/releases/{asset_name}"),
+        "v0.5.4",
+        &asset_name,
+        "https://download.example.cn/qx/latest.json",
+    )
+    .expect_err("foreign mirror origin must be rejected");
+
+    assert!(error.contains("not an allowed Qx release asset"));
+}
+
+#[test]
 #[cfg(target_os = "macos")]
 fn prepares_app_bundle_for_launch() {
     let root = unique_temp_dir("qx-updater-test");

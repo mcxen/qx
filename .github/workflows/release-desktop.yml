@@ -83,6 +83,8 @@ jobs:
         run: npm run prepare:search-tools
 
       - name: Build Tauri bundle
+        env:
+          QX_UPDATE_MIRROR_MANIFEST_URL: ${{ vars.QX_UPDATE_MIRROR_MANIFEST_URL }}
         run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
       - name: Ad-hoc sign macOS app bundle (no Apple paid cert)
@@ -227,6 +229,106 @@ jobs:
             --title "${RELEASE_TAG}" \
             --notes "Desktop clients built from ${GITHUB_REPOSITORY}@${GITHUB_SHA}." \
             $([ "${PRERELEASE}" = "true" ] && echo "--prerelease" || echo "")
+
+      - name: Mirror release to WebDAV
+        shell: bash
+        env:
+          WEBDAV_UPLOAD_BASE: ${{ secrets.WEBDAV_UPLOAD_BASE }}
+          WEBDAV_USERNAME: ${{ secrets.WEBDAV_USERNAME }}
+          WEBDAV_PASSWORD: ${{ secrets.WEBDAV_PASSWORD }}
+          QX_UPDATE_MIRROR_MANIFEST_URL: ${{ vars.QX_UPDATE_MIRROR_MANIFEST_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${WEBDAV_UPLOAD_BASE}" ] \
+            && [ -z "${WEBDAV_USERNAME}" ] \
+            && [ -z "${WEBDAV_PASSWORD}" ] \
+            && [ -z "${QX_UPDATE_MIRROR_MANIFEST_URL}" ]; then
+            echo "WebDAV mirror is not configured; skipping mirror upload."
+            exit 0
+          fi
+
+          if [ -z "${WEBDAV_UPLOAD_BASE}" ] \
+            || [ -z "${WEBDAV_USERNAME}" ] \
+            || [ -z "${WEBDAV_PASSWORD}" ] \
+            || [ -z "${QX_UPDATE_MIRROR_MANIFEST_URL}" ]; then
+            echo "WebDAV mirror configuration is incomplete." >&2
+            exit 1
+          fi
+
+          case "${WEBDAV_UPLOAD_BASE}" in
+            https://*) ;;
+            *)
+              echo "WEBDAV_UPLOAD_BASE must use HTTPS." >&2
+              exit 1
+              ;;
+          esac
+          case "${QX_UPDATE_MIRROR_MANIFEST_URL}" in
+            https://*/latest.json) ;;
+            *)
+              echo "QX_UPDATE_MIRROR_MANIFEST_URL must be an HTTPS URL ending in /latest.json." >&2
+              exit 1
+              ;;
+          esac
+
+          UPLOAD_BASE="${WEBDAV_UPLOAD_BASE%/}"
+          PUBLIC_ROOT="${QX_UPDATE_MIRROR_MANIFEST_URL%/latest.json}"
+          PUBLIC_RELEASE_BASE="${PUBLIC_ROOT}/releases"
+
+          MKCOL_STATUS=$(curl --silent --show-error \
+            --output /dev/null \
+            --write-out "%{http_code}" \
+            --user "${WEBDAV_USERNAME}:${WEBDAV_PASSWORD}" \
+            --request MKCOL \
+            "${UPLOAD_BASE}/releases")
+          case "${MKCOL_STATUS}" in
+            200|201|204|405) ;;
+            *)
+              echo "Unable to prepare WebDAV releases collection (HTTP ${MKCOL_STATUS})." >&2
+              exit 1
+              ;;
+          esac
+
+          upload_webdav() {
+            local source="$1"
+            local destination="$2"
+            curl --fail-with-body --retry 3 --retry-all-errors \
+              --user "${WEBDAV_USERNAME}:${WEBDAV_PASSWORD}" \
+              --upload-file "${source}" \
+              "${destination}"
+          }
+
+          for ASSET in \
+            release-assets/*_aarch64-apple-darwin.app.zip \
+            release-assets/*setup.exe
+          do
+            ASSET_NAME=$(basename "${ASSET}")
+            upload_webdav "${ASSET}" "${UPLOAD_BASE}/releases/${ASSET_NAME}"
+          done
+
+          jq --arg base "${PUBLIC_RELEASE_BASE}" '
+            .asset_url = ($base + "/" + .asset_name)
+            | .artifacts |= map(.asset_url = ($base + "/" + .asset_name))
+          ' release-assets/latest.json > release-assets/latest-webdav.json
+
+          upload_webdav \
+            release-assets/latest-webdav.json \
+            "${UPLOAD_BASE}/releases/${RELEASE_TAG}.json"
+
+          if [ "${PRERELEASE}" = "true" ]; then
+            echo "Prerelease mirrored without replacing the stable latest.json."
+            exit 0
+          fi
+
+          # Publish the stable pointer only after every versioned asset exists.
+          upload_webdav \
+            release-assets/latest-webdav.json \
+            "${UPLOAD_BASE}/latest.json"
+
+          curl --fail --silent --show-error --retry 5 --retry-all-errors \
+            "${QX_UPDATE_MIRROR_MANIFEST_URL}" \
+            | jq --exit-status --arg version "${RELEASE_TAG#v}" \
+              '.version == $version and (.artifacts | length) == 2' >/dev/null
 
       - name: Compute SHA256 and notify Homebrew tap
         env:

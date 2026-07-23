@@ -215,6 +215,39 @@ redirects to the latest published release. The updater selects only the artifact
 for its compiled target. If that artifact is missing or invalid, update discovery
 fails safely because the app cannot identify and verify the platform package.
 
+### Optional China WebDAV mirror
+
+The same release workflow can mirror every GitHub Release to an HTTPS WebDAV
+origin. Configure these repository Actions settings:
+
+- Secret `WEBDAV_UPLOAD_BASE`: writable WebDAV collection root, for example
+  `https://dav.example.cn/dav/qx`.
+- Secrets `WEBDAV_USERNAME` and `WEBDAV_PASSWORD`: a least-privilege publishing
+  account. They are used only by Actions and must never be embedded in Qx.
+- Variable `QX_UPDATE_MIRROR_MANIFEST_URL`: anonymous, public HTTPS download URL
+  ending in `/latest.json`, for example
+  `https://download.example.cn/qx/latest.json`.
+
+All four values absent means the mirror is intentionally disabled. A partial
+configuration fails the publish job instead of silently producing an incomplete
+mirror. The WebDAV root must exist; the workflow creates or reuses its
+`releases/` collection.
+
+The workflow uploads the macOS and Windows versioned assets first, rewrites a
+mirror-specific manifest with public download URLs, uploads a versioned
+`releases/vX.Y.Z.json`, and replaces the stable `latest.json` last. Prereleases
+are mirrored but never replace the stable pointer. A mirror failure does not
+remove the GitHub Release that was already published, and rerunning the workflow
+is safe because the same versioned files are overwritten.
+
+`QX_UPDATE_MIRROR_MANIFEST_URL` is also injected when the desktop binaries are
+built. A configured client checks that mirror first and falls back to GitHub if
+the mirror request or manifest validation fails. Mirror assets are accepted only
+over HTTPS, from the manifest's exact origin, and at the sibling
+`releases/<asset_name>` path. The public mirror must therefore allow anonymous
+GET requests without expiring share tokens; WebDAV credentials remain
+write-only release infrastructure.
+
 On Windows, the detached updater helper waits for Qx to exit and starts the NSIS
 installer silently through the native elevation verb. A per-machine install can
 show UAC; cancellation is treated as a failed update. The helper relaunches Qx

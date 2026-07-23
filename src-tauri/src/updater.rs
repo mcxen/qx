@@ -19,6 +19,7 @@ const GITHUB_LATEST_MANIFEST: &str =
     "https://github.com/mcxen/qx/releases/latest/download/latest.json";
 const GITHUB_RELEASE_DOWNLOAD_BASE: &str = "https://github.com/mcxen/qx/releases/download";
 const GITHUB_RELEASE_TAG_BASE: &str = "https://github.com/mcxen/qx/releases/tag";
+const MIRROR_LATEST_MANIFEST: Option<&str> = option_env!("QX_UPDATE_MIRROR_MANIFEST_URL");
 #[cfg(target_os = "macos")]
 const UPDATE_PLATFORM: &str = "macos";
 #[cfg(target_os = "macos")]
@@ -189,12 +190,35 @@ pub(crate) fn maybe_run_update_helper_from_args() -> bool {
 }
 
 fn check_for_update(current_version: &str) -> Result<QxUpdateInfo, String> {
-    check_for_update_via_latest_manifest(current_version)
+    if let Some(mirror_url) = configured_mirror_manifest_url() {
+        match check_for_update_via_manifest(current_version, mirror_url) {
+            Ok(info) => return Ok(info),
+            Err(mirror_error) => {
+                return check_for_update_via_manifest(current_version, GITHUB_LATEST_MANIFEST)
+                    .map_err(|github_error| {
+                        format!(
+                            "update checks failed via mirror ({mirror_error}) and GitHub ({github_error})"
+                        )
+                    });
+            }
+        }
+    }
+    check_for_update_via_manifest(current_version, GITHUB_LATEST_MANIFEST)
 }
 
-fn check_for_update_via_latest_manifest(current_version: &str) -> Result<QxUpdateInfo, String> {
+fn configured_mirror_manifest_url() -> Option<&'static str> {
+    MIRROR_LATEST_MANIFEST
+        .map(str::trim)
+        .filter(|url| !url.is_empty())
+}
+
+fn check_for_update_via_manifest(
+    current_version: &str,
+    manifest_url: &str,
+) -> Result<QxUpdateInfo, String> {
+    validate_manifest_url(manifest_url)?;
     let manifest: QxUpdateManifest = http_client()?
-        .get(GITHUB_LATEST_MANIFEST)
+        .get(manifest_url)
         .send()
         .map_err(|e| format!("fetch latest update manifest: {e}"))?
         .error_for_status()
@@ -202,12 +226,21 @@ fn check_for_update_via_latest_manifest(current_version: &str) -> Result<QxUpdat
         .json()
         .map_err(|e| format!("parse latest update manifest: {e}"))?;
 
-    update_info_from_manifest(current_version, manifest)
+    update_info_from_manifest_source(current_version, manifest, manifest_url)
 }
 
+#[cfg(test)]
 fn update_info_from_manifest(
     current_version: &str,
     manifest: QxUpdateManifest,
+) -> Result<QxUpdateInfo, String> {
+    update_info_from_manifest_source(current_version, manifest, GITHUB_LATEST_MANIFEST)
+}
+
+fn update_info_from_manifest_source(
+    current_version: &str,
+    manifest: QxUpdateManifest,
+    manifest_url: &str,
 ) -> Result<QxUpdateInfo, String> {
     let latest_version = manifest.version.trim().trim_start_matches('v').to_string();
     if latest_version.is_empty() {
@@ -252,11 +285,11 @@ fn update_info_from_manifest(
             artifact.asset_name.trim().to_string()
         };
         let asset_url = if artifact.asset_url.trim().is_empty() {
-            format!("{GITHUB_RELEASE_DOWNLOAD_BASE}/{tag}/{asset_name}")
+            default_asset_url(manifest_url, &tag, &asset_name)?
         } else {
             artifact.asset_url.trim().to_string()
         };
-        validate_release_asset_url(&asset_url, &tag, &asset_name)?;
+        validate_release_asset_url_from_manifest(&asset_url, &tag, &asset_name, manifest_url)?;
         (
             Some(asset_name),
             Some(asset_url),
@@ -288,14 +321,70 @@ fn default_asset_name(version: &str) -> String {
     String::new()
 }
 
+#[cfg(test)]
 fn validate_release_asset_url(url: &str, tag: &str, asset_name: &str) -> Result<(), String> {
+    validate_release_asset_url_from_manifest(url, tag, asset_name, GITHUB_LATEST_MANIFEST)
+}
+
+fn validate_manifest_url(url: &str) -> Result<(), String> {
+    let parsed =
+        reqwest::Url::parse(url).map_err(|e| format!("invalid update manifest URL: {e}"))?;
+    if parsed.scheme() != "https"
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+        || (url != GITHUB_LATEST_MANIFEST && !parsed.path().ends_with("/latest.json"))
+    {
+        return Err(format!("update manifest URL is not allowed: {url}"));
+    }
+    Ok(())
+}
+
+fn default_asset_url(manifest_url: &str, tag: &str, asset_name: &str) -> Result<String, String> {
+    if manifest_url == GITHUB_LATEST_MANIFEST {
+        return Ok(format!("{GITHUB_RELEASE_DOWNLOAD_BASE}/{tag}/{asset_name}"));
+    }
+    let manifest = reqwest::Url::parse(manifest_url)
+        .map_err(|e| format!("invalid update manifest URL: {e}"))?;
+    let expected_path = mirror_asset_path(manifest.path(), asset_name)?;
+    let mut asset = manifest;
+    asset.set_path(&expected_path);
+    Ok(asset.to_string())
+}
+
+fn mirror_asset_path(manifest_path: &str, asset_name: &str) -> Result<String, String> {
+    if !manifest_path.ends_with("/latest.json") {
+        return Err("mirror update manifest URL must end in /latest.json".to_string());
+    }
+    let root = manifest_path.trim_end_matches("/latest.json");
+    Ok(format!("{root}/releases/{asset_name}"))
+}
+
+fn validate_release_asset_url_from_manifest(
+    url: &str,
+    tag: &str,
+    asset_name: &str,
+    manifest_url: &str,
+) -> Result<(), String> {
     if tag.contains(['/', '\\']) || asset_name.contains(['/', '\\']) {
         return Err("update manifest contains an invalid tag or asset name".to_string());
     }
     let parsed = reqwest::Url::parse(url).map_err(|e| format!("invalid update asset URL: {e}"))?;
-    let expected_path = format!("/mcxen/qx/releases/download/{tag}/{asset_name}");
+    let manifest = reqwest::Url::parse(manifest_url)
+        .map_err(|e| format!("invalid update manifest URL: {e}"))?;
+    let expected_path = if manifest_url == GITHUB_LATEST_MANIFEST {
+        format!("/mcxen/qx/releases/download/{tag}/{asset_name}")
+    } else {
+        mirror_asset_path(manifest.path(), asset_name)?
+    };
     if parsed.scheme() != "https"
-        || parsed.host_str() != Some("github.com")
+        || parsed.scheme() != manifest.scheme()
+        || parsed.host_str() != manifest.host_str()
+        || parsed.port_or_known_default() != manifest.port_or_known_default()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
         || parsed.path() != expected_path
         || parsed.query().is_some()
         || parsed.fragment().is_some()
