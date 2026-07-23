@@ -133,9 +133,10 @@ Tauri 生产环境前端是 `tauri://localhost`（或 `asset://`），`~/.qx/plu
   的 iframe、command/panel、后台任务或全局快捷键。执行边界使用 Rust 宿主返回的
   原生平台标识，不以 WebView user-agent 决定；平台 bridge 不可用时，对声明了平台的
   插件 fail closed。
-- `min_app_version`：同样属于运行时执行边界；当前 Qx 版本低于声明值时保留安装与设置
-  可见性，但不启动插件 runtime、后台任务或快捷键。宿主版本读取失败时对声明了最低
-  版本的插件 fail closed，避免 bridge 异常意外放行较新的端口代码。
+- `min_app_version`：同时属于安装与运行时执行边界；市场会标记不可安装并引导升级，
+  Rust 安装命令会拒绝本地包、URL 与市场下载包。对已经存在的旧安装仍保留设置可见性，
+  但不启动 runtime、后台任务或快捷键。宿主版本读取失败时对声明了最低版本的插件
+  fail closed，避免 bridge 异常意外放行较新的端口代码。
 - `keywords`：全局搜索关键词；插件级关键词会自动合并进该插件的每条命令与 Panel。主搜索统一忽略大小写、Unicode 全/半角差异，并容忍空格、连字符、下划线、点号和斜杠等常见名称分隔符。
 - `permissions`：插件可申请的能力，具体见权限表
 - `entry`：入口文件，默认 `index.js`

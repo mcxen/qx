@@ -41,6 +41,25 @@ function parsedVersion(version: string): ParsedVersion | null {
   return { core: core.split(".").map(Number), prerelease };
 }
 
+/** Shared marketplace/runtime SemVer boundary. Invalid or unavailable versions fail closed. */
+export function appVersionMeetsMinimum(
+  currentVersion: string,
+  minimumVersion: string | null | undefined,
+): boolean {
+  const minimum = minimumVersion?.trim();
+  if (!minimum) return true;
+  const current = parsedVersion(currentVersion);
+  const required = parsedVersion(minimum);
+  if (!current || !required) return false;
+  const width = Math.max(current.core.length, required.core.length);
+  for (let index = 0; index < width; index += 1) {
+    const left = current.core[index] ?? 0;
+    const right = required.core[index] ?? 0;
+    if (left !== right) return left > right;
+  }
+  return comparePrerelease(current.prerelease, required.prerelease) >= 0;
+}
+
 function comparePrerelease(left: string[], right: string[]): number {
   if (!left.length || !right.length) {
     if (left.length === right.length) return 0;
@@ -66,16 +85,5 @@ export function pluginSupportsAppVersion(
   plugin: InstalledPlugin,
   currentVersion: string,
 ): boolean {
-  const minimum = plugin.manifest?.min_app_version?.trim();
-  if (!minimum) return true;
-  const current = parsedVersion(currentVersion);
-  const required = parsedVersion(minimum);
-  if (!current || !required) return false;
-  const width = Math.max(current.core.length, required.core.length);
-  for (let index = 0; index < width; index += 1) {
-    const left = current.core[index] ?? 0;
-    const right = required.core[index] ?? 0;
-    if (left !== right) return left > right;
-  }
-  return comparePrerelease(current.prerelease, required.prerelease) >= 0;
+  return appVersionMeetsMinimum(currentVersion, plugin.manifest?.min_app_version);
 }

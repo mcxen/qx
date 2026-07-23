@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowUpCircle,
   Command,
   Download,
   ExternalLink,
-  PackageCheck,
   PackagePlus,
   Puzzle,
   RefreshCw,
@@ -67,12 +67,13 @@ import type {
   PluginCompatibilityStatus,
   PluginIndexEntry,
   PluginIndexSourceStatus,
+  PluginReleaseNote,
   PluginPlatform,
   PluginPlatformCompatibility,
   PluginPreference,
 } from "../../../plugin/types";
 import { marketplaceEntryKey } from "../../../plugin/types";
-import { currentPluginPlatform } from "../../../plugin/platform";
+import { appVersionMeetsMinimum, currentPluginPlatform } from "../../../plugin/platform";
 import {
   localizeMarketplaceEntryDescription,
   localizeMarketplaceEntryName,
@@ -91,6 +92,7 @@ import {
   type ConfigurableBuiltinModuleId,
 } from "../../catalog";
 import { isBuiltinModuleEnabled } from "../../moduleAvailability";
+import PluginBadge from "./PluginBadge";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -132,11 +134,11 @@ function compatibilityLabel(status: PluginCompatibilityStatus, t: Translate): st
   }
 }
 
-function compatibilityBadgeVariant(status: PluginCompatibilityStatus): "default" | "secondary" | "outline" | "destructive" {
-  if (status === "supported") return "default";
-  if (status === "partial") return "secondary";
-  if (status === "mac-only") return "outline";
-  return "destructive";
+function compatibilityBadgeTone(status: PluginCompatibilityStatus): "success" | "warning" | "neutral" | "danger" {
+  if (status === "supported") return "success";
+  if (status === "partial") return "warning";
+  if (status === "mac-only") return "neutral";
+  return "danger";
 }
 
 function fallbackLabel(label: string): string {
@@ -225,9 +227,9 @@ function PlatformCompatibilityBlock({
     <div className={`qx-plugin-compat-platform${active ? " is-active" : ""}`}>
       <div className="qx-plugin-compat-head">
         <div className="qx-plugin-compat-platform-name">{PLATFORM_LABELS[platform]}</div>
-        <Badge variant={compatibilityBadgeVariant(compatibility.status)}>
+        <PluginBadge tone={compatibilityBadgeTone(compatibility.status)}>
           {compatibilityLabel(compatibility.status, t)}
-        </Badge>
+        </PluginBadge>
       </div>
       <CompatibilityList title={t("plugins.compat.available", "Available")} items={compatibility.features} />
       <CompatibilityList title={t("plugins.compat.degraded", "Degraded")} items={compatibility.degraded} />
@@ -312,6 +314,11 @@ function marketplaceEntryMatchesQuery(
     localizeMarketplaceEntryDescription(entry, t),
     entry.min_app_version,
     ...(entry.required_permissions ?? []),
+    ...(entry.releases ?? []).flatMap((release) => [
+      release.version,
+      release.notes,
+      ...Object.values(release.notes_localizations ?? {}),
+    ]),
   ]
     .filter(Boolean)
     .some((value) => String(value).toLowerCase().includes(query));
@@ -328,6 +335,17 @@ function formatDate(value?: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString();
+}
+
+function localizeReleaseNotes(release: PluginReleaseNote, locale: Locale): string {
+  const localized = release.notes_localizations ?? {};
+  const exact = localized[locale];
+  if (exact?.trim()) return exact.trim();
+  const language = locale.split("-")[0];
+  const languageMatch = Object.entries(localized).find(([key]) => key.split("-")[0] === language);
+  if (languageMatch?.[1]?.trim()) return languageMatch[1].trim();
+  if (localized.en?.trim()) return localized.en.trim();
+  return release.notes?.trim() ?? "";
 }
 
 function shortcutHasConflict(
@@ -630,7 +648,7 @@ function PluginDetail({
   const iconAsset = plugin.manifest?.icon;
   const screenshots = plugin.manifest?.screenshots ?? [];
   const settingsKey = builtin ? BUILTIN_SETTINGS_KEYS[plugin.id] : undefined;
-  const { settings, patch, patchSearchMetadata } = useSettingsStore();
+  const { settings, patch, patchSearchMetadata, setActiveTab } = useSettingsStore();
   const builtinModuleId = builtin ? plugin.id.slice("builtin:".length) : null;
   const aliasMetadataKey = builtinModuleId ? moduleMetadataKey(builtinModuleId) : pluginMetadataKey(plugin.id);
   const aliasMetadata = metadataForKey(settings, aliasMetadataKey);
@@ -641,8 +659,26 @@ function PluginDetail({
   const [prefValues, setPrefValues] = useState<Record<string, string | number | boolean>>({});
   const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [prefsBusy, setPrefsBusy] = useState(false);
+  const [hostVersion, setHostVersion] = useState<string | null>(null);
   const prefValuesRef = useRef<Record<string, string | number | boolean>>({});
   const loadTokenRef = useRef(0);
+  const appCompatible = builtin
+    || hostVersion === null
+    || appVersionMeetsMinimum(hostVersion ?? "", plugin.manifest?.min_app_version);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getVersion()
+      .then((version) => {
+        if (!cancelled) setHostVersion(version);
+      })
+      .catch(() => {
+        if (!cancelled) setHostVersion("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [plugin.id]);
 
   // Compute defaults from preference definitions.
   const computeDefaults = useCallback(() => {
@@ -761,27 +797,48 @@ function PluginDetail({
           <Toggle
             value={plugin.enabled}
             onChange={onToggle}
-            disabled={builtin && !configurableBuiltin}
+            disabled={(builtin && !configurableBuiltin) || (!appCompatible && !plugin.enabled)}
             ariaLabel={t("modules.enabled", "Enable module")}
           />
         </div>
       </div>
 
       <div className="qx-plugin-badges">
-        <Badge variant="secondary">v{plugin.version}</Badge>
+        <PluginBadge>v{plugin.version}</PluginBadge>
         {builtin
-          ? <Badge variant="secondary">{t("plugins.badge.builtin", "Built-in")}</Badge>
-          : <Badge variant="secondary">{t("plugins.badge.external", "External")}</Badge>}
-        <Badge variant={plugin.enabled ? "default" : "outline"}>
+          ? <PluginBadge tone="accent">{t("plugins.badge.builtin", "Built-in")}</PluginBadge>
+          : <PluginBadge>{t("plugins.badge.external", "External")}</PluginBadge>}
+        <PluginBadge tone={plugin.enabled ? "success" : "neutral"}>
           {plugin.enabled
             ? t("plugins.badge.enabled", "Enabled")
             : t("plugins.badge.disabled", "Disabled")}
-        </Badge>
+        </PluginBadge>
+        {!appCompatible && (
+          <PluginBadge tone="warning">
+            {t("plugins.marketplace.requiresQx", "Requires Qx {version}")
+              .replace("{version}", plugin.manifest?.min_app_version || "—")}
+          </PluginBadge>
+        )}
       </div>
 
       {displayDescription ? (
         <div className="qx-plugin-description">{displayDescription}</div>
       ) : null}
+
+      {!appCompatible && (
+        <div className="qx-plugin-compat-warning">
+          <div>
+            {t(
+              "plugins.installed.requiresQxMessage",
+              "This plugin is installed but cannot run until Qx is updated to {required} or newer.",
+            ).replace("{required}", plugin.manifest?.min_app_version || "—")}
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => setActiveTab("about")}>
+            <ArrowUpCircle size={13} aria-hidden="true" />
+            {t("plugins.marketplace.updateQx", "Update Qx")}
+          </Button>
+        </div>
+      )}
 
       {!builtin && screenshots.length > 0 && (
         <SettingsCard
@@ -892,7 +949,8 @@ function MarketplaceTab({
   onInstallComplete: () => void | Promise<void>;
 }) {
   const t = useT();
-  const { settings, patch } = useSettingsStore();
+  const locale = useLocale();
+  const { settings, patch, setActiveTab } = useSettingsStore();
   const registries = settings.plugin_registries?.length
     ? settings.plugin_registries
     : DEFAULT_PLUGIN_REGISTRIES;
@@ -907,6 +965,21 @@ function MarketplaceTab({
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [librariesOpen, setLibrariesOpen] = useState(false);
   const [installStatus, setInstallStatus] = useState<{ tone: StatusTone; message: string } | null>(null);
+  const [hostVersion, setHostVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getVersion()
+      .then((version) => {
+        if (!cancelled) setHostVersion(version);
+      })
+      .catch(() => {
+        if (!cancelled) setHostVersion("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredEntries = useMemo(() => {
     const q = normalizeSearch(searchQuery);
@@ -968,6 +1041,18 @@ function MarketplaceTab({
   }, [fetchIndex, sourceFilter, registriesSignature]);
 
   const handleInstall = async (entry: PluginIndexEntry, mode: "install" | "upgrade" | "reinstall") => {
+    if (!appVersionMeetsMinimum(hostVersion ?? "", entry.min_app_version)) {
+      setInstallStatus({
+        tone: "danger",
+        message: t(
+          "plugins.marketplace.requiresQxMessage",
+          "{name} requires Qx {required} or newer. Update Qx before installing.",
+        )
+          .replace("{name}", localizeMarketplaceEntryName(entry, t))
+          .replace("{required}", entry.min_app_version || "—"),
+      });
+      return;
+    }
     const key = marketplaceEntryKey(entry);
     setInstallingKey(key);
     setInstallStatus(null);
@@ -1239,16 +1324,16 @@ function MarketplaceTab({
       {sourceStatuses.length > 0 && (
         <div className="qx-plugin-source-status" aria-live="polite">
           {sourceStatuses.map((source) => (
-            <Badge
+            <PluginBadge
               key={source.id}
-              variant={source.ok ? "secondary" : "destructive"}
+              tone={source.ok ? "neutral" : "danger"}
               title={source.error || source.index_url}
             >
               {source.name}
               {source.ok
                 ? ` · ${source.plugin_count}`
                 : ` · ${t("plugins.libraries.failed", "failed")}`}
-            </Badge>
+            </PluginBadge>
           ))}
         </div>
       )}
@@ -1278,6 +1363,8 @@ function MarketplaceTab({
               const alreadyInstalled = installedVersion != null;
               const updateAvailable = isPluginUpdateAvailable(installedVersion, entry.version);
               const installing = installingKey === key;
+              const compatible = appVersionMeetsMinimum(hostVersion ?? "", entry.min_app_version);
+              const compatibilityPending = hostVersion === null && Boolean(entry.min_app_version);
 
               return (
                 <button
@@ -1290,9 +1377,9 @@ function MarketplaceTab({
                     <div className="qx-plugin-list-title">
                       {localizeMarketplaceEntryName(entry, t)}
                       {entry.source_name ? (
-                        <Badge variant="secondary" className="qx-plugin-source-badge">
+                        <PluginBadge compact className="qx-plugin-source-badge">
                           {entry.source_name}
-                        </Badge>
+                        </PluginBadge>
                       ) : null}
                     </div>
                     <div className="qx-plugin-list-meta">
@@ -1308,25 +1395,31 @@ function MarketplaceTab({
                       return desc ? <div className="qx-plugin-list-desc">{desc}</div> : null;
                     })()}
                   </div>
-                  {updateAvailable && !installing && (
-                    <ArrowUpCircle
-                      size={14}
-                      aria-label={t("plugins.marketplace.updateAvailable", "Update available")}
-                    />
-                  )}
-                  {alreadyInstalled && !updateAvailable && !installing && (
-                    <PackageCheck
-                      size={14}
-                      aria-label={t("plugins.marketplace.installed", "Installed")}
-                    />
-                  )}
-                  {installing && (
-                    <Download
-                      className="qx-loading-spinner"
-                      size={14}
-                      aria-label={t("plugins.marketplace.installing", "Installing")}
-                    />
-                  )}
+                  <span className="qx-plugin-list-status">
+                    {compatibilityPending ? (
+                      <PluginBadge compact>
+                        {t("plugins.marketplace.checkingCompatibility", "Checking…")}
+                      </PluginBadge>
+                    ) : !compatible ? (
+                      <PluginBadge compact tone="warning">
+                        {t("plugins.marketplace.requiresQx", "Requires Qx {version}")
+                          .replace("{version}", entry.min_app_version || "—")}
+                      </PluginBadge>
+                    ) : installing ? (
+                      <PluginBadge compact tone="accent">
+                        <Download className="qx-loading-spinner" size={11} aria-hidden="true" />
+                        {t("plugins.marketplace.installing", "Installing")}
+                      </PluginBadge>
+                    ) : updateAvailable ? (
+                      <PluginBadge compact tone="accent">
+                        {t("plugins.marketplace.updateAvailable", "Update")}
+                      </PluginBadge>
+                    ) : alreadyInstalled ? (
+                      <PluginBadge compact tone="success">
+                        {t("plugins.marketplace.installed", "Installed")}
+                      </PluginBadge>
+                    ) : null}
+                  </span>
                 </button>
               );
             })
@@ -1340,18 +1433,24 @@ function MarketplaceTab({
                 {localizeMarketplaceEntryName(selectedEntry, t)}
               </div>
               <div className="qx-plugin-badges">
-                <Badge variant="secondary">v{selectedEntry.version}</Badge>
+                <PluginBadge>v{selectedEntry.version}</PluginBadge>
                 {selectedEntry.source_name && (
-                  <Badge variant="default">
+                  <PluginBadge>
                     {t("plugins.marketplace.source", "Library")}: {selectedEntry.source_name}
-                  </Badge>
+                  </PluginBadge>
                 )}
-                {selectedEntry.author && <Badge variant="secondary">{selectedEntry.author}</Badge>}
-                {selectedEntry.size_bytes && <Badge variant="secondary">{formatBytes(selectedEntry.size_bytes)}</Badge>}
+                {selectedEntry.author && <PluginBadge>{selectedEntry.author}</PluginBadge>}
+                {selectedEntry.size_bytes && <PluginBadge>{formatBytes(selectedEntry.size_bytes)}</PluginBadge>}
                 {isPluginUpdateAvailable(installedVersions.get(selectedEntry.id), selectedEntry.version) && (
-                  <Badge variant="default">
+                  <PluginBadge tone="accent">
                     {t("plugins.marketplace.updateAvailable", "Update available")}
-                  </Badge>
+                  </PluginBadge>
+                )}
+                {hostVersion !== null
+                  && !appVersionMeetsMinimum(hostVersion, selectedEntry.min_app_version) && (
+                  <PluginBadge tone="warning">
+                    {t("plugins.marketplace.incompatible", "Not compatible")}
+                  </PluginBadge>
                 )}
               </div>
               {(() => {
@@ -1364,6 +1463,8 @@ function MarketplaceTab({
                   const alreadyInstalled = installedVersion != null;
                   const updateAvailable = isPluginUpdateAvailable(installedVersion, selectedEntry.version);
                   const installing = installingKey === marketplaceEntryKey(selectedEntry);
+                  const compatible = appVersionMeetsMinimum(hostVersion ?? "", selectedEntry.min_app_version);
+                  const compatibilityPending = hostVersion === null && Boolean(selectedEntry.min_app_version);
                   const busyLabel = updateAvailable
                     ? t("plugins.marketplace.updating", "Updating...")
                     : alreadyInstalled
@@ -1383,9 +1484,30 @@ function MarketplaceTab({
                       ? "reinstall"
                       : "install";
                   return (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div className="qx-plugin-install-stack">
+                      {!compatibilityPending && !compatible && (
+                        <div className="qx-plugin-compat-warning">
+                          <div>
+                            {t(
+                              "plugins.marketplace.requiresQxMessage",
+                              "{name} requires Qx {required} or newer. Update Qx before installing.",
+                            )
+                              .replace("{name}", localizeMarketplaceEntryName(selectedEntry, t))
+                              .replace("{required}", selectedEntry.min_app_version || "—")}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setActiveTab("about")}
+                          >
+                            <ArrowUpCircle size={13} aria-hidden="true" />
+                            {t("plugins.marketplace.updateQx", "Update Qx")}
+                          </Button>
+                        </div>
+                      )}
                       {alreadyInstalled && (
-                        <div style={{ fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.4 }}>
+                        <div className="qx-plugin-install-hint">
                           {updateAvailable
                             ? t(
                                 "plugins.marketplace.updateHint",
@@ -1399,11 +1521,11 @@ function MarketplaceTab({
                               ).replace("{version}", installedVersion ?? selectedEntry.version)}
                         </div>
                       )}
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+                      <div className="qx-plugin-install-actions">
                         <Button
                           variant={alreadyInstalled && !updateAvailable ? "outline" : "default"}
                           size="sm"
-                          disabled={installing}
+                          disabled={installing || compatibilityPending || !compatible}
                           onClick={() => void handleInstall(selectedEntry, mode)}
                         >
                           {installing ? (
@@ -1418,7 +1540,7 @@ function MarketplaceTab({
                           {installing ? busyLabel : actionLabel}
                         </Button>
                         {alreadyInstalled && !updateAvailable && (
-                          <span style={{ fontSize: 12, color: "var(--color-text-tertiary)" }}>
+                          <span className="qx-plugin-install-hint">
                             {t("plugins.marketplace.installed", "Installed")}
                           </span>
                         )}
@@ -1427,6 +1549,44 @@ function MarketplaceTab({
                   );
                 })()}
               </SettingsCard>
+              {selectedEntry.releases && selectedEntry.releases.length > 0 && (
+                <SettingsCard
+                  title={t("plugins.marketplace.versionHistory", "Version History")}
+                  description={t(
+                    "plugins.marketplace.versionHistory.desc",
+                    "What changed in each published plugin version.",
+                  )}
+                >
+                  <div className="qx-plugin-release-list">
+                    {selectedEntry.releases.slice(0, 20).map((release, index) => {
+                      const notes = localizeReleaseNotes(release, locale);
+                      return (
+                        <div
+                          className={`qx-plugin-release-row${index === 0 ? " is-current" : ""}`}
+                          key={`${release.version}-${release.published_at || index}`}
+                        >
+                          <div className="qx-plugin-release-head">
+                            <PluginBadge tone={index === 0 ? "accent" : "neutral"}>
+                              v{release.version}
+                            </PluginBadge>
+                            {index === 0 && (
+                              <span className="qx-plugin-release-current">
+                                {t("plugins.marketplace.currentRelease", "Current")}
+                              </span>
+                            )}
+                            {release.published_at && (
+                              <span className="qx-plugin-release-date">
+                                {formatDate(release.published_at)}
+                              </span>
+                            )}
+                          </div>
+                          {notes && <div className="qx-plugin-release-notes">{notes}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </SettingsCard>
+              )}
               {alternateSources.length > 0 && (
                 <SettingsCard title={t("plugins.marketplace.otherSources", "Other libraries")}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -1454,12 +1614,22 @@ function MarketplaceTab({
                             <div className="qx-plugin-list-title">
                               {alt.source_name || alt.source_id || t("plugins.marketplace.source", "Library")}
                             </div>
-                            <div className="qx-plugin-list-meta">v{alt.version}</div>
+                            <div className="qx-plugin-list-meta">
+                              v{alt.version}
+                              {!appVersionMeetsMinimum(hostVersion ?? "", alt.min_app_version)
+                                ? ` · ${t("plugins.marketplace.requiresQx", "Requires Qx {version}")
+                                  .replace("{version}", alt.min_app_version || "—")}`
+                                : ""}
+                            </div>
                           </div>
                           <Button
                             size="sm"
                             variant="outline"
-                            disabled={installingAlt || installingKey != null}
+                            disabled={
+                              installingAlt
+                              || installingKey != null
+                              || !appVersionMeetsMinimum(hostVersion ?? "", alt.min_app_version)
+                            }
                             onClick={() => {
                               setSelectedKey(altKey);
                               const installedVersion = installedVersions.get(alt.id);
@@ -1490,7 +1660,7 @@ function MarketplaceTab({
                 <SettingsCard title={t("plugins.marketplace.requiredPerms", "Required permissions")}>
                   <div className="qx-plugin-badges">
                     {selectedEntry.required_permissions.map((p) => (
-                      <Badge key={p} variant="secondary">{p}</Badge>
+                      <PluginBadge key={p}>{p}</PluginBadge>
                     ))}
                   </div>
                 </SettingsCard>

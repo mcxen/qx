@@ -128,10 +128,19 @@ export interface PluginIndexEntry {
   updated_at?: string;
   author?: string;
   min_app_version?: string;
+  /** Newest first. Historical entries are informational, not rollback URLs. */
+  releases?: PluginReleaseNote[];
   /** Host-stamped registry attribution after multi-source fetch. */
   source_id?: string;
   source_name?: string;
   source_index_url?: string;
+}
+
+export interface PluginReleaseNote {
+  version: string;
+  notes?: string;
+  notes_localizations?: Record<string, string>;
+  published_at?: string;
 }
 
 export interface PluginIndexSourceStatus {

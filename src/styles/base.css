@@ -129,6 +129,8 @@
   --qx-accent-hover: var(--qx-blue-700);
   --qx-accent-soft: rgba(37, 99, 235, 0.12);
   --qx-text-on-accent: #ffffff;
+  --qx-success: #15803d;
+  --qx-warning: #b45309;
   --qx-danger: #b42318;
   --qx-danger-border: rgba(180, 35, 24, 0.22);
 
@@ -257,6 +259,8 @@
   --qx-accent-hover: var(--qx-blue-700);
   --qx-accent-soft: rgba(59, 130, 246, 0.18);
   --qx-text-on-accent: #ffffff;
+  --qx-success: #22c55e;
+  --qx-warning: #f59e0b;
   --qx-danger: #f04438;
   --qx-danger-border: rgba(240, 68, 56, 0.28);
   --qx-gh-level-0: #161b22;

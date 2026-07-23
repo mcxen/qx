@@ -240,7 +240,7 @@ tab = "plugin:*"   → PluginPanelViewport
 - 权限系统
 - 前端插件库：`PluginManager.tsx`
   - `Installed`：本地插件/内置模块搜索，`All / Built-in / External / Enabled / Disabled` 筛选，启用/禁用、卸载、preferences、权限详情。
-  - `Browse`：远程市场搜索，左侧列表 + 右侧详情，展示版本、作者、大小、权限、最低 Qx 版本、更新时间、SHA256，并提供安装状态反馈。
+  - `Browse`：远程市场搜索，左侧列表 + 右侧详情，展示版本说明、历史版本、作者、大小、权限、最低 Qx 版本、更新时间、SHA256，并提供安装状态反馈。最低版本不满足时 UI 禁用所有安装来源并引导到 About；Rust 安装边界再次拒绝不兼容包。
   - 导入入口：本地 `.zip` / `.qx-plugin`、GitHub repo/release/archive URL、Raycast extension tree URL。
   - 后续优化：组件拆分、键盘列表导航、大列表虚拟化。
 

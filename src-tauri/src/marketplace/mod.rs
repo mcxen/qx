@@ -249,6 +249,18 @@ fn validate_manifest_storage(storage: Option<&PluginStorageManifest>) -> Result<
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginReleaseNote {
+    pub version: String,
+    #[serde(default)]
+    pub notes: String,
+    /// Optional locale → release-note map (`zh-CN`, `en`, …).
+    #[serde(default)]
+    pub notes_localizations: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub published_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginIndexEntry {
     pub id: String,
     pub name: String,
@@ -268,6 +280,9 @@ pub struct PluginIndexEntry {
     pub author: String,
     #[serde(default)]
     pub min_app_version: String,
+    /// Newest first. Historical entries are descriptive and not install targets.
+    #[serde(default)]
+    pub releases: Vec<PluginReleaseNote>,
     /// Registry that provided this entry (filled by host after fetch).
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub source_id: String,
@@ -275,6 +290,108 @@ pub struct PluginIndexEntry {
     pub source_name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub source_index_url: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ParsedPluginVersion {
+    core: Vec<u64>,
+    prerelease: Vec<String>,
+}
+
+fn parse_plugin_version(value: &str) -> Option<ParsedPluginVersion> {
+    let value = value.trim().trim_start_matches(['v', 'V']);
+    let without_build = value.split_once('+').map(|(head, _)| head).unwrap_or(value);
+    let (core, prerelease) = without_build
+        .split_once('-')
+        .map(|(core, pre)| (core, pre.split('.').map(str::to_string).collect()))
+        .unwrap_or_else(|| (without_build, Vec::new()));
+    if core.is_empty()
+        || !core
+            .split('.')
+            .all(|part| !part.is_empty() && part.chars().all(|ch| ch.is_ascii_digit()))
+        || prerelease.iter().any(|part: &String| {
+            part.is_empty()
+                || !part
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '-')
+        })
+    {
+        return None;
+    }
+    Some(ParsedPluginVersion {
+        core: core
+            .split('.')
+            .map(|part| part.parse::<u64>().ok())
+            .collect::<Option<Vec<_>>>()?,
+        prerelease,
+    })
+}
+
+fn compare_plugin_prerelease(left: &[String], right: &[String]) -> i32 {
+    if left.is_empty() || right.is_empty() {
+        return match (left.is_empty(), right.is_empty()) {
+            (true, true) => 0,
+            (true, false) => 1,
+            (false, true) => -1,
+            (false, false) => unreachable!(),
+        };
+    }
+    let width = left.len().max(right.len());
+    for index in 0..width {
+        let Some(left_part) = left.get(index) else {
+            return -1;
+        };
+        let Some(right_part) = right.get(index) else {
+            return 1;
+        };
+        if left_part == right_part {
+            continue;
+        }
+        let left_numeric = left_part.chars().all(|ch| ch.is_ascii_digit());
+        let right_numeric = right_part.chars().all(|ch| ch.is_ascii_digit());
+        if left_numeric && right_numeric {
+            let left_number = left_part.parse::<u64>().unwrap_or(0);
+            let right_number = right_part.parse::<u64>().unwrap_or(0);
+            return if left_number > right_number { 1 } else { -1 };
+        }
+        if left_numeric != right_numeric {
+            return if left_numeric { -1 } else { 1 };
+        }
+        return if left_part > right_part { 1 } else { -1 };
+    }
+    0
+}
+
+fn compare_plugin_versions(left: &str, right: &str) -> Option<i32> {
+    let left = parse_plugin_version(left)?;
+    let right = parse_plugin_version(right)?;
+    let width = left.core.len().max(right.core.len());
+    for index in 0..width {
+        let left_part = left.core.get(index).copied().unwrap_or(0);
+        let right_part = right.core.get(index).copied().unwrap_or(0);
+        if left_part != right_part {
+            return Some(if left_part > right_part { 1 } else { -1 });
+        }
+    }
+    Some(compare_plugin_prerelease(
+        &left.prerelease,
+        &right.prerelease,
+    ))
+}
+
+fn validate_manifest_host_version(manifest: &PluginManifest) -> Result<(), String> {
+    let minimum = manifest.min_app_version.trim();
+    if minimum.is_empty() {
+        return Ok(());
+    }
+    let current = env!("CARGO_PKG_VERSION");
+    match compare_plugin_versions(current, minimum) {
+        Some(order) if order >= 0 => Ok(()),
+        _ => Err(format!(
+            "Plugin {} requires Qx {} or newer; current Qx is {}.",
+            manifest.name, minimum, current
+        )),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1591,6 +1708,12 @@ fn install_plugin_archive(
     let plugin_id = validate_plugin_id(&manifest.id)?;
     validate_manifest_platforms(&manifest.platforms)?;
     validate_manifest_storage(manifest.storage.as_ref())?;
+    if let Err(error) = validate_manifest_host_version(&manifest) {
+        if let Some(path) = cleanup_path {
+            let _ = fs::remove_file(path);
+        }
+        return Err(error);
+    }
 
     // Durable data lives outside the package tree when possible; always stash
     // before wiping the install dir so upgrades do not erase preferences/KV/files.
@@ -2523,6 +2646,58 @@ mod tests {
         assert_eq!(result.cleared_records, 1);
         assert!(!map.contains_key("cache.feed.v2"));
         assert!(map.contains_key("reading.preferences"));
+    }
+
+    #[test]
+    fn plugin_version_requirement_handles_prereleases_and_v_prefixes() {
+        assert_eq!(compare_plugin_versions("v0.6.17", "0.6.16"), Some(1));
+        assert_eq!(compare_plugin_versions("0.6.16", "0.6.16"), Some(0));
+        assert_eq!(compare_plugin_versions("0.6.16-beta.2", "0.6.16"), Some(-1));
+        assert_eq!(compare_plugin_versions("0.6.16", "0.6.16-beta.2"), Some(1));
+        assert_eq!(compare_plugin_versions("invalid", "0.6.16"), None);
+    }
+
+    #[test]
+    fn install_boundary_rejects_manifest_for_newer_qx() {
+        let package = serde_json::json!({
+            "name": "sample-gallery",
+            "title": "Sample Gallery",
+            "description": "Generic converted gallery fixture."
+        });
+        let mut manifest =
+            build_raycast_plugin_manifest(&package, raycast_adapter_kind("sample-gallery"));
+        manifest.min_app_version = "999.0.0".to_string();
+        assert!(validate_manifest_host_version(&manifest)
+            .unwrap_err()
+            .contains("requires Qx 999.0.0 or newer"));
+    }
+
+    #[test]
+    fn marketplace_index_accepts_localized_release_history() {
+        let index: PluginIndex = serde_json::from_value(serde_json::json!({
+            "schema_version": 1,
+            "plugins": [{
+                "id": "sample",
+                "name": "Sample",
+                "version": "1.1.0",
+                "download_url": "https://example.com/sample.qx-plugin",
+                "releases": [{
+                    "version": "1.1.0",
+                    "published_at": "2026-07-23",
+                    "notes": "Current release.",
+                    "notes_localizations": { "zh-CN": "当前版本。" }
+                }]
+            }]
+        }))
+        .unwrap();
+        assert_eq!(index.plugins[0].releases[0].version, "1.1.0");
+        assert_eq!(
+            index.plugins[0].releases[0]
+                .notes_localizations
+                .get("zh-CN")
+                .map(String::as_str),
+            Some("当前版本。")
+        );
     }
 
     #[test]

@@ -279,7 +279,17 @@ qx-plugins/
       "required_permissions": ["open-url"],
       "updated_at": "2025-06-25",
       "author": "Your Name",
-      "min_app_version": "0.4.0"
+      "min_app_version": "0.4.0",
+      "releases": [
+        {
+          "version": "1.0.0",
+          "published_at": "2025-06-25",
+          "notes": "Initial release.",
+          "notes_localizations": {
+            "zh-CN": "首个正式版本。"
+          }
+        }
+      ]
     }
   ]
 }
@@ -289,6 +299,11 @@ qx-plugins/
 |---|---|
 | `schema_version` | 索引格式版本，当前为 `1` |
 | `plugins` | 插件条目数组，字段与上表一致 |
+| `plugins[].releases` | 可选，最新在前的版本说明数组；每项包含 `version`、`published_at`、默认 `notes` 与可选 `notes_localizations`。历史项只用于展示，不是回滚下载地址 |
+
+官方 `qx-plugins` 仓库使用根目录 `release-notes.json` 维护这组数据。每次提高插件
+manifest 版本时必须先添加对应说明；打包脚本会在缺少当前版本说明时失败，并最多保留
+最近 30 条历史。自建插件库可以直接生成同形 `releases[]`。
 
 > `download_url` 也可以指向 GitHub Release 的 asset，便于大文件分发。
 
@@ -301,7 +316,11 @@ qx-plugins/
 设置页的 Extensions 是当前插件库入口，分为两个标签：
 
 - `Installed`：管理已安装插件和内置模块。顶部可导入本地 `.zip` / `.qx-plugin`、安装 GitHub URL、安装 Raycast extension tree URL；下方提供搜索、类型/状态筛选、启用/禁用、卸载、权限查看和 preferences 编辑。
-- `Browse`：浏览远程市场。左侧是可搜索插件列表，右侧展示选中插件详情、版本、作者、大小、权限、最低 Qx 版本、更新时间和 SHA256。安装按钮会显示安装中、已安装、失败等状态。
+- `Browse`：浏览远程市场。左侧是可搜索插件列表，右侧展示选中插件详情、版本说明、历史版本、作者、大小、权限、最低 Qx 版本、更新时间和 SHA256。安装按钮会显示安装中、已安装、失败等状态。
+
+当前 Qx 低于 `min_app_version` 时，列表会显示“需要 Qx x”，详情提供前往 About
+升级的入口，安装/升级/重装及其他来源按钮不可用。Rust 安装命令还会对本地包与 URL
+安装再次校验，避免绕过市场 UI 安装不兼容插件。
 
 内置模块会以 Built-in 标记出现，只能查看和配置，不能禁用或卸载。外部插件安装后默认进入 `~/.qx/plugins/<id>/`，重新扫描可通过顶部 `Rescan` 完成。
 

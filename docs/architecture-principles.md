@@ -57,8 +57,9 @@
 - 插件平台声明：`manifest.platforms` 是运行时执行边界，不只是市场展示信息。不匹配
   当前宿主的平台仍可在 Settings 中管理，但不得创建 iframe、后台任务、全局快捷键、
   command 或 panel。
-- `min_app_version` 同样是 fail-closed 执行边界：宿主版本读取失败时，仅未声明最低版本
-  的旧插件可以继续运行，不得把 bridge 异常当成放行新端口代码的理由。
+- `min_app_version` 同时是 fail-closed 安装与执行边界：市场 UI 先禁用不兼容安装，
+  Rust 安装端口再次校验；宿主版本读取失败时，仅未声明最低版本的旧插件可以继续运行，
+  不得把 bridge 异常当成放行新端口代码的理由。
 - Island Surface：`docked` / float 消费同一 `IslandSession` 语义，不因 placement 改变 action 含义。
 - HTTP / file / AppleScript 等 host 能力：版本升级只**扩展**字段（如 `bodyBase64`、重定向后的 `url`），不悄悄改成功路径语义。
 

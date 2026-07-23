@@ -1,5 +1,24 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — 插件版本说明、兼容安装门槛与 Badge 语义
+
+**状态**：实现完成，等待发布构建。
+
+- 插件库索引新增 `releases[]`，按版本保存发布日期与可本地化升级说明；Browse 详情以
+  应用商店式历史版本列表展示，历史记录只读，不伪造旧包回滚地址。
+- Browse 在下载前按 SemVer 检查 `min_app_version`：不兼容项在列表和详情明确标记，
+  所有安装来源禁用，并可跳转 About 升级 Qx；Rust 安装端口再次执行同一 fail-closed
+  边界，本地包和 URL 安装无法绕过。
+- 插件管理 Badge 收口为 neutral / accent / success / warning / danger 五种语义，
+  版本、来源、权限、更新、安装、兼容和失败状态不再随机混用颜色。
+
+### 验证
+
+- [x] `npm run check` / `npx tsc --noEmit` / `npm run build`
+- [x] `cargo fmt --check` / `cargo check` / `cargo test --lib`（121 tests）
+- [x] 插件索引生成、版本历史保留、归档 checksum
+- [ ] macOS / Windows 发布工作流
+
 ## Feature — 插件缓存注册协议与 QxHeihe 已读/自动清理
 
 **状态**：实现完成，等待发布构建。
