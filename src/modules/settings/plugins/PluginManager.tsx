@@ -964,6 +964,7 @@ function MarketplaceTab({
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [librariesOpen, setLibrariesOpen] = useState(false);
+  const [registryDrafts, setRegistryDrafts] = useState<PluginRegistrySource[]>([]);
   const [installStatus, setInstallStatus] = useState<{ tone: StatusTone; message: string } | null>(null);
   const [hostVersion, setHostVersion] = useState<string | null>(null);
 
@@ -1109,6 +1110,15 @@ function MarketplaceTab({
     );
   };
 
+  const setLibrariesDialogOpen = (open: boolean) => {
+    if (open) {
+      setRegistryDrafts(registries.map((entry) => ({ ...entry })));
+    } else if (librariesOpen) {
+      saveRegistries(registryDrafts);
+    }
+    setLibrariesOpen(open);
+  };
+
   const sourceFilterOptions = useMemo(() => {
     const fromSettings = registries
       .filter((r) => r.enabled)
@@ -1124,7 +1134,7 @@ function MarketplaceTab({
   }, [registries, sourceStatuses, t]);
 
   const librariesDialog = (
-    <Dialog open={librariesOpen} onOpenChange={setLibrariesOpen}>
+    <Dialog open={librariesOpen} onOpenChange={setLibrariesDialogOpen}>
       <DialogContent style={{ width: "min(520px, calc(100vw - 40px))" }}>
         <DialogHeader>
           <DialogTitle>{t("plugins.libraries.title", "Plugin libraries")}</DialogTitle>
@@ -1136,35 +1146,38 @@ function MarketplaceTab({
           </DialogDescription>
         </DialogHeader>
         <div className="qx-plugin-libraries-editor">
-          {registries.map((registry, index) => (
+          {registryDrafts.map((registry, index) => (
             <div className="qx-plugin-library-row" key={`${registry.id}-${index}`}>
               <Input
                 value={registry.name}
                 placeholder={t("plugins.libraries.name", "Name")}
                 onChange={(e) => {
-                  const next = registries.map((item, i) =>
-                    i === index ? { ...item, name: e.target.value } : item,
+                  setRegistryDrafts((current) =>
+                    current.map((item, i) =>
+                      i === index ? { ...item, name: e.target.value } : item,
+                    ),
                   );
-                  saveRegistries(next);
                 }}
               />
               <Input
                 value={registry.index_url}
                 placeholder="https://…/index.json"
                 onChange={(e) => {
-                  const next = registries.map((item, i) =>
-                    i === index ? { ...item, index_url: e.target.value } : item,
+                  setRegistryDrafts((current) =>
+                    current.map((item, i) =>
+                      i === index ? { ...item, index_url: e.target.value } : item,
+                    ),
                   );
-                  saveRegistries(next);
                 }}
               />
               <Toggle
                 value={registry.enabled}
                 onChange={(enabled) => {
-                  const next = registries.map((item, i) =>
-                    i === index ? { ...item, enabled } : item,
+                  setRegistryDrafts((current) =>
+                    current.map((item, i) =>
+                      i === index ? { ...item, enabled } : item,
+                    ),
                   );
-                  saveRegistries(next);
                 }}
                 ariaLabel={t("plugins.libraries.enabled", "Enabled")}
               />
@@ -1172,8 +1185,10 @@ function MarketplaceTab({
                 type="button"
                 variant="ghost"
                 size="sm"
-                disabled={registries.length <= 1}
-                onClick={() => saveRegistries(registries.filter((_, i) => i !== index))}
+                disabled={registryDrafts.length <= 1}
+                onClick={() =>
+                  setRegistryDrafts((current) => current.filter((_, i) => i !== index))
+                }
               >
                 <Trash2 size={13} aria-hidden="true" />
               </Button>
@@ -1184,17 +1199,17 @@ function MarketplaceTab({
               type="button"
               variant="secondary"
               size="sm"
-              onClick={() =>
-                saveRegistries([
-                  ...registries,
+              onClick={() => {
+                setRegistryDrafts((current) => [
+                  ...current,
                   {
-                    id: `mirror-${Date.now().toString(36)}`,
+                    id: `mirror-${Date.now().toString(36)}-${current.length}`,
                     name: t("plugins.libraries.newMirror", "New mirror"),
                     index_url: "",
                     enabled: true,
                   },
-                ])
-              }
+                ]);
+              }}
             >
               {t("plugins.libraries.add", "Add library")}
             </Button>
@@ -1203,12 +1218,17 @@ function MarketplaceTab({
               variant="ghost"
               size="sm"
               onClick={() =>
-                saveRegistries(DEFAULT_PLUGIN_REGISTRIES.map((entry) => ({ ...entry })))
+                setRegistryDrafts(DEFAULT_PLUGIN_REGISTRIES.map((entry) => ({ ...entry })))
               }
             >
               {t("plugins.libraries.reset", "Reset defaults")}
             </Button>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setLibrariesOpen(false)}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => setLibrariesDialogOpen(false)}
+            >
               {t("launcher.done", "Done")}
             </Button>
           </div>
@@ -1241,7 +1261,7 @@ function MarketplaceTab({
           variant="outline"
           size="sm"
           className="qx-plugin-libraries-button"
-          onClick={() => setLibrariesOpen(true)}
+          onClick={() => setLibrariesDialogOpen(true)}
         >
           <PackagePlus size={13} aria-hidden="true" />
           <span>{t("plugins.libraries.manage", "Sources")}</span>
