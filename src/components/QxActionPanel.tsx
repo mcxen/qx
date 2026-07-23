@@ -19,6 +19,7 @@ export function QxActionList({
         className={`qx-action-item${action.tone === "danger" ? " danger" : ""}`}
         variant="ghost"
         type="button"
+        data-qx-search-focus="preserve"
         disabled={action.disabled}
         onClick={action.onClick}
       >

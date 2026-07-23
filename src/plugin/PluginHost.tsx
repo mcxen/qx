@@ -724,6 +724,7 @@ export function PluginPanelViewport() {
             <button
               key={cmd.name}
               className="qx-action-item"
+              data-qx-search-focus="preserve"
               onClick={() => void usePluginRegistry.getState().runCommand(cmd)}
               type="button"
             >
