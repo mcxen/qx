@@ -684,6 +684,8 @@ const zh: Record<string, string> = {
   "plugins.workbench.imageUnavailable": "图片无法显示",
   "plugins.workbench.imagePreview": "图片预览",
   "plugins.workbench.imagePreviewHint": "所选图片的全尺寸预览",
+  "plugins.workbench.previousImage": "上一张图片",
+  "plugins.workbench.nextImage": "下一张图片",
   "plugins.loading": "插件加载中",
   "plugins.error": "插件错误",
   "common.retry": "重试",

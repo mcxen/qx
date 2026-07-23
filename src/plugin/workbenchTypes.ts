@@ -71,10 +71,12 @@ export interface PluginWorkbenchDetail {
   /** Optional large media preview rendered above the structured detail. */
   image?: PluginWorkbenchImage;
   /**
-   * Optional media collection rendered as a host-owned responsive grid.
-   * Use this for community posts and other records with multiple images.
+   * Optional media collection rendered by the host. Use this for community
+   * posts and other records with multiple images.
    */
   images?: PluginWorkbenchImage[];
+  /** Host media layout. Defaults to `grid`; `horizontal` enables a filmstrip. */
+  imageLayout?: "grid" | "horizontal";
   /** Item-local asynchronous state; does not replace the usable cached detail. */
   status?: PluginWorkbenchAsyncStatus;
   body?: string;
@@ -300,6 +302,7 @@ function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
           .map((image) => normalizeImage(image, true))
           .filter((image): image is PluginWorkbenchImage => Boolean(image))
       : [],
+    imageLayout: raw.imageLayout === "horizontal" ? "horizontal" as const : "grid" as const,
     status: normalizeAsyncStatus(raw.status),
     body: shortText(raw.body, 12_000),
     form: normalizeForm(raw.form),

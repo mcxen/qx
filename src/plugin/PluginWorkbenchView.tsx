@@ -1,5 +1,20 @@
-import { useMemo, useRef, useState, type CSSProperties } from "react";
-import { AlertTriangle, CheckCircle2, LoaderCircle, Maximize2, X } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  LoaderCircle,
+  Maximize2,
+  X,
+} from "lucide-react";
 import { QxListLoading, shouldShowQxListLoading } from "../components/QxListLoading";
 import { useQxListSelection } from "../hooks/useQxListSelection";
 import {
@@ -84,7 +99,7 @@ function WorkbenchDetailImage({
   previewText,
 }: {
   image: PluginWorkbenchImage;
-  onPreview: (image: PluginWorkbenchImage) => void;
+  onPreview: (image: PluginWorkbenchImage, collection: PluginWorkbenchImage[]) => void;
   unavailableText: string;
   previewText: string;
 }) {
@@ -107,7 +122,7 @@ function WorkbenchDetailImage({
         <button
           type="button"
           className={`${className} is-zoomable`}
-          onClick={() => onPreview(image)}
+          onClick={() => onPreview(image, [image])}
           aria-label={image.alt ? `${previewText}: ${image.alt}` : previewText}
         >
           {content}
@@ -121,6 +136,95 @@ function WorkbenchDetailImage({
   );
 }
 
+function WorkbenchMediaCollection({
+  images,
+  layout,
+  onPreview,
+  unavailableText,
+  previewText,
+  previousText,
+  nextText,
+}: {
+  images: PluginWorkbenchImage[];
+  layout: "grid" | "horizontal";
+  onPreview: (image: PluginWorkbenchImage, collection: PluginWorkbenchImage[]) => void;
+  unavailableText: string;
+  previewText: string;
+  previousText: string;
+  nextText: string;
+}) {
+  const stripRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const horizontal = layout === "horizontal";
+  const moveTo = (index: number) => {
+    const next = Math.max(0, Math.min(images.length - 1, index));
+    setActiveIndex(next);
+    stripRef.current?.children[next]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  };
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!horizontal || (event.key !== "ArrowLeft" && event.key !== "ArrowRight")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    moveTo(activeIndex + (event.key === "ArrowRight" ? 1 : -1));
+  };
+  return (
+    <div className={`qx-host-workbench-media-collection${horizontal ? " is-horizontal" : ""}`}>
+      {horizontal && images.length > 1 ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          className="qx-host-workbench-media-strip-nav is-previous"
+          disabled={activeIndex === 0}
+          aria-label={previousText}
+          onClick={() => moveTo(activeIndex - 1)}
+        >
+          <ChevronLeft size={16} aria-hidden="true" />
+        </Button>
+      ) : null}
+      <div
+        ref={stripRef}
+        className={`qx-host-workbench-media-grid${horizontal ? " is-horizontal" : ""}`}
+        tabIndex={horizontal ? 0 : undefined}
+        aria-label={horizontal ? previewText : undefined}
+        onKeyDown={onKeyDown}
+      >
+        {images.map((image, index) => (
+          <WorkbenchDetailImage
+            key={`${image.url}-${index}`}
+            image={image}
+            onPreview={(selected) => onPreview(selected, images)}
+            unavailableText={unavailableText}
+            previewText={previewText}
+          />
+        ))}
+      </div>
+      {horizontal && images.length > 1 ? (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="qx-host-workbench-media-strip-nav is-next"
+            disabled={activeIndex === images.length - 1}
+            aria-label={nextText}
+            onClick={() => moveTo(activeIndex + 1)}
+          >
+            <ChevronRight size={16} aria-hidden="true" />
+          </Button>
+          <span className="qx-host-workbench-media-strip-count" aria-live="polite">
+            {activeIndex + 1} / {images.length}
+          </span>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function WorkbenchDetail({
   detail,
   emptyText,
@@ -129,14 +233,18 @@ function WorkbenchDetail({
   onPreview,
   unavailableText,
   previewText,
+  previousText,
+  nextText,
 }: {
   detail?: PluginWorkbenchDetail;
   emptyText: string;
   onInput: (id: string, value: string) => void;
   onAction: (id: string) => void;
-  onPreview: (image: PluginWorkbenchImage) => void;
+  onPreview: (image: PluginWorkbenchImage, collection: PluginWorkbenchImage[]) => void;
   unavailableText: string;
   previewText: string;
+  previousText: string;
+  nextText: string;
 }) {
   if (!detail) {
     return <div className="qx-content-detail-empty">{emptyText}</div>;
@@ -200,17 +308,15 @@ function WorkbenchDetail({
         />
       ) : null}
       {detail.images?.length ? (
-        <div className="qx-host-workbench-media-grid">
-          {detail.images.map((image, index) => (
-            <WorkbenchDetailImage
-              key={`${image.url}-${index}`}
-              image={image}
-              onPreview={onPreview}
-              unavailableText={unavailableText}
-              previewText={previewText}
-            />
-          ))}
-        </div>
+        <WorkbenchMediaCollection
+          images={detail.images}
+          layout={detail.imageLayout || "grid"}
+          onPreview={onPreview}
+          unavailableText={unavailableText}
+          previewText={previewText}
+          previousText={previousText}
+          nextText={nextText}
+        />
       ) : null}
       {detail.title ? <h2 className="qx-content-detail-heading">{detail.title}</h2> : null}
       {detail.subtitle ? <div className="qx-content-detail-meta">{detail.subtitle}</div> : null}
@@ -282,7 +388,10 @@ export default function PluginWorkbenchView({
   onAction,
 }: PluginWorkbenchViewProps) {
   const t = useT();
-  const [previewImage, setPreviewImage] = useState<PluginWorkbenchImage | null>(null);
+  const [preview, setPreview] = useState<{
+    images: PluginWorkbenchImage[];
+    index: number;
+  } | null>(null);
   const items = state.items || [];
   const selectedIndex = useMemo(() => {
     if (!items.length) return -1;
@@ -313,6 +422,31 @@ export default function PluginWorkbenchView({
     ? { "--qx-workbench-gallery-columns": state.layout?.columns || 4 } as CSSProperties
     : undefined;
   const detailOnly = items.length === 0 && Boolean(state.detail);
+  const openPreview = (image: PluginWorkbenchImage, collection: PluginWorkbenchImage[]) => {
+    const images = collection.length ? collection : [image];
+    const index = Math.max(0, images.findIndex((candidate) => candidate === image || candidate.url === image.url));
+    setPreview({ images, index });
+  };
+  const movePreview = (delta: number) => {
+    setPreview((current) => {
+      if (!current || current.images.length < 2) return current;
+      const index = (current.index + delta + current.images.length) % current.images.length;
+      return { ...current, index };
+    });
+  };
+  const previewImage = preview?.images[preview.index];
+
+  useEffect(() => {
+    if (!preview) return;
+    const onPreviewKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      event.stopPropagation();
+      movePreview(event.key === "ArrowRight" ? 1 : -1);
+    };
+    window.addEventListener("keydown", onPreviewKeyDown, true);
+    return () => window.removeEventListener("keydown", onPreviewKeyDown, true);
+  }, [preview]);
 
   const collection = gallery ? (
     <div
@@ -451,9 +585,11 @@ export default function PluginWorkbenchView({
             emptyText={t("plugins.workbench.select", "Select an item")}
             onInput={onInput}
             onAction={onAction}
-            onPreview={setPreviewImage}
+            onPreview={openPreview}
             unavailableText={t("plugins.workbench.imageUnavailable", "Image unavailable")}
             previewText={t("plugins.workbench.imagePreview", "Image Preview")}
+            previousText={t("plugins.workbench.previousImage", "Previous image")}
+            nextText={t("plugins.workbench.nextImage", "Next image")}
           />
         </div>
       ) : detailOpen ? (
@@ -471,14 +607,16 @@ export default function PluginWorkbenchView({
               emptyText={t("plugins.workbench.select", "Select an item")}
               onInput={onInput}
               onAction={onAction}
-              onPreview={setPreviewImage}
+              onPreview={openPreview}
               unavailableText={t("plugins.workbench.imageUnavailable", "Image unavailable")}
               previewText={t("plugins.workbench.imagePreview", "Image Preview")}
+              previousText={t("plugins.workbench.previousImage", "Previous image")}
+              nextText={t("plugins.workbench.nextImage", "Next image")}
             />
           </div>
         </div>
       ) : collection}
-      <Dialog open={Boolean(previewImage)} onOpenChange={(open) => { if (!open) setPreviewImage(null); }}>
+      <Dialog open={Boolean(previewImage)} onOpenChange={(open) => { if (!open) setPreview(null); }}>
         <DialogContent className="qx-host-workbench-media-dialog">
           <Button
             type="button"
@@ -486,7 +624,7 @@ export default function PluginWorkbenchView({
             size="icon"
             className="qx-host-workbench-media-close"
             aria-label={t("common.close", "Close")}
-            onClick={() => setPreviewImage(null)}
+            onClick={() => setPreview(null)}
           >
             <X size={16} aria-hidden="true" />
           </Button>
@@ -497,11 +635,43 @@ export default function PluginWorkbenchView({
             </DialogDescription>
           </DialogHeader>
           {previewImage ? (
-            <img
-              src={previewImage.url}
-              alt={previewImage.alt || ""}
-              style={{ objectFit: previewImage.fit || "contain" }}
-            />
+            <div className="qx-host-workbench-media-preview-stage">
+              {preview && preview.images.length > 1 ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="qx-host-workbench-media-preview-nav is-previous"
+                  aria-label={t("plugins.workbench.previousImage", "Previous image")}
+                  onClick={() => movePreview(-1)}
+                >
+                  <ChevronLeft size={20} aria-hidden="true" />
+                </Button>
+              ) : null}
+              <img
+                key={previewImage.url}
+                src={previewImage.url}
+                alt={previewImage.alt || ""}
+                style={{ objectFit: previewImage.fit || "contain" }}
+              />
+              {preview && preview.images.length > 1 ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  className="qx-host-workbench-media-preview-nav is-next"
+                  aria-label={t("plugins.workbench.nextImage", "Next image")}
+                  onClick={() => movePreview(1)}
+                >
+                  <ChevronRight size={20} aria-hidden="true" />
+                </Button>
+              ) : null}
+              {preview && preview.images.length > 1 ? (
+                <span className="qx-host-workbench-media-preview-count" aria-live="polite">
+                  {preview.index + 1} / {preview.images.length}
+                </span>
+              ) : null}
+            </div>
           ) : null}
           {previewImage?.caption ? <p>{previewImage.caption}</p> : null}
         </DialogContent>

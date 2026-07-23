@@ -664,6 +664,75 @@
   margin-bottom: 14px;
 }
 
+.qx-host-workbench-media-collection {
+  position: relative;
+  min-width: 0;
+}
+
+.qx-host-workbench-media-grid.is-horizontal {
+  display: grid;
+  overflow-x: auto;
+  grid-template-columns: none;
+  grid-auto-flow: column;
+  grid-auto-columns: min(84%, 420px);
+  padding: 2px 34px 12px;
+  scroll-padding-inline: 34px;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.qx-host-workbench-media-grid.is-horizontal .qx-host-workbench-media {
+  scroll-snap-align: center;
+}
+
+.qx-host-workbench-media-grid.is-horizontal:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--qx-accent) 58%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--qx-control-radius);
+}
+
+.qx-host-workbench-media-strip-nav,
+.qx-host-workbench-media-preview-nav {
+  position: absolute;
+  z-index: 2;
+  border-color: var(--qx-border-2);
+  background: var(--qx-bg-component-1);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--qx-shadow) 16%, transparent);
+}
+
+.qx-host-workbench-media-strip-nav {
+  top: calc(50% - 20px);
+}
+
+.qx-host-workbench-media-strip-nav.is-previous,
+.qx-host-workbench-media-preview-nav.is-previous {
+  left: 6px;
+}
+
+.qx-host-workbench-media-strip-nav.is-next,
+.qx-host-workbench-media-preview-nav.is-next {
+  right: 6px;
+}
+
+.qx-host-workbench-media-strip-count,
+.qx-host-workbench-media-preview-count {
+  position: absolute;
+  z-index: 2;
+  padding: 3px 7px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 999px;
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.qx-host-workbench-media-strip-count {
+  right: 40px;
+  bottom: 20px;
+}
+
 .qx-host-workbench-media-grid .qx-host-workbench-media {
   min-width: 0;
   margin: 0;
@@ -716,12 +785,30 @@
   padding-right: 36px;
 }
 
-.qx-host-workbench-media-dialog > img {
+.qx-host-workbench-media-preview-stage {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+}
+
+.qx-host-workbench-media-preview-stage > img {
   display: block;
   width: 100%;
   min-height: 0;
   height: 100%;
   object-fit: contain;
+}
+
+.qx-host-workbench-media-preview-nav {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.qx-host-workbench-media-preview-count {
+  right: 12px;
+  bottom: 10px;
 }
 
 .qx-host-workbench-form {
