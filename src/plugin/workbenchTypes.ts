@@ -23,12 +23,23 @@ export interface PluginWorkbenchControl {
   options?: Array<{ label: string; value: string }>;
   placeholder?: string;
   disabled?: boolean;
+  /**
+   * Consecutive controls with the same group id are rendered in one managed
+   * fieldset. The first occurrence supplies the label and optional group action.
+   */
+  group?: {
+    id: string;
+    label?: string;
+    action?: PluginWorkbenchAction;
+  };
 }
 
 export interface PluginWorkbenchForm {
   title?: string;
   description?: string;
   controls: PluginWorkbenchControl[];
+  /** Visible management actions rendered below the controls. */
+  actions?: PluginWorkbenchAction[];
 }
 
 export interface PluginWorkbenchImage {
@@ -222,6 +233,17 @@ function normalizeForm(value: unknown): PluginWorkbenchForm | undefined {
           options,
           placeholder: shortText(control.placeholder, 500),
           disabled: control.disabled === true,
+          group: (() => {
+            if (!control.group || typeof control.group !== "object") return undefined;
+            const group = control.group as Record<string, unknown>;
+            const groupId = shortText(group.id, 128)?.trim();
+            if (!groupId) return undefined;
+            return {
+              id: groupId,
+              label: shortText(group.label, 160),
+              action: normalizeActions([group.action])[0],
+            };
+          })(),
         } satisfies PluginWorkbenchControl;
       }).filter((control) => {
         if (!control.id || seen.has(control.id)) return false;
@@ -234,6 +256,7 @@ function normalizeForm(value: unknown): PluginWorkbenchForm | undefined {
     title: shortText(raw.title, 160),
     description: shortText(raw.description, 1_000),
     controls,
+    actions: normalizeActions(raw.actions),
   };
 }
 

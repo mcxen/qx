@@ -99,7 +99,26 @@ const dataImage = `data:image/png;base64,${"a".repeat(5_000)}`;
 const normalizedWorkbench = normalizePluginWorkbenchState({
   items: [
     { title: "Missing id is rejected" },
-    { id: "image", title: "Image", image: { url: dataImage }, detail: {} },
+    {
+      id: "image",
+      title: "Image",
+      image: { url: dataImage },
+      detail: {
+        form: {
+          controls: [{
+            id: "key",
+            label: "Key",
+            value: "width",
+            group: {
+              id: "parameter-width",
+              label: "Parameter",
+              action: { id: "delete-width", label: "Delete", tone: "danger" },
+            },
+          }],
+          actions: [{ id: "add-parameter", label: "Add parameter", primary: true }],
+        },
+      },
+    },
     { id: "duplicate", title: "First duplicate" },
     { id: "duplicate", title: "Second duplicate" },
   ],
@@ -111,7 +130,9 @@ const normalizedWorkbench = normalizePluginWorkbenchState({
 });
 assert.equal(normalizedWorkbench.items?.[0]?.id, "image");
 assert.equal(normalizedWorkbench.items?.[0]?.image?.url, dataImage);
-assert.equal(normalizedWorkbench.items?.[0]?.detail, undefined);
+assert.equal(normalizedWorkbench.items?.[0]?.detail?.form?.controls[0]?.group?.id, "parameter-width");
+assert.equal(normalizedWorkbench.items?.[0]?.detail?.form?.controls[0]?.group?.action?.id, "delete-width");
+assert.equal(normalizedWorkbench.items?.[0]?.detail?.form?.actions?.[0]?.id, "add-parameter");
 assert.equal(normalizedWorkbench.items?.length, 2);
 assert.deepEqual(normalizedWorkbench.tabs?.map((tab) => [tab.id, tab.active]), [
   ["one", true],

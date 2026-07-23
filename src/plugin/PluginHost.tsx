@@ -459,6 +459,20 @@ export function PluginPanelViewport() {
       return true;
     });
   }, [selectedWorkbenchItem, workbench]);
+  const workbenchFormActionDescriptors = useMemo<PluginWorkbenchAction[]>(() => {
+    const form = selectedWorkbenchDetail?.form;
+    if (!form) return [];
+    const candidates = [
+      ...(form.actions || []),
+      ...form.controls.flatMap((control) => control.group?.action ? [control.group.action] : []),
+    ];
+    const seen = new Set<string>();
+    return candidates.filter((action) => {
+      if (!action.id || seen.has(action.id)) return false;
+      seen.add(action.id);
+      return true;
+    });
+  }, [selectedWorkbenchDetail]);
 
   const primaryWorkbenchAction = workbench
     ? workbenchActionDescriptors.find((action) => action.primary && !action.disabled)
@@ -466,7 +480,8 @@ export function PluginPanelViewport() {
     : undefined;
 
   const runWorkbenchAction = useCallback((actionId: string) => {
-    const descriptor = workbenchActionDescriptors.find((action) => action.id === actionId);
+    const descriptor = [...workbenchActionDescriptors, ...workbenchFormActionDescriptors]
+      .find((action) => action.id === actionId);
     if (descriptor?.command) {
       const command = pluginCommands.find((candidate) => candidate.name === descriptor.command);
       if (command) {
@@ -487,7 +502,13 @@ export function PluginPanelViewport() {
           ? selectedWorkbenchItem.id
         : undefined,
     });
-  }, [pluginCommands, pluginId, selectedWorkbenchItem, workbenchActionDescriptors]);
+  }, [
+    pluginCommands,
+    pluginId,
+    selectedWorkbenchItem,
+    workbenchActionDescriptors,
+    workbenchFormActionDescriptors,
+  ]);
 
   // Raycast ActionPanel[0] and declarative Workbench primary both map to the
   // same QxShell primary/action surfaces.
@@ -778,6 +799,7 @@ export function PluginPanelViewport() {
             detailOpen={workbenchDetailOpen}
             onActivate={activateWorkbenchItem}
             onInput={updateWorkbenchInput}
+            onAction={runWorkbenchAction}
           />
         ) : null}
         {!panel && (

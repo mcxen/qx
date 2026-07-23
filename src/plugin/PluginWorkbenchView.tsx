@@ -14,6 +14,7 @@ import {
 } from "../components/ui";
 import type {
   PluginWorkbenchAsyncStatus,
+  PluginWorkbenchControl,
   PluginWorkbenchDetail,
   PluginWorkbenchField,
   PluginWorkbenchImage,
@@ -29,6 +30,7 @@ interface PluginWorkbenchViewProps {
   detailOpen: boolean;
   onActivate: (id: string) => void;
   onInput: (id: string, value: string) => void;
+  onAction: (id: string) => void;
 }
 
 function toneClass(tone: string | undefined): string {
@@ -123,6 +125,7 @@ function WorkbenchDetail({
   detail,
   emptyText,
   onInput,
+  onAction,
   onPreview,
   unavailableText,
   previewText,
@@ -130,6 +133,7 @@ function WorkbenchDetail({
   detail?: PluginWorkbenchDetail;
   emptyText: string;
   onInput: (id: string, value: string) => void;
+  onAction: (id: string) => void;
   onPreview: (image: PluginWorkbenchImage) => void;
   unavailableText: string;
   previewText: string;
@@ -137,6 +141,53 @@ function WorkbenchDetail({
   if (!detail) {
     return <div className="qx-content-detail-empty">{emptyText}</div>;
   }
+  const controlRows: Array<{
+    id: string;
+    label?: string;
+    action?: NonNullable<PluginWorkbenchControl["group"]>["action"];
+    controls: PluginWorkbenchControl[];
+    grouped: boolean;
+  }> = [];
+  for (const control of detail.form?.controls || []) {
+    const groupId = control.group?.id;
+    const previous = controlRows[controlRows.length - 1];
+    if (groupId && previous?.grouped && previous.id === groupId) {
+      previous.controls.push(control);
+      continue;
+    }
+    controlRows.push({
+      id: groupId || control.id,
+      label: control.group?.label,
+      action: control.group?.action,
+      controls: [control],
+      grouped: Boolean(groupId),
+    });
+  }
+  const renderControl = (control: PluginWorkbenchControl) => (
+    <label key={control.id}>
+      <span>{control.label}</span>
+      {control.type === "select" ? (
+        control.disabled || !control.options?.length ? (
+          <Input value={control.value} disabled aria-label={control.label} />
+        ) : (
+          <Select
+            value={control.value}
+            options={control.options}
+            ariaLabel={control.label}
+            onChange={(value) => onInput(control.id, value)}
+          />
+        )
+      ) : (
+        <Input
+          type={control.type === "number" ? "number" : "text"}
+          value={control.value}
+          placeholder={control.placeholder}
+          disabled={control.disabled}
+          onChange={(event) => onInput(control.id, event.currentTarget.value)}
+        />
+      )}
+    </label>
+  );
   return (
     <div className="qx-content-detail-scroll" data-qx-region-scroll>
       {detail.image?.url ? (
@@ -156,32 +207,45 @@ function WorkbenchDetail({
           {detail.form.title ? <h3>{detail.form.title}</h3> : null}
           {detail.form.description ? <p>{detail.form.description}</p> : null}
           <div className="qx-host-workbench-form-controls">
-            {detail.form.controls.map((control) => (
-              <label key={control.id}>
-                <span>{control.label}</span>
-                {control.type === "select" ? (
-                  control.disabled || !control.options?.length ? (
-                    <Input value={control.value} disabled aria-label={control.label} />
-                  ) : (
-                    <Select
-                      value={control.value}
-                      options={control.options}
-                      ariaLabel={control.label}
-                      onChange={(value) => onInput(control.id, value)}
-                    />
-                  )
-                ) : (
-                  <Input
-                    type={control.type === "number" ? "number" : "text"}
-                    value={control.value}
-                    placeholder={control.placeholder}
-                    disabled={control.disabled}
-                    onChange={(event) => onInput(control.id, event.currentTarget.value)}
-                  />
-                )}
-              </label>
-            ))}
+            {controlRows.map((row) => row.grouped ? (
+              <fieldset className="qx-host-workbench-form-group" key={row.id}>
+                <legend className="sr-only">{row.label || row.id}</legend>
+                <div className="qx-host-workbench-form-group-header">
+                  <span>{row.label || row.id}</span>
+                  {row.action ? (
+                    <Button
+                      type="button"
+                      variant={row.action.tone === "danger" ? "destructive" : "outline"}
+                      size="sm"
+                      disabled={row.action.disabled}
+                      onClick={() => onAction(row.action!.id)}
+                    >
+                      {row.action.label}
+                    </Button>
+                  ) : null}
+                </div>
+                <div className="qx-host-workbench-form-group-controls">
+                  {row.controls.map(renderControl)}
+                </div>
+              </fieldset>
+            ) : row.controls.map(renderControl))}
           </div>
+          {detail.form.actions?.length ? (
+            <div className="qx-host-workbench-form-actions">
+              {detail.form.actions.map((action) => (
+                <Button
+                  key={action.id}
+                  type="button"
+                  variant={action.tone === "danger" ? "destructive" : action.primary ? "default" : "outline"}
+                  size="sm"
+                  disabled={action.disabled}
+                  onClick={() => onAction(action.id)}
+                >
+                  {action.label}
+                </Button>
+              ))}
+            </div>
+          ) : null}
         </section>
       ) : null}
       {detail.body ? <p className="qx-host-workbench-body">{detail.body}</p> : null}
@@ -202,6 +266,7 @@ export default function PluginWorkbenchView({
   detailOpen,
   onActivate,
   onInput,
+  onAction,
 }: PluginWorkbenchViewProps) {
   const t = useT();
   const [previewImage, setPreviewImage] = useState<PluginWorkbenchImage | null>(null);
@@ -372,6 +437,7 @@ export default function PluginWorkbenchView({
             detail={state.detail}
             emptyText={t("plugins.workbench.select", "Select an item")}
             onInput={onInput}
+            onAction={onAction}
             onPreview={setPreviewImage}
             unavailableText={t("plugins.workbench.imageUnavailable", "Image unavailable")}
             previewText={t("plugins.workbench.imagePreview", "Image Preview")}
@@ -391,6 +457,7 @@ export default function PluginWorkbenchView({
               detail={detail}
               emptyText={t("plugins.workbench.select", "Select an item")}
               onInput={onInput}
+              onAction={onAction}
               onPreview={setPreviewImage}
               unavailableText={t("plugins.workbench.imageUnavailable", "Image unavailable")}
               previewText={t("plugins.workbench.imagePreview", "Image Preview")}

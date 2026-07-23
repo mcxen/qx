@@ -1131,15 +1131,61 @@ function MarketplaceTab({
       </DialogContent>
     </Dialog>
   );
+  const marketplaceToolbar = (
+    <div className="qx-plugin-list-toolbar qx-plugin-marketplace-toolbar">
+      <div className="qx-plugin-marketplace-query">
+        <div className="qx-plugin-search-wrap">
+          <Search size={14} aria-hidden="true" />
+          <Input
+            type="text"
+            placeholder={t("plugins.marketplace.search", "Search marketplace plugins...")}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="qx-plugin-search-input"
+          />
+        </div>
+        <div className="qx-plugin-source-filter">
+          <Select
+            value={sourceFilter}
+            options={sourceFilterOptions}
+            ariaLabel={t("plugins.marketplace.libraryFilter", "Plugin library")}
+            onChange={(next) => setSourceFilter(next)}
+          />
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="qx-plugin-libraries-button"
+          onClick={() => setLibrariesOpen(true)}
+        >
+          <PackagePlus size={13} aria-hidden="true" />
+          <span>{t("plugins.libraries.manage", "Sources")}</span>
+        </Button>
+      </div>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => void fetchIndex(sourceFilter === "all" ? undefined : sourceFilter)}
+        disabled={loading}
+      >
+        {loading ? (
+          <LoadingLabel>{t("plugins.marketplace.refresh", "Refresh")}</LoadingLabel>
+        ) : (
+          <>
+            <RefreshCw size={13} aria-hidden="true" />
+            {error
+              ? t("plugins.marketplace.retry", "Retry")
+              : t("plugins.marketplace.refresh", "Refresh")}
+          </>
+        )}
+      </Button>
+    </div>
+  );
 
   if (loading && entries.length === 0) {
     return (
       <div className="qx-marketplace">
-        <div className="qx-plugin-list-toolbar">
-          <Button variant="outline" size="sm" onClick={() => setLibrariesOpen(true)}>
-            {t("plugins.libraries.manage", "Libraries")}
-          </Button>
-        </div>
+        {marketplaceToolbar}
         {librariesDialog}
         <div className="qx-skeleton-stack" aria-label={t("plugins.marketplace.loadingAria", "Loading marketplace")}>
           {Array.from({ length: 6 }).map((_, index) => (
@@ -1163,23 +1209,11 @@ function MarketplaceTab({
   if (error && entries.length === 0) {
     return (
       <div className="qx-marketplace">
-        <div className="qx-plugin-list-toolbar">
-          <Button variant="outline" size="sm" onClick={() => setLibrariesOpen(true)}>
-            {t("plugins.libraries.manage", "Libraries")}
-          </Button>
-        </div>
+        {marketplaceToolbar}
         {librariesDialog}
         <div className="qx-empty-state">
           <div>{t("plugins.marketplace.failed", "Failed to load marketplace.")}</div>
           <div style={{ fontSize: 11, marginTop: 4 }}>{error}</div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void fetchIndex(sourceFilter === "all" ? undefined : sourceFilter)}
-            style={{ marginTop: 8 }}
-          >
-            {t("plugins.marketplace.retry", "Retry")}
-          </Button>
         </div>
       </div>
     );
@@ -1188,11 +1222,7 @@ function MarketplaceTab({
   if (entries.length === 0) {
     return (
       <div className="qx-marketplace">
-        <div className="qx-plugin-list-toolbar">
-          <Button variant="outline" size="sm" onClick={() => setLibrariesOpen(true)}>
-            {t("plugins.libraries.manage", "Libraries")}
-          </Button>
-        </div>
+        {marketplaceToolbar}
         {librariesDialog}
         <div className="qx-empty-state">
           {t("plugins.marketplace.empty", "No plugins available in the marketplace.")}
@@ -1204,43 +1234,7 @@ function MarketplaceTab({
   return (
     <div className="qx-marketplace">
       {librariesDialog}
-      {/* Search + library filter */}
-      <div className="qx-plugin-list-toolbar">
-        <div className="qx-plugin-search-wrap">
-          <Search size={14} aria-hidden="true" />
-          <Input
-            type="text"
-            placeholder={t("plugins.marketplace.search", "Search marketplace plugins...")}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="qx-plugin-search-input"
-          />
-        </div>
-        <Select
-          value={sourceFilter}
-          options={sourceFilterOptions}
-          ariaLabel={t("plugins.marketplace.libraryFilter", "Plugin library")}
-          onChange={(next) => setSourceFilter(next)}
-        />
-        <Button variant="outline" size="sm" onClick={() => setLibrariesOpen(true)}>
-          {t("plugins.libraries.manage", "Libraries")}
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => void fetchIndex(sourceFilter === "all" ? undefined : sourceFilter)}
-          disabled={loading}
-        >
-          {loading ? (
-            <LoadingLabel>{t("plugins.marketplace.refresh", "Refresh")}</LoadingLabel>
-          ) : (
-            <>
-              <RefreshCw size={13} aria-hidden="true" />
-              {t("plugins.marketplace.refresh", "Refresh")}
-            </>
-          )}
-        </Button>
-      </div>
+      {marketplaceToolbar}
 
       {sourceStatuses.length > 0 && (
         <div className="qx-plugin-source-status" aria-live="polite">

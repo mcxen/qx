@@ -805,7 +805,7 @@ const zh: Record<string, string> = {
   "plugins.marketplace.installFrom": "从此库安装",
   "plugins.libraries.title": "插件库",
   "plugins.libraries.desc": "可添加镜像或私有目录。启用的库会合并展示，GitHub 慢时也能从其他源安装。",
-  "plugins.libraries.manage": "插件库",
+  "plugins.libraries.manage": "仓库源",
   "plugins.libraries.name": "名称",
   "plugins.libraries.enabled": "启用",
   "plugins.libraries.add": "添加插件库",

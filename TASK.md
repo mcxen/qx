@@ -468,6 +468,16 @@
 - [x] `npx tsc --noEmit`
 - [x] `npm run check` / `npm run build`
 - [x] Bing / Unsplash `node --check`、manifest JSON、mock Workbench panel smoke、archive 校验
+
+## Fix — 插件仓库工具栏与 QxPicture API 管理
+
+- Extensions → Browse 将市场搜索、仓库筛选与“仓库源”Dialog 入口固定为同一行，
+  加载、失败和空数据状态复用同一工具栏，不再单独换行显示仓库入口。
+- Workbench form 新增宿主渲染的底部 `actions` 与 control `group`/`group.action`；
+  管理型插件可直接在右侧详情中呈现新增、恢复、删除与参数组动作。
+- QxPicture 0.3.0 显式展示每个参数的 Key / Type / Value / Select Options，并提供
+  参数组删除、API 删除和默认参数恢复；确认框默认填入 `DELETE`，点击确定即可完成，
+  同时清理对应图片缓存并避免无效 id 回退误删首项。
 - [ ] macOS：QxPicture 单项/批量刷新、横竖图放大与表单焦点；Bing Gallery/List 详情与窄窗 Esc。
 
 ## Fix — Workbench List / Gallery 统一详情开启布局

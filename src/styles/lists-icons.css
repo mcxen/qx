@@ -724,6 +724,46 @@
   gap: 8px;
 }
 
+.qx-host-workbench-form-group {
+  min-width: 0;
+  margin: 2px 0;
+  padding: 10px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-1);
+}
+
+.qx-host-workbench-form-group-header,
+.qx-host-workbench-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qx-host-workbench-form-group-header {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.qx-host-workbench-form-group-header > span {
+  padding: 0;
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.qx-host-workbench-form-group-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.qx-host-workbench-form-actions {
+  flex-wrap: wrap;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--qx-border-1);
+}
+
 .qx-host-workbench-form-controls label {
   display: grid;
   grid-template-columns: minmax(88px, 30%) minmax(0, 1fr);
@@ -799,6 +839,10 @@
   .qx-host-workbench-fields > div {
     grid-template-columns: minmax(0, 1fr);
     gap: 4px;
+  }
+
+  .qx-host-workbench-form-group {
+    padding: 8px;
   }
 }
 
