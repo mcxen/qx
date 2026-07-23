@@ -684,7 +684,7 @@ export interface PluginContext {
         onSelect?: (id: string, item: PluginWorkbenchItem) => void;
         onInput?: (id: string, value: string, item?: PluginWorkbenchItem) => void;
       },
-    ) => void;
+    ) => import("./workbenchTypes").PluginWorkbenchController;
   };
   notification: {
     show: (input: { title: string; body?: string; subtitle?: string }) => Promise<void>;

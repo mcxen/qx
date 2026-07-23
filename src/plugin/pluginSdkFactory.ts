@@ -6,7 +6,12 @@ import type {
   PluginCliStartRequest,
   PluginContext,
 } from "./types";
-import type { PluginWorkbenchItem, PluginWorkbenchState } from "./workbenchTypes";
+import type {
+  PluginWorkbenchController,
+  PluginWorkbenchItem,
+  PluginWorkbenchItemsUpdate,
+  PluginWorkbenchState,
+} from "./workbenchTypes";
 
 export type PluginCliCore = {
   run: (request: PluginCliRunRequest) => Promise<PluginCliRunResult>;
@@ -229,9 +234,11 @@ export function createPluginSdkRuntime(): PluginSdkRuntime {
     const mountWorkbench = (
       state: PluginWorkbenchState,
       handlers: WorkbenchHandlers = {},
-    ): void => {
+    ): PluginWorkbenchController => {
       const runtimeWindow = window as WorkbenchWindow;
-      runtimeWindow.__qxPluginUiBridge?.publishWorkbench?.(state);
+      let currentState = state;
+      const publish = () => runtimeWindow.__qxPluginUiBridge?.publishWorkbench?.(currentState);
+      publish();
       if (runtimeWindow.__qxWorkbenchHandler) {
         runtimeWindow.removeEventListener("message", runtimeWindow.__qxWorkbenchHandler);
       }
@@ -244,18 +251,18 @@ export function createPluginSdkRuntime(): PluginSdkRuntime {
         else if (workbenchEvent.kind === "tab") handlers.onTab?.(String(workbenchEvent.id ?? ""));
         else if (workbenchEvent.kind === "select") {
           const id = String(workbenchEvent.id ?? "");
-          const item = (state.items || []).find((candidate) => candidate.id === id);
+          const item = (currentState.items || []).find((candidate) => candidate.id === id);
           if (item) handlers.onSelect?.(id, item);
         } else if (workbenchEvent.kind === "action") {
           const id = String(workbenchEvent.id ?? "");
-          const selectedId = String(workbenchEvent.selectedId ?? state.selectedId ?? "");
-          const item = (state.items || []).find((candidate) => candidate.id === selectedId);
+          const selectedId = String(workbenchEvent.selectedId ?? currentState.selectedId ?? "");
+          const item = (currentState.items || []).find((candidate) => candidate.id === selectedId);
           handlers.onAction?.(id, item);
         } else if (workbenchEvent.kind === "input") {
           const id = String(workbenchEvent.id ?? "");
           const value = String(workbenchEvent.value ?? "");
-          const selectedId = String(workbenchEvent.selectedId ?? state.selectedId ?? "");
-          const item = (state.items || []).find((candidate) => candidate.id === selectedId);
+          const selectedId = String(workbenchEvent.selectedId ?? currentState.selectedId ?? "");
+          const item = (currentState.items || []).find((candidate) => candidate.id === selectedId);
           handlers.onInput?.(id, value, item);
         } else if (workbenchEvent.kind === "commandComplete") {
           handlers.onCommandComplete?.({
@@ -272,6 +279,49 @@ export function createPluginSdkRuntime(): PluginSdkRuntime {
         }
       };
       runtimeWindow.addEventListener("message", runtimeWindow.__qxWorkbenchHandler);
+      const update = (patch: Partial<PluginWorkbenchState>) => {
+        currentState = { ...currentState, ...patch };
+        publish();
+      };
+      const updateItems = (mutation: PluginWorkbenchItemsUpdate) => {
+        const removeIds = new Set((mutation.removeIds || []).map(String));
+        const byId = new Map(
+          (currentState.items || [])
+            .filter((item) => !removeIds.has(item.id))
+            .map((item) => [item.id, item]),
+        );
+        for (const item of mutation.upsert || []) {
+          if (!item?.id || removeIds.has(item.id)) continue;
+          const previous = byId.get(item.id);
+          byId.set(item.id, previous ? { ...previous, ...item } : item);
+        }
+        const ordered: PluginWorkbenchItem[] = [];
+        const emitted = new Set<string>();
+        for (const id of mutation.order || []) {
+          const item = byId.get(String(id));
+          if (!item || emitted.has(item.id)) continue;
+          emitted.add(item.id);
+          ordered.push(item);
+        }
+        for (const item of byId.values()) {
+          if (emitted.has(item.id)) continue;
+          emitted.add(item.id);
+          ordered.push(item);
+        }
+        const requestedSelection = Object.prototype.hasOwnProperty.call(mutation, "selectedId")
+          ? mutation.selectedId
+          : currentState.selectedId;
+        const selectedId = requestedSelection != null && emitted.has(String(requestedSelection))
+          ? String(requestedSelection)
+          : ordered[0]?.id ?? null;
+        currentState = { ...currentState, items: ordered, selectedId };
+        publish();
+      };
+      return {
+        update,
+        updateItems,
+        getState: () => currentState,
+      };
     };
 
     return { itemsFromJson, mountWorkbench };

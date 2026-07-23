@@ -31,16 +31,36 @@ export interface PluginWorkbenchForm {
   controls: PluginWorkbenchControl[];
 }
 
+export interface PluginWorkbenchImage {
+  url: string;
+  alt?: string;
+  fit?: "cover" | "contain";
+  /**
+   * Detail media defaults to `auto`; gallery cards continue to use the
+   * collection layout aspect ratio. This keeps portrait and unusually wide
+   * images usable in a narrow detail pane.
+   */
+  aspectRatio?: "auto" | "landscape" | "square" | "portrait";
+  /** Opens the host-owned image preview. Defaults to true for detail media. */
+  zoomable?: boolean;
+  caption?: string;
+}
+
+export interface PluginWorkbenchAsyncStatus {
+  state: "loading" | "success" | "error";
+  label?: string;
+  error?: string;
+  progress?: number;
+}
+
 /** Pure-data detail model rendered by Qx; HTML is intentionally not accepted. */
 export interface PluginWorkbenchDetail {
   title?: string;
   subtitle?: string;
   /** Optional large media preview rendered above the structured detail. */
-  image?: {
-    url: string;
-    alt?: string;
-    fit?: "cover" | "contain";
-  };
+  image?: PluginWorkbenchImage;
+  /** Item-local asynchronous state; does not replace the usable cached detail. */
+  status?: PluginWorkbenchAsyncStatus;
   body?: string;
   /** Host-rendered form controls; values remain controlled by plugin state. */
   form?: PluginWorkbenchForm;
@@ -69,11 +89,9 @@ export interface PluginWorkbenchItem {
   badge?: string;
   icon?: string;
   /** Remote/data image rendered by the host in gallery mode. */
-  image?: {
-    url: string;
-    alt?: string;
-    fit?: "cover" | "contain";
-  };
+  image?: PluginWorkbenchImage;
+  /** Per-item async state for refresh, metadata, thumbnail, or batch work. */
+  status?: PluginWorkbenchAsyncStatus;
   progress?: number;
   tone?: PluginWorkbenchTone | string;
   /** Structured detail rendered by the host. */
@@ -85,6 +103,8 @@ export interface PluginWorkbenchItem {
 }
 
 export interface PluginWorkbenchState {
+  /** Monotonic publication revision. The host ignores an older async snapshot. */
+  revision?: number;
   title?: string;
   meta?: string;
   error?: string | null;
@@ -113,6 +133,24 @@ export interface PluginWorkbenchState {
    * mounted Workbench after each completion so it can reload persisted data.
    */
   backgroundPoll?: { command: string };
+}
+
+export interface PluginWorkbenchItemsUpdate {
+  /** Insert new ids and shallow-replace existing ids without rebuilding the collection. */
+  upsert?: PluginWorkbenchItem[];
+  /** Remove ids after applying upserts. */
+  removeIds?: string[];
+  /** Optional stable id order; omitted ids retain their relative order at the end. */
+  order?: string[];
+  selectedId?: string | null;
+}
+
+export interface PluginWorkbenchController {
+  /** Publish a shallow state update while retaining omitted fields. */
+  update: (patch: Partial<PluginWorkbenchState>) => void;
+  /** Publish a keyed collection mutation suitable for incremental/batch async results. */
+  updateItems: (update: PluginWorkbenchItemsUpdate) => void;
+  getState: () => PluginWorkbenchState;
 }
 
 export type PluginWorkbenchEvent =
@@ -199,6 +237,19 @@ function normalizeForm(value: unknown): PluginWorkbenchForm | undefined {
   };
 }
 
+function normalizeAsyncStatus(value: unknown): PluginWorkbenchAsyncStatus | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  if (raw.state !== "loading" && raw.state !== "success" && raw.state !== "error") return undefined;
+  const progress = Number(raw.progress);
+  return {
+    state: raw.state,
+    label: shortText(raw.label, 240),
+    error: shortText(raw.error, 1_000),
+    progress: Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : undefined,
+  };
+}
+
 function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
@@ -215,13 +266,14 @@ function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
   const detail = {
     title: shortText(raw.title, 240),
     subtitle: shortText(raw.subtitle, 500),
-    image: normalizeImage(raw.image),
+    image: normalizeImage(raw.image, true),
+    status: normalizeAsyncStatus(raw.status),
     body: shortText(raw.body, 12_000),
     form: normalizeForm(raw.form),
     fields: normalizeFields(raw.fields),
     sections,
   };
-  return detail.title || detail.subtitle || detail.image || detail.body || detail.form || detail.fields.length || detail.sections.length
+  return detail.title || detail.subtitle || detail.image || detail.status || detail.body || detail.form || detail.fields.length || detail.sections.length
     ? detail
     : undefined;
 }
@@ -243,7 +295,7 @@ function normalizeActions(value: unknown): PluginWorkbenchAction[] {
   }).filter((action) => Boolean(action.id));
 }
 
-function normalizeImage(value: unknown): PluginWorkbenchItem["image"] {
+function normalizeImage(value: unknown, detail = false): PluginWorkbenchItem["image"] {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
   if (typeof raw.url !== "string") return undefined;
@@ -257,7 +309,15 @@ function normalizeImage(value: unknown): PluginWorkbenchItem["image"] {
   return {
     url,
     alt: shortText(raw.alt, 500),
-    fit: raw.fit === "contain" ? "contain" : "cover",
+    fit: raw.fit === "contain" || (detail && raw.fit !== "cover") ? "contain" : "cover",
+    aspectRatio:
+      raw.aspectRatio === "landscape" || raw.aspectRatio === "square" || raw.aspectRatio === "portrait"
+        ? raw.aspectRatio
+        : detail || raw.aspectRatio === "auto"
+          ? "auto"
+          : undefined,
+    zoomable: raw.zoomable == null ? detail : raw.zoomable === true,
+    caption: shortText(raw.caption, 500),
   };
 }
 
@@ -278,6 +338,7 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
           badge: shortText(item.badge, 120),
           icon: shortText(item.icon, 24),
           image: normalizeImage(item.image),
+          status: normalizeAsyncStatus(item.status),
           progress: Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : undefined,
           tone: normalizeTone(item.tone),
           detail: normalizeDetail(item.detail),
@@ -383,6 +444,9 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
       }
     : null;
   return {
+    revision: Number.isFinite(Number(raw.revision))
+      ? Math.max(0, Math.floor(Number(raw.revision)))
+      : undefined,
     title: shortText(raw.title, 240),
     meta: shortText(raw.meta, 500),
     error: raw.error == null ? null : shortText(raw.error, 2_000),

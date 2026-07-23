@@ -161,7 +161,10 @@ Workbench 是 **宿主呈现端口**，不是 CLI 专属控件。任何能表达
 List/Gallery + Detail + Actions + tabs/search 的市场模块都应发布纯数据并复用它；
 Sysinfo、Brew、Unsplash 等业务只负责领域状态。插件信任边界仍留在
 `workbenchTypes.normalizePluginWorkbenchState`，宿主 Shell 负责样式、焦点、导航与
-Esc。内置 React 模块若需要更深的多层工作流，继续复用
+Esc。图片详情的自适应比例、加载失败与全尺寸预览也属于宿主能力，插件不得尝试从
+隐藏 iframe 覆盖宿主 CSS 或另起 lightbox。异步集合仍以插件业务 state 为最终事实源；
+`mountWorkbench()` 返回的 controller 只负责在 SDK 内按稳定 id 合并 `updateItems`
+并发布完整快照，信任边界不接受 DOM patch。内置 React 模块若需要更深的多层工作流，继续复用
 `useQxListSelection` / `useQxMasterDetail` / `QxShellAction`，不应为了“统一”绕进
 iframe RPC；两条路径共享的是端口语义和视觉令牌，而不是强制同一 runtime。
 Custom Panel 的视觉令牌由 `src/plugin/pluginTheme.ts` 作为单一投影端口同步到 iframe；

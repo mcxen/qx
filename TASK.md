@@ -449,6 +449,27 @@
 - 修复位于宿主 Workbench 端口，所有声明式插件共享，不要求插件各自补 CSS。
 - Workbench List 空载与刷新状态改用 V2EX 同款宿主协议：左栏 header/计数始终存在，首次加载显示 skeleton + LoadingLabel，已有数据刷新保持旧条目并显示 `…`。
 
+## Feature — Workbench 图片详情兼容与异步集合更新协议
+
+**状态**：已完成宿主实现与公开协议同步，等待 QxPicture / Bing 运行态复核。
+
+- 图片详情默认按原始比例适配右栏，支持固定横/方/竖舞台、caption、加载失败局部反馈与宿主全尺寸 Dialog；窄主内容区自动切为详情单页，Esc 仍按 Dialog → Detail → query → launcher 级联。
+- `item.status` / `detail.status` 提供 per-item loading/success/error/progress，刷新图片或元数据时保留已有可用内容、选择和滚动。
+- `mountWorkbench()` 返回 `update/updateItems/getState` controller；批量图片/元数据可按稳定 id upsert/remove/reorder，SDK 合并后仍发布完整纯数据快照，不扩大 DOM 信任边界。
+- state 新增可选单调 `revision`，宿主拒绝旧 revision，避免异步整快照倒灌覆盖较新数据。
+- QxPicture 的 iframe lightbox、Bing 的宿主类名 CSS 注入均被确认不是可靠兼容路径；对应能力现由 Workbench 宿主统一提供，插件后续只需删除这些 workaround 并消费结构化字段。
+- 本机 `qx-plugins-clone` 已迁移源码消费者：Qx Bing Wallpaper 2.1.0 与 Unsplash 1.2.0
+  发布自适应详情大图、局部 item/detail status，并复用 revisioned Workbench controller；
+  两个定向 archive 与 marketplace index 已生成。QxPicture 当前只存在于
+  `~/.qx/plugins/qxpicture`，尚未进入源码仓库，不能把安装目录继续当作唯一事实来源。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check` / `npm run build`
+- [x] Bing / Unsplash `node --check`、manifest JSON、mock Workbench panel smoke、archive 校验
+- [ ] macOS：QxPicture 单项/批量刷新、横竖图放大与表单焦点；Bing Gallery/List 详情与窄窗 Esc。
+
 ## Fix — Workbench List / Gallery 统一详情开启布局
 
 **状态**：已完成宿主实现与规范同步，等待市场插件运行态视觉复核。

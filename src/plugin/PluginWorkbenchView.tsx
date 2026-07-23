@@ -1,10 +1,22 @@
-import { useMemo, useRef, type CSSProperties } from "react";
+import { useMemo, useRef, useState, type CSSProperties } from "react";
+import { AlertTriangle, CheckCircle2, LoaderCircle, Maximize2, X } from "lucide-react";
 import { QxListLoading, shouldShowQxListLoading } from "../components/QxListLoading";
 import { useQxListSelection } from "../hooks/useQxListSelection";
-import { Input, Select } from "../components/ui";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Button,
+  Input,
+  Select,
+} from "../components/ui";
 import type {
+  PluginWorkbenchAsyncStatus,
   PluginWorkbenchDetail,
   PluginWorkbenchField,
+  PluginWorkbenchImage,
   PluginWorkbenchState,
 } from "./workbenchTypes";
 import { useT } from "../i18n";
@@ -37,14 +49,90 @@ function WorkbenchFields({ fields }: { fields?: PluginWorkbenchField[] }) {
   );
 }
 
+function WorkbenchStatus({ status }: { status?: PluginWorkbenchAsyncStatus }) {
+  if (!status) return null;
+  const Icon = status.state === "loading"
+    ? LoaderCircle
+    : status.state === "error"
+      ? AlertTriangle
+      : CheckCircle2;
+  const copy = status.state === "error"
+    ? status.error || status.label
+    : status.label;
+  return (
+    <div
+      className={`qx-host-workbench-async is-${status.state}`}
+      role={status.state === "error" ? "alert" : "status"}
+    >
+      <Icon
+        size={14}
+        aria-hidden="true"
+        className={status.state === "loading" ? "qx-loading-spinner" : undefined}
+      />
+      {copy ? <span>{copy}</span> : null}
+      {status.progress != null ? <span>{Math.round(status.progress)}%</span> : null}
+    </div>
+  );
+}
+
+function WorkbenchDetailImage({
+  image,
+  onPreview,
+  unavailableText,
+  previewText,
+}: {
+  image: PluginWorkbenchImage;
+  onPreview: (image: PluginWorkbenchImage) => void;
+  unavailableText: string;
+  previewText: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  const content = failed ? (
+    <span className="qx-host-workbench-media-error">{unavailableText}</span>
+  ) : (
+    <img
+      key={image.url}
+      src={image.url}
+      alt={image.alt || ""}
+      style={{ objectFit: image.fit || "contain" }}
+      onError={() => setFailed(true)}
+    />
+  );
+  const className = `qx-host-workbench-detail-image aspect-${image.aspectRatio || "auto"}`;
+  return (
+    <figure className="qx-host-workbench-media">
+      {image.zoomable !== false && !failed ? (
+        <button
+          type="button"
+          className={`${className} is-zoomable`}
+          onClick={() => onPreview(image)}
+          aria-label={image.alt ? `${previewText}: ${image.alt}` : previewText}
+        >
+          {content}
+          <Maximize2 className="qx-host-workbench-media-expand" size={15} aria-hidden="true" />
+        </button>
+      ) : (
+        <div className={className}>{content}</div>
+      )}
+      {image.caption ? <figcaption>{image.caption}</figcaption> : null}
+    </figure>
+  );
+}
+
 function WorkbenchDetail({
   detail,
   emptyText,
   onInput,
+  onPreview,
+  unavailableText,
+  previewText,
 }: {
   detail?: PluginWorkbenchDetail;
   emptyText: string;
   onInput: (id: string, value: string) => void;
+  onPreview: (image: PluginWorkbenchImage) => void;
+  unavailableText: string;
+  previewText: string;
 }) {
   if (!detail) {
     return <div className="qx-content-detail-empty">{emptyText}</div>;
@@ -52,14 +140,17 @@ function WorkbenchDetail({
   return (
     <div className="qx-content-detail-scroll" data-qx-region-scroll>
       {detail.image?.url ? (
-        <div className="qx-host-workbench-detail-image">
-          <img
-            src={detail.image.url}
-            alt={detail.image.alt || ""}
-            style={{ objectFit: detail.image.fit || "contain" }}
-          />
-        </div>
+        <WorkbenchDetailImage
+          key={detail.image.url}
+          image={detail.image}
+          onPreview={onPreview}
+          unavailableText={unavailableText}
+          previewText={previewText}
+        />
       ) : null}
+      {detail.title ? <h2 className="qx-content-detail-heading">{detail.title}</h2> : null}
+      {detail.subtitle ? <div className="qx-content-detail-meta">{detail.subtitle}</div> : null}
+      <WorkbenchStatus status={detail.status} />
       {detail.form ? (
         <section className="qx-host-workbench-form">
           {detail.form.title ? <h3>{detail.form.title}</h3> : null}
@@ -93,8 +184,6 @@ function WorkbenchDetail({
           </div>
         </section>
       ) : null}
-      {detail.title ? <h2 className="qx-content-detail-heading">{detail.title}</h2> : null}
-      {detail.subtitle ? <div className="qx-content-detail-meta">{detail.subtitle}</div> : null}
       {detail.body ? <p className="qx-host-workbench-body">{detail.body}</p> : null}
       <WorkbenchFields fields={detail.fields} />
       {detail.sections?.map((section, index) => (
@@ -115,6 +204,7 @@ export default function PluginWorkbenchView({
   onInput,
 }: PluginWorkbenchViewProps) {
   const t = useT();
+  const [previewImage, setPreviewImage] = useState<PluginWorkbenchImage | null>(null);
   const items = state.items || [];
   const selectedIndex = useMemo(() => {
     if (!items.length) return -1;
@@ -184,6 +274,7 @@ export default function PluginWorkbenchView({
                 {item.badge || item.meta}
               </span>
             ) : null}
+            <WorkbenchStatus status={item.status} />
           </button>
         );
       }) : (
@@ -233,9 +324,14 @@ export default function PluginWorkbenchView({
                 </span>
               ) : null}
             </span>
-            {(item.badge || item.meta) ? (
-              <span className={`qx-host-workbench-accessory qx-host-workbench-badge${toneClass(item.tone)}`}>
-                {item.badge || item.meta}
+            {(item.badge || item.meta || item.status) ? (
+              <span className="qx-host-workbench-accessory">
+                {(item.badge || item.meta) ? (
+                  <span className={`qx-host-workbench-badge${toneClass(item.tone)}`}>
+                    {item.badge || item.meta}
+                  </span>
+                ) : null}
+                <WorkbenchStatus status={item.status} />
               </span>
             ) : null}
           </button>
@@ -276,6 +372,9 @@ export default function PluginWorkbenchView({
             detail={state.detail}
             emptyText={t("plugins.workbench.select", "Select an item")}
             onInput={onInput}
+            onPreview={setPreviewImage}
+            unavailableText={t("plugins.workbench.imageUnavailable", "Image unavailable")}
+            previewText={t("plugins.workbench.imagePreview", "Image Preview")}
           />
         </div>
       ) : detailOpen ? (
@@ -292,10 +391,41 @@ export default function PluginWorkbenchView({
               detail={detail}
               emptyText={t("plugins.workbench.select", "Select an item")}
               onInput={onInput}
+              onPreview={setPreviewImage}
+              unavailableText={t("plugins.workbench.imageUnavailable", "Image unavailable")}
+              previewText={t("plugins.workbench.imagePreview", "Image Preview")}
             />
           </div>
         </div>
       ) : collection}
+      <Dialog open={Boolean(previewImage)} onOpenChange={(open) => { if (!open) setPreviewImage(null); }}>
+        <DialogContent className="qx-host-workbench-media-dialog">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="qx-host-workbench-media-close"
+            aria-label={t("common.close", "Close")}
+            onClick={() => setPreviewImage(null)}
+          >
+            <X size={16} aria-hidden="true" />
+          </Button>
+          <DialogHeader>
+            <DialogTitle>{previewImage?.alt || t("plugins.workbench.imagePreview", "Image Preview")}</DialogTitle>
+            <DialogDescription className="sr-only">
+              {t("plugins.workbench.imagePreviewHint", "Full-size preview of the selected image")}
+            </DialogDescription>
+          </DialogHeader>
+          {previewImage ? (
+            <img
+              src={previewImage.url}
+              alt={previewImage.alt || ""}
+              style={{ objectFit: previewImage.fit || "contain" }}
+            />
+          ) : null}
+          {previewImage?.caption ? <p>{previewImage.caption}</p> : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -243,7 +243,18 @@ export function PluginPanelViewport() {
     });
     const unsubscribeWorkbench = subscribePluginWorkbench((payload) => {
       if (payload.pluginId !== pluginId) return;
-      setWorkbench(payload.state);
+      setWorkbench((current) => {
+        const nextRevision = payload.state.revision;
+        const currentRevision = current?.revision;
+        if (
+          nextRevision != null
+          && currentRevision != null
+          && nextRevision < currentRevision
+        ) {
+          return current;
+        }
+        return payload.state;
+      });
     });
     return () => {
       unsubscribeActions();
