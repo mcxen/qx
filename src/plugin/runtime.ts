@@ -219,6 +219,7 @@ export function buildPluginRuntimeHtml(
         return {
           status: Number(value?.status ?? 0),
           ok: Boolean(value?.ok),
+          url: String(value?.url || ''),
           headers,
           body,
           bodyBase64,

@@ -137,7 +137,7 @@ Qx 当前可运行 **5 条入口/执行链路**；它们可以组合在同一个
 | **island + panel** | Workbench `island` 字段，或 panel 关闭时调用 `context.island` | 停靠由宿主呈现；桌面浮窗只由用户从 Qx 手动浮出并可关闭，右上定位、轮播与抢占由宿主决定 | pomodoro |
 
 原则：**能 business 就 business**——只写业务映射（API → list items），不要复制壳 CSS。
-Workbench 条目可带：`icon` · `image` · `badge` · `tone` · **`progress`（0–100）** · `detail` · `actions` · `raw`。`detail` 必须是结构化数据；Workbench 不接受 HTML。
+Workbench 条目可带：`icon` · `image` · `badge` · `tone` · **`progress`（0–100）** · `detail` · `actions` · `raw`。List 会把 `item.image` 渲染为左侧缩略图；`detail.image` 可在右侧结构化详情顶部显示大图预览；`detail.form.controls` 可声明宿主渲染的 `text` / `number` / `select` 受控表单，并通过 `onInput(id, value, item)` 回传变更。`detail` 必须是结构化数据；Workbench 不接受 HTML。
 完整的布局、Light/Dark 对比度、Custom Panel token 与 Action 层级见
 [`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md)。
 
@@ -160,6 +160,7 @@ context.ui.mountWorkbench({
     tone: row.ok ? "success" : "danger",
     detail: {
       title: row.name,
+      image: { url: row.previewUrl, alt: row.name, fit: "contain" },
       fields: [
         { label: "Status", value: row.status },
         { label: "Updated", value: row.updatedAt },
@@ -354,6 +355,7 @@ const res = await context.http.fetch(url, {
   timeoutMs: 30_000,
 });
 const data = await res.json();
+// res.url is the effective URL after redirects.
 ```
 
 #### 存储（详见宿主设计 [`docs/plugin-storage.md`](../../docs/plugin-storage.md)）

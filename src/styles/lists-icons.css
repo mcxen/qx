@@ -478,6 +478,18 @@
   text-align: center;
 }
 
+.qx-host-workbench-icon.has-image {
+  overflow: hidden;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-2);
+}
+
+.qx-host-workbench-icon.has-image img {
+  width: 100%;
+  height: 100%;
+}
+
 .qx-host-workbench-row small {
   display: block;
   overflow: hidden;
@@ -539,6 +551,84 @@
   margin: 0 0 12px;
   color: var(--qx-text-secondary);
   white-space: pre-wrap;
+}
+
+.qx-host-workbench-detail-image {
+  display: grid;
+  overflow: hidden;
+  width: 100%;
+  min-height: 180px;
+  max-height: min(52vh, 520px);
+  margin-bottom: 14px;
+  aspect-ratio: 16 / 9;
+  place-items: center;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-radius);
+  background: var(--qx-bg-component-2);
+}
+
+.qx-host-workbench-detail-image img {
+  width: 100%;
+  height: 100%;
+}
+
+.qx-host-workbench-form {
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-radius);
+  background: var(--qx-bg-component-2);
+}
+
+.qx-host-workbench-form h3 {
+  margin: 0 0 4px;
+  color: var(--qx-text-primary);
+  font-size: 13px;
+}
+
+.qx-host-workbench-form p {
+  margin: 0 0 10px;
+  color: var(--qx-text-tertiary);
+  font-size: 12px;
+}
+
+.qx-host-workbench-form-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.qx-host-workbench-form-controls label {
+  display: grid;
+  grid-template-columns: minmax(88px, 30%) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+}
+
+.qx-host-workbench-form-controls input,
+.qx-host-workbench-form-controls select,
+.qx-host-workbench-form-controls .qx-select {
+  min-width: 0;
+  height: 30px;
+  padding: 0 9px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 6px;
+  outline: none;
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-primary);
+  font: inherit;
+}
+
+.qx-host-workbench-form-controls .qx-select,
+.qx-host-workbench-form-controls .qx-shadcn-select-trigger {
+  width: 100%;
+}
+
+.qx-host-workbench-form-controls input:focus,
+.qx-host-workbench-form-controls select:focus {
+  border-color: var(--qx-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--qx-accent) 18%, transparent);
 }
 
 .qx-host-workbench-fields {

@@ -833,6 +833,8 @@ fn default_timeout_ms() -> u64 {
 pub struct HttpResponse {
     pub status: u16,
     pub ok: bool,
+    /// Effective URL after the HTTP client followed redirects.
+    pub url: String,
     pub headers: std::collections::BTreeMap<String, String>,
     /// UTF-8 text body when the payload is valid UTF-8; empty for binary.
     pub body: String,
@@ -897,6 +899,7 @@ pub async fn plugin_http_fetch(req: HttpFetchRequest) -> Result<HttpResponse, St
 
     let status = resp.status().as_u16();
     let ok = resp.status().is_success();
+    let final_url = resp.url().to_string();
 
     let mut headers = std::collections::BTreeMap::new();
     for (name, value) in resp.headers().iter() {
@@ -928,6 +931,7 @@ pub async fn plugin_http_fetch(req: HttpFetchRequest) -> Result<HttpResponse, St
     Ok(HttpResponse {
         status,
         ok,
+        url: final_url,
         headers,
         body,
         body_base64,

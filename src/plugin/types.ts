@@ -569,6 +569,8 @@ export interface PluginContext {
     ) => Promise<{
       status: number;
       ok: boolean;
+      /** Effective response URL after redirects. */
+      url: string;
       headers: Record<string, string>;
       body: string;
       /** Raw response bytes encoded by the host; present for text and binary bodies. */
@@ -680,6 +682,7 @@ export interface PluginContext {
         }) => void;
         onQuery?: (value: string) => void;
         onSelect?: (id: string, item: PluginWorkbenchItem) => void;
+        onInput?: (id: string, value: string, item?: PluginWorkbenchItem) => void;
       },
     ) => void;
   };

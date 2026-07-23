@@ -14,11 +14,36 @@ export interface PluginWorkbenchSection {
   fields?: PluginWorkbenchField[];
 }
 
+export interface PluginWorkbenchControl {
+  /** Stable identifier returned to the plugin in `onInput`. */
+  id: string;
+  label: string;
+  value: string;
+  type?: "text" | "number" | "select";
+  options?: Array<{ label: string; value: string }>;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+export interface PluginWorkbenchForm {
+  title?: string;
+  description?: string;
+  controls: PluginWorkbenchControl[];
+}
+
 /** Pure-data detail model rendered by Qx; HTML is intentionally not accepted. */
 export interface PluginWorkbenchDetail {
   title?: string;
   subtitle?: string;
+  /** Optional large media preview rendered above the structured detail. */
+  image?: {
+    url: string;
+    alt?: string;
+    fit?: "cover" | "contain";
+  };
   body?: string;
+  /** Host-rendered form controls; values remain controlled by plugin state. */
+  form?: PluginWorkbenchForm;
   fields?: PluginWorkbenchField[];
   sections?: PluginWorkbenchSection[];
 }
@@ -94,6 +119,7 @@ export type PluginWorkbenchEvent =
   | { kind: "query"; value: string }
   | { kind: "tab"; id: string }
   | { kind: "select"; id: string }
+  | { kind: "input"; id: string; value: string; selectedId?: string }
   | { kind: "action"; id: string; selectedId?: string }
   | { kind: "commandComplete"; command: string; at: number }
   | { kind: "backgroundPoll"; command: string; at: number; ok: boolean; error?: string };
@@ -133,6 +159,46 @@ function normalizeFields(value: unknown): PluginWorkbenchField[] {
   }).filter((field) => Boolean(field.label));
 }
 
+function normalizeForm(value: unknown): PluginWorkbenchForm | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const seen = new Set<string>();
+  const controls = Array.isArray(raw.controls)
+    ? raw.controls.slice(0, 64).map((entry) => {
+        const control = (entry || {}) as Record<string, unknown>;
+        const id = shortText(control.id, 256)?.trim() || "";
+        const options = Array.isArray(control.options)
+          ? control.options.slice(0, 64).map((option) => {
+              const item = (option || {}) as Record<string, unknown>;
+              return {
+                label: shortText(item.label, 160) || shortText(item.value, 500) || "",
+                value: shortText(item.value, 500) || "",
+              };
+            }).filter((option) => Boolean(option.value))
+          : [];
+        return {
+          id,
+          label: shortText(control.label, 160) || id,
+          value: shortText(control.value, 2_000) || "",
+          type: control.type === "number" || control.type === "select" ? control.type : "text",
+          options,
+          placeholder: shortText(control.placeholder, 500),
+          disabled: control.disabled === true,
+        } satisfies PluginWorkbenchControl;
+      }).filter((control) => {
+        if (!control.id || seen.has(control.id)) return false;
+        seen.add(control.id);
+        return true;
+      })
+    : [];
+  if (!controls.length) return undefined;
+  return {
+    title: shortText(raw.title, 160),
+    description: shortText(raw.description, 1_000),
+    controls,
+  };
+}
+
 function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
@@ -149,11 +215,13 @@ function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
   const detail = {
     title: shortText(raw.title, 240),
     subtitle: shortText(raw.subtitle, 500),
+    image: normalizeImage(raw.image),
     body: shortText(raw.body, 12_000),
+    form: normalizeForm(raw.form),
     fields: normalizeFields(raw.fields),
     sections,
   };
-  return detail.title || detail.subtitle || detail.body || detail.fields.length || detail.sections.length
+  return detail.title || detail.subtitle || detail.image || detail.body || detail.form || detail.fields.length || detail.sections.length
     ? detail
     : undefined;
 }

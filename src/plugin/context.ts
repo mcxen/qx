@@ -137,6 +137,7 @@ export function createPluginContext(
         const result = (await rpc("httpFetch", { url, options })) as {
           status: number;
           ok: boolean;
+          url?: string;
           headers: Record<string, string>;
           body: string;
           bodyBase64?: string;
@@ -160,6 +161,7 @@ export function createPluginContext(
           body,
           bodyBase64,
           binary: Boolean(result.binary),
+          url: String(result.url || url),
           headers,
           text: async () => (body ? body : new TextDecoder().decode(responseBytes())),
           json: async () =>

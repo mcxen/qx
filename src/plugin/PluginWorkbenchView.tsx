@@ -1,6 +1,7 @@
 import { useMemo, useRef, type CSSProperties } from "react";
 import { QxListLoading, shouldShowQxListLoading } from "../components/QxListLoading";
 import { useQxListSelection } from "../hooks/useQxListSelection";
+import { Input, Select } from "../components/ui";
 import type {
   PluginWorkbenchDetail,
   PluginWorkbenchField,
@@ -15,6 +16,7 @@ interface PluginWorkbenchViewProps {
   state: PluginWorkbenchState;
   detailOpen: boolean;
   onActivate: (id: string) => void;
+  onInput: (id: string, value: string) => void;
 }
 
 function toneClass(tone: string | undefined): string {
@@ -35,12 +37,62 @@ function WorkbenchFields({ fields }: { fields?: PluginWorkbenchField[] }) {
   );
 }
 
-function WorkbenchDetail({ detail, emptyText }: { detail?: PluginWorkbenchDetail; emptyText: string }) {
+function WorkbenchDetail({
+  detail,
+  emptyText,
+  onInput,
+}: {
+  detail?: PluginWorkbenchDetail;
+  emptyText: string;
+  onInput: (id: string, value: string) => void;
+}) {
   if (!detail) {
     return <div className="qx-content-detail-empty">{emptyText}</div>;
   }
   return (
     <div className="qx-content-detail-scroll" data-qx-region-scroll>
+      {detail.image?.url ? (
+        <div className="qx-host-workbench-detail-image">
+          <img
+            src={detail.image.url}
+            alt={detail.image.alt || ""}
+            style={{ objectFit: detail.image.fit || "contain" }}
+          />
+        </div>
+      ) : null}
+      {detail.form ? (
+        <section className="qx-host-workbench-form">
+          {detail.form.title ? <h3>{detail.form.title}</h3> : null}
+          {detail.form.description ? <p>{detail.form.description}</p> : null}
+          <div className="qx-host-workbench-form-controls">
+            {detail.form.controls.map((control) => (
+              <label key={control.id}>
+                <span>{control.label}</span>
+                {control.type === "select" ? (
+                  control.disabled || !control.options?.length ? (
+                    <Input value={control.value} disabled aria-label={control.label} />
+                  ) : (
+                    <Select
+                      value={control.value}
+                      options={control.options}
+                      ariaLabel={control.label}
+                      onChange={(value) => onInput(control.id, value)}
+                    />
+                  )
+                ) : (
+                  <Input
+                    type={control.type === "number" ? "number" : "text"}
+                    value={control.value}
+                    placeholder={control.placeholder}
+                    disabled={control.disabled}
+                    onChange={(event) => onInput(control.id, event.currentTarget.value)}
+                  />
+                )}
+              </label>
+            ))}
+          </div>
+        </section>
+      ) : null}
       {detail.title ? <h2 className="qx-content-detail-heading">{detail.title}</h2> : null}
       {detail.subtitle ? <div className="qx-content-detail-meta">{detail.subtitle}</div> : null}
       {detail.body ? <p className="qx-host-workbench-body">{detail.body}</p> : null}
@@ -60,6 +112,7 @@ export default function PluginWorkbenchView({
   state,
   detailOpen,
   onActivate,
+  onInput,
 }: PluginWorkbenchViewProps) {
   const t = useT();
   const items = state.items || [];
@@ -161,7 +214,16 @@ export default function PluginWorkbenchView({
             {...getItemProps(index, { className: "tall qx-host-workbench-row" })}
             onClick={() => onActivate(id)}
           >
-            <span className="qx-host-workbench-icon" aria-hidden="true">{item.icon || "•"}</span>
+            <span className={`qx-host-workbench-icon${item.image?.url ? " has-image" : ""}`} aria-hidden="true">
+              {item.image?.url ? (
+                <img
+                  src={item.image.url}
+                  alt=""
+                  loading="lazy"
+                  style={{ objectFit: item.image.fit || "cover" }}
+                />
+              ) : item.icon || "•"}
+            </span>
             <span className="qx-list-copy">
               <strong className="qx-list-title">{item.title}</strong>
               {item.subtitle ? <small>{item.subtitle}</small> : null}
@@ -213,6 +275,7 @@ export default function PluginWorkbenchView({
           <WorkbenchDetail
             detail={state.detail}
             emptyText={t("plugins.workbench.select", "Select an item")}
+            onInput={onInput}
           />
         </div>
       ) : detailOpen ? (
@@ -228,6 +291,7 @@ export default function PluginWorkbenchView({
             <WorkbenchDetail
               detail={detail}
               emptyText={t("plugins.workbench.select", "Select an item")}
+              onInput={onInput}
             />
           </div>
         </div>

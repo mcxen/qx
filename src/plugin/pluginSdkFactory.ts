@@ -25,6 +25,7 @@ type WorkbenchHandlers = {
   onBackgroundPoll?: (event: { command: string; at: number; ok: boolean; error?: string }) => void;
   onQuery?: (value: string) => void;
   onSelect?: (id: string, item: PluginWorkbenchItem) => void;
+  onInput?: (id: string, value: string, item?: PluginWorkbenchItem) => void;
 };
 
 type WorkbenchWindow = Window & {
@@ -250,6 +251,12 @@ export function createPluginSdkRuntime(): PluginSdkRuntime {
           const selectedId = String(workbenchEvent.selectedId ?? state.selectedId ?? "");
           const item = (state.items || []).find((candidate) => candidate.id === selectedId);
           handlers.onAction?.(id, item);
+        } else if (workbenchEvent.kind === "input") {
+          const id = String(workbenchEvent.id ?? "");
+          const value = String(workbenchEvent.value ?? "");
+          const selectedId = String(workbenchEvent.selectedId ?? state.selectedId ?? "");
+          const item = (state.items || []).find((candidate) => candidate.id === selectedId);
+          handlers.onInput?.(id, value, item);
         } else if (workbenchEvent.kind === "commandComplete") {
           handlers.onCommandComplete?.({
             command: String(workbenchEvent.command ?? ""),

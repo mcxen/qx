@@ -67,7 +67,7 @@ plugin business state
        └─ island → PluginHost permission/command validation → shared IslandSession store
 ```
 
-不变量：iframe 只发布可序列化纯数据；`raw` 不跨信任边界；宿主限制列表/字段/动作数量和文本长度。item `id` 是强制、稳定、唯一的业务键；缺失或重复 item/tab id 在信任边界直接拒绝，tabs 至多一个 active，不保留 title/index 回退。`layout.kind` 可选 `list`（默认）或 `gallery`；Gallery 图片只接受 `https://` / `data:image/`，URL 超限整体拒绝而非截断，列数与比例由宿主归一化，选中与 Actions 仍走相同 Workbench 事件。Workbench 没有 DOM/HTML 兼容分支；复杂自绘内容走独立 custom panel。后台轮询只能绑定本插件已注册的 `no-view + interval` command，panel 回调不拥有后台生命周期。
+不变量：iframe 只发布可序列化纯数据；`raw` 不跨信任边界；宿主限制列表/字段/动作/表单控件数量和文本长度。item `id` 是强制、稳定、唯一的业务键；缺失或重复 item/tab/control id 在信任边界直接拒绝，tabs 至多一个 active，不保留 title/index 回退。`layout.kind` 可选 `list`（默认）或 `gallery`；Gallery 图片只接受 `https://` / `data:image/`，URL 超限整体拒绝而非截断，列数与比例由宿主归一化，选中与 Actions 仍走相同 Workbench 事件。详情表单只接受 `text` / `number` / `select`，变更以 `onInput` 纯数据事件回传。Workbench 没有 DOM/HTML 兼容分支；复杂自绘内容走独立 custom panel。后台轮询只能绑定本插件已注册的 `no-view + interval` command，panel 回调不拥有后台生命周期。
 
 SDK 不维护 host/iframe 两份实现：`createPluginSdkRuntime` 是无外部闭包的自包含 factory，可信 context 直接调用，sandbox bootstrap 通过 `Function#toString` 注入同一实现。Workbench `island` 不再由 kit 额外调用 `context.island`；PluginHost 接受同一 state 后统一投影，避免 state 与 island 两条消息竞态。
 
@@ -158,6 +158,10 @@ assertPermission(plugin, perms, "ai")  →  invoke("plugin_ai_chat", { req: payl
 ```
 
 结果沿原路通过 `postMessage({ type: "qx:rpc:response", ... })` 返回 iframe。
+
+Workbench 图片仍是受限纯数据端口：`item.image` 在 Gallery 中作为卡片图片、在 List
+中作为行缩略图；`detail.image` 在结构化详情顶部作为大图预览。两者只接受 HTTPS 或
+`data:image/` URL，并统一经过 `normalizePluginWorkbenchState` 长度与协议校验。
 
 ## 4. 权限模型
 

@@ -189,7 +189,7 @@ export default {
 | `context.display.raycastActionPanel` | 读取用户在 Settings -> Extensions -> Display 中配置的 Raycast ActionPanel 行内按钮显示偏好 |
 | `context.clipboard.read()` | 读取系统剪贴板文本（需 `clipboard` 权限） |
 | `context.clipboard.write(text)` | 写入系统剪贴板文本（需 `clipboard` 权限） |
-| `context.ui.mountWorkbench(state, handlers)` | 声明式受控 panel：Qx 渲染 tabs、稳定的 List/Gallery 空态画布、结构化详情、Actions 与 island；宿主即时处理 query/tab/selection，manifest command 完成后回调 `onCommandComplete`；`backgroundPoll` 可绑定后台 interval command；只接受纯数据 |
+| `context.ui.mountWorkbench(state, handlers)` | 声明式受控 panel：Qx 渲染 tabs、稳定的 List/Gallery 空态画布、结构化详情、text/number/select 表单、Actions 与 island；表单通过 `onInput(id, value, item)` 回传纯数据；宿主即时处理 query/tab/selection，manifest command 完成后回调 `onCommandComplete`；`backgroundPoll` 可绑定后台 interval command |
 | `context.island.show(input)` / `update(input)` / `dismiss()` | 在宿主灵动岛显示结构化数据、真实进度或 `wave/dots/spinner/pulse` activity、宿主倒计时与一个统一样式 command 动作（需 `island` 权限；桌面浮窗只能由用户从 Qx 手动浮出并可关闭；浮窗打开目标由宿主固定为当前插件 Panel） |
 | `context.cli.run({ program, args?, cwd?, env?, timeoutMs? })` | **业务 CLI 首选**：argv 同步执行（需 `cli`；**不**走 AI Agent Bash）。协议见 [plugin-cli-protocol.md](./plugin-cli-protocol.md) |
 | `context.cli.bash(script \| req)` | login-shell bash（需 `cli`） |
@@ -200,7 +200,7 @@ export default {
 | `context.system.setWallpaper(path, options?)` | 通过宿主原生适配器设置 macOS / Windows 壁纸（需 `system`） |
 | `context.system.openPath(path)` / `revealPath(path)` | 系统打开或在文件管理器中揭示路径（需 `system`） |
 | `context.system.openSettings(section)` | 按 `about/display/storage/network/power/privacy/apps` 语义打开 macOS / Windows 系统设置（需 `system`） |
-| `context.http.fetch(url, opts)` | 通过 Rust 后端发起真实 HTTP/HTTPS 请求（需 `http` 权限）；响应在所有平台统一提供 `body` / `bodyBase64` / `binary`、`text()` / `json()` / `arrayBuffer()` / `blob()` |
+| `context.http.fetch(url, opts)` | 通过 Rust 后端发起真实 HTTP/HTTPS 请求（需 `http` 权限）；响应在所有平台统一提供最终重定向地址 `url`、`body` / `bodyBase64` / `binary`、`text()` / `json()` / `arrayBuffer()` / `blob()` |
 | `context.notification.show(input)` | 显示系统通知（需 `notifications` 权限） |
 | `context.ai.providers()` | 读取 QxAI 可用 provider 和模型列表（需 `ai` 权限；自定义 provider 优先通过 API `/models` 获取） |
 | `context.ai.models(provider?)` | 读取某个 provider 的模型列表，省略时返回默认 provider 模型（需 `ai` 权限） |

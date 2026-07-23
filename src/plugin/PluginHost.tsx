@@ -428,6 +428,15 @@ export function PluginPanelViewport() {
     });
   }, [selectWorkbenchItem, workbench]);
 
+  const updateWorkbenchInput = useCallback((id: string, value: string) => {
+    postPluginWorkbenchEvent(pluginId, {
+      kind: "input",
+      id,
+      value,
+      selectedId: selectedWorkbenchItem?.id,
+    });
+  }, [pluginId, selectedWorkbenchItem]);
+
   const workbenchActionDescriptors = useMemo<PluginWorkbenchAction[]>(() => {
     if (!workbench) return [];
     const itemScoped = selectedWorkbenchItem?.actions || [];
@@ -757,6 +766,7 @@ export function PluginPanelViewport() {
             state={workbench}
             detailOpen={workbenchDetailOpen}
             onActivate={activateWorkbenchItem}
+            onInput={updateWorkbenchInput}
           />
         ) : null}
         {!panel && (

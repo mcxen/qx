@@ -60,7 +60,7 @@
 - `min_app_version` 同样是 fail-closed 执行边界：宿主版本读取失败时，仅未声明最低版本
   的旧插件可以继续运行，不得把 bridge 异常当成放行新端口代码的理由。
 - Island Surface：`docked` / float 消费同一 `IslandSession` 语义，不因 placement 改变 action 含义。
-- HTTP / file / AppleScript 等 host 能力：版本升级只**扩展**字段（如 `bodyBase64`），不悄悄改成功路径语义。
+- HTTP / file / AppleScript 等 host 能力：版本升级只**扩展**字段（如 `bodyBase64`、重定向后的 `url`），不悄悄改成功路径语义。
 
 ### I — Interface Segregation（接口隔离）
 
