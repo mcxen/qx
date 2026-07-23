@@ -230,6 +230,68 @@ jobs:
             --notes "Desktop clients built from ${GITHUB_REPOSITORY}@${GITHUB_SHA}." \
             $([ "${PRERELEASE}" = "true" ] && echo "--prerelease" || echo "")
 
+      - name: Mirror release to Gogs
+        env:
+          GOGS_PASSWORD: ${{ secrets.GOGS_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GOGS_PASSWORD}" ]; then
+            echo "GOGS_PASSWORD not set; skipping Gogs mirror."
+            exit 0
+          fi
+
+          GOGS_BASE="http://121.40.88.21:12101"
+          GOGS_AUTH="m:${GOGS_PASSWORD}"
+
+          echo "Creating Gogs release ${RELEASE_TAG} ..."
+          RESPONSE=$(curl -s -X POST \
+            -u "${GOGS_AUTH}" \
+            -H "Content-Type: application/json" \
+            -d "$(cat <<EOD
+          {
+            "tag_name": "${RELEASE_TAG}",
+            "target_commitish": "main",
+            "name": "${RELEASE_TAG}",
+            "body": "Desktop clients built from ${GITHUB_REPOSITORY}@${GITHUB_SHA}.",
+            "draft": false,
+            "prerelease": ${PRERELEASE}
+          }
+          EOD
+          )" \
+            "${GOGS_BASE}/api/v1/repos/m/Qx/releases")
+
+          RELEASE_ID=$(echo "${RESPONSE}" | jq -r '.id // empty')
+          if [ -z "${RELEASE_ID}" ]; then
+            # Release might already exist (same tag)
+            echo "Gogs release create response: $(echo "${RESPONSE}" | jq -c '.')"
+            EXISTING=$(curl -s -u "${GOGS_AUTH}" \
+              "${GOGS_BASE}/api/v1/repos/m/Qx/releases" \
+              | jq '.[] | select(.tag_name == "'"${RELEASE_TAG}"'") | .id // empty')
+            RELEASE_ID="${EXISTING}"
+            if [ -z "${RELEASE_ID}" ]; then
+              echo "Failed to create or find Gogs release." >&2
+              exit 1
+            fi
+            echo "Found existing Gogs release ID ${RELEASE_ID}"
+          else
+            echo "Created Gogs release ID ${RELEASE_ID}"
+          fi
+
+          # Upload each asset file
+          for ASSET in release-assets/*; do
+            [ -f "${ASSET}" ] || continue
+            ASSET_NAME=$(basename "${ASSET}")
+            echo "Uploading ${ASSET_NAME} to Gogs release ..."
+            curl -s -X POST \
+              -u "${GOGS_AUTH}" \
+              -F "attachment=@${ASSET}" \
+              "${GOGS_BASE}/api/v1/repos/m/Qx/releases/${RELEASE_ID}/assets?name=${ASSET_NAME}" \
+              > /dev/null
+          done
+
+          echo "Gogs mirror complete."
+
       - name: Mirror release to WebDAV
         shell: bash
         env:
