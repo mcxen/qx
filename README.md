@@ -1,6 +1,6 @@
 <!-- language: en -->
 
-> **Version**: v0.6.14 — current release
+> **Version**: v0.6.15 — current release
 
 <a id="readme-en"></a>
 
@@ -171,7 +171,7 @@ Prefer host **ports** over OS details: `context.cli`, `context.http`,
 [plugin development guide](./public/doc/plugin-development-guide.md).
 
 Marketplace examples: **Brew** (macOS CLI), **Unsplash**, **Qx Bing Wallpaper**,
-Calendar, V2EX.
+**QxHeihe**, Calendar, V2EX.
 
 ***
 
@@ -343,7 +343,8 @@ node scripts/convert-raycast-extension.mjs /path/to/extension --out /tmp/qx-out 
 权限，不要直接绑 OS 细节。详见
 [插件开发手册](./public/doc/plugin-development-guide.md)。
 
-市场示例：**Brew**（macOS）、**Unsplash**、Bing 壁纸、日历、V2EX 等。
+市场示例：**Brew**（macOS）、**Unsplash**、Bing 壁纸、**QxHeihe 小黑盒**、日历、
+V2EX 等。
 
 ***
 

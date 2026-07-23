@@ -167,8 +167,10 @@ assertPermission(plugin, perms, "ai")  →  invoke("plugin_ai_chat", { req: payl
 结果沿原路通过 `postMessage({ type: "qx:rpc:response", ... })` 返回 iframe。
 
 Workbench 图片仍是受限纯数据端口：`item.image` 在 Gallery 中作为卡片图片、在 List
-中作为行缩略图；`detail.image` 在结构化详情顶部作为大图预览。两者只接受 HTTPS 或
-`data:image/` URL，并统一经过 `normalizePluginWorkbenchState` 长度与协议校验。
+中作为行缩略图；`detail.image` 在结构化详情顶部作为单张大图预览，
+`detail.images[]` 用于社区帖子等多图内容并由宿主排成响应式网格。图片只接受 HTTPS
+或 `data:image/` URL；多图最多 24 张，并统一经过
+`normalizePluginWorkbenchState` 长度与协议校验。
 
 ## 4. 权限模型
 

@@ -189,7 +189,7 @@ export default {
 | `context.display.raycastActionPanel` | 读取用户在 Settings -> Extensions -> Display 中配置的 Raycast ActionPanel 行内按钮显示偏好 |
 | `context.clipboard.read()` | 读取系统剪贴板文本（需 `clipboard` 权限） |
 | `context.clipboard.write(text)` | 写入系统剪贴板文本（需 `clipboard` 权限） |
-| `context.ui.mountWorkbench(state, handlers)` | 声明式受控 panel：Qx 渲染 tabs、稳定的 List/Gallery 空态画布、自适应/可放大的图片详情、局部 async status、text/number/select 表单、表单/参数组管理 Actions 与 island；返回 controller 的 `update/updateItems` 以稳定 id 发布增量/批量业务结果；表单输入通过 `onInput(id, value, item)`、`form.actions` / `control.group.action` 通过 `onAction(id, item)` 回传纯数据；宿主即时处理 query/tab/selection，manifest command 完成后回调 `onCommandComplete`；`backgroundPoll` 可绑定后台 interval command |
+| `context.ui.mountWorkbench(state, handlers)` | 声明式受控 panel：Qx 渲染 tabs、稳定的 List/Gallery 空态画布、`detail.image` 单图与 `detail.images[]` 多图自适应/可放大详情、局部 async status、text/number/select 表单、表单/参数组管理 Actions 与 island；返回 controller 的 `update/updateItems` 以稳定 id 发布增量/批量业务结果；表单输入通过 `onInput(id, value, item)`、`form.actions` / `control.group.action` 通过 `onAction(id, item)` 回传纯数据；宿主即时处理 query/tab/selection，manifest command 完成后回调 `onCommandComplete`；`backgroundPoll` 可绑定后台 interval command |
 | `context.island.show(input)` / `update(input)` / `dismiss()` | 在宿主灵动岛显示结构化数据、真实进度或 `wave/dots/spinner/pulse` activity、宿主倒计时与一个统一样式 command 动作（需 `island` 权限；桌面浮窗只能由用户从 Qx 手动浮出并可关闭；浮窗打开目标由宿主固定为当前插件 Panel） |
 | `context.cli.run({ program, args?, cwd?, env?, timeoutMs? })` | **业务 CLI 首选**：argv 同步执行（需 `cli`；**不**走 AI Agent Bash）。协议见 [plugin-cli-protocol.md](./plugin-cli-protocol.md) |
 | `context.cli.bash(script \| req)` | login-shell bash（需 `cli`） |

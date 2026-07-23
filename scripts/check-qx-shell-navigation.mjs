@@ -104,6 +104,11 @@ const normalizedWorkbench = normalizePluginWorkbenchState({
       title: "Image",
       image: { url: dataImage },
       detail: {
+        images: [
+          { url: "https://images.example.test/one.jpg", caption: "One" },
+          { url: "http://images.example.test/rejected.jpg" },
+          { url: "https://images.example.test/two.jpg", zoomable: false },
+        ],
         form: {
           controls: [{
             id: "key",
@@ -130,6 +135,13 @@ const normalizedWorkbench = normalizePluginWorkbenchState({
 });
 assert.equal(normalizedWorkbench.items?.[0]?.id, "image");
 assert.equal(normalizedWorkbench.items?.[0]?.image?.url, dataImage);
+assert.deepEqual(
+  normalizedWorkbench.items?.[0]?.detail?.images?.map((image) => [image.url, image.zoomable]),
+  [
+    ["https://images.example.test/one.jpg", true],
+    ["https://images.example.test/two.jpg", false],
+  ],
+);
 assert.equal(normalizedWorkbench.items?.[0]?.detail?.form?.controls[0]?.group?.id, "parameter-width");
 assert.equal(normalizedWorkbench.items?.[0]?.detail?.form?.controls[0]?.group?.action?.id, "delete-width");
 assert.equal(normalizedWorkbench.items?.[0]?.detail?.form?.actions?.[0]?.id, "add-parameter");

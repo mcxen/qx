@@ -199,6 +199,19 @@ function WorkbenchDetail({
           previewText={previewText}
         />
       ) : null}
+      {detail.images?.length ? (
+        <div className="qx-host-workbench-media-grid">
+          {detail.images.map((image, index) => (
+            <WorkbenchDetailImage
+              key={`${image.url}-${index}`}
+              image={image}
+              onPreview={onPreview}
+              unavailableText={unavailableText}
+              previewText={previewText}
+            />
+          ))}
+        </div>
+      ) : null}
       {detail.title ? <h2 className="qx-content-detail-heading">{detail.title}</h2> : null}
       {detail.subtitle ? <div className="qx-content-detail-meta">{detail.subtitle}</div> : null}
       <WorkbenchStatus status={detail.status} />

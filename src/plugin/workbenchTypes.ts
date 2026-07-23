@@ -70,6 +70,11 @@ export interface PluginWorkbenchDetail {
   subtitle?: string;
   /** Optional large media preview rendered above the structured detail. */
   image?: PluginWorkbenchImage;
+  /**
+   * Optional media collection rendered as a host-owned responsive grid.
+   * Use this for community posts and other records with multiple images.
+   */
+  images?: PluginWorkbenchImage[];
   /** Item-local asynchronous state; does not replace the usable cached detail. */
   status?: PluginWorkbenchAsyncStatus;
   body?: string;
@@ -290,13 +295,18 @@ function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
     title: shortText(raw.title, 240),
     subtitle: shortText(raw.subtitle, 500),
     image: normalizeImage(raw.image, true),
+    images: Array.isArray(raw.images)
+      ? raw.images.slice(0, 24)
+          .map((image) => normalizeImage(image, true))
+          .filter((image): image is PluginWorkbenchImage => Boolean(image))
+      : [],
     status: normalizeAsyncStatus(raw.status),
     body: shortText(raw.body, 12_000),
     form: normalizeForm(raw.form),
     fields: normalizeFields(raw.fields),
     sections,
   };
-  return detail.title || detail.subtitle || detail.image || detail.status || detail.body || detail.form || detail.fields.length || detail.sections.length
+  return detail.title || detail.subtitle || detail.image || detail.images.length || detail.status || detail.body || detail.form || detail.fields.length || detail.sections.length
     ? detail
     : undefined;
 }

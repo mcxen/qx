@@ -1,5 +1,25 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — QxHeihe 小黑盒社区模块与 Workbench 多图详情
+
+**状态**：实现完成，等待发布构建。
+
+- 市场新增 `qxheihe`：小黑盒推荐列表、本地搜索、图片筛选、加载更多、缓存优先和
+  离线回退；选择帖子后异步读取公开详情并在同一稳定 id 上补齐正文与全部图片。
+- Workbench 公共详情协议新增 `detail.images[]`，信任边界最多接收 24 张 HTTPS /
+  data 图片；宿主统一渲染响应式网格、失败状态和全尺寸 Dialog。
+- 小黑盒评论列表接口需要登录。本模块不收集用户 Cookie，只显示公开评论数量并提供
+  “在小黑盒中打开”动作。
+- feeds 请求参数可能由上游调整；插件设置允许用户替换完整 Feed API URL，旧缓存仍可
+  在网络失败时继续阅读。
+
+### 验证
+
+- [x] `npm run check` / `npx tsc --noEmit` / `npm run build`
+- [x] `cargo fmt --check` / `cargo check`
+- [x] QxHeihe 插件语法、真实 API 烟测、打包、本机安装与 mock Workbench 流程
+- [ ] macOS / Windows 发布工作流
+
 ## Bugfix — Cardinal 短词伪相关结果
 
 **状态**：实现完成，Cardinal 真实索引回归已通过。

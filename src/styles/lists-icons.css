@@ -657,6 +657,31 @@
   opacity: 1;
 }
 
+.qx-host-workbench-media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 148px), 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.qx-host-workbench-media-grid .qx-host-workbench-media {
+  min-width: 0;
+  margin: 0;
+}
+
+.qx-host-workbench-media-grid .qx-host-workbench-detail-image {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  max-height: 280px;
+}
+
+.qx-host-workbench-media-grid .qx-host-workbench-detail-image.aspect-auto img {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: cover;
+}
+
 .qx-host-workbench-media figcaption,
 .qx-host-workbench-media-dialog > p {
   margin: 6px 2px 0;
