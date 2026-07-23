@@ -64,7 +64,7 @@
 |---|---|
 | `marketplace/mod.rs` | `.qx-plugin` 安装、签名（ed25519）、`~/.qx/plugins/<id>/` 落盘、**多源** `plugin_registries` 索引合并与来源归属、Raycast extension 转换、开发脚手架 |
 | `permissions.rs` | macOS TCC：屏幕录制 / 辅助功能 / 输入监控 状态与请求 |
-| `storage.rs` | 统一缓存目标注册表驱动存储统计与精确清理；逐模块 `clear_cache_target` 只接受注册目标并保护 state/data/cache 根目录，历史、生成文件和插件持久数据使用独立语义 |
+| `storage.rs` | 统一缓存目标注册表驱动存储统计与精确清理；逐模块 `clear_cache_target` 只接受注册目标并保护 state/data/cache 根目录；通过 marketplace manifest 登记的插件 cache key 作为动态目标接入，其余插件持久数据仍受保护 |
 | `settings/mod.rs` | `~/.qx/settings.json` 读写；写入后 re-register 全局快捷键 + 刷新托盘菜单 + emit `settings-updated` |
 | `settings/entry_config.rs` | Launcher 快捷入口与托盘动作的默认配置；兼容识别旧版默认快捷入口，避免覆盖用户自定义 |
 | `updater.rs` + `updater/` | 读取 per-target release manifest，校验资产，并编排 macOS bundle / Windows NSIS helper 更新；安装后 `app_quit::force_quit`（避开 macOS 双 ⌘Q）；helper 优先用 staging 二进制，等 PID 时 SIGTERM/SIGKILL |

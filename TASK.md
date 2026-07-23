@@ -1,5 +1,25 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — 插件缓存注册协议与 QxHeihe 已读/自动清理
+
+**状态**：实现完成，等待发布构建。
+
+- manifest 新增 `storage.cacheTargets[]`：插件以稳定 target id、展示文案和精确 persist
+  key 白名单声明可重建缓存；宿主拒绝重复 target/key、非法保留期和超量声明。
+- Settings → About → Storage 合并显示插件缓存，占用从受保护 Plugin Data 桶转入
+  Cache 桶避免重复统计；支持逐插件缓存清理和 Clear All Caches。
+- 可选 `retentionDays` + 顶层 `savedAt` envelope 提供宿主懒过期安全上限；插件继续
+  负责按记录 `readAt` 做细粒度淘汰。
+- QxHeihe 后续打开先画 feed、完整详情和已读状态缓存；选择帖子即标记已读，可手动
+  标为未读；设置支持 3/7 天保留，过期帖子、详情和阅读状态自动删除。
+
+### 验证
+
+- [x] `npm run check` / `npx tsc --noEmit` / `npm run build`
+- [x] `cargo fmt --check` / `cargo check` / `cargo test --lib`（118 tests）
+- [x] QxHeihe 在线首开、离线二次打开、已读状态、3/7 天清理、市场打包和本机安装
+- [ ] macOS / Windows 发布工作流
+
 ## Feature — QxHeihe 小黑盒社区模块与 Workbench 多图详情
 
 **状态**：实现完成，等待发布构建。

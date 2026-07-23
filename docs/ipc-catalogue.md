@@ -180,8 +180,8 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 - `get_file_size(path)`
 - `open_app(path)` — 仅允许 `/Applications` 或 `~/Applications`
 - `set_window_size(width, height)`
-- `qx_storage_overview` — 返回总占用、可回收模块缓存、缓存目标与受保护分桶
-- `qx_storage_clear_cache_target(target_id)` — 只清理注册表中的单个可重建模块缓存
+- `qx_storage_overview` — 返回总占用、可回收模块缓存、manifest 登记的插件缓存目标与受保护分桶
+- `qx_storage_clear_cache_target(target_id)` — 只清理注册表中的单个可重建缓存；插件目标格式 `plugin:<id>:<cache-id>` 并只删除声明的 persist key
 - `qx_storage_clear_cache/clear_files/clear_clipboard` — 分别清理全部注册缓存、生成文件或剪贴板附件
 - `qx_permissions_status/request/request_all/open_settings` — macOS TCC（含 Full Disk Access）
 - `qx_onboarding_platform` — 返回 `macos` / `windows` / `other`（首次启动引导）

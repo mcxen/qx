@@ -105,6 +105,7 @@ zip -r ../my-plugin.qx-plugin manifest.json index.js icon.png
 | `commands` | 否 | 搜索结果中出现的命令 |
 | `shortcuts` | 否 | 全局快捷键，`command` 对应命令 `name`，`key` 使用 Tauri global-shortcut 格式 |
 | `panel` | 否 | 注册为全屏面板 tab |
+| `storage.cacheTargets` | 否 | Qx ≥ 0.6.16；将精确 persist key 白名单登记为可重建缓存，接入 Settings → About → Storage 的占用、过期和单项清理 |
 | `min_app_version` | 否 | 最低 Qx 版本要求 |
 | `pubkey` / `signature` | 否 | ed25519 签名（可选） |
 

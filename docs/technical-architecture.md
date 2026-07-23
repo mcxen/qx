@@ -175,7 +175,9 @@ tab = "plugin:*"   → PluginPanelViewport
 ### 3.8 Storage 管理
 
 - `src-tauri/src/storage.rs` 维护唯一缓存目标注册表，`qx_storage_overview` 与逐项/全部缓存清理共用同一批目标，避免“界面统计到但清理遗漏”或平台路径漂移。
-- 可重建缓存、历史/离线记录、生成文件、数据库、插件包、`plugin-data` 与设置分别统计；只有注册为可重建缓存的目标可走 `qx_storage_clear_cache_target`。
+- 可重建缓存、历史/离线记录、生成文件、数据库、插件包、`plugin-data` 与设置分别统计；
+  只有注册为可重建缓存的目标可走 `qx_storage_clear_cache_target`。插件可通过 manifest
+  登记精确 persist key，宿主把其占用从受保护 Plugin Data 桶转入 Cache 桶，避免重复统计。
 - 前端 `StorageSettingsCard` 只消费后端模型，不拼接平台路径，也不把插件持久数据或已保存媒体标成缓存。
 
 ---

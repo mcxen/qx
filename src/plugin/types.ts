@@ -59,6 +59,20 @@ export interface PluginPanel {
   keywords?: string[];
 }
 
+export interface PluginCacheTargetDeclaration {
+  id: string;
+  label: string;
+  description?: string;
+  /** Exact context.storage.persist keys that are safe to rebuild and clear. */
+  keys: string[];
+  /** Plugin-owned automatic pruning window advertised to the host. */
+  retentionDays?: number;
+}
+
+export interface PluginStorageManifest {
+  cacheTargets?: PluginCacheTargetDeclaration[];
+}
+
 export interface PluginManifest {
   id: string;
   name: string;
@@ -85,6 +99,7 @@ export interface PluginManifest {
   min_app_version?: string;
   entry?: string;
   raycast?: PluginRaycastMetadata;
+  storage?: PluginStorageManifest;
   signature?: string;
   pubkey?: string;
 }

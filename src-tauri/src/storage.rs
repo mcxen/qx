@@ -34,9 +34,12 @@ pub struct StorageCacheTarget {
     pub id: String,
     pub module: String,
     pub label: String,
+    pub description: String,
     pub paths: Vec<StoragePath>,
     pub bytes: u64,
     pub files: u64,
+    pub records: u64,
+    pub retention_days: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Default)]
@@ -442,7 +445,7 @@ fn build_storage_overview() -> StorageOverview {
     let mut warnings: Vec<String> = Vec::new();
 
     let definitions = cache_target_definitions();
-    let cache_targets: Vec<StorageCacheTarget> = definitions
+    let mut cache_targets: Vec<StorageCacheTarget> = definitions
         .iter()
         .map(|target| {
             let (bytes, files) = measure_paths(&target.paths, &mut warnings);
@@ -450,17 +453,45 @@ fn build_storage_overview() -> StorageOverview {
                 id: target.id.into(),
                 module: target.module.into(),
                 label: target.label.into(),
+                description: String::new(),
                 paths: target.paths.iter().cloned().map(path_entry).collect(),
                 bytes,
                 files,
+                records: 0,
+                retention_days: None,
             }
         })
         .collect();
+    let plugin_cache_definitions = crate::marketplace::registered_plugin_cache_targets();
+    let plugin_cache_bytes = plugin_cache_definitions
+        .iter()
+        .map(|target| target.bytes)
+        .sum::<u64>();
+    cache_targets.extend(
+        plugin_cache_definitions
+            .iter()
+            .map(|target| StorageCacheTarget {
+                id: target.id.clone(),
+                module: target.plugin_name.clone(),
+                label: target.label.clone(),
+                description: target.description.clone(),
+                paths: vec![path_entry(target.storage_path.clone())],
+                bytes: target.bytes,
+                files: 0,
+                records: target.records,
+                retention_days: target.retention_days,
+            }),
+    );
     let cache_bytes = cache_targets.iter().map(|target| target.bytes).sum();
     let cache_files = cache_targets.iter().map(|target| target.files).sum();
     let cache_paths = definitions
         .iter()
         .flat_map(|target| target.paths.iter().cloned())
+        .chain(
+            plugin_cache_definitions
+                .iter()
+                .map(|target| target.storage_path.clone()),
+        )
         .collect::<Vec<_>>();
     let cache = StorageBucket {
         id: "cache".into(),
@@ -532,7 +563,7 @@ fn build_storage_overview() -> StorageOverview {
         id: "plugin-data".into(),
         label: "Plugin Data".into(),
         paths: vec![path_entry(plugin_data_path)],
-        bytes: plugin_data_bytes,
+        bytes: plugin_data_bytes.saturating_sub(plugin_cache_bytes),
         files: plugin_data_files,
         clearable: false,
     };
@@ -688,6 +719,14 @@ pub async fn qx_storage_clear_cache_target(
     target_id: String,
 ) -> Result<StorageClearResult, String> {
     storage_io(move || {
+        if target_id.starts_with("plugin:") {
+            let result = crate::marketplace::clear_registered_plugin_cache_target(&target_id)?;
+            return Ok(StorageClearResult {
+                cleared_bytes: result.cleared_bytes,
+                cleared_records: result.cleared_records,
+                ..StorageClearResult::default()
+            });
+        }
         let targets = cache_target_definitions();
         let target = targets
             .iter()
@@ -707,6 +746,21 @@ fn clear_cache_sync() -> Result<StorageClearResult, String> {
     let mut total = StorageClearResult::default();
     for target in cache_target_definitions() {
         merge_clear_result(&mut total, clear_cache_target_definition(&target)?);
+    }
+    let plugin_target_ids = crate::marketplace::registered_plugin_cache_targets()
+        .into_iter()
+        .map(|target| target.id)
+        .collect::<Vec<_>>();
+    for target_id in plugin_target_ids {
+        let result = crate::marketplace::clear_registered_plugin_cache_target(&target_id)?;
+        merge_clear_result(
+            &mut total,
+            StorageClearResult {
+                cleared_bytes: result.cleared_bytes,
+                cleared_records: result.cleared_records,
+                ..StorageClearResult::default()
+            },
+        );
     }
     Ok(total)
 }

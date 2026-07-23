@@ -1,11 +1,11 @@
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Cursor, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::command;
 
 const DEFAULT_INDEX_URL: &str =
@@ -108,6 +108,29 @@ pub struct RaycastMetadata {
     pub platform_compatibility: BTreeMap<String, PlatformCompatibility>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginStorageManifest {
+    /// Rebuildable persist-KV groups exposed to Settings → About → Storage.
+    #[serde(default)]
+    pub cache_targets: Vec<PluginCacheTargetDeclaration>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCacheTargetDeclaration {
+    pub id: String,
+    pub label: String,
+    #[serde(default)]
+    pub description: String,
+    /// Exact persist keys owned by this rebuildable cache group.
+    #[serde(default)]
+    pub keys: Vec<String>,
+    /// Author-facing retention contract; pruning remains plugin-owned.
+    #[serde(default)]
+    pub retention_days: Option<u32>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
     pub id: String,
@@ -150,6 +173,8 @@ pub struct PluginManifest {
     #[serde(default)]
     pub raycast: Option<RaycastMetadata>,
     #[serde(default)]
+    pub storage: Option<PluginStorageManifest>,
+    #[serde(default)]
     pub signature: String,
     #[serde(default)]
     pub pubkey: String,
@@ -165,6 +190,59 @@ fn validate_manifest_platforms(platforms: &[String]) -> Result<(), String> {
             return Err(format!(
                 "unsupported manifest platform: {platform}; expected macos, windows, or linux"
             ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_manifest_storage(storage: Option<&PluginStorageManifest>) -> Result<(), String> {
+    let Some(storage) = storage else {
+        return Ok(());
+    };
+    if storage.cache_targets.len() > 16 {
+        return Err("manifest.storage.cacheTargets exceeds 16 entries".to_string());
+    }
+    let mut target_ids = BTreeSet::new();
+    let mut registered_keys = BTreeSet::new();
+    for target in &storage.cache_targets {
+        let target_id = validate_plugin_id(&target.id)?;
+        if !target_ids.insert(target_id.to_string()) {
+            return Err(format!("duplicate plugin cache target: {target_id}"));
+        }
+        if target.label.trim().is_empty() || target.label.len() > 160 {
+            return Err(format!(
+                "invalid label for plugin cache target: {target_id}"
+            ));
+        }
+        if target.description.len() > 500 {
+            return Err(format!(
+                "description is too long for plugin cache target: {target_id}"
+            ));
+        }
+        if target.keys.is_empty() || target.keys.len() > 64 {
+            return Err(format!(
+                "plugin cache target {target_id} must declare 1–64 persist keys"
+            ));
+        }
+        if let Some(days) = target.retention_days {
+            if !(1..=365).contains(&days) {
+                return Err(format!(
+                    "plugin cache target {target_id} retentionDays must be 1–365"
+                ));
+            }
+        }
+        for key in &target.keys {
+            let key = key.trim();
+            if key.is_empty() || key.len() > 256 || key.chars().any(char::is_control) {
+                return Err(format!(
+                    "invalid persist key in plugin cache target: {target_id}"
+                ));
+            }
+            if !registered_keys.insert(key.to_string()) {
+                return Err(format!(
+                    "persist cache key is registered more than once: {key}"
+                ));
+            }
         }
     }
     Ok(())
@@ -1287,6 +1365,7 @@ fn build_raycast_plugin_manifest(
                 .unwrap_or_default(),
             platform_compatibility: raycast_platform_compatibility(adapter),
         }),
+        storage: None,
         signature: String::new(),
         pubkey: String::new(),
     }
@@ -1511,6 +1590,7 @@ fn install_plugin_archive(
     }
     let plugin_id = validate_plugin_id(&manifest.id)?;
     validate_manifest_platforms(&manifest.platforms)?;
+    validate_manifest_storage(manifest.storage.as_ref())?;
 
     // Durable data lives outside the package tree when possible; always stash
     // before wiping the install dir so upgrades do not erase preferences/KV/files.
@@ -1934,6 +2014,166 @@ fn write_storage_map(id: &str, map: &BTreeMap<String, serde_json::Value>) -> Res
     atomic_write(&path, json.as_bytes()).map_err(|e| format!("write storage for {id}: {e}"))
 }
 
+#[derive(Debug, Clone)]
+pub(crate) struct RegisteredPluginCacheTarget {
+    pub id: String,
+    pub plugin_id: String,
+    pub plugin_name: String,
+    pub label: String,
+    pub description: String,
+    pub storage_path: PathBuf,
+    pub bytes: u64,
+    pub records: u64,
+    pub retention_days: Option<u32>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct PluginCacheClearResult {
+    pub cleared_bytes: u64,
+    pub cleared_records: u64,
+}
+
+pub(crate) fn registered_plugin_cache_targets() -> Vec<RegisteredPluginCacheTarget> {
+    let _guard = plugin_storage_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut targets = Vec::new();
+    let Ok(entries) = fs::read_dir(plugins_root()) else {
+        return targets;
+    };
+    for entry in entries.flatten() {
+        let package_dir = entry.path();
+        if !package_dir.is_dir() {
+            continue;
+        }
+        let Some(manifest) = read_manifest(&package_dir) else {
+            continue;
+        };
+        if validate_plugin_id(&manifest.id).is_err()
+            || validate_manifest_storage(manifest.storage.as_ref()).is_err()
+        {
+            continue;
+        }
+        let Some(storage) = manifest.storage else {
+            continue;
+        };
+        let mut map = read_storage_map(&manifest.id).unwrap_or_default();
+        let mut storage_changed = false;
+        let storage_path = match checked_plugin_storage_path(&manifest.id) {
+            Ok(path) => path,
+            Err(_) => continue,
+        };
+        for declaration in storage.cache_targets {
+            let mut bytes = 0_u64;
+            let mut records = 0_u64;
+            for key in &declaration.keys {
+                if declaration
+                    .retention_days
+                    .is_some_and(|days| plugin_cache_value_expired(map.get(key), days))
+                {
+                    map.remove(key);
+                    storage_changed = true;
+                    continue;
+                }
+                let Some(value) = map.get(key) else {
+                    continue;
+                };
+                bytes = bytes.saturating_add(
+                    serde_json::to_vec(value)
+                        .map(|encoded| encoded.len() as u64)
+                        .unwrap_or(0),
+                );
+                records = records.saturating_add(1);
+            }
+            targets.push(RegisteredPluginCacheTarget {
+                id: format!("plugin:{}:{}", manifest.id, declaration.id),
+                plugin_id: manifest.id.clone(),
+                plugin_name: manifest.name.clone(),
+                label: declaration.label,
+                description: declaration.description,
+                storage_path: storage_path.clone(),
+                bytes,
+                records,
+                retention_days: declaration.retention_days,
+            });
+        }
+        if storage_changed {
+            let _ = write_storage_map(&manifest.id, &map);
+        }
+    }
+    targets.sort_by(|left, right| left.id.cmp(&right.id));
+    targets
+}
+
+fn plugin_cache_value_expired(value: Option<&serde_json::Value>, retention_days: u32) -> bool {
+    let Some(saved_at) = value
+        .and_then(|value| value.as_object())
+        .and_then(|value| value.get("savedAt"))
+        .and_then(serde_json::Value::as_u64)
+    else {
+        return false;
+    };
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0);
+    let retention_ms = u64::from(retention_days)
+        .saturating_mul(24)
+        .saturating_mul(60)
+        .saturating_mul(60)
+        .saturating_mul(1_000);
+    saved_at > 0 && now.saturating_sub(saved_at) > retention_ms
+}
+
+fn remove_plugin_cache_keys(
+    map: &mut BTreeMap<String, serde_json::Value>,
+    keys: &[String],
+) -> PluginCacheClearResult {
+    let mut result = PluginCacheClearResult::default();
+    for key in keys {
+        let Some(value) = map.remove(key) else {
+            continue;
+        };
+        result.cleared_bytes = result.cleared_bytes.saturating_add(
+            serde_json::to_vec(&value)
+                .map(|encoded| encoded.len() as u64)
+                .unwrap_or(0),
+        );
+        result.cleared_records = result.cleared_records.saturating_add(1);
+    }
+    result
+}
+
+pub(crate) fn clear_registered_plugin_cache_target(
+    target_id: &str,
+) -> Result<PluginCacheClearResult, String> {
+    let target = registered_plugin_cache_targets()
+        .into_iter()
+        .find(|target| target.id == target_id)
+        .ok_or_else(|| format!("unknown plugin cache target: {target_id}"))?;
+    let package_dir = checked_plugin_dir(&target.plugin_id)?;
+    let manifest = read_manifest(&package_dir)
+        .ok_or_else(|| format!("manifest not found for {}", target.plugin_id))?;
+    validate_manifest_storage(manifest.storage.as_ref())?;
+    let declaration = manifest
+        .storage
+        .and_then(|storage| {
+            storage
+                .cache_targets
+                .into_iter()
+                .find(|candidate| format!("plugin:{}:{}", manifest.id, candidate.id) == target_id)
+        })
+        .ok_or_else(|| format!("plugin cache target no longer registered: {target_id}"))?;
+
+    let _guard = plugin_storage_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut map = read_storage_map(&target.plugin_id)?;
+    let result = remove_plugin_cache_keys(&mut map, &declaration.keys);
+    write_storage_map(&target.plugin_id, &map)?;
+    Ok(result)
+}
+
 #[command]
 pub fn plugin_storage_get(id: String, key: String) -> Result<Option<serde_json::Value>, String> {
     let map = read_storage_map(&id)?;
@@ -2210,6 +2450,79 @@ mod tests {
         assert!(validate_manifest_platforms(&["macos".to_string(), "windows".to_string()]).is_ok());
         assert!(validate_manifest_platforms(&["darwin".to_string()]).is_err());
         assert!(validate_manifest_platforms(&["win32".to_string()]).is_err());
+    }
+
+    #[test]
+    fn plugin_cache_targets_require_unique_explicit_keys() {
+        let valid = PluginStorageManifest {
+            cache_targets: vec![PluginCacheTargetDeclaration {
+                id: "community".to_string(),
+                label: "Community Cache".to_string(),
+                description: "Rebuildable posts".to_string(),
+                keys: vec!["cache.community.v2".to_string()],
+                retention_days: Some(7),
+            }],
+        };
+        assert!(validate_manifest_storage(Some(&valid)).is_ok());
+
+        let duplicate_key = PluginStorageManifest {
+            cache_targets: vec![
+                valid.cache_targets[0].clone(),
+                PluginCacheTargetDeclaration {
+                    id: "detail".to_string(),
+                    label: "Detail Cache".to_string(),
+                    description: String::new(),
+                    keys: vec!["cache.community.v2".to_string()],
+                    retention_days: Some(3),
+                },
+            ],
+        };
+        assert!(validate_manifest_storage(Some(&duplicate_key)).is_err());
+
+        let invalid_retention = PluginStorageManifest {
+            cache_targets: vec![PluginCacheTargetDeclaration {
+                retention_days: Some(0),
+                ..valid.cache_targets[0].clone()
+            }],
+        };
+        assert!(validate_manifest_storage(Some(&invalid_retention)).is_err());
+    }
+
+    #[test]
+    fn plugin_cache_retention_uses_saved_at_envelope() {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        let recent = serde_json::json!({ "savedAt": now, "posts": [] });
+        let expired = serde_json::json!({
+            "savedAt": now.saturating_sub(8 * 24 * 60 * 60 * 1_000),
+            "posts": []
+        });
+        assert!(!plugin_cache_value_expired(Some(&recent), 7));
+        assert!(plugin_cache_value_expired(Some(&expired), 7));
+        assert!(!plugin_cache_value_expired(
+            Some(&serde_json::json!({ "posts": [] })),
+            7
+        ));
+    }
+
+    #[test]
+    fn plugin_cache_clear_preserves_unregistered_persist_keys() {
+        let mut map = BTreeMap::from([
+            (
+                "cache.feed.v2".to_string(),
+                serde_json::json!({ "savedAt": 1, "posts": [1, 2] }),
+            ),
+            (
+                "reading.preferences".to_string(),
+                serde_json::json!({ "dense": true }),
+            ),
+        ]);
+        let result = remove_plugin_cache_keys(&mut map, &["cache.feed.v2".to_string()]);
+        assert_eq!(result.cleared_records, 1);
+        assert!(!map.contains_key("cache.feed.v2"));
+        assert!(map.contains_key("reading.preferences"));
     }
 
     #[test]

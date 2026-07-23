@@ -24,9 +24,12 @@ interface StorageCacheTarget {
   id: string;
   module: string;
   label: string;
+  description?: string;
   paths: StoragePath[];
   bytes: number;
   files: number;
+  records?: number;
+  retention_days?: number | null;
 }
 
 interface StorageBucket {
@@ -327,7 +330,7 @@ export default function StorageSettingsCard() {
               const label = t(CACHE_LABEL_KEYS[target.id] ?? `about.storage.cacheTarget.${target.id}`, target.label);
               const description = t(
                 CACHE_DESCRIPTION_KEYS[target.id] ?? `about.storage.cacheTarget.${target.id}.desc`,
-                target.module,
+                target.description || target.module,
               );
               const targetBusy = busy === `cache:${target.id}`;
               return (
@@ -355,7 +358,11 @@ export default function StorageSettingsCard() {
                   <div className="qx-module-cache-side">
                     <div className="qx-storage-meta">
                       <span>{formatBytes(target.bytes)}</span>
-                      <span>{target.files} {t("about.storage.files.unit", "files")}</span>
+                      {(target.records ?? 0) > 0 ? (
+                        <span>{target.records} {t("about.storage.records.unit", "records")}</span>
+                      ) : (
+                        <span>{target.files} {t("about.storage.files.unit", "files")}</span>
+                      )}
                     </div>
                     <Button
                       variant="outline"
@@ -370,7 +377,11 @@ export default function StorageSettingsCard() {
                           "Clear the rebuildable cache for {module}?",
                         ).replace("{module}", label),
                       })}
-                      disabled={busy !== null || (target.bytes <= 0 && target.files <= 0)}
+                      disabled={busy !== null || (
+                        target.bytes <= 0
+                        && target.files <= 0
+                        && (target.records ?? 0) <= 0
+                      )}
                     >
                       {targetBusy
                         ? t("about.storage.clearing", "Clearing...")

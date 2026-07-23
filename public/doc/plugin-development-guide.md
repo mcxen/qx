@@ -395,7 +395,12 @@ await context.storage.session.set("pageCache", items)  // 仅本次进程
 
 **升级/重装 zip 不会清空** preferences 与 persist / files；**卸载默认全删**。
 
-插件的 `persist` 与 `files` 是持久业务数据，Settings → Storage 的“清理全部缓存”不会删除它们。插件若把可重建响应放入 persist，应提供自己的明确清理 Action；宿主不会猜测某个 storage key 是否属于缓存，也不会把插件设置、历史或下载文件冒充成安全缓存。
+插件的 `persist` 与 `files` 默认是受保护的持久业务数据。需要把可重建响应接入
+Settings → About → Storage 时，在 manifest 的 `storage.cacheTargets[]` 中登记精确
+persist key；宿主只统计和删除白名单 key，不猜测前缀，也不会误删设置、历史或下载。
+缓存值推荐使用 `{ savedAt: Date.now(), ... }` envelope；声明 `retentionDays` 后，
+宿主会在存储统计时懒清理超过期限的整个 key。插件仍应按业务记录的 `readAt` 等字段
+做更细粒度的主动淘汰。
 
 ### 3.3 端口分层（给架构读者）
 
@@ -461,6 +466,15 @@ await context.storage.session.set("pageCache", items)  // 仅本次进程
     "title": "My Plugin",
     "keywords": ["my plugin"]
   },
+  "storage": {
+    "cacheTargets": [{
+      "id": "feed",
+      "label": "Feed Cache",
+      "description": "Rebuildable feed and detail responses.",
+      "keys": ["cache.feed.v2"],
+      "retentionDays": 7
+    }]
+  },
   "min_app_version": "0.5.26"
 }
 ```
@@ -472,6 +486,7 @@ await context.storage.session.set("pageCache", items)  // 仅本次进程
 | `commands[].name` | 与 `export default.commands[].name` 一致 |
 | `panel` | 需要工作台时声明；否则可省略 |
 | `preferences[].type` | `string` / **`textarea`（多行）** / `password` / `number` / `boolean` / `select` |
+| `storage.cacheTargets[]` | 可选；用稳定 `id`、展示文案、1–64 个精确 persist `keys` 和可选 `retentionDays`（1–365）把可重建缓存接入系统存储管理 |
 | `platforms` | 运行时执行边界；如仅 macOS：`["macos"]`（例：Brew）。宿主以 Rust 原生平台标识判定；不匹配当前系统或平台 bridge 不可用时插件仍在 Settings 可管理，但宿主不会创建 iframe、command/panel、后台任务或全局快捷键 |
 | `min_app_version` | 使用新端口时钉住（`cli` → ≥ 0.5.26）；按 SemVer 比较（同版本 prerelease 低于正式版），宿主版本不足时不启动该插件 runtime、后台任务或快捷键。宿主版本 bridge 不可用时按 fail-closed 处理声明了最低版本的插件 |
 
@@ -807,6 +822,7 @@ export default async function (context) {
 | `context.system.openSettings` + typed Sysinfo 模型 | **0.6.0+** |
 | `context.cli` | **0.5.26+** |
 | 二进制 HTTP `arrayBuffer` | 0.5.18+ |
+| `manifest.storage.cacheTargets` 系统缓存管理 | **0.6.16+** |
 | 基础 panel / storage | 按你目标发行版 |
 
 协议变更应：**扩展字段、不改成功路径语义**；破坏性变更提高 `min_app_version` 并更新本文与 `plugin-cli-protocol.md`。

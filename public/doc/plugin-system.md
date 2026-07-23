@@ -144,6 +144,9 @@ Tauri 生产环境前端是 `tauri://localhost`（或 `asset://`），`~/.qx/plu
 - `commands`：出现在搜索结果中的命令列表
 - `shortcuts`：可选，全局快捷键列表。`command` 对应命令 `name`，`key` 使用 Tauri global-shortcut 格式，例如 `CommandOrControl+Shift+V`
 - `panel`：是否注册为一个可切换的全屏面板 tab
+- `storage.cacheTargets`：可选的可重建 persist 缓存声明。每项提供插件内唯一 `id`、
+  `label`、可选 `description`、精确 `keys[]` 和可选 `retentionDays`（1–365）；
+  Settings → About → Storage 将显示占用并可单独清理。未登记的插件数据保持受保护。
 - `min_app_version`：最低 Qx 版本
 - `pubkey` / `signature`：ed25519 签名（可选，建议开启）
 
@@ -238,6 +241,9 @@ export default {
 | `context.storage.persist.keys()` | 列举 persist 键与近似大小 |
 | `context.storage.persist.clear()` | 清空本插件 persist KV |
 
+缓存值可使用 `{ savedAt: Date.now(), ... }` envelope，并通过 manifest
+`storage.cacheTargets[]` 登记精确 key。宿主会统计/清除白名单 key，并在
+`retentionDays` 到期后懒清理整个 key；不登记时仍按持久业务数据保护。
 存储布局与生命周期见 [`docs/plugin-storage.md`](../../docs/plugin-storage.md)。
 
 AI 调用示例：

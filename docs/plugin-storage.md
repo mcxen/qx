@@ -107,7 +107,35 @@
 | **卸载** | 删除 | **默认删除**；高级选项「保留数据」可后续做 |
 | **清除数据** | 不动 | 按 scope 清空（UI / API） |
 
-Settings → About → Storage 会把 `plugin-data/` 作为**受保护的持久数据**单独统计；“清理全部缓存”和逐模块缓存清理都不会删除这里的 preferences、persist KV 或 files。需要清除插件数据时必须走 `plugin_data_clear` 的显式 scope 与独立确认，不能把插件持久数据注册成宿主可重建缓存。
+Settings → About → Storage 会把 `plugin-data/` 作为**受保护的持久数据**单独统计。
+默认情况下，“清理全部缓存”和逐模块缓存清理不会删除 preferences、persist KV 或
+files。唯一例外是插件通过 `manifest.storage.cacheTargets[]` 明确登记的
+**可重建 persist key**：宿主只统计和删除这些精确 key，其余业务状态仍受保护。
+需要清除整个插件数据时必须走 `plugin_data_clear` 的显式 scope 与独立确认。
+
+### 5.1 可重建缓存声明
+
+```json
+{
+  "storage": {
+    "cacheTargets": [{
+      "id": "feed",
+      "label": "Community Feed",
+      "description": "Rebuildable list and detail responses.",
+      "keys": ["cache.feed.v2"],
+      "retentionDays": 7
+    }]
+  }
+}
+```
+
+- `id` 在插件内唯一；宿主目标 id 为 `plugin:<plugin-id>:<id>`。
+- `keys` 是精确 persist key 白名单，不接受前缀、glob 或目录。
+- 同一个 key 不能被两个 target 重复声明。
+- `retentionDays` 为 1–365 天。缓存值应使用 `{ savedAt, ... }` envelope，其中
+  `savedAt` 是 Unix 毫秒；宿主在统计存储时会懒清理整个过期 key。
+- 插件仍应按业务粒度主动淘汰记录。例如已读文章可按各自 `readAt` 删除，而宿主的
+  `retentionDays` 是整个 key 的最终安全上限。
 
 ### 升级算法（必须）
 
@@ -145,6 +173,8 @@ context.getPreference(id)                // 单键；宿主从 preferences.json
 | `plugin_preferences_get/set` | 已有 |
 | `plugin_data_usage` | preferences + storage + files 占用 |
 | `plugin_data_clear` | `scopes: ["preferences"\|"persist"\|"files"\|"all"]` |
+| `qx_storage_overview` | 合并宿主缓存与 manifest 登记的插件缓存 key |
+| `qx_storage_clear_cache_target` | 精确清除宿主目标或 `plugin:<id>:<cache-id>` |
 
 前端 Settings → 插件详情可展示 **占用** 与 **清除数据**（后续 UI）。
 
@@ -185,7 +215,7 @@ raycast-cache:<ns>:<key>  转换 shim 专用前缀（若落 persist）
 | **P0** | 设计文档 + 作者手册存储章节 | **本变更** |
 | **P1** | `plugin_storage_list/clear`、`plugin_data_usage/clear` | **本变更 API** |
 | **P1** | 数据根迁移到 `~/.qx/plugin-data/<id>`，读路径双查 | 后续 |
-| **P2** | Settings UI 展示占用 / 一键清除 | 后续 |
+| **P2** | Settings UI 展示占用 / manifest 缓存逐项清除 | **已完成** |
 | **P2** | Raycast Cache → persist 映射，去掉 iframe localStorage 依赖 | 后续 |
 | **P3** | 配额强制、export/import 用户数据 zip | 可选 |
 
@@ -198,6 +228,8 @@ raycast-cache:<ns>:<key>  转换 shim 专用前缀（若落 persist）
 - [ ] 两插件并发 `storage.set` 不互相丢键  
 - [ ] `plugin_data_usage` 数字合理  
 - [ ] `plugin_data_clear({ scopes: ["persist"] })` 不动 preferences  
+- [ ] manifest cache target 只清登记 key，不动同插件其它 persist key
+- [ ] 带 `savedAt` 的过期 cache key 在 Storage 概览时自动删除
 
 ---
 
