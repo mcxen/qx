@@ -1,10 +1,12 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
   AlertTriangle,
@@ -39,6 +41,32 @@ import { useT } from "../i18n";
 import { qxMasterDetailIds, qxRegionProps } from "../hooks/useQxMasterDetail";
 
 export const PLUGIN_WORKBENCH_REGIONS = qxMasterDetailIds("plugin-workbench");
+
+const WORKBENCH_LIST_WIDTH_KEY = "qx:workbench:list-width";
+const DEFAULT_WORKBENCH_LIST_WIDTH = 420;
+
+function clampWorkbenchListWidth(value: number, splitWidth: number): number {
+  return Math.round(Math.max(220, Math.min(Math.max(220, splitWidth - 328), value)));
+}
+
+function readWorkbenchListWidth(): number | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = Number(window.localStorage.getItem(WORKBENCH_LIST_WIDTH_KEY));
+    return Number.isFinite(stored) && stored > 0 ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistWorkbenchListWidth(value: number | null): void {
+  try {
+    if (value == null) window.localStorage.removeItem(WORKBENCH_LIST_WIDTH_KEY);
+    else window.localStorage.setItem(WORKBENCH_LIST_WIDTH_KEY, String(value));
+  } catch {
+    // Resizing remains available when a private WebView blocks persistence.
+  }
+}
 
 interface PluginWorkbenchViewProps {
   state: PluginWorkbenchState;
@@ -392,6 +420,8 @@ export default function PluginWorkbenchView({
     images: PluginWorkbenchImage[];
     index: number;
   } | null>(null);
+  const [listWidth, setListWidth] = useState(readWorkbenchListWidth);
+  const splitRef = useRef<HTMLDivElement>(null);
   const items = state.items || [];
   const selectedIndex = useMemo(() => {
     if (!items.length) return -1;
@@ -447,6 +477,51 @@ export default function PluginWorkbenchView({
     window.addEventListener("keydown", onPreviewKeyDown, true);
     return () => window.removeEventListener("keydown", onPreviewKeyDown, true);
   }, [preview]);
+
+  const updateListWidth = useCallback((clientX: number) => {
+    const split = splitRef.current;
+    if (!split) return;
+    const rect = split.getBoundingClientRect();
+    const next = clampWorkbenchListWidth(clientX - rect.left, rect.width);
+    setListWidth(next);
+    persistWorkbenchListWidth(next);
+  }, []);
+
+  const startListResize = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    updateListWidth(event.clientX);
+    const onMove = (moveEvent: PointerEvent) => updateListWidth(moveEvent.clientX);
+    const onUp = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp, { once: true });
+  }, [updateListWidth]);
+
+  const nudgeListWidth = useCallback((delta: number) => {
+    const splitWidth = splitRef.current?.getBoundingClientRect().width ?? 980;
+    const next = clampWorkbenchListWidth(
+      (listWidth ?? DEFAULT_WORKBENCH_LIST_WIDTH) + delta,
+      splitWidth,
+    );
+    setListWidth(next);
+    persistWorkbenchListWidth(next);
+  }, [listWidth]);
+
+  const onListResizeKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    event.stopPropagation();
+    nudgeListWidth(event.key === "ArrowLeft" ? -24 : 24);
+  }, [nudgeListWidth]);
 
   const collection = gallery ? (
     <div
@@ -593,8 +668,29 @@ export default function PluginWorkbenchView({
           />
         </div>
       ) : detailOpen ? (
-        <div className={`qx-content-split qx-host-workbench-split has-detail${gallery ? " is-gallery" : ""}${densityClass}`}>
+        <div
+          ref={splitRef}
+          className={`qx-content-split qx-host-workbench-split has-detail${gallery ? " is-gallery" : ""}${densityClass}`}
+          style={listWidth
+            ? { "--qx-workbench-list-w": `${listWidth}px` } as CSSProperties
+            : undefined}
+        >
           {collection}
+          <div
+            className="qx-host-workbench-resize-handle"
+            role="separator"
+            aria-label={t("plugins.workbench.resizeList", "Resize list and detail")}
+            aria-orientation="vertical"
+            aria-valuenow={listWidth ?? undefined}
+            tabIndex={0}
+            data-qx-search-focus="preserve"
+            onPointerDown={startListResize}
+            onKeyDown={onListResizeKeyDown}
+            onDoubleClick={() => {
+              setListWidth(null);
+              persistWorkbenchListWidth(null);
+            }}
+          />
           <div
             className="qx-content-detail qx-plugin-detail"
             {...qxRegionProps(PLUGIN_WORKBENCH_REGIONS.detail, {

@@ -686,6 +686,7 @@ const zh: Record<string, string> = {
   "plugins.workbench.imagePreviewHint": "所选图片的全尺寸预览",
   "plugins.workbench.previousImage": "上一张图片",
   "plugins.workbench.nextImage": "下一张图片",
+  "plugins.workbench.resizeList": "调整列表与详情宽度",
   "plugins.loading": "插件加载中",
   "plugins.error": "插件错误",
   "common.retry": "重试",
