@@ -737,6 +737,26 @@ pub struct SearchMetadataEntry {
     pub hidden: bool,
 }
 
+/// One plugin marketplace / mirror (`index.json` URL).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct PluginRegistrySource {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "index_url")]
+    pub index_url: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+fn default_plugin_registries() -> Vec<PluginRegistrySource> {
+    vec![PluginRegistrySource {
+        id: "qx-official".to_string(),
+        name: "Qx Official".to_string(),
+        index_url: "https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json".to_string(),
+        enabled: true,
+    }]
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     #[serde(default)]
@@ -751,6 +771,9 @@ pub struct Settings {
     pub plugins: Vec<PluginConfig>,
     #[serde(default)]
     pub plugin_display: PluginDisplaySettings,
+    /// User-configured plugin marketplace sources (mirrors / private catalogs).
+    #[serde(default = "default_plugin_registries")]
+    pub plugin_registries: Vec<PluginRegistrySource>,
     #[serde(default)]
     pub file_search: FileSearchSettings,
     #[serde(default)]
@@ -786,6 +809,7 @@ impl Default for Settings {
             app_shortcuts: BTreeMap::new(),
             plugins: Vec::new(),
             plugin_display: PluginDisplaySettings::default(),
+            plugin_registries: default_plugin_registries(),
             file_search: FileSearchSettings::default(),
             screencap: ScreencapSettings::default(),
             advanced: AdvancedSettings::default(),
@@ -832,6 +856,9 @@ pub(crate) fn read_settings() -> Settings {
         }
         Err(_) => Settings::default(),
     };
+    if settings.plugin_registries.is_empty() {
+        settings.plugin_registries = default_plugin_registries();
+    }
     shortcuts::merge_missing_default_shortcuts(&mut settings);
     shortcuts::migrate_swapped_window_launcher_defaults(&mut settings);
     shortcuts::migrate_windows_factory_host_shortcuts(&mut settings);

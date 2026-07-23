@@ -113,11 +113,31 @@ export interface PluginIndexEntry {
   updated_at?: string;
   author?: string;
   min_app_version?: string;
+  /** Host-stamped registry attribution after multi-source fetch. */
+  source_id?: string;
+  source_name?: string;
+  source_index_url?: string;
+}
+
+export interface PluginIndexSourceStatus {
+  id: string;
+  name: string;
+  index_url: string;
+  ok: boolean;
+  error?: string | null;
+  plugin_count: number;
 }
 
 export interface PluginIndex {
   schema_version: number;
   plugins: PluginIndexEntry[];
+  sources?: PluginIndexSourceStatus[];
+}
+
+/** Stable list key when the same plugin id appears from multiple libraries. */
+export function marketplaceEntryKey(entry: PluginIndexEntry): string {
+  const source = (entry.source_id || entry.source_index_url || "default").trim();
+  return `${source}::${entry.id}`;
 }
 
 export interface PluginRuntimeStatus {

@@ -723,10 +723,7 @@ pub async fn screencap_confirm_region_select(
 }
 
 /// Scale picker-logical points on a monitor into capture-backend pixels.
-fn physical_area_from_logical(
-    app: &AppHandle,
-    logical: &RecordArea,
-) -> Result<RecordArea, String> {
+fn physical_area_from_logical(app: &AppHandle, logical: &RecordArea) -> Result<RecordArea, String> {
     let monitor = capture_monitor(logical.monitor_id)?;
     let tauri_monitor = tauri_monitor_for_capture(app, &monitor)?;
     let size = tauri_monitor.size();
@@ -759,9 +756,8 @@ pub async fn screencap_recapture_last_region(app: AppHandle) -> Result<(), Strin
         return Err("A screen recording is already in progress".to_string());
     }
     ensure_screen_capture_permission()?;
-    let logical = load_last_region().ok_or_else(|| {
-        "No previous capture region. Take a screenshot first.".to_string()
-    })?;
+    let logical = load_last_region()
+        .ok_or_else(|| "No previous capture region. Take a screenshot first.".to_string())?;
     let physical = physical_area_from_logical(&app, &logical)?;
     if physical.w < 16 || physical.h < 16 {
         return Err("Selection too small — drag a larger region".to_string());

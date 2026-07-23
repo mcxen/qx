@@ -46,7 +46,12 @@ Qx 使用自定义跨平台 helper 更新，不依赖 Tauri signed updater：
   - CI 与本地均使用 **ad-hoc** `codesign --sign -`（免费，非公证）。
   - 从 `Qx.app` 复制出的 update helper 必须再次：去 quarantine（`xattr -cr`）+ ad-hoc 重签，否则 Gatekeeper 会拦截 helper 进程。
   - 解压后的 staging `Qx.app` 与替换后的目标 bundle 同样清理 xattr 并 ad-hoc 重签。
-- 主程序退出后，helper 用 `ditto` 替换目标 `Qx.app`，再通过 `/usr/bin/open` 重启。
+- 安装编排完成后主进程通过 `app_quit::force_quit` 退出（**不得**裸调 `app.exit`：
+  macOS 两次 ⌘Q 策略会拦截第一次 `ExitRequested`，helper 会一直等 PID 超时）。
+- Helper 二进制优先从 **staging 新版本** `Contents/MacOS/Qx` 复制（这样升级路径也能带上
+  新的等进程逻辑），失败时再回退到当前进程。
+- Helper 等待当前 PID 退出：约 2s 后 `SIGTERM`，约 8s 后 `SIGKILL`（兼容旧版仍被
+  双 ⌘Q 卡住的进程），然后 `ditto` 替换目标 `Qx.app`，再用 `/usr/bin/open` 重启。
 - Windows helper 等待当前 Qx 进程退出，再通过原生 `ShellExecuteExW(runas)` 提权运行
   NSIS `/S /UPDATE`；安装器继续执行 `windows/hooks.nsh` 的 Qx Everything 文件锁保护，成功后
   helper 从原安装路径重启 Qx。`perMachine` 安装可能显示一次系统 UAC 确认。
@@ -60,7 +65,7 @@ Qx 使用自定义跨平台 helper 更新，不依赖 Tauri signed updater：
 |------|------|
 | `<version>/Qx.app.zip` / `<version>/Qx-update.exe` | 下载的对应平台安装包 |
 | `<version>/staging/Qx.app` | 解压后的待替换 bundle |
-| `qx-update-helper-<pid>` | 从当前进程复制的 helper 二进制 |
+| `qx-update-helper-<pid>` | 优先从 staging 新二进制复制的 helper（回退：当前进程） |
 | `backup-Qx-<version>.app` | 替换时临时备份（成功后删除） |
 | `last-update-status.json` | 最近一次 helper 结果 |
 

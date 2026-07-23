@@ -6,6 +6,9 @@ import { Select } from "./components/ui";
 import { useStore, type AppEntry, type SearchScope } from "./store";
 import { useSettingsStore } from "./modules/settings/store";
 import LauncherContext from "./launcher/LauncherContext";
+import LauncherEntryManageDialogs, {
+  type LauncherManageDialogRequest,
+} from "./launcher/LauncherEntryManageDialogs";
 import { createLauncherActions, getLauncherActionTitle } from "./launcher/launcherActions";
 import { toLauncherQuickEntries } from "./launcher/quickEntries";
 import { useLauncherHistory } from "./launcher/useLauncherHistory";
@@ -58,6 +61,7 @@ export default function Launcher({
   const t = useT();
   const appearance = settings.appearance;
   const [scope, setScope] = useState<SearchScope>(searchScopeRef.current);
+  const [manageDialog, setManageDialog] = useState<LauncherManageDialogRequest | null>(null);
   const query = useStore((state) => state.query);
   const setQuery = useStore((state) => state.setQuery);
   const selectedIndex = useStore((state) => state.selectedIndex);
@@ -70,8 +74,17 @@ export default function Launcher({
     { value: "clipboard", label: t("launcher.scope.clipboard", "Clipboard") },
   ];
   const launcherActions = useMemo(
-    () => createLauncherActions({ item: selectedItem, onItemClick, onNavigate, t }),
-    [selectedItem, onItemClick, onNavigate, t],
+    () =>
+      createLauncherActions({
+        item: selectedItem,
+        onItemClick,
+        onNavigate,
+        t,
+        settings,
+        onEditAliases: (item) => setManageDialog({ kind: "aliases", item }),
+        onRecordShortcut: (item) => setManageDialog({ kind: "shortcut", item }),
+      }),
+    [selectedItem, onItemClick, onNavigate, t, settings],
   );
   // History loads once on mount. Do not re-fetch when results briefly empty
   // during search transitions — that doubled IPC during every summon.
@@ -330,6 +343,7 @@ export default function Launcher({
       actions={launcherActions.map((action) => ({
         label: action.label,
         kbd: action.kbd,
+        menuKey: action.menuKey,
         disabled: action.disabled,
         tone: action.danger ? "danger" : "normal",
         onClick: () => void action.run(),
@@ -342,6 +356,10 @@ export default function Launcher({
         onToggleCategory={onToggleCategory}
         onSelectRow={onSelectResultRow}
         loadingPhase={loadingPhase}
+      />
+      <LauncherEntryManageDialogs
+        request={manageDialog}
+        onClose={() => setManageDialog(null)}
       />
     </QxShell>
   );

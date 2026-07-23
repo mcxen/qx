@@ -29,6 +29,8 @@ import {
   writeClipboardEntry,
 } from "./actions";
 import {
+  getClipboardHistorySession,
+  loadMoreClipboardHistory,
   prefetchClipboardOpen,
   refreshClipboardHistory,
 } from "./openSession";
@@ -237,24 +239,65 @@ export default function ClipboardPanel() {
   const [filePreviewLoading, setFilePreviewLoading] = useState(false);
   const [filePreviewError, setFilePreviewError] = useState<string | null>(null);
   const [mediaProgress, setMediaProgress] = useState<MediaProgress | null>(null);
+  const [hasMoreCold, setHasMoreCold] = useState(false);
+  const [loadingMoreCold, setLoadingMoreCold] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const preserveSelectionId = useRef<string | null>(null);
+  const loadingMoreRef = useRef(false);
 
   const filterLabel = (id: Filter) => t(FILTER_KEYS[id].key, FILTER_KEYS[id].fallback);
+
+  const syncSessionFlags = useCallback(() => {
+    const session = getClipboardHistorySession();
+    setHasMoreCold(session.hasMore);
+  }, []);
+
+  const requestColdPage = useCallback(async () => {
+    if (loadingMoreRef.current) return;
+    const session = getClipboardHistorySession();
+    if (!session.hasMore) {
+      setHasMoreCold(false);
+      return;
+    }
+    loadingMoreRef.current = true;
+    setLoadingMoreCold(true);
+    try {
+      const next = await loadMoreClipboardHistory();
+      setHasMoreCold(next.hasMore);
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMoreCold(false);
+    }
+  }, []);
 
   useEffect(() => {
     ensureClipboardRestoreOnHide();
     // Chunk + history (+ optional live image) are started in parallel by the
     // host open path; join the same in-flight work if already running.
-    void prefetchClipboardOpen({ captureLiveImage: true });
+    void prefetchClipboardOpen({ captureLiveImage: true }).then(syncSessionFlags);
     if (!isTauriRuntime()) return;
     const unlisten = listen("clipboard-updated", () => {
-      void refreshClipboardHistory();
+      void refreshClipboardHistory().then(syncSessionFlags);
     });
     return () => {
       unlisten.then((f) => f());
     };
-  }, []);
+  }, [syncSessionFlags]);
+
+  // Server-side search covers cold rows; type/date filters still run client-side.
+  // Skip the initial mount so we don't race the open-path hot prefetch.
+  const searchBootRef = useRef(true);
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    if (searchBootRef.current) {
+      searchBootRef.current = false;
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      void refreshClipboardHistory({ query, reset: true }).then(syncSessionFlags);
+    }, 180);
+    return () => window.clearTimeout(handle);
+  }, [query, syncSessionFlags]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -328,6 +371,21 @@ export default function ClipboardPanel() {
     return matches;
   }, [clipboardHistory, dateFilter, filter, query]);
 
+  // Infinite scroll: when the list reaches the bottom, pull the next cold page.
+  // Also auto-fill when content does not overflow (short lists / type filters).
+  useEffect(() => {
+    const el = listRef.current;
+    if (!el) return;
+    const maybeLoad = () => {
+      if (loadingMoreRef.current || !getClipboardHistorySession().hasMore) return;
+      const remaining = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (remaining <= 96) void requestColdPage();
+    };
+    el.addEventListener("scroll", maybeLoad, { passive: true });
+    maybeLoad();
+    return () => el.removeEventListener("scroll", maybeLoad);
+  }, [requestColdPage, clipboardHistory.length, filtered.length, hasMoreCold]);
+
   useEffect(() => {
     setSelected((current) => Math.min(current, Math.max(filtered.length - 1, 0)));
   }, [filtered.length]);
@@ -348,6 +406,13 @@ export default function ClipboardPanel() {
     index: selected,
     listSignature: filtered.map((item) => item.id).join("\0"),
   });
+
+  // Keyboard near the end of the loaded list also warms the next cold page.
+  useEffect(() => {
+    if (!hasMoreCold || loadingMoreRef.current) return;
+    if (filtered.length === 0) return;
+    if (selected >= filtered.length - 4) void requestColdPage();
+  }, [filtered.length, hasMoreCold, requestColdPage, selected]);
 
   // Load clipboard images as data URLs (avoids asset protocol issues)
   useEffect(() => {
@@ -656,9 +721,37 @@ export default function ClipboardPanel() {
       return;
     }
     try {
+      // Instant path: use already-cached OCR text without waiting on Vision.
+      const cached = item.ocr_text?.trim();
+      if (cached) {
+        if (dest === "clipboard") {
+          await writeText(cached);
+          setStatus(t("ocr.copied", "OCR text copied"));
+          window.setTimeout(() => setStatus(""), 1600);
+          return;
+        }
+        setPendingModuleLaunch({
+          tab: "documents",
+          surface: "import",
+          params: {
+            content: cached,
+            title: cached.split(/\r?\n/).find((line) => line.trim())?.trim().slice(0, 48) || "OCR",
+          },
+        });
+        setTab("documents");
+        setStatus("");
+        return;
+      }
+
       setStatus(t("ocr.running", "Recognizing…"));
       const result = await ocrRecognizeClipboardImage(item.id);
-      await refreshClipboardHistory();
+      // Don't block UI on a full history reload — optimistic ocr_text update.
+      setClipboardHistory(
+        clipboardHistory.map((entry) =>
+          entry.id === item.id ? { ...entry, ocr_text: result.text } : entry,
+        ),
+      );
+      void refreshClipboardHistory();
       if (dest === "clipboard") {
         await writeText(result.text);
         setStatus(t("ocr.copied", "OCR text copied"));
@@ -1144,6 +1237,13 @@ export default function ClipboardPanel() {
               {clipboardHistory.length === 0
                 ? t("clipboard.emptyHistory", "No clipboard history yet")
                 : t("clipboard.noMatch", "No matching items")}
+            </div>
+          )}
+          {filtered.length > 0 && (loadingMoreCold || hasMoreCold) && (
+            <div className="qx-clipboard-cold-footer" aria-live="polite">
+              {loadingMoreCold
+                ? t("clipboard.loadingOlder", "Loading older history…")
+                : t("clipboard.scrollForOlder", "Scroll for older history")}
             </div>
           )}
         </div>

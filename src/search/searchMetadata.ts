@@ -89,7 +89,92 @@ export function sortEntriesWithPins<T extends { path: string; kind?: string }>(
     .map(({ entry }) => entry);
 }
 
-/** Empty home list: hide user-hidden apps, then pin-sort. Search must not use this. */
+/**
+ * Split pinned rows (by pin_order) from the rest. Used by result row builder so
+ * pins form a sticky top section even after category grouping.
+ */
+export function splitPinnedEntries<T extends { path: string; kind?: string }>(
+  entries: T[],
+  settings: Settings,
+  keyFor: (item: T) => string | null,
+): { pinned: T[]; rest: T[] } {
+  const tagged = entries.map((entry, index) => ({
+    entry,
+    index,
+    rank: pinSortRank(settings, keyFor(entry)),
+  }));
+  const pinned = tagged
+    .filter((row) => row.rank < 1_000_000)
+    .sort((a, b) => (a.rank - b.rank) || (a.index - b.index))
+    .map((row) => row.entry);
+  if (pinned.length === 0) return { pinned: [], rest: entries };
+  const pinnedPaths = new Set(pinned.map((entry) => entry.path));
+  const rest = entries.filter((entry) => !pinnedPaths.has(entry.path));
+  return { pinned, rest };
+}
+
+/**
+ * Sticky pins for any list (home or search):
+ * - Pinned entries always lead, ordered by pin_order (not match score).
+ * - Missing pinned rows are injected from `catalog` / plugin ports so typing
+ *   a query cannot bury or drop pins.
+ */
+export function promotePinnedStickyEntries(
+  results: AppEntry[],
+  settings: Settings,
+  options?: {
+    catalog?: AppEntry[];
+    plugins?: Array<{
+      id: string;
+      name: string;
+      enabled: boolean;
+      description?: string;
+      manifest?: { icon?: string } | null;
+    }>;
+  },
+): AppEntry[] {
+  const byPath = new Map<string, AppEntry>();
+  for (const entry of options?.catalog ?? []) {
+    byPath.set(entry.path, entry);
+  }
+  for (const entry of results) {
+    byPath.set(entry.path, entry);
+  }
+  if (options?.plugins) {
+    for (const row of pinnedPortEntriesFromSettings(settings, options.plugins)) {
+      if (byPath.has(row.path)) continue;
+      byPath.set(row.path, {
+        name: row.name,
+        display_name: row.display_name || row.name,
+        path: row.path,
+        icon: row.icon,
+        kind: (row.kind || "command") as AppEntry["kind"],
+        subtitle: row.subtitle,
+      });
+    }
+  }
+
+  const pinned: Array<{ entry: AppEntry; rank: number }> = [];
+  for (const [key, meta] of Object.entries(settings.search_metadata || {})) {
+    if (!meta?.pinned || meta.hidden) continue;
+    let path: string | null = null;
+    if (key.startsWith("app:")) path = key.slice("app:".length);
+    else if (key.startsWith("plugin:")) path = `__qx:plugin:${key.slice("plugin:".length)}`;
+    else if (key.startsWith("module:")) path = `__qx:${key.slice("module:".length)}`;
+    if (!path) continue;
+    const entry = byPath.get(path);
+    if (!entry) continue;
+    pinned.push({ entry, rank: pinSortRank(settings, key) });
+  }
+  pinned.sort((a, b) => a.rank - b.rank || a.entry.path.localeCompare(b.entry.path));
+  if (pinned.length === 0) return results;
+
+  const pinnedPaths = new Set(pinned.map((row) => row.entry.path));
+  const rest = results.filter((entry) => !pinnedPaths.has(entry.path));
+  return [...pinned.map((row) => row.entry), ...rest];
+}
+
+/** Empty home list: hide user-hidden apps, then pin-sort. */
 export function prepareHomeAppList<T extends { path: string; kind?: string }>(
   entries: T[],
   settings: Settings,

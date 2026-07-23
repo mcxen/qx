@@ -8,7 +8,10 @@ use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 use tauri::command;
 
-const INDEX_URL: &str = "https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json";
+const DEFAULT_INDEX_URL: &str =
+    "https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json";
+const DEFAULT_REGISTRY_ID: &str = "qx-official";
+const DEFAULT_REGISTRY_NAME: &str = "Qx Official";
 const USER_AGENT: &str = "Qx/0.1 (Marketplace; +https://github.com/mcxen/qx)";
 static PLUGIN_STORAGE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 const HTTP_RETRY_ATTEMPTS: usize = 2;
@@ -187,12 +190,134 @@ pub struct PluginIndexEntry {
     pub author: String,
     #[serde(default)]
     pub min_app_version: String,
+    /// Registry that provided this entry (filled by host after fetch).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source_name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub source_index_url: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginIndexSourceStatus {
+    pub id: String,
+    pub name: String,
+    pub index_url: String,
+    pub ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+    pub plugin_count: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginIndex {
     pub schema_version: u32,
     pub plugins: Vec<PluginIndexEntry>,
+    /// Per-registry fetch status so the UI can show which mirrors worked.
+    #[serde(default)]
+    pub sources: Vec<PluginIndexSourceStatus>,
+}
+
+#[derive(Debug, Clone)]
+struct RegistryFetchTarget {
+    id: String,
+    name: String,
+    index_url: String,
+}
+
+fn enabled_registry_targets() -> Vec<RegistryFetchTarget> {
+    let settings = crate::settings::read_settings();
+    let mut targets: Vec<RegistryFetchTarget> = settings
+        .plugin_registries
+        .into_iter()
+        .filter(|r| r.enabled && !r.index_url.trim().is_empty())
+        .map(|r| RegistryFetchTarget {
+            id: if r.id.trim().is_empty() {
+                blake3_short(&r.index_url)
+            } else {
+                r.id.trim().to_string()
+            },
+            name: if r.name.trim().is_empty() {
+                r.index_url.trim().to_string()
+            } else {
+                r.name.trim().to_string()
+            },
+            index_url: r.index_url.trim().to_string(),
+        })
+        .collect();
+    if targets.is_empty() {
+        targets.push(RegistryFetchTarget {
+            id: DEFAULT_REGISTRY_ID.to_string(),
+            name: DEFAULT_REGISTRY_NAME.to_string(),
+            index_url: DEFAULT_INDEX_URL.to_string(),
+        });
+    }
+    targets
+}
+
+fn blake3_short(input: &str) -> String {
+    let hash = blake3::hash(input.as_bytes());
+    hash.to_hex()[..10].to_string()
+}
+
+fn stamp_entry_source(
+    mut entry: PluginIndexEntry,
+    target: &RegistryFetchTarget,
+) -> PluginIndexEntry {
+    entry.source_id = target.id.clone();
+    entry.source_name = target.name.clone();
+    entry.source_index_url = target.index_url.clone();
+    entry
+}
+
+async fn fetch_one_registry_index(
+    target: RegistryFetchTarget,
+) -> (PluginIndexSourceStatus, Vec<PluginIndexEntry>) {
+    match http_get_with_fallbacks(&target.index_url).await {
+        Ok(bytes) => match serde_json::from_slice::<PluginIndex>(&bytes) {
+            Ok(mut index) => {
+                let plugins: Vec<PluginIndexEntry> = index
+                    .plugins
+                    .drain(..)
+                    .map(|entry| stamp_entry_source(entry, &target))
+                    .collect();
+                (
+                    PluginIndexSourceStatus {
+                        id: target.id,
+                        name: target.name,
+                        index_url: target.index_url,
+                        ok: true,
+                        error: None,
+                        plugin_count: plugins.len() as u32,
+                    },
+                    plugins,
+                )
+            }
+            Err(e) => (
+                PluginIndexSourceStatus {
+                    id: target.id,
+                    name: target.name,
+                    index_url: target.index_url,
+                    ok: false,
+                    error: Some(format!("parse index: {e}")),
+                    plugin_count: 0,
+                },
+                Vec::new(),
+            ),
+        },
+        Err(e) => (
+            PluginIndexSourceStatus {
+                id: target.id,
+                name: target.name,
+                index_url: target.index_url,
+                ok: false,
+                error: Some(e),
+                plugin_count: 0,
+            },
+            Vec::new(),
+        ),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -608,10 +733,87 @@ async fn http_get_from_repo_archive(source: &GitHubRawSource) -> Result<Vec<u8>,
     ))
 }
 
+/// Fetch marketplace index from all enabled plugin registries and merge entries.
+///
+/// Each entry is stamped with `source_id` / `source_name` / `source_index_url` so
+/// the UI can show library attribution and let the user install from a chosen
+/// mirror (important when GitHub raw is slow or blocked).
+///
+/// `source_id`: when set, only fetch that registry (still returns `sources` status).
 #[command]
-pub async fn fetch_plugin_index() -> Result<PluginIndex, String> {
-    let bytes = http_get_with_fallbacks(INDEX_URL).await?;
-    serde_json::from_slice::<PluginIndex>(&bytes).map_err(|e| format!("parse index: {e}"))
+pub async fn fetch_plugin_index(source_id: Option<String>) -> Result<PluginIndex, String> {
+    let filter = source_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+    let targets: Vec<RegistryFetchTarget> = enabled_registry_targets()
+        .into_iter()
+        .filter(|t| filter.as_ref().map(|id| id == &t.id).unwrap_or(true))
+        .collect();
+    if targets.is_empty() {
+        return Err(if filter.is_some() {
+            "No enabled plugin library matches that source id.".to_string()
+        } else {
+            "No plugin libraries configured. Add one under Settings → Extensions.".to_string()
+        });
+    }
+
+    let mut handles = Vec::with_capacity(targets.len());
+    for target in targets {
+        handles.push(tauri::async_runtime::spawn(async move {
+            fetch_one_registry_index(target).await
+        }));
+    }
+
+    let mut sources = Vec::new();
+    let mut plugins = Vec::new();
+    for handle in handles {
+        match handle.await {
+            Ok((status, entries)) => {
+                sources.push(status);
+                plugins.extend(entries);
+            }
+            Err(e) => {
+                sources.push(PluginIndexSourceStatus {
+                    id: "unknown".to_string(),
+                    name: "unknown".to_string(),
+                    index_url: String::new(),
+                    ok: false,
+                    error: Some(format!("registry task failed: {e}")),
+                    plugin_count: 0,
+                });
+            }
+        }
+    }
+
+    if plugins.is_empty() && sources.iter().all(|s| !s.ok) {
+        let detail = sources
+            .iter()
+            .filter_map(|s| s.error.as_ref().map(|e| format!("{}: {e}", s.name)))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        return Err(if detail.is_empty() {
+            "Failed to load any plugin library.".to_string()
+        } else {
+            format!("Failed to load plugin libraries: {detail}")
+        });
+    }
+
+    // Stable order: by name, then source name (same plugin from multiple mirrors stays adjacent).
+    plugins.sort_by(|a, b| {
+        a.name
+            .to_ascii_lowercase()
+            .cmp(&b.name.to_ascii_lowercase())
+            .then_with(|| a.source_name.cmp(&b.source_name))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
+    Ok(PluginIndex {
+        schema_version: 1,
+        plugins,
+        sources,
+    })
 }
 
 #[command]

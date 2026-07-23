@@ -739,6 +739,42 @@ img.qx-ext-card-icon {
   padding: 8px var(--qx-settings-gutter-x);
   border-bottom: 1px solid var(--qx-border-1);
   background: var(--qx-overlay-1);
+  flex-wrap: wrap;
+}
+
+.qx-plugin-source-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 6px var(--qx-settings-gutter-x);
+  border-bottom: 1px solid var(--qx-border-1);
+}
+
+.qx-plugin-source-badge {
+  margin-left: 6px;
+  vertical-align: middle;
+  font-weight: 600;
+}
+
+.qx-plugin-list-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.qx-plugin-libraries-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.qx-plugin-library-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(0, 1.6fr) auto auto;
+  gap: 8px;
+  align-items: center;
 }
 
 .qx-plugin-search-wrap {

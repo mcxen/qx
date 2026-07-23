@@ -1,10 +1,11 @@
 import type { AppEntry } from "../store";
-import type { FileSearchCategory } from "../modules/settings/store";
+import type { FileSearchCategory, Settings } from "../modules/settings/store";
 import {
   compareFileModifiedDescending,
   fileCategoryIdFromNormalized,
   normalizeFileSearchCategories,
 } from "../search/fileCategories";
+import { metadataKeyForEntry, splitPinnedEntries } from "../search/searchMetadata";
 
 export type LauncherResultRow =
   | {
@@ -24,13 +25,18 @@ export type LauncherResultRow =
       categoryId?: string;
     };
 
-type LauncherEntryCategoryId = "launcher.qx" | "launcher.apps" | "launcher.plugins";
+type LauncherEntryCategoryId =
+  | "launcher.pinned"
+  | "launcher.qx"
+  | "launcher.apps"
+  | "launcher.plugins";
 
 const LAUNCHER_ENTRY_CATEGORIES: Array<{
   id: LauncherEntryCategoryId;
   label: string;
   translationKey: string;
 }> = [
+  { id: "launcher.pinned", label: "Pinned", translationKey: "launcher.category.pinned" },
   { id: "launcher.qx", label: "Qx Built-ins", translationKey: "launcher.category.qx" },
   { id: "launcher.apps", label: "Applications", translationKey: "launcher.category.apps" },
   {
@@ -60,15 +66,53 @@ export function buildLauncherResultRows(
   results: AppEntry[],
   categories: FileSearchCategory[],
   collapsedCategoryIds: ReadonlySet<string>,
+  settings?: Settings,
 ): LauncherResultRow[] {
   const normalized = normalizeFileSearchCategories(categories);
   const rows: LauncherResultRow[] = [];
 
-  const launcherEntries = results
-    .map((item, resultIndex) => ({ item, resultIndex }))
-    .filter(({ item }) => item.kind !== "file" && item.kind !== "folder");
+  // Sticky pin section first — independent of search rank and Qx/Apps/Plugins groups.
+  const nonFileResults = results.filter(
+    (item) => item.kind !== "file" && item.kind !== "folder",
+  );
+  const { pinned, rest: unpinnedNonFiles } = settings
+    ? splitPinnedEntries(nonFileResults, settings, metadataKeyForEntry)
+    : { pinned: [] as AppEntry[], rest: nonFileResults };
+
+  const resultIndexByPath = new Map(results.map((item, resultIndex) => [item.path, resultIndex]));
+
+  if (pinned.length > 0) {
+    const categoryId = "launcher.pinned";
+    const collapsed = collapsedCategoryIds.has(categoryId);
+    rows.push({
+      kind: "category",
+      key: `category:${categoryId}`,
+      categoryId,
+      label: "Pinned",
+      translationKey: "launcher.category.pinned",
+      count: pinned.length,
+      collapsed,
+    });
+    if (!collapsed) {
+      for (const item of pinned) {
+        rows.push({
+          kind: "item",
+          key: `item:pinned:${item.kind ?? "app"}:${item.path}:${item.name}`,
+          item,
+          resultIndex: resultIndexByPath.get(item.path) ?? 0,
+          categoryId,
+        });
+      }
+    }
+  }
+
+  const launcherEntries = unpinnedNonFiles.map((item) => ({
+    item,
+    resultIndex: resultIndexByPath.get(item.path) ?? 0,
+  }));
 
   for (const category of LAUNCHER_ENTRY_CATEGORIES) {
+    if (category.id === "launcher.pinned") continue;
     const matches = launcherEntries.filter(
       ({ item }) => launcherEntryCategoryId(item) === category.id,
     );

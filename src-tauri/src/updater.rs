@@ -150,10 +150,13 @@ pub async fn qx_update_download_and_install(
     .await
     .map_err(|e| format!("update install task failed: {e}"))??;
 
+    // Helper is already spawned and waiting on this PID. Must force-quit so
+    // macOS double-⌘Q confirmation does not intercept ExitRequested and leave
+    // the process alive (helper would then time out after ~90s).
     let app_for_exit = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(350));
-        app_for_exit.exit(0);
+        crate::app_quit::force_quit(&app_for_exit);
     });
 
     Ok(result)
@@ -601,13 +604,25 @@ fn spawn_update_helper(
     prepare_app_for_launch(staged_app)?;
 
     let helper_path = update_cache_dir().join(format!("qx-update-helper-{}", std::process::id()));
+    // Prefer the *staged* binary as the helper so this install already carries
+    // force-quit / SIGTERM wait logic. Copying the currently running (older)
+    // binary cannot fix double-⌘Q exit interception when upgrading from that build.
     let current_exe = std::env::current_exe().map_err(|e| format!("resolve current exe: {e}"))?;
+    let staged_exe = {
+        let name = current_binary_name().unwrap_or_else(|_| "Qx".to_string());
+        staged_app.join("Contents/MacOS").join(name)
+    };
+    let helper_source = if staged_exe.is_file() {
+        staged_exe
+    } else {
+        current_exe
+    };
     // Remove a previous copy so codesign never sees a broken half-file.
     let _ = fs::remove_file(&helper_path);
-    fs::copy(&current_exe, &helper_path).map_err(|e| {
+    fs::copy(&helper_source, &helper_path).map_err(|e| {
         format!(
             "copy update helper from {} to {}: {e}",
-            current_exe.display(),
+            helper_source.display(),
             helper_path.display()
         )
     })?;
@@ -908,14 +923,60 @@ fn rollback_app(target_app: &Path, backup_app: &Path) {
 }
 
 fn wait_for_process_exit(pid: i32, timeout: Duration) -> Result<(), String> {
+    // macOS double-⌘Q policy intercepts bare `app.exit` on older builds, so the
+    // parent may stay alive after "install". Soft-signal after a short grace, then
+    // hard-kill before giving up so bundle replace can proceed.
+    let soft_after = Duration::from_secs(2);
+    let hard_after = Duration::from_secs(8);
     let start = Instant::now();
+    let mut sent_term = false;
+    let mut sent_kill = false;
     while start.elapsed() < timeout {
         if !process_exists(pid) {
             return Ok(());
         }
+        let elapsed = start.elapsed();
+        if !sent_term && elapsed >= soft_after {
+            let _ = signal_process(pid, SignalKind::Term);
+            sent_term = true;
+        }
+        if !sent_kill && elapsed >= hard_after {
+            let _ = signal_process(pid, SignalKind::Kill);
+            sent_kill = true;
+        }
         std::thread::sleep(Duration::from_millis(250));
     }
+    if !process_exists(pid) {
+        return Ok(());
+    }
     Err(format!("timed out waiting for process {pid} to exit"))
+}
+
+enum SignalKind {
+    Term,
+    Kill,
+}
+
+#[cfg(unix)]
+fn signal_process(pid: i32, kind: SignalKind) -> Result<(), String> {
+    let sig = match kind {
+        SignalKind::Term => libc::SIGTERM,
+        SignalKind::Kill => libc::SIGKILL,
+    };
+    let result = unsafe { libc::kill(pid, sig) };
+    if result == 0 {
+        return Ok(());
+    }
+    let err = std::io::Error::last_os_error();
+    if err.raw_os_error() == Some(libc::ESRCH) {
+        return Ok(());
+    }
+    Err(format!("signal process {pid}: {err}"))
+}
+
+#[cfg(not(unix))]
+fn signal_process(_pid: i32, _kind: SignalKind) -> Result<(), String> {
+    Ok(())
 }
 
 #[cfg(unix)]

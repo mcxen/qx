@@ -1,7 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { AppEntry } from "../store";
+import type { Settings } from "../modules/settings/store";
+import { useSettingsStore } from "../modules/settings/store";
 import { openSystemPath, revealSystemPath } from "../system";
+import { metadataForKey } from "../search/searchMetadata";
+import {
+  launcherEntryManageState,
+  toggleLauncherEntryHidden,
+  toggleLauncherEntryPin,
+} from "./entryManage";
 import type { LauncherAction } from "./types";
 
 type LauncherItemKind = NonNullable<AppEntry["kind"]>;
@@ -28,20 +36,120 @@ export function getLauncherActionTitle(item: AppEntry, t: Translate): string {
   return t("launcher.action.appActions", "Application Actions");
 }
 
+function manageEntryActions({
+  item,
+  settings,
+  t,
+  onEditAliases,
+  onRecordShortcut,
+}: {
+  item: AppEntry;
+  settings: Settings;
+  t: Translate;
+  onEditAliases?: (item: AppEntry) => void;
+  onRecordShortcut?: (item: AppEntry) => void;
+}): LauncherAction[] {
+  const manage = launcherEntryManageState(settings, item);
+  if (!manage.canManage || !manage.metadataKey) return [];
+
+  const { metadataKey, hasShortcut, pinned, hidden, canShortcut } = manage;
+  const actions: LauncherAction[] = [
+    {
+      id: "pin",
+      label: pinned
+        ? t("launcher.unpinApp", "Unpin from top")
+        : t("launcher.pinApp", "Pin to top"),
+      menuKey: "p",
+      run: () => {
+        const store = useSettingsStore.getState();
+        toggleLauncherEntryPin(
+          store.settings,
+          metadataKey,
+          metadataForKey(store.settings, metadataKey),
+          store.patchSearchMetadata,
+        );
+      },
+    },
+    {
+      id: "hide-home",
+      label: hidden
+        ? t("launcher.showOnHome", "Show on home list")
+        : t("launcher.hideFromHome", "Hide from home list"),
+      menuKey: "h",
+      run: () => {
+        const store = useSettingsStore.getState();
+        toggleLauncherEntryHidden(
+          store.settings,
+          metadataKey,
+          metadataForKey(store.settings, metadataKey),
+          store.patchSearchMetadata,
+        );
+      },
+    },
+    {
+      id: "edit-aliases",
+      label: t("launcher.editAliases", "Edit aliases"),
+      menuKey: "a",
+      run: () => onEditAliases?.(item),
+    },
+  ];
+
+  if (canShortcut) {
+    actions.push({
+      id: "record-shortcut",
+      label: hasShortcut
+        ? t("launcher.editShortcut", "Edit shortcut")
+        : t("launcher.recordShortcut", "Record shortcut"),
+      menuKey: "s",
+      kbd: hasShortcut ? manage.binding?.key : undefined,
+      run: () => onRecordShortcut?.(item),
+    });
+    if (hasShortcut) {
+      actions.push({
+        id: "remove-shortcut",
+        label: t("launcher.removeShortcut", "Remove shortcut"),
+        menuKey: "r",
+        danger: true,
+        run: () => {
+          useSettingsStore.getState().patchAppShortcut(metadataKey, {
+            key: "",
+            enabled: false,
+          });
+        },
+      });
+    }
+  }
+
+  return actions;
+}
+
 export function createLauncherActions({
   item,
   onItemClick,
   onNavigate,
   t,
+  settings,
+  onEditAliases,
+  onRecordShortcut,
 }: {
   item: AppEntry | null;
   onItemClick: (item: AppEntry) => void;
   onNavigate: (tab: string) => void;
   t: Translate;
+  settings: Settings;
+  onEditAliases?: (item: AppEntry) => void;
+  onRecordShortcut?: (item: AppEntry) => void;
 }): LauncherAction[] {
   if (!item) return [];
 
   const kind = resolveLauncherItemKind(item);
+  const manage = manageEntryActions({
+    item,
+    settings,
+    t,
+    onEditAliases,
+    onRecordShortcut,
+  });
 
   if (kind === "clipboard") {
     return [
@@ -70,6 +178,7 @@ export function createLauncherActions({
         kbd: "Enter",
         run: () => onItemClick(item),
       },
+      ...manage,
     ];
   }
 
@@ -93,6 +202,8 @@ export function createLauncherActions({
       kbd: "Enter",
       run: () => onItemClick(item),
     },
+    // Pin / aliases / shortcut sit near the top of Actions (Raycast-style manage).
+    ...manage,
     {
       id: "reveal",
       label: t("launcher.action.showInFinder", "Show in Finder"),

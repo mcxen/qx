@@ -34,7 +34,7 @@
 
 | 文件 | 数据库 | 说明 |
 |---|---|---|
-| `clipboard.rs` + `clipboard/{native,capture,file_list}.rs` | `Application Support/qx/clipboard.db` | 始终 `manage(ClipboardDb(Option<Connection>))`；失败可 lazy 重连；后台按系统序号轮询，读取成功后才提交游标；Windows `CF_HDROP` / macOS file URL 统一为有序 file-list，捕获时不因 UNC/离线路径暂不可达而丢弃 |
+| `clipboard.rs` + `clipboard/{native,capture,file_list,history}.rs` | `Application Support/qx/clipboard.db` | 始终 `manage(ClipboardDb(Option<Connection>))`；失败可 lazy 重连；后台按系统序号轮询，读取成功后才提交游标；Windows `CF_HDROP` / macOS file URL 统一为有序 file-list，捕获时不因 UNC/离线路径暂不可达而丢弃。**热/冷历史**：磁盘保留未置顶约 5000 条 / 90 天；UI 首屏热窗口 ~80 条，滚到底经 `get_clipboard_history_page` 游标加载冷页 |
 | `rss/mod.rs` + `fetcher.rs` + `icon_cache.rs` + `storage.rs` + `types.rs` | `Application Support/qx/rss.db` + `cache/rss-icons` | **始终** `manage(RssDb(Option<Connection>))` + `ensure_open`；schema 升级在事务内先补旧库列、再创建依赖索引；feed-rs / OPML / folders；文章 `reading_progress` 归一化持久化；首次打开写入默认订阅目录；订阅图标按 feed icon/logo → 站点 favicon 解析后压为最长边 64px 的本地 PNG，30 天内直接复用并以 stale cache 抵御网络失败 |
 | `v2ex.rs` | `cache/v2ex/*.json` | 抓 v2ex.com JSON；**内存 + 磁盘 TTL 缓存**（topics ~3min，replies ~2min，失败可回退 stale）；hot/latest 无需 token，node/notification 需 token（命令可接收插件 preference 的 `token` 覆盖）；市场插件 `v2ex` 走 `invoke:v2ex_*` + 插件 persist SWR |
 | `weather.rs` (host API for marketplace **Weather** plugin + optional built-in) | 无 | ipapi.co 定位 → Open-Meteo（默认）或 OpenWeatherMap（需 key） |
@@ -47,7 +47,7 @@
 | `media/` | OpenH264 + `mp4` + `gifski` | Qx 根级媒体服务；统一负责 H.264 码流/MP4 封装、媒体尺寸约束和 GIF 转换，不依赖截图模块或其历史库，供截图、剪贴板、OCR、文件预览等能力复用。 |
 | `clipboard.rs` | arboard + clipboard-manager | 系统剪贴板；公共 IPC `clipboard_write_image_file` 将磁盘图片发布到剪贴板，供捕获 toast / 历史回写等复用。 |
 | `screencap/` | 消费系统能力 | **仅捕获工作流**：圈选 session、录制生命周期、历史、控制岛、标注合成。显示器 / 窗列表 / 区域抓帧 / 剪贴板写图走 `display` · `desktop_windows` · `clipboard` · `media`；禁止模块内直接 `xcap::Window` 或重复显示器识别。 |
-| `ocr.rs` | 系统 OCR 能力 + 历史 | 平台引擎（macOS Vision / Windows.Media.Ocr）、OAR 模型下载、`ocr_history.db` 历史 |
+| `ocr.rs` | 系统 OCR 能力 + 历史 | 平台引擎（macOS Vision / Windows.Media.Ocr）、OAR 模型下载、`ocr_history.db` 历史。**性能**：默认 Fast 识别 + 长边缩放（~1600）、路径/行缓存秒回、自动 OCR 单线程队列、批量 OCR 窗口并行 2、clipboard-updated 防抖 |
 | `macro_recorder.rs` | `rdev` + `enigo` | 记录键鼠事件到 `~/.qx/macros.db`；replay 通过 `enigo` 模拟 |
 
 ## AI
@@ -62,12 +62,12 @@
 
 | 文件 | 说明 |
 |---|---|
-| `marketplace/mod.rs` | `.qx-plugin` 安装、签名（ed25519）、`~/.qx/plugins/<id>/` 落盘、`index.json` 抓取、Raycast extension 转换、开发脚手架 |
+| `marketplace/mod.rs` | `.qx-plugin` 安装、签名（ed25519）、`~/.qx/plugins/<id>/` 落盘、**多源** `plugin_registries` 索引合并与来源归属、Raycast extension 转换、开发脚手架 |
 | `permissions.rs` | macOS TCC：屏幕录制 / 辅助功能 / 输入监控 状态与请求 |
 | `storage.rs` | 统一缓存目标注册表驱动存储统计与精确清理；逐模块 `clear_cache_target` 只接受注册目标并保护 state/data/cache 根目录，历史、生成文件和插件持久数据使用独立语义 |
 | `settings/mod.rs` | `~/.qx/settings.json` 读写；写入后 re-register 全局快捷键 + 刷新托盘菜单 + emit `settings-updated` |
 | `settings/entry_config.rs` | Launcher 快捷入口与托盘动作的默认配置；兼容识别旧版默认快捷入口，避免覆盖用户自定义 |
-| `updater.rs` + `updater/` | 读取 per-target release manifest，校验资产，并编排 macOS bundle / Windows NSIS helper 更新 |
+| `updater.rs` + `updater/` | 读取 per-target release manifest，校验资产，并编排 macOS bundle / Windows NSIS helper 更新；安装后 `app_quit::force_quit`（避开 macOS 双 ⌘Q）；helper 优先用 staging 二进制，等 PID 时 SIGTERM/SIGKILL |
 | `diagnostics.rs` | 结构化诊断事件与日志文件路径；仅在 Advanced 日志开关或 Developer Mode 启用时落盘 |
 
 ## 通用工具

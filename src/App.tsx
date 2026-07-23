@@ -33,6 +33,7 @@ import {
   pinnedPortEntriesFromSettings,
   pluginMetadataKey,
   prepareHomeAppList,
+  promotePinnedStickyEntries,
 } from "./search/searchMetadata";
 import {
   encodeModuleLaunchPath,
@@ -679,8 +680,9 @@ function App() {
       results,
       settings.file_search.categories,
       collapsedLauncherCategoryIds,
+      settings,
     ),
-    [collapsedLauncherCategoryIds, results, settings.file_search.categories],
+    [collapsedLauncherCategoryIds, results, settings],
   );
 
   const toggleLauncherCategory = useCallback((categoryId: string) => {
@@ -783,9 +785,17 @@ function App() {
   const applyResults = useCallback(
     (entries: AppEntry[], options?: { merge?: boolean; prepend?: boolean }) => {
       // Home list: merge pinned plugins, hide user-hidden, pin-sort.
-      // Active search: stamp 30-day click usage, merge frequent matches that
-      // still match the query, then rank (relevance first, usage as tie-break).
+      // Active search: stamp usage, rank by relevance, then sticky-pin so
+      // user pins always lead (independent of match score / query).
       const activeQuery = useStore.getState().query.trim();
+      const withStickyPins = (list: AppEntry[]): AppEntry[] => {
+        const settingsState = useSettingsStore.getState().settings;
+        const plugins = usePluginRegistry.getState().plugins;
+        return promotePinnedStickyEntries(list, settingsState, {
+          catalog: lastHomeAppResults,
+          plugins,
+        });
+      };
       if (!activeQuery) {
         rankRequestSeqRef.current += 1;
         rankCandidatesRef.current = null;
@@ -813,12 +823,12 @@ function App() {
         : stamped;
       // Provider order is already useful enough for the first paint. Never
       // make visible results wait for the ranking worker to start or respond.
-      scheduleResultCommit(merged, activeQuery);
+      scheduleResultCommit(withStickyPins(merged), activeQuery);
       const requestSeq = ++rankRequestSeqRef.current;
       void rankSearchResultsAsync(merged, activeQuery).then((next) => {
         if (requestSeq !== rankRequestSeqRef.current) return;
         if (useStore.getState().query.trim() !== activeQuery) return;
-        scheduleResultCommit(next, activeQuery);
+        scheduleResultCommit(withStickyPins(next), activeQuery);
       });
     },
     [scheduleResultCommit, setResults],

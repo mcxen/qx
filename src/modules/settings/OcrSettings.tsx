@@ -194,16 +194,16 @@ export default function OcrSettings() {
                 title={t("ocr.modelSize", "Model Size")}
                 description={t(
                   "ocr.modelSize.desc",
-                  "Larger models are more accurate but use more disk space and memory.",
+                  "Also controls OS recognition speed: Tiny/Small use Fast OCR with downscale; Medium uses Accurate OCR.",
                 )}
               >
                 <Select
                   value={adv.ocr_model_size}
                   onChange={(v) => patch("advanced", { ...adv, ocr_model_size: v })}
                   options={[
-                    { value: "tiny", label: t("ocr.size.tiny", "Tiny (~5MB)") },
-                    { value: "small", label: t("ocr.size.small", "Small (~15MB)") },
-                    { value: "medium", label: t("ocr.size.medium", "Medium (~30MB)") },
+                    { value: "tiny", label: t("ocr.size.tiny", "Tiny · Fast (~5MB)") },
+                    { value: "small", label: t("ocr.size.small", "Small · Fast (~15MB)") },
+                    { value: "medium", label: t("ocr.size.medium", "Medium · Accurate (~30MB)") },
                   ]}
                 />
               </Row>

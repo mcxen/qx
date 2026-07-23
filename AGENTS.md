@@ -295,6 +295,10 @@ through `isNativeEditingShortcut` and bare-key guards in `src/utils/keyboard.ts`
 
 Clipboard history is a shared Rust feature, not a text-only frontend cache.
 
+- Clipboard history is hot/cold: disk retains a large unpinned window (days +
+  thousands of rows); the UI opens a small hot page and loads older cold pages
+  when the list scrolls (or keyboard selection) reaches the bottom. Do not load
+  the entire retained store into the store on every open.
 - Preserve clipboard item kinds explicitly: text, image, file list, and supported
   rich content. Do not coerce file clipboard contents into plain path text.
 - File items must retain normalized real paths and be written back with native

@@ -4,13 +4,20 @@
 //! - Optional OAR model packs under `~/.oar` (download only; runtime uses platform
 //!   engines until a bundled ONNX pipeline is wired)
 //! - Persistent history for Settings → OCR
+//!
+//! Performance invariants:
+//! - Never run Vision/PowerShell on the UI thread (`runtime::blocking` / OCR worker).
+//! - Prefer **fast** recognition + **downscaled** input for everyday use.
+//! - Serialize background auto-OCR so clipboard capture cannot flood the pool.
+//! - Reuse cached `ocr_text` / history by source path when present.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::Local;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::{command, AppHandle, Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
@@ -21,6 +28,11 @@ const MODELSCOPE_API: &str = "https://www.modelscope.cn/api/v1/models";
 const REVISION: &str = "master";
 const HISTORY_LIMIT_DEFAULT: u32 = 80;
 const HISTORY_LIMIT_MAX: u32 = 200;
+/// Longest edge for everyday OCR. Larger screenshots are downscaled first.
+const OCR_MAX_EDGE_FAST: u32 = 1600;
+const OCR_MAX_EDGE_ACCURATE: u32 = 2400;
+/// Auto-OCR coalesces `clipboard-updated` so FE is not refreshed per frame.
+const AUTO_OCR_EMIT_DEBOUNCE_MS: u64 = 450;
 
 struct ModelPack {
     det: &'static str,
@@ -56,6 +68,84 @@ static PACKS: &[(&str, ModelPack)] = &[
 ];
 
 static DB: OnceLock<Mutex<Option<Connection>>> = OnceLock::new();
+
+/// Background auto-OCR job queue (single consumer).
+struct AutoOcrJob {
+    app: AppHandle,
+    entry_id: String,
+    image_path: String,
+}
+
+static AUTO_OCR_TX: OnceLock<std::sync::mpsc::Sender<AutoOcrJob>> = OnceLock::new();
+static AUTO_OCR_EMIT_SCHEDULED: AtomicBool = AtomicBool::new(false);
+
+/// Enqueue background clipboard OCR. Serialized — never floods spawn_blocking.
+pub(crate) fn enqueue_auto_ocr(app: AppHandle, entry_id: String, image_path: String) {
+    let tx = AUTO_OCR_TX.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<AutoOcrJob>();
+        let _ = std::thread::Builder::new()
+            .name("qx-auto-ocr".into())
+            .spawn(move || {
+                // Single consumer: one OCR at a time, never piles spawn_blocking.
+                while let Ok(job) = rx.recv() {
+                    run_auto_ocr_job(job);
+                }
+            });
+        tx
+    });
+    let _ = tx.send(AutoOcrJob {
+        app,
+        entry_id,
+        image_path,
+    });
+}
+
+fn run_auto_ocr_job(job: AutoOcrJob) {
+    let AutoOcrJob {
+        app,
+        entry_id,
+        image_path,
+    } = job;
+    // Skip if already filled (user or previous pass).
+    if let Some(db) = app.try_state::<crate::clipboard::ClipboardDb>() {
+        if let Ok(Some(_)) = crate::clipboard::ocr_text_for_entry(&db, &entry_id) {
+            return;
+        }
+    }
+    let path = PathBuf::from(&image_path);
+    let result = recognize_image_path(&path, "clipboard");
+    match result {
+        Ok(ocr) => {
+            if let Some(db) = app.try_state::<crate::clipboard::ClipboardDb>() {
+                let _ = crate::clipboard::set_entry_ocr_text(&db, &entry_id, &ocr.text);
+                schedule_clipboard_updated_emit(app);
+            }
+        }
+        Err(error) => {
+            crate::diagnostics::log(
+                crate::diagnostics::LogLevel::Debug,
+                "clipboard.ocr",
+                "auto OCR skipped/failed",
+                serde_json::json!({ "id": entry_id, "error": error }),
+            );
+        }
+    }
+}
+
+/// Coalesce FE history reloads: many auto-OCR completions → one refresh.
+fn schedule_clipboard_updated_emit(app: AppHandle) {
+    if AUTO_OCR_EMIT_SCHEDULED
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return;
+    }
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(AUTO_OCR_EMIT_DEBOUNCE_MS));
+        AUTO_OCR_EMIT_SCHEDULED.store(false, Ordering::SeqCst);
+        let _ = app.emit("clipboard-updated", ());
+    });
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -192,6 +282,96 @@ fn ensure_ocr_enabled() -> Result<(), String> {
         return Err("OCR is disabled. Enable it in Settings → OCR.".to_string());
     }
     Ok(())
+}
+
+/// Map Settings → OCR "model size" to speed vs accuracy for the OS engine.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OcrQuality {
+    /// Default: Vision Fast, no language correction, aggressive downscale.
+    Fast,
+    /// Medium pack / explicit accurate: Vision Accurate, mild downscale.
+    Accurate,
+}
+
+fn ocr_quality_from_model_size(model_size: &str) -> OcrQuality {
+    match model_size.trim().to_ascii_lowercase().as_str() {
+        "medium" | "large" | "accurate" => OcrQuality::Accurate,
+        _ => OcrQuality::Fast, // tiny / small / default
+    }
+}
+
+fn ocr_max_edge(quality: OcrQuality) -> u32 {
+    match quality {
+        OcrQuality::Fast => OCR_MAX_EDGE_FAST,
+        OcrQuality::Accurate => OCR_MAX_EDGE_ACCURATE,
+    }
+}
+
+/// Downscale huge screenshots before OCR. Returns `(path_to_read, optional_temp_to_delete)`.
+fn prepare_ocr_input(path: &Path, max_edge: u32) -> Result<(PathBuf, Option<PathBuf>), String> {
+    let (width, height) = match image::image_dimensions(path) {
+        Ok(dims) => dims,
+        Err(_) => return Ok((path.to_path_buf(), None)),
+    };
+    let longest = width.max(height);
+    if longest == 0 || longest <= max_edge {
+        return Ok((path.to_path_buf(), None));
+    }
+
+    let img = image::open(path).map_err(|e| format!("decode OCR image: {e}"))?;
+    let resized = img.thumbnail(max_edge, max_edge);
+    let tmp = std::env::temp_dir().join(format!(
+        "qx-ocr-{}-{}.png",
+        std::process::id(),
+        Instant::now().elapsed().as_nanos()
+    ));
+    resized
+        .save(&tmp)
+        .map_err(|e| format!("write OCR downscale: {e}"))?;
+    Ok((tmp.clone(), Some(tmp)))
+}
+
+fn find_history_by_source_path(source_path: &str) -> Option<OcrHistoryEntry> {
+    if source_path.trim().is_empty() {
+        return None;
+    }
+    with_db(|conn| {
+        conn.query_row(
+            "SELECT id, text, source, source_path, engine, created_at, char_count
+             FROM ocr_history
+             WHERE source_path = ?1 AND length(trim(text)) > 0
+             ORDER BY created_at DESC
+             LIMIT 1",
+            params![source_path],
+            |row| {
+                Ok(OcrHistoryEntry {
+                    id: row.get(0)?,
+                    text: row.get(1)?,
+                    source: row.get(2)?,
+                    source_path: row.get(3)?,
+                    engine: row.get(4)?,
+                    created_at: row.get(5)?,
+                    char_count: row.get(6)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|e| format!("ocr history path lookup: {e}"))
+    })
+    .ok()
+    .flatten()
+}
+
+fn result_from_history(entry: OcrHistoryEntry) -> OcrRecognizeResult {
+    OcrRecognizeResult {
+        id: entry.id,
+        text: entry.text,
+        engine: entry.engine,
+        source: entry.source,
+        source_path: entry.source_path,
+        char_count: entry.char_count as usize,
+        created_at: entry.created_at,
+    }
 }
 
 fn download_file(
@@ -370,6 +550,9 @@ pub fn check_ocr_models(size: String) -> Result<serde_json::Value, String> {
 }
 
 /// Recognize text from an image on disk. Records history on success.
+///
+/// Uses path-based history cache, downscales large inputs, and prefers the
+/// fast OS recognition path unless Settings model size is medium+.
 pub(crate) fn recognize_image_path(
     path: &Path,
     source: &str,
@@ -378,17 +561,26 @@ pub(crate) fn recognize_image_path(
     if !path.is_file() {
         return Err(format!("OCR image not found: {}", path.display()));
     }
-    let (engine_pref, _model_size) = resolve_engine_name();
+    let path_str = path.to_string_lossy().to_string();
+    if let Some(cached) = find_history_by_source_path(&path_str) {
+        return Ok(result_from_history(cached));
+    }
+
+    let (engine_pref, model_size) = resolve_engine_name();
     if engine_pref.is_empty() {
         return Err("OCR is disabled. Enable it in Settings → OCR.".to_string());
     }
-
-    let (text, engine_used) = recognize_with_engine(path, &engine_pref)?;
+    let quality = ocr_quality_from_model_size(&model_size);
+    let (work_path, temp) = prepare_ocr_input(path, ocr_max_edge(quality))?;
+    let recognize_result = recognize_with_engine(&work_path, &engine_pref, quality);
+    if let Some(tmp) = temp {
+        let _ = std::fs::remove_file(tmp);
+    }
+    let (text, engine_used) = recognize_result?;
     let text = text.trim().to_string();
     if text.is_empty() {
         return Err("No text recognized in the image".to_string());
     }
-    let path_str = path.to_string_lossy().to_string();
     let entry = insert_history(&text, source, Some(&path_str), &engine_used)?;
     Ok(OcrRecognizeResult {
         id: entry.id,
@@ -401,24 +593,29 @@ pub(crate) fn recognize_image_path(
     })
 }
 
-fn recognize_with_engine(path: &Path, engine_pref: &str) -> Result<(String, String), String> {
+fn recognize_with_engine(
+    path: &Path,
+    engine_pref: &str,
+    quality: OcrQuality,
+) -> Result<(String, String), String> {
     // Prefer the configured host engine. OAR model packs are downloadable for
     // future ONNX inference; recognition currently uses OS OCR (reliable, offline).
     match engine_pref {
         "apple-vision" => {
             #[cfg(target_os = "macos")]
             {
-                recognize_apple_vision(path).map(|t| (t, "apple-vision".to_string()))
+                recognize_apple_vision(path, quality).map(|t| (t, "apple-vision".to_string()))
             }
             #[cfg(not(target_os = "macos"))]
             {
+                let _ = quality;
                 Err("Apple Vision OCR is only available on macOS. Switch engine to OAR-OCR (uses Windows OCR on this platform).".to_string())
             }
         }
         _ => {
             #[cfg(target_os = "macos")]
             {
-                recognize_apple_vision(path).map(|t| {
+                recognize_apple_vision(path, quality).map(|t| {
                     let label = if engine_pref == "oar-ocr" {
                         "apple-vision"
                     } else {
@@ -429,11 +626,12 @@ fn recognize_with_engine(path: &Path, engine_pref: &str) -> Result<(String, Stri
             }
             #[cfg(target_os = "windows")]
             {
+                let _ = quality;
                 recognize_windows_ocr(path).map(|t| (t, "windows-ocr".to_string()))
             }
             #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             {
-                let _ = path;
+                let _ = (path, quality);
                 Err("OCR is not supported on this platform".to_string())
             }
         }
@@ -445,7 +643,7 @@ fn recognize_with_engine(path: &Path, engine_pref: &str) -> Result<(String, Stri
 extern "C" {}
 
 #[cfg(target_os = "macos")]
-fn recognize_apple_vision(path: &Path) -> Result<String, String> {
+fn recognize_apple_vision(path: &Path, quality: OcrQuality) -> Result<String, String> {
     use objc2::msg_send;
     use objc2::runtime::{AnyClass, AnyObject, Bool};
     use objc2_foundation::NSString;
@@ -455,8 +653,18 @@ fn recognize_apple_vision(path: &Path) -> Result<String, String> {
         return Err("OCR image is empty".to_string());
     }
 
+    // VNRequestTextRecognitionLevelAccurate = 0, Fast = 1
+    let level: i64 = match quality {
+        OcrQuality::Accurate => 0,
+        OcrQuality::Fast => 1,
+    };
+    let language_correction = match quality {
+        OcrQuality::Accurate => Bool::YES,
+        OcrQuality::Fast => Bool::NO,
+    };
+
     unsafe {
-        // NSData from bytes
+        // NSData from bytes (already downscaled when needed)
         let data_cls = AnyClass::get(c"NSData").ok_or("NSData class missing")?;
         let data: *mut AnyObject = msg_send![
             data_cls,
@@ -491,9 +699,10 @@ fn recognize_apple_vision(path: &Path) -> Result<String, String> {
         if request.is_null() {
             return Err("failed to create VNRecognizeTextRequest".to_string());
         }
-        // VNRequestTextRecognitionLevelAccurate = 0
-        let _: () = msg_send![request, setRecognitionLevel: 0i64];
-        let _: () = msg_send![request, setUsesLanguageCorrection: Bool::YES];
+        let _: () = msg_send![request, setRecognitionLevel: level];
+        let _: () = msg_send![request, setUsesLanguageCorrection: language_correction];
+        // Prefer a single top candidate; faster and enough for copy/search.
+        let _: () = msg_send![request, setMinimumTextHeight: 0.0f64];
 
         let array_cls = AnyClass::get(c"NSArray").ok_or("NSArray class missing")?;
         let requests: *mut AnyObject = msg_send![array_cls, arrayWithObject: request];
@@ -606,27 +815,63 @@ pub async fn ocr_recognize_clipboard_image(
     app: AppHandle,
     id: String,
 ) -> Result<OcrRecognizeResult, String> {
-    let app_for_store = app.clone();
+    ensure_ocr_enabled()?;
+    let db = app
+        .try_state::<crate::clipboard::ClipboardDb>()
+        .ok_or_else(|| "Clipboard database unavailable".to_string())?;
+
+    // Instant path: already cached on the clipboard row — no Vision/PowerShell.
+    if let Ok(Some(text)) = crate::clipboard::ocr_text_for_entry(&db, &id) {
+        let path = crate::clipboard::image_path_for_entry(&db, &id)
+            .ok()
+            .flatten();
+        let entry = if let Some(ref p) = path {
+            find_history_by_source_path(p).unwrap_or_else(|| {
+                insert_history(&text, "clipboard", path.as_deref(), "cache").unwrap_or(
+                    OcrHistoryEntry {
+                        id: id.clone(),
+                        text: text.clone(),
+                        source: "clipboard".into(),
+                        source_path: path.clone(),
+                        engine: "cache".into(),
+                        created_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                        char_count: text.chars().count() as i64,
+                    },
+                )
+            })
+        } else {
+            OcrHistoryEntry {
+                id: id.clone(),
+                text: text.clone(),
+                source: "clipboard".into(),
+                source_path: None,
+                engine: "cache".into(),
+                created_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
+                char_count: text.chars().count() as i64,
+            }
+        };
+        return Ok(result_from_history(entry));
+    }
+
+    let path = crate::clipboard::image_path_for_entry(&db, &id)?
+        .ok_or_else(|| "Selected clipboard item has no image".to_string())?;
     let entry_id = id.clone();
+    let path_for_job = path.clone();
     let result = crate::runtime::blocking(move || {
-        ensure_ocr_enabled()?;
-        let db = app
-            .try_state::<crate::clipboard::ClipboardDb>()
-            .ok_or_else(|| "Clipboard database unavailable".to_string())?;
-        let path = crate::clipboard::image_path_for_entry(&db, &id)?
-            .ok_or_else(|| "Selected clipboard item has no image".to_string())?;
-        recognize_image_path(Path::new(&path), "clipboard")
+        recognize_image_path(Path::new(&path_for_job), "clipboard")
     })
     .await
     .map_err(|e| format!("OCR worker: {e}"))??;
-    if let Some(db) = app_for_store.try_state::<crate::clipboard::ClipboardDb>() {
-        let _ = crate::clipboard::set_entry_ocr_text(&db, &entry_id, &result.text);
-        let _ = app_for_store.emit("clipboard-updated", ());
-    }
+
+    let _ = crate::clipboard::set_entry_ocr_text(&db, &entry_id, &result.text);
+    let _ = app.emit("clipboard-updated", ());
     Ok(result)
 }
 
 /// OCR all clipboard images that do not yet have cached text (bounded batch).
+///
+/// Runs a small parallel window (2) so batch work is faster without saturating
+/// the blocking pool / Vision engine.
 #[command]
 pub async fn clipboard_ocr_pending(
     app: AppHandle,
@@ -641,19 +886,36 @@ pub async fn clipboard_ocr_pending(
     let total = candidates.len();
     let mut done = 0usize;
     let mut failed = 0usize;
-    for (id, path) in candidates {
-        let path_buf = PathBuf::from(&path);
-        let entry_id = id.clone();
-        let recognize =
-            crate::runtime::blocking(move || recognize_image_path(&path_buf, "clipboard")).await;
-        match recognize {
-            Ok(Ok(result)) => {
-                let _ = crate::clipboard::set_entry_ocr_text(&db, &entry_id, &result.text);
-                done += 1;
+
+    // Parallelism of 2: Vision is heavy; more than ~2 often thrashing.
+    const WINDOW: usize = 2;
+    let mut index = 0usize;
+    while index < candidates.len() {
+        let end = (index + WINDOW).min(candidates.len());
+        let chunk: Vec<(String, String)> = candidates[index..end].to_vec();
+        index = end;
+
+        let mut handles = Vec::with_capacity(chunk.len());
+        for (id, path) in chunk {
+            handles.push(tauri::async_runtime::spawn(async move {
+                let path_buf = PathBuf::from(path);
+                let recognize =
+                    crate::runtime::blocking(move || recognize_image_path(&path_buf, "clipboard"))
+                        .await;
+                (id, recognize)
+            }));
+        }
+        for handle in handles {
+            match handle.await {
+                Ok((entry_id, Ok(Ok(result)))) => {
+                    let _ = crate::clipboard::set_entry_ocr_text(&db, &entry_id, &result.text);
+                    done += 1;
+                }
+                _ => failed += 1,
             }
-            _ => failed += 1,
         }
     }
+
     if done > 0 {
         let _ = app.emit("clipboard-updated", ());
     }

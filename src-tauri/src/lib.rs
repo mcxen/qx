@@ -534,6 +534,8 @@ pub fn run() {
             open_app,
             set_window_size,
             clipboard::history::get_clipboard_history,
+            clipboard::history::get_clipboard_history_page,
+            clipboard::history::get_clipboard_entry,
             clipboard::history::read_clipboard_image_now,
             clipboard::history::write_clipboard_image_entry,
             clipboard::media::write_clipboard_file_entry,

@@ -5,6 +5,18 @@
 > **写插件逻辑**请先读 [`plugin-development-guide.md`](./plugin-development-guide.md)。  
 > 本文侧重：**打包、Import zip、Browse、上架 `qx-plugins`**。
 
+## 多源插件库（镜像）
+
+Qx 支持配置 **多个** `index.json` 地址（`settings.plugin_registries`）：
+
+- 默认源：`Qx Official` → `https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json`
+- 用户可在 **设置 → 扩展 → 浏览 → 插件库** 中添加国内镜像 / 私有目录
+- Browse 列表合并所有已启用库；每条结果带 **来源库** 归属
+- 同一 `id` 出现在多个库时，详情可 **选择从哪个库安装**
+- 顶部过滤器可只看某一库；各库拉取成功/失败状态以徽章展示
+
+镜像只需托管与官方兼容的 `index.json`（及其中 `download_url` 指向的 `.qx-plugin` 文件）。
+
 ## 目录结构
 
 一个 Qx 插件是一个目录，包含以下文件：

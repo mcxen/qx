@@ -2,7 +2,12 @@
 //!
 //! Qx is a background helper. On macOS, a single accidental ⌘Q must not tear
 //! down the tray process — require two presses within a short window. Windows
-//! and explicit programmatic exits still quit immediately.
+//! user quits are immediate.
+//!
+//! **Programmatic exits** (auto-update helper, tests) must call [`force_quit`].
+//! Never use bare `app.exit(0)` on macOS — that raises `ExitRequested`, which
+//! is intercepted by the double-⌘Q policy and only arms a confirmation, so the
+//! process stays alive and the update helper times out waiting for the PID.
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -94,8 +99,25 @@ pub fn request_quit(app: &AppHandle) -> bool {
     }
 }
 
+/// Immediate process exit for auto-update and other host-owned workflows.
+///
+/// Marks [`EXITING`] first so the subsequent `ExitRequested` event is allowed
+/// through macOS double-⌘Q confirmation (see `allow_exit_event`).
+pub fn force_quit(app: &AppHandle) {
+    if EXITING.load(Ordering::SeqCst) {
+        // Already exiting — still nudge exit in case a prior call was swallowed.
+        app.exit(0);
+        return;
+    }
+    arm_exit_cleanup(app);
+    app.exit(0);
+}
+
 /// `RunEvent::ExitRequested` path. On confirm, arm cleanup and allow the exit
 /// to proceed without nesting another `app.exit`.
+///
+/// When [`force_quit`] or a confirmed second ⌘Q already armed cleanup,
+/// returns `true` immediately so `api.prevent_exit()` is not called.
 pub fn allow_exit_event(app: &AppHandle) -> bool {
     if EXITING.load(Ordering::SeqCst) {
         return true;

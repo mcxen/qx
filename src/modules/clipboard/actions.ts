@@ -100,6 +100,13 @@ export async function pasteClipboardEntryAtCursor(item: ClipboardEntry): Promise
 }
 
 export async function loadClipboardEntryById(id: string): Promise<ClipboardEntry | undefined> {
+  // Prefer direct id lookup so cold-tier rows (beyond the hot window) still resolve.
+  try {
+    const entry = await invoke<ClipboardEntry | null>("get_clipboard_entry", { id });
+    if (entry) return entry;
+  } catch {
+    /* fall through to hot-window scan for older hosts */
+  }
   const history = await invoke<ClipboardEntry[]>("get_clipboard_history", { limit: 200 });
   return history.find((entry) => entry.id === id);
 }

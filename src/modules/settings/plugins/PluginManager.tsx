@@ -18,9 +18,11 @@ import { usePluginRegistry } from "../../../plugin/registry";
 import { resolvePluginAssetUrl } from "../../../plugin/runtime";
 import { BUILTIN_SETTINGS_KEYS } from "../../../plugin/builtin";
 import {
+  DEFAULT_PLUGIN_REGISTRIES,
   DEFAULT_SETTINGS,
   SHORTCUT_LABELS,
   useSettingsStore,
+  type PluginRegistrySource,
   type SearchMetadataEntry,
   type ShortcutBinding,
 } from "../store";
@@ -64,10 +66,12 @@ import type {
   InstalledPlugin,
   PluginCompatibilityStatus,
   PluginIndexEntry,
+  PluginIndexSourceStatus,
   PluginPlatform,
   PluginPlatformCompatibility,
   PluginPreference,
 } from "../../../plugin/types";
+import { marketplaceEntryKey } from "../../../plugin/types";
 import { currentPluginPlatform } from "../../../plugin/platform";
 import {
   localizeMarketplaceEntryDescription,
@@ -888,36 +892,62 @@ function MarketplaceTab({
   onInstallComplete: () => void | Promise<void>;
 }) {
   const t = useT();
+  const { settings, patch } = useSettingsStore();
+  const registries = settings.plugin_registries?.length
+    ? settings.plugin_registries
+    : DEFAULT_PLUGIN_REGISTRIES;
   const [entries, setEntries] = useState<PluginIndexEntry[]>([]);
+  const [sourceStatuses, setSourceStatuses] = useState<PluginIndexSourceStatus[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [installingId, setInstallingId] = useState<string | null>(null);
+  const [installingKey, setInstallingKey] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  /** `all` or a registry source id */
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [librariesOpen, setLibrariesOpen] = useState(false);
   const [installStatus, setInstallStatus] = useState<{ tone: StatusTone; message: string } | null>(null);
 
   const filteredEntries = useMemo(() => {
     const q = normalizeSearch(searchQuery);
-    return entries.filter((entry) => marketplaceEntryMatchesQuery(entry, q, t));
-  }, [entries, searchQuery, t]);
+    return entries.filter((entry) => {
+      if (sourceFilter !== "all" && (entry.source_id || "") !== sourceFilter) return false;
+      return marketplaceEntryMatchesQuery(entry, q, t);
+    });
+  }, [entries, searchQuery, sourceFilter, t]);
 
   const selectedEntry = useMemo(() => {
-    if (selectedId) {
-      const selected = filteredEntries.find((entry) => entry.id === selectedId);
+    if (selectedKey) {
+      const selected = filteredEntries.find((entry) => marketplaceEntryKey(entry) === selectedKey);
       if (selected) return selected;
     }
     return filteredEntries[0] ?? null;
-  }, [filteredEntries, selectedId]);
+  }, [filteredEntries, selectedKey]);
 
-  const fetchIndex = useCallback(async () => {
+  /** Same plugin id may exist on multiple libraries — offer install source choice. */
+  const alternateSources = useMemo(() => {
+    if (!selectedEntry) return [] as PluginIndexEntry[];
+    return entries.filter(
+      (entry) =>
+        entry.id === selectedEntry.id
+        && marketplaceEntryKey(entry) !== marketplaceEntryKey(selectedEntry),
+    );
+  }, [entries, selectedEntry]);
+
+  const fetchIndex = useCallback(async (sourceId?: string) => {
     setLoading(true);
     setError(null);
     setInstallStatus(null);
     try {
-      const index = await invoke<{ schema_version: number; plugins: PluginIndexEntry[] }>(
-        "fetch_plugin_index",
-      );
+      const index = await invoke<{
+        schema_version: number;
+        plugins: PluginIndexEntry[];
+        sources?: PluginIndexSourceStatus[];
+      }>("fetch_plugin_index", {
+        sourceId: sourceId && sourceId !== "all" ? sourceId : null,
+      });
       setEntries(index.plugins);
+      setSourceStatuses(index.sources ?? []);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -925,12 +955,21 @@ function MarketplaceTab({
     }
   }, []);
 
+  const registriesSignature = useMemo(
+    () =>
+      registries
+        .map((r) => `${r.id}\0${r.enabled ? 1 : 0}\0${r.index_url}`)
+        .join("\n"),
+    [registries],
+  );
+
   useEffect(() => {
-    void fetchIndex();
-  }, [fetchIndex]);
+    void fetchIndex(sourceFilter === "all" ? undefined : sourceFilter);
+  }, [fetchIndex, sourceFilter, registriesSignature]);
 
   const handleInstall = async (entry: PluginIndexEntry, mode: "install" | "upgrade" | "reinstall") => {
-    setInstallingId(entry.id);
+    const key = marketplaceEntryKey(entry);
+    setInstallingKey(key);
     setInstallStatus(null);
     try {
       const path = await invoke<string>("download_plugin", {
@@ -950,11 +989,14 @@ function MarketplaceTab({
           : mode === "reinstall"
             ? "{name} reinstalled."
             : "{name} installed.";
+      const sourceSuffix = entry.source_name
+        ? ` · ${t("plugins.marketplace.fromSource", "from {source}").replace("{source}", entry.source_name)}`
+        : "";
       setInstallStatus({
         tone: "success",
         message: t(messageKey, fallback)
           .replace("{name}", localizeMarketplaceEntryName(entry, t))
-          .replace("{version}", entry.version),
+          .replace("{version}", entry.version) + sourceSuffix,
       });
     } catch (err) {
       console.error("Marketplace install failed", err);
@@ -963,13 +1005,142 @@ function MarketplaceTab({
         message: t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err)),
       });
     } finally {
-      setInstallingId(null);
+      setInstallingKey(null);
     }
   };
 
-  if (loading) {
+  const saveRegistries = (next: PluginRegistrySource[]) => {
+    const cleaned = next
+      .map((entry) => ({
+        id: entry.id.trim() || `registry-${Date.now().toString(36)}`,
+        name: entry.name.trim() || entry.index_url.trim() || "Library",
+        index_url: entry.index_url.trim(),
+        enabled: entry.enabled !== false,
+      }))
+      .filter((entry) => entry.index_url);
+    patch(
+      "plugin_registries",
+      cleaned.length > 0 ? cleaned : DEFAULT_PLUGIN_REGISTRIES.map((entry) => ({ ...entry })),
+    );
+  };
+
+  const sourceFilterOptions = useMemo(() => {
+    const fromSettings = registries
+      .filter((r) => r.enabled)
+      .map((r) => ({ value: r.id, label: r.name || r.index_url }));
+    const fromStatus = sourceStatuses
+      .filter((s) => !fromSettings.some((r) => r.value === s.id))
+      .map((s) => ({ value: s.id, label: s.name || s.id }));
+    return [
+      { value: "all", label: t("plugins.marketplace.allLibraries", "All libraries") },
+      ...fromSettings,
+      ...fromStatus,
+    ];
+  }, [registries, sourceStatuses, t]);
+
+  const librariesDialog = (
+    <Dialog open={librariesOpen} onOpenChange={setLibrariesOpen}>
+      <DialogContent style={{ width: "min(520px, calc(100vw - 40px))" }}>
+        <DialogHeader>
+          <DialogTitle>{t("plugins.libraries.title", "Plugin libraries")}</DialogTitle>
+          <DialogDescription>
+            {t(
+              "plugins.libraries.desc",
+              "Add mirrors or private catalogs. Qx merges enabled libraries so you can install when GitHub is slow.",
+            )}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="qx-plugin-libraries-editor">
+          {registries.map((registry, index) => (
+            <div className="qx-plugin-library-row" key={`${registry.id}-${index}`}>
+              <Input
+                value={registry.name}
+                placeholder={t("plugins.libraries.name", "Name")}
+                onChange={(e) => {
+                  const next = registries.map((item, i) =>
+                    i === index ? { ...item, name: e.target.value } : item,
+                  );
+                  saveRegistries(next);
+                }}
+              />
+              <Input
+                value={registry.index_url}
+                placeholder="https://…/index.json"
+                onChange={(e) => {
+                  const next = registries.map((item, i) =>
+                    i === index ? { ...item, index_url: e.target.value } : item,
+                  );
+                  saveRegistries(next);
+                }}
+              />
+              <Toggle
+                value={registry.enabled}
+                onChange={(enabled) => {
+                  const next = registries.map((item, i) =>
+                    i === index ? { ...item, enabled } : item,
+                  );
+                  saveRegistries(next);
+                }}
+                ariaLabel={t("plugins.libraries.enabled", "Enabled")}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={registries.length <= 1}
+                onClick={() => saveRegistries(registries.filter((_, i) => i !== index))}
+              >
+                <Trash2 size={13} aria-hidden="true" />
+              </Button>
+            </div>
+          ))}
+          <div className="qx-modal-actions">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() =>
+                saveRegistries([
+                  ...registries,
+                  {
+                    id: `mirror-${Date.now().toString(36)}`,
+                    name: t("plugins.libraries.newMirror", "New mirror"),
+                    index_url: "",
+                    enabled: true,
+                  },
+                ])
+              }
+            >
+              {t("plugins.libraries.add", "Add library")}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                saveRegistries(DEFAULT_PLUGIN_REGISTRIES.map((entry) => ({ ...entry })))
+              }
+            >
+              {t("plugins.libraries.reset", "Reset defaults")}
+            </Button>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setLibrariesOpen(false)}>
+              {t("launcher.done", "Done")}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
+  if (loading && entries.length === 0) {
     return (
       <div className="qx-marketplace">
+        <div className="qx-plugin-list-toolbar">
+          <Button variant="outline" size="sm" onClick={() => setLibrariesOpen(true)}>
+            {t("plugins.libraries.manage", "Libraries")}
+          </Button>
+        </div>
+        {librariesDialog}
         <div className="qx-skeleton-stack" aria-label={t("plugins.marketplace.loadingAria", "Loading marketplace")}>
           {Array.from({ length: 6 }).map((_, index) => (
             <div className="qx-skeleton-row" key={index}>
@@ -989,29 +1160,51 @@ function MarketplaceTab({
     );
   }
 
-  if (error) {
+  if (error && entries.length === 0) {
     return (
-      <div className="qx-empty-state">
-        <div>{t("plugins.marketplace.failed", "Failed to load marketplace.")}</div>
-        <div style={{ fontSize: 11, marginTop: 4 }}>{error}</div>
-        <Button variant="outline" size="sm" onClick={fetchIndex} style={{ marginTop: 8 }}>
-          {t("plugins.marketplace.retry", "Retry")}
-        </Button>
+      <div className="qx-marketplace">
+        <div className="qx-plugin-list-toolbar">
+          <Button variant="outline" size="sm" onClick={() => setLibrariesOpen(true)}>
+            {t("plugins.libraries.manage", "Libraries")}
+          </Button>
+        </div>
+        {librariesDialog}
+        <div className="qx-empty-state">
+          <div>{t("plugins.marketplace.failed", "Failed to load marketplace.")}</div>
+          <div style={{ fontSize: 11, marginTop: 4 }}>{error}</div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void fetchIndex(sourceFilter === "all" ? undefined : sourceFilter)}
+            style={{ marginTop: 8 }}
+          >
+            {t("plugins.marketplace.retry", "Retry")}
+          </Button>
+        </div>
       </div>
     );
   }
 
   if (entries.length === 0) {
     return (
-      <div className="qx-empty-state">
-        {t("plugins.marketplace.empty", "No plugins available in the marketplace.")}
+      <div className="qx-marketplace">
+        <div className="qx-plugin-list-toolbar">
+          <Button variant="outline" size="sm" onClick={() => setLibrariesOpen(true)}>
+            {t("plugins.libraries.manage", "Libraries")}
+          </Button>
+        </div>
+        {librariesDialog}
+        <div className="qx-empty-state">
+          {t("plugins.marketplace.empty", "No plugins available in the marketplace.")}
+        </div>
       </div>
     );
   }
 
   return (
     <div className="qx-marketplace">
-      {/* Search input */}
+      {librariesDialog}
+      {/* Search + library filter */}
       <div className="qx-plugin-list-toolbar">
         <div className="qx-plugin-search-wrap">
           <Search size={14} aria-hidden="true" />
@@ -1023,7 +1216,21 @@ function MarketplaceTab({
             className="qx-plugin-search-input"
           />
         </div>
-        <Button variant="outline" size="sm" onClick={fetchIndex} disabled={loading}>
+        <Select
+          value={sourceFilter}
+          options={sourceFilterOptions}
+          ariaLabel={t("plugins.marketplace.libraryFilter", "Plugin library")}
+          onChange={(next) => setSourceFilter(next)}
+        />
+        <Button variant="outline" size="sm" onClick={() => setLibrariesOpen(true)}>
+          {t("plugins.libraries.manage", "Libraries")}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void fetchIndex(sourceFilter === "all" ? undefined : sourceFilter)}
+          disabled={loading}
+        >
           {loading ? (
             <LoadingLabel>{t("plugins.marketplace.refresh", "Refresh")}</LoadingLabel>
           ) : (
@@ -1034,6 +1241,23 @@ function MarketplaceTab({
           )}
         </Button>
       </div>
+
+      {sourceStatuses.length > 0 && (
+        <div className="qx-plugin-source-status" aria-live="polite">
+          {sourceStatuses.map((source) => (
+            <Badge
+              key={source.id}
+              variant={source.ok ? "secondary" : "destructive"}
+              title={source.error || source.index_url}
+            >
+              {source.name}
+              {source.ok
+                ? ` · ${source.plugin_count}`
+                : ` · ${t("plugins.libraries.failed", "failed")}`}
+            </Badge>
+          ))}
+        </div>
+      )}
 
       {installStatus && (
         <div className={`qx-plugin-status is-${installStatus.tone}`}>
@@ -1052,22 +1276,30 @@ function MarketplaceTab({
             </div>
           ) : (
             filteredEntries.map((entry) => {
-              const active = entry.id === selectedEntry?.id;
+              const key = marketplaceEntryKey(entry);
+              const active = selectedEntry
+                ? marketplaceEntryKey(selectedEntry) === key
+                : false;
               const installedVersion = installedVersions.get(entry.id);
               const alreadyInstalled = installedVersion != null;
               const updateAvailable = isPluginUpdateAvailable(installedVersion, entry.version);
-              const installing = installingId === entry.id;
+              const installing = installingKey === key;
 
               return (
                 <button
-                  key={entry.id}
+                  key={key}
                   className={`qx-plugin-library-item${active ? " is-active" : ""}`}
-                  onClick={() => setSelectedId(entry.id)}
+                  onClick={() => setSelectedKey(key)}
                   type="button"
                 >
                   <div className="qx-plugin-list-main">
                     <div className="qx-plugin-list-title">
                       {localizeMarketplaceEntryName(entry, t)}
+                      {entry.source_name ? (
+                        <Badge variant="secondary" className="qx-plugin-source-badge">
+                          {entry.source_name}
+                        </Badge>
+                      ) : null}
                     </div>
                     <div className="qx-plugin-list-meta">
                       v{entry.version}
@@ -1115,6 +1347,11 @@ function MarketplaceTab({
               </div>
               <div className="qx-plugin-badges">
                 <Badge variant="secondary">v{selectedEntry.version}</Badge>
+                {selectedEntry.source_name && (
+                  <Badge variant="default">
+                    {t("plugins.marketplace.source", "Library")}: {selectedEntry.source_name}
+                  </Badge>
+                )}
                 {selectedEntry.author && <Badge variant="secondary">{selectedEntry.author}</Badge>}
                 {selectedEntry.size_bytes && <Badge variant="secondary">{formatBytes(selectedEntry.size_bytes)}</Badge>}
                 {isPluginUpdateAvailable(installedVersions.get(selectedEntry.id), selectedEntry.version) && (
@@ -1132,7 +1369,7 @@ function MarketplaceTab({
                   const installedVersion = installedVersions.get(selectedEntry.id);
                   const alreadyInstalled = installedVersion != null;
                   const updateAvailable = isPluginUpdateAvailable(installedVersion, selectedEntry.version);
-                  const installing = installingId === selectedEntry.id;
+                  const installing = installingKey === marketplaceEntryKey(selectedEntry);
                   const busyLabel = updateAvailable
                     ? t("plugins.marketplace.updating", "Updating...")
                     : alreadyInstalled
@@ -1196,6 +1433,65 @@ function MarketplaceTab({
                   );
                 })()}
               </SettingsCard>
+              {alternateSources.length > 0 && (
+                <SettingsCard title={t("plugins.marketplace.otherSources", "Other libraries")}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div className="qx-plugin-list-desc">
+                      {t(
+                        "plugins.marketplace.otherSources.desc",
+                        "This plugin is also listed elsewhere. Pick a library to download from.",
+                      )}
+                    </div>
+                    {alternateSources.map((alt) => {
+                      const altKey = marketplaceEntryKey(alt);
+                      const installingAlt = installingKey === altKey;
+                      return (
+                        <div
+                          key={altKey}
+                          className="qx-plugin-library-alt-row"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 8,
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div className="qx-plugin-list-title">
+                              {alt.source_name || alt.source_id || t("plugins.marketplace.source", "Library")}
+                            </div>
+                            <div className="qx-plugin-list-meta">v{alt.version}</div>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={installingAlt || installingKey != null}
+                            onClick={() => {
+                              setSelectedKey(altKey);
+                              const installedVersion = installedVersions.get(alt.id);
+                              const alreadyInstalled = installedVersion != null;
+                              const updateAvailable = isPluginUpdateAvailable(
+                                installedVersion,
+                                alt.version,
+                              );
+                              const mode: "install" | "upgrade" | "reinstall" = updateAvailable
+                                ? "upgrade"
+                                : alreadyInstalled
+                                  ? "reinstall"
+                                  : "install";
+                              void handleInstall(alt, mode);
+                            }}
+                          >
+                            {installingAlt
+                              ? t("plugins.marketplace.installing", "Installing...")
+                              : t("plugins.marketplace.installFrom", "Install from here")}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </SettingsCard>
+              )}
               {selectedEntry.required_permissions && selectedEntry.required_permissions.length > 0 && (
                 <SettingsCard title={t("plugins.marketplace.requiredPerms", "Required permissions")}>
                   <div className="qx-plugin-badges">
@@ -1205,9 +1501,24 @@ function MarketplaceTab({
                   </div>
                 </SettingsCard>
               )}
-              {(selectedEntry.updated_at || selectedEntry.min_app_version || selectedEntry.checksum_sha256) && (
+              {(selectedEntry.updated_at
+                || selectedEntry.min_app_version
+                || selectedEntry.checksum_sha256
+                || selectedEntry.source_index_url) && (
                 <SettingsCard title={t("plugins.marketplace.metadata", "Metadata")}>
                   <div className="qx-plugin-info-grid">
+                    {selectedEntry.source_name && (
+                      <>
+                        <span>{t("plugins.marketplace.source", "Library")}</span>
+                        <span>{selectedEntry.source_name}</span>
+                      </>
+                    )}
+                    {selectedEntry.source_index_url && (
+                      <>
+                        <span>{t("plugins.marketplace.sourceUrl", "Index URL")}</span>
+                        <span style={{ wordBreak: "break-all" }}>{selectedEntry.source_index_url}</span>
+                      </>
+                    )}
                     {selectedEntry.updated_at && (
                       <>
                         <span>{t("plugins.marketplace.updated", "Updated")}</span>

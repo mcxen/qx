@@ -121,6 +121,23 @@ export interface AdvancedSettings {
   ocr_model_size: string;
 }
 
+/** One plugin marketplace / mirror (`index.json`). */
+export interface PluginRegistrySource {
+  id: string;
+  name: string;
+  index_url: string;
+  enabled: boolean;
+}
+
+export const DEFAULT_PLUGIN_REGISTRIES: PluginRegistrySource[] = [
+  {
+    id: "qx-official",
+    name: "Qx Official",
+    index_url: "https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json",
+    enabled: true,
+  },
+];
+
 export interface AgentSettings {
   agent_mode_enabled: boolean;
   default_provider: string;
@@ -292,6 +309,8 @@ export interface Settings {
   app_shortcuts: Record<string, ShortcutBinding>;
   plugins: PluginConfig[];
   plugin_display: PluginDisplaySettings;
+  /** Marketplace catalogs / mirrors (GitHub + domestic mirrors, etc.). */
+  plugin_registries: PluginRegistrySource[];
   file_search: FileSearchSettings;
   screencap: ScreencapSettings;
   advanced: AdvancedSettings;
@@ -399,6 +418,7 @@ export const DEFAULT_SETTINGS: Settings = {
     history_layout: "gallery",
     controls_pinned: false,
   },
+  plugin_registries: DEFAULT_PLUGIN_REGISTRIES.map((entry) => ({ ...entry })),
   advanced: {
     logging_enabled: false,
     log_level: "info",
@@ -584,6 +604,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           general: { ...DEFAULT_SETTINGS.general, ...s.general },
           appearance: { ...DEFAULT_SETTINGS.appearance, ...s.appearance },
           plugin_display: { ...DEFAULT_SETTINGS.plugin_display, ...s.plugin_display },
+          plugin_registries:
+            Array.isArray((s as Settings).plugin_registries)
+            && (s as Settings).plugin_registries.length > 0
+              ? (s as Settings).plugin_registries.map((entry) => ({
+                  id: String(entry?.id || "").trim() || `registry-${Math.random().toString(36).slice(2, 8)}`,
+                  name: String(entry?.name || "").trim() || String(entry?.index_url || "Library"),
+                  index_url: String(entry?.index_url || "").trim(),
+                  enabled: entry?.enabled !== false,
+                })).filter((entry) => entry.index_url)
+              : DEFAULT_PLUGIN_REGISTRIES.map((entry) => ({ ...entry })),
           file_search: {
             ...DEFAULT_SETTINGS.file_search,
             ...(s as Settings).file_search,

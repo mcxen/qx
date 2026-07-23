@@ -8,6 +8,8 @@
  * - Same tier: kind → clickCount → file type (office docs before source/logs)
  *   → shorter display name → localeCompare (zh-aware).
  * - Empty query: caller must not use this (home list uses pin sort).
+ * - Sticky pins are applied by the caller after ranking via
+ *   `promotePinnedStickyEntries` so pins always lead, independent of match score.
  */
 
 import type { AppEntry } from "../store";

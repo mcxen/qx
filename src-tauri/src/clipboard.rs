@@ -39,8 +39,11 @@ const MAX_IMAGE_PIXELS: u64 = 16_777_216; // 4096 × 4096
 const MAX_STORED_IMAGE_BYTES: u64 = 12 * 1024 * 1024;
 const MAX_TEXT_BYTES: usize = 512 * 1024;
 const MAX_PASTEBOARD_SNAPSHOT_BYTES: usize = 512 * 1024;
+/// How long unpinned history is retained on disk (Raycast free-tier style window).
 const CLIPBOARD_RETENTION_DAYS: i64 = 90;
-const CLIPBOARD_UNPINNED_LIMIT: i64 = 300;
+/// Cold capacity: unpinned rows kept on disk beyond the hot UI window.
+/// Frontend opens with a small hot page and loads older rows on scroll.
+const CLIPBOARD_UNPINNED_LIMIT: i64 = 5000;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PasteboardSnapshot {
@@ -645,6 +648,11 @@ fn ensure_clipboard_schema(conn: &Connection) -> rusqlite::Result<()> {
     ensure_column(&conn, "file_paths", "TEXT")?;
     ensure_column(&conn, "file_kind", "TEXT")?;
     ensure_column(&conn, "ocr_text", "TEXT")?;
+    // Hot/cold list + search pagination (pinned → timestamp → id).
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_clipboard_history_list
+           ON clipboard_history(pinned DESC, timestamp DESC, id DESC);",
+    )?;
     Ok(())
 }
 
@@ -756,6 +764,21 @@ pub(crate) fn set_entry_ocr_text(db: &ClipboardDb, id: &str, ocr_text: &str) -> 
     Ok(())
 }
 
+/// Cached OCR text for a clipboard row (fast path before re-running Vision).
+pub(crate) fn ocr_text_for_entry(db: &ClipboardDb, id: &str) -> Result<Option<String>, String> {
+    let mut guard = lock_db(&db.0);
+    let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
+    let text: Option<String> = conn
+        .query_row(
+            "SELECT ocr_text FROM clipboard_history WHERE id = ?1",
+            rusqlite::params![id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| format!("clipboard ocr_text lookup: {e}"))?;
+    Ok(text.filter(|value| !value.trim().is_empty()))
+}
+
 /// Image clipboard rows that still need OCR (for batch / background fill).
 pub(crate) fn list_entries_needing_ocr(
     db: &ClipboardDb,
@@ -831,6 +854,9 @@ fn is_image_extension(path: &str) -> bool {
 }
 
 /// After an image lands in history, optionally OCR it in the background when enabled.
+///
+/// Jobs are serialized on a dedicated worker so rapid clipboard captures cannot
+/// flood the blocking pool (which felt like "OCR keeps blocking").
 pub(crate) fn queue_auto_ocr_for_entry(app: &AppHandle, entry_id: String, image_path: String) {
     if image_path.trim().is_empty() {
         return;
@@ -839,37 +865,7 @@ pub(crate) fn queue_auto_ocr_for_entry(app: &AppHandle, entry_id: String, image_
     if !settings.advanced.ocr_enabled {
         return;
     }
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let result = crate::runtime::blocking(move || {
-            crate::ocr::recognize_image_path(std::path::Path::new(&image_path), "clipboard")
-        })
-        .await;
-        match result {
-            Ok(Ok(ocr)) => {
-                if let Some(db) = app.try_state::<ClipboardDb>() {
-                    let _ = set_entry_ocr_text(&db, &entry_id, &ocr.text);
-                    let _ = app.emit("clipboard-updated", ());
-                }
-            }
-            Ok(Err(error)) => {
-                crate::diagnostics::log(
-                    crate::diagnostics::LogLevel::Debug,
-                    "clipboard.ocr",
-                    "auto OCR skipped/failed",
-                    serde_json::json!({ "id": entry_id, "error": error }),
-                );
-            }
-            Err(error) => {
-                crate::diagnostics::log(
-                    crate::diagnostics::LogLevel::Debug,
-                    "clipboard.ocr",
-                    "auto OCR worker failed",
-                    serde_json::json!({ "id": entry_id, "error": error.to_string() }),
-                );
-            }
-        }
-    });
+    crate::ocr::enqueue_auto_ocr(app.clone(), entry_id, image_path);
 }
 
 fn lock_db(db: &Arc<Mutex<Option<Connection>>>) -> MutexGuard<'_, Option<Connection>> {
