@@ -248,11 +248,17 @@ with_db / ensure_open:
 
 `focusInput` 在 `visible` 变化与 Launcher 再次获得 key focus 时都会 immediate + rAF + 一次短 timeout 有限重试（key window / WebView first responder 异步）；失焦/隐藏必须立即取消前端 retry 与 debounce。Rust `floating_request_key` 在 UI 线程触碰 AppKit 前必须重新确认 `PANEL_OPEN && is_visible`，禁止迟到的 `makeKeyAndOrderFront` 复活已因 outside click 隐藏的窗口。重试不得形成轮询，也不得从已聚焦的其他文本编辑器或打开的键盘弹层抢焦点。Launcher 空 query 的 Esc 另有 window bubble fallback，仅在 React/Radix 未消费事件时隐藏窗口，不使用进程级键盘 monitor。
 
-所有带 Shell 搜索框的页面还遵循 persistent-search-focus：普通按钮、列表或空白区域的
-pointer 交互结束后，若没有文本编辑器、选中文本或打开的 Dialog/Menu/Listbox，焦点回到
-`.qx-shell-search-slot input.qx-plugin-search`。Launcher 另有 capture 级裸字符兜底，焦点意外
-落到非编辑控件时首字符与 Backspace/Delete 直接写入主搜索框；不得从真实编辑器或 IME
-候选窗口抢焦点。
+焦点所有权分成两层：
+
+- Launcher 的 `SearchBar` 在明确召唤/返回 Launcher 时聚焦，并保留 capture 级裸字符兜底；
+  焦点意外落到非编辑控件时，首字符与 Backspace/Delete 可直接写入主搜索框。
+- 模块 `QxModuleSearch` 默认 `autoFocus=false`。需要以搜索开场的列表或聊天输入必须显式
+  opt in，且只在 mount 时聚焦一次。用户随后点击列表、详情、按钮、表单或阅读区后，
+  新区域取得焦点；`QxShell` 不注册 window `pointerup` 监听把焦点抢回搜索框。
+
+Action 菜单关闭时只恢复打开菜单前的焦点；若 Action 已打开 Dialog/Listbox 或把焦点交给
+新的编辑器，则新的焦点所有者优先。任何重聚焦都不得从真实编辑器、Workbench 表单或
+IME 候选窗口抢焦点。
 
 搜索 provider 不在 input 事件中直接运行：当前约 45ms 静默后启动，查询变化立即 abort 并
 提升 sequence；渐进结果提交按静默窗口合并，避免 Zustand 外部 store 的同步通知阻塞下一次

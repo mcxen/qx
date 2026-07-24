@@ -16,7 +16,9 @@ QxAI is the shared AI substrate for built-in modules and plugins. It should not 
    - Built-in providers expose static model metadata.
    - OpenAI-compatible custom providers fetch model metadata from `GET /models`.
    - API keys stay in the Rust backend and are never exposed to plugin iframes.
-   - Model entries should eventually include capabilities: `text`, `vision`, `toolCalling`, `json`, `streaming`, `embedding`.
+   - Model entries expose `reasoning` when the provider catalog advertises native
+     reasoning support; later capability expansion may add `text`, `vision`,
+     `toolCalling`, `json`, `streaming`, and `embedding`.
 
 2. **Message Transport**
    - Text messages use plain string content.
@@ -26,30 +28,49 @@ QxAI is the shared AI substrate for built-in modules and plugins. It should not 
    - Providers without image support must fail with a clear unsupported-capability error.
 
 3. **Streaming**
-   - Current API:
+   - Current APIs:
      - `context.ai.stream(input, onChunk, options?)`
-     - `plugin_ai_stream_chat` returns text chunks and the plugin runtime delivers them through `onChunk`.
-   - Stream events should include `delta`, `toolCall`, `toolResult`, `memory`, `error`, and `done`.
+     - `context.ai.streamEvents(input, onEvent, options?)`
+   - The host starts `plugin_ai_stream_chat_events` and forwards provider SSE deltas
+     to the requesting iframe while the request is still active. `stream()` is the
+     compatibility text-only projection; it must never buffer an entire response
+     and replay it with timers.
+   - Structured events currently include `text_delta` and `reasoning_delta`; the
+     host lifecycle also carries `error` and `done`. Future additions may include
+     `toolCall`, `toolResult`, and `memory`.
+   - Built-in function calling uses the same event transport. Tool call argument
+     deltas are reconstructed in Rust, while text and reasoning remain live.
    - Current synchronous chat remains available as `context.ai.chat`.
 
-4. **Tools**
+4. **Native reasoning**
+   - Reasoning is opt-in per conversation/request and is enabled only when the
+     selected model advertises the capability.
+   - Provider-native `reasoning_content` / `reasoning` text is rendered in a
+     separate collapsible surface; it is never mixed into the final answer.
+   - Opaque `reasoning_details` are preserved on assistant tool-call messages for
+     provider continuity, but are not presented as readable chain-of-thought.
+   - OpenRouter receives `reasoning.enabled`; DeepSeek receives its native
+     `thinking.type` request shape. Other compatible providers receive
+     `reasoning_effort` only after the caller explicitly opts in.
+
+5. **Tools**
    - Built-in safe tools: provider/model list, memory read/write, search apps/files, HTTP fetch, notifications.
    - Dangerous tools: bash, process kill, permissions request, file write/delete. These require dedicated permissions such as `ai-bash` or exact `invoke:<cmd>`.
    - Bash execution must always use a timeout and return structured `{ status, stdout, stderr, timedOut }`.
    - Current global switches live in Settings -> AI Agent. Agent mode and the master tools switch must be enabled before bash or grep tools run.
    - Grep search is exposed as a real `rg`/`grep` subprocess through `context.ai.search.grep(query, opts?)`, capped by the user-configured result limit.
 
-5. **MCP**
+6. **MCP**
    - Planned Rust host layer uses the official Rust MCP SDK shape: one configured server becomes a tool namespace.
    - MCP tools should be discoverable through `context.ai.tools.list()` and callable through `context.ai.tools.call(name, input)`.
    - MCP server configuration must be user-managed and auditable, not bundled invisibly by plugins.
 
-6. **Memory**
+7. **Memory**
    - User memory is explicit, inspectable, and deletable.
    - Current backing store is `~/.qx/qxai-memory.json`.
    - Future store should move to SQLite with tags, source plugin, timestamps, embeddings, and user-visible enable/disable flags.
 
-7. **Background Tasks**
+8. **Background Tasks**
    - Current in-process task API:
      - `submit`, `list`, `get`, `cancel`
      - states: `queued`, `running`, `succeeded`, `failed`, `cancelled`
@@ -57,7 +78,7 @@ QxAI is the shared AI substrate for built-in modules and plugins. It should not 
    - Running after the app process fully exits requires a LaunchAgent/helper process; do not claim this until that helper is implemented.
    - Future persistent tasks should move the task ledger into SQLite and add `waitingForTool`.
 
-8. **Soul / Persona**
+9. **Soul / Persona**
    - `soul` is the persistent persona layer above memory:
      - default system prompt
      - tone and boundaries
@@ -77,6 +98,14 @@ await context.ai.agentSettings()
 await context.ai.chat("prompt", { provider, model, system })
 await context.ai.chat({ prompt, images: ["data:image/png;base64,..."] })
 await context.ai.stream("prompt", (chunk) => append(chunk), { provider, model })
+await context.ai.streamEvents(
+  "prompt",
+  (event) => {
+    if (event.type === "text_delta") append(event.delta)
+    if (event.type === "reasoning_delta") updateReasoning(event.delta)
+  },
+  { provider, model, reasoning: true },
+)
 await context.ai.runBash("pwd && ls", { cwd, timeoutMs })
 await context.ai.search.grep("TODO", { root: "/path/to/project", maxResults: 50 })
 await context.ai.memory.list()

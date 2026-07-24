@@ -27,6 +27,8 @@ pub struct PluginAiChatRequest {
     pub images: Vec<String>,
     #[serde(default)]
     pub image_detail: Option<String>,
+    #[serde(default)]
+    pub reasoning: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -368,6 +370,17 @@ pub fn plugin_ai_chat(req: PluginAiChatRequest) -> Result<String, String> {
 pub fn plugin_ai_stream_chat(req: PluginAiChatRequest) -> Result<Vec<String>, String> {
     let (provider, model, messages) = normalize_ai_chat_request(req)?;
     crate::g4f::qxai_stream_chat(provider, model, messages)
+}
+
+#[tauri::command]
+pub fn plugin_ai_stream_chat_events(
+    app: tauri::AppHandle,
+    request_id: String,
+    req: PluginAiChatRequest,
+) -> Result<(), String> {
+    let reasoning = req.reasoning;
+    let (provider, model, messages) = normalize_ai_chat_request(req)?;
+    crate::g4f::qxai_stream_chat_events(app, request_id, provider, model, messages, reasoning)
 }
 
 fn normalize_ai_chat_request(

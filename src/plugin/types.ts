@@ -189,6 +189,12 @@ export type PluginAiContentPart =
 export interface PluginAiModel {
   id: string;
   name: string;
+  reasoning?: boolean;
+}
+
+export interface PluginAiStreamEvent {
+  type: "text_delta" | "reasoning_delta";
+  delta: string;
 }
 
 export interface PluginAiProvider {
@@ -231,6 +237,7 @@ export interface PluginAiChatOptions {
   prompt?: string;
   images?: string[];
   imageDetail?: "auto" | "low" | "high";
+  reasoning?: boolean;
   messages?: PluginAiMessage[];
 }
 
@@ -725,6 +732,11 @@ export interface PluginContext {
     stream: (
       input: string | PluginAiChatOptions | PluginAiMessage[],
       onChunk: (chunk: string) => void,
+      options?: Omit<PluginAiChatOptions, "prompt" | "messages">,
+    ) => Promise<string>;
+    streamEvents: (
+      input: string | PluginAiChatOptions | PluginAiMessage[],
+      onEvent: (event: PluginAiStreamEvent) => void,
       options?: Omit<PluginAiChatOptions, "prompt" | "messages">,
     ) => Promise<string>;
     runBash: (

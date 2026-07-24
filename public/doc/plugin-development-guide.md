@@ -280,6 +280,29 @@ Workbench 中带 `command` 的 action 完成后，宿主会调用 `onCommandComp
 | 任意 shell 脚本 | `context.ai.runBash` | `ai-bash` | **慎用**；受 Agent Bash 门控 |
 | LLM | `context.ai.*` | `ai` 等 | 见 AI 文档 |
 
+AI 流式输出必须直接消费宿主事件，不要先等待完整结果再用定时器拆字：
+
+```ts
+await context.ai.stream("总结这篇文章", (chunk) => appendText(chunk), {
+  provider,
+  model,
+})
+
+await context.ai.streamEvents("分析并回答", (event) => {
+  if (event.type === "text_delta") appendText(event.delta)
+  if (event.type === "reasoning_delta") appendReasoning(event.delta)
+}, {
+  provider,
+  model,
+  reasoning: true,
+})
+```
+
+`stream()` 是只转发正文的兼容接口；`streamEvents()` 可区分正文和模型原生推理。
+只有 `models()` 返回的模型声明 `reasoning: true` 时才应向用户展示推理开关。
+推理正文应折叠展示，不得与最终回答混排；供应商返回的 opaque reasoning details
+由宿主维护工具调用连续性，插件不要尝试解释或展示。
+
 ### 3.1.1 内置 React 端口 ↔ 插件端口（不要混用）
 
 | 内置（宿主 React 模块） | 插件 iframe | 关系 |

@@ -1443,6 +1443,64 @@
 - [x] `npm run build`
 - [x] `cargo fmt --check`（`src-tauri/`）
 - [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+
+---
+
+## Bugfix — 窄窗口主从视图与 AI 真流式
+
+**状态**：已实现，等待手动运行态验证。
+
+### 修复内容
+
+- 统一 `.qx-content-split` 的 `760px` 单页协议：列表态只显示列表，打开详情后只显示详情，Esc 逐层退回列表。
+- Clipboard 移除窄窗硬隐藏详情；Documents 点击/Enter 进入全屏编辑器，Esc 返回文件列表；Workbench 容器断点同步隐藏分隔拖拽条。
+- QxAI 普通聊天与 function-calling Agent 共用真实 SSE 增量事件，工具启用时不再等待整段回复后一次显示。
+- Provider 模型目录增加 `reasoning` 能力；对支持模型提供会话级推理开关，并把原生 reasoning 与最终回答分栏折叠展示。
+- 插件 `context.ai.stream()` 改为真实事件转发，新增 `context.ai.streamEvents()` 区分 `text_delta` / `reasoning_delta`。
+- OpenRouter opaque `reasoning_details` 在工具调用轮次中原样回传以保持连续性，但不作为可读思考链展示。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
+- [x] `npm run check`
+- [x] `npm run build`
+- [x] 本次 Rust 文件 `rustfmt --edition 2021 --check src/g4f.rs src/plugin_api.rs`
+- [x] 全仓 `cargo fmt --check`
+- [ ] 手动验证：窗口缩窄至 Island 隐藏后，RSS / Clipboard / Documents / Workbench 的列表、详情、Esc 阶梯。
+- [ ] 手动验证：普通聊天、启用工具的 Agent、插件 `streamEvents()` 以及 OpenRouter / DeepSeek 推理输出。
+
+---
+
+## Refactor — QxPicture API 配置与 Shell 焦点所有权
+
+**状态**：实现、打包和本机安装验证完成。
+
+### 修复内容
+
+- QxPicture 正式源码升级至 0.4.0，删除不受宿主支持的 `context.ui.formDialog` 和不可靠的
+  连续 `window.prompt` 新增流程。
+- “添加 API”改为 Workbench 内联草稿详情：名称、URL、响应类型、JSON method/path 在同一
+  表单编辑；校验成功前不修改持久配置，保存时通过配置写队列原子提交，失败时保留草稿。
+- 新增独立 smoke test，覆盖添加、JSON 字段、持久化重载、无效 URL 不落盘及禁止调用 prompt。
+- `QxModuleSearch` 默认 `autoFocus=false`，所有需要初始搜索焦点的模块显式 opt in。
+- 删除 `QxShell` 的全局 pointer-up 搜索重聚焦；列表、详情、按钮、Workbench 表单和编辑器
+  在 pointer 交互后持续拥有焦点。Launcher 仍保留明确召唤聚焦与裸字符兜底。
+- Action 菜单焦点恢复会尊重新打开的 overlay 或编辑器，不覆盖新的交互所有者。
+
+### 验证
+
+- [x] QxPicture `node --check`
+- [x] QxPicture API draft smoke
+- [x] `npx tsc --noEmit`
+- [x] `npm run test:shell-navigation`
+- [x] Qx `npm run check`、`npm run build`、`cargo check`
+- [x] QxPicture `npm run package:plugins`，0.4.0 包清单、SHA256 与安装版 smoke 通过
+- [x] 安装到 `~/.qx/plugins/qxpicture`；原 0.3.1 可恢复备份，plugin-data 哈希保持一致
+- [x] `npm run tauri build` 产出 `.app` / `.dmg`；本地 ad-hoc 重签后安装到
+  `/Applications/Qx.app`，签名、版本、bundle id 与实际运行进程路径验证通过
+- [ ] 手动召唤窗口后的视觉验收：QxPicture 新增 API 表单，以及 Workbench 输入框 pointer
+  持续持有焦点（自动界面工具无法访问按生命周期策略后台启动、尚未召唤的 Qx 窗口）
 - [ ] 手动验证内置 DuckDuckGo 输出、自定义 provider 输出、已有会话切换模型和异常灵动岛报错。
 
 ---

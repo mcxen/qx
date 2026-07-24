@@ -2,8 +2,10 @@ import type {
   InstalledPlugin,
   PluginAiModelSelection,
   PluginAiProvider,
+  PluginAiStreamEvent,
   PluginContext,
 } from "./types";
+import { listen } from "@tauri-apps/api/event";
 import { handlePluginRpc } from "./rpcMethods";
 import { DEFAULT_SETTINGS, useSettingsStore } from "../modules/settings/store";
 import { createPluginUiKit, enhancePluginCli } from "./cliWorkbench";
@@ -30,6 +32,54 @@ export function createPluginContext(
 ): PluginContext {
   const rpc = (method: string, payload: Record<string, unknown> = {}) =>
     handlePluginRpc(plugin, method, payload, hooks);
+  const streamAi = async (
+    input: Parameters<PluginContext["ai"]["streamEvents"]>[0],
+    onEvent: (event: PluginAiStreamEvent) => void,
+    options: Parameters<PluginContext["ai"]["streamEvents"]>[2] = {},
+  ): Promise<string> => {
+    const streamRequestId = `plugin-ai-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .slice(2, 9)}`;
+    let full = "";
+    let unlisten: (() => void) | undefined;
+    return await new Promise<string>((resolve, reject) => {
+      listen<{
+        requestId: string;
+        kind: string;
+        chunk: string;
+        done: boolean;
+        error?: string;
+      }>("qxai://stream", (event) => {
+        if (event.payload.requestId !== streamRequestId) return;
+        if (event.payload.error) {
+          unlisten?.();
+          reject(new Error(event.payload.error));
+          return;
+        }
+        if (event.payload.done) {
+          unlisten?.();
+          resolve(full || event.payload.chunk);
+          return;
+        }
+        const type = event.payload.kind === "reasoning"
+          ? "reasoning_delta"
+          : "text_delta";
+        if (type === "text_delta") full += event.payload.chunk;
+        onEvent({ type, delta: event.payload.chunk });
+      })
+        .then((un) => {
+          unlisten = un;
+          return rpc("aiStreamChat", {
+            ...createAiChatPayload(input, options),
+            streamRequestId,
+          });
+        })
+        .catch((error) => {
+          unlisten?.();
+          reject(error);
+        });
+    });
+  };
 
   return {
     pluginId: plugin.id,
@@ -194,17 +244,11 @@ export function createPluginContext(
         rpc("aiAgentSettings") as ReturnType<PluginContext["ai"]["agentSettings"]>,
       chat: (input, options) =>
         rpc("aiChat", createAiChatPayload(input, options)) as Promise<string>,
-      stream: async (input, onChunk, options) => {
-        const chunks = (await rpc("aiStreamChat", createAiChatPayload(input, options))) as string[];
-        let full = "";
-        for (const chunk of chunks) {
-          const text = String(chunk ?? "");
-          full += text;
-          onChunk(text);
-          await new Promise((resolve) => window.setTimeout(resolve, 0));
-        }
-        return full;
-      },
+      stream: (input, onChunk, options) =>
+        streamAi(input, (event) => {
+          if (event.type === "text_delta") onChunk(event.delta);
+        }, options),
+      streamEvents: streamAi,
       runBash: (script, options = {}) =>
         rpc("aiRunBash", {
           script,

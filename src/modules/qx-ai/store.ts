@@ -13,6 +13,7 @@ export type { AgentStep } from "./react-agent";
 export interface G4fMessage {
   role: "user" | "assistant" | "system";
   content: string;
+  reasoning?: string;
   steps?: AgentStep[];
 }
 
@@ -23,12 +24,13 @@ export interface G4fConversation {
   messages: G4fMessage[];
   provider: string;
   model: string;
+  reasoningEnabled?: boolean;
 }
 
 export interface G4fProvider {
   id: string;
   name: string;
-  models: { id: string; name: string }[];
+  models: { id: string; name: string; reasoning?: boolean }[];
   baseUrl?: string;
   requiresApiKey?: boolean;
 }
@@ -48,8 +50,10 @@ export interface BuiltInProviderCredential {
 
 interface StreamEvent {
   requestId: string;
+  kind: "text" | "reasoning" | "done";
   chunk: string;
   done: boolean;
+  message?: unknown;
   error?: string;
 }
 
@@ -111,6 +115,7 @@ interface G4fStore {
   streaming: boolean;
   streamingConversationId: string | null;
   streamedContent: string;
+  streamedReasoning: string;
   streamingSteps: AgentStep[];
   error: string | null;
   view: G4fView;
@@ -132,6 +137,7 @@ interface G4fStore {
   renameConversation: (id: string, name: string) => void;
   selectConversation: (id: string) => void;
   setConversationModel: (id: string, provider: string, model: string) => void;
+  setConversationReasoning: (id: string, enabled: boolean) => void;
 
   sendMessage: (content: string) => Promise<void>;
   clearMessages: () => void;
@@ -193,6 +199,8 @@ interface StreamChatEventsArgs {
   model: string;
   messages: G4fMessage[];
   onChunk: (full: string) => void;
+  onReasoning: (full: string) => void;
+  reasoning: boolean;
 }
 
 async function streamChatEvents({
@@ -201,8 +209,11 @@ async function streamChatEvents({
   model,
   messages,
   onChunk,
+  onReasoning,
+  reasoning,
 }: StreamChatEventsArgs): Promise<string> {
   let responseText = "";
+  let reasoningText = "";
   let unlisten: (() => void) | undefined;
   let settled = false;
   let timer: number | undefined;
@@ -234,8 +245,13 @@ async function streamChatEvents({
         if (stop()) resolve(responseText || event.payload.chunk);
         return;
       }
-      responseText += event.payload.chunk;
-      onChunk(responseText);
+      if (event.payload.kind === "reasoning") {
+        reasoningText += event.payload.chunk;
+        onReasoning(reasoningText);
+      } else {
+        responseText += event.payload.chunk;
+        onChunk(responseText);
+      }
     })
       .then((un) => {
         if (settled) {
@@ -252,6 +268,7 @@ async function streamChatEvents({
           provider,
           model,
           messages,
+          reasoning,
         });
       })
       .catch((err) => {
@@ -270,6 +287,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   streaming: false,
   streamingConversationId: null,
   streamedContent: "",
+  streamedReasoning: "",
   streamingSteps: [],
   error: null,
   view: "list",
@@ -308,6 +326,9 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         : [],
       provider: selection.provider,
       model: selection.model,
+      reasoningEnabled: providers
+        .find((item) => item.id === selection.provider)
+        ?.models.find((item) => item.id === selection.model)?.reasoning ?? false,
     };
     set({
       conversations: [...conversations, conv],
@@ -344,12 +365,32 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     set((s) => ({
       conversations: s.conversations.map((c) =>
         c.id === id
-          ? { ...c, provider: selection.provider, model: selection.model }
+          ? {
+              ...c,
+              provider: selection.provider,
+              model: selection.model,
+              reasoningEnabled:
+                providers
+                  .find((item) => item.id === selection.provider)
+                  ?.models.find((item) => item.id === selection.model)?.reasoning
+                  ? (c.reasoningEnabled ?? true)
+                  : false,
+            }
           : c,
       ),
       currentProvider: selection.provider,
       currentModel: selection.model,
       error: null,
+    }));
+  },
+
+  setConversationReasoning: (id, enabled) => {
+    set((state) => ({
+      conversations: state.conversations.map((conversation) =>
+        conversation.id === id
+          ? { ...conversation, reasoningEnabled: enabled }
+          : conversation,
+      ),
     }));
   },
 
@@ -399,6 +440,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       streaming: true,
       streamingConversationId: currentConversationId,
       streamedContent: "",
+      streamedReasoning: "",
       streamingSteps: [],
       error: null,
     });
@@ -408,6 +450,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         streaming: false,
         streamingConversationId: null,
         streamedContent: "",
+        streamedReasoning: "",
         streamingSteps: [],
       });
       return;
@@ -459,11 +502,19 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
                 ? { streamedContent: text }
                 : s,
             ),
+          onReasoningStream: (text) =>
+            set((s) =>
+              s.streamingConversationId === currentConversationId
+                ? { streamedReasoning: text }
+                : s,
+            ),
+          reasoning: Boolean(titledConv.reasoningEnabled),
         });
 
         const assistantMessage: G4fMessage = {
           role: "assistant",
           content: result.finalAnswer,
+          reasoning: result.reasoning,
           steps: result.steps,
         };
 
@@ -476,6 +527,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           streaming: false,
           streamingConversationId: null,
           streamedContent: "",
+          streamedReasoning: "",
           streamingSteps: [],
         }));
         return;
@@ -487,10 +539,17 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         provider: selection.provider,
         model: selection.model,
         messages: titledConv.messages,
+        reasoning: Boolean(titledConv.reasoningEnabled),
         onChunk: (full) =>
           set((s) =>
             s.streamingConversationId === currentConversationId
               ? { streamedContent: full }
+              : s,
+          ),
+        onReasoning: (full) =>
+          set((s) =>
+            s.streamingConversationId === currentConversationId
+              ? { streamedReasoning: full }
               : s,
           ),
       });
@@ -498,6 +557,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       const assistantMessage: G4fMessage = {
         role: "assistant",
         content: response,
+        reasoning: get().streamedReasoning || undefined,
       };
 
       set((s) => ({
@@ -509,6 +569,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         streaming: false,
         streamingConversationId: null,
         streamedContent: "",
+        streamedReasoning: "",
         streamingSteps: [],
       }));
     } catch (e) {
@@ -516,6 +577,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         streaming: false,
         streamingConversationId: null,
         streamedContent: "",
+        streamedReasoning: "",
         streamingSteps: [],
         error: s.currentConversationId === currentConversationId ? String(e) : s.error,
       }));

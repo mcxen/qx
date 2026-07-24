@@ -1,5 +1,6 @@
 import { Suspense, lazy, memo, useMemo } from "react";
 import { Brain, CheckCircle2, Loader2, Search, Wrench, XCircle } from "lucide-react";
+import { useT } from "../../i18n";
 import type { AgentStep } from "./react-agent";
 const MarkdownRenderer = lazy(() => import("./MarkdownRenderer"));
 
@@ -148,18 +149,34 @@ export const AgentStepsView = memo(function AgentStepsView({ steps }: { steps: A
 
 export function AiMessageContent({
   content,
+  reasoning,
   streaming = false,
   steps,
 }: {
   content: string;
+  reasoning?: string;
   streaming?: boolean;
   steps?: AgentStep[];
 }) {
+  const t = useT();
   const parts = useMemo(() => parseParts(content), [content]);
 
   return (
     <>
       {steps && steps.length > 0 && <AgentStepsView steps={steps} />}
+      {reasoning ? (
+        <details className="qx-ai-reasoning" open={streaming}>
+          <summary>
+            <Brain size={13} />
+            <span>
+              {streaming
+                ? t("qxai.reasoning.streaming", "Reasoning…")
+                : t("qxai.reasoning", "Reasoning")}
+            </span>
+          </summary>
+          <div className="qx-ai-reasoning-body">{reasoning}</div>
+        </details>
+      ) : null}
       <Suspense fallback={<div className="qx-md-body">{content}</div>}>
         {parts.map((part, index) =>
           part.type === "tool" ? (

@@ -7,7 +7,7 @@
 
 ## 多源插件库（镜像）
 
-Qx 支持配置 **多个** `index.json` 地址（`settings.plugin_registries`）：
+Qx 支持配置 **多个** 插件库地址（`settings.plugin_registries`）：
 
 - 默认源：`Qx Official` → `https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json`
 - 用户可在 **设置 → 扩展 → 浏览 → 插件库** 中添加国内镜像 / 私有目录
@@ -15,7 +15,25 @@ Qx 支持配置 **多个** `index.json` 地址（`settings.plugin_registries`）
 - 同一 `id` 出现在多个库时，详情可 **选择从哪个库安装**
 - 顶部过滤器可只看某一库；各库拉取成功/失败状态以徽章展示
 
-镜像只需托管与官方兼容的 `index.json`（及其中 `download_url` 指向的 `.qx-plugin` 文件）。
+### 可填写的 URL 形态
+
+| 填写内容 | 行为 |
+|----------|------|
+| 完整 `…/index.json` | 直接拉取（GitHub raw / Gogs raw 均可） |
+| Gogs / Gitea 仓库首页，如 `http://host:port/owner/repo` | 自动尝试 `…/raw/main/index.json` 与 `…/raw/master/index.json` |
+| GitHub 仓库根 | 自动展开到 `raw.githubusercontent.com/…/index.json` |
+
+> **注意**：仓库 HTML 首页会返回 200，但内容不是 JSON。未做自动展开前，把 Gogs 首页当 `index_url` 会失败；现在 Qx 会改写为 raw 路径。
+
+### 安装时的下载回退
+
+镜像 `index.json` 里的 `download_url` 若仍指向 GitHub raw，安装时会：
+
+1. **优先**尝试与 `index.json` 同目录的 `.qx-plugin`（例如 Gogs `…/raw/main/brew.qx-plugin`）
+2. 再试原始 `download_url` / GitHub 候选
+3. 必要时从仓库 zip archive 中抽取文件（GitHub codeload 或 Gogs `…/archive/{branch}.zip`）
+
+推荐镜像仓库同时托管 `index.json` 与各 `.qx-plugin`；`download_url` 也可写成相对路径（如 `brew.qx-plugin`）。
 
 ## 目录结构
 

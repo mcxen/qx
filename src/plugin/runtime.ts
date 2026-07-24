@@ -122,6 +122,7 @@ export function buildPluginRuntimeHtml(
       const initialTheme = JSON.parse(${serializeForInlineScript(JSON.stringify(initialTheme))}); applyPluginTheme(initialTheme.theme, initialTheme.tokens);
       let plugin = null;
       const pending = new Map();
+      const aiStreams = new Map();
       const contextTimers = new Map();
       let timerCounter = 0;
       let workbenchMounted = false;
@@ -457,16 +458,46 @@ export function buildPluginRuntimeHtml(
           defaultModel: () => rpc('aiDefaultModel'),
           agentSettings: () => rpc('aiAgentSettings'),
           chat: (input, options = {}) => rpc('aiChat', createAiChatPayload(input, options)),
-          stream: async (input, onChunk, options = {}) => {
-            const chunks = await rpc('aiStreamChat', createAiChatPayload(input, options));
+          streamEvents: (input, onEvent, options = {}) => {
+            const streamRequestId = generateId();
             let full = '';
-            for (const chunk of chunks || []) {
-              const text = String(chunk || '');
-              full += text;
-              if (typeof onChunk === 'function') onChunk(text);
-              await new Promise((resolve) => window.setTimeout(resolve, 0));
-            }
-            return full;
+            return new Promise((resolve, reject) => {
+              aiStreams.set(streamRequestId, {
+                accept(stream) {
+                  if (stream.error) {
+                    aiStreams.delete(streamRequestId);
+                    reject(new Error(stream.error));
+                    return;
+                  }
+                  if (stream.done) {
+                    aiStreams.delete(streamRequestId);
+                    resolve(full || String(stream.chunk || ''));
+                    return;
+                  }
+                  const delta = String(stream.chunk || '');
+                  if (stream.kind === 'reasoning') {
+                    if (typeof onEvent === 'function') onEvent({ type: 'reasoning_delta', delta });
+                  } else {
+                    full += delta;
+                    if (typeof onEvent === 'function') onEvent({ type: 'text_delta', delta });
+                  }
+                },
+              });
+              rpc('aiStreamChat', {
+                ...createAiChatPayload(input, options),
+                streamRequestId,
+              }).catch((error) => {
+                aiStreams.delete(streamRequestId);
+                reject(error);
+              });
+            });
+          },
+          stream: (input, onChunk, options = {}) => {
+            return context.ai.streamEvents(input, (event) => {
+              if (event.type === 'text_delta' && typeof onChunk === 'function') {
+                onChunk(event.delta);
+              }
+            }, options);
           },
           runBash: (script, options = {}) => rpc('aiRunBash', {
             script: String(script || ''),
@@ -590,6 +621,14 @@ export function buildPluginRuntimeHtml(
           pending.delete(requestId);
           if (error) req.reject(new Error(error));
           else req.resolve(result);
+          return;
+        }
+
+        if (type === 'qx:ai-stream') {
+          if (data.pluginId !== pluginId || data.runtimeId !== runtimeId) return;
+          const stream = data.stream || {};
+          const receiver = aiStreams.get(stream.requestId);
+          if (receiver) receiver.accept(stream);
           return;
         }
 

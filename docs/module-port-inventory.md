@@ -27,7 +27,7 @@
 | 主从键盘区域 | **`useQxMasterDetail`** | 插件可选自实现 region | 与 QxShell.navigation 配合 |
 | 二维网格索引 | **`qxGridNavigation`** | Workbench Gallery 由宿主处理 | 通用纯函数；不得放回 PluginHost 专用算法 |
 | Actions 数据 / 右栏渲染 | **`QxShellAction` + `QxActionList`** | Workbench 发布纯 action descriptor，宿主映射一次 | Bottom Bar、Cmd/Ctrl+K、Context 使用同一动作数据；快捷键统一平台化 |
-| 模块搜索框 | **`QxModuleSearch`** | Workbench 由宿主渲染受控 query；custom panel 自绘 input | Workbench handler 必须同步回画；Launcher 搜索另见 SearchBar |
+| 模块搜索框 | **`QxModuleSearch`**（默认不自动聚焦；首要搜索页显式 `autoFocus`） | Workbench 由宿主渲染受控 query；custom panel 自绘 input | Workbench handler 必须同步回画；pointer 进入表单/详情后不得抢回搜索焦点；Launcher 搜索另见 SearchBar |
 | 列表 loading | **`QxListLoading`** | Workbench 由宿主保留旧数据或渲染 skeleton；custom panel 自理 | 不得把加载态做成整页空白 |
 | 网络 | `invoke` 领域命令 / 直接 provider | **`context.http.fetch`** 或 **`invoke:cmd`** | 插件需 `http` 或精确 `invoke:` |
 | 跨会话缓存 | localStorage / Rust 磁盘缓存 | **`context.storage.persist`** | SWR：先画缓存再刷新 |

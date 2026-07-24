@@ -29,10 +29,15 @@ const shortcutRecorderSource = readFileSync(
   new URL("../src/components/ShortcutRecorder.tsx", import.meta.url),
   "utf8",
 );
+const moduleSearchSource = readFileSync(
+  new URL("../src/components/QxModuleSearch.tsx", import.meta.url),
+  "utf8",
+);
 
-// Shortcut recording owns keyboard focus. The shell's normal pointer-up
-// search restore must recognize the shared focus-preservation marker.
-assert.match(qxShellSource, /data-qx-search-focus="preserve"/);
+// Search fields never reclaim focus after arbitrary pointer interaction.
+// Surfaces opt into one-shot autofocus instead of inheriting permanent ownership.
+assert.doesNotMatch(qxShellSource, /window\.addEventListener\("pointerup"/);
+assert.match(moduleSearchSource, /autoFocus = false/);
 assert.match(shortcutRecorderSource, /data-qx-search-focus="preserve"/);
 
 const list = (overrides = {}) => resolveQxListNavigation({

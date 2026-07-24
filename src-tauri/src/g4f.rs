@@ -18,6 +18,8 @@ pub struct ChatMessage {
 pub struct ProviderModel {
     pub id: String,
     pub name: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub reasoning: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -60,8 +62,11 @@ pub struct BuiltInProviderCredential {
 #[serde(rename_all = "camelCase")]
 pub struct QxaiStreamEvent {
     pub request_id: String,
+    pub kind: String,
     pub chunk: String,
     pub done: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -153,10 +158,23 @@ fn openai_list_models(base_url: &str, api_key: &str) -> Result<Vec<ProviderModel
         .and_then(|data| data.as_array())
         .ok_or_else(|| "models response missing data array".to_string())?
         .iter()
-        .filter_map(|item| item.get("id").and_then(|id| id.as_str()))
-        .map(|id| ProviderModel {
-            id: id.to_string(),
-            name: id.to_string(),
+        .filter_map(|item| {
+            let id = item.get("id").and_then(|id| id.as_str())?;
+            let reasoning = item
+                .get("supported_parameters")
+                .and_then(|value| value.as_array())
+                .is_some_and(|parameters| {
+                    parameters.iter().any(|parameter| {
+                        parameter.as_str().is_some_and(|name| {
+                            matches!(name, "reasoning" | "reasoning_effort" | "include_reasoning")
+                        })
+                    })
+                });
+            Some(ProviderModel {
+                id: id.to_string(),
+                name: id.to_string(),
+                reasoning,
+            })
         })
         .collect::<Vec<_>>();
     models.sort_by(|a, b| a.id.cmp(&b.id));
@@ -216,16 +234,18 @@ fn provider_openai_chat_stream(
     api_key: &str,
     model: &str,
     messages: &[ChatMessage],
-    mut on_chunk: impl FnMut(&str),
+    reasoning: bool,
+    mut on_delta: impl FnMut(&str, &str),
 ) -> Result<String, String> {
     let client = make_client()?;
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "model": model,
         "messages": messages,
         "stream": true,
     });
+    apply_reasoning_request(base_url, &mut body, reasoning);
 
     let resp = client
         .post(&url)
@@ -254,9 +274,16 @@ fn provider_openai_chat_stream(
         let Ok(value) = serde_json::from_str::<serde_json::Value>(data) else {
             continue;
         };
-        if let Some(content) = value["choices"][0]["delta"]["content"].as_str() {
+        let delta = &value["choices"][0]["delta"];
+        if let Some(reasoning) = delta["reasoning_content"]
+            .as_str()
+            .or_else(|| delta["reasoning"].as_str())
+        {
+            on_delta("reasoning", reasoning);
+        }
+        if let Some(content) = delta["content"].as_str() {
             full.push_str(content);
-            on_chunk(content);
+            on_delta("text", content);
         }
     }
 
@@ -264,6 +291,19 @@ fn provider_openai_chat_stream(
         return provider_openai_chat(base_url, api_key, model, messages);
     }
     Ok(full)
+}
+
+fn apply_reasoning_request(base_url: &str, body: &mut serde_json::Value, enabled: bool) {
+    if !enabled {
+        return;
+    }
+    if base_url.contains("openrouter.ai") {
+        body["reasoning"] = serde_json::json!({ "enabled": true });
+    } else if base_url.contains("deepseek.com") {
+        body["thinking"] = serde_json::json!({ "type": "enabled" });
+    } else {
+        body["reasoning_effort"] = serde_json::Value::String("medium".to_string());
+    }
 }
 
 async fn provider_openai_chat_with_tools(
@@ -318,6 +358,122 @@ async fn provider_openai_chat_with_tools(
         .ok_or_else(|| "no message in API response".to_string())
 }
 
+fn provider_openai_chat_with_tools_stream(
+    base_url: &str,
+    api_key: &str,
+    model: &str,
+    messages: &[serde_json::Value],
+    tools: &[serde_json::Value],
+    tool_choice: &str,
+    reasoning: bool,
+    mut on_delta: impl FnMut(&str, &str),
+) -> Result<serde_json::Value, String> {
+    let client = make_client()?;
+    let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
+    let mut body = serde_json::json!({
+        "model": model,
+        "messages": messages,
+        "stream": true,
+    });
+    if !tools.is_empty() {
+        body["tools"] = serde_json::Value::Array(tools.to_vec());
+        body["tool_choice"] = serde_json::Value::String(tool_choice.to_string());
+    }
+    apply_reasoning_request(base_url, &mut body, reasoning);
+
+    let resp = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .header("Authorization", format!("Bearer {}", api_key))
+        .json(&body)
+        .send()
+        .map_err(|e| format!("request to {url} failed: {e}"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().unwrap_or_default();
+        return Err(format!("{url} returned HTTP {status}: {text}"));
+    }
+
+    let mut content = String::new();
+    let mut reasoning_content = String::new();
+    let mut reasoning_details = Vec::<serde_json::Value>::new();
+    let mut tool_calls = Vec::<serde_json::Value>::new();
+    let reader = std::io::BufReader::new(resp);
+    for line in reader.lines() {
+        let line = line.map_err(|e| format!("failed to read response stream from {url}: {e}"))?;
+        let Some(data) = line.strip_prefix("data: ") else {
+            continue;
+        };
+        if data == "[DONE]" {
+            break;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(data) else {
+            continue;
+        };
+        let delta = &value["choices"][0]["delta"];
+        if let Some(text) = delta["reasoning_content"]
+            .as_str()
+            .or_else(|| delta["reasoning"].as_str())
+        {
+            reasoning_content.push_str(text);
+            on_delta("reasoning", text);
+        }
+        if let Some(details) = delta["reasoning_details"].as_array() {
+            reasoning_details.extend(details.iter().cloned());
+        }
+        if let Some(text) = delta["content"].as_str() {
+            content.push_str(text);
+            on_delta("text", text);
+        }
+        if let Some(calls) = delta["tool_calls"].as_array() {
+            for call in calls {
+                let index = call["index"].as_u64().unwrap_or(0) as usize;
+                while tool_calls.len() <= index {
+                    tool_calls.push(serde_json::json!({
+                        "id": "",
+                        "type": "function",
+                        "function": { "name": "", "arguments": "" }
+                    }));
+                }
+                let target = &mut tool_calls[index];
+                if let Some(id) = call["id"].as_str() {
+                    target["id"] = serde_json::Value::String(id.to_string());
+                }
+                if let Some(kind) = call["type"].as_str() {
+                    target["type"] = serde_json::Value::String(kind.to_string());
+                }
+                if let Some(name) = call["function"]["name"].as_str() {
+                    target["function"]["name"] = serde_json::Value::String(name.to_string());
+                }
+                if let Some(arguments) = call["function"]["arguments"].as_str() {
+                    let existing = target["function"]["arguments"].as_str().unwrap_or_default();
+                    target["function"]["arguments"] =
+                        serde_json::Value::String(format!("{existing}{arguments}"));
+                }
+            }
+        }
+    }
+
+    let mut message = serde_json::json!({
+        "role": "assistant",
+        "content": if content.is_empty() {
+            serde_json::Value::Null
+        } else {
+            serde_json::Value::String(content)
+        },
+    });
+    if !tool_calls.is_empty() {
+        message["tool_calls"] = serde_json::Value::Array(tool_calls);
+    }
+    if !reasoning_content.is_empty() {
+        message["reasoning_content"] = serde_json::Value::String(reasoning_content);
+    }
+    if !reasoning_details.is_empty() {
+        message["reasoning_details"] = serde_json::Value::Array(reasoning_details);
+    }
+    Ok(message)
+}
+
 /// Send a chat message to an AI provider and get a complete response.
 #[tauri::command]
 pub fn g4f_chat(
@@ -345,7 +501,12 @@ pub fn g4f_stream_chat(
         &endpoint.api_key,
         &model,
         &messages,
-        |chunk| chunks.push(chunk.to_string()),
+        false,
+        |kind, chunk| {
+            if kind == "text" {
+                chunks.push(chunk.to_string());
+            }
+        },
     )?;
     Ok(chunks)
 }
@@ -373,6 +534,7 @@ pub fn g4f_list_providers() -> Vec<ProviderInfo> {
             models: vec![ProviderModel {
                 id: "openrouter/auto".to_string(),
                 name: "Auto Router".to_string(),
+                reasoning: true,
             }],
         },
         ProviderInfo {
@@ -384,10 +546,12 @@ pub fn g4f_list_providers() -> Vec<ProviderInfo> {
                 ProviderModel {
                     id: "deepseek-v4-flash".to_string(),
                     name: "DeepSeek V4 Flash".to_string(),
+                    reasoning: true,
                 },
                 ProviderModel {
                     id: "deepseek-v4-pro".to_string(),
                     name: "DeepSeek V4 Pro".to_string(),
+                    reasoning: true,
                 },
             ],
         },
@@ -488,6 +652,67 @@ pub async fn qxai_chat_with_tools(
 }
 
 #[tauri::command]
+pub fn qxai_stream_chat_with_tools_events(
+    app: tauri::AppHandle,
+    request_id: String,
+    provider: Option<String>,
+    model: Option<String>,
+    messages: Vec<serde_json::Value>,
+    tools: Vec<serde_json::Value>,
+    tool_choice: Option<String>,
+    reasoning: Option<bool>,
+) -> Result<(), String> {
+    std::thread::spawn(move || {
+        let stream_app = app.clone();
+        let stream_request_id = request_id.clone();
+        let emit_delta = |kind: &str, chunk: &str| {
+            let _ = stream_app.emit(
+                "qxai://stream",
+                QxaiStreamEvent {
+                    request_id: stream_request_id.clone(),
+                    kind: kind.to_string(),
+                    chunk: chunk.to_string(),
+                    done: false,
+                    message: None,
+                    error: None,
+                },
+            );
+        };
+        let result = (|| {
+            let providers = qxai_provider_catalog();
+            let selection = resolve_model_selection(&providers, provider, model)?;
+            let endpoint = provider_endpoint(&selection.provider)?;
+            provider_openai_chat_with_tools_stream(
+                &endpoint.base_url,
+                &endpoint.api_key,
+                &selection.model,
+                &messages,
+                &tools,
+                tool_choice.as_deref().unwrap_or("auto"),
+                reasoning.unwrap_or(false),
+                emit_delta,
+            )
+        })();
+        let (message, error) = match result {
+            Ok(message) => (Some(message), None),
+            Err(error) => (None, Some(error)),
+        };
+        let _ = app.emit(
+            "qxai://stream",
+            QxaiStreamEvent {
+                request_id,
+                kind: "done".to_string(),
+                chunk: String::new(),
+                done: true,
+                message,
+                error,
+            },
+        );
+    });
+    Ok(())
+}
+
+#[tauri::command]
 pub fn qxai_stream_chat(
     provider: Option<String>,
     model: Option<String>,
@@ -506,17 +731,20 @@ pub fn qxai_stream_chat_events(
     provider: Option<String>,
     model: Option<String>,
     messages: Vec<ChatMessage>,
+    reasoning: Option<bool>,
 ) -> Result<(), String> {
     std::thread::spawn(move || {
         let stream_app = app.clone();
         let stream_request_id = request_id.clone();
-        let emit_chunk = |chunk: &str| {
+        let emit_chunk = |kind: &str, chunk: &str| {
             let _ = stream_app.emit(
                 "qxai://stream",
                 QxaiStreamEvent {
                     request_id: stream_request_id.clone(),
+                    kind: kind.to_string(),
                     chunk: chunk.to_string(),
                     done: false,
+                    message: None,
                     error: None,
                 },
             );
@@ -532,6 +760,7 @@ pub fn qxai_stream_chat_events(
                 &endpoint.api_key,
                 &selection.model,
                 &messages,
+                reasoning.unwrap_or(false),
                 emit_chunk,
             )
         }));
@@ -558,8 +787,10 @@ pub fn qxai_stream_chat_events(
             "qxai://stream",
             QxaiStreamEvent {
                 request_id,
+                kind: "done".to_string(),
                 chunk,
                 done: true,
+                message: None,
                 error,
             },
         );

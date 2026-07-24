@@ -228,6 +228,7 @@ export default function V2exPanel() {
       search={
         <QxModuleSearch
           value={query}
+          autoFocus
           onChange={setQuery}
           placeholder="Search V2EX topics..."
         />

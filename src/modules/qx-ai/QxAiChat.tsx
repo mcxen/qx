@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Hammer, UserRound } from "lucide-react";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
-import { Select } from "../../components/ui";
+import { Select, Toggle } from "../../components/ui";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
@@ -20,6 +20,7 @@ export default function QxAiChat() {
     streaming,
     streamingConversationId,
     streamedContent,
+    streamedReasoning,
     streamingSteps,
     error,
     providers,
@@ -29,6 +30,7 @@ export default function QxAiChat() {
     deleteConversation,
     createConversation,
     setConversationModel,
+    setConversationReasoning,
     loadProviders,
   } = useG4fStore();
 
@@ -55,6 +57,7 @@ export default function QxAiChat() {
     [providers, conv?.provider],
   );
   const activeModels = activeProvider?.models ?? [];
+  const activeModel = activeModels.find((model) => model.id === conv?.model);
   const canChat = Boolean(
     conv &&
       activeProvider &&
@@ -195,6 +198,7 @@ export default function QxAiChat() {
       search={
         <QxModuleSearch
           value={input}
+          autoFocus
           onChange={setInput}
           onFocus={requestPanelKeyWindow}
           disabled={isCurrentConversationStreaming || !conv}
@@ -257,6 +261,26 @@ export default function QxAiChat() {
               )}
             </div>
           )}
+
+          <div className="qx-action-title">{t("qxai.reasoning", "Reasoning")}</div>
+          <div className="qx-ai-reasoning-setting">
+            <div>
+              <strong>{t("qxai.reasoning", "Reasoning")}</strong>
+              <span>
+                {activeModel?.reasoning
+                  ? t("qxai.reasoning.desc", "Show the model's native reasoning stream")
+                  : t("qxai.reasoning.unsupported", "Not advertised by this model")}
+              </span>
+            </div>
+            <Toggle
+              value={Boolean(conv?.reasoningEnabled)}
+              disabled={!conv || !activeModel?.reasoning || isCurrentConversationStreaming}
+              onChange={(enabled) => {
+                if (conv) setConversationReasoning(conv.id, enabled);
+              }}
+              ariaLabel={t("qxai.reasoning", "Reasoning")}
+            />
+          </div>
 
           <div className="qx-action-title">{t("qxai.tools", "Tools")}</div>
           <div className="qx-ai-tool-summary">
@@ -328,13 +352,18 @@ export default function QxAiChat() {
                   {msg.role === "user" ? "You" : conv?.provider || "AI"}
                 </div>
                 <div className="qx-ai-message-bubble">
-                  <AiMessageContent content={msg.content} steps={msg.steps} />
+                  <AiMessageContent
+                    content={msg.content}
+                    reasoning={msg.reasoning}
+                    steps={msg.steps}
+                  />
                 </div>
               </div>
             </div>
           ))}
 
-          {isCurrentConversationStreaming && (streamedContent || streamingSteps.length > 0) && (
+          {isCurrentConversationStreaming
+            && (streamedContent || streamedReasoning || streamingSteps.length > 0) && (
             <div className="qx-ai-message is-assistant">
               <div className="qx-ai-message-avatar" aria-hidden="true">
                 <Bot size={14} />
@@ -344,6 +373,7 @@ export default function QxAiChat() {
                 <div className="qx-ai-message-bubble">
                   <AiMessageContent
                     content={streamedContent}
+                    reasoning={streamedReasoning}
                     streaming
                     steps={streamingSteps}
                   />

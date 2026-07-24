@@ -145,6 +145,7 @@ export default function QxAiPanel() {
       search={
         <QxModuleSearch
           value={query}
+          autoFocus
           onChange={setQuery}
           placeholder={t("qxai.searchConversations", "Search conversations…")}
         />

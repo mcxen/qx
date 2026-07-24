@@ -504,11 +504,14 @@ export interface AgentRunOptions {
   onStep: (step: AgentStep) => void;
   onStepUpdate: (id: string, patch: Partial<AgentStep>) => void;
   onAssistantStream: (text: string) => void;
+  onReasoningStream: (text: string) => void;
+  reasoning: boolean;
   maxIterations?: number;
 }
 
 export interface AgentRunResult {
   finalAnswer: string;
+  reasoning?: string;
   steps: AgentStep[];
 }
 
@@ -701,6 +704,87 @@ interface OpenAIMessage {
   role: string;
   content: string | null;
   tool_calls?: OpenAIToolCall[];
+  reasoning_content?: string;
+  reasoning_details?: unknown[];
+}
+
+interface FunctionStreamEvent {
+  requestId: string;
+  kind: "text" | "reasoning" | "done";
+  chunk: string;
+  done: boolean;
+  message?: OpenAIMessage;
+  error?: string;
+}
+
+async function streamFunctionCallingOnce(
+  opts: AgentRunOptions,
+  messages: Array<Record<string, unknown>>,
+  tools: Array<Record<string, unknown>>,
+): Promise<OpenAIMessage> {
+  const requestId = `qxai-tools-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 9)}`;
+  let content = "";
+  let reasoning = "";
+  let unlisten: (() => void) | undefined;
+  let settled = false;
+  const stop = () => {
+    if (settled) return false;
+    settled = true;
+    try {
+      unlisten?.();
+    } catch {
+      // ignore listener cleanup failures
+    }
+    return true;
+  };
+
+  return await new Promise<OpenAIMessage>((resolve, reject) => {
+    listen<FunctionStreamEvent>("qxai://stream", (event) => {
+      if (event.payload.requestId !== requestId) return;
+      if (event.payload.error) {
+        if (stop()) reject(new Error(event.payload.error));
+        return;
+      }
+      if (event.payload.done) {
+        if (stop()) {
+          resolve(event.payload.message ?? {
+            role: "assistant",
+            content: content || null,
+            reasoning_content: reasoning || undefined,
+          });
+        }
+        return;
+      }
+      if (event.payload.kind === "reasoning") {
+        reasoning += event.payload.chunk;
+        opts.onReasoningStream(reasoning);
+      } else {
+        content += event.payload.chunk;
+        opts.onAssistantStream(content);
+      }
+    })
+      .then((un) => {
+        if (settled) {
+          un();
+          return;
+        }
+        unlisten = un;
+        return invoke("qxai_stream_chat_with_tools_events", {
+          requestId,
+          provider: opts.provider,
+          model: opts.model,
+          messages,
+          tools,
+          toolChoice: "auto",
+          reasoning: opts.reasoning,
+        });
+      })
+      .catch((error) => {
+        if (stop()) reject(error instanceof Error ? error : new Error(String(error)));
+      });
+  });
 }
 
 export async function runFunctionCallingAgent(
@@ -734,13 +818,7 @@ export async function runFunctionCallingAgent(
   for (let i = 0; i < maxIterations; i++) {
     let message: OpenAIMessage;
     try {
-      message = await invoke<OpenAIMessage>("qxai_chat_with_tools", {
-        provider: opts.provider,
-        model: opts.model,
-        messages: working,
-        tools,
-        toolChoice: "auto",
-      });
+      message = await streamFunctionCallingOnce(opts, working, tools);
     } catch (err) {
       const errStep: AgentStep = {
         id: nextStepId(),
@@ -755,10 +833,6 @@ export async function runFunctionCallingAgent(
 
     const toolCalls = message.tool_calls ?? [];
 
-    if (message.content) {
-      opts.onAssistantStream(message.content);
-    }
-
     if (toolCalls.length === 0) {
       const finalText = message.content?.trim() ?? "";
       lastFinal = finalText;
@@ -770,13 +844,23 @@ export async function runFunctionCallingAgent(
       };
       steps.push(finalStep);
       opts.onStep(finalStep);
-      return { finalAnswer: finalText, steps };
+      return {
+        finalAnswer: finalText,
+        reasoning: message.reasoning_content,
+        steps,
+      };
     }
 
     working.push({
       role: "assistant",
       content: message.content ?? "",
       tool_calls: toolCalls,
+      ...(message.reasoning_content
+        ? { reasoning_content: message.reasoning_content }
+        : {}),
+      ...(message.reasoning_details
+        ? { reasoning_details: message.reasoning_details }
+        : {}),
     });
 
     for (const call of toolCalls) {
@@ -843,17 +927,12 @@ export async function runFunctionCallingAgent(
   ];
 
   try {
-    const recoveryMessage = await invoke<OpenAIMessage>("qxai_chat_with_tools", {
-      provider: opts.provider,
-      model: opts.model,
-      messages: recoveryMessages,
-      tools: [],
-      toolChoice: "none",
-    });
+    const recoveryMessage = await streamFunctionCallingOnce(
+      opts,
+      recoveryMessages,
+      [],
+    );
     const finalText = (recoveryMessage.content?.trim() ?? lastFinal).trim();
-    if (finalText) {
-      opts.onAssistantStream(finalText);
-    }
     const finalStep: AgentStep = {
       id: nextStepId(),
       kind: "final",
@@ -862,7 +941,11 @@ export async function runFunctionCallingAgent(
     };
     steps.push(finalStep);
     opts.onStep(finalStep);
-    return { finalAnswer: finalText, steps };
+    return {
+      finalAnswer: finalText,
+      reasoning: recoveryMessage.reasoning_content,
+      steps,
+    };
   } catch {
     // recovery failed, fall through to error
   }

@@ -1023,6 +1023,7 @@ export default function ClipboardPanel() {
       className="qx-clipboard-search-wrap"
       inputClassName="qx-clipboard-search"
       value={query}
+      autoFocus
       onChange={(next) => {
         setQuery(next);
         setSelected(0);
@@ -1132,8 +1133,8 @@ export default function ClipboardPanel() {
       actionTitle={t("clipboard.actions", "Clipboard Actions")}
       actions={clipboardActions}
     >
-      <div className="qx-clipboard-body">
-        <div ref={listRef} className="qx-clipboard-list" role="listbox" aria-label={t("clipboard.listAria", "Clipboard history")}>
+      <div className={`qx-clipboard-body qx-content-split${detailOpen ? " has-detail" : ""}`}>
+        <div ref={listRef} className="qx-clipboard-list qx-content-list" role="listbox" aria-label={t("clipboard.listAria", "Clipboard history")}>
           {grouped.map((section, sectionIndex) => {
             const sectionKey = `${section.title}-${sectionIndex}`;
             return (
@@ -1248,7 +1249,7 @@ export default function ClipboardPanel() {
           )}
         </div>
 
-        <div className="qx-clipboard-detail">
+        <div className="qx-clipboard-detail qx-content-detail">
           {selectedItem ? (
             <>
               {selectedItem.file_path ? (

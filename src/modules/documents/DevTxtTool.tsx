@@ -195,8 +195,12 @@ function patchFileList(prev: TextFileEntry[], entry: TextFileEntry): TextFileEnt
 export default function DevTxtTool() {
   const t = useT();
   const setTab = useStore((state) => state.setTab);
+  const [narrowContent, setNarrowContent] = useState(
+    () => window.matchMedia("(max-width: 760px)").matches,
+  );
   const [files, setFiles] = useState<TextFileEntry[]>([]);
   const [selectedName, setSelectedName] = useState<string | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [content, setContent] = useState("");
   const [dirty, setDirty] = useState(false);
   const [loadingList, setLoadingList] = useState(true);
@@ -232,6 +236,14 @@ export default function DevTxtTool() {
   contentRef.current = content;
   selectedNameRef.current = selectedName;
   dirtyRef.current = dirty;
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 760px)");
+    const sync = () => setNarrowContent(media.matches);
+    sync();
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -642,7 +654,8 @@ export default function DevTxtTool() {
 
   /** Instant selection — previous dirty buffer is queued, never awaited. */
   const selectFile = useCallback(
-    (name: string) => {
+    (name: string, openEditor = false) => {
+      if (openEditor) setEditorOpen(true);
       if (name === selectedNameRef.current) return;
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);
@@ -665,6 +678,7 @@ export default function DevTxtTool() {
         // Local list update first (snappy); full refresh optional
         setFiles((prev) => [entry, ...prev.filter((f) => f.name !== entry.name)]);
         setSelectedName(entry.name);
+        setEditorOpen(true);
         setQuery("");
         setContent("");
         setDirty(false);
@@ -861,7 +875,8 @@ export default function DevTxtTool() {
     if (!editing && (region === "docs-files" || region === "docs-actions" || !region)) {
       if (e.key === "Enter" && region === "docs-files") {
         e.preventDefault();
-        editorRef.current?.focus();
+        setEditorOpen(true);
+        window.requestAnimationFrame(() => editorRef.current?.focus());
       } else if ((e.key === "n" || e.key === "N") && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         void createNewFile();
@@ -1072,8 +1087,16 @@ export default function DevTxtTool() {
     leave: goBack,
     esc: {
       inner: {
-        active: renamingName !== null,
-        close: () => setRenamingName(null),
+        active: renamingName !== null || (narrowContent && editorOpen),
+        close: () => {
+          if (renamingName !== null) {
+            setRenamingName(null);
+          } else {
+            setEditorOpen(false);
+            setFocusRegion("docs-files");
+            window.requestAnimationFrame(() => filesListRef.current?.focus());
+          }
+        },
       },
       query: { active: query.length > 0, clear: () => setQuery("") },
     },
@@ -1280,15 +1303,33 @@ export default function DevTxtTool() {
         count: filtered.length,
         onChange: (i) => {
           const file = filtered[i];
-          if (file) selectFile(file.name);
+          if (file) {
+            setEditorOpen(false);
+            selectFile(file.name);
+          }
         },
+        onOpen: () => {
+          if (!active) return;
+          setEditorOpen(true);
+        },
+        onClose: narrowContent
+          ? () => {
+              setEditorOpen(false);
+              setFocusRegion("docs-files");
+            }
+          : undefined,
+        focusList: () => filesListRef.current?.focus(),
+        focusDetail: () => editorRef.current?.focus(),
         pageSize: 10,
       })}
     >
-      <div className="qx-content-split qx-docs-split" onFocusCapture={onFocusCapture}>
+      <div
+        className={`qx-content-split qx-docs-split${editorOpen ? " has-detail" : ""}`}
+        onFocusCapture={onFocusCapture}
+      >
         <div
           ref={filesListRef}
-          className="qx-plugin-list qx-docs-file-list"
+          className="qx-plugin-list qx-docs-file-list qx-content-list"
           role="listbox"
           aria-label={t("docs.files", "Files")}
           {...qxRegionProps(DOCS_MD.list, {
@@ -1312,7 +1353,7 @@ export default function DevTxtTool() {
                 {...getItemProps(fileIndex, {
                   className: `qx-docs-file-row${saveBar ? " is-saving" : ""}`,
                 })}
-                onClick={() => selectFile(file.name)}
+                onClick={() => selectFile(file.name, true)}
                 onDoubleClick={() => !oversized && startRename(file)}
                 onFocus={() => setFocusRegion("docs-files")}
               >
@@ -1374,7 +1415,7 @@ export default function DevTxtTool() {
         </div>
 
         <div
-          className="qx-docs-workspace"
+          className="qx-docs-workspace qx-content-detail"
           {...qxRegionProps(DOCS_MD.detail, {
             label: t("docs.editor", "Editor"),
             scroll: true,

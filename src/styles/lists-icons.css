@@ -974,6 +974,10 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .qx-host-workbench-resize-handle {
+    display: none;
+  }
+
   .qx-host-workbench-split.has-detail > .qx-content-list {
     display: none;
   }

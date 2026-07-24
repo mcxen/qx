@@ -218,6 +218,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const settingsSearch = (
     <QxModuleSearch
       value={filter}
+      autoFocus
       onChange={setFilter}
       onFocus={requestPanelKeyWindow}
       placeholder={t("settings.search", "Search settings...")}

@@ -335,6 +335,7 @@ export default function RssPanel() {
       search={
         <QxModuleSearch
           value={query}
+          autoFocus
           onChange={setQuery}
           placeholder="Search feeds or folders…"
         />

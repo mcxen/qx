@@ -25,7 +25,10 @@ export interface QxModuleSearchProps {
   value: string;
   onChange: (value: string) => void;
   placeholder: string;
-  /** Default true for module panels; pass false for Documents / secondary fields. */
+  /**
+   * One-shot mount focus. Defaults false so merely rendering a search field does
+   * not claim keyboard ownership; launcher/composer/list surfaces opt in explicitly.
+   */
   autoFocus?: boolean;
   disabled?: boolean;
   /** Extra classes on the wrap (e.g. clipboard layout tweaks). */
@@ -69,7 +72,7 @@ export function QxModuleSearch({
   value,
   onChange,
   placeholder,
-  autoFocus = true,
+  autoFocus = false,
   disabled = false,
   className,
   inputClassName,

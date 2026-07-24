@@ -78,6 +78,65 @@
   border-color: transparent;
 }
 
+.qx-ai-reasoning-setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-overlay-1);
+}
+
+.qx-ai-reasoning-setting > div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.qx-ai-reasoning-setting strong {
+  color: var(--qx-text-primary);
+  font-size: 12px;
+}
+
+.qx-ai-reasoning-setting span {
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.qx-ai-reasoning {
+  margin-bottom: 8px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-overlay-1);
+}
+
+.qx-ai-reasoning summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 9px;
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.qx-ai-reasoning summary::-webkit-details-marker {
+  display: none;
+}
+
+.qx-ai-reasoning-body {
+  padding: 0 9px 9px;
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
 .qx-ai-response {
   white-space: normal;
 }

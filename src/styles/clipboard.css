@@ -663,7 +663,7 @@
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 760px) {
   .qx-clipboard-search {
     font-size: 13px;
   }
@@ -672,7 +672,11 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .qx-clipboard-detail {
+  .qx-clipboard-body:not(.has-detail) .qx-clipboard-detail {
+    display: none;
+  }
+
+  .qx-clipboard-body.has-detail .qx-clipboard-list {
     display: none;
   }
 

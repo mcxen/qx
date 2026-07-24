@@ -224,9 +224,13 @@
   opacity: 0.55;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 760px) {
   .qx-docs-split {
-    grid-template-columns: minmax(150px, 190px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qx-docs-file-list {
+    border-right: 0;
   }
 }
 

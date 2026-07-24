@@ -1060,6 +1060,7 @@ function MarketplaceTab({
     try {
       const path = await invoke<string>("download_plugin", {
         url: entry.download_url,
+        sourceIndexUrl: entry.source_index_url || undefined,
       });
       await invoke("install_plugin", { path });
       await onInstallComplete();
@@ -1141,7 +1142,7 @@ function MarketplaceTab({
           <DialogDescription>
             {t(
               "plugins.libraries.desc",
-              "Add mirrors or private catalogs. Qx merges enabled libraries so you can install when GitHub is slow.",
+              "Add mirrors or private catalogs (GitHub, Gogs, Gitea). Paste a repo URL or full index.json; Qx resolves raw/main and raw/master. Downloads prefer files next to the index when the mirror still lists GitHub URLs.",
             )}
           </DialogDescription>
         </DialogHeader>
@@ -1161,7 +1162,10 @@ function MarketplaceTab({
               />
               <Input
                 value={registry.index_url}
-                placeholder="https://…/index.json"
+                placeholder={t(
+                  "plugins.libraries.urlPlaceholder",
+                  "https://…/index.json or http://gogs/owner/repo",
+                )}
                 onChange={(e) => {
                   setRegistryDrafts((current) =>
                     current.map((item, i) =>

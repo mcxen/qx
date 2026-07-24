@@ -469,50 +469,61 @@ fn stamp_entry_source(
 async fn fetch_one_registry_index(
     target: RegistryFetchTarget,
 ) -> (PluginIndexSourceStatus, Vec<PluginIndexEntry>) {
-    match http_get_with_fallbacks(&target.index_url).await {
-        Ok(bytes) => match serde_json::from_slice::<PluginIndex>(&bytes) {
-            Ok(mut index) => {
-                let plugins: Vec<PluginIndexEntry> = index
-                    .plugins
-                    .drain(..)
-                    .map(|entry| stamp_entry_source(entry, &target))
-                    .collect();
-                (
-                    PluginIndexSourceStatus {
-                        id: target.id,
-                        name: target.name,
-                        index_url: target.index_url,
-                        ok: true,
-                        error: None,
-                        plugin_count: plugins.len() as u32,
-                    },
-                    plugins,
-                )
-            }
-            Err(e) => (
-                PluginIndexSourceStatus {
-                    id: target.id,
-                    name: target.name,
-                    index_url: target.index_url,
-                    ok: false,
-                    error: Some(format!("parse index: {e}")),
-                    plugin_count: 0,
-                },
-                Vec::new(),
-            ),
-        },
-        Err(e) => (
-            PluginIndexSourceStatus {
-                id: target.id,
-                name: target.name,
-                index_url: target.index_url,
-                ok: false,
-                error: Some(e),
-                plugin_count: 0,
+    let candidates = plugin_index_url_candidates(&target.index_url);
+    let mut last_error = String::new();
+    for candidate in candidates {
+        match http_get_with_fallbacks(&candidate).await {
+            Ok(bytes) => match serde_json::from_slice::<PluginIndex>(&bytes) {
+                Ok(mut index) => {
+                    // Persist the URL that actually returned JSON so downloads can
+                    // resolve relative / GitHub-mirrored asset URLs against it.
+                    let resolved = RegistryFetchTarget {
+                        id: target.id.clone(),
+                        name: target.name.clone(),
+                        index_url: candidate,
+                    };
+                    let plugins: Vec<PluginIndexEntry> = index
+                        .plugins
+                        .drain(..)
+                        .map(|entry| stamp_entry_source(entry, &resolved))
+                        .collect();
+                    return (
+                        PluginIndexSourceStatus {
+                            id: resolved.id,
+                            name: resolved.name,
+                            index_url: resolved.index_url,
+                            ok: true,
+                            error: None,
+                            plugin_count: plugins.len() as u32,
+                        },
+                        plugins,
+                    );
+                }
+                Err(e) => {
+                    // HTML repo pages look like HTTP 200 but are not indexes.
+                    last_error = format!("parse index from {candidate}: {e}");
+                }
             },
-            Vec::new(),
-        ),
+            Err(e) => {
+                last_error = e;
+            }
+        }
     }
+    (
+        PluginIndexSourceStatus {
+            id: target.id,
+            name: target.name,
+            index_url: target.index_url,
+            ok: false,
+            error: Some(if last_error.is_empty() {
+                "no usable index.json candidates".to_string()
+            } else {
+                last_error
+            }),
+            plugin_count: 0,
+        },
+        Vec::new(),
+    )
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -540,8 +551,14 @@ struct RaycastSource {
     extension_path: String,
 }
 
+/// Raw file locator for GitHub **or** Gogs/Gitea-style forges.
+///
+/// - `origin` empty → GitHub (`codeload.github.com` / raw.githubusercontent.com)
+/// - `origin` set → `{origin}/{owner}/{repo}/raw/{reference}/{rel}` and
+///   `{origin}/{owner}/{repo}/archive/{reference}.zip`
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct GitHubRawSource {
+    origin: String,
     owner: String,
     repo: String,
     reference: String,
@@ -824,17 +841,39 @@ async fn http_get(url: &str) -> Result<Vec<u8>, String> {
 }
 
 async fn http_get_with_fallbacks(url: &str) -> Result<Vec<u8>, String> {
+    http_get_asset_candidates(&[url.to_string()]).await
+}
+
+/// Download a marketplace asset, trying the primary URL plus registry-local
+/// rewrites (Gogs/Gitea/GitHub mirrors that leave `download_url` on GitHub).
+async fn http_get_plugin_asset(
+    url: &str,
+    source_index_url: Option<&str>,
+) -> Result<Vec<u8>, String> {
+    let candidates = plugin_download_url_candidates(url, source_index_url.unwrap_or(""));
+    http_get_asset_candidates(&candidates).await
+}
+
+async fn http_get_asset_candidates(urls: &[String]) -> Result<Vec<u8>, String> {
     let mut errors = Vec::new();
-    for candidate in github_url_candidates(url) {
-        match http_get(&candidate).await {
+    let mut expanded = Vec::new();
+    for url in urls {
+        for candidate in github_url_candidates(url) {
+            push_unique(&mut expanded, candidate);
+        }
+    }
+    for candidate in &expanded {
+        match http_get(candidate).await {
             Ok(bytes) => return Ok(bytes),
             Err(error) => errors.push(error),
         }
     }
-    if let Some(source) = github_raw_archive_source(url) {
-        match http_get_from_repo_archive(&source).await {
-            Ok(bytes) => return Ok(bytes),
-            Err(error) => errors.push(error),
+    for candidate in &expanded {
+        if let Some(source) = forge_raw_archive_source(candidate) {
+            match http_get_from_repo_archive(&source).await {
+                Ok(bytes) => return Ok(bytes),
+                Err(error) => errors.push(error),
+            }
         }
     }
     Err(errors.join(" | fallback failed: "))
@@ -1012,8 +1051,11 @@ pub async fn fetch_plugin_index(source_id: Option<String>) -> Result<PluginIndex
 }
 
 #[command]
-pub async fn download_plugin(url: String) -> Result<String, String> {
-    let bytes = http_get_with_fallbacks(&url).await?;
+pub async fn download_plugin(
+    url: String,
+    source_index_url: Option<String>,
+) -> Result<String, String> {
+    let bytes = http_get_plugin_asset(&url, source_index_url.as_deref()).await?;
     let tmp = std::env::temp_dir().join(format!("qx-plugin-{}.qx", uuid_like()));
     let mut f = fs::File::create(&tmp).map_err(|e| format!("create tmp: {e}"))?;
     f.write_all(&bytes).map_err(|e| format!("write tmp: {e}"))?;
@@ -1822,9 +1864,183 @@ fn normalize_plugin_archive_url(input: &str) -> String {
 }
 
 fn push_unique(values: &mut Vec<String>, value: String) {
+    if value.is_empty() {
+        return;
+    }
     if !values.iter().any(|existing| existing == &value) {
         values.push(value);
     }
+}
+
+fn is_github_host_url(url: &str) -> bool {
+    let lower = url.to_ascii_lowercase();
+    lower.contains("github.com/") || lower.contains("raw.githubusercontent.com/")
+}
+
+/// Split `scheme://host[:port]/path` into origin + path segments (no empty).
+fn split_http_url(input: &str) -> Option<(String, Vec<String>)> {
+    let trimmed = input
+        .trim()
+        .split(['?', '#'])
+        .next()
+        .unwrap_or("")
+        .trim_end_matches('/');
+    let (scheme, rest) = if let Some(rest) = trimmed.strip_prefix("https://") {
+        ("https", rest)
+    } else if let Some(rest) = trimmed.strip_prefix("http://") {
+        ("http", rest)
+    } else {
+        return None;
+    };
+    let (host, path) = rest
+        .split_once('/')
+        .map(|(h, p)| (h, p))
+        .unwrap_or((rest, ""));
+    if host.is_empty() {
+        return None;
+    }
+    let origin = format!("{scheme}://{host}");
+    let parts = path
+        .split('/')
+        .filter(|p| !p.is_empty())
+        .map(|p| p.to_string())
+        .collect::<Vec<_>>();
+    Some((origin, parts))
+}
+
+fn strip_git_suffix(name: &str) -> &str {
+    name.strip_suffix(".git").unwrap_or(name)
+}
+
+/// Expand a user-entered plugin library URL into concrete `index.json` candidates.
+///
+/// Accepts full `…/index.json`, GitHub/Gogs/Gitea repo roots, and raw URLs.
+/// HTML repo homepages return HTTP 200 but must be rewritten to `/raw/{branch}/index.json`.
+fn plugin_index_url_candidates(input: &str) -> Vec<String> {
+    let trimmed = input.trim();
+    let mut candidates = Vec::new();
+    if trimmed.is_empty() {
+        return candidates;
+    }
+    push_unique(&mut candidates, trimmed.to_string());
+
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.ends_with(".json") {
+        for c in github_url_candidates(trimmed) {
+            push_unique(&mut candidates, c);
+        }
+        return candidates;
+    }
+
+    if let Some((origin, mut parts)) = split_http_url(trimmed) {
+        if parts.len() >= 2 {
+            // Drop browse segments: /src/branch/main, /tree/main, /blob/main/...
+            if parts.len() >= 4 && matches!(parts[2].as_str(), "src" | "tree" | "branch") {
+                parts.truncate(2);
+            } else if parts.len() >= 3 && matches!(parts[2].as_str(), "tree" | "blob" | "src") {
+                parts.truncate(2);
+            } else if parts.len() > 2
+                && !matches!(
+                    parts[2].as_str(),
+                    "raw" | "archive" | "releases" | "src" | "tree" | "blob"
+                )
+            {
+                parts.truncate(2);
+            }
+
+            if parts.len() >= 2
+                && (parts.len() == 2 || !matches!(parts[2].as_str(), "raw" | "archive"))
+            {
+                let owner = parts[0].clone();
+                let repo = strip_git_suffix(&parts[1]).to_string();
+                for branch in ["main", "master"] {
+                    push_unique(
+                        &mut candidates,
+                        format!("{origin}/{owner}/{repo}/raw/{branch}/index.json"),
+                    );
+                }
+                if origin.contains("github.com") {
+                    for branch in ["main", "master"] {
+                        push_unique(
+                            &mut candidates,
+                            format!(
+                                "https://raw.githubusercontent.com/{owner}/{repo}/{branch}/index.json"
+                            ),
+                        );
+                    }
+                }
+            }
+
+            // /owner/repo/raw/<ref>/… missing index.json filename
+            if parts.len() >= 4 && parts[2] == "raw" {
+                let owner = &parts[0];
+                let repo = strip_git_suffix(&parts[1]);
+                let reference = &parts[3];
+                let rest = parts[4..].join("/");
+                if rest.is_empty() || !rest.to_ascii_lowercase().ends_with(".json") {
+                    push_unique(
+                        &mut candidates,
+                        format!("{origin}/{owner}/{repo}/raw/{reference}/index.json"),
+                    );
+                }
+            }
+        }
+    }
+
+    for c in github_url_candidates(trimmed) {
+        push_unique(&mut candidates, c);
+    }
+    candidates
+}
+
+/// Resolve plugin package download URLs for a registry entry.
+/// Prefer assets co-located with the registry `index.json` before GitHub.
+fn plugin_download_url_candidates(download_url: &str, source_index_url: &str) -> Vec<String> {
+    let mut candidates = Vec::new();
+    let download = download_url.trim();
+    let index = source_index_url.trim();
+
+    if !download.is_empty()
+        && !download.contains("://")
+        && !download.starts_with("//")
+        && !index.is_empty()
+    {
+        if let Some(base) = index.rsplit_once('/').map(|(b, _)| b) {
+            let rel = download.trim_start_matches("./");
+            push_unique(&mut candidates, format!("{base}/{rel}"));
+        }
+    }
+
+    if !download.is_empty() && !index.is_empty() {
+        if let Some(file_name) = download
+            .rsplit(['/', '\\'])
+            .next()
+            .filter(|s| !s.is_empty() && s.contains('.'))
+        {
+            if let Some(base) = index.rsplit_once('/').map(|(b, _)| b) {
+                let sibling = format!("{base}/{file_name}");
+                if !is_github_host_url(index) {
+                    push_unique(&mut candidates, sibling);
+                } else {
+                    push_unique(&mut candidates, download.to_string());
+                    push_unique(&mut candidates, sibling);
+                    for c in github_url_candidates(download) {
+                        push_unique(&mut candidates, c);
+                    }
+                    return candidates;
+                }
+            }
+        }
+    }
+
+    if !download.is_empty() {
+        push_unique(&mut candidates, download.to_string());
+        for c in github_url_candidates(download) {
+            push_unique(&mut candidates, c);
+        }
+    }
+
+    candidates
 }
 
 fn github_url_candidates(input: &str) -> Vec<String> {
@@ -1894,6 +2110,7 @@ fn parse_github_raw_path(path: &str) -> Option<GitHubRawSource> {
         return None;
     }
     Some(GitHubRawSource {
+        origin: String::new(),
         owner: parts[0].to_string(),
         repo: parts[1].to_string(),
         reference: parts[2].to_string(),
@@ -1901,7 +2118,8 @@ fn parse_github_raw_path(path: &str) -> Option<GitHubRawSource> {
     })
 }
 
-fn github_raw_archive_source(input: &str) -> Option<GitHubRawSource> {
+/// Locate a raw file for archive fallback (GitHub codeload or Gogs/Gitea zip).
+fn forge_raw_archive_source(input: &str) -> Option<GitHubRawSource> {
     let trimmed = input.trim();
     if let Some(path_start) = trimmed.find("raw.githubusercontent.com/") {
         return parse_github_raw_path(&trimmed[path_start + "raw.githubusercontent.com/".len()..]);
@@ -1915,12 +2133,25 @@ fn github_raw_archive_source(input: &str) -> Option<GitHubRawSource> {
         let parts: Vec<&str> = path.split('/').filter(|part| !part.is_empty()).collect();
         if parts.len() >= 5 && parts[2] == "raw" {
             return Some(GitHubRawSource {
+                origin: String::new(),
                 owner: parts[0].to_string(),
                 repo: parts[1].to_string(),
                 reference: parts[3].to_string(),
                 rel: parts[4..].join("/"),
             });
         }
+        return None;
+    }
+
+    let (origin, parts) = split_http_url(trimmed)?;
+    if parts.len() >= 5 && parts[2] == "raw" {
+        return Some(GitHubRawSource {
+            origin,
+            owner: parts[0].clone(),
+            repo: strip_git_suffix(&parts[1]).to_string(),
+            reference: parts[3].clone(),
+            rel: parts[4..].join("/"),
+        });
     }
     None
 }
@@ -1928,27 +2159,44 @@ fn github_raw_archive_source(input: &str) -> Option<GitHubRawSource> {
 impl GitHubRawSource {
     fn archive_urls(&self) -> Vec<String> {
         let mut urls = Vec::new();
-        push_unique(
-            &mut urls,
-            format!(
-                "https://codeload.github.com/{}/{}/zip/refs/heads/{}",
-                self.owner, self.repo, self.reference
-            ),
-        );
-        push_unique(
-            &mut urls,
-            format!(
-                "https://codeload.github.com/{}/{}/zip/refs/tags/{}",
-                self.owner, self.repo, self.reference
-            ),
-        );
-        push_unique(
-            &mut urls,
-            format!(
-                "https://codeload.github.com/{}/{}/zip/{}",
-                self.owner, self.repo, self.reference
-            ),
-        );
+        if self.origin.is_empty() || self.origin.contains("github.com") {
+            push_unique(
+                &mut urls,
+                format!(
+                    "https://codeload.github.com/{}/{}/zip/refs/heads/{}",
+                    self.owner, self.repo, self.reference
+                ),
+            );
+            push_unique(
+                &mut urls,
+                format!(
+                    "https://codeload.github.com/{}/{}/zip/refs/tags/{}",
+                    self.owner, self.repo, self.reference
+                ),
+            );
+            push_unique(
+                &mut urls,
+                format!(
+                    "https://codeload.github.com/{}/{}/zip/{}",
+                    self.owner, self.repo, self.reference
+                ),
+            );
+        } else {
+            push_unique(
+                &mut urls,
+                format!(
+                    "{}/{}/{}/archive/{}.zip",
+                    self.origin, self.owner, self.repo, self.reference
+                ),
+            );
+            push_unique(
+                &mut urls,
+                format!(
+                    "{}/{}/{}/archive/{}.tar.gz",
+                    self.origin, self.owner, self.repo, self.reference
+                ),
+            );
+        }
         urls
     }
 }
@@ -2743,13 +2991,14 @@ mod tests {
 
     #[test]
     fn parses_github_raw_source_for_archive_fallback() {
-        let source = github_raw_archive_source(
+        let source = forge_raw_archive_source(
             "https://raw.githubusercontent.com/mcxen/qx-plugins/main/external-display-control.qx-plugin",
         )
         .unwrap();
         assert_eq!(
             source,
             GitHubRawSource {
+                origin: String::new(),
                 owner: "mcxen".to_string(),
                 repo: "qx-plugins".to_string(),
                 reference: "main".to_string(),
@@ -2764,6 +3013,58 @@ mod tests {
                 "https://codeload.github.com/mcxen/qx-plugins/zip/main",
             ]
         );
+    }
+
+    #[test]
+    fn expands_gogs_repo_root_to_raw_index() {
+        let candidates = plugin_index_url_candidates("http://121.40.88.21:12101/m/qx-plugin");
+        assert!(candidates
+            .contains(&"http://121.40.88.21:12101/m/qx-plugin/raw/main/index.json".to_string()));
+        assert!(candidates
+            .contains(&"http://121.40.88.21:12101/m/qx-plugin/raw/master/index.json".to_string()));
+    }
+
+    #[test]
+    fn prefers_gogs_sibling_download_over_github() {
+        let candidates = plugin_download_url_candidates(
+            "https://raw.githubusercontent.com/mcxen/qx-plugins/main/brew.qx-plugin",
+            "http://121.40.88.21:12101/m/qx-plugin/raw/main/index.json",
+        );
+        assert_eq!(
+            candidates.first().map(String::as_str),
+            Some("http://121.40.88.21:12101/m/qx-plugin/raw/main/brew.qx-plugin")
+        );
+        assert!(candidates
+            .iter()
+            .any(|u| u.contains("raw.githubusercontent.com")));
+    }
+
+    #[test]
+    fn resolves_relative_plugin_download_url() {
+        let candidates = plugin_download_url_candidates(
+            "brew.qx-plugin",
+            "http://gogs.example/m/qx-plugin/raw/main/index.json",
+        );
+        assert_eq!(
+            candidates.first().map(String::as_str),
+            Some("http://gogs.example/m/qx-plugin/raw/main/brew.qx-plugin")
+        );
+    }
+
+    #[test]
+    fn parses_gogs_raw_source_for_archive_fallback() {
+        let source = forge_raw_archive_source(
+            "http://121.40.88.21:12101/m/qx-plugin/raw/main/brew.qx-plugin",
+        )
+        .unwrap();
+        assert_eq!(source.origin, "http://121.40.88.21:12101");
+        assert_eq!(source.owner, "m");
+        assert_eq!(source.repo, "qx-plugin");
+        assert_eq!(source.reference, "main");
+        assert_eq!(source.rel, "brew.qx-plugin");
+        assert!(source
+            .archive_urls()
+            .contains(&"http://121.40.88.21:12101/m/qx-plugin/archive/main.zip".to_string()));
     }
 
     #[test]

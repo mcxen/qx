@@ -132,6 +132,18 @@ function postToPluginPanel(pluginId: string, message: Record<string, unknown>): 
   }, "*");
 }
 
+/** Deliver a host event to every live runtime owned by one plugin. */
+export function postToPluginRuntimes(
+  pluginId: string,
+  message: Record<string, unknown>,
+): void {
+  const runtimes = runtimeSources.get(pluginId);
+  if (!runtimes) return;
+  for (const [runtimeId, source] of runtimes) {
+    source.postMessage({ ...message, pluginId, runtimeId }, "*");
+  }
+}
+
 export function runPluginItemAction(pluginId: string, actionId: string): void {
   postToPluginPanel(pluginId, { type: "qx:run-item-action", actionId });
 }

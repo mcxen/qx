@@ -660,6 +660,7 @@ export function PluginPanelViewport() {
         activeChrome && activeChrome.showSearch !== false ? (
           <QxModuleSearch
             value={activeChrome?.query || ""}
+            autoFocus={false}
             onChange={(value) => workbench
               ? updateWorkbenchQuery(value)
               : postPluginChromeQuery(pluginId, value)}

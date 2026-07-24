@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { openUrl as openerOpenUrl } from "@tauri-apps/plugin-opener";
 import type {
   InstalledPlugin,
@@ -20,6 +21,7 @@ import {
   showPluginIsland,
   updatePluginIsland,
 } from "./pluginIsland";
+import { postToPluginRuntimes } from "./pluginShellBridge";
 
 const pluginSessionStorage = new Map<string, Map<string, unknown>>();
 
@@ -431,7 +433,35 @@ export const rpcHandlers: Record<string, RpcHandler> = {
       hasPrompt: typeof payload.prompt === "string" && payload.prompt.length > 0,
       messageCount: Array.isArray(payload.messages) ? payload.messages.length : 0,
     });
-    return invoke("plugin_ai_stream_chat", { req: payload });
+    const requestId = String(payload.streamRequestId || "");
+    if (!requestId) {
+      throw new Error("AI stream request id is required");
+    }
+    const unlisten = await listen("qxai://stream", (event) => {
+      const stream = event.payload as {
+        requestId?: string;
+        kind?: string;
+        chunk?: string;
+        done?: boolean;
+        error?: string;
+      };
+      if (stream.requestId !== requestId) return;
+      postToPluginRuntimes(plugin.id, {
+        type: "qx:ai-stream",
+        stream,
+      });
+      if (stream.done || stream.error) unlisten();
+    });
+    try {
+      await invoke("plugin_ai_stream_chat_events", {
+        requestId,
+        req: payload,
+      });
+    } catch (error) {
+      unlisten();
+      throw error;
+    }
+    return { requestId };
   },
 
   aiRunBash: async (plugin, perms, payload) => {
