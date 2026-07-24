@@ -6,6 +6,7 @@ import {
   type AgentStep,
   getEnabledTools,
   runFunctionCallingAgent,
+  runReactAgent,
 } from "./react-agent";
 
 export type { AgentStep } from "./react-agent";
@@ -456,6 +457,10 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       return;
     }
 
+    // The native tool boundary re-reads persisted settings for security. Flush
+    // the debounced Settings store first so a freshly enabled Bash/Tools switch
+    // cannot race the first tool invocation.
+    await useSettingsStore.getState().flush();
     const agentSettings = useSettingsStore.getState().settings.agent;
     const enabledTools = getEnabledTools(agentSettings);
     const useAgent = enabledTools.length > 0;
@@ -472,7 +477,12 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           defaultSystemPrompt;
         const nonSystem = titledConv.messages.filter((m) => m.role !== "system");
 
-        const runAgent = runFunctionCallingAgent;
+        // Native function calling is opt-in because many compatible models do
+        // not accept tool schemas. The prompt-based ReAct transport remains the
+        // portable path and still executes the same permissioned local tools.
+        const runAgent = agentSettings.model_tools_enabled
+          ? runFunctionCallingAgent
+          : runReactAgent;
 
         const result = await runAgent({
           messages: nonSystem,

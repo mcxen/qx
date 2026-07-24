@@ -15,6 +15,7 @@ const steps = [
   ["shell-navigation", "scripts/check-qx-shell-navigation.mjs"],
   ["island", "scripts/check-qx-island.mjs"],
   ["module-ports", "scripts/check-module-ports.mjs"],
+  ["qx-ai-agent", "scripts/check-qx-ai-agent.mjs"],
 ];
 
 let failed = 0;

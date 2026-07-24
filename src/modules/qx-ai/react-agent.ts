@@ -99,7 +99,7 @@ export const TOOLS: ToolSpec[] = [
         status: number | null;
         stdout: string;
         stderr: string;
-        timed_out: boolean;
+        timedOut: boolean;
       }>("plugin_ai_run_bash", {
         req: {
           script,
@@ -108,7 +108,7 @@ export const TOOLS: ToolSpec[] = [
         },
       });
       const parts: string[] = [];
-      parts.push(`exit=${result.status ?? "?"}${result.timed_out ? " (timeout)" : ""}`);
+      parts.push(`exit=${result.status ?? "?"}${result.timedOut ? " (timeout)" : ""}`);
       if (result.stdout) parts.push(`stdout:\n${result.stdout}`);
       if (result.stderr) parts.push(`stderr:\n${result.stderr}`);
       return truncate(parts.join("\n"));
@@ -740,7 +740,7 @@ async function streamFunctionCallingOnce(
     return true;
   };
 
-  return await new Promise<OpenAIMessage>((resolve, reject) => {
+  const streamPromise = new Promise<OpenAIMessage>((resolve, reject) => {
     listen<FunctionStreamEvent>("qxai://stream", (event) => {
       if (event.payload.requestId !== requestId) return;
       if (event.payload.error) {
@@ -785,6 +785,38 @@ async function streamFunctionCallingOnce(
         if (stop()) reject(error instanceof Error ? error : new Error(String(error)));
       });
   });
+
+  try {
+    return await streamPromise;
+  } catch (streamError) {
+    // Some OpenAI-compatible providers support function calling but not
+    // streaming tool-call deltas. Preserve the working pre-stream transport as
+    // a compatibility fallback; no local tool has executed at this point.
+    try {
+      const message = await invoke<OpenAIMessage>("qxai_chat_with_tools", {
+        provider: opts.provider,
+        model: opts.model,
+        messages,
+        tools,
+        toolChoice: tools.length > 0 ? "auto" : "none",
+      });
+      if (message.reasoning_content) {
+        opts.onReasoningStream(message.reasoning_content);
+      }
+      if (message.content) {
+        opts.onAssistantStream(message.content);
+      }
+      return message;
+    } catch (fallbackError) {
+      const streamMessage =
+        streamError instanceof Error ? streamError.message : String(streamError);
+      const fallbackMessage =
+        fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      throw new Error(
+        `Streaming tool call failed: ${streamMessage}; compatibility fallback failed: ${fallbackMessage}`,
+      );
+    }
+  }
 }
 
 export async function runFunctionCallingAgent(

@@ -33,12 +33,36 @@ const moduleSearchSource = readFileSync(
   new URL("../src/components/QxModuleSearch.tsx", import.meta.url),
   "utf8",
 );
+const pluginWorkbenchSource = readFileSync(
+  new URL("../src/plugin/PluginWorkbenchView.tsx", import.meta.url),
+  "utf8",
+);
+const listIconsStyles = readFileSync(
+  new URL("../src/styles/lists-icons.css", import.meta.url),
+  "utf8",
+);
 
 // Search fields never reclaim focus after arbitrary pointer interaction.
 // Surfaces opt into one-shot autofocus instead of inheriting permanent ownership.
 assert.doesNotMatch(qxShellSource, /window\.addEventListener\("pointerup"/);
 assert.match(moduleSearchSource, /autoFocus = false/);
 assert.match(shortcutRecorderSource, /data-qx-search-focus="preserve"/);
+
+// Full-size Workbench media owns an inner scrollport. Portrait and long images
+// retain their natural aspect ratio instead of being forced into stage height.
+assert.match(pluginWorkbenchSource, /qx-host-workbench-media-preview-scroll/);
+assert.match(
+  listIconsStyles,
+  /\.qx-host-workbench-media-preview-scroll\s*\{[^}]*overflow:\s*auto;/s,
+);
+assert.match(
+  listIconsStyles,
+  /\.qx-host-workbench-media-preview-scroll\s*>\s*img\s*\{[^}]*height:\s*auto;[^}]*max-height:\s*none;/s,
+);
+assert.doesNotMatch(
+  listIconsStyles,
+  /\.qx-host-workbench-media-preview-scroll\s*>\s*img\s*\{[^}]*height:\s*100%;/s,
+);
 
 const list = (overrides = {}) => resolveQxListNavigation({
   key: "ArrowDown",

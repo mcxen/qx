@@ -487,12 +487,19 @@ pub async fn plugin_ai_run_bash(req: PluginAiBashRequest) -> Result<PluginAiBash
     let configured_timeout = u64::from(settings.bash_timeout_ms).clamp(1000, 300_000);
     let timeout_ms = req.timeout_ms.clamp(1000, configured_timeout);
     let script = req.script;
-    let cwd = req
+    if script.trim().is_empty() {
+        return Err("AI bash script is empty".to_string());
+    }
+    if script.contains('\0') {
+        return Err("AI bash script must not contain NUL".to_string());
+    }
+    let cwd_value = req
         .cwd
         .as_deref()
         .unwrap_or(settings.bash_cwd.as_str())
         .trim()
         .to_string();
+    let cwd = crate::plugin_cli::resolve_cli_cwd(Some(&cwd_value));
 
     tauri::async_runtime::spawn_blocking(move || {
         let bash = crate::plugin_cli::resolve_bash_binary()?;
@@ -502,8 +509,8 @@ pub async fn plugin_ai_run_bash(req: PluginAiBashRequest) -> Result<PluginAiBash
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .stdin(std::process::Stdio::null());
-        if !cwd.is_empty() {
-            cmd.current_dir(cwd);
+        if let Some(dir) = cwd.as_ref() {
+            cmd.current_dir(dir);
         }
         crate::plugin_cli::apply_plugin_cli_env(&mut cmd, &std::collections::HashMap::new());
         let result = crate::plugin_cli::run_process_with_timeout(

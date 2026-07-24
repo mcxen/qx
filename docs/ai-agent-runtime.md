@@ -40,6 +40,9 @@ QxAI is the shared AI substrate for built-in modules and plugins. It should not 
      `toolCall`, `toolResult`, and `memory`.
    - Built-in function calling uses the same event transport. Tool call argument
      deltas are reconstructed in Rust, while text and reasoning remain live.
+   - Function-call streaming retains the complete-response command as a
+     compatibility fallback for OpenAI-compatible providers that accept tools
+     but do not stream tool-call deltas reliably.
    - Current synchronous chat remains available as `context.ai.chat`.
 
 4. **Native reasoning**
@@ -58,6 +61,13 @@ QxAI is the shared AI substrate for built-in modules and plugins. It should not 
    - Dangerous tools: bash, process kill, permissions request, file write/delete. These require dedicated permissions such as `ai-bash` or exact `invoke:<cmd>`.
    - Bash execution must always use a timeout and return structured `{ status, stdout, stderr, timedOut }`.
    - Current global switches live in Settings -> AI Agent. Agent mode and the master tools switch must be enabled before bash or grep tools run.
+   - `Model Tool Calling` selects the transport rather than the permission:
+     enabled uses native tool schemas; disabled uses the portable ReAct prompt
+     protocol. Both execute the same permissioned local tool implementations.
+   - Before a built-in Agent starts, pending debounced settings are flushed so
+     the Rust permission gate observes newly enabled Agent / Tools / Bash state.
+   - Bash working directories expand `~`, `~/...`, and `~\...` at the shared CLI
+     boundary before spawning. The shell is still executed with a bounded timeout.
    - Grep search is exposed as a real `rg`/`grep` subprocess through `context.ai.search.grep(query, opts?)`, capped by the user-configured result limit.
 
 6. **MCP**

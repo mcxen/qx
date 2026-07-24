@@ -265,7 +265,7 @@ fn provider_openai_chat_stream(
     let reader = std::io::BufReader::new(resp);
     for line in reader.lines() {
         let line = line.map_err(|e| format!("failed to read response stream from {url}: {e}"))?;
-        let Some(data) = line.strip_prefix("data: ") else {
+        let Some(data) = sse_data(&line) else {
             continue;
         };
         if data == "[DONE]" {
@@ -294,15 +294,62 @@ fn provider_openai_chat_stream(
 }
 
 fn apply_reasoning_request(base_url: &str, body: &mut serde_json::Value, enabled: bool) {
+    if base_url.contains("api.deepseek.com") {
+        // DeepSeek defaults current models to thinking mode. Send the explicit
+        // state so the per-conversation Qx toggle is authoritative.
+        body["thinking"] = serde_json::json!({
+            "type": if enabled { "enabled" } else { "disabled" }
+        });
+        return;
+    }
     if !enabled {
         return;
     }
     if base_url.contains("openrouter.ai") {
         body["reasoning"] = serde_json::json!({ "enabled": true });
-    } else if base_url.contains("deepseek.com") {
-        body["thinking"] = serde_json::json!({ "type": "enabled" });
     } else {
         body["reasoning_effort"] = serde_json::Value::String("medium".to_string());
+    }
+}
+
+fn should_send_tool_choice(base_url: &str, reasoning: bool) -> bool {
+    // DeepSeek thinking-mode tool calls reject `tool_choice`; omission keeps
+    // the provider's automatic selection while preserving tool schemas.
+    !(reasoning && base_url.contains("api.deepseek.com"))
+}
+
+fn sse_data(line: &str) -> Option<&str> {
+    line.strip_prefix("data:").map(str::trim_start)
+}
+
+fn merge_stream_tool_calls(tool_calls: &mut Vec<serde_json::Value>, calls: &[serde_json::Value]) {
+    for call in calls {
+        let index = call["index"].as_u64().unwrap_or(0) as usize;
+        while tool_calls.len() <= index {
+            tool_calls.push(serde_json::json!({
+                "id": "",
+                "type": "function",
+                "function": { "name": "", "arguments": "" }
+            }));
+        }
+        let target = &mut tool_calls[index];
+        if let Some(id) = call["id"].as_str() {
+            target["id"] = serde_json::Value::String(id.to_string());
+        }
+        if let Some(kind) = call["type"].as_str() {
+            target["type"] = serde_json::Value::String(kind.to_string());
+        }
+        if let Some(name) = call["function"]["name"].as_str() {
+            target["function"]["name"] = serde_json::Value::String(name.to_string());
+        }
+        if let Some(arguments) = call["function"]["arguments"].as_str() {
+            let existing = target["function"]["arguments"].as_str().unwrap_or_default();
+            target["function"]["arguments"] =
+                serde_json::Value::String(format!("{existing}{arguments}"));
+        } else if call["function"]["arguments"].is_object() {
+            target["function"]["arguments"] =
+                serde_json::Value::String(call["function"]["arguments"].to_string());
+        }
     }
 }
 
@@ -377,7 +424,9 @@ fn provider_openai_chat_with_tools_stream(
     });
     if !tools.is_empty() {
         body["tools"] = serde_json::Value::Array(tools.to_vec());
-        body["tool_choice"] = serde_json::Value::String(tool_choice.to_string());
+        if should_send_tool_choice(base_url, reasoning) {
+            body["tool_choice"] = serde_json::Value::String(tool_choice.to_string());
+        }
     }
     apply_reasoning_request(base_url, &mut body, reasoning);
 
@@ -401,7 +450,7 @@ fn provider_openai_chat_with_tools_stream(
     let reader = std::io::BufReader::new(resp);
     for line in reader.lines() {
         let line = line.map_err(|e| format!("failed to read response stream from {url}: {e}"))?;
-        let Some(data) = line.strip_prefix("data: ") else {
+        let Some(data) = sse_data(&line) else {
             continue;
         };
         if data == "[DONE]" {
@@ -426,31 +475,7 @@ fn provider_openai_chat_with_tools_stream(
             on_delta("text", text);
         }
         if let Some(calls) = delta["tool_calls"].as_array() {
-            for call in calls {
-                let index = call["index"].as_u64().unwrap_or(0) as usize;
-                while tool_calls.len() <= index {
-                    tool_calls.push(serde_json::json!({
-                        "id": "",
-                        "type": "function",
-                        "function": { "name": "", "arguments": "" }
-                    }));
-                }
-                let target = &mut tool_calls[index];
-                if let Some(id) = call["id"].as_str() {
-                    target["id"] = serde_json::Value::String(id.to_string());
-                }
-                if let Some(kind) = call["type"].as_str() {
-                    target["type"] = serde_json::Value::String(kind.to_string());
-                }
-                if let Some(name) = call["function"]["name"].as_str() {
-                    target["function"]["name"] = serde_json::Value::String(name.to_string());
-                }
-                if let Some(arguments) = call["function"]["arguments"].as_str() {
-                    let existing = target["function"]["arguments"].as_str().unwrap_or_default();
-                    target["function"]["arguments"] =
-                        serde_json::Value::String(format!("{existing}{arguments}"));
-                }
-            }
+            merge_stream_tool_calls(&mut tool_calls, calls);
         }
     }
 
@@ -888,4 +913,69 @@ pub fn qxai_save_custom_providers(providers: Vec<CustomProviderConfig>) -> Resul
     let path = custom_providers_path();
     let json = serde_json::to_string_pretty(&providers).map_err(|e| format!("serialize: {e}"))?;
     std::fs::write(&path, json).map_err(|e| format!("write {}: {e}", path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        apply_reasoning_request, merge_stream_tool_calls, should_send_tool_choice, sse_data,
+    };
+
+    #[test]
+    fn sse_data_accepts_standard_spacing_variants() {
+        assert_eq!(sse_data("data: {\"ok\":true}"), Some("{\"ok\":true}"));
+        assert_eq!(sse_data("data:{\"ok\":true}"), Some("{\"ok\":true}"));
+        assert_eq!(sse_data("event: message"), None);
+    }
+
+    #[test]
+    fn streamed_tool_call_arguments_are_reassembled_by_index() {
+        let mut calls = Vec::new();
+        merge_stream_tool_calls(
+            &mut calls,
+            &[serde_json::json!({
+                "index": 0,
+                "id": "call_bash",
+                "type": "function",
+                "function": { "name": "bash", "arguments": "{\"script\":\"p" }
+            })],
+        );
+        merge_stream_tool_calls(
+            &mut calls,
+            &[serde_json::json!({
+                "index": 0,
+                "function": { "arguments": "wd\"}" }
+            })],
+        );
+        assert_eq!(calls[0]["id"], "call_bash");
+        assert_eq!(calls[0]["function"]["name"], "bash");
+        assert_eq!(calls[0]["function"]["arguments"], "{\"script\":\"pwd\"}");
+    }
+
+    #[test]
+    fn object_tool_arguments_are_normalized_to_json_text() {
+        let mut calls = Vec::new();
+        merge_stream_tool_calls(
+            &mut calls,
+            &[serde_json::json!({
+                "index": 0,
+                "id": "call_bash",
+                "function": { "name": "bash", "arguments": { "script": "pwd" } }
+            })],
+        );
+        assert_eq!(calls[0]["function"]["arguments"], "{\"script\":\"pwd\"}");
+    }
+
+    #[test]
+    fn deepseek_reasoning_state_and_tool_choice_are_compatible() {
+        let mut enabled = serde_json::json!({});
+        apply_reasoning_request("https://api.deepseek.com", &mut enabled, true);
+        assert_eq!(enabled["thinking"]["type"], "enabled");
+        assert!(!should_send_tool_choice("https://api.deepseek.com", true));
+
+        let mut disabled = serde_json::json!({});
+        apply_reasoning_request("https://api.deepseek.com", &mut disabled, false);
+        assert_eq!(disabled["thinking"]["type"], "disabled");
+        assert!(should_send_tool_choice("https://api.deepseek.com", false));
+    }
 }

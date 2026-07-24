@@ -1515,6 +1515,37 @@
 
 ---
 
+## Bugfix — QxAI Bash 与流式工具调用恢复
+
+**状态**：已实现，构建与本机安装验证完成。
+
+### 修复内容
+
+- 共享 CLI 工作目录端口展开 `~`、`~/...` 与 Windows 分隔符写法，修复模型按 Bash schema
+  示例传入 `cwd: "~"` 时进程无法启动。
+- QxAI Bash 结果按 Rust camelCase 合约读取 `timedOut`，并在后端拒绝空脚本与 NUL。
+- Agent 启动前刷新防抖中的设置写入，避免刚开启 Agent / Tools / Bash 后，Rust 权限门仍读到旧值。
+- `Model Tool Calling` 现在真正选择传输协议：开启走原生 function calling；关闭走兼容模型更广的
+  ReAct 文本协议，两者调用同一组受控工具。
+- 流式 function calling 失败时，在任何本地工具执行前回退到完整响应工具命令。
+- DeepSeek 明确发送 thinking enabled/disabled；思考模式工具请求不再发送其拒绝的 `tool_choice`。
+- SSE 同时接受 `data:` 与 `data: `，并覆盖字符串碎片和对象形式的工具参数。
+
+### 验证
+
+- [x] `npm run test:qx-ai-agent`
+- [x] `npm run check`
+- [x] `npx tsc --noEmit`
+- [x] `cargo fmt --check`
+- [x] QxAI / CLI Rust 定向单元测试（含真实 Bash `pwd` + `cwd: "~"`）
+- [x] `cargo check`
+- [x] `npm run build`
+- [x] `cargo test --lib`（135 passed）
+- [x] Release `.app` / `.dmg` 构建成功，本地 ad-hoc 签名后安装并从
+  `/Applications/Qx.app` 启动
+
+---
+
 ## Bugfix — 插件异常隔离与灵动岛报错
 
 **状态**：已实现，已通过静态验证。

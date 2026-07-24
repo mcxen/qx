@@ -24,6 +24,27 @@ pub(crate) fn default_cli_timeout_ms() -> u64 {
     60_000
 }
 
+/// Resolve a user/model supplied working directory without relying on a shell
+/// to expand `~`. Keep relative paths relative to the Qx process for backwards
+/// compatibility, but normalize both desktop separators below the home alias.
+pub(crate) fn resolve_cli_cwd(raw: Option<&str>) -> Option<PathBuf> {
+    let value = raw.map(str::trim).filter(|value| !value.is_empty())?;
+    if value == "~" {
+        return Some(crate::paths::home_dir());
+    }
+    if let Some(rest) = value
+        .strip_prefix("~/")
+        .or_else(|| value.strip_prefix("~\\"))
+    {
+        let mut path = crate::paths::home_dir();
+        for component in rest.split(['/', '\\']).filter(|part| !part.is_empty()) {
+            path.push(component);
+        }
+        return Some(path);
+    }
+    Some(PathBuf::from(value))
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginCliRunRequest {
@@ -487,12 +508,7 @@ pub async fn plugin_cli_run(req: PluginCliRunRequest) -> Result<PluginCliRunResu
     let program = resolve_cli_program(&req.program)?;
     let program_display = program.display().to_string();
     let args = req.args;
-    let cwd = req
-        .cwd
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
+    let cwd = resolve_cli_cwd(req.cwd.as_deref());
     let env = req.env.unwrap_or_default();
     let timeout_ms = req.timeout_ms.clamp(1_000, 600_000);
     validate_cli_env(&env)?;
@@ -503,7 +519,7 @@ pub async fn plugin_cli_run(req: PluginCliRunRequest) -> Result<PluginCliRunResu
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .stdin(std::process::Stdio::null());
-        if let Some(dir) = cwd.as_deref() {
+        if let Some(dir) = cwd.as_ref() {
             cmd.current_dir(dir);
         }
         apply_plugin_cli_env(&mut cmd, &env);
@@ -525,12 +541,7 @@ pub async fn plugin_cli_bash(req: PluginCliBashRequest) -> Result<PluginCliRunRe
     }
     let bash = resolve_bash_binary()?;
     let program_display = format!("{} -lc", bash.display());
-    let cwd = req
-        .cwd
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
+    let cwd = resolve_cli_cwd(req.cwd.as_deref());
     let env = req.env.unwrap_or_default();
     let timeout_ms = req.timeout_ms.clamp(1_000, 600_000);
     validate_cli_env(&env)?;
@@ -543,7 +554,7 @@ pub async fn plugin_cli_bash(req: PluginCliBashRequest) -> Result<PluginCliRunRe
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .stdin(std::process::Stdio::null());
-        if let Some(dir) = cwd.as_deref() {
+        if let Some(dir) = cwd.as_ref() {
             cmd.current_dir(dir);
         }
         apply_plugin_cli_env(&mut cmd, &env);
@@ -964,12 +975,7 @@ pub async fn plugin_cli_start(
     let env = req.env.unwrap_or_default();
     validate_cli_env(&env)?;
     let timeout_ms = req.timeout_ms.clamp(1_000, 600_000);
-    let cwd = req
-        .cwd
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string());
+    let cwd = resolve_cli_cwd(req.cwd.as_deref());
 
     let (program_display, mut cmd) = if kind == "run" {
         let program_raw = req
@@ -1008,7 +1014,7 @@ pub async fn plugin_cli_start(
         (display, cmd)
     };
 
-    if let Some(dir) = cwd.as_deref() {
+    if let Some(dir) = cwd.as_ref() {
         cmd.current_dir(dir);
     }
     apply_plugin_cli_env(&mut cmd, &env);
@@ -1151,7 +1157,7 @@ pub async fn plugin_cli_list_jobs(plugin_id: String) -> Result<Vec<PluginCliJobS
 
 #[cfg(test)]
 mod tests {
-    use super::{append_capped, run_process_with_timeout, MAX_OUTPUT_BYTES};
+    use super::{append_capped, resolve_cli_cwd, run_process_with_timeout, MAX_OUTPUT_BYTES};
 
     #[test]
     fn capped_output_never_slices_inside_utf8() {
@@ -1166,6 +1172,39 @@ mod tests {
         let mut output = "a".repeat(MAX_OUTPUT_BYTES);
         append_capped(&mut output, "ignored");
         assert_eq!(output.len(), MAX_OUTPUT_BYTES);
+    }
+
+    #[test]
+    fn cli_cwd_expands_home_for_both_desktop_separators() {
+        let home = crate::paths::home_dir();
+        assert_eq!(resolve_cli_cwd(Some("~")), Some(home.clone()));
+        assert_eq!(
+            resolve_cli_cwd(Some("~/Documents/Qx")),
+            Some(home.join("Documents").join("Qx"))
+        );
+        assert_eq!(
+            resolve_cli_cwd(Some(r"~\Documents\Qx")),
+            Some(crate::paths::home_dir().join("Documents").join("Qx"))
+        );
+        assert_eq!(resolve_cli_cwd(Some("   ")), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn bash_starts_in_expanded_home_directory() {
+        let home = resolve_cli_cwd(Some("~")).expect("home cwd");
+        let bash = super::resolve_bash_binary().expect("bash binary");
+        let mut command = std::process::Command::new(&bash);
+        command
+            .args(["-lc", "pwd"])
+            .current_dir(&home)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .stdin(std::process::Stdio::null());
+        let result = run_process_with_timeout(command, 5_000, format!("{} -lc", bash.display()))
+            .expect("bash should start");
+        assert_eq!(result.status, Some(0));
+        assert_eq!(result.stdout.trim(), home.to_string_lossy());
     }
 
     #[cfg(unix)]
