@@ -6,9 +6,9 @@ export interface PluginPreference {
   /**
    * - `string` — single-line
    * - `textarea` — multi-line (repos, path lists, JSON snippets)
-   * - `password` | `number` | `boolean` | `select`
+   * - `password` | `number` | `boolean` | `select` | `segmented` | `slider`
    */
-  type: "string" | "textarea" | "password" | "number" | "boolean" | "select";
+  type: "string" | "textarea" | "password" | "number" | "boolean" | "select" | "segmented" | "slider";
   required?: boolean;
   default?: string | number | boolean;
   options?: { label: string; value: string }[];
@@ -16,6 +16,10 @@ export interface PluginPreference {
   /** Optional rows for `textarea` (default 4). */
   rows?: number;
   placeholder?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  unit?: string;
 }
 
 export interface PluginCommand {
@@ -703,6 +707,7 @@ export interface PluginContext {
       state: PluginWorkbenchState,
       handlers?: {
         onTab?: (id: string) => void;
+        onFilter?: (id: string, value: string) => void;
         onAction?: (id: string, item?: PluginWorkbenchItem) => void;
         onCommandComplete?: (event: { command: string; at: number }) => void;
         onBackgroundPoll?: (event: {

@@ -82,13 +82,13 @@ SDK 不维护 host/iframe 两份实现：`createPluginSdkRuntime` 是无外部�
 
 | 层 | 拥有内容 | 约束 |
 |---|---|---|
-| 插件业务状态 | 原始数据、过滤结果、业务选中项、loading/error、动作副作用 | `mountWorkbench` 是受控发布；handler 收到 query/tab/select 后必须先同步更新本地状态并重新发布，慢网络/CLI 另起异步任务 |
-| 宿主交互状态 | 当前可见 query、active tab、pointer/keyboard selection、焦点与滚动 | query/tab/select 先乐观更新 React，再按顺序发给 iframe，保证 iframe 忙时仍有即时反馈 |
+| 插件业务状态 | 原始数据、过滤结果、业务选中项、loading/error、动作副作用 | `mountWorkbench` 是受控发布；handler 收到 query/tab/filter/select 后必须先同步更新本地状态并重新发布，慢网络/CLI 另起异步任务 |
+| 宿主交互状态 | 当前可见 query、active tab、filter value、pointer/keyboard selection、焦点与滚动 | query/tab/filter/select 先乐观更新 React，再按顺序发给 iframe，保证 iframe 忙时仍有即时反馈 |
 | 宿主安全边界 | runtime 身份、数据归一化、命令归属、图片协议、数量/长度上限 | 仅接受 `panelSessionsByPlugin` 当前 `pluginId + runtimeId + contentWindow` 的消息；旧 iframe 发布会被丢弃 |
 
-宿主到插件的事件为 `query(value)`、`tab(id)`、`select(id)`、`action(id, selectedId)`、`commandComplete(command, at)`、`backgroundPoll(...)`。`action.selectedId` 是用户触发动作瞬间的宿主选择快照，插件 kit 必须优先用它解析 item，不能依赖可能尚未完成回画的旧 `state.selectedId`。Manifest `command` 动作由宿主校验为当前插件命令后在长期 runtime 执行，完成后以 `commandComplete` 通知 panel 单次重读共享状态；其余动作回到 panel handler。
+宿主到插件的事件为 `query(value)`、`tab(id)`、`filter(id, value)`、`select(id)`、`action(id, selectedId)`、`commandComplete(command, at)`、`backgroundPoll(...)`。`action.selectedId` 是用户触发动作瞬间的宿主选择快照，插件 kit 必须优先用它解析 item，不能依赖可能尚未完成回画的旧 `state.selectedId`。Manifest `command` 动作由宿主校验为当前插件命令后在长期 runtime 执行，完成后以 `commandComplete` 通知 panel 单次重读共享状态；其余动作回到 panel handler。
 
-插件 handler 不得在回写 query/tab/select 前等待网络、CLI 或数据库。推荐顺序：同步更新 state → `paint()` → debounce/cancel 旧任务 → 后台加载 → generation 校验 → 再 `paint()`。这样受控搜索不会回跳，慢旧结果也不会覆盖新查询。
+插件 handler 不得在回写 query/tab/filter/select 前等待网络、CLI 或数据库。推荐顺序：同步更新 state → `paint()` → debounce/cancel 旧任务 → 后台加载 → generation 校验 → 再 `paint()`。这样受控搜索不会回跳，慢旧结果也不会覆盖新查询。
 
 #### 指针、焦点与键盘
 

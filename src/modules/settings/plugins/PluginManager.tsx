@@ -49,6 +49,7 @@ import {
   Select,
   SettingsCard,
   Skeleton,
+  Slider,
   Tabs,
   TabsContent,
   TabsList,
@@ -467,14 +468,46 @@ function PreferenceField({
           value={String(value ?? "")}
           options={pref.options ?? []}
           ariaLabel={pref.label}
-          className="qx-inline-select"
+          className="qx-plugin-preference-control"
           onChange={(next) => onChange(next)}
         />
       );
 
+    case "segmented":
+      return (
+        <div className="qx-plugin-preference-control">
+          <SegmentedControl
+            value={String(value ?? "")}
+            options={pref.options ?? []}
+            onChange={(next) => onChange(next)}
+          />
+        </div>
+      );
+
+    case "slider": {
+      const min = Number.isFinite(pref.min) ? Number(pref.min) : 0;
+      const max = Number.isFinite(pref.max) ? Number(pref.max) : 100;
+      const step = Number.isFinite(pref.step) && Number(pref.step) > 0 ? Number(pref.step) : 1;
+      const numericValue = Math.max(min, Math.min(max, Number(value) || min));
+      return (
+        <div className="qx-plugin-preference-control qx-plugin-preference-slider">
+          <Slider
+            value={numericValue}
+            min={min}
+            max={max}
+            step={step}
+            ariaLabel={pref.label}
+            formatLabel={(next) => `${next}${pref.unit || ""}`}
+            onChange={(next) => onChange(next)}
+          />
+          <span>{numericValue}{pref.unit || ""}</span>
+        </div>
+      );
+    }
+
     case "number":
       return (
-        <div className="qx-settings-input-wrap qx-settings-input-wrap--narrow">
+        <div className="qx-settings-input-wrap qx-plugin-preference-control">
           <Input
             type="number"
             value={String(value ?? 0)}
@@ -485,7 +518,7 @@ function PreferenceField({
 
     case "password":
       return (
-        <div className="qx-settings-input-wrap">
+        <div className="qx-settings-input-wrap qx-plugin-preference-control">
           <Input
             type="password"
             value={String(value ?? "")}
@@ -528,7 +561,7 @@ function PreferenceField({
         );
       }
       return (
-        <div className="qx-settings-input-wrap">
+        <div className="qx-settings-input-wrap qx-plugin-preference-control">
           <Input
             type="text"
             value={String(value ?? "")}

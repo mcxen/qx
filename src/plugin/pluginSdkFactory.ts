@@ -25,6 +25,7 @@ export type PluginCliCore = {
 
 type WorkbenchHandlers = {
   onTab?: (id: string) => void;
+  onFilter?: (id: string, value: string) => void;
   onAction?: (id: string, item?: PluginWorkbenchItem) => void;
   onCommandComplete?: (event: { command: string; at: number }) => void;
   onBackgroundPoll?: (event: { command: string; at: number; ok: boolean; error?: string }) => void;
@@ -249,6 +250,12 @@ export function createPluginSdkRuntime(): PluginSdkRuntime {
         const workbenchEvent = message.event || {};
         if (workbenchEvent.kind === "query") handlers.onQuery?.(String(workbenchEvent.value ?? ""));
         else if (workbenchEvent.kind === "tab") handlers.onTab?.(String(workbenchEvent.id ?? ""));
+        else if (workbenchEvent.kind === "filter") {
+          handlers.onFilter?.(
+            String(workbenchEvent.id ?? ""),
+            String(workbenchEvent.value ?? ""),
+          );
+        }
         else if (workbenchEvent.kind === "select") {
           const id = String(workbenchEvent.id ?? "");
           const item = (currentState.items || []).find((candidate) => candidate.id === id);

@@ -2532,6 +2532,35 @@ span.qx-plugin-screenshot {
   width: 100%;
 }
 
+.qx-plugin-preference-control {
+  width: min(100%, 280px);
+  max-width: 280px;
+  min-width: 0;
+}
+
+.qx-plugin-preference-control .qx-shadcn-select-trigger,
+.qx-plugin-preference-control > .qx-shadcn-toggle-group {
+  width: 100%;
+}
+
+.qx-plugin-preference-control > .qx-shadcn-toggle-group > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.qx-plugin-preference-slider {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+}
+
+.qx-plugin-preference-slider .qx-slider {
+  width: 100%;
+}
+
 /* Settings → Shortcuts → Application launch picker */
 .qx-app-shortcut-section-header {
   display: flex;

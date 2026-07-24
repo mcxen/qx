@@ -141,6 +141,13 @@ export interface PluginWorkbenchState {
     aspectRatio?: "landscape" | "square" | "portrait";
   };
   tabs?: Array<{ id: string; label: string; active?: boolean }>;
+  /** Compact host-rendered filters shown beside collection tabs. */
+  filters?: Array<{
+    id: string;
+    label: string;
+    value: string;
+    options: Array<{ label: string; value: string }>;
+  }>;
   actions?: PluginWorkbenchAction[];
   items?: PluginWorkbenchItem[];
   selectedId?: string | null;
@@ -178,6 +185,7 @@ export interface PluginWorkbenchController {
 export type PluginWorkbenchEvent =
   | { kind: "query"; value: string }
   | { kind: "tab"; id: string }
+  | { kind: "filter"; id: string; value: string }
   | { kind: "select"; id: string }
   | { kind: "input"; id: string; value: string; selectedId?: string }
   | { kind: "action"; id: string; selectedId?: string }
@@ -416,6 +424,34 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
       })
     : [];
   if (tabs.length && !tabs.some((tab) => tab.active)) tabs[0].active = true;
+  const seenFilterIds = new Set<string>();
+  const filters = Array.isArray(raw.filters)
+    ? raw.filters.slice(0, 8).map((entry) => {
+        const filter = (entry || {}) as Record<string, unknown>;
+        const options = Array.isArray(filter.options)
+          ? filter.options.slice(0, 16).map((option) => {
+              const item = (option || {}) as Record<string, unknown>;
+              return {
+                label: shortText(item.label, 120) || shortText(item.value, 120) || "",
+                value: shortText(item.value, 120) || "",
+              };
+            }).filter((option) => Boolean(option.value))
+          : [];
+        const requestedValue = shortText(filter.value, 120) || "";
+        return {
+          id: shortText(filter.id, 64) || "",
+          label: shortText(filter.label, 120) || shortText(filter.id, 64) || "Filter",
+          value: options.some((option) => option.value === requestedValue)
+            ? requestedValue
+            : options[0]?.value || "",
+          options,
+        };
+      }).filter((filter) => {
+        if (!filter.id || !filter.options.length || seenFilterIds.has(filter.id)) return false;
+        seenFilterIds.add(filter.id);
+        return true;
+      })
+    : [];
   const hasIsland = Object.prototype.hasOwnProperty.call(raw, "island");
   const layoutRaw = raw.layout && typeof raw.layout === "object"
     ? raw.layout as Record<string, unknown>
@@ -501,6 +537,7 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
     queryPlaceholder: shortText(raw.queryPlaceholder, 120),
     layout,
     tabs,
+    filters,
     actions: normalizeActions(raw.actions),
     items,
     selectedId: raw.selectedId == null ? null : shortText(raw.selectedId, 256),

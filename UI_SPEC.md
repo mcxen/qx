@@ -325,7 +325,7 @@ Top Bar 包含搜索、可选 leading、筛选和少量上下文操作。**不�
 - Launcher 的 All / Files 搜索中，每次非空 query 变化（输入、删除、粘贴）都必须立即调用文件搜索 pass 0；后续 pass 可异步增量合并，但不得以字符数阈值、Enter 或失焦作为首次调用条件。旧请求必须由序号/取消信号隔离，不能覆盖新 query。
 - 文件结果只按 leaf name 命中，不以父目录制造相关性。短 ASCII 词（四字符及以下，例如 `Siri`）只允许字面量与弱分隔匹配，不生成逐字符通配符；更长 ASCII 缩写及至少三字符的非 ASCII 查询才允许密集有序子序列召回。Cardinal、Spotlight 与 Everything 的候选必须经过同一后置匹配，分类内先按名称相关性、再按修改时间排序。
 - trailing 操作不得挤压搜索框到不可输入。
-- 声明式 Workbench 的 Top Bar 由宿主统一组合：搜索只占 `search` 主列，tabs / 后台状态只占紧凑 `trailing` 列；插件不得把两者再包进同一个可伸缩容器。统计、loading 与 error 信息属于 Main Area 状态行，不得把 Top Bar 撑成第二层。
+- 声明式 Workbench 的 Top Bar 由宿主统一组合：搜索只占 `search` 主列，tabs / `filters[]` / 后台状态只占紧凑 `trailing` 列；筛选由宿主 Select 渲染并通过 `onFilter(id, value)` 回传。插件不得把这些控件再包进一个可伸缩容器。统计、loading 与 error 信息属于 Main Area 状态行，不得把 Top Bar 撑成第二层。
 - Workbench 是结构化业务表面，不是 CLI 专用皮肤。CLI、HTTP 与 typed
   `context.system.*` 数据源均可复用 List / Gallery / Detail / tabs / Actions；
   Sysinfo 是系统 API 数据源的参考。只有图表、地图、画布等无法表达为宿主结构化
@@ -333,7 +333,7 @@ Top Bar 包含搜索、可选 leading、筛选和少量上下文操作。**不�
 - Extensions 的 Raycast URL 转换入口保留但必须明确显示 Legacy / Frozen 与暂停维护提示；正式插件默认路径是从上游源代码按 Qx Workbench / Actions / Island / `context.*` 协议重新开发。
 - Workbench 发布后即使隐藏的插件 iframe 暂时保留焦点，List / Gallery 的方向键、Page、Home/End 与 Enter 也必须转交可见宿主 Shell；首次发布应把焦点恢复到宿主搜索或集合区域，后续选择刷新不得抢回焦点。
 - Workbench List / Gallery 的鼠标点击必须由宿主立即更新选中态并异步通知插件；宿主视图可见时隐藏 iframe 必须退出指针命中层，不能让插件回传延迟或透明叠层造成点击无响应。
-- Workbench query、active tab 与 selectedId 采用受控双层状态：宿主先乐观呈现交互，插件 handler 同步更新业务 state 并重新发布；慢 I/O 不得阻塞回画。Action 事件必须携带触发瞬间的 selectedId 快照，快速选择后执行不能落到旧条目。
+- Workbench query、active tab、filter value 与 selectedId 采用受控双层状态：宿主先乐观呈现交互，插件 handler 同步更新业务 state 并重新发布；慢 I/O 不得阻塞回画。Action 事件必须携带触发瞬间的 selectedId 快照，快速选择后执行不能落到旧条目。
 - Workbench item `id` 是强制、稳定且唯一的业务键；缺失或重复 item/tab id 在信任边界直接拒绝，tabs 最多一个 active，不提供 title/index 兼容回退。`data:image/` 不得被截断成损坏 URL，超出宿主上限时应整体拒绝。
 - Workbench manifest command 完成后宿主必须发送 `commandComplete` 回执；插件据此单次重读共享持久化状态，不得用亚秒级磁盘轮询等待暂停、继续、停止等动作生效。
 - Workbench Gallery 使用当前响应式网格的真实列数做二维选择：←/→ 在同行移动，↑/↓ 跨行并尽量保持列位置。焦点留在搜索框时，上下键仍浏览网格；空查询的左右键也浏览网格，有查询文字时左右键才保留原生光标语义。

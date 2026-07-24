@@ -47,7 +47,8 @@ pub struct PluginPanel {
 pub struct PluginPreference {
     pub id: String,
     pub label: String,
-    /// `string` | `textarea` | `password` | `number` | `boolean` | `select`
+    /// `string` | `textarea` | `password` | `number` | `boolean` | `select` |
+    /// `segmented` | `slider`
     #[serde(rename = "type")]
     pub pref_type: String,
     #[serde(default)]
@@ -63,6 +64,14 @@ pub struct PluginPreference {
     pub rows: Option<u32>,
     #[serde(default)]
     pub placeholder: Option<String>,
+    #[serde(default)]
+    pub min: Option<f64>,
+    #[serde(default)]
+    pub max: Option<f64>,
+    #[serde(default)]
+    pub step: Option<f64>,
+    #[serde(default)]
+    pub unit: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

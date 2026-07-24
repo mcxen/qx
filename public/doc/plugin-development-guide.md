@@ -141,7 +141,7 @@ Workbench 条目可带：`icon` · `image` · `images` · `badge` · `tone` · *
 完整的布局、Light/Dark 对比度、Custom Panel token 与 Action 层级见
 [`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md)。
 
-Workbench 是受控业务端口：插件拥有最终业务 state，宿主拥有即时的输入、tab、选择、焦点和滚动反馈。`onQuery` / `onTab` / `onSelect` 先同步改 state + `paint()`，再启动可取消的慢任务；不要在回画前 `await`。每个 item 都必须提供稳定、唯一、非空的 `id`；宿主会直接拒绝缺失或重复项，不提供 title/index 兼容回退。`onAction` 直接使用宿主传入的 `selectedItem`，不要从可能滞后的闭包另猜当前项。完整事件与信任边界见 [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md#声明式-workbench-端口)。
+Workbench 是受控业务端口：插件拥有最终业务 state，宿主拥有即时的输入、tab、筛选、选择、焦点和滚动反馈。`filters[]` 声明紧凑 Select，变更由 `onFilter(id, value)` 回传；`onQuery` / `onTab` / `onFilter` / `onSelect` 应先同步改 state + `paint()`，再启动可取消的慢任务，不要在回画前 `await`。每个 item 都必须提供稳定、唯一、非空的 `id`；宿主会直接拒绝缺失或重复项，不提供 title/index 兼容回退。`onAction` 直接使用宿主传入的 `selectedItem`，不要从可能滞后的闭包另猜当前项。完整事件与信任边界见 [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md#声明式-workbench-端口)。
 
 `mountWorkbench({ island })` 是一次声明式发布：宿主接受 Workbench state 后校验并投影同一个插件 island session，SDK 不再发送第二条独立 island RPC。需要在 Panel 关闭后持续更新时才直接调用 `context.island`；两条入口最终仍进入同一个宿主 session store。
 
@@ -508,7 +508,7 @@ persist key；宿主只统计和删除白名单 key，不猜测前缀，也不�
 | `permissions` | 与代码实际调用一致；宁少勿多 |
 | `commands[].name` | 与 `export default.commands[].name` 一致 |
 | `panel` | 需要工作台时声明；否则可省略 |
-| `preferences[].type` | `string` / **`textarea`（多行）** / `password` / `number` / `boolean` / `select` |
+| `preferences[].type` | `string` / **`textarea`（多行）** / `password` / `number` / `boolean` / `select` / `segmented` / `slider`；`slider` 可声明 `min` / `max` / `step` / `unit` |
 | `storage.cacheTargets[]` | 可选；用稳定 `id`、展示文案、1–64 个精确 persist `keys` 和可选 `retentionDays`（1–365）把可重建缓存接入系统存储管理 |
 | `platforms` | 运行时执行边界；如仅 macOS：`["macos"]`（例：Brew）。宿主以 Rust 原生平台标识判定；不匹配当前系统或平台 bridge 不可用时插件仍在 Settings 可管理，但宿主不会创建 iframe、command/panel、后台任务或全局快捷键 |
 | `min_app_version` | 使用新端口时钉住（`cli` → ≥ 0.5.26）；按 SemVer 比较（同版本 prerelease 低于正式版）。Qx ≥ 0.6.17 会在市场禁用安装并由 Rust 安装边界拒绝不兼容包；旧安装仍可管理但不启动 runtime、后台任务或快捷键。宿主版本 bridge 不可用时 fail closed |

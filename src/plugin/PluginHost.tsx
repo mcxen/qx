@@ -48,6 +48,7 @@ import {
   syncPluginWorkbenchIsland,
 } from "./pluginIsland";
 import { islandHost } from "../island";
+import { Select } from "../components/ui";
 
 export function PluginHost() {
   const loaded = usePluginRegistry((state) => state.loaded);
@@ -158,6 +159,18 @@ export function PluginPanelViewport() {
         }
       : current);
     postPluginWorkbenchEvent(pluginId, { kind: "tab", id });
+  }, [pluginId]);
+  const updateWorkbenchFilter = useCallback((id: string, value: string) => {
+    setWorkbenchDetailOpen(false);
+    setWorkbench((current) => current
+      ? {
+          ...current,
+          filters: current.filters?.map((filter) => (
+            filter.id === id ? { ...filter, value } : filter
+          )),
+        }
+      : current);
+    postPluginWorkbenchEvent(pluginId, { kind: "filter", id, value });
   }, [pluginId]);
 
   const handlePluginKeys = useCallback((event: React.KeyboardEvent) => {
@@ -696,6 +709,16 @@ export function PluginPanelViewport() {
               ))}
             </div>
           ) : null}
+          {workbench?.filters?.map((filter) => (
+            <Select
+              key={filter.id}
+              value={filter.value}
+              options={filter.options}
+              ariaLabel={filter.label}
+              className="qx-plugin-workbench-filter"
+              onChange={(value) => updateWorkbenchFilter(filter.id, value)}
+            />
+          ))}
           <PluginBackgroundBadge pluginId={pluginId} />
         </div>
       }

@@ -237,6 +237,16 @@
   white-space: nowrap;
 }
 
+.qx-plugin-workbench-filter {
+  width: 132px;
+  flex: 0 0 132px;
+}
+
+.qx-plugin-workbench-filter .qx-shadcn-select-trigger {
+  height: 28px;
+  font-size: 12px;
+}
+
 .qx-plugin-shell .qx-shell-search-slot > .qx-search-wrap {
   width: 100%;
   min-width: 0;
