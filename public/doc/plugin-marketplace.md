@@ -321,7 +321,9 @@ qx-plugins/
 
 官方 `qx-plugins` 仓库使用根目录 `release-notes.json` 维护这组数据。每次提高插件
 manifest 版本时必须先添加对应说明；打包脚本会在缺少当前版本说明时失败，并最多保留
-最近 30 条历史。自建插件库可以直接生成同形 `releases[]`。
+最近 30 条历史。打包时还会自动在每个 `.qx-plugin` 内生成 `releases.json`，包含
+`plugin_id`、`current_version` 和同一份 `releases[]`；它是发布目录的只读副本，不应
+在插件源码目录中另行手工维护。自建插件库可以直接生成同形数据。
 
 > `download_url` 也可以指向 GitHub Release 的 asset，便于大文件分发。
 

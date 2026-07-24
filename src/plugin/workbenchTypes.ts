@@ -77,6 +77,8 @@ export interface PluginWorkbenchDetail {
   images?: PluginWorkbenchImage[];
   /** Host media layout. Defaults to `grid`; `horizontal` enables a filmstrip. */
   imageLayout?: "grid" | "horizontal";
+  /** Place media above the heading (default) or directly after the reading body. */
+  mediaPlacement?: "header" | "after-body";
   /** Item-local asynchronous state; does not replace the usable cached detail. */
   status?: PluginWorkbenchAsyncStatus;
   body?: string;
@@ -108,6 +110,8 @@ export interface PluginWorkbenchItem {
   icon?: string;
   /** Remote/data image rendered by the host in gallery mode. */
   image?: PluginWorkbenchImage;
+  /** Compact media card rendered inside a List row. Intended for social/community posts. */
+  images?: PluginWorkbenchImage[];
   /** Per-item async state for refresh, metadata, thumbnail, or batch work. */
   status?: PluginWorkbenchAsyncStatus;
   progress?: number;
@@ -303,6 +307,7 @@ function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
           .filter((image): image is PluginWorkbenchImage => Boolean(image))
       : [],
     imageLayout: raw.imageLayout === "horizontal" ? "horizontal" as const : "grid" as const,
+    mediaPlacement: raw.mediaPlacement === "after-body" ? "after-body" as const : "header" as const,
     status: normalizeAsyncStatus(raw.status),
     body: shortText(raw.body, 12_000),
     form: normalizeForm(raw.form),
@@ -374,6 +379,11 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
           badge: shortText(item.badge, 120),
           icon: shortText(item.icon, 24),
           image: normalizeImage(item.image),
+          images: Array.isArray(item.images)
+            ? item.images.slice(0, 6)
+                .map((image) => normalizeImage(image))
+                .filter((image): image is PluginWorkbenchImage => Boolean(image))
+            : [],
           status: normalizeAsyncStatus(item.status),
           progress: Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : undefined,
           tone: normalizeTone(item.tone),

@@ -341,6 +341,10 @@ Top Bar 包含搜索、可选 leading、筛选和少量上下文操作。**不�
 - Workbench List / Gallery 默认以完整 Main Area 作为浏览画布；点击条目或对带详情的条目按 Enter 后，宿主统一切换为「左侧保留当前 List / Gallery 集合 + 右侧 Detail」的主从布局。Esc 先关闭 Detail 并恢复全宽集合，再清本地 query，最后离开模块；Context Panel 仍只承载 Actions。插件不得为 Bing、Unsplash、Brew 等消费者各自复制这套布局状态。
 - Workbench List / Gallery 的内容轨是稳定宿主表面：空数据或少量数据时仍占满当前浏览区或已打开详情时的左侧集合栏；空态必须跨满所属区域并垂直居中，不能缩成首个 grid cell 或随 item 数量塌缩。若发布的是无条目的面板级 `detail`，Detail 直接占满 Main Area，不保留无意义的空集合栏。
 - Workbench List 必须像 V2EX 一样始终保留左栏 section header 与数量；首次空载显示统一骨架行 + LoadingLabel，已有条目刷新时保留旧列表并把数量短暂显示为 `…`，不得退回整栏纯文本 loading。
+- Workbench List 的单图缩略图继续使用 `item.image`；社区动态可用
+  `item.images[]` 在文字轨下显示紧凑图片卡，宿主最多接收 6 张、显示前三张并汇总余量。
+  阅读文章不得把正文图片冒充列表缩略图，应通过
+  `detail.mediaPlacement: "after-body"` 把 `detail.image(s)` 放在正文之后。
 - Workbench 右侧图片详情必须由宿主适配横图、竖图、超宽图和窄内容区：单图使用
   `detail.image`，社区帖子等多图内容使用 `detail.images[]`；多图由宿主排成响应式网格。
   详情图片默认按原始比例 contain，可声明 landscape/square/portrait 固定舞台；加载失败

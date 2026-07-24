@@ -253,6 +253,30 @@ function WorkbenchMediaCollection({
   );
 }
 
+function WorkbenchListMedia({ images }: { images: PluginWorkbenchImage[] }) {
+  const visible = images.slice(0, 3);
+  return (
+    <span
+      className={`qx-host-workbench-list-media count-${visible.length}`}
+      aria-hidden="true"
+    >
+      {visible.map((image, index) => (
+        <span className="qx-host-workbench-list-media-image" key={`${image.url}-${index}`}>
+          <img
+            src={image.url}
+            alt=""
+            loading="lazy"
+            style={{ objectFit: image.fit || "cover" }}
+          />
+          {index === visible.length - 1 && images.length > visible.length ? (
+            <span className="qx-host-workbench-list-media-more">+{images.length - visible.length}</span>
+          ) : null}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function WorkbenchDetail({
   detail,
   emptyText,
@@ -324,8 +348,8 @@ function WorkbenchDetail({
       )}
     </label>
   );
-  return (
-    <div className="qx-content-detail-scroll" data-qx-region-scroll>
+  const detailMedia = (
+    <>
       {detail.image?.url ? (
         <WorkbenchDetailImage
           key={detail.image.url}
@@ -346,6 +370,11 @@ function WorkbenchDetail({
           nextText={nextText}
         />
       ) : null}
+    </>
+  );
+  return (
+    <div className="qx-content-detail-scroll" data-qx-region-scroll>
+      {detail.mediaPlacement !== "after-body" ? detailMedia : null}
       {detail.title ? <h2 className="qx-content-detail-heading">{detail.title}</h2> : null}
       {detail.subtitle ? <div className="qx-content-detail-meta">{detail.subtitle}</div> : null}
       <WorkbenchStatus status={detail.status} />
@@ -396,6 +425,7 @@ function WorkbenchDetail({
         </section>
       ) : null}
       {detail.body ? <p className="qx-host-workbench-body">{detail.body}</p> : null}
+      {detail.mediaPlacement === "after-body" ? detailMedia : null}
       <WorkbenchFields fields={detail.fields} />
       {detail.sections?.map((section, index) => (
         <section className="qx-host-workbench-section" key={`${section.title || "section"}-${index}`}>
@@ -589,7 +619,9 @@ export default function PluginWorkbenchView({
           <button
             key={id}
             type="button"
-            {...getItemProps(index, { className: "tall qx-host-workbench-row" })}
+            {...getItemProps(index, {
+              className: `tall qx-host-workbench-row${item.images?.length ? " has-card-media" : ""}`,
+            })}
             onClick={() => onActivate(id)}
           >
             <span className={`qx-host-workbench-icon${item.image?.url ? " has-image" : ""}`} aria-hidden="true">
@@ -605,6 +637,7 @@ export default function PluginWorkbenchView({
             <span className="qx-list-copy">
               <strong className="qx-list-title">{item.title}</strong>
               {item.subtitle ? <small>{item.subtitle}</small> : null}
+              {item.images?.length ? <WorkbenchListMedia images={item.images} /> : null}
               {item.progress != null ? (
                 <span className="qx-host-workbench-progress" aria-label={`${Math.round(item.progress)}%`}>
                   <i style={{ width: `${Math.max(0, Math.min(100, item.progress))}%` }} />
