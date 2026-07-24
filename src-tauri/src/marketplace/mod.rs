@@ -806,10 +806,18 @@ fn http_status_error(
     detail
 }
 
-async fn http_get_once(url: &str) -> Result<Vec<u8>, String> {
+async fn http_get_once(url: &str, bypass_cache: bool) -> Result<Vec<u8>, String> {
     let client = crate::http_client::client(USER_AGENT, std::time::Duration::from_secs(30), None)?;
-    let resp = client
-        .get(url)
+    let mut request = client.get(url);
+    if bypass_cache {
+        request = request
+            .header(
+                reqwest::header::CACHE_CONTROL,
+                "no-cache, no-store, max-age=0",
+            )
+            .header(reqwest::header::PRAGMA, "no-cache");
+    }
+    let resp = request
         .send()
         .await
         .map_err(|e| format!("http request: {e}"))?;
@@ -825,10 +833,10 @@ async fn http_get_once(url: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("read body: {e}"))
 }
 
-async fn http_get(url: &str) -> Result<Vec<u8>, String> {
+async fn http_get_with_policy(url: &str, bypass_cache: bool) -> Result<Vec<u8>, String> {
     let mut last_error = String::new();
     for attempt in 0..=HTTP_RETRY_ATTEMPTS {
-        match http_get_once(url).await {
+        match http_get_once(url, bypass_cache).await {
             Ok(bytes) => return Ok(bytes),
             Err(error) => {
                 last_error = error;
@@ -849,8 +857,28 @@ async fn http_get(url: &str) -> Result<Vec<u8>, String> {
     Err(last_error)
 }
 
+async fn http_get(url: &str) -> Result<Vec<u8>, String> {
+    http_get_with_policy(url, false).await
+}
+
 async fn http_get_with_fallbacks(url: &str) -> Result<Vec<u8>, String> {
-    http_get_asset_candidates(&[url.to_string()]).await
+    let mut errors = Vec::new();
+    let candidates = github_url_candidates(url);
+    for candidate in &candidates {
+        match http_get_with_policy(&candidate, true).await {
+            Ok(bytes) => return Ok(bytes),
+            Err(error) => errors.push(error),
+        }
+    }
+    for candidate in &candidates {
+        if let Some(source) = forge_raw_archive_source(candidate) {
+            match http_get_from_repo_archive(&source).await {
+                Ok(bytes) => return Ok(bytes),
+                Err(error) => errors.push(error),
+            }
+        }
+    }
+    Err(errors.join(" | fallback failed: "))
 }
 
 /// Download a marketplace asset, trying the primary URL plus registry-local
