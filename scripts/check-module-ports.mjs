@@ -627,6 +627,47 @@ if (bundleProductionModule("src/plugin/pluginSdkFactory.ts", sdkOut)) {
   }
 }
 
+// Workbench detail sub-surfaces remain bounded pure-data protocols.
+const workbenchTypesOut = path.join(scratch, "workbenchTypes.mjs");
+if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
+  try {
+    const workbench = await import(pathToFileURL(workbenchTypesOut).href + `?t=${Date.now()}`);
+    const normalized = workbench.normalizePluginWorkbenchState({
+      items: [{
+        id: "topic-1",
+        title: "Topic",
+        detail: {
+          images: [{ url: "https://example.com/1.jpg" }],
+          imageLayout: "horizontal",
+          replies: {
+            total: 120,
+            items: Array.from({ length: 105 }, (_, index) => ({
+              id: `reply-${index + 1}`,
+              floor: index + 7,
+              author: `Author ${index + 1}`,
+              createdAt: "2026-07-24",
+              originalPoster: index === 0,
+              body: `Reply ${index + 1}`,
+            })),
+          },
+        },
+      }],
+    });
+    const detail = normalized.items?.[0]?.detail;
+    if (detail?.imageLayout !== "horizontal" || detail.images?.length !== 1) {
+      fail("Workbench host filmstrip normalization");
+    }
+    if (detail?.replies?.items.length !== 100 || detail.replies.total !== 120) {
+      fail("Workbench replies must preserve total and cap rendered items at 100");
+    }
+    if (detail?.replies?.items[0]?.floor !== 7 || !detail.replies.items[0]?.originalPoster) {
+      fail("Workbench replies must preserve source floor and OP metadata");
+    }
+  } catch (e) {
+    fail(`Workbench detail protocol runtime test: ${e}`);
+  }
+}
+
 // Real/direct/unavailable and iframe contexts must stay substitutable. CLI and
 // UI are omitted here because their shared serialized factory is tested above.
 const contextOut = path.join(scratch, "pluginContext.mjs");

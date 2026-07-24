@@ -1,5 +1,74 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Bugfix — 关闭剪贴板搜索后 Launcher 仍返回历史条目
+
+**状态**：实现完成，等待发布构建。
+
+- 根因是剪贴板存在 Module Surface 与 Launcher 慢 Provider 两条搜索路径；设置开关只
+  约束前者，后者仍会直接读取历史。30 天常用结果召回也可能绕过模块开关重新注入。
+- 新增统一 `moduleSearchPolicy`：直接 Provider、异步回填、排序提交、sticky pin 与
+  常用召回均在同一边界过滤。关闭剪贴板搜索不影响剪贴板模块、Quick Entry、历史记录
+  或模块内浏览。
+- 搜索进度不再把已关闭的剪贴板 Provider 标为 pending/running；设置变化时立即移除
+  当前可见的违规结果并使旧排序结果失效。
+- 剪贴板历史查询收口为 Launcher 唯一慢 Provider；Module Surface 只保留打开剪贴板
+  根命令，避免重复 IPC 和重复候选。
+- 统一策略识别旧版 `__qx:rss:feed:*` 使用频率记录，关闭 RSS 搜索后旧记录不能旁路
+  召回；总开关关闭时子开关保留真实值但禁用交互。
+
+### 验证
+
+- [x] `npm run check`
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+
+## Refactor — Storage Management 独立模块列表
+
+**状态**：实现完成，等待发布构建。
+
+- 存储界面从 About 迁移到 Settings → System → Storage Management；About 只保留版本、
+  更新与发布信息。
+- 页面只显示宿主缓存注册表中的模块目标，以紧凑表格行对齐模块、大小、项目数和清理
+  操作；移除按 Cache / Files / Databases 等物理桶重复展示的第二套统计。
+- 保留逐模块清理、清理全部模块缓存和刷新；历史、生成文件、数据库、插件持久数据与
+  设置不进入该页面，也不会被“清理全部缓存”删除。
+
+## Feature — Workbench 通用胶片与底部回复区
+
+**状态**：实现完成，等待发布构建与市场发布。
+
+- Workbench 社区动态继续通过宿主 `detail.images + imageLayout=horizontal` 渲染胶片、
+  大图预览与相邻图预加载，插件不再拥有媒体 UI。
+- 新增 `detail.replies` 纯数据协议和共享 `QxReplyList`，统一显示 `#楼号`、作者、时间、
+  楼主标记与正文；回复固定在详情阅读流底部。
+- 内置 V2EX 迁移到同一回复组件；QxCoolapk 1.4.0 从普通 sections 迁移到结构化回复，
+  并兼容读取 1.3.x 离线缓存中的旧回复格式。
+
+## Feature — QxWeibo 微博只读 Feed 插件
+
+**状态**：实现完成，等待市场发布。
+
+- 市场新增 `qxweibo`：支持配置主用户 UID、多个关注用户 UID，并可从主 UID 的公开
+  关注列表中限量聚合关注流；选择微博后按需读取完整正文和首屏评论。
+- 复用 Workbench List / Detail / Actions / Island 和通用图片浏览协议，不自绘列表、
+  分栏、Esc 或大图预览。
+- 多游客 Cookie 轮换使用；不足时仅为当前会话自动申请。API 请求串行并使用可配置
+  随机间隔，关注聚合受用户数量上限约束，避免无界并发。
+- 微博图床图片经 `context.http` 获取并转为有界会话预览，不向 Workbench 发布新浪
+  图片直链，也不把 Cookie 或 data URL 写入内容缓存。
+- Feed、评论和已读状态使用 SWR 持久缓存并登记宿主可清理目标；网络失败保留旧内容。
+- QxWeibo 1.1.0 将首屏评论接入 Workbench 通用底部 `detail.replies`，保留接口楼号
+  （缺失时按稳定返回顺序编号）、作者、时间、楼主标记和回复关系；不再用普通 sections
+  拼接评论。
+- 可维护源码拆分为组合入口、微博工作流与媒体代理；市场构建生成宿主 Blob runtime
+  所需的自包含 `index.js`。插件开发手册同步说明“多文件源码、单入口分发”边界。
+
+### 验证
+
+- [x] QxWeibo mock Workbench smoke test
+- [x] 真实游客 Cookie、用户 Feed、评论和新浪图片代理烟测
+- [x] 市场打包、归档检查与本机安装
+
 ## Feature — 插件版本说明、兼容安装门槛与 Badge 语义
 
 **状态**：实现完成，等待发布构建。
@@ -25,8 +94,9 @@
 
 - manifest 新增 `storage.cacheTargets[]`：插件以稳定 target id、展示文案和精确 persist
   key 白名单声明可重建缓存；宿主拒绝重复 target/key、非法保留期和超量声明。
-- Settings → About → Storage 合并显示插件缓存，占用从受保护 Plugin Data 桶转入
-  Cache 桶避免重复统计；支持逐插件缓存清理和 Clear All Caches。
+- Settings → System → Storage Management 合并显示插件登记的模块缓存，占用从受保护
+  Plugin Data 桶转入 Cache 目标避免重复统计；支持逐插件缓存清理和 Clear All Caches，
+  不再重复展示物理存储桶。
 - 可选 `retentionDays` + 顶层 `savedAt` envelope 提供宿主懒过期安全上限；插件继续
   负责按记录 `readAt` 做细粒度淘汰。
 - QxHeihe 后续打开先画 feed、完整详情和已读状态缓存；选择帖子即标记已读，可手动
@@ -61,6 +131,27 @@
 - [x] QxHeihe 插件语法、真实 API 烟测、打包、本机安装与 mock Workbench 流程
 - [x] 竖长图全尺寸预览回归检查、macOS `.app` / `.dmg` 正式构建、签名校验与本机安装启动
 - [ ] macOS / Windows 发布工作流
+
+## Feature — Workbench 原位图文长文与 QxCoolapk 1.3
+
+**状态**：宿主协议与 Coolapk 消费端已实现，正式构建和本机安装完成。
+
+- Workbench `detail.content[]` 新增有界的 `text` / `image` 纯数据块；长文章可以保留
+  上游段落与图片顺序，同时继续复用宿主图片失败态、放大预览和左右切图。
+- QxCoolapk 读取真实接口的 `message_raw_output`，不再只消费已经合并的 `message` 与
+  `picArr`；受保护图片完成鉴权代理后回填到原始段落位置，旧缓存或缺少块数据时仍回退
+  到 `mediaPlacement="after-body"`。
+- QxCoolapk 升级至 1.3.0；动态帖卡片、完整详情图集、回复、已读与缓存协议保持不变。
+- QxCoolapk 1.3.1 将点赞、回复、阅读和设备合并进作者/发布时间副标题，移除正文下方
+  重复且占据大量纵向空间的属性表。
+
+### 验证
+
+- [x] Workbench 信任边界 text/image 块回归
+- [x] QxCoolapk mock Workbench smoke
+- [x] 真实酷安长文 `72872133` 原始块顺序检查
+- [x] QxCoolapk 1.3.0 打包、归档检查与本机安装
+- [x] Qx 0.6.25 `.app` / `.dmg` 正式构建、签名校验与启动
 
 ## Bugfix — Cardinal 短词伪相关结果
 
@@ -490,7 +581,9 @@
 
 **状态**：已完成代码、接口与规范同步，等待发布后跨平台运行态复核。
 
-- Storage 从 About 大组件拆为独立设置表面，区分可重建模块缓存、历史/离线内容、生成文件和受保护数据位置；每个缓存目标显示真实模块、路径、大小和文件数，可逐项清理或一次清理全部缓存。
+- Storage 从 About 迁移到 System 下的独立设置表面，只列出可重建模块存储；每个缓存
+  目标显示真实模块、路径、大小和文件数，可逐项清理或一次清理全部缓存，历史、生成
+  文件和受保护数据不再作为第二套物理桶重复展示。
 - Rust 端以单一缓存目标注册表同时驱动统计与清理，覆盖 Launcher 应用图标、RSS 图标、剪贴板派生预览、V2EX、Weather、Marketplace、Updater、OCR、文件搜索索引和录屏临时目录；修复原统计了更新目录却未实际清理、Windows 应用图标路径不一致及多个模块缓存漏统的问题。
 - 新增 `qx_storage_clear_cache_target(target_id)`；只接受注册 id，并拒绝 Home、Qx state/data/cache 根目录、输出目录及非绝对路径。清理目录时不跟随根符号链接，避免缓存路径被替换后穿透删除。
 - `plugin-data` 作为持久数据独立统计，不计入可重建缓存；清理全部缓存明确保留设置、插件、插件数据、历史和已保存截图/录屏。
@@ -537,6 +630,8 @@
 - Detail 新增 `mediaPlacement: "after-body"`，文章图片可跟随正文；默认 header 布局保持动态/图库兼容。
 - QxCoolapk 依据 `feedArticle`、`is_html_article=1`、`type=12` 判断文章；文章不发布列表图片卡，普通动态图片发布为卡片。
 - 全尺寸媒体预览支持 50%–400% 缩放、复位、双向滚动和键盘/修饰键滚轮操作。
+- 全尺寸媒体预览移除底部缩放大托盘；加减按钮改为 26px 圆形控件，百分比与右下角页码统一为同高胶囊。
+- Workbench `island: null` 只撤销插件瞬时状态并恢复 Shell 静态灵动岛；宽屏不再留下底部中央空位，既有 680px 窄屏断点继续隐藏。
 
 ## Fix — 插件仓库工具栏与 QxPicture API 管理
 
@@ -1463,6 +1558,8 @@
 ### 修复内容
 
 - 统一 `.qx-content-split` 的 `760px` 单页协议：列表态只显示列表，打开详情后只显示详情，Esc 逐层退回列表。
+- RSS 阅读态在窄屏显式覆盖可拖拽的三列轨道，避免列表和分隔条隐藏后正文只占第一列、
+  右侧残留大片空白；详情现在占满整个 Main Area。
 - Clipboard 移除窄窗硬隐藏详情；Documents 点击/Enter 进入全屏编辑器，Esc 返回文件列表；Workbench 容器断点同步隐藏分隔拖拽条。
 - QxAI 普通聊天与 function-calling Agent 共用真实 SSE 增量事件，工具启用时不再等待整段回复后一次显示。
 - Provider 模型目录增加 `reasoning` 能力；对支持模型提供会话级推理开关，并把原生 reasoning 与最终回答分栏折叠展示。
@@ -1475,6 +1572,7 @@
 - [x] `cargo check`（`src-tauri/`，通过；存在既有 warning）
 - [x] `npm run check`
 - [x] `npm run build`
+- [x] RSS 阅读态窄屏 CSS 优先级回归检查
 - [x] 本次 Rust 文件 `rustfmt --edition 2021 --check src/g4f.rs src/plugin_api.rs`
 - [x] 全仓 `cargo fmt --check`
 - [ ] 手动验证：窗口缩窄至 Island 隐藏后，RSS / Clipboard / Documents / Workbench 的列表、详情、Esc 阶梯。

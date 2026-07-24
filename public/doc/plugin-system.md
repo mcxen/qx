@@ -64,7 +64,14 @@ my-plugin.qx-plugin  (zip)
 
 Tauri 生产环境前端是 `tauri://localhost`（或 `asset://`），`~/.qx/plugins/*/index.js` 是 `file://` 路径。webview 默认无法 ESM import 文件系统上的模块（CORS、MIME、绝对路径解析都有坑）。Vite 构建后所有 `import()` 也会被静态分析成 chunk，运行时拼出的本地路径根本不进 bundle 体系。
 
-**正确做法**：后端把插件文件读成字符串，前端用 `Blob` 造 `blob:` URL，再 `import(blobUrl)`。这是 webview 里能跑通的动态 ESM。
+**正确做法**：后端把 `manifest.entry` 指向的插件入口读成字符串，前端用 `Blob`
+造 `blob:` URL，再 `import(blobUrl)`。这是 webview 里能跑通的动态 ESM。
+
+这个加载边界也意味着 Blob 入口没有插件目录作为相对模块基址：分发用 `index.js`
+必须是自包含 ESM，不能保留 `import "./api.js"` 等相对导入。开发阶段可以使用
+`index.source.js` + `source/*.js` 多文件结构，但发布前必须通过 esbuild 等工具 bundle
+成 manifest 指向的单入口。静态图片等资源继续通过 `context.assets.resolve()` /
+`plugin_resolve_asset` 解析，不要把“JS 单入口”误解为所有资源都要内联。
 
 ---
 
@@ -193,7 +200,7 @@ export default {
 | `context.display.raycastActionPanel` | 读取用户在 Settings -> Extensions -> Display 中配置的 Raycast ActionPanel 行内按钮显示偏好 |
 | `context.clipboard.read()` | 读取系统剪贴板文本（需 `clipboard` 权限） |
 | `context.clipboard.write(text)` | 写入系统剪贴板文本（需 `clipboard` 权限） |
-| `context.ui.mountWorkbench(state, handlers)` | 声明式受控 panel：Qx 渲染 tabs、稳定的 List/Gallery 空态画布、`detail.image` 单图与 `detail.images[]` 多图自适应/可放大详情、局部 async status、text/number/select 表单、表单/参数组管理 Actions 与 island；返回 controller 的 `update/updateItems` 以稳定 id 发布增量/批量业务结果；表单输入通过 `onInput(id, value, item)`、`form.actions` / `control.group.action` 通过 `onAction(id, item)` 回传纯数据；宿主即时处理 query/tab/selection，manifest command 完成后回调 `onCommandComplete`；`backgroundPoll` 可绑定后台 interval command |
+| `context.ui.mountWorkbench(state, handlers)` | 声明式受控 panel：Qx 渲染 tabs、稳定的 List/Gallery 空态画布、`detail.image` 单图、`detail.images[]` 多图、保持段落原位的 `detail.content[]` text/image 长文块，以及底部 `detail.replies` 通用回复区（`#floor` / author / time / OP）；统一提供自适应与可放大详情；支持局部 async status、text/number/select 表单、表单/参数组管理 Actions 与 island；返回 controller 的 `update/updateItems` 以稳定 id 发布增量/批量业务结果；表单输入通过 `onInput(id, value, item)`、`form.actions` / `control.group.action` 通过 `onAction(id, item)` 回传纯数据；宿主即时处理 query/tab/selection，manifest command 完成后回调 `onCommandComplete`；`backgroundPoll` 可绑定后台 interval command |
 | `context.island.show(input)` / `update(input)` / `dismiss()` | 在宿主灵动岛显示结构化数据、真实进度或 `wave/dots/spinner/pulse` activity、宿主倒计时与一个统一样式 command 动作（需 `island` 权限；桌面浮窗只能由用户从 Qx 手动浮出并可关闭；浮窗打开目标由宿主固定为当前插件 Panel） |
 | `context.cli.run({ program, args?, cwd?, env?, timeoutMs? })` | **业务 CLI 首选**：argv 同步执行（需 `cli`；**不**走 AI Agent Bash）。协议见 [plugin-cli-protocol.md](./plugin-cli-protocol.md) |
 | `context.cli.bash(script \| req)` | login-shell bash（需 `cli`） |

@@ -5,7 +5,7 @@ import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { QxActionList } from "../../components/QxActionPanel";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
-import { LoadingLabel, SegmentedControl } from "../../components/ui";
+import { SegmentedControl } from "../../components/ui";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import {
   qxMasterDetailIds,
@@ -19,10 +19,13 @@ import { type V2exMode, type V2exReply, type V2exTopic, formatTime } from "./typ
 import { sanitizeTopicHtml } from "./V2exDetail";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import BetaBadge from "../../components/BetaBadge";
+import QxReplyList from "../../components/QxReplyList";
+import { useT } from "../../i18n";
 
 const MD = qxMasterDetailIds("v2ex");
 
 export default function V2exPanel() {
+  const t = useT();
   const setTab = useStore((state) => state.setTab);
   const [mode, setMode] = useState<V2exMode>("latest");
   const [query, setQuery] = useState("");
@@ -364,36 +367,28 @@ export default function V2exPanel() {
                   className="v2ex-detail-content"
                   dangerouslySetInnerHTML={{ __html: cleanTopicContent }}
                 />
-                <div className="v2ex-replies-section">
-                  <div className="v2ex-replies-header">
-                    <span>Replies ({detailTopic.replies})</span>
-                  </div>
-                  {repliesLoading && (
-                    <div className="v2ex-replies-hint">
-                      <LoadingLabel>Loading replies...</LoadingLabel>
-                    </div>
-                  )}
-                  {repliesError && (
-                    <div className="v2ex-replies-hint v2ex-replies-error">{repliesError}</div>
-                  )}
-                  {!repliesLoading && !repliesError && replies.length === 0 && (
-                    <div className="v2ex-replies-hint">No replies yet.</div>
-                  )}
-                  {replies.map((reply) => (
-                    <div key={reply.id} className="v2ex-reply-item">
-                      <div className="v2ex-reply-meta">
-                        <span className="v2ex-reply-floor">#{reply.floor}</span>
-                        <span className="v2ex-reply-author">{reply.author}</span>
-                        {reply.author === detailTopic.author && <span className="v2ex-reply-op">OP</span>}
-                        <span className="v2ex-reply-time">{formatTime(reply.created)}</span>
-                      </div>
+                <QxReplyList
+                  title={t("v2ex.replies", "Replies")}
+                  total={detailTopic.replies}
+                  loading={repliesLoading}
+                  loadingText={t("v2ex.replies.loading", "Loading replies…")}
+                  error={repliesError}
+                  emptyText={t("v2ex.replies.empty", "No replies yet.")}
+                  originalPosterLabel={t("v2ex.replies.op", "OP")}
+                  items={replies.map((reply) => ({
+                    id: String(reply.id),
+                    floor: reply.floor,
+                    author: reply.author,
+                    createdAt: formatTime(reply.created),
+                    originalPoster: reply.author === detailTopic.author,
+                    body: (
                       <div
-                        className="v2ex-reply-content v2ex-detail-content"
+                        className="v2ex-detail-content"
                         dangerouslySetInnerHTML={{ __html: sanitizeTopicHtml(reply.content) }}
                       />
-                    </div>
-                  ))}
-                </div>
+                    ),
+                  }))}
+                />
                 {detailTopic.url && (
                   <div className="qx-content-detail-footer">
                     <button className="qx-command-button" onClick={() => void openUrl(detailTopic.url)} type="button">

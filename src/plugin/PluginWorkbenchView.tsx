@@ -41,6 +41,7 @@ import type {
 } from "./workbenchTypes";
 import { useT } from "../i18n";
 import { qxMasterDetailIds, qxRegionProps } from "../hooks/useQxMasterDetail";
+import QxReplyList from "../components/QxReplyList";
 
 export const PLUGIN_WORKBENCH_REGIONS = qxMasterDetailIds("plugin-workbench");
 
@@ -124,11 +125,13 @@ function WorkbenchStatus({ status }: { status?: PluginWorkbenchAsyncStatus }) {
 
 function WorkbenchDetailImage({
   image,
+  collection,
   onPreview,
   unavailableText,
   previewText,
 }: {
   image: PluginWorkbenchImage;
+  collection?: PluginWorkbenchImage[];
   onPreview: (image: PluginWorkbenchImage, collection: PluginWorkbenchImage[]) => void;
   unavailableText: string;
   previewText: string;
@@ -152,7 +155,7 @@ function WorkbenchDetailImage({
         <button
           type="button"
           className={`${className} is-zoomable`}
-          onClick={() => onPreview(image, [image])}
+          onClick={() => onPreview(image, collection?.length ? collection : [image])}
           aria-label={image.alt ? `${previewText}: ${image.alt}` : previewText}
         >
           {content}
@@ -293,6 +296,7 @@ function WorkbenchDetail({
   previousText: string;
   nextText: string;
 }) {
+  const t = useT();
   if (!detail) {
     return <div className="qx-content-detail-empty">{emptyText}</div>;
   }
@@ -367,6 +371,27 @@ function WorkbenchDetail({
       ) : null}
     </>
   );
+  const contentImages = detail.content
+    ?.flatMap((block) => block.type === "image" ? [block.image] : [])
+    || [];
+  const detailContent = detail.content?.length ? (
+    <div className="qx-host-workbench-content">
+      {detail.content.map((block, index) => block.type === "text" ? (
+        <p className="qx-host-workbench-body" key={`text-${index}`}>{block.text}</p>
+      ) : (
+        <WorkbenchDetailImage
+          key={`image-${block.image.url}-${index}`}
+          image={block.image}
+          collection={contentImages}
+          onPreview={onPreview}
+          unavailableText={unavailableText}
+          previewText={previewText}
+        />
+      ))}
+    </div>
+  ) : detail.body ? (
+    <p className="qx-host-workbench-body">{detail.body}</p>
+  ) : null;
   return (
     <div className="qx-content-detail-scroll" data-qx-region-scroll>
       {detail.mediaPlacement !== "after-body" ? detailMedia : null}
@@ -419,7 +444,7 @@ function WorkbenchDetail({
           ) : null}
         </section>
       ) : null}
-      {detail.body ? <p className="qx-host-workbench-body">{detail.body}</p> : null}
+      {detailContent}
       {detail.mediaPlacement === "after-body" ? detailMedia : null}
       <WorkbenchFields fields={detail.fields} />
       {detail.sections?.map((section, index) => (
@@ -429,6 +454,35 @@ function WorkbenchDetail({
           <WorkbenchFields fields={section.fields} />
         </section>
       ))}
+      {detail.replies ? (
+        <QxReplyList
+          title={detail.replies.title || t("plugins.workbench.replies", "Replies")}
+          total={detail.replies.total}
+          items={detail.replies.items.map((reply) => ({
+            id: reply.id,
+            floor: reply.floor,
+            author: reply.author,
+            createdAt: reply.createdAt,
+            originalPoster: reply.originalPoster,
+            body: reply.body,
+          }))}
+          loading={detail.replies.status?.state === "loading"}
+          loadingText={
+            detail.replies.status?.label
+            || t("plugins.workbench.replies.loading", "Loading replies…")
+          }
+          error={
+            detail.replies.status?.state === "error"
+              ? detail.replies.status.error || detail.replies.status.label
+              : undefined
+          }
+          emptyText={
+            detail.replies.emptyText
+            || t("plugins.workbench.replies.empty", "No replies yet.")
+          }
+          originalPosterLabel={t("plugins.workbench.replies.op", "OP")}
+        />
+      ) : null}
     </div>
   );
 }
@@ -872,12 +926,13 @@ export default function PluginWorkbenchView({
                   aria-label={t("plugins.workbench.zoomOut", "Zoom out")}
                   onClick={() => changePreviewZoom(-0.25)}
                 >
-                  <Minus size={16} aria-hidden="true" />
+                  <Minus size={14} aria-hidden="true" />
                 </Button>
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
+                  className="qx-host-workbench-media-zoom-value"
                   aria-label={t("plugins.workbench.resetZoom", "Reset zoom")}
                   onClick={() => setPreviewZoom(1)}
                 >
@@ -891,7 +946,7 @@ export default function PluginWorkbenchView({
                   aria-label={t("plugins.workbench.zoomIn", "Zoom in")}
                   onClick={() => changePreviewZoom(0.25)}
                 >
-                  <Plus size={16} aria-hidden="true" />
+                  <Plus size={14} aria-hidden="true" />
                 </Button>
               </div>
               {preview && preview.images.length > 1 ? (

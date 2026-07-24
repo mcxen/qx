@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Search,
+  HardDrive,
 } from "lucide-react";
 import { useSettingsStore, type SettingsTab } from "./store";
 import GeneralSettings from "./GeneralSettings";
@@ -28,6 +29,7 @@ import AgentSettings from "./AgentSettings";
 import WeatherSettings from "./WeatherSettings";
 import AboutPanel from "./AboutPanel";
 import FileSearchSettings from "./FileSearchSettings";
+import StorageSettings from "./StorageSettings";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { Button, ScrollArea } from "../../components/ui";
@@ -86,6 +88,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "System",
     items: [
       { id: "permissions", label: "Permissions", icon: ShieldCheck },
+      { id: "storage", label: "Storage Management", icon: HardDrive },
       { id: "advanced", label: "Advanced", icon: SlidersHorizontal },
       { id: "about", label: "About", icon: Info },
     ],
@@ -104,6 +107,7 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   weather: "Weather",
   ocr: "OCR",
   advanced: "Advanced",
+  storage: "Storage Management",
   about: "About",
 };
 
@@ -206,6 +210,8 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         return <WeatherSettings />;
       case "advanced":
         return <AdvancedSettings />;
+      case "storage":
+        return <StorageSettings />;
       case "ocr":
         return <OcrSettings />;
       case "about":

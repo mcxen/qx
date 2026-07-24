@@ -178,7 +178,7 @@ tab = "plugin:*"   → PluginPanelViewport
 - 可重建缓存、历史/离线记录、生成文件、数据库、插件包、`plugin-data` 与设置分别统计；
   只有注册为可重建缓存的目标可走 `qx_storage_clear_cache_target`。插件可通过 manifest
   登记精确 persist key，宿主把其占用从受保护 Plugin Data 桶转入 Cache 桶，避免重复统计。
-- 前端 `StorageSettingsCard` 只消费后端模型，不拼接平台路径，也不把插件持久数据或已保存媒体标成缓存。
+- 前端 `StorageSettings` 位于 Settings → System，只消费后端 `cache_targets` 模型并按模块显示，不拼接平台路径，也不重复渲染物理存储桶，插件持久数据与已保存媒体不会被标成缓存。
 
 ---
 

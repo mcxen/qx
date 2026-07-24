@@ -42,6 +42,10 @@ import {
   searchModuleSurfaces,
   setPendingModuleLaunch,
 } from "./search/moduleSurfaces";
+import {
+  filterLauncherModuleSearchEntries,
+  shouldSearchClipboardProvider,
+} from "./search/moduleSearchPolicy";
 import { rankSearchResultsAsync } from "./search/rankResultsAsync";
 import { normalizeFileSearchCategories } from "./search/fileCategories";
 import {
@@ -791,10 +795,13 @@ function App() {
       const withStickyPins = (list: AppEntry[]): AppEntry[] => {
         const settingsState = useSettingsStore.getState().settings;
         const plugins = usePluginRegistry.getState().plugins;
-        return promotePinnedStickyEntries(list, settingsState, {
-          catalog: lastHomeAppResults,
-          plugins,
-        });
+        return filterLauncherModuleSearchEntries(
+          promotePinnedStickyEntries(list, settingsState, {
+            catalog: lastHomeAppResults,
+            plugins,
+          }),
+          isModuleSearchEnabled,
+        );
       };
       if (!activeQuery) {
         rankRequestSeqRef.current += 1;
@@ -809,15 +816,22 @@ function App() {
         return;
       }
       const previous = rankCandidatesRef.current;
-      const candidates = options?.merge && previous?.query === activeQuery
+      const unfilteredCandidates = options?.merge && previous?.query === activeQuery
         ? dedupeEntries(options.prepend
             ? [...entries, ...previous.entries]
             : [...previous.entries, ...entries])
         : entries;
+      const candidates = filterLauncherModuleSearchEntries(
+        unfilteredCandidates,
+        isModuleSearchEnabled,
+      );
       rankCandidatesRef.current = { query: activeQuery, entries: candidates };
 
       const stamped = stampUsage(candidates);
-      const frequent = frequentMatchingEntries(activeQuery);
+      const frequent = filterLauncherModuleSearchEntries(
+        frequentMatchingEntries(activeQuery),
+        isModuleSearchEnabled,
+      );
       const merged = frequent.length > 0
         ? dedupeEntries([...frequent, ...stamped])
         : stamped;
@@ -833,6 +847,35 @@ function App() {
     },
     [scheduleResultCommit, setResults],
   );
+
+  // Settings may change while an old provider/ranker still owns visible rows.
+  // Remove disabled module results immediately and invalidate pending rank work;
+  // the module itself and its Quick Entry remain available.
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    const current = useStore.getState();
+    if (!current.query.trim()) return;
+    const filteredVisible = filterLauncherModuleSearchEntries(
+      current.results,
+      isModuleSearchEnabled,
+    );
+    if (filteredVisible.length !== current.results.length) {
+      rankRequestSeqRef.current += 1;
+      setResults(filteredVisible);
+    }
+    const ranked = rankCandidatesRef.current;
+    if (ranked) {
+      rankCandidatesRef.current = {
+        ...ranked,
+        entries: filterLauncherModuleSearchEntries(ranked.entries, isModuleSearchEnabled),
+      };
+    }
+  }, [
+    settings.module_search.enabled,
+    settings.module_search.modules,
+    settingsLoaded,
+    setResults,
+  ]);
 
   const persistPendingWindowSize = useCallback(() => {
     const pending = pendingWindowSizeRef.current;
@@ -1735,7 +1778,11 @@ function App() {
     ) => {
       const trimmed = q.trim();
       const shouldSearchFiles = (scope === "files" || scope === "all") && trimmed.length > 0;
-      const shouldSearchClipboard = (scope === "all" || scope === "clipboard") && trimmed.length > 0;
+      const shouldSearchClipboard = shouldSearchClipboardProvider(
+        scope,
+        trimmed,
+        isModuleSearchEnabled("clipboard"),
+      );
 
       if (!shouldSearchFiles && !shouldSearchClipboard) return;
 
@@ -1815,12 +1862,15 @@ function App() {
 
       const clipboardTask = clipboardPromise.then((clipboardEntries) => {
         if (seq !== searchSeqRef.current || signal.aborted) return;
-        if (clipboardEntries.length > 0) {
-          applyResults(clipboardEntries, { merge: true });
+        const allowedEntries = isModuleSearchEnabled("clipboard")
+          ? clipboardEntries
+          : [];
+        if (allowedEntries.length > 0) {
+          applyResults(allowedEntries, { merge: true });
         }
         if (shouldSearchClipboard) {
           patchSearchTracks(
-            { clipboard: { status: "done", hits: clipboardEntries.length } },
+            { clipboard: { status: "done", hits: allowedEntries.length } },
             { phase: "searching", seq },
           );
         }
@@ -1974,7 +2024,9 @@ function App() {
         phase: "searching",
         query: trimmed,
         seq,
-        tracks: buildSearchTracks(scope, trimmed),
+        tracks: buildSearchTracks(scope, trimmed, {
+          clipboardEnabled: isModuleSearchEnabled("clipboard"),
+        }),
       });
 
       // File pass 0 is part of the immediate query path: every non-empty edit

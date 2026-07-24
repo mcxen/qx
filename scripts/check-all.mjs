@@ -13,6 +13,7 @@ const steps = [
   ["docs", "scripts/check-docs.mjs"],
   ["i18n", "scripts/check-i18n.mjs"],
   ["shell-navigation", "scripts/check-qx-shell-navigation.mjs"],
+  ["module-search", "scripts/check-module-search.mjs"],
   ["island", "scripts/check-qx-island.mjs"],
   ["module-ports", "scripts/check-module-ports.mjs"],
   ["qx-ai-agent", "scripts/check-qx-ai-agent.mjs"],

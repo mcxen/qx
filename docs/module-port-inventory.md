@@ -23,7 +23,7 @@
 | 壳 chrome（Esc 胶囊、Actions 菜单 kbd、Island 文案） | **`useQxModuleShell`** | 无 1:1 壳；Panel 自绘 DOM，宿主 `PluginHost` 仍包一层 QxShell | 内置必走 shell；插件 panel 打开时宿主 shell 提供 Esc leave → launcher |
 | Esc 阶梯（inner → query → leave） | `useEscBack` / `shell.stepBack` | 插件 iframe 内自理；宿主 window Esc → `tryModuleEscapeStep` 再 leave 模块 | 见 UI_SPEC Esc |
 | Host Esc 跨焦点 | **`moduleEscapeHost`** + `App.performHostEscape` | 同左（打开的是插件 tab 时，PluginHost 的 shell 注册 stepBack） | 禁止非 launcher 直接 `setTab` 跳过模块阶梯 |
-| 列表选中 / 滚入视口 | **`useQxListSelection`** | 声明式 Workbench List/Gallery 由宿主处理；custom panel 自理 | DOM：`qx-list-row` + `is-active`；List 的 `item.image` 为行缩略图，`item.images[]` 为社区动态紧凑卡片，`detail.image(s)` 为自适应右侧媒体且可用 `mediaPlacement="after-body"` 跟随文章正文；全尺寸预览统一横图按宽、竖图按高、超长截图按宽滚动，并由宿主预解码前后各两张（最多缓存 8 张）；宿主提供失败态/放大预览，`item/detail.status` 表达局部异步状态，`detail.form` 为宿主渲染的 text/number/select 受控参数表单；`mountWorkbench()` controller 的 `updateItems` 按稳定 id 增量/批量合并并仍发布完整快照；浏览态全宽集合，激活带详情条目后由宿主挂载左集合 + 右详情；宿主乐观选择后通知插件；隐藏 Workbench iframe 的集合导航键转交宿主 Shell；详情打开后 region 键驱动当前集合或阅读区 |
+| 列表选中 / 滚入视口 | **`useQxListSelection`** | 声明式 Workbench List/Gallery 由宿主处理；custom panel 自理 | DOM：`qx-list-row` + `is-active`；List 的 `item.image` 为行缩略图，`item.images[]` 为社区动态紧凑卡片，`detail.image(s)` 为自适应右侧媒体且可用 `mediaPlacement="after-body"` 跟随文章正文；需要原位图文顺序的长文使用有界纯数据 `detail.content[]` text/image 块；全尺寸预览统一横图按宽、竖图按高、超长截图按宽滚动，并由宿主预解码前后各两张（最多缓存 8 张）；`detail.replies` 由共享 `QxReplyList` 在底部显示 `#楼号`、作者、时间与 OP，内置 V2EX 同样复用；宿主提供失败态/放大预览，`item/detail.status` 表达局部异步状态，`detail.form` 为宿主渲染的 text/number/select 受控参数表单；`mountWorkbench()` controller 的 `updateItems` 按稳定 id 增量/批量合并并仍发布完整快照；浏览态全宽集合，激活带详情条目后由宿主挂载左集合 + 右详情；宿主乐观选择后通知插件；隐藏 Workbench iframe 的集合导航键转交宿主 Shell；详情打开后 region 键驱动当前集合或阅读区 |
 | 主从键盘区域 | **`useQxMasterDetail`** | 插件可选自实现 region | 与 QxShell.navigation 配合 |
 | 二维网格索引 | **`qxGridNavigation`** | Workbench Gallery 由宿主处理 | 通用纯函数；不得放回 PluginHost 专用算法 |
 | Actions 数据 / 右栏渲染 | **`QxShellAction` + `QxActionList`** | Workbench 发布纯 action descriptor，宿主映射一次 | Bottom Bar、Cmd/Ctrl+K、Context 使用同一动作数据；快捷键统一平台化 |
@@ -32,7 +32,7 @@
 | 网络 | `invoke` 领域命令 / 直接 provider | **`context.http.fetch`** 或 **`invoke:cmd`** | 插件需 `http` 或精确 `invoke:` |
 | 跨会话缓存 | localStorage / Rust 磁盘缓存 | **`context.storage.persist`** | SWR：先画缓存再刷新 |
 | 进程内缓存 | React state / ref | **`context.storage.session`** | — |
-| 宿主缓存统计 / 清理 | **`storage` 注册表 + `StorageSettingsCard`** | `manifest.storage.cacheTargets[]` 精确登记可重建 persist keys；未登记插件数据仍受保护 | `qx_storage_overview` 与 `qx_storage_clear_cache_target` 共用目标；插件目标为 `plugin:<id>:<cache-id>`，只清 key 白名单 |
+| 宿主缓存统计 / 清理 | **`storage` 注册表 + `StorageSettings`** | `manifest.storage.cacheTargets[]` 精确登记可重建 persist keys；未登记插件数据仍受保护 | Settings → System → Storage Management 只消费 `cache_targets`；`qx_storage_overview` 与 `qx_storage_clear_cache_target` 共用目标；插件目标为 `plugin:<id>:<cache-id>`，只清 key 白名单 |
 | 灵动岛 | `island` prop / **`islandHost`** | **`context.island`** | 权限 `island`；`QxShell.islandKey` 必须稳定并由 Shell 绑定内置模块 `openTarget`；插件目标由 bridge 绑定；store 单写、DockSlot 单渲染；前台非粘性 location 高于后台粘性轮播；桌面浮窗只由用户从 Qx 手动浮出并可关闭 |
 | 主题 / 语义 token | `ThemeProvider` + `base.css` | Workbench 由 host 渲染；Custom Panel 由 `pluginTheme` 注入 | 同步 resolved Light/Dark、`.dark`、公开 shadcn/Qx token；插件 UI 规范见 `public/doc/plugin-ui-guidelines.md` |
 | CLI | 不暴露给模块业务（走 Rust） | **`context.cli`** | 权限 `cli` |
@@ -87,7 +87,8 @@
 | **weather** | ✅ | ✅ | http + invoke weather* | persist SWR | 无 |
 | **v2ex** | ✅ | ✅ | http + invoke v2ex* | persist SWR + host disk | 无 |
 | **qxheihe** | ✅ | ✅ | **host Workbench List + 多图详情** + http/open-url | persist SWR | 小黑盒公开 feed/详情；评论接口需登录，因此仅展示评论数量 |
-| **qxcoolapk** | ✅ | ✅ | **host Workbench List + filters + article island** + http/open-url | persist SWR + 已读优先有界缓存 | 酷安文章原文/图片加载投影到灵动岛；动态卡片、已读/未读筛选与批量清理均走宿主端口 |
+| **qxcoolapk** | ✅ | ✅ | **host Workbench List + media filmstrip + replies + filters + article island** + http/open-url | persist SWR + 已读优先有界缓存 | 酷安文章原文/图片加载投影到灵动岛；动态多图走宿主胶片与大图预览，回复走底部 `detail.replies`；已读/未读筛选与批量清理均走宿主端口 |
+| **qxweibo** | ✅ | ✅ | **host Workbench List + media filmstrip + replies + detail island** + http/open-url | persist SWR + session image proxy | 指定用户与受控聚合关注流；多游客 Cookie 轮换、串行随机间隔；微博图床走会话代理，首屏评论走底部 `detail.replies` |
 | **brew** | ✅ | ✅ | **host Workbench List** + cli/open-url | — | 全宽 List → 宿主左集合/右详情；原生 tabs/Actions；`panel.render` 快返回 |
 | **unsplash** | ✅ | ✅ | **host Workbench Gallery** + http/system wallpaper/file ports | persist last search | 全宽 Gallery → 宿主左图库/右详情；item/panel Actions；与 Bing 复用宿主壁纸端口 |
 | **external-display-control** | ✅ | ✅ | invoke external-displays | — | 无 |

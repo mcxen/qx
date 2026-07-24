@@ -130,7 +130,7 @@ Rust: list_installed_plugins()  ──►  PluginRegistry.load()
                               loadPlugin(plugin, hooks)
                                          │
                                          ▼
-                    read_plugin_entry(id) → Blob URL → sandbox iframe
+          read_plugin_entry(id) → 自包含 ESM Blob URL → sandbox iframe
                                          │
                                          ▼
                          iframe 发送 qx:plugin:loaded
@@ -138,6 +138,11 @@ Rust: list_installed_plugins()  ──►  PluginRegistry.load()
                                          ▼
                          注册 commands[] / panel 到 store
 ```
+
+`read_plugin_entry` 只返回 manifest 入口文本，不提供安装目录的 ESM 模块解析器。
+因此运行时入口必须在市场构建阶段 bundle 为自包含文件；`source/*.js` 可以作为可维护
+源码随包保留，但 iframe 不会沿相对路径继续加载这些模块。静态资源解析仍走独立的
+`plugin_resolve_asset` 端口。
 
 ## 3. RPC 调用链路
 
@@ -171,6 +176,9 @@ Workbench 图片仍是受限纯数据端口：`item.image` 在 Gallery 中作为
 `detail.images[]` 用于社区帖子等多图内容并由宿主排成响应式网格。图片只接受 HTTPS
 或 `data:image/` URL；多图最多 24 张，并统一经过
 `normalizePluginWorkbenchState` 长度与协议校验。
+`detail.replies` 是详情阅读流底部的结构化回复端口；宿主复用 `QxReplyList`，统一
+渲染 `#floor`、作者、时间、楼主标记和纯文本正文。插件不得再把回复压成普通
+`sections`，也不得自绘回复 DOM。内置 V2EX 使用同一组件作为视觉与交互基准。
 
 ## 4. 权限模型
 

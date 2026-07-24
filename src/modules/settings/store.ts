@@ -337,6 +337,7 @@ export type SettingsTab =
   | "weather"
   | "advanced"
   | "ocr"
+  | "storage"
   | "about";
 
 export const DEFAULT_SETTINGS: Settings = {

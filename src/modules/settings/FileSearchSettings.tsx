@@ -126,8 +126,8 @@ export default function FileSearchSettings() {
               description={t(`general.moduleSearch.${id}.desc`, meta.hint)}
             >
               <Toggle
-                value={moduleSearch.enabled && moduleEnabled && on}
-                disabled={!moduleEnabled}
+                value={moduleEnabled && on}
+                disabled={!moduleSearch.enabled || !moduleEnabled}
                 onChange={(value) =>
                   patch("module_search", {
                     ...moduleSearch,

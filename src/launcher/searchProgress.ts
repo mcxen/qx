@@ -76,11 +76,14 @@ export function resetSearchProgress(): void {
 export function buildSearchTracks(
   scope: "all" | "apps" | "files" | "clipboard",
   query: string,
+  options?: { clipboardEnabled?: boolean },
 ): SearchTrackState[] {
   const trimmed = query.trim();
   const shouldApps = scope === "all" || scope === "apps";
   const shouldFiles = (scope === "files" || scope === "all") && trimmed.length > 0;
-  const shouldClipboard = (scope === "all" || scope === "clipboard") && trimmed.length > 0;
+  const shouldClipboard = options?.clipboardEnabled !== false
+    && (scope === "all" || scope === "clipboard")
+    && trimmed.length > 0;
 
   const tracks: SearchTrackState[] = [];
   if (shouldApps) {

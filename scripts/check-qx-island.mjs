@@ -179,6 +179,10 @@ const pluginIslandSource = fs.readFileSync("src/plugin/pluginIsland.ts", "utf8")
 assert.match(pluginIslandSource, /workbenchProjectionSignatures/);
 assert.match(pluginIslandSource, /hasPluginIslandSession\(plugin\.id\)/);
 assert.match(pluginIslandSource, /getPluginIcon\(plugin\.id\)/);
+assert.match(
+  pluginIslandSource,
+  /if\s*\(input\s*==\s*null\)\s*\{[^}]*dismissPluginIsland\(plugin\.id\);[^}]*return false;/s,
+);
 
 const shellContentSource = fs.readFileSync("src/island/surface/ShellContent.tsx", "utf8");
 assert.match(shellContentSource, /qx-island-module-button/);

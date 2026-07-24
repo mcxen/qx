@@ -62,7 +62,7 @@
 ```text
 ~/.qx/plugins/<id>/
 ├── manifest.json      # 契约：id、权限、命令、面板、偏好
-├── index.js           # ESM：export default { commands, panel? }
+├── index.js           # 宿主实际加载的单入口 ESM
 ├── icon.png           # 可选
 ├── README.md          # 可选
 └── data/              # 运行时生成：storage / preferences
@@ -83,6 +83,39 @@ zip -r ~/Desktop/my-plugin.qx-plugin manifest.json index.js icon.png README.md
 4. 或从 **Browse** 市场安装  
 
 宿主解压到 `~/.qx/plugins/<manifest.id>/`；同 id 覆盖安装。
+
+#### 多文件源码与单入口运行时
+
+插件的**开发源码可以拆分**，但当前运行时只读取 `manifest.entry` 指向的一个文件文本，
+再通过 Blob URL 执行。Blob 入口没有插件安装目录作为 ESM base URL，因此发布后的
+`index.js` **不能保留** `import "./api.js"` 这类相对导入；包内存在对应文件也不会让
+该导入自动可用。
+
+推荐把源码按职责拆分，再在打包前合并成一个自包含入口：
+
+```text
+src/my-plugin/
+├── manifest.json
+├── index.source.js       # 组合根，只连接 command / panel
+├── source/
+│   ├── api.js            # 上游协议与请求
+│   ├── cache.js          # SWR / 持久化模型
+│   └── panel.js          # Workbench 业务状态
+└── index.js              # esbuild 生成；manifest.entry 指向这里
+```
+
+```bash
+esbuild src/my-plugin/index.source.js \
+  --bundle --format=esm --platform=browser --target=es2022 \
+  --outfile=src/my-plugin/index.js
+```
+
+市场仓库的 `npm run package:plugins` 会先执行已登记的插件构建脚本，再生成归档；
+`*.source.js` 不进入压缩包。需要让源码模块随包提供给后续维护者时，可保留
+`source/*.js`，但运行时仍只执行生成后的 `index.js`。
+
+拆分边界按变化原因决定，而不是机械按行数切割：入口只做组装，API、缓存、媒体处理
+和 Workbench 工作流各自保持清晰；任何单个源码文件仍不得超过项目规定的 1000 行。
 
 ### 2.2 导出契约（插件主接口）
 
@@ -137,13 +170,13 @@ Qx 当前可运行 **5 条入口/执行链路**；它们可以组合在同一个
 | **island + panel** | Workbench `island` 字段，或 panel 关闭时调用 `context.island` | 停靠由宿主呈现；桌面浮窗只由用户从 Qx 手动浮出并可关闭，右上定位、轮播与抢占由宿主决定 | pomodoro |
 
 原则：**能 business 就 business**——只写业务映射（API → list items），不要复制壳 CSS。
-Workbench 条目可带：`icon` · `image` · `images` · `badge` · `tone` · **`progress`（0–100）** · `status` · `detail` · `actions` · `raw`。List 会把 `item.image` 渲染为左侧缩略图；社区动态可用 `item.images[]` 在文字轨下发布完整的横向滚动卡片媒体，宿主只在信任边界保留与详情一致的 24 张异常输入安全上限。List/Detail 分隔条由宿主提供，可拖拽或用左右键调整并持久化宽度，插件不得自绘分栏。`detail.image` 可在右侧结构化详情顶部显示一张自适应大图，`detail.images[]` 可发布最多 24 张有序的社区/图集图片。宿主默认使用响应式网格；声明 `detail.imageLayout: "horizontal"` 后改为可横向滚动的胶片条，左右键与宿主按钮逐张移动。阅读文章可声明 `detail.mediaPlacement: "after-body"`，让图片跟随正文；默认 `header` 仍适合动态和图库。每张图可声明 `aspectRatio: "auto" | "landscape" | "square" | "portrait"`、`zoomable`、`caption`；宿主统一处理加载失败与整组全尺寸预览，大图打开后可用左右键切换。全尺寸预览遵循 Workbench 通用媒体协议：横图按宽、普通竖图按高适配初始视口，超长截图按宽纵向滚动；宿主在打开和切换时预加载、预解码前后各两张，并以最多 8 张的有界缓存控制内存。插件只负责稳定顺序和可用图片 URL，不需要缩图、自建 lightbox 或预加载队列。`item.status` / `detail.status` 表达不清空旧内容的局部异步状态。`detail.form.controls` 可声明宿主渲染的 `text` / `number` / `select` 受控表单，并通过 `onInput(id, value, item)` 回传变更。管理型详情还可用 `detail.form.actions` 显示表单底部动作；连续 controls 使用相同 `group.id` 时宿主合并为参数组，首个 control 可通过 `group.action` 提供组内删除等动作。所有动作仍回传 `onAction(id, selectedItem)`，无需自绘按钮。`detail` 必须是结构化数据；Workbench 不接受 HTML。
+Workbench 条目可带：`icon` · `image` · `images` · `badge` · `tone` · **`progress`（0–100）** · `status` · `detail` · `actions` · `raw`。List 会把 `item.image` 渲染为左侧缩略图；社区动态可用 `item.images[]` 在文字轨下发布完整的横向滚动卡片媒体，宿主只在信任边界保留与详情一致的 24 张异常输入安全上限。List/Detail 分隔条由宿主提供，可拖拽或用左右键调整并持久化宽度，插件不得自绘分栏。`detail.image` 可在右侧结构化详情顶部显示一张自适应大图，`detail.images[]` 可发布最多 24 张有序的社区/图集图片。宿主默认使用响应式网格；声明 `detail.imageLayout: "horizontal"` 后改为可横向滚动的胶片条，左右键与宿主按钮逐张移动。普通阅读文章可声明 `detail.mediaPlacement: "after-body"`，让整组图片跟随正文；若上游提供了准确的图文块顺序，使用 `detail.content: Array<{ type: "text"; text: string } | { type: "image"; image: WorkbenchImage }>` 保留图片在段落之间的原始位置。宿主只接受最多 64 个纯数据块（其中文字总量和图片数量另有有界限制），不接受 HTML；所有块内图片自动组成同一个全尺寸预览集合。默认 `header` 仍适合动态和图库。每张图可声明 `aspectRatio: "auto" | "landscape" | "square" | "portrait"`、`zoomable`、`caption`；宿主统一处理加载失败与整组全尺寸预览，大图打开后可用左右键切换。全尺寸预览遵循 Workbench 通用媒体协议：横图按宽、普通竖图按高适配初始视口，超长截图按宽纵向滚动；宿主在打开和切换时预加载、预解码前后各两张，并以最多 8 张的有界缓存控制内存。插件只负责稳定顺序和可用图片 URL，不需要缩图、自建 lightbox 或预加载队列。`detail.replies` 用于详情底部的通用回复区：传入 `total` 与 `items[]`，每项提供稳定 `id`、`floor`、`author`、`createdAt`、`body` 和可选 `originalPoster`；宿主统一显示 `#楼号`、作者、时间与楼主标记，最多接收 100 条纯文本回复。不要再用普通 `sections` 拼回复标题。`item.status` / `detail.status` 表达不清空旧内容的局部异步状态。`detail.form.controls` 可声明宿主渲染的 `text` / `number` / `select` 受控表单，并通过 `onInput(id, value, item)` 回传变更。管理型详情还可用 `detail.form.actions` 显示表单底部动作；连续 controls 使用相同 `group.id` 时宿主合并为参数组，首个 control 可通过 `group.action` 提供组内删除等动作。所有动作仍回传 `onAction(id, selectedItem)`，无需自绘按钮。`detail` 必须是结构化数据；Workbench 不接受 HTML。
 完整的布局、Light/Dark 对比度、Custom Panel token 与 Action 层级见
 [`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md)。
 
 Workbench 是受控业务端口：插件拥有最终业务 state，宿主拥有即时的输入、tab、筛选、选择、焦点和滚动反馈。`filters[]` 声明紧凑 Select，变更由 `onFilter(id, value)` 回传；`onQuery` / `onTab` / `onFilter` / `onSelect` 应先同步改 state + `paint()`，再启动可取消的慢任务，不要在回画前 `await`。每个 item 都必须提供稳定、唯一、非空的 `id`；宿主会直接拒绝缺失或重复项，不提供 title/index 兼容回退。`onAction` 直接使用宿主传入的 `selectedItem`，不要从可能滞后的闭包另猜当前项。完整事件与信任边界见 [`docs/plugin-architecture.md`](../../docs/plugin-architecture.md#声明式-workbench-端口)。
 
-`mountWorkbench({ island })` 是一次声明式发布：宿主接受 Workbench state 后校验并投影同一个插件 island session，SDK 不再发送第二条独立 island RPC。需要在 Panel 关闭后持续更新时才直接调用 `context.island`；两条入口最终仍进入同一个宿主 session store。
+`mountWorkbench({ island })` 是一次声明式发布：宿主接受 Workbench state 后校验并投影同一个插件 island session，SDK 不再发送第二条独立 island RPC。`island: null` 只表示撤销插件的瞬时状态，宿主会恢复模块自己的静态灵动岛；插件不应通过长期发布 `null` 占住底部空位。需要在 Panel 关闭后持续更新时才直接调用 `context.island`；两条入口最终仍进入同一个宿主 session store。
 
 ### 2.2.2 声明式 Workbench（推荐）
 
@@ -165,6 +198,17 @@ const view = context.ui.mountWorkbench({
         { label: "Status", value: row.status },
         { label: "Updated", value: row.updatedAt },
       ],
+      replies: {
+        total: row.replyCount,
+        items: row.replies.map((reply) => ({
+          id: reply.id,
+          floor: reply.floor,
+          author: reply.author,
+          createdAt: reply.createdAt,
+          originalPoster: reply.authorId === row.authorId,
+          body: reply.text,
+        })),
+      },
     },
     actions: [{ id: "open", label: "Open", primary: true }],
   })),

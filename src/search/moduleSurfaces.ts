@@ -149,8 +149,8 @@ async function searchRssSurfaces(query: string): Promise<ModuleSurfaceHit[]> {
   }
 }
 
-async function searchClipboardSurfaces(query: string): Promise<ModuleSurfaceHit[]> {
-  if (!isModuleSearchEnabled("clipboard") || !("__TAURI_INTERNALS__" in window)) return [];
+function searchClipboardSurfaces(query: string): ModuleSurfaceHit[] {
+  if (!isModuleSearchEnabled("clipboard")) return [];
   const hits: ModuleSurfaceHit[] = [];
   const openScore = scoreText(query, "clipboard", "paste", "history", "剪贴板", "粘贴");
   if (openScore > 0) {
@@ -164,67 +164,7 @@ async function searchClipboardSurfaces(query: string): Promise<ModuleSurfaceHit[
       launch: { tab: "clipboard", surface: "root" },
     }));
   }
-  try {
-    const history = await invoke<Array<{
-      id: string;
-      text: string;
-      pinned: boolean;
-      image_path?: string | null;
-      file_path?: string | null;
-      file_paths?: string[];
-      file_kind?: string | null;
-      ocr_text?: string | null;
-    }>>("get_clipboard_history", { limit: 120 });
-    for (const item of history) {
-      const filePaths = item.file_paths?.length
-        ? item.file_paths
-        : item.file_path
-          ? [item.file_path]
-          : [];
-      const primaryFileLabel = filePaths[0]
-        ? (filePaths[0].split(/[/\\]/).pop() || filePaths[0])
-        : "";
-      const isImage = Boolean(item.image_path)
-        || item.file_kind === "image"
-        || filePaths.some((p) => /\.(png|jpe?g|gif|webp|bmp|heic|tiff?)$/i.test(p));
-      const ocrPreview = item.ocr_text?.replace(/\s+/g, " ").trim().slice(0, 80) || "";
-      const label = item.file_path
-        ? (filePaths.length > 1 ? `${primaryFileLabel} · ${filePaths.length} items` : primaryFileLabel)
-        : item.image_path
-          ? (ocrPreview || "Image")
-          : item.text.replace(/\s+/g, " ").trim().slice(0, 80) || "Clipboard Item";
-      const score = scoreText(
-        query,
-        label,
-        filePaths.join(" "),
-        item.text?.slice(0, 200),
-        item.ocr_text?.slice(0, 400) || "",
-        item.image_path || "",
-        isImage ? "image picture photo 图片 截图" : "",
-        item.pinned ? "pinned" : "",
-        "clipboard",
-      );
-      if (score <= 0) continue;
-      hits.push(hit({
-        id: `clipboard:item:${item.id}`,
-        moduleId: "clipboard",
-        title: label,
-        subtitle: [
-          "Clipboard",
-          item.pinned ? "Pinned" : null,
-          isImage ? (ocrPreview ? "Image · OCR" : "Image") : item.file_path ? "File" : "Text",
-        ]
-          .filter(Boolean)
-          .join(" · "),
-        icon: "builtin:clipboard",
-        score,
-        launch: { tab: "clipboard", surface: "item", params: { id: item.id } },
-      }));
-    }
-  } catch {
-    // ignore
-  }
-  return hits.sort((a, b) => b.score - a.score).slice(0, 10);
+  return hits;
 }
 
 function searchQxAiSurfaces(query: string): ModuleSurfaceHit[] {
@@ -485,7 +425,7 @@ export async function searchModuleSurfaces(query: string): Promise<ModuleSurface
   // Parallel IPC: one slow module must not serialize the others.
   const results = await Promise.all([
     searchRssSurfaces(q),
-    searchClipboardSurfaces(q),
+    Promise.resolve(searchClipboardSurfaces(q)),
     Promise.resolve(searchQxAiSurfaces(q)),
     searchMacroSurfaces(q),
     searchScreencapSurfaces(q),

@@ -205,7 +205,9 @@ export function syncPluginWorkbenchIsland(
   if (input == null) {
     workbenchProjectionSignatures.set(plugin.id, "null");
     dismissPluginIsland(plugin.id);
-    return true;
+    // A null Workbench projection only dismisses the transient plugin-owned
+    // session. It must not suppress the QxShell static fallback island.
+    return false;
   }
   const signature = JSON.stringify(input);
   if (

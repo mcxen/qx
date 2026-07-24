@@ -58,7 +58,7 @@ QxShell (visual="elevated")
 | **Basics** 基础 | General · Search Settings · Appearance · Shortcuts | 人人都会改的全局偏好 |
 | **Extensions** 扩展 | Extensions | 安装 / 管理插件 |
 | **Features** 功能 | AI · OCR · RSS · Weather | 内置模块自己的偏好 |
-| **System** 系统 | Permissions · Advanced · About | 权限、进阶、关于 |
+| **System** 系统 | Permissions · Storage Management · Advanced · About | 权限、模块存储、进阶、关于 |
 
 ### 各页职责（Current）
 
@@ -73,7 +73,8 @@ QxShell (visual="elevated")
 | **OCR / RSS / Weather** | 各自模块设置 |
 | **Permissions** | macOS 权限 |
 | **Advanced** | 数据路径 · 托盘 · 诊断日志开关/级别/文件入口 · 网络 · 配置导入导出 · 清理 · 开发 · 重置 |
-| **About** | 版本与存储；Storage 按模块列出可重建缓存并与历史、生成文件、插件持久数据分区 |
+| **Storage Management** | 仅按模块列出可重建存储；表格行展示大小、项目数与逐项清理，不重复展示物理存储桶 |
+| **About** | 版本、更新与发布信息 |
 
 ### 扩展列表显示名（i18n）
 

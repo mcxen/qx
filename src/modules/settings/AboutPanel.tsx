@@ -5,7 +5,6 @@ import { open } from "@tauri-apps/plugin-shell";
 import { Row, SettingsCard } from "../../components/ui";
 import GifText from "../../components/gif-text";
 import { useT } from "../../i18n";
-import StorageSettingsCard from "./StorageSettingsCard";
 
 const RELEASES_URL = "https://github.com/mcxen/qx/releases";
 
@@ -204,8 +203,6 @@ export default function AboutPanel() {
           </button>
         </Row>
       </SettingsCard>
-
-      <StorageSettingsCard />
     </div>
   );
 }

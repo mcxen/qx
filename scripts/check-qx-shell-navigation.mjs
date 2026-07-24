@@ -75,6 +75,22 @@ assert.match(
   listIconsStyles,
   /\.qx-host-workbench-media-preview-scroll\.is-portrait\s*>\s*img\s*\{[^}]*width:\s*auto;[^}]*height:\s*100%;/s,
 );
+assert.match(
+  listIconsStyles,
+  /\.qx-host-workbench-media-zoom\s+\.qx-shadcn-button\s*\{[^}]*width:\s*26px;[^}]*height:\s*26px;[^}]*border-radius:\s*50%;/s,
+);
+assert.match(
+  listIconsStyles,
+  /\.qx-host-workbench-media-zoom\s+\.qx-shadcn-button\.qx-host-workbench-media-zoom-value\s*\{[^}]*min-width:\s*46px;[^}]*border-radius:\s*999px;/s,
+);
+assert.match(
+  listIconsStyles,
+  /\.qx-host-workbench-media-preview-count\s*\{[^}]*min-width:\s*46px;[^}]*height:\s*26px;/s,
+);
+assert.match(
+  listIconsStyles,
+  /@media\s*\(max-width:\s*760px\)\s*\{[\s\S]*?\.qx-rss-shell\.is-reading\s+\.qx-rss-article-split\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s,
+);
 
 const list = (overrides = {}) => resolveQxListNavigation({
   key: "ArrowDown",
@@ -150,6 +166,12 @@ const normalizedWorkbench = normalizePluginWorkbenchState({
           { url: "http://images.example.test/rejected.jpg" },
           { url: "https://images.example.test/two.jpg", zoomable: false },
         ],
+        content: [
+          { type: "text", text: "Before image" },
+          { type: "image", image: { url: "https://images.example.test/inline.jpg" } },
+          { type: "image", image: { url: "http://images.example.test/rejected-inline.jpg" } },
+          { type: "text", text: "After image" },
+        ],
         form: {
           controls: [{
             id: "key",
@@ -181,6 +203,15 @@ assert.deepEqual(
   [
     ["https://images.example.test/one.jpg", true],
     ["https://images.example.test/two.jpg", false],
+  ],
+);
+assert.deepEqual(
+  normalizedWorkbench.items?.[0]?.detail?.content?.map((block) =>
+    block.type === "text" ? [block.type, block.text] : [block.type, block.image.url]),
+  [
+    ["text", "Before image"],
+    ["image", "https://images.example.test/inline.jpg"],
+    ["text", "After image"],
   ],
 );
 assert.equal(normalizedWorkbench.items?.[0]?.detail?.form?.controls[0]?.group?.id, "parameter-width");

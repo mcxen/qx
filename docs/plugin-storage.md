@@ -107,7 +107,8 @@
 | **卸载** | 删除 | **默认删除**；高级选项「保留数据」可后续做 |
 | **清除数据** | 不动 | 按 scope 清空（UI / API） |
 
-Settings → About → Storage 会把 `plugin-data/` 作为**受保护的持久数据**单独统计。
+Settings → System → Storage Management 只展示 manifest 登记的可重建模块存储；
+未登记的 `plugin-data/` 继续作为**受保护的持久数据**保留，不进入管理列表或清理总量。
 默认情况下，“清理全部缓存”和逐模块缓存清理不会删除 preferences、persist KV 或
 files。唯一例外是插件通过 `manifest.storage.cacheTargets[]` 明确登记的
 **可重建 persist key**：宿主只统计和删除这些精确 key，其余业务状态仍受保护。

@@ -723,7 +723,7 @@ export const islandHost = {
 - QxShell/App = subscriber + shim；QxShell 只写 session，不直接画普通 island。
 - Home = Launcher 单写者。  
 - Sticky tasks = 模块经 `islandHost` 管理，与 tab mount 无关。
-- Workbench `state.island` 由 PluginHost 在信任边界校验后与该 state 同次投影；`mountWorkbench` 不再额外发第二个 iframe island RPC。直接 `context.island` 仍走同一 store。
+- Workbench `state.island` 由 PluginHost 在信任边界校验后与该 state 同次投影；`mountWorkbench` 不再额外发第二个 iframe island RPC。直接 `context.island` 仍走同一 store。`state.island: null` 只撤销插件的瞬时投影，不得继续占有或压制 QxShell 的静态 fallback；因此主窗宽度大于窄屏断点时仍显示模块灵动岛。
 
 #### 6.3 兼容 shim
 

@@ -14,6 +14,26 @@ export interface PluginWorkbenchSection {
   fields?: PluginWorkbenchField[];
 }
 
+export interface PluginWorkbenchReply {
+  /** Stable reply id. Falls back to its bounded list position when omitted. */
+  id: string;
+  /** Source floor number shown as `#floor`. */
+  floor: string | number;
+  author: string;
+  body: string;
+  createdAt?: string;
+  originalPoster?: boolean;
+}
+
+export interface PluginWorkbenchReplies {
+  title?: string;
+  /** Upstream total; may be larger than the currently loaded first page. */
+  total?: number;
+  items: PluginWorkbenchReply[];
+  status?: PluginWorkbenchAsyncStatus;
+  emptyText?: string;
+}
+
 export interface PluginWorkbenchControl {
   /** Stable identifier returned to the plugin in `onInput`. */
   id: string;
@@ -57,6 +77,16 @@ export interface PluginWorkbenchImage {
   caption?: string;
 }
 
+export type PluginWorkbenchContentBlock =
+  | {
+      type: "text";
+      text: string;
+    }
+  | {
+      type: "image";
+      image: PluginWorkbenchImage;
+    };
+
 export interface PluginWorkbenchAsyncStatus {
   state: "loading" | "success" | "error";
   label?: string;
@@ -82,10 +112,17 @@ export interface PluginWorkbenchDetail {
   /** Item-local asynchronous state; does not replace the usable cached detail. */
   status?: PluginWorkbenchAsyncStatus;
   body?: string;
+  /**
+   * Ordered, host-rendered long-form content. Use this when text and images
+   * must retain their source positions; HTML is still intentionally rejected.
+   */
+  content?: PluginWorkbenchContentBlock[];
   /** Host-rendered form controls; values remain controlled by plugin state. */
   form?: PluginWorkbenchForm;
   fields?: PluginWorkbenchField[];
   sections?: PluginWorkbenchSection[];
+  /** Host-rendered reply list fixed at the bottom of the detail reading flow. */
+  replies?: PluginWorkbenchReplies;
 }
 
 export interface PluginWorkbenchAction {
@@ -154,7 +191,7 @@ export interface PluginWorkbenchState {
   /** Detail for dashboards without a selected row. Selected item detail wins. */
   detail?: PluginWorkbenchDetail;
   emptyText?: string;
-  /** Optional island projection. null dismisses the plugin island session. */
+  /** Optional island projection. null dismisses it and restores the Shell fallback. */
   island?: PluginIslandDisplayInput | null;
   /**
    * Bind this view to a manifest `mode: "no-view"` + `interval` command.
@@ -292,6 +329,31 @@ function normalizeAsyncStatus(value: unknown): PluginWorkbenchAsyncStatus | unde
   };
 }
 
+function normalizeContentBlocks(value: unknown): PluginWorkbenchContentBlock[] {
+  if (!Array.isArray(value)) return [];
+  let textBudget = 24_000;
+  let imageBudget = 24;
+  const blocks: PluginWorkbenchContentBlock[] = [];
+  for (const entry of value.slice(0, 64)) {
+    if (!entry || typeof entry !== "object") continue;
+    const raw = entry as Record<string, unknown>;
+    if (raw.type === "text" && textBudget > 0) {
+      const text = shortText(raw.text, Math.min(8_000, textBudget))?.trim();
+      if (!text) continue;
+      textBudget -= text.length;
+      blocks.push({ type: "text", text });
+      continue;
+    }
+    if (raw.type === "image" && imageBudget > 0) {
+      const image = normalizeImage(raw.image, true);
+      if (!image) continue;
+      imageBudget -= 1;
+      blocks.push({ type: "image", image });
+    }
+  }
+  return blocks;
+}
+
 function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
@@ -305,6 +367,38 @@ function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
         };
       })
     : [];
+  const repliesRaw = raw.replies && typeof raw.replies === "object"
+    ? raw.replies as Record<string, unknown>
+    : null;
+  const replyItems = Array.isArray(repliesRaw?.items)
+    ? repliesRaw.items.slice(0, 100).map((entry, index) => {
+        const reply = (entry || {}) as Record<string, unknown>;
+        const rawFloor = reply.floor;
+        const floor = typeof rawFloor === "number" && Number.isFinite(rawFloor)
+          ? Math.max(0, Math.round(rawFloor))
+          : shortText(rawFloor, 48) || index + 1;
+        return {
+          id: shortText(reply.id, 256) || `reply-${index + 1}`,
+          floor,
+          author: shortText(reply.author, 160) || "",
+          body: shortText(reply.body, 8_000) || "",
+          createdAt: shortText(reply.createdAt, 160),
+          originalPoster: reply.originalPoster === true,
+        };
+      }).filter((reply) => Boolean(reply.author && reply.body))
+    : [];
+  const replyTotal = Number(repliesRaw?.total);
+  const replies = repliesRaw
+    ? {
+        title: shortText(repliesRaw.title, 160),
+        total: Number.isFinite(replyTotal)
+          ? Math.max(0, Math.round(replyTotal))
+          : replyItems.length,
+        items: replyItems,
+        status: normalizeAsyncStatus(repliesRaw.status),
+        emptyText: shortText(repliesRaw.emptyText, 500),
+      }
+    : undefined;
   const detail = {
     title: shortText(raw.title, 240),
     subtitle: shortText(raw.subtitle, 500),
@@ -318,11 +412,13 @@ function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
     mediaPlacement: raw.mediaPlacement === "after-body" ? "after-body" as const : "header" as const,
     status: normalizeAsyncStatus(raw.status),
     body: shortText(raw.body, 12_000),
+    content: normalizeContentBlocks(raw.content),
     form: normalizeForm(raw.form),
     fields: normalizeFields(raw.fields),
     sections,
+    replies,
   };
-  return detail.title || detail.subtitle || detail.image || detail.images.length || detail.status || detail.body || detail.form || detail.fields.length || detail.sections.length
+  return detail.title || detail.subtitle || detail.image || detail.images.length || detail.status || detail.body || detail.content.length || detail.form || detail.fields.length || detail.sections.length || detail.replies
     ? detail
     : undefined;
 }
