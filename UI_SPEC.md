@@ -355,6 +355,8 @@ Top Bar 包含搜索、可选 leading、筛选和少量上下文操作。**不�
   改为按宽度阅读并从顶部纵向滚动，不得强制塞满舞台高度或裁掉顶部/底部。画布必须
   支持 50%–400% 缩放、复位与双向滚动，并保留
   Cmd/Ctrl+滚轮及 `+` / `-` / `0` 键盘操作。插件 iframe
+  不负责预加载；宿主在大图打开及每次切换时应异步预取并解码前后各两张图片，使用
+  最多 8 张的有界内存缓存，失败不得阻塞当前图片或改变导航顺序。
   不得注入宿主类名 CSS 或自建 lightbox 来修右栏。
 - Workbench 的局部异步反馈使用 `item.status` / `detail.status`，已有图片和字段在刷新时继续可见。分批/批量结果通过 `mountWorkbench()` controller 的 `updateItems({ upsert, removeIds, order, selectedId })` 按稳定 id 合并；SDK 仍向宿主发布完整纯数据快照。并发整快照可用单调 `revision` 做 latest-wins，旧 revision 不得覆盖新数据、选择或详情。
 - Workbench 管理型详情可在 `detail.form.actions` 发布表单底部动作；同一业务对象的连续 controls 可用稳定 `group.id` 合并为一个 fieldset，并由首个 control 的 `group.action` 提供组内操作。宿主统一渲染按钮、危险色和事件 selectedId，插件不得为参数删除等常规管理重新自绘 DOM。

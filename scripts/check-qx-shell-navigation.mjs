@@ -52,6 +52,9 @@ assert.match(shortcutRecorderSource, /data-qx-search-focus="preserve"/);
 // retain their natural aspect ratio instead of being forced into stage height.
 assert.match(pluginWorkbenchSource, /qx-host-workbench-media-preview-scroll/);
 assert.match(pluginWorkbenchSource, /previewMetrics\.height\s*\/[\s\S]*previewMetrics\.width[\s\S]*>=\s*3\.2/);
+assert.match(pluginWorkbenchSource, /previewDecodeCache/);
+assert.match(pluginWorkbenchSource, /\[-2,\s*-1,\s*1,\s*2\]/);
+assert.match(pluginWorkbenchSource, /while\s*\(cache\.size\s*>\s*8\)/);
 assert.match(
   listIconsStyles,
   /\.qx-host-workbench-media-preview-scroll\s*\{[^}]*overflow:\s*auto;/s,

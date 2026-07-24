@@ -451,6 +451,7 @@ export default function PluginWorkbenchView({
     width: number;
     height: number;
   } | null>(null);
+  const previewDecodeCache = useRef(new Map<string, HTMLImageElement>());
   const [listWidth, setListWidth] = useState(readWorkbenchListWidth);
   const splitRef = useRef<HTMLDivElement>(null);
   const items = state.items || [];
@@ -515,6 +516,32 @@ export default function PluginWorkbenchView({
         ? "landscape"
         : "portrait"
       : "contain";
+
+  useEffect(() => {
+    if (!preview || preview.images.length < 2) return;
+    const cache = previewDecodeCache.current;
+    const count = preview.images.length;
+    const indexes = [-2, -1, 1, 2].map(
+      (offset) => (preview.index + offset + count) % count,
+    );
+    for (const [priorityIndex, index] of indexes.entries()) {
+      const url = preview.images[index]?.url;
+      if (!url || cache.has(url)) continue;
+      const image = new Image();
+      image.decoding = "async";
+      image.fetchPriority = priorityIndex === 1 || priorityIndex === 2 ? "high" : "low";
+      image.src = url;
+      cache.set(url, image);
+      void image.decode().catch(() => {
+        // The visible image keeps its normal error UI; predecode is best effort.
+      });
+    }
+    while (cache.size > 8) {
+      const oldest = cache.keys().next().value;
+      if (!oldest) break;
+      cache.delete(oldest);
+    }
+  }, [preview]);
 
   useEffect(() => {
     if (!preview) return;
