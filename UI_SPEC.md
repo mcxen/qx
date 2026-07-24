@@ -342,13 +342,17 @@ Top Bar 包含搜索、可选 leading、筛选和少量上下文操作。**不�
 - Workbench List / Gallery 的内容轨是稳定宿主表面：空数据或少量数据时仍占满当前浏览区或已打开详情时的左侧集合栏；空态必须跨满所属区域并垂直居中，不能缩成首个 grid cell 或随 item 数量塌缩。若发布的是无条目的面板级 `detail`，Detail 直接占满 Main Area，不保留无意义的空集合栏。
 - Workbench List 必须像 V2EX 一样始终保留左栏 section header 与数量；首次空载显示统一骨架行 + LoadingLabel，已有条目刷新时保留旧列表并把数量短暂显示为 `…`，不得退回整栏纯文本 loading。
 - Workbench List 的单图缩略图继续使用 `item.image`；社区动态可用
-  `item.images[]` 在文字轨下显示紧凑图片卡，宿主最多接收 6 张、显示前三张并汇总余量。
+  `item.images[]` 在文字轨下显示完整的横向滚动图片卡；宿主只保留与详情相同的 24 张
+  异常输入安全上限，不得截断正常社区动态的图片集合。
   阅读文章不得把正文图片冒充列表缩略图，应通过
   `detail.mediaPlacement: "after-body"` 把 `detail.image(s)` 放在正文之后。
 - Workbench 右侧图片详情必须由宿主适配横图、竖图、超宽图和窄内容区：单图使用
   `detail.image`，社区帖子等多图内容使用 `detail.images[]`；多图由宿主排成响应式网格。
   详情图片默认按原始比例 contain，可声明 landscape/square/portrait 固定舞台；加载失败
-  显示局部错误，点击可缩放图片打开宿主 Dialog，Esc 先关闭 Dialog。插件 iframe
+  显示局部错误，点击可缩放图片打开宿主 Dialog，Esc 先关闭 Dialog。Dialog 必须保持
+  在窗口可见范围内，图片以自然比例渲染在独立滚动画布中；竖长图不得被强制为舞台高度
+  或裁掉顶部/底部。画布必须支持 50%–400% 缩放、复位与双向滚动，并保留
+  Cmd/Ctrl+滚轮及 `+` / `-` / `0` 键盘操作。插件 iframe
   不得注入宿主类名 CSS 或自建 lightbox 来修右栏。
 - Workbench 的局部异步反馈使用 `item.status` / `detail.status`，已有图片和字段在刷新时继续可见。分批/批量结果通过 `mountWorkbench()` controller 的 `updateItems({ upsert, removeIds, order, selectedId })` 按稳定 id 合并；SDK 仍向宿主发布完整纯数据快照。并发整快照可用单调 `revision` 做 latest-wins，旧 revision 不得覆盖新数据、选择或详情。
 - Workbench 管理型详情可在 `detail.form.actions` 发布表单底部动作；同一业务对象的连续 controls 可用稳定 `group.id` 合并为一个 fieldset，并由首个 control 的 `group.action` 提供组内操作。宿主统一渲染按钮、危险色和事件 selectedId，插件不得为参数删除等常规管理重新自绘 DOM。

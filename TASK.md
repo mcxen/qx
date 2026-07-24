@@ -41,12 +41,14 @@
 
 ## Feature — QxHeihe 小黑盒社区模块与 Workbench 多图详情
 
-**状态**：实现完成，等待发布构建。
+**状态**：实现完成；竖长图宿主修复已完成本机正式构建与安装。
 
 - 市场新增 `qxheihe`：小黑盒推荐列表、本地搜索、图片筛选、加载更多、缓存优先和
   离线回退；选择帖子后异步读取公开详情并在同一稳定 id 上补齐正文与全部图片。
 - Workbench 公共详情协议新增 `detail.images[]`，信任边界最多接收 24 张 HTTPS /
   data 图片；宿主统一渲染响应式网格、失败状态和全尺寸 Dialog。
+- 全尺寸 Dialog 使用独立滚动画布按自然比例呈现图片；竖长图不再被固定舞台高度裁切，
+  图片导航和计数仍固定在预览层上方。
 - 小黑盒评论列表接口需要登录。本模块不收集用户 Cookie，只显示公开评论数量并提供
   “在小黑盒中打开”动作。
 - feeds 请求参数可能由上游调整；插件设置允许用户替换完整 Feed API URL，旧缓存仍可
@@ -57,6 +59,7 @@
 - [x] `npm run check` / `npx tsc --noEmit` / `npm run build`
 - [x] `cargo fmt --check` / `cargo check`
 - [x] QxHeihe 插件语法、真实 API 烟测、打包、本机安装与 mock Workbench 流程
+- [x] 竖长图全尺寸预览回归检查、macOS `.app` / `.dmg` 正式构建、签名校验与本机安装启动
 - [ ] macOS / Windows 发布工作流
 
 ## Bugfix — Cardinal 短词伪相关结果
@@ -527,6 +530,13 @@
 - [x] `npx tsc --noEmit`
 - [x] `npm run check` / `npm run build`
 - [x] Bing / Unsplash `node --check`、manifest JSON、mock Workbench panel smoke、archive 校验
+
+## Feature — Workbench 社区动态卡片与文章正文媒体
+
+- Workbench List 新增 `item.images[]` 紧凑媒体卡协议：完整横向滚动展示，信任边界仅保留 24 张异常输入安全上限。
+- Detail 新增 `mediaPlacement: "after-body"`，文章图片可跟随正文；默认 header 布局保持动态/图库兼容。
+- QxCoolapk 依据 `feedArticle`、`is_html_article=1`、`type=12` 判断文章；文章不发布列表图片卡，普通动态图片发布为卡片。
+- 全尺寸媒体预览支持 50%–400% 缩放、复位、双向滚动和键盘/修饰键滚轮操作。
 
 ## Fix — 插件仓库工具栏与 QxPicture API 管理
 

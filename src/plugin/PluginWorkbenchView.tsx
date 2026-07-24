@@ -15,6 +15,8 @@ import {
   ChevronRight,
   LoaderCircle,
   Maximize2,
+  Minus,
+  Plus,
   X,
 } from "lucide-react";
 import { QxListLoading, shouldShowQxListLoading } from "../components/QxListLoading";
@@ -254,13 +256,9 @@ function WorkbenchMediaCollection({
 }
 
 function WorkbenchListMedia({ images }: { images: PluginWorkbenchImage[] }) {
-  const visible = images.slice(0, 3);
   return (
-    <span
-      className={`qx-host-workbench-list-media count-${visible.length}`}
-      aria-hidden="true"
-    >
-      {visible.map((image, index) => (
+    <span className="qx-host-workbench-list-media" aria-hidden="true">
+      {images.map((image, index) => (
         <span className="qx-host-workbench-list-media-image" key={`${image.url}-${index}`}>
           <img
             src={image.url}
@@ -268,9 +266,6 @@ function WorkbenchListMedia({ images }: { images: PluginWorkbenchImage[] }) {
             loading="lazy"
             style={{ objectFit: image.fit || "cover" }}
           />
-          {index === visible.length - 1 && images.length > visible.length ? (
-            <span className="qx-host-workbench-list-media-more">+{images.length - visible.length}</span>
-          ) : null}
         </span>
       ))}
     </span>
@@ -450,6 +445,7 @@ export default function PluginWorkbenchView({
     images: PluginWorkbenchImage[];
     index: number;
   } | null>(null);
+  const [previewZoom, setPreviewZoom] = useState(1);
   const [listWidth, setListWidth] = useState(readWorkbenchListWidth);
   const splitRef = useRef<HTMLDivElement>(null);
   const items = state.items || [];
@@ -485,24 +481,39 @@ export default function PluginWorkbenchView({
   const openPreview = (image: PluginWorkbenchImage, collection: PluginWorkbenchImage[]) => {
     const images = collection.length ? collection : [image];
     const index = Math.max(0, images.findIndex((candidate) => candidate === image || candidate.url === image.url));
+    setPreviewZoom(1);
     setPreview({ images, index });
   };
   const movePreview = (delta: number) => {
+    setPreviewZoom(1);
     setPreview((current) => {
       if (!current || current.images.length < 2) return current;
       const index = (current.index + delta + current.images.length) % current.images.length;
       return { ...current, index };
     });
   };
+  const changePreviewZoom = (delta: number) => {
+    setPreviewZoom((current) => Math.max(0.5, Math.min(4, Math.round((current + delta) * 10) / 10)));
+  };
   const previewImage = preview?.images[preview.index];
 
   useEffect(() => {
     if (!preview) return;
     const onPreviewKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-      event.preventDefault();
-      event.stopPropagation();
-      movePreview(event.key === "ArrowRight" ? 1 : -1);
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        event.stopPropagation();
+        movePreview(event.key === "ArrowRight" ? 1 : -1);
+      } else if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        changePreviewZoom(0.25);
+      } else if (event.key === "-") {
+        event.preventDefault();
+        changePreviewZoom(-0.25);
+      } else if (event.key === "0") {
+        event.preventDefault();
+        setPreviewZoom(1);
+      }
     };
     window.addEventListener("keydown", onPreviewKeyDown, true);
     return () => window.removeEventListener("keydown", onPreviewKeyDown, true);
@@ -777,12 +788,58 @@ export default function PluginWorkbenchView({
                   <ChevronLeft size={20} aria-hidden="true" />
                 </Button>
               ) : null}
-              <img
-                key={previewImage.url}
-                src={previewImage.url}
-                alt={previewImage.alt || ""}
-                style={{ objectFit: previewImage.fit || "contain" }}
-              />
+              <div
+                className="qx-host-workbench-media-preview-scroll"
+                tabIndex={0}
+                aria-label={t("plugins.workbench.imagePreviewHint", "Full-size preview of the selected image")}
+                onWheel={(event) => {
+                  if (!event.metaKey && !event.ctrlKey) return;
+                  event.preventDefault();
+                  changePreviewZoom(event.deltaY < 0 ? 0.25 : -0.25);
+                }}
+              >
+                <img
+                  key={previewImage.url}
+                  src={previewImage.url}
+                  alt={previewImage.alt || ""}
+                  className={previewZoom === 1 ? undefined : "is-zoomed"}
+                  style={{
+                    objectFit: previewImage.fit || "contain",
+                    "--qx-image-zoom": previewZoom,
+                  } as CSSProperties}
+                />
+              </div>
+              <div className="qx-host-workbench-media-zoom">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  disabled={previewZoom <= 0.5}
+                  aria-label={t("plugins.workbench.zoomOut", "Zoom out")}
+                  onClick={() => changePreviewZoom(-0.25)}
+                >
+                  <Minus size={16} aria-hidden="true" />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={t("plugins.workbench.resetZoom", "Reset zoom")}
+                  onClick={() => setPreviewZoom(1)}
+                >
+                  {Math.round(previewZoom * 100)}%
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  disabled={previewZoom >= 4}
+                  aria-label={t("plugins.workbench.zoomIn", "Zoom in")}
+                  onClick={() => changePreviewZoom(0.25)}
+                >
+                  <Plus size={16} aria-hidden="true" />
+                </Button>
+              </div>
               {preview && preview.images.length > 1 ? (
                 <Button
                   type="button"

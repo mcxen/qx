@@ -380,7 +380,7 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
           icon: shortText(item.icon, 24),
           image: normalizeImage(item.image),
           images: Array.isArray(item.images)
-            ? item.images.slice(0, 6)
+            ? item.images.slice(0, 24)
                 .map((image) => normalizeImage(image))
                 .filter((image): image is PluginWorkbenchImage => Boolean(image))
             : [],
