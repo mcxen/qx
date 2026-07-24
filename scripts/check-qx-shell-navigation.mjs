@@ -51,17 +51,18 @@ assert.match(shortcutRecorderSource, /data-qx-search-focus="preserve"/);
 // Full-size Workbench media owns an inner scrollport. Portrait and long images
 // retain their natural aspect ratio instead of being forced into stage height.
 assert.match(pluginWorkbenchSource, /qx-host-workbench-media-preview-scroll/);
+assert.match(pluginWorkbenchSource, /previewMetrics\.height\s*\/[\s\S]*previewMetrics\.width[\s\S]*>=\s*3\.2/);
 assert.match(
   listIconsStyles,
   /\.qx-host-workbench-media-preview-scroll\s*\{[^}]*overflow:\s*auto;/s,
 );
 assert.match(
   listIconsStyles,
-  /\.qx-host-workbench-media-preview-scroll\s*>\s*img\s*\{[^}]*height:\s*auto;[^}]*max-height:\s*none;/s,
+  /\.qx-host-workbench-media-preview-scroll\s*>\s*img\s*\{[^}]*height:\s*auto;[^}]*max-height:\s*100%;/s,
 );
-assert.doesNotMatch(
+assert.match(
   listIconsStyles,
-  /\.qx-host-workbench-media-preview-scroll\s*>\s*img\s*\{[^}]*height:\s*100%;/s,
+  /\.qx-host-workbench-media-preview-scroll\.is-long-screenshot\s*>\s*img\s*\{[^}]*max-height:\s*none;/s,
 );
 
 const list = (overrides = {}) => resolveQxListNavigation({

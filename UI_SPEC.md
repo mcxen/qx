@@ -350,8 +350,9 @@ Top Bar 包含搜索、可选 leading、筛选和少量上下文操作。**不�
   `detail.image`，社区帖子等多图内容使用 `detail.images[]`；多图由宿主排成响应式网格。
   详情图片默认按原始比例 contain，可声明 landscape/square/portrait 固定舞台；加载失败
   显示局部错误，点击可缩放图片打开宿主 Dialog，Esc 先关闭 Dialog。Dialog 必须保持
-  在窗口可见范围内，图片以自然比例渲染在独立滚动画布中；竖长图不得被强制为舞台高度
-  或裁掉顶部/底部。画布必须支持 50%–400% 缩放、复位与双向滚动，并保留
+  在窗口可见范围内。普通横图、竖图优先按可用高度完整 contain；加载后宽高比达到
+  3.2:1 的超长截图改为按宽度阅读并从顶部纵向滚动，不得强制塞满舞台高度或裁掉
+  顶部/底部。画布必须支持 50%–400% 缩放、复位与双向滚动，并保留
   Cmd/Ctrl+滚轮及 `+` / `-` / `0` 键盘操作。插件 iframe
   不得注入宿主类名 CSS 或自建 lightbox 来修右栏。
 - Workbench 的局部异步反馈使用 `item.status` / `detail.status`，已有图片和字段在刷新时继续可见。分批/批量结果通过 `mountWorkbench()` controller 的 `updateItems({ upsert, removeIds, order, selectedId })` 按稳定 id 合并；SDK 仍向宿主发布完整纯数据快照。并发整快照可用单调 `revision` 做 latest-wins，旧 revision 不得覆盖新数据、选择或详情。

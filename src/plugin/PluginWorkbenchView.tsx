@@ -446,6 +446,11 @@ export default function PluginWorkbenchView({
     index: number;
   } | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
+  const [previewMetrics, setPreviewMetrics] = useState<{
+    url: string;
+    width: number;
+    height: number;
+  } | null>(null);
   const [listWidth, setListWidth] = useState(readWorkbenchListWidth);
   const splitRef = useRef<HTMLDivElement>(null);
   const items = state.items || [];
@@ -482,10 +487,12 @@ export default function PluginWorkbenchView({
     const images = collection.length ? collection : [image];
     const index = Math.max(0, images.findIndex((candidate) => candidate === image || candidate.url === image.url));
     setPreviewZoom(1);
+    setPreviewMetrics(null);
     setPreview({ images, index });
   };
   const movePreview = (delta: number) => {
     setPreviewZoom(1);
+    setPreviewMetrics(null);
     setPreview((current) => {
       if (!current || current.images.length < 2) return current;
       const index = (current.index + delta + current.images.length) % current.images.length;
@@ -496,6 +503,11 @@ export default function PluginWorkbenchView({
     setPreviewZoom((current) => Math.max(0.5, Math.min(4, Math.round((current + delta) * 10) / 10)));
   };
   const previewImage = preview?.images[preview.index];
+  const previewIsLongScreenshot = Boolean(
+    previewImage
+      && previewMetrics?.url === previewImage.url
+      && previewMetrics.height / Math.max(1, previewMetrics.width) >= 3.2,
+  );
 
   useEffect(() => {
     if (!preview) return;
@@ -789,7 +801,7 @@ export default function PluginWorkbenchView({
                 </Button>
               ) : null}
               <div
-                className="qx-host-workbench-media-preview-scroll"
+                className={`qx-host-workbench-media-preview-scroll${previewIsLongScreenshot ? " is-long-screenshot" : " is-fit-height"}`}
                 tabIndex={0}
                 aria-label={t("plugins.workbench.imagePreviewHint", "Full-size preview of the selected image")}
                 onWheel={(event) => {
@@ -803,6 +815,14 @@ export default function PluginWorkbenchView({
                   src={previewImage.url}
                   alt={previewImage.alt || ""}
                   className={previewZoom === 1 ? undefined : "is-zoomed"}
+                  onLoad={(event) => {
+                    const image = event.currentTarget;
+                    setPreviewMetrics({
+                      url: previewImage.url,
+                      width: image.naturalWidth,
+                      height: image.naturalHeight,
+                    });
+                  }}
                   style={{
                     objectFit: previewImage.fit || "contain",
                     "--qx-image-zoom": previewZoom,

@@ -876,7 +876,7 @@
   padding: 2px;
   overflow: auto;
   overscroll-behavior: contain;
-  align-content: start;
+  align-content: center;
   justify-items: center;
 }
 
@@ -892,8 +892,17 @@
   max-width: 100%;
   min-height: 0;
   height: auto;
-  max-height: none;
+  max-height: 100%;
   object-fit: contain;
+  object-position: center;
+}
+
+.qx-host-workbench-media-preview-scroll.is-long-screenshot {
+  align-content: start;
+}
+
+.qx-host-workbench-media-preview-scroll.is-long-screenshot > img {
+  max-height: none;
   object-position: center top;
 }
 
