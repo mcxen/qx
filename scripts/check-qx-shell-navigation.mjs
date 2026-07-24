@@ -64,6 +64,14 @@ assert.match(
   listIconsStyles,
   /\.qx-host-workbench-media-preview-scroll\.is-long-screenshot\s*>\s*img\s*\{[^}]*max-height:\s*none;/s,
 );
+assert.match(
+  listIconsStyles,
+  /\.qx-host-workbench-media-preview-scroll\.is-landscape\s*>\s*img\s*\{[^}]*width:\s*100%;[^}]*height:\s*auto;/s,
+);
+assert.match(
+  listIconsStyles,
+  /\.qx-host-workbench-media-preview-scroll\.is-portrait\s*>\s*img\s*\{[^}]*width:\s*auto;[^}]*height:\s*100%;/s,
+);
 
 const list = (overrides = {}) => resolveQxListNavigation({
   key: "ArrowDown",

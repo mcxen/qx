@@ -897,11 +897,26 @@
   object-position: center;
 }
 
+.qx-host-workbench-media-preview-scroll.is-landscape > img {
+  width: 100%;
+  height: auto;
+  max-height: 100%;
+}
+
+.qx-host-workbench-media-preview-scroll.is-portrait > img {
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+}
+
 .qx-host-workbench-media-preview-scroll.is-long-screenshot {
   align-content: start;
 }
 
 .qx-host-workbench-media-preview-scroll.is-long-screenshot > img {
+  width: auto;
+  height: auto;
+  max-width: 100%;
   max-height: none;
   object-position: center top;
 }

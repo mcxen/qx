@@ -508,6 +508,13 @@ export default function PluginWorkbenchView({
       && previewMetrics?.url === previewImage.url
       && previewMetrics.height / Math.max(1, previewMetrics.width) >= 3.2,
   );
+  const previewOrientation = previewIsLongScreenshot
+    ? "long-screenshot"
+    : previewMetrics && previewImage && previewMetrics.url === previewImage.url
+      ? previewMetrics.width >= previewMetrics.height
+        ? "landscape"
+        : "portrait"
+      : "contain";
 
   useEffect(() => {
     if (!preview) return;
@@ -801,7 +808,7 @@ export default function PluginWorkbenchView({
                 </Button>
               ) : null}
               <div
-                className={`qx-host-workbench-media-preview-scroll${previewIsLongScreenshot ? " is-long-screenshot" : " is-fit-height"}`}
+                className={`qx-host-workbench-media-preview-scroll is-${previewOrientation}`}
                 tabIndex={0}
                 aria-label={t("plugins.workbench.imagePreviewHint", "Full-size preview of the selected image")}
                 onWheel={(event) => {
