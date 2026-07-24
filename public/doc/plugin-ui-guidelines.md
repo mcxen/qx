@@ -22,8 +22,10 @@ Gallery、详情、搜索、状态和 Actions 优先发布为 Workbench 纯数�
 Workbench 中，插件负责业务 state、稳定 id、数据获取、动作处理和持久化；宿主负责
 Shell、明暗主题、焦点、滚动、选择、响应式布局、Esc、Actions 菜单与 Island chrome。
 图片详情的横竖比例适配、加载失败和全尺寸 Dialog 同样由宿主负责；插件只发布
-`detail.image` 的 `aspectRatio/zoomable/caption`，不得向隐藏 iframe 注入宿主 class
-CSS 或另做 lightbox。图片/元数据分批更新时保留旧内容并发布
+稳定有序的 `detail.image(s)` 及 `aspectRatio/zoomable/caption`，不得向隐藏 iframe
+注入宿主 class CSS 或另做 lightbox。宿主统一执行横图按宽、普通竖图按高、超长图
+按宽滚动的初始适配，并预加载/预解码当前图片前后各两张；插件不得维护独立预加载
+队列。图片/元数据分批更新时保留旧内容并发布
 `item.status/detail.status`，使用 `mountWorkbench()` 返回 controller 的
 `updateItems` 按稳定 id 合并，不要清空整个列表。插件不得复制这些宿主能力。
 
