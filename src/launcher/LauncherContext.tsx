@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Check, Pencil, Plus, RotateCcw, Star, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Pencil, Plus, RotateCcw, Star, Trash2, X } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import SearchAliasTagEditor from "../components/SearchAliasTagEditor";
 import { Button, Input, Select } from "../components/ui";
@@ -51,14 +51,20 @@ function ContextEntry({
   subtitle,
   onClick,
   beta = false,
+  compact = false,
 }: {
   title: string;
   subtitle: string;
   onClick: () => void;
   beta?: boolean;
+  compact?: boolean;
 }) {
   return (
-    <button className="qx-context-entry" onClick={onClick} type="button">
+    <button
+      className={`qx-context-entry${compact ? " is-compact" : ""}`}
+      onClick={onClick}
+      type="button"
+    >
       <span className="qx-context-entry-title qx-module-title-with-badge">
         <span>{title}</span>
         {beta && <BetaBadge />}
@@ -70,6 +76,7 @@ function ContextEntry({
 
 export default function LauncherContext({
   quickEntries,
+  allModules,
   recentLaunches,
   recentSearches,
   query,
@@ -77,6 +84,7 @@ export default function LauncherContext({
   selectedItem,
 }: {
   quickEntries: QuickEntry[];
+  allModules: QuickEntry[];
   recentLaunches: HistoryEntry[];
   recentSearches: SearchHistoryEntry[];
   query: string;
@@ -88,6 +96,7 @@ export default function LauncherContext({
   const { settings, patch, patchSearchMetadata } = useSettingsStore();
   const plugins = usePluginRegistry((state) => state.plugins);
   const [editingQuickEntries, setEditingQuickEntries] = useState(false);
+  const [allModulesCollapsed, setAllModulesCollapsed] = useState(false);
   const selectedMetadataKey = metadataKeyForEntry(selectedItem ?? { name: "", path: "", icon: "" });
   const selectedMetadata = metadataForKey(settings, selectedMetadataKey);
   const canEditMetadata = Boolean(selectedItem && selectedMetadataKey);
@@ -310,6 +319,47 @@ export default function LauncherContext({
           </Button>
         )}
       </ContextSection>
+
+      {allModules.length > 0 && (
+        <section className="qx-context-collapsible-section">
+          <button
+            type="button"
+            className="qx-context-title qx-context-section-toggle has-spacing"
+            aria-expanded={!allModulesCollapsed}
+            aria-controls="qx-launcher-all-modules"
+            title={
+              allModulesCollapsed
+                ? t("launcher.expandAllModules", "Expand all modules")
+                : t("launcher.collapseAllModules", "Collapse all modules")
+            }
+            onClick={() => setAllModulesCollapsed((value) => !value)}
+          >
+            <span>{t("launcher.allModules", "All Modules")}</span>
+            <span className="qx-context-section-toggle-trailing">
+              <span className="qx-context-section-count">{allModules.length}</span>
+              <ChevronDown
+                aria-hidden="true"
+                size={14}
+                className={allModulesCollapsed ? "is-collapsed" : ""}
+              />
+            </span>
+          </button>
+          {!allModulesCollapsed && (
+            <div id="qx-launcher-all-modules" className="qx-context-collapsible-content">
+              {allModules.map((entry) => (
+                <ContextEntry
+                  key={entry.id}
+                  title={entry.title}
+                  subtitle={entry.subtitle}
+                  beta={entry.beta}
+                  compact
+                  onClick={entry.onClick}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {recentLaunches.length > 0 && (
         <ContextSection title={t("launcher.recent", "Recent")} spacing>

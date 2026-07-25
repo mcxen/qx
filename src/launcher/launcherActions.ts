@@ -5,14 +5,15 @@ import type { Settings } from "../modules/settings/store";
 import { useSettingsStore } from "../modules/settings/store";
 import { openSystemPath, revealSystemPath } from "../system";
 import { metadataForKey } from "../search/searchMetadata";
+import { getQxDesktopPlatform } from "../utils/keyboard";
 import {
   launcherEntryManageState,
   toggleLauncherEntryHidden,
   toggleLauncherEntryPin,
 } from "./entryManage";
+import { launcherActionModel } from "./actionModel";
 import type { LauncherAction } from "./types";
 
-type LauncherItemKind = NonNullable<AppEntry["kind"]>;
 type Translate = (key: string, fallback: string) => string;
 
 async function readClipboardText(item: AppEntry): Promise<string> {
@@ -24,16 +25,9 @@ async function readClipboardText(item: AppEntry): Promise<string> {
   return history.find((entry) => entry.id === id)?.text ?? item.name;
 }
 
-function resolveLauncherItemKind(item: AppEntry): LauncherItemKind {
-  return item.kind ?? (item.path.startsWith("__qx:") ? "command" : "app");
-}
-
 export function getLauncherActionTitle(item: AppEntry, t: Translate): string {
-  const kind = resolveLauncherItemKind(item);
-  if (kind === "file" || kind === "folder") return t("launcher.action.fileActions", "File Actions");
-  if (kind === "clipboard") return t("launcher.action.clipboardActions", "Clipboard Actions");
-  if (kind === "command" || kind === "calculation") return t("launcher.action.commandActions", "Command Actions");
-  return t("launcher.action.appActions", "Application Actions");
+  const model = launcherActionModel(item, getQxDesktopPlatform());
+  return t(model.titleKey, model.titleFallback);
 }
 
 function manageEntryActions({
@@ -142,7 +136,9 @@ export function createLauncherActions({
 }): LauncherAction[] {
   if (!item) return [];
 
-  const kind = resolveLauncherItemKind(item);
+  const desktopPlatform = getQxDesktopPlatform();
+  const model = launcherActionModel(item, desktopPlatform);
+  const { kind } = model;
   const manage = manageEntryActions({
     item,
     settings,
@@ -172,9 +168,7 @@ export function createLauncherActions({
     return [
       {
         id: "run-command",
-        label: item.path === "__qx:settings"
-          ? t("launcher.action.openSettings", "Open Settings")
-          : t("launcher.action.runCommand", "Run Command"),
+        label: t(model.primaryKey, model.primaryFallback),
         kbd: "Enter",
         run: () => onItemClick(item),
       },
@@ -186,7 +180,7 @@ export function createLauncherActions({
     return [
       {
         id: "copy-result",
-        label: t("launcher.action.copyResult", "Copy Result"),
+        label: t(model.primaryKey, model.primaryFallback),
         kbd: "Enter",
         run: () => onItemClick(item),
       },
@@ -196,9 +190,7 @@ export function createLauncherActions({
   return [
     {
       id: "open",
-      label: kind === "file"
-        ? t("launcher.action.openFile", "Open File")
-        : t("launcher.action.openApp", "Open Application"),
+      label: t(model.primaryKey, model.primaryFallback),
       kbd: "Enter",
       run: () => onItemClick(item),
     },
@@ -206,7 +198,9 @@ export function createLauncherActions({
     ...manage,
     {
       id: "reveal",
-      label: t("launcher.action.showInFinder", "Show in Finder"),
+      label: desktopPlatform === "windows"
+        ? t("launcher.action.showInFileExplorer", "Show in File Explorer")
+        : t("launcher.action.showInFinder", "Show in Finder"),
       kbd: "CmdOrCtrl+Enter",
       run: () => revealSystemPath(item.path),
     },
@@ -216,7 +210,7 @@ export function createLauncherActions({
       kbd: "CmdOrCtrl+C",
       run: () => writeText(item.path),
     },
-    ...(kind === "app"
+    ...(model.showsPackageContents
       ? [
           {
             id: "show-package",

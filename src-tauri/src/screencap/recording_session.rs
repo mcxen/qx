@@ -295,21 +295,24 @@ pub async fn stop_recording(app: AppHandle) -> Result<String, String> {
         }
     }
 
-    set_recording_ui_protected(&app, false);
-    // Let the picker frontend leave recording-frame mode before the window is
-    // expanded back to the full display for editing.
     emit_recording_status(&app);
-    // A region capture returns to the same protected selection frame so the
-    // user can move/resize and record again. Captures started without a picker
-    // retain the normal main/pinned-island restoration behavior.
-    if !selection::restore_picker_selection_internal(&app) {
-        restore_capture_surface(&app, 1200)?;
-    }
-    if crate::settings::read_settings()
-        .screencap
-        .auto_hide_after_capture
-    {
-        controls::hide(&app);
+    if result.is_ok() {
+        // Successful recordings end the picker session exactly like a
+        // screenshot. Do not resurrect the old editable selection frame.
+        selection::finish_capture_session(
+            &app,
+            1200,
+            crate::settings::read_settings()
+                .screencap
+                .auto_hide_after_capture,
+            true,
+        )?;
+    } else {
+        // Keep the selected region only on failure so the user can retry.
+        set_recording_ui_protected(&app, false);
+        if !selection::restore_picker_selection_internal(&app) {
+            restore_capture_surface(&app, 1200)?;
+        }
     }
     emit_recording_status(&app);
     result

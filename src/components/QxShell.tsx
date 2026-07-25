@@ -48,6 +48,14 @@ export interface QxShellTopbarFilter {
   onChange: (value: string) => void;
 }
 
+export interface QxShellActionMenuRequest {
+  /** Monotonic identity; repeated coordinates still open a fresh request. */
+  id: number;
+  /** Viewport/client coordinates supplied by a context-menu pointer event. */
+  x: number;
+  y: number;
+}
+
 type ResizeDirection =
   | "East"
   | "North"
@@ -114,6 +122,8 @@ interface QxShellProps {
   /** Stable id projected to the Bottom Bar and unmodified Enter. */
   primaryActionId?: string;
   actionTitle?: string;
+  /** Opens the shared Actions menu beside a contextual pointer location. */
+  actionMenuRequest?: QxShellActionMenuRequest | null;
   onBack?: () => void;
   backLabel?: string;
   className?: string;
@@ -145,6 +155,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   actions,
   primaryActionId,
   actionTitle,
+  actionMenuRequest,
   onBack,
   backLabel = "Back",
   className = "",
@@ -175,6 +186,10 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const leftAction = escapeAction ?? fallbackEscapeAction;
   const hasLeading = Boolean(onBack || leading);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const [actionMenuAnchorPoint, setActionMenuAnchorPoint] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [actionIndex, setActionIndex] = useState(0);
   /** Raycast nested Action Panel stack (root → submenu → …). */
   const [menuStack, setMenuStack] = useState<
@@ -191,6 +206,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const searchGlowTimers = useRef<WeakMap<HTMLElement, ReturnType<typeof setTimeout>>>(new WeakMap());
   /** Focus target to restore when the Action menu closes (Raycast: Esc back to list). */
   const actionMenuFocusRestoreRef = useRef<HTMLElement | null>(null);
+  const handledActionMenuRequestRef = useRef<number | null>(null);
   const menuActions = useMemo(() => actions ?? [], [actions]);
   const primaryAction = useMemo(
     () => primaryActionId
@@ -399,6 +415,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     setMenuStack([]);
     setMenuQuery("");
     setSubmenuLoading(false);
+    setActionMenuAnchorPoint(null);
     if (restoreFocus) restoreActionMenuFocus();
     else actionMenuFocusRestoreRef.current = null;
   };
@@ -410,12 +427,34 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       return;
     }
     captureActionMenuFocusRestore();
+    setActionMenuAnchorPoint(null);
     const firstEnabled = menuActions.findIndex((action) => !action.disabled);
     setActionIndex(firstEnabled >= 0 ? firstEnabled : 0);
     setMenuStack([{ title: menuTitle, actions: menuActions }]);
     setMenuQuery("");
     setActionMenuOpen(true);
   };
+
+  useEffect(() => {
+    if (!actionMenuRequest || menuActions.length === 0) return;
+    if (handledActionMenuRequestRef.current === actionMenuRequest.id) return;
+    handledActionMenuRequestRef.current = actionMenuRequest.id;
+    captureActionMenuFocusRestore();
+    setActionMenuAnchorPoint({
+      x: actionMenuRequest.x,
+      y: actionMenuRequest.y,
+    });
+    const firstEnabled = menuActions.findIndex((action) => !action.disabled);
+    setActionIndex(firstEnabled >= 0 ? firstEnabled : 0);
+    setMenuStack([{ title: menuTitle, actions: menuActions }]);
+    setMenuQuery("");
+    setActionMenuOpen(true);
+  }, [
+    actionMenuRequest,
+    captureActionMenuFocusRestore,
+    menuActions,
+    menuTitle,
+  ]);
 
   /** Radix/shadcn Popover dismiss (outside click) and controlled open sync. */
   const handleActionMenuOpenChange = (next: boolean) => {
@@ -883,6 +922,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
             currentMenuLevel?.searchPlaceholder ?? "Filter…"
           }
           loading={submenuLoading}
+          anchorPoint={actionMenuAnchorPoint}
         />
       )}
     </div>

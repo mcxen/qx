@@ -1,4 +1,5 @@
 import type { PluginIslandDisplayInput } from "./types";
+import type { QxActivityProgress } from "../types/contentActivity";
 
 export type PluginWorkbenchTone = "neutral" | "success" | "warning" | "danger" | "accent";
 
@@ -89,12 +90,7 @@ export type PluginWorkbenchContentBlock =
       image: PluginWorkbenchImage;
     };
 
-export interface PluginWorkbenchAsyncStatus {
-  state: "loading" | "success" | "error";
-  label?: string;
-  error?: string;
-  progress?: number;
-}
+export type PluginWorkbenchAsyncStatus = QxActivityProgress;
 
 /** Pure-data detail model rendered by Qx; HTML is intentionally not accepted. */
 export interface PluginWorkbenchDetail {
@@ -324,11 +320,17 @@ function normalizeAsyncStatus(value: unknown): PluginWorkbenchAsyncStatus | unde
   const raw = value as Record<string, unknown>;
   if (raw.state !== "loading" && raw.state !== "success" && raw.state !== "error") return undefined;
   const progress = Number(raw.progress);
+  const completed = Number(raw.completed);
+  const total = Number(raw.total);
+  const failed = Number(raw.failed);
   return {
     state: raw.state,
     label: shortText(raw.label, 240),
     error: shortText(raw.error, 1_000),
     progress: Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : undefined,
+    completed: Number.isFinite(completed) ? Math.max(0, completed) : undefined,
+    total: Number.isFinite(total) ? Math.max(0, total) : undefined,
+    failed: Number.isFinite(failed) ? Math.max(0, failed) : undefined,
   };
 }
 

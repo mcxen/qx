@@ -1990,7 +1990,7 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
         <div className="qx-plugin-manager-actions">
           <TabsList>
             <TabsTrigger value="installed">{t("plugins.tabs.installed", "Installed")}</TabsTrigger>
-            <TabsTrigger value="browse">{t("plugins.tabs.browse", "Browse")}</TabsTrigger>
+            <TabsTrigger value="browse">{t("plugins.tabs.browse", "Plugin Store")}</TabsTrigger>
           </TabsList>
           <div className="qx-plugin-manager-tools">
             {tab === "installed" && (

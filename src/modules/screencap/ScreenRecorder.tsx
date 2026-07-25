@@ -127,11 +127,15 @@ export default function ScreenRecorder() {
       void syncRecordingStatus();
     }
     if (!isTauriRuntime()) return;
-    const unlistenCaptured = listen<{ kind?: string; path?: string }>("screencap:captured", (event) => {
+    const unlistenCaptured = listen<{ kind?: string; path?: string; dismissed?: boolean }>(
+      "screencap:captured",
+      (event) => {
       const path = event.payload?.path;
       if (!path || !isScreenshotPath(path)) return;
       void loadHistory();
       void syncRecordingStatus();
+      // Copy-and-continue (Cmd/Ctrl+C) keeps Qx hidden — no in-module toast/preview.
+      if (event.payload?.dismissed) return;
       setPreview(path);
       setToastPath(path);
     });
@@ -312,7 +316,7 @@ export default function ScreenRecorder() {
       actions: [
         {
           id: "start-screenshot",
-          label: t("screencap.startScreenshot", "Start Screenshot"),
+          label: t("screencap.startScreenshot", "Start Screenshot / Recording"),
           icon: "play",
           onAction: () => void beginScreenshot(),
         },
@@ -502,7 +506,7 @@ export default function ScreenRecorder() {
   if (isRecording || status === "processing") {
     return (
       <QxShell
-        title={t("screencap.title", "Screen Capture")}
+        title={t("screencap.title", "Screenshot & Recording Module")}
         islandKey="screencap.recording"
         search={
           <div className="qx-rss-detail-title qx-module-title-with-badge">
@@ -578,14 +582,14 @@ export default function ScreenRecorder() {
 
   return (
     <QxShell
-      title={t("screencap.title", "Screen Capture")}
+      title={t("screencap.title", "Screenshot & Recording Module")}
       islandKey="screencap"
       search={
         <div className="qx-rss-detail-title qx-module-title-with-badge">
           <span>
             {showingPreview
               ? t("screencap.previewTitle", "Capture Preview")
-              : t("screencap.title", "Screen Capture")}
+              : t("screencap.title", "Screenshot & Recording Module")}
           </span>
           <BetaBadge />
         </div>

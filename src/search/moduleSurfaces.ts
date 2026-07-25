@@ -254,7 +254,7 @@ async function searchScreencapSurfaces(query: string): Promise<ModuleSurfaceHit[
   if (!isModuleSearchEnabled("screencap") || !("__TAURI_INTERNALS__" in window)) return [];
   const hits: ModuleSurfaceHit[] = [];
   for (const item of [
-    { surface: "root", title: "Open Screen Capture", keys: ["screenshot", "video", "mp4", "mov", "gif", "record", "screen", "截图", "录屏"] },
+    { surface: "root", title: "Open Screenshot & Recording Module", keys: ["screenshot", "video", "mp4", "mov", "gif", "record", "screen", "截图", "录屏"] },
     { surface: "record", title: "Start Screen Recording", keys: ["start", "video", "mp4", "mov", "record", "gif", "录屏"] },
     { surface: "screenshot", title: "Take Screenshot", keys: ["capture", "image", "png", "screen", "截图", "截屏"] },
   ] as const) {

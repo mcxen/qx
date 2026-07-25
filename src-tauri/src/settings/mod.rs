@@ -948,7 +948,8 @@ pub async fn update_settings(app: AppHandle, mut settings: Settings) -> Result<S
             || old.builtin_modules != settings_for_io.builtin_modules;
         let tray_changed = old.quick_entries != settings_for_io.quick_entries
             || old.tray_actions != settings_for_io.tray_actions
-            || old.general.auto_hide_on_blur != settings_for_io.general.auto_hide_on_blur;
+            || old.general.auto_hide_on_blur != settings_for_io.general.auto_hide_on_blur
+            || old.general.language != settings_for_io.general.language;
         let app_icon_changed = old.appearance.app_icon != settings_for_io.appearance.app_icon;
         write_settings(&settings_for_io)?;
         Ok((shortcuts_changed, tray_changed, app_icon_changed))

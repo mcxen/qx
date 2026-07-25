@@ -7,13 +7,13 @@ import type { TrayActionConfig } from "./store";
  * Plugin items are registered separately via context.tray (permission `tray`).
  */
 export const TRAY_ACTION_TYPES = [
-  { value: "status_memory", label: "Status · Memory" },
-  { value: "status_cpu", label: "Status · CPU" },
-  { value: "status_network", label: "Status · Network" },
-  { value: "open_main", label: "Open Main Window" },
-  { value: "keep_visible", label: "Keep Window Visible" },
-  { value: "settings", label: "Settings" },
-  { value: "hide_main", label: "Hide Main Window" },
+  { value: "status_memory", labelKey: "shortcuts.trayMenu.statusMemory", label: "Status · Memory" },
+  { value: "status_cpu", labelKey: "shortcuts.trayMenu.statusCpu", label: "Status · CPU" },
+  { value: "status_network", labelKey: "shortcuts.trayMenu.statusNetwork", label: "Status · Network" },
+  { value: "open_main", labelKey: "shortcuts.trayMenu.openMain", label: "Open Main Window" },
+  { value: "keep_visible", labelKey: "shortcuts.trayMenu.keepVisible", label: "Keep Window Visible" },
+  { value: "settings", labelKey: "shortcuts.trayMenu.settings", label: "Settings" },
+  { value: "hide_main", labelKey: "shortcuts.trayMenu.hideMain", label: "Hide Main Window" },
 ] as const;
 
 export const DEFAULT_TRAY_ACTIONS: TrayActionConfig[] = [

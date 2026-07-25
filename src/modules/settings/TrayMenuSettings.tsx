@@ -66,7 +66,10 @@ export default function TrayMenuSettings() {
               <Select
                 value={addAction}
                 onChange={setAddAction}
-                options={availableToAdd.map((type) => ({ value: type.value, label: type.label }))}
+                options={availableToAdd.map((type) => ({
+                  value: type.value,
+                  label: t(type.labelKey, type.label),
+                }))}
                 ariaLabel={t("shortcuts.trayMenu.addAction", "Add action")}
               />
               <Button

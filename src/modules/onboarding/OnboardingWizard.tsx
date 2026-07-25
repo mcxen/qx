@@ -201,8 +201,19 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
   ];
 
   return (
-    <div className="qx-onboarding" role="dialog" aria-modal="true" aria-labelledby="qx-onboarding-title">
+    <div
+      className="qx-onboarding"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="qx-onboarding-title"
+      data-tauri-drag-region
+    >
       <div className="qx-onboarding-card">
+        <div
+          className="qx-onboarding-window-drag"
+          data-tauri-drag-region
+          aria-hidden="true"
+        />
         <div className="qx-onboarding-steps" aria-hidden="true">
           {stepLabels.map((label, i) => (
             <div

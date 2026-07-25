@@ -14,10 +14,11 @@ import {
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { shouldIgnoreBareShortcut } from "../../utils/keyboard";
 import { useSettingsStore } from "../settings/store";
-import ImageLightbox from "./ImageLightbox";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { QxActionPanel } from "../../components/QxActionPanel";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
+import QxMediaViewer from "../../components/QxMediaViewer";
+import QxReplyList from "../../components/QxReplyList";
 import { useArticleReadingProgress } from "./useArticleReadingProgress";
 import { useT } from "../../i18n";
 import { buildRssRefreshIsland } from "./refreshProgress";
@@ -698,32 +699,32 @@ export default function ArticleList() {
                   />
 
                   {v2exTopicId != null && (
-                    <div className="qx-rss-v2ex-comments">
-                      <div className="qx-rss-v2ex-header">
-                        V2EX Comments {v2exReplies.length > 0 && `(${v2exReplies.length})`}
-                      </div>
-                      {v2exLoading && (
-                        <div className="qx-rss-v2ex-loading">Loading comments...</div>
+                    <QxReplyList
+                      title={t("rss.v2exReplies.title", "V2EX Comments")}
+                      total={v2exReplies.length}
+                      loading={v2exLoading}
+                      loadingText={t("rss.v2exReplies.loading", "Loading comments…")}
+                      emptyText={t(
+                        "rss.v2exReplies.empty",
+                        "No comments loaded. Ensure a V2EX token is set in Settings.",
                       )}
-                      {!v2exLoading && v2exReplies.length === 0 && (
-                        <div className="qx-rss-v2ex-empty">
-                          No comments loaded. Ensure a V2EX token is set in Settings.
-                        </div>
-                      )}
-                      {v2exReplies.map((reply) => (
-                        <div key={reply.id} className="qx-rss-v2ex-reply">
-                          <div className="qx-rss-v2ex-reply-meta">
-                            <span className="qx-rss-v2ex-floor">#{reply.floor}</span>
-                            <strong>{reply.author}</strong>
-                            <span className="qx-rss-v2ex-time">{formatTime(reply.created)}</span>
-                          </div>
-                          <div
-                            className="qx-rss-v2ex-reply-body"
+                      items={v2exReplies.map((reply) => ({
+                        id: String(reply.id),
+                        floor: reply.floor,
+                        author: reply.author,
+                        createdAt: formatTime(reply.created),
+                        originalPoster: Boolean(
+                          currentArticle.author
+                            && reply.author === currentArticle.author,
+                        ),
+                        body: (
+                          <span
                             dangerouslySetInnerHTML={{ __html: sanitizeHtml(reply.content) }}
                           />
-                        </div>
-                      ))}
-                    </div>
+                        ),
+                      }))}
+                      originalPosterLabel={t("plugins.workbench.replies.op", "OP")}
+                    />
                   )}
 
                   {originalContent && (
@@ -770,7 +771,13 @@ export default function ArticleList() {
         </article>
       </div>
 
-      {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
+      <QxMediaViewer
+        open={Boolean(lightbox)}
+        images={lightbox ? [{ url: lightbox, alt: currentArticle?.title || "" }] : []}
+        onOpenChange={(open) => {
+          if (!open) setLightbox(null);
+        }}
+      />
     </QxShell>
   );
 }

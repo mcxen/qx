@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   AppWindow,
-  Camera,
-  Circle,
+  Check,
   Grid3x3,
   Hash,
   Maximize,
@@ -22,6 +21,7 @@ import {
 import { loadLastCaptureSelection, saveLastCaptureSelection } from "./preferences";
 import { DEFAULT_SETTINGS, type ScreencapSettings } from "../settings/store";
 import type { CaptureMode, RecordingSnapshot, RecordingOptions } from "./store";
+import { resolveCaptureToolbarPosition } from "./captureToolbarPosition";
 
 interface LogicalArea {
   x: number;
@@ -178,6 +178,8 @@ export default function RegionPickerWindow() {
   const [recording, setRecording] = useState<RecordingSnapshot | null>(null);
   const [captureSettings, setCaptureSettings] = useState<ScreencapSettings>(DEFAULT_SETTINGS.screencap);
   const [intent, setIntent] = useState<CaptureMode>("screenshot");
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [toolbarSize, setToolbarSize] = useState({ width: 440, height: 34 });
   const [pickMode, setPickMode] = useState<PickMode>("region");
   const [drawStart, setDrawStart] = useState<Point | null>(null);
   const [drawEnd, setDrawEnd] = useState<Point | null>(null);
@@ -520,7 +522,7 @@ export default function RegionPickerWindow() {
     action: CaptureMode,
     areaOverride?: Rect,
     ocrDestination?: "clipboard" | "editor" | null,
-    options?: { forceCopy?: boolean; skipDelay?: boolean },
+    options?: { forceCopy?: boolean; skipDelay?: boolean; dismissUi?: boolean },
   ) => {
     const target = areaOverride ?? selection;
     if (busy || !target || countdown !== null) return;
@@ -537,7 +539,9 @@ export default function RegionPickerWindow() {
       ? canvas.toDataURL("image/png").split(",")[1]
       : undefined;
 
-    const delay = options?.skipDelay ? 0 : captureSettings.capture_delay_seconds;
+    // Copy-and-continue (Cmd/Ctrl+C) always skips the delay countdown.
+    const dismissUi = options?.dismissUi === true;
+    const delay = (options?.skipDelay || dismissUi) ? 0 : captureSettings.capture_delay_seconds;
     if (delay > 0) {
       try {
         await invoke("screencap_set_picker_passthrough", { enabled: true });
@@ -571,7 +575,7 @@ export default function RegionPickerWindow() {
         monitorId: picker?.monitorId ?? null,
       });
       const shouldCopy = action === "screenshot"
-        && (options?.forceCopy === true || captureSettings.auto_copy_to_clipboard);
+        && (options?.forceCopy === true || dismissUi || captureSettings.auto_copy_to_clipboard);
       await invoke("screencap_confirm_region_select", {
         area: {
           x: Math.round(target.x),
@@ -589,6 +593,7 @@ export default function RegionPickerWindow() {
         ocrDestination: action === "screenshot" ? (ocrDestination ?? null) : null,
         annotationOverlayBase64,
         copyToClipboard: shouldCopy,
+        dismissUi: action === "screenshot" && dismissUi,
       });
     } catch (captureError) {
       setBusy(false);
@@ -856,9 +861,13 @@ export default function RegionPickerWindow() {
     }
     setSelection(next);
     const confirmMode = captureSettings.capture_confirm_mode;
-    // Ctrl/Cmd drag → screenshot + clipboard immediately (skip refine toolbar).
+    // Ctrl/Cmd drag → screenshot + clipboard immediately, then hide Qx (paste flow).
     if (instantCopy && !opts?.forceRefine) {
-      void confirm("screenshot", next, null, { forceCopy: true, skipDelay: true });
+      void confirm("screenshot", next, null, {
+        forceCopy: true,
+        skipDelay: true,
+        dismissUi: true,
+      });
       return true;
     }
     if (confirmMode === "release" && !opts?.forceRefine) {
@@ -1013,7 +1022,35 @@ export default function RegionPickerWindow() {
     ? { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }
     : rect;
   const showAnnotationTools = intent === "screenshot";
+  const toolbarPosition = selection
+    ? resolveCaptureToolbarPosition(
+      selection,
+      toolbarSize,
+      { width: window.innerWidth, height: window.innerHeight },
+    )
+    : null;
   const handles: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
+
+  useLayoutEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar || !selection) return;
+    const measure = () => {
+      const bounds = toolbar.getBoundingClientRect();
+      setToolbarSize((current) => {
+        const next = {
+          width: Math.ceil(bounds.width),
+          height: Math.ceil(bounds.height),
+        };
+        return current.width === next.width && current.height === next.height
+          ? current
+          : next;
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, [intent, selection]);
 
   return (
     <div
@@ -1065,6 +1102,28 @@ export default function RegionPickerWindow() {
           event.preventDefault();
           if (event.shiftKey) redo();
           else undo();
+          return;
+        }
+        // Cmd/Ctrl+C after a selection: capture → clipboard → hide picker & Qx.
+        // Native text fields keep copy (annotation text input).
+        if (
+          (event.metaKey || event.ctrlKey)
+          && !event.altKey
+          && !event.shiftKey
+          && event.key.toLowerCase() === "c"
+        ) {
+          const target = event.target as HTMLElement | null;
+          if (target?.closest("input, textarea, [contenteditable='true']")) {
+            return;
+          }
+          if (textDraft) return;
+          if (!selection || busy || countdown !== null) return;
+          event.preventDefault();
+          void confirm("screenshot", selection, null, {
+            forceCopy: true,
+            skipDelay: true,
+            dismissUi: true,
+          });
           return;
         }
         if (event.key === "Enter" && selection && !busy && countdown === null) {
@@ -1229,12 +1288,11 @@ export default function RegionPickerWindow() {
 
       {selection && !recordingActive && countdown === null && (
         <div
+          ref={toolbarRef}
           className="qx-region-picker-toolbar"
           style={{
-            left: clamp(selection.x + selection.w / 2, 220, window.innerWidth - 220),
-            top: selection.y + selection.h + 48 < window.innerHeight
-              ? selection.y + selection.h + 10
-              : Math.max(10, selection.y - 44),
+            left: toolbarPosition?.left,
+            top: toolbarPosition?.top,
           }}
           /* Root listens for pointerdown (not only mousedown). Stopping mouse
              alone still let the root clear selection and start a new drag
@@ -1242,14 +1300,6 @@ export default function RegionPickerWindow() {
           onPointerDown={(event) => event.stopPropagation()}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          <button
-            type="button"
-            className={intent === "screenshot" ? "is-primary" : ""}
-            onClick={() => void confirm("screenshot", selection)}
-            disabled={busy}
-          >
-            <Camera size={14} /> {t("screencap.screenshot", "Screenshot")}
-          </button>
           {showAnnotationTools && (
             <>
               <button
@@ -1270,17 +1320,6 @@ export default function RegionPickerWindow() {
               </button>
             </>
           )}
-          <button
-            type="button"
-            className={`is-record${intent === "recording" ? " is-primary" : ""}`}
-            onClick={() => void confirm("recording", selection)}
-            disabled={busy || annotations.length > 0}
-            title={annotations.length > 0
-              ? t("screencap.picker.annotationsBlockRecord", "Clear annotations before recording.")
-              : undefined}
-          >
-            <Circle size={10} fill="currentColor" /> {t("screencap.record", "Record")}
-          </button>
           {showAnnotationTools && (
             <>
               <span />
@@ -1315,6 +1354,20 @@ export default function RegionPickerWindow() {
               ))}
             </>
           )}
+          <button
+            type="button"
+            className="is-icon is-confirm"
+            onClick={() => void confirm(intent, selection)}
+            disabled={busy || (intent === "recording" && annotations.length > 0)}
+            aria-label={intent === "screenshot"
+              ? t("screencap.picker.confirmScreenshot", "Confirm screenshot")
+              : t("screencap.picker.confirmRecording", "Confirm recording")}
+            title={intent === "screenshot"
+              ? t("screencap.picker.confirmScreenshot", "Confirm screenshot")
+              : t("screencap.picker.confirmRecording", "Confirm recording")}
+          >
+            <Check size={16} strokeWidth={2.5} />
+          </button>
           <button type="button" className="is-icon" onClick={() => void cancel()} aria-label={t("common.cancel", "Cancel")}>
             <X size={14} />
           </button>
@@ -1327,8 +1380,16 @@ export default function RegionPickerWindow() {
             ? t("screencap.picker.windowHint", "Hover a window and click to select · Esc to cancel")
             : t(
               "screencap.picker.draw",
-              "Drag on {display} · Ctrl/⌘+drag copies · R last region · Esc cancel",
+              "Drag on {display} · Ctrl/⌘+C or Ctrl/⌘+drag copies · R last region · Esc cancel",
             ).replace("{display}", display)}
+        </div>
+      )}
+      {selection && !tool && !recordingActive && countdown === null && (
+        <div className="qx-region-picker-hint is-tool-hint">
+          {t(
+            "screencap.picker.selectionHint",
+            "⌘/Ctrl+C copy & dismiss · Enter confirm · Esc clear",
+          )}
         </div>
       )}
       {selection && tool && countdown === null && (

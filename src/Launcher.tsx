@@ -1,5 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import QxShell, { type QxShellAction } from "./components/QxShell";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import QxShell, {
+  type QxShellAction,
+  type QxShellActionMenuRequest,
+} from "./components/QxShell";
 import ResultsList from "./ResultsList";
 import SearchBar, { requestLauncherSearchFocus } from "./SearchBar";
 import { useStore, type AppEntry, type SearchScope } from "./store";
@@ -9,7 +12,7 @@ import LauncherEntryManageDialogs, {
   type LauncherManageDialogRequest,
 } from "./launcher/LauncherEntryManageDialogs";
 import { createLauncherActions, getLauncherActionTitle } from "./launcher/launcherActions";
-import { toLauncherQuickEntries } from "./launcher/quickEntries";
+import { toLauncherAllModules, toLauncherQuickEntries } from "./launcher/quickEntries";
 import { useLauncherHistory } from "./launcher/useLauncherHistory";
 import type { QuickEntry } from "./launcher/types";
 import type { SearchTrackId } from "./launcher/searchProgress";
@@ -60,6 +63,8 @@ export default function Launcher({
   const appearance = settings.appearance;
   const [scope, setScope] = useState<SearchScope>(searchScopeRef.current);
   const [manageDialog, setManageDialog] = useState<LauncherManageDialogRequest | null>(null);
+  const [actionMenuRequest, setActionMenuRequest] =
+    useState<QxShellActionMenuRequest | null>(null);
   const query = useStore((state) => state.query);
   const setQuery = useStore((state) => state.setQuery);
   const selectedIndex = useStore((state) => state.selectedIndex);
@@ -71,10 +76,10 @@ export default function Launcher({
     { value: "files", label: t("launcher.scope.files", "Files") },
     { value: "clipboard", label: t("launcher.scope.clipboard", "Clipboard") },
   ];
-  const launcherActions = useMemo(
-    () =>
+  const actionsForItem = useCallback(
+    (item: AppEntry | null) =>
       createLauncherActions({
-        item: selectedItem,
+        item,
         onItemClick,
         onNavigate,
         t,
@@ -82,7 +87,11 @@ export default function Launcher({
         onEditAliases: (item) => setManageDialog({ kind: "aliases", item }),
         onRecordShortcut: (item) => setManageDialog({ kind: "shortcut", item }),
       }),
-    [selectedItem, onItemClick, onNavigate, t, settings],
+    [onItemClick, onNavigate, t, settings],
+  );
+  const launcherActions = useMemo(
+    () => actionsForItem(selectedItem),
+    [actionsForItem, selectedItem],
   );
   const shellActions = useMemo<QxShellAction[]>(() => {
     if (selectedCategory) {
@@ -117,26 +126,31 @@ export default function Launcher({
   });
 
   const plugins = usePluginRegistry((state) => state.plugins);
+  const openLauncherTarget = useCallback((target: string) => {
+    if (target === "file-search") {
+      setScope("files");
+      searchScopeRef.current = "files";
+      setQuery("");
+      useStore.getState().setSelectedIndex(0);
+      onScopeChange();
+      window.requestAnimationFrame(requestLauncherSearchFocus);
+      return;
+    }
+    // plugin:<id> opens the plugin panel tab (same as launcher openItem).
+    onNavigate(target);
+  }, [onNavigate, onScopeChange, searchScopeRef, setQuery]);
   const quickEntries: QuickEntry[] = useMemo(() => {
     return toLauncherQuickEntries(
       settings.quick_entries,
-      (target) => {
-        if (target === "file-search") {
-          setScope("files");
-          searchScopeRef.current = "files";
-          setQuery("");
-          useStore.getState().setSelectedIndex(0);
-          onScopeChange();
-          window.requestAnimationFrame(requestLauncherSearchFocus);
-          return;
-        }
-        // plugin:<id> opens the plugin panel tab (same as launcher openItem).
-        onNavigate(target);
-      },
+      openLauncherTarget,
       t,
       plugins,
     );
-  }, [settings.quick_entries, plugins, onNavigate, onScopeChange, searchScopeRef, setQuery, t]);
+  }, [settings.quick_entries, openLauncherTarget, plugins, t]);
+  const allModules: QuickEntry[] = useMemo(
+    () => toLauncherAllModules(openLauncherTarget, t, plugins),
+    [openLauncherTarget, plugins, t],
+  );
 
   const isSearchActivity = (isSearching || isSearchSettling) && !!query.trim();
   const idleHome = !isSearchActivity && results.length === 0 && loadingPhase !== "loading-apps";
@@ -312,6 +326,7 @@ export default function Launcher({
       context={
         <LauncherContext
           quickEntries={quickEntries}
+          allModules={allModules}
           recentLaunches={recentLaunches}
           recentSearches={recentSearches}
           query={query}
@@ -339,6 +354,7 @@ export default function Launcher({
             }
       }
       primaryActionId={primaryActionId}
+      actionMenuRequest={actionMenuRequest}
       actionTitle={
         selectedItem
           ? getLauncherActionTitle(selectedItem, t)
@@ -349,9 +365,23 @@ export default function Launcher({
       <ResultsList
         items={results}
         rows={resultRows}
-        onItemClick={onItemClick}
+        onItemClick={(item) => {
+          const primary = actionsForItem(item)[0];
+          if (primary && !primary.disabled) void primary.run();
+        }}
         onToggleCategory={onToggleCategory}
         onSelectRow={onSelectResultRow}
+        onOpenActionsAt={(x, y) => {
+          // Selection must commit before QxShell snapshots the selected row's
+          // actions; otherwise a fast right-click can display the prior item.
+          window.requestAnimationFrame(() => {
+            setActionMenuRequest((request) => ({
+              id: (request?.id ?? 0) + 1,
+              x,
+              y,
+            }));
+          });
+        }}
         loadingPhase={loadingPhase}
       />
       <LauncherEntryManageDialogs

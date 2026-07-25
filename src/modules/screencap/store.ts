@@ -65,9 +65,14 @@ export function ensureCaptureToastListener(t?: Translate): void {
   if (captureListenerStarted || typeof window === "undefined") return;
   if (!("__TAURI_INTERNALS__" in window)) return;
   captureListenerStarted = true;
-  void listen<{ kind?: string; path?: string }>("screencap:captured", (event) => {
+  void listen<{ kind?: string; path?: string; dismissed?: boolean; copied?: boolean }>(
+    "screencap:captured",
+    (event) => {
     const path = event.payload?.path;
     if (!path || !path.toLowerCase().endsWith(".png")) return;
+    // Cmd/Ctrl+C copy-and-continue: image is already on the clipboard and Qx
+    // stays hidden — no "Screenshot saved / Copy" toast that would break flow.
+    if (event.payload?.dismissed) return;
     queueScreenshotToast(path);
     const filename = path.split(/[\\/]/).pop() || path;
     const showCaptured = () => {

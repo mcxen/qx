@@ -29,6 +29,51 @@
   margin-top: 12px;
 }
 
+.qx-context-collapsible-section {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.qx-context-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qx-context-section-toggle:hover {
+  color: var(--qx-text-secondary);
+}
+
+.qx-context-section-toggle-trailing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.qx-context-section-toggle svg {
+  transition: transform 140ms ease;
+}
+
+.qx-context-section-toggle svg.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.qx-context-section-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.qx-context-collapsible-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .qx-context-section-actions {
   display: flex;
   justify-content: flex-end;
@@ -52,6 +97,11 @@
 
 .qx-context-entry:hover {
   background: var(--qx-bg-component-2);
+}
+
+.qx-context-entry.is-compact {
+  min-height: 42px;
+  padding-block: 6px;
 }
 
 .qx-context-entry-title {

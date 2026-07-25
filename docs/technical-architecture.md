@@ -279,7 +279,7 @@ updater::* (check/download_and_install/helper_replace)
 
 - **剪贴板监听**: `clipboard::start_listener()` — 始终 `manage` ClipboardDb；轮询系统剪贴板
 - **RSS**: `rss::init` — 始终 `manage` RssDb（`Option` + lazy open）；见 [shell-and-shortcuts.md](./shell-and-shortcuts.md) §5
-- **Icon 预加载**: `apps::preload_icons()` — 后台用 sips 转换并限制应用图标最长边为 128px；RSS 启动任务把远程 favicon 压为 64px 本地缓存
+- **Icon 预加载**: `apps::preload_icons()` — 后台生成并缓存最长边为 128px 的应用图标；macOS 通过 AppKit / sips 读取 `.app`，Windows 通过 Shell 解析开始菜单 `.lnk` 的 `HICON` 并转为 PNG；RSS 启动任务把远程 favicon 压为 64px 本地缓存
 - **全局快捷键**: `settings::register_shortcuts()` — **toggle** 开/关主窗口；细节见 [shell-and-shortcuts.md](./shell-and-shortcuts.md)
 
 ---
@@ -418,7 +418,6 @@ npm run tauri build -- --bundles app
 | `src/modules/rss/RssPanel.tsx` | 293 | RSS 订阅列表 |
 | `src/modules/rss/ArticleList.tsx` | 321 | RSS 文章列表 |
 | `src/modules/rss/store.ts` | 321 | RSS store + 辅助函数 |
-| `src/modules/rss/ArticleDetail.tsx` | 299 | RSS 文章详情 |
 | `src-tauri/src/lib.rs` | 175 | Tauri 启动 + 45 个命令注册 |
 | `src-tauri/src/rss/storage.rs` | 266 | RSS SQLite CRUD |
 | `src-tauri/src/rss/fetcher.rs` | 202 | RSS 网络抓取 + 解析 |

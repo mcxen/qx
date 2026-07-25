@@ -1,6 +1,6 @@
 [package]
 name = "qx"
-version = "0.6.29"
+version = "0.6.30"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -53,6 +53,7 @@ pinyin = "0.10"
 base64 = "0.22"
 regex = "1"
 portable-pty = "0.9"
+sys-locale = "0.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"

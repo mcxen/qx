@@ -70,6 +70,7 @@ import { getQxDesktopPlatform, isImeCompositionEvent } from "./utils/keyboard";
 import { isBuiltinModuleEnabled } from "./modules/moduleAvailability";
 import { closeSettings, openSettings } from "./modules/settings/openSettings";
 import { ensureCaptureToastListener } from "./modules/screencap/store";
+import { openSystemPath } from "./system";
 import "./App.css";
 
 // Clipboard is a core module: eager import (no React.lazy) so shortcut open never
@@ -111,6 +112,11 @@ const MIN_WINDOW_HEIGHT = 360;
 const MAX_WINDOW_WIDTH = 1500;
 const MAX_WINDOW_HEIGHT = 882;
 const FIRST_LAUNCH_WINDOW_RATIO = 0.6;
+const FIRST_INSTALL_MIN_WIDTH = 980;
+const FIRST_INSTALL_MIN_HEIGHT = 612;
+const FIRST_INSTALL_ASPECT_RATIO = 1.6;
+const FIRST_INSTALL_MONITOR_WIDTH_LIMIT = 0.9;
+const FIRST_INSTALL_MONITOR_HEIGHT_LIMIT = 0.85;
 const OVERSIZED_SAVED_WINDOW_RATIO = 0.9;
 const MODULE_SWITCH_PAINT_DELAY_MS = 32;
 const HOST_ESCAPE_EVENT = "qx:host-escape";
@@ -154,7 +160,7 @@ interface QxUpdateInfo {
 
 const MODULE_LABEL_KEYS: Record<string, { key: string; fallback: string }> = {
   clipboard: { key: "clipboard.title", fallback: "Clipboard History" },
-  screencap: { key: "launcher.screencap", fallback: "Screen Capture" },
+  screencap: { key: "launcher.screencap", fallback: "Screenshot & Recording Module" },
   rss: { key: "launcher.rss", fallback: "RSS Reader" },
   v2ex: { key: "launcher.v2ex", fallback: "V2EX" },
   weather: { key: "launcher.weather", fallback: "Weather" },
@@ -390,12 +396,20 @@ function clampWindowSizeForMonitor(width: number, height: number, monitorSize: {
 async function getFirstLaunchWindowSize() {
   const logicalSize = await getMonitorLogicalWorkSize();
   if (!logicalSize) {
-    return clampWindowSize(980, 576);
+    return clampWindowSize(FIRST_INSTALL_MIN_WIDTH, FIRST_INSTALL_MIN_HEIGHT);
   }
 
+  const width = Math.min(
+    Math.max(FIRST_INSTALL_MIN_WIDTH, logicalSize.width * FIRST_LAUNCH_WINDOW_RATIO),
+    logicalSize.width * FIRST_INSTALL_MONITOR_WIDTH_LIMIT,
+  );
+  const height = Math.min(
+    Math.max(FIRST_INSTALL_MIN_HEIGHT, width / FIRST_INSTALL_ASPECT_RATIO),
+    logicalSize.height * FIRST_INSTALL_MONITOR_HEIGHT_LIMIT,
+  );
   return clampWindowSize(
-    logicalSize.width * FIRST_LAUNCH_WINDOW_RATIO,
-    logicalSize.height * FIRST_LAUNCH_WINDOW_RATIO,
+    width,
+    height,
   );
 }
 
@@ -1476,9 +1490,11 @@ function App() {
     });
   }, [settings.appearance.glass_enabled, settingsLoaded]);
 
-  // A fresh install presents the launcher once (and macOS permission onboarding).
-  // After that Qx starts as a background helper; the launcher is surfaced only
-  // by an explicit shortcut/tray action.
+  // Every new Qx desktop process presents the launcher once. This makes an
+  // explicit relaunch or updater restart visible instead of looking like Qx
+  // failed to start. The ref keeps settings hydration/HMR from showing twice.
+  // A fresh install also receives a wide default size that keeps Quick Entries
+  // visible; existing users retain their saved dimensions.
   useEffect(() => {
     if (!settingsLoaded || !isTauriRuntime()) return;
     if (startupWindowRestoredRef.current) return;
@@ -1510,8 +1526,6 @@ function App() {
           || currentSettings.general.permission_onboarding_version
             < MACOS_PERMISSION_ONBOARDING_VERSION
         );
-      const shouldShowFirstLaunch =
-        (!currentSettings.general.has_shown_launcher && !hasSavedSize) || needsOnboarding;
       if (!currentSettings.general.has_shown_launcher) {
         useSettingsStore.getState().patch("general", {
           ...currentSettings.general,
@@ -1536,21 +1550,19 @@ function App() {
         });
         await useSettingsStore.getState().flush();
       }
-      if (shouldShowFirstLaunch) {
-        // Let the size settle, then show via floating_show (centers on the
-        // cursor monitor — do not use win.center() which can land on the wrong display).
-        await new Promise((r) => window.setTimeout(r, 50));
-        // Onboarding needs longer blur immunity while the user visits System Settings.
-        ignoreBlurUntilRef.current = Date.now() + (needsOnboarding ? 120_000 : 2500);
-        await invoke("floating_show").catch(() => {});
-        // Ensure the onboarding window has app results even if focus events are flaky.
-        await loadEmptyLauncherApps(setResults, setLoadingPhase);
-        // Re-center once more after the panel is actually visible.
-        await invoke("floating_show").catch(() => {});
-        if (needsOnboarding) {
-          await invoke("floating_set_onboarding_active", { active: true }).catch(() => {});
-          setShowOnboarding(true);
-        }
+      // Let the restored/default size settle, then show via floating_show
+      // (centers on the cursor monitor; win.center() may choose another display).
+      await new Promise((r) => window.setTimeout(r, 50));
+      // Onboarding needs longer blur immunity while the user visits System Settings.
+      ignoreBlurUntilRef.current = Date.now() + (needsOnboarding ? 120_000 : 2500);
+      await invoke("floating_show").catch(() => {});
+      // Ensure a cold-start window already contains useful launcher rows.
+      await loadEmptyLauncherApps(setResults, setLoadingPhase);
+      // Re-center once more after the panel is actually visible.
+      await invoke("floating_show").catch(() => {});
+      if (needsOnboarding) {
+        await invoke("floating_set_onboarding_active", { active: true }).catch(() => {});
+        setShowOnboarding(true);
       }
     };
 
@@ -2421,8 +2433,13 @@ function App() {
       setTab(tabMatch[1] as any);
       return;
     }
-    // Open external application or file
-    await invoke("open_app", { path: item.path });
+    // Files and directories belong to the platform shell: Finder on macOS,
+    // File Explorer on Windows, and the default application for files.
+    if (item.kind === "file" || item.kind === "folder") {
+      await openSystemPath(item.path);
+    } else {
+      await invoke("open_app", { path: item.path });
+    }
     // Record launch history (fire-and-forget)
     invoke("record_launch", { path: item.path, name: item.name }).catch(() => {});
     if (isTauriRuntime()) {

@@ -26,6 +26,9 @@
 2. **模块快捷键**（剪贴板 / RSS / GIF）：打开对应 tab；若已在该 tab 再按 → 隐藏窗口；若窗口开着但在别的 tab → 切到该模块。
 3. **所有关闭路径**应尽量走 Rust `floating_panel::hide*`，保证内部 `PANEL_OPEN` / `LAST_HIDE_AT` 一致。
 4. **Tauri managed state**（`RssDb`、`ClipboardDb`）在启动时**始终** `app.manage(...)`，不能因 DB open 失败而漏注册（否则前端会报 *state not managed* / 缺少 `.manage()`）。
+5. **进程首窗可见**：Qx 完全退出后再次启动时，`App.tsx` 在设置与窗口尺寸恢复完成后
+   主动 `floating_show` 一次；这与同一进程内的快捷键 toggle / hide 状态分开。首次安装
+   使用能显示 Launcher 右侧 Quick Entries 的宽窗尺寸，老用户继续恢复保存尺寸。
 
 Windows 的透明无边框主窗口不使用 DWM 原生 shadow：它在 Windows 10、远程桌面和
 部分显卡组合下会退化成不透明矩形黑边。`floating_panel::install` 只在 Windows 调用
@@ -275,6 +278,12 @@ IME 候选窗口抢焦点。
 并从集合自动生成 Actions 入口。搜索槽中的 Enter 也遵循该主动作，但 IME 组合输入优先。
 模块不得再写一份 bare Enter handler，也不得注册 `Cmd/Ctrl+K` 或 Esc 的进程级监听。
 文本编辑器和非 Shell 输入框继续保留原生编辑语义。
+
+Launcher 结果右键通过 `QxShell.actionMenuRequest` 发布 viewport 坐标：宿主先更新当前选择，
+再将既有 Actions Popover 锚定到指针附近。它不得维护另一份右键动作集合。键盘
+`Cmd/Ctrl+K` 和 Bottom Bar Actions 按钮不发布坐标，继续使用右下角宿主锚点。
+结果列表的 pointer hover 只负责视觉反馈，不写 `selectedIndex`；选择只能由方向键、单击
+或右键确认。双击复用当前条目的 Enter 主动作，不另写文件/文件夹打开分支。
 
 ---
 

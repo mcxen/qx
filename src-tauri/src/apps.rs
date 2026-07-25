@@ -1,13 +1,13 @@
 use rusqlite::{params, Connection};
 use serde::Serialize;
-use std::collections::hash_map::DefaultHasher;
 use std::fs;
-use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
 use std::sync::OnceLock;
 use tauri::{AppHandle, Emitter};
+
+mod icons;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct AppEntry {
@@ -25,7 +25,6 @@ pub struct AppEntry {
 static APP_CACHE: Mutex<Vec<AppEntry>> = Mutex::new(Vec::new());
 static DB_PATH: OnceLock<PathBuf> = OnceLock::new();
 static CACHE_INITIALIZED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-const CACHED_ICON_EDGE: u32 = 128;
 
 fn app_cache_lock() -> Option<std::sync::MutexGuard<'static, Vec<AppEntry>>> {
     match APP_CACHE.lock() {
@@ -134,12 +133,12 @@ fn heal_entry_icon(entry: &mut AppEntry) {
         return;
     }
     let app_path = PathBuf::from(&entry.path);
-    let current = icon_cache_path(&app_path, &entry.name);
+    let current = icons::cache_path(&app_path, &entry.name);
     if current.is_file() {
         entry.icon = current.to_string_lossy().to_string();
         return;
     }
-    let legacy = legacy_icon_cache_path(&entry.name);
+    let legacy = icons::legacy_cache_path(&entry.name);
     if legacy.is_file() {
         entry.icon = legacy.to_string_lossy().to_string();
         return;
@@ -234,181 +233,8 @@ fn sync_db(entries: &[AppEntry]) {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn get_icon_cache_dir() -> PathBuf {
-    let dir = crate::paths::state_dir().join("icons");
-    let _ = fs::create_dir_all(&dir);
-    dir
-}
-
-#[cfg(not(target_os = "macos"))]
-fn get_icon_cache_dir() -> PathBuf {
-    let dir = crate::paths::cache_dir().join("icons");
-    let _ = fs::create_dir_all(&dir);
-    dir
-}
-
 fn has_info_plist(app_path: &PathBuf) -> bool {
     app_path.join("Contents").join("Info.plist").is_file()
-}
-
-fn icon_cache_path(app_path: &PathBuf, app_name: &str) -> PathBuf {
-    let mut hasher = DefaultHasher::new();
-    app_path.to_string_lossy().hash(&mut hasher);
-    let path_hash = hasher.finish();
-    let safe_name = app_name
-        .chars()
-        .map(|c| match c {
-            '/' | ':' => '-',
-            _ => c,
-        })
-        .collect::<String>();
-    get_icon_cache_dir().join(format!("{safe_name}-{path_hash:016x}.png"))
-}
-
-fn legacy_icon_cache_path(app_name: &str) -> PathBuf {
-    let safe_name = app_name.replace('/', "-");
-    get_icon_cache_dir().join(format!("{safe_name}.png"))
-}
-
-fn has_current_cached_icon(app_path: &PathBuf, app_name: &str, icon: &str) -> bool {
-    if icon.is_empty() {
-        return false;
-    }
-    let current_path = icon_cache_path(app_path, app_name);
-    icon == current_path.to_string_lossy()
-        && current_path.exists()
-        && compact_cached_icon(&current_path)
-}
-
-#[cfg(target_os = "macos")]
-fn compact_cached_icon(path: &Path) -> bool {
-    let Ok((width, height)) = image::image_dimensions(path) else {
-        return false;
-    };
-    if width <= CACHED_ICON_EDGE && height <= CACHED_ICON_EDGE {
-        return true;
-    }
-    let temp = path.with_extension("compact.png");
-    let output = Command::new("sips")
-        .args([
-            "-Z",
-            "128",
-            path.to_str().unwrap_or(""),
-            "--out",
-            temp.to_str().unwrap_or(""),
-        ])
-        .output();
-    match output {
-        Ok(result) if result.status.success() && temp.is_file() => {
-            let replaced = fs::rename(&temp, path).is_ok();
-            if !replaced {
-                let _ = fs::remove_file(&temp);
-            }
-            replaced
-        }
-        _ => {
-            let _ = fs::remove_file(temp);
-            false
-        }
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn compact_cached_icon(path: &Path) -> bool {
-    let Ok((width, height)) = image::image_dimensions(path) else {
-        return false;
-    };
-    if width <= CACHED_ICON_EDGE && height <= CACHED_ICON_EDGE {
-        return true;
-    }
-    let Ok(decoded) = image::open(path) else {
-        return false;
-    };
-    decoded
-        .thumbnail(CACHED_ICON_EDGE, CACHED_ICON_EDGE)
-        .save_with_format(path, image::ImageFormat::Png)
-        .is_ok()
-}
-
-/// Convert .icns to .png using macOS built-in `sips` tool, cache results.
-/// Chromium/Tauri webview cannot render .icns, only PNG/JPEG/GIF/WebP.
-fn icon_to_png(icns_path: &PathBuf, app_path: &PathBuf, app_name: &str) -> String {
-    let png_path = icon_cache_path(app_path, app_name);
-
-    if png_path.exists() {
-        let png_modified = fs::metadata(&png_path).ok().and_then(|m| m.modified().ok());
-        let icns_modified = fs::metadata(icns_path).ok().and_then(|m| m.modified().ok());
-        if let (Some(png_m), Some(icns_m)) = (png_modified, icns_modified) {
-            if png_m >= icns_m && compact_cached_icon(&png_path) {
-                return png_path.to_string_lossy().to_string();
-            }
-        }
-    }
-
-    let output = Command::new("sips")
-        .args([
-            "-s",
-            "format",
-            "png",
-            "-Z",
-            "128",
-            icns_path.to_str().unwrap_or(""),
-            "--out",
-            png_path.to_str().unwrap_or(""),
-        ])
-        .output();
-
-    match output {
-        Ok(o) if o.status.success() && png_path.exists() && compact_cached_icon(&png_path) => {
-            png_path.to_string_lossy().to_string()
-        }
-        _ => String::new(),
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn appkit_icon_to_png(app_path: &PathBuf, app_name: &str) -> String {
-    use objc2::AnyThread;
-    use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep, NSWorkspace};
-    use objc2_foundation::{NSDictionary, NSSize, NSString};
-
-    let png_path = icon_cache_path(app_path, app_name);
-    if png_path.exists() && compact_cached_icon(&png_path) {
-        return png_path.to_string_lossy().to_string();
-    }
-
-    let app_path_string = app_path.to_string_lossy();
-    let ns_path = NSString::from_str(&app_path_string);
-    let empty_props = NSDictionary::new();
-
-    let write_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let workspace = NSWorkspace::sharedWorkspace();
-        let image = workspace.iconForFile(&ns_path);
-        image.setSize(NSSize::new(
-            CACHED_ICON_EDGE as f64,
-            CACHED_ICON_EDGE as f64,
-        ));
-        let tiff = image.TIFFRepresentation()?;
-        let bitmap = NSBitmapImageRep::initWithData(NSBitmapImageRep::alloc(), &tiff)?;
-        let png = unsafe {
-            bitmap.representationUsingType_properties(NSBitmapImageFileType::PNG, &empty_props)
-        }?;
-        fs::write(&png_path, unsafe { png.as_bytes_unchecked() }).ok()?;
-        Some(())
-    }));
-
-    match write_result {
-        Ok(Some(())) if png_path.exists() && compact_cached_icon(&png_path) => {
-            png_path.to_string_lossy().to_string()
-        }
-        _ => String::new(),
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn appkit_icon_to_png(_app_path: &PathBuf, _app_name: &str) -> String {
-    String::new()
 }
 
 fn resolve_app_bundle(path: PathBuf) -> Option<PathBuf> {
@@ -700,8 +526,8 @@ fn scan_dir_fast(dir: &PathBuf, results: &mut Vec<AppEntry>) {
                     .unwrap_or("Unknown")
                     .to_string();
                 let (display_name, aliases) = resolve_localized_names(&path, &name);
-                let png_path = icon_cache_path(&path, &name);
-                let legacy_png_path = legacy_icon_cache_path(&name);
+                let png_path = icons::cache_path(&path, &name);
+                let legacy_png_path = icons::legacy_cache_path(&name);
                 let icon = if png_path.exists() {
                     png_path.to_string_lossy().to_string()
                 } else if legacy_png_path.exists() {
@@ -877,13 +703,13 @@ fn fill_missing_icons(app: &AppHandle) {
     let mut changed = false;
     for entry in apps.iter() {
         let app_path = PathBuf::from(&entry.path);
-        if has_current_cached_icon(&app_path, &entry.name, &entry.icon) {
+        if icons::has_current_cache(&app_path, &entry.name, &entry.icon) {
             continue;
         }
-        let mut png = appkit_icon_to_png(&app_path, &entry.name);
+        let mut png = icons::platform_icon_to_png(&app_path, &entry.name);
         if png.is_empty() {
             if let Some(icon_path) = resolve_icon_path(&app_path, &entry.name) {
-                png = icon_to_png(&icon_path, &app_path, &entry.name);
+                png = icons::icon_file_to_png(&icon_path, &app_path, &entry.name);
             }
         }
         if png.is_empty() {
@@ -995,26 +821,4 @@ pub async fn search_files(
         request_id,
     )
     .await
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{compact_cached_icon, CACHED_ICON_EDGE};
-
-    #[test]
-    fn cached_application_icons_are_compacted() {
-        let path = std::env::temp_dir().join(format!(
-            "qx-app-icon-test-{}-{}.png",
-            std::process::id(),
-            CACHED_ICON_EDGE
-        ));
-        image::DynamicImage::new_rgba8(512, 384)
-            .save_with_format(&path, image::ImageFormat::Png)
-            .expect("write icon fixture");
-        assert!(compact_cached_icon(&path));
-        let (width, height) = image::image_dimensions(&path).expect("compacted dimensions");
-        let _ = std::fs::remove_file(path);
-        assert!(width <= CACHED_ICON_EDGE);
-        assert!(height <= CACHED_ICON_EDGE);
-    }
 }

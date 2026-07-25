@@ -11,6 +11,13 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
 ## Core Rules
 
 - 主壳固定为三层：Top Bar / Main Area / Bottom Bar。
+- Qx 完全退出后再次启动时，新进程必须主动显示一次 Launcher，让用户明确知道重启已完成；
+  同一进程内的设置 hydration、HMR 或窗口隐藏/显示不得重复触发。首次安装且没有保存尺寸时，
+  默认窗口宽度必须高于 860px 的 Context 响应式断点（屏幕空间不足除外），确保右侧快捷入口
+  可见；已有用户继续恢复其保存尺寸。
+- 截图或录屏成功后必须走同一个 capture-session 完成协议：结束 picker generation、隐藏并
+  清空圈选层、解除内容保护、恢复结果界面，并按统一的捕获后隐藏设置处理控制栏。成功停止
+  录屏不得重新弹出此前选区；仅失败时允许保留选区供重试。
 - 无边框主窗口必须保留原生窗口操作语义：Top Bar 负责拖动，Shell 最外沿提供
   resize hit targets。Windows WebView2 使用上下左右与四角八方向
   `startResizeDragging` 手柄，并显式拥有
@@ -328,8 +335,24 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
 - 搜索占据可用主列；内容筛选通过 `QxShell.topbarFilters` 发布 `id / label / value / options / onChange`，由宿主固定 Select 渲染在 trailing 列，不得把搜索缩成短输入框。
 - 内置模块和插件都不得在 `trailing` 中自绘 Select、分段按钮或 tabs 充当内容筛选。刷新、新建、导入、录制等命令属于 Bottom Bar / Actions；短状态优先进入 Island，避免 Top Bar 重新变成工具按钮排。
 - Quick Entries 不以成组图标占用 Top Bar；它们保留在 Context Panel、Actions 或专用入口中。Top Bar trailing 只保留筛选和当前上下文必需操作。
-- Launcher 右侧默认 Quick Entries 只保留剪贴板、RSS 阅读、设置和文件搜索。文件搜索入口切换到 Files scope、清空旧 query 并聚焦搜索框；其他模块仍可由用户在编辑模式中自行添加。
+- Launcher 右侧 Quick Entries 保持用户可编辑；其后提供默认展开、可折叠的“所有模块”目录，
+  由宿主模块目录与外置插件注册表自动生成，只显示当前已启用入口，不维护第二份硬编码列表。
+  文件搜索入口切换到 Files scope、清空旧 query 并聚焦搜索框；模块启停或插件安装状态变化后，
+  “所有模块”必须自动同步。
 - Launcher 的 All / Files 搜索中，每次非空 query 变化（输入、删除、粘贴）都必须立即调用文件搜索 pass 0；后续 pass 可异步增量合并，但不得以字符数阈值、Enter 或失焦作为首次调用条件。旧请求必须由序号/取消信号隔离，不能覆盖新 query。
+- Launcher 结果单击只更新选择，双击或 Enter 执行主动作。文件交给系统默认应用打开；文件夹交给平台文件管理器打开（macOS Finder、Windows 文件资源管理器），不得走仅允许应用包或可执行文件的 `open_app` 端口。
+- Launcher Bottom Bar 与 Actions 必须消费同一个条目类型模型：文件夹显示“打开文件夹”，
+  任意后缀的普通文件显示“打开文件”并交给系统默认应用，只有原生应用显示“打开应用”。
+  “显示包内容”仅属于 macOS `.app`，不得出现在 Windows `.exe`、普通文件、文件夹、
+  Qx 命令、计算结果或剪贴板条目中。
+- Launcher 结果右键不再打开另一套条目菜单：必须先选中指针下的结果，再把同一套 Actions
+  Popover 锚定在指针附近；`Cmd+K / Ctrl+K` 与右下角 Actions 按钮仍锚定 Bottom Bar。
+  两种入口共享动作、快捷键、层级菜单和执行回调，只允许弹出位置不同。
+- Launcher 的键盘选择与鼠标 Hover 相互独立：方向键立即移动选中项；鼠标移动只显示
+  Hover，不得暗中改变当前选择。单击确认选中，双击执行该条目的 Enter 主动作；右键也先
+  确认指针下条目，再打开 Actions。
+- 系统托盘内置状态、快捷入口、窗口动作与退出项必须跟随 Qx 的 `system / English / 简体中文` 语言设置，并在语言变化后立即重建；用户自定义标题保持原文。插件托盘项通过 `titles` / `groupTitles` 发布双语文案，由宿主选择当前语言。
+- macOS 首次引导覆盖普通 Shell 时，卡片顶部必须提供明确的窗口拖拽握区，卡片外空白背景也可移动无边框窗口；拖拽层不得覆盖按钮、开关、链接或正文交互。
 - 文件结果只按 leaf name 命中，不以父目录制造相关性。短 ASCII 词（四字符及以下，例如 `Siri`）只允许字面量与弱分隔匹配，不生成逐字符通配符；更长 ASCII 缩写及至少三字符的非 ASCII 查询才允许密集有序子序列召回。Cardinal、Spotlight 与 Everything 的候选必须经过同一后置匹配，分类内先按名称相关性、再按修改时间排序。
 - trailing 操作不得挤压搜索框到不可输入。
 - 声明式 Workbench 的 Top Bar 由宿主统一组合：搜索只占 `search` 主列，tabs 与 `filters[]` 统一投影为 `topbarFilters` 固定 Select；筛选变更继续通过 `onTab(id)` / `onFilter(id, value)` 回传。插件不得提供筛选 DOM 或 CSS。后台状态进入紧凑宿主状态或 Island；统计、loading 与 error 信息属于 Main Area 状态行，不得把 Top Bar 撑成第二层。
@@ -370,7 +393,7 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
   不负责预加载；宿主在大图打开及每次切换时应异步预取并解码前后各两张图片，使用
   最多 8 张的有界内存缓存，失败不得阻塞当前图片或改变导航顺序。
   不得注入宿主类名 CSS 或自建 lightbox 来修右栏。
-- Workbench 的局部异步反馈使用 `item.status` / `detail.status`，已有图片和字段在刷新时继续可见。分批/批量结果通过 `mountWorkbench()` controller 的 `updateItems({ upsert, removeIds, order, selectedId })` 按稳定 id 合并；SDK 仍向宿主发布完整纯数据快照。并发整快照可用单调 `revision` 做 latest-wins，旧 revision 不得覆盖新数据、选择或详情。
+- Workbench 的局部异步反馈使用 `item.status` / `detail.status`，已有图片和字段在刷新时继续可见。状态可传真实 `progress: 0–100`，或批量任务的 `completed / total / failed`，宿主通过统一 activity 协议计算百分比；未知进度不得模拟。分批/批量结果通过 `mountWorkbench()` controller 的 `updateItems({ upsert, removeIds, order, selectedId })` 按稳定 id 合并；SDK 仍向宿主发布完整纯数据快照。并发整快照可用单调 `revision` 做 latest-wins，旧 revision 不得覆盖新数据、选择或详情。
 - Workbench 管理型详情可在 `detail.form.actions` 发布表单底部动作；同一业务对象的连续 controls 可用稳定 `group.id` 合并为一个 fieldset，并由首个 control 的 `group.action` 提供组内操作。宿主统一渲染按钮、危险色和事件 selectedId，插件不得为参数删除等常规管理重新自绘 DOM。
 - Top Bar 必须保持单行。筛选、状态和 trailing 操作不得换行，不得移动到第二行，也不得用 `grid-column: 1 / -1` 做窄屏兜底。
 - 窄屏空间不足时，优先压缩搜索宽度、限制 trailing 最大宽度、隐藏次要状态文本、使用图标按钮或把低频动作收进菜单；不得通过增加 Top Bar 高度解决。
@@ -687,7 +710,7 @@ V2EX / Weather / DevTxt / Screen Capture / Macro / Plugin Host：
 - 录制类模块：Esc 可先停止录制或丢弃草稿 / 清预览，再在下一层离开；不要静默无出口。
 - Screen Capture 无真实搜索框时焦点常落在 body：必须依赖 host Esc 兜底 leave → hide，不能只靠 Shell 内 keydown。
 
-Screen Capture：
+Screenshot & Recording Module（截图录屏模块）：
 
 - 截图与录屏共用一个模块、历史列表和显示器选择协议；截图保存 PNG，录屏保存 MP4/MOV 并可按需转 GIF。
 - 显示器枚举、稳定 ID、内置/外接/主屏判断、鼠标所在屏幕和跨后端映射属于 Qx 系统级能力；截图、窗口管理、浮窗与热插拔监听必须消费同一服务，不得在模块内各自判断。圈选打开时先立即检测一次，随后以约 40ms 间隔检测鼠标所在显示器并随跨屏移动；一旦开始框选、已有选区或进入确认流程就停止跟随，避免编辑状态被迁移。圈选层同时为每个显示器创建轻量、鼠标穿透的黑色半透明遮罩，只有鼠标所在显示器保留交互层。
@@ -695,7 +718,7 @@ Screen Capture：
 - 区域圈选初始覆盖鼠标所在显示器；顶栏只提供 **区域 / 窗口 / 全屏** 模式，不再提供显示器切换控件。跨屏时由鼠标所在显示器自动决定目标，其他显示器使用不抢焦点的浅黑遮罩；捕获目标必须携带显示器 ID，不得把外接屏圈选错误映射回主屏。
 - 入口意图（截图 / 录制）决定确认条主按钮高亮与 Enter 默认动作；仍可在确认前切换。模块主界面只保留双入口（截图 / 录制），不再提供绕过圈选的「直接开始主屏全屏录制」歧义路径。
 - 圈选确认方式可配置：**精修后捕获**（默认：松手只建选区，可移动、四角+四边缩放后再确认）或 **松手即捕获**（按意图立即截图/录制；按住 Alt/Option 强制进入精修）。点暗幕可重画选区。
-- 确认工具条：截图 / 录制；截图路径提供矩形、箭头、文字、画笔、序号、马赛克与颜色，标注只进入 PNG，不进入录屏（有标注时禁用录制）。键盘：Enter 确认、双击选区确认、Space 全屏、S/R 意图、Tab 区域/窗口、1–6 工具、⌘Z/⇧⌘Z 撤销重做、Esc 分层退出。上次成功选区在同一显示器上会作为默认精修起点。
+- 确认工具条：使用 ✓ 确认当前截图/录制、× 取消，不重复显示长文本主按钮；截图路径提供矩形、箭头、文字、画笔、序号、马赛克与颜色，标注只进入 PNG，不进入录屏。工具条以实际测量宽高定位，左右边界始终限制在当前 picker 显示器内容区内；选区贴左/右边缘或窄屏换行时不得被屏幕裁切。键盘：Enter 确认（按设置自动复制并可恢复模块界面）、双击选区确认、**⌘C / Ctrl+C 截图复制到剪贴板并隐藏圈选层与 Qx 主界面**（继续粘贴心智流；标注文本框内保留原生复制）、Ctrl/⌘+拖动松手同样复制并隐藏、Space 全屏、S/R 意图、Tab 区域/窗口、1–6 工具、⌘Z/⇧⌘Z 撤销重做、Esc 分层退出。上次成功选区在同一显示器上会作为默认精修起点。
 - 延迟 0/3/5s 可配置；倒计时期间圈选窗穿透桌面输入，Esc 取消倒计时。
 - 窗口模式：悬停高亮可见窗口轮廓，单击选定后进入与区域相同的精修/确认路径。
 - “开始截图”和“开始录制”是两个独立 Launcher command，也是默认关闭、可录入的全局快捷动作。
@@ -741,13 +764,13 @@ Settings：
 
 ### Settings · Extensions / 已安装模块（成熟小卡片）
 
-实现：`src/modules/settings/plugins/`（`PluginManager` → Installed / Browse）。视觉在 `settings-actions.css` 的 `.qx-plugin-module-card*`。
+实现：`src/modules/settings/plugins/`（`PluginManager` → Installed / Plugin Store）。视觉在 `settings-actions.css` 的 `.qx-plugin-module-card*`。
 
-Browse 工具栏保持单行：市场搜索为主列，仓库筛选与“仓库源”弹窗入口紧邻搜索框右侧，
+Plugin Store 工具栏保持单行：市场搜索为主列，仓库筛选与“仓库源”弹窗入口紧邻搜索框右侧，
 刷新位于尾部；不得把仓库源单独换成第二行。窄宽度优先压缩筛选宽度并把仓库源入口
 图标化，Top/toolbar 高度不变。
 
-Browse 详情必须展示插件库提供的版本说明与历史版本（最新在前）。当
+Plugin Store 详情必须展示插件库提供的版本说明与历史版本（最新在前）。当
 `min_app_version` 高于当前 Qx 时，列表显示紧凑的“需要 Qx x”警告徽章，详情说明
 不兼容原因并提供前往 About 升级的入口；安装、升级、重装和其他来源库按钮全部禁用。
 后端安装命令必须再次校验最低版本，不能只依赖前端按钮状态。
@@ -836,7 +859,7 @@ Settings → System → Storage Management 同时展示宿主静态缓存和插�
 按钮只删除声明的 persist keys。未登记的 Plugin Data 不进入 Cache 总量，也不能被
 “Clear All Caches”删除。
 
-Workbench 社区详情的多图动态统一使用宿主 `detail.images` 胶片/网格和全尺寸预览；
+Workbench 与内置阅读模块的图片统一进入共享 `QxMediaViewer`；社区详情的多图动态使用宿主 `detail.images` 胶片/网格和全尺寸预览；
 插件不得自绘轮播。详情回复统一使用底部 `detail.replies` → `QxReplyList`，每行按
 `#楼号 / 作者 / 楼主标记 / 时间 / 正文` 排列；内置 V2EX 与插件 Workbench 共用同一
 组件和样式。全尺寸预览的左右边缘提供固定感应区：鼠标接近对应边缘或键盘聚焦时才

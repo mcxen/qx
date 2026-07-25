@@ -249,7 +249,10 @@
   z-index: 4;
   display: flex;
   align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
   gap: 5px;
+  max-width: calc(100vw - 20px);
   min-height: 34px;
   padding: 4px;
   border: 1px solid rgba(255, 255, 255, 0.22);
@@ -295,6 +298,16 @@
 .qx-region-picker-toolbar button.is-primary {
   background: rgba(91, 140, 255, 0.28);
   color: #fff;
+}
+
+.qx-region-picker-toolbar button.is-confirm {
+  background: rgba(52, 199, 89, 0.24);
+  color: #8ff0a8;
+}
+
+.qx-region-picker-toolbar button.is-confirm:hover {
+  background: rgba(52, 199, 89, 0.36);
+  color: #c4ffd1;
 }
 
 .qx-region-picker-toolbar button.is-record.is-primary {

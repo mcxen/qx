@@ -53,7 +53,7 @@ DMG 内附 `install.sh`，也可直接运行 `bash install.sh` 自动完成安�
 - 下载渠道1: 从 [GitHub Releases](https://github.com/mcxen/qx/releases) 下载 NSIS 安装包（`.exe`），运行安装即可。
   需要 [WebView2 运行时](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 10/11 通常已预装）。
 
-* 下载渠道2:： 蓝奏云，选择最新版本：https\://imsalt.lanzout.com/b02ijjbl0h\
+* 下载渠道2:： 蓝奏云，选择最新版本：<https://imsalt.lanzout.com/b02ijjbl0h>\
   密码:qx
 
   ![image](assets/pasted-image-1784986638982.png)
@@ -218,7 +218,7 @@ Qx 内置多种功能模块，按 `Option+Space` 唤起后可通过搜索或快�
 
 按 `Option+S` 截图、`Option+G` 录屏（默认快捷键）。
 
-- 截图：区域选择后自动保存，支持标注
+- 截图：区域选择后自动保存，支持标注；选区确认后 **⌘C / Ctrl+C** 直接复制到剪贴板并隐藏圈选框与 Qx，便于继续粘贴
 
 - 录屏：区域 / 全屏录制为 MP4/MOV
 
@@ -559,6 +559,10 @@ zip -r ~/Desktop/my-plugin.qx-plugin manifest.json index.js icon.png README.md
 -
 
 ![IMG_1832](assets/pasted-image-1784948579869.jpg)
+
+![sponsor-wechat](assets/pasted-image-1784989269071.png)
+
+
 
 ## 许可证
 

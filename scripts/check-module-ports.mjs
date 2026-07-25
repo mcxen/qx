@@ -234,12 +234,32 @@ function readPluginInvokePolicy() {
 
 const pluginInvokePolicy = readPluginInvokePolicy();
 
+// Native tray copy follows the same persisted language preference as the
+// WebView and rebuilds immediately when that preference changes.
+const trayMenuSource = read("src-tauri/src/tray_menu.rs");
+const settingsBackendSource = read("src-tauri/src/settings/mod.rs");
+for (const contract of [
+  "sys_locale::get_locale()",
+  '"zh-CN" => TrayLocale::ZhCn',
+  'tr(locale, "Quit Qx", "退出 Qx")',
+  "localized_map_value(&item.titles",
+  "localized_map_value(&item.group_titles",
+]) {
+  if (!trayMenuSource.includes(contract)) {
+    fail(`native tray locale contract missing: ${contract}`);
+  }
+}
+if (!/tray_changed[\s\S]*old\.general\.language\s*!=\s*settings_for_io\.general\.language/.test(
+  settingsBackendSource,
+)) {
+  fail("changing the Qx language must rebuild the native tray menu");
+}
+
 // --- Built-in panel modules must register Esc via useQxModuleShell ----------
 const MODULE_PANELS = [
   "src/modules/clipboard/ClipboardPanel.tsx",
   "src/modules/rss/RssPanel.tsx",
   "src/modules/rss/ArticleList.tsx",
-  "src/modules/rss/ArticleDetail.tsx",
   "src/modules/documents/DevTxtTool.tsx",
   "src/modules/screencap/ScreenRecorder.tsx",
   "src/modules/macros/MacroRecorder.tsx",
@@ -743,8 +763,19 @@ if (bundleProductionModule("src/plugin/pluginSdkFactory.ts", sdkOut)) {
 
 // Workbench detail sub-surfaces remain bounded pure-data protocols.
 const workbenchViewSource = read("src/plugin/PluginWorkbenchView.tsx");
+const mediaViewerSource = read("src/components/QxMediaViewer.tsx");
+const rssArticleSource = read("src/modules/rss/ArticleList.tsx");
 const workbenchStyleSource = read("src/styles/lists-icons.css");
 const overlayScrollbarSource = read("src/utils/overlayScrollbar.ts");
+if (!workbenchViewSource.includes("<QxMediaViewer") || !rssArticleSource.includes("<QxMediaViewer")) {
+  fail("Workbench and RSS must share the host QxMediaViewer");
+}
+if (!workbenchViewSource.includes("<QxReplyList") || !rssArticleSource.includes("<QxReplyList")) {
+  fail("Workbench and RSS must share the host QxReplyList");
+}
+if (exists("src/modules/rss/ArticleDetail.tsx") || exists("src/modules/rss/ImageLightbox.tsx")) {
+  fail("RSS legacy detail and lightbox implementations must not return");
+}
 if (!workbenchViewSource.includes("data-qx-scrollbar-horizontal-lift")) {
   fail("Workbench filmstrip must opt into the raised overlay scrollbar");
 }
@@ -758,11 +789,11 @@ if (!overlayScrollbarSource.includes("dataset.qxScrollbarHorizontalLift")) {
   fail("overlay scrollbar must honor the Workbench filmstrip lift");
 }
 if (
-  !workbenchViewSource.includes("changePreviewZoomByWheel(event.deltaY)")
-  || !workbenchViewSource.includes('"--qx-image-zoom-size"')
-  || workbenchViewSource.includes("if (!event.metaKey && !event.ctrlKey) return")
+  !mediaViewerSource.includes("Math.exp(-event.deltaY")
+  || !mediaViewerSource.includes('"--qx-image-zoom-size"')
+  || mediaViewerSource.includes("if (!event.metaKey && !event.ctrlKey) return")
 ) {
-  fail("Workbench image preview wheel zoom must work without modifier keys");
+  fail("shared media preview wheel zoom must work without modifier keys");
 }
 if (/calc\(\s*100%\s*\*\s*var\(--qx-image-zoom/.test(workbenchStyleSource)) {
   fail("Workbench image zoom must not use unsupported CSS percentage multiplication");
@@ -789,6 +820,12 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
       items: [{
         id: "topic-1",
         title: "Topic",
+        status: {
+          state: "loading",
+          completed: 3,
+          total: 5,
+          failed: 1,
+        },
         detail: {
           images: [{ url: "https://example.com/1.jpg" }],
           imageLayout: "horizontal",
@@ -807,6 +844,7 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
       }],
     });
     const detail = normalized.items?.[0]?.detail;
+    const status = normalized.items?.[0]?.status;
     if (detail?.imageLayout !== "horizontal" || detail.images?.length !== 1) {
       fail("Workbench host filmstrip normalization");
     }
@@ -815,6 +853,9 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
     }
     if (detail?.replies?.items[0]?.floor !== 7 || !detail.replies.items[0]?.originalPoster) {
       fail("Workbench replies must preserve source floor and OP metadata");
+    }
+    if (status?.completed !== 3 || status.total !== 5 || status.failed !== 1) {
+      fail("Workbench activity status must preserve real batch counters");
     }
   } catch (e) {
     fail(`Workbench detail protocol runtime test: ${e}`);

@@ -21,7 +21,7 @@ export const QUICK_ENTRY_TARGETS = [
   { value: "file-search", label: "File Search", subtitle: "Find recent files and folders", titleKey: "launcher.fileSearch", subtitleKey: "launcher.fileSearch.desc" },
   { value: "qx-ai", label: "QxAI", subtitle: "Chat and agent tasks", titleKey: "launcher.qx-ai", subtitleKey: "launcher.qx-ai.desc" },
   { value: "rss", label: "RSS Reader", subtitle: "Feeds and articles", titleKey: "launcher.rss", subtitleKey: "launcher.rss.desc" },
-  { value: "screencap", label: "Screenshot Module", subtitle: "Screenshots and MP4/MOV recording", titleKey: "launcher.screencap", subtitleKey: "launcher.screencap.desc" },
+  { value: "screencap", label: "Screenshot & Recording Module", subtitle: "Screenshots and MP4/MOV recording", titleKey: "launcher.screencap", subtitleKey: "launcher.screencap.desc" },
   { value: "v2ex", label: "V2EX", subtitle: "Latest and hot topics", titleKey: "launcher.v2ex", subtitleKey: "launcher.v2ex.desc" },
   { value: "weather", label: "Weather", subtitle: "Current conditions and forecast", titleKey: "launcher.weather", subtitleKey: "launcher.weather.desc" },
   { value: "documents", label: "Text Tools", subtitle: "Text, Markdown, JSON", titleKey: "launcher.documents", subtitleKey: "launcher.documents.desc" },
@@ -76,7 +76,9 @@ export function localizeQuickEntry(
 ): { title: string; subtitle: string } {
   const fallback = QUICK_ENTRY_TARGETS.find((target) => target.value === entry.target);
   if (fallback) {
-    const title = !entry.title?.trim() || entry.title === fallback.label
+    const legacyDefaultTitle =
+      entry.target === "screencap" && entry.title === "Screenshot Module";
+    const title = !entry.title?.trim() || entry.title === fallback.label || legacyDefaultTitle
       ? t(fallback.titleKey, fallback.label)
       : entry.title;
     const subtitle = !entry.subtitle?.trim() || entry.subtitle === fallback.subtitle
@@ -174,6 +176,28 @@ export function toLauncherQuickEntries(
         target: entry.target,
         beta: !pluginId && isBetaModule(entry.target),
         onClick: () => onNavigate(entry.target),
+      };
+    });
+}
+
+/** Enabled builtin modules + external plugins for the launcher's complete module directory. */
+export function toLauncherAllModules(
+  onNavigate: (target: string) => void,
+  t: Translate,
+  plugins?: InstalledPlugin[],
+): QuickEntry[] {
+  return buildQuickEntryTargetOptions(plugins, t)
+    .filter((option) => option.value !== "settings")
+    .filter((option) => isQuickEntryTargetAvailable(option.value, plugins))
+    .map((option) => {
+      const pluginId = parsePluginQuickEntryTarget(option.value);
+      return {
+        id: `all-modules-${option.value}`,
+        title: option.label,
+        subtitle: option.subtitle,
+        target: option.value,
+        beta: !pluginId && isBetaModule(option.value),
+        onClick: () => onNavigate(option.value),
       };
     });
 }

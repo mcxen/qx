@@ -379,6 +379,8 @@ export interface PluginSystemEnv {
 export interface PluginTrayItem {
   id: string;
   title: string;
+  /** Optional native-menu titles selected from the current Qx locale. */
+  titles?: Partial<Record<"en" | "zh-CN", string>>;
   enabled?: boolean;
   /** Run this plugin command name when the user clicks the row. */
   command?: string;
@@ -389,6 +391,8 @@ export interface PluginTrayItem {
   presentation?: "action" | "status";
   /** Optional native submenu label for related plugin rows. */
   group?: string;
+  /** Optional localized label for the submenu identified by `group`. */
+  groupTitles?: Partial<Record<"en" | "zh-CN", string>>;
 }
 
 /** Live host metrics for tray labels / dashboards (`system-stats`). */

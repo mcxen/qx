@@ -176,6 +176,37 @@ pub(super) fn hide_region_picker_internal(app: &AppHandle) {
     picker_window::hide(app);
 }
 
+/// Complete a successful screenshot or recording through one shared surface
+/// cleanup path. A completed capture must never restore the editable picker.
+///
+/// `restore_main_ui`: when true (default confirm path), reopen the pinned capture
+/// island or main screencap module. When false (Cmd/Ctrl+C copy-and-continue),
+/// leave every Qx surface hidden so the user can paste into another app.
+pub(super) fn finish_capture_session(
+    app: &AppHandle,
+    suppress_ms: u64,
+    auto_hide_after_capture: bool,
+    restore_main_ui: bool,
+) -> Result<(), String> {
+    end_picker_session();
+    hide_region_picker_internal(app);
+    if let Ok(mut session) = picker_session().lock() {
+        *session = None;
+    }
+    set_recording_ui_protected(app, false);
+    if restore_main_ui {
+        restore_capture_surface(app, suppress_ms)?;
+        if auto_hide_after_capture {
+            hide_recording_controls_internal(app);
+        }
+    } else {
+        // Copy-and-continue: picker already closed; keep main panel + island off.
+        hide_recording_controls_internal(app);
+        crate::floating_panel::hide(app);
+    }
+    Ok(())
+}
+
 fn show_region_picker_internal(
     app: &AppHandle,
     mode: CaptureMode,
@@ -555,6 +586,8 @@ pub async fn screencap_confirm_region_select(
     copy_to_clipboard: Option<bool>,
     // After a screenshot: "clipboard" copies OCR text; "editor" opens Text Toolbox.
     ocr_destination: Option<String>,
+    // Cmd/Ctrl+C (and Ctrl/Cmd+drag copy): leave Qx hidden so the user can paste.
+    dismiss_ui: Option<bool>,
 ) -> Result<(), String> {
     let session = picker_session()
         .lock()
@@ -594,6 +627,8 @@ pub async fn screencap_confirm_region_select(
     }
     if action == CaptureMode::Screenshot {
         let copy_to_clipboard = copy_to_clipboard.unwrap_or(false);
+        // Copy-and-continue shortcuts always dismiss Qx chrome after the shot.
+        let dismiss_ui = dismiss_ui.unwrap_or(false);
         let ocr_destination = ocr_destination
             .as_deref()
             .map(|value| value.trim().to_ascii_lowercase())
@@ -694,22 +729,19 @@ pub async fn screencap_confirm_region_select(
                         status.output_path = Some(path_for_event.clone());
                         status.error = clipboard_error.clone();
                     }
-                    if let Ok(mut session) = picker_session().lock() {
-                        *session = None;
-                    }
-                    set_recording_ui_protected(&app_ui, false);
-                    restore_capture_surface(&app_ui, 800)?;
-                    if auto_hide_after_capture {
-                        hide_recording_controls_internal(&app_ui);
-                    }
+                    // Stay fully hidden only when copy-and-continue succeeded.
+                    // Copy failures restore the module so the error is visible.
+                    let restore_main_ui = !dismiss_ui || clipboard_error.is_some();
+                    finish_capture_session(&app_ui, 800, auto_hide_after_capture, restore_main_ui)?;
                     recording_session::emit_recording_status(&app_ui);
                     Ok::<Option<String>, String>(clipboard_error)
                 })
                 .await
                 .map_err(|error| error.to_string())??;
-                let _ = clipboard_error;
                 // Delay so the main screencap surface can mount listeners first.
+                // Successful dismiss: skip toast — user is pasting elsewhere.
                 let emit_app = app.clone();
+                let skip_toast = dismiss_ui && clipboard_error.is_none();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
                     let _ = emit_app.emit(
@@ -717,6 +749,8 @@ pub async fn screencap_confirm_region_select(
                         serde_json::json!({
                             "kind": "screenshot",
                             "path": output_path,
+                            "copied": copy_to_clipboard,
+                            "dismissed": skip_toast,
                         }),
                     );
                 });
@@ -836,11 +870,7 @@ pub async fn screencap_recapture_last_region(app: AppHandle) -> Result<(), Strin
                     status.output_path = Some(path_for_event.clone());
                     status.error = clipboard_error.clone();
                 }
-                set_recording_ui_protected(&app_ui, false);
-                restore_capture_surface(&app_ui, 800)?;
-                if auto_hide_after_capture {
-                    hide_recording_controls_internal(&app_ui);
-                }
+                finish_capture_session(&app_ui, 800, auto_hide_after_capture, true)?;
                 recording_session::emit_recording_status(&app_ui);
                 Ok::<Option<String>, String>(clipboard_error)
             })

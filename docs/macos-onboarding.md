@@ -57,6 +57,9 @@ Welcome → Full Disk Access → Optional features → Done
   弹窗；只使用 Spotlight。轮询首次确认 FDA 后，在不重启 Qx 的情况下启动完整索引。
 - 引导、系统权限面板和系统文件/文件夹选择器期间，主窗口不得因失焦自动隐藏。外部
   操作完成且 Qx 重新获得焦点后，恢复正常 Esc 阶梯与点击窗口外隐藏。
+- 引导覆盖层会遮住普通 QxShell Top Bar，因此卡片顶部必须保留独立
+  `data-tauri-drag-region` 握区；卡片外背景也可拖动窗口，表单、按钮和权限行不得被
+  拖拽命中区覆盖。
 - `permission_onboarding_version` 是权限引导的协议版本。新增重要权限说明或修复授权
   流程时递增它，已完成旧版本的安装会在更新后再显示一次；同一版本不重复打扰用户。
 - 非 macOS：自动把 `has_completed_onboarding` 标为 true，不展示向导。
@@ -75,3 +78,5 @@ Welcome → Full Disk Access → Optional features → Done
    再次重启不重放。
 8. 从权限页打开系统设置，或从 RSS 导入打开系统文件选择器 → Qx 保持显示；选择或取消
    后回到 Qx，Esc 与点击窗口外隐藏恢复。
+9. 在 Welcome、Files、Optional、Done 每一步，从卡片顶部握区或卡片外背景拖动窗口，
+   窗口应立即移动；按钮、开关和正文选择仍正常。

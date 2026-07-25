@@ -27,6 +27,7 @@ export default function ShellActionMenu({
   onSearchQueryChange,
   searchPlaceholder = "Filter…",
   loading = false,
+  anchorPoint,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -43,6 +44,8 @@ export default function ShellActionMenu({
   onSearchQueryChange?: (value: string) => void;
   searchPlaceholder?: string;
   loading?: boolean;
+  /** Viewport coordinate for context-menu invocation; absent anchors to Bottom Bar Actions. */
+  anchorPoint?: { x: number; y: number } | null;
 }) {
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const searchRef = useRef<HTMLInputElement | null>(null);
@@ -71,12 +74,20 @@ export default function ShellActionMenu({
   return (
     <Popover open={open} onOpenChange={onOpenChange} modal={false}>
       <PopoverAnchor asChild>
-        <span className="qx-actions-popover-anchor" aria-hidden="true" />
+        <span
+          className={`qx-actions-popover-anchor${anchorPoint ? " is-contextual" : ""}`}
+          style={
+            anchorPoint
+              ? { left: anchorPoint.x, top: anchorPoint.y, right: "auto", bottom: "auto" }
+              : undefined
+          }
+          aria-hidden="true"
+        />
       </PopoverAnchor>
       <PopoverContent
-        align="end"
-        side="top"
-        sideOffset={10}
+        align={anchorPoint ? "start" : "end"}
+        side={anchorPoint ? "right" : "top"}
+        sideOffset={anchorPoint ? 6 : 10}
         className={`qx-actions-popover${searchable ? " is-searchable" : ""}${
           canGoBack ? " is-nested" : ""
         }`}

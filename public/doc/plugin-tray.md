@@ -45,20 +45,29 @@ manifest 示例（实时内存 + 网速菜单）：
 type PluginTrayItem = {
   id: string;       // 稳定 id，≤48
   title: string;    // 菜单文案，≤64；可含实时数字
+  titles?: { en?: string; "zh-CN"?: string }; // 可选双语标题；title 为兜底
   enabled?: boolean;
   command?: string; // 点击时执行的本插件 commands[].name
   presentation?: "action" | "status"; // status 为不可点击的信息行
   group?: string;   // 同名项显示在一个原生子菜单内，≤48
+  groupTitles?: { en?: string; "zh-CN"?: string }; // 可选双语子菜单标题
 };
 
 await context.tray.setItems([
-  { id: "deploy", title: "Deployment 42% · 2m 08s / ~5m", presentation: "status", group: "My CI" },
+  {
+    id: "deploy",
+    title: "Deployment 42% · 2m 08s / ~5m",
+    titles: { en: "Deployment 42% · 2m 08s / ~5m", "zh-CN": "部署 42% · 2分08秒 / 约5分" },
+    presentation: "status",
+    group: "My CI",
+    groupTitles: { en: "My CI", "zh-CN": "我的 CI" },
+  },
   { id: "updated", title: "Updated 8s ago", presentation: "status", group: "My CI" },
   { id: "refresh", title: "Refresh deployments", group: "My CI", command: "refresh" },
 ]);
 ```
 
-`presentation: "status"` 显示为禁用的信息行，不能携带可执行语义；`group` 让相关行进入同一个原生子菜单。二者是跨 macOS / Windows 的**原生菜单呈现**，并非 CSS：系统负责字体、颜色、深色模式和辅助功能。未提供 `group` 的旧插件项继续平铺在 Qx 托盘菜单中，完全兼容。
+`presentation: "status"` 显示为禁用的信息行，不能携带可执行语义；`group` 让相关行进入同一个原生子菜单。`titles` / `groupTitles` 由宿主按 Qx 当前语言选择，缺失时分别回退到 `title` / `group`；插件不要从系统语言自行猜测。它们是跨 macOS / Windows 的**原生菜单呈现**，并非 CSS：系统负责字体、颜色、深色模式和辅助功能。未提供新字段的旧插件完全兼容。
 
 ### `context.tray.clear()`
 

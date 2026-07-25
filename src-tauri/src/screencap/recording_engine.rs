@@ -65,6 +65,11 @@ fn drain_latest_frame<T>(receiver: &std::sync::mpsc::Receiver<T>, latest: &mut O
     }
 }
 
+#[cfg(any(target_os = "windows", test))]
+fn windows_stream_frame_requires_fallback(image: &image::RgbaImage) -> bool {
+    crate::display::frame_is_effectively_black(image)
+}
+
 fn capture_timestamp_ms(
     timeline_origin: &mut Option<std::time::Instant>,
     captured_at: std::time::Instant,
@@ -236,104 +241,138 @@ fn recording_loop_inner(
     let mut next_frame_at = std::time::Instant::now();
 
     // ── Native continuous stream (region selections crop each stream frame) ─
-    let recorder_result =
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| monitor.video_recorder()));
-    let stream_ok = match recorder_result {
-        Ok(Ok((recorder, rx))) => {
-            let started =
-                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| recorder.start()))
-                    .is_ok_and(|result| result.is_ok());
-            if !started {
-                false
-            } else {
-                let mut consecutive_empty: u32 = 0;
-                let mut received_frame = false;
-                let mut stream_healthy = true;
-                let mut buffered_frame = None;
-                while !stop_flag.load(Ordering::Relaxed) {
-                    // Keep the newest stream frame while pacing to the requested
-                    // FPS. Discarding the whole queue here made a frame arriving
-                    // just before the deadline vanish, then waited for another
-                    // display refresh and reduced effective FPS.
-                    drain_latest_frame(&rx, &mut buffered_frame);
-                    let now = std::time::Instant::now();
-                    if now < next_frame_at {
-                        std::thread::sleep(
-                            (next_frame_at - now).min(std::time::Duration::from_millis(4)),
-                        );
-                        continue;
-                    }
+    // WGC can produce a live stream of successful-but-black frames under
+    // Remote Desktop and some display drivers. The still-frame display port
+    // already avoids WGC for those sessions; recording must honor the same
+    // health decision before opening a continuous stream.
+    #[cfg(target_os = "windows")]
+    let try_native_stream = crate::display_windows::should_try_wgc();
+    #[cfg(not(target_os = "windows"))]
+    let try_native_stream = true;
 
-                    let mut latest = if let Some(frame) = buffered_frame.take() {
-                        frame
-                    } else {
-                        match rx.recv_timeout(std::time::Duration::from_millis(500)) {
-                            Ok(frame) => frame,
-                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                                consecutive_empty += 1;
-                                let timeout_limit = if received_frame {
-                                    STREAM_STALL_TIMEOUTS
-                                } else {
-                                    STREAM_START_TIMEOUTS
-                                };
-                                if consecutive_empty >= timeout_limit {
+    let stream_ok = if try_native_stream {
+        let recorder_result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| monitor.video_recorder()));
+        match recorder_result {
+            Ok(Ok((recorder, rx))) => {
+                let started =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| recorder.start()))
+                        .is_ok_and(|result| result.is_ok());
+                if !started {
+                    false
+                } else {
+                    let mut consecutive_empty: u32 = 0;
+                    let mut received_frame = false;
+                    let mut stream_healthy = true;
+                    let mut buffered_frame = None;
+                    while !stop_flag.load(Ordering::Relaxed) {
+                        // Keep the newest stream frame while pacing to the requested
+                        // FPS. Discarding the whole queue here made a frame arriving
+                        // just before the deadline vanish, then waited for another
+                        // display refresh and reduced effective FPS.
+                        drain_latest_frame(&rx, &mut buffered_frame);
+                        let now = std::time::Instant::now();
+                        if now < next_frame_at {
+                            std::thread::sleep(
+                                (next_frame_at - now).min(std::time::Duration::from_millis(4)),
+                            );
+                            continue;
+                        }
+
+                        let mut latest = if let Some(frame) = buffered_frame.take() {
+                            frame
+                        } else {
+                            match rx.recv_timeout(std::time::Duration::from_millis(500)) {
+                                Ok(frame) => frame,
+                                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                                    consecutive_empty += 1;
+                                    let timeout_limit = if received_frame {
+                                        STREAM_STALL_TIMEOUTS
+                                    } else {
+                                        STREAM_START_TIMEOUTS
+                                    };
+                                    if consecutive_empty >= timeout_limit {
+                                        stream_healthy = false;
+                                        break;
+                                    }
+                                    continue;
+                                }
+                                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                                    let _ = recorder.stop();
                                     stream_healthy = false;
                                     break;
                                 }
-                                continue;
                             }
-                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                                let _ = recorder.stop();
-                                stream_healthy = false;
-                                break;
-                            }
+                        };
+                        consecutive_empty = 0;
+                        received_frame = true;
+
+                        while let Ok(more) = rx.try_recv() {
+                            latest = more;
                         }
-                    };
-                    consecutive_empty = 0;
-                    received_frame = true;
 
-                    while let Ok(more) = rx.try_recv() {
-                        latest = more;
+                        let Some(img) =
+                            image::RgbaImage::from_raw(latest.width, latest.height, latest.raw)
+                        else {
+                            continue;
+                        };
+                        #[cfg(target_os = "windows")]
+                        if windows_stream_frame_requires_fallback(&img) {
+                            crate::diagnostics::log(
+                            crate::diagnostics::LogLevel::Warn,
+                            "screencap.recording.windows",
+                            "Windows Graphics Capture recording returned an effectively black frame; using GDI fallback",
+                            serde_json::json!({ "monitorId": monitor.id().ok() }),
+                        );
+                            // Do not encode the rejected frame: the fallback should
+                            // own timestamp zero and the cover image so the exported
+                            // video has no black lead-in.
+                            stream_healthy = false;
+                            break;
+                        }
+                        let prepared = if let Some(capture_area) = area.as_ref() {
+                            crop_physical_into(&mut crop_scratch, &img, capture_area, mon_w, mon_h)
+                        } else {
+                            &img
+                        };
+
+                        encode_rgba_frame(
+                            &mut encoder,
+                            &mut writer,
+                            &mut track_added,
+                            &mut dimensions,
+                            &mut pending_sample,
+                            &mut frame_idx,
+                            &mut encode_scratch,
+                            &mut timeline_origin,
+                            &mut cover_frame,
+                            prepared,
+                            options.max_size,
+                        )?;
+
+                        let after_encode = std::time::Instant::now();
+                        advance_frame_deadline(&mut next_frame_at, frame_duration, after_encode);
                     }
-
-                    let Some(img) =
-                        image::RgbaImage::from_raw(latest.width, latest.height, latest.raw)
-                    else {
-                        continue;
-                    };
-                    let prepared = if let Some(capture_area) = area.as_ref() {
-                        crop_physical_into(&mut crop_scratch, &img, capture_area, mon_w, mon_h)
-                    } else {
-                        &img
-                    };
-
-                    encode_rgba_frame(
-                        &mut encoder,
-                        &mut writer,
-                        &mut track_added,
-                        &mut dimensions,
-                        &mut pending_sample,
-                        &mut frame_idx,
-                        &mut encode_scratch,
-                        &mut timeline_origin,
-                        &mut cover_frame,
-                        prepared,
-                        options.max_size,
-                    )?;
-
-                    let after_encode = std::time::Instant::now();
-                    advance_frame_deadline(&mut next_frame_at, frame_duration, after_encode);
+                    // xcap uses a zero-capacity channel on both WGC and macOS.
+                    // Release the receiver before stopping the native session so a
+                    // callback already blocked in send() can exit instead of
+                    // extending or deadlocking the user's Stop action.
+                    drop(rx);
+                    let _ = recorder.stop();
+                    stream_healthy
                 }
-                // xcap uses a zero-capacity channel on both WGC and macOS.
-                // Release the receiver before stopping the native session so a
-                // callback already blocked in send() can exit instead of
-                // extending or deadlocking the user's Stop action.
-                drop(rx);
-                let _ = recorder.stop();
-                stream_healthy
             }
+            Ok(Err(_)) | Err(_) => false,
         }
-        Ok(Err(_)) | Err(_) => false,
+    } else {
+        #[cfg(target_os = "windows")]
+        crate::diagnostics::log(
+            crate::diagnostics::LogLevel::Info,
+            "screencap.recording.windows",
+            "Windows Graphics Capture recording skipped; using GDI fallback",
+            serde_json::json!({ "remoteSession": crate::display_windows::is_remote_session() }),
+        );
+        false
     };
 
     // ── Region / poll path: capture_region uses the same logical points as the picker ─
@@ -430,8 +469,8 @@ fn recording_loop_inner(
 #[cfg(test)]
 mod tests {
     use super::{
-        advance_frame_deadline, capture_timestamp_ms, drain_latest_frame, write_recording_cover,
-        FrameEncodeScratch,
+        advance_frame_deadline, capture_timestamp_ms, drain_latest_frame,
+        windows_stream_frame_requires_fallback, write_recording_cover, FrameEncodeScratch,
     };
     use openh264::formats::YUVSource;
     use std::time::{Duration, Instant};
@@ -489,6 +528,15 @@ mod tests {
         let mut buffered = Some(0_u8);
         drain_latest_frame(&receiver, &mut buffered);
         assert_eq!(buffered, Some(3));
+    }
+
+    #[test]
+    fn windows_recording_rejects_black_stream_before_encoding() {
+        let black = image::RgbaImage::from_pixel(64, 64, image::Rgba([0, 0, 0, 255]));
+        assert!(windows_stream_frame_requires_fallback(&black));
+
+        let content = image::RgbaImage::from_pixel(64, 64, image::Rgba([42, 84, 126, 255]));
+        assert!(!windows_stream_frame_requires_fallback(&content));
     }
 
     #[test]

@@ -57,6 +57,9 @@ pub const fn tray_icon_is_template() -> bool {
 pub struct PluginTrayItem {
     pub id: String,
     pub title: String,
+    /// Optional host-locale titles (`en` / `zh-CN`); `title` remains fallback.
+    #[serde(default)]
+    pub titles: HashMap<String, String>,
     #[serde(default = "default_true")]
     pub enabled: bool,
     /// Optional command name to run when clicked (plugin manifest command).
@@ -68,6 +71,9 @@ pub struct PluginTrayItem {
     /// Optional native submenu label shared by related plugin items.
     #[serde(default)]
     pub group: Option<String>,
+    /// Optional localized label for the native submenu identified by `group`.
+    #[serde(default)]
+    pub group_titles: HashMap<String, String>,
 }
 
 fn default_true() -> bool {
@@ -126,11 +132,81 @@ fn format_bytes_rate(bps: f64) -> String {
     format!("{:.2} MB/s", bps / (1024.0 * 1024.0))
 }
 
-fn sample_status_titles(rt: &mut TrayRuntime) -> (String, String, String) {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TrayLocale {
+    En,
+    ZhCn,
+}
+
+fn is_simplified_chinese_locale(tag: &str) -> bool {
+    let normalized = tag.trim().to_ascii_lowercase().replace('_', "-");
+    let base = normalized.split('.').next().unwrap_or(&normalized);
+    if !base.starts_with("zh")
+        || base.contains("hant")
+        || matches!(base, "zh-tw" | "zh-hk" | "zh-mo")
+        || base.starts_with("zh-tw-")
+        || base.starts_with("zh-hk-")
+        || base.starts_with("zh-mo-")
+    {
+        return false;
+    }
+    base == "zh"
+        || base.contains("hans")
+        || matches!(base, "zh-cn" | "zh-sg" | "zh-my")
+        || base.starts_with("zh-cn-")
+        || base.starts_with("zh-sg-")
+        || base.starts_with("zh-my-")
+}
+
+fn tray_locale(settings: &settings::Settings) -> TrayLocale {
+    match settings.general.language.as_str() {
+        "zh-CN" => TrayLocale::ZhCn,
+        "en" => TrayLocale::En,
+        _ => {
+            if sys_locale::get_locale()
+                .as_deref()
+                .is_some_and(is_simplified_chinese_locale)
+            {
+                TrayLocale::ZhCn
+            } else {
+                TrayLocale::En
+            }
+        }
+    }
+}
+
+fn tr(locale: TrayLocale, en: &str, zh_cn: &str) -> String {
+    match locale {
+        TrayLocale::En => en.to_string(),
+        TrayLocale::ZhCn => zh_cn.to_string(),
+    }
+}
+
+fn localized_map_value(
+    values: &HashMap<String, String>,
+    fallback: &str,
+    locale: TrayLocale,
+) -> String {
+    let key = match locale {
+        TrayLocale::En => "en",
+        TrayLocale::ZhCn => "zh-CN",
+    };
+    values
+        .get(key)
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .unwrap_or(fallback)
+        .to_string()
+}
+
+fn sample_status_titles(rt: &mut TrayRuntime, locale: TrayLocale) -> (String, String, String) {
     let stats = system_stats::platform_cpu_memory_sync();
     let mem = format!(
-        "Memory  {:.1}/{:.0} GB  ({:.0}%)",
-        stats.memory_used_gb, stats.memory_total_gb, stats.memory
+        "{}  {:.1}/{:.0} GB  ({:.0}%)",
+        tr(locale, "Memory", "内存"),
+        stats.memory_used_gb,
+        stats.memory_total_gb,
+        stats.memory
     );
     let cpu = format!("CPU  {:.0}%", stats.cpu);
 
@@ -151,46 +227,107 @@ fn sample_status_titles(rt: &mut TrayRuntime) -> (String, String, String) {
                 bytes_out,
             });
             format!(
-                "Net  ↓ {}  ↑ {}",
+                "{}  ↓ {}  ↑ {}",
+                tr(locale, "Net", "网络"),
                 format_bytes_rate(down),
                 format_bytes_rate(up)
             )
         }
-        Err(_) => "Net  —".into(),
+        Err(_) => format!("{}  —", tr(locale, "Net", "网络")),
     };
     (mem, cpu, net)
+}
+
+fn builtin_action_title(id: &str, locale: TrayLocale) -> Option<String> {
+    Some(match id {
+        "open_main" => tr(locale, "Open Main Window", "打开主窗口"),
+        "keep_visible" => tr(locale, "Keep Window Visible", "保持窗口可见"),
+        "settings" => tr(locale, "Settings", "设置"),
+        "hide_main" => tr(locale, "Hide Main Window", "隐藏主窗口"),
+        _ => return None,
+    })
+}
+
+fn is_default_action_title(id: &str, title: &str) -> bool {
+    matches!(
+        (id, title.trim()),
+        ("open_main", "Open Main Window")
+            | ("keep_visible", "Keep Window Visible")
+            | ("settings", "Settings")
+            | ("hide_main", "Hide Main Window")
+    )
 }
 
 fn tray_action_title(
     settings: &settings::Settings,
     action: &TrayActionConfig,
     status: &(String, String, String),
+    locale: TrayLocale,
 ) -> String {
     match action.id.as_str() {
         "status_memory" => status.0.clone(),
         "status_cpu" => status.1.clone(),
         "status_network" => status.2.clone(),
         "keep_visible" => {
-            let base = if action.title.trim().is_empty() {
-                "Keep Window Visible"
+            let base = if action.title.trim().is_empty()
+                || is_default_action_title(&action.id, &action.title)
+            {
+                builtin_action_title(&action.id, locale)
+                    .unwrap_or_else(|| action.id.trim().to_string())
             } else {
-                action.title.trim()
+                action.title.trim().to_string()
             };
             let state = if settings.general.auto_hide_on_blur {
-                "Off"
+                tr(locale, "Off", "关")
             } else {
-                "On"
+                tr(locale, "On", "开")
             };
             format!("{base}: {state}")
         }
         _ => {
-            if action.title.trim().is_empty() {
-                action.id.trim().to_string()
+            if action.title.trim().is_empty() || is_default_action_title(&action.id, &action.title)
+            {
+                builtin_action_title(&action.id, locale)
+                    .unwrap_or_else(|| action.id.trim().to_string())
             } else {
                 action.title.trim().to_string()
             }
         }
     }
+}
+
+fn quick_entry_title(entry: &settings::QuickEntryConfig, locale: TrayLocale) -> String {
+    let title = entry.title.trim();
+    let localized = match entry.target.trim() {
+        "clipboard" if matches!(title, "" | "Clipboard History") => {
+            Some(tr(locale, "Clipboard History", "剪贴板历史"))
+        }
+        "screencap" if matches!(title, "" | "Screenshot Module" | "Screen Capture") => {
+            Some(tr(locale, "Screenshot Module", "截图与录屏"))
+        }
+        "documents" if matches!(title, "" | "Text Tools" | "Documents") => {
+            Some(tr(locale, "Text Tools", "文本工具"))
+        }
+        "settings" if matches!(title, "" | "Qx Settings" | "Settings") => {
+            Some(tr(locale, "Qx Settings", "Qx 设置"))
+        }
+        "rss" if matches!(title, "" | "RSS Reader") => Some(tr(locale, "RSS Reader", "RSS 阅读器")),
+        "file-search" if matches!(title, "" | "File Search") => {
+            Some(tr(locale, "File Search", "文件搜索"))
+        }
+        "weather" if matches!(title, "" | "Weather") => Some(tr(locale, "Weather", "天气")),
+        "macros" if matches!(title, "" | "Macro Recorder") => {
+            Some(tr(locale, "Macro Recorder", "宏录制"))
+        }
+        _ => None,
+    };
+    localized.unwrap_or_else(|| {
+        if title.is_empty() {
+            entry.target.trim().to_string()
+        } else {
+            title.to_string()
+        }
+    })
 }
 
 fn is_status_action(id: &str) -> bool {
@@ -205,10 +342,11 @@ pub fn needs_status_refresh(settings: &settings::Settings) -> bool {
 }
 
 pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri::Result<Menu<Wry>> {
+    let locale = tray_locale(settings);
     let mut rt = tray_runtime()
         .lock()
         .map_err(|_| tauri::Error::FailedToReceiveMessage)?;
-    let status = sample_status_titles(&mut rt);
+    let status = sample_status_titles(&mut rt, locale);
     let plugin_snapshot: Vec<(String, Vec<PluginTrayItem>)> = rt
         .plugin_items
         .iter()
@@ -225,7 +363,7 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
         .iter()
         .filter(|a| a.enabled && is_status_action(a.id.trim()))
     {
-        let title = tray_action_title(settings, action, &status);
+        let title = tray_action_title(settings, action, &status, locale);
         let item = MenuItem::with_id(
             app,
             format!("tray_action:{}", action.id.trim()),
@@ -247,11 +385,7 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
         .filter(|entry| entry.enabled && !entry.target.trim().is_empty())
         .enumerate()
     {
-        let title = if entry.title.trim().is_empty() {
-            entry.target.trim()
-        } else {
-            entry.title.trim()
-        };
+        let title = quick_entry_title(entry, locale);
         let item = MenuItem::with_id(
             app,
             format!("quick:{index}:{}", entry.target.trim()),
@@ -273,7 +407,7 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
         let item = MenuItem::with_id(
             app,
             format!("tray_action:{}", action.id.trim()),
-            tray_action_title(settings, action, &status),
+            tray_action_title(settings, action, &status, locale),
             true,
             None::<&str>,
         )?;
@@ -282,7 +416,13 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
     }
 
     if !appended_action && !status_appended {
-        let show = MenuItem::with_id(app, "show", "Show/Hide", true, None::<&str>)?;
+        let show = MenuItem::with_id(
+            app,
+            "show",
+            tr(locale, "Show/Hide", "显示/隐藏"),
+            true,
+            None::<&str>,
+        )?;
         menu.append(&show)?;
         appended_action = true;
     }
@@ -300,11 +440,12 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
         // readable without attempting unsupported CSS in system menus.
         for item in visible.iter().filter(|item| item.group.is_none()) {
             let menu_id = format!("plugin_tray:{}:{}", plugin_id, item.id.trim());
-            let title = if item.title.trim().is_empty() {
+            let fallback = if item.title.trim().is_empty() {
                 item.id.trim()
             } else {
                 item.title.trim()
             };
+            let title = localized_map_value(&item.titles, fallback, locale);
             let mi = MenuItem::with_id(
                 app,
                 menu_id,
@@ -331,10 +472,15 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
             }
         }
         for (group_index, group) in groups.iter().enumerate() {
+            let group_title = visible
+                .iter()
+                .find(|item| item.group.as_deref().map(str::trim) == Some(group.as_str()))
+                .map(|item| localized_map_value(&item.group_titles, group, locale))
+                .unwrap_or_else(|| group.clone());
             let submenu = Submenu::with_id(
                 app,
                 format!("plugin_tray_group:{}:{}", plugin_id, group_index),
-                group,
+                group_title,
                 true,
             )?;
             for item in visible
@@ -342,11 +488,12 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
                 .filter(|item| item.group.as_deref().map(str::trim) == Some(group.as_str()))
             {
                 let menu_id = format!("plugin_tray:{}:{}", plugin_id, item.id.trim());
-                let title = if item.title.trim().is_empty() {
+                let fallback = if item.title.trim().is_empty() {
                     item.id.trim()
                 } else {
                     item.title.trim()
                 };
+                let title = localized_map_value(&item.titles, fallback, locale);
                 let mi = MenuItem::with_id(
                     app,
                     menu_id,
@@ -367,7 +514,13 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
 
     // macOS: accelerator still ⌘Q, but app_quit requires two presses within ~2.5s.
     // Windows: single Ctrl+Q / menu click quits immediately.
-    let quit = MenuItem::with_id(app, "quit", "Quit Qx", true, Some("CmdOrCtrl+Q"))?;
+    let quit = MenuItem::with_id(
+        app,
+        "quit",
+        tr(locale, "Quit Qx", "退出 Qx"),
+        true,
+        Some("CmdOrCtrl+Q"),
+    )?;
     menu.append(&quit)?;
     Ok(menu)
 }
@@ -494,6 +647,24 @@ fn sanitize_tray_token(raw: &str, max: usize) -> Result<String, String> {
     Ok(s)
 }
 
+fn sanitize_localizations(values: HashMap<String, String>, max: usize) -> HashMap<String, String> {
+    values
+        .into_iter()
+        .filter_map(|(locale, value)| {
+            if locale != "en" && locale != "zh-CN" {
+                return None;
+            }
+            let clean = value
+                .trim()
+                .chars()
+                .filter(|character| !character.is_control())
+                .take(max)
+                .collect::<String>();
+            (!clean.is_empty()).then_some((locale, clean))
+        })
+        .collect()
+}
+
 #[tauri::command]
 pub fn plugin_tray_set_items(
     app: AppHandle,
@@ -548,10 +719,12 @@ pub fn plugin_tray_set_items(
         cleaned.push(PluginTrayItem {
             id,
             title,
+            titles: sanitize_localizations(i.titles, 64),
             enabled: i.enabled,
             command,
             presentation,
             group,
+            group_titles: sanitize_localizations(i.group_titles, 48),
         });
     }
     {
@@ -581,4 +754,53 @@ pub fn plugin_tray_list(plugin_id: String) -> Result<Vec<PluginTrayItem>, String
         .lock()
         .map_err(|_| "tray registry lock poisoned".to_string())?;
     Ok(rt.plugin_items.get(&plugin_id).cloned().unwrap_or_default())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn simplified_chinese_detection_matches_frontend_policy() {
+        for locale in ["zh", "zh-CN", "zh_Hans_CN", "zh-SG.UTF-8"] {
+            assert!(is_simplified_chinese_locale(locale), "{locale}");
+        }
+        for locale in ["en-US", "zh-TW", "zh_Hant", "zh-HK", "C"] {
+            assert!(!is_simplified_chinese_locale(locale), "{locale}");
+        }
+    }
+
+    #[test]
+    fn built_in_titles_localize_but_custom_titles_are_preserved() {
+        let mut settings = settings::Settings::default();
+        settings.general.language = "zh-CN".into();
+        let status = ("内存".into(), "CPU".into(), "网络".into());
+        let mut action = TrayActionConfig {
+            id: "open_main".into(),
+            title: "Open Main Window".into(),
+            enabled: true,
+        };
+        assert_eq!(
+            tray_action_title(&settings, &action, &status, TrayLocale::ZhCn),
+            "打开主窗口"
+        );
+        action.title = "Open Workbench".into();
+        assert_eq!(
+            tray_action_title(&settings, &action, &status, TrayLocale::ZhCn),
+            "Open Workbench"
+        );
+    }
+
+    #[test]
+    fn plugin_localization_uses_title_as_fallback() {
+        let values = HashMap::from([("zh-CN".into(), "刷新部署".into())]);
+        assert_eq!(
+            localized_map_value(&values, "Refresh deployments", TrayLocale::ZhCn),
+            "刷新部署"
+        );
+        assert_eq!(
+            localized_map_value(&values, "Refresh deployments", TrayLocale::En),
+            "Refresh deployments"
+        );
+    }
 }

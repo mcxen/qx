@@ -116,7 +116,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 | `screencap_list_windows` | `desktop_windows_list`（带 session 的 monitorId + coordinateScale） |
 | `screencap_copy_image_to_clipboard` | `clipboard_write_image_file` |
 
-工作流专用：`screencap_select_display(monitor_id)`（保留为旧调用门面，主界面不再暴露）、`screencap_region_picker_ready()`（WebView 挂载后重放当前 picker session 并重新置前/聚焦）、`screencap_confirm_region_select(...)`、`screencap_recapture_last_region`（无圈选层、按上次逻辑选区静默截图；全局快捷键 `recapture_last_region`）、`screencap_set_picker_passthrough`、`screencap_set_pointer_follow(enabled)`、`screencap_set_picker_interaction_lock(locked)`（拖拽中钉住当前屏，防 Windows 跨屏 handoff 清草稿）、`screencap_toggle_controls` / `screencap_set_controls_pinned`、`start_recording` / `stop_recording` / 历史命令。鼠标跨屏识别仍由根级 `display` 服务完成；区域抓帧底层走 `display::capture_region`；标注合成与历史仍属 screencap。Windows 远程会话直接使用 GDI，实体机会话的 WGC 若返回近全黑空帧也回退 GDI。
+工作流专用：`screencap_select_display(monitor_id)`（保留为旧调用门面，主界面不再暴露）、`screencap_region_picker_ready()`（WebView 挂载后重放当前 picker session 并重新置前/聚焦）、`screencap_confirm_region_select(..., copy_to_clipboard?, dismiss_ui?)`（`dismiss_ui` 用于 ⌘C/Ctrl+C 复制后保持主界面隐藏）、`screencap_recapture_last_region`（无圈选层、按上次逻辑选区静默截图；全局快捷键 `recapture_last_region`）、`screencap_set_picker_passthrough`、`screencap_set_pointer_follow(enabled)`、`screencap_set_picker_interaction_lock(locked)`（拖拽中钉住当前屏，防 Windows 跨屏 handoff 清草稿）、`screencap_toggle_controls` / `screencap_set_controls_pinned`、`start_recording` / `stop_recording` / 历史命令。鼠标跨屏识别仍由根级 `display` 服务完成；区域抓帧底层走 `display::capture_region`；标注合成与历史仍属 screencap。Windows 截图和录屏共享 WGC 健康策略：远程会话直接使用 GDI；实体机会话若 WGC 返回近全黑空帧，则在截图持久化或录屏编码前拒绝该帧并回退 GDI，录屏时间轴从首个有效 fallback 帧开始。
 
 截图 worker 的捕获、编码或写盘错误（包括 worker panic）必须统一进入恢复路径：重新显示原选区或捕获入口并记录 `screencap.screenshot` 诊断事件，禁止在来源窗口已隐藏后直接提前返回。
 

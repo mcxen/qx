@@ -452,7 +452,7 @@ pub(crate) fn capture_region_from_monitor(
 /// may also take the fallback, which is harmless; the important distinction is
 /// that a successful-but-empty WGC frame must never be persisted as a screenshot.
 #[cfg(any(target_os = "windows", test))]
-fn frame_is_effectively_black(image: &image::RgbaImage) -> bool {
+pub(crate) fn frame_is_effectively_black(image: &image::RgbaImage) -> bool {
     if image.is_empty() {
         return true;
     }

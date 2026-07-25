@@ -49,6 +49,25 @@ Shell chrome。
 - 普通行不因其他行有进度而改变高度。
 - 选中框完整包住内容和进度槽。
 
+局部异步状态使用同一数据协议，适用于 `item.status` 和 `detail.status`：
+
+```ts
+type WorkbenchStatus = {
+  state: "loading" | "success" | "error";
+  label?: string;
+  error?: string;
+  progress?: number;   // 已知百分比时传真实 0–100
+  completed?: number;  // 批量任务已完成数量
+  total?: number;      // 批量任务总量
+  failed?: number;     // 其中失败数量
+};
+```
+
+`progress` 与 `completed / total` 二选一即可；宿主统一计算并绘制进度。未知进度不传
+百分比，也不能用定时器模拟。刷新时保留已有条目、图片与字段，状态只占自己的局部槽位。
+图片全尺寸预览和详情回复分别发布 `detail.image(s)` 与 `detail.replies`，由宿主共享的
+媒体查看器和回复列表呈现，插件不得复制 lightbox、缩放导航或评论 DOM。
+
 ## 3. 单一动作协议
 
 每个动作只有一份描述：

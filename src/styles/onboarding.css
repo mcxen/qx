@@ -24,6 +24,29 @@
   padding: 22px 24px 20px;
 }
 
+.qx-onboarding-window-drag {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+  margin: -12px 0 8px;
+  cursor: grab;
+  -webkit-app-region: drag;
+}
+
+.qx-onboarding-window-drag:active {
+  cursor: grabbing;
+}
+
+.qx-onboarding-window-drag::before {
+  width: 38px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--qx-border-2);
+  content: "";
+  pointer-events: none;
+}
+
 .qx-onboarding-steps {
   display: flex;
   gap: 8px;

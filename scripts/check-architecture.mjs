@@ -129,6 +129,19 @@ for (const file of sourceFiles) {
   }
 }
 
+// --- 8. Borderless macOS onboarding must retain a drag affordance ---
+const onboardingSource = read("src/modules/onboarding/OnboardingWizard.tsx");
+const onboardingStyles = read("src/styles/onboarding.css");
+if (!/className="qx-onboarding"[\s\S]*data-tauri-drag-region/.test(onboardingSource)) {
+  fail("macOS onboarding overlay must expose a background window drag region");
+}
+if (!/className="qx-onboarding-window-drag"[\s\S]*data-tauri-drag-region/.test(onboardingSource)) {
+  fail("macOS onboarding card must expose a dedicated window drag handle");
+}
+if (!/\.qx-onboarding-window-drag\s*\{[\s\S]*-webkit-app-region:\s*drag/.test(onboardingStyles)) {
+  fail("macOS onboarding drag handle must retain native drag CSS semantics");
+}
+
 if (failures.length) {
   console.error("architecture check failed:\n");
   for (const item of failures) console.error(`  - ${item}`);

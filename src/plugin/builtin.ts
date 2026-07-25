@@ -63,17 +63,17 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
   },
   {
     id: "screencap",
-    name: "Screen Capture",
+    name: "Screenshot & Recording Module",
     keywords: ["screenshot", "screen capture", "gif", "screencap", "screen record", "recording", "截图", "截屏", "录屏", "屏幕录制"],
     commands: [
       {
         name: "open-screencap",
-        title: "Open Screen Capture",
+        title: "Open Screenshot & Recording Module",
         keywords: ["screenshot", "gif", "screencap", "screen record", "截图", "录屏", "open"],
       },
     ],
     panel: {
-      title: "Screen Capture",
+      title: "Screenshot & Recording Module",
       keywords: ["screenshot", "gif", "screencap", "screen record", "截图", "录屏"],
     },
     description: "Screenshots and MP4/MOV recording with optional GIF conversion",

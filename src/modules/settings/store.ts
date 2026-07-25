@@ -282,7 +282,7 @@ export const MODULE_SEARCH_LABELS: Record<ModuleSearchModuleId, { title: string;
   clipboard: { title: "Clipboard", hint: "History items and open command" },
   "qx-ai": { title: "QxAI", hint: "Conversations, new chat, settings" },
   rss: { title: "RSS Reader", hint: "Feeds, folders, open reader" },
-  screencap: { title: "Screen Capture", hint: "Screenshots, MP4/MOV recording, and optional GIF conversion" },
+  screencap: { title: "Screenshot & Recording Module", hint: "Screenshots, MP4/MOV recording, and optional GIF conversion" },
   macros: { title: "Macro Recorder", hint: "Saved macros" },
   documents: { title: "Text Toolbox", hint: "Disk notepad · folder files" },
   weather: { title: "Weather", hint: "Locations and open weather" },
@@ -497,7 +497,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   quick_entries: [
     { id: "clipboard", title: "Clipboard History", subtitle: "Pinned, frequent, links", target: "clipboard", enabled: true },
-    { id: "screencap", title: "Screenshot Module", subtitle: "Screenshots and MP4/MOV recording", target: "screencap", enabled: true },
+    { id: "screencap", title: "Screenshot & Recording Module", subtitle: "Screenshots and MP4/MOV recording", target: "screencap", enabled: true },
     { id: "documents", title: "Text Tools", subtitle: "Text, Markdown, JSON", target: "documents", enabled: true },
     { id: "settings", title: "Qx Settings", subtitle: "Appearance and plugins", target: "settings", enabled: true },
   ],

@@ -615,6 +615,10 @@
   pointer-events: none;
 }
 
+.qx-actions-popover-anchor.is-contextual {
+  position: fixed;
+}
+
 .qx-actions-popover-title {
   display: flex;
   align-items: center;

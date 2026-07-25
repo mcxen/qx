@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -13,22 +12,13 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  Download,
   LoaderCircle,
   Maximize2,
-  Minus,
-  Plus,
-  X,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { QxListLoading, shouldShowQxListLoading } from "../components/QxListLoading";
 import { useQxListSelection } from "../hooks/useQxListSelection";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
   Button,
   Input,
   Select,
@@ -44,6 +34,8 @@ import type {
 import { useT } from "../i18n";
 import { qxMasterDetailIds, qxRegionProps } from "../hooks/useQxMasterDetail";
 import QxReplyList from "../components/QxReplyList";
+import QxMediaViewer, { type QxMediaViewerImage } from "../components/QxMediaViewer";
+import { resolveActivityPercent } from "../types/contentActivity";
 
 export const PLUGIN_WORKBENCH_REGIONS = qxMasterDetailIds("plugin-workbench");
 
@@ -102,6 +94,7 @@ function WorkbenchFields({ fields }: { fields?: PluginWorkbenchField[] }) {
 
 function WorkbenchStatus({ status }: { status?: PluginWorkbenchAsyncStatus }) {
   if (!status) return null;
+  const progress = resolveActivityPercent(status);
   const Icon = status.state === "loading"
     ? LoaderCircle
     : status.state === "error"
@@ -121,7 +114,7 @@ function WorkbenchStatus({ status }: { status?: PluginWorkbenchAsyncStatus }) {
         className={status.state === "loading" ? "qx-loading-spinner" : undefined}
       />
       {copy ? <span>{copy}</span> : null}
-      {status.progress != null ? <span>{Math.round(status.progress)}%</span> : null}
+      {progress != null ? <span>{Math.round(progress)}%</span> : null}
     </div>
   );
 }
@@ -504,13 +497,6 @@ export default function PluginWorkbenchView({
     images: PluginWorkbenchImage[];
     index: number;
   } | null>(null);
-  const [previewZoom, setPreviewZoom] = useState(1);
-  const [previewMetrics, setPreviewMetrics] = useState<{
-    url: string;
-    width: number;
-    height: number;
-  } | null>(null);
-  const previewDecodeCache = useRef(new Map<string, HTMLImageElement>());
   const [listWidth, setListWidth] = useState(readWorkbenchListWidth);
   const splitRef = useRef<HTMLDivElement>(null);
   const items = state.items || [];
@@ -546,109 +532,28 @@ export default function PluginWorkbenchView({
   const openPreview = (image: PluginWorkbenchImage, collection: PluginWorkbenchImage[]) => {
     const images = collection.length ? collection : [image];
     const index = Math.max(0, images.findIndex((candidate) => candidate === image || candidate.url === image.url));
-    setPreviewZoom(1);
-    setPreviewMetrics(null);
     setPreview({ images, index });
   };
-  const movePreview = (delta: number) => {
-    setPreviewZoom(1);
-    setPreviewMetrics(null);
-    setPreview((current) => {
-      if (!current || current.images.length < 2) return current;
-      const index = (current.index + delta + current.images.length) % current.images.length;
-      return { ...current, index };
-    });
-  };
-  const changePreviewZoom = (delta: number) => {
-    setPreviewZoom((current) => Math.max(0.5, Math.min(4, Math.round((current + delta) * 10) / 10)));
-  };
-  const changePreviewZoomByWheel = (deltaY: number) => {
-    setPreviewZoom((current) => {
-      const next = current * Math.exp(-deltaY * 0.0025);
-      return Math.max(0.5, Math.min(4, Math.round(next * 100) / 100));
-    });
-  };
-  const previewImage = preview?.images[preview.index];
-  const downloadPreviewImage = useCallback(async () => {
-    if (!previewImage) return;
-    if (previewImage.downloadId) {
-      onDownload(previewImage.downloadId);
+  const downloadPreviewImage = useCallback(async (image: QxMediaViewerImage) => {
+    const workbenchImage = image as PluginWorkbenchImage;
+    if (workbenchImage.downloadId) {
+      onDownload(workbenchImage.downloadId);
       return;
     }
-    const dataUrl = previewImage.url.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/is);
+    const dataUrl = image.url.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/is);
     if (dataUrl) {
       await invoke("plugin_system_save_download", {
-        filename: previewImage.alt || "qx-image",
+        filename: image.alt || "qx-image",
         mimeType: dataUrl[1],
         dataBase64: dataUrl[2],
       });
       return;
     }
     const anchor = document.createElement("a");
-    anchor.href = previewImage.url;
-    anchor.download = previewImage.alt || "qx-image";
+    anchor.href = image.url;
+    anchor.download = image.alt || "qx-image";
     anchor.click();
-  }, [onDownload, previewImage]);
-  const previewIsLongScreenshot = Boolean(
-    previewImage
-      && previewMetrics?.url === previewImage.url
-      && previewMetrics.height / Math.max(1, previewMetrics.width) >= 3.2,
-  );
-  const previewOrientation = previewIsLongScreenshot
-    ? "long-screenshot"
-    : previewMetrics && previewImage && previewMetrics.url === previewImage.url
-      ? previewMetrics.width >= previewMetrics.height
-        ? "landscape"
-        : "portrait"
-      : "contain";
-
-  useEffect(() => {
-    if (!preview || preview.images.length < 2) return;
-    const cache = previewDecodeCache.current;
-    const count = preview.images.length;
-    const indexes = [-2, -1, 1, 2].map(
-      (offset) => (preview.index + offset + count) % count,
-    );
-    for (const [priorityIndex, index] of indexes.entries()) {
-      const url = preview.images[index]?.url;
-      if (!url || cache.has(url)) continue;
-      const image = new Image();
-      image.decoding = "async";
-      image.fetchPriority = priorityIndex === 1 || priorityIndex === 2 ? "high" : "low";
-      image.src = url;
-      cache.set(url, image);
-      void image.decode().catch(() => {
-        // The visible image keeps its normal error UI; predecode is best effort.
-      });
-    }
-    while (cache.size > 8) {
-      const oldest = cache.keys().next().value;
-      if (!oldest) break;
-      cache.delete(oldest);
-    }
-  }, [preview]);
-
-  useEffect(() => {
-    if (!preview) return;
-    const onPreviewKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-        event.preventDefault();
-        event.stopPropagation();
-        movePreview(event.key === "ArrowRight" ? 1 : -1);
-      } else if (event.key === "+" || event.key === "=") {
-        event.preventDefault();
-        changePreviewZoom(0.25);
-      } else if (event.key === "-") {
-        event.preventDefault();
-        changePreviewZoom(-0.25);
-      } else if (event.key === "0") {
-        event.preventDefault();
-        setPreviewZoom(1);
-      }
-    };
-    window.addEventListener("keydown", onPreviewKeyDown, true);
-    return () => window.removeEventListener("keydown", onPreviewKeyDown, true);
-  }, [preview]);
+  }, [onDownload]);
 
   const updateListWidth = useCallback((clientX: number) => {
     const split = splitRef.current;
@@ -891,142 +796,15 @@ export default function PluginWorkbenchView({
           </div>
         </div>
       ) : collection}
-      <Dialog open={Boolean(previewImage)} onOpenChange={(open) => { if (!open) setPreview(null); }}>
-        <DialogContent className="qx-host-workbench-media-dialog">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className="qx-host-workbench-media-close"
-            aria-label={t("common.close", "Close")}
-            onClick={() => setPreview(null)}
-          >
-            <X size={16} aria-hidden="true" />
-          </Button>
-          <DialogHeader>
-            <DialogTitle>{previewImage?.alt || t("plugins.workbench.imagePreview", "Image Preview")}</DialogTitle>
-            <DialogDescription className="sr-only">
-              {t("plugins.workbench.imagePreviewHint", "Full-size preview of the selected image")}
-            </DialogDescription>
-          </DialogHeader>
-          {previewImage ? (
-            <div
-              className="qx-host-workbench-media-preview-stage"
-              onWheel={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                changePreviewZoomByWheel(event.deltaY);
-              }}
-            >
-              {preview && preview.images.length > 1 ? (
-                <div className="qx-host-workbench-media-preview-nav-zone is-previous">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="qx-host-workbench-media-preview-nav"
-                    aria-label={t("plugins.workbench.previousImage", "Previous image")}
-                    onClick={() => movePreview(-1)}
-                  >
-                    <ChevronLeft size={20} aria-hidden="true" />
-                  </Button>
-                </div>
-              ) : null}
-              <div
-                className={[
-                  "qx-host-workbench-media-preview-scroll",
-                  `is-${previewOrientation}`,
-                  previewZoom > 1 ? "is-enlarged" : previewZoom < 1 ? "is-reduced" : "",
-                ].filter(Boolean).join(" ")}
-                tabIndex={0}
-                aria-label={t("plugins.workbench.imagePreviewHint", "Full-size preview of the selected image")}
-              >
-                <img
-                  key={previewImage.url}
-                  src={previewImage.url}
-                  alt={previewImage.alt || ""}
-                  className={previewZoom === 1 ? undefined : "is-zoomed"}
-                  onLoad={(event) => {
-                    const image = event.currentTarget;
-                    setPreviewMetrics({
-                      url: previewImage.url,
-                      width: image.naturalWidth,
-                      height: image.naturalHeight,
-                    });
-                  }}
-                  style={{
-                    objectFit: previewImage.fit || "contain",
-                    "--qx-image-zoom-size": `${Math.round(previewZoom * 100)}%`,
-                  } as CSSProperties}
-                />
-              </div>
-              <div className="qx-host-workbench-media-zoom">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  disabled={previewZoom <= 0.5}
-                  aria-label={t("plugins.workbench.zoomOut", "Zoom out")}
-                  onClick={() => changePreviewZoom(-0.25)}
-                >
-                  <Minus size={14} aria-hidden="true" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="qx-host-workbench-media-zoom-value"
-                  aria-label={t("plugins.workbench.resetZoom", "Reset zoom")}
-                  onClick={() => setPreviewZoom(1)}
-                >
-                  {Math.round(previewZoom * 100)}%
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  disabled={previewZoom >= 4}
-                  aria-label={t("plugins.workbench.zoomIn", "Zoom in")}
-                  onClick={() => changePreviewZoom(0.25)}
-                >
-                  <Plus size={14} aria-hidden="true" />
-                </Button>
-              </div>
-              {preview && preview.images.length > 1 ? (
-                <div className="qx-host-workbench-media-preview-nav-zone is-next">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="qx-host-workbench-media-preview-nav"
-                    aria-label={t("plugins.workbench.nextImage", "Next image")}
-                    onClick={() => movePreview(1)}
-                  >
-                    <ChevronRight size={20} aria-hidden="true" />
-                  </Button>
-                </div>
-              ) : null}
-              {preview && preview.images.length > 1 ? (
-                <span className="qx-host-workbench-media-preview-count" aria-live="polite">
-                  {preview.index + 1} / {preview.images.length}
-                </span>
-              ) : null}
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={`qx-host-workbench-media-download${preview && preview.images.length > 1 ? " has-count" : ""}`}
-                aria-label={t("plugins.workbench.downloadImage", "Download original image")}
-                onClick={() => void downloadPreviewImage()}
-              >
-                <Download size={14} aria-hidden="true" />
-                <span>{t("plugins.workbench.downloadImage", "Download original")}</span>
-              </Button>
-            </div>
-          ) : null}
-          {previewImage?.caption ? <p>{previewImage.caption}</p> : null}
-        </DialogContent>
-      </Dialog>
+      <QxMediaViewer
+        open={Boolean(preview)}
+        images={preview?.images || []}
+        initialIndex={preview?.index || 0}
+        onOpenChange={(open) => {
+          if (!open) setPreview(null);
+        }}
+        onDownload={downloadPreviewImage}
+      />
     </div>
   );
 }

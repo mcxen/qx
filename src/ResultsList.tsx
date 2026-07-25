@@ -1,6 +1,6 @@
 import { useStore } from "./store";
 import type { AppEntry } from "./store";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -21,7 +21,6 @@ import {
 } from "lucide-react";
 import { QxListLoading } from "./components/QxListLoading";
 import { Kbd } from "./components/ui";
-import AppResultContextMenu from "./launcher/AppResultContextMenu";
 import { getQxListItemProps, useQxListSelection } from "./hooks/useQxListSelection";
 import { useDisplayName } from "./search/appDisplay";
 import { useT } from "./i18n";
@@ -273,13 +272,11 @@ const ResultItem = memo(function ResultItem({
   index,
   selectedIndex,
   label,
-  onHoverSelect,
 }: {
   item: AppEntry;
   index: number;
   selectedIndex: number;
   label: string;
-  onHoverSelect: (index: number) => void;
 }) {
   const settings = useSettingsStore((state) => state.settings);
   const metadataKey = metadataKeyForEntry(item);
@@ -306,7 +303,6 @@ const ResultItem = memo(function ResultItem({
         role: "option",
       })}
       data-qx-result-index={index}
-      onMouseEnter={() => onHoverSelect(index)}
     >
       <AppIcon item={item} label={label} />
       <div className="qx-list-copy">
@@ -354,9 +350,8 @@ const ResultItem = memo(function ResultItem({
 });
 
 /**
- * Raycast / Spotlight style: do not move the keyboard selection to the row under
- * a stationary cursor when the list re-renders (query change, arrow keys, etc.).
- * Hover selection arms only after the pointer actually moves.
+ * Keyboard selection and pointer hover are deliberately independent:
+ * arrows move selection immediately; hover is visual only; click confirms.
  */
 export default function ResultsList({
   items,
@@ -364,6 +359,7 @@ export default function ResultsList({
   onItemClick,
   onToggleCategory,
   onSelectRow,
+  onOpenActionsAt,
   loadingPhase,
 }: {
   items: AppEntry[];
@@ -371,6 +367,7 @@ export default function ResultsList({
   onItemClick: (item: AppEntry) => void;
   onToggleCategory: (categoryId: string) => void;
   onSelectRow: (index: number) => void;
+  onOpenActionsAt: (x: number, y: number) => void;
   loadingPhase?: string;
 }) {
   const t = useT();
@@ -378,43 +375,12 @@ export default function ResultsList({
   const selectedIndex = useStore((state) => state.selectedIndex);
   const loadingLabel = t("launcher.loadingApps", "Loading apps...");
   const listRef = useRef<HTMLDivElement>(null);
-  const hoverArmedRef = useRef(false);
-  const lastPointerRef = useRef<{ x: number; y: number } | null>(null);
 
-  useEffect(() => {
-    const disarmHover = (event: KeyboardEvent) => {
-      // Any intentional keyboard interaction owns selection until the mouse moves again.
-      if (event.metaKey || event.ctrlKey || event.altKey) {
-        hoverArmedRef.current = false;
-        return;
-      }
-      if (
-        event.key === "ArrowUp"
-        || event.key === "ArrowDown"
-        || event.key === "PageUp"
-        || event.key === "PageDown"
-        || event.key === "Home"
-        || event.key === "End"
-        || event.key === "Enter"
-        || event.key === "Tab"
-        || event.key === "Escape"
-        || event.key.length === 1
-      ) {
-        hoverArmedRef.current = false;
-      }
-    };
-    window.addEventListener("keydown", disarmHover, true);
-    return () => window.removeEventListener("keydown", disarmHover, true);
-  }, []);
-
-  // New result set (async search / filter): keep keyboard selection until the mouse moves.
+  // Async search/filter updates preserve the current keyboard or click selection.
   const listSignature = useMemo(
     () => rows.map((row) => row.key).join("\n"),
     [rows],
   );
-  useEffect(() => {
-    hoverArmedRef.current = false;
-  }, [listSignature]);
 
   // Shared selection paint + nearest scroll follow (same contract as Clipboard).
   useQxListSelection({
@@ -423,25 +389,11 @@ export default function ResultsList({
     listSignature,
   });
 
-  const handlePointerMove = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    const last = lastPointerRef.current;
-    if (!last || last.x !== event.clientX || last.y !== event.clientY) {
-      hoverArmedRef.current = true;
-      lastPointerRef.current = { x: event.clientX, y: event.clientY };
-    }
-  }, []);
-
-  const handleHoverSelect = useCallback((index: number) => {
-    if (!hoverArmedRef.current) return;
-    onSelectRow(index);
-  }, [onSelectRow]);
-
   return (
     <div
       ref={listRef}
       className="qx-plugin-list qx-launcher-results"
       style={{ flex: 1, borderRight: "none" }}
-      onMouseMove={handlePointerMove}
     >
       {rows.map((row, rowIndex) => {
         if (row.kind === "category") {
@@ -453,7 +405,6 @@ export default function ResultsList({
               })}
               key={row.key}
               aria-expanded={!row.collapsed}
-              onMouseEnter={() => handleHoverSelect(rowIndex)}
               onClick={() => {
                 onSelectRow(rowIndex);
                 onToggleCategory(row.categoryId);
@@ -474,17 +425,23 @@ export default function ResultsList({
         }
         const item = row.item;
         return (
-          <AppResultContextMenu item={item} key={row.key}>
-            <div onClick={() => onItemClick(item)}>
-              <ResultItem
-                item={item}
-                index={rowIndex}
-                selectedIndex={selectedIndex}
-                label={getDisplayName(item)}
-                onHoverSelect={handleHoverSelect}
-              />
-            </div>
-          </AppResultContextMenu>
+          <div
+            key={row.key}
+            onClick={() => onSelectRow(rowIndex)}
+            onDoubleClick={() => onItemClick(item)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              onSelectRow(rowIndex);
+              onOpenActionsAt(event.clientX, event.clientY);
+            }}
+          >
+            <ResultItem
+              item={item}
+              index={rowIndex}
+              selectedIndex={selectedIndex}
+              label={getDisplayName(item)}
+            />
+          </div>
         );
       })}
       {items.length === 0 && loadingPhase === "loading-apps" && (

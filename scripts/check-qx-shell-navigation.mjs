@@ -20,6 +20,8 @@ import {
   shouldHandleQxGridKey,
 } from "../src/hooks/qxGridNavigation.ts";
 import { normalizePluginWorkbenchState } from "../src/plugin/workbenchTypes.ts";
+import { resolveCaptureToolbarPosition } from "../src/modules/screencap/captureToolbarPosition.ts";
+import { launcherActionModel } from "../src/launcher/actionModel.ts";
 
 const qxShellSource = readFileSync(
   new URL("../src/components/QxShell.tsx", import.meta.url),
@@ -37,6 +39,18 @@ const pluginWorkbenchSource = readFileSync(
   new URL("../src/plugin/PluginWorkbenchView.tsx", import.meta.url),
   "utf8",
 );
+const appSource = readFileSync(
+  new URL("../src/App.tsx", import.meta.url),
+  "utf8",
+);
+const resultsListSource = readFileSync(
+  new URL("../src/ResultsList.tsx", import.meta.url),
+  "utf8",
+);
+const mediaViewerSource = readFileSync(
+  new URL("../src/components/QxMediaViewer.tsx", import.meta.url),
+  "utf8",
+);
 const listIconsStyles = readFileSync(
   new URL("../src/styles/lists-icons.css", import.meta.url),
   "utf8",
@@ -48,13 +62,91 @@ assert.doesNotMatch(qxShellSource, /window\.addEventListener\("pointerup"/);
 assert.match(moduleSearchSource, /autoFocus = false/);
 assert.match(shortcutRecorderSource, /data-qx-search-focus="preserve"/);
 
+// Launcher follows desktop list semantics and opens filesystem entries through
+// the cross-platform path port, not the application-only launcher command.
+assert.match(resultsListSource, /onClick=\{\(\) => onSelectRow\(rowIndex\)\}/);
+assert.match(resultsListSource, /onDoubleClick=\{\(\) => onItemClick\(item\)\}/);
+assert.doesNotMatch(resultsListSource, /onMouseEnter=\{\(\) => .*Select/);
+assert.doesNotMatch(resultsListSource, /hoverArmedRef|handleHoverSelect/);
+assert.match(
+  resultsListSource,
+  /onContextMenu=\{\(event\) => \{[\s\S]*event\.preventDefault\(\);[\s\S]*onSelectRow\(rowIndex\);[\s\S]*onOpenActionsAt\(event\.clientX, event\.clientY\)/,
+);
+assert.match(qxShellSource, /actionMenuRequest\?: QxShellActionMenuRequest \| null/);
+assert.match(appSource, /item\.kind === "file" \|\| item\.kind === "folder"[\s\S]*openSystemPath\(item\.path\)/);
+
+const launcherItem = (kind, path) => ({
+  name: path.split(/[\\/]/).pop() || path,
+  path,
+  icon: "",
+  kind,
+});
+assert.deepEqual(
+  launcherActionModel(launcherItem("folder", "/Users/me/Documents"), "macos"),
+  {
+    kind: "folder",
+    titleKey: "launcher.action.fileActions",
+    titleFallback: "File Actions",
+    primaryKey: "launcher.action.openFolder",
+    primaryFallback: "Open Folder",
+    hasPathActions: true,
+    showsPackageContents: false,
+  },
+);
+assert.equal(
+  launcherActionModel(launcherItem("file", "C:\\Users\\me\\report.pdf"), "windows").primaryKey,
+  "launcher.action.openFile",
+);
+assert.equal(
+  launcherActionModel(launcherItem("app", "C:\\Program Files\\Qx\\Qx.exe"), "windows")
+    .showsPackageContents,
+  false,
+);
+assert.equal(
+  launcherActionModel(launcherItem("app", "/Applications/Qx.app"), "macos")
+    .showsPackageContents,
+  true,
+);
+assert.equal(
+  launcherActionModel(launcherItem("command", "__qx:settings"), "macos").primaryKey,
+  "launcher.action.openSettings",
+);
+assert.equal(
+  launcherActionModel(launcherItem("calculation", "__qx:calc:42"), "windows").primaryKey,
+  "launcher.action.copyResult",
+);
+assert.equal(
+  launcherActionModel(launcherItem("clipboard", "__qx:clipboard:1"), "windows").primaryKey,
+  "launcher.action.copyText",
+);
+
+// Capture confirmation stays inside the active picker display even when a
+// selection hugs the left/right edge or the toolbar wraps.
+assert.deepEqual(
+  resolveCaptureToolbarPosition(
+    { x: 0, y: 100, w: 80, h: 120 },
+    { width: 640, height: 42 },
+    { width: 800, height: 600 },
+  ),
+  { left: 330, top: 230 },
+);
+assert.deepEqual(
+  resolveCaptureToolbarPosition(
+    { x: 740, y: 540, w: 60, h: 60 },
+    { width: 640, height: 76 },
+    { width: 800, height: 600 },
+  ),
+  { left: 470, top: 454 },
+);
+
 // Full-size Workbench media owns an inner scrollport. Portrait and long images
 // retain their natural aspect ratio instead of being forced into stage height.
-assert.match(pluginWorkbenchSource, /qx-host-workbench-media-preview-scroll/);
-assert.match(pluginWorkbenchSource, /previewMetrics\.height\s*\/[\s\S]*previewMetrics\.width[\s\S]*>=\s*3\.2/);
-assert.match(pluginWorkbenchSource, /previewDecodeCache/);
-assert.match(pluginWorkbenchSource, /\[-2,\s*-1,\s*1,\s*2\]/);
-assert.match(pluginWorkbenchSource, /while\s*\(cache\.size\s*>\s*8\)/);
+assert.match(pluginWorkbenchSource, /<QxMediaViewer/);
+assert.match(mediaViewerSource, /qx-host-workbench-media-preview-scroll/);
+assert.match(mediaViewerSource, /metrics\.height\s*\/[\s\S]*metrics\.width[\s\S]*>=\s*3\.2/);
+assert.match(mediaViewerSource, /decodeCache/);
+assert.match(mediaViewerSource, /\[-2,\s*-1,\s*1,\s*2\]/);
+assert.match(mediaViewerSource, /while\s*\(cache\.size\s*>\s*8\)/);
 assert.match(
   listIconsStyles,
   /\.qx-host-workbench-media-preview-scroll\s*\{[^}]*overflow:\s*auto;/s,
