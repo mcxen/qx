@@ -1,204 +1,85 @@
-# Raycast Extension Conversion
+# Raycast Extension Migration
 
-> **状态：Frozen / 暂停维护。** 转换器代码与入口暂时保留，仅用于历史研究和一次性实验，不承诺适配新的 Raycast API。所有正式维护的插件应阅读上游源代码，直接使用 Qx `context.*`、Workbench、Actions 与 Island 协议重新开发；不要把转换产物作为发布基线。
+> **Frozen.** The converter is retained for historical research and one-off experiments.
+> It is not a supported production path and does not track new Raycast APIs.
 
-Qx does not run Raycast extensions directly. Raycast view commands depend on
-`@raycast/api`, React rendering, Node modules, and in some cases Raycast's Swift
-bridge. Qx plugins run inside an iframe sandbox and communicate with the app by
-`postMessage` RPC, so Raycast extensions need an adapter layer.
+Qx does not run Raycast extensions directly. Maintained plugins must read the upstream source,
+preserve its business intent, and reimplement it against Qx `context.*`, Workbench, Actions and
+Island protocols.
 
-The marketplace lives in **`mcxen/qx-plugins`**. Converted plugins (with icons
-and screenshots) are packaged as `.qx-plugin` zips and installed from:
+## 1. Why direct loading does not work
 
-```text
-https://raw.githubusercontent.com/mcxen/qx-plugins/main/<plugin-id>.qx-plugin
-```
+Raycast view commands depend on `@raycast/api`, React/Node rendering and sometimes native bridges.
+Qx plugins run in a sandbox and communicate through permissioned host ports. Similar names do not
+make the lifecycle, UI tree or native APIs interchangeable.
 
-Install does **not** fetch Raycast’s GitHub tree at runtime. Screenshots and
-code ship **inside** the archive that was previously converted and published.
+## 2. Supported migration path
 
-## Converter entry points
+1. Read the upstream command and identify its domain service, inputs, outputs and side effects.
+2. Replace Raycast storage, network, CLI and system calls with the matching Qx `context.*` port.
+3. Return declarative Workbench data instead of translating the React tree.
+4. Convert every user operation to a stable Qx Action ID.
+5. Publish status and real progress through Island.
+6. Create a native Qx Manifest with minimum permissions and supported platforms.
+7. Test cold install, keyboard flow, errors and both desktop platforms.
 
-| Entry | Role |
-|-------|------|
-| `scripts/convert-raycast-extension.mjs` | Convert a local Raycast extension directory |
-| `scripts/convert-raycast-url.mjs` | Sparse-clone a GitHub tree URL, then convert |
-| `scripts/raycast-converter/generic.mjs` | esbuild generic Raycast → Qx bundle |
-| `scripts/raycast-converter/shims.mjs` | `@raycast/api`, fetch, fs, Buffer, AppleScript |
-| `scripts/raycast-converter/adapters.mjs` | Hand-written adapters (e.g. system-information) |
-| `mcxen/qx-plugins` packaging | `npm run package:plugins` → `index.json` |
+Canonical targets:
 
-以下命令仅供历史调试，不是市场插件的推荐发布流程：
+- author workflow: [`plugin-development-guide.md`](./plugin-development-guide.md)
+- UI and actions: [`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md)
+- CLI: [`plugin-cli-protocol.md`](./plugin-cli-protocol.md)
+- Manifest and package: [`plugin-marketplace.md`](./plugin-marketplace.md)
 
-```bash
-npm ci
-npm run convert:raycast-url -- \
-  https://github.com/raycast/extensions/tree/<commit>/extensions/<name> \
-  --out dist/raycast-converted \
-  --package \
-  --publish
-```
+## 3. Historical converter
 
-Or from a local checkout:
+The repository still contains:
 
-```bash
-npm run convert:raycast -- /path/to/raycast-extension --out /tmp/qx-plugins --package
-```
+| Entry | Historical role |
+|---|---|
+| `scripts/convert-raycast-extension.mjs` | convert a local extension directory |
+| `scripts/convert-raycast-url.mjs` | fetch a GitHub tree and convert |
+| `scripts/raycast-converter/generic.mjs` | generic esbuild path |
+| `scripts/raycast-converter/shims.mjs` | partial API shims |
+| `scripts/raycast-converter/adapters.mjs` | hand-written adapters |
 
-Output shape:
+These commands may help inspect an extension, but their output is not a release baseline.
+Do not add new production behavior to converter shims.
 
-```text
-raycast-<extension-name>/
-├── manifest.json
-├── index.js          # esbuild bundle + Buffer banner
-├── README.md
-├── icons / screenshots copied from Raycast metadata
-└── …
+## 4. Action mapping
 
-raycast-<extension-name>.qx-plugin   # zip for marketplace
-```
+Map intent, not components:
 
-Inside Qx, Settings → Plugins can also accept a Raycast extension tree URL when
-the converter is available in the build (dev/source trees). Packaged app builds
-must ship or embed the same pipeline for full parity.
+| Raycast concept | Qx target |
+|---|---|
+| primary `Action` | one `actions[]` item with stable `id` and `primary: true` |
+| `ActionPanel` | the same Qx `actions[]` set |
+| `List` / `Grid` | Workbench List / Grid |
+| detail markdown | Workbench Detail |
+| form submit | Workbench Form action |
+| toast / HUD | toast or short Island feedback |
 
-## Raycast Action ≡ Qx Action
+Bottom Bar and Enter are host projections of the primary action. Never create separate copies.
+Esc remains a host navigation protocol.
 
-There is **one** action system for plugins: **QxShell Actions**.
+## 5. Platform rules
 
-Raycast `actions={<ActionPanel>…}` on `List.Item` / `Grid.Item` is not a
-parallel UI — it is the data source for Qx:
+- Do not carry AppleScript, fixed Unix paths or macOS-only binaries into a cross-platform package.
+- Use host HTTP, storage, CLI and system ports.
+- Declare actual `platforms`; do not claim Windows compatibility without testing.
+- Keep paths opaque and use host-provided separators and environment information.
+- Unsupported capabilities must produce a clear unavailable state.
 
-```text
-ActionPanel (plugin)
-    → collectActions (shim)
-    → postMessage qx:plugin:item-actions
-    → PluginHost
-    → QxShell primaryAction + actions[] + context panel
-```
+## 6. Binary data and files
 
-| Raycast | Qx |
-|---------|-----|
-| First `Action` in panel | Bottom-bar **primary** (Enter) |
-| All `Action`s | **⌘K** menu + right **Actions** panel |
-| Select item | Publish actions (do not auto-run) |
-| Run action | Host posts `qx:run-item-action` → iframe handler |
+Use host HTTP binary responses and the documented plugin storage/file ports. Do not depend on
+browser `file://` access, raw local paths in images, or converter Buffer polyfills as an architecture.
 
-Settings → “条目上显示操作按钮” only toggles **optional** in-card chips.
-Turning it off does **not** disable actions — they stay on QxShell.
+## 7. Migration checklist
 
-## Architecture principle
-
-**从上游源代码理解业务，再按 Qx 原生插件协议重新实现。** 共享能力缺失时先补
-Qx host port，再让第一方插件直接消费该端口；不要继续扩展转换 shim 来承载正式产品。
-
-This follows project SOLID ports (see `docs/architecture-principles.md`):
-
-- **O/D**: extend host capabilities and shims; plugins depend on stable context
-  methods, not OS details.
-- **I**: declare only needed permissions (`http`, `invoke:plugin_file_*`, …).
-- **L**: same fetch/file/AppleScript semantics across app versions within
-  `min_app_version`.
-
-| Layer | Responsibility |
-|-------|----------------|
-| Host (`plugin_http_fetch`, runtime `fetch`) | Text + **binary** HTTP (`bodyBase64`, `arrayBuffer`) |
-| Host (`plugin_file_*`, `plugin_run_applescript`) | File cache, automation |
-| Converter shims | `@raycast/api` UI, `Buffer`, `node-fetch`, `fs-extra`, path aliases |
-| Marketplace plugin | Converted bundle + assets + `min_app_version` |
-
-### Binary HTTP (Qx ≥ 0.5.18)
-
-Older hosts returned only UTF-8 `body` strings. Binary downloads used by
-image-heavy extensions were corrupted and `arrayBuffer()` was missing. From
-**0.5.18**:
-
-- Rust `plugin_http_fetch` returns `body`, `bodyBase64`, and `binary`
-- Plugin runtime / context expose `arrayBuffer()` and `blob()`
-- Default HTTP timeout is 30s (max 120s) for large assets
-
-Set `min_app_version` on plugins that download binary assets.
-
-### Buffer polyfill
-
-Many Raycast sources call Node’s global `Buffer.from`. The converter injects a
-banner at the top of the bundle and also shims the `buffer` package.
-
-### Paths
-
-- `/qx-plugin-files/<plugin-id>/…` — private plugin data (file bridge)
-- `/qx-home` and `~/…` — user home (rewritten for AppleScript)
-
-## Generic Raycast extensions
-
-For extensions without a custom adapter, the CLI builds a generic compatibility
-bundle with esbuild and replaces common imports:
-
-- `@raycast/api`: `List`, `Grid`, `Detail`, `ActionPanel`, `Action`, `Toast`,
-  `showToast`, `showHUD`, `LocalStorage`, `Cache`, `getPreferenceValues`,
-  `open`, `showInFinder`, `Clipboard`, `useNavigation`, preferences, etc.
-- `node-fetch`: `context.http.fetch` (+ `arrayBuffer` when host provides it)
-- `run-applescript`: permissioned `plugin_run_applescript`
-- `file-url`, `fs-extra`, `os`, `path`, `buffer`: browser/Qx shims
-
-npm dependencies beyond the virtual set are installed in a temporary checkout
-with lifecycle scripts disabled. React / React DOM always resolve from the
-converter’s own dependencies so hooks share one React copy.
-
-Preferences map into Qx manifest preferences (`select`, `boolean`, `password`,
-`string`). Screenshots are discovered from Raycast `metadata/`, `screenshots/`,
-`media/`, and package fields.
-
-`ActionPanel` actions are collected even when wrapped in custom action
-components (e.g. Bing’s `ActionsOnlineBingWallpaper`). Selected item actions are
-published to **QxShell** (primary / ⌘K / context) as the real Action surface —
-not a second iframe dock. Keyboard: arrow keys select, Enter runs primary, and
-declared Raycast shortcuts (e.g. Bing `⌘R` random wallpaper, `⌘Y` preview) fire
-inside the plugin. Host panel reload is **`⌘⇧R` / Reload Panel** only (never bare
-`R`, which stole Bing’s random action UX).
-
-`open` / `showInFinder` route local paths through `system.openPath` /
-`system.revealPath` (converter grants `system` when Finder/file open is detected);
-http(s) still uses `open-url`. `openExtensionPreferences` opens Settings →
-Extensions. Settings → Extensions → Display can hide the legacy inline Action
-row chips; Shell Actions remain.
-
-`mode: "no-view"` + `interval` becomes a Qx background timer with resume state
-in local storage.
-
-### Platform compatibility report
-
-The converter writes `manifest.raycast.platformCompatibility` after scanning
-source for List/Grid, fetch, Clipboard, fs, AppleScript, intervals, menu bar,
-etc. Status values: `supported`, `partial`, `mac-only`, `unsupported`.
-
-Windows is capability-level: UI/HTTP/clipboard/storage/open/interval can work;
-AppleScript / Finder / menu bar stay degraded until a Windows automation
-provider exists.
-
-## Custom adapters
-
-Some extensions map cleanly onto native Qx commands. Example:
-`system-information` (commit `888d04008da11340e0a0fa98b32dde4465a33e72`) uses
-`qx_system_information_*` instead of Raycast’s Node/Swift stack. Prefer
-capability permissions (`system-info`, `processes`, …) and exact
-`invoke:<cmd>` for dangerous actions (e.g. kill process).
-
-## What Qx does not load from Raycast
-
-- Native Swift bridge
-- Arbitrary Node native addons
-- Untrusted Rust/binaries from the extension tree
-
-All system access goes through permissioned Rust commands.
-
-## Legacy experiment checklist
-
-1. 在临时目录运行转换器，不直接写入市场 `src/`
-2. 仅用于评估上游业务与所需 Qx ports
-3. 正式实现从源代码重新设计，移除 Raycast runtime/shims
-4. 使用 Workbench / Actions / Island 和精确 `context.*` permissions
-5. 按常规 Qx 插件流程测试、打包和发布
-
-共享能力缺失时修 Qx host port，再迁移所有第一方插件；不要把扩展 converter shim
-作为正式修复或升级路径。
+- [ ] Business behavior was reimplemented, not just transpiled.
+- [ ] No runtime dependency on `@raycast/api`.
+- [ ] No new converter shim was added.
+- [ ] Manifest permissions and platforms are minimal and accurate.
+- [ ] Workbench and Actions follow current Qx contracts.
+- [ ] Network, CLI and progress are real.
+- [ ] Package passes local cold-install validation.

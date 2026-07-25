@@ -119,8 +119,9 @@ export default function QxAiSettings() {
   const settingsActions = useMemo<QxShellAction[]>(
     () => [
       // No kbd Esc here — Esc is only bottom-left escapeAction (UI_SPEC).
-      { label: t("qxai.settings.done", "Done"), onClick: goBack },
+      { id: "done", label: t("qxai.settings.done", "Done"), onClick: goBack },
       {
+        id: "agent-providers",
         label: t("qxai.agentProviders", "Agent & Providers"),
         onClick: () => openAgentSettingsTab(),
       },
@@ -131,7 +132,6 @@ export default function QxAiSettings() {
   const shell = useQxModuleShell({
     leave: goBack,
     island,
-    t,
   });
 
   return (
@@ -143,12 +143,7 @@ export default function QxAiSettings() {
       onKeyDown={shell.onKeyDown}
       island={shell.island}
       escapeAction={shell.escapeAction}
-      primaryAction={{
-        label: t("qxai.settings.done", "Done"),
-        tone: "primary",
-        onClick: goBack,
-      }}
-      secondaryAction={shell.secondaryAction}
+      primaryActionId="done"
       actionTitle={t("qxai.settings.actions", "Chat Settings Actions")}
       actions={settingsActions}
     >

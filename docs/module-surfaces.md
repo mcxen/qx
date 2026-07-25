@@ -169,7 +169,7 @@ Rust：`ModuleSearchSettings`（`settings/mod.rs`），`#[serde(default)]`，旧
 |---|---|
 | 主搜 surface | 从 **Launcher 冷启动** 直达对象 |
 | 模块内 Actions（⌘K） | 已在模块内时的上下文操作 |
-| secondaryAction Paste/Open | 底栏高频主/次操作 |
+| `actions[]` + `primaryActionId` | 底栏高频主动作、Enter 与 Actions |
 
 两者 label 尽量一致，但 **不要** 把主搜 provider 写进 QxShell。
 

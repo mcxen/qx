@@ -116,6 +116,39 @@
   -webkit-app-region: drag;
 }
 
+.qx-shell.is-windows-host .qx-shell-topbar {
+  /* Reserve a real pointer target between the 8px resize edge and content.
+     WebView2 does not reliably inherit a parent data-tauri-drag-region through
+     the full-width search/control children. */
+  padding-left: 32px;
+}
+
+.qx-shell-window-drag-handle {
+  position: absolute;
+  z-index: 2;
+  top: 9px;
+  bottom: 9px;
+  left: 9px;
+  width: 15px;
+  border-radius: 5px;
+  cursor: move;
+  /* React calls Tauri startDragging explicitly; avoid a second WebView drag. */
+  -webkit-app-region: no-drag;
+  touch-action: none;
+}
+
+.qx-shell-window-drag-handle::before {
+  content: "";
+  position: absolute;
+  inset: 5px 4px;
+  border-radius: 2px;
+  background:
+    radial-gradient(circle, var(--qx-text-tertiary) 1px, transparent 1.4px)
+    0 0 / 4px 4px;
+  opacity: 0.52;
+  pointer-events: none;
+}
+
 /* Esc lives in the bottom bar; modules without a leading control use a 2-col topbar. */
 .qx-shell-topbar.no-leading {
   grid-template-columns: minmax(var(--qx-search-min-w), 1fr) auto;
@@ -184,19 +217,11 @@
   width: 100%;
 }
 
-.qx-launcher-trailing {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.qx-shell.launcher-shell .qx-shell-filter-slot,
+.qx-shell.launcher-shell .qx-shell-content-filter {
   width: 100%;
-  justify-content: flex-end;
-  -webkit-app-region: no-drag;
-}
-
-.qx-launcher-trailing .qx-launcher-scope {
+  max-width: none;
   flex: 1 1 auto;
-  width: 100%;
-  min-width: 100px;
 }
 
 .qx-shell-main {
@@ -222,37 +247,10 @@
   width: 100%;
 }
 
-.qx-plugin-topbar-trailing {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  gap: 8px;
-}
-
-.qx-plugin-chrome-tabs {
-  flex: 0 1 auto;
-  max-width: min(44vw, 100%);
-  overflow-x: auto;
-  scrollbar-width: none;
-  white-space: nowrap;
-}
-
-.qx-plugin-workbench-filter {
-  width: 132px;
-  flex: 0 0 132px;
-}
-
-.qx-plugin-workbench-filter .qx-shadcn-select-trigger {
-  height: 28px;
-  font-size: 12px;
-}
-
 .qx-plugin-shell .qx-shell-search-slot > .qx-search-wrap {
   width: 100%;
   min-width: 0;
 }
-
-.qx-plugin-chrome-tabs::-webkit-scrollbar { display: none; }
 
 .qx-shell-search-slot > .qx-search-wrap {
   width: 100%;
@@ -272,6 +270,38 @@
   overflow: hidden;
   flex-wrap: nowrap;
   justify-self: end;
+}
+
+.qx-shell-filter-slot,
+.qx-shell-trailing-extra {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.qx-shell-filter-slot {
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
+.qx-shell-content-filter {
+  width: clamp(132px, 15vw, 188px);
+  min-width: 132px;
+  flex: 0 1 188px;
+}
+
+.qx-shell-content-filter .qx-shadcn-select-trigger {
+  height: 36px;
+  min-height: 36px;
+  max-height: 36px;
+  border-radius: var(--qx-control-radius);
+  font-size: 12px;
+}
+
+.qx-shell-trailing-extra {
+  flex: 0 0 auto;
 }
 
 .qx-shell-back {
@@ -887,12 +917,12 @@
   height: 100%;
   min-height: 0;
   overflow: hidden;
-  animation: qx-island-content-enter 160ms cubic-bezier(0.22, 0.72, 0.26, 1) both;
+  animation: qx-island-content-fade 120ms ease-out both;
 }
 
-@keyframes qx-island-content-enter {
-  from { opacity: 0; transform: translateY(3px) scale(0.99); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+@keyframes qx-island-content-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .qx-island-shell-row {
@@ -995,6 +1025,9 @@
   flex: 1 1 auto;
   width: auto;
   min-width: 0;
+}
+
+.qx-island-shell-marquee.is-overflowing {
   mask-image: linear-gradient(90deg, transparent, black 3%, black 97%, transparent);
   -webkit-mask-image: linear-gradient(90deg, transparent, black 3%, black 97%, transparent);
 }
@@ -1191,7 +1224,6 @@
   width: 36px;
   height: 12px;
   color: var(--qx-accent);
-  animation: qx-bottom-island-bounce-mini 0.92s cubic-bezier(0.42, 0, 0.28, 1) infinite alternate;
 }
 
 .qx-island-activity-dots {
@@ -1254,9 +1286,10 @@
 
 .qx-island-activity-pulse i {
   width: 2px;
-  height: 5px;
+  height: 13px;
   border-radius: 999px;
   background: var(--qx-accent);
+  transform-origin: center;
   animation: qx-island-pulse-bar 0.8s ease-in-out infinite alternate;
 }
 
@@ -1269,8 +1302,8 @@
 }
 
 @keyframes qx-island-pulse-bar {
-  from { height: 4px; opacity: 0.45; }
-  to { height: 13px; opacity: 1; }
+  from { opacity: 0.45; transform: scaleY(0.3); }
+  to { opacity: 1; transform: scaleY(1); }
 }
 
 .qx-island-surface .qx-shadcn-button.qx-island-shell-action {
@@ -1816,26 +1849,12 @@
   }
 }
 
-@keyframes qx-bottom-island-bounce-mini {
-  from {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-1px);
-  }
-  to {
-    transform: translateY(0);
-  }
-}
-
 @keyframes qx-bottom-island-dot {
   0%, 100% {
     opacity: 0.25;
-    transform: translateY(0);
   }
   50% {
     opacity: 1;
-    transform: translateY(-1.5px);
   }
 }
 
@@ -1892,6 +1911,11 @@
   .qx-shell-trailing {
     justify-content: flex-end;
     justify-self: end;
+  }
+
+  .qx-shell-content-filter {
+    width: min(132px, 28vw);
+    min-width: min(112px, 28vw);
   }
 
   .qx-shell.launcher-shell .qx-shell-topbar {

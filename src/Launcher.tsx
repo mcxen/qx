@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import QxShell from "./components/QxShell";
+import QxShell, { type QxShellAction } from "./components/QxShell";
 import ResultsList from "./ResultsList";
 import SearchBar, { requestLauncherSearchFocus } from "./SearchBar";
-import { Select } from "./components/ui";
 import { useStore, type AppEntry, type SearchScope } from "./store";
 import { useSettingsStore } from "./modules/settings/store";
 import LauncherContext from "./launcher/LauncherContext";
@@ -19,7 +18,6 @@ import { homeIslandDataBus, useResolvedHomeIsland } from "./home-island";
 import { islandHost, useHomeIslandContribution } from "./island";
 import { mapBottomIslandContent } from "./island/compat/mapBottomIslandContent";
 import { usePluginRegistry } from "./plugin/registry";
-import { getQxShortcutPreset } from "./utils/keyboard";
 import type { LauncherResultRow } from "./launcher/resultRows";
 
 interface LauncherProps {
@@ -86,6 +84,32 @@ export default function Launcher({
       }),
     [selectedItem, onItemClick, onNavigate, t, settings],
   );
+  const shellActions = useMemo<QxShellAction[]>(() => {
+    if (selectedCategory) {
+      return [{
+        id: "toggle-category",
+        label: selectedCategory.collapsed
+          ? t("launcher.expandCategory", "Expand")
+          : t("launcher.collapseCategory", "Collapse"),
+        kbd: "Enter",
+        onClick: () => onToggleCategory(selectedCategory.categoryId),
+      }];
+    }
+    return launcherActions.map((action) => ({
+      id: action.id,
+      label: action.label,
+      kbd: action.kbd,
+      menuKey: action.menuKey,
+      disabled: action.disabled,
+      tone: action.danger ? "danger" : "normal",
+      onClick: () => void action.run(),
+    }));
+  }, [launcherActions, onToggleCategory, selectedCategory, t]);
+  const primaryActionId = selectedCategory
+    ? "toggle-category"
+    : selectedItem
+      ? launcherActions[0]?.id
+      : undefined;
   // History loads once on mount. Do not re-fetch when results briefly empty
   // during search transitions — that doubled IPC during every summon.
   const { recentLaunches, recentSearches } = useLauncherHistory({
@@ -229,6 +253,7 @@ export default function Launcher({
             String(results.length),
           ),
           progress: Math.min(100, Math.max(12, results.length * 12)),
+          progressStyle: "compact-line",
         }),
       });
       islandHost.dismiss("launcher.loading");
@@ -272,21 +297,18 @@ export default function Launcher({
       islandManagedExternally
       onKeyDown={handleLauncherKeyDown}
       search={<SearchBar onKeyDown={handleLauncherKeyDown} embedded />}
-      trailing={
-        <div className="qx-launcher-trailing">
-          <Select
-            value={scope}
-            options={scopeOptions}
-            ariaLabel={t("launcher.scope", "Search scope")}
-            className="qx-launcher-scope"
-            onChange={(next) => {
-              setScope(next);
-              searchScopeRef.current = next;
-              onScopeChange();
-            }}
-          />
-        </div>
-      }
+      topbarFilters={[{
+        id: "launcher-scope",
+        label: t("launcher.scope", "Search scope"),
+        value: scope,
+        options: scopeOptions,
+        onChange: (next) => {
+          const nextScope = next as SearchScope;
+          setScope(nextScope);
+          searchScopeRef.current = nextScope;
+          onScopeChange();
+        },
+      }]}
       context={
         <LauncherContext
           quickEntries={quickEntries}
@@ -301,6 +323,7 @@ export default function Launcher({
       escapeAction={
         hasQuery
           ? {
+              id: "escape",
               label: "Esc",
               kbd: "Esc",
               onClick: () => {
@@ -309,45 +332,19 @@ export default function Launcher({
               },
             }
           : {
+              id: "escape",
               label: "Esc",
               kbd: "Esc",
               onClick: onEscape,
             }
       }
-      primaryAction={{
-        label: selectedCategory
-          ? selectedCategory.collapsed
-            ? t("launcher.expandCategory", "Expand")
-            : t("launcher.collapseCategory", "Collapse")
-          : selectedItem
-            ? t("launcher.open", "Open")
-            : t("launcher.search", "Search"),
-        kbd: "↵",
-        disabled: !selectedItem && !selectedCategory,
-        tone: "primary",
-        onClick: () => {
-          if (selectedCategory) onToggleCategory(selectedCategory.categoryId);
-          else if (selectedItem) onItemClick(selectedItem);
-        },
-      }}
-      secondaryAction={{
-        label: t("launcher.actions", "Actions"),
-        kbd: getQxShortcutPreset().actionMenu,
-        disabled: !selectedItem,
-      }}
+      primaryActionId={primaryActionId}
       actionTitle={
         selectedItem
           ? getLauncherActionTitle(selectedItem, t)
           : t("launcher.actions", "Actions")
       }
-      actions={launcherActions.map((action) => ({
-        label: action.label,
-        kbd: action.kbd,
-        menuKey: action.menuKey,
-        disabled: action.disabled,
-        tone: action.danger ? "danger" : "normal",
-        onClick: () => void action.run(),
-      }))}
+      actions={shellActions}
     >
       <ResultsList
         items={results}

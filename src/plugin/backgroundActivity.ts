@@ -95,6 +95,34 @@ export function isBackgroundIntervalCommand(
   return command.mode === "no-view" && parseIntervalMs(command.interval) != null;
 }
 
+export function resolveBackgroundNextRunAt({
+  now,
+  intervalMs,
+  lastRunAt,
+  nextRunAt,
+}: {
+  now: number;
+  intervalMs: number;
+  lastRunAt: number | null;
+  nextRunAt: number | null;
+}): number {
+  let resolved =
+    nextRunAt != null && Number.isFinite(nextRunAt) && nextRunAt > 0
+      ? nextRunAt
+      : null;
+  if (lastRunAt != null && Number.isFinite(lastRunAt) && lastRunAt > 0) {
+    const earliest = lastRunAt + intervalMs;
+    if (resolved == null || resolved < earliest) resolved = earliest;
+  }
+  if (resolved != null && resolved <= now) {
+    // Recover exactly one slot missed during sleep/shutdown. The persisted
+    // last-run throttle above prevents plugin reloads from causing a storm.
+    return now + 1000;
+  }
+  // First install/enable must not mutate user state as a catalogue side effect.
+  return resolved ?? now + intervalMs;
+}
+
 /** Durable last-run timestamp even when the in-memory job map was cleared. */
 export function peekLastRunAt(pluginId: string, commandName: string): number | null {
   return readNumber(storageKey("last", pluginId, commandName));

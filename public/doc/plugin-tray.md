@@ -1,7 +1,8 @@
 # Plugin Tray 能力端口（`context.tray`）
 
-> 给**插件作者**的宿主能力契约。
-> 宿主托盘实现见 `src-tauri/src/tray_menu.rs`；前端桥接 `App.tsx` + `rpcMethods.ts`。
+这是 `context.tray` 的唯一权威契约。开发总流程见
+[`plugin-development-guide.md`](./plugin-development-guide.md)；其他文档不复制本页 API。
+插件不依赖宿主实现文件或系统托盘 API。
 
 ## 心智模型
 

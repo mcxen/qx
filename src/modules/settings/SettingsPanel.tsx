@@ -278,12 +278,14 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const settingsActions = useMemo<QxShellAction[]>(() => {
     const jump: QxShellAction[] = NAV_GROUPS.flatMap((group) =>
       group.items.map((item) => ({
+        id: `jump-${item.id}`,
         label: t(`nav.${item.id}`, item.label),
         onClick: () => setActiveTab(item.id),
       })),
     );
     return [
       {
+        id: "close",
         label: t("settings.close", "Close"),
         onClick: onClose,
       },
@@ -324,7 +326,6 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       query: { active: activeSearchQuery.length > 0, clear: clearActiveSearchQuery },
     },
     island: settingsIsland,
-    t,
   });
 
   return (
@@ -339,11 +340,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       customIsland={homePreviewIsland}
       escapeAction={shell.escapeAction}
       onKeyDown={shell.onKeyDown}
-      primaryAction={{
-        label: t("settings.close", "Close"),
-        onClick: onClose,
-      }}
-      secondaryAction={shell.secondaryAction}
+      primaryActionId="close"
       actionTitle={t("settings.actions", "Settings Actions")}
       actions={settingsActions}
     >

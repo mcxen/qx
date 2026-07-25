@@ -15,6 +15,8 @@ import {
   SetFeedFolderDialog,
 } from "./FolderDialogs";
 import { FeedIcon, formatRelative } from "./rss-components";
+import { useT } from "../../i18n";
+import { buildRssRefreshIsland } from "./refreshProgress";
 
 type FeedSection = {
   key: string;
@@ -33,6 +35,7 @@ export default function RssPanel() {
     error,
     statusMessage,
     refreshingFeedId,
+    refreshProgress,
     selectedIndex,
     setSelectedIndex,
     loadFeeds,
@@ -44,6 +47,7 @@ export default function RssPanel() {
     setFeedFolder,
     exportOpml,
   } = useRssStore();
+  const t = useT();
   const setTab = useStore((state) => state.setTab);
   const showFeedIcons = useSettingsStore((s) => s.settings.rss.show_feed_icons);
 
@@ -154,19 +158,14 @@ export default function RssPanel() {
   };
 
   const handleModuleKeys = useCallback((e: React.KeyboardEvent) => {
-    // ↑↓: QxShell.navigation + useQxListSelection (is-active + scroll follow).
-    if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      e.preventDefault();
-      if (selectedFeed) void openFeed(selectedFeed.id);
-      return;
-    }
+    // ↑↓ / Enter: QxShell navigation and primary-action protocol.
     if ((e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey && !e.altKey) {
       if (selectedFeed) {
         e.preventDefault();
         setFolderTargetFeed(selectedFeed);
       }
     }
-  }, [openFeed, selectedFeed]);
+  }, [selectedFeed]);
 
   const handleDelete = (id: number) => {
     if (window.confirm("Remove this feed and all its articles?")) {
@@ -191,6 +190,7 @@ export default function RssPanel() {
 
   const actions = useMemo<QxShellAction[]>(() => [
     {
+      id: "view-articles",
       label: "View Articles",
       kbd: "↵",
       disabled: !selectedFeed,
@@ -199,6 +199,7 @@ export default function RssPanel() {
       },
     },
     {
+      id: "refresh-feed",
       label: "Refresh Feed",
       kbd: "R",
       disabled: !selectedFeed,
@@ -207,15 +208,18 @@ export default function RssPanel() {
       },
     },
     {
+      id: "add-feed",
       label: "Add Feed",
       kbd: "N",
       onClick: () => setShowAdd(true),
     },
     {
+      id: "new-folder",
       label: "New Folder",
       onClick: () => setShowNewFolder(true),
     },
     {
+      id: "set-folder",
       label: "Set Folder…",
       kbd: "F",
       disabled: !selectedFeed,
@@ -224,6 +228,7 @@ export default function RssPanel() {
       },
     },
     {
+      id: "remove-folder",
       label: "Remove from Folder",
       disabled: !selectedFeed?.folder_id,
       onClick: () => {
@@ -233,18 +238,22 @@ export default function RssPanel() {
       },
     },
     {
+      id: "import-opml",
       label: "Import OPML…",
       onClick: () => setShowImportOpml(true),
     },
     {
+      id: "export-opml",
       label: "Export OPML",
       onClick: () => void handleExportOpml(),
     },
     {
+      id: "refresh-all",
       label: "Refresh All",
       onClick: () => void refreshAll(),
     },
     {
+      id: "edit-subscription",
       label: "Edit Subscription",
       kbd: "E",
       disabled: !selectedFeed,
@@ -253,6 +262,7 @@ export default function RssPanel() {
       },
     },
     {
+      id: "delete-folder",
       label: selectedFeed?.folder_name
         ? `Delete Folder “${selectedFeed.folder_name}”`
         : "Delete Folder",
@@ -270,6 +280,7 @@ export default function RssPanel() {
       },
     },
     {
+      id: "delete-feed",
       label: "Delete Feed",
       kbd: "D",
       tone: "danger",
@@ -297,11 +308,7 @@ export default function RssPanel() {
     },
     onKeyDown: handleModuleKeys,
     island: refreshingFeedId
-      ? {
-          label: "RSS Syncing",
-          detail: refreshingFeedId === -1 ? `${feeds.length} feeds` : selectedFeed?.title,
-          progress: refreshingFeedId === -1 ? 42 : 55,
-        }
+      ? buildRssRefreshIsland(refreshProgress, selectedFeed?.title, t)
       : statusMessage
         ? { label: "RSS", detail: statusMessage, tone: "success" }
         : {
@@ -339,36 +346,6 @@ export default function RssPanel() {
           onChange={setQuery}
           placeholder="Search feeds or folders…"
         />
-      }
-      trailing={
-        <>
-          <button className="qx-command-button" type="button" onClick={() => setShowImportOpml(true)}>
-            Import
-          </button>
-          <button
-            className="qx-command-button"
-            type="button"
-            title="Create an empty folder"
-            onClick={() => setShowNewFolder(true)}
-          >
-            New Folder
-          </button>
-          <button
-            className="qx-command-button"
-            type="button"
-            disabled={!selectedFeed}
-            title={selectedFeed ? "Set folder for this subscription" : "Select a feed first"}
-            onClick={() => selectedFeed && setFolderTargetFeed(selectedFeed)}
-          >
-            Set Folder
-          </button>
-          <button className="qx-command-button" type="button" onClick={() => void refreshAll()}>
-            Refresh
-          </button>
-          <button className="qx-command-button primary" type="button" onClick={() => setShowAdd(true)}>
-            Add Feed
-          </button>
-        </>
       }
       context={
         <div
@@ -453,16 +430,7 @@ export default function RssPanel() {
       }
       island={shell.island}
       escapeAction={shell.escapeAction}
-      primaryAction={{
-        label: selectedFeed ? "View Articles" : "Add Feed",
-        kbd: selectedFeed ? "↵" : "N",
-        tone: "primary",
-        onClick: () => {
-          if (selectedFeed) void openFeed(selectedFeed.id);
-          else setShowAdd(true);
-        },
-      }}
-      secondaryAction={shell.secondaryAction}
+      primaryActionId={selectedFeed ? "view-articles" : "add-feed"}
       actionTitle="Feed Actions"
       actions={actions}
     >

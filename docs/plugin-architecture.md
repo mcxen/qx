@@ -90,6 +90,8 @@ SDK 不维护 host/iframe 两份实现：`createPluginSdkRuntime` 是无外部�
 | 宿主交互状态 | 当前可见 query、active tab、filter value、pointer/keyboard selection、焦点与滚动 | query/tab/filter/select 先乐观更新 React，再按顺序发给 iframe，保证 iframe 忙时仍有即时反馈 |
 | 宿主安全边界 | runtime 身份、数据归一化、命令归属、图片协议、数量/长度上限 | 仅接受 `panelSessionsByPlugin` 当前 `pluginId + runtimeId + contentWindow` 的消息；旧 iframe 发布会被丢弃 |
 
+Workbench `tabs[]` 与 `filters[]` 统一投影到 QxShell 固定的 Top Bar Select，插件不拥有筛选控件 DOM 或样式。
+
 宿主到插件的事件为 `query(value)`、`tab(id)`、`filter(id, value)`、`select(id)`、`action(id, selectedId)`、`commandComplete(command, at)`、`backgroundPoll(...)`。`action.selectedId` 是用户触发动作瞬间的宿主选择快照，插件 kit 必须优先用它解析 item，不能依赖可能尚未完成回画的旧 `state.selectedId`。Manifest `command` 动作由宿主校验为当前插件命令后在长期 runtime 执行，完成后以 `commandComplete` 通知 panel 单次重读共享状态；其余动作回到 panel handler。
 
 插件 handler 不得在回写 query/tab/filter/select 前等待网络、CLI 或数据库。推荐顺序：同步更新 state → `paint()` → debounce/cancel 旧任务 → 后台加载 → generation 校验 → 再 `paint()`。这样受控搜索不会回跳，慢旧结果也不会覆盖新查询。
@@ -310,8 +312,8 @@ Plugin API: `tray.setItems([{ id, title, command?, presentation?, group? }])` / 
 
 | Raycast | QxShell |
 |---------|---------|
-| 第一个 Action | `primaryAction`（底栏 / Enter） |
-| 全部 Action | `actions[]` + 右侧 Actions + ⌘K |
+| 第一个 / primary Action 的稳定 ID | `primaryActionId`（底栏 / Enter） |
+| 全部 Action | 单一 `actions[]` + 右侧 Actions + ⌘/Ctrl+K + Context |
 | 执行 | 宿主 `qx:run-item-action` → iframe handler |
 
 可选「条目上显示操作按钮」只是卡片内 chips，关掉也不影响上述主路径。

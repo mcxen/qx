@@ -5,7 +5,7 @@ import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
-import { formatQxShortcut } from "../../utils/keyboard";
+import { formatQxShortcut, getQxShortcutPreset } from "../../utils/keyboard";
 import { useStore } from "../../store";
 import { openAgentSettingsTab } from "./AiProviderConfig";
 import { useG4fStore } from "./store";
@@ -64,19 +64,11 @@ export default function QxAiPanel() {
 
   const leave = useCallback(() => setTab("launcher"), [setTab]);
 
-  const handleModuleKeys = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey && selectedConv) {
-      e.preventDefault();
-      openSelected();
-    }
-  }, [selectedConv]);
-
   const shell = useQxModuleShell({
     leave,
     esc: {
       query: { active: query.length > 0, clear: () => setQuery("") },
     },
-    onKeyDown: handleModuleKeys,
     islandState: {
       title: t("qxai.title", "QxAI Chat"),
       loading,
@@ -87,32 +79,36 @@ export default function QxAiPanel() {
         String(conversations.length),
       ),
     },
-    t,
   });
 
-  const actionMenuLabel = formatQxShortcut(shell.actionMenuShortcut) ?? "⌘K";
+  const actionMenuLabel = formatQxShortcut(getQxShortcutPreset().actionMenu) ?? "⌘K";
 
   const actions = useMemo<QxShellAction[]>(
     () => [
       {
+        id: "open-chat",
         label: t("qxai.openChat", "Open Chat"),
         kbd: "↵",
         disabled: !selectedConv,
         onClick: openSelected,
       },
       {
+        id: "new-chat",
         label: t("qxai.newChat", "New Chat"),
         onClick: () => createConversation(),
       },
       {
+        id: "chat-settings",
         label: t("qxai.chatSettings", "Chat Settings"),
         onClick: () => setView("settings"),
       },
       {
+        id: "agent-providers",
         label: t("qxai.agentProviders", "Agent & Providers"),
         onClick: () => openAgentSettingsTab(),
       },
       {
+        id: "delete-chat",
         label: t("common.delete", "Delete"),
         tone: "danger",
         disabled: !selectedConv,
@@ -150,15 +146,6 @@ export default function QxAiPanel() {
           placeholder={t("qxai.searchConversations", "Search conversations…")}
         />
       }
-      trailing={
-        <button
-          className="qx-command-button primary"
-          type="button"
-          onClick={() => createConversation()}
-        >
-          {t("qxai.newChat", "New Chat")}
-        </button>
-      }
       context={
         <div className="qx-action-panel">
           <div className="qx-action-title">{t("qxai.conversation", "Conversation")}</div>
@@ -194,16 +181,7 @@ export default function QxAiPanel() {
       }
       island={shell.island}
       escapeAction={shell.escapeAction}
-      primaryAction={{
-        label: selectedConv ? t("qxai.openChat", "Open Chat") : t("qxai.newChat", "New Chat"),
-        kbd: selectedConv ? "↵" : undefined,
-        tone: "primary",
-        onClick: () => {
-          if (selectedConv) openSelected();
-          else createConversation();
-        },
-      }}
-      secondaryAction={shell.secondaryAction}
+      primaryActionId={selectedConv ? "open-chat" : "new-chat"}
       actionTitle={t("qxai.actions", "AI Actions")}
       actions={actions}
     >

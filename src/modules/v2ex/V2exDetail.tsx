@@ -77,11 +77,13 @@ export default function V2exDetail({ topic, onBack }: V2exDetailProps) {
 
   const actions = useMemo<QxShellAction[]>(() => [
     {
+      id: "open-browser",
       label: "Open in Browser",
       kbd: "O",
       onClick: () => void openUrl(topic.url),
     },
     {
+      id: "back",
       label: "Back to Topics",
       onClick: onBack,
     },
@@ -113,13 +115,7 @@ export default function V2exDetail({ topic, onBack }: V2exDetailProps) {
         </aside>
       }
       island={shell.island}
-      primaryAction={{
-        label: "Open in Browser",
-        kbd: "O",
-        tone: "primary",
-        onClick: () => void openUrl(topic.url),
-      }}
-      secondaryAction={shell.secondaryAction}
+      primaryActionId="open-browser"
       actionTitle="Topic Actions"
       actions={actions}
     >

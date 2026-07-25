@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo } from "react";
 import type { KeyboardEvent } from "react";
 import type { BottomIslandContent } from "../components/QxBottomIsland";
 import type { QxShellAction } from "../components/ShellActionButton";
-import { getQxShortcutPreset } from "../utils/keyboard";
 import { registerModuleEscapeStep } from "./moduleEscapeHost";
 import {
   buildModuleIsland as buildModuleIslandPure,
@@ -19,7 +18,7 @@ import { useEscBack, type EscCascade } from "./useEscBack";
  * states stay consistent without copy-paste.
  *
  * Does **not** own list navigation, master-detail regions, or domain actions —
- * pass those as `navigation` / `primaryAction` / `actions` on QxShell yourself.
+ * pass those as `navigation` / `actions` / `primaryActionId` on QxShell yourself.
  *
  * @example
  * ```tsx
@@ -31,14 +30,14 @@ import { useEscBack, type EscCascade } from "./useEscBack";
  *   },
  *   islandState: { title: "V2EX", loading, error, count: items.length, detail: mode },
  *   onKeyDown: (e) => { if (e.key === "r") refresh(); },
- *   t,
  * });
  *
  * <QxShell
  *   escapeAction={shell.escapeAction}
  *   onKeyDown={shell.onKeyDown}
  *   island={shell.island}
- *   secondaryAction={shell.secondaryAction}
+ *   actions={actions}
+ *   primaryActionId="open"
  *   ...
  * />
  * ```
@@ -82,21 +81,12 @@ export type UseQxModuleShellOptions = {
   island?: BottomIslandContent | null;
   /** Declarative loading / error / idle island. */
   islandState?: ModuleIslandState;
-  /** Default true — pass false for modules without an actions menu. */
-  showActionsMenu?: boolean;
-  /**
-   * i18n helper. Defaults to English fallback only so plugins can call without
-   * `useT` (still preferred for built-ins).
-   */
-  t?: (key: string, fallback: string) => string;
 };
 
 export type QxModuleShellChrome = {
   escapeAction: QxShellAction;
   onKeyDown: (event: KeyboardEvent) => void;
   island: BottomIslandContent | null;
-  secondaryAction: QxShellAction | undefined;
-  actionMenuShortcut: string;
   leave: () => void;
   /** One Esc cascade step (inner → query → leave). Same as escapeAction.onClick. */
   stepBack: () => void;
@@ -112,11 +102,7 @@ export function useQxModuleShell(options: UseQxModuleShellOptions): QxModuleShel
     onKeyDown: extraKeyDown,
     island: islandOverride,
     islandState,
-    showActionsMenu = true,
-    t = (_key, fallback) => fallback,
   } = options;
-
-  const actionMenuShortcut = getQxShortcutPreset().actionMenu;
 
   const { onKeyDown: escKeyDown, stepBack } = useEscBack({
     inner: esc?.inner,
@@ -147,20 +133,10 @@ export function useQxModuleShell(options: UseQxModuleShellOptions): QxModuleShel
     return null;
   }, [islandOverride, islandState]);
 
-  const secondaryAction = useMemo(() => {
-    if (!showActionsMenu) return undefined;
-    return {
-      label: t("common.actions", "Action"),
-      kbd: actionMenuShortcut,
-    } satisfies QxShellAction;
-  }, [actionMenuShortcut, showActionsMenu, t]);
-
   return {
     escapeAction,
     onKeyDown,
     island,
-    secondaryAction,
-    actionMenuShortcut,
     leave,
     stepBack,
   };

@@ -242,22 +242,24 @@ export default function WeatherPanel() {
     leave: goBack,
     island,
     onKeyDown: handleModuleKeyDown,
-    t,
   });
 
   const weatherActions = useMemo<QxShellAction[]>(
     () => [
       {
+        id: "refresh",
         label: t("weather.refresh", "Refresh"),
         kbd: "R",
         disabled: loading,
         onClick: () => void loadWeather(),
       },
       {
+        id: "settings",
         label: t("weather.openSettings", "Weather Settings"),
         onClick: openWeatherSettings,
       },
       {
+        id: "back",
         label: t("common.back", "Back"),
         onClick: goBack,
       },
@@ -280,26 +282,9 @@ export default function WeatherPanel() {
           <BetaBadge />
         </div>
       }
-      trailing={
-        <button
-          className="qx-command-button"
-          onClick={() => void loadWeather()}
-          title={t("weather.refresh", "Refresh")}
-          disabled={loading}
-        >
-          {t("weather.refresh", "Refresh")}
-        </button>
-      }
       island={shell.island}
       onKeyDown={shell.onKeyDown}
-      primaryAction={{
-        label: t("weather.refresh", "Refresh"),
-        kbd: "R",
-        tone: "primary",
-        disabled: loading,
-        onClick: () => void loadWeather(),
-      }}
-      secondaryAction={shell.secondaryAction}
+      primaryActionId="refresh"
       actionTitle={t("weather.actions", "Weather Actions")}
       actions={weatherActions}
     >

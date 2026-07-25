@@ -8,7 +8,10 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useShallow } from "zustand/react/shallow";
-import QxShell, { type QxShellAction } from "../components/QxShell";
+import QxShell, {
+  type QxShellAction,
+  type QxShellTopbarFilter,
+} from "../components/QxShell";
 import { QxActionList } from "../components/QxActionPanel";
 import PluginBackgroundBadge, {
   usePluginBackgroundJob,
@@ -48,7 +51,6 @@ import {
   syncPluginWorkbenchIsland,
 } from "./pluginIsland";
 import { islandHost } from "../island";
-import { Select } from "../components/ui";
 
 export function PluginHost() {
   const loaded = usePluginRegistry((state) => state.loaded);
@@ -460,6 +462,13 @@ export function PluginPanelViewport() {
       selectedId: selectedWorkbenchItem?.id,
     });
   }, [pluginId, selectedWorkbenchItem]);
+  const downloadWorkbenchImage = useCallback((id: string) => {
+    postPluginWorkbenchEvent(pluginId, {
+      kind: "download",
+      id,
+      selectedId: selectedWorkbenchItem?.id,
+    });
+  }, [pluginId, selectedWorkbenchItem]);
 
   const workbenchActionDescriptors = useMemo<PluginWorkbenchAction[]>(() => {
     if (!workbench) return [];
@@ -531,6 +540,7 @@ export function PluginPanelViewport() {
 
   const contextualActions = useMemo<QxShellAction[]>(() => workbench
     ? workbenchActionDescriptors.map((action) => ({
+        id: action.id,
         label: action.label,
         kbd: action.kbd || (action.id === primaryWorkbenchAction?.id ? "Enter" : undefined),
         disabled: action.disabled,
@@ -538,6 +548,7 @@ export function PluginPanelViewport() {
         onClick: () => runWorkbenchAction(action.id),
       }))
     : itemActions.map((action, index) => ({
+        id: `item-${action.id}`,
         label: action.title,
         kbd: action.kbd || (index === 0 ? "Enter" : undefined),
         onClick: () => runItem(action.id),
@@ -554,11 +565,13 @@ export function PluginPanelViewport() {
     // Panel-level ops stay after the selected item's ActionPanel (Raycast order).
     const panelOps: QxShellAction[] = [
       {
+        id: "host.reload-panel",
         label: t("plugins.reloadPanel", "Reload Panel"),
         kbd: "CmdOrCtrl+Shift+R",
         onClick: () => setRefreshKey((k) => k + 1),
       },
       ...pluginCommands.map((cmd) => ({
+        id: `host.command.${cmd.name}`,
         label: cmd.title,
         onClick: () => void usePluginRegistry.getState().runCommand(cmd),
       })),
@@ -618,7 +631,6 @@ export function PluginPanelViewport() {
             detail: backgroundDetail || (plugin?.version ? `v${plugin.version}` : undefined),
             activity: background?.isRunning ? "pulse" : undefined,
           },
-    t,
   });
 
   const activeChrome: PluginChromePayload | null = workbench
@@ -659,6 +671,46 @@ export function PluginPanelViewport() {
       }
     : undefined;
   const actionSelectionTitle = workbench ? selectedWorkbenchItem?.title || "" : selectionTitle;
+  const topbarFilters = useMemo<QxShellTopbarFilter[]>(() => {
+    const filters: QxShellTopbarFilter[] = [];
+    if (activeChrome?.showTabs && activeChrome.tabs?.length) {
+      const activeTab = activeChrome.tabs.find((tabItem) => tabItem.active)
+        ?? activeChrome.tabs[0];
+      if (activeTab) {
+        filters.push({
+          id: "collection-view",
+          label: t("plugins.collectionView", "Collection view"),
+          value: activeTab.id,
+          options: activeChrome.tabs.map((tabItem) => ({
+            value: tabItem.id,
+            label: tabItem.label,
+          })),
+          onChange: (id) => {
+            if (workbench) selectWorkbenchTab(id);
+            else postPluginChromeTab(pluginId, id);
+          },
+        });
+      }
+    }
+    for (const filter of workbench?.filters ?? []) {
+      filters.push({
+        id: filter.id,
+        label: filter.label,
+        value: filter.value,
+        options: filter.options,
+        onChange: (value) => updateWorkbenchFilter(filter.id, value),
+      });
+    }
+    return filters;
+  }, [
+    activeChrome?.showTabs,
+    activeChrome?.tabs,
+    pluginId,
+    selectWorkbenchTab,
+    t,
+    updateWorkbenchFilter,
+    workbench,
+  ]);
 
   return (
     <QxShell
@@ -689,39 +741,8 @@ export function PluginPanelViewport() {
           <span className="qx-rss-detail-title qx-module-title-with-badge">{shellTitle}</span>
         )
       }
-      trailing={
-        <div className="qx-plugin-topbar-trailing">
-          {activeChrome?.showTabs && activeChrome.tabs?.length ? (
-            <div className="qx-shadcn-tabs-list qx-plugin-chrome-tabs" role="tablist">
-              {activeChrome.tabs.map((tabItem) => (
-                <button
-                  key={tabItem.id}
-                  type="button"
-                  role="tab"
-                  data-state={tabItem.active ? "active" : "inactive"}
-                  className="qx-shadcn-tabs-trigger"
-                  onClick={() => workbench
-                    ? selectWorkbenchTab(tabItem.id)
-                    : postPluginChromeTab(pluginId, tabItem.id)}
-                >
-                  {tabItem.label}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {workbench?.filters?.map((filter) => (
-            <Select
-              key={filter.id}
-              value={filter.value}
-              options={filter.options}
-              ariaLabel={filter.label}
-              className="qx-plugin-workbench-filter"
-              onChange={(value) => updateWorkbenchFilter(filter.id, value)}
-            />
-          ))}
-          <PluginBackgroundBadge pluginId={pluginId} />
-        </div>
-      }
+      topbarFilters={topbarFilters}
+      trailing={<PluginBackgroundBadge pluginId={pluginId} />}
       context={
         <aside className="qx-action-panel">
           {/* Raycast ActionPanel ≡ Qx Actions (same list as bottom bar + ⌘K). */}
@@ -740,6 +761,7 @@ export function PluginPanelViewport() {
           )}
           <div className="qx-action-title">{t("plugins.panelActions", "Panel")}</div>
           <QxActionList actions={[{
+            id: "host.reload-panel",
             label: t("plugins.reloadPanel", "Reload Panel"),
             kbd: "CmdOrCtrl+Shift+R",
             onClick: () => setRefreshKey((k) => k + 1),
@@ -781,24 +803,11 @@ export function PluginPanelViewport() {
       }
       island={shell.island}
       islandManagedExternally={workbenchIslandManaged || pluginIslandSessionActive}
-      primaryAction={
-        primaryItem
-          ? {
-              label: "title" in primaryItem ? primaryItem.title : primaryItem.label,
-              kbd: primaryItem.kbd || "Enter",
-              tone: "primary",
-              onClick: () => workbench
-                ? runWorkbenchAction(primaryItem.id)
-                : runItem(primaryItem.id),
-            }
-          : {
-              label: t("plugins.reloadPanel", "Reload Panel"),
-              kbd: "CmdOrCtrl+Shift+R",
-              tone: "primary",
-              onClick: () => setRefreshKey((k) => k + 1),
-            }
-      }
-      secondaryAction={shell.secondaryAction}
+      primaryActionId={primaryItem
+        ? workbench
+          ? primaryItem.id
+          : `item-${primaryItem.id}`
+        : "host.reload-panel"}
       actionTitle={
         actionSelectionTitle
           ? `${t("common.actions", "Actions")} · ${actionSelectionTitle}`
@@ -825,6 +834,7 @@ export function PluginPanelViewport() {
             onActivate={activateWorkbenchItem}
             onInput={updateWorkbenchInput}
             onAction={runWorkbenchAction}
+            onDownload={downloadWorkbenchImage}
           />
         ) : null}
         {!panel && (

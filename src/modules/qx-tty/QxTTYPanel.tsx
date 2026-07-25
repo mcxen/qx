@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import { CircleStop, Plus, SquareTerminal, Trash2 } from "lucide-react";
+import { CircleStop, SquareTerminal, Trash2 } from "lucide-react";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { Button } from "../../components/ui";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
@@ -239,17 +239,20 @@ export default function QxTTYPanel() {
 
   const actions = useMemo<QxShellAction[]>(() => [
     {
+      id: "new-terminal",
       label: t("tty.new", "New Terminal"),
       kbd: "CmdOrCtrl+N",
       onClick: () => void createSession(),
     },
     {
+      id: "clear-terminal",
       label: t("tty.clear", "Clear Terminal"),
       kbd: "CmdOrCtrl+L",
       disabled: !activeId,
       onClick: () => void clearTerminal(),
     },
     {
+      id: "close-session",
       label: t("tty.close", "Close Session"),
       disabled: !activeId,
       tone: "danger",
@@ -267,7 +270,6 @@ export default function QxTTYPanel() {
         : t("tty.noSessions", "No terminal sessions"),
       tone: error ? "danger" : activeSession?.running ? "success" : "neutral",
     },
-    t,
   });
 
   return (
@@ -275,16 +277,10 @@ export default function QxTTYPanel() {
       title={t("tty.title", "QxTTY")}
       islandKey="qx-tty"
       className="qx-tty-shell"
-      trailing={(
-        <Button size="sm" onClick={() => void createSession()}>
-          <Plus size={14} aria-hidden="true" />
-          {t("tty.new", "New Terminal")}
-        </Button>
-      )}
       escapeAction={shell.escapeAction}
       onKeyDown={shell.onKeyDown}
       island={shell.island}
-      secondaryAction={shell.secondaryAction}
+      primaryActionId="new-terminal"
       actionTitle={t("tty.actions", "Terminal Actions")}
       actions={actions}
     >

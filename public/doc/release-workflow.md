@@ -1,7 +1,9 @@
 # Qx Release Workflow
 
-This document records the practical release flow agents should use when asked to
-commit, tag, or publish Qx. It complements the short checklist in `AGENTS.md`.
+This is the canonical public workflow for releasing the Qx desktop clients.
+Plugin packaging and marketplace publication are separate and live in
+[`plugin-marketplace.md`](./plugin-marketplace.md). `AGENTS.md` keeps only the
+short execution checklist and links back to this workflow.
 
 ## Scope
 

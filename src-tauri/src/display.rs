@@ -403,7 +403,15 @@ pub(crate) fn capture_region_from_monitor(
                 monitor.capture_region(x, y, width, height)
             }));
             match modern {
-                Ok(Ok(image)) => return Ok(image),
+                Ok(Ok(image)) if !frame_is_effectively_black(&image) => return Ok(image),
+                Ok(Ok(_)) => {
+                    crate::diagnostics::log(
+                        crate::diagnostics::LogLevel::Warn,
+                        "display.capture.windows",
+                        "Windows Graphics Capture returned an effectively black frame; using GDI fallback",
+                        serde_json::json!({ "monitorId": monitor.id().ok() }),
+                    );
+                }
                 Ok(Err(error)) => {
                     crate::display_windows::disable_wgc();
                     crate::diagnostics::log(
@@ -438,6 +446,26 @@ pub(crate) fn capture_region_from_monitor(
             .capture_region(x, y, width, height)
             .map_err(|error| format!("capture region: {error}"))
     }
+}
+
+/// Sample the frame rather than scanning every pixel. A legitimate dark region
+/// may also take the fallback, which is harmless; the important distinction is
+/// that a successful-but-empty WGC frame must never be persisted as a screenshot.
+#[cfg(any(target_os = "windows", test))]
+fn frame_is_effectively_black(image: &image::RgbaImage) -> bool {
+    if image.is_empty() {
+        return true;
+    }
+    let stride = (image.len() / 4 / 1024).max(1);
+    let mut sampled = 0usize;
+    let mut near_black = 0usize;
+    for pixel in image.pixels().step_by(stride) {
+        sampled += 1;
+        if pixel[0] <= 3 && pixel[1] <= 3 && pixel[2] <= 3 {
+            near_black += 1;
+        }
+    }
+    near_black * 1000 >= sampled * 998
 }
 
 /// Reusable fallback after the native continuous stream proved unavailable.
@@ -510,8 +538,8 @@ impl PollingCaptureSession {
 #[cfg(test)]
 mod tests {
     use super::{
-        contains_point, select_display_area_for_cursor, select_display_area_for_cursor_sources,
-        select_display_area_for_raw_cursor, DisplayArea,
+        contains_point, frame_is_effectively_black, select_display_area_for_cursor,
+        select_display_area_for_cursor_sources, select_display_area_for_raw_cursor, DisplayArea,
     };
 
     fn area(x: i32, y: i32, width: u32, height: u32) -> DisplayArea {
@@ -606,5 +634,19 @@ mod tests {
             ),
             Some(external)
         );
+    }
+
+    #[test]
+    fn detects_empty_windows_capture_frame_without_rejecting_real_content() {
+        let black = image::RgbaImage::from_pixel(64, 64, image::Rgba([0, 0, 0, 255]));
+        assert!(frame_is_effectively_black(&black));
+
+        let mut content = black;
+        for y in 0..16 {
+            for x in 0..16 {
+                content.put_pixel(x, y, image::Rgba([40, 80, 120, 255]));
+            }
+        }
+        assert!(!frame_is_effectively_black(&content));
     }
 }

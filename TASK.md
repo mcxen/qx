@@ -1,5 +1,25 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Refactor — Top Bar 内容筛选与文本工具箱 Workbench 对齐
+
+**状态**：实现完成，等待发布构建。
+
+- `QxShell.topbarFilters` 成为内置模块与插件 Workbench 共用的内容筛选端口；宿主固定
+  Select 的高度、宽度、间距、响应式和无拖拽行为，模块/插件不再自绘 tabs、分段筛选
+  或 Select。
+- Launcher、剪贴板、RSS 文章、V2EX、截图历史和文本工具箱已迁移；Workbench
+  `tabs[] / filters[]` 由 PluginHost 统一投影，并保留原 `onTab / onFilter` 事件协议。
+- 刷新、新建、导入、录制等命令从 Top Bar 移回 Bottom Bar / Actions；状态优先进入
+  Island。文本工具箱新增文件类型筛选，列表态主动作改为打开所选文件，编辑未保存态
+  主动作改为保存。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `npm run check`
+- [x] 860px / 681px 实际布局：Top Bar 48px、筛选 132×36px、无横向溢出；Bottom Bar 46px
+
 ## Bugfix — 关闭剪贴板搜索后 Launcher 仍返回历史条目
 
 **状态**：实现完成，等待发布构建。
@@ -1055,6 +1075,10 @@
 ### 截图与多显示器统一捕获（2026-07-15）
 
 - **Windows xcap 与圈选兼容层（2026-07-19）**：Windows 构建启用 xcap 0.9 的 WGC still-frame/recording 后端；根级 `display` 服务捕获 WGC 失败或 panic 时自动降级到 GDI，并修正 compatible bitmap 的透明 alpha；录屏原生流初始化失败、断开或连续无帧时改走同一系统捕获端口轮询，不再由 screencap 私自选择后端；全局截图/录屏快捷键失败写入诊断日志。圈选 picker 与多屏 shade 同时显式设置 WebView2 alpha=0 背景，避免 Windows 只透明化原生窗口、WebView 控制器仍以不透明黑底覆盖桌面。远程桌面/虚拟显示驱动仍需 Windows 真机 smoke test。
+- **Windows RDP 截图兼容与完成 Island（2026-07-25）**：远程桌面会话直接绕过可能返回黑帧的 WGC still-frame；实体机会话保留 WGC，并对成功返回的近全黑空帧执行 GDI 回退。picker WebView 挂载后通过 ready IPC 重放 session、重新置前聚焦。截图完成由宿主 Bottom Island 显示文件名与快捷复制，成功/失败在原 session 回馈。
+- **RSS 真实刷新进度（2026-07-25）**：移除 Feed/Article Island 的固定 42/55 模拟百分比；单 Feed HTTP 请求显示 activity，全量刷新读取数据库全部订阅并逐项请求，以 Rust `rss:refresh-progress` 的 completed/total/failed 驱动确定进度；Feeds 与 Articles Actions 均提供 Refresh All。
+- **Windows 主窗口拖拽（2026-07-25）**：无边框 WebView2 顶栏新增位于 resize hit zone 内侧的独立拖拽握区；搜索/按钮以外的顶栏子区域显式调用 `startDragging()`，交互控件继续排除，避免顶栏被全宽搜索框铺满后只剩不可用的父级 drag region。
+- **SysInfo 模块内一致刷新（2026-07-25）**：Hardware 打开期间 CPU、Memory、Power、Network 每 5 秒同轮后台刷新，不再只更新当前选中分类；CPU/Memory 共用一次 in-flight stats 请求，静态系统规格与 Storage 继续使用 panel runtime cache。
 - **鼠标所在桌面默认跟随（2026-07-16）**：圈选启动默认落在鼠标所在显示器；尚未开始框选时由 Rust 后台复用统一 `display` 服务检测跨屏并迁移受保护圈选窗，开始交互、已有选区、倒计时或确认后立即停止跟随，session 结束时后台任务自动退出。
 - **P0–P1 交互重设计（2026-07-15）**：意图驱动主按钮（Enter/S/R）；模块双入口收敛；区域重画 + 八向手柄；延迟 0/3/5s 倒计时穿透；`confirmMode` 精修/松手即捕；窗口悬停选取；标注扩展（矩形/画笔/颜色/撤销重做）；截图 post-capture toast；无视频编辑。
 - **系统能力层（SOLID）**：窗列表提升为 `desktop_windows`（`desktop_windows_list`）；显示器公共 IPC `display_list` + `display::capture_region`；剪贴板 `clipboard_write_image_file`；前端端口 `src/system/*`；screencap 仅消费系统服务与保留工作流门面。

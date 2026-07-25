@@ -404,7 +404,9 @@ CSS 要点：
 `wave`、`dots`、`spinner`、`pulse` 是唯一公开的不确定进度动画。动画由宿主绘制，
 producer 不传 SVG/DOM/CSS。
 session winner 改变时 `ShellContent` 播放一次短入场；同 session 的 progress/文案
-更新不重播。`prefers-reduced-motion: reduce` 关闭全部活动与入场动画。
+更新不重播。入场仅淡入，加载动画限制在固定尺寸内部盒子中；不得平移/缩放 Surface
+或整行内容，也不得用纵向位移或动态高度造成 docked / floating 几何跳动。
+`prefers-reduced-motion: reduce` 关闭全部活动与入场动画。
 
 #### 3.5 Intent / Action 注册与分发（Issue 1）
 

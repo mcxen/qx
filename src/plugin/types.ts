@@ -752,6 +752,7 @@ export interface PluginContext {
         onQuery?: (value: string) => void;
         onSelect?: (id: string, item: PluginWorkbenchItem) => void;
         onInput?: (id: string, value: string, item?: PluginWorkbenchItem) => void;
+        onDownload?: (id: string, item?: PluginWorkbenchItem) => void;
       },
     ) => import("./workbenchTypes").PluginWorkbenchController;
   };
@@ -827,6 +828,12 @@ export interface PluginContext {
     openPath: (path: string) => Promise<void>;
     /** Reveal path in Finder / Explorer (permission `system`). */
     revealPath: (path: string) => Promise<void>;
+    /** Save base64 bytes in the user's Downloads directory (permission `system`). */
+    saveDownload: (input: {
+      filename: string;
+      mimeType?: string;
+      dataBase64: string;
+    }) => Promise<string>;
     /** Open a semantic System Settings destination without platform URI knowledge. */
     openSettings: (section: PluginSystemSettingsSection) => Promise<void>;
     /** Set one local image as wallpaper through the host platform adapter. */

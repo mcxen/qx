@@ -65,6 +65,8 @@ export interface PluginWorkbenchForm {
 export interface PluginWorkbenchImage {
   url: string;
   alt?: string;
+  /** Opaque plugin-owned key used when the host asks the plugin for the original bytes. */
+  downloadId?: string;
   fit?: "cover" | "contain";
   /**
    * Detail media defaults to `auto`; gallery cards continue to use the
@@ -225,6 +227,7 @@ export type PluginWorkbenchEvent =
   | { kind: "filter"; id: string; value: string }
   | { kind: "select"; id: string }
   | { kind: "input"; id: string; value: string; selectedId?: string }
+  | { kind: "download"; id: string; selectedId?: string }
   | { kind: "action"; id: string; selectedId?: string }
   | { kind: "commandComplete"; command: string; at: number }
   | { kind: "backgroundPoll"; command: string; at: number; ok: boolean; error?: string };
@@ -332,9 +335,8 @@ function normalizeAsyncStatus(value: unknown): PluginWorkbenchAsyncStatus | unde
 function normalizeContentBlocks(value: unknown): PluginWorkbenchContentBlock[] {
   if (!Array.isArray(value)) return [];
   let textBudget = 24_000;
-  let imageBudget = 24;
   const blocks: PluginWorkbenchContentBlock[] = [];
-  for (const entry of value.slice(0, 64)) {
+  for (const entry of value) {
     if (!entry || typeof entry !== "object") continue;
     const raw = entry as Record<string, unknown>;
     if (raw.type === "text" && textBudget > 0) {
@@ -344,10 +346,9 @@ function normalizeContentBlocks(value: unknown): PluginWorkbenchContentBlock[] {
       blocks.push({ type: "text", text });
       continue;
     }
-    if (raw.type === "image" && imageBudget > 0) {
+    if (raw.type === "image") {
       const image = normalizeImage(raw.image, true);
       if (!image) continue;
-      imageBudget -= 1;
       blocks.push({ type: "image", image });
     }
   }
@@ -404,7 +405,7 @@ function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
     subtitle: shortText(raw.subtitle, 500),
     image: normalizeImage(raw.image, true),
     images: Array.isArray(raw.images)
-      ? raw.images.slice(0, 24)
+      ? raw.images
           .map((image) => normalizeImage(image, true))
           .filter((image): image is PluginWorkbenchImage => Boolean(image))
       : [],
@@ -454,6 +455,7 @@ function normalizeImage(value: unknown, detail = false): PluginWorkbenchItem["im
   return {
     url,
     alt: shortText(raw.alt, 500),
+    downloadId: shortText(raw.downloadId, 256),
     fit: raw.fit === "contain" || (detail && raw.fit !== "cover") ? "contain" : "cover",
     aspectRatio:
       raw.aspectRatio === "landscape" || raw.aspectRatio === "square" || raw.aspectRatio === "portrait"
@@ -484,7 +486,7 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
           icon: shortText(item.icon, 24),
           image: normalizeImage(item.image),
           images: Array.isArray(item.images)
-            ? item.images.slice(0, 24)
+            ? item.images
                 .map((image) => normalizeImage(image))
                 .filter((image): image is PluginWorkbenchImage => Boolean(image))
             : [],

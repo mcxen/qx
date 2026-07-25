@@ -1,7 +1,8 @@
 # Plugin CLI 接口协议（`context.cli`）
 
-> 作者总手册：[`plugin-development-guide.md`](./plugin-development-guide.md)
-> 本文是 **`context.cli` 端口** 的完整契约（请求/响应/安全/版本）。
+本文是 **`context.cli` 端口唯一权威契约**，负责请求、响应、任务、PATH、安全和版本。
+作者流程见 [`plugin-development-guide.md`](./plugin-development-guide.md)；CLI 如何组织成
+Workbench 见 [`plugin-cli-gui.md`](./plugin-cli-gui.md)。其他文档只链接本协议，不复制字段。
 
 稳定端口：插件跑本机命令行工具（Homebrew、发布 CLI、内部工具等）。
 **默认 argv 模式**；需要管道 / 通配符 / 复杂 shell 时用 **`context.cli.bash`**。
@@ -14,7 +15,7 @@
 | 权限 | 作用 |
 |------|------|
 | `cli` | 允许 `context.cli.*`（run / bash / which / 异步 jobs / map） |
-| `system` | 允许 `context.system.env` / `openPath` / `revealPath` / `openSettings` / `setWallpaper` |
+| `system` | 允许 `context.system.env` / `openPath` / `revealPath` / `saveDownload` / `openSettings` / `setWallpaper` |
 | `invoke:plugin_cli_*` 等 | 若走 `context.invoke(...)` 时的精确授权（危险命令集） |
 
 manifest 示例（CLI 工具 + 打开产物）：
@@ -176,6 +177,11 @@ const env = await context.system.env();
 
 await context.system.openPath("~/Downloads/out.mp4");  // 系统默认打开
 await context.system.revealPath(outPath);              // Finder / Explorer 选中
+await context.system.saveDownload({
+  filename: "image.jpg",
+  mimeType: "image/jpeg",
+  dataBase64: encodedBytes,
+});                                                     // 写入 Downloads
 await context.system.setWallpaper(outPath, { scope: "every" }); // macOS / Windows
 await context.system.openSettings("storage");          // 系统设置的语义分区
 ```
@@ -185,7 +191,8 @@ await context.system.openSettings("storage");          // 系统设置的语义�
 | `env()` | 平台、架构、home/temp、目录分隔符与 PATH 列表分隔符 |
 | `openPath(path)` | 用系统默认应用打开（支持 `~/`） |
 | `revealPath(path)` | 在文件管理器中显示 |
-| `setWallpaper(path, { scope? })` | 用宿主平台适配器设置本地图片（支持插件虚拟路径）；`scope` 为 `current` / `every`，Windows 忽略桌面范围 |
+| `saveDownload({ filename, mimeType?, dataBase64 })` | 将二进制数据安全写入用户 Downloads 目录，不覆盖已有文件 |
+| `setWallpaper(path, { scope? })` | 用宿主平台适配器设置本地图片（支持插件虚拟路径）；`scope` 为 `current` / `every`，Windows 忽略桌面范围。插件身份由宿主注入，插件只传路径与范围 |
 | `openSettings(section)` | 打开 `about` / `display` / `storage` / `network` / `power` / `privacy` / `apps` 对应的 macOS 或 Windows 系统设置 |
 
 Windows 的 `openPath` 由宿主直接调用 Shell API，路径不会经过 `cmd /C start` 解释；
@@ -232,6 +239,7 @@ unavailable error，不回退 Unix 路径。可运行
 | `plugin_cli_cancel` | `cliCancel` |
 | `plugin_cli_list_jobs` | `cliListJobs` |
 | `plugin_system_env` | `systemEnv` |
+| `plugin_system_save_download` | `systemSaveDownload` |
 | `plugin_system_open_path` | `systemOpenPath` |
 | `plugin_system_reveal_path` | `systemRevealPath` |
 | `plugin_system_set_wallpaper` | `systemSetWallpaper` |

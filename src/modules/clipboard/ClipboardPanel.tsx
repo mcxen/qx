@@ -13,7 +13,6 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-  Select,
   type CalendarRange,
 } from "../../components/ui";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
@@ -840,18 +839,13 @@ export default function ClipboardPanel() {
     }
     // Chord actions (⌘C / ⌘P / ⌘⌫ / …) are owned by QxShell action matching so
     // they work both with the Actions panel open and while search is focused.
-    // Keep Enter here so paste still wins over shell chrome when typing in search.
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
       // Raycast-style alternate: ⌘↵ copies the selected item (detail is →).
       e.preventDefault();
       await copyItem(selectedItem);
       return;
     }
-    if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-      e.preventDefault();
-      await pasteItem(selectedItem, { focusAtCursor: true });
-    }
-  }, [copyItem, isEditing, pasteItem, saveTextEdit, saveTextEditAsNew, selectedItem]);
+  }, [copyItem, isEditing, saveTextEdit, saveTextEditAsNew, selectedItem]);
 
   /** File clipboard image, or captured image blob path on disk. */
   const compressSourcePath = useMemo(() => {
@@ -899,12 +893,14 @@ export default function ClipboardPanel() {
     // menuKey: single letters while Actions panel is open (Raycast-style).
     const list: QxShellAction[] = [
       {
+        id: "paste",
         label: pasteActionLabel,
         kbd: "Enter",
         disabled: !selectedItem,
         onClick: () => void pasteItem(selectedItem, { focusAtCursor: true }),
       },
       {
+        id: "copy",
         label: t("clipboard.copy", "Copy"),
         kbd: "CmdOrCtrl+C",
         menuKey: "c",
@@ -912,6 +908,7 @@ export default function ClipboardPanel() {
         onClick: () => void copyItem(selectedItem),
       },
       {
+        id: "toggle-pin",
         label: selectedItem?.pinned ? t("clipboard.unpin", "Unpin") : t("clipboard.pin", "Pin"),
         kbd: "CmdOrCtrl+P",
         menuKey: "p",
@@ -919,6 +916,7 @@ export default function ClipboardPanel() {
         onClick: () => void togglePin(selectedItem),
       },
       {
+        id: "delete",
         label: t("clipboard.delete", "Delete"),
         kbd: "CmdOrCtrl+Backspace",
         menuKey: "d",
@@ -927,6 +925,7 @@ export default function ClipboardPanel() {
         onClick: () => void deleteItem(selectedItem),
       },
       {
+        id: "import-text-toolbox",
         label: t("clipboard.importDocs", "Import to Text Toolbox"),
         kbd: "CmdOrCtrl+Shift+T",
         menuKey: "t",
@@ -938,12 +937,14 @@ export default function ClipboardPanel() {
     // OCR for every image-shaped clipboard item (bitmap paste + image files).
     if (selectedItem && isClipboardImageItem(selectedItem)) {
       list.push({
+        id: "ocr-copy",
         label: t("clipboard.ocrCopy", "OCR and Copy"),
         kbd: "CmdOrCtrl+Shift+O",
         menuKey: "o",
         onClick: () => void runOcrOnItem(selectedItem, "clipboard"),
       });
       list.push({
+        id: "ocr-editor",
         label: t("clipboard.ocrEditor", "OCR to Text Toolbox"),
         kbd: "CmdOrCtrl+Shift+E",
         menuKey: "e",
@@ -952,6 +953,7 @@ export default function ClipboardPanel() {
     }
     if (clipboardHistory.some((item) => isClipboardImageItem(item) && !item.ocr_text?.trim())) {
       list.push({
+        id: "ocr-all",
         label: t("clipboard.ocrAll", "OCR All Images"),
         menuKey: "a",
         onClick: () => void ocrAllPendingImages(),
@@ -961,6 +963,7 @@ export default function ClipboardPanel() {
     // Context-sensitive media tools — only when the current item can run them.
     if (compressSourcePath) {
       list.push({
+        id: "compress-image",
         label: t("clipboard.compressImage", "Compress Image"),
         kbd: "CmdOrCtrl+Shift+C",
         menuKey: "m",
@@ -970,6 +973,7 @@ export default function ClipboardPanel() {
     }
     if (gifSourcePath) {
       list.push({
+        id: "video-to-gif",
         label: t("clipboard.videoToGif", "Video to GIF"),
         kbd: "CmdOrCtrl+Shift+G",
         menuKey: "g",
@@ -979,6 +983,7 @@ export default function ClipboardPanel() {
     }
     if (selectedItem?.file_path) {
       list.push({
+        id: "reveal-file",
         label: t("clipboard.reveal", "Show in Finder"),
         kbd: "CmdOrCtrl+Shift+R",
         menuKey: "r",
@@ -987,6 +992,7 @@ export default function ClipboardPanel() {
         },
       });
       list.push({
+        id: "copy-path",
         label: t("clipboard.copyPath", "Copy Path"),
         kbd: "CmdOrCtrl+Shift+P",
         menuKey: "y",
@@ -996,6 +1002,7 @@ export default function ClipboardPanel() {
       });
     } else if (selectedItem?.image_path) {
       list.push({
+        id: "reveal-image",
         label: t("clipboard.reveal", "Show in Finder"),
         kbd: "CmdOrCtrl+Shift+R",
         menuKey: "r",
@@ -1033,27 +1040,6 @@ export default function ClipboardPanel() {
   );
 
   const itemCountLabel = t("clipboard.items", "{n} items").replace("{n}", String(filtered.length));
-
-  const trailing = (
-    <>
-      <Select
-        value={filter}
-        options={(Object.keys(FILTER_KEYS) as Filter[]).map((id) => ({
-          value: id,
-          label: filterLabel(id),
-        }))}
-        ariaLabel={t("clipboard.filter", "Clipboard filter")}
-        className="qx-clipboard-filter"
-        onChange={(next) => {
-          setFilter(next);
-          setSelected(0);
-        }}
-      />
-      <div className="qx-clipboard-status" aria-live="polite">
-        {status}
-      </div>
-    </>
-  );
 
   const shell = useQxModuleShell({
     leave,
@@ -1099,7 +1085,6 @@ export default function ClipboardPanel() {
         ? { kind: "orbit", nonce: islandEffectNonce }
         : undefined,
     },
-    t,
   });
 
   return (
@@ -1107,7 +1092,19 @@ export default function ClipboardPanel() {
       title={t("clipboard.title", "Clipboard History")}
       islandKey="clipboard"
       search={searchSlot}
-      trailing={trailing}
+      topbarFilters={[{
+        id: "clipboard-kind",
+        label: t("clipboard.filter", "Clipboard filter"),
+        value: filter,
+        options: (Object.keys(FILTER_KEYS) as Filter[]).map((id) => ({
+          value: id,
+          label: filterLabel(id),
+        })),
+        onChange: (next) => {
+          setFilter(next as Filter);
+          setSelected(0);
+        },
+      }]}
       escapeAction={shell.escapeAction}
       onKeyDown={shell.onKeyDown}
       navigation={{
@@ -1124,12 +1121,7 @@ export default function ClipboardPanel() {
       }}
       className="qx-clipboard-shell"
       island={shell.island}
-      primaryAction={!editingId && selectedItem ? {
-        label: pasteActionLabel,
-        kbd: "Enter",
-        onClick: () => void pasteItem(selectedItem, { focusAtCursor: true }),
-      } : undefined}
-      secondaryAction={shell.secondaryAction}
+      primaryActionId={!editingId && selectedItem ? "paste" : undefined}
       actionTitle={t("clipboard.actions", "Clipboard Actions")}
       actions={clipboardActions}
     >

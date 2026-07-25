@@ -13,7 +13,6 @@ import {
 import { useStore } from "../../store";
 import { useSettingsStore } from "../settings/store";
 import { openSettings } from "../settings/openSettings";
-import { SegmentedControl } from "../../components/ui";
 import GifPreview from "./GifPreview";
 import CaptureHistory from "./CaptureHistory";
 import CaptureToast from "./CaptureToast";
@@ -119,7 +118,7 @@ export default function ScreenRecorder() {
   }, [loadHistory, refreshCapturePermission, syncRecordingStatus]);
 
   useEffect(() => {
-    ensureCaptureToastListener();
+    ensureCaptureToastListener(t);
     const pending = takeScreenshotToast();
     if (pending) {
       setToastPath(pending);
@@ -147,7 +146,7 @@ export default function ScreenRecorder() {
       void unlistenCaptured.then((dispose) => dispose());
       void unlistenState.then((dispose) => dispose());
     };
-  }, [loadHistory, setPreview, syncRecordingStatus]);
+  }, [loadHistory, setPreview, syncRecordingStatus, t]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -383,16 +382,18 @@ export default function ScreenRecorder() {
 
   const readyActions = useMemo<QxShellAction[]>(
     () => [
-      { label: t("screencap.screenshot", "Take Screenshot"), kbd: "Enter", onClick: () => void beginScreenshot() },
+      { id: "screenshot", label: t("screencap.screenshot", "Take Screenshot"), kbd: "Enter", onClick: () => void beginScreenshot() },
       {
+        id: "recapture-last",
         label: t("screencap.recaptureLast", "Recapture Last Region"),
         kbd: settings.shortcuts.recapture_last_region?.enabled
           ? settings.shortcuts.recapture_last_region.key
           : undefined,
         onClick: () => void handleRecaptureLast(),
       },
-      { label: t("screencap.record", "Record"), onClick: () => void beginAreaSelect() },
+      { id: "record", label: t("screencap.record", "Record"), onClick: () => void beginAreaSelect() },
       {
+        id: "toggle-pinned-controls",
         label: controlsPinned
           ? t("screencap.controls.unpin", "Hide Persistent Capture Island")
           : t("screencap.controls.pin", "Keep Capture Island Visible"),
@@ -401,6 +402,7 @@ export default function ScreenRecorder() {
       ...settings.tray_actions
         .filter((action) => action.enabled)
         .map((action) => ({
+          id: `tray-${action.id}`,
           label: action.title,
           kbd: settings.shortcuts[`tray_${action.id}`]?.enabled
             ? settings.shortcuts[`tray_${action.id}`]?.key
@@ -423,8 +425,9 @@ export default function ScreenRecorder() {
 
   const doneActions = useMemo<QxShellAction[]>(
     () => [
-      { label: t("screencap.newRecording", "New Capture"), kbd: "Enter", onClick: handleNewRecording },
+      { id: "new-capture", label: t("screencap.newRecording", "New Capture"), kbd: "Enter", onClick: handleNewRecording },
       {
+        id: "back-launcher",
         label: t("screencap.backLauncher", "Back to Launcher"),
         onClick: () => {
           reset();
@@ -438,11 +441,13 @@ export default function ScreenRecorder() {
   const recordingActions = useMemo<QxShellAction[]>(
     () => [
       {
+        id: "pop-out",
         label: t("screencap.popOut", "Move to Floating Controls"),
         disabled: status === "processing",
         onClick: () => void handlePopOut(),
       },
       {
+        id: "stop",
         label: status === "processing"
           ? t("screencap.saving", "Saving…")
           : t("screencap.stop", "Stop Recording"),
@@ -465,25 +470,7 @@ export default function ScreenRecorder() {
       return;
     }
 
-    if (e.key === "Enter" && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      if (isRecording || status === "processing") {
-        e.preventDefault();
-        void handleStop();
-        return;
-      }
-      if (status === "idle" || status === "error") {
-        e.preventDefault();
-        void beginScreenshot();
-        return;
-      }
-      if (status === "done") {
-        e.preventDefault();
-        handleNewRecording();
-        return;
-      }
-    }
-
-  }, [beginAreaSelect, beginScreenshot, handleStop, isRecording, status]);
+  }, [beginAreaSelect]);
 
   const leave = useCallback(() => {
     reset();
@@ -506,7 +493,6 @@ export default function ScreenRecorder() {
     },
     onKeyDown: handleModuleKeys,
     island: captureIsland,
-    t,
   });
 
   const selectedHistoryIndex = history.length
@@ -536,13 +522,7 @@ export default function ScreenRecorder() {
           />
         )}
         escapeAction={shell.escapeAction}
-        primaryAction={{
-          label: status === "processing" ? t("common.savingShort", "Saving") : t("common.stop", "Stop"),
-          disabled: status === "processing",
-          tone: status === "processing" ? "normal" : "danger",
-          onClick: () => void handleStop(),
-        }}
-        secondaryAction={status === "processing" ? undefined : shell.secondaryAction}
+        primaryActionId="stop"
         actionTitle={t("screencap.actions", "Recording Actions")}
         actions={recordingActions}
       >
@@ -622,32 +602,21 @@ export default function ScreenRecorder() {
           ? () => setPreview(history[selectedHistoryIndex].path)
           : undefined,
       } : undefined}
-      trailing={
-        <>
-          <SegmentedControl
-            value={historyLayout}
-            options={[
-              { value: "list", label: t("screencap.history.list", "List") },
-              { value: "gallery", label: t("screencap.history.gallery", "Gallery") },
-            ]}
-            onChange={(value) => updateCaptureSettings({ history_layout: value as CaptureHistoryLayout })}
-          />
-          <button className="qx-command-button primary" onClick={() => void beginScreenshot()} type="button">
-            {t("screencap.screenshot", "Screenshot")}
-          </button>
-          <button className="qx-command-button" onClick={() => void beginAreaSelect()} type="button">
-            {t("screencap.record", "Record")}
-          </button>
-        </>
-      }
+      topbarFilters={[{
+        id: "capture-layout",
+        label: t("screencap.history.layout", "History layout"),
+        value: historyLayout,
+        options: [
+          { value: "list", label: t("screencap.history.list", "List") },
+          { value: "gallery", label: t("screencap.history.gallery", "Gallery") },
+        ],
+        onChange: (value) => updateCaptureSettings({
+          history_layout: value as CaptureHistoryLayout,
+        }),
+      }]}
       island={shell.island}
       escapeAction={shell.escapeAction}
-      primaryAction={
-        showingPreview
-          ? { label: t("common.new", "New"), kbd: "Enter", tone: "primary", onClick: handleNewRecording }
-          : { label: t("screencap.screenshot", "Screenshot"), kbd: "Enter", tone: "primary", onClick: () => void beginScreenshot() }
-      }
-      secondaryAction={shell.secondaryAction}
+      primaryActionId={showingPreview ? "new-capture" : "screenshot"}
       actionTitle={t("screencap.actions", "Capture Actions")}
       actions={showingPreview ? doneActions : readyActions}
     >

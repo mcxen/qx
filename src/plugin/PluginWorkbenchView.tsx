@@ -13,12 +13,14 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Download,
   LoaderCircle,
   Maximize2,
   Minus,
   Plus,
   X,
 } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
 import { QxListLoading, shouldShowQxListLoading } from "../components/QxListLoading";
 import { useQxListSelection } from "../hooks/useQxListSelection";
 import {
@@ -77,6 +79,7 @@ interface PluginWorkbenchViewProps {
   onActivate: (id: string) => void;
   onInput: (id: string, value: string) => void;
   onAction: (id: string) => void;
+  onDownload: (id: string) => void;
 }
 
 function toneClass(tone: string | undefined): string {
@@ -494,6 +497,7 @@ export default function PluginWorkbenchView({
   onActivate,
   onInput,
   onAction,
+  onDownload,
 }: PluginWorkbenchViewProps) {
   const t = useT();
   const [preview, setPreview] = useState<{
@@ -565,6 +569,26 @@ export default function PluginWorkbenchView({
     });
   };
   const previewImage = preview?.images[preview.index];
+  const downloadPreviewImage = useCallback(async () => {
+    if (!previewImage) return;
+    if (previewImage.downloadId) {
+      onDownload(previewImage.downloadId);
+      return;
+    }
+    const dataUrl = previewImage.url.match(/^data:(image\/[a-z0-9.+-]+);base64,(.+)$/is);
+    if (dataUrl) {
+      await invoke("plugin_system_save_download", {
+        filename: previewImage.alt || "qx-image",
+        mimeType: dataUrl[1],
+        dataBase64: dataUrl[2],
+      });
+      return;
+    }
+    const anchor = document.createElement("a");
+    anchor.href = previewImage.url;
+    anchor.download = previewImage.alt || "qx-image";
+    anchor.click();
+  }, [onDownload, previewImage]);
   const previewIsLongScreenshot = Boolean(
     previewImage
       && previewMetrics?.url === previewImage.url
@@ -987,6 +1011,17 @@ export default function PluginWorkbenchView({
                   {preview.index + 1} / {preview.images.length}
                 </span>
               ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className={`qx-host-workbench-media-download${preview && preview.images.length > 1 ? " has-count" : ""}`}
+                aria-label={t("plugins.workbench.downloadImage", "Download original image")}
+                onClick={() => void downloadPreviewImage()}
+              >
+                <Download size={14} aria-hidden="true" />
+                <span>{t("plugins.workbench.downloadImage", "Download original")}</span>
+              </Button>
             </div>
           ) : null}
           {previewImage?.caption ? <p>{previewImage.caption}</p> : null}

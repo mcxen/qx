@@ -211,6 +211,7 @@ tab = "plugin:*"   → PluginPanelViewport
 - 三视图: Feeds 列表 → Articles 列表 (按 today/yesterday/earlier 分组) → Article 详情
 - 键盘全覆盖: ↑↓/j/k 导航, S 星标, U 读/未读, O 浏览器打开, R 刷新, N 添加, E 编辑
 - 支持 OPML 导入/导出
+- 单 Feed 刷新执行一条真实 HTTP 流程并用 activity 表达不可测的请求阶段；刷新全部从数据库读取完整订阅集合逐个抓取，通过 `rss:refresh-progress` 发布当前 Feed、completed/total 和失败数，Bottom Island 不使用固定模拟百分比。
 
 ### 4.5 屏幕录制 GIF
 

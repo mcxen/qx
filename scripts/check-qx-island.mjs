@@ -202,6 +202,11 @@ assert.match(islandSurfaceSource, /progressStyle = "surface-fill"/);
 assert.match(islandSurfaceSource, /qx-island-progress-surface-fill/);
 assert.match(islandSurfaceSource, /qx-island-progress-island-ring/);
 
+assert.match(
+  launcherSource,
+  /id:\s*"launcher\.results"[\s\S]*?progressStyle:\s*"compact-line"/,
+);
+
 const shellCssSource = fs.readFileSync("src/styles/shell.css", "utf8");
 assert.match(
   shellCssSource,
@@ -218,6 +223,23 @@ assert.doesNotMatch(
 assert.match(
   shellCssSource,
   /\.qx-island-progress-surface-fill\s*\{[^}]*position:\s*absolute;[^}]*background:\s*var\(--qx-island-progress-fill\)/s,
+);
+assert.match(
+  shellCssSource,
+  /\.qx-island-shell-content\s*\{[^}]*animation:\s*qx-island-content-fade/s,
+);
+assert.doesNotMatch(shellCssSource, /qx-island-content-enter|qx-bottom-island-bounce-mini/);
+assert.match(
+  shellCssSource,
+  /\.qx-island-shell-marquee\.is-overflowing\s*\{[^}]*mask-image:/s,
+);
+assert.doesNotMatch(
+  shellCssSource,
+  /\.qx-island-shell-marquee\s*\{[^}]*mask-image:/s,
+);
+assert.match(
+  shellCssSource,
+  /@keyframes qx-island-pulse-bar\s*\{[^}]*transform:\s*scaleY\(0\.3\)/s,
 );
 
 const workbenchViewSource = fs.readFileSync("src/plugin/PluginWorkbenchView.tsx", "utf8");

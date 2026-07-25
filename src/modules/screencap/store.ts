@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { DEFAULT_RECORDING_OPTIONS } from "./preferences";
+import { islandHost } from "../../island";
 
 export interface ScreencapEntry {
   id: number;
@@ -44,6 +45,9 @@ export function recaptureLastRegion(): Promise<void> {
 /** One-shot toast path so a late-mounted ScreenRecorder still shows post-capture UI. */
 let pendingScreenshotToastPath: string | null = null;
 let captureListenerStarted = false;
+type Translate = (key: string, fallback: string) => string;
+let captureTranslate: Translate = (_key, fallback) => fallback;
+const CAPTURE_COMPLETE_ISLAND_ID = "screencap.capture-complete";
 
 export function queueScreenshotToast(path: string): void {
   pendingScreenshotToastPath = path;
@@ -56,7 +60,8 @@ export function takeScreenshotToast(): string | null {
 }
 
 /** Call once from the main webview so captures are queued even if the module is unmounted. */
-export function ensureCaptureToastListener(): void {
+export function ensureCaptureToastListener(t?: Translate): void {
+  if (t) captureTranslate = t;
   if (captureListenerStarted || typeof window === "undefined") return;
   if (!("__TAURI_INTERNALS__" in window)) return;
   captureListenerStarted = true;
@@ -64,6 +69,62 @@ export function ensureCaptureToastListener(): void {
     const path = event.payload?.path;
     if (!path || !path.toLowerCase().endsWith(".png")) return;
     queueScreenshotToast(path);
+    const filename = path.split(/[\\/]/).pop() || path;
+    const showCaptured = () => {
+      islandHost.show({
+        id: CAPTURE_COMPLETE_ISLAND_ID,
+        priority: "toast",
+        source: "module",
+        placement: "docked-or-float",
+        ttlMs: 10_000,
+        content: {
+          identity: { iconName: "camera" },
+          primary: captureTranslate("screencap.capture.saved", "Screenshot saved"),
+          secondary: filename,
+          tone: "success",
+          action: {
+            id: "copy",
+            label: captureTranslate("screencap.capture.copy", "Copy"),
+          },
+        },
+        actions: {
+          copy: async () => {
+            try {
+              await invoke("screencap_copy_image_to_clipboard", { path });
+              islandHost.show({
+                id: CAPTURE_COMPLETE_ISLAND_ID,
+                priority: "toast",
+                source: "module",
+                placement: "docked-or-float",
+                ttlMs: 2_400,
+                content: {
+                  identity: { iconName: "camera" },
+                  primary: captureTranslate("screencap.capture.copied", "Screenshot copied"),
+                  secondary: filename,
+                  tone: "success",
+                  effect: { kind: "orbit", nonce: Date.now() },
+                },
+              });
+            } catch (copyError) {
+              islandHost.show({
+                id: CAPTURE_COMPLETE_ISLAND_ID,
+                priority: "error",
+                source: "module",
+                placement: "docked-or-float",
+                ttlMs: 6_000,
+                content: {
+                  identity: { iconName: "camera" },
+                  primary: captureTranslate("screencap.capture.copyFailed", "Copy failed"),
+                  secondary: String(copyError),
+                  tone: "danger",
+                },
+              });
+            }
+          },
+        },
+      });
+    };
+    showCaptured();
   });
   // Screenshot → OCR → Text Toolbox (editor destination). Clipboard destination
   // is handled natively in Rust; editor needs a main-webview tab switch.

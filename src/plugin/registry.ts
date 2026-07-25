@@ -28,6 +28,7 @@ import {
   parseIntervalMs,
   peekLastRunAt,
   peekNextRunAt,
+  resolveBackgroundNextRunAt,
   usePluginBackgroundStore,
 } from "./backgroundActivity";
 import { clearPluginIcons } from "./pluginIconRegistry";
@@ -166,22 +167,12 @@ function scheduleBackgroundCommand(command: RegisteredCommand): void {
   const existing = bg.getJob(command.pluginId, command.name);
   const lastRunAt = existing?.lastRunAt ?? peekLastRunAt(command.pluginId, command.name);
   const now = Date.now();
-  let nextRunAt =
-    existing?.nextRunAt != null && Number.isFinite(existing.nextRunAt) && existing.nextRunAt > 0
-      ? existing.nextRunAt
-      : peekNextRunAt(command.pluginId, command.name);
-
-  // Host-level throttle: never schedule sooner than a full interval after last run.
-  // Protects against ephemeral Cache bugs and delay=0 storm after sleep/wake.
-  if (lastRunAt != null && Number.isFinite(lastRunAt)) {
-    const earliest = lastRunAt + intervalMs;
-    if (nextRunAt == null || nextRunAt < earliest) nextRunAt = earliest;
-  }
-  if (nextRunAt == null || nextRunAt <= now) {
-    // First arm, or overdue: wait a full interval from now (do not fire immediately
-    // on every plugin load / resume — that made Bing wallpaper thrash).
-    nextRunAt = now + intervalMs;
-  }
+  const nextRunAt = resolveBackgroundNextRunAt({
+    now,
+    intervalMs,
+    lastRunAt,
+    nextRunAt: existing?.nextRunAt ?? peekNextRunAt(command.pluginId, command.name),
+  });
 
   const delay = Math.max(1000, nextRunAt - now);
   bg.markScheduled(command, now + delay);

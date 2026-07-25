@@ -78,7 +78,7 @@ export default function AppearanceSettings({
   };
 
   return (
-    <div className="qx-settings-page">
+    <div className="qx-settings-page qx-appearance-settings">
       <SettingsCard title={t("appearance.surface.title", "Theme & Surface")}>
         <Row
           title={t("appearance.appIcon", "Application Icon")}

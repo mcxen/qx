@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 export interface RssFeed {
   id: number;
@@ -44,6 +45,16 @@ export type RssView = "feeds" | "articles" | "detail";
 
 export type ArticleFilter = "all" | "unread" | "starred";
 
+export interface RssRefreshProgress {
+  scope: "feed" | "all";
+  phase: "fetching" | "saving" | "finished";
+  feedId?: number | null;
+  feedTitle?: string | null;
+  completed: number;
+  total: number;
+  failed: number;
+}
+
 interface RssStore {
   view: RssView;
   selectedFeedId: number | null;
@@ -62,6 +73,7 @@ interface RssStore {
   loading: boolean;
   error: string | null;
   refreshingFeedId: number | null;
+  refreshProgress: RssRefreshProgress | null;
   statusMessage: string | null;
 
   setView: (v: RssView) => void;
@@ -125,6 +137,7 @@ export const useRssStore = create<RssStore>((set, get) => ({
   loading: false,
   error: null,
   refreshingFeedId: null,
+  refreshProgress: null,
   statusMessage: null,
 
   setView: (view) => set({ view }),
@@ -178,8 +191,27 @@ export const useRssStore = create<RssStore>((set, get) => ({
 
   refreshFeed: async (id) => {
     if (!isTauriRuntime()) return;
-    set({ refreshingFeedId: id, error: null });
+    if (get().refreshingFeedId != null) return;
+    set({
+      refreshingFeedId: id,
+      refreshProgress: {
+        scope: "feed",
+        phase: "fetching",
+        feedId: id,
+        feedTitle: get().feeds.find((feed) => feed.id === id)?.title ?? null,
+        completed: 0,
+        total: 1,
+        failed: 0,
+      },
+      error: null,
+    });
+    let unlisten: (() => void) | null = null;
     try {
+      unlisten = await listen<RssRefreshProgress>("rss:refresh-progress", (event) => {
+        if (event.payload.scope === "feed" && event.payload.feedId === id) {
+          set({ refreshProgress: event.payload });
+        }
+      });
       await invoke<number>("rss_refresh_feed", { id });
       await get().loadFeeds();
       if (get().view === "articles" && get().selectedFeedId === id) {
@@ -188,21 +220,43 @@ export const useRssStore = create<RssStore>((set, get) => ({
     } catch (e) {
       set({ error: String(e) });
     } finally {
-      set({ refreshingFeedId: null });
+      unlisten?.();
+      set({ refreshingFeedId: null, refreshProgress: null });
     }
   },
 
   refreshAll: async () => {
     if (!isTauriRuntime()) return;
-    set({ refreshingFeedId: -1, error: null });
+    if (get().refreshingFeedId != null) return;
+    const knownTotal = get().feeds.length;
+    set({
+      refreshingFeedId: -1,
+      refreshProgress: {
+        scope: "all",
+        phase: "fetching",
+        feedId: null,
+        feedTitle: null,
+        completed: 0,
+        total: knownTotal,
+        failed: 0,
+      },
+      error: null,
+    });
+    let unlisten: (() => void) | null = null;
     try {
+      unlisten = await listen<RssRefreshProgress>("rss:refresh-progress", (event) => {
+        if (event.payload.scope === "all") {
+          set({ refreshProgress: event.payload });
+        }
+      });
       await invoke<number>("rss_refresh_all");
       await get().loadFeeds();
       if (get().view === "articles") await get().loadArticles();
     } catch (e) {
       set({ error: String(e) });
     } finally {
-      set({ refreshingFeedId: null });
+      unlisten?.();
+      set({ refreshingFeedId: null, refreshProgress: null });
     }
   },
 

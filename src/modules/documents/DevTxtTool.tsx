@@ -58,6 +58,7 @@ type TextFileEntry = {
 };
 
 type FocusRegion = "docs-files" | "docs-editor" | "docs-actions";
+type DocFilter = "all" | DocLanguage;
 
 /** Master–detail regions (list | editor | actions) — keep stable ids for keyboard. */
 const DOCS_MD = {
@@ -206,6 +207,7 @@ export default function DevTxtTool() {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingFile, setLoadingFile] = useState(false);
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<DocFilter>("all");
   const [message, setMessage] = useState("");
   const [workspacePath, setWorkspacePath] = useState("");
   const [renamingName, setRenamingName] = useState<string | null>(null);
@@ -594,13 +596,16 @@ export default function DevTxtTool() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return files;
     return files.filter(
       (f) =>
-        f.name.toLowerCase().includes(q)
-        || f.language.toLowerCase().includes(q),
+        (filter === "all" || f.language === filter)
+        && (
+          !q
+          || f.name.toLowerCase().includes(q)
+          || f.language.toLowerCase().includes(q)
+        ),
     );
-  }, [files, query]);
+  }, [files, filter, query]);
 
   const selectedIndex = Math.max(
     0,
@@ -792,12 +797,14 @@ export default function DevTxtTool() {
       if (texts.length === 0) {
         return [
           {
+            id: "clipboard-empty",
             label: t("docs.insertClipboard.empty", "No text clipboard items"),
             disabled: true,
           },
         ];
       }
       return texts.map((entry) => ({
+        id: `clipboard-${entry.id}`,
         label: clipPreviewLine(entry.text),
         detail: `${entry.text.length.toLocaleString()} ${t("docs.stat.chars", "chars")}`,
         onClick: () => insertClipText(entry.text),
@@ -873,11 +880,7 @@ export default function DevTxtTool() {
     const editing = isEditableTarget(e.target);
 
     if (!editing && (region === "docs-files" || region === "docs-actions" || !region)) {
-      if (e.key === "Enter" && region === "docs-files") {
-        e.preventDefault();
-        setEditorOpen(true);
-        window.requestAnimationFrame(() => editorRef.current?.focus());
-      } else if ((e.key === "n" || e.key === "N") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if ((e.key === "n" || e.key === "N") && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         void createNewFile();
       }
@@ -934,6 +937,7 @@ export default function DevTxtTool() {
   const languageActions = useMemo<QxShellAction[]>(
     () =>
       LANGUAGES.map((lang) => ({
+        id: `language-${lang.id}`,
         label: t(lang.labelKey, lang.label),
         disabled: !active || active.language === lang.id,
         onClick: () => void setLanguage(lang.id),
@@ -946,24 +950,40 @@ export default function DevTxtTool() {
   const listActions = useMemo<QxShellAction[]>(
     () => [
       {
+        id: "open-file",
+        label: t("common.open", "Open"),
+        kbd: "Enter",
+        disabled: !active,
+        onClick: () => {
+          if (!active) return;
+          setEditorOpen(true);
+          window.requestAnimationFrame(() => editorRef.current?.focus());
+        },
+      },
+      {
+        id: "new-file",
         label: t("docs.newFile", "New File"),
         kbd: "N",
         onClick: () => void createNewFile(),
       },
       {
+        id: "rename",
         label: t("docs.rename", "Rename"),
         disabled: !active,
         onClick: () => active && startRename(active),
       },
       {
+        id: "open-folder",
         label: t("docs.openFolder", "Open folder"),
         onClick: () => openWorkspace(),
       },
       {
+        id: "refresh",
         label: t("docs.refresh", "Refresh list"),
         onClick: () => void refreshList(selectedNameRef.current),
       },
       {
+        id: "delete-file",
         label: t("docs.deleteFile", "Delete File"),
         tone: "danger" as const,
         disabled: !active,
@@ -977,11 +997,20 @@ export default function DevTxtTool() {
   const editorActions = useMemo<QxShellAction[]>(
     () => [
       {
+        id: "save",
+        label: t("common.save", "Save"),
+        kbd: "CmdOrCtrl+S",
+        disabled: !dirty,
+        onClick: saveExplicit,
+      },
+      {
+        id: "paste",
         label: t("docs.paste", "Paste"),
         disabled: !active,
         onClick: () => void pasteClipboard(),
       },
       {
+        id: "insert-clipboard",
         // Nested Action Panel (Raycast ›): open → filterable last-50 list
         label: t("docs.insertClipboard", "Insert from Clipboard History"),
         kbd: "CmdOrCtrl+Shift+V",
@@ -992,11 +1021,13 @@ export default function DevTxtTool() {
         loadChildren: loadClipboardChildren,
       },
       {
+        id: "copy-all",
         label: t("docs.copyAll", "Copy All"),
         disabled: !content,
         onClick: () => void copyAll(),
       },
       {
+        id: "language",
         // Nested language picker (static children)
         label: t("docs.language", "Language"),
         children: languageActions,
@@ -1102,7 +1133,6 @@ export default function DevTxtTool() {
     },
     onKeyDown: handleModuleKeys,
     island,
-    t,
   });
 
   return (
@@ -1122,36 +1152,28 @@ export default function DevTxtTool() {
           placeholder={t("docs.searchFiles", "Search files…")}
         />
       }
-      trailing={
-        <>
-          {active ? (
-            <span className="qx-shell-meta">
-              {languageLabel(active.language, t)}
-              {dirty ? ` · ${t("docs.dirty", "Unsaved")}` : ""}
-            </span>
-          ) : null}
-          <button
-            className="qx-command-button"
-            type="button"
-            onClick={() => openWorkspace()}
-            title={workspacePath || t("docs.openFolder", "Open folder")}
-          >
-            {t("docs.openFolder", "Open folder")}
-          </button>
-          <button
-            className="qx-command-button primary"
-            type="button"
-            onClick={() => void createNewFile()}
-          >
-            {t("docs.newFile", "New File")}
-          </button>
-          {message ? (
-            <div className="qx-clipboard-status" aria-live="polite">
-              {message}
-            </div>
-          ) : null}
-        </>
-      }
+      topbarFilters={[{
+        id: "document-language",
+        label: t("docs.filter.language", "File type"),
+        value: filter,
+        options: [
+          { value: "all", label: t("common.all", "All") },
+          ...LANGUAGES.map((language) => ({
+            value: language.id,
+            label: t(language.labelKey, language.label),
+          })),
+        ],
+        onChange: (value) => {
+          const nextFilter = value as DocFilter;
+          setFilter(nextFilter);
+          setEditorOpen(false);
+          const nextFile = files.find(
+            (file) => nextFilter === "all" || file.language === nextFilter,
+          );
+          setSelectedName(nextFile?.name ?? null);
+          window.requestAnimationFrame(() => filesListRef.current?.focus());
+        },
+      }]}
       context={
         <div
           className="qx-action-panel"
@@ -1280,21 +1302,7 @@ export default function DevTxtTool() {
         </div>
       }
       island={shell.island}
-      primaryAction={
-        listFocused
-          ? {
-              label: t("docs.newFile", "New File"),
-              tone: "primary",
-              onClick: () => void createNewFile(),
-            }
-          : {
-              label: t("docs.copyAll", "Copy All"),
-              disabled: !content,
-              tone: "primary",
-              onClick: () => void copyAll(),
-            }
-      }
-      secondaryAction={shell.secondaryAction}
+      primaryActionId={listFocused ? (active ? "open-file" : "new-file") : dirty ? "save" : "copy-all"}
       actionTitle={actionTitle}
       actions={documentActions}
       navigation={qxMasterDetailNavigation({

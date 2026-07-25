@@ -84,6 +84,7 @@ export function buildModuleIsland(state: ModuleIslandState): ModuleIslandContent
 }
 
 export type EscapeAction = {
+  id: "escape";
   label: string;
   kbd: string;
   onClick: () => void;
@@ -92,6 +93,7 @@ export type EscapeAction = {
 /** Visible bottom-left Esc capsule (never put Esc on primaryAction). */
 export function qxEscapeAction(leave: () => void): EscapeAction {
   return {
+    id: "escape",
     label: "Esc",
     kbd: "Esc",
     onClick: leave,

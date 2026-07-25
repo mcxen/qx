@@ -38,6 +38,10 @@ Windows 下，`QxShell` 最外沿由八方向 `startResizeDragging` 手柄负责
 `resizable: true` 但鼠标无法拖动改变大小。Tauri/tao 在 macOS 对该 API 返回
 unsupported，因此 macOS 不渲染 WebView 手柄，继续使用 Cocoa/NSPanel 的原生可调整
 大小边缘，避免覆盖层吞掉原生命中。
+Windows WebView2 不保证父级 `data-tauri-drag-region` 穿过铺满顶栏的搜索/控件子树；
+`QxShell` 因此在 8px 顶部/侧边 resize hit zone 内侧保留独立握区，并对顶栏的
+非交互子元素显式调用 `startDragging()`。输入、按钮、链接、select、contenteditable
+与 `data-qx-no-window-drag` 必须排除，避免拖窗抢走文字选择或点击。
 该调用还必须由 `src-tauri/capabilities/default.json` 显式授予
 `core:window:allow-start-resize-dragging`；`core:window:default` 和
 `allow-start-dragging` 都不包含缩放 IPC。
@@ -263,6 +267,14 @@ IME 候选窗口抢焦点。
 搜索 provider 不在 input 事件中直接运行：当前约 45ms 静默后启动，查询变化立即 abort 并
 提升 sequence；渐进结果提交按静默窗口合并，避免 Zustand 外部 store 的同步通知阻塞下一次
 按键。排序 Worker 保持常驻，同一时刻只执行一个任务并仅保留最新等待任务。
+
+### 6.1 窗口内动作
+
+模块动作不是全局快捷键。Feature 只发布稳定 ID 的 `QxShellAction[]`，
+用 `primaryActionId` 指定主动作；QxShell 让 Bottom Bar 与未修饰 Enter 执行同一对象，
+并从集合自动生成 Actions 入口。搜索槽中的 Enter 也遵循该主动作，但 IME 组合输入优先。
+模块不得再写一份 bare Enter handler，也不得注册 `Cmd/Ctrl+K` 或 Esc 的进程级监听。
+文本编辑器和非 Shell 输入框继续保留原生编辑语义。
 
 ---
 

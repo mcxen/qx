@@ -4,14 +4,31 @@ pub mod storage;
 pub mod types;
 
 use rusqlite::params;
+use serde::Serialize;
 use std::path::Path;
 use std::sync::Arc;
-use tauri::{command, Manager, State};
+use tauri::{command, AppHandle, Emitter, Manager, State};
 
 use storage::RssDb;
 use types::{Article, Feed, Folder};
 
 use crate::settings;
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RssRefreshProgress {
+    scope: &'static str,
+    phase: &'static str,
+    feed_id: Option<i64>,
+    feed_title: Option<String>,
+    completed: usize,
+    total: usize,
+    failed: usize,
+}
+
+fn emit_refresh_progress(app: &AppHandle, progress: RssRefreshProgress) {
+    let _ = app.emit("rss:refresh-progress", progress);
+}
 
 /// Always register `RssDb` so invoke commands never hit "state not managed".
 /// If the first open fails (path/permissions/corrupt file), store `None` and
@@ -236,13 +253,61 @@ pub fn rss_toggle_star(state: State<RssDb>, id: i64, is_starred: bool) -> Result
 }
 
 #[command]
-pub async fn rss_refresh_feed(state: State<'_, RssDb>, id: i64) -> Result<usize, String> {
-    let url = with_db(&state, |conn| Ok(storage::feed_url_by_id(conn, id)))?;
-    let url = url.ok_or_else(|| "feed not found".to_string())?;
-    let mut parsed = fetcher::fetch_and_parse(&url).await?;
+pub async fn rss_refresh_feed(
+    app: AppHandle,
+    state: State<'_, RssDb>,
+    id: i64,
+) -> Result<usize, String> {
+    let target = with_db(&state, |conn| Ok(storage::feed_target_by_id(conn, id)))?;
+    let (url, title) = target.ok_or_else(|| "feed not found".to_string())?;
+    emit_refresh_progress(
+        &app,
+        RssRefreshProgress {
+            scope: "feed",
+            phase: "fetching",
+            feed_id: Some(id),
+            feed_title: Some(title.clone()),
+            completed: 0,
+            total: 1,
+            failed: 0,
+        },
+    );
+    let mut parsed = match fetcher::fetch_and_parse(&url).await {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            let _ = with_db(&state, |conn| {
+                storage::increment_feed_error(conn, id).map_err(|e| format!("{e}"))
+            });
+            emit_refresh_progress(
+                &app,
+                RssRefreshProgress {
+                    scope: "feed",
+                    phase: "finished",
+                    feed_id: Some(id),
+                    feed_title: Some(title),
+                    completed: 1,
+                    total: 1,
+                    failed: 1,
+                },
+            );
+            return Err(error);
+        }
+    };
     parsed.icon = icon_cache::resolve(&url, &parsed.icon).await;
+    emit_refresh_progress(
+        &app,
+        RssRefreshProgress {
+            scope: "feed",
+            phase: "saving",
+            feed_id: Some(id),
+            feed_title: Some(title.clone()),
+            completed: 0,
+            total: 1,
+            failed: 0,
+        },
+    );
     let count = parsed.articles.len();
-    with_db(&state, |conn| {
+    if let Err(error) = with_db(&state, |conn| {
         for a in &parsed.articles {
             let _ = store_article(conn, id, a);
         }
@@ -254,23 +319,88 @@ pub async fn rss_refresh_feed(state: State<'_, RssDb>, id: i64) -> Result<usize,
         storage::update_feed_meta(conn, id, &parsed.title, &parsed.icon)
             .map_err(|e| format!("{e}"))?;
         Ok::<(), String>(())
-    })?;
+    }) {
+        emit_refresh_progress(
+            &app,
+            RssRefreshProgress {
+                scope: "feed",
+                phase: "finished",
+                feed_id: Some(id),
+                feed_title: Some(title),
+                completed: 1,
+                total: 1,
+                failed: 1,
+            },
+        );
+        return Err(error);
+    }
+    emit_refresh_progress(
+        &app,
+        RssRefreshProgress {
+            scope: "feed",
+            phase: "finished",
+            feed_id: Some(id),
+            feed_title: Some(title),
+            completed: 1,
+            total: 1,
+            failed: 0,
+        },
+    );
     Ok(count)
 }
 
 #[command]
-pub async fn rss_refresh_all(state: State<'_, RssDb>) -> Result<usize, String> {
+pub async fn rss_refresh_all(app: AppHandle, state: State<'_, RssDb>) -> Result<usize, String> {
     let feeds = with_db(&state, |conn| {
-        storage::all_feed_urls(conn).map_err(|e| format!("{e}"))
+        storage::all_feed_targets(conn).map_err(|e| format!("{e}"))
     })?;
 
+    let feed_count = feeds.len();
     let mut total = 0usize;
-    for (id, url) in feeds {
+    let mut completed = 0usize;
+    let mut failed = 0usize;
+    emit_refresh_progress(
+        &app,
+        RssRefreshProgress {
+            scope: "all",
+            phase: "fetching",
+            feed_id: None,
+            feed_title: None,
+            completed,
+            total: feed_count,
+            failed,
+        },
+    );
+    for (id, url, title) in feeds {
+        emit_refresh_progress(
+            &app,
+            RssRefreshProgress {
+                scope: "all",
+                phase: "fetching",
+                feed_id: Some(id),
+                feed_title: Some(title.clone()),
+                completed,
+                total: feed_count,
+                failed,
+            },
+        );
         match fetcher::fetch_and_parse(&url).await {
             Ok(mut parsed) => {
                 parsed.icon = icon_cache::resolve(&url, &parsed.icon).await;
-                total += parsed.articles.len();
-                let _ = with_db(&state, |conn| {
+                emit_refresh_progress(
+                    &app,
+                    RssRefreshProgress {
+                        scope: "all",
+                        phase: "saving",
+                        feed_id: Some(id),
+                        feed_title: Some(title.clone()),
+                        completed,
+                        total: feed_count,
+                        failed,
+                    },
+                );
+                let article_count = parsed.articles.len();
+                let stored = with_db(&state, |conn| {
                     for a in &parsed.articles {
                         let _ = store_article(conn, id, a);
                     }
@@ -279,13 +409,32 @@ pub async fn rss_refresh_all(state: State<'_, RssDb>) -> Result<usize, String> {
                         .map_err(|e| format!("{e}"))?;
                     Ok::<(), String>(())
                 });
+                if stored.is_ok() {
+                    total += article_count;
+                } else {
+                    failed += 1;
+                }
             }
             Err(_) => {
+                failed += 1;
                 let _ = with_db(&state, |conn| {
                     storage::increment_feed_error(conn, id).map_err(|e| format!("{e}"))
                 });
             }
         }
+        completed += 1;
+        emit_refresh_progress(
+            &app,
+            RssRefreshProgress {
+                scope: "all",
+                phase: "fetching",
+                feed_id: Some(id),
+                feed_title: Some(title),
+                completed,
+                total: feed_count,
+                failed,
+            },
+        );
     }
     let retention = rss_settings().retention_days;
     if retention > 0 {
@@ -293,6 +442,18 @@ pub async fn rss_refresh_all(state: State<'_, RssDb>) -> Result<usize, String> {
             storage::delete_old_articles(conn, retention).map_err(|e| format!("{e}"))
         });
     }
+    emit_refresh_progress(
+        &app,
+        RssRefreshProgress {
+            scope: "all",
+            phase: "finished",
+            feed_id: None,
+            feed_title: None,
+            completed,
+            total: feed_count,
+            failed,
+        },
+    );
     Ok(total)
 }
 

@@ -11,11 +11,11 @@ export function QxActionList({
   empty?: ReactNode;
 }) {
   if (!actions.length) return empty ? <>{empty}</> : null;
-  return actions.map((action, index) => {
+  return actions.map((action) => {
     const shortcut = formatQxShortcut(action.kbd);
     return (
       <Button
-        key={`${action.label}-${index}`}
+        key={action.id}
         className={`qx-action-item${action.tone === "danger" ? " danger" : ""}`}
         variant="ghost"
         type="button"

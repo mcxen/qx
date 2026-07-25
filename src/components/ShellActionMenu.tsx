@@ -154,7 +154,7 @@ export default function ShellActionMenu({
               const nested = actionHasSubmenu(action);
               return (
                 <button
-                  key={`${action.label}-${index}`}
+                  key={action.id}
                   ref={(element) => {
                     itemRefs.current[index] = element;
                   }}

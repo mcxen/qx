@@ -345,6 +345,16 @@ export default function RegionPickerWindow() {
     void pickerListener.catch((listenError) => setError(String(listenError)));
     void topologyListener.catch((listenError) => setError(String(listenError)));
     void stateListener.catch((listenError) => setError(String(listenError)));
+    // The native window can be visible before WebView2 has mounted React in a
+    // remote Windows session. Wait for all listeners, then ask Rust to replay
+    // state and reassert focus/input on the actual picker surface.
+    void Promise.all([pickerListener, topologyListener, stateListener])
+      .then(() => invoke<PickerStatus | null>("screencap_region_picker_ready"))
+      .then((status) => {
+        if (status) setPicker(status);
+        rootRef.current?.focus();
+      })
+      .catch((readyError) => setError(String(readyError)));
     return () => {
       document.body.classList.remove("qx-region-picker-body");
       void pickerListener.then((dispose) => dispose()).catch(() => {});

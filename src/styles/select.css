@@ -323,6 +323,10 @@
 }
 
 .qx-shadcn-toggle-group-item {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   min-width: 0;
   height: 28px;
   padding: 0 10px;

@@ -332,6 +332,8 @@ export function createPluginContext(
         rpc("systemOpenPath", { path }) as ReturnType<PluginContext["system"]["openPath"]>,
       revealPath: (path) =>
         rpc("systemRevealPath", { path }) as ReturnType<PluginContext["system"]["revealPath"]>,
+      saveDownload: (input) =>
+        rpc("systemSaveDownload", input) as ReturnType<PluginContext["system"]["saveDownload"]>,
       openSettings: (section) =>
         rpc("systemOpenSettings", { section }) as ReturnType<
           PluginContext["system"]["openSettings"]

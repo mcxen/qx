@@ -30,6 +30,7 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
 - **Context 侧栏宽度全局统一**：只用 `--qx-context-w`（`QxShell.has-context` 的 grid 第二列）。禁止模块用 inline style / localStorage 改写该变量；列表内部分栏（如 RSS 文章列表宽）可单独 token，不得影响 shell context 列宽。
 - Bottom Bar 使用 `grid-template-columns: auto 1fr auto`。
 - Bottom Island 必须相对窗口居中：`position: absolute; left: 50%; transform: translateX(-50%)`。
+- Windows 无边框主窗口必须在 Top Bar 保留独立拖拽握区；握区位于顶部缩放边缘以内、搜索和按钮以外。顶栏非交互子区域可调用 `startDragging()`，输入框、按钮、链接、选择器与可编辑内容必须保持 `no-drag`，不得用整条透明覆盖层吞掉控件。
 - `.qx-shell-bottombar` 必须 `position: relative`。
 - **Top / Bottom chrome 厚度接近**：共用水平 inset 与相近高度 token，禁止顶栏做成远厚于底栏的「大标题板」。
 - **Launcher 空闲灵动岛可插拔**：模式走 `src/home-island` 注册表；指标采样必须异步非阻塞。System 信息岛默认只展示 CPU / MEM 两项，GPU 采样可保留在共享数据模型中但不在该岛呈现。
@@ -90,14 +91,15 @@ QxShell 的纵向结构高度不得因为窗口左右缩窄、文字变长、筛
 | 键盘 Esc 级联 | `useEscBack` → `onKeyDown` / `stepBack` | 每按一次退一层：inner → query → leave module；命中后 `preventDefault` + `stopPropagation` |
 | Shell 最终兜底 | `QxShell` 内置 | 若模块 `onKeyDown` 未消费 Esc，则触发 `escapeAction.onClick`（应与 `stepBack` 同语义） |
 | Host 阶梯兜底 | `App.performHostEscape` + `moduleEscapeHost` | 焦点不在 Shell 内时仍生效：先 `tryModuleEscapeStep`（`useQxModuleShell` 注册的 `stepBack`，含 RSS 文章列表→源列表），再 leave module → 清空 launcher query → hide。模块已 `preventDefault` 时不二次步进。**禁止**非 launcher 时直接 `setTab("launcher")` 跳过模块内阶梯 |
-| 搜索 / trailing | `search` / `trailing` | 搜索在 Top Bar 主列；筛选与少量上下文操作在 trailing |
+| 搜索 / 内容筛选 / trailing | `search` / `topbarFilters` / `trailing` | 搜索在 Top Bar 主列；内容筛选只发布数据给宿主固定 Select；`trailing` 仅保留不可归入筛选或 Actions 的短状态 |
 | 状态 | `island` / `customIsland` | 轻量任务与位置信息，见 Bottom Island |
-| 主动作 | `primaryAction` / `secondaryAction` / `actions` | 当前上下文真实可执行动作 |
+| 动作 | `actions` + `primaryActionId` | 单一动作集合；稳定 ID 指定 Bottom Bar 与 Enter 的主动作，Shell 自行生成 Actions 入口 |
 | **i18n** | `useT(key, englishFallback)` | **所有用户可见文案**（标题、按钮、空态、toast、confirm）必须可翻译；中文进 `i18n.ts` 的 `zh` 表 |
 
 **禁止：**
 
-- `primaryAction` / `secondaryAction` / `actions[]` 使用 `kbd: "Esc"` / `"Escape"`（Esc 专属 `escapeAction`）。`QxShell` 在 action 匹配时会忽略 Esc。
+- `actions[]` 使用 `kbd: "Esc"` / `"Escape"`（Esc 专属 `escapeAction`）。`QxShell` 在 action 匹配时会忽略 Esc。
+- 为 Bottom Bar、Enter、Context Panel 复制动作，或用无回调 action 充当 Actions 菜单哨兵。动作只声明一次，`id` 必须稳定、非本地化且同层唯一。
 - 在 Chat Settings 等表单页把 “Done” 标成 `kbd: Esc`（会与级联冲突、且违反 UI_SPEC）。
 - 模块硬编码中文或英文 UI 字符串而不走 `useT`（`console` / 开发注释除外）。
 
@@ -116,10 +118,14 @@ return (
     title="Module"
     search={/* search slot */}
     // 底栏 Esc 与键盘同一阶梯（stepBack），不要写成永远 jump 到 launcher
-    escapeAction={{ label: "Esc", kbd: "Esc", onClick: stepBack }}
+    escapeAction={{ id: "escape", label: "Esc", kbd: "Esc", onClick: stepBack }}
     onKeyDown={onKeyDown}
     island={{ label: "Module", detail: "…" }}
-    primaryAction={{ label: "Open", kbd: "↵", onClick: openSelected }}
+    actions={[
+      { id: "open", label: "Open", kbd: "↵", onClick: openSelected },
+      { id: "refresh", label: "Refresh", kbd: "R", onClick: refresh },
+    ]}
+    primaryActionId="open"
   >
     {/* content */}
   </QxShell>
@@ -296,7 +302,7 @@ Advanced → Diagnostics 提供独立的 **Diagnostic Logging** 开关，默认�
 
 ## Top Bar
 
-Top Bar 包含搜索、可选 leading、筛选和少量上下文操作。**不包含模块返回**；返回统一在 Bottom Bar 左下角 Esc。
+Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**不包含模块返回，也不放刷新、新建、导入、截图等命令按钮**；返回统一在 Bottom Bar 左下角 Esc，命令统一进入 Bottom Bar 主动作或 Actions。
 
 列布局：
 
@@ -319,13 +325,14 @@ Top Bar 包含搜索、可选 leading、筛选和少量上下文操作。**不�
 - 搜索是 Top Bar 的主体内容，并保留一个独立、紧凑的输入控件表面；只允许一层边框、背景和 focus ring，不得再包裹第二张搜索卡片或装饰容器。
 - 列表型模块中，搜索文字的起始位置必须与主列表行标题列的起始位置对齐，允许误差不超过 `4px`；对齐对象是标题文字，不是列表外边缘或类型图标。列表行本身不得为「已删除的顶栏返回」预留大段 `padding-left`。
 - Launcher 等带 Context Panel 的两栏 Shell，搜索卡片右边缘必须与 Main Area / Context Panel 分割线对齐，允许误差不超过 `4px`；筛选控件位于右侧 trailing/context 轨道。
-- 搜索占据可用主列；筛选和少量上下文操作固定在 trailing 列，不得把搜索缩成短输入框。
+- 搜索占据可用主列；内容筛选通过 `QxShell.topbarFilters` 发布 `id / label / value / options / onChange`，由宿主固定 Select 渲染在 trailing 列，不得把搜索缩成短输入框。
+- 内置模块和插件都不得在 `trailing` 中自绘 Select、分段按钮或 tabs 充当内容筛选。刷新、新建、导入、录制等命令属于 Bottom Bar / Actions；短状态优先进入 Island，避免 Top Bar 重新变成工具按钮排。
 - Quick Entries 不以成组图标占用 Top Bar；它们保留在 Context Panel、Actions 或专用入口中。Top Bar trailing 只保留筛选和当前上下文必需操作。
 - Launcher 右侧默认 Quick Entries 只保留剪贴板、RSS 阅读、设置和文件搜索。文件搜索入口切换到 Files scope、清空旧 query 并聚焦搜索框；其他模块仍可由用户在编辑模式中自行添加。
 - Launcher 的 All / Files 搜索中，每次非空 query 变化（输入、删除、粘贴）都必须立即调用文件搜索 pass 0；后续 pass 可异步增量合并，但不得以字符数阈值、Enter 或失焦作为首次调用条件。旧请求必须由序号/取消信号隔离，不能覆盖新 query。
 - 文件结果只按 leaf name 命中，不以父目录制造相关性。短 ASCII 词（四字符及以下，例如 `Siri`）只允许字面量与弱分隔匹配，不生成逐字符通配符；更长 ASCII 缩写及至少三字符的非 ASCII 查询才允许密集有序子序列召回。Cardinal、Spotlight 与 Everything 的候选必须经过同一后置匹配，分类内先按名称相关性、再按修改时间排序。
 - trailing 操作不得挤压搜索框到不可输入。
-- 声明式 Workbench 的 Top Bar 由宿主统一组合：搜索只占 `search` 主列，tabs / `filters[]` / 后台状态只占紧凑 `trailing` 列；筛选由宿主 Select 渲染并通过 `onFilter(id, value)` 回传。插件不得把这些控件再包进一个可伸缩容器。统计、loading 与 error 信息属于 Main Area 状态行，不得把 Top Bar 撑成第二层。
+- 声明式 Workbench 的 Top Bar 由宿主统一组合：搜索只占 `search` 主列，tabs 与 `filters[]` 统一投影为 `topbarFilters` 固定 Select；筛选变更继续通过 `onTab(id)` / `onFilter(id, value)` 回传。插件不得提供筛选 DOM 或 CSS。后台状态进入紧凑宿主状态或 Island；统计、loading 与 error 信息属于 Main Area 状态行，不得把 Top Bar 撑成第二层。
 - Workbench 是结构化业务表面，不是 CLI 专用皮肤。CLI、HTTP 与 typed
   `context.system.*` 数据源均可复用 List / Gallery / Detail / tabs / Actions；
   Sysinfo 是系统 API 数据源的参考。只有图表、地图、画布等无法表达为宿主结构化
@@ -434,7 +441,7 @@ Context Panel：
   - **Settings** → `closeSettings()`（`openSettings` 记录的一层 `returnTo`：调用方模块/插件，否则 launcher）。禁止 Settings leave 写死 `setTab("launcher")`。
   - 子视图（如 QxAI chat/settings、RSS detail）→ 回到模块内上一级列表。
   - 录制等临时态可先停任务 / 丢弃草稿，再在级联下一层离开。
-- 禁止用右侧 `primaryAction` / `secondaryAction` 的 `kbd: "Esc"` 替代左下角 Esc；Esc 快捷键归属左侧。
+- 禁止用右侧 `actions[]` 的 `kbd: "Esc"` 替代左下角 Esc；Esc 快捷键归属左侧。
 
 ### 中间 · Bottom Island（QxIsland）
 
@@ -444,9 +451,15 @@ Context Panel：
 - 模块 `island` prop 经 shim 写入 session store；`customIsland` 为分类例外（如录屏 HUD），会抑制 store docked。
 - 文本单行截断；progress 默认使用 Surface 下层的浅蓝背景从左向右填充，也可由
   生产者选择宿主图标环、Surface 环或文案列短线；任何样式都不得撑高底栏或遮挡交互。
+- Launcher 主搜索的扫描与结果进度固定使用线条表达：扫描态保留专用 step bar，
+  搜索完成态显式使用 `compact-line`，不得继承普通任务的 `surface-fill` 默认值。
+- Island 文案未溢出时必须完整显示，不得套用边缘渐隐；只有宿主确认 marquee
+  实际溢出后才启用左右遮罩和滚动，首尾字符不能被图标、进度层或遮罩覆盖。
 - 不确定进度只使用宿主动画枚举：`wave`、`dots`、`spinner`、`pulse`。Producer
   不提供 SVG、DOM、CSS 或伪造百分比。session
-  winner 切换使用宿主短过渡，普通 progress/文案 update 不重复触发入场动画。
+  winner 切换只允许宿主短淡入，普通 progress/文案 update 不重复触发入场动画。
+  加载动画只能在固定尺寸的内部盒子中改变描边、旋转、透明度或缩放，不得对 Surface、
+  整行内容或加载元素做纵向位移，也不得通过动态高度造成灵动岛跳动。
 - `countdown` 使用绝对 `endsAt` 或暂停态 `remainingMs`；宿主以等宽 tabular 数字实时渲染，docked / floating 不依赖生产者每秒推送文本。
 - 普通模块 / 插件 slots 岛左侧由宿主按 `openTarget` 渲染 **24px 圆角矩形模块图标**；
   点击直接回到该内置模块或插件 Panel。内置 `QxShell` 默认从稳定 `islandKey` 命名空间
@@ -484,11 +497,12 @@ Context Panel：
 
 ### 右侧 · Actions
 
-- 只显示当前上下文真实可执行动作（`primaryAction` / `secondaryAction` / `actions`）。
+- 只消费当前上下文的单一 `actions[]`。`primaryActionId` 指向其中一个稳定 ID，投影为主按钮与未修饰 Enter；Actions 菜单和 Context Panel 引用相同对象。
 - 无可用动作时不渲染按钮。
 - Bottom Bar 动作按钮不使用 pointer hover 改变颜色、边框或亮度；默认状态必须保持可读，交互反馈使用 `:focus-visible` 与 `:active`。
 - 菜单入口文案由 Shell 固定为中文“操作”、英文 `Action`，快捷键固定为平台化的
   `Cmd/Ctrl+K`；模块不得覆盖为“终端操作”等领域名称。
+- 禁止模块用 `onKeyDown` 再实现一份 bare Enter 业务语义；搜索框中的未修饰 Enter 也由 Shell 执行当前主动作，IME 组合输入除外。
 - 窄窗口可压缩主动作或隐藏 Island 次要信息，但不得隐藏 Action 的快捷键提示；
   Action 文案可截断，快捷键本身必须保持完整且不参与收缩。
 - `Action` 打开临时菜单，不把菜单内容塞进 Context Panel。
@@ -658,6 +672,8 @@ Clipboard：
 RSS：
 
 - 阅读器可使用三栏：Feed / Article List / Detail。
+- “刷新订阅”只刷新当前 Feed；“刷新全部”必须读取数据库中的完整订阅集合逐个执行真实 HTTP 请求，不能只处理当前列表选中项。
+- 刷新灵动岛不得使用计时器或固定百分比模拟网络进度。单个 Feed 请求中显示 activity；刷新全部时按 `已完成订阅数 / 全部订阅数` 计算确定进度，并显示当前 Feed 与失败数。解析、图标解析和数据库提交完成后，该 Feed 才计入 completed。
 - Feed 图标必须优先读取 Qx 持久化的小尺寸本地缓存；远程 icon/favicon 只用于首次填充或低频过期刷新，打开阅读器不得为每个订阅重复下载图标。缓存图标保持适合列表显示的尺寸并保留字母占位降级。
 - Article List / Detail 使用 `useQxListSelection` + `useQxMasterDetail` 标准端口；左侧文章列表不得另造键盘导航或选中状态。
 - 三栏宽度可以拖拽调整，宽度写入本地状态或设置。
@@ -683,7 +699,8 @@ Screen Capture：
 - 延迟 0/3/5s 可配置；倒计时期间圈选窗穿透桌面输入，Esc 取消倒计时。
 - 窗口模式：悬停高亮可见窗口轮廓，单击选定后进入与区域相同的精修/确认路径。
 - “开始截图”和“开始录制”是两个独立 Launcher command，也是默认关闭、可录入的全局快捷动作。
-- 截图完成后的默认动作可配置为“自动复制到剪贴板”或“仅保存”；复制失败不得删除已经保存并写入历史的 PNG。模块内展示轻量 post-capture toast（打开 / 复制 / 显示）。
+- 截图完成后的默认动作可配置为“自动复制到剪贴板”或“仅保存”；复制失败不得删除已经保存并写入历史的 PNG。模块内展示轻量 post-capture toast（打开 / 复制 / 显示），宿主 Bottom Island 同时提供短时“复制”动作；复制成功后在原岛显示完成反馈。
+- Windows 远程桌面会话不得继续使用可能“成功返回黑帧”的 WGC still-frame 路径，应直接走 GDI 兼容捕获；实体机会话继续优先使用 WGC。WGC 返回近全黑空帧时同样回退 GDI。透明 WebView2 圈选层挂载后必须通过 ready 握手重放 session 并重新置前/聚焦，避免远程环境中窗口已创建但选择器不可见或不接收输入。
 - 捕获历史支持 **列表 / 图库** 两种持久化视图：未打开条目时集合占满 Main Area；选择条目后，两种视图都切换为标准 Workbench 主从布局，左侧保留当前 List / Gallery 集合，右侧显示捕获详情。两种视图必须共享选择、预览、删除、Shell 键盘导航和 Actions，不得维护两份历史状态。
 - 捕获历史默认使用 Gallery：浏览态让缩略图网格占满 Main Area，打开卡片后保留左侧 Gallery 并在右侧显示详情，Esc 只关闭详情并返回全宽 Gallery；List 仍作为用户主动选择的紧凑模式保留，并遵循同一主从切换。
 - 无屏幕录制权限时，底部捕获灵动岛只显示权限提示和“获取权限”动作；权限确认后才显示“开始截图”和“设置”动作。
@@ -964,11 +981,11 @@ search={
 | `escapeAction` | 左下 Esc（`label/kbd: Esc`，`onClick: leave`） |
 | `onKeyDown` | Esc 级联 + 模块附加键 |
 | `island` | 来自 `island` 或 `islandState`（loading → error → idle） |
-| `secondaryAction` | 右下 Actions 菜单（可关） |
+| `actions` / `primaryActionId` | 右下主动作与 Actions 菜单；Shell 拥有菜单触发器 |
 
 内置与 **扩展 PluginHost** 共用。纯函数 `buildModuleIsland` / `qxEscapeAction` 可供非 React 适配层调用。  
 `QxShell.islandKey` 必须是稳定、非本地化的 route identity，禁止从可见标题推导。普通 `island` prop 只由 shim 写入 session store，底栏只由 `QxIslandDockSlot` 读取并渲染 winner；模块不得同时直接渲染 props 和写 store。`customIsland` 仅保留录屏 HUD 等分类例外，并抑制普通 docked winner。
-内置模块与 custom panel 仍自管 `primaryAction` / `actions` / `navigation` / 内容区；声明式插件 Workbench 只发布纯数据，由 PluginHost 按同一 QxShell 契约渲染列表、Gallery、详情、导航和 Actions。List 使用 Raycast 式图标 / 两行文字 / trailing accessory 三轨布局，选中态为带内边距的圆角整行高亮；标题与副标题只能在文字轨内省略，badge / meta 不得覆盖正文。Gallery 使用宿主网格、图片懒加载、同一选中/滚动协议与 item Actions，不允许插件复制自绘图库 chrome。Workbench 的 Context Panel 只呈现动作，不复制详情。
+内置模块与 custom panel 仍自管 `actions` / `primaryActionId` / `navigation` / 内容区；声明式插件 Workbench 只发布纯数据，由 PluginHost 按同一 QxShell 契约渲染列表、Gallery、详情、导航和 Actions。List 使用 Raycast 式图标 / 两行文字 / trailing accessory 三轨布局，选中态为带内边距的圆角整行高亮；标题与副标题只能在文字轨内省略，badge / meta 不得覆盖正文。Gallery 使用宿主网格、图片懒加载、同一选中/滚动协议与 item Actions，不允许插件复制自绘图库 chrome。Workbench 的 Context Panel 只呈现动作，不复制详情。
 第三方插件作者的最小布局、明暗对比度、Custom Panel token 与 Action 层级规范见
 [`public/doc/plugin-ui-guidelines.md`](public/doc/plugin-ui-guidelines.md)。插件 iframe 必须由
 宿主同步 resolved Light/Dark、`.dark` 与公开语义 token；Custom Panel 不得依赖只适合
@@ -1070,8 +1087,9 @@ const locale = useLocale();
 t("clipboard.title", "Clipboard History")
 
 // ✅ 快捷键：不走 t()
-escapeAction={{ label: "Esc", kbd: "Esc", onClick: goBack }}
-primaryAction={{ label: t("common.copy", "Copy"), kbd: "↵", onClick: copy }}
+escapeAction={{ id: "escape", label: "Esc", kbd: "Esc", onClick: goBack }}
+actions={[{ id: "copy", label: t("common.copy", "Copy"), kbd: "↵", onClick: copy }]}
+primaryActionId="copy"
 
 // ✅ 日期
 new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date)

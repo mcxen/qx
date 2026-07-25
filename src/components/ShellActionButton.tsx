@@ -2,6 +2,8 @@ import { Button } from "./ui";
 import { formatQxShortcut } from "../utils/keyboard";
 
 export interface QxShellAction {
+  /** Stable, non-localized identity shared by Bottom Bar, Enter, Context and Actions. */
+  id: string;
   label: string;
   /** Optional secondary line under the label (e.g. char count). */
   detail?: string;
@@ -37,16 +39,19 @@ export default function ShellActionButton({
   triggerAttrs,
 }: {
   action?: QxShellAction;
-  variant?: "normal" | "escape";
+  variant?: "normal" | "primary" | "escape";
   /** Extra DOM attributes (e.g. action-menu trigger marker for outside-dismiss). */
   triggerAttrs?: Record<string, string | boolean | undefined>;
 }) {
-  if (!action || action.disabled) return null;
+  if (!action) return null;
   const shortcutLabel = formatQxShortcut(action.kbd);
+  const resolvedTone = variant === "primary" && (action.tone == null || action.tone === "normal")
+    ? "primary"
+    : action.tone ?? "normal";
 
   return (
     <Button
-      className={`qx-shell-action tone-${action.tone ?? "normal"} variant-${variant}`}
+      className={`qx-shell-action tone-${resolvedTone} variant-${variant}`}
       disabled={action.disabled}
       onClick={action.onClick}
       type="button"

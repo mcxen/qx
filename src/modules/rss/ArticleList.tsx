@@ -18,8 +18,9 @@ import ImageLightbox from "./ImageLightbox";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { QxActionPanel } from "../../components/QxActionPanel";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
-import { SegmentedControl } from "../../components/ui";
 import { useArticleReadingProgress } from "./useArticleReadingProgress";
+import { useT } from "../../i18n";
+import { buildRssRefreshIsland } from "./refreshProgress";
 
 interface V2exReply {
   id: number;
@@ -79,6 +80,7 @@ function readStoredWidth(key: string, fallback: number): number {
 }
 
 export default function ArticleList() {
+  const t = useT();
   const {
     feeds,
     selectedFeedId,
@@ -86,6 +88,7 @@ export default function ArticleList() {
     articles,
     readingArticles,
     currentArticle,
+    refreshProgress,
     selectedIndex,
     setSelectedIndex,
     filter,
@@ -100,6 +103,7 @@ export default function ArticleList() {
     toggleStar,
     saveReadingProgress,
     refreshFeed,
+    refreshAll,
     goBack,
   } = useRssStore();
 
@@ -382,12 +386,7 @@ export default function ArticleList() {
     },
     onKeyDown: handleModuleKeys,
     island: refreshingFeedId != null
-      ? {
-          label: "RSS Syncing",
-          detail: feed?.title,
-          progress: 55,
-          actionLabel: "Pause",
-        }
+      ? buildRssRefreshIsland(refreshProgress, feed?.title, t)
       : currentArticle
         ? {
             label: "Reading RSS",
@@ -407,15 +406,16 @@ export default function ArticleList() {
   const actions = useMemo<QxShellAction[]>(() => {
     const list: QxShellAction[] = [
       {
-        label: currentArticle ? "Close Detail" : "Read Article",
-        kbd: currentArticle ? "Esc" : "↵",
-        disabled: !focusArticle,
+        id: "read-article",
+        label: "Read Article",
+        kbd: "↵",
+        disabled: !focusArticle || Boolean(currentArticle),
         onClick: () => {
-          if (currentArticle) goBack();
-          else if (focusArticle) void openArticleForReading(focusArticle.id);
+          if (focusArticle && !currentArticle) void openArticleForReading(focusArticle.id);
         },
       },
       {
+        id: "toggle-star",
         label: focusArticle?.is_starred ? "Unstar" : "Star",
         kbd: "S",
         disabled: !focusArticle,
@@ -424,6 +424,7 @@ export default function ArticleList() {
         },
       },
       {
+        id: "toggle-read",
         label: focusArticle?.is_read ? "Mark Unread" : "Mark Read",
         kbd: "U",
         disabled: !focusArticle,
@@ -432,6 +433,7 @@ export default function ArticleList() {
         },
       },
       {
+        id: "open-browser",
         label: "Open in Browser",
         kbd: "O",
         disabled: !focusArticle?.link,
@@ -440,6 +442,7 @@ export default function ArticleList() {
         },
       },
       {
+        id: "load-original",
         label: originalContent ? "Revert to Feed Content" : loadingOriginal ? "Loading..." : "Load Full Article",
         kbd: "L",
         disabled: !currentArticle?.link || loadingOriginal,
@@ -456,6 +459,7 @@ export default function ArticleList() {
         },
       },
       {
+        id: "refresh-feed",
         label: "Refresh Feed",
         kbd: "R",
         disabled: selectedFeedId == null,
@@ -463,9 +467,16 @@ export default function ArticleList() {
           if (selectedFeedId != null) void refreshFeed(selectedFeedId);
         },
       },
+      {
+        id: "refresh-all",
+        label: "Refresh All",
+        disabled: refreshingFeedId != null,
+        onClick: () => void refreshAll(),
+      },
     ];
     if (next) {
       list.push({
+        id: "next-article",
         label: `Next: ${next.title?.slice(0, 40) || "(untitled)"}`,
         kbd: "J",
         onClick: () => void openArticleForReading(next.id),
@@ -473,13 +484,14 @@ export default function ArticleList() {
     }
     if (prev) {
       list.push({
+        id: "previous-article",
         label: `Prev: ${prev.title?.slice(0, 40) || "(untitled)"}`,
         kbd: "K",
         onClick: () => void openArticleForReading(prev.id),
       });
     }
     return list;
-  }, [currentArticle, focusArticle, goBack, loadingOriginal, markRead, next, openArticleForReading, originalContent, prev, refreshFeed, selectedFeedId, toggleStar]);
+  }, [currentArticle, focusArticle, goBack, loadingOriginal, markRead, next, openArticleForReading, originalContent, prev, refreshAll, refreshFeed, refreshingFeedId, selectedFeedId, toggleStar]);
 
   const isReading = Boolean(currentArticle);
 
@@ -521,16 +533,16 @@ export default function ArticleList() {
           placeholder={feed ? `Search in ${feed.title}…` : "Search articles..."}
         />
       }
-      trailing={
-        <SegmentedControl
-          value={filter}
-          onChange={setFilter}
-          options={filterChips.map((chip) => ({
-            value: chip.key,
-            label: chip.label,
-          }))}
-        />
-      }
+      topbarFilters={[{
+        id: "article-state",
+        label: t("rss.articleFilter", "Article filter"),
+        value: filter,
+        options: filterChips.map((chip) => ({
+          value: chip.key,
+          label: chip.label,
+        })),
+        onChange: (value) => setFilter(value as typeof filter),
+      }]}
       context={
         <QxActionPanel
           title="Article Actions"
@@ -539,17 +551,7 @@ export default function ArticleList() {
         />
       }
       island={shell.island}
-      primaryAction={{
-        label: currentArticle?.link ? "Open Original" : selectedArticle ? "Read Article" : "Back",
-        kbd: currentArticle?.link ? "O" : selectedArticle ? "↵" : "Esc",
-        tone: "primary",
-        onClick: () => {
-          if (currentArticle?.link) void openUrl(currentArticle.link);
-          else if (selectedArticle) void openArticleForReading(selectedArticle.id);
-          else goBack();
-        },
-      }}
-      secondaryAction={shell.secondaryAction}
+      primaryActionId={currentArticle?.link ? "open-browser" : selectedArticle ? "read-article" : undefined}
       actionTitle="Article Actions"
       actions={actions}
     >

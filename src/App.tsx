@@ -188,13 +188,11 @@ function ModuleLoadingShell({
   // Same Esc / host-cascade registration path as real modules (moduleEscapeHost).
   const shell = useQxModuleShell({
     leave: onBack,
-    showActionsMenu: false,
     islandState: {
       title,
       loading: true,
       loadingDetail: t("common.loadingModule", "Loading module"),
     },
-    t,
   });
 
   return (
@@ -221,10 +219,12 @@ function ModuleLoadingShell({
         </div>
       }
       island={shell.island}
-      primaryAction={{
+      actions={[{
+        id: "loading",
         label: t("common.loading", "Loading"),
         disabled: true,
-      }}
+      }]}
+      primaryActionId="loading"
     >
       <div
         className="qx-module-loading-stage"
@@ -265,7 +265,6 @@ function ModuleErrorShell({
   const title = getModuleLabel(tab, t);
   const shell = useQxModuleShell({
     leave: onBack,
-    showActionsMenu: false,
     island: {
       label: t("common.moduleError", "Module Error"),
       detail: title,
@@ -273,7 +272,6 @@ function ModuleErrorShell({
       actionLabel: t("common.back", "Back"),
       onAction: onBack,
     },
-    t,
   });
 
   return (
@@ -300,11 +298,13 @@ function ModuleErrorShell({
         </div>
       }
       island={shell.island}
-      primaryAction={{
+      actions={[{
+        id: "back",
         label: t("common.back", "Back"),
         tone: "primary",
         onClick: onBack,
-      }}
+      }]}
+      primaryActionId="back"
     >
       <div className="qx-empty-state">
         {t("common.failedRender", "{name} failed to render.").replace("{name}", title)}
@@ -1078,11 +1078,11 @@ function App() {
 
   useEffect(() => {
     if (!settingsLoaded || !isTauriRuntime()) return;
-    ensureCaptureToastListener();
+    ensureCaptureToastListener(t);
     const pinned = settings.screencap.controls_pinned
       && settings.builtin_modules?.modules?.screencap !== false;
     void invoke("screencap_set_controls_pinned", { pinned }).catch(() => {});
-  }, [settings.builtin_modules?.modules?.screencap, settings.screencap.controls_pinned, settingsLoaded]);
+  }, [settings.builtin_modules?.modules?.screencap, settings.screencap.controls_pinned, settingsLoaded, t]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;

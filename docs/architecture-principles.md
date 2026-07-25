@@ -30,6 +30,14 @@
 | Rust feature module | 领域行为 + 序列化模型 | App 生命周期编排（归 `lib.rs`） |
 | Platform adapter | OS 专有调用 | 跨端业务规则 |
 
+### Action port
+
+模块只发布一个 `QxShellAction[]`，每个动作使用稳定、非本地化且同层唯一的 `id`。
+`primaryActionId` 只是对该集合的引用：QxShell 由它同时派生 Bottom Bar 主按钮和
+未修饰 Enter；Actions 菜单与 Context Panel 消费相同对象。禁止并行维护
+`primaryAction`、模块 Enter handler 或无回调的 Actions 哨兵。Esc 不属于此端口，
+只走 `escapeAction` / `useEscBack`。
+
 新增文件时先问：它的「唯一变化原因」是什么？说不清就拆。
 
 ### O — Open/Closed（对扩展开放，对修改封闭）

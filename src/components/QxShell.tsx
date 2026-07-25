@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { type BottomIslandContent } from "./QxBottomIsland";
 import ShellActionButton, { type QxShellAction } from "./ShellActionButton";
+import { validateQxShellActions } from "./qx-shell/actionProtocol";
 import ShellActionMenu, {
   QX_ACTION_MENU_TRIGGER_ATTR,
   actionHasSubmenu,
@@ -32,9 +33,20 @@ import type {
 } from "../island/types";
 import { defaultIslandOpenTarget } from "../island/session/openTarget";
 import { useT } from "../i18n";
+import { Select } from "./ui";
 
 export type { BottomIslandContent } from "./QxBottomIsland";
 export type { QxShellAction } from "./ShellActionButton";
+
+export interface QxShellTopbarFilter {
+  /** Stable, non-localized filter identity. */
+  id: string;
+  /** Accessible name for the host-rendered Select. */
+  label: string;
+  value: string;
+  options: Array<{ value: string; label: string; disabled?: boolean }>;
+  onChange: (value: string) => void;
+}
 
 type ResizeDirection =
   | "East"
@@ -63,13 +75,16 @@ const WINDOW_RESIZE_HANDLES: Array<{
 // Tauri/tao maps this API to WM_NCLBUTTONDOWN on Windows. macOS explicitly
 // reports it as unsupported, so Cocoa/NSPanel must retain its native resizable
 // edge hit testing instead of having a WebView overlay consume the pointer.
-const USE_EXPLICIT_WINDOW_RESIZE_HANDLES = getQxDesktopPlatform() === "windows";
+const IS_WINDOWS_HOST = getQxDesktopPlatform() === "windows";
+const USE_EXPLICIT_WINDOW_RESIZE_HANDLES = IS_WINDOWS_HOST;
 
 interface QxShellProps {
   title: string;
   visual?: "solid" | "elevated" | "glass";
   search?: ReactNode;
   leading?: ReactNode;
+  /** Host-owned content filters. Modules and plugins publish data, never filter DOM. */
+  topbarFilters?: QxShellTopbarFilter[];
   trailing?: ReactNode;
   children: ReactNode;
   context?: ReactNode;
@@ -95,9 +110,9 @@ interface QxShellProps {
    */
   islandManagedExternally?: boolean;
   escapeAction?: QxShellAction;
-  primaryAction?: QxShellAction;
-  secondaryAction?: QxShellAction;
   actions?: QxShellAction[];
+  /** Stable id projected to the Bottom Bar and unmodified Enter. */
+  primaryActionId?: string;
   actionTitle?: string;
   onBack?: () => void;
   backLabel?: string;
@@ -113,6 +128,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   visual = "solid",
   search,
   leading,
+  topbarFilters,
   trailing,
   children,
   context,
@@ -126,9 +142,8 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   islandOpenTarget,
   islandManagedExternally = false,
   escapeAction,
-  primaryAction,
-  secondaryAction,
   actions,
+  primaryActionId,
   actionTitle,
   onBack,
   backLabel = "Back",
@@ -155,20 +170,10 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   });
 
   const fallbackEscapeAction: QxShellAction = onBack
-    ? { label: backLabel, kbd: "Esc", onClick: onBack }
-    : { label: "Esc", kbd: "Esc" };
+    ? { id: "escape", label: backLabel, kbd: "Esc", onClick: onBack }
+    : { id: "escape", label: "Esc", kbd: "Esc" };
   const leftAction = escapeAction ?? fallbackEscapeAction;
   const hasLeading = Boolean(onBack || leading);
-  const visiblePrimaryAction = primaryAction?.disabled ? undefined : primaryAction;
-  const rawSecondaryAction = secondaryAction?.disabled ? undefined : secondaryAction;
-  const visibleSecondaryAction = rawSecondaryAction && (actions?.length ?? 0) > 0 && !rawSecondaryAction.onClick
-    ? {
-        ...rawSecondaryAction,
-        label: t("common.actions", "Action"),
-        kbd: getQxShortcutPreset().actionMenu,
-      }
-    : rawSecondaryAction;
-  const hasRightActions = Boolean(visiblePrimaryAction || visibleSecondaryAction);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [actionIndex, setActionIndex] = useState(0);
   /** Raycast nested Action Panel stack (root → submenu → …). */
@@ -187,6 +192,21 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   /** Focus target to restore when the Action menu closes (Raycast: Esc back to list). */
   const actionMenuFocusRestoreRef = useRef<HTMLElement | null>(null);
   const menuActions = useMemo(() => actions ?? [], [actions]);
+  const primaryAction = useMemo(
+    () => primaryActionId
+      ? menuActions.find((action) => action.id === primaryActionId)
+      : undefined,
+    [menuActions, primaryActionId],
+  );
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const issues = validateQxShellActions(menuActions, primaryActionId);
+    if (issues.length > 0) {
+      console.warn(`[QxShell:${islandKey}] invalid action protocol`, issues);
+    }
+  }, [islandKey, menuActions, primaryActionId]);
+  const showActionMenu = menuActions.some((action) => action.id !== primaryActionId);
+  const hasRightActions = Boolean(primaryAction || showActionMenu);
   const menuTitle = actionTitle ?? `${title} Actions`;
   const currentMenuLevel = menuStack[menuStack.length - 1];
   const rawLevelActions = currentMenuLevel?.actions ?? menuActions;
@@ -434,7 +454,12 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     // While nested, menuKey/chords apply to the *current* level only; root
     // chords still match primary/secondary chrome when not in a submenu field.
     const levelActions = menuOpen ? activeMenuActions : menuActions;
-    const candidates = [...levelActions, visiblePrimaryAction, visibleSecondaryAction];
+    const candidates = menuOpen
+      ? levelActions
+      : [
+          primaryAction,
+          ...levelActions.filter((action) => action.id !== primaryAction?.id),
+        ];
 
     return candidates.find((action) => {
       if (!action || action.disabled) return false;
@@ -640,10 +665,34 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       return;
     }
 
+    const nativeEvent = event.nativeEvent;
+    const primaryEnterAction = event.key === "Enter"
+      && !event.metaKey
+      && !event.ctrlKey
+      && !event.altKey
+      && !event.shiftKey
+      && primaryAction
+      && !primaryAction.disabled
+      && (primaryAction.onClick || actionHasSubmenu(primaryAction))
+      ? primaryAction
+      : undefined;
+    // Outside native editors, Enter always executes the same stable action
+    // shown in the Bottom Bar. Feature handlers cannot silently replace it.
+    const targetInShellSearch = event.target instanceof Element
+      && Boolean(event.target.closest(".qx-shell-search-slot"));
+    if (
+      primaryEnterAction
+      && (!shouldIgnoreBareShortcut(nativeEvent) || targetInShellSearch)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      runMenuAction(primaryEnterAction);
+      return;
+    }
+
     onKeyDown?.(event);
     if (event.defaultPrevented) return;
 
-    const nativeEvent = event.nativeEvent;
     if (handleNavigationKeyDown(event, navigation)) return;
 
     // Shell is the final keyboard fallback. Inner views, dialogs and search
@@ -690,10 +739,27 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     void getCurrentWindow().startResizeDragging(direction).catch(() => {});
   };
 
+  const startWindowDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!IS_WINDOWS_HOST || event.button !== 0) return;
+    const target = event.target instanceof Element ? event.target : null;
+    // Direct topbar hits are already handled by Tauri's drag-region listener.
+    if (target === event.currentTarget) return;
+    if (
+      target?.closest(
+        "button, a, input, textarea, select, [contenteditable='true'], [data-qx-no-window-drag]",
+      )
+    ) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    void getCurrentWindow().startDragging().catch(() => {});
+  };
+
   return (
     <div
       ref={assignShellRef}
-      className={`qx-shell visual-${visual} ${context ? "has-context" : ""} ${overlayBottom ? "qx-shell-overlay-bottom" : ""} ${className}`}
+      className={`qx-shell visual-${visual} ${IS_WINDOWS_HOST ? "is-windows-host" : ""} ${context ? "has-context" : ""} ${overlayBottom ? "qx-shell-overlay-bottom" : ""} ${className}`}
       style={style}
       aria-label={title}
       onKeyDownCapture={handleKeyDownCapture}
@@ -717,7 +783,15 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       <div
         className={`qx-shell-topbar${hasLeading ? "" : " no-leading"}`}
         data-tauri-drag-region
+        onPointerDown={startWindowDrag}
       >
+        {IS_WINDOWS_HOST ? (
+          <div
+            className="qx-shell-window-drag-handle"
+            data-qx-window-drag-handle
+            aria-hidden="true"
+          />
+        ) : null}
         {onBack ? (
           <button
             className="qx-shell-back"
@@ -731,7 +805,29 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
           leading
         )}
         <div className="qx-shell-search-slot">{search}</div>
-        {trailing && <div className="qx-shell-trailing">{trailing}</div>}
+        {(topbarFilters?.length || trailing) ? (
+          <div className="qx-shell-trailing">
+            {topbarFilters?.length ? (
+              <div
+                className="qx-shell-filter-slot"
+                role="group"
+                aria-label={t("shell.contentFilters", "Content filters")}
+              >
+                {topbarFilters.map((filter) => (
+                  <Select
+                    key={filter.id}
+                    value={filter.value}
+                    options={filter.options}
+                    ariaLabel={filter.label}
+                    className="qx-shell-content-filter"
+                    onChange={filter.onChange}
+                  />
+                ))}
+              </div>
+            ) : null}
+            {trailing ? <div className="qx-shell-trailing-extra">{trailing}</div> : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="qx-shell-main">
@@ -748,24 +844,18 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
         <QxIslandDockSlot exception={customIsland} />
         {hasRightActions ? (
           <div className="qx-shell-actions">
-            <ShellActionButton action={visiblePrimaryAction} />
-            <ShellActionButton
-              action={
-                visibleSecondaryAction && menuActions.length > 0 && !visibleSecondaryAction.onClick
-                  ? {
-                      ...visibleSecondaryAction,
-                      onClick: () => {
-                        openActionMenu();
-                      },
-                    }
-                  : visibleSecondaryAction
-              }
-              triggerAttrs={
-                visibleSecondaryAction && menuActions.length > 0 && !visibleSecondaryAction.onClick
-                  ? { [QX_ACTION_MENU_TRIGGER_ATTR]: true }
-                  : undefined
-              }
-            />
+            <ShellActionButton action={primaryAction} variant="primary" />
+            {showActionMenu ? (
+              <ShellActionButton
+                action={{
+                  id: "qx.actions",
+                  label: t("common.actions", "Action"),
+                  kbd: getQxShortcutPreset().actionMenu,
+                  onClick: openActionMenu,
+                }}
+                triggerAttrs={{ [QX_ACTION_MENU_TRIGGER_ATTR]: true }}
+              />
+            ) : null}
           </div>
         ) : (
           <div className="qx-shell-actions is-empty" aria-hidden="true" />

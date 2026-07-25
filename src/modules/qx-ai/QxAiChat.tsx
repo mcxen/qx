@@ -6,7 +6,6 @@ import { Select, Toggle } from "../../components/ui";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
-import { isEditableTarget } from "../../utils/keyboard";
 import { useSettingsStore } from "../settings/store";
 import { openAgentSettingsTab } from "./AiProviderConfig";
 import { AiMessageContent } from "./message-rendering";
@@ -73,20 +72,6 @@ export default function QxAiChat() {
     void sendMessage(trimmed);
   }, [canChat, input, isCurrentConversationStreaming, sendMessage]);
 
-  const handleModuleKeys = useCallback((e: React.KeyboardEvent) => {
-    // Enter sends only from the chat field; never steal bare letters like N/S.
-    if (
-      e.key === "Enter"
-      && !e.shiftKey
-      && !e.metaKey
-      && !e.ctrlKey
-      && isEditableTarget(e.target)
-    ) {
-      e.preventDefault();
-      handleSend();
-    }
-  }, [handleSend]);
-
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conv?.messages, streamedContent]);
@@ -105,6 +90,7 @@ export default function QxAiChat() {
 
   const actions = useMemo<QxShellAction[]>(() => [
     {
+      id: "send",
       label: isCurrentConversationStreaming
         ? t("qxai.sending", "Sending…")
         : t("qxai.send", "Send"),
@@ -113,23 +99,28 @@ export default function QxAiChat() {
       onClick: handleSend,
     },
     {
+      id: "new-chat",
       label: t("qxai.newChat", "New Chat"),
       onClick: () => createConversation(),
     },
     {
+      id: "clear-messages",
       label: t("qxai.clearMessages", "Clear Messages"),
       disabled: !conv || conv.messages.length === 0,
       onClick: () => clearMessages(),
     },
     {
+      id: "chat-settings",
       label: t("qxai.chatSettings", "Chat Settings"),
       onClick: () => setView("settings"),
     },
     {
+      id: "agent-providers",
       label: t("qxai.agentProviders", "Agent & Providers"),
       onClick: () => openAgentSettingsTab(),
     },
     {
+      id: "delete-chat",
       label: t("qxai.deleteChat", "Delete Chat"),
       tone: "danger",
       disabled: !conv,
@@ -182,9 +173,7 @@ export default function QxAiChat() {
     esc: {
       query: { active: input.length > 0, clear: () => setInput("") },
     },
-    onKeyDown: handleModuleKeys,
     island,
-    t,
   });
 
   const messages = conv?.messages.filter((m) => m.role !== "system") ?? [];
@@ -208,11 +197,6 @@ export default function QxAiChat() {
               : t("qxai.typeMessage", "Type a message… (Enter to send)")
           }
         />
-      }
-      trailing={
-        <button className="qx-command-button" type="button" onClick={() => createConversation()}>
-          {t("qxai.newChat", "New Chat")}
-        </button>
       }
       context={
         <div className="qx-action-panel">
@@ -326,14 +310,7 @@ export default function QxAiChat() {
       }
       island={shell.island}
       escapeAction={shell.escapeAction}
-      primaryAction={{
-        label: isCurrentConversationStreaming ? "…" : t("qxai.send", "Send"),
-        kbd: "Enter",
-        tone: "primary",
-        disabled: isCurrentConversationStreaming || !input.trim() || !canChat,
-        onClick: handleSend,
-      }}
-      secondaryAction={shell.secondaryAction}
+      primaryActionId="send"
       actionTitle="Chat Actions"
       actions={actions}
     >

@@ -263,6 +263,12 @@ for (const rel of MODULE_PANELS) {
   if (!src.includes("useQxModuleShell")) {
     fail(`expected useQxModuleShell in ${rel}`);
   }
+  if (/\b(?:primaryAction|secondaryAction)\s*=/.test(src)) {
+    fail(`${rel} must publish one actions[] set plus primaryActionId`);
+  }
+  if (src.includes("shell.secondaryAction") || src.includes("actionMenuShortcut")) {
+    fail(`${rel} must not depend on legacy Actions-trigger sentinels`);
+  }
 }
 
 if (!exists("docs/module-port-inventory.md")) {
@@ -296,6 +302,54 @@ if (cliWorkbench.includes("function parseJsonLoose")) {
 }
 
 const qxShell = read("src/components/QxShell.tsx");
+for (const token of [
+  "actions?: QxShellAction[]",
+  "primaryActionId?: string",
+  "validateQxShellActions",
+]) {
+  if (!qxShell.includes(token)) fail(`QxShell action protocol missing ${token}`);
+}
+if (qxShell.includes("secondaryAction?:")) {
+  fail("QxShell must own the Actions trigger instead of accepting a sentinel action");
+}
+const launcherSource = read("src/Launcher.tsx");
+if (/\b(?:primaryAction|secondaryAction)\s*=/.test(launcherSource)) {
+  fail("Launcher must publish one actions[] set plus primaryActionId");
+}
+if (!qxShell.includes("topbarFilters?: QxShellTopbarFilter[]")) {
+  fail("QxShell must own the typed Top Bar content-filter port");
+}
+if (!qxShell.includes('className="qx-shell-content-filter"')) {
+  fail("QxShell must render Top Bar filters with the canonical host Select");
+}
+const pluginHostSource = read("src/plugin/PluginHost.tsx");
+if (!pluginHostSource.includes("topbarFilters={topbarFilters}")) {
+  fail("PluginHost must project Workbench tabs/filters through QxShell.topbarFilters");
+}
+const pluginRegistrySource = read("src/plugin/registry.ts");
+if (!pluginRegistrySource.includes("resolveBackgroundNextRunAt")) {
+  fail("plugin registry must use the shared background schedule resolver");
+}
+for (const legacyToken of [
+  "qx-plugin-chrome-tabs",
+  "qx-plugin-workbench-filter",
+]) {
+  if (pluginHostSource.includes(legacyToken)) {
+    fail(`PluginHost must not self-render legacy Top Bar filter chrome: ${legacyToken}`);
+  }
+}
+for (const rel of [
+  "src/Launcher.tsx",
+  "src/modules/clipboard/ClipboardPanel.tsx",
+  "src/modules/documents/DevTxtTool.tsx",
+  "src/modules/rss/ArticleList.tsx",
+  "src/modules/screencap/ScreenRecorder.tsx",
+  "src/modules/v2ex/V2exPanel.tsx",
+]) {
+  if (!read(rel).includes("topbarFilters={")) {
+    fail(`${rel} must publish content filters through QxShell.topbarFilters`);
+  }
+}
 if (!qxShell.includes("startResizeDragging")) {
   fail("QxShell must keep explicit Windows frameless-window resize handles");
 }
@@ -574,6 +628,66 @@ if (bundleOk) {
   }
 }
 
+const actionProtocolOut = path.join(scratch, "actionProtocol.mjs");
+if (bundleProductionModule("src/components/qx-shell/actionProtocol.ts", actionProtocolOut)) {
+  try {
+    const protocol = await import(pathToFileURL(actionProtocolOut).href + `?t=${Date.now()}`);
+    const valid = protocol.validateQxShellActions([
+      { id: "open", label: "Open" },
+      { id: "more", label: "More", children: [{ id: "copy", label: "Copy" }] },
+    ], "open");
+    if (valid.length !== 0) fail(`valid action protocol rejected: ${valid.join("; ")}`);
+    const invalid = protocol.validateQxShellActions([
+      { id: "open", label: "Open" },
+      { id: "open", label: "Duplicate", kbd: "Esc" },
+    ], "missing");
+    for (const token of ["duplicate action id", "Esc belongs", "is missing"]) {
+      if (!invalid.some((issue) => issue.includes(token))) {
+        fail(`action protocol validator did not report ${token}`);
+      }
+    }
+  } catch (e) {
+    fail(`action protocol runtime test: ${e}`);
+  }
+}
+
+const backgroundScheduleOut = path.join(scratch, "backgroundActivity.mjs");
+if (bundleProductionModule("src/plugin/backgroundActivity.ts", backgroundScheduleOut)) {
+  try {
+    const background = await import(
+      pathToFileURL(backgroundScheduleOut).href + `?t=${Date.now()}`
+    );
+    const day = 86_400_000;
+    const first = background.resolveBackgroundNextRunAt({
+      now: 1_000_000,
+      intervalMs: day,
+      lastRunAt: null,
+      nextRunAt: null,
+    });
+    if (first !== 1_000_000 + day) fail("first background schedule must wait one interval");
+    const recovered = background.resolveBackgroundNextRunAt({
+      now: 2 * day,
+      intervalMs: day,
+      lastRunAt: 0.5 * day,
+      nextRunAt: 1.5 * day,
+    });
+    if (recovered !== 2 * day + 1000) {
+      fail("overdue background schedule must recover promptly after resume");
+    }
+    const throttled = background.resolveBackgroundNextRunAt({
+      now: day,
+      intervalMs: day,
+      lastRunAt: 0.75 * day,
+      nextRunAt: day,
+    });
+    if (throttled !== 1.75 * day) {
+      fail("background schedule must retain a full interval after the last run");
+    }
+  } catch (e) {
+    fail(`background schedule runtime test: ${e}`);
+  }
+}
+
 // Pure shell helpers must stay re-exported from useQxModuleShell for module authors.
 const shellSrc = read("src/hooks/useQxModuleShell.ts");
 if (!shellSrc.includes("export function buildModuleIsland")) {
@@ -755,6 +869,23 @@ for (const [leftName, left, rightName, right] of [
       `plugin RPC drift: ${rightName} missing [${missing.join(", ")}], `
       + `${leftName} missing [${extra.join(", ")}]`,
     );
+  }
+}
+
+// Tauri v2 maps Rust snake_case command parameters to camelCase invoke keys.
+// Keep plugin identity host-injected so wallpaper plugins cannot omit or forge it.
+const rpcMethodsSource = read("src/plugin/rpcMethods.ts");
+const wallpaperHandler = rpcMethodsSource.match(
+  /systemSetWallpaper:\s*async[\s\S]*?invoke\("plugin_system_set_wallpaper",\s*\{([\s\S]*?)\}\);/,
+);
+if (!wallpaperHandler) {
+  fail("cannot locate plugin system wallpaper RPC handler");
+} else {
+  if (!/\bpluginId:\s*plugin\.id\b/.test(wallpaperHandler[1])) {
+    fail("systemSetWallpaper must pass the host plugin identity as Tauri key pluginId");
+  }
+  if (/\bplugin_id\s*:/.test(wallpaperHandler[1])) {
+    fail("systemSetWallpaper must not pass the Rust spelling plugin_id to Tauri invoke");
   }
 }
 

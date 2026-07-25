@@ -503,6 +503,37 @@ pub fn screencap_region_select_status() -> Option<PickerStatus> {
     screencap_region_select_status_with_restore(false)
 }
 
+/// Picker-webview readiness handshake. WebView2 may finish mounting after the
+/// native transparent window was first shown, especially through Remote
+/// Desktop. Reassert input/focus only after React has installed its listeners,
+/// then replay the current session so the first event cannot be lost.
+#[command]
+pub fn screencap_region_picker_ready(app: AppHandle) -> Result<Option<PickerStatus>, String> {
+    let status = screencap_region_select_status_with_restore(false);
+    if status.is_none() {
+        return Ok(None);
+    }
+    let app_for_ui = app.clone();
+    crate::main_thread::run_on_main(&app_for_ui.clone(), move || {
+        let picker = app_for_ui
+            .get_webview_window(PICKER_LABEL)
+            .ok_or_else(|| "region picker window is unavailable".to_string())?;
+        picker
+            .set_ignore_cursor_events(false)
+            .map_err(|error| format!("picker input: {error}"))?;
+        picker
+            .show()
+            .map_err(|error| format!("show region picker: {error}"))?;
+        let _ = picker.set_always_on_top(true);
+        let _ = picker.set_focus();
+        Ok::<(), String>(())
+    })??;
+    if let Some(payload) = status.clone() {
+        let _ = app.emit("screencap:picker", payload);
+    }
+    Ok(status)
+}
+
 #[command]
 pub async fn screencap_cancel_region_select(app: AppHandle) -> Result<(), String> {
     end_picker_session();

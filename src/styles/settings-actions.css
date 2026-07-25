@@ -2628,8 +2628,16 @@ span.qx-plugin-screenshot {
   gap: 6px;
 }
 
+.qx-appearance-settings .qx-settings-row-control > .qx-shadcn-toggle-group {
+  width: min(280px, 100%);
+}
+
+.qx-appearance-settings .qx-settings-row-control > .qx-shadcn-toggle-group > * {
+  flex: 1 1 0;
+}
+
 .qx-app-icon-choice {
-  min-width: 88px;
+  min-width: 0;
   height: 48px;
   gap: 7px;
   padding-inline: 8px;

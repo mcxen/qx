@@ -32,6 +32,7 @@ type WorkbenchHandlers = {
   onQuery?: (value: string) => void;
   onSelect?: (id: string, item: PluginWorkbenchItem) => void;
   onInput?: (id: string, value: string, item?: PluginWorkbenchItem) => void;
+  onDownload?: (id: string, item?: PluginWorkbenchItem) => void;
 };
 
 type WorkbenchWindow = Window & {
@@ -271,6 +272,11 @@ export function createPluginSdkRuntime(): PluginSdkRuntime {
           const selectedId = String(workbenchEvent.selectedId ?? currentState.selectedId ?? "");
           const item = (currentState.items || []).find((candidate) => candidate.id === selectedId);
           handlers.onInput?.(id, value, item);
+        } else if (workbenchEvent.kind === "download") {
+          const id = String(workbenchEvent.id ?? "");
+          const selectedId = String(workbenchEvent.selectedId ?? currentState.selectedId ?? "");
+          const item = (currentState.items || []).find((candidate) => candidate.id === selectedId);
+          if (id) handlers.onDownload?.(id, item);
         } else if (workbenchEvent.kind === "commandComplete") {
           handlers.onCommandComplete?.({
             command: String(workbenchEvent.command ?? ""),

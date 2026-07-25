@@ -553,6 +553,11 @@ export function buildPluginRuntimeHtml(
           env: () => rpc('systemEnv'),
           openPath: (path) => rpc('systemOpenPath', { path: String(path || '') }),
           revealPath: (path) => rpc('systemRevealPath', { path: String(path || '') }),
+          saveDownload: (input) => rpc('systemSaveDownload', {
+            filename: String(input?.filename || ''),
+            mimeType: String(input?.mimeType || ''),
+            dataBase64: String(input?.dataBase64 || ''),
+          }),
           openSettings: (section) => rpc('systemOpenSettings', { section: String(section || '') }),
           setWallpaper: (path, options = {}) => rpc('systemSetWallpaper', { path: String(path || ''), scope: options && options.scope }),
           stats: async () => {

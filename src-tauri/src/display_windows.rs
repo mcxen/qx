@@ -14,11 +14,12 @@ use windows_sys::Win32::Graphics::Gdi::{
     SRCCOPY,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::GetDesktopWindow;
+use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_REMOTESESSION};
 
 static WGC_HEALTHY: AtomicBool = AtomicBool::new(true);
 
 pub(crate) fn should_try_wgc() -> bool {
-    WGC_HEALTHY.load(Ordering::Relaxed)
+    WGC_HEALTHY.load(Ordering::Relaxed) && !is_remote_session()
 }
 
 pub(crate) fn disable_wgc() {
@@ -26,6 +27,14 @@ pub(crate) fn disable_wgc() {
     // current process proves incompatible, do not pay that timeout per frame
     // in the recording polling fallback. Restarting Qx probes WGC again.
     WGC_HEALTHY.store(false, Ordering::Relaxed);
+}
+
+/// WGC can successfully return an all-black frame under Remote Desktop even
+/// though GDI still has access to the composed desktop. Keep physical Windows
+/// sessions on the modern path and select the compatibility backend only for
+/// an actual remote session.
+pub(crate) fn is_remote_session() -> bool {
+    unsafe { GetSystemMetrics(SM_REMOTESESSION) != 0 }
 }
 
 struct DesktopDc {

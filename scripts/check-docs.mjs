@@ -60,6 +60,51 @@ for (const file of markdownFiles) {
   }
 }
 
+// Public plugin docs are intentionally split by ownership. Prevent large copied
+// prose blocks from drifting across files and reintroducing parallel contracts.
+const publicDocs = markdownFiles.filter((file) => file.startsWith("public/doc/"));
+const paragraphOwners = new Map();
+for (const file of publicDocs) {
+  const withoutCode = read(file).replace(/```[\s\S]*?```/g, "");
+  for (const paragraph of withoutCode.split(/\n\s*\n/)) {
+    if (/^\s*(?:#|\||[-*]\s|\d+\.)/m.test(paragraph)) continue;
+    const normalized = paragraph
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
+    if (normalized.length < 180) continue;
+    const owner = paragraphOwners.get(normalized);
+    if (owner && owner !== file) {
+      fail(`duplicated public-doc paragraph: ${owner} <-> ${file}`);
+    } else {
+      paragraphOwners.set(normalized, file);
+    }
+  }
+}
+
+const publicIndex = read("public/doc/README.md");
+for (const canonical of [
+  "plugin-development-guide.md",
+  "plugin-ui-guidelines.md",
+  "plugin-cli-protocol.md",
+  "plugin-marketplace.md",
+  "plugin-system.md",
+  "plugin-tray.md",
+  "raycast-plugin-conversion.md",
+  "release-workflow.md",
+]) {
+  if (!publicIndex.includes(canonical)) fail(`public doc index missing ${canonical}`);
+}
+if (/^##\s+(?:manifest\.json 规范|context API|权限列表)/m.test(
+  read("public/doc/plugin-development-guide.md"),
+)) {
+  fail("plugin development guide must link canonical protocols instead of duplicating field tables");
+}
+if (/^###?\s+context API/m.test(read("public/doc/plugin-marketplace.md"))) {
+  fail("plugin marketplace guide must not duplicate the runtime context API");
+}
+
 // Keep explicit native-control prohibitions enforceable. Rendered Markdown checkboxes are exempt.
 const sourceFiles = [];
 function walk(directory) {

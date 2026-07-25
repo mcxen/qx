@@ -3,7 +3,9 @@
 //! OS-specific path opening and wallpaper mutation stay below this port so
 //! business plugins do not duplicate PowerShell, AppleScript, or Win32 details.
 
+use base64::Engine;
 use serde::Serialize;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -67,6 +69,89 @@ pub fn plugin_system_env() -> PluginSystemEnv {
             .ok()
             .map(|path| path.display().to_string()),
     }
+}
+
+fn download_extension(mime_type: &str) -> &'static str {
+    match mime_type.trim().to_ascii_lowercase().as_str() {
+        "image/jpeg" | "image/jpg" => "jpg",
+        "image/png" => "png",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        "image/avif" => "avif",
+        "image/bmp" => "bmp",
+        "image/tiff" => "tiff",
+        _ => "bin",
+    }
+}
+
+fn safe_download_name(filename: &str, mime_type: &str) -> String {
+    let mut name = filename
+        .trim()
+        .replace(['/', '\\'], "_")
+        .chars()
+        .filter(|character| !character.is_control())
+        .collect::<String>();
+    if name.is_empty() || name == "." || name == ".." {
+        name = "qx-image".to_string();
+    }
+    if Path::new(&name).extension().is_none() {
+        name.push('.');
+        name.push_str(download_extension(mime_type));
+    }
+    name
+}
+
+fn unique_download_path(directory: &Path, filename: &str) -> PathBuf {
+    let initial = directory.join(filename);
+    if !initial.exists() {
+        return initial;
+    }
+    let path = Path::new(filename);
+    let stem = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("qx-image");
+    let extension = path.extension().and_then(|value| value.to_str());
+    for index in 1..10_000 {
+        let candidate_name = match extension {
+            Some(extension) => format!("{stem} ({index}).{extension}"),
+            None => format!("{stem} ({index})"),
+        };
+        let candidate = directory.join(candidate_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    let nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    directory.join(format!("{stem}-{}-{nonce}", std::process::id()))
+}
+
+/// Save host-rendered or plugin-fetched binary data in the user's Downloads directory.
+/// The filename is sanitized and existing files are never overwritten.
+#[tauri::command]
+pub async fn plugin_system_save_download(
+    filename: String,
+    mime_type: String,
+    data_base64: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(data_base64.as_bytes())
+            .map_err(|error| format!("decode download data: {error}"))?;
+        let directory =
+            dirs::download_dir().unwrap_or_else(|| crate::paths::home_dir().join("Downloads"));
+        fs::create_dir_all(&directory)
+            .map_err(|error| format!("create Downloads directory: {error}"))?;
+        let name = safe_download_name(&filename, &mime_type);
+        let target = unique_download_path(&directory, &name);
+        fs::write(&target, bytes).map_err(|error| format!("write download: {error}"))?;
+        Ok(target.display().to_string())
+    })
+    .await
+    .map_err(|error| format!("save download task failed: {error}"))?
 }
 
 fn validate_user_path(path: &str) -> Result<PathBuf, String> {

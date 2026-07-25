@@ -158,10 +158,11 @@ Launcher `SearchBar` 负责召唤/聚焦语义，视觉委托给同一组件。
 
 - `leave` + 可选 Esc 内层 / 清 query
 - `island` 或 `islandState`（`buildModuleIsland`）
-- 默认 `secondaryAction`（Actions 菜单）
 - `onKeyDown` 合并 Esc 与业务键
 
-`PluginPanelViewport`（扩展）与 Weather / Macros / QxAI 列表等内置模块共用此端口。
+业务动作由模块发布单一 `QxShellAction[]` + `primaryActionId`；QxShell 自行投影主按钮、
+Enter 与 Actions 菜单。`PluginPanelViewport`（扩展）与 Weather / Macros / QxAI 列表等
+内置模块共用此端口。
 
 ## Loading 与灵动岛
 

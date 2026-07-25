@@ -15,6 +15,9 @@ pub(super) fn capture(
     // The picker hide is dispatched synchronously to the UI thread. Keep one
     // compositor-frame grace period for Windows DWM / macOS WindowServer
     // without imposing the old fixed 120 ms latency on every screenshot.
+    #[cfg(target_os = "windows")]
+    std::thread::sleep(std::time::Duration::from_millis(80));
+    #[cfg(not(target_os = "windows"))]
     std::thread::sleep(std::time::Duration::from_millis(24));
     let monitor = capture_monitor(area.monitor_id)?;
     let mon_w = monitor

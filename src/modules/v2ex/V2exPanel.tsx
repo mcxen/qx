@@ -5,7 +5,6 @@ import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { QxActionList } from "../../components/QxActionPanel";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
-import { SegmentedControl } from "../../components/ui";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import {
   qxMasterDetailIds,
@@ -18,7 +17,6 @@ import { useStore } from "../../store";
 import { type V2exMode, type V2exReply, type V2exTopic, formatTime } from "./types";
 import { sanitizeTopicHtml } from "./V2exDetail";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
-import BetaBadge from "../../components/BetaBadge";
 import QxReplyList from "../../components/QxReplyList";
 import { useT } from "../../i18n";
 
@@ -146,19 +144,15 @@ export default function V2exPanel() {
 
   const handleModuleKeys = useCallback((event: React.KeyboardEvent) => {
     // ↑↓ / Page / Home / End: QxShell.navigation + useQxListSelection (paint/scroll).
-    if (event.key === "Enter" && !event.metaKey && !event.ctrlKey && !event.altKey) {
-      event.preventDefault();
-      if (selectedTopic) openTopicAtIndex(selectedIndex, true);
-      return;
-    }
     if ((event.key === "r" || event.key === "R") && !event.metaKey && !event.ctrlKey && !event.altKey) {
       event.preventDefault();
       void loadTopics(mode, query);
     }
-  }, [mode, query, selectedIndex, selectedTopic]);
+  }, [mode, query]);
 
   const actions = useMemo<QxShellAction[]>(() => [
     {
+      id: "view-topic",
       label: detailTopic ? "Close Detail" : "View Topic",
       kbd: "Enter",
       disabled: !selectedTopic,
@@ -168,6 +162,7 @@ export default function V2exPanel() {
       },
     },
     {
+      id: "open-browser",
       label: "Open in Browser",
       kbd: "O",
       disabled: !selectedTopic,
@@ -176,11 +171,13 @@ export default function V2exPanel() {
       },
     },
     {
+      id: "refresh",
       label: "Refresh",
       kbd: "R",
       onClick: () => void loadTopics(mode, query),
     },
     {
+      id: "toggle-mode",
       label: mode === "latest" ? "Show Hot" : "Show Latest",
       onClick: () => setMode(mode === "latest" ? "hot" : "latest"),
     },
@@ -236,25 +233,16 @@ export default function V2exPanel() {
           placeholder="Search V2EX topics..."
         />
       }
-      trailing={
-        <>
-          <div className="qx-module-title-with-badge">
-            <span>V2EX</span>
-            <BetaBadge />
-          </div>
-          <SegmentedControl
-            value={mode}
-            onChange={(next) => setMode(next)}
-            options={[
-              { value: "latest", label: "Latest" },
-              { value: "hot", label: "Hot" },
-            ]}
-          />
-          <button className="qx-command-button" onClick={() => void loadTopics(mode, query)} type="button">
-            Refresh
-          </button>
-        </>
-      }
+      topbarFilters={[{
+        id: "topic-view",
+        label: t("v2ex.topicView", "Topic view"),
+        value: mode,
+        options: [
+          { value: "latest", label: t("v2ex.latest", "Latest") },
+          { value: "hot", label: t("v2ex.hot", "Hot") },
+        ],
+        onChange: (value) => setMode(value as V2exMode),
+      }]}
       context={
         <aside
           className="qx-action-panel"
@@ -277,17 +265,7 @@ export default function V2exPanel() {
         </aside>
       }
       island={shell.island}
-      primaryAction={{
-        label: detailTopic?.url ? "Open Topic" : selectedTopic ? "View Topic" : "Open",
-        kbd: detailTopic?.url ? "O" : "Enter",
-        disabled: !selectedTopic,
-        tone: "primary",
-        onClick: () => {
-          if (detailTopic?.url) void openUrl(detailTopic.url);
-          else if (selectedTopic) openTopicAtIndex(selectedIndex);
-        },
-      }}
-      secondaryAction={shell.secondaryAction}
+      primaryActionId={detailTopic?.url ? "open-browser" : selectedTopic ? "view-topic" : undefined}
       actionTitle="V2EX Actions"
       actions={actions}
     >

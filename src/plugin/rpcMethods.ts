@@ -571,6 +571,15 @@ export const rpcHandlers: Record<string, RpcHandler> = {
     return invoke("plugin_system_env");
   },
 
+  systemSaveDownload: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "system");
+    return invoke("plugin_system_save_download", {
+      filename: String(payload.filename || ""),
+      mimeType: String(payload.mimeType || "application/octet-stream"),
+      dataBase64: String(payload.dataBase64 || ""),
+    });
+  },
+
   systemOpenPath: async (plugin, perms, payload) => {
     assertPermission(plugin, perms, "system");
     return invoke("plugin_system_open_path", { path: String(payload.path || "") });
@@ -591,7 +600,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   systemSetWallpaper: async (plugin, perms, payload) => {
     assertPermission(plugin, perms, "system");
     return invoke("plugin_system_set_wallpaper", {
-      plugin_id: plugin.id,
+      pluginId: plugin.id,
       path: String(payload.path || ""),
       scope: payload.scope == null ? null : String(payload.scope),
     });

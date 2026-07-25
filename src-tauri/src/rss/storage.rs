@@ -595,18 +595,19 @@ pub fn delete_feed(conn: &Connection, id: i64) -> rusqlite::Result<()> {
     Ok(())
 }
 
-pub fn feed_url_by_id(conn: &Connection, id: i64) -> Option<String> {
+pub fn feed_target_by_id(conn: &Connection, id: i64) -> Option<(String, String)> {
     conn.query_row(
-        "SELECT url FROM rss_feeds WHERE id = ?1",
+        "SELECT url, COALESCE(title, '') FROM rss_feeds WHERE id = ?1",
         params![id],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get(1)?)),
     )
     .ok()
 }
 
-pub fn all_feed_urls(conn: &Connection) -> rusqlite::Result<Vec<(i64, String)>> {
-    let mut stmt = conn.prepare("SELECT id, url FROM rss_feeds")?;
-    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+pub fn all_feed_targets(conn: &Connection) -> rusqlite::Result<Vec<(i64, String, String)>> {
+    let mut stmt =
+        conn.prepare("SELECT id, url, COALESCE(title, '') FROM rss_feeds ORDER BY id")?;
+    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
     let mut out = Vec::new();
     for r in rows {
         out.push(r?);

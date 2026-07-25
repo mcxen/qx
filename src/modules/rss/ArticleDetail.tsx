@@ -116,6 +116,7 @@ export default function ArticleDetail() {
     const list: QxShellAction[] = [];
     if (currentArticle?.link) {
       list.push({
+        id: "open-browser",
         label: "Open in Browser",
         kbd: "O",
         onClick: () => void openUrl(currentArticle.link),
@@ -123,11 +124,13 @@ export default function ArticleDetail() {
     }
     if (currentArticle) {
       list.push({
+        id: "toggle-star",
         label: currentArticle.is_starred ? "Unstar" : "Star",
         kbd: "S",
         onClick: () => void toggleStar(currentArticle.id, !currentArticle.is_starred),
       });
       list.push({
+        id: "toggle-read",
         label: currentArticle.is_read ? "Mark Unread" : "Mark Read",
         kbd: "U",
         onClick: () => void markRead(currentArticle.id, !currentArticle.is_read),
@@ -135,6 +138,7 @@ export default function ArticleDetail() {
     }
     if (next) {
       list.push({
+        id: "next-article",
         label: `Next: ${next.title?.slice(0, 40) || "(untitled)"}`,
         kbd: "J",
         onClick: () => void openArticleAtTop(next.id),
@@ -142,6 +146,7 @@ export default function ArticleDetail() {
     }
     if (prev) {
       list.push({
+        id: "previous-article",
         label: `Prev: ${prev.title?.slice(0, 40) || "(untitled)"}`,
         kbd: "K",
         onClick: () => void openArticleAtTop(prev.id),
@@ -258,16 +263,7 @@ export default function ArticleDetail() {
         />
       }
       island={shell.island}
-      primaryAction={{
-        label: currentArticle.link ? "Open Original" : "Back",
-        kbd: currentArticle.link ? "O" : "Esc",
-        tone: "primary",
-        onClick: () => {
-          if (currentArticle.link) void openUrl(currentArticle.link);
-          else goBack();
-        },
-      }}
-      secondaryAction={shell.secondaryAction}
+      primaryActionId={currentArticle.link ? "open-browser" : undefined}
       actionTitle="Article Actions"
       actions={actions}
     >

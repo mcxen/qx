@@ -140,23 +140,25 @@ export default function MacroRecorder() {
 
   const macroActions = useMemo<QxShellAction[]>(() => {
     if (isRecording) {
-      return [{ label: "Stop Recording", kbd: "Enter", tone: "danger", onClick: handleStop }];
+      return [{ id: "stop", label: "Stop Recording", kbd: "Enter", tone: "danger", onClick: handleStop }];
     }
     if (lastRecordedSteps) {
       return [
         {
+          id: "save",
           label: "Save Macro",
           kbd: "Enter",
           disabled: !name.trim(),
           onClick: () => void handleSave(),
         },
-        { label: "Discard", tone: "danger", onClick: handleDiscard },
-        { label: "Record Again", onClick: handleStart },
+        { id: "discard", label: "Discard", tone: "danger", onClick: handleDiscard },
+        { id: "record", label: "Record Again", onClick: handleStart },
       ];
     }
     return [
-      { label: "Start Recording", kbd: "Enter", onClick: handleStart },
+      { id: "record", label: "Start Recording", kbd: "Enter", onClick: handleStart },
       {
+        id: "refresh",
         label: "Refresh List",
         onClick: () => void listMacros(),
       },
@@ -174,30 +176,9 @@ export default function MacroRecorder() {
           <BetaBadge />
         </div>
       }
-      trailing={
-        <>
-          {!isRecording && !lastRecordedSteps && (
-            <button className="qx-command-button primary" onClick={handleStart} type="button">
-              Start Recording
-            </button>
-          )}
-          {isRecording && (
-            <button className="qx-command-button danger" onClick={handleStop} type="button">
-              Stop
-            </button>
-          )}
-        </>
-      }
       island={shell.island}
       escapeAction={shell.escapeAction}
-      primaryAction={
-        isRecording
-          ? { label: "Stop", tone: "danger", onClick: handleStop }
-          : lastRecordedSteps
-            ? { label: "Save", kbd: "Enter", disabled: !name.trim(), onClick: () => void handleSave() }
-            : { label: "Record", kbd: "Enter", tone: "primary", onClick: handleStart }
-      }
-      secondaryAction={shell.secondaryAction}
+      primaryActionId={isRecording ? "stop" : lastRecordedSteps ? "save" : "record"}
       actionTitle="Macro Actions"
       actions={macroActions}
       onKeyDown={shell.onKeyDown}
