@@ -50,8 +50,13 @@ DMG 内附 `install.sh`，也可直接运行 `bash install.sh` 自动完成安�
 
 ### Windows
 
-从 [GitHub Releases](https://github.com/mcxen/qx/releases) 下载 NSIS 安装包（`.exe`），运行安装即可。
-需要 [WebView2 运行时](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 10/11 通常已预装）。
+- 下载渠道1: 从 [GitHub Releases](https://github.com/mcxen/qx/releases) 下载 NSIS 安装包（`.exe`），运行安装即可。
+  需要 [WebView2 运行时](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 10/11 通常已预装）。
+
+* 下载渠道2:： 蓝奏云，选择最新版本：https\://imsalt.lanzout.com/b02ijjbl0h\
+  密码:qx
+
+  ![image](assets/pasted-image-1784986638982.png)
 
 ### 首次启动与权限（macOS）
 
@@ -553,7 +558,7 @@ zip -r ~/Desktop/my-plugin.qx-plugin manifest.json index.js icon.png README.md
 
 -
 
-  ![IMG_1832](assets/pasted-image-1784948579869.jpg)
+![IMG_1832](assets/pasted-image-1784948579869.jpg)
 
 ## 许可证
 
