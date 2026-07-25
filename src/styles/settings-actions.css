@@ -739,12 +739,13 @@ img.qx-ext-card-icon {
 
 .qx-plugin-marketplace-toolbar {
   flex-wrap: nowrap;
+  overflow-x: auto;
 }
 
 .qx-plugin-marketplace-query {
   display: flex;
   align-items: center;
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   gap: 8px;
 }

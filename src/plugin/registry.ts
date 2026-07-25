@@ -8,11 +8,14 @@ import {
   isExpectedPluginMessageOrigin,
   isPluginRuntimeSource,
   loadPlugin,
+  broadcastToPluginRuntimes,
   unloadPluginRuntime,
 } from "./runtime";
 import { createUnavailableContext } from "./context";
 import { BUILTIN_PLUGINS } from "./builtin";
 import { createQxLogger, qxLog } from "../lib/logger";
+import { normalizeLanguagePreference, resolveLocale } from "../i18n";
+import { useSettingsStore } from "../modules/settings/store";
 import type {
   InstalledPlugin,
   PluginRuntimeStatus,
@@ -40,6 +43,32 @@ const backgroundTimers = new Map<string, number>();
 /** In-flight background runs to prevent overlapping wallpaper sets. */
 const backgroundInFlight = new Set<string>();
 const registryLogger = createQxLogger("plugin.registry");
+let stopPluginLocaleBridge: (() => void) | null = null;
+
+function currentPluginLocale() {
+  const preference = normalizeLanguagePreference(
+    useSettingsStore.getState().settings.general.language,
+  );
+  return { current: resolveLocale(preference), preference };
+}
+
+function startPluginLocaleBridge(): void {
+  stopPluginLocaleBridge?.();
+  let previous = currentPluginLocale();
+  const publishIfChanged = () => {
+    const next = currentPluginLocale();
+    if (next.current === previous.current && next.preference === previous.preference) return;
+    previous = next;
+    broadcastToPluginRuntimes({ type: "qx:locale", locale: next });
+  };
+  const unsubscribe = useSettingsStore.subscribe(publishIfChanged);
+  window.addEventListener("languagechange", publishIfChanged);
+  stopPluginLocaleBridge = () => {
+    unsubscribe();
+    window.removeEventListener("languagechange", publishIfChanged);
+    stopPluginLocaleBridge = null;
+  };
+}
 
 function backgroundJobKey(pluginId: string, commandName: string): string {
   return `${pluginId}\0${commandName}`;
@@ -309,6 +338,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
         shortcuts: {},
         loaded: true,
       });
+      startPluginLocaleBridge();
 
       if (sorted.length > 0) {
         hooks.onPluginStatus?.({
@@ -539,6 +569,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       shortcuts: Object.values(shortcuts).flat().length,
     });
     clearBackgroundTimers();
+    stopPluginLocaleBridge?.();
     clearPluginIcons();
     Object.values(shortcuts).flat().forEach((shortcut) => {
       void unregister(shortcut).catch(() => {});

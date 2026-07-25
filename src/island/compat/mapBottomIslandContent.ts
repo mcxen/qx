@@ -10,6 +10,7 @@ export function mapBottomIslandContent(
       ? {
           kind: "progress" as const,
           progress: content.progress,
+          presentation: content.progressStyle,
         }
       : content.activity
         ? {
@@ -46,6 +47,8 @@ export function mapSlotToBottomIsland(
     detail: content.secondary,
     progress:
       content.meter?.kind === "progress" ? content.meter.progress : undefined,
+    progressStyle:
+      content.meter?.kind === "progress" ? content.meter.presentation : undefined,
     activity:
       content.meter?.kind === "activity" ? content.meter.activity : undefined,
     tone: content.tone,

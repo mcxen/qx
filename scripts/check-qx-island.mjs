@@ -127,6 +127,7 @@ const display = showSession({
   content: {
     primary: "Pomodoro",
     componentId: "forbidden.component",
+    meter: { kind: "progress", progress: 42, presentation: "icon-ring" },
   },
 });
 assert.ok(display);
@@ -139,12 +140,17 @@ assert.deepEqual(normalizedDisplay?.openTarget, {
   id: "pomodoro-island",
 });
 assert.equal(normalizedDisplay?.content.componentId, undefined);
+assert.equal(normalizedDisplay?.content.meter?.presentation, "icon-ring");
 
 const generation = normalizedDisplay?.generation;
 assert.equal(updateSession("plugin.display.pomodoro-island", {
   expectedGeneration: generation,
   content: { secondary: "Running" },
 }).ok, true);
+assert.equal(
+  getSession("plugin.display.pomodoro-island")?.content.meter?.presentation,
+  "icon-ring",
+);
 assert.equal(updateSession("plugin.display.pomodoro-island", {
   expectedGeneration: generation,
   content: { secondary: "Stale" },
@@ -187,10 +193,75 @@ assert.match(
 const shellContentSource = fs.readFileSync("src/island/surface/ShellContent.tsx", "utf8");
 assert.match(shellContentSource, /qx-island-module-button/);
 assert.match(shellContentSource, /visibleIslandActivity\(content\)/);
+assert.match(shellContentSource, /content\.meter\?\.presentation \?\? "surface-fill"/);
+assert.match(shellContentSource, /qx-island-module-progress-ring/);
+assert.match(shellContentSource, /showCompactProgress \? " has-progress"/);
+
+const islandSurfaceSource = fs.readFileSync("src/island/surface/QxIslandSurface.tsx", "utf8");
+assert.match(islandSurfaceSource, /progressStyle = "surface-fill"/);
+assert.match(islandSurfaceSource, /qx-island-progress-surface-fill/);
+assert.match(islandSurfaceSource, /qx-island-progress-island-ring/);
+
+const shellCssSource = fs.readFileSync("src/styles/shell.css", "utf8");
+assert.match(
+  shellCssSource,
+  /\.qx-island-shell-copy\.has-progress\s*\{[^}]*grid-template-rows:[^}]*row-gap:\s*3px/s,
+);
+assert.match(
+  shellCssSource,
+  /\.qx-island-meter-progress\s*\{[^}]*width:\s*min\(100%,\s*200px\)/s,
+);
+assert.doesNotMatch(
+  shellCssSource,
+  /\.qx-island-meter-progress\s*\{[^}]*position:\s*absolute/s,
+);
+assert.match(
+  shellCssSource,
+  /\.qx-island-progress-surface-fill\s*\{[^}]*position:\s*absolute;[^}]*background:\s*var\(--qx-island-progress-fill\)/s,
+);
+
+const workbenchViewSource = fs.readFileSync("src/plugin/PluginWorkbenchView.tsx", "utf8");
+assert.match(workbenchViewSource, /item\.progress != null \? "has-progress"/);
+
+const workbenchCssSource = fs.readFileSync("src/styles/lists-icons.css", "utf8");
+assert.match(
+  workbenchCssSource,
+  /\.qx-host-workbench-row\.qx-list-row\.has-progress\s*\{[^}]*min-height:\s*56px;[^}]*padding-bottom:\s*8px/s,
+);
 
 const cliWorkbenchSource = fs.readFileSync("src/plugin/cliWorkbench.ts", "utf8");
 assert.match(cliWorkbenchSource, /createPluginSdkRuntime\.toString\(\)/);
 assert.doesNotMatch(cliWorkbenchSource, /function parseJsonLoose/);
+
+__resetIslandStoreForTests();
+for (const progress of [0, 1, 50, 92, 99, 100]) {
+  const id = `progress-${progress}`;
+  showSession({
+    id,
+    priority: "task",
+    source: "module",
+    content: {
+      primary: "Progress",
+      meter: { kind: "progress", progress },
+    },
+  });
+  assert.equal(getSession(id)?.content.meter?.progress, progress);
+}
+
+__resetIslandStoreForTests();
+for (const presentation of ["surface-fill", "icon-ring", "island-ring", "compact-line"]) {
+  const id = `presentation-${presentation}`;
+  showSession({
+    id,
+    priority: "task",
+    source: "module",
+    content: {
+      primary: "Presentation",
+      meter: { kind: "progress", progress: 50, presentation },
+    },
+  });
+  assert.equal(getSession(id)?.content.meter?.presentation, presentation);
+}
 
 __resetIslandStoreForTests();
 console.log("QxIsland production port and Shell integration checks passed");

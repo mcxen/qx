@@ -474,12 +474,18 @@
 }
 
 .qx-host-workbench-row.qx-list-row {
+  position: relative;
   grid-template-columns: 30px minmax(0, 1fr) minmax(0, auto);
   align-items: center;
   gap: 10px;
   min-height: 52px;
   padding: 6px 10px;
   border-radius: var(--qx-control-radius);
+}
+
+.qx-host-workbench-row.qx-list-row.has-progress {
+  min-height: 56px;
+  padding-bottom: 8px;
 }
 
 .qx-host-workbench-row.qx-list-row.is-active {
@@ -612,9 +618,11 @@
 
 .qx-host-workbench-progress {
   display: block;
+  flex: 0 0 3px;
+  width: 100%;
   height: 3px;
   overflow: hidden;
-  margin-top: 5px;
+  margin: 4px 0 1px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--qx-text-primary) 10%, transparent);
 }

@@ -34,6 +34,17 @@ export interface PluginCommand {
 
 export type PluginPlatform = "macos" | "windows" | "linux";
 export type PluginCompatibilityStatus = "supported" | "partial" | "mac-only" | "unsupported";
+/** Resolved Qx UI locale exposed to plugins. */
+export type PluginLocale = "en" | "zh-CN";
+/** User's Qx language setting, before the `system` preference is resolved. */
+export type PluginLanguagePreference = "system" | PluginLocale;
+
+export interface PluginLocaleState {
+  /** Effective Qx UI language. Use this for plugin copy and `Intl` formatting. */
+  current: PluginLocale;
+  /** User setting that produced `current`; `system` follows Qx's OS-language policy. */
+  preference: PluginLanguagePreference;
+}
 
 export interface PluginPlatformCompatibility {
   status: PluginCompatibilityStatus;
@@ -491,6 +502,11 @@ export interface PluginKillProcessResult {
 export type PluginIslandTone = "neutral" | "success" | "warning" | "danger";
 export type PluginIslandActionIcon = "pause" | "play" | "stop" | "open";
 export type PluginIslandActivity = "wave" | "dots" | "spinner" | "pulse";
+export type PluginIslandProgressStyle =
+  | "surface-fill"
+  | "icon-ring"
+  | "island-ring"
+  | "compact-line";
 
 /** Structured, host-rendered content for the optional external QxIsland surface. */
 export interface PluginIslandDisplayInput {
@@ -499,6 +515,8 @@ export interface PluginIslandDisplayInput {
   tone?: PluginIslandTone;
   /** Real progress from 0–100. Omit for a non-progress display. */
   progress?: number;
+  /** Host-owned progress presentation. Defaults to surface-fill. */
+  progressStyle?: PluginIslandProgressStyle;
   /** Host-rendered indeterminate loading animation. Ignored when progress is set. */
   activity?: PluginIslandActivity;
   /** Host-rendered real-time countdown; use endsAt while running. */
@@ -521,6 +539,14 @@ export interface PluginIslandDisplayInput {
 
 export interface PluginContext {
   pluginId: string;
+  /**
+   * Qx language port. It reflects the product setting, not the iframe/browser
+   * locale, so plugins must not infer UI language from `navigator.language`.
+   * No manifest permission is required.
+   */
+  locale: PluginLocaleState & {
+    onChange: (listener: (state: PluginLocaleState) => void) => () => void;
+  };
   display: {
     raycastActionPanel: boolean;
   };

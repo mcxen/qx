@@ -279,6 +279,7 @@ export interface IslandSlotContent {
   meter?: {
     kind: "progress" | "activity";
     progress?: number; // 0–100, never fake
+    presentation?: "surface-fill" | "icon-ring" | "island-ring" | "compact-line";
     activity?: "wave" | "dots" | "spinner" | "pulse";
   };
   action?: {
@@ -319,12 +320,13 @@ export interface IslandSlotContent {
 
 #### 3.4 ShellContent 固定高度内布局（Issue 8）
 
-Chrome **固定 34px**。`ShellContent` 使用 **单层网格**，progress **不得**作为第二 flex 行撑高：
+Chrome **固定 34px**。真实进度由宿主按 `meter.presentation` 渲染，默认
+`surface-fill`；所有表现都位于统一 Surface 内，**不得**撑高或改变宿主几何：
 
 ```text
 ┌────────────────────────────────────────────────────────────┐
 │ [identity] primary … secondary [activity?][countdown?][actions?] │  ← 一行，align center
-│ ▓▓▓▓▓▓▓░░░░ progress 2px overlay along bottom edge         │  ← absolute bottom inset
+│ ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░ progress                            │  ← 默认浅蓝背景填充
 └────────────────────────────────────────────────────────────┘
 height: 34px; overflow: hidden;
 trailing pack (right):  [activity][countdown][actions]  — actions always rightmost when present
@@ -340,7 +342,11 @@ trailing pack (right):  [activity][countdown][actions]  — actions always right
 - `effect: { kind: "orbit", nonce }` 是宿主渲染的一次性完成反馈；`nonce` 变化才重播，且 `prefers-reduced-motion` 下禁用。
 - 两者可同时存在（非互斥）；不换行；空间不足时 primary/secondary 进入宿主 marquee，完整文案以双组循环横向滚动展示，trailing 优先保留 action 再保留 activity。
 - marquee 仅在实际溢出时启用；重复组对辅助技术隐藏，并保留完整 `aria-label`。`prefers-reduced-motion` 下停止动画并回退为静态裁剪。
-- `progress` 与 `activity`：progress 始终底边 overlay；activity 在 trailing pack（对齐现 `QxBottomIsland`：progress 与 activity 不同时抢同一 meter 语义——若同时传入，**优先渲染 progress overlay，仍可保留 activity 动画**仅当 `meter.kind === "activity"`；`kind === "progress"` 时不渲染 activity 条）。
+- `progress` 与 `activity`：progress 与 activity 不同时抢同一 meter 语义；
+  `meter.kind === "progress"` 时按受控 presentation 渲染，activity 在 trailing pack。
+- presentation 只允许 `surface-fill`（默认）、`icon-ring`、`island-ring`、
+  `compact-line`。插件不能提供颜色、SVG、DOM 或 CSS；`icon-ring` 无可用目标图标时
+  安全回退为 `compact-line`。
 
 CSS 要点：
 
@@ -356,9 +362,15 @@ CSS 要点：
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--qx-island-gap);
+  height: 100%;
   min-height: 0;
   align-items: center;
   padding: 0 var(--qx-island-pad-x);
+}
+.qx-island-shell-copy.has-progress {
+  display: grid;
+  grid-template-rows: minmax(0, auto) 2px;
+  row-gap: 3px;
 }
 .qx-island-shell-trailing {
   display: inline-flex;
@@ -367,10 +379,7 @@ CSS 要点：
   flex: 0 0 auto;
 }
 .qx-island-meter-progress {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: 3px;
+  width: min(100%, 200px);
   height: 2px;
 }
 .qx-island-meter-activity {
@@ -385,7 +394,7 @@ CSS 要点：
 |---|---|
 | primary only | 单行截断 |
 | + secondary | 同行 ellipsis |
-| + progress | 底边 2px overlay；文案垂直仍居中 |
+| + progress | 默认浅蓝背景从左向右填充；可选图标环、Surface 环或文案短线 |
 | + activity | trailing pack 左侧；无 action 时 activity 即为最右 |
 | + countdown | `MM:SS` / `H:MM:SS`；等宽数字；可由 duration 派生 progress |
 | + action | trailing pack **最右** capsule button，不换行 |
@@ -1024,7 +1033,7 @@ Rollback：关 float；DockHost 可回退 ShellContent props 路径。
 | 风险 | 严重度 | 缓解 |
 |---|---|---|
 | PR1 视觉回归 | 中 | 模块矩阵 QA（§PR1） |
-| progress 裁切 | 中 | overlay 布局契约 |
+| progress 裁切 / 遮挡 | 中 | Surface 统一分层 + 四种受控 presentation 契约 |
 | screencap 双路径混淆 | 中 | §9 例外表；文档点名 |
 | Windows 抢焦点 | 中 | screencap 旗标 + 验收 |
 | 设置默认 float 惊吓用户 | 中 | 默认 off |
@@ -1121,7 +1130,7 @@ Rollback：关 float；DockHost 可回退 ShellContent props 路径。
 - **Title**: `island: unified QxIslandSurface chrome and size tokens`
 - **Depends on**: —
 - **Files**: `src/island/surface/*`；`ShellContent`；`shell.css` / `base.css` tokens；`QxBottomIsland` re-export；`QxShell` 中心接入 shell Surface
-- **Description**: 落地 shell variant chrome 与 **UI_SPEC 修订向** 34px / max 400 宽；progress **overlay** 布局；**不含** store/float。  
+- **Description**: 落地 shell variant chrome 与 **UI_SPEC 修订向** 34px / max 400 宽；progress 使用宿主受控 presentation；**不含** store/float。
 - **QA 矩阵（必须）**：Clipboard 带 progress；RSS refresh；Launcher searching activity；PluginHost/loading；空 island `visibility:hidden`；底栏高度不增加；681–860 / ≤680 窄屏；Windows 长 Esc 标签下宽度预算。
 
 ### PR2 — Session store + comparator + action registry + host API

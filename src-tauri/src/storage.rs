@@ -215,7 +215,7 @@ fn cache_target_definitions() -> Vec<CacheTargetDefinition> {
         CacheTargetDefinition {
             id: "marketplace-archives",
             module: "extensions",
-            label: "Marketplace Archives",
+            label: "Marketplace Cache",
             paths: vec![crate::paths::cache_dir().join("marketplace-repos")],
             mode: CacheClearMode::Contents,
         },

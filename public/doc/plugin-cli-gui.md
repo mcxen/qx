@@ -145,7 +145,9 @@ type WorkbenchState = {
   }[]
   actions?: { id: string; label: string; command?: string; primary?: boolean; tone?: string }[]
   island?: {
-    primary: string; secondary?: string; progress?: number; tone?: string
+    primary: string; secondary?: string; progress?: number
+    progressStyle?: "surface-fill" | "icon-ring" | "island-ring" | "compact-line"
+    tone?: string
     countdown?: { endsAt?: number; remainingMs?: number; durationMs?: number; paused?: boolean }
     action?: { label: string; command: string; icon?: "pause" | "play" | "stop" | "open"; variant?: "default" | "danger" }
   } | null

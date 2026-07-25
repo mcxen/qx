@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { LoadingLabel } from "../../components/ui";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { Badge, Button, Input, LoadingLabel, Select } from "../../components/ui";
 import { useT } from "../../i18n";
 import { openSettings } from "../settings/openSettings";
 import {
@@ -317,6 +318,404 @@ export function CustomProvidersSection({ onSaved }: { onSaved?: (detail: string)
           </div>
         );
       })}
+    </div>
+  );
+}
+
+type ProviderEditorInitial =
+  | { kind: "builtin"; provider: G4fProvider; apiKey: string }
+  | { kind: "custom"; provider: CustomProvider };
+
+type ProviderEditorResult =
+  | { kind: "builtin"; id: string; apiKey: string }
+  | {
+      kind: "custom";
+      data: {
+        name: string;
+        baseUrl: string;
+        apiKey: string;
+        models: { id: string; name: string }[];
+      };
+    };
+
+function providerModelsText(models: { id: string }[]): string {
+  return models.map((model) => model.id).join(", ");
+}
+
+function providerModels(text: string): { id: string; name: string }[] {
+  return text
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean)
+    .map((id) => ({ id, name: id }));
+}
+
+function maskProviderKey(apiKey: string, emptyLabel: string): string {
+  if (!apiKey) return emptyLabel;
+  if (apiKey.length <= 8) return "••••••••";
+  return `${apiKey.slice(0, 4)}…${apiKey.slice(-4)}`;
+}
+
+function ProviderEditor({
+  builtInProviders,
+  initial,
+  onSave,
+  onCancel,
+}: {
+  builtInProviders: G4fProvider[];
+  initial?: ProviderEditorInitial;
+  onSave: (result: ProviderEditorResult) => Promise<void> | void;
+  onCancel: () => void;
+}) {
+  const t = useT();
+  const initialProvider = initial?.kind === "builtin"
+    ? initial.provider
+    : initial?.kind === "custom"
+      ? initial.provider
+      : undefined;
+  const [templateId, setTemplateId] = useState(
+    initial?.kind === "builtin" ? initial.provider.id : "custom",
+  );
+  const [name, setName] = useState(initialProvider?.name ?? "");
+  const [baseUrl, setBaseUrl] = useState(initialProvider?.baseUrl ?? "");
+  const [apiKey, setApiKey] = useState(
+    initial?.kind === "builtin" ? initial.apiKey : initial?.provider.apiKey ?? "",
+  );
+  const [modelsText, setModelsText] = useState(
+    providerModelsText(initialProvider?.models ?? []),
+  );
+  const [fetchingModels, setFetchingModels] = useState(false);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const selectedTemplate = builtInProviders.find((provider) => provider.id === templateId);
+  const isBuiltIn = Boolean(selectedTemplate);
+
+  const canFetchModels = Boolean(baseUrl.trim() && apiKey.trim() && !fetchingModels && !isBuiltIn);
+  const canSave = Boolean(
+    name.trim() &&
+    baseUrl.trim() &&
+    (apiKey.trim() || (isBuiltIn && initial?.kind === "builtin")),
+  );
+
+  const applyTemplate = (nextId: string) => {
+    setTemplateId(nextId);
+    const template = builtInProviders.find((provider) => provider.id === nextId);
+    if (!template) {
+      setName("");
+      setBaseUrl("");
+      setApiKey("");
+      setModelsText("");
+      return;
+    }
+    setName(template.name);
+    setBaseUrl(template.baseUrl ?? "");
+    setModelsText(providerModelsText(template.models));
+  };
+
+  const fetchModels = async () => {
+    if (!canFetchModels) return;
+    setFetchingModels(true);
+    setModelsError(null);
+    try {
+      const models = await invoke<{ id: string; name: string }[]>("qxai_fetch_models", {
+        baseUrl: baseUrl.trim(),
+        apiKey,
+      });
+      setModelsText(providerModelsText(models));
+    } catch (error) {
+      setModelsError(String(error));
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const submit = async () => {
+    if (!canSave || saving) return;
+    setSaving(true);
+    try {
+      if (isBuiltIn) {
+        await onSave({
+          kind: "builtin",
+          id: selectedTemplate?.id ?? (initial?.kind === "builtin" ? initial.provider.id : ""),
+          apiKey: apiKey.trim(),
+        });
+      } else {
+        await onSave({
+          kind: "custom",
+          data: {
+            name: name.trim(),
+            baseUrl: baseUrl.trim(),
+            apiKey: apiKey.trim(),
+            models: providerModels(modelsText),
+          },
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="qx-ai-provider-editor">
+      {!initial && (
+        <label className="qx-ai-config-field">
+          {t("qxai.providers.template", "Provider template")}
+          <Select
+            value={templateId}
+            options={[
+              {
+                value: "custom",
+                label: t("qxai.providers.customTemplate", "Custom OpenAI-compatible provider"),
+              },
+              ...builtInProviders.map((provider) => ({
+                value: provider.id,
+                label: `${provider.name} · ${t("qxai.providers.templateLabel", "Template")}`,
+              })),
+            ]}
+            ariaLabel={t("qxai.providers.template", "Provider template")}
+            onChange={applyTemplate}
+          />
+        </label>
+      )}
+
+      <div className="qx-ai-provider-editor-grid">
+        <label className="qx-ai-config-field">
+          {t("qxai.providers.name", "Provider name")}
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder={t("qxai.providers.namePlaceholder", "e.g. My OpenAI")}
+            readOnly={isBuiltIn}
+          />
+        </label>
+        <label className="qx-ai-config-field">
+          {t("qxai.providers.baseUrl", "Base URL")}
+          <Input
+            value={baseUrl}
+            onChange={(event) => setBaseUrl(event.target.value)}
+            placeholder="https://api.openai.com/v1"
+            readOnly={isBuiltIn}
+          />
+        </label>
+      </div>
+
+      <label className="qx-ai-config-field">
+        {t("qxai.providers.apiKey", "API key")}
+        <Input
+          type="password"
+          value={apiKey}
+          onChange={(event) => setApiKey(event.target.value)}
+          placeholder={t("qxai.providers.apiKeyPlaceholder", "Paste an API key")}
+          autoComplete="off"
+        />
+      </label>
+
+      <label className="qx-ai-config-field">
+        {t("qxai.providers.models", "Models")}
+        <Input
+          value={modelsText}
+          onChange={(event) => setModelsText(event.target.value)}
+          placeholder={t("qxai.providers.modelsPlaceholder", "gpt-4o, gpt-4o-mini")}
+          readOnly={isBuiltIn}
+        />
+      </label>
+
+      {!isBuiltIn && (
+        <div className="qx-ai-config-row">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!canFetchModels}
+            onClick={() => void fetchModels()}
+          >
+            {fetchingModels
+              ? <LoadingLabel>{t("qxai.providers.fetchingModels", "Fetching models…")}</LoadingLabel>
+              : t("qxai.providers.fetchModels", "Fetch models")}
+          </Button>
+          {modelsError && <span className="qx-ai-config-error">{modelsError}</span>}
+        </div>
+      )}
+
+      <div className="qx-ai-config-row is-end">
+        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+          {t("common.cancel", "Cancel")}
+        </Button>
+        <Button type="button" variant="default" size="sm" disabled={!canSave || saving} onClick={() => void submit()}>
+          {saving
+            ? t("qxai.providers.saving", "Saving…")
+            : initial
+              ? t("common.save", "Save")
+              : t("qxai.providers.add", "Add provider")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function ProviderListSection() {
+  const t = useT();
+  const {
+    builtInProviders,
+    builtInCredentials,
+    customProviders,
+    addCustomProvider,
+    removeCustomProvider,
+    updateCustomProvider,
+    saveBuiltInProviderKey,
+  } = useG4fStore();
+  const [editor, setEditor] = useState<ProviderEditorInitial | "new" | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const configured = [
+    ...builtInProviders.map((provider) => ({
+      kind: "builtin" as const,
+      id: provider.id,
+      name: provider.name,
+      baseUrl: provider.baseUrl ?? "",
+      models: provider.models,
+      apiKey: builtInCredentials.find((credential) => credential.id === provider.id)?.apiKey ?? "",
+      provider,
+    })),
+    ...customProviders.map((provider) => ({
+      kind: "custom" as const,
+      id: provider.id,
+      name: provider.name,
+      baseUrl: provider.baseUrl,
+      models: provider.models,
+      apiKey: provider.apiKey,
+      provider,
+    })),
+  ];
+
+  const closeEditor = () => {
+    setEditor(null);
+    setActionError(null);
+  };
+
+  const saveEditor = async (result: ProviderEditorResult) => {
+    try {
+      if (result.kind === "builtin") {
+        await saveBuiltInProviderKey(result.id, result.apiKey);
+      } else if (editor && editor !== "new" && editor.kind === "custom") {
+        await updateCustomProvider(editor.provider.id, result.data);
+      } else {
+        await addCustomProvider(result.data);
+      }
+      closeEditor();
+    } catch (error) {
+      setActionError(String(error));
+    }
+  };
+
+  const remove = async (provider: CustomProvider) => {
+    if (!window.confirm(
+      t("qxai.providers.deleteConfirm", "Delete provider \"{name}\"?").replace("{name}", provider.name),
+    )) return;
+    try {
+      await removeCustomProvider(provider.id);
+    } catch (error) {
+      setActionError(String(error));
+    }
+  };
+
+  const editorInitial = editor && editor !== "new" ? editor : undefined;
+
+  return (
+    <div className="qx-ai-provider-section">
+      <div className="qx-ai-config-header">
+        <div className="qx-ai-config-desc">
+          {t(
+            "qxai.providers.desc",
+            "Choose a built-in template or add any OpenAI-compatible provider. Providers are kept in one editable list.",
+          )}
+        </div>
+        {!editor && (
+          <Button type="button" size="sm" onClick={() => setEditor("new")}>
+            <Plus size={14} aria-hidden="true" />
+            {t("qxai.providers.add", "Add provider")}
+          </Button>
+        )}
+      </div>
+
+      {editor && (
+        <div className="qx-ai-provider-editor-wrap">
+          <div className="qx-ai-config-card-title">
+            {editor === "new"
+              ? t("qxai.providers.addTitle", "Add provider")
+              : t("qxai.providers.editTitle", "Edit provider")}
+          </div>
+          <ProviderEditor
+            builtInProviders={builtInProviders}
+            initial={editorInitial}
+            onSave={saveEditor}
+            onCancel={closeEditor}
+          />
+        </div>
+      )}
+
+      {actionError && <div role="alert" className="qx-ai-config-error">{actionError}</div>}
+
+      {configured.length === 0 ? (
+        <div className="qx-ai-config-muted">
+          {t("qxai.providers.empty", "No providers configured yet.")}
+        </div>
+      ) : (
+        <div className="qx-ai-provider-list" role="list">
+          {configured.map((provider) => {
+            const isCustom = provider.kind === "custom";
+            return (
+              <div key={provider.id} className="qx-ai-provider-list-row" role="listitem">
+                <div className="qx-ai-provider-list-main">
+                  <div className="qx-ai-provider-list-title">
+                    <span>{provider.name}</span>
+                    <Badge variant="outline">
+                      {isCustom
+                        ? t("qxai.providers.customBadge", "Custom")
+                        : t("qxai.providers.templateBadge", "Template")}
+                    </Badge>
+                  </div>
+                  <div className="qx-ai-config-card-meta">{provider.baseUrl}</div>
+                  <div className="qx-ai-config-card-meta">
+                    {provider.apiKey
+                      ? `${t("qxai.providers.key", "Key")}: ${maskProviderKey(provider.apiKey, "")}`
+                      : t("qxai.providers.notConfigured", "API key not configured")}
+                    {` · ${provider.models.length} ${t("qxai.providers.modelsCount", "models")}`}
+                  </div>
+                </div>
+                <div className="qx-ai-provider-list-actions">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditor(
+                      isCustom
+                        ? { kind: "custom", provider: provider.provider }
+                        : { kind: "builtin", provider: provider.provider, apiKey: provider.apiKey },
+                    )}
+                  >
+                    <Pencil size={13} aria-hidden="true" />
+                    {t("common.edit", "Edit")}
+                  </Button>
+                  {isCustom && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="qx-ai-provider-delete"
+                      onClick={() => void remove(provider.provider)}
+                    >
+                      <Trash2 size={13} aria-hidden="true" />
+                      {t("common.delete", "Delete")}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

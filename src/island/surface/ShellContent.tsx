@@ -1,8 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { Blocks, LayoutGrid, Search } from "lucide-react";
 import type {
   IslandContentAction,
   IslandOpenTarget,
+  IslandProgressStyle,
   IslandSlotContent,
   IslandTone,
 } from "../types";
@@ -12,22 +13,7 @@ import { visibleIslandActivity } from "./contentPolicy";
 import { builtinModuleIcon } from "../../modules/builtinIcons";
 import { Button } from "../../components/ui";
 import { useT } from "../../i18n";
-
-function clampProgress(value?: number): number | null {
-  if (typeof value !== "number" || Number.isNaN(value)) return null;
-  return Math.max(0, Math.min(100, value));
-}
-
-function countdownRemaining(content: IslandSlotContent, now: number): number | null {
-  const countdown = content.countdown;
-  if (!countdown) return null;
-  if (countdown.paused || countdown.endsAt == null || !Number.isFinite(countdown.endsAt)) {
-    return typeof countdown.remainingMs === "number" && Number.isFinite(countdown.remainingMs)
-      ? Math.max(0, countdown.remainingMs)
-      : null;
-  }
-  return Math.max(0, countdown.endsAt - now);
-}
+import type { IslandProgressSnapshot } from "./useIslandProgress";
 
 function formatCountdown(value: number): string {
   const totalSeconds = Math.max(0, Math.ceil(value / 1000));
@@ -109,12 +95,15 @@ export interface ShellContentProps {
   /** Host-owned module/plugin destination represented by the leading icon. */
   openTarget?: IslandOpenTarget;
   onOpenTarget?: () => void;
+  /** Shared with QxIslandSurface so countdowns use one timer. */
+  progressState?: IslandProgressSnapshot;
   /** Fallback for legacy BottomIsland onAction when no sessionId */
   onAction?: (actionId: string) => void | Promise<void>;
 }
 
 /**
- * Fixed-height shell layout: single row + progress as bottom overlay.
+ * Fixed-height shell layout: one chrome row with an optional compact progress
+ * slot inside the copy column. The meter never runs below identity/actions.
  * Trailing pack: [activity?][actions?] with actions always rightmost.
  */
 export default function ShellContent({
@@ -123,42 +112,26 @@ export default function ShellContent({
   compact = false,
   openTarget,
   onOpenTarget,
+  progressState = { progress: null, countdownMs: null },
   onAction,
 }: ShellContentProps) {
   const t = useT();
-  const [now, setNow] = useState(() => Date.now());
-  const countdownRunning = Boolean(
-    content?.countdown
-    && !content.countdown.paused
-    && typeof content.countdown.endsAt === "number"
-    && Number.isFinite(content.countdown.endsAt),
-  );
-
-  useEffect(() => {
-    if (!countdownRunning) return undefined;
-    setNow(Date.now());
-    const timer = window.setInterval(() => setNow(Date.now()), 250);
-    return () => window.clearInterval(timer);
-  }, [countdownRunning, content?.countdown?.endsAt]);
 
   if (!content) {
     return <span className="qx-island-shell-placeholder" />;
   }
 
-  const countdownMs = countdownRemaining(content, now);
-  const countdownProgress = countdownMs != null
-    && typeof content.countdown?.durationMs === "number"
-    && content.countdown.durationMs > 0
-    ? clampProgress(((content.countdown.durationMs - countdownMs) / content.countdown.durationMs) * 100)
-    : null;
-  const progress = countdownProgress ?? (
-    content.meter?.kind === "progress"
-      ? clampProgress(content.meter.progress)
-      : null
-  );
+  const { progress, countdownMs } = progressState;
   const activityKind = visibleIslandActivity(content);
   const activity = Boolean(activityKind);
   const canOpenTarget = Boolean(openTarget && onOpenTarget);
+  const progressStyle: IslandProgressStyle =
+    content.meter?.presentation ?? "surface-fill";
+  const showIconRing =
+    progress !== null && progressStyle === "icon-ring" && canOpenTarget;
+  const showCompactProgress =
+    progress !== null
+    && (progressStyle === "compact-line" || (progressStyle === "icon-ring" && !canOpenTarget));
   const TargetIcon = openTarget?.kind === "module"
     ? builtinModuleIcon(openTarget.id) ?? LayoutGrid
     : openTarget?.kind === "plugin"
@@ -195,7 +168,13 @@ export default function ShellContent({
           aria-hidden="true"
         />
       )}
-      <div className={`qx-island-shell-row${canOpenTarget ? " has-module-icon" : ""}`}>
+      <div
+        className={[
+          "qx-island-shell-row",
+          canOpenTarget ? "has-module-icon" : "",
+          showCompactProgress ? "has-progress" : "",
+        ].filter(Boolean).join(" ")}
+      >
         {canOpenTarget && (
           <Button
             className="qx-island-module-button"
@@ -212,25 +191,54 @@ export default function ShellContent({
             ) : (
               <TargetIcon size={14} strokeWidth={2.1} aria-hidden="true" />
             )}
+            {showIconRing && (
+              <svg
+                className="qx-island-module-progress-ring"
+                viewBox="0 0 28 28"
+                aria-hidden="true"
+              >
+                <rect className="is-track" x="1.5" y="1.5" width="25" height="25" rx="8" pathLength="100" />
+                <rect
+                  className="is-value"
+                  x="1.5"
+                  y="1.5"
+                  width="25"
+                  height="25"
+                  rx="8"
+                  pathLength="100"
+                  style={{ strokeDasharray: `${progress} 100` }}
+                />
+              </svg>
+            )}
           </Button>
         )}
-        <div className="qx-island-shell-copy">
-          {content.identity?.tag && (
-            <span className="qx-island-shell-tag">
-              {content.identity.beacon && content.identity.beacon !== "off" && (
-                <i
-                  className={`qx-sci-beacon is-${content.identity.beacon}`}
-                  aria-hidden="true"
-                />
-              )}
-              {content.identity.tag}
-            </span>
+        <div className={`qx-island-shell-copy${showCompactProgress ? " has-progress" : ""}`}>
+          <div className="qx-island-shell-copy-line">
+            {content.identity?.tag && (
+              <span className="qx-island-shell-tag">
+                {content.identity.beacon && content.identity.beacon !== "off" && (
+                  <i
+                    className={`qx-sci-beacon is-${content.identity.beacon}`}
+                    aria-hidden="true"
+                  />
+                )}
+                {content.identity.tag}
+              </span>
+            )}
+            <ShellMessageMarquee
+              primary={content.primary}
+              secondary={content.secondary}
+              compact={compact}
+            />
+          </div>
+          {showCompactProgress && (
+            <div
+              className="qx-island-meter-progress"
+              aria-hidden="true"
+            >
+              <span style={{ width: `${progress}%` }} />
+            </div>
           )}
-          <ShellMessageMarquee
-            primary={content.primary}
-            secondary={content.secondary}
-            compact={compact}
-          />
         </div>
         <div className="qx-island-shell-trailing">
           {activity && (
@@ -278,14 +286,6 @@ export default function ShellContent({
           )}
         </div>
       </div>
-      {progress !== null && (
-        <div
-          className="qx-island-meter-progress"
-          aria-label={`${progress}%`}
-        >
-          <span style={{ width: `${progress}%` }} />
-        </div>
-      )}
     </div>
   );
 }

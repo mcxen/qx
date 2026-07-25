@@ -144,6 +144,13 @@ export function postToPluginRuntimes(
   }
 }
 
+/** Deliver one host-wide event to every live worker and panel runtime. */
+export function broadcastToPluginRuntimes(message: Record<string, unknown>): void {
+  for (const [pluginId] of runtimeSources) {
+    postToPluginRuntimes(pluginId, message);
+  }
+}
+
 export function runPluginItemAction(pluginId: string, actionId: string): void {
   postToPluginPanel(pluginId, { type: "qx:run-item-action", actionId });
 }

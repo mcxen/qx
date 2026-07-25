@@ -18,6 +18,7 @@ import type { AppearanceSettings, Settings } from "../../modules/settings/store"
 import { Button } from "../../components/ui";
 import { Maximize2, Minimize2, PanelTopOpen, X } from "lucide-react";
 import { useT } from "../../i18n";
+import { useIslandProgress } from "../surface/useIslandProgress";
 
 interface Snapshot {
   sessions_json?: string | null;
@@ -113,6 +114,7 @@ export default function IslandFloatApp() {
         componentProps: undefined,
       }
     : null;
+  const progressState = useIslandProgress(content);
 
   const toggleCompact = () => {
     const next = !compact;
@@ -167,12 +169,15 @@ export default function IslandFloatApp() {
           variant="shell"
           empty={!content}
           tone={content?.tone}
+          progress={progressState.progress}
+          progressStyle={content?.meter?.presentation}
           className="qx-island-float-surface"
         >
           <div className="qx-island-float-content">
             <ShellContent
               key={session?.id ?? "empty"}
               content={content}
+              progressState={progressState}
               compact={compact}
               sessionId={session?.id}
               openTarget={session?.openTarget}

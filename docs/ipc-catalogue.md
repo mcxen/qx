@@ -98,7 +98,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 
 ## marketplace
 
-`fetch_plugin_index(source_id?)`（合并 `settings.plugin_registries` 中所有已启用库的 `index.json`；条目带 `source_id` / `source_name` / `source_index_url` 归属；返回 `sources[]` 各库状态）、`download_plugin(url)`、`install_plugin(path)`、`install_plugin_from_url(url)`、`install_raycast_extension_from_url(url)`、`uninstall_plugin(id)`、`list_installed_plugins()`、`read_plugin_entry(id)`、`set_plugin_enabled(id, enabled)`、`plugin_storage_get/set/delete(id, key, value?)`、`plugin_preferences_get/set(id, values?)`、`sign_plugin(dir, private_key_hex)`、`scaffold_plugin(name, output_dir)`。
+`fetch_plugin_index(source_id?, force_refresh?)`（合并 `settings.plugin_registries` 中所有已启用库的 `index.json`；条目带 `source_id` / `source_name` / `source_index_url` 归属；返回 `sources[]` 各库状态；默认优先使用 15 分钟本地索引缓存，`force_refresh` 跳过缓存并更新缓存）、`download_plugin(url)`、`install_plugin(path)`、`install_plugin_from_url(url)`、`install_raycast_extension_from_url(url)`、`uninstall_plugin(id)`、`list_installed_plugins()`、`read_plugin_entry(id)`、`set_plugin_enabled(id, enabled)`、`plugin_storage_get/set/delete(id, key, value?)`、`plugin_preferences_get/set(id, values?)`、`sign_plugin(dir, private_key_hex)`、`scaffold_plugin(name, output_dir)`。
 
 ## settings
 

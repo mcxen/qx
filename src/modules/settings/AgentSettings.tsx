@@ -1,9 +1,8 @@
 import { useEffect, useMemo } from "react";
 import { LoadingLabel, Row, SegmentedControl, Select, SettingsCard, Slider, Toggle } from "../../components/ui";
 import {
-  BuiltInProviderKeys,
-  CustomProvidersSection,
   MemorySection,
+  ProviderListSection,
 } from "../qx-ai/AiProviderConfig";
 import { useG4fStore } from "../qx-ai/store";
 import { useT } from "../../i18n";
@@ -16,14 +15,12 @@ export default function AgentSettings() {
   const {
     providers,
     builtInProviders,
-    builtInCredentials,
     customProviders,
     currentProvider,
     currentModel,
     loading,
     error,
     loadProviders,
-    saveBuiltInProviderKey,
     setCurrentProvider,
     setCurrentModel,
   } = useG4fStore();
@@ -109,14 +106,7 @@ export default function AgentSettings() {
     <div className="qx-settings-page">
       <SettingsCard
         title={t("agent.providers.title", "Providers & Keys")}>
-        <BuiltInProviderKeys
-          providers={builtInProviders}
-          credentials={builtInCredentials}
-          onSave={async (id, apiKey) => {
-            await saveBuiltInProviderKey(id, apiKey);
-          }}
-        />
-        <CustomProvidersSection />
+        <ProviderListSection />
         <MemorySection />
       </SettingsCard>
 

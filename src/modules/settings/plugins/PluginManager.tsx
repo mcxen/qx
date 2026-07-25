@@ -1042,7 +1042,7 @@ function MarketplaceTab({
     );
   }, [entries, selectedEntry]);
 
-  const fetchIndex = useCallback(async (sourceId?: string) => {
+  const fetchIndex = useCallback(async (sourceId?: string, forceRefresh = false) => {
     setLoading(true);
     setError(null);
     setInstallStatus(null);
@@ -1053,6 +1053,7 @@ function MarketplaceTab({
         sources?: PluginIndexSourceStatus[];
       }>("fetch_plugin_index", {
         sourceId: sourceId && sourceId !== "all" ? sourceId : null,
+        forceRefresh,
       });
       setEntries(index.plugins);
       setSourceStatuses(index.sources ?? []);
@@ -1300,17 +1301,17 @@ function MarketplaceTab({
       <Button
         variant="outline"
         size="sm"
-        onClick={() => void fetchIndex(sourceFilter === "all" ? undefined : sourceFilter)}
+        onClick={() => void fetchIndex(sourceFilter === "all" ? undefined : sourceFilter, true)}
         disabled={loading}
       >
         {loading ? (
-          <LoadingLabel>{t("plugins.marketplace.refresh", "Refresh")}</LoadingLabel>
+          <LoadingLabel>{t("plugins.marketplace.refreshSource", "Refreshing plugin sources")}</LoadingLabel>
         ) : (
           <>
             <RefreshCw size={13} aria-hidden="true" />
             {error
-              ? t("plugins.marketplace.retry", "Retry")
-              : t("plugins.marketplace.refresh", "Refresh")}
+              ? t("plugins.marketplace.retrySource", "Retry refreshing sources")
+              : t("plugins.marketplace.refreshSource", "Refresh plugin sources")}
           </>
         )}
       </Button>

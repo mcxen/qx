@@ -9,6 +9,11 @@ export type IslandActivity =
   | "dots"
   | "spinner"
   | "pulse";
+export type IslandProgressStyle =
+  | "surface-fill"
+  | "icon-ring"
+  | "island-ring"
+  | "compact-line";
 export type IslandChromeVariant = "shell" | "system" | "sci" | "date";
 
 export type IslandPriority = "task" | "error" | "toast" | "location" | "home";
@@ -58,6 +63,8 @@ export interface IslandSlotContent {
     kind: "progress" | "activity";
     /** 0–100; never fake */
     progress?: number;
+    /** Host-owned visual treatment. Defaults to surface-fill. */
+    presentation?: IslandProgressStyle;
     /** Host-owned indeterminate animation. */
     activity?: IslandActivity;
   };

@@ -6,6 +6,7 @@ export type {
   IslandActionIcon,
   IslandActionVariant,
   IslandActivity,
+  IslandProgressStyle,
   IslandChromeVariant,
   IslandPriority,
   IslandPlacementMode,
@@ -43,6 +44,7 @@ export { default as QxIslandSurface } from "./surface/QxIslandSurface";
 export { default as ShellContent } from "./surface/ShellContent";
 export { default as QxIslandDockHost } from "./surface/QxIslandDockHost";
 export { default as QxIslandDockSlot } from "./surface/QxIslandDockSlot";
+export { useIslandProgress } from "./surface/useIslandProgress";
 
 export {
   mapBottomIslandContent,

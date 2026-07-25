@@ -11,6 +11,7 @@ import {
   useSettingsStore,
   type PluginDisplaySettings,
 } from "../modules/settings/store";
+import { normalizeLanguagePreference, resolveLocale } from "../i18n";
 import { createQxLogger } from "../lib/logger";
 import { PLUGIN_WORKBENCH_RUNTIME_JS } from "./cliWorkbench";
 import { PLUGIN_OVERLAY_SCROLLBAR_RUNTIME_JS } from "../utils/overlayScrollbar";
@@ -32,6 +33,7 @@ import {
   waitForPluginRuntime,
 } from "./pluginRuntimeIpc";
 export {
+  broadcastToPluginRuntimes,
   isExpectedPluginMessageOrigin,
   isPluginRuntimeSource,
   postPluginChromeKey,
@@ -90,6 +92,13 @@ function pluginDisplaySettingsSnapshot(): PluginDisplaySettings {
   };
 }
 
+function pluginLocaleSnapshot() {
+  const preference = normalizeLanguagePreference(
+    useSettingsStore.getState().settings.general.language,
+  );
+  return { current: resolveLocale(preference), preference };
+}
+
 export function buildPluginRuntimeHtml(
   pluginId: string,
   entrySource: string,
@@ -98,6 +107,7 @@ export function buildPluginRuntimeHtml(
 ): string {
   const raycastActionPanel = pluginDisplay.raycast_action_panel !== false;
   const initialTheme = currentPluginThemePayload();
+  const initialLocale = pluginLocaleSnapshot();
   const runtime = `
     <style>
       html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
@@ -118,6 +128,8 @@ export function buildPluginRuntimeHtml(
       const pluginDisplay = ${JSON.stringify({
         raycastActionPanel,
       })};
+      let localeState = JSON.parse(${serializeForInlineScript(JSON.stringify(initialLocale))});
+      const localeListeners = new Set();
       ${PLUGIN_THEME_RUNTIME_JS}
       const initialTheme = JSON.parse(${serializeForInlineScript(JSON.stringify(initialTheme))}); applyPluginTheme(initialTheme.theme, initialTheme.tokens);
       let plugin = null;
@@ -372,6 +384,15 @@ export function buildPluginRuntimeHtml(
 
       const context = {
         pluginId,
+        locale: {
+          get current() { return localeState.current; },
+          get preference() { return localeState.preference; },
+          onChange: (listener) => {
+            if (typeof listener !== 'function') return () => {};
+            localeListeners.add(listener);
+            return () => localeListeners.delete(listener);
+          },
+        },
         display: pluginDisplay,
         invoke: (cmd, args) => rpc('invoke', { cmd, args }),
         showToast: (msg) => rpc('showToast', { msg }),
@@ -611,6 +632,20 @@ export function buildPluginRuntimeHtml(
         const { type } = data;
         if (type === 'qx:theme') {
           applyPluginTheme(data.theme, data.tokens);
+          return;
+        }
+        if (type === 'qx:locale') {
+          if (data.pluginId !== pluginId || data.runtimeId !== runtimeId) return;
+          const next = data.locale || {};
+          if ((next.current !== 'en' && next.current !== 'zh-CN')
+            || (next.preference !== 'system' && next.preference !== 'en' && next.preference !== 'zh-CN')) return;
+          if (next.current === localeState.current && next.preference === localeState.preference) return;
+          localeState = { current: next.current, preference: next.preference };
+          for (const listener of [...localeListeners]) {
+            try { listener(localeState); } catch (error) {
+              postPluginLog('error', 'Plugin locale listener failed', { error: summarizeLogValue(error) });
+            }
+          }
           return;
         }
         if (type === 'qx:rpc:response') {

@@ -8,6 +8,10 @@ import type {
 import { listen } from "@tauri-apps/api/event";
 import { handlePluginRpc } from "./rpcMethods";
 import { DEFAULT_SETTINGS, useSettingsStore } from "../modules/settings/store";
+import {
+  normalizeLanguagePreference,
+  resolveLocale,
+} from "../i18n";
 import { createPluginUiKit, enhancePluginCli } from "./cliWorkbench";
 
 export interface PluginContextHooks {
@@ -15,6 +19,31 @@ export interface PluginContextHooks {
   onPrompt: (label: string, defaultValue?: string) => Promise<string | null>;
   onGetPreference: (pluginId: string, id: string) => Promise<unknown>;
   onRunPluginCommand?: (pluginId: string, command: string) => Promise<void>;
+}
+
+function pluginLocaleState() {
+  const preference = normalizeLanguagePreference(
+    useSettingsStore.getState().settings.general.language,
+  );
+  return { current: resolveLocale(preference), preference };
+}
+
+function subscribePluginLocale(
+  listener: (state: ReturnType<typeof pluginLocaleState>) => void,
+): () => void {
+  let previous = pluginLocaleState();
+  const notifyIfChanged = () => {
+    const next = pluginLocaleState();
+    if (next.current === previous.current && next.preference === previous.preference) return;
+    previous = next;
+    listener(next);
+  };
+  const unsubscribe = useSettingsStore.subscribe(notifyIfChanged);
+  window.addEventListener("languagechange", notifyIfChanged);
+  return () => {
+    unsubscribe();
+    window.removeEventListener("languagechange", notifyIfChanged);
+  };
 }
 
 function createAiChatPayload(
@@ -83,6 +112,15 @@ export function createPluginContext(
 
   return {
     pluginId: plugin.id,
+    locale: {
+      get current() {
+        return pluginLocaleState().current;
+      },
+      get preference() {
+        return pluginLocaleState().preference;
+      },
+      onChange: subscribePluginLocale,
+    },
     display: {
       raycastActionPanel: (
         useSettingsStore.getState().settings.plugin_display

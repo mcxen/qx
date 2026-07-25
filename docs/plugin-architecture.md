@@ -53,6 +53,10 @@
 - Custom panel 的 resolved Light/Dark、`.dark` 和公开语义/Qx 兼容 token 由
   `pluginTheme` 统一投影；主题 class 或宿主外观 style token 变化时经 Shell bridge
   广播，插件不得用单一主题 fallback 猜测宿主颜色
+- Qx 语言经无权限 `context.locale` 端口投影：`current` 是已解析的 `en` / `zh-CN`，
+  `preference` 保留 `system` / `en` / `zh-CN`。语言设置或系统语言变化时，registry 经
+  Shell bridge 向每个存活 worker/panel runtime 广播 `qx:locale`，runtime 先更新状态再
+  调用插件注册的 `onChange` listener；插件不得用 `navigator.language` 推测 Qx 文案语言
 
 ### 声明式 Workbench 端口
 

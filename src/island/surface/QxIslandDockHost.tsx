@@ -13,6 +13,7 @@ import { useT } from "../../i18n";
 import { islandHost } from "../session/hostApi";
 import { useIslandRotation } from "../session/useIslandRotation";
 import { islandRouteForTarget } from "../session/openTarget";
+import { useIslandProgress } from "./useIslandProgress";
 
 /**
  * Renders the docked store winner inside QxIslandSurface.
@@ -32,6 +33,7 @@ export default function QxIslandDockHost() {
   const winner = winnerId
     ? sessions.find((session) => session.id === winnerId) ?? null
     : null;
+  const progressState = useIslandProgress(winner?.content);
 
   if (!winner) {
     return (
@@ -78,6 +80,8 @@ export default function QxIslandDockHost() {
       placement="docked"
       variant="shell"
       tone={winner.content.tone}
+      progress={progressState.progress}
+      progressStyle={winner.content.meter?.presentation}
       aria-label={winner.content.primary}
       className={canFloat ? "qx-island-dock-popout" : undefined}
     >
@@ -85,6 +89,7 @@ export default function QxIslandDockHost() {
         <ShellContent
           key={winner.id}
           content={winner.content}
+          progressState={progressState}
           sessionId={winner.id}
           openTarget={winner.openTarget}
           onOpenTarget={openRoute

@@ -581,6 +581,12 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
         progress: Number.isFinite(Number(islandRaw.progress))
           ? Math.max(0, Math.min(100, Number(islandRaw.progress)))
           : undefined,
+        progressStyle: islandRaw.progressStyle === "surface-fill"
+          || islandRaw.progressStyle === "icon-ring"
+          || islandRaw.progressStyle === "island-ring"
+          || islandRaw.progressStyle === "compact-line"
+          ? islandRaw.progressStyle
+          : undefined,
         activity: islandRaw.activity === "wave" || islandRaw.activity === "dots" || islandRaw.activity === "spinner" || islandRaw.activity === "pulse"
           ? islandRaw.activity
           : undefined,

@@ -5,7 +5,13 @@
 import ShellContent from "../island/surface/ShellContent";
 import QxIslandSurface from "../island/surface/QxIslandSurface";
 import { mapBottomIslandContent } from "../island/compat/mapBottomIslandContent";
-import type { IslandActionIcon, IslandActionVariant, IslandActivity } from "../island/types";
+import type {
+  IslandActionIcon,
+  IslandActionVariant,
+  IslandActivity,
+  IslandProgressStyle,
+} from "../island/types";
+import { useIslandProgress } from "../island/surface/useIslandProgress";
 
 export interface BottomIslandAction {
   id: string;
@@ -19,6 +25,7 @@ export interface BottomIslandContent {
   label: string;
   detail?: string;
   progress?: number;
+  progressStyle?: IslandProgressStyle;
   activity?: IslandActivity;
   tone?: "neutral" | "success" | "warning" | "danger";
   actionLabel?: string;
@@ -33,15 +40,19 @@ export default function QxBottomIsland({
   content?: BottomIslandContent | null;
 }) {
   const slot = content ? mapBottomIslandContent(content) : null;
+  const progressState = useIslandProgress(slot);
   return (
     <QxIslandSurface
       placement="docked"
       variant="shell"
       empty={!content}
       tone={content?.tone}
+      progress={progressState.progress}
+      progressStyle={slot?.meter?.presentation}
     >
       <ShellContent
         content={slot}
+        progressState={progressState}
         onAction={(actionId) => {
           const action = content?.actions?.find((item) => item.id === actionId);
           if (action) action.onAction();

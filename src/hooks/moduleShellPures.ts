@@ -3,7 +3,11 @@
  * Used by `useQxModuleShell` and by `scripts/check-module-ports.mjs` unit tests.
  */
 
-import type { IslandActivity, IslandTone } from "../island/types";
+import type {
+  IslandActivity,
+  IslandProgressStyle,
+  IslandTone,
+} from "../island/types";
 
 export type ModuleIslandTone = IslandTone | undefined;
 export type ModuleIslandActivity = IslandActivity | undefined;
@@ -17,6 +21,7 @@ export type ModuleIslandState = {
   detail?: string;
   count?: number;
   progress?: number;
+  progressStyle?: IslandProgressStyle;
   activity?: ModuleIslandActivity;
   tone?: ModuleIslandTone;
   actionLabel?: string;
@@ -28,6 +33,7 @@ export type ModuleIslandContent = {
   detail?: string;
   tone?: IslandTone;
   progress?: number;
+  progressStyle?: IslandProgressStyle;
   activity?: IslandActivity;
   actionLabel?: string;
   onAction?: () => void;
@@ -51,6 +57,7 @@ export function buildModuleIsland(state: ModuleIslandState): ModuleIslandContent
       label: title,
       detail: state.loadingDetail?.trim() || "Loading…",
       progress: state.progress,
+      progressStyle: state.progressStyle,
       activity: state.activity ?? (state.progress == null ? "wave" : undefined),
       tone: state.tone,
       actionLabel: state.actionLabel,
@@ -69,6 +76,7 @@ export function buildModuleIsland(state: ModuleIslandState): ModuleIslandContent
     detail,
     tone: state.tone,
     progress: state.progress,
+    progressStyle: state.progressStyle,
     activity: state.activity,
     actionLabel: state.actionLabel,
     onAction: state.onAction,

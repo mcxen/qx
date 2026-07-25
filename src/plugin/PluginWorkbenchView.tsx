@@ -738,7 +738,11 @@ export default function PluginWorkbenchView({
             key={id}
             type="button"
             {...getItemProps(index, {
-              className: `tall qx-host-workbench-row${item.images?.length ? " has-card-media" : ""}`,
+              className: [
+                "tall qx-host-workbench-row",
+                item.images?.length ? "has-card-media" : "",
+                item.progress != null ? "has-progress" : "",
+              ].filter(Boolean).join(" "),
             })}
             onClick={() => onActivate(id)}
           >

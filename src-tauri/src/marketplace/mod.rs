@@ -16,6 +16,7 @@ const USER_AGENT: &str = "Qx/0.1 (Marketplace; +https://github.com/mcxen/qx)";
 static PLUGIN_STORAGE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 const HTTP_RETRY_ATTEMPTS: usize = 2;
 const HTTP_RETRY_AFTER_CAP_SECS: u64 = 3;
+const PLUGIN_INDEX_CACHE_TTL_SECS: u64 = 15 * 60;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginCommand {
@@ -421,6 +422,19 @@ pub struct PluginIndex {
     /// Per-registry fetch status so the UI can show which mirrors worked.
     #[serde(default)]
     pub sources: Vec<PluginIndexSourceStatus>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PluginIndexCache {
+    saved_at_ms: u64,
+    index: PluginIndex,
+}
+
+impl PluginIndexCache {
+    fn is_fresh(&self) -> bool {
+        let ttl_ms = PLUGIN_INDEX_CACHE_TTL_SECS.saturating_mul(1_000);
+        unix_now_ms().saturating_sub(self.saved_at_ms) <= ttl_ms
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -920,6 +934,62 @@ fn marketplace_repo_cache_dir() -> PathBuf {
     crate::paths::cache_dir().join("marketplace-repos")
 }
 
+fn unix_now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or(0)
+}
+
+fn plugin_index_cache_path(source_id: Option<&str>, targets: &[RegistryFetchTarget]) -> PathBuf {
+    // Include the enabled source configuration in the key. Editing a source URL,
+    // id, or display name therefore never reuses an unrelated index response.
+    let mut signature = String::from(source_id.unwrap_or("all"));
+    let mut target_signatures = targets
+        .iter()
+        .map(|target| format!("{}\0{}\0{}", target.id, target.name, target.index_url))
+        .collect::<Vec<_>>();
+    target_signatures.sort();
+    for target in target_signatures {
+        signature.push('\n');
+        signature.push_str(&target);
+    }
+    marketplace_repo_cache_dir().join(format!("index-{}.json", blake3_short(&signature)))
+}
+
+fn read_plugin_index_cache_sync(path: &Path) -> Option<PluginIndexCache> {
+    let bytes = fs::read(path).ok()?;
+    serde_json::from_slice::<PluginIndexCache>(&bytes).ok()
+}
+
+async fn read_plugin_index_cache(path: PathBuf) -> Option<PluginIndexCache> {
+    tauri::async_runtime::spawn_blocking(move || read_plugin_index_cache_sync(&path))
+        .await
+        .ok()
+        .flatten()
+}
+
+fn write_plugin_index_cache_sync(path: &Path, index: &PluginIndex) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "plugin index cache path has no parent".to_string())?;
+    fs::create_dir_all(parent).map_err(|e| format!("create plugin index cache: {e}"))?;
+    let cache = PluginIndexCache {
+        saved_at_ms: unix_now_ms(),
+        index: index.clone(),
+    };
+    let bytes =
+        serde_json::to_vec(&cache).map_err(|e| format!("serialize plugin index cache: {e}"))?;
+    fs::write(path, bytes).map_err(|e| format!("write plugin index cache: {e}"))
+}
+
+async fn write_plugin_index_cache(path: PathBuf, index: PluginIndex) {
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        let _ = write_plugin_index_cache_sync(&path, &index);
+    })
+    .await;
+}
+
 fn cache_safe_part(value: &str) -> String {
     value
         .chars()
@@ -1011,8 +1081,13 @@ async fn http_get_from_repo_archive(source: &GitHubRawSource) -> Result<Vec<u8>,
 /// mirror (important when GitHub raw is slow or blocked).
 ///
 /// `source_id`: when set, only fetch that registry (still returns `sources` status).
+/// `force_refresh`: bypass the short-lived local index cache. The Browse page
+/// uses this for the explicit “刷新仓库源” action.
 #[command]
-pub async fn fetch_plugin_index(source_id: Option<String>) -> Result<PluginIndex, String> {
+pub async fn fetch_plugin_index(
+    source_id: Option<String>,
+    force_refresh: Option<bool>,
+) -> Result<PluginIndex, String> {
     let filter = source_id
         .as_deref()
         .map(str::trim)
@@ -1028,6 +1103,14 @@ pub async fn fetch_plugin_index(source_id: Option<String>) -> Result<PluginIndex
         } else {
             "No plugin libraries configured. Add one under Settings → Extensions.".to_string()
         });
+    }
+
+    let cache_path = plugin_index_cache_path(filter.as_deref(), &targets);
+    let cached = read_plugin_index_cache(cache_path.clone()).await;
+    if !force_refresh.unwrap_or(false) {
+        if let Some(cache) = cached.as_ref().filter(|cache| cache.is_fresh()) {
+            return Ok(cache.index.clone());
+        }
     }
 
     let mut handles = Vec::with_capacity(targets.len());
@@ -1059,6 +1142,12 @@ pub async fn fetch_plugin_index(source_id: Option<String>) -> Result<PluginIndex
     }
 
     if plugins.is_empty() && sources.iter().all(|s| !s.ok) {
+        // A stale index is still more useful than an empty marketplace when a
+        // registry is temporarily unavailable. An explicit refresh can then be
+        // retried without losing the last usable list.
+        if let Some(cache) = cached {
+            return Ok(cache.index);
+        }
         let detail = sources
             .iter()
             .filter_map(|s| s.error.as_ref().map(|e| format!("{}: {e}", s.name)))
@@ -1080,11 +1169,13 @@ pub async fn fetch_plugin_index(source_id: Option<String>) -> Result<PluginIndex
             .then_with(|| a.id.cmp(&b.id))
     });
 
-    Ok(PluginIndex {
+    let index = PluginIndex {
         schema_version: 1,
         plugins,
         sources,
-    })
+    };
+    write_plugin_index_cache(cache_path, index.clone()).await;
+    Ok(index)
 }
 
 #[command]

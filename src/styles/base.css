@@ -57,6 +57,8 @@
   --qx-island-float-width: 400px;
   --qx-island-float-compact-width: 240px;
   --qx-island-float-height: 34px;
+  --qx-island-progress-fill: color-mix(in srgb, var(--qx-accent) 18%, transparent);
+  --qx-island-progress-track: color-mix(in srgb, var(--qx-text-primary) 12%, transparent);
 
   --qx-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Display",
     "Helvetica Neue", "PingFang SC", sans-serif;

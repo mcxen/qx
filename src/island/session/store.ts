@@ -89,6 +89,13 @@ function applyPluginCaps(input: IslandShowInput): IslandShowInput | null {
       content.meter = {
         kind: "progress",
         progress: Math.max(0, Math.min(100, Number(content.meter.progress ?? 0))),
+        presentation:
+          content.meter.presentation === "surface-fill"
+          || content.meter.presentation === "icon-ring"
+          || content.meter.presentation === "island-ring"
+          || content.meter.presentation === "compact-line"
+            ? content.meter.presentation
+            : undefined,
       };
     }
     return {
@@ -321,6 +328,13 @@ export function updateSession(
         content.meter = {
           kind: "progress",
           progress: Math.max(0, Math.min(100, Number(content.meter.progress ?? 0))),
+          presentation:
+            content.meter.presentation === "surface-fill"
+            || content.meter.presentation === "icon-ring"
+            || content.meter.presentation === "island-ring"
+            || content.meter.presentation === "compact-line"
+              ? content.meter.presentation
+              : undefined,
         };
       }
     }

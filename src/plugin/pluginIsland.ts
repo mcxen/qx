@@ -5,6 +5,7 @@ import type {
   PluginIslandActionIcon,
   PluginIslandActivity,
   PluginIslandDisplayInput,
+  PluginIslandProgressStyle,
 } from "./types";
 import { getPluginIcon } from "./pluginIconRegistry";
 
@@ -14,6 +15,17 @@ export type PluginIslandCommandRunner = (
 ) => void | Promise<void>;
 
 const workbenchProjectionSignatures = new Map<string, string>();
+
+function normalizePluginIslandProgressStyle(
+  value: unknown,
+): PluginIslandProgressStyle | undefined {
+  return value === "surface-fill"
+    || value === "icon-ring"
+    || value === "island-ring"
+    || value === "compact-line"
+    ? value
+    : undefined;
+}
 
 export function pluginIslandSessionId(pluginId: string): string {
   return `plugin.display.${pluginId}`;
@@ -97,6 +109,7 @@ export function normalizePluginIslandInput(
     progress: typeof raw.progress === "number"
       ? Math.max(0, Math.min(100, raw.progress))
       : undefined,
+    progressStyle: normalizePluginIslandProgressStyle(raw.progressStyle),
     activity,
     countdown,
     action: action?.label && action.command ? action : undefined,
@@ -135,7 +148,11 @@ export function buildPluginIslandShowInput(
       secondary: input.secondary,
       tone: input.tone,
       meter: input.progress != null
-        ? { kind: "progress", progress: input.progress }
+        ? {
+            kind: "progress",
+            progress: input.progress,
+            presentation: input.progressStyle,
+          }
         : input.activity
           ? { kind: "activity", activity: input.activity }
           : undefined,

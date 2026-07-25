@@ -370,6 +370,30 @@ context.getPreference(id: string): Promise<unknown>
 context.setTimeout / setInterval / clearTimeout / clearInterval  // 面板销毁自动清理
 ```
 
+#### 语言（必须与 Qx 对齐）
+
+插件文案必须读取 `context.locale.current`，而不是 `navigator.language`：前者是用户在
+Qx 中实际选择的界面语言，可能与系统/iframe 语言不同。当前稳定值为 `"en"` 和
+`"zh-CN"`；`context.locale.preference` 还会暴露 `"system"`、`"en"` 或 `"zh-CN"`。
+不需要额外权限。
+
+```js
+const copy = (context.locale.current === "zh-CN")
+  ? { refresh: "刷新", empty: "暂无内容" }
+  : { refresh: "Refresh", empty: "Nothing here yet" };
+
+// 仅当面板要在设置页改语言后立即重画时订阅；destroy 时取消订阅。
+const stopLocale = context.locale.onChange(({ current }) => {
+  state.locale = current;
+  paint();
+});
+// destroy() { stopLocale(); }
+```
+
+`system` 的解析规则由 Qx 统一处理：简体中文系统使用 `zh-CN`，其他系统使用 `en`。
+插件应只依据 `current` 决定文案，并将它传给 `Intl.DateTimeFormat`、`Intl.NumberFormat`
+等格式化器。
+
 #### CLI（完整协议 → [`plugin-cli-protocol.md`](./plugin-cli-protocol.md)）
 
 ```ts
@@ -660,6 +684,7 @@ await context.island.update({
   primary: "Build #184",
   secondary: "Complete",
   progress: 100,
+  progressStyle: "icon-ring",
   tone: "success",
 });
 ```
@@ -667,6 +692,18 @@ await context.island.update({
 不确定进度使用宿主 `activity`：`wave`（通用加载）、`dots`（轻量等待）、
 `spinner`（短命令）或 `pulse`（持续采样）；拿到真实百分比后改发 `progress`，两者不要
 同时提供。动画、切换过渡和 reduced-motion 均由 Qx 处理。
+
+真实进度可通过 `progressStyle` 选择宿主样式：
+
+| 值 | 表现 |
+|---|---|
+| `surface-fill` | 默认；浅蓝背景按百分比从左向右覆盖整个 Surface |
+| `icon-ring` | 沿左侧模块圆角图标外沿前进；没有目标图标时回退短线 |
+| `island-ring` | 沿整个灵动岛圆角外沿前进 |
+| `compact-line` | 文案列下方的 2px 短线 |
+
+插件只能选择枚举，不能指定颜色、透明度、SVG、DOM 或 CSS。省略或传入未知值时，
+宿主使用 `surface-fill`。
 
 `action.command` 必须是当前插件 manifest 中声明的 command。插件不能控制窗口位置、
 置顶或任务优先级；用户在 Settings → Appearance → External Island Display 决定是否

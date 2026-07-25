@@ -197,11 +197,12 @@ export default {
 | `context.prompt(label, defaultValue?)` | 弹出输入框 |
 | `context.openUrl(url)` | 打开外部链接（需 `open-url` 权限） |
 | `context.getPreference(id)` | 读取用户在设置中配置的偏好 |
+| `context.locale.current` / `.preference` / `.onChange(listener)` | Qx 当前**生效**语言（`en` / `zh-CN`）、原始语言偏好（`system` / `en` / `zh-CN`）及变化订阅；无需权限。插件 UI 必须用它匹配 Qx，不能根据 `navigator.language` 猜测 iframe 或系统语言。 |
 | `context.display.raycastActionPanel` | 读取用户在 Settings -> Extensions -> Display 中配置的 Raycast ActionPanel 行内按钮显示偏好 |
 | `context.clipboard.read()` | 读取系统剪贴板文本（需 `clipboard` 权限） |
 | `context.clipboard.write(text)` | 写入系统剪贴板文本（需 `clipboard` 权限） |
 | `context.ui.mountWorkbench(state, handlers)` | 声明式受控 panel：Qx 渲染 tabs、稳定的 List/Gallery 空态画布、`detail.image` 单图、`detail.images[]` 多图、保持段落原位的 `detail.content[]` text/image 长文块，以及底部 `detail.replies` 通用回复区（`#floor` / author / time / OP）；统一提供自适应与可放大详情；支持局部 async status、text/number/select 表单、表单/参数组管理 Actions 与 island；返回 controller 的 `update/updateItems` 以稳定 id 发布增量/批量业务结果；表单输入通过 `onInput(id, value, item)`、`form.actions` / `control.group.action` 通过 `onAction(id, item)` 回传纯数据；宿主即时处理 query/tab/selection，manifest command 完成后回调 `onCommandComplete`；`backgroundPoll` 可绑定后台 interval command |
-| `context.island.show(input)` / `update(input)` / `dismiss()` | 在宿主灵动岛显示结构化数据、真实进度或 `wave/dots/spinner/pulse` activity、宿主倒计时与一个统一样式 command 动作（需 `island` 权限；桌面浮窗只能由用户从 Qx 手动浮出并可关闭；浮窗打开目标由宿主固定为当前插件 Panel） |
+| `context.island.show(input)` / `update(input)` / `dismiss()` | 在宿主灵动岛显示结构化数据、真实进度（`progressStyle` 可选 `surface-fill/icon-ring/island-ring/compact-line`，默认浅蓝全岛填充）或 `wave/dots/spinner/pulse` activity、宿主倒计时与一个统一样式 command 动作（需 `island` 权限；桌面浮窗只能由用户从 Qx 手动浮出并可关闭；浮窗打开目标由宿主固定为当前插件 Panel） |
 | `context.cli.run({ program, args?, cwd?, env?, timeoutMs? })` | **业务 CLI 首选**：argv 同步执行（需 `cli`；**不**走 AI Agent Bash）。协议见 [plugin-cli-protocol.md](./plugin-cli-protocol.md) |
 | `context.cli.bash(script \| req)` | login-shell bash（需 `cli`） |
 | `context.cli.which(program)` | 解析 PATH / Homebrew 常见路径上的可执行文件（需 `cli`） |
@@ -505,7 +506,7 @@ App 启动
 | `plugin_http_fetch(req)` | 真实 HTTP/HTTPS 请求 |
 | `plugin_notification_show(req)` | 显示系统通知 |
 | `plugin_resolve_asset(id, asset_path)` | 将插件资源解析为可被 `convertFileSrc()` 使用的路径 |
-| `fetch_plugin_index()` | 拉取远程插件索引 |
+| `fetch_plugin_index(source_id?, force_refresh?)` | 读取插件源索引；默认优先使用 15 分钟本地缓存，强制刷新时跳过缓存并更新缓存 |
 | `download_plugin(url)` | 下载插件包到临时目录 |
 | `install_plugin_from_url(url)` | 从 GitHub repo、release asset 或 archive ZIP URL 下载并安装插件 |
 | `install_raycast_extension_from_url(url)` | Legacy/Frozen：尝试转换 Raycast tree URL；正式插件不使用此发布路径 |

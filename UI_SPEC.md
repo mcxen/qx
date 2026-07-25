@@ -442,7 +442,8 @@ Context Panel：
 - **统一高度 `34px`**（min 32 / max 36）；docked 宽 `min(400px, calc(100% - 260px))`。
 - Chrome（尺寸、居中、玻璃/border）只在 `.qx-island-surface`；内容不得自带 absolute 外轮廓。
 - 模块 `island` prop 经 shim 写入 session store；`customIsland` 为分类例外（如录屏 HUD），会抑制 store docked。
-- 文本单行截断，progress 为底边 overlay，不撑高底栏。
+- 文本单行截断；progress 默认使用 Surface 下层的浅蓝背景从左向右填充，也可由
+  生产者选择宿主图标环、Surface 环或文案列短线；任何样式都不得撑高底栏或遮挡交互。
 - 不确定进度只使用宿主动画枚举：`wave`、`dots`、`spinner`、`pulse`。Producer
   不提供 SVG、DOM、CSS 或伪造百分比。session
   winner 切换使用宿主短过渡，普通 progress/文案 update 不重复触发入场动画。
@@ -517,7 +518,7 @@ Actions Menu：
 |---|---|
 | `label` | `primary` |
 | `detail` | `secondary` |
-| `progress` / `activity` | `meter` |
+| `progress` / `progressStyle` / `activity` | `meter` |
 | `actionLabel` / `onAction` | `action` + `bindActions` |
 
 遗留形状（仍支持）：
@@ -527,6 +528,7 @@ Actions Menu：
   label: string;
   detail?: string;
   progress?: number;
+  progressStyle?: "surface-fill" | "icon-ring" | "island-ring" | "compact-line";
   tone?: "neutral" | "success" | "warning" | "danger";
   actionLabel?: string;
   onAction?: () => void;
@@ -550,6 +552,9 @@ Actions Menu：
 
 - 未知进度不要伪造百分比。
 - 进度使用 `progress`，阶段文字放 `detail`。
+- `progressStyle` 是宿主受控枚举：`surface-fill`（默认浅蓝背景从左到右填充）、
+  `icon-ring`（模块图标圆角外沿）、`island-ring`（Surface 圆角外沿）或
+  `compact-line`（文案列短线）。生产者不能传颜色、SVG、DOM 或 CSS；未知值回退默认。
 - 不确定进度使用 `activity: "wave" | "dots" | "spinner" | "pulse"`；同一状态只选
   一套，默认通用加载推荐 `wave`，轻量等待推荐 `dots`，短命令推荐 `spinner`，持续
   采样推荐 `pulse`。
