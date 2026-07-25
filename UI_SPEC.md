@@ -32,7 +32,7 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
 - **主搜索可直达模块子界面**（Module Surfaces：订阅源、会话、宏等）。协议见 `docs/module-surfaces.md`；用户可在 Settings → Search Settings → Launcher Search Sources 按模块关闭接入。
 - Screen Recording、Weather、V2EX、Macro Recorder 标记为 **Beta**：模块名后使用浅色虚线 `Beta` 标识，并通过 tooltip/模块设置说明其可能不稳定。Beta 标识只表达成熟度，不用整卡警告色。内置模块专属配置统一进入 Settings → Extensions → Installed → 对应模块；模块主界面只保留直接跳转链接。
 - 可关闭的 Beta 内置模块在 Settings → Extensions → Installed 的模块配置 Dialog 中启停。关闭后必须同时从 Quick Entries、Launcher 静态命令、Module Surfaces 和直接导航中移除；对应 lazy view 不得挂载，模块 effect / IPC 数据请求不得启动。Settings 中的模块卡仍保留，作为重新启用的唯一管理入口。
-- **返回只走 Bottom Bar 左下角 Esc**（`escapeAction` + `useEscBack`）。Top Bar 默认不渲染返回箭头；禁止模块在 Top Bar 再做一套返回。
+- **返回走 Bottom Bar 左下角 Esc**（`escapeAction` + `useEscBack`，文案 Back/Hide）；非主搜索另有小房子一键回主界面。Top Bar 默认不渲染返回箭头；禁止模块在 Top Bar 再做一套返回。
 - 右侧 Context Panel 只放导航、辅助信息和当前对象操作入口，不放第二套主布局。
 - **Context 侧栏宽度全局统一**：只用 `--qx-context-w`（`QxShell.has-context` 的 grid 第二列）。禁止模块用 inline style / localStorage 改写该变量；列表内部分栏（如 RSS 文章列表宽）可单独 token，不得影响 shell context 列宽。
 - Bottom Bar 使用 `grid-template-columns: auto 1fr auto`。
@@ -94,7 +94,7 @@ QxShell 的纵向结构高度不得因为窗口左右缩窄、文字变长、筛
 
 | 职责 | API / 机制 | 说明 |
 |---|---|---|
-| 可见 Esc | `escapeAction` | 左下角唯一返回入口；`variant="escape"` 只显示快捷键胶囊（通常 `Esc`） |
+| 可见 Esc | `escapeAction` | 左下角返回入口；`variant="escape"` 显示 **文案 + Esc**（Back/Hide）；非主搜索旁有小房子回主界面 |
 | 键盘 Esc 级联 | `useEscBack` → `onKeyDown` / `stepBack` | 每按一次退一层：inner → query → leave module；命中后 `preventDefault` + `stopPropagation` |
 | Shell 最终兜底 | `QxShell` 内置 | 若模块 `onKeyDown` 未消费 Esc，则触发 `escapeAction.onClick`（应与 `stepBack` 同语义） |
 | Host 阶梯兜底 | `App.performHostEscape` + `moduleEscapeHost` | 焦点不在 Shell 内时仍生效：先 `tryModuleEscapeStep`（`useQxModuleShell` 注册的 `stepBack`，含 RSS 文章列表→源列表），再 leave module → 清空 launcher query → hide。模块已 `preventDefault` 时不二次步进。**禁止**非 launcher 时直接 `setTab("launcher")` 跳过模块内阶梯 |
@@ -125,7 +125,7 @@ return (
     title="Module"
     search={/* search slot */}
     // 底栏 Esc 与键盘同一阶梯（stepBack），不要写成永远 jump 到 launcher
-    escapeAction={{ id: "escape", label: "Esc", kbd: "Esc", onClick: stepBack }}
+    escapeAction={{ id: "escape", label: "Back", kbd: "Esc", onClick: stepBack }}
     onKeyDown={onKeyDown}
     island={{ label: "Module", detail: "…" }}
     actions={[
@@ -450,16 +450,19 @@ Context Panel：
 结构：
 
 ```text
-[ Esc ]        [ Bottom Island ]        [ Primary / Secondary / Actions ]
+[ Back|Hide + Esc ] [ 🏠? ]   [ Bottom Island ]   [ Primary / Actions ]
 ```
 
 布局：`.qx-shell-bottombar` 为 `position: relative` + `grid-template-columns: auto 1fr auto`；Island 绝对居中叠在中间轨。
 
-### 左侧 · Esc（唯一可见返回）
+### 左侧 · Esc + Home
 
-- 只渲染 `escapeAction`（或兼容路径下由 `onBack` 推导的 fallback），通过 `ShellActionButton variant="escape"`。
-- escape 变体**只显示快捷键**（`kbd`，通常为 `Esc`），不重复显示模块名或图标。
-- `escapeAction.onClick` 应与 `useEscBack.stepBack` 一致（每按一次退一层）。无 inner/query 时等价于最终 leave：
+- 渲染 `escapeAction`（或兼容路径下由 `onBack` 推导的 fallback），通过 `ShellActionButton variant="escape"`。
+- escape 变体显示 **文案 + Esc 快捷键胶囊**：
+  - **主搜索 Launcher**（`islandKey="launcher"`）：空查询为 **Hide / 隐藏**（隐藏主界面）；有查询为 **Back / 返回**（先清空搜索）。**不显示**小房子。
+  - **非主搜索**（模块 / Settings / 插件 / loading）：**Back / 返回**（与 `useEscBack.stepBack` 同语义，每按一次退一层）。
+- 非主搜索时，Esc 右侧另有一个同风格 **小房子** 按钮（`shell.goHome`）：一键回到主搜索 Launcher，跳过模块内阶梯与 Settings `returnTo`。Launcher 不渲染该按钮。
+- `escapeAction.onClick` 应与 `useEscBack.stepBack` 一致。无 inner/query 时等价于最终 leave：
   - 模块根视图 → `setTab("launcher")`。
   - **Settings** → `closeSettings()`（`openSettings` 记录的一层 `returnTo`：调用方模块/插件，否则 launcher）。禁止 Settings leave 写死 `setTab("launcher")`。
   - 子视图（如 QxAI chat/settings、RSS detail）→ 回到模块内上一级列表。
@@ -706,7 +709,7 @@ RSS：
 
 V2EX / Weather / DevTxt / Screen Capture / Macro / Plugin Host：
 
-- 统一 `escapeAction={{ label: "Esc", kbd: "Esc", onClick: stepBack }}`（或 `useQxModuleShell` 的 `shell.escapeAction`）。
+- 统一 `escapeAction={{ label: "Back", kbd: "Esc", onClick: stepBack }}`（或 `useQxModuleShell` 的 `shell.escapeAction`）。
 - 录制类模块：Esc 可先停止录制或丢弃草稿 / 清预览，再在下一层离开；不要静默无出口。
 - Screen Capture 无真实搜索框时焦点常落在 body：必须依赖 host Esc 兜底 leave → hide，不能只靠 Shell 内 keydown。
 
@@ -717,8 +720,8 @@ Screenshot & Recording Module（截图录屏模块）：
 - Qx 首次启动后的第一次唤起也必须出现在鼠标所在显示器与当前 macOS Space；不得沿用隐藏窗口创建时的主屏、DPI 或桌面归属，后续唤起遵循同一规则。
 - 区域圈选初始覆盖鼠标所在显示器；顶栏只提供 **区域 / 窗口 / 全屏** 模式，不再提供显示器切换控件。跨屏时由鼠标所在显示器自动决定目标，其他显示器使用不抢焦点的浅黑遮罩；捕获目标必须携带显示器 ID，不得把外接屏圈选错误映射回主屏。
 - 入口意图（截图 / 录制）决定确认条主按钮高亮与 Enter 默认动作；仍可在确认前切换。模块主界面只保留双入口（截图 / 录制），不再提供绕过圈选的「直接开始主屏全屏录制」歧义路径。
-- 圈选确认方式可配置：**精修后捕获**（默认：松手只建选区，可移动、四角+四边缩放后再确认）或 **松手即捕获**（按意图立即截图/录制；按住 Alt/Option 强制进入精修）。点暗幕可重画选区。
-- 确认工具条：使用 ✓ 确认当前截图/录制、× 取消，不重复显示长文本主按钮；截图路径提供矩形、箭头、文字、画笔、序号、马赛克与颜色，标注只进入 PNG，不进入录屏。工具条以实际测量宽高定位，左右边界始终限制在当前 picker 显示器内容区内；选区贴左/右边缘或窄屏换行时不得被屏幕裁切。键盘：Enter 确认（按设置自动复制并可恢复模块界面）、双击选区确认、**⌘C / Ctrl+C 截图复制到剪贴板并隐藏圈选层与 Qx 主界面**（继续粘贴心智流；标注文本框内保留原生复制）、Ctrl/⌘+拖动松手同样复制并隐藏、Space 全屏、S/R 意图、Tab 区域/窗口、1–6 工具、⌘Z/⇧⌘Z 撤销重做、Esc 分层退出。上次成功选区在同一显示器上会作为默认精修起点。
+- 录屏圈选确认方式可配置：**精修后捕获**（默认：松手只建选区，可移动、四角+四边缩放后再确认）或 **松手即捕获**（按意图开始录制；按住 Alt/Option 强制进入精修）。截图始终停留在可编辑选区，允许移动、四角+四边缩放和涂鸦；截图复制始终需要显式按下 `⌘C` / `Ctrl+C`，不会因拖动时的修饰键自动触发。
+- 确认工具条：使用 ✓ 确认当前截图/录制、× 取消，不重复显示长文本主按钮；截图路径提供矩形、箭头、文字、画笔、序号、马赛克与颜色，标注只进入 PNG，不进入录屏。工具条以实际测量宽高定位，左右边界始终限制在当前 picker 显示器内容区内；选区贴左/右边缘或窄屏换行时不得被屏幕裁切。键盘：Enter 确认（按设置自动复制并可恢复模块界面）、双击选区确认、**⌘C / Ctrl+C 截图复制到剪贴板并隐藏圈选层与 Qx 主界面**（继续粘贴心智流；标注文本框内保留原生复制）、Space 全屏、S/R 意图、Tab 区域/窗口、1–6 工具、⌘Z/⇧⌘Z 撤销重做、Esc 分层退出。上次成功选区在同一显示器上会作为默认精修起点。
 - 延迟 0/3/5s 可配置；倒计时期间圈选窗穿透桌面输入，Esc 取消倒计时。
 - 窗口模式：悬停高亮可见窗口轮廓，单击选定后进入与区域相同的精修/确认路径。
 - “开始截图”和“开始录制”是两个独立 Launcher command，也是默认关闭、可录入的全局快捷动作。
@@ -1096,7 +1099,7 @@ search={
 - 用户可见标题、按钮、空状态、错误、通知、Bottom Island 文案必须走 `useT(key, englishFallback)`；品牌名、协议名、用户数据、文件路径除外。
 - **英文**写在调用处 fallback；**中文**写在 `src/i18n.ts` 的 `zh` 表。缺失中文时回退英文 fallback，不显示裸 key。
 - **快捷键与键盘符号不翻译**：`kbd`、`formatQxShortcut`、Shell 左下角 Esc 胶囊、Actions 菜单里的 `⌘` / `Ctrl` / `Esc` / `↵` 等保持平台原样。只翻译动作名称（如 “复制”“关闭”），不翻译按键本身。
-- 左下角 `escapeAction` 推荐 `label: "Esc", kbd: "Esc"`（escape 变体只渲染 kbd）；不要把 “返回/Back” 当必须翻译的左下角主文案。
+- 左下角 `escapeAction` 显示 **Back/返回** 或 **Hide/隐藏** + `kbd: "Esc"`；文案走 i18n（`common.back` / `shell.hide`）。
 - 日期、时间、数字、百分比和文件大小使用 **resolved locale** 的 `Intl` formatter（`useLocale()`），不在组件内硬编码 `"zh-CN"` 或手写语言相关拼接。
 - 布局按中英文长文案验收；固定高度区域单行截断，完整内容用 Tooltip 或详情。
 
@@ -1110,7 +1113,7 @@ const locale = useLocale();
 t("clipboard.title", "Clipboard History")
 
 // ✅ 快捷键：不走 t()
-escapeAction={{ id: "escape", label: "Esc", kbd: "Esc", onClick: goBack }}
+escapeAction={{ id: "escape", label: "Back", kbd: "Esc", onClick: goBack }}
 actions={[{ id: "copy", label: t("common.copy", "Copy"), kbd: "↵", onClick: copy }]}
 primaryActionId="copy"
 

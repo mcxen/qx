@@ -6,6 +6,12 @@ import { isBuiltinModuleEnabled } from "../modules/moduleAvailability";
 // Builtin module definitions
 // ---------------------------------------------------------------------------
 
+/**
+ * Optional launcher command beyond the panel itself.
+ * Built-ins that only open their panel must leave `commands` empty — the panel
+ * entry is already searchable. Module Surfaces carry real deep-link actions
+ * (screenshot, new chat, OPML import, …).
+ */
 interface BuiltinCommandDef {
   name: string;
   title: string;
@@ -16,6 +22,7 @@ interface BuiltinInfo {
   id: string;
   name: string;
   keywords: string[];
+  /** Extra commands only — never a redundant "open this panel" entry. */
   commands: BuiltinCommandDef[];
   panel?: { title: string; keywords: string[] };
   description?: string;
@@ -31,13 +38,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     id: "clipboard",
     name: "Clipboard",
     keywords: ["clipboard", "paste", "copy", "history", "剪贴板", "剪切板", "粘贴", "复制", "历史"],
-    commands: [
-      {
-        name: "open-clipboard",
-        title: "Open Clipboard History",
-        keywords: ["clipboard", "paste", "history", "剪贴板", "粘贴", "open"],
-      },
-    ],
+    commands: [],
     panel: {
       title: "Clipboard History",
       keywords: ["clipboard", "paste", "history", "剪贴板", "粘贴"],
@@ -48,13 +49,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     id: "qx-ai",
     name: "QxAI",
     keywords: ["ai", "chat", "gpt", "qxai", "qx ai", "llm", "agent", "人工智能", "聊天", "助手", "智能体"],
-    commands: [
-      {
-        name: "open-qxai",
-        title: "Open QxAI Chat",
-        keywords: ["ai", "chat", "gpt", "qxai", "llm", "人工智能", "聊天", "open"],
-      },
-    ],
+    commands: [],
     panel: {
       title: "QxAI Chat",
       keywords: ["ai", "chat", "gpt", "qxai", "llm", "人工智能", "聊天"],
@@ -65,13 +60,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     id: "screencap",
     name: "Screenshot & Recording Module",
     keywords: ["screenshot", "screen capture", "gif", "screencap", "screen record", "recording", "截图", "截屏", "录屏", "屏幕录制"],
-    commands: [
-      {
-        name: "open-screencap",
-        title: "Open Screenshot & Recording Module",
-        keywords: ["screenshot", "gif", "screencap", "screen record", "截图", "录屏", "open"],
-      },
-    ],
+    commands: [],
     panel: {
       title: "Screenshot & Recording Module",
       keywords: ["screenshot", "gif", "screencap", "screen record", "截图", "录屏"],
@@ -124,7 +113,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       },
       {
         id: "capture_confirm_mode",
-        label: "Selection confirm",
+        label: "Recording selection confirm",
         type: "select",
         default: "refine",
         options: [
@@ -141,13 +130,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     id: "rss",
     name: "RSS Reader",
     keywords: ["rss", "reader", "feeds", "feed", "articles", "atom", "订阅", "阅读器", "文章", "资讯"],
-    commands: [
-      {
-        name: "open-rss",
-        title: "Open RSS Reader",
-        keywords: ["rss", "feeds", "feed", "articles", "订阅", "open"],
-      },
-    ],
+    commands: [],
     panel: {
       title: "RSS Reader",
       keywords: ["rss", "feeds", "feed", "articles", "订阅"],
@@ -158,13 +141,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     id: "v2ex",
     name: "V2EX",
     keywords: ["v2ex", "topics", "forum", "node", "社区", "帖子", "主题", "节点", "热门"],
-    commands: [
-      {
-        name: "open-v2ex",
-        title: "Open V2EX",
-        keywords: ["v2ex", "topics", "forum", "社区", "帖子", "热门", "open"],
-      },
-    ],
+    commands: [],
     panel: {
       title: "V2EX",
       keywords: ["v2ex", "topics", "forum", "社区", "帖子", "热门"],
@@ -193,13 +170,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     id: "macros",
     name: "Macro Recorder",
     keywords: ["macro", "macros", "recording", "automation", "宏", "宏录制", "录制", "自动化"],
-    commands: [
-      {
-        name: "open-macros",
-        title: "Open Macro Recorder",
-        keywords: ["macro", "macros", "recording", "宏", "录制", "open"],
-      },
-    ],
+    commands: [],
     panel: {
       title: "Macro Recorder",
       keywords: ["macro", "macros", "recording", "宏", "录制"],
@@ -210,13 +181,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     id: "documents",
     name: "Documents",
     keywords: ["document", "documents", "doc", "markdown", "json", "text", "toolbox", "word count", "文档", "字数", "文本", "文本工具箱", "工具箱"],
-    commands: [
-      {
-        name: "open-documents",
-        title: "Open Document Tools",
-        keywords: ["document", "documents", "doc", "markdown", "json", "word count", "文档", "字数", "文本", "open"],
-      },
-    ],
+    commands: [],
     panel: {
       title: "Document Tools",
       keywords: ["document", "documents", "doc", "markdown", "json", "word count", "文档", "字数", "文本"],
@@ -227,13 +192,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     id: "qx-tty",
     name: "QxTTY",
     keywords: ["terminal", "tty", "shell", "command line", "command", "console", "终端", "命令行", "命令", "控制台"],
-    commands: [
-      {
-        name: "open-qx-tty",
-        title: "Open QxTTY",
-        keywords: ["terminal", "tty", "shell", "command line", "终端", "命令行", "open"],
-      },
-    ],
+    commands: [],
     panel: {
       title: "QxTTY",
       keywords: ["terminal", "tty", "shell", "command line", "终端", "命令行"],
@@ -244,13 +203,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     id: "weather",
     name: "Weather",
     keywords: ["weather", "forecast", "temperature", "climate", "天气", "气温", "温度", "预报", "天气预报"],
-    commands: [
-      {
-        name: "open-weather",
-        title: "Open Weather",
-        keywords: ["weather", "forecast", "temperature", "天气", "气温", "预报", "open"],
-      },
-    ],
+    commands: [],
     panel: {
       title: "Weather",
       keywords: ["weather", "forecast", "temperature", "天气", "气温", "预报"],

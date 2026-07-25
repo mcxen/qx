@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo } from "react";
 import type { KeyboardEvent } from "react";
 import type { BottomIslandContent } from "../components/QxBottomIsland";
 import type { QxShellAction } from "../components/ShellActionButton";
+import { useT } from "../i18n";
+import { goHomeToLauncher } from "../modules/settings/openSettings";
 import { registerModuleEscapeStep } from "./moduleEscapeHost";
 import {
   buildModuleIsland as buildModuleIslandPure,
@@ -54,8 +56,8 @@ export function buildModuleIsland(state: ModuleIslandState): BottomIslandContent
 }
 
 /** Visible bottom-left Esc capsule (re-export). */
-export function qxEscapeAction(leave: () => void): QxShellAction {
-  return qxEscapeActionPure(leave);
+export function qxEscapeAction(leave: () => void, label = "Back"): QxShellAction {
+  return qxEscapeActionPure(leave, label);
 }
 
 export type UseQxModuleShellOptions = {
@@ -90,6 +92,11 @@ export type QxModuleShellChrome = {
   leave: () => void;
   /** One Esc cascade step (inner → query → leave). Same as escapeAction.onClick. */
   stepBack: () => void;
+  /**
+   * Bottom-bar house button: jump to main launcher (not one Esc step).
+   * QxShell also defaults this for non-launcher surfaces.
+   */
+  onGoHome: () => void;
 };
 
 /**
@@ -103,6 +110,7 @@ export function useQxModuleShell(options: UseQxModuleShellOptions): QxModuleShel
     island: islandOverride,
     islandState,
   } = options;
+  const t = useT();
 
   const { onKeyDown: escKeyDown, stepBack } = useEscBack({
     inner: esc?.inner,
@@ -124,8 +132,15 @@ export function useQxModuleShell(options: UseQxModuleShellOptions): QxModuleShel
   );
 
   // Bottom-left Esc matches keyboard cascade (one step per press), not a jump
-  // past open detail / query layers.
-  const escapeAction = useMemo(() => qxEscapeAction(stepBack), [stepBack]);
+  // past open detail / query layers. Visible label is Back (not bare "Esc").
+  const escapeAction = useMemo(
+    () => qxEscapeAction(stepBack, t("common.back", "Back")),
+    [stepBack, t],
+  );
+
+  const onGoHome = useCallback(() => {
+    goHomeToLauncher();
+  }, []);
 
   const island = useMemo(() => {
     if (islandOverride !== undefined) return islandOverride;
@@ -139,5 +154,6 @@ export function useQxModuleShell(options: UseQxModuleShellOptions): QxModuleShel
     island,
     leave,
     stepBack,
+    onGoHome,
   };
 }

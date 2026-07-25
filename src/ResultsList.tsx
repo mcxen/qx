@@ -196,13 +196,21 @@ function iconKind(item: AppEntry): string {
   return "app";
 }
 
-function sourceLabel(item: AppEntry): string {
-  if (item.kind === "folder") return "Folder";
-  if (item.kind === "file") return FILE_LABEL_BY_ICON_KIND[fileIconKind(item)] ?? "File";
-  if (item.kind === "clipboard") return "Clipboard";
-  if (item.kind === "calculation") return "Copy Result";
-  if (item.kind === "command") return "Command";
-  return "Application";
+function sourceLabel(item: AppEntry, t: (key: string, fallback: string) => string): string {
+  if (item.kind === "folder") return t("launcher.source.folder", "Folder");
+  if (item.kind === "file") {
+    return FILE_LABEL_BY_ICON_KIND[fileIconKind(item)] ?? t("launcher.source.file", "File");
+  }
+  if (item.kind === "clipboard") return t("launcher.source.clipboard", "Clipboard");
+  if (item.kind === "calculation") return t("launcher.source.calculation", "Copy Result");
+  // Built-in / plugin panel openers are modules, not free-floating commands.
+  if (item.moduleId || item.path.startsWith("__qx:plugin:") || item.path.startsWith("__qx:")) {
+    if (item.kind === "command" || item.path.startsWith("__qx:")) {
+      return t("launcher.source.module", "Module");
+    }
+  }
+  if (item.kind === "command") return t("launcher.source.command", "Command");
+  return t("launcher.source.app", "Application");
 }
 
 function fallbackLabel(label: string): string {
@@ -290,6 +298,7 @@ const ResultItem = memo(function ResultItem({
   const backgroundCommandName = commandNameFromAppPath(item.path);
   const subtitle = resultSubtitle(item);
   const density = settings.appearance.launcher_result_density === "compact" ? "compact" : "comfortable";
+  const t = useT();
 
   return (
     <div
@@ -343,7 +352,7 @@ const ResultItem = memo(function ResultItem({
             <Kbd>{shortcutLabel}</Kbd>
           </span>
         )}
-        <span className="qx-list-time">{sourceLabel(item)}</span>
+        <span className="qx-list-time">{sourceLabel(item, t)}</span>
       </span>
     </div>
   );

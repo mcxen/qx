@@ -122,3 +122,18 @@ export function closeSettings(): void {
   }
   useStore.getState().setTab(target as Tab);
 }
+
+/**
+ * Bottom-bar house control: always return to the main launcher search surface.
+ * Unlike Esc leave, this does not restore Settings `returnTo` (module/plugin).
+ */
+export function goHomeToLauncher(): void {
+  settingsReturnTab = "launcher";
+  try {
+    sessionStorage.removeItem(PENDING_TAB_KEY);
+    sessionStorage.removeItem(FOCUS_PLUGIN_KEY);
+  } catch {
+    /* ignore */
+  }
+  useStore.getState().setTab("launcher");
+}

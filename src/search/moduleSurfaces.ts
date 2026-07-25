@@ -124,11 +124,10 @@ async function searchRssSurfaces(query: string): Promise<ModuleSurfaceHit[]> {
         launch: { tab: "rss", surface: "feed", params: { feedId: feed.id } },
       }));
     }
-    // Static sub-commands
+    // Action deep links only (panel entry already opens the reader root).
     for (const item of [
-      { surface: "root", title: "Open RSS Reader", keys: ["rss", "reader", "订阅", "feeds"] },
-      { surface: "import-opml", title: "Import OPML", keys: ["opml", "import", "rss"] },
-      { surface: "add-feed", title: "Add RSS Feed", keys: ["add", "feed", "subscribe", "rss"] },
+      { surface: "import-opml", title: "Import OPML", keys: ["opml", "import", "rss", "导入"] },
+      { surface: "add-feed", title: "Add RSS Feed", keys: ["add", "feed", "subscribe", "rss", "添加", "订阅"] },
     ] as const) {
       const score = scoreText(query, item.title, ...item.keys);
       if (score > 0) {
@@ -136,7 +135,7 @@ async function searchRssSurfaces(query: string): Promise<ModuleSurfaceHit[]> {
           id: `rss:cmd:${item.surface}`,
           moduleId: "rss",
           title: item.title,
-          subtitle: "RSS · command",
+          subtitle: "RSS",
           icon: "builtin:rss",
           score: Math.min(score, 70),
           launch: { tab: "rss", surface: item.surface },
@@ -149,31 +148,18 @@ async function searchRssSurfaces(query: string): Promise<ModuleSurfaceHit[]> {
   }
 }
 
-function searchClipboardSurfaces(query: string): ModuleSurfaceHit[] {
-  if (!isModuleSearchEnabled("clipboard")) return [];
-  const hits: ModuleSurfaceHit[] = [];
-  const openScore = scoreText(query, "clipboard", "paste", "history", "剪贴板", "粘贴");
-  if (openScore > 0) {
-    hits.push(hit({
-      id: "clipboard:root",
-      moduleId: "clipboard",
-      title: "Open Clipboard History",
-      subtitle: "Clipboard · command",
-      icon: "builtin:clipboard",
-      score: openScore,
-      launch: { tab: "clipboard", surface: "root" },
-    }));
-  }
-  return hits;
+/** Clipboard has no deep-link actions — panel entry alone is enough. */
+function searchClipboardSurfaces(_query: string): ModuleSurfaceHit[] {
+  return [];
 }
 
 function searchQxAiSurfaces(query: string): ModuleSurfaceHit[] {
   if (!isModuleSearchEnabled("qx-ai")) return [];
   const hits: ModuleSurfaceHit[] = [];
+  // Root open is the panel entry; only action surfaces remain.
   for (const item of [
-    { surface: "root", title: "Open QxAI", keys: ["ai", "chat", "qxai", "gpt", "人工智能"] },
-    { surface: "new", title: "New AI Chat", keys: ["new", "chat", "ai", "新建"] },
-    { surface: "settings", title: "AI Chat Settings", keys: ["ai", "settings", "provider", "model"] },
+    { surface: "new", title: "New AI Chat", keys: ["new", "chat", "ai", "新建", "对话"] },
+    { surface: "settings", title: "AI Chat Settings", keys: ["ai", "settings", "provider", "model", "设置"] },
   ] as const) {
     const score = scoreText(query, item.title, ...item.keys);
     if (score > 0) {
@@ -181,7 +167,7 @@ function searchQxAiSurfaces(query: string): ModuleSurfaceHit[] {
         id: `qx-ai:cmd:${item.surface}`,
         moduleId: "qx-ai",
         title: item.title,
-        subtitle: "QxAI · command",
+        subtitle: "QxAI",
         icon: "builtin:qx-ai",
         score: Math.min(score, 75),
         launch: { tab: "qx-ai", surface: item.surface },
@@ -212,18 +198,7 @@ function searchQxAiSurfaces(query: string): ModuleSurfaceHit[] {
 async function searchMacroSurfaces(query: string): Promise<ModuleSurfaceHit[]> {
   if (!isModuleSearchEnabled("macros") || !("__TAURI_INTERNALS__" in window)) return [];
   const hits: ModuleSurfaceHit[] = [];
-  const openScore = scoreText(query, "macro", "macros", "recording", "宏", "录制");
-  if (openScore > 0) {
-    hits.push(hit({
-      id: "macros:root",
-      moduleId: "macros",
-      title: "Open Macro Recorder",
-      subtitle: "Macros · command",
-      icon: "builtin:macros",
-      score: openScore,
-      launch: { tab: "macros", surface: "root" },
-    }));
-  }
+  // Panel opens the recorder; search only named macros to play.
   try {
     const list = await invoke<Array<{
       id: number | null;
@@ -253,10 +228,10 @@ async function searchMacroSurfaces(query: string): Promise<ModuleSurfaceHit[]> {
 async function searchScreencapSurfaces(query: string): Promise<ModuleSurfaceHit[]> {
   if (!isModuleSearchEnabled("screencap") || !("__TAURI_INTERNALS__" in window)) return [];
   const hits: ModuleSurfaceHit[] = [];
+  // Panel opens the module; keep capture actions only.
   for (const item of [
-    { surface: "root", title: "Open Screenshot & Recording Module", keys: ["screenshot", "video", "mp4", "mov", "gif", "record", "screen", "截图", "录屏"] },
-    { surface: "record", title: "Start Screen Recording", keys: ["start", "video", "mp4", "mov", "record", "gif", "录屏"] },
-    { surface: "screenshot", title: "Take Screenshot", keys: ["capture", "image", "png", "screen", "截图", "截屏"] },
+    { surface: "record", title: "Start Screen Recording", keys: ["start", "video", "mp4", "mov", "record", "gif", "录屏", "开始录屏"] },
+    { surface: "screenshot", title: "Take Screenshot", keys: ["capture", "image", "png", "screen", "截图", "截屏", "开始截图"] },
   ] as const) {
     const score = scoreText(query, item.title, ...item.keys);
     if (score > 0) {
@@ -264,7 +239,7 @@ async function searchScreencapSurfaces(query: string): Promise<ModuleSurfaceHit[
         id: `screencap:cmd:${item.surface}`,
         moduleId: "screencap",
         title: item.title,
-        subtitle: "Screen Capture · command",
+        subtitle: "Screen Capture",
         icon: "builtin:screencap",
         score: Math.min(score, 75),
         launch: { tab: "screencap", surface: item.surface },
@@ -315,11 +290,11 @@ async function searchScreencapSurfaces(query: string): Promise<ModuleSurfaceHit[
 function searchDocumentsSurfaces(query: string): ModuleSurfaceHit[] {
   if (!isModuleSearchEnabled("documents")) return [];
   const hits: ModuleSurfaceHit[] = [];
+  // Panel opens the toolbox; keep tool surfaces only.
   for (const item of [
-    { surface: "root", title: "Open Documents", keys: ["document", "documents", "text", "文档"] },
-    { surface: "clean", title: "Documents · Clean Text", keys: ["clean", "normalize", "text"] },
-    { surface: "markdown", title: "Documents · Markdown Summary", keys: ["markdown", "md", "summary"] },
-    { surface: "json", title: "Documents · Format JSON", keys: ["json", "format", "pretty"] },
+    { surface: "clean", title: "Documents · Clean Text", keys: ["clean", "normalize", "text", "清理", "文本"] },
+    { surface: "markdown", title: "Documents · Markdown Summary", keys: ["markdown", "md", "summary", "摘要"] },
+    { surface: "json", title: "Documents · Format JSON", keys: ["json", "format", "pretty", "格式化"] },
   ] as const) {
     const score = scoreText(query, item.title, ...item.keys);
     if (score > 0) {
@@ -327,7 +302,7 @@ function searchDocumentsSurfaces(query: string): ModuleSurfaceHit[] {
         id: `documents:${item.surface}`,
         moduleId: "documents",
         title: item.title,
-        subtitle: "Documents · tool",
+        subtitle: "Documents",
         icon: "builtin:documents",
         score: Math.min(score, 72),
         launch: { tab: "documents", surface: item.surface },
@@ -340,18 +315,7 @@ function searchDocumentsSurfaces(query: string): ModuleSurfaceHit[] {
 function searchWeatherSurfaces(query: string): ModuleSurfaceHit[] {
   if (!isModuleSearchEnabled("weather")) return [];
   const hits: ModuleSurfaceHit[] = [];
-  const openScore = scoreText(query, "weather", "forecast", "temperature", "天气", "气温");
-  if (openScore > 0) {
-    hits.push(hit({
-      id: "weather:root",
-      moduleId: "weather",
-      title: "Open Weather",
-      subtitle: "Weather · command",
-      icon: "builtin:weather",
-      score: openScore,
-      launch: { tab: "weather", surface: "root" },
-    }));
-  }
+  // Panel opens weather; locations are the only surface deep links.
   const weather = useSettingsStore.getState().settings.weather;
   const locations = [
     ...(Array.isArray(weather.locations) ? weather.locations : []),
@@ -373,26 +337,15 @@ function searchWeatherSurfaces(query: string): ModuleSurfaceHit[] {
   return hits.sort((a, b) => b.score - a.score).slice(0, 8);
 }
 
-function searchQxTtySurfaces(query: string): ModuleSurfaceHit[] {
-  if (!isModuleSearchEnabled("qx-tty")) return [];
-  const score = scoreText(query, "QxTTY", "terminal", "tty", "shell", "command line", "终端", "命令行");
-  if (score <= 0) return [];
-  return [hit({
-    id: "qx-tty:root",
-    moduleId: "qx-tty",
-    title: "Open QxTTY",
-    subtitle: "QxTTY · terminal",
-    icon: "builtin:qx-tty",
-    score: Math.min(score, 72),
-    launch: { tab: "qx-tty", surface: "root" },
-  })];
+/** QxTTY has no action surfaces beyond opening the panel. */
+function searchQxTtySurfaces(_query: string): ModuleSurfaceHit[] {
+  return [];
 }
 
 function searchV2exSurfaces(query: string): ModuleSurfaceHit[] {
   if (!isModuleSearchEnabled("v2ex")) return [];
   const hits: ModuleSurfaceHit[] = [];
   for (const item of [
-    { surface: "root", title: "Open V2EX", keys: ["v2ex", "forum", "社区"] },
     { surface: "hot", title: "V2EX Hot", keys: ["v2ex", "hot", "热门"] },
     { surface: "latest", title: "V2EX Latest", keys: ["v2ex", "latest", "最新"] },
   ] as const) {
@@ -402,7 +355,7 @@ function searchV2exSurfaces(query: string): ModuleSurfaceHit[] {
         id: `v2ex:${item.surface}`,
         moduleId: "v2ex",
         title: item.title,
-        subtitle: "V2EX · command",
+        subtitle: "V2EX",
         icon: "builtin:v2ex",
         score: Math.min(score, 72),
         launch: { tab: "v2ex", surface: item.surface },

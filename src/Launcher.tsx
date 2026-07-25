@@ -334,12 +334,12 @@ export default function Launcher({
           onSearchSelect={setQuery}
         />
       }
-      // Visible Esc: clear search when non-empty; empty query leaves hide to host keyboard Esc.
+      // Launcher: Esc = Back (clear query) or Hide (empty → hide panel). No house button.
       escapeAction={
         hasQuery
           ? {
               id: "escape",
-              label: "Esc",
+              label: t("common.back", "Back"),
               kbd: "Esc",
               onClick: () => {
                 setQuery("");
@@ -348,11 +348,12 @@ export default function Launcher({
             }
           : {
               id: "escape",
-              label: "Esc",
+              label: t("shell.hide", "Hide"),
               kbd: "Esc",
               onClick: onEscape,
             }
       }
+      onGoHome={null}
       primaryActionId={primaryActionId}
       actionMenuRequest={actionMenuRequest}
       actionTitle={

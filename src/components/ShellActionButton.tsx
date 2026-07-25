@@ -55,16 +55,13 @@ export default function ShellActionButton({
       disabled={action.disabled}
       onClick={action.onClick}
       type="button"
+      title={variant === "escape" ? action.label : undefined}
+      aria-label={variant === "escape" ? action.label : undefined}
       {...triggerAttrs}
     >
-      {variant === "escape" && shortcutLabel ? (
-        <kbd>{shortcutLabel}</kbd>
-      ) : (
-        <>
-          <span>{action.label}</span>
-          {shortcutLabel && <kbd>{shortcutLabel}</kbd>}
-        </>
-      )}
+      {/* Escape shows label + Esc kbd (Back/Hide). Other variants keep label + optional kbd. */}
+      {action.label ? <span>{action.label}</span> : null}
+      {shortcutLabel ? <kbd>{shortcutLabel}</kbd> : null}
     </Button>
   );
 }

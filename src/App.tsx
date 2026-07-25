@@ -23,6 +23,7 @@ import {
 } from "./launcher/searchProgress";
 import { LoadingLabel, Skeleton } from "./components/ui";
 import { registerAllBuiltins } from "./plugin/builtin";
+import { isRedundantPanelOpenCommand } from "./plugin/panelOpenCommand";
 import { PluginHost, PluginPanelViewport } from "./plugin/PluginHost";
 import { calculateExpression } from "./search/calculator";
 import {
@@ -500,6 +501,7 @@ function mapAppEntries(apps: AppEntry[]): AppEntry[] {
     icon: entry.icon,
     kind: (entry.kind || "command") as AppEntry["kind"],
     subtitle: entry.subtitle,
+    moduleId: entry.moduleId,
   }));
   // Prefer explicit pinned port rows; drop OS-app duplicates by path.
   const seen = new Set(pinnedPorts.map((entry) => entry.path));
@@ -2053,16 +2055,22 @@ function App() {
 
       const entries: AppEntry[] = [];
 
+      // Also match installed plugin panel names/keywords as navigation entries
+      const pluginState = usePluginRegistry.getState();
       const pluginMatches = findCommands(q).filter((match) => {
         const pluginId = match.command.pluginId;
-        if (!pluginId.startsWith("builtin:")) return true;
-        return isModuleSearchEnabled(pluginId.slice("builtin:".length));
+        if (pluginId.startsWith("builtin:")) {
+          if (!isModuleSearchEnabled(pluginId.slice("builtin:".length))) return false;
+        }
+        // Panel is already a search hit — hide pure "open-*" openers (sysinfo, …).
+        if (isRedundantPanelOpenCommand(match.command, Boolean(pluginState.panels[pluginId]))) {
+          return false;
+        }
+        return true;
       });
       const syntheticEntries: AppEntry[] = [];
       const settingsState = useSettingsStore.getState().settings;
 
-      // Also match installed plugin panel names/keywords as navigation entries
-      const pluginState = usePluginRegistry.getState();
       if (q.trim()) {
         for (const [pluginId, panel] of Object.entries(pluginState.panels)) {
           const nameSource = panel.pluginName || pluginId;

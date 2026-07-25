@@ -201,6 +201,7 @@ export function pinnedPortEntriesFromSettings(
   icon: string;
   kind: string;
   subtitle?: string;
+  moduleId?: string;
 }> {
   const rows: Array<{
     name: string;
@@ -209,6 +210,7 @@ export function pinnedPortEntriesFromSettings(
     icon: string;
     kind: string;
     subtitle?: string;
+    moduleId?: string;
   }> = [];
   for (const [key, meta] of Object.entries(settings.search_metadata || {})) {
     if (!meta?.pinned || meta.hidden) continue;
@@ -228,6 +230,7 @@ export function pinnedPortEntriesFromSettings(
     }
     if (key.startsWith("module:")) {
       const moduleId = key.slice("module:".length);
+      // English name is a fallback; pickDisplayName localizes via launcher.<id>.
       rows.push({
         name: moduleId,
         display_name: moduleId,
@@ -235,6 +238,7 @@ export function pinnedPortEntriesFromSettings(
         icon: `builtin:${moduleId}`,
         kind: "command",
         subtitle: "Module",
+        moduleId,
       });
     }
   }

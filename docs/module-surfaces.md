@@ -19,13 +19,15 @@
 | Raycast | Qx |
 |---|---|
 | Extension | 内置模块 / 插件 |
-| Command（manifest） | `plugin/builtin` 静态 command + panel 关键词 |
+| Command（manifest） | **仅真实动作**；纯「打开面板」不注册 command（panel 关键词已可搜） |
 | Command arguments | `ModuleLaunch.params` |
 | Deeplink | `__qx:launch:<json>` + 进程内 pending |
-| 根搜索动态行 | `searchModuleSurfaces(query)` |
+| 根搜索动态行 | `searchModuleSurfaces(query)`（深链动作 / 动态对象，不含 root open） |
 | useNavigation push | 模块 store 的 `view` / `openFeed` 等 |
 
 Raycast **不会**把 List 每一行动态行默认塞进根搜索；动态对象需要 provider 或 arguments command。Qx 用 **Module Surface provider** 表达同一意图。
+
+**不冗余原则：** 已有 panel 的模块/插件（如 sysinfo、剪贴板）不得再暴露仅用于打开 panel 的 `open-*` command；主搜命中 panel 名称即可进入。宿主对外部插件也会过滤 `open-*` 且已注册 panel 的 command（`isRedundantPanelOpenCommand`）。
 
 ## 3. 核心类型
 

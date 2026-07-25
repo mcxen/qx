@@ -56,11 +56,16 @@ function isNativeAppEntry(item: AppEntry): boolean {
   return (item.kind ?? "app") === "app" && !!item.path && !item.path.startsWith("__qx:");
 }
 
-function appShortcutLabelFromId(id: string, locale: string, catalog: AppEntry[]): string {
+function appShortcutLabelFromId(
+  id: string,
+  locale: "en" | "zh-CN",
+  catalog: AppEntry[],
+  t?: (key: string, fallback: string) => string,
+): string {
   if (!id.startsWith("app:")) return id;
   const path = id.slice("app:".length);
   const hit = catalog.find((app) => app.path === path);
-  if (hit) return pickDisplayName(hit, locale);
+  if (hit) return pickDisplayName(hit, locale, t);
   const leaf = path.split(/[\\/]/).pop() || path;
   return leaf.replace(/\.app$/i, "");
 }

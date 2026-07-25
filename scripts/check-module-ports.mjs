@@ -738,7 +738,7 @@ if (!fs.existsSync(pureModule)) {
     const esc = pures.qxEscapeAction(() => {
       left = true;
     });
-    if (esc.label !== "Esc" || esc.kbd !== "Esc") fail("qxEscapeAction shape");
+    if (esc.label !== "Back" || esc.kbd !== "Esc") fail("qxEscapeAction shape");
     esc.onClick();
     if (!left) fail("qxEscapeAction onClick");
   }

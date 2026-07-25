@@ -491,7 +491,22 @@
   display: inline-flex;
   align-items: center;
   justify-self: start;
+  gap: 6px;
   min-width: 0;
+}
+
+/* Icon-only house: jump to main launcher (non-launcher surfaces). */
+.qx-shell-action.qx-shell-home {
+  min-width: 30px;
+  width: 30px;
+  padding: 0;
+  justify-content: center;
+  color: var(--qx-text-secondary);
+}
+
+.qx-shell-action.qx-shell-home svg {
+  display: block;
+  flex: 0 0 auto;
 }
 
 .qx-shell-actions {
@@ -529,6 +544,7 @@
   min-width: 42px;
   padding: 0 9px;
   justify-content: center;
+  gap: 6px;
   border-color: var(--qx-border-2);
   background: rgba(var(--qx-surface-rgb-2), var(--qx-control-surface-opacity));
   color: var(--qx-text-secondary);

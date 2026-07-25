@@ -90,11 +90,15 @@ export type EscapeAction = {
   onClick: () => void;
 };
 
-/** Visible bottom-left Esc capsule (never put Esc on primaryAction). */
-export function qxEscapeAction(leave: () => void): EscapeAction {
+/**
+ * Visible bottom-left Esc capsule (never put Esc on primaryAction).
+ * Default label is "Back"; launcher empty-query uses "Hide". Callers may
+ * pass a translated label via `label`.
+ */
+export function qxEscapeAction(leave: () => void, label = "Back"): EscapeAction {
   return {
     id: "escape",
-    label: "Esc",
+    label,
     kbd: "Esc",
     onClick: leave,
   };

@@ -93,7 +93,7 @@ Settings → Extensions 的插件/模块标题与描述必须走
 亦可在宿主 `src/i18n.ts` 的 `plugins.ext.*` 表补中文。
 
 内置模块的专属选项统一放在 **Extensions → Installed → 模块配置**。Screen Capture
-的格式、帧率、质量、分辨率、圈选确认、延迟、录制后隐藏、自动复制和捕获岛常驻
+的格式、帧率、质量、分辨率、录屏圈选确认、延迟、录制后隐藏、自动复制和捕获岛常驻
 都由 `screencap` 设置段集中保存；模块主界面只提供进入该配置的直接链接。
 
 Appearance 的透明度不是单一全局 alpha。设置模型保留

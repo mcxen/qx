@@ -257,7 +257,7 @@ const { onKeyDown, stepBack } = useEscBack({
 });
 
 // on QxShell:
-// escapeAction={{ label: "Esc", kbd: "Esc", onClick: stepBack }}
+// escapeAction={{ label: "Back", kbd: "Esc", onClick: stepBack }}
 // onKeyDown={onKeyDown}
 ```
 

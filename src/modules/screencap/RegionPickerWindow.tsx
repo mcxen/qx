@@ -209,9 +209,6 @@ export default function RegionPickerWindow() {
   const interactionRafRef = useRef<number | null>(null);
   const interactionPointRef = useRef<Point | null>(null);
   const drawingRef = useRef(false);
-  /** Ctrl/Cmd held at drag start → release confirms screenshot + copy (Lightshot-style). */
-  const instantCopyDragRef = useRef(false);
-
   const multiDisplay = picker?.multiDisplay === true;
   const multiDisplayRef = useRef(false);
   multiDisplayRef.current = multiDisplay;
@@ -764,8 +761,6 @@ export default function RegionPickerWindow() {
       /* capture is best-effort on some hosts */
     }
     const point = { x: event.clientX, y: event.clientY };
-    // Lightshot-style: hold Ctrl/Cmd when starting the drag → release captures + copies.
-    instantCopyDragRef.current = event.ctrlKey || event.metaKey;
     drawingRef.current = true;
     drawStartRef.current = point;
     drawEndRef.current = point;
@@ -832,7 +827,6 @@ export default function RegionPickerWindow() {
 
   const finishDrawSelection = useCallback((opts?: {
     forceRefine?: boolean;
-    instantCopy?: boolean;
   }) => {
     if (drawRafRef.current != null) {
       window.cancelAnimationFrame(drawRafRef.current);
@@ -842,8 +836,6 @@ export default function RegionPickerWindow() {
     // on Windows when pointerup races the commit from pointerdown.
     const start = drawStartRef.current;
     const end = drawEndRef.current;
-    const instantCopy = Boolean(opts?.instantCopy || instantCopyDragRef.current);
-    instantCopyDragRef.current = false;
     drawingRef.current = false;
     drawStartRef.current = null;
     drawEndRef.current = null;
@@ -861,16 +853,11 @@ export default function RegionPickerWindow() {
     }
     setSelection(next);
     const confirmMode = captureSettings.capture_confirm_mode;
-    // Ctrl/Cmd drag → screenshot + clipboard immediately, then hide Qx (paste flow).
-    if (instantCopy && !opts?.forceRefine) {
-      void confirm("screenshot", next, null, {
-        forceCopy: true,
-        skipDelay: true,
-        dismissUi: true,
-      });
-      return true;
-    }
-    if (confirmMode === "release" && !opts?.forceRefine) {
+    // Screenshots stay in the editable selection state so the user can resize
+    // and annotate before the explicit Cmd/Ctrl+C copy action. The release
+    // preference remains meaningful for recordings, where the transport takes
+    // over as soon as the region is accepted.
+    if (intent === "recording" && confirmMode === "release" && !opts?.forceRefine) {
       void confirm(intent, next);
     }
     return true;
@@ -887,12 +874,9 @@ export default function RegionPickerWindow() {
         // pointercancel on Windows can fire during DWM focus churn — still
         // commit if the draft is already large enough via finishDrawSelection.
         const forceRefine = event.altKey && event.type === "pointerup";
-        const instantCopy = event.type === "pointerup"
-          && (event.ctrlKey || event.metaKey || instantCopyDragRef.current);
-        finishDrawSelection({ forceRefine, instantCopy });
+        finishDrawSelection({ forceRefine });
       } else {
         clearDrawDraft();
-        instantCopyDragRef.current = false;
         setInteractionLock(false);
       }
       try {
@@ -1380,7 +1364,7 @@ export default function RegionPickerWindow() {
             ? t("screencap.picker.windowHint", "Hover a window and click to select · Esc to cancel")
             : t(
               "screencap.picker.draw",
-              "Drag on {display} · Ctrl/⌘+C or Ctrl/⌘+drag copies · R last region · Esc cancel",
+              "Drag on {display} · Ctrl/⌘+C copies · R last region · Esc cancel",
             ).replace("{display}", display)}
         </div>
       )}

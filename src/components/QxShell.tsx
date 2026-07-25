@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Home } from "lucide-react";
 import { type BottomIslandContent } from "./QxBottomIsland";
 import ShellActionButton, { type QxShellAction } from "./ShellActionButton";
 import { validateQxShellActions } from "./qx-shell/actionProtocol";
@@ -32,6 +33,7 @@ import type {
   IslandSource,
 } from "../island/types";
 import { defaultIslandOpenTarget } from "../island/session/openTarget";
+import { goHomeToLauncher } from "../modules/settings/openSettings";
 import { useT } from "../i18n";
 import { Select } from "./ui";
 
@@ -126,6 +128,11 @@ interface QxShellProps {
   actionMenuRequest?: QxShellActionMenuRequest | null;
   onBack?: () => void;
   backLabel?: string;
+  /**
+   * Bottom-bar house control → main launcher. Defaults on for non-launcher
+   * surfaces (`islandKey !== "launcher"`). Pass `null` to hide explicitly.
+   */
+  onGoHome?: (() => void) | null;
   className?: string;
   style?: CSSProperties;
   onKeyDown?: (event: React.KeyboardEvent) => void;
@@ -158,6 +165,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   actionMenuRequest,
   onBack,
   backLabel = "Back",
+  onGoHome,
   className = "",
   style,
   onKeyDown,
@@ -165,6 +173,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   navigation,
 }, ref) {
   const t = useT();
+  const isLauncherSurface = islandKey === "launcher";
   const resolvedIslandOpenTarget = useMemo(
     () => islandOpenTarget ?? defaultIslandOpenTarget(islandKey, islandSource),
     [islandKey, islandOpenTarget, islandSource],
@@ -182,8 +191,34 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
 
   const fallbackEscapeAction: QxShellAction = onBack
     ? { id: "escape", label: backLabel, kbd: "Esc", onClick: onBack }
-    : { id: "escape", label: "Esc", kbd: "Esc" };
-  const leftAction = escapeAction ?? fallbackEscapeAction;
+    : {
+        id: "escape",
+        label: isLauncherSurface
+          ? t("shell.hide", "Hide")
+          : t("common.back", "Back"),
+        kbd: "Esc",
+      };
+  const leftAction = useMemo(() => {
+    const base = escapeAction ?? fallbackEscapeAction;
+    // Normalize legacy "Esc"-only labels to Back / Hide for the visible capsule.
+    if (base.label === "Esc" || !base.label?.trim()) {
+      return {
+        ...base,
+        label: isLauncherSurface
+          ? t("shell.hide", "Hide")
+          : t("common.back", "Back"),
+      };
+    }
+    return base;
+  }, [escapeAction, fallbackEscapeAction, isLauncherSurface, t]);
+  const showHomeButton = !isLauncherSurface && onGoHome !== null;
+  const handleGoHome = useCallback(() => {
+    if (typeof onGoHome === "function") {
+      onGoHome();
+      return;
+    }
+    goHomeToLauncher();
+  }, [onGoHome]);
   const hasLeading = Boolean(onBack || leading);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [actionMenuAnchorPoint, setActionMenuAnchorPoint] = useState<{
@@ -877,6 +912,17 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       <div className="qx-shell-bottombar">
         <div className="qx-shell-left">
           <ShellActionButton action={leftAction} variant="escape" />
+          {showHomeButton ? (
+            <button
+              type="button"
+              className="qx-shell-action variant-escape qx-shell-home"
+              onClick={handleGoHome}
+              title={t("shell.goHome", "Home")}
+              aria-label={t("shell.goHome", "Home")}
+            >
+              <Home size={14} strokeWidth={2.25} aria-hidden="true" />
+            </button>
+          ) : null}
         </div>
         {/* Ordinary island content always resolves through the session store.
             Only classified custom HUDs may suppress the docked winner. */}
