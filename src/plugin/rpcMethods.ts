@@ -606,6 +606,8 @@ export const rpcHandlers: Record<string, RpcHandler> = {
       title: String(item.title || item.id || "").slice(0, 64),
       enabled: item.enabled !== false,
       command: item.command != null ? String(item.command).slice(0, 64) : undefined,
+      presentation: item.presentation === "status" ? "status" : "action",
+      group: item.group != null ? String(item.group).slice(0, 48) : undefined,
     }));
     return invoke("plugin_tray_set_items", { plugin_id: plugin.id, items });
   },

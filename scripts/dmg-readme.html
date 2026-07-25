@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Qx 安装说明</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { margin: 0; padding: 32px; font: 16px/1.65 -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif; color: #242424; background: #f5f5f7; }
+    main { max-width: 760px; margin: 0 auto; padding: 32px 38px 42px; background: #fff; border-radius: 18px; box-shadow: 0 12px 36px rgba(0,0,0,.10); }
+    h1 { margin: 0 0 6px; font-size: 30px; }
+    h2 { margin: 28px 0 8px; font-size: 20px; }
+    p { margin: 8px 0; }
+    li { margin: 8px 0; }
+    code { padding: 2px 6px; border-radius: 5px; background: #f0f0f2; }
+    pre { overflow: auto; padding: 14px 16px; border-radius: 10px; background: #1f2937; color: #f9fafb; }
+    a { color: #087f5b; }
+    .notice { padding: 12px 14px; border-left: 4px solid #09bd68; background: #ecfff4; border-radius: 8px; }
+    .qr { display: block; width: min(360px, 100%); margin: 18px auto 0; border-radius: 14px; }
+    .muted { color: #6b7280; font-size: 14px; }
+    @media (prefers-color-scheme: dark) {
+      body { color: #f5f5f7; background: #1c1c1e; }
+      main { background: #2c2c2e; }
+      code { background: #3a3a3c; }
+      .notice { background: #123d2b; }
+      a { color: #69e6a7; }
+      .muted { color: #b0b0b5; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Qx 安装说明</h1>
+    <p class="muted">版本 __RELEASE_TAG__ · macOS Apple Silicon</p>
+
+    <h2>推荐方式：拖动安装</h2>
+    <ol>
+      <li>将左侧的 <strong>Qx.app</strong> 拖到 <strong>Applications</strong> 文件夹快捷方式。</li>
+      <li>打开“应用程序”中的 Qx。首次打开若出现安全提示，请右键 Qx.app，选择“打开”。</li>
+    </ol>
+
+    <h2>备用方式：运行 install.sh</h2>
+    <p>如果 macOS 阻止启动，打开终端，将本文件所在的安装盘窗口拖入终端以定位目录，然后运行：</p>
+    <pre><code>bash install.sh</code></pre>
+    <p><code>install.sh</code> 会把应用复制到“应用程序”（没有写入权限时使用 <code>~/Applications</code>），并移除下载隔离标记。</p>
+    <p>也可以手动执行一次：</p>
+    <pre><code>xattr -dr com.apple.quarantine /Applications/Qx.app</code></pre>
+    <p class="notice">Qx 当前使用免费签名，未进行 Apple 公证。首次启动出现提示属于 macOS 的安全检查；确认来源可信后，按上面的步骤操作即可。</p>
+
+    <h2>支持 Qx</h2>
+    <p>Qx 由个人持续维护。若它对你有帮助，欢迎按能力赞助，用于服务器、签名和持续开发；不赞助也完全不影响使用。</p>
+    <p><a href="https://ifdian.net/a/mcxen">爱发电</a> · <a href="https://ko-fi.com/mcxen">Ko-fi</a></p>
+    <img class="qr" src="sponsor-wechat.png" alt="微信赞助二维码">
+  </main>
+</body>
+</html>

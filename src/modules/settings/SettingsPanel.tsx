@@ -115,6 +115,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   const { activeTab, setActiveTab, load, loaded, settings } = useSettingsStore();
   const t = useT();
   const [filter, setFilter] = useState("");
+  const [pluginSearchQuery, setPluginSearchQuery] = useState("");
   const [version, setVersion] = useState("");
   /** Mode the user is hovering / focusing in Home Island settings. */
   const [homePreviewMode, setHomePreviewMode] = useState<string | null>(null);
@@ -197,7 +198,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       case "shortcuts":
         return <ShortcutSettings />;
       case "plugins":
-        return <PluginManager />;
+        return <PluginManager searchQuery={pluginSearchQuery} />;
       case "permissions":
         return <PermissionSettings />;
       case "appearance":
@@ -223,11 +224,15 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
 
   const settingsSearch = (
     <QxModuleSearch
-      value={filter}
+      value={activeTab === "plugins" ? pluginSearchQuery : filter}
       autoFocus
-      onChange={setFilter}
+      onChange={activeTab === "plugins" ? setPluginSearchQuery : setFilter}
       onFocus={requestPanelKeyWindow}
-      placeholder={t("settings.search", "Search settings...")}
+      placeholder={
+        activeTab === "plugins"
+          ? t("plugins.search", "Search extensions...")
+          : t("settings.search", "Search settings...")
+      }
     />
   );
 
@@ -309,10 +314,14 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       </QxIslandSurface>
     ) : undefined;
 
+  const activeSearchQuery = activeTab === "plugins" ? pluginSearchQuery : filter;
+  const clearActiveSearchQuery = activeTab === "plugins"
+    ? () => setPluginSearchQuery("")
+    : () => setFilter("");
   const shell = useQxModuleShell({
     leave: onClose,
     esc: {
-      query: { active: filter.length > 0, clear: () => setFilter("") },
+      query: { active: activeSearchQuery.length > 0, clear: clearActiveSearchQuery },
     },
     island: settingsIsland,
     t,
@@ -339,7 +348,6 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
       actions={settingsActions}
     >
       <section className="qx-settings-content">
-        <div className="qx-settings-title">{t(`nav.${activeTab}`, TAB_LABELS[activeTab])}</div>
         <div className={`qx-settings-body${activeTab === "plugins" ? " is-plugin-manager" : ""}`}>
           {activeTab === "plugins" ? (
             renderContent()

@@ -1,17 +1,10 @@
 import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Plus, RotateCcw, Trash2 } from "lucide-react";
 import { useSettingsStore } from "./store";
 import { usePluginRegistry } from "../../plugin/registry";
 import { Button, Row, Toggle, Select, Input, SettingsCard } from "../../components/ui";
 import { useT } from "../../i18n";
 import { revealSystemPath } from "../../system";
-import {
-  TRAY_ACTION_TYPES,
-  DEFAULT_TRAY_ACTIONS,
-  sanitizeTrayActions,
-  createTrayAction,
-} from "./trayActions";
 
 interface StorageClearResult {
   cleared_bytes: number;
@@ -51,24 +44,11 @@ export default function AdvancedSettings() {
   const adv = settings.advanced;
   const g = settings.general;
   const proxyMode = resolveProxyMode(adv);
-  const trayActions = sanitizeTrayActions(settings.tray_actions);
   const [busy, setBusy] = useState<string | null>(null);
   const [ioPath, setIoPath] = useState("");
   const [pluginName, setPluginName] = useState("");
   const [scaffoldMsg, setScaffoldMsg] = useState("");
   const [clearMsg, setClearMsg] = useState("");
-  const [addAction, setAddAction] = useState<string>(TRAY_ACTION_TYPES[0].value);
-
-  const patchTrayActions = (actions: typeof trayActions) => patch("tray_actions", actions);
-  const updateAction = (id: string, changes: Partial<(typeof trayActions)[number]>) => {
-    patchTrayActions(trayActions.map((a) => (a.id === id ? { ...a, ...changes } : a)));
-  };
-  const removeAction = (id: string) => {
-    patchTrayActions(trayActions.filter((a) => a.id !== id));
-  };
-  const availableToAdd = TRAY_ACTION_TYPES.filter(
-    (type) => !trayActions.some((a) => a.id === type.value),
-  );
 
   const handleImport = async () => {
     if (!ioPath.trim()) return;
@@ -174,81 +154,6 @@ export default function AdvancedSettings() {
             />
           </div>
         </Row>
-      </SettingsCard>
-
-      <SettingsCard title={t("general.trayMenu", "Tray Menu")}>
-        <p className="qx-settings-section-desc" style={{ margin: "0 0 8px" }}>
-          {t(
-            "general.trayMenu.hint",
-            "Status rows show live Memory / Network / CPU. Plugins with permission “tray” can append their own items.",
-          )}
-        </p>
-        <div className="qx-tray-action-editor">
-          {trayActions.map((action) => (
-            <div className="qx-tray-action-edit-row" key={action.id}>
-              <div className="qx-tray-action-edit-fields">
-                <Input
-                  value={action.title}
-                  aria-label={t("general.trayMenu.title", "Action title")}
-                  onChange={(e) => updateAction(action.id, { title: e.target.value })}
-                />
-                <span className="qx-tray-action-edit-id">{action.id}</span>
-              </div>
-              <div className="qx-tray-action-edit-actions">
-                <Toggle
-                  value={action.enabled}
-                  onChange={(v) => updateAction(action.id, { enabled: v })}
-                />
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => removeAction(action.id)}
-                  title={t("general.trayMenu.remove", "Remove")}
-                >
-                  <Trash2 size={14} />
-                </Button>
-              </div>
-            </div>
-          ))}
-          <div className="qx-tray-action-editor-footer">
-            {availableToAdd.length > 0 && (
-              <>
-                <Select
-                  value={addAction}
-                  onChange={setAddAction}
-                  options={availableToAdd.map((type) => ({
-                    value: type.value,
-                    label: type.label,
-                  }))}
-                  ariaLabel={t("general.trayMenu.addAction", "Add action")}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => {
-                    patchTrayActions([...trayActions, createTrayAction(addAction)]);
-                    const next = availableToAdd.filter((a) => a.value !== addAction);
-                    if (next.length > 0) setAddAction(next[0].value);
-                  }}
-                >
-                  <Plus size={14} />
-                  {t("general.trayMenu.add", "Add")}
-                </Button>
-              </>
-            )}
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              onClick={() => patchTrayActions(DEFAULT_TRAY_ACTIONS)}
-            >
-              <RotateCcw size={14} />
-              {t("general.trayMenu.reset", "Reset")}
-            </Button>
-          </div>
-        </div>
       </SettingsCard>
 
       <SettingsCard title={t("advanced.diagnostics.title", "Diagnostics")}>

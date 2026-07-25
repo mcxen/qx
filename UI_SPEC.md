@@ -397,7 +397,7 @@ Top Bar 包含搜索、可选 leading、筛选和少量上下文操作。**不�
 - 内容列表、详情、Context Panel 各自管理滚动。
 - 左右栏滚动互不影响。
 - 任意宽度下不得产生横向页面滚动。
-- **滚动条**：所有原生 scrollbar chrome 永久隐藏，统一由 `src/utils/overlayScrollbar.ts` 绘制固定浮层拇指；仅对应区域**正在滚动**时短暂显现，停止后自动淡出。普通 overflow、Radix ScrollArea 和插件 iframe 必须使用同一细线样式；勿在业务模块写常驻宽滚动条或第二套 scrollbar。
+- **滚动条**：所有原生 scrollbar chrome 永久隐藏，统一由 `src/utils/overlayScrollbar.ts` 绘制固定浮层拇指；仅对应区域**正在滚动**时短暂显现，停止后自动淡出。普通 overflow、Radix ScrollArea 和插件 iframe 必须使用同一细线样式；勿在业务模块写常驻宽滚动条或第二套 scrollbar。Workbench 横向胶片仍使用该浮层拇指，并通过宿主内部 inset 将其贴近图片底边，禁止恢复占满详情宽度的原生轨道。
 
 Context Panel：
 
@@ -485,6 +485,7 @@ Context Panel：
 
 - 只显示当前上下文真实可执行动作（`primaryAction` / `secondaryAction` / `actions`）。
 - 无可用动作时不渲染按钮。
+- Bottom Bar 动作按钮不使用 pointer hover 改变颜色、边框或亮度；默认状态必须保持可读，交互反馈使用 `:focus-visible` 与 `:active`。
 - 菜单入口文案由 Shell 固定为中文“操作”、英文 `Action`，快捷键固定为平台化的
   `Cmd/Ctrl+K`；模块不得覆盖为“终端操作”等领域名称。
 - 窄窗口可压缩主动作或隐藏 Island 次要信息，但不得隐藏 Action 的快捷键提示；
@@ -710,6 +711,7 @@ Settings：
 - 使用 `visual="elevated"`。
 - Esc / Close → 关闭设置面板。
 - Appearance 的应用图标选择保留原版与云月两个内置选项；切换只影响应用/窗口图标，菜单栏与系统托盘图标始终保持独立。
+- 托盘菜单配置归入 Settings → Shortcuts：它与全局快捷键一样在主窗口隐藏时生效。插件只能贡献原生 action/status 行与可选子菜单分组；不得把 Web CSS、颜色或自绘控件带入 macOS / Windows 系统菜单。
 - 菜单栏 / 系统托盘图标按平台使用不同呈现：macOS 使用 template 图标让系统自动
   着色；Windows 使用有前景/背景层次的彩色非 template 图标，确保浅色和深色任务栏
   都可辨认。不得把 macOS 单色 template 标志直接当作 Windows tray 图标。
@@ -815,7 +817,10 @@ Settings → System → Storage Management 同时展示宿主静态缓存和插�
 Workbench 社区详情的多图动态统一使用宿主 `detail.images` 胶片/网格和全尺寸预览；
 插件不得自绘轮播。详情回复统一使用底部 `detail.replies` → `QxReplyList`，每行按
 `#楼号 / 作者 / 楼主标记 / 时间 / 正文` 排列；内置 V2EX 与插件 Workbench 共用同一
-组件和样式。
+组件和样式。全尺寸预览的左右边缘提供固定感应区：鼠标接近对应边缘或键盘聚焦时才
+显示切换按钮，按下时不得位移；无 hover 设备保持按钮可见。预览舞台内无修饰键滚轮
+直接缩放并阻止背景滚动，缩放尺寸必须使用 WebView 支持的标准 CSS 百分比，放大后
+保持完整二维滚动范围。缩放控制与比例固定在右下角，图片序号放在左下角，二者不得遮挡。
 
 ## Loading States
 

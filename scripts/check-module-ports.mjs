@@ -628,6 +628,45 @@ if (bundleProductionModule("src/plugin/pluginSdkFactory.ts", sdkOut)) {
 }
 
 // Workbench detail sub-surfaces remain bounded pure-data protocols.
+const workbenchViewSource = read("src/plugin/PluginWorkbenchView.tsx");
+const workbenchStyleSource = read("src/styles/lists-icons.css");
+const overlayScrollbarSource = read("src/utils/overlayScrollbar.ts");
+if (!workbenchViewSource.includes("data-qx-scrollbar-horizontal-lift")) {
+  fail("Workbench filmstrip must opt into the raised overlay scrollbar");
+}
+const filmstripStyle = workbenchStyleSource.match(
+  /\.qx-host-workbench-media-grid\.is-horizontal\s*\{([\s\S]*?)\n\}/,
+)?.[1] || "";
+if (/scrollbar-width\s*:\s*(?:auto|thin)/.test(filmstripStyle)) {
+  fail("Workbench filmstrip must not restore native scrollbar chrome");
+}
+if (!overlayScrollbarSource.includes("dataset.qxScrollbarHorizontalLift")) {
+  fail("overlay scrollbar must honor the Workbench filmstrip lift");
+}
+if (
+  !workbenchViewSource.includes("changePreviewZoomByWheel(event.deltaY)")
+  || !workbenchViewSource.includes('"--qx-image-zoom-size"')
+  || workbenchViewSource.includes("if (!event.metaKey && !event.ctrlKey) return")
+) {
+  fail("Workbench image preview wheel zoom must work without modifier keys");
+}
+if (/calc\(\s*100%\s*\*\s*var\(--qx-image-zoom/.test(workbenchStyleSource)) {
+  fail("Workbench image zoom must not use unsupported CSS percentage multiplication");
+}
+for (const contract of [
+  ".qx-host-workbench-media-preview-nav:active",
+  ".qx-host-workbench-media-preview-nav-zone:hover",
+  ".qx-host-workbench-media-preview-scroll.is-portrait > img.is-zoomed",
+  "width: var(--qx-image-zoom-size)",
+  "height: var(--qx-image-zoom-size)",
+  "right: 12px",
+  "left: 12px",
+]) {
+  if (!workbenchStyleSource.includes(contract)) {
+    fail(`Workbench image preview style contract missing: ${contract}`);
+  }
+}
+
 const workbenchTypesOut = path.join(scratch, "workbenchTypes.mjs");
 if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
   try {

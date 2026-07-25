@@ -23,6 +23,22 @@ pub struct TrayActionConfig {
 pub(super) fn default_quick_entries() -> Vec<QuickEntryConfig> {
     [
         ("clipboard", "Clipboard History", "Pinned, frequent, links"),
+        (
+            "screencap",
+            "Screenshot Module",
+            "Screenshots and MP4/MOV recording",
+        ),
+        ("documents", "Text Tools", "Text, Markdown, JSON"),
+        ("settings", "Qx Settings", "Appearance and plugins"),
+    ]
+    .into_iter()
+    .map(quick_entry)
+    .collect()
+}
+
+pub(super) fn previous_default_quick_entries() -> Vec<QuickEntryConfig> {
+    [
+        ("clipboard", "Clipboard History", "Pinned, frequent, links"),
         ("rss", "RSS Reader", "Feeds and articles"),
         ("settings", "Settings", "Appearance and plugins"),
         (
@@ -59,7 +75,7 @@ pub(super) fn legacy_default_quick_entries() -> Vec<QuickEntryConfig> {
 }
 
 pub(super) fn migrate_legacy_default_quick_entries(entries: &mut Vec<QuickEntryConfig>) {
-    if *entries == legacy_default_quick_entries() {
+    if *entries == legacy_default_quick_entries() || *entries == previous_default_quick_entries() {
         *entries = default_quick_entries();
     }
 }

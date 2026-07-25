@@ -11,6 +11,7 @@ const IDLE_MS = 720;
 const ATTR = "data-qx-scrolling";
 const MIN_THUMB_PX = 24;
 const EDGE_INSET_PX = 2;
+const MAX_HORIZONTAL_LIFT_PX = 32;
 
 interface OverlayState {
   target: HTMLElement | null;
@@ -40,6 +41,12 @@ function hide(state: OverlayState): void {
   state.horizontal.classList.remove("is-visible");
   state.target?.removeAttribute(ATTR);
   state.target = null;
+}
+
+function horizontalLift(target: HTMLElement): number {
+  const value = Number(target.dataset.qxScrollbarHorizontalLift);
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(MAX_HORIZONTAL_LIFT_PX, value));
 }
 
 function update(state: OverlayState): void {
@@ -75,7 +82,12 @@ function update(state: OverlayState): void {
     const progress = target.scrollLeft / Math.max(1, target.scrollWidth - viewportWidth);
     const left = Math.max(EDGE_INSET_PX, rect.left + EDGE_INSET_PX + (trackWidth - thumbWidth) * progress);
     state.horizontal.style.left = `${left}px`;
-    state.horizontal.style.top = `${Math.min(window.innerHeight - 4, rect.bottom - 4)}px`;
+    state.horizontal.style.top = `${
+      Math.max(
+        EDGE_INSET_PX,
+        Math.min(window.innerHeight - 4, rect.bottom - 4 - horizontalLift(target)),
+      )
+    }px`;
     state.horizontal.style.width = `${Math.min(trackWidth, thumbWidth)}px`;
     state.horizontal.classList.add("is-visible");
   } else {

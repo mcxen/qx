@@ -11,7 +11,6 @@ import {
   Puzzle,
   RefreshCw,
   RotateCcw,
-  Search,
   Trash2,
 } from "lucide-react";
 import { usePluginRegistry } from "../../../plugin/registry";
@@ -86,6 +85,7 @@ import InstalledModuleCard from "./InstalledModuleCard";
 import { BUILTIN_PLUGIN_ICONS, isPluginUpdateAvailable } from "./helpers";
 import BetaBadge from "../../../components/BetaBadge";
 import PluginBackgroundBadge from "../../../components/PluginBackgroundBadge";
+import { showPluginInstallStatus } from "../../../island";
 import {
   isBetaModule,
   isConfigurableBuiltinModule,
@@ -977,9 +977,11 @@ function PluginDetail({
 function MarketplaceTab({
   installedVersions,
   onInstallComplete,
+  searchQuery,
 }: {
   installedVersions: Map<string, string>;
   onInstallComplete: () => void | Promise<void>;
+  searchQuery: string;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -992,7 +994,6 @@ function MarketplaceTab({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [installingKey, setInstallingKey] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
   /** `all` or a registry source id */
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -1076,20 +1077,24 @@ function MarketplaceTab({
 
   const handleInstall = async (entry: PluginIndexEntry, mode: "install" | "upgrade" | "reinstall") => {
     if (!appVersionMeetsMinimum(hostVersion ?? "", entry.min_app_version)) {
-      setInstallStatus({
-        tone: "danger",
-        message: t(
-          "plugins.marketplace.requiresQxMessage",
-          "{name} requires Qx {required} or newer. Update Qx before installing.",
-        )
-          .replace("{name}", localizeMarketplaceEntryName(entry, t))
-          .replace("{required}", entry.min_app_version || "—"),
-      });
+      const message = t(
+        "plugins.marketplace.requiresQxMessage",
+        "{name} requires Qx {required} or newer. Update Qx before installing.",
+      )
+        .replace("{name}", localizeMarketplaceEntryName(entry, t))
+        .replace("{required}", entry.min_app_version || "—");
+      setInstallStatus({ tone: "danger", message });
+      showPluginInstallStatus({ kind: "error", label: message });
       return;
     }
     const key = marketplaceEntryKey(entry);
     setInstallingKey(key);
     setInstallStatus(null);
+    showPluginInstallStatus({
+      kind: "activity",
+      label: t("plugins.marketplace.installing", "Installing..."),
+      detail: localizeMarketplaceEntryName(entry, t),
+    });
     try {
       const path = await invoke<string>("download_plugin", {
         url: entry.download_url,
@@ -1112,18 +1117,16 @@ function MarketplaceTab({
       const sourceSuffix = entry.source_name
         ? ` · ${t("plugins.marketplace.fromSource", "from {source}").replace("{source}", entry.source_name)}`
         : "";
-      setInstallStatus({
-        tone: "success",
-        message: t(messageKey, fallback)
-          .replace("{name}", localizeMarketplaceEntryName(entry, t))
-          .replace("{version}", entry.version) + sourceSuffix,
-      });
+      const message = t(messageKey, fallback)
+        .replace("{name}", localizeMarketplaceEntryName(entry, t))
+        .replace("{version}", entry.version) + sourceSuffix;
+      setInstallStatus({ tone: "success", message });
+      showPluginInstallStatus({ kind: "success", label: message });
     } catch (err) {
       console.error("Marketplace install failed", err);
-      setInstallStatus({
-        tone: "danger",
-        message: t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err)),
-      });
+      const message = t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err));
+      setInstallStatus({ tone: "danger", message });
+      showPluginInstallStatus({ kind: "error", label: message });
     } finally {
       setInstallingKey(null);
     }
@@ -1276,16 +1279,6 @@ function MarketplaceTab({
   const marketplaceToolbar = (
     <div className="qx-plugin-list-toolbar qx-plugin-marketplace-toolbar">
       <div className="qx-plugin-marketplace-query">
-        <div className="qx-plugin-search-wrap">
-          <Search size={14} aria-hidden="true" />
-          <Input
-            type="text"
-            placeholder={t("plugins.marketplace.search", "Search marketplace plugins...")}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="qx-plugin-search-input"
-          />
-        </div>
         <div className="qx-plugin-source-filter">
           <Select
             value={sourceFilter}
@@ -1792,13 +1785,12 @@ function filterInstalledPlugin(plugin: InstalledPlugin, filter: InstalledFilter)
 /*  Main PluginManager                                                 */
 /* ------------------------------------------------------------------ */
 
-export default function PluginManager() {
+export default function PluginManager({ searchQuery }: { searchQuery: string }) {
   const t = useT();
   const locale = useLocale();
   const { plugins, install, uninstall, setEnabled, refresh, loaded, loading } =
     usePluginRegistry();
   const searchMetadata = useSettingsStore((state) => state.settings.search_metadata);
-  const pluginDisplay = useSettingsStore((state) => state.settings.plugin_display);
   const builtinModules = useSettingsStore((state) => state.settings.builtin_modules);
   const patchSettings = useSettingsStore((state) => state.patch);
   const [tab, setTab] = useState<Tab>("installed");
@@ -1809,7 +1801,6 @@ export default function PluginManager() {
   const [raycastUrl, setRaycastUrl] = useState("");
   const [busy, setBusy] = useState<"path" | "url" | "raycast" | null>(null);
   const [installStatus, setInstallStatus] = useState<string | null>(null);
-  const [installedQuery, setInstalledQuery] = useState("");
   const [installedFilter, setInstalledFilter] = useState<InstalledFilter>("all");
   const [importExpanded, setImportExpanded] = useState(false);
 
@@ -1849,13 +1840,22 @@ export default function PluginManager() {
     if (!trimmed) return;
     setBusy("path");
     setInstallStatus(null);
+    showPluginInstallStatus({
+      kind: "activity",
+      label: t("plugins.installing", "Installing..."),
+      detail: t("plugins.installLocal", "Install Local"),
+    });
     try {
       await install(trimmed);
       setArchivePath("");
-      setInstallStatus(t("plugins.installComplete", "Plugin installed."));
+      const message = t("plugins.installComplete", "Plugin installed.");
+      setInstallStatus(message);
+      showPluginInstallStatus({ kind: "success", label: message });
     } catch (err) {
       console.error("Plugin install failed", err);
-      setInstallStatus(t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err)));
+      const message = t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err));
+      setInstallStatus(message);
+      showPluginInstallStatus({ kind: "error", label: message });
     } finally {
       setBusy(null);
     }
@@ -1866,14 +1866,23 @@ export default function PluginManager() {
     if (!trimmed) return;
     setBusy("url");
     setInstallStatus(null);
+    showPluginInstallStatus({
+      kind: "activity",
+      label: t("plugins.downloading", "Downloading..."),
+      detail: t("plugins.installUrl", "Install URL"),
+    });
     try {
       await invoke("install_plugin_from_url", { url: trimmed });
       await refresh();
       setArchiveUrl("");
-      setInstallStatus(t("plugins.installComplete", "Plugin installed."));
+      const message = t("plugins.installComplete", "Plugin installed.");
+      setInstallStatus(message);
+      showPluginInstallStatus({ kind: "success", label: message });
     } catch (err) {
       console.error("Plugin URL install failed", err);
-      setInstallStatus(t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err)));
+      const message = t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err));
+      setInstallStatus(message);
+      showPluginInstallStatus({ kind: "error", label: message });
     } finally {
       setBusy(null);
     }
@@ -1884,14 +1893,23 @@ export default function PluginManager() {
     if (!trimmed) return;
     setBusy("raycast");
     setInstallStatus(null);
+    showPluginInstallStatus({
+      kind: "activity",
+      label: t("plugins.converting", "Converting..."),
+      detail: t("plugins.installRaycast", "Install Raycast"),
+    });
     try {
       await invoke("install_raycast_extension_from_url", { url: trimmed });
       await refresh();
       setRaycastUrl("");
-      setInstallStatus(t("plugins.installComplete", "Plugin installed."));
+      const message = t("plugins.installComplete", "Plugin installed.");
+      setInstallStatus(message);
+      showPluginInstallStatus({ kind: "success", label: message });
     } catch (err) {
       console.error("Raycast extension install failed", err);
-      setInstallStatus(t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err)));
+      const message = t("plugins.installFailed", "Install failed: {message}").replace("{message}", String(err));
+      setInstallStatus(message);
+      showPluginInstallStatus({ kind: "error", label: message });
     } finally {
       setBusy(null);
     }
@@ -1949,14 +1967,14 @@ export default function PluginManager() {
     return map;
   }, [displayPlugins]);
   const filteredPlugins = useMemo(() => {
-    const q = normalizeSearch(installedQuery);
+    const q = normalizeSearch(searchQuery);
     return displayPlugins
       .filter((plugin) => filterInstalledPlugin(plugin, installedFilter)
         && pluginMatchesQuery(plugin, q, searchMetadata, t, locale))
       .slice()
       .sort((a, b) => localizePluginName(a, t, locale)
         .localeCompare(localizePluginName(b, t, locale), locale === "zh-CN" ? "zh-CN" : "en"));
-  }, [displayPlugins, installedFilter, installedQuery, locale, searchMetadata, t]);
+  }, [displayPlugins, installedFilter, locale, searchMetadata, searchQuery, t]);
   const configPlugin = displayPlugins.find((p) => p.id === configId) ?? null;
 
   /* ---- render ---- */
@@ -1975,23 +1993,17 @@ export default function PluginManager() {
           </TabsList>
           <div className="qx-plugin-manager-tools">
             {tab === "installed" && (
-              <div
-                className="qx-plugin-display-toggle"
-                title={t(
-                  "plugins.raycastActions.desc",
-                  "Show secondary actions on converted Raycast items. Narrow panels hide them automatically.",
-                )}
-              >
-                <span>{t("plugins.raycastActions", "Raycast Actions")}</span>
-                <Toggle
-                  value={pluginDisplay.raycast_action_panel}
-                  ariaLabel={t("plugins.raycastActions", "Raycast Actions")}
-                  onChange={(raycast_action_panel) => patchSettings("plugin_display", {
-                    ...pluginDisplay,
-                    raycast_action_panel,
-                  })}
-                />
-              </div>
+              <SegmentedControl
+                value={installedFilter}
+                options={[
+                  { value: "all", label: t("plugins.filter.all", "All") },
+                  { value: "builtin", label: t("plugins.filter.builtin", "Built-in") },
+                  { value: "external", label: t("plugins.filter.external", "External") },
+                  { value: "enabled", label: t("plugins.filter.enabled", "Enabled") },
+                  { value: "disabled", label: t("plugins.filter.disabled", "Disabled") },
+                ]}
+                onChange={setInstalledFilter}
+              />
             )}
             {tab === "installed" && (
               <Button variant="outline" size="sm" onClick={() => setImportExpanded(true)}>
@@ -2079,37 +2091,13 @@ export default function PluginManager() {
       </Dialog>
 
       <TabsContent value="installed" className="qx-marketplace qx-plugin-installed-tab">
-        <div className="qx-plugin-list-toolbar">
-          <div className="qx-plugin-search-wrap">
-            <Search size={14} aria-hidden="true" />
-            <Input
-              type="text"
-              value={installedQuery}
-              onChange={(e) => setInstalledQuery(e.target.value)}
-              placeholder={t("plugins.searchInstalled", "Search installed modules...")}
-              className="qx-plugin-search-input"
-            />
-          </div>
-          <SegmentedControl
-            value={installedFilter}
-            options={[
-              { value: "all", label: t("plugins.filter.all", "All") },
-              { value: "builtin", label: t("plugins.filter.builtin", "Built-in") },
-              { value: "external", label: t("plugins.filter.external", "External") },
-              { value: "enabled", label: t("plugins.filter.enabled", "Enabled") },
-              { value: "disabled", label: t("plugins.filter.disabled", "Disabled") },
-            ]}
-            onChange={setInstalledFilter}
-          />
-        </div>
-
         {displayPlugins.length === 0 ? (
           <div className="qx-empty-state">
             {loading ? t("plugins.loadingModules", "Loading modules...") : t("plugins.noModules", "No modules installed")}
           </div>
         ) : filteredPlugins.length === 0 ? (
           <div className="qx-empty-state">
-            {t("plugins.noMatches", "No modules match “{query}”").replace("{query}", installedQuery || installedFilter)}
+            {t("plugins.noMatches", "No modules match “{query}”").replace("{query}", searchQuery || installedFilter)}
           </div>
         ) : (
           <div className="qx-ext-card-list" role="list">
@@ -2183,6 +2171,7 @@ export default function PluginManager() {
         <MarketplaceTab
           installedVersions={installedVersions}
           onInstallComplete={handleRefresh}
+          searchQuery={searchQuery}
         />
       </TabsContent>
     </Tabs>

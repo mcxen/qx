@@ -1,6 +1,6 @@
 <!-- language: en -->
 
-> **Version**: v0.6.26 — current release
+> **Version**: v0.6.27 — current release
 
 <a id="readme-en"></a>
 
@@ -66,14 +66,36 @@ Prebuilt packages are published on
 
 | Platform                | Package                                                                                        |
 | ----------------------- | ---------------------------------------------------------------------------------------------- |
-| **macOS** Apple Silicon | `.app.zip` → unzip into `/Applications` · first open: right-click → **Open**                   |
+| **macOS** Apple Silicon | `.dmg` → open **Read Me**, drag Qx to Applications · `install.sh` can remove quarantine       |
+| **macOS** (updater)     | `.app.zip` → unzip into `/Applications` · first open: right-click → **Open**                  |
 | **Windows** x64         | NSIS installer · [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) required |
 
 Qx stays in the menu bar / system tray after setup until you summon it.
 
+The macOS DMG includes a **Read Me** and an executable `install.sh`. The
+normal path is to drag `Qx.app` onto the Applications shortcut. If Gatekeeper
+still blocks the first launch, run `bash install.sh` from the mounted DMG; it
+copies Qx to `/Applications` (or `~/Applications`) and removes only the
+`com.apple.quarantine` attribute. The equivalent manual command is:
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Qx.app
+```
+
 **Default hotkey (macOS):** `⌥ Space` — press again to hide.
 
 Navigate with `↑` `↓` `Enter` · actions with `⌘K` / `Ctrl+K` · leave with `Esc`.
+
+### Support Qx
+
+Qx is maintained as an open-source project. If it saves you time, a small
+sponsorship helps cover signing, hosting, and continued development; there is
+never any pressure to contribute.
+
+- [爱发电](https://ifdian.net/a/mcxen)
+- [Ko-fi](https://ko-fi.com/mcxen)
+
+<p><img src="./assets/sponsor-wechat.png" alt="微信赞助二维码" width="360"></p>
 
 ***
 
@@ -241,14 +263,35 @@ brew upgrade --cask qx   # 升级
 
 | 平台                      | 包                                                                                 |
 | ----------------------- | --------------------------------------------------------------------------------- |
-| **macOS** Apple Silicon | `.app.zip` → 解压到 `/Applications` · 首次打开：右键 → **打开**                               |
+| **macOS** Apple Silicon | `.dmg` → 打开 **Read Me**，将 Qx 拖到“应用程序” · `install.sh` 可移除隔离标记                 |
+| **macOS**（更新器）      | `.app.zip` → 解压到 `/Applications` · 首次打开：右键 → **打开**                              |
 | **Windows** x64         | NSIS 安装包 · 需 [WebView2](https://developer.microsoft.com/microsoft-edge/webview2/) |
 
 安装后常驻菜单栏 / 托盘，按快捷键唤起。
 
+macOS DMG 内含 **Read Me** 和可执行的 `install.sh`。通常将 `Qx.app` 拖到
+“应用程序”快捷方式即可；如果首次启动仍被 Gatekeeper 拦截，请在挂载的 DMG
+目录中运行 `bash install.sh`。脚本会把 Qx 安装到 `/Applications`（没有写入
+权限时使用 `~/Applications`），并且只移除 `com.apple.quarantine` 隔离标记。
+也可以手动执行：
+
+```sh
+xattr -dr com.apple.quarantine /Applications/Qx.app
+```
+
 **默认快捷键（macOS）：** `⌥ Space`（再次按下隐藏）。
 
 导航：`↑` `↓` `Enter` · 操作：`⌘K` / `Ctrl+K` · 返回：`Esc`。
+
+### 支持 Qx
+
+Qx 由个人以开源方式持续维护。如果它对你有帮助，欢迎按能力赞助，用于
+签名、服务器和持续开发；不赞助也完全不影响使用。
+
+- [爱发电](https://ifdian.net/a/mcxen)
+- [Ko-fi](https://ko-fi.com/mcxen)
+
+<p><img src="./assets/sponsor-wechat.png" alt="微信赞助二维码" width="360"></p>
 
 ***
 

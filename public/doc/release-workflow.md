@@ -184,8 +184,17 @@ current environment.
 The release assets must include all of:
 
 - `qx_vX.Y.Z_aarch64-apple-darwin.app.zip`
+- `qx_vX.Y.Z_aarch64-apple-darwin.dmg` (drag-to-Applications installer with
+  `Read Me.html`, `install.sh`, and the quarantine guidance)
 - `Qx_X.Y.Z_x64-setup.exe`
 - `latest.json`
+
+The DMG is the user-facing macOS installer. The updater continues to use the
+`.app.zip` artifact because `latest.json` intentionally points at a package
+with stable updater semantics. `scripts/create-macos-dmg.sh` keeps the Finder
+layout and installer guidance reproducible in CI; `scripts/dmg-install.sh`
+copies the app to `/Applications` (or `~/Applications` when needed) and only
+removes the `com.apple.quarantine` extended attribute.
 
 ### Windows in-place upgrades
 

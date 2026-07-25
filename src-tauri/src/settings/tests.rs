@@ -172,7 +172,7 @@ fn default_quick_entries_stay_focused_on_core_navigation() {
         .into_iter()
         .map(|entry| entry.target)
         .collect::<Vec<_>>();
-    assert_eq!(targets, ["clipboard", "rss", "settings", "file-search"]);
+    assert_eq!(targets, ["clipboard", "screencap", "documents", "settings"]);
     assert_ne!(
         super::entry_config::legacy_default_quick_entries(),
         super::default_quick_entries()
@@ -184,6 +184,10 @@ fn quick_entry_migration_preserves_user_customization() {
     let mut legacy = super::entry_config::legacy_default_quick_entries();
     super::entry_config::migrate_legacy_default_quick_entries(&mut legacy);
     assert_eq!(legacy, super::default_quick_entries());
+
+    let mut previous = super::entry_config::previous_default_quick_entries();
+    super::entry_config::migrate_legacy_default_quick_entries(&mut previous);
+    assert_eq!(previous, super::default_quick_entries());
 
     let mut customized = super::entry_config::legacy_default_quick_entries();
     customized.reverse();

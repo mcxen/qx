@@ -440,16 +440,6 @@ img.qx-ext-card-icon {
   padding-right: 4px;
 }
 
-.qx-settings-title {
-  padding: 8px var(--qx-settings-gutter-x);
-  border-bottom: 1px solid var(--qx-border-1);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--qx-text-primary);
-  background: var(--qx-overlay-2);
-  transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
-}
-
 .qx-settings-page {
   display: flex;
   flex-direction: column;
@@ -715,27 +705,19 @@ img.qx-ext-card-icon {
 
 .qx-plugin-manager-actions {
   justify-content: space-between;
+  flex-wrap: nowrap;
+  min-width: 0;
 }
 
-.qx-plugin-manager-tools,
-.qx-plugin-display-toggle {
+.qx-plugin-manager-tools {
   display: inline-flex;
   align-items: center;
+  flex-wrap: nowrap;
 }
 
 .qx-plugin-manager-tools {
   gap: 6px;
   min-width: 0;
-}
-
-.qx-plugin-display-toggle {
-  gap: 7px;
-  min-height: 30px;
-  padding: 0 4px 0 8px;
-  color: var(--qx-text-secondary);
-  font-size: 11px;
-  font-weight: 550;
-  white-space: nowrap;
 }
 
 .qx-marketplace {
@@ -2346,10 +2328,6 @@ span.qx-plugin-screenshot {
 .qx-settings-scroll {
   height: 100%;
   width: 100%;
-}
-
-.qx-settings-title {
-  min-width: 0;
 }
 
 /* Wrapper used inside .qx-settings-row-control to constrain a shadcn Input to a

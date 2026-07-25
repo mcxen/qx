@@ -35,6 +35,33 @@ If the request changes **public interfaces or layer boundaries**, update docs in
 - Use `apply_patch` for manual edits.
 - Do not introduce generated build artifacts, secrets, temp files, or unrelated formatting churn.
 
+## Documentation and build-output boundaries
+
+Keep the three documentation/build locations separate; they are not alternate
+copies of the same source:
+
+- `docs/` contains internal contributor and architecture documentation (ports,
+  threading, storage, shell contracts, and design decisions).
+- `docs/README.md` and `public/doc/README.md` intentionally have the same
+  basename but are different indexes: the former is for core contributors and
+  the latter is for plugin authors, operators, and release maintainers. The
+  matching filename is not a duplicate to remove.
+- `public/doc/` contains user-, operator-, and plugin-author-facing Markdown.
+  This is the canonical source for documents that Qx links from its UI or
+  README, including the plugin development and release guides. Edit this tree,
+  not its build output.
+- `dist/` is generated Vite output. `dist/doc/` is only the build-time copy of
+  `public/doc/`, alongside compiled JavaScript, CSS, and assets. Never edit or
+  commit anything under `dist/`; remove it when stale and regenerate it with
+  `npm run build`. A root-level `doc/` directory is not part of the project and
+  must not be created as a third documentation source.
+
+When the same Markdown appears under `public/doc/` and `dist/doc/`, the
+`public/doc/` file is authoritative and the `dist/doc/` copy is disposable
+build output. Do not maintain both versions or manually “fix” the generated
+copy. If a duplicate source document is found elsewhere, consolidate it into
+the appropriate canonical tree and update links in the same change.
+
 ## Architecture Principles (SOLID)
 
 Full write-up: [`docs/architecture-principles.md`](docs/architecture-principles.md).

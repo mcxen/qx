@@ -94,7 +94,7 @@
 | **external-display-control** | ✅ | ✅ | invoke external-displays | — | 无 |
 | **qx-bing-wallpaper** | ✅ | ✅ | **host Workbench Gallery** + http/system wallpaper/file ports | persist SWR | 全宽 Gallery → 宿主左图库/右详情；item/panel Actions；壁纸系统差异由 host port 适配；无 Raycast shim |
 | **raycast-calendar** | ✅ | ✅ | Raycast shim | — | 转换插件 |
-| **qxgh** (QxGH) | ✅ | ✅ | **host Workbench**：结构化 detail/actions + 公开 HTML + island | persist SWR | 不用 api.github.com；解析 actions/releases 网页 |
+| **qxgh** (QxGH) | ✅ | ✅ | **host Workbench**：结构化 detail/actions + 公开 HTML + island + tray | persist SWR | 不用 api.github.com；解析 actions/releases 网页；活跃部署以原生托盘子菜单显示预计百分比与用时 |
 | **sysinfo** | ✅ | ✅ | **host Workbench List** + typed system/info/storage/network/power/process ports | — | Hardware 视图以左侧 List 区分 System/CPU/Memory/Power/Storage/Network，中间详情随选择切换；Processes 保持独立视图和可操作进程行。静态 CPU 规格含可选物理/逻辑/性能/能效核心、最高频率、缓存行及原生 L1/L2/L3 记录，内核 family/release 按一次性 `uname -srm` 快照提供，实时负载单独采样；结束进程需精确 invoke + `YES` 确认；无 shell 与自绘 DOM |
 
 **老包兼容**：无 `AGENTS.md` 仍可安装；无 `panel` 的纯 command 包仍可跑命令，但**不能**作为 panel tab 打开（宿主不注册 panel）——这是原有契约，不是新门槛。

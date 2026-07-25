@@ -222,6 +222,7 @@ function WorkbenchMediaCollection({
       <div
         ref={stripRef}
         className={`qx-host-workbench-media-grid${horizontal ? " is-horizontal" : ""}`}
+        data-qx-scrollbar-horizontal-lift={horizontal ? 10 : undefined}
         tabIndex={horizontal ? 0 : undefined}
         aria-label={horizontal ? previewText : undefined}
         onKeyDown={onKeyDown}
@@ -557,6 +558,12 @@ export default function PluginWorkbenchView({
   const changePreviewZoom = (delta: number) => {
     setPreviewZoom((current) => Math.max(0.5, Math.min(4, Math.round((current + delta) * 10) / 10)));
   };
+  const changePreviewZoomByWheel = (deltaY: number) => {
+    setPreviewZoom((current) => {
+      const next = current * Math.exp(-deltaY * 0.0025);
+      return Math.max(0.5, Math.min(4, Math.round(next * 100) / 100));
+    });
+  };
   const previewImage = preview?.images[preview.index];
   const previewIsLongScreenshot = Boolean(
     previewImage
@@ -875,28 +882,36 @@ export default function PluginWorkbenchView({
             </DialogDescription>
           </DialogHeader>
           {previewImage ? (
-            <div className="qx-host-workbench-media-preview-stage">
+            <div
+              className="qx-host-workbench-media-preview-stage"
+              onWheel={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                changePreviewZoomByWheel(event.deltaY);
+              }}
+            >
               {preview && preview.images.length > 1 ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="qx-host-workbench-media-preview-nav is-previous"
-                  aria-label={t("plugins.workbench.previousImage", "Previous image")}
-                  onClick={() => movePreview(-1)}
-                >
-                  <ChevronLeft size={20} aria-hidden="true" />
-                </Button>
+                <div className="qx-host-workbench-media-preview-nav-zone is-previous">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="qx-host-workbench-media-preview-nav"
+                    aria-label={t("plugins.workbench.previousImage", "Previous image")}
+                    onClick={() => movePreview(-1)}
+                  >
+                    <ChevronLeft size={20} aria-hidden="true" />
+                  </Button>
+                </div>
               ) : null}
               <div
-                className={`qx-host-workbench-media-preview-scroll is-${previewOrientation}`}
+                className={[
+                  "qx-host-workbench-media-preview-scroll",
+                  `is-${previewOrientation}`,
+                  previewZoom > 1 ? "is-enlarged" : previewZoom < 1 ? "is-reduced" : "",
+                ].filter(Boolean).join(" ")}
                 tabIndex={0}
                 aria-label={t("plugins.workbench.imagePreviewHint", "Full-size preview of the selected image")}
-                onWheel={(event) => {
-                  if (!event.metaKey && !event.ctrlKey) return;
-                  event.preventDefault();
-                  changePreviewZoom(event.deltaY < 0 ? 0.25 : -0.25);
-                }}
               >
                 <img
                   key={previewImage.url}
@@ -913,7 +928,7 @@ export default function PluginWorkbenchView({
                   }}
                   style={{
                     objectFit: previewImage.fit || "contain",
-                    "--qx-image-zoom": previewZoom,
+                    "--qx-image-zoom-size": `${Math.round(previewZoom * 100)}%`,
                   } as CSSProperties}
                 />
               </div>
@@ -950,16 +965,18 @@ export default function PluginWorkbenchView({
                 </Button>
               </div>
               {preview && preview.images.length > 1 ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  className="qx-host-workbench-media-preview-nav is-next"
-                  aria-label={t("plugins.workbench.nextImage", "Next image")}
-                  onClick={() => movePreview(1)}
-                >
-                  <ChevronRight size={20} aria-hidden="true" />
-                </Button>
+                <div className="qx-host-workbench-media-preview-nav-zone is-next">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="qx-host-workbench-media-preview-nav"
+                    aria-label={t("plugins.workbench.nextImage", "Next image")}
+                    onClick={() => movePreview(1)}
+                  >
+                    <ChevronRight size={20} aria-hidden="true" />
+                  </Button>
+                </div>
               ) : null}
               {preview && preview.images.length > 1 ? (
                 <span className="qx-host-workbench-media-preview-count" aria-live="polite">

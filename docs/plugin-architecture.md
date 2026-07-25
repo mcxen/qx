@@ -294,9 +294,10 @@ Tray menu is built in `tray_menu.rs`:
 | `tray_actions` status ids | Live **Memory / Network / CPU** (≈3s refresh while enabled) |
 | `quick_entries` | Open modules |
 | `tray_actions` window ids | Open / Keep visible / Settings / Hide |
-| Plugin `context.tray` | Per-plugin items (`permission: tray`) |
+| Plugin `context.tray` | Per-plugin items (`permission: tray`), optional native submenu and non-clickable status presentation |
 
-Plugin API: `tray.setItems([{ id, title, command? }])` / `tray.clear()`. Click emits `plugin-tray-action`; frontend runs the command.
+Plugin API: `tray.setItems([{ id, title, command?, presentation?, group? }])` / `tray.clear()`.
+`presentation: "status"` is informational and disabled; `group` creates a native submenu. This is intentionally not CSS: macOS and Windows retain platform menu styling. Clickable actions emit `plugin-tray-action`; frontend runs the command.
 
 ## 10. Raycast Action ≡ Qx Action
 

@@ -8,7 +8,7 @@
 ```text
 插件代码                          宿主
 ────────                          ────
-context.tray.setItems([...])  →  系统托盘菜单（仅本插件的行）
+context.tray.setItems([...])  →  系统托盘菜单（仅本插件的行 / 子菜单）
 context.system.stats()        →  CPU / 内存（拼 title）
 context.system.networkCounters() → 字节计数（插件自己算速率）
 用户点击托盘项                 →  plugin-tray-action
@@ -46,14 +46,18 @@ type PluginTrayItem = {
   title: string;    // 菜单文案，≤64；可含实时数字
   enabled?: boolean;
   command?: string; // 点击时执行的本插件 commands[].name
+  presentation?: "action" | "status"; // status 为不可点击的信息行
+  group?: string;   // 同名项显示在一个原生子菜单内，≤48
 };
 
 await context.tray.setItems([
-  { id: "mem", title: "MEM  12.4/32 GB  (39%)" },           // 纯状态，无 command
-  { id: "net", title: "Net  ↓ 1.2 MB/s  ↑ 0.3 MB/s" },
-  { id: "open", title: "Open Dashboard", command: "open" }, // 可点
+  { id: "deploy", title: "Deployment 42% · 2m 08s / ~5m", presentation: "status", group: "My CI" },
+  { id: "updated", title: "Updated 8s ago", presentation: "status", group: "My CI" },
+  { id: "refresh", title: "Refresh deployments", group: "My CI", command: "refresh" },
 ]);
 ```
+
+`presentation: "status"` 显示为禁用的信息行，不能携带可执行语义；`group` 让相关行进入同一个原生子菜单。二者是跨 macOS / Windows 的**原生菜单呈现**，并非 CSS：系统负责字体、颜色、深色模式和辅助功能。未提供 `group` 的旧插件项继续平铺在 Qx 托盘菜单中，完全兼容。
 
 ### `context.tray.clear()`
 
@@ -113,8 +117,9 @@ async function tick(context) {
 
 | 项 | 行为 |
 |----|------|
-| 无 `command` | 可显示；点击无插件逻辑（状态行） |
-| 有 `command` | 宿主 `runCommand(pluginId, command)` |
+| `presentation: "status"` | 可显示；始终不可点击，用于进度、时间、指标等信息 |
+| 无 `command` 的 action | 可显示；点击无插件逻辑 |
+| 有 `command` 的 action | 宿主 `runCommand(pluginId, command)` |
 | 插件未加载 / 无该 command | 记日志，不崩溃 |
 
 ## 后端命令
@@ -129,7 +134,7 @@ async function tick(context) {
 
 ## 与宿主内置状态行的关系
 
-设置 → **高级 → 托盘菜单** 里的 `Status · Memory / Network / CPU` 是**宿主内置**实现，不占插件配额。
+设置 → **快捷键 → 托盘菜单** 里的 `Status · Memory / Network / CPU` 是**宿主内置**实现，不占插件配额。
 插件用 `context.tray` 做**自己的**状态/入口；两者可同时出现。
 
 ## 约束
@@ -137,7 +142,7 @@ async function tick(context) {
 - 每插件最多 12 项；title/id 长度截断
 - 不要高频 `setItems`（建议 ≥2–3s）；托盘重建有成本
 - 禁用/卸载必须清托盘（宿主已做；插件 `destroy` 仍应 `clear`）
-- 不提供任意 NSStatusItem / 托盘图标替换（v1 仅共享 Qx 图标菜单）
+- 不提供任意 NSStatusItem / 托盘图标替换，也不提供 CSS / 自定义颜色；使用 `group` 与 `status` 获得受系统主题保护的原生层级
 
 ## 版本
 

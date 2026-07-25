@@ -310,7 +310,7 @@ Workbench 中带 `command` 的 action 完成后，宿主会调用 `onCommandComp
 | 打开/揭示本地产物、读平台环境、系统设置、设置壁纸 | **`context.system`** | `system` | `env` / `openPath` / `revealPath` / `openSettings` / `setWallpaper`；与 `openUrl` 不同 |
 | 读取系统、存储、网络、电源 | **`context.system`** | `system-info` | `info` / `storage` / `network` / `networkCounters` / `power`；macOS / Windows 返回同一 typed model。电池存在、外接电源、充电、充满状态彼此独立，健康/容量字段按硬件能力可选 |
 | 读取/结束进程 | **`context.system.processes`** | `processes` + 结束时精确 invoke | `list()`；`kill(pid)` 还需 `invoke:qx_system_information_kill_process` |
-| 系统托盘菜单项 | **`context.tray`** | `tray` | `setItems` / `clear`；点选可跑本插件 `command` |
+| 系统托盘菜单项 | **`context.tray`** | `tray` | `setItems` / `clear`；支持原生 `group` 子菜单与 `status` 信息行；点选 action 可跑本插件 `command` |
 | 调公司 HTTP API | **`context.http`** | `http` | 跨平台更稳 |
 | 复用宿主领域命令（V2EX/天气缓存等） | **`context.invoke("…")`** | 精确 `invoke:<cmd>` 或能力组 | 优先走已缓存的 host 命令，再 http 回退 |
 | 用户配置（路径、token） | **`context.getPreference`** | —（manifest.preferences） | 密钥用 `password` |
@@ -391,7 +391,8 @@ await context.cli.which("brew")  // => "/opt/homebrew/bin/brew" | null（含 log
 // 容量值须搭配 capacityUnit 使用，未被系统/硬件提供的字段为 null。
 // 权限: "tray" — 往系统托盘加菜单（可选 command 为本插件 commands[].name）
 // await context.tray.setItems([
-//   { id: "mem", title: "Open dashboard", command: "open" },
+//   { id: "deploy", title: "Deployment 42% · 2m 08s / ~5m", presentation: "status", group: "My CI" },
+//   { id: "refresh", title: "Refresh", group: "My CI", command: "refresh" },
 // ]);
 
 await context.cli.run({
@@ -845,7 +846,7 @@ export default async function (context) {
 | **v2ex** | `invoke:v2ex_*` + persist SWR + panel 详情；包内 AGENTS.md |
 | **weather** | `invoke:fetch_weather*` + Open-Meteo http 回退 + persist SWR |
 | **pomodoro-island** | panel 控制台 + `context.island`；**必须有 panel**（防注册失败） |
-| **QxGH** (`qxgh`) | **business-only**：公开 `github.com` **HTML 页**解析 Actions/Releases → `mountWorkbench`（不用 REST API） |
+| **QxGH** (`qxgh`) | **business-only**：公开 `github.com` **HTML 页**解析 Actions/Releases → `mountWorkbench`（不用 REST API）；活跃部署同步到原生 tray 状态子菜单 |
 | **Sysinfo** (`sysinfo`) | **business-only**：typed `context.system.*` → Overview / Storage / Network / Processes Workbench；无 shell、无自绘 DOM |
 | **raycast-*** | 转换插件：依赖 Raycast shim，适合 UI 型扩展 |
 

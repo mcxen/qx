@@ -109,12 +109,22 @@ jobs:
             src-tauri/target/${{ matrix.target }}/release/bundle/macos/Qx.app \
             qx_${RELEASE_TAG}_${{ matrix.target }}.app.zip
 
+      - name: Create macOS drag-to-Applications DMG
+        if: runner.os == 'macOS'
+        run: |
+          bash scripts/create-macos-dmg.sh \
+            --app src-tauri/target/${{ matrix.target }}/release/bundle/macos/Qx.app \
+            --output qx_${RELEASE_TAG}_${{ matrix.target }}.dmg \
+            --volume-name "Qx ${RELEASE_TAG}" \
+            --release-tag "${RELEASE_TAG}"
+
       - name: Upload desktop artifact
         uses: actions/upload-artifact@v4
         with:
           name: qx-${{ matrix.artifact }}
           path: |
             qx_*.app.zip
+            qx_*.dmg
             src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
           if-no-files-found: error
 

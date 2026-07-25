@@ -3,6 +3,7 @@ import { islandHost } from "../session/hostApi";
 import type { IslandTone } from "../types";
 
 const PLUGIN_SESSION_ID = "plugin.status";
+const PLUGIN_INSTALL_SESSION_ID = "plugin.install";
 
 /** Rate limit: one show per plugin per second (global coalesce for v1). */
 let lastShowAt = 0;
@@ -60,4 +61,41 @@ export function showPluginIslandStatus(status: PluginRuntimeStatus): void {
 
 export function clearPluginIslandStatus(): void {
   islandHost.dismiss(PLUGIN_SESSION_ID);
+}
+
+/**
+ * Host-owned install/update feedback. Installation is initiated by Qx rather
+ * than by a plugin runtime, so it uses the shell source and is not subject to
+ * the plugin display caps. The shared ShellContent marquee keeps long error
+ * messages readable in the fixed-width island.
+ */
+export function showPluginInstallStatus(status: PluginRuntimeStatus): void {
+  const tone: IslandTone =
+    status.kind === "error"
+      ? "danger"
+      : status.kind === "success"
+        ? "success"
+        : "neutral";
+  const priority = status.kind === "activity"
+    ? "task" as const
+    : status.kind === "error"
+      ? "error" as const
+      : "toast" as const;
+
+  islandHost.show({
+    id: PLUGIN_INSTALL_SESSION_ID,
+    priority,
+    source: "shell",
+    placement: "docked",
+    sticky: status.kind === "activity",
+    ttlMs: status.kind === "activity" ? 30_000 : 8_000,
+    content: {
+      primary: status.label,
+      secondary: status.detail,
+      tone,
+      meter: status.kind === "activity"
+        ? { kind: "activity", activity: "wave" }
+        : undefined,
+    },
+  });
 }

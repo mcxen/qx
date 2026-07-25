@@ -52,6 +52,7 @@ export { useShellIslandShim } from "./compat/useShellIslandShim";
 export {
   showPluginIslandStatus,
   clearPluginIslandStatus,
+  showPluginInstallStatus,
 } from "./bridge/pluginIslandBridge";
 export {
   registerIslandComponent,

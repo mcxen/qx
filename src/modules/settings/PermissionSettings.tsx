@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useT } from "../../i18n";
 import { Button, SettingsCard } from "../../components/ui";
+import { getQxDesktopPlatform } from "../../utils/keyboard";
 
 interface PermissionStatus {
   id: string;
@@ -57,6 +58,7 @@ function statusLabel(status: PermissionStatus, t: (key: string, fallback: string
 
 export default function PermissionSettings() {
   const t = useT();
+  const isMac = getQxDesktopPlatform() === "macos";
   const [items, setItems] = useState<PermissionStatus[]>([]);
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -76,16 +78,22 @@ export default function PermissionSettings() {
   }, [t]);
 
   useEffect(() => {
+    if (!isMac) {
+      setItems([]);
+      setLoading(false);
+      return;
+    }
     void loadPermissions();
-  }, [loadPermissions]);
+  }, [isMac, loadPermissions]);
 
   // Live refresh while the settings page is open (user may toggle in System Settings).
   useEffect(() => {
+    if (!isMac) return;
     const id = window.setInterval(() => {
       void loadPermissions();
     }, 2500);
     return () => window.clearInterval(id);
-  }, [loadPermissions]);
+  }, [isMac, loadPermissions]);
 
   const grantedCount = useMemo(
     () => items.filter((item) => item.available && item.granted).length,
@@ -143,6 +151,31 @@ export default function PermissionSettings() {
       setBusyId(null);
     }
   };
+
+  if (!isMac) {
+    return (
+      <div className="qx-settings-page">
+        <SettingsCard title={t("permissions.windows.title", "Permissions")}>
+          <div className="qx-permissions-summary">
+            <div>
+              <div className="qx-permissions-summary-title">
+                {t("permissions.windows.ready", "Permissions are normal")}
+              </div>
+              <div className="qx-permissions-summary-desc">
+                {t(
+                  "permissions.windows.desc",
+                  "Windows does not require Qx macOS privacy permissions. Features that need access will prompt when used.",
+                )}
+              </div>
+            </div>
+            <span className="qx-permission-status is-granted">
+              {t("permissions.windows.status", "Normal")}
+            </span>
+          </div>
+        </SettingsCard>
+      </div>
+    );
+  }
 
   return (
     <div className="qx-settings-page">

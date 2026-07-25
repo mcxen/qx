@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Blocks, LayoutGrid, Search } from "lucide-react";
 import type {
   IslandContentAction,
@@ -38,6 +38,67 @@ function formatCountdown(value: number): string {
     return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   }
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function ShellMessageMarquee({
+  primary,
+  secondary,
+  compact,
+}: {
+  primary: string;
+  secondary?: string;
+  compact: boolean;
+}) {
+  const marqueeRef = useRef<HTMLSpanElement>(null);
+  const groupRef = useRef<HTMLSpanElement>(null);
+  const [overflowing, setOverflowing] = useState(false);
+
+  useLayoutEffect(() => {
+    const marquee = marqueeRef.current;
+    const group = groupRef.current;
+    if (!marquee || !group) return undefined;
+
+    const measure = () => {
+      setOverflowing(group.scrollWidth > marquee.clientWidth + 1);
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return undefined;
+    const observer = new ResizeObserver(measure);
+    observer.observe(marquee);
+    observer.observe(group);
+    return () => observer.disconnect();
+  }, [primary, secondary, compact]);
+
+  const renderGroup = (ariaHidden = false) => (
+    <span
+      className="qx-island-marquee-group qx-island-shell-marquee-group"
+      ref={ariaHidden ? undefined : groupRef}
+      aria-hidden={ariaHidden || undefined}
+    >
+      <span className="qx-island-shell-primary">{primary}</span>
+      {!compact && secondary && (
+        <span className="qx-island-shell-secondary">{secondary}</span>
+      )}
+    </span>
+  );
+
+  const accessibleText = !compact && secondary ? `${primary} · ${secondary}` : primary;
+  return (
+    <span
+      ref={marqueeRef}
+      className={`qx-island-marquee qx-island-shell-marquee${overflowing ? " is-overflowing" : ""}`}
+      aria-label={accessibleText}
+    >
+      {overflowing ? (
+        <>
+          {renderGroup()}
+          {renderGroup(true)}
+        </>
+      ) : (
+        renderGroup()
+      )}
+    </span>
+  );
 }
 
 export interface ShellContentProps {
@@ -165,12 +226,11 @@ export default function ShellContent({
               {content.identity.tag}
             </span>
           )}
-          <span className="qx-island-shell-primary">
-            {content.primary}
-          </span>
-          {!compact && content.secondary && (
-            <span className="qx-island-shell-secondary">{content.secondary}</span>
-          )}
+          <ShellMessageMarquee
+            primary={content.primary}
+            secondary={content.secondary}
+            compact={compact}
+          />
         </div>
         <div className="qx-island-shell-trailing">
           {activity && (

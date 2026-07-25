@@ -15,7 +15,7 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{
     image::Image,
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem, Submenu},
     AppHandle, Emitter, Wry,
 };
 
@@ -62,10 +62,24 @@ pub struct PluginTrayItem {
     /// Optional command name to run when clicked (plugin manifest command).
     #[serde(default)]
     pub command: Option<String>,
+    /// `status` is an informational, non-clickable native menu row.
+    #[serde(default = "default_plugin_tray_presentation")]
+    pub presentation: String,
+    /// Optional native submenu label shared by related plugin items.
+    #[serde(default)]
+    pub group: Option<String>,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn default_plugin_tray_presentation() -> String {
+    "action".into()
+}
+
+fn plugin_tray_item_is_status(item: &PluginTrayItem) -> bool {
+    item.presentation == "status"
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -276,18 +290,73 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
     // Plugin contributions
     let mut plugin_appended = false;
     for (plugin_id, items) in plugin_snapshot {
-        for item in items
+        let visible: Vec<PluginTrayItem> = items
             .into_iter()
             .filter(|i| i.enabled && !i.id.trim().is_empty())
-        {
+            .collect();
+
+        // Legacy contributions stay flat. A group opts into an OS-native
+        // submenu, which keeps dense status blocks (for example a deployment)
+        // readable without attempting unsupported CSS in system menus.
+        for item in visible.iter().filter(|item| item.group.is_none()) {
             let menu_id = format!("plugin_tray:{}:{}", plugin_id, item.id.trim());
             let title = if item.title.trim().is_empty() {
                 item.id.trim()
             } else {
                 item.title.trim()
             };
-            let mi = MenuItem::with_id(app, menu_id, title, true, None::<&str>)?;
+            let mi = MenuItem::with_id(
+                app,
+                menu_id,
+                title,
+                !plugin_tray_item_is_status(item),
+                None::<&str>,
+            )?;
             menu.append(&mi)?;
+            plugin_appended = true;
+        }
+
+        let mut groups: Vec<String> = Vec::new();
+        for item in &visible {
+            let Some(group) = item
+                .group
+                .as_ref()
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+            else {
+                continue;
+            };
+            if !groups.iter().any(|known| known == group) {
+                groups.push(group.to_string());
+            }
+        }
+        for (group_index, group) in groups.iter().enumerate() {
+            let submenu = Submenu::with_id(
+                app,
+                format!("plugin_tray_group:{}:{}", plugin_id, group_index),
+                group,
+                true,
+            )?;
+            for item in visible
+                .iter()
+                .filter(|item| item.group.as_deref().map(str::trim) == Some(group.as_str()))
+            {
+                let menu_id = format!("plugin_tray:{}:{}", plugin_id, item.id.trim());
+                let title = if item.title.trim().is_empty() {
+                    item.id.trim()
+                } else {
+                    item.title.trim()
+                };
+                let mi = MenuItem::with_id(
+                    app,
+                    menu_id,
+                    title,
+                    !plugin_tray_item_is_status(item),
+                    None::<&str>,
+                )?;
+                submenu.append(&mi)?;
+            }
+            menu.append(&submenu)?;
             plugin_appended = true;
         }
     }
@@ -451,18 +520,38 @@ pub fn plugin_tray_set_items(
         if title.is_empty() {
             continue;
         }
-        let command = match i.command {
-            Some(c) => match sanitize_tray_token(&c, 64) {
-                Ok(v) => Some(v),
-                Err(_) => None,
-            },
-            None => None,
+        let presentation = if i.presentation.trim() == "status" {
+            "status".to_string()
+        } else {
+            "action".to_string()
         };
+        let command = if presentation == "status" {
+            None
+        } else {
+            match i.command {
+                Some(c) => sanitize_tray_token(&c, 64).ok(),
+                None => None,
+            }
+        };
+        let group = i
+            .group
+            .as_deref()
+            .map(|value| {
+                value
+                    .trim()
+                    .chars()
+                    .filter(|c| !c.is_control())
+                    .take(48)
+                    .collect::<String>()
+            })
+            .filter(|value| !value.is_empty());
         cleaned.push(PluginTrayItem {
             id,
             title,
             enabled: i.enabled,
             command,
+            presentation,
+            group,
         });
     }
     {

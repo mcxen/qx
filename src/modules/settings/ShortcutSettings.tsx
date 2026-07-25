@@ -2,6 +2,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ShortcutRecorder from "../../components/ShortcutRecorder";
+import TrayMenuSettings from "./TrayMenuSettings";
 import {
   LinkButton,
   Popover,
@@ -450,6 +451,8 @@ export default function ShortcutSettings() {
           })}
         </div>
       ))}
+
+      <TrayMenuSettings />
 
       <div style={{ marginBottom: 16 }}>
         <div className="qx-app-shortcut-section-header">

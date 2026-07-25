@@ -21,13 +21,13 @@ export const QUICK_ENTRY_TARGETS = [
   { value: "file-search", label: "File Search", subtitle: "Find recent files and folders", titleKey: "launcher.fileSearch", subtitleKey: "launcher.fileSearch.desc" },
   { value: "qx-ai", label: "QxAI", subtitle: "Chat and agent tasks", titleKey: "launcher.qx-ai", subtitleKey: "launcher.qx-ai.desc" },
   { value: "rss", label: "RSS Reader", subtitle: "Feeds and articles", titleKey: "launcher.rss", subtitleKey: "launcher.rss.desc" },
-  { value: "screencap", label: "Screen Capture", subtitle: "Screenshots and MP4/MOV recording", titleKey: "launcher.screencap", subtitleKey: "launcher.screencap.desc" },
+  { value: "screencap", label: "Screenshot Module", subtitle: "Screenshots and MP4/MOV recording", titleKey: "launcher.screencap", subtitleKey: "launcher.screencap.desc" },
   { value: "v2ex", label: "V2EX", subtitle: "Latest and hot topics", titleKey: "launcher.v2ex", subtitleKey: "launcher.v2ex.desc" },
   { value: "weather", label: "Weather", subtitle: "Current conditions and forecast", titleKey: "launcher.weather", subtitleKey: "launcher.weather.desc" },
-  { value: "documents", label: "Documents", subtitle: "Disk notepad · folder files", titleKey: "launcher.documents", subtitleKey: "launcher.documents.desc" },
+  { value: "documents", label: "Text Tools", subtitle: "Text, Markdown, JSON", titleKey: "launcher.documents", subtitleKey: "launcher.documents.desc" },
   { value: "macros", label: "Macro Recorder", subtitle: "Record and replay actions", titleKey: "launcher.macros", subtitleKey: "launcher.macros.desc" },
   { value: "qx-tty", label: "QxTTY", subtitle: "Persistent local terminal sessions", titleKey: "launcher.qx-tty", subtitleKey: "launcher.qx-tty.desc" },
-  { value: "settings", label: "Settings", subtitle: "Appearance and plugins", titleKey: "launcher.settings", subtitleKey: "launcher.settings.desc" },
+  { value: "settings", label: "Qx Settings", subtitle: "Appearance and plugins", titleKey: "launcher.settings", subtitleKey: "launcher.settings.desc" },
 ] as const;
 
 export function pluginQuickEntryTarget(pluginId: string): string {
@@ -100,7 +100,7 @@ export function localizeQuickEntry(
   };
 }
 
-const DEFAULT_QUICK_ENTRY_TARGETS = ["clipboard", "rss", "settings", "file-search"];
+const DEFAULT_QUICK_ENTRY_TARGETS = ["clipboard", "screencap", "documents", "settings"];
 
 export const DEFAULT_QUICK_ENTRIES: QuickEntryConfig[] = DEFAULT_QUICK_ENTRY_TARGETS.map((value) => {
   const target = QUICK_ENTRY_TARGETS.find((item) => item.value === value)!;

@@ -371,6 +371,13 @@ export interface PluginTrayItem {
   enabled?: boolean;
   /** Run this plugin command name when the user clicks the row. */
   command?: string;
+  /**
+   * Native presentation, not web CSS. `status` is shown as a disabled
+   * informational row so it cannot accidentally invoke a command.
+   */
+  presentation?: "action" | "status";
+  /** Optional native submenu label for related plugin rows. */
+  group?: string;
 }
 
 /** Live host metrics for tray labels / dashboards (`system-stats`). */
@@ -771,6 +778,7 @@ export interface PluginContext {
    * Full contract: `public/doc/plugin-tray.md`.
    *
    * Plugins push menu rows; optional `command` maps to this plugin's `commands[].name`.
+   * Rows can use an OS-native `status` presentation and a shared submenu `group`.
    * Combine with `system.stats` / `system.networkCounters` to show live Memory / Net labels.
    */
   tray: {

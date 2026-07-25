@@ -402,7 +402,7 @@ export const DEFAULT_SETTINGS: Settings = {
   plugins: [],
   plugin_display: {
     // Optional in-iframe action chips. Real actions always use QxShell (⌘K / bottom bar).
-    raycast_action_panel: false,
+    raycast_action_panel: true,
   },
   file_search: {
     categories: DEFAULT_FILE_SEARCH_CATEGORIES,
@@ -497,9 +497,9 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   quick_entries: [
     { id: "clipboard", title: "Clipboard History", subtitle: "Pinned, frequent, links", target: "clipboard", enabled: true },
-    { id: "rss", title: "RSS Reader", subtitle: "Feeds and articles", target: "rss", enabled: true },
-    { id: "settings", title: "Settings", subtitle: "Appearance and plugins", target: "settings", enabled: true },
-    { id: "file-search", title: "File Search", subtitle: "Find recent files and folders", target: "file-search", enabled: true },
+    { id: "screencap", title: "Screenshot Module", subtitle: "Screenshots and MP4/MOV recording", target: "screencap", enabled: true },
+    { id: "documents", title: "Text Tools", subtitle: "Text, Markdown, JSON", target: "documents", enabled: true },
+    { id: "settings", title: "Qx Settings", subtitle: "Appearance and plugins", target: "settings", enabled: true },
   ],
   tray_actions: [
     { id: "status_memory", title: "Memory", enabled: true },

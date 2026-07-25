@@ -495,11 +495,6 @@
   -webkit-backdrop-filter: blur(12px) saturate(140%);
 }
 
-.qx-shell-action:hover {
-  border-color: var(--qx-border-3);
-  background: rgba(var(--qx-surface-rgb-2), min(0.92, calc(var(--qx-control-surface-opacity) + 0.10)));
-}
-
 .qx-shell-action.variant-escape {
   min-width: 42px;
   padding: 0 9px;
@@ -507,11 +502,6 @@
   border-color: var(--qx-border-2);
   background: rgba(var(--qx-surface-rgb-2), var(--qx-control-surface-opacity));
   color: var(--qx-text-secondary);
-}
-
-.qx-shell-action.variant-escape:hover {
-  border-color: var(--qx-border-3);
-  color: var(--qx-text-primary);
 }
 
 .qx-shell-action.tone-primary {
@@ -523,6 +513,33 @@
 .qx-shell-action.tone-danger {
   color: var(--qx-danger);
   border-color: var(--qx-danger-border);
+}
+
+/* Bottom Bar actions are intentionally pointer-stable. Use focus-visible and
+   active feedback for discoverability without making the bar react to hover. */
+.qx-shell-bottombar .qx-shell-action {
+  border-color: var(--qx-border-2);
+  background: rgba(var(--qx-surface-rgb-1), var(--qx-control-surface-opacity));
+  color: var(--qx-text-primary);
+  transition: none;
+}
+
+.qx-shell-bottombar .qx-shell-action.variant-escape {
+  border-color: var(--qx-border-2);
+  background: rgba(var(--qx-surface-rgb-2), var(--qx-control-surface-opacity));
+  color: var(--qx-text-secondary);
+}
+
+.qx-shell-bottombar .qx-shell-action.tone-primary {
+  border-color: var(--qx-accent);
+  background: var(--qx-accent);
+  color: var(--qx-text-on-accent);
+}
+
+.qx-shell-bottombar .qx-shell-action.tone-danger {
+  border-color: var(--qx-danger-border);
+  background: rgba(var(--qx-surface-rgb-1), var(--qx-control-surface-opacity));
+  color: var(--qx-danger);
 }
 
 .qx-shell-action:disabled {
@@ -888,6 +905,34 @@
   align-items: baseline;
   gap: 6px;
   min-width: 0;
+}
+
+.qx-island-shell-marquee {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  mask-image: linear-gradient(90deg, transparent, black 3%, black 97%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, black 3%, black 97%, transparent);
+}
+
+.qx-island-shell-marquee-group {
+  gap: 6px;
+}
+
+.qx-island-shell-marquee.is-overflowing .qx-island-shell-marquee-group {
+  animation: qx-island-shell-marquee 10s linear infinite;
+}
+
+.qx-island-shell-marquee .qx-island-shell-primary,
+.qx-island-shell-marquee .qx-island-shell-secondary {
+  flex: 0 0 auto;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+@keyframes qx-island-shell-marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-100%); }
 }
 
 .qx-island-shell-tag {

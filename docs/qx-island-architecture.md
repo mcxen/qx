@@ -338,7 +338,8 @@ trailing pack (right):  [activity][countdown][actions]  — actions always right
   renderer 不变量，不依赖 producer 是否正确移除旧 `pulse`。
 - `action` / `actions` 只使用宿主受限图标集与统一 22px capsule（default/danger），包含 hover/active/focus-visible；宿主模块最多发布两个，插件仍限制为一个；producer 不能提供 DOM/CSS。
 - `effect: { kind: "orbit", nonce }` 是宿主渲染的一次性完成反馈；`nonce` 变化才重播，且 `prefers-reduced-motion` 下禁用。
-- 两者可同时存在（非互斥）；不换行；空间不足时 primary/secondary ellipsis，trailing 优先保留 action 再保留 activity。
+- 两者可同时存在（非互斥）；不换行；空间不足时 primary/secondary 进入宿主 marquee，完整文案以双组循环横向滚动展示，trailing 优先保留 action 再保留 activity。
+- marquee 仅在实际溢出时启用；重复组对辅助技术隐藏，并保留完整 `aria-label`。`prefers-reduced-motion` 下停止动画并回退为静态裁剪。
 - `progress` 与 `activity`：progress 始终底边 overlay；activity 在 trailing pack（对齐现 `QxBottomIsland`：progress 与 activity 不同时抢同一 meter 语义——若同时传入，**优先渲染 progress overlay，仍可保留 activity 动画**仅当 `meter.kind === "activity"`；`kind === "progress"` 时不渲染 activity 条）。
 
 CSS 要点：
@@ -621,6 +622,7 @@ Launcher / plugin 映射（**与 §5.2 一致，唯一 v1 策略**）：
 | plugin `activity` | `plugin.status`，`source: plugin`，`priority: **toast**`，`meter.activity`，TTL **≤ 8000ms**（建议 activity 持续刷新时用 update 续命，仍封顶 8s 滑动窗口或每次 show 重置） |
 | plugin success | `priority: toast`，tone success，TTL **2600ms** |
 | plugin error | `priority: toast`，tone **danger**（**不用** `priority: error` 带，避免与「插件 ≤ toast」打架；视觉靠 tone），TTL **8000ms** |
+| Qx 插件安装/更新 | `plugin.install`，`source: shell`；进行中为 `task` activity，完成为 `toast`，失败为 `error`；由宿主发布，不受插件 payload 截断限制 |
 | results ready | `launcher.results` location |
 | home idle | `home` home priority；非 idle dismiss |
 
