@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRssStore, type RssFeed } from "./store";
 import { LoadingLabel, Modal, Select } from "../../components/ui";
+import { useT } from "../../i18n";
 
 const UNGROUPED = "none";
 
@@ -12,6 +13,7 @@ export default function EditFeedDialog({
   onClose: () => void;
 }) {
   const { updateFeed, setFeedFolder, folders, loading } = useRssStore();
+  const t = useT();
   const [url, setUrl] = useState(feed.url);
   const [title, setTitle] = useState(feed.title);
   const [folderChoice, setFolderChoice] = useState(
@@ -27,20 +29,20 @@ export default function EditFeedDialog({
 
   const folderOptions = useMemo(
     () => [
-      { value: UNGROUPED, label: "Ungrouped" },
+      { value: UNGROUPED, label: t("rss.ungrouped", "Ungrouped") },
       ...folders.map((f) => ({ value: String(f.id), label: f.name })),
     ],
-    [folders],
+    [folders, t],
   );
 
   const submit = async () => {
     const trimmedUrl = url.trim();
     if (!trimmedUrl) {
-      setLocalError("URL cannot be empty");
+      setLocalError(t("rss.urlRequired", "URL cannot be empty"));
       return;
     }
     if (!/^https?:\/\//i.test(trimmedUrl)) {
-      setLocalError("URL must start with http:// or https://");
+      setLocalError(t("rss.urlProtocolError", "URL must start with http:// or https://"));
       return;
     }
     setLocalError(null);
@@ -71,9 +73,13 @@ export default function EditFeedDialog({
   };
 
   return (
-    <Modal title="Edit subscription" subtitle="URL, title, and folder for this feed only." onClose={onClose}>
+    <Modal
+      title={t("rss.editSubscription", "Edit subscription")}
+      subtitle={t("rss.editSubscriptionHint", "URL, title, and folder for this feed only.")}
+      onClose={onClose}
+    >
       <div className="qx-modal-field">
-        <label className="qx-modal-field-label">Feed URL</label>
+        <label className="qx-modal-field-label">{t("rss.feedUrl", "Feed URL")}</label>
         <input
           ref={inputRef}
           type="text"
@@ -86,30 +92,30 @@ export default function EditFeedDialog({
         />
       </div>
       <div className="qx-modal-field">
-        <label className="qx-modal-field-label">Title</label>
+        <label className="qx-modal-field-label">{t("rss.title", "Title")}</label>
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Feed name"
+          placeholder={t("rss.feedName", "Feed name")}
           className="qx-inline-input"
           style={{ width: "100%" }}
         />
       </div>
       <div className="qx-modal-field">
-        <label className="qx-modal-field-label">Folder</label>
+        <label className="qx-modal-field-label">{t("rss.folder", "Folder")}</label>
         <Select
           value={folderChoice}
           options={folderOptions}
           onChange={setFolderChoice}
-          ariaLabel="Folder for this feed"
+          ariaLabel={t("rss.folderForFeed", "Folder for this feed")}
         />
       </div>
       {localError && <div className="qx-modal-error">{localError}</div>}
       <div className="qx-modal-actions">
         <button className="qx-command-button" type="button" onClick={onClose}>
-          Cancel
+          {t("common.cancel", "Cancel")}
         </button>
         <button
           className="qx-command-button primary"
@@ -117,7 +123,9 @@ export default function EditFeedDialog({
           onClick={() => void submit()}
           disabled={loading || !url.trim()}
         >
-          {loading ? <LoadingLabel>Save</LoadingLabel> : "Save"}
+          {loading
+            ? <LoadingLabel>{t("common.save", "Save")}</LoadingLabel>
+            : t("common.save", "Save")}
         </button>
       </div>
     </Modal>

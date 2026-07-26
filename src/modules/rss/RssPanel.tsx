@@ -102,7 +102,9 @@ export default function RssPanel() {
     for (const feed of filtered) {
       const folderId = feed.folder_id ?? null;
       const key = folderId == null ? "ungrouped" : `folder:${folderId}`;
-      const title = folderId == null ? "Ungrouped" : (feed.folder_name || "Folder");
+      const title = folderId == null
+        ? t("rss.ungrouped", "Ungrouped")
+        : (feed.folder_name || t("rss.folder", "Folder"));
       if (!map.has(key)) {
         map.set(key, { key, title, folderId, items: [], empty: true });
       }
@@ -124,7 +126,7 @@ export default function RssPanel() {
       if (!ordered.includes(section)) ordered.push(section);
     }
     return ordered;
-  }, [filtered, folders, query]);
+  }, [filtered, folders, query, t]);
 
   const flatFeeds = useMemo(() => sections.flatMap((s) => s.items), [sections]);
   const listRef = useRef<HTMLDivElement>(null);
@@ -141,6 +143,14 @@ export default function RssPanel() {
 
   const selectedFeed = flatFeeds[selectedIndex];
   const unreadCount = feeds.reduce((sum, feed) => sum + feed.unread_count, 0);
+  const localizedStatusMessage = statusMessage?.kind === "importingOpml"
+    ? t("rss.importingOpml", "Importing OPML…")
+    : statusMessage?.kind === "importedFeeds"
+      ? t("rss.importedFeeds", "Imported {n} feeds").replace(
+          "{n}",
+          String(statusMessage.count),
+        )
+      : null;
 
   const dialogOpen =
     showAdd
@@ -168,7 +178,7 @@ export default function RssPanel() {
   }, [selectedFeed]);
 
   const handleDelete = (id: number) => {
-    if (window.confirm("Remove this feed and all its articles?")) {
+    if (window.confirm(t("rss.removeFeedConfirm", "Remove this feed and all its articles?"))) {
       void removeFeed(id);
     }
   };
@@ -184,14 +194,19 @@ export default function RssPanel() {
       a.click();
       URL.revokeObjectURL(url);
     } catch (err) {
-      window.alert(`OPML export failed: ${String(err)}`);
+      window.alert(
+        t("rss.opmlExportFailed", "OPML export failed: {error}").replace(
+          "{error}",
+          String(err),
+        ),
+      );
     }
   };
 
   const actions = useMemo<QxShellAction[]>(() => [
     {
       id: "view-articles",
-      label: "View Articles",
+      label: t("rss.viewArticles", "View Articles"),
       kbd: "↵",
       disabled: !selectedFeed,
       onClick: () => {
@@ -200,7 +215,7 @@ export default function RssPanel() {
     },
     {
       id: "refresh-feed",
-      label: "Refresh Feed",
+      label: t("rss.refreshFeed", "Refresh Feed"),
       kbd: "R",
       disabled: !selectedFeed,
       onClick: () => {
@@ -209,18 +224,18 @@ export default function RssPanel() {
     },
     {
       id: "add-feed",
-      label: "Add Feed",
+      label: t("rss.addFeed", "Add Feed"),
       kbd: "N",
       onClick: () => setShowAdd(true),
     },
     {
       id: "new-folder",
-      label: "New Folder",
+      label: t("rss.newFolder", "New Folder"),
       onClick: () => setShowNewFolder(true),
     },
     {
       id: "set-folder",
-      label: "Set Folder…",
+      label: t("rss.setFolder", "Set Folder…"),
       kbd: "F",
       disabled: !selectedFeed,
       onClick: () => {
@@ -229,7 +244,7 @@ export default function RssPanel() {
     },
     {
       id: "remove-folder",
-      label: "Remove from Folder",
+      label: t("rss.removeFromFolder", "Remove from Folder"),
       disabled: !selectedFeed?.folder_id,
       onClick: () => {
         if (selectedFeed?.folder_id != null) {
@@ -239,22 +254,22 @@ export default function RssPanel() {
     },
     {
       id: "import-opml",
-      label: "Import OPML…",
+      label: t("rss.importOpml", "Import OPML…"),
       onClick: () => setShowImportOpml(true),
     },
     {
       id: "export-opml",
-      label: "Export OPML",
+      label: t("rss.exportOpml", "Export OPML"),
       onClick: () => void handleExportOpml(),
     },
     {
       id: "refresh-all",
-      label: "Refresh All",
+      label: t("rss.refreshAll", "Refresh All"),
       onClick: () => void refreshAll(),
     },
     {
       id: "edit-subscription",
-      label: "Edit Subscription",
+      label: t("rss.editSubscription", "Edit Subscription"),
       kbd: "E",
       disabled: !selectedFeed,
       onClick: () => {
@@ -264,15 +279,21 @@ export default function RssPanel() {
     {
       id: "delete-folder",
       label: selectedFeed?.folder_name
-        ? `Delete Folder “${selectedFeed.folder_name}”`
-        : "Delete Folder",
+        ? t("rss.deleteNamedFolder", "Delete Folder “{name}”").replace(
+            "{name}",
+            selectedFeed.folder_name,
+          )
+        : t("rss.deleteFolder", "Delete Folder"),
       disabled: !selectedFeed?.folder_id,
       onClick: () => {
         if (!selectedFeed?.folder_id) return;
-        const name = selectedFeed.folder_name || "this folder";
+        const name = selectedFeed.folder_name || t("rss.thisFolder", "this folder");
         if (
           window.confirm(
-            `Delete folder “${name}”? Subscriptions in it become ungrouped (feeds are kept).`,
+            t(
+              "rss.deleteFolderConfirm",
+              "Delete folder “{name}”? Subscriptions in it become ungrouped (feeds are kept).",
+            ).replace("{name}", name),
           )
         ) {
           void deleteFolder(selectedFeed.folder_id);
@@ -281,7 +302,7 @@ export default function RssPanel() {
     },
     {
       id: "delete-feed",
-      label: "Delete Feed",
+      label: t("rss.deleteFeed", "Delete Feed"),
       kbd: "D",
       tone: "danger",
       disabled: !selectedFeed,
@@ -289,7 +310,7 @@ export default function RssPanel() {
         if (selectedFeed) handleDelete(selectedFeed.id);
       },
     },
-  ], [deleteFolder, openFeed, refreshAll, refreshFeed, selectedFeed, setFeedFolder]);
+  ], [deleteFolder, openFeed, refreshAll, refreshFeed, selectedFeed, setFeedFolder, t]);
 
   const shell = useQxModuleShell({
     leave,
@@ -309,11 +330,14 @@ export default function RssPanel() {
     onKeyDown: handleModuleKeys,
     island: refreshingFeedId
       ? buildRssRefreshIsland(refreshProgress, selectedFeed?.title, t)
-      : statusMessage
-        ? { label: "RSS", detail: statusMessage, tone: "success" }
+      : localizedStatusMessage
+        ? { label: "RSS", detail: localizedStatusMessage, tone: "success" }
         : {
-            label: "RSS Reader",
-            detail: `${feeds.length} feeds · ${folders.length} folders · ${unreadCount} unread`,
+            label: t("rss.reader", "RSS Reader"),
+            detail: t("rss.librarySummary", "{feeds} feeds · {folders} folders · {unread} unread")
+              .replace("{feeds}", String(feeds.length))
+              .replace("{folders}", String(folders.length))
+              .replace("{unread}", String(unreadCount)),
           },
   });
 
@@ -322,7 +346,7 @@ export default function RssPanel() {
   return (
     <QxShell
       ref={shellRef}
-      title="RSS Reader"
+      title={t("rss.reader", "RSS Reader")}
       islandKey="rss.feeds"
       className="qx-rss-shell"
       onKeyDown={shell.onKeyDown}
@@ -344,29 +368,34 @@ export default function RssPanel() {
           value={query}
           autoFocus
           onChange={setQuery}
-          placeholder="Search feeds or folders…"
+          placeholder={t("rss.searchFeeds", "Search feeds or folders…")}
         />
       }
       context={
         <div
           className="qx-action-panel"
           data-qx-region="rss-feed-actions"
-          data-qx-region-label="Feed actions"
+          data-qx-region-label={t("rss.feedActions", "Feed actions")}
           data-qx-region-scroll
           tabIndex={-1}
         >
-          <div className="qx-action-title">Subscription</div>
+          <div className="qx-action-title">{t("rss.subscription", "Subscription")}</div>
           {selectedFeed ? (
             <div className="v2ex-context-copy" style={{ marginBottom: 8 }}>
               <strong>{selectedFeed.title || selectedFeed.url}</strong>
               <span>
-                Folder: {selectedFeed.folder_name || "Ungrouped"}
+                {t("rss.folderLabel", "Folder: {name}").replace(
+                  "{name}",
+                  selectedFeed.folder_name || t("rss.ungrouped", "Ungrouped"),
+                )}
               </span>
               <span>{selectedFeed.url}</span>
             </div>
           ) : (
             <div className="v2ex-context-copy" style={{ marginBottom: 8 }}>
-              <span>Select a feed to set its folder or edit it.</span>
+              <span>
+                {t("rss.selectFeedHint", "Select a feed to set its folder or edit it.")}
+              </span>
             </div>
           )}
           <button
@@ -375,7 +404,7 @@ export default function RssPanel() {
             onClick={() => selectedFeed && void openFeed(selectedFeed.id)}
             disabled={!selectedFeed}
           >
-            <span>View Articles</span>
+            <span>{t("rss.viewArticles", "View Articles")}</span>
             <kbd>↩</kbd>
           </button>
           <button
@@ -383,7 +412,7 @@ export default function RssPanel() {
             type="button"
             onClick={() => setShowNewFolder(true)}
           >
-            <span>New Folder</span>
+            <span>{t("rss.newFolder", "New Folder")}</span>
           </button>
           <button
             className="qx-action-item"
@@ -391,7 +420,7 @@ export default function RssPanel() {
             onClick={() => selectedFeed && setFolderTargetFeed(selectedFeed)}
             disabled={!selectedFeed}
           >
-            <span>Set Folder…</span>
+            <span>{t("rss.setFolder", "Set Folder…")}</span>
             <kbd>F</kbd>
           </button>
           <button
@@ -400,7 +429,7 @@ export default function RssPanel() {
             onClick={() => selectedFeed && void setFeedFolder(selectedFeed.id, null)}
             disabled={!selectedFeed?.folder_id}
           >
-            <span>Remove from Folder</span>
+            <span>{t("rss.removeFromFolder", "Remove from Folder")}</span>
           </button>
           <button
             className="qx-action-item"
@@ -408,15 +437,15 @@ export default function RssPanel() {
             onClick={() => selectedFeed && setEditFeed(selectedFeed)}
             disabled={!selectedFeed}
           >
-            <span>Edit Subscription</span>
+            <span>{t("rss.editSubscription", "Edit Subscription")}</span>
             <kbd>E</kbd>
           </button>
-          <div className="qx-action-title">Library</div>
+          <div className="qx-action-title">{t("rss.library", "Library")}</div>
           <button className="qx-action-item" type="button" onClick={() => setShowImportOpml(true)}>
-            <span>Import OPML</span>
+            <span>{t("rss.importOpmlShort", "Import OPML")}</span>
           </button>
           <button className="qx-action-item" type="button" onClick={() => void handleExportOpml()}>
-            <span>Export OPML</span>
+            <span>{t("rss.exportOpml", "Export OPML")}</span>
           </button>
           <button
             className="qx-action-item danger"
@@ -424,35 +453,35 @@ export default function RssPanel() {
             onClick={() => selectedFeed && handleDelete(selectedFeed.id)}
             disabled={!selectedFeed}
           >
-            <span>Delete Feed</span>
+            <span>{t("rss.deleteFeed", "Delete Feed")}</span>
           </button>
         </div>
       }
       island={shell.island}
       escapeAction={shell.escapeAction}
       primaryActionId={selectedFeed ? "view-articles" : "add-feed"}
-      actionTitle="Feed Actions"
+      actionTitle={t("rss.feedActions", "Feed Actions")}
       actions={actions}
     >
       <div
         ref={listRef}
         className="qx-plugin-list qx-rss-feed-list"
         role="listbox"
-        aria-label="Feed list"
+        aria-label={t("rss.feedList", "Feed list")}
         data-qx-region="rss-feeds"
-        data-qx-region-label="Feed list"
+        data-qx-region-label={t("rss.feedList", "Feed list")}
         data-qx-region-initial="true"
         data-qx-region-scroll
         tabIndex={-1}
       >
         <div className="qx-section-header">
-          <span style={{ flex: 1 }}>Subscriptions</span>
+          <span style={{ flex: 1 }}>{t("rss.subscriptions", "Subscriptions")}</span>
           <span>{filtered.length}</span>
         </div>
         {shouldShowQxListLoading(loading, filtered.length) && (
           <QxListLoading
-            ariaLabel="Loading feeds"
-            label="Loading feeds..."
+            ariaLabel={t("rss.loadingFeeds", "Loading feeds")}
+            label={t("rss.loadingFeedsEllipsis", "Loading feeds...")}
             rows={5}
             showMeta={false}
           />
@@ -463,22 +492,29 @@ export default function RssPanel() {
               <span style={{ flex: 1 }}>{section.title}</span>
               <span>
                 {section.empty ? "0" : section.items.length}
-                {section.folderId != null && section.empty ? " · empty" : ""}
+                {section.folderId != null && section.empty
+                  ? ` · ${t("rss.empty", "empty")}`
+                  : ""}
               </span>
               {section.folderId != null && section.empty && (
                 <button
                   type="button"
                   className="qx-command-button"
                   style={{ marginLeft: 8, height: 22, fontSize: 11, padding: "0 8px" }}
-                  title="Delete empty folder"
+                  title={t("rss.deleteEmptyFolder", "Delete empty folder")}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (window.confirm(`Delete empty folder “${section.title}”?`)) {
+                    if (
+                      window.confirm(
+                        t("rss.deleteEmptyFolderConfirm", "Delete empty folder “{name}”?")
+                          .replace("{name}", section.title),
+                      )
+                    ) {
                       void deleteFolder(section.folderId!);
                     }
                   }}
                 >
-                  Delete
+                  {t("common.delete", "Delete")}
                 </button>
               )}
             </div>
@@ -487,7 +523,10 @@ export default function RssPanel() {
                 className="qx-list-subtitle"
                 style={{ padding: "6px 12px 10px", color: "var(--color-text-tertiary)" }}
               >
-                Empty folder — select a feed and Set Folder, or Import OPML into this group.
+                {t(
+                  "rss.emptyFolderHint",
+                  "Empty folder — select a feed and Set Folder, or Import OPML into this group.",
+                )}
               </div>
             )}
             {section.items.map((feed) => {
@@ -508,9 +547,15 @@ export default function RssPanel() {
                     </span>
                     <span className="qx-list-subtitle">
                       {feed.folder_name ? `${feed.folder_name} · ` : ""}
-                      {formatRelative(feed.last_fetched) || "never fetched"}
-                      {feed.error_count > 0 ? ` · ${feed.error_count} errors` : ""}
-                      {refreshing ? " · refreshing" : ""}
+                      {formatRelative(feed.last_fetched, t)
+                        || t("rss.neverFetched", "never fetched")}
+                      {feed.error_count > 0
+                        ? ` · ${t("rss.errorCount", "{n} errors").replace(
+                            "{n}",
+                            String(feed.error_count),
+                          )}`
+                        : ""}
+                      {refreshing ? ` · ${t("rss.refreshing", "refreshing")}` : ""}
                     </span>
                   </span>
                   {feed.unread_count > 0 && <span className="qx-badge">{feed.unread_count}</span>}
@@ -521,12 +566,18 @@ export default function RssPanel() {
         ))}
         {filtered.length === 0 && folders.length === 0 && !loading && (
           <div className="qx-empty-state">
-            No feeds yet. Add a subscription, New Folder, or Import OPML.
+            {t(
+              "rss.noFeeds",
+              "No feeds yet. Add a subscription, New Folder, or Import OPML.",
+            )}
           </div>
         )}
         {filtered.length === 0 && folders.length > 0 && !loading && query.trim() === "" && (
           <div className="qx-empty-state" style={{ paddingTop: 4 }}>
-            No subscriptions yet — folders above are empty until you add or move feeds.
+            {t(
+              "rss.noSubscriptions",
+              "No subscriptions yet — folders above are empty until you add or move feeds.",
+            )}
           </div>
         )}
         {error && (

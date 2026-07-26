@@ -65,7 +65,7 @@
 | 模块 | 表面 | Shell / Esc | 列表 / 主从 | 搜索 loading | 数据 / 缓存 | 缺口 / 备注 |
 |------|------|-------------|-------------|--------------|-------------|-------------|
 | **clipboard** | 全屏面板（**核心**，eager import） | `useQxModuleShell` + stepBack | `useQxListSelection` | `QxModuleSearch` | Rust clipboard DB；**打开端口** `openSession.prefetchClipboardOpen`（热窗口 history 并发；idle warm；SWR 先画 store）；**冷存储** `loadMoreClipboardHistory`（列表滚到底 / 键盘近底加载） | 快捷键打开：navigate 即预取热窗口，滚底再拉更早记录；面板非 lazy |
-| **rss** | feeds / articles / detail | shell 各层；`goBack` 嵌套 | `useQxListSelection` + `useQxMasterDetail`（文章） | `QxModuleSearch` + `QxListLoading` | `rss.db` + 默认目录 seed + 阅读进度 + 64px 本地图标缓存 | 嵌套 leave 已对齐 host Esc；单 Feed 刷新用 activity，刷新全部按 Rust `rss:refresh-progress` 的真实 completed/total 驱动 Island；favicon 30 天复用并支持 stale fallback |
+| **rss** | feeds / articles / detail | shell 各层；`goBack` 嵌套 | `useQxListSelection` + `useQxMasterDetail`（文章） | `QxModuleSearch` + `QxListLoading` | `rss.db` + 默认目录 seed + 阅读进度 + 64px 本地图标缓存 + 正文图片缓存 | 嵌套 leave 已对齐 host Esc；单 Feed 刷新用 activity，刷新全部按 Rust `rss:refresh-progress` 的真实 completed/total 驱动 Island；favicon 30 天复用并支持 stale fallback；正文远程图片通过 `rss_cache_article_image` 复用宿主代理并转成本地 asset URL，避免 WKWebView / WebView2 网络栈差异 |
 | **documents** | 文件列表 + 编辑 | shell | list + master-detail | `QxModuleSearch` | 本地文件 invoke | 无重大缺口 |
 | **screencap** | 录制 / 历史主从预览 | shell + 录制 / 详情 inner Esc | `useQxListSelection` + list/gallery + right-side detail | 标题槽（非搜索） | Rust capture | 布局选择持久化；Windows RDP still-frame 走 GDI，picker ready 后重放 session；截图完成由宿主 Island 提供快捷复制；权限动作统一由捕获灵动岛承载 |
 | **macros** | 录制器 | shell | — | — | macro store | 无重大缺口 |

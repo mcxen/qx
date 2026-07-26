@@ -2137,6 +2137,14 @@
   border-radius: var(--qx-control-radius);
 }
 
+.rss-article-content img[data-qx-image-state="loading"] {
+  visibility: hidden;
+}
+
+.rss-article-content img[data-qx-image-state="failed"] {
+  display: none !important;
+}
+
 .rss-article-content[data-image-mode="full"] img {
   width: 100% !important;
 }

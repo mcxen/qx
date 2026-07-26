@@ -77,6 +77,10 @@ fn rss_icons_dir() -> PathBuf {
     crate::paths::cache_dir().join("rss-icons")
 }
 
+fn rss_article_images_dir() -> PathBuf {
+    crate::paths::cache_dir().join("rss-article-images")
+}
+
 fn plugins_dir() -> PathBuf {
     qx_home_dir().join("plugins")
 }
@@ -189,6 +193,13 @@ fn cache_target_definitions() -> Vec<CacheTargetDefinition> {
             module: "rss",
             label: "RSS Feed Icons",
             paths: vec![rss_icons_dir()],
+            mode: CacheClearMode::Contents,
+        },
+        CacheTargetDefinition {
+            id: "rss-article-images",
+            module: "rss",
+            label: "RSS Article Images",
+            paths: vec![rss_article_images_dir()],
             mode: CacheClearMode::Contents,
         },
         CacheTargetDefinition {

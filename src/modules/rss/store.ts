@@ -55,6 +55,10 @@ export interface RssRefreshProgress {
   failed: number;
 }
 
+export type RssStatusMessage =
+  | { kind: "importingOpml" }
+  | { kind: "importedFeeds"; count: number };
+
 interface RssStore {
   view: RssView;
   selectedFeedId: number | null;
@@ -74,7 +78,7 @@ interface RssStore {
   error: string | null;
   refreshingFeedId: number | null;
   refreshProgress: RssRefreshProgress | null;
-  statusMessage: string | null;
+  statusMessage: RssStatusMessage | null;
 
   setView: (v: RssView) => void;
   setSelectedFeedId: (id: number | null) => void;
@@ -87,7 +91,7 @@ interface RssStore {
   setCurrentArticle: (a: RssArticle | null) => void;
   setError: (e: string | null) => void;
   setRefreshing: (id: number | null) => void;
-  setStatusMessage: (m: string | null) => void;
+  setStatusMessage: (m: RssStatusMessage | null) => void;
 
   loadFeeds: () => Promise<void>;
   loadFolders: () => Promise<void>;
@@ -343,16 +347,16 @@ export const useRssStore = create<RssStore>((set, get) => ({
 
   importOpml: async (content) => {
     if (!isTauriRuntime()) return 0;
-    set({ loading: true, error: null, statusMessage: "Importing OPML…" });
+    set({ loading: true, error: null, statusMessage: { kind: "importingOpml" } });
     try {
       const count = await invoke<number>("rss_import_opml", { content });
       await get().loadFeeds();
       set({
         loading: false,
-        statusMessage: `Imported ${count} feed${count === 1 ? "" : "s"}`,
+        statusMessage: { kind: "importedFeeds", count },
       });
       window.setTimeout(() => {
-        if (get().statusMessage?.startsWith("Imported")) set({ statusMessage: null });
+        if (get().statusMessage?.kind === "importedFeeds") set({ statusMessage: null });
       }, 2200);
       return count;
     } catch (e) {

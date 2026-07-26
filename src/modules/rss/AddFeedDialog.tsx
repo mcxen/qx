@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useRssStore } from "./store";
 import { LoadingLabel, Modal } from "../../components/ui";
+import { useT } from "../../i18n";
 
 export default function AddFeedDialog({ onClose }: { onClose: () => void }) {
   const { addFeed, loading } = useRssStore();
+  const t = useT();
   const [url, setUrl] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -16,7 +18,7 @@ export default function AddFeedDialog({ onClose }: { onClose: () => void }) {
     const trimmed = url.trim();
     if (!trimmed) return;
     if (!/^https?:\/\//i.test(trimmed)) {
-      setLocalError("URL must start with http:// or https://");
+      setLocalError(t("rss.urlProtocolError", "URL must start with http:// or https://"));
       return;
     }
     setLocalError(null);
@@ -40,8 +42,8 @@ export default function AddFeedDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal
-      title="Add RSS Subscription"
-      subtitle="Paste the feed URL (RSS or Atom)."
+      title={t("rss.addSubscription", "Add RSS Subscription")}
+      subtitle={t("rss.addSubscriptionHint", "Paste the feed URL (RSS or Atom).")}
       onClose={onClose}
     >
       <input
@@ -57,14 +59,16 @@ export default function AddFeedDialog({ onClose }: { onClose: () => void }) {
       {localError && <div className="qx-modal-error">{localError}</div>}
       <div className="qx-modal-actions">
         <button className="qx-command-button" onClick={onClose}>
-          Cancel
+          {t("common.cancel", "Cancel")}
         </button>
         <button
           className="qx-command-button primary"
           onClick={() => void submit()}
           disabled={loading || !url.trim()}
         >
-          {loading ? <LoadingLabel>Add Feed</LoadingLabel> : "Add Feed"}
+          {loading
+            ? <LoadingLabel>{t("rss.addFeed", "Add Feed")}</LoadingLabel>
+            : t("rss.addFeed", "Add Feed")}
         </button>
       </div>
     </Modal>

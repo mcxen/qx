@@ -857,6 +857,7 @@ pub fn run() {
             g4f::qxai_get_custom_providers,
             g4f::qxai_save_custom_providers,
             plugin_system::plugin_system_set_wallpaper,
+            rss::rss_cache_article_image,
             screencap::recording_session::screencap_list_audio_inputs,
         ])
         .build(tauri::generate_context!())
