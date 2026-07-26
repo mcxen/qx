@@ -1342,7 +1342,8 @@ function App() {
 
     // WebView2 does not reproduce macOS vibrancy from CSS backdrop-filter.
     // Keep Windows surfaces substantially more opaque while preserving the
-    // full settings slider range; native Acrylic remains an optional backdrop.
+    // full settings slider range. Windows 11 may add native Mica; Windows 10
+    // deliberately keeps this surface-only fallback to avoid Acrylic drag lag.
     const opacity = !glassEnabled
       ? 1
       : isWindows ? 0.82 + opacityScale * 0.18 : configuredOpacity;

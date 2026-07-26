@@ -202,7 +202,7 @@ const zh: Record<string, string> = {
   "appearance.opacity": "界面透明度",
   "appearance.opacity.desc": "直接控制背景通透度；数值越低，背景细节越清晰",
   "appearance.glass": "系统毛玻璃",
-  "appearance.glass.desc": "使用 macOS Vibrancy 或 Windows Acrylic；关闭后所有窗口表面完全不透明，并保留当前毛玻璃参数。",
+  "appearance.glass.desc": "使用 macOS Vibrancy 或 Windows 11 Mica；Windows 10 使用优化的不透明回退。关闭后所有窗口表面完全不透明，并保留当前毛玻璃参数。",
   "appearance.opacity.window": "窗口不透明度",
   "appearance.opacity.window.desc": "独立控制窗口背景不透明度；100% 为完全不透明。",
   "appearance.blur": "模糊强度",

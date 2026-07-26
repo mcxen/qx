@@ -159,7 +159,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 
 ## window material
 
-- `set_window_glass_effect(enabled)` — 在 UI 主线程运行时启停主窗口原生材质；macOS 使用 Vibrancy，Windows 使用 Acrylic。CSS 不透明度与模糊参数由前端 token 独立控制。
+- `set_window_glass_effect(enabled)` — 在 UI 主线程运行时启停主窗口原生材质；macOS 使用 Vibrancy，Windows 11 使用 Mica，Windows 10 使用高不透明度 WebView 表面回退，不启用拖拽性能较差的 Acrylic。CSS 不透明度与模糊参数由前端 token 独立控制。
 
 ## system 相关
 

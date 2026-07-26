@@ -22,8 +22,9 @@
   AppLocalData/AppCache/AppLog、`~/.qx` 与 `Pictures/Qx` 专属目录；不扩大到
   整个 Home、Documents、Downloads 或系统 LocalData。
 - Windows 主窗拖动收敛为单一原生 move 入口：Top Bar 仅由显式
-  `startDragging()` 驱动，不再叠加 drag-region / app-region；Windows 保留 DWM
-  Acrylic，并关闭 WebView2 canvas 与子层重复的 CSS backdrop blur，避免移动透明
+  `startDragging()` 驱动，不再叠加 drag-region / app-region；Windows 11 改用 DWM
+  Mica，Windows 10 使用高不透明度表面回退，不再启用官方明确标注拖拽性能较差的
+  Acrylic；WebView2 canvas 与子层继续关闭重复的 CSS backdrop blur，避免移动透明
   窗口时每帧多次桌面采样。
 
 ### 验证

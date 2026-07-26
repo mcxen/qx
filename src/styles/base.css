@@ -376,8 +376,9 @@ body {
   transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
 }
 
-/* Windows already uses the native DWM Acrylic material. Layering WebView2
-   backdrop filters over it makes every window move re-sample the desktop
+/* Windows uses the native DWM Mica material where supported and an opaque
+   surface fallback elsewhere. Layering WebView2 backdrop filters over it
+   makes every window move re-sample the desktop
    several times (canvas + top/context/bottom chrome), which causes visible
    drag latency on integrated GPUs and Remote Desktop. Windows surfaces have
    deliberate opacity floors, so keep their hierarchy without a second blur

@@ -243,15 +243,17 @@ fn set_frosted_glass(app: &AppHandle, enabled: bool) -> Result<(), String> {
     let Some(win) = app.get_webview_window("main") else {
         return Err("main window not found".to_string());
     };
-    // Acrylic is the Windows counterpart to the macOS vibrancy material.
-    // Remote Desktop and older Windows builds may reject it; the stronger CSS
-    // surface opacity remains the deliberate fallback in that case.
+
+    // Acrylic's undocumented composition path is known to lag while a window
+    // moves or resizes on current Windows 10/11 builds. Always remove it before
+    // selecting the cheaper Windows 11 Mica backdrop. Windows 10 and unsupported
+    // sessions deliberately fall back to Qx's high-opacity WebView surfaces.
+    let _ = window_vibrancy::clear_acrylic(&win);
+    let _ = window_vibrancy::clear_mica(&win);
     if enabled {
-        window_vibrancy::apply_acrylic(&win, None)
-            .map_err(|error| format!("apply Windows acrylic: {error}"))?;
-    } else {
-        window_vibrancy::clear_acrylic(&win)
-            .map_err(|error| format!("clear Windows acrylic: {error}"))?;
+        if let Err(error) = window_vibrancy::apply_mica(&win, None) {
+            eprintln!("[window] Windows Mica unavailable; using opaque surface fallback: {error}");
+        }
     }
     Ok(())
 }
