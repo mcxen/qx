@@ -71,10 +71,8 @@ export default function RecordingControlWindow() {
     <main className="qx-recording-control-window" data-tauri-drag-region>
       {recordingActive ? (
         <RecordingTransport
-          host="floating"
           snapshot={snapshot}
           stopping={stopping}
-          onTransfer={returnToMain}
           onStop={stop}
         />
       ) : (

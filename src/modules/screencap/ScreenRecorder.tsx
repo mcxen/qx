@@ -26,7 +26,6 @@ import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import BetaBadge from "../../components/BetaBadge";
 import { useT } from "../../i18n";
-import RecordingTransport from "./RecordingTransport";
 import {
   getCaptureHistoryKind,
   type CaptureHistoryKind,
@@ -73,7 +72,6 @@ export default function ScreenRecorder() {
     isRecording,
     status,
     elapsedMs,
-    frameCount,
     lastGifPath,
     history,
     error,
@@ -620,16 +618,6 @@ export default function ScreenRecorder() {
           </div>
         }
         onKeyDown={shell.onKeyDown}
-        customIsland={(
-          <RecordingTransport
-            host="main"
-            status={status}
-            elapsedMs={elapsedMs}
-            frameCount={frameCount}
-            onTransfer={handlePopOut}
-            onStop={handleStop}
-          />
-        )}
         escapeAction={shell.escapeAction}
         primaryActionId="stop"
         actionTitle={t("screencap.actions", "Recording Actions")}

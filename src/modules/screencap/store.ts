@@ -225,6 +225,7 @@ interface ScreencapStore {
   showControls: () => Promise<void>;
   loadHistory: () => Promise<void>;
   deleteEntry: (id: number) => Promise<void>;
+  renameEntry: (id: number, newName: string) => Promise<boolean>;
   clearHistory: () => Promise<void>;
   setPreview: (path: string) => void;
   reset: () => void;
@@ -327,6 +328,24 @@ export const useScreencapStore = create<ScreencapStore>((set, get) => ({
       set({ history, lastGifPath, status });
     } catch (e) {
       set({ error: String(e) });
+    }
+  },
+
+  renameEntry: async (id, newName) => {
+    try {
+      const previous = get().history.find((entry) => entry.id === id);
+      const renamed = await invoke<ScreencapEntry>("rename_screencap", { id, newName });
+      set({
+        history: get().history.map((entry) => entry.id === id ? renamed : entry),
+        lastGifPath: previous && get().lastGifPath === previous.path
+          ? renamed.path
+          : get().lastGifPath,
+        error: null,
+      });
+      return true;
+    } catch (e) {
+      set({ error: String(e) });
+      return false;
     }
   },
 

@@ -68,6 +68,13 @@ pub fn delete_screencap(id: i64) -> Result<(), String> {
 }
 
 #[command]
+pub async fn rename_screencap(id: i64, new_name: String) -> Result<GifEntry, String> {
+    tauri::async_runtime::spawn_blocking(move || storage::rename_capture(id, new_name))
+        .await
+        .map_err(|error| format!("rename capture worker failed: {error}"))?
+}
+
+#[command]
 pub async fn screencap_show_controls(app: AppHandle) -> Result<(), String> {
     set_recording_ui_protected(&app, true);
     show_recording_controls_internal(&app)

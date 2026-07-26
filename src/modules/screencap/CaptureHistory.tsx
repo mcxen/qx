@@ -1,7 +1,15 @@
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { Camera, ChevronDown, Trash2, Video } from "lucide-react";
+import { Camera, ChevronDown, Pencil, Trash2, Video } from "lucide-react";
 import { useRef, useState } from "react";
-import { Button } from "../../components/ui";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  Input,
+} from "../../components/ui";
 import { useLocale, useT } from "../../i18n";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useScreencapStore } from "./store";
@@ -10,6 +18,18 @@ import {
   type CaptureHistoryKind,
   type CaptureHistoryLayout,
 } from "./preferences";
+import type { ScreencapEntry } from "./store";
+
+function captureFileParts(path: string): { filename: string; stem: string; extension: string } {
+  const filename = path.split(/[\\/]/).pop() ?? path;
+  const extensionIndex = filename.lastIndexOf(".");
+  if (extensionIndex <= 0) return { filename, stem: filename, extension: "" };
+  return {
+    filename,
+    stem: filename.slice(0, extensionIndex),
+    extension: filename.slice(extensionIndex),
+  };
+}
 
 function formatTimestamp(timestamp: number, locale: string): string {
   return new Date(timestamp * 1000).toLocaleString(locale, {
@@ -75,7 +95,11 @@ export default function CaptureHistory({
 }: CaptureHistoryProps) {
   const t = useT();
   const locale = useLocale();
-  const { history, lastGifPath, setPreview, deleteEntry, clearHistory } = useScreencapStore();
+  const { history, lastGifPath, setPreview, deleteEntry, renameEntry, clearHistory } = useScreencapStore();
+  const [renameTarget, setRenameTarget] = useState<ScreencapEntry | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
   const screenshots = history.filter((entry) => getCaptureHistoryKind(entry) === "screenshot");
   const recordings = history.filter((entry) => getCaptureHistoryKind(entry) === "recording");
   const visibleHistory = [
@@ -102,6 +126,30 @@ export default function CaptureHistory({
     event.preventDefault();
     if (lastGifPath !== entryPath) setPreview(entryPath);
     onOpenActionsAt(event.clientX, event.clientY);
+  };
+
+  const beginRename = (entry: ScreencapEntry) => {
+    setRenameTarget(entry);
+    setRenameValue(captureFileParts(entry.path).stem);
+    setRenameError(null);
+  };
+
+  const submitRename = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!renameTarget || renameBusy) return;
+    if (!renameValue.trim()) {
+      setRenameError(t("screencap.history.renameRequired", "Enter a file name."));
+      return;
+    }
+    setRenameBusy(true);
+    const renamed = await renameEntry(renameTarget.id, renameValue);
+    setRenameBusy(false);
+    if (renamed) {
+      setRenameTarget(null);
+      setRenameError(null);
+    } else {
+      setRenameError(t("screencap.history.renameFailed", "Could not rename this file."));
+    }
   };
 
   const renderEntries = (entries: typeof history, indexOffset: number, label: string) => (
@@ -139,6 +187,15 @@ export default function CaptureHistory({
                   </small>
                   <small>{formatTimestamp(entry.created_at, locale)}</small>
                 </span>
+              </button>
+              <button
+                type="button"
+                className="qx-capture-gallery-rename"
+                title={t("screencap.history.rename", "Rename")}
+                aria-label={t("screencap.history.rename", "Rename")}
+                onClick={() => beginRename(entry)}
+              >
+                <Pencil size={13} />
               </button>
               <button
                 type="button"
@@ -180,6 +237,15 @@ export default function CaptureHistory({
             </button>
             <button
               type="button"
+              className="qx-capture-history-rename"
+              title={t("screencap.history.rename", "Rename")}
+              aria-label={t("screencap.history.rename", "Rename")}
+              onClick={() => beginRename(entry)}
+            >
+              <Pencil size={13} />
+            </button>
+            <button
+              type="button"
               className="qx-capture-history-delete"
               title={t("common.delete", "Delete")}
               aria-label={t("common.delete", "Delete")}
@@ -216,8 +282,11 @@ export default function CaptureHistory({
     },
   ];
 
+  const renameParts = renameTarget ? captureFileParts(renameTarget.path) : null;
+
   return (
-    <section className="qx-capture-history" aria-label={t("screencap.history", "History")}>
+    <>
+      <section className="qx-capture-history" aria-label={t("screencap.history", "History")}>
       <header className="qx-section-header qx-capture-history-header">
         <span>{t("screencap.history", "History")}</span>
         <small>{history.length}</small>
@@ -265,6 +334,63 @@ export default function CaptureHistory({
           );
         })}
       </div>
-    </section>
+      </section>
+      <Dialog
+        open={Boolean(renameTarget)}
+        onOpenChange={(open) => {
+          if (!open && !renameBusy) {
+            setRenameTarget(null);
+            setRenameError(null);
+          }
+        }}
+      >
+        <DialogContent className="qx-capture-rename-dialog">
+          <DialogHeader>
+            <DialogTitle>{t("screencap.history.renameTitle", "Rename capture")}</DialogTitle>
+            <DialogDescription>
+              {t(
+                "screencap.history.renameDescription",
+                "The file extension is preserved so the capture remains playable.",
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <form className="qx-capture-rename-form" onSubmit={(event) => void submitRename(event)}>
+            <label htmlFor="qx-capture-rename-input">
+              {t("screencap.history.fileName", "File name")}
+            </label>
+            <div className="qx-capture-rename-field">
+              <Input
+                id="qx-capture-rename-input"
+                autoFocus
+                value={renameValue}
+                disabled={renameBusy}
+                aria-invalid={Boolean(renameError)}
+                onChange={(event) => {
+                  setRenameValue(event.target.value);
+                  setRenameError(null);
+                }}
+              />
+              {renameParts?.extension ? <span>{renameParts.extension}</span> : null}
+            </div>
+            {renameError ? <small className="qx-capture-rename-error">{renameError}</small> : null}
+            <div className="qx-capture-rename-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={renameBusy}
+                onClick={() => setRenameTarget(null)}
+              >
+                {t("common.cancel", "Cancel")}
+              </Button>
+              <Button type="submit" disabled={renameBusy || !renameValue.trim()}>
+                {renameBusy
+                  ? t("screencap.history.renaming", "Renaming…")
+                  : t("screencap.history.rename", "Rename")}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

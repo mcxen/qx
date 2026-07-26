@@ -706,6 +706,7 @@ pub fn run() {
             screencap::commands::save_gif,
             screencap::commands::list_gif_history,
             screencap::commands::get_screencap_history,
+            screencap::commands::rename_screencap,
             screencap::commands::delete_screencap,
             screencap::commands::is_recording,
             island_window::island_window_ensure,

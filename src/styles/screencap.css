@@ -74,10 +74,10 @@
 }
 
 .qx-region-picker-rect.is-recording {
-  border-color: #ff453a;
+  border-color: var(--qx-accent, #5b8cff);
   box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.5) inset,
-    0 0 0 1px rgba(255, 69, 58, 0.25);
+    0 0 0 1px rgba(255, 255, 255, 0.38) inset,
+    0 0 0 1px color-mix(in srgb, var(--qx-accent, #5b8cff) 30%, transparent);
   pointer-events: none;
 }
 
@@ -115,22 +115,6 @@
   pointer-events: auto;
 }
 
-.qx-region-picker-text-input {
-  position: absolute;
-  z-index: 3;
-  width: 180px;
-  height: 28px;
-  box-sizing: border-box;
-  border: 1px dashed rgba(255, 255, 255, 0.56);
-  border-radius: 2px;
-  outline: none;
-  background: transparent;
-  color: #fff;
-  padding: 0 8px;
-  font: 600 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  user-select: text;
-}
-
 .qx-region-picker-text-annotations {
   position: absolute;
   inset: 0;
@@ -140,90 +124,161 @@
 
 .qx-region-picker-text-box {
   position: absolute;
-  min-width: 28px;
-  min-height: 28px;
-  max-width: min(80%, 520px);
-  transform: translateY(-19px);
+  z-index: 1;
+  box-sizing: border-box;
+  min-width: 16px;
+  min-height: 18px;
+  border: 1px solid transparent;
+  border-radius: 3px;
   pointer-events: auto;
   touch-action: none;
+  user-select: none;
 }
 
 .qx-region-picker-text-box span,
 .qx-region-picker-text-box textarea {
   display: block;
-  min-width: 28px;
-  min-height: 28px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
   margin: 0;
-  padding: 3px 6px;
-  border: 1px solid transparent;
-  border-radius: 3px;
+  padding: 0 max(2px, 0.22em);
+  border: 0;
+  border-radius: 2px;
+  outline: none;
   background: transparent;
-  font: 600 18px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 600 1em/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   text-align: left;
-  text-shadow: 0 1px 0 rgb(255 255 255 / 0.9), 0 -1px 0 rgb(255 255 255 / 0.9);
+  text-shadow: none;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  overflow: hidden;
 }
 
 .qx-region-picker-text-delete {
   position: absolute;
-  z-index: 2;
-  top: -9px;
-  right: -9px;
-  width: 16px;
-  height: 16px;
+  z-index: 4;
+  top: -22px;
+  right: -10px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
   padding: 0;
-  border: 1px solid rgb(255 255 255 / 0.86);
+  border: 1px solid color-mix(in srgb, var(--qx-accent, #5b8cff) 72%, white);
   border-radius: 999px;
-  background: rgb(35 35 35 / 0.9);
+  background: color-mix(in srgb, var(--qx-accent, #5b8cff) 76%, #10131a);
   color: #fff;
   cursor: pointer;
-  font: 700 13px/14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  text-align: center;
   text-shadow: none;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
 }
 
 .qx-region-picker-text-delete:hover {
-  background: #ff453a;
+  background: var(--qx-danger, #ff453a);
 }
 
 .qx-region-picker-text-box span {
+  display: block;
+  padding-top: 2px;
+  padding-bottom: 2px;
   cursor: move;
 }
 
-.qx-region-picker-text-box.is-selected span,
-.qx-region-picker-text-box.is-editing textarea {
-  border-color: rgb(255 255 255 / 0.68);
+.qx-region-picker-text-box.is-selected {
+  z-index: 3;
+  border-color: var(--qx-accent, #5b8cff);
+  border-style: dashed;
 }
 
-.qx-region-picker-text-box.is-editing {
-  border: 1px dashed rgb(255 255 255 / 0.78);
-  border-radius: 3px;
-}
-
-.qx-region-picker-text-box.is-editing textarea {
-  border-color: transparent;
+.qx-region-picker-text-box.is-interacting {
+  cursor: grabbing;
+  will-change: left, top, width, height, font-size;
 }
 
 .qx-region-picker-text-box textarea {
-  resize: both;
-  outline: none;
+  resize: none;
   color: inherit;
-  text-shadow: inherit;
+  caret-color: currentColor;
   user-select: text;
 }
 
-.qx-region-picker-text-box input {
-  width: max(180px, 14ch);
-  outline: none;
-  color: var(--qx-text-primary, #fff);
-  cursor: text;
-  user-select: text;
+.qx-region-picker-text-resize {
+  position: absolute;
+  z-index: 3;
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.94);
+  border-radius: 999px;
+  background: var(--qx-accent, #5b8cff);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.32);
 }
 
-.qx-region-picker-text-input:focus {
-  border-color: #5b8cff;
-  box-shadow: 0 0 0 2px rgba(91, 140, 255, 0.28);
+.qx-region-picker-text-resize.is-nw {
+  top: -5px;
+  left: -5px;
+  cursor: nwse-resize;
+}
+
+.qx-region-picker-text-resize.is-ne {
+  top: -5px;
+  right: -5px;
+  cursor: nesw-resize;
+}
+
+.qx-region-picker-text-resize.is-se {
+  right: -5px;
+  bottom: -5px;
+  cursor: nwse-resize;
+}
+
+.qx-region-picker-text-resize.is-sw {
+  bottom: -5px;
+  left: -5px;
+  cursor: nesw-resize;
+}
+
+.qx-region-picker-text-edge {
+  position: absolute;
+  z-index: 2;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.qx-region-picker-text-edge.is-n,
+.qx-region-picker-text-edge.is-s {
+  right: 5px;
+  left: 5px;
+  height: 9px;
+  cursor: ns-resize;
+}
+
+.qx-region-picker-text-edge.is-n {
+  top: -5px;
+}
+
+.qx-region-picker-text-edge.is-s {
+  bottom: -5px;
+}
+
+.qx-region-picker-text-edge.is-e,
+.qx-region-picker-text-edge.is-w {
+  top: 5px;
+  bottom: 5px;
+  width: 9px;
+  cursor: ew-resize;
+}
+
+.qx-region-picker-text-edge.is-e {
+  right: -5px;
+}
+
+.qx-region-picker-text-edge.is-w {
+  left: -5px;
 }
 
 .qx-region-picker-handle {
@@ -946,7 +1001,7 @@
   display: flex;
   width: 100%;
   min-width: 0;
-  padding: 8px 30px 9px 9px;
+  padding: 8px 58px 9px 9px;
   flex-direction: column;
   gap: 3px;
 }
@@ -969,9 +1024,9 @@
   font-size: 10px;
 }
 
-.qx-capture-gallery-delete {
+.qx-capture-gallery-delete,
+.qx-capture-gallery-rename {
   position: absolute;
-  right: 6px;
   bottom: 7px;
   display: grid;
   width: 24px;
@@ -985,14 +1040,30 @@
   cursor: pointer;
 }
 
+.qx-capture-gallery-delete {
+  right: 6px;
+}
+
+.qx-capture-gallery-rename {
+  right: 32px;
+}
+
 .qx-capture-gallery-card:hover .qx-capture-gallery-delete,
+.qx-capture-gallery-card:hover .qx-capture-gallery-rename,
 .qx-capture-gallery-card.is-active .qx-capture-gallery-delete,
-.qx-capture-gallery-delete:focus-visible {
+.qx-capture-gallery-card.is-active .qx-capture-gallery-rename,
+.qx-capture-gallery-delete:focus-visible,
+.qx-capture-gallery-rename:focus-visible {
   color: var(--qx-text-tertiary);
 }
 
+.qx-capture-gallery-rename:hover,
 .qx-capture-gallery-delete:hover {
   background: var(--qx-bg-component-2);
+  color: var(--qx-accent);
+}
+
+.qx-capture-gallery-delete:hover {
   color: var(--qx-danger);
 }
 
@@ -1017,7 +1088,7 @@
   min-width: 0;
   align-items: center;
   gap: 9px;
-  padding: 7px 30px 7px 8px;
+  padding: 7px 58px 7px 8px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -1086,10 +1157,10 @@
   font-size: 10px;
 }
 
-.qx-capture-history-delete {
+.qx-capture-history-delete,
+.qx-capture-history-rename {
   position: absolute;
   top: 50%;
-  right: 6px;
   display: grid;
   width: 24px;
   height: 24px;
@@ -1103,15 +1174,76 @@
   cursor: pointer;
 }
 
+.qx-capture-history-delete {
+  right: 6px;
+}
+
+.qx-capture-history-rename {
+  right: 32px;
+}
+
 .qx-capture-history-row:hover .qx-capture-history-delete,
+.qx-capture-history-row:hover .qx-capture-history-rename,
 .qx-capture-history-row.is-active .qx-capture-history-delete,
-.qx-capture-history-delete:focus-visible {
+.qx-capture-history-row.is-active .qx-capture-history-rename,
+.qx-capture-history-delete:focus-visible,
+.qx-capture-history-rename:focus-visible {
   color: var(--qx-text-tertiary);
 }
 
+.qx-capture-history-rename:hover,
 .qx-capture-history-delete:hover {
   background: var(--qx-bg-component-2);
+  color: var(--qx-accent);
+}
+
+.qx-capture-history-delete:hover {
   color: var(--qx-danger);
+}
+
+.qx-capture-rename-dialog {
+  width: min(420px, calc(100vw - 40px));
+}
+
+.qx-capture-rename-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qx-capture-rename-form > label {
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.qx-capture-rename-field {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.qx-capture-rename-field input {
+  min-width: 0;
+  flex: 1;
+}
+
+.qx-capture-rename-field > span {
+  color: var(--qx-text-tertiary);
+  font-size: 12px;
+}
+
+.qx-capture-rename-error {
+  color: var(--qx-danger);
+  font-size: 11px;
+}
+
+.qx-capture-rename-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 6px;
 }
 
 .qx-capture-history-empty {
@@ -1142,6 +1274,85 @@
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.qx-recording-toolbar {
+  --qx-capture-toolbar-bg: rgb(247 247 246 / 0.98);
+  --qx-capture-toolbar-border: rgb(65 72 72 / 0.78);
+  --qx-capture-toolbar-text: rgb(47 55 55);
+  --qx-capture-toolbar-hover: rgb(31 41 41 / 0.10);
+  display: flex;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 5px 6px 5px 12px;
+  border: 1px solid var(--qx-capture-toolbar-border);
+  border-radius: 4px;
+  background: var(--qx-capture-toolbar-bg);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
+  color: var(--qx-capture-toolbar-text);
+}
+
+.qx-recording-toolbar-status {
+  display: inline-flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 9px;
+}
+
+.qx-recording-toolbar-status strong,
+.qx-recording-toolbar-status span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-recording-toolbar-status strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.qx-recording-toolbar-status span {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+}
+
+.qx-recording-toolbar-divider {
+  width: 1px;
+  height: 28px;
+  background: rgb(60 67 67 / 0.52);
+}
+
+.qx-recording-toolbar-action {
+  display: inline-flex;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--qx-danger, #ff453a);
+  cursor: pointer;
+}
+
+.qx-recording-toolbar-action:hover:not(:disabled) {
+  background: var(--qx-capture-toolbar-hover);
+}
+
+.qx-recording-toolbar.is-processing .qx-recording-toolbar-action {
+  color: var(--qx-capture-toolbar-text);
+}
+
+.qx-recording-toolbar-action:disabled {
+  cursor: default;
+  opacity: 0.55;
 }
 
 .qx-recording-transport {

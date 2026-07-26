@@ -6,8 +6,8 @@ use super::state::{picker, CONTROLS_PINNED};
 use crate::display::{capture_monitor, cursor_monitor, tauri_monitor_for_capture};
 
 pub(super) const CONTROL_LABEL: &str = "recording-controls";
-const CONTROLS_LOGICAL_W: f64 = 340.0;
-const CONTROLS_LOGICAL_H: f64 = 36.0;
+const CONTROLS_LOGICAL_W: f64 = 250.0;
+const CONTROLS_LOGICAL_H: f64 = 46.0;
 
 pub(super) fn set_ui_protected(app: &AppHandle, protected: bool) {
     let app = app.clone();
@@ -22,7 +22,7 @@ pub(super) fn set_ui_protected(app: &AppHandle, protected: bool) {
     });
 }
 
-/// Place the recording island beneath the selected region when possible.
+/// Place the protected recording toolbar beneath the selected region when possible.
 /// Full-screen/no-selection capture falls back to the display's bottom center.
 pub(super) fn position(app: &AppHandle) {
     let Some(controls) = app.get_webview_window(CONTROL_LABEL) else {

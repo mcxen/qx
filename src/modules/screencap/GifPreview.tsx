@@ -94,6 +94,14 @@ export default function GifPreview({ path }: Props) {
     const media = mediaRef.current;
     if (!media) return;
     if (media.paused) {
+      if (media.ended || (
+        Number.isFinite(media.duration)
+        && media.duration > 0
+        && media.currentTime >= media.duration - 0.05
+      )) {
+        media.currentTime = 0;
+        setCurrentTime(0);
+      }
       void media.play();
       setPlaying(true);
     } else {
@@ -125,7 +133,6 @@ export default function GifPreview({ path }: Props) {
             ref={mediaRef}
             src={src}
             autoPlay
-            loop
             muted={muted}
             playsInline
             onLoadedMetadata={(event) => {
@@ -142,6 +149,11 @@ export default function GifPreview({ path }: Props) {
             }}
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}
+            onEnded={(event) => {
+              const media = event.currentTarget;
+              setCurrentTime(Number.isFinite(media.duration) ? media.duration : media.currentTime);
+              setPlaying(false);
+            }}
             className="qx-screencap-preview-media"
           />
         ) : playing || !isAnimatedImage ? (

@@ -145,6 +145,7 @@ const DANGEROUS_INVOKE_COMMANDS = new Set([
   "stop_recording",
   "save_gif",
   "delete_screencap",
+  "rename_screencap",
   "macro_start_recording",
   "macro_stop_recording",
   "macro_save",

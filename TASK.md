@@ -1,5 +1,94 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — 捕获历史重命名与单次播放
+
+**状态**：实现完成，等待桌面运行态复核。
+
+- 截图、录屏在列表与图库浏览布局均提供重命名按钮；弹窗只编辑文件主名并固定保留扩展名。
+- Rust 后台工作线程原子式同步移动捕获文件、录屏封面并更新历史数据库；重名、非法名称和
+  文件缺失时保留原文件与历史。
+- MP4/MOV 预览取消循环，自动播放一遍后停在结尾；再次点击播放会回到开头。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [x] `cargo fmt --check`
+- [x] `cargo check`
+- [x] `npm run tauri build` 并签名安装到 `/Applications/Qx.app`
+- [ ] macOS 运行态验证截图/录屏改名、重名保护、录屏播放一次停止。
+
+## Fix — 截图文字输入与缩放性能
+
+**状态**：实现完成，等待桌面运行态复核。
+
+- 换行测量从反复测量整段字符串改为缓存字形宽度的线性扫描，保留“先横向增长、到边界后
+  换行并扩高”的交互。
+- 文字移动与缩放合并到每个动画帧最多一次状态更新，结束拖拽前刷新最后位置。
+- 纯文字内容和几何变化不再触发箭头、画笔、马赛克等非文字标注画布重绘。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [x] `npm run tauri build` 并签名安装到 `/Applications/Qx.app`
+- [ ] macOS 运行态验证长文本连续输入、自动换行扩高、四边拖动与四角缩放流畅度。
+
+## Fix — 取消双击选区直接截屏
+
+**状态**：实现完成。
+
+- 截图与录屏选区不再响应双击确认；用户仍通过工具栏确认按钮或 Enter 执行捕获。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [x] `npm run tauri build` 并签名安装到 `/Applications/Qx.app`
+
+## Feature — 录屏选区蓝框与工具栏录制控制
+
+**状态**：实现完成，等待桌面运行态复核。
+
+- 录屏选区保持蓝色边框和域外暗化，录制中蓝框复用受保护、鼠标穿透的 picker frame，
+  不进入录屏成品。
+- 录屏确认按钮由对号改为 `▶`；录制工具栏使用 `⏺` 暂停并保存，保存处理中切换为 `▶`。
+- 录制中移除主窗口 Bottom Island 控制条，独立受保护工具栏前部显示“正在录制”和实时时长。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [x] `cargo fmt --check`
+- [x] `cargo check`
+- [x] `npm run tauri build` 并签名安装到 `/Applications/Qx.app`
+- [ ] macOS 运行态验证蓝框、域外暗化、计时、暂停保存，以及控制层不进入录制成品。
+
+## Feature — 截图文字标注直接创建与自由变换
+
+**状态**：实现完成，等待桌面运行态复核。
+
+- 点击文字工具或按 `3` 后直接在选区中央创建单字符宽文本框，输入时宽度随内容增长；
+  到截图右边界自动换行并扩高，接近底边时向上调整，`Shift+Enter` 手动换行。
+- 选中文字显示虚线边框、四角蓝色缩放点和右上角删除；四条边均可拖拽，左右边改宽并
+  重新换行，上下边调整高度但不允许遮住文字；角点横拉只改宽，斜拉等比缩放文本框与字号。
+- 输入态与回车完成态都完整显示全部文字行，不使用单行裁切。
+- Enter、Esc 或点击框外结束编辑并隐藏控件；空文本自动删除。
+- 截图导出移除文字白色描边，使用独立导出画布合成纯色文字，不污染底层形状画布。
+- 马赛克改为连续平滑的模糊笔迹，不再逐个绘制离散方块图章。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [x] `npm run tauri build`，Apple Development 签名验证并安装至 `/Applications/Qx.app`
+- [ ] macOS 运行态验证创建、输入自增长、拖动、四角缩放、删除和导出成品。
+
 ## Feature — 捕获预览 OCR 编辑与 Bottom Bar 动作顺序
 
 **状态**：实现完成，等待桌面运行态视觉复核。
@@ -1140,7 +1229,7 @@
 - **P0–P1 交互重设计（2026-07-15，2026-07-26 收口）**：意图驱动主按钮（Enter/S/R）；入口直接进入拖拽圈选、不显示前置模式条；区域/全屏可往返恢复；区域重画 + 八向手柄；延迟 0/3/5s 倒计时穿透；`confirmMode` 精修/松手即捕；窗口悬停选取；标注保留矩形/画笔/颜色/撤销重做并移除椭圆；截图 post-capture toast；无视频编辑。
 - **系统能力层（SOLID）**：窗列表提升为 `desktop_windows`（`desktop_windows_list`）；显示器公共 IPC `display_list` + `display::capture_region`；剪贴板 `clipboard_write_image_file`；前端端口 `src/system/*`；screencap 仅消费系统服务与保留工作流门面。
 - **截图闭环补齐**：录制停止后 `restore_selection` 回灌选区；预览支持复制图片；历史按扩展名识别截图；Esc 分层（草稿/选区/退出）；窗选在 session 就绪后刷新。
-- **截图标注增强**：序号标记（5）、马赛克遮盖（6）；历史缩略图；双击选区确认；记忆上次选区；搜索文案「截图与录屏」。
+- **截图标注增强**：序号标记（5）、马赛克遮盖（6）；历史缩略图；记忆上次选区；搜索文案「截图与录屏」。双击选区确认已在后续交互修订中移除。
 - **修复截图后闪退（SIGTRAP）**：根因是 async 命令在 tokio worker 上调用 AppKit（`show_floating` / `setLevel` / 剪贴板）；新增 `main_thread::run_on_main`，浮窗/捕获岛/圈选窗/剪贴板写图一律回主线程。
 - **修复录制闪退**：崩溃栈为 `start_recording` → `controls::show` → `promote`（同样非主线程 AppKit）；`start_recording` UI 收拢到一次主线程事务，圈选窗打开/内容保护一并主线程化。
 - **通用 runtime 线程模型**：`src-tauri/src/runtime/`（`install` / `ui` / `run_ui` / `blocking` / `spawn_ui`）；setup 钉主线程 id；截图命令示范 `blocking→ui`；island 窗体 hop；文档 `docs/runtime-threading.md`。

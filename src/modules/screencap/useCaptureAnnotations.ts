@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
 import type { CaptureColor, CaptureTool } from "./CaptureToolbar";
 import { captureNumberForeground, captureNumberOutline } from "./captureColor";
+import {
+  CAPTURE_TEXT_LINE_HEIGHT,
+  CAPTURE_TEXT_VERTICAL_PADDING,
+  captureTextPadding,
+  wrapCaptureTextLines,
+} from "./captureTextLayout";
 
 export interface Point {
   x: number;
@@ -15,7 +21,17 @@ export interface Rect extends Point {
 type ShapeKind = "arrow" | "rect";
 
 export type CaptureAnnotation =
-  | { type: "text"; id: string; x: number; y: number; text: string; color: CaptureColor }
+  | {
+      type: "text";
+      id: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      fontSize: number;
+      text: string;
+      color: CaptureColor;
+    }
   | { type: "arrow"; x1: number; y1: number; x2: number; y2: number; color: CaptureColor }
   | { type: "rect"; x1: number; y1: number; x2: number; y2: number; color: CaptureColor }
   | { type: "mosaic"; points: Point[]; color: CaptureColor }
@@ -25,6 +41,12 @@ export type CaptureAnnotation =
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
+
+export const CAPTURE_TEXT_INITIAL_WIDTH = 24;
+export const CAPTURE_TEXT_INITIAL_HEIGHT = 30;
+export const CAPTURE_TEXT_INITIAL_FONT_SIZE = 18;
+export const CAPTURE_TEXT_MIN_FONT_SIZE = 8;
+export const CAPTURE_TEXT_MAX_FONT_SIZE = 160;
 
 function drawArrow(context: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number) {
   const angle = Math.atan2(y2 - y1, x2 - x1);
@@ -39,34 +61,35 @@ function drawArrow(context: CanvasRenderingContext2D, x1: number, y1: number, x2
   context.stroke();
 }
 
-function drawMosaicStamp(context: CanvasRenderingContext2D, centerX: number, centerY: number) {
-  const cell = 8;
-  const radius = 14;
-  for (let row = -radius; row < radius; row += cell) {
-    for (let col = -radius; col < radius; col += cell) {
-      if (col * col + row * row > radius * radius) continue;
-      const seed = ((Math.floor(centerX + col) * 73856093) ^ (Math.floor(centerY + row) * 19349663)) >>> 0;
-      const tone = 40 + (seed % 160);
-      context.fillStyle = `rgb(${tone},${tone},${tone})`;
-      context.fillRect(centerX + col, centerY + row, cell, cell);
-    }
-  }
-}
-
 function drawMosaicStroke(context: CanvasRenderingContext2D, points: Point[], width: number, height: number) {
   if (points.length === 0) return;
-  let previous = { x: points[0].x * width, y: points[0].y * height };
-  drawMosaicStamp(context, previous.x, previous.y);
-  for (let index = 1; index < points.length; index += 1) {
-    const next = { x: points[index].x * width, y: points[index].y * height };
-    const distance = Math.hypot(next.x - previous.x, next.y - previous.y);
-    for (let step = 6; step < distance; step += 6) {
-      const ratio = step / distance;
-      drawMosaicStamp(context, previous.x + (next.x - previous.x) * ratio, previous.y + (next.y - previous.y) * ratio);
+  const path = new Path2D();
+  path.moveTo(points[0].x * width, points[0].y * height);
+  if (points.length === 1) {
+    path.lineTo(points[0].x * width + 0.01, points[0].y * height + 0.01);
+  } else {
+    for (let index = 1; index < points.length; index += 1) {
+      const previous = points[index - 1];
+      const current = points[index];
+      const midpointX = ((previous.x + current.x) / 2) * width;
+      const midpointY = ((previous.y + current.y) / 2) * height;
+      path.quadraticCurveTo(previous.x * width, previous.y * height, midpointX, midpointY);
     }
-    drawMosaicStamp(context, next.x, next.y);
-    previous = next;
+    const finalPoint = points[points.length - 1];
+    path.lineTo(finalPoint.x * width, finalPoint.y * height);
   }
+  context.save();
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.filter = "blur(5px)";
+  context.strokeStyle = "rgba(82, 82, 88, 0.82)";
+  context.lineWidth = 30;
+  context.stroke(path);
+  context.filter = "blur(2px)";
+  context.strokeStyle = "rgba(150, 150, 156, 0.46)";
+  context.lineWidth = 20;
+  context.stroke(path);
+  context.restore();
 }
 
 function drawNumberMarker(context: CanvasRenderingContext2D, x: number, y: number, value: number, color: string) {
@@ -95,9 +118,20 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
   const [nextNumber, setNextNumber] = useState(1);
   const [penDraft, setPenDraft] = useState<Point[] | null>(null);
   const [strokeDraftKind, setStrokeDraftKind] = useState<"pen" | "mosaic" | null>(null);
-  const [textDraft, setTextDraft] = useState<{ point: Point; text: string } | null>(null);
+  const [activeTextId, setActiveTextId] = useState<string | null>(null);
   const nextTextId = useRef(1);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawableAnnotationsRef = useRef<CaptureAnnotation[]>([]);
+  const nextDrawableAnnotations = annotations.filter((annotation) => annotation.type !== "text");
+  if (
+    nextDrawableAnnotations.length !== drawableAnnotationsRef.current.length
+    || nextDrawableAnnotations.some(
+      (annotation, index) => annotation !== drawableAnnotationsRef.current[index],
+    )
+  ) {
+    drawableAnnotationsRef.current = nextDrawableAnnotations;
+  }
+  const drawableAnnotations = drawableAnnotationsRef.current;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -114,7 +148,7 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
     context.lineJoin = "round";
     context.lineWidth = 3;
 
-    const paint = (annotation: CaptureAnnotation, includeText = false) => {
+    const paint = (annotation: CaptureAnnotation) => {
       context.strokeStyle = annotation.color;
       context.fillStyle = annotation.color;
       if (annotation.type === "arrow") {
@@ -137,20 +171,10 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
         context.stroke();
       } else if (annotation.type === "number") {
         drawNumberMarker(context, annotation.x * selection.w, annotation.y * selection.h, annotation.value, annotation.color);
-      } else if (includeText) {
-        const x = annotation.x * selection.w;
-        const y = annotation.y * selection.h;
-        context.font = "600 18px -apple-system, BlinkMacSystemFont, sans-serif";
-        context.lineWidth = 4;
-        context.strokeStyle = "rgba(255,255,255,.9)";
-        context.strokeText(annotation.text, x, y);
-        context.fillStyle = annotation.color;
-        context.fillText(annotation.text, x, y);
-        context.lineWidth = 3;
       }
     };
 
-    for (const annotation of annotations) paint(annotation);
+    for (const annotation of drawableAnnotations) paint(annotation);
     if (shapeDraft) {
       paint({
         type: shapeDraft.kind,
@@ -168,37 +192,39 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
         color,
       });
     }
-  }, [annotations, color, penDraft, selection, shapeDraft, strokeDraftKind]);
+  }, [color, drawableAnnotations, penDraft, selection, shapeDraft, strokeDraftKind]);
 
   const exportOverlayBase64 = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !selection) return undefined;
-    const context = canvas.getContext("2d");
-    if (!context) return undefined;
     const ratio = window.devicePixelRatio || 1;
+    const output = document.createElement("canvas");
+    output.width = canvas.width;
+    output.height = canvas.height;
+    const context = output.getContext("2d");
+    if (!context) return undefined;
+    context.drawImage(canvas, 0, 0);
+    context.scale(ratio, ratio);
+    context.textAlign = "left";
+    context.textBaseline = "top";
     const paintText = (annotation: CaptureAnnotation) => {
-      if (annotation.type !== "text") return;
-      const x = annotation.x * selection.w;
-      const y = annotation.y * selection.h;
-      context.font = "600 18px -apple-system, BlinkMacSystemFont, sans-serif";
-      context.lineWidth = 4;
-      context.strokeStyle = "rgba(255,255,255,.9)";
-      context.strokeText(annotation.text, x, y);
+      if (annotation.type !== "text" || !annotation.text) return;
+      const x = annotation.x * selection.w + Math.max(2, annotation.fontSize * 0.22);
+      const lineHeight = annotation.fontSize * CAPTURE_TEXT_LINE_HEIGHT;
+      const y = annotation.y * selection.h + CAPTURE_TEXT_VERTICAL_PADDING;
+      const contentWidth = Math.max(
+        1,
+        annotation.w * selection.w - captureTextPadding(annotation.fontSize) * 2,
+      );
+      const lines = wrapCaptureTextLines(annotation.text, annotation.fontSize, contentWidth);
+      context.font = `600 ${annotation.fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
       context.fillStyle = annotation.color;
-      context.fillText(annotation.text, x, y);
+      lines.forEach((line, index) => {
+        context.fillText(line, x, y + index * lineHeight);
+      });
     };
-    context.save();
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
     annotations.forEach(paintText);
-    context.restore();
-    const base64 = canvas.toDataURL("image/png").split(",")[1];
-    context.save();
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    annotations.forEach((annotation) => {
-      if (annotation.type === "text") context.clearRect(annotation.x * selection.w - 4, annotation.y * selection.h - 24, Math.max(180, context.measureText(annotation.text).width + 8), 30);
-    });
-    context.restore();
-    return base64;
+    return output.toDataURL("image/png").split(",")[1];
   }, [annotations, selection]);
 
   const pushAnnotation = useCallback((annotation: CaptureAnnotation) => {
@@ -235,10 +261,8 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
     event.stopPropagation();
     const point = canvasPoint(event);
     if (!point) return;
-    if (tool === "text") {
-      setTextDraft({ point, text: "" });
-      setTool(null);
-    } else if (tool === "number") {
+    if (tool === "text") return;
+    if (tool === "number") {
       pushAnnotation({ type: "number", x: point.x / selection.w, y: point.y / selection.h, value: nextNumber, color });
       setNextNumber((value) => value + 1);
     } else if (tool === "pen" || tool === "mosaic") {
@@ -254,12 +278,36 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
     if (penDraft) setPenDraft((current) => (current ? [...current, point] : current));
     else if (shapeDraft) setShapeDraft({ ...shapeDraft, end: point });
   };
-  const commitTextDraft = useCallback(() => {
-    if (!selection || !textDraft) return;
-    const text = textDraft.text.trim();
-    if (text) pushAnnotation({ type: "text", id: `text-${nextTextId.current++}`, x: textDraft.point.x / selection.w, y: textDraft.point.y / selection.h, text, color });
-    setTextDraft(null);
-  }, [color, pushAnnotation, selection, textDraft]);
+  const createTextAnnotation = useCallback((point?: Point) => {
+    if (!selection || busy) return null;
+    const width = Math.min(CAPTURE_TEXT_INITIAL_WIDTH, selection.w);
+    const height = Math.min(CAPTURE_TEXT_INITIAL_HEIGHT, selection.h);
+    const left = clamp(
+      point?.x ?? (selection.w - width) / 2,
+      0,
+      Math.max(0, selection.w - width),
+    );
+    const top = clamp(
+      point?.y ?? (selection.h - height) / 2,
+      0,
+      Math.max(0, selection.h - height),
+    );
+    const id = `text-${nextTextId.current++}`;
+    pushAnnotation({
+      type: "text",
+      id,
+      x: left / selection.w,
+      y: top / selection.h,
+      w: width / selection.w,
+      h: height / selection.h,
+      fontSize: Math.min(CAPTURE_TEXT_INITIAL_FONT_SIZE, height * 0.72),
+      text: "",
+      color,
+    });
+    setActiveTextId(id);
+    setTool(null);
+    return id;
+  }, [busy, color, pushAnnotation, selection]);
   const onCanvasMouseUp = (event: MouseEvent<HTMLCanvasElement>) => {
     if (!selection) return;
     event.preventDefault();
@@ -291,17 +339,18 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
     setShapeDraft(null);
   };
 
-  const updateTextAnnotation = useCallback((id: string, patch: Partial<Pick<Extract<CaptureAnnotation, { type: "text" }>, "x" | "y" | "text">>) => {
+  const updateTextAnnotation = useCallback((id: string, patch: Partial<Pick<Extract<CaptureAnnotation, { type: "text" }>, "x" | "y" | "w" | "h" | "fontSize" | "text">>) => {
     setAnnotations((current) => current.map((annotation) => annotation.type === "text" && annotation.id === id ? { ...annotation, ...patch } : annotation));
   }, []);
   const deleteTextAnnotation = useCallback((id: string) => {
     setAnnotations((current) => current.filter((annotation) => !(annotation.type === "text" && annotation.id === id)));
+    setActiveTextId((current) => current === id ? null : current);
   }, []);
 
   return {
     tool, setTool, color, setColor, annotations, setAnnotations, redoStack, setRedoStack,
     shapeDraft, setShapeDraft, nextNumber, setNextNumber, penDraft, setPenDraft,
-    textDraft, setTextDraft, canvasRef, undo, redo, onCanvasMouseDown, onCanvasMouseMove,
-    onCanvasMouseUp, commitTextDraft, updateTextAnnotation, deleteTextAnnotation, exportOverlayBase64,
+    activeTextId, setActiveTextId, canvasRef, undo, redo, onCanvasMouseDown, onCanvasMouseMove,
+    onCanvasMouseUp, createTextAnnotation, updateTextAnnotation, deleteTextAnnotation, exportOverlayBase64,
   };
 }

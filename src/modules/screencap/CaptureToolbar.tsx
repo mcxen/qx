@@ -13,6 +13,7 @@ import {
   ChevronDown,
   MoveUpRight,
   Pencil,
+  Play,
   Redo2,
   Undo2,
   X,
@@ -495,7 +496,9 @@ export const CaptureToolbar = forwardRef<HTMLDivElement, CaptureToolbarProps>(fu
           shortcut="Enter"
           onClick={onConfirm}
         >
-          <Check size={17} strokeWidth={2.5} />
+          {screenshot
+            ? <Check size={17} strokeWidth={2.5} />
+            : <Play size={17} fill="currentColor" strokeWidth={1.8} />}
         </ToolButton>
         <ToolButton shortcut="Esc" label={t("common.cancel", "Cancel")} disabled={busy} className="is-icon" onClick={onCancel}>
           <X size={16} />

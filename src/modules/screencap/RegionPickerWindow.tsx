@@ -74,9 +74,9 @@ export default function RegionPickerWindow() {
   const drawingRef = useRef(false);
   const {
     tool, setTool, color, setColor, annotations, setAnnotations, redoStack, setRedoStack,
-    shapeDraft, setShapeDraft, setNextNumber, penDraft, setPenDraft, textDraft, setTextDraft,
+    shapeDraft, setShapeDraft, setNextNumber, penDraft, setPenDraft, activeTextId, setActiveTextId,
     canvasRef, undo, redo, onCanvasMouseDown, onCanvasMouseMove, onCanvasMouseUp,
-    commitTextDraft, updateTextAnnotation, deleteTextAnnotation, exportOverlayBase64,
+    createTextAnnotation, updateTextAnnotation, deleteTextAnnotation, exportOverlayBase64,
   } = useCaptureAnnotations(selection, busy);
   const multiDisplay = picker?.multiDisplay === true;
   const multiDisplayRef = useRef(false);
@@ -433,7 +433,7 @@ export default function RegionPickerWindow() {
     setRedoStack([]);
     setShapeDraft(null);
     setPenDraft(null);
-    setTextDraft(null);
+    setActiveTextId(null);
     setNextNumber(1);
     setTool(null);
     setError(null);
@@ -698,8 +698,8 @@ export default function RegionPickerWindow() {
             void invoke("screencap_set_picker_passthrough", { enabled: false }).catch(() => {});
             return;
           }
-          if (textDraft) {
-            setTextDraft(null);
+          if (activeTextId) {
+            setActiveTextId(null);
             return;
           }
           if (tool) {
@@ -747,7 +747,6 @@ export default function RegionPickerWindow() {
           if (target?.closest("input, textarea, [contenteditable='true']")) {
             return;
           }
-          if (textDraft) return;
           if (!selection || busy || countdown !== null) return;
           event.preventDefault();
           void confirm("screenshot", selection, null, {
@@ -814,7 +813,7 @@ export default function RegionPickerWindow() {
             switchPickMode(pickMode === "region" ? "fullscreen" : "region");
           } else if (key === "1") setTool("rect");
           else if (key === "2") setTool("arrow");
-          else if (key === "3") setTool("text");
+          else if (key === "3") createTextAnnotation();
           else if (key === "4") setTool("pen");
           else if (key === "5") setTool("number");
           else if (key === "6") setTool("mosaic");
@@ -842,12 +841,6 @@ export default function RegionPickerWindow() {
           <div
             className={`qx-region-picker-rect${selection ? " is-selected" : ""}${tool ? ` is-tool-${tool}` : ""}${recordingActive ? " is-recording" : ""}`}
             style={{ left: visibleRect.x, top: visibleRect.y, width: visibleRect.w, height: visibleRect.h }}
-            onDoubleClick={(event) => {
-              if (!selection || tool || busy || countdown !== null) return;
-              event.preventDefault();
-              event.stopPropagation();
-              void confirm(intent);
-            }}
           >
             {selection && !recordingActive && countdown === null && (
               <>
@@ -861,36 +854,11 @@ export default function RegionPickerWindow() {
                 <CaptureTextAnnotations
                   selection={selection}
                   annotations={annotations.filter((annotation) => annotation.type === "text")}
+                  activeId={activeTextId}
+                  onActiveChange={setActiveTextId}
                   onUpdate={updateTextAnnotation}
                   onDelete={deleteTextAnnotation}
                 />
-                {textDraft && (
-                  <input
-                    autoFocus
-                    className="qx-region-picker-text-input"
-                    value={textDraft.text}
-                    placeholder={t("screencap.picker.textPrompt", "Enter annotation text")}
-                    style={{
-                      color,
-                      left: clamp(textDraft.point.x, 4, Math.max(4, selection.w - 184)),
-                      top: clamp(textDraft.point.y - 22, 4, Math.max(4, selection.h - 32)),
-                    }}
-                    onChange={(event) => setTextDraft({ ...textDraft, text: event.target.value })}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    onBlur={() => commitTextDraft()}
-                    onKeyDown={(event) => {
-                      event.stopPropagation();
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        commitTextDraft();
-                      }
-                      if (event.key === "Escape") {
-                        event.preventDefault();
-                        setTextDraft(null);
-                      }
-                    }}
-                  />
-                )}
                 {!tool && (['n', 'e', 's', 'w'] as const).map((edge) => (
                   <div
                     key={`move-${edge}`}
@@ -934,7 +902,14 @@ export default function RegionPickerWindow() {
           onToggleIntent={() => switchIntent(intent === "screenshot" ? "recording" : "screenshot")}
           onSelectRegion={() => switchPickMode("region")}
           onSelectFullscreen={selectFullScreen}
-          onToolChange={setTool}
+          onToolChange={(nextTool) => {
+            if (nextTool === "text") {
+              createTextAnnotation();
+              return;
+            }
+            setActiveTextId(null);
+            setTool(nextTool);
+          }}
           onColorChange={setColor}
           onUndo={undo}
           onRedo={redo}
@@ -967,7 +942,7 @@ export default function RegionPickerWindow() {
       {selection && tool && countdown === null && (
         <div className="qx-region-picker-hint is-tool-hint">
           {tool === "text"
-            ? t("screencap.picker.textHint", "Click to place text; click existing text to edit or drag it to move")
+            ? t("screencap.picker.textHint", "Click Text to add; drag to move and use blue corners to resize")
             : tool === "arrow"
               ? t("screencap.picker.arrowHint", "Drag inside the selection to draw an arrow")
               : tool === "rect"

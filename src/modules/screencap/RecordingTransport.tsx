@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { PanelBottom, PictureInPicture2, Square } from "lucide-react";
+import { Circle, Play } from "lucide-react";
 import { useT } from "../../i18n";
 import type { RecordingSnapshot, RecordingStatus } from "./store";
 
@@ -7,13 +6,10 @@ export const RECORDING_TRANSPORT_WIDTH = 340;
 export const RECORDING_TRANSPORT_HEIGHT = 36;
 
 interface RecordingTransportProps {
-  host: "main" | "floating";
   snapshot?: RecordingSnapshot | null;
   status?: RecordingStatus;
   elapsedMs?: number;
-  frameCount?: number;
   stopping?: boolean;
-  onTransfer: () => void | Promise<void>;
   onStop: () => void | Promise<void>;
 }
 
@@ -25,88 +21,54 @@ function formatTime(milliseconds: number): string {
 }
 
 export default function RecordingTransport({
-  host,
   snapshot,
   status,
   elapsedMs,
-  frameCount,
   stopping = false,
-  onTransfer,
   onStop,
 }: RecordingTransportProps) {
   const t = useT();
-  const [transferring, setTransferring] = useState(false);
   const phase = snapshot?.phase ?? status ?? "recording";
   const elapsed = snapshot?.elapsedMs ?? elapsedMs ?? 0;
-  const frames = snapshot?.frameCount ?? frameCount ?? 0;
   const processing = phase === "processing" || stopping;
   const failed = phase === "error";
-  const measuredFps = elapsed >= 1000 && frames > 0
-    ? (frames * 1000 / elapsed).toFixed(1)
-    : null;
-  const transferLabel = host === "main"
-    ? t("screencap.popOut", "Move to Floating Controls")
-    : t("screencap.controls.dock", "Move into Qx");
-
-  const transfer = async () => {
-    if (transferring || processing) return;
-    setTransferring(true);
-    // A short contraction makes the cross-window hand-off read as one surface moving.
-    await new Promise((resolve) => window.setTimeout(resolve, 110));
-    try {
-      await onTransfer();
-    } finally {
-      setTransferring(false);
-    }
-  };
 
   return (
     <div
-      className={`qx-recording-transport is-${host}${failed ? " is-error" : ""}${
+      className={`qx-recording-toolbar${failed ? " is-error" : ""}${
         processing ? " is-processing" : ""
-      }${transferring ? " is-transferring" : ""}`}
-      data-tauri-drag-region={host === "floating" ? true : undefined}
+      }`}
+      data-tauri-drag-region
       aria-label={t("screencap.controls.aria", "Screen recording controls")}
     >
-      <span className="qx-recording-transport-dot" aria-hidden="true" />
-      <strong className="qx-recording-transport-state" data-tauri-drag-region={host === "floating" ? true : undefined}>
+      <div className="qx-recording-toolbar-status" data-tauri-drag-region>
+      <strong data-tauri-drag-region>
         {processing
           ? t("screencap.controls.savingShort", "Saving")
           : failed
             ? t("screencap.controls.error", "Recording error")
             : t("screencap.controls.recording", "Recording")}
       </strong>
-      <span className="qx-recording-transport-time" data-tauri-drag-region={host === "floating" ? true : undefined}>
+      <span data-tauri-drag-region>
         {formatTime(elapsed)}
       </span>
-      <span className="qx-recording-transport-frames" data-tauri-drag-region={host === "floating" ? true : undefined}>
-        {frames} {t("screencap.framesShort", "frames")}{measuredFps ? ` · ${measuredFps} fps` : ""}
-      </span>
-      <span className="qx-recording-transport-divider" aria-hidden="true" />
+      </div>
+      <span className="qx-recording-toolbar-divider" aria-hidden="true" />
       <button
-        className="qx-recording-transport-icon"
+        className="qx-recording-toolbar-action"
         type="button"
-        title={transferLabel}
-        aria-label={transferLabel}
-        disabled={processing || transferring}
-        onClick={() => void transfer()}
-      >
-        {host === "main" ? <PictureInPicture2 size={14} /> : <PanelBottom size={14} />}
-      </button>
-      <button
-        className="qx-recording-transport-stop"
-        type="button"
-        disabled={processing || transferring}
+        aria-label={processing
+          ? t("screencap.controls.savingShort", "Saving")
+          : t("screencap.controls.pauseSave", "Pause and save recording")}
+        title={processing
+          ? t("screencap.controls.savingShort", "Saving")
+          : t("screencap.controls.pauseSave", "Pause and save recording")}
+        disabled={processing}
         onClick={() => void onStop()}
       >
-        <Square size={9} fill="currentColor" aria-hidden="true" />
-        <span>
-          {processing
-            ? t("screencap.controls.savingShort", "Saving")
-            : failed
-              ? t("screencap.controls.finish", "Finish")
-              : t("screencap.controls.stop", "Stop")}
-        </span>
+        {processing
+          ? <Play size={15} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />
+          : <Circle size={15} fill="currentColor" strokeWidth={1.8} aria-hidden="true" />}
       </button>
     </div>
   );

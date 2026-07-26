@@ -150,3 +150,110 @@ pub(super) fn delete_capture(id: i64) -> Result<(), String> {
     }
     Ok(())
 }
+
+pub(super) fn rename_capture(id: i64, new_name: String) -> Result<GifEntry, String> {
+    let name = new_name.trim();
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || name.ends_with(['.', ' '])
+        || name
+            .chars()
+            .any(|character| character.is_control() || r#"<>:"/\|?*"#.contains(character))
+    {
+        return Err("Invalid file name".to_string());
+    }
+
+    let conn = open_db().map_err(|error| format!("db: {error}"))?;
+    let entry = conn
+        .query_row(
+            "SELECT id, file_path, thumbnail_path, width, height, frame_count, duration_ms, created_at
+             FROM gif_history WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok(GifEntry {
+                    id: row.get(0)?,
+                    path: row.get(1)?,
+                    thumbnail_path: row.get(2)?,
+                    width: row.get::<_, Option<i64>>(3)?.unwrap_or(0) as u32,
+                    height: row.get::<_, Option<i64>>(4)?.unwrap_or(0) as u32,
+                    frame_count: row.get::<_, Option<i64>>(5)?.unwrap_or(0) as u32,
+                    duration_ms: row.get::<_, Option<i64>>(6)?.unwrap_or(0) as u64,
+                    created_at: row.get(7)?,
+                })
+            },
+        )
+        .map_err(|error| format!("not found: {error}"))?;
+
+    let source = PathBuf::from(&entry.path);
+    if !source.is_file() {
+        return Err("Capture file no longer exists".to_string());
+    }
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    let destination_name = if extension.is_empty() {
+        name.to_string()
+    } else {
+        format!("{name}.{extension}")
+    };
+    let destination = source.with_file_name(destination_name);
+    if destination == source {
+        return Ok(entry);
+    }
+    if destination.exists() {
+        return Err("A file with that name already exists".to_string());
+    }
+
+    let thumbnail_source = entry.thumbnail_path.as_ref().map(PathBuf::from);
+    let thumbnail_destination = thumbnail_source.as_ref().and_then(|thumbnail| {
+        if !thumbnail.is_file() {
+            return None;
+        }
+        let thumbnail_extension = thumbnail
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or("png");
+        Some(destination.with_file_name(format!("{name}.cover.{thumbnail_extension}")))
+    });
+    if let Some(thumbnail) = thumbnail_destination.as_ref() {
+        if thumbnail.exists() {
+            return Err("A preview file with that name already exists".to_string());
+        }
+    }
+
+    fs::rename(&source, &destination).map_err(|error| format!("rename capture: {error}"))?;
+    if let (Some(thumbnail_source), Some(thumbnail_destination)) =
+        (thumbnail_source.as_ref(), thumbnail_destination.as_ref())
+    {
+        if let Err(error) = fs::rename(thumbnail_source, thumbnail_destination) {
+            let _ = fs::rename(&destination, &source);
+            return Err(format!("rename preview: {error}"));
+        }
+    }
+
+    let destination_text = destination.to_string_lossy().to_string();
+    let thumbnail_text = thumbnail_destination
+        .as_ref()
+        .map(|value| value.to_string_lossy().to_string())
+        .or_else(|| entry.thumbnail_path.clone());
+    if let Err(error) = conn.execute(
+        "UPDATE gif_history SET file_path = ?1, thumbnail_path = ?2 WHERE id = ?3",
+        params![destination_text, thumbnail_text, id],
+    ) {
+        if let (Some(thumbnail_source), Some(thumbnail_destination)) =
+            (thumbnail_source.as_ref(), thumbnail_destination.as_ref())
+        {
+            let _ = fs::rename(thumbnail_destination, thumbnail_source);
+        }
+        let _ = fs::rename(&destination, &source);
+        return Err(format!("update history: {error}"));
+    }
+
+    Ok(GifEntry {
+        path: destination_text,
+        thumbnail_path: thumbnail_text,
+        ..entry
+    })
+}
