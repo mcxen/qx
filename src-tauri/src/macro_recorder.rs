@@ -1,7 +1,7 @@
 use enigo::{Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
-use rdev::{listen, Event, EventType};
+use rdev::{Event, EventType};
 use serde::{Deserialize, Serialize};
-use std::sync::{Mutex, Once, OnceLock};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::command;
 
@@ -31,26 +31,16 @@ struct RecordingState {
 }
 
 static RECORDING: OnceLock<Mutex<Option<RecordingState>>> = OnceLock::new();
-static LISTENER: Once = Once::new();
 
 fn recording_state() -> &'static Mutex<Option<RecordingState>> {
     RECORDING.get_or_init(|| Mutex::new(None))
 }
 
 fn start_listener_once() {
-    LISTENER.call_once(|| {
-        std::thread::Builder::new()
-            .name("qx-macro-recorder".to_string())
-            .spawn(|| {
-                if let Err(e) = listen(|event| record_event(event)) {
-                    eprintln!("rdev listen error: {e:?}");
-                }
-            })
-            .ok();
-    });
+    crate::input_events::ensure_started();
 }
 
-fn record_event(event: Event) {
+pub(crate) fn record_shared_event(event: Event) {
     let Ok(mut guard) = recording_state().lock() else {
         return;
     };

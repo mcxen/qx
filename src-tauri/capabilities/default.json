@@ -19,6 +19,7 @@
     "clipboard-manager:allow-write-image",
     "shell:default",
     "shell:allow-open",
+    "dialog:allow-open",
     "core:window:default",
     "core:window:allow-show",
     "core:window:allow-hide",

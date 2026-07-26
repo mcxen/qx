@@ -814,9 +814,11 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   };
 
   const startWindowDrag = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!IS_WINDOWS_HOST || event.button !== 0) return;
+    if (event.button !== 0) return;
     const target = event.target instanceof Element ? event.target : null;
-    // Direct topbar hits are already handled by Tauri's drag-region listener.
+    // Direct topbar hits use Tauri's drag-region listener. Explicitly start a
+    // drag from non-interactive title/wrapper descendants on every platform so
+    // the useful move target is not limited to a few pixels of empty chrome.
     if (target === event.currentTarget) return;
     if (
       target?.closest(

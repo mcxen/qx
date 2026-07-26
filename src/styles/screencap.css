@@ -27,48 +27,6 @@
   pointer-events: none;
 }
 
-.qx-region-picker-modebar {
-  position: absolute;
-  z-index: 6;
-  top: 18px;
-  left: 50%;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 10px;
-  background: rgba(22, 22, 24, 0.9);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
-  transform: translateX(-50%);
-}
-
-.qx-region-picker-modebar button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 28px;
-  padding: 0 9px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.82);
-  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  white-space: nowrap;
-  cursor: pointer;
-}
-
-.qx-region-picker-modebar button:hover,
-.qx-region-picker-modebar button.is-active {
-  background: rgba(255, 255, 255, 0.15);
-  color: #fff;
-}
-
-.qx-region-picker-modebar button:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
-
 .qx-region-picker-shade {
   position: absolute;
   /* Active-display cutout dim — dark enough to read the selection hole. */
@@ -245,28 +203,49 @@
 }
 
 .qx-region-picker-toolbar {
+  --qx-capture-toolbar-bg: rgb(247 247 246 / 0.98);
+  --qx-capture-toolbar-border: rgb(65 72 72 / 0.78);
+  --qx-capture-toolbar-text: rgb(47 55 55);
+  --qx-capture-toolbar-hover: rgb(31 41 41 / 0.10);
+  --qx-capture-toolbar-divider: rgb(60 67 67 / 0.52);
   position: absolute;
   z-index: 4;
   display: flex;
   align-items: center;
   justify-content: center;
-  flex-wrap: wrap;
-  gap: 5px;
-  max-width: calc(100vw - 20px);
-  min-height: 34px;
-  padding: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 9px;
-  background: rgba(22, 22, 24, 0.9);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+  width: max-content;
+  flex-wrap: nowrap;
+  gap: 2px;
+  max-width: none;
+  min-height: 46px;
+  padding: 5px 6px;
+  border: 1px solid var(--qx-capture-toolbar-border);
+  border-radius: 4px;
+  background: var(--qx-capture-toolbar-bg);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.28);
   transform: translateX(-50%);
+  pointer-events: auto;
+  touch-action: none;
+  white-space: nowrap;
 }
 
-.qx-region-picker-toolbar > span {
+.qx-capture-toolbar-main,
+.qx-capture-toolbar-tail {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+
+.qx-capture-toolbar-main > span,
+.qx-capture-toolbar-tail > span {
   width: 1px;
-  height: 18px;
-  margin: 0 2px;
-  background: rgba(255, 255, 255, 0.16);
+  min-width: 1px;
+  height: 28px;
+  margin: 0 5px;
+  background: var(--qx-capture-toolbar-divider);
 }
 
 .qx-region-picker-toolbar button {
@@ -274,21 +253,22 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
-  height: 28px;
-  padding: 0 8px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0 6px;
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: rgba(255, 255, 255, 0.82);
-  font: 600 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--qx-capture-toolbar-text);
+  font: 500 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   white-space: nowrap;
   cursor: pointer;
 }
 
 .qx-region-picker-toolbar button:hover,
 .qx-region-picker-toolbar button.is-active {
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+  background: var(--qx-capture-toolbar-hover);
+  color: var(--qx-capture-toolbar-text);
 }
 
 .qx-region-picker-toolbar button.is-record {
@@ -301,13 +281,13 @@
 }
 
 .qx-region-picker-toolbar button.is-confirm {
-  background: rgba(52, 199, 89, 0.24);
-  color: #8ff0a8;
+  background: transparent;
+  color: var(--qx-capture-toolbar-text);
 }
 
 .qx-region-picker-toolbar button.is-confirm:hover {
-  background: rgba(52, 199, 89, 0.36);
-  color: #c4ffd1;
+  background: var(--qx-capture-toolbar-hover);
+  color: var(--qx-capture-toolbar-text);
 }
 
 .qx-region-picker-toolbar button.is-record.is-primary {
@@ -316,8 +296,126 @@
 }
 
 .qx-region-picker-toolbar button.is-icon {
-  width: 28px;
+  width: 36px;
   padding: 0;
+}
+
+.qx-region-picker-toolbar button.is-mode-switch {
+  width: 38px;
+  padding: 0;
+  color: var(--qx-capture-toolbar-text);
+}
+
+.qx-region-picker-toolbar.is-recording button.is-mode-switch {
+  color: var(--qx-capture-toolbar-text);
+}
+
+.qx-capture-record-dot {
+  fill: rgb(126 132 130);
+  stroke: var(--qx-capture-toolbar-bg);
+  stroke-width: 1;
+}
+
+.qx-capture-tooltip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qx-capture-tooltip kbd {
+  padding: 1px 4px;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  border-radius: 3px;
+  font: 500 10px/1.25 var(--qx-font-mono);
+  opacity: 0.78;
+}
+
+.qx-capture-color-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+}
+
+.qx-capture-options-trigger {
+  min-width: 86px;
+  padding: 0 10px !important;
+}
+
+.qx-capture-options {
+  --qx-capture-menu-bg: rgb(239 239 237 / 0.99);
+  --qx-capture-menu-text: rgb(33 33 33);
+  --qx-capture-menu-muted: rgb(132 132 132);
+  --qx-capture-menu-divider: rgb(120 120 120 / 0.28);
+  z-index: 10020;
+  width: min(286px, calc(100vw - 24px));
+  max-height: min(560px, calc(100vh - 40px));
+  overflow: auto;
+  padding: 5px 0;
+  border: 1px solid rgb(96 96 96 / 0.42);
+  border-radius: 7px;
+  background: var(--qx-capture-menu-bg) !important;
+  color: var(--qx-capture-menu-text);
+  box-shadow: 0 16px 42px rgb(0 0 0 / 0.30);
+  opacity: 1;
+  backdrop-filter: none;
+}
+
+.qx-capture-number-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid currentColor;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.qx-capture-menu-section + .qx-capture-menu-section {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--qx-capture-menu-divider);
+}
+
+.qx-capture-menu-heading {
+  padding: 3px 12px 2px 27px;
+  color: var(--qx-capture-menu-muted);
+  font: 500 11px/1.25 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.qx-capture-menu-item {
+  display: grid;
+  grid-template-columns: 15px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  min-height: 25px;
+  padding: 2px 12px 2px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--qx-capture-menu-text);
+  font: 500 12px/1.25 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-align: left;
+  cursor: default;
+}
+
+.qx-capture-menu-item:hover:not(:disabled) {
+  background: rgb(0 0 0 / 0.08);
+}
+
+.qx-capture-menu-item:disabled {
+  color: var(--qx-capture-menu-muted);
+}
+
+.qx-capture-menu-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
 }
 
 .qx-region-picker-toolbar button:disabled {
@@ -326,18 +424,23 @@
 }
 
 .qx-region-picker-swatch {
-  width: 16px !important;
-  height: 16px !important;
-  min-width: 16px;
+  flex: 0 0 17px !important;
+  width: 17px !important;
+  min-width: 17px !important;
+  max-width: 17px !important;
+  height: 17px !important;
+  min-height: 17px !important;
+  max-height: 17px !important;
+  aspect-ratio: 1 / 1;
   padding: 0 !important;
   border-radius: 999px !important;
-  border: 2px solid rgba(255, 255, 255, 0.35) !important;
+  border: 1.5px solid rgb(75 80 80 / 0.72) !important;
   box-shadow: none !important;
 }
 
 .qx-region-picker-swatch.is-active {
-  border-color: #fff !important;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25) !important;
+  border-color: rgb(35 38 38) !important;
+  box-shadow: 0 0 0 2px rgb(35 38 38 / 0.20) !important;
 }
 
 .qx-region-picker-countdown {
@@ -537,6 +640,95 @@
   color: var(--qx-text-tertiary);
   font-size: 10px;
   cursor: pointer;
+}
+
+.qx-capture-history-groups {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 6px 10px;
+}
+
+.qx-capture-history-group {
+  min-width: 0;
+}
+
+.qx-capture-history-group-trigger {
+  display: flex;
+  width: 100%;
+  height: 34px;
+  min-height: 34px;
+  justify-content: flex-start;
+  gap: 7px;
+  padding: 0 8px;
+  border-radius: var(--qx-control-radius);
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.qx-capture-history-group-trigger:hover {
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-primary);
+}
+
+.qx-capture-history-group-trigger > span {
+  flex: 1;
+}
+
+.qx-capture-history-group-trigger small {
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.qx-capture-history-group-chevron {
+  flex: 0 0 auto;
+  transform: rotate(-90deg);
+  transition: transform 120ms ease;
+}
+
+.qx-capture-history-group.is-expanded .qx-capture-history-group-chevron {
+  transform: rotate(0deg);
+}
+
+.qx-capture-history-group-content {
+  min-width: 0;
+}
+
+.qx-capture-history-group-divider {
+  height: 1px;
+  margin: 5px 8px;
+  background: var(--qx-border-1);
+}
+
+.qx-capture-history-group .qx-capture-history-list,
+.qx-capture-history-group .qx-capture-history-gallery {
+  overflow: visible;
+}
+
+.qx-capture-history-group .qx-capture-history-list {
+  padding: 2px 0 4px;
+}
+
+.qx-capture-history-group .qx-capture-history-gallery {
+  padding: 6px 2px 8px;
+}
+
+.qx-capture-history-group-empty {
+  display: flex;
+  min-height: 58px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qx-capture-history-group-chevron {
+    transition: none;
+  }
 }
 
 .qx-capture-history-list {

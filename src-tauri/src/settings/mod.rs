@@ -528,6 +528,32 @@ pub struct ScreencapSettings {
     pub history_layout: String,
     #[serde(default)]
     pub controls_pinned: bool,
+    #[serde(default = "default_true")]
+    pub screenshot_sound_enabled: bool,
+    #[serde(default = "default_true")]
+    pub show_floating_thumbnail: bool,
+    #[serde(default = "default_true")]
+    pub remember_last_selection: bool,
+    #[serde(default)]
+    pub screenshot_include_cursor: bool,
+    #[serde(default = "default_true")]
+    pub recording_include_cursor: bool,
+    #[serde(default)]
+    pub recording_show_mouse_clicks: bool,
+    #[serde(default)]
+    pub recording_microphone_id: Option<String>,
+    #[serde(default = "default_capture_destination")]
+    pub screenshot_destination: String,
+    #[serde(default = "default_capture_destination")]
+    pub recording_destination: String,
+    #[serde(default)]
+    pub screenshot_custom_directory: Option<String>,
+    #[serde(default)]
+    pub recording_custom_directory: Option<String>,
+    #[serde(default = "default_capture_open_after")]
+    pub screenshot_open_after: String,
+    #[serde(default = "default_capture_open_after")]
+    pub recording_open_after: String,
 }
 
 fn default_screencap_format() -> String {
@@ -548,6 +574,12 @@ fn default_screencap_confirm_mode() -> String {
 fn default_screencap_history_layout() -> String {
     "gallery".to_string()
 }
+fn default_capture_destination() -> String {
+    "library".to_string()
+}
+fn default_capture_open_after() -> String {
+    "none".to_string()
+}
 
 impl Default for ScreencapSettings {
     fn default() -> Self {
@@ -562,6 +594,19 @@ impl Default for ScreencapSettings {
             auto_copy_to_clipboard: true,
             history_layout: default_screencap_history_layout(),
             controls_pinned: false,
+            screenshot_sound_enabled: true,
+            show_floating_thumbnail: true,
+            remember_last_selection: true,
+            screenshot_include_cursor: false,
+            recording_include_cursor: true,
+            recording_show_mouse_clicks: false,
+            recording_microphone_id: None,
+            screenshot_destination: default_capture_destination(),
+            recording_destination: default_capture_destination(),
+            screenshot_custom_directory: None,
+            recording_custom_directory: None,
+            screenshot_open_after: default_capture_open_after(),
+            recording_open_after: default_capture_open_after(),
         }
     }
 }

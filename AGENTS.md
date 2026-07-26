@@ -425,6 +425,67 @@ Run the smallest useful verification set for the change:
 
 Record any skipped validation and why.
 
+### Local macOS build, install, and TCC-efficient testing
+
+For repeated local macOS testing, use the free Apple Account **Personal Team**
+and an `Apple Development` identity. Do not change the checked-in Tauri signing
+configuration to make this happen: Release Action intentionally signs its CI
+artifact independently with ad-hoc signing and has no access to a developer's
+private key.
+
+The local flow is:
+
+```bash
+# 1. Build the local release bundle.
+npm run tauri build
+
+# 2. Find the stable local development identity.
+security find-identity -v -p codesigning
+
+# 3. Sign the freshly built bundle and install it.
+IDENTITY='Apple Development: your-apple-id@example.com (TEAMID1234)'
+APP='src-tauri/target/release/bundle/macos/Qx.app'
+
+codesign --force --deep \
+  --sign "$IDENTITY" \
+  --timestamp=none \
+  --identifier 'com.mcx.qx' \
+  --entitlements src-tauri/Entitlements.plist \
+  "$APP"
+
+codesign --verify --deep --strict --verbose=2 "$APP"
+rm -rf /Applications/Qx.app
+ditto "$APP" /Applications/Qx.app
+```
+
+The `--deep` signing is deliberate for the Tauri bundle because Qx contains
+nested executables such as `qx-ffmpeg`. Verify the installed copy too when an
+installer or copy step may have replaced the bundle:
+
+```bash
+codesign --verify --deep --strict --verbose=2 /Applications/Qx.app
+codesign -dvvv --entitlements :- /Applications/Qx.app 2>&1
+```
+
+The output should contain the same Apple Development authority, Team ID, and
+`Identifier=com.mcx.qx`. Keep the identity, Team ID, Bundle ID, and entitlements
+stable. macOS TCC associates permissions with the app's code identity; switching
+from ad-hoc to Apple Development requires one new authorization, after which
+repeated builds signed by the same identity can reuse the grant.
+
+If `codesign` reports `errSecInternalComponent` or `unable to build chain to
+self-signed root`, inspect the certificate issuer. Apple Development
+certificates use the current WWDR G3 intermediate; an expired WWDR certificate
+in the login keychain can make the certificate visible in Xcode but unusable by
+the command-line signer. Install the matching WWDR G3 certificate from Apple's
+official PKI page, then rerun `security find-identity`.
+
+Do not put the personal identity, private key, provisioning profile, or a
+machine-specific `signingIdentity` setting in the repository. A local wrapper
+script may live outside the repository or be excluded locally. The signed local
+bundle is for development/TCC testing only; Release Action remains ad-hoc and
+non-notarized unless the release process is explicitly changed.
+
 **Do not wait for GitHub Windows builds.** After a push, inspect at most one
 status snapshot to confirm the workflow URL and current state, then return
 control to the user. Never run `gh run watch`, repeated `gh run view/list`

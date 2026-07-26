@@ -39,6 +39,8 @@ export { Button } from "./shadcn/button";
 export { Input } from "./shadcn/input";
 export { Calendar, type CalendarRange } from "./shadcn/calendar";
 export { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./shadcn/popover";
+export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./shadcn/tooltip";
+export { Switch } from "./shadcn/switch";
 export { Card, CardContent, CardDescription, CardHeader, CardTitle };
 export { Separator };
 export { ScrollArea, ScrollBar };

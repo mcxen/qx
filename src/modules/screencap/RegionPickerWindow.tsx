@@ -1,28 +1,20 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import {
-  AppWindow,
-  Check,
-  Grid3x3,
-  Hash,
-  Maximize,
-  MoveUpRight,
-  Pencil,
-  Square,
-  Type,
-  X,
-} from "lucide-react";
 import { useT } from "../../i18n";
-import {
-  listDesktopWindowsForCapture,
-  type DesktopWindow,
-} from "../../system";
 import { loadLastCaptureSelection, saveLastCaptureSelection } from "./preferences";
-import { DEFAULT_SETTINGS, type ScreencapSettings } from "../settings/store";
+import { DEFAULT_SETTINGS, type ScreencapSettings, type Settings } from "../settings/store";
 import type { CaptureMode, RecordingSnapshot, RecordingOptions } from "./store";
-import { resolveCaptureToolbarPosition } from "./captureToolbarPosition";
-
+import { CaptureToolbar } from "./CaptureToolbar";
+import { useCaptureToolbarPlacement } from "./useCaptureToolbarPlacement";
+import { useCaptureAnnotations, type Point, type Rect } from "./useCaptureAnnotations";
+import {
+  clamp,
+  clampRectToViewport,
+  MIN_CAPTURE_SIZE as MIN_SIZE,
+  rectFromPoints,
+  selectionFromLogicalArea,
+} from "./captureSelectionGeometry";
 interface LogicalArea {
   x: number;
   y: number;
@@ -30,7 +22,6 @@ interface LogicalArea {
   h: number;
   monitorId?: number | null;
 }
-
 interface PickerStatus {
   mode: CaptureMode;
   monitorId: number;
@@ -41,131 +32,14 @@ interface PickerStatus {
   /** When false (single display), skip cross-display pointer-follow IPC. */
   multiDisplay?: boolean;
 }
-
-interface Point {
-  x: number;
-  y: number;
-}
-
-interface Rect extends Point {
-  w: number;
-  h: number;
-}
-
 type ResizeHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
-type PickMode = "region" | "window" | "fullscreen";
-type Tool = "text" | "arrow" | "rect" | "pen" | "number" | "mosaic" | null;
-type AnnotationColor = "#ff3b30" | "#ffcc00" | "#5b8cff" | "#34c759" | "#ffffff";
-type ShapeKind = "arrow" | "rect" | "mosaic";
-
-type Annotation =
-  | { type: "text"; x: number; y: number; text: string; color: AnnotationColor }
-  | { type: "arrow"; x1: number; y1: number; x2: number; y2: number; color: AnnotationColor }
-  | { type: "rect"; x1: number; y1: number; x2: number; y2: number; color: AnnotationColor }
-  | { type: "mosaic"; x1: number; y1: number; x2: number; y2: number; color: AnnotationColor }
-  | { type: "number"; x: number; y: number; value: number; color: AnnotationColor }
-  | { type: "pen"; points: Point[]; color: AnnotationColor };
-
+type PickMode = "region" | "fullscreen";
 interface RectInteraction {
   kind: "move" | "resize";
   start: Point;
   origin: Rect;
   handle?: ResizeHandle;
 }
-
-const MIN_SIZE = 32;
-const ANNOTATION_COLORS: AnnotationColor[] = ["#ff3b30", "#ffcc00", "#5b8cff", "#34c759", "#ffffff"];
-
-function selectionFromLogicalArea(area: LogicalArea | null | undefined): Rect | null {
-  if (!area || area.w < MIN_SIZE || area.h < MIN_SIZE) return null;
-  return {
-    x: area.x,
-    y: area.y,
-    w: area.w,
-    h: area.h,
-  };
-}
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-function rectFromPoints(start: Point, end: Point): Rect {
-  return {
-    x: Math.min(start.x, end.x),
-    y: Math.min(start.y, end.y),
-    w: Math.abs(end.x - start.x),
-    h: Math.abs(end.y - start.y),
-  };
-}
-
-function clampRectToViewport(rect: Rect): Rect {
-  const w = clamp(rect.w, MIN_SIZE, window.innerWidth);
-  const h = clamp(rect.h, MIN_SIZE, window.innerHeight);
-  return {
-    x: clamp(rect.x, 0, Math.max(0, window.innerWidth - w)),
-    y: clamp(rect.y, 0, Math.max(0, window.innerHeight - h)),
-    w,
-    h,
-  };
-}
-
-function drawArrow(context: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number) {
-  const angle = Math.atan2(y2 - y1, x2 - x1);
-  const head = 12;
-  context.beginPath();
-  context.moveTo(x1, y1);
-  context.lineTo(x2, y2);
-  context.moveTo(x2, y2);
-  context.lineTo(x2 - head * Math.cos(angle - Math.PI / 6), y2 - head * Math.sin(angle - Math.PI / 6));
-  context.moveTo(x2, y2);
-  context.lineTo(x2 - head * Math.cos(angle + Math.PI / 6), y2 - head * Math.sin(angle + Math.PI / 6));
-  context.stroke();
-}
-
-/** Opaque redaction mosaic — covers underlying pixels when the overlay is composited. */
-function drawMosaic(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-) {
-  const cell = 8;
-  for (let row = 0; row < h; row += cell) {
-    for (let col = 0; col < w; col += cell) {
-      const seed = ((Math.floor(x + col) * 73856093) ^ (Math.floor(y + row) * 19349663)) >>> 0;
-      const tone = 40 + (seed % 160);
-      context.fillStyle = `rgb(${tone},${tone},${tone})`;
-      context.fillRect(x + col, y + row, Math.min(cell, w - col), Math.min(cell, h - row));
-    }
-  }
-}
-
-function drawNumberMarker(
-  context: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  value: number,
-  color: string,
-) {
-  const radius = 12;
-  context.beginPath();
-  context.fillStyle = color;
-  context.arc(x, y, radius, 0, Math.PI * 2);
-  context.fill();
-  context.lineWidth = 2;
-  context.strokeStyle = "rgba(255,255,255,.92)";
-  context.stroke();
-  context.fillStyle = "#fff";
-  context.font = "700 13px -apple-system, BlinkMacSystemFont, sans-serif";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-  context.fillText(String(value), x, y + 0.5);
-  context.textAlign = "start";
-  context.textBaseline = "alphabetic";
-}
-
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
@@ -174,32 +48,21 @@ function sleep(ms: number): Promise<void> {
 export default function RegionPickerWindow() {
   const t = useT();
   const [picker, setPicker] = useState<PickerStatus | null>(null);
-  const [windows, setWindows] = useState<DesktopWindow[]>([]);
   const [recording, setRecording] = useState<RecordingSnapshot | null>(null);
   const [captureSettings, setCaptureSettings] = useState<ScreencapSettings>(DEFAULT_SETTINGS.screencap);
+  const settingsEnvelopeRef = useRef<Settings | null>(null);
   const [intent, setIntent] = useState<CaptureMode>("screenshot");
-  const toolbarRef = useRef<HTMLDivElement>(null);
-  const [toolbarSize, setToolbarSize] = useState({ width: 440, height: 34 });
   const [pickMode, setPickMode] = useState<PickMode>("region");
+  const regionSelectionRef = useRef<Rect | null>(null);
   const [drawStart, setDrawStart] = useState<Point | null>(null);
   const [drawEnd, setDrawEnd] = useState<Point | null>(null);
   const [selection, setSelection] = useState<Rect | null>(null);
   const [interaction, setInteraction] = useState<RectInteraction | null>(null);
-  const [tool, setTool] = useState<Tool>(null);
-  const [color, setColor] = useState<AnnotationColor>("#ff3b30");
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
-  const [, setRedoStack] = useState<Annotation[]>([]);
-  const [shapeDraft, setShapeDraft] = useState<{ kind: ShapeKind; start: Point; end: Point } | null>(null);
-  const [nextNumber, setNextNumber] = useState(1);
   const lastClickRef = useRef<{ at: number; x: number; y: number } | null>(null);
-  const [penDraft, setPenDraft] = useState<Point[] | null>(null);
-  const [textDraft, setTextDraft] = useState<{ point: Point; text: string } | null>(null);
-  const [hoverWindow, setHoverWindow] = useState<DesktopWindow | null>(null);
   const [busy, setBusy] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const cancelCountdownRef = useRef(false);
   /** Latest draw points while dragging — refs stay valid before React commits. */
   const drawStartRef = useRef<Point | null>(null);
@@ -209,6 +72,12 @@ export default function RegionPickerWindow() {
   const interactionRafRef = useRef<number | null>(null);
   const interactionPointRef = useRef<Point | null>(null);
   const drawingRef = useRef(false);
+  const {
+    tool, setTool, color, setColor, annotations, setAnnotations, redoStack, setRedoStack,
+    shapeDraft, setShapeDraft, setNextNumber, penDraft, setPenDraft, textDraft, setTextDraft,
+    canvasRef, undo, redo, onCanvasMouseDown, onCanvasMouseMove, onCanvasMouseUp,
+    commitTextDraft,
+  } = useCaptureAnnotations(selection, busy);
   const multiDisplay = picker?.multiDisplay === true;
   const multiDisplayRef = useRef(false);
   multiDisplayRef.current = multiDisplay;
@@ -237,39 +106,29 @@ export default function RegionPickerWindow() {
     setDrawEnd(null);
   }, []);
 
-  const loadWindows = useCallback(async () => {
-    if (picker?.monitorId == null || picker.coordinateScale == null || picker.coordinateScale <= 0) {
-      setWindows([]);
-      return;
-    }
-    try {
-      // System desktop-window inventory — not a screencap-private command.
-      const list = await listDesktopWindowsForCapture(picker.monitorId, picker.coordinateScale);
-      setWindows(list);
-    } catch {
-      setWindows([]);
-    }
-  }, [picker?.coordinateScale, picker?.monitorId]);
-
   useEffect(() => {
     document.body.classList.add("qx-region-picker-body");
     rootRef.current?.focus();
     void Promise.all([
       invoke<PickerStatus | null>("screencap_region_select_status"),
       invoke<RecordingSnapshot>("recording_status"),
-      invoke<{ screencap: ScreencapSettings }>("get_settings"),
+      invoke<Settings>("get_settings"),
     ]).then(([status, snapshot, settings]) => {
       setPicker(status);
+      settingsEnvelopeRef.current = settings;
       setCaptureSettings(settings.screencap);
       if (status?.mode === "recording" || status?.mode === "screenshot") {
         setIntent(status.mode);
       }
       const restored = selectionFromLogicalArea(status?.logicalArea);
       if (restored) {
+        regionSelectionRef.current = restored;
         setSelection(restored);
       } else {
         // Remember last region on this monitor for fast re-capture.
-        const remembered = loadLastCaptureSelection();
+        const remembered = settings.screencap.remember_last_selection
+          ? loadLastCaptureSelection()
+          : null;
         if (
           remembered
           && (remembered.monitorId == null || remembered.monitorId === status?.monitorId)
@@ -280,6 +139,7 @@ export default function RegionPickerWindow() {
             w: remembered.w,
             h: remembered.h,
           });
+          regionSelectionRef.current = next;
           setSelection(next);
         }
       }
@@ -309,19 +169,25 @@ export default function RegionPickerWindow() {
         setIntent(payload.mode);
       }
       clearDrawDraft();
+      interactionRef.current = null;
+      setInteraction(null);
+      setPickMode("region");
       setTool(null);
-      setHoverWindow(null);
       setBusy(false);
       setCountdown(null);
       setError(null);
       cancelCountdownRef.current = true;
       if (payload.restoreSelection) {
         const restored = selectionFromLogicalArea(payload.logicalArea);
-        if (restored) setSelection(restored);
+        if (restored) {
+          regionSelectionRef.current = restored;
+          setSelection(restored);
+        }
         setAnnotations([]);
         setRedoStack([]);
         setNextNumber(1);
       } else {
+        regionSelectionRef.current = null;
         setSelection(null);
         setAnnotations([]);
         setRedoStack([]);
@@ -362,18 +228,20 @@ export default function RegionPickerWindow() {
     };
   }, []);
 
-  useEffect(() => {
-    if (pickMode !== "window") return;
-    void loadWindows();
-    const timer = window.setInterval(() => void loadWindows(), 1200);
-    return () => window.clearInterval(timer);
-  }, [loadWindows, pickMode]);
-
-  // After display switch / session attach, refresh window list once picker is known.
-  useEffect(() => {
-    if (picker?.monitorId == null) return;
-    void loadWindows();
-  }, [loadWindows, picker?.monitorId, picker?.coordinateScale]);
+  const updateCaptureSettings = useCallback((patch: Partial<ScreencapSettings>) => {
+    setCaptureSettings((current) => {
+      const next = { ...current, ...patch };
+      const envelope = settingsEnvelopeRef.current;
+      if (envelope) {
+        const settings = { ...envelope, screencap: next };
+        settingsEnvelopeRef.current = settings;
+        void invoke<Settings>("update_settings", { settings }).catch((updateError) => {
+          setError(String(updateError));
+        });
+      }
+      return next;
+    });
+  }, []);
 
   // Rust owns cross-display pointer tracking. Stop it as soon as the user has
   // started an interaction so an in-progress selection can never move screens.
@@ -391,94 +259,6 @@ export default function RegionPickerWindow() {
     }
   }, [busy, countdown, drawStart, interaction, multiDisplay, selection, setPointerFollow]);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !selection) return;
-    const ratio = window.devicePixelRatio || 1;
-    canvas.width = Math.max(1, Math.round(selection.w * ratio));
-    canvas.height = Math.max(1, Math.round(selection.h * ratio));
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    context.setTransform(1, 0, 0, 1, 0, 0);
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    context.scale(ratio, ratio);
-    context.lineCap = "round";
-    context.lineJoin = "round";
-    context.lineWidth = 3;
-
-    const paint = (annotation: Annotation) => {
-      context.strokeStyle = annotation.color;
-      context.fillStyle = annotation.color;
-      if (annotation.type === "arrow") {
-        drawArrow(
-          context,
-          annotation.x1 * selection.w,
-          annotation.y1 * selection.h,
-          annotation.x2 * selection.w,
-          annotation.y2 * selection.h,
-        );
-      } else if (annotation.type === "rect") {
-        const x = Math.min(annotation.x1, annotation.x2) * selection.w;
-        const y = Math.min(annotation.y1, annotation.y2) * selection.h;
-        const w = Math.abs(annotation.x2 - annotation.x1) * selection.w;
-        const h = Math.abs(annotation.y2 - annotation.y1) * selection.h;
-        context.strokeRect(x, y, w, h);
-      } else if (annotation.type === "mosaic") {
-        const x = Math.min(annotation.x1, annotation.x2) * selection.w;
-        const y = Math.min(annotation.y1, annotation.y2) * selection.h;
-        const w = Math.abs(annotation.x2 - annotation.x1) * selection.w;
-        const h = Math.abs(annotation.y2 - annotation.y1) * selection.h;
-        drawMosaic(context, x, y, w, h);
-      } else if (annotation.type === "pen") {
-        if (annotation.points.length < 2) return;
-        context.beginPath();
-        context.moveTo(annotation.points[0].x * selection.w, annotation.points[0].y * selection.h);
-        for (let i = 1; i < annotation.points.length; i += 1) {
-          context.lineTo(annotation.points[i].x * selection.w, annotation.points[i].y * selection.h);
-        }
-        context.stroke();
-      } else if (annotation.type === "number") {
-        drawNumberMarker(
-          context,
-          annotation.x * selection.w,
-          annotation.y * selection.h,
-          annotation.value,
-          annotation.color,
-        );
-      } else {
-        const x = annotation.x * selection.w;
-        const y = annotation.y * selection.h;
-        context.font = "600 18px -apple-system, BlinkMacSystemFont, sans-serif";
-        context.lineWidth = 4;
-        context.strokeStyle = "rgba(255,255,255,.9)";
-        context.strokeText(annotation.text, x, y);
-        context.fillStyle = annotation.color;
-        context.fillText(annotation.text, x, y);
-        context.lineWidth = 3;
-        context.strokeStyle = annotation.color;
-      }
-    };
-
-    for (const annotation of annotations) paint(annotation);
-    if (shapeDraft) {
-      paint({
-        type: shapeDraft.kind,
-        x1: shapeDraft.start.x / selection.w,
-        y1: shapeDraft.start.y / selection.h,
-        x2: shapeDraft.end.x / selection.w,
-        y2: shapeDraft.end.y / selection.h,
-        color,
-      });
-    }
-    if (penDraft && penDraft.length > 1) {
-      paint({
-        type: "pen",
-        points: penDraft.map((point) => ({ x: point.x / selection.w, y: point.y / selection.h })),
-        color,
-      });
-    }
-  }, [annotations, color, penDraft, selection, shapeDraft]);
-
   const cancel = useCallback(async () => {
     if (busy && countdown === null) return;
     cancelCountdownRef.current = true;
@@ -488,33 +268,6 @@ export default function RegionPickerWindow() {
     await invoke("screencap_cancel_region_select").catch(() => {});
   }, [busy, countdown]);
 
-  const pushAnnotation = useCallback((annotation: Annotation) => {
-    setAnnotations((current) => [...current, annotation]);
-    setRedoStack([]);
-  }, []);
-
-  const undo = useCallback(() => {
-    setAnnotations((current) => {
-      if (current.length === 0) return current;
-      const removed = current[current.length - 1];
-      if (removed.type === "number") {
-        setNextNumber((value) => Math.max(1, Math.min(value, removed.value)));
-      }
-      const next = current.slice(0, -1);
-      setRedoStack((stack) => [...stack, removed]);
-      return next;
-    });
-  }, []);
-
-  const redo = useCallback(() => {
-    setRedoStack((stack) => {
-      if (stack.length === 0) return stack;
-      const item = stack[stack.length - 1];
-      setAnnotations((current) => [...current, item]);
-      return stack.slice(0, -1);
-    });
-  }, []);
-
   const confirm = useCallback(async (
     action: CaptureMode,
     areaOverride?: Rect,
@@ -523,7 +276,7 @@ export default function RegionPickerWindow() {
   ) => {
     const target = areaOverride ?? selection;
     if (busy || !target || countdown !== null) return;
-    if (action === "recording" && annotations.length > 0) {
+    if (action === "recording" && annotations.some((annotation) => annotation.type !== "mosaic")) {
       setError(t("screencap.picker.annotationsBlockRecord", "Clear annotations before recording."));
       return;
     }
@@ -564,15 +317,20 @@ export default function RegionPickerWindow() {
     }
 
     try {
-      saveLastCaptureSelection({
-        x: Math.round(target.x),
-        y: Math.round(target.y),
-        w: Math.round(target.w),
-        h: Math.round(target.h),
-        monitorId: picker?.monitorId ?? null,
-      });
+      if (captureSettings.remember_last_selection) {
+        saveLastCaptureSelection({
+          x: Math.round(target.x),
+          y: Math.round(target.y),
+          w: Math.round(target.w),
+          h: Math.round(target.h),
+          monitorId: picker?.monitorId ?? null,
+        });
+      }
       const shouldCopy = action === "screenshot"
-        && (options?.forceCopy === true || dismissUi || captureSettings.auto_copy_to_clipboard);
+        && (options?.forceCopy === true
+          || dismissUi
+          || captureSettings.screenshot_destination === "clipboard"
+          || captureSettings.auto_copy_to_clipboard);
       await invoke("screencap_confirm_region_select", {
         area: {
           x: Math.round(target.x),
@@ -587,6 +345,33 @@ export default function RegionPickerWindow() {
           resolution: captureSettings.resolution,
         } satisfies RecordingOptions,
         action,
+        captureOptions: {
+          destination: action === "screenshot"
+            ? captureSettings.screenshot_destination
+            : captureSettings.recording_destination,
+          customDirectory: action === "screenshot"
+            ? captureSettings.screenshot_custom_directory
+            : captureSettings.recording_custom_directory,
+          openAfter: action === "screenshot"
+            ? captureSettings.screenshot_open_after
+            : captureSettings.recording_open_after,
+          showFloatingThumbnail: captureSettings.show_floating_thumbnail,
+          rememberSelection: captureSettings.remember_last_selection,
+          includeCursor: action === "screenshot"
+            ? captureSettings.screenshot_include_cursor
+            : captureSettings.recording_include_cursor,
+          showMouseClicks: action === "recording" && captureSettings.recording_show_mouse_clicks,
+          microphoneId: action === "recording" ? captureSettings.recording_microphone_id : null,
+          recordingMasks: action === "recording"
+            ? annotations.filter((annotation) => annotation.type === "mosaic").map((annotation) => ({
+              x: Math.min(annotation.x1, annotation.x2),
+              y: Math.min(annotation.y1, annotation.y2),
+              w: Math.abs(annotation.x2 - annotation.x1),
+              h: Math.abs(annotation.y2 - annotation.y1),
+            }))
+            : [],
+          playSound: action === "screenshot" && captureSettings.screenshot_sound_enabled,
+        },
         ocrDestination: action === "screenshot" ? (ocrDestination ?? null) : null,
         annotationOverlayBase64,
         copyToClipboard: shouldCopy,
@@ -596,25 +381,24 @@ export default function RegionPickerWindow() {
       setBusy(false);
       setError(String(captureError));
     }
-  }, [annotations.length, busy, captureSettings, countdown, picker?.monitorId, selection, t]);
+  }, [annotations, busy, captureSettings, countdown, picker?.monitorId, selection, t]);
 
   const selectFullScreen = useCallback(() => {
     if (busy) return;
+    if (pickMode === "region" && selection) regionSelectionRef.current = selection;
     setInteractionLock(false);
     setPointerFollow(false);
     setPickMode("fullscreen");
     setSelection({ x: 0, y: 0, w: window.innerWidth, h: window.innerHeight });
     clearDrawDraft();
-    setHoverWindow(null);
     setAnnotations([]);
     setRedoStack([]);
     setError(null);
-  }, [busy, clearDrawDraft, setInteractionLock, setPointerFollow]);
+  }, [busy, clearDrawDraft, pickMode, selection, setInteractionLock, setPointerFollow]);
 
   const switchPickMode = useCallback((mode: PickMode) => {
     if (busy) return;
-    setPickMode(mode);
-    setHoverWindow(null);
+    if (mode === "region" && pickMode === "region") return;
     clearDrawDraft();
     setInteractionLock(false);
     setTool(null);
@@ -622,13 +406,38 @@ export default function RegionPickerWindow() {
       selectFullScreen();
       return;
     }
-    if (mode === "window") {
-      setSelection(null);
-      void loadWindows();
+    setPickMode("region");
+    setSelection(regionSelectionRef.current);
+    setAnnotations([]);
+    setRedoStack([]);
+    setNextNumber(1);
+    setError(null);
+    setPointerFollow(regionSelectionRef.current == null);
+  }, [busy, clearDrawDraft, pickMode, selectFullScreen, setInteractionLock, setPointerFollow]);
+
+  const switchIntent = useCallback((next: CaptureMode) => {
+    if (busy || next === intent) return;
+    if (
+      intent === "screenshot"
+      && next === "recording"
+      && annotations.length > 0
+      && !window.confirm(t(
+        "screencap.picker.clearAnnotationsForRecording",
+        "Recording does not include screenshot annotations. Clear them and switch?",
+      ))
+    ) {
       return;
     }
-    // region: keep current selection if any
-  }, [busy, clearDrawDraft, loadWindows, selectFullScreen, setInteractionLock]);
+    setAnnotations([]);
+    setRedoStack([]);
+    setShapeDraft(null);
+    setPenDraft(null);
+    setTextDraft(null);
+    setNextNumber(1);
+    setTool(null);
+    setError(null);
+    setIntent(next);
+  }, [annotations.length, busy, intent, t]);
 
   const beginResize = (event: React.PointerEvent, handle: ResizeHandle) => {
     if (!selection || busy) return;
@@ -649,20 +458,6 @@ export default function RegionPickerWindow() {
       /* ignore */
     }
   };
-
-  const hitWindow = useCallback((point: Point): DesktopWindow | null => {
-    for (const item of windows) {
-      if (
-        point.x >= item.x
-        && point.y >= item.y
-        && point.x <= item.x + item.w
-        && point.y <= item.y + item.h
-      ) {
-        return item;
-      }
-    }
-    return null;
-  }, [windows]);
 
   const flushDrawEnd = useCallback(() => {
     drawRafRef.current = null;
@@ -717,20 +512,6 @@ export default function RegionPickerWindow() {
     if (busy || event.button !== 0 || countdown !== null) return;
     // Pin display immediately (Rust atomic) — do not wait for React or follow IPC.
     setInteractionLock(true);
-    if (pickMode === "window") {
-      const hit = hitWindow({ x: event.clientX, y: event.clientY });
-      if (hit) {
-        event.preventDefault();
-        const next = clampRectToViewport({ x: hit.x, y: hit.y, w: hit.w, h: hit.h });
-        setSelection(next);
-        setHoverWindow(null);
-        setAnnotations([]);
-        setRedoStack([]);
-        setPickMode("region");
-        setInteractionLock(false);
-      }
-      return;
-    }
     if (pickMode === "fullscreen") {
       setInteractionLock(false);
       return;
@@ -801,9 +582,6 @@ export default function RegionPickerWindow() {
   };
 
   const onRootPointerMove = (event: React.PointerEvent) => {
-    if (pickMode === "window" && !selection && !busy && !drawingRef.current) {
-      setHoverWindow(hitWindow({ x: event.clientX, y: event.clientY }));
-    }
     // Use refs so the first moves after pointerdown work before React re-renders
     // (critical on Windows WebView2 high-rate mouse events).
     const start = drawStartRef.current;
@@ -852,6 +630,8 @@ export default function RegionPickerWindow() {
       return false;
     }
     setSelection(next);
+    regionSelectionRef.current = next;
+    setPickMode("region");
     const confirmMode = captureSettings.capture_confirm_mode;
     // Screenshots stay in the editable selection state so the user can resize
     // and annotate before the explicit Cmd/Ctrl+C copy action. The release
@@ -895,151 +675,30 @@ export default function RegionPickerWindow() {
     setInteractionLock(false);
   };
 
-  const canvasPoint = (event: React.MouseEvent<HTMLCanvasElement>): Point | null => {
-    if (!selection) return null;
-    const bounds = event.currentTarget.getBoundingClientRect();
-    return {
-      x: clamp(event.clientX - bounds.left, 0, selection.w),
-      y: clamp(event.clientY - bounds.top, 0, selection.h),
-    };
-  };
-
-  const onCanvasMouseDown = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!selection || !tool || busy) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const point = canvasPoint(event);
-    if (!point) return;
-    if (tool === "text") {
-      setTextDraft({ point, text: "" });
-      setTool(null);
-      return;
-    }
-    if (tool === "number") {
-      pushAnnotation({
-        type: "number",
-        x: point.x / selection.w,
-        y: point.y / selection.h,
-        value: nextNumber,
-        color,
-      });
-      setNextNumber((value) => value + 1);
-      return;
-    }
-    if (tool === "pen") {
-      setPenDraft([point]);
-      return;
-    }
-    if (tool === "arrow" || tool === "rect" || tool === "mosaic") {
-      setShapeDraft({ kind: tool, start: point, end: point });
-    }
-  };
-
-  const onCanvasMouseMove = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    const point = canvasPoint(event);
-    if (!point) return;
-    if (penDraft) {
-      setPenDraft((current) => (current ? [...current, point] : current));
-      return;
-    }
-    if (shapeDraft) {
-      setShapeDraft({ ...shapeDraft, end: point });
-    }
-  };
-
-  const commitTextDraft = useCallback(() => {
-    if (!selection || !textDraft) return;
-    const text = textDraft.text.trim();
-    if (text) {
-      pushAnnotation({
-        type: "text",
-        x: textDraft.point.x / selection.w,
-        y: textDraft.point.y / selection.h,
-        text,
-        color,
-      });
-    }
-    setTextDraft(null);
-  }, [color, pushAnnotation, selection, textDraft]);
-
-  const onCanvasMouseUp = (event: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!selection) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (penDraft) {
-      if (penDraft.length > 1) {
-        pushAnnotation({
-          type: "pen",
-          points: penDraft.map((point) => ({
-            x: point.x / selection.w,
-            y: point.y / selection.h,
-          })),
-          color,
-        });
-      }
-      setPenDraft(null);
-      return;
-    }
-    if (!shapeDraft) return;
-    const end = canvasPoint(event) ?? shapeDraft.end;
-    const distance = Math.hypot(end.x - shapeDraft.start.x, end.y - shapeDraft.start.y);
-    if (distance > 8) {
-      pushAnnotation({
-        type: shapeDraft.kind,
-        x1: shapeDraft.start.x / selection.w,
-        y1: shapeDraft.start.y / selection.h,
-        x2: end.x / selection.w,
-        y2: end.y / selection.h,
-        color,
-      });
-    }
-    setShapeDraft(null);
-  };
-
   const draft = drawStart && drawEnd ? rectFromPoints(drawStart, drawEnd) : null;
-  const rect = selection ?? draft ?? (hoverWindow
-    ? { x: hoverWindow.x, y: hoverWindow.y, w: hoverWindow.w, h: hoverWindow.h }
-    : null);
+  const rect = selection ?? draft;
   const display = picker?.monitorName ?? t("screencap.display", "display");
   const recordingActive = recording?.phase === "recording" || recording?.phase === "processing";
   const visibleRect = recordingActive && rect
     ? { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }
     : rect;
-  const showAnnotationTools = intent === "screenshot";
-  const toolbarPosition = selection
-    ? resolveCaptureToolbarPosition(
-      selection,
-      toolbarSize,
-      { width: window.innerWidth, height: window.innerHeight },
-    )
-    : null;
+  const {
+    toolbarRef,
+    toolbarStyle,
+    onToolbarPointerDown,
+    onToolbarPointerMove,
+    onToolbarPointerUp,
+  } = useCaptureToolbarPlacement({
+    selection,
+    fullscreen: pickMode === "fullscreen",
+    intent,
+  });
   const handles: ResizeHandle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
-
-  useLayoutEffect(() => {
-    const toolbar = toolbarRef.current;
-    if (!toolbar || !selection) return;
-    const measure = () => {
-      const bounds = toolbar.getBoundingClientRect();
-      setToolbarSize((current) => {
-        const next = {
-          width: Math.ceil(bounds.width),
-          height: Math.ceil(bounds.height),
-        };
-        return current.width === next.width && current.height === next.height
-          ? current
-          : next;
-      });
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(toolbar);
-    return () => observer.disconnect();
-  }, [intent, selection]);
 
   return (
     <div
       ref={rootRef}
-      className={`qx-region-picker${pickMode === "window" ? " is-window-mode" : ""}${countdown !== null ? " is-countdown" : ""}`}
+      className={`qx-region-picker${countdown !== null ? " is-countdown" : ""}`}
       tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
@@ -1124,7 +783,7 @@ export default function RegionPickerWindow() {
           const key = event.key.toLowerCase();
           if (key === "s") {
             event.preventDefault();
-            setIntent("screenshot");
+            switchIntent("screenshot");
           } else if (key === "r") {
             // Xnip-style: re-apply last confirmed region on this display.
             event.preventDefault();
@@ -1148,10 +807,10 @@ export default function RegionPickerWindow() {
               w: remembered.w,
               h: remembered.h,
             });
+            regionSelectionRef.current = next;
             setSelection(next);
             setPickMode("region");
             setTool(null);
-            setHoverWindow(null);
             setAnnotations([]);
             setRedoStack([]);
             setNextNumber(1);
@@ -1161,11 +820,10 @@ export default function RegionPickerWindow() {
             setPointerFollow(false);
           } else if (key === "v") {
             event.preventDefault();
-            setIntent("recording");
-            setTool(null);
+            switchIntent("recording");
           } else if (key === "tab") {
             event.preventDefault();
-            switchPickMode(pickMode === "region" ? "window" : "region");
+            switchPickMode(pickMode === "region" ? "fullscreen" : "region");
           } else if (key === "1") setTool("rect");
           else if (key === "2") setTool("arrow");
           else if (key === "3") setTool("text");
@@ -1179,22 +837,6 @@ export default function RegionPickerWindow() {
       onPointerUp={onRootPointerUp}
       onPointerCancel={onRootPointerUp}
     >
-      {!recordingActive && countdown === null && (
-        <div className="qx-region-picker-modebar" onPointerDown={(event) => event.stopPropagation()}>
-          <button type="button" className={pickMode === "region" ? "is-active" : ""} disabled={busy} onClick={() => switchPickMode("region")}>
-            {t("screencap.pick.region", "Region")}
-          </button>
-          <button type="button" className={pickMode === "window" ? "is-active" : ""} disabled={busy} onClick={() => switchPickMode("window")}>
-            <AppWindow size={13} aria-hidden="true" />
-            {t("screencap.pick.window", "Window")}
-          </button>
-          <button type="button" className={pickMode === "fullscreen" ? "is-active" : ""} disabled={busy} onClick={() => switchPickMode("fullscreen")}>
-            <Maximize size={13} aria-hidden="true" />
-            {t("screencap.fullscreen", "Full Screen")}
-          </button>
-        </div>
-      )}
-
       {/* Dim the active display immediately so multi-monitor capture reads as a
           single capture session; cutout shades replace this once a rect exists. */}
       {!recordingActive && countdown === null && !visibleRect && (
@@ -1210,7 +852,7 @@ export default function RegionPickerWindow() {
             <div className="qx-region-picker-shade" style={{ left: visibleRect.x + visibleRect.w, top: visibleRect.y, right: 0, height: visibleRect.h }} />
           </>}
           <div
-            className={`qx-region-picker-rect${selection ? " is-selected" : ""}${tool ? ` is-tool-${tool}` : ""}${recordingActive ? " is-recording" : ""}${!selection && hoverWindow ? " is-hover-window" : ""}`}
+            className={`qx-region-picker-rect${selection ? " is-selected" : ""}${tool ? ` is-tool-${tool}` : ""}${recordingActive ? " is-recording" : ""}`}
             style={{ left: visibleRect.x, top: visibleRect.y, width: visibleRect.w, height: visibleRect.h }}
             onPointerDown={onSelectionPointerDown}
           >
@@ -1264,108 +906,44 @@ export default function RegionPickerWindow() {
           {!recordingActive && countdown === null && (
             <div className="qx-region-picker-size" style={{ left: visibleRect.x, top: Math.max(8, visibleRect.y - 28) }}>
               {Math.round(visibleRect.w)} × {Math.round(visibleRect.h)}
-              {hoverWindow && !selection ? ` · ${hoverWindow.appName || hoverWindow.title}` : ""}
             </div>
           )}
         </>
       )}
 
       {selection && !recordingActive && countdown === null && (
-        <div
+        <CaptureToolbar
           ref={toolbarRef}
-          className="qx-region-picker-toolbar"
-          style={{
-            left: toolbarPosition?.left,
-            top: toolbarPosition?.top,
-          }}
-          /* Root listens for pointerdown (not only mousedown). Stopping mouse
-             alone still let the root clear selection and start a new drag
-             before Screenshot/Record click handlers ran. */
-          onPointerDown={(event) => event.stopPropagation()}
-          onMouseDown={(event) => event.stopPropagation()}
-        >
-          {showAnnotationTools && (
-            <>
-              <button
-                type="button"
-                onClick={() => void confirm("screenshot", selection, "clipboard")}
-                disabled={busy}
-                title={t("screencap.ocrClipboard", "OCR to clipboard")}
-              >
-                {t("screencap.ocrClipboard", "OCR Copy")}
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirm("screenshot", selection, "editor")}
-                disabled={busy}
-                title={t("screencap.ocrEditor", "OCR to Text Toolbox")}
-              >
-                {t("screencap.ocrEditor", "OCR Editor")}
-              </button>
-            </>
-          )}
-          {showAnnotationTools && (
-            <>
-              <span />
-              <button type="button" className={tool === "rect" ? "is-active" : ""} onClick={() => setTool(tool === "rect" ? null : "rect")} title="1">
-                <Square size={14} />
-              </button>
-              <button type="button" className={tool === "arrow" ? "is-active" : ""} onClick={() => setTool(tool === "arrow" ? null : "arrow")} title="2">
-                <MoveUpRight size={14} />
-              </button>
-              <button type="button" className={tool === "text" ? "is-active" : ""} onClick={() => setTool(tool === "text" ? null : "text")} title="3">
-                <Type size={14} />
-              </button>
-              <button type="button" className={tool === "pen" ? "is-active" : ""} onClick={() => setTool(tool === "pen" ? null : "pen")} title="4">
-                <Pencil size={14} />
-              </button>
-              <button type="button" className={tool === "number" ? "is-active" : ""} onClick={() => setTool(tool === "number" ? null : "number")} title="5">
-                <Hash size={14} />
-              </button>
-              <button type="button" className={tool === "mosaic" ? "is-active" : ""} onClick={() => setTool(tool === "mosaic" ? null : "mosaic")} title="6">
-                <Grid3x3 size={14} />
-              </button>
-              <span />
-              {ANNOTATION_COLORS.map((swatch) => (
-                <button
-                  key={swatch}
-                  type="button"
-                  className={`qx-region-picker-swatch${color === swatch ? " is-active" : ""}`}
-                  style={{ background: swatch }}
-                  aria-label={swatch}
-                  onClick={() => setColor(swatch)}
-                />
-              ))}
-            </>
-          )}
-          <button
-            type="button"
-            className="is-icon is-confirm"
-            onClick={() => void confirm(intent, selection)}
-            disabled={busy || (intent === "recording" && annotations.length > 0)}
-            aria-label={intent === "screenshot"
-              ? t("screencap.picker.confirmScreenshot", "Confirm screenshot")
-              : t("screencap.picker.confirmRecording", "Confirm recording")}
-            title={intent === "screenshot"
-              ? t("screencap.picker.confirmScreenshot", "Confirm screenshot")
-              : t("screencap.picker.confirmRecording", "Confirm recording")}
-          >
-            <Check size={16} strokeWidth={2.5} />
-          </button>
-          <button type="button" className="is-icon" onClick={() => void cancel()} aria-label={t("common.cancel", "Cancel")}>
-            <X size={14} />
-          </button>
-        </div>
+          intent={intent}
+          tool={tool}
+          color={color}
+          busy={busy}
+          canUndo={annotations.length > 0}
+          canRedo={redoStack.length > 0}
+          settings={captureSettings}
+          onToggleIntent={() => switchIntent(intent === "screenshot" ? "recording" : "screenshot")}
+          onSelectRegion={() => switchPickMode("region")}
+          onSelectFullscreen={selectFullScreen}
+          onToolChange={setTool}
+          onColorChange={setColor}
+          onUndo={undo}
+          onRedo={redo}
+          onSettingsChange={updateCaptureSettings}
+          onConfirm={() => void confirm(intent, selection)}
+          onCancel={() => void cancel()}
+          onToolbarPointerDown={onToolbarPointerDown}
+          onToolbarPointerMove={onToolbarPointerMove}
+          onToolbarPointerUp={onToolbarPointerUp}
+          style={toolbarStyle}
+        />
       )}
 
       {!rect && !busy && !recordingActive && countdown === null && (
         <div className="qx-region-picker-hint">
-          {pickMode === "window"
-            ? t("screencap.picker.windowHint", "Hover a window and click to select · Esc to cancel")
-            : t(
-              "screencap.picker.draw",
-              "Drag on {display} · Ctrl/⌘+C copies · R last region · Esc cancel",
-            ).replace("{display}", display)}
+          {t(
+            "screencap.picker.draw",
+            "Drag on {display} · Ctrl/⌘+C copies · R last region · Esc cancel",
+          ).replace("{display}", display)}
         </div>
       )}
       {selection && !tool && !recordingActive && countdown === null && (

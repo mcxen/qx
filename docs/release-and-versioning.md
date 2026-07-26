@@ -43,7 +43,11 @@ Qx 使用自定义跨平台 helper 更新，不依赖 Tauri signed updater：
 - `qx_update_download_and_install` 在两端都校验 SHA256 和 size；macOS 解压到 staging，
   Windows 额外校验安装器 PE (`MZ`) 头。
 - **签名策略（不买 Apple 开发者账号）**：
-  - CI 与本地均使用 **ad-hoc** `codesign --sign -`（免费，非公证）。
+  - CI / Release 使用 **ad-hoc** `codesign --sign -`（免费，非公证）。
+  - 本机重复开发测试可登录免费 Apple Account 的 **Personal Team**，使用稳定的
+    `Apple Development` 身份签名；这不会进入仓库，也不会改变 Release Action。
+  - 本机 Apple Development 签名和 CI ad-hoc 签名是两个代码身份；测试 CI 下载包时
+    仍可能需要单独授予 TCC 权限。
   - 从 `Qx.app` 复制出的 update helper 必须再次：去 quarantine（`xattr -cr`）+ ad-hoc 重签，否则 Gatekeeper 会拦截 helper 进程。
   - 解压后的 staging `Qx.app` 与替换后的目标 bundle 同样清理 xattr 并 ad-hoc 重签。
 - 安装编排完成后主进程通过 `app_quit::force_quit` 退出（**不得**裸调 `app.exit`：

@@ -19,7 +19,7 @@ use super::state::{
 };
 use super::storage::{load_last_region, save_last_region};
 use super::types::{CaptureMode, PickerSession};
-use super::{CaptureDisplay, PickerStatus, RecordArea, RecordingOptions};
+use super::{CaptureDisplay, CaptureExecutionOptions, PickerStatus, RecordArea, RecordingOptions};
 use crate::desktop_windows::{self, DesktopWindow};
 use crate::display::{
     capture_monitor, capture_monitor_for_tauri, cursor_monitor, displays, tauri_monitor_for_capture,
@@ -581,6 +581,7 @@ pub async fn screencap_confirm_region_select(
     app: AppHandle,
     area: RecordArea,
     options: Option<RecordingOptions>,
+    capture_options: Option<CaptureExecutionOptions>,
     action: Option<String>,
     annotation_overlay_base64: Option<String>,
     copy_to_clipboard: Option<bool>,
@@ -622,11 +623,13 @@ pub async fn screencap_confirm_region_select(
         .map(CaptureMode::parse)
         .transpose()?
         .unwrap_or(session.mode);
+    let capture_options = capture_options.unwrap_or_default();
     if action == CaptureMode::Recording && annotation_overlay_base64.is_some() {
         return Err("Annotations can only be applied to screenshots".to_string());
     }
     if action == CaptureMode::Screenshot {
-        let copy_to_clipboard = copy_to_clipboard.unwrap_or(false);
+        let copy_to_clipboard = copy_to_clipboard.unwrap_or(false)
+            || capture_options.destination.as_deref() == Some("clipboard");
         // Copy-and-continue shortcuts always dismiss Qx chrome after the shot.
         let dismiss_ui = dismiss_ui.unwrap_or(false);
         let ocr_destination = ocr_destination
@@ -639,15 +642,25 @@ pub async fn screencap_confirm_region_select(
         // surface hidden and look indistinguishable from a process crash.
         //
         // Pattern: runtime::blocking (capture) → runtime::ui (clipboard + restore).
+        let include_cursor = capture_options.include_cursor.unwrap_or(false);
         let result = crate::runtime::blocking(move || {
-            take_screenshot_blocking(area, annotation_overlay_base64)
+            take_screenshot_blocking(area, annotation_overlay_base64, include_cursor)
         })
         .await
         .map_err(|error| format!("screenshot worker failed: {error}"))
         .and_then(|inner| inner);
         match result {
             Ok(output) => {
+                super::feedback::play_screenshot_sound(&app, capture_options.play_sound).await;
+                let delivery_options = capture_options.clone();
+                let source_for_delivery = output.path.clone();
+                let delivery = crate::runtime::blocking(move || {
+                    super::delivery::deliver_capture(&source_for_delivery, &delivery_options)
+                })
+                .await
+                .map_err(|error| format!("capture delivery worker failed: {error}"))?;
                 let output_path = output.path.to_string_lossy().to_string();
+                let delivered_path = delivery.delivered_path.to_string_lossy().to_string();
                 let path_for_clip = output.path.clone();
                 let path_for_event = output_path.clone();
                 let app_ui = app.clone();
@@ -673,15 +686,20 @@ pub async fn screencap_confirm_region_select(
 
                 let clipboard_error = crate::runtime::ui(&app, move || {
                     use tauri_plugin_clipboard_manager::ClipboardExt;
-                    let mut clipboard_error = if copy_to_clipboard {
-                        crate::clipboard::write_image_file_to_clipboard(&app_ui, &path_for_clip)
-                            .err()
-                            .map(|error| {
-                                format!("Screenshot saved, but automatic copy failed: {error}")
-                            })
-                    } else {
-                        None
-                    };
+                    let mut clipboard_error = delivery.warning.clone();
+                    if copy_to_clipboard {
+                        let copy_error = crate::clipboard::write_image_file_to_clipboard(
+                            &app_ui,
+                            &path_for_clip,
+                        )
+                        .err()
+                        .map(|error| {
+                            format!("Screenshot saved, but automatic copy failed: {error}")
+                        });
+                        if copy_error.is_some() {
+                            clipboard_error = copy_error;
+                        }
+                    }
 
                     if let Some(outcome) = ocr_result {
                         match outcome {
@@ -749,8 +767,10 @@ pub async fn screencap_confirm_region_select(
                         serde_json::json!({
                             "kind": "screenshot",
                             "path": output_path,
+                            "deliveredPath": delivered_path,
                             "copied": copy_to_clipboard,
                             "dismissed": skip_toast,
+                            "showFloatingThumbnail": capture_options.show_floating_thumbnail,
                         }),
                     );
                 });
@@ -777,7 +797,14 @@ pub async fn screencap_confirm_region_select(
         }
     }
     // Area is CSS client points on a picker that covers the chosen display.
-    match recording_session::start_recording(app.clone(), Some(area), options).await {
+    match recording_session::start_recording(
+        app.clone(),
+        Some(area),
+        options,
+        Some(capture_options),
+    )
+    .await
+    {
         Ok(()) => Ok(()),
         Err(error) => {
             let _ = restore_picker_selection_internal(&app);
@@ -835,34 +862,58 @@ pub async fn screencap_recapture_last_region(app: AppHandle) -> Result<(), Strin
     // Brief compositor grace (same order of magnitude as screenshot::capture).
     tokio::time::sleep(std::time::Duration::from_millis(40)).await;
 
-    let copy_to_clipboard = crate::settings::read_settings()
-        .screencap
-        .auto_copy_to_clipboard;
-    let auto_hide_after_capture = crate::settings::read_settings()
-        .screencap
-        .auto_hide_after_capture;
+    let capture_settings = crate::settings::read_settings().screencap;
+    let copy_to_clipboard = capture_settings.auto_copy_to_clipboard;
+    let auto_hide_after_capture = capture_settings.auto_hide_after_capture;
+    let execution = CaptureExecutionOptions {
+        destination: Some(capture_settings.screenshot_destination.clone()),
+        custom_directory: capture_settings.screenshot_custom_directory.clone(),
+        open_after: Some(capture_settings.screenshot_open_after.clone()),
+        show_floating_thumbnail: Some(capture_settings.show_floating_thumbnail),
+        remember_selection: Some(capture_settings.remember_last_selection),
+        include_cursor: Some(capture_settings.screenshot_include_cursor),
+        play_sound: Some(capture_settings.screenshot_sound_enabled),
+        ..CaptureExecutionOptions::default()
+    };
 
-    let result = crate::runtime::blocking(move || take_screenshot_blocking(physical, None))
-        .await
-        .map_err(|error| format!("screenshot worker failed: {error}"))
-        .and_then(|inner| inner);
+    let include_cursor = capture_settings.screenshot_include_cursor;
+    let result =
+        crate::runtime::blocking(move || take_screenshot_blocking(physical, None, include_cursor))
+            .await
+            .map_err(|error| format!("screenshot worker failed: {error}"))
+            .and_then(|inner| inner);
 
     match result {
         Ok(output) => {
+            super::feedback::play_screenshot_sound(
+                &app,
+                Some(capture_settings.screenshot_sound_enabled),
+            )
+            .await;
+            let source_for_delivery = output.path.clone();
+            let delivery = crate::runtime::blocking(move || {
+                super::delivery::deliver_capture(&source_for_delivery, &execution)
+            })
+            .await
+            .map_err(|error| format!("capture delivery worker failed: {error}"))?;
             let output_path = output.path.to_string_lossy().to_string();
+            let delivered_path = delivery.delivered_path.to_string_lossy().to_string();
             let path_for_clip = output.path.clone();
             let path_for_event = output_path.clone();
             let app_ui = app.clone();
             let clipboard_error = crate::runtime::ui(&app, move || {
-                let clipboard_error = if copy_to_clipboard {
-                    crate::clipboard::write_image_file_to_clipboard(&app_ui, &path_for_clip)
-                        .err()
-                        .map(|error| {
-                            format!("Screenshot saved, but automatic copy failed: {error}")
-                        })
-                } else {
-                    None
-                };
+                let mut clipboard_error = delivery.warning.clone();
+                if copy_to_clipboard {
+                    let copy_error =
+                        crate::clipboard::write_image_file_to_clipboard(&app_ui, &path_for_clip)
+                            .err()
+                            .map(|error| {
+                                format!("Screenshot saved, but automatic copy failed: {error}")
+                            });
+                    if copy_error.is_some() {
+                        clipboard_error = copy_error;
+                    }
+                }
                 if let Ok(mut status) = runtime_status().lock() {
                     status.phase = "done";
                     status.started_at = None;
@@ -885,6 +936,8 @@ pub async fn screencap_recapture_last_region(app: AppHandle) -> Result<(), Strin
                     serde_json::json!({
                         "kind": "screenshot",
                         "path": output_path,
+                        "deliveredPath": delivered_path,
+                        "showFloatingThumbnail": capture_settings.show_floating_thumbnail,
                     }),
                 );
             });

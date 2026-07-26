@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+pub(crate) mod ffmpeg;
 pub(crate) mod gif;
 pub(crate) mod h264;
 pub(crate) mod image;

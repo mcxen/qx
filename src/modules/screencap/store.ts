@@ -32,6 +32,33 @@ export interface RecordingOptions {
 
 export type CaptureMode = "screenshot" | "recording";
 
+export interface RelativeCaptureRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+export interface CaptureExecutionOptions {
+  destination?: "library" | "desktop" | "documents" | "clipboard" | "custom";
+  customDirectory?: string | null;
+  openAfter?: "none" | "preview" | "player" | "mail";
+  showFloatingThumbnail?: boolean;
+  rememberSelection?: boolean;
+  includeCursor?: boolean;
+  showMouseClicks?: boolean;
+  microphoneId?: string | null;
+  recordingMasks?: RelativeCaptureRect[];
+  playSound?: boolean;
+}
+
+export interface AudioInput {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  available: boolean;
+}
+
 /** Shared capture-selection port used by the main module and floating island. */
 export function requestCaptureSelection(mode: CaptureMode): Promise<void> {
   return invoke("screencap_begin_capture_select", { mode });
@@ -65,7 +92,13 @@ export function ensureCaptureToastListener(t?: Translate): void {
   if (captureListenerStarted || typeof window === "undefined") return;
   if (!("__TAURI_INTERNALS__" in window)) return;
   captureListenerStarted = true;
-  void listen<{ kind?: string; path?: string; dismissed?: boolean; copied?: boolean }>(
+  void listen<{
+    kind?: string;
+    path?: string;
+    dismissed?: boolean;
+    copied?: boolean;
+    showFloatingThumbnail?: boolean;
+  }>(
     "screencap:captured",
     (event) => {
     const path = event.payload?.path;
@@ -73,6 +106,7 @@ export function ensureCaptureToastListener(t?: Translate): void {
     // Cmd/Ctrl+C copy-and-continue: image is already on the clipboard and Qx
     // stays hidden — no "Screenshot saved / Copy" toast that would break flow.
     if (event.payload?.dismissed) return;
+    if (event.payload?.showFloatingThumbnail === false) return;
     queueScreenshotToast(path);
     const filename = path.split(/[\\/]/).pop() || path;
     const showCaptured = () => {

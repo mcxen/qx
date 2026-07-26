@@ -1,7 +1,31 @@
 use super::{
     default_toggle_launcher_shortcut, default_toggle_window_shortcut, portable_shortcut_key,
-    AdvancedSettings, AgentSettings, BuiltinModulesSettings, Settings,
+    AdvancedSettings, AgentSettings, BuiltinModulesSettings, ScreencapSettings, Settings,
 };
+
+#[test]
+fn legacy_screencap_settings_keep_three_second_delay_and_gain_new_defaults() {
+    let settings: ScreencapSettings = serde_json::from_str(
+        r#"{
+        "output_format":"mp4",
+        "fps":24,
+        "quality":"balanced",
+        "resolution":"1080p",
+        "capture_confirm_mode":"refine",
+        "capture_delay_seconds":3,
+        "auto_hide_after_capture":true,
+        "auto_copy_to_clipboard":true,
+        "history_layout":"gallery",
+        "controls_pinned":false
+    }"#,
+    )
+    .expect("legacy screencap settings");
+    assert_eq!(settings.capture_delay_seconds, 3);
+    assert!(settings.screenshot_sound_enabled);
+    assert!(settings.show_floating_thumbnail);
+    assert_eq!(settings.screenshot_destination, "library");
+    assert_eq!(settings.recording_open_after, "none");
+}
 
 #[test]
 fn legacy_advanced_settings_keep_diagnostic_logging_disabled() {

@@ -18,6 +18,28 @@ export interface LastCaptureSelection {
 }
 
 export type CaptureHistoryLayout = "list" | "gallery";
+export type CaptureHistoryKind = "screenshot" | "recording";
+
+export function getCaptureHistoryKind(entry: {
+  path: string;
+  duration_ms: number;
+}): CaptureHistoryKind {
+  const lower = entry.path.toLowerCase();
+  if (
+    lower.endsWith(".png")
+    || lower.endsWith(".jpg")
+    || lower.endsWith(".jpeg")
+    || lower.endsWith(".webp")
+  ) {
+    return "screenshot";
+  }
+  return entry.duration_ms === 0
+    && !lower.endsWith(".gif")
+    && !lower.endsWith(".mp4")
+    && !lower.endsWith(".mov")
+    ? "screenshot"
+    : "recording";
+}
 
 export function loadLastCaptureSelection(): LastCaptureSelection | null {
   try {

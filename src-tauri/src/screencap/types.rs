@@ -2,6 +2,40 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelativeCaptureRect {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CaptureExecutionOptions {
+    pub destination: Option<String>,
+    pub custom_directory: Option<String>,
+    pub open_after: Option<String>,
+    pub show_floating_thumbnail: Option<bool>,
+    pub remember_selection: Option<bool>,
+    pub include_cursor: Option<bool>,
+    pub show_mouse_clicks: Option<bool>,
+    pub microphone_id: Option<String>,
+    #[serde(default)]
+    pub recording_masks: Vec<RelativeCaptureRect>,
+    pub play_sound: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioInput {
+    pub id: String,
+    pub name: String,
+    pub is_default: bool,
+    pub available: bool,
+}
+
 pub(super) const DEFAULT_FPS: u32 = 24;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -30,10 +64,14 @@ pub(super) struct NormalizedRecordingOptions {
     pub(super) fps: u32,
     pub(super) bitrate: u32,
     pub(super) max_size: Option<(u32, u32)>,
+    pub(super) execution: CaptureExecutionOptions,
 }
 
 impl RecordingOptions {
-    pub(super) fn normalize(self) -> NormalizedRecordingOptions {
+    pub(super) fn normalize(
+        self,
+        execution: CaptureExecutionOptions,
+    ) -> NormalizedRecordingOptions {
         let extension = match self.output_format.as_deref() {
             Some("mov") => "mov",
             _ => "mp4",
@@ -58,6 +96,7 @@ impl RecordingOptions {
             fps,
             bitrate,
             max_size,
+            execution,
         }
     }
 }
@@ -193,6 +232,10 @@ pub(super) struct RecordingState {
     pub(super) stop_flag: std::sync::Arc<AtomicBool>,
     pub(super) thread_handle: Option<std::thread::JoinHandle<Result<RecordingOutput, String>>>,
     pub(super) started_at: std::time::Instant,
+    pub(super) execution: CaptureExecutionOptions,
+    pub(super) output_path: PathBuf,
+    pub(super) audio_capture: Option<crate::media::ffmpeg::AudioCapture>,
+    pub(super) audio_warning: Option<String>,
 }
 
 #[derive(Debug)]

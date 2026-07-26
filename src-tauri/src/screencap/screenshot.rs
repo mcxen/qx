@@ -11,6 +11,7 @@ use crate::display::{capture_monitor, capture_region_from_monitor};
 pub(super) fn capture(
     area: RecordArea,
     annotation_overlay_base64: Option<String>,
+    include_cursor: bool,
 ) -> Result<RecordingOutput, String> {
     // The picker hide is dispatched synchronously to the UI thread. Keep one
     // compositor-frame grace period for Windows DWM / macOS WindowServer
@@ -31,6 +32,18 @@ pub(super) fn capture(
     // Region still-frame is a display system capability; screencap only owns
     // annotation composite + history persistence.
     let mut image = capture_region_from_monitor(&monitor, area.x, area.y, area.w, area.h)?;
+    if include_cursor {
+        crate::input_events::composite_pointer(
+            &mut image,
+            (
+                monitor.x().unwrap_or_default(),
+                monitor.y().unwrap_or_default(),
+            ),
+            monitor.scale_factor().unwrap_or(1.0) as f64,
+            (area.x, area.y),
+            false,
+        );
+    }
     composite_annotation_overlay(&mut image, annotation_overlay_base64.as_deref())?;
     let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();
     let output_path = captures_dir().join(format!("screenshot_{timestamp}.png"));

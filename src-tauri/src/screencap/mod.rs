@@ -1,5 +1,7 @@
 pub(crate) mod commands;
 mod controls;
+mod delivery;
+mod feedback;
 mod geometry;
 mod picker_window;
 mod recording_engine;
@@ -24,4 +26,7 @@ pub use crate::display::DisplayDescriptor as CaptureDisplay;
 pub use commands::screencap_toggle_controls;
 pub use selection::screencap_begin_capture_select;
 pub use selection::screencap_recapture_last_region;
-pub use types::{GifEntry, PickerStatus, RecordArea, RecordingOptions, RecordingStatusSnapshot};
+pub use types::{
+    AudioInput, CaptureExecutionOptions, GifEntry, PickerStatus, RecordArea, RecordingOptions,
+    RecordingStatusSnapshot,
+};

@@ -16,6 +16,7 @@ mod g4f;
 mod github_calendar;
 mod history;
 mod http_client;
+mod input_events;
 mod island_window;
 mod macro_recorder;
 mod main_thread;
@@ -297,6 +298,7 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .on_window_event(|window, event| {
             let label = window.label();
             // Secondary surfaces: hide instead of destroy (main may be hidden).
@@ -787,6 +789,7 @@ pub fn run() {
             g4f::qxai_get_custom_providers,
             g4f::qxai_save_custom_providers,
             plugin_system::plugin_system_set_wallpaper,
+            screencap::recording_session::screencap_list_audio_inputs,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

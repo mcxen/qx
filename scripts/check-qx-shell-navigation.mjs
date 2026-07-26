@@ -20,7 +20,14 @@ import {
   shouldHandleQxGridKey,
 } from "../src/hooks/qxGridNavigation.ts";
 import { normalizePluginWorkbenchState } from "../src/plugin/workbenchTypes.ts";
-import { resolveCaptureToolbarPosition } from "../src/modules/screencap/captureToolbarPosition.ts";
+import {
+  clampCaptureToolbarPosition,
+  resolveCaptureToolbarPosition,
+} from "../src/modules/screencap/captureToolbarPosition.ts";
+import {
+  captureNumberForeground,
+  captureNumberOutline,
+} from "../src/modules/screencap/captureColor.ts";
 import { launcherActionModel } from "../src/launcher/actionModel.ts";
 
 const qxShellSource = readFileSync(
@@ -121,7 +128,7 @@ assert.equal(
 );
 
 // Capture confirmation stays inside the active picker display even when a
-// selection hugs the left/right edge or the toolbar wraps.
+// selection hugs the left/right edge; the toolbar itself remains one row.
 assert.deepEqual(
   resolveCaptureToolbarPosition(
     { x: 0, y: 100, w: 80, h: 120 },
@@ -138,6 +145,26 @@ assert.deepEqual(
   ),
   { left: 470, top: 454 },
 );
+assert.deepEqual(
+  clampCaptureToolbarPosition(
+    { left: -120, top: 900 },
+    { width: 640, height: 46 },
+    { width: 800, height: 600 },
+  ),
+  { left: 330, top: 544 },
+);
+assert.deepEqual(
+  clampCaptureToolbarPosition(
+    { left: 1200, top: -20 },
+    { width: 640, height: 46 },
+    { width: 800, height: 600 },
+  ),
+  { left: 470, top: 10 },
+);
+assert.equal(captureNumberForeground("#ffffff"), "#111111");
+assert.equal(captureNumberForeground("#fff"), "#111111");
+assert.equal(captureNumberForeground("#ff3b30"), "#ffffff");
+assert.equal(captureNumberOutline("#ffffff"), "rgba(0,0,0,.72)");
 
 // Full-size Workbench media owns an inner scrollport. Portrait and long images
 // retain their natural aspect ratio instead of being forced into stage height.

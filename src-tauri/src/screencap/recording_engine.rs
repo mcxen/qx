@@ -6,6 +6,63 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use super::geometry::{clamp_area, crop_physical_into};
 use super::state::{set_capture_error, FRAME_COUNT};
 use super::types::{NormalizedRecordingOptions, RecordArea, RecordingOutput};
+
+fn frame_with_masks<'a>(
+    source: &image::RgbaImage,
+    scratch: &'a mut image::RgbaImage,
+    masks: &[super::types::RelativeCaptureRect],
+) -> Option<&'a image::RgbaImage> {
+    if masks.is_empty() {
+        return None;
+    }
+    if scratch.dimensions() != source.dimensions() {
+        *scratch = image::RgbaImage::new(source.width(), source.height());
+    }
+    scratch.as_mut().copy_from_slice(source.as_raw());
+    for mask in masks {
+        let left = (mask.x.clamp(0.0, 1.0) * source.width() as f64).round() as u32;
+        let top = (mask.y.clamp(0.0, 1.0) * source.height() as f64).round() as u32;
+        let width = (mask.w.clamp(0.0, 1.0) * source.width() as f64).round() as u32;
+        let height = (mask.h.clamp(0.0, 1.0) * source.height() as f64).round() as u32;
+        let right = left.saturating_add(width).min(source.width());
+        let bottom = top.saturating_add(height).min(source.height());
+        for y in top..bottom {
+            for x in left..right {
+                let cell_x = (x - left) / 10;
+                let cell_y = (y - top) / 10;
+                let tone = 48 + (((cell_x * 73) ^ (cell_y * 151)) % 144) as u8;
+                scratch.put_pixel(x, y, image::Rgba([tone, tone, tone, 255]));
+            }
+        }
+    }
+    Some(scratch)
+}
+
+fn frame_with_pointer<'a>(
+    source: &image::RgbaImage,
+    scratch: &'a mut image::RgbaImage,
+    monitor_origin: (i32, i32),
+    scale: f64,
+    crop_origin: (u32, u32),
+    include_cursor: bool,
+    show_clicks: bool,
+) -> Option<&'a image::RgbaImage> {
+    if !include_cursor && !show_clicks {
+        return None;
+    }
+    if scratch.dimensions() != source.dimensions() {
+        *scratch = image::RgbaImage::new(source.width(), source.height());
+    }
+    scratch.as_mut().copy_from_slice(source.as_raw());
+    crate::input_events::composite_pointer(
+        scratch,
+        monitor_origin,
+        scale,
+        crop_origin,
+        show_clicks,
+    );
+    Some(scratch)
+}
 use crate::display::{capture_monitor, PollingCaptureSession};
 use crate::media::h264::{mp4_config, mp4_parts};
 use crate::media::image::constrain_video_size;
@@ -201,6 +258,11 @@ fn recording_loop_inner(
     let mon_h = monitor
         .height()
         .map_err(|error| format!("display height: {error}"))?;
+    let monitor_origin = (
+        monitor.x().unwrap_or_default(),
+        monitor.y().unwrap_or_default(),
+    );
+    let monitor_scale = monitor.scale_factor().unwrap_or(1.0) as f64;
 
     // Picker selections have already been converted into this monitor's xcap coordinates.
     let area = area.and_then(|a| clamp_area(a, mon_w, mon_h));
@@ -236,6 +298,8 @@ fn recording_loop_inner(
     let mut pending_sample: Option<(Vec<u8>, u64, bool)> = None;
     let mut encode_scratch = FrameEncodeScratch::default();
     let mut crop_scratch = image::RgbaImage::new(0, 0);
+    let mut pointer_scratch = image::RgbaImage::new(0, 0);
+    let mut mask_scratch = image::RgbaImage::new(0, 0);
     let mut timeline_origin = None;
     let mut cover_frame = None;
     let mut next_frame_at = std::time::Instant::now();
@@ -335,6 +399,24 @@ fn recording_loop_inner(
                         } else {
                             &img
                         };
+                        let crop_origin =
+                            area.as_ref().map(|area| (area.x, area.y)).unwrap_or((0, 0));
+                        let prepared = frame_with_pointer(
+                            prepared,
+                            &mut pointer_scratch,
+                            monitor_origin,
+                            monitor_scale,
+                            crop_origin,
+                            options.execution.include_cursor.unwrap_or(true),
+                            options.execution.show_mouse_clicks.unwrap_or(false),
+                        )
+                        .unwrap_or(prepared);
+                        let prepared = frame_with_masks(
+                            prepared,
+                            &mut mask_scratch,
+                            &options.execution.recording_masks,
+                        )
+                        .unwrap_or(prepared);
 
                         encode_rgba_frame(
                             &mut encoder,
@@ -395,6 +477,23 @@ fn recording_loop_inner(
             match capture.capture() {
                 Ok(img) => {
                     consecutive_errors = 0;
+                    let source = img.as_ref();
+                    let prepared = frame_with_pointer(
+                        source,
+                        &mut pointer_scratch,
+                        monitor_origin,
+                        monitor_scale,
+                        (poll_x, poll_y),
+                        options.execution.include_cursor.unwrap_or(true),
+                        options.execution.show_mouse_clicks.unwrap_or(false),
+                    )
+                    .unwrap_or(source);
+                    let prepared = frame_with_masks(
+                        prepared,
+                        &mut mask_scratch,
+                        &options.execution.recording_masks,
+                    )
+                    .unwrap_or(prepared);
                     encode_rgba_frame(
                         &mut encoder,
                         &mut writer,
@@ -405,7 +504,7 @@ fn recording_loop_inner(
                         &mut encode_scratch,
                         &mut timeline_origin,
                         &mut cover_frame,
-                        img.as_ref(),
+                        prepared,
                         options.max_size,
                     )?;
                     let after_encode = std::time::Instant::now();
@@ -469,7 +568,7 @@ fn recording_loop_inner(
 #[cfg(test)]
 mod tests {
     use super::{
-        advance_frame_deadline, capture_timestamp_ms, drain_latest_frame,
+        advance_frame_deadline, capture_timestamp_ms, drain_latest_frame, frame_with_masks,
         windows_stream_frame_requires_fallback, write_recording_cover, FrameEncodeScratch,
     };
     use openh264::formats::YUVSource;
@@ -528,6 +627,21 @@ mod tests {
         let mut buffered = Some(0_u8);
         drain_latest_frame(&receiver, &mut buffered);
         assert_eq!(buffered, Some(3));
+    }
+
+    #[test]
+    fn recording_masks_are_scaled_and_applied_to_every_prepared_frame() {
+        let source = image::RgbaImage::from_pixel(100, 80, image::Rgba([240, 20, 20, 255]));
+        let mut scratch = image::RgbaImage::new(0, 0);
+        let masks = vec![crate::screencap::types::RelativeCaptureRect {
+            x: 0.25,
+            y: 0.25,
+            w: 0.5,
+            h: 0.5,
+        }];
+        let prepared = frame_with_masks(&source, &mut scratch, &masks).unwrap();
+        assert_eq!(prepared.get_pixel(5, 5), source.get_pixel(5, 5));
+        assert_ne!(prepared.get_pixel(50, 40), source.get_pixel(50, 40));
     }
 
     #[test]

@@ -247,11 +247,24 @@ export interface ScreencapSettings {
   quality: "compact" | "balanced" | "high";
   resolution: "720p" | "1080p" | "native";
   capture_confirm_mode: "refine" | "release";
-  capture_delay_seconds: 0 | 3 | 5;
+  capture_delay_seconds: 0 | 3 | 5 | 10;
   auto_hide_after_capture: boolean;
   auto_copy_to_clipboard: boolean;
   history_layout: "list" | "gallery";
   controls_pinned: boolean;
+  screenshot_sound_enabled: boolean;
+  show_floating_thumbnail: boolean;
+  remember_last_selection: boolean;
+  screenshot_include_cursor: boolean;
+  recording_include_cursor: boolean;
+  recording_show_mouse_clicks: boolean;
+  recording_microphone_id: string | null;
+  screenshot_destination: "library" | "desktop" | "documents" | "clipboard" | "custom";
+  recording_destination: "library" | "desktop" | "documents" | "custom";
+  screenshot_custom_directory: string | null;
+  recording_custom_directory: string | null;
+  screenshot_open_after: "none" | "preview" | "mail";
+  recording_open_after: "none" | "player" | "mail";
 }
 
 /** Built-in module ids that can contribute to main launcher search. */
@@ -418,6 +431,19 @@ export const DEFAULT_SETTINGS: Settings = {
     auto_copy_to_clipboard: true,
     history_layout: "gallery",
     controls_pinned: false,
+    screenshot_sound_enabled: true,
+    show_floating_thumbnail: true,
+    remember_last_selection: true,
+    screenshot_include_cursor: false,
+    recording_include_cursor: true,
+    recording_show_mouse_clicks: false,
+    recording_microphone_id: null,
+    screenshot_destination: "library",
+    recording_destination: "library",
+    screenshot_custom_directory: null,
+    recording_custom_directory: null,
+    screenshot_open_after: "none",
+    recording_open_after: "none",
   },
   plugin_registries: DEFAULT_PLUGIN_REGISTRIES.map((entry) => ({ ...entry })),
   advanced: {

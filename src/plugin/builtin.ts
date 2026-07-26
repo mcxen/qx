@@ -109,7 +109,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
         label: "Capture delay",
         type: "select",
         default: "0",
-        options: [{ value: "0", label: "None" }, { value: "3", label: "3s" }, { value: "5", label: "5s" }],
+        options: [{ value: "0", label: "None" }, { value: "5", label: "5s" }, { value: "10", label: "10s" }],
       },
       {
         id: "capture_confirm_mode",
@@ -124,6 +124,12 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       { id: "auto_hide_after_capture", label: "Hide capture toolbar after capture", type: "boolean", default: true },
       { id: "auto_copy_to_clipboard", label: "Copy screenshots and recordings to clipboard", type: "boolean", default: true },
       { id: "controls_pinned", label: "Keep capture toolbar visible", type: "boolean", default: false },
+      { id: "screenshot_sound_enabled", label: "Play screenshot sound", type: "boolean", default: true },
+      { id: "show_floating_thumbnail", label: "Show floating thumbnail", type: "boolean", default: true },
+      { id: "remember_last_selection", label: "Remember last selection", type: "boolean", default: true },
+      { id: "screenshot_include_cursor", label: "Show pointer in screenshots", type: "boolean", default: false },
+      { id: "recording_include_cursor", label: "Show pointer in recordings", type: "boolean", default: true },
+      { id: "recording_show_mouse_clicks", label: "Show mouse clicks in recordings", type: "boolean", default: false },
     ],
   },
   {

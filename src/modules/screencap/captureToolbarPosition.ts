@@ -27,6 +27,29 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
+/** Clamp a toolbar center/top point so the measured single-row bar stays visible. */
+export function clampCaptureToolbarPosition(
+  point: CaptureToolbarPosition,
+  toolbar: CaptureToolbarSize,
+  viewport: CaptureToolbarViewport,
+): CaptureToolbarPosition {
+  const width = Math.min(
+    Math.max(0, toolbar.width),
+    Math.max(0, viewport.width - VIEWPORT_MARGIN * 2),
+  );
+  const halfWidth = width / 2;
+  const minLeft = VIEWPORT_MARGIN + halfWidth;
+  const maxLeft = Math.max(minLeft, viewport.width - VIEWPORT_MARGIN - halfWidth);
+  return {
+    left: clamp(point.left, minLeft, maxLeft),
+    top: clamp(
+      point.top,
+      VIEWPORT_MARGIN,
+      Math.max(VIEWPORT_MARGIN, viewport.height - VIEWPORT_MARGIN - toolbar.height),
+    ),
+  };
+}
+
 /** Keep the measured capture toolbar inside its picker-display viewport. */
 export function resolveCaptureToolbarPosition(
   selection: CaptureToolbarRect,

@@ -4,6 +4,8 @@
 <dict>
     <key>NSScreenCaptureDescription</key>
     <string>Qx needs Screen Recording access to record screen GIFs.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Qx uses the selected microphone only while you record the screen.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>Qx uses Apple Events to open apps and automation when requested.</string>
 </dict>

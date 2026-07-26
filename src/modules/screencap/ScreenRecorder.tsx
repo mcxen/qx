@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -22,7 +22,11 @@ import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import BetaBadge from "../../components/BetaBadge";
 import { useT } from "../../i18n";
 import RecordingTransport from "./RecordingTransport";
-import type { CaptureHistoryLayout } from "./preferences";
+import {
+  getCaptureHistoryKind,
+  type CaptureHistoryKind,
+  type CaptureHistoryLayout,
+} from "./preferences";
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -38,10 +42,6 @@ function formatTime(ms: number): string {
 function isScreenshotPath(path: string | null | undefined): boolean {
   if (!path) return false;
   return path.toLowerCase().endsWith(".png");
-}
-
-function isScreenRecordingPermissionError(value: string | null): boolean {
-  return Boolean(value && /screen recording permission required/i.test(value));
 }
 
 export default function ScreenRecorder() {
@@ -74,6 +74,25 @@ export default function ScreenRecorder() {
   const controlsPinned = captureSettings.controls_pinned;
   const delaySeconds = captureSettings.capture_delay_seconds;
   const historyLayout = captureSettings.history_layout as CaptureHistoryLayout;
+  const [expandedHistoryGroups, setExpandedHistoryGroups] = useState<Record<CaptureHistoryKind, boolean>>({
+    screenshot: true,
+    recording: true,
+  });
+  const screenshotHistory = useMemo(
+    () => history.filter((entry) => getCaptureHistoryKind(entry) === "screenshot"),
+    [history],
+  );
+  const recordingHistory = useMemo(
+    () => history.filter((entry) => getCaptureHistoryKind(entry) === "recording"),
+    [history],
+  );
+  const visibleHistory = useMemo(
+    () => [
+      ...(expandedHistoryGroups.screenshot ? screenshotHistory : []),
+      ...(expandedHistoryGroups.recording ? recordingHistory : []),
+    ],
+    [expandedHistoryGroups, recordingHistory, screenshotHistory],
+  );
   const updateCaptureSettings = useCallback(
     (changes: Partial<typeof captureSettings>) => {
       patchSettings("screencap", { ...captureSettings, ...changes });
@@ -82,40 +101,17 @@ export default function ScreenRecorder() {
   );
   const [localError, setLocalError] = useState<string | null>(null);
   const [toastPath, setToastPath] = useState<string | null>(null);
-  const [capturePermissionGranted, setCapturePermissionGranted] = useState<boolean | null>(null);
-
-  const refreshCapturePermission = useCallback(async () => {
-    if (!isTauriRuntime()) {
-      setCapturePermissionGranted(true);
-      return;
-    }
-    try {
-      const permissions = await invoke<Array<{ id?: string; granted?: boolean; available?: boolean }>>(
-        "qx_permissions_status",
-      );
-      const capturePermission = permissions.find((permission) => permission.id === "screen-recording");
-      setCapturePermissionGranted(
-        capturePermission == null
-          ? true
-          : capturePermission.available === false || capturePermission.granted === true,
-      );
-    } catch {
-      // Keep capture actions available when permission probing is unavailable.
-      setCapturePermissionGranted(true);
-    }
-  }, []);
-
+  const observedPreviewPath = useRef<string | null>(null);
   useEffect(() => {
     void loadHistory();
     void syncRecordingStatus();
-    void refreshCapturePermission();
     if (isTauriRuntime()) {
       // Warm the native display inventory while the module is idle so a later
       // shortcut or island action can open the picker without the first-frame
       // xcap enumeration delay.
       void invoke("display_list").catch(() => {});
     }
-  }, [loadHistory, refreshCapturePermission, syncRecordingStatus]);
+  }, [loadHistory, syncRecordingStatus]);
 
   useEffect(() => {
     ensureCaptureToastListener(t);
@@ -170,7 +166,6 @@ export default function ScreenRecorder() {
     } catch (captureError) {
       const message = String(captureError);
       setLocalError(message);
-      if (isScreenRecordingPermissionError(message)) setCapturePermissionGranted(false);
     }
   }, [t]);
 
@@ -204,11 +199,10 @@ export default function ScreenRecorder() {
     const onFocus = () => {
       void syncRecordingStatus();
       void loadHistory();
-      void refreshCapturePermission();
     };
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
-  }, [loadHistory, refreshCapturePermission, syncRecordingStatus]);
+  }, [loadHistory, syncRecordingStatus]);
 
   const beginAreaSelect = useCallback(
     () => beginCaptureSelection("recording"),
@@ -251,50 +245,41 @@ export default function ScreenRecorder() {
   };
 
   const displayError = localError || error;
-  const needsScreenRecordingPermission = isScreenRecordingPermissionError(displayError);
   const showingPreview = Boolean(lastGifPath) && (status === "done" || status === "idle");
-  const capturePermissionMissing = capturePermissionGranted === false || needsScreenRecordingPermission;
-  const capturePermissionChecking = capturePermissionGranted === null && !capturePermissionMissing;
 
-  const openScreenRecordingPermission = useCallback(async () => {
-    if (!isTauriRuntime()) return;
-    try {
-      await invoke("qx_permissions_open_settings", { id: "screen-recording" });
-      setCapturePermissionGranted(false);
-    } catch (permissionError) {
-      setLocalError(String(permissionError));
+  useEffect(() => {
+    if (!lastGifPath || observedPreviewPath.current === lastGifPath) return;
+    const entry = history.find((item) => item.path === lastGifPath);
+    if (!entry) return;
+    observedPreviewPath.current = lastGifPath;
+    const kind = getCaptureHistoryKind(entry);
+    setExpandedHistoryGroups((current) => current[kind]
+      ? current
+      : { ...current, [kind]: true });
+  }, [history, lastGifPath]);
+
+  const handleHistoryGroupExpanded = useCallback((
+    kind: CaptureHistoryKind,
+    expanded: boolean,
+  ) => {
+    setExpandedHistoryGroups((current) => ({ ...current, [kind]: expanded }));
+    if (expanded || !lastGifPath) return;
+    const selected = history.find((entry) => entry.path === lastGifPath);
+    if (!selected || getCaptureHistoryKind(selected) !== kind) return;
+    const otherKind: CaptureHistoryKind = kind === "screenshot" ? "recording" : "screenshot";
+    const otherEntries = otherKind === "screenshot" ? screenshotHistory : recordingHistory;
+    if (expandedHistoryGroups[otherKind] && otherEntries[0]) {
+      setPreview(otherEntries[0].path);
+    } else {
+      reset();
     }
-  }, []);
+  }, [expandedHistoryGroups, history, lastGifPath, recordingHistory, reset, screenshotHistory, setPreview]);
 
   const openCaptureSettings = useCallback(() => {
     openSettings({ focusPluginId: "builtin:screencap" });
   }, []);
 
   const captureIsland = useMemo<BottomIslandContent>(() => {
-    if (capturePermissionMissing) {
-      return {
-        label: t("screencap.permission.requiredShort", "Screen Recording Permission Required"),
-        detail: t("screencap.permission.islandHint", "Open System Settings, enable Qx, then restart Qx."),
-        tone: "warning",
-        actions: [
-          {
-            id: "open-permission-settings",
-            label: t("screencap.permission.get", "Get Permission"),
-            icon: "open",
-            onAction: () => void openScreenRecordingPermission(),
-          },
-        ],
-      };
-    }
-
-    if (capturePermissionChecking) {
-      return {
-        label: t("screencap.permission.checking", "Checking Permission"),
-        detail: t("common.loading", "Loading…"),
-        tone: "neutral",
-      };
-    }
-
     return {
       label: isRecording || status === "processing"
         ? t("screencap.recording", "Recording")
@@ -330,15 +315,12 @@ export default function ScreenRecorder() {
     };
   }, [
     beginScreenshot,
-    capturePermissionChecking,
-    capturePermissionMissing,
     delaySeconds,
     displayError,
     elapsedMs,
     isRecording,
     lastGifPath,
     openCaptureSettings,
-    openScreenRecordingPermission,
     recordingOptions.fps,
     recordingOptions.outputFormat,
     showingPreview,
@@ -380,13 +362,17 @@ export default function ScreenRecorder() {
     } catch (captureError) {
       const message = String(captureError);
       setLocalError(message);
-      if (isScreenRecordingPermissionError(message)) setCapturePermissionGranted(false);
     }
   }, [t]);
 
   const readyActions = useMemo<QxShellAction[]>(
     () => [
-      { id: "screenshot", label: t("screencap.screenshot", "Take Screenshot"), kbd: "Enter", onClick: () => void beginScreenshot() },
+      {
+        id: "screenshot",
+        label: t("screencap.startCapture", "Screenshot / Recording"),
+        kbd: "Enter",
+        onClick: () => void beginScreenshot(),
+      },
       {
         id: "recapture-last",
         label: t("screencap.recaptureLast", "Recapture Last Region"),
@@ -429,7 +415,12 @@ export default function ScreenRecorder() {
 
   const doneActions = useMemo<QxShellAction[]>(
     () => [
-      { id: "new-capture", label: t("screencap.newRecording", "New Capture"), kbd: "Enter", onClick: handleNewRecording },
+      {
+        id: "new-capture",
+        label: t("screencap.startCapture", "Screenshot / Recording"),
+        kbd: "Enter",
+        onClick: () => void beginScreenshot(),
+      },
       {
         id: "back-launcher",
         label: t("screencap.backLauncher", "Back to Launcher"),
@@ -439,7 +430,7 @@ export default function ScreenRecorder() {
         },
       },
     ],
-    [reset, setTab, t],
+    [beginScreenshot, reset, setTab, t],
   );
 
   const recordingActions = useMemo<QxShellAction[]>(
@@ -499,9 +490,7 @@ export default function ScreenRecorder() {
     island: captureIsland,
   });
 
-  const selectedHistoryIndex = history.length
-    ? Math.max(0, history.findIndex((entry) => entry.path === lastGifPath))
-    : -1;
+  const selectedHistoryIndex = visibleHistory.findIndex((entry) => entry.path === lastGifPath);
 
   if (isRecording || status === "processing") {
     return (
@@ -595,15 +584,15 @@ export default function ScreenRecorder() {
         </div>
       }
       onKeyDown={shell.onKeyDown}
-      navigation={history.length ? {
+      navigation={visibleHistory.length ? {
         index: selectedHistoryIndex,
-        count: history.length,
+        count: visibleHistory.length,
         pageSize: historyLayout === "gallery" ? 8 : 6,
         regionId: "screencap-history",
         editable: "search",
-        onChange: (index) => setPreview(history[index].path),
+        onChange: (index) => setPreview(visibleHistory[index].path),
         onOpen: selectedHistoryIndex >= 0
-          ? () => setPreview(history[selectedHistoryIndex].path)
+          ? () => setPreview(visibleHistory[selectedHistoryIndex].path)
           : undefined,
       } : undefined}
       topbarFilters={[{
@@ -642,7 +631,11 @@ export default function ScreenRecorder() {
           data-qx-region-initial="true"
           tabIndex={-1}
         >
-          <CaptureHistory layout={historyLayout} />
+          <CaptureHistory
+            layout={historyLayout}
+            expandedGroups={expandedHistoryGroups}
+            onExpandedChange={handleHistoryGroupExpanded}
+          />
         </div>
         {showingPreview ? (
           <div

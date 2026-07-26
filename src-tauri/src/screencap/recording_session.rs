@@ -18,8 +18,16 @@ use super::state::{
 };
 use super::storage::{captures_dir, insert_history_with_thumbnail};
 use super::types::RecordingState;
-use super::{RecordArea, RecordingOptions, RecordingStatusSnapshot};
+use super::{CaptureExecutionOptions, RecordArea, RecordingOptions, RecordingStatusSnapshot};
 use crate::display::cursor_capture_monitor_id;
+
+#[command]
+pub async fn screencap_list_audio_inputs(app: AppHandle) -> Result<Vec<super::AudioInput>, String> {
+    let blocking_app = app.clone();
+    crate::runtime::blocking(move || crate::media::ffmpeg::list_audio_inputs(&blocking_app))
+        .await
+        .map_err(|error| error.to_string())?
+}
 
 fn recording_status_snapshot(app: &AppHandle) -> RecordingStatusSnapshot {
     let controls_visible = app
@@ -71,6 +79,9 @@ fn abort_recording_start_blocking() {
         return;
     };
     state.stop_flag.store(true, Ordering::Relaxed);
+    if let Some(audio) = state.audio_capture.take() {
+        crate::media::ffmpeg::cancel_audio_capture(audio);
+    }
     if let Some(handle) = state.thread_handle.take() {
         if let Ok(Ok(output)) = handle.join() {
             let _ = fs::remove_file(output.path);
@@ -87,6 +98,7 @@ pub async fn start_recording(
     app: AppHandle,
     area: Option<RecordArea>,
     options: Option<RecordingOptions>,
+    capture_options: Option<CaptureExecutionOptions>,
 ) -> Result<(), String> {
     selection::ensure_screen_capture_permission()?;
 
@@ -100,10 +112,12 @@ pub async fn start_recording(
         state::clear_capture_error();
         FRAME_COUNT.store(0, Ordering::Relaxed);
 
-        let options = options.unwrap_or_default().normalize();
+        let execution = capture_options.unwrap_or_default();
+        let options = options.unwrap_or_default().normalize(execution.clone());
         let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();
         let output_path =
             captures_dir().join(format!("recording_{timestamp}.{}", options.extension));
+        let state_output_path = output_path.clone();
         let stop_flag = std::sync::Arc::new(AtomicBool::new(false));
         let stop_clone = stop_flag.clone();
         let monitor_id = area
@@ -129,6 +143,10 @@ pub async fn start_recording(
             stop_flag,
             thread_handle: Some(handle),
             started_at,
+            execution,
+            output_path: state_output_path,
+            audio_capture: None,
+            audio_warning: None,
         });
     }
 
@@ -180,6 +198,43 @@ pub async fn start_recording(
 
     match ui_result {
         Ok(Ok(())) => {
+            let microphone = recording_state()
+                .lock()
+                .ok()
+                .and_then(|recording| recording.as_ref()?.execution.microphone_id.clone());
+            if let Some(microphone_id) = microphone.filter(|value| !value.is_empty()) {
+                let audio_app = app.clone();
+                let video_path = recording_state().lock().ok().and_then(|recording| {
+                    recording.as_ref().map(|state| state.output_path.clone())
+                });
+                if let Some(video_path) = video_path {
+                    let audio_result = crate::runtime::blocking(move || {
+                        crate::media::ffmpeg::start_audio_capture(
+                            &audio_app,
+                            &microphone_id,
+                            &video_path,
+                        )
+                    })
+                    .await;
+                    if let Ok(mut recording) = recording_state().lock() {
+                        if let Some(state) = recording.as_mut() {
+                            match audio_result {
+                                Ok(Ok(audio)) => state.audio_capture = Some(audio),
+                                Ok(Err(error)) => {
+                                    state.audio_warning = Some(format!(
+                                        "Microphone unavailable; recording continues without audio: {error}"
+                                    ))
+                                }
+                                Err(error) => {
+                                    state.audio_warning = Some(format!(
+                                        "Microphone worker unavailable; recording continues without audio: {error}"
+                                    ))
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             if capture_start.send(()).is_err() {
                 let error = "recording worker stopped before capture started".to_string();
                 let _ = tauri::async_runtime::spawn_blocking(abort_recording_start_blocking).await;
@@ -217,7 +272,9 @@ pub async fn start_recording(
 }
 
 /// Open a dedicated transparent fullscreen picker (no main-window glass mask).
-fn stop_recording_blocking() -> Result<String, String> {
+fn stop_recording_blocking(
+    app: AppHandle,
+) -> Result<(String, CaptureExecutionOptions, Option<String>), String> {
     let mut guard = recording_state().lock().map_err(|e| format!("lock: {e}"))?;
     let mut state = guard.take().ok_or("Not recording")?;
     drop(guard);
@@ -234,6 +291,11 @@ fn stop_recording_blocking() -> Result<String, String> {
         let _ = fs::remove_file(&output.path);
         return Err(error);
     }
+    if let Some(audio) = state.audio_capture.take() {
+        if let Err(error) = crate::media::ffmpeg::finish_audio_capture(&app, audio, &output.path) {
+            state.audio_warning = Some(error);
+        }
+    }
     insert_history_with_thumbnail(
         &output.path,
         output.thumbnail_path.as_deref(),
@@ -243,7 +305,11 @@ fn stop_recording_blocking() -> Result<String, String> {
         duration_ms,
     )
     .map_err(|error| format!("save recording history: {error}"))?;
-    Ok(output.path.to_string_lossy().to_string())
+    Ok((
+        output.path.to_string_lossy().to_string(),
+        state.execution,
+        state.audio_warning,
+    ))
 }
 
 #[command]
@@ -256,14 +322,25 @@ pub async fn stop_recording(app: AppHandle) -> Result<String, String> {
         status.error = None;
     }
     emit_recording_status(&app);
-    let result = tauri::async_runtime::spawn_blocking(stop_recording_blocking)
-        .await
-        .map_err(|e| format!("recording encoder worker failed: {e}"))?;
+    let blocking_app = app.clone();
+    let result =
+        tauri::async_runtime::spawn_blocking(move || stop_recording_blocking(blocking_app))
+            .await
+            .map_err(|e| format!("recording encoder worker failed: {e}"))?;
 
     match &result {
-        Ok(path) => {
+        Ok((path, execution, audio_warning)) => {
             let capture_settings = crate::settings::read_settings().screencap;
-            let copy_error = if capture_settings.auto_copy_to_clipboard {
+            let source_path = std::path::PathBuf::from(path.as_str());
+            let delivery_options = execution.clone();
+            let delivery = crate::runtime::blocking(move || {
+                super::delivery::deliver_capture(&source_path, &delivery_options)
+            })
+            .await
+            .map_err(|error| format!("capture delivery worker failed: {error}"))?;
+            let copy_error = if capture_settings.auto_copy_to_clipboard
+                || execution.destination.as_deref() == Some("clipboard")
+            {
                 let path_for_clipboard = std::path::PathBuf::from(path);
                 let copy_result = match crate::runtime::ui(&app, move || {
                     crate::clipboard::media::write_file_path_to_clipboard(&path_for_clipboard)
@@ -279,11 +356,12 @@ pub async fn stop_recording(app: AppHandle) -> Result<String, String> {
             } else {
                 None
             };
+            let warning = audio_warning.clone().or(copy_error).or(delivery.warning);
             if let Ok(mut status) = runtime_status().lock() {
                 status.phase = "done";
                 status.started_at = None;
                 status.output_path = Some(path.clone());
-                status.error = copy_error;
+                status.error = warning;
             }
         }
         Err(error) => {
@@ -315,7 +393,7 @@ pub async fn stop_recording(app: AppHandle) -> Result<String, String> {
         }
     }
     emit_recording_status(&app);
-    result
+    result.map(|(path, _, _)| path)
 }
 
 /// A capture worker can fail before the user presses Stop (permission backend,
@@ -332,6 +410,9 @@ fn reap_failed_recording_worker(app: &AppHandle) {
     let Some(mut state) = state else {
         return;
     };
+    if let Some(audio) = state.audio_capture.take() {
+        crate::media::ffmpeg::cancel_audio_capture(audio);
+    }
     let worker_error = match state.thread_handle.take().map(|handle| handle.join()) {
         Some(Ok(Ok(output))) => {
             let _ = fs::remove_file(output.path);
