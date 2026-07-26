@@ -52,6 +52,11 @@ jobs:
       - name: Check frontend
         run: npx tsc --noEmit
 
+      - name: Prepare bundled assets
+        run: |
+          npm run prepare:search-tools
+          npm run prepare:capture-assets
+
       - name: Check Rust formatting
         run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
 
