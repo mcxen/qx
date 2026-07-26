@@ -45,9 +45,19 @@ Windows WebView2 不保证父级 `data-tauri-drag-region` 穿过铺满顶栏的�
 `QxShell` 因此在 8px 顶部/侧边 resize hit zone 内侧保留独立握区，并对顶栏的
 非交互子元素显式调用 `startDragging()`。输入、按钮、链接、select、contenteditable
 与 `data-qx-no-window-drag` 必须排除，避免拖窗抢走文字选择或点击。
+Top Bar 的移动只能由该显式 handler 发起，不得再叠加
+`data-tauri-drag-region` 或 `-webkit-app-region: drag`；Windows WebView2 对同一
+pointerdown 启动两条原生 move loop 会产生明显卡顿。自绘 Title Bar 不经过该 React
+handler，继续单独使用 Tauri drag region。
 该调用还必须由 `src-tauri/capabilities/default.json` 显式授予
 `core:window:allow-start-resize-dragging`；`core:window:default` 和
 `allow-start-dragging` 都不包含缩放 IPC。
+
+Windows 11 主窗口由 DWM Mica 承担桌面背景材质；Windows 10 使用高不透明度
+WebView 表面回退，不启用 `window-vibrancy` 官方明确标注会造成拖拽/缩放卡顿的
+Acrylic。WebView 内的 canvas/top/context/bottom 也不再叠加 CSS
+`backdrop-filter`，避免移动透明窗口时每帧重复采样桌面并执行多层 blur。Windows
+的 surface opacity floor 负责保持文字和区域层级，macOS Vibrancy/CSS blur 语义保持不变。
 
 Appearance 中的 `title_bar_visible` 启用 Qx 自绘标题栏，macOS 与 Windows 共用同一
 Shell 端口并按平台排列控制按钮。拖动继续使用 `allow-start-dragging`，最大化使用

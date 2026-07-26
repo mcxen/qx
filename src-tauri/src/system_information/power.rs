@@ -168,47 +168,34 @@ fn collect_platform() -> Result<QxPowerInfo, String> {
 
 #[cfg(target_os = "windows")]
 fn collect_platform() -> Result<QxPowerInfo, String> {
-    let raw = super::powershell(
-        "$b=Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue|Select-Object -First 1;\
-         if($null -eq $b){[pscustomobject]@{present=$false}|ConvertTo-Json -Compress;exit};\
-         $s=Get-CimInstance -Namespace root/WMI -Class BatteryStatus -ErrorAction SilentlyContinue|Select-Object -First 1;\
-         $d=Get-CimInstance -Namespace root/WMI -Class BatteryStaticData -ErrorAction SilentlyContinue|Select-Object -First 1;\
-         $f=Get-CimInstance -Namespace root/WMI -Class BatteryFullChargedCapacity -ErrorAction SilentlyContinue|Select-Object -First 1;\
-         $c=Get-CimInstance -Namespace root/WMI -Class BatteryCycleCount -ErrorAction SilentlyContinue|Select-Object -First 1;\
-         $level=if($null -ne $b.EstimatedChargeRemaining){[int]$b.EstimatedChargeRemaining}else{$null};\
-         $online=if($null -ne $s){[bool]$s.PowerOnline}else{$null};\
-         $charging=if($null -ne $s){[bool]$s.Charging}else{[int]$b.BatteryStatus -in 6,7,8,9};\
-         $runtime=if($null -ne $b.EstimatedRunTime -and [uint64]$b.EstimatedRunTime -lt 71582788){[uint32]$b.EstimatedRunTime}else{$null};\
-         [pscustomobject]@{present=$true;level=$level;charging=$charging;online=$online;\
-         full=($level -ge 100 -and $online -eq $true -and -not $charging);condition=[string]$b.Status;\
-         runtime=$runtime;design=if($null -ne $d){[uint32]$d.DesignedCapacity}else{$null};\
-         capacity=if($null -ne $f){[uint32]$f.FullChargedCapacity}else{$null};\
-         remaining=if($null -ne $s){[uint32]$s.RemainingCapacity}else{$null};\
-         cycle=if($null -ne $c){[uint32]$c.CycleCount}else{$null};\
-         rate=if($null -ne $s){[double]$s.Rate}else{$null}}|ConvertTo-Json -Compress",
-    )?;
-    let value: serde_json::Value = serde_json::from_str(raw.trim())
-        .map_err(|error| format!("parse Windows power information: {error}"))?;
-    if !value["present"].as_bool().unwrap_or(false) {
+    use std::mem::zeroed;
+    use windows_sys::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
+
+    let mut status: SYSTEM_POWER_STATUS = unsafe { zeroed() };
+    if unsafe { GetSystemPowerStatus(&mut status) } == 0 {
+        return Err("GetSystemPowerStatus failed".to_string());
+    }
+    const BATTERY_FLAG_NO_BATTERY: u8 = 128;
+    const BATTERY_FLAG_CHARGING: u8 = 8;
+    const UNKNOWN_PERCENT: u8 = u8::MAX;
+    const UNKNOWN_LIFETIME: u32 = u32::MAX;
+    if status.BatteryFlag & BATTERY_FLAG_NO_BATTERY != 0 {
         return Ok(no_battery());
     }
 
-    let battery_level = value["level"].as_u64().map(|level| level.min(100) as u8);
-    let is_charging = value["charging"].as_bool().unwrap_or(false);
-    let fully_charged = value["full"].as_bool().unwrap_or(false);
-    let external_connected = value["online"].as_bool();
-    let design_capacity = value["design"].as_u64().map(|value| value as u32);
-    let full_charge_capacity = value["capacity"].as_u64().map(|value| value as u32);
-    let remaining_capacity = value["remaining"].as_u64().map(|value| value as u32);
-    let maximum_capacity_percent = match (full_charge_capacity, design_capacity) {
-        (Some(full), Some(design)) if design > 0 => Some(
-            (full as f64 / design as f64 * 100.0)
-                .round()
-                .clamp(0.0, 100.0) as u8,
-        ),
+    let battery_level = (status.BatteryLifePercent != UNKNOWN_PERCENT)
+        .then_some(status.BatteryLifePercent.min(100));
+    let external_connected = match status.ACLineStatus {
+        0 => Some(false),
+        1 => Some(true),
         _ => None,
     };
-    let source = if external_connected == Some(true) || is_charging {
+    let is_charging = status.BatteryFlag & BATTERY_FLAG_CHARGING != 0;
+    let fully_charged =
+        battery_level == Some(100) && external_connected == Some(true) && !is_charging;
+    let time_remaining_minutes =
+        (status.BatteryLifeTime != UNKNOWN_LIFETIME).then_some(status.BatteryLifeTime / 60);
+    let source = if external_connected == Some(true) {
         "AC Power"
     } else {
         "Battery Power"
@@ -232,23 +219,17 @@ fn collect_platform() -> Result<QxPowerInfo, String> {
         is_charging,
         fully_charged,
         external_connected,
-        cycle_count: value["cycle"].as_u64().map(|value| value as u32),
-        condition: value["condition"]
-            .as_str()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string),
-        maximum_capacity_percent,
+        cycle_count: None,
+        condition: None,
+        maximum_capacity_percent: None,
         temperature_celsius: None,
-        time_remaining_minutes: value["runtime"].as_u64().map(|value| value as u32),
+        time_remaining_minutes,
         time_to_full_minutes: None,
-        design_capacity,
-        full_charge_capacity,
-        remaining_capacity,
-        capacity_unit: Some("mWh".into()),
-        power_watts: value["rate"]
-            .as_f64()
-            .map(|rate| (rate.abs() / 1000.0) as f32),
+        design_capacity: None,
+        full_charge_capacity: None,
+        remaining_capacity: None,
+        capacity_unit: None,
+        power_watts: None,
         source,
         summary,
     })
@@ -338,6 +319,22 @@ mod tests {
         assert_eq!(value["batteryLevel"], serde_json::Value::Null);
         assert_eq!(value["externalConnected"], serde_json::Value::Null);
         assert_eq!(value["cycleCount"], serde_json::Value::Null);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_collector_returns_a_consistent_native_power_model() {
+        let power = super::collect().expect("collect native Windows power information");
+        if power.battery_present {
+            assert!(power.battery_level.is_none_or(|level| level <= 100));
+            assert_ne!(power.source, "No battery");
+            if power.is_charging {
+                assert_eq!(power.external_connected, Some(true));
+            }
+        } else {
+            assert_eq!(power.battery_level, None);
+            assert_eq!(power.source, "No battery");
+        }
     }
 
     #[cfg(target_os = "macos")]

@@ -88,7 +88,48 @@
 - [x] `npm run build`
 - [x] `npm run tauri build`，Apple Development 签名验证并安装至 `/Applications/Qx.app`
 - [ ] macOS 运行态验证创建、输入自增长、拖动、四角缩放、删除和导出成品。
+## Bugfix — Windows Sysinfo / 电池采样去除 PowerShell 阻塞
 
+**状态**：实现与本机原生采样验证完成，等待安装包运行态复核。
+
+- `system_information/windows.rs` 统一承载 Windows 系统身份、CPU 拓扑/缓存、内存、
+  磁盘、IPv4、网络计数器与进程枚举，直接使用注册表及 Win32 API；Sysinfo 采样路径
+  不再启动 PowerShell/WMI 子进程。
+- Windows 电源采样改用 `GetSystemPowerStatus`；电量、外接电源、充电、充满与剩余时间
+  保持统一模型，系统 API 不提供的健康/容量字段继续按可选值返回。
+- 市场 Sysinfo 1.3.1 将定时器、切页与手动刷新统一为 single-flight：后台重叠 tick
+  直接跳过，用户触发刷新最多排队一轮；静态系统/存储快照继续按 panel runtime 缓存。
+- Windows 插件 CLI 的桌面 PATH 直接读取 Machine/User 环境注册表，不再为补 PATH
+  冷启动 PowerShell；内置终端仍按用户意图启动 PowerShell，但从 `SystemRoot`
+  解析稳定路径。
+- Windows OCR / toast 仍通过 PowerShell 进入 WinRT（均在 blocking worker），
+  现统一设置硬超时并在超时后结束进程树，避免异常 WinRT 调用永久占住 worker。
+- Windows 应用图标缓存位于 `%LOCALAPPDATA%/Qx/icons`；Tauri asset protocol
+  已显式放行 `$LOCALDATA/Qx/**`，避免 PNG 已生成但 WebView 拒绝加载。
+- 本地资源协议进一步覆盖 Qx 的跨平台 Data/Cache、Tauri AppConfig/AppData/
+  AppLocalData/AppCache/AppLog、`~/.qx` 与 `Pictures/Qx` 专属目录；不扩大到
+  整个 Home、Documents、Downloads 或系统 LocalData。
+- Windows 主窗拖动收敛为单一原生 move 入口：Top Bar 仅由显式
+  `startDragging()` 驱动，不再叠加 drag-region / app-region；Windows 11 改用 DWM
+  Mica，Windows 10 使用高不透明度表面回退，不再启用官方明确标注拖拽性能较差的
+  Acrylic；WebView2 canvas 与子层继续关闭重复的 CSS backdrop blur，避免移动透明
+  窗口时每帧多次桌面采样。
+- Sysinfo 1.4.0 增加显示器分类与中文名称/说明，CPU、内存、电源、存储、显示器、
+  网络和进程使用可识别图标。宿主 `context.system.displays()` 统一返回分辨率、刷新率、
+  缩放、旋转和主屏/内置屏状态；Windows 通过 DisplayConfig 补充 HDMI、DisplayPort、
+  eDP、Miracast、虚拟显示链路及有效的 EDID 厂商/产品标识。
+- 存储容量继续走轻量原生快照。逐设备 SMART 健康度与温度需要独立 NVMe/ATA IOCTL
+  （Windows）和 IOKit（macOS）适配器，且 USB 桥接器或驱动可能不暴露传感器；后续
+  端口保持可选字段，只展示硬件真实返回值，不从卷使用率推测健康状态。
+
+### 验证
+
+- [x] `cargo fmt --check`
+- [x] `cargo check`（Windows MSVC）
+- [x] Windows 原生 system/storage/network/process 与 power collector 单测
+- [x] `npm run check`
+- [x] `qx-plugins`: `npm run smoke:sysinfo` / `npm run package:one -- --only=sysinfo`
+- [ ] 安装版连续打开 Sysinfo、切换 Hardware/Processes 并观察睡眠唤醒后的电池刷新。
 ## Feature — 捕获预览 OCR 编辑与 Bottom Bar 动作顺序
 
 **状态**：实现完成，等待桌面运行态视觉复核。

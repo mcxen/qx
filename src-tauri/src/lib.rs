@@ -243,15 +243,17 @@ fn set_frosted_glass(app: &AppHandle, enabled: bool) -> Result<(), String> {
     let Some(win) = app.get_webview_window("main") else {
         return Err("main window not found".to_string());
     };
-    // Acrylic is the Windows counterpart to the macOS vibrancy material.
-    // Remote Desktop and older Windows builds may reject it; the stronger CSS
-    // surface opacity remains the deliberate fallback in that case.
+
+    // Acrylic's undocumented composition path is known to lag while a window
+    // moves or resizes on current Windows 10/11 builds. Always remove it before
+    // selecting the cheaper Windows 11 Mica backdrop. Windows 10 and unsupported
+    // sessions deliberately fall back to Qx's high-opacity WebView surfaces.
+    let _ = window_vibrancy::clear_acrylic(&win);
+    let _ = window_vibrancy::clear_mica(&win);
     if enabled {
-        window_vibrancy::apply_acrylic(&win, None)
-            .map_err(|error| format!("apply Windows acrylic: {error}"))?;
-    } else {
-        window_vibrancy::clear_acrylic(&win)
-            .map_err(|error| format!("clear Windows acrylic: {error}"))?;
+        if let Err(error) = window_vibrancy::apply_mica(&win, None) {
+            eprintln!("[window] Windows Mica unavailable; using opaque surface fallback: {error}");
+        }
     }
     Ok(())
 }
@@ -419,6 +421,24 @@ pub fn run() {
                 &startup_settings.appearance.window_behavior,
                 startup_settings.appearance.show_in_app_list,
             );
+
+            // WebView2 can deadlock when a second WebviewWindowBuilder runs
+            // inside a synchronous command. Pre-create the optional island at
+            // Tauri's documented setup-safe point; runtime fallback creation
+            // remains async for users who enable it later.
+            if startup_settings.appearance.island_float_enabled {
+                if let Err(error) = island_window::install(
+                    &handle,
+                    startup_settings.appearance.island_float_always_on_top,
+                ) {
+                    diagnostics::log(
+                        diagnostics::LogLevel::Warn,
+                        "main.island",
+                        "failed to pre-create floating island",
+                        serde_json::json!({ "error": error }),
+                    );
+                }
+            }
 
             // Present the launcher on first launch so a fresh install is not
             // invisible at startup (which looks like Qx failed to open). The
@@ -706,7 +726,6 @@ pub fn run() {
             screencap::commands::save_gif,
             screencap::commands::list_gif_history,
             screencap::commands::get_screencap_history,
-            screencap::commands::rename_screencap,
             screencap::commands::delete_screencap,
             screencap::commands::is_recording,
             island_window::island_window_ensure,
@@ -838,6 +857,8 @@ pub fn run() {
             g4f::qxai_get_custom_providers,
             g4f::qxai_save_custom_providers,
             plugin_system::plugin_system_set_wallpaper,
+            screencap::commands::rename_screencap,
+            rss::rss_cache_article_image,
             screencap::recording_session::screencap_list_audio_inputs,
         ])
         .build(tauri::generate_context!())

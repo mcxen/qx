@@ -1,3 +1,4 @@
+mod article_image_cache;
 pub mod fetcher;
 mod icon_cache;
 pub mod storage;
@@ -615,6 +616,14 @@ pub async fn rss_fetch_original_content(url: String) -> Result<String, String> {
 
     let html = resp.text().await.map_err(|e| format!("read body: {e}"))?;
     Ok(extract_article_body(&html))
+}
+
+#[command]
+pub async fn rss_cache_article_image(
+    url: String,
+    referer: Option<String>,
+) -> Result<String, String> {
+    article_image_cache::resolve(&url, referer.as_deref()).await
 }
 
 fn extract_article_body(html: &str) -> String {

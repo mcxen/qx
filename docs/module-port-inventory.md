@@ -39,7 +39,7 @@
 | 主题 / 语义 token | `ThemeProvider` + `base.css` | Workbench 由 host 渲染；Custom Panel 由 `pluginTheme` 注入 | 同步 resolved Light/Dark、`.dark`、公开 shadcn/Qx token；插件 UI 规范见 `public/doc/plugin-ui-guidelines.md` |
 | 语言 / 本地化 | `useLocale` / `useT` | **`context.locale.current` / `preference` / `onChange`** | 无权限；值是 Qx 生效语言而非浏览器语言。插件用 `current` 匹配文案与 `Intl`，不得读取 `navigator.language` 推测 Qx 设置 |
 | CLI | 不暴露给模块业务（走 Rust） | **`context.cli`** | 权限 `cli` |
-| 系统信息 / 设置 / 下载 | Rust `qx_system_information_*` 领域命令 + `plugin_system_save_download` | **`context.system.info/storage/network/networkCounters/power/processes/openSettings/saveDownload`** | typed 跨平台 model；OS API、PowerShell/AppKit URL 和 Downloads 路径只存在于宿主 adapter |
+| 系统信息 / 设置 / 下载 | Rust `qx_system_information_*` / `display_list` 领域命令 + `plugin_system_save_download` | **`context.system.info/storage/displays/network/networkCounters/power/processes/openSettings/saveDownload`** | typed 跨平台 model；显示器模型含分辨率/刷新率/缩放/旋转及可用的连接协议/EDID 标识；OS API、PowerShell/AppKit URL 和 Downloads 路径只存在于宿主 adapter |
 | 本地路径打开 / 揭示 | **`src/system/pathActions.ts`** | **`context.system.openPath/revealPath`** | 共用 Rust 语义端口；macOS 不先 canonicalize Spotlight 路径，Windows 不经过 WebView opener ACL |
 | 打开外链 | `@tauri-apps/plugin-opener` | **`context.openUrl`** | `open-url` |
 | OCR 识别 / 历史 | `src/system/ocr.ts` + 设置历史 | **`context.ocr.*`**（`recognizePath` / `recognizeClipboardImage` / `listHistory` / …） | 权限 `ocr`；宿主 Settings → OCR 启用；支持 `no-view`+`interval` 后台定时 |
@@ -65,7 +65,7 @@
 | 模块 | 表面 | Shell / Esc | 列表 / 主从 | 搜索 loading | 数据 / 缓存 | 缺口 / 备注 |
 |------|------|-------------|-------------|--------------|-------------|-------------|
 | **clipboard** | 全屏面板（**核心**，eager import） | `useQxModuleShell` + stepBack | `useQxListSelection` | `QxModuleSearch` | Rust clipboard DB；**打开端口** `openSession.prefetchClipboardOpen`（热窗口 history 并发；idle warm；SWR 先画 store）；**冷存储** `loadMoreClipboardHistory`（列表滚到底 / 键盘近底加载） | 快捷键打开：navigate 即预取热窗口，滚底再拉更早记录；面板非 lazy |
-| **rss** | feeds / articles / detail | shell 各层；`goBack` 嵌套 | `useQxListSelection` + `useQxMasterDetail`（文章） | `QxModuleSearch` + `QxListLoading` | `rss.db` + 默认目录 seed + 阅读进度 + 64px 本地图标缓存 | 嵌套 leave 已对齐 host Esc；单 Feed 刷新用 activity，刷新全部按 Rust `rss:refresh-progress` 的真实 completed/total 驱动 Island；favicon 30 天复用并支持 stale fallback |
+| **rss** | feeds / articles / detail | shell 各层；`goBack` 嵌套 | `useQxListSelection` + `useQxMasterDetail`（文章） | `QxModuleSearch` + `QxListLoading` | `rss.db` + 默认目录 seed + 阅读进度 + 64px 本地图标缓存 + 正文图片缓存 | 嵌套 leave 已对齐 host Esc；单 Feed 刷新用 activity，刷新全部按 Rust `rss:refresh-progress` 的真实 completed/total 驱动 Island；favicon 30 天复用并支持 stale fallback；正文远程图片通过 `rss_cache_article_image` 复用宿主代理并转成本地 asset URL，避免 WKWebView / WebView2 网络栈差异 |
 | **documents** | 文件列表 + 编辑 | shell | list + master-detail | `QxModuleSearch` | 本地文件 invoke | 无重大缺口 |
 | **screencap** | 录制 / 历史主从预览 | shell + 录制 / 详情 inner Esc | `useQxListSelection` + list/gallery + right-side detail | 标题槽（非搜索） | Rust capture | 布局选择持久化；Windows RDP still-frame 走 GDI，picker ready 后重放 session；截图完成由宿主 Island 提供快捷复制；权限动作统一由捕获灵动岛承载 |
 | **macros** | 录制器 | shell | — | — | macro store | 无重大缺口 |
@@ -98,7 +98,7 @@
 | **qx-bing-wallpaper** | ✅ | ✅ | **host Workbench List（缩略图）** + http/system wallpaper/file ports | persist SWR | 宿主左侧缩略图列表/右侧高清详情；窄详情栏不堆叠；item/panel Actions；壁纸系统差异由 host port 适配；无 Raycast shim |
 | **raycast-calendar** | ✅ | ✅ | Raycast shim | — | 转换插件 |
 | **qxgh** (QxGH) | ✅ | ✅ | **host Workbench**：结构化 detail/actions + 公开 HTML + island + tray | persist SWR | 不用 api.github.com；解析 actions/releases 网页；活跃部署以原生托盘子菜单显示预计百分比与用时 |
-| **sysinfo** | ✅ | ✅ | **host Workbench List** + typed system/info/storage/network/power/process ports + `homeWidgets` | — | CPU/Memory/Power/Network 通过 Manifest 与宿主 Home 组件关联，卡片仍由 Qx 共享采样总线绘制；Hardware 面板同轮 5 秒刷新，静态规格与 Storage 保持 runtime cache；Processes 可操作且结束需 `YES` 确认；无 shell、自绘 Home DOM 或 CSS |
+| **sysinfo** | ✅ | ✅ | **host Workbench List** + typed system/info/storage/network/power/process ports + `homeWidgets` | — | CPU/Memory/Power/Network 通过 Manifest 与宿主 Home 组件关联，卡片仍由 Qx 共享采样总线绘制；Hardware 面板同轮 5 秒刷新且整轮 single-flight，静态规格与 Storage 保持 runtime cache；Windows 端口直接使用 Win32，不启动 PowerShell/WMI 采样进程；Processes 可操作且结束需 `YES` 确认；无 shell、自绘 Home DOM 或 CSS |
 
 **老包兼容**：无 `AGENTS.md` 仍可安装；无 `panel` 的纯 command 包仍可跑命令，但**不能**作为 panel tab 打开（宿主不注册 panel）——这是原有契约，不是新门槛。
 

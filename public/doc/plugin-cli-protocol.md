@@ -196,7 +196,8 @@ await context.system.openSettings("storage");          // 系统设置的语义�
 | `openSettings(section)` | 打开 `about` / `display` / `storage` / `network` / `power` / `privacy` / `apps` 对应的 macOS 或 Windows 系统设置 |
 
 Windows 的 `openPath` 由宿主直接调用 Shell API，路径不会经过 `cmd /C start` 解释；
-空格、非 ASCII 与 shell 特殊字符保持原样。PowerShell、Explorer 和 taskkill 等
+空格、非 ASCII 与 shell 特殊字符保持原样。Windows 的 PATH 由宿主直接读取
+Machine/User 环境注册表，不会仅为程序发现冷启动 PowerShell。PowerShell、Explorer 和 taskkill 等
 Windows inbox 程序统一从 `SystemRoot` 的宿主适配器解析，插件不得猜
 `C:\Windows`，也不依赖 GUI 进程 PATH。
 

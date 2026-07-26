@@ -23,9 +23,11 @@
 | `file_search.rs` + `file_search/platform_{macos,windows}.rs` | 共享文件分类、去重、排序与 latest-wins 调度；macOS Cardinal/Spotlight 和 Windows Everything 分别封装在平台适配器中。Windows 使用 Qx 私有命名实例与 LocalAppData 下的私有后台配置，不读取或拉起用户 Everything 界面；ES 结果通过 UTF-8 文本导出读取，不依赖控制台代码页 |
 | `history.rs` | `launch_history` / `search_history` / `search_click_events` SQLite 表；`record_*` 后台写入，`get_*` 批量读取；搜索结果 30 天点击量聚合供推荐加权 |
 | `system_stats.rs` | Mach APIs：`host_processor_info`（每核 CPU）、`host_statistics64`（内存），供 `HomeSystemIsland` 每 1.6s 轮询 |
-| `system_information.rs` | 主机名/芯片/内存/存储/网络/进程列表；`kill_process` 通过 `/bin/kill` 发 SIGTERM |
+| `system_information.rs` + `system_information/` | 主机名/芯片/内存/存储/网络/进程/电源的统一命令；Windows 适配器直接使用 Win32 注册表、拓扑、磁盘、IP Helper、ToolHelp 与 System Power Status API，不以 PowerShell/WMI 子进程轮询；Unix 进程终止通过 `/bin/kill`，Windows 使用 `taskkill` 执行明确的终止动作 |
+| `windows_process.rs` | Windows GUI 进程的系统边界：从 `SystemRoot` 解析 inbox executable，直接读取 Machine/User 环境注册表组成桌面 PATH；OCR / toast 暂时通过 PowerShell 进入 WinRT 时必须走带硬超时和进程树清理的输出 helper。用户主动打开的终端/CLI shell 不属于系统采样。 |
+| `apps.rs` + `apps/icons.rs` | Windows 从开始菜单快捷方式枚举应用，以 Shell `HICON` 栅格化为 `%LOCALAPPDATA%/Qx/icons` 下的紧凑 PNG；该目录由 Tauri `$LOCALDATA/Qx/**` asset scope 放行，前端只通过 `convertFileSrc()` 加载绝对路径。 |
 | `runtime/` | **线程调度系统能力**：主线程 UI 事务（`ui`/`run_ui`）、blocking 算力池、跨平台主线程 id；所有窗口/剪贴板操作必须经此层。见 [runtime-threading.md](./runtime-threading.md) |
-| `display.rs` / `display_windows.rs` | Qx 系统级显示器服务：统一枚举、稳定 ID、主屏/内置屏/外接屏识别、鼠标所在屏幕、Tauri↔捕获后端映射、区域 still-frame 捕获（`capture_region`）；Windows 以 xcap WGC 为主路径，并由系统服务统一提供可复用的 GDI fallback（远程桌面、虚拟显示驱动、D3D/WGC 不可用或返回近全黑帧时）。截图与连续录屏必须共享该健康判定：远程会话不启动 WGC，录屏在编码前拒绝 WGC 黑帧并切换 GDI，禁止把黑帧写入视频时间轴。业务模块不得重复实现原生抓帧；公共 IPC `display_list`（进入截图录屏模块时用于预热短 TTL 原生显示器缓存） |
+| `display.rs` / `display_windows.rs` | Qx 系统级显示器服务：统一枚举稳定 ID、名称、分辨率、刷新率、缩放、旋转、主屏/内置屏/外接屏，并在 Windows 通过 DisplayConfig 补充 HDMI/DisplayPort/eDP/Miracast 等连接协议与 EDID 标识；同时负责鼠标所在屏幕、Tauri↔捕获后端映射、区域 still-frame 捕获（`capture_region`）。Windows 以 xcap WGC 为主路径，并由系统服务统一提供可复用的 GDI fallback（远程桌面、虚拟显示驱动、D3D/WGC 不可用或返回近全黑帧时）。截图与连续录屏必须共享该健康判定：远程会话不启动 WGC，录屏在编码前拒绝 WGC 黑帧并切换 GDI，禁止把黑帧写入视频时间轴。业务模块不得重复实现原生抓帧；公共 IPC `display_list` 同时供截图预热与插件 `context.system.displays()` 使用。 |
 | `desktop_windows.rs` | Qx 系统级顶层窗口清单：可见窗枚举、几何、z 序、按显示器裁剪与逻辑坐标换算；公共 IPC `desktop_windows_list`；截图窗选等只消费该服务，禁止 feature 内直接 `xcap::Window` |
 | `display_monitor.rs` | 复用系统级显示器服务监听插拔并发出 `display:changed`，不得自行枚举或分类显示器 |
 | `external_displays.rs` | 检测/安装 DDC CLI 驱动并设置外接显示器亮度、音量等硬件控制项；只负责 DDC 设备与控制协议，不承担 Qx 通用显示器识别 |

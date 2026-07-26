@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { LoadingLabel, Modal, Select } from "../../components/ui";
 import { useRssStore, type RssFeed, type RssFolder } from "./store";
+import { useT } from "../../i18n";
 
 const NEW_FOLDER_VALUE = "__new__";
 const UNGROUPED_VALUE = "none";
@@ -14,6 +15,7 @@ const UNGROUPED_VALUE = "none";
 /** Create a folder with zero feeds (shows as empty section in the list). */
 export function NewFolderDialog({ onClose }: { onClose: () => void }) {
   const createFolder = useRssStore((s) => s.createFolder);
+  const t = useT();
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -26,7 +28,7 @@ export function NewFolderDialog({ onClose }: { onClose: () => void }) {
   const submit = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      setError("Folder name is required");
+      setError(t("rss.folderNameRequired", "Folder name is required"));
       return;
     }
     setBusy(true);
@@ -34,7 +36,10 @@ export function NewFolderDialog({ onClose }: { onClose: () => void }) {
     try {
       const folder = await createFolder(trimmed);
       if (!folder) {
-        setError(useRssStore.getState().error || "Could not create folder");
+        setError(
+          useRssStore.getState().error
+          || t("rss.createFolderFailed", "Could not create folder"),
+        );
         setBusy(false);
         return;
       }
@@ -47,8 +52,11 @@ export function NewFolderDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal
-      title="New Folder"
-      subtitle="Empty folders are fine — add or move subscriptions into them later."
+      title={t("rss.newFolder", "New Folder")}
+      subtitle={t(
+        "rss.newFolderHint",
+        "Empty folders are fine — add or move subscriptions into them later.",
+      )}
       onClose={onClose}
     >
       <input
@@ -65,14 +73,14 @@ export function NewFolderDialog({ onClose }: { onClose: () => void }) {
             onClose();
           }
         }}
-        placeholder="Folder name"
+        placeholder={t("rss.folderName", "Folder name")}
         className="qx-inline-input"
         style={{ width: "100%" }}
       />
       {error && <div className="qx-modal-error">{error}</div>}
       <div className="qx-modal-actions">
         <button className="qx-command-button" type="button" onClick={onClose}>
-          Cancel
+          {t("common.cancel", "Cancel")}
         </button>
         <button
           className="qx-command-button primary"
@@ -80,7 +88,9 @@ export function NewFolderDialog({ onClose }: { onClose: () => void }) {
           disabled={busy || !name.trim()}
           onClick={() => void submit()}
         >
-          {busy ? <LoadingLabel>Create</LoadingLabel> : "Create"}
+          {busy
+            ? <LoadingLabel>{t("common.create", "Create")}</LoadingLabel>
+            : t("common.create", "Create")}
         </button>
       </div>
     </Modal>
@@ -99,6 +109,7 @@ export function SetFeedFolderDialog({
 }) {
   const setFeedFolder = useRssStore((s) => s.setFeedFolder);
   const createFolder = useRssStore((s) => s.createFolder);
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [choice, setChoice] = useState<string>(
@@ -113,14 +124,17 @@ export function SetFeedFolderDialog({
 
   const options = useMemo(
     () => [
-      { value: UNGROUPED_VALUE, label: "Ungrouped" },
+      { value: UNGROUPED_VALUE, label: t("rss.ungrouped", "Ungrouped") },
       ...folders.map((f) => ({
         value: String(f.id),
         label: `${f.name}${f.feed_count > 0 ? ` (${f.feed_count})` : ""}`,
       })),
-      { value: NEW_FOLDER_VALUE, label: "＋ New folder & put this feed in it…" },
+      {
+        value: NEW_FOLDER_VALUE,
+        label: t("rss.newFolderAndAssign", "＋ New folder & put this feed in it…"),
+      },
     ],
-    [folders],
+    [folders, t],
   );
 
   const submit = async () => {
@@ -130,13 +144,16 @@ export function SetFeedFolderDialog({
       if (choice === NEW_FOLDER_VALUE) {
         const trimmed = newName.trim();
         if (!trimmed) {
-          setError("Folder name is required");
+          setError(t("rss.folderNameRequired", "Folder name is required"));
           setBusy(false);
           return;
         }
         const folder = await createFolder(trimmed);
         if (!folder) {
-          setError(useRssStore.getState().error || "Could not create folder");
+          setError(
+            useRssStore.getState().error
+            || t("rss.createFolderFailed", "Could not create folder"),
+          );
           setBusy(false);
           return;
         }
@@ -146,7 +163,7 @@ export function SetFeedFolderDialog({
       } else {
         const folderId = Number(choice);
         if (!Number.isFinite(folderId)) {
-          setError("Invalid folder");
+          setError(t("rss.invalidFolder", "Invalid folder"));
           setBusy(false);
           return;
         }
@@ -161,24 +178,28 @@ export function SetFeedFolderDialog({
 
   return (
     <Modal
-      title="Set folder for subscription"
+      title={t("rss.setFolderForSubscription", "Set folder for subscription")}
       subtitle={feed.title || feed.url}
       onClose={onClose}
     >
       <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.45 }}>
-        Folders only group individual feeds in the list. Pick an existing folder,
-        ungroup, or create a new folder and put <strong>this</strong> feed in it.
+        {t(
+          "rss.folderGroupingHint",
+          "Folders only group individual feeds in the list. Pick an existing folder, ungroup, or create a new folder and put this feed in it.",
+        )}
       </p>
       <Select
         value={choice}
         options={options}
         onChange={setChoice}
-        ariaLabel="Folder for this feed"
+        ariaLabel={t("rss.folderForFeed", "Folder for this feed")}
         className="qx-rss-folder-select"
       />
       {choice === NEW_FOLDER_VALUE && (
         <div className="qx-modal-field" style={{ marginTop: 10 }}>
-          <label className="qx-modal-field-label">New folder name</label>
+          <label className="qx-modal-field-label">
+            {t("rss.newFolderName", "New folder name")}
+          </label>
           <input
             ref={nameRef}
             type="text"
@@ -190,7 +211,7 @@ export function SetFeedFolderDialog({
                 void submit();
               }
             }}
-            placeholder="e.g. Tech, News"
+            placeholder={t("rss.folderNameExample", "e.g. Tech, News")}
             className="qx-inline-input"
             style={{ width: "100%" }}
           />
@@ -199,7 +220,7 @@ export function SetFeedFolderDialog({
       {error && <div className="qx-modal-error">{error}</div>}
       <div className="qx-modal-actions">
         <button className="qx-command-button" type="button" onClick={onClose}>
-          Cancel
+          {t("common.cancel", "Cancel")}
         </button>
         <button
           className="qx-command-button primary"
@@ -207,7 +228,9 @@ export function SetFeedFolderDialog({
           disabled={busy || (choice === NEW_FOLDER_VALUE && !newName.trim())}
           onClick={() => void submit()}
         >
-          {busy ? <LoadingLabel>Save</LoadingLabel> : "Save"}
+          {busy
+            ? <LoadingLabel>{t("common.save", "Save")}</LoadingLabel>
+            : t("common.save", "Save")}
         </button>
       </div>
     </Modal>
@@ -217,6 +240,7 @@ export function SetFeedFolderDialog({
 /** File input + paste — hidden file inputs often fail in Tauri panels. */
 export function ImportOpmlDialog({ onClose }: { onClose: () => void }) {
   const importOpml = useRssStore((s) => s.importOpml);
+  const t = useT();
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -240,7 +264,7 @@ export function ImportOpmlDialog({ onClose }: { onClose: () => void }) {
   const runImport = async (content: string) => {
     const trimmed = content.trim();
     if (!trimmed) {
-      setError("Paste OPML XML or choose a file");
+      setError(t("rss.opmlRequired", "Paste OPML XML or choose a file"));
       return;
     }
     setBusy(true);
@@ -274,8 +298,11 @@ export function ImportOpmlDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Modal
-      title="Import OPML"
-      subtitle="OPML folders become feed groups; each outline is one subscription."
+      title={t("rss.importOpmlShort", "Import OPML")}
+      subtitle={t(
+        "rss.importOpmlHint",
+        "OPML folders become feed groups; each outline is one subscription.",
+      )}
       onClose={() => {
         if (busy) return;
         endExternalInteraction();
@@ -296,7 +323,7 @@ export function ImportOpmlDialog({ onClose }: { onClose: () => void }) {
         onClick={() => void chooseFile()}
         disabled={busy}
       >
-        Choose OPML file…
+        {t("rss.chooseOpmlFile", "Choose OPML file…")}
       </button>
       <textarea
         value={text}
@@ -309,7 +336,7 @@ export function ImportOpmlDialog({ onClose }: { onClose: () => void }) {
       {error && <div className="qx-modal-error">{error}</div>}
       <div className="qx-modal-actions">
         <button className="qx-command-button" type="button" onClick={onClose}>
-          Cancel
+          {t("common.cancel", "Cancel")}
         </button>
         <button
           className="qx-command-button primary"
@@ -317,7 +344,9 @@ export function ImportOpmlDialog({ onClose }: { onClose: () => void }) {
           disabled={busy || !text.trim()}
           onClick={() => void runImport(text)}
         >
-          {busy ? <LoadingLabel>Import</LoadingLabel> : "Import"}
+          {busy
+            ? <LoadingLabel>{t("common.import", "Import")}</LoadingLabel>
+            : t("common.import", "Import")}
         </button>
       </div>
     </Modal>

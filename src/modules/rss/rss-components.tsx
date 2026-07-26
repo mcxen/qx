@@ -2,13 +2,22 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
 import type { RssFeed } from "./store";
 
-export function formatRelative(ts: number): string {
+export function formatRelative(
+  ts: number,
+  t: (key: string, fallback: string) => string = (_key, fallback) => fallback,
+): string {
   if (!ts) return "";
   const diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)}d ago`;
+  if (diff < 60) return t("rss.time.justNow", "just now");
+  if (diff < 3600) {
+    return t("rss.time.minutesAgo", "{n}m ago").replace("{n}", String(Math.floor(diff / 60)));
+  }
+  if (diff < 86400) {
+    return t("rss.time.hoursAgo", "{n}h ago").replace("{n}", String(Math.floor(diff / 3600)));
+  }
+  if (diff < 86400 * 7) {
+    return t("rss.time.daysAgo", "{n}d ago").replace("{n}", String(Math.floor(diff / 86400)));
+  }
   const d = new Date(ts * 1000);
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }

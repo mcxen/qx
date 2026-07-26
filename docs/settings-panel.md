@@ -105,7 +105,7 @@ Appearance 的透明度不是单一全局 alpha。设置模型保留
 - `window_behavior`：主窗口显示方式，取值为 `always-on-top`（始终置顶）、`normal`（普通窗口）或 `auto-hide`（悬浮桌面且失焦隐藏）；默认保持原有的悬浮失焦隐藏行为。旧版 `general.autoHideOnBlur` 会在读取时迁移为 `normal` / `auto-hide`，并继续同步保存以兼容旧托盘逻辑；
 - `show_in_app_list`：是否在 macOS Dock 或 Windows 任务栏保留 Qx 图标；默认关闭。开启后应用仍使用同一个可复用主窗口，不会改变三种窗口显示方式；
 
-- `glass_enabled`：统一启停 macOS Vibrancy / Windows Acrylic 与 CSS 毛玻璃；关闭时所有表面完全不透明，但不覆盖已保存的分区参数；
+- `glass_enabled`：统一启停 macOS Vibrancy / Windows 11 Mica 与 CSS 毛玻璃；Windows 10 使用高不透明度表面回退，不启用拖拽性能较差的 Acrylic；关闭时所有表面完全不透明，但不覆盖已保存的分区参数；
 - `blur_radius`：独立的 CSS 背景模糊半径（0–30px），不再由窗口不透明度推导；
 
 - `shell_region_opacity`：Top Bar 与 Context 区域；

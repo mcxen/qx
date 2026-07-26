@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { useRssStore, type RssArticle } from "./store";
@@ -61,12 +61,6 @@ interface Section {
   items: RssArticle[];
 }
 
-const SECTION_LABELS: Record<Section["key"], string> = {
-  today: "Today",
-  yesterday: "Yesterday",
-  earlier: "Earlier",
-};
-
 const RSS_LIST_WIDTH_KEY = "qx:rss:list-width";
 const DEFAULT_RSS_LIST_WIDTH = 340;
 const MD = qxMasterDetailIds("rss");
@@ -109,6 +103,7 @@ export default function ArticleList() {
   const { bottom_island_mode, image_display_mode, image_fixed_width, article_font_size, article_font_family } = rss;
 
   const [originalContent, setOriginalContent] = useState<string | null>(null);
+  const [heroImageSrc, setHeroImageSrc] = useState<string | null>(null);
   const [loadingOriginal, setLoadingOriginal] = useState(false);
   const [v2exReplies, setV2exReplies] = useState<V2exReply[]>([]);
   const [v2exLoading, setV2exLoading] = useState(false);
@@ -148,7 +143,12 @@ export default function ArticleList() {
     [feeds, selectedFeedId],
   );
   const cleanContent = useMemo(
-    () => (currentArticle ? sanitizeHtml(originalContent ?? currentArticle.content ?? currentArticle.summary) : ""),
+    () => (currentArticle
+      ? sanitizeHtml(
+          originalContent ?? currentArticle.content ?? currentArticle.summary,
+          currentArticle.link,
+        )
+      : ""),
     [currentArticle, originalContent],
   );
   const articleContentStyle = {
@@ -187,9 +187,17 @@ export default function ArticleList() {
       groups[classifyArticleTime(a.published_at)].push(a);
     }
     return (["today", "yesterday", "earlier"] as const)
-      .map((k) => ({ key: k, label: SECTION_LABELS[k], items: groups[k] }))
+      .map((k) => ({
+        key: k,
+        label: {
+          today: t("rss.section.today", "Today"),
+          yesterday: t("rss.section.yesterday", "Yesterday"),
+          earlier: t("rss.section.earlier", "Earlier"),
+        }[k],
+        items: groups[k],
+      }))
       .filter((s) => s.items.length > 0);
-  }, [articles]);
+  }, [articles, t]);
 
   const flatIndex = (article: RssArticle): number =>
     articles.findIndex((a) => a.id === article.id);
@@ -205,9 +213,9 @@ export default function ArticleList() {
   });
 
   const filterChips: { key: typeof filter; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "unread", label: "Unread" },
-    { key: "starred", label: "Starred" },
+    { key: "all", label: t("common.all", "All") },
+    { key: "unread", label: t("rss.unread", "Unread") },
+    { key: "starred", label: t("rss.starred", "Starred") },
   ];
   const selectedArticle = articles[selectedIndex];
   const unreadCount = articles.filter((article) => !article.is_read).length;
@@ -243,6 +251,31 @@ export default function ArticleList() {
   useEffect(() => {
     const root = document.getElementById("rss-article-content");
     if (!root) return;
+    let cancelled = false;
+    const images = Array.from(root.querySelectorAll<HTMLImageElement>("img[data-qx-remote-src]"));
+    let nextImage = 0;
+    const loadNext = async () => {
+      while (!cancelled) {
+        const image = images[nextImage++];
+        if (!image) return;
+        const url = image.dataset.qxRemoteSrc;
+        if (!url) continue;
+        image.dataset.qxImageState = "loading";
+        try {
+          const path = await invoke<string>("rss_cache_article_image", {
+            url,
+            referer: currentArticle?.link || null,
+          });
+          if (cancelled || !image.isConnected) return;
+          image.src = convertFileSrc(path);
+          image.dataset.qxImageState = "loaded";
+        } catch {
+          if (!cancelled && image.isConnected) image.dataset.qxImageState = "failed";
+        }
+      }
+    };
+    void Promise.all(Array.from({ length: Math.min(3, images.length) }, () => loadNext()));
+
     const onClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       if (target.tagName === "IMG") {
@@ -251,8 +284,31 @@ export default function ArticleList() {
       }
     };
     root.addEventListener("click", onClick);
-    return () => root.removeEventListener("click", onClick);
-  }, [cleanContent]);
+    return () => {
+      cancelled = true;
+      root.removeEventListener("click", onClick);
+    };
+  }, [cleanContent, currentArticle?.link]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setHeroImageSrc(null);
+    const url = currentArticle?.image_url?.trim();
+    if (!url) return () => {
+      cancelled = true;
+    };
+    void invoke<string>("rss_cache_article_image", {
+      url,
+      referer: currentArticle?.link || null,
+    })
+      .then((path) => {
+        if (!cancelled) setHeroImageSrc(convertFileSrc(path));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [currentArticle?.image_url, currentArticle?.link]);
 
   useEffect(() => {
     if (!currentArticle) return;
@@ -327,16 +383,21 @@ export default function ArticleList() {
       ? buildRssRefreshIsland(refreshProgress, feed?.title, t)
       : currentArticle
         ? {
-            label: "Reading RSS",
+            label: t("rss.reading", "Reading RSS"),
             detail:
               bottom_island_mode === "index"
-                ? `${currentIdx >= 0 ? currentIdx + 1 : 0}/${readingArticles.length || 1} articles`
+                ? t("rss.articleIndex", "{current}/{total} articles")
+                    .replace("{current}", String(currentIdx >= 0 ? currentIdx + 1 : 0))
+                    .replace("{total}", String(readingArticles.length || 1))
                 : `${scrollPercent}%`,
             progress: bottom_island_mode === "index" ? articleProgress : scrollPercent,
           }
         : {
-            label: feed?.title || "RSS Articles",
-            detail: `${articles.length} articles · ${unreadCount} unread · ${filter}`,
+            label: feed?.title || t("rss.articles", "RSS Articles"),
+            detail: t("rss.articleSummary", "{articles} articles · {unread} unread · {filter}")
+              .replace("{articles}", String(articles.length))
+              .replace("{unread}", String(unreadCount))
+              .replace("{filter}", filterChips.find((chip) => chip.key === filter)?.label ?? filter),
           },
   });
 
@@ -345,7 +406,7 @@ export default function ArticleList() {
     const list: QxShellAction[] = [
       {
         id: "read-article",
-        label: "Read Article",
+        label: t("rss.readArticle", "Read Article"),
         kbd: "↵",
         disabled: !focusArticle || Boolean(currentArticle),
         onClick: () => {
@@ -354,7 +415,9 @@ export default function ArticleList() {
       },
       {
         id: "toggle-star",
-        label: focusArticle?.is_starred ? "Unstar" : "Star",
+        label: focusArticle?.is_starred
+          ? t("rss.unstar", "Unstar")
+          : t("rss.star", "Star"),
         kbd: "S",
         disabled: !focusArticle,
         onClick: () => {
@@ -363,7 +426,9 @@ export default function ArticleList() {
       },
       {
         id: "toggle-read",
-        label: focusArticle?.is_read ? "Mark Unread" : "Mark Read",
+        label: focusArticle?.is_read
+          ? t("rss.markUnread", "Mark Unread")
+          : t("rss.markRead", "Mark Read"),
         kbd: "U",
         disabled: !focusArticle,
         onClick: () => {
@@ -372,7 +437,7 @@ export default function ArticleList() {
       },
       {
         id: "open-browser",
-        label: "Open in Browser",
+        label: t("rss.openBrowser", "Open in Browser"),
         kbd: "O",
         disabled: !focusArticle?.link,
         onClick: () => {
@@ -381,7 +446,11 @@ export default function ArticleList() {
       },
       {
         id: "load-original",
-        label: originalContent ? "Revert to Feed Content" : loadingOriginal ? "Loading..." : "Load Full Article",
+        label: originalContent
+          ? t("rss.revertFeedContent", "Revert to Feed Content")
+          : loadingOriginal
+            ? t("common.loading", "Loading...")
+            : t("rss.loadFullArticle", "Load Full Article"),
         kbd: "L",
         disabled: !currentArticle?.link || loadingOriginal,
         onClick: () => {
@@ -398,7 +467,7 @@ export default function ArticleList() {
       },
       {
         id: "refresh-feed",
-        label: "Refresh Feed",
+        label: t("rss.refreshFeed", "Refresh Feed"),
         kbd: "R",
         disabled: selectedFeedId == null,
         onClick: () => {
@@ -407,7 +476,7 @@ export default function ArticleList() {
       },
       {
         id: "refresh-all",
-        label: "Refresh All",
+        label: t("rss.refreshAll", "Refresh All"),
         disabled: refreshingFeedId != null,
         onClick: () => void refreshAll(),
       },
@@ -415,7 +484,10 @@ export default function ArticleList() {
     if (next) {
       list.push({
         id: "next-article",
-        label: `Next: ${next.title?.slice(0, 40) || "(untitled)"}`,
+        label: t("rss.nextArticle", "Next: {title}").replace(
+          "{title}",
+          next.title?.slice(0, 40) || t("rss.untitled", "(untitled)"),
+        ),
         kbd: "J",
         onClick: () => void openArticleForReading(next.id),
       });
@@ -423,20 +495,23 @@ export default function ArticleList() {
     if (prev) {
       list.push({
         id: "previous-article",
-        label: `Prev: ${prev.title?.slice(0, 40) || "(untitled)"}`,
+        label: t("rss.previousArticle", "Prev: {title}").replace(
+          "{title}",
+          prev.title?.slice(0, 40) || t("rss.untitled", "(untitled)"),
+        ),
         kbd: "K",
         onClick: () => void openArticleForReading(prev.id),
       });
     }
     return list;
-  }, [currentArticle, focusArticle, goBack, loadingOriginal, markRead, next, openArticleForReading, originalContent, prev, refreshAll, refreshFeed, refreshingFeedId, selectedFeedId, toggleStar]);
+  }, [currentArticle, focusArticle, loadingOriginal, markRead, next, openArticleForReading, originalContent, prev, refreshAll, refreshFeed, refreshingFeedId, selectedFeedId, t, toggleStar]);
 
   const isReading = Boolean(currentArticle);
 
   return (
     <QxShell
       ref={shellRef}
-      title={feed?.title || "RSS Articles"}
+      title={feed?.title || t("rss.articles", "RSS Articles")}
       islandKey="rss.article-list"
       // List browsing stays dense/solid; open article softens chrome for reading.
       visual={isReading ? "glass" : "solid"}
@@ -467,7 +542,9 @@ export default function ArticleList() {
             setLocalQuery(next);
             setSearch(next);
           }}
-          placeholder={feed ? `Search in ${feed.title}…` : "Search articles..."}
+          placeholder={feed
+            ? t("rss.searchInFeed", "Search in {feed}…").replace("{feed}", feed.title)
+            : t("rss.searchArticles", "Search articles...")}
         />
       }
       topbarFilters={[{
@@ -482,14 +559,17 @@ export default function ArticleList() {
       }]}
       context={
         <QxActionPanel
-          title="Article Actions"
+          title={t("rss.articleActions", "Article Actions")}
           actions={actions}
-          {...qxRegionProps(MD.actions, { label: "Article actions", scroll: true })}
+          {...qxRegionProps(MD.actions, {
+            label: t("rss.articleActions", "Article actions"),
+            scroll: true,
+          })}
         />
       }
       island={shell.island}
       primaryActionId={currentArticle?.link ? "open-browser" : selectedArticle ? "read-article" : undefined}
-      actionTitle="Article Actions"
+      actionTitle={t("rss.articleActions", "Article Actions")}
       actions={actions}
     >
       <QxResizableSplit
@@ -504,9 +584,9 @@ export default function ArticleList() {
           ref={listRef}
           className="qx-content-list qx-plugin-list"
           role="listbox"
-          aria-label="Article list"
+          aria-label={t("rss.articleList", "Article list")}
           {...qxRegionProps(MD.list, {
-            label: "Article list",
+            label: t("rss.articleList", "Article list"),
             initial: !isReading,
             scroll: true,
           })}
@@ -518,7 +598,7 @@ export default function ArticleList() {
                 <span>{section.items.length}</span>
                 {section.key === "today" && feed && (
                   <button className="qx-command-button ghost" onClick={() => void markAllRead(feed.id)}>
-                    Mark all read
+                    {t("rss.markAllRead", "Mark all read")}
                   </button>
                 )}
               </div>
@@ -539,7 +619,7 @@ export default function ArticleList() {
                     <span className={`qx-rss-dot${a.is_read ? " is-read" : ""}`} />
                     <span className="qx-list-copy">
                       <span className="qx-list-title">
-                        {a.title || "(untitled)"}
+                        {a.title || t("rss.untitled", "(untitled)")}
                       </span>
                       <span className="qx-list-subtitle">{stripHtml(a.summary).slice(0, 120)}</span>
                     </span>
@@ -557,20 +637,22 @@ export default function ArticleList() {
           ))}
           {shouldShowQxListLoading(refreshingFeedId != null, articles.length) ? (
             <QxListLoading
-              ariaLabel="Refreshing articles"
-              label="Refreshing..."
+              ariaLabel={t("rss.refreshingArticles", "Refreshing articles")}
+              label={t("rss.refreshing", "Refreshing...")}
               rows={4}
               variant="tall"
             />
           ) : articles.length === 0 ? (
-            <div className="qx-empty-state">No articles in this feed.</div>
+            <div className="qx-empty-state">
+              {t("rss.noArticles", "No articles in this feed.")}
+            </div>
           ) : null}
         </div>
 
         <article
           className="qx-content-detail qx-plugin-detail qx-rss-detail-content qx-rss-reader"
           {...qxRegionProps(MD.detail, {
-            label: "Article reader",
+            label: t("rss.articleReader", "Article reader"),
             initial: isReading,
           })}
           aria-hidden={!isReading}
@@ -579,11 +661,17 @@ export default function ArticleList() {
             <>
               <div className="qx-detail-header qx-rss-reader-chrome">
                 <div className="qx-rss-reader-chrome-copy">
-                  <div className="qx-detail-title">{feed?.title || "Article"}</div>
+                  <div className="qx-detail-title">
+                    {feed?.title || t("rss.article", "Article")}
+                  </div>
                   <div className="qx-detail-meta">{formatDate(currentArticle.published_at)}</div>
                 </div>
                 <span className="qx-badge">
-                  {currentArticle.is_starred ? "Starred" : currentArticle.is_read ? "Read" : "Unread"}
+                  {currentArticle.is_starred
+                    ? t("rss.starred", "Starred")
+                    : currentArticle.is_read
+                      ? t("rss.read", "Read")
+                      : t("rss.unread", "Unread")}
                 </span>
               </div>
               <div ref={scrollRef} className="qx-content-detail-scroll qx-rss-reader-scroll" data-qx-region-scroll>
@@ -599,19 +687,30 @@ export default function ArticleList() {
                       lineHeight: 1.3,
                     }}
                   >
-                    {currentArticle.title || "(untitled)"}
+                    {currentArticle.title || t("rss.untitled", "(untitled)")}
                   </h1>
                   <div className="qx-content-detail-meta">
-                    {currentArticle.author && <span>By {currentArticle.author}</span>}
-                    {currentArticle.is_starred && <span>Starred</span>}
-                    <span>{currentArticle.is_read ? "Read" : "Unread"}</span>
+                    {currentArticle.author && (
+                      <span>
+                        {t("rss.byAuthor", "By {author}").replace(
+                          "{author}",
+                          currentArticle.author,
+                        )}
+                      </span>
+                    )}
+                    {currentArticle.is_starred && <span>{t("rss.starred", "Starred")}</span>}
+                    <span>
+                      {currentArticle.is_read
+                        ? t("rss.read", "Read")
+                        : t("rss.unread", "Unread")}
+                    </span>
                   </div>
 
-                  {currentArticle.image_url && (
+                  {heroImageSrc && (
                     <img
-                      src={currentArticle.image_url}
+                      src={heroImageSrc}
                       alt=""
-                      onClick={() => setLightbox(currentArticle.image_url)}
+                      onClick={() => setLightbox(heroImageSrc)}
                       className="qx-rss-reader-hero"
                       style={heroImgStyle}
                     />
@@ -654,22 +753,25 @@ export default function ArticleList() {
                   )}
 
                   {originalContent && (
-                    <div className="qx-rss-original-badge">Showing original page content</div>
+                    <div className="qx-rss-original-badge">
+                      {t("rss.showingOriginal", "Showing original page content")}
+                    </div>
                   )}
 
                   {next && (
                     <div className="qx-rss-next-article">
-                      <div className="qx-rss-next-label">Up Next</div>
+                      <div className="qx-rss-next-label">{t("rss.upNext", "Up Next")}</div>
                       <button
                         className="qx-rss-next-link"
                         onClick={() => void openArticleForReading(next.id)}
-                        title={next.title || "(untitled)"}
+                        title={next.title || t("rss.untitled", "(untitled)")}
                         type="button"
                       >
-                        {next.title || "(untitled)"}
+                        {next.title || t("rss.untitled", "(untitled)")}
                       </button>
                       <span className="qx-rss-next-kbd">
-                        Press <kbd>J</kbd>
+                        {t("rss.pressShortcut", "Press {shortcut}").replace("{shortcut}", "")}
+                        <kbd>J</kbd>
                       </span>
                     </div>
                   )}
@@ -681,7 +783,7 @@ export default function ArticleList() {
                         onClick={() => void openUrl(currentArticle.link)}
                         type="button"
                       >
-                        Open original
+                        {t("rss.openOriginal", "Open original")}
                       </button>
                     </div>
                   )}
@@ -690,8 +792,13 @@ export default function ArticleList() {
             </>
           ) : (
             <div className="qx-content-detail-empty">
-              <div>Select an article to read</div>
-              <span>{articles.length} articles in this feed</span>
+              <div>{t("rss.selectArticle", "Select an article to read")}</div>
+              <span>
+                {t("rss.articleCountInFeed", "{n} articles in this feed").replace(
+                  "{n}",
+                  String(articles.length),
+                )}
+              </span>
             </div>
           )}
         </article>

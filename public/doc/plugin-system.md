@@ -23,6 +23,9 @@ QxShell / Rust services / platform adapters
 - PluginHost 把 Workbench 数据投影到 QxShell；插件不拥有窗口 chrome。
 - Rust 服务负责网络、存储、CLI、系统能力和平台适配。
 - macOS 与 Windows 对插件暴露相同模型；不可用能力以明确错误返回。
+- `context.system.displays()` 返回显示器名称、分辨率、刷新率、缩放、旋转、
+  主屏/内置屏状态，以及平台可提供的连接协议和 EDID 厂商/产品标识；
+  插件不得自行调用 DisplayConfig、CoreGraphics 或 shell 工具重复枚举。
 
 ## 2. 包、注册与运行
 

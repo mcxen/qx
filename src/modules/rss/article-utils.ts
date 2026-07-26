@@ -26,24 +26,63 @@ export function formatDate(ts: number): string {
   });
 }
 
-export function sanitizeHtml(html: string): string {
+const TRANSPARENT_PIXEL =
+  "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
+
+function absoluteHttpUrl(value: string, baseUrl?: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed, baseUrl);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function lastSrcsetCandidate(value: string): string {
+  const candidates = value
+    .split(",")
+    .map((candidate) => candidate.trim().split(/\s+/)[0] ?? "")
+    .filter(Boolean);
+  return candidates[candidates.length - 1] ?? "";
+}
+
+export function sanitizeHtml(html: string, baseUrl?: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("script,style,iframe,object,embed,form,input,button").forEach((el) => el.remove());
   stripDangerousHtmlAttributes(doc);
   doc.querySelectorAll("a").forEach((el) => {
     const a = el as HTMLAnchorElement;
     if (!a.hasAttribute("href")) return;
+    const href = absoluteHttpUrl(a.getAttribute("href") ?? "", baseUrl);
+    if (href) a.setAttribute("href", href);
     a.setAttribute("target", "_blank");
     a.setAttribute("rel", "noopener noreferrer");
   });
   doc.querySelectorAll("img").forEach((el) => {
     const img = el as HTMLImageElement;
+    const source =
+      img.getAttribute("data-src")
+      || img.getAttribute("data-original")
+      || img.getAttribute("data-lazy-src")
+      || img.getAttribute("data-url")
+      || img.getAttribute("src")
+      || lastSrcsetCandidate(img.getAttribute("data-srcset") || img.getAttribute("srcset") || "");
+    const remoteSource = absoluteHttpUrl(source, baseUrl);
+    if (remoteSource) {
+      img.setAttribute("data-qx-remote-src", remoteSource);
+      img.setAttribute("src", TRANSPARENT_PIXEL);
+      img.removeAttribute("srcset");
+      img.removeAttribute("data-srcset");
+    }
     img.style.maxWidth = "100%";
     img.style.height = "auto";
     img.style.borderRadius = "4px";
     img.style.display = "block";
     img.style.margin = "10px 0";
     img.setAttribute("loading", "lazy");
+    img.setAttribute("decoding", "async");
   });
   doc.querySelectorAll("pre,code").forEach((el) => {
     const h = el as HTMLElement;

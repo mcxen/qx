@@ -236,46 +236,7 @@ fn login_shell_path() -> Option<String> {
             }
             #[cfg(windows)]
             {
-                // Machine + User PATH from the registry is closer to an interactive shell
-                // than the truncated GUI process env. Resolve Windows PowerShell
-                // from SystemRoot first because the very PATH being repaired may
-                // not yet contain its standard installation directory.
-                let mut command =
-                    std::process::Command::new(crate::windows_process::powershell_binary());
-                command
-                    .args([
-                        "-NoProfile",
-                        "-NonInteractive",
-                        "-Command",
-                        "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')",
-                    ])
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::null())
-                    .stdin(std::process::Stdio::null());
-                configure_child_process_group(&mut command);
-                let mut child = command
-                    .spawn()
-                    .ok()?;
-                let start = Instant::now();
-                let output = loop {
-                    match child.try_wait() {
-                        Ok(Some(_)) => break child.wait_with_output().ok()?,
-                        Ok(None) if start.elapsed() >= Duration::from_secs(3) => {
-                            kill_child_tree(&mut child);
-                            return None;
-                        }
-                        Ok(None) => std::thread::sleep(Duration::from_millis(20)),
-                        Err(_) => {
-                            kill_child_tree(&mut child);
-                            return None;
-                        }
-                    }
-                };
-                if !output.status.success() {
-                    return None;
-                }
-                let path = String::from_utf8(output.stdout).ok()?.trim().to_string();
-                (!path.is_empty()).then_some(path)
+                crate::windows_process::desktop_path_env()
             }
             #[cfg(not(any(unix, windows)))]
             {

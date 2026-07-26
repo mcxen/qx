@@ -134,7 +134,8 @@
 | 设置 / i18n | `settings-panel.md`, `src/i18n.ts` | I：按页拆分；D：文案依赖 key 而非组件内写死语言 |
 | IPC | `ipc-catalogue.md` | 契约单一事实来源 |
 | **系统能力** | `display.rs` · `desktop_windows.rs` · `media/` · `clipboard` · `runtime/` · FE `src/system/*` | S：发现/媒体/剪贴板/线程调度各管一责；D：feature 只依赖端口；禁止在 screencap/OCR 内复制 xcap 枚举 |
-| **Windows inbox 程序** | `windows_process.rs` | 从 `SystemRoot` 解析 PowerShell / Explorer / taskkill；GUI PATH 过薄时仍可用，feature 禁止各自硬编码 `C:\Windows` 或裸程序名 |
+| **Windows 系统边界** | `windows_process.rs` | 从 `SystemRoot` 解析 PowerShell / Explorer / taskkill，直接从 Machine/User 环境注册表补齐桌面 PATH，并为必须经过 WinRT PowerShell bridge 的 OCR / toast 提供带进程树终止的硬超时；GUI PATH 过薄时仍可用，feature 禁止各自硬编码 `C:\Windows`、裸程序名或无界 `Command::output()` |
+| **本地资源读取范围** | `tauri.conf.json` asset protocol | 只放行 Qx 自有状态、数据、缓存、日志和 `Pictures/Qx` 目录：自定义 `~/.qx`、平台 `Data/qx` / `LocalData/Qx` / `Cache/Qx`，以及 Tauri `AppConfig` / `AppData` / `AppLocalData` / `AppCache` / `AppLog`。该范围只决定 WebView 能否读取已知本地资源，不负责 Rust 的目录创建和写权限；禁止为修复单个预览而放行整个 Documents、Downloads、Home 或系统 LocalData。 |
 | **Runtime 线程** | [runtime-threading.md](./runtime-threading.md) | UI 只在主线程；重活 `blocking`；async command 用 `runtime::ui` 一次事务 |
 
 ### 系统能力提升规则（与 AGENTS Module Decomposition 对齐）
@@ -149,7 +150,7 @@
 | 磁盘图写剪贴板 | `clipboard` | `clipboard_write_image_file` / `src/system/clipboard.ts` |
 | 视频/GIF 编解码 | `media/` | 既有 convert 命令 |
 | 主线程 UI / 后台算力 | `runtime/` | `runtime::ui` · `runtime::blocking` · `runtime::install`（见 runtime-threading.md） |
-| 系统信息 / 设置目的地 | `system_information` · `plugin_system` | `context.system.info/storage/network/power/stats/processes/openSettings`；插件只见同形数据和语义 section，不见 PowerShell / AppKit / `ms-settings:`；静态 CPU 拓扑/缓存和内核 family/release 只进一次性信息快照，缺失的缓存层级不猜测，实时负载独立采样；Power 模型将电池存在、外接电源、充电与充满拆成独立状态，健康/容量字段按硬件能力可选；macOS 内存必须使用 SDK 匹配的 `vm_statistics64` 布局与真实页大小，CPU 累计 tick 的近同时多消费者读取复用稳定样本，APFS 存储统计读取 Data volume 而非只读系统快照 |
+| 系统信息 / 设置目的地 | `system_information` · `display` · `plugin_system` | `context.system.info/storage/displays/network/power/stats/processes/openSettings`；插件只见同形数据和语义 section，不见 PowerShell / AppKit / `ms-settings:`；Windows 高频与静态采样均走 Rust + Win32 API（注册表、拓扑、磁盘、DisplayConfig、IP Helper、ToolHelp、System Power Status），不得通过 PowerShell/WMI 子进程轮询；静态 CPU 拓扑/缓存和内核 family/release 只进一次性信息快照，缺失的缓存层级不猜测，实时负载独立采样；显示器协议和 EDID 标识仅在系统明确返回有效值时暴露；Power 模型将电池存在、外接电源、充电与充满拆成独立状态，健康/容量字段按硬件能力可选；macOS 内存必须使用 SDK 匹配的 `vm_statistics64` 布局与真实页大小，CPU 累计 tick 的近同时多消费者读取复用稳定样本，APFS 存储统计读取 Data volume 而非只读系统快照 |
 | 本地路径打开 / 揭示 | `plugin_system` | `src/system/pathActions.ts` · `context.system.openPath/revealPath`；内置模块与插件共享平台语义，不直接依赖 WebView opener 的路径 ACL / canonicalize |
 | Qx 磁盘占用 / 缓存清理 | `storage` | `qx_storage_overview` · `qx_storage_clear_cache_target`；统计和删除共用注册表。插件只能通过 `manifest.storage.cacheTargets[]` 登记精确可重建 persist keys；其余 `plugin-data`、历史和生成文件保持独立受保护语义 |
 

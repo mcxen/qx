@@ -144,32 +144,96 @@ fn ensure_island_window(app: &AppHandle, always_on_top: bool) -> Result<(), Stri
     Ok(())
 }
 
+fn prepare_hidden_island(app: &AppHandle, always_on_top: bool) -> Result<(), String> {
+    ensure_island_window(app, always_on_top)?;
+    if let Some(win) = app.get_webview_window(ISLAND_LABEL) {
+        let compact = SNAPSHOT.lock().map(|snap| snap.compact).unwrap_or(false);
+        let _ = win.set_always_on_top(always_on_top);
+        let width = if compact {
+            ISLAND_COMPACT_WIDTH
+        } else {
+            ISLAND_WIDTH
+        };
+        let _ = win.set_size(LogicalSize::new(width, ISLAND_HEIGHT));
+        position_island(app, compact);
+        let _ = win.hide();
+    }
+    Ok(())
+}
+
+fn show_island(app: &AppHandle, always_on_top: bool) -> Result<(), String> {
+    ensure_island_window(app, always_on_top)?;
+    let win = app
+        .get_webview_window(ISLAND_LABEL)
+        .ok_or_else(|| "island window unavailable".to_string())?;
+    let _ = win.set_always_on_top(always_on_top);
+    let compact = SNAPSHOT.lock().map(|snap| snap.compact).unwrap_or(false);
+    position_island(app, compact);
+
+    // Session snapshots can update for every launcher query/progress tick.
+    // Re-showing an already visible auxiliary window on each snapshot can
+    // reorder AppKit's key window, leaving the main search field with a
+    // caret but sending subsequent key events to the island. Visibility is
+    // a transition here: content updates travel over `island:sessions` and
+    // must never re-front an island that is already on screen.
+    if win.is_visible().unwrap_or(false) {
+        return Ok(());
+    }
+    win.show()
+        .map_err(|error| format!("show island window: {error}"))?;
+    #[cfg(target_os = "macos")]
+    promote_without_focus(&win);
+    Ok(())
+}
+
+async fn run_webview_creation<F>(app: &AppHandle, operation: F) -> Result<(), String>
+where
+    F: FnOnce() -> Result<(), String> + Send + 'static,
+{
+    #[cfg(target_os = "windows")]
+    {
+        // Tauri documents a WebView2 deadlock when WebviewWindowBuilder is
+        // reached from a synchronous command or event handler. An async
+        // command plus a blocking worker keeps creation outside the active
+        // WebView2 IPC callback while Tauri coordinates with the event loop.
+        let _ = app;
+        tauri::async_runtime::spawn_blocking(operation)
+            .await
+            .map_err(|error| format!("island window worker failed: {error}"))?
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        crate::runtime::ui(app, operation)
+            .await
+            .map_err(String::from)?
+    }
+}
+
+/// Pre-create the hidden WebView during Tauri setup, which is a documented
+/// safe creation point on Windows. Runtime commands remain an async fallback
+/// for users who enable the floating island after startup.
+pub(crate) fn install(app: &AppHandle, always_on_top: bool) -> Result<(), String> {
+    if let Ok(mut snap) = SNAPSHOT.lock() {
+        snap.always_on_top = always_on_top;
+    }
+    prepare_hidden_island(app, always_on_top)
+}
+
 #[tauri::command]
-pub fn island_window_ensure(app: AppHandle, always_on_top: Option<bool>) -> Result<(), String> {
+pub async fn island_window_ensure(
+    app: AppHandle,
+    always_on_top: Option<bool>,
+) -> Result<(), String> {
     let aot = always_on_top.unwrap_or(true);
     if let Ok(mut snap) = SNAPSHOT.lock() {
         snap.always_on_top = aot;
     }
-    crate::runtime::run_ui(&app.clone(), move || {
-        ensure_island_window(&app, aot)?;
-        if let Some(win) = app.get_webview_window(ISLAND_LABEL) {
-            let compact = SNAPSHOT.lock().map(|snap| snap.compact).unwrap_or(false);
-            let _ = win.set_always_on_top(aot);
-            let width = if compact {
-                ISLAND_COMPACT_WIDTH
-            } else {
-                ISLAND_WIDTH
-            };
-            let _ = win.set_size(LogicalSize::new(width, ISLAND_HEIGHT));
-            position_island(&app, compact);
-            let _ = win.hide();
-        }
-        Ok::<(), String>(())
-    })?
+    let worker_app = app.clone();
+    run_webview_creation(&app, move || prepare_hidden_island(&worker_app, aot)).await
 }
 
 #[tauri::command]
-pub fn island_window_show(
+pub async fn island_window_show(
     app: AppHandle,
     always_on_top: Option<bool>,
     position_x: Option<i32>,
@@ -189,30 +253,8 @@ pub fn island_window_show(
             snapshot.position_y = None;
         }
     }
-    crate::runtime::run_ui(&app.clone(), move || {
-        ensure_island_window(&app, aot)?;
-        let win = app
-            .get_webview_window(ISLAND_LABEL)
-            .ok_or_else(|| "island window unavailable".to_string())?;
-        let _ = win.set_always_on_top(aot);
-        let compact = SNAPSHOT.lock().map(|snap| snap.compact).unwrap_or(false);
-        position_island(&app, compact);
-
-        // Session snapshots can update for every launcher query/progress tick.
-        // Re-showing an already visible auxiliary window on each snapshot can
-        // reorder AppKit's key window, leaving the main search field with a
-        // caret but sending subsequent key events to the island. Visibility is
-        // a transition here: content updates travel over `island:sessions` and
-        // must never re-front an island that is already on screen.
-        if win.is_visible().unwrap_or(false) {
-            return Ok::<(), String>(());
-        }
-        win.show()
-            .map_err(|error| format!("show island window: {error}"))?;
-        #[cfg(target_os = "macos")]
-        promote_without_focus(&win);
-        Ok::<(), String>(())
-    })?
+    let worker_app = app.clone();
+    run_webview_creation(&app, move || show_island(&worker_app, aot)).await
 }
 
 #[tauri::command]

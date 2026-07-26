@@ -5,6 +5,8 @@
 //! Public IPC: [`display_list`]. Region still-frame capture: [`capture_region`].
 
 use serde::Serialize;
+#[cfg(target_os = "windows")]
+use std::collections::HashMap;
 #[cfg(target_os = "macos")]
 use std::sync::{Mutex, OnceLock};
 #[cfg(target_os = "macos")]
@@ -30,8 +32,137 @@ pub struct DisplayDescriptor {
     pub name: String,
     pub width: u32,
     pub height: u32,
+    pub refresh_rate_hz: Option<f32>,
+    pub scale_factor: Option<f32>,
+    pub rotation_degrees: Option<f32>,
+    pub connection: Option<String>,
+    pub edid_manufacturer_id: Option<u16>,
+    pub edid_product_code: Option<u16>,
     pub is_primary: bool,
     pub is_builtin: bool,
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Clone, Debug)]
+struct WindowsDisplayConnection {
+    connection: String,
+    edid_manufacturer_id: Option<u16>,
+    edid_product_code: Option<u16>,
+    is_builtin: bool,
+}
+
+#[cfg(target_os = "windows")]
+fn utf16_buffer(value: &[u16]) -> String {
+    let len = value
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(value.len());
+    String::from_utf16_lossy(&value[..len]).trim().to_string()
+}
+
+#[cfg(target_os = "windows")]
+fn windows_connection_name(technology: i32) -> &'static str {
+    use windows_sys::Win32::Devices::Display as dc;
+    match technology {
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_HD15 => "VGA",
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DVI => "DVI",
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_HDMI => "HDMI",
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS => "LVDS",
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EXTERNAL => "DisplayPort",
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED => "eDP",
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_USB_TUNNEL => "DisplayPort USB tunnel",
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EXTERNAL => "UDI",
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED => "Embedded UDI",
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_SDTVDONGLE => "TV dongle",
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_MIRACAST => "Miracast",
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_WIRED => "Indirect wired",
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INDIRECT_VIRTUAL => "Virtual display",
+        dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL => "Internal",
+        _ => "Other",
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn windows_display_connections() -> HashMap<String, WindowsDisplayConnection> {
+    use windows_sys::Win32::Devices::Display as dc;
+
+    let mut path_count = 0u32;
+    let mut mode_count = 0u32;
+    if unsafe {
+        dc::GetDisplayConfigBufferSizes(dc::QDC_ONLY_ACTIVE_PATHS, &mut path_count, &mut mode_count)
+    } != 0
+        || path_count == 0
+    {
+        return HashMap::new();
+    }
+
+    let mut paths =
+        vec![unsafe { std::mem::zeroed::<dc::DISPLAYCONFIG_PATH_INFO>() }; path_count as usize];
+    let mut modes =
+        vec![unsafe { std::mem::zeroed::<dc::DISPLAYCONFIG_MODE_INFO>() }; mode_count as usize];
+    if unsafe {
+        dc::QueryDisplayConfig(
+            dc::QDC_ONLY_ACTIVE_PATHS,
+            &mut path_count,
+            paths.as_mut_ptr(),
+            &mut mode_count,
+            modes.as_mut_ptr(),
+            std::ptr::null_mut(),
+        )
+    } != 0
+    {
+        return HashMap::new();
+    }
+
+    let mut result = HashMap::new();
+    for path in paths.into_iter().take(path_count as usize) {
+        let mut target = unsafe { std::mem::zeroed::<dc::DISPLAYCONFIG_TARGET_DEVICE_NAME>() };
+        target.header.r#type = dc::DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME;
+        target.header.size = std::mem::size_of::<dc::DISPLAYCONFIG_TARGET_DEVICE_NAME>() as u32;
+        target.header.adapterId = path.targetInfo.adapterId;
+        target.header.id = path.targetInfo.id;
+        if unsafe { dc::DisplayConfigGetDeviceInfo(&mut target.header) } != 0 {
+            continue;
+        }
+        let name = utf16_buffer(&target.monitorFriendlyDeviceName);
+        if name.is_empty() {
+            continue;
+        }
+        let output_technology = target.outputTechnology;
+        let edid_ids_valid = unsafe { target.flags.Anonymous.value } & 0x4 != 0;
+        result.insert(
+            name.to_lowercase(),
+            WindowsDisplayConnection {
+                connection: windows_connection_name(output_technology).to_string(),
+                edid_manufacturer_id: (edid_ids_valid && target.edidManufactureId != 0)
+                    .then_some(target.edidManufactureId),
+                edid_product_code: (edid_ids_valid && target.edidProductCodeId != 0)
+                    .then_some(target.edidProductCodeId),
+                is_builtin: matches!(
+                    output_technology,
+                    dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_DISPLAYPORT_EMBEDDED
+                        | dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_LVDS
+                        | dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_UDI_EMBEDDED
+                        | dc::DISPLAYCONFIG_OUTPUT_TECHNOLOGY_INTERNAL
+                ),
+            },
+        );
+    }
+    result
+}
+
+#[cfg(target_os = "windows")]
+fn windows_display_connection(
+    name: &str,
+    connections: &HashMap<String, WindowsDisplayConnection>,
+) -> Option<WindowsDisplayConnection> {
+    let name = name.to_lowercase();
+    connections.get(&name).cloned().or_else(|| {
+        connections
+            .iter()
+            .find(|(candidate, _)| candidate.contains(&name) || name.contains(candidate.as_str()))
+            .map(|(_, value)| value.clone())
+    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -336,27 +467,54 @@ fn is_builtin_display(id: u32) -> bool {
     core_graphics::display::CGDisplay::new(id).is_builtin()
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn is_builtin_display(_id: u32) -> bool {
     false
 }
 
 pub(crate) fn displays() -> Result<Vec<DisplayDescriptor>, String> {
+    #[cfg(target_os = "windows")]
+    let connections = windows_display_connections();
     all_capture_monitors()?
         .into_iter()
         .map(|monitor| {
             let id = monitor
                 .id()
                 .map_err(|error| format!("display id: {error}"))?;
+            let name = monitor
+                .friendly_name()
+                .or_else(|_| monitor.name())
+                .unwrap_or_else(|_| format!("Display {id}"));
+            #[cfg(target_os = "windows")]
+            let connection = windows_display_connection(&name, &connections);
             Ok(DisplayDescriptor {
                 id,
-                name: monitor
-                    .friendly_name()
-                    .or_else(|_| monitor.name())
-                    .unwrap_or_else(|_| format!("Display {id}")),
+                name,
                 width: monitor.width().unwrap_or_default(),
                 height: monitor.height().unwrap_or_default(),
+                refresh_rate_hz: monitor.frequency().ok().filter(|value| *value > 0.0),
+                scale_factor: monitor.scale_factor().ok().filter(|value| *value > 0.0),
+                rotation_degrees: monitor.rotation().ok(),
+                #[cfg(target_os = "windows")]
+                connection: connection.as_ref().map(|value| value.connection.clone()),
+                #[cfg(not(target_os = "windows"))]
+                connection: None,
+                #[cfg(target_os = "windows")]
+                edid_manufacturer_id: connection
+                    .as_ref()
+                    .and_then(|value| value.edid_manufacturer_id),
+                #[cfg(not(target_os = "windows"))]
+                edid_manufacturer_id: None,
+                #[cfg(target_os = "windows")]
+                edid_product_code: connection
+                    .as_ref()
+                    .and_then(|value| value.edid_product_code),
+                #[cfg(not(target_os = "windows"))]
+                edid_product_code: None,
                 is_primary: monitor.is_primary().unwrap_or(false),
+                #[cfg(target_os = "windows")]
+                is_builtin: connection.as_ref().is_some_and(|value| value.is_builtin),
+                #[cfg(not(target_os = "windows"))]
                 is_builtin: is_builtin_display(id),
             })
         })

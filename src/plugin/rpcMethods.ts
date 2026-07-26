@@ -65,6 +65,7 @@ const COMMAND_CAPABILITIES: Record<string, string> = {
   qx_system_information_list_processes: "processes",
   qx_system_monitor_network_counters: "system-info",
   qx_system_monitor_power: "system-info",
+  display_list: "system-info",
   qx_storage_overview: "storage-management",
   qx_external_displays_driver: "external-displays",
   qx_external_displays_install_driver: "external-displays",

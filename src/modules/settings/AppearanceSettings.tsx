@@ -131,7 +131,7 @@ export default function AppearanceSettings({
             ]}
           />
         </Row>
-        <Row title={t("appearance.glass", "System Glass")} description={t("appearance.glass.desc", "Use macOS Vibrancy or Windows Acrylic. Turning it off makes every window surface fully opaque while preserving your glass settings.")}>
+        <Row title={t("appearance.glass", "System Glass")} description={t("appearance.glass.desc", "Use macOS Vibrancy or Windows 11 Mica. Windows 10 uses an optimized opaque fallback. Turning it off makes every window surface fully opaque while preserving your glass settings.")}>
           <Toggle
             value={a.glass_enabled}
             onChange={(v) => patch("appearance", { ...a, glass_enabled: v })}

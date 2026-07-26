@@ -215,6 +215,11 @@ pub(super) fn platform_icon_to_png(app_path: &Path, app_name: &str) -> String {
         },
     };
 
+    let png_path = cache_path(app_path, app_name);
+    if png_path.is_file() && compact_cache(&png_path) {
+        return png_path.to_string_lossy().to_string();
+    }
+
     let wide_path: Vec<u16> = app_path
         .as_os_str()
         .encode_wide()
@@ -231,6 +236,10 @@ pub(super) fn platform_icon_to_png(app_path: &Path, app_name: &str) -> String {
         )
     };
     if found == 0 || file_info.hIcon.is_null() {
+        eprintln!(
+            "[apps] Windows Shell returned no icon for {}",
+            app_path.display()
+        );
         return String::new();
     }
 
@@ -303,9 +312,12 @@ pub(super) fn platform_icon_to_png(app_path: &Path, app_name: &str) -> String {
     }
 
     if rgba.is_empty() {
+        eprintln!(
+            "[apps] failed to rasterize Windows icon for {}",
+            app_path.display()
+        );
         return String::new();
     }
-    let png_path = cache_path(app_path, app_name);
     match image::save_buffer_with_format(
         &png_path,
         &rgba,

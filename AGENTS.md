@@ -425,6 +425,74 @@ Run the smallest useful verification set for the change:
 
 Record any skipped validation and why.
 
+### Local Windows build, install, and launch
+
+Use the real Tauri bundle when validating Windows-only window styles, WebView2,
+native resources, installer behavior, or `cfg(target_os = "windows")` code. A
+successful `cargo check` does not exercise the installed WebView2 process or
+NSIS replacement path.
+
+Before building, review `git status --short`. `tauri build` consumes the entire
+working tree, including unrelated uncommitted changes, even when the preceding
+commit intentionally staged only one file. Tell the user what the local build
+will contain; do not silently commit or discard their dirty files.
+
+PowerShell environments used by desktop agents may block `npm.ps1` or omit the
+Rust toolchain from `PATH`:
+
+```powershell
+# npm.ps1 may be rejected by the PowerShell execution policy. Use the cmd shim.
+$npmCmd = (Get-Command npm.cmd -ErrorAction Stop).Source
+
+# Qx Windows bundles must use the MSVC toolchain. Some agent shells have a
+# toolchain installed but do not expose ~/.cargo/bin on PATH.
+$msvcBin = Join-Path $env:USERPROFILE `
+  '.rustup\toolchains\stable-x86_64-pc-windows-msvc\bin'
+if (-not (Test-Path -LiteralPath (Join-Path $msvcBin 'cargo.exe'))) {
+  throw 'stable-x86_64-pc-windows-msvc cargo is not installed'
+}
+$env:Path = "$msvcBin;$env:Path"
+
+& $npmCmd run tauri build
+```
+
+Do not work around a missing MSVC Cargo by building the Windows installer with
+the GNU toolchain. If `cargo fmt --check` reports that `rustfmt` is not installed
+for MSVC, install that component only when toolchain setup is in scope;
+otherwise record formatting as skipped. Do not claim a GNU `rustfmt` check as
+proof that the configured MSVC toolchain is complete.
+
+`npm run tauri build` already runs the configured frontend build and resource
+preparation before the optimized Rust build. A warm build can still take more
+than a minute and may be quiet during linking or packaging. Use the execution
+tool's long-running cell/wait mechanism and send periodic progress updates;
+do not repeatedly kill and restart a healthy build because no new output was
+printed.
+
+Successful Windows output normally includes both:
+
+```text
+src-tauri/target/release/bundle/msi/Qx_<version>_x64_en-US.msi
+src-tauri/target/release/bundle/nsis/Qx_<version>_x64-setup.exe
+```
+
+For an explicitly requested local install, prefer the generated NSIS installer
+and verify every transition. Resolve the exact installer path first; stop only
+the installed Qx process whose executable path matches
+`C:\Program Files\Qx\Qx.exe`; run the installer hidden with `/S` and `-Wait`;
+require exit code zero; confirm the installed file exists; then launch it. A
+per-machine install may require an already elevated shell—report a nonzero or
+UAC-blocked install instead of claiming success.
+
+After launch, verify all of the following:
+
+- `Get-Process Qx` returns the new process and `Responding` is true.
+- Its `Path` is the installed executable, not `target/release/qx.exe`.
+- The installed file version and timestamp match the new build.
+- `~/.qx/logs/qx.log` contains a fresh `Qx setup completed` entry for the new PID.
+- For the feature being fixed, perform the real interaction when possible
+  (for example, float and click the island, then load a local and remote image).
+
 ### Local macOS build, install, and TCC-efficient testing
 
 For repeated local macOS testing, use the free Apple Account **Personal Team**
