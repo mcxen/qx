@@ -37,6 +37,7 @@
   --qx-shell-chrome-x: 14px;
   --qx-shell-topbar-gap: 8px;
   /* Top/bottom chrome share similar thickness (was up to 92px vs 56px bottom). */
+  --qx-titlebar-h: 32px;
   --qx-topbar-h: clamp(48px, 6vh, 54px);
   --qx-bottom-bar-h: clamp(46px, 5.8vh, 54px);
   --qx-context-w: clamp(240px, 28vw, 340px);

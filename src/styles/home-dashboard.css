@@ -154,6 +154,18 @@ button.qx-home-widget:focus-visible,
   line-height: 1.45;
 }
 
+.qx-launcher-home-widget-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  color: var(--qx-text-secondary);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-2);
+}
+
 .qx-home-metrics {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

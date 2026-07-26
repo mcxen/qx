@@ -41,6 +41,7 @@ import { formatQxShortcut } from "./utils/keyboard";
 import { EyeOff, Pin } from "lucide-react";
 import type { LauncherResultRow } from "./launcher/resultRows";
 import { builtinModuleIcon, builtinModuleIconKind } from "./modules/builtinIcons";
+import { getPluginIcon } from "./plugin/pluginIconRegistry";
 
 const FILE_ICON_BY_EXTENSION: Record<string, string> = {
   pdf: "file-pdf",
@@ -229,21 +230,29 @@ function lucideIconForKind(kind: string): LucideIcon | null {
 
 export function LauncherAppIcon({ item, label }: { item: AppEntry; label: string }) {
   const [failed, setFailed] = useState(false);
-  const kind = iconKind(item);
-  const builtin = item.icon.startsWith("builtin:");
-  const LucideIcon = builtinModuleIcon(item.icon) ?? lucideIconForKind(kind);
+  const moduleId = item.moduleId
+    || item.path.match(/^__qx:(?:cmd:)?(?:builtin:)?([^:]+)(?::|$)/)?.[1];
+  const pluginId = item.path.startsWith("__qx:plugin:") ? item.path.slice("__qx:plugin:".length) : "";
+  const effectiveIcon = getPluginIcon(pluginId)
+    || item.icon
+    || (moduleId ? `builtin:${moduleId}` : "")
+    || "";
+  const effectiveItem = effectiveIcon === item.icon ? item : { ...item, icon: effectiveIcon };
+  const kind = iconKind(effectiveItem);
+  const builtin = effectiveIcon.startsWith("builtin:");
+  const LucideIcon = builtinModuleIcon(effectiveIcon) ?? lucideIconForKind(kind);
   const canUseImage =
-    item.icon &&
+    effectiveIcon &&
     !failed &&
     !builtin &&
-    !item.icon.startsWith("plugin:");
-  const imageSrc = /^(?:[a-zA-Z]:[\\/]|\\\\|\/)/.test(item.icon)
-    ? convertFileSrc(item.icon)
-    : item.icon;
+    !effectiveIcon.startsWith("plugin:");
+  const imageSrc = /^(?:[a-zA-Z]:[\\/]|\\\\|\/)/.test(effectiveIcon)
+    ? convertFileSrc(effectiveIcon)
+    : effectiveIcon;
 
   useEffect(() => {
     setFailed(false);
-  }, [item.icon]);
+  }, [effectiveIcon]);
 
   return (
     <span className={`qx-list-icon qx-app-icon kind-${kind}`} aria-hidden="true">

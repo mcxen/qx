@@ -1578,6 +1578,22 @@ function App() {
     if (!isTauriRuntime()) return;
     const win = getCurrentWindow();
     const unlisten = win.onResized(async ({ payload }) => {
+      // A maximized/fullscreen window is intentionally larger than the
+      // launcher's remembered-size limits. Applying clampWindowSize here
+      // immediately restores the old size, which makes the title-bar maximize
+      // action flicker and never settle into fullscreen.
+      const [maximized, fullscreen] = await Promise.all([
+        win.isMaximized().catch(() => false),
+        win.isFullscreen().catch(() => false),
+      ]);
+      if (maximized || fullscreen) {
+        pendingWindowSizeRef.current = null;
+        if (resizeSaveTimerRef.current) {
+          window.clearTimeout(resizeSaveTimerRef.current);
+          resizeSaveTimerRef.current = null;
+        }
+        return;
+      }
       const scaleFactor = await win.scaleFactor().catch(() => 1);
       const logical = {
         width: payload.width / scaleFactor,
@@ -2500,6 +2516,11 @@ function App() {
         break;
       case "Enter":
         e.preventDefault();
+        // Launcher owns Enter when the search field has focus. Stop the event
+        // here so QxShell cannot re-resolve a stale primary action while the
+        // selected row is being opened. IME candidate confirmation returned
+        // above and therefore keeps its native behavior.
+        e.stopPropagation();
         if (row?.kind === "category") {
           toggleLauncherCategory(row.categoryId);
         } else if (item) {

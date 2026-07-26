@@ -1,5 +1,7 @@
 import type { HomeDashboardWidgetId } from "../modules/settings/store";
 import type { InstalledPlugin, PluginHomeWidgetSource } from "../plugin/types";
+import type { LucideIcon } from "lucide-react";
+import { Cpu, MemoryStick, Network, Pin, Zap } from "lucide-react";
 
 type Translate = (key: string, fallback: string) => string;
 
@@ -7,6 +9,7 @@ export interface HomeDashboardWidgetOption {
   id: HomeDashboardWidgetId;
   title: string;
   description: string;
+  icon: LucideIcon;
 }
 
 export const HOME_DASHBOARD_WIDGET_IDS: HomeDashboardWidgetId[] = [
@@ -23,26 +26,31 @@ export function homeDashboardWidgetOptions(t: Translate): HomeDashboardWidgetOpt
       id: "launcher.pinned",
       title: t("launcher.home.pinned", "Pinned Applications"),
       description: t("launcher.home.pinned.desc", "Applications, modules and plugins pinned from Launcher Actions."),
+      icon: Pin,
     },
     {
       id: "system.cpu",
       title: "CPU",
       description: t("launcher.home.cpu.desc", "Current processor utilization."),
+      icon: Cpu,
     },
     {
       id: "system.memory",
       title: t("launcher.home.memory", "Memory"),
       description: t("launcher.home.memory.desc", "Current memory pressure and capacity."),
+      icon: MemoryStick,
     },
     {
       id: "system.power",
       title: t("launcher.home.power", "Power"),
       description: t("launcher.home.power.desc", "Battery level and charging state."),
+      icon: Zap,
     },
     {
       id: "system.network",
       title: t("launcher.home.network", "Network"),
       description: t("launcher.home.network.desc", "Current download and upload rates."),
+      icon: Network,
     },
   ];
 }

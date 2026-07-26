@@ -48,6 +48,10 @@ fn default_auto_hide_on_blur() -> bool {
     true
 }
 
+fn default_window_behavior() -> String {
+    "auto-hide".to_string()
+}
+
 impl Default for GeneralSettings {
     fn default() -> Self {
         Self {
@@ -73,6 +77,15 @@ pub struct AppearanceSettings {
     /// Runtime application icon id. This never changes the tray icon.
     #[serde(default = "default_app_icon")]
     pub app_icon: String,
+    /// Show the host-rendered title bar and desktop window controls.
+    #[serde(default)]
+    pub title_bar_visible: bool,
+    /// `always-on-top`, `normal`, or `auto-hide`.
+    #[serde(default = "default_window_behavior")]
+    pub window_behavior: String,
+    /// Keep the app icon in the macOS Dock or Windows taskbar.
+    #[serde(default)]
+    pub show_in_app_list: bool,
     #[serde(default = "default_true")]
     pub glass_enabled: bool,
     #[serde(default = "default_blur_opacity")]
@@ -219,6 +232,9 @@ impl Default for AppearanceSettings {
         Self {
             theme: default_theme(),
             app_icon: default_app_icon(),
+            title_bar_visible: false,
+            window_behavior: default_window_behavior(),
+            show_in_app_list: false,
             glass_enabled: true,
             blur_opacity: default_blur_opacity(),
             blur_radius: default_blur_radius(),
@@ -899,6 +915,10 @@ pub(crate) fn read_settings() -> Settings {
         Ok(content) => {
             let mut value: serde_json::Value =
                 serde_json::from_str(&content).unwrap_or(serde_json::Value::Null);
+            let has_window_behavior = value
+                .get("appearance")
+                .and_then(|appearance| appearance.get("window_behavior"))
+                .is_some();
             // Soft-migrate onboarding flag: installs that already showed the launcher
             // before this field existed must not re-open the permission wizard.
             if let Some(general) = value.get_mut("general").and_then(|g| g.as_object_mut()) {
@@ -913,10 +933,22 @@ pub(crate) fn read_settings() -> Settings {
                     );
                 }
             }
-            serde_json::from_value(value).unwrap_or_default()
+            let mut settings: Settings = serde_json::from_value(value).unwrap_or_default();
+            // Older versions stored this choice as the inverse boolean
+            // `general.autoHideOnBlur`. Preserve that preference when the new
+            // three-way appearance setting is absent.
+            if !has_window_behavior {
+                settings.appearance.window_behavior = if settings.general.auto_hide_on_blur {
+                    "auto-hide".to_string()
+                } else {
+                    "normal".to_string()
+                };
+            }
+            settings
         }
         Err(_) => Settings::default(),
     };
+    normalize_window_behavior(&mut settings);
     if settings.plugin_registries.is_empty() {
         settings.plugin_registries = default_plugin_registries();
     }
@@ -932,6 +964,21 @@ pub(crate) fn read_settings() -> Settings {
         settings.agent.default_model = "openrouter/auto".to_string();
     }
     settings
+}
+
+fn normalize_window_behavior(settings: &mut Settings) {
+    if !matches!(
+        settings.appearance.window_behavior.as_str(),
+        "always-on-top" | "normal" | "auto-hide"
+    ) {
+        settings.appearance.window_behavior = if settings.general.auto_hide_on_blur {
+            "auto-hide".to_string()
+        } else {
+            "normal".to_string()
+        };
+    }
+    // Keep the legacy field synchronized for tray actions and older helpers.
+    settings.general.auto_hide_on_blur = settings.appearance.window_behavior == "auto-hide";
 }
 
 pub(crate) fn write_settings(settings: &Settings) -> Result<(), String> {
@@ -999,6 +1046,7 @@ pub async fn get_settings() -> Settings {
 
 #[command]
 pub async fn update_settings(app: AppHandle, mut settings: Settings) -> Result<Settings, String> {
+    normalize_window_behavior(&mut settings);
     settings.appearance.app_icon =
         crate::app_icon::normalize_id(&settings.appearance.app_icon).to_string();
     let settings_for_io = settings.clone();
@@ -1010,6 +1058,7 @@ pub async fn update_settings(app: AppHandle, mut settings: Settings) -> Result<S
         let tray_changed = old.quick_entries != settings_for_io.quick_entries
             || old.tray_actions != settings_for_io.tray_actions
             || old.general.auto_hide_on_blur != settings_for_io.general.auto_hide_on_blur
+            || old.appearance.window_behavior != settings_for_io.appearance.window_behavior
             || old.general.language != settings_for_io.general.language;
         let app_icon_changed = old.appearance.app_icon != settings_for_io.appearance.app_icon;
         write_settings(&settings_for_io)?;
@@ -1024,6 +1073,9 @@ pub async fn update_settings(app: AppHandle, mut settings: Settings) -> Result<S
             .await
             .map_err(String::from)??;
     }
+
+    crate::floating_panel::apply_window_behavior(&app, &settings.appearance.window_behavior);
+    crate::floating_panel::apply_app_list_presence(&app, settings.appearance.show_in_app_list);
 
     if shortcuts_changed && !global_shortcuts_are_paused() {
         register_shortcuts(&app, &settings)?;
@@ -1044,6 +1096,8 @@ pub async fn reset_settings(app: AppHandle) -> Result<Settings, String> {
     crate::runtime::ui(&app, move || crate::app_icon::apply(&icon_app, &icon_id))
         .await
         .map_err(String::from)??;
+    crate::floating_panel::apply_window_behavior(&app, &default.appearance.window_behavior);
+    crate::floating_panel::apply_app_list_presence(&app, default.appearance.show_in_app_list);
     register_shortcuts(&app, &default)?;
     crate::refresh_tray_menu(&app, &default)?;
     Ok(default)
@@ -1053,8 +1107,22 @@ pub async fn reset_settings(app: AppHandle) -> Result<Settings, String> {
 pub async fn import_settings(app: AppHandle, path: String) -> Result<Settings, String> {
     let settings = settings_io(move || {
         let content = fs::read_to_string(&path).map_err(|e| format!("read {}: {e}", path))?;
-        let mut settings: Settings =
+        let value: serde_json::Value =
             serde_json::from_str(&content).map_err(|e| format!("parse: {e}"))?;
+        let has_window_behavior = value
+            .get("appearance")
+            .and_then(|appearance| appearance.get("window_behavior"))
+            .is_some();
+        let mut settings: Settings =
+            serde_json::from_value(value).map_err(|e| format!("parse: {e}"))?;
+        if !has_window_behavior {
+            settings.appearance.window_behavior = if settings.general.auto_hide_on_blur {
+                "auto-hide".to_string()
+            } else {
+                "normal".to_string()
+            };
+        }
+        normalize_window_behavior(&mut settings);
         settings.appearance.app_icon =
             crate::app_icon::normalize_id(&settings.appearance.app_icon).to_string();
         write_settings(&settings)?;
@@ -1066,6 +1134,8 @@ pub async fn import_settings(app: AppHandle, path: String) -> Result<Settings, S
     crate::runtime::ui(&app, move || crate::app_icon::apply(&icon_app, &icon_id))
         .await
         .map_err(String::from)??;
+    crate::floating_panel::apply_window_behavior(&app, &settings.appearance.window_behavior);
+    crate::floating_panel::apply_app_list_presence(&app, settings.appearance.show_in_app_list);
     register_shortcuts(&app, &settings)?;
     crate::refresh_tray_menu(&app, &settings)?;
     Ok(settings)

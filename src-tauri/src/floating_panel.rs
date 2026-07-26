@@ -23,6 +23,9 @@ static ACTIVE_ROUTE: OnceLock<Mutex<String>> = OnceLock::new();
 /// Our own open flag — more reliable than `is_visible()` alone for NSPanel /
 /// blur-hide races with global hotkeys.
 static PANEL_OPEN: AtomicBool = AtomicBool::new(false);
+/// Native z-order projection of Appearance → Window Display Mode.
+/// `false` means the normal-window mode; auto-hide still floats while visible.
+static WINDOW_ALWAYS_ON_TOP: AtomicBool = AtomicBool::new(true);
 /// When the panel was last hidden (blur-hide can race ahead of the hotkey).
 static LAST_HIDE_AT: OnceLock<Mutex<Option<Instant>>> = OnceLock::new();
 /// Ignore re-open for this long after a hide so the same keypress that caused
@@ -167,7 +170,8 @@ pub fn request_auto_hide_after_focus_settles(app: &AppHandle) {
             return;
         }
 
-        let auto_hide_enabled = crate::settings::read_settings().general.auto_hide_on_blur;
+        let auto_hide_enabled =
+            crate::settings::read_settings().appearance.window_behavior == "auto-hide";
         let suppressed = auto_hide_suppressed();
         let app_for_ui = app.clone();
         let focus = crate::main_thread::ui(&app, move || {
@@ -257,10 +261,12 @@ fn accepts_key_window_request(panel_open: bool, native_visible: bool) -> bool {
 mod macos {
     use super::previous_foreground_pid;
     use super::MAIN_LABEL;
+    use super::WINDOW_ALWAYS_ON_TOP;
     use objc2::msg_send;
     use objc2::runtime::{AnyClass, AnyObject};
     use objc2_app_kit::{NSWindowCollectionBehavior, NSWindowStyleMask};
     use std::ffi::CStr;
+    use std::sync::atomic::Ordering;
     use tauri::AppHandle;
     use tauri::Manager;
 
@@ -381,6 +387,29 @@ mod macos {
             | NSWindowCollectionBehavior::IgnoresCycle
     }
 
+    fn normal_collection_behavior() -> NSWindowCollectionBehavior {
+        NSWindowCollectionBehavior::MoveToActiveSpace
+            | NSWindowCollectionBehavior::Transient
+            | NSWindowCollectionBehavior::IgnoresCycle
+    }
+
+    pub(super) fn apply_window_behavior(app: &AppHandle, always_on_top: bool) {
+        let Some(ns_window) = ns_window(app) else {
+            return;
+        };
+        unsafe {
+            let _: () = msg_send![ns_window, setLevel: if always_on_top { 3isize } else { 0isize }];
+            let _: () = msg_send![
+                ns_window,
+                setCollectionBehavior: if always_on_top {
+                    panel_collection_behavior()
+                } else {
+                    normal_collection_behavior()
+                }
+            ];
+        }
+    }
+
     /// Apply panel-like semantics to the main NSWindow.
     ///
     /// Tauri creates a plain NSWindow. NSPanel-specific bits such as
@@ -416,9 +445,19 @@ mod macos {
             // Float above regular windows. 3 == NSFloatingWindowLevel.
             // FullScreenAuxiliary is what lets us layer over fullscreen apps;
             // level alone is not enough.
-            let _: () = msg_send![ns_window, setLevel: 3isize];
+            let _: () = msg_send![
+                ns_window,
+                setLevel: if WINDOW_ALWAYS_ON_TOP.load(Ordering::SeqCst) { 3isize } else { 0isize }
+            ];
 
-            let _: () = msg_send![ns_window, setCollectionBehavior: panel_collection_behavior()];
+            let _: () = msg_send![
+                ns_window,
+                setCollectionBehavior: if WINDOW_ALWAYS_ON_TOP.load(Ordering::SeqCst) {
+                    panel_collection_behavior()
+                } else {
+                    normal_collection_behavior()
+                }
+            ];
         }
     }
 
@@ -431,9 +470,19 @@ mod macos {
             return;
         };
         unsafe {
-            let _: () = msg_send![ns_window, setLevel: 3isize];
+            let _: () = msg_send![
+                ns_window,
+                setLevel: if WINDOW_ALWAYS_ON_TOP.load(Ordering::SeqCst) { 3isize } else { 0isize }
+            ];
             let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
-            let _: () = msg_send![ns_window, setCollectionBehavior: panel_collection_behavior()];
+            let _: () = msg_send![
+                ns_window,
+                setCollectionBehavior: if WINDOW_ALWAYS_ON_TOP.load(Ordering::SeqCst) {
+                    panel_collection_behavior()
+                } else {
+                    normal_collection_behavior()
+                }
+            ];
         }
     }
 
@@ -445,9 +494,23 @@ mod macos {
             return;
         };
         unsafe {
-            let _: () = msg_send![ns_window, setLevel: if active { 0isize } else { 3isize }];
+            let _: () = msg_send![
+                ns_window,
+                setLevel: if active || !WINDOW_ALWAYS_ON_TOP.load(Ordering::SeqCst) {
+                    0isize
+                } else {
+                    3isize
+                }
+            ];
             let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
-            let _: () = msg_send![ns_window, setCollectionBehavior: panel_collection_behavior()];
+            let _: () = msg_send![
+                ns_window,
+                setCollectionBehavior: if WINDOW_ALWAYS_ON_TOP.load(Ordering::SeqCst) {
+                    panel_collection_behavior()
+                } else {
+                    normal_collection_behavior()
+                }
+            ];
         }
     }
 
@@ -460,7 +523,14 @@ mod macos {
         unsafe {
             // Re-apply before orderFront so the window is eligible for the
             // active Space / fullscreen session at the moment of show.
-            let _: () = msg_send![ns_window, setCollectionBehavior: panel_collection_behavior()];
+            let _: () = msg_send![
+                ns_window,
+                setCollectionBehavior: if WINDOW_ALWAYS_ON_TOP.load(Ordering::SeqCst) {
+                    panel_collection_behavior()
+                } else {
+                    normal_collection_behavior()
+                }
+            ];
             let _: () = msg_send![ns_window, orderFrontRegardless];
         }
     }
@@ -587,12 +657,12 @@ fn center_on_cursor(app: &AppHandle) -> Option<()> {
     Some(())
 }
 
-/// One-time installation during app setup: hide the dock icon and promote
-/// the main window into an NSPanel.
-pub fn install(app: &AppHandle) {
+/// One-time installation during app setup: configure app-list presence and
+/// promote the main window into an NSPanel.
+pub fn install(app: &AppHandle, window_behavior: &str, show_in_app_list: bool) {
     #[cfg(target_os = "macos")]
     {
-        let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+        apply_app_list_presence(app, show_in_app_list);
         macos::promote_main_to_panel(app);
     }
     #[cfg(target_os = "windows")]
@@ -610,7 +680,47 @@ pub fn install(app: &AppHandle) {
             );
         }
     }
+    #[cfg(target_os = "windows")]
+    apply_app_list_presence(app, show_in_app_list);
+    apply_window_behavior(app, window_behavior);
     let _ = app; // suppress unused on non-macos
+}
+
+/// Project the cross-platform app-list preference onto the native shell.
+/// macOS uses the activation policy (Dock + app switcher); Windows uses the
+/// taskbar exclusion flag on the reusable main window.
+pub fn apply_app_list_presence(app: &AppHandle, show_in_app_list: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        let policy = if show_in_app_list {
+            tauri::ActivationPolicy::Regular
+        } else {
+            tauri::ActivationPolicy::Accessory
+        };
+        let _ = app.set_activation_policy(policy);
+    }
+    #[cfg(target_os = "windows")]
+    if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+        let _ = win.set_skip_taskbar(!show_in_app_list);
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let _ = (app, show_in_app_list);
+}
+
+/// Project the three-way appearance preference onto the native window layer.
+/// The frontend controls remain drawn by Qx; this only changes z-order.
+pub fn apply_window_behavior(app: &AppHandle, behavior: &str) {
+    let always_on_top = behavior != "normal";
+    WINDOW_ALWAYS_ON_TOP.store(always_on_top, Ordering::SeqCst);
+    let app = app.clone();
+    let _ = crate::main_thread::run_on_main(&app.clone(), move || {
+        #[cfg(target_os = "macos")]
+        macos::apply_window_behavior(&app, always_on_top);
+        #[cfg(target_os = "windows")]
+        if let Some(win) = app.get_webview_window(MAIN_LABEL) {
+            let _ = win.set_always_on_top(always_on_top);
+        }
+    });
 }
 
 /// Show the main window as a floating, non-activating panel.

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "./store";
 import { useTheme } from "../../ThemeProvider";
-import { Row, SegmentedControl, SettingsCard, Slider, Toggle } from "../../components/ui";
+import { Row, SegmentedControl, SettingsCard, Select, Slider, Toggle } from "../../components/ui";
 import { useT } from "../../i18n";
 import { HomeIslandSettings } from "../../home-island";
 import { ToggleGroup, ToggleGroupItem } from "../../components/shadcn/toggle-group";
@@ -213,10 +213,65 @@ export default function AppearanceSettings({
       </SettingsCard>
 
       <SettingsCard title={t("appearance.layout.title", "Window & Density")}>
+        <Row
+          title={t("appearance.titleBar", "Title Bar")}
+          description={t(
+            "appearance.titleBar.desc",
+            "Show traditional window controls above the Qx toolbar on macOS and Windows.",
+          )}
+        >
+          <SegmentedControl
+            value={a.title_bar_visible ? "visible" : "hidden"}
+            onChange={(value) =>
+              patch("appearance", {
+                ...a,
+                title_bar_visible: value === "visible",
+              })
+            }
+            options={[
+              { value: "visible", label: t("appearance.titleBar.visible", "Always Show") },
+              { value: "hidden", label: t("appearance.titleBar.hidden", "Always Hide") },
+            ]}
+          />
+        </Row>
+        <Row
+          title={t("appearance.windowBehavior", "Window Display Mode")}
+          description={t(
+            "appearance.windowBehavior.desc",
+            "Choose whether Qx stays above other windows, behaves like a normal window, or hides when it loses focus.",
+          )}
+        >
+          <Select
+            value={a.window_behavior}
+            onChange={(value) => {
+              if (value === "always-on-top" || value === "normal" || value === "auto-hide") {
+                patch("appearance", { ...a, window_behavior: value });
+              }
+            }}
+            ariaLabel={t("appearance.windowBehavior", "Window Display Mode")}
+            options={[
+              { value: "always-on-top", label: t("appearance.windowBehavior.alwaysOnTop", "Always on top") },
+              { value: "normal", label: t("appearance.windowBehavior.normal", "Normal window") },
+              { value: "auto-hide", label: t("appearance.windowBehavior.autoHide", "Floating · hide on blur") },
+            ]}
+          />
+        </Row>
+        <Row
+          title={t("appearance.showInAppList", "Show in App List")}
+          description={t(
+            "appearance.showInAppList.desc",
+            "Keep the Qx icon in the macOS Dock or Windows taskbar after launch, like a traditional app.",
+          )}
+        >
+          <Toggle
+            value={a.show_in_app_list}
+            onChange={(checked) => patch("appearance", { ...a, show_in_app_list: checked })}
+          />
+        </Row>
         <Row title={t("appearance.windowSize", "Window Size")} description={t("appearance.windowSize.desc", "Launcher window dimensions (min 400×300).")}>
           <div className="qx-window-size-group">
             <label className="qx-dimension-label">
-              <span className="qx-dimension-label-text">W</span>
+              <span className="qx-dimension-label-text">{t("appearance.dimension.w", "W")}</span>
               <input
                 type="number"
                 min={MIN_WINDOW_WIDTH}
@@ -240,7 +295,7 @@ export default function AppearanceSettings({
             </label>
             <span className="qx-dimension-sep">×</span>
             <label className="qx-dimension-label">
-              <span className="qx-dimension-label-text">H</span>
+              <span className="qx-dimension-label-text">{t("appearance.dimension.h", "H")}</span>
               <input
                 type="number"
                 min={MIN_WINDOW_HEIGHT}
@@ -275,7 +330,7 @@ export default function AppearanceSettings({
             ]}
           />
         </Row>
-        <Row title={t("appearance.fontSize", "Font Size")} description={t("appearance.fontSize.desc", "Base UI font size.")}>
+        <Row title={t("appearance.fontSize", "Font Size")} description={t("appearance.fontSize.desc", "Font size for article reader content.")}>
           <SegmentedControl
             value={String(a.font_size)}
             onChange={(v) => patch("appearance", { ...a, font_size: parseInt(v) })}

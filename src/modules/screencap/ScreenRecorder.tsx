@@ -274,10 +274,6 @@ export default function ScreenRecorder() {
     await stopRecording();
   };
 
-  const handleNewRecording = () => {
-    reset();
-  };
-
   /**
    * Right-click on a history row should first select that entry, then surface
    * the shared Actions menu at the cursor position. Selection must commit
@@ -723,7 +719,7 @@ export default function ScreenRecorder() {
       data-qx-region-scroll
       tabIndex={-1}
     >
-      <GifPreview path={lastGifPath!} onClose={handleNewRecording} />
+      <GifPreview path={lastGifPath!} />
     </div>
   );
 

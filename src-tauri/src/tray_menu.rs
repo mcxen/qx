@@ -241,7 +241,7 @@ fn sample_status_titles(rt: &mut TrayRuntime, locale: TrayLocale) -> (String, St
 fn builtin_action_title(id: &str, locale: TrayLocale) -> Option<String> {
     Some(match id {
         "open_main" => tr(locale, "Open Main Window", "打开主窗口"),
-        "keep_visible" => tr(locale, "Keep Window Visible", "保持窗口可见"),
+        "keep_visible" => tr(locale, "Window Display Mode", "窗口显示方式"),
         "settings" => tr(locale, "Settings", "设置"),
         "hide_main" => tr(locale, "Hide Main Window", "隐藏主窗口"),
         _ => return None,
@@ -253,6 +253,7 @@ fn is_default_action_title(id: &str, title: &str) -> bool {
         (id, title.trim()),
         ("open_main", "Open Main Window")
             | ("keep_visible", "Keep Window Visible")
+            | ("keep_visible", "Window Display Mode")
             | ("settings", "Settings")
             | ("hide_main", "Hide Main Window")
     )
@@ -277,10 +278,10 @@ fn tray_action_title(
             } else {
                 action.title.trim().to_string()
             };
-            let state = if settings.general.auto_hide_on_blur {
-                tr(locale, "Off", "关")
-            } else {
-                tr(locale, "On", "开")
+            let state = match settings.appearance.window_behavior.as_str() {
+                "always-on-top" => tr(locale, "Always on top", "始终置顶"),
+                "normal" => tr(locale, "Normal window", "普通窗口"),
+                _ => tr(locale, "Hide on blur", "失焦隐藏"),
             };
             format!("{base}: {state}")
         }
@@ -537,7 +538,12 @@ pub fn handle_tray_action(app: &AppHandle, action_id: &str) {
         }
         "keep_visible" => {
             let mut next = settings::read_settings();
-            next.general.auto_hide_on_blur = !next.general.auto_hide_on_blur;
+            next.appearance.window_behavior = match next.appearance.window_behavior.as_str() {
+                "auto-hide" => "normal".to_string(),
+                "normal" => "always-on-top".to_string(),
+                _ => "auto-hide".to_string(),
+            };
+            next.general.auto_hide_on_blur = next.appearance.window_behavior == "auto-hide";
             if let Err(err) = settings::write_settings(&next) {
                 crate::diagnostics::log(
                     crate::diagnostics::LogLevel::Error,
@@ -547,11 +553,10 @@ pub fn handle_tray_action(app: &AppHandle, action_id: &str) {
                 );
                 return;
             }
+            crate::floating_panel::apply_window_behavior(app, &next.appearance.window_behavior);
             let _ = refresh_tray_menu(app, &next);
             let _ = app.emit("settings-updated", next.clone());
-            if !next.general.auto_hide_on_blur {
-                crate::floating_panel::show_floating(app);
-            }
+            crate::floating_panel::show_floating(app);
         }
         _ => {}
     }

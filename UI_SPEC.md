@@ -31,6 +31,9 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
   `core:window:allow-start-resize-dragging` capability；禁止把窗口边缘标成 drag
   region，否则会抢走缩放命中。Tauri/tao 在 macOS 不支持该 IPC，因此 macOS 不渲染
   WebView 手柄，继续由可调整大小的 Cocoa/NSPanel 原生窗口边缘处理。
+- Settings → Appearance 可启用跨平台自绘标题栏，默认隐藏以保留紧凑 Launcher。启用后标题栏固定在 Top Bar 上方，macOS 与 Windows 按各自桌面习惯排列最小化、最大化/还原和关闭按钮；按钮使用 Qx 主题变量，空白与标题可拖窗，双击切换最大化。关闭按钮只隐藏可复用主窗口，不销毁后台 helper。
+- Settings → Appearance → Window & Density 统一提供三种主窗口显示方式：始终置顶、普通窗口、悬浮桌面且失焦自动隐藏。三者互斥；普通窗口不因失焦隐藏，也不参与置顶层；悬浮模式只有在窗口失焦后收起，不能打断当前应用工作。
+- 同一设置区域提供“显示在应用栏”开关；开启后 macOS 保留 Dock 图标、Windows 保留任务栏图标，关闭后继续使用后台工具的隐藏应用列表行为。macOS 点击 Dock 图标时按传统应用语义重新显示 Qx。
 - 搜索是第一入口；模块内搜索必须放在 Top Bar。
 - Launcher 搜索为空时 Main Area 显示宿主绘制的 Home Dashboard；输入任意查询后立即切回
   ResultsList。Dashboard 复用现有置顶 metadata 与系统指标采样总线，不保存像素坐标，

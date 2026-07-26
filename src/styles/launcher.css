@@ -387,6 +387,18 @@
   gap: 1px;
 }
 
+.qx-launcher-home-widget-icon {
+  display: inline-flex !important;
+  flex: 0 0 24px;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-secondary);
+}
+
 .qx-rss-detail-title {
   overflow: hidden;
   color: var(--qx-text-primary);

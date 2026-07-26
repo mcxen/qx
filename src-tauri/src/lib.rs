@@ -373,7 +373,14 @@ pub fn run() {
                 }),
             );
 
-            if let Err(error) = app_icon::apply(&handle, &startup_settings.appearance.app_icon) {
+            let startup_icon = startup_settings.appearance.app_icon.clone();
+            let startup_icon_app = handle.clone();
+            let icon_result = runtime::run_ui(&handle, move || {
+                app_icon::apply(&startup_icon_app, &startup_icon)
+            })
+            .map_err(String::from)
+            .and_then(|result| result);
+            if let Err(error) = icon_result {
                 diagnostics::log(
                     diagnostics::LogLevel::Warn,
                     "main.app_icon",
@@ -402,9 +409,13 @@ pub fn run() {
                 );
             }
 
-            // Hide from dock and promote the main window into a
+            // Apply app-list presence and promote the main window into a
             // non-activating NSPanel so global shortcuts never steal focus.
-            floating_panel::install(&handle);
+            floating_panel::install(
+                &handle,
+                &startup_settings.appearance.window_behavior,
+                startup_settings.appearance.show_in_app_list,
+            );
 
             // Present the launcher on first launch so a fresh install is not
             // invisible at startup (which looks like Qx failed to open). The
@@ -829,15 +840,20 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|app, event| {
             // macOS sends Reopen when the helper is activated (for example by
-            // Login Items or `open -a Qx`). Qx is shortcut-first: activation
-            // keeps the helper alive but must never surface a hidden launcher.
+            // Login Items, `open -a Qx`, or clicking its Dock icon). When the
+            // user opted into the app list, treat that click like a traditional
+            // app activation; otherwise remain shortcut-first and hidden.
             #[cfg(target_os = "macos")]
             match event {
                 tauri::RunEvent::Reopen {
                     has_visible_windows: false,
                     ..
                 } => {
-                    floating_panel::hide(app);
+                    if settings::read_settings().appearance.show_in_app_list {
+                        floating_panel::show_floating(app);
+                    } else {
+                        floating_panel::hide(app);
+                    }
                 }
                 // System ⌘Q / termination may arrive as ExitRequested instead of
                 // the tray menu accelerator. Apply the same double-confirm policy.

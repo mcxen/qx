@@ -28,17 +28,17 @@ export default function RssSettings() {
   const clearRead = async () => {
     try {
       const count = await invoke<number>("rss_clear_read_articles");
-      setCleanupMsg(`${count} read article${count !== 1 ? "s" : ""} cleared.`);
+      setCleanupMsg(t("rss.clearRead.result", "{n} read article(s) cleared.").replace("{n}", String(count)));
     } catch (e) {
       setCleanupMsg(String(e));
     }
   };
 
   const clearAll = async () => {
-    if (!window.confirm("Delete ALL articles? (Feeds will be kept.) This cannot be undone.")) return;
+    if (!window.confirm(t("rss.clearAll.confirm", "Delete ALL articles? (Feeds will be kept.) This cannot be undone."))) return;
     try {
       const count = await invoke<number>("rss_clear_all_articles");
-      setCleanupMsg(`${count} article${count !== 1 ? "s" : ""} deleted.`);
+      setCleanupMsg(t("rss.clearAll.result", "{n} article(s) deleted.").replace("{n}", String(count)));
     } catch (e) {
       setCleanupMsg(String(e));
     }

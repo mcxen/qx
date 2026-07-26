@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { Check, MoreHorizontal, Pin, Search } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import {
   Button,
   Input,
@@ -40,7 +40,7 @@ function mergeEntries(entries: AppEntry[]): AppEntry[] {
 export interface LauncherHomePopoverProps {
   entries: AppEntry[];
   homeWidgets: HomeDashboardWidgetId[];
-  widgetOptions: Array<{ id: HomeDashboardWidgetId; title: string; description: string }>;
+  widgetOptions: Array<{ id: HomeDashboardWidgetId; title: string; description: string; icon: ComponentType<{ size?: number; strokeWidth?: number }> }>;
   onToggleWidget: (id: HomeDashboardWidgetId, enabled: boolean) => void;
 }
 
@@ -235,6 +235,9 @@ export default function LauncherHomePopover({
           <div className="qx-launcher-home-widget-list">
             {widgetOptions.map((option) => (
               <label key={option.id} className="qx-launcher-home-widget-row">
+                <span className="qx-launcher-home-widget-icon" aria-hidden="true">
+                  <option.icon size={15} strokeWidth={2} />
+                </span>
                 <span>
                   <strong>{option.title}</strong>
                   <small>{option.description}</small>

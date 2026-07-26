@@ -186,7 +186,7 @@ export default function AgentSettings() {
         title={t("agent.tools", "Tools")}>
         <Row
           title={t("agent.tools.enabled", "Enable Tools")}
-          description={`${t("agent.tools.enabled.desc", "Master switch for agent tool execution.")} ${toolCount} tool groups selected.`}
+          description={`${t("agent.tools.enabled.desc", "Master switch for agent tool execution.")} ${t("agent.tools.selectedCount", "{n} tool groups selected.").replace("{n}", String(toolCount))}`}
         >
           <Toggle
             value={agent.tools_enabled}

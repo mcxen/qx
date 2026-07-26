@@ -46,6 +46,7 @@ export interface GeneralSettings {
   launch_at_login: boolean;
   language: string;
   auto_update: boolean;
+  /** Legacy compatibility field; use appearance.window_behavior instead. */
   autoHideOnBlur: boolean;
   data_path: string;
   has_shown_launcher: boolean;
@@ -56,6 +57,7 @@ export interface GeneralSettings {
 }
 
 export type LauncherResultDensity = "comfortable" | "compact";
+export type WindowBehavior = "always-on-top" | "normal" | "auto-hide";
 
 export type HomeDashboardWidgetId =
   | "launcher.pinned"
@@ -75,6 +77,12 @@ export interface AppearanceSettings {
   theme: string;
   /** Runtime application icon. The tray icon stays unchanged. */
   app_icon: "original" | "cloud";
+  /** Show the Qx-drawn desktop title bar and window controls. */
+  title_bar_visible: boolean;
+  /** Main window z-order and blur behavior. */
+  window_behavior: WindowBehavior;
+  /** Keep Qx visible in the macOS Dock or Windows taskbar. */
+  show_in_app_list: boolean;
   glass_enabled: boolean;
   blur_opacity: number;
   blur_radius: number;
@@ -384,6 +392,9 @@ export const DEFAULT_SETTINGS: Settings = {
   appearance: {
     theme: "light",
     app_icon: "cloud",
+    title_bar_visible: false,
+    window_behavior: "auto-hide",
+    show_in_app_list: false,
     glass_enabled: true,
     blur_opacity: 0.16,
     blur_radius: 14,
@@ -549,7 +560,7 @@ export const DEFAULT_SETTINGS: Settings = {
     { id: "status_network", title: "Network", enabled: true },
     { id: "status_cpu", title: "CPU", enabled: false },
     { id: "open_main", title: "Open Main Window", enabled: true },
-    { id: "keep_visible", title: "Keep Window Visible", enabled: true },
+    { id: "keep_visible", title: "Window Display Mode", enabled: true },
     { id: "settings", title: "Settings", enabled: true },
     { id: "hide_main", title: "Hide Main Window", enabled: false },
   ],
@@ -649,6 +660,14 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           appearance: {
             ...DEFAULT_SETTINGS.appearance,
             ...s.appearance,
+            window_behavior:
+              s.appearance?.window_behavior === "always-on-top"
+              || s.appearance?.window_behavior === "normal"
+              || s.appearance?.window_behavior === "auto-hide"
+                ? s.appearance.window_behavior
+                : s.general?.autoHideOnBlur === false
+                  ? "normal"
+                  : "auto-hide",
             home_dashboard_widgets:
               Array.isArray(s.appearance?.home_dashboard_widgets)
               && s.appearance.home_dashboard_widgets.length > 0

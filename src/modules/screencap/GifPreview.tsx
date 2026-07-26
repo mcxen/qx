@@ -8,7 +8,6 @@ import CaptureOcrPanel from "./CaptureOcrPanel";
 
 interface Props {
   path: string;
-  onClose: () => void;
 }
 
 function formatBytes(n: number): string {
@@ -29,7 +28,7 @@ function formatClock(seconds: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-export default function GifPreview({ path, onClose }: Props) {
+export default function GifPreview({ path }: Props) {
   const t = useT();
   const mediaRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(true);
@@ -239,16 +238,6 @@ export default function GifPreview({ path, onClose }: Props) {
       )}
 
       {isStillImage ? <CaptureOcrPanel path={path} /> : null}
-
-      {/* Keep the close button reachable so the new capture entry-point
-          remains functional even after the inline action list moves out. */}
-      <button
-        type="button"
-        onClick={onClose}
-        className="qx-screencap-preview-btn qx-screencap-preview-btn--primary qx-screencap-preview-new"
-      >
-        {t("common.new", "New")}
-      </button>
 
       {previewStatus.msg && (
         <div

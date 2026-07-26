@@ -24,18 +24,6 @@ export default function GeneralSettings() {
           />
         </Row>
         <Row
-          title={t("general.autoHideOnBlur", "Auto-hide on Blur")}
-          description={t(
-            "general.autoHideOnBlur.desc",
-            "Hide launcher-style views when Qx loses focus.",
-          )}
-        >
-          <Toggle
-            value={g.autoHideOnBlur}
-            onChange={(v) => patch("general", { ...g, autoHideOnBlur: v })}
-          />
-        </Row>
-        <Row
           title={t("general.language", "Language")}
           description={t(
             "general.language.desc",

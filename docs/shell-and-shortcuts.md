@@ -49,6 +49,11 @@ Windows WebView2 不保证父级 `data-tauri-drag-region` 穿过铺满顶栏的�
 `core:window:allow-start-resize-dragging`；`core:window:default` 和
 `allow-start-dragging` 都不包含缩放 IPC。
 
+Appearance 中的 `title_bar_visible` 启用 Qx 自绘标题栏，macOS 与 Windows 共用同一
+Shell 端口并按平台排列控制按钮。拖动继续使用 `allow-start-dragging`，最大化使用
+`allow-toggle-maximize`，最小化必须显式授予 `core:window:allow-minimize`。关闭按钮走
+`floating_hide_restore_focus`，不得调用原生 close 销毁可复用主窗口。
+
 ---
 
 ## 2. 浮动面板状态机（`floating_panel.rs`）
@@ -90,7 +95,10 @@ else                                   → show_and_navigate(route)
 
 ### 2.4 经典竞态：blur 自动隐藏 vs 全局热键
 
-用户设置里默认 `autoHideOnBlur: true`。
+窗口显示方式在 Settings → Appearance → Window & Density 统一管理：
+`always-on-top` 始终置顶、`normal` 按普通窗口参与前后层级、`auto-hide` 悬浮在桌面上且失焦自动隐藏。
+旧版 `autoHideOnBlur` 仍作为兼容字段保留，不再单独作为用户设置展示。
+同一处还可选择是否保留 macOS Dock / Windows 任务栏图标；关闭时 Qx 继续以后台工具方式运行，开启时按传统桌面应用显示在应用列表中。
 
 错误时序（修之前）：
 

@@ -36,6 +36,8 @@ import { defaultIslandOpenTarget } from "../island/session/openTarget";
 import { goHomeToLauncher } from "../modules/settings/openSettings";
 import { useT } from "../i18n";
 import { Select } from "./ui";
+import QxWindowTitleBar from "./QxWindowTitleBar";
+import { useSettingsStore } from "../modules/settings/store";
 
 export type { BottomIslandContent } from "./QxBottomIsland";
 export type { QxShellAction } from "./ShellActionButton";
@@ -173,6 +175,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   navigation,
 }, ref) {
   const t = useT();
+  const showTitleBar = useSettingsStore((state) => state.settings.appearance.title_bar_visible);
   const isLauncherSurface = islandKey === "launcher";
   const resolvedIslandOpenTarget = useMemo(
     () => islandOpenTarget ?? defaultIslandOpenTarget(islandKey, islandSource),
@@ -899,7 +902,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   return (
     <div
       ref={assignShellRef}
-      className={`qx-shell visual-${visual} ${IS_WINDOWS_HOST ? "is-windows-host" : ""} ${context ? "has-context" : ""} ${overlayBottom ? "qx-shell-overlay-bottom" : ""} ${className}`}
+      className={`qx-shell visual-${visual} ${IS_WINDOWS_HOST ? "is-windows-host" : "is-macos-host"} ${showTitleBar ? "has-window-titlebar" : ""} ${context ? "has-context" : ""} ${overlayBottom ? "qx-shell-overlay-bottom" : ""} ${className}`}
       style={style}
       aria-label={title}
       onKeyDownCapture={handleKeyDownCapture}
@@ -921,12 +924,14 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
           ))
         : null}
 
+      {showTitleBar ? <QxWindowTitleBar title={title} /> : null}
+
       <div
         className={`qx-shell-topbar${hasLeading ? "" : " no-leading"}`}
         data-tauri-drag-region
         onPointerDown={startWindowDrag}
       >
-        {IS_WINDOWS_HOST ? (
+        {IS_WINDOWS_HOST && !showTitleBar ? (
           <div
             className="qx-shell-window-drag-handle"
             data-qx-window-drag-handle

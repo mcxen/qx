@@ -15,6 +15,45 @@ const INTERVAL_MS: Record<IslandDataChannel, number> = {
   net: 1000,
 };
 
+const DATA_CACHE_KEY = "qx.home-dashboard.data.v1";
+const DATA_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+
+function readCachedState(): IslandDataState | null {
+  if (typeof localStorage === "undefined") return null;
+  try {
+    const cached = JSON.parse(localStorage.getItem(DATA_CACHE_KEY) || "null") as {
+      savedAt?: number;
+      stats?: SystemStatsSnapshot | null;
+      power?: PowerSnapshot | null;
+      net?: NetSnapshot | null;
+    } | null;
+    if (!cached?.savedAt || Date.now() - cached.savedAt > DATA_CACHE_MAX_AGE_MS) return null;
+    return {
+      stats: cached.stats ?? null,
+      power: cached.power ?? null,
+      net: cached.net ?? null,
+      ready: { stats: Boolean(cached.stats), power: Boolean(cached.power), net: Boolean(cached.net) },
+      error: emptyError(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedState(state: IslandDataState): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(DATA_CACHE_KEY, JSON.stringify({
+      savedAt: Date.now(),
+      stats: state.stats,
+      power: state.power,
+      net: state.net,
+    }));
+  } catch {
+    // Restricted WebViews may deny storage; the in-memory cache still works.
+  }
+}
+
 const emptyReady = (): Record<IslandDataChannel, boolean> => ({
   stats: false,
   power: false,
@@ -28,7 +67,7 @@ const emptyError = (): Record<IslandDataChannel, string | null> => ({
 });
 
 function createInitialState(): IslandDataState {
-  return {
+  return readCachedState() ?? {
     stats: null,
     power: null,
     net: null,
@@ -268,6 +307,7 @@ class HomeIslandDataBus {
           ready: { ...this.state.ready, stats: true },
           error: { ...this.state.error, stats: null },
         });
+        writeCachedState(this.state);
         return;
       }
 
@@ -290,6 +330,7 @@ class HomeIslandDataBus {
           ready: { ...this.state.ready, power: true },
           error: { ...this.state.error, power: null },
         });
+        writeCachedState(this.state);
         return;
       }
 
@@ -327,6 +368,7 @@ class HomeIslandDataBus {
         ready: { ...this.state.ready, net: true },
         error: { ...this.state.error, net: null },
       });
+      writeCachedState(this.state);
     } catch (error) {
       if (gen !== this.generation) return;
       const message = error instanceof Error ? error.message : String(error || "failed");

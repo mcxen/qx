@@ -10,6 +10,111 @@
   color: var(--qx-text-primary);
 }
 
+.qx-window-titlebar {
+  position: relative;
+  grid-area: 1 / 1;
+  align-self: start;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  height: var(--qx-titlebar-h);
+  min-height: var(--qx-titlebar-h);
+  padding: 0 8px 0 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--qx-border-1) 72%, transparent);
+  background: rgba(var(--qx-glass-bg), var(--qx-shell-region-opacity-effective));
+  color: var(--qx-text-secondary);
+  box-shadow: inset 0 1px 0 var(--qx-shell-chrome-highlight);
+  backdrop-filter: blur(var(--qx-shell-chrome-blur)) saturate(var(--qx-shell-chrome-saturation));
+  -webkit-backdrop-filter: blur(var(--qx-shell-chrome-blur)) saturate(var(--qx-shell-chrome-saturation));
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.qx-window-titlebar-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-align: left;
+}
+
+.qx-window-titlebar-controls {
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+  margin: 0 -8px 0 8px;
+  -webkit-app-region: no-drag;
+}
+
+.qx-window-titlebar-button.qx-shadcn-button {
+  width: 38px;
+  min-width: 38px;
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border-radius: 0;
+  color: var(--qx-text-secondary);
+}
+
+.qx-window-titlebar-button.qx-shadcn-button:hover {
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-primary);
+}
+
+.qx-window-titlebar-button.qx-window-close:hover {
+  background: color-mix(in srgb, var(--qx-danger) 84%, transparent);
+  color: var(--primary-foreground);
+}
+
+.qx-shell.is-macos-host .qx-window-titlebar {
+  padding-right: 12px;
+}
+
+.qx-shell.is-macos-host .qx-window-titlebar-title {
+  order: 2;
+  position: absolute;
+  left: 50%;
+  max-width: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+.qx-shell.is-macos-host .qx-window-titlebar-controls {
+  order: 1;
+  margin: 0 8px 0 -12px;
+}
+
+.qx-shell.is-macos-host .qx-window-close {
+  order: 1;
+}
+
+.qx-shell.is-macos-host .qx-window-minimize {
+  order: 2;
+}
+
+.qx-shell.is-macos-host .qx-window-maximize {
+  order: 3;
+}
+
+.qx-shell.is-macos-host .qx-window-titlebar-button.qx-shadcn-button {
+  width: 30px;
+  min-width: 30px;
+}
+
+.qx-shell.has-window-titlebar .qx-shell-topbar {
+  top: var(--qx-titlebar-h);
+}
+
+.qx-shell.has-window-titlebar .qx-shell-content,
+.qx-shell.has-window-titlebar .qx-shell-context {
+  padding-top: calc(var(--qx-titlebar-h) + var(--qx-topbar-h));
+  scroll-padding-top: calc(var(--qx-titlebar-h) + var(--qx-topbar-h) + 8px);
+}
+
 .qx-shell-resize-handle {
   position: absolute;
   z-index: 60;
