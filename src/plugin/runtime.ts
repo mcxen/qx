@@ -49,7 +49,6 @@ export {
 } from "./pluginShellBridge";
 export { resolvePluginAssetUrl } from "./pluginRuntimeTransport";
 const runtimeLogger = createQxLogger("plugin.runtime");
-
 export interface PluginLoadResult {
   plugin: InstalledPlugin;
   commands: RegisteredCommand[];
@@ -587,6 +586,7 @@ export function buildPluginRuntimeHtml(
           },
           info: () => rpc('invoke', { cmd: 'qx_system_information_check_system_info', args: {} }),
           storage: () => rpc('invoke', { cmd: 'qx_system_information_check_storage', args: {} }),
+          displays: () => rpc('invoke', { cmd: 'display_list', args: {} }),
           network: () => rpc('invoke', { cmd: 'qx_system_information_check_network', args: {} }),
           power: () => rpc('invoke', { cmd: 'qx_system_monitor_power', args: {} }),
           qxStorageOverview: () => rpc('invoke', { cmd: 'qx_storage_overview', args: {} }),

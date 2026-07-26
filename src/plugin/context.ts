@@ -381,6 +381,10 @@ export function createPluginContext(
         cmd: "qx_system_information_check_storage",
         args: {},
       }) as ReturnType<PluginContext["system"]["storage"]>,
+      displays: () => rpc("invoke", {
+        cmd: "display_list",
+        args: {},
+      }) as ReturnType<PluginContext["system"]["displays"]>,
       network: () => rpc("invoke", {
         cmd: "qx_system_information_check_network",
         args: {},

@@ -26,6 +26,13 @@
   Mica，Windows 10 使用高不透明度表面回退，不再启用官方明确标注拖拽性能较差的
   Acrylic；WebView2 canvas 与子层继续关闭重复的 CSS backdrop blur，避免移动透明
   窗口时每帧多次桌面采样。
+- Sysinfo 1.4.0 增加显示器分类与中文名称/说明，CPU、内存、电源、存储、显示器、
+  网络和进程使用可识别图标。宿主 `context.system.displays()` 统一返回分辨率、刷新率、
+  缩放、旋转和主屏/内置屏状态；Windows 通过 DisplayConfig 补充 HDMI、DisplayPort、
+  eDP、Miracast、虚拟显示链路及有效的 EDID 厂商/产品标识。
+- 存储容量继续走轻量原生快照。逐设备 SMART 健康度与温度需要独立 NVMe/ATA IOCTL
+  （Windows）和 IOKit（macOS）适配器，且 USB 桥接器或驱动可能不暴露传感器；后续
+  端口保持可选字段，只展示硬件真实返回值，不从卷使用率推测健康状态。
 
 ### 验证
 

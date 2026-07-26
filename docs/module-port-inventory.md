@@ -39,7 +39,7 @@
 | 主题 / 语义 token | `ThemeProvider` + `base.css` | Workbench 由 host 渲染；Custom Panel 由 `pluginTheme` 注入 | 同步 resolved Light/Dark、`.dark`、公开 shadcn/Qx token；插件 UI 规范见 `public/doc/plugin-ui-guidelines.md` |
 | 语言 / 本地化 | `useLocale` / `useT` | **`context.locale.current` / `preference` / `onChange`** | 无权限；值是 Qx 生效语言而非浏览器语言。插件用 `current` 匹配文案与 `Intl`，不得读取 `navigator.language` 推测 Qx 设置 |
 | CLI | 不暴露给模块业务（走 Rust） | **`context.cli`** | 权限 `cli` |
-| 系统信息 / 设置 / 下载 | Rust `qx_system_information_*` 领域命令 + `plugin_system_save_download` | **`context.system.info/storage/network/networkCounters/power/processes/openSettings/saveDownload`** | typed 跨平台 model；OS API、PowerShell/AppKit URL 和 Downloads 路径只存在于宿主 adapter |
+| 系统信息 / 设置 / 下载 | Rust `qx_system_information_*` / `display_list` 领域命令 + `plugin_system_save_download` | **`context.system.info/storage/displays/network/networkCounters/power/processes/openSettings/saveDownload`** | typed 跨平台 model；显示器模型含分辨率/刷新率/缩放/旋转及可用的连接协议/EDID 标识；OS API、PowerShell/AppKit URL 和 Downloads 路径只存在于宿主 adapter |
 | 本地路径打开 / 揭示 | **`src/system/pathActions.ts`** | **`context.system.openPath/revealPath`** | 共用 Rust 语义端口；macOS 不先 canonicalize Spotlight 路径，Windows 不经过 WebView opener ACL |
 | 打开外链 | `@tauri-apps/plugin-opener` | **`context.openUrl`** | `open-url` |
 | OCR 识别 / 历史 | `src/system/ocr.ts` + 设置历史 | **`context.ocr.*`**（`recognizePath` / `recognizeClipboardImage` / `listHistory` / …） | 权限 `ocr`；宿主 Settings → OCR 启用；支持 `no-view`+`interval` 后台定时 |

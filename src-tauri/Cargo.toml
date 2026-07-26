@@ -70,6 +70,7 @@ fswalk = { path = "vendor/cardinal/fswalk" }
 window-vibrancy = "0.6"
 xcap = { version = "0.9", features = ["wgc"] }
 windows-sys = { version = "0.59", features = [
+  "Win32_Devices_Display",
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
   "Win32_Media_Audio",

@@ -150,7 +150,7 @@
 | 磁盘图写剪贴板 | `clipboard` | `clipboard_write_image_file` / `src/system/clipboard.ts` |
 | 视频/GIF 编解码 | `media/` | 既有 convert 命令 |
 | 主线程 UI / 后台算力 | `runtime/` | `runtime::ui` · `runtime::blocking` · `runtime::install`（见 runtime-threading.md） |
-| 系统信息 / 设置目的地 | `system_information` · `plugin_system` | `context.system.info/storage/network/power/stats/processes/openSettings`；插件只见同形数据和语义 section，不见 PowerShell / AppKit / `ms-settings:`；Windows 高频与静态采样均走 `system_information/windows.rs` 的 Win32 API（注册表、拓扑、磁盘、IP Helper、ToolHelp、System Power Status），不得通过 PowerShell/WMI 子进程轮询；静态 CPU 拓扑/缓存和内核 family/release 只进一次性信息快照，缺失的缓存层级不猜测，实时负载独立采样；Power 模型将电池存在、外接电源、充电与充满拆成独立状态，健康/容量字段按硬件能力可选；macOS 内存必须使用 SDK 匹配的 `vm_statistics64` 布局与真实页大小，CPU 累计 tick 的近同时多消费者读取复用稳定样本，APFS 存储统计读取 Data volume 而非只读系统快照 |
+| 系统信息 / 设置目的地 | `system_information` · `display` · `plugin_system` | `context.system.info/storage/displays/network/power/stats/processes/openSettings`；插件只见同形数据和语义 section，不见 PowerShell / AppKit / `ms-settings:`；Windows 高频与静态采样均走 Rust + Win32 API（注册表、拓扑、磁盘、DisplayConfig、IP Helper、ToolHelp、System Power Status），不得通过 PowerShell/WMI 子进程轮询；静态 CPU 拓扑/缓存和内核 family/release 只进一次性信息快照，缺失的缓存层级不猜测，实时负载独立采样；显示器协议和 EDID 标识仅在系统明确返回有效值时暴露；Power 模型将电池存在、外接电源、充电与充满拆成独立状态，健康/容量字段按硬件能力可选；macOS 内存必须使用 SDK 匹配的 `vm_statistics64` 布局与真实页大小，CPU 累计 tick 的近同时多消费者读取复用稳定样本，APFS 存储统计读取 Data volume 而非只读系统快照 |
 | 本地路径打开 / 揭示 | `plugin_system` | `src/system/pathActions.ts` · `context.system.openPath/revealPath`；内置模块与插件共享平台语义，不直接依赖 WebView opener 的路径 ACL / canonicalize |
 | Qx 磁盘占用 / 缓存清理 | `storage` | `qx_storage_overview` · `qx_storage_clear_cache_target`；统计和删除共用注册表。插件只能通过 `manifest.storage.cacheTargets[]` 登记精确可重建 persist keys；其余 `plugin-data`、历史和生成文件保持独立受保护语义 |
 

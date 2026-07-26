@@ -476,6 +476,21 @@ export interface PluginStorageInfo {
   summary: string;
 }
 
+export interface PluginDisplayInfo {
+  id: number;
+  name: string;
+  width: number;
+  height: number;
+  refreshRateHz?: number | null;
+  scaleFactor?: number | null;
+  rotationDegrees?: number | null;
+  connection?: string | null;
+  edidManufacturerId?: number | null;
+  edidProductCode?: number | null;
+  isPrimary: boolean;
+  isBuiltin: boolean;
+}
+
 export interface PluginNetworkInfo {
   devices: Array<{ name: string; ip: string }>;
   count: number;
@@ -864,6 +879,7 @@ export interface PluginContext {
     networkCounters: () => Promise<PluginNetworkCounters>;
     info: () => Promise<PluginSystemInfo>;
     storage: () => Promise<PluginStorageInfo>;
+    displays: () => Promise<PluginDisplayInfo[]>;
     network: () => Promise<PluginNetworkInfo>;
     power: () => Promise<PluginPowerInfo>;
     qxStorageOverview: () => Promise<unknown>;
