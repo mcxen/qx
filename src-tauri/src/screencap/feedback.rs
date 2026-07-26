@@ -92,15 +92,16 @@ async fn play(_app: &AppHandle, path: PathBuf) -> Result<(), String> {
     // This function already runs through an async capture completion path. Keep
     // the UTF-16 buffer alive until WinMM has consumed it rather than handing an
     // ephemeral pointer to SND_ASYNC.
-    let result = crate::runtime::blocking(move || unsafe {
+    let played = crate::runtime::blocking(move || unsafe {
         PlaySoundW(
             path.as_ptr(),
             std::ptr::null_mut(),
             SND_FILENAME | SND_NODEFAULT,
         )
     })
-    .await;
-    if result == 0 {
+    .await
+    .map_err(|err| err.to_string())?;
+    if played == 0 {
         Err("PlaySoundW refused shutter playback".to_string())
     } else {
         Ok(())
