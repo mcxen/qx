@@ -392,7 +392,9 @@ pub fn run() {
             // Keep the configured resizable window behavior and enforce minimum size.
             // Product dimensions are logical pixels. Using PhysicalSize here
             // made the minimum shrink on Windows displays above 100% scaling.
-            let _ = win.set_min_size(Some(LogicalSize::new(480, 360)));
+            // Keep a usable compact launcher state available when the user
+            // shrinks the window below the normal dashboard dimensions.
+            let _ = win.set_min_size(Some(LogicalSize::new(360, 150)));
 
             #[cfg(any(target_os = "macos", target_os = "windows"))]
             if let Err(error) =

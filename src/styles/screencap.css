@@ -140,33 +140,77 @@
 
 .qx-region-picker-text-box {
   position: absolute;
-  min-width: 24px;
-  min-height: 24px;
+  min-width: 28px;
+  min-height: 28px;
+  max-width: min(80%, 520px);
   transform: translateY(-19px);
   pointer-events: auto;
+  touch-action: none;
 }
 
-.qx-region-picker-text-box button,
-.qx-region-picker-text-box input {
-  min-width: 24px;
-  min-height: 24px;
+.qx-region-picker-text-box span,
+.qx-region-picker-text-box textarea {
+  display: block;
+  min-width: 28px;
+  min-height: 28px;
   margin: 0;
-  padding: 1px 4px;
+  padding: 3px 6px;
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-radius: 3px;
   background: transparent;
   font: 600 18px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   text-align: left;
   text-shadow: 0 1px 0 rgb(255 255 255 / 0.9), 0 -1px 0 rgb(255 255 255 / 0.9);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
-.qx-region-picker-text-box button {
+.qx-region-picker-text-delete {
+  position: absolute;
+  z-index: 2;
+  top: -9px;
+  right: -9px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid rgb(255 255 255 / 0.86);
+  border-radius: 999px;
+  background: rgb(35 35 35 / 0.9);
+  color: #fff;
+  cursor: pointer;
+  font: 700 13px/14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-align: center;
+  text-shadow: none;
+}
+
+.qx-region-picker-text-delete:hover {
+  background: #ff453a;
+}
+
+.qx-region-picker-text-box span {
   cursor: move;
 }
 
-.qx-region-picker-text-box:hover button,
-.qx-region-picker-text-box.is-editing input {
+.qx-region-picker-text-box.is-selected span,
+.qx-region-picker-text-box.is-editing textarea {
   border-color: rgb(255 255 255 / 0.68);
+}
+
+.qx-region-picker-text-box.is-editing {
+  border: 1px dashed rgb(255 255 255 / 0.78);
+  border-radius: 3px;
+}
+
+.qx-region-picker-text-box.is-editing textarea {
+  border-color: transparent;
+}
+
+.qx-region-picker-text-box textarea {
+  resize: both;
+  outline: none;
+  color: inherit;
+  text-shadow: inherit;
+  user-select: text;
 }
 
 .qx-region-picker-text-box input {
@@ -184,6 +228,7 @@
 
 .qx-region-picker-handle {
   position: absolute;
+  z-index: 5;
   width: 12px;
   height: 12px;
   padding: 0;
@@ -192,6 +237,35 @@
   background: #5b8cff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.32);
 }
+
+.qx-region-picker-move-edge {
+  position: absolute;
+  z-index: 4;
+  pointer-events: auto;
+  background: transparent;
+}
+
+.qx-region-picker-move-edge.is-n,
+.qx-region-picker-move-edge.is-s {
+  left: 12px;
+  right: 12px;
+  height: 10px;
+  cursor: move;
+}
+
+.qx-region-picker-move-edge.is-n { top: -5px; }
+.qx-region-picker-move-edge.is-s { bottom: -5px; }
+
+.qx-region-picker-move-edge.is-e,
+.qx-region-picker-move-edge.is-w {
+  top: 12px;
+  bottom: 12px;
+  width: 10px;
+  cursor: move;
+}
+
+.qx-region-picker-move-edge.is-e { right: -5px; }
+.qx-region-picker-move-edge.is-w { left: -5px; }
 
 .qx-region-picker-handle.is-nw { left: -7px; top: -7px; cursor: nwse-resize; }
 .qx-region-picker-handle.is-ne { right: -7px; top: -7px; cursor: nesw-resize; }
@@ -216,10 +290,17 @@
 
 .qx-region-picker-hint {
   position: absolute;
-  top: 62px;
-  left: 0;
-  right: 0;
-  text-align: center;
+  z-index: 6;
+  top: auto;
+  right: auto;
+  bottom: 16px;
+  left: 16px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 6px 9px;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-radius: 6px;
+  background: rgb(20 20 20 / 0.72);
+  text-align: left;
   color: #fff;
   font-size: 13px;
   font-weight: 600;
@@ -229,7 +310,7 @@
 
 .qx-region-picker-hint.is-tool-hint {
   top: auto;
-  bottom: 28px;
+  bottom: 16px;
 }
 
 .qx-region-picker-error {
@@ -1386,6 +1467,42 @@
 
 .qx-screencap-preview-player-slider.qx-slider .qx-shadcn-slider {
   width: 100%;
+}
+
+.qx-screencap-preview-player-volume {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 5px;
+  min-width: 94px;
+  margin-left: 2px;
+  padding-left: 8px;
+  border-left: 1px solid var(--qx-border-1);
+}
+
+.qx-screencap-preview-player-volume-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--qx-text-secondary);
+  cursor: pointer;
+}
+
+.qx-screencap-preview-player-volume-toggle:hover {
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-primary);
+}
+
+.qx-screencap-preview-player-volume-slider.qx-slider {
+  width: 64px;
+  min-width: 64px;
 }
 
 .qx-screencap-preview-meta {

@@ -7,7 +7,6 @@ import ResultsList from "./ResultsList";
 import SearchBar, { requestLauncherSearchFocus } from "./SearchBar";
 import { useStore, type AppEntry, type SearchScope } from "./store";
 import { useSettingsStore } from "./modules/settings/store";
-import LauncherContext from "./launcher/LauncherContext";
 import LauncherEntryManageDialogs, {
   type LauncherManageDialogRequest,
 } from "./launcher/LauncherEntryManageDialogs";
@@ -124,7 +123,7 @@ export default function Launcher({
       : undefined;
   // History loads once on mount. Do not re-fetch when results briefly empty
   // during search transitions — that doubled IPC during every summon.
-  const { recentLaunches, recentSearches } = useLauncherHistory({
+  const { recentSearches } = useLauncherHistory({
     shouldRefreshWhenIdle: false,
   });
 
@@ -318,7 +317,7 @@ export default function Launcher({
   return (
     <QxShell
       title={t("launcher.title", "Qx Launcher")}
-      className="launcher-shell"
+      className={`launcher-shell${hasQuery ? " has-query" : ""}`}
       islandKey="launcher"
       islandManagedExternally
       onKeyDown={handleLauncherKeyDown}
@@ -335,17 +334,7 @@ export default function Launcher({
           onScopeChange();
         },
       }]}
-      context={
-        <LauncherContext
-          quickEntries={quickEntries}
-          allModules={allModules}
-          recentLaunches={recentLaunches}
-          recentSearches={recentSearches}
-          query={query}
-          selectedItem={activeSelectedItem}
-          onSearchSelect={setQuery}
-        />
-      }
+      context={null}
       // Launcher: Esc = Back (clear query) or Hide (empty → hide panel). No house button.
       escapeAction={
         hasQuery
@@ -401,10 +390,12 @@ export default function Launcher({
       ) : (
         <HomeDashboard
           items={launcherDirectory}
+          recentSearches={recentSearches}
           onItemClick={(item) => {
             const primary = actionsForItem(item)[0];
             if (primary && !primary.disabled) void primary.run();
           }}
+          onSearchSelect={setQuery}
           onNavigate={onNavigate}
         />
       )}

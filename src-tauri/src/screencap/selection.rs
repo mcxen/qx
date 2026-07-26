@@ -618,9 +618,6 @@ pub async fn screencap_confirm_region_select(
         h: (area.h as f64 * scale).round().max(2.0) as u32,
         monitor_id: Some(session.monitor_id),
     };
-    if area.w < 16 || area.h < 16 {
-        return Err("Selection too small — drag a larger region".to_string());
-    }
     let action = action
         .as_deref()
         .map(CaptureMode::parse)
@@ -854,9 +851,6 @@ pub async fn screencap_recapture_last_region(app: AppHandle) -> Result<(), Strin
     let logical = load_last_region()
         .ok_or_else(|| "No previous capture region. Take a screenshot first.".to_string())?;
     let physical = physical_area_from_logical(&app, &logical)?;
-    if physical.w < 16 || physical.h < 16 {
-        return Err("Selection too small — drag a larger region".to_string());
-    }
 
     // Leave the desktop clear so Qx chrome is not in the frame.
     hide_recording_controls_internal(&app);

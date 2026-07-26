@@ -28,7 +28,7 @@
 
 ## 1. 安装
 
-### macOS（Homebrew，推荐）
+### 苹果牌 电脑macOS（Homebrew，推荐）
 
 ```sh
 brew tap mcxen/qx
@@ -36,7 +36,7 @@ brew install --cask qx
 brew upgrade --cask qx   # 升级
 ```
 
-### macOS（DMG）
+### 苹果牌 电脑macOS（DMG）
 
 1. 从 [GitHub Releases](https://github.com/mcxen/qx/releases) 下载 `.dmg`
 2. 将 `Qx.app` 拖入"应用程序"
@@ -48,30 +48,26 @@ xattr -dr com.apple.quarantine /Applications/Qx.app
 
 DMG 内附 `install.sh`，也可直接运行 `bash install.sh` 自动完成安装并移除隔离标记。
 
-### Windows
+### Windows系统电脑
 
-- 下载渠道1: 从 [GitHub Releases](https://github.com/mcxen/qx/releases) 下载 NSIS 安装包（`.exe`），运行安装即可。
-  需要 [WebView2 运行时](https://developer.microsoft.com/microsoft-edge/webview2/)（Windows 10/11 通常已预装）。
+- 点击安装：[快速下载地址](https://lz.qaiu.top/d/lz/ioxct3ytrnyb)
 
-* 下载渠道2:： 蓝奏云，选择最新版本：<https://imsalt.lanzout.com/b02ijjbl0h>\
-  密码:qx
+- 安装后一路确认即可，然后按住shift+ alt + space空格启动界面
 
-  ![image](assets/pasted-image-1784986638982.png)
-
-### 首次启动与权限（macOS）
-
-首次启动时 Qx 会引导完成必要的系统权限设置：
-
-![macOS 权限设置](assets/Macos权限设置.png)
-
-| 权限           | 用途                                | 是否必须 |
-| ------------ | --------------------------------- | ---- |
-| **完全磁盘访问权限** | 文件搜索（遍历 Documents/Desktop 等受保护目录） | 推荐   |
-| **辅助功能**     | 剪贴板自动粘贴、宏回放                       | 可选   |
-| **屏幕录制**     | 截图与录屏功能                           | 可选   |
-| **输入监听**     | 录制键盘/鼠标宏、全局快捷键                    | 可选   |
-
-> 权限可跳过，不影响 Qx 启动。后续可在 **设置 -> 权限** 中重新运行权限向导。
+> 首次启动与权限（macOS）
+>
+> 首次启动时 Qx 会引导完成必要的系统权限设置：
+>
+> ![macOS 权限设置](assets/Macos权限设置.png)
+>
+> | 权限           | 用途                                | 是否必须 |
+> | ------------ | --------------------------------- | ---- |
+> | **完全磁盘访问权限** | 文件搜索（遍历 Documents/Desktop 等受保护目录） | 推荐   |
+> | **辅助功能**     | 剪贴板自动粘贴、宏回放                       | 可选   |
+> | **屏幕录制**     | 截图与录屏功能                           | 可选   |
+> | **输入监听**     | 录制键盘/鼠标宏、全局快捷键                    | 可选   |
+>
+> > 权限可跳过，不影响 Qx 启动。后续可在 **设置 -> 权限** 中重新运行权限向导。
 
 ### 默认快捷键
 

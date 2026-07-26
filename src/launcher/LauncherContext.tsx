@@ -1,12 +1,10 @@
-import { invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Check, ChevronDown, Pencil, Plus, RotateCcw, Star, Trash2, X } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import SearchAliasTagEditor from "../components/SearchAliasTagEditor";
 import { Button, Input, Select } from "../components/ui";
 import { useT } from "../i18n";
 import { useDisplayName } from "../search/appDisplay";
-import type { AppEntry, HistoryEntry, SearchHistoryEntry } from "../store";
+import type { AppEntry } from "../store";
 import { DEFAULT_SETTINGS, type QuickEntryConfig, useSettingsStore } from "../modules/settings/store";
 import {
   metadataForKey,
@@ -77,18 +75,10 @@ function ContextEntry({
 export default function LauncherContext({
   quickEntries,
   allModules,
-  recentLaunches,
-  recentSearches,
-  query,
-  onSearchSelect,
   selectedItem,
 }: {
   quickEntries: QuickEntry[];
   allModules: QuickEntry[];
-  recentLaunches: HistoryEntry[];
-  recentSearches: SearchHistoryEntry[];
-  query: string;
-  onSearchSelect: (query: string) => void;
   selectedItem: AppEntry | null;
 }) {
   const t = useT();
@@ -359,35 +349,6 @@ export default function LauncherContext({
             </div>
           )}
         </section>
-      )}
-
-      {recentLaunches.length > 0 && (
-        <ContextSection title={t("launcher.recent", "Recent")} spacing>
-          {recentLaunches.map((entry) => (
-            <ContextEntry
-              key={`launch-${entry.id}`}
-              title={entry.name}
-              subtitle={entry.timestamp}
-              onClick={() => {
-                invoke("open_app", { path: entry.path }).catch(() => {});
-                getCurrentWindow().hide().catch(() => {});
-              }}
-            />
-          ))}
-        </ContextSection>
-      )}
-
-      {recentSearches.length > 0 && !query && (
-        <ContextSection title={t("launcher.recentSearches", "Recent Searches")} spacing>
-          {recentSearches.map((entry) => (
-            <ContextEntry
-              key={`search-${entry.id}`}
-              title={entry.query}
-              subtitle={entry.timestamp}
-              onClick={() => onSearchSelect(entry.query)}
-            />
-          ))}
-        </ContextSection>
       )}
 
       {canEditMetadata && selectedMetadataKey && (

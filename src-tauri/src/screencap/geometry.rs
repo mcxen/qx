@@ -17,16 +17,16 @@ pub(super) fn clamp_area(
     monitor_width: u32,
     monitor_height: u32,
 ) -> Option<RecordArea> {
-    if area.w < 2 || area.h < 2 || monitor_width < 2 || monitor_height < 2 {
+    if area.w == 0 || area.h == 0 || monitor_width == 0 || monitor_height == 0 {
         return None;
     }
-    let x = area.x.min(monitor_width.saturating_sub(2));
-    let y = area.y.min(monitor_height.saturating_sub(2));
+    let x = area.x.min(monitor_width.saturating_sub(1));
+    let y = area.y.min(monitor_height.saturating_sub(1));
     Some(RecordArea {
         x,
         y,
-        w: area.w.min(monitor_width.saturating_sub(x)).max(2),
-        h: area.h.min(monitor_height.saturating_sub(y)).max(2),
+        w: area.w.min(monitor_width.saturating_sub(x)).max(1),
+        h: area.h.min(monitor_height.saturating_sub(y)).max(1),
         monitor_id: area.monitor_id,
     })
 }
@@ -86,11 +86,23 @@ fn physical_crop_bounds(
     let mut y = (area.y as f64 * scale_y).round() as u32;
     let mut width = (area.w as f64 * scale_x).round() as u32;
     let mut height = (area.h as f64 * scale_y).round() as u32;
-    x = x.min(frame_width.saturating_sub(2));
-    y = y.min(frame_height.saturating_sub(2));
-    width = width.min(frame_width.saturating_sub(x)).max(2) & !1;
-    height = height.min(frame_height.saturating_sub(y)).max(2) & !1;
+    x = x.min(frame_width.saturating_sub(1));
+    y = y.min(frame_height.saturating_sub(1));
+    width = even_crop_size(width, frame_width.saturating_sub(x));
+    height = even_crop_size(height, frame_height.saturating_sub(y));
     (x, y, width, height)
+}
+
+/// H.264 prefers even dimensions, but a one-pixel edge crop must remain a
+/// one-pixel crop instead of being shifted inward or rejected.
+fn even_crop_size(requested: u32, available: u32) -> u32 {
+    let available = available.max(1);
+    let size = requested.min(available).max(1);
+    if size >= 2 {
+        (size & !1).max(2).min(available)
+    } else {
+        1
+    }
 }
 
 /// Copy a stream-frame crop into one session-owned image. WGC and the macOS
@@ -170,6 +182,23 @@ mod tests {
         .expect("valid");
         assert_eq!((area.x, area.y, area.w, area.h), (10, 20, 790, 40));
         assert_eq!(area.monitor_id, Some(42));
+    }
+
+    #[test]
+    fn one_pixel_edge_area_is_not_shifted_inward() {
+        let area = clamp_area(
+            RecordArea {
+                x: 799,
+                y: 599,
+                w: 1,
+                h: 1,
+                monitor_id: None,
+            },
+            800,
+            600,
+        )
+        .expect("valid");
+        assert_eq!((area.x, area.y, area.w, area.h), (799, 599, 1, 1));
     }
 
     #[test]

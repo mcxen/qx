@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
-import { Pause, Play, Camera, Video } from "lucide-react";
+import { Pause, Play, Camera, Video, Volume2, VolumeX } from "lucide-react";
 import { useScreencapStore } from "./store";
 import { Select, Slider } from "../../components/ui";
 import { useT } from "../../i18n";
@@ -32,6 +32,8 @@ export default function GifPreview({ path }: Props) {
   const t = useT();
   const mediaRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(true);
+  const [volume, setVolume] = useState(1);
+  const [muted, setMuted] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [size, setSize] = useState<number | null>(null);
@@ -50,6 +52,8 @@ export default function GifPreview({ path }: Props) {
 
   useEffect(() => {
     setPlaying(true);
+    setVolume(1);
+    setMuted(false);
     setCurrentTime(0);
     setDuration(0);
     setSize(null);
@@ -59,6 +63,10 @@ export default function GifPreview({ path }: Props) {
       .then((s) => setSize(s))
       .catch(() => {});
   }, [src]);
+
+  useEffect(() => {
+    if (mediaRef.current) mediaRef.current.volume = volume;
+  }, [volume]);
 
   const handleConvertGif = async () => {
     setConverting(true);
@@ -102,6 +110,11 @@ export default function GifPreview({ path }: Props) {
     setCurrentTime(target);
   }, []);
 
+  const handleVolumeChange = useCallback((value: number) => {
+    setVolume(value);
+    if (value > 0) setMuted(false);
+  }, []);
+
   const IconKind = isVideo ? Video : isStillImage ? Camera : Video;
 
   return (
@@ -113,7 +126,7 @@ export default function GifPreview({ path }: Props) {
             src={src}
             autoPlay
             loop
-            muted
+            muted={muted}
             playsInline
             onLoadedMetadata={(event) => {
               const media = event.currentTarget;
@@ -180,6 +193,28 @@ export default function GifPreview({ path }: Props) {
             formatLabel={(v) => formatClock(v)}
             className="qx-screencap-preview-player-slider"
           />
+          <div className="qx-screencap-preview-player-volume">
+            <button
+              type="button"
+              className="qx-screencap-preview-player-volume-toggle"
+              onClick={() => setMuted((value) => !value)}
+              aria-label={muted || volume === 0
+                ? t("screencap.preview.player.unmute", "Unmute")
+                : t("screencap.preview.player.mute", "Mute")}
+            >
+              {muted || volume === 0 ? <VolumeX size={14} /> : <Volume2 size={14} />}
+            </button>
+            <Slider
+              value={muted ? 0 : volume}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={handleVolumeChange}
+              ariaLabel={t("screencap.preview.player.volume", "Volume")}
+              formatLabel={(value) => `${Math.round(value * 100)}%`}
+              className="qx-screencap-preview-player-volume-slider"
+            />
+          </div>
         </div>
       )}
 

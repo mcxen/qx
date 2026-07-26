@@ -55,6 +55,16 @@ function CaptureFrameIcon({ dashed = false, recording = false, display = false }
   );
 }
 
+/** Compact camera silhouette used for the screenshot/recording mode switch. */
+function CaptureCameraIcon() {
+  return (
+    <svg width="23" height="20" viewBox="0 0 24 20" fill="none" aria-hidden="true">
+      <rect x="2" y="3" width="12" height="14" rx="1" stroke="currentColor" strokeWidth="1.7" />
+      <path d="M14 7.2 21 5v10l-7-2.2V7.2Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function TextIcon() {
   return (
     <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
@@ -85,8 +95,12 @@ interface ToolButtonProps {
 }
 
 function ToolButton({ label, shortcut, children, active, disabled, className = "", onClick }: ToolButtonProps) {
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  useEffect(() => {
+    setTooltipOpen(false);
+  }, [label]);
   return (
-    <Tooltip>
+    <Tooltip open={tooltipOpen} onOpenChange={setTooltipOpen} disableHoverableContent>
       <TooltipTrigger asChild>
         <button
           type="button"
@@ -94,6 +108,9 @@ function ToolButton({ label, shortcut, children, active, disabled, className = "
           disabled={disabled}
           aria-label={label}
           onClick={onClick}
+          onPointerEnter={() => setTooltipOpen(true)}
+          onPointerMove={() => setTooltipOpen(true)}
+          onPointerLeave={() => setTooltipOpen(false)}
         >
           {children}
         </button>
@@ -249,7 +266,7 @@ export const CaptureToolbar = forwardRef<HTMLDivElement, CaptureToolbarProps>(fu
           shortcut={screenshot ? "V" : "S"}
           onClick={onToggleIntent}
         >
-          <CaptureFrameIcon recording={screenshot} />
+          <CaptureCameraIcon />
         </ToolButton>
         <span />
         <ToolButton shortcut="Tab" label={screenshot

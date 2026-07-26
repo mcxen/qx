@@ -9,11 +9,10 @@ use std::mem::size_of;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use windows_sys::Win32::Graphics::Gdi::{
-    BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GdiFlush, GetWindowDC,
+    BitBlt, CreateCompatibleDC, CreateDIBSection, DeleteDC, DeleteObject, GdiFlush, GetDC,
     ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS,
     SRCCOPY,
 };
-use windows_sys::Win32::UI::WindowsAndMessaging::GetDesktopWindow;
 use windows_sys::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_REMOTESESSION};
 
 static WGC_HEALTHY: AtomicBool = AtomicBool::new(true);
@@ -105,8 +104,11 @@ impl GdiCaptureSession {
         }
 
         unsafe {
-            let window = GetDesktopWindow();
-            let desktop_raw = GetWindowDC(window);
+            // GetDC(NULL) is the virtual desktop DC. GetWindowDC(GetDesktopWindow())
+            // can return a valid-looking but black surface on DWM/driver
+            // combinations even though the composed desktop is capturable.
+            let window = std::ptr::null_mut();
+            let desktop_raw = GetDC(window);
             if desktop_raw.is_null() {
                 return Err(last_error("GetWindowDC"));
             }

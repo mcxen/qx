@@ -7,7 +7,8 @@
 //!
 //! Performance invariants:
 //! - Never run Vision/PowerShell on the UI thread (`runtime::blocking` / OCR worker).
-//! - Prefer **fast** recognition + **downscaled** input for everyday use.
+//! - Prefer accurate recognition for CJK screenshots; the platform engines are
+//!   still invoked off the UI thread.
 //! - Serialize background auto-OCR so clipboard capture cannot flood the pool.
 //! - Reuse cached `ocr_text` / history by source path when present.
 
@@ -68,6 +69,9 @@ static PACKS: &[(&str, ModelPack)] = &[
 ];
 
 static DB: OnceLock<Mutex<Option<Connection>>> = OnceLock::new();
+/// Keep model installation idempotent when the Settings view is reopened or
+/// a double-click races the disabled button state.
+static OCR_MODEL_DOWNLOAD_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 /// Background auto-OCR job queue (single consumer).
 struct AutoOcrJob {
@@ -293,7 +297,15 @@ enum OcrQuality {
     Accurate,
 }
 
-fn ocr_quality_from_model_size(model_size: &str) -> OcrQuality {
+fn ocr_quality_from_model_size(model_size: &str, engine: &str) -> OcrQuality {
+    // Apple Vision's fast mode frequently confuses dense Simplified Chinese
+    // UI text (especially after a screenshot has been downscaled). Keep the
+    // macOS native path accurate regardless of the optional OAR pack size.
+    #[cfg(target_os = "macos")]
+    if matches!(engine, "apple-vision" | "oar-ocr") {
+        return OcrQuality::Accurate;
+    }
+
     match model_size.trim().to_ascii_lowercase().as_str() {
         "medium" | "large" | "accurate" => OcrQuality::Accurate,
         _ => OcrQuality::Fast, // tiny / small / default
@@ -491,6 +503,10 @@ fn download_file(
 #[command]
 pub async fn download_ocr_model(app: AppHandle, size: String) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
+        let _download_guard = OCR_MODEL_DOWNLOAD_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .map_err(|_| "OCR model download is already running".to_string())?;
         let pack = PACKS
             .iter()
             .find(|(name, _)| *name == size)
@@ -551,8 +567,8 @@ pub fn check_ocr_models(size: String) -> Result<serde_json::Value, String> {
 
 /// Recognize text from an image on disk. Records history on success.
 ///
-/// Uses path-based history cache, downscales large inputs, and prefers the
-/// fast OS recognition path unless Settings model size is medium+.
+/// Uses the path-based history cache for clipboard/file callers, reruns
+/// explicit screenshot requests, and downscales only very large inputs.
 pub(crate) fn recognize_image_path(
     path: &Path,
     source: &str,
@@ -562,15 +578,21 @@ pub(crate) fn recognize_image_path(
         return Err(format!("OCR image not found: {}", path.display()));
     }
     let path_str = path.to_string_lossy().to_string();
-    if let Some(cached) = find_history_by_source_path(&path_str) {
-        return Ok(result_from_history(cached));
+    // Screenshot OCR must be rerun for every explicit request. Keeping a
+    // path-only cache here made an old low-quality result survive engine and
+    // language fixes, so users would continue seeing garbled Chinese after
+    // retrying the same capture. Clipboard/file callers retain the cache.
+    if source != "screenshot" {
+        if let Some(cached) = find_history_by_source_path(&path_str) {
+            return Ok(result_from_history(cached));
+        }
     }
 
     let (engine_pref, model_size) = resolve_engine_name();
     if engine_pref.is_empty() {
         return Err("OCR is disabled. Enable it in Settings → OCR.".to_string());
     }
-    let quality = ocr_quality_from_model_size(&model_size);
+    let quality = ocr_quality_from_model_size(&model_size, &engine_pref);
     let (work_path, temp) = prepare_ocr_input(path, ocr_max_edge(quality))?;
     let recognize_result = recognize_with_engine(&work_path, &engine_pref, quality);
     if let Some(tmp) = temp {
@@ -608,8 +630,19 @@ fn recognize_with_engine(
             }
             #[cfg(not(target_os = "macos"))]
             {
-                let _ = quality;
-                Err("Apple Vision OCR is only available on macOS. Switch engine to OAR-OCR (uses Windows OCR on this platform).".to_string())
+                #[cfg(target_os = "windows")]
+                {
+                    let _ = quality;
+                    // Keep a shared settings profile portable: an existing
+                    // macOS `apple-vision` preference should transparently
+                    // use the native Windows OCR engine on Windows.
+                    recognize_windows_ocr(path).map(|t| (t, "windows-ocr".to_string()))
+                }
+                #[cfg(not(target_os = "windows"))]
+                {
+                    let _ = quality;
+                    Err("Apple Vision OCR is only available on macOS. Switch engine to OAR-OCR (uses Windows OCR on this platform).".to_string())
+                }
             }
         }
         _ => {
@@ -646,7 +679,7 @@ extern "C" {}
 fn recognize_apple_vision(path: &Path, quality: OcrQuality) -> Result<String, String> {
     use objc2::msg_send;
     use objc2::runtime::{AnyClass, AnyObject, Bool};
-    use objc2_foundation::NSString;
+    use objc2_foundation::{NSArray, NSString};
 
     let bytes = std::fs::read(path).map_err(|e| format!("read OCR image: {e}"))?;
     if bytes.is_empty() {
@@ -701,6 +734,16 @@ fn recognize_apple_vision(path: &Path, quality: OcrQuality) -> Result<String, St
         }
         let _: () = msg_send![request, setRecognitionLevel: level];
         let _: () = msg_send![request, setUsesLanguageCorrection: language_correction];
+        // Vision does not reliably infer CJK from a screenshot when no
+        // recognition language is requested. Keep Chinese first so mixed
+        // Chinese/Latin UI screenshots use the installed zh-Hans model.
+        let language_values = [
+            NSString::from_str("zh-Hans"),
+            NSString::from_str("zh-Hant"),
+            NSString::from_str("en-US"),
+        ];
+        let recognition_languages = NSArray::from_retained_slice(&language_values);
+        let _: () = msg_send![request, setRecognitionLanguages: &*recognition_languages];
         // Prefer a single top candidate; faster and enough for copy/search.
         let _: () = msg_send![request, setMinimumTextHeight: 0.0f64];
 
@@ -762,9 +805,18 @@ fn recognize_windows_ocr(path: &Path) -> Result<String, String> {
     let script = format!(
         r#"
 $ErrorActionPreference = 'Stop'
+# PowerShell inherits the Windows console code page when stdout is redirected.
+# Force UTF-8 so Chinese OCR text survives the Rust process boundary.
+$utf8 = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = $utf8
+$OutputEncoding = $utf8
 Add-Type -AssemblyName System.Runtime.WindowsRuntime
 $null = [Windows.Storage.StorageFile, Windows.Storage, ContentType = WindowsRuntime]
 $null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Graphics.Imaging, ContentType = WindowsRuntime]
+$null = [Windows.Graphics.Imaging.SoftwareBitmap, Windows.Graphics.Imaging, ContentType = WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapPixelFormat, Windows.Graphics.Imaging, ContentType = WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapAlphaMode, Windows.Graphics.Imaging, ContentType = WindowsRuntime]
+$null = [Windows.Globalization.Language, Windows.Globalization, ContentType = WindowsRuntime]
 $null = [Windows.Media.Ocr.OcrEngine, Windows.Media.Ocr, ContentType = WindowsRuntime]
 function Await($WinRtTask, $ResultType) {{
   $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {{
@@ -779,10 +831,28 @@ $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($path)) ([Win
 $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
 $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
 $bitmap = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
-$engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
-if ($null -eq $engine) {{ throw 'Windows OCR engine unavailable' }}
+# Windows OCR only accepts a small set of SoftwareBitmap formats. Screenshots
+# can decode as indexed/alpha formats, so normalize every input to BGRA8.
+$bitmap = [Windows.Graphics.Imaging.SoftwareBitmap]::Convert(
+  $bitmap,
+  [Windows.Graphics.Imaging.BitmapPixelFormat]::Bgra8,
+  [Windows.Graphics.Imaging.BitmapAlphaMode]::Premultiplied
+)
+# Prefer an explicit Chinese OCR pack so recognition does not depend on the
+# user's Windows display language. Fall back to Traditional Chinese, English,
+# then the user profile if a language pack is not installed.
+$engine = $null
+foreach ($tag in @('zh-CN', 'zh-TW', 'en-US')) {{
+  try {{
+    $language = [Windows.Globalization.Language]::new($tag)
+    $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($language)
+    if ($null -ne $engine) {{ break }}
+  }} catch {{ }}
+}}
+if ($null -eq $engine) {{ $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }}
+if ($null -eq $engine) {{ throw 'Windows OCR engine unavailable. Install Chinese (Simplified or Traditional) OCR language features in Windows Settings → Time & language → Language & region → Language options.' }}
 $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
-$result.Text
+[Console]::Out.Write($result.Text)
 "#,
         path = path_str
     );

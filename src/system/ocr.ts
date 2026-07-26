@@ -27,7 +27,12 @@ export interface OcrStatus {
   enabled: boolean;
   engine: string;
   modelSize: string;
-  models: { downloaded?: boolean };
+  models: {
+    downloaded?: boolean;
+    det?: boolean;
+    rec?: boolean;
+    dict?: boolean;
+  };
   platform: string;
 }
 

@@ -294,11 +294,14 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
   const updateTextAnnotation = useCallback((id: string, patch: Partial<Pick<Extract<CaptureAnnotation, { type: "text" }>, "x" | "y" | "text">>) => {
     setAnnotations((current) => current.map((annotation) => annotation.type === "text" && annotation.id === id ? { ...annotation, ...patch } : annotation));
   }, []);
+  const deleteTextAnnotation = useCallback((id: string) => {
+    setAnnotations((current) => current.filter((annotation) => !(annotation.type === "text" && annotation.id === id)));
+  }, []);
 
   return {
     tool, setTool, color, setColor, annotations, setAnnotations, redoStack, setRedoStack,
     shapeDraft, setShapeDraft, nextNumber, setNextNumber, penDraft, setPenDraft,
     textDraft, setTextDraft, canvasRef, undo, redo, onCanvasMouseDown, onCanvasMouseMove,
-    onCanvasMouseUp, commitTextDraft, updateTextAnnotation, exportOverlayBase64,
+    onCanvasMouseUp, commitTextDraft, updateTextAnnotation, deleteTextAnnotation, exportOverlayBase64,
   };
 }

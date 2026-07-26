@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import {
   Button,
@@ -44,6 +44,8 @@ export default function FileSearchSettings() {
   const [draft, setDraft] = useState<FileSearchCategory | null>(null);
   const [extensionsDraft, setExtensionsDraft] = useState("");
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const pointerDragRef = useRef<{ id: string; pointerId: number } | null>(null);
 
   const saveCategories = (next: FileSearchCategory[]) => {
     patch("file_search", { categories: normalizeFileSearchCategories(next) });
@@ -52,12 +54,51 @@ export default function FileSearchSettings() {
   const moveCategory = (id: string, offset: number) => {
     const from = categories.findIndex((category) => category.id === id);
     const to = Math.max(0, Math.min(categories.length - 1, from + offset));
-    if (from < 0 || from === to) return;
+    if (from < 0 || from === to || categories[from]?.catch_all) return;
     const next = [...categories];
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
     saveCategories(next);
   };
+
+  const reorderCategory = (sourceId: string, targetId: string | null) => {
+    if (!targetId || sourceId === targetId) return;
+    const from = categories.findIndex((category) => category.id === sourceId);
+    const to = categories.findIndex((category) => category.id === targetId);
+    if (from < 0 || to < 0 || categories[from]?.catch_all) return;
+    const next = [...categories];
+    const [moved] = next.splice(from, 1);
+    const targetIndex = next.findIndex((category) => category.id === targetId);
+    next.splice(Math.max(0, targetIndex), 0, moved);
+    saveCategories(next);
+  };
+
+  useEffect(() => {
+    if (!draggedId) return undefined;
+    const onPointerMove = (event: PointerEvent) => {
+      const target = document
+        .elementFromPoint(event.clientX, event.clientY)
+        ?.closest<HTMLElement>("[data-file-category-id]");
+      const targetId = target?.dataset.fileCategoryId ?? null;
+      if (targetId && targetId !== draggedId) setDropTargetId(targetId);
+      event.preventDefault();
+    };
+    const finish = () => {
+      const sourceId = pointerDragRef.current?.id ?? draggedId;
+      reorderCategory(sourceId, dropTargetId);
+      pointerDragRef.current = null;
+      setDraggedId(null);
+      setDropTargetId(null);
+    };
+    window.addEventListener("pointermove", onPointerMove, { passive: false });
+    window.addEventListener("pointerup", finish, { once: true });
+    window.addEventListener("pointercancel", finish, { once: true });
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+    };
+  }, [categories, draggedId, dropTargetId]);
 
   const openEditor = (category: FileSearchCategory) => {
     setDraft({ ...category, extensions: [...category.extensions] });
@@ -165,25 +206,23 @@ export default function FileSearchSettings() {
           {categories.map((category, index) => (
             <div
               key={category.id}
-              className={`qx-file-category-setting-row${draggedId === category.id ? " is-dragging" : ""}`}
-              draggable
-              onDragStart={() => setDraggedId(category.id)}
-              onDragEnd={() => setDraggedId(null)}
-              onDragOver={(event) => event.preventDefault()}
-              onDrop={(event) => {
-                event.preventDefault();
-                if (!draggedId || draggedId === category.id) return;
-                const from = categories.findIndex((item) => item.id === draggedId);
-                const to = categories.findIndex((item) => item.id === category.id);
-                if (from < 0 || to < 0) return;
-                const next = [...categories];
-                const [moved] = next.splice(from, 1);
-                next.splice(to, 0, moved);
-                saveCategories(next);
-                setDraggedId(null);
-              }}
+              data-file-category-id={category.id}
+              className={`qx-file-category-setting-row${draggedId === category.id ? " is-dragging" : ""}${dropTargetId === category.id ? " is-drop-target" : ""}`}
             >
-              <span className="qx-file-category-drag" aria-hidden="true">
+              <span
+                className="qx-file-category-drag"
+                role="button"
+                tabIndex={category.catch_all ? -1 : 0}
+                aria-label={t("fileSearch.categories.drag", "Drag to reorder")}
+                onPointerDown={(event) => {
+                  if (category.catch_all || event.button !== 0) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  pointerDragRef.current = { id: category.id, pointerId: event.pointerId };
+                  setDraggedId(category.id);
+                  setDropTargetId(null);
+                }}
+              >
                 <GripVertical size={14} strokeWidth={2} />
               </span>
               <div className="qx-file-category-setting-copy">
@@ -204,7 +243,7 @@ export default function FileSearchSettings() {
                   size="icon"
                   variant="ghost"
                   aria-label={t("fileSearch.categories.moveUp", "Move up")}
-                  disabled={index === 0}
+                  disabled={index === 0 || category.catch_all}
                   onClick={() => moveCategory(category.id, -1)}
                 >
                   <ArrowUp size={13} />

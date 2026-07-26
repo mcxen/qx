@@ -12,7 +12,9 @@ import {
   ocrClearHistory,
   ocrDeleteHistory,
   ocrListHistory,
+  ocrStatus,
   type OcrHistoryEntry,
+  type OcrStatus,
 } from "../../system/ocr";
 
 interface DownloadProgress {
@@ -29,6 +31,9 @@ export default function OcrSettings() {
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [downloadDone, setDownloadDone] = useState(false);
+  const [modelStatus, setModelStatus] = useState<OcrStatus | null>(null);
+  const [modelStatusBusy, setModelStatusBusy] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
   const [history, setHistory] = useState<OcrHistoryEntry[]>([]);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
@@ -57,10 +62,6 @@ export default function OcrSettings() {
     (async () => {
       unlisten = await listen<DownloadProgress>("ocr-download-progress", (event) => {
         setProgress(event.payload);
-        if (event.payload.percent >= 100) {
-          setDownloadDone(true);
-          setDownloading(false);
-        }
       });
     })();
     return () => {
@@ -72,21 +73,49 @@ export default function OcrSettings() {
     if (adv.ocr_enabled) void refreshHistory();
   }, [adv.ocr_enabled, refreshHistory]);
 
+  const isOarOcr = adv.ocr_engine === "oar-ocr";
+  const isMac = getQxDesktopPlatform() === "macos";
+
+  const refreshModelStatus = useCallback(async () => {
+    if (!isOarOcr) {
+      setModelStatus(null);
+      setModelError(null);
+      return;
+    }
+    try {
+      setModelStatusBusy(true);
+      setModelError(null);
+      setModelStatus(await ocrStatus());
+    } catch (error) {
+      setModelError(String(error));
+    } finally {
+      setModelStatusBusy(false);
+    }
+  }, [isOarOcr]);
+
+  useEffect(() => {
+    if (adv.ocr_enabled && isOarOcr) void refreshModelStatus();
+  }, [adv.ocr_enabled, adv.ocr_model_size, isOarOcr, refreshModelStatus]);
+
   const handleDownload = useCallback(async () => {
     setDownloading(true);
     setProgress(null);
     setDownloadDone(false);
+    setModelError(null);
     try {
       await invoke("download_ocr_model", { size: adv.ocr_model_size });
+      await refreshModelStatus();
+      setDownloadDone(true);
     } catch (e) {
       console.error("download_ocr_model failed", e);
+      setModelError(String(e));
+    } finally {
       setDownloading(false);
     }
-  }, [adv.ocr_model_size]);
+  }, [adv.ocr_model_size, refreshModelStatus]);
 
   const selected = history.find((row) => row.id === selectedId) ?? history[0] ?? null;
-  const isOarOcr = adv.ocr_engine === "oar-ocr";
-  const isMac = getQxDesktopPlatform() === "macos";
+  const canDownloadModel = !isMac;
 
   useEffect(() => {
     if (!isMac && adv.ocr_engine === "apple-vision") {
@@ -190,11 +219,43 @@ export default function OcrSettings() {
 
           {isOarOcr && (
             <SettingsCard title={t("ocr.model.title", "OAR Model")}>
+              <div
+                className={`qx-settings-inline-status${
+                  modelStatus?.models.downloaded ? " is-success" : ""
+                }`}
+              >
+                <span>
+                  {modelStatusBusy
+                    ? t("ocr.model.checking", "Checking model files…")
+                    : modelStatus?.models.downloaded
+                      ? t("ocr.model.installed", "Model pack installed")
+                      : t("ocr.model.notInstalled", "Model pack not installed")}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void refreshModelStatus()}
+                  disabled={modelStatusBusy}
+                >
+                  {t("ocr.model.refresh", "Refresh")}
+                </Button>
+              </div>
+              {modelStatus && !modelStatus.models.downloaded && (
+                <div className="qx-settings-progress-label">
+                  {t(
+                    "ocr.model.filesMissing",
+                    "Required files: detector, recognizer, dictionary",
+                  )}
+                </div>
+              )}
+              {modelError && <div className="qx-settings-error">{modelError}</div>}
               <Row
                 title={t("ocr.modelSize", "Model Size")}
                 description={t(
                   "ocr.modelSize.desc",
-                  "Also controls OS recognition speed: Tiny/Small use Fast OCR with downscale; Medium uses Accurate OCR.",
+                  isMac
+                    ? "macOS uses Apple Vision Accurate mode with Chinese language support; pack size only affects the optional download."
+                    : "Tiny/Small use fast OS OCR; Medium uses accurate OCR.",
                 )}
               >
                 <Select
@@ -208,24 +269,35 @@ export default function OcrSettings() {
                 />
               </Row>
 
-              <Row
-                title={t("ocr.download", "Download OCR Models")}
-                description={t(
-                  "ocr.download.desc",
-                  "Download the selected OCR model pack (optional; recognition uses the OS engine today).",
-                )}
-              >
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={handleDownload}
-                  disabled={downloading}
+              {canDownloadModel ? (
+                <Row
+                  title={t("ocr.download", "Download OCR Models")}
+                  description={t(
+                    "ocr.download.desc",
+                    "Download the selected OAR pack. Windows recognition uses the installed Windows OCR language pack.",
+                  )}
                 >
-                  {downloading
-                    ? t("ocr.downloading", "Downloading…")
-                    : t("ocr.downloadBtn", "Download OCR Models")}
-                </Button>
-              </Row>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={handleDownload}
+                    disabled={downloading || modelStatus?.models.downloaded === true}
+                  >
+                    {downloading
+                      ? t("ocr.downloading", "Downloading…")
+                      : modelStatus?.models.downloaded
+                        ? t("ocr.model.installed", "Model pack installed")
+                        : t("ocr.downloadBtn", "Download OCR Models")}
+                  </Button>
+                </Row>
+              ) : (
+                <div className="qx-settings-progress-label">
+                  {t(
+                    "ocr.download.macNote",
+                    "macOS uses the built-in Apple Vision engine. No OCR model download is required.",
+                  )}
+                </div>
+              )}
 
               {progress && (
                 <div className="qx-settings-progress">

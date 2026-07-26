@@ -9,9 +9,16 @@
 
 .qx-home-dashboard-grid {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
   min-height: 100%;
+}
+
+.qx-home-primary {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+  gap: 10px;
+  min-height: 0;
 }
 
 .qx-home-widget {
@@ -55,6 +62,53 @@ button.qx-home-widget:focus-visible,
   flex-direction: column;
   min-height: 220px;
   padding: 12px;
+}
+
+.qx-home-recent-searches {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px;
+}
+
+.qx-home-recent-search-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  gap: 4px;
+}
+
+.qx-home-recent-search {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--qx-control-radius);
+  background: transparent;
+  color: var(--qx-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.qx-home-recent-search:hover {
+  border-color: var(--qx-border-1);
+  background: var(--qx-bg-component-2);
+}
+
+.qx-home-recent-search > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-home-recent-search > time {
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .qx-home-widget-header,
@@ -235,7 +289,7 @@ button.qx-home-widget:focus-visible,
 }
 
 @container qx-home-dashboard (max-width: 640px) {
-  .qx-home-dashboard-grid {
+  .qx-home-primary {
     grid-template-columns: minmax(0, 1fr);
   }
 

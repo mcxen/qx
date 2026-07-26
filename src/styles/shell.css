@@ -1572,6 +1572,7 @@
 .qx-island-content.qx-home-system-island {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   width: 100%;
   height: 100%;
@@ -1635,7 +1636,9 @@
 .qx-island-marquee {
   display: flex;
   align-items: center;
-  width: 100%;
+  width: auto;
+  max-width: 100%;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   mask-image: none;
@@ -1670,6 +1673,7 @@
 .qx-island-content.qx-home-sci-island {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   width: 100%;
   height: 100%;
@@ -1912,6 +1916,7 @@
 .qx-island-content.qx-home-date-island {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
   width: 100%;
   height: 100%;
@@ -2113,6 +2118,56 @@
 
   .qx-shell-actions {
     grid-column: 2;
+  }
+}
+
+/* The launcher remains useful at the compact window size: keep only the
+   search field visible until a query is entered, then reveal results below it. */
+@media (max-width: 520px), (max-height: 260px) {
+  .qx-shell.launcher-shell .qx-shell-topbar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .qx-shell.launcher-shell .qx-shell-trailing,
+  .qx-shell.launcher-shell .qx-shell-context,
+  .qx-shell.launcher-shell .qx-shell-bottombar {
+    display: none;
+  }
+
+  .qx-shell.launcher-shell:not(.has-query) .qx-shell-main {
+    display: none;
+  }
+
+  .qx-shell.launcher-shell.has-query .qx-shell-main {
+    position: absolute;
+    z-index: 25;
+    top: var(--qx-topbar-h);
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: block;
+    overflow: hidden;
+    border-top: 1px solid var(--qx-border-1);
+    background: rgba(var(--qx-glass-bg), var(--qx-shell-region-opacity-effective));
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+  }
+
+  .qx-shell.launcher-shell.has-window-titlebar.has-query .qx-shell-main {
+    top: calc(var(--qx-titlebar-h) + var(--qx-topbar-h));
+  }
+
+  .qx-shell.launcher-shell.has-query .qx-shell-content {
+    height: 100%;
+    padding: 0;
+  }
+}
+
+/* Do not let a docked island sit underneath the action buttons. */
+@media (max-width: 740px) {
+  .qx-shell-bottombar .qx-island-surface[data-placement="docked"] {
+    display: none;
   }
 }
 .qx-module-title-with-badge {

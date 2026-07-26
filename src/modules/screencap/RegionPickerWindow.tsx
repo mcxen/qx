@@ -59,7 +59,6 @@ export default function RegionPickerWindow() {
   const [drawEnd, setDrawEnd] = useState<Point | null>(null);
   const [selection, setSelection] = useState<Rect | null>(null);
   const [interaction, setInteraction] = useState<RectInteraction | null>(null);
-  const lastClickRef = useRef<{ at: number; x: number; y: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -77,7 +76,7 @@ export default function RegionPickerWindow() {
     tool, setTool, color, setColor, annotations, setAnnotations, redoStack, setRedoStack,
     shapeDraft, setShapeDraft, setNextNumber, penDraft, setPenDraft, textDraft, setTextDraft,
     canvasRef, undo, redo, onCanvasMouseDown, onCanvasMouseMove, onCanvasMouseUp,
-    commitTextDraft, updateTextAnnotation, exportOverlayBase64,
+    commitTextDraft, updateTextAnnotation, deleteTextAnnotation, exportOverlayBase64,
   } = useCaptureAnnotations(selection, busy);
   const multiDisplay = picker?.multiDisplay === true;
   const multiDisplayRef = useRef(false);
@@ -461,6 +460,25 @@ export default function RegionPickerWindow() {
     }
   };
 
+  const beginMove = (event: React.PointerEvent) => {
+    if (!selection || tool || busy || event.button !== 0 || countdown !== null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setInteractionLock(true);
+    const next: RectInteraction = {
+      kind: "move",
+      start: { x: event.clientX, y: event.clientY },
+      origin: selection,
+    };
+    interactionRef.current = next;
+    setInteraction(next);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      /* ignore */
+    }
+  };
+
   const flushDrawEnd = useCallback(() => {
     drawRafRef.current = null;
     const end = drawEndRef.current;
@@ -549,38 +567,6 @@ export default function RegionPickerWindow() {
     drawEndRef.current = point;
     setDrawStart(point);
     setDrawEnd(point);
-  };
-
-  const onSelectionPointerDown = (event: React.PointerEvent) => {
-    if (!selection || tool || busy || event.button !== 0 || countdown !== null) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setInteractionLock(true);
-    const now = Date.now();
-    const prev = lastClickRef.current;
-    if (
-      prev
-      && now - prev.at < 320
-      && Math.hypot(event.clientX - prev.x, event.clientY - prev.y) < 8
-    ) {
-      lastClickRef.current = null;
-      setInteractionLock(false);
-      void confirm(intent);
-      return;
-    }
-    lastClickRef.current = { at: now, x: event.clientX, y: event.clientY };
-    const next: RectInteraction = {
-      kind: "move",
-      start: { x: event.clientX, y: event.clientY },
-      origin: selection,
-    };
-    interactionRef.current = next;
-    setInteraction(next);
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      /* ignore */
-    }
   };
 
   const onRootPointerMove = (event: React.PointerEvent) => {
@@ -856,7 +842,12 @@ export default function RegionPickerWindow() {
           <div
             className={`qx-region-picker-rect${selection ? " is-selected" : ""}${tool ? ` is-tool-${tool}` : ""}${recordingActive ? " is-recording" : ""}`}
             style={{ left: visibleRect.x, top: visibleRect.y, width: visibleRect.w, height: visibleRect.h }}
-            onPointerDown={onSelectionPointerDown}
+            onDoubleClick={(event) => {
+              if (!selection || tool || busy || countdown !== null) return;
+              event.preventDefault();
+              event.stopPropagation();
+              void confirm(intent);
+            }}
           >
             {selection && !recordingActive && countdown === null && (
               <>
@@ -871,6 +862,7 @@ export default function RegionPickerWindow() {
                   selection={selection}
                   annotations={annotations.filter((annotation) => annotation.type === "text")}
                   onUpdate={updateTextAnnotation}
+                  onDelete={deleteTextAnnotation}
                 />
                 {textDraft && (
                   <input
@@ -879,6 +871,7 @@ export default function RegionPickerWindow() {
                     value={textDraft.text}
                     placeholder={t("screencap.picker.textPrompt", "Enter annotation text")}
                     style={{
+                      color,
                       left: clamp(textDraft.point.x, 4, Math.max(4, selection.w - 184)),
                       top: clamp(textDraft.point.y - 22, 4, Math.max(4, selection.h - 32)),
                     }}
@@ -898,6 +891,16 @@ export default function RegionPickerWindow() {
                     }}
                   />
                 )}
+                {!tool && (['n', 'e', 's', 'w'] as const).map((edge) => (
+                  <div
+                    key={`move-${edge}`}
+                    className={`qx-region-picker-move-edge is-${edge}`}
+                    role="button"
+                    tabIndex={-1}
+                    aria-label={t("screencap.picker.moveSelection", "Move selection")}
+                    onPointerDown={beginMove}
+                  />
+                ))}
                 {handles.map((handle) => (
                   <button
                     key={handle}

@@ -1,4 +1,4 @@
-import { BatteryCharging, BatteryMedium, Cpu, MemoryStick, Network, Pin } from "lucide-react";
+import { BatteryCharging, BatteryMedium, Cpu, MemoryStick, Network, Pin, Search } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { LauncherAppIcon } from "../ResultsList";
 import { useIslandData } from "../home-island";
@@ -7,7 +7,7 @@ import { useSettingsStore } from "../modules/settings/store";
 import { usePluginRegistry } from "../plugin/registry";
 import { useDisplayName } from "../search/appDisplay";
 import { isEntryPinned, metadataKeyForEntry } from "../search/searchMetadata";
-import type { AppEntry } from "../store";
+import type { AppEntry, SearchHistoryEntry } from "../store";
 import { homeDashboardWidgetOptions, homeWidgetProvider, sanitizeHomeDashboardWidgets } from "./catalog";
 import LauncherHomePopover from "../launcher/LauncherHomePopover";
 
@@ -60,11 +60,15 @@ function MetricCard({
 
 export default function HomeDashboard({
   items,
+  recentSearches,
   onItemClick,
+  onSearchSelect,
   onNavigate,
 }: {
   items: AppEntry[];
+  recentSearches: SearchHistoryEntry[];
   onItemClick: (item: AppEntry) => void;
+  onSearchSelect: (query: string) => void;
   onNavigate: (target: string) => void;
 }) {
   const t = useT();
@@ -95,102 +99,131 @@ export default function HomeDashboard({
   return (
     <div className="qx-home-dashboard" data-qx-region="launcher-home" data-qx-region-initial="true">
       <div className="qx-home-dashboard-grid">
-        {enabled.includes("launcher.pinned") && (
-          <section className="qx-home-widget qx-home-pinned" data-widget-id="launcher.pinned">
-            <header className="qx-home-widget-header">
-              <span className="qx-home-widget-heading">
-                <Pin size={14} strokeWidth={2.1} aria-hidden="true" />
-                <span className="qx-home-widget-title">{t("launcher.home.pinned", "Pinned Entries")}</span>
-              </span>
-              <span className="qx-home-widget-header-actions">
-                <span className="qx-home-widget-count">{pinned.length}</span>
-                <LauncherHomePopover
-                  entries={items}
-                  homeWidgets={enabled}
-                  widgetOptions={homeDashboardWidgetOptions(t)}
-                  onToggleWidget={(id, enabledNext) => {
-                    const widgets = enabledNext
-                      ? [...enabled, id]
-                      : enabled.filter((value) => value !== id);
-                    if (widgets.length === 0) return;
-                    patch("appearance", {
-                      ...settings.appearance,
-                      home_dashboard_widgets: widgets,
-                    });
-                  }}
-                />
-              </span>
-            </header>
-            {pinned.length > 0 ? (
-              <div className="qx-home-app-grid">
-                {pinned.map((item) => {
-                  const label = getDisplayName(item);
-                  return (
-                    <button key={item.path} type="button" className="qx-home-app" onClick={() => onItemClick(item)} title={label}>
-                      <LauncherAppIcon item={item} label={label} />
-                      <span>{label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="qx-home-widget-empty">
-                <span>{t("launcher.home.pinned.empty", "No pinned entries")}</span>
-                <small>{t("launcher.home.pinned.hint", "Use the three-dot menu to add apps or modules.")}</small>
-              </div>
-            )}
-          </section>
-        )}
+        <div className="qx-home-primary">
+          {enabled.includes("launcher.pinned") && (
+            <section className="qx-home-widget qx-home-pinned" data-widget-id="launcher.pinned">
+              <header className="qx-home-widget-header">
+                <span className="qx-home-widget-heading">
+                  <Pin size={14} strokeWidth={2.1} aria-hidden="true" />
+                  <span className="qx-home-widget-title">{t("launcher.home.pinned", "Pinned Entries")}</span>
+                </span>
+                <span className="qx-home-widget-header-actions">
+                  <span className="qx-home-widget-count">{pinned.length}</span>
+                  <LauncherHomePopover
+                    entries={items}
+                    homeWidgets={enabled}
+                    widgetOptions={homeDashboardWidgetOptions(t)}
+                    onToggleWidget={(id, enabledNext) => {
+                      const widgets = enabledNext
+                        ? [...enabled, id]
+                        : enabled.filter((value) => value !== id);
+                      if (widgets.length === 0) return;
+                      patch("appearance", {
+                        ...settings.appearance,
+                        home_dashboard_widgets: widgets,
+                      });
+                    }}
+                  />
+                </span>
+              </header>
+              {pinned.length > 0 ? (
+                <div className="qx-home-app-grid">
+                  {pinned.map((item) => {
+                    const label = getDisplayName(item);
+                    return (
+                      <button key={item.path} type="button" className="qx-home-app" onClick={() => onItemClick(item)} title={label}>
+                        <LauncherAppIcon item={item} label={label} />
+                        <span>{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="qx-home-widget-empty">
+                  <span>{t("launcher.home.pinned.empty", "No pinned entries")}</span>
+                  <small>{t("launcher.home.pinned.hint", "Use the three-dot menu to add apps or modules.")}</small>
+                </div>
+              )}
+            </section>
+          )}
 
-        <div className="qx-home-metrics">
-          {enabled.includes("system.cpu") && (
-            <MetricCard
-              id="system.cpu"
-              title="CPU"
-              value={data.ready.stats && data.stats ? `${number.format(data.stats.cpu)}%` : "—"}
-              detail={t("launcher.home.cpu.live", "Current utilization")}
-              progress={data.stats?.cpu}
-              icon={<Cpu size={17} strokeWidth={2} />}
-              onClick={providerFor("system.cpu")}
-            />
-          )}
-          {enabled.includes("system.memory") && (
-            <MetricCard
-              id="system.memory"
-              title={t("launcher.home.memory", "Memory")}
-              value={data.ready.stats && data.stats ? `${number.format(data.stats.memory)}%` : "—"}
-              detail={data.stats ? `${number.format(data.stats.memoryUsedGb)} / ${number.format(data.stats.memoryTotalGb)} GB` : t("launcher.home.loading", "Reading system data")}
-              progress={data.stats?.memory}
-              icon={<MemoryStick size={17} strokeWidth={2} />}
-              onClick={providerFor("system.memory")}
-            />
-          )}
-          {enabled.includes("system.power") && (
-            <MetricCard
-              id="system.power"
-              title={t("launcher.home.power", "Power")}
-              value={data.ready.power && data.power?.batteryLevel != null ? `${Math.round(data.power.batteryLevel)}%` : "—"}
-              detail={data.power?.isCharging
-                ? t("launcher.home.power.charging", "Charging")
-                : data.power?.fullyCharged
-                  ? t("launcher.home.power.full", "Fully charged")
-                  : data.power?.source || t("launcher.home.loading", "Reading system data")}
-              progress={data.power?.batteryLevel}
-              icon={data.power?.isCharging ? <BatteryCharging size={17} strokeWidth={2} /> : <BatteryMedium size={17} strokeWidth={2} />}
-              onClick={providerFor("system.power")}
-            />
-          )}
-          {enabled.includes("system.network") && (
-            <MetricCard
-              id="system.network"
-              title={t("launcher.home.network", "Network")}
-              value={data.ready.net && data.net ? rate(data.net.downRate) : "—"}
-              detail={data.net ? `${t("launcher.home.network.up", "Upload")} ${rate(data.net.upRate)}` : t("launcher.home.loading", "Reading system data")}
-              icon={<Network size={17} strokeWidth={2} />}
-              onClick={providerFor("system.network")}
-            />
-          )}
+          <div className="qx-home-metrics">
+            {enabled.includes("system.cpu") && (
+              <MetricCard
+                id="system.cpu"
+                title="CPU"
+                value={data.ready.stats && data.stats ? `${number.format(data.stats.cpu)}%` : "—"}
+                detail={t("launcher.home.cpu.live", "Current utilization")}
+                progress={data.stats?.cpu}
+                icon={<Cpu size={17} strokeWidth={2} />}
+                onClick={providerFor("system.cpu")}
+              />
+            )}
+            {enabled.includes("system.memory") && (
+              <MetricCard
+                id="system.memory"
+                title={t("launcher.home.memory", "Memory")}
+                value={data.ready.stats && data.stats ? `${number.format(data.stats.memory)}%` : "—"}
+                detail={data.stats ? `${number.format(data.stats.memoryUsedGb)} / ${number.format(data.stats.memoryTotalGb)} GB` : t("launcher.home.loading", "Reading system data")}
+                progress={data.stats?.memory}
+                icon={<MemoryStick size={17} strokeWidth={2} />}
+                onClick={providerFor("system.memory")}
+              />
+            )}
+            {enabled.includes("system.power") && (
+              <MetricCard
+                id="system.power"
+                title={t("launcher.home.power", "Power")}
+                value={data.ready.power && data.power?.batteryLevel != null ? `${Math.round(data.power.batteryLevel)}%` : "—"}
+                detail={data.power?.isCharging
+                  ? t("launcher.home.power.charging", "Charging")
+                  : data.power?.fullyCharged
+                    ? t("launcher.home.power.full", "Fully charged")
+                    : data.power?.source || t("launcher.home.loading", "Reading system data")}
+                progress={data.power?.batteryLevel}
+                icon={data.power?.isCharging ? <BatteryCharging size={17} strokeWidth={2} /> : <BatteryMedium size={17} strokeWidth={2} />}
+                onClick={providerFor("system.power")}
+              />
+            )}
+            {enabled.includes("system.network") && (
+              <MetricCard
+                id="system.network"
+                title={t("launcher.home.network", "Network")}
+                value={data.ready.net && data.net ? rate(data.net.downRate) : "—"}
+                detail={data.net ? `${t("launcher.home.network.up", "Upload")} ${rate(data.net.upRate)}` : t("launcher.home.loading", "Reading system data")}
+                icon={<Network size={17} strokeWidth={2} />}
+                onClick={providerFor("system.network")}
+              />
+            )}
+          </div>
         </div>
+
+        <section className="qx-home-widget qx-home-recent-searches" data-widget-id="launcher.recent-searches">
+          <header className="qx-home-widget-header">
+            <span className="qx-home-widget-title">{t("launcher.recentSearches", "Recent Searches")}</span>
+            <span className="qx-home-widget-count">{recentSearches.length}</span>
+          </header>
+          {recentSearches.length > 0 ? (
+            <div className="qx-home-recent-search-list">
+              {recentSearches.map((entry) => (
+                <button
+                  key={`home-search-${entry.id}`}
+                  type="button"
+                  className="qx-home-recent-search"
+                  onClick={() => onSearchSelect(entry.query)}
+                >
+                  <Search size={14} strokeWidth={2} aria-hidden="true" />
+                  <span>{entry.query}</span>
+                  <time>{entry.timestamp}</time>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="qx-home-widget-empty">
+              <span>{t("launcher.recentSearches.empty", "No recent searches")}</span>
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

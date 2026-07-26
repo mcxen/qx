@@ -1,6 +1,9 @@
 import type { Point, Rect } from "./useCaptureAnnotations";
 
-export const MIN_CAPTURE_SIZE = 32;
+// Keep the picker usable for one-line text and small UI controls. The native
+// capture backends still clamp to at least one physical pixel, so this is a
+// logical/CSS affordance rather than an artificial screenshot limit.
+export const MIN_CAPTURE_SIZE = 4;
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
