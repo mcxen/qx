@@ -51,11 +51,11 @@ export default function RecordingControlWindow() {
   const beginCapture = async (mode: CaptureMode) => {
     if (launching) return;
     setLaunching(true);
-    await invoke("screencap_hide_controls").catch(() => {});
     try {
+      // The backend maps and focuses the picker before hiding this calling
+      // WebView. Hiding ourselves first can suspend WebView2 on Windows before
+      // it gets a chance to issue the capture command.
       await requestCaptureSelection(mode);
-    } catch {
-      await invoke("screencap_show_controls").catch(() => {});
     } finally {
       setLaunching(false);
     }

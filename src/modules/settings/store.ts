@@ -383,7 +383,7 @@ export const DEFAULT_SETTINGS: Settings = {
     language: "system",
     // Off by default — Windows auto-install may quit without a reliable relaunch.
     auto_update: false,
-    autoHideOnBlur: true,
+    autoHideOnBlur: false,
     data_path: "",
     has_shown_launcher: false,
     has_completed_onboarding: false,
@@ -392,9 +392,9 @@ export const DEFAULT_SETTINGS: Settings = {
   appearance: {
     theme: "light",
     app_icon: "cloud",
-    title_bar_visible: false,
-    window_behavior: "auto-hide",
-    show_in_app_list: false,
+    title_bar_visible: true,
+    window_behavior: "normal",
+    show_in_app_list: true,
     glass_enabled: true,
     blur_opacity: 0.16,
     blur_radius: 14,

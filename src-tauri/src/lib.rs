@@ -2,6 +2,7 @@ mod app_icon;
 mod app_quit;
 mod apps;
 mod apps_zh_dict;
+mod auxiliary_window;
 mod clipboard;
 mod desktop_windows;
 mod diagnostics;

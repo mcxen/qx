@@ -90,7 +90,7 @@ UI_SPEC（当前）：
 1. **单一呈现契约**：`QxIslandSurface` 拥有外轮廓尺寸、radius、glass/border（按 variant 表）、docked 居中；内容仅填 slots / 注册组件内层。
 2. **统一信息通道**：metrics / status / intent；docked 优先级 task > error > toast > location > home，含完整 comparator（§4.3）。
 3. **模块可调用 API**：`islandHost.show / update / dismiss / bindActions`（及插件 bridge）。
-4. **可脱离主窗口**（通用岛）：label `island` 轻量 webview；默认不抢焦点；可点击；主窗 hide 后 standing plugin/module 与 sticky task 可展示（设置控制）。默认几何为主屏工作区右上。
+4. **可脱离主窗口**（通用岛）：label `island` 轻量 webview；默认不抢焦点；可点击；主窗 hide 后 standing plugin/module 与 sticky task 可展示（设置控制）。默认几何为主屏工作区右上。Windows 的通用岛与截图控制条必须使用可交互的 `WS_EX_NOACTIVATE` 辅助窗语义，点击按钮不得夺走当前前台应用；截图 picker 在控制条动作提交后再显式接管焦点。
 5. **异步显示解耦**：可序列化 session + **host 分配 generation**；surface 独立订阅。
 6. **分类迁移全部 call site**：每个 `island=` / `customIsland=` 归入 slots | registered component | **v1 永久/阶段性例外**（§9 表）；不得口头“全部”而不列 screencap。
 7. **跨平台**：macOS + Windows 行为对等目标以 **screencap 旗标** 为准，不要求 island 成为 NSPanel。

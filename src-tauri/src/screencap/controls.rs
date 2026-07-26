@@ -140,6 +140,10 @@ fn show_now(app: &AppHandle) -> Result<(), String> {
     let controls = app
         .get_webview_window(CONTROL_LABEL)
         .ok_or_else(|| "recording controls window is unavailable".to_string())?;
+    // On Windows this is an interactive WS_EX_NOACTIVATE tool surface: its
+    // buttons receive clicks without taking the foreground away from the app
+    // being captured. The picker itself explicitly takes focus after launch.
+    crate::auxiliary_window::make_non_activating(&controls)?;
     let _ = controls.set_content_protected(true);
     let _ = controls.set_always_on_top(true);
     let _ = controls.set_ignore_cursor_events(false);
@@ -149,8 +153,6 @@ fn show_now(app: &AppHandle) -> Result<(), String> {
         .map_err(|error| format!("show recording controls: {error}"))?;
     #[cfg(target_os = "macos")]
     promote_now(&controls);
-    #[cfg(not(target_os = "macos"))]
-    let _ = controls.set_focus();
     super::recording_session::emit_recording_status(app);
     Ok(())
 }

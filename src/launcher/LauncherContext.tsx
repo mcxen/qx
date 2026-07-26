@@ -29,18 +29,40 @@ function ContextSection({
   title,
   children,
   spacing = false,
+  collapsible = false,
+  collapsed = false,
+  onToggle,
+  headerActions,
+  contentId,
 }: {
   title: string;
   children: ReactNode;
   spacing?: boolean;
+  collapsible?: boolean;
+  collapsed?: boolean;
+  onToggle?: () => void;
+  headerActions?: ReactNode;
+  contentId?: string;
 }) {
   return (
-    <>
-      <div className={`qx-context-title${spacing ? " has-spacing" : ""}`}>
-        {title}
+    <section className={collapsible ? "qx-context-collapsible-section" : undefined}>
+      <div className={`qx-context-title${spacing ? " has-spacing" : ""}${collapsible ? " qx-context-title-row" : ""}`}>
+        {collapsible ? (
+          <button
+            type="button"
+            className="qx-context-section-toggle"
+            aria-expanded={!collapsed}
+            aria-controls={contentId}
+            onClick={onToggle}
+          >
+            <span>{title}</span>
+            <ChevronDown aria-hidden="true" size={14} className={collapsed ? "is-collapsed" : ""} />
+          </button>
+        ) : <span>{title}</span>}
+        {headerActions}
       </div>
-      {children}
-    </>
+      {(!collapsible || !collapsed) && (contentId ? <div id={contentId}>{children}</div> : children)}
+    </section>
   );
 }
 
@@ -86,6 +108,7 @@ export default function LauncherContext({
   const { settings, patch, patchSearchMetadata } = useSettingsStore();
   const plugins = usePluginRegistry((state) => state.plugins);
   const [editingQuickEntries, setEditingQuickEntries] = useState(false);
+  const [quickEntriesCollapsed, setQuickEntriesCollapsed] = useState(false);
   const [allModulesCollapsed, setAllModulesCollapsed] = useState(false);
   const selectedMetadataKey = metadataKeyForEntry(selectedItem ?? { name: "", path: "", icon: "" });
   const selectedMetadata = metadataForKey(settings, selectedMetadataKey);
@@ -177,8 +200,13 @@ export default function LauncherContext({
 
   return (
     <div className="qx-launcher-context">
-      <ContextSection title={t("launcher.quickEntries", "Quick Entries")}>
-        <div className="qx-context-section-actions">
+      <ContextSection
+        title={t("launcher.quickEntries", "Quick Entries")}
+        collapsible
+        collapsed={quickEntriesCollapsed}
+        onToggle={() => setQuickEntriesCollapsed((value) => !value)}
+        contentId="qx-launcher-quick-entries"
+        headerActions={(
           <Button
             type="button"
             size="sm"
@@ -192,7 +220,8 @@ export default function LauncherContext({
           >
             {editingQuickEntries ? <Check size={14} /> : <Pencil size={14} />}
           </Button>
-        </div>
+        )}
+      >
         {editingQuickEntries ? (
           <div className="qx-quick-entry-editor">
             {quickEntryDrafts.map((entry) => (

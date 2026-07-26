@@ -115,10 +115,11 @@ fn promote_without_focus(island: &tauri::WebviewWindow) {
 }
 
 fn ensure_island_window(app: &AppHandle, always_on_top: bool) -> Result<(), String> {
-    if app.get_webview_window(ISLAND_LABEL).is_some() {
+    if let Some(island) = app.get_webview_window(ISLAND_LABEL) {
+        crate::auxiliary_window::make_non_activating(&island)?;
         return Ok(());
     }
-    WebviewWindowBuilder::new(
+    let island = WebviewWindowBuilder::new(
         app,
         ISLAND_LABEL,
         WebviewUrl::App("index.html?surface=island".into()),
@@ -139,6 +140,7 @@ fn ensure_island_window(app: &AppHandle, always_on_top: bool) -> Result<(), Stri
     .visible(false)
     .build()
     .map_err(|error| format!("open island window: {error}"))?;
+    crate::auxiliary_window::make_non_activating(&island)?;
     Ok(())
 }
 

@@ -22,6 +22,7 @@ import { mapBottomIslandContent } from "./island/compat/mapBottomIslandContent";
 import { usePluginRegistry } from "./plugin/registry";
 import type { LauncherResultRow } from "./launcher/resultRows";
 import HomeDashboard from "./home-dashboard/HomeDashboard";
+import LauncherContext from "./launcher/LauncherContext";
 
 interface LauncherProps {
   results: AppEntry[];
@@ -334,7 +335,13 @@ export default function Launcher({
           onScopeChange();
         },
       }]}
-      context={null}
+      context={(
+        <LauncherContext
+          quickEntries={quickEntries}
+          allModules={allModules}
+          selectedItem={activeSelectedItem}
+        />
+      )}
       // Launcher: Esc = Back (clear query) or Hide (empty → hide panel). No house button.
       escapeAction={
         hasQuery

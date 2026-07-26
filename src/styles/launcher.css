@@ -29,6 +29,17 @@
   margin-top: 12px;
 }
 
+.qx-context-title-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.qx-context-title-row .qx-context-section-toggle {
+  flex: 1;
+  padding: 0;
+}
+
 .qx-context-collapsible-section {
   display: flex;
   flex-direction: column;

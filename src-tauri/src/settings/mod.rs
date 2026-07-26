@@ -45,11 +45,11 @@ pub struct GeneralSettings {
 }
 
 fn default_auto_hide_on_blur() -> bool {
-    true
+    false
 }
 
 fn default_window_behavior() -> String {
-    "auto-hide".to_string()
+    "normal".to_string()
 }
 
 impl Default for GeneralSettings {
@@ -61,7 +61,7 @@ impl Default for GeneralSettings {
             // Off by default: Windows auto-install can quit the app even when
             // the replace/relaunch path fails, leaving users without a running Qx.
             auto_update: false,
-            auto_hide_on_blur: true,
+            auto_hide_on_blur: false,
             data_path: crate::paths::data_dir().to_string_lossy().to_string(),
             has_shown_launcher: false,
             has_completed_onboarding: false,
@@ -78,13 +78,13 @@ pub struct AppearanceSettings {
     #[serde(default = "default_app_icon")]
     pub app_icon: String,
     /// Show the host-rendered title bar and desktop window controls.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub title_bar_visible: bool,
     /// `always-on-top`, `normal`, or `auto-hide`.
     #[serde(default = "default_window_behavior")]
     pub window_behavior: String,
     /// Keep the app icon in the macOS Dock or Windows taskbar.
-    #[serde(default)]
+    #[serde(default = "default_true")]
     pub show_in_app_list: bool,
     #[serde(default = "default_true")]
     pub glass_enabled: bool,
@@ -232,9 +232,9 @@ impl Default for AppearanceSettings {
         Self {
             theme: default_theme(),
             app_icon: default_app_icon(),
-            title_bar_visible: false,
+            title_bar_visible: true,
             window_behavior: default_window_behavior(),
-            show_in_app_list: false,
+            show_in_app_list: true,
             glass_enabled: true,
             blur_opacity: default_blur_opacity(),
             blur_radius: default_blur_radius(),

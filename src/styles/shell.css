@@ -615,9 +615,11 @@
 }
 
 .qx-shell-actions {
+  grid-column: 3;
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
+  justify-self: end;
   gap: 8px;
   min-width: 0;
 }
@@ -919,6 +921,10 @@
 .qx-island-surface[data-placement="docked"] {
   position: absolute;
   left: 50%;
+  width: min(
+    var(--qx-island-docked-width),
+    var(--qx-island-safe-width, 100%)
+  );
   transform: translateX(-50%);
 }
 
@@ -2075,7 +2081,11 @@
   }
 
   .qx-island-surface[data-placement="docked"] {
-    width: min(340px, calc(100% - 220px));
+    width: min(
+      340px,
+      calc(100% - 220px),
+      var(--qx-island-safe-width, 100%)
+    );
     min-width: 220px;
     min-height: var(--qx-island-height-min);
   }
@@ -2164,11 +2174,12 @@
   }
 }
 
-/* Do not let a docked island sit underneath the action buttons. */
-@media (max-width: 740px) {
-  .qx-shell-bottombar .qx-island-surface[data-placement="docked"] {
-    display: none;
-  }
+/* The centered island first shrinks to the symmetric space measured by
+   QxShell. Hide it only when that space is narrower than its minimum width. */
+.qx-shell-bottombar[data-island-overlap="true"]
+  .qx-island-surface[data-placement="docked"] {
+  visibility: hidden;
+  pointer-events: none;
 }
 .qx-module-title-with-badge {
   display: inline-flex;
