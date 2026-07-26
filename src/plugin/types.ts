@@ -88,6 +88,21 @@ export interface PluginStorageManifest {
   cacheTargets?: PluginCacheTargetDeclaration[];
 }
 
+export type PluginHomeWidgetSource =
+  | "system.cpu"
+  | "system.memory"
+  | "system.power"
+  | "system.network";
+
+/**
+ * A plugin may associate one of its panels with a host-rendered Home widget.
+ * It contributes no DOM or CSS; Qx owns sampling, chrome and responsiveness.
+ */
+export interface PluginHomeWidgetDeclaration {
+  id: string;
+  source: PluginHomeWidgetSource;
+}
+
 export interface PluginManifest {
   id: string;
   name: string;
@@ -115,6 +130,7 @@ export interface PluginManifest {
   entry?: string;
   raycast?: PluginRaycastMetadata;
   storage?: PluginStorageManifest;
+  homeWidgets?: PluginHomeWidgetDeclaration[];
   signature?: string;
   pubkey?: string;
 }

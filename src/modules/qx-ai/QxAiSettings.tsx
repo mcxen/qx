@@ -118,7 +118,7 @@ export default function QxAiSettings() {
 
   const settingsActions = useMemo<QxShellAction[]>(
     () => [
-      // No kbd Esc here — Esc is only bottom-left escapeAction (UI_SPEC).
+      // No kbd Esc here — Esc is only the far-right escapeAction (UI_SPEC).
       { id: "done", label: t("qxai.settings.done", "Done"), onClick: goBack },
       {
         id: "agent-providers",

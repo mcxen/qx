@@ -91,7 +91,7 @@ export type EscapeAction = {
 };
 
 /**
- * Visible bottom-left Esc capsule (never put Esc on primaryAction).
+ * Visible far-right Esc capsule (never put Esc on primaryAction).
  * Default label is "Back"; launcher empty-query uses "Hide". Callers may
  * pass a translated label via `label`.
  */

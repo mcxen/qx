@@ -6,7 +6,7 @@
 >
 > 本文件是 UI 布局与交互的单一事实来源。实现与本文冲突时，以代码为据并回写本文件。
 
-Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索优先，内容居中，右侧给上下文，**底部左下角统一 Esc 返回**，中间承载状态与可扩展灵动岛，右侧承载动作。模块只替换内容区和 Context Panel，不重新发明主壳。
+Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索优先，内容居中，右侧给上下文，**底部最右侧统一 Esc 返回**，中间承载状态与可扩展灵动岛，右侧依次承载主动作、Actions 与 Esc。模块只替换内容区和 Context Panel，不重新发明主壳。
 
 ## Core Rules
 
@@ -32,6 +32,11 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
   region，否则会抢走缩放命中。Tauri/tao 在 macOS 不支持该 IPC，因此 macOS 不渲染
   WebView 手柄，继续由可调整大小的 Cocoa/NSPanel 原生窗口边缘处理。
 - 搜索是第一入口；模块内搜索必须放在 Top Bar。
+- Launcher 搜索为空时 Main Area 显示宿主绘制的 Home Dashboard；输入任意查询后立即切回
+  ResultsList。Dashboard 复用现有置顶 metadata 与系统指标采样总线，不保存像素坐标，
+  只保存有序组件 ID；窗口拖拽缩放由容器断点重排，不改写用户布局。置顶入口卡片右上角
+  使用三点 Popover：可搜索并置顶应用、内置模块和已安装插件，主页卡片开关也集中在同一处；
+  Context 侧栏不再重复放置主页组件编辑区。
 - List 主从视图中，搜索为空时 ←/→ 在左侧列表与中间详情区域之间切换活动区域；
   随后的 ↑↓/PageUp/PageDown 分别驱动左侧选择或中间详情滚动。用户以 pointer 激活
   中间详情后，即使搜索框仍保留 DOM 光标，垂直阅读键也必须滚动详情。搜索非空时
@@ -39,7 +44,7 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
 - **主搜索可直达模块子界面**（Module Surfaces：订阅源、会话、宏等）。协议见 `docs/module-surfaces.md`；用户可在 Settings → Search Settings → Launcher Search Sources 按模块关闭接入。
 - Screen Recording、Weather、V2EX、Macro Recorder 标记为 **Beta**：模块名后使用浅色虚线 `Beta` 标识，并通过 tooltip/模块设置说明其可能不稳定。Beta 标识只表达成熟度，不用整卡警告色。内置模块专属配置统一进入 Settings → Extensions → Installed → 对应模块；模块主界面只保留直接跳转链接。
 - 可关闭的 Beta 内置模块在 Settings → Extensions → Installed 的模块配置 Dialog 中启停。关闭后必须同时从 Quick Entries、Launcher 静态命令、Module Surfaces 和直接导航中移除；对应 lazy view 不得挂载，模块 effect / IPC 数据请求不得启动。Settings 中的模块卡仍保留，作为重新启用的唯一管理入口。
-- **返回走 Bottom Bar 左下角 Esc**（`escapeAction` + `useEscBack`，文案 Back/Hide）；非主搜索另有小房子一键回主界面。Top Bar 默认不渲染返回箭头；禁止模块在 Top Bar 再做一套返回。
+- **返回走 Bottom Bar 最右侧 Esc**（`escapeAction` + `useEscBack`，文案 Back/Hide）；非主搜索左侧另有小房子一键回主界面。Top Bar 默认不渲染返回箭头；禁止模块在 Top Bar 再做一套返回。
 - 右侧 Context Panel 只放导航、辅助信息和当前对象操作入口，不放第二套主布局。
 - **Context 侧栏宽度全局统一**：只用 `--qx-context-w`（`QxShell.has-context` 的 grid 第二列）。禁止模块用 inline style / localStorage 改写该变量；列表内部分栏（如 RSS 文章列表宽）可单独 token，不得影响 shell context 列宽。
 - Bottom Bar 使用 `grid-template-columns: auto 1fr auto`。
@@ -101,7 +106,7 @@ QxShell 的纵向结构高度不得因为窗口左右缩窄、文字变长、筛
 
 | 职责 | API / 机制 | 说明 |
 |---|---|---|
-| 可见 Esc | `escapeAction` | 左下角返回入口；`variant="escape"` 显示 **文案 + Esc**（Back/Hide）；非主搜索旁有小房子回主界面 |
+| 可见 Esc | `escapeAction` | 最右侧返回入口；`variant="escape"` 显示 **文案 + Esc**（Back/Hide）；非主搜索左侧有小房子回主界面 |
 | 键盘 Esc 级联 | `useEscBack` → `onKeyDown` / `stepBack` | 每按一次退一层：inner → query → leave module；命中后 `preventDefault` + `stopPropagation` |
 | Shell 最终兜底 | `QxShell` 内置 | 若模块 `onKeyDown` 未消费 Esc，则触发 `escapeAction.onClick`（应与 `stepBack` 同语义） |
 | Host 阶梯兜底 | `App.performHostEscape` + `moduleEscapeHost` | 焦点不在 Shell 内时仍生效：先 `tryModuleEscapeStep`（`useQxModuleShell` 注册的 `stepBack`，含 RSS 文章列表→源列表），再 leave module → 清空 launcher query → hide。模块已 `preventDefault` 时不二次步进。**禁止**非 launcher 时直接 `setTab("launcher")` 跳过模块内阶梯 |
@@ -167,7 +172,7 @@ Host 窗口 `keydown` 兜底覆盖第 3–5 步；第 1–2 步由模块 `useEsc
 
 禁止：
 
-- 同时传 `onBack` 与 `escapeAction`（会画出左上角箭头 + 左下角 Esc，双返回）。
+- 同时传 `onBack` 与 `escapeAction`（会画出左上角箭头 + 底栏最右侧 Esc，双返回）。
 - 新代码依赖 `onBack` / `backLabel` 渲染 Top Bar 返回箭头。`onBack` 仅为历史兼容；模块应只传 `escapeAction`。
 - 在 Context Panel 外再做一套全局返回栏或 footer。
 - 复制 Esc 监听逻辑而不走 `useEscBack`。
@@ -316,7 +321,7 @@ Advanced → Diagnostics 提供独立的 **Diagnostic Logging** 开关，默认�
 
 ## Top Bar
 
-Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**不包含模块返回，也不放刷新、新建、导入、截图等命令按钮**；返回统一在 Bottom Bar 左下角 Esc，命令统一进入 Bottom Bar 主动作或 Actions。
+Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**不包含模块返回，也不放刷新、新建、导入、截图等命令按钮**；返回统一在 Bottom Bar 最右侧 Esc，命令统一进入其左侧的 Bottom Bar 主动作或 Actions。
 
 列布局：
 
@@ -457,24 +462,24 @@ Context Panel：
 结构：
 
 ```text
-[ Back|Hide + Esc ] [ 🏠? ]   [ Bottom Island ]   [ Primary / Actions ]
+[ 🏠? ]   [ Bottom Island ]   [ Primary / Actions / Back|Hide + Esc ]
 ```
 
 布局：`.qx-shell-bottombar` 为 `position: relative` + `grid-template-columns: auto 1fr auto`；Island 绝对居中叠在中间轨。
 
-### 左侧 · Esc + Home
+### 左侧 Home / 右侧 Actions + Esc
 
-- 渲染 `escapeAction`（或兼容路径下由 `onBack` 推导的 fallback），通过 `ShellActionButton variant="escape"`。
+- 最右侧渲染 `escapeAction`（或兼容路径下由 `onBack` 推导的 fallback），通过 `ShellActionButton variant="escape"`；主动作与 Actions 菜单位于它左侧。
 - escape 变体显示 **文案 + Esc 快捷键胶囊**：
   - **主搜索 Launcher**（`islandKey="launcher"`）：空查询为 **Hide / 隐藏**（隐藏主界面）；有查询为 **Back / 返回**（先清空搜索）。**不显示**小房子。
   - **非主搜索**（模块 / Settings / 插件 / loading）：**Back / 返回**（与 `useEscBack.stepBack` 同语义，每按一次退一层）。
-- 非主搜索时，Esc 右侧另有一个同风格 **小房子** 按钮（`shell.goHome`）：一键回到主搜索 Launcher，跳过模块内阶梯与 Settings `returnTo`。Launcher 不渲染该按钮。
+- 非主搜索时，底栏左侧另有一个同风格 **小房子** 按钮（`shell.goHome`）：一键回到主搜索 Launcher，跳过模块内阶梯与 Settings `returnTo`。Launcher 不渲染该按钮。
 - `escapeAction.onClick` 应与 `useEscBack.stepBack` 一致。无 inner/query 时等价于最终 leave：
   - 模块根视图 → `setTab("launcher")`。
   - **Settings** → `closeSettings()`（`openSettings` 记录的一层 `returnTo`：调用方模块/插件，否则 launcher）。禁止 Settings leave 写死 `setTab("launcher")`。
   - 子视图（如 QxAI chat/settings、RSS detail）→ 回到模块内上一级列表。
   - 录制等临时态可先停任务 / 丢弃草稿，再在级联下一层离开。
-- 禁止用右侧 `actions[]` 的 `kbd: "Esc"` 替代左下角 Esc；Esc 快捷键归属左侧。
+- 禁止用 `actions[]` 的 `kbd: "Esc"` 替代最右侧 Esc；Esc 快捷键仍只归属 `escapeAction`。
 
 ### 中间 · Bottom Island（QxIsland）
 
@@ -484,6 +489,8 @@ Context Panel：
 - 模块 `island` prop 经 shim 写入 session store；`customIsland` 为分类例外（如录屏 HUD），会抑制 store docked。
 - 文本单行截断；progress 默认使用 Surface 下层的浅蓝背景从左向右填充，也可由
   生产者选择宿主图标环、Surface 环或文案列短线；任何样式都不得撑高底栏或遮挡交互。
+- 灵动岛短文案不使用渐隐蒙版；仅在文字实际溢出并启用跑马灯时对右边缘渐隐，左边缘
+  始终保持不透明，不能遮挡首字。
 - Launcher 主搜索的扫描与结果进度固定使用线条表达：扫描态保留专用 step bar，
   搜索完成态显式使用 `compact-line`，不得继承普通任务的 `surface-fill` 默认值。
 - Island 文案未溢出时必须完整显示，不得套用边缘渐隐；只有宿主确认 marquee
@@ -668,7 +675,14 @@ Hooks：`useIslandStats` · `useIslandPower` · `useIslandNet` · `useIslandData
 
 Launcher：
 
-- 左侧搜索结果，右侧常用入口和最近项。
+- 空查询时左侧显示紧凑 Home Dashboard（置顶应用 + 用户选中的系统组件），右侧保留常用
+  入口、全部模块与主页组件编辑；有查询时左侧恢复搜索结果。Dashboard 不是新 route，
+  因此 Esc 空查询仍隐藏窗口，输入焦点、Top Bar 和 Bottom Bar 契约不变。
+- Home 组件只使用宿主注册的语义数据源。内置 CPU / Memory / Power / Network 复用
+  `home-island/data` 兴趣计数总线；插件 `manifest.homeWidgets[]` 只能把受支持数据源关联到
+  自身 Panel，不能注入 DOM、CSS、刷新周期、尺寸或点击动画。
+- 置顶应用组件只消费 `settings.search_metadata.*.pinned/pin_order`，与搜索结果 Actions 的
+  Pin to Top 是同一份配置；不得另建“桌面收藏”列表。
 - 搜索结果、右侧入口、底部动作都支持键盘操作。
 - 选中应用 / 可管理入口后，Bottom Bar **⌘K / Ctrl+K Actions** 与右键菜单共用同一套管理能力：
   **置顶（Pin to top）**、**隐藏主页**、**编辑别名**、（仅原生应用）**录制 / 编辑全局启动快捷键**。
@@ -744,6 +758,7 @@ Screenshot & Recording Module（截图录屏模块）：
 - Windows 远程桌面会话不得继续使用可能“成功返回黑帧”的 WGC still-frame 路径，应直接走 GDI 兼容捕获；实体机会话继续优先使用 WGC。WGC 返回近全黑空帧时同样回退 GDI。透明 WebView2 圈选层挂载后必须通过 ready 握手重放 session 并重新置前/聚焦，避免远程环境中窗口已创建但选择器不可见或不接收输入。
 - 捕获历史支持 **列表 / 图库** 两种持久化视图：未打开条目时集合占满 Main Area；选择条目后，两种视图都切换为标准 Workbench 主从布局，左侧保留当前 List / Gallery 集合，右侧显示捕获详情。两种视图必须共享选择、预览、删除、Shell 键盘导航和 Actions，不得维护两份历史状态。
 - 捕获历史默认使用 Gallery：浏览态让缩略图网格占满 Main Area，打开卡片后保留左侧 Gallery 并在右侧显示详情，Esc 只关闭详情并返回全宽 Gallery；List 仍作为用户主动选择的紧凑模式保留，并遵循同一主从切换。
+- 静态截图详情在图片和元数据下方提供系统 OCR 入口；识别文字显示在可滚动文本框内，双击进入编辑。编辑态的撤销、重做和保存固定在框内右下角，保存结果按截图路径保留；录屏与 GIF 详情不显示该区域。
 - 底部捕获灵动岛始终保持普通状态，显示“开始截图/录屏”和“设置”；不在岛内切换为权限提示或显示“获取权限”，权限错误由实际捕获流程反馈。
 - “显示/隐藏捕获灵动岛”是第三个默认关闭、可录入的全局快捷动作，只切换捕获工具栏，不改变主窗口当前 route。
 - 用户可开启 340×36 常驻捕获灵动岛；空闲时提供截图/录制入口，录制中切换为时长、帧数和停止控制，控制窗始终启用内容保护。
@@ -920,13 +935,13 @@ useEscBack({
 
 **B. 可见按钮 · `escapeAction`**
 
-- 左下角 Esc 按钮的 `onClick` 等于当前级联的**最终一级**（与 `launcher` / 上一级 `goBack` 相同）。
-- 级联的中间层（关详情、清搜索）只由键盘 `useEscBack` 处理；不要把中间层绑到左下角按钮，以免单击 Esc 胶囊跳过中间层语义混乱。若模块需要「按钮也关闭详情」，应把当前视图的返回目标设为「关详情后的父级」，而不是跳过父级直接 launcher。
+- 最右侧 Esc 按钮的 `onClick` 等于当前级联的**最终一级**（与 `launcher` / 上一级 `goBack` 相同）。
+- 级联的中间层（关详情、清搜索）只由键盘 `useEscBack` 处理；不要把中间层绑到最右侧按钮，以免单击 Esc 胶囊跳过中间层语义混乱。若模块需要「按钮也关闭详情」，应把当前视图的返回目标设为「关详情后的父级」，而不是跳过父级直接 launcher。
 
 **C. Shell 兜底**
 
-- 模块 `onKeyDown` 未消费的 `Escape`，由 `QxShell` 调用 `leftAction.onClick`（即 `escapeAction`）。
-- 因此 `escapeAction.onClick` 不得省略；省略时左下角可能只显示不可用的 Esc 外观。
+- 模块 `onKeyDown` 未消费的 `Escape`，由 `QxShell` 调用可见 `escapeAction.onClick`。
+- 因此 `escapeAction.onClick` 不得省略；省略时最右侧可能只显示不可用的 Esc 外观。
 
 **D. 与 Top Bar 的关系**
 
@@ -1029,7 +1044,7 @@ search={
 
 | 输出 | 用途 |
 |------|------|
-| `escapeAction` | 左下 Esc（`label/kbd: Esc`，`onClick: leave`） |
+| `escapeAction` | 最右侧 Esc（`label/kbd: Esc`，`onClick: leave`） |
 | `onKeyDown` | Esc 级联 + 模块附加键 |
 | `island` | 来自 `island` 或 `islandState`（loading → error → idle） |
 | `actions` / `primaryActionId` | 右下主动作与 Actions 菜单；Shell 拥有菜单触发器 |
@@ -1069,6 +1084,9 @@ search={
 ## Responsive
 
 - 宽屏可以使用两栏或三栏。
+- Home Dashboard 使用 Main Area 容器宽度而非窗口物理宽度断点：宽时为置顶应用 + 指标列，
+  中等宽度时指标改为双列，窄时改为单列。卡片字号和控件尺寸不做连续缩放；Main Area
+  高度不足时独立纵向滚动。普通点击态只改变语义背景/边框，不做 translate、scale 或抖动反馈。
 - `max-width: 860px` 时通用 QxShell 隐藏 Context Panel；模块若需要保留详情，必须提供进入详情页、Dialog 或 Drawer 的明确入口，不使用未实现的“自动下移”假设。
 - `max-width: 760px` 时主从内容切换为单页模式：列表与详情任一时刻只显示一个，
   详情页必须保留底部 Esc 返回，并保持当前选择、列表滚动与详情阅读位置。
@@ -1123,8 +1141,8 @@ search={
 
 - 用户可见标题、按钮、空状态、错误、通知、Bottom Island 文案必须走 `useT(key, englishFallback)`；品牌名、协议名、用户数据、文件路径除外。
 - **英文**写在调用处 fallback；**中文**写在 `src/i18n.ts` 的 `zh` 表。缺失中文时回退英文 fallback，不显示裸 key。
-- **快捷键与键盘符号不翻译**：`kbd`、`formatQxShortcut`、Shell 左下角 Esc 胶囊、Actions 菜单里的 `⌘` / `Ctrl` / `Esc` / `↵` 等保持平台原样。只翻译动作名称（如 “复制”“关闭”），不翻译按键本身。
-- 左下角 `escapeAction` 显示 **Back/返回** 或 **Hide/隐藏** + `kbd: "Esc"`；文案走 i18n（`common.back` / `shell.hide`）。
+- **快捷键与键盘符号不翻译**：`kbd`、`formatQxShortcut`、Shell 最右侧 Esc 胶囊、Actions 菜单里的 `⌘` / `Ctrl` / `Esc` / `↵` 等保持平台原样。只翻译动作名称（如 “复制”“关闭”），不翻译按键本身。
+- 最右侧 `escapeAction` 显示 **Back/返回** 或 **Hide/隐藏** + `kbd: "Esc"`；文案走 i18n（`common.back` / `shell.hide`）。
 - 日期、时间、数字、百分比和文件大小使用 **resolved locale** 的 `Intl` formatter（`useLocale()`），不在组件内硬编码 `"zh-CN"` 或手写语言相关拼接。
 - 布局按中英文长文案验收；固定高度区域单行截断，完整内容用 Tooltip 或详情。
 
@@ -1195,6 +1213,6 @@ new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date)
 - Light / Dark / 透明度调节下文本层级清晰。
 - Select、Popover、Dialog、Dropdown、Tooltip 保持半透明且可读。
 - Bottom Island 始终窗口居中。
-- 左下角 Esc 可见且可点；Top Bar **无**返回箭头（除非显式 `leading`）。
+- 最右侧 Esc 可见且可点；Top Bar **无**返回箭头（除非显式 `leading`）。
 - 键盘 Esc 与点击 Esc 胶囊在同一模块根视图下行为一致。
 - 小窗口、默认窗口、宽屏无横向滚动、无文字挤压。

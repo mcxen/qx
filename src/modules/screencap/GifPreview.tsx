@@ -4,6 +4,7 @@ import { Pause, Play, Camera, Video } from "lucide-react";
 import { useScreencapStore } from "./store";
 import { Select, Slider } from "../../components/ui";
 import { useT } from "../../i18n";
+import CaptureOcrPanel from "./CaptureOcrPanel";
 
 interface Props {
   path: string;
@@ -236,6 +237,8 @@ export default function GifPreview({ path, onClose }: Props) {
           </button>
         </div>
       )}
+
+      {isStillImage ? <CaptureOcrPanel path={path} /> : null}
 
       {/* Keep the close button reachable so the new capture entry-point
           remains functional even after the inline action list moves out. */}

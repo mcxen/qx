@@ -17,9 +17,9 @@ Main Area
 └─ 可选 Context Panel
 
 Bottom Bar
-├─ Esc
+├─ 可选 Home
 ├─ Bottom Island
-└─ 主动作 + Actions
+└─ 主动作 + Actions + Esc（Esc 始终最右）
 ```
 
 - 插件不得自行绘制第二套 Top Bar、筛选 tabs、Bottom Bar 或 Actions 入口。
@@ -40,6 +40,13 @@ Bottom Bar
 
 优先声明式 Workbench。只有无法表达的遗留界面才使用自定义 HTML；自定义内容仍不得覆盖
 Shell chrome。
+
+### Launcher Home 组件
+
+Home 组件不是缩小版 Custom Panel。插件只能通过 `manifest.homeWidgets[]` 将宿主支持的
+语义系统数据源关联到自己的 Panel；Qx 统一绘制卡片、读取共享异步采样、处理窗口缩放、
+焦点和主题。插件不得提交 Home HTML/CSS、像素尺寸、轮询计时器或点击位移动画。完整字段
+见 [`plugin-marketplace.md`](./plugin-marketplace.md)。
 
 列表应保持原生桌面密度：
 

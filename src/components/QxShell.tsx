@@ -198,7 +198,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
           : t("common.back", "Back"),
         kbd: "Esc",
       };
-  const leftAction = useMemo(() => {
+  const visibleEscapeAction = useMemo(() => {
     const base = escapeAction ?? fallbackEscapeAction;
     // Normalize legacy "Esc"-only labels to Back / Hide for the visible capsule.
     if (base.label === "Esc" || !base.label?.trim()) {
@@ -836,10 +836,10 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     // Shell is the final keyboard fallback. Inner views, dialogs and search
     // fields get first refusal through normal bubbling; an otherwise
     // unhandled Esc always matches the visible bottom-bar action.
-    if (event.key === "Escape" && leftAction.onClick && !leftAction.disabled) {
+    if (event.key === "Escape" && visibleEscapeAction.onClick && !visibleEscapeAction.disabled) {
       event.preventDefault();
       event.stopPropagation();
-      leftAction.onClick();
+      visibleEscapeAction.onClick();
       return;
     }
 
@@ -978,7 +978,6 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
 
       <div className="qx-shell-bottombar">
         <div className="qx-shell-left">
-          <ShellActionButton action={leftAction} variant="escape" />
           {showHomeButton ? (
             <button
               type="button"
@@ -994,24 +993,25 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
         {/* Ordinary island content always resolves through the session store.
             Only classified custom HUDs may suppress the docked winner. */}
         <QxIslandDockSlot exception={customIsland} />
-        {hasRightActions ? (
-          <div className="qx-shell-actions">
-            <ShellActionButton action={primaryAction} variant="primary" />
-            {showActionMenu ? (
-              <ShellActionButton
-                action={{
-                  id: "qx.actions",
-                  label: t("common.actions", "Action"),
-                  kbd: getQxShortcutPreset().actionMenu,
-                  onClick: openActionMenu,
-                }}
-                triggerAttrs={{ [QX_ACTION_MENU_TRIGGER_ATTR]: true }}
-              />
-            ) : null}
-          </div>
-        ) : (
-          <div className="qx-shell-actions is-empty" aria-hidden="true" />
-        )}
+        <div className={`qx-shell-actions${hasRightActions ? "" : " has-escape-only"}`}>
+          {hasRightActions ? (
+            <>
+              <ShellActionButton action={primaryAction} variant="primary" />
+              {showActionMenu ? (
+                <ShellActionButton
+                  action={{
+                    id: "qx.actions",
+                    label: t("common.actions", "Action"),
+                    kbd: getQxShortcutPreset().actionMenu,
+                    onClick: openActionMenu,
+                  }}
+                  triggerAttrs={{ [QX_ACTION_MENU_TRIGGER_ATTR]: true }}
+                />
+              ) : null}
+            </>
+          ) : null}
+          <ShellActionButton action={visibleEscapeAction} variant="escape" />
+        </div>
       </div>
       {/* Keep mounted so Radix/shadcn can play open/close animations. */}
       {menuActions.length > 0 && (

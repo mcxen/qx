@@ -139,6 +139,13 @@ pub struct PluginCacheTargetDeclaration {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginHomeWidgetDeclaration {
+    pub id: String,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
     pub id: String,
     pub name: String,
@@ -181,6 +188,9 @@ pub struct PluginManifest {
     pub raycast: Option<RaycastMetadata>,
     #[serde(default)]
     pub storage: Option<PluginStorageManifest>,
+    /// Host-rendered empty-launcher widgets that may open this plugin panel.
+    #[serde(default, rename = "homeWidgets")]
+    pub home_widgets: Vec<PluginHomeWidgetDeclaration>,
     #[serde(default)]
     pub signature: String,
     #[serde(default)]
@@ -250,6 +260,29 @@ fn validate_manifest_storage(storage: Option<&PluginStorageManifest>) -> Result<
                     "persist cache key is registered more than once: {key}"
                 ));
             }
+        }
+    }
+    Ok(())
+}
+
+fn validate_manifest_home_widgets(widgets: &[PluginHomeWidgetDeclaration]) -> Result<(), String> {
+    if widgets.len() > 8 {
+        return Err("manifest.homeWidgets exceeds 8 entries".to_string());
+    }
+    let mut ids = BTreeSet::new();
+    for widget in widgets {
+        let id = validate_plugin_id(&widget.id)?;
+        if !ids.insert(id.to_string()) {
+            return Err(format!("duplicate plugin home widget: {id}"));
+        }
+        if !matches!(
+            widget.source.as_str(),
+            "system.cpu" | "system.memory" | "system.power" | "system.network"
+        ) {
+            return Err(format!(
+                "unsupported plugin home widget source: {}",
+                widget.source
+            ));
         }
     }
     Ok(())
@@ -1669,6 +1702,7 @@ fn build_raycast_plugin_manifest(
             platform_compatibility: raycast_platform_compatibility(adapter),
         }),
         storage: None,
+        home_widgets: Vec::new(),
         signature: String::new(),
         pubkey: String::new(),
     }
@@ -1894,6 +1928,7 @@ fn install_plugin_archive(
     let plugin_id = validate_plugin_id(&manifest.id)?;
     validate_manifest_platforms(&manifest.platforms)?;
     validate_manifest_storage(manifest.storage.as_ref())?;
+    validate_manifest_home_widgets(&manifest.home_widgets)?;
     if let Err(error) = validate_manifest_host_version(&manifest) {
         if let Some(path) = cleanup_path {
             let _ = fs::remove_file(path);
@@ -2566,6 +2601,7 @@ pub(crate) fn registered_plugin_cache_targets() -> Vec<RegisteredPluginCacheTarg
         };
         if validate_plugin_id(&manifest.id).is_err()
             || validate_manifest_storage(manifest.storage.as_ref()).is_err()
+            || validate_manifest_home_widgets(&manifest.home_widgets).is_err()
         {
             continue;
         }
@@ -2670,6 +2706,7 @@ pub(crate) fn clear_registered_plugin_cache_target(
     let manifest = read_manifest(&package_dir)
         .ok_or_else(|| format!("manifest not found for {}", target.plugin_id))?;
     validate_manifest_storage(manifest.storage.as_ref())?;
+    validate_manifest_home_widgets(&manifest.home_widgets)?;
     let declaration = manifest
         .storage
         .and_then(|storage| {
@@ -2965,6 +3002,24 @@ mod tests {
         assert!(validate_manifest_platforms(&["macos".to_string(), "windows".to_string()]).is_ok());
         assert!(validate_manifest_platforms(&["darwin".to_string()]).is_err());
         assert!(validate_manifest_platforms(&["win32".to_string()]).is_err());
+    }
+
+    #[test]
+    fn home_widgets_only_accept_host_rendered_system_sources() {
+        let valid = vec![PluginHomeWidgetDeclaration {
+            id: "cpu".to_string(),
+            source: "system.cpu".to_string(),
+        }];
+        assert!(validate_manifest_home_widgets(&valid).is_ok());
+
+        let visual_injection = vec![PluginHomeWidgetDeclaration {
+            id: "custom".to_string(),
+            source: "custom.html".to_string(),
+        }];
+        assert!(validate_manifest_home_widgets(&visual_injection).is_err());
+
+        let duplicate = vec![valid[0].clone(), valid[0].clone()];
+        assert!(validate_manifest_home_widgets(&duplicate).is_err());
     }
 
     #[test]

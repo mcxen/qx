@@ -16,7 +16,7 @@ import { useEscBack, type EscCascade } from "./useEscBack";
  * Module / extension shell chrome — shared Esc, Island, and Actions menu defaults.
  *
  * Built-in panels and external plugin hosts (PluginHost) should assemble QxShell
- * through this port so leave semantics, bottom-left Esc, and island loading/error
+ * through this port so leave semantics, far-right Esc, and island loading/error
  * states stay consistent without copy-paste.
  *
  * Does **not** own list navigation, master-detail regions, or domain actions —
@@ -55,7 +55,7 @@ export function buildModuleIsland(state: ModuleIslandState): BottomIslandContent
   return buildModuleIslandPure(state);
 }
 
-/** Visible bottom-left Esc capsule (re-export). */
+/** Visible far-right Esc capsule (re-export). */
 export function qxEscapeAction(leave: () => void, label = "Back"): QxShellAction {
   return qxEscapeActionPure(leave, label);
 }

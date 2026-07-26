@@ -425,7 +425,12 @@ pub(super) fn powershell(script: &str) -> Result<String, String> {
 fn check_system_info_blocking() -> Result<QxSystemInfo, String> {
     #[cfg(target_os = "windows")]
     {
-        let raw = powershell("$cpu=Get-CimInstance Win32_Processor|Select-Object -First 1;$os=Get-CimInstance Win32_OperatingSystem;$bios=Get-CimInstance Win32_BIOS;[pscustomobject]@{chip=$cpu.Name;physicalCores=[uint32]$cpu.NumberOfCores;logicalCores=[uint32]$cpu.NumberOfLogicalProcessors;maxMHz=[uint32]$cpu.MaxClockSpeed;memory=[uint64]$os.TotalVisibleMemorySize*1024;caption=$os.Caption;version=$os.Version;serial=$bios.SerialNumber}|ConvertTo-Json -Compress")?;
+        // -ErrorAction SilentlyContinue on every Get-CimInstance: on some Windows
+        // SKUs (Server Core, hardened images, VMs without a WMI provider for a
+        // given class) individual queries return nothing or throw. The script
+        // still emits valid JSON with null fields instead of failing the whole
+        // invoke, so the Sysinfo panel can render the rows it could collect.
+        let raw = powershell("$cpu=Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue|Select-Object -First 1;$os=Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue;$bios=Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue;[pscustomobject]@{chip=$cpu.Name;physicalCores=[uint32]$cpu.NumberOfCores;logicalCores=[uint32]$cpu.NumberOfLogicalProcessors;maxMHz=[uint32]$cpu.MaxClockSpeed;memory=[uint64]$os.TotalVisibleMemorySize*1024;caption=$os.Caption;version=$os.Version;serial=$bios.SerialNumber}|ConvertTo-Json -Compress")?;
         let value: serde_json::Value = serde_json::from_str(raw.trim())
             .map_err(|e| format!("parse Windows system information: {e}"))?;
         let memory_total_bytes = value["memory"].as_u64().unwrap_or(0);
@@ -575,7 +580,7 @@ fn check_system_info_blocking() -> Result<QxSystemInfo, String> {
 fn check_storage_blocking() -> Result<QxStorageInfo, String> {
     #[cfg(target_os = "windows")]
     {
-        let raw = powershell("$drive=Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='$env:SystemDrive'\";[pscustomobject]@{size=[uint64]$drive.Size;free=[uint64]$drive.FreeSpace}|ConvertTo-Json -Compress")?;
+        let raw = powershell("$drive=Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='$env:SystemDrive'\" -ErrorAction SilentlyContinue;[pscustomobject]@{size=[uint64]$drive.Size;free=[uint64]$drive.FreeSpace}|ConvertTo-Json -Compress")?;
         let value: serde_json::Value = serde_json::from_str(raw.trim())
             .map_err(|e| format!("parse Windows storage information: {e}"))?;
         let total = value["size"].as_u64().unwrap_or(0);
@@ -655,7 +660,11 @@ fn check_storage_blocking() -> Result<QxStorageInfo, String> {
 fn check_network_blocking() -> Result<QxNetworkInfo, String> {
     #[cfg(target_os = "windows")]
     {
-        let raw = powershell("@(Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -ne '127.0.0.1' -and $_.AddressState -eq 'Preferred'} | Select-Object InterfaceAlias,IPAddress)|ConvertTo-Json -Compress")?;
+        // Get-NetIPAddress lives in the NetAdapter module, which is absent on
+        // Server Core or hardened images. -ErrorAction SilentlyContinue keeps
+        // the script alive; the plugin renders an empty interface list in that
+        // case instead of failing the whole invoke.
+        let raw = powershell("@(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object {$_.IPAddress -ne '127.0.0.1' -and $_.AddressState -eq 'Preferred'} | Select-Object InterfaceAlias,IPAddress)|ConvertTo-Json -Compress")?;
         let value: serde_json::Value = serde_json::from_str(raw.trim())
             .map_err(|e| format!("parse Windows network information: {e}"))?;
         let items = value.as_array().cloned().unwrap_or_default();
@@ -710,7 +719,10 @@ fn check_network_blocking() -> Result<QxNetworkInfo, String> {
 fn network_counters_blocking() -> Result<QxNetworkCounters, String> {
     #[cfg(target_os = "windows")]
     {
-        let raw = powershell("@(Get-NetAdapterStatistics | Select-Object Name,ReceivedBytes,SentBytes)|ConvertTo-Json -Compress")?;
+        // Get-NetAdapterStatistics is part of the NetAdapter module; on SKUs
+        // without it the script still returns an empty array instead of a
+        // "cmdlet not found" terminating error.
+        let raw = powershell("@(Get-NetAdapterStatistics -ErrorAction SilentlyContinue | Select-Object Name,ReceivedBytes,SentBytes)|ConvertTo-Json -Compress")?;
         let value: serde_json::Value = serde_json::from_str(raw.trim())
             .map_err(|e| format!("parse Windows network counters: {e}"))?;
         let items = value.as_array().cloned().unwrap_or_else(|| {
@@ -779,7 +791,7 @@ fn network_counters_blocking() -> Result<QxNetworkCounters, String> {
 fn list_processes_blocking() -> Result<QxProcessList, String> {
     #[cfg(target_os = "windows")]
     {
-        let raw = powershell("$total=[double](Get-CimInstance Win32_OperatingSystem).TotalVisibleMemorySize*1024;@(Get-Process | ForEach-Object {[pscustomobject]@{pid=$_.Id;name=$_.ProcessName;cpu=0;mem=if($total -gt 0){[math]::Round($_.WorkingSet64/$total*100,2)}else{0}}})|ConvertTo-Json -Compress")?;
+        let raw = powershell("$total=[double](Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue).TotalVisibleMemorySize*1024;@(Get-Process -ErrorAction SilentlyContinue | ForEach-Object {[pscustomobject]@{pid=$_.Id;name=$_.ProcessName;cpu=0;mem=if($total -gt 0){[math]::Round($_.WorkingSet64/$total*100,2)}else{0}}})|ConvertTo-Json -Compress")?;
         let value: serde_json::Value = serde_json::from_str(raw.trim())
             .map_err(|e| format!("parse Windows process list: {e}"))?;
         let items = value.as_array().cloned().unwrap_or_else(|| {

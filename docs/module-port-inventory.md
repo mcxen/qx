@@ -34,6 +34,7 @@
 | 跨会话缓存 | localStorage / Rust 磁盘缓存 | **`context.storage.persist`** | SWR：先画缓存再刷新 |
 | 进程内缓存 | React state / ref | **`context.storage.session`** | — |
 | 宿主缓存统计 / 清理 | **`storage` 注册表 + `StorageSettings`** | `manifest.storage.cacheTargets[]` 精确登记可重建 persist keys；未登记插件数据仍受保护 | Settings → System → Storage Management 只消费 `cache_targets`；`qx_storage_overview` 与 `qx_storage_clear_cache_target` 共用目标；插件目标为 `plugin:<id>:<cache-id>`，只清 key 白名单 |
+| Launcher Home 组件 | **`src/home-dashboard` 注册目录 + `home-island/data`** | `manifest.homeWidgets[]` 只关联受支持的 `system.*` 数据源与插件 Panel | 宿主绘制、采样、响应式和焦点；插件不得提供 DOM/CSS/轮询。置顶应用复用 `search_metadata` pin 协议 |
 | 灵动岛 | `island` prop / **`islandHost`** | **`context.island`** | 权限 `island`；真实进度可声明宿主受控 `progressStyle`（默认 `surface-fill`，另有 `icon-ring/island-ring/compact-line`），禁止插件注入视觉代码；`QxShell.islandKey` 必须稳定并由 Shell 绑定内置模块 `openTarget`；插件目标由 bridge 绑定；store 单写、DockSlot 单渲染；前台非粘性 location 高于后台粘性轮播；桌面浮窗只由用户从 Qx 手动浮出并可关闭 |
 | 主题 / 语义 token | `ThemeProvider` + `base.css` | Workbench 由 host 渲染；Custom Panel 由 `pluginTheme` 注入 | 同步 resolved Light/Dark、`.dark`、公开 shadcn/Qx token；插件 UI 规范见 `public/doc/plugin-ui-guidelines.md` |
 | 语言 / 本地化 | `useLocale` / `useT` | **`context.locale.current` / `preference` / `onChange`** | 无权限；值是 Qx 生效语言而非浏览器语言。插件用 `current` 匹配文案与 `Intl`，不得读取 `navigator.language` 推测 Qx 设置 |
@@ -97,7 +98,7 @@
 | **qx-bing-wallpaper** | ✅ | ✅ | **host Workbench List（缩略图）** + http/system wallpaper/file ports | persist SWR | 宿主左侧缩略图列表/右侧高清详情；窄详情栏不堆叠；item/panel Actions；壁纸系统差异由 host port 适配；无 Raycast shim |
 | **raycast-calendar** | ✅ | ✅ | Raycast shim | — | 转换插件 |
 | **qxgh** (QxGH) | ✅ | ✅ | **host Workbench**：结构化 detail/actions + 公开 HTML + island + tray | persist SWR | 不用 api.github.com；解析 actions/releases 网页；活跃部署以原生托盘子菜单显示预计百分比与用时 |
-| **sysinfo** | ✅ | ✅ | **host Workbench List** + typed system/info/storage/network/power/process ports | — | Hardware 视图以左侧 List 区分 System/CPU/Memory/Power/Storage/Network，中间详情随选择切换；打开期间 CPU/Memory/Power/Network 每 5 秒同轮刷新且 CPU/Memory 共用一次 stats 请求，静态系统规格与存储保持 runtime cache；Processes 保持独立视图和可操作进程行；结束进程需精确 invoke + `YES` 确认；无 shell 与自绘 DOM |
+| **sysinfo** | ✅ | ✅ | **host Workbench List** + typed system/info/storage/network/power/process ports + `homeWidgets` | — | CPU/Memory/Power/Network 通过 Manifest 与宿主 Home 组件关联，卡片仍由 Qx 共享采样总线绘制；Hardware 面板同轮 5 秒刷新，静态规格与 Storage 保持 runtime cache；Processes 可操作且结束需 `YES` 确认；无 shell、自绘 Home DOM 或 CSS |
 
 **老包兼容**：无 `AGENTS.md` 仍可安装；无 `panel` 的纯 command 包仍可跑命令，但**不能**作为 panel tab 打开（宿主不注册 panel）——这是原有契约，不是新门槛。
 

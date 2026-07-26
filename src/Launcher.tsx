@@ -12,7 +12,7 @@ import LauncherEntryManageDialogs, {
   type LauncherManageDialogRequest,
 } from "./launcher/LauncherEntryManageDialogs";
 import { createLauncherActions, getLauncherActionTitle } from "./launcher/launcherActions";
-import { toLauncherAllModules, toLauncherQuickEntries } from "./launcher/quickEntries";
+import { quickEntryToAppEntry, toLauncherAllModules, toLauncherQuickEntries } from "./launcher/quickEntries";
 import { useLauncherHistory } from "./launcher/useLauncherHistory";
 import type { QuickEntry } from "./launcher/types";
 import type { SearchTrackId } from "./launcher/searchProgress";
@@ -22,6 +22,7 @@ import { islandHost, useHomeIslandContribution } from "./island";
 import { mapBottomIslandContent } from "./island/compat/mapBottomIslandContent";
 import { usePluginRegistry } from "./plugin/registry";
 import type { LauncherResultRow } from "./launcher/resultRows";
+import HomeDashboard from "./home-dashboard/HomeDashboard";
 
 interface LauncherProps {
   results: AppEntry[];
@@ -66,10 +67,11 @@ export default function Launcher({
   const [actionMenuRequest, setActionMenuRequest] =
     useState<QxShellActionMenuRequest | null>(null);
   const query = useStore((state) => state.query);
+  const hasQuery = query.trim().length > 0;
   const setQuery = useStore((state) => state.setQuery);
   const selectedIndex = useStore((state) => state.selectedIndex);
   const selectedRow = resultRows[selectedIndex];
-  const selectedCategory = selectedRow?.kind === "category" ? selectedRow : null;
+  const selectedCategory = hasQuery && selectedRow?.kind === "category" ? selectedRow : null;
   const scopeOptions: { value: SearchScope; label: string }[] = [
     { value: "all", label: t("launcher.scope.all", "All") },
     { value: "apps", label: t("launcher.scope.apps", "Apps") },
@@ -89,9 +91,10 @@ export default function Launcher({
       }),
     [onItemClick, onNavigate, t, settings],
   );
+  const activeSelectedItem = hasQuery ? selectedItem : null;
   const launcherActions = useMemo(
-    () => actionsForItem(selectedItem),
-    [actionsForItem, selectedItem],
+    () => actionsForItem(activeSelectedItem),
+    [actionsForItem, activeSelectedItem],
   );
   const shellActions = useMemo<QxShellAction[]>(() => {
     if (selectedCategory) {
@@ -116,7 +119,7 @@ export default function Launcher({
   }, [launcherActions, onToggleCategory, selectedCategory, t]);
   const primaryActionId = selectedCategory
     ? "toggle-category"
-    : selectedItem
+    : activeSelectedItem
       ? launcherActions[0]?.id
       : undefined;
   // History loads once on mount. Do not re-fetch when results briefly empty
@@ -151,9 +154,16 @@ export default function Launcher({
     () => toLauncherAllModules(openLauncherTarget, t, plugins),
     [openLauncherTarget, plugins, t],
   );
+  const launcherDirectory = useMemo(() => {
+    const entries = [...results, ...quickEntries, ...allModules]
+      .map((entry) => "path" in entry ? entry : quickEntryToAppEntry(entry, plugins))
+      .filter((entry): entry is AppEntry => Boolean(entry));
+    const byPath = new Map(entries.map((entry) => [entry.path, entry]));
+    return [...byPath.values()];
+  }, [allModules, plugins, quickEntries, results]);
 
   const isSearchActivity = (isSearching || isSearchSettling) && !!query.trim();
-  const idleHome = !isSearchActivity && results.length === 0 && loadingPhase !== "loading-apps";
+  const idleHome = !isSearchActivity && !hasQuery;
 
   // Always resolve (hooks rules); only show when idle. Rotation + live metrics
   // run for the idle home island (and stay warm while mounted).
@@ -254,7 +264,7 @@ export default function Launcher({
       };
     }
 
-    if (results.length > 0) {
+    if (hasQuery && results.length > 0) {
       islandHost.show({
         id: "launcher.results",
         priority: "location",
@@ -287,6 +297,7 @@ export default function Launcher({
     isSearchSettling,
     query,
     results.length,
+    hasQuery,
     searchHits,
     t,
   ]);
@@ -298,10 +309,11 @@ export default function Launcher({
       onNavigate("settings");
       return;
     }
+    if (!hasQuery && ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", "Enter"].includes(event.key)) {
+      return;
+    }
     onKeyDown(event);
   };
-
-  const hasQuery = query.length > 0;
 
   return (
     <QxShell
@@ -330,7 +342,7 @@ export default function Launcher({
           recentLaunches={recentLaunches}
           recentSearches={recentSearches}
           query={query}
-          selectedItem={selectedItem}
+          selectedItem={activeSelectedItem}
           onSearchSelect={setQuery}
         />
       }
@@ -357,34 +369,45 @@ export default function Launcher({
       primaryActionId={primaryActionId}
       actionMenuRequest={actionMenuRequest}
       actionTitle={
-        selectedItem
-          ? getLauncherActionTitle(selectedItem, t)
+        activeSelectedItem
+          ? getLauncherActionTitle(activeSelectedItem, t)
           : t("launcher.actions", "Actions")
       }
       actions={shellActions}
     >
-      <ResultsList
-        items={results}
-        rows={resultRows}
-        onItemClick={(item) => {
-          const primary = actionsForItem(item)[0];
-          if (primary && !primary.disabled) void primary.run();
-        }}
-        onToggleCategory={onToggleCategory}
-        onSelectRow={onSelectResultRow}
-        onOpenActionsAt={(x, y) => {
-          // Selection must commit before QxShell snapshots the selected row's
-          // actions; otherwise a fast right-click can display the prior item.
-          window.requestAnimationFrame(() => {
-            setActionMenuRequest((request) => ({
-              id: (request?.id ?? 0) + 1,
-              x,
-              y,
-            }));
-          });
-        }}
-        loadingPhase={loadingPhase}
-      />
+      {hasQuery ? (
+        <ResultsList
+          items={results}
+          rows={resultRows}
+          onItemClick={(item) => {
+            const primary = actionsForItem(item)[0];
+            if (primary && !primary.disabled) void primary.run();
+          }}
+          onToggleCategory={onToggleCategory}
+          onSelectRow={onSelectResultRow}
+          onOpenActionsAt={(x, y) => {
+            // Selection must commit before QxShell snapshots the selected row's
+            // actions; otherwise a fast right-click can display the prior item.
+            window.requestAnimationFrame(() => {
+              setActionMenuRequest((request) => ({
+                id: (request?.id ?? 0) + 1,
+                x,
+                y,
+              }));
+            });
+          }}
+          loadingPhase={loadingPhase}
+        />
+      ) : (
+        <HomeDashboard
+          items={launcherDirectory}
+          onItemClick={(item) => {
+            const primary = actionsForItem(item)[0];
+            if (primary && !primary.disabled) void primary.run();
+          }}
+          onNavigate={onNavigate}
+        />
+      )}
       <LauncherEntryManageDialogs
         request={manageDialog}
         onClose={() => setManageDialog(null)}

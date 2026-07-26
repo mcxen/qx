@@ -98,6 +98,9 @@ pub struct AppearanceSettings {
     /// `comfortable` (two-line rows) or `compact` (dense single-line).
     #[serde(default = "default_launcher_result_density")]
     pub launcher_result_density: String,
+    /// Ordered host-rendered widgets for the empty-query Launcher dashboard.
+    #[serde(default = "default_home_dashboard_widgets")]
+    pub home_dashboard_widgets: Vec<String>,
     #[serde(default = "default_home_island_mode")]
     pub home_island_mode: String,
     /// Multi-select home island modes (rotate when length > 1). Empty → use `home_island_mode`.
@@ -183,6 +186,18 @@ fn default_launcher_result_density() -> String {
     "comfortable".to_string()
 }
 
+fn default_home_dashboard_widgets() -> Vec<String> {
+    [
+        "launcher.pinned",
+        "system.cpu",
+        "system.memory",
+        "system.power",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
 fn default_home_island_mode() -> String {
     "system".to_string()
 }
@@ -216,6 +231,7 @@ impl Default for AppearanceSettings {
             border_radius: default_border_radius(),
             font_size: default_font_size(),
             launcher_result_density: default_launcher_result_density(),
+            home_dashboard_widgets: default_home_dashboard_widgets(),
             home_island_mode: default_home_island_mode(),
             home_island_modes: vec![default_home_island_mode()],
             home_island_rotate_secs: default_home_island_rotate_secs(),

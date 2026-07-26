@@ -227,7 +227,7 @@ function lucideIconForKind(kind: string): LucideIcon | null {
   return LUCIDE_ICON_BY_KIND[kind] ?? null;
 }
 
-function AppIcon({ item, label }: { item: AppEntry; label: string }) {
+export function LauncherAppIcon({ item, label }: { item: AppEntry; label: string }) {
   const [failed, setFailed] = useState(false);
   const kind = iconKind(item);
   const builtin = item.icon.startsWith("builtin:");
@@ -313,7 +313,7 @@ const ResultItem = memo(function ResultItem({
       })}
       data-qx-result-index={index}
     >
-      <AppIcon item={item} label={label} />
+      <LauncherAppIcon item={item} label={label} />
       <div className="qx-list-copy">
         <div className="qx-list-title qx-module-title-with-badge">
           <span>{label}</span>

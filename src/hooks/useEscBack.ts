@@ -30,7 +30,7 @@ export function useEscBack(cascade: EscCascade) {
   const queryClear = cascade.query?.clear;
   const launcher = cascade.launcher;
 
-  /** One cascade step — shared by keyboard Esc and the bottom-left Esc button. */
+  /** One cascade step — shared by keyboard Esc and the far-right Esc button. */
   const stepBack = useCallback(() => {
     if (innerActive && innerClose) {
       innerClose();

@@ -1,5 +1,6 @@
 import type { QuickEntryConfig } from "../modules/settings/store";
 import type { QuickEntry } from "./types";
+import type { AppEntry } from "../store";
 import { isBetaModule } from "../modules/catalog";
 import { isBuiltinModuleEnabled } from "../modules/moduleAvailability";
 import type { InstalledPlugin } from "../plugin/types";
@@ -200,6 +201,37 @@ export function toLauncherAllModules(
         onClick: () => onNavigate(option.value),
       };
     });
+}
+
+/** Project a quick-entry target into the same launchable shape as search results. */
+export function quickEntryToAppEntry(
+  entry: Pick<QuickEntry, "title" | "subtitle" | "target">,
+  plugins?: InstalledPlugin[],
+): AppEntry | null {
+  const target = entry.target.trim();
+  if (!target || target === "file-search") return null;
+  if (target.startsWith("plugin:")) {
+    const pluginId = parsePluginQuickEntryTarget(target);
+    if (!pluginId) return null;
+    const plugin = plugins?.find((item) => item.id === pluginId);
+    return {
+      name: entry.title || plugin?.name || pluginId,
+      display_name: entry.title || plugin?.name || pluginId,
+      subtitle: entry.subtitle || plugin?.description || pluginId,
+      path: `__qx:plugin:${pluginId}`,
+      icon: plugin?.manifest?.icon || `builtin:${pluginId}`,
+      kind: "command",
+    };
+  }
+  return {
+    name: entry.title || target,
+    display_name: entry.title || target,
+    subtitle: entry.subtitle || "Module",
+    path: `__qx:${target}`,
+    icon: `builtin:${target}`,
+    kind: "command",
+    moduleId: target,
+  };
 }
 
 export function createQuickEntry(

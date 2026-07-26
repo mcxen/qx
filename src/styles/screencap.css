@@ -1513,6 +1513,114 @@
   color: var(--qx-danger);
 }
 
+.qx-screencap-ocr {
+  display: flex;
+  flex: 1 0 220px;
+  min-height: 220px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 8px;
+  background: var(--qx-overlay-1);
+}
+
+.qx-screencap-ocr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.qx-screencap-ocr-header > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qx-screencap-ocr-header strong {
+  color: var(--qx-text-primary);
+  font-size: 12px;
+}
+
+.qx-screencap-ocr-header span,
+.qx-screencap-ocr-hint {
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+}
+
+.qx-screencap-ocr-box {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-height: 170px;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 6px;
+  background: var(--qx-bg-component-1);
+}
+
+.qx-screencap-ocr-box.is-editing {
+  border-color: color-mix(in srgb, var(--qx-accent) 58%, var(--qx-border-1));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--qx-accent) 15%, transparent);
+}
+
+.qx-screencap-ocr-text,
+.qx-screencap-ocr-box textarea {
+  flex: 1;
+  width: 100%;
+  min-height: 130px;
+  padding: 10px 10px 42px;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: var(--qx-text-primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.qx-screencap-ocr-text {
+  overflow: auto;
+  cursor: text;
+  user-select: text;
+}
+
+.qx-screencap-ocr-text.is-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--qx-text-tertiary);
+  cursor: default;
+  text-align: center;
+}
+
+.qx-screencap-ocr-actions {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.qx-screencap-ocr-hint {
+  position: absolute;
+  right: 10px;
+  bottom: 9px;
+}
+
+.qx-screencap-ocr-error {
+  margin: 0;
+  color: var(--qx-danger);
+  font-size: 11px;
+  word-break: break-word;
+}
+
 @media (max-width: 520px) {
   .qx-screencap-preview-player-time {
     min-width: 78px;

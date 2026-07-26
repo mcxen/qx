@@ -183,6 +183,210 @@
   gap: 6px;
 }
 
+.qx-launcher-home-menu-trigger {
+  width: 30px;
+  height: 30px;
+  margin-top: -4px;
+  color: var(--qx-text-secondary);
+}
+
+.qx-launcher-home-popover {
+  display: flex;
+  flex-direction: column;
+  width: min(340px, calc(100vw - 32px));
+  max-height: min(620px, calc(100vh - 32px));
+  padding: 12px;
+  overflow: hidden;
+  border: 1px solid var(--qx-border-2);
+  background: var(--popover);
+  color: var(--qx-text-primary);
+}
+
+.qx-launcher-home-popover-header,
+.qx-launcher-home-popover-section-title,
+.qx-launcher-home-entry,
+.qx-launcher-home-widget-row {
+  display: flex;
+  align-items: center;
+}
+
+.qx-launcher-home-popover-header {
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 10px;
+  border-bottom: 1px solid var(--qx-border-1);
+}
+
+.qx-launcher-home-popover-header > div,
+.qx-launcher-home-entry-copy,
+.qx-launcher-home-widget-row > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.qx-launcher-home-popover-header strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.qx-launcher-home-popover-header span,
+.qx-launcher-home-entry-copy small,
+.qx-launcher-home-widget-row small {
+  overflow: hidden;
+  color: var(--qx-text-tertiary);
+  font-size: 10.5px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-launcher-home-popover-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding-top: 10px;
+}
+
+.qx-launcher-home-popover-section-title {
+  justify-content: space-between;
+  padding: 0 2px 7px;
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.qx-launcher-home-popover-section-title > span:last-child {
+  color: var(--qx-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.qx-launcher-home-popover-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-tertiary);
+}
+
+.qx-launcher-home-popover-search .qx-shadcn-input {
+  height: 30px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.qx-launcher-home-filter {
+  display: flex;
+  gap: 4px;
+  padding: 7px 0;
+}
+
+.qx-launcher-home-filter button {
+  min-height: 25px;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--qx-control-radius);
+  background: transparent;
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.qx-launcher-home-filter button:hover,
+.qx-launcher-home-filter button.is-active {
+  border-color: var(--qx-border-1);
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-primary);
+}
+
+.qx-launcher-home-entry-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+}
+
+.qx-launcher-home-entry {
+  gap: 8px;
+  min-height: 46px;
+  padding: 6px 7px;
+  border-bottom: 1px solid var(--qx-border-1);
+}
+
+.qx-launcher-home-entry:last-child {
+  border-bottom: 0;
+}
+
+.qx-launcher-home-entry:hover,
+.qx-launcher-home-entry.is-pinned {
+  background: var(--qx-bg-component-2);
+}
+
+.qx-launcher-home-entry .qx-app-icon {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+}
+
+.qx-launcher-home-entry-copy {
+  flex: 1;
+  gap: 1px;
+}
+
+.qx-launcher-home-entry-copy strong,
+.qx-launcher-home-widget-row strong {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-launcher-home-entry-action {
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+}
+
+.qx-launcher-home-entry-empty {
+  padding: 20px 10px;
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+  text-align: center;
+}
+
+.qx-launcher-home-widgets-section {
+  border-top: 1px solid var(--qx-border-1);
+}
+
+.qx-launcher-home-widget-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qx-launcher-home-widget-row {
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 38px;
+  padding: 5px 2px;
+}
+
+.qx-launcher-home-widget-row > span {
+  gap: 1px;
+}
+
 .qx-rss-detail-title {
   overflow: hidden;
   color: var(--qx-text-primary);

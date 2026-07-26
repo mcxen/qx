@@ -103,11 +103,15 @@ Manifest 只声明包元数据、入口、命令、面板、权限与兼容范�
 | 本机命令 | `context.cli` | `child_process` |
 | 宿主命令 | `context.invoke` | 猜测 Tauri 内部实现 |
 | 进度与快捷反馈 | `context.island` | 自建悬浮窗口 |
+| Launcher Home 入口 | `manifest.homeWidgets[]`（受支持语义源） | 自绘首页卡片、私有轮询 |
 | 托盘状态 | `context.tray` | 直接调用系统托盘库 |
 | 翻译 | `context.i18n` | 硬编码单一语言 UI |
 
 能力必须在 Manifest 中申请最小权限。无权限与能力不可用都应返回可解释错误，
 而不是伪造成功或退回危险的通用执行。
+
+Home 声明只负责把宿主系统数据源关联到插件 Panel。CPU、内存、电源和网络卡片由 Qx
+共享采样并统一渲染；插件不要重复请求数据、注入视觉代码或指定窗口尺寸。
 
 ## 5. Panel 生命周期
 
@@ -151,8 +155,8 @@ actions: [
 Bottom Bar，并让未修饰 Enter 执行它；Actions 菜单和 Context Panel也引用同一对象。
 Esc 不属于动作快捷键。
 
-Top Bar 右侧只发布内容筛选模型，由宿主绘制固定下拉框。Bottom Bar 的左侧 Esc、
-中间 Island、右侧主动作与 Actions 也全部由宿主绘制。详细规则见
+Top Bar 右侧只发布内容筛选模型，由宿主绘制固定下拉框。Bottom Bar 的左侧 Home、
+中间 Island，以及右侧依次排列的主动作、Actions、Esc 也全部由宿主绘制。详细规则见
 [`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md)。
 
 ## 7. 后台工作与 Island

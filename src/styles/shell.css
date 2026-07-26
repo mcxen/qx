@@ -517,9 +517,8 @@
   min-width: 0;
 }
 
-.qx-shell-actions.is-empty {
+.qx-shell-actions.has-escape-only {
   min-width: 42px;
-  pointer-events: none;
 }
 
 .qx-shell-action {
@@ -1048,8 +1047,8 @@
 }
 
 .qx-island-shell-marquee.is-overflowing {
-  mask-image: linear-gradient(90deg, transparent, black 3%, black 97%, transparent);
-  -webkit-mask-image: linear-gradient(90deg, transparent, black 3%, black 97%, transparent);
+  mask-image: linear-gradient(90deg, black 0%, black 97%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, black 0%, black 97%, transparent 100%);
 }
 
 .qx-island-shell-marquee-group {
@@ -1534,8 +1533,13 @@
   width: 100%;
   min-width: 0;
   overflow: hidden;
-  mask-image: linear-gradient(90deg, transparent, black 7%, black 93%, transparent);
-  -webkit-mask-image: linear-gradient(90deg, transparent, black 7%, black 93%, transparent);
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.qx-island-marquee.is-overflowing {
+  mask-image: linear-gradient(90deg, black 0%, black 94%, transparent 100%);
+  -webkit-mask-image: linear-gradient(90deg, black 0%, black 94%, transparent 100%);
 }
 
 .qx-island-marquee-group {

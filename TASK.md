@@ -1,5 +1,46 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — 捕获预览 OCR 编辑与 Bottom Bar 动作顺序
+
+**状态**：实现完成，等待桌面运行态视觉复核。
+
+- 静态截图预览下方新增图片文字识别框，复用系统 OCR 端口；识别结果可双击编辑，提供
+  撤销、重做和保存，并按截图路径保留最近的已保存文字。
+- QxShell 将所有可见 Esc 返回胶囊统一移到 Bottom Bar 最右侧；主动作与 Actions 位于
+  Esc 左侧，Home 保留在左侧，键盘 Esc 级联语义不变。
+- 修复灵动岛未溢出文字仍套用双端渐隐蒙版、导致首字模糊的问题；普通文字无蒙版，
+  跑马灯只在右边缘渐隐。
+- Settings 底部原“关闭”主动作改名为“确认”，行为仍为保存当前设置状态并关闭面板。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `npm run check`
+- [ ] macOS 安装后验证 OCR、双击编辑、撤销/重做/保存及底栏顺序。
+
+## Feature — Launcher 空查询 Home Dashboard 与 Sysinfo 组件关联
+
+**状态**：实现完成，等待桌面运行态视觉复核。
+
+- Launcher 空查询改为宿主 Home Dashboard；输入查询立即恢复既有 ResultsList，Esc 仍保持
+  清查询 / 隐藏的原有阶梯。
+- 置顶应用组件复用 `search_metadata` Pin to Top，不新增收藏配置；右侧 Context 可选择
+  置顶入口、CPU、内存、电量、网络组件；三点 Popover 支持搜索并添加应用、内置模块和
+  已安装插件；配置入口位于置顶入口卡片右上角，Context 侧栏不重复显示主页组件编辑区。
+- Dashboard 仅保存有序组件 ID，使用 Main Area container query 在宽列、双列、单列间
+  确定性重排；缩放不写设置、不卸载数据源，点击态不使用位移、缩放或抖动。
+- 系统组件复用 Home Island 兴趣计数采样总线，隐藏暂停、共享 IPC、失败保留占位。
+- 插件 Manifest 新增受限 `homeWidgets[]` 关联协议；Sysinfo 1.3.0 声明 CPU / Memory /
+  Power / Network，宿主绘制卡片并在激活时打开 Sysinfo Panel。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `cargo check`
+- [ ] `npm run check` / `npm run build`
+- [ ] 480×360、680×500、980×576、1280×800 运行态拖拽与 Light/Dark/透明主题。
+
 ## Refactor — Top Bar 内容筛选与文本工具箱 Workbench 对齐
 
 **状态**：实现完成，等待发布构建。

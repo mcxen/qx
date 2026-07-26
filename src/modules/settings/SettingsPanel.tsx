@@ -286,7 +286,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
     return [
       {
         id: "close",
-        label: t("settings.close", "Close"),
+        label: t("settings.confirm", "Confirm"),
         onClick: onClose,
       },
       ...jump,

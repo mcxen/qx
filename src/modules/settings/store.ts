@@ -57,6 +57,20 @@ export interface GeneralSettings {
 
 export type LauncherResultDensity = "comfortable" | "compact";
 
+export type HomeDashboardWidgetId =
+  | "launcher.pinned"
+  | "system.cpu"
+  | "system.memory"
+  | "system.power"
+  | "system.network";
+
+export const DEFAULT_HOME_DASHBOARD_WIDGETS: HomeDashboardWidgetId[] = [
+  "launcher.pinned",
+  "system.cpu",
+  "system.memory",
+  "system.power",
+];
+
 export interface AppearanceSettings {
   theme: string;
   /** Runtime application icon. The tray icon stays unchanged. */
@@ -78,6 +92,8 @@ export interface AppearanceSettings {
    * - `compact`: single-line dense rows
    */
   launcher_result_density: LauncherResultDensity;
+  /** Ordered, host-rendered widgets shown while Launcher query is empty. */
+  home_dashboard_widgets: HomeDashboardWidgetId[];
   /** Home island mode id — see `src/home-island` registry (free string for extensibility). */
   home_island_mode: string;
   /** Multi-select set for idle home island rotation (empty → use home_island_mode). */
@@ -380,6 +396,7 @@ export const DEFAULT_SETTINGS: Settings = {
     border_radius: 8,
     font_size: 14,
     launcher_result_density: "comfortable",
+    home_dashboard_widgets: [...DEFAULT_HOME_DASHBOARD_WIDGETS],
     home_island_mode: "system",
     home_island_modes: ["system"],
     home_island_rotate_secs: 8,
@@ -629,7 +646,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           ...DEFAULT_SETTINGS,
           ...s,
           general: { ...DEFAULT_SETTINGS.general, ...s.general },
-          appearance: { ...DEFAULT_SETTINGS.appearance, ...s.appearance },
+          appearance: {
+            ...DEFAULT_SETTINGS.appearance,
+            ...s.appearance,
+            home_dashboard_widgets:
+              Array.isArray(s.appearance?.home_dashboard_widgets)
+              && s.appearance.home_dashboard_widgets.length > 0
+                ? s.appearance.home_dashboard_widgets
+                : DEFAULT_SETTINGS.appearance.home_dashboard_widgets,
+          },
           plugin_display: { ...DEFAULT_SETTINGS.plugin_display, ...s.plugin_display },
           plugin_registries:
             Array.isArray((s as Settings).plugin_registries)
