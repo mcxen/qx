@@ -376,6 +376,18 @@ body {
   transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
 }
 
+/* Windows already uses the native DWM Acrylic material. Layering WebView2
+   backdrop filters over it makes every window move re-sample the desktop
+   several times (canvas + top/context/bottom chrome), which causes visible
+   drag latency on integrated GPUs and Remote Desktop. Windows surfaces have
+   deliberate opacity floors, so keep their hierarchy without a second blur
+   pipeline. Feature-owned foreground filter effects remain untouched. */
+.qx-canvas.is-windows-host,
+.qx-canvas.is-windows-host * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
 /* Opaque mode is a real material-off state, not merely alpha=1. Keep this
    scoped to the main canvas so feature-owned image/SVG filters are untouched. */
 :root[data-glass-enabled="false"] .qx-canvas,

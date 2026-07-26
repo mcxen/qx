@@ -175,7 +175,7 @@ export default function SearchBar({
   if (embedded) return input;
 
   return (
-    <div className="qx-plugin-toolbar" data-tauri-drag-region>
+    <div className="qx-plugin-toolbar">
       {input}
     </div>
   );

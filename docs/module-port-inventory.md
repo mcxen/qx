@@ -98,7 +98,7 @@
 | **qx-bing-wallpaper** | ✅ | ✅ | **host Workbench List（缩略图）** + http/system wallpaper/file ports | persist SWR | 宿主左侧缩略图列表/右侧高清详情；窄详情栏不堆叠；item/panel Actions；壁纸系统差异由 host port 适配；无 Raycast shim |
 | **raycast-calendar** | ✅ | ✅ | Raycast shim | — | 转换插件 |
 | **qxgh** (QxGH) | ✅ | ✅ | **host Workbench**：结构化 detail/actions + 公开 HTML + island + tray | persist SWR | 不用 api.github.com；解析 actions/releases 网页；活跃部署以原生托盘子菜单显示预计百分比与用时 |
-| **sysinfo** | ✅ | ✅ | **host Workbench List** + typed system/info/storage/network/power/process ports + `homeWidgets` | — | CPU/Memory/Power/Network 通过 Manifest 与宿主 Home 组件关联，卡片仍由 Qx 共享采样总线绘制；Hardware 面板同轮 5 秒刷新，静态规格与 Storage 保持 runtime cache；Processes 可操作且结束需 `YES` 确认；无 shell、自绘 Home DOM 或 CSS |
+| **sysinfo** | ✅ | ✅ | **host Workbench List** + typed system/info/storage/network/power/process ports + `homeWidgets` | — | CPU/Memory/Power/Network 通过 Manifest 与宿主 Home 组件关联，卡片仍由 Qx 共享采样总线绘制；Hardware 面板同轮 5 秒刷新且整轮 single-flight，静态规格与 Storage 保持 runtime cache；Windows 端口直接使用 Win32，不启动 PowerShell/WMI 采样进程；Processes 可操作且结束需 `YES` 确认；无 shell、自绘 Home DOM 或 CSS |
 
 **老包兼容**：无 `AGENTS.md` 仍可安装；无 `panel` 的纯 command 包仍可跑命令，但**不能**作为 panel tab 打开（宿主不注册 panel）——这是原有契约，不是新门槛。
 

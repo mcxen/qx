@@ -7,6 +7,8 @@ use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
 mod power;
 pub use power::QxPowerInfo;
+#[cfg(target_os = "windows")]
+mod windows;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -391,86 +393,10 @@ fn linux_cache_line_bytes() -> Option<u64> {
         .ok()
 }
 
-#[cfg(target_os = "windows")]
-pub(super) fn powershell(script: &str) -> Result<String, String> {
-    let program = crate::windows_process::powershell_binary();
-    let script = format!(
-        "[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false); {script}"
-    );
-    let mut command = Command::new(&program);
-    command
-        .args([
-            "-NoLogo",
-            "-NoProfile",
-            "-NonInteractive",
-            "-Command",
-            &script,
-        ])
-        .creation_flags(CREATE_NO_WINDOW);
-    let output = command
-        .output()
-        .map_err(|error| format!("run {}: {error}", program.display()))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(if stderr.is_empty() {
-            format!("{} exited with {}", program.display(), output.status)
-        } else {
-            stderr
-        });
-    }
-    String::from_utf8(output.stdout)
-        .map_err(|error| format!("decode Windows PowerShell output as UTF-8: {error}"))
-}
-
 fn check_system_info_blocking() -> Result<QxSystemInfo, String> {
     #[cfg(target_os = "windows")]
     {
-        // -ErrorAction SilentlyContinue on every Get-CimInstance: on some Windows
-        // SKUs (Server Core, hardened images, VMs without a WMI provider for a
-        // given class) individual queries return nothing or throw. The script
-        // still emits valid JSON with null fields instead of failing the whole
-        // invoke, so the Sysinfo panel can render the rows it could collect.
-        let raw = powershell("$cpu=Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue|Select-Object -First 1;$os=Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue;$bios=Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue;[pscustomobject]@{chip=$cpu.Name;physicalCores=[uint32]$cpu.NumberOfCores;logicalCores=[uint32]$cpu.NumberOfLogicalProcessors;maxMHz=[uint32]$cpu.MaxClockSpeed;memory=[uint64]$os.TotalVisibleMemorySize*1024;caption=$os.Caption;version=$os.Version;serial=$bios.SerialNumber}|ConvertTo-Json -Compress")?;
-        let value: serde_json::Value = serde_json::from_str(raw.trim())
-            .map_err(|e| format!("parse Windows system information: {e}"))?;
-        let memory_total_bytes = value["memory"].as_u64().unwrap_or(0);
-        let os = format!(
-            "{} ({})",
-            value["caption"].as_str().unwrap_or("Windows"),
-            value["version"].as_str().unwrap_or("Unknown")
-        );
-        return Ok(QxSystemInfo {
-            hostname: std::env::var("COMPUTERNAME").unwrap_or_else(|_| "Unknown".to_string()),
-            chip: value["chip"]
-                .as_str()
-                .unwrap_or("Unknown")
-                .trim()
-                .to_string(),
-            cpu_physical_cores: value["physicalCores"].as_u64().map(|value| value as u32),
-            cpu_logical_cores: value["logicalCores"].as_u64().map(|value| value as u32),
-            cpu_performance_cores: None,
-            cpu_efficiency_cores: None,
-            cpu_max_frequency_mhz: value["maxMHz"].as_u64().map(|value| value as u32),
-            cpu_cache_line_bytes: None,
-            cpu_caches: Vec::new(),
-            memory: format_gb(memory_total_bytes),
-            memory_total_bytes,
-            platform: "windows".to_string(),
-            architecture: std::env::consts::ARCH.to_string(),
-            os: os.clone(),
-            mac_os: os,
-            kernel: format!(
-                "Windows NT {}",
-                value["version"].as_str().unwrap_or("Unknown")
-            ),
-            kernel_name: "Windows NT".to_string(),
-            kernel_version: value["version"].as_str().unwrap_or("Unknown").to_string(),
-            serial_number: value["serial"]
-                .as_str()
-                .unwrap_or("Not available")
-                .trim()
-                .to_string(),
-        });
+        return windows::system_info();
     }
 
     #[cfg(target_os = "macos")]
@@ -580,27 +506,7 @@ fn check_system_info_blocking() -> Result<QxSystemInfo, String> {
 fn check_storage_blocking() -> Result<QxStorageInfo, String> {
     #[cfg(target_os = "windows")]
     {
-        let raw = powershell("$drive=Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='$env:SystemDrive'\" -ErrorAction SilentlyContinue;[pscustomobject]@{size=[uint64]$drive.Size;free=[uint64]$drive.FreeSpace}|ConvertTo-Json -Compress")?;
-        let value: serde_json::Value = serde_json::from_str(raw.trim())
-            .map_err(|e| format!("parse Windows storage information: {e}"))?;
-        let total = value["size"].as_u64().unwrap_or(0);
-        let free = value["free"].as_u64().unwrap_or(0);
-        let used = total.saturating_sub(free);
-        let percent = if total == 0 {
-            0.0
-        } else {
-            used as f64 / total as f64 * 100.0
-        };
-        let total_s = format_gb(total);
-        let used_s = format_gb(used);
-        let free_s = format_gb(free);
-        return Ok(QxStorageInfo {
-            total: total_s.clone(),
-            used: used_s.clone(),
-            free: free_s.clone(),
-            percent_used: format!("{percent:.2}%"),
-            summary: format!("{used_s} used of {total_s} ({free_s} available)"),
-        });
+        return windows::storage_info();
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -660,27 +566,7 @@ fn check_storage_blocking() -> Result<QxStorageInfo, String> {
 fn check_network_blocking() -> Result<QxNetworkInfo, String> {
     #[cfg(target_os = "windows")]
     {
-        // Get-NetIPAddress lives in the NetAdapter module, which is absent on
-        // Server Core or hardened images. -ErrorAction SilentlyContinue keeps
-        // the script alive; the plugin renders an empty interface list in that
-        // case instead of failing the whole invoke.
-        let raw = powershell("@(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Where-Object {$_.IPAddress -ne '127.0.0.1' -and $_.AddressState -eq 'Preferred'} | Select-Object InterfaceAlias,IPAddress)|ConvertTo-Json -Compress")?;
-        let value: serde_json::Value = serde_json::from_str(raw.trim())
-            .map_err(|e| format!("parse Windows network information: {e}"))?;
-        let items = value.as_array().cloned().unwrap_or_default();
-        let devices = items
-            .into_iter()
-            .filter_map(|item| {
-                Some(QxNetworkDevice {
-                    name: item["InterfaceAlias"].as_str()?.to_string(),
-                    ip: item["IPAddress"].as_str()?.to_string(),
-                })
-            })
-            .collect::<Vec<_>>();
-        return Ok(QxNetworkInfo {
-            count: devices.len(),
-            devices,
-        });
+        return windows::network_info();
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -719,35 +605,7 @@ fn check_network_blocking() -> Result<QxNetworkInfo, String> {
 fn network_counters_blocking() -> Result<QxNetworkCounters, String> {
     #[cfg(target_os = "windows")]
     {
-        // Get-NetAdapterStatistics is part of the NetAdapter module; on SKUs
-        // without it the script still returns an empty array instead of a
-        // "cmdlet not found" terminating error.
-        let raw = powershell("@(Get-NetAdapterStatistics -ErrorAction SilentlyContinue | Select-Object Name,ReceivedBytes,SentBytes)|ConvertTo-Json -Compress")?;
-        let value: serde_json::Value = serde_json::from_str(raw.trim())
-            .map_err(|e| format!("parse Windows network counters: {e}"))?;
-        let items = value.as_array().cloned().unwrap_or_else(|| {
-            value
-                .as_object()
-                .map(|_| vec![value.clone()])
-                .unwrap_or_default()
-        });
-        let interfaces = items
-            .into_iter()
-            .filter_map(|item| {
-                Some(QxNetworkCounter {
-                    name: item["Name"].as_str()?.to_string(),
-                    bytes_in: item["ReceivedBytes"].as_u64().unwrap_or(0),
-                    bytes_out: item["SentBytes"].as_u64().unwrap_or(0),
-                })
-            })
-            .collect::<Vec<_>>();
-        let total_bytes_in = interfaces.iter().map(|item| item.bytes_in).sum();
-        let total_bytes_out = interfaces.iter().map(|item| item.bytes_out).sum();
-        return Ok(QxNetworkCounters {
-            interfaces,
-            total_bytes_in,
-            total_bytes_out,
-        });
+        return windows::network_counters();
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -791,30 +649,7 @@ fn network_counters_blocking() -> Result<QxNetworkCounters, String> {
 fn list_processes_blocking() -> Result<QxProcessList, String> {
     #[cfg(target_os = "windows")]
     {
-        let raw = powershell("$total=[double](Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue).TotalVisibleMemorySize*1024;@(Get-Process -ErrorAction SilentlyContinue | ForEach-Object {[pscustomobject]@{pid=$_.Id;name=$_.ProcessName;cpu=0;mem=if($total -gt 0){[math]::Round($_.WorkingSet64/$total*100,2)}else{0}}})|ConvertTo-Json -Compress")?;
-        let value: serde_json::Value = serde_json::from_str(raw.trim())
-            .map_err(|e| format!("parse Windows process list: {e}"))?;
-        let items = value.as_array().cloned().unwrap_or_else(|| {
-            value
-                .as_object()
-                .map(|_| vec![value.clone()])
-                .unwrap_or_default()
-        });
-        let processes = items
-            .into_iter()
-            .filter_map(|item| {
-                Some(QxProcessInfo {
-                    pid: item["pid"].as_u64()? as u32,
-                    name: item["name"].as_str()?.to_string(),
-                    cpu: item["cpu"].as_f64().unwrap_or(0.0) as f32,
-                    mem: item["mem"].as_f64().unwrap_or(0.0) as f32,
-                })
-            })
-            .collect::<Vec<_>>();
-        return Ok(QxProcessList {
-            count: processes.len(),
-            processes,
-        });
+        return windows::process_list();
     }
 
     #[cfg(not(target_os = "windows"))]

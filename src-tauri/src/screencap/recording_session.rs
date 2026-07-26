@@ -188,6 +188,19 @@ pub async fn start_recording(
         }
         crate::floating_panel::hide(&ui_app);
         if keep_selection_frame {
+            // Windows excludes content-protected WebViews from desktop
+            // capture. The picker is deliberately content-protected, so
+            // re-showing its selection frame would black out the entire
+            // selected recording region. The floating controls remain the
+            // stop affordance while recording.
+            #[cfg(target_os = "windows")]
+            crate::diagnostics::log(
+                crate::diagnostics::LogLevel::Info,
+                "screencap.recording.windows",
+                "recording selection frame skipped because protected WebView would capture as black",
+                serde_json::json!({}),
+            );
+            #[cfg(not(target_os = "windows"))]
             selection::show_picker_recording_frame_safely(&ui_app);
         }
         show_recording_controls_internal(&ui_app)?;

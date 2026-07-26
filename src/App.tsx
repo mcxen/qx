@@ -2616,7 +2616,9 @@ function App() {
 
   return (
     <ThemeProvider>
-      <div className="qx-canvas">
+      <div
+        className={`qx-canvas ${getQxDesktopPlatform() === "windows" ? "is-windows-host" : "is-macos-host"}`}
+      >
         <IslandFloatBridge
           appearance={settings.appearance}
           enabled={settings.appearance.island_float_enabled}

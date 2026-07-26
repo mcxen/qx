@@ -420,6 +420,24 @@ pub fn run() {
                 startup_settings.appearance.show_in_app_list,
             );
 
+            // WebView2 can deadlock when a second WebviewWindowBuilder runs
+            // inside a synchronous command. Pre-create the optional island at
+            // Tauri's documented setup-safe point; runtime fallback creation
+            // remains async for users who enable it later.
+            if startup_settings.appearance.island_float_enabled {
+                if let Err(error) = island_window::install(
+                    &handle,
+                    startup_settings.appearance.island_float_always_on_top,
+                ) {
+                    diagnostics::log(
+                        diagnostics::LogLevel::Warn,
+                        "main.island",
+                        "failed to pre-create floating island",
+                        serde_json::json!({ "error": error }),
+                    );
+                }
+            }
+
             // Present the launcher on first launch so a fresh install is not
             // invisible at startup (which looks like Qx failed to open). The
             // frontend `restoreWindow` effect also shows the window, but it

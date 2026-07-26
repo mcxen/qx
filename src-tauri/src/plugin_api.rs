@@ -1146,8 +1146,7 @@ fn send_windows_notification(title: &str, body: &str) -> Result<(), String> {
     command
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
         .creation_flags(CREATE_NO_WINDOW);
-    let output = command
-        .output()
+    let output = crate::windows_process::output_with_timeout(&mut command, Duration::from_secs(5))
         .map_err(|e| format!("spawn powershell: {e}"))?;
     if output.status.success() {
         Ok(())

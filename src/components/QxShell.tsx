@@ -977,10 +977,9 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const startWindowDrag = (event: React.PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     const target = event.target instanceof Element ? event.target : null;
-    // Direct topbar hits use Tauri's drag-region listener. Explicitly start a
-    // drag from non-interactive title/wrapper descendants on every platform so
-    // the useful move target is not limited to a few pixels of empty chrome.
-    if (target === event.currentTarget) return;
+    // Topbar movement has one owner: this explicit handler. Mixing the Tauri
+    // data attribute, Chromium app-region CSS and startDragging can dispatch
+    // two native move loops for the same pointerdown on Windows WebView2.
     if (
       target?.closest(
         "button, a, input, textarea, select, [contenteditable='true'], [data-qx-no-window-drag]",
@@ -1022,7 +1021,6 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
 
       <div
         className={`qx-shell-topbar${hasLeading ? "" : " no-leading"}`}
-        data-tauri-drag-region
         onPointerDown={startWindowDrag}
       >
         {IS_WINDOWS_HOST && !showTitleBar ? (

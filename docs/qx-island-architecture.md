@@ -780,6 +780,11 @@ export const islandHost = {
 - `island_window_show` 是幂等的可见性转换：session/query/progress 更新只经
   `island:sessions` 刷新内容；已显示的浮窗不得再次 `show` / `orderFront`，否则 macOS
   会重排 key window，主界面文本框可能只收到首个字符。
+- Windows 不得从同步 Tauri command 或窗口事件 handler 调用
+  `WebviewWindowBuilder::new`：WebView2 会在当前 IPC / 事件回调中等待同一消息泵，
+  形成死锁。总开关在启动时已开启的 island 必须在 `setup` 中预创建为隐藏窗口；
+  运行期首次启用或窗口缺失时，`island_window_ensure/show` 必须是 async command，
+  并从独立 worker 发起创建。点击浮出按钮只应命中已存在窗口的 `show` 快路径。
 - 点击按钮后允许短暂 focus 浮窗（系统行为）；松手/dismiss 不强制 activate 主窗。
 
 验收（PR4）：

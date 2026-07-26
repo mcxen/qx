@@ -94,7 +94,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 
 `plugin_clipboard_read/write`、`plugin_perform_paste`、`plugin_perform_paste_at_cursor`、`plugin_http_fetch(req)`（只允许 http/https + 超时）、`plugin_notification_show(req)`、`plugin_resolve_asset(id, asset_path)`。
 
-插件 CLI 端口（`cli` 权限，**不**受 AI Agent Bash 开关门控）：`plugin_cli_run` / `plugin_cli_bash` / `plugin_cli_which`（同步），`plugin_cli_start` / `plugin_cli_poll` / `plugin_cli_cancel` / `plugin_cli_list_jobs`（异步并发 job）。系统能力（`system` 权限）：`plugin_system_env` / `plugin_system_open_path` / `plugin_system_reveal_path` / `plugin_system_open_settings` / `plugin_system_set_wallpaper`；系统设置与壁纸均由宿主在 macOS / Windows 适配，不要求插件执行 PowerShell。
+插件 CLI 端口（`cli` 权限，**不**受 AI Agent Bash 开关门控）：`plugin_cli_run` / `plugin_cli_bash` / `plugin_cli_which`（同步），`plugin_cli_start` / `plugin_cli_poll` / `plugin_cli_cancel` / `plugin_cli_list_jobs`（异步并发 job）。Windows 的 GUI PATH 由宿主直接合并 Machine/User 环境注册表，不为路径发现启动 PowerShell；只有插件明确请求 PowerShell 或内置终端会按用户意图启动 shell。系统能力（`system` 权限）：`plugin_system_env` / `plugin_system_open_path` / `plugin_system_reveal_path` / `plugin_system_open_settings` / `plugin_system_set_wallpaper`；系统设置与壁纸均由宿主在 macOS / Windows 适配，不要求插件执行 PowerShell。
 
 ## marketplace
 
@@ -165,13 +165,13 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 
 - `get_system_stats()` — Mach APIs 读 CPU/内存
 - `qx_external_displays_driver/install_driver/list/set_control` — DDC 驱动状态、安装、外接显示器枚举与亮度/音量控制
-- `qx_system_information_check_system_info` — 主机名 / 芯片 / macOS 版本 / 内核 / 序列号
-- `qx_system_information_check_storage` — 通过 `df -k /` 读根卷
-- `qx_system_information_check_network` — `ifconfig` 枚举非 loopback IPv4
-- `qx_system_information_list_processes` — `ps -axo pid,pcpu,pmem,comm`
+- `qx_system_information_check_system_info` — 主机名 / 芯片 / OS / 内核 / 序列号；Windows 通过注册表与 Win32 拓扑/内存 API
+- `qx_system_information_check_storage` — macOS/Linux 通过 `df`，Windows 通过 `GetDiskFreeSpaceExW`
+- `qx_system_information_check_network` — macOS/Linux 通过 `ifconfig`，Windows 通过 `GetAdaptersAddresses`
+- `qx_system_information_list_processes` — macOS/Linux 通过 `ps`，Windows 通过 ToolHelp + Process Status API
 - `qx_system_information_kill_process(pid)` — 拒 pid 0 和自身
-- `qx_system_monitor_network_counters` — `netstat -ibn`
-- `qx_system_monitor_power` — `battery` crate
+- `qx_system_monitor_network_counters` — macOS/Linux 通过 `netstat`，Windows 通过 `GetIfTable2`
+- `qx_system_monitor_power` — macOS 通过 I/O Registry，Windows 通过 `GetSystemPowerStatus`，其他平台使用 `battery` crate
 
 ## OCR
 

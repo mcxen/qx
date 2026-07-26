@@ -373,6 +373,25 @@ for (const rel of [
 if (!qxShell.includes("startResizeDragging")) {
   fail("QxShell must keep explicit Windows frameless-window resize handles");
 }
+if (!qxShell.includes("startDragging")) {
+  fail("QxShell Top Bar must keep one explicit window-move owner");
+}
+if (qxShell.includes("data-tauri-drag-region")) {
+  fail("QxShell Top Bar must not combine its explicit startDragging handler with a Tauri drag region");
+}
+const searchBarSource = read("src/SearchBar.tsx");
+if (searchBarSource.includes("data-tauri-drag-region")) {
+  fail("SearchBar descendants must not start a second native drag loop");
+}
+const shellStyles = read("src/styles/shell.css");
+if (shellStyles.includes("-webkit-app-region: drag")) {
+  fail("Shell chrome must not combine Chromium app-region dragging with Tauri move ports");
+}
+const baseStyles = read("src/styles/base.css");
+if (!baseStyles.includes(".qx-canvas.is-windows-host *")
+    || !baseStyles.includes("backdrop-filter: none !important")) {
+  fail("Windows Acrylic must not be layered with WebView-wide CSS backdrop blur");
+}
 if (!qxShell.includes('getQxDesktopPlatform() === "windows"')) {
   fail("WebView resize handles must not consume native macOS edge resizing");
 }
@@ -407,11 +426,30 @@ if (!mainWindowConfig || mainWindowConfig.resizable !== true) {
 if (mainWindowConfig.decorations !== false) {
   fail("QxShell resize handles are only valid for the frameless main window contract");
 }
+const assetAllow = tauriConfig.app?.security?.assetProtocol?.scope?.allow || [];
+for (const requiredScope of [
+  "$HOME/.qx/**",
+  "$PICTURE/Qx/**",
+  "$DATA/qx/**",
+  "$LOCALDATA/Qx/**",
+  "$CACHE/Qx/**",
+  "$APPCONFIG/**",
+  "$APPDATA/**",
+  "$APPLOCALDATA/**",
+  "$APPCACHE/**",
+  "$APPLOG/**",
+]) {
+  if (!assetAllow.includes(requiredScope)) {
+    fail(`Qx generated data requires the ${requiredScope} asset scope`);
+  }
+}
 
 const pluginSystemPort = read("src-tauri/src/plugin_system.rs");
 const pluginTypes = read("src/plugin/types.ts");
 const pluginCliPort = read("src-tauri/src/plugin_cli.rs");
 const pluginApiPort = read("src-tauri/src/plugin_api.rs");
+const ocrPort = read("src-tauri/src/ocr.rs");
+const terminalPort = read("src-tauri/src/terminal.rs");
 const textToolboxPort = read("src-tauri/src/text_toolbox.rs");
 const windowsProcessPort = read("src-tauri/src/windows_process.rs");
 const tauriCompositionRoot = read("src-tauri/src/lib.rs");
@@ -437,12 +475,24 @@ if (!windowsProcessPort.includes('var_os("SystemRoot")')
 if (!tauriCompositionRoot.includes('mod windows_process;')) {
   fail("Windows inbox executable discovery must be registered as a root adapter");
 }
+if (!pluginCliPort.includes("crate::windows_process::desktop_path_env()")) {
+  fail("Windows plugin CLI must read desktop PATH through the shared registry adapter");
+}
 for (const [source, name] of [
-  [pluginCliPort, "plugin CLI"],
   [pluginApiPort, "plugin notifications"],
+  [ocrPort, "OCR"],
+  [terminalPort, "terminal"],
 ]) {
   if (!source.includes("crate::windows_process::powershell_binary()")) {
     fail(`Windows ${name} must use the shared PowerShell adapter`);
+  }
+}
+for (const [source, name] of [
+  [pluginApiPort, "plugin notifications"],
+  [ocrPort, "OCR"],
+]) {
+  if (!source.includes("crate::windows_process::output_with_timeout(")) {
+    fail(`Windows ${name} PowerShell bridge must use the shared hard-timeout adapter`);
   }
 }
 for (const [source, name] of [

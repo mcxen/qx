@@ -12,6 +12,9 @@
 //! - Serialize background auto-OCR so clipboard capture cannot flood the pool.
 //! - Reuse cached `ocr_text` / history by source path when present.
 
+#[cfg(any(target_os = "windows", test))]
+mod text_layout;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -22,6 +25,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::{command, AppHandle, Emitter, Manager};
 use tauri_plugin_clipboard_manager::ClipboardExt;
+
+#[cfg(target_os = "windows")]
+use text_layout::{format_windows_ocr_lines, WindowsOcrLine};
 
 const OAR_HOME: &str = ".oar";
 const MODELSCOPE_REPO: &str = "greatv/oar-ocr";
@@ -797,9 +803,20 @@ fn recognize_windows_ocr(path: &Path) -> Result<String, String> {
     use std::os::windows::process::CommandExt;
     use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 
-    // Ensure PNG/JPEG path is absolute for PowerShell.
+    // Ensure PNG/JPEG path is absolute for PowerShell. Rust's Windows
+    // `canonicalize` commonly returns an extended-length `\\?\` path, but
+    // WinRT's StorageFile API rejects that prefix as containing invalid
+    // characters. Convert it back to the ordinary absolute/UNC form first.
     let abs = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let path_str = abs.to_string_lossy().replace('\'', "''");
+    let abs_str = abs.to_string_lossy();
+    let winrt_path = if let Some(unc) = abs_str.strip_prefix(r"\\?\UNC\") {
+        format!(r"\\{unc}")
+    } else if let Some(plain) = abs_str.strip_prefix(r"\\?\") {
+        plain.to_string()
+    } else {
+        abs_str.into_owned()
+    };
+    let path_str = winrt_path.replace('\'', "''");
 
     // Windows.Media.Ocr via WinRT interop in PowerShell.
     let script = format!(
@@ -823,8 +840,17 @@ function Await($WinRtTask, $ResultType) {{
     $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
   }})[0]
   $netTask = $asTask.MakeGenericMethod($ResultType).Invoke($null, @($WinRtTask))
-  $netTask.Wait(-1) | Out-Null
-  $netTask.Result
+  try {{
+    # GetResult unwraps WinRT task failures instead of surfacing a generic
+    # AggregateException from Task.Wait(-1), which hid the OCR root cause.
+    $netTask.GetAwaiter().GetResult()
+  }} catch {{
+    $exception = $_.Exception
+    while ($null -ne $exception.InnerException) {{
+      $exception = $exception.InnerException
+    }}
+    throw $exception
+  }}
 }}
 $path = '{path}'
 $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($path)) ([Windows.Storage.StorageFile])
@@ -852,21 +878,40 @@ foreach ($tag in @('zh-CN', 'zh-TW', 'en-US')) {{
 if ($null -eq $engine) {{ $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }}
 if ($null -eq $engine) {{ throw 'Windows OCR engine unavailable. Install Chinese (Simplified or Traditional) OCR language features in Windows Settings → Time & language → Language & region → Language options.' }}
 $result = Await ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
-[Console]::Out.Write($result.Text)
+$lines = @($result.Lines | ForEach-Object {{
+  $words = @($_.Words)
+  $top = $null
+  $bottom = $null
+  if ($words.Count -gt 0) {{
+    $top = ($words | ForEach-Object {{ $_.BoundingRect.Y }} | Measure-Object -Minimum).Minimum
+    $bottom = ($words | ForEach-Object {{ $_.BoundingRect.Y + $_.BoundingRect.Height }} | Measure-Object -Maximum).Maximum
+  }}
+  [PSCustomObject]@{{
+    Text = $_.Text
+    Top = $top
+    Height = if ($null -ne $top -and $null -ne $bottom) {{ $bottom - $top }} else {{ $null }}
+  }}
+}})
+$json = ConvertTo-Json -InputObject @($lines) -Compress
+[Console]::Out.Write($json)
 "#,
         path = path_str
     );
 
-    let output = std::process::Command::new(crate::windows_process::powershell_binary())
+    let mut command = std::process::Command::new(crate::windows_process::powershell_binary());
+    command
         .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
+        .creation_flags(CREATE_NO_WINDOW);
+    let output = crate::windows_process::output_with_timeout(&mut command, Duration::from_secs(45))
         .map_err(|e| format!("Windows OCR process: {e}"))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("Windows OCR failed: {stderr}"));
     }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    let json = String::from_utf8_lossy(&output.stdout);
+    let lines = serde_json::from_str::<Vec<WindowsOcrLine>>(json.trim())
+        .map_err(|error| format!("Windows OCR result format: {error}"))?;
+    Ok(format_windows_ocr_lines(lines))
 }
 
 #[command]

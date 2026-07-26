@@ -63,7 +63,7 @@ fn default_shell() -> PathBuf {
     }
     #[cfg(target_os = "windows")]
     {
-        PathBuf::from("powershell.exe")
+        crate::windows_process::powershell_binary()
     }
     #[cfg(not(target_os = "windows"))]
     {
