@@ -121,13 +121,59 @@
   width: 180px;
   height: 28px;
   box-sizing: border-box;
-  border: 1px solid rgba(255, 255, 255, 0.42);
-  border-radius: 6px;
+  border: 1px dashed rgba(255, 255, 255, 0.56);
+  border-radius: 2px;
   outline: none;
-  background: rgba(20, 20, 22, 0.9);
+  background: transparent;
   color: #fff;
   padding: 0 8px;
   font: 600 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  user-select: text;
+}
+
+.qx-region-picker-text-annotations {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.qx-region-picker-text-box {
+  position: absolute;
+  min-width: 24px;
+  min-height: 24px;
+  transform: translateY(-19px);
+  pointer-events: auto;
+}
+
+.qx-region-picker-text-box button,
+.qx-region-picker-text-box input {
+  min-width: 24px;
+  min-height: 24px;
+  margin: 0;
+  padding: 1px 4px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: transparent;
+  font: 600 18px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-align: left;
+  text-shadow: 0 1px 0 rgb(255 255 255 / 0.9), 0 -1px 0 rgb(255 255 255 / 0.9);
+}
+
+.qx-region-picker-text-box button {
+  cursor: move;
+}
+
+.qx-region-picker-text-box:hover button,
+.qx-region-picker-text-box.is-editing input {
+  border-color: rgb(255 255 255 / 0.68);
+}
+
+.qx-region-picker-text-box input {
+  width: max(180px, 14ch);
+  outline: none;
+  color: var(--qx-text-primary, #fff);
+  cursor: text;
   user-select: text;
 }
 

@@ -36,7 +36,7 @@ export type CaptureColor = "#ff3b30" | "#ffcc00" | "#5b8cff" | "#34c759" | "#fff
 
 const COLORS: CaptureColor[] = ["#ff3b30", "#ffcc00", "#5b8cff", "#34c759", "#ffffff"];
 
-function CaptureFrameIcon({ dashed = false, recording = false }: { dashed?: boolean; recording?: boolean }) {
+function CaptureFrameIcon({ dashed = false, recording = false, display = false }: { dashed?: boolean; recording?: boolean; display?: boolean }) {
   return (
     <svg width="23" height="20" viewBox="0 0 24 21" fill="none" aria-hidden="true">
       <rect
@@ -49,6 +49,7 @@ function CaptureFrameIcon({ dashed = false, recording = false }: { dashed?: bool
         strokeWidth="1.5"
         strokeDasharray={dashed ? "3 2.2" : undefined}
       />
+      {display ? <path d="M11 16v2.4m-3 0h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /> : null}
       {recording ? <circle className="qx-capture-record-dot" cx="18.7" cy="15.2" r="4.6" /> : null}
     </svg>
   );
@@ -259,7 +260,7 @@ export const CaptureToolbar = forwardRef<HTMLDivElement, CaptureToolbarProps>(fu
         <ToolButton shortcut="Space" label={screenshot
           ? t("screencap.picker.fullScreenshot", "Capture full screen")
           : t("screencap.picker.fullRecording", "Record full screen")} disabled={busy} onClick={onSelectFullscreen}>
-          <CaptureFrameIcon recording={!screenshot} />
+          <CaptureFrameIcon recording={!screenshot} display />
         </ToolButton>
 
         {screenshot ? (
