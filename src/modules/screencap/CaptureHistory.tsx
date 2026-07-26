@@ -63,12 +63,15 @@ interface CaptureHistoryProps {
   layout: CaptureHistoryLayout;
   expandedGroups: Record<CaptureHistoryKind, boolean>;
   onExpandedChange: (kind: CaptureHistoryKind, expanded: boolean) => void;
+  /** Right-click on a row selects it then opens the shared Actions menu. */
+  onOpenActionsAt?: (x: number, y: number) => void;
 }
 
 export default function CaptureHistory({
   layout,
   expandedGroups,
   onExpandedChange,
+  onOpenActionsAt,
 }: CaptureHistoryProps) {
   const t = useT();
   const locale = useLocale();
@@ -87,6 +90,19 @@ export default function CaptureHistory({
     listSignature: `${layout}:${visibleHistory.map((entry) => entry.id).join(",")}`,
     enabled: selectedIndex >= 0,
   });
+
+  /**
+   * Right-click on a row → select it (so the action menu snapshots the
+   * matching item) → open the shared Actions Popover at the cursor. The
+   * menu itself is owned by the parent ScreenRecorder and reuses the same
+   * actions as the bottom-bar Actions button.
+   */
+  const handleRowContextMenu = (event: React.MouseEvent, entryPath: string) => {
+    if (!onOpenActionsAt) return;
+    event.preventDefault();
+    if (lastGifPath !== entryPath) setPreview(entryPath);
+    onOpenActionsAt(event.clientX, event.clientY);
+  };
 
   const renderEntries = (entries: typeof history, indexOffset: number, label: string) => (
     <div
@@ -108,6 +124,7 @@ export default function CaptureHistory({
                 type="button"
                 {...getItemProps(index, { className: "qx-capture-gallery-main", baseClass: false })}
                 onClick={() => setPreview(entry.path)}
+                onContextMenu={(event) => handleRowContextMenu(event, entry.path)}
               >
                 <span className="qx-capture-gallery-media" aria-hidden="true">
                   {image ? <img src={mediaSrc} alt="" loading="lazy" /> : <RecordingThumbnail entry={entry} />}
@@ -141,6 +158,7 @@ export default function CaptureHistory({
               type="button"
               {...getItemProps(index, { className: "qx-capture-history-main", baseClass: false })}
               onClick={() => setPreview(entry.path)}
+              onContextMenu={(event) => handleRowContextMenu(event, entry.path)}
             >
               {image || entry.thumbnail_path ? (
                 <span className="qx-capture-history-thumb" aria-hidden="true">

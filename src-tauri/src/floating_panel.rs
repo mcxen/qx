@@ -226,9 +226,21 @@ pub fn set_external_interaction_active(active: bool) {
     }
 }
 
-#[tauri::command]
-pub fn floating_set_external_interaction_active(active: bool) {
+/// Update the external-interaction guard and the native window ordering as one
+/// transition. The guard keeps Qx visible while an OS-owned surface is open;
+/// the native ordering lets that surface remain in front of Qx.
+pub fn set_external_interaction_active_with_app(app: &AppHandle, active: bool) {
     set_external_interaction_active(active);
+    let app_for_ui = app.clone();
+    let _ = crate::main_thread::run_on_main(app, move || {
+        #[cfg(target_os = "macos")]
+        macos::set_external_interaction_window_mode(&app_for_ui, active);
+    });
+}
+
+#[tauri::command]
+pub fn floating_set_external_interaction_active(app: AppHandle, active: bool) {
+    set_external_interaction_active_with_app(&app, active);
 }
 
 /// Prefer our open flag; fall back to OS visibility for paths that only called
@@ -420,6 +432,20 @@ mod macos {
         };
         unsafe {
             let _: () = msg_send![ns_window, setLevel: 3isize];
+            let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
+            let _: () = msg_send![ns_window, setCollectionBehavior: panel_collection_behavior()];
+        }
+    }
+
+    /// Switch between Qx's launcher level and a normal window level while an
+    /// OS-owned picker or privacy pane is in use. Qx remains visible, but the
+    /// external surface is allowed to become the frontmost window.
+    pub(super) fn set_external_interaction_window_mode(app: &AppHandle, active: bool) {
+        let Some(ns_window) = ns_window(app) else {
+            return;
+        };
+        unsafe {
+            let _: () = msg_send![ns_window, setLevel: if active { 0isize } else { 3isize }];
             let _: () = msg_send![ns_window, setHidesOnDeactivate: false];
             let _: () = msg_send![ns_window, setCollectionBehavior: panel_collection_behavior()];
         }

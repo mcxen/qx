@@ -225,6 +225,8 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     x: number;
     y: number;
   } | null>(null);
+  const [contextActionMenuRequest, setContextActionMenuRequest] =
+    useState<QxShellActionMenuRequest | null>(null);
   const [actionIndex, setActionIndex] = useState(0);
   /** Raycast nested Action Panel stack (root → submenu → …). */
   const [menuStack, setMenuStack] = useState<
@@ -242,6 +244,8 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   /** Focus target to restore when the Action menu closes (Raycast: Esc back to list). */
   const actionMenuFocusRestoreRef = useRef<HTMLElement | null>(null);
   const handledActionMenuRequestRef = useRef<number | null>(null);
+  const handledContextActionMenuRequestRef = useRef<number | null>(null);
+  const nextContextActionMenuRequestIdRef = useRef(0);
   const menuActions = useMemo(() => actions ?? [], [actions]);
   const primaryAction = useMemo(
     () => primaryActionId
@@ -475,10 +479,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     if (handledActionMenuRequestRef.current === actionMenuRequest.id) return;
     handledActionMenuRequestRef.current = actionMenuRequest.id;
     captureActionMenuFocusRestore();
-    setActionMenuAnchorPoint({
-      x: actionMenuRequest.x,
-      y: actionMenuRequest.y,
-    });
+    setActionMenuAnchorPoint({ x: actionMenuRequest.x, y: actionMenuRequest.y });
     const firstEnabled = menuActions.findIndex((action) => !action.disabled);
     setActionIndex(firstEnabled >= 0 ? firstEnabled : 0);
     setMenuStack([{ title: menuTitle, actions: menuActions }]);
@@ -490,6 +491,69 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
     menuActions,
     menuTitle,
   ]);
+
+  useEffect(() => {
+    if (!contextActionMenuRequest || menuActions.length === 0) return;
+    if (handledContextActionMenuRequestRef.current === contextActionMenuRequest.id) return;
+    handledContextActionMenuRequestRef.current = contextActionMenuRequest.id;
+    captureActionMenuFocusRestore();
+    setActionMenuAnchorPoint({
+      x: contextActionMenuRequest.x,
+      y: contextActionMenuRequest.y,
+    });
+    const firstEnabled = menuActions.findIndex((action) => !action.disabled);
+    setActionIndex(firstEnabled >= 0 ? firstEnabled : 0);
+    setMenuStack([{ title: menuTitle, actions: menuActions }]);
+    setMenuQuery("");
+    setActionMenuOpen(true);
+  }, [
+    captureActionMenuFocusRestore,
+    contextActionMenuRequest,
+    menuActions,
+    menuTitle,
+  ]);
+
+  const handleContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || menuActions.length === 0) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (!target) return;
+
+    // Text editors and the shell's own overlays retain their native/context
+    // semantics. The content area below is the shared item-action surface.
+    if (
+      target.closest(
+        "input, textarea, select, [contenteditable='true'], .qx-actions-popover, .qx-action-panel, .qx-shell-topbar, .qx-shell-bottombar",
+      )
+    ) {
+      return;
+    }
+    const row = target.closest<HTMLElement>("[data-qx-list-index]");
+    const inContent = target.closest(".qx-shell-content");
+    if (!inContent) return;
+
+    if (row) {
+      const index = Number.parseInt(row.getAttribute("data-qx-list-index") ?? "", 10);
+      if (
+        Number.isInteger(index)
+        && index >= 0
+        && index < (navigation?.count ?? Number.POSITIVE_INFINITY)
+      ) {
+        navigation?.onChange(index);
+      }
+    }
+
+    event.preventDefault();
+    const { clientX, clientY } = event;
+    // Let the selection update commit before the action array is captured.
+    window.requestAnimationFrame(() => {
+      nextContextActionMenuRequestIdRef.current += 1;
+      setContextActionMenuRequest({
+        id: nextContextActionMenuRequestIdRef.current,
+        x: clientX,
+        y: clientY,
+      });
+    });
+  };
 
   /** Radix/shadcn Popover dismiss (outside click) and controlled open sync. */
   const handleActionMenuOpenChange = (next: boolean) => {
@@ -840,6 +904,7 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
       aria-label={title}
       onKeyDownCapture={handleKeyDownCapture}
       onKeyDown={handleKeyDown}
+      onContextMenu={handleContextMenu}
       onInputCapture={handleInputCapture}
       onFocusCapture={handleRegionFocusCapture}
       onPointerDownCapture={handleRegionPointerCapture}

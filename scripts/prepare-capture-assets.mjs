@@ -7,44 +7,6 @@ import ffmpegPath from "ffmpeg-static";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const output = resolve(root, "src-tauri/resources/generated/screencap-shutter.wav");
-const sampleRate = 44_100;
-const duration = 0.18;
-const sampleCount = Math.round(sampleRate * duration);
-const pcm = Buffer.alloc(sampleCount * 2);
-let seed = 0x51a7c0de;
-
-for (let index = 0; index < sampleCount; index += 1) {
-  const time = index / sampleRate;
-  seed = (Math.imul(seed, 1_664_525) + 1_013_904_223) >>> 0;
-  const noise = (seed / 0xffff_ffff) * 2 - 1;
-  const first = Math.exp(-time * 52)
-    * (0.68 * noise + 0.32 * Math.sin(time * 2 * Math.PI * 1_850));
-  const secondTime = Math.max(0, time - 0.045);
-  const second = time >= 0.045
-    ? Math.exp(-secondTime * 72)
-      * (0.48 * noise + 0.28 * Math.sin(secondTime * 2 * Math.PI * 1_260))
-    : 0;
-  const sample = Math.max(-1, Math.min(1, (first + second) * 0.72));
-  pcm.writeInt16LE(Math.round(sample * 32_767), index * 2);
-}
-
-const header = Buffer.alloc(44);
-header.write("RIFF", 0);
-header.writeUInt32LE(36 + pcm.length, 4);
-header.write("WAVE", 8);
-header.write("fmt ", 12);
-header.writeUInt32LE(16, 16);
-header.writeUInt16LE(1, 20);
-header.writeUInt16LE(1, 22);
-header.writeUInt32LE(sampleRate, 24);
-header.writeUInt32LE(sampleRate * 2, 28);
-header.writeUInt16LE(2, 32);
-header.writeUInt16LE(16, 34);
-header.write("data", 36);
-header.writeUInt32LE(pcm.length, 40);
-
-await mkdir(dirname(output), { recursive: true });
-await writeFile(output, Buffer.concat([header, pcm]));
 
 const targetTriples = {
   "darwin-arm64": "aarch64-apple-darwin",
@@ -59,6 +21,12 @@ const ffmpeg = await readFile(ffmpegPath);
 if (ffmpeg.length < 1_000_000) {
   throw new Error("Downloaded FFmpeg binary is incomplete");
 }
+
+const screenshotSound = await readFile(output);
+if (screenshotSound.length < 1_000) {
+  throw new Error(`Bundled screenshot sound is missing or incomplete: ${output}`);
+}
+
 if (process.platform === "darwin") {
   const signature = spawnSync("codesign", ["--verify", "--strict", ffmpegPath], {
     stdio: "ignore",

@@ -232,6 +232,7 @@ export function Slider({
   disabled,
   ariaLabel,
   formatLabel,
+  className = "",
 }: {
   value: number;
   min: number;
@@ -241,9 +242,10 @@ export function Slider({
   disabled?: boolean;
   ariaLabel?: string;
   formatLabel?: (v: number) => string;
+  className?: string;
 }) {
   return (
-    <div className="qx-slider" role="none">
+    <div className={`qx-slider ${className}`.trim()} role="none">
       <ShadcnSlider
         value={[value]}
         min={min}

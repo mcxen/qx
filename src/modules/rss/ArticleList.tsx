@@ -17,6 +17,7 @@ import { useSettingsStore } from "../settings/store";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { QxActionPanel } from "../../components/QxActionPanel";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
+import QxResizableSplit from "../../components/QxResizableSplit";
 import QxMediaViewer from "../../components/QxMediaViewer";
 import QxReplyList from "../../components/QxReplyList";
 import { useArticleReadingProgress } from "./useArticleReadingProgress";
@@ -70,16 +71,6 @@ const RSS_LIST_WIDTH_KEY = "qx:rss:list-width";
 const DEFAULT_RSS_LIST_WIDTH = 340;
 const MD = qxMasterDetailIds("rss");
 
-function clampWidth(value: number, min: number, max: number): number {
-  return Math.round(Math.max(min, Math.min(max, value)));
-}
-
-function readStoredWidth(key: string, fallback: number): number {
-  if (typeof window === "undefined") return fallback;
-  const stored = Number(window.localStorage.getItem(key));
-  return Number.isFinite(stored) && stored > 0 ? stored : fallback;
-}
-
 export default function ArticleList() {
   const t = useT();
   const {
@@ -110,11 +101,7 @@ export default function ArticleList() {
 
   const [localQuery, setLocalQuery] = useState("");
   const [lightbox, setLightbox] = useState<string | null>(null);
-  const [listWidth, setListWidth] = useState(() =>
-    readStoredWidth(RSS_LIST_WIDTH_KEY, DEFAULT_RSS_LIST_WIDTH),
-  );
   const shellRef = useRef<HTMLDivElement>(null);
-  const splitRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const { focusList, focusDetail } = useQxMasterDetailFocus(shellRef, MD);
@@ -190,56 +177,6 @@ export default function ArticleList() {
         display: "block",
         borderRadius: 4,
       };
-  // Only the in-content list/detail split is resizable. Shell context width
-  // must stay on global --qx-context-w so every module shares one sidebar size.
-  const shellStyle = {
-    "--qx-rss-list-w": `${listWidth}px`,
-  } as CSSProperties;
-
-  const startListResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const split = splitRef.current;
-    if (!split) return;
-    const rect = split.getBoundingClientRect();
-    const min = 220;
-    const max = Math.max(min, rect.width - 320);
-    const previousCursor = document.body.style.cursor;
-    const previousUserSelect = document.body.style.userSelect;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-
-    const update = (clientX: number) => {
-      const next = clampWidth(clientX - rect.left, min, max);
-      setListWidth(next);
-      window.localStorage.setItem(RSS_LIST_WIDTH_KEY, String(next));
-    };
-    const onMove = (moveEvent: PointerEvent) => update(moveEvent.clientX);
-    const onUp = () => {
-      document.body.style.cursor = previousCursor;
-      document.body.style.userSelect = previousUserSelect;
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-
-    update(event.clientX);
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp, { once: true });
-  }, []);
-
-  const nudgeListWidth = useCallback((delta: number) => {
-    const split = splitRef.current;
-    const rectWidth = split?.getBoundingClientRect().width ?? 980;
-    const next = clampWidth(listWidth + delta, 220, Math.max(220, rectWidth - 320));
-    setListWidth(next);
-    window.localStorage.setItem(RSS_LIST_WIDTH_KEY, String(next));
-  }, [listWidth]);
-
-  const onListResizeKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    nudgeListWidth(event.key === "ArrowLeft" ? -24 : 24);
-  }, [nudgeListWidth]);
-
   const sections: Section[] = useMemo(() => {
     const groups: Record<string, RssArticle[]> = {
       today: [],
@@ -504,7 +441,6 @@ export default function ArticleList() {
       // List browsing stays dense/solid; open article softens chrome for reading.
       visual={isReading ? "glass" : "solid"}
       className={`qx-content-shell qx-rss-shell${isReading ? " is-reading" : ""}`}
-      style={shellStyle}
       onKeyDown={shell.onKeyDown}
       navigation={qxMasterDetailNavigation({
         ids: MD,
@@ -556,9 +492,13 @@ export default function ArticleList() {
       actionTitle="Article Actions"
       actions={actions}
     >
-      <div
-        ref={splitRef}
+      <QxResizableSplit
         className={`qx-content-split qx-rss-article-split${currentArticle ? " has-detail" : ""}`}
+        storageKey={RSS_LIST_WIDTH_KEY}
+        defaultLeftWidth={DEFAULT_RSS_LIST_WIDTH}
+        minLeftWidth={220}
+        minRightWidth={320}
+        separatorLabel={t("rss.resizeList", "Resize RSS article list")}
       >
         <div
           ref={listRef}
@@ -626,20 +566,6 @@ export default function ArticleList() {
             <div className="qx-empty-state">No articles in this feed.</div>
           ) : null}
         </div>
-
-        <div
-          className="qx-rss-resize-handle qx-rss-list-resize"
-          role="separator"
-          aria-label="Resize RSS article list"
-          aria-orientation="vertical"
-          tabIndex={0}
-          onPointerDown={startListResize}
-          onKeyDown={onListResizeKeyDown}
-          onDoubleClick={() => {
-            setListWidth(DEFAULT_RSS_LIST_WIDTH);
-            window.localStorage.setItem(RSS_LIST_WIDTH_KEY, String(DEFAULT_RSS_LIST_WIDTH));
-          }}
-        />
 
         <article
           className="qx-content-detail qx-plugin-detail qx-rss-detail-content qx-rss-reader"
@@ -769,7 +695,7 @@ export default function ArticleList() {
             </div>
           )}
         </article>
-      </div>
+      </QxResizableSplit>
 
       <QxMediaViewer
         open={Boolean(lightbox)}

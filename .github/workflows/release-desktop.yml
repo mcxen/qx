@@ -79,9 +79,6 @@ jobs:
       - name: Check architecture and plugin ports
         run: npm run check
 
-      - name: Prepare bundled search tools
-        run: npm run prepare:search-tools
-
       - name: Build Tauri bundle
         env:
           QX_UPDATE_MIRROR_MANIFEST_URL: ${{ vars.QX_UPDATE_MIRROR_MANIFEST_URL }}

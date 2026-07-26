@@ -325,7 +325,10 @@ pub fn run() {
                 // OS-owned privacy panels and file pickers temporarily take
                 // focus. Once Qx becomes key again, normal outside-click and
                 // Esc behavior resumes.
-                floating_panel::set_external_interaction_active(false);
+                floating_panel::set_external_interaction_active_with_app(
+                    &window.app_handle(),
+                    false,
+                );
             }
             // Hide on focus loss when auto-hide is enabled.
             // - Windows: WebView2 outside-click focus can race; native event is required.
@@ -359,7 +362,7 @@ pub fn run() {
                 return Ok(());
             };
 
-            let startup_settings = settings::read_settings();
+            let mut startup_settings = settings::read_settings();
             diagnostics::log(
                 diagnostics::LogLevel::Info,
                 "main.setup",
@@ -402,6 +405,37 @@ pub fn run() {
             // Hide from dock and promote the main window into a
             // non-activating NSPanel so global shortcuts never steal focus.
             floating_panel::install(&handle);
+
+            // Present the launcher on first launch so a fresh install is not
+            // invisible at startup (which looks like Qx failed to open). The
+            // frontend `restoreWindow` effect also shows the window, but it
+            // depends on the settings store hydrating first; guaranteeing it
+            // here makes a first launch reliable regardless of frontend timing.
+            if !startup_settings.general.has_shown_launcher {
+                startup_settings.general.has_shown_launcher = true;
+                if let Err(error) = settings::write_settings(&startup_settings) {
+                    diagnostics::log(
+                        diagnostics::LogLevel::Warn,
+                        "main.setup",
+                        "failed to persist has_shown_launcher",
+                        serde_json::json!({ "error": error }),
+                    );
+                }
+                // Showing during `setup` is a no-op on macOS: the run loop is
+                // not running yet and the WebviewWindow hand-off has not
+                // completed, so `win.show()` is ignored. Defer a beat so first
+                // launch actually surfaces the window once the event loop is up.
+                let show_handle = handle.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(700));
+                    floating_panel::show_floating(&show_handle);
+                    // At first launch the panel does not win focus, so the blur
+                    // auto-hide would blank it within 500ms before the user
+                    // notices. Suppress long enough for the user to interact,
+                    // which re-arms the normal auto-hide via Focused(true).
+                    floating_panel::suppress_auto_hide(std::time::Duration::from_secs(60));
+                });
+            }
 
             // A system-owned or third-party global chord (PowerToys commonly
             // owns Alt+Space on Windows) must not abort setup while the main

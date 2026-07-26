@@ -581,7 +581,7 @@
 }
 
 .qx-screencap-browser.has-detail {
-  grid-template-columns: minmax(280px, 44%) minmax(0, 1fr);
+  grid-template-columns: minmax(280px, 44%) var(--qx-split-handle-w) minmax(320px, 1fr);
 }
 
 .qx-screencap-history-pane {
@@ -592,7 +592,7 @@
 }
 
 .qx-screencap-browser.has-detail .qx-screencap-history-pane {
-  border-right: 1px solid var(--qx-border-1);
+  border-right: none;
 }
 
 /* The selected row/card already provides keyboard focus feedback. Avoid a
@@ -608,6 +608,12 @@
   flex-direction: column;
   min-height: 0;
   overflow: auto;
+}
+
+@media (max-width: 760px) {
+  .qx-screencap-browser.has-detail {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .qx-capture-history {
@@ -1235,4 +1241,287 @@
 
 .qx-screencap-convert-row .qx-select {
   width: 92px;
+}
+
+/* ── Capture Preview (right pane of screencap module) ────────────────── */
+
+.qx-screencap-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 10px 8px;
+  min-width: 0;
+}
+
+.qx-screencap-preview-stage {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 160px;
+  max-height: 240px;
+  padding: 0;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--qx-overlay-1);
+}
+
+.qx-screencap-preview-media {
+  display: block;
+  max-width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+}
+
+.qx-screencap-preview-paused {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 160px;
+  color: var(--qx-text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+/* Compact video player bar: play/pause + time + scrubber. */
+.qx-screencap-preview-player {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 8px;
+  background: var(--qx-overlay-1);
+}
+
+.qx-screencap-preview-player-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 6px;
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-primary);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.qx-screencap-preview-player-toggle:hover:not(:disabled) {
+  background: var(--qx-bg-component-3);
+  border-color: color-mix(in srgb, var(--qx-accent) 30%, var(--qx-border-1));
+}
+
+.qx-screencap-preview-player-toggle:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.qx-screencap-preview-player-time {
+  flex: 0 0 auto;
+  min-width: 96px;
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  text-align: center;
+}
+
+.qx-screencap-preview-player-slider.qx-slider {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.qx-screencap-preview-player-slider.qx-slider .qx-shadcn-slider {
+  width: 100%;
+}
+
+.qx-screencap-preview-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--qx-text-secondary);
+}
+
+.qx-screencap-preview-meta-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-secondary);
+}
+
+.qx-screencap-preview-meta-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--qx-text-primary);
+  font-weight: 500;
+}
+
+.qx-screencap-preview-meta-stats {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--qx-text-tertiary);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.qx-screencap-preview-meta-divider {
+  display: inline-block;
+  width: 1px;
+  height: 10px;
+  background: var(--qx-border-1);
+}
+
+/* Vertical action list — replaces the horizontal button row. */
+.qx-screencap-preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 8px;
+  background: var(--qx-overlay-1);
+}
+
+.qx-screencap-preview-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  padding: 7px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--qx-border-1) 72%, transparent);
+}
+
+.qx-screencap-preview-list-row:last-child {
+  border-bottom: none;
+}
+
+.qx-screencap-preview-list-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.qx-screencap-preview-list-label > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-screencap-preview-list-label > svg {
+  flex: 0 0 auto;
+  color: var(--qx-text-tertiary);
+}
+
+.qx-screencap-preview-list-row--primary {
+  background: color-mix(in srgb, var(--qx-bg-component-2) 60%, transparent);
+}
+
+.qx-screencap-preview-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 60%;
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 5px;
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.qx-screencap-preview-input:focus-visible {
+  border-color: color-mix(in srgb, var(--qx-accent) 60%, var(--qx-border-1));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--qx-accent) 22%, transparent);
+}
+
+.qx-screencap-preview-input::placeholder {
+  color: var(--qx-text-tertiary);
+}
+
+.qx-screencap-preview-btn {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 6px;
+  background: var(--qx-bg-component-1);
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.qx-screencap-preview-btn:hover:not(:disabled) {
+  background: var(--qx-bg-component-3);
+  border-color: color-mix(in srgb, var(--qx-accent) 30%, var(--qx-border-1));
+}
+
+.qx-screencap-preview-btn:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.qx-screencap-preview-btn--primary {
+  border-color: color-mix(in srgb, var(--qx-accent) 45%, var(--qx-border-1));
+  background: var(--qx-accent);
+  color: var(--qx-text-on-accent);
+}
+
+.qx-screencap-preview-btn--primary:hover:not(:disabled) {
+  border-color: var(--qx-accent);
+  background: color-mix(in srgb, var(--qx-accent) 88%, var(--qx-bg-component-1));
+}
+
+.qx-screencap-preview-status {
+  font-size: 11px;
+  color: var(--qx-text-tertiary);
+  word-break: break-all;
+}
+
+.qx-screencap-preview-status.is-error {
+  color: var(--qx-danger);
+}
+
+@media (max-width: 520px) {
+  .qx-screencap-preview-player-time {
+    min-width: 78px;
+    font-size: 10px;
+  }
+  .qx-screencap-preview-list-row {
+    flex-wrap: wrap;
+  }
+  .qx-screencap-preview-input {
+    max-width: 100%;
+  }
 }

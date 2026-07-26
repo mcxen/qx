@@ -555,6 +555,10 @@ Actions Menu：
   - `Esc` 或再次 `Cmd+K` / `Ctrl+K`：关闭菜单，并**恢复打开菜单前的焦点**（搜索框 / 列表 / region）；列表 `navigation` 选中项不得因菜单内上下键而改变。
   - 关闭菜单后的下一次 `Esc` 才走 `escapeAction` / `useEscBack` 离开模块。
 - 菜单项来自模块传入的 `actions`（当前选中对象上下文）。
+- 内容区右键统一复用这套 Actions Popover：Shell 从指针下最近的
+  `data-qx-list-index` 读取条目索引，先调用 `navigation.onChange` 提交选中态，下一帧再把同一
+  `actions[]` 锚定到指针坐标打开。内置模块与 Workbench List/Gallery 不得为右键另写菜单；搜索框、
+  编辑器和 Actions/Bottom Bar 等宿主控件保留各自的原生/既有右键语义。
 - 模块不得在搜索框聚焦时用裸字母（如 `n` / `s`）强行拦截输入；裸快捷键仅在非编辑目标、或 Actions 菜单打开时由 Shell 协议处理。
 
 ## Bottom Island
@@ -911,6 +915,8 @@ useEscBack({
 - 每层命中后必须 `preventDefault` + `stopPropagation`，不继续递进。
 - 模块不得自写 Esc 监听；新子状态必须挂到 `inner`。
 - 打开的 Dialog / Popover / Dropdown / Actions 菜单优先于模块级联；最内层 overlay 先关。
+- 打开 macOS 系统设置、权限页或文件选择器等 OS-owned surface 时，Qx 主面板保持可见但临时降为普通窗口层级，
+  不得强制压在系统窗口上；外部 surface 关闭后，用户点击回 Qx，主面板恢复浮窗层级且不得因失焦自动隐藏。
 
 **B. 可见按钮 · `escapeAction`**
 
@@ -1008,6 +1014,14 @@ search={
    Esc / `navigation.onClose` 只退回列表，不直接离开模块。Clipboard、RSS、Documents、
    V2EX、Screen Capture 与 Workbench 都复用 `.qx-content-split` /
    `.qx-content-list` / `.qx-content-detail` / `.has-detail`，不得各自硬隐藏详情。
+
+左右内容分区如果需要调整宽度，统一使用 `QxResizableSplit`（`src/components/QxResizableSplit.tsx`）：
+传入两个直接子节点（左列表、右详情），由宿主统一提供 8px 拖拽手柄、`col-resize` 指针、
+键盘 ←/→ 微调、Home/End 到边界、双击恢复默认值、`role="separator"` 无障碍语义和可选
+`localStorage` 持久化；截图/录屏 toast 等浮层通过 `overlay` 传入，不参与分区计算。模块只负责
+`className`、最小宽度、响应式单栏规则和分区内容；不得再
+复制 pointermove、body cursor/user-select、键盘微调或宽度持久化逻辑。跨模块的 Shell Context
+宽度仍只使用 `--qx-context-w`，不得由该组件覆盖。
 
 参考：`V2exPanel`、`ArticleList`（RSS）、`DevTxtTool`。
 

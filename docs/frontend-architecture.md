@@ -152,6 +152,16 @@ Launcher `SearchBar` 负责召唤/聚焦语义，视觉委托给同一组件。
 - 列表内 ↑↓ 选中；detail 内 ↑↓ 滚动正文；←→ 切换 region
 - 空 detail 用 `aria-hidden`；打开后 `focusDetail`，关闭后 `focusList`
 
+### 可调整左右分区
+
+需要用户调整列表/详情宽度的 master–detail 页面使用
+`src/components/QxResizableSplit.tsx`。组件接收两个直接子节点并保持它们为分区的直接
+DOM 子节点，统一负责拖拽、键盘 ←/→ 与 Home/End、双击恢复、separator 无障碍语义和可选
+`localStorage` 宽度持久化；不参与布局的 toast 等浮层使用 `overlay`。调用方只配置
+`storageKey`、左右最小宽度、默认/复位宽度和 `separatorLabel`，并通过自身的布局 class
+提供响应式单栏规则；不要在模块内重新实现 pointermove 或宽度存储。当前 RSS 文章列表、
+Plugin Workbench 和 Screen Capture 已复用该端口。
+
 ### 模块壳 chrome（内置 + 扩展）
 
 `useQxModuleShell`：
@@ -162,7 +172,9 @@ Launcher `SearchBar` 负责召唤/聚焦语义，视觉委托给同一组件。
 
 业务动作由模块发布单一 `QxShellAction[]` + `primaryActionId`；QxShell 自行投影主按钮、
 Enter 与 Actions 菜单。`PluginPanelViewport`（扩展）与 Weather / Macros / QxAI 列表等
-内置模块共用此端口。
+内置模块共用此端口。内容区右键由 QxShell 读取标准行的 `data-qx-list-index`，经
+`navigation.onChange` 提交条目后，在下一帧锚定同一 Actions Popover；Workbench List/Gallery
+因此无需各自实现右键菜单，编辑器和宿主 overlay 控件继续保留原生语义。
 
 ## Loading 与灵动岛
 

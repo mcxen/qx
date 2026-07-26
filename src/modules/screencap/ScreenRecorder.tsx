@@ -16,7 +16,12 @@ import { openSettings } from "../settings/openSettings";
 import GifPreview from "./GifPreview";
 import CaptureHistory from "./CaptureHistory";
 import CaptureToast from "./CaptureToast";
-import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
+import QxResizableSplit from "../../components/QxResizableSplit";
+import QxShell, {
+  type BottomIslandContent,
+  type QxShellAction,
+  type QxShellActionMenuRequest,
+} from "../../components/QxShell";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import BetaBadge from "../../components/BetaBadge";
@@ -27,6 +32,8 @@ import {
   type CaptureHistoryKind,
   type CaptureHistoryLayout,
 } from "./preferences";
+
+const SCREENCAP_HISTORY_WIDTH_KEY = "qx:screencap:history-width";
 
 function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -42,6 +49,22 @@ function formatTime(ms: number): string {
 function isScreenshotPath(path: string | null | undefined): boolean {
   if (!path) return false;
   return path.toLowerCase().endsWith(".png");
+}
+
+function isImageCopyablePath(path: string | null | undefined): boolean {
+  if (!path) return false;
+  const lower = path.toLowerCase();
+  return lower.endsWith(".png")
+    || lower.endsWith(".jpg")
+    || lower.endsWith(".jpeg")
+    || lower.endsWith(".webp")
+    || lower.endsWith(".gif");
+}
+
+function isVideoConvertiblePath(path: string | null | undefined): boolean {
+  if (!path) return false;
+  const lower = path.toLowerCase();
+  return lower.endsWith(".mp4") || lower.endsWith(".mov");
 }
 
 export default function ScreenRecorder() {
@@ -60,6 +83,10 @@ export default function ScreenRecorder() {
     loadHistory,
     setPreview,
     reset,
+    saveAsCopy,
+    copyImage,
+    revealInFolder,
+    previewStatus,
   } = useScreencapStore();
 
   const setTab = useStore((state) => state.setTab);
@@ -102,6 +129,13 @@ export default function ScreenRecorder() {
   const [localError, setLocalError] = useState<string | null>(null);
   const [toastPath, setToastPath] = useState<string | null>(null);
   const observedPreviewPath = useRef<string | null>(null);
+  /**
+   * Pointer-anchored Action menu request: bottom Actions button uses the
+   * default anchor, right-click on a history row supplies (x, y) so the same
+   * menu pops up next to the cursor (Launcher-style).
+   */
+  const [actionMenuRequest, setActionMenuRequest] =
+    useState<QxShellActionMenuRequest | null>(null);
   useEffect(() => {
     void loadHistory();
     void syncRecordingStatus();
@@ -244,8 +278,47 @@ export default function ScreenRecorder() {
     reset();
   };
 
+  /**
+   * Right-click on a history row should first select that entry, then surface
+   * the shared Actions menu at the cursor position. Selection must commit
+   * before the menu snapshots its actions; deferring the menu one frame
+   * matches Launcher's pattern and avoids showing stale per-item actions.
+   */
+  const handleOpenActionsAt = useCallback((x: number, y: number) => {
+    window.requestAnimationFrame(() => {
+      setActionMenuRequest((request) => ({
+        id: (request?.id ?? 0) + 1,
+        x,
+        y,
+      }));
+    });
+  }, []);
+
+  /**
+   * Convert the current preview to a GIF via the same Rust command as the
+   * inline Convert row. Mirrors GifPreview's defaults so an action-menu pick
+   * produces the same artifact as clicking the inline Create GIF button.
+   */
+  const handleConvertGifAction = useCallback(
+    async (path: string) => {
+      try {
+        const gif = await invoke<string>("convert_recording_to_gif", {
+          sourcePath: path,
+          maxWidth: 960,
+          fps: 12,
+        });
+        await loadHistory();
+        setPreview(gif);
+      } catch (e) {
+        setLocalError(String(e));
+      }
+    },
+    [loadHistory, setPreview],
+  );
+
   const displayError = localError || error;
   const showingPreview = Boolean(lastGifPath) && (status === "done" || status === "idle");
+  const saving = previewStatus.saving;
 
   useEffect(() => {
     if (!lastGifPath || observedPreviewPath.current === lastGifPath) return;
@@ -413,25 +486,72 @@ export default function ScreenRecorder() {
     ],
   );
 
-  const doneActions = useMemo<QxShellAction[]>(
-    () => [
-      {
+  const doneActions = useMemo<QxShellAction[]>(() => {
+    const actions: QxShellAction[] = [];
+    // Operations that operate on the currently previewed item.
+    if (lastGifPath) {
+      actions.push({
+        id: "save-as-copy",
+        label: saving
+          ? t("common.saving", "Saving…")
+          : t("screencap.preview.list.saveAs", "Save as copy"),
+        disabled: !lastGifPath || saving,
+        onClick: () => void saveAsCopy(lastGifPath, t),
+      });
+      if (isImageCopyablePath(lastGifPath)) {
+        actions.push({
+          id: "copy-image",
+          label: t("screencap.preview.list.copy", "Copy to clipboard"),
+          onClick: () => void copyImage(lastGifPath, t),
+        });
+      }
+      if (isVideoConvertiblePath(lastGifPath)) {
+        actions.push({
+          id: "convert-gif",
+          label: t("screencap.preview.convert", "Convert to GIF"),
+          onClick: () => void handleConvertGifAction(lastGifPath),
+        });
+      }
+      actions.push({
+        id: "show-in-folder",
+        label: t("screencap.preview.list.reveal", "Show in folder"),
+        onClick: () => void revealInFolder(lastGifPath, t),
+      });
+      actions.push({
         id: "new-capture",
-        label: t("screencap.startCapture", "Screenshot / Recording"),
+        label: t("screencap.preview.list.newCapture", "New capture"),
         kbd: "Enter",
         onClick: () => void beginScreenshot(),
-      },
-      {
+      });
+      actions.push({
         id: "back-launcher",
         label: t("screencap.backLauncher", "Back to Launcher"),
         onClick: () => {
           reset();
           setTab("launcher");
         },
-      },
-    ],
-    [beginScreenshot, reset, setTab, t],
-  );
+      });
+    } else {
+      actions.push({
+        id: "new-capture",
+        label: t("screencap.startCapture", "Screenshot / Recording"),
+        kbd: "Enter",
+        onClick: () => void beginScreenshot(),
+      });
+    }
+    return actions;
+  }, [
+    beginScreenshot,
+    copyImage,
+    handleConvertGifAction,
+    lastGifPath,
+    previewStatus.saving,
+    reset,
+    revealInFolder,
+    saveAsCopy,
+    setTab,
+    t,
+  ]);
 
   const recordingActions = useMemo<QxShellAction[]>(
     () => [
@@ -569,6 +689,44 @@ export default function ScreenRecorder() {
     );
   }
 
+  const captureToast = toastPath ? (
+    <CaptureToast
+      path={toastPath}
+      onOpen={() => {
+        setPreview(toastPath);
+        setToastPath(null);
+      }}
+      onDismiss={() => setToastPath(null)}
+    />
+  ) : null;
+  const historyPane = (
+    <div
+      className="qx-content-list qx-screencap-history-pane"
+      data-qx-region="screencap-history"
+      data-qx-region-label={t("screencap.history.region", "Capture history")}
+      data-qx-region-initial="true"
+      tabIndex={-1}
+    >
+      <CaptureHistory
+        layout={historyLayout}
+        expandedGroups={expandedHistoryGroups}
+        onExpandedChange={handleHistoryGroupExpanded}
+        onOpenActionsAt={handleOpenActionsAt}
+      />
+    </div>
+  );
+  const previewPane = (
+    <div
+      className="qx-content-detail qx-screencap-preview-pane"
+      data-qx-region="screencap-preview"
+      data-qx-region-label={t("screencap.previewTitle", "Capture Preview")}
+      data-qx-region-scroll
+      tabIndex={-1}
+    >
+      <GifPreview path={lastGifPath!} onClose={handleNewRecording} />
+    </div>
+  );
+
   return (
     <QxShell
       title={t("screencap.title", "Screenshot & Recording Module")}
@@ -612,43 +770,28 @@ export default function ScreenRecorder() {
       primaryActionId={showingPreview ? "new-capture" : "screenshot"}
       actionTitle={t("screencap.actions", "Capture Actions")}
       actions={showingPreview ? doneActions : readyActions}
+      actionMenuRequest={actionMenuRequest}
     >
-      <div className={`qx-content-split qx-screencap-browser is-${historyLayout}${showingPreview ? " has-detail" : ""}`}>
-        {toastPath && (
-          <CaptureToast
-            path={toastPath}
-            onOpen={() => {
-              setPreview(toastPath);
-              setToastPath(null);
-            }}
-            onDismiss={() => setToastPath(null)}
-          />
-        )}
-        <div
-          className="qx-content-list qx-screencap-history-pane"
-          data-qx-region="screencap-history"
-          data-qx-region-label={t("screencap.history.region", "Capture history")}
-          data-qx-region-initial="true"
-          tabIndex={-1}
+      {showingPreview ? (
+        <QxResizableSplit
+          className={`qx-content-split qx-screencap-browser is-${historyLayout} has-detail`}
+          storageKey={SCREENCAP_HISTORY_WIDTH_KEY}
+          defaultLeftWidth={null}
+          resetLeftWidth={null}
+          minLeftWidth={280}
+          minRightWidth={320}
+          separatorLabel={t("screencap.resizeHistory", "Resize capture history and preview")}
+          overlay={captureToast}
         >
-          <CaptureHistory
-            layout={historyLayout}
-            expandedGroups={expandedHistoryGroups}
-            onExpandedChange={handleHistoryGroupExpanded}
-          />
+          {historyPane}
+          {previewPane}
+        </QxResizableSplit>
+      ) : (
+        <div className={`qx-content-split qx-screencap-browser is-${historyLayout}`}>
+          {captureToast}
+          {historyPane}
         </div>
-        {showingPreview ? (
-          <div
-            className="qx-content-detail qx-screencap-preview-pane"
-            data-qx-region="screencap-preview"
-            data-qx-region-label={t("screencap.previewTitle", "Capture Preview")}
-            data-qx-region-scroll
-            tabIndex={-1}
-          >
-            <GifPreview path={lastGifPath!} onClose={handleNewRecording} />
-          </div>
-        ) : null}
-      </div>
+      )}
     </QxShell>
   );
 }

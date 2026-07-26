@@ -8,6 +8,7 @@ use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use tauri::AppHandle;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -344,9 +345,9 @@ fn validate_settings_section(section: &str) -> Result<&str, String> {
 /// Open one stable semantic settings destination. Plugins do not need to know
 /// `ms-settings:` identifiers or version-specific macOS preference URLs.
 #[tauri::command]
-pub async fn plugin_system_open_settings(section: String) -> Result<(), String> {
+pub async fn plugin_system_open_settings(app: AppHandle, section: String) -> Result<(), String> {
     let section = validate_settings_section(&section)?.to_string();
-    crate::floating_panel::set_external_interaction_active(true);
+    crate::floating_panel::set_external_interaction_active_with_app(&app, true);
     let result = tauri::async_runtime::spawn_blocking(move || {
         #[cfg(target_os = "macos")]
         {
@@ -392,7 +393,7 @@ pub async fn plugin_system_open_settings(section: String) -> Result<(), String> 
     .map_err(|error| format!("open settings task failed: {error}"))
     .and_then(|result| result);
     if result.is_err() {
-        crate::floating_panel::set_external_interaction_active(false);
+        crate::floating_panel::set_external_interaction_active_with_app(&app, false);
     }
     result
 }

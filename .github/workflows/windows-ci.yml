@@ -50,21 +50,16 @@ jobs:
         run: npm run check
 
       - name: Check frontend
-        run: npm run build
-
-      - name: Prepare bundled assets
-        run: |
-          npm run prepare:search-tools
-          npm run prepare:capture-assets
+        run: npx tsc --noEmit
 
       - name: Check Rust formatting
         run: cargo fmt --check --manifest-path src-tauri/Cargo.toml
 
       - name: Check Windows Rust target
-        run: cargo check --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
+        run: cargo check --release --manifest-path src-tauri/Cargo.toml --target x86_64-pc-windows-msvc
 
       - name: Test Windows Rust library
-        run: cargo test --manifest-path src-tauri/Cargo.toml --lib --target x86_64-pc-windows-msvc
+        run: cargo test --release --manifest-path src-tauri/Cargo.toml --lib --target x86_64-pc-windows-msvc
 
       - name: Build Windows NSIS installer
         run: npm run tauri -- build --target x86_64-pc-windows-msvc --bundles nsis

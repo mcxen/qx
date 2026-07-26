@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { DEFAULT_RECORDING_OPTIONS } from "./preferences";
 import { islandHost } from "../../island";
+import { revealSystemPath, writeImageFileToClipboard } from "../../system";
 
 export interface ScreencapEntry {
   id: number;
@@ -216,6 +217,8 @@ interface ScreencapStore {
   lastGifPath: string | null;
   history: ScreencapEntry[];
   error: string | null;
+  /** Inline status surfaced in the preview pane for copy / save-as / reveal. */
+  previewStatus: { msg: string | null; error: boolean; saving: boolean };
   startRecording: (area?: RecordArea | null, options?: RecordingOptions) => Promise<void>;
   stopRecording: () => Promise<void>;
   syncRecordingStatus: () => Promise<RecordingSnapshot | null>;
@@ -225,6 +228,11 @@ interface ScreencapStore {
   clearHistory: () => Promise<void>;
   setPreview: (path: string) => void;
   reset: () => void;
+  /** Preview-driven actions that share status with the right pane. */
+  saveAsCopy: (path: string, t: Translate) => Promise<void>;
+  copyImage: (path: string, t: Translate) => Promise<void>;
+  revealInFolder: (path: string, t: Translate) => Promise<void>;
+  clearPreviewStatus: () => void;
 }
 
 export const useScreencapStore = create<ScreencapStore>((set, get) => ({
@@ -236,6 +244,7 @@ export const useScreencapStore = create<ScreencapStore>((set, get) => ({
   lastGifPath: null,
   history: [],
   error: null,
+  previewStatus: { msg: null, error: false, saving: false },
 
   startRecording: async (area, options = DEFAULT_RECORDING_OPTIONS) => {
     set({ error: null });
@@ -332,7 +341,11 @@ export const useScreencapStore = create<ScreencapStore>((set, get) => ({
   },
 
   // Keep status usable for browsing history after a finished capture.
-  setPreview: (path) => set({ lastGifPath: path, status: "done", error: null }),
+  setPreview: (path) => {
+    set({ lastGifPath: path, status: "done", error: null });
+    // Switching previews invalidates any in-flight action feedback.
+    get().clearPreviewStatus();
+  },
 
   reset: () => {
     if (get().isRecording) return;
@@ -343,6 +356,90 @@ export const useScreencapStore = create<ScreencapStore>((set, get) => ({
       controlsVisible: false,
       error: null,
       lastGifPath: null,
+      previewStatus: { msg: null, error: false, saving: false },
     });
+  },
+
+  clearPreviewStatus: () => {
+    set((current) => {
+      if (current.previewStatus.msg === null && !current.previewStatus.error && !current.previewStatus.saving) {
+        return current;
+      }
+      return { previewStatus: { msg: null, error: false, saving: false } };
+    });
+  },
+
+  saveAsCopy: async (path, t) => {
+    if (!path) return;
+    const fileName = path.split(/[\\/]/).pop() ?? path;
+    const extension = fileName.split(".").pop()?.toLowerCase() ?? "";
+    const escapedExtension = extension.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const suffix = extension || "mp4";
+    const base = fileName.replace(new RegExp(`\\.${escapedExtension}$`, "i"), "") + "_copy";
+    const separatorIndex = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+    const dir = path.substring(0, separatorIndex);
+    const pathSeparator = path.lastIndexOf("\\") > path.lastIndexOf("/") ? "\\" : "/";
+    const dest = `${dir}${pathSeparator}${base}.${suffix}`;
+    set({
+      previewStatus: { msg: null, error: false, saving: true },
+    });
+    try {
+      await invoke("save_gif", { sourcePath: path, destPath: dest });
+      set({
+        previewStatus: {
+          msg: `${t("screencap.preview.savedTo", "Saved to")} ${dest}`,
+          error: false,
+          saving: false,
+        },
+      });
+    } catch (e) {
+      set({
+        previewStatus: {
+          msg: `${t("common.error", "Error")}: ${String(e)}`,
+          error: true,
+          saving: false,
+        },
+      });
+    }
+  },
+
+  copyImage: async (path, t) => {
+    if (!path) return;
+    set({
+      previewStatus: { msg: null, error: false, saving: false },
+    });
+    try {
+      await writeImageFileToClipboard(path);
+      set({
+        previewStatus: {
+          msg: t("screencap.toast.copied", "Copied"),
+          error: false,
+          saving: false,
+        },
+      });
+    } catch (e) {
+      set({
+        previewStatus: {
+          msg: `${t("common.error", "Error")}: ${String(e)}`,
+          error: true,
+          saving: false,
+        },
+      });
+    }
+  },
+
+  revealInFolder: async (path, t) => {
+    if (!path) return;
+    try {
+      await revealSystemPath(path);
+    } catch (e) {
+      set({
+        previewStatus: {
+          msg: `${t("screencap.preview.revealFailed", "Show in folder failed")}: ${String(e)}`,
+          error: true,
+          saving: false,
+        },
+      });
+    }
   },
 }));

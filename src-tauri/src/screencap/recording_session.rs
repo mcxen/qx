@@ -100,7 +100,7 @@ pub async fn start_recording(
     options: Option<RecordingOptions>,
     capture_options: Option<CaptureExecutionOptions>,
 ) -> Result<(), String> {
-    selection::ensure_screen_capture_permission()?;
+    selection::ensure_screen_capture_permission(Some(&app))?;
 
     let started_at;
     let capture_start;

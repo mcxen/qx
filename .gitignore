@@ -13,7 +13,8 @@ dist-ssr
 src-tauri/target
 src-tauri/target/
 src-tauri/resources/search/
-src-tauri/resources/generated/
+src-tauri/resources/generated/*
+!src-tauri/resources/generated/screencap-shutter.wav
 src-tauri/binaries/qx-ffmpeg-*
 *.app
 *.dmg

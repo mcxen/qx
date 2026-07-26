@@ -5,7 +5,7 @@
 //! open System Settings for the user to toggle Qx on.
 
 use serde::Serialize;
-use tauri::command;
+use tauri::{command, AppHandle};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct MacPermissionStatus {
@@ -112,15 +112,23 @@ fn permission(
 }
 
 #[cfg(target_os = "macos")]
-fn open_settings_url(url: &str) -> Result<(), String> {
-    crate::floating_panel::set_external_interaction_active(true);
+fn open_settings_url(url: &str, app: Option<&AppHandle>) -> Result<(), String> {
+    if let Some(app) = app {
+        crate::floating_panel::set_external_interaction_active_with_app(app, true);
+    } else {
+        crate::floating_panel::set_external_interaction_active(true);
+    }
     let result = std::process::Command::new("open")
         .arg(url)
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("open System Settings: {e}"));
     if result.is_err() {
-        crate::floating_panel::set_external_interaction_active(false);
+        if let Some(app) = app {
+            crate::floating_panel::set_external_interaction_active_with_app(app, false);
+        } else {
+            crate::floating_panel::set_external_interaction_active(false);
+        }
     }
     result
 }
@@ -269,34 +277,41 @@ pub fn qx_permissions_status() -> Result<Vec<MacPermissionStatus>, String> {
 }
 
 #[command]
-pub fn qx_permissions_request(id: String) -> Result<bool, String> {
+pub fn qx_permissions_request(app: AppHandle, id: String) -> Result<bool, String> {
+    qx_permissions_request_internal(Some(&app), id)
+}
+
+pub(crate) fn qx_permissions_request_internal(
+    app: Option<&AppHandle>,
+    id: String,
+) -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
         match id.as_str() {
             "full-disk-access" => {
                 // Probe first so the app appears in the FDA list, then open Settings.
                 let _ = full_disk_access_granted();
-                open_settings_url(FULL_DISK_ACCESS_SETTINGS)?;
+                open_settings_url(FULL_DISK_ACCESS_SETTINGS, app)?;
                 Ok(full_disk_access_granted())
             }
             "screen-recording" => {
                 let granted = unsafe { CGRequestScreenCaptureAccess() };
                 if !granted {
-                    let _ = open_settings_url(SCREEN_RECORDING_SETTINGS);
+                    let _ = open_settings_url(SCREEN_RECORDING_SETTINGS, app);
                 }
                 Ok(granted || screen_recording_granted())
             }
             "accessibility" => {
                 let granted = request_accessibility_prompt();
                 if !granted {
-                    let _ = open_settings_url(ACCESSIBILITY_SETTINGS);
+                    let _ = open_settings_url(ACCESSIBILITY_SETTINGS, app);
                 }
                 Ok(granted || accessibility_granted())
             }
             "input-monitoring" => {
                 let granted = unsafe { IOHIDRequestAccess(IOHID_REQUEST_TYPE_LISTEN_EVENT) };
                 if !granted {
-                    let _ = open_settings_url(INPUT_MONITORING_SETTINGS);
+                    let _ = open_settings_url(INPUT_MONITORING_SETTINGS, app);
                 }
                 Ok(granted || input_monitoring_granted())
             }
@@ -306,6 +321,7 @@ pub fn qx_permissions_request(id: String) -> Result<bool, String> {
 
     #[cfg(not(target_os = "macos"))]
     {
+        let _ = app;
         let _ = id;
         Err("permission requests are only available on macOS".to_string())
     }
@@ -314,11 +330,14 @@ pub fn qx_permissions_request(id: String) -> Result<bool, String> {
 /// Request several optional permissions in one shot (onboarding "enable all").
 /// Returns the latest status list after each request attempt.
 #[command]
-pub fn qx_permissions_request_all(ids: Vec<String>) -> Result<Vec<MacPermissionStatus>, String> {
+pub fn qx_permissions_request_all(
+    app: AppHandle,
+    ids: Vec<String>,
+) -> Result<Vec<MacPermissionStatus>, String> {
     #[cfg(target_os = "macos")]
     {
         for id in ids {
-            let _ = qx_permissions_request(id);
+            let _ = qx_permissions_request_internal(Some(&app), id);
             // Brief gap so successive Settings panes / dialogs do not race.
             std::thread::sleep(std::time::Duration::from_millis(350));
         }
@@ -327,13 +346,14 @@ pub fn qx_permissions_request_all(ids: Vec<String>) -> Result<Vec<MacPermissionS
 
     #[cfg(not(target_os = "macos"))]
     {
+        let _ = app;
         let _ = ids;
         qx_permissions_status()
     }
 }
 
 #[command]
-pub fn qx_permissions_open_settings(id: String) -> Result<(), String> {
+pub fn qx_permissions_open_settings(app: AppHandle, id: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         let url = match id.as_str() {
@@ -346,11 +366,12 @@ pub fn qx_permissions_open_settings(id: String) -> Result<(), String> {
             "input-monitoring" => INPUT_MONITORING_SETTINGS,
             _ => return Err(format!("unknown permission: {id}")),
         };
-        open_settings_url(url)
+        open_settings_url(url, Some(&app))
     }
 
     #[cfg(not(target_os = "macos"))]
     {
+        let _ = app;
         let _ = id;
         Err("permission settings are only available on macOS".to_string())
     }

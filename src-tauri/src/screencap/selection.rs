@@ -25,11 +25,14 @@ use crate::display::{
     capture_monitor, capture_monitor_for_tauri, cursor_monitor, displays, tauri_monitor_for_capture,
 };
 
-pub(super) fn ensure_screen_capture_permission() -> Result<(), String> {
+pub(super) fn ensure_screen_capture_permission(app: Option<&AppHandle>) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         if !crate::permissions::screen_recording_granted() {
-            let _ = crate::permissions::qx_permissions_request("screen-recording".to_string());
+            let _ = crate::permissions::qx_permissions_request_internal(
+                app,
+                "screen-recording".to_string(),
+            );
             if !crate::permissions::screen_recording_granted() {
                 return Err(
                     "Screen Recording permission required. Enable Qx in System Settings → Privacy & Security → Screen Recording, then fully quit and reopen Qx."
@@ -445,7 +448,7 @@ pub async fn screencap_begin_capture_select(app: AppHandle, mode: String) -> Res
     {
         return Err("A screen recording is already in progress".to_string());
     }
-    ensure_screen_capture_permission()?;
+    ensure_screen_capture_permission(Some(&app))?;
     let mode = CaptureMode::parse(&mode)?;
     // Invalidate any stale picker tracker before replacing its session.
     let generation = begin_picker_session();
@@ -847,7 +850,7 @@ pub async fn screencap_recapture_last_region(app: AppHandle) -> Result<(), Strin
     {
         return Err("A screen recording is already in progress".to_string());
     }
-    ensure_screen_capture_permission()?;
+    ensure_screen_capture_permission(Some(&app))?;
     let logical = load_last_region()
         .ok_or_else(|| "No previous capture region. Take a screenshot first.".to_string())?;
     let physical = physical_area_from_logical(&app, &logical)?;
