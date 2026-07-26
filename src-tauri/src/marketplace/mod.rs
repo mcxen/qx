@@ -8,15 +8,12 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::command;
 
-const DEFAULT_INDEX_URL: &str =
-    "https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json";
-const DEFAULT_REGISTRY_ID: &str = "qx-official";
-const DEFAULT_REGISTRY_NAME: &str = "Qx Official";
 const USER_AGENT: &str = "Qx/0.1 (Marketplace; +https://github.com/mcxen/qx)";
 static PLUGIN_STORAGE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 const HTTP_RETRY_ATTEMPTS: usize = 2;
 const HTTP_RETRY_AFTER_CAP_SECS: u64 = 3;
 const PLUGIN_INDEX_CACHE_TTL_SECS: u64 = 15 * 60;
+const PLUGIN_REGISTRY_TIMEOUT_SECS: u64 = 20;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginCommand {
@@ -444,10 +441,10 @@ struct RegistryFetchTarget {
     index_url: String,
 }
 
-fn enabled_registry_targets() -> Vec<RegistryFetchTarget> {
-    let settings = crate::settings::read_settings();
-    let mut targets: Vec<RegistryFetchTarget> = settings
-        .plugin_registries
+fn enabled_registry_targets_from(
+    sources: Vec<crate::settings::PluginRegistrySource>,
+) -> Vec<RegistryFetchTarget> {
+    sources
         .into_iter()
         .filter(|r| r.enabled && !r.index_url.trim().is_empty())
         .map(|r| RegistryFetchTarget {
@@ -463,15 +460,12 @@ fn enabled_registry_targets() -> Vec<RegistryFetchTarget> {
             },
             index_url: r.index_url.trim().to_string(),
         })
-        .collect();
-    if targets.is_empty() {
-        targets.push(RegistryFetchTarget {
-            id: DEFAULT_REGISTRY_ID.to_string(),
-            name: DEFAULT_REGISTRY_NAME.to_string(),
-            index_url: DEFAULT_INDEX_URL.to_string(),
-        });
-    }
-    targets
+        .collect()
+}
+
+fn enabled_registry_targets() -> Vec<RegistryFetchTarget> {
+    let settings = crate::settings::read_settings();
+    enabled_registry_targets_from(settings.plugin_registries)
 }
 
 fn blake3_short(input: &str) -> String {
@@ -489,7 +483,7 @@ fn stamp_entry_source(
     entry
 }
 
-async fn fetch_one_registry_index(
+async fn fetch_one_registry_index_inner(
     target: RegistryFetchTarget,
 ) -> (PluginIndexSourceStatus, Vec<PluginIndexEntry>) {
     let candidates = plugin_index_url_candidates(&target.index_url);
@@ -547,6 +541,28 @@ async fn fetch_one_registry_index(
         },
         Vec::new(),
     )
+}
+
+async fn fetch_one_registry_index(
+    target: RegistryFetchTarget,
+) -> (PluginIndexSourceStatus, Vec<PluginIndexEntry>) {
+    let timeout = Duration::from_secs(PLUGIN_REGISTRY_TIMEOUT_SECS);
+    match tokio::time::timeout(timeout, fetch_one_registry_index_inner(target.clone())).await {
+        Ok(result) => result,
+        Err(_) => (
+            PluginIndexSourceStatus {
+                id: target.id,
+                name: target.name,
+                index_url: target.index_url,
+                ok: false,
+                error: Some(format!(
+                    "plugin library request timed out after {PLUGIN_REGISTRY_TIMEOUT_SECS}s"
+                )),
+                plugin_count: 0,
+            },
+            Vec::new(),
+        ),
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -3031,6 +3047,40 @@ mod tests {
         assert_eq!(compare_plugin_versions("0.6.16-beta.2", "0.6.16"), Some(-1));
         assert_eq!(compare_plugin_versions("0.6.16", "0.6.16-beta.2"), Some(1));
         assert_eq!(compare_plugin_versions("invalid", "0.6.16"), None);
+    }
+
+    #[test]
+    fn disabled_plugin_registries_are_not_fetch_targets() {
+        let targets = enabled_registry_targets_from(vec![
+            crate::settings::PluginRegistrySource {
+                id: "healthy".to_string(),
+                name: "Healthy".to_string(),
+                index_url: "https://example.com/index.json".to_string(),
+                enabled: true,
+            },
+            crate::settings::PluginRegistrySource {
+                id: "blocked".to_string(),
+                name: "Blocked".to_string(),
+                index_url: "https://blocked.example.com/index.json".to_string(),
+                enabled: false,
+            },
+        ]);
+
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].id, "healthy");
+    }
+
+    #[test]
+    fn all_disabled_plugin_registries_do_not_restore_default_source() {
+        let targets = enabled_registry_targets_from(vec![crate::settings::PluginRegistrySource {
+            id: "qx-official".to_string(),
+            name: "Qx Official".to_string(),
+            index_url: "https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json"
+                .to_string(),
+            enabled: false,
+        }]);
+
+        assert!(targets.is_empty());
     }
 
     #[test]

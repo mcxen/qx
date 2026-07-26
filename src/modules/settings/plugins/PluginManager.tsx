@@ -985,7 +985,7 @@ function MarketplaceTab({
 }) {
   const t = useT();
   const locale = useLocale();
-  const { settings, patch, setActiveTab } = useSettingsStore();
+  const { settings, patch, flush, setActiveTab } = useSettingsStore();
   const registries = settings.plugin_registries?.length
     ? settings.plugin_registries
     : DEFAULT_PLUGIN_REGISTRIES;
@@ -1001,6 +1001,14 @@ function MarketplaceTab({
   const [registryDrafts, setRegistryDrafts] = useState<PluginRegistrySource[]>([]);
   const [installStatus, setInstallStatus] = useState<{ tone: StatusTone; message: string } | null>(null);
   const [hostVersion, setHostVersion] = useState<string | null>(null);
+  const fetchGeneration = useRef(0);
+
+  const enabledSourceIds = useMemo(
+    () => new Set(registries.filter((registry) => registry.enabled).map((registry) => registry.id)),
+    [registries],
+  );
+  const activeSourceFilter =
+    sourceFilter !== "all" && !enabledSourceIds.has(sourceFilter) ? "all" : sourceFilter;
 
   useEffect(() => {
     let cancelled = false;
@@ -1019,10 +1027,10 @@ function MarketplaceTab({
   const filteredEntries = useMemo(() => {
     const q = normalizeSearch(searchQuery);
     return entries.filter((entry) => {
-      if (sourceFilter !== "all" && (entry.source_id || "") !== sourceFilter) return false;
+      if (activeSourceFilter !== "all" && (entry.source_id || "") !== activeSourceFilter) return false;
       return marketplaceEntryMatchesQuery(entry, q, t);
     });
-  }, [entries, searchQuery, sourceFilter, t]);
+  }, [activeSourceFilter, entries, searchQuery, t]);
 
   const selectedEntry = useMemo(() => {
     if (selectedKey) {
@@ -1043,10 +1051,13 @@ function MarketplaceTab({
   }, [entries, selectedEntry]);
 
   const fetchIndex = useCallback(async (sourceId?: string, forceRefresh = false) => {
+    const generation = ++fetchGeneration.current;
     setLoading(true);
     setError(null);
     setInstallStatus(null);
     try {
+      await flush();
+      if (generation !== fetchGeneration.current) return;
       const index = await invoke<{
         schema_version: number;
         plugins: PluginIndexEntry[];
@@ -1055,14 +1066,15 @@ function MarketplaceTab({
         sourceId: sourceId && sourceId !== "all" ? sourceId : null,
         forceRefresh,
       });
+      if (generation !== fetchGeneration.current) return;
       setEntries(index.plugins);
       setSourceStatuses(index.sources ?? []);
     } catch (err) {
-      setError(String(err));
+      if (generation === fetchGeneration.current) setError(String(err));
     } finally {
-      setLoading(false);
+      if (generation === fetchGeneration.current) setLoading(false);
     }
-  }, []);
+  }, [flush]);
 
   const registriesSignature = useMemo(
     () =>
@@ -1073,8 +1085,14 @@ function MarketplaceTab({
   );
 
   useEffect(() => {
-    void fetchIndex(sourceFilter === "all" ? undefined : sourceFilter);
-  }, [fetchIndex, sourceFilter, registriesSignature]);
+    if (sourceFilter !== "all" && !enabledSourceIds.has(sourceFilter)) {
+      setSourceFilter("all");
+    }
+  }, [enabledSourceIds, sourceFilter]);
+
+  useEffect(() => {
+    void fetchIndex(activeSourceFilter === "all" ? undefined : activeSourceFilter);
+  }, [activeSourceFilter, fetchIndex, registriesSignature]);
 
   const handleInstall = async (entry: PluginIndexEntry, mode: "install" | "upgrade" | "reinstall") => {
     if (!appVersionMeetsMinimum(hostVersion ?? "", entry.min_app_version)) {
@@ -1162,6 +1180,7 @@ function MarketplaceTab({
       .filter((r) => r.enabled)
       .map((r) => ({ value: r.id, label: r.name || r.index_url }));
     const fromStatus = sourceStatuses
+      .filter((s) => enabledSourceIds.has(s.id))
       .filter((s) => !fromSettings.some((r) => r.value === s.id))
       .map((s) => ({ value: s.id, label: s.name || s.id }));
     return [
@@ -1169,7 +1188,7 @@ function MarketplaceTab({
       ...fromSettings,
       ...fromStatus,
     ];
-  }, [registries, sourceStatuses, t]);
+  }, [enabledSourceIds, registries, sourceStatuses, t]);
 
   const librariesDialog = (
     <Dialog open={librariesOpen} onOpenChange={setLibrariesDialogOpen}>
@@ -1301,7 +1320,7 @@ function MarketplaceTab({
       <Button
         variant="outline"
         size="sm"
-        onClick={() => void fetchIndex(sourceFilter === "all" ? undefined : sourceFilter, true)}
+        onClick={() => void fetchIndex(activeSourceFilter === "all" ? undefined : activeSourceFilter, true)}
         disabled={loading}
       >
         {loading ? (
