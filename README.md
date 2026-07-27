@@ -1,6 +1,6 @@
 <!-- language: en -->
 
-> **Version**: v0.6.39 — current release
+> **Version**: v0.6.40 — current release
 
 <a id="readme-en"></a>
 
@@ -35,13 +35,13 @@ Main Search:
 
 
 
-RSS 阅读
+RSS Reader:
 
-![RSS阅读器界面](assets/pasted-image-1784216357149.png)
+![RSS Reader](assets/pasted-image-1784216357149.png)
 
-V2EX插件
+V2EX Plugin:
 
-![image](assets/pasted-image-1784216492326.png)
+![V2EX Plugin](assets/pasted-image-1784216492326.png)
 
 
 
@@ -140,9 +140,10 @@ Architecture rules, Esc protocol, and UI conventions:
 | **Capture**   | Screenshot & region record (MP4/MOV) · annotate · GIF          |
 | **RSS**       | Feeds, folders, OPML, inline reading                           |
 | **QxAI**      | Streaming chat · OpenRouter / DeepSeek / custom BYOK           |
-| **Plugins**   | Sandboxed runtime · zip import · marketplace · Raycast convert |
+| **Plugins**   | Sandboxed runtime · zip import · marketplace · Workbench UI    |
 
-Also built in: weather · V2EX · macros · OCR · text tools · themes & shortcuts.
+Also built in: weather · V2EX · macros · OCR · text tools · Home Dashboard ·
+floating island · themes & shortcuts.
 
 ***
 
@@ -168,6 +169,7 @@ Also built in: weather · V2EX · macros · OCR · text tools · themes & shortc
 | `src/`        | React shell and built-in modules (clipboard, RSS, capture, settings, …) |
 | `src/plugin/` | Plugin registry, runtime iframe, RPC, host ports                        |
 | `src-tauri/`  | Rust core: marketplace, clipboard, capture, CLI / file / HTTP ports     |
+| `qx-plugins/` | First-party marketplace plugins (Brew, Unsplash, Sysinfo, …)           |
 | `public/doc/` | User- and author-facing guides                                          |
 | `docs/`       | Internal architecture for contributors                                  |
 | `scripts/`    | Checks, Raycast converter, packaging helpers                            |
@@ -193,7 +195,7 @@ Prefer host **ports** over OS details: `context.cli`, `context.http`,
 [plugin development guide](./public/doc/plugin-development-guide.md).
 
 Marketplace examples: **Brew** (macOS CLI), **Unsplash**, **Qx Bing Wallpaper**,
-**QxHeihe**, Calendar, V2EX.
+**QxHeihe**, **QxCoolapk**, **QxWeibo**, **Sysinfo**, **QxGH**, Calendar, V2EX.
 
 ***
 
@@ -335,9 +337,9 @@ npm run tauri build -- --target aarch64-apple-darwin --bundles app
 | **截图与录屏** | 区域 / 窗口 · 标注 · MP4/MOV · 可转 GIF         |
 | **RSS**   | 订阅、文件夹、OPML、应用内阅读                       |
 | **QxAI**  | 流式对话 · OpenRouter / DeepSeek / 自定义 BYOK |
-| **插件**    | 沙盒运行时 · 压缩包 Import · 市场 · Raycast 转换    |
+| **插件**    | 沙盒运行时 · 压缩包 Import · 市场 · Workbench UI    |
 
-另含：天气 · V2EX · 宏 · OCR · 文本工具 · 主题与快捷键。
+另含：天气 · V2EX · 宏 · OCR · 文本工具 · 主页 Dashboard · 悬浮灵动岛 · 主题与快捷键。
 
 ***
 
@@ -363,6 +365,7 @@ npm run tauri build -- --target aarch64-apple-darwin --bundles app
 | `src/`        | React 壳与内置模块（剪贴板、RSS、截图、设置等）        |
 | `src/plugin/` | 插件注册、iframe 运行时、RPC、宿主端口            |
 | `src-tauri/`  | Rust 核心：市场、剪贴板、截图、CLI / 文件 / HTTP 等 |
+| `qx-plugins/` | 第一方市场插件（Brew、Unsplash、Sysinfo 等）    |
 | `public/doc/` | 面向用户 / 插件作者的文档                      |
 | `docs/`       | 贡献者架构文档                             |
 | `scripts/`    | 检查脚本、Raycast 转换器等                   |
@@ -386,8 +389,8 @@ node scripts/convert-raycast-extension.mjs /path/to/extension --out /tmp/qx-out 
 权限，不要直接绑 OS 细节。详见
 [插件开发手册](./public/doc/plugin-development-guide.md)。
 
-市场示例：**Brew**（macOS）、**Unsplash**、Bing 壁纸、**QxHeihe 小黑盒**、日历、
-V2EX 等。
+市场示例：**Brew**（macOS）、**Unsplash**、Bing 壁纸、**QxHeihe 小黑盒**、
+**QxCoolapk 酷安**、**QxWeibo 微博**、**Sysinfo**、**QxGH**、日历、V2EX 等。
 
 ***
 

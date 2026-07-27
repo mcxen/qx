@@ -1,6 +1,6 @@
 # Qx 开发者文档索引
 
-> 状态：Current · 适用版本：v0.5.18 · Owner：Core · 最后复核：2026-07-15
+> 状态：Current · 适用版本：v0.6.39 · Owner：Core · 最后复核：2026-07-27
 
 面向核心贡献者。所有面向用户的说明在 [README.md](../README.md) 和 [`public/doc/`](../public/doc/) 下。
 
@@ -22,9 +22,12 @@
 | [module-port-inventory.md](./module-port-inventory.md) | **内置模块 + 市场插件端口对照**（shell/Esc/列表/缓存/http；写插件/新模块先看） |
 | [rust-backend.md](./rust-backend.md) | Rust 模块导览、启动顺序、添加新模块流程、常见坑 |
 | [runtime-threading.md](./runtime-threading.md) | **主线程 UI + blocking 多线程**：`runtime::ui` / `blocking`、模块命令模板、SIGTRAP 规避 |
-| [ipc-catalogue.md](./ipc-catalogue.md) | 全部 127 个 Tauri 命令 + 事件通道；按模块分组 |
+| [ipc-catalogue.md](./ipc-catalogue.md) | 全部 310+ 个 Tauri 命令 + 事件通道；按模块分组 |
 | [settings-panel.md](./settings-panel.md) | Settings/About 面板结构、Row/Card/SettingsCard 规范 |
 | [macos-onboarding.md](./macos-onboarding.md) | macOS 首次启动权限引导（FDA / 剪贴板粘贴 / 可选 TCC） |
+| [qx-island-architecture.md](./qx-island-architecture.md) | 灵动岛统一抽象层：info channels、size/surface、capabilities/styles |
+| [shortcut-registry.md](./shortcut-registry.md) | 统一快捷键注册表（Global vs In-App）· 状态：Design |
+| [user-guide/README.md](./user-guide/README.md) | 终端用户指南（安装、搜索、模块、插件、设置） |
 
 ## 插件
 
@@ -81,7 +84,7 @@
 ## 计划中未写的
 
 - CONTRIBUTING.md（外部贡献流程、PR 模板）
-- 单元测试指南（目前无测试框架）
+- 测试指南（`cargo test --lib` 135+ tests、`npm run test:shell-navigation`、`npm run test:island` 已有，但缺统一文档）
 - macOS 签名 / notarization 手册
 - Tauri v2 capability / ACL 说明
 - vendored `cardinal/` 三个 crate 的来龙去脉
