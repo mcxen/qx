@@ -287,10 +287,18 @@ export default function ArticleList() {
         try {
           const source = await prepareArticleImage(url, currentArticle?.link);
           if (cancelled || !image.isConnected) return;
-          image.src = source;
-          window.requestAnimationFrame(() => {
+          const reveal = () => {
             if (!cancelled && image.isConnected) image.dataset.qxImageState = "loaded";
-          });
+          };
+          const fail = () => {
+            if (!cancelled && image.isConnected) image.dataset.qxImageState = "failed";
+          };
+          image.addEventListener("load", reveal, { once: true });
+          image.addEventListener("error", fail, { once: true });
+          image.src = source;
+          // A decoded shared source can complete synchronously before the
+          // browser schedules a load event for this visible element.
+          if (image.complete && image.naturalWidth > 0) reveal();
         } catch {
           if (!cancelled && image.isConnected) image.dataset.qxImageState = "failed";
         }

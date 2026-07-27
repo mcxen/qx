@@ -97,7 +97,10 @@ export function sanitizeHtml(html: string, baseUrl?: string): string {
     img.style.borderRadius = "4px";
     img.style.display = "block";
     img.style.margin = "10px 0";
-    img.setAttribute("loading", "lazy");
+    // Rust cache requests are already concurrency-limited by the reader. A
+    // second browser-level lazy gate can leave a cached local image invisible
+    // while its original width/height reserves a large blank region.
+    img.setAttribute("loading", "eager");
     img.setAttribute("decoding", "async");
   });
   doc.querySelectorAll("pre,code").forEach((el) => {
