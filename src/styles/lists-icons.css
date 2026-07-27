@@ -2135,10 +2135,12 @@
   height: auto !important;
   max-width: 100% !important;
   border-radius: var(--qx-control-radius);
+  opacity: 1;
+  transition: opacity 120ms ease;
 }
 
 .rss-article-content img[data-qx-image-state="loading"] {
-  visibility: hidden;
+  opacity: 0;
 }
 
 .rss-article-content img[data-qx-image-state="failed"] {

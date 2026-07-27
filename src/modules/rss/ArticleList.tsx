@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { useRssStore, type RssArticle } from "./store";
-import { classifyArticleTime, formatDate, sanitizeHtml } from "./article-utils";
+import { classifyArticleTime, collectArticleImageUrls, formatDate, sanitizeHtml } from "./article-utils";
+import { prepareArticleImage, prewarmArticleImages } from "./articleImageCache";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import {
   qxMasterDetailIds,
@@ -151,6 +152,13 @@ export default function ArticleList() {
       : ""),
     [currentArticle, originalContent],
   );
+
+  const prewarmArticle = useCallback((article: RssArticle | undefined) => {
+    if (!article) return;
+    const urls = collectArticleImageUrls(article.content || article.summary, article.link);
+    if (article.image_url?.trim()) urls.unshift(article.image_url.trim());
+    prewarmArticleImages(urls, article.link);
+  }, []);
   const articleContentStyle = {
     "--rss-article-font-size": `${article_font_size}px`,
     "--rss-article-line-height": article_font_size > 16 ? "1.7" : "1.55",
@@ -236,7 +244,10 @@ export default function ArticleList() {
   const openArticleForReading = useCallback(
     async (id: number, focusReader = false) => {
       const index = articles.findIndex((article) => article.id === id);
-      if (index >= 0) setSelectedIndex(index);
+      if (index >= 0) {
+        setSelectedIndex(index);
+        prewarmArticle(articles[index]);
+      }
       await openArticle(id);
       window.requestAnimationFrame(() => {
         if (focusReader) focusDetail();
@@ -245,8 +256,20 @@ export default function ArticleList() {
         });
       });
     },
-    [articles, focusDetail, openArticle, setSelectedIndex],
+    [articles, focusDetail, openArticle, prewarmArticle, setSelectedIndex],
   );
+
+  useEffect(() => {
+    prewarmArticle(articles[selectedIndex]);
+    prewarmArticle(articles[selectedIndex - 1]);
+    prewarmArticle(articles[selectedIndex + 1]);
+  }, [articles, prewarmArticle, selectedIndex]);
+
+  useEffect(() => {
+    prewarmArticle(currentArticle ?? undefined);
+    const nextArticle = readingArticles.findIndex((article) => article.id === currentArticle?.id);
+    if (nextArticle >= 0) prewarmArticle(readingArticles[nextArticle + 1]);
+  }, [currentArticle, prewarmArticle, readingArticles]);
 
   useEffect(() => {
     const root = document.getElementById("rss-article-content");
@@ -262,13 +285,12 @@ export default function ArticleList() {
         if (!url) continue;
         image.dataset.qxImageState = "loading";
         try {
-          const path = await invoke<string>("rss_cache_article_image", {
-            url,
-            referer: currentArticle?.link || null,
-          });
+          const source = await prepareArticleImage(url, currentArticle?.link);
           if (cancelled || !image.isConnected) return;
-          image.src = convertFileSrc(path);
-          image.dataset.qxImageState = "loaded";
+          image.src = source;
+          window.requestAnimationFrame(() => {
+            if (!cancelled && image.isConnected) image.dataset.qxImageState = "loaded";
+          });
         } catch {
           if (!cancelled && image.isConnected) image.dataset.qxImageState = "failed";
         }
@@ -297,12 +319,9 @@ export default function ArticleList() {
     if (!url) return () => {
       cancelled = true;
     };
-    void invoke<string>("rss_cache_article_image", {
-      url,
-      referer: currentArticle?.link || null,
-    })
-      .then((path) => {
-        if (!cancelled) setHeroImageSrc(convertFileSrc(path));
+    void prepareArticleImage(url, currentArticle?.link)
+      .then((source) => {
+        if (!cancelled) setHeroImageSrc(source);
       })
       .catch(() => {});
     return () => {

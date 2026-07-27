@@ -1,5 +1,20 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Fix — RSS 阅读器图片预热与稳定显示
+
+**状态**：实现完成，等待桌面运行态复核。
+
+- 文章正文与封面共享 Rust 图片缓存请求、WebView 本地解码 Promise；同一 URL 不重复下载或解码。
+- 列表选中项、前后相邻文章和阅读队列下一篇会在打开前预热首批图片；可见图片仅在本地文件
+  已完成解码后切换为可见，避免透明占位图切换时闪烁。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [ ] macOS 运行态验证冷缓存、热缓存、键盘连续切换文章时正文和封面无闪烁。
+
 ## Feature — 捕获历史重命名与单次播放
 
 **状态**：实现完成，等待桌面运行态复核。

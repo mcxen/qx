@@ -48,6 +48,28 @@ function lastSrcsetCandidate(value: string): string {
   return candidates[candidates.length - 1] ?? "";
 }
 
+function imageRemoteSource(img: HTMLImageElement, baseUrl?: string): string | null {
+  const source =
+    img.getAttribute("data-src")
+    || img.getAttribute("data-original")
+    || img.getAttribute("data-lazy-src")
+    || img.getAttribute("data-url")
+    || img.getAttribute("src")
+    || lastSrcsetCandidate(img.getAttribute("data-srcset") || img.getAttribute("srcset") || "");
+  return absoluteHttpUrl(source, baseUrl);
+}
+
+/** Returns the article's original HTTP(S) images for Rust cache prewarming. */
+export function collectArticleImageUrls(html: string, baseUrl?: string): string[] {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const urls = new Set<string>();
+  doc.querySelectorAll("img").forEach((element) => {
+    const source = imageRemoteSource(element as HTMLImageElement, baseUrl);
+    if (source) urls.add(source);
+  });
+  return [...urls];
+}
+
 export function sanitizeHtml(html: string, baseUrl?: string): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("script,style,iframe,object,embed,form,input,button").forEach((el) => el.remove());
@@ -62,17 +84,11 @@ export function sanitizeHtml(html: string, baseUrl?: string): string {
   });
   doc.querySelectorAll("img").forEach((el) => {
     const img = el as HTMLImageElement;
-    const source =
-      img.getAttribute("data-src")
-      || img.getAttribute("data-original")
-      || img.getAttribute("data-lazy-src")
-      || img.getAttribute("data-url")
-      || img.getAttribute("src")
-      || lastSrcsetCandidate(img.getAttribute("data-srcset") || img.getAttribute("srcset") || "");
-    const remoteSource = absoluteHttpUrl(source, baseUrl);
+    const remoteSource = imageRemoteSource(img, baseUrl);
     if (remoteSource) {
       img.setAttribute("data-qx-remote-src", remoteSource);
       img.setAttribute("src", TRANSPARENT_PIXEL);
+      img.setAttribute("data-qx-image-state", "loading");
       img.removeAttribute("srcset");
       img.removeAttribute("data-srcset");
     }
