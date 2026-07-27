@@ -24,6 +24,7 @@ import QxReplyList from "../../components/QxReplyList";
 import { useArticleReadingProgress } from "./useArticleReadingProgress";
 import { useT } from "../../i18n";
 import { buildRssRefreshIsland } from "./refreshProgress";
+import { getQxDesktopPlatform } from "../../utils/keyboard";
 
 interface V2exReply {
   id: number;
@@ -68,6 +69,7 @@ const MD = qxMasterDetailIds("rss");
 
 export default function ArticleList() {
   const t = useT();
+  const useRustImageCache = getQxDesktopPlatform() === "windows";
   const {
     feeds,
     selectedFeedId,
@@ -148,17 +150,18 @@ export default function ArticleList() {
       ? sanitizeHtml(
           originalContent ?? currentArticle.content ?? currentArticle.summary,
           currentArticle.link,
+          useRustImageCache ? "rust-cache" : "webview",
         )
       : ""),
-    [currentArticle, originalContent],
+    [currentArticle, originalContent, useRustImageCache],
   );
 
   const prewarmArticle = useCallback((article: RssArticle | undefined) => {
-    if (!article) return;
+    if (!useRustImageCache || !article) return;
     const urls = collectArticleImageUrls(article.content || article.summary, article.link);
     if (article.image_url?.trim()) urls.unshift(article.image_url.trim());
     prewarmArticleImages(urls, article.link);
-  }, []);
+  }, [useRustImageCache]);
   const articleContentStyle = {
     "--rss-article-font-size": `${article_font_size}px`,
     "--rss-article-line-height": article_font_size > 16 ? "1.7" : "1.55",
@@ -274,6 +277,18 @@ export default function ArticleList() {
   useEffect(() => {
     const root = document.getElementById("rss-article-content");
     if (!root) return;
+    const onClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.tagName === "IMG") {
+        const src = target.getAttribute("src");
+        if (src) setLightbox(src);
+      }
+    };
+    root.addEventListener("click", onClick);
+    if (!useRustImageCache) {
+      return () => root.removeEventListener("click", onClick);
+    }
+
     let cancelled = false;
     const images = Array.from(root.querySelectorAll<HTMLImageElement>("img[data-qx-remote-src]"));
     let nextImage = 0;
@@ -306,19 +321,11 @@ export default function ArticleList() {
     };
     void Promise.all(Array.from({ length: Math.min(3, images.length) }, () => loadNext()));
 
-    const onClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.tagName === "IMG") {
-        const src = target.getAttribute("src");
-        if (src) setLightbox(src);
-      }
-    };
-    root.addEventListener("click", onClick);
     return () => {
       cancelled = true;
       root.removeEventListener("click", onClick);
     };
-  }, [cleanContent, currentArticle?.link]);
+  }, [cleanContent, currentArticle?.link, useRustImageCache]);
 
   useEffect(() => {
     let cancelled = false;
@@ -327,6 +334,12 @@ export default function ArticleList() {
     if (!url) return () => {
       cancelled = true;
     };
+    if (!useRustImageCache) {
+      setHeroImageSrc(url);
+      return () => {
+        cancelled = true;
+      };
+    }
     void prepareArticleImage(url, currentArticle?.link)
       .then((source) => {
         if (!cancelled) setHeroImageSrc(source);
@@ -335,7 +348,7 @@ export default function ArticleList() {
     return () => {
       cancelled = true;
     };
-  }, [currentArticle?.image_url, currentArticle?.link]);
+  }, [currentArticle?.image_url, currentArticle?.link, useRustImageCache]);
 
   useEffect(() => {
     if (!currentArticle) return;

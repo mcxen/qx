@@ -70,7 +70,13 @@ export function collectArticleImageUrls(html: string, baseUrl?: string): string[
   return [...urls];
 }
 
-export function sanitizeHtml(html: string, baseUrl?: string): string {
+export type ArticleImageLoadingMode = "webview" | "rust-cache";
+
+export function sanitizeHtml(
+  html: string,
+  baseUrl?: string,
+  imageLoadingMode: ArticleImageLoadingMode = "webview",
+): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("script,style,iframe,object,embed,form,input,button").forEach((el) => el.remove());
   stripDangerousHtmlAttributes(doc);
@@ -86,9 +92,15 @@ export function sanitizeHtml(html: string, baseUrl?: string): string {
     const img = el as HTMLImageElement;
     const remoteSource = imageRemoteSource(img, baseUrl);
     if (remoteSource) {
-      img.setAttribute("data-qx-remote-src", remoteSource);
-      img.setAttribute("src", TRANSPARENT_PIXEL);
-      img.setAttribute("data-qx-image-state", "loading");
+      if (imageLoadingMode === "rust-cache") {
+        img.setAttribute("data-qx-remote-src", remoteSource);
+        img.setAttribute("src", TRANSPARENT_PIXEL);
+        img.setAttribute("data-qx-image-state", "loading");
+      } else {
+        img.setAttribute("src", remoteSource);
+        img.removeAttribute("data-qx-remote-src");
+        img.removeAttribute("data-qx-image-state");
+      }
       img.removeAttribute("srcset");
       img.removeAttribute("data-srcset");
     }
@@ -97,9 +109,9 @@ export function sanitizeHtml(html: string, baseUrl?: string): string {
     img.style.borderRadius = "4px";
     img.style.display = "block";
     img.style.margin = "10px 0";
-    // Rust cache requests are already concurrency-limited by the reader. A
-    // second browser-level lazy gate can leave a cached local image invisible
-    // while its original width/height reserves a large blank region.
+    // The visible article owns scrolling and only mounts one body at a time.
+    // Eager loading also prevents a local Rust-cached source from being gated
+    // a second time by the browser after the reader has already prepared it.
     img.setAttribute("loading", "eager");
     img.setAttribute("decoding", "async");
   });
