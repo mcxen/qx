@@ -142,6 +142,18 @@ if (!/\.qx-onboarding-window-drag\s*\{[\s\S]*-webkit-app-region:\s*drag/.test(on
   fail("macOS onboarding drag handle must retain native drag CSS semantics");
 }
 
+// --- 9. esbuild selects its native binary through optionalDependencies ---
+const packageJson = JSON.parse(read("package.json"));
+for (const dependencyGroup of ["dependencies", "devDependencies", "optionalDependencies"]) {
+  for (const dependency of Object.keys(packageJson[dependencyGroup] ?? {})) {
+    if (dependency.startsWith("@esbuild/")) {
+      fail(
+        `package.json ${dependencyGroup}.${dependency} must not pin a platform-specific esbuild binary; depend on esbuild instead`,
+      );
+    }
+  }
+}
+
 if (failures.length) {
   console.error("architecture check failed:\n");
   for (const item of failures) console.error(`  - ${item}`);
@@ -149,4 +161,4 @@ if (failures.length) {
   process.exit(1);
 }
 
-console.log("architecture: ok — SOLID doc linked, host binary/path ports, converter Buffer, settings i18n import, island ports, capture capabilities.");
+console.log("architecture: ok — SOLID doc linked, host binary/path ports, converter Buffer, platform dependencies, settings i18n import, island ports, capture capabilities.");
