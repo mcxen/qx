@@ -175,6 +175,36 @@ fn constructs_mirror_asset_url_when_manifest_omits_it() {
 }
 
 #[test]
+fn constructs_cnb_release_asset_url_when_manifest_omits_it() {
+    let asset_name = default_asset_name("0.5.4");
+    let info = update_info_from_manifest_source(
+        "0.5.3",
+        QxUpdateManifest {
+            version: "0.5.4".to_string(),
+            tag: "v0.5.4".to_string(),
+            platform: UPDATE_PLATFORM.to_string(),
+            target: UPDATE_TARGET.to_string(),
+            asset_name: asset_name.clone(),
+            asset_url: String::new(),
+            sha256: "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789".to_string(),
+            size: Some(500),
+            artifacts: Vec::new(),
+        },
+        CNB_LATEST_MANIFEST,
+    )
+    .expect("CNB manifest should resolve");
+
+    assert_eq!(
+        info.asset_url.as_deref(),
+        Some(format!("https://cnb.cool/v.ip/Qx/-/releases/download/v0.5.4/{asset_name}").as_str())
+    );
+    assert_eq!(
+        info.release_url.as_deref(),
+        Some("https://cnb.cool/v.ip/Qx/-/releases/v0.5.4")
+    );
+}
+
+#[test]
 fn rejects_asset_outside_configured_mirror_path() {
     let asset_name = default_asset_name("0.5.4");
     let error = validate_release_asset_url_from_manifest(

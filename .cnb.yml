@@ -1,0 +1,63 @@
+# CNB 国内下载镜像：Tag 发布后等待 GitHub 原生构建完成，再将同一批产物
+# 镜像到 CNB Release。CNB 只负责分发，不在 Linux runner 上重复构建桌面端。
+$:
+  tag_push:
+    - docker:
+        image: ubuntu:24.04
+      stages:
+        - name: Prepare CNB release assets
+          script: |
+            set -eu
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq --no-install-recommends ca-certificates curl jq
+            mkdir -p cnb-release
+
+            # GitHub 的 macOS/Windows 构建与发布是异步的；轮询只发生在 CI，
+            # 不会占用 Qx 客户端的启动或更新线程。
+            manifest_url="https://github.com/mcxen/qx/releases/download/${CNB_BRANCH}/latest.json"
+            for attempt in $(seq 1 180); do
+              if curl --fail --silent --show-error --location --retry 2 \
+                "$manifest_url" -o /tmp/qx-latest.json \
+                && jq -e --arg version "${CNB_BRANCH#v}" '.version == $version and (.artifacts | length) >= 2' /tmp/qx-latest.json >/dev/null; then
+                break
+              fi
+              if [ "$attempt" = 180 ]; then
+                echo "GitHub release ${CNB_BRANCH} was not ready after 30 minutes." >&2
+                exit 1
+              fi
+              sleep 10
+            done
+
+            release_api="https://api.github.com/repos/mcxen/qx/releases/tags/${CNB_BRANCH}"
+            curl --fail --silent --show-error --location --retry 5 \
+              "$release_api" -o /tmp/qx-release.json
+            jq -e '.assets | length > 0' /tmp/qx-release.json >/dev/null
+
+            jq -r '.assets[].browser_download_url' /tmp/qx-release.json | while IFS= read -r asset_url; do
+              asset_name="${asset_url##*/}"
+              curl --fail --silent --show-error --location --retry 5 --retry-all-errors \
+                "$asset_url" -o "cnb-release/${asset_name}"
+            done
+
+            cnb_base="https://cnb.cool/v.ip/Qx/-/releases/download/${CNB_BRANCH}"
+            jq --arg base "$cnb_base" \
+              '.asset_url = ($base + "/" + .asset_name)
+               | .artifacts |= map(.asset_url = ($base + "/" + .asset_name))' \
+              /tmp/qx-latest.json > cnb-release/latest.json
+
+        - name: Create CNB release
+          type: git:release
+          options:
+            tag: ${CNB_BRANCH}
+            title: ${CNB_BRANCH}
+            description: "国内下载镜像：桌面端安装包与自动更新清单"
+            overlying: true
+            latest: true
+
+        - name: Upload CNB release assets
+          image: cnbcool/attachments:latest
+          settings:
+            tag: ${CNB_BRANCH}
+            attachments:
+              - "./cnb-release/*"

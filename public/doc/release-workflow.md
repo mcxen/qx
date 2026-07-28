@@ -259,6 +259,20 @@ over HTTPS, from the manifest's exact origin, and at the sibling
 GET requests without expiring share tokens; WebDAV credentials remain
 write-only release infrastructure.
 
+### CNB domestic release mirror
+
+The repository also contains a `.cnb.yml` pipeline for CNB. On every `v*` tag,
+CNB waits for the GitHub desktop release to finish, downloads the exact same
+artifacts, creates the matching CNB Release, and uploads the packages plus
+`latest.json` with `cnbcool/attachments`. This avoids rebuilding native macOS
+and Windows clients on a Linux runner and keeps checksums identical.
+
+Qx checks the stable CNB manifest first:
+`https://cnb.cool/v.ip/Qx/-/releases/latest/download/latest.json`. If CNB is
+unavailable or its manifest fails validation, the updater continues through the
+configured WebDAV mirror and then GitHub. All requests run in the existing
+background update task; no update-network request runs on the UI thread.
+
 On Windows, the detached updater helper waits for Qx to exit and starts the NSIS
 installer silently through the native elevation verb. A per-machine install can
 show UAC; cancellation is treated as a failed update. The helper relaunches Qx

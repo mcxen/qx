@@ -19,6 +19,9 @@ const GITHUB_LATEST_MANIFEST: &str =
     "https://github.com/mcxen/qx/releases/latest/download/latest.json";
 const GITHUB_RELEASE_DOWNLOAD_BASE: &str = "https://github.com/mcxen/qx/releases/download";
 const GITHUB_RELEASE_TAG_BASE: &str = "https://github.com/mcxen/qx/releases/tag";
+const CNB_LATEST_MANIFEST: &str = "https://cnb.cool/v.ip/Qx/-/releases/latest/download/latest.json";
+const CNB_RELEASE_DOWNLOAD_BASE: &str = "https://cnb.cool/v.ip/Qx/-/releases/download";
+const CNB_RELEASE_TAG_BASE: &str = "https://cnb.cool/v.ip/Qx/-/releases";
 const MIRROR_LATEST_MANIFEST: Option<&str> = option_env!("QX_UPDATE_MIRROR_MANIFEST_URL");
 #[cfg(target_os = "macos")]
 const UPDATE_PLATFORM: &str = "macos";
@@ -190,20 +193,24 @@ pub(crate) fn maybe_run_update_helper_from_args() -> bool {
 }
 
 fn check_for_update(current_version: &str) -> Result<QxUpdateInfo, String> {
+    let mut errors = Vec::new();
+    match check_for_update_via_manifest(current_version, CNB_LATEST_MANIFEST) {
+        Ok(info) => return Ok(info),
+        Err(error) => errors.push(format!("CNB: {error}")),
+    }
     if let Some(mirror_url) = configured_mirror_manifest_url() {
         match check_for_update_via_manifest(current_version, mirror_url) {
             Ok(info) => return Ok(info),
-            Err(mirror_error) => {
-                return check_for_update_via_manifest(current_version, GITHUB_LATEST_MANIFEST)
-                    .map_err(|github_error| {
-                        format!(
-                            "update checks failed via mirror ({mirror_error}) and GitHub ({github_error})"
-                        )
-                    });
-            }
+            Err(error) => errors.push(format!("configured mirror: {error}")),
         }
     }
-    check_for_update_via_manifest(current_version, GITHUB_LATEST_MANIFEST)
+    match check_for_update_via_manifest(current_version, GITHUB_LATEST_MANIFEST) {
+        Ok(info) => Ok(info),
+        Err(error) => {
+            errors.push(format!("GitHub: {error}"));
+            Err(format!("update checks failed: {}", errors.join("; ")))
+        }
+    }
 }
 
 fn configured_mirror_manifest_url() -> Option<&'static str> {
@@ -303,13 +310,21 @@ fn update_info_from_manifest_source(
     Ok(build_update_info(
         current_version,
         latest_version,
-        Some(format!("{GITHUB_RELEASE_TAG_BASE}/{tag}")),
+        Some(release_tag_url(manifest_url, &tag)),
         asset_name,
         asset_url,
         sha256,
         size,
         None,
     ))
+}
+
+fn release_tag_url(manifest_url: &str, tag: &str) -> String {
+    if manifest_url == CNB_LATEST_MANIFEST {
+        format!("{CNB_RELEASE_TAG_BASE}/{tag}")
+    } else {
+        format!("{GITHUB_RELEASE_TAG_BASE}/{tag}")
+    }
 }
 
 fn default_asset_name(version: &str) -> String {
@@ -346,6 +361,9 @@ fn default_asset_url(manifest_url: &str, tag: &str, asset_name: &str) -> Result<
     if manifest_url == GITHUB_LATEST_MANIFEST {
         return Ok(format!("{GITHUB_RELEASE_DOWNLOAD_BASE}/{tag}/{asset_name}"));
     }
+    if manifest_url == CNB_LATEST_MANIFEST {
+        return Ok(format!("{CNB_RELEASE_DOWNLOAD_BASE}/{tag}/{asset_name}"));
+    }
     let manifest = reqwest::Url::parse(manifest_url)
         .map_err(|e| format!("invalid update manifest URL: {e}"))?;
     let expected_path = mirror_asset_path(manifest.path(), asset_name)?;
@@ -376,6 +394,8 @@ fn validate_release_asset_url_from_manifest(
         .map_err(|e| format!("invalid update manifest URL: {e}"))?;
     let expected_path = if manifest_url == GITHUB_LATEST_MANIFEST {
         format!("/mcxen/qx/releases/download/{tag}/{asset_name}")
+    } else if manifest_url == CNB_LATEST_MANIFEST {
+        format!("/v.ip/Qx/-/releases/download/{tag}/{asset_name}")
     } else {
         mirror_asset_path(manifest.path(), asset_name)?
     };

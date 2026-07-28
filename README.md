@@ -1,6 +1,6 @@
 <!-- language: en -->
 
-> **Version**: v0.6.42 — current release
+> **Version**: v0.6.43 — current release
 
 <a id="readme-en"></a>
 
@@ -62,7 +62,8 @@ brew upgrade --cask qx   # later
 ### Releases
 
 Prebuilt packages are published on
-[GitHub Releases](https://github.com/mcxen/qx/releases):
+[GitHub Releases](https://github.com/mcxen/qx/releases) and the
+[CNB domestic mirror](https://cnb.cool/v.ip/Qx/-/releases):
 
 | Platform                | Package                                                                                        |
 | ----------------------- | ---------------------------------------------------------------------------------------------- |
@@ -261,7 +262,8 @@ brew upgrade --cask qx   # 升级
 ### 发行包
 
 预编译包发布于
-[GitHub Releases](https://github.com/mcxen/qx/releases)：
+[GitHub Releases](https://github.com/mcxen/qx/releases)，国内用户也可以从
+[CNB 国内镜像](https://cnb.cool/v.ip/Qx/-/releases)下载：
 
 | 平台                      | 包                                                                                 |
 | ----------------------- | --------------------------------------------------------------------------------- |
