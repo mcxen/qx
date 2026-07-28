@@ -41,6 +41,7 @@ mod text_toolbox;
 mod tray_menu;
 mod updater;
 mod v2ex;
+mod watchdog;
 mod weather;
 #[cfg(target_os = "windows")]
 mod windows_process;
@@ -291,7 +292,7 @@ pub fn run() {
         eprintln!("[QX PANIC] {loc}: {msg}");
     }));
 
-    if updater::maybe_run_update_helper_from_args() {
+    if watchdog::maybe_run_from_args() || updater::maybe_run_update_helper_from_args() {
         return;
     }
 
@@ -364,6 +365,15 @@ pub fn run() {
                 );
                 return Ok(());
             };
+
+            if let Err(error) = watchdog::start() {
+                diagnostics::log(
+                    diagnostics::LogLevel::Warn,
+                    "main.watchdog",
+                    "failed to start Windows watchdog",
+                    serde_json::json!({ "error": error }),
+                );
+            }
 
             let mut startup_settings = settings::read_settings();
             diagnostics::log(
@@ -892,6 +902,9 @@ pub fn run() {
 
             #[cfg(not(target_os = "macos"))]
             {
+                if matches!(&event, tauri::RunEvent::ExitRequested { .. }) {
+                    watchdog::mark_clean_shutdown();
+                }
                 let _ = (app, event);
             }
         });

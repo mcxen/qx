@@ -289,7 +289,15 @@ IME 候选窗口抢焦点。
 提升 sequence；渐进结果提交按静默窗口合并，避免 Zustand 外部 store 的同步通知阻塞下一次
 按键。排序 Worker 保持常驻，同一时刻只执行一个任务并仅保留最新等待任务。
 
-### 6.1 窗口内动作
+### 6.1 macOS 全局输入监听的线程约束
+
+`src-tauri/src/input_events.rs` 使用 `rdev` 的 CoreGraphics event tap 收集物理按键和鼠标事件。
+macOS 的 TIS/TSM 键盘布局 API（例如 `TSMGetInputSourceProperty`）只能在主 dispatch queue 调用；
+它们不能从 event-tap 的 `qx-input-events` 回调线程执行。项目维护的 `vendor/rdev` 因此保留
+`EventType::KeyPress/KeyRelease` 与鼠标事件，但在 macOS 监听回调中将 `Event::name` 留空。
+Qx 的宏录制和指针合成只依赖物理 `Key`/鼠标事件，不得为了字符名称重新调用 TIS/TSM。
+
+### 6.2 窗口内动作
 
 模块动作不是全局快捷键。Feature 只发布稳定 ID 的 `QxShellAction[]`，
 用 `primaryActionId` 指定主动作；QxShell 让 Bottom Bar 与未修饰 Enter 执行同一对象，

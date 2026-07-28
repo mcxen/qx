@@ -33,6 +33,7 @@ fn now_ms() -> u64 {
 fn arm_exit_cleanup(app: &AppHandle) {
     EXITING.store(true, Ordering::SeqCst);
     LAST_QUIT_REQUEST_MS.store(0, Ordering::SeqCst);
+    crate::watchdog::mark_clean_shutdown();
     if let Some(flag) = app.try_state::<clipboard::ClipboardShutdown>() {
         flag.0.store(true, Ordering::SeqCst);
     }
