@@ -458,7 +458,9 @@ export default function ClipboardPanel() {
 
   // Information paints immediately from the path; size/dims/preview fill in async.
   useEffect(() => {
-    const path = selectedItem?.file_path;
+    const path = selectedItem?.file_path ?? selectedItem?.image_path;
+    // Captured images already render the real PNG; no generated thumbnail needed.
+    const isCapturedImage = !selectedItem?.file_path && Boolean(selectedItem?.image_path);
     setFilePreviewUrl(null);
     setFilePreviewError(null);
     setFilePreviewLoading(false);
@@ -490,7 +492,7 @@ export default function ClipboardPanel() {
 
     // Delay expensive preview/probe work until keyboard navigation settles. The
     // Rust side also admits at most one preview/probe worker at a time.
-    setFilePreviewLoading(true);
+    if (!isCapturedImage) setFilePreviewLoading(true);
     let previewRetryTimer: number | null = null;
     const loadFilePreview = (attempt: number) => {
       // 2) Preview thumbnail asynchronously (image / video frame / PDF page).
@@ -526,7 +528,7 @@ export default function ClipboardPanel() {
     };
 
     const heavyTimer = window.setTimeout(() => {
-      loadFilePreview(0);
+      if (!isCapturedImage) loadFilePreview(0);
 
       // 3) Dimensions / duration — slow path, never blocks Information.
       void invoke<FileMetadata>("clipboard_file_media_probe", { path })
@@ -558,7 +560,7 @@ export default function ClipboardPanel() {
       window.clearTimeout(heavyTimer);
       if (previewRetryTimer !== null) window.clearTimeout(previewRetryTimer);
     };
-  }, [selectedItem?.file_path, t]);
+  }, [selectedItem?.file_path, selectedItem?.image_path, t]);
 
   useEffect(() => {
     if (!isTauriRuntime()) return;
@@ -1402,19 +1404,37 @@ export default function ClipboardPanel() {
                     </>
                   )}
                   {selectedItem.image_path && !selectedItem.file_path && (
-                    <div>
-                      <dt>{t("clipboard.quickAction", "Quick action")}</dt>
-                      <dd>
-                        <button
-                          className="qx-inline-action"
-                          onClick={() => void startMediaTask("compress")}
-                          disabled={Boolean(mediaProgress)}
-                          type="button"
-                        >
-                          <Shrink size={13} /> {t("clipboard.compress", "Compress")}
-                        </button>
-                      </dd>
-                    </div>
+                    <>
+                      <div>
+                        <dt>{t("clipboard.size", "Size")}</dt>
+                        <dd>
+                          {fileMetadata && fileMetadata.size > 0
+                            ? formatBytes(fileMetadata.size)
+                            : t("clipboard.sizePending", "…")}
+                        </dd>
+                      </div>
+                      {fileMetadata?.width && fileMetadata?.height ? (
+                        <div>
+                          <dt>{t("clipboard.dimensions", "Dimensions")}</dt>
+                          <dd>
+                            {fileMetadata.width} × {fileMetadata.height}
+                          </dd>
+                        </div>
+                      ) : null}
+                      <div>
+                        <dt>{t("clipboard.quickAction", "Quick action")}</dt>
+                        <dd>
+                          <button
+                            className="qx-inline-action"
+                            onClick={() => void startMediaTask("compress")}
+                            disabled={Boolean(mediaProgress)}
+                            type="button"
+                          >
+                            <Shrink size={13} /> {t("clipboard.compress", "Compress")}
+                          </button>
+                        </dd>
+                      </div>
+                    </>
                   )}
                   <div>
                     <dt>{t("clipboard.copiedAt", "Copied")}</dt>
