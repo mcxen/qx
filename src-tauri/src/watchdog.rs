@@ -19,25 +19,29 @@ mod windows {
         CloseHandle, BOOL, HWND, LPARAM, WAIT_OBJECT_0, WAIT_TIMEOUT,
     };
     use windows_sys::Win32::System::Threading::{
-        OpenProcess, TerminateProcess, WaitForSingleObject, CREATE_NO_WINDOW,
-        PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
+        CreateEventW, OpenEventW, OpenProcess, SetEvent, TerminateProcess, WaitForSingleObject,
+        CREATE_NO_WINDOW, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
+        PROCESS_TERMINATE, SYNCHRONIZATION_SYNCHRONIZE,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowThreadProcessId, IsHungAppWindow,
     };
 
     const WATCHDOG_FLAG: &str = "--qx-watchdog";
-    const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(1);
-    const HEARTBEAT_GRACE: Duration = Duration::from_secs(12);
-    const HEARTBEAT_STALE: Duration = Duration::from_secs(12);
+    // A recovery service is deliberately low-frequency. Thirty seconds is
+    // soon enough for a background utility, while avoiding needless wakeups
+    // from an otherwise idle helper process.
+    const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(30);
+    const HEARTBEAT_GRACE: Duration = Duration::from_secs(30);
+    const HEARTBEAT_STALE: Duration = Duration::from_secs(60);
     const RESTART_WINDOW_SECS: u64 = 300;
     const MAX_RESTARTS_IN_WINDOW: usize = 3;
 
     static SESSION: OnceLock<Session> = OnceLock::new();
 
     struct Session {
-        heartbeat: PathBuf,
-        stop: PathBuf,
+        heartbeat_event: usize,
+        clean_event: usize,
     }
 
     pub(crate) fn maybe_run_from_args() -> bool {
@@ -63,13 +67,12 @@ mod windows {
             .map_err(|e| format!("create watchdog directory {}: {e}", root.display()))?;
 
         let pid = std::process::id();
-        let heartbeat = root.join(format!("qx-{pid}.heartbeat"));
-        let stop = root.join(format!("qx-{pid}.stop"));
+        let nonce = now_millis();
+        let heartbeat_name = format!("Local\\Qx-Watchdog-Heartbeat-{pid}-{nonce}");
+        let clean_name = format!("Local\\Qx-Watchdog-Clean-{pid}-{nonce}");
         let helper = root.join(format!("qx-watchdog-{pid}.exe"));
         let restart_state = root.join("restart-history.txt");
 
-        let _ = fs::remove_file(&heartbeat);
-        let _ = fs::remove_file(&stop);
         let _ = fs::remove_file(&helper);
         fs::copy(&target, &helper).map_err(|e| {
             format!(
@@ -78,7 +81,8 @@ mod windows {
                 helper.display()
             )
         })?;
-        write_heartbeat(&heartbeat)?;
+        let heartbeat_event = create_named_event(&heartbeat_name)?;
+        let clean_event = create_named_event(&clean_name)?;
 
         let child = Command::new(&helper)
             .arg(WATCHDOG_FLAG)
@@ -86,10 +90,10 @@ mod windows {
             .arg(pid.to_string())
             .arg("--target-app")
             .arg(&target)
-            .arg("--heartbeat")
-            .arg(&heartbeat)
-            .arg("--stop")
-            .arg(&stop)
+            .arg("--heartbeat-event")
+            .arg(&heartbeat_name)
+            .arg("--clean-event")
+            .arg(&clean_name)
             .arg("--restart-state")
             .arg(&restart_state)
             .stdin(Stdio::null())
@@ -105,19 +109,20 @@ mod windows {
         drop(child);
         SESSION
             .set(Session {
-                heartbeat: heartbeat.clone(),
-                stop,
+                heartbeat_event,
+                clean_event,
             })
             .map_err(|_| "watchdog session initialized twice".to_string())?;
 
         let _ = thread::Builder::new()
             .name("qx-watchdog-heartbeat".to_string())
             .spawn(move || loop {
-                if write_heartbeat(&heartbeat).is_err() {
-                    // A failed write is intentionally retried. The helper will
-                    // only restart after the configured stale interval.
+                unsafe {
+                    if SetEvent(heartbeat_event as *mut core::ffi::c_void) == 0 {
+                        break;
+                    }
                 }
-                thread::sleep(HEARTBEAT_INTERVAL);
+                thread::sleep(HEALTH_CHECK_INTERVAL);
             });
 
         Ok(())
@@ -127,7 +132,9 @@ mod windows {
         let Some(session) = SESSION.get() else {
             return;
         };
-        let _ = fs::write(&session.stop, b"clean");
+        unsafe {
+            let _ = SetEvent(session.clean_event as *mut core::ffi::c_void);
+        }
     }
 
     fn run_from_args(args: &[String]) -> Result<(), String> {
@@ -139,26 +146,28 @@ mod windows {
             arg_value(args, "--target-app")
                 .ok_or_else(|| "watchdog missing --target-app".to_string())?,
         );
-        let heartbeat = PathBuf::from(
-            arg_value(args, "--heartbeat")
-                .ok_or_else(|| "watchdog missing --heartbeat".to_string())?,
-        );
-        let stop = PathBuf::from(
-            arg_value(args, "--stop").ok_or_else(|| "watchdog missing --stop".to_string())?,
-        );
+        let heartbeat_name = arg_value(args, "--heartbeat-event")
+            .ok_or_else(|| "watchdog missing --heartbeat-event".to_string())?;
+        let clean_name = arg_value(args, "--clean-event")
+            .ok_or_else(|| "watchdog missing --clean-event".to_string())?;
         let restart_state = PathBuf::from(
             arg_value(args, "--restart-state")
                 .ok_or_else(|| "watchdog missing --restart-state".to_string())?,
         );
 
-        supervise(pid, &target, &heartbeat, &stop, &restart_state)
+        let heartbeat_event = open_named_event(&heartbeat_name)?;
+        let clean_event = open_named_event(&clean_name)?;
+        let result = supervise(pid, &target, heartbeat_event, clean_event, &restart_state);
+        close_handle(heartbeat_event);
+        close_handle(clean_event);
+        result
     }
 
     fn supervise(
         pid: u32,
         target: &Path,
-        heartbeat: &Path,
-        stop: &Path,
+        heartbeat_event: *mut core::ffi::c_void,
+        clean_event: *mut core::ffi::c_void,
         restart_state: &Path,
     ) -> Result<(), String> {
         let Some(handle) = open_process(pid) else {
@@ -166,12 +175,24 @@ mod windows {
         };
 
         let started = std::time::Instant::now();
+        let mut last_heartbeat = started;
         let mut restart_for_stall = false;
         loop {
-            if stop.exists() {
+            if unsafe { WaitForSingleObject(clean_event, 0) } == WAIT_OBJECT_0 {
                 close_handle(handle);
-                cleanup_files(heartbeat, stop);
                 return Ok(());
+            }
+
+            let heartbeat_status = unsafe {
+                WaitForSingleObject(heartbeat_event, HEALTH_CHECK_INTERVAL.as_millis() as u32)
+            };
+            if heartbeat_status == WAIT_OBJECT_0 {
+                last_heartbeat = std::time::Instant::now();
+            } else if heartbeat_status != WAIT_TIMEOUT {
+                close_handle(handle);
+                return Err(format!(
+                    "wait for Qx heartbeat failed with code {heartbeat_status}"
+                ));
             }
 
             let status = unsafe { WaitForSingleObject(handle, 0) };
@@ -186,8 +207,7 @@ mod windows {
             }
 
             let beyond_grace = started.elapsed() >= HEARTBEAT_GRACE;
-            let stalled =
-                beyond_grace && heartbeat_age(heartbeat).is_some_and(|age| age >= HEARTBEAT_STALE);
+            let stalled = beyond_grace && last_heartbeat.elapsed() >= HEARTBEAT_STALE;
             if beyond_grace && (stalled || app_window_is_hung(pid)) {
                 let terminated = unsafe { TerminateProcess(handle, 1) != 0 };
                 if !terminated {
@@ -200,12 +220,10 @@ mod windows {
                 restart_for_stall = true;
                 break;
             }
-            thread::sleep(Duration::from_secs(2));
         }
         close_handle(handle);
 
-        if stop.exists() {
-            cleanup_files(heartbeat, stop);
+        if unsafe { WaitForSingleObject(clean_event, 0) } == WAIT_OBJECT_0 {
             return Ok(());
         }
         if !allow_restart(restart_state) {
@@ -247,18 +265,32 @@ mod windows {
         }
     }
 
-    fn write_heartbeat(path: &Path) -> Result<(), String> {
-        let parent = path
-            .parent()
-            .ok_or_else(|| "watchdog heartbeat has no parent directory".to_string())?;
-        fs::create_dir_all(parent).map_err(|e| format!("create heartbeat directory: {e}"))?;
-        fs::write(path, now_secs().to_string())
-            .map_err(|e| format!("write heartbeat {}: {e}", path.display()))
+    fn create_named_event(name: &str) -> Result<usize, String> {
+        let wide = wide_name(name);
+        let handle = unsafe { CreateEventW(std::ptr::null(), 0, 0, wide.as_ptr()) };
+        if handle.is_null() {
+            return Err(format!(
+                "create watchdog event {name}: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        Ok(handle as usize)
     }
 
-    fn heartbeat_age(path: &Path) -> Option<Duration> {
-        let modified = fs::metadata(path).ok()?.modified().ok()?;
-        SystemTime::now().duration_since(modified).ok()
+    fn open_named_event(name: &str) -> Result<*mut core::ffi::c_void, String> {
+        let wide = wide_name(name);
+        let handle = unsafe { OpenEventW(SYNCHRONIZATION_SYNCHRONIZE, 0, wide.as_ptr()) };
+        if handle.is_null() {
+            return Err(format!(
+                "open watchdog event {name}: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        Ok(handle)
+    }
+
+    fn wide_name(name: &str) -> Vec<u16> {
+        name.encode_utf16().chain(std::iter::once(0)).collect()
     }
 
     struct WindowState {
@@ -310,11 +342,6 @@ mod windows {
         true
     }
 
-    fn cleanup_files(heartbeat: &Path, stop: &Path) {
-        let _ = fs::remove_file(heartbeat);
-        let _ = fs::remove_file(stop);
-    }
-
     fn arg_value(args: &[String], key: &str) -> Option<String> {
         args.windows(2)
             .find(|window| window[0] == key)
@@ -325,6 +352,13 @@ mod windows {
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|value| value.as_secs())
+            .unwrap_or_default()
+    }
+
+    fn now_millis() -> u128 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|value| value.as_millis())
             .unwrap_or_default()
     }
 }

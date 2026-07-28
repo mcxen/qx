@@ -70,7 +70,7 @@
 | `settings/mod.rs` | `~/.qx/settings.json` 读写；写入后 re-register 全局快捷键 + 刷新托盘菜单 + emit `settings-updated` |
 | `settings/entry_config.rs` | Launcher 快捷入口与托盘动作的默认配置；兼容识别旧版默认快捷入口，避免覆盖用户自定义 |
 | `updater.rs` + `updater/` | 读取 per-target release manifest，校验资产，并编排 macOS bundle / Windows NSIS helper 更新；安装后 `app_quit::force_quit`（避开 macOS 双 ⌘Q）；helper 优先用 staging 二进制，等 PID 时 SIGTERM/SIGKILL |
-| `watchdog.rs` | Windows 常驻恢复边界：主进程写心跳，独立 helper 监测异常退出/无心跳并有限次重启；用户主动退出与更新退出写 clean-stop 标记，避免误拉起 |
+| `watchdog.rs` | Windows 常驻恢复边界：主进程每 30 秒通过命名事件发出轻量心跳，独立 helper 低频监测异常退出/无心跳并有限次静默重启；用户主动退出与更新退出发出 clean-stop 事件，避免误拉起 |
 | `diagnostics.rs` | 结构化诊断事件与日志文件路径；仅在 Advanced 日志开关或 Developer Mode 启用时落盘 |
 
 ## 通用工具

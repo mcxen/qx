@@ -1,6 +1,6 @@
 <!-- language: en -->
 
-> **Version**: v0.6.41 — current release
+> **Version**: v0.6.42 — current release
 
 <a id="readme-en"></a>
 
