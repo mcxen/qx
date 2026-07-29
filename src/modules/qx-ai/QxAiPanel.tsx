@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
+import { QxActionList } from "../../components/QxActionPanel";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
-import { formatQxShortcut, getQxShortcutPreset } from "../../utils/keyboard";
 import { useStore } from "../../store";
 import { openAgentSettingsTab } from "./AiProviderConfig";
 import { useG4fStore } from "./store";
@@ -81,8 +81,6 @@ export default function QxAiPanel() {
     },
   });
 
-  const actionMenuLabel = formatQxShortcut(getQxShortcutPreset().actionMenu) ?? "⌘K";
-
   const actions = useMemo<QxShellAction[]>(
     () => [
       {
@@ -124,6 +122,7 @@ export default function QxAiPanel() {
     ],
     [createConversation, deleteConversation, selectedConv, setView, t],
   );
+  const primaryActionId = selectedConv ? "open-chat" : "new-chat";
 
   return (
     <QxShell
@@ -168,20 +167,16 @@ export default function QxAiPanel() {
             </div>
           )}
           <div className="qx-action-title">{t("qxai.quick", "Quick")}</div>
-          <button className="qx-action-item" type="button" onClick={() => createConversation()}>
-            <span>{t("qxai.newChat", "New Chat")}</span>
-          </button>
-          <button className="qx-action-item" type="button" onClick={() => setView("settings")}>
-            <span>{t("qxai.chatSettings", "Chat Settings")}</span>
-          </button>
-          <button className="qx-action-item" type="button" onClick={() => openAgentSettingsTab()}>
-            <span>{t("qxai.agentProviders", "Agent & Providers")}</span>
-          </button>
+          <QxActionList
+            actions={actions.filter((action) => action.id !== primaryActionId && !action.disabled)}
+            showShortcuts={false}
+          />
         </div>
       }
       island={shell.island}
       escapeAction={shell.escapeAction}
-      primaryActionId={selectedConv ? "open-chat" : "new-chat"}
+      primaryActionId={primaryActionId}
+      actionMenuEnabled={false}
       actionTitle={t("qxai.actions", "AI Actions")}
       actions={actions}
     >
@@ -230,8 +225,8 @@ export default function QxAiPanel() {
               ? t("qxai.noMatch", "No matching conversations.")
               : t(
                   "qxai.emptyList",
-                  "No conversations yet. Use New Chat or Actions ({menu}).",
-                ).replace("{menu}", actionMenuLabel)}
+                  "No conversations yet. Use New Chat in the bottom bar.",
+                )}
           </div>
         )}
         {error && (

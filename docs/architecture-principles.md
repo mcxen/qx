@@ -34,9 +34,14 @@
 
 模块只发布一个 `QxShellAction[]`，每个动作使用稳定、非本地化且同层唯一的 `id`。
 `primaryActionId` 只是对该集合的引用：QxShell 由它同时派生 Bottom Bar 主按钮和
-未修饰 Enter；Actions 菜单与 Context Panel 消费相同对象。禁止并行维护
+未修饰 Enter；其余 Action surface 从相同对象过滤投影。禁止并行维护
 `primaryAction`、模块 Enter handler 或无回调的 Actions 哨兵。Esc 不属于此端口，
 只走 `escapeAction` / `useEscBack`。
+内置模块若把 Context 作为唯一完整 Action 面，可显式设置 `actionMenuEnabled=false`
+抑制重复的 Bottom Bar Actions 菜单；它仍必须发布同一份完整 `actions[]`，且
+`primaryActionId` 继续驱动 Bottom Bar 与 Enter，不得另造第二套主动作。
+插件宿主固定使用这一路径：Bottom Bar 只投影 primary，Context 只投影其余业务动作；
+manifest 启动命令、后台 interval 与宿主 reload 不得自动混入当前面板的业务 Actions。
 
 新增文件时先问：它的「唯一变化原因」是什么？说不清就拆。
 

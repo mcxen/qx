@@ -249,7 +249,12 @@ export default function V2exPanel() {
           {...qxRegionProps(MD.actions, { label: "Topic actions", scroll: true })}
         >
           <div className="qx-action-title">Topic Actions</div>
-          <QxActionList actions={actions.slice(0, 3)} />
+          <QxActionList
+            actions={actions.slice(0, 3).filter((action) => (
+              action.id !== (detailTopic?.url ? "open-browser" : selectedTopic ? "view-topic" : undefined)
+            ))}
+            showShortcuts={false}
+          />
           <div className="qx-action-title">Selected</div>
           <div className="v2ex-context-copy">
             {contextTopic ? (
@@ -266,6 +271,7 @@ export default function V2exPanel() {
       }
       island={shell.island}
       primaryActionId={detailTopic?.url ? "open-browser" : selectedTopic ? "view-topic" : undefined}
+      actionMenuEnabled={false}
       actionTitle="V2EX Actions"
       actions={actions}
     >

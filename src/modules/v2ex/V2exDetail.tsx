@@ -105,7 +105,10 @@ export default function V2exDetail({ topic, onBack }: V2exDetailProps) {
       context={
         <aside className="qx-action-panel">
           <div className="qx-action-title">Topic Actions</div>
-          <QxActionList actions={actions} />
+          <QxActionList
+            actions={actions.filter((action) => action.id !== "open-browser")}
+            showShortcuts={false}
+          />
           <div className="qx-action-title">Info</div>
           <div className="v2ex-context-copy">
             <strong>{topic.node || "V2EX"}</strong>
@@ -116,6 +119,7 @@ export default function V2exDetail({ topic, onBack }: V2exDetailProps) {
       }
       island={shell.island}
       primaryActionId="open-browser"
+      actionMenuEnabled={false}
       actionTitle="Topic Actions"
       actions={actions}
     >

@@ -561,23 +561,17 @@ export function PluginPanelViewport() {
         workbenchActionDescriptors,
       ]);
 
-  const actions = useMemo<QxShellAction[]>(() => {
-    // Panel-level ops stay after the selected item's ActionPanel (Raycast order).
-    const panelOps: QxShellAction[] = [
-      {
-        id: "host.reload-panel",
-        label: t("plugins.reloadPanel", "Reload Panel"),
-        kbd: "CmdOrCtrl+Shift+R",
-        onClick: () => setRefreshKey((k) => k + 1),
-      },
-      ...pluginCommands.map((cmd) => ({
-        id: `host.command.${cmd.name}`,
-        label: cmd.title,
-        onClick: () => void usePluginRegistry.getState().runCommand(cmd),
-      })),
-    ];
-    return [...contextualActions, ...panelOps];
-  }, [contextualActions, pluginCommands, t]);
+  const primaryActionId = primaryItem
+    ? workbench
+      ? primaryItem.id
+      : `item-${primaryItem.id}`
+    : undefined;
+  const contextActions = useMemo(
+    () => workbench || !raycastActionPanel
+      ? contextualActions.filter((action) => action.id !== primaryActionId)
+      : [],
+    [contextualActions, primaryActionId, raycastActionPanel, workbench],
+  );
 
   if (!isPluginTab) return null;
 
@@ -745,47 +739,21 @@ export function PluginPanelViewport() {
       trailing={<PluginBackgroundBadge pluginId={pluginId} />}
       context={
         <aside className="qx-action-panel">
-          {/* Raycast ActionPanel ≡ Qx Actions (same list as bottom bar + ⌘K). */}
-          <div className="qx-action-title">{t("common.actions", "Actions")}</div>
           {actionSelectionTitle ? (
-            <div className="v2ex-context-copy" style={{ marginBottom: 6 }}>
+            <div className="v2ex-context-copy qx-plugin-action-selection">
               <strong>{actionSelectionTitle}</strong>
             </div>
           ) : null}
-          {contextualActions.length > 0 ? (
-            <QxActionList actions={contextualActions} />
-          ) : (
-            <div className="v2ex-context-copy" style={{ opacity: 0.7 }}>
+          {contextActions.length > 0 ? (
+            <>
+              <div className="qx-action-title">{t("common.actions", "Actions")}</div>
+              <QxActionList actions={contextActions} showShortcuts={false} />
+            </>
+          ) : contextualActions.length === 0 ? (
+            <div className="v2ex-context-copy qx-plugin-action-empty">
               {t("plugins.selectForActions", "Select an item to load its actions")}
             </div>
-          )}
-          <div className="qx-action-title">{t("plugins.panelActions", "Panel")}</div>
-          <QxActionList actions={[{
-            id: "host.reload-panel",
-            label: t("plugins.reloadPanel", "Reload Panel"),
-            kbd: "CmdOrCtrl+Shift+R",
-            onClick: () => setRefreshKey((k) => k + 1),
-          }]} />
-          {pluginCommands.map((cmd) => (
-            <button
-              key={cmd.name}
-              className="qx-action-item"
-              data-qx-search-focus="preserve"
-              onClick={() => void usePluginRegistry.getState().runCommand(cmd)}
-              type="button"
-            >
-              <span className="qx-module-title-with-badge">
-                <span>{cmd.title}</span>
-                {cmd.mode === "no-view" && cmd.interval ? (
-                  <PluginBackgroundBadge
-                    pluginId={pluginId}
-                    commandName={cmd.name}
-                    compact
-                  />
-                ) : null}
-              </span>
-            </button>
-          ))}
+          ) : null}
           {background?.hasBackground && (
             <PluginBackgroundPanel pluginId={pluginId} summary={background} />
           )}
@@ -803,17 +771,14 @@ export function PluginPanelViewport() {
       }
       island={shell.island}
       islandManagedExternally={workbenchIslandManaged || pluginIslandSessionActive}
-      primaryActionId={primaryItem
-        ? workbench
-          ? primaryItem.id
-          : `item-${primaryItem.id}`
-        : "host.reload-panel"}
+      primaryActionId={primaryActionId}
+      actionMenuEnabled={false}
       actionTitle={
         actionSelectionTitle
           ? `${t("common.actions", "Actions")} · ${actionSelectionTitle}`
           : t("common.actions", "Actions")
       }
-      actions={actions}
+      actions={contextualActions}
     >
       <div className="qx-plugin-runtime-stage">
         <div

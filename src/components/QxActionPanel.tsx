@@ -6,9 +6,11 @@ import { Button } from "./ui";
 export function QxActionList({
   actions,
   empty,
+  showShortcuts = true,
 }: {
   actions: readonly QxShellAction[];
   empty?: ReactNode;
+  showShortcuts?: boolean;
 }) {
   if (!actions.length) return empty ? <>{empty}</> : null;
   return actions.map((action) => {
@@ -27,7 +29,7 @@ export function QxActionList({
           <span>{action.label}</span>
           {action.detail ? <small className="qx-action-item-detail">{action.detail}</small> : null}
         </span>
-        {shortcut ? <kbd>{shortcut}</kbd> : null}
+        {showShortcuts && shortcut ? <kbd>{shortcut}</kbd> : null}
       </Button>
     );
   });

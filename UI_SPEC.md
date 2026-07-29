@@ -66,6 +66,9 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
 - 可关闭的 Beta 内置模块在 Settings → Extensions → Installed 的模块配置 Dialog 中启停。关闭后必须同时从 Quick Entries、Launcher 静态命令、Module Surfaces 和直接导航中移除；对应 lazy view 不得挂载，模块 effect / IPC 数据请求不得启动。Settings 中的模块卡仍保留，作为重新启用的唯一管理入口。
 - **返回走 Bottom Bar 最右侧 Esc**（`escapeAction` + `useEscBack`，文案 Back/Hide）；非主搜索左侧另有小房子一键回主界面。Top Bar 默认不渲染返回箭头；禁止模块在 Top Bar 再做一套返回。
 - 右侧 Context Panel 只放导航、辅助信息和当前对象操作入口，不放第二套主布局。
+- 使用完整 Context Action 区的内置模块与插件面板只在 Bottom Bar 保留 Enter 主动作，
+  Context 只列其余业务动作，并关闭重复的 Actions 菜单。插件宿主不得把 manifest 启动命令、
+  后台 interval 或宿主 reload 自动追加为当前面板动作。
 - **Context 侧栏宽度全局统一**：只用 `--qx-context-w`（`QxShell.has-context` 的 grid 第二列）。禁止模块用 inline style / localStorage 改写该变量；列表内部分栏（如 RSS 文章列表宽）可单独 token，不得影响 shell context 列宽。
 - Bottom Bar 使用 `grid-template-columns: auto 1fr auto`。
 - Bottom Island 必须相对窗口居中：`position: absolute; left: 50%; transform: translateX(-50%)`。
@@ -133,6 +136,7 @@ QxShell 的纵向结构高度不得因为窗口左右缩窄、文字变长、筛
 | 搜索 / 内容筛选 / trailing | `search` / `topbarFilters` / `trailing` | 搜索在 Top Bar 主列；内容筛选只发布数据给宿主固定 Select；`trailing` 仅保留不可归入筛选或 Actions 的短状态 |
 | 状态 | `island` / `customIsland` | 轻量任务与位置信息，见 Bottom Island |
 | 动作 | `actions` + `primaryActionId` | 单一动作集合；稳定 ID 指定 Bottom Bar 与 Enter 的主动作，Shell 自行生成 Actions 入口 |
+| 动作菜单投影 | `actionMenuEnabled` | 默认 `true`；仅宿主内置模块在 Context 已是唯一完整 Action 面时可设为 `false`，但仍须发布完整 `actions[]`，Bottom Bar / Enter 继续由 `primaryActionId` 派生 |
 | **i18n** | `useT(key, englishFallback)` | **所有用户可见文案**（标题、按钮、空态、toast、confirm）必须可翻译；中文进 `i18n.ts` 的 `zh` 表 |
 
 **禁止：**
@@ -456,6 +460,8 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
   细边缘高光和短距离 scroll-edge fade。禁止在整个 Shell 与上下栏重复叠加 blur。
 - 内容滚动容器使用与上下栏等高的安全 inset；滚动时内容可以进入栏后并被材质柔化，
   初始内容和键盘滚动落点不得被栏遮挡。
+- Main Area 的直接子视图不得再次叠加 `--qx-topbar-h` / `--qx-bottom-bar-h`；业务布局只加
+  自身紧凑内边距，避免首屏空白和无内容溢出。Launcher Home Dashboard 遵循此规则。
 - 内容列表、详情、Context Panel 各自管理滚动。
 - 左右栏滚动互不影响。
 - 任意宽度下不得产生横向页面滚动。
@@ -744,6 +750,12 @@ Clipboard：
 RSS：
 
 - 阅读器可使用三栏：Feed / Article List / Detail。
+- 右侧 Context 是 RSS 唯一的完整 Action 面：Feed 视图按“订阅 / 内容库”分组，文章视图按
+  “文章 / 订阅 / 导航”分组；同一动作不得再复制到右侧手写按钮、正文 footer 或 Bottom Bar
+  Actions 菜单。RSS Action 不显示或注册 `F/J/K/R/S/U/O/L` 等裸键快捷方式。
+- Bottom Bar 只保留一个随上下文变化的 Enter 主动作：Feed 列表进入所选订阅，文章列表
+  阅读所选文章，正文阅读进入下一篇；该主动作从右侧 Action 分组中移除，避免重复。末篇
+  正文没有下一篇时不显示伪主动作。Shell 标准方向键、Enter 主动作和 Esc 阶梯继续保留。
 - “刷新订阅”只刷新当前 Feed；“刷新全部”必须读取数据库中的完整订阅集合逐个执行真实 HTTP 请求，不能只处理当前列表选中项。
 - 刷新灵动岛不得使用计时器或固定百分比模拟网络进度。单个 Feed 请求中显示 activity；刷新全部时按 `已完成订阅数 / 全部订阅数` 计算确定进度，并显示当前 Feed 与失败数。解析、图标解析和数据库提交完成后，该 Feed 才计入 completed。
 - Feed 图标必须优先读取 Qx 持久化的小尺寸本地缓存；远程 icon/favicon 只用于首次填充或低频过期刷新，打开阅读器不得为每个订阅重复下载图标。缓存图标保持适合列表显示的尺寸并保留字母占位降级。

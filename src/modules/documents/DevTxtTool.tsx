@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
+import { QxActionList } from "../../components/QxActionPanel";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { useStore, type ClipboardEntry } from "../../store";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
@@ -1038,6 +1039,9 @@ export default function DevTxtTool() {
   );
 
   const documentActions = listFocused ? listActions : editorActions;
+  const primaryActionId = listFocused
+    ? active ? "open-file" : "new-file"
+    : dirty ? "save" : "copy-all";
   const actionTitle = listFocused
     ? t("docs.actions.list", "List actions")
     : t("docs.actions.editor", "Editor actions");
@@ -1188,17 +1192,6 @@ export default function DevTxtTool() {
               {workspacePath || "…"}
             </span>
           </div>
-          <button className="qx-action-item" type="button" onClick={() => openWorkspace()}>
-            <span>{t("docs.openFolder", "Open folder")}</span>
-          </button>
-          <button
-            className="qx-action-item"
-            type="button"
-            onClick={() => void refreshList(selectedNameRef.current)}
-          >
-            <span>{t("docs.refresh", "Refresh list")}</span>
-          </button>
-
           <div className="qx-action-title" style={{ marginTop: 10 }}>
             {t("docs.file", "File")}
           </div>
@@ -1263,46 +1256,17 @@ export default function DevTxtTool() {
           </div>
 
           <div className="qx-action-title">{t("common.actions", "Actions")}</div>
-          <button className="qx-action-item" type="button" onClick={() => void createNewFile()}>
-            <span>{t("docs.newFile", "New File")}</span>
-            <kbd>N</kbd>
-          </button>
-          <button
-            className="qx-action-item"
-            type="button"
-            disabled={!active}
-            onClick={() => active && startRename(active)}
-          >
-            <span>{t("docs.rename", "Rename")}</span>
-          </button>
-          <button
-            className="qx-action-item"
-            type="button"
-            disabled={!active}
-            onClick={() => void pasteClipboard()}
-          >
-            <span>{t("docs.paste", "Paste")}</span>
-          </button>
-          <button
-            className="qx-action-item"
-            type="button"
-            disabled={!content}
-            onClick={() => void copyAll()}
-          >
-            <span>{t("docs.copyAll", "Copy All")}</span>
-          </button>
-          <button
-            className="qx-action-item danger"
-            type="button"
-            disabled={!active}
-            onClick={() => void deleteActive()}
-          >
-            <span>{t("docs.deleteFile", "Delete File")}</span>
-          </button>
+          <QxActionList
+            actions={documentActions.filter((action) => (
+              action.id !== primaryActionId && !action.disabled
+            ))}
+            showShortcuts={false}
+          />
         </div>
       }
       island={shell.island}
-      primaryActionId={listFocused ? (active ? "open-file" : "new-file") : dirty ? "save" : "copy-all"}
+      primaryActionId={primaryActionId}
+      actionMenuEnabled={false}
       actionTitle={actionTitle}
       actions={documentActions}
       navigation={qxMasterDetailNavigation({

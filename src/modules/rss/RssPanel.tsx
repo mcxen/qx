@@ -7,6 +7,7 @@ import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
+import { QxActionList } from "../../components/QxActionPanel";
 import AddFeedDialog from "./AddFeedDialog";
 import EditFeedDialog from "./EditFeedDialog";
 import {
@@ -167,16 +168,6 @@ export default function RssPanel() {
       ?.focus({ preventScroll: true });
   };
 
-  const handleModuleKeys = useCallback((e: React.KeyboardEvent) => {
-    // ↑↓ / Enter: QxShell navigation and primary-action protocol.
-    if ((e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      if (selectedFeed) {
-        e.preventDefault();
-        setFolderTargetFeed(selectedFeed);
-      }
-    }
-  }, [selectedFeed]);
-
   const handleDelete = (id: number) => {
     if (window.confirm(t("rss.removeFeedConfirm", "Remove this feed and all its articles?"))) {
       void removeFeed(id);
@@ -216,7 +207,6 @@ export default function RssPanel() {
     {
       id: "refresh-feed",
       label: t("rss.refreshFeed", "Refresh Feed"),
-      kbd: "R",
       disabled: !selectedFeed,
       onClick: () => {
         if (selectedFeed) void refreshFeed(selectedFeed.id);
@@ -225,7 +215,7 @@ export default function RssPanel() {
     {
       id: "add-feed",
       label: t("rss.addFeed", "Add Feed"),
-      kbd: "N",
+      kbd: "↵",
       onClick: () => setShowAdd(true),
     },
     {
@@ -236,7 +226,6 @@ export default function RssPanel() {
     {
       id: "set-folder",
       label: t("rss.setFolder", "Set Folder…"),
-      kbd: "F",
       disabled: !selectedFeed,
       onClick: () => {
         if (selectedFeed) setFolderTargetFeed(selectedFeed);
@@ -270,7 +259,6 @@ export default function RssPanel() {
     {
       id: "edit-subscription",
       label: t("rss.editSubscription", "Edit Subscription"),
-      kbd: "E",
       disabled: !selectedFeed,
       onClick: () => {
         if (selectedFeed) setEditFeed(selectedFeed);
@@ -303,7 +291,6 @@ export default function RssPanel() {
     {
       id: "delete-feed",
       label: t("rss.deleteFeed", "Delete Feed"),
-      kbd: "D",
       tone: "danger",
       disabled: !selectedFeed,
       onClick: () => {
@@ -327,7 +314,6 @@ export default function RssPanel() {
       },
       query: { active: query.length > 0, clear: () => setQuery("") },
     },
-    onKeyDown: handleModuleKeys,
     island: refreshingFeedId
       ? buildRssRefreshIsland(refreshProgress, selectedFeed?.title, t)
       : localizedStatusMessage
@@ -340,6 +326,24 @@ export default function RssPanel() {
               .replace("{unread}", String(unreadCount)),
           },
   });
+
+  const primaryActionId = selectedFeed ? "view-articles" : "add-feed";
+  const subscriptionActions = actions.filter((action) => action.id !== primaryActionId && [
+    "view-articles",
+    "refresh-feed",
+    "set-folder",
+    "remove-folder",
+    "edit-subscription",
+    "delete-folder",
+    "delete-feed",
+  ].includes(action.id));
+  const libraryActions = actions.filter((action) => action.id !== primaryActionId && [
+    "add-feed",
+    "new-folder",
+    "import-opml",
+    "export-opml",
+    "refresh-all",
+  ].includes(action.id));
 
   let flatIndex = 0;
 
@@ -381,7 +385,7 @@ export default function RssPanel() {
         >
           <div className="qx-action-title">{t("rss.subscription", "Subscription")}</div>
           {selectedFeed ? (
-            <div className="v2ex-context-copy" style={{ marginBottom: 8 }}>
+            <div className="v2ex-context-copy qx-rss-action-summary">
               <strong>{selectedFeed.title || selectedFeed.url}</strong>
               <span>
                 {t("rss.folderLabel", "Folder: {name}").replace(
@@ -392,75 +396,21 @@ export default function RssPanel() {
               <span>{selectedFeed.url}</span>
             </div>
           ) : (
-            <div className="v2ex-context-copy" style={{ marginBottom: 8 }}>
+            <div className="v2ex-context-copy qx-rss-action-summary">
               <span>
                 {t("rss.selectFeedHint", "Select a feed to set its folder or edit it.")}
               </span>
             </div>
           )}
-          <button
-            className="qx-action-item"
-            type="button"
-            onClick={() => selectedFeed && void openFeed(selectedFeed.id)}
-            disabled={!selectedFeed}
-          >
-            <span>{t("rss.viewArticles", "View Articles")}</span>
-            <kbd>↩</kbd>
-          </button>
-          <button
-            className="qx-action-item"
-            type="button"
-            onClick={() => setShowNewFolder(true)}
-          >
-            <span>{t("rss.newFolder", "New Folder")}</span>
-          </button>
-          <button
-            className="qx-action-item"
-            type="button"
-            onClick={() => selectedFeed && setFolderTargetFeed(selectedFeed)}
-            disabled={!selectedFeed}
-          >
-            <span>{t("rss.setFolder", "Set Folder…")}</span>
-            <kbd>F</kbd>
-          </button>
-          <button
-            className="qx-action-item"
-            type="button"
-            onClick={() => selectedFeed && void setFeedFolder(selectedFeed.id, null)}
-            disabled={!selectedFeed?.folder_id}
-          >
-            <span>{t("rss.removeFromFolder", "Remove from Folder")}</span>
-          </button>
-          <button
-            className="qx-action-item"
-            type="button"
-            onClick={() => selectedFeed && setEditFeed(selectedFeed)}
-            disabled={!selectedFeed}
-          >
-            <span>{t("rss.editSubscription", "Edit Subscription")}</span>
-            <kbd>E</kbd>
-          </button>
+          <QxActionList actions={subscriptionActions} showShortcuts={false} />
           <div className="qx-action-title">{t("rss.library", "Library")}</div>
-          <button className="qx-action-item" type="button" onClick={() => setShowImportOpml(true)}>
-            <span>{t("rss.importOpmlShort", "Import OPML")}</span>
-          </button>
-          <button className="qx-action-item" type="button" onClick={() => void handleExportOpml()}>
-            <span>{t("rss.exportOpml", "Export OPML")}</span>
-          </button>
-          <button
-            className="qx-action-item danger"
-            type="button"
-            onClick={() => selectedFeed && handleDelete(selectedFeed.id)}
-            disabled={!selectedFeed}
-          >
-            <span>{t("rss.deleteFeed", "Delete Feed")}</span>
-          </button>
+          <QxActionList actions={libraryActions} showShortcuts={false} />
         </div>
       }
       island={shell.island}
       escapeAction={shell.escapeAction}
-      primaryActionId={selectedFeed ? "view-articles" : "add-feed"}
-      actionTitle={t("rss.feedActions", "Feed Actions")}
+      primaryActionId={primaryActionId}
+      actionMenuEnabled={false}
       actions={actions}
     >
       <div

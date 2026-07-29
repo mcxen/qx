@@ -1,5 +1,58 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Refactor — 全量插件 Action 去重
+
+**状态**：实现完成，等待桌面运行态视觉复核。
+
+- 统一插件宿主只消费插件显式发布的业务 Actions；移除自动追加的当前插件启动命令、
+  后台 interval、宿主“重新加载面板”等无意义入口。
+- Bottom Bar 保留唯一 Enter 主动作；Workbench Context 只显示其余动作，不再同时生成
+  重复的 Cmd/Ctrl+K Actions 菜单。Raycast 兼容面板开启行内 ActionPanel 时不再在 Context
+  重复投影同一批次要动作。
+- 内置 V2EX、QxAI、文本工具箱同步收敛为相同协议；社区 Workbench 插件逐项复核后
+  保留了作用域确实不同的单项/批量动作（如刷新当前与刷新全部）。
+
+### 验证
+
+- [x] `npm run check`
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [ ] Workbench、Raycast 兼容插件与 V2EX 桌面运行态检查。
+
+## Refactor — RSS 单一 Action 区域
+
+**状态**：实现完成，等待桌面运行态视觉复核。
+
+- Feed 与 Article Context Action 改为宿主 `QxActionList` 分组呈现，移除手写重复按钮；
+  正文底部不再重复提供“打开原文”。
+- Bottom Bar 保留唯一 Enter 主动作，不再生成重复的 Actions 菜单：订阅列表进入订阅，
+  文章列表开始阅读，正文阅读进入下一篇。
+- 移除 RSS 的 F/J/K/R/S/U/O/L 等裸键及 Action 快捷键标签；方向键、Enter 与 Esc 继续
+  使用 QxShell 标准协议。
+
+### 验证
+
+- [x] `npm run check`
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [ ] Feed / Article / Reader 三层检查 Action 去重、Enter 主动作和 Esc 阶梯。
+
+## Fix — Launcher Home Dashboard 重复安全留白
+
+**状态**：实现完成，等待桌面运行态视觉复核。
+
+- 移除 Home Dashboard 对 Top Bar / Bottom Bar 安全高度的重复预留；该安全区继续由
+  QxShell 内容容器统一负责，Dashboard 只保留 12px 紧凑内容边距。
+- 高窗口下置顶入口与系统卡片紧贴 Top Bar 下方开始，减少最近搜索和右侧 Context
+  Panel 在内容本可容纳时仍出现滚动的情况。
+
+### 验证
+
+- [x] `npm run check`
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [ ] 980×576、1280×800、1500×900 运行态确认首屏留白与滚动行为。
+
 ## Fix — RSS 阅读器图片预热与稳定显示
 
 **状态**：按平台修正完成，等待桌面运行态复核。

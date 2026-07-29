@@ -4,7 +4,8 @@
   min-width: 0;
   height: 100%;
   overflow: auto;
-  padding: calc(var(--qx-topbar-h) + 12px) 12px calc(var(--qx-bottom-bar-h) + 12px);
+  /* QxShell content already owns the Top/Bottom Bar safe insets. */
+  padding: 12px;
 }
 
 .qx-home-dashboard-grid {

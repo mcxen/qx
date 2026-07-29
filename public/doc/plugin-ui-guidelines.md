@@ -19,14 +19,14 @@ Main Area
 Bottom Bar
 ├─ 可选 Home
 ├─ Bottom Island
-└─ 主动作 + Actions + Esc（Esc 始终最右）
+└─ 主动作 + Esc（Esc 始终最右）
 ```
 
 - 插件不得自行绘制第二套 Top Bar、筛选 tabs、Bottom Bar 或 Actions 入口。
 - Top Bar 右侧只用于内容筛选。发布稳定 `id`、当前值、选项和变更事件，宿主统一绘制
-  下拉框；普通命令进入 Actions。
+  下拉框；需要在当前面板执行的普通命令声明为 Workbench action。
 - Bottom Island 相对整个窗口居中，不相对内容列或 Context Panel 居中。
-- Context Panel 是辅助信息和同一动作集合的另一投影，不是第二个主界面。
+- Context Panel 是辅助信息和非主业务动作的投影，不是第二个主界面。
 
 ## 2. 选择 Workbench 模式
 
@@ -91,14 +91,13 @@ type WorkbenchAction = {
 };
 ```
 
-宿主以动作 `id` 连接四个入口：
+宿主以动作 `id` 连接三个入口：
 
 ```text
 actions[]
    ├─ primary id → Bottom Bar 主按钮
    ├─ primary id → 未修饰 Enter
-   ├─ 全部动作 → Actions 菜单
-   └─ 相同对象 → Context Panel
+   └─ 其余动作 → Context Panel
 ```
 
 因此：
@@ -108,7 +107,8 @@ actions[]
 - 标签变化、语言切换或列表选择变化不能改变动作身份。
 - 禁用的主动作仍可显示，但 Enter 不执行。
 - 子菜单在自己的层级中也必须使用唯一 ID。
-- Actions 触发器由宿主生成；插件不声明“Actions”空动作。
+- 插件不声明“Actions”空动作，也不要把 manifest 启动命令或后台 interval 复制成面板动作。
+- 需要用户在当前面板执行的命令必须由 Workbench action 显式引用。
 
 推荐动作顺序：
 
@@ -120,11 +120,10 @@ actions[]
 ## 4. 快捷键与 Esc
 
 - Enter 执行当前主动作。
-- `Cmd+K`（macOS）或 `Ctrl+K`（Windows）打开 Actions。
 - 上下方向键移动选择，左右方向键进入/退出详情。
 - 快捷键标签由宿主按平台格式化，不硬编码只有 macOS 可读的符号。
 - 文本输入保留复制、粘贴、剪切、全选、撤销、IME 和组合输入。
-- 单字母动作只在 Actions 菜单打开时使用，不能抢占搜索输入。
+- 插件不得用单字母动作抢占搜索输入。
 
 Esc 永远不是普通动作：
 
@@ -198,7 +197,7 @@ filters: [
 - [ ] Top Bar / Main Area / Bottom Bar 结构唯一。
 - [ ] 右上角筛选使用宿主固定下拉框。
 - [ ] 动作有稳定唯一 ID，且最多一个主动作。
-- [ ] Bottom Bar、Enter、Actions、Context 引用同一动作。
+- [ ] Bottom Bar、Enter 与 Context 引用同一动作集合，且 Context 不重复主动作。
 - [ ] Esc 只走宿主阶梯。
 - [ ] 带进度列表行不遮挡下一行。
 - [ ] Island 进度不遮挡文字且动画不跳动。

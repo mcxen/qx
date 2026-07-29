@@ -21,7 +21,7 @@ QxShell（Top Bar / Main Area / Bottom Bar）
 
 - 插件声明数据、筛选项、动作和状态；宿主负责窗口、主题、键盘和固定控件。
 - `panel.render()` 返回可用的缓存内容或声明式 Workbench，不阻塞网络与重任务。
-- 一个动作只声明一次。稳定 `id` 同时驱动 Bottom Bar、Enter、Actions 菜单和 Context Panel。
+- 一个动作只声明一次。稳定 `id` 驱动 Bottom Bar、Enter，并让 Context Panel 投影其余动作。
 - 平台差异由宿主端口处理，插件不要判断 macOS/Windows 后自行拼系统命令。
 
 ## 2. 文档地图
@@ -152,11 +152,13 @@ actions: [
 ```
 
 不要再单独声明一个 Bottom Bar 按钮或 Enter handler。宿主会把同一个主动作投影到
-Bottom Bar，并让未修饰 Enter 执行它；Actions 菜单和 Context Panel也引用同一对象。
+Bottom Bar，并让未修饰 Enter 执行它；Context Panel 从同一集合只投影其余业务动作。
+manifest 的面板启动命令、后台 interval 和宿主重新加载不会自动出现在当前面板 Actions；
+需要用户在面板内执行的命令，必须显式声明为 Workbench action。
 Esc 不属于动作快捷键。
 
 Top Bar 右侧只发布内容筛选模型，由宿主绘制固定下拉框。Bottom Bar 的左侧 Home、
-中间 Island，以及右侧依次排列的主动作、Actions、Esc 也全部由宿主绘制。详细规则见
+中间 Island，以及右侧依次排列的主动作与 Esc 也全部由宿主绘制。详细规则见
 [`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md)。
 
 ## 7. 后台工作与 Island

@@ -13,10 +13,9 @@ import {
   useQxMasterDetailFocus,
 } from "../../hooks/useQxMasterDetail";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
-import { shouldIgnoreBareShortcut } from "../../utils/keyboard";
 import { useSettingsStore } from "../settings/store";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
-import { QxActionPanel } from "../../components/QxActionPanel";
+import { QxActionList } from "../../components/QxActionPanel";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import QxResizableSplit from "../../components/QxResizableSplit";
 import QxMediaViewer from "../../components/QxMediaViewer";
@@ -356,47 +355,6 @@ export default function ArticleList() {
     if (index >= 0 && index !== selectedIndex) setSelectedIndex(index);
   }, [articles, currentArticle, selectedIndex, setSelectedIndex]);
 
-  const handleModuleKeys = useCallback((e: React.KeyboardEvent) => {
-    const ignoreBare = shouldIgnoreBareShortcut(e.nativeEvent);
-    const region = e.target instanceof Element
-      ? e.target.closest<HTMLElement>("[data-qx-region]")?.dataset.qxRegion
-      : undefined;
-    // ↑↓ / Page: QxShell.navigation (list region) + useQxListSelection.
-    // j/k remain article-reader shortcuts (next/prev while reading).
-    switch (e.key) {
-      case "j":
-        if (ignoreBare || e.metaKey || e.ctrlKey) return;
-        e.preventDefault();
-        if (currentArticle && next) void openArticleForReading(next.id);
-        else setSelectedIndex(articles.length > 0 ? Math.min(selectedIndex + 1, articles.length - 1) : 0);
-        focusList();
-        break;
-      case "k":
-        if (ignoreBare || e.metaKey || e.ctrlKey) return;
-        e.preventDefault();
-        if (currentArticle && prev) void openArticleForReading(prev.id);
-        else setSelectedIndex(Math.max(selectedIndex - 1, 0));
-        focusList();
-        break;
-      case "Enter": {
-        if (region === MD.detail) return;
-        e.preventDefault();
-        const a = articles[selectedIndex];
-        if (a) void openArticleForReading(a.id, true);
-        break;
-      }
-    }
-  }, [
-    articles,
-    currentArticle,
-    focusList,
-    next,
-    openArticleForReading,
-    prev,
-    selectedIndex,
-    setSelectedIndex,
-  ]);
-
   const shell = useQxModuleShell({
     leave: goBack,
     esc: {
@@ -418,7 +376,6 @@ export default function ArticleList() {
         },
       },
     },
-    onKeyDown: handleModuleKeys,
     island: refreshingFeedId != null
       ? buildRssRefreshIsland(refreshProgress, feed?.title, t)
       : currentArticle
@@ -458,7 +415,6 @@ export default function ArticleList() {
         label: focusArticle?.is_starred
           ? t("rss.unstar", "Unstar")
           : t("rss.star", "Star"),
-        kbd: "S",
         disabled: !focusArticle,
         onClick: () => {
           if (focusArticle) void toggleStar(focusArticle.id, !focusArticle.is_starred);
@@ -469,7 +425,6 @@ export default function ArticleList() {
         label: focusArticle?.is_read
           ? t("rss.markUnread", "Mark Unread")
           : t("rss.markRead", "Mark Read"),
-        kbd: "U",
         disabled: !focusArticle,
         onClick: () => {
           if (focusArticle) void markRead(focusArticle.id, !focusArticle.is_read);
@@ -478,7 +433,6 @@ export default function ArticleList() {
       {
         id: "open-browser",
         label: t("rss.openBrowser", "Open in Browser"),
-        kbd: "O",
         disabled: !focusArticle?.link,
         onClick: () => {
           if (focusArticle?.link) void openUrl(focusArticle.link);
@@ -491,7 +445,6 @@ export default function ArticleList() {
           : loadingOriginal
             ? t("common.loading", "Loading...")
             : t("rss.loadFullArticle", "Load Full Article"),
-        kbd: "L",
         disabled: !currentArticle?.link || loadingOriginal,
         onClick: () => {
           if (originalContent) {
@@ -508,7 +461,6 @@ export default function ArticleList() {
       {
         id: "refresh-feed",
         label: t("rss.refreshFeed", "Refresh Feed"),
-        kbd: "R",
         disabled: selectedFeedId == null,
         onClick: () => {
           if (selectedFeedId != null) void refreshFeed(selectedFeedId);
@@ -528,7 +480,7 @@ export default function ArticleList() {
           "{title}",
           next.title?.slice(0, 40) || t("rss.untitled", "(untitled)"),
         ),
-        kbd: "J",
+        kbd: "↵",
         onClick: () => void openArticleForReading(next.id),
       });
     }
@@ -539,12 +491,29 @@ export default function ArticleList() {
           "{title}",
           prev.title?.slice(0, 40) || t("rss.untitled", "(untitled)"),
         ),
-        kbd: "K",
         onClick: () => void openArticleForReading(prev.id),
       });
     }
     return list;
   }, [currentArticle, focusArticle, loadingOriginal, markRead, next, openArticleForReading, originalContent, prev, refreshAll, refreshFeed, refreshingFeedId, selectedFeedId, t, toggleStar]);
+
+  const primaryActionId = currentArticle
+    ? next
+      ? "next-article"
+      : undefined
+    : selectedArticle
+      ? "read-article"
+      : undefined;
+  const articleActions = actions.filter((action) => action.id !== primaryActionId && [
+    "read-article",
+    "toggle-star",
+    "toggle-read",
+    "open-browser",
+    "load-original",
+  ].includes(action.id));
+  const feedActions = actions.filter((action) => ["refresh-feed", "refresh-all"].includes(action.id));
+  const navigationActions = actions.filter((action) => action.id !== primaryActionId
+    && ["next-article", "previous-article"].includes(action.id));
 
   const isReading = Boolean(currentArticle);
 
@@ -598,18 +567,28 @@ export default function ArticleList() {
         onChange: (value) => setFilter(value as typeof filter),
       }]}
       context={
-        <QxActionPanel
-          title={t("rss.articleActions", "Article Actions")}
-          actions={actions}
+        <aside
+          className="qx-action-panel"
           {...qxRegionProps(MD.actions, {
             label: t("rss.articleActions", "Article actions"),
             scroll: true,
           })}
-        />
+        >
+          <div className="qx-action-title">{t("rss.article", "Article")}</div>
+          <QxActionList actions={articleActions} showShortcuts={false} />
+          <div className="qx-action-title">{t("rss.feed", "Feed")}</div>
+          <QxActionList actions={feedActions} showShortcuts={false} />
+          {navigationActions.length > 0 ? (
+            <>
+              <div className="qx-action-title">{t("rss.navigation", "Navigation")}</div>
+              <QxActionList actions={navigationActions} showShortcuts={false} />
+            </>
+          ) : null}
+        </aside>
       }
       island={shell.island}
-      primaryActionId={currentArticle?.link ? "open-browser" : selectedArticle ? "read-article" : undefined}
-      actionTitle={t("rss.articleActions", "Article Actions")}
+      primaryActionId={primaryActionId}
+      actionMenuEnabled={false}
       actions={actions}
     >
       <QxResizableSplit
@@ -809,24 +788,9 @@ export default function ArticleList() {
                       >
                         {next.title || t("rss.untitled", "(untitled)")}
                       </button>
-                      <span className="qx-rss-next-kbd">
-                        {t("rss.pressShortcut", "Press {shortcut}").replace("{shortcut}", "")}
-                        <kbd>J</kbd>
-                      </span>
                     </div>
                   )}
 
-                  {currentArticle.link && (
-                    <div className="qx-content-detail-footer">
-                      <button
-                        className="qx-command-button"
-                        onClick={() => void openUrl(currentArticle.link)}
-                        type="button"
-                      >
-                        {t("rss.openOriginal", "Open original")}
-                      </button>
-                    </div>
-                  )}
                 </div>
               </div>
             </>

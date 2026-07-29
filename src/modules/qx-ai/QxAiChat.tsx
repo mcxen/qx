@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bot, Hammer, UserRound } from "lucide-react";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
+import { QxActionList } from "../../components/QxActionPanel";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { Select, Toggle } from "../../components/ui";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
@@ -297,20 +298,19 @@ export default function QxAiChat() {
                       )}
               </div>
             )}
-            <button
-              className="qx-action-item"
-              type="button"
-              style={{ marginTop: 8 }}
-              onClick={() => openAgentSettingsTab()}
-            >
-              <span>{t("qxai.openAgentSettingsShort", "Open Agent Settings")}</span>
-            </button>
           </div>
+
+          <div className="qx-action-title">{t("common.actions", "Actions")}</div>
+          <QxActionList
+            actions={actions.filter((action) => action.id !== "send" && !action.disabled)}
+            showShortcuts={false}
+          />
         </div>
       }
       island={shell.island}
       escapeAction={shell.escapeAction}
       primaryActionId="send"
+      actionMenuEnabled={false}
       actionTitle="Chat Actions"
       actions={actions}
     >
