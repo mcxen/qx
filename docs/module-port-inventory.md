@@ -90,6 +90,7 @@
 | **weather** | ✅ | ✅ | http + invoke weather* | persist SWR | 无 |
 | **v2ex** | ✅ | ✅ | http + invoke v2ex* | persist SWR + host disk | 无 |
 | **qxheihe** | ✅ | ✅ | **host Workbench List + 多图详情** + http/open-url | persist SWR | 小黑盒公开 feed/详情；评论接口需登录，因此仅展示评论数量 |
+| **qxtieba** | ✅ | ✅ | **host Workbench List + 主楼详情 + 楼层评论** + http/open-url | persist SWR + 已读状态 | 默认图拉丁吧/笔记本吧，支持用户配置多贴吧与原生标签切换；游客态移动/桌面公开页面双回退；首屏楼层通过共享 `detail.replies` 展示，风控失败时保留缓存并提供原帖跳转 |
 | **qxcoolapk** | ✅ | ✅ | **host Workbench List + media filmstrip + replies + filters + article island** + http/open-url/system | persist SWR + 已读优先有界缓存 | 酷安文章原文/图片加载投影到灵动岛；动态多图走宿主胶片与大图预览，回复走底部 `detail.replies`；原图下载由宿主保存到 Downloads；已读/未读筛选与批量清理均走宿主端口 |
 | **qxweibo** | ✅ | ✅ | **host Workbench List + media filmstrip + replies + detail island** + http/open-url/system | persist SWR + session image proxy | 指定用户与受控聚合关注流；多游客 Cookie 轮换、串行随机间隔；微博图床走会话代理，原图下载由宿主保存到 Downloads，首屏评论走底部 `detail.replies` |
 | **brew** | ✅ | ✅ | **host Workbench List** + cli/open-url | — | 全宽 List → 宿主左集合/右详情；原生 tabs/Actions；`panel.render` 快返回 |
