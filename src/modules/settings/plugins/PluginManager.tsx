@@ -1071,7 +1071,15 @@ function MarketplaceTab({
       });
       if (generation !== fetchGeneration.current) return;
       setEntries(index.plugins);
-      setSourceStatuses(index.sources ?? []);
+      const nextSources = index.sources ?? [];
+      setSourceStatuses((current) => {
+        if (!sourceId || sourceId === "all") return nextSources;
+        const refreshedIds = new Set(nextSources.map((source) => source.id));
+        return [
+          ...current.filter((source) => !refreshedIds.has(source.id)),
+          ...nextSources,
+        ];
+      });
     } catch (err) {
       if (generation === fetchGeneration.current) setError(String(err));
     } finally {
@@ -1179,19 +1187,38 @@ function MarketplaceTab({
   };
 
   const sourceFilterOptions = useMemo(() => {
+    const statusById = new Map(sourceStatuses.map((status) => [status.id, status]));
+    const enabledStatuses = sourceStatuses.filter((status) => enabledSourceIds.has(status.id));
+    const allCount = enabledStatuses.length > 0
+      ? enabledStatuses.reduce(
+        (total, status) => total + (status.ok ? status.plugin_count : 0),
+        0,
+      )
+      : entries.length;
+    const optionLabel = (id: string, name: string) => {
+      const status = statusById.get(id);
+      if (!status) return name;
+      return `${name} · ${status.ok ? status.plugin_count : t("plugins.libraries.failed", "failed")}`;
+    };
     const fromSettings = registries
       .filter((r) => r.enabled)
-      .map((r) => ({ value: r.id, label: r.name || r.index_url }));
+      .map((r) => ({
+        value: r.id,
+        label: optionLabel(r.id, r.name || r.index_url),
+      }));
     const fromStatus = sourceStatuses
       .filter((s) => enabledSourceIds.has(s.id))
       .filter((s) => !fromSettings.some((r) => r.value === s.id))
-      .map((s) => ({ value: s.id, label: s.name || s.id }));
+      .map((s) => ({ value: s.id, label: optionLabel(s.id, s.name || s.id) }));
     return [
-      { value: "all", label: t("plugins.marketplace.allLibraries", "All libraries") },
+      {
+        value: "all",
+        label: `${t("plugins.marketplace.allLibraries", "All libraries")} · ${allCount}`,
+      },
       ...fromSettings,
       ...fromStatus,
     ];
-  }, [enabledSourceIds, registries, sourceStatuses, t]);
+  }, [enabledSourceIds, entries.length, registries, sourceStatuses, t]);
 
   const librariesDialog = (
     <Dialog open={librariesOpen} onOpenChange={setLibrariesDialogOpen}>
@@ -1394,23 +1421,6 @@ function MarketplaceTab({
     <div className="qx-marketplace">
       {librariesDialog}
       {marketplaceToolbar}
-
-      {sourceStatuses.length > 0 && (
-        <div className="qx-plugin-source-status" aria-live="polite">
-          {sourceStatuses.map((source) => (
-            <PluginBadge
-              key={source.id}
-              tone={source.ok ? "neutral" : "danger"}
-              title={source.error || source.index_url}
-            >
-              {source.name}
-              {source.ok
-                ? ` · ${source.plugin_count}`
-                : ` · ${t("plugins.libraries.failed", "failed")}`}
-            </PluginBadge>
-          ))}
-        </div>
-      )}
 
       {installStatus && (
         <div className={`qx-plugin-status is-${installStatus.tone}`}>

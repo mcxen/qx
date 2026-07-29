@@ -1131,7 +1131,7 @@ async fn http_get_from_repo_archive(source: &GitHubRawSource) -> Result<Vec<u8>,
 ///
 /// `source_id`: when set, only fetch that registry (still returns `sources` status).
 /// `force_refresh`: bypass the short-lived local index cache. The Browse page
-/// uses this for the explicit “刷新仓库源” action.
+/// uses this for the explicit “重新扫描” action.
 #[command]
 pub async fn fetch_plugin_index(
     source_id: Option<String>,

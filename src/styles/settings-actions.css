@@ -764,15 +764,6 @@ img.qx-ext-card-icon {
   flex: 0 0 auto;
 }
 
-.qx-plugin-source-status {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  flex-shrink: 0;
-  padding: 6px var(--qx-settings-gutter-x);
-  border-bottom: 1px solid var(--qx-border-1);
-}
-
 .qx-plugin-source-badge {
   margin-left: 6px;
   vertical-align: middle;
