@@ -885,9 +885,10 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
               id: `reply-${index + 1}`,
               floor: index + 7,
               author: `Author ${index + 1}`,
+              likeCount: index === 0 ? 23 : 0,
               createdAt: "2026-07-24",
               originalPoster: index === 0,
-              body: `Reply ${index + 1}`,
+              body: `Reply ${index + 1}${index === 0 ? "\n\n♥ 23" : ""}`,
             })),
           },
         },
@@ -901,8 +902,15 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
     if (detail?.replies?.items.length !== 100 || detail.replies.total !== 120) {
       fail("Workbench replies must preserve total and cap rendered items at 100");
     }
-    if (detail?.replies?.items[0]?.floor !== 7 || !detail.replies.items[0]?.originalPoster) {
-      fail("Workbench replies must preserve source floor and OP metadata");
+    if (
+      detail?.replies?.items[0]?.floor !== 7
+      || detail.replies.items[0]?.likeCount !== 23
+      || !detail.replies.items[0]?.originalPoster
+    ) {
+      fail("Workbench replies must preserve source floor, like count, and OP metadata");
+    }
+    if (detail.replies.items[0]?.body !== "Reply 1") {
+      fail("Workbench replies must remove the legacy body like suffix when likeCount is structured");
     }
     if (status?.completed !== 3 || status.total !== 5 || status.failed !== 1) {
       fail("Workbench activity status must preserve real batch counters");

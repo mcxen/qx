@@ -74,6 +74,8 @@ type WorkbenchStatus = {
 百分比，也不能用定时器模拟。刷新时保留已有条目、图片与字段，状态只占自己的局部槽位。
 图片全尺寸预览和详情回复分别发布 `detail.image(s)` 与 `detail.replies`，由宿主共享的
 媒体查看器和回复列表呈现，插件不得复制 lightbox、缩放导航或评论 DOM。
+回复点赞数使用 `detail.replies.items[].likeCount` 发布，宿主将其显示在作者名右侧；
+不得把 `♥ 数量` 拼进回复正文。
 
 ## 3. 单一动作协议
 

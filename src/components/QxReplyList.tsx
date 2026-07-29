@@ -5,6 +5,7 @@ export interface QxReplyListItem {
   id: string;
   floor: string | number;
   author: string;
+  likeCount?: number;
   createdAt?: string;
   originalPoster?: boolean;
   body: ReactNode;
@@ -54,6 +55,9 @@ export default function QxReplyList({
           <div className="qx-reply-meta">
             <span className="qx-reply-floor">#{reply.floor}</span>
             <span className="qx-reply-author">{reply.author}</span>
+            {Number(reply.likeCount) > 0 ? (
+              <span className="qx-reply-likes">♥ {reply.likeCount}</span>
+            ) : null}
             {reply.originalPoster ? (
               <span className="qx-reply-op">{originalPosterLabel}</span>
             ) : null}

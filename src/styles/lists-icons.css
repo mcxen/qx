@@ -2004,6 +2004,11 @@
   font-weight: 600;
 }
 
+.qx-reply-likes {
+  color: var(--qx-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
 .qx-reply-op {
   padding: 0 4px;
   border-radius: 3px;

@@ -435,6 +435,7 @@ function WorkbenchDetail({
             id: reply.id,
             floor: reply.floor,
             author: reply.author,
+            likeCount: reply.likeCount,
             createdAt: reply.createdAt,
             originalPoster: reply.originalPoster,
             body: reply.body,

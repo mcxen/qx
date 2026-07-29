@@ -185,7 +185,7 @@ Workbench 图片仍是受限纯数据端口：`item.image` 在 Gallery 中作为
 或 `data:image/` URL；多图最多 24 张，并统一经过
 `normalizePluginWorkbenchState` 长度与协议校验。
 `detail.replies` 是详情阅读流底部的结构化回复端口；宿主复用 `QxReplyList`，统一
-渲染 `#floor`、作者、时间、楼主标记和纯文本正文。插件不得再把回复压成普通
+渲染 `#floor`、作者、作者右侧的可选 `likeCount`、时间、楼主标记和纯文本正文。插件不得再把回复压成普通
 `sections`，也不得自绘回复 DOM。内置 V2EX 使用同一组件作为视觉与交互基准。
 
 ## 4. 权限模型

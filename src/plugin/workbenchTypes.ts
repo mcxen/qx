@@ -22,6 +22,8 @@ export interface PluginWorkbenchReply {
   floor: string | number;
   author: string;
   body: string;
+  /** Optional upstream like count, rendered immediately after the author. */
+  likeCount?: number;
   createdAt?: string;
   originalPoster?: boolean;
 }
@@ -380,11 +382,20 @@ function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
         const floor = typeof rawFloor === "number" && Number.isFinite(rawFloor)
           ? Math.max(0, Math.round(rawFloor))
           : shortText(rawFloor, 48) || index + 1;
+        const rawLikeCount = Number(reply.likeCount);
+        const likeCount = Number.isFinite(rawLikeCount)
+          ? Math.max(0, Math.round(rawLikeCount))
+          : undefined;
+        const rawBody = shortText(reply.body, 8_000) || "";
+        const legacyLikeSuffix = likeCount && rawBody.endsWith(`\n\n♥ ${likeCount}`)
+          ? `\n\n♥ ${likeCount}`
+          : "";
         return {
           id: shortText(reply.id, 256) || `reply-${index + 1}`,
           floor,
           author: shortText(reply.author, 160) || "",
-          body: shortText(reply.body, 8_000) || "",
+          body: legacyLikeSuffix ? rawBody.slice(0, -legacyLikeSuffix.length) : rawBody,
+          likeCount,
           createdAt: shortText(reply.createdAt, 160),
           originalPoster: reply.originalPoster === true,
         };
