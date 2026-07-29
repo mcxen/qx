@@ -136,7 +136,7 @@ Rust: list_installed_plugins()  ──►  PluginRegistry.load()
                               loadPlugin(plugin, hooks)
                                          │
                                          ▼
-          read_plugin_entry(id) → 自包含 ESM Blob URL → sandbox iframe
+          read_plugin_modules(id) → 包内 ESM import map → sandbox iframe
                                          │
                                          ▼
                          iframe 发送 qx:plugin:loaded
@@ -145,10 +145,12 @@ Rust: list_installed_plugins()  ──►  PluginRegistry.load()
                          注册 commands[] / panel 到 store
 ```
 
-`read_plugin_entry` 只返回 manifest 入口文本，不提供安装目录的 ESM 模块解析器。
-因此运行时入口必须在市场构建阶段 bundle 为自包含文件；`source/*.js` 可以作为可维护
-源码随包保留，但 iframe 不会沿相对路径继续加载这些模块。静态资源解析仍走独立的
-`plugin_resolve_asset` 端口。
+`read_plugin_modules` 返回安装目录内受大小与数量限制的 `.js` / `.mjs` 模块集合。
+宿主解析静态导入、re-export 和字符串形式的动态导入，将包内相对路径改写为隔离的
+`qx-plugin:/…` specifier，并在 iframe 首个 module 执行前写入 import map。相对导入
+不得越过插件根目录，缺失文件会停止注册；非字符串动态 import 与包管理器 bare
+specifier 仍须在发布前 bundle。单文件入口继续作为该协议的单模块特例兼容。
+静态图片等资源仍走独立的 `plugin_resolve_asset` 端口。
 
 ## 3. RPC 调用链路
 

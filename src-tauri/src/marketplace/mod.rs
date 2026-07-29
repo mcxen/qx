@@ -2520,6 +2520,93 @@ pub fn list_installed_plugins() -> Result<Vec<InstalledPlugin>, String> {
 
 #[command]
 pub fn read_plugin_entry(id: String) -> Result<String, String> {
+    let bundle = read_plugin_modules(id)?;
+    bundle
+        .modules
+        .get(&bundle.entry)
+        .cloned()
+        .ok_or_else(|| format!("plugin entry not found: {}", bundle.entry))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginModuleBundle {
+    pub entry: String,
+    pub modules: BTreeMap<String, String>,
+}
+
+const MAX_PLUGIN_MODULE_FILES: usize = 256;
+const MAX_PLUGIN_MODULE_BYTES: usize = 4 * 1024 * 1024;
+
+fn collect_plugin_modules(
+    root: &Path,
+    directory: &Path,
+    modules: &mut BTreeMap<String, String>,
+    total_bytes: &mut usize,
+) -> Result<(), String> {
+    let entries = fs::read_dir(directory)
+        .map_err(|e| format!("read plugin module directory {}: {e}", directory.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("read plugin module entry: {e}"))?;
+        let path = entry.path();
+        let file_type = entry
+            .file_type()
+            .map_err(|e| format!("inspect plugin module {}: {e}", path.display()))?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            collect_plugin_modules(root, &path, modules, total_bytes)?;
+            continue;
+        }
+        if !file_type.is_file()
+            || !matches!(
+                path.extension().and_then(|value| value.to_str()),
+                Some("js" | "mjs")
+            )
+        {
+            continue;
+        }
+        if modules.len() >= MAX_PLUGIN_MODULE_FILES {
+            return Err(format!(
+                "plugin contains more than {MAX_PLUGIN_MODULE_FILES} JavaScript modules"
+            ));
+        }
+        let canonical = path
+            .canonicalize()
+            .map_err(|e| format!("resolve plugin module {}: {e}", path.display()))?;
+        if !canonical.starts_with(root) {
+            return Err(format!(
+                "plugin module escapes install directory: {}",
+                path.display()
+            ));
+        }
+        let source = fs::read_to_string(&canonical)
+            .map_err(|e| format!("read plugin module {}: {e}", canonical.display()))?;
+        *total_bytes = total_bytes.saturating_add(source.len());
+        if *total_bytes > MAX_PLUGIN_MODULE_BYTES {
+            return Err(format!(
+                "plugin JavaScript modules exceed {} bytes",
+                MAX_PLUGIN_MODULE_BYTES
+            ));
+        }
+        let relative = canonical
+            .strip_prefix(root)
+            .map_err(|e| format!("resolve plugin module path: {e}"))?
+            .components()
+            .filter_map(|component| match component {
+                Component::Normal(value) => value.to_str(),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("/");
+        modules.insert(relative, source);
+    }
+    Ok(())
+}
+
+#[command]
+pub fn read_plugin_modules(id: String) -> Result<PluginModuleBundle, String> {
     let dir = checked_plugin_dir(&id)?;
     let manifest = read_manifest(&dir).ok_or_else(|| format!("manifest not found for {id}"))?;
     let entry_name = if manifest.entry.trim().is_empty() {
@@ -2529,18 +2616,38 @@ pub fn read_plugin_entry(id: String) -> Result<String, String> {
     };
     let entry_rel = safe_relative_path(entry_name)
         .ok_or_else(|| format!("invalid plugin entry path: {entry_name}"))?;
-    let entry_path = dir.join(entry_rel);
     let canonical_dir = dir
         .canonicalize()
         .map_err(|e| format!("resolve plugin dir for {id}: {e}"))?;
+    let entry_path = canonical_dir.join(&entry_rel);
     let canonical_entry = entry_path
         .canonicalize()
         .map_err(|e| format!("resolve plugin entry {}: {e}", entry_path.display()))?;
     if !canonical_entry.starts_with(&canonical_dir) || !canonical_entry.is_file() {
         return Err(format!("plugin entry not found: {entry_name}"));
     }
-    fs::read_to_string(&canonical_entry)
-        .map_err(|e| format!("read plugin entry {}: {e}", canonical_entry.display()))
+    let entry = entry_rel
+        .components()
+        .filter_map(|component| match component {
+            Component::Normal(value) => value.to_str(),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/");
+    let mut modules = BTreeMap::new();
+    let mut total_bytes = 0;
+    collect_plugin_modules(
+        &canonical_dir,
+        &canonical_dir,
+        &mut modules,
+        &mut total_bytes,
+    )?;
+    if !modules.contains_key(&entry) {
+        return Err(format!(
+            "plugin entry is not a JavaScript module: {entry_name}"
+        ));
+    }
+    Ok(PluginModuleBundle { entry, modules })
 }
 
 #[command]

@@ -1,7 +1,7 @@
 {
   "name": "qx",
   "private": true,
-  "version": "0.6.46",
+  "version": "0.6.47",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -47,6 +47,7 @@
     "@xterm/xterm": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "es-module-lexer": "^1.7.0",
     "framer-motion": "^12.40.0",
     "geist": "^1.7.2",
     "lucide-react": "^1.21.0",

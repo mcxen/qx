@@ -32,6 +32,7 @@ import {
   sendRuntimeRequest,
   waitForPluginRuntime,
 } from "./pluginRuntimeIpc";
+import { preparePluginModuleGraph, type PluginModuleBundle, type PluginModuleGraph } from "./moduleGraph";
 export {
   broadcastToPluginRuntimes,
   isExpectedPluginMessageOrigin,
@@ -100,13 +101,14 @@ function pluginLocaleSnapshot() {
 
 export function buildPluginRuntimeHtml(
   pluginId: string,
-  entrySource: string,
   runtimeId: string,
+  moduleGraph: PluginModuleGraph,
   pluginDisplay: PluginDisplaySettings = pluginDisplaySettingsSnapshot(),
 ): string {
   const raycastActionPanel = pluginDisplay.raycast_action_panel !== false;
   const initialTheme = currentPluginThemePayload();
   const initialLocale = pluginLocaleSnapshot();
+  const importMap = JSON.stringify({ imports: moduleGraph.imports }).replace(/</g, "\\u003c");
   const runtime = `
     <style>
       html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}
@@ -117,13 +119,14 @@ export function buildPluginRuntimeHtml(
       .qx-plugin-scrollbar.is-vertical{width:3px}
       .qx-plugin-scrollbar.is-horizontal{height:3px}
     </style>
+    <script type="importmap">${importMap}</script>
     <script type="module">
       ${PLUGIN_WORKBENCH_RUNTIME_JS}
       ${PLUGIN_OVERLAY_SCROLLBAR_RUNTIME_JS}
       const pluginId = ${JSON.stringify(pluginId)};
       const runtimeId = ${JSON.stringify(runtimeId)};
       globalThis.__qxPluginRuntimeId = runtimeId;
-      const entrySource = ${serializeForInlineScript(entrySource)};
+      const entrySpecifier = ${JSON.stringify(moduleGraph.entrySpecifier)};
       const pluginDisplay = ${JSON.stringify({
         raycastActionPanel,
       })};
@@ -754,13 +757,7 @@ export function buildPluginRuntimeHtml(
       });
 
       try {
-        const entryBlobUrl = URL.createObjectURL(new Blob([entrySource], { type: 'text/javascript' }));
-        let mod;
-        try {
-          mod = await import(entryBlobUrl);
-        } finally {
-          URL.revokeObjectURL(entryBlobUrl);
-        }
+        const mod = await import(entrySpecifier);
         plugin = mod.default || mod;
         postPluginLog('debug', 'Plugin module loaded');
         postToParent({ type: 'qx:plugin:loaded', pluginId, runtimeId });
@@ -784,9 +781,10 @@ export async function loadPlugin(
     pluginName: plugin.name,
     version: plugin.manifest?.version,
   });
-  const entrySource = await invoke<string>("read_plugin_entry", { id: plugin.id });
+  const moduleBundle = await invoke<PluginModuleBundle>("read_plugin_modules", { id: plugin.id });
+  const moduleGraph = await preparePluginModuleGraph(moduleBundle);
   const workerRuntimeId = nextRequestId();
-  const workerHtml = buildPluginRuntimeHtml(plugin.id, entrySource, workerRuntimeId);
+  const workerHtml = buildPluginRuntimeHtml(plugin.id, workerRuntimeId, moduleGraph);
   const iframe = createSandboxIframe(workerHtml, false);
   document.body.appendChild(iframe);
   registerPluginRuntime(plugin.id, workerRuntimeId, iframe);
@@ -897,7 +895,7 @@ export async function loadPlugin(
         }
         container.innerHTML = "";
         const panelRuntimeId = nextRequestId();
-        const panelHtml = buildPluginRuntimeHtml(plugin.id, entrySource, panelRuntimeId);
+        const panelHtml = buildPluginRuntimeHtml(plugin.id, panelRuntimeId, moduleGraph);
         const panelIframe = createSandboxIframe(panelHtml, true);
         container.appendChild(panelIframe);
         registerPluginRuntime(plugin.id, panelRuntimeId, panelIframe);

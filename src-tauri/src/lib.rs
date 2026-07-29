@@ -754,6 +754,7 @@ pub fn run() {
             marketplace::uninstall_plugin,
             marketplace::list_installed_plugins,
             marketplace::read_plugin_entry,
+            marketplace::read_plugin_modules,
             marketplace::set_plugin_enabled,
             marketplace::plugin_storage_get,
             marketplace::plugin_storage_set,

@@ -48,6 +48,9 @@ my-plugin/
 ```
 
 运行时入口必须是 `index.js`。可以拆分源码，但安装包必须包含入口引用的文件。
+入口支持用标准 ESM 的 `./`、`../` 相对路径导入包内 `.js` / `.mjs`，也支持字符串
+形式的动态 `import("./detail.js")`；路径不得越过插件根目录。包管理器 bare specifier
+和运行时拼接的动态 import 必须在发布前 bundle。
 
 ```js
 export default {
