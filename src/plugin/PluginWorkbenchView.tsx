@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -29,6 +30,7 @@ import type {
   PluginWorkbenchDetail,
   PluginWorkbenchField,
   PluginWorkbenchImage,
+  PluginWorkbenchReplyContent,
   PluginWorkbenchState,
 } from "./workbenchTypes";
 import { useT } from "../i18n";
@@ -36,18 +38,69 @@ import { qxMasterDetailIds, qxRegionProps } from "../hooks/useQxMasterDetail";
 import QxReplyList from "../components/QxReplyList";
 import QxMediaViewer, { type QxMediaViewerImage } from "../components/QxMediaViewer";
 import { resolveActivityPercent } from "../types/contentActivity";
+import { resolvePluginAssetUrl } from "./pluginRuntimeTransport";
 
 export const PLUGIN_WORKBENCH_REGIONS = qxMasterDetailIds("plugin-workbench");
 
 const WORKBENCH_LIST_WIDTH_KEY = "qx:workbench:list-width";
 
 interface PluginWorkbenchViewProps {
+  pluginId: string;
   state: PluginWorkbenchState;
   detailOpen: boolean;
   onActivate: (id: string) => void;
   onInput: (id: string, value: string) => void;
   onAction: (id: string) => void;
   onDownload: (id: string) => void;
+}
+
+function WorkbenchReplyAsset({
+  pluginId,
+  part,
+}: {
+  pluginId: string;
+  part: Extract<PluginWorkbenchReplyContent, { type: "asset-image" }>;
+}) {
+  const [url, setUrl] = useState<string>();
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setUrl(undefined);
+    setFailed(false);
+    void resolvePluginAssetUrl(pluginId, part.assetPath).then((resolved) => {
+      if (!active) return;
+      if (resolved) setUrl(resolved);
+      else setFailed(true);
+    });
+    return () => { active = false; };
+  }, [part.assetPath, pluginId]);
+  if (!url || failed) return <span>{part.alt || ""}</span>;
+  return (
+    <img
+      className="qx-reply-inline-asset"
+      src={url}
+      alt={part.alt || ""}
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function WorkbenchReplyBody({
+  pluginId,
+  body,
+  content,
+}: {
+  pluginId: string;
+  body: string;
+  content?: PluginWorkbenchReplyContent[];
+}) {
+  if (!content?.length) return body;
+  return content.map((part, index) => part.type === "text" ? (
+    <span key={`text-${index}`}>{part.text}</span>
+  ) : (
+    <WorkbenchReplyAsset key={`${part.assetPath}-${index}`} pluginId={pluginId} part={part} />
+  ));
 }
 
 function toneClass(tone: string | undefined): string {
@@ -249,6 +302,7 @@ function WorkbenchListMedia({ images }: { images: PluginWorkbenchImage[] }) {
 }
 
 function WorkbenchDetail({
+  pluginId,
   detail,
   emptyText,
   onInput,
@@ -259,6 +313,7 @@ function WorkbenchDetail({
   previousText,
   nextText,
 }: {
+  pluginId: string;
   detail?: PluginWorkbenchDetail;
   emptyText: string;
   onInput: (id: string, value: string) => void;
@@ -438,7 +493,13 @@ function WorkbenchDetail({
             likeCount: reply.likeCount,
             createdAt: reply.createdAt,
             originalPoster: reply.originalPoster,
-            body: reply.body,
+            body: (
+              <WorkbenchReplyBody
+                pluginId={pluginId}
+                body={reply.body}
+                content={reply.content}
+              />
+            ),
           }))}
           loading={detail.replies.status?.state === "loading"}
           loadingText={
@@ -462,6 +523,7 @@ function WorkbenchDetail({
 }
 
 export default function PluginWorkbenchView({
+  pluginId,
   state,
   detailOpen,
   onActivate,
@@ -670,6 +732,7 @@ export default function PluginWorkbenchView({
           })}
         >
           <WorkbenchDetail
+            pluginId={pluginId}
             detail={state.detail}
             emptyText={t("plugins.workbench.select", "Select an item")}
             onInput={onInput}
@@ -700,6 +763,7 @@ export default function PluginWorkbenchView({
             })}
           >
             <WorkbenchDetail
+              pluginId={pluginId}
               detail={detail}
               emptyText={t("plugins.workbench.select", "Select an item")}
               onInput={onInput}

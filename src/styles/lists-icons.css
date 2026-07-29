@@ -2031,6 +2031,15 @@
   white-space: pre-wrap;
 }
 
+.qx-reply-inline-asset {
+  display: inline-block;
+  width: 1.45em;
+  height: 1.45em;
+  margin: 0 0.08em;
+  object-fit: contain;
+  vertical-align: -0.32em;
+}
+
 .qx-reply-body > :first-child {
   margin-top: 0;
 }

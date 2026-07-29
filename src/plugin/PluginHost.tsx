@@ -793,6 +793,7 @@ export function PluginPanelViewport() {
         />
         {workbench ? (
           <PluginWorkbenchView
+            pluginId={pluginId}
             state={workbench}
             detailOpen={workbenchDetailOpen}
             onActivate={activateWorkbenchItem}

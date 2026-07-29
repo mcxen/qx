@@ -889,6 +889,12 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
               createdAt: "2026-07-24",
               originalPoster: index === 0,
               body: `Reply ${index + 1}${index === 0 ? "\n\n♥ 23" : ""}`,
+              content: index === 0 ? [
+                { type: "text", text: "Reply " },
+                { type: "asset-image", assetPath: "assets/emotions/image_emoticon8.png", alt: "image_emoticon8" },
+                { type: "asset-image", assetPath: "/etc/passwd", alt: "blocked" },
+                { type: "asset-image", assetPath: "../outside.png", alt: "blocked" },
+              ] : undefined,
             })),
           },
         },
@@ -911,6 +917,12 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
     }
     if (detail.replies.items[0]?.body !== "Reply 1") {
       fail("Workbench replies must remove the legacy body like suffix when likeCount is structured");
+    }
+    if (
+      detail.replies.items[0]?.content?.length !== 2
+      || detail.replies.items[0]?.content?.[1]?.type !== "asset-image"
+    ) {
+      fail("Workbench reply inline content must retain text and safe package-relative assets only");
     }
     if (status?.completed !== 3 || status.total !== 5 || status.failed !== 1) {
       fail("Workbench activity status must preserve real batch counters");

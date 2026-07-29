@@ -22,11 +22,28 @@ export interface PluginWorkbenchReply {
   floor: string | number;
   author: string;
   body: string;
+  /**
+   * Optional ordered inline content. The plain body remains the accessible and
+   * backwards-compatible fallback when an asset cannot be resolved.
+   */
+  content?: PluginWorkbenchReplyContent[];
   /** Optional upstream like count, rendered immediately after the author. */
   likeCount?: number;
   createdAt?: string;
   originalPoster?: boolean;
 }
+
+export type PluginWorkbenchReplyContent =
+  | {
+      type: "text";
+      text: string;
+    }
+  | {
+      type: "asset-image";
+      /** Relative path inside the installed plugin package. */
+      assetPath: string;
+      alt?: string;
+    };
 
 export interface PluginWorkbenchReplies {
   title?: string;
@@ -359,6 +376,34 @@ function normalizeContentBlocks(value: unknown): PluginWorkbenchContentBlock[] {
   return blocks;
 }
 
+function normalizeReplyContent(value: unknown): PluginWorkbenchReplyContent[] {
+  if (!Array.isArray(value)) return [];
+  let textBudget = 8_000;
+  const content: PluginWorkbenchReplyContent[] = [];
+  for (const entry of value.slice(0, 512)) {
+    if (!entry || typeof entry !== "object") continue;
+    const raw = entry as Record<string, unknown>;
+    if (raw.type === "text" && textBudget > 0) {
+      const text = shortText(raw.text, Math.min(2_000, textBudget));
+      if (!text) continue;
+      textBudget -= text.length;
+      content.push({ type: "text", text });
+      continue;
+    }
+    if (raw.type === "asset-image") {
+      const assetPath = shortText(raw.assetPath, 500)?.trim() || "";
+      const hasParentTraversal = assetPath.split(/[\\/]+/).some((part) => part === "..");
+      if (!assetPath || hasParentTraversal || /^(?:[a-z][a-z0-9+.-]*:|\/|\\)/i.test(assetPath)) continue;
+      content.push({
+        type: "asset-image",
+        assetPath,
+        alt: shortText(raw.alt, 160),
+      });
+    }
+  }
+  return content;
+}
+
 function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
@@ -395,11 +440,12 @@ function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
           floor,
           author: shortText(reply.author, 160) || "",
           body: legacyLikeSuffix ? rawBody.slice(0, -legacyLikeSuffix.length) : rawBody,
+          content: normalizeReplyContent(reply.content),
           likeCount,
           createdAt: shortText(reply.createdAt, 160),
           originalPoster: reply.originalPoster === true,
         };
-      }).filter((reply) => Boolean(reply.author && reply.body))
+      }).filter((reply) => Boolean(reply.author && (reply.body || reply.content.length)))
     : [];
   const replyTotal = Number(repliesRaw?.total);
   const replies = repliesRaw
