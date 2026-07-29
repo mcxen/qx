@@ -387,6 +387,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
         method: String(options.method || "GET"),
         headers: (options.headers || {}) as Record<string, string>,
         body: typeof options.body === "string" ? options.body : undefined,
+        body_base64: typeof options.bodyBase64 === "string" ? options.bodyBase64 : undefined,
         timeout_ms: typeof options.timeoutMs === "number" ? options.timeoutMs : undefined,
       },
     });

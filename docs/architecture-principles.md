@@ -71,7 +71,7 @@ manifest 启动命令、后台 interval 与宿主 reload 不得自动混入当�
   Rust 安装端口再次校验；宿主版本读取失败时，仅未声明最低版本的旧插件可以继续运行，
   不得把 bridge 异常当成放行新端口代码的理由。
 - Island Surface：`docked` / float 消费同一 `IslandSession` 语义，不因 placement 改变 action 含义。
-- HTTP / file / AppleScript 等 host 能力：版本升级只**扩展**字段（如 `bodyBase64`、重定向后的 `url`），不悄悄改成功路径语义。
+- HTTP / file / AppleScript 等 host 能力：版本升级只**扩展**字段（如响应 `bodyBase64`、请求 `bodyBase64`、重定向后的 `url`），不悄悄改成功路径语义。二进制 HTTP 请求必须走标准 base64 字节端口，不能把 Protobuf 等原始字节塞进 UTF-8 `body`。
 
 ### I — Interface Segregation（接口隔离）
 

@@ -666,6 +666,8 @@ export interface PluginContext {
       options?: {
         method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
         headers?: Record<string, string>;
+        /** Raw request bytes encoded as standard base64. Takes precedence over `body`. */
+        bodyBase64?: string;
         body?: string;
         timeoutMs?: number;
       },

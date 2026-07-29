@@ -107,6 +107,10 @@ Manifest 只声明包元数据、入口、命令、面板、权限与兼容范�
 | 托盘状态 | `context.tray` | 直接调用系统托盘库 |
 | 翻译 | `context.i18n` | 硬编码单一语言 UI |
 
+`context.http.fetch` 的 `body` 是 UTF-8 文本。发送 Protobuf、压缩包等原始字节时，
+把字节编码为标准 base64 后传入 `bodyBase64`；它会覆盖 `body`。二进制响应继续通过
+`response.arrayBuffer()` 或 `response.bodyBase64` 读取。
+
 能力必须在 Manifest 中申请最小权限。无权限与能力不可用都应返回可解释错误，
 而不是伪造成功或退回危险的通用执行。
 

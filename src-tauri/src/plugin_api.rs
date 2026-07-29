@@ -835,6 +835,9 @@ pub struct HttpFetchRequest {
     pub headers: std::collections::BTreeMap<String, String>,
     #[serde(default)]
     pub body: Option<String>,
+    /// Standard-base64 request bytes. This takes precedence over the UTF-8 text body.
+    #[serde(default, alias = "bodyBase64")]
+    pub body_base64: Option<String>,
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
 }
@@ -908,7 +911,12 @@ pub async fn plugin_http_fetch(req: HttpFetchRequest) -> Result<HttpResponse, St
         builder = builder.header(key.as_str(), value.as_str());
     }
 
-    if let Some(body) = &req.body {
+    if let Some(body_base64) = &req.body_base64 {
+        let body = base64::engine::general_purpose::STANDARD
+            .decode(body_base64)
+            .map_err(|e| format!("invalid base64 request body: {e}"))?;
+        builder = builder.body(body);
+    } else if let Some(body) = &req.body {
         builder = builder.body(body.clone());
     }
 
