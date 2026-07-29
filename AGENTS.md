@@ -381,6 +381,7 @@ queued -> running(progress) -> succeeded(output item) | failed(error) | cancelle
 - Basic system information must use a shared model with cfg-gated collectors.
   Platform-only fields are optional rather than reasons to fork frontend views.
 - Network, downloads, plugin installs, model fetches, and API calls must be real. Do not simulate success.
+- A marketplace plugin that depends on an external interface must not be published or upgraded until the final archive is cold-installed and every user-facing API path is exercised through Qx's actual `context.*` host port. Browser/curl/Node/Python/MCP checks and fixtures are diagnostic or regression evidence only; they do not satisfy release verification. Binary HTTP paths must also verify compression and non-Protobuf error bodies through the host.
 
 ## Responsiveness And Concurrency
 
