@@ -696,8 +696,7 @@ img.qx-ext-card-icon {
   border-bottom: 1px solid var(--qx-border-1);
 }
 
-.qx-plugin-manager-actions,
-.qx-plugin-list-toolbar {
+.qx-plugin-manager-actions {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -717,6 +716,8 @@ img.qx-ext-card-icon {
 
 .qx-plugin-manager-tools {
   gap: 6px;
+  flex: 1;
+  justify-content: flex-end;
   min-width: 0;
 }
 
@@ -729,23 +730,19 @@ img.qx-ext-card-icon {
   overflow: hidden;
 }
 
-.qx-plugin-list-toolbar {
-  flex-shrink: 0;
-  padding: 8px var(--qx-settings-gutter-x);
-  border-bottom: 1px solid var(--qx-border-1);
-  background: var(--qx-overlay-1);
-  flex-wrap: wrap;
-}
-
-.qx-plugin-marketplace-toolbar {
-  flex-wrap: nowrap;
-  overflow-x: auto;
+.qx-plugin-marketplace-tools-host {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+  gap: 8px;
 }
 
 .qx-plugin-marketplace-query {
   display: flex;
   align-items: center;
-  flex: 1 1 auto;
+  flex: 0 1 300px;
   min-width: 0;
   gap: 8px;
 }
@@ -1486,9 +1483,8 @@ span.qx-plugin-screenshot {
     justify-content: flex-end;
   }
 
-  .qx-plugin-list-toolbar {
-    align-items: stretch;
-    flex-direction: column;
+  .qx-plugin-marketplace-tools-host {
+    width: 100%;
   }
 
   .qx-plugin-library-body {

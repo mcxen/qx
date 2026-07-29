@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -978,10 +979,12 @@ function MarketplaceTab({
   installedVersions,
   onInstallComplete,
   searchQuery,
+  toolbarHost,
 }: {
   installedVersions: Map<string, string>;
   onInstallComplete: () => void | Promise<void>;
   searchQuery: string;
+  toolbarHost: HTMLDivElement | null;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -1296,46 +1299,47 @@ function MarketplaceTab({
       </DialogContent>
     </Dialog>
   );
-  const marketplaceToolbar = (
-    <div className="qx-plugin-list-toolbar qx-plugin-marketplace-toolbar">
-      <div className="qx-plugin-marketplace-query">
-        <div className="qx-plugin-source-filter">
-          <Select
-            value={sourceFilter}
-            options={sourceFilterOptions}
-            ariaLabel={t("plugins.marketplace.libraryFilter", "Plugin library")}
-            onChange={(next) => setSourceFilter(next)}
-          />
+  const marketplaceToolbar = toolbarHost
+    ? createPortal((
+      <>
+        <div className="qx-plugin-marketplace-query">
+          <div className="qx-plugin-source-filter">
+            <Select
+              value={sourceFilter}
+              options={sourceFilterOptions}
+              ariaLabel={t("plugins.marketplace.libraryFilter", "Plugin library")}
+              onChange={(next) => setSourceFilter(next)}
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="qx-plugin-libraries-button"
+            onClick={() => setLibrariesDialogOpen(true)}
+          >
+            <PackagePlus size={13} aria-hidden="true" />
+            <span>{t("plugins.libraries.manage", "Sources")}</span>
+          </Button>
         </div>
         <Button
           variant="outline"
           size="sm"
-          className="qx-plugin-libraries-button"
-          onClick={() => setLibrariesDialogOpen(true)}
+          onClick={() => void fetchIndex(activeSourceFilter === "all" ? undefined : activeSourceFilter, true)}
+          disabled={loading}
+          title={t("plugins.marketplace.rescan.desc", "Rescan plugin libraries")}
         >
-          <PackagePlus size={13} aria-hidden="true" />
-          <span>{t("plugins.libraries.manage", "Sources")}</span>
+          {loading ? (
+            <LoadingLabel>{t("plugins.marketplace.rescanning", "Rescanning")}</LoadingLabel>
+          ) : (
+            <>
+              <RefreshCw size={13} aria-hidden="true" />
+              {t("plugins.rescan", "Rescan")}
+            </>
+          )}
         </Button>
-      </div>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => void fetchIndex(activeSourceFilter === "all" ? undefined : activeSourceFilter, true)}
-        disabled={loading}
-      >
-        {loading ? (
-          <LoadingLabel>{t("plugins.marketplace.refreshSource", "Refreshing plugin sources")}</LoadingLabel>
-        ) : (
-          <>
-            <RefreshCw size={13} aria-hidden="true" />
-            {error
-              ? t("plugins.marketplace.retrySource", "Retry refreshing sources")
-              : t("plugins.marketplace.refreshSource", "Refresh plugin sources")}
-          </>
-        )}
-      </Button>
-    </div>
-  );
+      </>
+    ), toolbarHost)
+    : null;
 
   if (loading && entries.length === 0) {
     return (
@@ -1816,6 +1820,7 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
   const [tab, setTab] = useState<Tab>("installed");
   /** Open config dialog for this installed module id (null = closed). */
   const [configId, setConfigId] = useState<string | null>(null);
+  const [marketplaceToolbarHost, setMarketplaceToolbarHost] = useState<HTMLDivElement | null>(null);
   const [archivePath, setArchivePath] = useState("");
   const [archiveUrl, setArchiveUrl] = useState("");
   const [raycastUrl, setRaycastUrl] = useState("");
@@ -2031,10 +2036,14 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
                 {t("plugins.import", "Import")}
               </Button>
             )}
-            <Button variant="outline" size="sm" onClick={handleRefresh} title={t("plugins.rescan.desc", "Rescan plugins")}>
-              <RefreshCw size={13} aria-hidden="true" />
-              {t("plugins.rescan", "Rescan")}
-            </Button>
+            {tab === "installed" ? (
+              <Button variant="outline" size="sm" onClick={handleRefresh} title={t("plugins.rescan.desc", "Rescan plugins")}>
+                <RefreshCw size={13} aria-hidden="true" />
+                {t("plugins.rescan", "Rescan")}
+              </Button>
+            ) : (
+              <div className="qx-plugin-marketplace-tools-host" ref={setMarketplaceToolbarHost} />
+            )}
           </div>
         </div>
       </div>
@@ -2192,6 +2201,7 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
           installedVersions={installedVersions}
           onInstallComplete={handleRefresh}
           searchQuery={searchQuery}
+          toolbarHost={marketplaceToolbarHost}
         />
       </TabsContent>
     </Tabs>

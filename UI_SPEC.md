@@ -430,6 +430,7 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
   不得注入宿主类名 CSS 或自建 lightbox 来修右栏。
 - Workbench 的局部异步反馈使用 `item.status` / `detail.status`，已有图片和字段在刷新时继续可见。状态可传真实 `progress: 0–100`，或批量任务的 `completed / total / failed`，宿主通过统一 activity 协议计算百分比；未知进度不得模拟。分批/批量结果通过 `mountWorkbench()` controller 的 `updateItems({ upsert, removeIds, order, selectedId })` 按稳定 id 合并；SDK 仍向宿主发布完整纯数据快照。并发整快照可用单调 `revision` 做 latest-wins，旧 revision 不得覆盖新数据、选择或详情。
 - Workbench 管理型详情可在 `detail.form.actions` 发布表单底部动作；同一业务对象的连续 controls 可用稳定 `group.id` 合并为一个 fieldset，并由首个 control 的 `group.action` 提供组内操作。宿主统一渲染按钮、危险色和事件 selectedId，插件不得为参数删除等常规管理重新自绘 DOM。
+- Settings → Extensions 的 Installed / Plugin Store 与当前页工具必须共用一行紧凑工具栏。Plugin Store 在该行依次放仓库筛选、仓库源管理与唯一的“重新扫描”；内容区不得再重复一行“刷新仓库源”，“重新扫描”在商店页强制重新读取当前仓库源。
 - Top Bar 必须保持单行。筛选、状态和 trailing 操作不得换行，不得移动到第二行，也不得用 `grid-column: 1 / -1` 做窄屏兜底。
 - 窄屏空间不足时，优先压缩搜索宽度、限制 trailing 最大宽度、隐藏次要状态文本、使用图标按钮或把低频动作收进菜单；不得通过增加 Top Bar 高度解决。
 - Top Bar 高度不得随窗口宽度变化。模块样式不得只用 `min-height` 允许内容撑高 Top Bar；必须保持固定 `height` / `max-height` 或等价 block-size 约束。
