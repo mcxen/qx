@@ -133,8 +133,6 @@ interface QxShellProps {
   actions?: QxShellAction[];
   /** Stable id projected to the Bottom Bar and unmodified Enter. */
   primaryActionId?: string;
-  /** Keep the primary Enter action but suppress the shared Actions menu projection. */
-  actionMenuEnabled?: boolean;
   actionTitle?: string;
   /** Opens the shared Actions menu beside a contextual pointer location. */
   actionMenuRequest?: QxShellActionMenuRequest | null;
@@ -173,7 +171,6 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   escapeAction,
   actions,
   primaryActionId,
-  actionMenuEnabled = true,
   actionTitle,
   actionMenuRequest,
   onBack,
@@ -260,24 +257,20 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const handledActionMenuRequestRef = useRef<number | null>(null);
   const handledContextActionMenuRequestRef = useRef<number | null>(null);
   const nextContextActionMenuRequestIdRef = useRef(0);
-  const declaredActions = useMemo(() => actions ?? [], [actions]);
-  const menuActions = useMemo(
-    () => actionMenuEnabled ? declaredActions : [],
-    [actionMenuEnabled, declaredActions],
-  );
+  const menuActions = useMemo(() => actions ?? [], [actions]);
   const primaryAction = useMemo(
     () => primaryActionId
-      ? declaredActions.find((action) => action.id === primaryActionId)
+      ? menuActions.find((action) => action.id === primaryActionId)
       : undefined,
-    [declaredActions, primaryActionId],
+    [menuActions, primaryActionId],
   );
   useEffect(() => {
     if (!import.meta.env.DEV) return;
-    const issues = validateQxShellActions(declaredActions, primaryActionId);
+    const issues = validateQxShellActions(menuActions, primaryActionId);
     if (issues.length > 0) {
       console.warn(`[QxShell:${islandKey}] invalid action protocol`, issues);
     }
-  }, [declaredActions, islandKey, primaryActionId]);
+  }, [islandKey, menuActions, primaryActionId]);
   const showActionMenu = menuActions.some((action) => action.id !== primaryActionId);
   const hasRightActions = Boolean(primaryAction || showActionMenu);
   const menuTitle = actionTitle ?? `${title} Actions`;

@@ -136,7 +136,6 @@ QxShell 的纵向结构高度不得因为窗口左右缩窄、文字变长、筛
 | 搜索 / 内容筛选 / trailing | `search` / `topbarFilters` / `trailing` | 搜索在 Top Bar 主列；内容筛选只发布数据给宿主固定 Select；`trailing` 仅保留不可归入筛选或 Actions 的短状态 |
 | 状态 | `island` / `customIsland` | 轻量任务与位置信息，见 Bottom Island |
 | 动作 | `actions` + `primaryActionId` | 单一动作集合；稳定 ID 指定 Bottom Bar 与 Enter 的主动作，Shell 自行生成 Actions 入口 |
-| 动作菜单投影 | `actionMenuEnabled` | 默认 `true`；仅宿主内置模块在 Context 已是唯一完整 Action 面时可设为 `false`，但仍须发布完整 `actions[]`，Bottom Bar / Enter 继续由 `primaryActionId` 派生 |
 | **i18n** | `useT(key, englishFallback)` | **所有用户可见文案**（标题、按钮、空态、toast、confirm）必须可翻译；中文进 `i18n.ts` 的 `zh` 表 |
 
 **禁止：**

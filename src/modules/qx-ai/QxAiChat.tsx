@@ -310,7 +310,6 @@ export default function QxAiChat() {
       island={shell.island}
       escapeAction={shell.escapeAction}
       primaryActionId="send"
-      actionMenuEnabled={false}
       actionTitle="Chat Actions"
       actions={actions}
     >

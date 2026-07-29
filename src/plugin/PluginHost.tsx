@@ -772,7 +772,6 @@ export function PluginPanelViewport() {
       island={shell.island}
       islandManagedExternally={workbenchIslandManaged || pluginIslandSessionActive}
       primaryActionId={primaryActionId}
-      actionMenuEnabled={false}
       actionTitle={
         actionSelectionTitle
           ? `${t("common.actions", "Actions")} · ${actionSelectionTitle}`

@@ -176,7 +176,6 @@ export default function QxAiPanel() {
       island={shell.island}
       escapeAction={shell.escapeAction}
       primaryActionId={primaryActionId}
-      actionMenuEnabled={false}
       actionTitle={t("qxai.actions", "AI Actions")}
       actions={actions}
     >

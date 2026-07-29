@@ -588,7 +588,6 @@ export default function ArticleList() {
       }
       island={shell.island}
       primaryActionId={primaryActionId}
-      actionMenuEnabled={false}
       actions={actions}
     >
       <QxResizableSplit

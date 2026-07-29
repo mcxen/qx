@@ -271,7 +271,6 @@ export default function V2exPanel() {
       }
       island={shell.island}
       primaryActionId={detailTopic?.url ? "open-browser" : selectedTopic ? "view-topic" : undefined}
-      actionMenuEnabled={false}
       actionTitle="V2EX Actions"
       actions={actions}
     >

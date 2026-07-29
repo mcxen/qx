@@ -410,7 +410,6 @@ export default function RssPanel() {
       island={shell.island}
       escapeAction={shell.escapeAction}
       primaryActionId={primaryActionId}
-      actionMenuEnabled={false}
       actions={actions}
     >
       <div

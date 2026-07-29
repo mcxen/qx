@@ -119,7 +119,6 @@ export default function V2exDetail({ topic, onBack }: V2exDetailProps) {
       }
       island={shell.island}
       primaryActionId="open-browser"
-      actionMenuEnabled={false}
       actionTitle="Topic Actions"
       actions={actions}
     >

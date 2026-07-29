@@ -1266,7 +1266,6 @@ export default function DevTxtTool() {
       }
       island={shell.island}
       primaryActionId={primaryActionId}
-      actionMenuEnabled={false}
       actionTitle={actionTitle}
       actions={documentActions}
       navigation={qxMasterDetailNavigation({
