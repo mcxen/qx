@@ -177,12 +177,14 @@ export function Select<T extends string>({
   options,
   onChange,
   ariaLabel,
+  disabled = false,
   className = "",
 }: {
   value: T;
   options: { value: T; label: string; disabled?: boolean }[];
   onChange: (v: T) => void;
   ariaLabel?: string;
+  disabled?: boolean;
   className?: string;
 }) {
   const selected = options.find((option) => option.value === value && !option.disabled)
@@ -191,6 +193,7 @@ export function Select<T extends string>({
   return (
     <div className={`qx-select ${className}`.trim()}>
       <ShadcnSelect
+        disabled={disabled}
         value={selected?.value}
         onValueChange={(next) => onChange(next as T)}
       >

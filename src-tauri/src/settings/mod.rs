@@ -417,6 +417,16 @@ impl Default for AgentSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RssSettings {
     #[serde(
+        default = "default_rss_background_refresh_enabled",
+        rename = "background_refresh_enabled"
+    )]
+    pub background_refresh_enabled: bool,
+    #[serde(
+        default = "default_rss_background_refresh_interval_hours",
+        rename = "background_refresh_interval_hours"
+    )]
+    pub background_refresh_interval_hours: u32,
+    #[serde(
         default = "default_offline_cache_enabled",
         rename = "offline_cache_enabled"
     )]
@@ -447,6 +457,14 @@ pub struct RssSettings {
 
 fn default_offline_cache_enabled() -> bool {
     true
+}
+
+fn default_rss_background_refresh_enabled() -> bool {
+    true
+}
+
+fn default_rss_background_refresh_interval_hours() -> u32 {
+    24
 }
 
 fn default_max_articles_per_feed() -> u32 {
@@ -484,6 +502,8 @@ fn default_retention_days() -> u32 {
 impl Default for RssSettings {
     fn default() -> Self {
         Self {
+            background_refresh_enabled: true,
+            background_refresh_interval_hours: 24,
             offline_cache_enabled: true,
             max_articles_per_feed: 500,
             bottom_island_mode: "scroll".to_string(),

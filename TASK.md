@@ -1,5 +1,27 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — RSS 每日后台刷新
+
+**状态**：实现完成，等待长时运行验证。
+
+- RSS 默认开启每日后台刷新；Settings 可选择每 6 / 12 / 24 小时或关闭。Qx 启动后延迟检查，
+  后续每 15 分钟轻量复核一次，只有设置周期到期才执行，不要求 RSS 面板处于打开状态。
+- 最近一次全量刷新时间持久化在 `rss_meta`；手动“全部刷新”同样重新计时。单 Feed、手动
+  全量与后台全量共享进程内刷新锁，避免并发抓取和数据库重复写入。
+- 后台全量刷新复用现有真实 HTTP、解析、持久化、裁剪和 `rss:refresh-progress` 流程；
+  SQLite 查询与保存通过 blocking pool 执行，成功或失败写入诊断日志但不召唤窗口。
+- Settings → RSS Reader → Library & Storage 提供后台刷新开关与周期选择，默认每天。
+
+### 验证
+
+- [x] `npm run check`
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [x] `cargo fmt --check`
+- [x] `cargo check`
+- [x] RSS 调度与 meta 单元测试（`cargo test rss::`，12 passed）
+- [ ] 长时运行 / 睡眠唤醒后确认只执行一次到期刷新。
+
 ## Refactor — 全量插件 Action 去重
 
 **状态**：实现完成，等待桌面运行态视觉复核。

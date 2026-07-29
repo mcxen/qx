@@ -8,12 +8,16 @@ use rusqlite::params;
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use tauri::{command, AppHandle, Emitter, Manager, State};
 
 use storage::RssDb;
 use types::{Article, Feed, Folder};
 
 use crate::settings;
+
+const BACKGROUND_REFRESH_CHECK_INTERVAL: Duration = Duration::from_secs(15 * 60);
+const BACKGROUND_REFRESH_STARTUP_DELAY: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,6 +28,11 @@ struct RssRefreshProgress {
     feed_title: Option<String>,
     completed: usize,
     total: usize,
+    failed: usize,
+}
+
+struct RssRefreshAllOutcome {
+    article_count: usize,
     failed: usize,
 }
 
@@ -48,9 +57,78 @@ pub fn init(app: &tauri::AppHandle) {
             None
         }
     };
-    let db = RssDb(Arc::new(std::sync::Mutex::new(conn)));
+    let db = RssDb(
+        Arc::new(std::sync::Mutex::new(conn)),
+        Arc::new(tokio::sync::Mutex::new(())),
+    );
     app.manage(db.clone());
-    tauri::async_runtime::spawn(warm_feed_icon_cache(db));
+    tauri::async_runtime::spawn(warm_feed_icon_cache(db.clone()));
+    start_background_refresh(app.clone(), db);
+}
+
+fn background_refresh_is_due(
+    enabled: bool,
+    interval_hours: u32,
+    last_refresh_at: Option<i64>,
+    now: i64,
+) -> bool {
+    let interval_secs = i64::from(interval_hours.max(1)) * 60 * 60;
+    enabled
+        && last_refresh_at
+            .map(|last| now.saturating_sub(last) >= interval_secs)
+            .unwrap_or(true)
+}
+
+fn start_background_refresh(app: AppHandle, db: RssDb) {
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(BACKGROUND_REFRESH_STARTUP_DELAY).await;
+        loop {
+            let due_db = db.clone();
+            let due = crate::runtime::blocking(move || {
+                let rss_settings = settings::read_settings().rss;
+                let now = chrono::Local::now().timestamp();
+                let last_refresh_at = with_db(&due_db, |conn| {
+                    storage::last_refresh_all_at(conn).map_err(|error| error.to_string())
+                })
+                .unwrap_or(None);
+                background_refresh_is_due(
+                    rss_settings.background_refresh_enabled,
+                    rss_settings.background_refresh_interval_hours,
+                    last_refresh_at,
+                    now,
+                )
+            })
+            .await
+            .unwrap_or(false);
+            if due {
+                if let Ok(_refresh_guard) = db.1.try_lock() {
+                    let result = refresh_all_inner(&app, &db).await;
+                    let (level, message, fields) = match result {
+                        Ok(outcome) if outcome.failed > 0 => (
+                            crate::diagnostics::LogLevel::Warn,
+                            "daily RSS background refresh completed with feed failures",
+                            serde_json::json!({
+                                "articleCount": outcome.article_count,
+                                "failedFeeds": outcome.failed,
+                            }),
+                        ),
+                        Ok(outcome) => (
+                            crate::diagnostics::LogLevel::Info,
+                            "daily RSS background refresh completed",
+                            serde_json::json!({ "articleCount": outcome.article_count }),
+                        ),
+                        Err(error) => (
+                            crate::diagnostics::LogLevel::Warn,
+                            "daily RSS background refresh failed",
+                            serde_json::json!({ "error": error }),
+                        ),
+                    };
+                    crate::diagnostics::log(level, "rss.background_refresh", message, fields);
+                }
+            }
+            tokio::time::sleep(BACKGROUND_REFRESH_CHECK_INTERVAL).await;
+        }
+    });
 }
 
 async fn warm_feed_icon_cache(db: RssDb) {
@@ -74,7 +152,7 @@ async fn warm_feed_icon_cache(db: RssDb) {
     }
 }
 
-fn with_db<F, R>(state: &State<RssDb>, f: F) -> Result<R, String>
+fn with_db<F, R>(state: &RssDb, f: F) -> Result<R, String>
 where
     F: FnOnce(&rusqlite::Connection) -> Result<R, String>,
 {
@@ -84,6 +162,17 @@ where
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let conn = storage::ensure_open(&mut guard)?;
     f(conn)
+}
+
+async fn with_db_async<F, R>(state: &RssDb, f: F) -> Result<R, String>
+where
+    F: FnOnce(&rusqlite::Connection) -> Result<R, String> + Send + 'static,
+    R: Send + 'static,
+{
+    let db = state.clone();
+    crate::runtime::blocking(move || with_db(&db, f))
+        .await
+        .map_err(String::from)?
 }
 
 fn rss_settings() -> settings::RssSettings {
@@ -259,6 +348,7 @@ pub async fn rss_refresh_feed(
     state: State<'_, RssDb>,
     id: i64,
 ) -> Result<usize, String> {
+    let _refresh_guard = state.1.lock().await;
     let target = with_db(&state, |conn| Ok(storage::feed_target_by_id(conn, id)))?;
     let (url, title) = target.ok_or_else(|| "feed not found".to_string())?;
     emit_refresh_progress(
@@ -352,16 +442,27 @@ pub async fn rss_refresh_feed(
 
 #[command]
 pub async fn rss_refresh_all(app: AppHandle, state: State<'_, RssDb>) -> Result<usize, String> {
-    let feeds = with_db(&state, |conn| {
+    let _refresh_guard = state.1.lock().await;
+    Ok(refresh_all_inner(&app, &state).await?.article_count)
+}
+
+async fn refresh_all_inner(app: &AppHandle, state: &RssDb) -> Result<RssRefreshAllOutcome, String> {
+    let refresh_started_at = chrono::Local::now().timestamp();
+    with_db_async(state, move |conn| {
+        storage::set_last_refresh_all_at(conn, refresh_started_at).map_err(|e| format!("{e}"))
+    })
+    .await?;
+    let feeds = with_db_async(state, |conn| {
         storage::all_feed_targets(conn).map_err(|e| format!("{e}"))
-    })?;
+    })
+    .await?;
 
     let feed_count = feeds.len();
     let mut total = 0usize;
     let mut completed = 0usize;
     let mut failed = 0usize;
     emit_refresh_progress(
-        &app,
+        app,
         RssRefreshProgress {
             scope: "all",
             phase: "fetching",
@@ -374,7 +475,7 @@ pub async fn rss_refresh_all(app: AppHandle, state: State<'_, RssDb>) -> Result<
     );
     for (id, url, title) in feeds {
         emit_refresh_progress(
-            &app,
+            app,
             RssRefreshProgress {
                 scope: "all",
                 phase: "fetching",
@@ -389,7 +490,7 @@ pub async fn rss_refresh_all(app: AppHandle, state: State<'_, RssDb>) -> Result<
             Ok(mut parsed) => {
                 parsed.icon = icon_cache::resolve(&url, &parsed.icon).await;
                 emit_refresh_progress(
-                    &app,
+                    app,
                     RssRefreshProgress {
                         scope: "all",
                         phase: "saving",
@@ -401,7 +502,7 @@ pub async fn rss_refresh_all(app: AppHandle, state: State<'_, RssDb>) -> Result<
                     },
                 );
                 let article_count = parsed.articles.len();
-                let stored = with_db(&state, |conn| {
+                let stored = with_db_async(state, move |conn| {
                     for a in &parsed.articles {
                         let _ = store_article(conn, id, a);
                     }
@@ -409,7 +510,8 @@ pub async fn rss_refresh_all(app: AppHandle, state: State<'_, RssDb>) -> Result<
                     storage::update_feed_meta(conn, id, &parsed.title, &parsed.icon)
                         .map_err(|e| format!("{e}"))?;
                     Ok::<(), String>(())
-                });
+                })
+                .await;
                 if stored.is_ok() {
                     total += article_count;
                 } else {
@@ -418,14 +520,15 @@ pub async fn rss_refresh_all(app: AppHandle, state: State<'_, RssDb>) -> Result<
             }
             Err(_) => {
                 failed += 1;
-                let _ = with_db(&state, |conn| {
+                let _ = with_db_async(state, move |conn| {
                     storage::increment_feed_error(conn, id).map_err(|e| format!("{e}"))
-                });
+                })
+                .await;
             }
         }
         completed += 1;
         emit_refresh_progress(
-            &app,
+            app,
             RssRefreshProgress {
                 scope: "all",
                 phase: "fetching",
@@ -437,14 +540,17 @@ pub async fn rss_refresh_all(app: AppHandle, state: State<'_, RssDb>) -> Result<
             },
         );
     }
-    let retention = rss_settings().retention_days;
+    let retention = crate::runtime::blocking(|| rss_settings().retention_days)
+        .await
+        .map_err(String::from)?;
     if retention > 0 {
-        let _ = with_db(&state, |conn| {
+        let _ = with_db_async(state, move |conn| {
             storage::delete_old_articles(conn, retention).map_err(|e| format!("{e}"))
-        });
+        })
+        .await;
     }
     emit_refresh_progress(
-        &app,
+        app,
         RssRefreshProgress {
             scope: "all",
             phase: "finished",
@@ -455,7 +561,10 @@ pub async fn rss_refresh_all(app: AppHandle, state: State<'_, RssDb>) -> Result<
             failed,
         },
     );
-    Ok(total)
+    Ok(RssRefreshAllOutcome {
+        article_count: total,
+        failed,
+    })
 }
 
 #[command]
@@ -655,4 +764,35 @@ fn extract_article_body(html: &str) -> String {
     }
 
     result.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::background_refresh_is_due;
+
+    #[test]
+    fn background_refresh_requires_enabled_and_elapsed_day() {
+        let day = 24 * 60 * 60;
+        let now = 2 * day;
+        assert!(!background_refresh_is_due(false, 24, None, now));
+        assert!(background_refresh_is_due(true, 24, None, now));
+        assert!(!background_refresh_is_due(
+            true,
+            24,
+            Some(now - day + 1),
+            now,
+        ));
+        assert!(background_refresh_is_due(true, 24, Some(now - day), now));
+        assert!(background_refresh_is_due(
+            true,
+            6,
+            Some(now - 6 * 60 * 60),
+            now
+        ));
+    }
+
+    #[test]
+    fn future_timestamp_does_not_trigger_refresh_loop() {
+        assert!(!background_refresh_is_due(true, 24, Some(200), 100));
+    }
 }

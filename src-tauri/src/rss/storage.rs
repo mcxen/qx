@@ -7,7 +7,10 @@ use super::types::{Article, Feed, Folder};
 /// Managed Tauri state. Connection may be `None` if the first open failed;
 /// callers reconnect lazily via `ensure_open`.
 #[derive(Clone)]
-pub struct RssDb(pub Arc<Mutex<Option<Connection>>>);
+pub struct RssDb(
+    pub Arc<Mutex<Option<Connection>>>,
+    pub Arc<tokio::sync::Mutex<()>>,
+);
 
 /// Open (or re-open) the DB into `slot` if empty.
 pub fn ensure_open(slot: &mut Option<Connection>) -> Result<&Connection, String> {
@@ -208,6 +211,16 @@ fn meta_set(conn: &Connection, key: &str, value: &str) -> rusqlite::Result<()> {
         params![key, value],
     )?;
     Ok(())
+}
+
+const LAST_REFRESH_ALL_AT_META_KEY: &str = "last_refresh_all_at";
+
+pub fn last_refresh_all_at(conn: &Connection) -> rusqlite::Result<Option<i64>> {
+    Ok(meta_get(conn, LAST_REFRESH_ALL_AT_META_KEY)?.and_then(|value| value.parse::<i64>().ok()))
+}
+
+pub fn set_last_refresh_all_at(conn: &Connection, timestamp: i64) -> rusqlite::Result<()> {
+    meta_set(conn, LAST_REFRESH_ALL_AT_META_KEY, &timestamp.to_string())
 }
 
 /// URLs that were briefly in the starter catalog and should be removed on upgrade
@@ -739,6 +752,22 @@ mod tests {
             )
             .expect("read migrated folder index");
         assert_eq!(folder_index_count, 1);
+    }
+
+    #[test]
+    fn full_refresh_timestamp_round_trips_through_meta() {
+        let mut conn = Connection::open_in_memory().expect("open in-memory rss db");
+        migrate_schema(&mut conn).expect("create rss schema");
+
+        assert_eq!(
+            last_refresh_all_at(&conn).expect("read empty timestamp"),
+            None
+        );
+        set_last_refresh_all_at(&conn, 1_725_000_000).expect("save timestamp");
+        assert_eq!(
+            last_refresh_all_at(&conn).expect("read timestamp"),
+            Some(1_725_000_000),
+        );
     }
 
     #[test]

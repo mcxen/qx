@@ -186,6 +186,8 @@ export interface AgentSettings {
 }
 
 export interface RssSettings {
+  background_refresh_enabled: boolean;
+  background_refresh_interval_hours: number;
   offline_cache_enabled: boolean;
   max_articles_per_feed: number;
   bottom_island_mode: "scroll" | "index";
@@ -508,6 +510,8 @@ export const DEFAULT_SETTINGS: Settings = {
     agent_max_iterations: 12,
   },
   rss: {
+    background_refresh_enabled: true,
+    background_refresh_interval_hours: 24,
     offline_cache_enabled: true,
     max_articles_per_feed: 500,
     bottom_island_mode: "scroll",

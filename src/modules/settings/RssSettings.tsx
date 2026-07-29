@@ -49,6 +49,30 @@ export default function RssSettings() {
       <SettingsCard
         title={t("rss.library.title", "Library & Storage")}>
         <Row
+          title={t("rss.backgroundRefresh", "Daily Background Refresh")}
+          description={t("rss.backgroundRefresh.desc", "Refresh every 6, 12, or 24 hours while Qx is running. A manual Refresh All resets the timer.")}
+        >
+          <Toggle
+            value={r.background_refresh_enabled}
+            onChange={(v) => patchR({ background_refresh_enabled: v })}
+          />
+        </Row>
+        <Row
+          title={t("rss.backgroundRefresh.interval", "Background Refresh Interval")}
+          description={t("rss.backgroundRefresh.interval.desc", "Choose how long Qx waits between full subscription refreshes.")}
+        >
+          <Select
+            value={String(r.background_refresh_interval_hours)}
+            disabled={!r.background_refresh_enabled}
+            onChange={(value) => patchR({ background_refresh_interval_hours: Number(value) })}
+            options={[
+              { value: "6", label: t("rss.backgroundRefresh.6h", "Every 6 Hours") },
+              { value: "12", label: t("rss.backgroundRefresh.12h", "Every 12 Hours") },
+              { value: "24", label: t("rss.backgroundRefresh.24h", "Every Day") },
+            ]}
+          />
+        </Row>
+        <Row
           title={t("rss.offlineCache", "Offline Content Caching")}
           description={t("rss.offlineCache.desc", "Save full article content to local storage for offline reading. When disabled, only titles and summaries are stored.")}
         >

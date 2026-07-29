@@ -434,6 +434,13 @@ const zh: Record<string, string> = {
   "rss.refresh.fetching": "正在获取",
   "rss.refresh.saving": "正在保存",
   "rss.refresh.failed": "个失败",
+  "rss.backgroundRefresh": "每日后台刷新",
+  "rss.backgroundRefresh.desc": "Qx 运行时可每 6、12 或 24 小时刷新全部订阅；手动“全部刷新”会重新计时。",
+  "rss.backgroundRefresh.interval": "后台刷新周期",
+  "rss.backgroundRefresh.interval.desc": "设置两次全量订阅刷新之间的等待时间。",
+  "rss.backgroundRefresh.6h": "每 6 小时",
+  "rss.backgroundRefresh.12h": "每 12 小时",
+  "rss.backgroundRefresh.24h": "每天",
   "rss.about.title": "关于 RSS",
   "rss.about.defaults": "默认订阅",
   "rss.about.defaults.desc":
