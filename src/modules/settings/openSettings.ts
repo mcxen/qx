@@ -21,8 +21,8 @@ const PENDING_TAB_KEY = "qx.settings.pendingTab";
 const FOCUS_PLUGIN_KEY = "qx.settings.focusPluginId";
 
 export interface OpenSettingsOptions {
-  /** Settings sidebar section (general, weather, agent, plugins, …). */
-  section?: SettingsTab;
+  /** Settings sidebar section (general, agent, plugins, …). */
+  section?: SettingsTab | "weather";
   /**
    * Focus an installed plugin / builtin module card under Extensions.
    * Implies `section: "plugins"` when set.
@@ -93,10 +93,15 @@ function writePendingFocus(focusPluginId: string | undefined): void {
  * Open the Settings panel. Records a one-level return target for `closeSettings`.
  */
 export function openSettings(options: OpenSettingsOptions = {}): void {
-  const focusPluginId = options.focusPluginId?.trim() || undefined;
+  // `weather` was a standalone Settings tab before v0.6.51. Keep deep links
+  // working, but land them in the builtin extension's configuration instead.
+  const focusPluginId = options.focusPluginId?.trim()
+    || (options.section === "weather" ? "builtin:weather" : undefined);
   const section: SettingsTab | undefined = focusPluginId
     ? "plugins"
-    : options.section;
+    : options.section === "weather"
+      ? undefined
+      : options.section;
 
   settingsReturnTab = sanitizeReturnTab(resolveReturnTarget(options.returnTo));
   writePendingFocus(focusPluginId);

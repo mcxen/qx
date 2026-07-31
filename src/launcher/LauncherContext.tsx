@@ -1,11 +1,11 @@
-import { Check, ChevronDown, Pencil, Plus, RotateCcw, Star, Trash2, X } from "lucide-react";
+import { Check, ChevronDown, Pencil, Plus, Star, Trash2 } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 import SearchAliasTagEditor from "../components/SearchAliasTagEditor";
-import { Button, Input, Select } from "../components/ui";
-import { useT } from "../i18n";
+import { Button, Select } from "../components/ui";
+import { useLocale, useT } from "../i18n";
 import { useDisplayName } from "../search/appDisplay";
 import type { AppEntry } from "../store";
-import { DEFAULT_SETTINGS, type QuickEntryConfig, useSettingsStore } from "../modules/settings/store";
+import { useSettingsStore } from "../modules/settings/store";
 import {
   metadataForKey,
   metadataKeyForEntry,
@@ -16,10 +16,7 @@ import {
   createQuickEntry,
   isQuickEntryAlreadyAdded,
   localizeQuickEntry,
-  parsePluginQuickEntryTarget,
-  pluginQuickEntryTarget,
   quickEntryFromAppEntry,
-  QUICK_ENTRY_TARGETS,
   sanitizeQuickEntries,
 } from "./quickEntries";
 import type { QuickEntry } from "./types";
@@ -104,10 +101,12 @@ export default function LauncherContext({
   selectedItem: AppEntry | null;
 }) {
   const t = useT();
+  const locale = useLocale();
   const getDisplayName = useDisplayName();
   const { settings, patch, patchSearchMetadata } = useSettingsStore();
   const plugins = usePluginRegistry((state) => state.plugins);
   const [editingQuickEntries, setEditingQuickEntries] = useState(false);
+  const [quickEntryTarget, setQuickEntryTarget] = useState("");
   const [quickEntriesCollapsed, setQuickEntriesCollapsed] = useState(false);
   const [allModulesCollapsed, setAllModulesCollapsed] = useState(false);
   const selectedMetadataKey = metadataKeyForEntry(selectedItem ?? { name: "", path: "", icon: "" });
@@ -115,13 +114,14 @@ export default function LauncherContext({
   const canEditMetadata = Boolean(selectedItem && selectedMetadataKey);
   const quickEntryDrafts = sanitizeQuickEntries(settings.quick_entries);
   const targetOptions = useMemo(
-    () => buildQuickEntryTargetOptions(plugins, t),
-    [plugins, t],
+    () => buildQuickEntryTargetOptions(plugins, t, locale),
+    [plugins, t, locale],
   );
-  const selectOptions = useMemo(() => {
+  const availableQuickEntryOptions = useMemo(() => {
     const options: { value: string; label: string; disabled?: boolean }[] = [];
     let lastGroup = "";
     for (const option of targetOptions) {
+      if (isQuickEntryAlreadyAdded(quickEntryDrafts, option.value)) continue;
       const group = option.group || "";
       if (group && group !== lastGroup) {
         if (options.length > 0) {
@@ -129,58 +129,16 @@ export default function LauncherContext({
         }
         lastGroup = group;
       }
-      const isPlugin = Boolean(parsePluginQuickEntryTarget(option.value));
       options.push({
         value: option.value,
-        label: isPlugin ? `🔌 ${option.label}` : option.label,
+        label: option.label,
       });
-    }
-    // Ensure current draft targets remain selectable even if plugin was disabled mid-edit.
-    for (const entry of quickEntryDrafts) {
-      if (!options.some((option) => option.value === entry.target && !option.disabled)) {
-        options.push({
-          value: entry.target,
-          label: entry.title || entry.target,
-        });
-      }
     }
     return options;
   }, [targetOptions, quickEntryDrafts]);
 
-  const patchQuickEntries = (entries: QuickEntryConfig[]) => patch("quick_entries", entries);
-  const updateQuickEntry = (id: string, changes: Partial<QuickEntryConfig>) => {
-    patchQuickEntries(
-      quickEntryDrafts.map((entry) => {
-        if (entry.id !== id) return entry;
-        const nextTarget = changes.target ?? entry.target;
-        const targetMeta = targetOptions.find((item) => item.value === nextTarget);
-        const prevMeta = targetOptions.find((item) => item.value === entry.target);
-        const titleLockedToDefault =
-          !entry.title
-          || entry.title === prevMeta?.label
-          || QUICK_ENTRY_TARGETS.some((item) => item.value === entry.target && item.label === entry.title);
-        const subtitleLockedToDefault =
-          !entry.subtitle
-          || entry.subtitle === prevMeta?.subtitle
-          || QUICK_ENTRY_TARGETS.some((item) => item.value === entry.target && item.subtitle === entry.subtitle);
-        return {
-          ...entry,
-          ...changes,
-          title:
-            changes.target && targetMeta && titleLockedToDefault
-              ? targetMeta.label
-              : changes.title ?? entry.title,
-          subtitle:
-            changes.target && targetMeta && subtitleLockedToDefault
-              ? targetMeta.subtitle
-              : changes.subtitle ?? entry.subtitle,
-        };
-      }),
-    );
-  };
-  const removeQuickEntry = (id: string) => {
-    patchQuickEntries(quickEntryDrafts.filter((entry) => entry.id !== id));
-  };
+  const patchQuickEntries = (entries: typeof quickEntryDrafts) => patch("quick_entries", entries);
+  const removeQuickEntry = (id: string) => patchQuickEntries(quickEntryDrafts.filter((entry) => entry.id !== id));
 
   const selectedQuickTarget = selectedItem
     ? quickEntryFromAppEntry(selectedItem, plugins)?.target
@@ -224,36 +182,11 @@ export default function LauncherContext({
       >
         {editingQuickEntries ? (
           <div className="qx-quick-entry-editor">
-            {quickEntryDrafts.map((entry) => (
-              <div className="qx-quick-entry-edit-row" key={entry.id}>
-                <div className="qx-quick-entry-edit-fields">
-                  <Input
-                    value={entry.title}
-                    aria-label={t("launcher.quickEntryTitle", "Quick entry title")}
-                    onChange={(event) => updateQuickEntry(entry.id, { title: event.target.value })}
-                  />
-                  <Input
-                    value={entry.subtitle}
-                    aria-label={t("launcher.quickEntrySubtitle", "Quick entry subtitle")}
-                    onChange={(event) => updateQuickEntry(entry.id, { subtitle: event.target.value })}
-                  />
-                  <Select
-                    value={entry.target}
-                    options={selectOptions}
-                    ariaLabel={t("launcher.quickEntryTarget", "Quick entry target")}
-                    onChange={(target) => updateQuickEntry(entry.id, { target })}
-                  />
-                </div>
-                <div className="qx-quick-entry-edit-actions">
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant={entry.enabled ? "secondary" : "ghost"}
-                    onClick={() => updateQuickEntry(entry.id, { enabled: !entry.enabled })}
-                    title={entry.enabled ? t("launcher.enabled", "Enabled") : t("launcher.disabled", "Disabled")}
-                  >
-                    {entry.enabled ? <Check size={14} /> : <X size={14} />}
-                  </Button>
+            {quickEntryDrafts.map((entry) => {
+              const labels = localizeQuickEntry(entry, t, plugins, locale);
+              return (
+                <div className="qx-quick-entry-simple-row" key={entry.id}>
+                  <span>{labels.title}</span>
                   <Button
                     type="button"
                     size="icon"
@@ -264,55 +197,36 @@ export default function LauncherContext({
                     <Trash2 size={14} />
                   </Button>
                 </div>
-              </div>
-            ))}
-            <div className="qx-quick-entry-editor-footer">
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                onClick={() => {
-                  const firstPlugin = plugins.find(
-                    (plugin) => plugin.enabled && !plugin.id.startsWith("builtin:"),
-                  );
-                  const target = firstPlugin
-                    ? pluginQuickEntryTarget(firstPlugin.id)
-                    : QUICK_ENTRY_TARGETS[0].value;
-                  patchQuickEntries([...quickEntryDrafts, createQuickEntry(target, plugins)]);
-                }}
-              >
-                <Plus size={14} />
-                {t("launcher.add", "Add")}
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => patchQuickEntries(DEFAULT_SETTINGS.quick_entries)}
-              >
-                <RotateCcw size={14} />
-                {t("launcher.reset", "Reset")}
-              </Button>
-            </div>
-            {plugins.some((plugin) => plugin.enabled && !plugin.id.startsWith("builtin:")) ? (
-              <div className="qx-context-editor-title" style={{ marginTop: 4, opacity: 0.75 }}>
-                {t(
-                  "launcher.quickEntries.pluginsHint",
-                  "Installed plugins appear in the target list — pick one after Import / marketplace install.",
-                )}
-              </div>
-            ) : (
-              <div className="qx-context-editor-title" style={{ marginTop: 4, opacity: 0.75 }}>
-                {t(
-                  "launcher.quickEntries.noPluginsHint",
-                  "Install a plugin under Settings → Extensions to pin it here as a quick app.",
-                )}
+              );
+            })}
+            {availableQuickEntryOptions.length > 0 && (
+              <div className="qx-quick-entry-add-row">
+                <Select
+                  value={quickEntryTarget || availableQuickEntryOptions[0].value}
+                  options={availableQuickEntryOptions}
+                  ariaLabel={t("launcher.quickEntryTarget", "Quick entry target")}
+                  onChange={setQuickEntryTarget}
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => {
+                    const target = quickEntryTarget || availableQuickEntryOptions[0]?.value;
+                    if (!target) return;
+                    patchQuickEntries([...quickEntryDrafts, createQuickEntry(target, plugins)]);
+                    setQuickEntryTarget("");
+                  }}
+                >
+                  <Plus size={14} />
+                  {t("launcher.add", "Add")}
+                </Button>
               </div>
             )}
           </div>
         ) : (
           quickEntries.map((entry) => {
-            const labels = localizeQuickEntry(entry, t, plugins);
+            const labels = localizeQuickEntry(entry, t, plugins, locale);
             return (
               <ContextEntry
                 key={entry.id}

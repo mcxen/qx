@@ -19,6 +19,7 @@ interface UseQxShellNavigationOptions {
 function isVisibleRegion(region: HTMLElement): boolean {
   return region.getAttribute("aria-hidden") !== "true"
     && !region.hasAttribute("hidden")
+    && !region.closest('[aria-hidden="true"], [inert]')
     && region.getClientRects().length > 0;
 }
 

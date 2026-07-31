@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import { Fragment, type HTMLAttributes, type ReactNode } from "react";
 import { formatQxShortcut } from "../utils/keyboard";
 import type { QxShellAction } from "./ShellActionButton";
 import { Button } from "./ui";
@@ -33,6 +33,39 @@ export function QxActionList({
       </Button>
     );
   });
+}
+
+export interface QxActionSection {
+  /** Stable, non-localized identity used as the React key. */
+  id: string;
+  title: ReactNode;
+  /** Optional summary/metadata rendered between the heading and actions. */
+  summary?: ReactNode;
+  actions: readonly QxShellAction[];
+  showShortcuts?: boolean;
+}
+
+/**
+ * Shared Workbench/feature projection for grouped Context actions.
+ *
+ * Callers keep one QxShellAction collection and partition it into semantic
+ * sections; this component only renders non-empty groups. The primary action
+ * should already be removed by stable id before projection so Context never
+ * duplicates the Bottom Bar action.
+ */
+export function QxActionSections({ sections }: { sections: readonly QxActionSection[] }) {
+  return sections
+    .filter((section) => section.actions.length > 0)
+    .map((section) => (
+      <Fragment key={section.id}>
+        <div className="qx-action-title">{section.title}</div>
+        {section.summary}
+        <QxActionList
+          actions={section.actions}
+          showShortcuts={section.showShortcuts}
+        />
+      </Fragment>
+    ));
 }
 
 export function QxActionPanel({

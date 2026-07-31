@@ -303,6 +303,11 @@ pub struct ClipboardEntry {
     pub pinned: bool,
     pub copy_count: i64,
     pub image_path: Option<String>,
+    /// Capture-time image facts. The panel reads these directly instead of
+    /// probing the PNG again whenever selection moves.
+    pub image_size_bytes: Option<i64>,
+    pub image_width: Option<i64>,
+    pub image_height: Option<i64>,
     pub file_path: Option<String>,
     /// Ordered native file-list payload. `file_path` remains the primary item
     /// for compatibility, preview and old databases.
@@ -647,6 +652,9 @@ fn ensure_clipboard_schema(conn: &Connection) -> rusqlite::Result<()> {
     ensure_column(&conn, "file_path", "TEXT")?;
     ensure_column(&conn, "file_paths", "TEXT")?;
     ensure_column(&conn, "file_kind", "TEXT")?;
+    ensure_column(&conn, "image_size_bytes", "INTEGER")?;
+    ensure_column(&conn, "image_width", "INTEGER")?;
+    ensure_column(&conn, "image_height", "INTEGER")?;
     ensure_column(&conn, "ocr_text", "TEXT")?;
     // Hot/cold list + search pagination (pinned → timestamp → id).
     conn.execute_batch(
@@ -1069,6 +1077,13 @@ pub fn start_listener(app: &AppHandle) {
                                     None,
                                 ) {
                                     Ok(entry_id) => {
+                                        store_captured_image_metadata(
+                                            &db_clone,
+                                            &entry_id,
+                                            &image_path,
+                                            width,
+                                            height,
+                                        );
                                         stored_entry = true;
                                         queue_auto_ocr_for_entry(
                                             &app_handle,
@@ -1128,6 +1143,31 @@ fn store(
         image_pasteboard_path,
         file_paths.as_deref(),
     )
+}
+
+/// Bitmap captures already provide dimensions. Persist them with the history
+/// row so navigating between images never re-opens the saved PNG on the UI
+/// selection path.
+fn store_captured_image_metadata(
+    db: &Arc<Mutex<Option<Connection>>>,
+    id: &str,
+    path: &Path,
+    width: u32,
+    height: u32,
+) {
+    let size = fs::metadata(path)
+        .map(|metadata| metadata.len() as i64)
+        .ok();
+    let mut guard = lock_db(db);
+    let Ok(conn) = ensure_connection(&mut guard) else {
+        return;
+    };
+    let _ = conn.execute(
+        "UPDATE clipboard_history
+         SET image_size_bytes = ?1, image_width = ?2, image_height = ?3
+         WHERE id = ?4",
+        params![size, i64::from(width), i64::from(height), id],
+    );
 }
 
 fn store_file_list(

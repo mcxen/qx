@@ -75,6 +75,7 @@ export default function QxMediaViewer({
   } | null>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const visibleImageRef = useRef<HTMLImageElement | null>(null);
   const zoomRef = useRef(1);
   const dragRef = useRef<{
     pointerId: number;
@@ -98,7 +99,47 @@ export default function QxMediaViewer({
     dragRef.current = null;
   }, [imageSetKey, images.length, initialIndex, open]);
 
+  const recordImageMetrics = useCallback((element: HTMLImageElement) => {
+    if (!image || element.naturalWidth <= 0 || element.naturalHeight <= 0) return;
+    setMetrics({
+      url: image.url,
+      width: element.naturalWidth,
+      height: element.naturalHeight,
+    });
+  }, [image?.url]);
+
+  const setVisibleImageRef = useCallback((element: HTMLImageElement | null) => {
+    visibleImageRef.current = element;
+    // A decoded cache entry can finish before React attaches onLoad. Reading
+    // through the ref at mount makes its natural dimensions available to the
+    // zoom layout immediately instead of leaving it in the fit-only fallback.
+    if (element?.complete) {
+      recordImageMetrics(element);
+    } else if (element) {
+      void element.decode().then(() => recordImageMetrics(element)).catch(() => {
+        // onLoad remains the fallback for formats WebKit cannot decode here.
+      });
+    }
+  }, [recordImageMetrics]);
+
+  const syncPreviewLayout = useCallback(() => {
+    const scroll = scrollRef.current;
+    if (scroll) {
+      setViewport({
+        width: Math.max(0, scroll.clientWidth - 4),
+        height: Math.max(0, scroll.clientHeight - 4),
+      });
+    }
+    if (visibleImageRef.current?.complete) {
+      recordImageMetrics(visibleImageRef.current);
+    }
+  }, [recordImageMetrics]);
+
   const setZoomLevel = useCallback((nextZoom: number, anchor?: { x: number; y: number }) => {
+    // WebKit can defer ResizeObserver delivery while a dialog is animating.
+    // Read the live scrollport at the interaction boundary, so a click always
+    // has both the decoded image and viewport dimensions for its canvas.
+    syncPreviewLayout();
     const currentZoom = zoomRef.current;
     const next = Math.max(0.5, Math.min(4, Math.round(nextZoom * 100) / 100));
     if (next === currentZoom) return;
@@ -125,7 +166,7 @@ export default function QxMediaViewer({
         scroll.scrollTop = Math.max(0, anchorY * ratio - (anchor?.y ?? 0));
       });
     }
-  }, []);
+  }, [syncPreviewLayout]);
 
   const move = useCallback((delta: number) => {
     zoomRef.current = 1;
@@ -140,6 +181,16 @@ export default function QxMediaViewer({
   const changeZoom = useCallback((delta: number) => {
     setZoomLevel(zoomRef.current + delta);
   }, [setZoomLevel]);
+
+  // A cached image may already be complete when the dialog opens, so its
+  // `load` event will not fire again after the viewer resets per-image state.
+  // Measure it explicitly; otherwise the zoom percentage changes while the
+  // rendered size stays at the fit-to-viewport fallback.
+  useEffect(() => {
+    if (!open || !image) return;
+    const element = visibleImageRef.current;
+    if (element?.complete) recordImageMetrics(element);
+  }, [image?.url, open, recordImageMetrics]);
 
   useEffect(() => {
     if (!open || images.length < 2) return;
@@ -185,17 +236,12 @@ export default function QxMediaViewer({
     if (!open) return;
     const scroll = scrollRef.current;
     if (!scroll) return;
-    const updateViewport = () => {
-      setViewport({
-        width: Math.max(0, scroll.clientWidth - 4),
-        height: Math.max(0, scroll.clientHeight - 4),
-      });
-    };
+    const updateViewport = () => syncPreviewLayout();
     updateViewport();
     const observer = new ResizeObserver(updateViewport);
     observer.observe(scroll);
     return () => observer.disconnect();
-  }, [image?.url, open]);
+  }, [image?.url, open, syncPreviewLayout]);
 
   useEffect(() => {
     if (!open) return;
@@ -379,17 +425,11 @@ export default function QxMediaViewer({
                 >
                   <img
                     key={image.url}
+                    ref={setVisibleImageRef}
                     src={image.url}
                     alt={image.alt || ""}
                     className={zoom === 1 ? undefined : "is-zoomed"}
-                    onLoad={(event) => {
-                      const element = event.currentTarget;
-                      setMetrics({
-                        url: image.url,
-                        width: element.naturalWidth,
-                        height: element.naturalHeight,
-                      });
-                    }}
+                    onLoad={(event) => recordImageMetrics(event.currentTarget)}
                     style={{
                       objectFit: image.fit || "contain",
                       width: `${renderedSize.width}px`,
@@ -402,19 +442,17 @@ export default function QxMediaViewer({
               ) : (
                 <img
                   key={image.url}
+                  ref={setVisibleImageRef}
                   src={image.url}
                   alt={image.alt || ""}
                   className={zoom === 1 ? undefined : "is-zoomed"}
-                  onLoad={(event) => {
-                    const element = event.currentTarget;
-                    setMetrics({
-                      url: image.url,
-                      width: element.naturalWidth,
-                      height: element.naturalHeight,
-                    });
-                  }}
+                  onLoad={(event) => recordImageMetrics(event.currentTarget)}
                   style={{
                     objectFit: image.fit || "contain",
+                    // Keep zoom functional during WebKit's image-metric gap.
+                    // Unlike transform, `zoom` participates in layout, so the
+                    // scrollport receives a real overflow area for panning.
+                    zoom,
                     maxWidth: "100%",
                     maxHeight: "100%",
                   } as CSSProperties}

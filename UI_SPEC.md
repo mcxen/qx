@@ -69,7 +69,10 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
 - 使用完整 Context Action 区的内置模块与插件面板只在 Bottom Bar 保留 Enter 主动作，
   Context 只列其余业务动作，并关闭重复的 Actions 菜单。插件宿主不得把 manifest 启动命令、
   后台 interval 或宿主 reload 自动追加为当前面板动作。
-- **Context 侧栏宽度全局统一**：只用 `--qx-context-w`（`QxShell.has-context` 的 grid 第二列）。禁止模块用 inline style / localStorage 改写该变量；列表内部分栏（如 RSS 文章列表宽）可单独 token，不得影响 shell context 列宽。
+- 有列表与详情的 Workbench 面板，Enter 是宿主导航动作：列表中打开所选详情，详情中关闭详情并
+  返回列表。插件的“在浏览器打开”等业务动作不得占用 Enter，必须作为 Context Action 并使用带修饰键的
+  明确快捷键。
+- **Context 侧栏由 QxShell 全局控制**：默认宽度使用 `--qx-context-w`，用户可拖动宿主分隔条调整；拖到右缘阈值后收起，主内容占满，收起后仍保留窄恢复轨。宽度由 Shell 使用同一持久键保存，禁止模块用 inline style / 私有 localStorage 改写；列表内部分栏（如 RSS 文章列表宽）继续使用自己的 token。
 - Bottom Bar 使用 `grid-template-columns: auto 1fr auto`。
 - Bottom Island 必须相对窗口居中：`position: absolute; left: 50%; transform: translateX(-50%)`。
 - 无边框主窗口必须让 Top Bar 的标题、空白和非交互包装区域在 macOS 与 Windows 都可直接拖动；Windows 另保留位于顶部缩放边缘以内的独立握区。输入框、按钮、链接、选择器与可编辑内容必须保持 `no-drag`，不得用整条透明覆盖层吞掉控件。
@@ -102,7 +105,7 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
   --qx-shell-chrome-x: 14px;              /* topbar / bottombar 共用水平 inset */
   --qx-topbar-h: clamp(48px, 6vh, 54px);  /* 与底栏接近，禁止顶栏厚到 90px+ */
   --qx-bottom-bar-h: clamp(46px, 5.8vh, 54px);
-  --qx-context-w: clamp(240px, 28vw, 340px); /* 全应用唯一 Context 侧栏宽度；模块禁止覆盖 */
+  --qx-context-w: clamp(240px, 28vw, 340px); /* Context 默认宽度；实际值由 QxShell 分隔条覆盖 */
   --qx-search-min-w: 220px;
   --qx-radius: 8px;
   --qx-control-radius: 6px;
@@ -453,7 +456,10 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
 }
 
 .qx-shell.has-context .qx-shell-main {
-  grid-template-columns: minmax(0, 1fr) var(--qx-context-w);
+  grid-template-columns:
+    minmax(0, 1fr)
+    var(--qx-context-handle-w)
+    var(--qx-context-current-w, var(--qx-context-w));
 }
 ```
 
@@ -473,7 +479,9 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
 
 Context Panel：
 
-- 宽度填满 `var(--qx-context-w)`。
+- 默认宽度使用 `var(--qx-context-w)`；宿主 `QxContextSplit` 可在 220–420px 内调整并全局持久化。
+- 分隔条可用鼠标/触控笔左右拖动；右栏缩至阈值以下时折叠为 0，主内容占满。折叠后保留窄恢复轨，向左拖动或双击可恢复。
+- 分隔条使用 `role="separator"`：Left 扩大右栏、Right 缩小，Home 到最大，End 收起；折叠 Context 的可聚焦后代必须进入 inert 状态，Shell 区域导航忽略它们。
 - 面板本身就是容器，不再套大卡片菜单。
 - 列表项可有 hover/active，但不要把整个右栏做成一张卡。
 
@@ -483,7 +491,7 @@ Context Panel：
 
 - 打开文章时 Shell 可切 `visual="glass"`，并给 shell 加 `is-reading`。
 - **正文字行长随阅读列宽变化**（不强制居中 max-width measure）；列表栏可略收一点让出正文。
-- Context 仍只放动作，宽度继续用全局 `--qx-context-w`（略紧即可，不单独加宽）。
+- Context 仍只放动作，宽度由 Shell 全局分隔条控制；RSS 不单独保存或覆盖宽度。
 - 正文字号/字体来自 Settings → RSS；正文排版（段落/标题/代码）可增强，但**文章标题样式保持原逻辑**。
 - 阅读进度按文章 ID 隔离持久化为 0–100 的归一化位置；滚动停止后节流写入，切换文章或离开详情时只提交正在退出的阅读会话快照。不得在复用滚动 DOM 时读取下一篇的尺寸并回写上一篇。再次打开时应在正文与图片布局稳定后恢复，窗口、字体或栏宽变化不得依赖旧像素偏移。
 
@@ -754,12 +762,13 @@ Clipboard：
 RSS：
 
 - 阅读器可使用三栏：Feed / Article List / Detail。
-- 右侧 Context 是 RSS 唯一的完整 Action 面：Feed 视图按“订阅 / 内容库”分组，文章视图按
-  “文章 / 订阅 / 导航”分组；同一动作不得再复制到右侧手写按钮、正文 footer 或 Bottom Bar
-  Actions 菜单。RSS Action 不显示或注册 `F/J/K/R/S/U/O/L` 等裸键快捷方式。
-- Bottom Bar 只保留一个随上下文变化的 Enter 主动作：Feed 列表进入所选订阅，文章列表
-  阅读所选文章，正文阅读进入下一篇；该主动作从右侧 Action 分组中移除，避免重复。末篇
-  正文没有下一篇时不显示伪主动作。Shell 标准方向键、Enter 主动作和 Esc 阶梯继续保留。
+- 右侧 Context 是 RSS 唯一的完整 Action 面：Feed 视图按“订阅 / 内容库”分组；文章视图按
+  “文章 / 刷新 / 导航”分组。文章组提供阅读、保存、已读状态、下载 HTML、在浏览器中打开与
+  正文加载；同一动作不得再复制到右侧手写按钮、正文 footer 或 Bottom Bar Actions 菜单。
+- RSS 不注册 `F/J/K/R/S/U/O/L` 等裸键快捷方式。Enter 遵循阅读层级：订阅列表进入所选订阅，
+  文章列表打开所选文章，正文中返回文章列表并恢复列表焦点；`⌘/Ctrl+R` 刷新当前订阅，
+  `⌘/Ctrl+D` 保存/取消保存文章，`⌘/Ctrl+S` 下载当前文章 HTML，`⌘/Ctrl+Shift+R` 全部刷新。
+  上下方向键继续移动当前列表选择，Esc 阶梯不变。
 - “刷新订阅”只刷新当前 Feed；“刷新全部”必须读取数据库中的完整订阅集合逐个执行真实 HTTP 请求，不能只处理当前列表选中项。
 - Settings → RSS Reader → Library & Storage 默认开启“每日后台刷新”，可选择每 6 / 12 / 24
   小时或关闭。Qx 运行时按最近一次全量刷新时间与所选周期执行；手动“全部刷新”重新计时。后台任务不得要求面板挂载、
@@ -1077,7 +1086,7 @@ search={
 `localStorage` 持久化；截图/录屏 toast 等浮层通过 `overlay` 传入，不参与分区计算。模块只负责
 `className`、最小宽度、响应式单栏规则和分区内容；不得再
 复制 pointermove、body cursor/user-select、键盘微调或宽度持久化逻辑。跨模块的 Shell Context
-宽度仍只使用 `--qx-context-w`，不得由该组件覆盖。
+由 `QxContextSplit` 独立控制，不得用 `QxResizableSplit` 或模块样式覆盖。
 
 参考：`V2exPanel`、`ArticleList`（RSS）、`DevTxtTool`。
 

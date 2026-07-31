@@ -3,7 +3,6 @@ import { getVersion } from "@tauri-apps/api/app";
 import type { LucideIcon } from "lucide-react";
 import {
   Bot,
-  CloudSun,
   Info,
   Keyboard,
   Palette,
@@ -26,7 +25,6 @@ import RssSettings from "./RssSettings";
 import AdvancedSettings from "./AdvancedSettings";
 import OcrSettings from "./OcrSettings";
 import AgentSettings from "./AgentSettings";
-import WeatherSettings from "./WeatherSettings";
 import AboutPanel from "./AboutPanel";
 import FileSearchSettings from "./FileSearchSettings";
 import StorageSettings from "./StorageSettings";
@@ -38,7 +36,6 @@ import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { homeIslandDataBus, useResolvedHomeIsland } from "../../home-island";
 import { QxIslandSurface } from "../../island";
-import { isBuiltinModuleEnabled } from "../moduleAvailability";
 
 interface NavItem {
   id: SettingsTab;
@@ -56,7 +53,7 @@ interface NavGroup {
  *
  *  基础 (Basics)     app-wide prefs everyone uses
  *  扩展 (Extensions)  installable / marketplace surface
- *  功能 (Features)    built-in module prefs (AI, OCR, RSS, Weather)
+ *  功能 (Features)    built-in module prefs (AI, OCR, RSS)
  *  系统 (System)      OS permissions, developer, about
  */
 const NAV_GROUPS: NavGroup[] = [
@@ -81,7 +78,6 @@ const NAV_GROUPS: NavGroup[] = [
       { id: "agent", label: "AI Agent", icon: Bot },
       { id: "ocr", label: "OCR", icon: ScanText },
       { id: "rss", label: "RSS Reader", icon: Rss },
-      { id: "weather", label: "Weather", icon: CloudSun },
     ],
   },
   {
@@ -104,7 +100,6 @@ const TAB_LABELS: Record<SettingsTab, string> = {
   appearance: "Appearance",
   agent: "AI Agent",
   rss: "RSS Reader",
-  weather: "Weather",
   ocr: "OCR",
   advanced: "Advanced",
   storage: "Storage Management",
@@ -172,12 +167,7 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
   );
 
   const navGroups = useMemo(() => {
-    const availableGroups = NAV_GROUPS
-      .map((group) => ({
-        ...group,
-        items: group.items.filter((item) => item.id !== "weather" || isBuiltinModuleEnabled("weather", settings)),
-      }))
-      .filter((group) => group.items.length > 0);
+    const availableGroups = NAV_GROUPS.filter((group) => group.items.length > 0);
     if (!filter.trim()) return availableGroups;
     return availableGroups
       .map((group) => ({
@@ -207,8 +197,6 @@ export default function SettingsPanel({ onClose }: { onClose: () => void }) {
         return <AgentSettings />;
       case "rss":
         return <RssSettings />;
-      case "weather":
-        return <WeatherSettings />;
       case "advanced":
         return <AdvancedSettings />;
       case "storage":

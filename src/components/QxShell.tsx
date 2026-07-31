@@ -45,6 +45,7 @@ import { goHomeToLauncher } from "../modules/settings/openSettings";
 import { useT } from "../i18n";
 import { Select } from "./ui";
 import QxWindowTitleBar from "./QxWindowTitleBar";
+import QxContextSplit from "./QxContextSplit";
 import { useSettingsStore } from "../modules/settings/store";
 
 export type { BottomIslandContent } from "./QxBottomIsland";
@@ -1068,10 +1069,18 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
         ) : null}
       </div>
 
-      <div className="qx-shell-main">
-        <main className="qx-shell-content">{children}</main>
-        {context && <aside className="qx-shell-context">{context}</aside>}
-      </div>
+      {context ? (
+        <QxContextSplit
+          context={context}
+          separatorLabel={t("shell.resizeContext", "Resize or hide context panel")}
+        >
+          {children}
+        </QxContextSplit>
+      ) : (
+        <div className="qx-shell-main">
+          <main className="qx-shell-content">{children}</main>
+        </div>
+      )}
 
       <div
         className="qx-shell-bottombar"

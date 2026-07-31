@@ -212,7 +212,7 @@ export default function WeatherPanel() {
 
   const goBack = useCallback(() => setTab("launcher"), [setTab]);
   const openWeatherSettings = useCallback(() => {
-    openSettings({ section: "weather" });
+    openSettings({ focusPluginId: "builtin:weather" });
   }, []);
 
   const handleModuleKeyDown = useCallback((e: React.KeyboardEvent) => {

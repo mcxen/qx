@@ -16,6 +16,26 @@ import type { PluginManifest } from "./types";
 
 export type TranslateFn = (key: string, fallback: string) => string;
 
+/** Compact, product-owned copy for the plugins shipped in Qx's community catalog. */
+const FIRST_PARTY_PLUGIN_LABELS: Record<string, { name: string; description: string }> = {
+  brew: { name: "Brew", description: "Manage Homebrew packages (macOS)." },
+  "external-display-control": { name: "External Display Control", description: "Adjust external display brightness." },
+  "pomodoro-island": { name: "Pomodoro Island", description: "Focus timer with breaks." },
+  "raycast-calendar": { name: "Quick Calendar", description: "Browse calendar months." },
+  "qx-bing-wallpaper": { name: "Qx Bing Wallpaper", description: "Browse Bing daily wallpapers." },
+  qxgold: { name: "QxGold", description: "Live JD gold prices and history." },
+  qxcoolapk: { name: "QxCoolapk", description: "Browse Coolapk community feeds." },
+  qxgh: { name: "QxGH", description: "Watch GitHub Actions and Releases." },
+  qxheihe: { name: "QxHeihe", description: "Browse Heybox community posts." },
+  qxpicture: { name: "Qxpicture", description: "Browse and save random images." },
+  qxtieba: { name: "QxTieba", description: "Browse Baidu Tieba posts." },
+  qxweibo: { name: "QxWeibo", description: "Browse Weibo posts and comments." },
+  sysinfo: { name: "Sysinfo", description: "View CPU, memory, and system status." },
+  unsplash: { name: "Unsplash", description: "Search Unsplash photos and set wallpapers." },
+  v2ex: { name: "V2EX", description: "Browse latest and hot V2EX topics." },
+  weather: { name: "Weather", description: "View current weather and forecasts." },
+};
+
 export type PluginLabelSource = {
   id: string;
   name: string;
@@ -48,6 +68,9 @@ export function localizePluginName(
   t: TranslateFn,
   locale: Locale = "en",
 ): string {
+  const firstParty = FIRST_PARTY_PLUGIN_LABELS[plugin.id];
+  if (firstParty) return t(`plugins.ext.${plugin.id}.name`, firstParty.name);
+
   const fromManifest = pickFromLocaleMap(plugin.manifest?.names, locale);
   if (fromManifest) return fromManifest;
 
@@ -65,6 +88,9 @@ export function localizePluginDescription(
   t: TranslateFn,
   locale: Locale = "en",
 ): string {
+  const firstParty = FIRST_PARTY_PLUGIN_LABELS[plugin.id];
+  if (firstParty) return t(`plugins.ext.${plugin.id}.desc`, firstParty.description);
+
   const fallback = (plugin.description || "").trim();
   const fromManifest = pickFromLocaleMap(plugin.manifest?.descriptions, locale);
   if (fromManifest) return fromManifest;
@@ -81,12 +107,15 @@ export function localizeMarketplaceEntryName(
   entry: { id: string; name: string },
   t: TranslateFn,
 ): string {
-  return t(`plugins.ext.${entry.id}.name`, entry.name);
+  return t(`plugins.ext.${entry.id}.name`, FIRST_PARTY_PLUGIN_LABELS[entry.id]?.name ?? entry.name);
 }
 
 export function localizeMarketplaceEntryDescription(
   entry: { id: string; description?: string },
   t: TranslateFn,
 ): string {
-  return t(`plugins.ext.${entry.id}.desc`, (entry.description || "").trim());
+  return t(
+    `plugins.ext.${entry.id}.desc`,
+    FIRST_PARTY_PLUGIN_LABELS[entry.id]?.description ?? (entry.description || "").trim(),
+  );
 }

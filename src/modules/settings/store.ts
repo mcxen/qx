@@ -375,7 +375,6 @@ export type SettingsTab =
   | "appearance"
   | "agent"
   | "rss"
-  | "weather"
   | "advanced"
   | "ocr"
   | "storage"

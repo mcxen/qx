@@ -13,6 +13,9 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
   padding: 12px;
 }
 
@@ -154,33 +157,30 @@
   gap: 8px;
 }
 
-.qx-quick-entry-edit-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+.qx-quick-entry-simple-row,
+.qx-quick-entry-add-row {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  padding: 8px;
+  min-width: 0;
+  padding: 6px 8px;
   border: 1px solid var(--qx-border-1);
   border-radius: var(--qx-card-radius);
   background: var(--qx-bg-component-1);
 }
 
-.qx-quick-entry-edit-fields {
-  display: grid;
+.qx-quick-entry-simple-row > span {
+  flex: 1;
   min-width: 0;
-  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.qx-quick-entry-edit-fields .qx-select,
-.qx-quick-entry-edit-fields .qx-select-trigger,
-.qx-quick-entry-edit-fields .qx-shadcn-input {
-  width: 100%;
+.qx-quick-entry-add-row .qx-select,
+.qx-quick-entry-add-row .qx-select-trigger {
+  flex: 1;
   min-width: 0;
-}
-
-.qx-quick-entry-edit-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 
 .qx-quick-entry-editor-footer {

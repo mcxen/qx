@@ -15,7 +15,7 @@ import { quickEntryToAppEntry, toLauncherAllModules, toLauncherQuickEntries } fr
 import { useLauncherHistory } from "./launcher/useLauncherHistory";
 import type { QuickEntry } from "./launcher/types";
 import type { SearchTrackId } from "./launcher/searchProgress";
-import { useT } from "./i18n";
+import { useLocale, useT } from "./i18n";
 import { homeIslandDataBus, useResolvedHomeIsland } from "./home-island";
 import { islandHost, useHomeIslandContribution } from "./island";
 import { mapBottomIslandContent } from "./island/compat/mapBottomIslandContent";
@@ -66,6 +66,7 @@ export default function Launcher({
   const [manageDialog, setManageDialog] = useState<LauncherManageDialogRequest | null>(null);
   const [actionMenuRequest, setActionMenuRequest] =
     useState<QxShellActionMenuRequest | null>(null);
+  const [contextMenuItem, setContextMenuItem] = useState<AppEntry | null>(null);
   const query = useStore((state) => state.query);
   const hasQuery = query.trim().length > 0;
   const setQuery = useStore((state) => state.setQuery);
@@ -91,7 +92,7 @@ export default function Launcher({
       }),
     [onItemClick, onNavigate, t, settings],
   );
-  const activeSelectedItem = hasQuery ? selectedItem : null;
+  const activeSelectedItem = contextMenuItem ?? (hasQuery ? selectedItem : null);
   const launcherActions = useMemo(
     () => actionsForItem(activeSelectedItem),
     [actionsForItem, activeSelectedItem],
@@ -122,6 +123,20 @@ export default function Launcher({
     : activeSelectedItem
       ? launcherActions[0]?.id
       : undefined;
+  const requestItemContextMenu = useCallback((item: AppEntry, x: number, y: number) => {
+    setContextMenuItem(item);
+    window.requestAnimationFrame(() => {
+      setActionMenuRequest((request) => ({
+        id: (request?.id ?? 0) + 1,
+        x,
+        y,
+      }));
+    });
+  }, []);
+
+  useEffect(() => {
+    if (hasQuery) setContextMenuItem(null);
+  }, [hasQuery]);
   // History loads once on mount. Do not re-fetch when results briefly empty
   // during search transitions — that doubled IPC during every summon.
   const { recentSearches } = useLauncherHistory({
@@ -129,6 +144,7 @@ export default function Launcher({
   });
 
   const plugins = usePluginRegistry((state) => state.plugins);
+  const locale = useLocale();
   const openLauncherTarget = useCallback((target: string) => {
     if (target === "file-search") {
       setScope("files");
@@ -148,11 +164,12 @@ export default function Launcher({
       openLauncherTarget,
       t,
       plugins,
+      locale,
     );
-  }, [settings.quick_entries, openLauncherTarget, plugins, t]);
+  }, [settings.quick_entries, openLauncherTarget, plugins, t, locale]);
   const allModules: QuickEntry[] = useMemo(
-    () => toLauncherAllModules(openLauncherTarget, t, plugins),
-    [openLauncherTarget, plugins, t],
+    () => toLauncherAllModules(openLauncherTarget, t, plugins, locale),
+    [openLauncherTarget, plugins, t, locale],
   );
   const launcherDirectory = useMemo(() => {
     const entries = [...results, ...quickEntries, ...allModules]
@@ -393,6 +410,7 @@ export default function Launcher({
             });
           }}
           loadingPhase={loadingPhase}
+          showPinnedStrip
         />
       ) : (
         <HomeDashboard
@@ -404,6 +422,7 @@ export default function Launcher({
           }}
           onSearchSelect={setQuery}
           onNavigate={onNavigate}
+          onItemContextMenu={requestItemContextMenu}
         />
       )}
       <LauncherEntryManageDialogs

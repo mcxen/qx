@@ -692,7 +692,8 @@ img.qx-ext-card-icon {
 
 .qx-plugin-manager-top {
   flex: 0 0 auto;
-  padding: 8px var(--qx-settings-gutter-x);
+  /* One compact 34px control row: tabs, filters and actions share a baseline. */
+  padding: 6px var(--qx-settings-gutter-x);
   border-bottom: 1px solid var(--qx-border-1);
 }
 
@@ -719,6 +720,13 @@ img.qx-ext-card-icon {
   flex: 1;
   justify-content: flex-end;
   min-width: 0;
+}
+
+/* Tabs and segmented controls already occupy 34px (28px item + 2px padding + border).
+ * Match their outer height for the Select and small action buttons in this toolbar. */
+.qx-plugin-manager-top .qx-shadcn-button.size-sm,
+.qx-plugin-manager-top .qx-shadcn-select-trigger {
+  height: 34px;
 }
 
 .qx-marketplace {
@@ -1084,6 +1092,20 @@ img.qx-plugin-detail-icon {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.qx-plugin-install-source {
+  display: grid;
+  grid-template-columns: auto minmax(150px, 220px);
+  align-items: center;
+  flex: 1 1 260px;
+  gap: 8px;
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+}
+
+.qx-plugin-install-source .qx-select {
+  min-width: 0;
 }
 
 .qx-plugin-install-actions {

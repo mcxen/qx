@@ -3,7 +3,13 @@ import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
 import { useRssStore, type RssArticle } from "./store";
-import { classifyArticleTime, collectArticleImageUrls, formatDate, sanitizeHtml } from "./article-utils";
+import {
+  classifyArticleTime,
+  collectArticleImageUrls,
+  downloadArticleHtml,
+  formatDate,
+  sanitizeHtml,
+} from "./article-utils";
 import { prepareArticleImage, prewarmArticleImages } from "./articleImageCache";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import {
@@ -15,7 +21,7 @@ import {
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useSettingsStore } from "../settings/store";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
-import { QxActionList } from "../../components/QxActionPanel";
+import { QxActionSections } from "../../components/QxActionPanel";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import QxResizableSplit from "../../components/QxResizableSplit";
 import QxMediaViewer from "../../components/QxMediaViewer";
@@ -261,6 +267,11 @@ export default function ArticleList() {
     [articles, focusDetail, openArticle, prewarmArticle, setSelectedIndex],
   );
 
+  const closeArticleToList = useCallback(() => {
+    goBack();
+    window.requestAnimationFrame(focusList);
+  }, [focusList, goBack]);
+
   useEffect(() => {
     prewarmArticle(articles[selectedIndex]);
     prewarmArticle(articles[selectedIndex - 1]);
@@ -365,7 +376,7 @@ export default function ArticleList() {
             setLightbox(null);
             return;
           }
-          goBack();
+          closeArticleToList();
         },
       },
       query: {
@@ -407,14 +418,22 @@ export default function ArticleList() {
         kbd: "↵",
         disabled: !focusArticle || Boolean(currentArticle),
         onClick: () => {
-          if (focusArticle && !currentArticle) void openArticleForReading(focusArticle.id);
+          if (focusArticle && !currentArticle) void openArticleForReading(focusArticle.id, true);
         },
+      },
+      {
+        id: "return-to-article-list",
+        label: t("rss.returnToArticleList", "Back to Article List"),
+        kbd: "↵",
+        disabled: !currentArticle,
+        onClick: closeArticleToList,
       },
       {
         id: "toggle-star",
         label: focusArticle?.is_starred
-          ? t("rss.unstar", "Unstar")
-          : t("rss.star", "Star"),
+          ? t("rss.unsaveArticle", "Remove Saved Article")
+          : t("rss.saveArticle", "Save Article"),
+        kbd: "CmdOrCtrl+D",
         disabled: !focusArticle,
         onClick: () => {
           if (focusArticle) void toggleStar(focusArticle.id, !focusArticle.is_starred);
@@ -428,6 +447,15 @@ export default function ArticleList() {
         disabled: !focusArticle,
         onClick: () => {
           if (focusArticle) void markRead(focusArticle.id, !focusArticle.is_read);
+        },
+      },
+      {
+        id: "download-article",
+        label: t("rss.downloadArticle", "Download Article"),
+        kbd: "CmdOrCtrl+S",
+        disabled: !focusArticle,
+        onClick: () => {
+          if (focusArticle) downloadArticleHtml(focusArticle);
         },
       },
       {
@@ -461,7 +489,8 @@ export default function ArticleList() {
       {
         id: "refresh-feed",
         label: t("rss.refreshFeed", "Refresh Feed"),
-        disabled: selectedFeedId == null,
+        kbd: "CmdOrCtrl+R",
+        disabled: selectedFeedId == null || refreshingFeedId != null,
         onClick: () => {
           if (selectedFeedId != null) void refreshFeed(selectedFeedId);
         },
@@ -469,6 +498,7 @@ export default function ArticleList() {
       {
         id: "refresh-all",
         label: t("rss.refreshAll", "Refresh All"),
+        kbd: "CmdOrCtrl+Shift+R",
         disabled: refreshingFeedId != null,
         onClick: () => void refreshAll(),
       },
@@ -480,7 +510,6 @@ export default function ArticleList() {
           "{title}",
           next.title?.slice(0, 40) || t("rss.untitled", "(untitled)"),
         ),
-        kbd: "↵",
         onClick: () => void openArticleForReading(next.id),
       });
     }
@@ -495,23 +524,20 @@ export default function ArticleList() {
       });
     }
     return list;
-  }, [currentArticle, focusArticle, loadingOriginal, markRead, next, openArticleForReading, originalContent, prev, refreshAll, refreshFeed, refreshingFeedId, selectedFeedId, t, toggleStar]);
+  }, [closeArticleToList, currentArticle, focusArticle, loadingOriginal, markRead, next, openArticleForReading, originalContent, prev, refreshAll, refreshFeed, refreshingFeedId, selectedFeedId, t, toggleStar]);
 
-  const primaryActionId = currentArticle
-    ? next
-      ? "next-article"
-      : undefined
-    : selectedArticle
-      ? "read-article"
-      : undefined;
-  const articleActions = actions.filter((action) => action.id !== primaryActionId && [
-    "read-article",
+  const primaryActionId = currentArticle ? "return-to-article-list" : "read-article";
+  const articleActionIds = [
+    ...(!currentArticle ? ["read-article"] : []),
     "toggle-star",
     "toggle-read",
+    "download-article",
     "open-browser",
-    "load-original",
-  ].includes(action.id));
-  const feedActions = actions.filter((action) => ["refresh-feed", "refresh-all"].includes(action.id));
+    ...(currentArticle ? ["load-original"] : []),
+  ];
+  const articleActions = actions.filter((action) => action.id !== primaryActionId && articleActionIds.includes(action.id));
+  const feedActions = actions.filter((action) => action.id !== primaryActionId
+    && ["refresh-feed", "refresh-all"].includes(action.id));
   const navigationActions = actions.filter((action) => action.id !== primaryActionId
     && ["next-article", "previous-article"].includes(action.id));
 
@@ -536,7 +562,7 @@ export default function ArticleList() {
           if (a) void openArticleForReading(a.id, true);
         },
         onClose: () => {
-          if (currentArticle) goBack();
+          if (currentArticle) closeArticleToList();
         },
         pageSize: 8,
         focusList,
@@ -574,16 +600,27 @@ export default function ArticleList() {
             scroll: true,
           })}
         >
-          <div className="qx-action-title">{t("rss.article", "Article")}</div>
-          <QxActionList actions={articleActions} showShortcuts={false} />
-          <div className="qx-action-title">{t("rss.feed", "Feed")}</div>
-          <QxActionList actions={feedActions} showShortcuts={false} />
-          {navigationActions.length > 0 ? (
-            <>
-              <div className="qx-action-title">{t("rss.navigation", "Navigation")}</div>
-              <QxActionList actions={navigationActions} showShortcuts={false} />
-            </>
-          ) : null}
+          <QxActionSections
+            sections={[
+              {
+                id: "article",
+                title: t("rss.article", "Article"),
+                actions: articleActions,
+              },
+              {
+                id: "refresh",
+                title: t("rss.refresh", "Refresh"),
+                actions: feedActions,
+                showShortcuts: true,
+              },
+              {
+                id: "navigation",
+                title: t("rss.navigation", "Navigation"),
+                actions: navigationActions,
+                showShortcuts: false,
+              },
+            ]}
+          />
         </aside>
       }
       island={shell.island}

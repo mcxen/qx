@@ -7,7 +7,7 @@ import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { QxListLoading, shouldShowQxListLoading } from "../../components/QxListLoading";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
-import { QxActionList } from "../../components/QxActionPanel";
+import { QxActionSections } from "../../components/QxActionPanel";
 import AddFeedDialog from "./AddFeedDialog";
 import EditFeedDialog from "./EditFeedDialog";
 import {
@@ -207,7 +207,8 @@ export default function RssPanel() {
     {
       id: "refresh-feed",
       label: t("rss.refreshFeed", "Refresh Feed"),
-      disabled: !selectedFeed,
+      kbd: "CmdOrCtrl+R",
+      disabled: !selectedFeed || refreshingFeedId != null,
       onClick: () => {
         if (selectedFeed) void refreshFeed(selectedFeed.id);
       },
@@ -215,7 +216,6 @@ export default function RssPanel() {
     {
       id: "add-feed",
       label: t("rss.addFeed", "Add Feed"),
-      kbd: "↵",
       onClick: () => setShowAdd(true),
     },
     {
@@ -254,6 +254,8 @@ export default function RssPanel() {
     {
       id: "refresh-all",
       label: t("rss.refreshAll", "Refresh All"),
+      kbd: "CmdOrCtrl+Shift+R",
+      disabled: refreshingFeedId != null,
       onClick: () => void refreshAll(),
     },
     {
@@ -297,7 +299,7 @@ export default function RssPanel() {
         if (selectedFeed) handleDelete(selectedFeed.id);
       },
     },
-  ], [deleteFolder, openFeed, refreshAll, refreshFeed, selectedFeed, setFeedFolder, t]);
+  ], [deleteFolder, openFeed, refreshAll, refreshFeed, refreshingFeedId, selectedFeed, setFeedFolder, t]);
 
   const shell = useQxModuleShell({
     leave,
@@ -327,10 +329,12 @@ export default function RssPanel() {
           },
   });
 
-  const primaryActionId = selectedFeed ? "view-articles" : "add-feed";
+  // Enter follows the reading hierarchy: subscription list → article list.
+  // Refresh remains a secondary command and never steals row navigation.
+  const primaryActionId = "view-articles";
   const subscriptionActions = actions.filter((action) => action.id !== primaryActionId && [
-    "view-articles",
     "refresh-feed",
+    "view-articles",
     "set-folder",
     "remove-folder",
     "edit-subscription",
@@ -344,6 +348,24 @@ export default function RssPanel() {
     "export-opml",
     "refresh-all",
   ].includes(action.id));
+  const subscriptionSummary = selectedFeed ? (
+    <div className="v2ex-context-copy qx-rss-action-summary">
+      <strong>{selectedFeed.title || selectedFeed.url}</strong>
+      <span>
+        {t("rss.folderLabel", "Folder: {name}").replace(
+          "{name}",
+          selectedFeed.folder_name || t("rss.ungrouped", "Ungrouped"),
+        )}
+      </span>
+      <span>{selectedFeed.url}</span>
+    </div>
+  ) : (
+    <div className="v2ex-context-copy qx-rss-action-summary">
+      <span>
+        {t("rss.selectFeedHint", "Select a feed to set its folder or edit it.")}
+      </span>
+    </div>
+  );
 
   let flatIndex = 0;
 
@@ -383,28 +405,21 @@ export default function RssPanel() {
           data-qx-region-scroll
           tabIndex={-1}
         >
-          <div className="qx-action-title">{t("rss.subscription", "Subscription")}</div>
-          {selectedFeed ? (
-            <div className="v2ex-context-copy qx-rss-action-summary">
-              <strong>{selectedFeed.title || selectedFeed.url}</strong>
-              <span>
-                {t("rss.folderLabel", "Folder: {name}").replace(
-                  "{name}",
-                  selectedFeed.folder_name || t("rss.ungrouped", "Ungrouped"),
-                )}
-              </span>
-              <span>{selectedFeed.url}</span>
-            </div>
-          ) : (
-            <div className="v2ex-context-copy qx-rss-action-summary">
-              <span>
-                {t("rss.selectFeedHint", "Select a feed to set its folder or edit it.")}
-              </span>
-            </div>
-          )}
-          <QxActionList actions={subscriptionActions} showShortcuts={false} />
-          <div className="qx-action-title">{t("rss.library", "Library")}</div>
-          <QxActionList actions={libraryActions} showShortcuts={false} />
+          <QxActionSections
+            sections={[
+              {
+                id: "subscription",
+                title: t("rss.subscription", "Subscription"),
+                summary: subscriptionSummary,
+                actions: subscriptionActions,
+              },
+              {
+                id: "library",
+                title: t("rss.library", "Library"),
+                actions: libraryActions,
+              },
+            ]}
+          />
         </div>
       }
       island={shell.island}

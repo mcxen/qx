@@ -62,12 +62,14 @@ export default function HomeDashboard({
   items,
   recentSearches,
   onItemClick,
+  onItemContextMenu,
   onSearchSelect,
   onNavigate,
 }: {
   items: AppEntry[];
   recentSearches: SearchHistoryEntry[];
   onItemClick: (item: AppEntry) => void;
+  onItemContextMenu: (item: AppEntry, x: number, y: number) => void;
   onSearchSelect: (query: string) => void;
   onNavigate: (target: string) => void;
 }) {
@@ -131,7 +133,17 @@ export default function HomeDashboard({
                   {pinned.map((item) => {
                     const label = getDisplayName(item);
                     return (
-                      <button key={item.path} type="button" className="qx-home-app" onClick={() => onItemClick(item)} title={label}>
+                      <button
+                        key={item.path}
+                        type="button"
+                        className="qx-home-app"
+                        onClick={() => onItemClick(item)}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          onItemContextMenu(item, event.clientX, event.clientY);
+                        }}
+                        title={label}
+                      >
                         <LauncherAppIcon item={item} label={label} />
                         <span>{label}</span>
                       </button>

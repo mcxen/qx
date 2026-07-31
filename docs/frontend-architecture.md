@@ -162,6 +162,11 @@ DOM 子节点，统一负责拖拽、键盘 ←/→ 与 Home/End、双击恢复�
 提供响应式单栏规则；不要在模块内重新实现 pointermove 或宽度存储。当前 RSS 文章列表、
 Plugin Workbench 和 Screen Capture 已复用该端口。
 
+Shell 最外层的主内容 / Context Action 分区不使用模块自己的 `QxResizableSplit`，而由
+`src/components/QxContextSplit.tsx` 统一管理。它保存一个跨模块 Context 宽度，提供鼠标拖动、
+键盘 separator、双击复位以及拖到右缘后的 0 宽折叠；折叠后保留恢复轨并将右栏设为 inert。
+RSS、Launcher、Settings 和 PluginHost 只向 `QxShell.context` 发布内容，不接触宽度或持久键。
+
 ### 模块壳 chrome（内置 + 扩展）
 
 `useQxModuleShell`：

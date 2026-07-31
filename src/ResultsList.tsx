@@ -379,6 +379,7 @@ export default function ResultsList({
   onSelectRow,
   onOpenActionsAt,
   loadingPhase,
+  showPinnedStrip = false,
 }: {
   items: AppEntry[];
   rows: LauncherResultRow[];
@@ -387,9 +388,12 @@ export default function ResultsList({
   onSelectRow: (index: number) => void;
   onOpenActionsAt: (x: number, y: number) => void;
   loadingPhase?: string;
+  /** Search mode renders pinned results as a compact horizontal app strip. */
+  showPinnedStrip?: boolean;
 }) {
   const t = useT();
   const getDisplayName = useDisplayName();
+  const launcherSettings = useSettingsStore((state) => state.settings);
   const selectedIndex = useStore((state) => state.selectedIndex);
   const loadingLabel = t("launcher.loadingApps", "Loading apps...");
   const listRef = useRef<HTMLDivElement>(null);
@@ -407,39 +411,134 @@ export default function ResultsList({
     listSignature,
   });
 
+  const renderedRows = useMemo(() => {
+    const next: Array<
+      | { kind: "row"; row: LauncherResultRow; rowIndex: number }
+      | {
+          kind: "pinned-strip";
+          category: Extract<LauncherResultRow, { kind: "category" }>;
+          categoryIndex: number;
+          items: Array<{ row: Extract<LauncherResultRow, { kind: "item" }>; rowIndex: number }>;
+        }
+    > = [];
+
+    const pinnedCategoryIndex = showPinnedStrip
+      ? rows.findIndex(
+        (row) => row.kind === "category"
+          && (row.categoryId === "launcher.pinned" || row.translationKey === "launcher.category.pinned"),
+      )
+      : -1;
+    const pinnedRows = showPinnedStrip
+      ? rows.flatMap((row, rowIndex) =>
+        row.kind === "item" && isEntryPinned(launcherSettings, metadataKeyForEntry(row.item))
+          ? [{ row, rowIndex }]
+          : [],
+      )
+      : [];
+
+    if (pinnedCategoryIndex >= 0) {
+      const category = rows[pinnedCategoryIndex];
+      if (category.kind === "category") {
+        next.push({
+          kind: "pinned-strip",
+          category,
+          categoryIndex: pinnedCategoryIndex,
+          items: pinnedRows,
+        });
+      }
+    }
+
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+      const row = rows[rowIndex];
+      if (rowIndex === pinnedCategoryIndex) continue;
+      if (row.kind === "item" && isEntryPinned(launcherSettings, metadataKeyForEntry(row.item))) continue;
+      next.push({ kind: "row", row, rowIndex });
+    }
+    return next;
+  }, [launcherSettings, rows, showPinnedStrip]);
+
+  const renderCategory = (
+    row: Extract<LauncherResultRow, { kind: "category" }>,
+    rowIndex: number,
+  ) => (
+    <div
+      {...getQxListItemProps(rowIndex, selectedIndex, {
+        className: "qx-file-category-row",
+        role: "option",
+      })}
+      key={row.key}
+      aria-expanded={!row.collapsed}
+      onClick={() => {
+        onSelectRow(rowIndex);
+        onToggleCategory(row.categoryId);
+      }}
+    >
+      <ChevronRight
+        className={`qx-file-category-chevron${row.collapsed ? "" : " is-expanded"}`}
+        size={13}
+        strokeWidth={2.1}
+        aria-hidden="true"
+      />
+      <span className="qx-file-category-label">
+        {t(row.translationKey, row.label)}
+      </span>
+      <span className="qx-file-category-count">{row.count}</span>
+    </div>
+  );
+
   return (
     <div
       ref={listRef}
       className="qx-plugin-list qx-launcher-results"
       style={{ flex: 1, borderRight: "none" }}
     >
-      {rows.map((row, rowIndex) => {
-        if (row.kind === "category") {
+      {renderedRows.map((entry) => {
+        if (entry.kind === "pinned-strip") {
+          const { category, categoryIndex, items: pinnedItems } = entry;
           return (
-            <div
-              {...getQxListItemProps(rowIndex, selectedIndex, {
-                className: "qx-file-category-row",
-                role: "option",
-              })}
-              key={row.key}
-              aria-expanded={!row.collapsed}
-              onClick={() => {
-                onSelectRow(rowIndex);
-                onToggleCategory(row.categoryId);
-              }}
-            >
-              <ChevronRight
-                className={`qx-file-category-chevron${row.collapsed ? "" : " is-expanded"}`}
-                size={13}
-                strokeWidth={2.1}
-                aria-hidden="true"
-              />
-              <span className="qx-file-category-label">
-                {t(row.translationKey, row.label)}
-              </span>
-              <span className="qx-file-category-count">{row.count}</span>
-            </div>
+            <section className="qx-launcher-pinned-strip-section" key={category.key}>
+              {renderCategory(category, categoryIndex)}
+              {!category.collapsed && pinnedItems.length > 0 && (
+                <div
+                  className="qx-launcher-pinned-strip"
+                  role="group"
+                  aria-label={t(category.translationKey, category.label)}
+                >
+                  {pinnedItems.map(({ row, rowIndex }) => {
+                    const item = row.item;
+                    const label = getDisplayName(item);
+                    return (
+                      <button
+                        {...getQxListItemProps(rowIndex, selectedIndex, {
+                          baseClass: false,
+                          className: "qx-launcher-pinned-icon",
+                          role: "option",
+                        })}
+                        key={row.key}
+                        type="button"
+                        title={label}
+                        onClick={() => onSelectRow(rowIndex)}
+                        onDoubleClick={() => onItemClick(item)}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          onSelectRow(rowIndex);
+                          onOpenActionsAt(event.clientX, event.clientY);
+                        }}
+                      >
+                        <LauncherAppIcon item={item} label={label} />
+                        <span>{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
           );
+        }
+
+        const { row, rowIndex } = entry;
+        if (row.kind === "category") {
+          return renderCategory(row, rowIndex);
         }
         const item = row.item;
         return (

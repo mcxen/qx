@@ -461,6 +461,10 @@ export default function ClipboardPanel() {
     const path = selectedItem?.file_path ?? selectedItem?.image_path;
     // Captured images already render the real PNG; no generated thumbnail needed.
     const isCapturedImage = !selectedItem?.file_path && Boolean(selectedItem?.image_path);
+    const hasCachedCapturedImageMetadata = isCapturedImage
+      && (selectedItem?.image_size_bytes ?? 0) > 0
+      && (selectedItem?.image_width ?? 0) > 0
+      && (selectedItem?.image_height ?? 0) > 0;
     setFilePreviewUrl(null);
     setFilePreviewError(null);
     setFilePreviewLoading(false);
@@ -470,11 +474,23 @@ export default function ClipboardPanel() {
     }
 
     let cancelled = false;
-    // 0) Sync optimistic row — Information never waits on IPC for name/kind.
-    setFileMetadata(optimisticFileMeta(path));
+    // 0) Captured image dimensions and byte size were known at capture time and
+    // are stored with the history row. Reuse them synchronously on selection.
+    const optimistic = optimisticFileMeta(path);
+    setFileMetadata(hasCachedCapturedImageMetadata
+      ? {
+          ...optimistic,
+          kind: "image",
+          size: selectedItem?.image_size_bytes ?? optimistic.size,
+          width: selectedItem?.image_width ?? null,
+          height: selectedItem?.image_height ?? null,
+        }
+      : optimistic);
 
     // 1) Fast stat (size + confirmed kind) — no image decode / ffmpeg / QL.
-    void invoke<FileMetadata>("clipboard_file_metadata", { path })
+    // New captured images already have this complete cache, so do not issue an
+    // IPC round-trip while the user is moving through the list.
+    if (!hasCachedCapturedImageMetadata) void invoke<FileMetadata>("clipboard_file_metadata", { path })
       .then((metadata) => {
         if (cancelled) return;
         setFileMetadata((current) => ({
@@ -531,6 +547,8 @@ export default function ClipboardPanel() {
       if (!isCapturedImage) loadFilePreview(0);
 
       // 3) Dimensions / duration — slow path, never blocks Information.
+      // Captured images with stored facts do not need to probe themselves again.
+      if (hasCachedCapturedImageMetadata) return;
       void invoke<FileMetadata>("clipboard_file_media_probe", { path })
         .then((probed) => {
           if (cancelled) return;

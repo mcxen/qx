@@ -26,6 +26,49 @@ export function formatDate(ts: number): string {
   });
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function downloadFilename(title: string): string {
+  const stem = title
+    .replace(/[\\/:*?\"<>|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 96);
+  return `${stem || "article"}.html`;
+}
+
+/** Download a readable, sanitized article snapshot to the user's Downloads folder. */
+export function downloadArticleHtml(article: {
+  title: string;
+  link: string;
+  author: string;
+  published_at: number;
+  content: string;
+  summary: string;
+}): void {
+  const title = article.title.trim() || "Article";
+  const content = sanitizeHtml(article.content || article.summary, article.link, "webview");
+  const source = absoluteHttpUrl(article.link);
+  const byline = [article.author.trim(), formatDate(article.published_at)].filter(Boolean).join(" · ");
+  const htmlDocument = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(title)}</title><style>body{max-width:760px;margin:40px auto;padding:0 20px;color:#202124;font:17px/1.65 system-ui,sans-serif}img{max-width:100%;height:auto}a{color:#1463d9}pre{overflow:auto}</style>
+</head><body><article><h1>${escapeHtml(title)}</h1>${byline ? `<p>${escapeHtml(byline)}</p>` : ""}${source ? `<p><a href="${escapeHtml(source)}">${escapeHtml(source)}</a></p>` : ""}${content}</article></body></html>`;
+  const url = URL.createObjectURL(new Blob([htmlDocument], { type: "text/html;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = downloadFilename(title);
+  anchor.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
 const TRANSPARENT_PIXEL =
   "data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=";
 

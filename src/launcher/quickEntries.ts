@@ -4,6 +4,8 @@ import type { AppEntry } from "../store";
 import { isBetaModule } from "../modules/catalog";
 import { isBuiltinModuleEnabled } from "../modules/moduleAvailability";
 import type { InstalledPlugin } from "../plugin/types";
+import { localizePluginDescription, localizePluginName } from "../plugin/pluginLabels";
+import type { Locale } from "../i18n";
 
 type Translate = (key: string, fallback: string) => string;
 
@@ -45,6 +47,7 @@ export function parsePluginQuickEntryTarget(target: string): string | null {
 export function buildQuickEntryTargetOptions(
   plugins: InstalledPlugin[] | undefined,
   t?: Translate,
+  locale: Locale = "en",
 ): QuickEntryTargetOption[] {
   const modules: QuickEntryTargetOption[] = QUICK_ENTRY_TARGETS.map((target) => ({
     value: target.value,
@@ -58,11 +61,12 @@ export function buildQuickEntryTargetOptions(
   const external = (plugins || [])
     .filter((plugin) => plugin.enabled && !plugin.id.startsWith("builtin:"))
     .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
+    .sort((a, b) => localizePluginName(a, t ?? ((_, fallback) => fallback), locale)
+      .localeCompare(localizePluginName(b, t ?? ((_, fallback) => fallback), locale), locale === "zh-CN" ? "zh-CN" : "en"))
     .map((plugin) => ({
       value: pluginQuickEntryTarget(plugin.id),
-      label: plugin.name || plugin.id,
-      subtitle: plugin.description?.trim() || plugin.id,
+      label: localizePluginName(plugin, t ?? ((_, fallback) => fallback), locale),
+      subtitle: localizePluginDescription(plugin, t ?? ((_, fallback) => fallback), locale) || plugin.id,
       group: t ? t("launcher.quickGroup.plugins", "Plugins") : "Plugins",
     }));
 
@@ -74,6 +78,7 @@ export function localizeQuickEntry(
   entry: Pick<QuickEntryConfig, "title" | "subtitle" | "target">,
   t: Translate,
   plugins?: InstalledPlugin[],
+  locale: Locale = "en",
 ): { title: string; subtitle: string } {
   const fallback = QUICK_ENTRY_TARGETS.find((target) => target.value === entry.target);
   if (fallback) {
@@ -92,8 +97,8 @@ export function localizeQuickEntry(
   if (pluginId) {
     const plugin = plugins?.find((item) => item.id === pluginId);
     return {
-      title: entry.title?.trim() || plugin?.name || pluginId,
-      subtitle: entry.subtitle?.trim() || plugin?.description || pluginId,
+      title: entry.title?.trim() || (plugin ? localizePluginName(plugin, t, locale) : pluginId),
+      subtitle: entry.subtitle?.trim() || (plugin ? localizePluginDescription(plugin, t, locale) : pluginId),
     };
   }
 
@@ -137,7 +142,9 @@ export function sanitizeQuickEntries(entries: QuickEntryConfig[] | undefined): Q
         title,
         subtitle,
         target,
-        enabled: entry.enabled !== false,
+        // Quick entries are now add/remove only. Preserve old settings but
+        // reactivate formerly disabled entries instead of exposing a toggle.
+        enabled: true,
       };
     })
     .filter((entry) => entry.target);
@@ -162,12 +169,13 @@ export function toLauncherQuickEntries(
   onNavigate: (tab: string) => void,
   t?: Translate,
   plugins?: InstalledPlugin[],
+  locale: Locale = "en",
 ): QuickEntry[] {
   return sanitizeQuickEntries(entries)
     .filter((entry) => entry.enabled && isQuickEntryTargetAvailable(entry.target, plugins))
     .map((entry) => {
       const labels = t
-        ? localizeQuickEntry(entry, t, plugins)
+        ? localizeQuickEntry(entry, t, plugins, locale)
         : { title: entry.title, subtitle: entry.subtitle };
       const pluginId = parsePluginQuickEntryTarget(entry.target);
       return {
@@ -186,8 +194,9 @@ export function toLauncherAllModules(
   onNavigate: (target: string) => void,
   t: Translate,
   plugins?: InstalledPlugin[],
+  locale: Locale = "en",
 ): QuickEntry[] {
-  return buildQuickEntryTargetOptions(plugins, t)
+  return buildQuickEntryTargetOptions(plugins, t, locale)
     .filter((option) => option.value !== "settings")
     .filter((option) => isQuickEntryTargetAvailable(option.value, plugins))
     .map((option) => {

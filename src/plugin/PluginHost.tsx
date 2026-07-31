@@ -12,7 +12,7 @@ import QxShell, {
   type QxShellAction,
   type QxShellTopbarFilter,
 } from "../components/QxShell";
-import { QxActionList } from "../components/QxActionPanel";
+import { QxActionSections } from "../components/QxActionPanel";
 import PluginBackgroundBadge, {
   usePluginBackgroundJob,
   usePluginBackgroundSummary,
@@ -532,6 +532,27 @@ export function PluginPanelViewport() {
     workbenchFormActionDescriptors,
   ]);
 
+  // List/detail Workbench panels own a navigation primary, not an arbitrary
+  // plugin business action. This keeps Enter consistent for social/community
+  // feeds: list → open detail, detail → return to list.
+  const workbenchDetailAction = useMemo<QxShellAction | undefined>(() => {
+    if (!workbench || !selectedWorkbenchItem || !selectedWorkbenchDetail) return undefined;
+    if (workbenchDetailOpen) {
+      return {
+        id: "__qx:workbench-close-detail",
+        label: t("plugins.workbench.backToList", "Back to List"),
+        kbd: "↵",
+        onClick: closeWorkbenchDetail,
+      };
+    }
+    return {
+      id: "__qx:workbench-open-detail",
+      label: t("plugins.workbench.openDetail", "Open Details"),
+      kbd: "↵",
+      onClick: () => activateWorkbenchItem(selectedWorkbenchItem.id),
+    };
+  }, [activateWorkbenchItem, closeWorkbenchDetail, selectedWorkbenchDetail, selectedWorkbenchItem, t, workbench, workbenchDetailOpen]);
+
   // Raycast ActionPanel[0] and declarative Workbench primary both map to the
   // same QxShell primary/action surfaces.
   const primaryItem = workbench
@@ -539,14 +560,17 @@ export function PluginPanelViewport() {
     : itemActions[0];
 
   const contextualActions = useMemo<QxShellAction[]>(() => workbench
-    ? workbenchActionDescriptors.map((action) => ({
+    ? [
+      ...(workbenchDetailAction ? [workbenchDetailAction] : []),
+      ...workbenchActionDescriptors.map((action) => ({
         id: action.id,
         label: action.label,
-        kbd: action.kbd || (action.id === primaryWorkbenchAction?.id ? "Enter" : undefined),
+        kbd: action.kbd || (!workbenchDetailAction && action.id === primaryWorkbenchAction?.id ? "Enter" : undefined),
         disabled: action.disabled,
-        tone: action.tone === "danger" ? "danger" : action.primary ? "primary" : "normal",
+        tone: (action.tone === "danger" ? "danger" : action.primary ? "primary" : "normal") as QxShellAction["tone"],
         onClick: () => runWorkbenchAction(action.id),
-      }))
+      })),
+    ]
     : itemActions.map((action, index) => ({
         id: `item-${action.id}`,
         label: action.title,
@@ -559,13 +583,15 @@ export function PluginPanelViewport() {
         runWorkbenchAction,
         workbench,
         workbenchActionDescriptors,
+        workbenchDetailAction,
       ]);
 
-  const primaryActionId = primaryItem
-    ? workbench
-      ? primaryItem.id
-      : `item-${primaryItem.id}`
-    : undefined;
+  const primaryActionId = workbenchDetailAction?.id
+    ?? (primaryItem
+      ? workbench
+        ? primaryItem.id
+        : `item-${primaryItem.id}`
+      : undefined);
   const contextActions = useMemo(
     () => workbench || !raycastActionPanel
       ? contextualActions.filter((action) => action.id !== primaryActionId)
@@ -660,6 +686,7 @@ export function PluginPanelViewport() {
             : primaryItem
               ? () => runWorkbenchAction(primaryItem.id)
               : undefined,
+          onClose: workbenchDetailOpen ? closeWorkbenchDetail : undefined,
         }),
         editable: "search" as const,
       }
@@ -745,10 +772,13 @@ export function PluginPanelViewport() {
             </div>
           ) : null}
           {contextActions.length > 0 ? (
-            <>
-              <div className="qx-action-title">{t("common.actions", "Actions")}</div>
-              <QxActionList actions={contextActions} showShortcuts={false} />
-            </>
+            <QxActionSections
+              sections={[{
+                id: "actions",
+                title: t("common.actions", "Actions"),
+                actions: contextActions,
+              }]}
+            />
           ) : contextualActions.length === 0 ? (
             <div className="v2ex-context-copy qx-plugin-action-empty">
               {t("plugins.selectForActions", "Select an item to load its actions")}

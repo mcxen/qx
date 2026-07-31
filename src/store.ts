@@ -32,6 +32,10 @@ export interface ClipboardEntry {
   pinned: boolean;
   copy_count: number;
   image_path?: string | null;
+  /** Capture-time image metadata; avoids reopening the cached PNG on selection. */
+  image_size_bytes?: number | null;
+  image_width?: number | null;
+  image_height?: number | null;
   file_path?: string | null;
   /** Ordered native file clipboard payload; legacy rows fall back to file_path. */
   file_paths?: string[];

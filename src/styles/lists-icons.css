@@ -1382,6 +1382,72 @@
   opacity: 1;
 }
 
+/* Search-only pinned apps: an icon rail keeps frequent launches compact. */
+.qx-launcher-pinned-strip-section {
+  min-width: 0;
+  border-bottom: 1px solid var(--qx-border-1);
+}
+
+.qx-launcher-pinned-strip-section .qx-file-category-row {
+  border-top: 0;
+}
+
+.qx-launcher-pinned-strip {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 8px 12px 12px;
+  /* Native tracks stay hidden; overlayScrollbar.ts shows Qx's thin thumb while scrolling. */
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+}
+
+.qx-launcher-pinned-icon {
+  display: grid;
+  flex: 0 0 72px;
+  grid-template-rows: 48px auto;
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  padding: 4px 2px;
+  border: 0;
+  border-radius: var(--qx-control-radius);
+  background: transparent;
+  color: var(--qx-text-primary);
+  cursor: pointer;
+  scroll-snap-align: start;
+}
+
+.qx-launcher-pinned-icon:hover,
+.qx-launcher-pinned-icon.is-active {
+  background: color-mix(in srgb, var(--qx-accent) 9%, var(--qx-bg-component-3));
+}
+
+.qx-launcher-pinned-icon.is-active {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--qx-accent) 48%, transparent);
+}
+
+.qx-launcher-pinned-icon .qx-list-icon,
+.qx-launcher-pinned-icon .qx-app-icon {
+  width: 48px;
+  height: 48px;
+  justify-self: center;
+  border-radius: 13px;
+}
+
+.qx-launcher-pinned-icon > span:last-child {
+  overflow: hidden;
+  width: 100%;
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .qx-launcher-results .qx-launcher-row.is-hidden-app .qx-list-title {
   color: var(--qx-text-secondary);
 }

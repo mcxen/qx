@@ -6,6 +6,7 @@ import { useSettingsStore } from "../modules/settings/store";
 import { openSystemPath, revealSystemPath } from "../system";
 import { metadataForKey } from "../search/searchMetadata";
 import { getQxDesktopPlatform } from "../utils/keyboard";
+import { openSettings } from "../modules/settings/openSettings";
 import {
   launcherEntryManageState,
   toggleLauncherEntryHidden,
@@ -15,6 +16,16 @@ import { launcherActionModel } from "./actionModel";
 import type { LauncherAction } from "./types";
 
 type Translate = (key: string, fallback: string) => string;
+
+function extensionManageAction(item: AppEntry, t: Translate): LauncherAction[] {
+  const pluginId = item.path.match(/^__qx:plugin:([^:]+)$/)?.[1];
+  if (!pluginId) return [];
+  return [{
+    id: "manage-extension",
+    label: t("launcher.manageExtension", "Manage Extension"),
+    run: () => openSettings({ focusPluginId: pluginId }),
+  }];
+}
 
 async function readClipboardText(item: AppEntry): Promise<string> {
   const id = item.path.slice("__qx:clipboard:".length);
@@ -173,6 +184,7 @@ export function createLauncherActions({
         run: () => onItemClick(item),
       },
       ...manage,
+      ...extensionManageAction(item, t),
     ];
   }
 

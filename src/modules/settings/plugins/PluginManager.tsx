@@ -9,6 +9,7 @@ import {
   ExternalLink,
   LoaderCircle,
   PackagePlus,
+  Play,
   Puzzle,
   RefreshCw,
   RotateCcw,
@@ -95,6 +96,7 @@ import {
 } from "../../catalog";
 import { isBuiltinModuleEnabled } from "../../moduleAvailability";
 import PluginBadge from "./PluginBadge";
+import WeatherSettings from "../WeatherSettings";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -676,6 +678,7 @@ function PluginDetail({
   const t = useT();
   const locale = useLocale();
   const builtin = isBuiltin(plugin);
+  const hasCustomBuiltinSettings = plugin.id === "builtin:weather";
   const configurableBuiltin = isConfigurableBuiltinModule(plugin.id);
   const preferences = plugin.manifest?.preferences ?? [];
   const permissions = plugin.manifest?.permissions ?? plugin.permissions ?? [];
@@ -699,6 +702,13 @@ function PluginDetail({
   const appCompatible = builtin
     || hostVersion === null
     || appVersionMeetsMinimum(hostVersion ?? "", plugin.manifest?.min_app_version);
+  const launchTarget = builtinModuleId ?? `plugin:${plugin.id}`;
+  const canLaunch = plugin.enabled && appCompatible;
+
+  const launchPlugin = useCallback(() => {
+    if (!canLaunch) return;
+    window.dispatchEvent(new CustomEvent("qx:navigate", { detail: launchTarget }));
+  }, [canLaunch, launchTarget]);
 
   useEffect(() => {
     let cancelled = false;
@@ -825,6 +835,19 @@ function PluginDetail({
           )}
         </div>
         <div className="qx-plugin-detail-header-actions">
+          <Button
+            size="sm"
+            onClick={launchPlugin}
+            disabled={!canLaunch}
+            title={!plugin.enabled
+              ? t("plugins.launch.enableFirst", "Enable this module before launching")
+              : !appCompatible
+                ? t("plugins.launch.incompatible", "Update Qx before launching this module")
+                : undefined}
+          >
+            <Play size={14} aria-hidden="true" />
+            {t("plugins.launch", "Launch")}
+          </Button>
           <span className="qx-plugin-detail-toggle-label">
             {t("modules.enabled", "Enable module")}
           </span>
@@ -918,7 +941,9 @@ function PluginDetail({
         </SettingsCard>
       )}
 
-      {preferences.length > 0 && prefsLoaded && (
+      {hasCustomBuiltinSettings && <WeatherSettings />}
+
+      {!hasCustomBuiltinSettings && preferences.length > 0 && prefsLoaded && (
         <SettingsCard
           title={t("plugins.preferences", "Preferences")}
           description={prefsBusy ? t("plugins.preferences.saving", "Saving…") : undefined}
@@ -999,7 +1024,10 @@ function MarketplaceTab({
   const [installingKey, setInstallingKey] = useState<string | null>(null);
   /** `all` or a registry source id */
   const [sourceFilter, setSourceFilter] = useState<string>("all");
+  /** Selection is a plugin identity, never an individual registry copy. */
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  /** A duplicate source is only chosen at install time; the default stays first. */
+  const [installSourceKey, setInstallSourceKey] = useState<string | null>(null);
   const [librariesOpen, setLibrariesOpen] = useState(false);
   const [registryDrafts, setRegistryDrafts] = useState<PluginRegistrySource[]>([]);
   const [installStatus, setInstallStatus] = useState<{ tone: StatusTone; message: string } | null>(null);
@@ -1035,23 +1063,39 @@ function MarketplaceTab({
     });
   }, [activeSourceFilter, entries, searchQuery, t]);
 
-  const selectedEntry = useMemo(() => {
+  /** One catalog row per plugin. Registry order defines the user's default source. */
+  const mergedEntries = useMemo(() => {
+    const sourceRank = new Map(registries.map((registry, index) => [registry.id, index]));
+    const groups = new Map<string, PluginIndexEntry[]>();
+    for (const entry of filteredEntries) {
+      const key = entry.id.trim();
+      const group = groups.get(key) ?? [];
+      group.push(entry);
+      groups.set(key, group);
+    }
+    return [...groups.entries()].map(([key, sources]) => {
+      const sortedSources = [...sources].sort((a, b) => {
+        const aRank = sourceRank.get(a.source_id || "") ?? Number.MAX_SAFE_INTEGER;
+        const bRank = sourceRank.get(b.source_id || "") ?? Number.MAX_SAFE_INTEGER;
+        if (aRank !== bRank) return aRank - bRank;
+        return marketplaceEntryKey(a).localeCompare(marketplaceEntryKey(b));
+      });
+      return { key, entry: sortedSources[0], sources: sortedSources };
+    });
+  }, [filteredEntries, registries]);
+
+  const selectedGroup = useMemo(() => {
     if (selectedKey) {
-      const selected = filteredEntries.find((entry) => marketplaceEntryKey(entry) === selectedKey);
+      const selected = mergedEntries.find((entry) => entry.key === selectedKey);
       if (selected) return selected;
     }
-    return filteredEntries[0] ?? null;
-  }, [filteredEntries, selectedKey]);
-
-  /** Same plugin id may exist on multiple libraries — offer install source choice. */
-  const alternateSources = useMemo(() => {
-    if (!selectedEntry) return [] as PluginIndexEntry[];
-    return entries.filter(
-      (entry) =>
-        entry.id === selectedEntry.id
-        && marketplaceEntryKey(entry) !== marketplaceEntryKey(selectedEntry),
-    );
-  }, [entries, selectedEntry]);
+    return mergedEntries[0] ?? null;
+  }, [mergedEntries, selectedKey]);
+  const selectedEntry = selectedGroup?.entry ?? null;
+  const selectedInstallEntry = selectedGroup
+    ? selectedGroup.sources.find((entry) => marketplaceEntryKey(entry) === installSourceKey)
+      ?? selectedGroup.entry
+    : null;
 
   const fetchIndex = useCallback(async (sourceId?: string, forceRefresh = false) => {
     const generation = ++fetchGeneration.current;
@@ -1188,13 +1232,8 @@ function MarketplaceTab({
 
   const sourceFilterOptions = useMemo(() => {
     const statusById = new Map(sourceStatuses.map((status) => [status.id, status]));
-    const enabledStatuses = sourceStatuses.filter((status) => enabledSourceIds.has(status.id));
-    const allCount = enabledStatuses.length > 0
-      ? enabledStatuses.reduce(
-        (total, status) => total + (status.ok ? status.plugin_count : 0),
-        0,
-      )
-      : entries.length;
+    // The all-libraries view merges duplicate registry copies by plugin id.
+    const allCount = new Set(entries.map((entry) => entry.id.trim())).size;
     const optionLabel = (id: string, name: string) => {
       const status = statusById.get(id);
       if (!status) return name;
@@ -1430,7 +1469,7 @@ function MarketplaceTab({
 
       <div className="qx-plugin-library-body">
         <div className="qx-plugin-library-list">
-          {filteredEntries.length === 0 && searchQuery.trim() ? (
+          {mergedEntries.length === 0 && searchQuery.trim() ? (
             <div className="qx-empty-state">
               {t("plugins.marketplace.noMatch", "No plugins match “{query}”").replace(
                 "{query}",
@@ -1438,10 +1477,10 @@ function MarketplaceTab({
               )}
             </div>
           ) : (
-            filteredEntries.map((entry) => {
-              const key = marketplaceEntryKey(entry);
+            mergedEntries.map((group) => {
+              const { entry, key } = group;
               const active = selectedEntry
-                ? marketplaceEntryKey(selectedEntry) === key
+                ? selectedGroup?.key === key
                 : false;
               const installedVersion = installedVersions.get(entry.id);
               const alreadyInstalled = installedVersion != null;
@@ -1451,20 +1490,22 @@ function MarketplaceTab({
               const compatibilityPending = hostVersion === null && Boolean(entry.min_app_version);
 
               return (
-                <button
+                <div
                   key={key}
                   className={`qx-plugin-library-item${active ? " is-active" : ""}`}
                   onClick={() => setSelectedKey(key)}
-                  type="button"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      setSelectedKey(key);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
                 >
                   <div className="qx-plugin-list-main">
                     <div className="qx-plugin-list-title">
                       {localizeMarketplaceEntryName(entry, t)}
-                      {entry.source_name ? (
-                        <PluginBadge compact className="qx-plugin-source-badge">
-                          {entry.source_name}
-                        </PluginBadge>
-                      ) : null}
                     </div>
                     <div className="qx-plugin-list-meta">
                       v{entry.version}
@@ -1502,9 +1543,22 @@ function MarketplaceTab({
                       <PluginBadge compact tone="success">
                         {t("plugins.marketplace.installed", "Installed")}
                       </PluginBadge>
-                    ) : null}
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void handleInstall(entry, "install");
+                        }}
+                      >
+                        <PackagePlus size={13} aria-hidden="true" />
+                        {t("plugins.marketplace.install", "Install")}
+                      </Button>
+                    )}
                   </span>
-                </button>
+                </div>
               );
             })
           )}
@@ -1518,11 +1572,6 @@ function MarketplaceTab({
               </div>
               <div className="qx-plugin-badges">
                 <PluginBadge>v{selectedEntry.version}</PluginBadge>
-                {selectedEntry.source_name && (
-                  <PluginBadge>
-                    {t("plugins.marketplace.source", "Library")}: {selectedEntry.source_name}
-                  </PluginBadge>
-                )}
                 {selectedEntry.author && <PluginBadge>{selectedEntry.author}</PluginBadge>}
                 {selectedEntry.size_bytes && <PluginBadge>{formatBytes(selectedEntry.size_bytes)}</PluginBadge>}
                 {isPluginUpdateAvailable(installedVersions.get(selectedEntry.id), selectedEntry.version) && (
@@ -1543,12 +1592,13 @@ function MarketplaceTab({
               })()}
               <SettingsCard title={t("plugins.marketplace.install", "Install")}>
                 {(() => {
-                  const installedVersion = installedVersions.get(selectedEntry.id);
+                  const installEntry = selectedInstallEntry ?? selectedEntry;
+                  const installedVersion = installedVersions.get(installEntry.id);
                   const alreadyInstalled = installedVersion != null;
-                  const updateAvailable = isPluginUpdateAvailable(installedVersion, selectedEntry.version);
-                  const installing = installingKey === marketplaceEntryKey(selectedEntry);
-                  const compatible = appVersionMeetsMinimum(hostVersion ?? "", selectedEntry.min_app_version);
-                  const compatibilityPending = hostVersion === null && Boolean(selectedEntry.min_app_version);
+                  const updateAvailable = isPluginUpdateAvailable(installedVersion, installEntry.version);
+                  const installing = installingKey === marketplaceEntryKey(installEntry);
+                  const compatible = appVersionMeetsMinimum(hostVersion ?? "", installEntry.min_app_version);
+                  const compatibilityPending = hostVersion === null && Boolean(installEntry.min_app_version);
                   const busyLabel = updateAvailable
                     ? t("plugins.marketplace.updating", "Updating...")
                     : alreadyInstalled
@@ -1557,7 +1607,7 @@ function MarketplaceTab({
                   const actionLabel = updateAvailable
                     ? t("plugins.marketplace.update", "Update to v{version}").replace(
                         "{version}",
-                        selectedEntry.version,
+                        installEntry.version,
                       )
                     : alreadyInstalled
                       ? t("plugins.marketplace.reinstall", "Reinstall")
@@ -1576,8 +1626,8 @@ function MarketplaceTab({
                               "plugins.marketplace.requiresQxMessage",
                               "{name} requires Qx {required} or newer. Update Qx before installing.",
                             )
-                              .replace("{name}", localizeMarketplaceEntryName(selectedEntry, t))
-                              .replace("{required}", selectedEntry.min_app_version || "—")}
+                              .replace("{name}", localizeMarketplaceEntryName(installEntry, t))
+                              .replace("{required}", installEntry.min_app_version || "—")}
                           </div>
                           <Button
                             type="button"
@@ -1598,19 +1648,33 @@ function MarketplaceTab({
                                 "Installed v{local} → marketplace v{market}. Preferences and plugin data are kept.",
                               )
                                 .replace("{local}", installedVersion ?? "")
-                                .replace("{market}", selectedEntry.version)
+                                .replace("{market}", installEntry.version)
                             : t(
                                 "plugins.marketplace.reinstallHint",
                                 "Installed v{version}. Reinstall replaces the package and keeps preferences/data.",
-                              ).replace("{version}", installedVersion ?? selectedEntry.version)}
+                              ).replace("{version}", installedVersion ?? installEntry.version)}
                         </div>
                       )}
                       <div className="qx-plugin-install-actions">
+                        {selectedGroup && selectedGroup.sources.length > 1 && (
+                          <div className="qx-plugin-install-source">
+                            <span>{t("plugins.marketplace.source", "Library")}</span>
+                            <Select
+                              value={marketplaceEntryKey(installEntry)}
+                              options={selectedGroup.sources.map((source) => ({
+                                value: marketplaceEntryKey(source),
+                                label: source.source_name || source.source_id || t("plugins.marketplace.source", "Library"),
+                              }))}
+                              ariaLabel={t("plugins.marketplace.source", "Library")}
+                              onChange={(value) => setInstallSourceKey(value)}
+                            />
+                          </div>
+                        )}
                         <Button
                           variant={alreadyInstalled && !updateAvailable ? "outline" : "default"}
                           size="sm"
                           disabled={installing || compatibilityPending || !compatible}
-                          onClick={() => void handleInstall(selectedEntry, mode)}
+                          onClick={() => void handleInstall(installEntry, mode)}
                         >
                           {installing ? (
                             <LoaderCircle className="qx-loading-spinner" size={13} aria-hidden="true" />
@@ -1665,75 +1729,6 @@ function MarketplaceTab({
                             )}
                           </div>
                           {notes && <div className="qx-plugin-release-notes">{notes}</div>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </SettingsCard>
-              )}
-              {alternateSources.length > 0 && (
-                <SettingsCard title={t("plugins.marketplace.otherSources", "Other libraries")}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <div className="qx-plugin-list-desc">
-                      {t(
-                        "plugins.marketplace.otherSources.desc",
-                        "This plugin is also listed elsewhere. Pick a library to download from.",
-                      )}
-                    </div>
-                    {alternateSources.map((alt) => {
-                      const altKey = marketplaceEntryKey(alt);
-                      const installingAlt = installingKey === altKey;
-                      return (
-                        <div
-                          key={altKey}
-                          className="qx-plugin-library-alt-row"
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            gap: 8,
-                          }}
-                        >
-                          <div style={{ minWidth: 0 }}>
-                            <div className="qx-plugin-list-title">
-                              {alt.source_name || alt.source_id || t("plugins.marketplace.source", "Library")}
-                            </div>
-                            <div className="qx-plugin-list-meta">
-                              v{alt.version}
-                              {!appVersionMeetsMinimum(hostVersion ?? "", alt.min_app_version)
-                                ? ` · ${t("plugins.marketplace.requiresQx", "Requires Qx {version}")
-                                  .replace("{version}", alt.min_app_version || "—")}`
-                                : ""}
-                            </div>
-                          </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={
-                              installingAlt
-                              || installingKey != null
-                              || !appVersionMeetsMinimum(hostVersion ?? "", alt.min_app_version)
-                            }
-                            onClick={() => {
-                              setSelectedKey(altKey);
-                              const installedVersion = installedVersions.get(alt.id);
-                              const alreadyInstalled = installedVersion != null;
-                              const updateAvailable = isPluginUpdateAvailable(
-                                installedVersion,
-                                alt.version,
-                              );
-                              const mode: "install" | "upgrade" | "reinstall" = updateAvailable
-                                ? "upgrade"
-                                : alreadyInstalled
-                                  ? "reinstall"
-                                  : "install";
-                              void handleInstall(alt, mode);
-                            }}
-                          >
-                            {installingAlt
-                              ? t("plugins.marketplace.installing", "Installing...")
-                              : t("plugins.marketplace.installFrom", "Install from here")}
-                          </Button>
                         </div>
                       );
                     })}

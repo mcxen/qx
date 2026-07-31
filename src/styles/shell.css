@@ -303,11 +303,18 @@
 
 .qx-shell.launcher-shell .qx-shell-topbar {
   /* Align search | trailing with main content | context.
-     trailing width = context-w - chrome-x - topbar-gap (see base.css tokens). */
+     Keep a usable filter width when the resizable Context rail is collapsed. */
   --qx-shell-topbar-gap: 8px;
   grid-template-columns:
     minmax(0, 1fr)
-    calc(var(--qx-context-w) - var(--qx-shell-chrome-x) - var(--qx-shell-topbar-gap));
+    max(
+      132px,
+      calc(
+        var(--qx-context-current-w, var(--qx-context-w))
+        - var(--qx-shell-chrome-x)
+        - var(--qx-shell-topbar-gap)
+      )
+    );
   gap: var(--qx-shell-topbar-gap);
 }
 
@@ -440,19 +447,65 @@
 }
 
 .qx-shell.has-context .qx-shell-main {
-  /* Right rail is a single shared track: never override --qx-context-w per module. */
-  grid-template-columns: minmax(0, 1fr) var(--qx-context-w);
+  /* QxShell owns one global, resizable Context track; modules never override it. */
+  grid-template-columns:
+    minmax(0, 1fr)
+    var(--qx-context-handle-w, 8px)
+    var(--qx-context-current-w, var(--qx-context-w));
+}
+
+.qx-shell-context-handle {
+  position: relative;
+  z-index: 2;
+  min-width: 0;
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.qx-shell-context-handle::before {
+  position: absolute;
+  top: calc(var(--qx-topbar-h) + 6px);
+  bottom: calc(var(--qx-bottom-bar-h) + 6px);
+  left: 50%;
+  width: 1px;
+  border-radius: 999px;
+  background: var(--qx-border-1);
+  content: "";
+  transform: translateX(-50%);
+  transition: width 100ms ease, background-color 100ms ease;
+}
+
+.qx-shell-context-handle:hover::before,
+.qx-shell-context-handle:focus-visible::before,
+.qx-context-split.is-resizing-context .qx-shell-context-handle::before {
+  width: 3px;
+  background: color-mix(in srgb, var(--qx-accent) 62%, var(--qx-border-2));
+}
+
+.qx-context-split.is-context-collapsed .qx-shell-context-handle::before {
+  width: 2px;
+  background: color-mix(in srgb, var(--qx-accent) 38%, var(--qx-border-2));
+}
+
+.qx-context-split.is-context-collapsed .qx-shell-context-handle {
+  width: 16px;
+  justify-self: end;
+  transform: translateX(-8px);
 }
 
 .qx-shell-content,
 .qx-shell-context {
   min-height: 0;
-  overflow: auto;
   box-sizing: border-box;
   padding-top: var(--qx-topbar-h);
   padding-bottom: var(--qx-bottom-bar-h);
   scroll-padding-top: calc(var(--qx-topbar-h) + 8px);
   scroll-padding-bottom: calc(var(--qx-bottom-bar-h) + 8px);
+}
+
+.qx-shell-content {
+  overflow: auto;
 }
 
 [data-qx-region] {
@@ -464,14 +517,22 @@
 }
 
 .qx-shell-context {
-  /* Lock column width to the global token so Launcher / RSS / Settings / AI match. */
-  width: 100%;
-  max-width: var(--qx-context-w);
-  min-width: 0;
+  inline-size: var(--qx-context-current-w, var(--qx-context-w));
+  min-inline-size: 0;
+  max-inline-size: var(--qx-context-current-w, var(--qx-context-w));
+  overflow-x: hidden;
+  overflow-y: auto;
   border-left: 1px solid var(--qx-border-1);
   background: rgba(var(--qx-glass-bg), var(--qx-shell-region-opacity-effective));
   backdrop-filter: blur(10px) saturate(130%);
   -webkit-backdrop-filter: blur(10px) saturate(130%);
+}
+
+.qx-context-split.is-context-collapsed .qx-shell-context {
+  visibility: hidden;
+  overflow: hidden;
+  border-left: 0;
+  pointer-events: none;
 }
 
 .qx-shell.visual-elevated .qx-shell-context {
@@ -2064,6 +2125,7 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .qx-shell-context-handle,
   .qx-shell-context {
     display: none;
   }

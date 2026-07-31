@@ -23,6 +23,9 @@ fn map_history_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClipboardEntry> 
         pinned: row.get::<_, i64>(3)? != 0,
         copy_count: row.get(4)?,
         image_path: row.get(5)?,
+        image_size_bytes: row.get(10)?,
+        image_width: row.get(11)?,
+        image_height: row.get(12)?,
         file_paths: decode_stored_file_paths(file_paths_json.as_deref(), file_path.as_deref()),
         file_path,
         file_kind: row.get(8)?,
@@ -80,7 +83,8 @@ pub fn get_clipboard_history_page(
 
     // Build dynamic WHERE for optional cursor + token filters.
     let mut sql = String::from(
-        "SELECT id, text, timestamp, pinned, copy_count, image_path, file_path, file_paths, file_kind, ocr_text
+        "SELECT id, text, timestamp, pinned, copy_count, image_path, file_path, file_paths, file_kind, ocr_text,
+                image_size_bytes, image_width, image_height
          FROM clipboard_history
          WHERE 1=1",
     );
@@ -166,7 +170,8 @@ pub fn get_clipboard_entry(
     let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
     let mut stmt = conn
         .prepare(
-            "SELECT id, text, timestamp, pinned, copy_count, image_path, file_path, file_paths, file_kind, ocr_text
+            "SELECT id, text, timestamp, pinned, copy_count, image_path, file_path, file_paths, file_kind, ocr_text,
+                    image_size_bytes, image_width, image_height
              FROM clipboard_history
              WHERE id = ?1
              LIMIT 1",
@@ -217,17 +222,25 @@ pub fn read_clipboard_image_now(
             }
             let path_str = image_path.to_string_lossy().to_string();
             let pasteboard_path = snapshot_current_pasteboard(&hash_hex);
+            let size = fs::metadata(&image_path)
+                .map(|metadata| metadata.len() as i64)
+                .unwrap_or(0);
             let mut guard = lock_db(&db.0);
             let conn = ensure_connection(&mut guard).map_err(|e| format!("{e}"))?;
             let ts = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
             let _ = conn.execute(
-                "INSERT INTO clipboard_history (id, text, timestamp, image_path, image_pasteboard_path)
-                 VALUES (?1, ?2, ?3, ?4, ?5)
+                "INSERT INTO clipboard_history (
+                    id, text, timestamp, image_path, image_pasteboard_path,
+                    image_size_bytes, image_width, image_height
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                  ON CONFLICT(id) DO UPDATE SET
                     timestamp = excluded.timestamp,
                     image_path = COALESCE(excluded.image_path, clipboard_history.image_path),
-                    image_pasteboard_path = COALESCE(excluded.image_pasteboard_path, clipboard_history.image_pasteboard_path)",
-                rusqlite::params![hash_hex, "", ts, path_str, pasteboard_path],
+                    image_pasteboard_path = COALESCE(excluded.image_pasteboard_path, clipboard_history.image_pasteboard_path),
+                    image_size_bytes = excluded.image_size_bytes,
+                    image_width = excluded.image_width,
+                    image_height = excluded.image_height",
+                rusqlite::params![hash_hex, "", ts, path_str, pasteboard_path, size, i64::from(width), i64::from(height)],
             );
             prune_clipboard_storage(conn);
             drop(guard);

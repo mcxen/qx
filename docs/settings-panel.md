@@ -15,8 +15,8 @@
 ```ts
 import { openSettings } from "../settings/openSettings";
 
-// 从天气模块进天气页：Esc 回天气
-openSettings({ section: "weather" });
+// 从天气模块进其内置扩展配置：Esc 回天气
+openSettings({ focusPluginId: "builtin:weather" });
 
 // 打开某插件/内置模块配置卡：Esc 回当前 panel
 openSettings({ focusPluginId: "builtin:screencap" });
@@ -57,7 +57,7 @@ QxShell (visual="elevated")
 |------|-----|----------|
 | **Basics** 基础 | General · Search Settings · Appearance · Shortcuts | 人人都会改的全局偏好 |
 | **Extensions** 扩展 | Extensions | 安装 / 管理插件 |
-| **Features** 功能 | AI · OCR · RSS · Weather | 内置模块自己的偏好 |
+| **Features** 功能 | AI · OCR · RSS | 内置模块自己的偏好 |
 | **System** 系统 | Permissions · Storage Management · Advanced · About | 权限、模块存储、进阶、关于 |
 
 ### 各页职责（Current）
@@ -68,9 +68,9 @@ QxShell (visual="elevated")
 | **Search Settings** | 文件类型分类 · Cardinal/Everything 优先级 · 拖动排序 · 新增/编辑/删除 · 启动器模块搜索源 |
 | **Appearance** | 应用图标 · 主题与分区透明度 · 窗口与密度 · Home Island |
 | **Shortcuts** | 全局 / 应用快捷键 · 托盘菜单（后台时可用的内置菜单项） |
-| **Extensions** | Installed 使用分组连续列表，Browse 使用主从列表，配置走 Dialog |
+| **Extensions** | Installed 使用分组连续列表，Browse 使用主从列表，配置走 Dialog；天气等内置扩展的专属配置也在此处 |
 | **AI Agent** | 供应商 · 模型 · 工具 · Bash · Grep |
-| **OCR / RSS / Weather** | 各自模块设置 |
+| **OCR / RSS** | 各自模块设置 |
 | **Permissions** | macOS 权限 |
 | **Advanced** | 数据路径 · 诊断日志开关/级别/文件入口 · 网络 · 配置导入导出 · 清理 · 开发 · 重置 |
 | **Storage Management** | 仅按模块列出可重建存储；表格行展示大小、项目数与逐项清理，不重复展示物理存储桶 |
