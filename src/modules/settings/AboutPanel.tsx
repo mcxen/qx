@@ -2,9 +2,10 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-shell";
-import { Row, SettingsCard } from "../../components/ui";
+import { Row, Select, SettingsCard } from "../../components/ui";
 import GifText from "../../components/gif-text";
 import { useT } from "../../i18n";
+import { useSettingsStore, type GeneralSettings } from "./store";
 
 const RELEASES_URL = "https://github.com/mcxen/qx/releases";
 
@@ -20,6 +21,7 @@ interface QxUpdateInfo {
   notes: string | null;
   can_install: boolean;
   install_reason: string | null;
+  source: string;
 }
 
 interface QxUpdateInstallResult {
@@ -32,6 +34,11 @@ interface QxUpdateInstallResult {
 
 export default function AboutPanel() {
   const t = useT();
+  const { settings, patch } = useSettingsStore();
+  const updateSource: GeneralSettings["update_source"] =
+    settings.general.update_source === "cnb" || settings.general.update_source === "github"
+      ? settings.general.update_source
+      : "auto";
   const [version, setVersion] = useState<string>("");
   const [latest, setLatest] = useState<string | null>(null);
   const [latestUrl, setLatestUrl] = useState<string>(RELEASES_URL);
@@ -46,7 +53,7 @@ export default function AboutPanel() {
       setStatus("");
     }
     try {
-      const info = await invoke<QxUpdateInfo>("qx_update_check");
+      const info = await invoke<QxUpdateInfo>("qx_update_check", { source: updateSource });
       setUpdateInfo(info);
       setVersion(info.current_version || "unknown");
       setLatest(info.latest_version ? `v${info.latest_version}` : null);
@@ -102,7 +109,9 @@ export default function AboutPanel() {
     setInstalling(true);
     setStatus("");
     try {
-      const result = await invoke<QxUpdateInstallResult>("qx_update_download_and_install");
+      const result = await invoke<QxUpdateInstallResult>("qx_update_download_and_install", {
+        source: updateSource,
+      });
       setStatus(result.message);
     } catch (e) {
       setStatus(
@@ -183,6 +192,24 @@ export default function AboutPanel() {
               </button>
             )}
           </div>
+        </Row>
+
+        <Row
+          title={t("about.updateSource", "Update Source")}
+          description={t(
+            "about.updateSource.desc",
+            "Automatic compares CNB and GitHub, then uses the newest valid release.",
+          )}
+        >
+          <Select
+            value={updateSource}
+            onChange={(value) => patch("general", { ...settings.general, update_source: value as GeneralSettings["update_source"] })}
+            options={[
+              { value: "auto", label: t("about.updateSource.auto", "Automatic") },
+              { value: "cnb", label: t("about.updateSource.cnb", "CNB mirror") },
+              { value: "github", label: t("about.updateSource.github", "GitHub") },
+            ]}
+          />
         </Row>
 
         {status && (

@@ -1191,7 +1191,8 @@ function App() {
             return;
           }
           appLogger.info("Auto update check started");
-          const info = await invoke<QxUpdateInfo>("qx_update_check");
+          const source = useSettingsStore.getState().settings.general.update_source;
+          const info = await invoke<QxUpdateInfo>("qx_update_check", { source });
           appLogger.debug("Auto update check completed", { info });
           if (cancelled || !info.available || !info.can_install) return;
 
@@ -1209,7 +1210,7 @@ function App() {
             },
           });
 
-          await invoke("qx_update_download_and_install");
+          await invoke("qx_update_download_and_install", { source });
           appLogger.info("Auto update download and install started", {
             latestVersion: info.latest_version,
           });

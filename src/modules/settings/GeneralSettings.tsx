@@ -56,6 +56,23 @@ export default function GeneralSettings() {
             onChange={(v) => patch("general", { ...g, auto_update: v })}
           />
         </Row>
+        <Row
+          title={t("general.updateSource", "Update Source")}
+          description={t(
+            "general.updateSource.desc",
+            "Auto compares available releases and uses the newest valid source.",
+          )}
+        >
+          <Select
+            value={g.update_source === "cnb" || g.update_source === "github" ? g.update_source : "auto"}
+            onChange={(v) => patch("general", { ...g, update_source: v as typeof g.update_source })}
+            options={[
+              { value: "auto", label: t("general.updateSource.auto", "Automatic") },
+              { value: "cnb", label: t("general.updateSource.cnb", "CNB mirror") },
+              { value: "github", label: t("general.updateSource.github", "GitHub") },
+            ]}
+          />
+        </Row>
       </SettingsCard>
     </div>
   );

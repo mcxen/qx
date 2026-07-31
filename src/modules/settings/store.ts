@@ -46,6 +46,8 @@ export interface GeneralSettings {
   launch_at_login: boolean;
   language: string;
   auto_update: boolean;
+  /** Update source preference: auto compares the configured mirrors and GitHub. */
+  update_source: "auto" | "cnb" | "github";
   /** Legacy compatibility field; use appearance.window_behavior instead. */
   autoHideOnBlur: boolean;
   data_path: string;
@@ -385,6 +387,7 @@ export const DEFAULT_SETTINGS: Settings = {
     language: "system",
     // Off by default — Windows auto-install may quit without a reliable relaunch.
     auto_update: false,
+    update_source: "auto",
     autoHideOnBlur: false,
     data_path: "",
     has_shown_launcher: false,

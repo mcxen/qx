@@ -30,6 +30,8 @@ pub struct GeneralSettings {
     pub launch_at_login: bool,
     pub language: String,
     pub auto_update: bool,
+    #[serde(default = "default_update_source")]
+    pub update_source: String,
     #[serde(default = "default_auto_hide_on_blur", rename = "autoHideOnBlur")]
     pub auto_hide_on_blur: bool,
     pub data_path: String,
@@ -48,6 +50,10 @@ fn default_auto_hide_on_blur() -> bool {
     false
 }
 
+fn default_update_source() -> String {
+    "auto".to_string()
+}
+
 fn default_window_behavior() -> String {
     "normal".to_string()
 }
@@ -61,6 +67,7 @@ impl Default for GeneralSettings {
             // Off by default: Windows auto-install can quit the app even when
             // the replace/relaunch path fails, leaving users without a running Qx.
             auto_update: false,
+            update_source: default_update_source(),
             auto_hide_on_blur: false,
             data_path: crate::paths::data_dir().to_string_lossy().to_string(),
             has_shown_launcher: false,

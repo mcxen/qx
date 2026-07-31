@@ -267,10 +267,12 @@ artifacts, creates the matching CNB Release, and uploads the packages plus
 `latest.json` with `cnbcool/attachments`. This avoids rebuilding native macOS
 and Windows clients on a Linux runner and keeps checksums identical.
 
-Qx checks the stable CNB manifest first:
+Qx defaults to automatic source selection and compares the stable CNB manifest,
+the optional configured mirror, and GitHub:
 `https://cnb.cool/v.ip/Qx/-/releases/latest/download/latest.json`. If CNB is
-unavailable or its manifest fails validation, the updater continues through the
-configured WebDAV mirror and then GitHub. All requests run in the existing
+unavailable or has an older valid manifest, the updater continues through the
+other sources and chooses the newest valid release. The About panel can also
+pin checks to CNB or GitHub. All requests run in the existing
 background update task; no update-network request runs on the UI thread.
 
 On Windows, the detached updater helper waits for Qx to exit and starts the NSIS

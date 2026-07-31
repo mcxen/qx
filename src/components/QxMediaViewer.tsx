@@ -75,6 +75,7 @@ export default function QxMediaViewer({
   } | null>(null);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const zoomRef = useRef(1);
   const dragRef = useRef<{
     pointerId: number;
     x: number;
@@ -91,12 +92,43 @@ export default function QxMediaViewer({
   useEffect(() => {
     if (!open) return;
     setIndex(Math.max(0, Math.min(images.length - 1, initialIndex)));
+    zoomRef.current = 1;
     setZoom(1);
     setMetrics(null);
     dragRef.current = null;
   }, [imageSetKey, images.length, initialIndex, open]);
 
+  const setZoomLevel = useCallback((nextZoom: number, anchor?: { x: number; y: number }) => {
+    const currentZoom = zoomRef.current;
+    const next = Math.max(0.5, Math.min(4, Math.round(nextZoom * 100) / 100));
+    if (next === currentZoom) return;
+
+    const scroll = scrollRef.current;
+    const rect = scroll?.getBoundingClientRect();
+    const anchorX = scroll && rect && anchor
+      ? scroll.scrollLeft + anchor.x - rect.left
+      : null;
+    const anchorY = scroll && rect && anchor
+      ? scroll.scrollTop + anchor.y - rect.top
+      : null;
+
+    zoomRef.current = next;
+    setZoom(next);
+
+    // Keep the point under the pointer stable while a wheel/pinch gesture
+    // changes the image size. The scroll range is updated after React lays
+    // out the resized canvas.
+    if (scroll && anchorX !== null && anchorY !== null) {
+      requestAnimationFrame(() => {
+        const ratio = next / currentZoom;
+        scroll.scrollLeft = Math.max(0, anchorX * ratio - (anchor?.x ?? 0));
+        scroll.scrollTop = Math.max(0, anchorY * ratio - (anchor?.y ?? 0));
+      });
+    }
+  }, []);
+
   const move = useCallback((delta: number) => {
+    zoomRef.current = 1;
     setZoom(1);
     setMetrics(null);
     setIndex((current) => {
@@ -106,10 +138,8 @@ export default function QxMediaViewer({
   }, [images.length]);
 
   const changeZoom = useCallback((delta: number) => {
-    setZoom((current) =>
-      Math.max(0.5, Math.min(4, Math.round((current + delta) * 10) / 10)),
-    );
-  }, []);
+    setZoomLevel(zoomRef.current + delta);
+  }, [setZoomLevel]);
 
   useEffect(() => {
     if (!open || images.length < 2) return;
@@ -182,6 +212,7 @@ export default function QxMediaViewer({
         changeZoom(-0.25);
       } else if (event.key === "0") {
         event.preventDefault();
+        zoomRef.current = 1;
         setZoom(1);
       }
     };
@@ -248,10 +279,28 @@ export default function QxMediaViewer({
               if (event.metaKey || event.ctrlKey) {
                 event.preventDefault();
                 event.stopPropagation();
-                setZoom((current) => {
-                  const next = current * Math.exp(-event.deltaY * 0.0025);
-                  return Math.max(0.5, Math.min(4, Math.round(next * 100) / 100));
-                });
+                setZoomLevel(
+                  zoomRef.current * Math.exp(-event.deltaY * 0.0025),
+                  { x: event.clientX, y: event.clientY },
+                );
+                return;
+              }
+              // A traditional mouse wheel uses line-sized deltas. Use it as
+              // a zoom gesture; pixel-sized two-finger scrolling remains
+              // available for panning an already enlarged image. macOS
+              // trackpad pinch arrives through the ctrl/meta path above.
+              const isMouseWheel = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+                || Math.abs(event.deltaY) >= 30;
+              if (isMouseWheel) {
+                event.preventDefault();
+                event.stopPropagation();
+                const deltaY = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+                  ? event.deltaY * 16
+                  : event.deltaY;
+                setZoomLevel(
+                  zoomRef.current * Math.exp(-deltaY * 0.004),
+                  { x: event.clientX, y: event.clientY },
+                );
                 return;
               }
               if (zoom <= 1) return;
@@ -320,27 +369,57 @@ export default function QxMediaViewer({
                 event.currentTarget.classList.remove("is-dragging");
               }}
             >
-              <img
-                key={image.url}
-                src={image.url}
-                alt={image.alt || ""}
-                className={zoom === 1 ? undefined : "is-zoomed"}
-                onLoad={(event) => {
-                  const element = event.currentTarget;
-                  setMetrics({
-                    url: image.url,
-                    width: element.naturalWidth,
-                    height: element.naturalHeight,
-                  });
-                }}
-                style={{
-                  objectFit: image.fit || "contain",
-                  width: renderedSize ? `${renderedSize.width}px` : undefined,
-                  height: renderedSize ? `${renderedSize.height}px` : undefined,
-                  maxWidth: renderedSize ? "none" : "100%",
-                  maxHeight: renderedSize ? "none" : "100%",
-                } as CSSProperties}
-              />
+              {renderedSize ? (
+                <div
+                  className="qx-host-workbench-media-preview-canvas"
+                  style={{
+                    width: `${Math.max(viewport.width, renderedSize.width)}px`,
+                    height: `${Math.max(viewport.height, renderedSize.height)}px`,
+                  }}
+                >
+                  <img
+                    key={image.url}
+                    src={image.url}
+                    alt={image.alt || ""}
+                    className={zoom === 1 ? undefined : "is-zoomed"}
+                    onLoad={(event) => {
+                      const element = event.currentTarget;
+                      setMetrics({
+                        url: image.url,
+                        width: element.naturalWidth,
+                        height: element.naturalHeight,
+                      });
+                    }}
+                    style={{
+                      objectFit: image.fit || "contain",
+                      width: `${renderedSize.width}px`,
+                      height: `${renderedSize.height}px`,
+                      maxWidth: "none",
+                      maxHeight: "none",
+                    } as CSSProperties}
+                  />
+                </div>
+              ) : (
+                <img
+                  key={image.url}
+                  src={image.url}
+                  alt={image.alt || ""}
+                  className={zoom === 1 ? undefined : "is-zoomed"}
+                  onLoad={(event) => {
+                    const element = event.currentTarget;
+                    setMetrics({
+                      url: image.url,
+                      width: element.naturalWidth,
+                      height: element.naturalHeight,
+                    });
+                  }}
+                  style={{
+                    objectFit: image.fit || "contain",
+                    maxWidth: "100%",
+                    maxHeight: "100%",
+                  } as CSSProperties}
+                />
+              )}
             </div>
             <div className="qx-host-workbench-media-zoom">
               <Button
@@ -359,7 +438,10 @@ export default function QxMediaViewer({
                 size="sm"
                 className="qx-host-workbench-media-zoom-value"
                 aria-label={t("plugins.workbench.resetZoom", "Reset zoom")}
-                onClick={() => setZoom(1)}
+                onClick={() => {
+                  zoomRef.current = 1;
+                  setZoom(1);
+                }}
               >
                 {Math.round(zoom * 100)}%
               </Button>

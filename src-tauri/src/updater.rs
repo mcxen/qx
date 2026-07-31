@@ -51,6 +51,24 @@ pub struct QxUpdateInfo {
     pub notes: Option<String>,
     pub can_install: bool,
     pub install_reason: Option<String>,
+    pub source: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UpdateSource {
+    Auto,
+    Cnb,
+    Github,
+}
+
+impl UpdateSource {
+    fn parse(value: Option<&str>) -> Self {
+        match value.map(str::trim) {
+            Some("cnb") => Self::Cnb,
+            Some("github") => Self::Github,
+            _ => Self::Auto,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,20 +123,26 @@ struct HelperStatus {
 }
 
 #[tauri::command]
-pub async fn qx_update_check(app: AppHandle) -> Result<QxUpdateInfo, String> {
+pub async fn qx_update_check(
+    app: AppHandle,
+    source: Option<String>,
+) -> Result<QxUpdateInfo, String> {
     let current = app.package_info().version.to_string();
-    tokio::task::spawn_blocking(move || check_for_update(&current))
-        .await
-        .map_err(|e| format!("update check task failed: {e}"))?
+    tokio::task::spawn_blocking(move || {
+        check_for_update(&current, UpdateSource::parse(source.as_deref()))
+    })
+    .await
+    .map_err(|e| format!("update check task failed: {e}"))?
 }
 
 #[tauri::command]
 pub async fn qx_update_download_and_install(
     app: AppHandle,
+    source: Option<String>,
 ) -> Result<QxUpdateInstallResult, String> {
     let current = app.package_info().version.to_string();
     let result = tokio::task::spawn_blocking(move || {
-        let update = check_for_update(&current)?;
+        let update = check_for_update(&current, UpdateSource::parse(source.as_deref()))?;
         if !update.available {
             return Err("Qx is already on the latest version.".to_string());
         }
@@ -192,25 +216,40 @@ pub(crate) fn maybe_run_update_helper_from_args() -> bool {
     true
 }
 
-fn check_for_update(current_version: &str) -> Result<QxUpdateInfo, String> {
+fn check_for_update(current_version: &str, source: UpdateSource) -> Result<QxUpdateInfo, String> {
+    let mut candidates = Vec::new();
     let mut errors = Vec::new();
-    match check_for_update_via_manifest(current_version, CNB_LATEST_MANIFEST) {
-        Ok(info) => return Ok(info),
-        Err(error) => errors.push(format!("CNB: {error}")),
+    let mut manifests = Vec::new();
+    match source {
+        UpdateSource::Auto | UpdateSource::Cnb => manifests.push(("CNB", CNB_LATEST_MANIFEST)),
+        UpdateSource::Github => {}
     }
-    if let Some(mirror_url) = configured_mirror_manifest_url() {
-        match check_for_update_via_manifest(current_version, mirror_url) {
-            Ok(info) => return Ok(info),
-            Err(error) => errors.push(format!("configured mirror: {error}")),
+    if source == UpdateSource::Auto {
+        if let Some(mirror_url) = configured_mirror_manifest_url() {
+            manifests.push(("configured mirror", mirror_url));
         }
     }
-    match check_for_update_via_manifest(current_version, GITHUB_LATEST_MANIFEST) {
-        Ok(info) => Ok(info),
-        Err(error) => {
-            errors.push(format!("GitHub: {error}"));
-            Err(format!("update checks failed: {}", errors.join("; ")))
+    if matches!(source, UpdateSource::Auto | UpdateSource::Github) {
+        manifests.push(("GitHub", GITHUB_LATEST_MANIFEST));
+    }
+    for (label, manifest_url) in manifests {
+        match check_for_update_via_manifest(current_version, manifest_url) {
+            Ok(info) => candidates.push(info),
+            Err(error) => errors.push(format!("{label}: {error}")),
         }
     }
+
+    candidates.sort_by(|left, right| {
+        compare_versions(
+            left.latest_version.as_deref().unwrap_or_default(),
+            right.latest_version.as_deref().unwrap_or_default(),
+        )
+        .cmp(&0)
+    });
+    if let Some(info) = candidates.pop() {
+        return Ok(info);
+    }
+    Err(format!("update checks failed: {}", errors.join("; ")))
 }
 
 fn configured_mirror_manifest_url() -> Option<&'static str> {
@@ -316,6 +355,7 @@ fn update_info_from_manifest_source(
         sha256,
         size,
         None,
+        update_source_from_manifest(manifest_url).to_string(),
     ))
 }
 
@@ -425,6 +465,7 @@ fn build_update_info(
     sha256: Option<String>,
     size: Option<u64>,
     notes: Option<String>,
+    source: String,
 ) -> QxUpdateInfo {
     let available = compare_versions(&latest_version, current_version) > 0;
     let (can_install, install_reason) =
@@ -441,6 +482,17 @@ fn build_update_info(
         notes,
         can_install,
         install_reason,
+        source,
+    }
+}
+
+fn update_source_from_manifest(manifest_url: &str) -> &'static str {
+    if manifest_url == CNB_LATEST_MANIFEST {
+        "cnb"
+    } else if manifest_url == GITHUB_LATEST_MANIFEST {
+        "github"
+    } else {
+        "mirror"
     }
 }
 

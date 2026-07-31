@@ -962,6 +962,23 @@
   object-position: center top;
 }
 
+/* The explicit canvas is the scrollable surface. Keeping the image inside a
+   sized canvas prevents CSS grid from shrinking an enlarged image back to
+   the viewport, which made the zoom buttons appear to do nothing. */
+.qx-host-workbench-media-preview-canvas {
+  display: grid;
+  flex: none;
+  min-width: 0;
+  min-height: 0;
+  place-items: center;
+}
+
+.qx-host-workbench-media-preview-canvas > img {
+  display: block;
+  object-fit: contain;
+  object-position: center;
+}
+
 .qx-host-workbench-media-preview-scroll.is-enlarged {
   align-content: start;
   justify-items: start;
@@ -977,6 +994,10 @@
 
 .qx-host-workbench-media-preview-scroll.is-enlarged.is-portrait > img {
   margin-inline: auto;
+}
+
+.qx-host-workbench-media-preview-scroll.is-enlarged > .qx-host-workbench-media-preview-canvas {
+  place-items: center;
 }
 
 .qx-host-workbench-media-zoom {

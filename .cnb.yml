@@ -49,8 +49,6 @@ $:
         - name: Create CNB release
           type: git:release
           options:
-            tag: ${CNB_BRANCH}
-            title: ${CNB_BRANCH}
             description: "国内下载镜像：桌面端安装包与自动更新清单"
             overlying: true
             latest: true
@@ -58,6 +56,5 @@ $:
         - name: Upload CNB release assets
           image: cnbcool/attachments:latest
           settings:
-            tag: ${CNB_BRANCH}
             attachments:
               - "./cnb-release/*"
