@@ -12,7 +12,11 @@ import {
   normalizeLanguagePreference,
   resolveLocale,
 } from "../i18n";
-import { createPluginUiKit, enhancePluginCli } from "./cliWorkbench";
+import {
+  createPluginStateKit,
+  createPluginUiKit,
+  enhancePluginCli,
+} from "./cliWorkbench";
 
 export interface PluginContextHooks {
   onToast: (msg: string) => void;
@@ -153,6 +157,7 @@ export function createPluginContext(
     setInterval: (handler, delay, ...args) => window.setInterval(handler, delay, ...args),
     clearTimeout: (id) => window.clearTimeout(id),
     clearInterval: (id) => window.clearInterval(id),
+    state: createPluginStateKit(),
     clipboard: {
       read: () => rpc("clipboardRead") as Promise<string>,
       write: (text: string) => rpc("clipboardWrite", { text }) as Promise<void>,

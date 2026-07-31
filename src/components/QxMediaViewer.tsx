@@ -10,6 +10,38 @@ import {
 } from "./ui";
 import { useT } from "../i18n";
 
+const MEDIA_DECODE_CACHE_TTL_MS = 15 * 60 * 1_000;
+const MEDIA_DECODE_CACHE_MAX_ENTRIES = 24;
+const mediaDecodeCache = new Map<string, {
+  image: HTMLImageElement;
+  lastAccessedAt: number;
+}>();
+let mediaDecodeCacheTimer: ReturnType<typeof setTimeout> | null = null;
+
+function pruneMediaDecodeCache(now = Date.now()) {
+  for (const [url, entry] of mediaDecodeCache) {
+    if (now - entry.lastAccessedAt < MEDIA_DECODE_CACHE_TTL_MS) continue;
+    entry.image.src = "";
+    mediaDecodeCache.delete(url);
+  }
+  while (mediaDecodeCache.size > MEDIA_DECODE_CACHE_MAX_ENTRIES) {
+    const oldest = [...mediaDecodeCache.entries()]
+      .sort((left, right) => left[1].lastAccessedAt - right[1].lastAccessedAt)[0];
+    if (!oldest) break;
+    oldest[1].image.src = "";
+    mediaDecodeCache.delete(oldest[0]);
+  }
+}
+
+function scheduleMediaDecodeCachePrune() {
+  if (mediaDecodeCacheTimer) clearTimeout(mediaDecodeCacheTimer);
+  mediaDecodeCacheTimer = setTimeout(() => {
+    mediaDecodeCacheTimer = null;
+    pruneMediaDecodeCache();
+    if (mediaDecodeCache.size) scheduleMediaDecodeCachePrune();
+  }, MEDIA_DECODE_CACHE_TTL_MS);
+}
+
 export interface QxMediaViewerImage {
   url: string;
   alt?: string;
@@ -41,7 +73,15 @@ export default function QxMediaViewer({
     width: number;
     height: number;
   } | null>(null);
-  const decodeCache = useRef(new Map<string, HTMLImageElement>());
+  const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+    scrollLeft: number;
+    scrollTop: number;
+  } | null>(null);
   const image = images[index];
   const imageSetKey = useMemo(
     () => images.map((item) => item.url).join("\u0000"),
@@ -53,6 +93,7 @@ export default function QxMediaViewer({
     setIndex(Math.max(0, Math.min(images.length - 1, initialIndex)));
     setZoom(1);
     setMetrics(null);
+    dragRef.current = null;
   }, [imageSetKey, images.length, initialIndex, open]);
 
   const move = useCallback((delta: number) => {
@@ -72,28 +113,59 @@ export default function QxMediaViewer({
 
   useEffect(() => {
     if (!open || images.length < 2) return;
-    const cache = decodeCache.current;
-    const indexes = [-2, -1, 1, 2].map(
+    const now = Date.now();
+    pruneMediaDecodeCache(now);
+    const offsets = [0, -1, 1, -2, 2];
+    const indexes = offsets.map(
       (offset) => (index + offset + images.length) % images.length,
     );
     for (const [priorityIndex, candidateIndex] of indexes.entries()) {
       const url = images[candidateIndex]?.url;
-      if (!url || cache.has(url)) continue;
+      if (!url) continue;
+      const cached = mediaDecodeCache.get(url);
+      if (cached) {
+        cached.lastAccessedAt = now;
+        mediaDecodeCache.delete(url);
+        mediaDecodeCache.set(url, cached);
+        continue;
+      }
       const candidate = new Image();
       candidate.decoding = "async";
-      candidate.fetchPriority = priorityIndex === 1 || priorityIndex === 2 ? "high" : "low";
+      candidate.fetchPriority = Math.abs(offsets[priorityIndex]) <= 1 ? "high" : "low";
       candidate.src = url;
-      cache.set(url, candidate);
+      mediaDecodeCache.set(url, { image: candidate, lastAccessedAt: now });
       void candidate.decode().catch(() => {
         // Visible media retains its normal error behavior; predecode is best effort.
       });
     }
-    while (cache.size > 8) {
-      const oldest = cache.keys().next().value;
-      if (!oldest) break;
-      cache.delete(oldest);
-    }
+    pruneMediaDecodeCache(now);
+    scheduleMediaDecodeCachePrune();
   }, [images, index, open]);
+
+  useEffect(() => {
+    if (zoom > 1) return;
+    const scroll = scrollRef.current;
+    if (scroll) {
+      scroll.scrollLeft = 0;
+      scroll.scrollTop = 0;
+    }
+  }, [image?.url, zoom]);
+
+  useEffect(() => {
+    if (!open) return;
+    const scroll = scrollRef.current;
+    if (!scroll) return;
+    const updateViewport = () => {
+      setViewport({
+        width: Math.max(0, scroll.clientWidth - 4),
+        height: Math.max(0, scroll.clientHeight - 4),
+      });
+    };
+    updateViewport();
+    const observer = new ResizeObserver(updateViewport);
+    observer.observe(scroll);
+    return () => observer.disconnect();
+  }, [image?.url, open]);
 
   useEffect(() => {
     if (!open) return;
@@ -127,6 +199,28 @@ export default function QxMediaViewer({
     : metrics && image && metrics.url === image.url
       ? metrics.width >= metrics.height ? "landscape" : "portrait"
       : "contain";
+  const renderedSize = useMemo(() => {
+    if (
+      !image
+      || metrics?.url !== image.url
+      || viewport.width <= 0
+      || viewport.height <= 0
+    ) {
+      return null;
+    }
+    const naturalWidth = Math.max(1, metrics.width);
+    const naturalHeight = Math.max(1, metrics.height);
+    const fitScale = longScreenshot
+      ? viewport.width / naturalWidth
+      : Math.min(
+          viewport.width / naturalWidth,
+          viewport.height / naturalHeight,
+        );
+    return {
+      width: Math.max(1, naturalWidth * fitScale * zoom),
+      height: Math.max(1, naturalHeight * fitScale * zoom),
+    };
+  }, [image, longScreenshot, metrics, viewport.height, viewport.width, zoom]);
 
   return (
     <Dialog open={open && Boolean(image)} onOpenChange={onOpenChange}>
@@ -151,12 +245,22 @@ export default function QxMediaViewer({
           <div
             className="qx-host-workbench-media-preview-stage"
             onWheel={(event) => {
+              if (event.metaKey || event.ctrlKey) {
+                event.preventDefault();
+                event.stopPropagation();
+                setZoom((current) => {
+                  const next = current * Math.exp(-event.deltaY * 0.0025);
+                  return Math.max(0.5, Math.min(4, Math.round(next * 100) / 100));
+                });
+                return;
+              }
+              if (zoom <= 1) return;
+              const scroll = scrollRef.current;
+              if (!scroll) return;
               event.preventDefault();
               event.stopPropagation();
-              setZoom((current) => {
-                const next = current * Math.exp(-event.deltaY * 0.0025);
-                return Math.max(0.5, Math.min(4, Math.round(next * 100) / 100));
-              });
+              scroll.scrollLeft += event.deltaX;
+              scroll.scrollTop += event.deltaY;
             }}
           >
             {images.length > 1 ? (
@@ -174,6 +278,7 @@ export default function QxMediaViewer({
               </div>
             ) : null}
             <div
+              ref={scrollRef}
               className={[
                 "qx-host-workbench-media-preview-scroll",
                 `is-${orientation}`,
@@ -181,6 +286,39 @@ export default function QxMediaViewer({
               ].filter(Boolean).join(" ")}
               tabIndex={0}
               aria-label={t("plugins.workbench.imagePreviewHint", "Full-size preview of the selected image")}
+              onPointerDown={(event) => {
+                if (zoom <= 1 || event.button !== 0) return;
+                const scroll = event.currentTarget;
+                dragRef.current = {
+                  pointerId: event.pointerId,
+                  x: event.clientX,
+                  y: event.clientY,
+                  scrollLeft: scroll.scrollLeft,
+                  scrollTop: scroll.scrollTop,
+                };
+                scroll.setPointerCapture(event.pointerId);
+                scroll.classList.add("is-dragging");
+                event.preventDefault();
+              }}
+              onPointerMove={(event) => {
+                const drag = dragRef.current;
+                if (!drag || drag.pointerId !== event.pointerId) return;
+                event.currentTarget.scrollLeft = drag.scrollLeft - (event.clientX - drag.x);
+                event.currentTarget.scrollTop = drag.scrollTop - (event.clientY - drag.y);
+                event.preventDefault();
+              }}
+              onPointerUp={(event) => {
+                if (dragRef.current?.pointerId !== event.pointerId) return;
+                dragRef.current = null;
+                event.currentTarget.classList.remove("is-dragging");
+                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+                  event.currentTarget.releasePointerCapture(event.pointerId);
+                }
+              }}
+              onPointerCancel={(event) => {
+                dragRef.current = null;
+                event.currentTarget.classList.remove("is-dragging");
+              }}
             >
               <img
                 key={image.url}
@@ -197,7 +335,10 @@ export default function QxMediaViewer({
                 }}
                 style={{
                   objectFit: image.fit || "contain",
-                  "--qx-image-zoom-size": `${Math.round(zoom * 100)}%`,
+                  width: renderedSize ? `${renderedSize.width}px` : undefined,
+                  height: renderedSize ? `${renderedSize.height}px` : undefined,
+                  maxWidth: renderedSize ? "none" : "100%",
+                  maxHeight: renderedSize ? "none" : "100%",
                 } as CSSProperties}
               />
             </div>

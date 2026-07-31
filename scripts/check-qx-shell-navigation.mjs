@@ -171,12 +171,28 @@ assert.equal(captureNumberOutline("#ffffff"), "rgba(0,0,0,.72)");
 assert.match(pluginWorkbenchSource, /<QxMediaViewer/);
 assert.match(mediaViewerSource, /qx-host-workbench-media-preview-scroll/);
 assert.match(mediaViewerSource, /metrics\.height\s*\/[\s\S]*metrics\.width[\s\S]*>=\s*3\.2/);
-assert.match(mediaViewerSource, /decodeCache/);
-assert.match(mediaViewerSource, /\[-2,\s*-1,\s*1,\s*2\]/);
-assert.match(mediaViewerSource, /while\s*\(cache\.size\s*>\s*8\)/);
+assert.match(mediaViewerSource, /mediaDecodeCache/);
+assert.match(mediaViewerSource, /\[0,\s*-1,\s*1,\s*-2,\s*2\]/);
+assert.match(mediaViewerSource, /MEDIA_DECODE_CACHE_TTL_MS\s*=\s*15\s*\*\s*60\s*\*\s*1_000/);
+assert.match(mediaViewerSource, /MEDIA_DECODE_CACHE_MAX_ENTRIES\s*=\s*24/);
+assert.match(mediaViewerSource, /setPointerCapture\(event\.pointerId\)/);
+assert.match(mediaViewerSource, /scrollLeft\s*=\s*drag\.scrollLeft/);
+assert.match(mediaViewerSource, /scrollTop\s*=\s*drag\.scrollTop/);
+assert.match(mediaViewerSource, /new ResizeObserver\(updateViewport\)/);
+assert.match(
+  mediaViewerSource,
+  /Math\.min\(\s*viewport\.width\s*\/\s*naturalWidth,\s*viewport\.height\s*\/\s*naturalHeight,\s*\)/s,
+);
+assert.match(mediaViewerSource, /event\.metaKey\s*\|\|\s*event\.ctrlKey/);
+assert.match(mediaViewerSource, /scroll\.scrollLeft\s*\+=\s*event\.deltaX/);
+assert.match(mediaViewerSource, /scroll\.scrollTop\s*\+=\s*event\.deltaY/);
 assert.match(
   listIconsStyles,
   /\.qx-host-workbench-media-preview-scroll\s*\{[^}]*overflow:\s*auto;/s,
+);
+assert.match(
+  listIconsStyles,
+  /\.qx-host-workbench-media-preview-scroll\.is-enlarged\s*\{[^}]*cursor:\s*grab;[^}]*touch-action:\s*none;/s,
 );
 assert.match(
   listIconsStyles,

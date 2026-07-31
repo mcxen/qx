@@ -962,25 +962,17 @@
   object-position: center top;
 }
 
-.qx-host-workbench-media-preview-scroll.is-landscape > img.is-zoomed,
-.qx-host-workbench-media-preview-scroll.is-contain > img.is-zoomed,
-.qx-host-workbench-media-preview-scroll.is-long-screenshot > img.is-zoomed {
-  width: var(--qx-image-zoom-size);
-  height: auto;
-  max-width: none;
-  max-height: none;
-}
-
-.qx-host-workbench-media-preview-scroll.is-portrait > img.is-zoomed {
-  width: auto;
-  height: var(--qx-image-zoom-size);
-  max-width: none;
-  max-height: none;
-}
-
 .qx-host-workbench-media-preview-scroll.is-enlarged {
   align-content: start;
   justify-items: start;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.qx-host-workbench-media-preview-scroll.is-enlarged.is-dragging {
+  cursor: grabbing;
+  scroll-behavior: auto;
 }
 
 .qx-host-workbench-media-preview-scroll.is-enlarged.is-portrait > img {

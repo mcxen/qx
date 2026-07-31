@@ -353,9 +353,47 @@ function normalizeAsyncStatus(value: unknown): PluginWorkbenchAsyncStatus | unde
   };
 }
 
-function normalizeContentBlocks(value: unknown): PluginWorkbenchContentBlock[] {
+const MAX_ITEM_IMAGES = 4;
+// Trust-boundary abuse caps, not product truncation. Normal upstream
+// collections must remain complete; the byte budget is the primary guard.
+const MAX_DETAIL_IMAGES = 96;
+const MAX_DETAIL_CONTENT_IMAGES = 96;
+const MAX_WORKBENCH_MEDIA_CHARS = 32_000_000;
+
+interface WorkbenchMediaBudget {
+  remaining: number;
+}
+
+function consumeImage(
+  image: PluginWorkbenchImage | undefined,
+  budget: WorkbenchMediaBudget,
+): PluginWorkbenchImage | undefined {
+  if (!image || image.url.length > budget.remaining) return undefined;
+  budget.remaining -= image.url.length;
+  return image;
+}
+
+function normalizeImageList(
+  value: unknown,
+  limit: number,
+  budget: WorkbenchMediaBudget,
+  detail = false,
+): PluginWorkbenchImage[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .slice(0, limit)
+    .map((image) => normalizeImage(image, detail))
+    .map((image) => consumeImage(image, budget))
+    .filter((image): image is PluginWorkbenchImage => Boolean(image));
+}
+
+function normalizeContentBlocks(
+  value: unknown,
+  budget: WorkbenchMediaBudget,
+): PluginWorkbenchContentBlock[] {
   if (!Array.isArray(value)) return [];
   let textBudget = 24_000;
+  let imageBudget = MAX_DETAIL_CONTENT_IMAGES;
   const blocks: PluginWorkbenchContentBlock[] = [];
   for (const entry of value) {
     if (!entry || typeof entry !== "object") continue;
@@ -367,10 +405,12 @@ function normalizeContentBlocks(value: unknown): PluginWorkbenchContentBlock[] {
       blocks.push({ type: "text", text });
       continue;
     }
-    if (raw.type === "image") {
+    if (raw.type === "image" && imageBudget > 0) {
       const image = normalizeImage(raw.image, true);
-      if (!image) continue;
-      blocks.push({ type: "image", image });
+      const boundedImage = consumeImage(image, budget);
+      if (!boundedImage) continue;
+      imageBudget -= 1;
+      blocks.push({ type: "image", image: boundedImage });
     }
   }
   return blocks;
@@ -404,7 +444,10 @@ function normalizeReplyContent(value: unknown): PluginWorkbenchReplyContent[] {
   return content;
 }
 
-function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
+function normalizeDetail(
+  value: unknown,
+  budget: WorkbenchMediaBudget,
+): PluginWorkbenchDetail | undefined {
   if (!value || typeof value !== "object") return undefined;
   const raw = value as Record<string, unknown>;
   const sections = Array.isArray(raw.sections)
@@ -462,17 +505,13 @@ function normalizeDetail(value: unknown): PluginWorkbenchDetail | undefined {
   const detail = {
     title: shortText(raw.title, 240),
     subtitle: shortText(raw.subtitle, 500),
-    image: normalizeImage(raw.image, true),
-    images: Array.isArray(raw.images)
-      ? raw.images
-          .map((image) => normalizeImage(image, true))
-          .filter((image): image is PluginWorkbenchImage => Boolean(image))
-      : [],
+    image: consumeImage(normalizeImage(raw.image, true), budget),
+    images: normalizeImageList(raw.images, MAX_DETAIL_IMAGES, budget, true),
     imageLayout: raw.imageLayout === "horizontal" ? "horizontal" as const : "grid" as const,
     mediaPlacement: raw.mediaPlacement === "after-body" ? "after-body" as const : "header" as const,
     status: normalizeAsyncStatus(raw.status),
     body: shortText(raw.body, 12_000),
-    content: normalizeContentBlocks(raw.content),
+    content: normalizeContentBlocks(raw.content, budget),
     form: normalizeForm(raw.form),
     fields: normalizeFields(raw.fields),
     sections,
@@ -530,6 +569,7 @@ function normalizeImage(value: unknown, detail = false): PluginWorkbenchItem["im
 /** Trust boundary for iframe → React workbench data. */
 export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchState {
   const raw = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const mediaBudget: WorkbenchMediaBudget = { remaining: MAX_WORKBENCH_MEDIA_CHARS };
   const seenItemIds = new Set<string>();
   const items = Array.isArray(raw.items)
     ? raw.items.slice(0, 500).map((entry, index) => {
@@ -543,16 +583,12 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
           meta: shortText(item.meta, 240),
           badge: shortText(item.badge, 120),
           icon: shortText(item.icon, 24),
-          image: normalizeImage(item.image),
-          images: Array.isArray(item.images)
-            ? item.images
-                .map((image) => normalizeImage(image))
-                .filter((image): image is PluginWorkbenchImage => Boolean(image))
-            : [],
+          image: consumeImage(normalizeImage(item.image), mediaBudget),
+          images: normalizeImageList(item.images, MAX_ITEM_IMAGES, mediaBudget),
           status: normalizeAsyncStatus(item.status),
           progress: Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : undefined,
           tone: normalizeTone(item.tone),
-          detail: normalizeDetail(item.detail),
+          detail: normalizeDetail(item.detail, mediaBudget),
           actions: normalizeActions(item.actions),
         } satisfies PluginWorkbenchItem;
       }).filter((item) => {
@@ -704,7 +740,7 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
     actions: normalizeActions(raw.actions),
     items,
     selectedId: raw.selectedId == null ? null : shortText(raw.selectedId, 256),
-    detail: normalizeDetail(raw.detail),
+    detail: normalizeDetail(raw.detail, mediaBudget),
     emptyText: shortText(raw.emptyText, 500),
     ...(backgroundPollCommand ? { backgroundPoll: { command: backgroundPollCommand } } : {}),
     ...(hasIsland ? { island } : {}),

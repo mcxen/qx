@@ -23,7 +23,7 @@
 | 壳 chrome（Esc 胶囊、Actions 菜单、Island 文案） | **`useQxModuleShell`** | 无 1:1 壳；宿主 `PluginHost` 包一层 QxShell | 内置必走 shell；插件 panel 打开时宿主 shell 提供 Esc leave → launcher |
 | Esc 阶梯（inner → query → leave） | `useEscBack` / `shell.stepBack` | 插件 iframe 内自理；宿主 window Esc → `tryModuleEscapeStep` 再 leave 模块 | 见 UI_SPEC Esc |
 | Host Esc 跨焦点 | **`moduleEscapeHost`** + `App.performHostEscape` | 同左（打开的是插件 tab 时，PluginHost 的 shell 注册 stepBack） | 禁止非 launcher 直接 `setTab` 跳过模块阶梯 |
-| 列表选中 / 滚入视口 | **`useQxListSelection`** | 声明式 Workbench List/Gallery 由宿主处理；custom panel 自理 | DOM：`qx-list-row` + `is-active`；List 的 `item.image` 为行缩略图，`item.images[]` 为社区动态紧凑卡片，`detail.image(s)` 为自适应右侧媒体且可用 `mediaPlacement="after-body"` 跟随文章正文；详情图片集合按插件发布数量完整呈现，不人为截断；需要原位图文顺序的长文使用纯数据 `detail.content[]` text/image 块；Workbench 与内置 RSS 共用 `QxMediaViewer`，全尺寸预览统一横图按宽、竖图按高、超长截图按宽滚动，并由宿主预解码相邻图片（缓存是性能策略，不是集合上限）；预览左下角提供下载原图；`detail.replies` 由共享 `QxReplyList` 在底部显示 `#楼号`、作者、作者右侧点赞数、时间与 OP，正文可用纯文本或受限的 text/包内 asset-image 行内片段，内置 V2EX 同样复用；宿主提供失败态/放大预览，`item/detail.status` 通过共用 activity 字段表达真实百分比或 completed/total/failed，`detail.form` 为宿主渲染的 text/number/select 受控参数表单；`mountWorkbench()` controller 的 `updateItems` 按稳定 id 增量/批量合并并仍发布完整快照；浏览态全宽集合，激活带详情条目后由宿主挂载左集合 + 右详情；宿主乐观选择后通知插件；隐藏 Workbench iframe 的集合导航键转交宿主 Shell；详情打开后 region 键驱动当前集合或阅读区 |
+| 列表选中 / 滚入视口 | **`useQxListSelection`** | 声明式 Workbench List/Gallery 由宿主处理；custom panel 自理 | DOM：`qx-list-row` + `is-active`；List 的 `item.image` 为行缩略图，`item.images[]` 为社区动态紧凑卡片，`detail.image(s)` 为自适应右侧媒体且可用 `mediaPlacement="after-body"` 跟随文章正文；详情图片集合按插件发布数量完整呈现，不人为截断；需要原位图文顺序的长文使用纯数据 `detail.content[]` text/image 块；Workbench 与内置 RSS 共用 `QxMediaViewer`，全尺寸预览统一横图按宽、竖图按高、超长截图按宽滚动，放大后支持拖拽平移；宿主预解码相邻图片并按最后访问时间保留 15 分钟/24 张（缓存是性能策略，不是集合上限）；预览左下角提供下载原图；`detail.replies` 由共享 `QxReplyList` 在底部显示 `#楼号`、作者、作者右侧点赞数、时间与 OP，正文可用纯文本或受限的 text/包内 asset-image 行内片段，内置 V2EX 同样复用；宿主提供失败态/放大预览，`item/detail.status` 通过共用 activity 字段表达真实百分比或 completed/total/failed；社区内容的 indeterminate 正文、评论与图片加载统一投影到 Workbench `island.activity`，不在 `detail.status` / `detail.replies.status` 重复显示，内联 status 仅保留错误或确属内容区域的可量化进度；`detail.form` 为宿主渲染的 text/number/select 受控参数表单；`mountWorkbench()` controller 的 `updateItems` 按稳定 id 增量/批量合并并仍发布完整快照；浏览态全宽集合，激活带详情条目后由宿主挂载左集合 + 右详情；宿主乐观选择后通知插件；隐藏 Workbench iframe 的集合导航键转交宿主 Shell；详情打开后 region 键驱动当前集合或阅读区 |
 | 主从键盘区域 | **`useQxMasterDetail`** | 插件可选自实现 region | 与 QxShell.navigation 配合 |
 | 二维网格索引 | **`qxGridNavigation`** | Workbench Gallery 由宿主处理 | 通用纯函数；不得放回 PluginHost 专用算法 |
 | Actions 数据 / 右栏渲染 | **`QxShellAction[]` + `primaryActionId` + `QxActionList`** | Workbench 发布纯 action descriptor + primary id，宿主映射一次 | 稳定动作 ID 驱动 Bottom Bar 与 Enter；完整 Context 型页面只投影非 primary 业务动作并关闭重复 Actions 菜单。manifest 启动/后台命令及宿主 reload 不混入插件业务 Action；Shell 通过 `data-qx-list-index` + `navigation.onChange` 统一处理条目右键，模块不得复制菜单 |
@@ -33,6 +33,7 @@
 | 网络 | `invoke` 领域命令 / 直接 provider | **`context.http.fetch`** 或 **`invoke:cmd`** | 插件需 `http` 或精确 `invoke:` |
 | 跨会话缓存 | localStorage / Rust 磁盘缓存 | **`context.storage.persist`** | SWR：先画缓存再刷新 |
 | 进程内缓存 | React state / ref | **`context.storage.session`** | — |
+| 状态生命周期原语 | feature helper / store | **`context.state`**：`createLatestWriter`、`createReadLedger`、`createLru`、`createGenerationGate` | 纯进程内 SDK，无权限/RPC；社区插件统一已读保留、最新快照串行落盘、媒体内存预算与过期请求防护 |
 | 宿主缓存统计 / 清理 | **`storage` 注册表 + `StorageSettings`** | `manifest.storage.cacheTargets[]` 精确登记可重建 persist keys；未登记插件数据仍受保护 | Settings → System → Storage Management 只消费 `cache_targets`；`qx_storage_overview` 与 `qx_storage_clear_cache_target` 共用目标；插件目标为 `plugin:<id>:<cache-id>`，只清 key 白名单 |
 | Launcher Home 组件 | **`src/home-dashboard` 注册目录 + `home-island/data`** | `manifest.homeWidgets[]` 只关联受支持的 `system.*` 数据源与插件 Panel | 宿主绘制、采样、响应式和焦点；插件不得提供 DOM/CSS/轮询。置顶应用复用 `search_metadata` pin 协议 |
 | 灵动岛 | `island` prop / **`islandHost`** | **`context.island`** | 权限 `island`；真实进度可声明宿主受控 `progressStyle`（默认 `surface-fill`，另有 `icon-ring/island-ring/compact-line`），禁止插件注入视觉代码；`QxShell.islandKey` 必须稳定并由 Shell 绑定内置模块 `openTarget`；插件目标由 bridge 绑定；store 单写、DockSlot 单渲染；前台非粘性 location 高于后台粘性轮播；桌面浮窗只由用户从 Qx 手动浮出并可关闭 |
@@ -91,8 +92,8 @@
 | **v2ex** | ✅ | ✅ | http + invoke v2ex* | persist SWR + host disk | 无 |
 | **qxheihe** | ✅ | ✅ | **host Workbench List + 多图详情 + 评论树** + http/open-url | persist SWR | 小黑盒公开 feed/详情；匿名优先读取评论树，Cookie 仅作可选增强；风控时保留缓存并提示验证 |
 | **qxtieba** | ✅ | ✅ | **host Workbench List + 主楼详情 + 楼层评论** + http/open-url | persist SWR + 已读状态 | 默认图拉丁吧/笔记本吧，支持多贴吧标签与并发交错的混合 Feed；游客态移动/桌面公开页面双回退；首屏楼层通过共享 `detail.replies` 展示，贴吧表情作为插件包内紧凑行内资源解析，风控失败时保留缓存并提供原帖跳转 |
-| **qxcoolapk** | ✅ | ✅ | **host Workbench List + media filmstrip + replies + filters + article island** + http/open-url/system | persist SWR + 已读优先有界缓存 | 酷安文章原文/图片加载投影到灵动岛；动态多图走宿主胶片与大图预览，回复走底部 `detail.replies`；原图下载由宿主保存到 Downloads；已读/未读筛选与批量清理均走宿主端口 |
-| **qxweibo** | ✅ | ✅ | **host Workbench List + media filmstrip + replies + detail island** + http/open-url/system | persist SWR + session image proxy | 指定用户与受控聚合关注流；多游客 Cookie 轮换、串行随机间隔；微博图床走会话代理，原图下载由宿主保存到 Downloads，首屏评论走底部 `detail.replies` |
+| **qxcoolapk** | ✅ | ✅ | **host Workbench List + media filmstrip + replies + filters + article island** + http/open-url/system | persist SWR + 已读优先有界缓存 | 酷安文章原文/图片加载投影到灵动岛；动态完整多图集合走四路有界并发、宿主胶片与大图预览；相邻正文/回复低优先级预取到持久缓存但不预取整组原图；原图下载由宿主保存到 Downloads |
+| **qxweibo** | ✅ | ✅ | **host Workbench List + media filmstrip + replies + detail island** + http/open-url/system | persist SWR + session image proxy | 指定用户与受控聚合关注流；多游客 Cookie 轮换，API 串行限速、完整图片集合四路有界并发且按源顺序整组提交；相邻正文/评论低优先级预取到持久缓存但不预取整组原图；微博图床走会话代理，原图下载由宿主保存到 Downloads |
 | **brew** | ✅ | ✅ | **host Workbench List** + cli/open-url | — | 全宽 List → 宿主左集合/右详情；原生 tabs/Actions；`panel.render` 快返回 |
 | **unsplash** | ✅ | ✅ | **host Workbench Gallery** + http/system wallpaper/file ports | persist last search | 全宽 Gallery → 宿主左图库/右详情；item/panel Actions；与 Bing 复用宿主壁纸端口 |
 | **external-display-control** | ✅ | ✅ | invoke external-displays | — | 无 |
@@ -119,9 +120,10 @@
 
 1. `src/<id>/{manifest.json,index.js,README.md,AGENTS.md}`
 2. 用户能打开面板 → **同时**写 `manifest.panel` 与 `export default.panel`
-3. 慢数据 → `context.storage.persist` SWR；能复用宿主命令则 `invoke:` 保留 host 磁盘缓存
-4. 列表/详情型插件优先 `mountWorkbench(state, handlers)`；仅复杂可视化使用 custom panel
-5. `npm run package:plugins`；zip 内自带 AGENTS.md 方便后续 Agent 维护
+3. 慢数据 → `context.storage.persist` SWR；频繁快照用 `context.state.createLatestWriter`
+4. 社区/列表状态 → `createReadLedger`；Data URL → `createLru`；tab/query 请求 → `createGenerationGate`
+5. 列表/详情型插件优先 `mountWorkbench(state, handlers)`；仅复杂可视化使用 custom panel
+6. `npm run package:plugins`；zip 内自带 AGENTS.md 方便后续 Agent 维护
 
 ### 明确不要复用的
 

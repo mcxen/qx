@@ -33,7 +33,11 @@ export function createPluginUiKit(): PluginContext["ui"] {
   return hostSdkRuntime.createPluginUiKit();
 }
 
+export function createPluginStateKit(): PluginContext["state"] {
+  return hostSdkRuntime.createPluginStateKit();
+}
+
 /** Inline JavaScript injected into sandboxed plugin iframes. */
 export const PLUGIN_WORKBENCH_RUNTIME_JS = String.raw`
-const { enhancePluginCli, createPluginUiKit } = (${createPluginSdkRuntime.toString()})();
+const { enhancePluginCli, createPluginUiKit, createPluginStateKit } = (${createPluginSdkRuntime.toString()})();
 `;

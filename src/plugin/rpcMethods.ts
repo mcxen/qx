@@ -389,6 +389,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
         body: typeof options.body === "string" ? options.body : undefined,
         body_base64: typeof options.bodyBase64 === "string" ? options.bodyBase64 : undefined,
         timeout_ms: typeof options.timeoutMs === "number" ? options.timeoutMs : undefined,
+        max_bytes: typeof options.maxBytes === "number" ? options.maxBytes : undefined,
       },
     });
   },

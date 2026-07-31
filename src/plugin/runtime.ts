@@ -33,6 +33,7 @@ import {
   waitForPluginRuntime,
 } from "./pluginRuntimeIpc";
 import { preparePluginModuleGraph, type PluginModuleBundle, type PluginModuleGraph } from "./moduleGraph";
+import { buildQxPluginContractRuntime } from "./qxPluginContract";
 export {
   broadcastToPluginRuntimes,
   isExpectedPluginMessageOrigin,
@@ -98,12 +99,13 @@ function pluginLocaleSnapshot() {
   );
   return { current: resolveLocale(preference), preference };
 }
-
 export function buildPluginRuntimeHtml(
   pluginId: string,
   runtimeId: string,
   moduleGraph: PluginModuleGraph,
   pluginDisplay: PluginDisplaySettings = pluginDisplaySettingsSnapshot(),
+  manifestCommandNames: string[] = [],
+  manifestHasPanel = false,
 ): string {
   const raycastActionPanel = pluginDisplay.raycast_action_panel !== false;
   const initialTheme = currentPluginThemePayload();
@@ -141,7 +143,7 @@ export function buildPluginRuntimeHtml(
       let timerCounter = 0;
       let workbenchMounted = false;
       const workbenchHostKeys = new Set(${JSON.stringify(PLUGIN_WORKBENCH_HOST_KEYS)});
-
+      ${buildQxPluginContractRuntime(manifestCommandNames, manifestHasPanel)}
       function generateId() {
         return 'req-' + Date.now() + '-' + Math.random().toString(36).slice(2);
       }
@@ -383,7 +385,6 @@ export function buildPluginRuntimeHtml(
           }
         },
       };
-
       const context = {
         pluginId,
         locale: {
@@ -411,6 +412,7 @@ export function buildPluginRuntimeHtml(
         setInterval: (handler, delay, ...args) => registerInterval(handler, delay, args),
         clearTimeout: (id) => clearContextTimer(id),
         clearInterval: (id) => clearContextTimer(id),
+        state: createPluginStateKit(),
         clipboard: {
           read: () => rpc('clipboardRead'),
           write: (text) => rpc('clipboardWrite', { text }),
@@ -758,7 +760,7 @@ export function buildPluginRuntimeHtml(
 
       try {
         const mod = await import(entrySpecifier);
-        plugin = mod.default || mod;
+        plugin = validatePluginDefinition(mod.default || mod);
         postPluginLog('debug', 'Plugin module loaded');
         postToParent({ type: 'qx:plugin:loaded', pluginId, runtimeId });
       } catch (err) {
@@ -781,23 +783,23 @@ export async function loadPlugin(
     pluginName: plugin.name,
     version: plugin.manifest?.version,
   });
+  const manifest = plugin.manifest;
   const moduleBundle = await invoke<PluginModuleBundle>("read_plugin_modules", { id: plugin.id });
   const moduleGraph = await preparePluginModuleGraph(moduleBundle);
   const workerRuntimeId = nextRequestId();
-  const workerHtml = buildPluginRuntimeHtml(plugin.id, workerRuntimeId, moduleGraph);
+  const workerHtml = buildPluginRuntimeHtml(plugin.id, workerRuntimeId, moduleGraph,
+    pluginDisplaySettingsSnapshot(), (manifest?.commands || []).map((command) => command.name),
+    Boolean(manifest?.panel));
   const iframe = createSandboxIframe(workerHtml, false);
   document.body.appendChild(iframe);
   registerPluginRuntime(plugin.id, workerRuntimeId, iframe);
   const pluginLoaded = waitForPluginRuntime(plugin, iframe, workerRuntimeId, 10000);
-
   const result: PluginLoadResult = {
     plugin,
     iframe,
     runtimeId: workerRuntimeId,
     commands: [],
   };
-
-  const manifest = plugin.manifest;
   const pluginIcon = await resolvePluginAssetUrl(plugin.id, manifest?.icon);
   setPluginIcon(plugin.id, pluginIcon);
 

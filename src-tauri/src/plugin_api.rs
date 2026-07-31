@@ -840,6 +840,10 @@ pub struct HttpFetchRequest {
     pub body_base64: Option<String>,
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
+    /// Maximum response body size returned to a plugin. The host clamps this
+    /// to a safe range so plugins cannot request an unbounded binary payload.
+    #[serde(default)]
+    pub max_bytes: Option<u64>,
 }
 
 fn default_method() -> String {
@@ -849,6 +853,16 @@ fn default_method() -> String {
 fn default_timeout_ms() -> u64 {
     // Wallpaper / asset downloads benefit from a longer default than API JSON calls.
     30000
+}
+
+const DEFAULT_PLUGIN_HTTP_MAX_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_PLUGIN_HTTP_MAX_BYTES: u64 = 32 * 1024 * 1024;
+const MIN_PLUGIN_HTTP_MAX_BYTES: u64 = 64 * 1024;
+
+fn plugin_http_max_bytes(requested: Option<u64>) -> u64 {
+    requested
+        .unwrap_or(DEFAULT_PLUGIN_HTTP_MAX_BYTES)
+        .clamp(MIN_PLUGIN_HTTP_MAX_BYTES, MAX_PLUGIN_HTTP_MAX_BYTES)
 }
 
 #[derive(Debug, Serialize)]
@@ -861,7 +875,8 @@ pub struct HttpResponse {
     pub headers: std::collections::BTreeMap<String, String>,
     /// UTF-8 text body when the payload is valid UTF-8; empty for binary.
     pub body: String,
-    /// Always present raw response bytes (base64). Use for images / arrayBuffer.
+    /// Raw response bytes (base64) for binary bodies. Empty for UTF-8 text so
+    /// the host does not retain a second copy of every JSON response.
     pub body_base64: String,
     pub binary: bool,
 }
@@ -920,10 +935,20 @@ pub async fn plugin_http_fetch(req: HttpFetchRequest) -> Result<HttpResponse, St
         builder = builder.body(body.clone());
     }
 
-    let resp = builder
+    let mut resp = builder
         .send()
         .await
         .map_err(|e| format!("http request: {e}"))?;
+
+    let max_bytes = plugin_http_max_bytes(req.max_bytes);
+    if resp
+        .content_length()
+        .is_some_and(|length| length > max_bytes)
+    {
+        return Err(format!(
+            "HTTP response exceeds the {max_bytes}-byte plugin limit"
+        ));
+    }
 
     let status = resp.status().as_u16();
     let ok = resp.status().is_success();
@@ -936,22 +961,27 @@ pub async fn plugin_http_fetch(req: HttpFetchRequest) -> Result<HttpResponse, St
         }
     }
 
-    let bytes = resp
-        .bytes()
-        .await
-        .map_err(|e| format!("read body: {e}"))?
-        .to_vec();
-    let body_base64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    let mut bytes = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("read body: {e}"))? {
+        if bytes.len().saturating_add(chunk.len()) > max_bytes as usize {
+            return Err(format!(
+                "HTTP response exceeds the {max_bytes}-byte plugin limit"
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
     let text_hint = content_type_is_text(&headers);
-    let (body, binary) = match String::from_utf8(bytes) {
-        Ok(text) => (text, false),
+    let (body, body_base64, binary) = match String::from_utf8(bytes) {
+        Ok(text) => (text, String::new(), false),
         Err(err) => {
+            let raw = err.into_bytes();
+            let base64 = base64::engine::general_purpose::STANDARD.encode(&raw);
             if text_hint {
-                // Lossy only when the server claimed text; otherwise keep body empty
-                // so callers use body_base64 / arrayBuffer instead of corrupted data.
-                (String::from_utf8_lossy(err.as_bytes()).into_owned(), true)
+                // Preserve the historical text fallback for servers that send
+                // a non-UTF-8 body while still marking the response as binary.
+                (String::from_utf8_lossy(&raw).into_owned(), base64, true)
             } else {
-                (String::new(), true)
+                (String::new(), base64, true)
             }
         }
     };

@@ -10,8 +10,8 @@ Plugin package
                  │
                  ▼
 Sandboxed plugin runtime
-  context.ui / http / storage / cli / system / island / tray
-                 │ typed RPC
+  context.ui / state / http / storage / cli / system / island / tray
+                 │ pure SDK + typed RPC
                  ▼
 PluginHost + permission policy
                  │
@@ -22,6 +22,8 @@ QxShell / Rust services / platform adapters
 - 插件依赖 `context.*` 端口，不依赖 iframe、Tauri、Rust 命令或操作系统细节。
 - PluginHost 把 Workbench 数据投影到 QxShell；插件不拥有窗口 chrome。
 - Rust 服务负责网络、存储、CLI、系统能力和平台适配。
+- `context.state` 是 direct/iframe 共用的纯 SDK：提供最新快照写入队列、已读时间
+  账本、有预算 LRU 和异步 generation gate，不发 RPC，也不需要 Manifest 权限。
 - macOS 与 Windows 对插件暴露相同模型；不可用能力以明确错误返回。
 - `context.system.displays()` 返回显示器名称、分辨率、刷新率、缩放、旋转、
   主屏/内置屏状态，以及平台可提供的连接协议和 EDID 厂商/产品标识；

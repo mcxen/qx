@@ -572,6 +572,61 @@ export interface PluginIslandDisplayInput {
   ttlMs?: number;
 }
 
+export interface PluginLatestWriter<T> {
+  /**
+   * Queue one JSON-serializable snapshot. Writes are serialized and a queued
+   * obsolete revision is skipped in favor of the newest snapshot.
+   */
+  write: (value: T) => Promise<void>;
+  /** Wait until the latest queued write has settled. */
+  flush: () => Promise<void>;
+}
+
+export interface PluginReadLedgerOptions {
+  initial?: Record<string, number>;
+  retentionDays?: number;
+  maxEntries?: number;
+}
+
+export interface PluginReadLedger {
+  has: (id: string) => boolean;
+  /** Mark only when absent, so repeatedly opening an item does not extend retention. */
+  mark: (id: string, at?: number) => boolean;
+  unmark: (id: string) => boolean;
+  markMany: (ids: string[], at?: number) => number;
+  merge: (values: Record<string, number>) => void;
+  replace: (values: Record<string, number>) => void;
+  configure: (options: Pick<PluginReadLedgerOptions, "retentionDays" | "maxEntries">) => void;
+  prune: () => void;
+  snapshot: () => Record<string, number>;
+  ids: () => string[];
+  size: () => number;
+  clear: () => void;
+}
+
+export interface PluginLruOptions<T> {
+  maxEntries?: number;
+  maxSize?: number;
+  sizeOf?: (value: T) => number;
+}
+
+export interface PluginLruCache<T> {
+  get: (key: string) => T | undefined;
+  set: (key: string, value: T) => boolean;
+  has: (key: string) => boolean;
+  delete: (key: string) => boolean;
+  clear: () => void;
+  size: () => number;
+  totalSize: () => number;
+}
+
+export interface PluginGenerationGate {
+  current: () => number;
+  next: () => number;
+  invalidate: () => number;
+  isCurrent: (generation: number) => boolean;
+}
+
 export interface PluginContext {
   pluginId: string;
   /**
@@ -600,6 +655,18 @@ export interface PluginContext {
   setInterval: (handler: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) => number;
   clearTimeout: (id: number) => void;
   clearInterval: (id: number) => void;
+  /**
+   * Pure in-process state primitives shared by direct and sandboxed plugins.
+   * These helpers perform no host I/O and require no manifest permission.
+   */
+  state: {
+    createLatestWriter: <T>(
+      writer: (snapshot: T) => Promise<void> | void,
+    ) => PluginLatestWriter<T>;
+    createReadLedger: (options?: PluginReadLedgerOptions) => PluginReadLedger;
+    createLru: <T>(options?: PluginLruOptions<T>) => PluginLruCache<T>;
+    createGenerationGate: () => PluginGenerationGate;
+  };
   clipboard: {
     read: () => Promise<string>;
     write: (text: string) => Promise<void>;
@@ -670,6 +737,8 @@ export interface PluginContext {
         bodyBase64?: string;
         body?: string;
         timeoutMs?: number;
+        /** Host-enforced response limit. Defaults to 16 MiB and is capped at 32 MiB. */
+        maxBytes?: number;
       },
     ) => Promise<{
       status: number;
@@ -678,7 +747,7 @@ export interface PluginContext {
       url: string;
       headers: Record<string, string>;
       body: string;
-      /** Raw response bytes encoded by the host; present for text and binary bodies. */
+      /** Raw response bytes encoded by the host; present for binary bodies. */
       bodyBase64: string;
       binary: boolean;
       text: () => Promise<string>;
@@ -925,24 +994,35 @@ export interface PluginContext {
   };
 }
 
+export interface QxPluginCommand {
+  name: string;
+  title: string;
+  description?: string;
+  icon?: string;
+  keywords?: string[];
+  /** Command execution must be cancellable by the host lifecycle where applicable. */
+  run: (ctx: PluginContext) => Promise<void> | void;
+}
+
+export interface QxPluginPanel {
+  title?: string;
+  icon?: string;
+  keywords?: string[];
+  /** Mount the first frame quickly; start slow work in the background. */
+  render: (container: HTMLElement, ctx: PluginContext) => Promise<void> | void;
+  /** Release views, timers, subscriptions, media strings, and pending work. */
+  destroy?: (container: HTMLElement) => Promise<void> | void;
+}
+
+/** Canonical runtime contract for an installed Qx plugin. */
+export interface QxPlugin {
+  commands?: QxPluginCommand[];
+  panel?: QxPluginPanel;
+}
+
+/** Compatibility wrapper for an ES module with a default QxPlugin export. */
 export interface PluginModule {
-  default?: {
-    commands?: Array<{
-      name: string;
-      title: string;
-      description?: string;
-      icon?: string;
-      keywords?: string[];
-      run?: (ctx: PluginContext) => Promise<void> | void;
-    }>;
-    panel?: {
-      title?: string;
-      icon?: string;
-      keywords?: string[];
-      render?: (container: HTMLElement, ctx: PluginContext) => Promise<void> | void;
-      destroy?: (container: HTMLElement) => Promise<void> | void;
-    };
-  };
+  default?: QxPlugin;
 }
 
 export interface PluginCommandRunOptions {

@@ -71,7 +71,7 @@ plugin business state
        └─ island → PluginHost permission/command validation → shared IslandSession store
 ```
 
-不变量：iframe 只发布可序列化纯数据；`raw` 不跨信任边界；宿主限制列表/字段/动作/表单控件数量和文本长度。item `id` 是强制、稳定、唯一的业务键；缺失或重复 item/tab/control id 在信任边界直接拒绝，tabs 至多一个 active，不保留 title/index 回退。`layout.kind` 可选 `list`（默认）或 `gallery`；Gallery 图片只接受 `https://` / `data:image/`，URL 超限整体拒绝而非截断，列数与比例由宿主归一化，选中与 Actions 仍走相同 Workbench 事件。详情图片可声明 `aspectRatio/zoomable/caption`，但加载失败、自适应窄栏和全尺寸 Dialog 均由宿主共享 `QxMediaViewer` 呈现；有序图片集合的方向适配、超长图滚动、缩放及前后各两张的预取/预解码属于同一媒体协议，宿主缓存上限为 8 张。插件 iframe CSS 不能也不得覆盖宿主详情，也不得另建 lightbox 或预加载队列。`item.status/detail.status` 是保留旧内容时的局部 loading/success/error，并通过共用 activity 字段接受真实 `progress` 或 `completed / total / failed`，不能用清空集合或模拟百分比替代刷新反馈。详情表单只接受 `text` / `number` / `select`，变更以 `onInput` 纯数据事件回传；管理动作通过 `form.actions` 或连续 control 的稳定 `group.id + group.action` 声明，仍由宿主带 selectedId 投递 `onAction`。Workbench 没有 DOM/HTML 兼容分支；复杂自绘内容走独立 custom panel。后台轮询只能绑定本插件已注册的 `no-view + interval` command，panel 回调不拥有后台生命周期。
+不变量：iframe 只发布可序列化纯数据；`raw` 不跨信任边界；宿主限制列表/字段/动作/表单控件数量和文本长度。item `id` 是强制、稳定、唯一的业务键；缺失或重复 item/tab/control id 在信任边界直接拒绝，tabs 至多一个 active，不保留 title/index 回退。`layout.kind` 可选 `list`（默认）或 `gallery`；Gallery 图片只接受 `https://` / `data:image/`，URL 超限整体拒绝而非截断，列数与比例由宿主归一化，选中与 Actions 仍走相同 Workbench 事件。详情图片可声明 `aspectRatio/zoomable/caption`，但加载失败、自适应窄栏和全尺寸 Dialog 均由宿主共享 `QxMediaViewer` 呈现；有序图片集合的方向适配、超长图滚动、缩放、拖拽平移及前后各两张的预取/预解码属于同一媒体协议。宿主解码缓存按最后访问时间保留 15 分钟并以 24 张为内存上限；缓存淘汰不改变集合。插件 iframe CSS 不能也不得覆盖宿主详情，也不得另建 lightbox 或预加载队列。`item.status/detail.status` 是保留旧内容时的局部 loading/success/error，并通过共用 activity 字段接受真实 `progress` 或 `completed / total / failed`，不能用清空集合或模拟百分比替代刷新反馈。详情表单只接受 `text` / `number` / `select`，变更以 `onInput` 纯数据事件回传；管理动作通过 `form.actions` 或连续 control 的稳定 `group.id + group.action` 声明，仍由宿主带 selectedId 投递 `onAction`。Workbench 没有 DOM/HTML 兼容分支；复杂自绘内容走独立 custom panel。后台轮询只能绑定本插件已注册的 `no-view + interval` command，panel 回调不拥有后台生命周期。
 
 `mountWorkbench()` 返回轻量 controller：`update(patch)` 保留未给出的顶层字段，
 `updateItems({ upsert, removeIds, order, selectedId })` 在 iframe SDK 内按稳定 id 合并，
@@ -80,7 +80,7 @@ plugin business state
 宿主忽略更旧 revision。selection、focus、scroll 的连续性依赖稳定 item id，插件不得
 用数组索引或标题作为 id。
 
-SDK 不维护 host/iframe 两份实现：`createPluginSdkRuntime` 是无外部闭包的自包含 factory，可信 context 直接调用，sandbox bootstrap 通过 `Function#toString` 注入同一实现。Workbench `island` 不再由 kit 额外调用 `context.island`；PluginHost 接受同一 state 后统一投影，避免 state 与 island 两条消息竞态。
+SDK 不维护 host/iframe 两份实现：`createPluginSdkRuntime` 是无外部闭包的自包含 factory，可信 context 直接调用，sandbox bootstrap 通过 `Function#toString` 注入同一实现。它同时提供 `context.state` 纯进程内原语（latest writer、read ledger、bounded LRU、generation gate）；这些原语不发 RPC、不申请权限，直接与 iframe 生命周期绑定。Workbench `island` 不再由 kit 额外调用 `context.island`；PluginHost 接受同一 state 后统一投影，避免 state 与 island 两条消息竞态。
 
 #### 状态所有权与事件一致性
 
@@ -261,6 +261,20 @@ iframe 内调用 plugin.panel.render(container, context)
 
 **契约**：`panel.render` 只负责首次挂载与首帧 UI，**不得** `await` 长时间 CLI/网络。慢数据用 `void load()` 在后台更新 DOM。作者说明见 `public/doc/plugin-development-guide.md` §6.6。
 
+### QxPlugin 媒体与生命周期预算
+
+插件运行时的正式导出类型是 `QxPlugin`：Manifest command 必须对应同名的
+`commands[].run`，Manifest panel 必须对应 `panel.render(container, context)`。
+Panel 销毁时必须释放 Workbench、定时器、事件订阅、未完成请求和图片缓存；宿主会
+在加载时校验 command/panel 形状，并在 iframe 销毁时清理上下文定时器。
+
+媒体是受限资源而不是普通字符串：宿主 HTTP 默认限制响应为 16 MiB，最大 32 MiB；
+Workbench 每个 item 最多 4 张图片；detail 必须保留上游正常图片集合，不用产品级
+数量上限截断，宿主仅保留 96 张异常输入安全阈值。单次快照媒体 URL 总长度最多
+32 MB。插件图片预览应使用按访问时间淘汰的有限 LRU，并根据集合数量动态分配预览
+字符预算；详情请求使用较小的 `maxBytes`，并避免同时保存原始 bytes、Blob、Canvas
+和多个 Data URL 副本。
+
 销毁：
 
 ```text
@@ -289,9 +303,9 @@ iframe 内调用 plugin.panel.destroy(container)
 ## 8. 新增 RPC 方法步骤
 
 1. 在 `src/plugin/types.ts` 的 `PluginContext` 中补充类型。
-2. 在 `src/plugin/rpcMethods.ts` 的 `rpcHandlers` 新增处理器，必要时调用 `assertPermission` / `assertInvokeAllowed`。
-3. 在 `src/plugin/context.ts` 的 `createPluginContext` 中暴露给插件。
-4. 在 `src/plugin/runtime.ts` 的 iframe 内 runtime HTML 中同步暴露同名方法。
+2. 纯进程内能力优先加入 `createPluginSdkRuntime`，由 direct/iframe 共享；只有宿主 I/O 才新增 RPC。
+3. 宿主 I/O 在 `src/plugin/rpcMethods.ts` 的 `rpcHandlers` 新增处理器，必要时调用 `assertPermission` / `assertInvokeAllowed`。
+4. 在 `src/plugin/context.ts` 的 `createPluginContext` 中暴露给插件；iframe 由共享 SDK 或 runtime context 同步暴露。
 5. 更新 `public/doc/plugin-system.md` 的 context API 表格。
 6. 运行 `npx tsc --noEmit` 与 `npm run build`。
 

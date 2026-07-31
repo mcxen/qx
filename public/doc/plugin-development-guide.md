@@ -60,17 +60,16 @@ export default {
       title: "Refresh",
       mode: "no-view",
       async run(context) {
-        const response = await context.http.get("https://example.com/status");
-        await context.storage.persist("latest", response.data);
+        const response = await context.http.fetch("https://example.com/status");
+        await context.storage.persist.set("latest", await response.json());
       },
     },
   ],
 
   panel: {
-    async render(context) {
-      const latest = await context.storage.get("latest");
-      return {
-        kind: "list",
+    async render(container, context) {
+      const latest = await context.storage.persist.get("latest");
+      context.ui.mountWorkbench({
         title: "Example",
         items: latest?.items ?? [],
         actions: [
@@ -85,7 +84,7 @@ export default {
             command: "refresh",
           },
         ],
-      };
+      });
     },
   },
 };
@@ -102,7 +101,11 @@ Manifest 只声明包元数据、入口、命令、面板、权限与兼容范�
 | 声明列表、详情、表单、筛选 | `context.ui` / Workbench | 插件自绘 Top Bar、Bottom Bar |
 | HTTP 请求 | `context.http` | shell 调 curl |
 | 持久数据 | `context.storage.persist` | 写插件目录、浏览器 localStorage |
-| 临时缓存 | `context.storage` 的缓存能力 | 把缓存当数据库 |
+| 临时缓存 | `context.storage.session` | 把缓存当数据库 |
+| 已读/收藏时间账本 | `context.state.createReadLedger` | 每个插件复制裁剪、上限与合并代码 |
+| 串行最新状态落盘 | `context.state.createLatestWriter` + `storage.persist` | 并发 `set` 让旧快照覆盖新快照 |
+| 有预算的内存缓存 | `context.state.createLru` | 无上限保存 Data URL / 大字符串 |
+| 丢弃过期异步结果 | `context.state.createGenerationGate` | 让旧请求覆盖新 tab / 新查询 |
 | 本机命令 | `context.cli` | `child_process` |
 | 宿主命令 | `context.invoke` | 猜测 Tauri 内部实现 |
 | 进度与快捷反馈 | `context.island` | 自建悬浮窗口 |
@@ -112,7 +115,8 @@ Manifest 只声明包元数据、入口、命令、面板、权限与兼容范�
 
 `context.http.fetch` 的 `body` 是 UTF-8 文本。发送 Protobuf、压缩包等原始字节时，
 把字节编码为标准 base64 后传入 `bodyBase64`；它会覆盖 `body`。二进制响应继续通过
-`response.arrayBuffer()` 或 `response.bodyBase64` 读取。
+`response.arrayBuffer()` 或 `response.bodyBase64` 读取。宿主默认将响应限制为 16 MiB，
+单次请求最多可申请 32 MiB；图片预览应主动传入更小的 `maxBytes`。
 
 能力必须在 Manifest 中申请最小权限。无权限与能力不可用都应返回可解释错误，
 而不是伪造成功或退回危险的通用执行。
@@ -122,16 +126,50 @@ Home 声明只负责把宿主系统数据源关联到插件 Panel。CPU、内存
 
 ## 5. Panel 生命周期
 
-`panel.render(context)` 应快速完成：
+插件导出必须是一个 `QxPlugin` 对象（ES module 默认导出）：
+
+```ts
+export default {
+  commands: [{ name: "open-example", title: "Open Example", run: async (context) => {} }],
+  panel: {
+    render(container, context) { /* 首帧 + 后台加载 */ },
+    destroy(container) { /* 清理 timers、订阅、请求和媒体缓存 */ },
+  },
+};
+```
+
+Manifest 中声明的每个 command 必须在 `QxPlugin.commands` 中提供同名且可调用的
+`run`；声明 panel 时必须提供 `panel.render`。宿主加载时会校验这些契约。
+
+`panel.render(container, context)` 应快速完成：
 
 1. 读取缓存或本地持久状态。
-2. 返回 Workbench。
+2. 立即挂载首帧 Workbench（通过 `context.ui.mountWorkbench`）。
 3. 通过命令、后台 interval 或用户动作刷新真实数据。
 4. 完成后更新存储、Workbench 或 Island。
 
 网络型面板采用 stale-while-revalidate：保留可用旧内容，显示真实刷新状态，
 慢请求不得把新选择或新查询覆盖回旧结果。进度必须来自真实阶段或明确标记为
 indeterminate，不能 mock 百分比。
+
+媒体必须受字节预算约束，但不得用产品级图片数量上限截断上游正常集合：单个列表项
+最多 4 张紧凑预览，详情按源顺序发布完整集合；宿主仅在信任边界保留 96 张异常输入
+安全阈值。Workbench 单次快照的媒体 URL 总长度不超过 32 MB。插件自己的
+Base64/Data URL 缓存应使用 `context.state.createLru({ maxEntries, maxSize, sizeOf })`
+（或等价的按最后访问时间淘汰策略），并根据集合数量动态压缩单张预览预算；不要同时
+保留原始 bytes、Canvas 与多个 Data URL 副本。详情原图请求建议使用
+`maxBytes: 8 * 1024 * 1024`，下载原图才申请更大的上限。
+
+社区列表的正文、评论和图片等 indeterminate 加载应发布到 Workbench 快照的
+`island`，使用宿主已有的 `spinner`、`wave`、`dots` 或 `pulse` 动画；不要同时在
+`detail.status` 或 `detail.replies.status` 放一条重复的“正在加载”。详情内联状态
+只用于错误，或确实属于内容区域且能提供真实 completed/total/failed 的进度。多图请求
+应使用有上限的并发队列，完成后按源顺序合并，避免逐张回画、无界 fan-out 或后一次
+异步结果覆盖整组图片。
+
+社区列表可在选中项加载完成后，低优先级串行预取相邻 1–3 条正文和评论并写入内容缓存；
+不得把预取条目标记为已读，也不要预取整页原图。用户改变选择、tab 或销毁 panel 后，
+旧预取队列必须停止继续扩展。
 
 插件面板的 Esc 阶梯由宿主统一处理：关闭内层详情、清空查询、离开插件、清空启动器
 查询、隐藏窗口。插件不要注册全局 Esc，也不要调用内部的 `tryModuleEscapeStep`；
@@ -174,7 +212,8 @@ Top Bar 右侧只发布内容筛选模型，由宿主绘制固定下拉框。Bot
 
 - 声明 `mode: "no-view"`；需要周期执行时设置 Manifest 的 interval。
 - 先返回任务或缓存状态，不占用 Panel render。
-- 进度通过 Island 或 Workbench 状态发布。
+- 后台任务进度通过 `context.island` 发布；前台 Workbench 内容加载通过快照
+  `island` 发布，只有内容内的可量化进度或错误才使用 Workbench status。
 - 成功、失败、取消都要形成终态；错误保持在当前操作，不让整个面板失效。
 - 任务在 Qx 休眠或关闭期间错过计划时间时，宿主恢复后补执行一次；插件命令必须把失败
   继续抛给宿主，不能 catch 后伪装成成功。

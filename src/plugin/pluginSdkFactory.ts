@@ -5,6 +5,8 @@ import type {
   PluginCliRunResult,
   PluginCliStartRequest,
   PluginContext,
+  PluginLruCache,
+  PluginLruOptions,
 } from "./types";
 import type {
   PluginWorkbenchController,
@@ -52,6 +54,7 @@ export interface PluginSdkRuntime {
   ) => Promise<R[]>;
   enhancePluginCli: (core: PluginCliCore) => PluginContext["cli"];
   createPluginUiKit: () => PluginContext["ui"];
+  createPluginStateKit: () => PluginContext["state"];
 }
 
 /**
@@ -108,6 +111,201 @@ export function createPluginSdkRuntime(): PluginSdkRuntime {
     });
     await Promise.all(runners);
     return results;
+  }
+
+  function createPluginStateKit(): PluginContext["state"] {
+    const finitePositive = (value: unknown, fallback: number, maximum: number) => {
+      const parsed = Math.floor(Number(value));
+      return Number.isFinite(parsed) && parsed > 0
+        ? Math.min(parsed, maximum)
+        : fallback;
+    };
+
+    const cloneSerializable = <T>(value: T): T => {
+      const serialized = JSON.stringify(value);
+      if (serialized === undefined) {
+        throw new Error("plugin state snapshot must be JSON-serializable");
+      }
+      return JSON.parse(serialized) as T;
+    };
+
+    const createLatestWriter: PluginContext["state"]["createLatestWriter"] = (writer) => {
+      let latestRevision = 0;
+      let queue = Promise.resolve();
+      return {
+        write(value) {
+          const revision = ++latestRevision;
+          const snapshot = cloneSerializable(value);
+          const operation = queue
+            .catch(() => undefined)
+            .then(async () => {
+              if (revision !== latestRevision) return;
+              await writer(snapshot);
+            });
+          queue = operation;
+          return operation;
+        },
+        flush: () => queue,
+      };
+    };
+
+    const createReadLedger: PluginContext["state"]["createReadLedger"] = (options = {}) => {
+      let retentionDays = finitePositive(options.retentionDays, 7, 3_650);
+      let maxEntries = finitePositive(options.maxEntries, 5_000, 100_000);
+      let values: Record<string, number> = {};
+
+      const normalize = (source: Record<string, number> | undefined) => {
+        const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1_000;
+        return Object.fromEntries(
+          Object.entries(source || {})
+            .map(([id, at]) => [String(id).trim(), Number(at)] as const)
+            .filter(([id, at]) => id && Number.isFinite(at) && at > 0 && at >= cutoff)
+            .sort((left, right) => right[1] - left[1])
+            .slice(0, maxEntries),
+        );
+      };
+      const prune = () => {
+        values = normalize(values);
+      };
+      const merge = (source: Record<string, number>) => {
+        for (const [rawId, rawAt] of Object.entries(source || {})) {
+          const id = String(rawId).trim();
+          const at = Number(rawAt);
+          if (!id || !Number.isFinite(at) || at <= 0) continue;
+          values[id] = Math.max(Number(values[id]) || 0, at);
+        }
+        prune();
+      };
+
+      values = normalize(options.initial);
+      return {
+        has(id) {
+          return Boolean(values[String(id || "").trim()]);
+        },
+        mark(id, at = Date.now()) {
+          const key = String(id || "").trim();
+          const timestamp = Number(at);
+          if (!key || values[key] || !Number.isFinite(timestamp) || timestamp <= 0) return false;
+          values[key] = timestamp;
+          prune();
+          return Boolean(values[key]);
+        },
+        unmark(id) {
+          const key = String(id || "").trim();
+          if (!key || !values[key]) return false;
+          delete values[key];
+          return true;
+        },
+        markMany(ids, at = Date.now()) {
+          const timestamp = Number(at);
+          if (!Number.isFinite(timestamp) || timestamp <= 0) return 0;
+          let changed = 0;
+          for (const rawId of ids || []) {
+            const id = String(rawId || "").trim();
+            if (!id || values[id]) continue;
+            values[id] = timestamp;
+            changed += 1;
+          }
+          prune();
+          return changed;
+        },
+        merge,
+        replace(source) {
+          values = normalize(source);
+        },
+        configure(next) {
+          retentionDays = finitePositive(next.retentionDays, retentionDays, 3_650);
+          maxEntries = finitePositive(next.maxEntries, maxEntries, 100_000);
+          prune();
+        },
+        prune,
+        snapshot() {
+          prune();
+          return { ...values };
+        },
+        ids() {
+          prune();
+          return Object.keys(values);
+        },
+        size() {
+          prune();
+          return Object.keys(values).length;
+        },
+        clear() {
+          values = {};
+        },
+      };
+    };
+
+    const createLru = <T>(options: PluginLruOptions<T> = {}): PluginLruCache<T> => {
+      const maxEntries = finitePositive(options.maxEntries, 64, 10_000);
+      const maxSize = finitePositive(options.maxSize, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER);
+      const sizeOf = options.sizeOf || ((value: unknown) => typeof value === "string" ? value.length : 1);
+      const entries = new Map<string, { value: T; size: number }>();
+      let total = 0;
+      const remove = (key: string) => {
+        const current = entries.get(key);
+        if (!current) return false;
+        total -= current.size;
+        entries.delete(key);
+        return true;
+      };
+      return {
+        get(key) {
+          const normalized = String(key);
+          const current = entries.get(normalized);
+          if (!current) return undefined;
+          entries.delete(normalized);
+          entries.set(normalized, current);
+          return current.value;
+        },
+        set(key, value) {
+          const normalized = String(key);
+          remove(normalized);
+          const measured = Math.max(0, Number(sizeOf(value)) || 0);
+          if (measured > maxSize) return false;
+          entries.set(normalized, { value, size: measured });
+          total += measured;
+          while (entries.size > maxEntries || total > maxSize) {
+            const oldest = entries.keys().next().value;
+            if (oldest == null) break;
+            remove(oldest);
+          }
+          return entries.has(normalized);
+        },
+        has: (key) => entries.has(String(key)),
+        delete: (key) => remove(String(key)),
+        clear() {
+          entries.clear();
+          total = 0;
+        },
+        size: () => entries.size,
+        totalSize: () => total,
+      };
+    };
+
+    const createGenerationGate: PluginContext["state"]["createGenerationGate"] = () => {
+      let generation = 0;
+      return {
+        current: () => generation,
+        next: () => {
+          generation += 1;
+          return generation;
+        },
+        invalidate: () => {
+          generation += 1;
+          return generation;
+        },
+        isCurrent: (candidate) => candidate === generation,
+      };
+    };
+
+    return {
+      createLatestWriter,
+      createReadLedger,
+      createLru,
+      createGenerationGate,
+    };
   }
 
   function enhancePluginCli(core: PluginCliCore): PluginContext["cli"] {
@@ -346,5 +544,6 @@ export function createPluginSdkRuntime(): PluginSdkRuntime {
     mapWithConcurrency,
     enhancePluginCli,
     createPluginUiKit,
+    createPluginStateKit,
   };
 }

@@ -806,6 +806,33 @@ if (bundleProductionModule("src/plugin/pluginSdkFactory.ts", sdkOut)) {
     if (iframeSdk.parseJsonLoose(noisyJson).ok !== true) fail("serialized iframe SDK loose JSON parser");
     const mapped = await iframeSdk.mapWithConcurrency([1, 2, 3], async (value) => value * 2, 2);
     if (mapped.join(",") !== "2,4,6") fail("serialized iframe SDK concurrency mapper");
+    const state = iframeSdk.createPluginStateKit();
+    const writes = [];
+    const writer = state.createLatestWriter(async (snapshot) => {
+      writes.push(snapshot);
+    });
+    const firstWrite = writer.write({ revision: 1 });
+    const lastWrite = writer.write({ revision: 2 });
+    await Promise.all([firstWrite, lastWrite, writer.flush()]);
+    if (writes.length !== 1 || writes[0].revision !== 2) {
+      fail(`serialized iframe SDK latest writer: ${JSON.stringify(writes)}`);
+    }
+    const ledger = state.createReadLedger({ retentionDays: 7, maxEntries: 2 });
+    const now = Date.now();
+    if (!ledger.mark("a", now - 2) || ledger.mark("a", now - 1)) fail("read ledger mark-once contract");
+    ledger.markMany(["b", "c"], now);
+    if (ledger.size() !== 2 || ledger.has("a")) fail("read ledger bounded retention contract");
+    const lru = state.createLru({ maxEntries: 2, maxSize: 5, sizeOf: (value) => value.length });
+    lru.set("a", "aa");
+    lru.set("b", "bb");
+    lru.get("a");
+    lru.set("c", "cc");
+    if (!lru.has("a") || lru.has("b") || !lru.has("c")) fail("state LRU recency contract");
+    const gate = state.createGenerationGate();
+    const generation = gate.next();
+    if (!gate.isCurrent(generation) || gate.isCurrent(gate.invalidate() - 1)) {
+      fail("state generation gate contract");
+    }
   } catch (e) {
     fail(`plugin SDK shared factory runtime test: ${e}`);
   }
@@ -840,10 +867,18 @@ if (!overlayScrollbarSource.includes("dataset.qxScrollbarHorizontalLift")) {
 }
 if (
   !mediaViewerSource.includes("Math.exp(-event.deltaY")
-  || !mediaViewerSource.includes('"--qx-image-zoom-size"')
-  || mediaViewerSource.includes("if (!event.metaKey && !event.ctrlKey) return")
+  || !mediaViewerSource.includes("event.metaKey || event.ctrlKey")
+  || !mediaViewerSource.includes("scroll.scrollLeft += event.deltaX")
+  || !mediaViewerSource.includes("scroll.scrollTop += event.deltaY")
 ) {
-  fail("shared media preview wheel zoom must work without modifier keys");
+  fail("shared media preview must reserve wheel zoom for Cmd/Ctrl and pan enlarged images");
+}
+if (
+  !mediaViewerSource.includes("new ResizeObserver(updateViewport)")
+  || !mediaViewerSource.includes("viewport.width / naturalWidth")
+  || !mediaViewerSource.includes("viewport.height / naturalHeight")
+) {
+  fail("shared media preview 100% must derive from the live contain viewport");
 }
 if (/calc\(\s*100%\s*\*\s*var\(--qx-image-zoom/.test(workbenchStyleSource)) {
   fail("Workbench image zoom must not use unsupported CSS percentage multiplication");
@@ -851,9 +886,9 @@ if (/calc\(\s*100%\s*\*\s*var\(--qx-image-zoom/.test(workbenchStyleSource)) {
 for (const contract of [
   ".qx-host-workbench-media-preview-nav:active",
   ".qx-host-workbench-media-preview-nav-zone:hover",
-  ".qx-host-workbench-media-preview-scroll.is-portrait > img.is-zoomed",
-  "width: var(--qx-image-zoom-size)",
-  "height: var(--qx-image-zoom-size)",
+  ".qx-host-workbench-media-preview-scroll.is-enlarged",
+  "cursor: grab",
+  "touch-action: none",
   "right: 12px",
   "left: 12px",
 ]) {
@@ -877,7 +912,9 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
           failed: 1,
         },
         detail: {
-          images: [{ url: "https://example.com/1.jpg" }],
+          images: Array.from({ length: 12 }, (_, index) => ({
+            url: `https://example.com/${index + 1}.jpg`,
+          })),
           imageLayout: "horizontal",
           replies: {
             total: 120,
@@ -902,8 +939,8 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
     });
     const detail = normalized.items?.[0]?.detail;
     const status = normalized.items?.[0]?.status;
-    if (detail?.imageLayout !== "horizontal" || detail.images?.length !== 1) {
-      fail("Workbench host filmstrip normalization");
+    if (detail?.imageLayout !== "horizontal" || detail.images?.length !== 12) {
+      fail("Workbench host filmstrip must preserve normal complete image collections");
     }
     if (detail?.replies?.items.length !== 100 || detail.replies.total !== 120) {
       fail("Workbench replies must preserve total and cap rendered items at 100");
@@ -933,20 +970,20 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
 }
 
 // Real/direct/unavailable and iframe contexts must stay substitutable. CLI and
-// UI are omitted here because their shared serialized factory is tested above.
+// UI/state are omitted here because their shared serialized factory is tested above.
 const contextOut = path.join(scratch, "pluginContext.mjs");
 if (bundleProductionModule("src/plugin/context.ts", contextOut)) {
   try {
     const contextModule = await import(pathToFileURL(contextOut).href + `?t=${Date.now()}`);
     const directPaths = objectFunctionPaths(contextModule.createUnavailableContext("contract-test"))
-      .filter((name) => !name.startsWith("cli.") && !name.startsWith("ui."));
+      .filter((name) => !name.startsWith("cli.") && !name.startsWith("ui.") && !name.startsWith("state."));
     const runtimeSource = read("src/plugin/runtime.ts");
     const iframePaths = runtimeContextFunctionPaths(runtimeSource)
-      .filter((name) => !name.startsWith("cli.") && !name.startsWith("ui."));
+      .filter((name) => !name.startsWith("cli.") && !name.startsWith("ui.") && !name.startsWith("state."));
     const crlfIframePaths = runtimeContextFunctionPaths(
       normalizeSourceText(runtimeSource.replace(/\n/g, "\r\n")),
     )
-      .filter((name) => !name.startsWith("cli.") && !name.startsWith("ui."));
+      .filter((name) => !name.startsWith("cli.") && !name.startsWith("ui.") && !name.startsWith("state."));
     if (iframePaths.join("\n") !== crlfIframePaths.join("\n")) {
       fail("iframe context contract must be invariant across LF and CRLF checkouts");
     }
