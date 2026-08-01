@@ -30,6 +30,7 @@ import type {
   PluginWorkbenchDetail,
   PluginWorkbenchField,
   PluginWorkbenchImage,
+  PluginWorkbenchChart,
   PluginWorkbenchReplyContent,
   PluginWorkbenchState,
 } from "./workbenchTypes";
@@ -145,6 +146,89 @@ function WorkbenchStatus({ status }: { status?: PluginWorkbenchAsyncStatus }) {
       {copy ? <span>{copy}</span> : null}
       {progress != null ? <span>{Math.round(progress)}%</span> : null}
     </div>
+  );
+}
+
+function WorkbenchChart({ chart }: { chart?: PluginWorkbenchChart }) {
+  if (!chart || chart.type !== "line") return null;
+  const points = chart.points
+    .filter((point) => Number.isFinite(Number(point.value)))
+    .slice(-240)
+    .map((point) => ({ ...point, value: Number(point.value) }));
+  if (points.length < 2) return null;
+
+  const width = 640;
+  const height = 220;
+  const left = 12;
+  const right = 12;
+  const top = 22;
+  const bottom = 28;
+  const values = points.map((point) => point.value);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = Math.max(Math.abs(max) * 0.001, max - min, 0.01);
+  const yMin = min - span * 0.08;
+  const yMax = max + span * 0.08;
+  const plotWidth = width - left - right;
+  const plotHeight = height - top - bottom;
+  const x = (index: number) => left + (index * plotWidth) / Math.max(1, points.length - 1);
+  const y = (value: number) => top + ((yMax - value) * plotHeight) / Math.max(0.01, yMax - yMin);
+  const line = points.map((point, index) => `${x(index).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");
+  const area = `${left},${height - bottom} ${line} ${width - right},${height - bottom}`;
+  const firstLabel = points[0]?.label || "";
+  const lastPoint = points[points.length - 1];
+  const latestValue = values[values.length - 1];
+  const lastLabel = lastPoint?.label || "";
+  const latest = chart.value || String(latestValue);
+  const ariaLabel = [chart.title, chart.subtitle, chart.valueLabel, latest].filter(Boolean).join(" — ");
+
+  return (
+    <section className="qx-host-workbench-chart" aria-label={ariaLabel || "Line chart"}>
+      {(chart.title || chart.subtitle || chart.value) ? (
+        <header className="qx-host-workbench-chart-header">
+          <div>
+            {chart.title ? <h3>{chart.title}</h3> : null}
+            {chart.subtitle ? <p>{chart.subtitle}</p> : null}
+          </div>
+          {chart.value ? (
+            <div className="qx-host-workbench-chart-value">
+              {chart.valueLabel ? <span>{chart.valueLabel}</span> : null}
+              <strong>{chart.value}</strong>
+            </div>
+          ) : null}
+        </header>
+      ) : null}
+      <div className="qx-host-workbench-chart-plot">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={ariaLabel || "Line chart"}>
+          {[0, 0.5, 1].map((ratio) => {
+            const gridY = top + ratio * plotHeight;
+            return (
+              <line
+                key={ratio}
+                x1={left}
+                x2={width - right}
+                y1={gridY}
+                y2={gridY}
+                className="qx-host-workbench-chart-grid"
+              />
+            );
+          })}
+          <polygon points={area} className="qx-host-workbench-chart-area" />
+          <polyline points={line} className="qx-host-workbench-chart-line" />
+          <circle
+            cx={x(points.length - 1)}
+            cy={y(latestValue || 0)}
+            r="4"
+            className="qx-host-workbench-chart-dot"
+          />
+          <text x={left} y={height - 8} className="qx-host-workbench-chart-label">{firstLabel}</text>
+          <text x={width - right} y={height - 8} textAnchor="end" className="qx-host-workbench-chart-label">{lastLabel}</text>
+          {chart.unit ? (
+            <text x={width - right} y={top - 7} textAnchor="end" className="qx-host-workbench-chart-unit">{chart.unit}</text>
+          ) : null}
+        </svg>
+      </div>
+    </section>
   );
 }
 
@@ -474,6 +558,7 @@ function WorkbenchDetail({
       ) : null}
       {detailContent}
       {detail.mediaPlacement === "after-body" ? detailMedia : null}
+      <WorkbenchChart chart={detail.chart} />
       <WorkbenchFields fields={detail.fields} />
       {detail.sections?.map((section, index) => (
         <section className="qx-host-workbench-section" key={`${section.title || "section"}-${index}`}>

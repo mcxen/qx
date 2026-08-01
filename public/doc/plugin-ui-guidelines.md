@@ -95,6 +95,35 @@ type WorkbenchStatus = {
 `{ type: "asset-image", assetPath, alt }`。`assetPath` 必须是插件根目录内的相对路径，
 由宿主解析；行内图片采用紧凑正文尺寸，不进入媒体预览，缺失时显示 `alt`/正文回退。
 
+### 2.1 数据图表
+
+需要趋势、时间序列或指标曲线时，插件应发布结构化 `detail.chart`，由宿主使用 Qx 的
+shadcn/Radix 语义 token 绘制；不要把自绘 SVG、Canvas、data URI 或硬编码颜色塞进
+`detail.images`。当前端口支持折线图：
+
+```js
+detail: {
+  chart: {
+    type: "line",
+    title: "Real sampled history",
+    subtitle: "07/31 10:00 – 08/01 10:00",
+    unit: "CNY / gram",
+    valueLabel: "Latest",
+    value: "881.88",
+    points: [
+      { label: "07/31 10:00", value: 879.2 },
+      { label: "08/01 10:00", value: 881.88 },
+    ],
+  },
+}
+```
+
+`points` 必须来自真实数据源或插件持久化的真实采样；不得用随机值、插值点或定时器动画
+伪造历史。数据源只提供当前值时，插件必须在详情中说明历史范围和样本数，并在少于两个
+样本时隐藏曲线或显示明确的“等待更多样本”状态。插件负责本地化标题、单位、时间标签和
+统计文案，宿主负责尺寸、网格线、颜色、暗色/透明主题、无障碍标签以及最多 240 个点的
+渲染上限。
+
 ## 3. 单一动作协议
 
 每个动作只有一份描述：

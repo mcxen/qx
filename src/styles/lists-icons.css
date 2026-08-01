@@ -671,6 +671,102 @@
   display: flow-root;
 }
 
+.qx-host-workbench-chart {
+  margin: 4px 0 16px;
+  padding: 12px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--qx-bg-component-2) 64%, transparent);
+}
+
+.qx-host-workbench-chart-header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.qx-host-workbench-chart-header h3,
+.qx-host-workbench-chart-header p {
+  margin: 0;
+}
+
+.qx-host-workbench-chart-header h3 {
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.qx-host-workbench-chart-header p {
+  margin-top: 2px;
+  color: var(--qx-text-secondary);
+  font-size: 10px;
+}
+
+.qx-host-workbench-chart-value {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.qx-host-workbench-chart-value span {
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+}
+
+.qx-host-workbench-chart-value strong {
+  color: var(--qx-text-primary);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.qx-host-workbench-chart-plot {
+  width: 100%;
+  min-height: 150px;
+}
+
+.qx-host-workbench-chart-plot svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.qx-host-workbench-chart-grid {
+  stroke: var(--qx-border-1);
+  stroke-dasharray: 2 4;
+  stroke-width: 1;
+}
+
+.qx-host-workbench-chart-area {
+  fill: var(--qx-accent-soft);
+  opacity: 0.72;
+}
+
+.qx-host-workbench-chart-line {
+  fill: none;
+  stroke: var(--qx-accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+}
+
+.qx-host-workbench-chart-dot {
+  fill: var(--qx-bg-component-1);
+  stroke: var(--qx-accent);
+  stroke-width: 2.5;
+}
+
+.qx-host-workbench-chart-label,
+.qx-host-workbench-chart-unit {
+  fill: var(--qx-text-tertiary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
 .qx-host-workbench-content > .qx-host-workbench-media {
   margin-block: 4px 18px;
 }

@@ -15,6 +15,20 @@ export interface PluginWorkbenchSection {
   fields?: PluginWorkbenchField[];
 }
 
+/** Host-rendered chart data. Plugins publish values; Qx owns the visual style. */
+export interface PluginWorkbenchChart {
+  type: "line";
+  title?: string;
+  subtitle?: string;
+  unit?: string;
+  value?: string;
+  valueLabel?: string;
+  points: Array<{
+    label?: string;
+    value: number;
+  }>;
+}
+
 export interface PluginWorkbenchReply {
   /** Stable reply id. Falls back to its bounded list position when omitted. */
   id: string;
@@ -136,6 +150,8 @@ export interface PluginWorkbenchDetail {
   content?: PluginWorkbenchContentBlock[];
   /** Host-rendered form controls; values remain controlled by plugin state. */
   form?: PluginWorkbenchForm;
+  /** Optional host-rendered data visualization using Qx semantic theme tokens. */
+  chart?: PluginWorkbenchChart;
   fields?: PluginWorkbenchField[];
   sections?: PluginWorkbenchSection[];
   /** Host-rendered reply list fixed at the bottom of the detail reading flow. */

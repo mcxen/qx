@@ -23,6 +23,8 @@ QxShell（Top Bar / Main Area / Bottom Bar）
 - `panel.render()` 返回可用的缓存内容或声明式 Workbench，不阻塞网络与重任务。
 - 一个动作只声明一次。稳定 `id` 驱动 Bottom Bar、Enter，并让 Context Panel 投影其余动作。
 - Context 末尾的「关于」由宿主从 Manifest 的双语名称、作者和双语描述固定投影；插件不自绘。
+- 趋势和时间序列使用 `detail.chart` 结构化数据；宿主统一用 Qx shadcn/Radix 主题绘制，插件不得
+  提交自绘 SVG/Canvas 或硬编码业务颜色。历史图表只能展示真实源数据或持久化真实采样。
 - 平台差异由宿主端口处理，插件不要判断 macOS/Windows 后自行拼系统命令。
 
 旧包没有 `names` / `descriptions` 时仍可安装，宿主回退到英文 `name` / `description`；新建或
