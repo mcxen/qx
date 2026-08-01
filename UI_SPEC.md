@@ -66,6 +66,9 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
 - 可关闭的 Beta 内置模块在 Settings → Extensions → Installed 的模块配置 Dialog 中启停。关闭后必须同时从 Quick Entries、Launcher 静态命令、Module Surfaces 和直接导航中移除；对应 lazy view 不得挂载，模块 effect / IPC 数据请求不得启动。Settings 中的模块卡仍保留，作为重新启用的唯一管理入口。
 - **返回走 Bottom Bar 最右侧 Esc**（`escapeAction` + `useEscBack`，文案 Back/Hide）；非主搜索左侧另有小房子一键回主界面。Top Bar 默认不渲染返回箭头；禁止模块在 Top Bar 再做一套返回。
 - 右侧 Context Panel 只放导航、辅助信息和当前对象操作入口，不放第二套主布局。
+- 插件 Workbench 的 Context 由宿主固定分区：当前对象标题、非主业务 Actions、可选后台状态，
+  最后是可选「关于」。关于区只从 Manifest 投影本地化名称、作者和本地化描述；插件不得自行
+  复制、排序或绘制另一套 About。当前语言无对应文案时回退英文 `name` / `description`。
 - 使用完整 Context Action 区的内置模块与插件面板只在 Bottom Bar 保留 Enter 主动作，
   Context 只列其余业务动作，并关闭重复的 Actions 菜单。插件宿主不得把 manifest 启动命令、
   后台 interval 或宿主 reload 自动追加为当前面板动作。

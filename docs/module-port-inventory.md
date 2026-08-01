@@ -28,6 +28,7 @@
 | 主从键盘区域 | **`useQxMasterDetail`** | 插件可选自实现 region | 与 QxShell.navigation 配合 |
 | 二维网格索引 | **`qxGridNavigation`** | Workbench Gallery 由宿主处理 | 通用纯函数；不得放回 PluginHost 专用算法 |
 | Actions 数据 / 右栏渲染 | **`QxShellAction[]` + `primaryActionId` + `QxActionList` / `QxActionSections`** | Workbench 发布纯 action descriptor + primary id，宿主映射一次 | 稳定动作 ID 驱动 Bottom Bar 与 Enter；完整 Context 型页面只投影非 primary 业务动作，多个领域组统一交给 `QxActionSections` 跳过空组，并关闭重复 Actions 菜单。manifest 启动/后台命令及宿主 reload 不混入插件业务 Action；Shell 通过 `data-qx-list-index` + `navigation.onChange` 统一处理条目右键，模块不得复制菜单 |
+| 插件 Context「关于」 | 内置模块按领域自行提供辅助说明 | Manifest `names` / `descriptions` + `author`，由 `PluginHost` 固定投影 | 固定在 Context 末尾；名称与描述统一走 `pluginLabels` 本地化端口，缺少当前语言时回退英文；插件不得自绘重复 About |
 | 模块搜索框 | **`QxModuleSearch`**（默认不自动聚焦；首要搜索页显式 `autoFocus`） | Workbench 由宿主渲染受控 query；custom panel 自绘 input | Workbench handler 必须同步回画；pointer 进入表单/详情后不得抢回搜索焦点；Launcher 搜索另见 SearchBar |
 | Top Bar 内容筛选 | **`QxShell.topbarFilters`**（宿主固定 Select） | Workbench `tabs[] / filters[]` 由 PluginHost 投影；custom panel 应改用 Workbench | 模块/插件只发布 `id / label / value / options`；不得在 `trailing` 自绘 tabs、SegmentedControl 或 Select；命令按钮进入 Bottom Bar / Actions |
 | 列表 loading | **`QxListLoading`** | Workbench 由宿主保留旧数据或渲染 skeleton；custom panel 自理 | 不得把加载态做成整页空白 |

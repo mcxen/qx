@@ -28,6 +28,14 @@ Bottom Bar
 - Bottom Island 相对整个窗口居中，不相对内容列或 Context Panel 居中。
 - Context Panel 是辅助信息和非主业务动作的投影，不是第二个主界面。
 
+插件 Workbench 的 Context 顺序由宿主固定：当前对象标题、非主业务 Actions、可选后台状态，
+最后是可选的「关于」。只要 Manifest 提供描述，宿主就在「关于」中依次显示本地化插件名、
+作者（存在时）和本地化描述。插件不得通过 Workbench detail、action 或自定义 HTML 再复制
+一套 About，也不能改变该区的样式和顺序。
+
+名称和描述来自 Manifest 的 `name` / `description` 英文回退，以及 `names` / `descriptions`
+本地化映射。市场插件必须提供 `en` 与 `zh-CN`；宿主按当前语言选择，缺失时回退英文。
+
 ## 2. 选择 Workbench 模式
 
 | 内容 | 模式 |
@@ -90,6 +98,7 @@ type WorkbenchAction = {
   id: string;          // 稳定、非翻译、同层唯一
   label: string;
   primary?: boolean;  // 同层最多一个
+  menuKey?: string;   // Actions 打开时可直接输入的单字母键
   kbd?: string;
   disabled?: boolean;
   tone?: "normal" | "primary" | "danger";
@@ -115,6 +124,11 @@ actions[]
 - 子菜单在自己的层级中也必须使用唯一 ID。
 - 插件不声明“Actions”空动作，也不要把 manifest 启动命令或后台 interval 复制成面板动作。
 - 需要用户在当前面板执行的命令必须由 Workbench action 显式引用。
+- 每个可见业务动作必须执行真实操作或切换真实状态；状态说明、无回调占位、与宿主导航重复的
+  “打开详情”等伪动作不得进入 Actions。
+- 每个可见业务动作必须声明 `menuKey`：一个 ASCII 字母，大小写不敏感，且在当前菜单层级
+  唯一。用户打开 `Cmd/Ctrl+K` 后可直接输入该字母执行动作。列表态宿主保留 `D` 给
+  “打开详情”，详情态保留 `B` 给“返回列表”；插件不得在对应层级复用它们。
 - 有集合与 `detail` 的 Workbench 面板，宿主保留 Enter 作为导航主动作：列表中“打开详情”，
   详情中“返回列表”。插件的“打开原网页”等业务动作不得标记为 primary；它们保留在 Context
   并应使用带修饰键的快捷键。
@@ -129,6 +143,7 @@ actions[]
 ## 4. 快捷键与 Esc
 
 - Enter 执行当前主动作；有详情的 Workbench 列表/阅读态分别为打开详情/返回列表。
+- `menuKey` 只在 Actions 菜单打开时生效；`kbd` 是可选的窗口内完整快捷键，两者用途不同。
 - 上下方向键移动选择，左右方向键进入/退出详情。
 - 快捷键标签由宿主按平台格式化，不硬编码只有 macOS 可读的符号。
 - 文本输入保留复制、粘贴、剪切、全选、撤销、IME 和组合输入。
@@ -206,6 +221,7 @@ filters: [
 - [ ] Top Bar / Main Area / Bottom Bar 结构唯一。
 - [ ] 右上角筛选使用宿主固定下拉框。
 - [ ] 动作有稳定唯一 ID，且最多一个主动作。
+- [ ] 每个业务动作都是真实操作/状态切换，并有同层唯一的 `menuKey`。
 - [ ] Bottom Bar、Enter 与 Context 引用同一动作集合，且 Context 不重复主动作。
 - [ ] Esc 只走宿主阶梯。
 - [ ] 带进度列表行不遮挡下一行。

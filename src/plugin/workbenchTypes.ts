@@ -147,6 +147,8 @@ export interface PluginWorkbenchAction {
   label: string;
   /** Optional manifest command. Host executes it outside the panel runtime. */
   command?: string;
+  /** Single-letter alias available only while the Actions menu is open. */
+  menuKey?: string;
   kbd?: string;
   primary?: boolean;
   disabled?: boolean;
@@ -527,10 +529,12 @@ function normalizeActions(value: unknown): PluginWorkbenchAction[] {
   return value.slice(0, 32).map((entry) => {
     const raw = (entry || {}) as Record<string, unknown>;
     const shortcut = shortText(raw.kbd, 64)?.trim();
+    const menuKey = shortText(raw.menuKey, 8)?.trim();
     return {
       id: shortText(raw.id, 128) || "",
       label: shortText(raw.label, 180) || shortText(raw.id, 128) || "Action",
       command: shortText(raw.command, 128),
+      menuKey: menuKey && /^[a-z]$/i.test(menuKey) ? menuKey.toLowerCase() : undefined,
       kbd: shortcut && !/^esc(?:ape)?$/i.test(shortcut) ? shortcut : undefined,
       primary: raw.primary === true,
       disabled: raw.disabled === true,

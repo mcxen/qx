@@ -81,7 +81,14 @@ await context.tray.setItems([
 
 ```ts
 const s = await context.system.stats();
-// { cpu, memory /*%*/, memoryUsedGb, memoryTotalGb, gpu? }
+// {
+//   cpu, memory /*%*/, memoryUsedGb, memoryTotalGb,
+//   memoryPressure /* normal | warning | critical | unknown */,
+//   memoryPressureLevel, swapUsedGb, swapTotalGb, gpu?
+// }
+
+// macOS 内存口径与 Stats / Activity Monitor 接近：可清理和文件缓存页
+// 不计入 memoryUsedGb；健康判断优先使用 memoryPressure。
 
 const n = await context.system.networkCounters();
 // { totalBytesIn, totalBytesOut, interfaces? }

@@ -417,6 +417,10 @@ export interface PluginSystemStats {
   memory: number;
   memoryUsedGb: number;
   memoryTotalGb: number;
+  memoryPressure: "normal" | "warning" | "critical" | "unknown";
+  memoryPressureLevel: number;
+  swapUsedGb: number;
+  swapTotalGb: number;
   gpu?: number | null;
 }
 

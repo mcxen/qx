@@ -23,8 +23,16 @@ my-plugin/
 {
   "id": "my-plugin",
   "name": "My Plugin",
+  "names": {
+    "en": "My Plugin",
+    "zh-CN": "我的插件"
+  },
   "version": "1.0.0",
   "description": "A focused Qx module",
+  "descriptions": {
+    "en": "A focused Qx module",
+    "zh-CN": "一个专注的 Qx 模块"
+  },
   "author": "Your Name",
   "icon": "icon.png",
   "screenshots": ["screenshot-1.png"],
@@ -72,9 +80,11 @@ my-plugin/
 | 字段 | 必填 | 说明 |
 |---|---:|---|
 | `id` | 是 | 全局唯一、稳定的小写连字符 ID |
-| `name` | 是 | 显示名称 |
+| `name` | 是 | 英文回退显示名称 |
+| `names` | 市场插件是 | 本地化名称；至少包含 `en` 与 `zh-CN` |
 | `version` | 是 | SemVer |
-| `description`, `author` | 否 | 市场与设置页信息 |
+| `description`, `author` | 否 | 英文回退描述与作者；提供描述时宿主固定投影到 Context「关于」 |
+| `descriptions` | 市场插件是 | 本地化描述；至少包含 `en` 与 `zh-CN` |
 | `icon`, `screenshots` | 否 | 包内相对路径 |
 | `platforms` | 否 | `macos`、`windows`、`linux` 的去重数组 |
 | `keywords` | 否 | 搜索别名 |

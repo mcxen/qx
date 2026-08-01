@@ -571,6 +571,7 @@ export function buildPluginRuntimeHtml(
               memory: Number(raw.memory || 0),
               memoryUsedGb: Number(raw.memoryUsedGb != null ? raw.memoryUsedGb : raw.memory_used_gb || 0),
               memoryTotalGb: Number(raw.memoryTotalGb != null ? raw.memoryTotalGb : raw.memory_total_gb || 0),
+              memoryPressure: String(raw.memoryPressure != null ? raw.memoryPressure : raw.memory_pressure || 'unknown'), memoryPressureLevel: Number(raw.memoryPressureLevel != null ? raw.memoryPressureLevel : raw.memory_pressure_level || 0), swapUsedGb: Number(raw.swapUsedGb != null ? raw.swapUsedGb : raw.swap_used_gb || 0), swapTotalGb: Number(raw.swapTotalGb != null ? raw.swapTotalGb : raw.swap_total_gb || 0),
               gpu: raw.gpu == null ? null : Number(raw.gpu),
             };
           },
@@ -995,5 +996,4 @@ export async function loadPlugin(
 
   return result;
 }
-
 export { handlePluginRpc };

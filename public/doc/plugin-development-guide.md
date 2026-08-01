@@ -22,6 +22,7 @@ QxShell（Top Bar / Main Area / Bottom Bar）
 - 插件声明数据、筛选项、动作和状态；宿主负责窗口、主题、键盘和固定控件。
 - `panel.render()` 返回可用的缓存内容或声明式 Workbench，不阻塞网络与重任务。
 - 一个动作只声明一次。稳定 `id` 驱动 Bottom Bar、Enter，并让 Context Panel 投影其余动作。
+- Context 末尾的「关于」由宿主从 Manifest 的双语名称、作者和双语描述固定投影；插件不自绘。
 - 平台差异由宿主端口处理，插件不要判断 macOS/Windows 后自行拼系统命令。
 
 ## 2. 文档地图
@@ -74,13 +75,11 @@ export default {
         items: latest?.items ?? [],
         actions: [
           {
-            id: "open",
-            label: "Open",
-            primary: true,
-          },
-          {
             id: "refresh",
             label: "Refresh",
+            primary: true,
+            menuKey: "r",
+            kbd: "CmdOrCtrl+R",
             command: "refresh",
           },
         ],
@@ -185,12 +184,14 @@ actions: [
     id: "open-result",
     label: "Open Result",
     primary: true,
+    menuKey: "o",
     kbd: "Enter",
   },
   {
     id: "refresh",
     label: "Refresh",
-    kbd: "R",
+    menuKey: "r",
+    kbd: "CmdOrCtrl+R",
     command: "refresh",
   },
 ]
@@ -201,6 +202,16 @@ Bottom Bar，并让未修饰 Enter 执行它；Context Panel 从同一集合只�
 manifest 的面板启动命令、后台 interval 和宿主重新加载不会自动出现在当前面板 Actions；
 需要用户在面板内执行的命令，必须显式声明为 Workbench action。
 Esc 不属于动作快捷键。
+
+Actions 不是说明列表。每个可见业务 action 都必须执行一个真实操作（例如刷新、打开原网页、
+导出）或切换一个真实且可观察的状态（例如显示/隐藏 Island）；不得用 action 显示状态、充当
+无回调占位，也不得复制宿主已经提供的“打开详情/返回列表”。每个业务 action 必须配置
+`menuKey`：单个 ASCII 字母、大小写不敏感、在当前菜单层级唯一。用户打开 `Cmd/Ctrl+K`
+后可直接输入该字母执行动作。宿主在列表态保留 `D` 给“打开详情”，在详情态保留 `B` 给
+“返回列表”；插件 action 在对应层级不得占用这些字母。
+
+`menuKey` 与 `kbd` 不同：前者仅在 Actions 菜单打开时生效，不会抢走搜索输入；后者是可选的
+窗口内完整快捷键，业务动作使用 `CmdOrCtrl+…` 等可移植写法，不能用单字母 `kbd` 抢占输入。
 
 Top Bar 右侧只发布内容筛选模型，由宿主绘制固定下拉框。Bottom Bar 的左侧 Home、
 中间 Island，以及右侧依次排列的主动作与 Esc 也全部由宿主绘制。详细规则见
@@ -264,7 +275,10 @@ Island 内容必须有稳定会话标识。插件可选择宿主支持的进度�
 - [ ] Manifest 与默认导出命令一一对应。
 - [ ] 声明 `manifest.panel` 时实际导出 `panel`。
 - [ ] 权限是最小集合，危险操作有明确用户动作。
+- [ ] Manifest 的 `names` / `descriptions` 同时包含 `en` 与 `zh-CN`，Context「关于」无需自绘。
 - [ ] Workbench action `id` 稳定且同层唯一。
+- [ ] 每个业务 action 都是可执行操作或真实状态开关，没有状态项、空占位或重复宿主导航。
+- [ ] 每个业务 action 都有同层唯一的单字母 `menuKey`，且不占用宿主当前层的 `D` / `B`。
 - [ ] 只有一个主动作；Enter、Bottom Bar 与 Actions 语义一致。
 - [ ] 没有动作使用 Esc。
 - [ ] Top Bar 筛选与 Bottom Bar 都交给宿主。

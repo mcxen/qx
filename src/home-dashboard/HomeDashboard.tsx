@@ -1,7 +1,7 @@
 import { BatteryCharging, BatteryMedium, Cpu, MemoryStick, Network, Pin, Search } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { LauncherAppIcon } from "../ResultsList";
-import { useIslandData } from "../home-island";
+import { useIslandData, type SystemStatsSnapshot } from "../home-island";
 import { useLocale, useT } from "../i18n";
 import { useSettingsStore } from "../modules/settings/store";
 import { usePluginRegistry } from "../plugin/registry";
@@ -93,6 +93,14 @@ export default function HomeDashboard({
     if (value >= 1024) return `${number.format(value / 1024)} KB/s`;
     return `${number.format(value)} B/s`;
   };
+  const memoryPressure = (value?: SystemStatsSnapshot["memoryPressure"]) => {
+    switch (value) {
+      case "normal": return t("launcher.home.memory.pressure.normal", "Normal pressure");
+      case "warning": return t("launcher.home.memory.pressure.warning", "Elevated pressure");
+      case "critical": return t("launcher.home.memory.pressure.critical", "Critical pressure");
+      default: return t("launcher.home.memory.pressure.unknown", "Pressure unavailable");
+    }
+  };
   const providerFor = (source: "system.cpu" | "system.memory" | "system.power" | "system.network") => {
     const provider = homeWidgetProvider(source, plugins);
     return provider ? () => onNavigate(`plugin:${provider.id}`) : undefined;
@@ -176,7 +184,9 @@ export default function HomeDashboard({
                 id="system.memory"
                 title={t("launcher.home.memory", "Memory")}
                 value={data.ready.stats && data.stats ? `${number.format(data.stats.memory)}%` : "—"}
-                detail={data.stats ? `${number.format(data.stats.memoryUsedGb)} / ${number.format(data.stats.memoryTotalGb)} GB` : t("launcher.home.loading", "Reading system data")}
+                detail={data.stats
+                  ? `${number.format(data.stats.memoryUsedGb)} / ${number.format(data.stats.memoryTotalGb)} GB · ${memoryPressure(data.stats.memoryPressure)}`
+                  : t("launcher.home.loading", "Reading system data")}
                 progress={data.stats?.memory}
                 icon={<MemoryStick size={17} strokeWidth={2} />}
                 onClick={providerFor("system.memory")}

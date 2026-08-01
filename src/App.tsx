@@ -176,7 +176,7 @@ function getModuleLabel(tab: string, t: (key: string, fallback: string) => strin
   if (tab.startsWith("plugin:")) {
     const pluginId = tab.slice("plugin:".length);
     const panel = usePluginRegistry.getState().panels[pluginId];
-    return panel?.title || panel?.pluginName || pluginId;
+    return t(`plugins.ext.${pluginId}.name`, panel?.title || panel?.pluginName || pluginId);
   }
   const entry = MODULE_LABEL_KEYS[tab];
   if (entry) return t(entry.key, entry.fallback);
@@ -2093,16 +2093,17 @@ function App() {
         for (const [pluginId, panel] of Object.entries(pluginState.panels)) {
           const nameSource = panel.pluginName || pluginId;
           const titleSource = panel.title || pluginId;
+          const localizedPanelName = t(`plugins.ext.${pluginId}.name`, titleSource);
           const kw = panel.keywords || [];
           const builtinModuleId = pluginId.startsWith("builtin:") ? pluginId.slice("builtin:".length) : null;
           if (builtinModuleId && !isModuleSearchEnabled(builtinModuleId)) continue;
           if (
-            textMatchesQuery(q, nameSource, titleSource, ...kw) ||
+            textMatchesQuery(q, localizedPanelName, nameSource, titleSource, ...kw) ||
             itemMatchesSearchMetadata(settingsState, pluginMetadataKey(pluginId), q) ||
             (builtinModuleId ? itemMatchesSearchMetadata(settingsState, moduleMetadataKey(builtinModuleId), q) : false)
           ) {
             syntheticEntries.push({
-              name: panel.title || pluginId,
+              name: localizedPanelName,
               path: builtinModuleId ? `__qx:${builtinModuleId}` : `__qx:plugin:${pluginId}`,
               icon: panel.icon || `builtin:${pluginId}`,
               kind: "command",

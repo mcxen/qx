@@ -4,6 +4,7 @@ import type {
   PluginAiProvider,
   PluginAiStreamEvent,
   PluginContext,
+  PluginSystemStats,
 } from "./types";
 import { listen } from "@tauri-apps/api/event";
 import { handlePluginRpc } from "./rpcMethods";
@@ -351,12 +352,16 @@ export function createPluginContext(
         const raw = (await rpc("invoke", {
           cmd: "get_system_stats",
           args: {},
-        })) as Record<string, number | null | undefined>;
+        })) as Record<string, unknown>;
         return {
           cpu: Number(raw.cpu ?? 0),
           memory: Number(raw.memory ?? 0),
           memoryUsedGb: Number(raw.memoryUsedGb ?? raw.memory_used_gb ?? 0),
           memoryTotalGb: Number(raw.memoryTotalGb ?? raw.memory_total_gb ?? 0),
+          memoryPressure: String(raw.memoryPressure ?? raw.memory_pressure ?? "unknown") as PluginSystemStats["memoryPressure"],
+          memoryPressureLevel: Number(raw.memoryPressureLevel ?? raw.memory_pressure_level ?? 0),
+          swapUsedGb: Number(raw.swapUsedGb ?? raw.swap_used_gb ?? 0),
+          swapTotalGb: Number(raw.swapTotalGb ?? raw.swap_total_gb ?? 0),
           gpu: raw.gpu == null ? null : Number(raw.gpu),
         };
       },

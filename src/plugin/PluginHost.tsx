@@ -43,7 +43,8 @@ import {
   shouldIgnoreBareShortcut,
 } from "../utils/keyboard";
 import { formatRelativeTime, formatTimestamp } from "./backgroundActivity";
-import { useT } from "../i18n";
+import { useLocale, useT } from "../i18n";
+import { localizePluginDescription, localizePluginName } from "./pluginLabels";
 import { resolveQxGridIndex, shouldHandleQxGridKey } from "../hooks/qxGridNavigation";
 import { focusQxRegion, qxMasterDetailNavigation } from "../hooks/useQxMasterDetail";
 import {
@@ -84,6 +85,7 @@ function renderPluginStatus(
 
 export function PluginPanelViewport() {
   const t = useT();
+  const locale = useLocale();
   const tab = useStore((s) => s.tab);
   const setTab = useStore((s) => s.setTab);
   const isPluginTab = tab.startsWith("plugin:");
@@ -408,7 +410,15 @@ export function PluginPanelViewport() {
     };
   }, [isPluginTab, panel, pluginId, refreshKey, raycastActionPanel]);
 
-  const shellTitle = panel?.title || plugin?.name || pluginId;
+  const pluginDisplayName = plugin
+    ? localizePluginName(plugin, t, locale)
+    : pluginId;
+  const pluginDisplayDescription = plugin
+    ? localizePluginDescription(plugin, t, locale)
+    : "";
+  const shellTitle = panel?.title && panel.title !== plugin?.name
+    ? panel.title
+    : pluginDisplayName;
 
   const runItem = useCallback(
     (actionId: string) => {
@@ -542,6 +552,7 @@ export function PluginPanelViewport() {
         id: "__qx:workbench-close-detail",
         label: t("plugins.workbench.backToList", "Back to List"),
         kbd: "↵",
+        menuKey: "b",
         onClick: closeWorkbenchDetail,
       };
     }
@@ -549,6 +560,7 @@ export function PluginPanelViewport() {
       id: "__qx:workbench-open-detail",
       label: t("plugins.workbench.openDetail", "Open Details"),
       kbd: "↵",
+      menuKey: "d",
       onClick: () => activateWorkbenchItem(selectedWorkbenchItem.id),
     };
   }, [activateWorkbenchItem, closeWorkbenchDetail, selectedWorkbenchDetail, selectedWorkbenchItem, t, workbench, workbenchDetailOpen]);
@@ -565,6 +577,7 @@ export function PluginPanelViewport() {
       ...workbenchActionDescriptors.map((action) => ({
         id: action.id,
         label: action.label,
+        menuKey: action.menuKey,
         kbd: action.kbd || (!workbenchDetailAction && action.id === primaryWorkbenchAction?.id ? "Enter" : undefined),
         disabled: action.disabled,
         tone: (action.tone === "danger" ? "danger" : action.primary ? "primary" : "normal") as QxShellAction["tone"],
@@ -635,19 +648,19 @@ export function PluginPanelViewport() {
     island: renderState.kind === "loading"
       ? {
           label: t("plugins.loading", "Plugin loading"),
-          detail: plugin?.name || pluginId,
+          detail: pluginDisplayName,
           activity: "wave",
         }
       : renderState.kind === "error"
         ? {
             label: t("plugins.error", "Plugin error"),
-            detail: renderState.detail || plugin?.name || pluginId,
+            detail: renderState.detail || pluginDisplayName,
             tone: "danger",
             actionLabel: t("common.retry", "Retry"),
             onAction: () => setRefreshKey((k) => k + 1),
           }
         : {
-            label: plugin?.name || shellTitle,
+            label: pluginDisplayName,
             detail: backgroundDetail || (plugin?.version ? `v${plugin.version}` : undefined),
             activity: background?.isRunning ? "pulse" : undefined,
           },
@@ -787,13 +800,13 @@ export function PluginPanelViewport() {
           {background?.hasBackground && (
             <PluginBackgroundPanel pluginId={pluginId} summary={background} />
           )}
-          {plugin?.description && (
+          {pluginDisplayDescription && (
             <>
               <div className="qx-action-title">{t("common.about", "About")}</div>
               <div className="v2ex-context-copy">
-                <strong>{plugin.name}</strong>
-                {plugin.author && <span>{plugin.author}</span>}
-                <span>{plugin.description}</span>
+                <strong>{pluginDisplayName}</strong>
+                {plugin?.author && <span>{plugin.author}</span>}
+                <span>{pluginDisplayDescription}</span>
               </div>
             </>
           )}

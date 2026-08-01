@@ -68,11 +68,11 @@ export function localizePluginName(
   t: TranslateFn,
   locale: Locale = "en",
 ): string {
-  const firstParty = FIRST_PARTY_PLUGIN_LABELS[plugin.id];
-  if (firstParty) return t(`plugins.ext.${plugin.id}.name`, firstParty.name);
-
   const fromManifest = pickFromLocaleMap(plugin.manifest?.names, locale);
   if (fromManifest) return fromManifest;
+
+  const firstParty = FIRST_PARTY_PLUGIN_LABELS[plugin.id];
+  if (firstParty) return t(`plugins.ext.${plugin.id}.name`, firstParty.name);
 
   const moduleId = builtinModuleIdFromPluginId(plugin.id);
   if (moduleId) {
@@ -88,12 +88,12 @@ export function localizePluginDescription(
   t: TranslateFn,
   locale: Locale = "en",
 ): string {
-  const firstParty = FIRST_PARTY_PLUGIN_LABELS[plugin.id];
-  if (firstParty) return t(`plugins.ext.${plugin.id}.desc`, firstParty.description);
-
   const fallback = (plugin.description || "").trim();
   const fromManifest = pickFromLocaleMap(plugin.manifest?.descriptions, locale);
   if (fromManifest) return fromManifest;
+
+  const firstParty = FIRST_PARTY_PLUGIN_LABELS[plugin.id];
+  if (firstParty) return t(`plugins.ext.${plugin.id}.desc`, firstParty.description);
 
   const moduleId = builtinModuleIdFromPluginId(plugin.id);
   if (moduleId) {

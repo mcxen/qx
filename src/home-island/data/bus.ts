@@ -10,7 +10,7 @@ import type {
 } from "./types";
 
 const INTERVAL_MS: Record<IslandDataChannel, number> = {
-  stats: 1500,
+  stats: 1000,
   power: 3500,
   net: 1000,
 };
@@ -283,6 +283,10 @@ class HomeIslandDataBus {
             memory: number;
             memory_used_gb: number;
             memory_total_gb: number;
+            memory_pressure: "normal" | "warning" | "critical" | "unknown";
+            memory_pressure_level: number;
+            swap_used_gb: number;
+            swap_total_gb: number;
             gpu: number | null;
           }>("get_system_stats");
 
@@ -300,6 +304,10 @@ class HomeIslandDataBus {
           memory: raw.memory,
           memoryUsedGb: raw.memory_used_gb,
           memoryTotalGb: raw.memory_total_gb,
+          memoryPressure: raw.memory_pressure ?? "unknown",
+          memoryPressureLevel: raw.memory_pressure_level ?? 0,
+          swapUsedGb: raw.swap_used_gb ?? 0,
+          swapTotalGb: raw.swap_total_gb ?? 0,
           gpu: raw.gpu,
         };
         this.patch({

@@ -8,6 +8,7 @@ export function validateQxShellActions(
   const issues: string[] = [];
   const validateLevel = (level: QxShellAction[], path: string) => {
     const ids = new Set<string>();
+    const menuKeys = new Set<string>();
     for (const action of level) {
       if (!action.id.trim()) issues.push(`${path}: action id must not be empty`);
       else if (ids.has(action.id)) issues.push(`${path}: duplicate action id "${action.id}"`);
@@ -16,6 +17,13 @@ export function validateQxShellActions(
       if (shortcut === "esc" || shortcut === "escape") {
         issues.push(`${path}.${action.id}: Esc belongs to escapeAction`);
       }
+      const menuKey = action.menuKey?.trim().toLowerCase();
+      if (menuKey && !/^[a-z]$/.test(menuKey)) {
+        issues.push(`${path}.${action.id}: menuKey must be one ASCII letter`);
+      } else if (menuKey && menuKeys.has(menuKey)) {
+        issues.push(`${path}.${action.id}: duplicate menuKey "${menuKey}"`);
+      }
+      if (menuKey) menuKeys.add(menuKey);
       if (action.children) validateLevel(action.children, `${path}.${action.id}`);
     }
   };

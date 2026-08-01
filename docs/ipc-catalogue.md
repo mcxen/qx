@@ -163,7 +163,11 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 
 ## system 相关
 
-- `get_system_stats()` — Mach APIs 读 CPU/内存
+- `get_system_stats()` — macOS 通过 `HOST_CPU_LOAD_INFO` 做系统 CPU tick 差分；
+  内存通过 `HOST_VM_INFO64` 读取，并从 active + inactive + speculative + wired +
+  compressed 中扣除 purgeable 与 external/file-cache 页；同时返回
+  `kern.memorystatus_vm_pressure_level` 和 `vm.swapusage`。Windows 保持同构模型，
+  使用 `GetSystemTimes` / `GlobalMemoryStatusEx`。
 - `qx_external_displays_driver/install_driver/list/set_control` — DDC 驱动状态、安装、外接显示器枚举与亮度/音量控制
 - `qx_system_information_check_system_info` — 主机名 / 芯片 / OS / 内核 / 序列号；Windows 通过注册表与 Win32 拓扑/内存 API
 - `qx_system_information_check_storage` — macOS/Linux 通过 `df`，Windows 通过 `GetDiskFreeSpaceExW`

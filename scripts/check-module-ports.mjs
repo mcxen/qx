@@ -532,6 +532,7 @@ for (const token of [
   "storage.persist",
   "module-port-inventory",
   "tryModuleEscapeStep",
+  "menuKey",
   "老插件",
 ]) {
   if (!guide.includes(token)) fail(`plugin-development-guide missing: ${token}`);
@@ -708,10 +709,10 @@ if (bundleProductionModule("src/components/qx-shell/actionProtocol.ts", actionPr
     ], "open");
     if (valid.length !== 0) fail(`valid action protocol rejected: ${valid.join("; ")}`);
     const invalid = protocol.validateQxShellActions([
-      { id: "open", label: "Open" },
-      { id: "open", label: "Duplicate", kbd: "Esc" },
+      { id: "open", label: "Open", menuKey: "o" },
+      { id: "open", label: "Duplicate", kbd: "Esc", menuKey: "o" },
     ], "missing");
-    for (const token of ["duplicate action id", "Esc belongs", "is missing"]) {
+    for (const token of ["duplicate action id", "duplicate menuKey", "Esc belongs", "is missing"]) {
       if (!invalid.some((issue) => issue.includes(token))) {
         fail(`action protocol validator did not report ${token}`);
       }
