@@ -21,7 +21,9 @@ make the lifecycle, UI tree or native APIs interchangeable.
 4. Convert every user operation to a stable Qx Action ID.
 5. Publish status and real progress through Island.
 6. Create a native Qx Manifest with minimum permissions and supported platforms.
-7. Test cold install, keyboard flow, errors and both desktop platforms.
+7. Re-map Raycast `List` / `Detail` / `ActionPanel` into the single Qx Workbench state;
+   do not carry over a self-drawn toolbar, sidebar, About block or Enter handler.
+8. Test cold install, keyboard flow, errors and both desktop platforms.
 
 Canonical targets:
 

@@ -25,6 +25,41 @@ QxShell（Top Bar / Main Area / Bottom Bar）
 - Context 末尾的「关于」由宿主从 Manifest 的双语名称、作者和双语描述固定投影；插件不自绘。
 - 平台差异由宿主端口处理，插件不要判断 macOS/Windows 后自行拼系统命令。
 
+旧包没有 `names` / `descriptions` 时仍可安装，宿主回退到英文 `name` / `description`；新建或
+升级插件不得继续省略这两个本地化映射。
+
+### 1.1 一张图看懂布局责任
+
+```text
+QxShell（宿主固定）
+├─ Top Bar       主搜索 + tabs/filters
+├─ Main Area     Workbench List / Grid / Detail / Form
+├─ Context       当前对象 → 非主 Actions → 后台状态 → About
+└─ Bottom Bar    Home → Island → primary → Esc
+```
+
+插件只发布 Main Area 的数据模型和 Context 所需的 action/status 元数据；Top Bar、Context
+容器、About、Bottom Bar、焦点、键盘、主题和宽度都由宿主绘制。插件不得把 Raycast 的
+`ActionPanel`、React toolbar 或 HTML sidebar 原样搬进 Qx。
+
+Workbench 的最小事件契约如下；事件必须回到同一个状态源，不能维护第二份选择或查询：
+
+```js
+context.ui.mountWorkbench(
+  { title: "Example", query, tabs, items, selectedId, detail, actions, island },
+  {
+    onQuery: (value) => setQuery(value),
+    onTab: (id) => setTab(id),
+    onSelect: (id, item) => setSelected(item),
+    onAction: (id, item) => runAction(id, item),
+  },
+);
+```
+
+`items[].actions` 只描述当前条目的真实业务操作；列表/详情的进入与返回由宿主 Enter、左右
+方向键和 Esc 阶梯处理。Raycast 的 `ActionPanel` 映射为同一份 `actions[]`，不再额外声明
+Bottom Bar 或 Enter handler。
+
 ## 2. 文档地图
 
 - 布局、Workbench、Actions、Esc、主题：[`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md)
@@ -92,6 +127,8 @@ export default {
 Manifest 只声明包元数据、入口、命令、面板、权限与兼容范围。完整字段见
 [`plugin-marketplace.md`](./plugin-marketplace.md)。如果声明了 `manifest.panel`，
 `index.js` 的默认导出也必须提供 `panel`；否则宿主会报告 `Panel not registered`。
+`panel.title` 应省略或与 `name` 保持一致，让宿主使用 `names` 本地化；不要填一个没有
+本地化映射的第二个英文产品名。
 
 ## 4. 选择正确端口
 
@@ -146,6 +183,9 @@ Manifest 中声明的每个 command 必须在 `QxPlugin.commands` 中提供同�
 2. 立即挂载首帧 Workbench（通过 `context.ui.mountWorkbench`）。
 3. 通过命令、后台 interval 或用户动作刷新真实数据。
 4. 完成后更新存储、Workbench 或 Island。
+
+`panel.destroy(container)` 必须取消 interval、订阅、未完成请求、媒体缓存和 Island/Tray
+会话。不要依赖 `render()` 返回的清理函数：宿主只调用显式的 `destroy` 生命周期。
 
 网络型面板采用 stale-while-revalidate：保留可用旧内容，显示真实刷新状态，
 慢请求不得把新选择或新查询覆盖回旧结果。进度必须来自真实阶段或明确标记为
@@ -274,6 +314,7 @@ Island 内容必须有稳定会话标识。插件可选择宿主支持的进度�
 
 - [ ] Manifest 与默认导出命令一一对应。
 - [ ] 声明 `manifest.panel` 时实际导出 `panel`。
+- [ ] `panel.title` 已省略或与 `name` 一致，没有绕过本地化端口的第二个产品名。
 - [ ] 权限是最小集合，危险操作有明确用户动作。
 - [ ] Manifest 的 `names` / `descriptions` 同时包含 `en` 与 `zh-CN`，Context「关于」无需自绘。
 - [ ] Workbench action `id` 稳定且同层唯一。

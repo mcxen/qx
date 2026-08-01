@@ -93,7 +93,7 @@ my-plugin/
 | `preferences` | 否 | 宿主设置表单 |
 | `commands` | 否 | 可搜索命令 |
 | `shortcuts` | 否 | 用户可启用的全局命令快捷键 |
-| `panel` | 否 | 注册面板入口 |
+| `panel` | 否 | 注册面板入口；`title` 应省略或与 `name` 相同，以便宿主使用 `names` 本地化 |
 | `storage.cacheTargets` | 否 | 可重建缓存的精确 persist key 白名单 |
 | `homeWidgets` | 否 | 将宿主支持的语义系统数据源关联到本插件 Panel；不提供视觉代码 |
 | `min_app_version` | 否 | 最低 Qx 版本 |
