@@ -1,5 +1,33 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Fix — Windows DPI 尺寸与原生四边阴影
+
+**状态**：代码修复完成，等待 Windows 10/11 安装包运行态复核。
+
+- 确认 Tauri/Tao 已使用 Windows Per-Monitor V2；保留显示器 work area / resize payload
+  的物理像素到逻辑像素转换，不对 WebView 叠加二次 CSS zoom。
+- 尺寸持久化同时监听 `scaleChanged`，使用事件携带的新 scale factor 解释后续 resize，
+  避免跨 100% / 125% / 150% / 200% 显示器时因异步查询时序写入错误逻辑尺寸。
+- 首窗尺寸策略从 `App.tsx` 提取为纯逻辑模块。常规显示器保留 980×612 宽布局；
+  1280×720、1366×768 与紧凑 RDP 工作区按 60% 逻辑工作区降级，并迁移占用超过
+  紧凑工作区 84% 的旧保存尺寸，让响应式布局收起 Context Panel 而不是接近满屏。
+- Windows 不再在初始化时覆盖配置并调用 `set_shadow(false)`；配置与运行时都显式启用
+  Tao undecorated shadow，由 DWM 在 WebView 边界外绘制四周系统阴影。
+
+### 验证
+
+- [x] `npm run check`
+- [ ] `npx tsc --noEmit` / `npm run build`：当前被并发 Workbench 改动中的三个
+  `Array.at()`（ES2021 target）错误阻断；Windows 窗口改动未产生 TypeScript 错误。
+- [x] 从 `HEAD` 仅应用本项补丁的隔离工作树执行 `npm run build`，TypeScript 与 Vite
+  production build 均通过。
+- [x] `cargo fmt --check` / `cargo check` / `cargo test --lib`（158 passed）
+- [x] 尺寸策略定向断言：1280×720 → 768×480、1366×728 → 820×512，
+  1920×1040 → 1152×720，旧 980×612 在紧凑工作区迁移为 768×480。
+- [ ] Windows Compatibility：MSVC target check + NSIS bundle。
+- [ ] Windows 10/11/RDP：100% 与混合 DPI 下首窗、拖动跨屏、重启恢复、最大化恢复；
+  浅色/深色桌面检查四边 DWM 阴影及 Windows 10 顶部 1px 原生边线。
+
 ## Feature — RSS 每日后台刷新
 
 **状态**：实现完成，等待长时运行验证。

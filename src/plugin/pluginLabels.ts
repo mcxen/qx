@@ -32,7 +32,10 @@ const FIRST_PARTY_PLUGIN_LABELS: Record<string, { name: string; description: str
   qxweibo: { name: "QxWeibo", description: "Browse Weibo posts and comments." },
   sysinfo: { name: "Sysinfo", description: "View CPU, memory, and system status." },
   unsplash: { name: "Unsplash", description: "Search Unsplash photos and set wallpapers." },
-  v2ex: { name: "V2EX", description: "Browse latest and hot V2EX topics." },
+  v2ex: {
+    name: "V2EX",
+    description: "Browse V2EX latest, hot, and node topics with replies.",
+  },
   weather: { name: "Weather", description: "View current weather and forecasts." },
 };
 

@@ -335,10 +335,17 @@ fn parse_v2_topics(json: &str) -> Result<Vec<V2exTopic>, String> {
         .filter_map(|v| {
             let id = v.get("id")?.as_u64()?;
             let title = v.get("title")?.as_str()?.to_string();
-            let node = v
-                .get("node")
+            let node_obj = v.get("node");
+            let node = node_obj
                 .and_then(|n| n.get("title"))
                 .and_then(|t| t.as_str())
+                .or_else(|| {
+                    node_obj
+                        .and_then(|n| n.get("name"))
+                        .and_then(|t| t.as_str())
+                })
+                .or_else(|| v.get("node_title").and_then(|t| t.as_str()))
+                .or_else(|| v.get("node_name").and_then(|t| t.as_str()))
                 .unwrap_or("")
                 .to_string();
             let author = v
@@ -353,6 +360,7 @@ fn parse_v2_topics(json: &str) -> Result<Vec<V2exTopic>, String> {
             let content = v
                 .get("content_rendered")
                 .and_then(|c| c.as_str())
+                .or_else(|| v.get("content").and_then(|c| c.as_str()))
                 .unwrap_or("")
                 .to_string();
 
@@ -462,7 +470,15 @@ pub async fn v2ex_fetch_node_topics(
             return Err("Node name is empty".to_string());
         }
         let json = v2ex_get_authed(&format!("/api/v2/nodes/{node}/topics"), token.as_deref())?;
-        parse_v2_topics(&json)
+        let mut topics = parse_v2_topics(&json)?;
+        // Node list endpoints sometimes omit nested node metadata; stamp the
+        // requested node name so the UI can still label rows.
+        for topic in &mut topics {
+            if topic.node.trim().is_empty() {
+                topic.node = node.to_string();
+            }
+        }
+        Ok(topics)
     })
     .await
     .map_err(|e| format!("V2EX node topics panicked: {e}"))?

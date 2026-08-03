@@ -11,7 +11,7 @@ const MODULE_LABELS_EN: Record<string, string> = {
   clipboard: "Clipboard History",
   screencap: "Screenshot & Recording Module",
   rss: "RSS Reader",
-  v2ex: "V2EX",
+
   weather: "Weather",
   "qx-ai": "QxAI",
   macros: "Macro Recorder",
@@ -29,8 +29,6 @@ const MODULE_SURFACE_LABELS_EN: Record<string, string> = {
   "screencap:screenshot": "Take Screenshot",
   "screencap:record": "Start Screen Recording",
   "screencap:start": "Start Screen Recording",
-  "v2ex:hot": "V2EX Hot",
-  "v2ex:latest": "V2EX Latest",
   "documents:clean": "Clean Text",
   "documents:markdown": "Markdown Summary",
   "documents:json": "Format JSON",

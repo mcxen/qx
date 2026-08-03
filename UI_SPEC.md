@@ -1232,10 +1232,14 @@ new Intl.DateTimeFormat(locale, { dateStyle: "medium" }).format(date)
 
 - QxAI 内置供应商按 OpenRouter、DeepSeek 排序，OpenRouter 是默认供应商；内置供应商固定 API endpoint 和推荐模型，设置界面只要求用户填写对应 API Key。DuckDuckGo 不属于内置供应商目录。
 
-- 透明无边框主窗口只在 macOS 使用 AppKit `NSWindow` 原生阴影。Windows 的 DWM
-  无边框阴影在 Windows 10、远程桌面及部分显卡环境会退化为不透明矩形黑边，因此宿主
-  必须关闭 Windows 原生 shadow，并由 WebView 画布的语义 border + inset highlight 保持
-  边界可辨；不得在 WebView 边界内模拟会被裁切的外阴影。
+- 透明无边框主窗口必须使用平台原生外阴影：macOS 使用 AppKit `NSWindow`，Windows
+  使用 Tao undecorated-shadow / DWM。WebView 画布只保留语义 border + inset highlight，
+  不得在 WebView 边界内模拟会被裁切的 CSS 外阴影。Windows 10/11 与 RDP 必须实测
+  四边阴影、1px 顶边、圆角和透明合成，不得因某一环境回退而全局关闭 native shadow。
+- Windows 窗口按 Per-Monitor V2 处理 DPI。显示器 work area 与 resize payload 的物理像素
+  必须先按当前 scale factor 转为逻辑像素再用于尺寸持久化；收到 scale change 后应使用
+  事件的新比例解释后续 resize。不得叠加 WebView/CSS zoom。紧凑工作区允许响应式收起
+  Context Panel，首窗尺寸不得以固定宽高下限占满 1280×720 桌面。
 - Tauri v2 通信使用 `@tauri-apps/api/core` 的 `invoke`。
 - 文件路径展示必须通过 `convertFileSrc()`，禁止直接拼 `file://`。
 - 系统监控使用 Mach 内核 API，不使用 `sysinfo` crate。

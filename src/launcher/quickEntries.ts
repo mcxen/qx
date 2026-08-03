@@ -25,7 +25,6 @@ export const QUICK_ENTRY_TARGETS = [
   { value: "qx-ai", label: "QxAI", subtitle: "Chat and agent tasks", titleKey: "launcher.qx-ai", subtitleKey: "launcher.qx-ai.desc" },
   { value: "rss", label: "RSS Reader", subtitle: "Feeds and articles", titleKey: "launcher.rss", subtitleKey: "launcher.rss.desc" },
   { value: "screencap", label: "Screenshot & Recording Module", subtitle: "Screenshots and MP4/MOV recording", titleKey: "launcher.screencap", subtitleKey: "launcher.screencap.desc" },
-  { value: "v2ex", label: "V2EX", subtitle: "Latest and hot topics", titleKey: "launcher.v2ex", subtitleKey: "launcher.v2ex.desc" },
   { value: "weather", label: "Weather", subtitle: "Current conditions and forecast", titleKey: "launcher.weather", subtitleKey: "launcher.weather.desc" },
   { value: "documents", label: "Text Tools", subtitle: "Text, Markdown, JSON", titleKey: "launcher.documents", subtitleKey: "launcher.documents.desc" },
   { value: "macros", label: "Macro Recorder", subtitle: "Record and replay actions", titleKey: "launcher.macros", subtitleKey: "launcher.macros.desc" },
@@ -293,7 +292,7 @@ export function quickEntryFromAppEntry(
     return createQuickEntry(pluginQuickEntryTarget(pluginId), plugins);
   }
   const tabMatch = item.path.match(
-    /^__qx:(clipboard|screencap|rss|v2ex|weather|qx-ai|macros|documents|qx-tty|settings)$/,
+    /^__qx:(clipboard|screencap|rss|weather|qx-ai|macros|documents|qx-tty|settings)$/,
   );
   if (tabMatch) return createQuickEntry(tabMatch[1], plugins);
   return null;

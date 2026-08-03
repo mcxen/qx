@@ -46,7 +46,7 @@ Qx/
 │   ├── launcher/                 # context、quick entries、actions
 │   ├── modules/
 │   │   ├── clipboard/  screencap/  rss/  qx-ai/
-│   │   ├── macros/  weather/  documents/  v2ex/
+│   │   ├── macros/  weather/  documents/
 │   │   └── settings/
 │   └── plugin/                   # 插件系统
 ├── src-tauri/                    # Rust 后端

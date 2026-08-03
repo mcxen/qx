@@ -9,7 +9,6 @@ const MODULE_SEARCH_IDS = new Set<ModuleSearchModuleId>([
   "macros",
   "documents",
   "weather",
-  "v2ex",
   "qx-tty",
 ]);
 

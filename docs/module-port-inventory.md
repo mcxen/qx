@@ -75,8 +75,8 @@
 | **qx-tty** | 终端 | shell | 侧栏 session 自管 | — | PTY invoke | 可选将来 `useQxSelectableList` |
 | **qx-ai** | list / chat / settings | shell（含 chat/settings leave 父级） | list selection（会话） | `QxModuleSearch` + loading | AI store | 无重大缺口 |
 | **settings** | 设置壳 | shell（query=筛选）；leave=`closeSettings` | — | `QxModuleSearch` | settings store + **`openSettings` returnTo** | 模块深链进设置后 Esc 回调用方，不再一律 launcher |
-| **v2ex**（内置） | 面板 | shell | list + master-detail | search + loading | `invoke:v2ex_*`（宿主磁盘缓存） | **默认关闭**；市场插件为主 |
 | **weather**（内置） | 面板 | shell | — | — | `fetch_weather*` + localStorage | **默认关闭**；市场插件为主 |
+| ~~**v2ex**（内置）~~ | — | — | — | — | 宿主 `invoke:v2ex_*` 仍供插件 | **已移除内置面板**；仅市场插件 `v2ex` |
 | **onboarding** | 向导 | 专用 UI | — | — | permissions | 非 QxShell 业务面板，合理例外 |
 | **github-calendar** | 小组件 | 非主 tab | — | — | 网络 | 非主模块 tab |
 | **catalog / moduleAvailability** | 元数据 | — | — | — | — | 端口注册表辅助 |
@@ -91,7 +91,7 @@
 |---------|------------|-----------|----------|------|------|
 | **pomodoro-island** | ✅ manifest + export | ✅ | **host Workbench** + background heartbeat + host countdown/activity/action island + notifications | persist state/history/deadline | **QxIsland 首个规范样板**：running=`pulse + endsAt`、paused=冻结 countdown、complete=100%；插件不能自动弹窗，用户手动浮出后可关闭，打开目标由 host 固定回插件 Panel |
 | **weather** | ✅ | ✅ | http + invoke weather* | persist SWR | 无 |
-| **v2ex** | ✅ | ✅ | http + invoke v2ex* | persist SWR + host disk | 无 |
+| **v2ex** | ✅ | ✅ | **host Workbench** List + detail + replies + tabs/filters + actions；http + invoke v2ex* | persist SWR + host disk | 内置面板已移除；Latest/Hot 无需 token，Nodes/Notifications 需要；Enter/Esc 走宿主 |
 | **qxheihe** | ✅ | ✅ | **host Workbench List + 多图详情 + 评论树** + http/open-url | persist SWR | 小黑盒公开 feed/详情；匿名优先读取评论树，Cookie 仅作可选增强；风控时保留缓存并提示验证 |
 | **qxtieba** | ✅ | ✅ | **host Workbench List + 主楼详情 + 楼层评论** + http/open-url | persist SWR + 已读状态 | 默认图拉丁吧/笔记本吧，支持多贴吧标签与并发交错的混合 Feed；游客态移动/桌面公开页面双回退；首屏楼层通过共享 `detail.replies` 展示，贴吧表情作为插件包内紧凑行内资源解析，风控失败时保留缓存并提供原帖跳转 |
 | **qxcoolapk** | ✅ | ✅ | **host Workbench List + media filmstrip + replies + filters + article island** + http/open-url/system | persist SWR + 已读优先有界缓存 | 酷安文章原文/图片加载投影到灵动岛；动态完整多图集合走四路有界并发、宿主胶片与大图预览；相邻正文/回复低优先级预取到持久缓存但不预取整组原图；原图下载由宿主保存到 Downloads |
@@ -142,6 +142,6 @@
 | 业务模块统一 `useQxModuleShell` | 已完成（clipboard/rss/docs/…） |
 | Loading/Error 过渡壳对齐 shell 端口 | 见 `App.tsx` ModuleLoading/ErrorShell |
 | 市场 pomodoro panel 注册 | 已修复（1.1.0） |
-| 内置 weather/v2ex 默认关闭 | 已完成；宿主 API 保留给插件 |
+| 内置 weather 默认关闭；内置 v2ex 面板已移除 | 已完成；`invoke:v2ex_*` 宿主 API 仅服务市场插件 |
 
 维护：增减主 tab 模块或市场插件时，**同 PR 更新本表**。

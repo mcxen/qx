@@ -6,7 +6,6 @@ import {
   CloudSun,
   FileText,
   Keyboard,
-  MessageCircle,
   MonitorPlay,
   Rss,
   Settings,
@@ -19,7 +18,6 @@ export const BUILTIN_MODULE_ICONS: Record<string, LucideIcon> = {
   "builtin:qx-ai": Bot,
   "builtin:screencap": MonitorPlay,
   "builtin:rss": Rss,
-  "builtin:v2ex": MessageCircle,
   "builtin:macros": Keyboard,
   "builtin:documents": FileText,
   "builtin:weather": CloudSun,
@@ -48,8 +46,6 @@ export function builtinModuleIconKind(value: string): string {
       return "record";
     case "builtin:rss":
       return "rss";
-    case "builtin:v2ex":
-      return "v2ex";
     case "builtin:macros":
       return "macro";
     case "builtin:documents":

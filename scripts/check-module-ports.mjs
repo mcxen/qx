@@ -268,7 +268,6 @@ const MODULE_PANELS = [
   "src/modules/qx-ai/QxAiChat.tsx",
   "src/modules/qx-ai/QxAiSettings.tsx",
   "src/modules/settings/SettingsPanel.tsx",
-  "src/modules/v2ex/V2exPanel.tsx",
   "src/modules/weather/WeatherPanel.tsx",
   "src/plugin/PluginHost.tsx",
   "src/App.tsx", // ModuleLoadingShell / ModuleErrorShell
@@ -364,7 +363,6 @@ for (const rel of [
   "src/modules/documents/DevTxtTool.tsx",
   "src/modules/rss/ArticleList.tsx",
   "src/modules/screencap/ScreenRecorder.tsx",
-  "src/modules/v2ex/V2exPanel.tsx",
 ]) {
   if (!read(rel).includes("topbarFilters={")) {
     fail(`${rel} must publish content filters through QxShell.topbarFilters`);

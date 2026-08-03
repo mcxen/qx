@@ -966,7 +966,7 @@ function PluginDetail({
             );
           })}
 
-          {settingsKey === "v2ex" && (
+          {plugin.id === "v2ex" && (
             <Button
               variant="outline"
               size="sm"

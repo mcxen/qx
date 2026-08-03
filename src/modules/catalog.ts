@@ -3,8 +3,6 @@ export const BUILTIN_MODULE_CATALOG = {
   "qx-ai": { maturity: "stable", userDisableable: false },
   rss: { maturity: "stable", userDisableable: false },
   screencap: { maturity: "beta", userDisableable: true },
-  /** Prefer marketplace plugin `v2ex` (cached). Built-in panel is opt-in. */
-  v2ex: { maturity: "beta", userDisableable: true },
   /** Prefer marketplace plugin `weather`. Built-in panel is opt-in. */
   weather: { maturity: "beta", userDisableable: true },
   documents: { maturity: "stable", userDisableable: false },

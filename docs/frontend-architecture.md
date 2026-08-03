@@ -63,7 +63,7 @@ Zustand 单 store（`store.ts`）保存 launcher 强共享状态：
 
 ## Tab 路由
 
-由 `App.tsx` 管理，值域包括：`launcher | clipboard | qx-ai | rss | screencap | v2ex | weather | macros | documents | settings | plugin:<id>`。
+由 `App.tsx` 管理，值域包括：`launcher | clipboard | qx-ai | rss | screencap | weather | macros | documents | settings | plugin:<id>`。
 
 切换方式：
 - 用户点 quick entry / Actions menu → 调 `onNavigate(tab)`

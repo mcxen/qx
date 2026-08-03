@@ -304,7 +304,6 @@ export type ModuleSearchModuleId =
   | "macros"
   | "documents"
   | "weather"
-  | "v2ex"
   | "qx-tty";
 
 export const MODULE_SEARCH_MODULE_IDS: ModuleSearchModuleId[] = [
@@ -315,7 +314,6 @@ export const MODULE_SEARCH_MODULE_IDS: ModuleSearchModuleId[] = [
   "macros",
   "documents",
   "weather",
-  "v2ex",
   "qx-tty",
 ];
 
@@ -327,7 +325,6 @@ export const MODULE_SEARCH_LABELS: Record<ModuleSearchModuleId, { title: string;
   macros: { title: "Macro Recorder", hint: "Saved macros" },
   documents: { title: "Text Toolbox", hint: "Disk notepad · folder files" },
   weather: { title: "Weather", hint: "Locations and open weather" },
-  v2ex: { title: "V2EX", hint: "Hot / Latest views" },
   "qx-tty": { title: "QxTTY", hint: "Persistent local terminal sessions" },
 };
 
@@ -546,7 +543,6 @@ export const DEFAULT_SETTINGS: Settings = {
       macros: true,
       documents: true,
       weather: true,
-      v2ex: true,
       "qx-tty": true,
     },
   },

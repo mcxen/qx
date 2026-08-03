@@ -89,7 +89,6 @@ export type BuiltinTab =
   | "clipboard"
   | "screencap"
   | "rss"
-  | "v2ex"
   | "weather"
   | "settings"
   | "macros"

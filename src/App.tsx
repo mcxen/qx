@@ -50,6 +50,11 @@ import {
 import { rankSearchResultsAsync } from "./search/rankResultsAsync";
 import { normalizeFileSearchCategories } from "./search/fileCategories";
 import {
+  clampWindowSize,
+  clampWindowSizeForMonitor,
+  getFirstLaunchWindowSizeForMonitor,
+} from "./utils/windowSizing";
+import {
   buildLauncherResultRows,
   selectedLauncherItem,
 } from "./launcher/resultRows";
@@ -82,7 +87,6 @@ const SettingsPanel = lazy(() => import("./modules/settings/SettingsPanel"));
 const OnboardingWizard = lazy(() => import("./modules/onboarding/OnboardingWizard"));
 const MACOS_PERMISSION_ONBOARDING_VERSION = 1;
 const RssReader = lazy(() => import("./modules/rss"));
-const V2exPanel = lazy(() => import("./modules/v2ex/V2exPanel"));
 const G4fReader = lazy(() => import("./modules/qx-ai"));
 const MacroRecorder = lazy(() => import("./modules/macros/MacroRecorder"));
 const WeatherPanel = lazy(() => import("./modules/weather/WeatherPanel"));
@@ -108,17 +112,6 @@ const SETTINGS_SEARCH_TERMS = [
   "qx设置",
   "qx 设置",
 ];
-const MIN_WINDOW_WIDTH = 480;
-const MIN_WINDOW_HEIGHT = 360;
-const MAX_WINDOW_WIDTH = 1500;
-const MAX_WINDOW_HEIGHT = 882;
-const FIRST_LAUNCH_WINDOW_RATIO = 0.6;
-const FIRST_INSTALL_MIN_WIDTH = 980;
-const FIRST_INSTALL_MIN_HEIGHT = 612;
-const FIRST_INSTALL_ASPECT_RATIO = 1.6;
-const FIRST_INSTALL_MONITOR_WIDTH_LIMIT = 0.9;
-const FIRST_INSTALL_MONITOR_HEIGHT_LIMIT = 0.85;
-const OVERSIZED_SAVED_WINDOW_RATIO = 0.9;
 const MODULE_SWITCH_PAINT_DELAY_MS = 32;
 const HOST_ESCAPE_EVENT = "qx:host-escape";
 /** Auto-update must never compete with first paint / first summon. */
@@ -163,7 +156,6 @@ const MODULE_LABEL_KEYS: Record<string, { key: string; fallback: string }> = {
   clipboard: { key: "clipboard.title", fallback: "Clipboard History" },
   screencap: { key: "launcher.screencap", fallback: "Screenshot & Recording Module" },
   rss: { key: "launcher.rss", fallback: "RSS Reader" },
-  v2ex: { key: "launcher.v2ex", fallback: "V2EX" },
   weather: { key: "launcher.weather", fallback: "Weather" },
   "qx-ai": { key: "module.qx-ai", fallback: "QxAI Chat" },
   macros: { key: "launcher.macros", fallback: "Macro Recorder" },
@@ -368,50 +360,14 @@ class ModuleErrorBoundary extends Component<
   }
 }
 
-function clampWindowSize(width: number, height: number) {
-  return {
-    width: Math.min(MAX_WINDOW_WIDTH, Math.max(MIN_WINDOW_WIDTH, Math.round(width || 0))),
-    height: Math.min(MAX_WINDOW_HEIGHT, Math.max(MIN_WINDOW_HEIGHT, Math.round(height || 0))),
-  };
-}
-
 async function getMonitorLogicalWorkSize() {
   const monitor = await currentMonitor().then((m) => m ?? primaryMonitor()).catch(() => null);
   return monitor?.workArea.size.toLogical(monitor.scaleFactor) ?? null;
 }
 
-function clampWindowSizeForMonitor(width: number, height: number, monitorSize: { width: number; height: number } | null) {
-  const base = clampWindowSize(width, height);
-  if (!monitorSize) return base;
-  const isOversized =
-    base.width > monitorSize.width * OVERSIZED_SAVED_WINDOW_RATIO ||
-    base.height > monitorSize.height * OVERSIZED_SAVED_WINDOW_RATIO;
-  if (!isOversized) return base;
-
-  return clampWindowSize(
-    Math.min(base.width, monitorSize.width * FIRST_LAUNCH_WINDOW_RATIO),
-    Math.min(base.height, monitorSize.height * FIRST_LAUNCH_WINDOW_RATIO),
-  );
-}
-
 async function getFirstLaunchWindowSize() {
   const logicalSize = await getMonitorLogicalWorkSize();
-  if (!logicalSize) {
-    return clampWindowSize(FIRST_INSTALL_MIN_WIDTH, FIRST_INSTALL_MIN_HEIGHT);
-  }
-
-  const width = Math.min(
-    Math.max(FIRST_INSTALL_MIN_WIDTH, logicalSize.width * FIRST_LAUNCH_WINDOW_RATIO),
-    logicalSize.width * FIRST_INSTALL_MONITOR_WIDTH_LIMIT,
-  );
-  const height = Math.min(
-    Math.max(FIRST_INSTALL_MIN_HEIGHT, width / FIRST_INSTALL_ASPECT_RATIO),
-    logicalSize.height * FIRST_INSTALL_MONITOR_HEIGHT_LIMIT,
-  );
-  return clampWindowSize(
-    width,
-    height,
-  );
+  return getFirstLaunchWindowSizeForMonitor(logicalSize);
 }
 
 // Register built-in modules into the plugin registry once at startup.
@@ -1019,7 +975,6 @@ function App() {
         import("./modules/documents/DevTxtTool"),
         import("./modules/settings/SettingsPanel"),
         import("./modules/rss"),
-        import("./modules/v2ex/V2exPanel"),
         import("./modules/qx-ai"),
         import("./modules/macros/MacroRecorder"),
         import("./modules/weather/WeatherPanel"),
@@ -1313,7 +1268,7 @@ function App() {
       } else if (tabId === "settings") {
         openSettings();
       } else if (tabId === "clipboard" || tabId === "screencap"
-          || tabId === "rss" || tabId === "v2ex" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "qx-tty") {
+          || tabId === "rss" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "qx-tty") {
         if (!isBuiltinModuleEnabled(tabId)) return;
         if (tabId === "clipboard") {
           void prefetchClipboardOpen({ captureLiveImage: true });
@@ -1579,47 +1534,78 @@ function App() {
   useEffect(() => {
     if (!isTauriRuntime()) return;
     const win = getCurrentWindow();
-    const unlisten = win.onResized(async ({ payload }) => {
-      // A maximized/fullscreen window is intentionally larger than the
-      // launcher's remembered-size limits. Applying clampWindowSize here
-      // immediately restores the old size, which makes the title-bar maximize
-      // action flicker and never settle into fullscreen.
-      const [maximized, fullscreen] = await Promise.all([
-        win.isMaximized().catch(() => false),
-        win.isFullscreen().catch(() => false),
-      ]);
-      if (maximized || fullscreen) {
-        pendingWindowSizeRef.current = null;
-        if (resizeSaveTimerRef.current) {
-          window.clearTimeout(resizeSaveTimerRef.current);
-          resizeSaveTimerRef.current = null;
-        }
+    let disposed = false;
+    let latestScaleFactor = 1;
+    let removeScaleListener: (() => void) | null = null;
+    let removeResizeListener: (() => void) | null = null;
+
+    const setupWindowSizeListeners = async () => {
+      latestScaleFactor = await win.scaleFactor().catch(() => 1);
+      if (disposed) return;
+
+      removeScaleListener = await win.onScaleChanged(({ payload }) => {
+        // Tao applies WM_DPICHANGED for its Per-Monitor V2 window. Keep the
+        // event's factor next to the following physical resize event so a
+        // delayed IPC scaleFactor() query cannot persist the wrong units.
+        if (payload.scaleFactor > 0) latestScaleFactor = payload.scaleFactor;
+      });
+      if (disposed) {
+        removeScaleListener();
+        removeScaleListener = null;
         return;
       }
-      const scaleFactor = await win.scaleFactor().catch(() => 1);
-      const logical = {
-        width: payload.width / scaleFactor,
-        height: payload.height / scaleFactor,
-      };
-      const { width, height } = clampWindowSize(logical.width, logical.height);
-      if (logical.width !== width || logical.height !== height) {
-        await win.setSize(new LogicalSize(width, height)).catch(() => {});
+
+      removeResizeListener = await win.onResized(async ({ payload }) => {
+        // A maximized/fullscreen window is intentionally larger than the
+        // launcher's remembered-size limits. Applying clampWindowSize here
+        // immediately restores the old size, which makes the title-bar maximize
+        // action flicker and never settle into fullscreen.
+        const [maximized, fullscreen] = await Promise.all([
+          win.isMaximized().catch(() => false),
+          win.isFullscreen().catch(() => false),
+        ]);
+        if (maximized || fullscreen) {
+          pendingWindowSizeRef.current = null;
+          if (resizeSaveTimerRef.current) {
+            window.clearTimeout(resizeSaveTimerRef.current);
+            resizeSaveTimerRef.current = null;
+          }
+          return;
+        }
+        const logical = {
+          width: payload.width / latestScaleFactor,
+          height: payload.height / latestScaleFactor,
+        };
+        const { width, height } = clampWindowSize(logical.width, logical.height);
+        if (logical.width !== width || logical.height !== height) {
+          await win.setSize(new LogicalSize(width, height)).catch(() => {});
+        }
+        pendingWindowSizeRef.current = { width, height };
+        if (resizeSaveTimerRef.current) {
+          window.clearTimeout(resizeSaveTimerRef.current);
+        }
+        resizeSaveTimerRef.current = window.setTimeout(() => {
+          persistPendingWindowSize();
+        }, 250);
+      });
+      if (disposed) {
+        removeResizeListener();
+        removeResizeListener = null;
       }
-      pendingWindowSizeRef.current = { width, height };
-      if (resizeSaveTimerRef.current) {
-        window.clearTimeout(resizeSaveTimerRef.current);
-      }
-      resizeSaveTimerRef.current = window.setTimeout(() => {
-        persistPendingWindowSize();
-      }, 250);
+    };
+
+    void setupWindowSizeListeners().catch((error) => {
+      appLogger.warn("Failed to install window size listeners", { error });
     });
     return () => {
+      disposed = true;
       if (resizeSaveTimerRef.current) {
         window.clearTimeout(resizeSaveTimerRef.current);
         resizeSaveTimerRef.current = null;
       }
       pendingWindowSizeRef.current = null;
-      unlisten.then((fn) => fn());
+      removeScaleListener?.();
+      removeResizeListener?.();
     };
   }, [persistPendingWindowSize]);
 
@@ -1732,7 +1718,7 @@ function App() {
       const next = e.payload;
       if (next === "settings") {
         openSettings();
-      } else if (next === "clipboard" || next === "screencap" || next === "rss" || next === "v2ex" || next === "weather" || next === "qx-ai" || next === "macros" || next === "qx-tty") {
+      } else if (next === "clipboard" || next === "screencap" || next === "rss" || next === "weather" || next === "qx-ai" || next === "macros" || next === "qx-tty") {
         if (!isBuiltinModuleEnabled(next)) return;
         // Start clipboard open work before React commits the tab switch.
         if (next === "clipboard") {
@@ -2454,7 +2440,7 @@ function App() {
       return;
     }
     // Handle __qx:<tabId> style paths (backward compat)
-    const tabMatch = item.path.match(/^__qx:(clipboard|screencap|rss|v2ex|weather|qx-ai|macros|documents|qx-tty)$/);
+    const tabMatch = item.path.match(/^__qx:(clipboard|screencap|rss|weather|qx-ai|macros|documents|qx-tty)$/);
     if (tabMatch) {
       if (!isBuiltinModuleEnabled(tabMatch[1])) return;
       setTab(tabMatch[1] as any);
@@ -2583,8 +2569,6 @@ function App() {
         return <ScreenRecorder />;
       case "rss":
         return <RssReader />;
-      case "v2ex":
-        return <V2exPanel />;
       case "qx-ai":
         return <G4fReader />;
       case "macros":

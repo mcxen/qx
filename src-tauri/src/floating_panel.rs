@@ -667,15 +667,14 @@ pub fn install(app: &AppHandle, window_behavior: &str, show_in_app_list: bool) {
     }
     #[cfg(target_os = "windows")]
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
-        // DWM renders an opaque rectangular shadow for transparent,
-        // undecorated windows on some Windows / RDP combinations. Qx already
-        // owns its launcher outline and inset highlight in the WebView, so the
-        // native shadow only creates a second, mismatched frame.
-        if let Err(error) = win.set_shadow(false) {
+        // Keep the borderless window in Tao's undecorated-shadow mode. Tao
+        // retains the native non-client frame insets, so DWM can render the
+        // real four-sided system shadow outside the WebView bounds.
+        if let Err(error) = win.set_shadow(true) {
             crate::diagnostics::log(
                 crate::diagnostics::LogLevel::Warn,
                 "floating_panel",
-                "failed to disable the Windows native launcher shadow",
+                "failed to enable the Windows native launcher shadow",
                 serde_json::json!({ "error": error.to_string() }),
             );
         }

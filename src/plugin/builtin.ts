@@ -144,35 +144,6 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     description: "RSS/Atom feed reader",
   },
   {
-    id: "v2ex",
-    name: "V2EX",
-    keywords: ["v2ex", "topics", "forum", "node", "社区", "帖子", "主题", "节点", "热门"],
-    commands: [],
-    panel: {
-      title: "V2EX",
-      keywords: ["v2ex", "topics", "forum", "社区", "帖子", "热门"],
-    },
-    description: "V2EX forum viewer",
-    preferences: [
-      {
-        id: "token",
-        label: "Access Token",
-        type: "password",
-        required: false,
-        description: "Required for API v2 features (notifications, node topics, replies). Go to v2ex.com/settings/tokens to create one.",
-      },
-      {
-        id: "nodes",
-        label: "Nodes",
-        type: "string",
-        required: false,
-        default: "programmer create share ideas apple jobs qna",
-        description: "Node names for the 'Topics By Node' view, separated by spaces.",
-      },
-    ],
-    settingsKey: "v2ex",
-  },
-  {
     id: "macros",
     name: "Macro Recorder",
     keywords: ["macro", "macros", "recording", "automation", "宏", "宏录制", "录制", "自动化"],

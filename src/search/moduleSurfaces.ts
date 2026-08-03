@@ -342,29 +342,6 @@ function searchQxTtySurfaces(_query: string): ModuleSurfaceHit[] {
   return [];
 }
 
-function searchV2exSurfaces(query: string): ModuleSurfaceHit[] {
-  if (!isModuleSearchEnabled("v2ex")) return [];
-  const hits: ModuleSurfaceHit[] = [];
-  for (const item of [
-    { surface: "hot", title: "V2EX Hot", keys: ["v2ex", "hot", "热门"] },
-    { surface: "latest", title: "V2EX Latest", keys: ["v2ex", "latest", "最新"] },
-  ] as const) {
-    const score = scoreText(query, item.title, ...item.keys);
-    if (score > 0) {
-      hits.push(hit({
-        id: `v2ex:${item.surface}`,
-        moduleId: "v2ex",
-        title: item.title,
-        subtitle: "V2EX",
-        icon: "builtin:v2ex",
-        score: Math.min(score, 72),
-        launch: { tab: "v2ex", surface: item.surface },
-      }));
-    }
-  }
-  return hits;
-}
-
 /**
  * Aggregate dynamic surfaces for the main launcher search.
  * Providers run in parallel via Promise.all; each uses async invoke where needed.
@@ -384,7 +361,6 @@ export async function searchModuleSurfaces(query: string): Promise<ModuleSurface
     searchScreencapSurfaces(q),
     Promise.resolve(searchDocumentsSurfaces(q)),
     Promise.resolve(searchWeatherSurfaces(q)),
-    Promise.resolve(searchV2exSurfaces(q)),
     Promise.resolve(searchQxTtySurfaces(q)),
   ]);
 

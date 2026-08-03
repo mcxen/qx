@@ -1,6 +1,6 @@
 # Shell、全局快捷键与托管 State
 
-> 状态：Current · 适用版本：v0.5.13 · Owner：Core · 最后复核：2026-07-14
+> 状态：Current · 适用版本：v0.6.53 · Owner：Core · 最后复核：2026-08-01
 
 本文记录 **浮动主窗口 / 全局快捷键切换 / RSS·Clipboard 托管 State / 搜索框重聚焦** 的约定与坑。改这些行为前先读这里，避免全库搜一遍。
 
@@ -30,10 +30,16 @@
    主动 `floating_show` 一次；这与同一进程内的快捷键 toggle / hide 状态分开。首次安装
    使用能显示 Launcher 右侧 Quick Entries 的宽窗尺寸，老用户继续恢复保存尺寸。
 
-Windows 的透明无边框主窗口不使用 DWM 原生 shadow：它在 Windows 10、远程桌面和
-部分显卡组合下会退化成不透明矩形黑边。`floating_panel::install` 只在 Windows 调用
-`set_shadow(false)`；Qx WebView 自己的语义边框与内高光继续负责窗口边界，macOS 仍由
-AppKit 绘制 launcher 外阴影。
+Windows 的透明无边框主窗口使用 Tao 的 undecorated-shadow 模式，由 DWM 在 WebView
+边界外绘制四周原生阴影；`tauri.conf.json` 与 `floating_panel::install` 都保持
+`shadow=true`。WebView 自己只画语义边框与内高光，不用会被窗口矩形裁切的 CSS 外阴影。
+macOS 继续由 AppKit 绘制 launcher 外阴影。
+
+Windows/Tao 以 Per-Monitor V2 运行。显示器 `workArea.size` 与 resize event payload 是
+物理像素，首窗/设置尺寸是逻辑像素：前端必须使用显示器或窗口 scale factor 做转换，
+并在 `scaleChanged` 后使用事件携带的新比例解释紧随其后的 resize，不能给 WebView
+额外设置 CSS zoom。1280×720 等紧凑工作区允许 Launcher 响应式收起 Context Panel，
+不得用 980×612 的首窗硬下限把窗口撑到接近全屏。
 
 无边框窗口的移动与缩放必须分开：Top Bar 的 `data-tauri-drag-region` 只负责移动。
 Windows 下，`QxShell` 最外沿由八方向 `startResizeDragging` 手柄负责缩放；不得把

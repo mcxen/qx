@@ -1,4 +1,7 @@
-import { stripDangerousHtmlAttributes } from "../../utils/sanitize-html";
+import {
+  stripAuthorThemeStyles,
+  stripDangerousHtmlAttributes,
+} from "../../utils/sanitize-html";
 
 export function startOfDay(d: Date): number {
   const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -122,7 +125,9 @@ export function sanitizeHtml(
 ): string {
   const doc = new DOMParser().parseFromString(html, "text/html");
   doc.querySelectorAll("script,style,iframe,object,embed,form,input,button").forEach((el) => el.remove());
+  // Security first, then drop CMS/theme colors so Qx tokens win in the reader.
   stripDangerousHtmlAttributes(doc);
+  stripAuthorThemeStyles(doc);
   doc.querySelectorAll("a").forEach((el) => {
     const a = el as HTMLAnchorElement;
     if (!a.hasAttribute("href")) return;
@@ -147,6 +152,7 @@ export function sanitizeHtml(
       img.removeAttribute("srcset");
       img.removeAttribute("data-srcset");
     }
+    // Layout only — color/background come from host CSS after theme strip.
     img.style.maxWidth = "100%";
     img.style.height = "auto";
     img.style.borderRadius = "4px";
@@ -158,36 +164,11 @@ export function sanitizeHtml(
     img.setAttribute("loading", "eager");
     img.setAttribute("decoding", "async");
   });
-  doc.querySelectorAll("pre,code").forEach((el) => {
-    const h = el as HTMLElement;
-    h.style.background = "var(--qx-bg-component-3)";
-    h.style.padding = "2px 6px";
-    h.style.borderRadius = "4px";
-    h.style.fontSize = "12px";
-    h.style.fontFamily = 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace';
-  });
+  // Structural spacing only. Theme (code bg, blockquote accent, headings) is
+  // owned by `.rss-article-content` CSS so dark/light transparency stays coherent.
   doc.querySelectorAll("pre").forEach((el) => {
     const h = el as HTMLElement;
-    h.style.padding = "10px 12px";
     h.style.overflowX = "auto";
-  });
-  doc.querySelectorAll("h1,h2,h3,h4").forEach((el) => {
-    const h = el as HTMLElement;
-    h.style.marginTop = "16px";
-    h.style.marginBottom = "6px";
-    h.style.fontWeight = "600";
-  });
-  doc.querySelectorAll("p,li").forEach((el) => {
-    const h = el as HTMLElement;
-    h.style.lineHeight = "inherit";
-    h.style.margin = "6px 0";
-  });
-  doc.querySelectorAll("blockquote").forEach((el) => {
-    const h = el as HTMLElement;
-    h.style.borderLeft = "3px solid var(--qx-accent)";
-    h.style.paddingLeft = "12px";
-    h.style.color = "var(--qx-text-secondary)";
-    h.style.margin = "10px 0";
   });
   return doc.body ? doc.body.innerHTML : html;
 }
