@@ -1,5 +1,29 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — Hacker News 社区插件
+
+**状态**：基础版本实现完成，待桌面运行态复核。
+
+- 新增 `qx-plugins/src/hacker-news` 市场插件，使用 Hacker News 官方 Firebase API 获取最新帖子。
+- 使用宿主 Workbench 展示帖子列表、正文、作者、分数、时间和原帖链接；选中帖子后按需加载嵌套评论。
+- 帖子与评论使用持久化 stale-while-revalidate 缓存；刷新失败时保留已有内容，不伪造成功。
+- 翻译能力暂不混入首个 Feed 版本，单独登记为后续任务。
+
+### 验证
+
+- [x] `qx-plugins`: 真实调用 `newstories.json` 与 `item/{id}.json`。
+- [x] `qx-plugins`: `npm run package:one -- --only=hacker-news`、安装包结构与入口语法检查。
+- [ ] Qx 桌面态：最新列表、正文、嵌套评论、打开原帖、复制链接、缓存失败回退。
+
+## Task — Hacker News 帖子中英翻译
+
+**状态**：待开发；已进入任务列表。
+
+- [ ] 在 QxAI 设置中增加可选翻译服务配置：兼容用户自有 AI API，并评估低成本模型/按量调用策略。
+- [ ] 调研并验证可用的开源或公开翻译接口（例如 Bing/微软翻译类服务），明确鉴权、额度、隐私和失败回退。
+- [ ] 设计 Hacker News 帖子正文与评论的中英双语翻译交互、缓存、取消和单条/批量翻译边界。
+- [ ] 将翻译 provider 抽象成窄端口，避免 Hacker News 插件直接绑定单一供应商；在真实接口验证后再发布。
+
 ## Fix — Windows DPI 尺寸与原生四边阴影
 
 **状态**：代码修复完成，等待 Windows 10/11 安装包运行态复核。

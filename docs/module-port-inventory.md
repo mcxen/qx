@@ -92,6 +92,7 @@
 | **pomodoro-island** | ✅ manifest + export | ✅ | **host Workbench** + background heartbeat + host countdown/activity/action island + notifications | persist state/history/deadline | **QxIsland 首个规范样板**：running=`pulse + endsAt`、paused=冻结 countdown、complete=100%；插件不能自动弹窗，用户手动浮出后可关闭，打开目标由 host 固定回插件 Panel |
 | **weather** | ✅ | ✅ | http + invoke weather* | persist SWR | 无 |
 | **v2ex** | ✅ | ✅ | **host Workbench** List + detail + replies + tabs/filters + actions；http + invoke v2ex* | persist SWR + host disk | 内置面板已移除；Latest/Hot 无需 token，Nodes/Notifications 需要；Enter/Esc 走宿主 |
+| **hacker-news** | ✅ | ✅ | **host Workbench** latest List + detail + nested replies + actions；public Hacker News HTTP API | persist SWR | 首版只提供最新帖子、正文与按需评论；翻译 provider / QxAI 设置接入登记在 `TASK.md` 后续任务 |
 | **qxheihe** | ✅ | ✅ | **host Workbench List + 多图详情 + 评论树** + http/open-url | persist SWR | 小黑盒公开 feed/详情；匿名优先读取评论树，Cookie 仅作可选增强；风控时保留缓存并提示验证 |
 | **qxtieba** | ✅ | ✅ | **host Workbench List + 主楼详情 + 楼层评论** + http/open-url | persist SWR + 已读状态 | 默认图拉丁吧/笔记本吧，支持多贴吧标签与并发交错的混合 Feed；游客态移动/桌面公开页面双回退；首屏楼层通过共享 `detail.replies` 展示，贴吧表情作为插件包内紧凑行内资源解析，风控失败时保留缓存并提供原帖跳转 |
 | **qxcoolapk** | ✅ | ✅ | **host Workbench List + media filmstrip + replies + filters + article island** + http/open-url/system | persist SWR + 已读优先有界缓存 | 酷安文章原文/图片加载投影到灵动岛；动态完整多图集合走四路有界并发、宿主胶片与大图预览；相邻正文/回复低优先级预取到持久缓存但不预取整组原图；原图下载由宿主保存到 Downloads |
