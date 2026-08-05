@@ -113,9 +113,12 @@ async fn fetch_url(url: &str) -> Result<Vec<u8>, String> {
 pub async fn fetch_and_parse(url: &str) -> Result<ParsedFeed, String> {
     let body = fetch_url(url).await?;
 
+    parse_feed_body(url, &body)
+}
+
+fn parse_feed_body(url: &str, body: &[u8]) -> Result<ParsedFeed, String> {
     // feed-rs parser is synchronous and fast — run it on the current task.
-    let feed = parser::parse(Cursor::new(body.as_slice()))
-        .map_err(|e| format!("feed parse error: {e}"))?;
+    let feed = parser::parse(Cursor::new(body)).map_err(|e| format!("feed parse error: {e}"))?;
 
     let title = feed
         .title
@@ -170,11 +173,10 @@ pub async fn fetch_and_parse(url: &str) -> Result<ParsedFeed, String> {
             .first()
             .map(|a| a.name.clone())
             .unwrap_or_default();
-        let published_at = entry
-            .published
-            .or(entry.updated)
-            .map(|d| d.timestamp())
-            .unwrap_or(0);
+        // `updated` is an edit/last-modified timestamp, not the article's
+        // publication time. Do not display it as the publication date when a
+        // feed omits its publication field.
+        let published_at = entry.published.map(|d| d.timestamp()).unwrap_or(0);
         let image_url = extract_image(&content).or_else(|| {
             entry.media.iter().find_map(|m| {
                 m.content
@@ -223,7 +225,48 @@ fn extract_image(html: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_feed_proxy_host, resolve_feed_icon};
+    use super::{is_feed_proxy_host, parse_feed_body, resolve_feed_icon};
+
+    #[test]
+    fn uses_publication_time_instead_of_entry_updated_time() {
+        let feed = br#"
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <title>Example</title>
+              <entry>
+                <id>article-1</id>
+                <title>Article</title>
+                <link href="https://example.com/article-1" />
+                <published>2024-01-02T03:04:05Z</published>
+                <updated>2024-02-03T04:05:06Z</updated>
+              </entry>
+            </feed>
+        "#;
+
+        let parsed = parse_feed_body("https://example.com/feed.xml", feed).expect("parse feed");
+
+        assert_eq!(parsed.articles.len(), 1);
+        assert_eq!(parsed.articles[0].published_at, 1_704_164_645);
+    }
+
+    #[test]
+    fn does_not_use_updated_time_when_publication_time_is_missing() {
+        let feed = br#"
+            <feed xmlns="http://www.w3.org/2005/Atom">
+              <title>Example</title>
+              <entry>
+                <id>article-1</id>
+                <title>Article</title>
+                <link href="https://example.com/article-1" />
+                <updated>2024-02-03T04:05:06Z</updated>
+              </entry>
+            </feed>
+        "#;
+
+        let parsed = parse_feed_body("https://example.com/feed.xml", feed).expect("parse feed");
+
+        assert_eq!(parsed.articles.len(), 1);
+        assert_eq!(parsed.articles[0].published_at, 0);
+    }
 
     #[test]
     fn prefers_feed_icon_when_absolute() {

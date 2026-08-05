@@ -208,6 +208,13 @@ fn store_article(
             now,
         ],
     )?;
+    // Refresh the timestamp for existing rows too. This clears legacy values
+    // that came from `entry.updated` and keeps the displayed date tied to the
+    // article publication field.
+    conn.execute(
+        "UPDATE rss_articles SET published_at = ?1 WHERE guid = ?2",
+        params![a.published_at, a.guid],
+    )?;
     Ok(())
 }
 
