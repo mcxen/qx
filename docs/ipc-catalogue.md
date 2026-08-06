@@ -46,7 +46,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 | 命令 | 用途 |
 |---|---|
 | `display_list()` | 枚举显示器（稳定 ID、名称、尺寸、刷新率、缩放、旋转、主屏/内置屏，以及平台可提供的连接协议与 EDID 厂商/产品码）。**任何功能**需要显示器信息都走此命令，不得自建枚举；插件通过 `context.system.displays()` 消费。 |
-| `display_brightness_list()` | 列出 macOS 内置屏原生亮度和支持 DDC/CI 的外接屏硬件亮度目标；目标 ID 由宿主生成，插件通过 `context.system.displayBrightness()` 消费。 |
+| `display_brightness_list()` | 列出 macOS 内置屏原生亮度和外接屏 DDC/CI 目标；每个外接目标都保留 `rawCurrent/rawMax`、百分比和 DDC 失败阶段/IOReturn，避免识别失败被静默丢弃；插件通过 `context.system.displayBrightness()` 消费。 |
 | `display_brightness_set(display_id, value)` | 设置统一显示器亮度目标（0–100）；内置屏走 DisplayServices，外接屏走 Qx 内嵌 DDC/CI I2C。 |
 | `desktop_windows_list(query?)` | 枚举可见顶层窗口；可选按 `monitorId` 裁剪、`logicalScale` 换算逻辑坐标、名称排除。截图窗选、布局工具等共用。 |
 

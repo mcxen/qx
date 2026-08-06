@@ -59,9 +59,13 @@ pub struct DisplayBrightnessControl {
     pub backend: String,
     pub current: Option<u8>,
     pub max: u8,
+    pub raw_current: Option<u16>,
+    pub raw_max: Option<u16>,
     pub is_builtin: bool,
     pub supported: bool,
     pub error: Option<String>,
+    pub error_stage: Option<String>,
+    pub error_code: Option<i32>,
 }
 
 #[cfg(target_os = "macos")]
@@ -70,6 +74,8 @@ struct MacDdcDisplay {
     id: u32,
     current: u16,
     max: u16,
+    error_code: i32,
+    error_stage: u32,
     name: [std::os::raw::c_char; 256],
 }
 
@@ -78,7 +84,7 @@ unsafe extern "C" {
     fn qx_native_display_brightness(display: u32, out: *mut u16) -> i32;
     fn qx_native_set_display_brightness(display: u32, value: u16) -> i32;
     fn qx_ddc_list(out: *mut MacDdcDisplay, capacity: usize) -> usize;
-    fn qx_ddc_set(display: u32, value: u16) -> i32;
+    fn qx_ddc_set(display: u32, value: u16, error_stage: *mut u32) -> i32;
 }
 
 #[cfg(target_os = "macos")]
@@ -99,6 +105,34 @@ fn native_target_id(display_id: u32) -> String {
 #[cfg(target_os = "macos")]
 fn ddc_target_id(display_id: u32) -> String {
     format!("ddc:{display_id}")
+}
+
+#[cfg(target_os = "macos")]
+fn ddc_stage_name(stage: u32) -> &'static str {
+    match stage {
+        1 => "missing display info",
+        2 => "missing IODisplayLocation",
+        3 => "missing IOKit display adapter",
+        4 => "IOAVService API unavailable",
+        5 => "cannot resolve IOKit registry id",
+        6 => "cannot create IOKit iterator",
+        7 => "no external DCPAVServiceProxy",
+        8 => "cannot create IOAVService",
+        9 => "DDC VCP read request failed",
+        10 => "DDC VCP read response failed",
+        11 => "invalid DDC VCP response",
+        12 => "DDC VCP write failed",
+        _ => "unknown DDC failure",
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn ddc_error(stage: u32, error_code: i32) -> String {
+    if error_code == 0 {
+        format!("DDC: {}", ddc_stage_name(stage))
+    } else {
+        format!("DDC: {} (IOReturn {error_code})", ddc_stage_name(stage))
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -608,10 +642,14 @@ fn brightness_controls() -> Result<Vec<DisplayBrightnessControl>, String> {
             backend: "native".to_string(),
             current: (status == 0).then_some(current.min(100) as u8),
             max: 100,
+            raw_current: (status == 0).then_some(current.min(100)),
+            raw_max: (status == 0).then_some(100),
             is_builtin: true,
             supported: status == 0,
             error: (status != 0)
                 .then(|| format!("macOS native brightness is unavailable (status {status})")),
+            error_stage: (status != 0).then(|| "native DisplayServices".to_string()),
+            error_code: (status != 0).then_some(status),
         });
     }
 
@@ -623,6 +661,8 @@ fn brightness_controls() -> Result<Vec<DisplayBrightnessControl>, String> {
             id: 0,
             current: 0,
             max: 0,
+            error_code: 0,
+            error_stage: 0,
             name: [0; 256],
         })
         .collect::<Vec<_>>();
@@ -634,19 +674,29 @@ fn brightness_controls() -> Result<Vec<DisplayBrightnessControl>, String> {
             .find(|ddc| ddc.id == display.id)
         {
             let max = ddc.max.max(1);
+            let supported = ddc.error_stage == 0 && ddc.max > 0;
             controls.push(DisplayBrightnessControl {
-                id: ddc_target_id(display.id),
+                id: if supported {
+                    ddc_target_id(display.id)
+                } else {
+                    format!("unavailable:{}", display.id)
+                },
                 name: if mac_string(&ddc.name).is_empty() {
                     display.name.clone()
                 } else {
                     mac_string(&ddc.name)
                 },
                 backend: "ddc".to_string(),
-                current: Some(((ddc.current as f32 / max as f32) * 100.0).round() as u8),
+                current: supported
+                    .then_some(((ddc.current as f32 / max as f32) * 100.0).round() as u8),
                 max: 100,
+                raw_current: supported.then_some(ddc.current),
+                raw_max: supported.then_some(ddc.max),
                 is_builtin: false,
-                supported: true,
-                error: None,
+                supported,
+                error: (!supported).then(|| ddc_error(ddc.error_stage, ddc.error_code)),
+                error_stage: (!supported).then(|| ddc_stage_name(ddc.error_stage).to_string()),
+                error_code: (!supported).then_some(ddc.error_code),
             });
         } else {
             controls.push(DisplayBrightnessControl {
@@ -655,11 +705,15 @@ fn brightness_controls() -> Result<Vec<DisplayBrightnessControl>, String> {
                 backend: "ddc".to_string(),
                 current: None,
                 max: 100,
+                raw_current: None,
+                raw_max: None,
                 is_builtin: false,
                 supported: false,
                 error: Some(
-                    "Display does not expose a readable DDC/CI brightness control".to_string(),
+                    "DDC: display was not returned by the macOS display adapter".to_string(),
                 ),
+                error_stage: Some("display adapter mismatch".to_string()),
+                error_code: None,
             });
         }
     }
@@ -716,6 +770,8 @@ fn set_brightness(display_id: String, value: u8) -> Result<(), String> {
                 id: 0,
                 current: 0,
                 max: 0,
+                error_code: 0,
+                error_stage: 0,
                 name: [0; 256],
             })
             .collect::<Vec<_>>();
@@ -725,10 +781,14 @@ fn set_brightness(display_id: String, value: u8) -> Result<(), String> {
             .take(count.min(ddc_displays.len()))
             .find(|ddc| ddc.id == display.id)
             .ok_or_else(|| "The selected display does not expose DDC/CI brightness".to_string())?;
+        if ddc.error_stage != 0 || ddc.max == 0 {
+            return Err(ddc_error(ddc.error_stage.max(11), ddc.error_code));
+        }
         let raw_value = ((value as u32 * ddc.max.max(1) as u32 + 50) / 100) as u16;
-        let status = unsafe { qx_ddc_set(display.id, raw_value) };
+        let mut error_stage = 0_u32;
+        let status = unsafe { qx_ddc_set(display.id, raw_value, &mut error_stage) };
         if status != 0 {
-            return Err(format!("DDC/CI brightness write failed (status {status})"));
+            return Err(ddc_error(error_stage.max(12), status));
         }
         return Ok(());
     }

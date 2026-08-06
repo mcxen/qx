@@ -501,9 +501,13 @@ export interface PluginDisplayBrightnessControl {
   backend: string;
   current: number | null;
   max: number;
+  rawCurrent: number | null;
+  rawMax: number | null;
   isBuiltin: boolean;
   supported: boolean;
   error?: string | null;
+  errorStage?: string | null;
+  errorCode?: number | null;
 }
 
 export interface PluginNetworkInfo {
