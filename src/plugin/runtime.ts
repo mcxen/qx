@@ -593,6 +593,7 @@ export function buildPluginRuntimeHtml(
           info: () => rpc('invoke', { cmd: 'qx_system_information_check_system_info', args: {} }),
           storage: () => rpc('invoke', { cmd: 'qx_system_information_check_storage', args: {} }),
           displays: () => rpc('invoke', { cmd: 'display_list', args: {} }),
+          displayBrightness: () => rpc('invoke', { cmd: 'display_brightness_list', args: {} }), setDisplayBrightness: (displayId, value) => rpc('invoke', { cmd: 'display_brightness_set', args: { displayId: String(displayId || ''), value: Math.max(0, Math.min(100, Math.round(Number(value) || 0))) } }),
           network: () => rpc('invoke', { cmd: 'qx_system_information_check_network', args: {} }),
           power: () => rpc('invoke', { cmd: 'qx_system_monitor_power', args: {} }),
           qxStorageOverview: () => rpc('invoke', { cmd: 'qx_storage_overview', args: {} }),
@@ -994,6 +995,5 @@ export async function loadPlugin(
     throw error;
   }
 
-  return result;
-}
+  return result; }
 export { handlePluginRpc };

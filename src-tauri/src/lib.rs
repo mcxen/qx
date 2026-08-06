@@ -10,7 +10,6 @@ mod display;
 mod display_monitor;
 #[cfg(target_os = "windows")]
 mod display_windows;
-mod external_displays;
 mod file_search;
 mod floating_panel;
 mod g4f;
@@ -633,6 +632,8 @@ pub fn run() {
             clipboard::media::read_image_file,
             clipboard::clipboard_write_image_file,
             display::display_list,
+            display::display_brightness_list,
+            display::display_brightness_set,
             desktop_windows::desktop_windows_list,
             floating_panel::floating_show,
             floating_panel::floating_hide,
@@ -706,10 +707,6 @@ pub fn run() {
             terminal::terminal_resize,
             terminal::terminal_close_session,
             terminal::terminal_clear_buffer,
-            external_displays::qx_external_displays_driver,
-            external_displays::qx_external_displays_install_driver,
-            external_displays::qx_external_displays_list,
-            external_displays::qx_external_displays_set_control,
             screencap::recording_session::start_recording,
             screencap::recording_session::stop_recording,
             screencap::recording_session::recording_status,

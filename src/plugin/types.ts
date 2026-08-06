@@ -495,6 +495,17 @@ export interface PluginDisplayInfo {
   isBuiltin: boolean;
 }
 
+export interface PluginDisplayBrightnessControl {
+  id: string;
+  name: string;
+  backend: string;
+  current: number | null;
+  max: number;
+  isBuiltin: boolean;
+  supported: boolean;
+  error?: string | null;
+}
+
 export interface PluginNetworkInfo {
   devices: Array<{ name: string; ip: string }>;
   count: number;
@@ -955,6 +966,8 @@ export interface PluginContext {
     info: () => Promise<PluginSystemInfo>;
     storage: () => Promise<PluginStorageInfo>;
     displays: () => Promise<PluginDisplayInfo[]>;
+    displayBrightness: () => Promise<PluginDisplayBrightnessControl[]>;
+    setDisplayBrightness: (displayId: string, value: number) => Promise<void>;
     network: () => Promise<PluginNetworkInfo>;
     power: () => Promise<PluginPowerInfo>;
     qxStorageOverview: () => Promise<unknown>;

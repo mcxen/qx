@@ -31,6 +31,7 @@ import type {
   PluginWorkbenchField,
   PluginWorkbenchImage,
   PluginWorkbenchChart,
+  PluginWorkbenchInlineContent,
   PluginWorkbenchReplyContent,
   PluginWorkbenchState,
 } from "./workbenchTypes";
@@ -55,12 +56,12 @@ interface PluginWorkbenchViewProps {
   onDownload: (id: string) => void;
 }
 
-function WorkbenchReplyAsset({
+function WorkbenchInlineAsset({
   pluginId,
   part,
 }: {
   pluginId: string;
-  part: Extract<PluginWorkbenchReplyContent, { type: "asset-image" }>;
+  part: Extract<PluginWorkbenchInlineContent, { type: "asset-image" }>;
 }) {
   const [url, setUrl] = useState<string>();
   const [failed, setFailed] = useState(false);
@@ -87,6 +88,21 @@ function WorkbenchReplyAsset({
   );
 }
 
+function WorkbenchInlineRemoteImage({
+  image,
+}: {
+  image: PluginWorkbenchImage;
+}) {
+  return (
+    <img
+      className="qx-reply-inline-asset"
+      src={image.url}
+      alt={image.alt || ""}
+      loading="lazy"
+    />
+  );
+}
+
 function WorkbenchReplyBody({
   pluginId,
   body,
@@ -97,11 +113,31 @@ function WorkbenchReplyBody({
   content?: PluginWorkbenchReplyContent[];
 }) {
   if (!content?.length) return body;
-  return content.map((part, index) => part.type === "text" ? (
-    <span key={`text-${index}`}>{part.text}</span>
-  ) : (
-    <WorkbenchReplyAsset key={`${part.assetPath}-${index}`} pluginId={pluginId} part={part} />
-  ));
+  return content.map((part, index) => {
+    if (part.type === "text") return <span key={`text-${index}`}>{part.text}</span>;
+    if (part.type === "asset-image") {
+      return <WorkbenchInlineAsset key={`${part.assetPath}-${index}`} pluginId={pluginId} part={part} />;
+    }
+    return <WorkbenchInlineRemoteImage key={`${part.image.url}-${index}`} image={part.image} />;
+  });
+}
+
+function WorkbenchInlineTextContent({
+  pluginId,
+  content,
+}: {
+  pluginId: string;
+  content: Array<Exclude<PluginWorkbenchInlineContent, { type: "image" }>>;
+}) {
+  return (
+    <p className="qx-host-workbench-body">
+      {content.map((part, index) => part.type === "text" ? (
+        <span key={`text-${index}`}>{part.text}</span>
+      ) : (
+        <WorkbenchInlineAsset key={`${part.assetPath}-${index}`} pluginId={pluginId} part={part} />
+      ))}
+    </p>
+  );
 }
 
 function toneClass(tone: string | undefined): string {
@@ -486,10 +522,19 @@ function WorkbenchDetail({
   const contentImages = detail.content
     ?.flatMap((block) => block.type === "image" ? [block.image] : [])
     || [];
-  const detailContent = detail.content?.length ? (
+  const inlineTextContent = detail.content?.filter((block): block is Exclude<PluginWorkbenchInlineContent, { type: "image" }> => block.type !== "image") || [];
+  const detailContent = detail.content?.length && contentImages.length === 0 ? (
+    <div className="qx-host-workbench-content">
+      <WorkbenchInlineTextContent pluginId={pluginId} content={inlineTextContent} />
+    </div>
+  ) : detail.content?.length ? (
     <div className="qx-host-workbench-content">
       {detail.content.map((block, index) => block.type === "text" ? (
         <p className="qx-host-workbench-body" key={`text-${index}`}>{block.text}</p>
+      ) : block.type === "asset-image" ? (
+        <p className="qx-host-workbench-body qx-host-workbench-inline-body" key={`asset-${block.assetPath}-${index}`}>
+          <WorkbenchInlineAsset pluginId={pluginId} part={block} />
+        </p>
       ) : (
         <WorkbenchDetailImage
           key={`image-${block.image.url}-${index}`}

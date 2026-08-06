@@ -146,7 +146,7 @@ manifest 启动命令、后台 interval 与宿主 reload 不得自动混入当�
 
 | 能力 | 根级服务 | 公共 IPC / 端口 |
 |---|---|---|
-| 显示器枚举与映射 | `display` | `display_list` / `src/system/display.ts` |
+| 显示器枚举、亮度与映射 | `display` + macOS `display_macos.m` | `display_list` / `display_brightness_list` / `display_brightness_set` / `src/system/display.ts` |
 | 顶层窗口清单与几何 | `desktop_windows` | `desktop_windows_list` / `src/system/desktopWindows.ts` |
 | 区域 still-frame / 录制降级抓帧 | `display::capture_region*` | 内部 API（工作流封装；Windows WGC still-frame 失败走 GDI，原生连续流失败后的高频轮询复用一个 GDI DC/DIB/RGBA session，避免逐帧重建 WGC/D3D 或 GDI 资源） |
 | 磁盘图写剪贴板 | `clipboard` | `clipboard_write_image_file` / `src/system/clipboard.ts` |

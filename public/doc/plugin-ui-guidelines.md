@@ -90,10 +90,11 @@ type WorkbenchStatus = {
 媒体查看器和回复列表呈现，插件不得复制 lightbox、缩放导航或评论 DOM。
 回复点赞数使用 `detail.replies.items[].likeCount` 发布，宿主将其显示在作者名右侧；
 不得把 `♥ 数量` 拼进回复正文。
-回复需要把包内小图与文字原位混排时，可同时发布纯文本 `body` 回退和有序
-`content[]`：文本使用 `{ type: "text", text }`，包内图片使用
+正文或回复需要把包内小图与文字原位混排时，可同时发布纯文本 `body` 回退和有序
+`content[]`。Workbench 对正文与回复使用同一个行内内容协议：文本使用
+`{ type: "text", text }`，远程行内图片使用 `{ type: "image", image }`，包内表情/贴纸使用
 `{ type: "asset-image", assetPath, alt }`。`assetPath` 必须是插件根目录内的相对路径，
-由宿主解析；行内图片采用紧凑正文尺寸，不进入媒体预览，缺失时显示 `alt`/正文回退。
+由宿主统一解析；行内图片采用紧凑正文尺寸，不进入媒体预览，缺失时显示 `alt`/正文回退。
 
 ### 2.1 数据图表
 

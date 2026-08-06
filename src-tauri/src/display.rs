@@ -25,6 +25,9 @@ struct CaptureMonitorCache {
 #[cfg(target_os = "macos")]
 static CAPTURE_MONITOR_CACHE: OnceLock<Mutex<Option<CaptureMonitorCache>>> = OnceLock::new();
 
+#[cfg(target_os = "macos")]
+static DISPLAY_CONTROL_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DisplayDescriptor {
@@ -40,6 +43,62 @@ pub struct DisplayDescriptor {
     pub edid_product_code: Option<u16>,
     pub is_primary: bool,
     pub is_builtin: bool,
+}
+
+/// A brightness target exposed by the shared display-control port.
+///
+/// `id` is intentionally opaque to callers: `native:<CGDirectDisplayID>` is
+/// backed by macOS DisplayServices, while `ddc:<CGDirectDisplayID>` is backed
+/// by Qx's embedded DDC/CI adapter. This keeps plugin code independent of OS
+/// display handles and external executables.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisplayBrightnessControl {
+    pub id: String,
+    pub name: String,
+    pub backend: String,
+    pub current: Option<u8>,
+    pub max: u8,
+    pub is_builtin: bool,
+    pub supported: bool,
+    pub error: Option<String>,
+}
+
+#[cfg(target_os = "macos")]
+#[repr(C)]
+struct MacDdcDisplay {
+    id: u32,
+    current: u16,
+    max: u16,
+    name: [std::os::raw::c_char; 256],
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn qx_native_display_brightness(display: u32, out: *mut u16) -> i32;
+    fn qx_native_set_display_brightness(display: u32, value: u16) -> i32;
+    fn qx_ddc_list(out: *mut MacDdcDisplay, capacity: usize) -> usize;
+    fn qx_ddc_set(display: u32, value: u16) -> i32;
+}
+
+#[cfg(target_os = "macos")]
+fn mac_string(value: &[std::os::raw::c_char]) -> String {
+    let bytes = value
+        .iter()
+        .take_while(|byte| **byte != 0)
+        .map(|byte| *byte as u8)
+        .collect::<Vec<_>>();
+    String::from_utf8_lossy(&bytes).trim().to_string()
+}
+
+#[cfg(target_os = "macos")]
+fn native_target_id(display_id: u32) -> String {
+    format!("native:{display_id}")
+}
+
+#[cfg(target_os = "macos")]
+fn ddc_target_id(display_id: u32) -> String {
+    format!("ddc:{display_id}")
 }
 
 #[cfg(target_os = "windows")]
@@ -525,6 +584,166 @@ pub(crate) fn displays() -> Result<Vec<DisplayDescriptor>, String> {
 #[command]
 pub async fn display_list() -> Result<Vec<DisplayDescriptor>, String> {
     crate::runtime::blocking(displays)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[cfg(target_os = "macos")]
+fn brightness_controls() -> Result<Vec<DisplayBrightnessControl>, String> {
+    let _guard = DISPLAY_CONTROL_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| "display control lock poisoned".to_string())?;
+    let inventory = displays()?;
+    let mut controls = Vec::with_capacity(inventory.len());
+
+    // Built-in panels use the same private DisplayServices channel as Apple's
+    // brightness UI. This is hardware/native brightness, not a WebView shade.
+    for display in inventory.iter().filter(|display| display.is_builtin) {
+        let mut current = 0_u16;
+        let status = unsafe { qx_native_display_brightness(display.id, &mut current) };
+        controls.push(DisplayBrightnessControl {
+            id: native_target_id(display.id),
+            name: display.name.clone(),
+            backend: "native".to_string(),
+            current: (status == 0).then_some(current.min(100) as u8),
+            max: 100,
+            is_builtin: true,
+            supported: status == 0,
+            error: (status != 0)
+                .then(|| format!("macOS native brightness is unavailable (status {status})")),
+        });
+    }
+
+    // Qx embeds the small DDC/CI transport and returns display IDs matching
+    // the shared xcap/CoreGraphics inventory. No m1ddc/ddcctl process or
+    // Homebrew installation is involved.
+    let mut ddc_displays = (0..32)
+        .map(|_| MacDdcDisplay {
+            id: 0,
+            current: 0,
+            max: 0,
+            name: [0; 256],
+        })
+        .collect::<Vec<_>>();
+    let ddc_count = unsafe { qx_ddc_list(ddc_displays.as_mut_ptr(), ddc_displays.len()) };
+    for display in inventory.iter().filter(|display| !display.is_builtin) {
+        if let Some(ddc) = ddc_displays
+            .iter()
+            .take(ddc_count.min(ddc_displays.len()))
+            .find(|ddc| ddc.id == display.id)
+        {
+            let max = ddc.max.max(1);
+            controls.push(DisplayBrightnessControl {
+                id: ddc_target_id(display.id),
+                name: if mac_string(&ddc.name).is_empty() {
+                    display.name.clone()
+                } else {
+                    mac_string(&ddc.name)
+                },
+                backend: "ddc".to_string(),
+                current: Some(((ddc.current as f32 / max as f32) * 100.0).round() as u8),
+                max: 100,
+                is_builtin: false,
+                supported: true,
+                error: None,
+            });
+        } else {
+            controls.push(DisplayBrightnessControl {
+                id: format!("unavailable:{}", display.id),
+                name: display.name.clone(),
+                backend: "ddc".to_string(),
+                current: None,
+                max: 100,
+                is_builtin: false,
+                supported: false,
+                error: Some(
+                    "Display does not expose a readable DDC/CI brightness control".to_string(),
+                ),
+            });
+        }
+    }
+
+    Ok(controls)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn brightness_controls() -> Result<Vec<DisplayBrightnessControl>, String> {
+    Ok(Vec::new())
+}
+
+#[tauri::command]
+pub async fn display_brightness_list() -> Result<Vec<DisplayBrightnessControl>, String> {
+    crate::runtime::blocking(brightness_controls)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[cfg(target_os = "macos")]
+fn set_brightness(display_id: String, value: u8) -> Result<(), String> {
+    let _guard = DISPLAY_CONTROL_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| "display control lock poisoned".to_string())?;
+    let value = value.min(100);
+    if let Some(raw_id) = display_id.strip_prefix("native:") {
+        let id = raw_id
+            .parse::<u32>()
+            .map_err(|_| "Invalid native display target".to_string())?;
+        let display = displays()?
+            .into_iter()
+            .find(|display| display.id == id && display.is_builtin)
+            .ok_or_else(|| "The selected native display is no longer available".to_string())?;
+        let status = unsafe { qx_native_set_display_brightness(display.id, value as u16) };
+        if status != 0 {
+            return Err(format!(
+                "macOS native brightness write failed (status {status})"
+            ));
+        }
+        return Ok(());
+    }
+
+    if let Some(raw_id) = display_id.strip_prefix("ddc:") {
+        let id = raw_id
+            .parse::<u32>()
+            .map_err(|_| "Invalid DDC display target".to_string())?;
+        let display = displays()?
+            .into_iter()
+            .find(|display| display.id == id && !display.is_builtin)
+            .ok_or_else(|| "The selected DDC display is no longer available".to_string())?;
+        let mut ddc_displays = (0..32)
+            .map(|_| MacDdcDisplay {
+                id: 0,
+                current: 0,
+                max: 0,
+                name: [0; 256],
+            })
+            .collect::<Vec<_>>();
+        let count = unsafe { qx_ddc_list(ddc_displays.as_mut_ptr(), ddc_displays.len()) };
+        let ddc = ddc_displays
+            .iter()
+            .take(count.min(ddc_displays.len()))
+            .find(|ddc| ddc.id == display.id)
+            .ok_or_else(|| "The selected display does not expose DDC/CI brightness".to_string())?;
+        let raw_value = ((value as u32 * ddc.max.max(1) as u32 + 50) / 100) as u16;
+        let status = unsafe { qx_ddc_set(display.id, raw_value) };
+        if status != 0 {
+            return Err(format!("DDC/CI brightness write failed (status {status})"));
+        }
+        return Ok(());
+    }
+
+    Err("Unknown display brightness target".to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_brightness(_display_id: String, _value: u8) -> Result<(), String> {
+    Err("Display brightness control is currently supported on macOS only".to_string())
+}
+
+#[tauri::command]
+pub async fn display_brightness_set(display_id: String, value: u8) -> Result<(), String> {
+    crate::runtime::blocking(move || set_brightness(display_id, value))
         .await
         .map_err(|error| error.to_string())?
 }

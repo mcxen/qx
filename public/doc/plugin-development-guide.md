@@ -72,6 +72,11 @@ Bottom Bar 或 Enter handler。
 - 运行时与权限边界：[`plugin-system.md`](./plugin-system.md)
 - 内置 React 端口和插件端口映射：[`docs/module-port-inventory.md`](../../docs/module-port-inventory.md)
 
+显示器亮度插件应使用 `context.system.displayBrightness()` 读取 Qx 提供的内置屏和
+外接 DDC/CI 目标，并使用 `context.system.setDisplayBrightness(id, value)` 写入 0–100
+亮度。由于该端口位于 `context.system`，manifest 还需声明 `system`，并添加精确写权限
+`invoke:display_brightness_set`；插件不得安装、启动或解析 m1ddc/ddcctl 等外部工具。
+
 ## 3. 最小插件
 
 推荐源码结构：

@@ -757,8 +757,8 @@ const zh: Record<string, string> = {
   // First-party marketplace plugin titles/descriptions (Settings → Extensions).
   "plugins.ext.brew.name": "Homebrew",
   "plugins.ext.brew.desc": "管理 Homebrew 软件包（macOS）。",
-  "plugins.ext.external-display-control.name": "外接显示器控制",
-  "plugins.ext.external-display-control.desc": "调节外接显示器亮度。",
+  "plugins.ext.external-display-control.name": "显示器亮度",
+  "plugins.ext.external-display-control.desc": "调节内置和外接显示器亮度。",
   "plugins.ext.pomodoro-island.name": "番茄钟灵动岛",
   "plugins.ext.pomodoro-island.desc": "专注计时与休息提醒。",
   "plugins.ext.raycast-calendar.name": "快捷日历",

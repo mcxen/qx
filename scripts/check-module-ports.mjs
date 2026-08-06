@@ -642,8 +642,7 @@ for (const marketSrc of marketRoots) {
       }
     }
     const macOnlyCommands = invokeCommands.filter((command) =>
-      command === "plugin_run_applescript"
-      || command.startsWith("qx_external_displays_"));
+      command === "plugin_run_applescript");
     if (macOnlyCommands.length
         && (platforms.length !== 1 || platforms[0] !== "macos")) {
       fail(
