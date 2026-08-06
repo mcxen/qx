@@ -44,7 +44,7 @@ openh264 = "0.9.7"
 mp4 = "0.14"
 bytes = "1"
 zip = "2"
-rdev = "0.5"
+rdev = { version = "0.5", features = ["unstable_grab"] }
 enigo = { version = "0.2", features = ["wayland"] }
 ed25519-dalek = { version = "2", features = ["alloc"] }
 hex = "0.4"

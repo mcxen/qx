@@ -90,7 +90,7 @@ const zh: Record<string, string> = {
   "settings.navGroup.modules": "模块",
   "settings.navGroup.system": "系统",
 
-  "shortcuts.hint": "全局快捷键在 Qx 后台运行时也生效。点击录入时会暂时停用已注册快捷键，便于重绑；冲突时会提示，不会静默覆盖。默认启用「切换当前窗口」；Launcher 搜索与模块快捷键需手动开启。",
+  "shortcuts.hint": "全局快捷键在 Qx 后台运行时也生效。点击录入时会暂时停用已注册快捷键，便于重绑；冲突时会提示，不会静默覆盖。macOS 可绑定 Cmd+Space 接管 Spotlight（需要辅助功能/输入监控权限）。默认启用「切换当前窗口」；Launcher 搜索与模块快捷键需手动开启。",
   "shortcuts.group.global": "全局",
   "shortcuts.group.clipboard": "剪贴板",
   "shortcuts.group.rss": "RSS",
@@ -134,7 +134,7 @@ const zh: Record<string, string> = {
   "shortcuts.on": "开",
   "shortcuts.off": "关",
   "shortcuts.reset": "恢复默认快捷键",
-  "shortcuts.issue.reserved": "该快捷键已被操作系统保留（例如 Cmd/Ctrl+Space）。",
+  "shortcuts.issue.reserved": "该快捷键已被操作系统保留（例如 Windows 的 Ctrl+Space）。",
   "shortcuts.issue.invalid": "无效的快捷键。",
   "shortcuts.issue.conflict": "该快捷键已被另一个全局动作使用。",
   "shortcuts.extension.title": "快捷键",

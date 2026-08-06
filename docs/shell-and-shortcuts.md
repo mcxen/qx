@@ -154,6 +154,14 @@ else                                   → show_and_navigate(route)
    - `app_shortcuts` 启动本机 App（不走 toggle_route）
 3. 仅 `ShortcutState::Pressed` 触发一次
 
+macOS 的 `Cmd+Space` 是唯一的系统保留例外：设置页允许录入它，注册时由
+`settings/macos_shortcut_override.rs` 使用窄范围的 CoreGraphics event tap 在
+Spotlight 之前消费精确的 `Cmd+Space`，然后调用同一个 Qx 动作回调。该适配器不
+记录或转发其他键，也不改变普通快捷键的 Tauri 注册路径。它需要用户在 macOS
+“系统设置 → 隐私与安全性 → 辅助功能 / 输入监控”中允许 Qx；没有权限时 Qx
+继续运行，并在诊断日志中记录接管失败。Windows 的 `Ctrl+Space` 仍按系统保留
+快捷键处理。
+
 应用启动快捷键可在 **设置 → 快捷键 → 应用启动** 用「添加应用」打开可搜索 Popover
 （`search_apps`）选择本机 App 后录制；也可在启动器结果右键录制。绑定键存
 `settings.app_shortcuts`（id 形如 `app:<path>`）。添加/录制全程留在 Settings，

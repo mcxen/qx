@@ -1,9 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use tauri::{command, AppHandle};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
+use super::macos_shortcut_override::{self, CmdSpaceHandler};
 use super::{read_settings, Settings, ShortcutBinding};
 
 /// While ShortcutRecorder is open, OS global hotkeys must not fire.
@@ -190,6 +192,39 @@ pub(super) fn portable_shortcut_key(key: &str) -> String {
         .join("+")
 }
 
+#[cfg(target_os = "macos")]
+fn is_macos_cmd_space(key: &str) -> bool {
+    portable_shortcut_key(key).eq_ignore_ascii_case("CmdOrCtrl+Space")
+}
+
+#[cfg(not(target_os = "macos"))]
+fn is_macos_cmd_space(_key: &str) -> bool {
+    false
+}
+
+/// Register through Qx's one global-shortcut port. Cmd+Space is a macOS
+/// system chord, so it uses the narrow native override adapter instead of
+/// competing with Spotlight through RegisterEventHotKey.
+fn register_shortcut<F>(app: &AppHandle, key: &str, callback: F) -> Result<(), String>
+where
+    F: Fn(AppHandle) + Send + Sync + 'static,
+{
+    if is_macos_cmd_space(key) {
+        let app = app.clone();
+        let handler: CmdSpaceHandler = Arc::new(move || callback(app.clone()));
+        return macos_shortcut_override::set_handler(Some(handler));
+    }
+
+    let callback = Arc::new(callback);
+    app.global_shortcut()
+        .on_shortcut(key, move |app, _shortcut, event| {
+            if event.state() == ShortcutState::Pressed {
+                callback(app.clone());
+            }
+        })
+        .map_err(|error| error.to_string())
+}
+
 fn toggle_route(app: &AppHandle, route: &str) {
     crate::floating_panel::toggle_route(app, route);
 }
@@ -205,6 +240,7 @@ pub fn shortcuts_pause_global(app: AppHandle) -> Result<(), String> {
     GLOBAL_SHORTCUTS_PAUSED.store(true, Ordering::SeqCst);
     if depth == 1 {
         let _ = app.global_shortcut().unregister_all();
+        let _ = macos_shortcut_override::set_handler(None);
     }
     Ok(())
 }
@@ -228,6 +264,7 @@ pub fn shortcuts_resume_global(app: AppHandle) -> Result<(), String> {
 pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result<(), String> {
     let gs = app.global_shortcut();
     let _ = gs.unregister_all();
+    macos_shortcut_override::set_handler(None)?;
     if global_shortcuts_are_paused() {
         // Settings are saved while recording; apply OS bindings on resume.
         return Ok(());
@@ -251,10 +288,8 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
     if let Some(key) = shortcut_for(settings, "toggle_launcher") {
         if collect_registration!(
             "register toggle_launcher shortcut",
-            gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-                if event.state() == ShortcutState::Pressed {
-                    crate::floating_panel::toggle_launcher(app);
-                }
+            register_shortcut(app, key.as_str(), move |app| {
+                crate::floating_panel::toggle_launcher(&app);
             })
         ) {
             registered.insert(key);
@@ -264,10 +299,8 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
     if let Some(key) = shortcut_for(settings, "toggle_window") {
         if collect_registration!(
             "register toggle_window shortcut",
-            gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-                if event.state() == ShortcutState::Pressed {
-                    crate::floating_panel::toggle(app);
-                }
+            register_shortcut(app, key.as_str(), move |app| {
+                crate::floating_panel::toggle(&app);
             })
         ) {
             registered.insert(key);
@@ -278,10 +311,8 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
     if let Some(key) = shortcut_for(settings, "clipboard") {
         if collect_registration!(
             "register clipboard shortcut",
-            gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-                if event.state() == ShortcutState::Pressed {
-                    toggle_route(app, "clipboard");
-                }
+            register_shortcut(app, key.as_str(), move |app| {
+                toggle_route(&app, "clipboard");
             })
         ) {
             registered.insert(key);
@@ -291,10 +322,8 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
     if let Some(key) = shortcut_for(settings, "rss") {
         if collect_registration!(
             "register rss shortcut",
-            gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-                if event.state() == ShortcutState::Pressed {
-                    toggle_route(app, "rss");
-                }
+            register_shortcut(app, key.as_str(), move |app| {
+                toggle_route(&app, "rss");
             })
         ) {
             registered.insert(key);
@@ -314,10 +343,8 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
             let action_id = action_id.to_string();
             if collect_registration!(
                 format!("register {shortcut_id} shortcut"),
-                gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        crate::tray_menu::handle_tray_action(app, &action_id);
-                    }
+                register_shortcut(app, key.as_str(), move |app| {
+                    crate::tray_menu::handle_tray_action(&app, &action_id);
                 })
             ) {
                 registered.insert(key);
@@ -329,10 +356,8 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
         if let Some(key) = shortcut_for(settings, "capture_screenshot") {
             if collect_registration!(
                 "register capture_screenshot shortcut",
-                gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        begin_capture_from_shortcut(app.clone(), "screenshot");
-                    }
+                register_shortcut(app, key.as_str(), move |app| {
+                    begin_capture_from_shortcut(app, "screenshot");
                 })
             ) {
                 registered.insert(key);
@@ -341,10 +366,8 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
         if let Some(key) = shortcut_for(settings, "recapture_last_region") {
             if collect_registration!(
                 "register recapture_last_region shortcut",
-                gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        recapture_last_region_from_shortcut(app.clone());
-                    }
+                register_shortcut(app, key.as_str(), move |app| {
+                    recapture_last_region_from_shortcut(app);
                 })
             ) {
                 registered.insert(key);
@@ -353,10 +376,8 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
         if let Some(key) = shortcut_for(settings, "record_gif") {
             if collect_registration!(
                 "register record_gif shortcut",
-                gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        begin_capture_from_shortcut(app.clone(), "recording");
-                    }
+                register_shortcut(app, key.as_str(), move |app| {
+                    begin_capture_from_shortcut(app, "recording");
                 })
             ) {
                 registered.insert(key);
@@ -365,10 +386,8 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
         if let Some(key) = shortcut_for(settings, "toggle_capture_controls") {
             if collect_registration!(
                 "register toggle_capture_controls shortcut",
-                gs.on_shortcut(key.as_str(), move |app, _shortcut, event| {
-                    if event.state() == ShortcutState::Pressed {
-                        let _ = crate::screencap::screencap_toggle_controls(app.clone());
-                    }
+                register_shortcut(app, key.as_str(), move |app| {
+                    let _ = crate::screencap::screencap_toggle_controls(app);
                 })
             ) {
                 registered.insert(key);
@@ -397,10 +416,8 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
         };
         collect_registration!(
             format!("register app shortcut {id}"),
-            gs.on_shortcut(key.as_str(), move |_app, _shortcut, event| {
-                if event.state() == ShortcutState::Pressed {
-                    let _ = crate::launch_app_path(&app_path);
-                }
+            register_shortcut(app, key.as_str(), move |_app| {
+                let _ = crate::launch_app_path(&app_path);
             })
         );
     }

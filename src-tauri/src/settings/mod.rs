@@ -7,6 +7,7 @@ use std::sync::{Mutex, OnceLock};
 use tauri::{command, AppHandle};
 
 mod entry_config;
+mod macos_shortcut_override;
 pub(crate) mod shortcuts;
 
 use entry_config::{
