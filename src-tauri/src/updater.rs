@@ -74,12 +74,13 @@ impl UpdateSource {
     }
 }
 
+/// Immediate ack for `qx_update_download_and_install`. Download/stage run on a
+/// background thread so the main UI invoke path is never held open.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct QxUpdateInstallResult {
-    pub version: String,
-    pub staged_app: String,
-    pub target_app: String,
-    pub helper_path: String,
+#[serde(rename_all = "camelCase")]
+pub struct QxUpdateStartResult {
+    pub started: bool,
+    pub already_running: bool,
     pub message: String,
 }
 
@@ -142,112 +143,167 @@ pub async fn qx_update_check(
 pub async fn qx_update_download_and_install(
     app: AppHandle,
     source: Option<String>,
-) -> Result<QxUpdateInstallResult, String> {
+) -> Result<QxUpdateStartResult, String> {
+    // Download/stage must not hold this invoke or freeze the main UI. Only the
+    // late helper-install path quits the host (after the job is ready).
+    if !progress::try_begin_job() {
+        return Ok(QxUpdateStartResult {
+            started: false,
+            already_running: true,
+            message: "An update is already in progress.".to_string(),
+        });
+    }
+
     let current = app.package_info().version.to_string();
-    // Open the progress surface before the blocking work so users always see a
-    // waiting state, even when the launcher itself is hidden (auto-update).
-    let reporter = progress::show_window(&app, None)
-        .map_err(|error| format!("update progress window: {error}"))?;
+    // Open the progress surface on the async command path (UI thread) before
+    // detaching work, so users always see a waiting state.
+    let reporter = match progress::show_window(&app, None) {
+        Ok(reporter) => reporter,
+        Err(error) => {
+            progress::end_job();
+            return Err(format!("update progress window: {error}"));
+        }
+    };
     reporter.emit_phase("checking", "Checking for the latest release…");
 
+    progress::clear_pending_install();
     let app_for_work = app.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        progress::ensure_not_cancelled()?;
-        let update = check_for_update(&current, UpdateSource::parse(source.as_deref()))?;
-        progress::ensure_not_cancelled()?;
-        if !update.available {
-            return Err("Qx is already on the latest version.".to_string());
-        }
-        if !update.can_install {
-            return Err(update
-                .install_reason
-                .unwrap_or_else(|| "This update is not installable automatically.".to_string()));
-        }
-
-        let asset_url = update
-            .asset_url
-            .clone()
-            .ok_or_else(|| "update asset URL missing".to_string())?;
-        let expected_sha = update
-            .sha256
-            .clone()
-            .ok_or_else(|| "update SHA256 missing".to_string())?;
-        let latest_version = update
-            .latest_version
-            .clone()
-            .ok_or_else(|| "latest version missing".to_string())?;
-
-        // Window was opened on the UI thread before this task; only emit
-        // progress from the worker so we never create WebViews off-main.
-        let reporter = ProgressReporter::new(app_for_work.clone(), Some(latest_version.clone()));
-        reporter.emit_phase(
-            "preparing",
-            &format!("Preparing update to v{latest_version}…"),
-        );
-        progress::ensure_not_cancelled()?;
-
-        let plan = prepare_install(
-            &app_for_work,
-            &reporter,
-            &latest_version,
-            &asset_url,
-            &expected_sha,
-            update.size,
-        )?;
-
-        // After helper spawn, cancel is intentionally ignored — the process will
-        // quit and the helper owns the rest of the install.
-        reporter.emit_phase(
-            "installing",
-            "Installing update… Qx will quit and relaunch.",
-        );
-
-        Ok(QxUpdateInstallResult {
-            version: latest_version,
-            staged_app: plan.payload.display().to_string(),
-            target_app: plan.target.display().to_string(),
-            helper_path: plan.helper.display().to_string(),
-            message: plan.message,
-        })
-    })
-    .await
-    .map_err(|e| format!("update install task failed: {e}"))?;
-
-    let result = match result {
-        Ok(value) => value,
-        Err(error) => {
-            // Soft outcomes close the sheet; hard failures keep an error state
-            // with Close; user cancel is also soft (sheet closes).
-            let soft = error.contains("already on the latest") || progress::is_cancel_error(&error);
-            if soft {
-                let _ = progress::hide_window(&app);
-                if progress::is_cancel_error(&error) {
-                    // Drop partial zips/helpers so a cancelled offline attempt
-                    // does not leave stale cache clutter.
-                    prune_update_cache(None);
+    std::thread::Builder::new()
+        .name("qx-update-download".to_string())
+        .spawn(move || {
+            let outcome = run_download_and_stage(&app_for_work, &current, source.as_deref());
+            match outcome {
+                Ok(staged) => {
+                    progress::set_pending_install(progress::PendingInstall {
+                        version: staged.version.clone(),
+                        payload: staged.payload,
+                        target: staged.target,
+                    });
+                    let reporter =
+                        ProgressReporter::new(app_for_work.clone(), Some(staged.version.clone()));
+                    // Stop here: user must click Install & Restart.
+                    reporter.emit_ready(&staged.message);
+                    progress::clear_cancel();
                 }
-            } else {
-                let reporter = ProgressReporter::new(app.clone(), None);
-                reporter.emit_error(&error);
+                Err(error) => {
+                    progress::clear_pending_install();
+                    let soft = error.contains("already on the latest")
+                        || progress::is_cancel_error(&error);
+                    if soft {
+                        let _ = progress::hide_window(&app_for_work);
+                        if progress::is_cancel_error(&error) {
+                            prune_update_cache(None);
+                        }
+                    } else {
+                        let reporter = ProgressReporter::new(app_for_work.clone(), None);
+                        reporter.emit_error(&error);
+                    }
+                    progress::clear_cancel();
+                }
             }
-            progress::clear_cancel();
+            progress::end_job();
+        })
+        .map_err(|error| {
+            progress::end_job();
+            format!("spawn update job: {error}")
+        })?;
+
+    Ok(QxUpdateStartResult {
+        started: true,
+        already_running: false,
+        message: "Download started. Keep using Qx; when ready, click Install & Restart in the progress window."
+            .to_string(),
+    })
+}
+
+/// Blocking download + verify/stage only (no helper, no quit).
+fn run_download_and_stage(
+    app: &AppHandle,
+    current: &str,
+    source: Option<&str>,
+) -> Result<StagedUpdate, String> {
+    progress::ensure_not_cancelled()?;
+    let update = check_for_update(current, UpdateSource::parse(source))?;
+    progress::ensure_not_cancelled()?;
+    if !update.available {
+        return Err("Qx is already on the latest version.".to_string());
+    }
+    if !update.can_install {
+        return Err(update
+            .install_reason
+            .unwrap_or_else(|| "This update is not installable automatically.".to_string()));
+    }
+
+    let asset_url = update
+        .asset_url
+        .clone()
+        .ok_or_else(|| "update asset URL missing".to_string())?;
+    let expected_sha = update
+        .sha256
+        .clone()
+        .ok_or_else(|| "update SHA256 missing".to_string())?;
+    let latest_version = update
+        .latest_version
+        .clone()
+        .ok_or_else(|| "latest version missing".to_string())?;
+
+    let reporter = ProgressReporter::new(app.clone(), Some(latest_version.clone()));
+    reporter.emit_phase(
+        "preparing",
+        &format!("Preparing update to v{latest_version}…"),
+    );
+    progress::ensure_not_cancelled()?;
+
+    stage_update(
+        &reporter,
+        &latest_version,
+        &asset_url,
+        &expected_sha,
+        update.size,
+    )
+}
+
+/// User clicked Install & Restart: spawn helper then quit. Main app stays usable until then.
+#[tauri::command]
+pub async fn qx_update_apply_and_restart(app: AppHandle) -> Result<(), String> {
+    let pending = progress::take_pending_install()
+        .ok_or_else(|| "No staged update is ready to install.".to_string())?;
+    let version = pending.version.clone();
+    let reporter = ProgressReporter::new(app.clone(), Some(version.clone()));
+    reporter.emit_phase(
+        "installing",
+        "Installing update… Qx will quit and relaunch.",
+    );
+
+    // Windows: helper copy + short poll is blocking disk/IO. macOS: codesign
+    // prep is also blocking. Never hold the async runtime core for this.
+    let pending_for_spawn = pending.clone();
+    let spawn_result = tokio::task::spawn_blocking(move || spawn_install_helper(&pending_for_spawn))
+        .await
+        .map_err(|error| format!("update apply task failed: {error}"))?;
+
+    let helper = match spawn_result {
+        Ok(path) => path,
+        Err(error) => {
+            // Put pending back so the user can retry after fixing the error
+            // (e.g. Windows AV locking the helper copy, or codesign failure).
+            progress::set_pending_install(pending);
+            let reporter = ProgressReporter::new(app.clone(), Some(version));
+            reporter.emit_error(&error);
             return Err(error);
         }
     };
+    let _ = helper;
 
-    let reporter = ProgressReporter::new(app.clone(), Some(result.version.clone()));
     reporter.emit_phase("restarting", "Update ready. Restarting Qx…");
-
-    // Helper is already spawned and waiting on this PID. Must force-quit so
-    // macOS double-⌘Q confirmation does not intercept ExitRequested and leave
-    // the process alive (helper would then time out after ~90s).
+    // Helper is already waiting on this PID. Quit promptly so Windows elevated
+    // installer / macOS ditto can proceed without the 90s wait timeout.
     let app_for_exit = app.clone();
     std::thread::spawn(move || {
         std::thread::sleep(Duration::from_millis(450));
         crate::app_quit::force_quit(&app_for_exit);
     });
-
-    Ok(result)
+    Ok(())
 }
 
 #[tauri::command]
@@ -636,22 +692,22 @@ fn download_http_client() -> Result<reqwest::blocking::Client, String> {
     .map_err(|e| format!("build update download HTTP client: {e}"))
 }
 
-struct InstallPlan {
+/// Download + verify only. Helper spawn waits for `qx_update_apply_and_restart`.
+struct StagedUpdate {
     payload: PathBuf,
     target: PathBuf,
-    helper: PathBuf,
+    version: String,
     message: String,
 }
 
 #[cfg(target_os = "macos")]
-fn prepare_install(
-    _app: &AppHandle,
+fn stage_update(
     reporter: &ProgressReporter,
     version: &str,
     asset_url: &str,
     expected_sha256: &str,
     expected_size: Option<u64>,
-) -> Result<InstallPlan, String> {
+) -> Result<StagedUpdate, String> {
     progress::ensure_not_cancelled()?;
     let target = current_app_bundle()?;
     let payload = download_and_stage(reporter, version, asset_url, expected_sha256, expected_size)?;
@@ -659,37 +715,49 @@ fn prepare_install(
     reporter.emit_phase("verifying", "Verifying staged app bundle…");
     validate_staged_app(&payload, &target, version)?;
     progress::ensure_not_cancelled()?;
-    reporter.emit_phase("installing", "Preparing install helper…");
-    let helper = spawn_update_helper(&payload, &target, version)?;
-    Ok(InstallPlan {
+    Ok(StagedUpdate {
         payload,
         target,
-        helper,
-        message: "Update staged. Qx will quit, replace the app bundle, and relaunch.".to_string(),
+        version: version.to_string(),
+        message: "Update ready. Click Install & Restart when you want Qx to quit and apply it."
+            .to_string(),
     })
 }
 
 #[cfg(target_os = "windows")]
-fn prepare_install(
-    _app: &AppHandle,
+fn stage_update(
     reporter: &ProgressReporter,
     version: &str,
     asset_url: &str,
     expected_sha256: &str,
     expected_size: Option<u64>,
-) -> Result<InstallPlan, String> {
-    windows::prepare_install(reporter, version, asset_url, expected_sha256, expected_size)
+) -> Result<StagedUpdate, String> {
+    windows::stage_update(reporter, version, asset_url, expected_sha256, expected_size)
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn prepare_install(
-    _app: &AppHandle,
+fn stage_update(
     _reporter: &ProgressReporter,
     _version: &str,
     _asset_url: &str,
     _expected_sha256: &str,
     _expected_size: Option<u64>,
-) -> Result<InstallPlan, String> {
+) -> Result<StagedUpdate, String> {
+    Err("Automatic updates are not supported on this platform.".to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn spawn_install_helper(staged: &progress::PendingInstall) -> Result<PathBuf, String> {
+    spawn_update_helper(&staged.payload, &staged.target, &staged.version)
+}
+
+#[cfg(target_os = "windows")]
+fn spawn_install_helper(staged: &progress::PendingInstall) -> Result<PathBuf, String> {
+    windows::spawn_install_helper(&staged.payload, &staged.target, &staged.version)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn spawn_install_helper(_staged: &progress::PendingInstall) -> Result<PathBuf, String> {
     Err("Automatic updates are not supported on this platform.".to_string())
 }
 

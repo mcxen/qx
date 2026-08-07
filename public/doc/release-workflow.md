@@ -301,11 +301,12 @@ only after NSIS exits successfully. Do not bypass the existing NSIS hooks: they
 stop only Qx's private Everything instance and protect in-place replacement from
 Windows file locks.
 
-While `qx_update_download_and_install` runs, Qx opens a dedicated always-on-top
-**update-progress** window on both macOS and Windows. Download reports byte
-progress; extract / verify / helper install show an indeterminate waiting bar so
-the user always has a visible state until Qx quits to finish the swap (or until
-an error leaves a dismissible failure state).
+`qx_update_download_and_install` only starts a background download/stage job and
+returns immediately so the main app stays interactive. When the package is
+ready, the always-on-top **update-progress** window (non-activating) shows
+**Install & Restart**. Only `qx_update_apply_and_restart` spawns the helper and
+quits Qx. The window label must stay in `src-tauri/capabilities/default.json`;
+the UI also polls `qx_update_progress_snapshot` as a progress fallback.
 
 ## Dirty Files After Push
 

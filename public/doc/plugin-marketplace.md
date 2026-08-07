@@ -184,9 +184,37 @@ Qx 可配置官方源、镜像源或自托管索引。一个源可以填写：
 - 市场安装：读取索引并显示权限与兼容信息。
 - 本地文件：选择 `.qx-plugin`，走同一验证路径。
 - URL 安装：下载后走同一验证路径。
+- **浏览器一键安装（deep link）**：网页通过自定义协议唤起 Qx，用户确认后走同一
+  URL 安装路径。
 - 开发目录：仅用于开发者模式，支持 Reload Panel。
 - Raycast 导入：仅用于冻结转换器的历史实验，见
   [`raycast-plugin-conversion.md`](./raycast-plugin-conversion.md)。
+
+### 6.1 浏览器 deep link
+
+安装后的 Qx 注册自定义 scheme `qx://`（macOS `Info.plist` / Windows·Linux 运行时
+注册）。商店页或任意网页可用：
+
+```text
+qx://plugins/install?url=https://raw.githubusercontent.com/mcxen/qx-plugins/main/brew.qx-plugin
+qx://plugins/install?id=brew
+qx://plugins/install?id=brew&index=https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json
+```
+
+短别名：`qx://install?url=…`、`qx://install-plugin?url=…`。
+
+约束：
+
+- `url` 必须是 **https** 包地址；Qx 仍执行包结构、兼容版本、权限与摘要校验。
+- `id` 从当前已配置市场源的 `index.json` 解析 `download_url`。
+- 安装前弹确认框（含权限列表，若索引中有）；取消不下载。
+- 成功后打开 **设置 → 扩展** 并聚焦该插件。
+
+本地调试（macOS，需已安装或 `tauri dev` 注册协议后）：
+
+```bash
+open 'qx://plugins/install?id=weather'
+```
 
 升级应保留兼容的 preferences 与持久数据。卸载是否清理数据必须是显式用户选择。
 

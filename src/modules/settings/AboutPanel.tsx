@@ -24,11 +24,10 @@ interface QxUpdateInfo {
   source: string;
 }
 
-interface QxUpdateInstallResult {
-  version: string;
-  staged_app: string;
-  target_app: string;
-  helper_path: string;
+/** Immediate ack — download runs in the background until install/restart. */
+interface QxUpdateStartResult {
+  started: boolean;
+  alreadyRunning: boolean;
   message: string;
 }
 
@@ -106,13 +105,23 @@ export default function AboutPanel() {
   };
 
   const handleInstallUpdate = async () => {
+    // Do not hold Settings/About open on a long invoke — download must not
+    // freeze the main app. Progress lives in the floating update window.
     setInstalling(true);
     setStatus("");
     try {
-      const result = await invoke<QxUpdateInstallResult>("qx_update_download_and_install", {
+      const result = await invoke<QxUpdateStartResult>("qx_update_download_and_install", {
         source: updateSource,
       });
-      setStatus(result.message);
+      setStatus(
+        result.message
+          || (result.alreadyRunning
+            ? t("about.updateAlreadyRunning", "An update is already in progress.")
+            : t(
+              "about.updateStarted",
+              "Download started. Keep using Qx — when ready, click Install & Restart in the progress window.",
+            )),
+      );
     } catch (e) {
       setStatus(
         t("about.installFailed", "Update install failed: {message}").replace("{message}", String(e)),
@@ -163,7 +172,10 @@ export default function AboutPanel() {
           title={t("about.checkUpdates", "Check for Updates")}
           description={
             updateInfo?.available && updateInfo.can_install
-              ? t("about.checkUpdates.ready", "Download {name} and restart Qx.").replace(
+              ? t(
+                "about.checkUpdates.ready",
+                "Download {name}, then Install & Restart when you are ready.",
+              ).replace(
                 "{name}",
                 updateInfo.asset_name ?? t("about.latestRelease", "the latest release"),
               )
@@ -188,7 +200,7 @@ export default function AboutPanel() {
               >
                 {installing
                   ? t("about.downloading", "Downloading...")
-                  : t("about.downloadInstall", "Download & Install")}
+                  : t("about.downloadUpdate", "Download Update")}
               </button>
             )}
           </div>

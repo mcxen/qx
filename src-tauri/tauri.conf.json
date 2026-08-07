@@ -80,5 +80,12 @@
         "installerHooks": "./windows/hooks.nsh"
       }
     }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["qx"]
+      }
+    }
   }
 }

@@ -8,13 +8,13 @@ use windows_sys::Win32::System::Threading::{
 use windows_sys::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW};
 use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
-pub(super) fn prepare_install(
+pub(super) fn stage_update(
     reporter: &ProgressReporter,
     version: &str,
     asset_url: &str,
     expected_sha256: &str,
     expected_size: Option<u64>,
-) -> Result<InstallPlan, String> {
+) -> Result<super::StagedUpdate, String> {
     super::progress::ensure_not_cancelled()?;
     prune_update_cache(Some(version));
     let update_dir = update_cache_dir().join(version);
@@ -32,19 +32,30 @@ pub(super) fn prepare_install(
     reporter.emit_phase("verifying", "Verifying Windows installer…");
     validate_installer(&payload)?;
     super::progress::ensure_not_cancelled()?;
-    reporter.emit_phase("installing", "Preparing Windows install helper…");
     let target = std::env::current_exe().map_err(|e| format!("resolve current exe: {e}"))?;
-    let helper = spawn_helper(&payload, &target, version)?;
-    Ok(InstallPlan {
+    Ok(super::StagedUpdate {
         payload,
         target,
-        helper,
-        message: "Update downloaded. Qx will quit, install the update, and relaunch. Windows may ask for administrator approval.".to_string(),
+        version: version.to_string(),
+        message: "Update ready. Click Install & Restart when you want Qx to quit and apply it. Windows may ask for administrator approval.".to_string(),
     })
 }
 
+pub(super) fn spawn_install_helper(
+    installer: &std::path::Path,
+    target_exe: &std::path::Path,
+    version: &str,
+) -> Result<PathBuf, String> {
+    spawn_helper(installer, target_exe, version)
+}
+
 fn validate_installer(installer: &Path) -> Result<(), String> {
-    if installer.extension().and_then(|value| value.to_str()) != Some("exe") {
+    // Windows paths may use .EXE / .Exe; never reject a valid NSIS payload on case.
+    let is_exe = installer
+        .extension()
+        .and_then(|value| value.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"));
+    if !is_exe {
         return Err("Windows update asset is not an .exe installer".to_string());
     }
     let mut file = fs::File::open(installer)

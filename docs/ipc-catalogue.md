@@ -256,7 +256,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `plugin_ai_memory_delete`, `plugin_http_fetch`, `plugin_notification_show`, `plugin_resolve_asset`,
 `qx_permissions_status`, `qx_permissions_request`, `qx_permissions_request_all`,
 `qx_permissions_open_settings`, `qx_onboarding_platform`, `qx_update_check`, `qx_update_download_and_install`,
-`qx_update_progress_snapshot`, `qx_update_progress_close`, `qx_update_progress_cancel`, `download_ocr_model`,
+`qx_update_apply_and_restart`, `qx_update_progress_snapshot`, `qx_update_progress_close`, `qx_update_progress_cancel`, `download_ocr_model`,
 `check_ocr_models`, `ocr_recognize_path`, `ocr_recognize_clipboard_image`, `ocr_list_history`,
 `ocr_delete_history`, `ocr_clear_history`, `ocr_copy_result_text`, `ocr_status`, `clipboard_ocr_pending`,
 `macro_start_recording`, `macro_stop_recording`, `macro_save`, `macro_list`, `macro_delete`, `macro_play`,

@@ -28,6 +28,20 @@ html.qx-update-progress-page body,
   backdrop-filter: blur(22px) saturate(1.2);
   -webkit-backdrop-filter: blur(22px) saturate(1.2);
   user-select: none;
+  /* Explicit startDragging owns move; avoid competing CSS drag regions. */
+  -webkit-app-region: no-drag;
+  cursor: grab;
+  touch-action: none;
+}
+
+.qx-update-progress:active {
+  cursor: grabbing;
+}
+
+.qx-update-progress-actions,
+.qx-update-progress-actions button {
+  cursor: pointer;
+  -webkit-app-region: no-drag;
 }
 
 .qx-update-progress[data-error="true"] {
@@ -120,6 +134,18 @@ html.qx-update-progress-page body,
   height: 26px;
   padding: 0 10px;
   font-size: 11px;
+}
+
+.qx-update-progress-footer .qx-command-button.primary {
+  background: color-mix(in srgb, var(--qx-accent, #6ea8fe) 88%, #fff);
+  color: #0b1220;
+  border-color: transparent;
+  font-weight: 650;
+}
+
+.qx-update-progress[data-ready="true"] .qx-update-progress-fill {
+  width: 100%;
+  animation: none;
 }
 
 @keyframes qx-update-progress-slide {

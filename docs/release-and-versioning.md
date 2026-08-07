@@ -47,12 +47,16 @@ Qx 使用自定义跨平台 helper 更新，不依赖 Tauri signed updater：
 - 前端通过 `qx_update_check` 读取可选更新源。默认 `auto` 会比较 CNB、配置的镜像和 GitHub 的有效清单，选择版本最高者；也可固定为 `cnb` 或 `github`。
 - Release 使用 `latest.json`，后端按当前 target 选择 macOS app zip 或 Windows x64 NSIS。
 - 只有对应资产 SHA256 存在，且 Qx 从正式安装位置运行时才允许自动安装。
-- `qx_update_download_and_install` 在两端都校验 SHA256 和 size；macOS 解压到 staging，
-  Windows 额外校验安装器 PE (`MZ`) 头。
-- 安装路径会打开独立的 **update-progress** 悬浮窗（macOS / Windows 共用）：下载阶段
-  推送字节进度与百分比，解压/校验/helper 安装阶段显示不确定等待条；失败时窗口保留
-  错误态并可关闭。进度事件为 `qx-update-progress`，快照命令
-  `qx_update_progress_snapshot`。
+- **两阶段更新**（下载 ≠ 安装）：
+  1. `qx_update_download_and_install` **立即返回**（`QxUpdateStartResult`），后台下载/
+     校验/解压，**不**启动 helper、**不**退出；进度窗 phase=`ready` 且
+     `readyToInstall=true`，主应用全程可用。
+  2. 用户点击 **Install & Restart** → `qx_update_apply_and_restart` 才 spawn helper 并
+     `force_quit`。取消（Cancel/Later）清 pending 槽位。
+- 两端校验 SHA256 和 size；macOS 解压到 staging，Windows 额外校验安装器 PE (`MZ`) 头。
+- **update-progress** 悬浮窗（非激活、不抢焦点）：下载字节进度；就绪后展示主按钮
+  「安装并重启」。事件 `qx-update-progress` + 快照轮询；窗口须在
+  `capabilities/default.json`；拖动用 `startDragging`。
 - 检查/下载/解压阶段支持 **取消**（`qx_update_progress_cancel`）：协作式中断，
   无网时也可主动关掉等待。manifest 请求 connect 约 10s / 总 20s 超时以便离线快速失败；
   大包下载总超时 30 分钟，但连接仍 10s 内失败。helper 已启动后的安装/重启不可取消。

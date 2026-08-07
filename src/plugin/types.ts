@@ -172,6 +172,10 @@ export interface PluginIndexEntry {
   name: string;
   version: string;
   description: string;
+  /** Locale → display name (from plugin manifest / package index). */
+  names?: Record<string, string>;
+  /** Locale → description (from plugin manifest / package index). */
+  descriptions?: Record<string, string>;
   download_url: string;
   size_bytes?: number;
   checksum_sha256?: string;

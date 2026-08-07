@@ -296,8 +296,16 @@ pub fn run() {
         return;
     }
 
+    // single-instance must register before deep-link so secondary launches on
+    // Windows/Linux forward `qx://…` into the existing process.
     tauri::Builder::default()
         .manage(terminal::TerminalManager::default())
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // Focus the running helper when the user re-opens a deep link or
+            // second process. Deep-link args are handled by the plugin feature.
+            floating_panel::show_floating(app);
+        }))
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -373,6 +381,21 @@ pub fn run() {
                     "failed to start Windows watchdog",
                     serde_json::json!({ "error": error }),
                 );
+            }
+
+            // Windows/Linux need runtime scheme registration (dev + installed).
+            // macOS uses Info.plist / bundle deep-link config instead.
+            #[cfg(any(windows, target_os = "linux"))]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                if let Err(error) = app.deep_link().register_all() {
+                    diagnostics::log(
+                        diagnostics::LogLevel::Warn,
+                        "main.deep_link",
+                        "failed to register qx:// scheme",
+                        serde_json::json!({ "error": error.to_string() }),
+                    );
+                }
             }
 
             let mut startup_settings = settings::read_settings();
@@ -817,6 +840,7 @@ pub fn run() {
             permissions::qx_onboarding_platform,
             updater::qx_update_check,
             updater::qx_update_download_and_install,
+            updater::qx_update_apply_and_restart,
             updater::qx_update_progress_snapshot,
             updater::qx_update_progress_close,
             updater::qx_update_progress_cancel,

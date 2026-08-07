@@ -107,16 +107,22 @@ export function localizePluginDescription(
 
 /** Marketplace index rows share the same external id namespace as installed plugins. */
 export function localizeMarketplaceEntryName(
-  entry: { id: string; name: string },
+  entry: { id: string; name: string; names?: Record<string, string> },
   t: TranslateFn,
+  locale: Locale = "en",
 ): string {
+  const fromIndex = pickFromLocaleMap(entry.names, locale);
+  if (fromIndex) return fromIndex;
   return t(`plugins.ext.${entry.id}.name`, FIRST_PARTY_PLUGIN_LABELS[entry.id]?.name ?? entry.name);
 }
 
 export function localizeMarketplaceEntryDescription(
-  entry: { id: string; description?: string },
+  entry: { id: string; description?: string; descriptions?: Record<string, string> },
   t: TranslateFn,
+  locale: Locale = "en",
 ): string {
+  const fromIndex = pickFromLocaleMap(entry.descriptions, locale);
+  if (fromIndex) return fromIndex;
   return t(
     `plugins.ext.${entry.id}.desc`,
     FIRST_PARTY_PLUGIN_LABELS[entry.id]?.description ?? (entry.description || "").trim(),

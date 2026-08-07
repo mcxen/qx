@@ -10,6 +10,7 @@ import { requestLauncherSearchFocus } from "./SearchBar";
 import { useSettingsStore } from "./modules/settings/store";
 import { ThemeProvider } from "./ThemeProvider";
 import { usePluginRegistry } from "./plugin/registry";
+import { installPluginDeepLinkHandler } from "./plugin/deepLinkInstall";
 import type { PluginRuntimeStatus } from "./plugin/types";
 import QxShell from "./components/QxShell";
 import { islandHost, showPluginIslandStatus, clearPluginIslandStatus } from "./island";
@@ -1034,6 +1035,21 @@ function App() {
     };
   }, [t]);
 
+  // Browser → Qx: qx://plugins/install?url=… | ?id=…
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    let disposed = false;
+    let cleanup: (() => void) | undefined;
+    void installPluginDeepLinkHandler().then((dispose) => {
+      if (disposed) dispose();
+      else cleanup = dispose;
+    });
+    return () => {
+      disposed = true;
+      cleanup?.();
+    };
+  }, []);
+
   // Phase 1 + settings in parallel on first mount — do not serialize home list
   // behind settings JSON, or settings behind apps IPC.
   useEffect(() => {
@@ -1172,21 +1188,27 @@ function App() {
             },
           });
 
-          await invoke("qx_update_download_and_install", { source });
-          appLogger.info("Auto update download and install started", {
+          // Fire-and-forget: backend returns as soon as the background job is
+          // accepted. Download must not pin this effect or the main panel.
+          const start = await invoke<{ started?: boolean; alreadyRunning?: boolean }>(
+            "qx_update_download_and_install",
+            { source },
+          );
+          appLogger.info("Auto update job accepted", {
             latestVersion: info.latest_version,
+            start,
           });
           if (!cancelled) {
             islandHost.show({
               id: "system.update",
               priority: "task",
               source: "system",
-              sticky: true,
+              sticky: false,
+              ttlMs: 4_000,
               content: {
-                primary: "Installing update",
-                secondary: "Qx will restart.",
-                tone: "success",
-                meter: { kind: "activity", activity: "wave" },
+                primary: "Update downloading",
+                secondary: "Progress window open — Qx stays usable",
+                tone: "neutral",
               },
             });
           }

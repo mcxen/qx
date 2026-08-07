@@ -4,6 +4,7 @@
 //! always-on-top WebView so users still see phase + percent on both macOS and
 //! Windows while the launcher is hidden.
 
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -38,6 +39,23 @@ pub fn is_cancelled() -> bool {
     cancel_flag().load(Ordering::SeqCst)
 }
 
+/// Single background download/install job slot (pre-helper only).
+fn job_running_flag() -> &'static AtomicBool {
+    static RUNNING: AtomicBool = AtomicBool::new(false);
+    &RUNNING
+}
+
+/// Atomically claim the update job. Returns false if another job is active.
+pub fn try_begin_job() -> bool {
+    job_running_flag()
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_ok()
+}
+
+pub fn end_job() {
+    job_running_flag().store(false, Ordering::SeqCst);
+}
+
 pub fn ensure_not_cancelled() -> Result<(), String> {
     if is_cancelled() {
         Err(cancelled_message().to_string())
@@ -65,7 +83,41 @@ pub struct UpdateProgress {
     pub bytes_downloaded: Option<u64>,
     pub bytes_total: Option<u64>,
     pub indeterminate: bool,
+    /// Download/stage finished; host waits for user to click Install & Restart.
+    pub ready_to_install: bool,
     pub error: Option<String>,
+}
+
+/// Staged payload waiting for explicit user apply (helper spawn + quit).
+#[derive(Debug, Clone)]
+pub struct PendingInstall {
+    pub version: String,
+    pub payload: PathBuf,
+    pub target: PathBuf,
+}
+
+fn pending_install_slot() -> &'static Mutex<Option<PendingInstall>> {
+    static PENDING: OnceLock<Mutex<Option<PendingInstall>>> = OnceLock::new();
+    PENDING.get_or_init(|| Mutex::new(None))
+}
+
+pub fn set_pending_install(pending: PendingInstall) {
+    if let Ok(mut guard) = pending_install_slot().lock() {
+        *guard = Some(pending);
+    }
+}
+
+pub fn take_pending_install() -> Option<PendingInstall> {
+    pending_install_slot()
+        .lock()
+        .ok()
+        .and_then(|mut guard| guard.take())
+}
+
+pub fn clear_pending_install() {
+    if let Ok(mut guard) = pending_install_slot().lock() {
+        *guard = None;
+    }
 }
 
 #[derive(Clone)]
@@ -93,6 +145,21 @@ impl ProgressReporter {
             bytes_downloaded: None,
             bytes_total: None,
             indeterminate: true,
+            ready_to_install: false,
+            error: None,
+        });
+    }
+
+    pub fn emit_ready(&self, message: &str) {
+        self.emit(UpdateProgress {
+            phase: "ready".to_string(),
+            message: message.to_string(),
+            version: self.version.clone(),
+            percent: Some(100.0),
+            bytes_downloaded: None,
+            bytes_total: None,
+            indeterminate: false,
+            ready_to_install: true,
             error: None,
         });
     }
@@ -118,6 +185,7 @@ impl ProgressReporter {
                 bytes_downloaded: Some(downloaded),
                 bytes_total: total,
                 indeterminate: percent.is_none(),
+                ready_to_install: false,
                 error: None,
             },
             force,
@@ -133,27 +201,33 @@ impl ProgressReporter {
             bytes_downloaded: None,
             bytes_total: None,
             indeterminate: false,
+            ready_to_install: false,
             error: Some(message.to_string()),
         });
     }
 
     fn emit_throttled(&self, progress: UpdateProgress, force: bool) {
+        let now = unix_ms();
         if !force {
-            let now = unix_ms();
             let previous = self.last_emit_ms.load(Ordering::Relaxed);
             if now.saturating_sub(previous) < MIN_EMIT_INTERVAL.as_millis() as u64 {
+                // Still refresh the snapshot store so poll-based UI can advance
+                // even when high-frequency download ticks are coalesced.
+                store_last_progress(progress);
                 return;
             }
-            self.last_emit_ms.store(now, Ordering::Relaxed);
-        } else {
-            self.last_emit_ms.store(unix_ms(), Ordering::Relaxed);
         }
+        self.last_emit_ms.store(now, Ordering::Relaxed);
         self.emit(progress);
     }
 
     fn emit(&self, progress: UpdateProgress) {
         store_last_progress(progress.clone());
-        let _ = self.app.emit(EVENT, progress);
+        // Broadcast + target the progress surface. A bare emit can miss a
+        // late-mounted secondary webview; emit_to keeps the dedicated window
+        // in lockstep with download bytes.
+        let _ = self.app.emit(EVENT, progress.clone());
+        let _ = self.app.emit_to(LABEL, EVENT, progress);
     }
 }
 
@@ -217,9 +291,13 @@ fn ensure_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
     .transparent(true)
     .shadow(true)
     .always_on_top(true)
-    .skip_taskbar(true)
+    // Keep a taskbar / dock presence so a stuck update is findable, and allow
+    // the surface to receive the first click for Cancel / drag without an
+    // extra activation click (macOS + Windows).
+    .skip_taskbar(false)
     .visible(false)
     .focused(false)
+    .accept_first_mouse(true)
     .build()
     .map_err(|error| format!("open update progress window: {error}"))
 }
@@ -249,8 +327,10 @@ pub fn show_window(app: &AppHandle, version: Option<&str>) -> Result<ProgressRep
     window
         .show()
         .map_err(|error| format!("show update progress window: {error}"))?;
-    // Keep the progress surface above the launcher without stealing typing focus.
-    let _ = window.set_focus();
+    // Never steal key focus from the main launcher while downloading — only the
+    // helper-install/restart phase ends the host process.
+    let _ = crate::auxiliary_window::make_non_activating(&window);
+    let _ = window.set_always_on_top(true);
     Ok(reporter)
 }
 
@@ -263,11 +343,20 @@ pub fn hide_window(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-/// User-facing cancel: set the cooperative flag and surface a waiting cancel phase.
-/// The worker observes the flag between network reads / phases and finishes with
-/// a cancel error. Closing the window alone does not stop a download.
+/// User-facing cancel / "Later": stop cooperative download and drop a staged
+/// apply slot. If no worker is running (already ready), hide the surface so
+/// Windows/macOS users return to the main app immediately.
 pub fn cancel(app: &AppHandle) -> Result<(), String> {
+    let was_ready = last_progress()
+        .map(|p| p.ready_to_install || p.phase == "ready")
+        .unwrap_or(false);
     request_cancel();
+    clear_pending_install();
+    if was_ready || !job_running_flag().load(Ordering::SeqCst) {
+        let _ = hide_window(app);
+        clear_cancel();
+        return Ok(());
+    }
     let reporter = ProgressReporter::new(app.clone(), last_progress().and_then(|p| p.version));
     reporter.emit_phase("cancelling", "Cancelling update…");
     Ok(())

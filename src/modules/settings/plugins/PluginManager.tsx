@@ -96,6 +96,7 @@ import {
 } from "../../catalog";
 import { isBuiltinModuleEnabled } from "../../moduleAvailability";
 import PluginBadge from "./PluginBadge";
+import PluginScreenshotCarousel from "./PluginScreenshotCarousel";
 import WeatherSettings from "../WeatherSettings";
 
 /* ------------------------------------------------------------------ */
@@ -306,17 +307,20 @@ function marketplaceEntryMatchesQuery(
   entry: PluginIndexEntry,
   query: string,
   t: TranslateFn,
+  locale: Locale,
 ) {
   if (!query) return true;
   return [
     entry.id,
     entry.name,
-    localizeMarketplaceEntryName(entry, t),
+    localizeMarketplaceEntryName(entry, t, locale),
     entry.version,
     entry.author,
     entry.description,
-    localizeMarketplaceEntryDescription(entry, t),
+    localizeMarketplaceEntryDescription(entry, t, locale),
     entry.min_app_version,
+    ...Object.values(entry.names ?? {}),
+    ...Object.values(entry.descriptions ?? {}),
     ...(entry.required_permissions ?? []),
     ...(entry.releases ?? []).flatMap((release) => [
       release.version,
@@ -900,19 +904,9 @@ function PluginDetail({
       {!builtin && screenshots.length > 0 && (
         <SettingsCard
           title={t("plugins.screenshots", "Screenshots")}
-          description={t("plugins.screenshots.desc", "Preview images bundled with this plugin.")}
+          description={t("plugins.screenshots.desc", "Preview images bundled with this plugin. Swipe or use arrows to browse.")}
         >
-          <div className="qx-plugin-screenshot-grid">
-            {screenshots.map((screenshot) => (
-              <PluginAssetImage
-                key={screenshot}
-                plugin={plugin}
-                asset={screenshot}
-                className="qx-plugin-screenshot"
-                fallback={t("plugins.preview", "Preview")}
-              />
-            ))}
-          </div>
+          <PluginScreenshotCarousel plugin={plugin} screenshots={screenshots} />
         </SettingsCard>
       )}
 
@@ -1059,9 +1053,9 @@ function MarketplaceTab({
     const q = normalizeSearch(searchQuery);
     return entries.filter((entry) => {
       if (activeSourceFilter !== "all" && (entry.source_id || "") !== activeSourceFilter) return false;
-      return marketplaceEntryMatchesQuery(entry, q, t);
+      return marketplaceEntryMatchesQuery(entry, q, t, locale);
     });
-  }, [activeSourceFilter, entries, searchQuery, t]);
+  }, [activeSourceFilter, entries, locale, searchQuery, t]);
 
   /** One catalog row per plugin. Registry order defines the user's default source. */
   const mergedEntries = useMemo(() => {
@@ -1155,7 +1149,7 @@ function MarketplaceTab({
         "plugins.marketplace.requiresQxMessage",
         "{name} requires Qx {required} or newer. Update Qx before installing.",
       )
-        .replace("{name}", localizeMarketplaceEntryName(entry, t))
+        .replace("{name}", localizeMarketplaceEntryName(entry, t, locale))
         .replace("{required}", entry.min_app_version || "—");
       setInstallStatus({ tone: "danger", message });
       showPluginInstallStatus({ kind: "error", label: message });
@@ -1167,7 +1161,7 @@ function MarketplaceTab({
     showPluginInstallStatus({
       kind: "activity",
       label: t("plugins.marketplace.installing", "Installing..."),
-      detail: localizeMarketplaceEntryName(entry, t),
+      detail: localizeMarketplaceEntryName(entry, t, locale),
     });
     try {
       const path = await invoke<string>("download_plugin", {
@@ -1192,7 +1186,7 @@ function MarketplaceTab({
         ? ` · ${t("plugins.marketplace.fromSource", "from {source}").replace("{source}", entry.source_name)}`
         : "";
       const message = t(messageKey, fallback)
-        .replace("{name}", localizeMarketplaceEntryName(entry, t))
+        .replace("{name}", localizeMarketplaceEntryName(entry, t, locale))
         .replace("{version}", entry.version) + sourceSuffix;
       setInstallStatus({ tone: "success", message });
       showPluginInstallStatus({ kind: "success", label: message });
@@ -1505,7 +1499,7 @@ function MarketplaceTab({
                 >
                   <div className="qx-plugin-list-main">
                     <div className="qx-plugin-list-title">
-                      {localizeMarketplaceEntryName(entry, t)}
+                      {localizeMarketplaceEntryName(entry, t, locale)}
                     </div>
                     <div className="qx-plugin-list-meta">
                       v{entry.version}
@@ -1516,7 +1510,7 @@ function MarketplaceTab({
                       {entry.size_bytes ? ` · ${formatBytes(entry.size_bytes)}` : ""}
                     </div>
                     {(() => {
-                      const desc = localizeMarketplaceEntryDescription(entry, t);
+                      const desc = localizeMarketplaceEntryDescription(entry, t, locale);
                       return desc ? <div className="qx-plugin-list-desc">{desc}</div> : null;
                     })()}
                   </div>
@@ -1568,7 +1562,7 @@ function MarketplaceTab({
           {selectedEntry ? (
             <>
               <div className="qx-plugin-detail-title">
-                {localizeMarketplaceEntryName(selectedEntry, t)}
+                {localizeMarketplaceEntryName(selectedEntry, t, locale)}
               </div>
               <div className="qx-plugin-badges">
                 <PluginBadge>v{selectedEntry.version}</PluginBadge>
@@ -1587,7 +1581,7 @@ function MarketplaceTab({
                 )}
               </div>
               {(() => {
-                const desc = localizeMarketplaceEntryDescription(selectedEntry, t);
+                const desc = localizeMarketplaceEntryDescription(selectedEntry, t, locale);
                 return desc ? <div className="qx-plugin-description">{desc}</div> : null;
               })()}
               <SettingsCard title={t("plugins.marketplace.install", "Install")}>
@@ -1626,7 +1620,7 @@ function MarketplaceTab({
                               "plugins.marketplace.requiresQxMessage",
                               "{name} requires Qx {required} or newer. Update Qx before installing.",
                             )
-                              .replace("{name}", localizeMarketplaceEntryName(installEntry, t))
+                              .replace("{name}", localizeMarketplaceEntryName(installEntry, t, locale))
                               .replace("{required}", installEntry.min_app_version || "—")}
                           </div>
                           <Button

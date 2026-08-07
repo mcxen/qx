@@ -8,5 +8,18 @@
     <string>Qx uses the selected microphone only while you record the screen.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>Qx uses Apple Events to open apps and automation when requested.</string>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLName</key>
+            <string>com.mcx.qx</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>qx</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>
