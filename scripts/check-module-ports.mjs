@@ -50,7 +50,7 @@ function runtimeContextFunctionPaths(source) {
   const endMarker = "\n      };\n\n      window.addEventListener";
   const end = source.indexOf(endMarker, start);
   if (start < 0 || end < 0) {
-    fail("cannot locate iframe context object in src/plugin/runtime.ts");
+    fail("cannot locate iframe context object in plugin runtime HTML bootstrap");
     return [];
   }
   const snippet = source.slice(start, end + "\n      };".length);
@@ -73,7 +73,7 @@ function runtimeContextFunctionPaths(source) {
   };
   visit(tree);
   if (!rootObject) {
-    fail("cannot parse iframe context object in src/plugin/runtime.ts");
+    fail("cannot parse iframe context object in plugin runtime HTML bootstrap");
     return [];
   }
   const paths = [];
@@ -312,6 +312,10 @@ if (!exists("docs/module-port-inventory.md")) {
 
 const runtimeLines = read("src/plugin/runtime.ts").split(/\r?\n/).length;
 if (runtimeLines > 1000) fail(`src/plugin/runtime.ts exceeds 1000 lines (${runtimeLines})`);
+const runtimeHtmlLines = read("src/plugin/pluginRuntimeHtml.ts").split(/\r?\n/).length;
+if (runtimeHtmlLines > 1000) {
+  fail(`src/plugin/pluginRuntimeHtml.ts exceeds 1000 lines (${runtimeHtmlLines})`);
+}
 const cliWorkbench = read("src/plugin/cliWorkbench.ts");
 if (!cliWorkbench.includes("createPluginSdkRuntime.toString()")) {
   fail("plugin iframe SDK must serialize the canonical createPluginSdkRuntime factory");
@@ -975,7 +979,9 @@ if (bundleProductionModule("src/plugin/context.ts", contextOut)) {
     const contextModule = await import(pathToFileURL(contextOut).href + `?t=${Date.now()}`);
     const directPaths = objectFunctionPaths(contextModule.createUnavailableContext("contract-test"))
       .filter((name) => !name.startsWith("cli.") && !name.startsWith("ui.") && !name.startsWith("state."));
-    const runtimeSource = read("src/plugin/runtime.ts");
+    // iframe bootstrap (context + rpc literals) lives in pluginRuntimeHtml.ts;
+    // runtime.ts only owns load/unload and host-side session wiring.
+    const runtimeSource = read("src/plugin/pluginRuntimeHtml.ts");
     const iframePaths = runtimeContextFunctionPaths(runtimeSource)
       .filter((name) => !name.startsWith("cli.") && !name.startsWith("ui.") && !name.startsWith("state."));
     const crlfIframePaths = runtimeContextFunctionPaths(
@@ -1001,7 +1007,7 @@ if (bundleProductionModule("src/plugin/context.ts", contextOut)) {
 // Context shape alone is insufficient: every implementation must dispatch the
 // same literal RPC names, and every dispatched name needs a host handler.
 const directRpcMethods = literalRpcMethods(read("src/plugin/context.ts"));
-const iframeRpcMethods = literalRpcMethods(read("src/plugin/runtime.ts"));
+const iframeRpcMethods = literalRpcMethods(read("src/plugin/pluginRuntimeHtml.ts"));
 const handlerRpcMethods = rpcHandlerMethods(read("src/plugin/rpcMethods.ts"));
 for (const [leftName, left, rightName, right] of [
   ["direct context", directRpcMethods, "iframe context", iframeRpcMethods],

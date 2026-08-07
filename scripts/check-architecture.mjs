@@ -47,9 +47,13 @@ if (pluginApi) {
     fail("plugin_api.rs: HttpResponse must expose body_base64 for binary plugin fetch (port, not per-plugin curl forks)");
   }
 }
-const runtime = exists("src/plugin/runtime.ts") ? read("src/plugin/runtime.ts") : "";
-if (runtime && !/arrayBuffer/.test(runtime)) {
-  fail("src/plugin/runtime.ts: plugin fetch response must implement arrayBuffer()");
+const runtimeHtml = exists("src/plugin/pluginRuntimeHtml.ts")
+  ? read("src/plugin/pluginRuntimeHtml.ts")
+  : exists("src/plugin/runtime.ts")
+    ? read("src/plugin/runtime.ts")
+    : "";
+if (runtimeHtml && !/arrayBuffer/.test(runtimeHtml)) {
+  fail("plugin runtime HTML bootstrap: plugin fetch response must implement arrayBuffer()");
 }
 
 // --- 3. Raycast conversion stays generic (OCP) ---

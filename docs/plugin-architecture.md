@@ -12,7 +12,8 @@
 | `src/plugin/builtin.ts` | 内置模块注册（RSS、V2EX、Clipboard 等） |
 | `src/plugin/registry.ts` | Zustand store：加载/卸载/启用/禁用/搜索/快捷键 |
 | `src/plugin/backgroundActivity.ts` | **后台 interval 端口**：job 快照、last/next run、running；UI 标签唯一数据源 |
-| `src/plugin/runtime.ts` | iframe 沙箱生命周期、postMessage 协议、面板渲染 |
+| `src/plugin/runtime.ts` | iframe 沙箱生命周期（load/unload）、命令注册、面板 session 挂载 |
+| `src/plugin/pluginRuntimeHtml.ts` | iframe bootstrap HTML：import map、context/RPC 字面量、Workbench 注入 |
 | `src/plugin/pluginShellBridge.ts` | panel session registry、Workbench/Chrome/Actions 消息信任边界与宿主订阅 |
 | `src/plugin/pluginTheme.ts` | Custom Panel 主题 payload、公开语义 token 白名单与 iframe apply runtime |
 | `src/plugin/pluginRuntimeTransport.ts` | sandbox iframe 创建与插件 asset URL 解析 |
@@ -370,6 +371,6 @@ context.system.env | openPath | revealPath       ←  权限 system
 
 - **不要**在插件 iframe 内直接调用 `invoke`；所有后端调用必须通过 `postMessage` → `handlePluginRpc`。
 - **不要**在 `registry.ts` 中新增 RPC 处理逻辑；统一放到 `rpcMethods.ts`。
-- **不要**在 `runtime.ts` 中新增 AI task 状态逻辑；统一放到 `aiRuntime.ts`。
+- **不要**在 `runtime.ts` / `pluginRuntimeHtml.ts` 中新增 AI task 状态逻辑；统一放到 `aiRuntime.ts`。
 - 新增 `context` API 时，同步更新 `createUnavailableContext`，否则命令执行时可能拿到过时的可用上下文。
 - CLI 逻辑放在 `plugin_cli.rs` / `cliWorkbench.ts`，不要把 job 表塞进 `plugin_api.rs`。

@@ -142,7 +142,7 @@ tab = "plugin:*"   → PluginPanelViewport
 - 每个内置 command 的 `run()` 调用 `navigateToTab(mod.id)`
 - 内置模块仍通过 React 组件渲染（非 iframe）
 
-**外部插件** (`plugin/runtime.ts`):
+**外部插件** (`plugin/runtime.ts` + `plugin/pluginRuntimeHtml.ts`):
 - 从 `~/.qx/plugins/` 加载 zip 包
 - 每个插件运行在独立的 sandboxed iframe 中
 - 通过 `postMessage` RPC 与主进程通信

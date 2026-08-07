@@ -181,7 +181,7 @@ Esc。图片详情的自适应比例、加载失败与全尺寸预览也属于�
 iframe RPC；多个领域动作组通过 `QxActionSections` 从同一 `QxShellAction[]` 投影，空组由
 端口统一跳过。两条路径共享的是端口语义和视觉令牌，而不是强制同一 runtime。
 Custom Panel 的视觉令牌由 `src/plugin/pluginTheme.ts` 作为单一投影端口同步到 iframe；
-`runtime.ts` 只负责组装该自包含 apply runtime，`pluginShellBridge.ts` 只负责在宿主主题
+`pluginRuntimeHtml.ts`（由 `runtime.ts` 的 load 路径调用）只负责组装该自包含 apply runtime，`pluginShellBridge.ts` 只负责在宿主主题
 或外观 style 变化时广播。不得让插件各自复制 Light/Dark 色板或依赖深色 fallback。
 
 ### OS 模态交互
