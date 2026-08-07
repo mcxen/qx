@@ -41,7 +41,10 @@ src/
 │  ├─ rankResults.worker.ts # 独立线程执行全局排序
 │  ├─ searchUsage.ts      # 30 天点击量缓存与高频匹配召回
 │  ├─ moduleSurfaces.ts   # 主搜索动态深链（RSS feed 等），见 docs/module-surfaces.md
-│  └─ calculator.ts
+│  ├─ calculator.ts       # 纯表达式 gate + tokenizer + 递归下降求值（无 eval）
+│  ├─ calculatorProvider.ts # CalculationResult → AppEntry / calc path 编解码
+│  ├─ calculatorAsync.ts  # Worker 异步求值端口、latest-wins、主线程 yield 降级
+│  └─ calculator.worker.ts
 ├─ modules/               # 可懒加载功能面板
 ├─ plugin/                # 插件运行时（见 docs/plugin-architecture.md）
 ├─ hooks/                 # useEscBack、usePanelKeyWindow
@@ -110,15 +113,16 @@ leave 走 `closeSettings()`。该端口维护一层 `returnTo`，使「模块 �
 
 1. `setIsSearching(true)`；`searchSeqRef` 自增，用于丢弃过期结果
 2. 若 query 空 → `useLauncherHistory` 提供最近启动/搜索作为空态填充，直接 return
-3. 下一事件循环立即开始；插件命令、内置模块、计算器等固定小集合在当前 turn 先发布，不等待 IPC
-4. 应用内存搜索、文件 pass 0、动态模块、使用记录、剪贴板和文件扩展 pass 分别启动独立 Promise；任何 provider 只合并自己的批次，不等待其他 provider
-5. `search_apps` 只在 Rust 内存缓存中评分；查询热路径不修复图标、不访问文件系统。文件 pass 1/2 在自己的 provider 内渐进执行，但与应用、剪贴板、模块保持并发
-6. 结果合并 → `applyResults`：先按 provider 顺序立即发布，保证输入后马上可见；同时维护当前 query 的候选快照，经 `rankResultsAsync` 投递给独立 Web Worker 执行全局重排，回传后再更新稳定顺序
-7. **不阻塞主路径**：`refreshSearchUsageCache()` 异步拉 `get_search_click_stats`；就绪后用同一 `seq` 再 `applyResults` 一次
-8. 900ms 后 `record_search(query)`；打开任一条结果时 `record_search_click`（fire-and-forget）
-9. `finishSearchActivity()` 关 `isSearching` → 180ms 后关 `isSearchSettling`（用于底部灵动岛的收尾动画）
+3. 下一事件循环立即开始；插件命令、内置模块等固定小集合在当前 turn 先发布，不等待 IPC
+4. 应用内存搜索、**计算器**、文件 pass 0、动态模块、使用记录、剪贴板和文件扩展 pass 分别启动独立 Promise；任何 provider 只合并自己的批次，不等待其他 provider
+5. 计算器经 `calculatorAsync`（Worker + latest-wins；Worker 不可用时 microtask 降级）求值后 `prepend` 一条 `kind: "calculation"`；Enter 复制数值，不用 `eval`。回调用 `searchSeqRef` + 当前 query 双校验丢弃过期
+6. `search_apps` 只在 Rust 内存缓存中评分；查询热路径不修复图标、不访问文件系统。文件 pass 1/2 在自己的 provider 内渐进执行，但与应用、剪贴板、模块保持并发
+7. 结果合并 → `applyResults`：先按 provider 顺序立即发布，保证输入后马上可见；同时维护当前 query 的候选快照，经 `rankResultsAsync` 投递给独立 Web Worker 执行全局重排，回传后再更新稳定顺序
+8. **不阻塞主路径**：`refreshSearchUsageCache()` 异步拉 `get_search_click_stats`；就绪后用同一 `seq` 再 `applyResults` 一次
+9. 900ms 后 `record_search(query)`；打开任一条结果时 `record_search_click`（fire-and-forget）
+10. `finishSearchActivity()` 关 `isSearching` → 180ms 后关 `isSearchSettling`（用于底部灵动岛的收尾动画）
 
-所有 provider 回调用 `searchSeqRef`、排序回调用独立的 `rankRequestSeqRef` 保护过期。新排序请求采用 latest-wins：终止仍在执行的旧 Worker 请求；Worker 不可用或异常时保留未排序结果，禁止退回主线程同步排序。实现：`src/search/searchUsage.ts`、`src/search/rankResults.ts`、`src/search/rankResultsAsync.ts`、`src/search/rankResults.worker.ts`。
+所有 provider 回调用 `searchSeqRef`、排序回调用独立的 `rankRequestSeqRef` 保护过期。计算器与排序均采用 latest-wins Worker 队列。Worker 不可用时：排序保留 provider 序、计算器用 microtask 主线程降级（仍不阻塞当前 turn）。实现：`src/search/searchUsage.ts`、`src/search/rankResults*.ts`、`src/search/calculator*.ts`。
 
 ### 列表选中与键盘滚动
 
@@ -281,7 +285,8 @@ Esc 处理见 [AGENTS.md](../AGENTS.md) / [UI_SPEC.md](../UI_SPEC.md)；`hooks/u
 见 [docs/plugin-architecture.md](./plugin-architecture.md)。核心：
 
 - `plugin/registry.ts` — zustand store：list/load/unload、shortcut 注册、command scoring
-- `plugin/runtime.ts` — iframe 沙箱 + Blob URL + postMessage RPC dispatch
+- `plugin/runtime.ts` — iframe 沙箱生命周期（load/unload）与面板 session
+- `plugin/pluginRuntimeHtml.ts` — iframe bootstrap HTML、context/RPC 字面量、Blob URL 装配
 - `plugin/rpcMethods.ts` — RPC method 表 + 权限检查
 - `plugin/context.ts` — 生成插件可见的 context 对象（能力 vs unavailable）
 - `plugin/aiRuntime.ts` — AI task 状态机

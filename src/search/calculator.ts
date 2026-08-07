@@ -25,6 +25,14 @@ const CONSTANTS: Record<string, number> = {
   pi: Math.PI,
 };
 
+/**
+ * Cheap gate used by the async search provider before scheduling work.
+ * Must stay O(query length) and free of allocation-heavy parsing.
+ */
+export function looksLikeCalculationQuery(input: string): boolean {
+  return normalizeInput(input) != null;
+}
+
 function normalizeInput(input: string): string | null {
   const trimmed = input.trim();
   if (!trimmed) return null;

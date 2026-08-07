@@ -519,7 +519,7 @@ Context Panel：
 
 - 最右侧渲染 `escapeAction`（或兼容路径下由 `onBack` 推导的 fallback），通过 `ShellActionButton variant="escape"`；主动作与 Actions 菜单位于它左侧。
 - escape 变体显示 **文案 + Esc 快捷键胶囊**：
-  - **主搜索 Launcher**（`islandKey="launcher"`）：空查询为 **Hide / 隐藏**（隐藏主界面）；有查询为 **Back / 返回**（先清空搜索）。**不显示**小房子。
+  - **主搜索 Launcher**（`islandKey="launcher"`）：空查询为 **Hide / 隐藏**（隐藏主界面）；有查询为 **Back / 返回**（**整行清空**搜索框，不是只删光标处）。中文 IME 候选打开时 Esc 先取消候选；仅 `isComposing` 时让给 IME，不得用粘滞 `keyCode 229` 吞掉清行。**不显示**小房子。
   - **非主搜索**（模块 / Settings / 插件 / loading）：**Back / 返回**（与 `useEscBack.stepBack` 同语义，每按一次退一层）。
 - 非主搜索时，底栏左侧另有一个同风格 **小房子** 按钮（`shell.goHome`）：一键回到主搜索 Launcher，跳过模块内阶梯与 Settings `returnTo`。Launcher 不渲染该按钮。
 - `escapeAction.onClick` 应与 `useEscBack.stepBack` 一致。无 inner/query 时等价于最终 leave：

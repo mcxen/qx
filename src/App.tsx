@@ -25,7 +25,8 @@ import { LoadingLabel, Skeleton } from "./components/ui";
 import { registerAllBuiltins } from "./plugin/builtin";
 import { isRedundantPanelOpenCommand } from "./plugin/panelOpenCommand";
 import { PluginHost, PluginPanelViewport } from "./plugin/PluginHost";
-import { calculateExpression } from "./search/calculator";
+import { resolveCalculationEntryAsync } from "./search/calculatorAsync";
+import { decodeCalculationResult, isCalculationPath } from "./search/calculatorProvider";
 import {
   itemMatchesSearchMetadata,
   metadataKeyForEntry,
@@ -72,7 +73,11 @@ import { tryModuleEscapeStep } from "./hooks/moduleEscapeHost";
 import { useQxModuleShell } from "./hooks/useQxModuleShell";
 import { useT } from "./i18n";
 import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./lib/logger";
-import { getQxDesktopPlatform, isImeCompositionEvent } from "./utils/keyboard";
+import {
+  getQxDesktopPlatform,
+  isImeCompositionEvent,
+  shouldDeferEscapeForIme,
+} from "./utils/keyboard";
 import { isBuiltinModuleEnabled } from "./modules/moduleAvailability";
 import { closeSettings, openSettings } from "./modules/settings/openSettings";
 import { ensureCaptureToastListener } from "./modules/screencap/store";
@@ -730,11 +735,13 @@ function App() {
       setTab("launcher");
       return;
     }
-    // Launcher Esc cascade: clear search text first so the user can retype and
-    // search again. Only hide the window when the query is already empty.
+    // Launcher Esc cascade: clear the full search line first (whole query, not
+    // caret-only). Only hide the window when the query is already empty.
     if (state.query.length > 0) {
       state.setQuery("");
       state.setSelectedIndex(0);
+      // Keep focus in the search field so the next character starts a fresh query.
+      requestLauncherSearchFocus();
       return;
     }
     if (isTauriRuntime()) {
@@ -2132,16 +2139,8 @@ function App() {
       );
 
       // Module surfaces load off the critical path (see loadModuleSurfaceProviders).
-
-      const calculation = calculateExpression(q);
-      if (calculation && (scope === "all" || scope === "apps")) {
-        syntheticEntries.unshift({
-          name: `${calculation.expression} = ${calculation.formatted}`,
-          path: `__qx:calc:${encodeURIComponent(calculation.formatted)}`,
-          icon: "builtin:calculator",
-          kind: "calculation",
-        });
-      }
+      // Calculator is an independent async provider (worker / microtask) so typing
+      // and first paint never wait on expression evaluation.
 
       if ((scope === "all" || scope === "apps") && matchesSettings(q)) {
         syntheticEntries.unshift(createSettingsSearchEntry(settingsMatchTier(q)));
@@ -2162,6 +2161,15 @@ function App() {
       // provider below starts independently and only merges its own batch.
       const fixedEntries = dedupeEntries(entries);
       applyResults(fixedEntries);
+
+      const calculationTask = (scope === "all" || scope === "apps")
+        ? resolveCalculationEntryAsync(q).then((entry) => {
+            if (seq !== searchSeqRef.current || signal.aborted || !entry) return;
+            // Still on the same query string (generation alone can race paste).
+            if (useStore.getState().query.trim() !== trimmed) return;
+            applyResults([entry], { merge: true, prepend: true });
+          })
+        : Promise.resolve();
 
       const appSearchTask = (scope === "all" || scope === "apps")
         ? abortableInvoke<AppEntry[]>("search_apps", { query: q }, signal)
@@ -2227,6 +2235,7 @@ function App() {
         : Promise.resolve();
 
       void Promise.allSettled([
+        calculationTask,
         appSearchTask,
         metadataAppTask,
         filesPass0Task,
@@ -2304,7 +2313,9 @@ function App() {
 
   useEffect(() => {
     const onUnhandledEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      // Only real IME composition defers Esc; do not use sticky keyCode 229.
+      if (shouldDeferEscapeForIme(event)) return;
       // Bubble-phase host cascade for every tab while the panel is open.
       // React/Radix overlays and module useEscBack get first refusal via
       // preventDefault. Do NOT gate on tab===launcher — modules without a
@@ -2432,8 +2443,9 @@ function App() {
       if (entry) await pasteClipboardEntryAtCursor(entry);
       return;
     }
-    if (item.path.startsWith("__qx:calc:")) {
-      await writeText(decodeURIComponent(item.path.slice("__qx:calc:".length)));
+    if (isCalculationPath(item.path)) {
+      const value = decodeCalculationResult(item.path);
+      if (value != null) await writeText(value);
       if (isTauriRuntime()) {
         await invoke("floating_hide_restore_focus").catch(() => getCurrentWindow().hide());
       }
@@ -2461,16 +2473,19 @@ function App() {
   }, [setTab]);
 
   const handleKeyDown = useCallback(async (e: React.KeyboardEvent) => {
-    // Enter confirms an active IME candidate; it must not launch the selected
-    // result or trigger another shell action while composition is in progress.
-    if (isImeCompositionEvent(e.nativeEvent)) return;
-
+    // Esc clears launcher query / steps the host cascade. Do not gate Esc on
+    // legacy keyCode 229 — that sticks after Chinese IME and blocked full-line clear.
     if (e.key === "Escape") {
+      if (shouldDeferEscapeForIme(e.nativeEvent)) return;
       e.preventDefault();
       e.stopPropagation();
       performHostEscape();
       return;
     }
+
+    // Enter confirms an active IME candidate; it must not launch the selected
+    // result or trigger another shell action while composition is in progress.
+    if (isImeCompositionEvent(e.nativeEvent)) return;
 
     if (tab !== "launcher") {
       return;

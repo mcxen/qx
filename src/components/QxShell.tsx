@@ -25,6 +25,7 @@ import {
   getQxDesktopPlatform,
   getQxShortcutPreset,
   isImeCompositionEvent,
+  shouldDeferEscapeForIme,
   isEditableTarget,
   isNativeEditingShortcut,
   isReservedGlobalShortcut,
@@ -854,7 +855,8 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const handleKeyDownCapture = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented) return;
 
-    if (isImeCompositionEvent(event.nativeEvent)) return;
+    if (shouldDeferEscapeForIme(event.nativeEvent)) return;
+    if (event.key !== "Escape" && isImeCompositionEvent(event.nativeEvent)) return;
 
     // Never intercept launcher / Spotlight chords inside the shell.
     if (isReservedGlobalShortcutEvent(event.nativeEvent)) return;
@@ -887,7 +889,9 @@ const QxShell = forwardRef<HTMLDivElement, QxShellProps>(function QxShell({
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented) return;
 
-    if (isImeCompositionEvent(event.nativeEvent)) return;
+    // Esc must still clear/hide after Chinese IME; only defer while composing.
+    if (shouldDeferEscapeForIme(event.nativeEvent)) return;
+    if (event.key !== "Escape" && isImeCompositionEvent(event.nativeEvent)) return;
 
     if (isReservedGlobalShortcutEvent(event.nativeEvent)) return;
 

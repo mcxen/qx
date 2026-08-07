@@ -156,6 +156,26 @@ export default function SearchBar({
     };
   }, [focusInput, setQuery, setSelectedIndex, visible]);
 
+  const handleSearchKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      // Primary search owns first Esc: clear the entire line (Raycast/Spotlight).
+      // Shell / host cascade then hide on a subsequent empty Esc.
+      if (
+        event.key === "Escape"
+        && query.length > 0
+        && !event.nativeEvent.isComposing
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        setQuery("");
+        setSelectedIndex(0);
+        return;
+      }
+      onKeyDown(event);
+    },
+    [onKeyDown, query, setQuery, setSelectedIndex],
+  );
+
   const input = (
     <QxModuleSearch
       inputRef={inputRef}
@@ -166,7 +186,7 @@ export default function SearchBar({
         setSelectedIndex(0);
       }}
       onFocus={requestPanelKeyWindow}
-      onKeyDown={onKeyDown}
+      onKeyDown={handleSearchKeyDown}
       placeholder={t("launcher.placeholder", "Search for apps and commands...")}
       inputProps={{ "data-qx-primary-search": "true" }}
     />

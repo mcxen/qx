@@ -23,6 +23,19 @@ export function isImeCompositionEvent(
   return event.isComposing || event.keyCode === 229;
 }
 
+/**
+ * Whether Esc must be left to the IME (cancel open candidate list).
+ *
+ * Only trust `isComposing` here. Legacy keyCode 229 can stick after composition
+ * ends on some WebViews and would otherwise swallow launcher Esc that should
+ * clear the full search line (UI_SPEC: first Esc clears query, second hides).
+ */
+export function shouldDeferEscapeForIme(
+  event: Pick<KeyboardEvent, "key" | "isComposing">,
+): boolean {
+  return event.key === "Escape" && event.isComposing === true;
+}
+
 export function shouldIgnoreBareShortcut(
   event: Pick<KeyboardEvent, "isComposing" | "keyCode" | "target">,
 ): boolean {
