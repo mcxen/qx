@@ -568,12 +568,8 @@ mod macos {
     }
 
     pub(super) fn cursor_position_for_display_lookup() -> Option<(f64, f64)> {
-        unsafe {
-            let event_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSEvent\0").ok()?)?;
-            let point: objc2_foundation::NSPoint = msg_send![event_cls, mouseLocation];
-            let y = core_graphics::display::CGDisplay::main().pixels_high() as f64 - point.y;
-            Some((point.x, y))
-        }
+        // Shared display port — do not re-sample NSEvent here.
+        crate::display::raw_cursor_position_for_display_lookup()
     }
 }
 

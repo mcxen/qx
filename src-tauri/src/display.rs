@@ -378,6 +378,145 @@ fn select_display_area_for_cursor_sources(
         .or_else(|| raw_cursor.and_then(|(x, y)| select_display_area_for_raw_cursor(areas, x, y)))
 }
 
+/// Platform-native pointer sample used when Tauri's physical cursor is noisy
+/// across mixed-DPI menu bars. On macOS this is `NSEvent.mouseLocation`
+/// converted to a top-left oriented point; other platforms return `None`.
+pub(crate) fn raw_cursor_position_for_display_lookup() -> Option<(f64, f64)> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CStr;
+
+        use objc2::msg_send;
+        use objc2::runtime::AnyClass;
+
+        unsafe {
+            let event_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSEvent\0").ok()?)?;
+            let point: objc2_foundation::NSPoint = msg_send![event_cls, mouseLocation];
+            let y = core_graphics::display::CGDisplay::main().pixels_high() as f64 - point.y;
+            Some((point.x, y))
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
+fn tauri_monitor_for_display_area(
+    app: &AppHandle,
+    area: DisplayArea,
+) -> Option<tauri::Monitor> {
+    app.available_monitors().ok()?.into_iter().find(|monitor| {
+        let candidate = display_area_from_monitor(monitor);
+        candidate.frame_x == area.frame_x && candidate.frame_y == area.frame_y
+    })
+}
+
+/// Shared pointer → display resolution for launcher, tray, and capture.
+///
+/// Resolution order:
+/// 1. Tauri physical cursor (`app.cursor_position`)
+/// 2. Optional physical event hint (tray-icon click, etc.)
+/// 3. Platform raw cursor (`NSEvent.mouseLocation` on macOS)
+/// 4. `monitor_from_point` / window monitor / primary
+pub(crate) fn resolve_pointer_display(
+    app: &AppHandle,
+    window: Option<&tauri::WebviewWindow>,
+    physical_hint: Option<(f64, f64)>,
+) -> Option<DisplayArea> {
+    let areas = available_display_areas(app);
+    let normalized_cursor = app
+        .cursor_position()
+        .ok()
+        .map(|cursor| (cursor.x, cursor.y));
+    let raw_cursor = raw_cursor_position_for_display_lookup();
+    select_display_area_for_cursor_sources(&areas, normalized_cursor, raw_cursor)
+        .or_else(|| {
+            physical_hint.and_then(|(x, y)| select_display_area_for_cursor(&areas, x, y))
+        })
+        .or_else(|| {
+            physical_hint.and_then(|(x, y)| select_display_area_for_raw_cursor(&areas, x, y))
+        })
+        .or_else(|| {
+            app.cursor_position().ok().and_then(|cursor| {
+                app.monitor_from_point(cursor.x, cursor.y)
+                    .ok()
+                    .flatten()
+                    .map(|monitor| display_area_from_monitor(&monitor))
+            })
+        })
+        .or_else(|| {
+            window.and_then(|window| {
+                window
+                    .current_monitor()
+                    .ok()
+                    .flatten()
+                    .map(|monitor| display_area_from_monitor(&monitor))
+            })
+        })
+        .or_else(|| {
+            app.primary_monitor()
+                .ok()
+                .flatten()
+                .map(|monitor| display_area_from_monitor(&monitor))
+        })
+}
+
+/// Prefer a physical pointer sample that already lies on `area`, then fall back
+/// to the work-area top-center (menu-bar / tray zone).
+pub(crate) fn pointer_anchor_on_display(
+    app: &AppHandle,
+    area: DisplayArea,
+    physical_hint: Option<(f64, f64)>,
+) -> (f64, f64) {
+    if let Ok(cursor) = app.cursor_position() {
+        if contains_point(area, cursor.x, cursor.y) {
+            return (cursor.x, cursor.y);
+        }
+    }
+    if let Some((x, y)) = physical_hint {
+        if contains_point(area, x, y) {
+            return (x, y);
+        }
+        let scale = area.scale_factor.max(1.0);
+        let scaled = (x * scale, y * scale);
+        if contains_point(area, scaled.0, scaled.1) {
+            return scaled;
+        }
+    }
+    if let Some((x, y)) = raw_cursor_position_for_display_lookup() {
+        let scale = area.scale_factor.max(1.0);
+        let scaled = (x * scale, y * scale);
+        if contains_point(area, scaled.0, scaled.1) {
+            return scaled;
+        }
+        if contains_point(area, x, y) {
+            return (x, y);
+        }
+    }
+    let scale = area.scale_factor.max(1.0);
+    (
+        area.work_x as f64 + area.work_width as f64 * 0.5,
+        area.work_y as f64 + 4.0 * scale,
+    )
+}
+
+pub(crate) fn capture_monitor_id_for_display_area(
+    app: &AppHandle,
+    area: DisplayArea,
+) -> Option<u32> {
+    let monitor = tauri_monitor_for_display_area(app, area)?;
+    capture_monitor_for_tauri(app, &monitor).ok()?.id().ok()
+}
+
+pub(crate) fn display_area_for_window(window: &tauri::WebviewWindow) -> Option<DisplayArea> {
+    window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .map(|monitor| display_area_from_monitor(&monitor))
+}
+
 pub(crate) fn display_area_for_current_cursor(
     app: &AppHandle,
     window: &tauri::WebviewWindow,
@@ -388,33 +527,14 @@ pub(crate) fn display_area_for_current_cursor(
         .cursor_position()
         .ok()
         .map(|cursor| (cursor.x, cursor.y));
+    let raw_cursor = raw_cursor.or_else(raw_cursor_position_for_display_lookup);
     select_display_area_for_cursor_sources(&areas, normalized_cursor, raw_cursor)
-        .or_else(|| {
-            app.cursor_position().ok().and_then(|cursor| {
-                app.monitor_from_point(cursor.x, cursor.y)
-                    .ok()
-                    .flatten()
-                    .map(|monitor| display_area_from_monitor(&monitor))
-            })
-        })
-        .or_else(|| {
-            window
-                .current_monitor()
-                .ok()
-                .flatten()
-                .map(|monitor| display_area_from_monitor(&monitor))
-        })
-        .or_else(|| {
-            app.primary_monitor()
-                .ok()
-                .flatten()
-                .map(|monitor| display_area_from_monitor(&monitor))
-        })
+        .or_else(|| resolve_pointer_display(app, Some(window), None))
 }
 
 pub(crate) fn cursor_monitor(app: &AppHandle) -> Option<tauri::Monitor> {
-    let cursor = app.cursor_position().ok()?;
-    app.monitor_from_point(cursor.x, cursor.y).ok().flatten()
+    let area = resolve_pointer_display(app, None, None)?;
+    tauri_monitor_for_display_area(app, area)
 }
 
 pub(crate) fn capture_monitor_for_tauri(

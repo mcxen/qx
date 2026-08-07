@@ -68,13 +68,22 @@ accumulate and the display reaches the final value without a visible flash.
 
 ## Display focus
 
-When the left-click Tray panel opens, the host resolves the click position to the
-corresponding native display and publishes that display id to the panel. The
-brightness provider orders that display first, so the control nearest to the
-user's click is immediately available while the remaining supported displays
-stay available below it. The host keeps this focus in a small process-local
-value and exposes `tray_panel_get_focus_display` for a panel that is already
-mounted; the `tray-focus-display` event updates it on subsequent Tray opens. On
-macOS, placement uses Tauri's canonical physical cursor position rather than
-the status-item event's scaled coordinate, so a menu-bar click on an external
-display is resolved and clamped within that display's work area.
+When the left-click Tray panel opens, the host resolves the pointer through the
+shared display port (`resolve_pointer_display` in `display.rs`) and publishes
+that display id to the panel. The brightness provider orders that display first,
+so the control nearest to the user's click is immediately available while the
+remaining supported displays stay available below it. The host keeps this focus
+in a small process-local value and exposes `tray_panel_get_focus_display` for a
+panel that is already mounted; the `tray-focus-display` event updates it on
+subsequent Tray opens.
+
+Placement order is the same multi-display contract used by the launcher:
+
+1. Tauri physical cursor (`app.cursor_position`)
+2. Platform raw cursor (`NSEvent.mouseLocation` on macOS)
+3. Tray-icon click coordinate as a physical (then scale-aware) hint
+4. Clamp inside the resolved display's work area under the menu bar
+
+Feature code must not call `monitor_from_point` or invent its own multi-monitor
+geometry; tray, launcher, and capture all consume this port so an external
+menu-bar click never opens the panel on the primary display by mistake.

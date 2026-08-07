@@ -10,6 +10,11 @@ use tauri::{
     WebviewWindowBuilder,
 };
 
+use crate::display::{
+    capture_monitor_id_for_display_area, display_area_for_window, pointer_anchor_on_display,
+    resolve_pointer_display, DisplayArea,
+};
+
 const LABEL: &str = "tray-panel";
 const WIDTH: f64 = 360.0;
 const HEIGHT: f64 = 420.0;
@@ -30,6 +35,26 @@ fn current_focused_display_id() -> Option<u32> {
         .lock()
         .ok()
         .and_then(|focused| *focused)
+}
+
+fn place_panel_on_display(
+    window: &tauri::WebviewWindow,
+    app: &AppHandle,
+    area: DisplayArea,
+    physical_hint: Option<(f64, f64)>,
+) {
+    let scale = area.scale_factor.max(1.0);
+    let width = (WIDTH * scale).round() as i32;
+    let height = (HEIGHT * scale).round() as i32;
+    let right = area.work_x.saturating_add(area.work_width as i32);
+    let bottom = area.work_y.saturating_add(area.work_height as i32);
+    let (cursor_x, cursor_y) = pointer_anchor_on_display(app, area, physical_hint);
+    let x = (cursor_x.round() as i32 - width / 2)
+        .clamp(area.work_x, (right - width).max(area.work_x));
+    let y = (cursor_y.round() as i32 + (8.0 * scale) as i32)
+        .clamp(area.work_y, (bottom - height).max(area.work_y));
+    let _ = window.set_size(PhysicalSize::new(width.max(1) as u32, height.max(1) as u32));
+    let _ = window.set_position(PhysicalPosition::new(x, y));
 }
 
 #[cfg(target_os = "macos")]
@@ -60,48 +85,28 @@ fn ensure_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
 
 #[cfg(target_os = "macos")]
 pub fn toggle_at(app: &AppHandle, click_x: f64, click_y: f64) -> Result<(), String> {
-    // TrayIconEvent also carries a position, but on macOS its status-item
-    // coordinate can be scaled using the menu bar's backing scale factor.
-    // The runtime cursor position is the canonical physical screen coordinate
-    // used by Tauri's monitor APIs and remains correct when the menu bar is on
-    // an external display.
-    let cursor = app
-        .cursor_position()
-        .unwrap_or_else(|_| PhysicalPosition::new(click_x, click_y));
-    let monitor = app
-        .monitor_from_point(cursor.x, cursor.y)
-        .ok()
-        .flatten()
-        .or_else(|| app.primary_monitor().ok().flatten());
-    let display_id = monitor.as_ref().and_then(|monitor| {
-        crate::display::capture_monitor_for_tauri(app, monitor)
-            .ok()
-            .and_then(|capture| capture.id().ok())
-    });
-    set_focused_display_id(display_id);
-    let _ = app.emit("tray-focus-display", display_id);
-
+    // TrayIconEvent carries a position, but on macOS the status-item coordinate
+    // can be scaled with the menu bar's backing factor. Placement always goes
+    // through the shared display port (Tauri physical cursor, NSEvent raw
+    // sample, then the tray-click hint) so an external-display menu bar opens
+    // the panel on that same display.
     let window = ensure_window(app)?;
     if window.is_visible().unwrap_or(false) {
         return window
             .hide()
             .map_err(|error| format!("hide tray panel: {error}"));
     }
-    if let Some(monitor) = monitor {
-        let work = monitor.work_area();
-        let scale = monitor.scale_factor().max(1.0);
-        let width = (WIDTH * scale).round() as i32;
-        let height = (HEIGHT * scale).round() as i32;
-        let right = work.position.x.saturating_add(work.size.width as i32);
-        let bottom = work.position.y.saturating_add(work.size.height as i32);
-        let cursor_x = cursor.x.round() as i32;
-        let cursor_y = cursor.y.round() as i32;
-        let x = (cursor_x - width / 2).clamp(work.position.x, (right - width).max(work.position.x));
-        let y = (cursor_y + (8.0 * scale) as i32)
-            .clamp(work.position.y, (bottom - height).max(work.position.y));
-        let _ = window.set_size(PhysicalSize::new(width.max(1) as u32, height.max(1) as u32));
-        let _ = window.set_position(PhysicalPosition::new(x, y));
-    }
+
+    let physical_hint = Some((click_x, click_y));
+    let area = resolve_pointer_display(app, Some(&window), physical_hint).ok_or_else(|| {
+        "Cannot resolve the display under the pointer for the tray panel".to_string()
+    })?;
+    let display_id = capture_monitor_id_for_display_area(app, area);
+    set_focused_display_id(display_id);
+    let _ = app.emit("tray-focus-display", display_id);
+
+    place_panel_on_display(&window, app, area, physical_hint);
+
     // Keep the transient Tray surface independent from the reusable launcher.
     // Otherwise hiding this panel can reveal a main window that was already
     // underneath and look like a second "open Qx" action.
@@ -119,8 +124,10 @@ pub fn toggle_at(app: &AppHandle, click_x: f64, click_y: f64) -> Result<(), Stri
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn toggle_at(app: &AppHandle, _click_x: f64, _click_y: f64) -> Result<(), String> {
-    set_focused_display_id(crate::display::cursor_capture_monitor_id(app));
+pub fn toggle_at(app: &AppHandle, click_x: f64, click_y: f64) -> Result<(), String> {
+    let area = resolve_pointer_display(app, None, Some((click_x, click_y)));
+    let display_id = area.and_then(|area| capture_monitor_id_for_display_area(app, area));
+    set_focused_display_id(display_id.or_else(|| crate::display::cursor_capture_monitor_id(app)));
     let _ = app.emit("tray-focus-display", current_focused_display_id());
     crate::floating_panel::show_floating(app);
     Ok(())
@@ -160,10 +167,32 @@ pub fn tray_panel_resize(app: AppHandle, width: f64, height: f64) -> Result<(), 
     let Some(window) = app.get_webview_window(LABEL) else {
         return Ok(());
     };
+    let logical_width = width.clamp(280.0, 480.0);
+    let logical_height = height.clamp(150.0, 520.0);
     window
-        .set_size(LogicalSize::new(
-            width.clamp(280.0, 480.0),
-            height.clamp(150.0, 520.0),
-        ))
-        .map_err(|error| format!("resize tray panel: {error}"))
+        .set_size(LogicalSize::new(logical_width, logical_height))
+        .map_err(|error| format!("resize tray panel: {error}"))?;
+
+    // Clamp inside the monitor the panel already occupies — do not re-resolve
+    // the live pointer, or a mid-resize mouse move would teleport the panel.
+    if let Some(area) = display_area_for_window(&window) {
+        if let Ok(position) = window.outer_position() {
+            let scale = area.scale_factor.max(1.0);
+            let physical_width = (logical_width * scale).round() as i32;
+            let physical_height = (logical_height * scale).round() as i32;
+            let right = area.work_x.saturating_add(area.work_width as i32);
+            let bottom = area.work_y.saturating_add(area.work_height as i32);
+            let x = position
+                .x
+                .clamp(area.work_x, (right - physical_width).max(area.work_x));
+            let y = position
+                .y
+                .clamp(area.work_y, (bottom - physical_height).max(area.work_y));
+            if x != position.x || y != position.y {
+                let _ = window.set_position(PhysicalPosition::new(x, y));
+            }
+        }
+    }
+    let _ = app;
+    Ok(())
 }
