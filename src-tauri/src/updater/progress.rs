@@ -4,7 +4,7 @@
 //! always-on-top WebView so users still see phase + percent on both macOS and
 //! Windows while the launcher is hidden.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
@@ -18,6 +18,41 @@ const WIDTH: f64 = 360.0;
 const HEIGHT: f64 = 148.0;
 const EVENT: &str = "qx-update-progress";
 const MIN_EMIT_INTERVAL: Duration = Duration::from_millis(80);
+
+/// Cooperative cancel for download / pre-helper install. Helper spawn and
+/// restart phases ignore this so we never leave a half-applied update.
+fn cancel_flag() -> &'static AtomicBool {
+    static CANCEL: AtomicBool = AtomicBool::new(false);
+    &CANCEL
+}
+
+pub fn clear_cancel() {
+    cancel_flag().store(false, Ordering::SeqCst);
+}
+
+pub fn request_cancel() {
+    cancel_flag().store(true, Ordering::SeqCst);
+}
+
+pub fn is_cancelled() -> bool {
+    cancel_flag().load(Ordering::SeqCst)
+}
+
+pub fn ensure_not_cancelled() -> Result<(), String> {
+    if is_cancelled() {
+        Err(cancelled_message().to_string())
+    } else {
+        Ok(())
+    }
+}
+
+pub fn cancelled_message() -> &'static str {
+    "Update cancelled."
+}
+
+pub fn is_cancel_error(message: &str) -> bool {
+    message.contains(cancelled_message())
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -206,6 +241,7 @@ fn place_window(app: &AppHandle, window: &tauri::WebviewWindow) {
 /// Open (or focus) the progress surface and seed an initial waiting state.
 /// Must run on the UI/main thread — never from `spawn_blocking`.
 pub fn show_window(app: &AppHandle, version: Option<&str>) -> Result<ProgressReporter, String> {
+    clear_cancel();
     let reporter = ProgressReporter::new(app.clone(), version.map(str::to_string));
     reporter.emit_phase("preparing", "Preparing update…");
     let window = ensure_window(app)?;
@@ -224,6 +260,16 @@ pub fn hide_window(app: &AppHandle) -> Result<(), String> {
             .hide()
             .map_err(|error| format!("hide update progress window: {error}"))?;
     }
+    Ok(())
+}
+
+/// User-facing cancel: set the cooperative flag and surface a waiting cancel phase.
+/// The worker observes the flag between network reads / phases and finishes with
+/// a cancel error. Closing the window alone does not stop a download.
+pub fn cancel(app: &AppHandle) -> Result<(), String> {
+    request_cancel();
+    let reporter = ProgressReporter::new(app.clone(), last_progress().and_then(|p| p.version));
+    reporter.emit_phase("cancelling", "Cancelling update…");
     Ok(())
 }
 

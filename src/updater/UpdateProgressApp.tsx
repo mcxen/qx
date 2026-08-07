@@ -31,11 +31,18 @@ function phaseLabel(phase: string, t: (key: string, fallback: string) => string)
       return t("update.progress.installing", "Installing");
     case "restarting":
       return t("update.progress.restarting", "Restarting");
+    case "cancelling":
+      return t("update.progress.cancelling", "Cancelling");
     case "error":
       return t("update.progress.error", "Update failed");
     default:
       return t("update.progress.waiting", "Please wait");
   }
+}
+
+/** Helper already owns install — do not offer cancel. */
+function canCancel(phase: string): boolean {
+  return !["installing", "restarting", "error", "cancelling"].includes(phase);
 }
 
 export default function UpdateProgressApp() {
@@ -45,6 +52,7 @@ export default function UpdateProgressApp() {
     message: t("update.progress.waitingMessage", "Waiting for update…"),
     indeterminate: true,
   });
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     document.documentElement.classList.add("qx-update-progress-page");
@@ -56,6 +64,12 @@ export default function UpdateProgressApp() {
       .catch(() => {});
     const unlisten = listen<UpdateProgressPayload>("qx-update-progress", ({ payload }) => {
       setProgress(payload);
+      if (payload.phase === "error" || payload.phase === "cancelling") {
+        setCancelling(payload.phase === "cancelling");
+      }
+      if (payload.phase === "restarting" || payload.phase === "installing") {
+        setCancelling(false);
+      }
     });
     return () => {
       document.documentElement.classList.remove("qx-update-progress-page");
@@ -67,6 +81,15 @@ export default function UpdateProgressApp() {
   const percent = Math.max(0, Math.min(100, progress.percent ?? 0));
   const isError = progress.phase === "error" || Boolean(progress.error);
   const showDeterminate = !progress.indeterminate && progress.percent != null && !isError;
+  const showCancel = canCancel(progress.phase) && !cancelling && !isError;
+
+  const handleCancel = () => {
+    if (cancelling || !showCancel) return;
+    setCancelling(true);
+    void invoke("qx_update_progress_cancel").catch(() => {
+      setCancelling(false);
+    });
+  };
 
   return (
     <main className="qx-update-progress" data-tauri-drag-region data-error={isError ? "true" : "false"}>
@@ -108,17 +131,30 @@ export default function UpdateProgressApp() {
             ? `${Math.round(percent)}%`
             : isError
               ? t("update.progress.failed", "Failed")
-              : t("update.progress.keepOpen", "Please keep this window open")}
+              : cancelling || progress.phase === "cancelling"
+                ? t("update.progress.cancellingHint", "Stopping…")
+                : t("update.progress.keepOpen", "Please keep this window open")}
         </span>
-        {isError && (
-          <button
-            type="button"
-            className="qx-command-button"
-            onClick={() => void invoke("qx_update_progress_close").catch(() => {})}
-          >
-            {t("common.close", "Close")}
-          </button>
-        )}
+        <div className="qx-update-progress-actions">
+          {showCancel && (
+            <button
+              type="button"
+              className="qx-command-button"
+              onClick={handleCancel}
+            >
+              {t("update.progress.cancel", "Cancel")}
+            </button>
+          )}
+          {isError && (
+            <button
+              type="button"
+              className="qx-command-button"
+              onClick={() => void invoke("qx_update_progress_close").catch(() => {})}
+            >
+              {t("common.close", "Close")}
+            </button>
+          )}
+        </div>
       </footer>
     </main>
   );

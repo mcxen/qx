@@ -109,6 +109,13 @@ html.qx-update-progress-page body,
   color: var(--qx-text-tertiary, rgba(255, 255, 255, 0.5));
 }
 
+.qx-update-progress-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .qx-update-progress-footer .qx-command-button {
   height: 26px;
   padding: 0 10px;

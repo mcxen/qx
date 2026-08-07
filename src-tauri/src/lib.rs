@@ -819,6 +819,7 @@ pub fn run() {
             updater::qx_update_download_and_install,
             updater::qx_update_progress_snapshot,
             updater::qx_update_progress_close,
+            updater::qx_update_progress_cancel,
             ocr::download_ocr_model,
             ocr::check_ocr_models,
             ocr::ocr_recognize_path,

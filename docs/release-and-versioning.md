@@ -53,6 +53,9 @@ Qx 使用自定义跨平台 helper 更新，不依赖 Tauri signed updater：
   推送字节进度与百分比，解压/校验/helper 安装阶段显示不确定等待条；失败时窗口保留
   错误态并可关闭。进度事件为 `qx-update-progress`，快照命令
   `qx_update_progress_snapshot`。
+- 检查/下载/解压阶段支持 **取消**（`qx_update_progress_cancel`）：协作式中断，
+  无网时也可主动关掉等待。manifest 请求 connect 约 10s / 总 20s 超时以便离线快速失败；
+  大包下载总超时 30 分钟，但连接仍 10s 内失败。helper 已启动后的安装/重启不可取消。
 - **签名策略（不买 Apple 开发者账号）**：
   - CI / Release 使用 **ad-hoc** `codesign --sign -`（免费，非公证）。
   - 本机重复开发测试可登录免费 Apple Account 的 **Personal Team**，使用稳定的

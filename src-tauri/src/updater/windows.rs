@@ -15,6 +15,7 @@ pub(super) fn prepare_install(
     expected_sha256: &str,
     expected_size: Option<u64>,
 ) -> Result<InstallPlan, String> {
+    super::progress::ensure_not_cancelled()?;
     prune_update_cache(Some(version));
     let update_dir = update_cache_dir().join(version);
     let _ = fs::remove_dir_all(&update_dir);
@@ -27,8 +28,10 @@ pub(super) fn prepare_install(
         expected_sha256,
         expected_size,
     )?;
+    super::progress::ensure_not_cancelled()?;
     reporter.emit_phase("verifying", "Verifying Windows installer…");
     validate_installer(&payload)?;
+    super::progress::ensure_not_cancelled()?;
     reporter.emit_phase("installing", "Preparing Windows install helper…");
     let target = std::env::current_exe().map_err(|e| format!("resolve current exe: {e}"))?;
     let helper = spawn_helper(&payload, &target, version)?;
