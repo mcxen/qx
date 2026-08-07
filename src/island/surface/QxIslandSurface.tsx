@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type {
   IslandChromeVariant,
   IslandPlacement,
@@ -16,6 +16,35 @@ export interface QxIslandSurfaceProps {
   children: ReactNode;
   className?: string;
   "aria-label"?: string;
+}
+
+const PROGRESS_PARTICLES = Array.from({ length: 18 }, (_, index) => ({
+  left: 7 + ((index * 47 + 13) % 88),
+  top: 18 + ((index * 29 + 11) % 64),
+  size: 1 + (index % 3),
+  delay: -((index * 173) % 2600),
+  duration: 2200 + ((index * 251) % 1700),
+}));
+
+function ProgressParticles({ className = "" }: { className?: string }) {
+  return (
+    <span className={`qx-island-progress-particles ${className}`.trim()} aria-hidden="true">
+      {PROGRESS_PARTICLES.map((particle, index) => (
+        <i
+          key={index}
+          className="qx-island-progress-particle"
+          style={{
+            left: `${particle.left}%`,
+            top: `${particle.top}%`,
+            width: `${particle.size}px`,
+            height: `${particle.size}px`,
+            animationDelay: `${particle.delay}ms`,
+            animationDuration: `${particle.duration}ms`,
+          }}
+        />
+      ))}
+    </span>
+  );
 }
 
 /**
@@ -44,6 +73,41 @@ export default function QxIslandSurface({
     typeof progress === "number" && Number.isFinite(progress)
       ? Math.max(0, Math.min(100, progress))
       : null;
+  const previousProgressRef = useRef<number | null>(normalizedProgress);
+  const trailProgressRef = useRef(0);
+  const trailKeyRef = useRef(0);
+  const [progressTrail, setProgressTrail] = useState<{
+    width: number;
+    key: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const previousProgress = previousProgressRef.current;
+    previousProgressRef.current = normalizedProgress;
+
+    if (normalizedProgress == null) {
+      trailProgressRef.current = 0;
+      setProgressTrail(null);
+      return undefined;
+    }
+
+    if (previousProgress != null && normalizedProgress < previousProgress) {
+      const trailWidth = Math.max(previousProgress, trailProgressRef.current);
+      trailProgressRef.current = trailWidth;
+      const key = trailKeyRef.current + 1;
+      trailKeyRef.current = key;
+      setProgressTrail({ width: trailWidth, key });
+      const timer = window.setTimeout(() => {
+        trailProgressRef.current = 0;
+        setProgressTrail(null);
+      }, 620);
+      return () => window.clearTimeout(timer);
+    }
+
+    trailProgressRef.current = 0;
+    setProgressTrail(null);
+    return undefined;
+  }, [normalizedProgress]);
 
   return (
     <div
@@ -67,10 +131,22 @@ export default function QxIslandSurface({
       )}
       {normalizedProgress != null && progressStyle === "surface-fill" && (
         <span
+          className="qx-island-progress-surface-trail"
+          key={`trail-${progressTrail?.key ?? "none"}`}
+          style={{ width: `${progressTrail?.width ?? 0}%` }}
+          aria-hidden="true"
+        >
+          <ProgressParticles className="is-trail" />
+        </span>
+      )}
+      {normalizedProgress != null && progressStyle === "surface-fill" && (
+        <span
           className="qx-island-progress-surface-fill"
           style={{ width: `${normalizedProgress}%` }}
           aria-hidden="true"
-        />
+        >
+          <ProgressParticles />
+        </span>
       )}
       {normalizedProgress != null && progressStyle === "island-ring" && (
         <svg

@@ -9,18 +9,30 @@ use windows_sys::Win32::UI::Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SH
 use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
 pub(super) fn prepare_install(
+    reporter: &ProgressReporter,
     version: &str,
     asset_url: &str,
     expected_sha256: &str,
     expected_size: Option<u64>,
 ) -> Result<InstallPlan, String> {
+    super::progress::ensure_not_cancelled()?;
     prune_update_cache(Some(version));
     let update_dir = update_cache_dir().join(version);
     let _ = fs::remove_dir_all(&update_dir);
     fs::create_dir_all(&update_dir).map_err(|e| format!("create update dir: {e}"))?;
     let payload = update_dir.join("Qx-update.exe");
-    download_verified_file(asset_url, &payload, expected_sha256, expected_size)?;
+    download_verified_file(
+        Some(reporter),
+        asset_url,
+        &payload,
+        expected_sha256,
+        expected_size,
+    )?;
+    super::progress::ensure_not_cancelled()?;
+    reporter.emit_phase("verifying", "Verifying Windows installer…");
     validate_installer(&payload)?;
+    super::progress::ensure_not_cancelled()?;
+    reporter.emit_phase("installing", "Preparing Windows install helper…");
     let target = std::env::current_exe().map_err(|e| format!("resolve current exe: {e}"))?;
     let helper = spawn_helper(&payload, &target, version)?;
     Ok(InstallPlan {

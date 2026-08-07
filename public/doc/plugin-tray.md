@@ -17,7 +17,37 @@ context.system.networkCounters() → 字节计数（插件自己算速率）
 ```
 
 插件**不**直接操作 OS 托盘 API；只依赖 Qx 端口。
-用户设置里的「托盘菜单」控制**宿主内置**项（打开窗口、内置 Memory/Net 状态行等）；**插件项与内置项并列显示**。
+用户设置里的「托盘菜单」同时控制宿主内置项和声明式轻量 Provider 的显示与顺序。普通
+`context.tray` 项继续进入右键原生菜单；支持滑块等交互控件的 Provider 由左键 Tray Panel
+统一绘制。
+
+## 轻量 Tray Provider（无需加载插件运行时）
+
+插件可以在 manifest 声明宿主已登记的数据源。Qx 只读取 manifest，并直接调用 Rust
+领域服务；不会为了保留 Tray 控件而加载插件 `index.js`、Panel 或 iframe：
+
+```json
+{
+  "surfaceProviders": [{
+    "id": "brightness",
+    "source": "system.display-brightness",
+    "surfaces": ["tray", "home"],
+    "presentation": "standard",
+    "titles": { "en": "Display Brightness", "zh-CN": "显示器亮度" },
+    "defaultEnabled": true
+  }]
+}
+```
+
+当前登记源为 `system.display-brightness`。Tray 和 Launcher Home 消费同一适配器契约；
+读取、写入、节流、平台差异和错误均由宿主负责。设置中的 `tray_providers` 只保存稳定的
+`<plugin-id>:<provider-id>`、开关与数组顺序。声明 Provider 且没有 interval 或已启用全局
+快捷键的插件采用 manifest-only 懒加载，首次打开 Panel/执行命令时才创建运行时。
+
+`presentation` 可选 `compact`（288 pt）、`standard`（360 pt）或 `wide`（440 pt）。这只是
+内容密度偏好，最终高度由宿主根据可见行自动测量并限制在 150–520 pt。宿主提供 action、
+带说明 action、status、control card、shortcut grid 与 section label 六类标准行；Provider
+只返回数据和操作，不提供宽高、DOM 或 CSS。
 
 ## 权限
 
@@ -159,7 +189,8 @@ async function tick(context) {
 - 每插件最多 12 项；title/id 长度截断
 - 不要高频 `setItems`（建议 ≥2–3s）；托盘重建有成本
 - 禁用/卸载必须清托盘（宿主已做；插件 `destroy` 仍应 `clear`）
-- 不提供任意 NSStatusItem / 托盘图标替换，也不提供 CSS / 自定义颜色；使用 `group` 与 `status` 获得受系统主题保护的原生层级
+- 不提供任意 NSStatusItem / 托盘图标替换。`context.tray` 仍不接受 CSS；只有登记过的
+  `surfaceProviders` 可由宿主在轻量 Tray Panel 中绘制标准控件。
 
 ## 版本
 

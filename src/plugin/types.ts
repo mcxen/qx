@@ -92,7 +92,8 @@ export type PluginHomeWidgetSource =
   | "system.cpu"
   | "system.memory"
   | "system.power"
-  | "system.network";
+  | "system.network"
+  | "system.display-brightness";
 
 /**
  * A plugin may associate one of its panels with a host-rendered Home widget.
@@ -101,6 +102,24 @@ export type PluginHomeWidgetSource =
 export interface PluginHomeWidgetDeclaration {
   id: string;
   source: PluginHomeWidgetSource;
+}
+
+export type PluginSurfaceProviderSource = "system.display-brightness";
+export type PluginSurfaceProviderTarget = "tray" | "home";
+export type PluginSurfaceProviderPresentation = "compact" | "standard" | "wide";
+
+/**
+ * Declarative lightweight data provider rendered and executed by Qx. It is
+ * discovered from manifest metadata and never loads the plugin JavaScript.
+ */
+export interface PluginSurfaceProviderDeclaration {
+  id: string;
+  source: PluginSurfaceProviderSource;
+  surfaces: PluginSurfaceProviderTarget[];
+  presentation?: PluginSurfaceProviderPresentation;
+  title?: string;
+  titles?: Partial<Record<"en" | "zh-CN", string>>;
+  defaultEnabled?: boolean;
 }
 
 export interface PluginManifest {
@@ -131,6 +150,7 @@ export interface PluginManifest {
   raycast?: PluginRaycastMetadata;
   storage?: PluginStorageManifest;
   homeWidgets?: PluginHomeWidgetDeclaration[];
+  surfaceProviders?: PluginSurfaceProviderDeclaration[];
   signature?: string;
   pubkey?: string;
 }
@@ -495,6 +515,21 @@ export interface PluginDisplayInfo {
   isBuiltin: boolean;
 }
 
+export interface PluginDisplayBrightnessControl {
+  id: string;
+  name: string;
+  backend: string;
+  current: number | null;
+  max: number;
+  rawCurrent: number | null;
+  rawMax: number | null;
+  isBuiltin: boolean;
+  supported: boolean;
+  error?: string | null;
+  errorStage?: string | null;
+  errorCode?: number | null;
+}
+
 export interface PluginNetworkInfo {
   devices: Array<{ name: string; ip: string }>;
   count: number;
@@ -565,13 +600,24 @@ export interface PluginIslandDisplayInput {
     durationMs?: number;
     paused?: boolean;
   };
-  /** One manifest command that the user may run from the island. */
+  /** Primary manifest command shown on the island (compat alias of actions[0]). */
   action?: {
     label: string;
     command: string;
     icon?: PluginIslandActionIcon;
     variant?: "default" | "danger";
   };
+  /**
+   * Up to two host-rendered trailing actions (e.g. Pause + Stop). Each command
+   * must exist on the plugin manifest. When both `action` and `actions` are set,
+   * `actions` wins.
+   */
+  actions?: Array<{
+    label: string;
+    command: string;
+    icon?: PluginIslandActionIcon;
+    variant?: "default" | "danger";
+  }>;
   /** Optional expiry. Omit for a standing data display. */
   ttlMs?: number;
 }
@@ -865,6 +911,36 @@ export interface PluginContext {
         onDownload?: (id: string, item?: PluginWorkbenchItem) => void;
       },
     ) => import("./workbenchTypes").PluginWorkbenchController;
+    /** Publish host-rendered Actions for a custom HTML panel. */
+    mountActions: (
+      actions: Array<{
+        id: string;
+        label: string;
+        menuKey: string;
+        kbd?: string;
+        disabled?: boolean;
+        primary?: boolean;
+        tone?: "normal" | "primary" | "danger";
+      }>,
+      handlers?: {
+        onAction?: (id: string) => void;
+        selectionTitle?: string;
+      },
+    ) => {
+      update: (
+        actions: Array<{
+          id: string;
+          label: string;
+          menuKey: string;
+          kbd?: string;
+          disabled?: boolean;
+          primary?: boolean;
+          tone?: "normal" | "primary" | "danger";
+        }>,
+        selectionTitle?: string,
+      ) => void;
+      destroy: () => void;
+    };
   };
   notification: {
     show: (input: { title: string; body?: string; subtitle?: string }) => Promise<void>;
@@ -955,6 +1031,8 @@ export interface PluginContext {
     info: () => Promise<PluginSystemInfo>;
     storage: () => Promise<PluginStorageInfo>;
     displays: () => Promise<PluginDisplayInfo[]>;
+    displayBrightness: () => Promise<PluginDisplayBrightnessControl[]>;
+    setDisplayBrightness: (displayId: string, value: number) => Promise<void>;
     network: () => Promise<PluginNetworkInfo>;
     power: () => Promise<PluginPowerInfo>;
     qxStorageOverview: () => Promise<unknown>;

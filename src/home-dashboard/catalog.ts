@@ -1,7 +1,7 @@
 import type { HomeDashboardWidgetId } from "../modules/settings/store";
 import type { InstalledPlugin, PluginHomeWidgetSource } from "../plugin/types";
 import type { LucideIcon } from "lucide-react";
-import { Cpu, MemoryStick, Network, Pin, Zap } from "lucide-react";
+import { Cpu, MemoryStick, Monitor, Network, Pin, Zap } from "lucide-react";
 
 type Translate = (key: string, fallback: string) => string;
 
@@ -18,6 +18,7 @@ export const HOME_DASHBOARD_WIDGET_IDS: HomeDashboardWidgetId[] = [
   "system.memory",
   "system.power",
   "system.network",
+  "system.display-brightness",
 ];
 
 export function homeDashboardWidgetOptions(t: Translate): HomeDashboardWidgetOption[] {
@@ -51,6 +52,12 @@ export function homeDashboardWidgetOptions(t: Translate): HomeDashboardWidgetOpt
       title: t("launcher.home.network", "Network"),
       description: t("launcher.home.network.desc", "Current download and upload rates."),
       icon: Network,
+    },
+    {
+      id: "system.display-brightness",
+      title: t("launcher.home.displayBrightness", "Display Brightness"),
+      description: t("launcher.home.displayBrightness.desc", "Current brightness across connected displays."),
+      icon: Monitor,
     },
   ];
 }

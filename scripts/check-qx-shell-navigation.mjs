@@ -303,6 +303,7 @@ const normalizedWorkbench = normalizePluginWorkbenchState({
         ],
         content: [
           { type: "text", text: "Before image" },
+          { type: "asset-image", assetPath: "assets/emotions/image_emoticon8.png", alt: "image_emoticon8" },
           { type: "image", image: { url: "https://images.example.test/inline.jpg" } },
           { type: "image", image: { url: "http://images.example.test/rejected-inline.jpg" } },
           { type: "text", text: "After image" },
@@ -342,9 +343,14 @@ assert.deepEqual(
 );
 assert.deepEqual(
   normalizedWorkbench.items?.[0]?.detail?.content?.map((block) =>
-    block.type === "text" ? [block.type, block.text] : [block.type, block.image.url]),
+    block.type === "text"
+      ? [block.type, block.text]
+      : block.type === "asset-image"
+        ? [block.type, block.assetPath]
+        : [block.type, block.image.url]),
   [
     ["text", "Before image"],
+    ["asset-image", "assets/emotions/image_emoticon8.png"],
     ["image", "https://images.example.test/inline.jpg"],
     ["text", "After image"],
   ],

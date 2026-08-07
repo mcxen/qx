@@ -1,6 +1,6 @@
 [package]
 name = "qx"
-version = "0.6.54"
+version = "0.6.60"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -16,6 +16,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+cc = "1"
 
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "macos-private-api", "protocol-asset"] }
@@ -43,7 +44,7 @@ openh264 = "0.9.7"
 mp4 = "0.14"
 bytes = "1"
 zip = "2"
-rdev = "0.5"
+rdev = { version = "0.5", features = ["unstable_grab"] }
 enigo = { version = "0.2", features = ["wayland"] }
 ed25519-dalek = { version = "2", features = ["alloc"] }
 hex = "0.4"
@@ -76,6 +77,7 @@ fswalk = { path = "vendor/cardinal/fswalk" }
 [target.'cfg(target_os = "windows")'.dependencies]
 window-vibrancy = "0.6"
 xcap = { version = "0.9", features = ["wgc"] }
+wmi = "0.15.1"
 windows-sys = { version = "0.59", features = [
   "Win32_Devices_Display",
   "Win32_Foundation",

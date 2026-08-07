@@ -72,6 +72,16 @@ Bottom Bar 或 Enter handler。
 - 运行时与权限边界：[`plugin-system.md`](./plugin-system.md)
 - 内置 React 端口和插件端口映射：[`docs/module-port-inventory.md`](../../docs/module-port-inventory.md)
 
+显示器亮度插件应使用 `context.system.displayBrightness()` 读取 Qx 提供的内置屏和
+外接 DDC/CI 目标，并使用 `context.system.setDisplayBrightness(id, value)` 写入 0–100
+亮度。返回值中的 `current` 是百分比，`rawCurrent/rawMax` 是显示器 VCP 的真实值；
+不支持或通信失败的外接屏仍会返回，并通过 `error/errorStage/errorCode` 说明失败阶段。
+macOS 适配使用 DisplayServices 与内嵌 DDC/CI；Windows 适配使用 WMI 与 Win32
+Monitor Configuration。两端保持同一序列化模型，插件不得按平台解析目标 ID。
+由于该端口位于 `context.system`，manifest 还需声明 `system`，并添加精确写权限
+`invoke:display_brightness_set`；插件不得安装、启动或解析 m1ddc/ddcctl、PowerShell
+等外部工具。
+
 ## 3. 最小插件
 
 推荐源码结构：
@@ -149,6 +159,7 @@ Manifest 只声明包元数据、入口、命令、面板、权限与兼容范�
 | 进度与快捷反馈 | `context.island` | 自建悬浮窗口 |
 | Launcher Home 入口 | `manifest.homeWidgets[]`（受支持语义源） | 自绘首页卡片、私有轮询 |
 | 托盘状态 | `context.tray` | 直接调用系统托盘库 |
+| Tray/Home 标准控件 | `manifest.surfaceProviders[]`（受支持语义源） | 为常驻展示加载完整 Panel 运行时 |
 | 翻译 | `context.i18n` | 硬编码单一语言 UI |
 
 `context.http.fetch` 的 `body` 是 UTF-8 文本。发送 Protobuf、压缩包等原始字节时，
@@ -254,6 +265,33 @@ Actions 不是说明列表。每个可见业务 action 都必须执行一个真�
 
 `menuKey` 与 `kbd` 不同：前者仅在 Actions 菜单打开时生效，不会抢走搜索输入；后者是可选的
 窗口内完整快捷键，业务动作使用 `CmdOrCtrl+…` 等可移植写法，不能用单字母 `kbd` 抢占输入。
+
+无法用 Workbench 表达而保留自定义 HTML 的面板，必须通过 `context.ui.mountActions()` 发布
+宿主 Actions，不能在内容区自绘命令工具栏。设置 `primary: false` 的动作只进入 Context / Actions
+菜单，不占用 Bottom Bar 主动作：
+
+```js
+const actions = context.ui.mountActions([
+  {
+    id: "refresh",
+    label: "Refresh",
+    menuKey: "r",
+    kbd: "CmdOrCtrl+R",
+    primary: false,
+  },
+], {
+  onAction(id) {
+    if (id === "refresh") void refresh({ manual: true });
+  },
+});
+
+// panel.destroy
+actions.destroy();
+```
+
+面板存活期间需要轮询的数据，应使用 `context.setInterval` 并做静默增量更新：轮询不得反复
+清空可用内容、切换整页 loading、重建相同 DOM、抢走焦点或重置滚动位置。仅当数据结构变化
+时重绘；普通数值变化应就地更新。Panel 销毁时必须清除 interval。
 
 Top Bar 右侧只发布内容筛选模型，由宿主绘制固定下拉框。Bottom Bar 的左侧 Home、
 中间 Island，以及右侧依次排列的主动作与 Esc 也全部由宿主绘制。详细规则见

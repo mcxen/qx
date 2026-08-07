@@ -70,7 +70,11 @@ function broadcastPluginTheme(): void {
 export type PluginItemActionDescriptor = {
   id: string;
   title: string;
+  menuKey?: string;
   kbd?: string;
+  disabled?: boolean;
+  primary?: boolean;
+  tone?: "normal" | "primary" | "danger";
 };
 
 export type PluginItemActionsPayload = {
@@ -260,8 +264,12 @@ export function ensurePluginShellBridge(): void {
     const actions = Array.isArray(data.actions)
       ? data.actions.slice(0, 64).map((raw: PluginItemActionDescriptor) => ({
           id: String(raw?.id || "").slice(0, 128),
-          title: String(raw?.title || "Action").slice(0, 256),
+          title: String(raw?.title || (raw as { label?: string })?.label || "Action").slice(0, 256),
+          menuKey: raw?.menuKey ? String(raw.menuKey).slice(0, 1).toLowerCase() : undefined,
           kbd: raw?.kbd ? String(raw.kbd).slice(0, 64) : undefined,
+          disabled: raw?.disabled === true,
+          primary: typeof raw?.primary === "boolean" ? raw.primary : undefined,
+          tone: raw?.tone === "danger" || raw?.tone === "primary" ? raw.tone : "normal",
         })).filter((action: PluginItemActionDescriptor) => Boolean(action.id))
       : [];
     publishSafely(itemActionsListeners, {

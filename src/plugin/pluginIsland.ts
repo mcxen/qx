@@ -50,20 +50,26 @@ export function normalizePluginIslandInput(
     raw.tone === "success" || raw.tone === "warning" || raw.tone === "danger"
       ? raw.tone
       : "neutral";
-  const actionRaw = raw.action as Record<string, unknown> | undefined;
-  const actionIcon: PluginIslandActionIcon | undefined = actionRaw?.icon === "pause"
-    || actionRaw?.icon === "play"
-    || actionRaw?.icon === "stop"
-    || actionRaw?.icon === "open"
-    ? actionRaw.icon
-    : undefined;
-  const action = actionRaw
-    ? {
-        label: String(actionRaw.label || "").trim().slice(0, 40),
-        command: String(actionRaw.command || "").trim().slice(0, 128),
-        icon: actionIcon,
-        variant: actionRaw.variant === "danger" ? "danger" as const : "default" as const,
-      }
+  const normalizeAction = (value: unknown) => {
+    if (!value || typeof value !== "object") return undefined;
+    const actionRaw = value as Record<string, unknown>;
+    const actionIcon: PluginIslandActionIcon | undefined = actionRaw.icon === "pause"
+      || actionRaw.icon === "play"
+      || actionRaw.icon === "stop"
+      || actionRaw.icon === "open"
+      ? actionRaw.icon
+      : undefined;
+    const action = {
+      label: String(actionRaw.label || "").trim().slice(0, 40),
+      command: String(actionRaw.command || "").trim().slice(0, 128),
+      icon: actionIcon,
+      variant: actionRaw.variant === "danger" ? "danger" as const : "default" as const,
+    };
+    return action.label && action.command ? action : undefined;
+  };
+  const action = normalizeAction(raw.action);
+  const actions = Array.isArray(raw.actions)
+    ? raw.actions.map(normalizeAction).filter((item): item is NonNullable<typeof item> => Boolean(item)).slice(0, 2)
     : undefined;
   const activity: PluginIslandActivity | undefined =
     raw.activity === "wave"
@@ -112,7 +118,8 @@ export function normalizePluginIslandInput(
     progressStyle: normalizePluginIslandProgressStyle(raw.progressStyle),
     activity,
     countdown,
-    action: action?.label && action.command ? action : undefined,
+    action,
+    actions: actions && actions.length > 0 ? actions : undefined,
     ttlMs: typeof raw.ttlMs === "number" && Number.isFinite(raw.ttlMs)
       ? Math.max(500, Math.floor(raw.ttlMs))
       : undefined,
@@ -124,14 +131,32 @@ export function buildPluginIslandShowInput(
   input: PluginIslandDisplayInput,
   runCommand?: PluginIslandCommandRunner,
 ): IslandShowInput {
-  if (
-    input.action
-    && !plugin.manifest?.commands?.some((command) => command.name === input.action?.command)
-  ) {
-    throw new Error(`Plugin island action is not a manifest command: ${input.action.command}`);
+  const commandSet = new Set((plugin.manifest?.commands ?? []).map((command) => command.name));
+  const resolvedActions = (input.actions && input.actions.length > 0
+    ? input.actions
+    : input.action
+      ? [input.action]
+      : []).slice(0, 2);
+  for (const action of resolvedActions) {
+    if (!commandSet.has(action.command)) {
+      throw new Error(`Plugin island action is not a manifest command: ${action.command}`);
+    }
   }
-  const actionId = input.action ? "plugin-command" : undefined;
   const identityIcon = getPluginIcon(plugin.id);
+  const contentActions = resolvedActions.map((action, index) => ({
+    id: index === 0 ? "plugin-command" : `plugin-command-${index}`,
+    label: action.label,
+    icon: action.icon,
+    variant: action.variant,
+  }));
+  const handlers = runCommand
+    ? Object.fromEntries(
+      resolvedActions.map((action, index) => [
+        contentActions[index].id,
+        () => runCommand(plugin.id, action.command),
+      ]),
+    )
+    : undefined;
   return {
     id: pluginIslandSessionId(plugin.id),
     priority: "location",
@@ -157,18 +182,10 @@ export function buildPluginIslandShowInput(
           ? { kind: "activity", activity: input.activity }
           : undefined,
       countdown: input.countdown,
-      action: input.action && actionId
-        ? {
-            id: actionId,
-            label: input.action.label,
-            icon: input.action.icon,
-            variant: input.action.variant,
-          }
-        : undefined,
+      action: contentActions[0],
+      actions: contentActions.length > 0 ? contentActions : undefined,
     },
-    actions: input.action && actionId && runCommand
-      ? { [actionId]: () => runCommand(plugin.id, input.action!.command) }
-      : undefined,
+    actions: handlers,
   };
 }
 

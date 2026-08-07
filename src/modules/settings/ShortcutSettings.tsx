@@ -352,7 +352,7 @@ export default function ShortcutSettings() {
       <div className="qx-settings-hint" style={{ marginBottom: 12, fontSize: 12, color: "var(--color-text-tertiary)", lineHeight: 1.45 }}>
         {t(
           "shortcuts.hint",
-          "Global shortcuts work while Qx is in the background. Current Window is enabled by default; Launcher Search and module shortcuts remain off until you enable them.",
+          "Global shortcuts work while Qx is in the background. On macOS, Cmd+Space can replace Spotlight when Accessibility/Input Monitoring permission is granted. Current Window is enabled by default; Launcher Search and module shortcuts remain off until you enable them.",
         )}
       </div>
       {SHORTCUT_GROUPS.map((group) => (
@@ -377,7 +377,7 @@ export default function ShortcutSettings() {
               ? t(
                 `shortcuts.issue.${issueCode}`,
                 issueCode === "reserved"
-                  ? "Reserved by the operating system (for example Cmd/Ctrl+Space)."
+                  ? "Reserved by the operating system (for example Windows Ctrl+Space)."
                   : issueCode === "invalid"
                     ? "Invalid shortcut."
                     : "This shortcut is already used by another global action.",
@@ -554,7 +554,7 @@ export default function ShortcutSettings() {
               ? t(
                 `shortcuts.issue.${issueCode}`,
                 issueCode === "reserved"
-                  ? "Reserved by the operating system (for example Cmd/Ctrl+Space)."
+                  ? "Reserved by the operating system (for example Windows Ctrl+Space)."
                   : issueCode === "invalid"
                     ? "Invalid shortcut."
                     : "This shortcut is already used by another global action.",

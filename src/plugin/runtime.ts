@@ -127,7 +127,7 @@ export function buildPluginRuntimeHtml(
       ${PLUGIN_OVERLAY_SCROLLBAR_RUNTIME_JS}
       const pluginId = ${JSON.stringify(pluginId)};
       const runtimeId = ${JSON.stringify(runtimeId)};
-      globalThis.__qxPluginRuntimeId = runtimeId;
+      globalThis.__qxPluginId = pluginId; globalThis.__qxPluginRuntimeId = runtimeId;
       const entrySpecifier = ${JSON.stringify(moduleGraph.entrySpecifier)};
       const pluginDisplay = ${JSON.stringify({
         raycastActionPanel,
@@ -593,6 +593,7 @@ export function buildPluginRuntimeHtml(
           info: () => rpc('invoke', { cmd: 'qx_system_information_check_system_info', args: {} }),
           storage: () => rpc('invoke', { cmd: 'qx_system_information_check_storage', args: {} }),
           displays: () => rpc('invoke', { cmd: 'display_list', args: {} }),
+          displayBrightness: () => rpc('invoke', { cmd: 'display_brightness_list', args: {} }), setDisplayBrightness: (displayId, value) => rpc('invoke', { cmd: 'display_brightness_set', args: { displayId: String(displayId || ''), value: Math.max(0, Math.min(100, Math.round(Number(value) || 0))) } }),
           network: () => rpc('invoke', { cmd: 'qx_system_information_check_network', args: {} }),
           power: () => rpc('invoke', { cmd: 'qx_system_monitor_power', args: {} }),
           qxStorageOverview: () => rpc('invoke', { cmd: 'qx_storage_overview', args: {} }),
@@ -794,7 +795,9 @@ export async function loadPlugin(
   const iframe = createSandboxIframe(workerHtml, false);
   document.body.appendChild(iframe);
   registerPluginRuntime(plugin.id, workerRuntimeId, iframe);
-  const pluginLoaded = waitForPluginRuntime(plugin, iframe, workerRuntimeId, 10000);
+  // Large first-party panels (e.g. external-display-control) need headroom for
+  // module graph install + first import; 10s was too tight on cold starts.
+  const pluginLoaded = waitForPluginRuntime(plugin, iframe, workerRuntimeId, 20_000);
   const result: PluginLoadResult = {
     plugin,
     iframe,
@@ -913,7 +916,7 @@ export async function loadPlugin(
         try {
           // Load + first paint only. Plugins must not await long CLI/network in panel.render
           // (host tears down the iframe on timeout). See plugin-development-guide panel rules.
-          await waitForPluginRuntime(plugin, panelIframe, panelRuntimeId, 5000, false);
+          await waitForPluginRuntime(plugin, panelIframe, panelRuntimeId, 12_000, false);
           await sendRuntimeRequest(
             plugin,
             panelIframe,
@@ -994,6 +997,5 @@ export async function loadPlugin(
     throw error;
   }
 
-  return result;
-}
+  return result; }
 export { handlePluginRpc };

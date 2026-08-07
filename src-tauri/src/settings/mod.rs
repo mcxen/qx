@@ -7,12 +7,13 @@ use std::sync::{Mutex, OnceLock};
 use tauri::{command, AppHandle};
 
 mod entry_config;
+mod macos_shortcut_override;
 pub(crate) mod shortcuts;
 
 use entry_config::{
     default_quick_entries, default_tray_actions, migrate_legacy_default_quick_entries,
 };
-pub use entry_config::{QuickEntryConfig, TrayActionConfig};
+pub use entry_config::{QuickEntryConfig, TrayActionConfig, TrayProviderConfig};
 #[cfg(all(test, target_os = "windows"))]
 use shortcuts::migrate_windows_factory_host_shortcuts;
 #[cfg(test)]
@@ -902,6 +903,9 @@ pub struct Settings {
     pub quick_entries: Vec<QuickEntryConfig>,
     #[serde(default = "default_tray_actions")]
     pub tray_actions: Vec<TrayActionConfig>,
+    /// Ordered lightweight manifest providers shown in the custom Tray panel.
+    #[serde(default)]
+    pub tray_providers: Vec<TrayProviderConfig>,
 }
 
 impl Default for Settings {
@@ -926,6 +930,7 @@ impl Default for Settings {
             builtin_modules: BuiltinModulesSettings::default(),
             quick_entries: default_quick_entries(),
             tray_actions: default_tray_actions(),
+            tray_providers: Vec::new(),
         }
     }
 }
@@ -1084,6 +1089,7 @@ pub async fn update_settings(app: AppHandle, mut settings: Settings) -> Result<S
             || old.builtin_modules != settings_for_io.builtin_modules;
         let tray_changed = old.quick_entries != settings_for_io.quick_entries
             || old.tray_actions != settings_for_io.tray_actions
+            || old.tray_providers != settings_for_io.tray_providers
             || old.general.auto_hide_on_blur != settings_for_io.general.auto_hide_on_blur
             || old.appearance.window_behavior != settings_for_io.appearance.window_behavior
             || old.general.language != settings_for_io.general.language;

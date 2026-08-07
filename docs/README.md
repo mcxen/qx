@@ -20,6 +20,7 @@
 | [shell-and-shortcuts.md](./shell-and-shortcuts.md) | **浮动面板 / 全局快捷键 toggle / managed State / 搜索重聚焦**（优先查这份） |
 | [module-surfaces.md](./module-surfaces.md) | 主搜索直达模块子界面（Raycast 对照、RSS feed 深链、OPML/文件夹） |
 | [module-port-inventory.md](./module-port-inventory.md) | **内置模块 + 市场插件端口对照**（shell/Esc/列表/缓存/http；写插件/新模块先看） |
+| [tray-surface-design.md](./tray-surface-design.md) | **Tray Surface 设计系统**：尺寸预设、标准行型、轻量 Provider 与测量规则 |
 | [rust-backend.md](./rust-backend.md) | Rust 模块导览、启动顺序、添加新模块流程、常见坑 |
 | [runtime-threading.md](./runtime-threading.md) | **主线程 UI + blocking 多线程**：`runtime::ui` / `blocking`、模块命令模板、SIGTRAP 规避 |
 | [ipc-catalogue.md](./ipc-catalogue.md) | 全部 310+ 个 Tauri 命令 + 事件通道；按模块分组 |

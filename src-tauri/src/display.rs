@@ -13,6 +13,9 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{command, AppHandle};
 
+#[cfg(target_os = "windows")]
+mod brightness_windows;
+
 #[cfg(target_os = "macos")]
 const DISPLAY_CACHE_TTL: Duration = Duration::from_millis(750);
 
@@ -24,6 +27,9 @@ struct CaptureMonitorCache {
 
 #[cfg(target_os = "macos")]
 static CAPTURE_MONITOR_CACHE: OnceLock<Mutex<Option<CaptureMonitorCache>>> = OnceLock::new();
+
+#[cfg(target_os = "macos")]
+static DISPLAY_CONTROL_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,6 +46,96 @@ pub struct DisplayDescriptor {
     pub edid_product_code: Option<u16>,
     pub is_primary: bool,
     pub is_builtin: bool,
+}
+
+/// A brightness target exposed by the shared display-control port.
+///
+/// `id` is intentionally opaque to callers. macOS uses DisplayServices or its
+/// embedded DDC/CI adapter; Windows uses WMI for integrated panels and Win32
+/// Monitor Configuration for physical DDC/CI targets. Plugin/UI code never
+/// receives an OS display handle or starts a platform utility.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DisplayBrightnessControl {
+    pub id: String,
+    pub name: String,
+    pub backend: String,
+    pub current: Option<u8>,
+    pub max: u8,
+    pub raw_current: Option<u16>,
+    pub raw_max: Option<u16>,
+    pub is_builtin: bool,
+    pub supported: bool,
+    pub error: Option<String>,
+    pub error_stage: Option<String>,
+    pub error_code: Option<i32>,
+}
+
+#[cfg(target_os = "macos")]
+#[repr(C)]
+struct MacDdcDisplay {
+    id: u32,
+    current: u16,
+    max: u16,
+    error_code: i32,
+    error_stage: u32,
+    name: [std::os::raw::c_char; 256],
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn qx_native_display_brightness(display: u32, out: *mut u16) -> i32;
+    fn qx_native_set_display_brightness(display: u32, value: u16) -> i32;
+    fn qx_ddc_list(out: *mut MacDdcDisplay, capacity: usize) -> usize;
+    fn qx_ddc_set(display: u32, value: u16, error_stage: *mut u32) -> i32;
+}
+
+#[cfg(target_os = "macos")]
+fn mac_string(value: &[std::os::raw::c_char]) -> String {
+    let bytes = value
+        .iter()
+        .take_while(|byte| **byte != 0)
+        .map(|byte| *byte as u8)
+        .collect::<Vec<_>>();
+    String::from_utf8_lossy(&bytes).trim().to_string()
+}
+
+#[cfg(target_os = "macos")]
+fn native_target_id(display_id: u32) -> String {
+    format!("native:{display_id}")
+}
+
+#[cfg(target_os = "macos")]
+fn ddc_target_id(display_id: u32) -> String {
+    format!("ddc:{display_id}")
+}
+
+#[cfg(target_os = "macos")]
+fn ddc_stage_name(stage: u32) -> &'static str {
+    match stage {
+        1 => "missing display info",
+        2 => "missing IODisplayLocation",
+        3 => "missing IOKit display adapter",
+        4 => "IOAVService API unavailable",
+        5 => "cannot resolve IOKit registry id",
+        6 => "cannot create IOKit iterator",
+        7 => "no external DCPAVServiceProxy",
+        8 => "cannot create IOAVService",
+        9 => "DDC VCP read request failed",
+        10 => "DDC VCP read response failed",
+        11 => "invalid DDC VCP response",
+        12 => "DDC VCP write failed",
+        _ => "unknown DDC failure",
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn ddc_error(stage: u32, error_code: i32) -> String {
+    if error_code == 0 {
+        format!("DDC: {}", ddc_stage_name(stage))
+    } else {
+        format!("DDC: {} (IOReturn {error_code})", ddc_stage_name(stage))
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -282,6 +378,140 @@ fn select_display_area_for_cursor_sources(
         .or_else(|| raw_cursor.and_then(|(x, y)| select_display_area_for_raw_cursor(areas, x, y)))
 }
 
+/// Platform-native pointer sample used when Tauri's physical cursor is noisy
+/// across mixed-DPI menu bars. On macOS this is `NSEvent.mouseLocation`
+/// converted to a top-left oriented point; other platforms return `None`.
+pub(crate) fn raw_cursor_position_for_display_lookup() -> Option<(f64, f64)> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CStr;
+
+        use objc2::msg_send;
+        use objc2::runtime::AnyClass;
+
+        unsafe {
+            let event_cls = AnyClass::get(CStr::from_bytes_with_nul(b"NSEvent\0").ok()?)?;
+            let point: objc2_foundation::NSPoint = msg_send![event_cls, mouseLocation];
+            let y = core_graphics::display::CGDisplay::main().pixels_high() as f64 - point.y;
+            Some((point.x, y))
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
+fn tauri_monitor_for_display_area(app: &AppHandle, area: DisplayArea) -> Option<tauri::Monitor> {
+    app.available_monitors().ok()?.into_iter().find(|monitor| {
+        let candidate = display_area_from_monitor(monitor);
+        candidate.frame_x == area.frame_x && candidate.frame_y == area.frame_y
+    })
+}
+
+/// Shared pointer → display resolution for launcher, tray, and capture.
+///
+/// Resolution order:
+/// 1. Tauri physical cursor (`app.cursor_position`)
+/// 2. Optional physical event hint (tray-icon click, etc.)
+/// 3. Platform raw cursor (`NSEvent.mouseLocation` on macOS)
+/// 4. `monitor_from_point` / window monitor / primary
+pub(crate) fn resolve_pointer_display(
+    app: &AppHandle,
+    window: Option<&tauri::WebviewWindow>,
+    physical_hint: Option<(f64, f64)>,
+) -> Option<DisplayArea> {
+    let areas = available_display_areas(app);
+    let normalized_cursor = app
+        .cursor_position()
+        .ok()
+        .map(|cursor| (cursor.x, cursor.y));
+    let raw_cursor = raw_cursor_position_for_display_lookup();
+    select_display_area_for_cursor_sources(&areas, normalized_cursor, raw_cursor)
+        .or_else(|| physical_hint.and_then(|(x, y)| select_display_area_for_cursor(&areas, x, y)))
+        .or_else(|| {
+            physical_hint.and_then(|(x, y)| select_display_area_for_raw_cursor(&areas, x, y))
+        })
+        .or_else(|| {
+            app.cursor_position().ok().and_then(|cursor| {
+                app.monitor_from_point(cursor.x, cursor.y)
+                    .ok()
+                    .flatten()
+                    .map(|monitor| display_area_from_monitor(&monitor))
+            })
+        })
+        .or_else(|| {
+            window.and_then(|window| {
+                window
+                    .current_monitor()
+                    .ok()
+                    .flatten()
+                    .map(|monitor| display_area_from_monitor(&monitor))
+            })
+        })
+        .or_else(|| {
+            app.primary_monitor()
+                .ok()
+                .flatten()
+                .map(|monitor| display_area_from_monitor(&monitor))
+        })
+}
+
+/// Prefer a physical pointer sample that already lies on `area`, then fall back
+/// to the work-area top-center (menu-bar / tray zone).
+pub(crate) fn pointer_anchor_on_display(
+    app: &AppHandle,
+    area: DisplayArea,
+    physical_hint: Option<(f64, f64)>,
+) -> (f64, f64) {
+    if let Ok(cursor) = app.cursor_position() {
+        if contains_point(area, cursor.x, cursor.y) {
+            return (cursor.x, cursor.y);
+        }
+    }
+    if let Some((x, y)) = physical_hint {
+        if contains_point(area, x, y) {
+            return (x, y);
+        }
+        let scale = area.scale_factor.max(1.0);
+        let scaled = (x * scale, y * scale);
+        if contains_point(area, scaled.0, scaled.1) {
+            return scaled;
+        }
+    }
+    if let Some((x, y)) = raw_cursor_position_for_display_lookup() {
+        let scale = area.scale_factor.max(1.0);
+        let scaled = (x * scale, y * scale);
+        if contains_point(area, scaled.0, scaled.1) {
+            return scaled;
+        }
+        if contains_point(area, x, y) {
+            return (x, y);
+        }
+    }
+    let scale = area.scale_factor.max(1.0);
+    (
+        area.work_x as f64 + area.work_width as f64 * 0.5,
+        area.work_y as f64 + 4.0 * scale,
+    )
+}
+
+pub(crate) fn capture_monitor_id_for_display_area(
+    app: &AppHandle,
+    area: DisplayArea,
+) -> Option<u32> {
+    let monitor = tauri_monitor_for_display_area(app, area)?;
+    capture_monitor_for_tauri(app, &monitor).ok()?.id().ok()
+}
+
+pub(crate) fn display_area_for_window(window: &tauri::WebviewWindow) -> Option<DisplayArea> {
+    window
+        .current_monitor()
+        .ok()
+        .flatten()
+        .map(|monitor| display_area_from_monitor(&monitor))
+}
+
 pub(crate) fn display_area_for_current_cursor(
     app: &AppHandle,
     window: &tauri::WebviewWindow,
@@ -292,33 +522,14 @@ pub(crate) fn display_area_for_current_cursor(
         .cursor_position()
         .ok()
         .map(|cursor| (cursor.x, cursor.y));
+    let raw_cursor = raw_cursor.or_else(raw_cursor_position_for_display_lookup);
     select_display_area_for_cursor_sources(&areas, normalized_cursor, raw_cursor)
-        .or_else(|| {
-            app.cursor_position().ok().and_then(|cursor| {
-                app.monitor_from_point(cursor.x, cursor.y)
-                    .ok()
-                    .flatten()
-                    .map(|monitor| display_area_from_monitor(&monitor))
-            })
-        })
-        .or_else(|| {
-            window
-                .current_monitor()
-                .ok()
-                .flatten()
-                .map(|monitor| display_area_from_monitor(&monitor))
-        })
-        .or_else(|| {
-            app.primary_monitor()
-                .ok()
-                .flatten()
-                .map(|monitor| display_area_from_monitor(&monitor))
-        })
+        .or_else(|| resolve_pointer_display(app, Some(window), None))
 }
 
 pub(crate) fn cursor_monitor(app: &AppHandle) -> Option<tauri::Monitor> {
-    let cursor = app.cursor_position().ok()?;
-    app.monitor_from_point(cursor.x, cursor.y).ok().flatten()
+    let area = resolve_pointer_display(app, None, None)?;
+    tauri_monitor_for_display_area(app, area)
 }
 
 pub(crate) fn capture_monitor_for_tauri(
@@ -525,6 +736,202 @@ pub(crate) fn displays() -> Result<Vec<DisplayDescriptor>, String> {
 #[command]
 pub async fn display_list() -> Result<Vec<DisplayDescriptor>, String> {
     crate::runtime::blocking(displays)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[cfg(target_os = "macos")]
+fn brightness_controls() -> Result<Vec<DisplayBrightnessControl>, String> {
+    let _guard = DISPLAY_CONTROL_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| "display control lock poisoned".to_string())?;
+    let inventory = displays()?;
+    let mut controls = Vec::with_capacity(inventory.len());
+
+    // Built-in panels use the same private DisplayServices channel as Apple's
+    // brightness UI. This is hardware/native brightness, not a WebView shade.
+    for display in inventory.iter().filter(|display| display.is_builtin) {
+        let mut current = 0_u16;
+        let status = unsafe { qx_native_display_brightness(display.id, &mut current) };
+        controls.push(DisplayBrightnessControl {
+            id: native_target_id(display.id),
+            name: display.name.clone(),
+            backend: "native".to_string(),
+            current: (status == 0).then_some(current.min(100) as u8),
+            max: 100,
+            raw_current: (status == 0).then_some(current.min(100)),
+            raw_max: (status == 0).then_some(100),
+            is_builtin: true,
+            supported: status == 0,
+            error: (status != 0)
+                .then(|| format!("macOS native brightness is unavailable (status {status})")),
+            error_stage: (status != 0).then(|| "native DisplayServices".to_string()),
+            error_code: (status != 0).then_some(status),
+        });
+    }
+
+    // Qx embeds the small DDC/CI transport and returns display IDs matching
+    // the shared xcap/CoreGraphics inventory. No m1ddc/ddcctl process or
+    // Homebrew installation is involved.
+    let mut ddc_displays = (0..32)
+        .map(|_| MacDdcDisplay {
+            id: 0,
+            current: 0,
+            max: 0,
+            error_code: 0,
+            error_stage: 0,
+            name: [0; 256],
+        })
+        .collect::<Vec<_>>();
+    let ddc_count = unsafe { qx_ddc_list(ddc_displays.as_mut_ptr(), ddc_displays.len()) };
+    for display in inventory.iter().filter(|display| !display.is_builtin) {
+        if let Some(ddc) = ddc_displays
+            .iter()
+            .take(ddc_count.min(ddc_displays.len()))
+            .find(|ddc| ddc.id == display.id)
+        {
+            let max = ddc.max.max(1);
+            let supported = ddc.error_stage == 0 && ddc.max > 0;
+            controls.push(DisplayBrightnessControl {
+                id: if supported {
+                    ddc_target_id(display.id)
+                } else {
+                    format!("unavailable:{}", display.id)
+                },
+                name: if mac_string(&ddc.name).is_empty() {
+                    display.name.clone()
+                } else {
+                    mac_string(&ddc.name)
+                },
+                backend: "ddc".to_string(),
+                current: supported
+                    .then_some(((ddc.current as f32 / max as f32) * 100.0).round() as u8),
+                max: 100,
+                raw_current: supported.then_some(ddc.current),
+                raw_max: supported.then_some(ddc.max),
+                is_builtin: false,
+                supported,
+                error: (!supported).then(|| ddc_error(ddc.error_stage, ddc.error_code)),
+                error_stage: (!supported).then(|| ddc_stage_name(ddc.error_stage).to_string()),
+                error_code: (!supported).then_some(ddc.error_code),
+            });
+        } else {
+            controls.push(DisplayBrightnessControl {
+                id: format!("unavailable:{}", display.id),
+                name: display.name.clone(),
+                backend: "ddc".to_string(),
+                current: None,
+                max: 100,
+                raw_current: None,
+                raw_max: None,
+                is_builtin: false,
+                supported: false,
+                error: Some(
+                    "DDC: display was not returned by the macOS display adapter".to_string(),
+                ),
+                error_stage: Some("display adapter mismatch".to_string()),
+                error_code: None,
+            });
+        }
+    }
+
+    Ok(controls)
+}
+
+#[cfg(target_os = "windows")]
+fn brightness_controls() -> Result<Vec<DisplayBrightnessControl>, String> {
+    brightness_windows::brightness_controls()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn brightness_controls() -> Result<Vec<DisplayBrightnessControl>, String> {
+    Ok(Vec::new())
+}
+
+#[tauri::command]
+pub async fn display_brightness_list() -> Result<Vec<DisplayBrightnessControl>, String> {
+    crate::runtime::blocking(brightness_controls)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[cfg(target_os = "macos")]
+fn set_brightness(display_id: String, value: u8) -> Result<(), String> {
+    let _guard = DISPLAY_CONTROL_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .map_err(|_| "display control lock poisoned".to_string())?;
+    let value = value.min(100);
+    if let Some(raw_id) = display_id.strip_prefix("native:") {
+        let id = raw_id
+            .parse::<u32>()
+            .map_err(|_| "Invalid native display target".to_string())?;
+        let display = displays()?
+            .into_iter()
+            .find(|display| display.id == id && display.is_builtin)
+            .ok_or_else(|| "The selected native display is no longer available".to_string())?;
+        let status = unsafe { qx_native_set_display_brightness(display.id, value as u16) };
+        if status != 0 {
+            return Err(format!(
+                "macOS native brightness write failed (status {status})"
+            ));
+        }
+        return Ok(());
+    }
+
+    if let Some(raw_id) = display_id.strip_prefix("ddc:") {
+        let id = raw_id
+            .parse::<u32>()
+            .map_err(|_| "Invalid DDC display target".to_string())?;
+        let display = displays()?
+            .into_iter()
+            .find(|display| display.id == id && !display.is_builtin)
+            .ok_or_else(|| "The selected DDC display is no longer available".to_string())?;
+        let mut ddc_displays = (0..32)
+            .map(|_| MacDdcDisplay {
+                id: 0,
+                current: 0,
+                max: 0,
+                error_code: 0,
+                error_stage: 0,
+                name: [0; 256],
+            })
+            .collect::<Vec<_>>();
+        let count = unsafe { qx_ddc_list(ddc_displays.as_mut_ptr(), ddc_displays.len()) };
+        let ddc = ddc_displays
+            .iter()
+            .take(count.min(ddc_displays.len()))
+            .find(|ddc| ddc.id == display.id)
+            .ok_or_else(|| "The selected display does not expose DDC/CI brightness".to_string())?;
+        if ddc.error_stage != 0 || ddc.max == 0 {
+            return Err(ddc_error(ddc.error_stage.max(11), ddc.error_code));
+        }
+        let raw_value = ((value as u32 * ddc.max.max(1) as u32 + 50) / 100) as u16;
+        let mut error_stage = 0_u32;
+        let status = unsafe { qx_ddc_set(display.id, raw_value, &mut error_stage) };
+        if status != 0 {
+            return Err(ddc_error(error_stage.max(12), status));
+        }
+        return Ok(());
+    }
+
+    Err("Unknown display brightness target".to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn set_brightness(display_id: String, value: u8) -> Result<(), String> {
+    brightness_windows::set_brightness(&display_id, value)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn set_brightness(_display_id: String, _value: u8) -> Result<(), String> {
+    Err("Display brightness control is unavailable on this platform".to_string())
+}
+
+#[tauri::command]
+pub async fn display_brightness_set(display_id: String, value: u8) -> Result<(), String> {
+    crate::runtime::blocking(move || set_brightness(display_id, value))
         .await
         .map_err(|error| error.to_string())?
 }

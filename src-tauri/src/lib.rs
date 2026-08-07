@@ -10,7 +10,6 @@ mod display;
 mod display_monitor;
 #[cfg(target_os = "windows")]
 mod display_windows;
-mod external_displays;
 mod file_search;
 mod floating_panel;
 mod g4f;
@@ -39,6 +38,7 @@ mod system_stats;
 mod terminal;
 mod text_toolbox;
 mod tray_menu;
+mod tray_panel;
 mod updater;
 mod v2ex;
 mod watchdog;
@@ -546,6 +546,7 @@ pub fn run() {
 
             TrayIconBuilder::with_id(MAIN_TRAY_ID)
                 .menu(&menu)
+                .menu_on_left_click(false)
                 .icon(tray_icon)
                 .icon_as_template(tray_menu::tray_icon_is_template())
                 .on_menu_event(|app, event| {
@@ -582,13 +583,12 @@ pub fn run() {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
+                        position,
                         ..
                     } = event
                     {
                         let app = tray.app_handle();
-                        if let Some(win) = app.get_webview_window("main") {
-                            toggle_window(app, &win);
-                        }
+                        let _ = tray_panel::toggle_at(app, position.x, position.y);
                     }
                 })
                 .build(app)?;
@@ -605,6 +605,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            tray_panel::tray_panel_hide,
+            tray_panel::tray_panel_open_settings,
+            tray_panel::tray_panel_run_action,
+            tray_panel::tray_panel_resize,
+            tray_panel::tray_panel_get_focus_display,
             set_window_glass_effect,
             get_file_size,
             diagnostics::qx_log_event,
@@ -633,6 +638,8 @@ pub fn run() {
             clipboard::media::read_image_file,
             clipboard::clipboard_write_image_file,
             display::display_list,
+            display::display_brightness_list,
+            display::display_brightness_set,
             desktop_windows::desktop_windows_list,
             floating_panel::floating_show,
             floating_panel::floating_hide,
@@ -706,10 +713,6 @@ pub fn run() {
             terminal::terminal_resize,
             terminal::terminal_close_session,
             terminal::terminal_clear_buffer,
-            external_displays::qx_external_displays_driver,
-            external_displays::qx_external_displays_install_driver,
-            external_displays::qx_external_displays_list,
-            external_displays::qx_external_displays_set_control,
             screencap::recording_session::start_recording,
             screencap::recording_session::stop_recording,
             screencap::recording_session::recording_status,
@@ -814,6 +817,9 @@ pub fn run() {
             permissions::qx_onboarding_platform,
             updater::qx_update_check,
             updater::qx_update_download_and_install,
+            updater::qx_update_progress_snapshot,
+            updater::qx_update_progress_close,
+            updater::qx_update_progress_cancel,
             ocr::download_ocr_model,
             ocr::check_ocr_models,
             ocr::ocr_recognize_path,

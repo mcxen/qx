@@ -186,9 +186,9 @@ Workbench 图片仍是受限纯数据端口：`item.image` 在 Gallery 中作为
 `normalizePluginWorkbenchState` 长度与协议校验。
 `detail.replies` 是详情阅读流底部的结构化回复端口；宿主复用 `QxReplyList`，统一
 渲染 `#floor`、作者、作者右侧的可选 `likeCount`、时间、楼主标记和正文。正文默认使用
-纯文本 `body`；需要小图原位混排时，`content[]` 只接受 text 与插件包内
-`asset-image`，相对路径仍经 `plugin_resolve_asset` 约束，失败回落到可读文本。插件不得再把回复压成普通
-`sections`，也不得自绘回复 DOM。内置 V2EX 使用同一组件作为视觉与交互基准。
+纯文本 `body`；需要小图原位混排时，正文与回复共用 `content[]` 行内协议，接受 text、远程
+`image` 与插件包内 `asset-image`，相对路径仍经 `plugin_resolve_asset` 约束，失败回落到可读文本。
+插件不得再把回复压成普通 `sections`，也不得自绘回复 DOM。内置 V2EX 使用同一组件作为视觉与交互基准。
 
 ## 4. 权限模型
 

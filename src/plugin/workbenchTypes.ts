@@ -47,10 +47,20 @@ export interface PluginWorkbenchReply {
   originalPoster?: boolean;
 }
 
-export type PluginWorkbenchReplyContent =
+/**
+ * Ordered inline content shared by long-form details and replies.
+ *
+ * `asset-image` is intentionally package-relative: it lets a plugin ship
+ * small, offline-safe emoji/sticker assets without exposing arbitrary paths.
+ */
+export type PluginWorkbenchInlineContent =
   | {
       type: "text";
       text: string;
+    }
+  | {
+      type: "image";
+      image: PluginWorkbenchImage;
     }
   | {
       type: "asset-image";
@@ -58,6 +68,9 @@ export type PluginWorkbenchReplyContent =
       assetPath: string;
       alt?: string;
     };
+
+/** Kept as a named alias for callers compiled against the old reply port. */
+export type PluginWorkbenchReplyContent = PluginWorkbenchInlineContent;
 
 export interface PluginWorkbenchReplies {
   title?: string;
@@ -113,15 +126,7 @@ export interface PluginWorkbenchImage {
   caption?: string;
 }
 
-export type PluginWorkbenchContentBlock =
-  | {
-      type: "text";
-      text: string;
-    }
-  | {
-      type: "image";
-      image: PluginWorkbenchImage;
-    };
+export type PluginWorkbenchContentBlock = PluginWorkbenchInlineContent;
 
 export type PluginWorkbenchAsyncStatus = QxActivityProgress;
 
@@ -405,61 +410,81 @@ function normalizeImageList(
     .filter((image): image is PluginWorkbenchImage => Boolean(image));
 }
 
-function normalizeContentBlocks(
-  value: unknown,
-  budget: WorkbenchMediaBudget,
-): PluginWorkbenchContentBlock[] {
-  if (!Array.isArray(value)) return [];
-  let textBudget = 24_000;
-  let imageBudget = MAX_DETAIL_CONTENT_IMAGES;
-  const blocks: PluginWorkbenchContentBlock[] = [];
-  for (const entry of value) {
-    if (!entry || typeof entry !== "object") continue;
-    const raw = entry as Record<string, unknown>;
-    if (raw.type === "text" && textBudget > 0) {
-      const text = shortText(raw.text, Math.min(8_000, textBudget))?.trim();
-      if (!text) continue;
-      textBudget -= text.length;
-      blocks.push({ type: "text", text });
-      continue;
-    }
-    if (raw.type === "image" && imageBudget > 0) {
-      const image = normalizeImage(raw.image, true);
-      const boundedImage = consumeImage(image, budget);
-      if (!boundedImage) continue;
-      imageBudget -= 1;
-      blocks.push({ type: "image", image: boundedImage });
-    }
-  }
-  return blocks;
+function normalizeAssetImage(value: unknown): Extract<PluginWorkbenchInlineContent, { type: "asset-image" }> | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const raw = value as Record<string, unknown>;
+  const assetPath = shortText(raw.assetPath, 500)?.trim() || "";
+  const hasParentTraversal = assetPath.split(/[\\/]+/).some((part) => part === "..");
+  if (!assetPath || hasParentTraversal || /^(?:[a-z][a-z0-9+.-]*:|\/|\\)/i.test(assetPath)) return undefined;
+  return {
+    type: "asset-image",
+    assetPath,
+    alt: shortText(raw.alt, 160),
+  };
 }
 
-function normalizeReplyContent(value: unknown): PluginWorkbenchReplyContent[] {
+interface InlineContentOptions {
+  textBudget: number;
+  imageBudget: number;
+  detailImages?: boolean;
+  allowRemoteImages?: boolean;
+}
+
+/** Normalize the same inline-content port for details and replies. */
+function normalizeInlineContent(
+  value: unknown,
+  budget: WorkbenchMediaBudget,
+  options: InlineContentOptions,
+): PluginWorkbenchInlineContent[] {
   if (!Array.isArray(value)) return [];
-  let textBudget = 8_000;
-  const content: PluginWorkbenchReplyContent[] = [];
+  let textBudget = options.textBudget;
+  let imageBudget = options.imageBudget;
+  const content: PluginWorkbenchInlineContent[] = [];
   for (const entry of value.slice(0, 512)) {
     if (!entry || typeof entry !== "object") continue;
     const raw = entry as Record<string, unknown>;
     if (raw.type === "text" && textBudget > 0) {
-      const text = shortText(raw.text, Math.min(2_000, textBudget));
+      const text = shortText(raw.text, Math.min(8_000, textBudget));
       if (!text) continue;
       textBudget -= text.length;
       content.push({ type: "text", text });
       continue;
     }
     if (raw.type === "asset-image") {
-      const assetPath = shortText(raw.assetPath, 500)?.trim() || "";
-      const hasParentTraversal = assetPath.split(/[\\/]+/).some((part) => part === "..");
-      if (!assetPath || hasParentTraversal || /^(?:[a-z][a-z0-9+.-]*:|\/|\\)/i.test(assetPath)) continue;
-      content.push({
-        type: "asset-image",
-        assetPath,
-        alt: shortText(raw.alt, 160),
-      });
+      const image = normalizeAssetImage(raw);
+      if (image) content.push(image);
+      continue;
+    }
+    if (raw.type === "image" && options.allowRemoteImages !== false && imageBudget > 0) {
+      const image = consumeImage(normalizeImage(raw.image, options.detailImages === true), budget);
+      if (!image) continue;
+      imageBudget -= 1;
+      content.push({ type: "image", image });
     }
   }
   return content;
+}
+
+function normalizeContentBlocks(
+  value: unknown,
+  budget: WorkbenchMediaBudget,
+): PluginWorkbenchContentBlock[] {
+  return normalizeInlineContent(value, budget, {
+    textBudget: 24_000,
+    imageBudget: MAX_DETAIL_CONTENT_IMAGES,
+    detailImages: true,
+  });
+}
+
+function normalizeReplyContent(
+  value: unknown,
+  budget: WorkbenchMediaBudget,
+): PluginWorkbenchReplyContent[] {
+  return normalizeInlineContent(value, budget, {
+    textBudget: 8_000,
+    imageBudget: MAX_DETAIL_CONTENT_IMAGES,
+    detailImages: true,
+  });
 }
 
 function normalizeDetail(
@@ -501,7 +526,7 @@ function normalizeDetail(
           floor,
           author: shortText(reply.author, 160) || "",
           body: legacyLikeSuffix ? rawBody.slice(0, -legacyLikeSuffix.length) : rawBody,
-          content: normalizeReplyContent(reply.content),
+          content: normalizeReplyContent(reply.content, budget),
           likeCount,
           createdAt: shortText(reply.createdAt, 160),
           originalPoster: reply.originalPoster === true,

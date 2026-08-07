@@ -46,6 +46,8 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 | 命令 | 用途 |
 |---|---|
 | `display_list()` | 枚举显示器（稳定 ID、名称、尺寸、刷新率、缩放、旋转、主屏/内置屏，以及平台可提供的连接协议与 EDID 厂商/产品码）。**任何功能**需要显示器信息都走此命令，不得自建枚举；插件通过 `context.system.displays()` 消费。 |
+| `display_brightness_list()` | 以同一模型列出 macOS/Windows 内置屏与外接屏亮度目标；保留 `rawCurrent/rawMax`、百分比、后端和失败阶段/错误码，避免识别失败被静默丢弃；插件通过 `context.system.displayBrightness()` 消费。 |
+| `display_brightness_set(display_id, value)` | 设置统一显示器亮度目标（0–100）；macOS 内置屏走 DisplayServices、外接屏走内嵌 DDC/CI，Windows 内置屏走 WMI、物理显示器走 Win32 Monitor Configuration。 |
 | `desktop_windows_list(query?)` | 枚举可见顶层窗口；可选按 `monitorId` 裁剪、`logicalScale` 换算逻辑坐标、名称排除。截图窗选、布局工具等共用。 |
 
 前端端口：`src/system/display.ts`、`src/system/desktopWindows.ts`、`src/system/clipboard.ts`。
@@ -168,7 +170,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
   compressed 中扣除 purgeable 与 external/file-cache 页；同时返回
   `kern.memorystatus_vm_pressure_level` 和 `vm.swapusage`。Windows 保持同构模型，
   使用 `GetSystemTimes` / `GlobalMemoryStatusEx`。
-- `qx_external_displays_driver/install_driver/list/set_control` — DDC 驱动状态、安装、外接显示器枚举与亮度/音量控制
+- `display_brightness_list/set` — macOS/Windows 内置屏与支持 DDC/CI 的外接屏亮度控制；平台适配由 Qx 原生核心提供，不依赖 Homebrew、PowerShell 或外部显示器工具
 - `qx_system_information_check_system_info` — 主机名 / 芯片 / OS / 内核 / 序列号；Windows 通过注册表与 Win32 拓扑/内存 API
 - `qx_system_information_check_storage` — macOS/Linux 通过 `df`，Windows 通过 `GetDiskFreeSpaceExW`
 - `qx_system_information_check_network` — macOS/Linux 通过 `ifconfig`，Windows 通过 `GetAdaptersAddresses`
@@ -200,7 +202,74 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 以下清单按 `src-tauri/src/lib.rs` 的注册顺序维护，供 `npm run docs:check` 自动核对：
 
 <!-- IPC_COMMANDS_START -->
-`set_window_glass_effect`, `get_file_size`, `qx_log_event`, `qx_log_path`, `search_apps`, `search_files`, `open_app`, `set_window_size`, `get_clipboard_history`, `get_clipboard_history_page`, `get_clipboard_entry`, `read_clipboard_image_now`, `write_clipboard_image_entry`, `write_clipboard_file_entry`, `clipboard_file_metadata`, `clipboard_file_preview`, `clipboard_file_media_probe`, `clipboard_compress_image`, `clipboard_video_to_gif`, `clear_clipboard_history`, `delete_clipboard_entry`, `toggle_clipboard_pin`, `record_clipboard_copy`, `update_clipboard_text_entry`, `create_clipboard_text_entry`, `read_image_file`, `clipboard_write_image_file`, `display_list`, `desktop_windows_list`, `floating_show`, `floating_hide`, `floating_hide_restore_focus`, `floating_previous_app_name`, `floating_set_onboarding_active`, `floating_set_external_interaction_active`, `floating_toggle`, `floating_request_key`, `set_active_route`, `rss_list_feeds`, `rss_add_feed`, `rss_update_feed`, `rss_remove_feed`, `rss_list_articles`, `rss_get_article`, `rss_mark_read`, `rss_set_reading_progress`, `rss_mark_all_read`, `rss_toggle_star`, `rss_refresh_feed`, `rss_refresh_all`, `rss_import_opml`, `rss_export_opml`, `rss_list_folders`, `rss_create_folder`, `rss_rename_folder`, `rss_delete_folder`, `rss_set_feed_folder`, `rss_clear_read_articles`, `rss_clear_all_articles`, `rss_fetch_original_content`, `get_settings`, `update_settings`, `reset_settings`, `import_settings`, `export_settings`, `shortcuts_pause_global`, `shortcuts_resume_global`, `qx_storage_overview`, `qx_storage_clear_cache`, `qx_storage_clear_cache_target`, `qx_storage_clear_files`, `qx_storage_clear_clipboard`, `qx_storage_clear_clipboard_history`, `qx_storage_clear_launcher_history`, `qx_storage_clear_rss_cache`, `qx_storage_clear_reclaimable`, `docs_workspace_path`, `docs_open_workspace`, `docs_list_files`, `docs_read_file`, `docs_write_file`, `docs_create_file`, `docs_rename_file`, `docs_delete_file`, `docs_set_language`, `docs_inspect_text`, `qx_system_information_check_system_info`, `qx_system_information_check_storage`, `qx_system_information_check_network`, `qx_system_information_list_processes`, `qx_system_information_kill_process`, `qx_system_monitor_network_counters`, `qx_system_monitor_power`, `get_system_stats`, `terminal_create_session`, `terminal_list_sessions`, `terminal_snapshot`, `terminal_write`, `terminal_resize`, `terminal_close_session`, `terminal_clear_buffer`, `qx_external_displays_driver`, `qx_external_displays_install_driver`, `qx_external_displays_list`, `qx_external_displays_set_control`, `start_recording`, `stop_recording`, `recording_status`, `screencap_begin_region_select`, `screencap_begin_capture_select`, `screencap_list_displays`, `screencap_list_windows`, `screencap_set_picker_passthrough`, `screencap_set_pointer_follow`, `screencap_set_picker_interaction_lock`, `screencap_select_display`, `screencap_cancel_region_select`, `screencap_confirm_region_select`, `screencap_recapture_last_region`, `screencap_region_select_status`, `screencap_region_picker_ready`, `screencap_show_controls`, `screencap_toggle_controls`, `screencap_hide_controls`, `screencap_set_controls_pinned`, `screencap_return_to_main`, `screencap_copy_image_to_clipboard`, `convert_recording_to_gif`, `save_gif`, `list_gif_history`, `get_screencap_history`, `delete_screencap`, `is_recording`, `island_window_ensure`, `island_window_show`, `island_window_hide`, `island_window_remember_position`, `island_window_set_compact`, `island_window_set_always_on_top`, `island_window_get_snapshot`, `island_sessions_publish`, `fetch_plugin_index`, `download_plugin`, `install_plugin`, `install_plugin_from_url`, `install_raycast_extension_from_url`, `uninstall_plugin`, `list_installed_plugins`, `read_plugin_entry`, `read_plugin_modules`, `set_plugin_enabled`, `plugin_storage_get`, `plugin_storage_set`, `plugin_storage_delete`, `plugin_storage_list`, `plugin_storage_clear`, `plugin_data_usage`, `plugin_data_clear`, `plugin_preferences_get`, `plugin_preferences_set`, `sign_plugin`, `scaffold_plugin`, `plugin_tray_set_items`, `plugin_tray_clear`, `plugin_tray_list`, `plugin_clipboard_read`, `plugin_clipboard_write`, `plugin_perform_paste`, `plugin_perform_paste_at_cursor`, `plugin_run_applescript`, `plugin_file_read_base64`, `plugin_file_exists`, `plugin_file_ensure_dir`, `plugin_file_write_base64`, `plugin_file_empty_dir`, `plugin_file_list`, `plugin_ai_list_providers`, `plugin_ai_default_model`, `plugin_ai_agent_settings`, `plugin_ai_chat`, `plugin_ai_stream_chat`, `plugin_ai_stream_chat_events`, `plugin_ai_run_bash`, `plugin_cli_run`, `plugin_cli_bash`, `plugin_cli_which`, `plugin_cli_start`, `plugin_cli_poll`, `plugin_cli_cancel`, `plugin_cli_list_jobs`, `plugin_system_env`, `plugin_system_save_download`, `plugin_system_open_path`, `plugin_system_reveal_path`, `plugin_system_open_settings`, `plugin_ai_grep_search`, `plugin_ai_memory_list`, `plugin_ai_memory_add`, `plugin_ai_memory_delete`, `plugin_http_fetch`, `plugin_notification_show`, `plugin_resolve_asset`, `qx_permissions_status`, `qx_permissions_request`, `qx_permissions_request_all`, `qx_permissions_open_settings`, `qx_onboarding_platform`, `qx_update_check`, `qx_update_download_and_install`, `download_ocr_model`, `check_ocr_models`, `ocr_recognize_path`, `ocr_recognize_clipboard_image`, `ocr_list_history`, `ocr_delete_history`, `ocr_clear_history`, `ocr_copy_result_text`, `ocr_status`, `clipboard_ocr_pending`, `macro_start_recording`, `macro_stop_recording`, `macro_save`, `macro_list`, `macro_delete`, `macro_play`, `record_launch`, `get_launch_history`, `clear_launch_history`, `record_search`, `get_search_history`, `clear_search_history`, `delete_search_entry`, `record_search_click`, `get_search_click_stats`, `clear_search_click_stats`, `v2ex_fetch_topics`, `v2ex_search_topics`, `v2ex_fetch_node_topics`, `v2ex_fetch_topic_replies`, `v2ex_fetch_token_info`, `v2ex_fetch_notifications`, `github_contributions`, `github_contributions_raw`, `fetch_weather`, `fetch_weather_for_location`, `get_cached_weather`, `get_cached_weather_for_location`, `detect_location`, `g4f_chat`, `g4f_stream_chat`, `g4f_chat_custom`, `g4f_list_providers`, `qxai_stream_chat`, `qxai_stream_chat_events`, `qxai_stream_chat_with_tools_events`, `qxai_chat_with_tools`, `qxai_list_providers`, `qxai_fetch_models`, `qxai_get_builtin_provider_credentials`, `qxai_save_builtin_provider_credentials`, `qxai_get_custom_providers`, `qxai_save_custom_providers`, `plugin_system_set_wallpaper`, `rename_screencap`, `rss_cache_article_image`, `screencap_list_audio_inputs`
+`tray_panel_hide`, `tray_panel_open_settings`, `tray_panel_run_action`, `tray_panel_resize`,
+`tray_panel_get_focus_display`, `set_window_glass_effect`, `get_file_size`, `qx_log_event`, `qx_log_path`,
+`search_apps`, `search_files`, `open_app`, `set_window_size`, `get_clipboard_history`,
+`get_clipboard_history_page`, `get_clipboard_entry`, `read_clipboard_image_now`, `write_clipboard_image_entry`,
+`write_clipboard_file_entry`, `clipboard_file_metadata`, `clipboard_file_preview`,
+`clipboard_file_media_probe`, `clipboard_compress_image`, `clipboard_video_to_gif`, `clear_clipboard_history`,
+`delete_clipboard_entry`, `toggle_clipboard_pin`, `record_clipboard_copy`, `update_clipboard_text_entry`,
+`create_clipboard_text_entry`, `read_image_file`, `clipboard_write_image_file`, `display_list`,
+`display_brightness_list`, `display_brightness_set`, `desktop_windows_list`, `floating_show`, `floating_hide`,
+`floating_hide_restore_focus`, `floating_previous_app_name`, `floating_set_onboarding_active`,
+`floating_set_external_interaction_active`, `floating_toggle`, `floating_request_key`, `set_active_route`,
+`rss_list_feeds`, `rss_add_feed`, `rss_update_feed`, `rss_remove_feed`, `rss_list_articles`, `rss_get_article`,
+`rss_mark_read`, `rss_set_reading_progress`, `rss_mark_all_read`, `rss_toggle_star`, `rss_refresh_feed`,
+`rss_refresh_all`, `rss_import_opml`, `rss_export_opml`, `rss_list_folders`, `rss_create_folder`,
+`rss_rename_folder`, `rss_delete_folder`, `rss_set_feed_folder`, `rss_clear_read_articles`,
+`rss_clear_all_articles`, `rss_fetch_original_content`, `get_settings`, `update_settings`, `reset_settings`,
+`import_settings`, `export_settings`, `shortcuts_pause_global`, `shortcuts_resume_global`,
+`qx_storage_overview`, `qx_storage_clear_cache`, `qx_storage_clear_cache_target`, `qx_storage_clear_files`,
+`qx_storage_clear_clipboard`, `qx_storage_clear_clipboard_history`, `qx_storage_clear_launcher_history`,
+`qx_storage_clear_rss_cache`, `qx_storage_clear_reclaimable`, `docs_workspace_path`, `docs_open_workspace`,
+`docs_list_files`, `docs_read_file`, `docs_write_file`, `docs_create_file`, `docs_rename_file`,
+`docs_delete_file`, `docs_set_language`, `docs_inspect_text`, `qx_system_information_check_system_info`,
+`qx_system_information_check_storage`, `qx_system_information_check_network`,
+`qx_system_information_list_processes`, `qx_system_information_kill_process`,
+`qx_system_monitor_network_counters`, `qx_system_monitor_power`, `get_system_stats`, `terminal_create_session`,
+`terminal_list_sessions`, `terminal_snapshot`, `terminal_write`, `terminal_resize`, `terminal_close_session`,
+`terminal_clear_buffer`, `start_recording`, `stop_recording`, `recording_status`,
+`screencap_begin_region_select`, `screencap_begin_capture_select`, `screencap_list_displays`,
+`screencap_list_windows`, `screencap_set_picker_passthrough`, `screencap_set_pointer_follow`,
+`screencap_set_picker_interaction_lock`, `screencap_select_display`, `screencap_cancel_region_select`,
+`screencap_confirm_region_select`, `screencap_recapture_last_region`, `screencap_region_select_status`,
+`screencap_region_picker_ready`, `screencap_show_controls`, `screencap_toggle_controls`,
+`screencap_hide_controls`, `screencap_set_controls_pinned`, `screencap_return_to_main`,
+`screencap_copy_image_to_clipboard`, `convert_recording_to_gif`, `save_gif`, `list_gif_history`,
+`get_screencap_history`, `delete_screencap`, `is_recording`, `island_window_ensure`, `island_window_show`,
+`island_window_hide`, `island_window_remember_position`, `island_window_set_compact`,
+`island_window_set_always_on_top`, `island_window_get_snapshot`, `island_sessions_publish`,
+`fetch_plugin_index`, `download_plugin`, `install_plugin`, `install_plugin_from_url`,
+`install_raycast_extension_from_url`, `uninstall_plugin`, `list_installed_plugins`, `read_plugin_entry`,
+`read_plugin_modules`, `set_plugin_enabled`, `plugin_storage_get`, `plugin_storage_set`,
+`plugin_storage_delete`, `plugin_storage_list`, `plugin_storage_clear`, `plugin_data_usage`,
+`plugin_data_clear`, `plugin_preferences_get`, `plugin_preferences_set`, `sign_plugin`, `scaffold_plugin`,
+`plugin_tray_set_items`, `plugin_tray_clear`, `plugin_tray_list`, `plugin_clipboard_read`,
+`plugin_clipboard_write`, `plugin_perform_paste`, `plugin_perform_paste_at_cursor`, `plugin_run_applescript`,
+`plugin_file_read_base64`, `plugin_file_exists`, `plugin_file_ensure_dir`, `plugin_file_write_base64`,
+`plugin_file_empty_dir`, `plugin_file_list`, `plugin_ai_list_providers`, `plugin_ai_default_model`,
+`plugin_ai_agent_settings`, `plugin_ai_chat`, `plugin_ai_stream_chat`, `plugin_ai_stream_chat_events`,
+`plugin_ai_run_bash`, `plugin_cli_run`, `plugin_cli_bash`, `plugin_cli_which`, `plugin_cli_start`,
+`plugin_cli_poll`, `plugin_cli_cancel`, `plugin_cli_list_jobs`, `plugin_system_env`,
+`plugin_system_save_download`, `plugin_system_open_path`, `plugin_system_reveal_path`,
+`plugin_system_open_settings`, `plugin_ai_grep_search`, `plugin_ai_memory_list`, `plugin_ai_memory_add`,
+`plugin_ai_memory_delete`, `plugin_http_fetch`, `plugin_notification_show`, `plugin_resolve_asset`,
+`qx_permissions_status`, `qx_permissions_request`, `qx_permissions_request_all`,
+`qx_permissions_open_settings`, `qx_onboarding_platform`, `qx_update_check`, `qx_update_download_and_install`,
+`qx_update_progress_snapshot`, `qx_update_progress_close`, `qx_update_progress_cancel`, `download_ocr_model`,
+`check_ocr_models`, `ocr_recognize_path`, `ocr_recognize_clipboard_image`, `ocr_list_history`,
+`ocr_delete_history`, `ocr_clear_history`, `ocr_copy_result_text`, `ocr_status`, `clipboard_ocr_pending`,
+`macro_start_recording`, `macro_stop_recording`, `macro_save`, `macro_list`, `macro_delete`, `macro_play`,
+`record_launch`, `get_launch_history`, `clear_launch_history`, `record_search`, `get_search_history`,
+`clear_search_history`, `delete_search_entry`, `record_search_click`, `get_search_click_stats`,
+`clear_search_click_stats`, `v2ex_fetch_topics`, `v2ex_search_topics`, `v2ex_fetch_node_topics`,
+`v2ex_fetch_topic_replies`, `v2ex_fetch_token_info`, `v2ex_fetch_notifications`, `github_contributions`,
+`github_contributions_raw`, `fetch_weather`, `fetch_weather_for_location`, `get_cached_weather`,
+`get_cached_weather_for_location`, `detect_location`, `g4f_chat`, `g4f_stream_chat`, `g4f_chat_custom`,
+`g4f_list_providers`, `qxai_stream_chat`, `qxai_stream_chat_events`, `qxai_stream_chat_with_tools_events`,
+`qxai_chat_with_tools`, `qxai_list_providers`, `qxai_fetch_models`, `qxai_get_builtin_provider_credentials`,
+`qxai_save_builtin_provider_credentials`, `qxai_get_custom_providers`, `qxai_save_custom_providers`,
+`plugin_system_set_wallpaper`, `rename_screencap`, `rss_cache_article_image`, `screencap_list_audio_inputs`
 <!-- IPC_COMMANDS_END -->
 
 ## 事件通道
@@ -213,6 +282,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 | `apps:updated` / `apps:icons-ready` | 后台索引 | `App.tsx` `doSearch` 重刷 |
 | `clipboard-updated` | 剪贴板轮询 / `read_clipboard_image_now` | `ClipboardPanel.tsx` |
 | `clipboard-media-progress` | 图片压缩 / 视频转 GIF 后台任务 | `ClipboardPanel.tsx` 灵动岛进度 |
+| `tray-focus-display` | Tray 打开时的点击显示器解析 | `TrayPanelApp.tsx` 将亮度控制置顶 |
 | `qxai://stream` | `qxai_stream_chat_events` / `qxai_stream_chat_with_tools_events` 内部线程 | `modules/qx-ai/store.ts`、`react-agent.ts`、插件 iframe bridge |
 | `ocr:download-progress` / `ocr-download-progress` | `download_ocr_model` | `modules/settings/OcrSettings.tsx` |
 | `screencap:ocr` | 截图确认后 OCR | `screencap/store.ts`（editor 打开文本工具） |

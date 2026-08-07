@@ -347,6 +347,9 @@ trailing pack (right):  [activity][countdown][actions]  — actions always right
 - presentation 只允许 `surface-fill`（默认）、`icon-ring`、`island-ring`、
   `compact-line`。插件不能提供颜色、SVG、DOM 或 CSS；`icon-ring` 无可用目标图标时
   安全回退为 `compact-line`。
+- `surface-fill` 的宿主默认视觉包含低密度点状光粒子；当真实 progress 下降时，旧填充右缘
+  保留短暂荧光残影并自行淡出。残影只属于呈现层，不改变 `meter.progress`、session 排序或
+  可访问进度值；减少动态效果时降级为静态填充。
 
 CSS 要点：
 

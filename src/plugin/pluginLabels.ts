@@ -19,7 +19,7 @@ export type TranslateFn = (key: string, fallback: string) => string;
 /** Compact, product-owned copy for the plugins shipped in Qx's community catalog. */
 const FIRST_PARTY_PLUGIN_LABELS: Record<string, { name: string; description: string }> = {
   brew: { name: "Brew", description: "Manage Homebrew packages (macOS)." },
-  "external-display-control": { name: "External Display Control", description: "Adjust external display brightness." },
+  "external-display-control": { name: "Display Brightness", description: "Adjust built-in and external display brightness." },
   "pomodoro-island": { name: "Pomodoro Island", description: "Focus timer with breaks." },
   "raycast-calendar": { name: "Quick Calendar", description: "Browse calendar months." },
   "qx-bing-wallpaper": { name: "Qx Bing Wallpaper", description: "Browse Bing daily wallpapers." },

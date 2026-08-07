@@ -66,7 +66,8 @@ export type HomeDashboardWidgetId =
   | "system.cpu"
   | "system.memory"
   | "system.power"
-  | "system.network";
+  | "system.network"
+  | "system.display-brightness";
 
 export const DEFAULT_HOME_DASHBOARD_WIDGETS: HomeDashboardWidgetId[] = [
   "launcher.pinned",
@@ -242,6 +243,11 @@ export interface TrayActionConfig {
   enabled: boolean;
 }
 
+export interface TrayProviderConfig {
+  id: string;
+  enabled: boolean;
+}
+
 export interface PluginConfig {
   id: string;
   name: string;
@@ -361,6 +367,8 @@ export interface Settings {
   builtin_modules: BuiltinModulesSettings;
   quick_entries: QuickEntryConfig[];
   tray_actions: TrayActionConfig[];
+  /** Ordered lightweight manifest providers rendered by the Tray panel. */
+  tray_providers: TrayProviderConfig[];
 }
 
 export type SettingsTab =
@@ -566,6 +574,7 @@ export const DEFAULT_SETTINGS: Settings = {
     { id: "settings", title: "Settings", enabled: true },
     { id: "hide_main", title: "Hide Main Window", enabled: false },
   ],
+  tray_providers: [],
 };
 
 interface SettingsStore {
@@ -727,6 +736,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           tray_actions: Array.isArray(s.tray_actions) && s.tray_actions.length > 0
             ? s.tray_actions
             : DEFAULT_SETTINGS.tray_actions,
+          tray_providers: Array.isArray(s.tray_providers) ? s.tray_providers : [],
         },
         loaded: true,
       });

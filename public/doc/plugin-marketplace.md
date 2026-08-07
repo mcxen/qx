@@ -71,6 +71,9 @@ my-plugin/
   "homeWidgets": [
     { "id": "cpu", "source": "system.cpu" }
   ],
+  "surfaceProviders": [
+    { "id": "brightness", "source": "system.display-brightness", "surfaces": ["tray", "home"], "presentation": "standard" }
+  ],
   "min_app_version": "0.6.28",
   "pubkey": "",
   "signature": ""
@@ -96,6 +99,7 @@ my-plugin/
 | `panel` | 否 | 注册面板入口；`title` 应省略或与 `name` 相同，以便宿主使用 `names` 本地化 |
 | `storage.cacheTargets` | 否 | 可重建缓存的精确 persist key 白名单 |
 | `homeWidgets` | 否 | 将宿主支持的语义系统数据源关联到本插件 Panel；不提供视觉代码 |
+| `surfaceProviders` | 否 | 声明宿主登记的轻量 Tray/Home 数据源；可用 `presentation` 选择 `compact` / `standard` / `wide`，不加载插件入口、不提供视觉代码 |
 | `min_app_version` | 否 | 最低 Qx 版本 |
 | `pubkey`, `signature` | 否 | 可选 ed25519 签名 |
 
@@ -113,8 +117,8 @@ my-plugin/
 
 ### Home Widgets
 
-`homeWidgets[]` 当前只接受 `system.cpu`、`system.memory`、`system.power`、
-`system.network`。`id` 在插件内稳定且唯一。该声明表示用户激活对应 Home 卡片时可打开
+`homeWidgets[]` 当前接受 `system.cpu`、`system.memory`、`system.power`、
+`system.network`、`system.display-brightness`。`id` 在插件内稳定且唯一。该声明表示用户激活对应 Home 卡片时可打开
 插件 Panel；数据采样、缓存、布局、主题、键盘和点击反馈都由 Qx 宿主负责。插件不能通过
 该字段注入 DOM、CSS、颜色、刷新周期或固定像素尺寸。未安装插件时基础系统卡片仍可使用。
 

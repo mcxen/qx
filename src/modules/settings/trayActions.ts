@@ -31,11 +31,17 @@ const labelForId = (id: string): string =>
 
 export function sanitizeTrayActions(actions: TrayActionConfig[] | undefined): TrayActionConfig[] {
   const source = Array.isArray(actions) && actions.length > 0 ? actions : DEFAULT_TRAY_ACTIONS;
-  return source.map((action, index) => ({
-    id: action.id?.trim() || `action-${index}`,
-    title: action.title?.trim() || labelForId(action.id),
-    enabled: action.enabled !== false,
-  }));
+  const seen = new Set<string>();
+  return source.flatMap((action, index) => {
+    const id = action.id?.trim() || `action-${index}`;
+    if (seen.has(id)) return [];
+    seen.add(id);
+    return [{
+      id,
+      title: action.title?.trim() || labelForId(id),
+      enabled: action.enabled !== false,
+    }];
+  });
 }
 
 export function createTrayAction(id: string): TrayActionConfig {

@@ -395,6 +395,14 @@ export function createPluginContext(
         cmd: "display_list",
         args: {},
       }) as ReturnType<PluginContext["system"]["displays"]>,
+      displayBrightness: () => rpc("invoke", {
+        cmd: "display_brightness_list",
+        args: {},
+      }) as ReturnType<PluginContext["system"]["displayBrightness"]>,
+      setDisplayBrightness: (displayId, value) => rpc("invoke", {
+        cmd: "display_brightness_set",
+        args: { displayId, value: Math.max(0, Math.min(100, Math.round(value))) },
+      }) as ReturnType<PluginContext["system"]["setDisplayBrightness"]>,
       network: () => rpc("invoke", {
         cmd: "qx_system_information_check_network",
         args: {},

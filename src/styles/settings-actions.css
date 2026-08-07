@@ -2609,6 +2609,26 @@ span.qx-plugin-screenshot {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
+  min-height: 46px;
+  padding: 7px 8px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-1);
+}
+
+.qx-tray-provider-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+  padding-top: 9px;
+  border-top: 1px solid var(--qx-border-1);
+}
+
+.qx-tray-provider-heading {
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+  font-weight: 650;
 }
 
 .qx-tray-action-edit-fields {

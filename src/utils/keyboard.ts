@@ -76,8 +76,9 @@ const MODIFIER_TOKENS = new Set([
 
 /**
  * Global host chords that must never be bound as in-app action shortcuts.
- * macOS uses Option+Space and Windows uses Ctrl+Alt+Space; Cmd/Ctrl+Space
- * remains reserved for Spotlight / OS input switching.
+ * macOS uses Option+Space and Windows uses Ctrl+Alt+Space. Cmd+Space is
+ * accepted for macOS global bindings; the native shortcut adapter can take
+ * it before Spotlight when the required macOS permission is available.
  */
 const RESERVED_GLOBAL_SHORTCUTS = new Set([
   "alt+space",
@@ -95,7 +96,7 @@ const RESERVED_GLOBAL_SHORTCUTS = new Set([
   "mod+space",
 ]);
 
-/** OS search chords that cannot be registered reliably as Qx globals. */
+/** OS search/input chords that remain unavailable on the current platform. */
 const OS_RESERVED_GLOBAL_SHORTCUTS = new Set([
   "cmd+space",
   "command+space",
@@ -212,6 +213,11 @@ export function isReservedGlobalShortcut(shortcut: string | undefined): boolean 
 
 function isOsReservedGlobalShortcut(shortcut: string | undefined): boolean {
   const canonical = canonicalizeShortcut(shortcut);
+  // Qx has a native macOS event-tap adapter for Cmd+Space. Keep the portable
+  // CmdOrCtrl spelling usable on macOS while retaining the Windows guard.
+  if (getQxDesktopPlatform() === "macos" && canonical === "cmdorctrl+space") {
+    return false;
+  }
   return canonical ? OS_RESERVED_GLOBAL_SHORTCUTS.has(canonical) : false;
 }
 

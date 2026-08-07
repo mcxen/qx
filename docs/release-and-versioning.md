@@ -18,8 +18,15 @@
 2. bump 上面 3 个文件的版本
 3. `git commit -m "vX.Y.Z: <一句话总结>"`
 4. `git tag -a vX.Y.Z -m "vX.Y.Z: ..."`
-5. `git push && git push origin vX.Y.Z`
-6. tag push 会触发 `.github/workflows/release-desktop.yml`
+5. 将主线和精确 Tag 推送到 release remote：
+   `git push origin main`、`git push origin vX.Y.Z`
+6. 将同一个精确 Tag 推送到 CNB：`git push cnb vX.Y.Z`
+   （不要只推 GitHub；GitHub Release 不会自动触发 CNB）
+7. 分别确认两个远端都指向同一提交：
+   `git ls-remote origin refs/tags/vX.Y.Z`、
+   `git ls-remote cnb refs/tags/vX.Y.Z`
+8. release remote 的 tag push 会触发 `.github/workflows/release-desktop.yml`，CNB 的
+   同名 tag push 会触发 `.cnb.yml` 的 `tag_push` 流程。
 
 CI 同时构建 macOS 14 (Apple Silicon) 与 Windows x64：
 
@@ -42,6 +49,13 @@ Qx 使用自定义跨平台 helper 更新，不依赖 Tauri signed updater：
 - 只有对应资产 SHA256 存在，且 Qx 从正式安装位置运行时才允许自动安装。
 - `qx_update_download_and_install` 在两端都校验 SHA256 和 size；macOS 解压到 staging，
   Windows 额外校验安装器 PE (`MZ`) 头。
+- 安装路径会打开独立的 **update-progress** 悬浮窗（macOS / Windows 共用）：下载阶段
+  推送字节进度与百分比，解压/校验/helper 安装阶段显示不确定等待条；失败时窗口保留
+  错误态并可关闭。进度事件为 `qx-update-progress`，快照命令
+  `qx_update_progress_snapshot`。
+- 检查/下载/解压阶段支持 **取消**（`qx_update_progress_cancel`）：协作式中断，
+  无网时也可主动关掉等待。manifest 请求 connect 约 10s / 总 20s 超时以便离线快速失败；
+  大包下载总超时 30 分钟，但连接仍 10s 内失败。helper 已启动后的安装/重启不可取消。
 - **签名策略（不买 Apple 开发者账号）**：
   - CI / Release 使用 **ad-hoc** `codesign --sign -`（免费，非公证）。
   - 本机重复开发测试可登录免费 Apple Account 的 **Personal Team**，使用稳定的
