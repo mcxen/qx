@@ -146,9 +146,8 @@ pub async fn qx_update_download_and_install(
     let current = app.package_info().version.to_string();
     // Open the progress surface before the blocking work so users always see a
     // waiting state, even when the launcher itself is hidden (auto-update).
-    let reporter = progress::show_window(&app, None).map_err(|error| {
-        format!("update progress window: {error}")
-    })?;
+    let reporter = progress::show_window(&app, None)
+        .map_err(|error| format!("update progress window: {error}"))?;
     reporter.emit_phase("checking", "Checking for the latest release…");
 
     let app_for_work = app.clone();
@@ -219,8 +218,7 @@ pub async fn qx_update_download_and_install(
         Err(error) => {
             // Soft outcomes close the sheet; hard failures keep an error state
             // with Close; user cancel is also soft (sheet closes).
-            let soft = error.contains("already on the latest")
-                || progress::is_cancel_error(&error);
+            let soft = error.contains("already on the latest") || progress::is_cancel_error(&error);
             if soft {
                 let _ = progress::hide_window(&app);
                 if progress::is_cancel_error(&error) {
@@ -238,10 +236,7 @@ pub async fn qx_update_download_and_install(
     };
 
     let reporter = ProgressReporter::new(app.clone(), Some(result.version.clone()));
-    reporter.emit_phase(
-        "restarting",
-        "Update ready. Restarting Qx…",
-    );
+    reporter.emit_phase("restarting", "Update ready. Restarting Qx…");
 
     // Helper is already spawned and waiting on this PID. Must force-quit so
     // macOS double-⌘Q confirmation does not intercept ExitRequested and leave
@@ -659,8 +654,7 @@ fn prepare_install(
 ) -> Result<InstallPlan, String> {
     progress::ensure_not_cancelled()?;
     let target = current_app_bundle()?;
-    let payload =
-        download_and_stage(reporter, version, asset_url, expected_sha256, expected_size)?;
+    let payload = download_and_stage(reporter, version, asset_url, expected_sha256, expected_size)?;
     progress::ensure_not_cancelled()?;
     reporter.emit_phase("verifying", "Verifying staged app bundle…");
     validate_staged_app(&payload, &target, version)?;

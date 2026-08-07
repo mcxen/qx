@@ -402,10 +402,7 @@ pub(crate) fn raw_cursor_position_for_display_lookup() -> Option<(f64, f64)> {
     }
 }
 
-fn tauri_monitor_for_display_area(
-    app: &AppHandle,
-    area: DisplayArea,
-) -> Option<tauri::Monitor> {
+fn tauri_monitor_for_display_area(app: &AppHandle, area: DisplayArea) -> Option<tauri::Monitor> {
     app.available_monitors().ok()?.into_iter().find(|monitor| {
         let candidate = display_area_from_monitor(monitor);
         candidate.frame_x == area.frame_x && candidate.frame_y == area.frame_y
@@ -431,9 +428,7 @@ pub(crate) fn resolve_pointer_display(
         .map(|cursor| (cursor.x, cursor.y));
     let raw_cursor = raw_cursor_position_for_display_lookup();
     select_display_area_for_cursor_sources(&areas, normalized_cursor, raw_cursor)
-        .or_else(|| {
-            physical_hint.and_then(|(x, y)| select_display_area_for_cursor(&areas, x, y))
-        })
+        .or_else(|| physical_hint.and_then(|(x, y)| select_display_area_for_cursor(&areas, x, y)))
         .or_else(|| {
             physical_hint.and_then(|(x, y)| select_display_area_for_raw_cursor(&areas, x, y))
         })

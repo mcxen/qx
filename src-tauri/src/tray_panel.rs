@@ -49,8 +49,8 @@ fn place_panel_on_display(
     let right = area.work_x.saturating_add(area.work_width as i32);
     let bottom = area.work_y.saturating_add(area.work_height as i32);
     let (cursor_x, cursor_y) = pointer_anchor_on_display(app, area, physical_hint);
-    let x = (cursor_x.round() as i32 - width / 2)
-        .clamp(area.work_x, (right - width).max(area.work_x));
+    let x =
+        (cursor_x.round() as i32 - width / 2).clamp(area.work_x, (right - width).max(area.work_x));
     let y = (cursor_y.round() as i32 + (8.0 * scale) as i32)
         .clamp(area.work_y, (bottom - height).max(area.work_y));
     let _ = window.set_size(PhysicalSize::new(width.max(1) as u32, height.max(1) as u32));

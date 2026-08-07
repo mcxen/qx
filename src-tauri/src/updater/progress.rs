@@ -272,5 +272,3 @@ pub fn cancel(app: &AppHandle) -> Result<(), String> {
     reporter.emit_phase("cancelling", "Cancelling update…");
     Ok(())
 }
-
-
