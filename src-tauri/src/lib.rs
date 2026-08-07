@@ -296,6 +296,10 @@ pub fn run() {
         return;
     }
 
+    // Cap Tokio worker + blocking pools before any plugin/command uses
+    // async_runtime (default blocking cap 512 was inflating macOS thread count).
+    runtime::install_async_runtime();
+
     // single-instance must register before deep-link so secondary launches on
     // Windows/Linux forward `qx://…` into the existing process.
     tauri::Builder::default()
@@ -493,8 +497,7 @@ pub fn run() {
                 // completed, so `win.show()` is ignored. Defer a beat so first
                 // launch actually surfaces the window once the event loop is up.
                 let show_handle = handle.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(700));
+                runtime::pool::spawn_after(std::time::Duration::from_millis(700), move || {
                     floating_panel::show_floating(&show_handle);
                     // At first launch the panel does not win focus, so the blur
                     // auto-hide would blank it within 500ms before the user
@@ -550,14 +553,11 @@ pub fn run() {
             // File search backends: deferred. Icons are filled after the app
             // scan inside `apps::ensure_cache` (avoids scan wiping empty icons).
             let file_search_handle = handle.clone();
-            let _ = std::thread::Builder::new()
-                .name("qx-deferred-startup".to_string())
-                .spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(400));
-                    let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        file_search::init(&file_search_handle);
-                    }));
-                });
+            runtime::pool::spawn_after(std::time::Duration::from_millis(400), move || {
+                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    file_search::init(&file_search_handle);
+                }));
+            });
 
             // Start external display monitor (polls every 2s, auto-shows on connect)
             display_monitor::start_display_monitor(handle.clone());

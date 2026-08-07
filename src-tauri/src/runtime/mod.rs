@@ -14,8 +14,14 @@
 //! | Work | API | Thread |
 //! |------|-----|--------|
 //! | Window / panel / clipboard UI | [`ui`] / [`run_ui`] / [`spawn_ui`] | Main (AppKit / message pump) |
-//! | CPU / disk / encode / network blocking | [`blocking`] | Tokio blocking pool |
+//! | CPU / disk / encode / network blocking | [`blocking`] | Tokio blocking pool (capped) |
+//! | Fire-and-forget background | [`pool::spawn`] / [`pool::spawn_after`] | Bounded pool, idle exit |
+//! | Media encode / ffmpeg | [`pool::spawn_media`] | Pool + concurrency cap (2) |
 //! | Lightweight pure logic | inline in the command | Current (async worker OK) |
+//!
+//! **Do not** `std::thread::spawn` for short jobs — each call creates an OS thread that
+//! does not return to a pool. Prefer [`pool`] (auto-exit when idle) or [`blocking`].
+//! Long-lived daemons (clipboard poll, display monitor) may keep **one** named thread.
 //!
 //! # Module pattern
 //!
@@ -37,11 +43,14 @@
 //!
 //! # Install
 //!
-//! Call [`install`] once from app setup so main-thread identity is known on all
+//! Call [`install_async_runtime`] before `tauri::Builder` (caps Tokio blocking threads)
+//! and [`install`] once from app setup so main-thread identity is known on all
 //! platforms (not only macOS `NSThread`).
 
 mod main_thread;
+pub mod pool;
 
 pub use main_thread::{
-    blocking, install, is_main, run_on_main, run_ui, run_ui_timeout, spawn_ui, ui, RuntimeError,
+    blocking, install, install_async_runtime, is_main, run_on_main, run_ui, run_ui_timeout,
+    spawn_ui, ui, RuntimeError,
 };

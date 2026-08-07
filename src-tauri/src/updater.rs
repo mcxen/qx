@@ -278,9 +278,10 @@ pub async fn qx_update_apply_and_restart(app: AppHandle) -> Result<(), String> {
     // Windows: helper copy + short poll is blocking disk/IO. macOS: codesign
     // prep is also blocking. Never hold the async runtime core for this.
     let pending_for_spawn = pending.clone();
-    let spawn_result = tokio::task::spawn_blocking(move || spawn_install_helper(&pending_for_spawn))
-        .await
-        .map_err(|error| format!("update apply task failed: {error}"))?;
+    let spawn_result =
+        tokio::task::spawn_blocking(move || spawn_install_helper(&pending_for_spawn))
+            .await
+            .map_err(|error| format!("update apply task failed: {error}"))?;
 
     let helper = match spawn_result {
         Ok(path) => path,
@@ -299,8 +300,7 @@ pub async fn qx_update_apply_and_restart(app: AppHandle) -> Result<(), String> {
     // Helper is already waiting on this PID. Quit promptly so Windows elevated
     // installer / macOS ditto can proceed without the 90s wait timeout.
     let app_for_exit = app.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(450));
+    crate::runtime::pool::spawn_after(Duration::from_millis(450), move || {
         crate::app_quit::force_quit(&app_for_exit);
     });
     Ok(())
@@ -326,9 +326,7 @@ pub(crate) fn maybe_run_update_helper_from_args() -> bool {
     if args.get(1).map(String::as_str) != Some(HELPER_FLAG) {
         // Normal launches: prune off the UI thread so disk I/O never delays
         // tray / shortcuts / first webview paint.
-        let _ = std::thread::Builder::new()
-            .name("qx-update-prune".to_string())
-            .spawn(|| prune_update_cache(None));
+        crate::runtime::pool::spawn(|| prune_update_cache(None));
         return false;
     }
     let result = run_update_helper(&args);

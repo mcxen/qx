@@ -22,16 +22,34 @@
 
 ```text
 crate::runtime
-├── install(app)           // setup 时钉死主线程 id（跨平台）
+├── install_async_runtime() // Builder 前：cap Tokio worker/blocking + keep-alive
+├── install(app)            // setup 时钉死主线程 id（跨平台）
 ├── is_main()
-├── run_ui(app, f)         // 同步 hop（兼容旧 run_on_main）
-├── ui(app, f).await       // 异步 hop（async command 优先）
-├── spawn_ui(app, f)       // fire-and-forget
+├── run_ui(app, f)          // 同步 hop（兼容旧 run_on_main）
+├── ui(app, f).await        // 异步 hop（async command 优先）
+├── spawn_ui(app, f)        // fire-and-forget UI
 ├── run_ui_timeout(...)
-└── blocking(f).await      // 算力 / IO，禁止 UI
+├── blocking(f).await       // Tokio blocking pool（禁止 UI）
+└── pool::                   // 有界后台池（空闲自动退出 OS 线程）
+    ├── spawn / try_spawn
+    ├── spawn_after(delay)  // 单 timer 线程 + pool 执行
+    └── spawn_media         // 并发 cap=2（压缩/ffmpeg）
 ```
 
-`install` 在 `lib.rs` `setup` 最早调用，用 Tauri `run_on_main_thread` 记录 `ThreadId`，**不依赖** macOS 专用 `NSThread`。
+### 线程预算（防 macOS 卡顿）
+
+| 池 | 上限 | 空闲退出 |
+|---|---|---|
+| Tokio workers | `clamp(2, 8)` × CPU | 否（固定） |
+| Tokio blocking | `clamp(8, 32)` | **是**（keep-alive 10s） |
+| `runtime::pool` | `clamp(2, 8)` 动态 | **是**（idle 12s） |
+| 守护线程 | 每种一个（clipboard / OCR / monitor…） | 进程级 |
+
+**禁止**对短任务 `std::thread::spawn`：每次新建 OS 线程且不回收，剪贴板/OCR debounce/
+媒体编码会把线程数打爆。对齐 Tokio / 开源实践：有界池 + idle keep-alive。
+
+`install_async_runtime` 在 `lib.rs` `run()`、**Tauri Builder 之前**调用。  
+`install` 在 `setup` 最早调用，用 Tauri `run_on_main_thread` 记录 `ThreadId`。
 
 ## 3. 模块命令标准写法
 

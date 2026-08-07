@@ -150,11 +150,13 @@ fn schedule_clipboard_updated_emit(app: AppHandle) {
     {
         return;
     }
-    std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(AUTO_OCR_EMIT_DEBOUNCE_MS));
-        AUTO_OCR_EMIT_SCHEDULED.store(false, Ordering::SeqCst);
-        let _ = app.emit("clipboard-updated", ());
-    });
+    crate::runtime::pool::spawn_after(
+        Duration::from_millis(AUTO_OCR_EMIT_DEBOUNCE_MS),
+        move || {
+            AUTO_OCR_EMIT_SCHEDULED.store(false, Ordering::SeqCst);
+            let _ = app.emit("clipboard-updated", ());
+        },
+    );
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

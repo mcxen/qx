@@ -492,7 +492,7 @@ pub fn clipboard_compress_image(
     }
     let job_id = format!("image-{}", chrono::Utc::now().timestamp_millis());
     let thread_job_id = job_id.clone();
-    std::thread::spawn(move || {
+    if !crate::runtime::pool::spawn_media(move || {
         emit_media_progress(
             &app,
             ClipboardMediaProgress {
@@ -558,7 +558,9 @@ pub fn clipboard_compress_image(
                 },
             ),
         }
-    });
+    }) {
+        return Err("too many media jobs running; wait for compression to finish".to_string());
+    }
     Ok(job_id)
 }
 
@@ -574,7 +576,7 @@ pub fn clipboard_video_to_gif(app: AppHandle, path: String) -> Result<String, St
     }
     let job_id = format!("video-{}", chrono::Utc::now().timestamp_millis());
     let thread_job_id = job_id.clone();
-    std::thread::spawn(move || {
+    if !crate::runtime::pool::spawn_media(move || {
         let result = (|| -> Result<PathBuf, String> {
             let duration = ffprobe_duration(&input).unwrap_or(1.0).max(0.1);
             let stem = input
@@ -652,7 +654,9 @@ pub fn clipboard_video_to_gif(app: AppHandle, path: String) -> Result<String, St
                 },
             ),
         }
-    });
+    }) {
+        return Err("too many media jobs running; wait for conversion to finish".to_string());
+    }
     Ok(job_id)
 }
 

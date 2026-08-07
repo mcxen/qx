@@ -741,13 +741,10 @@ fn fill_missing_icons(app: &AppHandle) {
 #[allow(dead_code)]
 pub fn preload_icons(app: &AppHandle) {
     let handle = app.clone();
-    let _ = std::thread::Builder::new()
-        .name("qx-icon-preload".to_string())
-        .spawn(move || {
-            // Small delay so first search_apps can serve DB rows without sips contention.
-            std::thread::sleep(std::time::Duration::from_millis(800));
-            fill_missing_icons(&handle);
-        });
+    // Shared timer + pool — do not open a dedicated OS thread per preload.
+    crate::runtime::pool::spawn_after(std::time::Duration::from_millis(800), move || {
+        fill_missing_icons(&handle);
+    });
 }
 
 #[tauri::command]

@@ -6,6 +6,36 @@ use std::time::Duration;
 use tauri::AppHandle;
 
 static MAIN_THREAD_ID: OnceLock<ThreadId> = OnceLock::new();
+/// Owned multi-thread runtime. Must outlive the whole process (Tauri only keeps a Handle).
+static TOKIO_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+
+/// Install a process-wide Tokio runtime with **capped blocking threads** and idle
+/// keep-alive so macOS does not accumulate hundreds of `tokio-runtime-worker`
+/// / blocking threads under clipboard, search, and plugin load.
+///
+/// Call once before `tauri::Builder::default()`. Open-source pattern: Tokio
+/// docs recommend sizing `max_blocking_threads` for the app, not the default 512.
+pub fn install_async_runtime() {
+    if TOKIO_RUNTIME.get().is_some() {
+        return;
+    }
+    let workers = std::thread::available_parallelism()
+        .map(|n| n.get().clamp(2, 8))
+        .unwrap_or(4);
+    // Blocking pool: enough for parallel disk/HTTP, far below Tokio's 512 default.
+    // Threads exit after keep_alive with no work (same idea as our runtime::pool).
+    let max_blocking = (workers * 4).clamp(8, 32);
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .worker_threads(workers)
+        .max_blocking_threads(max_blocking)
+        .thread_keep_alive(Duration::from_secs(10))
+        .thread_name("qx-tokio")
+        .build()
+        .expect("failed to build Qx Tokio runtime");
+    tauri::async_runtime::set(runtime.handle().clone());
+    let _ = TOKIO_RUNTIME.set(runtime);
+}
 
 /// Error from scheduling or waiting on runtime work.
 #[derive(Debug, Clone)]

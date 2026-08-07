@@ -687,7 +687,7 @@ pub fn qxai_stream_chat_with_tools_events(
     tool_choice: Option<String>,
     reasoning: Option<bool>,
 ) -> Result<(), String> {
-    std::thread::spawn(move || {
+    if !crate::runtime::pool::try_spawn(move || {
         let stream_app = app.clone();
         let stream_request_id = request_id.clone();
         let emit_delta = |kind: &str, chunk: &str| {
@@ -733,7 +733,9 @@ pub fn qxai_stream_chat_with_tools_events(
                 error,
             },
         );
-    });
+    }) {
+        return Err("background worker pool is busy; retry the chat stream shortly".to_string());
+    }
     Ok(())
 }
 
@@ -758,7 +760,7 @@ pub fn qxai_stream_chat_events(
     messages: Vec<ChatMessage>,
     reasoning: Option<bool>,
 ) -> Result<(), String> {
-    std::thread::spawn(move || {
+    if !crate::runtime::pool::try_spawn(move || {
         let stream_app = app.clone();
         let stream_request_id = request_id.clone();
         let emit_chunk = |kind: &str, chunk: &str| {
@@ -819,7 +821,9 @@ pub fn qxai_stream_chat_events(
                 error,
             },
         );
-    });
+    }) {
+        return Err("background worker pool is busy; retry the chat stream shortly".to_string());
+    }
 
     Ok(())
 }
