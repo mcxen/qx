@@ -22,6 +22,8 @@ QxShell / Rust services / platform adapters
 - 插件依赖 `context.*` 端口，不依赖 iframe、Tauri、Rust 命令或操作系统细节。
 - PluginHost 把 Workbench 数据投影到 QxShell；插件不拥有窗口 chrome。
 - Rust 服务负责网络、存储、CLI、系统能力和平台适配。
+- `surfaceProviders` 由 Tray/Home 直接消费 manifest 元数据和宿主适配器；没有 interval 或
+  已启用全局快捷键的 Provider 插件在首次 Panel/command 前不创建 iframe。
 - `context.state` 是 direct/iframe 共用的纯 SDK：提供最新快照写入队列、已读时间
   账本、有预算 LRU 和异步 generation gate，不发 RPC，也不需要 Manifest 权限。
 - macOS 与 Windows 对插件暴露相同模型；不可用能力以明确错误返回。

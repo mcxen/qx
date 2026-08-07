@@ -20,6 +20,14 @@ pub struct TrayActionConfig {
     pub enabled: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TrayProviderConfig {
+    /// Stable `<plugin-id>:<provider-id>` key from manifest.surfaceProviders.
+    pub id: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
 pub(super) fn default_quick_entries() -> Vec<QuickEntryConfig> {
     [
         ("clipboard", "Clipboard History", "Pinned, frequent, links"),

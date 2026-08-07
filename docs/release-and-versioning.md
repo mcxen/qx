@@ -18,8 +18,15 @@
 2. bump 上面 3 个文件的版本
 3. `git commit -m "vX.Y.Z: <一句话总结>"`
 4. `git tag -a vX.Y.Z -m "vX.Y.Z: ..."`
-5. `git push && git push origin vX.Y.Z`
-6. tag push 会触发 `.github/workflows/release-desktop.yml`
+5. 将主线和精确 Tag 推送到 release remote：
+   `git push origin main`、`git push origin vX.Y.Z`
+6. 将同一个精确 Tag 推送到 CNB：`git push cnb vX.Y.Z`
+   （不要只推 GitHub；GitHub Release 不会自动触发 CNB）
+7. 分别确认两个远端都指向同一提交：
+   `git ls-remote origin refs/tags/vX.Y.Z`、
+   `git ls-remote cnb refs/tags/vX.Y.Z`
+8. release remote 的 tag push 会触发 `.github/workflows/release-desktop.yml`，CNB 的
+   同名 tag push 会触发 `.cnb.yml` 的 `tag_push` 流程。
 
 CI 同时构建 macOS 14 (Apple Silicon) 与 Windows x64：
 

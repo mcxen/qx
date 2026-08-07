@@ -56,6 +56,7 @@ Qx/
 │       ├── apps.rs               # macOS 应用搜索
 │       ├── clipboard.rs          # 剪贴板监听 + SQLite 持久化
 │       ├── display.rs            # 系统级显示器识别、枚举与跨后端映射
+│       ├── display/brightness_windows.rs # Windows WMI + Monitor Configuration 亮度适配
 │       ├── media/                # Qx 核心媒体层：尺寸、H.264/MP4 与 GIF 转换
 │       ├── screencap/            # 捕获编排、状态、窗口、截图、录制与历史适配
 │       ├── macro_recorder.rs     # 宏捕捉与回放 (rdev + enigo)

@@ -111,7 +111,14 @@ Try the configured remote first:
 ```bash
 git push origin main
 git push origin vX.Y.Z
+
+# CNB 不会因为 GitHub Release 自动触发；必须推送同一个 Tag。
+git push cnb vX.Y.Z
 ```
+
+CNB 只需要这个 release Tag，不要为了触发镜像而把 `main` 推到 CNB。推送顺序应保持为：
+先推 release remote 的分支和 Tag，再推 CNB 的同名 Tag。这样 `.cnb.yml` 的
+`tag_push` 会使用同一提交，并等待 GitHub 桌面端 Release 产物准备完成。
 
 If `origin` is HTTPS and push fails with:
 
@@ -167,6 +174,15 @@ Expected successful confirmation shape:
 <commit-sha> refs/heads/main
 <commit-sha> refs/tags/vX.Y.Z
 ```
+
+同时确认 CNB 的 Tag：
+
+```bash
+git ls-remote cnb refs/tags/vX.Y.Z
+```
+
+两个远端的 Tag 必须解析到同一个 commit SHA。只确认 GitHub 的 Tag 不足以证明
+CNB 镜像流水线已经触发。
 
 ## GitHub Actions And Release Artifacts
 
@@ -261,11 +277,14 @@ write-only release infrastructure.
 
 ### CNB domestic release mirror
 
-The repository also contains a `.cnb.yml` pipeline for CNB. On every `v*` tag,
-CNB waits for the GitHub desktop release to finish, downloads the exact same
-artifacts, creates the matching CNB Release, and uploads the packages plus
-`latest.json` with `cnbcool/attachments`. This avoids rebuilding native macOS
-and Windows clients on a Linux runner and keeps checksums identical.
+The repository also contains a `.cnb.yml` pipeline for CNB. The release process
+must push the same `v*` Tag to the `cnb` remote after pushing it to the release
+remote. A GitHub tag or GitHub Release alone does not create a CNB `tag_push`
+event. Once the CNB Tag exists, CNB waits for the GitHub desktop release to
+finish, downloads the exact same artifacts, creates the matching CNB Release,
+and uploads the packages plus `latest.json` with `cnbcool/attachments`. This
+avoids rebuilding native macOS and Windows clients on a Linux runner and keeps
+checksums identical.
 
 Qx defaults to automatic source selection and compares the stable CNB manifest,
 the optional configured mirror, and GitHub:

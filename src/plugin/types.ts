@@ -92,7 +92,8 @@ export type PluginHomeWidgetSource =
   | "system.cpu"
   | "system.memory"
   | "system.power"
-  | "system.network";
+  | "system.network"
+  | "system.display-brightness";
 
 /**
  * A plugin may associate one of its panels with a host-rendered Home widget.
@@ -101,6 +102,24 @@ export type PluginHomeWidgetSource =
 export interface PluginHomeWidgetDeclaration {
   id: string;
   source: PluginHomeWidgetSource;
+}
+
+export type PluginSurfaceProviderSource = "system.display-brightness";
+export type PluginSurfaceProviderTarget = "tray" | "home";
+export type PluginSurfaceProviderPresentation = "compact" | "standard" | "wide";
+
+/**
+ * Declarative lightweight data provider rendered and executed by Qx. It is
+ * discovered from manifest metadata and never loads the plugin JavaScript.
+ */
+export interface PluginSurfaceProviderDeclaration {
+  id: string;
+  source: PluginSurfaceProviderSource;
+  surfaces: PluginSurfaceProviderTarget[];
+  presentation?: PluginSurfaceProviderPresentation;
+  title?: string;
+  titles?: Partial<Record<"en" | "zh-CN", string>>;
+  defaultEnabled?: boolean;
 }
 
 export interface PluginManifest {
@@ -131,6 +150,7 @@ export interface PluginManifest {
   raycast?: PluginRaycastMetadata;
   storage?: PluginStorageManifest;
   homeWidgets?: PluginHomeWidgetDeclaration[];
+  surfaceProviders?: PluginSurfaceProviderDeclaration[];
   signature?: string;
   pubkey?: string;
 }
@@ -880,6 +900,36 @@ export interface PluginContext {
         onDownload?: (id: string, item?: PluginWorkbenchItem) => void;
       },
     ) => import("./workbenchTypes").PluginWorkbenchController;
+    /** Publish host-rendered Actions for a custom HTML panel. */
+    mountActions: (
+      actions: Array<{
+        id: string;
+        label: string;
+        menuKey: string;
+        kbd?: string;
+        disabled?: boolean;
+        primary?: boolean;
+        tone?: "normal" | "primary" | "danger";
+      }>,
+      handlers?: {
+        onAction?: (id: string) => void;
+        selectionTitle?: string;
+      },
+    ) => {
+      update: (
+        actions: Array<{
+          id: string;
+          label: string;
+          menuKey: string;
+          kbd?: string;
+          disabled?: boolean;
+          primary?: boolean;
+          tone?: "normal" | "primary" | "danger";
+        }>,
+        selectionTitle?: string,
+      ) => void;
+      destroy: () => void;
+    };
   };
   notification: {
     show: (input: { title: string; body?: string; subtitle?: string }) => Promise<void>;

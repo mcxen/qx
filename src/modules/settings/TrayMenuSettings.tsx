@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { Button, Input, Select, SettingsCard, Toggle } from "../../components/ui";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
+import { usePluginRegistry } from "../../plugin/registry";
+import { resolveSurfaceProviders } from "../../plugin/surfaceProviders";
 import { useSettingsStore } from "./store";
 import {
   createTrayAction,
@@ -16,12 +18,30 @@ import {
  */
 export default function TrayMenuSettings() {
   const t = useT();
+  const locale = useLocale();
   const { settings, patch } = useSettingsStore();
+  const plugins = usePluginRegistry((state) => state.plugins);
   const trayActions = sanitizeTrayActions(settings.tray_actions);
+  const declaredProviders = resolveSurfaceProviders(plugins, "tray", locale);
+  const configuredProviders = settings.tray_providers;
+  const configuredKeys = new Set(configuredProviders.map((provider) => provider.id));
+  const trayProviders = [
+    ...configuredProviders.filter((config) => declaredProviders.some((provider) => provider.key === config.id)),
+    ...declaredProviders
+      .filter((provider) => !configuredKeys.has(provider.key))
+      .map((provider) => ({ id: provider.key, enabled: provider.declaration.defaultEnabled === true })),
+  ];
   const [addAction, setAddAction] = useState<string>(TRAY_ACTION_TYPES[0].value);
   const patchTrayActions = (actions: typeof trayActions) => patch("tray_actions", actions);
   const updateAction = (id: string, changes: Partial<(typeof trayActions)[number]>) => {
     patchTrayActions(trayActions.map((action) => (action.id === id ? { ...action, ...changes } : action)));
+  };
+  const move = <T,>(items: T[], index: number, delta: number): T[] => {
+    const target = index + delta;
+    if (target < 0 || target >= items.length) return items;
+    const next = [...items];
+    [next[index], next[target]] = [next[target], next[index]];
+    return next;
   };
   const availableToAdd = TRAY_ACTION_TYPES.filter(
     (type) => !trayActions.some((action) => action.id === type.value),
@@ -36,7 +56,7 @@ export default function TrayMenuSettings() {
         )}
       </p>
       <div className="qx-tray-action-editor">
-        {trayActions.map((action) => (
+        {trayActions.map((action, index) => (
           <div className="qx-tray-action-edit-row" key={action.id}>
             <div className="qx-tray-action-edit-fields">
               <Input
@@ -47,6 +67,8 @@ export default function TrayMenuSettings() {
               <span className="qx-tray-action-edit-id">{action.id}</span>
             </div>
             <div className="qx-tray-action-edit-actions">
+              <Button type="button" size="icon" variant="ghost" disabled={index === 0} onClick={() => patchTrayActions(move(trayActions, index, -1))} title={t("shortcuts.trayMenu.moveUp", "Move up")}><ArrowUp size={14} /></Button>
+              <Button type="button" size="icon" variant="ghost" disabled={index === trayActions.length - 1} onClick={() => patchTrayActions(move(trayActions, index, 1))} title={t("shortcuts.trayMenu.moveDown", "Move down")}><ArrowDown size={14} /></Button>
               <Toggle value={action.enabled} onChange={(enabled) => updateAction(action.id, { enabled })} />
               <Button
                 type="button"
@@ -60,6 +82,28 @@ export default function TrayMenuSettings() {
             </div>
           </div>
         ))}
+        {declaredProviders.length > 0 && (
+          <div className="qx-tray-provider-section">
+            <div className="qx-tray-provider-heading">{t("shortcuts.trayMenu.providers", "Tray Controls")}</div>
+            {trayProviders.map((config, index) => {
+              const provider = declaredProviders.find((item) => item.key === config.id);
+              if (!provider) return null;
+              return (
+                <div className="qx-tray-action-edit-row" key={config.id}>
+                  <div className="qx-tray-action-edit-fields">
+                    <strong>{provider.title}</strong>
+                    <span className="qx-tray-action-edit-id">{provider.declaration.source}</span>
+                  </div>
+                  <div className="qx-tray-action-edit-actions">
+                    <Button type="button" size="icon" variant="ghost" disabled={index === 0} onClick={() => patch("tray_providers", move(trayProviders, index, -1))} title={t("shortcuts.trayMenu.moveUp", "Move up")}><ArrowUp size={14} /></Button>
+                    <Button type="button" size="icon" variant="ghost" disabled={index === trayProviders.length - 1} onClick={() => patch("tray_providers", move(trayProviders, index, 1))} title={t("shortcuts.trayMenu.moveDown", "Move down")}><ArrowDown size={14} /></Button>
+                    <Toggle value={config.enabled} onChange={(enabled) => patch("tray_providers", trayProviders.map((item) => item.id === config.id ? { ...item, enabled } : item))} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <div className="qx-tray-action-editor-footer">
           {availableToAdd.length > 0 && (
             <>

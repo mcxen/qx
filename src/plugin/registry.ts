@@ -43,6 +43,8 @@ import {
 const backgroundTimers = new Map<string, number>();
 /** In-flight background runs to prevent overlapping wallpaper sets. */
 const backgroundInFlight = new Set<string>();
+/** Provider-only plugins stay manifest-only until a command/panel is used. */
+const lazyPluginLoads = new Map<string, Promise<void>>();
 const registryLogger = createQxLogger("plugin.registry");
 let stopPluginLocaleBridge: (() => void) | null = null;
 
@@ -313,6 +315,13 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       );
       // Topological sort: load dependencies first
       const sorted = topologicalSort(enabled);
+      const lazyProviderPlugins = sorted.filter((plugin) =>
+        (plugin.manifest?.surfaceProviders?.length ?? 0) > 0
+        && !(plugin.manifest?.commands ?? []).some((command) => Boolean(parseIntervalMs(command.interval)))
+        && !(plugin.manifest?.shortcuts ?? []).some((shortcut) => shortcut.enabled === true),
+      );
+      const lazyProviderIds = new Set(lazyProviderPlugins.map((plugin) => plugin.id));
+      const eagerPlugins = sorted.filter((plugin) => !lazyProviderIds.has(plugin.id));
       registryLogger.info("Installed plugins listed", {
         total: plugins.length,
         enabled: enabled.length,
@@ -331,11 +340,11 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       });
       startPluginLocaleBridge();
 
-      if (sorted.length > 0) {
+      if (eagerPlugins.length > 0) {
         hooks.onPluginStatus?.({
           kind: "activity",
           label: "Plugins",
-          detail: `Loading ${sorted.length} plugin${sorted.length === 1 ? "" : "s"}`,
+          detail: `Loading ${eagerPlugins.length} plugin${eagerPlugins.length === 1 ? "" : "s"}`,
         });
       }
 
@@ -511,6 +520,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
             label: "Plugin loaded",
             detail: plugin.name,
           });
+          return result;
         } catch (err) {
           registryLogger.error("Plugin failed to load into registry", {
             pluginId: plugin.id,
@@ -527,7 +537,75 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
         }
       };
 
-      void Promise.allSettled(sorted.map(loadOne)).then(() => {
+      const ensureLazyPlugin = async (plugin: InstalledPlugin) => {
+        const existing = lazyPluginLoads.get(plugin.id);
+        if (existing) return existing;
+        const promise = (async () => {
+          // Remove manifest stubs before loadOne installs the real runtime objects.
+          set((state) => ({
+            commands: state.commands.filter((command) => command.pluginId !== plugin.id),
+            panels: Object.fromEntries(
+              Object.entries(state.panels).filter(([id]) => id !== plugin.id),
+            ),
+          }));
+          await loadOne(plugin);
+        })().finally(() => lazyPluginLoads.delete(plugin.id));
+        lazyPluginLoads.set(plugin.id, promise);
+        return promise;
+      };
+
+      for (const plugin of lazyProviderPlugins) {
+        const manifest = plugin.manifest;
+        if (!manifest) continue;
+        const commands: RegisteredCommand[] = (manifest.commands ?? []).map((command) => ({
+          ...command,
+          pluginId: plugin.id,
+          pluginName: plugin.name,
+          keywords: Array.from(new Set([
+            plugin.name,
+            plugin.id,
+            ...(manifest.keywords ?? []),
+            ...(command.keywords ?? []),
+          ])),
+          async run(ctx, options) {
+            await ensureLazyPlugin(plugin);
+            const real = get().commands.find((candidate) =>
+              candidate.pluginId === plugin.id && candidate.name === command.name,
+            );
+            if (!real) throw new Error(`Plugin command unavailable: ${plugin.id}/${command.name}`);
+            await real.run(ctx, options);
+          },
+        }));
+        const panel: RegisteredPanel | undefined = manifest.panel ? {
+          pluginId: plugin.id,
+          pluginName: plugin.name,
+          title: manifest.panel.title || plugin.name,
+          icon: manifest.panel.icon || manifest.icon,
+          keywords: Array.from(new Set([
+            plugin.name,
+            plugin.id,
+            ...(manifest.keywords ?? []),
+            ...(manifest.panel.keywords ?? []),
+          ])),
+          async render(container, context) {
+            await ensureLazyPlugin(plugin);
+            const real = get().panels[plugin.id];
+            if (!real) throw new Error(`Plugin panel unavailable: ${plugin.id}`);
+            await real.render(container, context);
+          },
+          async destroy(container) {
+            const real = get().panels[plugin.id];
+            await real?.destroy?.(container);
+          },
+        } : undefined;
+        set((state) => ({
+          commands: [...state.commands, ...commands],
+          panels: panel ? { ...state.panels, [plugin.id]: panel } : state.panels,
+        }));
+        registryLogger.debug("Plugin registered as manifest-only provider", { pluginId: plugin.id });
+      }
+
+      void Promise.allSettled(eagerPlugins.map(loadOne)).then(() => {
         if (get()._loadToken === loadToken) {
           registryLogger.info("Plugin registry load completed", {
             loadToken,
@@ -560,6 +638,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       shortcuts: Object.values(shortcuts).flat().length,
     });
     clearBackgroundTimers();
+    lazyPluginLoads.clear();
     stopPluginLocaleBridge?.();
     clearPluginIcons();
     Object.values(shortcuts).flat().forEach((shortcut) => {

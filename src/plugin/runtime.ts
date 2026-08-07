@@ -127,7 +127,7 @@ export function buildPluginRuntimeHtml(
       ${PLUGIN_OVERLAY_SCROLLBAR_RUNTIME_JS}
       const pluginId = ${JSON.stringify(pluginId)};
       const runtimeId = ${JSON.stringify(runtimeId)};
-      globalThis.__qxPluginRuntimeId = runtimeId;
+      globalThis.__qxPluginId = pluginId; globalThis.__qxPluginRuntimeId = runtimeId;
       const entrySpecifier = ${JSON.stringify(moduleGraph.entrySpecifier)};
       const pluginDisplay = ${JSON.stringify({
         raycastActionPanel,

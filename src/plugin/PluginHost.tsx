@@ -567,9 +567,13 @@ export function PluginPanelViewport() {
 
   // Raycast ActionPanel[0] and declarative Workbench primary both map to the
   // same QxShell primary/action surfaces.
+  const hasExplicitPanelPrimary = !workbench
+    && itemActions.some((action) => typeof action.primary === "boolean");
   const primaryItem = workbench
     ? primaryWorkbenchAction
-    : itemActions[0];
+    : hasExplicitPanelPrimary
+      ? itemActions.find((action) => action.primary && !action.disabled)
+      : itemActions.find((action) => !action.disabled);
 
   const contextualActions = useMemo<QxShellAction[]>(() => workbench
     ? [
@@ -587,9 +591,13 @@ export function PluginPanelViewport() {
     : itemActions.map((action, index) => ({
         id: `item-${action.id}`,
         label: action.title,
-        kbd: action.kbd || (index === 0 ? "Enter" : undefined),
+        menuKey: action.menuKey,
+        kbd: action.kbd || (!hasExplicitPanelPrimary && index === 0 ? "Enter" : undefined),
+        disabled: action.disabled,
+        tone: action.tone,
         onClick: () => runItem(action.id),
       })), [
+        hasExplicitPanelPrimary,
         itemActions,
         primaryWorkbenchAction?.id,
         runItem,

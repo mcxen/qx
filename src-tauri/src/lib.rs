@@ -38,6 +38,7 @@ mod system_stats;
 mod terminal;
 mod text_toolbox;
 mod tray_menu;
+mod tray_panel;
 mod updater;
 mod v2ex;
 mod watchdog;
@@ -545,6 +546,7 @@ pub fn run() {
 
             TrayIconBuilder::with_id(MAIN_TRAY_ID)
                 .menu(&menu)
+                .menu_on_left_click(false)
                 .icon(tray_icon)
                 .icon_as_template(tray_menu::tray_icon_is_template())
                 .on_menu_event(|app, event| {
@@ -581,13 +583,12 @@ pub fn run() {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,
                         button_state: MouseButtonState::Up,
+                        position,
                         ..
                     } = event
                     {
                         let app = tray.app_handle();
-                        if let Some(win) = app.get_webview_window("main") {
-                            toggle_window(app, &win);
-                        }
+                        let _ = tray_panel::toggle_at(app, position.x, position.y);
                     }
                 })
                 .build(app)?;
@@ -604,6 +605,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            tray_panel::tray_panel_hide,
+            tray_panel::tray_panel_open_settings,
+            tray_panel::tray_panel_run_action,
+            tray_panel::tray_panel_resize,
+            tray_panel::tray_panel_get_focus_display,
             set_window_glass_effect,
             get_file_size,
             diagnostics::qx_log_event,

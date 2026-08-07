@@ -9,6 +9,7 @@ import IslandFloatApp from "./island/float/IslandFloatApp";
 import { ThemeProvider } from "./ThemeProvider";
 import { installOverlayScrollbars } from "./utils/overlayScrollbar";
 import LoadingMarkLab from "./components/LoadingMarkLab";
+import TrayPanelApp from "./tray/TrayPanelApp";
 
 installGlobalQxLogging();
 installOverlayScrollbars();
@@ -20,12 +21,15 @@ const isRegionPicker = surface === "region-picker";
 const isRegionPickerShade = surface === "region-picker-shade";
 const isIslandFloat = surface === "island";
 const isLoadingLab = surface === "loading-lab";
+const isTrayPanel = surface === "tray";
 
 document.documentElement.classList.toggle("qx-loading-lab-page", isLoadingLab);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    {isRecordingControls ? (
+    {isTrayPanel ? (
+      <TrayPanelApp />
+    ) : isRecordingControls ? (
       <ThemeProvider>
         <RecordingControlWindow />
       </ThemeProvider>

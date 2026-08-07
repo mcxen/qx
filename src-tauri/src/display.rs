@@ -13,6 +13,9 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::{command, AppHandle};
 
+#[cfg(target_os = "windows")]
+mod brightness_windows;
+
 #[cfg(target_os = "macos")]
 const DISPLAY_CACHE_TTL: Duration = Duration::from_millis(750);
 
@@ -47,10 +50,10 @@ pub struct DisplayDescriptor {
 
 /// A brightness target exposed by the shared display-control port.
 ///
-/// `id` is intentionally opaque to callers: `native:<CGDirectDisplayID>` is
-/// backed by macOS DisplayServices, while `ddc:<CGDirectDisplayID>` is backed
-/// by Qx's embedded DDC/CI adapter. This keeps plugin code independent of OS
-/// display handles and external executables.
+/// `id` is intentionally opaque to callers. macOS uses DisplayServices or its
+/// embedded DDC/CI adapter; Windows uses WMI for integrated panels and Win32
+/// Monitor Configuration for physical DDC/CI targets. Plugin/UI code never
+/// receives an OS display handle or starts a platform utility.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DisplayBrightnessControl {
@@ -721,7 +724,12 @@ fn brightness_controls() -> Result<Vec<DisplayBrightnessControl>, String> {
     Ok(controls)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn brightness_controls() -> Result<Vec<DisplayBrightnessControl>, String> {
+    brightness_windows::brightness_controls()
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn brightness_controls() -> Result<Vec<DisplayBrightnessControl>, String> {
     Ok(Vec::new())
 }
@@ -796,9 +804,14 @@ fn set_brightness(display_id: String, value: u8) -> Result<(), String> {
     Err("Unknown display brightness target".to_string())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn set_brightness(display_id: String, value: u8) -> Result<(), String> {
+    brightness_windows::set_brightness(&display_id, value)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn set_brightness(_display_id: String, _value: u8) -> Result<(), String> {
-    Err("Display brightness control is currently supported on macOS only".to_string())
+    Err("Display brightness control is unavailable on this platform".to_string())
 }
 
 #[tauri::command]

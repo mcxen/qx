@@ -1,6 +1,6 @@
 [package]
 name = "qx"
-version = "0.6.55"
+version = "0.6.56"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -77,6 +77,7 @@ fswalk = { path = "vendor/cardinal/fswalk" }
 [target.'cfg(target_os = "windows")'.dependencies]
 window-vibrancy = "0.6"
 xcap = { version = "0.9", features = ["wgc"] }
+wmi = "0.15.1"
 windows-sys = { version = "0.59", features = [
   "Win32_Devices_Display",
   "Win32_Foundation",

@@ -38,7 +38,10 @@ type WorkbenchHandlers = {
 };
 
 type WorkbenchWindow = Window & {
+  __qxPluginId?: string;
+  __qxPluginRuntimeId?: string;
   __qxWorkbenchHandler?: (event: MessageEvent) => void;
+  __qxPanelActionsHandler?: (event: MessageEvent) => void;
   __qxPluginUiBridge?: {
     publishWorkbench?: (state: PluginWorkbenchState) => void;
   };
@@ -535,7 +538,47 @@ export function createPluginSdkRuntime(): PluginSdkRuntime {
       };
     };
 
-    return { itemsFromJson, mountWorkbench };
+    const mountActions: PluginContext["ui"]["mountActions"] = (actions, handlers = {}) => {
+      const runtimeWindow = window as WorkbenchWindow;
+      let currentActions = actions;
+      let currentSelectionTitle = handlers.selectionTitle;
+      const publish = () => runtimeWindow.parent.postMessage({
+        type: "qx:plugin:item-actions",
+        pluginId: runtimeWindow.__qxPluginId,
+        runtimeId: runtimeWindow.__qxPluginRuntimeId,
+        selectionTitle: currentSelectionTitle,
+        actions: currentActions,
+      }, "*");
+      if (runtimeWindow.__qxPanelActionsHandler) {
+        runtimeWindow.removeEventListener("message", runtimeWindow.__qxPanelActionsHandler);
+      }
+      runtimeWindow.__qxPanelActionsHandler = (event: MessageEvent) => {
+        if (event.source !== runtimeWindow.parent) return;
+        const message = event.data || {};
+        if (message.type !== "qx:run-item-action") return;
+        handlers.onAction?.(String(message.actionId ?? ""));
+      };
+      runtimeWindow.addEventListener("message", runtimeWindow.__qxPanelActionsHandler);
+      publish();
+      return {
+        update(nextActions, selectionTitle) {
+          currentActions = nextActions;
+          currentSelectionTitle = selectionTitle;
+          publish();
+        },
+        destroy() {
+          if (runtimeWindow.__qxPanelActionsHandler) {
+            runtimeWindow.removeEventListener("message", runtimeWindow.__qxPanelActionsHandler);
+            delete runtimeWindow.__qxPanelActionsHandler;
+          }
+          currentActions = [];
+          currentSelectionTitle = undefined;
+          publish();
+        },
+      };
+    };
+
+    return { itemsFromJson, mountWorkbench, mountActions };
   }
 
   return {

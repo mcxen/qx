@@ -1001,7 +1001,7 @@
   visibility: hidden;
 }
 
-.qx-island-surface > :not(.qx-island-progress-surface-fill):not(.qx-island-progress-island-ring):not(.sr-only) {
+.qx-island-surface > :not(.qx-island-progress-surface-fill):not(.qx-island-progress-surface-trail):not(.qx-island-progress-particles):not(.qx-island-progress-island-ring):not(.sr-only) {
   position: relative;
   z-index: 1;
 }
@@ -1012,9 +1012,65 @@
   inset: 0 auto 0 0;
   display: block;
   min-width: 0;
+  overflow: hidden;
   background: var(--qx-island-progress-fill);
+  background-image:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--qx-accent) 11%, transparent),
+      color-mix(in srgb, var(--qx-accent) 25%, transparent));
   pointer-events: none;
-  transition: width 180ms ease-out;
+  transition: width 220ms ease-out;
+}
+
+.qx-island-progress-surface-trail {
+  position: absolute;
+  z-index: 1;
+  inset: 0 auto 0 0;
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  background: linear-gradient(90deg,
+    color-mix(in srgb, var(--qx-accent) 14%, transparent),
+    color-mix(in srgb, var(--qx-accent) 31%, transparent));
+  pointer-events: none;
+  animation: qx-island-progress-trail-fade 620ms ease-out both;
+}
+
+.qx-island-progress-surface-trail::after {
+  position: absolute;
+  top: -50%;
+  right: -10px;
+  width: 22px;
+  height: 200%;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--qx-accent) 72%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--qx-accent) 58%, transparent);
+  content: "";
+  filter: blur(5px);
+}
+
+.qx-island-progress-particles {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.qx-island-progress-particle {
+  position: absolute;
+  display: block;
+  border-radius: 50%;
+  background: var(--qx-text-primary);
+  box-shadow:
+    0 0 3px color-mix(in srgb, var(--qx-accent) 88%, transparent),
+    0 0 7px color-mix(in srgb, var(--qx-accent) 45%, transparent);
+  opacity: 0.42;
+  animation: qx-island-progress-firefly 2800ms ease-in-out infinite;
+}
+
+.qx-island-progress-particles.is-trail .qx-island-progress-particle {
+  animation-name: qx-island-progress-trail-particle;
 }
 
 .qx-island-progress-island-ring {
@@ -1355,10 +1411,29 @@
 
 @media (prefers-reduced-motion: reduce) {
   .qx-island-progress-surface-fill,
+  .qx-island-progress-surface-trail,
+  .qx-island-progress-particle,
   .qx-island-progress-island-ring .is-value,
   .qx-island-module-progress-ring .is-value {
     transition: none;
+    animation: none;
   }
+}
+
+@keyframes qx-island-progress-firefly {
+  0%, 100% { opacity: 0.22; transform: translate3d(0, 1px, 0) scale(0.78); }
+  45% { opacity: 0.88; transform: translate3d(1px, -1px, 0) scale(1); }
+  72% { opacity: 0.46; transform: translate3d(-1px, 0, 0) scale(0.86); }
+}
+
+@keyframes qx-island-progress-trail-fade {
+  0% { opacity: 0.82; }
+  100% { opacity: 0; }
+}
+
+@keyframes qx-island-progress-trail-particle {
+  0% { opacity: 0.7; transform: translate3d(0, 0, 0) scale(1); }
+  100% { opacity: 0; transform: translate3d(5px, -3px, 0) scale(0.35); }
 }
 
 .qx-island-meter-progress span {

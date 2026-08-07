@@ -146,6 +146,23 @@ pub struct PluginHomeWidgetDeclaration {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginSurfaceProviderDeclaration {
+    pub id: String,
+    pub source: String,
+    #[serde(default)]
+    pub surfaces: Vec<String>,
+    #[serde(default)]
+    pub presentation: Option<String>,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub titles: std::collections::HashMap<String, String>,
+    #[serde(default)]
+    pub default_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginManifest {
     pub id: String,
     pub name: String,
@@ -191,6 +208,9 @@ pub struct PluginManifest {
     /// Host-rendered empty-launcher widgets that may open this plugin panel.
     #[serde(default, rename = "homeWidgets")]
     pub home_widgets: Vec<PluginHomeWidgetDeclaration>,
+    /// Host-owned lightweight Tray/Home providers; no plugin runtime required.
+    #[serde(default, rename = "surfaceProviders")]
+    pub surface_providers: Vec<PluginSurfaceProviderDeclaration>,
     #[serde(default)]
     pub signature: String,
     #[serde(default)]
@@ -277,12 +297,56 @@ fn validate_manifest_home_widgets(widgets: &[PluginHomeWidgetDeclaration]) -> Re
         }
         if !matches!(
             widget.source.as_str(),
-            "system.cpu" | "system.memory" | "system.power" | "system.network"
+            "system.cpu"
+                | "system.memory"
+                | "system.power"
+                | "system.network"
+                | "system.display-brightness"
         ) {
             return Err(format!(
                 "unsupported plugin home widget source: {}",
                 widget.source
             ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_manifest_surface_providers(
+    providers: &[PluginSurfaceProviderDeclaration],
+) -> Result<(), String> {
+    if providers.len() > 8 {
+        return Err("manifest.surfaceProviders exceeds 8 entries".to_string());
+    }
+    let mut ids = BTreeSet::new();
+    for provider in providers {
+        let id = validate_plugin_id(&provider.id)?;
+        if !ids.insert(id.to_string()) {
+            return Err(format!("duplicate plugin surface provider: {id}"));
+        }
+        if provider.source != "system.display-brightness" {
+            return Err(format!(
+                "unsupported surface provider source: {}",
+                provider.source
+            ));
+        }
+        if provider
+            .presentation
+            .as_deref()
+            .is_some_and(|value| !matches!(value, "compact" | "standard" | "wide"))
+        {
+            return Err(format!(
+                "unsupported surface provider presentation: {}",
+                provider.presentation.as_deref().unwrap_or_default()
+            ));
+        }
+        if provider.surfaces.is_empty()
+            || provider
+                .surfaces
+                .iter()
+                .any(|surface| !matches!(surface.as_str(), "tray" | "home"))
+        {
+            return Err(format!("invalid surfaces for provider: {id}"));
         }
     }
     Ok(())
@@ -1703,6 +1767,7 @@ fn build_raycast_plugin_manifest(
         }),
         storage: None,
         home_widgets: Vec::new(),
+        surface_providers: Vec::new(),
         signature: String::new(),
         pubkey: String::new(),
     }
@@ -1929,6 +1994,7 @@ fn install_plugin_archive(
     validate_manifest_platforms(&manifest.platforms)?;
     validate_manifest_storage(manifest.storage.as_ref())?;
     validate_manifest_home_widgets(&manifest.home_widgets)?;
+    validate_manifest_surface_providers(&manifest.surface_providers)?;
     if let Err(error) = validate_manifest_host_version(&manifest) {
         if let Some(path) = cleanup_path {
             let _ = fs::remove_file(path);
@@ -2709,6 +2775,7 @@ pub(crate) fn registered_plugin_cache_targets() -> Vec<RegisteredPluginCacheTarg
         if validate_plugin_id(&manifest.id).is_err()
             || validate_manifest_storage(manifest.storage.as_ref()).is_err()
             || validate_manifest_home_widgets(&manifest.home_widgets).is_err()
+            || validate_manifest_surface_providers(&manifest.surface_providers).is_err()
         {
             continue;
         }
@@ -2814,6 +2881,7 @@ pub(crate) fn clear_registered_plugin_cache_target(
         .ok_or_else(|| format!("manifest not found for {}", target.plugin_id))?;
     validate_manifest_storage(manifest.storage.as_ref())?;
     validate_manifest_home_widgets(&manifest.home_widgets)?;
+    validate_manifest_surface_providers(&manifest.surface_providers)?;
     let declaration = manifest
         .storage
         .and_then(|storage| {

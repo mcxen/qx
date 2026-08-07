@@ -1,5 +1,5 @@
-import { BatteryCharging, BatteryMedium, Cpu, MemoryStick, Network, Pin, Search } from "lucide-react";
-import { useMemo, type ReactNode } from "react";
+import { BatteryCharging, BatteryMedium, Cpu, MemoryStick, Monitor, Network, Pin, Search } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { LauncherAppIcon } from "../ResultsList";
 import { useIslandData, type SystemStatsSnapshot } from "../home-island";
 import { useLocale, useT } from "../i18n";
@@ -10,6 +10,7 @@ import { isEntryPinned, metadataKeyForEntry } from "../search/searchMetadata";
 import type { AppEntry, SearchHistoryEntry } from "../store";
 import { homeDashboardWidgetOptions, homeWidgetProvider, sanitizeHomeDashboardWidgets } from "./catalog";
 import LauncherHomePopover from "../launcher/LauncherHomePopover";
+import { readDisplayBrightnessProvider, type DisplayBrightnessProviderItem } from "../plugin/surfaceProviders";
 
 function clampPercent(value: number | null | undefined): number {
   return Math.min(100, Math.max(0, Number(value) || 0));
@@ -85,6 +86,17 @@ export default function HomeDashboard({
     ...(enabled.includes("system.network") ? ["net" as const] : []),
   ], [enabled.join("|")]);
   const data = useIslandData(channels);
+  const [displayBrightness, setDisplayBrightness] = useState<DisplayBrightnessProviderItem[]>([]);
+  useEffect(() => {
+    if (!enabled.includes("system.display-brightness")) return;
+    let cancelled = false;
+    const refresh = () => void readDisplayBrightnessProvider()
+      .then((items) => { if (!cancelled) setDisplayBrightness(items); })
+      .catch(() => {});
+    refresh();
+    const timer = window.setInterval(refresh, 2000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [enabled.includes("system.display-brightness")]);
   const pinned = items.filter((item) => isEntryPinned(settings, metadataKeyForEntry(item))).slice(0, 12);
   const number = useMemo(() => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }), [locale]);
   const rate = (bytes: number) => {
@@ -101,7 +113,7 @@ export default function HomeDashboard({
       default: return t("launcher.home.memory.pressure.unknown", "Pressure unavailable");
     }
   };
-  const providerFor = (source: "system.cpu" | "system.memory" | "system.power" | "system.network") => {
+  const providerFor = (source: "system.cpu" | "system.memory" | "system.power" | "system.network" | "system.display-brightness") => {
     const provider = homeWidgetProvider(source, plugins);
     return provider ? () => onNavigate(`plugin:${provider.id}`) : undefined;
   };
@@ -217,6 +229,21 @@ export default function HomeDashboard({
                 onClick={providerFor("system.network")}
               />
             )}
+            {enabled.includes("system.display-brightness") && (() => {
+              const supported = displayBrightness.filter((display) => display.supported && display.current != null);
+              const primary = supported.find((display) => display.isBuiltin) ?? supported[0];
+              return (
+                <MetricCard
+                  id="system.display-brightness"
+                  title={t("launcher.home.displayBrightness", "Display Brightness")}
+                  value={primary?.current != null ? `${Math.round(primary.current)}%` : "—"}
+                  detail={primary ? `${primary.name}${supported.length > 1 ? ` · ${supported.length}` : ""}` : t("launcher.home.loading", "Reading system data")}
+                  progress={primary?.current}
+                  icon={<Monitor size={17} strokeWidth={2} />}
+                  onClick={providerFor("system.display-brightness")}
+                />
+              );
+            })()}
           </div>
         </div>
 
