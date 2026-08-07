@@ -339,8 +339,14 @@ fn downloads_verifies_and_stages_app_zip() {
     let size = zip_bytes.len() as u64;
     let url = serve_once(zip_bytes);
 
-    let staged = download_and_stage_in_dir(root.join("cache/0.0.test"), &url, &sha256, Some(size))
-        .expect("download and stage");
+    let staged = download_and_stage_in_dir(
+        None,
+        root.join("cache/0.0.test"),
+        &url,
+        &sha256,
+        Some(size),
+    )
+    .expect("download and stage");
 
     assert!(staged.ends_with("Qx.app"));
     assert_eq!(

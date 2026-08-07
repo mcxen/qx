@@ -817,6 +817,8 @@ pub fn run() {
             permissions::qx_onboarding_platform,
             updater::qx_update_check,
             updater::qx_update_download_and_install,
+            updater::qx_update_progress_snapshot,
+            updater::qx_update_progress_close,
             ocr::download_ocr_model,
             ocr::check_ocr_models,
             ocr::ocr_recognize_path,

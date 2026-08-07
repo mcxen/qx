@@ -10,6 +10,7 @@ import { ThemeProvider } from "./ThemeProvider";
 import { installOverlayScrollbars } from "./utils/overlayScrollbar";
 import LoadingMarkLab from "./components/LoadingMarkLab";
 import TrayPanelApp from "./tray/TrayPanelApp";
+import UpdateProgressApp from "./updater/UpdateProgressApp";
 
 installGlobalQxLogging();
 installOverlayScrollbars();
@@ -22,12 +23,17 @@ const isRegionPickerShade = surface === "region-picker-shade";
 const isIslandFloat = surface === "island";
 const isLoadingLab = surface === "loading-lab";
 const isTrayPanel = surface === "tray";
+const isUpdateProgress = surface === "update-progress";
 
 document.documentElement.classList.toggle("qx-loading-lab-page", isLoadingLab);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    {isTrayPanel ? (
+    {isUpdateProgress ? (
+      <ThemeProvider>
+        <UpdateProgressApp />
+      </ThemeProvider>
+    ) : isTrayPanel ? (
       <TrayPanelApp />
     ) : isRecordingControls ? (
       <ThemeProvider>

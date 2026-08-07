@@ -7,12 +7,15 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
+#[path = "updater/progress.rs"]
+mod progress;
 #[path = "updater/support.rs"]
 mod support;
 #[cfg(target_os = "windows")]
 #[path = "updater/windows.rs"]
 mod windows;
 
+use progress::ProgressReporter;
 use support::{compare_versions, current_binary_name, prune_update_cache, update_cache_dir};
 
 const GITHUB_LATEST_MANIFEST: &str =
@@ -141,6 +144,14 @@ pub async fn qx_update_download_and_install(
     source: Option<String>,
 ) -> Result<QxUpdateInstallResult, String> {
     let current = app.package_info().version.to_string();
+    // Open the progress surface before the blocking work so users always see a
+    // waiting state, even when the launcher itself is hidden (auto-update).
+    let reporter = progress::show_window(&app, None).map_err(|error| {
+        format!("update progress window: {error}")
+    })?;
+    reporter.emit_phase("checking", "Checking for the latest release…");
+
+    let app_for_work = app.clone();
     let result = tokio::task::spawn_blocking(move || {
         let update = check_for_update(&current, UpdateSource::parse(source.as_deref()))?;
         if !update.available {
@@ -165,7 +176,27 @@ pub async fn qx_update_download_and_install(
             .clone()
             .ok_or_else(|| "latest version missing".to_string())?;
 
-        let plan = prepare_install(&latest_version, &asset_url, &expected_sha, update.size)?;
+        // Window was opened on the UI thread before this task; only emit
+        // progress from the worker so we never create WebViews off-main.
+        let reporter = ProgressReporter::new(app_for_work.clone(), Some(latest_version.clone()));
+        reporter.emit_phase(
+            "preparing",
+            &format!("Preparing update to v{latest_version}…"),
+        );
+
+        let plan = prepare_install(
+            &app_for_work,
+            &reporter,
+            &latest_version,
+            &asset_url,
+            &expected_sha,
+            update.size,
+        )?;
+
+        reporter.emit_phase(
+            "installing",
+            "Installing update… Qx will quit and relaunch.",
+        );
 
         Ok(QxUpdateInstallResult {
             version: latest_version,
@@ -176,18 +207,49 @@ pub async fn qx_update_download_and_install(
         })
     })
     .await
-    .map_err(|e| format!("update install task failed: {e}"))??;
+    .map_err(|e| format!("update install task failed: {e}"))?;
+
+    let result = match result {
+        Ok(value) => value,
+        Err(error) => {
+            // Benign "already current" should not leave an error sheet open.
+            let soft = error.contains("already on the latest");
+            if soft {
+                let _ = progress::hide_window(&app);
+            } else {
+                let reporter = ProgressReporter::new(app.clone(), None);
+                reporter.emit_error(&error);
+            }
+            return Err(error);
+        }
+    };
+
+    let reporter = ProgressReporter::new(app.clone(), Some(result.version.clone()));
+    reporter.emit_phase(
+        "restarting",
+        "Update ready. Restarting Qx…",
+    );
 
     // Helper is already spawned and waiting on this PID. Must force-quit so
     // macOS double-⌘Q confirmation does not intercept ExitRequested and leave
     // the process alive (helper would then time out after ~90s).
     let app_for_exit = app.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(Duration::from_millis(350));
+        std::thread::sleep(Duration::from_millis(450));
         crate::app_quit::force_quit(&app_for_exit);
     });
 
     Ok(result)
+}
+
+#[tauri::command]
+pub fn qx_update_progress_snapshot() -> Option<progress::UpdateProgress> {
+    progress::last_progress()
+}
+
+#[tauri::command]
+pub fn qx_update_progress_close(app: AppHandle) -> Result<(), String> {
+    progress::hide_window(&app)
 }
 
 pub(crate) fn maybe_run_update_helper_from_args() -> bool {
@@ -556,14 +618,19 @@ struct InstallPlan {
 
 #[cfg(target_os = "macos")]
 fn prepare_install(
+    _app: &AppHandle,
+    reporter: &ProgressReporter,
     version: &str,
     asset_url: &str,
     expected_sha256: &str,
     expected_size: Option<u64>,
 ) -> Result<InstallPlan, String> {
     let target = current_app_bundle()?;
-    let payload = download_and_stage(version, asset_url, expected_sha256, expected_size)?;
+    let payload =
+        download_and_stage(reporter, version, asset_url, expected_sha256, expected_size)?;
+    reporter.emit_phase("verifying", "Verifying staged app bundle…");
     validate_staged_app(&payload, &target, version)?;
+    reporter.emit_phase("installing", "Preparing install helper…");
     let helper = spawn_update_helper(&payload, &target, version)?;
     Ok(InstallPlan {
         payload,
@@ -575,16 +642,20 @@ fn prepare_install(
 
 #[cfg(target_os = "windows")]
 fn prepare_install(
+    _app: &AppHandle,
+    reporter: &ProgressReporter,
     version: &str,
     asset_url: &str,
     expected_sha256: &str,
     expected_size: Option<u64>,
 ) -> Result<InstallPlan, String> {
-    windows::prepare_install(version, asset_url, expected_sha256, expected_size)
+    windows::prepare_install(reporter, version, asset_url, expected_sha256, expected_size)
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn prepare_install(
+    _app: &AppHandle,
+    _reporter: &ProgressReporter,
     _version: &str,
     _asset_url: &str,
     _expected_sha256: &str,
@@ -594,6 +665,7 @@ fn prepare_install(
 }
 
 fn download_and_stage(
+    reporter: &ProgressReporter,
     version: &str,
     asset_url: &str,
     expected_sha256: &str,
@@ -604,10 +676,17 @@ fn download_and_stage(
     let update_dir = update_cache_dir().join(version);
     // Fresh download: wipe this version dir too so we never reuse a partial zip.
     let _ = fs::remove_dir_all(&update_dir);
-    download_and_stage_in_dir(update_dir, asset_url, expected_sha256, expected_size)
+    download_and_stage_in_dir(
+        Some(reporter),
+        update_dir,
+        asset_url,
+        expected_sha256,
+        expected_size,
+    )
 }
 
 fn download_and_stage_in_dir(
+    reporter: Option<&ProgressReporter>,
     update_dir: PathBuf,
     asset_url: &str,
     expected_sha256: &str,
@@ -618,8 +697,17 @@ fn download_and_stage_in_dir(
     let _ = fs::remove_dir_all(&staging_root);
     fs::create_dir_all(&update_dir).map_err(|e| format!("create update dir: {e}"))?;
 
-    download_verified_file(asset_url, &download_path, expected_sha256, expected_size)?;
+    download_verified_file(
+        reporter,
+        asset_url,
+        &download_path,
+        expected_sha256,
+        expected_size,
+    )?;
 
+    if let Some(reporter) = reporter {
+        reporter.emit_phase("staging", "Extracting update package…");
+    }
     unzip_app(&download_path, &staging_root)?;
     let staged_app = staging_root.join("Qx.app");
     if !staged_app.exists() {
@@ -627,27 +715,38 @@ fn download_and_stage_in_dir(
     }
     // GitHub zip always arrives quarantined; clear + ad-hoc re-sign free of charge
     // so the helper can open the staged bundle after swap.
+    if let Some(reporter) = reporter {
+        reporter.emit_phase("staging", "Preparing app bundle…");
+    }
     prepare_app_for_launch(&staged_app)?;
     Ok(staged_app)
 }
 
 fn download_verified_file(
+    reporter: Option<&ProgressReporter>,
     asset_url: &str,
     download_path: &Path,
     expected_sha256: &str,
     expected_size: Option<u64>,
 ) -> Result<(), String> {
+    if let Some(reporter) = reporter {
+        reporter.emit_phase("downloading", "Starting download…");
+    }
     let mut response = http_client()?
         .get(asset_url)
         .send()
         .map_err(|e| format!("download update: {e}"))?
         .error_for_status()
         .map_err(|e| format!("download update: {e}"))?;
+    let total = expected_size.or_else(|| response.content_length());
     let mut file = fs::File::create(download_path)
         .map_err(|e| format!("create {}: {e}", download_path.display()))?;
     let mut hasher = Sha256::new();
     let mut downloaded = 0u64;
     let mut buffer = [0u8; 64 * 1024];
+    if let Some(reporter) = reporter {
+        reporter.emit_download(0, total, true);
+    }
     loop {
         let read = response
             .read(&mut buffer)
@@ -659,6 +758,13 @@ fn download_verified_file(
             .map_err(|e| format!("write update download: {e}"))?;
         hasher.update(&buffer[..read]);
         downloaded += read as u64;
+        if let Some(reporter) = reporter {
+            reporter.emit_download(downloaded, total, false);
+        }
+    }
+    if let Some(reporter) = reporter {
+        reporter.emit_download(downloaded, total.or(Some(downloaded)), true);
+        reporter.emit_phase("verifying", "Verifying download checksum…");
     }
     file.sync_all()
         .map_err(|e| format!("sync update download: {e}"))?;

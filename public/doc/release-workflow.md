@@ -301,6 +301,12 @@ only after NSIS exits successfully. Do not bypass the existing NSIS hooks: they
 stop only Qx's private Everything instance and protect in-place replacement from
 Windows file locks.
 
+While `qx_update_download_and_install` runs, Qx opens a dedicated always-on-top
+**update-progress** window on both macOS and Windows. Download reports byte
+progress; extract / verify / helper install show an indeterminate waiting bar so
+the user always has a visible state until Qx quits to finish the swap (or until
+an error leaves a dismissible failure state).
+
 ## Dirty Files After Push
 
 After pushing, run:

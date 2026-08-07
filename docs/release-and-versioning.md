@@ -49,6 +49,10 @@ Qx 使用自定义跨平台 helper 更新，不依赖 Tauri signed updater：
 - 只有对应资产 SHA256 存在，且 Qx 从正式安装位置运行时才允许自动安装。
 - `qx_update_download_and_install` 在两端都校验 SHA256 和 size；macOS 解压到 staging，
   Windows 额外校验安装器 PE (`MZ`) 头。
+- 安装路径会打开独立的 **update-progress** 悬浮窗（macOS / Windows 共用）：下载阶段
+  推送字节进度与百分比，解压/校验/helper 安装阶段显示不确定等待条；失败时窗口保留
+  错误态并可关闭。进度事件为 `qx-update-progress`，快照命令
+  `qx_update_progress_snapshot`。
 - **签名策略（不买 Apple 开发者账号）**：
   - CI / Release 使用 **ad-hoc** `codesign --sign -`（免费，非公证）。
   - 本机重复开发测试可登录免费 Apple Account 的 **Personal Team**，使用稳定的
