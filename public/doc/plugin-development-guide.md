@@ -58,9 +58,17 @@ context.ui.mountWorkbench(
 );
 ```
 
-`items[].actions` 只描述当前条目的真实业务操作；列表/详情的进入与返回由宿主 Enter、左右
-方向键和 Esc 阶梯处理。Raycast 的 `ActionPanel` 映射为同一份 `actions[]`，不再额外声明
-Bottom Bar 或 Enter handler。
+`items[].actions` 只描述当前条目的真实业务操作。宿主 Enter 约定：
+
+1. **列表且条目有 `detail`** → Enter 打开详情（阅读）
+2. **详情已打开且条目/面板有 `primary: true` 业务动作** → Enter 执行该动作（安装、设壁纸、打开原页、暂停番茄钟…）
+3. **详情已打开且没有 primary 业务动作** → Enter 返回列表；Esc 始终可关闭详情
+4. **列表且无 detail** → Enter 执行 `primary: true`（或第一个可用动作）
+
+因此「打开原文 / 安装 / 设壁纸」等在详情态要用的动作必须标 `primary: true`。不要给
+open-detail / close-detail 再声明插件 action，也不要假设 `kbd: "Enter"` 会覆盖宿主
+主导航。Raycast 的 `ActionPanel` 映射为同一份 `actions[]`，不再额外声明 Bottom Bar
+或 Enter handler。
 
 ## 2. 文档地图
 
