@@ -215,6 +215,39 @@ export function dismissPluginIsland(pluginId: string): void {
   islandHost.dismiss(pluginIslandSessionId(pluginId));
 }
 
+/**
+ * Drop host-owned island projection for one plugin (session + Workbench signature).
+ * Call on disable / uninstall / registry unload so sticky location islands and
+ * action handlers cannot outlive the plugin runtime.
+ */
+export function clearPluginIslandProjection(pluginId: string): void {
+  workbenchProjectionSignatures.delete(pluginId);
+  dismissPluginIsland(pluginId);
+  // Toast-priority plugin sessions use free-form ids; drop any still tagged as
+  // plugin source for this package when the open target matches.
+  for (const session of islandHost.getSnapshot()) {
+    if (session.source !== "plugin" && session.source !== "plugin-display") continue;
+    if (session.id === pluginIslandSessionId(pluginId)) continue;
+    if (session.openTarget?.kind === "plugin" && session.openTarget.id === pluginId) {
+      islandHost.dismiss(session.id);
+    }
+  }
+}
+
+/** Registry-wide teardown: every plugin.display.* and plugin-source island. */
+export function clearAllPluginIslandProjections(): void {
+  workbenchProjectionSignatures.clear();
+  for (const session of islandHost.getSnapshot()) {
+    if (
+      session.source === "plugin"
+      || session.source === "plugin-display"
+      || session.id.startsWith("plugin.display.")
+    ) {
+      islandHost.dismiss(session.id);
+    }
+  }
+}
+
 export function hasPluginIslandSession(pluginId: string): boolean {
   const id = pluginIslandSessionId(pluginId);
   return islandHost.getSnapshot().some((session) => session.id === id);

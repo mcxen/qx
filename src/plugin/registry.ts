@@ -32,6 +32,14 @@ import {
   usePluginBackgroundStore,
 } from "./backgroundActivity";
 import { clearPluginIcons } from "./pluginIconRegistry";
+import {
+  clearAllPluginIslandProjections,
+  clearPluginIslandProjection,
+} from "./pluginIsland";
+import {
+  drainPanelRuntimeSessions,
+  takePanelRuntimeSession,
+} from "./pluginShellBridge";
 import { scoreMatchDescending } from "../search/rankResults";
 import {
   parsePluginPlatform,
@@ -152,11 +160,35 @@ function clearBackgroundTimers(pluginId?: string): void {
   usePluginBackgroundStore.getState().clearAll();
 }
 
+/** True when host still owns a live worker and the interval command remains registered. */
+function shouldRescheduleBackgroundCommand(
+  command: RegisteredCommand,
+  loadTokenAtArm: number,
+): boolean {
+  const state = usePluginRegistry.getState();
+  if (state._loadToken !== loadTokenAtArm) return false;
+  if (!state.workers[command.pluginId]) return false;
+  const plugin = state.plugins.find((item) => item.id === command.pluginId);
+  if (!plugin?.enabled) return false;
+  const live = state.commands.find(
+    (item) => item.pluginId === command.pluginId && item.name === command.name,
+  );
+  return Boolean(live && isBackgroundIntervalCommand(live));
+}
+
+function teardownPluginPanelSession(pluginId: string): void {
+  const session = takePanelRuntimeSession(pluginId);
+  if (!session) return;
+  unloadPluginRuntime(pluginId, session.iframe, session.runtimeId);
+  session.iframe.remove();
+}
+
 function scheduleBackgroundCommand(command: RegisteredCommand): void {
   if (!isBackgroundIntervalCommand(command)) return;
   const intervalMs = parseIntervalMs(command.interval);
   if (!intervalMs) return;
   const jobKey = backgroundJobKey(command.pluginId, command.name);
+  const loadTokenAtArm = usePluginRegistry.getState()._loadToken;
 
   // Replace any pending timer for this command (prevents stacked firings).
   const existingTimer = backgroundTimers.get(jobKey);
@@ -164,6 +196,9 @@ function scheduleBackgroundCommand(command: RegisteredCommand): void {
     window.clearTimeout(existingTimer);
     backgroundTimers.delete(jobKey);
   }
+
+  // Do not arm timers for plugins that are no longer live (disable mid-flight).
+  if (!shouldRescheduleBackgroundCommand(command, loadTokenAtArm)) return;
 
   const bg = usePluginBackgroundStore.getState();
   const existing = bg.getJob(command.pluginId, command.name);
@@ -181,6 +216,13 @@ function scheduleBackgroundCommand(command: RegisteredCommand): void {
 
   const timer = window.setTimeout(() => {
     backgroundTimers.delete(jobKey);
+    if (!shouldRescheduleBackgroundCommand(command, loadTokenAtArm)) {
+      registryLogger.debug("Background plugin command dropped — plugin no longer live", {
+        pluginId: command.pluginId,
+        command: command.name,
+      });
+      return;
+    }
     if (backgroundInFlight.has(jobKey)) {
       registryLogger.warn("Background plugin command skipped — previous run still in flight", {
         pluginId: command.pluginId,
@@ -210,6 +252,14 @@ function scheduleBackgroundCommand(command: RegisteredCommand): void {
       })
       .finally(() => {
         backgroundInFlight.delete(jobKey);
+        // Never re-arm after disable/unload: in-flight finally used to resurrect timers.
+        if (!shouldRescheduleBackgroundCommand(command, loadTokenAtArm)) {
+          registryLogger.debug("Background plugin command not rescheduled after unload", {
+            pluginId: command.pluginId,
+            command: command.name,
+          });
+          return;
+        }
         scheduleBackgroundCommand(command);
       });
   }, delay);
@@ -494,6 +544,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
           if (get()._loadToken !== loadToken) {
             unloadPluginRuntime(plugin.id, result.iframe, result.runtimeId);
             result.iframe.remove();
+            clearPluginIslandProjection(plugin.id);
             return;
           }
           set((state) => ({
@@ -637,13 +688,21 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       workers: Object.keys(workers).length,
       shortcuts: Object.values(shortcuts).flat().length,
     });
+    // Bump generation first so in-flight background finally blocks cannot re-arm.
+    const nextLoadToken = get()._loadToken + 1;
+    set({ _loadToken: nextLoadToken });
     clearBackgroundTimers();
+    clearAllPluginIslandProjections();
     lazyPluginLoads.clear();
     stopPluginLocaleBridge?.();
     clearPluginIcons();
     Object.values(shortcuts).flat().forEach((shortcut) => {
       void unregister(shortcut).catch(() => {});
     });
+    for (const session of drainPanelRuntimeSessions()) {
+      unloadPluginRuntime(session.pluginId, session.iframe, session.runtimeId);
+      session.iframe.remove();
+    }
     Object.entries(workers).forEach(([pluginId, iframe]) => {
       const decorated = iframe as HTMLIFrameElement & {
         __qxRpcHandler?: (event: MessageEvent) => void;
@@ -655,6 +714,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
         unloadPluginRuntime(pluginId, iframe, decorated.__qxRuntimeId);
       }
       iframe.remove();
+      clearPluginIslandProjection(pluginId);
     });
     const builtinCommands = get().commands.filter((command) =>
       isBuiltinPluginId(command.pluginId),
@@ -670,7 +730,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       shortcuts: {},
       loaded: false,
       loading: false,
-      _loadToken: get()._loadToken + 1,
+      _loadToken: nextLoadToken,
     });
     registryLogger.info("Plugin registry unload completed");
   },
@@ -688,6 +748,9 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
 
   uninstall: async (id: string) => {
     registryLogger.info("Plugin uninstall started", { pluginId: id });
+    clearBackgroundTimers(id);
+    clearPluginIslandProjection(id);
+    teardownPluginPanelSession(id);
     try {
       await invoke("plugin_tray_clear", { plugin_id: id });
     } catch {
@@ -701,6 +764,45 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
   setEnabled: async (id: string, enabled: boolean) => {
     registryLogger.info("Plugin enabled state change started", { pluginId: id, enabled });
     if (!enabled) {
+      // Stop host-owned surfaces immediately so disable feels instant even while
+      // refresh reloads the remaining registry. Island + timers must not wait on
+      // the full unload/load cycle.
+      // Order matters: drop worker + mark disabled before clearing timers so any
+      // in-flight background finally cannot re-arm (shouldReschedule checks both).
+      const worker = get().workers[id];
+      const shortcutKeys = get().shortcuts[id];
+      if (shortcutKeys?.length) {
+        for (const key of shortcutKeys) void unregister(key).catch(() => {});
+      }
+      if (worker) {
+        const decorated = worker as HTMLIFrameElement & {
+          __qxRpcHandler?: (event: MessageEvent) => void;
+          __qxRuntimeId?: string;
+        };
+        const handler = decorated.__qxRpcHandler;
+        if (handler) window.removeEventListener("message", handler);
+        if (decorated.__qxRuntimeId) {
+          unloadPluginRuntime(id, worker, decorated.__qxRuntimeId);
+        }
+        worker.remove();
+      }
+      teardownPluginPanelSession(id);
+      set((state) => {
+        const { [id]: _removed, ...restWorkers } = state.workers;
+        const { [id]: _panel, ...restPanels } = state.panels;
+        const { [id]: _shortcuts, ...restShortcuts } = state.shortcuts;
+        return {
+          plugins: state.plugins.map((plugin) =>
+            plugin.id === id ? { ...plugin, enabled: false } : plugin,
+          ),
+          workers: restWorkers,
+          panels: restPanels,
+          shortcuts: restShortcuts,
+          commands: state.commands.filter((command) => command.pluginId !== id),
+        };
+      });
+      clearBackgroundTimers(id);
+      clearPluginIslandProjection(id);
       try {
         await invoke("plugin_tray_clear", { plugin_id: id });
       } catch {

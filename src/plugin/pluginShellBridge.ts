@@ -30,6 +30,21 @@ export function deletePanelRuntimeSession(pluginId: string, runtimeId: string): 
   }
 }
 
+/** Snapshot and clear all panel sessions (registry unload / disable). */
+export function drainPanelRuntimeSessions(): PanelRuntimeSession[] {
+  const sessions = Array.from(panelSessionsByPlugin.values());
+  panelSessionsByPlugin.clear();
+  return sessions;
+}
+
+/** Snapshot and clear one plugin's panel session if present. */
+export function takePanelRuntimeSession(pluginId: string): PanelRuntimeSession | undefined {
+  const session = panelSessionsByPlugin.get(pluginId);
+  if (!session) return undefined;
+  panelSessionsByPlugin.delete(pluginId);
+  return session;
+}
+
 export function registerPluginRuntime(
   pluginId: string,
   runtimeId: string,

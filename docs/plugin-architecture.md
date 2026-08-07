@@ -120,6 +120,10 @@ pointer click / host keydown / hidden iframe forwarded key
 - 宿主侧用 `lastRunAt + interval` 做二次节流。
 - 后台 run 使用 `launchType: background` + 更长 timeout（120s），避免下载超时后并发 set wallpaper。
 - Raycast `Cache` 落盘到 `localStorage`（如 Bing `lastRefresh`），不再每次 invoke 新建空 Map。
+- **停用/卸载/registry unload 必须同步停后台与灵动岛**：清 timer、bump `_loadToken`、
+  移除 worker/panel iframe，并 `clearPluginIslandProjection`。in-flight 后台
+  `finally` 仅在 worker 仍存活、插件仍 `enabled`、且 load token 未变时才 re-arm；
+  禁止停用后 sticky `plugin.display.*` session 或 interval 任务继续占用浮岛。
 
 ## 2. 数据流
 
