@@ -12,6 +12,7 @@
 | 把 CLI 做成界面 | [CLI Workbench 模式](./plugin-cli-gui.md) | CLI 数据到 Workbench 的产品化模式 |
 | 查询 CLI API | [CLI 协议](./plugin-cli-protocol.md) | `context.cli`、任务、PATH、安全与返回值 |
 | 发布或安装插件 | [插件市场指南](./plugin-marketplace.md) | Manifest、包结构、市场索引、安装与签名 |
+| 配置插件源（GitHub / CNB） | [插件市场指南 §5.1](./plugin-marketplace.md#51-github-与-cnb-示例) | 设置 → 扩展 → 插件库；商店 `#/sources` |
 | 理解运行时边界 | [插件系统架构](./plugin-system.md) | 运行时、权限、通信和各协议的归属 |
 | 接入系统托盘 | [Tray 协议](./plugin-tray.md) | `context.tray` |
 | 迁移 Raycast 扩展 | [Raycast 迁移说明](./raycast-plugin-conversion.md) | 冻结转换器的边界与人工重实现路径 |

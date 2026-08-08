@@ -179,6 +179,18 @@ Qx 可配置官方源、镜像源或自托管索引。一个源可以填写：
 安装器按已配置源解析包地址，并在允许的镜像之间回退。回退只改变下载来源，不跳过包
 身份、兼容、权限、摘要或签名校验。
 
+### 5.1 GitHub 与 CNB 示例
+
+在 **设置 → 扩展 → 插件库** 中配置（商店站「源配置」页同内容）：
+
+| 源 | 名称示例 | index_url |
+| --- | --- | --- |
+| GitHub（默认） | `Qx Official` | `https://raw.githubusercontent.com/mcxen/qx-plugins/main/index.json` |
+| CNB（国内） | `Qx CNB` | `https://cnb.cool/v.ip/qx-plugins/-/git/raw/main/index.json` |
+
+CNB 也可填仓库根 `https://cnb.cool/v.ip/qx-plugins`，宿主会尝试 `raw/main/index.json`。
+配置非 GitHub 索引后，若条目 `download_url` 仍指向 GitHub，安装器会 **优先尝试索引旁同名包路径**，再回退原地址。
+
 ## 6. 安装方式
 
 - 市场安装：读取索引并显示权限与兼容信息。
