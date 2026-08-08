@@ -85,12 +85,18 @@ Settings → Extensions 的插件/模块标题与描述必须走
 | 来源 | 解析顺序 |
 |------|----------|
 | 内置 `builtin:<id>` | manifest `names` → `launcher.<id>` → `module.<id>` → `name` |
-| 外置插件 | manifest `names` → `plugins.ext.<id>.name` → `name` |
-| 市场 Browse | `plugins.ext.<id>.name` → 索引 `name` |
+| 外置插件 | manifest `names` → `name` |
+| 市场 Browse | 索引 `names` → `name` |
 
-描述同理（`descriptions` / `launcher.<id>.desc` / `plugins.ext.<id>.desc`）。
-插件可在 `manifest.json` 自带 `names` / `descriptions` 多语言 map；第一方市场插件
-亦可在宿主 `src/i18n.ts` 的 `plugins.ext.*` 表补中文。
+描述同理（`descriptions` / `launcher.<id>.desc` / `description`）。社区插件必须在
+`manifest.json` 自带包含 `en` 与 `zh-CN` 的 `names` / `descriptions` 多语言 map；宿主不
+维护按插件 ID 分散的兼容翻译表。
+
+设置页中的社区插件权限、偏好和命令也必须经过同一个宿主本地化端口：偏好使用
+`labels` / `descriptions` / `placeholders`，选项使用 `options[].labels`，命令使用
+`titles` / `descriptions`，面板使用 `titles`。插件发布前必须补齐这些字段；缺失时宿主
+只显示包内原始文本，不会按插件 ID 维护兼容翻译。权限代码仍统一映射为用户可读的中文
+名称；不得直接把 `http`、`open-url`、`clipboard` 等能力代码当作设置文案展示。
 
 内置模块的专属选项统一放在 **Extensions → Installed → 模块配置**。Screen Capture
 的格式、帧率、质量、分辨率、录屏圈选确认、0/5/10 秒延迟、截图提示音、浮动缩略图、

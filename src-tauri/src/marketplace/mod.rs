@@ -19,8 +19,14 @@ const PLUGIN_REGISTRY_TIMEOUT_SECS: u64 = 20;
 pub struct PluginCommand {
     pub name: String,
     pub title: String,
+    /// Optional locale → command title map.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub titles: std::collections::HashMap<String, String>,
     #[serde(default)]
     pub description: String,
+    /// Optional locale → command description map.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub descriptions: std::collections::HashMap<String, String>,
     #[serde(default)]
     pub icon: String,
     #[serde(default)]
@@ -35,6 +41,9 @@ pub struct PluginCommand {
 pub struct PluginPanel {
     #[serde(default)]
     pub title: String,
+    /// Optional locale → panel title map.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub titles: std::collections::HashMap<String, String>,
     #[serde(default)]
     pub icon: String,
     #[serde(default)]
@@ -45,6 +54,9 @@ pub struct PluginPanel {
 pub struct PluginPreference {
     pub id: String,
     pub label: String,
+    /// Optional locale → preference label map.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub labels: std::collections::HashMap<String, String>,
     /// `string` | `textarea` | `password` | `number` | `boolean` | `select` |
     /// `segmented` | `slider`
     #[serde(rename = "type")]
@@ -57,11 +69,17 @@ pub struct PluginPreference {
     pub options: Vec<serde_json::Value>,
     #[serde(default)]
     pub description: String,
+    /// Optional locale → preference description map.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub descriptions: std::collections::HashMap<String, String>,
     /// Hint for multi-line editors (`textarea`).
     #[serde(default)]
     pub rows: Option<u32>,
     #[serde(default)]
     pub placeholder: Option<String>,
+    /// Optional locale → input placeholder map.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub placeholders: std::collections::HashMap<String, String>,
     #[serde(default)]
     pub min: Option<f64>,
     #[serde(default)]
@@ -371,6 +389,12 @@ pub struct PluginIndexEntry {
     pub version: String,
     #[serde(default)]
     pub description: String,
+    /// Locale → display name copied from the package index.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub names: std::collections::HashMap<String, String>,
+    /// Locale → description copied from the package index.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub descriptions: std::collections::HashMap<String, String>,
     pub download_url: String,
     #[serde(default)]
     pub size_bytes: u64,
@@ -1684,7 +1708,9 @@ fn build_raycast_plugin_manifest(
             commands.push(PluginCommand {
                 name: json_string(item, "name"),
                 title: json_string(item, "title"),
+                titles: Default::default(),
                 description: json_string(item, "description"),
+                descriptions: Default::default(),
                 icon: command_icon,
                 keywords: keywords.clone(),
                 mode: json_string(item, "mode"),
@@ -1703,7 +1729,9 @@ fn build_raycast_plugin_manifest(
                 } else {
                     title
                 },
+                titles: Default::default(),
                 description: json_string(item, "description"),
+                descriptions: Default::default(),
                 icon: icon.clone(),
                 keywords: {
                     let mut out = vec![tool_name];
@@ -1719,7 +1747,9 @@ fn build_raycast_plugin_manifest(
         commands.push(PluginCommand {
             name: "index".to_string(),
             title: name.clone(),
+            titles: Default::default(),
             description: json_string(package, "description"),
+            descriptions: Default::default(),
             icon: icon.clone(),
             keywords: keywords.clone(),
             mode: "view".to_string(),
@@ -1769,6 +1799,7 @@ fn build_raycast_plugin_manifest(
         shortcuts: Vec::new(),
         panel: Some(PluginPanel {
             title: name,
+            titles: Default::default(),
             icon,
             keywords,
         }),

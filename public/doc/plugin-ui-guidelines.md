@@ -33,10 +33,9 @@ Bottom Bar
 作者（存在时）和本地化描述。插件不得通过 Workbench detail、action 或自定义 HTML 再复制
 一套 About，也不能改变该区的样式和顺序。
 
-名称和描述来自 Manifest 的 `name` / `description` 英文回退，以及 `names` / `descriptions`
-本地化映射。市场插件必须提供 `en` 与 `zh-CN`；宿主按当前语言选择，缺失时回退英文。
-旧插件可暂时省略映射并依赖 `name` / `description` 回退；任何新发布或升级的市场版本都必须补齐
-两种语言。
+名称和描述来自 Manifest 的 `name` / `description` 原始文本，以及 `names` / `descriptions`
+本地化映射。市场插件必须提供 `en` 与 `zh-CN`；宿主按当前语言选择，缺失时仅显示包内
+原始文本。旧插件也必须在重新发布前补齐两种语言，宿主不维护按插件 ID 分散的兼容翻译。
 
 `panel.title` 只作为 Shell 标题的英文回退，推荐省略或与 Manifest `name` 相同；插件不能
 通过自定义 panel title 绕过 `names` 的本地化。Panel 销毁时必须释放计时器、订阅、请求、

@@ -306,6 +306,8 @@ function scoreCommand(command: RegisteredCommand, query: string): number {
     command.name,
     command.description,
     command.pluginName,
+    ...Object.values(command.titles ?? {}),
+    ...Object.values(command.descriptions ?? {}),
     ...(command.keywords || []),
   );
   return score / 100;
@@ -616,6 +618,10 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
             plugin.name,
             plugin.id,
             ...(manifest.keywords ?? []),
+            ...Object.values(manifest.names ?? {}),
+            ...Object.values(manifest.descriptions ?? {}),
+            ...Object.values(command.titles ?? {}),
+            ...Object.values(command.descriptions ?? {}),
             ...(command.keywords ?? []),
           ])),
           async run(ctx, options) {

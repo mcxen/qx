@@ -72,7 +72,12 @@ import ClipboardPanel from "./modules/clipboard/ClipboardPanel";
 import { prefetchClipboardOpen } from "./modules/clipboard/openSession";
 import { tryModuleEscapeStep } from "./hooks/moduleEscapeHost";
 import { useQxModuleShell } from "./hooks/useQxModuleShell";
-import { useT } from "./i18n";
+import { useLocale, useT } from "./i18n";
+import {
+  localizePluginCommandTitle,
+  localizePluginName,
+  localizePluginPanelTitle,
+} from "./plugin/pluginLabels";
 import { configureQxLogger, createQxLogger, installDevConsoleCapture } from "./lib/logger";
 import {
   getQxDesktopPlatform,
@@ -170,11 +175,18 @@ const MODULE_LABEL_KEYS: Record<string, { key: string; fallback: string }> = {
   settings: { key: "launcher.settings", fallback: "Settings" },
 };
 
-function getModuleLabel(tab: string, t: (key: string, fallback: string) => string): string {
+function getModuleLabel(
+  tab: string,
+  t: (key: string, fallback: string) => string,
+  locale: ReturnType<typeof useLocale>,
+): string {
   if (tab.startsWith("plugin:")) {
     const pluginId = tab.slice("plugin:".length);
     const panel = usePluginRegistry.getState().panels[pluginId];
-    return t(`plugins.ext.${pluginId}.name`, panel?.title || panel?.pluginName || pluginId);
+    const plugin = usePluginRegistry.getState().plugins.find((item) => item.id === pluginId);
+    return plugin
+      ? localizePluginName(plugin, t, locale)
+      : panel?.title || panel?.pluginName || pluginId;
   }
   const entry = MODULE_LABEL_KEYS[tab];
   if (entry) return t(entry.key, entry.fallback);
@@ -189,7 +201,8 @@ function ModuleLoadingShell({
   onBack: () => void;
 }) {
   const t = useT();
-  const title = getModuleLabel(tab, t);
+  const locale = useLocale();
+  const title = getModuleLabel(tab, t, locale);
   // Same Esc / host-cascade registration path as real modules (moduleEscapeHost).
   const shell = useQxModuleShell({
     leave: onBack,
@@ -267,7 +280,8 @@ function ModuleErrorShell({
   onBack: () => void;
 }) {
   const t = useT();
-  const title = getModuleLabel(tab, t);
+  const locale = useLocale();
+  const title = getModuleLabel(tab, t, locale);
   const shell = useQxModuleShell({
     leave: onBack,
     island: {
@@ -618,6 +632,7 @@ function App() {
   const { settings, load: loadSettings, loaded: settingsLoaded } = useSettingsStore();
   const mainVisible = useStore((state) => state.visible);
   const t = useT();
+  const locale = useLocale();
 
   // Keep Rust global-shortcut toggle-to-close in sync with the active tab.
   useEffect(() => {
@@ -2110,9 +2125,12 @@ function App() {
 
       if (q.trim()) {
         for (const [pluginId, panel] of Object.entries(pluginState.panels)) {
+          const plugin = pluginState.plugins.find((item) => item.id === pluginId);
           const nameSource = panel.pluginName || pluginId;
           const titleSource = panel.title || pluginId;
-          const localizedPanelName = t(`plugins.ext.${pluginId}.name`, titleSource);
+          const localizedPanelName = plugin
+            ? localizePluginPanelTitle(plugin, panel, t, locale)
+            : titleSource;
           const kw = panel.keywords || [];
           const builtinModuleId = pluginId.startsWith("builtin:") ? pluginId.slice("builtin:".length) : null;
           if (builtinModuleId && !isModuleSearchEnabled(builtinModuleId)) continue;
@@ -2137,13 +2155,14 @@ function App() {
           if (!p.enabled) continue;
           const nameSource = p.name;
           const descSource = p.description || "";
+          const localizedName = localizePluginName(p, t, locale);
           const manifestKw = p.manifest?.keywords || [];
           if (
-            textMatchesQuery(q, p.id, nameSource, descSource, ...manifestKw) ||
+            textMatchesQuery(q, p.id, localizedName, nameSource, descSource, ...manifestKw) ||
             itemMatchesSearchMetadata(settingsState, pluginMetadataKey(p.id), q)
           ) {
             syntheticEntries.push({
-              name: p.name,
+              name: localizedName,
               path: `__qx:plugin:${p.id}`,
               icon: `builtin:${p.id}`,
               kind: "command",
@@ -2154,7 +2173,15 @@ function App() {
 
       syntheticEntries.push(
         ...pluginMatches.map((m) => ({
-          name: m.command.title,
+          name: localizePluginCommandTitle(
+            pluginState.plugins.find((plugin) => plugin.id === m.command.pluginId) ?? {
+              id: m.command.pluginId,
+              name: m.command.pluginName,
+            },
+            m.command,
+            t,
+            locale,
+          ),
           path: `__qx:cmd:${m.command.pluginId}:${m.command.name}`,
           icon: m.command.icon || m.command.pluginIcon || `builtin:${m.command.pluginId}`,
           kind: "command" as const,
@@ -2278,7 +2305,17 @@ function App() {
         }, 900);
       }
     },
-    [applyResults, findCommands, finishSearchActivity, loadModuleSurfaceProviders, loadSlowSearchProviders, searchFilePass, setResults],
+    [
+      applyResults,
+      findCommands,
+      finishSearchActivity,
+      loadModuleSurfaceProviders,
+      loadSlowSearchProviders,
+      locale,
+      searchFilePass,
+      setResults,
+      t,
+    ],
   );
 
   useEffect(() => {

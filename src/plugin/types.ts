@@ -11,11 +11,17 @@ export interface PluginPreference {
   type: "string" | "textarea" | "password" | "number" | "boolean" | "select" | "segmented" | "slider";
   required?: boolean;
   default?: string | number | boolean;
-  options?: { label: string; value: string }[];
+  /** Locale → label, for example `{ "zh-CN": "接口密钥", "en": "API Key" }`. */
+  labels?: Record<string, string>;
+  options?: { label: string; value: string; labels?: Record<string, string> }[];
   description?: string;
+  /** Locale → preference description. */
+  descriptions?: Record<string, string>;
   /** Optional rows for `textarea` (default 4). */
   rows?: number;
   placeholder?: string;
+  /** Locale → input placeholder. */
+  placeholders?: Record<string, string>;
   min?: number;
   max?: number;
   step?: number;
@@ -25,7 +31,11 @@ export interface PluginPreference {
 export interface PluginCommand {
   name: string;
   title: string;
+  /** Locale → command title. */
+  titles?: Record<string, string>;
   description?: string;
+  /** Locale → command description. */
+  descriptions?: Record<string, string>;
   icon?: string;
   keywords?: string[];
   mode?: string;
@@ -70,6 +80,8 @@ export interface PluginShortcut {
 
 export interface PluginPanel {
   title?: string;
+  /** Locale → panel title. */
+  titles?: Record<string, string>;
   icon?: string;
   keywords?: string[];
 }

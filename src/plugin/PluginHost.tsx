@@ -44,7 +44,11 @@ import {
 } from "../utils/keyboard";
 import { formatRelativeTime, formatTimestamp } from "./backgroundActivity";
 import { useLocale, useT } from "../i18n";
-import { localizePluginDescription, localizePluginName } from "./pluginLabels";
+import {
+  localizePluginDescription,
+  localizePluginName,
+  localizePluginPanelTitle,
+} from "./pluginLabels";
 import { pluginSupportsPlatform } from "./platform";
 import { resolveQxGridIndex, shouldHandleQxGridKey } from "../hooks/qxGridNavigation";
 import { focusQxRegion, qxMasterDetailNavigation } from "../hooks/useQxMasterDetail";
@@ -417,9 +421,9 @@ export function PluginPanelViewport() {
   const pluginDisplayDescription = plugin
     ? localizePluginDescription(plugin, t, locale)
     : "";
-  const shellTitle = panel?.title && panel.title !== plugin?.name
-    ? panel.title
-    : pluginDisplayName;
+  const shellTitle = plugin
+    ? localizePluginPanelTitle(plugin, panel, t, locale)
+    : panel?.title || pluginId;
 
   const runItem = useCallback(
     (actionId: string) => {

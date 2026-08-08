@@ -84,8 +84,13 @@ import {
 import {
   localizeMarketplaceEntryDescription,
   localizeMarketplaceEntryName,
+  localizePluginCommandDescription,
+  localizePluginCommandMode,
+  localizePluginCommandTitle,
   localizePluginDescription,
   localizePluginName,
+  localizePluginPermission,
+  localizePluginPreference,
   type TranslateFn,
 } from "../../../plugin/pluginLabels";
 import InstalledModuleCard from "./InstalledModuleCard";
@@ -379,6 +384,7 @@ function ShortcutKey({ value }: { value?: string }) {
 
 function ExtensionCommandsCard({ plugin }: { plugin: InstalledPlugin }) {
   const t = useT();
+  const locale = useLocale();
   const commands = plugin.manifest?.commands ?? [];
   if (commands.length === 0) return null;
   return (
@@ -386,34 +392,38 @@ function ExtensionCommandsCard({ plugin }: { plugin: InstalledPlugin }) {
       title={t("plugins.commands", "Commands")}
     >
       <div className="qx-extension-command-list">
-        {commands.map((command) => (
-          <div key={command.name} className="qx-extension-command-row">
-            <span className="qx-extension-command-icon" aria-hidden="true">
-              <Command size={14} strokeWidth={2} />
-            </span>
-            <div className="qx-extension-command-copy">
-              <div className="qx-extension-command-title qx-module-title-with-badge">
-                <span>{command.title || command.name}</span>
-                {command.mode === "no-view" && command.interval ? (
-                  <PluginBackgroundBadge
-                    pluginId={plugin.id}
-                    commandName={command.name}
-                    compact
-                  />
+        {commands.map((command) => {
+          const title = localizePluginCommandTitle(plugin, command, t, locale);
+          const description = localizePluginCommandDescription(plugin, command, t, locale);
+          return (
+            <div key={command.name} className="qx-extension-command-row">
+              <span className="qx-extension-command-icon" aria-hidden="true">
+                <Command size={14} strokeWidth={2} />
+              </span>
+              <div className="qx-extension-command-copy">
+                <div className="qx-extension-command-title qx-module-title-with-badge">
+                  <span>{title}</span>
+                  {command.mode === "no-view" && command.interval ? (
+                    <PluginBackgroundBadge
+                      pluginId={plugin.id}
+                      commandName={command.name}
+                      compact
+                    />
+                  ) : null}
+                </div>
+                {description || command.interval ? (
+                  <div className="qx-extension-command-description">
+                    {description}
+                    {command.interval
+                      ? `${description ? " · " : ""}${t("plugins.background.interval", "Interval {n}").replace("{n}", String(command.interval))}`
+                      : null}
+                  </div>
                 ) : null}
               </div>
-              {command.interval ? (
-                <div className="qx-extension-command-description">
-                  {t("plugins.background.interval", "Interval {n}").replace(
-                    "{n}",
-                    String(command.interval),
-                  )}
-                </div>
-              ) : null}
+              {command.mode && <Badge variant="outline">{localizePluginCommandMode(command.mode, t)}</Badge>}
             </div>
-            {command.mode && <Badge variant="outline">{command.mode}</Badge>}
-          </div>
-        ))}
+          );
+        })}
       </div>
     </SettingsCard>
   );
@@ -436,24 +446,6 @@ function isMultilinePreference(pref: PluginPreference): boolean {
     || desc.includes("一行一个")
     || desc.includes("newline")
   );
-}
-
-function localizePreference(
-  plugin: InstalledPlugin,
-  pref: PluginPreference,
-  t: Translate,
-): PluginPreference {
-  if (plugin.id !== "builtin:screencap") return pref;
-  const key = `plugins.screencap.preference.${pref.id}`;
-  return {
-    ...pref,
-    label: t(`${key}.label`, pref.label),
-    description: pref.description ? t(`${key}.desc`, pref.description) : pref.description,
-    options: pref.options?.map((option) => ({
-      ...option,
-      label: t(`${key}.option.${option.value}`, option.label),
-    })),
-  };
 }
 
 function PreferenceField({
@@ -587,6 +579,7 @@ function PreferenceField({
 
 function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
   const t = useT();
+  const locale = useLocale();
   const { settings, patchShortcut } = useSettingsStore();
   const builtinShortcutIds = BUILTIN_PLUGIN_SHORTCUTS[plugin.id] ?? [];
   const manifestShortcuts = plugin.manifest?.shortcuts ?? [];
@@ -653,7 +646,9 @@ function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
         return (
           <Row
             key={`${shortcut.command}-${shortcut.key}`}
-            title={command?.title ?? shortcut.command}
+            title={command
+              ? localizePluginCommandTitle(plugin, command, t, locale)
+              : shortcut.command}
             description={undefined}
           >
             <div className="qx-extension-shortcut-control">
@@ -959,7 +954,7 @@ function PluginDetail({
         >
           <ul className="qx-plugin-permissions">
             {permissions.map((perm) => (
-              <li key={perm}>{perm}</li>
+              <li key={perm}>{localizePluginPermission(perm, t)}</li>
             ))}
           </ul>
         </SettingsCard>
@@ -973,7 +968,7 @@ function PluginDetail({
           description={prefsBusy ? t("plugins.preferences.saving", "Saving…") : undefined}
         >
           {preferences.map((pref) => {
-            const localizedPref = localizePreference(plugin, pref, t);
+            const localizedPref = localizePluginPreference(plugin, pref, t, locale);
             return (
               <Row
                 key={pref.id}
@@ -1804,7 +1799,7 @@ function MarketplaceTab({
                 <SettingsCard title={t("plugins.marketplace.requiredPerms", "Required permissions")}>
                   <div className="qx-plugin-badges">
                     {selectedEntry.required_permissions.map((p) => (
-                      <PluginBadge key={p}>{p}</PluginBadge>
+                      <PluginBadge key={p}>{localizePluginPermission(p, t)}</PluginBadge>
                     ))}
                   </div>
                 </SettingsCard>

@@ -27,8 +27,10 @@ QxShell（Top Bar / Main Area / Bottom Bar）
   提交自绘 SVG/Canvas 或硬编码业务颜色。历史图表只能展示真实源数据或持久化真实采样。
 - 平台差异由宿主端口处理，插件不要判断 macOS/Windows 后自行拼系统命令。
 
-旧包没有 `names` / `descriptions` 时仍可安装，宿主回退到英文 `name` / `description`；新建或
-升级插件不得继续省略这两个本地化映射。
+旧包没有 `names` / `descriptions` 时仍可安装，但宿主只显示包内原始 `name` / `description`；
+插件仓库的打包校验会拒绝继续发布缺少这些本地化映射的版本。设置偏好使用 `labels` /
+`descriptions` / `placeholders`，命令使用 `titles` / `descriptions`，面板使用 `titles`，
+并至少提供 `en` 与 `zh-CN`。
 
 ### 1.1 一张图看懂布局责任
 
@@ -365,6 +367,8 @@ Island 内容必须有稳定会话标识。插件可选择宿主支持的进度�
 - [ ] `panel.title` 已省略或与 `name` 一致，没有绕过本地化端口的第二个产品名。
 - [ ] 权限是最小集合，危险操作有明确用户动作。
 - [ ] Manifest 的 `names` / `descriptions` 同时包含 `en` 与 `zh-CN`，Context「关于」无需自绘。
+- [ ] Preferences 的 `labels` / `descriptions` / `placeholders`、commands 的 `titles` /
+  `descriptions`、panel 的 `titles` 已提供 `en` 与 `zh-CN`，选项文字也已本地化。
 - [ ] Workbench action `id` 稳定且同层唯一。
 - [ ] 每个业务 action 都是可执行操作或真实状态开关，没有状态项、空占位或重复宿主导航。
 - [ ] 每个业务 action 都有同层唯一的单字母 `menuKey`，且不占用宿主当前层的 `D` / `B`。

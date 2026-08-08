@@ -136,8 +136,7 @@ export function pickDisplayName(
         locale,
       );
     }
-    // Installed id may still have host i18n without a registry hit.
-    return t(`plugins.ext.${pluginId}.name`, item.name);
+    return item.name;
   }
 
   // OS apps: Simplified Chinese systems use Finder display name when present.

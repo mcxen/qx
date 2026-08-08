@@ -44,14 +44,18 @@ my-plugin/
     {
       "id": "apiKey",
       "label": "API Key",
+      "labels": { "en": "API Key", "zh-CN": "接口密钥" },
       "type": "password",
-      "required": true
+      "required": true,
+      "descriptions": { "en": "Key used for the API.", "zh-CN": "用于访问 API 的密钥。" }
     }
   ],
   "commands": [
     {
       "name": "refresh",
-      "title": "Refresh"
+      "title": "Refresh",
+      "titles": { "en": "Refresh", "zh-CN": "刷新" },
+      "descriptions": { "en": "Refresh the data.", "zh-CN": "刷新数据。" }
     }
   ],
   "shortcuts": [
@@ -63,6 +67,7 @@ my-plugin/
   ],
   "panel": {
     "title": "My Plugin",
+    "titles": { "en": "My Plugin", "zh-CN": "我的插件" },
     "keywords": ["dashboard"]
   },
   "storage": {
@@ -83,10 +88,10 @@ my-plugin/
 | 字段 | 必填 | 说明 |
 |---|---:|---|
 | `id` | 是 | 全局唯一、稳定的小写连字符 ID |
-| `name` | 是 | 英文回退显示名称 |
+| `name` | 是 | 默认显示名称；市场插件必须同时提供 `names.en` 与 `names.zh-CN` |
 | `names` | 市场插件是 | 本地化名称；至少包含 `en` 与 `zh-CN` |
 | `version` | 是 | SemVer |
-| `description`, `author` | 否 | 英文回退描述与作者；提供描述时宿主固定投影到 Context「关于」 |
+| `description`, `author` | 否 | 默认描述与作者；市场插件提供描述时必须同时提供 `descriptions.en` 与 `descriptions.zh-CN` |
 | `descriptions` | 市场插件是 | 本地化描述；至少包含 `en` 与 `zh-CN` |
 | `icon`, `screenshots` | 否 | 包内相对路径 |
 | `platforms` | 否 | `macos`、`windows`、`linux` 的去重数组；空或省略表示全平台。非空时宿主会从市场列表隐藏不匹配的包（例如 Windows 不展示 macOS-only 的 Homebrew），并拒绝安装与运行 |
@@ -105,8 +110,32 @@ my-plugin/
 
 ### Preferences
 
-支持 `string`、`password`、`number`、`boolean`、`select`。宿主统一绘制控件，插件不要另做
-设置页来保存同一字段。密码值不得写入日志或市场索引。
+支持 `string`、`textarea`、`password`、`number`、`boolean`、`select`、`segmented`、`slider`。
+宿主统一绘制控件，插件不要另做设置页来保存同一字段。密码值不得写入日志或市场索引。
+
+`label`、`description`、`placeholder` 是英文回退文本；对应的 `labels`、`descriptions`、
+`placeholders` 可提供 `en` 与 `zh-CN` 映射。`options[]` 中的每项也可通过 `labels` 映射
+本地化选项文字。例如：
+
+```json
+{
+  "id": "region",
+  "label": "Region",
+  "labels": { "en": "Region", "zh-CN": "地区" },
+  "type": "select",
+  "options": [
+    {
+      "label": "Global",
+      "value": "global",
+      "labels": { "en": "Global", "zh-CN": "全球" }
+    }
+  ]
+}
+```
+
+命令支持 `titles` / `descriptions`，面板支持 `titles`。社区插件发布前必须为每个实际
+使用的字段提供 `en` 与 `zh-CN`；宿主不会维护按插件 ID 分散的兼容翻译，旧包缺字段时
+只显示包内原始文本。
 
 ### 导出一致性
 
