@@ -118,7 +118,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 | `screencap_list_windows` | `desktop_windows_list`（带 session 的 monitorId + coordinateScale） |
 | `screencap_copy_image_to_clipboard` | `clipboard_write_image_file` |
 
-工作流专用：`screencap_select_display(monitor_id)`（保留为旧调用门面，主界面不再暴露）、`screencap_region_picker_ready()`（WebView 挂载后重放当前 picker session 并重新置前/聚焦）、`screencap_confirm_region_select(..., captureOptions?, copy_to_clipboard?, dismiss_ui?)`（`captureOptions` 是可选兼容扩展，包含保存/打开、缩略图、选区记忆、指针/点击、麦克风、录屏遮挡区和提示音；旧调用不传仍有效；`dismiss_ui` 用于 ⌘C/Ctrl+C 复制后保持主界面隐藏）、`screencap_list_audio_inputs()`（返回稳定 `AudioInput { id, name, isDefault, available }`）、`screencap_recapture_last_region`（无圈选层、按上次逻辑选区静默截图；全局快捷键 `recapture_last_region`）、`screencap_set_picker_passthrough`、`screencap_set_pointer_follow(enabled)`、`screencap_set_picker_interaction_lock(locked)`（拖拽中钉住当前屏，防 Windows 跨屏 handoff 清草稿）、`screencap_toggle_controls` / `screencap_set_controls_pinned`、`start_recording(area?, options?, captureOptions?)` / `stop_recording` / 历史命令。鼠标跨屏识别仍由根级 `display` 服务完成；区域抓帧底层走 `display::capture_region`；标注合成与历史仍属 screencap。Windows 截图和录屏共享 WGC 健康策略：远程会话直接使用 GDI；实体机会话若 WGC 返回近全黑空帧，则在截图持久化或录屏编码前拒绝该帧并回退 GDI，录屏时间轴从首个有效 fallback 帧开始。
+工作流专用：`screencap_select_display(monitor_id)`（保留为旧调用门面，主界面不再暴露）、`screencap_region_picker_ready()`（WebView 挂载后重放当前 picker session 并重新置前/聚焦）、`screencap_selection_preview(area)`（圈选层打开时对当前逻辑选区做轻量 PNG base64 预览，供马赛克等实时标注；不写历史、不放快门音；picker 表面 content-protected，不会进捕获栈）、`screencap_confirm_region_select(..., captureOptions?, copy_to_clipboard?, dismiss_ui?)`（`captureOptions` 是可选兼容扩展，包含保存/打开、缩略图、选区记忆、指针/点击、麦克风、录屏遮挡区和提示音；旧调用不传仍有效；`dismiss_ui` 用于 ⌘C/Ctrl+C 复制后保持主界面隐藏）、`screencap_list_audio_inputs()`（返回稳定 `AudioInput { id, name, isDefault, available }`）、`screencap_recapture_last_region`（无圈选层、按上次逻辑选区静默截图；全局快捷键 `recapture_last_region`）、`screencap_set_picker_passthrough`、`screencap_set_pointer_follow(enabled)`、`screencap_set_picker_interaction_lock(locked)`（拖拽中钉住当前屏，防 Windows 跨屏 handoff 清草稿）、`screencap_toggle_controls` / `screencap_set_controls_pinned`、`start_recording(area?, options?, captureOptions?)` / `stop_recording` / 历史命令。鼠标跨屏识别仍由根级 `display` 服务完成；区域抓帧底层走 `display::capture_region`；标注合成与历史仍属 screencap。Windows 截图和录屏共享 WGC 健康策略：远程会话直接使用 GDI；实体机会话若 WGC 返回近全黑空帧，则在截图持久化或录屏编码前拒绝该帧并回退 GDI，录屏时间轴从首个有效 fallback 帧开始。
 
 截图/录屏成品先写入 Qx 图库，再由 delivery 服务导出；导出和“完成后打开”失败仅作为局部 warning。快门音由截图成功收尾播放，麦克风枚举/采集/合并由根级 `media::ffmpeg` sidecar 端口负责；共享 `input_events` 同时向宏录制和捕获指针/点击效果提供输入快照。
 
@@ -126,7 +126,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 
 ## island_window
 
-轻量浮窗（label `island`，蓝本 = screencap recording-controls 旗标，**非** main NSPanel）。默认由 `appearance.island_float_enabled=false` 关闭；启用后仍须用户从 Qx 底部灵动岛手动浮出。首次位于主屏工作区右上角，之后可拖动并持久化物理桌面坐标；失效坐标回落主屏。浮窗关闭会清除本次手动意图，session 更新不会自动重开；打开期间普通模块/插件状态按 `island_float_rotate_secs` 轮播，重要事件抢占。
+轻量浮窗（label `island`，蓝本 = screencap recording-controls 旗标，**非** main NSPanel）。默认 `appearance.island_float_enabled=true`（新装可用）；仍须用户从 Qx 底部灵动岛手动浮出，不会自动弹出。首次位于主屏工作区右上角，之后可拖动并持久化物理桌面坐标；失效坐标回落主屏。浮窗关闭会清除本次手动意图，session 更新不会自动重开；打开期间普通模块/插件状态按 `island_float_rotate_secs` 轮播，重要事件抢占。
 
 | 命令 | 用途 |
 |---|---|
@@ -232,7 +232,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `screencap_begin_region_select`, `screencap_begin_capture_select`, `screencap_list_displays`,
 `screencap_list_windows`, `screencap_set_picker_passthrough`, `screencap_set_pointer_follow`,
 `screencap_set_picker_interaction_lock`, `screencap_select_display`, `screencap_cancel_region_select`,
-`screencap_confirm_region_select`, `screencap_recapture_last_region`, `screencap_region_select_status`,
+`screencap_confirm_region_select`, `screencap_selection_preview`, `screencap_recapture_last_region`, `screencap_region_select_status`,
 `screencap_region_picker_ready`, `screencap_show_controls`, `screencap_toggle_controls`,
 `screencap_hide_controls`, `screencap_set_controls_pinned`, `screencap_return_to_main`,
 `screencap_copy_image_to_clipboard`, `convert_recording_to_gif`, `save_gif`, `list_gif_history`,
