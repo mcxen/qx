@@ -17,6 +17,11 @@ import {
 } from "lucide-react";
 import { usePluginRegistry } from "../../../plugin/registry";
 import { resolvePluginAssetUrl } from "../../../plugin/runtime";
+import {
+  defaultPluginShortcutBinding,
+  pluginShortcutSettingsKey,
+  resolvePluginShortcutBinding,
+} from "../../../plugin/pluginShortcuts";
 import { BUILTIN_SETTINGS_KEYS } from "../../../plugin/builtin";
 import {
   DEFAULT_PLUGIN_REGISTRIES,
@@ -31,7 +36,6 @@ import SearchAliasTagEditor from "../../../components/SearchAliasTagEditor";
 import ShortcutRecorder from "../../../components/ShortcutRecorder";
 import {
   countEnabledGlobalShortcuts,
-  formatQxShortcut,
   globalShortcutHasConflict,
   globalShortcutIssue,
 } from "../../../utils/keyboard";
@@ -373,15 +377,6 @@ function shortcutHasConflict(
   return globalShortcutHasConflict(binding, counts);
 }
 
-function ShortcutKey({ value }: { value?: string }) {
-  const t = useT();
-  return (
-    <span className="qx-extension-shortcut-key">
-      {formatQxShortcut(value?.trim()) || t("plugins.shortcut.none", "None")}
-    </span>
-  );
-}
-
 function ExtensionCommandsCard({ plugin }: { plugin: InstalledPlugin }) {
   const t = useT();
   const locale = useLocale();
@@ -577,7 +572,13 @@ function PreferenceField({
   }
 }
 
-function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
+function ExtensionShortcutsCard({
+  plugin,
+  onShortcutsChanged,
+}: {
+  plugin: InstalledPlugin;
+  onShortcutsChanged?: () => void;
+}) {
   const t = useT();
   const locale = useLocale();
   const { settings, patchShortcut } = useSettingsStore();
@@ -643,21 +644,58 @@ function ExtensionShortcutsCard({ plugin }: { plugin: InstalledPlugin }) {
 
       {manifestShortcuts.map((shortcut) => {
         const command = plugin.manifest?.commands?.find((item) => item.name === shortcut.command);
+        const settingKey = pluginShortcutSettingsKey(plugin.id, shortcut.command);
+        const binding = resolvePluginShortcutBinding(settings, plugin.id, shortcut);
+        const conflict = shortcutHasConflict(binding, counts);
+        const issueCode = globalShortcutIssue(binding, counts);
+        const issue = issueCode
+          ? t(
+            `shortcuts.issue.${issueCode}`,
+            issueCode === "reserved"
+              ? "Reserved by the operating system (for example Cmd/Ctrl+Space)."
+              : issueCode === "invalid"
+                ? "Invalid shortcut."
+                : "This shortcut is already used by another global action.",
+          )
+          : null;
+        const defaultBinding = defaultPluginShortcutBinding(shortcut);
+        const commit = (next: ShortcutBinding) => {
+          patchShortcut(settingKey, next);
+          onShortcutsChanged?.();
+        };
         return (
           <Row
-            key={`${shortcut.command}-${shortcut.key}`}
+            key={settingKey}
             title={command
               ? localizePluginCommandTitle(plugin, command, t, locale)
               : shortcut.command}
-            description={undefined}
+            description={issue ?? t(
+              "shortcuts.extension.manifestDesc",
+              "This plugin command shortcut is opt-in and can be changed here.",
+            )}
           >
             <div className="qx-extension-shortcut-control">
-              <Badge variant={shortcut.enabled === false ? "outline" : "secondary"}>
-                {shortcut.enabled === false
-                  ? t("plugins.badge.disabled", "Disabled")
-                  : t("plugins.shortcut.manifest", "Manifest")}
-              </Badge>
-              <ShortcutKey value={shortcut.key} />
+              <Toggle
+                value={binding.enabled}
+                onChange={(enabled) => commit({ ...binding, enabled })}
+                ariaLabel={t("shortcuts.toggleEnabled", "Toggle enabled state")}
+              />
+              <ShortcutRecorder
+                initial={binding.key}
+                conflict={conflict}
+                onCommit={commit}
+                onCancel={() => {}}
+              />
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="qx-extension-shortcut-reset"
+                onClick={() => commit(defaultBinding)}
+                title={t("plugins.shortcut.reset", "Reset shortcut")}
+              >
+                <RotateCcw size={13} aria-hidden="true" />
+              </Button>
             </div>
           </Row>
         );
@@ -674,10 +712,12 @@ function PluginDetail({
   plugin,
   onToggle,
   onUninstall,
+  onShortcutsChanged,
 }: {
   plugin: InstalledPlugin;
   onToggle: () => void;
   onUninstall: () => void;
+  onShortcutsChanged?: () => void;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -937,7 +977,7 @@ function PluginDetail({
 
       {!builtin && <RaycastCompatibilityReport plugin={plugin} />}
 
-      <ExtensionShortcutsCard plugin={plugin} />
+      <ExtensionShortcutsCard plugin={plugin} onShortcutsChanged={onShortcutsChanged} />
 
       <SettingsCard
         title={t("plugins.aliasesTags", "Search Aliases & Tags")}
@@ -2250,6 +2290,7 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
                 <PluginDetail
                   plugin={configPlugin}
                   onToggle={() => void handleToggle(configPlugin)}
+                  onShortcutsChanged={() => void refresh()}
                   onUninstall={() => {
                     void handleUninstall(configPlugin.id);
                     setConfigId(null);

@@ -16,6 +16,7 @@ const steps = [
   ["module-search", "scripts/check-module-search.mjs"],
   ["island", "scripts/check-qx-island.mjs"],
   ["module-ports", "scripts/check-module-ports.mjs"],
+  ["plugin-shortcuts", "scripts/smoke-plugin-shortcuts.mjs"],
   ["qx-ai-agent", "scripts/check-qx-ai-agent.mjs"],
 ];
 

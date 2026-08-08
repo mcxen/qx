@@ -168,6 +168,13 @@ Spotlight 之前消费精确的 `Cmd+Space`，然后调用同一个 Qx 动作回
 不得唤起目标 App 或因 Esc 误关主窗（Popover Esc 只关选择器；录制时
 `shortcuts_pause_global`）。
 
+插件 command 的全局快捷键走同一宿主注册生命周期，但不是 `app_shortcuts`：插件
+manifest 的 `shortcuts[]` 只提供默认声明（默认应为 disabled），用户在 **设置 →
+扩展 → 已安装 → 插件 → Shortcuts** 的 Toggle / ShortcutRecorder 中启用或重录。
+用户值持久化在 `settings.shortcuts` 的稳定 namespaced id
+`plugin:<pluginId>:<command>`；注册前将其与 manifest 默认合并，修改后先安全注销旧键再
+重新注册。插件 command 不得伪装成原生 App 快捷键。
+
 默认键（`Settings::default`）。Windows 避开系统窗口菜单及 PowerToys Run 常用的
 `Alt+Space`；macOS 继续使用对应的 `Option+Space`：
 

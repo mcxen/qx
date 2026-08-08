@@ -101,7 +101,7 @@ my-plugin/
 | `entry` | 否 | ESM 入口，默认 `index.js` |
 | `preferences` | 否 | 宿主设置表单 |
 | `commands` | 否 | 可搜索命令 |
-| `shortcuts` | 否 | 用户可启用的全局命令快捷键 |
+| `shortcuts` | 否 | 用户可启用的全局命令快捷键；仅作默认声明，宿主将用户 override 存入 `settings.shortcuts` 的 `plugin:<pluginId>:<command>` |
 | `panel` | 否 | 注册面板入口；`title` 应省略或与 `name` 相同，以便宿主使用 `names` 本地化 |
 | `storage.cacheTargets` | 否 | 可重建缓存的精确 persist key 白名单 |
 | `homeWidgets` | 否 | 将宿主支持的语义系统数据源关联到本插件 Panel；不提供视觉代码 |
@@ -143,7 +143,9 @@ my-plugin/
 - Manifest 中每个 command 必须在 `index.js` 默认导出的 `commands` 中存在，反之亦然。
 - `manifest.panel` 存在时默认导出必须包含 `panel`。
 - command name、preference id 和插件 id 发布后保持稳定。
-- 全局快捷键默认应关闭，由用户明确启用。
+- 全局快捷键默认应关闭，由用户明确启用。插件 command 的快捷键可在 **设置 → 扩展 → 已安装 →
+  插件 → Shortcuts** 中 Toggle、录制或恢复 manifest 默认值。它们属于插件 command，不是
+  `app_shortcuts`，也不会把插件伪装成原生应用。
 
 ### Home Widgets
 

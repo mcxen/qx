@@ -46,6 +46,7 @@ import {
   pluginSupportsAppVersion,
   pluginSupportsPlatform,
 } from "./platform";
+import { resolvePluginShortcutBinding } from "./pluginShortcuts";
 
 /** One pending timer per plugin command — never stack duplicates. */
 const backgroundTimers = new Map<string, number>();
@@ -55,6 +56,8 @@ const backgroundInFlight = new Set<string>();
 const lazyPluginLoads = new Map<string, Promise<void>>();
 const registryLogger = createQxLogger("plugin.registry");
 let stopPluginLocaleBridge: (() => void) | null = null;
+/** Serialize refreshes so shortcut unregister/register cycles cannot overlap. */
+let pluginRefreshQueue: Promise<void> = Promise.resolve();
 
 function currentPluginLocale() {
   const preference = normalizeLanguagePreference(
@@ -110,7 +113,7 @@ interface PluginRegistryStore {
   hooks: PluginRuntimeHooks | null;
 
   load: (hooks: PluginRuntimeHooks) => Promise<void>;
-  unload: () => void;
+  unload: () => Promise<void>;
   install: (path: string) => Promise<InstalledPlugin>;
   uninstall: (id: string) => Promise<void>;
   setEnabled: (id: string, enabled: boolean) => Promise<void>;
@@ -370,7 +373,13 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       const lazyProviderPlugins = sorted.filter((plugin) =>
         (plugin.manifest?.surfaceProviders?.length ?? 0) > 0
         && !(plugin.manifest?.commands ?? []).some((command) => Boolean(parseIntervalMs(command.interval)))
-        && !(plugin.manifest?.shortcuts ?? []).some((shortcut) => shortcut.enabled === true),
+        && !(plugin.manifest?.shortcuts ?? []).some((shortcut) =>
+          resolvePluginShortcutBinding(
+            useSettingsStore.getState().settings,
+            plugin.id,
+            shortcut,
+          ).enabled
+        ),
       );
       const lazyProviderIds = new Set(lazyProviderPlugins.map((plugin) => plugin.id));
       const eagerPlugins = sorted.filter((plugin) => !lazyProviderIds.has(plugin.id));
@@ -515,10 +524,17 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
           const pluginShortcuts = plugin.manifest?.shortcuts || [];
           const registeredShortcuts: string[] = [];
           for (const shortcut of pluginShortcuts) {
-            // A plugin shortcut is process-global. Never reserve a system key
-            // unless the manifest/user has explicitly enabled that binding.
-            if (shortcut.enabled !== true || !shortcut.key || !shortcut.command) continue;
-            const portableKey = toPortableGlobalShortcut(shortcut.key);
+            // A plugin shortcut is process-global. Manifest declarations are
+            // opt-in defaults; settings.shortcuts may contain the user's
+            // namespaced override for this command.
+            if (!shortcut.command) continue;
+            const binding = resolvePluginShortcutBinding(
+              useSettingsStore.getState().settings,
+              plugin.id,
+              shortcut,
+            );
+            if (!binding.enabled || !binding.key) continue;
+            const portableKey = toPortableGlobalShortcut(binding.key);
             const command = result.commands.find((cmd) => cmd.name === shortcut.command);
             if (!command) continue;
             try {
@@ -534,7 +550,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
                 command: shortcut.command,
                 error,
               });
-              console.warn(`Failed to register shortcut ${shortcut.key} for ${plugin.id}:`, error);
+              console.warn(`Failed to register shortcut ${binding.key} for ${plugin.id}:`, error);
               hooks.onPluginStatus?.({
                 kind: "error",
                 pluginId: plugin.id,
@@ -688,7 +704,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     }
   },
 
-  unload: () => {
+  unload: async () => {
     const { workers, shortcuts } = get();
     registryLogger.info("Plugin registry unload started", {
       workers: Object.keys(workers).length,
@@ -702,9 +718,13 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     lazyPluginLoads.clear();
     stopPluginLocaleBridge?.();
     clearPluginIcons();
-    Object.values(shortcuts).flat().forEach((shortcut) => {
-      void unregister(shortcut).catch(() => {});
-    });
+    const unregisterResults = Object.values(shortcuts).flat().map((shortcut) =>
+      unregister(shortcut).catch(() => undefined),
+    );
+    // A refresh must not race a new registration against the native
+    // unregister calls. Awaiting all best-effort removals keeps a just-saved
+    // plugin override from being shadowed by the previous binding.
+    await Promise.all(unregisterResults);
     for (const session of drainPanelRuntimeSessions()) {
       unloadPluginRuntime(session.pluginId, session.iframe, session.runtimeId);
       session.iframe.remove();
@@ -778,7 +798,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       const worker = get().workers[id];
       const shortcutKeys = get().shortcuts[id];
       if (shortcutKeys?.length) {
-        for (const key of shortcutKeys) void unregister(key).catch(() => {});
+        await Promise.all(shortcutKeys.map((key) => unregister(key).catch(() => undefined)));
       }
       if (worker) {
         const decorated = worker as HTMLIFrameElement & {
@@ -820,16 +840,20 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     await get().refresh();
   },
 
-  refresh: async () => {
-    const hooks = get().hooks;
-    registryLogger.info("Plugin registry refresh started", { hasHooks: Boolean(hooks) });
-    get().unload();
-    if (hooks) {
-      await get().load(hooks);
-    } else {
-      set({ loaded: true, loading: false });
-    }
-    registryLogger.info("Plugin registry refresh requested");
+  refresh: () => {
+    const next = pluginRefreshQueue.then(async () => {
+      const hooks = get().hooks;
+      registryLogger.info("Plugin registry refresh started", { hasHooks: Boolean(hooks) });
+      await get().unload();
+      if (hooks) {
+        await get().load(hooks);
+      } else {
+        set({ loaded: true, loading: false });
+      }
+      registryLogger.info("Plugin registry refresh requested");
+    });
+    pluginRefreshQueue = next.catch(() => undefined);
+    return next;
   },
 
   findCommands: (query: string) => {
