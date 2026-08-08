@@ -34,6 +34,13 @@ interface MacroStore {
   setError: (e: string | null) => void;
 }
 
+// Esc, the visible Stop controls, and module teardown can converge on the
+// same store action. Keep one in-flight request so an unmount cannot issue a
+// second stop against a newly-started or already-stopped native session.
+let stopInFlight: Promise<void> | null = null;
+let startInFlight: Promise<void> | null = null;
+let stopRequested = false;
+
 export const useMacroStore = create<MacroStore>((set, get) => ({
   isRecording: false,
   lastRecordedSteps: null,
@@ -41,31 +48,57 @@ export const useMacroStore = create<MacroStore>((set, get) => ({
   savedMacros: [],
   error: null,
 
-  startRecording: async () => {
+  startRecording: () => {
+    if (startInFlight) return startInFlight;
+    if (stopInFlight) return stopInFlight;
+
+    stopRequested = false;
     set({ error: null });
-    try {
-      await invoke("macro_start_recording");
-      set({
-        isRecording: true,
-        lastRecordedSteps: null,
-        lastTotalDurationMs: 0,
-      });
-    } catch (e) {
-      set({ error: String(e) });
-    }
+    startInFlight = (async () => {
+      try {
+        await invoke("macro_start_recording");
+        // A module teardown may have requested stop while native start was
+        // waiting for its hook/event-tap thread. Let that stop action perform
+        // the matching native stop without publishing a stale recording UI.
+        if (stopRequested) return;
+        set({
+          isRecording: true,
+          lastRecordedSteps: null,
+          lastTotalDurationMs: 0,
+        });
+      } catch (e) {
+        set({ error: String(e) });
+      } finally {
+        startInFlight = null;
+      }
+    })();
+    return startInFlight;
   },
 
-  stopRecording: async () => {
-    try {
-      const data = await invoke<MacroData>("macro_stop_recording");
-      set({
-        isRecording: false,
-        lastRecordedSteps: data.steps,
-        lastTotalDurationMs: data.total_duration_ms,
-      });
-    } catch (e) {
-      set({ isRecording: false, error: String(e) });
-    }
+  stopRecording: () => {
+    stopRequested = true;
+    if (stopInFlight) return stopInFlight;
+    stopInFlight = (async () => {
+      try {
+        if (startInFlight) await startInFlight;
+        const data = await invoke<MacroData>("macro_stop_recording");
+        set({
+          isRecording: false,
+          lastRecordedSteps: data.steps,
+          lastTotalDurationMs: data.total_duration_ms,
+        });
+      } catch (e) {
+        const message = String(e);
+        if (message === "Not recording") {
+          set({ isRecording: false });
+        } else {
+          set({ isRecording: false, error: message });
+        }
+      } finally {
+        stopInFlight = null;
+      }
+    })();
+    return stopInFlight;
   },
 
   saveMacro: async (name) => {

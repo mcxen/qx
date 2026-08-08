@@ -33,7 +33,6 @@ fn receive(event: Event) {
             _ => {}
         }
     }
-    crate::macro_recorder::record_shared_event(event);
 }
 
 pub(crate) fn ensure_started() {

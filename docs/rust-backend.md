@@ -49,7 +49,7 @@
 | `clipboard.rs` | arboard + clipboard-manager | 系统剪贴板；公共 IPC `clipboard_write_image_file` 将磁盘图片发布到剪贴板，供捕获 toast / 历史回写等复用。 |
 | `screencap/` | 消费系统能力 | **仅捕获工作流**：圈选 session、录制生命周期、历史、控制岛、标注合成。显示器 / 窗列表 / 区域抓帧 / 剪贴板写图走 `display` · `desktop_windows` · `clipboard` · `media`；禁止模块内直接 `xcap::Window` 或重复显示器识别。 |
 | `ocr.rs` | 系统 OCR 能力 + 历史 | 平台引擎（macOS Vision / Windows.Media.Ocr）、OAR 模型下载、`ocr_history.db` 历史。**性能**：默认 Fast 识别 + 长边缩放（~1600）、路径/行缓存秒回、自动 OCR 单线程队列、批量 OCR 窗口并行 2、clipboard-updated 防抖 |
-| `macro_recorder.rs` | `rdev` + `enigo` | 记录键鼠事件到 `~/.qx/macros.db`；replay 通过 `enigo` 模拟 |
+| `macro_recorder.rs` + `macro_capture.rs` | 原生 macOS event tap / Windows 双低级 hook + `enigo` | `MacroCaptureSession` 独立管理可停止的键鼠捕获；回调只投递有界原始事件队列，录制结果写入 `~/.qx/macros.db`，replay 通过 `enigo` 模拟 |
 
 ## AI
 

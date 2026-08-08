@@ -49,6 +49,15 @@ export default function MacroRecorder() {
   const timerRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const shellRef = useRef<HTMLDivElement>(null);
 
+  // The module is intentionally allowed to unmount while recording or while
+  // native start is still pending. Route teardown through the same idempotent
+  // store stop action as Esc and the visible controls.
+  useEffect(() => {
+    return () => {
+      void stopRecording();
+    };
+  }, [stopRecording]);
+
   useEffect(() => {
     void listMacros();
   }, [listMacros]);
@@ -85,9 +94,9 @@ export default function MacroRecorder() {
     void startRecording();
   };
 
-  const handleStop = () => {
+  const handleStop = useCallback(() => {
     void stopRecording();
-  };
+  }, [stopRecording]);
 
   const handleSave = async () => {
     const trimmed = name.trim();

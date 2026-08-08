@@ -80,6 +80,12 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 
 `macro_start_recording()`、`macro_stop_recording()`、`macro_save(name, data)`、`macro_list()`、`macro_delete(id)`、`macro_play(id)`。
 
+`macro_start_recording` 成功才会返回；失败会返回原生 hook / event tap
+权限错误（macOS 需要 Input Monitoring，Windows 需要安装键盘和鼠标低级 hook）。
+录制由独立的 `MacroCaptureSession` 管理：原生回调只向有界队列投递原始事件，
+`macro_stop_recording` 会先卸载 hook / event tap，再等待捕获线程和消费线程退出。
+Esc、录制器按钮、模块卸载和应用退出都复用同一停止协议。
+
 ## qxai / g4f
 
 面向前端的：`qxai_list_providers`、`qxai_stream_chat_events(request_id, provider?, model?, messages, reasoning?)`、`qxai_stream_chat_with_tools_events(request_id, provider?, model?, messages, tools, tool_choice?, reasoning?)`、`qxai_chat_with_tools(...)`、`qxai_fetch_models(base_url, api_key)`、`qxai_get_builtin_provider_credentials`、`qxai_save_builtin_provider_credentials`、`qxai_get_custom_providers`、`qxai_save_custom_providers`。

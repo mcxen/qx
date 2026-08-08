@@ -11,6 +11,13 @@
 | **Tokio worker** | 多数 `async fn` `#[command]` | 编排、await、轻量逻辑 |
 | **Blocking pool** | `spawn_blocking` / `runtime::blocking` | 编码、磁盘、同步 HTTP、大图处理 |
 
+宏录制的原生 hook / event tap 不属于截图的永久指针监听器。`MacroCaptureSession`
+为每次录制创建独立 native capture thread 和一个容量为 4096 的有界原始事件队列；
+OS 回调只读取必要的 raw key code / 坐标并 `try_send`，不做键盘布局转换、数据库操作
+或业务锁。worker 线程负责事件解释和录制状态，stop 路径先禁用并卸载原生源，再 join
+capture thread 和 worker；macOS 的 event tap、run-loop source、Mach port 由创建线程
+完整移除和 `CFRelease`。
+
 **禁止**：在 worker 上直接调 AppKit → macOS `SIGTRAP`（日志：`Must only be used from the main thread`）。
 
 历史崩溃栈：

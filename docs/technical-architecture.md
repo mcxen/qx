@@ -59,7 +59,8 @@ Qx/
 │       ├── display/brightness_windows.rs # Windows WMI + Monitor Configuration 亮度适配
 │       ├── media/                # Qx 核心媒体层：尺寸、H.264/MP4 与 GIF 转换
 │       ├── screencap/            # 捕获编排、状态、窗口、截图、录制与历史适配
-│       ├── macro_recorder.rs     # 宏捕捉与回放 (rdev + enigo)
+│       ├── macro_capture.rs      # 独立可停止的原生宏捕获 session（macOS event tap / Windows 双 hook）
+│       ├── macro_recorder.rs     # 宏录制结果、SQLite 持久化与回放 (enigo)
 │       ├── diagnostics.rs        # 诊断日志与日志路径
 │       ├── display_monitor.rs    # 复用系统显示器服务的插拔监听
 │       ├── display_macos.m       # 内嵌 macOS DisplayServices + DDC/CI 适配

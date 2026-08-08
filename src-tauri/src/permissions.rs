@@ -178,6 +178,20 @@ fn input_monitoring_granted() -> bool {
     unsafe { IOHIDCheckAccess(IOHID_REQUEST_TYPE_LISTEN_EVENT) == IOHID_ACCESS_TYPE_GRANTED }
 }
 
+/// Native macro capture uses a private event tap and therefore needs the same
+/// Input Monitoring grant as the permissions panel advertises. Keep this
+/// narrow probe behind the permissions module instead of duplicating TCC FFI
+/// in the macro feature.
+#[cfg(target_os = "macos")]
+pub(crate) fn macro_capture_permission_granted() -> bool {
+    input_monitoring_granted()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn macro_capture_permission_granted() -> bool {
+    true
+}
+
 /// Prompt the system Accessibility dialog (adds app to the list when possible).
 #[cfg(target_os = "macos")]
 fn request_accessibility_prompt() -> bool {

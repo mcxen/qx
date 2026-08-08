@@ -1,6 +1,6 @@
 [package]
 name = "qx"
-version = "0.6.66"
+version = "0.6.67"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -93,6 +93,7 @@ windows-sys = { version = "0.59", features = [
   "Win32_Storage_FileSystem",
   "Win32_System_DataExchange",
   "Win32_System_Diagnostics_ToolHelp",
+  "Win32_System_LibraryLoader",
   "Win32_System_Memory",
   "Win32_System_Power",
   "Win32_System_ProcessStatus",

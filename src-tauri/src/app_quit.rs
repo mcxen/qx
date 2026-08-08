@@ -33,6 +33,10 @@ fn now_ms() -> u64 {
 fn arm_exit_cleanup(app: &AppHandle) {
     EXITING.store(true, Ordering::SeqCst);
     LAST_QUIT_REQUEST_MS.store(0, Ordering::SeqCst);
+    // Native macro hooks must be removed before the process begins its final
+    // exit transition. This is the same stop path used by Esc, the Stop
+    // button, and module teardown.
+    crate::macro_recorder::stop_for_shutdown();
     crate::watchdog::mark_clean_shutdown();
     if let Some(flag) = app.try_state::<clipboard::ClipboardShutdown>() {
         flag.0.store(true, Ordering::SeqCst);

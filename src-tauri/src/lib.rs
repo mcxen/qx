@@ -18,6 +18,7 @@ mod history;
 mod http_client;
 mod input_events;
 mod island_window;
+mod macro_capture;
 mod macro_recorder;
 mod main_thread;
 mod marketplace;
