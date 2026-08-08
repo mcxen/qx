@@ -577,24 +577,11 @@ img.qx-ext-card-icon {
   max-width: min(100%, 240px);
 }
 
-.qx-settings-row-control .qx-shadcn-select-trigger {
-  height: 28px;
-  min-height: 28px;
-  padding: 0 8px;
-  font-size: 12px;
-  font-weight: 500;
-  background: var(--qx-overlay-1);
-  border-color: var(--qx-border-1);
-}
-
+/* .qx-command-button and .qx-shadcn-button.size-sm are already 28px by
+   default; only enforce the min-height so non-size-sm buttons in rows stay
+   aligned with their compact siblings. */
 .qx-settings-row-control .qx-shadcn-button,
 .qx-settings-row-control .qx-command-button {
-  height: 28px;
-  min-height: 28px;
-}
-
-.qx-settings-row-control .qx-shadcn-button.size-sm {
-  height: 28px;
   min-height: 28px;
 }
 
@@ -1147,18 +1134,6 @@ img.qx-plugin-detail-icon {
 
 .qx-plugin-install-source .qx-select {
   min-width: 0;
-}
-
-/* Detail-page library picker sits next to 28px size-sm buttons; keep the
-   same compact density as settings row controls (see .qx-settings-row-control). */
-.qx-plugin-install-source .qx-shadcn-select-trigger {
-  height: 28px;
-  min-height: 28px;
-  padding: 0 8px;
-  font-size: 12px;
-  font-weight: 500;
-  background: var(--qx-overlay-1);
-  border-color: var(--qx-border-1);
 }
 
 .qx-plugin-install-actions {

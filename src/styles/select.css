@@ -9,12 +9,18 @@
   width: 160px;
 }
 
-.qx-inline-select .qx-shadcn-select-trigger {
+/* Compact 28px trigger shared by settings rows, inline selects and the
+   plugin detail page picker (all sit next to 28px size-sm buttons). */
+.qx-inline-select .qx-shadcn-select-trigger,
+.qx-settings-row-control .qx-shadcn-select-trigger,
+.qx-plugin-install-source .qx-shadcn-select-trigger {
   height: 28px;
+  min-height: 28px;
   padding: 0 8px;
-  background: var(--qx-overlay-1);
   font-size: 12px;
   font-weight: 500;
+  background: var(--qx-overlay-1);
+  border-color: var(--qx-border-1);
 }
 
 .qx-slider {
