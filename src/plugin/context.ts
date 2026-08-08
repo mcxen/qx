@@ -83,7 +83,7 @@ export function createPluginContext(
         chunk: string;
         done: boolean;
         error?: string;
-      }>("qxai://stream", (event) => {
+      }>("qxai-stream", (event) => {
         if (event.payload.requestId !== streamRequestId) return;
         if (event.payload.error) {
           unlisten?.();

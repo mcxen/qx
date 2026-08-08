@@ -3,6 +3,7 @@ mod controls;
 mod delivery;
 mod feedback;
 mod geometry;
+mod mosaic;
 mod picker_window;
 mod recording_engine;
 pub(crate) mod recording_session;

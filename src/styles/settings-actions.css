@@ -565,6 +565,47 @@ img.qx-ext-card-icon {
   margin-top: 2px;
 }
 
+/*
+ * Settings row controls share one compact height.
+ * Default SelectTrigger is 38px (shell density); Button size-sm / .qx-command-button
+ * are 28px — without this rule About and General look misaligned.
+ */
+.qx-settings-row-control > .qx-select,
+.qx-settings-row-control > .qx-inline-select {
+  width: auto;
+  min-width: 148px;
+  max-width: min(100%, 240px);
+}
+
+.qx-settings-row-control .qx-shadcn-select-trigger {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--qx-overlay-1);
+  border-color: var(--qx-border-1);
+}
+
+.qx-settings-row-control .qx-shadcn-button,
+.qx-settings-row-control .qx-command-button {
+  height: 28px;
+  min-height: 28px;
+}
+
+.qx-settings-row-control .qx-shadcn-button.size-sm {
+  height: 28px;
+  min-height: 28px;
+}
+
+.qx-settings-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .qx-settings-muted {
   color: var(--qx-text-secondary);
   font-size: 12px;

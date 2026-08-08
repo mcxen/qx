@@ -226,7 +226,7 @@ export default function RssSettings() {
           )}
         >
           <span className="qx-settings-muted" style={{ fontSize: 12 }}>
-            {t("rss.about.defaults.folders", "科技 · 新闻 · 资讯")}
+            {t("rss.about.defaults.folders", "Tech · News · Info")}
           </span>
         </Row>
         <Row

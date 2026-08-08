@@ -1296,6 +1296,8 @@ function App() {
         }
       } else if (tabId === "settings") {
         openSettings();
+      } else if (tabId === "settings:plugins") {
+        openSettings({ section: "plugins", returnTo: "launcher" });
       } else if (tabId === "clipboard" || tabId === "screencap"
           || tabId === "rss" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "qx-tty") {
         if (!isBuiltinModuleEnabled(tabId)) return;
@@ -1747,6 +1749,8 @@ function App() {
       const next = e.payload;
       if (next === "settings") {
         openSettings();
+      } else if (next === "settings:plugins") {
+        openSettings({ section: "plugins", returnTo: "launcher" });
       } else if (next === "clipboard" || next === "screencap" || next === "rss" || next === "weather" || next === "qx-ai" || next === "macros" || next === "qx-tty") {
         if (!isBuiltinModuleEnabled(next)) return;
         // Start clipboard open work before React commits the tab switch.
@@ -2459,6 +2463,10 @@ function App() {
       openSettings({ returnTo: "launcher" });
       return;
     }
+    if (item.path === "__qx:settings:plugins") {
+      openSettings({ section: "plugins", returnTo: "launcher" });
+      return;
+    }
     if (item.path.startsWith("__qx:clipboard:")) {
       const id = item.path.slice("__qx:clipboard:".length);
       const entry = await loadClipboardEntryById(id);
@@ -2567,7 +2575,8 @@ function App() {
       onKeyDown={handleKeyDown}
       onEscape={performHostEscape}
       onNavigate={(next) => {
-        if (next === "settings") openSettings();
+        if (next === "settings") openSettings({ returnTo: "launcher" });
+        else if (next === "settings:plugins") openSettings({ section: "plugins", returnTo: "launcher" });
         else setTab(next);
       }}
       searchScopeRef={searchScopeRef}

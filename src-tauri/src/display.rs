@@ -129,12 +129,43 @@ fn ddc_stage_name(stage: u32) -> &'static str {
     }
 }
 
+/// Human hint for common Apple Silicon DDC transport failures (m1ddc/Lunar class).
+#[cfg(target_os = "macos")]
+fn ddc_hint(stage: u32, error_code: i32) -> Option<&'static str> {
+    match stage {
+        7 | 8 => Some(
+            "No external AV service for this panel. Prefer USB-C/DP Alt Mode; \
+             some docks/HDMI paths block DDC on Apple Silicon.",
+        ),
+        9 | 10 | 12 => {
+            // 0xE0114000 (-535740416): private IOAV I2C family error seen when the
+            // link does not complete a DDC transaction (hub, cable, or DDC-CI off).
+            if error_code == -535_740_416 || error_code as u32 == 0xe011_4000 {
+                Some(
+                    "Display did not accept DDC I2C. Enable DDC/CI in the monitor OSD, \
+                     try a direct USB-C/DP cable (not a passive hub), or use the monitor buttons.",
+                )
+            } else {
+                Some(
+                    "DDC/CI transport failed. Check DDC/CI in the monitor menu and connection type.",
+                )
+            }
+        }
+        11 => Some("Monitor returned an unusable brightness range over DDC."),
+        _ => None,
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn ddc_error(stage: u32, error_code: i32) -> String {
-    if error_code == 0 {
+    let base = if error_code == 0 {
         format!("DDC: {}", ddc_stage_name(stage))
     } else {
         format!("DDC: {} (IOReturn {error_code})", ddc_stage_name(stage))
+    };
+    match ddc_hint(stage, error_code) {
+        Some(hint) => format!("{base}. {hint}"),
+        None => base,
     }
 }
 
@@ -904,10 +935,14 @@ fn set_brightness(display_id: String, value: u8) -> Result<(), String> {
             .take(count.min(ddc_displays.len()))
             .find(|ddc| ddc.id == display.id)
             .ok_or_else(|| "The selected display does not expose DDC/CI brightness".to_string())?;
-        if ddc.error_stage != 0 || ddc.max == 0 {
-            return Err(ddc_error(ddc.error_stage.max(11), ddc.error_code));
+        // MonitorControl still writes when VCP read failed but the AV service
+        // matched. Native list already substitutes max=100 in that case; keep a
+        // final fallback here so set never hard-requires a prior successful read.
+        if ddc.error_stage != 0 {
+            return Err(ddc_error(ddc.error_stage, ddc.error_code));
         }
-        let raw_value = ((value as u32 * ddc.max.max(1) as u32 + 50) / 100) as u16;
+        let scale_max = if ddc.max > 0 { ddc.max } else { 100 };
+        let raw_value = ((value as u32 * scale_max as u32 + 50) / 100) as u16;
         let mut error_stage = 0_u32;
         let status = unsafe { qx_ddc_set(display.id, raw_value, &mut error_stage) };
         if status != 0 {
@@ -1015,8 +1050,8 @@ pub(crate) fn capture_region_from_monitor(
 
 /// Sample the frame rather than scanning every pixel. A legitimate dark region
 /// may also take the fallback, which is harmless; the important distinction is
-/// that a successful-but-empty WGC frame must never be persisted as a screenshot.
-#[cfg(any(target_os = "windows", test))]
+/// that a successful-but-empty WGC frame must never be persisted as a screenshot
+/// or used as a mosaic freeze while the picker excludes itself from capture.
 pub(crate) fn frame_is_effectively_black(image: &image::RgbaImage) -> bool {
     if image.is_empty() {
         return true;

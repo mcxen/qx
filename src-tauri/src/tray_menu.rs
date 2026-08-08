@@ -309,6 +309,14 @@ fn quick_entry_title(entry: &settings::QuickEntryConfig, locale: TrayLocale) -> 
         "documents" if matches!(title, "" | "Text Tools" | "Documents") => {
             Some(tr(locale, "Text Tools", "文本工具"))
         }
+        "settings:plugins"
+            if matches!(
+                title,
+                "" | "Extensions" | "Plugins" | "Plugin Store" | "扩展" | "插件"
+            ) =>
+        {
+            Some(tr(locale, "Extensions", "扩展 / 插件"))
+        }
         "settings" if matches!(title, "" | "Qx Settings" | "Settings") => {
             Some(tr(locale, "Qx Settings", "Qx 设置"))
         }

@@ -75,7 +75,12 @@ import type {
   PluginPreference,
 } from "../../../plugin/types";
 import { marketplaceEntryKey } from "../../../plugin/types";
-import { appVersionMeetsMinimum, currentPluginPlatform } from "../../../plugin/platform";
+import {
+  appVersionMeetsMinimum,
+  currentPluginPlatform,
+  marketplaceEntrySupportsPlatform,
+  pluginSupportsPlatform,
+} from "../../../plugin/platform";
 import {
   localizeMarketplaceEntryDescription,
   localizeMarketplaceEntryName,
@@ -706,8 +711,9 @@ function PluginDetail({
   const appCompatible = builtin
     || hostVersion === null
     || appVersionMeetsMinimum(hostVersion ?? "", plugin.manifest?.min_app_version);
+  const platformCompatible = builtin || pluginSupportsPlatform(plugin);
   const launchTarget = builtinModuleId ?? `plugin:${plugin.id}`;
-  const canLaunch = plugin.enabled && appCompatible;
+  const canLaunch = plugin.enabled && appCompatible && platformCompatible;
 
   const launchPlugin = useCallback(() => {
     if (!canLaunch) return;
@@ -845,9 +851,11 @@ function PluginDetail({
             disabled={!canLaunch}
             title={!plugin.enabled
               ? t("plugins.launch.enableFirst", "Enable this module before launching")
-              : !appCompatible
-                ? t("plugins.launch.incompatible", "Update Qx before launching this module")
-                : undefined}
+              : !platformCompatible
+                ? t("plugins.launch.wrongPlatform", "This plugin is not available on this operating system")
+                : !appCompatible
+                  ? t("plugins.launch.incompatible", "Update Qx before launching this module")
+                  : undefined}
           >
             <Play size={14} aria-hidden="true" />
             {t("plugins.launch", "Launch")}
@@ -858,7 +866,10 @@ function PluginDetail({
           <Toggle
             value={plugin.enabled}
             onChange={onToggle}
-            disabled={(builtin && !configurableBuiltin) || (!appCompatible && !plugin.enabled)}
+            disabled={
+              (builtin && !configurableBuiltin)
+              || ((!appCompatible || !platformCompatible) && !plugin.enabled)
+            }
             ariaLabel={t("modules.enabled", "Enable module")}
           />
         </div>
@@ -874,6 +885,11 @@ function PluginDetail({
             ? t("plugins.badge.enabled", "Enabled")
             : t("plugins.badge.disabled", "Disabled")}
         </PluginBadge>
+        {!platformCompatible && (
+          <PluginBadge tone="warning">
+            {t("plugins.badge.wrongPlatform", "Wrong OS")}
+          </PluginBadge>
+        )}
         {!appCompatible && (
           <PluginBadge tone="warning">
             {t("plugins.marketplace.requiresQx", "Requires Qx {version}")
@@ -885,6 +901,20 @@ function PluginDetail({
       {displayDescription ? (
         <div className="qx-plugin-description">{displayDescription}</div>
       ) : null}
+
+      {!platformCompatible && (
+        <div className="qx-plugin-compat-warning">
+          <div>
+            {t(
+              "plugins.installed.wrongPlatformMessage",
+              "This plugin only supports {platforms}. It is installed but will not load on the current system.",
+            ).replace(
+              "{platforms}",
+              (plugin.manifest?.platforms || []).join(" · ") || "—",
+            )}
+          </div>
+        </div>
+      )}
 
       {!appCompatible && (
         <div className="qx-plugin-compat-warning">
@@ -1052,6 +1082,9 @@ function MarketplaceTab({
   const filteredEntries = useMemo(() => {
     const q = normalizeSearch(searchQuery);
     return entries.filter((entry) => {
+      // Wrong-OS packages (e.g. Homebrew on Windows) must not appear as an
+      // installable marketplace path. Runtime already refuses to load them.
+      if (!marketplaceEntrySupportsPlatform(entry)) return false;
       if (activeSourceFilter !== "all" && (entry.source_id || "") !== activeSourceFilter) return false;
       return marketplaceEntryMatchesQuery(entry, q, t, locale);
     });
@@ -1144,6 +1177,17 @@ function MarketplaceTab({
   }, [activeSourceFilter, fetchIndex, registriesSignature]);
 
   const handleInstall = async (entry: PluginIndexEntry, mode: "install" | "upgrade" | "reinstall") => {
+    if (!marketplaceEntrySupportsPlatform(entry)) {
+      const message = t(
+        "plugins.marketplace.wrongPlatformMessage",
+        "{name} only supports {platforms} and cannot be installed on this system.",
+      )
+        .replace("{name}", localizeMarketplaceEntryName(entry, t, locale))
+        .replace("{platforms}", (entry.platforms || []).join(" · ") || "—");
+      setInstallStatus({ tone: "danger", message });
+      showPluginInstallStatus({ kind: "error", label: message });
+      return;
+    }
     if (!appVersionMeetsMinimum(hostVersion ?? "", entry.min_app_version)) {
       const message = t(
         "plugins.marketplace.requiresQxMessage",
@@ -1480,7 +1524,8 @@ function MarketplaceTab({
               const alreadyInstalled = installedVersion != null;
               const updateAvailable = isPluginUpdateAvailable(installedVersion, entry.version);
               const installing = installingKey === key;
-              const compatible = appVersionMeetsMinimum(hostVersion ?? "", entry.min_app_version);
+              const platformCompatible = marketplaceEntrySupportsPlatform(entry);
+              const appCompatible = appVersionMeetsMinimum(hostVersion ?? "", entry.min_app_version);
               const compatibilityPending = hostVersion === null && Boolean(entry.min_app_version);
 
               return (
@@ -1515,11 +1560,15 @@ function MarketplaceTab({
                     })()}
                   </div>
                   <span className="qx-plugin-list-status">
-                    {compatibilityPending ? (
+                    {!platformCompatible ? (
+                      <PluginBadge compact tone="warning">
+                        {t("plugins.badge.wrongPlatform", "Wrong OS")}
+                      </PluginBadge>
+                    ) : compatibilityPending ? (
                       <PluginBadge compact>
                         {t("plugins.marketplace.checkingCompatibility", "Checking…")}
                       </PluginBadge>
-                    ) : !compatible ? (
+                    ) : !appCompatible ? (
                       <PluginBadge compact tone="warning">
                         {t("plugins.marketplace.requiresQx", "Requires Qx {version}")
                           .replace("{version}", entry.min_app_version || "—")}
@@ -1573,6 +1622,11 @@ function MarketplaceTab({
                     {t("plugins.marketplace.updateAvailable", "Update available")}
                   </PluginBadge>
                 )}
+                {!marketplaceEntrySupportsPlatform(selectedEntry) && (
+                  <PluginBadge tone="warning">
+                    {t("plugins.badge.wrongPlatform", "Wrong OS")}
+                  </PluginBadge>
+                )}
                 {hostVersion !== null
                   && !appVersionMeetsMinimum(hostVersion, selectedEntry.min_app_version) && (
                   <PluginBadge tone="warning">
@@ -1591,7 +1645,9 @@ function MarketplaceTab({
                   const alreadyInstalled = installedVersion != null;
                   const updateAvailable = isPluginUpdateAvailable(installedVersion, installEntry.version);
                   const installing = installingKey === marketplaceEntryKey(installEntry);
-                  const compatible = appVersionMeetsMinimum(hostVersion ?? "", installEntry.min_app_version);
+                  const platformCompatible = marketplaceEntrySupportsPlatform(installEntry);
+                  const appCompatible = appVersionMeetsMinimum(hostVersion ?? "", installEntry.min_app_version);
+                  const compatible = platformCompatible && appCompatible;
                   const compatibilityPending = hostVersion === null && Boolean(installEntry.min_app_version);
                   const busyLabel = updateAvailable
                     ? t("plugins.marketplace.updating", "Updating...")
@@ -1613,7 +1669,22 @@ function MarketplaceTab({
                       : "install";
                   return (
                     <div className="qx-plugin-install-stack">
-                      {!compatibilityPending && !compatible && (
+                      {!platformCompatible && (
+                        <div className="qx-plugin-compat-warning">
+                          <div>
+                            {t(
+                              "plugins.marketplace.wrongPlatformMessage",
+                              "{name} only supports {platforms} and cannot be installed on this system.",
+                            )
+                              .replace("{name}", localizeMarketplaceEntryName(installEntry, t, locale))
+                              .replace(
+                                "{platforms}",
+                                (installEntry.platforms || []).join(" · ") || "—",
+                              )}
+                          </div>
+                        </div>
+                      )}
+                      {platformCompatible && !compatibilityPending && !appCompatible && (
                         <div className="qx-plugin-compat-warning">
                           <div>
                             {t(

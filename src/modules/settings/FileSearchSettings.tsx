@@ -139,14 +139,14 @@ export default function FileSearchSettings() {
         title={t("appearance.moduleSearch.title", "Launcher Search Sources")}
         description={t(
           "general.moduleSearch.desc",
-          "Choose which built-in modules contribute commands and dynamic results to launcher search.",
+          "Choose which built-in modules contribute commands and dynamic results (clipboard, feeds, sessions, macros) to launcher search. Off by default so a fresh install stays focused on apps and files.",
         )}
       >
         <Row
           title={t("general.moduleSearch.enabled", "Enable module search")}
           description={t(
             "general.moduleSearch.enabled.desc",
-            "Master switch. When off, built-in modules no longer appear as search results or deep links.",
+            "Master switch, off by default. When on, only the modules enabled below appear in launcher search.",
           )}
         >
           <Toggle

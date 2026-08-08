@@ -456,7 +456,7 @@ async function streamOnce(
       flushTimer = window.setTimeout(flush, delay);
     };
 
-    listen<StreamEvent>("qxai://stream", (event) => {
+    listen<StreamEvent>("qxai-stream", (event) => {
       if (event.payload.requestId !== requestId) return;
       if (event.payload.error) {
         finish(new Error(event.payload.error), "");
@@ -741,7 +741,7 @@ async function streamFunctionCallingOnce(
   };
 
   const streamPromise = new Promise<OpenAIMessage>((resolve, reject) => {
-    listen<FunctionStreamEvent>("qxai://stream", (event) => {
+    listen<FunctionStreamEvent>("qxai-stream", (event) => {
       if (event.payload.requestId !== requestId) return;
       if (event.payload.error) {
         if (stop()) reject(new Error(event.payload.error));

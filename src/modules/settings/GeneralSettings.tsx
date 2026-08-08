@@ -27,7 +27,7 @@ export default function GeneralSettings() {
           title={t("general.language", "Language")}
           description={t(
             "general.language.desc",
-            "System follows the OS language where possible.",
+            "UI language. System uses Chinese only when the OS is Simplified Chinese; otherwise English.",
           )}
         >
           <Select
@@ -48,29 +48,12 @@ export default function GeneralSettings() {
           title={t("general.autoUpdates", "Automatic Updates")}
           description={t(
             "general.autoUpdates.desc",
-            "Off by default. When enabled, Qx checks for and installs updates automatically. On Windows a failed update can quit the app — prefer manual update from About if installs are unreliable.",
+            "Off by default. When enabled, Qx checks for and installs updates automatically. Pick the update source and run a manual check under About. On Windows a failed update can quit the app — prefer manual update from About if installs are unreliable.",
           )}
         >
           <Toggle
             value={g.auto_update}
             onChange={(v) => patch("general", { ...g, auto_update: v })}
-          />
-        </Row>
-        <Row
-          title={t("general.updateSource", "Update Source")}
-          description={t(
-            "general.updateSource.desc",
-            "Auto compares available releases and uses the newest valid source.",
-          )}
-        >
-          <Select
-            value={g.update_source === "cnb" || g.update_source === "github" ? g.update_source : "auto"}
-            onChange={(v) => patch("general", { ...g, update_source: v as typeof g.update_source })}
-            options={[
-              { value: "auto", label: t("general.updateSource.auto", "Automatic") },
-              { value: "cnb", label: t("general.updateSource.cnb", "CNB mirror") },
-              { value: "github", label: t("general.updateSource.github", "GitHub") },
-            ]}
           />
         </Row>
       </SettingsCard>

@@ -19,22 +19,8 @@ fn frame_with_masks<'a>(
         *scratch = image::RgbaImage::new(source.width(), source.height());
     }
     scratch.as_mut().copy_from_slice(source.as_raw());
-    for mask in masks {
-        let left = (mask.x.clamp(0.0, 1.0) * source.width() as f64).round() as u32;
-        let top = (mask.y.clamp(0.0, 1.0) * source.height() as f64).round() as u32;
-        let width = (mask.w.clamp(0.0, 1.0) * source.width() as f64).round() as u32;
-        let height = (mask.h.clamp(0.0, 1.0) * source.height() as f64).round() as u32;
-        let right = left.saturating_add(width).min(source.width());
-        let bottom = top.saturating_add(height).min(source.height());
-        for y in top..bottom {
-            for x in left..right {
-                let cell_x = (x - left) / 10;
-                let cell_y = (y - top) / 10;
-                let tone = 48 + (((cell_x * 73) ^ (cell_y * 151)) % 144) as u8;
-                scratch.put_pixel(x, y, image::Rgba([tone, tone, tone, 255]));
-            }
-        }
-    }
+    // Real block pixelation of source pixels (same path as screenshot mosaic).
+    super::mosaic::pixelate_relative_rects(scratch, masks, 0.035);
     Some(scratch)
 }
 
@@ -631,7 +617,13 @@ mod tests {
 
     #[test]
     fn recording_masks_are_scaled_and_applied_to_every_prepared_frame() {
-        let source = image::RgbaImage::from_pixel(100, 80, image::Rgba([240, 20, 20, 255]));
+        let mut source = image::RgbaImage::new(100, 80);
+        for y in 0..80 {
+            for x in 0..100 {
+                let tone = if ((x / 2) + (y / 2)) % 2 == 0 { 255 } else { 0 };
+                source.put_pixel(x, y, image::Rgba([tone, tone, tone, 255]));
+            }
+        }
         let mut scratch = image::RgbaImage::new(0, 0);
         let masks = vec![crate::screencap::types::RelativeCaptureRect {
             x: 0.25,
@@ -640,8 +632,10 @@ mod tests {
             h: 0.5,
         }];
         let prepared = frame_with_masks(&source, &mut scratch, &masks).unwrap();
+        // Outside the mask keeps the original checker contrast.
         assert_eq!(prepared.get_pixel(5, 5), source.get_pixel(5, 5));
-        assert_ne!(prepared.get_pixel(50, 40), source.get_pixel(50, 40));
+        // Inside the mask, neighboring samples of a block collapse to one tone.
+        assert_eq!(prepared.get_pixel(50, 40), prepared.get_pixel(51, 40));
     }
 
     #[test]

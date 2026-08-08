@@ -64,7 +64,7 @@ QxShell (visual="elevated")
 
 | 页 | 分区 |
 |----|------|
-| **General** | 启动与行为（登录启动、失焦隐藏、语言、自动更新） |
+| **General** | 启动与行为（登录启动、语言、自动更新开关；更新源在 About） |
 | **Search Settings** | 文件类型分类 · Cardinal/Everything 优先级 · 拖动排序 · 新增/编辑/删除 · 启动器模块搜索源 |
 | **Appearance** | 应用图标 · 主题与分区透明度 · 窗口与密度 · Home Island |
 | **Shortcuts** | 全局 / 应用快捷键 · 托盘菜单（后台时可用的内置菜单项） |
@@ -74,7 +74,7 @@ QxShell (visual="elevated")
 | **Permissions** | macOS 权限 |
 | **Advanced** | 数据路径 · 诊断日志开关/级别/文件入口 · 网络 · 配置导入导出 · 清理 · 开发 · 重置 |
 | **Storage Management** | 仅按模块列出可重建存储；表格行展示大小、项目数与逐项清理，不重复展示物理存储桶 |
-| **About** | 版本、更新与发布信息 |
+| **About** | 版本、**更新源**、检查/下载更新与发布页 |
 
 ### 扩展列表显示名（i18n）
 

@@ -384,6 +384,11 @@ pub struct PluginIndexEntry {
     pub author: String,
     #[serde(default)]
     pub min_app_version: String,
+    /// Host OS targets from the package index (`macos` / `windows` / `linux`).
+    /// Empty means every platform. Preserved so the UI can hide install paths
+    /// (for example Homebrew on Windows) without re-reading the archive.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub platforms: Vec<String>,
     /// Newest first. Historical entries are descriptive and not install targets.
     #[serde(default)]
     pub releases: Vec<PluginReleaseNote>,
@@ -496,6 +501,42 @@ fn validate_manifest_host_version(manifest: &PluginManifest) -> Result<(), Strin
             manifest.name, minimum, current
         )),
     }
+}
+
+/// Empty `platforms` means universal. Non-empty must include the host OS.
+fn host_plugin_platform() -> &'static str {
+    #[cfg(target_os = "macos")]
+    {
+        "macos"
+    }
+    #[cfg(target_os = "windows")]
+    {
+        "windows"
+    }
+    #[cfg(target_os = "linux")]
+    {
+        "linux"
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        "unknown"
+    }
+}
+
+fn validate_manifest_host_platform(manifest: &PluginManifest) -> Result<(), String> {
+    if manifest.platforms.is_empty() {
+        return Ok(());
+    }
+    let host = host_plugin_platform();
+    if manifest.platforms.iter().any(|platform| platform == host) {
+        return Ok(());
+    }
+    Err(format!(
+        "Plugin {} only supports {} and cannot be installed on {}.",
+        manifest.name,
+        manifest.platforms.join(" · "),
+        host
+    ))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1995,6 +2036,12 @@ fn install_plugin_archive(
     validate_manifest_storage(manifest.storage.as_ref())?;
     validate_manifest_home_widgets(&manifest.home_widgets)?;
     validate_manifest_surface_providers(&manifest.surface_providers)?;
+    if let Err(error) = validate_manifest_host_platform(&manifest) {
+        if let Some(path) = cleanup_path {
+            let _ = fs::remove_file(path);
+        }
+        return Err(error);
+    }
     if let Err(error) = validate_manifest_host_version(&manifest) {
         if let Some(path) = cleanup_path {
             let _ = fs::remove_file(path);
@@ -3177,6 +3224,52 @@ mod tests {
         assert!(validate_manifest_platforms(&["macos".to_string(), "windows".to_string()]).is_ok());
         assert!(validate_manifest_platforms(&["darwin".to_string()]).is_err());
         assert!(validate_manifest_platforms(&["win32".to_string()]).is_err());
+    }
+
+    #[test]
+    fn empty_platforms_are_universal_and_host_must_match_declared() {
+        let mut universal = PluginManifest {
+            id: "demo".into(),
+            name: "Demo".into(),
+            version: "1.0.0".into(),
+            description: String::new(),
+            names: Default::default(),
+            descriptions: Default::default(),
+            author: String::new(),
+            icon: String::new(),
+            screenshots: vec![],
+            platforms: vec![],
+            keywords: vec![],
+            permissions: vec![],
+            preferences: vec![],
+            commands: vec![],
+            shortcuts: vec![],
+            panel: None,
+            dependencies: vec![],
+            min_app_version: String::new(),
+            entry: "index.js".into(),
+            raycast: None,
+            storage: None,
+            home_widgets: vec![],
+            surface_providers: vec![],
+            signature: String::new(),
+            pubkey: String::new(),
+        };
+        assert!(validate_manifest_host_platform(&universal).is_ok());
+
+        let host = host_plugin_platform();
+        universal.platforms = vec![host.to_string()];
+        assert!(validate_manifest_host_platform(&universal).is_ok());
+
+        let foreign = if host == "windows" {
+            "macos"
+        } else {
+            "windows"
+        };
+        universal.platforms = vec![foreign.to_string()];
+        let err = validate_manifest_host_platform(&universal).unwrap_err();
+        assert!(err.contains("only supports"), "{err}");
+        assert!(err.contains(foreign), "{err}");
     }
 
     #[test]

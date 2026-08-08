@@ -45,6 +45,7 @@ import {
 import { formatRelativeTime, formatTimestamp } from "./backgroundActivity";
 import { useLocale, useT } from "../i18n";
 import { localizePluginDescription, localizePluginName } from "./pluginLabels";
+import { pluginSupportsPlatform } from "./platform";
 import { resolveQxGridIndex, shouldHandleQxGridKey } from "../hooks/qxGridNavigation";
 import { focusQxRegion, qxMasterDetailNavigation } from "../hooks/useQxMasterDetail";
 import {
@@ -885,7 +886,23 @@ export function PluginPanelViewport() {
         ) : null}
         {!panel && (
           <div className="qx-empty-state">
-            Plugin {pluginId} panel not registered
+            {plugin && !pluginSupportsPlatform(plugin)
+              ? t(
+                "plugins.host.wrongPlatform",
+                "This plugin only supports {platforms} and is not available on the current system.",
+              ).replace(
+                "{platforms}",
+                (plugin.manifest?.platforms || []).join(" · ") || "—",
+              )
+              : plugin && !plugin.enabled
+                ? t(
+                  "plugins.host.disabled",
+                  "This plugin is installed but disabled. Enable it in Settings → Extensions.",
+                )
+                : t(
+                  "plugins.host.panelNotRegistered",
+                  "Plugin {id} panel is not registered.",
+                ).replace("{id}", pluginId)}
           </div>
         )}
       </div>

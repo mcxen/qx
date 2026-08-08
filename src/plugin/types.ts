@@ -183,6 +183,12 @@ export interface PluginIndexEntry {
   updated_at?: string;
   author?: string;
   min_app_version?: string;
+  /**
+   * Host OS targets from the package manifest (`macos` / `windows` / `linux`).
+   * Empty or missing means every platform. Used to hide install/launch on the
+   * wrong OS so Windows does not install macOS-only packages like Homebrew.
+   */
+  platforms?: PluginPlatform[];
   /** Newest first. Historical entries are informational, not rollback URLs. */
   releases?: PluginReleaseNote[];
   /** Host-stamped registry attribution after multi-source fetch. */

@@ -439,7 +439,7 @@ export const rpcHandlers: Record<string, RpcHandler> = {
     if (!requestId) {
       throw new Error("AI stream request id is required");
     }
-    const unlisten = await listen("qxai://stream", (event) => {
+    const unlisten = await listen("qxai-stream", (event) => {
       const stream = event.payload as {
         requestId?: string;
         kind?: string;

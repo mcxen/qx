@@ -64,9 +64,11 @@ manifest 启动命令、后台 interval 与宿主 reload 不得自动混入当�
 - 插件 context：真实 context 与 `createUnavailableContext` 在方法集上对齐；不可用实现失败方式可预期（throw / reject），不默默 no-op 关键契约。
 - 插件 iframe context 与直接 / unavailable context 的全部方法叶子由
   `check-module-ports` 做结构化对照；新增端口必须同时更新两条 runtime，不能只补类型。
-- 插件平台声明：`manifest.platforms` 是运行时执行边界，不只是市场展示信息。不匹配
-  当前宿主的平台仍可在 Settings 中管理，但不得创建 iframe、后台任务、全局快捷键、
-  command 或 panel。
+- 插件平台声明：`manifest.platforms` 是安装与运行时执行边界，不只是市场展示信息。
+  市场索引与 UI 对不匹配当前 OS 的包**不展示安装路径**（例如 Windows 不出现
+  Homebrew）；本地/深链安装由 Rust 拒绝；若历史上已安装，仍可在 Settings 中管理/
+  卸载，但不得创建 iframe、后台任务、全局快捷键、command 或 panel，也不得提供
+  Launch 路径。
 - `min_app_version` 同时是 fail-closed 安装与执行边界：市场 UI 先禁用不兼容安装，
   Rust 安装端口再次校验；宿主版本读取失败时，仅未声明最低版本的旧插件可以继续运行，
   不得把 bridge 异常当成放行新端口代码的理由。

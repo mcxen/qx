@@ -29,7 +29,14 @@ export const QUICK_ENTRY_TARGETS = [
   { value: "documents", label: "Text Tools", subtitle: "Text, Markdown, JSON", titleKey: "launcher.documents", subtitleKey: "launcher.documents.desc" },
   { value: "macros", label: "Macro Recorder", subtitle: "Record and replay actions", titleKey: "launcher.macros", subtitleKey: "launcher.macros.desc" },
   { value: "qx-tty", label: "QxTTY", subtitle: "Persistent local terminal sessions", titleKey: "launcher.qx-tty", subtitleKey: "launcher.qx-tty.desc" },
-  { value: "settings", label: "Qx Settings", subtitle: "Appearance and plugins", titleKey: "launcher.settings", subtitleKey: "launcher.settings.desc" },
+  {
+    value: "settings:plugins",
+    label: "Extensions",
+    subtitle: "Install, update, and manage plugins",
+    titleKey: "launcher.settingsPlugins",
+    subtitleKey: "launcher.settingsPlugins.desc",
+  },
+  { value: "settings", label: "Qx Settings", subtitle: "Appearance, shortcuts, and preferences", titleKey: "launcher.settings", subtitleKey: "launcher.settings.desc" },
 ] as const;
 
 export function pluginQuickEntryTarget(pluginId: string): string {
@@ -107,7 +114,13 @@ export function localizeQuickEntry(
   };
 }
 
-const DEFAULT_QUICK_ENTRY_TARGETS = ["clipboard", "screencap", "documents", "settings"];
+const DEFAULT_QUICK_ENTRY_TARGETS = [
+  "clipboard",
+  "screencap",
+  "documents",
+  "settings:plugins",
+  "settings",
+];
 
 export const DEFAULT_QUICK_ENTRIES: QuickEntryConfig[] = DEFAULT_QUICK_ENTRY_TARGETS.map((value) => {
   const target = QUICK_ENTRY_TARGETS.find((item) => item.value === value)!;
@@ -153,7 +166,14 @@ function isQuickEntryTargetAvailable(
   target: string,
   plugins: InstalledPlugin[] | undefined,
 ): boolean {
-  if (target === "file-search" || target === "settings" || target === "launcher") return true;
+  if (
+    target === "file-search"
+    || target === "settings"
+    || target === "settings:plugins"
+    || target === "launcher"
+  ) {
+    return true;
+  }
   const pluginId = parsePluginQuickEntryTarget(target);
   if (pluginId) {
     const plugin = plugins?.find((item) => item.id === pluginId);
@@ -196,7 +216,7 @@ export function toLauncherAllModules(
   locale: Locale = "en",
 ): QuickEntry[] {
   return buildQuickEntryTargetOptions(plugins, t, locale)
-    .filter((option) => option.value !== "settings")
+    .filter((option) => option.value !== "settings" && option.value !== "settings:plugins")
     .filter((option) => isQuickEntryTargetAvailable(option.value, plugins))
     .map((option) => {
       const pluginId = parsePluginQuickEntryTarget(option.value);
@@ -231,6 +251,17 @@ export function quickEntryToAppEntry(
       kind: "command",
     };
   }
+  if (target === "settings:plugins") {
+    return {
+      name: entry.title || "Extensions",
+      display_name: entry.title || "Extensions",
+      subtitle: entry.subtitle || "Install, update, and manage plugins",
+      path: "__qx:settings:plugins",
+      icon: "builtin:plugins",
+      kind: "command",
+      moduleId: "settings",
+    };
+  }
   return {
     name: entry.title || target,
     display_name: entry.title || target,
@@ -238,7 +269,7 @@ export function quickEntryToAppEntry(
     path: `__qx:${target}`,
     icon: `builtin:${target}`,
     kind: "command",
-    moduleId: target,
+    moduleId: target === "settings" ? "settings" : target,
   };
 }
 
@@ -290,6 +321,9 @@ export function quickEntryFromAppEntry(
       return null;
     }
     return createQuickEntry(pluginQuickEntryTarget(pluginId), plugins);
+  }
+  if (item.path === "__qx:settings:plugins") {
+    return createQuickEntry("settings:plugins", plugins);
   }
   const tabMatch = item.path.match(
     /^__qx:(clipboard|screencap|rss|weather|qx-ai|macros|documents|qx-tty|settings)$/,

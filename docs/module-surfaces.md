@@ -132,12 +132,12 @@ doSearch (fast path)
 
 ## 6. 设置：按模块开关
 
-设置路径：**Settings → General → Module Search**
+设置路径：**Settings → Search Settings → Launcher Search Sources**
 
 ```ts
 module_search: {
-  enabled: boolean;                          // 总开关
-  modules: Partial<Record<ModuleId, boolean>> // 缺省 = true
+  enabled: boolean;                          // 总开关；**新装默认 false**
+  modules: Partial<Record<ModuleId, boolean>> // 总开关打开后，缺省 = true
 }
 ```
 
@@ -145,11 +145,12 @@ module_search: {
 
 | 开关 | 效果 |
 |---|---|
-| 总开关 off | 所有内置模块 command / panel / surface 不出现在主搜 |
+| 总开关 off（**默认**） | 所有内置模块 command / panel / surface 不出现在主搜（剪贴板历史等不会污染搜索） |
 | 某模块 off | 该模块的静态 command、panel、动态 surface、独立慢 Provider、sticky pin 与使用频率召回全部隐藏；模块本体和 Quick Entry 不受影响 |
 | 插件（非 builtin） | **不受** 此开关影响（仍走插件注册表） |
 
-Rust：`ModuleSearchSettings`（`settings/mod.rs`），`#[serde(default)]`，旧配置文件可缺省升级。
+Rust：`ModuleSearchSettings`（`settings/mod.rs`），`enabled` 的 serde 缺省为
+`false`（新装 / 字段缺失）；已保存为 `true` 的用户配置升级后保持开启。
 
 前端：`useSettingsStore().settings.module_search`；模块判定用
 `isModuleSearchEnabled(moduleId)`，所有 Launcher entry 统一经过

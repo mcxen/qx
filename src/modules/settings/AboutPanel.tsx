@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { open } from "@tauri-apps/plugin-shell";
-import { Row, Select, SettingsCard } from "../../components/ui";
+import { Button, Row, Select, SettingsCard } from "../../components/ui";
 import GifText from "../../components/gif-text";
 import { useT } from "../../i18n";
 import { useSettingsStore, type GeneralSettings } from "./store";
@@ -90,15 +90,18 @@ export default function AboutPanel() {
     void getVersion()
       .then(setVersion)
       .catch(() => setVersion("unknown"));
+  }, []);
 
+  // Silent refresh on mount and whenever the user switches update source.
+  useEffect(() => {
     const updateTimer = window.setTimeout(() => {
       void loadUpdateInfo(false);
-    }, 700);
+    }, 400);
 
     return () => {
       window.clearTimeout(updateTimer);
     };
-  }, []);
+  }, [updateSource]);
 
   const handleCheckUpdate = async () => {
     await loadUpdateInfo(true);
@@ -150,17 +153,39 @@ export default function AboutPanel() {
           title={t("about.appName", "Qx")}
           description={t(
             "about.appTagline",
-            "A keyboard-driven productivity launcher for macOS.",
+            "A keyboard-driven productivity launcher for macOS and Windows.",
           )}
         >
           <span style={{ color: "var(--qx-text-secondary)" }}>v{version || "..."}</span>
         </Row>
 
         <Row
+          title={t("about.updateSource", "Update Source")}
+          description={t(
+            "about.updateSource.desc",
+            "Used by Check for Updates, Download, and Automatic Updates. Automatic compares CNB and GitHub, then uses the newest valid release.",
+          )}
+        >
+          <Select
+            value={updateSource}
+            onChange={(value) => patch("general", {
+              ...settings.general,
+              update_source: value as GeneralSettings["update_source"],
+            })}
+            ariaLabel={t("about.updateSource", "Update Source")}
+            options={[
+              { value: "auto", label: t("about.updateSource.auto", "Automatic") },
+              { value: "cnb", label: t("about.updateSource.cnb", "CNB mirror") },
+              { value: "github", label: t("about.updateSource.github", "GitHub") },
+            ]}
+          />
+        </Row>
+
+        <Row
           title={t("about.latestRelease", "Latest Release")}
           description={t(
             "about.latestRelease.desc",
-            "Most recent version published on GitHub.",
+            "Newest version from the selected update source.",
           )}
         >
           <span style={{ color: "var(--qx-text-secondary)" }}>
@@ -179,49 +204,34 @@ export default function AboutPanel() {
                 "{name}",
                 updateInfo.asset_name ?? t("about.latestRelease", "the latest release"),
               )
-              : t("about.checkUpdates.idle", "Check the latest GitHub release.")
+              : t("about.checkUpdates.idle", "Check for the latest release from the selected source.")
           }
         >
-          <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            <button
+          <div className="qx-settings-row-actions">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
               onClick={() => void handleCheckUpdate()}
               disabled={checking || installing}
-              className="qx-command-button"
             >
               {checking
                 ? t("about.checking", "Checking...")
                 : t("about.checkNow", "Check Now")}
-            </button>
+            </Button>
             {updateInfo?.available && updateInfo.can_install && (
-              <button
+              <Button
+                type="button"
+                size="sm"
                 onClick={() => void handleInstallUpdate()}
                 disabled={checking || installing}
-                className="qx-command-button primary"
               >
                 {installing
                   ? t("about.downloading", "Downloading...")
                   : t("about.downloadUpdate", "Download Update")}
-              </button>
+              </Button>
             )}
           </div>
-        </Row>
-
-        <Row
-          title={t("about.updateSource", "Update Source")}
-          description={t(
-            "about.updateSource.desc",
-            "Automatic compares CNB and GitHub, then uses the newest valid release.",
-          )}
-        >
-          <Select
-            value={updateSource}
-            onChange={(value) => patch("general", { ...settings.general, update_source: value as GeneralSettings["update_source"] })}
-            options={[
-              { value: "auto", label: t("about.updateSource.auto", "Automatic") },
-              { value: "cnb", label: t("about.updateSource.cnb", "CNB mirror") },
-              { value: "github", label: t("about.updateSource.github", "GitHub") },
-            ]}
-          />
         </Row>
 
         {status && (
@@ -234,12 +244,12 @@ export default function AboutPanel() {
           title={t("about.githubReleases", "GitHub Releases")}
           description={t(
             "about.githubReleases.desc",
-            "View all releases and release notes.",
+            "View all releases and release notes on GitHub.",
           )}
         >
-          <button onClick={handleOpenReleases} className="qx-command-button">
+          <Button type="button" size="sm" variant="secondary" onClick={handleOpenReleases}>
             {t("about.openReleases", "Open Releases")}
-          </button>
+          </Button>
         </Row>
       </SettingsCard>
     </div>

@@ -89,7 +89,7 @@ my-plugin/
 | `description`, `author` | 否 | 英文回退描述与作者；提供描述时宿主固定投影到 Context「关于」 |
 | `descriptions` | 市场插件是 | 本地化描述；至少包含 `en` 与 `zh-CN` |
 | `icon`, `screenshots` | 否 | 包内相对路径 |
-| `platforms` | 否 | `macos`、`windows`、`linux` 的去重数组 |
+| `platforms` | 否 | `macos`、`windows`、`linux` 的去重数组；空或省略表示全平台。非空时宿主会从市场列表隐藏不匹配的包（例如 Windows 不展示 macOS-only 的 Homebrew），并拒绝安装与运行 |
 | `keywords` | 否 | 搜索别名 |
 | `permissions` | 否 | 最小能力集合 |
 | `entry` | 否 | ESM 入口，默认 `index.js` |

@@ -283,7 +283,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 | `clipboard-updated` | 剪贴板轮询 / `read_clipboard_image_now` | `ClipboardPanel.tsx` |
 | `clipboard-media-progress` | 图片压缩 / 视频转 GIF 后台任务 | `ClipboardPanel.tsx` 灵动岛进度 |
 | `tray-focus-display` | Tray 打开时的点击显示器解析 | `TrayPanelApp.tsx` 将亮度控制置顶 |
-| `qxai://stream` | `qxai_stream_chat_events` / `qxai_stream_chat_with_tools_events` 内部线程 | `modules/qx-ai/store.ts`、`react-agent.ts`、插件 iframe bridge |
+| `qxai-stream` | `qxai_stream_chat_events` / `qxai_stream_chat_with_tools_events` 内部线程 | `modules/qx-ai/store.ts`、`react-agent.ts`、插件 iframe bridge |
 | `ocr:download-progress` / `ocr-download-progress` | `download_ocr_model` | `modules/settings/OcrSettings.tsx` |
 | `screencap:ocr` | 截图确认后 OCR | `screencap/store.ts`（editor 打开文本工具） |
 | `qx-terminal-output` / `qx-terminal-exit` | QxTTY PTY reader | `modules/qx-tty/QxTTYPanel.tsx` |

@@ -459,6 +459,13 @@ export const CaptureToolbar = forwardRef<HTMLDivElement, CaptureToolbarProps>(fu
               {screenshot ? (
                 <>
                   <MenuItem
+                    label={t("screencap.picker.showMainAfter", "Open main window after capture")}
+                    checked={settings.show_main_after_screenshot}
+                    onClick={() => onSettingsChange({
+                      show_main_after_screenshot: !settings.show_main_after_screenshot,
+                    })}
+                  />
+                  <MenuItem
                     label={t("screencap.picker.shutterSound", "Play Screenshot Sound")}
                     checked={settings.screenshot_sound_enabled}
                     onClick={() => onSettingsChange({ screenshot_sound_enabled: !settings.screenshot_sound_enabled })}

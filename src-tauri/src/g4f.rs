@@ -1,8 +1,13 @@
 use serde::{Deserialize, Serialize};
-use std::io::BufRead;
+use std::io::{BufRead, Read};
 use std::path::PathBuf;
 use std::time::Duration;
 use tauri::Emitter;
+
+/// Frontend + Rust stream event channel.
+/// Prefer a simple name (no `://`) so WebView2 property-key paths never treat
+/// the event as a protocol/comment edge case under aggressive script injection.
+const QXAI_STREAM_EVENT: &str = "qxai-stream";
 
 // ---------------------------------------------------------------------------
 // Data types
@@ -82,6 +87,91 @@ fn make_client() -> Result<reqwest::blocking::Client, String> {
         Duration::from_secs(60),
         Some(Duration::from_secs(10)),
     )
+}
+
+/// Streaming needs a long (or idle-friendly) body timeout. The 60s client above
+/// aborts long Chinese/DeepSeek thinking streams mid-token on slow Windows
+/// networks, which looks like "no output" once the read fails.
+fn make_stream_client() -> Result<reqwest::blocking::Client, String> {
+    crate::http_client::blocking_client(
+        "Qx/1.0 (g4f)",
+        Duration::from_secs(600),
+        Some(Duration::from_secs(20)),
+    )
+}
+
+/// Decode one SSE line. Prefer UTF-8; fall back to GB18030 (common on Chinese
+/// Windows proxies / mislabeled responses) instead of aborting the stream.
+fn decode_sse_line(raw: &[u8]) -> String {
+    let bytes = raw.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(raw);
+    let bytes = match bytes.strip_suffix(&[b'\r']) {
+        Some(b) => b,
+        None => bytes,
+    };
+    if bytes.is_empty() {
+        return String::new();
+    }
+    match std::str::from_utf8(bytes) {
+        Ok(text) => text.to_string(),
+        Err(_) => {
+            let (cow, _enc, _had_errors) = encoding_rs::GB18030.decode(bytes);
+            cow.into_owned()
+        }
+    }
+}
+
+/// Iterate SSE lines from a response body as lossy/decoded text.
+/// `BufRead::lines()` errors on invalid UTF-8 and kills the whole stream —
+/// that is a frequent Windows failure mode when a hop rewrites charset.
+fn for_each_sse_line<R: Read>(
+    reader: R,
+    mut on_line: impl FnMut(&str) -> Result<(), String>,
+) -> Result<(), String> {
+    let mut reader = std::io::BufReader::new(reader);
+    let mut raw = Vec::with_capacity(512);
+    loop {
+        raw.clear();
+        let n = reader
+            .read_until(b'\n', &mut raw)
+            .map_err(|e| format!("failed to read response stream: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        // read_until includes the delimiter when found; keep a final
+        // partial line that had no trailing newline (n > 0 without `\n`).
+        if raw.last() == Some(&b'\n') {
+            raw.pop();
+        }
+        let line = decode_sse_line(&raw);
+        on_line(line.trim_end_matches('\r'))?;
+    }
+    Ok(())
+}
+
+/// Extract assistant text from an OpenAI-style delta/message content field.
+/// Supports plain strings and multi-part content arrays used by some providers.
+fn content_delta_text(content: &serde_json::Value) -> Option<String> {
+    if let Some(text) = content.as_str() {
+        return if text.is_empty() {
+            None
+        } else {
+            Some(text.to_string())
+        };
+    }
+    let parts = content.as_array()?;
+    let mut out = String::new();
+    for part in parts {
+        if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+            out.push_str(text);
+        } else if let Some(text) = part.as_str() {
+            out.push_str(text);
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 const OPENROUTER_ID: &str = "openrouter";
@@ -207,7 +297,7 @@ fn provider_openai_chat(
 
     let resp = client
         .post(&url)
-        .header("Content-Type", "application/json")
+        .header("Content-Type", "application/json; charset=utf-8")
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&body)
         .send()
@@ -223,9 +313,7 @@ fn provider_openai_chat(
         .json()
         .map_err(|e| format!("parse response from {url}: {e}"))?;
 
-    json["choices"][0]["message"]["content"]
-        .as_str()
-        .map(|s| s.to_string())
+    content_delta_text(&json["choices"][0]["message"]["content"])
         .ok_or_else(|| "no content in API response".to_string())
 }
 
@@ -237,7 +325,7 @@ fn provider_openai_chat_stream(
     reasoning: bool,
     mut on_delta: impl FnMut(&str, &str),
 ) -> Result<String, String> {
-    let client = make_client()?;
+    let client = make_stream_client()?;
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
     let mut body = serde_json::json!({
@@ -249,7 +337,9 @@ fn provider_openai_chat_stream(
 
     let resp = client
         .post(&url)
-        .header("Content-Type", "application/json")
+        .header("Content-Type", "application/json; charset=utf-8")
+        .header("Accept", "text/event-stream")
+        .header("Cache-Control", "no-cache")
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&body)
         .send()
@@ -262,17 +352,20 @@ fn provider_openai_chat_stream(
     }
 
     let mut full = String::new();
-    let reader = std::io::BufReader::new(resp);
-    for line in reader.lines() {
-        let line = line.map_err(|e| format!("failed to read response stream from {url}: {e}"))?;
-        let Some(data) = sse_data(&line) else {
-            continue;
+    let mut done = false;
+    for_each_sse_line(resp, |line| {
+        if done {
+            return Ok(());
+        }
+        let Some(data) = sse_data(line) else {
+            return Ok(());
         };
         if data == "[DONE]" {
-            break;
+            done = true;
+            return Ok(());
         }
         let Ok(value) = serde_json::from_str::<serde_json::Value>(data) else {
-            continue;
+            return Ok(());
         };
         let delta = &value["choices"][0]["delta"];
         if let Some(reasoning) = delta["reasoning_content"]
@@ -281,11 +374,12 @@ fn provider_openai_chat_stream(
         {
             on_delta("reasoning", reasoning);
         }
-        if let Some(content) = delta["content"].as_str() {
-            full.push_str(content);
-            on_delta("text", content);
+        if let Some(content) = content_delta_text(&delta["content"]) {
+            full.push_str(&content);
+            on_delta("text", &content);
         }
-    }
+        Ok(())
+    })?;
 
     if full.is_empty() {
         return provider_openai_chat(base_url, api_key, model, messages);
@@ -319,6 +413,8 @@ fn should_send_tool_choice(base_url: &str, reasoning: bool) -> bool {
 }
 
 fn sse_data(line: &str) -> Option<&str> {
+    // Tolerate BOM / leading whitespace some Windows proxies inject.
+    let line = line.trim_start_matches('\u{feff}').trim_start();
     line.strip_prefix("data:").map(str::trim_start)
 }
 
@@ -415,7 +511,7 @@ fn provider_openai_chat_with_tools_stream(
     reasoning: bool,
     mut on_delta: impl FnMut(&str, &str),
 ) -> Result<serde_json::Value, String> {
-    let client = make_client()?;
+    let client = make_stream_client()?;
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let mut body = serde_json::json!({
         "model": model,
@@ -432,7 +528,9 @@ fn provider_openai_chat_with_tools_stream(
 
     let resp = client
         .post(&url)
-        .header("Content-Type", "application/json")
+        .header("Content-Type", "application/json; charset=utf-8")
+        .header("Accept", "text/event-stream")
+        .header("Cache-Control", "no-cache")
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&body)
         .send()
@@ -447,17 +545,20 @@ fn provider_openai_chat_with_tools_stream(
     let mut reasoning_content = String::new();
     let mut reasoning_details = Vec::<serde_json::Value>::new();
     let mut tool_calls = Vec::<serde_json::Value>::new();
-    let reader = std::io::BufReader::new(resp);
-    for line in reader.lines() {
-        let line = line.map_err(|e| format!("failed to read response stream from {url}: {e}"))?;
-        let Some(data) = sse_data(&line) else {
-            continue;
+    let mut done = false;
+    for_each_sse_line(resp, |line| {
+        if done {
+            return Ok(());
+        }
+        let Some(data) = sse_data(line) else {
+            return Ok(());
         };
         if data == "[DONE]" {
-            break;
+            done = true;
+            return Ok(());
         }
         let Ok(value) = serde_json::from_str::<serde_json::Value>(data) else {
-            continue;
+            return Ok(());
         };
         let delta = &value["choices"][0]["delta"];
         if let Some(text) = delta["reasoning_content"]
@@ -470,14 +571,15 @@ fn provider_openai_chat_with_tools_stream(
         if let Some(details) = delta["reasoning_details"].as_array() {
             reasoning_details.extend(details.iter().cloned());
         }
-        if let Some(text) = delta["content"].as_str() {
-            content.push_str(text);
-            on_delta("text", text);
+        if let Some(text) = content_delta_text(&delta["content"]) {
+            content.push_str(&text);
+            on_delta("text", &text);
         }
         if let Some(calls) = delta["tool_calls"].as_array() {
             merge_stream_tool_calls(&mut tool_calls, calls);
         }
-    }
+        Ok(())
+    })?;
 
     let mut message = serde_json::json!({
         "role": "assistant",
@@ -692,7 +794,7 @@ pub fn qxai_stream_chat_with_tools_events(
         let stream_request_id = request_id.clone();
         let emit_delta = |kind: &str, chunk: &str| {
             let _ = stream_app.emit(
-                "qxai://stream",
+                QXAI_STREAM_EVENT,
                 QxaiStreamEvent {
                     request_id: stream_request_id.clone(),
                     kind: kind.to_string(),
@@ -723,7 +825,7 @@ pub fn qxai_stream_chat_with_tools_events(
             Err(error) => (None, Some(error)),
         };
         let _ = app.emit(
-            "qxai://stream",
+            QXAI_STREAM_EVENT,
             QxaiStreamEvent {
                 request_id,
                 kind: "done".to_string(),
@@ -765,7 +867,7 @@ pub fn qxai_stream_chat_events(
         let stream_request_id = request_id.clone();
         let emit_chunk = |kind: &str, chunk: &str| {
             let _ = stream_app.emit(
-                "qxai://stream",
+                QXAI_STREAM_EVENT,
                 QxaiStreamEvent {
                     request_id: stream_request_id.clone(),
                     kind: kind.to_string(),
@@ -811,7 +913,7 @@ pub fn qxai_stream_chat_events(
             Err(err) => (String::new(), Some(err)),
         };
         let _ = app.emit(
-            "qxai://stream",
+            QXAI_STREAM_EVENT,
             QxaiStreamEvent {
                 request_id,
                 kind: "done".to_string(),
@@ -929,7 +1031,26 @@ mod tests {
     fn sse_data_accepts_standard_spacing_variants() {
         assert_eq!(sse_data("data: {\"ok\":true}"), Some("{\"ok\":true}"));
         assert_eq!(sse_data("data:{\"ok\":true}"), Some("{\"ok\":true}"));
+        assert_eq!(sse_data("\u{feff}data: hi"), Some("hi"));
+        assert_eq!(sse_data("  data: hi"), Some("hi"));
         assert_eq!(sse_data("event: message"), None);
+    }
+
+    #[test]
+    fn decode_sse_line_recovers_gb18030_chinese() {
+        // "你好" in GB18030.
+        let bytes = [0xC4, 0xE3, 0xBA, 0xC3];
+        let text = super::decode_sse_line(&bytes);
+        assert_eq!(text, "你好");
+    }
+
+    #[test]
+    fn content_delta_accepts_multipart_arrays() {
+        let value = serde_json::json!([
+            { "type": "text", "text": "你" },
+            { "type": "text", "text": "好" }
+        ]);
+        assert_eq!(super::content_delta_text(&value).as_deref(), Some("你好"));
     }
 
     #[test]

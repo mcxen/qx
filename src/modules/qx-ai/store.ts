@@ -236,7 +236,7 @@ async function streamChatEvents({
       if (stop()) reject(new Error("AI stream timed out"));
     }, STREAM_TIMEOUT_MS);
 
-    listen<StreamEvent>("qxai://stream", (event) => {
+    listen<StreamEvent>("qxai-stream", (event) => {
       if (event.payload.requestId !== requestId) return;
       if (event.payload.error) {
         if (stop()) reject(new Error(event.payload.error));

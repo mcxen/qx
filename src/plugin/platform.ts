@@ -20,6 +20,15 @@ export function pluginSupportsPlatform(
   return !declared?.length || (platform !== null && declared.includes(platform));
 }
 
+/** Marketplace index entries may declare `platforms`; empty/missing means all. */
+export function marketplaceEntrySupportsPlatform(
+  entry: { platforms?: readonly string[] | null },
+  platform: PluginPlatform | null = currentPluginPlatform(),
+): boolean {
+  const declared = entry.platforms;
+  return !declared?.length || (platform !== null && declared.includes(platform));
+}
+
 interface ParsedVersion {
   core: number[];
   prerelease: string[];

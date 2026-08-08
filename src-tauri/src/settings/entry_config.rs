@@ -37,6 +37,32 @@ pub(super) fn default_quick_entries() -> Vec<QuickEntryConfig> {
             "Screenshots and MP4/MOV recording",
         ),
         ("documents", "Text Tools", "Text, Markdown, JSON"),
+        (
+            "settings:plugins",
+            "Extensions",
+            "Install, update, and manage plugins",
+        ),
+        (
+            "settings",
+            "Qx Settings",
+            "Appearance, shortcuts, and preferences",
+        ),
+    ]
+    .into_iter()
+    .map(quick_entry)
+    .collect()
+}
+
+/// Defaults shipped before the Extensions quick entry (settings:plugins).
+pub(super) fn previous_default_quick_entries() -> Vec<QuickEntryConfig> {
+    [
+        ("clipboard", "Clipboard History", "Pinned, frequent, links"),
+        (
+            "screencap",
+            "Screenshot Module",
+            "Screenshots and MP4/MOV recording",
+        ),
+        ("documents", "Text Tools", "Text, Markdown, JSON"),
         ("settings", "Qx Settings", "Appearance and plugins"),
     ]
     .into_iter()
@@ -44,7 +70,8 @@ pub(super) fn default_quick_entries() -> Vec<QuickEntryConfig> {
     .collect()
 }
 
-pub(super) fn previous_default_quick_entries() -> Vec<QuickEntryConfig> {
+/// Older short defaults (pre-screencap/documents set).
+pub(super) fn previous_short_default_quick_entries() -> Vec<QuickEntryConfig> {
     [
         ("clipboard", "Clipboard History", "Pinned, frequent, links"),
         ("rss", "RSS Reader", "Feeds and articles"),
@@ -83,7 +110,12 @@ pub(super) fn legacy_default_quick_entries() -> Vec<QuickEntryConfig> {
 }
 
 pub(super) fn migrate_legacy_default_quick_entries(entries: &mut Vec<QuickEntryConfig>) {
-    if *entries == legacy_default_quick_entries() || *entries == previous_default_quick_entries() {
+    // Only rewrite when the list still matches a known stock default so user
+    // customizations (reorder / add / remove) are never clobbered.
+    if *entries == legacy_default_quick_entries()
+        || *entries == previous_default_quick_entries()
+        || *entries == previous_short_default_quick_entries()
+    {
         *entries = default_quick_entries();
     }
 }
@@ -107,12 +139,14 @@ pub(super) fn default_tray_actions() -> Vec<TrayActionConfig> {
     .collect()
 }
 
-fn quick_entry((id, title, subtitle): (&str, &str, &str)) -> QuickEntryConfig {
+fn quick_entry((target, title, subtitle): (&str, &str, &str)) -> QuickEntryConfig {
+    // Stable id without ':' so tray menu ids stay easy to parse.
+    let id = target.replace(':', "-");
     QuickEntryConfig {
-        id: id.to_string(),
+        id,
         title: title.to_string(),
         subtitle: subtitle.to_string(),
-        target: id.to_string(),
+        target: target.to_string(),
         enabled: true,
     }
 }

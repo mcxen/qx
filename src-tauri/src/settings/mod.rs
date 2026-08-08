@@ -134,8 +134,8 @@ pub struct AppearanceSettings {
     pub home_island_cpu: bool,
     #[serde(default = "default_true")]
     pub home_island_memory: bool,
-    /// Floating QxIsland webview (default false for dogfood rollout).
-    #[serde(default)]
+    /// Floating QxIsland webview (default on so new installs can float immediately).
+    #[serde(default = "default_true")]
     pub island_float_enabled: bool,
     /// Auto-rotate standing module/plugin sessions. Default 8 seconds.
     #[serde(default = "default_island_float_rotate_secs")]
@@ -261,7 +261,7 @@ impl Default for AppearanceSettings {
             home_island_rotate_secs: default_home_island_rotate_secs(),
             home_island_cpu: true,
             home_island_memory: true,
-            island_float_enabled: false,
+            island_float_enabled: true,
             island_float_rotate_secs: default_island_float_rotate_secs(),
             island_float_when_main_hidden: true,
             island_float_always_on_top: true,
@@ -582,6 +582,9 @@ pub struct ScreencapSettings {
     pub capture_delay_seconds: u32,
     #[serde(default = "default_true")]
     pub auto_hide_after_capture: bool,
+    /// When false, successful screenshots do not reopen the main Qx window.
+    #[serde(default = "default_true")]
+    pub show_main_after_screenshot: bool,
     #[serde(default = "default_true")]
     pub auto_copy_to_clipboard: bool,
     #[serde(default = "default_screencap_history_layout")]
@@ -651,6 +654,7 @@ impl Default for ScreencapSettings {
             capture_confirm_mode: default_screencap_confirm_mode(),
             capture_delay_seconds: 0,
             auto_hide_after_capture: true,
+            show_main_after_screenshot: true,
             auto_copy_to_clipboard: true,
             history_layout: default_screencap_history_layout(),
             controls_pinned: false,
@@ -708,11 +712,16 @@ impl Default for FileSearchSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModuleSearchSettings {
     /// Master switch for all module search integration.
-    #[serde(default = "default_true")]
+    /// Default off: launcher does not surface clipboard/RSS/session hits until opted in.
+    #[serde(default = "default_false")]
     pub enabled: bool,
-    /// When a key is missing, treat as enabled (true).
+    /// When a key is missing, treat as enabled (true) once the master switch is on.
     #[serde(default)]
     pub modules: BTreeMap<String, bool>,
+}
+
+fn default_false() -> bool {
+    false
 }
 
 impl Default for ModuleSearchSettings {
@@ -733,7 +742,7 @@ impl Default for ModuleSearchSettings {
         modules.insert("v2ex".to_string(), false);
         modules.insert("weather".to_string(), false);
         Self {
-            enabled: true,
+            enabled: false,
             modules,
         }
     }

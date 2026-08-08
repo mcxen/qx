@@ -220,15 +220,16 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 30px;
+  /* Match compact settings control height (28px button / select trigger). */
+  min-height: 28px;
   width: 100%;
-  padding: 6px 9px 6px 28px;
+  padding: 4px 9px 4px 28px;
   border-radius: var(--radius);
   background: transparent;
   color: var(--qx-text-primary);
   font: inherit;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
   outline: none;
   cursor: pointer;
   user-select: none;

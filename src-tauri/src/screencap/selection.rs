@@ -478,6 +478,29 @@ pub fn screencap_list_displays() -> Result<Vec<CaptureDisplay>, String> {
     displays()
 }
 
+/// Snapshot the current picker selection for live mosaic preview (PNG base64).
+/// Does not write history or play sounds. Safe while the picker is open: the
+/// picker surface is content-protected and excluded from the capture stack.
+#[command]
+pub async fn screencap_selection_preview(area: RecordArea) -> Result<String, String> {
+    let session = picker_session()
+        .lock()
+        .ok()
+        .and_then(|session| session.clone())
+        .ok_or_else(|| "Capture selection session is unavailable".to_string())?;
+    let scale = session.coordinate_scale;
+    let physical = RecordArea {
+        x: (area.x as f64 * scale).round().max(0.0) as u32,
+        y: (area.y as f64 * scale).round().max(0.0) as u32,
+        w: (area.w as f64 * scale).round().max(2.0) as u32,
+        h: (area.h as f64 * scale).round().max(2.0) as u32,
+        monitor_id: Some(session.monitor_id),
+    };
+    crate::runtime::blocking(move || super::screenshot::preview_region_base64(physical))
+        .await
+        .map_err(|error| format!("selection preview worker failed: {error}"))?
+}
+
 /// Capture workflow facade over the system desktop-window inventory.
 /// Prefer `desktop_windows_list` for non-capture features.
 #[command]
@@ -587,6 +610,8 @@ pub async fn screencap_confirm_region_select(
     capture_options: Option<CaptureExecutionOptions>,
     action: Option<String>,
     annotation_overlay_base64: Option<String>,
+    // True block-pixelate ops applied to the real capture before the vector overlay.
+    mosaic_ops: Option<Vec<super::mosaic::MosaicOp>>,
     copy_to_clipboard: Option<bool>,
     // After a screenshot: "clipboard" copies OCR text; "editor" opens Text Toolbox.
     ocr_destination: Option<String>,
@@ -624,7 +649,10 @@ pub async fn screencap_confirm_region_select(
         .transpose()?
         .unwrap_or(session.mode);
     let capture_options = capture_options.unwrap_or_default();
-    if action == CaptureMode::Recording && annotation_overlay_base64.is_some() {
+    if action == CaptureMode::Recording
+        && (annotation_overlay_base64.is_some()
+            || mosaic_ops.as_ref().is_some_and(|ops| !ops.is_empty()))
+    {
         return Err("Annotations can only be applied to screenshots".to_string());
     }
     if action == CaptureMode::Screenshot {
@@ -644,7 +672,7 @@ pub async fn screencap_confirm_region_select(
         // Pattern: runtime::blocking (capture) → runtime::ui (clipboard + restore).
         let include_cursor = capture_options.include_cursor.unwrap_or(false);
         let result = crate::runtime::blocking(move || {
-            take_screenshot_blocking(area, annotation_overlay_base64, include_cursor)
+            take_screenshot_blocking(area, annotation_overlay_base64, include_cursor, mosaic_ops)
         })
         .await
         .map_err(|error| format!("screenshot worker failed: {error}"))
@@ -664,9 +692,9 @@ pub async fn screencap_confirm_region_select(
                 let path_for_clip = output.path.clone();
                 let path_for_event = output_path.clone();
                 let app_ui = app.clone();
-                let auto_hide_after_capture = crate::settings::read_settings()
-                    .screencap
-                    .auto_hide_after_capture;
+                let screencap_settings = crate::settings::read_settings().screencap;
+                let auto_hide_after_capture = screencap_settings.auto_hide_after_capture;
+                let show_main_after_screenshot = screencap_settings.show_main_after_screenshot;
 
                 // OCR off the UI thread after the shot is on disk.
                 let ocr_result = if let Some(dest) = ocr_destination.clone() {
@@ -747,9 +775,11 @@ pub async fn screencap_confirm_region_select(
                         status.output_path = Some(path_for_event.clone());
                         status.error = clipboard_error.clone();
                     }
-                    // Stay fully hidden only when copy-and-continue succeeded.
-                    // Copy failures restore the module so the error is visible.
-                    let restore_main_ui = !dismiss_ui || clipboard_error.is_some();
+                    // Stay fully hidden when copy-and-continue succeeds, or when
+                    // Settings → Screencap disables reopening the main window.
+                    // Failures still restore the module so the error is visible.
+                    let restore_main_ui =
+                        clipboard_error.is_some() || (!dismiss_ui && show_main_after_screenshot);
                     finish_capture_session(&app_ui, 800, auto_hide_after_capture, restore_main_ui)?;
                     recording_session::emit_recording_status(&app_ui);
                     Ok::<Option<String>, String>(clipboard_error)
@@ -862,6 +892,7 @@ pub async fn screencap_recapture_last_region(app: AppHandle) -> Result<(), Strin
     let capture_settings = crate::settings::read_settings().screencap;
     let copy_to_clipboard = capture_settings.auto_copy_to_clipboard;
     let auto_hide_after_capture = capture_settings.auto_hide_after_capture;
+    let show_main_after_screenshot = capture_settings.show_main_after_screenshot;
     let execution = CaptureExecutionOptions {
         destination: Some(capture_settings.screenshot_destination.clone()),
         custom_directory: capture_settings.screenshot_custom_directory.clone(),
@@ -874,11 +905,12 @@ pub async fn screencap_recapture_last_region(app: AppHandle) -> Result<(), Strin
     };
 
     let include_cursor = capture_settings.screenshot_include_cursor;
-    let result =
-        crate::runtime::blocking(move || take_screenshot_blocking(physical, None, include_cursor))
-            .await
-            .map_err(|error| format!("screenshot worker failed: {error}"))
-            .and_then(|inner| inner);
+    let result = crate::runtime::blocking(move || {
+        take_screenshot_blocking(physical, None, include_cursor, None)
+    })
+    .await
+    .map_err(|error| format!("screenshot worker failed: {error}"))
+    .and_then(|inner| inner);
 
     match result {
         Ok(output) => {
@@ -918,7 +950,8 @@ pub async fn screencap_recapture_last_region(app: AppHandle) -> Result<(), Strin
                     status.output_path = Some(path_for_event.clone());
                     status.error = clipboard_error.clone();
                 }
-                finish_capture_session(&app_ui, 800, auto_hide_after_capture, true)?;
+                let restore_main_ui = show_main_after_screenshot || clipboard_error.is_some();
+                finish_capture_session(&app_ui, 800, auto_hide_after_capture, restore_main_ui)?;
                 recording_session::emit_recording_status(&app_ui);
                 Ok::<Option<String>, String>(clipboard_error)
             })

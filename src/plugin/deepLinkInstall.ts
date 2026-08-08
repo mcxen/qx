@@ -10,13 +10,14 @@
  *   qx://install-plugin?url=…   (legacy alias)
  *
  * Only `https:` package URLs are accepted. Install still runs the host
- * marketplace path (checksum / permissions / min_app_version).
+ * marketplace path (checksum / permissions / min_app_version / platforms).
  */
 
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { showPluginInstallStatus } from "../island";
 import { openSettings } from "../modules/settings/openSettings";
+import { marketplaceEntrySupportsPlatform } from "./platform";
 import type { InstalledPlugin, PluginIndex, PluginIndexEntry } from "./types";
 import { usePluginRegistry } from "./registry";
 
@@ -161,6 +162,13 @@ async function resolveDownloadUrl(intent: PluginInstallIntent): Promise<{
         || (p.download_url?.startsWith(base) ?? false),
     );
     if (preferred) entry = preferred;
+  }
+
+  if (!marketplaceEntrySupportsPlatform(entry)) {
+    const platforms = (entry.platforms || []).join(" · ") || "—";
+    throw new Error(
+      `Plugin “${entry.name || intent.id}” only supports ${platforms} and cannot be installed on this system.`,
+    );
   }
 
   const downloadUrl = validateHttpsPackageUrl(entry.download_url || "");

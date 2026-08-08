@@ -113,7 +113,7 @@ export interface AppearanceSettings {
   home_island_rotate_secs: number;
   home_island_cpu: boolean;
   home_island_memory: boolean;
-  /** Floating island webview (default off — dogfood). */
+  /** Floating island webview (default on so new installs can float immediately). */
   island_float_enabled: boolean;
   /** Seconds between standing module/plugin sessions in the shared island. */
   island_float_rotate_secs: number;
@@ -283,6 +283,8 @@ export interface ScreencapSettings {
   capture_confirm_mode: "refine" | "release";
   capture_delay_seconds: 0 | 3 | 5 | 10;
   auto_hide_after_capture: boolean;
+  /** When false, a successful screenshot stays fully hidden (no main panel / screencap tab). */
+  show_main_after_screenshot: boolean;
   auto_copy_to_clipboard: boolean;
   history_layout: "list" | "gallery";
   controls_pinned: boolean;
@@ -422,7 +424,7 @@ export const DEFAULT_SETTINGS: Settings = {
     home_island_rotate_secs: 8,
     home_island_cpu: true,
     home_island_memory: true,
-    island_float_enabled: false,
+    island_float_enabled: true,
     island_float_rotate_secs: 8,
     island_float_when_main_hidden: true,
     island_float_always_on_top: true,
@@ -465,6 +467,7 @@ export const DEFAULT_SETTINGS: Settings = {
     capture_confirm_mode: "refine",
     capture_delay_seconds: 0,
     auto_hide_after_capture: true,
+    show_main_after_screenshot: true,
     auto_copy_to_clipboard: true,
     history_layout: "gallery",
     controls_pinned: false,
@@ -542,7 +545,8 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   search_metadata: {},
   module_search: {
-    enabled: true,
+    // Off by default: launcher stays apps/files/commands until the user opts in.
+    enabled: false,
     modules: {
       clipboard: true,
       "qx-ai": true,
@@ -563,7 +567,20 @@ export const DEFAULT_SETTINGS: Settings = {
     { id: "clipboard", title: "Clipboard History", subtitle: "Pinned, frequent, links", target: "clipboard", enabled: true },
     { id: "screencap", title: "Screenshot & Recording Module", subtitle: "Screenshots and MP4/MOV recording", target: "screencap", enabled: true },
     { id: "documents", title: "Text Tools", subtitle: "Text, Markdown, JSON", target: "documents", enabled: true },
-    { id: "settings", title: "Qx Settings", subtitle: "Appearance and plugins", target: "settings", enabled: true },
+    {
+      id: "settings-plugins",
+      title: "Extensions",
+      subtitle: "Install, update, and manage plugins",
+      target: "settings:plugins",
+      enabled: true,
+    },
+    {
+      id: "settings",
+      title: "Qx Settings",
+      subtitle: "Appearance, shortcuts, and preferences",
+      target: "settings",
+      enabled: true,
+    },
   ],
   tray_actions: [
     { id: "status_memory", title: "Memory", enabled: true },

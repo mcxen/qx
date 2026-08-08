@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { CaptureColor, CaptureTool } from "./CaptureToolbar";
 import { captureNumberForeground, captureNumberOutline } from "./captureColor";
+import {
+  MOSAIC_BRUSH_RADIUS_CSS,
+  mosaicBlockSizeRel,
+  mosaicBrushRadiusRel,
+  paintMosaicOps,
+  paintMosaicRegionOutline,
+  type MosaicOp,
+} from "./captureMosaic";
 import {
   CAPTURE_TEXT_LINE_HEIGHT,
   CAPTURE_TEXT_VERTICAL_PADDING,
@@ -18,7 +27,7 @@ export interface Rect extends Point {
   h: number;
 }
 
-type ShapeKind = "arrow" | "rect";
+type ShapeKind = "arrow" | "rect" | "mosaic";
 
 export type CaptureAnnotation =
   | {
@@ -34,7 +43,24 @@ export type CaptureAnnotation =
     }
   | { type: "arrow"; x1: number; y1: number; x2: number; y2: number; color: CaptureColor }
   | { type: "rect"; x1: number; y1: number; x2: number; y2: number; color: CaptureColor }
-  | { type: "mosaic"; points: Point[]; color: CaptureColor }
+  | {
+      type: "mosaic";
+      mode: "region";
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      blockSize: number;
+      color: CaptureColor;
+    }
+  | {
+      type: "mosaic";
+      mode: "brush";
+      points: Point[];
+      radius: number;
+      blockSize: number;
+      color: CaptureColor;
+    }
   | { type: "number"; x: number; y: number; value: number; color: CaptureColor }
   | { type: "pen"; points: Point[]; color: CaptureColor };
 
@@ -61,37 +87,6 @@ function drawArrow(context: CanvasRenderingContext2D, x1: number, y1: number, x2
   context.stroke();
 }
 
-function drawMosaicStroke(context: CanvasRenderingContext2D, points: Point[], width: number, height: number) {
-  if (points.length === 0) return;
-  const path = new Path2D();
-  path.moveTo(points[0].x * width, points[0].y * height);
-  if (points.length === 1) {
-    path.lineTo(points[0].x * width + 0.01, points[0].y * height + 0.01);
-  } else {
-    for (let index = 1; index < points.length; index += 1) {
-      const previous = points[index - 1];
-      const current = points[index];
-      const midpointX = ((previous.x + current.x) / 2) * width;
-      const midpointY = ((previous.y + current.y) / 2) * height;
-      path.quadraticCurveTo(previous.x * width, previous.y * height, midpointX, midpointY);
-    }
-    const finalPoint = points[points.length - 1];
-    path.lineTo(finalPoint.x * width, finalPoint.y * height);
-  }
-  context.save();
-  context.lineCap = "round";
-  context.lineJoin = "round";
-  context.filter = "blur(5px)";
-  context.strokeStyle = "rgba(82, 82, 88, 0.82)";
-  context.lineWidth = 30;
-  context.stroke(path);
-  context.filter = "blur(2px)";
-  context.strokeStyle = "rgba(150, 150, 156, 0.46)";
-  context.lineWidth = 20;
-  context.stroke(path);
-  context.restore();
-}
-
 function drawNumberMarker(context: CanvasRenderingContext2D, x: number, y: number, value: number, color: string) {
   context.beginPath();
   context.fillStyle = color;
@@ -109,6 +104,26 @@ function drawNumberMarker(context: CanvasRenderingContext2D, x: number, y: numbe
   context.textBaseline = "alphabetic";
 }
 
+function annotationToMosaicOp(annotation: CaptureAnnotation): MosaicOp | null {
+  if (annotation.type !== "mosaic") return null;
+  if (annotation.mode === "region") {
+    return {
+      mode: "region",
+      x1: annotation.x1,
+      y1: annotation.y1,
+      x2: annotation.x2,
+      y2: annotation.y2,
+      blockSize: annotation.blockSize,
+    };
+  }
+  return {
+    mode: "brush",
+    points: annotation.points,
+    radius: annotation.radius,
+    blockSize: annotation.blockSize,
+  };
+}
+
 export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
   const [tool, setTool] = useState<CaptureTool>(null);
   const [color, setColor] = useState<CaptureColor>("#ff3b30");
@@ -119,8 +134,12 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
   const [penDraft, setPenDraft] = useState<Point[] | null>(null);
   const [strokeDraftKind, setStrokeDraftKind] = useState<"pen" | "mosaic" | null>(null);
   const [activeTextId, setActiveTextId] = useState<string | null>(null);
+  const [freezeVersion, setFreezeVersion] = useState(0);
   const nextTextId = useRef(1);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const freezeImageRef = useRef<HTMLImageElement | null>(null);
+  const freezeKeyRef = useRef<string>("");
+  const freezeInflightRef = useRef(0);
   const drawableAnnotationsRef = useRef<CaptureAnnotation[]>([]);
   const nextDrawableAnnotations = annotations.filter((annotation) => annotation.type !== "text");
   if (
@@ -132,6 +151,69 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
     drawableAnnotationsRef.current = nextDrawableAnnotations;
   }
   const drawableAnnotations = drawableAnnotationsRef.current;
+
+  // Freeze only when mosaic will paint. On Windows the picker is
+  // WDA_EXCLUDEFROMCAPTURE; GDI previews can be black and are rejected in Rust.
+  // Final export always re-samples after the picker is hidden.
+  const needsMosaicFreeze = tool === "mosaic"
+    || annotations.some((annotation) => annotation.type === "mosaic")
+    || shapeDraft?.kind === "mosaic"
+    || strokeDraftKind === "mosaic";
+
+  useEffect(() => {
+    if (!needsMosaicFreeze || !selection || selection.w < 8 || selection.h < 8) {
+      return;
+    }
+    if (typeof window === "undefined" || !("__TAURI_INTERNALS__" in window)) return;
+
+    const key = `${Math.round(selection.x)}:${Math.round(selection.y)}:${Math.round(selection.w)}:${Math.round(selection.h)}`;
+    if (key === freezeKeyRef.current && freezeImageRef.current) return;
+
+    const token = ++freezeInflightRef.current;
+    // Slightly longer debounce on every platform; Windows WGC first-frame can be
+    // slow right after the picker appears.
+    const timer = window.setTimeout(() => {
+      void invoke<string>("screencap_selection_preview", {
+        area: {
+          x: Math.round(selection.x),
+          y: Math.round(selection.y),
+          w: Math.round(selection.w),
+          h: Math.round(selection.h),
+        },
+      })
+        .then((base64) => {
+          if (token !== freezeInflightRef.current) return;
+          const image = new Image();
+          image.decoding = "async";
+          image.onload = () => {
+            if (token !== freezeInflightRef.current) return;
+            // Guard against tiny/blank decode failures.
+            if ((image.naturalWidth || image.width) < 2 || (image.naturalHeight || image.height) < 2) {
+              freezeImageRef.current = null;
+              return;
+            }
+            freezeImageRef.current = image;
+            freezeKeyRef.current = key;
+            setFreezeVersion((value) => value + 1);
+          };
+          image.onerror = () => {
+            if (token !== freezeInflightRef.current) return;
+            freezeImageRef.current = null;
+          };
+          image.src = `data:image/png;base64,${base64}`;
+        })
+        .catch(() => {
+          // Windows GDI may return black under content-protected picker; keep
+          // outline/dashed draft feedback until export samples the real frame.
+          if (token !== freezeInflightRef.current) return;
+          freezeImageRef.current = null;
+        });
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [needsMosaicFreeze, selection]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -148,19 +230,85 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
     context.lineJoin = "round";
     context.lineWidth = 3;
 
+    const mosaicOps: MosaicOp[] = [];
+    for (const annotation of drawableAnnotations) {
+      const op = annotationToMosaicOp(annotation);
+      if (op) mosaicOps.push(op);
+    }
+    if (shapeDraft?.kind === "mosaic") {
+      mosaicOps.push({
+        mode: "region",
+        x1: shapeDraft.start.x / selection.w,
+        y1: shapeDraft.start.y / selection.h,
+        x2: shapeDraft.end.x / selection.w,
+        y2: shapeDraft.end.y / selection.h,
+        blockSize: mosaicBlockSizeRel(Math.min(selection.w, selection.h)),
+      });
+    }
+    if (penDraft && penDraft.length > 0 && strokeDraftKind === "mosaic") {
+      mosaicOps.push({
+        mode: "brush",
+        points: penDraft.map((point) => ({
+          x: point.x / selection.w,
+          y: point.y / selection.h,
+        })),
+        radius: mosaicBrushRadiusRel(Math.min(selection.w, selection.h)),
+        blockSize: mosaicBlockSizeRel(Math.min(selection.w, selection.h)),
+      });
+    }
+
+    const freeze = freezeImageRef.current;
+    if (mosaicOps.length > 0 && freeze) {
+      paintMosaicOps(
+        context,
+        freeze,
+        freeze.naturalWidth || freeze.width,
+        freeze.naturalHeight || freeze.height,
+        selection.w,
+        selection.h,
+        mosaicOps,
+      );
+    } else if (shapeDraft?.kind === "mosaic") {
+      paintMosaicRegionOutline(
+        context,
+        shapeDraft.start.x,
+        shapeDraft.start.y,
+        shapeDraft.end.x,
+        shapeDraft.end.y,
+      );
+    } else if (penDraft && penDraft.length > 0 && strokeDraftKind === "mosaic") {
+      // Freeze not ready yet — show a dashed stroke so the user still gets feedback.
+      context.save();
+      context.strokeStyle = "rgba(200, 200, 210, 0.85)";
+      context.lineWidth = MOSAIC_BRUSH_RADIUS_CSS * 2;
+      context.setLineDash([5, 4]);
+      context.beginPath();
+      context.moveTo(penDraft[0].x, penDraft[0].y);
+      for (let i = 1; i < penDraft.length; i += 1) {
+        context.lineTo(penDraft[i].x, penDraft[i].y);
+      }
+      context.stroke();
+      context.restore();
+    }
+
     const paint = (annotation: CaptureAnnotation) => {
+      if (annotation.type === "mosaic") return;
       context.strokeStyle = annotation.color;
       context.fillStyle = annotation.color;
       if (annotation.type === "arrow") {
-        drawArrow(context, annotation.x1 * selection.w, annotation.y1 * selection.h, annotation.x2 * selection.w, annotation.y2 * selection.h);
+        drawArrow(
+          context,
+          annotation.x1 * selection.w,
+          annotation.y1 * selection.h,
+          annotation.x2 * selection.w,
+          annotation.y2 * selection.h,
+        );
       } else if (annotation.type === "rect") {
         const x = Math.min(annotation.x1, annotation.x2) * selection.w;
         const y = Math.min(annotation.y1, annotation.y2) * selection.h;
         const w = Math.abs(annotation.x2 - annotation.x1) * selection.w;
         const h = Math.abs(annotation.y2 - annotation.y1) * selection.h;
         context.strokeRect(x, y, w, h);
-      } else if (annotation.type === "mosaic") {
-        drawMosaicStroke(context, annotation.points, selection.w, selection.h);
       } else if (annotation.type === "pen") {
         if (annotation.points.length < 2) return;
         context.beginPath();
@@ -170,12 +318,18 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
         }
         context.stroke();
       } else if (annotation.type === "number") {
-        drawNumberMarker(context, annotation.x * selection.w, annotation.y * selection.h, annotation.value, annotation.color);
+        drawNumberMarker(
+          context,
+          annotation.x * selection.w,
+          annotation.y * selection.h,
+          annotation.value,
+          annotation.color,
+        );
       }
     };
 
     for (const annotation of drawableAnnotations) paint(annotation);
-    if (shapeDraft) {
+    if (shapeDraft && shapeDraft.kind !== "mosaic") {
       paint({
         type: shapeDraft.kind,
         x1: shapeDraft.start.x / selection.w,
@@ -185,15 +339,16 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
         color,
       });
     }
-    if (penDraft && penDraft.length > 0 && strokeDraftKind) {
+    if (penDraft && penDraft.length > 0 && strokeDraftKind === "pen") {
       paint({
-        type: strokeDraftKind,
+        type: "pen",
         points: penDraft.map((point) => ({ x: point.x / selection.w, y: point.y / selection.h })),
         color,
       });
     }
-  }, [color, drawableAnnotations, penDraft, selection, shapeDraft, strokeDraftKind]);
+  }, [color, drawableAnnotations, freezeVersion, penDraft, selection, shapeDraft, strokeDraftKind]);
 
+  /** Vector + text overlay only — mosaics are applied in Rust on the real frame. */
   const exportOverlayBase64 = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !selection) return undefined;
@@ -203,12 +358,52 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
     output.height = canvas.height;
     const context = output.getContext("2d");
     if (!context) return undefined;
-    context.drawImage(canvas, 0, 0);
     context.scale(ratio, ratio);
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.lineWidth = 3;
+
+    for (const annotation of annotations) {
+      if (annotation.type === "mosaic" || annotation.type === "text") continue;
+      context.strokeStyle = annotation.color;
+      context.fillStyle = annotation.color;
+      if (annotation.type === "arrow") {
+        drawArrow(
+          context,
+          annotation.x1 * selection.w,
+          annotation.y1 * selection.h,
+          annotation.x2 * selection.w,
+          annotation.y2 * selection.h,
+        );
+      } else if (annotation.type === "rect") {
+        const x = Math.min(annotation.x1, annotation.x2) * selection.w;
+        const y = Math.min(annotation.y1, annotation.y2) * selection.h;
+        const w = Math.abs(annotation.x2 - annotation.x1) * selection.w;
+        const h = Math.abs(annotation.y2 - annotation.y1) * selection.h;
+        context.strokeRect(x, y, w, h);
+      } else if (annotation.type === "pen") {
+        if (annotation.points.length < 2) continue;
+        context.beginPath();
+        context.moveTo(annotation.points[0].x * selection.w, annotation.points[0].y * selection.h);
+        for (let index = 1; index < annotation.points.length; index += 1) {
+          context.lineTo(annotation.points[index].x * selection.w, annotation.points[index].y * selection.h);
+        }
+        context.stroke();
+      } else if (annotation.type === "number") {
+        drawNumberMarker(
+          context,
+          annotation.x * selection.w,
+          annotation.y * selection.h,
+          annotation.value,
+          annotation.color,
+        );
+      }
+    }
+
     context.textAlign = "left";
     context.textBaseline = "top";
-    const paintText = (annotation: CaptureAnnotation) => {
-      if (annotation.type !== "text" || !annotation.text) return;
+    for (const annotation of annotations) {
+      if (annotation.type !== "text" || !annotation.text) continue;
       const x = annotation.x * selection.w + Math.max(2, annotation.fontSize * 0.22);
       const lineHeight = annotation.fontSize * CAPTURE_TEXT_LINE_HEIGHT;
       const y = annotation.y * selection.h + CAPTURE_TEXT_VERTICAL_PADDING;
@@ -222,10 +417,18 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
       lines.forEach((line, index) => {
         context.fillText(line, x, y + index * lineHeight);
       });
-    };
-    annotations.forEach(paintText);
+    }
     return output.toDataURL("image/png").split(",")[1];
   }, [annotations, selection]);
+
+  const exportMosaicOps = useCallback((): MosaicOp[] => {
+    const ops: MosaicOp[] = [];
+    for (const annotation of annotations) {
+      const op = annotationToMosaicOp(annotation);
+      if (op) ops.push(op);
+    }
+    return ops;
+  }, [annotations]);
 
   const pushAnnotation = useCallback((annotation: CaptureAnnotation) => {
     setAnnotations((current) => [...current, annotation]);
@@ -255,43 +458,17 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
       y: clamp(event.clientY - bounds.top, 0, selection.h),
     };
   };
-  const onCanvasMouseDown = (event: MouseEvent<HTMLCanvasElement>) => {
-    if (!selection || !tool || busy) return;
-    event.preventDefault();
-    event.stopPropagation();
-    const point = canvasPoint(event);
-    if (!point) return;
-    if (tool === "text") return;
-    if (tool === "number") {
-      pushAnnotation({ type: "number", x: point.x / selection.w, y: point.y / selection.h, value: nextNumber, color });
-      setNextNumber((value) => value + 1);
-    } else if (tool === "pen" || tool === "mosaic") {
-      setPenDraft([point]);
-      setStrokeDraftKind(tool);
-    } else {
-      setShapeDraft({ kind: tool, start: point, end: point });
-    }
-  };
-  const onCanvasMouseMove = (event: MouseEvent<HTMLCanvasElement>) => {
-    const point = canvasPoint(event);
-    if (!point) return;
-    if (penDraft) setPenDraft((current) => (current ? [...current, point] : current));
-    else if (shapeDraft) setShapeDraft({ ...shapeDraft, end: point });
-  };
-  const createTextAnnotation = useCallback((point?: Point) => {
+  /**
+   * Create an empty text box at the clicked image point and open it for editing.
+   * Callers must pass a canvas-local point — the text tool no longer auto-places
+   * at the selection center when the toolbar button is pressed.
+   */
+  const createTextAnnotation = useCallback((point: Point) => {
     if (!selection || busy) return null;
     const width = Math.min(CAPTURE_TEXT_INITIAL_WIDTH, selection.w);
     const height = Math.min(CAPTURE_TEXT_INITIAL_HEIGHT, selection.h);
-    const left = clamp(
-      point?.x ?? (selection.w - width) / 2,
-      0,
-      Math.max(0, selection.w - width),
-    );
-    const top = clamp(
-      point?.y ?? (selection.h - height) / 2,
-      0,
-      Math.max(0, selection.h - height),
-    );
+    const left = clamp(point.x, 0, Math.max(0, selection.w - width));
+    const top = clamp(point.y, 0, Math.max(0, selection.h - height));
     const id = `text-${nextTextId.current++}`;
     pushAnnotation({
       type: "text",
@@ -305,18 +482,67 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
       color,
     });
     setActiveTextId(id);
-    setTool(null);
     return id;
   }, [busy, color, pushAnnotation, selection]);
+  const onCanvasMouseDown = (event: MouseEvent<HTMLCanvasElement>) => {
+    if (!selection || !tool || busy) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const point = canvasPoint(event);
+    if (!point) return;
+    if (tool === "text") {
+      createTextAnnotation(point);
+      return;
+    }
+    if (tool === "number") {
+      pushAnnotation({
+        type: "number",
+        x: point.x / selection.w,
+        y: point.y / selection.h,
+        value: nextNumber,
+        color,
+      });
+      setNextNumber((value) => value + 1);
+    } else if (tool === "pen") {
+      setPenDraft([point]);
+      setStrokeDraftKind("pen");
+    } else if (tool === "mosaic") {
+      // Primary: region rectangle. Shift+drag: freehand brush.
+      if (event.shiftKey) {
+        setPenDraft([point]);
+        setStrokeDraftKind("mosaic");
+      } else {
+        setShapeDraft({ kind: "mosaic", start: point, end: point });
+      }
+    } else {
+      setShapeDraft({ kind: tool, start: point, end: point });
+    }
+  };
+  const onCanvasMouseMove = (event: MouseEvent<HTMLCanvasElement>) => {
+    const point = canvasPoint(event);
+    if (!point) return;
+    if (penDraft) setPenDraft((current) => (current ? [...current, point] : current));
+    else if (shapeDraft) setShapeDraft({ ...shapeDraft, end: point });
+  };
   const onCanvasMouseUp = (event: MouseEvent<HTMLCanvasElement>) => {
     if (!selection) return;
     event.preventDefault();
     event.stopPropagation();
+    const minSide = Math.min(selection.w, selection.h);
     if (penDraft) {
-      if (strokeDraftKind && penDraft.length > 0) {
+      if (strokeDraftKind === "pen" && penDraft.length > 0) {
         pushAnnotation({
-          type: strokeDraftKind,
+          type: "pen",
           points: penDraft.map((point) => ({ x: point.x / selection.w, y: point.y / selection.h })),
+          color,
+        });
+      } else if (strokeDraftKind === "mosaic" && penDraft.length > 0) {
+        pushAnnotation({
+          type: "mosaic",
+          mode: "brush",
+          points: penDraft.map((point) => ({ x: point.x / selection.w, y: point.y / selection.h })),
+          radius: mosaicBrushRadiusRel(minSide),
+          blockSize: mosaicBlockSizeRel(minSide),
           color,
         });
       }
@@ -327,30 +553,71 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
     if (!shapeDraft) return;
     const end = canvasPoint(event) ?? shapeDraft.end;
     if (Math.hypot(end.x - shapeDraft.start.x, end.y - shapeDraft.start.y) > 8) {
-      pushAnnotation({
-        type: shapeDraft.kind,
-        x1: shapeDraft.start.x / selection.w,
-        y1: shapeDraft.start.y / selection.h,
-        x2: end.x / selection.w,
-        y2: end.y / selection.h,
-        color,
-      });
+      if (shapeDraft.kind === "mosaic") {
+        pushAnnotation({
+          type: "mosaic",
+          mode: "region",
+          x1: shapeDraft.start.x / selection.w,
+          y1: shapeDraft.start.y / selection.h,
+          x2: end.x / selection.w,
+          y2: end.y / selection.h,
+          blockSize: mosaicBlockSizeRel(minSide),
+          color,
+        });
+      } else {
+        pushAnnotation({
+          type: shapeDraft.kind,
+          x1: shapeDraft.start.x / selection.w,
+          y1: shapeDraft.start.y / selection.h,
+          x2: end.x / selection.w,
+          y2: end.y / selection.h,
+          color,
+        });
+      }
     }
     setShapeDraft(null);
   };
 
-  const updateTextAnnotation = useCallback((id: string, patch: Partial<Pick<Extract<CaptureAnnotation, { type: "text" }>, "x" | "y" | "w" | "h" | "fontSize" | "text">>) => {
-    setAnnotations((current) => current.map((annotation) => annotation.type === "text" && annotation.id === id ? { ...annotation, ...patch } : annotation));
+  const updateTextAnnotation = useCallback((
+    id: string,
+    patch: Partial<Pick<Extract<CaptureAnnotation, { type: "text" }>, "x" | "y" | "w" | "h" | "fontSize" | "text">>,
+  ) => {
+    setAnnotations((current) => current.map((annotation) => (
+      annotation.type === "text" && annotation.id === id ? { ...annotation, ...patch } : annotation
+    )));
   }, []);
   const deleteTextAnnotation = useCallback((id: string) => {
     setAnnotations((current) => current.filter((annotation) => !(annotation.type === "text" && annotation.id === id)));
-    setActiveTextId((current) => current === id ? null : current);
+    setActiveTextId((current) => (current === id ? null : current));
   }, []);
 
   return {
-    tool, setTool, color, setColor, annotations, setAnnotations, redoStack, setRedoStack,
-    shapeDraft, setShapeDraft, nextNumber, setNextNumber, penDraft, setPenDraft,
-    activeTextId, setActiveTextId, canvasRef, undo, redo, onCanvasMouseDown, onCanvasMouseMove,
-    onCanvasMouseUp, createTextAnnotation, updateTextAnnotation, deleteTextAnnotation, exportOverlayBase64,
+    tool,
+    setTool,
+    color,
+    setColor,
+    annotations,
+    setAnnotations,
+    redoStack,
+    setRedoStack,
+    shapeDraft,
+    setShapeDraft,
+    nextNumber,
+    setNextNumber,
+    penDraft,
+    setPenDraft,
+    activeTextId,
+    setActiveTextId,
+    canvasRef,
+    undo,
+    redo,
+    onCanvasMouseDown,
+    onCanvasMouseMove,
+    onCanvasMouseUp,
+    createTextAnnotation,
+    updateTextAnnotation,
+    deleteTextAnnotation,
+    exportOverlayBase64,
+    exportMosaicOps,
   };
 }

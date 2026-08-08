@@ -81,7 +81,9 @@
   pointer-events: none;
 }
 
-.qx-region-picker-rect.is-tool-text,
+.qx-region-picker-rect.is-tool-text {
+  cursor: text;
+}
 .qx-region-picker-rect.is-tool-arrow,
 .qx-region-picker-rect.is-tool-rect,
 .qx-region-picker-rect.is-tool-pen,
@@ -106,7 +108,10 @@
   pointer-events: none;
 }
 
-.qx-region-picker-rect.is-tool-text .qx-region-picker-annotations,
+.qx-region-picker-rect.is-tool-text .qx-region-picker-annotations {
+  pointer-events: auto;
+  cursor: text;
+}
 .qx-region-picker-rect.is-tool-arrow .qx-region-picker-annotations,
 .qx-region-picker-rect.is-tool-rect .qx-region-picker-annotations,
 .qx-region-picker-rect.is-tool-pen .qx-region-picker-annotations,

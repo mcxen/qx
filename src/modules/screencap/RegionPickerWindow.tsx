@@ -76,7 +76,7 @@ export default function RegionPickerWindow() {
     tool, setTool, color, setColor, annotations, setAnnotations, redoStack, setRedoStack,
     shapeDraft, setShapeDraft, setNextNumber, penDraft, setPenDraft, activeTextId, setActiveTextId,
     canvasRef, undo, redo, onCanvasMouseDown, onCanvasMouseMove, onCanvasMouseUp,
-    createTextAnnotation, updateTextAnnotation, deleteTextAnnotation, exportOverlayBase64,
+    updateTextAnnotation, deleteTextAnnotation, exportOverlayBase64, exportMosaicOps,
   } = useCaptureAnnotations(selection, busy);
   const multiDisplay = picker?.multiDisplay === true;
   const multiDisplayRef = useRef(false);
@@ -284,8 +284,9 @@ export default function RegionPickerWindow() {
     setError(null);
     cancelCountdownRef.current = false;
 
-    const canvas = canvasRef.current;
-    const annotationOverlayBase64 = action === "screenshot" && annotations.length > 0 && canvas
+    const mosaicOps = action === "screenshot" ? exportMosaicOps() : [];
+    const hasVectorAnnotations = annotations.some((annotation) => annotation.type !== "mosaic");
+    const annotationOverlayBase64 = action === "screenshot" && hasVectorAnnotations
       ? exportOverlayBase64()
       : undefined;
 
@@ -363,18 +364,34 @@ export default function RegionPickerWindow() {
           showMouseClicks: action === "recording" && captureSettings.recording_show_mouse_clicks,
           microphoneId: action === "recording" ? captureSettings.recording_microphone_id : null,
           recordingMasks: action === "recording"
-            ? annotations.filter((annotation) => annotation.type === "mosaic").map((annotation) => {
+            ? annotations.flatMap((annotation) => {
+              if (annotation.type !== "mosaic") return [];
+              if (annotation.mode === "region") {
+                const x = Math.min(annotation.x1, annotation.x2);
+                const y = Math.min(annotation.y1, annotation.y2);
+                return [{
+                  x,
+                  y,
+                  w: Math.abs(annotation.x2 - annotation.x1),
+                  h: Math.abs(annotation.y2 - annotation.y1),
+                }];
+              }
+              if (annotation.points.length === 0) return [];
               const xs = annotation.points.map((point) => point.x);
               const ys = annotation.points.map((point) => point.y);
-              const minX = Math.min(...xs);
-              const minY = Math.min(...ys);
-              return { x: minX, y: minY, w: Math.max(...xs) - minX, h: Math.max(...ys) - minY };
+              const pad = annotation.radius;
+              const minX = Math.max(0, Math.min(...xs) - pad);
+              const minY = Math.max(0, Math.min(...ys) - pad);
+              const maxX = Math.min(1, Math.max(...xs) + pad);
+              const maxY = Math.min(1, Math.max(...ys) + pad);
+              return [{ x: minX, y: minY, w: maxX - minX, h: maxY - minY }];
             })
             : [],
           playSound: action === "screenshot" && captureSettings.screenshot_sound_enabled,
         },
         ocrDestination: action === "screenshot" ? (ocrDestination ?? null) : null,
         annotationOverlayBase64,
+        mosaicOps: mosaicOps.length > 0 ? mosaicOps : null,
         copyToClipboard: shouldCopy,
         dismissUi: action === "screenshot" && dismissUi,
       });
@@ -382,7 +399,7 @@ export default function RegionPickerWindow() {
       setBusy(false);
       setError(String(captureError));
     }
-  }, [annotations, busy, captureSettings, countdown, exportOverlayBase64, picker?.monitorId, selection, t]);
+  }, [annotations, busy, captureSettings, countdown, exportMosaicOps, exportOverlayBase64, picker?.monitorId, selection, t]);
 
   const selectFullScreen = useCallback(() => {
     if (busy) return;
@@ -813,7 +830,10 @@ export default function RegionPickerWindow() {
             switchPickMode(pickMode === "region" ? "fullscreen" : "region");
           } else if (key === "1") setTool("rect");
           else if (key === "2") setTool("arrow");
-          else if (key === "3") createTextAnnotation();
+          else if (key === "3") {
+            setActiveTextId(null);
+            setTool((current) => (current === "text" ? null : "text"));
+          }
           else if (key === "4") setTool("pen");
           else if (key === "5") setTool("number");
           else if (key === "6") setTool("mosaic");
@@ -903,10 +923,8 @@ export default function RegionPickerWindow() {
           onSelectRegion={() => switchPickMode("region")}
           onSelectFullscreen={selectFullScreen}
           onToolChange={(nextTool) => {
-            if (nextTool === "text") {
-              createTextAnnotation();
-              return;
-            }
+            // Text works like number markers: activate the tool first, then
+            // click on the screenshot to place an editable text box.
             setActiveTextId(null);
             setTool(nextTool);
           }}
@@ -942,7 +960,10 @@ export default function RegionPickerWindow() {
       {selection && tool && countdown === null && (
         <div className="qx-region-picker-hint is-tool-hint">
           {tool === "text"
-            ? t("screencap.picker.textHint", "Click Text to add; drag to move and use blue corners to resize")
+            ? t(
+              "screencap.picker.textHint",
+              "Click on the screenshot to place text · Enter finish · drag to move · corners resize",
+            )
             : tool === "arrow"
               ? t("screencap.picker.arrowHint", "Drag inside the selection to draw an arrow")
               : tool === "rect"
@@ -950,7 +971,10 @@ export default function RegionPickerWindow() {
                 : tool === "number"
                   ? t("screencap.picker.numberHint", "Click to place numbered step markers")
                   : tool === "mosaic"
-                    ? t("screencap.picker.mosaicHint", "Paint mosaic over an area")
+                    ? t(
+                      "screencap.picker.mosaicHint",
+                      "Drag a rectangle to pixelate · hold Shift and drag for a brush stroke",
+                    )
                     : t("screencap.picker.penHint", "Drag inside the selection to draw freehand")}
         </div>
       )}

@@ -122,6 +122,12 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
         ],
       },
       { id: "auto_hide_after_capture", label: "Hide capture toolbar after capture", type: "boolean", default: true },
+      {
+        id: "show_main_after_screenshot",
+        label: "Show Qx main window after screenshot",
+        type: "boolean",
+        default: true,
+      },
       { id: "auto_copy_to_clipboard", label: "Copy screenshots and recordings to clipboard", type: "boolean", default: true },
       { id: "controls_pinned", label: "Keep capture toolbar visible", type: "boolean", default: false },
       { id: "screenshot_sound_enabled", label: "Play screenshot sound", type: "boolean", default: true },

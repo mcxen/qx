@@ -268,7 +268,7 @@ export default function AppearanceSettings({
             onChange={(checked) => patch("appearance", { ...a, show_in_app_list: checked })}
           />
         </Row>
-        <Row title={t("appearance.windowSize", "Window Size")} description={t("appearance.windowSize.desc", "Launcher window dimensions (min 400×300).")}>
+        <Row title={t("appearance.windowSize", "Window Size")} description={t("appearance.windowSize.desc", "Launcher window dimensions (min 480×360, max 1500×882).")}>
           <div className="qx-window-size-group">
             <label className="qx-dimension-label">
               <span className="qx-dimension-label-text">{t("appearance.dimension.w", "W")}</span>
@@ -375,10 +375,10 @@ export default function AppearanceSettings({
 
       <SettingsCard title={t("appearance.externalIsland.title", "External Island Display")}>
         <Row
-          title={t("appearance.externalIsland.enabled", "Enable external display")}
+          title={t("appearance.externalIsland.enabled", "Enable floating island")}
           description={t(
             "appearance.externalIsland.enabled.desc",
-            "Allow the docked Qx Island to be floated manually and dragged anywhere. It never opens automatically.",
+            "On by default. Allow the docked Qx Island to be floated manually and dragged anywhere. It never opens automatically.",
           )}
         >
           <Toggle

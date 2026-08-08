@@ -4,6 +4,7 @@ use image::ImageEncoder;
 use std::io::BufWriter;
 
 use super::geometry::clamp_area;
+use super::mosaic::{apply_mosaic_ops, MosaicOp};
 use super::storage::{captures_dir, insert_history};
 use super::types::{RecordArea, RecordingOutput};
 use crate::display::{capture_monitor, capture_region_from_monitor};
@@ -12,14 +13,27 @@ pub(super) fn capture(
     area: RecordArea,
     annotation_overlay_base64: Option<String>,
     include_cursor: bool,
+    mosaic_ops: Option<Vec<MosaicOp>>,
 ) -> Result<RecordingOutput, String> {
     // The picker hide is dispatched synchronously to the UI thread. Keep one
     // compositor-frame grace period for Windows DWM / macOS WindowServer
     // without imposing the old fixed 120 ms latency on every screenshot.
+    // Mosaic redaction needs a clean post-hide frame; Windows layered-window
+    // teardown can lag slightly longer when the picker also hosted a freeze
+    // capture earlier in the session.
+    let has_mosaic = mosaic_ops.as_ref().is_some_and(|ops| !ops.is_empty());
     #[cfg(target_os = "windows")]
-    std::thread::sleep(std::time::Duration::from_millis(80));
+    std::thread::sleep(std::time::Duration::from_millis(if has_mosaic {
+        110
+    } else {
+        80
+    }));
     #[cfg(not(target_os = "windows"))]
-    std::thread::sleep(std::time::Duration::from_millis(24));
+    std::thread::sleep(std::time::Duration::from_millis(if has_mosaic {
+        32
+    } else {
+        24
+    }));
     let monitor = capture_monitor(area.monitor_id)?;
     let mon_w = monitor
         .width()
@@ -43,6 +57,13 @@ pub(super) fn capture(
             (area.x, area.y),
             false,
         );
+    }
+    // Pixelate against the real captured frame before drawing vector overlays so
+    // privacy redaction cannot be undone by reading through a soft blur layer.
+    // Coordinates are selection-normalized (0..1), so multi-DPI Windows scales
+    // correctly without depending on WebView devicePixelRatio.
+    if let Some(ops) = mosaic_ops.as_ref() {
+        apply_mosaic_ops(&mut image, ops);
     }
     composite_annotation_overlay(&mut image, annotation_overlay_base64.as_deref())?;
     let timestamp = Local::now().format("%Y%m%d_%H%M%S_%3f").to_string();
@@ -71,6 +92,49 @@ pub(super) fn capture(
         height,
         frame_count: 1,
     })
+}
+
+/// Capture a selection region as PNG base64 for live mosaic preview (no history).
+///
+/// Windows note: the picker uses `WDA_EXCLUDEFROMCAPTURE`. WGC can still return
+/// the desktop beneath, but GDI `BitBlt` often paints excluded windows as black
+/// boxes. Reject effectively-black frames so the frontend keeps outline-only
+/// preview rather than sampling garbage pixels. Final export is unaffected —
+/// it captures after the picker is hidden.
+pub(super) fn preview_region_base64(area: RecordArea) -> Result<String, String> {
+    let monitor = capture_monitor(area.monitor_id)?;
+    let mon_w = monitor
+        .width()
+        .map_err(|error| format!("display width: {error}"))?;
+    let mon_h = monitor
+        .height()
+        .map_err(|error| format!("display height: {error}"))?;
+    let area = clamp_area(area, mon_w, mon_h)
+        .ok_or_else(|| "Selection is outside the selected display".to_string())?;
+    let image = capture_region_from_monitor(&monitor, area.x, area.y, area.w, area.h)?;
+    // Shared black-frame detector (Windows WGC/GDI fallbacks + harmless on macOS).
+    if crate::display::frame_is_effectively_black(&image) {
+        return Err(
+            "selection preview unavailable (capture excluded the picker surface)".to_string(),
+        );
+    }
+    let mut bytes = Vec::new();
+    {
+        let writer = BufWriter::new(&mut bytes);
+        image::codecs::png::PngEncoder::new_with_quality(
+            writer,
+            image::codecs::png::CompressionType::Fast,
+            image::codecs::png::FilterType::Sub,
+        )
+        .write_image(
+            image.as_raw(),
+            image.width(),
+            image.height(),
+            image::ExtendedColorType::Rgba8,
+        )
+        .map_err(|error| format!("encode selection preview: {error}"))?;
+    }
+    Ok(BASE64.encode(bytes))
 }
 
 fn composite_annotation_overlay(
