@@ -1149,6 +1149,18 @@ img.qx-plugin-detail-icon {
   min-width: 0;
 }
 
+/* Detail-page library picker sits next to 28px size-sm buttons; keep the
+   same compact density as settings row controls (see .qx-settings-row-control). */
+.qx-plugin-install-source .qx-shadcn-select-trigger {
+  height: 28px;
+  min-height: 28px;
+  padding: 0 8px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--qx-overlay-1);
+  border-color: var(--qx-border-1);
+}
+
 .qx-plugin-install-actions {
   display: flex;
   flex-wrap: wrap;
