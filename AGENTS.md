@@ -565,6 +565,29 @@ take only one status snapshot. This no-watching rule also applies to replacement
 runs and release workflows; do not claim success until a later snapshot actually
 shows completion.
 
+## Release Cadence And Change Volume (mandatory)
+
+- At the start and end of every task, inspect the aggregate change volume from
+  the latest release tag through the current branch and working tree. Count
+  tracked source, documentation, configuration, and nested repository changes
+  as additions plus deletions; exclude `dist/`, build output, caches, and other
+  generated artifacts. Check the authoritative Qx repository and any nested
+  plugin repository that is part of the requested release.
+- If the pending aggregate change exceeds **1200 changed lines**, the task must
+  end with a release: first consolidate the relevant completed commits from
+  feature branches into the release branch, then run the release checklist,
+  create one version tag, and publish it. Do not leave a >1200-line change set
+  untagged for another iteration.
+- Even below that threshold, after **two or three task iterations** since the
+  previous release, perform a tag-and-publish pass; the third iteration is the
+  hard limit. Each release must be traceable to the exact commit used by its
+  tag, and the release notes must identify the included feature batch.
+- “All branches” means all relevant completed work in the scoped repositories,
+  not stale mirrors, generated-package branches, or unrelated experiments.
+  Audit branch tips and merge only the changes that belong to the requested
+  release; preserve unrelated work for its own branch. A nested plugin catalog
+  must be committed and pinned before the host release commit is tagged.
+
 ## Release Checklist
 
 Only run this when the user asks to release, tag, or publish.
