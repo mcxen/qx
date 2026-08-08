@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { HistoryEntry, SearchHistoryEntry } from "../store";
+import { readCachedSearchHistory, writeCachedSearchHistory } from "../home-dashboard/cache";
 
 export function useLauncherHistory({
   shouldRefreshWhenIdle,
@@ -8,7 +9,7 @@ export function useLauncherHistory({
   shouldRefreshWhenIdle: boolean;
 }) {
   const [recentLaunches, setRecentLaunches] = useState<HistoryEntry[]>([]);
-  const [recentSearches, setRecentSearches] = useState<SearchHistoryEntry[]>([]);
+  const [recentSearches, setRecentSearches] = useState<SearchHistoryEntry[]>(() => readCachedSearchHistory());
 
   const loadHistory = useCallback(async () => {
     try {
@@ -18,6 +19,7 @@ export function useLauncherHistory({
       ]);
       setRecentLaunches(launches);
       setRecentSearches(searches);
+      writeCachedSearchHistory(searches);
     } catch {
       // History is supplemental; Launcher should remain usable if it is unavailable.
     }

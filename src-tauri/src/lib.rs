@@ -678,6 +678,7 @@ pub fn run() {
             rss::rss_update_feed,
             rss::rss_remove_feed,
             rss::rss_list_articles,
+            rss::rss_dashboard_snapshot,
             rss::rss_get_article,
             rss::rss_mark_read,
             rss::rss_set_reading_progress,

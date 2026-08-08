@@ -213,6 +213,8 @@ fn default_home_dashboard_widgets() -> Vec<String> {
         "system.cpu",
         "system.memory",
         "system.power",
+        "system.network",
+        "rss.unread-latest",
     ]
     .into_iter()
     .map(str::to_string)

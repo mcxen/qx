@@ -1,7 +1,11 @@
 import type { HomeDashboardWidgetId } from "../modules/settings/store";
-import type { InstalledPlugin, PluginHomeWidgetSource } from "../plugin/types";
+import type { InstalledPlugin, PluginHomeWidgetSource, PluginLocale } from "../plugin/types";
 import type { LucideIcon } from "lucide-react";
-import { Cpu, MemoryStick, Monitor, Network, Pin, Zap } from "lucide-react";
+import { Cpu, MemoryStick, Monitor, Network, Pin, Rss, Zap } from "lucide-react";
+import {
+  dashboardProviderWidgetId,
+  resolveSurfaceProviders,
+} from "../plugin/surfaceProviders";
 
 type Translate = (key: string, fallback: string) => string;
 
@@ -19,10 +23,15 @@ export const HOME_DASHBOARD_WIDGET_IDS: HomeDashboardWidgetId[] = [
   "system.power",
   "system.network",
   "system.display-brightness",
+  "rss.unread-latest",
 ];
 
-export function homeDashboardWidgetOptions(t: Translate): HomeDashboardWidgetOption[] {
-  return [
+export function homeDashboardWidgetOptions(
+  t: Translate,
+  plugins: readonly InstalledPlugin[] = [],
+  locale: PluginLocale = "en",
+): HomeDashboardWidgetOption[] {
+  const options: HomeDashboardWidgetOption[] = [
     {
       id: "launcher.pinned",
       title: t("launcher.home.pinned", "Pinned Applications"),
@@ -31,7 +40,7 @@ export function homeDashboardWidgetOptions(t: Translate): HomeDashboardWidgetOpt
     },
     {
       id: "system.cpu",
-      title: "CPU",
+      title: t("launcher.home.cpu", "CPU"),
       description: t("launcher.home.cpu.desc", "Current processor utilization."),
       icon: Cpu,
     },
@@ -59,11 +68,33 @@ export function homeDashboardWidgetOptions(t: Translate): HomeDashboardWidgetOpt
       description: t("launcher.home.displayBrightness.desc", "Current brightness across connected displays."),
       icon: Monitor,
     },
+    {
+      id: "rss.unread-latest",
+      title: t("launcher.home.rss", "Unread RSS"),
+      description: t("launcher.home.rss.desc", "Latest unread posts from your RSS feeds."),
+      icon: Rss,
+    },
   ];
+  const providers = resolveSurfaceProviders(plugins, "home", locale)
+    .filter((provider) => provider.declaration.source === "rss.unread-latest");
+  for (const provider of providers) {
+    options.push({
+      id: dashboardProviderWidgetId(provider.key),
+      title: provider.title,
+      description: provider.declaration.descriptions?.[locale]
+        || provider.declaration.description
+        || "",
+      icon: Rss,
+    });
+  }
+  return options;
 }
 
-export function sanitizeHomeDashboardWidgets(value: readonly string[] | undefined): HomeDashboardWidgetId[] {
-  const allowed = new Set(HOME_DASHBOARD_WIDGET_IDS);
+export function sanitizeHomeDashboardWidgets(
+  value: readonly string[] | undefined,
+  additionalIds: readonly HomeDashboardWidgetId[] = [],
+): HomeDashboardWidgetId[] {
+  const allowed = new Set<HomeDashboardWidgetId>([...HOME_DASHBOARD_WIDGET_IDS, ...additionalIds]);
   const widgets = Array.from(new Set((value ?? []).filter((id): id is HomeDashboardWidgetId => allowed.has(id as HomeDashboardWidgetId))));
   return widgets.length > 0 ? widgets : ["launcher.pinned"];
 }

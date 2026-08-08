@@ -177,6 +177,10 @@ pub struct PluginSurfaceProviderDeclaration {
     #[serde(default)]
     pub titles: std::collections::HashMap<String, String>,
     #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub descriptions: std::collections::HashMap<String, String>,
+    #[serde(default)]
     pub default_enabled: bool,
 }
 
@@ -342,10 +346,29 @@ fn validate_manifest_surface_providers(
         if !ids.insert(id.to_string()) {
             return Err(format!("duplicate plugin surface provider: {id}"));
         }
-        if provider.source != "system.display-brightness" {
+        if !matches!(
+            provider.source.as_str(),
+            "system.display-brightness" | "rss.unread-latest"
+        ) {
             return Err(format!(
                 "unsupported surface provider source: {}",
                 provider.source
+            ));
+        }
+        if provider.source == "rss.unread-latest"
+            && ["en", "zh-CN"].iter().any(|locale| {
+                provider
+                    .titles
+                    .get(*locale)
+                    .map_or(true, |value| value.trim().is_empty())
+                    || provider
+                        .descriptions
+                        .get(*locale)
+                        .map_or(true, |value| value.trim().is_empty())
+            })
+        {
+            return Err(format!(
+                "rss.unread-latest provider requires non-empty titles and descriptions for en and zh-CN: {id}"
             ));
         }
         if provider

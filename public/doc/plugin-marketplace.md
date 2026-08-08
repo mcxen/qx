@@ -77,7 +77,8 @@ my-plugin/
     { "id": "cpu", "source": "system.cpu" }
   ],
   "surfaceProviders": [
-    { "id": "brightness", "source": "system.display-brightness", "surfaces": ["tray", "home"], "presentation": "standard" }
+    { "id": "brightness", "source": "system.display-brightness", "surfaces": ["tray", "home"], "presentation": "standard" },
+    { "id": "rss", "source": "rss.unread-latest", "surfaces": ["home"], "titles": { "en": "Unread RSS", "zh-CN": "未读 RSS" }, "descriptions": { "en": "Latest unread feed posts", "zh-CN": "订阅源中的最新未读帖子" } }
   ],
   "min_app_version": "0.6.28",
   "pubkey": "",
@@ -104,7 +105,7 @@ my-plugin/
 | `panel` | 否 | 注册面板入口；`title` 应省略或与 `name` 相同，以便宿主使用 `names` 本地化 |
 | `storage.cacheTargets` | 否 | 可重建缓存的精确 persist key 白名单 |
 | `homeWidgets` | 否 | 将宿主支持的语义系统数据源关联到本插件 Panel；不提供视觉代码 |
-| `surfaceProviders` | 否 | 声明宿主登记的轻量 Tray/Home 数据源；可用 `presentation` 选择 `compact` / `standard` / `wide`，不加载插件入口、不提供视觉代码 |
+| `surfaceProviders` | 否 | 声明宿主登记的轻量 Tray/Home 数据源；当前 Home 支持 `rss.unread-latest`，可用 `presentation` 选择 `compact` / `standard` / `wide`，不加载插件入口、不提供视觉代码 |
 | `min_app_version` | 否 | 最低 Qx 版本 |
 | `pubkey`, `signature` | 否 | 可选 ed25519 签名 |
 
@@ -150,6 +151,15 @@ my-plugin/
 `system.network`、`system.display-brightness`。`id` 在插件内稳定且唯一。该声明表示用户激活对应 Home 卡片时可打开
 插件 Panel；数据采样、缓存、布局、主题、键盘和点击反馈都由 Qx 宿主负责。插件不能通过
 该字段注入 DOM、CSS、颜色、刷新周期或固定像素尺寸。未安装插件时基础系统卡片仍可使用。
+
+### Home Surface Providers
+
+`surfaceProviders[]` 是不启动插件运行时的宿主数据端口。当前登记的 `rss.unread-latest` 返回
+RSS 未读总数和有界的最新帖子投影，Qx 负责 SQLite 读取、本地缓存、节流、空态和卡片绘制。
+插件可以声明 `surfaces: ["home"]` 让用户在 Home 三点菜单中选择该卡片；`titles`、
+`descriptions` 必须同时提供 `en` 与 `zh-CN`，旧包缺少这些元数据时宿主不会按插件 id 维护
+内置中文映射。Provider 不得携带命令、私有轮询、HTML/CSS 或任意数据结构；需要新的信息
+能力时，先向 Qx 增加一个有界、可缓存、跨平台的宿主适配器和对应 manifest source。
 
 默认导出和 Workbench 最小示例见
 [`plugin-development-guide.md`](./plugin-development-guide.md)。

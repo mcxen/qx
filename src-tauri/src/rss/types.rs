@@ -52,6 +52,28 @@ pub struct Article {
     pub created_at: i64,
 }
 
+/// Small, host-rendered RSS projection for Launcher Home and other lightweight
+/// surfaces. It intentionally omits article bodies and images so the startup
+/// path can cache it without pulling a full RSS panel payload into memory.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RssDashboardArticle {
+    pub id: i64,
+    pub feed_id: i64,
+    pub feed_title: String,
+    pub title: String,
+    pub link: String,
+    pub published_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RssDashboardSnapshot {
+    pub unread_count: i64,
+    pub articles: Vec<RssDashboardArticle>,
+    pub generated_at: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct ParsedFeed {
     pub title: String,

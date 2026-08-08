@@ -5,9 +5,68 @@
     <link rel="icon" type="image/svg+xml" href="/qx-tray.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Qx</title>
+    <style>
+      html,
+      body {
+        background: #f4f5f7;
+      }
+
+      #qx-boot-surface {
+        position: fixed;
+        z-index: 2147483647;
+        inset: 0;
+        pointer-events: none;
+        background: #f4f5f7;
+        opacity: 1;
+        transition: opacity 140ms ease-out;
+      }
+
+      #qx-boot-surface::before,
+      #qx-boot-surface::after {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        display: block;
+        width: 10px;
+        height: 10px;
+        border-radius: 3px;
+        background: #2f6fed;
+        content: "";
+        transform: translate(-50%, -50%) rotate(45deg);
+      }
+
+      #qx-boot-surface::after {
+        width: 28px;
+        height: 28px;
+        opacity: 0.14;
+      }
+
+      #qx-boot-surface.is-ready {
+        opacity: 0;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        html,
+        body,
+        #qx-boot-surface {
+          background: #17181b;
+        }
+
+        #qx-boot-surface::before {
+          background: #8db2ff;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #qx-boot-surface {
+          transition: none;
+        }
+      }
+    </style>
   </head>
 
   <body>
+    <div id="qx-boot-surface" aria-hidden="true"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

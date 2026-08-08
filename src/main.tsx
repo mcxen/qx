@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, type ReactNode } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { installGlobalQxLogging } from "./lib/logger";
@@ -29,30 +29,45 @@ const isUpdateProgress = surface === "update-progress";
 
 document.documentElement.classList.toggle("qx-loading-lab-page", isLoadingLab);
 
+function BootSurfaceGuard({ children }: { children: ReactNode }) {
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const surface = document.getElementById("qx-boot-surface");
+      surface?.classList.add("is-ready");
+      window.setTimeout(() => surface?.remove(), 180);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  return <>{children}</>;
+}
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
-    {isUpdateProgress ? (
-      <ThemeProvider>
-        <UpdateProgressApp />
-      </ThemeProvider>
-    ) : isTrayPanel ? (
-      <TrayPanelApp />
-    ) : isRecordingControls ? (
-      <ThemeProvider>
-        <RecordingControlWindow />
-      </ThemeProvider>
-    ) : isRegionPickerShade ? (
-      <RegionPickerShadeWindow />
-    ) : isRegionPicker ? (
-      <RegionPickerWindow />
-    ) : isIslandFloat ? (
-      <IslandFloatApp />
-    ) : isLoadingLab ? (
-      <ThemeProvider>
-        <LoadingMarkLab />
-      </ThemeProvider>
-    ) : (
-      <App />
-    )}
+    <BootSurfaceGuard>
+      {isUpdateProgress ? (
+        <ThemeProvider>
+          <UpdateProgressApp />
+        </ThemeProvider>
+      ) : isTrayPanel ? (
+        <TrayPanelApp />
+      ) : isRecordingControls ? (
+        <ThemeProvider>
+          <RecordingControlWindow />
+        </ThemeProvider>
+      ) : isRegionPickerShade ? (
+        <RegionPickerShadeWindow />
+      ) : isRegionPicker ? (
+        <RegionPickerWindow />
+      ) : isIslandFloat ? (
+        <IslandFloatApp />
+      ) : isLoadingLab ? (
+        <ThemeProvider>
+          <LoadingMarkLab />
+        </ThemeProvider>
+      ) : (
+        <App />
+      )}
+    </BootSurfaceGuard>
   </React.StrictMode>,
 );

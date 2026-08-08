@@ -56,10 +56,12 @@ Shell chrome。
 
 ### Launcher Home 组件
 
-Home 组件不是缩小版 Custom Panel。插件只能通过 `manifest.homeWidgets[]` 将宿主支持的
-语义系统数据源关联到自己的 Panel；Qx 统一绘制卡片、读取共享异步采样、处理窗口缩放、
-焦点和主题。插件不得提交 Home HTML/CSS、像素尺寸、轮询计时器或点击位移动画。完整字段
-见 [`plugin-marketplace.md`](./plugin-marketplace.md)。
+Home 组件不是缩小版 Custom Panel。插件通过 `manifest.homeWidgets[]` 将宿主支持的语义
+系统数据源关联到自己的 Panel；如果要让宿主直接绘制 Home 信息卡片，则使用
+`manifest.surfaceProviders[]` 的已登记语义源（当前包括 `rss.unread-latest`）。Qx 统一绘制
+卡片、读取共享异步采样或 RSS 快照缓存、处理窗口缩放、焦点和主题。插件不得提交 Home
+HTML/CSS、像素尺寸、轮询计时器、任意 JSON 或点击位移动画。完整字段见
+[`plugin-marketplace.md`](./plugin-marketplace.md)。
 
 列表应保持原生桌面密度：
 

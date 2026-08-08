@@ -58,7 +58,10 @@ The reusable implementation is `src/tray/surface.ts`, `src/tray/TraySurface.tsx`
 
 `surfaceProviders[].presentation` is `compact`, `standard`, or `wide`. A provider source is accepted only when Qx registers a matching adapter in `src/plugin/surfaceProviders.ts` and validates it in the Rust manifest boundary. The adapter owns reads and mutations against a core service; the Tray renderer owns polling cadence, optimistic state, keyboard/accessibility behavior, and visual composition.
 
-Home may consume the same adapter snapshot, but it renders Home cards rather than embedding Tray DOM. Opening the full plugin panel remains an explicit user action and is the point where Qx may lazily start the plugin runtime.
+Home may consume the same adapter snapshot, but it renders Home cards rather than embedding Tray DOM.
+The host currently registers `rss.unread-latest` as a bounded RSS snapshot source for Home; the
+snapshot is cached before refresh and never starts a plugin runtime. Opening the full plugin panel
+remains an explicit user action and is the point where Qx may lazily start the plugin runtime.
 
 Brightness mutations are optimistic in the control surface but are written to
 the native display service through a latest-target ramp: each hardware write

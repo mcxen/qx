@@ -87,6 +87,7 @@ import { isBuiltinModuleEnabled } from "./modules/moduleAvailability";
 import { closeSettings, openSettings } from "./modules/settings/openSettings";
 import { ensureCaptureToastListener } from "./modules/screencap/store";
 import { openSystemPath } from "./system";
+import { readCachedHomeAppResults, writeCachedHomeAppResults } from "./home-dashboard/cache";
 import "./App.css";
 
 // Clipboard is a core module: eager import (no React.lazy) so shortcut open never
@@ -140,11 +141,12 @@ let lastEmptyAppsFetchAt = 0;
  * Last successful empty-query home list. Survives tab switches and brief store
  * empties so Option+Space can paint instantly while a background refresh runs.
  */
-let lastHomeAppResults: AppEntry[] = [];
+let lastHomeAppResults: AppEntry[] = readCachedHomeAppResults();
 
 function rememberHomeAppResults(entries: AppEntry[]): void {
   if (entries.length === 0) return;
   lastHomeAppResults = entries;
+  writeCachedHomeAppResults(entries);
 }
 
 function paintHomeAppResults(

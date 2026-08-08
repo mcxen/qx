@@ -173,7 +173,7 @@ Manifest 只声明包元数据、入口、命令、面板、权限与兼容范�
 | 本机命令 | `context.cli` | `child_process` |
 | 宿主命令 | `context.invoke` | 猜测 Tauri 内部实现 |
 | 进度与快捷反馈 | `context.island` | 自建悬浮窗口 |
-| Launcher Home 入口 | `manifest.homeWidgets[]`（受支持语义源） | 自绘首页卡片、私有轮询 |
+| Launcher Home 入口 | `manifest.homeWidgets[]`（把宿主源关联到插件 Panel）或 `manifest.surfaceProviders[]`（把受支持轻量信息源透出到 Home） | 自绘首页卡片、私有轮询 |
 | 托盘状态 | `context.tray` | 直接调用系统托盘库 |
 | Tray/Home 标准控件 | `manifest.surfaceProviders[]`（受支持语义源） | 为常驻展示加载完整 Panel 运行时 |
 | 翻译 | `context.i18n` | 硬编码单一语言 UI |
@@ -186,8 +186,13 @@ Manifest 只声明包元数据、入口、命令、面板、权限与兼容范�
 能力必须在 Manifest 中申请最小权限。无权限与能力不可用都应返回可解释错误，
 而不是伪造成功或退回危险的通用执行。
 
-Home 声明只负责把宿主系统数据源关联到插件 Panel。CPU、内存、电源和网络卡片由 Qx
-共享采样并统一渲染；插件不要重复请求数据、注入视觉代码或指定窗口尺寸。
+`homeWidgets[]` 只负责把宿主系统数据源关联到插件 Panel。若插件希望在 Launcher Home
+直接提供一张宿主卡片，应声明 `surfaceProviders[]`，并且只能使用 Qx 已登记的语义源。
+当前可用的 Home 信息源包括 `rss.unread-latest`：Qx 统一读取 RSS 未读快照、先画缓存、
+节流刷新并绘制最新帖子；插件只声明稳定 id、双语标题/说明和 `surfaces: ["home"]`，不提交
+数据请求、DOM、CSS、轮询周期或尺寸。展示 Home/Tray Provider 不会启动完整插件运行时；
+点击后才按需进入 RSS 模块或插件 Panel。新增信息能力必须先在宿主注册原子适配器，再加入
+Manifest 校验，禁止用一个泛化 JSON 卡片端口绕过这个边界。
 
 ## 5. Panel 生命周期
 

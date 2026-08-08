@@ -1,16 +1,26 @@
-import { BatteryCharging, BatteryMedium, Cpu, MemoryStick, Monitor, Network, Pin, Search } from "lucide-react";
+import { BatteryCharging, BatteryMedium, Cpu, MemoryStick, Monitor, Network, Pin, Rss, Search } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { LauncherAppIcon } from "../ResultsList";
 import { useIslandData, type SystemStatsSnapshot } from "../home-island";
 import { useLocale, useT } from "../i18n";
 import { useSettingsStore } from "../modules/settings/store";
 import { usePluginRegistry } from "../plugin/registry";
+import {
+  dashboardProviderWidgetId,
+  readRssDashboardProvider,
+  resolveSurfaceProviders,
+  readDisplayBrightnessProvider,
+  type ResolvedSurfaceProvider,
+  type DisplayBrightnessProviderItem,
+  type RssDashboardSnapshot,
+} from "../plugin/surfaceProviders";
 import { useDisplayName } from "../search/appDisplay";
 import { isEntryPinned, metadataKeyForEntry } from "../search/searchMetadata";
 import type { AppEntry, SearchHistoryEntry } from "../store";
 import { homeDashboardWidgetOptions, homeWidgetProvider, sanitizeHomeDashboardWidgets } from "./catalog";
+import { readCachedRssDashboardSnapshot, writeCachedRssDashboardSnapshot } from "./cache";
 import LauncherHomePopover from "../launcher/LauncherHomePopover";
-import { readDisplayBrightnessProvider, type DisplayBrightnessProviderItem } from "../plugin/surfaceProviders";
 
 function clampPercent(value: number | null | undefined): number {
   return Math.min(100, Math.max(0, Number(value) || 0));
@@ -59,6 +69,75 @@ function MetricCard({
   );
 }
 
+function formatRssArticleTime(timestamp: number, locale: string): string {
+  if (!timestamp) return "";
+  try {
+    return new Intl.DateTimeFormat(locale, {
+      month: "numeric",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(timestamp * 1000));
+  } catch {
+    return "";
+  }
+}
+
+function RssDashboardCard({
+  id,
+  title,
+  snapshot,
+  locale,
+  rssLabel,
+  untitledLabel,
+  loadingLabel,
+  onOpen,
+}: {
+  id: string;
+  title: string;
+  snapshot: RssDashboardSnapshot | null;
+  locale: string;
+  rssLabel: string;
+  untitledLabel: string;
+  loadingLabel: string;
+  onOpen: () => void;
+}) {
+  return (
+    <section className="qx-home-widget qx-home-rss" data-widget-id={id}>
+      <header className="qx-home-widget-header">
+        <span className="qx-home-widget-heading">
+          <Rss size={14} strokeWidth={2.1} aria-hidden="true" />
+          <span className="qx-home-widget-title">{title}</span>
+        </span>
+        <span className="qx-home-widget-count">{snapshot ? snapshot.unreadCount : "—"}</span>
+      </header>
+      {snapshot && snapshot.articles.length > 0 ? (
+        <div className="qx-home-rss-list">
+          {snapshot.articles.map((article) => (
+            <button
+              key={`${id}-${article.id}`}
+              type="button"
+              className="qx-home-rss-item"
+              onClick={onOpen}
+              title={article.link || article.title}
+            >
+              <span className="qx-home-rss-item-title">{article.title || untitledLabel}</span>
+              <span className="qx-home-rss-item-meta">
+                {article.feedTitle || rssLabel}
+                {article.publishedAt > 0 && ` · ${formatRssArticleTime(article.publishedAt, locale)}`}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="qx-home-widget-empty">
+          <span>{snapshot ? untitledLabel : loadingLabel}</span>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function HomeDashboard({
   items,
   recentSearches,
@@ -79,7 +158,18 @@ export default function HomeDashboard({
   const getDisplayName = useDisplayName();
   const { settings, patch } = useSettingsStore();
   const plugins = usePluginRegistry((state) => state.plugins);
-  const enabled = sanitizeHomeDashboardWidgets(settings.appearance.home_dashboard_widgets);
+  const homeProviders = useMemo(
+    () => resolveSurfaceProviders(plugins, "home", locale),
+    [locale, plugins],
+  );
+  const homeProviderWidgetIds = useMemo(
+    () => homeProviders.map((provider) => dashboardProviderWidgetId(provider.key)),
+    [homeProviders],
+  );
+  const enabled = useMemo(
+    () => sanitizeHomeDashboardWidgets(settings.appearance.home_dashboard_widgets, homeProviderWidgetIds),
+    [homeProviderWidgetIds, settings.appearance.home_dashboard_widgets],
+  );
   const channels = useMemo(() => [
     ...(enabled.some((id) => id === "system.cpu" || id === "system.memory") ? ["stats" as const] : []),
     ...(enabled.includes("system.power") ? ["power" as const] : []),
@@ -87,6 +177,48 @@ export default function HomeDashboard({
   ], [enabled.join("|")]);
   const data = useIslandData(channels);
   const [displayBrightness, setDisplayBrightness] = useState<DisplayBrightnessProviderItem[]>([]);
+  const rssWidgetIds = useMemo(
+    () => [
+      ...(enabled.includes("rss.unread-latest") ? ["rss.unread-latest"] : []),
+      ...homeProviders
+        .filter((provider) => provider.declaration.source === "rss.unread-latest")
+        .map((provider) => dashboardProviderWidgetId(provider.key))
+        .filter((id) => enabled.includes(id)),
+    ],
+    [enabled, homeProviders],
+  );
+  const rssEnabled = rssWidgetIds.length > 0;
+  const [rssSnapshot, setRssSnapshot] = useState<RssDashboardSnapshot | null>(() => readCachedRssDashboardSnapshot());
+  useEffect(() => {
+    if (!rssEnabled) return;
+    let cancelled = false;
+    const refresh = async () => {
+      try {
+        const snapshot = await readRssDashboardProvider();
+        if (cancelled) return;
+        setRssSnapshot(snapshot);
+        writeCachedRssDashboardSnapshot(snapshot);
+      } catch {
+        // Keep the last usable snapshot visible when RSS is unavailable.
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 60_000);
+    let removeRefreshListener: (() => void) | undefined;
+    if ("__TAURI_INTERNALS__" in window) {
+      void listen<{ phase?: string }>("rss:refresh-progress", (event) => {
+        if (event.payload.phase === "finished") void refresh();
+      }).then((unlisten) => {
+        if (cancelled) unlisten();
+        else removeRefreshListener = unlisten;
+      }).catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      removeRefreshListener?.();
+    };
+  }, [rssEnabled]);
   useEffect(() => {
     if (!enabled.includes("system.display-brightness")) return;
     let cancelled = false;
@@ -117,6 +249,15 @@ export default function HomeDashboard({
     const provider = homeWidgetProvider(source, plugins);
     return provider ? () => onNavigate(`plugin:${provider.id}`) : undefined;
   };
+  const selectedRssProviders = homeProviders.filter((provider) => {
+    const id = dashboardProviderWidgetId(provider.key);
+    return provider.declaration.source === "rss.unread-latest" && enabled.includes(id);
+  });
+  const openProvider = (provider: ResolvedSurfaceProvider) => {
+    onNavigate(provider.pluginId && provider.declaration.source === "rss.unread-latest" && plugins.find((plugin) => plugin.id === provider.pluginId)?.manifest?.panel
+      ? `plugin:${provider.pluginId}`
+      : "rss");
+  };
 
   return (
     <div className="qx-home-dashboard" data-qx-region="launcher-home" data-qx-region-initial="true">
@@ -134,7 +275,7 @@ export default function HomeDashboard({
                   <LauncherHomePopover
                     entries={items}
                     homeWidgets={enabled}
-                    widgetOptions={homeDashboardWidgetOptions(t)}
+                    widgetOptions={homeDashboardWidgetOptions(t, plugins, locale)}
                     onToggleWidget={(id, enabledNext) => {
                       const widgets = enabledNext
                         ? [...enabled, id]
@@ -183,7 +324,7 @@ export default function HomeDashboard({
             {enabled.includes("system.cpu") && (
               <MetricCard
                 id="system.cpu"
-                title="CPU"
+                title={t("launcher.home.cpu", "CPU")}
                 value={data.ready.stats && data.stats ? `${number.format(data.stats.cpu)}%` : "—"}
                 detail={t("launcher.home.cpu.live", "Current utilization")}
                 progress={data.stats?.cpu}
@@ -245,6 +386,31 @@ export default function HomeDashboard({
               );
             })()}
           </div>
+          {enabled.includes("rss.unread-latest") && (
+            <RssDashboardCard
+              id="rss.unread-latest"
+              title={t("launcher.home.rss", "Unread RSS")}
+              snapshot={rssSnapshot}
+              locale={locale}
+              rssLabel={t("launcher.rss", "RSS Reader")}
+              untitledLabel={t("launcher.home.rss.empty", "No unread RSS posts")}
+              loadingLabel={t("launcher.home.rss.loading", "Reading RSS updates")}
+              onOpen={() => onNavigate("rss")}
+            />
+          )}
+          {selectedRssProviders.map((provider) => (
+            <RssDashboardCard
+              key={dashboardProviderWidgetId(provider.key)}
+              id={dashboardProviderWidgetId(provider.key)}
+              title={provider.title}
+              snapshot={rssSnapshot}
+              locale={locale}
+              rssLabel={t("launcher.rss", "RSS Reader")}
+              untitledLabel={t("launcher.home.rss.empty", "No unread RSS posts")}
+              loadingLabel={t("launcher.home.rss.loading", "Reading RSS updates")}
+              onOpen={() => openProvider(provider)}
+            />
+          ))}
         </div>
 
         <section className="qx-home-widget qx-home-recent-searches" data-widget-id="launcher.recent-searches">

@@ -39,8 +39,9 @@ context.system.networkCounters() → 字节计数（插件自己算速率）
 }
 ```
 
-当前登记源为 `system.display-brightness`。Tray 和 Launcher Home 消费同一适配器契约；
-读取、写入、节流、平台差异和错误均由宿主负责。设置中的 `tray_providers` 只保存稳定的
+当前登记源为 `system.display-brightness`；Launcher Home 另支持 `rss.unread-latest`，由 RSS
+快照端口提供未读计数和最新帖子。Tray 和 Launcher Home 消费同一适配器契约；读取、缓存、
+写入、节流、平台差异和错误均由宿主负责。设置中的 `tray_providers` 只保存稳定的
 `<plugin-id>:<provider-id>`、开关与数组顺序。声明 Provider 且没有 interval 或已启用全局
 快捷键的插件采用 manifest-only 懒加载，首次打开 Panel/执行命令时才创建运行时。
 

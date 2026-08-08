@@ -12,7 +12,7 @@ use std::time::Duration;
 use tauri::{command, AppHandle, Emitter, Manager, State};
 
 use storage::RssDb;
-use types::{Article, Feed, Folder};
+use types::{Article, Feed, Folder, RssDashboardSnapshot};
 
 use crate::settings;
 
@@ -300,6 +300,17 @@ pub fn rss_list_articles(
         storage::list_articles(conn, feed_id, only_unread, query.as_deref())
             .map_err(|e| format!("{e}"))
     })
+}
+
+#[command]
+pub async fn rss_dashboard_snapshot(
+    state: State<'_, RssDb>,
+    limit: Option<u32>,
+) -> Result<RssDashboardSnapshot, String> {
+    with_db_async(&state, move |conn| {
+        storage::dashboard_snapshot(conn, limit.unwrap_or(6) as usize).map_err(|e| format!("{e}"))
+    })
+    .await
 }
 
 #[command]

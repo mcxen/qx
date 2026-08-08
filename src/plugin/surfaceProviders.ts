@@ -20,6 +20,21 @@ export interface DisplayBrightnessProviderItem {
   error?: string | null;
 }
 
+export interface RssDashboardArticle {
+  id: number;
+  feedId: number;
+  feedTitle: string;
+  title: string;
+  link: string;
+  publishedAt: number;
+}
+
+export interface RssDashboardSnapshot {
+  unreadCount: number;
+  articles: RssDashboardArticle[];
+  generatedAt: number;
+}
+
 export interface ResolvedSurfaceProvider {
   key: string;
   pluginId: string;
@@ -51,6 +66,10 @@ export function nextBrightnessRampValue(current: number, target: number): number
 
 export function providerKey(pluginId: string, providerId: string): string {
   return `${pluginId}:${providerId}`;
+}
+
+export function dashboardProviderWidgetId(key: string): `provider:${string}` {
+  return `provider:${key}`;
 }
 
 export function resolveSurfaceProviders(
@@ -102,6 +121,9 @@ export const surfaceProviderAdapters = {
     DisplayBrightnessProviderItem[],
     { id: string; value: number }
   >,
+  "rss.unread-latest": {
+    read: () => invoke<RssDashboardSnapshot>("rss_dashboard_snapshot", { limit: 6 }),
+  } satisfies LightweightSurfaceProviderAdapter<RssDashboardSnapshot>,
 } as const;
 
 export async function readDisplayBrightnessProvider(): Promise<DisplayBrightnessProviderItem[]> {
@@ -110,4 +132,8 @@ export async function readDisplayBrightnessProvider(): Promise<DisplayBrightness
 
 export async function writeDisplayBrightnessProvider(id: string, value: number): Promise<void> {
   await surfaceProviderAdapters["system.display-brightness"].write({ id, value });
+}
+
+export async function readRssDashboardProvider(): Promise<RssDashboardSnapshot> {
+  return surfaceProviderAdapters["rss.unread-latest"].read();
 }

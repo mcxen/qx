@@ -228,6 +228,63 @@ button.qx-home-widget:focus-visible,
   gap: 10px;
 }
 
+.qx-home-rss {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 12px;
+}
+
+.qx-home-rss-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  gap: 3px;
+}
+
+.qx-home-rss-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: var(--qx-control-radius);
+  background: transparent;
+  color: var(--qx-text-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.qx-home-rss-item:hover {
+  border-color: var(--qx-border-1);
+  background: var(--qx-bg-component-2);
+}
+
+.qx-home-rss-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.qx-home-rss-item-title {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 550;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-home-rss-item-meta {
+  overflow: hidden;
+  color: var(--qx-text-tertiary);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .qx-home-metric {
   position: relative;
   display: grid;

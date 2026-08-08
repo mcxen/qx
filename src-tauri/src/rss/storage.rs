@@ -2,7 +2,7 @@ use rusqlite::{params, Connection};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use super::types::{Article, Feed, Folder};
+use super::types::{Article, Feed, Folder, RssDashboardArticle, RssDashboardSnapshot};
 
 /// Managed Tauri state. Connection may be `None` if the first open failed;
 /// callers reconnect lazily via `ensure_open`.
@@ -544,6 +544,49 @@ pub fn list_articles(
     Ok(out)
 }
 
+/// Return one bounded, atomic projection for lightweight host surfaces.
+/// Bodies, summaries and images stay out of this query; opening the RSS panel
+/// remains the explicit path for full article data.
+pub fn dashboard_snapshot(
+    conn: &Connection,
+    limit: usize,
+) -> rusqlite::Result<RssDashboardSnapshot> {
+    let unread_count = conn.query_row(
+        "SELECT COUNT(*) FROM rss_articles WHERE is_read = 0",
+        [],
+        |row| row.get(0),
+    )?;
+    let limit = i64::try_from(limit.clamp(1, 8)).unwrap_or(8);
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.feed_id, COALESCE(f.title, ''), COALESCE(a.title, ''),
+                COALESCE(a.link, ''), COALESCE(a.published_at, 0)
+         FROM rss_articles a
+         INNER JOIN rss_feeds f ON f.id = a.feed_id
+         WHERE a.is_read = 0
+         ORDER BY a.published_at DESC NULLS LAST, a.id DESC
+         LIMIT ?1",
+    )?;
+    let rows = stmt.query_map(params![limit], |row| {
+        Ok(RssDashboardArticle {
+            id: row.get(0)?,
+            feed_id: row.get(1)?,
+            feed_title: row.get(2)?,
+            title: row.get(3)?,
+            link: row.get(4)?,
+            published_at: row.get(5)?,
+        })
+    })?;
+    let mut articles = Vec::new();
+    for row in rows {
+        articles.push(row?);
+    }
+    Ok(RssDashboardSnapshot {
+        unread_count,
+        articles,
+        generated_at: chrono::Local::now().timestamp(),
+    })
+}
+
 pub fn get_article(conn: &Connection, id: i64) -> rusqlite::Result<Option<Article>> {
     let mut stmt = conn.prepare(
         "SELECT id, feed_id, guid, title, summary, content, author, link, image_url, is_read, is_starred, reading_progress, published_at, created_at FROM rss_articles WHERE id = ?1",
@@ -801,5 +844,35 @@ mod tests {
             )
             .expect("read clamped progress");
         assert_eq!(clamped, 100.0);
+    }
+
+    #[test]
+    fn dashboard_snapshot_is_bounded_and_keeps_unread_count() {
+        let mut conn = Connection::open_in_memory().expect("open rss db");
+        migrate_schema(&mut conn).expect("create schema");
+        conn.execute(
+            "INSERT INTO rss_feeds (url, title, created_at) VALUES (?1, ?2, ?3)",
+            params!["https://example.com/feed.xml", "Example", 1],
+        )
+        .expect("insert feed");
+        for (guid, title, published_at, is_read) in [
+            ("one", "Newest", 30_i64, 0_i64),
+            ("two", "Older", 20_i64, 0_i64),
+            ("three", "Read", 40_i64, 1_i64),
+        ] {
+            conn.execute(
+                "INSERT INTO rss_articles
+                 (feed_id, guid, title, is_read, published_at, created_at)
+                 VALUES (1, ?1, ?2, ?3, ?4, ?5)",
+                params![guid, title, is_read, published_at, published_at],
+            )
+            .expect("insert article");
+        }
+
+        let snapshot = dashboard_snapshot(&conn, 1).expect("read dashboard snapshot");
+        assert_eq!(snapshot.unread_count, 2);
+        assert_eq!(snapshot.articles.len(), 1);
+        assert_eq!(snapshot.articles[0].title, "Newest");
+        assert_eq!(snapshot.articles[0].feed_title, "Example");
     }
 }

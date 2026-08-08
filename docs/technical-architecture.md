@@ -213,8 +213,14 @@ tab = "plugin:*"   → PluginPanelViewport
 - 键盘全覆盖: ↑↓/j/k 导航, S 星标, U 读/未读, O 浏览器打开, R 刷新, N 添加, E 编辑
 - 支持 OPML 导入/导出
 - 单 Feed 刷新执行一条真实 HTTP 流程并用 activity 表达不可测的请求阶段；刷新全部从数据库读取完整订阅集合逐个抓取，通过 `rss:refresh-progress` 发布当前 Feed、completed/total 和失败数，Bottom Island 不使用固定模拟百分比。
-- RSS 后台调度属于 Rust 领域服务：默认每天刷新，Settings 可选择 6 / 12 / 24 小时或关闭；
-  应用运行时每 15 分钟检查持久化的 `rss_meta.last_refresh_all_at`，所选周期到期才复用全量刷新流程。手动全量刷新同样更新时间戳；
+- RSS 后台调度属于 Rust 领域服务：默认每天刷新，Settings 可选择 6 / 12 / 24 小时或关闭。
+
+- Launcher Home 的 RSS 卡片不加载完整 RSS 面板。宿主通过 `rss_dashboard_snapshot(limit)` 获取
+未读计数和最新文章的轻量投影，并在 `src/home-dashboard/cache.ts` 中保留版本化缓存；首帧先
+展示缓存，刷新失败不清空可用内容。社区插件可以在 `manifest.surfaceProviders[]` 中声明
+`rss.unread-latest`，由同一宿主适配器复用该快照；Provider 只提供本地化标题/说明和关联入口，
+不注入 Home DOM/CSS，也不会因 Home 展示启动插件 iframe。
+- 应用运行时每 15 分钟检查持久化的 `rss_meta.last_refresh_all_at`，所选周期到期才复用全量刷新流程。手动全量刷新同样更新时间戳；
   单 Feed、手动全量和后台全量共享异步刷新锁，数据库阶段通过 blocking pool 执行，任务不依赖
   React 面板挂载且不改变窗口可见性或焦点。
 

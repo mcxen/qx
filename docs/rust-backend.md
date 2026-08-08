@@ -36,7 +36,7 @@
 | 文件 | 数据库 | 说明 |
 |---|---|---|
 | `clipboard.rs` + `clipboard/{native,capture,file_list,history}.rs` | `Application Support/qx/clipboard.db` | 始终 `manage(ClipboardDb(Option<Connection>))`；失败可 lazy 重连；后台按系统序号轮询，读取成功后才提交游标；Windows `CF_HDROP` / macOS file URL 统一为有序 file-list，捕获时不因 UNC/离线路径暂不可达而丢弃。**热/冷历史**：磁盘保留未置顶约 5000 条 / 90 天；UI 首屏热窗口 ~80 条，滚到底经 `get_clipboard_history_page` 游标加载冷页 |
-| `rss/mod.rs` + `fetcher.rs` + `icon_cache.rs` + `storage.rs` + `types.rs` | `Application Support/qx/rss.db` + `cache/rss-icons` | **始终** `manage(RssDb(Option<Connection>))` + `ensure_open`；schema 升级在事务内先补旧库列、再创建依赖索引；feed-rs / OPML / folders；文章 `reading_progress` 归一化持久化；首次打开写入默认订阅目录；订阅图标按 feed icon/logo → 站点 favicon 解析后压为最长边 64px 的本地 PNG，30 天内直接复用并以 stale cache 抵御网络失败 |
+| `rss/mod.rs` + `fetcher.rs` + `icon_cache.rs` + `storage.rs` + `types.rs` | `Application Support/qx/rss.db` + `cache/rss-icons` | **始终** `manage(RssDb(Option<Connection>))` + `ensure_open`；schema 升级在事务内先补旧库列、再创建依赖索引；feed-rs / OPML / folders；文章 `reading_progress` 归一化持久化；`rss_dashboard_snapshot` 以一次受控查询返回未读计数和有界最新文章投影，供 Home/Provider 先画缓存后异步刷新；首次打开写入默认订阅目录；订阅图标按 feed icon/logo → 站点 favicon 解析后压为最长边 64px 的本地 PNG，30 天内直接复用并以 stale cache 抵御网络失败 |
 | `v2ex.rs` | `cache/v2ex/*.json` | 抓 v2ex.com JSON；**内存 + 磁盘 TTL 缓存**（topics ~3min，replies ~2min，失败可回退 stale）；hot/latest 无需 token，node/notification 需 token（命令可接收插件 preference 的 `token` 覆盖）；市场插件 `v2ex` 走 `invoke:v2ex_*` + 插件 persist SWR |
 | `weather.rs` (host API for marketplace **Weather** plugin + optional built-in) | 无 | ipapi.co 定位 → Open-Meteo（默认）或 OpenWeatherMap（需 key） |
 | `github_calendar.rs` | 无 | 抓 GitHub profile 页面提取 `ContributionCalendar` |

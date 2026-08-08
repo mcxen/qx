@@ -116,7 +116,7 @@ export interface PluginHomeWidgetDeclaration {
   source: PluginHomeWidgetSource;
 }
 
-export type PluginSurfaceProviderSource = "system.display-brightness";
+export type PluginSurfaceProviderSource = "system.display-brightness" | "rss.unread-latest";
 export type PluginSurfaceProviderTarget = "tray" | "home";
 export type PluginSurfaceProviderPresentation = "compact" | "standard" | "wide";
 
@@ -131,6 +131,8 @@ export interface PluginSurfaceProviderDeclaration {
   presentation?: PluginSurfaceProviderPresentation;
   title?: string;
   titles?: Partial<Record<"en" | "zh-CN", string>>;
+  description?: string;
+  descriptions?: Partial<Record<"en" | "zh-CN", string>>;
   defaultEnabled?: boolean;
 }
 

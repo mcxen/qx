@@ -67,13 +67,17 @@ export type HomeDashboardWidgetId =
   | "system.memory"
   | "system.power"
   | "system.network"
-  | "system.display-brightness";
+  | "system.display-brightness"
+  | "rss.unread-latest"
+  | `provider:${string}`;
 
 export const DEFAULT_HOME_DASHBOARD_WIDGETS: HomeDashboardWidgetId[] = [
   "launcher.pinned",
   "system.cpu",
   "system.memory",
   "system.power",
+  "system.network",
+  "rss.unread-latest",
 ];
 
 export interface AppearanceSettings {

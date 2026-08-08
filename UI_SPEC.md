@@ -731,8 +731,10 @@ Launcher：
   入口、全部模块与主页组件编辑；有查询时左侧恢复搜索结果。Dashboard 不是新 route，
   因此 Esc 空查询仍隐藏窗口，输入焦点、Top Bar 和 Bottom Bar 契约不变。
 - Home 组件只使用宿主注册的语义数据源。内置 CPU / Memory / Power / Network 复用
-  `home-island/data` 兴趣计数总线；插件 `manifest.homeWidgets[]` 只能把受支持数据源关联到
-  自身 Panel，不能注入 DOM、CSS、刷新周期、尺寸或点击动画。
+  `home-island/data` 兴趣计数总线；RSS 未读最新帖子复用宿主 RSS 快照端口并先画本地缓存。
+  插件 `manifest.homeWidgets[]` 只能把受支持数据源关联到自身 Panel；插件若要让宿主把一项
+  轻量信息透出到 Home，应声明 `manifest.surfaceProviders[]` 的受支持语义源。两者都不能
+  注入 DOM、CSS、刷新周期、尺寸或点击动画，Home/Tray 读取 Provider 时不得启动完整插件运行时。
 - 置顶应用组件只消费 `settings.search_metadata.*.pinned/pin_order`，与搜索结果 Actions 的
   Pin to Top 是同一份配置；不得另建“桌面收藏”列表。
 - 搜索结果、右侧入口、底部动作都支持键盘操作。

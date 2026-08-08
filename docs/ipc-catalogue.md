@@ -54,7 +54,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 
 ## rss
 
-`rss_list_feeds`、`rss_add_feed(url)`、`rss_update_feed(id, url, title)`、`rss_remove_feed(id)`、`rss_list_articles(feed_id?, only_unread, query?)`、`rss_get_article(id)`、`rss_mark_read(id, is_read)`、`rss_set_reading_progress(id, progress)`、`rss_mark_all_read(feed_id)`、`rss_toggle_star(id, is_starred)`、`rss_refresh_feed(id)`、`rss_refresh_all()`、`rss_import_opml(content)`、`rss_export_opml()`、`rss_list_folders`、`rss_create_folder(name, parent_id?)`、`rss_rename_folder(id, name)`、`rss_delete_folder(id)`、`rss_set_feed_folder(feed_id, folder_id?)`、`rss_fetch_original_content(url)`、`rss_cache_article_image(url, referer?)`。两种刷新命令在真实 HTTP / 解析 / 持久化过程中发布 `rss:refresh-progress`；全量刷新 payload 的 `completed / total / failed` 以数据库完整订阅集合为基准。正文图片命令复用 Qx HTTP 代理配置，将受支持的远程位图限量下载到 `cache/rss-article-images` 后返回本地路径；前端不得让 WebView 绕过该端口直接承担正文图片网络兼容。
+`rss_list_feeds`、`rss_add_feed(url)`、`rss_update_feed(id, url, title)`、`rss_remove_feed(id)`、`rss_list_articles(feed_id?, only_unread, query?)`、`rss_dashboard_snapshot(limit?)`、`rss_get_article(id)`、`rss_mark_read(id, is_read)`、`rss_set_reading_progress(id, progress)`、`rss_mark_all_read(feed_id)`、`rss_toggle_star(id, is_starred)`、`rss_refresh_feed(id)`、`rss_refresh_all()`、`rss_import_opml(content)`、`rss_export_opml()`、`rss_list_folders`、`rss_create_folder(name, parent_id?)`、`rss_rename_folder(id, name)`、`rss_delete_folder(id)`、`rss_set_feed_folder(feed_id, folder_id?)`、`rss_fetch_original_content(url)`、`rss_cache_article_image(url, referer?)`。`rss_dashboard_snapshot` 只返回未读总数和有界的最新文章标题、订阅源、链接及时间，不返回正文/图片；它是 Launcher Home 与轻量 Provider 的原子读取端口，前端先画本地缓存再后台刷新。两种刷新命令在真实 HTTP / 解析 / 持久化过程中发布 `rss:refresh-progress`；全量刷新 payload 的 `completed / total / failed` 以数据库完整订阅集合为基准。正文图片命令复用 Qx HTTP 代理配置，将受支持的远程位图限量下载到 `cache/rss-article-images` 后返回本地路径；前端不得让 WebView 绕过该端口直接承担正文图片网络兼容。
 
 ## v2ex
 
@@ -213,7 +213,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `display_brightness_list`, `display_brightness_set`, `desktop_windows_list`, `floating_show`, `floating_hide`,
 `floating_hide_restore_focus`, `floating_previous_app_name`, `floating_set_onboarding_active`,
 `floating_set_external_interaction_active`, `floating_toggle`, `floating_request_key`, `set_active_route`,
-`rss_list_feeds`, `rss_add_feed`, `rss_update_feed`, `rss_remove_feed`, `rss_list_articles`, `rss_get_article`,
+`rss_list_feeds`, `rss_add_feed`, `rss_update_feed`, `rss_remove_feed`, `rss_list_articles`, `rss_dashboard_snapshot`, `rss_get_article`,
 `rss_mark_read`, `rss_set_reading_progress`, `rss_mark_all_read`, `rss_toggle_star`, `rss_refresh_feed`,
 `rss_refresh_all`, `rss_import_opml`, `rss_export_opml`, `rss_list_folders`, `rss_create_folder`,
 `rss_rename_folder`, `rss_delete_folder`, `rss_set_feed_folder`, `rss_clear_read_articles`,

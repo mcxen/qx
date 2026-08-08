@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { readCachedHomeAppResults } from "./home-dashboard/cache";
 
 export interface AppEntry {
   name: string;
@@ -123,7 +124,7 @@ interface AppStore {
 export const useStore = create<AppStore>((set) => ({
   visible: false,
   query: "",
-  results: [],
+  results: readCachedHomeAppResults(),
   selectedIndex: 0,
   tab: "launcher",
   clipboardHistory: [],
