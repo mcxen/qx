@@ -24,7 +24,6 @@ import {
 } from "./launcher/searchProgress";
 import { LoadingLabel, Skeleton } from "./components/ui";
 import { registerAllBuiltins } from "./plugin/builtin";
-import { isRedundantPanelOpenCommand } from "./plugin/panelOpenCommand";
 import { PluginHost, PluginPanelViewport } from "./plugin/PluginHost";
 import { resolveCalculationEntryAsync } from "./search/calculatorAsync";
 import { decodeCalculationResult, isCalculationPath } from "./search/calculatorProvider";
@@ -2113,10 +2112,6 @@ function App() {
         const pluginId = match.command.pluginId;
         if (pluginId.startsWith("builtin:")) {
           if (!isModuleSearchEnabled(pluginId.slice("builtin:".length))) return false;
-        }
-        // Panel is already a search hit — hide pure "open-*" openers (sysinfo, …).
-        if (isRedundantPanelOpenCommand(match.command, Boolean(pluginState.panels[pluginId]))) {
-          return false;
         }
         return true;
       });

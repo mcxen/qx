@@ -110,6 +110,12 @@ my-plugin/
 形式的动态 `import("./detail.js")`；路径不得越过插件根目录。包管理器 bare specifier
 和运行时拼接的动态 import 必须在发布前 bundle。
 
+`commands` 是可选的，只用于真实的可搜索操作：例如接收输入并产出结果、写入文件、
+刷新外部数据，或由后台 interval 驱动的无界面任务。插件如果已经有 `panel`，不要再
+注册仅用于打开面板的 `open-*`、插件名或模块名 command；面板名称本身就是主搜索入口。
+面板内的刷新、打开原网页、切换状态等用户操作应声明为 Workbench action。宿主不会再
+按命令名称猜测并过滤这类重复入口，清单与运行时入口必须从源头保持正确。
+
 ```js
 export default {
   commands: [
