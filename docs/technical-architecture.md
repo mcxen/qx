@@ -271,7 +271,7 @@ rss::* (list/add/update/remove/refresh/mark/toggle/import/export)
 settings::* (get/update/reset/import/export)
 screencap::* (start/stop/save/list/delete)
 macro_recorder::* (start/stop/save/list/delete/play)
-marketplace::* (fetch/download/install/uninstall/list/sign)
+marketplace::* (fetch/download/install/auto-update/uninstall/list/sign)
 updater::* (check/download_and_install/helper_replace)
 ```
 

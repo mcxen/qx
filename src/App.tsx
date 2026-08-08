@@ -164,6 +164,13 @@ interface QxUpdateInfo {
   can_install: boolean;
 }
 
+interface PluginAutoUpdateResult {
+  attempted: number;
+  alreadyRunning: boolean;
+  updated: Array<{ id: string; fromVersion: string; toVersion: string }>;
+  failed: Array<{ id: string; version: string; reason: string }>;
+}
+
 const MODULE_LABEL_KEYS: Record<string, { key: string; fallback: string }> = {
   clipboard: { key: "clipboard.title", fallback: "Clipboard History" },
   screencap: { key: "launcher.screencap", fallback: "Screenshot & Recording Module" },
@@ -1171,19 +1178,36 @@ function App() {
 
     let cancelled = false;
     const timerId = window.setTimeout(() => {
-      const runAutoUpdate = async () => {
+      const runPluginAutoUpdate = async () => {
+        try {
+          const result = await invoke<PluginAutoUpdateResult>(
+            "marketplace_update_compatible_plugins",
+          );
+          if (cancelled) return;
+          appLogger.info("Plugin auto update completed", {
+            attempted: result.attempted,
+            updated: result.updated.map((item) => `${item.id} ${item.fromVersion}→${item.toVersion}`),
+            failed: result.failed,
+            alreadyRunning: result.alreadyRunning,
+          });
+          // Plugin runtimes are lazy but may already be active after a long
+          // session. Reload only while hidden so an update never tears down a
+          // panel the user is currently using; the next load then sees the new
+          // package in either case.
+          if (result.updated.length > 0 && !useStore.getState().visible) {
+            await usePluginRegistry.getState().refresh();
+          }
+        } catch (error) {
+          // Plugin marketplace failures are local to the plugin updater and
+          // must not suppress the Qx binary update attempt.
+          appLogger.debug("Plugin auto update skipped", { error });
+        }
+      };
+
+      const runQxAutoUpdate = async () => {
         try {
           // Prefer downloading while the panel is hidden so bandwidth/CPU
           // do not hit the launcher critical path.
-          if (useStore.getState().visible) {
-            appLogger.debug("Auto update deferred: panel visible");
-            if (!cancelled) {
-              window.setTimeout(() => {
-                if (!cancelled) void runAutoUpdate();
-              }, 12_000);
-            }
-            return;
-          }
           appLogger.info("Auto update check started");
           const source = useSettingsStore.getState().settings.general.update_source;
           const info = await invoke<QxUpdateInfo>("qx_update_check", { source });
@@ -1234,7 +1258,21 @@ function App() {
         }
       };
 
-      void runAutoUpdate();
+      const startUpdates = () => {
+        if (cancelled) return;
+        if (useStore.getState().visible) {
+          appLogger.debug("Auto update deferred: panel visible");
+          window.setTimeout(startUpdates, 12_000);
+          return;
+        }
+        void runPluginAutoUpdate();
+        void runQxAutoUpdate();
+      };
+
+      // Keep the two update lanes independent: a broken marketplace mirror
+      // must never block the Qx updater, and a Qx release check failure must
+      // not prevent compatible installed plugins from being upgraded.
+      startUpdates();
     }, AUTO_UPDATE_START_DELAY_MS);
 
     return () => {

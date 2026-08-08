@@ -775,6 +775,7 @@ pub fn run() {
             island_window::island_window_get_snapshot,
             island_window::island_sessions_publish,
             marketplace::fetch_plugin_index,
+            marketplace::marketplace_update_compatible_plugins,
             marketplace::download_plugin,
             marketplace::install_plugin,
             marketplace::install_plugin_from_url,

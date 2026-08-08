@@ -395,8 +395,8 @@ export const DEFAULT_SETTINGS: Settings = {
   general: {
     launch_at_login: false,
     language: "system",
-    // Off by default — Windows auto-install may quit without a reliable relaunch.
-    auto_update: false,
+    // Enabled by default — this also upgrades installed compatible plugins.
+    auto_update: true,
     update_source: "auto",
     autoHideOnBlur: false,
     data_path: "",

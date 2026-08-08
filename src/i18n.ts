@@ -179,7 +179,7 @@ const zh: Record<string, string> = {
   "general.language.en": "English",
   "general.language.zh-CN": "简体中文",
   "general.autoUpdates": "自动更新",
-  "general.autoUpdates.desc": "默认关闭。开启后自动检查并安装更新。更新源与手动检查在「关于」中设置。Windows 上更新失败时可能直接退出，安装不稳定时请到「关于」手动更新。",
+  "general.autoUpdates.desc": "默认开启。开启后自动检查 Qx 更新，并将所有已安装插件升级到当前 Qx 版本兼容的最高版本。更新源与手动检查在「关于」中设置。插件更新失败会局部隔离，不会阻塞 Qx。",
   "general.updateSource": "更新源",
   "general.updateSource.desc": "自动模式会比较可用版本，并使用最新的有效来源。",
   "general.updateSource.auto": "自动判断",

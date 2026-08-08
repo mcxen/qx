@@ -4,7 +4,7 @@
 >
 > 事实来源：`src-tauri/src/lib.rs` 中的 `tauri::generate_handler!`
 
-Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_handler!` 注册 **195 个命令**；不要引用易漂移的固定行号。本文按领域解释主要接口，文末“注册命令基线”必须与注册宏逐项一致。
+Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_handler!` 注册 **196 个命令**；不要引用易漂移的固定行号。本文按领域解释主要接口，文末“注册命令基线”必须与注册宏逐项一致。
 
 `capabilities/default.json` 声明 Tauri IPC 边界及插件权限（`opener`、`global-shortcut`、`clipboard-manager`、`shell`、`core:window`、`core:path`）。任何窗口若未匹配 capability，就不能使用 IPC；当前 `main`、`recording-controls` 和 `region-picker` 都必须显式列入。自定义命令仍由 `generate_handler!` 注册，但动态创建的捕获窗口不能省略窗口 capability。
 
@@ -100,7 +100,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 
 ## marketplace
 
-`fetch_plugin_index(source_id?, force_refresh?)`（合并 `settings.plugin_registries` 中所有已启用库的 `index.json`；条目带 `source_id` / `source_name` / `source_index_url` 归属；返回 `sources[]` 各库状态；默认优先使用 15 分钟本地索引缓存，`force_refresh` 跳过缓存并更新缓存）、`download_plugin(url)`、`install_plugin(path)`、`install_plugin_from_url(url)`、`install_raycast_extension_from_url(url)`、`uninstall_plugin(id)`、`list_installed_plugins()`、`read_plugin_entry(id)`、`read_plugin_modules(id)`（返回受文件数与总字节上限保护的包内 ESM 图）、`set_plugin_enabled(id, enabled)`、`plugin_storage_get/set/delete(id, key, value?)`、`plugin_preferences_get/set(id, values?)`、`sign_plugin(dir, private_key_hex)`、`scaffold_plugin(name, output_dir)`。
+`fetch_plugin_index(source_id?, force_refresh?)`（合并 `settings.plugin_registries` 中所有已启用库的 `index.json`；条目带 `source_id` / `source_name` / `source_index_url` 归属；返回 `sources[]` 各库状态；默认优先使用 15 分钟本地索引缓存，`force_refresh` 跳过缓存并更新缓存）、`marketplace_update_compatible_plugins()`（后台刷新市场，按当前 Qx 版本/平台选择每个已安装插件的最高兼容版本，校验大小、SHA256、包 id 与版本后逐个安装；返回成功、跳过和失败明细，单个失败不阻塞其他插件）、`download_plugin(url)`、`install_plugin(path)`、`install_plugin_from_url(url)`、`install_raycast_extension_from_url(url)`、`uninstall_plugin(id)`、`list_installed_plugins()`、`read_plugin_entry(id)`、`read_plugin_modules(id)`（返回受文件数与总字节上限保护的包内 ESM 图）、`set_plugin_enabled(id, enabled)`、`plugin_storage_get/set/delete(id, key, value?)`、`plugin_preferences_get/set(id, values?)`、`sign_plugin(dir, private_key_hex)`、`scaffold_plugin(name, output_dir)`。
 
 ## settings
 
@@ -239,7 +239,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `get_screencap_history`, `delete_screencap`, `is_recording`, `island_window_ensure`, `island_window_show`,
 `island_window_hide`, `island_window_remember_position`, `island_window_set_compact`,
 `island_window_set_always_on_top`, `island_window_get_snapshot`, `island_sessions_publish`,
-`fetch_plugin_index`, `download_plugin`, `install_plugin`, `install_plugin_from_url`,
+`fetch_plugin_index`, `marketplace_update_compatible_plugins`, `download_plugin`, `install_plugin`, `install_plugin_from_url`,
 `install_raycast_extension_from_url`, `uninstall_plugin`, `list_installed_plugins`, `read_plugin_entry`,
 `read_plugin_modules`, `set_plugin_enabled`, `plugin_storage_get`, `plugin_storage_set`,
 `plugin_storage_delete`, `plugin_storage_list`, `plugin_storage_clear`, `plugin_data_usage`,

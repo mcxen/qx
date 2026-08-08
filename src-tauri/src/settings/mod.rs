@@ -65,9 +65,9 @@ impl Default for GeneralSettings {
             launch_at_login: false,
             // "system" | "en" | "zh-CN" — frontend resolves system to zh-CN only for Simplified Chinese OS
             language: "system".to_string(),
-            // Off by default: Windows auto-install can quit the app even when
-            // the replace/relaunch path fails, leaving users without a running Qx.
-            auto_update: false,
+            // Enabled by default: the frontend update lane also upgrades
+            // installed plugins that are compatible with this Qx build.
+            auto_update: true,
             update_source: default_update_source(),
             auto_hide_on_blur: false,
             data_path: crate::paths::data_dir().to_string_lossy().to_string(),

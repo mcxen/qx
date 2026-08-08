@@ -1,15 +1,21 @@
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::{Cursor, Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex, OnceLock,
+};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::command;
 
 const USER_AGENT: &str = "Qx/0.1 (Marketplace; +https://github.com/mcxen/qx)";
 static PLUGIN_STORAGE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static PLUGIN_INSTALL_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static PLUGIN_AUTO_UPDATE_RUNNING: AtomicBool = AtomicBool::new(false);
 const HTTP_RETRY_ATTEMPTS: usize = 2;
 const HTTP_RETRY_AFTER_CAP_SECS: u64 = 3;
 const PLUGIN_INDEX_CACHE_TTL_SECS: u64 = 15 * 60;
@@ -535,18 +541,24 @@ fn compare_plugin_versions(left: &str, right: &str) -> Option<i32> {
     ))
 }
 
+fn app_version_meets_minimum(current: &str, minimum: &str) -> bool {
+    let minimum = minimum.trim();
+    minimum.is_empty() || compare_plugin_versions(current, minimum).is_some_and(|order| order >= 0)
+}
+
 fn validate_manifest_host_version(manifest: &PluginManifest) -> Result<(), String> {
     let minimum = manifest.min_app_version.trim();
     if minimum.is_empty() {
         return Ok(());
     }
     let current = env!("CARGO_PKG_VERSION");
-    match compare_plugin_versions(current, minimum) {
-        Some(order) if order >= 0 => Ok(()),
-        _ => Err(format!(
+    if app_version_meets_minimum(current, minimum) {
+        Ok(())
+    } else {
+        Err(format!(
             "Plugin {} requires Qx {} or newer; current Qx is {}.",
             manifest.name, minimum, current
-        )),
+        ))
     }
 }
 
@@ -767,6 +779,133 @@ pub struct InstalledPlugin {
     pub manifest: Option<PluginManifest>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginAutoUpdateItem {
+    pub id: String,
+    pub name: String,
+    pub from_version: String,
+    pub to_version: String,
+    pub source_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginAutoUpdateIssue {
+    pub id: String,
+    pub version: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginAutoUpdateResult {
+    pub current_app_version: String,
+    pub already_running: bool,
+    pub attempted: u32,
+    pub updated: Vec<PluginAutoUpdateItem>,
+    pub skipped: Vec<PluginAutoUpdateIssue>,
+    pub failed: Vec<PluginAutoUpdateIssue>,
+}
+
+fn empty_plugin_auto_update_result(already_running: bool) -> PluginAutoUpdateResult {
+    PluginAutoUpdateResult {
+        current_app_version: env!("CARGO_PKG_VERSION").to_string(),
+        already_running,
+        attempted: 0,
+        updated: Vec::new(),
+        skipped: Vec::new(),
+        failed: Vec::new(),
+    }
+}
+
+struct PluginAutoUpdateGuard;
+
+impl Drop for PluginAutoUpdateGuard {
+    fn drop(&mut self) {
+        PLUGIN_AUTO_UPDATE_RUNNING.store(false, Ordering::Release);
+    }
+}
+
+fn begin_plugin_auto_update() -> Option<PluginAutoUpdateGuard> {
+    PLUGIN_AUTO_UPDATE_RUNNING
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .ok()
+        .map(|_| PluginAutoUpdateGuard)
+}
+
+fn marketplace_entry_supports_current_host(
+    entry: &PluginIndexEntry,
+    current_app_version: &str,
+) -> bool {
+    (entry.platforms.is_empty()
+        || entry
+            .platforms
+            .iter()
+            .any(|platform| platform == host_plugin_platform()))
+        && app_version_meets_minimum(current_app_version, &entry.min_app_version)
+}
+
+fn select_compatible_plugin_update<'a>(
+    installed: &InstalledPlugin,
+    entries: &'a [PluginIndexEntry],
+    current_app_version: &str,
+) -> Option<&'a PluginIndexEntry> {
+    entries
+        .iter()
+        .filter(|entry| entry.id == installed.id)
+        .filter(|entry| !entry.download_url.trim().is_empty())
+        .filter(|entry| marketplace_entry_supports_current_host(entry, current_app_version))
+        .filter(|entry| {
+            compare_plugin_versions(&entry.version, &installed.version)
+                .is_some_and(|order| order > 0)
+        })
+        .fold(None, |best, entry| match best {
+            None => Some(entry),
+            Some(current) => {
+                if compare_plugin_versions(&entry.version, &current.version) == Some(1) {
+                    Some(entry)
+                } else {
+                    // Keep the first catalog entry for equal versions so
+                    // mirror selection remains deterministic.
+                    Some(current)
+                }
+            }
+        })
+}
+
+fn verify_marketplace_asset(entry: &PluginIndexEntry, bytes: &[u8]) -> Result<(), String> {
+    if entry.size_bytes > 0 && entry.size_bytes != bytes.len() as u64 {
+        return Err(format!(
+            "{} v{} size mismatch: expected {} bytes, received {}",
+            entry.id,
+            entry.version,
+            entry.size_bytes,
+            bytes.len()
+        ));
+    }
+
+    let expected = entry.checksum_sha256.trim();
+    if expected.is_empty() {
+        return Ok(());
+    }
+    if expected.len() != 64 || !expected.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(format!(
+            "{} v{} has an invalid SHA256 in the marketplace index",
+            entry.id, entry.version
+        ));
+    }
+    let actual = hex::encode(Sha256::digest(bytes));
+    if actual.eq_ignore_ascii_case(expected) {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} v{} SHA256 mismatch: expected {}, received {}",
+            entry.id, entry.version, expected, actual
+        ))
+    }
+}
+
 #[derive(Debug)]
 struct RaycastSource {
     owner: String,
@@ -855,6 +994,10 @@ fn checked_plugin_storage_path(id: &str) -> Result<PathBuf, String> {
 
 fn plugin_storage_lock() -> &'static Mutex<()> {
     PLUGIN_STORAGE_LOCK.get_or_init(|| Mutex::new(()))
+}
+
+fn plugin_install_lock() -> &'static Mutex<()> {
+    PLUGIN_INSTALL_LOCK.get_or_init(|| Mutex::new(()))
 }
 
 /// Move package-local `plugins/<id>/data` to `plugin-data/<id>` when needed.
@@ -1377,6 +1520,108 @@ pub async fn fetch_plugin_index(
     };
     write_plugin_index_cache(cache_path, index.clone()).await;
     Ok(index)
+}
+
+/// Upgrade every installed marketplace plugin to the highest package version
+/// that the current Qx build can validate. The command deliberately owns the
+/// whole background workflow: refreshing registries, downloading assets,
+/// checking the index metadata, and installing one package at a time. A
+/// failure for one plugin is recorded and never prevents the remaining
+/// plugins from being considered.
+#[command]
+pub async fn marketplace_update_compatible_plugins() -> Result<PluginAutoUpdateResult, String> {
+    let Some(_guard) = begin_plugin_auto_update() else {
+        return Ok(empty_plugin_auto_update_result(true));
+    };
+
+    let current_app_version = env!("CARGO_PKG_VERSION").to_string();
+    let index = fetch_plugin_index(None, Some(true)).await?;
+    let installed = tauri::async_runtime::spawn_blocking(list_installed_plugins_sync)
+        .await
+        .map_err(|error| format!("list installed plugins task failed: {error}"))??;
+    let mut result = PluginAutoUpdateResult {
+        current_app_version: current_app_version.clone(),
+        already_running: false,
+        attempted: 0,
+        updated: Vec::new(),
+        skipped: Vec::new(),
+        failed: Vec::new(),
+    };
+
+    for installed_plugin in installed {
+        if installed_plugin.manifest.is_none() {
+            result.skipped.push(PluginAutoUpdateIssue {
+                id: installed_plugin.id,
+                version: installed_plugin.version,
+                reason: "installed plugin has no valid manifest".to_string(),
+            });
+            continue;
+        }
+
+        let Some(entry) = select_compatible_plugin_update(
+            &installed_plugin,
+            &index.plugins,
+            &current_app_version,
+        ) else {
+            continue;
+        };
+        let entry = entry.clone();
+        result.attempted = result.attempted.saturating_add(1);
+
+        let bytes =
+            match http_get_plugin_asset(&entry.download_url, Some(entry.source_index_url.as_str()))
+                .await
+            {
+                Ok(bytes) => bytes,
+                Err(error) => {
+                    result.failed.push(PluginAutoUpdateIssue {
+                        id: entry.id,
+                        version: entry.version,
+                        reason: format!("download failed: {error}"),
+                    });
+                    continue;
+                }
+            };
+
+        if let Err(error) = verify_marketplace_asset(&entry, &bytes) {
+            result.failed.push(PluginAutoUpdateIssue {
+                id: entry.id,
+                version: entry.version,
+                reason: error,
+            });
+            continue;
+        }
+
+        let expected_id = entry.id.clone();
+        let expected_version = entry.version.clone();
+        let installed_version = installed_plugin.version.clone();
+        let package = tauri::async_runtime::spawn_blocking(move || {
+            install_marketplace_archive(&bytes, &expected_id, &expected_version)
+        })
+        .await;
+
+        match package {
+            Err(error) => result.failed.push(PluginAutoUpdateIssue {
+                id: entry.id,
+                version: entry.version,
+                reason: format!("install task failed: {error}"),
+            }),
+            Ok(Ok(installed)) => result.updated.push(PluginAutoUpdateItem {
+                id: installed.id,
+                name: installed.name,
+                from_version: installed_version,
+                to_version: installed.version,
+                source_name: entry.source_name,
+            }),
+            Ok(Err(error)) => result.failed.push(PluginAutoUpdateIssue {
+                id: entry.id,
+                version: entry.version,
+                reason: format!("install failed: {error}"),
+            }),
+        }
+    }
+
+    Ok(result)
 }
 
 #[command]
@@ -2050,37 +2295,63 @@ pub fn install_plugin(path: String) -> Result<InstalledPlugin, String> {
     install_plugin_archive(&buf, cleanup_path)
 }
 
+fn read_plugin_archive_manifest(buf: &[u8]) -> Result<(String, PluginManifest), String> {
+    let mut archive =
+        zip::ZipArchive::new(Cursor::new(buf)).map_err(|e| format!("open zip: {e}"))?;
+    let manifest_name = (0..archive.len())
+        .find_map(|index| {
+            let entry = archive.by_index(index).ok()?;
+            if entry.name().ends_with("manifest.json") && !entry.is_dir() {
+                Some(entry.name().to_string())
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| "manifest.json not found in package".to_string())?;
+    let mut manifest_bytes = Vec::new();
+    archive
+        .by_name(&manifest_name)
+        .map_err(|e| format!("read manifest: {e}"))?
+        .read_to_end(&mut manifest_bytes)
+        .map_err(|e| format!("read manifest body: {e}"))?;
+    let manifest: PluginManifest =
+        serde_json::from_slice(&manifest_bytes).map_err(|e| format!("parse manifest: {e}"))?;
+    Ok((manifest_name, manifest))
+}
+
+fn install_marketplace_archive(
+    buf: &[u8],
+    expected_id: &str,
+    expected_version: &str,
+) -> Result<InstalledPlugin, String> {
+    let (_, manifest) = read_plugin_archive_manifest(buf)?;
+    if manifest.id != expected_id {
+        return Err(format!(
+            "marketplace package identity mismatch: expected {}, received {}",
+            expected_id, manifest.id
+        ));
+    }
+    if compare_plugin_versions(&manifest.version, expected_version) != Some(0) {
+        return Err(format!(
+            "marketplace package version mismatch for {}: expected {}, received {}",
+            expected_id, expected_version, manifest.version
+        ));
+    }
+    install_plugin_archive(buf, None)
+}
+
 fn install_plugin_archive(
     buf: &[u8],
     cleanup_path: Option<&Path>,
 ) -> Result<InstalledPlugin, String> {
-    let mut archive =
-        zip::ZipArchive::new(Cursor::new(buf)).map_err(|e| format!("open zip: {e}"))?;
-
-    let mut manifest_name = None;
-    for i in 0..archive.len() {
-        let entry = archive.by_index(i).map_err(|e| format!("entry {i}: {e}"))?;
-        if entry.name().ends_with("manifest.json") && !entry.is_dir() {
-            manifest_name = Some(entry.name().to_string());
-            break;
-        }
-    }
-    let manifest_name =
-        manifest_name.ok_or_else(|| "manifest.json not found in package".to_string())?;
+    // Manual installs, Raycast imports, and unattended marketplace upgrades
+    // share the same package/data replacement boundary. Serialize them so a
+    // background upgrade can never race a user-selected package install.
+    let _install_guard = plugin_install_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let (manifest_name, manifest) = read_plugin_archive_manifest(buf)?;
     let manifest_root = archive_parent(&manifest_name);
-
-    let mut archive =
-        zip::ZipArchive::new(Cursor::new(buf)).map_err(|e| format!("reopen zip: {e}"))?;
-    let mut manifest_bytes = Vec::new();
-    {
-        let mut mf = archive
-            .by_name(&manifest_name)
-            .map_err(|e| format!("read manifest: {e}"))?;
-        mf.read_to_end(&mut manifest_bytes)
-            .map_err(|e| format!("read manifest body: {e}"))?;
-    }
-    let manifest: PluginManifest =
-        serde_json::from_slice(&manifest_bytes).map_err(|e| format!("parse manifest: {e}"))?;
 
     if manifest.id.trim().is_empty() {
         return Err("manifest.id is empty".to_string());
@@ -2629,8 +2900,7 @@ pub fn uninstall_plugin(id: String) -> Result<(), String> {
     Ok(())
 }
 
-#[command]
-pub fn list_installed_plugins() -> Result<Vec<InstalledPlugin>, String> {
+fn list_installed_plugins_sync() -> Result<Vec<InstalledPlugin>, String> {
     let root = plugins_root();
     let mut out = Vec::new();
     let entries = match fs::read_dir(&root) {
@@ -2683,6 +2953,11 @@ pub fn list_installed_plugins() -> Result<Vec<InstalledPlugin>, String> {
     }
     out.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
     Ok(out)
+}
+
+#[command]
+pub fn list_installed_plugins() -> Result<Vec<InstalledPlugin>, String> {
+    list_installed_plugins_sync()
 }
 
 #[command]
@@ -3424,6 +3699,86 @@ mod tests {
         assert_eq!(compare_plugin_versions("0.6.16-beta.2", "0.6.16"), Some(-1));
         assert_eq!(compare_plugin_versions("0.6.16", "0.6.16-beta.2"), Some(1));
         assert_eq!(compare_plugin_versions("invalid", "0.6.16"), None);
+    }
+
+    fn auto_update_test_entry(version: &str, minimum: &str) -> PluginIndexEntry {
+        PluginIndexEntry {
+            id: "sample".to_string(),
+            name: "Sample".to_string(),
+            version: version.to_string(),
+            description: String::new(),
+            names: std::collections::HashMap::new(),
+            descriptions: std::collections::HashMap::new(),
+            download_url: "https://example.com/sample.qx-plugin".to_string(),
+            size_bytes: 0,
+            checksum_sha256: String::new(),
+            required_permissions: Vec::new(),
+            updated_at: String::new(),
+            author: String::new(),
+            min_app_version: minimum.to_string(),
+            platforms: Vec::new(),
+            releases: Vec::new(),
+            source_id: "official".to_string(),
+            source_name: "Official".to_string(),
+            source_index_url: "https://example.com/index.json".to_string(),
+        }
+    }
+
+    fn auto_update_test_installed(version: &str) -> InstalledPlugin {
+        let manifest: PluginManifest = serde_json::from_value(serde_json::json!({
+            "id": "sample",
+            "name": "Sample",
+            "version": version
+        }))
+        .unwrap();
+        InstalledPlugin {
+            id: "sample".to_string(),
+            name: "Sample".to_string(),
+            version: version.to_string(),
+            description: String::new(),
+            path: String::new(),
+            enabled: false,
+            permissions: Vec::new(),
+            author: String::new(),
+            manifest: Some(manifest),
+        }
+    }
+
+    #[test]
+    fn auto_update_selects_highest_version_compatible_with_current_qx() {
+        let installed = auto_update_test_installed("1.0.0");
+        let entries = vec![
+            auto_update_test_entry("1.4.0", "0.6.66"),
+            auto_update_test_entry("1.5.0", "0.6.67"),
+            auto_update_test_entry("1.3.0", "0.6.20"),
+        ];
+        let selected = select_compatible_plugin_update(&installed, &entries, "0.6.66")
+            .expect("a compatible update should be selected");
+        assert_eq!(selected.version, "1.4.0");
+    }
+
+    #[test]
+    fn auto_update_rejects_invalid_or_foreign_platform_candidates() {
+        let installed = auto_update_test_installed("1.0.0");
+        let mut foreign = auto_update_test_entry("2.0.0", "0.6.20");
+        foreign.platforms = vec![if host_plugin_platform() == "macos" {
+            "windows".to_string()
+        } else {
+            "macos".to_string()
+        }];
+        let invalid_minimum = auto_update_test_entry("1.9.0", "not-a-version");
+        let entries = vec![foreign, invalid_minimum];
+        assert!(select_compatible_plugin_update(&installed, &entries, "0.6.66").is_none());
+    }
+
+    #[test]
+    fn auto_update_verifies_marketplace_checksum_when_present() {
+        let bytes = b"Qx plugin package";
+        let mut entry = auto_update_test_entry("1.1.0", "0.6.20");
+        entry.checksum_sha256 = hex::encode(Sha256::digest(bytes));
+        assert!(verify_marketplace_asset(&entry, bytes).is_ok());
+        entry.checksum_sha256 = "0".repeat(64);
+        assert!(verify_marketplace_asset(&entry, bytes).is_err());
     }
 
     #[test]
