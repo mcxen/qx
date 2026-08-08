@@ -9,6 +9,10 @@ import { useSettingsStore, type GeneralSettings } from "./store";
 
 const RELEASES_URL = "https://github.com/mcxen/qx/releases";
 
+/** Backend manifest checks are bounded (~10s per source, parallel), but keep a
+ * UI-level ceiling so the About panel can never hang on a stuck invoke. */
+const UPDATE_CHECK_TIMEOUT_MS = 20_000;
+
 interface QxUpdateInfo {
   available: boolean;
   current_version: string;
@@ -29,6 +33,28 @@ interface QxUpdateStartResult {
   started: boolean;
   alreadyRunning: boolean;
   message: string;
+}
+
+/** invoke() with a hard timeout so a stuck backend can never hang the panel. */
+async function invokeWithTimeout<T>(
+  command: string,
+  args: Record<string, unknown>,
+  timeoutMs: number,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      invoke<T>(command, args),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Update check timed out after ${timeoutMs}ms.`)),
+          timeoutMs,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) window.clearTimeout(timer);
+  }
 }
 
 export default function AboutPanel() {
@@ -52,7 +78,11 @@ export default function AboutPanel() {
       setStatus("");
     }
     try {
-      const info = await invoke<QxUpdateInfo>("qx_update_check", { source: updateSource });
+      const info = await invokeWithTimeout<QxUpdateInfo>(
+        "qx_update_check",
+        { source: updateSource },
+        UPDATE_CHECK_TIMEOUT_MS,
+      );
       setUpdateInfo(info);
       setVersion(info.current_version || "unknown");
       setLatest(info.latest_version ? `v${info.latest_version}` : null);

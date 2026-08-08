@@ -346,8 +346,6 @@ pub(crate) fn maybe_run_update_helper_from_args() -> bool {
 }
 
 fn check_for_update(current_version: &str, source: UpdateSource) -> Result<QxUpdateInfo, String> {
-    let mut candidates = Vec::new();
-    let mut errors = Vec::new();
     let mut manifests = Vec::new();
     match source {
         UpdateSource::Auto | UpdateSource::Cnb => manifests.push(("CNB", CNB_LATEST_MANIFEST)),
@@ -361,12 +359,37 @@ fn check_for_update(current_version: &str, source: UpdateSource) -> Result<QxUpd
     if matches!(source, UpdateSource::Auto | UpdateSource::Github) {
         manifests.push(("GitHub", GITHUB_LATEST_MANIFEST));
     }
-    for (label, manifest_url) in manifests {
-        progress::ensure_not_cancelled()?;
-        match check_for_update_via_manifest(current_version, manifest_url) {
-            Ok(info) => candidates.push(info),
-            Err(error) => errors.push(format!("{label}: {error}")),
-        }
+
+    // Query every source in parallel: each manifest has its own hard timeout,
+    // so a slow/blocked source (e.g. GitHub behind a firewall) no longer
+    // delays the fast ones. Total wait is the slowest source, not the sum.
+    let mut candidates = Vec::new();
+    let mut errors = Vec::new();
+    if !manifests.is_empty() {
+        std::thread::scope(|scope| {
+            let handles: Vec<_> = manifests
+                .iter()
+                .map(|(label, manifest_url)| {
+                    let label = *label;
+                    let manifest_url = *manifest_url;
+                    scope.spawn(move || {
+                        progress::ensure_not_cancelled().ok()?;
+                        match check_for_update_via_manifest(current_version, manifest_url) {
+                            Ok(info) => Some(Ok((label, info))),
+                            Err(error) => Some(Err(format!("{label}: {error}"))),
+                        }
+                    })
+                })
+                .collect();
+            for handle in handles {
+                if let Ok(Some(result)) = handle.join() {
+                    match result {
+                        Ok((_label, info)) => candidates.push(info),
+                        Err(error) => errors.push(error),
+                    }
+                }
+            }
+        });
     }
 
     candidates.sort_by(|left, right| {
@@ -378,6 +401,9 @@ fn check_for_update(current_version: &str, source: UpdateSource) -> Result<QxUpd
     });
     if let Some(info) = candidates.pop() {
         return Ok(info);
+    }
+    if errors.is_empty() {
+        return Err("update checks failed: no update sources configured".to_string());
     }
     Err(format!("update checks failed: {}", errors.join("; ")))
 }
@@ -667,13 +693,14 @@ fn normalize_sha256(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
-/// Manifest / small JSON: fail offline quickly (connect 10s, total 20s).
+/// Manifest / small JSON: fail offline quickly (connect 5s, total 10s) so a
+/// blocked source (e.g. GitHub behind a firewall) cannot stall the check UI.
 fn http_client() -> Result<reqwest::blocking::Client, String> {
     let user_agent = format!("Qx/{}", env!("CARGO_PKG_VERSION"));
     crate::http_client::blocking_client(
         &user_agent,
-        Duration::from_secs(20),
-        Some(Duration::from_secs(10)),
+        Duration::from_secs(10),
+        Some(Duration::from_secs(5)),
     )
     .map_err(|e| format!("build update HTTP client: {e}"))
 }
@@ -684,7 +711,7 @@ fn download_http_client() -> Result<reqwest::blocking::Client, String> {
     let user_agent = format!("Qx/{}", env!("CARGO_PKG_VERSION"));
     crate::http_client::blocking_client(
         &user_agent,
-        Duration::from_secs(30 * 60),
+        Duration::from_secs(10 * 60),
         Some(Duration::from_secs(10)),
     )
     .map_err(|e| format!("build update download HTTP client: {e}"))
