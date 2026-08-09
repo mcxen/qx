@@ -19,6 +19,9 @@ mod http_client;
 mod input_events;
 mod island_window;
 mod macro_capture;
+mod macro_cursor_overlay;
+mod macro_playback;
+mod macro_playback_keys;
 mod macro_recorder;
 mod main_thread;
 mod marketplace;
@@ -319,7 +322,10 @@ pub fn run() {
         .on_window_event(|window, event| {
             let label = window.label();
             // Secondary surfaces: hide instead of destroy (main may be hidden).
-            if screencap::is_picker_surface(label) || label == "recording-controls" {
+            if screencap::is_picker_surface(label)
+                || label == "recording-controls"
+                || macro_cursor_overlay::is_surface(label)
+            {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = window.hide();
@@ -861,9 +867,14 @@ pub fn run() {
             macro_recorder::macro_start_recording,
             macro_recorder::macro_stop_recording,
             macro_recorder::macro_save,
+            macro_recorder::macro_create_demo,
             macro_recorder::macro_list,
             macro_recorder::macro_delete,
-            macro_recorder::macro_play,
+            macro_cursor_overlay::macro_cursor_overlay_show,
+            macro_cursor_overlay::macro_cursor_overlay_hide,
+            macro_playback::macro_play,
+            macro_playback::macro_toggle_playback_pause,
+            macro_playback::macro_stop_playback,
             history::record_launch,
             history::get_launch_history,
             history::clear_launch_history,

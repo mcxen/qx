@@ -46,6 +46,8 @@ export interface IslandContentAction {
   /** Must exist in ActionRegistry for this session when clickable. */
   id: string;
   label: string;
+  /** Optional host-formatted in-window shortcut hint shown beside the label. */
+  shortcut?: string;
   /** Host-owned icon set keeps docked and floating controls consistent. */
   icon?: IslandActionIcon;
   variant?: IslandActionVariant;

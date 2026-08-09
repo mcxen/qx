@@ -1,20 +1,84 @@
-use enigo::{Coordinate, Direction, Enigo, Key, Keyboard, Mouse, Settings};
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc::Receiver;
 use std::sync::{Condvar, Mutex, OnceLock};
-use std::time::{Duration, Instant};
-use tauri::command;
+use std::time::Instant;
+use tauri::{command, AppHandle, Emitter};
 
 use crate::macro_capture::{CaptureEvent, CaptureEventKind, MacroCaptureSession};
 
+const MACRO_RECORDING_EVENT: &str = "macro:recording";
+const RECORDING_POINTER_EVENT_INTERVAL_MS: u64 = 16;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MacroStep {
-    pub event_type: String, // "key_press", "key_release", "mouse_move", "mouse_click", "mouse_release", "wait"
+    pub event_type: String, // key/mouse events, wait, text_input, launch_application
     pub key: Option<String>,
     pub x: Option<i32>,
     pub y: Option<i32>,
     pub button: Option<String>,
+    #[serde(default)]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub application: Option<String>,
     pub duration_ms: u64,
+}
+
+fn empty_macro_step(event_type: &str, duration_ms: u64) -> MacroStep {
+    MacroStep {
+        event_type: event_type.to_string(),
+        key: None,
+        x: None,
+        y: None,
+        button: None,
+        text: None,
+        application: None,
+        duration_ms,
+    }
+}
+
+/// A deterministic cross-platform smoke macro used to verify the full
+/// playback path. It deliberately uses a semantic application/text step for
+/// the parts that are otherwise dependent on the user's launcher and keyboard
+/// layout, while keeping the address-bar shortcut as a real native key pair.
+fn demo_macro_steps() -> Vec<MacroStep> {
+    #[cfg(target_os = "macos")]
+    const ADDRESS_BAR_MODIFIER: &str = "MetaLeft";
+    #[cfg(target_os = "windows")]
+    const ADDRESS_BAR_MODIFIER: &str = "ControlLeft";
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    const ADDRESS_BAR_MODIFIER: &str = "ControlLeft";
+
+    let mut launch = empty_macro_step("launch_application", 0);
+    launch.application = Some("Google Chrome".to_string());
+
+    let mut text = empty_macro_step("text_input", 80);
+    text.text = Some("hello".to_string());
+
+    let mut modifier_press = empty_macro_step("key_press", 0);
+    modifier_press.key = Some(ADDRESS_BAR_MODIFIER.to_string());
+    let mut l_press = empty_macro_step("key_press", 40);
+    l_press.key = Some("KeyL".to_string());
+    let mut l_release = empty_macro_step("key_release", 30);
+    l_release.key = Some("KeyL".to_string());
+    let mut modifier_release = empty_macro_step("key_release", 30);
+    modifier_release.key = Some(ADDRESS_BAR_MODIFIER.to_string());
+
+    let mut return_press = empty_macro_step("key_press", 40);
+    return_press.key = Some("Return".to_string());
+    let mut return_release = empty_macro_step("key_release", 30);
+    return_release.key = Some("Return".to_string());
+
+    vec![
+        launch,
+        empty_macro_step("wait", 2_500),
+        modifier_press,
+        l_press,
+        l_release,
+        modifier_release,
+        text,
+        return_press,
+        return_release,
+    ]
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,8 +90,22 @@ pub struct MacroData {
     pub created_at: Option<i64>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct MacroRecordingProgress {
+    pub elapsed_ms: u64,
+    pub steps: usize,
+    pub cursor_x: Option<f64>,
+    pub cursor_y: Option<f64>,
+    pub mouse_button: Option<String>,
+    pub button_pressed: bool,
+}
+
 struct RecordingState {
     steps: Vec<MacroStep>,
+    /// Capture-relative timestamp for each serialized step. These offsets are
+    /// intentionally private: they exist only to remove the stop tail before
+    /// a MacroData payload is handed to the frontend or SQLite.
+    step_offsets_ms: Vec<u64>,
     start_time: Instant,
     last_ts: Instant,
     mac_modifier_flags: u64,
@@ -57,22 +135,69 @@ fn capture_controller() -> &'static (Mutex<CaptureControllerState>, Condvar) {
 fn collect_recording_events(
     receiver: Receiver<CaptureEvent>,
     started_at: Instant,
+    app: AppHandle,
 ) -> RecordingState {
     let mut state = RecordingState {
         steps: Vec::new(),
+        step_offsets_ms: Vec::new(),
         start_time: started_at,
         last_ts: started_at,
         mac_modifier_flags: 0,
     };
+    let mut last_pointer_event_at: Option<Instant> = None;
 
     while let Ok(event) = receiver.recv() {
+        let pointer = match event.kind {
+            CaptureEventKind::MouseMove { x, y } => Some((x, y, None, false)),
+            CaptureEventKind::MouseButton {
+                button,
+                pressed,
+                x,
+                y,
+            } => Some((x, y, Some(button_name(button)), pressed)),
+            _ => None,
+        };
         append_capture_event(&mut state, event);
+
+        if let Some((x, y, button, button_pressed)) = pointer {
+            let should_emit = button.is_some()
+                || last_pointer_event_at
+                    .map(|last| {
+                        event
+                            .captured_at
+                            .saturating_duration_since(last)
+                            .as_millis()
+                            >= RECORDING_POINTER_EVENT_INTERVAL_MS as u128
+                    })
+                    .unwrap_or(true);
+            if should_emit {
+                last_pointer_event_at = Some(event.captured_at);
+                let _ = app.emit(
+                    MACRO_RECORDING_EVENT,
+                    MacroRecordingProgress {
+                        elapsed_ms: event
+                            .captured_at
+                            .saturating_duration_since(started_at)
+                            .as_millis() as u64,
+                        steps: state.steps.len(),
+                        cursor_x: Some(x),
+                        cursor_y: Some(y),
+                        mouse_button: button,
+                        button_pressed,
+                    },
+                );
+            }
+        }
     }
 
     state
 }
 
 fn append_capture_event(state: &mut RecordingState, event: CaptureEvent) {
+    let event_offset_ms = event
+        .captured_at
+        .saturating_duration_since(state.start_time)
+        .as_millis() as u64;
     let elapsed = event
         .captured_at
         .saturating_duration_since(state.last_ts)
@@ -85,6 +210,8 @@ fn append_capture_event(state: &mut RecordingState, event: CaptureEvent) {
             x: None,
             y: None,
             button: None,
+            text: None,
+            application: None,
             duration_ms: elapsed,
         }),
         CaptureEventKind::KeyUp { code } => Some(MacroStep {
@@ -93,6 +220,8 @@ fn append_capture_event(state: &mut RecordingState, event: CaptureEvent) {
             x: None,
             y: None,
             button: None,
+            text: None,
+            application: None,
             duration_ms: elapsed,
         }),
         CaptureEventKind::KeyFlagsChanged { code, flags } => {
@@ -120,6 +249,8 @@ fn append_capture_event(state: &mut RecordingState, event: CaptureEvent) {
                     x: None,
                     y: None,
                     button: None,
+                    text: None,
+                    application: None,
                     duration_ms: elapsed,
                 })
             }
@@ -135,10 +266,15 @@ fn append_capture_event(state: &mut RecordingState, event: CaptureEvent) {
             x: Some(x.round() as i32),
             y: Some(y.round() as i32),
             button: None,
+            text: None,
+            application: None,
             duration_ms: elapsed,
         }),
         CaptureEventKind::MouseButton {
-            button, pressed, ..
+            button,
+            pressed,
+            x,
+            y,
         } => Some(MacroStep {
             event_type: if pressed {
                 "mouse_click".into()
@@ -146,9 +282,15 @@ fn append_capture_event(state: &mut RecordingState, event: CaptureEvent) {
                 "mouse_release".into()
             },
             key: None,
-            x: None,
-            y: None,
+            // Preserve the click location. A move event can be coalesced or
+            // dropped when the user clicks immediately after moving, so
+            // replay must not depend on the pointer still being at the right
+            // place by accident.
+            x: Some(x.round() as i32),
+            y: Some(y.round() as i32),
             button: Some(button_name(button)),
+            text: None,
+            application: None,
             duration_ms: elapsed,
         }),
     };
@@ -156,6 +298,7 @@ fn append_capture_event(state: &mut RecordingState, event: CaptureEvent) {
     state.last_ts = event.captured_at;
     if let Some(step) = step {
         state.steps.push(step);
+        state.step_offsets_ms.push(event_offset_ms);
     }
 }
 
@@ -427,26 +570,50 @@ fn finish_capture_stop() {
     }
 }
 
-fn stop_active_capture() -> Result<Option<MacroData>, String> {
+fn configured_stop_tail_ms() -> u64 {
+    crate::settings::read_settings()
+        .macros
+        .stop_tail_seconds
+        .min(60) as u64
+        * 1_000
+}
+
+fn finalize_recording(state: RecordingState, stop_elapsed_ms: u64, stop_tail_ms: u64) -> MacroData {
+    let cutoff_ms = stop_elapsed_ms.saturating_sub(stop_tail_ms);
+    let steps: Vec<MacroStep> = state
+        .steps
+        .into_iter()
+        .zip(state.step_offsets_ms)
+        .filter_map(|(step, offset_ms)| (offset_ms < cutoff_ms).then_some(step))
+        .collect();
+    let total_duration_ms = steps.iter().map(|step| step.duration_ms).sum();
+
+    MacroData {
+        id: None,
+        name: String::new(),
+        steps,
+        total_duration_ms,
+        created_at: None,
+    }
+}
+
+fn stop_active_capture(stop_tail_ms: u64) -> Result<Option<MacroData>, String> {
     let Some(session) = take_capture_for_stop() else {
         return Ok(None);
     };
 
+    let stop_started_at = Instant::now();
     let result = session.stop().map(|state| {
-        let total_duration_ms = state.start_time.elapsed().as_millis() as u64;
-        MacroData {
-            id: None,
-            name: String::new(),
-            steps: state.steps,
-            total_duration_ms,
-            created_at: None,
-        }
+        let stop_elapsed_ms = stop_started_at
+            .saturating_duration_since(state.start_time)
+            .as_millis() as u64;
+        finalize_recording(state, stop_elapsed_ms, stop_tail_ms)
     });
     finish_capture_stop();
     result.map(Some)
 }
 
-fn open_db() -> Result<rusqlite::Connection, String> {
+pub(crate) fn open_db() -> Result<rusqlite::Connection, String> {
     let db_path = dirs_db_path();
     if let Some(parent) = db_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("create dir: {e}"))?;
@@ -470,7 +637,7 @@ fn dirs_db_path() -> std::path::PathBuf {
 }
 
 #[command]
-pub fn macro_start_recording() -> Result<(), String> {
+pub fn macro_start_recording(app: AppHandle) -> Result<(), String> {
     let (lock, wake) = capture_controller();
     {
         let mut state = lock.lock().map_err(|e| format!("lock: {e}"))?;
@@ -481,8 +648,10 @@ pub fn macro_start_recording() -> Result<(), String> {
     }
 
     let started_at = Instant::now();
-    let session =
-        crate::macro_capture::start(move |receiver| collect_recording_events(receiver, started_at));
+    let worker_app = app.clone();
+    let session = crate::macro_capture::start(move |receiver| {
+        collect_recording_events(receiver, started_at, worker_app)
+    });
 
     let mut state = lock.lock().map_err(|e| format!("lock: {e}"))?;
     state.starting = false;
@@ -500,8 +669,21 @@ pub fn macro_start_recording() -> Result<(), String> {
 }
 
 #[command]
-pub fn macro_stop_recording() -> Result<MacroData, String> {
-    stop_active_capture()?.ok_or_else(|| "Not recording".to_string())
+pub fn macro_stop_recording(
+    app: AppHandle,
+    exclude_tail_ms: Option<u64>,
+) -> Result<MacroData, String> {
+    let result = stop_active_capture(exclude_tail_ms.unwrap_or_else(configured_stop_tail_ms))?
+        .ok_or_else(|| "Not recording".to_string());
+    if let Err(error) = crate::macro_cursor_overlay::hide(&app) {
+        crate::diagnostics::log(
+            crate::diagnostics::LogLevel::Warn,
+            "macro.cursor-overlay",
+            "failed to hide macro cursor overlay",
+            serde_json::json!({ "error": error }),
+        );
+    }
+    result
 }
 
 /// Stop the native capture session during module teardown or process exit.
@@ -509,7 +691,7 @@ pub fn macro_stop_recording() -> Result<MacroData, String> {
 /// the user-facing stop command and waits for an in-flight start/stop to
 /// finish before returning.
 pub(crate) fn stop_for_shutdown() {
-    match stop_active_capture() {
+    match stop_active_capture(configured_stop_tail_ms()) {
         Ok(Some(_)) => {}
         Ok(None) => {}
         Err(error) => crate::diagnostics::log(
@@ -532,6 +714,31 @@ pub fn macro_save(name: String, data: MacroData) -> Result<i64, String> {
     )
     .map_err(|e| format!("insert: {e}"))?;
     Ok(conn.last_insert_rowid())
+}
+
+#[command]
+pub fn macro_create_demo(name: String) -> Result<i64, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("Demo macro name cannot be empty".to_string());
+    }
+
+    let steps = demo_macro_steps();
+    let total_duration_ms = steps.iter().map(|step| step.duration_ms).sum::<u64>();
+    let steps_json = serde_json::to_string(&steps).map_err(|e| format!("serialize demo: {e}"))?;
+    let conn = open_db()?;
+    let now = chrono::Local::now().timestamp();
+    conn.execute(
+        "INSERT OR IGNORE INTO macros (name, steps, total_duration_ms, created_at) VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![name, steps_json, total_duration_ms, now],
+    )
+    .map_err(|e| format!("insert demo: {e}"))?;
+    conn.query_row(
+        "SELECT id FROM macros WHERE name = ?1",
+        rusqlite::params![name],
+        |row| row.get(0),
+    )
+    .map_err(|e| format!("find demo macro: {e}"))
 }
 
 #[command]
@@ -571,130 +778,17 @@ pub fn macro_delete(id: i64) -> Result<(), String> {
     Ok(())
 }
 
-#[command]
-pub fn macro_play(id: i64) -> Result<(), String> {
-    let conn = open_db()?;
-    let steps_str: String = conn
-        .query_row(
-            "SELECT steps FROM macros WHERE id = ?1",
-            rusqlite::params![id],
-            |row| row.get(0),
-        )
-        .map_err(|e| format!("load macro: {e}"))?;
-
-    let steps: Vec<MacroStep> =
-        serde_json::from_str(&steps_str).map_err(|e| format!("parse: {e}"))?;
-
-    let mut enigo = Enigo::new(&Settings::default()).map_err(|e| format!("enigo init: {e}"))?;
-
-    for step in &steps {
-        std::thread::sleep(Duration::from_millis(step.duration_ms));
-        match step.event_type.as_str() {
-            "key_press" => {
-                if let Some(ref k) = step.key {
-                    if let Ok(key) = parse_key(k) {
-                        let _ = enigo.key(key, Direction::Click);
-                    }
-                }
-            }
-            "mouse_move" => {
-                if let (Some(x), Some(y)) = (step.x, step.y) {
-                    let _ = enigo.move_mouse(x as i32, y as i32, Coordinate::Abs);
-                }
-            }
-            "mouse_click" => {
-                let _ = enigo.button(enigo::Button::Left, Direction::Click);
-            }
-            _ => {}
-        }
-    }
-
-    Ok(())
-}
-
-fn parse_key(s: &str) -> Result<Key, String> {
-    match s {
-        "Return" | "Enter" => Ok(Key::Return),
-        "Space" => Ok(Key::Space),
-        "Tab" => Ok(Key::Tab),
-        "BackSpace" | "Backspace" => Ok(Key::Backspace),
-        "Escape" | "Esc" => Ok(Key::Escape),
-        "ShiftLeft" | "ShiftRight" | "Shift" => Ok(Key::Shift),
-        "ControlLeft" | "ControlRight" | "Control" | "Ctrl" => Ok(Key::Control),
-        "Alt" | "AltLeft" | "AltRight" | "Option" => Ok(Key::Alt),
-        "MetaLeft" | "MetaRight" | "Meta" | "Command" | "Cmd" | "Super" => Ok(Key::Meta),
-        "UpArrow" | "Up" => Ok(Key::UpArrow),
-        "DownArrow" | "Down" => Ok(Key::DownArrow),
-        "LeftArrow" | "Left" => Ok(Key::LeftArrow),
-        "RightArrow" | "Right" => Ok(Key::RightArrow),
-        "PageUp" => Ok(Key::PageUp),
-        "PageDown" => Ok(Key::PageDown),
-        "Home" => Ok(Key::Home),
-        "End" => Ok(Key::End),
-        "Delete" => Ok(Key::Delete),
-        "F1" => Ok(Key::F1),
-        "F2" => Ok(Key::F2),
-        "F3" => Ok(Key::F3),
-        "F4" => Ok(Key::F4),
-        "F5" => Ok(Key::F5),
-        "F6" => Ok(Key::F6),
-        "F7" => Ok(Key::F7),
-        "F8" => Ok(Key::F8),
-        "F9" => Ok(Key::F9),
-        "F10" => Ok(Key::F10),
-        "F11" => Ok(Key::F11),
-        "F12" => Ok(Key::F12),
-        "F13" => Ok(Key::F13),
-        "F14" => Ok(Key::F14),
-        "F15" => Ok(Key::F15),
-        "F16" => Ok(Key::F16),
-        "F17" => Ok(Key::F17),
-        "F18" => Ok(Key::F18),
-        "F19" => Ok(Key::F19),
-        "F20" => Ok(Key::F20),
-        "Minus" => Ok(Key::Unicode('-')),
-        "Equal" => Ok(Key::Unicode('=')),
-        "LeftBracket" => Ok(Key::Unicode('[')),
-        "RightBracket" => Ok(Key::Unicode(']')),
-        "SemiColon" => Ok(Key::Unicode(';')),
-        "Quote" => Ok(Key::Unicode('\'')),
-        "BackSlash" | "IntlBackslash" => Ok(Key::Unicode('\\')),
-        "Comma" => Ok(Key::Unicode(',')),
-        "Dot" => Ok(Key::Unicode('.')),
-        "Slash" => Ok(Key::Unicode('/')),
-        k if k.len() == 4 && k.starts_with("Key") => {
-            let byte = k.as_bytes()[3];
-            if byte.is_ascii_uppercase() {
-                Ok(Key::Unicode((byte as char).to_ascii_lowercase()))
-            } else {
-                Err(format!("unknown key: {s}"))
-            }
-        }
-        k if k.len() == 4 && k.starts_with("Num") => {
-            let byte = k.as_bytes()[3];
-            if byte.is_ascii_digit() {
-                Ok(Key::Unicode(byte as char))
-            } else {
-                Err(format!("unknown key: {s}"))
-            }
-        }
-        k if k.len() == 1 => {
-            let c = k.chars().next().unwrap();
-            Ok(Key::Unicode(c))
-        }
-        _ => Err(format!("unknown key: {s}")),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn worker_interprets_raw_events_without_shared_listener_state() {
         let started_at = Instant::now();
         let mut state = RecordingState {
             steps: Vec::new(),
+            step_offsets_ms: Vec::new(),
             start_time: started_at,
             last_ts: started_at,
             mac_modifier_flags: 0,
@@ -712,5 +806,76 @@ mod tests {
         assert_eq!(state.steps[0].x, Some(12));
         assert_eq!(state.steps[0].y, Some(19));
         assert_eq!(state.steps[0].duration_ms, 20);
+    }
+
+    #[test]
+    fn click_steps_keep_their_coordinates() {
+        let started_at = Instant::now();
+        let mut state = RecordingState {
+            steps: Vec::new(),
+            step_offsets_ms: Vec::new(),
+            start_time: started_at,
+            last_ts: started_at,
+            mac_modifier_flags: 0,
+        };
+        append_capture_event(
+            &mut state,
+            CaptureEvent {
+                kind: CaptureEventKind::MouseButton {
+                    button: 0,
+                    pressed: true,
+                    x: 240.4,
+                    y: 118.8,
+                },
+                captured_at: started_at + Duration::from_millis(7),
+            },
+        );
+
+        assert_eq!(state.steps[0].event_type, "mouse_click");
+        assert_eq!(state.steps[0].x, Some(240));
+        assert_eq!(state.steps[0].y, Some(119));
+    }
+
+    #[test]
+    fn demo_macro_is_cross_platform_and_uses_layout_safe_text() {
+        let steps = demo_macro_steps();
+        assert_eq!(steps[0].event_type, "launch_application");
+        assert_eq!(steps[0].application.as_deref(), Some("Google Chrome"));
+        assert!(steps.iter().any(|step| {
+            step.event_type == "text_input" && step.text.as_deref() == Some("hello")
+        }));
+        assert!(steps.iter().any(|step| step.event_type == "key_press"));
+        assert!(steps.iter().any(|step| step.event_type == "key_release"));
+    }
+
+    #[test]
+    fn finalize_recording_removes_only_the_configured_stop_tail() {
+        let started_at = Instant::now();
+        let state = RecordingState {
+            steps: vec![
+                empty_macro_step("key_press", 1_000),
+                empty_macro_step("key_release", 3_000),
+                empty_macro_step("mouse_click", 3_500),
+                empty_macro_step("mouse_release", 1_500),
+            ],
+            step_offsets_ms: vec![1_000, 4_000, 7_500, 9_000],
+            start_time: started_at,
+            last_ts: started_at + Duration::from_millis(9_000),
+            mac_modifier_flags: 0,
+        };
+
+        let trimmed = finalize_recording(state, 10_000, 2_000);
+        assert_eq!(trimmed.steps.len(), 3);
+        assert_eq!(trimmed.total_duration_ms, 7_500);
+
+        let state = RecordingState {
+            steps: vec![empty_macro_step("key_press", 9_000)],
+            step_offsets_ms: vec![9_000],
+            start_time: started_at,
+            last_ts: started_at + Duration::from_millis(9_000),
+            mac_modifier_flags: 0,
+        };
+        let kept = finalize_recording(state, 10_000, 0);
+        assert_eq!(kept.steps.len(), 1);
     }
 }

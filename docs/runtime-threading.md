@@ -18,6 +18,23 @@ OS 回调只读取必要的 raw key code / 坐标并 `try_send`，不做键盘�
 capture thread 和 worker；macOS 的 event tap、run-loop source、Mach port 由创建线程
 完整移除和 `CFRelease`。
 
+录制 worker 只以约 16ms 的节流频率发出 `macro:recording` 坐标事件。指针可视化层是
+独立的每显示器透明 WebView，窗口创建、show/hide、置顶和点击穿透属性都通过 UI 线程
+端口完成；hook 回调不做布局、窗口调用、数据库操作或重锁。关闭录制时先收敛 native
+session，再隐藏可复用的 overlay，避免旧事件把下一次录制的指针状态污染。
+
+停止录制时，worker 返回的步骤带有私有捕获偏移量；最终化阶段按设置裁掉默认 2 秒的
+停止尾部，才生成 `MacroData`。因此浮动灵动岛、Esc 和停止按钮产生的输入不会落入宏，
+也不会把裁剪逻辑放进 hook 回调。
+
+宏播放同样不能占用 Tauri UI 线程：`macro_play` 只在 `spawn_blocking` 中读取宏数据，
+然后创建单实例 `macro_playback` worker。worker 独占 Enigo 实例，延迟和每一步的原始
+`duration_ms` 使用可取消、可暂停的短等待；每 100ms 最多发一次 waiting/step progress 事件，
+状态包含 `paused`，终态统一为 `completed` / `cancelled` / `error`。暂停只冻结当前等待
+的剩余时间，不释放播放任务；`macro_stop_playback` 和退出清理先置 cancel、唤醒暂停中的
+worker，再在阻塞边界 join；因此播放过程中 UI、Workbench 选择和灵动岛 Pause/Stop 仍可响应，
+且不会把数据库、布局或 native input 放进 OS hook / UI 回调。
+
 **禁止**：在 worker 上直接调 AppKit → macOS `SIGTRAP`（日志：`Must only be used from the main thread`）。
 
 历史崩溃栈：

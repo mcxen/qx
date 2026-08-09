@@ -2231,6 +2231,317 @@
   transition: background-color 0.1s ease, border-color 0.1s ease;
 }
 
+/* Macro Recorder Workbench: the recorder is a compact fixed header above a
+   reusable list/detail surface. Keep both panes in their own scroll chain so
+   a long step list never moves the shell chrome. */
+.qx-macro-shell .qx-shell-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.qx-macro-content {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.qx-macro-stage {
+  flex: 0 0 auto;
+  padding-bottom: 4px;
+}
+
+.qx-macro-record-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 7px 10px;
+}
+
+.qx-macro-record-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 108px;
+  color: var(--qx-text-primary);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.qx-macro-record-time {
+  min-width: 70px;
+  color: var(--qx-text-primary);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.qx-macro-demo-button {
+  margin-top: 10px;
+}
+
+.qx-macro-record-pointer {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 24px;
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+  font-family: var(--qx-font-mono);
+}
+
+.qx-macro-record-pointer svg {
+  width: 18px;
+  height: 23px;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.qx-macro-record-pointer path {
+  fill: var(--qx-text-on-accent);
+  stroke: var(--qx-accent);
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+}
+
+.qx-macro-record-pointer small {
+  color: var(--qx-text-tertiary);
+  font-family: var(--qx-font-sans);
+}
+
+.qx-macro-record-card .qx-command-button {
+  min-width: 108px;
+  height: 28px;
+  padding: 0 12px;
+}
+
+.qx-macro-record-card .qx-inline-input {
+  min-width: 140px;
+}
+
+.qx-macro-hint {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  min-height: 18px;
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+}
+
+.qx-macro-hint > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.qx-macro-error {
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--qx-danger) 38%, var(--qx-border-1));
+  border-radius: var(--qx-control-radius);
+  color: var(--qx-danger);
+  font-size: 12px;
+}
+
+.qx-macro-error.is-permission {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.qx-macro-error.is-permission .qx-shadcn-button {
+  flex: 0 0 auto;
+  color: var(--qx-danger);
+  border-color: color-mix(in srgb, var(--qx-danger) 42%, var(--qx-border-1));
+}
+
+.qx-macro-workbench {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.qx-macro-split {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.qx-macro-list-row {
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.qx-macro-list-mark {
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--qx-border-2);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.qx-macro-list-mark.is-playing {
+  border-color: var(--qx-accent);
+  background: var(--qx-accent);
+  box-shadow: 0 0 0 3px var(--qx-accent-soft);
+}
+
+.qx-macro-list-chevron {
+  color: var(--qx-text-tertiary);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.qx-macro-detail {
+  background: var(--qx-overlay-4);
+}
+
+.qx-detail-header-copy {
+  min-width: 0;
+}
+
+.qx-macro-detail-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qx-macro-step-heading {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 2px 4px;
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.qx-macro-step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.qx-macro-step {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--qx-control-radius);
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+  transition: background-color 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+
+.qx-macro-step.is-current {
+  border-color: color-mix(in srgb, var(--qx-accent) 48%, var(--qx-border-1));
+  background: color-mix(in srgb, var(--qx-accent) 10%, var(--qx-bg-component-2));
+  color: var(--qx-text-primary);
+}
+
+.qx-macro-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.qx-macro-step.is-current .qx-macro-step-index {
+  background: var(--qx-accent);
+  color: var(--qx-text-on-accent);
+}
+
+.qx-macro-step-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.qx-macro-step-copy > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-macro-step-copy small {
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+}
+
+.qx-macro-actions {
+  padding-bottom: 10px;
+}
+
+.qx-macro-delay-control {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px 10px;
+  border-bottom: 1px solid var(--qx-border-1);
+}
+
+.qx-macro-delay-control .qx-action-title {
+  padding: 0;
+}
+
+.qx-action-hint {
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+}
+
+.qx-macro-action-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 3px 8px 7px;
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+}
+
+.qx-macro-action-summary strong {
+  overflow: hidden;
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .qx-macro-record-card {
+    flex-wrap: wrap;
+  }
+
+  .qx-macro-record-status {
+    min-width: 0;
+  }
+
+  .qx-macro-record-time {
+    order: 3;
+    width: 100%;
+  }
+}
+
 .qx-module-stage {
   padding: 8px;
   display: flex;

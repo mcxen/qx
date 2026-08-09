@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ExternalLink, LoaderCircle, Pause, Play, Square } from "lucide-react";
-import { Button } from "../../components/ui";
+import { Button, Kbd } from "../../components/ui";
+import { formatQxShortcut } from "../../utils/keyboard";
 import type { IslandContentAction } from "../types";
 
 export interface IslandActionButtonProps {
@@ -28,6 +29,7 @@ export default function IslandActionButton({
       setPending(false);
     }
   };
+  const shortcut = formatQxShortcut(action.shortcut);
 
   return (
     <Button
@@ -43,6 +45,7 @@ export default function IslandActionButton({
     >
       <IslandActionGlyph icon={action.icon} pending={pending} />
       {action.label}
+      {shortcut ? <Kbd>{shortcut}</Kbd> : null}
     </Button>
   );
 }

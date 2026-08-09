@@ -28,9 +28,10 @@ export function mapBottomIslandContent(
       content.actionLabel != null
         ? { id: "default", label: content.actionLabel }
         : undefined,
-    actions: (content.actions ?? []).slice(0, 2).map(({ id, label, icon, variant }) => ({
+    actions: (content.actions ?? []).slice(0, 2).map(({ id, label, shortcut, icon, variant }) => ({
       id,
       label,
+      shortcut,
       icon,
       variant,
     })),

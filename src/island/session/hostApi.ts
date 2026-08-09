@@ -64,6 +64,16 @@ export const islandHost = {
     );
   },
 
+  /** Hide a producer's previously requested float without dismissing its docked session. */
+  clearFloat(id: string): void {
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent(ISLAND_FLOAT_REQUEST_EVENT, {
+        detail: { sessionId: id, clear: true },
+      }),
+    );
+  },
+
   getSnapshot(): IslandSession[] {
     return getSnapshot();
   },

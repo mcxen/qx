@@ -828,8 +828,9 @@ function PluginDetail({
 
   const handlePrefChange = useCallback(
     async (prefId: string, value: string | number | boolean) => {
-      const normalizedValue = settingsKey === "screencap"
-        && (prefId === "fps" || prefId === "capture_delay_seconds")
+      const normalizedValue = (settingsKey === "screencap"
+        && (prefId === "fps" || prefId === "capture_delay_seconds"))
+        || (settingsKey === "macros" && prefId === "stop_tail_seconds")
         ? Number(value)
         : value;
       const next = { ...prefValuesRef.current, [prefId]: normalizedValue };

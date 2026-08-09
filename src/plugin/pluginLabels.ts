@@ -42,8 +42,10 @@ function pickFromLocaleMap(
   return null;
 }
 
-function builtinPreferenceKey(preferenceId: string): string {
-  return `plugins.screencap.preference.${preferenceId}`;
+function builtinPreferenceKey(pluginId: string, preferenceId: string): string {
+  const moduleId = builtinModuleIdFromPluginId(pluginId);
+  const namespace = moduleId === "macros" ? "macros" : "screencap";
+  return `plugins.${namespace}.preference.${preferenceId}`;
 }
 
 /** User-facing plugin / module title for host chrome (Settings list, detail, …). */
@@ -106,9 +108,11 @@ export function localizePluginPreference(
   t: TranslateFn,
   locale: Locale = "en",
 ): PluginPreference {
-  const key = builtinPreferenceKey(preference.id);
+  const key = builtinPreferenceKey(plugin.id, preference.id);
   const localizeBuiltin = (translationKey: string, fallback: string): string => (
-    plugin.id === "builtin:screencap" ? t(translationKey, fallback) : fallback
+    plugin.id === "builtin:screencap" || plugin.id === "builtin:macros"
+      ? t(translationKey, fallback)
+      : fallback
   );
   const localizedDescription = pickFromLocaleMap(preference.descriptions, locale);
   const localizedPlaceholder = pickFromLocaleMap(preference.placeholders, locale);

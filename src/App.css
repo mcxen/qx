@@ -61,3 +61,69 @@
 @import "./styles/shared-modal.css";
 @import "./styles/onboarding.css";
 @import "./styles/loading-mark.css";
+
+.qx-macro-cursor-overlay-body,
+.qx-macro-cursor-overlay-body #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  pointer-events: none;
+}
+
+.qx-macro-cursor-overlay {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.qx-macro-cursor-pointer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 34px;
+  height: 44px;
+  opacity: 0;
+  transform-origin: 3px 2px;
+  will-change: transform, opacity;
+}
+
+.qx-macro-cursor-glyph {
+  position: absolute;
+  inset: 0;
+  width: 34px;
+  height: 44px;
+  overflow: visible;
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--qx-shadow) 55%, transparent));
+}
+
+.qx-macro-cursor-glyph path {
+  fill: var(--qx-text-on-accent);
+  stroke: var(--qx-shadow);
+  stroke-width: 2.4;
+  stroke-linejoin: round;
+}
+
+.qx-macro-cursor-ring {
+  position: absolute;
+  top: -13px;
+  left: -13px;
+  width: 46px;
+  height: 46px;
+  border: 3px solid var(--qx-accent);
+  border-radius: 50%;
+  opacity: 0;
+  transform: scale(.45);
+  pointer-events: none;
+}
+
+.qx-macro-cursor-pointer.is-clicking .qx-macro-cursor-ring {
+  animation: qx-macro-cursor-click 260ms ease-out;
+}
+
+@keyframes qx-macro-cursor-click {
+  0% { opacity: .9; transform: scale(.45); }
+  100% { opacity: 0; transform: scale(1.05); }
+}

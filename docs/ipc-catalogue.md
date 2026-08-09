@@ -78,13 +78,43 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 
 ## macros
 
-`macro_start_recording()`、`macro_stop_recording()`、`macro_save(name, data)`、`macro_list()`、`macro_delete(id)`、`macro_play(id)`。
+`macro_start_recording()`、`macro_stop_recording(exclude_tail_ms?)`、`macro_save(name, data)`、`macro_create_demo(name)`、`macro_list()`、`macro_delete(id)`、`macro_cursor_overlay_show()`、`macro_cursor_overlay_hide()`、`macro_play(id, delay_ms?)`、`macro_toggle_playback_pause()`、`macro_stop_playback()`。
 
 `macro_start_recording` 成功才会返回；失败会返回原生 hook / event tap
-权限错误（macOS 需要 Input Monitoring，Windows 需要安装键盘和鼠标低级 hook）。
+权限错误（macOS 使用 `macro_permission_denied:input-monitoring`，Windows 使用
+`macro_permission_denied:keyboard-hook:<code>` 或 `macro_permission_denied:mouse-hook:<code>`）。
+前端将这些稳定错误码映射为本地化提示；macOS 的“打开系统设置”按钮复用
+`qx_permissions_request({ id: "input-monitoring" })`，不会由宿主静默授予权限。
 录制由独立的 `MacroCaptureSession` 管理：原生回调只向有界队列投递原始事件，
 `macro_stop_recording` 会先卸载 hook / event tap，再等待捕获线程和消费线程退出。
 Esc、录制器按钮、模块卸载和应用退出都复用同一停止协议。
+
+`exclude_tail_ms` 由宏录制设置提供，默认是 2 秒；停止时按捕获时间戳裁掉停止前尾部事件，
+再把结果交给前端和 SQLite。应用退出没有前端参数时读取同一份持久化设置。
+
+录制成功后，Workbench 会按显示器创建透明、点击穿透的指针可视化层；它不参与
+捕获，也不复用截图指针监听器。录制 worker 以约 16ms 的上限发出 `macro:recording`
+位置事件，卡片、灵动岛和各显示器 overlay 分别消费同一份轻量坐标数据；停止、卸载
+和退出会隐藏并复用这些窗口。
+
+`macro_create_demo(name)` 写入一个跨平台 smoke macro：启动 Google Chrome、等待应用就绪、
+用原生地址栏快捷键定位并输入 `hello`，再提交搜索；Windows 只接受标准 Chrome 安装位置，
+macOS 通过 `open -a "Google Chrome"` 启动，找不到应用时播放会明确报错而不会静默跳过。
+
+`macro_play` 只负责在后台启动一个单实例播放任务并返回
+`{ playback_id, macro_id, macro_name, total_steps, delay_ms }`；SQLite 查询在
+`spawn_blocking` 中完成，Enigo 实例、延迟和原生输入均在独立 worker 中执行。
+`delay_ms` 最大为 60 秒，播放等待和每个步骤都以 25ms 粒度检查取消标志与暂停状态。
+`macro_stop_playback` 会设置取消标志并在阻塞线程中 join worker；Esc、灵动岛 Stop
+和应用退出走同一停止路径。模块视图卸载不会取消播放，事件桥接和任务灵动岛会继续
+运行，直到完成、失败或用户停止。
+
+播放 worker 通过 `macro:playback` 事件报告 `waiting`、`playing`、`paused`、`completed`、
+`cancelled`、`error`。`macro_toggle_playback_pause()` 只切换 worker 的协作式暂停标记，
+不结束任务；暂停会冻结当前步骤/播放前延迟的剩余时间，继续后从同一位置恢复。事件包含
+完成步数、总步数、当前（从 1 开始）步骤及原始 `MacroStep`，前端 Workbench 与灵动岛都
+消费这份真实进度；播放灵动岛的暂停/继续动作显示平台化 `Space` 快捷键提示，Stop 仍
+保持独立危险操作，不在回调或 UI 线程中执行数据库操作和布局工作。
 
 ## qxai / g4f
 
@@ -265,7 +295,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `qx_update_apply_and_restart`, `qx_update_progress_snapshot`, `qx_update_progress_close`, `qx_update_progress_cancel`, `download_ocr_model`,
 `check_ocr_models`, `ocr_recognize_path`, `ocr_recognize_clipboard_image`, `ocr_list_history`,
 `ocr_delete_history`, `ocr_clear_history`, `ocr_copy_result_text`, `ocr_status`, `clipboard_ocr_pending`,
-`macro_start_recording`, `macro_stop_recording`, `macro_save`, `macro_list`, `macro_delete`, `macro_play`,
+`macro_start_recording`, `macro_stop_recording`, `macro_save`, `macro_create_demo`, `macro_list`, `macro_delete`, `macro_cursor_overlay_show`, `macro_cursor_overlay_hide`, `macro_play`, `macro_toggle_playback_pause`, `macro_stop_playback`,
 `record_launch`, `get_launch_history`, `clear_launch_history`, `record_search`, `get_search_history`,
 `clear_search_history`, `delete_search_entry`, `record_search_click`, `get_search_click_stats`,
 `clear_search_click_stats`, `v2ex_fetch_topics`, `v2ex_search_topics`, `v2ex_fetch_node_topics`,
@@ -293,6 +323,8 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 | `ocr:download-progress` / `ocr-download-progress` | `download_ocr_model` | `modules/settings/OcrSettings.tsx` |
 | `screencap:ocr` | 截图确认后 OCR | `screencap/store.ts`（editor 打开文本工具） |
 | `qx-terminal-output` / `qx-terminal-exit` | QxTTY PTY reader | `modules/qx-tty/QxTTYPanel.tsx` |
+| `macro:playback` | 宏播放 worker | `modules/macros/store.ts` + Workbench/灵动岛桥接 |
+| `macro:recording` | 宏录制 worker（约 16ms 节流） | 宏录制状态、指针 overlay、灵动岛 |
 | 显示器变化 | `display_monitor::start_display_monitor` | 内部 auto-show panel |
 
 ## 约定

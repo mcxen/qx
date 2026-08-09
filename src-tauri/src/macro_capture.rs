@@ -253,9 +253,7 @@ mod platform {
         sender: SyncSender<CaptureEvent>,
     ) -> Result<Box<dyn NativeCaptureSession>, String> {
         if !crate::permissions::macro_capture_permission_granted() {
-            return Err(
-                "Macro recording permission denied. Enable Input Monitoring for Qx in System Settings → Privacy & Security → Input Monitoring, then try again.".to_string(),
-            );
+            return Err("macro_permission_denied:input-monitoring".to_string());
         }
 
         let control = Arc::new(MacControl {
@@ -312,11 +310,20 @@ mod platform {
             );
             if tap.is_null() {
                 drop(Box::from_raw(callback_info));
-                let error = "Macro recording event tap could not be created. Check Input Monitoring permission for Qx.".to_string();
+                let error = "macro_permission_denied:input-monitoring".to_string();
                 let _ = ready.send(Err(error.clone()));
                 return Err(error);
             }
             control.tap.store(tap, Ordering::SeqCst);
+            if control.stopping.load(Ordering::SeqCst) {
+                CFMachPortInvalidate(tap);
+                CFRelease(tap.cast());
+                control.tap.store(null_mut(), Ordering::SeqCst);
+                drop(Box::from_raw(callback_info));
+                let error = "macOS macro capture stopped before the event tap started".to_string();
+                let _ = ready.send(Err(error.clone()));
+                return Err(error);
+            }
 
             let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0);
             if source.is_null() {
@@ -332,6 +339,17 @@ mod platform {
 
             let run_loop = CFRunLoopGetCurrent();
             control.run_loop.store(run_loop, Ordering::SeqCst);
+            if control.stopping.load(Ordering::SeqCst) {
+                CFRelease(source.cast());
+                CFMachPortInvalidate(tap);
+                CFRelease(tap.cast());
+                control.run_loop.store(null_mut(), Ordering::SeqCst);
+                control.tap.store(null_mut(), Ordering::SeqCst);
+                drop(Box::from_raw(callback_info));
+                let error = "macOS macro capture stopped before the run loop started".to_string();
+                let _ = ready.send(Err(error.clone()));
+                return Err(error);
+            }
             CFRunLoopAddSource(run_loop, source, kCFRunLoopCommonModes);
             CGEventTapEnable(tap, true);
             let _ = ready.send(Ok(()));
@@ -547,6 +565,15 @@ mod platform {
             // caller can attempt to wake this thread with WM_QUIT.
             let _ = PeekMessageW(&mut message, null_mut(), 0, 0, PM_NOREMOVE);
 
+            // `stop_and_join` may race with thread startup. If it observed a
+            // zero thread id before this point, the stopping flag is the
+            // second wake-up path; never enter GetMessageW after it is set.
+            if control.stopping.load(Ordering::SeqCst) {
+                let error = "Windows macro capture stopped before hooks started".to_string();
+                let _ = ready.send(Err(error));
+                return Ok(());
+            }
+
             let callback_state = Box::new(WindowsCallbackState {
                 sender,
                 control: Arc::clone(&control),
@@ -562,13 +589,19 @@ mod platform {
                     &control,
                     callback_info,
                     &ready,
-                    format!(
-                        "Macro recording keyboard hook permission denied (Windows error {}).",
-                        GetLastError()
-                    ),
+                    format!("macro_permission_denied:keyboard-hook:{}", GetLastError()),
                 );
             }
             control.keyboard_hook.store(keyboard_hook, Ordering::SeqCst);
+            if control.stopping.load(Ordering::SeqCst) {
+                unhook_saved_hooks(&control);
+                CALLBACK_STATE.store(null_mut(), Ordering::SeqCst);
+                drop(Box::from_raw(callback_info));
+                let error =
+                    "Windows macro capture stopped before the mouse hook started".to_string();
+                let _ = ready.send(Err(error));
+                return Ok(());
+            }
 
             let mouse_hook = SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook_callback), module, 0);
             if mouse_hook.is_null() {
@@ -576,14 +609,20 @@ mod platform {
                 unhook_saved_hooks(&control);
                 CALLBACK_STATE.store(null_mut(), Ordering::SeqCst);
                 drop(Box::from_raw(callback_info));
-                let error = format!(
-                    "Macro recording mouse hook permission denied (Windows error {}).",
-                    error_code
-                );
+                let error = format!("macro_permission_denied:mouse-hook:{}", error_code);
                 let _ = ready.send(Err(error.clone()));
                 return Err(error);
             }
             control.mouse_hook.store(mouse_hook, Ordering::SeqCst);
+            if control.stopping.load(Ordering::SeqCst) {
+                unhook_saved_hooks(&control);
+                CALLBACK_STATE.store(null_mut(), Ordering::SeqCst);
+                drop(Box::from_raw(callback_info));
+                let error =
+                    "Windows macro capture stopped before the message loop started".to_string();
+                let _ = ready.send(Err(error));
+                return Ok(());
+            }
             let _ = ready.send(Ok(()));
 
             loop {

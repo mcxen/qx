@@ -12,6 +12,7 @@ import { installOverlayScrollbars } from "./utils/overlayScrollbar";
 import LoadingMarkLab from "./components/LoadingMarkLab";
 import TrayPanelApp from "./tray/TrayPanelApp";
 import UpdateProgressApp from "./updater/UpdateProgressApp";
+import MacroCursorOverlayWindow from "./modules/macros/MacroCursorOverlayWindow";
 
 installSafeTauriEventUnlisten();
 installGlobalQxLogging();
@@ -26,6 +27,7 @@ const isIslandFloat = surface === "island";
 const isLoadingLab = surface === "loading-lab";
 const isTrayPanel = surface === "tray";
 const isUpdateProgress = surface === "update-progress";
+const isMacroCursorOverlay = surface === "macro-cursor-overlay";
 
 document.documentElement.classList.toggle("qx-loading-lab-page", isLoadingLab);
 
@@ -51,6 +53,8 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
         </ThemeProvider>
       ) : isTrayPanel ? (
         <TrayPanelApp />
+      ) : isMacroCursorOverlay ? (
+        <MacroCursorOverlayWindow />
       ) : isRecordingControls ? (
         <ThemeProvider>
           <RecordingControlWindow />

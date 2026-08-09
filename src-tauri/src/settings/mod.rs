@@ -677,6 +677,25 @@ impl Default for ScreencapSettings {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MacroSettings {
+    /// Seconds reserved at the end of a recording for pressing Stop.
+    #[serde(default = "default_macro_stop_tail_seconds")]
+    pub stop_tail_seconds: u32,
+}
+
+fn default_macro_stop_tail_seconds() -> u32 {
+    2
+}
+
+impl Default for MacroSettings {
+    fn default() -> Self {
+        Self {
+            stop_tail_seconds: default_macro_stop_tail_seconds(),
+        }
+    }
+}
+
 pub fn default_file_search_categories() -> Vec<FileSearchCategory> {
     [
         ("folders", "Folders", "", true, false),
@@ -895,6 +914,8 @@ pub struct Settings {
     #[serde(default)]
     pub screencap: ScreencapSettings,
     #[serde(default)]
+    pub macros: MacroSettings,
+    #[serde(default)]
     pub advanced: AdvancedSettings,
     #[serde(default)]
     pub agent: AgentSettings,
@@ -931,6 +952,7 @@ impl Default for Settings {
             plugin_registries: default_plugin_registries(),
             file_search: FileSearchSettings::default(),
             screencap: ScreencapSettings::default(),
+            macros: MacroSettings::default(),
             advanced: AdvancedSettings::default(),
             agent: AgentSettings::default(),
             rss: RssSettings::default(),

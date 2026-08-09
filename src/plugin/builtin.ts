@@ -159,6 +159,23 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       keywords: ["macro", "macros", "recording", "宏", "录制"],
     },
     description: "Keyboard macro recorder",
+    settingsKey: "macros",
+    preferences: [
+      {
+        id: "stop_tail_seconds",
+        label: "Discard tail when stopping",
+        type: "select",
+        default: "2",
+        description: "Do not keep the final seconds used to reach the floating Stop control.",
+        options: [
+          { value: "0", label: "Keep everything" },
+          { value: "1", label: "1 second" },
+          { value: "2", label: "2 seconds (recommended)" },
+          { value: "3", label: "3 seconds" },
+          { value: "5", label: "5 seconds" },
+        ],
+      },
+    ],
   },
   {
     id: "documents",

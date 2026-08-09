@@ -559,7 +559,7 @@ Context Panel：
   通用插件图标。业务内容不得自绘图标按钮或伪造跳转。
 - 暂停的 `countdown` 必须保持静止：冻结剩余时间与底边进度，并由 `ShellContent`
   抑制 `wave / dots / spinner / pulse`，即使旧 producer 仍误传 activity 也不得播放。
-- Island action 使用统一 22px 胶囊按钮：受限 `pause/play/stop/open` 图标、可见 hover/active/focus 状态，永远位于 trailing 最右；宿主模块最多可并列两个紧凑动作，插件仍只允许一个；插件不得注入自定义按钮 DOM/CSS。
+- Island action 使用统一 22px 胶囊按钮：受限 `pause/play/stop/open` 图标、可见 hover/active/focus 状态，永远位于 trailing 最右；宿主模块最多可并列两个紧凑动作，插件仍只允许一个；动作可由宿主显示平台化快捷键提示（例如 Space），插件不得注入自定义按钮 DOM/CSS。
 - Island business action 只能由 `IslandActionButton` 渲染；执行期间按钮进入 busy/disabled
   状态，防止重复提交。浮窗的缩小/展开与打开 Qx 是独立的宿主窗口控件，不占用
   producer action 配额。

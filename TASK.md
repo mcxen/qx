@@ -1,5 +1,36 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — 宏录制 Workbench 与可停止播放
+
+**状态**：代码完成，等待桌面运行态复核。
+
+- 宏列表接入内置 Workbench 的列表选择、主从详情、搜索、Context Actions 和步骤详情；
+  ↑↓ 选择、Enter 进入详情/播放、Esc 按层级退出。
+- `macro_play(id, delay_ms?)` 改为单实例后台播放任务；支持 0 / 3 / 5 / 10 / 30 秒播放前延迟，
+  worker 以真实步骤事件更新完成度、当前步骤和步骤详情高亮。
+- `macro_toggle_playback_pause` 支持暂停/继续播放，暂停冻结当前步骤或播放前延迟的剩余时间；
+  Workbench 使用窗口内 `Space`，播放灵动岛显示同一平台化快捷键提示。
+- `macro_stop_playback`、播放灵动岛 Stop、Esc 和应用退出统一 cancel + join；模块视图卸载
+  保留后台播放任务，`macro:playback` 事件桥接到 Workbench store 和可持续的灵动岛任务面。
+- 播放按键/鼠标事件尊重 press/release 和录制的鼠标按钮，不在 UI 线程执行数据库或 native input。
+- 录制期间新增按显示器的透明点击穿透鼠标指针层；录制 worker 以约 16ms 节流推送坐标，
+  录制卡片和灵动岛同步显示坐标/步数，点击显示短暂反馈环，停止路径统一隐藏 overlay。
+- 点击/释放步骤保存原始坐标，播放前移动到记录位置；未知按键和步骤改为明确失败，不再静默跳过。
+- 录制开始即发布 task Island 并请求浮动显示 Stop；停止路径按设置裁掉默认最后 2 秒，
+  不把用于点击停止控件的输入写进宏；设置入口位于 设置 → 扩展 → 宏录制。
+- 空宏列表提供跨平台示范宏：打开 Google Chrome，等待启动，使用 macOS Command / Windows Ctrl
+  地址栏快捷键，输入 `hello` 并提交；macOS / Windows 分别走原生应用启动路径。
+
+### 验证
+
+- [x] `npm run check`
+- [x] `npx tsc --noEmit`
+- [x] `cargo fmt --check`
+- [x] `cargo check`
+- [x] `npm run build`
+- [ ] macOS/Windows 桌面态录制、延迟播放、Stop、Esc、退出清理。
+- [ ] 签名安装后运行示范宏并确认 Chrome 搜索 `hello`（当前本机待授予 Qx Input Monitoring）。
+
 ## Feature — Hacker News 社区插件
 
 **状态**：基础版本实现完成，待桌面运行态复核。

@@ -307,6 +307,11 @@ export interface ScreencapSettings {
   recording_open_after: "none" | "player" | "mail";
 }
 
+export interface MacroSettings {
+  /** Seconds at the end of a recording that are reserved for stopping it. */
+  stop_tail_seconds: 0 | 1 | 2 | 3 | 5;
+}
+
 /** Built-in module ids that can contribute to main launcher search. */
 export type ModuleSearchModuleId =
   | "clipboard"
@@ -363,6 +368,7 @@ export interface Settings {
   plugin_registries: PluginRegistrySource[];
   file_search: FileSearchSettings;
   screencap: ScreencapSettings;
+  macros: MacroSettings;
   advanced: AdvancedSettings;
   agent: AgentSettings;
   rss: RssSettings;
@@ -488,6 +494,9 @@ export const DEFAULT_SETTINGS: Settings = {
     recording_custom_directory: null,
     screenshot_open_after: "none",
     recording_open_after: "none",
+  },
+  macros: {
+    stop_tail_seconds: 2,
   },
   plugin_registries: DEFAULT_PLUGIN_REGISTRIES.map((entry) => ({ ...entry })),
   advanced: {
@@ -723,6 +732,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
             categories: normalizeFileSearchCategories((s as Settings).file_search?.categories),
           },
           screencap: { ...DEFAULT_SETTINGS.screencap, ...s.screencap },
+          macros: { ...DEFAULT_SETTINGS.macros, ...s.macros },
           advanced: { ...DEFAULT_SETTINGS.advanced, ...s.advanced },
           agent: { ...DEFAULT_SETTINGS.agent, ...s.agent },
           rss: { ...DEFAULT_SETTINGS.rss, ...s.rss },

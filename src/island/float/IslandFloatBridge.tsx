@@ -42,8 +42,12 @@ export default function IslandFloatBridge({
 
   useEffect(() => {
     const onRequest = (event: Event) => {
-      const detail = (event as CustomEvent<{ sessionId?: string }>).detail;
+      const detail = (event as CustomEvent<{ sessionId?: string; clear?: boolean }>).detail;
       const sessionId = String(detail?.sessionId ?? "").trim();
+      if (detail?.clear) {
+        setRequestedSessionId((current) => current === sessionId ? null : current);
+        return;
+      }
       if (sessionId) setRequestedSessionId(sessionId);
     };
     window.addEventListener(ISLAND_FLOAT_REQUEST_EVENT, onRequest);

@@ -285,12 +285,14 @@ export interface IslandSlotContent {
   action?: {
     id: string; // must exist in ActionRegistry for this session when clickable
     label: string;
+    shortcut?: string; // optional host-formatted shortcut hint
     icon?: "pause" | "play" | "stop" | "open";
     variant?: "default" | "danger";
   };
   actions?: Array<{
     id: string;
     label: string;
+    shortcut?: string;
     icon?: "pause" | "play" | "stop" | "open";
     variant?: "default" | "danger";
   }>; // host modules: max 2; plugins remain max 1
@@ -725,6 +727,8 @@ export const islandHost = {
   bindActions(id: string, handlers: Record<string, ActionHandler>): () => void;
   /** See §7.3 for when this is a no-op vs shows float */
   requestFloat(id: string): void;
+  /** Hide a requested float while keeping its docked session alive. */
+  clearFloat(id: string): void;
   getSnapshot(): IslandSession[];
   subscribe(listener: () => void): () => void;
 };
@@ -811,8 +815,9 @@ export const islandHost = {
 **显式浮出生命周期（v1 锁定）**：
 
 - `island_float_enabled` 只控制 Qx docked Surface 是否提供宿主“悬浮到桌面”按钮。
-- session 更新、main hide、blur-hide、close-to-background、窄屏和 exception 抑制都不得
-  自动打开浮窗。
+- 普通 session 更新、main hide、blur-hide、close-to-background、窄屏和 exception 抑制都不得
+  自动打开浮窗；录屏/宏录制这类必须在主窗隐藏后仍可停止的内置 task session 是唯一例外，
+  在 native session 成功启动后由模块请求浮出。
 - 用户点击 docked 按钮后，Host 对当前 winner 调用 `requestFloat(id)`，main bridge 记录
   本次显式 session id 并显示 `island` 窗。
 - 用户点击浮窗“关闭”时，float 先立即 hide，再发 `close-float` intent；main bridge 清除
@@ -826,11 +831,11 @@ export const islandHost = {
 |---|---|
 | `placement: "docked"` | 仅 docked；`requestFloat` → no-op |
 | `placement: "docked-or-float"` | eligible；只有 Qx docked Surface 的用户点击可触发 float |
-| `placement: "floating"` | v1 与 `docked-or-float` 使用同一手动浮出按钮与生命周期 |
-| `requestFloat(id)` | 仅接受存在、非 home、placement 含 float 语义的 session；调用必须来自 Qx 宿主按钮用户手势 |
+| `placement: "floating"` | v1 与 `docked-or-float` 使用同一浮出生命周期；内置录制 task 可在启动成功后自动请求 |
+| `requestFloat(id)` | 仅接受存在、非 home、placement 含 float 语义的 session；普通模块/插件从 Qx 宿主按钮调用，录制 task 可在 native session 成功后调用 |
 | 双显 | 用户手动浮出时允许 docked / floating 同源显示；producer 仍不能自行创建双表面 |
 
-谁可调用：Qx DockHost 的宿主按钮。模块业务和插件都不可自动调用 `requestFloat`。
+谁可调用：Qx DockHost 的宿主按钮；录屏/宏录制 native task 是为停止可达性保留的内置例外。
 
 #### 7.4 交互与 Esc（Issue 14）
 

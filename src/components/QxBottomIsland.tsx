@@ -16,6 +16,7 @@ import { useIslandProgress } from "../island/surface/useIslandProgress";
 export interface BottomIslandAction {
   id: string;
   label: string;
+  shortcut?: string;
   onAction: () => void;
   icon?: IslandActionIcon;
   variant?: IslandActionVariant;

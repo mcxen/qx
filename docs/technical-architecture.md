@@ -60,6 +60,7 @@ Qx/
 │       ├── media/                # Qx 核心媒体层：尺寸、H.264/MP4 与 GIF 转换
 │       ├── screencap/            # 捕获编排、状态、窗口、截图、录制与历史适配
 │       ├── macro_capture.rs      # 独立可停止的原生宏捕获 session（macOS event tap / Windows 双 hook）
+│       ├── macro_cursor_overlay.rs # 录制期间每显示器透明点击穿透指针层
 │       ├── macro_recorder.rs     # 宏录制结果、SQLite 持久化与回放 (enigo)
 │       ├── diagnostics.rs        # 诊断日志与日志路径
 │       ├── display_monitor.rs    # 复用系统显示器服务的插拔监听
@@ -233,10 +234,16 @@ tab = "plugin:*"   → PluginPanelViewport
 
 ### 4.6 宏录制
 
-- Rust: rdev (事件捕捉) + enigo (回放)
+- Rust: 独立 `MacroCaptureSession`（macOS event tap / Windows 双低级 hook）+ enigo (回放)
 - 记录: 鼠标移动/点击、键盘按键
-- 保存/回放/删除
-- 键盘: 只有 Esc/Enter (保存对话框), **缺失 ↑↓ 列表导航**
+- 保存/删除；回放是可延迟、可停止的后台单实例任务；点击步骤保留坐标，未知步骤/按键不会静默跳过
+- 内置示范宏通过受限的 `launch_application` / `text_input` 步骤打开 Google Chrome、定位地址栏并搜索 `hello`；macOS 使用 `open -a`，Windows 只解析标准 Chrome 安装目录
+- 列表复用 Workbench 的 `useQxListSelection`、`useQxMasterDetail`、`QxResizableSplit`
+  和 `QxActionSections`；Enter 进入详情/播放，↑↓ 选择，步骤详情高亮当前步骤
+- `macro:playback` 事件驱动主从详情和灵动岛的真实完成度/当前步骤；播放 worker 在退出时
+  与录制 worker 一样通过 cancel + join 清理
+- `macro:recording` 事件以约 16ms 节流推送当前坐标；录制期间为每个显示器创建可复用的
+  透明点击穿透指针层，窗口/UI 变化只经过主线程端口，原生 hook 不触碰布局或数据库
 
 ### 4.7 设置
 
@@ -308,14 +315,14 @@ updater::* (check/download_and_install/helper_replace)
 | RSS Articles | ↑↓/j/k, Enter, S, U, O, R, Esc | — |
 | RSS Detail | j/k, S, U, O, Esc | — |
 | ScreenRecorder | **无** | ↑↓, Enter, ⌫, Esc |
-| MacroRecorder | Esc, Enter (保存时) | ↑↓ 列表导航 |
+| MacroRecorder | Esc（录制/草稿/详情/播放逐层退出）, Enter（详情/播放/保存） | — |
 | Settings | Esc, 搜索过滤 | ↑↓ 切换标签页 |
 | Plugin Mgr | 搜索过滤 | ↑↓ 列表导航 |
 
 ### 推荐改进
 
 1. **ScreenRecorder**: 添加 `handleKeyDown` — ↑↓ 历史导航, Enter 选中, ⌫ 删除, Esc 关闭
-2. **MacroRecorder**: 添加 ↑↓ 列表导航, Enter 回放, ⌫ 删除
+2. **MacroRecorder**: 已接入 Workbench 列表/详情与动作面；后续可补充跨平台真实录制回归矩阵
 3. **Settings**: Ctrl+Tab / Ctrl+数字 切换标签页
 4. **Clipboard**: Ctrl+数字 快速切换类型过滤
 5. **通用**: 所有模块页面增加 ⌘K 唤起命令面板
@@ -366,7 +373,6 @@ updater::* (check/download_and_install/helper_replace)
 ### P0 - 必须
 1. **RSS 功能: 添加默认订阅** — 首次使用无引导，用户不知道如何添加
 2. **ScreenRecorder 键盘** — 当前完全不能用键盘操作
-3. **MacroRecorder 列表键盘** — 不能选择已有的宏
 
 ### P1 - 重要
 1. **Settings 标签页键盘切换** — 当前只能鼠标点或搜索过滤
@@ -425,11 +431,13 @@ npm run tauri build -- --bundles app
 | `src/App.tsx` | 775 | 主应用壳，包含渲染逻辑、键盘处理、窗口管理 |
 | `src/modules/settings/PluginManager.tsx` | 935 | 插件库 UI，Installed/Browse 已可用，后续需要拆分 |
 | `src/modules/clipboard/ClipboardPanel.tsx` | 379 | 剪贴板面板 + 工具函数混在一起 |
-| `src/modules/macros/MacroRecorder.tsx` | 304 | 宏录制面板，需要键盘增强 |
+| `src/modules/macros/MacroRecorder.tsx` | 684 | 宏录制 Workbench 列表/详情与播放进度界面 |
+| `src/modules/macros/playbackBridge.ts` | 195 | 宏播放事件、WorkBench/灵动岛任务桥接 |
 | `src/modules/screencap/ScreenRecorder.tsx` | 402 | 屏幕录制，缺失键盘 |
 | `src/modules/rss/RssPanel.tsx` | 293 | RSS 订阅列表 |
 | `src/modules/rss/ArticleList.tsx` | 321 | RSS 文章列表 |
 | `src/modules/rss/store.ts` | 321 | RSS store + 辅助函数 |
 | `src-tauri/src/lib.rs` | 175 | Tauri 启动 + 45 个命令注册 |
+| `src-tauri/src/macro_playback.rs` | 689 | 可延迟、可停止的后台宏播放 worker |
 | `src-tauri/src/rss/storage.rs` | 266 | RSS SQLite CRUD |
 | `src-tauri/src/rss/fetcher.rs` | 202 | RSS 网络抓取 + 解析 |

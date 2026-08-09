@@ -1,3 +1,5 @@
+import { useT } from "../../i18n";
+
 interface SaveDialogProps {
   stepCount: number;
   name: string;
@@ -13,6 +15,7 @@ export default function SaveDialog({
   onSave,
   onDiscard,
 }: SaveDialogProps) {
+  const t = useT();
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && name.trim()) {
       e.preventDefault();
@@ -43,13 +46,13 @@ export default function SaveDialog({
           textAlign: "center",
         }}
       >
-        {stepCount} steps captured
+        {t("macros.stepsCaptured", "{n} steps captured").replace("{n}", String(stepCount))}
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <input
           className="qx-inline-input"
           style={{ flex: 1 }}
-          placeholder="Macro name…"
+          placeholder={t("macros.namePlaceholder", "Macro name…")}
           value={name}
           autoFocus
           onChange={(e) => setName(e.target.value)}
@@ -59,10 +62,10 @@ export default function SaveDialog({
           onClick={onSave}
           disabled={!name.trim()}
         >
-          Save
+          {t("macros.save", "Save macro")}
         </button>
         <button className="qx-command-button" onClick={onDiscard}>
-          Discard
+          {t("macros.discard", "Discard")}
         </button>
       </div>
     </div>
