@@ -3,9 +3,9 @@ import { invoke } from "@tauri-apps/api/core";
 import type { CaptureColor, CaptureTool } from "./CaptureToolbar";
 import { captureNumberForeground, captureNumberOutline } from "./captureColor";
 import {
-  MOSAIC_BRUSH_RADIUS_CSS,
   mosaicBlockSizeRel,
   mosaicBrushRadiusRel,
+  paintMosaicBrushOutline,
   paintMosaicOps,
   paintMosaicRegionOutline,
   type MosaicOp,
@@ -268,27 +268,31 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
         selection.h,
         mosaicOps,
       );
-    } else if (shapeDraft?.kind === "mosaic") {
-      paintMosaicRegionOutline(
-        context,
-        shapeDraft.start.x,
-        shapeDraft.start.y,
-        shapeDraft.end.x,
-        shapeDraft.end.y,
-      );
-    } else if (penDraft && penDraft.length > 0 && strokeDraftKind === "mosaic") {
-      // Freeze not ready yet — show a dashed stroke so the user still gets feedback.
-      context.save();
-      context.strokeStyle = "rgba(200, 200, 210, 0.85)";
-      context.lineWidth = MOSAIC_BRUSH_RADIUS_CSS * 2;
-      context.setLineDash([5, 4]);
-      context.beginPath();
-      context.moveTo(penDraft[0].x, penDraft[0].y);
-      for (let i = 1; i < penDraft.length; i += 1) {
-        context.lineTo(penDraft[i].x, penDraft[i].y);
+    }
+
+    // Keep the region frame visible after mouse-up, including on Windows where
+    // the content-protected picker can prevent a live source-pixel preview.
+    // These guides stay in the picker canvas and are not part of the exported
+    // annotation overlay or the final Rust-applied mosaic.
+    for (const op of mosaicOps) {
+      if (op.mode === "region") {
+        paintMosaicRegionOutline(
+          context,
+          op.x1 * selection.w,
+          op.y1 * selection.h,
+          op.x2 * selection.w,
+          op.y2 * selection.h,
+        );
+      } else if (!freeze) {
+        paintMosaicBrushOutline(
+          context,
+          op.points.map((point) => ({
+            x: point.x * selection.w,
+            y: point.y * selection.h,
+          })),
+          op.radius * Math.min(selection.w, selection.h),
+        );
       }
-      context.stroke();
-      context.restore();
     }
 
     const paint = (annotation: CaptureAnnotation) => {

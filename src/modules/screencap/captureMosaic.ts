@@ -262,3 +262,29 @@ export function paintMosaicRegionOutline(
   context.fillRect(x, y, w, h);
   context.restore();
 }
+
+/** Fallback feedback for a mosaic brush while source pixels are unavailable. */
+export function paintMosaicBrushOutline(
+  context: CanvasRenderingContext2D,
+  points: Point[],
+  radius: number,
+): void {
+  if (points.length === 0) return;
+  context.save();
+  context.strokeStyle = "rgba(200, 200, 210, 0.85)";
+  context.fillStyle = "rgba(120, 120, 128, 0.18)";
+  context.lineWidth = radius * 2;
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.setLineDash([5, 4]);
+  context.beginPath();
+  context.moveTo(points[0].x, points[0].y);
+  for (let index = 1; index < points.length; index += 1) {
+    context.lineTo(points[index].x, points[index].y);
+  }
+  if (points.length === 1) {
+    context.lineTo(points[0].x + 0.01, points[0].y);
+  }
+  context.stroke();
+  context.restore();
+}
