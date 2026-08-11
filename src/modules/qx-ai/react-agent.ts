@@ -887,6 +887,15 @@ interface FunctionStreamEvent {
   error?: string;
 }
 
+function assertNamedToolCalls(message: OpenAIMessage, transport: string): OpenAIMessage {
+  for (const [index, call] of (message.tool_calls ?? []).entries()) {
+    if (!call.function?.name?.trim()) {
+      throw new Error(`${transport} returned tool call ${index + 1} without a function name`);
+    }
+  }
+  return message;
+}
+
 async function streamFunctionCallingOnce(
   opts: AgentRunOptions,
   messages: Array<Record<string, unknown>>,
@@ -958,19 +967,19 @@ async function streamFunctionCallingOnce(
   });
 
   try {
-    return await streamPromise;
+    return assertNamedToolCalls(await streamPromise, "Streaming provider");
   } catch (streamError) {
     // Some OpenAI-compatible providers support function calling but not
     // streaming tool-call deltas. Preserve the working pre-stream transport as
     // a compatibility fallback; no local tool has executed at this point.
     try {
-      const message = await invoke<OpenAIMessage>("qxai_chat_with_tools", {
+      const message = assertNamedToolCalls(await invoke<OpenAIMessage>("qxai_chat_with_tools", {
         provider: opts.provider,
         model: opts.model,
         messages,
         tools,
         toolChoice: tools.length > 0 ? "auto" : "none",
-      });
+      }), "Compatibility provider");
       if (message.reasoning_content) {
         onReasoningStream(message.reasoning_content);
       }

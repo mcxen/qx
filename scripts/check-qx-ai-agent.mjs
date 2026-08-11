@@ -34,6 +34,8 @@ assert.match(storeSource, /await useSettingsStore\.getState\(\)\.flush\(\)/);
 // a provider compatibility fallback.
 assert.match(agentSource, /invoke<OpenAIMessage>\("qxai_chat_with_tools"/);
 assert.match(agentSource, /compatibility fallback failed/);
+assert.match(agentSource, /assertNamedToolCalls\(await streamPromise/);
+assert.match(agentSource, /without a function name/);
 
 // Rust serializes PluginAiBashResult with camelCase.
 assert.match(agentSource, /timedOut: boolean/);

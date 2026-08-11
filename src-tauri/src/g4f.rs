@@ -418,6 +418,25 @@ fn sse_data(line: &str) -> Option<&str> {
     line.strip_prefix("data:").map(str::trim_start)
 }
 
+fn merge_stream_fragment(target: &mut serde_json::Value, fragment: &str) {
+    if fragment.is_empty() {
+        return;
+    }
+    let existing = target.as_str().unwrap_or_default();
+    let merged = if existing.is_empty() {
+        fragment.to_string()
+    } else if fragment == existing {
+        existing.to_string()
+    } else if fragment.starts_with(existing) {
+        // A few OpenAI-compatible providers emit cumulative values instead of
+        // deltas. Replace the prefix rather than duplicating it.
+        fragment.to_string()
+    } else {
+        format!("{existing}{fragment}")
+    };
+    *target = serde_json::Value::String(merged);
+}
+
 fn merge_stream_tool_calls(tool_calls: &mut Vec<serde_json::Value>, calls: &[serde_json::Value]) {
     for call in calls {
         let index = call["index"].as_u64().unwrap_or(0) as usize;
@@ -430,18 +449,19 @@ fn merge_stream_tool_calls(tool_calls: &mut Vec<serde_json::Value>, calls: &[ser
         }
         let target = &mut tool_calls[index];
         if let Some(id) = call["id"].as_str() {
-            target["id"] = serde_json::Value::String(id.to_string());
+            merge_stream_fragment(&mut target["id"], id);
         }
         if let Some(kind) = call["type"].as_str() {
             target["type"] = serde_json::Value::String(kind.to_string());
         }
         if let Some(name) = call["function"]["name"].as_str() {
-            target["function"]["name"] = serde_json::Value::String(name.to_string());
+            // Function names are stream deltas too. Overwriting each fragment
+            // leaves values such as `sh` (or the empty initializer) instead of
+            // `bash`, causing every local tool to be rejected as unnamed.
+            merge_stream_fragment(&mut target["function"]["name"], name);
         }
         if let Some(arguments) = call["function"]["arguments"].as_str() {
-            let existing = target["function"]["arguments"].as_str().unwrap_or_default();
-            target["function"]["arguments"] =
-                serde_json::Value::String(format!("{existing}{arguments}"));
+            merge_stream_fragment(&mut target["function"]["arguments"], arguments);
         } else if call["function"]["arguments"].is_object() {
             target["function"]["arguments"] =
                 serde_json::Value::String(call["function"]["arguments"].to_string());
@@ -1089,6 +1109,55 @@ mod tests {
             &[serde_json::json!({
                 "index": 0,
                 "function": { "arguments": "wd\"}" }
+            })],
+        );
+        assert_eq!(calls[0]["id"], "call_bash");
+        assert_eq!(calls[0]["function"]["name"], "bash");
+        assert_eq!(calls[0]["function"]["arguments"], "{\"script\":\"pwd\"}");
+    }
+
+    #[test]
+    fn streamed_tool_call_name_and_id_fragments_are_reassembled() {
+        let mut calls = Vec::new();
+        merge_stream_tool_calls(
+            &mut calls,
+            &[serde_json::json!({
+                "index": 0,
+                "id": "call_",
+                "type": "function",
+                "function": { "name": "ba", "arguments": "{" }
+            })],
+        );
+        merge_stream_tool_calls(
+            &mut calls,
+            &[serde_json::json!({
+                "index": 0,
+                "id": "bash",
+                "function": { "name": "sh", "arguments": "}" }
+            })],
+        );
+        assert_eq!(calls[0]["id"], "call_bash");
+        assert_eq!(calls[0]["function"]["name"], "bash");
+        assert_eq!(calls[0]["function"]["arguments"], "{}");
+    }
+
+    #[test]
+    fn cumulative_stream_fragments_do_not_duplicate_tool_fields() {
+        let mut calls = Vec::new();
+        merge_stream_tool_calls(
+            &mut calls,
+            &[serde_json::json!({
+                "index": 0,
+                "id": "call_",
+                "function": { "name": "ba", "arguments": "{\"script\":" }
+            })],
+        );
+        merge_stream_tool_calls(
+            &mut calls,
+            &[serde_json::json!({
+                "index": 0,
+                "id": "call_bash",
+                "function": { "name": "bash", "arguments": "{\"script\":\"pwd\"}" }
             })],
         );
         assert_eq!(calls[0]["id"], "call_bash");
