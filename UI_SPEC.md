@@ -853,6 +853,10 @@ QxAI：
 
 - 列表：Esc → launcher。
 - Chat / Settings：Esc → 会话列表（`setView("list")`），不是直接 launcher。
+- 每次模型请求都必须在系统上下文中注入当前真实宿主平台。Windows 不得向模型声明使用
+  Spotlight、`mdfind`、Finder 或 AppleScript；`files` / `apps` 统一描述为 Qx 跨平台宿主能力。
+- Chat 请求进行中使用 Bottom Island 的不确定 `dots` activity，不得伪造固定百分比；回复完成、
+  失败或取消后必须清除 activity / progress meter，静态岛只显示会话消息数或错误状态。
 
 ### Documents（文本工具箱 · 简易 Notepad++）
 

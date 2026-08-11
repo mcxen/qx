@@ -156,6 +156,26 @@ assert.equal(updateSession("plugin.display.pomodoro-island", {
   content: { secondary: "Stale" },
 }).ok, false);
 
+__resetIslandStoreForTests();
+showSession({
+  id: "module.qx-ai.chat.shell",
+  priority: "location",
+  source: "module",
+  content: {
+    primary: "QxAI Chat",
+    secondary: "Streaming response",
+    meter: { kind: "activity", activity: "dots" },
+  },
+});
+assert.equal(updateSession("module.qx-ai.chat.shell", {
+  content: { primary: "QxAI Chat", secondary: "3 messages" },
+}).ok, true);
+assert.equal(
+  getSession("module.qx-ai.chat.shell")?.content.meter,
+  undefined,
+  "a complete Island content snapshot must clear stale activity/progress",
+);
+
 // Integration invariants that pure priority checks cannot prove.
 const shellSource = fs.readFileSync("src/components/QxShell.tsx", "utf8");
 assert.match(shellSource, /islandKey:\s*string/);

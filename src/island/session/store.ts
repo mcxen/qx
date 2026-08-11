@@ -175,16 +175,10 @@ function mergeContent(
   patch: Partial<IslandSlotContent> | IslandSlotContent,
 ): IslandSlotContent {
   if ("primary" in patch && typeof (patch as IslandSlotContent).primary === "string") {
-    // Full-ish replace when primary is present
-    return {
-      ...base,
-      ...patch,
-      identity: patch.identity !== undefined ? patch.identity : base.identity,
-      meter: patch.meter !== undefined ? patch.meter : base.meter,
-      action: patch.action !== undefined ? patch.action : base.action,
-      actions: patch.actions !== undefined ? patch.actions : base.actions,
-      effect: patch.effect !== undefined ? patch.effect : base.effect,
-    };
+    // A producer that supplies primary is publishing a complete content
+    // snapshot. Optional fields omitted from the new snapshot must clear;
+    // retaining them leaves stale progress/activity/actions after completion.
+    return { ...(patch as IslandSlotContent) };
   }
   return {
     ...base,

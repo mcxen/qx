@@ -346,6 +346,9 @@ trailing pack (right):  [activity][countdown][actions]  — actions always right
 - marquee 仅在实际溢出时启用；重复组对辅助技术隐藏，并保留完整 `aria-label`。`prefers-reduced-motion` 下停止动画并回退为静态裁剪。
 - `progress` 与 `activity`：progress 与 activity 不同时抢同一 meter 语义；
   `meter.kind === "progress"` 时按受控 presentation 渲染，activity 在 trailing pack。
+- `islandHost.update` 的 `content` 若包含 `primary`，视为 producer 发布的完整内容快照；新快照
+  省略的 `meter` / `action` / `actions` / `effect` 必须被清除，不能从上一阶段继承。仅不含
+  `primary` 的 patch 才执行字段合并。这保证任务从 activity/progress 切回静态状态时不残留进度层。
 - presentation 只允许 `surface-fill`（默认）、`icon-ring`、`island-ring`、
   `compact-line`。插件不能提供颜色、SVG、DOM 或 CSS；`icon-ring` 无可用目标图标时
   安全回退为 `compact-line`。

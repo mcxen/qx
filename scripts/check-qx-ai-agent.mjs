@@ -31,4 +31,19 @@ assert.match(agentSource, /compatibility fallback failed/);
 assert.match(agentSource, /timedOut: boolean/);
 assert.doesNotMatch(agentSource, /timed_out: boolean/);
 
+// Every transport receives the real host platform, and tool descriptions must
+// not advertise macOS-only implementations as cross-platform behavior.
+assert.match(agentSource, /buildQxHostSystemPrompt/);
+assert.match(agentSource, /The current operating system is Windows/);
+assert.doesNotMatch(agentSource, /Search installed macOS applications by name/);
+assert.doesNotMatch(agentSource, /Search files on the system by name fragment using Spotlight\/mdfind/);
+assert.match(storeSource, /messages:\s*requestMessages/);
+
+const chatSource = readFileSync(
+  new URL("../src/modules/qx-ai/QxAiChat.tsx", import.meta.url),
+  "utf8",
+);
+assert.match(chatSource, /activity:\s*"dots"/);
+assert.doesNotMatch(chatSource, /progress:\s*55/);
+
 console.log("QxAI agent tool-call checks passed");

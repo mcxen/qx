@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "../settings/store";
 import {
   type AgentStep,
+  buildQxHostSystemPrompt,
   getEnabledTools,
   runFunctionCallingAgent,
   runReactAgent,
@@ -544,11 +545,18 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       }
 
       const requestId = generateStreamRequestId();
+      const basePrompt =
+        titledConv.messages.find((message) => message.role === "system")?.content?.trim()
+        || defaultSystemPrompt;
+      const requestMessages: G4fMessage[] = [
+        { role: "system", content: buildQxHostSystemPrompt(basePrompt) },
+        ...titledConv.messages.filter((message) => message.role !== "system"),
+      ];
       const response = await streamChatEvents({
         requestId,
         provider: selection.provider,
         model: selection.model,
-        messages: titledConv.messages,
+        messages: requestMessages,
         reasoning: Boolean(titledConv.reasoningEnabled),
         onChunk: (full) =>
           set((s) =>

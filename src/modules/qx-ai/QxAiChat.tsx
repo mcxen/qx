@@ -155,7 +155,7 @@ export default function QxAiChat() {
     ? {
         label: t("qxai.title", "QxAI Chat"),
         detail: t("qxai.streaming", "Streaming response…"),
-        progress: 55,
+        activity: "dots",
       }
     : error
       ? { label: t("qxai.title", "QxAI Chat"), detail: error, tone: "danger" }

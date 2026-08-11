@@ -2,6 +2,10 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { AgentSettings } from "../settings/store";
 import type { G4fMessage } from "./store";
+import {
+  getQxDesktopPlatform,
+  type QxDesktopPlatform,
+} from "../../utils/keyboard";
 
 export interface AgentStep {
   id: string;
@@ -77,7 +81,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: "bash",
     description:
-      "Run a shell command via /bin/bash. Use for filesystem operations, listing files, reading text files, running CLIs. Avoid destructive commands without an explicit user instruction.",
+      "Run a shell command through the Bash-compatible runtime resolved by Qx. Use for filesystem operations, listing files, reading text files, and CLIs. Avoid destructive commands without an explicit user instruction.",
     inputHint: '{"script": "ls -la ~/Documents", "cwd": "~"}',
     parameters: {
       type: "object",
@@ -195,7 +199,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: "apps",
     description:
-      "Search installed macOS applications by name. Returns matching app paths.",
+      "Search applications installed on the current operating system by name. Returns matching app paths.",
     inputHint: '{"query": "safari"}',
     parameters: {
       type: "object",
@@ -224,12 +228,12 @@ export const TOOLS: ToolSpec[] = [
   {
     name: "files",
     description:
-      "Search files on the system by name fragment using Spotlight/mdfind. Returns paths.",
+      "Search files on the current operating system by name fragment through Qx's cross-platform file index. Returns paths.",
     inputHint: '{"query": "invoice.pdf"}',
     parameters: {
       type: "object",
       properties: {
-        query: { type: "string", description: "Filename fragment to search via mdfind" },
+        query: { type: "string", description: "Filename fragment to search" },
       },
       required: ["query"],
     },
@@ -328,11 +332,29 @@ export function getEnabledTools(settings: AgentSettings): ToolSpec[] {
   return TOOLS.filter((tool) => tool.isEnabled(settings));
 }
 
+export function buildQxHostSystemPrompt(
+  basePrompt: string,
+  platform: QxDesktopPlatform = getQxDesktopPlatform(),
+): string {
+  const platformContext = platform === "windows"
+    ? `Qx host environment:
+- The current operating system is Windows.
+- Use Windows paths, applications, keyboard conventions, and terminology.
+- Qx files/apps tools are cross-platform host APIs. Do not claim that Windows searches use macOS-only Spotlight, mdfind, Finder, or AppleScript.`
+    : `Qx host environment:
+- The current operating system is macOS.
+- Use macOS paths, applications, keyboard conventions, and terminology.
+- Qx files/apps tools are host APIs; Spotlight or mdfind may be used behind the file-search port.`;
+
+  return [basePrompt.trim(), platformContext].filter(Boolean).join("\n\n");
+}
+
 export function buildReactSystemPrompt(
   basePrompt: string,
   enabled: ToolSpec[],
 ): string {
-  if (enabled.length === 0) return basePrompt;
+  const hostPrompt = buildQxHostSystemPrompt(basePrompt);
+  if (enabled.length === 0) return hostPrompt;
 
   const toolBlock = enabled
     .map(
@@ -367,7 +389,7 @@ Rules:
 Available tools:
 ${toolBlock}`;
 
-  return `${basePrompt.trim()}\n${protocol}`;
+  return `${hostPrompt}\n${protocol}`;
 }
 
 interface ParsedAction {
@@ -826,7 +848,7 @@ export async function runFunctionCallingAgent(
   const tools = toolsToOpenAISchema(enabled);
 
   const working: Array<Record<string, unknown>> = [];
-  const systemPrompt = opts.basePrompt.trim();
+  const systemPrompt = buildQxHostSystemPrompt(opts.basePrompt);
   if (systemPrompt) {
     working.push({ role: "system", content: systemPrompt });
   }
