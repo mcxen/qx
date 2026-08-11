@@ -176,6 +176,8 @@ fn open_pin_now(
     let label = format!("{PIN_PREFIX}{id}");
     let encoded = encode_path_query(&path);
     let url = format!("index.html?view=capture-pin&id={id}&path={encoded}");
+    // Seamless pin: undecorated + transparent; the WebView *is* the image.
+    // Soft OS shadow stays so the floating photo still lifts off the desktop.
     let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
         .title("Qx Pin")
         .inner_size(320.0, 240.0)

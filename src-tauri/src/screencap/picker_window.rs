@@ -1,7 +1,7 @@
 use tauri::utils::config::Color;
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 
-use super::geometry::{covers_full_display, physical_frame};
+use super::geometry::covers_full_display;
 use super::types::PickerSession;
 use crate::display::{all_capture_monitors, capture_monitor, tauri_monitor_for_capture};
 
@@ -213,9 +213,12 @@ pub(super) fn restore_editable_selection(app: &AppHandle, session: &PickerSessio
     .unwrap_or(false)
 }
 
-/// Reuse the protected picker only after shrinking it to the selected region.
-/// A transparent fullscreen WebView must never remain above the desktop while
-/// recording because a passthrough failure would swallow all user input.
+/// Keep the picker on the full active display while recording so the cutout
+/// shade remains: recording region stays bright, everything outside is dimmed.
+///
+/// The WebView is fully mouse-passthrough so desktop input is never blocked.
+/// Content protection keeps Qx chrome out of the capture stream. Full-display
+/// region recordings skip the overlay (nothing outside to dim).
 pub(super) fn show_recording_frame(
     app: &AppHandle,
     session: &PickerSession,
@@ -236,16 +239,34 @@ pub(super) fn show_recording_frame(
             .get_webview_window(PICKER_LABEL)
             .ok_or_else(|| "region picker window is unavailable".to_string())?;
         let _ = picker.hide();
+        // Full-screen capture has no exterior to dim.
         if covers_full_display(&area, logical_width, logical_height) {
             return Ok(false);
         }
 
-        let frame = physical_frame(monitor.position().x, monitor.position().y, scale, &area);
+        // Cover the whole display so the React cutout shades (outside the
+        // selection hole) stay correct. Shrinking to the selection frame made
+        // the exterior dim disappear and looked like "no recording region".
+        let _ = show_shades(&app, monitor_id);
+        // macOS: exclude the overlay HWND from capture (desktop shows through).
+        // Windows: WDA_EXCLUDEFROMCAPTURE paints black for the whole HWND, so
+        // leave protection off — the selection hole is fully transparent CSS and
+        // only the exterior dim paints; region capture samples the hole only.
+        #[cfg(target_os = "macos")]
+        let _ = picker.set_content_protected(true);
+        #[cfg(target_os = "windows")]
+        let _ = picker.set_content_protected(false);
         picker
-            .set_position(PhysicalPosition::new(frame.x, frame.y))
+            .set_position(PhysicalPosition::new(
+                monitor.position().x,
+                monitor.position().y,
+            ))
             .map_err(|error| format!("position recording frame: {error}"))?;
         picker
-            .set_size(PhysicalSize::new(frame.width, frame.height))
+            .set_size(PhysicalSize::new(
+                monitor.size().width,
+                monitor.size().height,
+            ))
             .map_err(|error| format!("size recording frame: {error}"))?;
         picker
             .set_ignore_cursor_events(true)

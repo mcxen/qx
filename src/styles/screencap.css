@@ -10,18 +10,19 @@
 }
 
 .qx-capture-pin {
+  /* Window chrome == image. No nested card, no inset frame. */
   position: fixed;
   inset: 0;
-  display: grid;
-  place-items: center;
+  display: block;
   overflow: hidden;
+  margin: 0;
+  padding: 0;
   background: transparent;
   cursor: grab;
   outline: none;
-  border-radius: 4px;
-  box-shadow:
-    0 0 0 1px rgb(255 255 255 / 0.18),
-    0 10px 28px rgb(0 0 0 / 0.38);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .qx-capture-pin:active {
@@ -29,62 +30,34 @@
 }
 
 .qx-capture-pin-image {
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
-  height: auto;
-  object-fit: contain;
-  transform-origin: center center;
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  object-fit: fill;
   pointer-events: none;
   user-select: none;
   -webkit-user-drag: none;
 }
 
-.qx-capture-pin-chrome {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
-  background: linear-gradient(180deg, rgb(0 0 0 / 0.42), transparent);
-  opacity: 0;
-  transition: opacity 120ms ease;
-  pointer-events: none;
-}
-
-.qx-capture-pin:hover .qx-capture-pin-chrome,
-.qx-capture-pin.is-menu-open .qx-capture-pin-chrome {
-  opacity: 1;
-}
-
-.qx-capture-pin-hint {
-  min-width: 0;
-  overflow: hidden;
-  color: rgb(255 255 255 / 0.86);
-  font: 600 10px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
-}
-
 .qx-capture-pin-close {
-  pointer-events: auto;
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
   display: grid;
   width: 22px;
   height: 22px;
   place-items: center;
-  flex: 0 0 auto;
   border: 0;
   border-radius: 999px;
   background: rgb(0 0 0 / 0.55);
   color: #fff;
   font: 600 16px/1 system-ui, sans-serif;
   cursor: pointer;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
 }
 
 .qx-capture-pin-close:hover {
@@ -230,11 +203,56 @@
 }
 
 .qx-region-picker-rect.is-recording {
-  border-color: var(--qx-accent, #5b8cff);
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.38) inset,
-    0 0 0 1px color-mix(in srgb, var(--qx-accent, #5b8cff) 30%, transparent);
+  /* Capture hole only — no border/paint on the recorded pixels. */
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
   pointer-events: none;
+}
+
+/*
+ * Red guide ring lives strictly outside the selection (3px band around the
+ * hole). Capture samples only the transparent rect, so the ring never enters
+ * the video. Positioned in RegionPickerWindow as left/top -3, size +6.
+ */
+.qx-region-picker-recording-ring {
+  position: absolute;
+  z-index: 4;
+  box-sizing: border-box;
+  border: 3px solid color-mix(in srgb, var(--qx-danger, #ff453a) 90%, white);
+  border-radius: 3px;
+  background: transparent;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.45),
+    0 0 10px color-mix(in srgb, var(--qx-danger, #ff453a) 35%, transparent);
+  animation: qx-recording-ring-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes qx-recording-ring-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 0.4),
+      0 0 8px color-mix(in srgb, var(--qx-danger, #ff453a) 30%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgb(255 255 255 / 0.65),
+      0 0 14px color-mix(in srgb, var(--qx-danger, #ff453a) 50%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .qx-region-picker-recording-ring {
+    animation: none;
+  }
+}
+
+/* Stronger exterior dim while actively recording so the hole reads clearly. */
+.qx-region-picker:has(.qx-region-picker-rect.is-recording) .qx-region-picker-shade {
+  background: var(--qx-screencap-recording-shade, rgb(0 0 0 / 0.58));
 }
 
 .qx-region-picker-rect.is-tool-text {

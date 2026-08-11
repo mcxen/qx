@@ -20,6 +20,7 @@ import { useLocale, useT } from "../../i18n";
 import { setPendingModuleLaunch, takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import { ocrRecognizeClipboardImage, revealSystemPath } from "../../system";
 import { registerWindowActivationTask } from "../../shell/windowActivation";
+import { pinScreenshotToDesktop } from "../screencap/store";
 import {
   clearClipboardRestore,
   ensureClipboardRestoreOnHide,
@@ -973,6 +974,22 @@ export default function ClipboardPanel() {
         menuKey: "e",
         onClick: () => void runOcrOnItem(selectedItem, "editor"),
       });
+      const pinPath = selectedItem.image_path
+        || (fileMetadata?.kind === "image" ? selectedItem.file_path : null)
+        || (selectedItem.file_path && isClipboardImageItem(selectedItem) ? selectedItem.file_path : null);
+      if (pinPath) {
+        list.push({
+          id: "pin-desktop",
+          label: t("screencap.pin.action", "Pin to Desktop"),
+          kbd: "CmdOrCtrl+Shift+I",
+          menuKey: "i",
+          onClick: () => {
+            void pinScreenshotToDesktop(pinPath).catch((error) => {
+              setStatus(String(error));
+            });
+          },
+        });
+      }
     }
     if (clipboardHistory.some((item) => isClipboardImageItem(item) && !item.ocr_text?.trim())) {
       list.push({
@@ -1038,6 +1055,7 @@ export default function ClipboardPanel() {
     return list;
   }, [
     compressSourcePath,
+    fileMetadata?.kind,
     gifSourcePath,
     mediaProgress,
     pasteActionLabel,

@@ -899,6 +899,20 @@ export default function RegionPickerWindow() {
             <div className="qx-region-picker-shade" style={{ left: 0, top: visibleRect.y, width: visibleRect.x, height: visibleRect.h }} />
             <div className="qx-region-picker-shade" style={{ left: visibleRect.x + visibleRect.w, top: visibleRect.y, right: 0, height: visibleRect.h }} />
           </>}
+          {/* Recording ring sits fully outside the capture hole so it never
+              samples into the video — only the transparent rect is the hole. */}
+          {recordingActive && (
+            <div
+              className="qx-region-picker-recording-ring"
+              style={{
+                left: visibleRect.x - 3,
+                top: visibleRect.y - 3,
+                width: visibleRect.w + 6,
+                height: visibleRect.h + 6,
+              }}
+              aria-hidden="true"
+            />
+          )}
           <div
             className={`qx-region-picker-rect${selection ? " is-selected" : ""}${tool ? ` is-tool-${tool}` : ""}${recordingActive ? " is-recording" : ""}`}
             style={{ left: visibleRect.x, top: visibleRect.y, width: visibleRect.w, height: visibleRect.h }}

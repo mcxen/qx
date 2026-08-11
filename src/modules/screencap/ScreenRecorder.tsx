@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   ensureCaptureToastListener,
+  pinScreenshotToDesktop,
   recaptureLastRegion,
   requestCaptureSelection,
   takeScreenshotToast,
@@ -498,6 +499,16 @@ export default function ScreenRecorder() {
           id: "copy-image",
           label: t("screencap.preview.list.copy", "Copy to clipboard"),
           onClick: () => void copyImage(lastGifPath, t),
+        });
+        actions.push({
+          id: "pin-desktop",
+          label: t("screencap.pin.action", "Pin to Desktop"),
+          kbd: "CmdOrCtrl+Shift+I",
+          onClick: () => {
+            void pinScreenshotToDesktop(lastGifPath).catch((error) => {
+              useScreencapStore.setState({ error: String(error) });
+            });
+          },
         });
       }
       if (isVideoConvertiblePath(lastGifPath)) {

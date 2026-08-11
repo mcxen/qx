@@ -312,10 +312,9 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
       );
     }
 
-    // Keep the region frame visible after mouse-up, including on Windows where
-    // the content-protected picker can prevent a live source-pixel preview.
-    // These guides stay in the picker canvas and are not part of the exported
-    // annotation overlay or the final Rust-applied mosaic.
+    // Always paint dashed guides so the mosaic zone is visible even when the
+    // live pixelate preview cannot sample the protected desktop (Windows).
+    // Guides are picker-only — not exported in the final capture.
     for (const op of mosaicOps) {
       if (op.mode === "region") {
         paintMosaicRegionOutline(
@@ -325,7 +324,7 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
           op.x2 * selection.w,
           op.y2 * selection.h,
         );
-      } else if (!freeze) {
+      } else {
         paintMosaicBrushOutline(
           context,
           op.points.map((point) => ({

@@ -241,7 +241,10 @@ export function paintMosaicOps(
   context.drawImage(out, 0, 0, destWidth, destHeight);
 }
 
-/** Draft outline while dragging a region mosaic (no freeze yet). */
+/**
+ * Always-visible mosaic region guide (draft + committed).
+ * Used when live pixelate preview is unavailable so the user still sees the mask.
+ */
 export function paintMosaicRegionOutline(
   context: CanvasRenderingContext2D,
   x1: number,
@@ -253,13 +256,38 @@ export function paintMosaicRegionOutline(
   const y = Math.min(y1, y2);
   const w = Math.abs(x2 - x1);
   const h = Math.abs(y2 - y1);
+  if (w < 1 || h < 1) return;
   context.save();
-  context.strokeStyle = "rgba(255, 255, 255, 0.9)";
-  context.lineWidth = 1.5;
-  context.setLineDash([4, 3]);
-  context.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
-  context.fillStyle = "rgba(120, 120, 128, 0.18)";
+  // Soft hatch so the zone is obvious even without pixelate preview.
+  context.fillStyle = "rgba(90, 96, 112, 0.28)";
   context.fillRect(x, y, w, h);
+  context.strokeStyle = "rgba(0, 0, 0, 0.55)";
+  context.lineWidth = 3;
+  context.setLineDash([]);
+  context.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
+  context.strokeStyle = "rgba(255, 255, 255, 0.95)";
+  context.lineWidth = 1.75;
+  context.setLineDash([6, 4]);
+  context.strokeRect(x + 0.5, y + 0.5, Math.max(0, w - 1), Math.max(0, h - 1));
+  // Corner ticks — read clearly on busy screenshots.
+  const tick = Math.min(10, Math.min(w, h) * 0.2);
+  context.setLineDash([]);
+  context.lineWidth = 2;
+  context.strokeStyle = "rgba(255, 220, 80, 0.95)";
+  context.beginPath();
+  context.moveTo(x, y + tick);
+  context.lineTo(x, y);
+  context.lineTo(x + tick, y);
+  context.moveTo(x + w - tick, y);
+  context.lineTo(x + w, y);
+  context.lineTo(x + w, y + tick);
+  context.moveTo(x + w, y + h - tick);
+  context.lineTo(x + w, y + h);
+  context.lineTo(x + w - tick, y + h);
+  context.moveTo(x + tick, y + h);
+  context.lineTo(x, y + h);
+  context.lineTo(x, y + h - tick);
+  context.stroke();
   context.restore();
 }
 
@@ -271,12 +299,12 @@ export function paintMosaicBrushOutline(
 ): void {
   if (points.length === 0) return;
   context.save();
-  context.strokeStyle = "rgba(200, 200, 210, 0.85)";
-  context.fillStyle = "rgba(120, 120, 128, 0.18)";
-  context.lineWidth = radius * 2;
+  context.strokeStyle = "rgba(255, 220, 80, 0.9)";
+  context.fillStyle = "rgba(90, 96, 112, 0.22)";
+  context.lineWidth = Math.max(4, radius * 2);
   context.lineCap = "round";
   context.lineJoin = "round";
-  context.setLineDash([5, 4]);
+  context.setLineDash([6, 4]);
   context.beginPath();
   context.moveTo(points[0].x, points[0].y);
   for (let index = 1; index < points.length; index += 1) {
@@ -285,6 +313,11 @@ export function paintMosaicBrushOutline(
   if (points.length === 1) {
     context.lineTo(points[0].x + 0.01, points[0].y);
   }
+  context.stroke();
+  // Solid core so the path stays legible over the dash stroke.
+  context.setLineDash([]);
+  context.strokeStyle = "rgba(255, 255, 255, 0.55)";
+  context.lineWidth = Math.max(2, radius * 0.9);
   context.stroke();
   context.restore();
 }

@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 import { useT } from "../../i18n";
 import { writeImageFileToClipboard } from "../../system";
 
-const MIN_ZOOM = 0.25;
+const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 4;
-const ZOOM_STEP = 1.12;
+const ZOOM_STEP = 1.1;
+const MIN_EDGE = 64;
 
 function decodePathParam(raw: string | null): string {
   if (!raw) return "";
@@ -18,21 +19,24 @@ function decodePathParam(raw: string | null): string {
 }
 
 /**
- * Snipaste-style desktop pin: always-on-top floating screenshot surface.
- * Drag to move, wheel to zoom, Esc / double-click to close, ⌘/Ctrl+C to copy.
+ * Seamless desktop pin: the window *is* the image (no nested chrome frame).
+ * Drag to move, wheel / ± resize the window with the image, Esc close.
  */
 export default function CapturePinWindow() {
   const t = useT();
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const path = useMemo(() => decodePathParam(params.get("path")), [params]);
   const label = useMemo(() => getCurrentWindow().label, []);
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
   const [zoom, setZoom] = useState(1);
   const [opacity, setOpacity] = useState(1);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ x: 12, y: 12 });
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [hover, setHover] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const applyingSize = useRef(false);
   const src = path ? convertFileSrc(path) : "";
 
   const closePin = useCallback(async () => {
@@ -59,10 +63,39 @@ export default function CapturePinWindow() {
     }
   }, [path]);
 
+  const pendingZoomRef = useRef(zoom);
+  pendingZoomRef.current = zoom;
+
+  const applyWindowSize = useCallback(async (size: { w: number; h: number }) => {
+    if (applyingSize.current) return;
+    applyingSize.current = true;
+    try {
+      // Drain coalesced zoom updates so rapid wheel steps don't stick mid-size.
+      for (;;) {
+        const nextZoom = pendingZoomRef.current;
+        const dpr = window.devicePixelRatio || 1;
+        // naturalWidth is image pixels; logical size matches 1:1 capture pixels.
+        const logicalW = Math.max(MIN_EDGE, (size.w / dpr) * nextZoom);
+        const logicalH = Math.max(MIN_EDGE, (size.h / dpr) * nextZoom);
+        await getCurrentWindow().setSize(new LogicalSize(logicalW, logicalH));
+        if (pendingZoomRef.current === nextZoom) break;
+      }
+    } catch {
+      // Ignore transient size failures during close.
+    } finally {
+      applyingSize.current = false;
+    }
+  }, []);
+
   useEffect(() => {
     document.body.classList.add("qx-capture-pin-body");
     return () => document.body.classList.remove("qx-capture-pin-body");
   }, []);
+
+  useEffect(() => {
+    if (!natural) return;
+    void applyWindowSize(natural);
+  }, [applyWindowSize, natural, zoom]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -94,7 +127,7 @@ export default function CapturePinWindow() {
       }
       if (event.key === "[") {
         event.preventDefault();
-        setOpacity((value) => Math.max(0.2, Math.round((value - 0.1) * 10) / 10));
+        setOpacity((value) => Math.max(0.25, Math.round((value - 0.1) * 10) / 10));
         return;
       }
       if (event.key === "]") {
@@ -132,15 +165,20 @@ export default function CapturePinWindow() {
   return (
     <div
       ref={rootRef}
-      className={`qx-capture-pin${menuOpen ? " is-menu-open" : ""}`}
+      className={`qx-capture-pin${menuOpen ? " is-menu-open" : ""}${hover ? " is-hover" : ""}`}
       style={{ opacity }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       onDoubleClick={(event) => {
         event.preventDefault();
         void closePin();
       }}
       onContextMenu={(event) => {
         event.preventDefault();
-        setMenuPos({ x: event.clientX, y: event.clientY });
+        setMenuPos({
+          x: Math.min(event.clientX, window.innerWidth - 160),
+          y: Math.min(event.clientY, window.innerHeight - 140),
+        });
         setMenuOpen(true);
       }}
       onWheel={(event) => {
@@ -151,7 +189,6 @@ export default function CapturePinWindow() {
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         if ((event.target as HTMLElement).closest("button, .qx-capture-pin-menu")) return;
-        // Tauri drag starts from the next pointer move after this call.
         void getCurrentWindow().startDragging().catch(() => {});
       }}
     >
@@ -160,16 +197,15 @@ export default function CapturePinWindow() {
         src={src}
         alt=""
         draggable={false}
-        style={{ transform: `scale(${zoom})` }}
+        onLoad={(event) => {
+          const image = event.currentTarget;
+          const w = image.naturalWidth || image.width;
+          const h = image.naturalHeight || image.height;
+          if (w > 0 && h > 0) setNatural({ w, h });
+        }}
         onError={() => setError(t("screencap.pin.loadFailed", "Could not load pin image."))}
       />
-      <div className="qx-capture-pin-chrome" aria-hidden={menuOpen ? undefined : true}>
-        <span className="qx-capture-pin-hint">
-          {t(
-            "screencap.pin.hint",
-            "Drag · wheel zoom · Esc close · ⌘/Ctrl+C copy",
-          )}
-        </span>
+      {(hover || menuOpen) && (
         <button
           type="button"
           className="qx-capture-pin-close"
@@ -181,7 +217,7 @@ export default function CapturePinWindow() {
         >
           ×
         </button>
-      </div>
+      )}
       {error && <div className="qx-capture-pin-error">{error}</div>}
       {copied && (
         <div className="qx-capture-pin-toast" role="status">
@@ -212,7 +248,7 @@ export default function CapturePinWindow() {
               setMenuOpen(false);
             }}
           >
-            {t("screencap.pin.resetZoom", "Reset zoom")}
+            {t("screencap.pin.resetZoom", "Actual size")}
           </button>
           <button
             type="button"

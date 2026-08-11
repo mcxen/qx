@@ -1,6 +1,7 @@
 use super::RecordArea;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub(super) struct PhysicalFrame {
     pub(super) x: i32,
     pub(super) y: i32,
@@ -42,6 +43,7 @@ pub(super) fn covers_full_display(
         && area.h as f64 + 1.0 >= logical_height
 }
 
+#[allow(dead_code)] // Used by capture crop paths / future recording dim strips.
 pub(super) fn physical_frame(
     monitor_x: i32,
     monitor_y: i32,
