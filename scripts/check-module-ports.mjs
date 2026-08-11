@@ -353,6 +353,25 @@ const pluginRegistrySource = read("src/plugin/registry.ts");
 if (!pluginRegistrySource.includes("resolveBackgroundNextRunAt")) {
   fail("plugin registry must use the shared background schedule resolver");
 }
+for (const token of [
+  "const pluginRpcHandlers = new Map",
+  "installPluginRpcHandler(plugin.id, rpcHandler)",
+  "removePluginRpcHandler(plugin.id, rpcHandler)",
+  "removeAllPluginRpcHandlers()",
+]) {
+  if (!pluginRegistrySource.includes(token)) {
+    fail(`plugin registry must clean host RPC listeners across stale load generations: ${token}`);
+  }
+}
+const screencapSelectionSource = read("src-tauri/src/screencap/selection.rs");
+const unprotectMainAt = screencapSelectionSource.indexOf("set_recording_ui_protected(&app, false)");
+const showPickerAt = screencapSelectionSource.indexOf("show_region_picker_internal(&app, mode, None)");
+if (unprotectMainAt < 0 || showPickerAt < 0 || unprotectMainAt > showPickerAt) {
+  fail("self-capture must unprotect the main window before showing the fullscreen picker");
+}
+if (!screencapSelectionSource.includes("picker_window::reassert_interactive(&app)")) {
+  fail("self-capture must reassert picker focus after main/control window mutations");
+}
 for (const legacyToken of [
   "qx-plugin-chrome-tabs",
   "qx-plugin-workbench-filter",

@@ -184,6 +184,12 @@ assertPermission(plugin, perms, "ai")  →  invoke("plugin_ai_chat", { req: payl
 
 结果沿原路通过 `postMessage({ type: "qx:rpc:response", ... })` 返回 iframe。
 
+宿主对每个 `pluginId` **最多保留一个 RPC message listener**。监听器生命周期独立于
+Zustand 的 `workers` 发布时机：加载代次失效、刷新、禁用和卸载都必须从宿主注册表移除
+监听器，再销毁 runtime。不得只把 handler 装饰在 iframe 上后依赖 `workers` 清理；异步
+加载可能在 iframe 已创建、但尚未写入 `workers` 时被新一代 refresh 取消，这会让同一个
+RPC 被残留 listener 重复执行并持续占用 WebView 内存。
+
 Workbench 图片仍是受限纯数据端口：`item.image` 在 Gallery 中作为卡片图片、在 List
 中作为行缩略图；`detail.image` 在结构化详情顶部作为单张大图预览，
 `detail.images[]` 用于社区帖子等多图内容并由宿主排成响应式网格。图片只接受 HTTPS

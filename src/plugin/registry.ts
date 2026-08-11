@@ -58,6 +58,43 @@ const registryLogger = createQxLogger("plugin.registry");
 let stopPluginLocaleBridge: (() => void) | null = null;
 /** Serialize refreshes so shortcut unregister/register cycles cannot overlap. */
 let pluginRefreshQueue: Promise<void> = Promise.resolve();
+/**
+ * One host RPC listener per plugin, independent of worker-store publication.
+ *
+ * A refresh can invalidate a load after its iframe has been created but before
+ * it is inserted into `workers`. Keeping cleanup only on the iframe stored in
+ * Zustand leaked that stale listener; every later RPC was then executed once
+ * per abandoned load. The host-owned map makes replacement and teardown
+ * deterministic even across that race.
+ */
+const pluginRpcHandlers = new Map<string, (event: MessageEvent) => void>();
+
+function installPluginRpcHandler(
+  pluginId: string,
+  handler: (event: MessageEvent) => void,
+): void {
+  const previous = pluginRpcHandlers.get(pluginId);
+  if (previous) window.removeEventListener("message", previous);
+  pluginRpcHandlers.set(pluginId, handler);
+  window.addEventListener("message", handler);
+}
+
+function removePluginRpcHandler(
+  pluginId: string,
+  expected?: (event: MessageEvent) => void,
+): void {
+  const current = pluginRpcHandlers.get(pluginId);
+  if (!current || (expected && current !== expected)) return;
+  window.removeEventListener("message", current);
+  pluginRpcHandlers.delete(pluginId);
+}
+
+function removeAllPluginRpcHandlers(): void {
+  for (const [pluginId, handler] of pluginRpcHandlers) {
+    window.removeEventListener("message", handler);
+    pluginRpcHandlers.delete(pluginId);
+  }
+}
 
 function currentPluginLocale() {
   const preference = normalizeLanguagePreference(
@@ -515,7 +552,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
                 );
               });
           };
-          window.addEventListener("message", rpcHandler);
+          installPluginRpcHandler(plugin.id, rpcHandler);
           (result.iframe as HTMLIFrameElement & {
             __qxRpcHandler?: (event: MessageEvent) => void;
             __qxRuntimeId?: string;
@@ -560,6 +597,8 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
             }
           }
           if (get()._loadToken !== loadToken) {
+            removePluginRpcHandler(plugin.id, rpcHandler);
+            await Promise.all(registeredShortcuts.map((key) => unregister(key).catch(() => undefined)));
             unloadPluginRuntime(plugin.id, result.iframe, result.runtimeId);
             result.iframe.remove();
             clearPluginIslandProjection(plugin.id);
@@ -718,6 +757,9 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     lazyPluginLoads.clear();
     stopPluginLocaleBridge?.();
     clearPluginIcons();
+    // Includes handlers from loads invalidated before their iframe reached the
+    // public worker map. Removing only `workers` is insufficient in that race.
+    removeAllPluginRpcHandlers();
     const unregisterResults = Object.values(shortcuts).flat().map((shortcut) =>
       unregister(shortcut).catch(() => undefined),
     );
@@ -735,7 +777,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
         __qxRuntimeId?: string;
       };
       const handler = decorated.__qxRpcHandler;
-      if (handler) window.removeEventListener("message", handler);
+      if (handler) removePluginRpcHandler(pluginId, handler);
       if (decorated.__qxRuntimeId) {
         unloadPluginRuntime(pluginId, iframe, decorated.__qxRuntimeId);
       }
@@ -806,7 +848,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
           __qxRuntimeId?: string;
         };
         const handler = decorated.__qxRpcHandler;
-        if (handler) window.removeEventListener("message", handler);
+        if (handler) removePluginRpcHandler(id, handler);
         if (decorated.__qxRuntimeId) {
           unloadPluginRuntime(id, worker, decorated.__qxRuntimeId);
         }

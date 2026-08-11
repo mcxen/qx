@@ -2406,3 +2406,17 @@ Vercel 标志性设计元素：在全局设置面板的背景中叠加半透明�
 | 所有组件 CSS | 逐步替换硬编码颜色为 `var(--qx-*)` |
 
 **渐进策略**：先在主面板/app.css 层实现完整变量系统，再逐步替换硬编码颜色。
+
+## Fix — Windows 截取 Qx 自身卡死与插件 RPC 内存泄漏
+
+**状态**：代码修复完成，发布验证中。
+
+- [x] 截取可见 Qx 主窗口时，先解除主窗口内容保护，再显示并最终重新置顶/聚焦 picker。
+- [x] picker 焦点交接失败时清理全屏遮罩与 capture session，恢复可操作界面；窗口内补充 Esc 兜底。
+- [x] 插件 RPC listener 改为每个插件单实例宿主注册；失效加载、刷新、禁用和卸载均统一清理。
+- [x] `npx tsc --noEmit`
+- [x] `cargo fmt --check`
+- [x] `cargo check`
+- [ ] `npm run check`（本次检查项通过；完整命令被相邻 `qx-plugins/external-display-control` 既有权限清单问题阻断）
+- [x] `npm run build`
+- [ ] Windows 安装包运行态复核：快捷键截取 Qx 自身、Esc 退出、重复插件刷新后内存稳定。

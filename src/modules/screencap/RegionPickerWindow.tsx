@@ -268,6 +268,23 @@ export default function RegionPickerWindow() {
     await invoke("screencap_cancel_region_select").catch(() => {});
   }, [busy, countdown]);
 
+  useEffect(() => {
+    // The picker normally focuses `rootRef`, whose React handler owns the
+    // stepped Esc behavior. If WebView2 instead leaves focus on body (observed
+    // when capturing Qx itself), keep an emergency window-local cancellation
+    // path so the fullscreen overlay can never trap desktop input.
+    const onUnownedEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const active = document.activeElement;
+      if (active && rootRef.current?.contains(active)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void cancel();
+    };
+    window.addEventListener("keydown", onUnownedEscape, true);
+    return () => window.removeEventListener("keydown", onUnownedEscape, true);
+  }, [cancel]);
+
   const confirm = useCallback(async (
     action: CaptureMode,
     areaOverride?: Rect,

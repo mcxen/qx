@@ -223,6 +223,10 @@ useEffect(() => {
 - 全局截图快捷键在主 Qx 窗口可见时保留当前模块，让 Qx 自身可被截图；截图 picker 会用
   专用的 capture-main-visible guard 暂停失焦自动隐藏。取消、完成或切换为录屏时必须清除此
   guard；圈选层和独立截图控制栏始终保持内容保护。
+- Windows 在保留主窗口截图时，必须先解除主窗口的内容保护，再显示、置顶并聚焦 picker；
+  所有主窗口/控制栏变更完成后要重新确认 picker 的交互与焦点。焦点交接失败必须立即隐藏
+  全屏 picker、结束 capture session 并恢复可操作界面，不能留下吞掉桌面点击但收不到 Esc
+  的透明遮罩。picker WebView 还需保留窗口内 Esc 兜底，不依赖某个 React 根节点持有焦点。
 
 ---
 

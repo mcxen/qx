@@ -141,6 +141,32 @@ pub(super) fn hide(app: &AppHandle) {
     });
 }
 
+/// Reassert the picker after any operation on the still-visible main window.
+/// On Windows, changing the main WebView's capture affinity can move focus/z
+/// order back to main even though the picker was shown first. Ignoring that
+/// leaves a fullscreen input surface above the desktop with no Esc receiver.
+pub(super) fn reassert_interactive(app: &AppHandle) -> Result<(), String> {
+    let app = app.clone();
+    crate::main_thread::run_on_main(&app.clone(), move || {
+        let picker = app
+            .get_webview_window(PICKER_LABEL)
+            .ok_or_else(|| "region picker window is unavailable".to_string())?;
+        picker
+            .set_ignore_cursor_events(false)
+            .map_err(|error| format!("picker input: {error}"))?;
+        picker
+            .set_always_on_top(true)
+            .map_err(|error| format!("picker z-order: {error}"))?;
+        picker
+            .show()
+            .map_err(|error| format!("show region picker: {error}"))?;
+        picker
+            .set_focus()
+            .map_err(|error| format!("focus region picker: {error}"))?;
+        Ok::<(), String>(())
+    })?
+}
+
 pub(super) fn restore_editable_selection(app: &AppHandle, session: &PickerSession) -> bool {
     let Some(area) = session.logical_area.clone() else {
         return false;

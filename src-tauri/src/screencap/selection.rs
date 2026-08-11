@@ -464,6 +464,13 @@ pub async fn screencap_begin_capture_select(
             .and_then(|window| window.is_visible().ok())
             .unwrap_or(false);
     crate::floating_panel::set_capture_main_visible_active(keep_main_visible);
+    if keep_main_visible {
+        // Change main-window capture affinity before the fullscreen picker is
+        // mapped. On Windows doing this afterwards can put focus/z-order back
+        // on main, leaving the transparent picker to swallow desktop input
+        // without receiving Esc.
+        set_recording_ui_protected(&app, false);
+    }
     // Invalidate any stale picker tracker before replacing its session.
     let generation = begin_picker_session();
     // Map/show the picker before hiding every existing Qx surface. If display
@@ -486,8 +493,20 @@ pub async fn screencap_begin_capture_select(
     if keep_main_visible {
         // Keep the current module capturable while the picker and controller
         // remain protected and excluded from the screenshot.
-        set_recording_ui_protected(&app, false);
         crate::floating_panel::cancel_pending_auto_hide();
+        // Final focus handoff must happen after every main/controls mutation.
+        // Treat failure as recoverable instead of leaving an input-blocking
+        // fullscreen overlay with no keyboard cancellation path.
+        if let Err(error) = picker_window::reassert_interactive(&app) {
+            end_picker_session();
+            crate::floating_panel::set_capture_main_visible_active(false);
+            hide_region_picker_internal(&app);
+            if let Ok(mut session) = picker_session().lock() {
+                *session = None;
+            }
+            let _ = restore_capture_surface(&app, 800);
+            return Err(error);
+        }
     } else {
         crate::floating_panel::hide(&app);
     }
