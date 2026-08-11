@@ -14,10 +14,10 @@ pub(crate) fn start_display_monitor(handle: tauri::AppHandle) {
     let _ = thread::Builder::new()
         .name("qx-display-monitor".to_string())
         .spawn(move || {
-            // xcap can touch native display APIs. Take the initial snapshot on
-            // this worker too, never on Tauri setup's event-loop thread.
-            if let Ok(monitors) = crate::display::refresh_capture_monitor_cache() {
-                known_count.store(monitors.len(), Ordering::SeqCst);
+            // Count through the cheapest platform API. Full xcap inventory is
+            // refreshed only after a topology change or by a capture request.
+            if let Ok(count) = crate::display::capture_monitor_count() {
+                known_count.store(count, Ordering::SeqCst);
             }
 
             loop {
@@ -42,14 +42,20 @@ pub(crate) fn start_display_monitor(handle: tauri::AppHandle) {
 }
 
 fn poll_once(handle: &tauri::AppHandle, known_count: &Arc<AtomicUsize>) {
-    let Ok(monitors) = crate::display::refresh_capture_monitor_cache() else {
+    let Ok(curr) = crate::display::capture_monitor_count() else {
         return;
     };
 
     let prev = known_count.load(Ordering::SeqCst);
-    let curr = monitors.len();
 
     if curr == prev {
+        return;
+    }
+
+    // Populate capture objects only for consumers that need the changed
+    // topology. Keep the old count on failure so the daemon retries instead of
+    // publishing a change while capture consumers still hold stale objects.
+    if crate::display::refresh_capture_monitor_cache().is_err() {
         return;
     }
 

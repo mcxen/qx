@@ -324,6 +324,10 @@ pub fn run() {
         .on_window_event(|window, event| {
             let label = window.label();
             // Secondary surfaces: hide instead of destroy (main may be hidden).
+            // Desktop pins are ephemeral one-shot surfaces: allow true close.
+            if screencap::is_pin_surface(label) {
+                return;
+            }
             if screencap::is_picker_surface(label)
                 || label == "recording-controls"
                 || macro_cursor_overlay::is_surface(label)
@@ -377,6 +381,7 @@ pub fn run() {
             let handle = app.handle().clone();
             // Pin UI-thread identity before any window promotion / async command.
             runtime::install(&handle);
+            runtime::start_health_monitor(handle.clone());
             let Some(win) = app.get_webview_window("main") else {
                 diagnostics::log(
                     diagnostics::LogLevel::Error,
@@ -771,6 +776,9 @@ pub fn run() {
             screencap::commands::screencap_set_controls_pinned,
             screencap::commands::screencap_return_to_main,
             screencap::commands::screencap_copy_image_to_clipboard,
+            screencap::pin::screencap_pin_image,
+            screencap::pin::screencap_pin_close,
+            screencap::pin::screencap_pin_close_all,
             screencap::commands::convert_recording_to_gif,
             screencap::commands::save_gif,
             screencap::commands::list_gif_history,

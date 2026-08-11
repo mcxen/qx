@@ -62,8 +62,9 @@ Qx/
 │       ├── macro_capture.rs      # 独立可停止的原生宏捕获 session（macOS event tap / Windows 双 hook）
 │       ├── macro_cursor_overlay.rs # 录制期间每显示器透明点击穿透指针层
 │       ├── macro_recorder.rs     # 宏录制结果、SQLite 持久化与回放 (enigo)
-│       ├── diagnostics.rs        # 诊断日志与日志路径
-│       ├── display_monitor.rs    # 复用系统显示器服务的插拔监听
+│       ├── diagnostics.rs        # 有界结构化诊断日志与日志路径
+│       ├── runtime/health.rs     # 低频 UI event-loop stall / recovery probe
+│       ├── display_monitor.rs    # 轻量 topology probe；变化时刷新捕获清单
 │       ├── display_macos.m       # 内嵌 macOS DisplayServices + DDC/CI 适配
 │       ├── updater.rs            # 跨平台更新检查、验证与 helper 编排
 │       ├── updater/              # Windows NSIS 适配、缓存支持与 updater 测试
@@ -277,7 +278,7 @@ apps::* (search_apps)
 clipboard::* (get/clear/delete/toggle/record)
 rss::* (list/add/update/remove/refresh/mark/toggle/import/export)
 settings::* (get/update/reset/import/export)
-screencap::* (start/stop/save/list/delete)
+screencap::* (start/stop/save/list/delete/pin)
 macro_recorder::* (start/stop/save/list/delete/play)
 marketplace::* (fetch/download/install/auto-update/uninstall/list/sign)
 updater::* (check/download_and_install/helper_replace)

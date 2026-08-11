@@ -5,6 +5,7 @@ mod feedback;
 mod geometry;
 mod mosaic;
 mod picker_window;
+pub(crate) mod pin;
 mod recording_engine;
 pub(crate) mod recording_session;
 mod screenshot;
@@ -15,6 +16,10 @@ mod types;
 
 pub(crate) fn is_picker_surface(label: &str) -> bool {
     picker_window::is_picker_surface(label)
+}
+
+pub(crate) fn is_pin_surface(label: &str) -> bool {
+    pin::is_pin_surface(label)
 }
 
 /// Hot-plug / topology change while the region picker is open.

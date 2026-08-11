@@ -289,7 +289,12 @@ export default function RegionPickerWindow() {
     action: CaptureMode,
     areaOverride?: Rect,
     ocrDestination?: "clipboard" | "editor" | null,
-    options?: { forceCopy?: boolean; skipDelay?: boolean; dismissUi?: boolean },
+    options?: {
+      forceCopy?: boolean;
+      skipDelay?: boolean;
+      dismissUi?: boolean;
+      pinToDesktop?: boolean;
+    },
   ) => {
     const target = areaOverride ?? selection;
     if (busy || !target || countdown !== null) return;
@@ -405,12 +410,13 @@ export default function RegionPickerWindow() {
             })
             : [],
           playSound: action === "screenshot" && captureSettings.screenshot_sound_enabled,
+          pinToDesktop: action === "screenshot" && options?.pinToDesktop === true,
         },
         ocrDestination: action === "screenshot" ? (ocrDestination ?? null) : null,
         annotationOverlayBase64,
         mosaicOps: mosaicOps.length > 0 ? mosaicOps : null,
         copyToClipboard: shouldCopy,
-        dismissUi: action === "screenshot" && dismissUi,
+        dismissUi: action === "screenshot" && (dismissUi || options?.pinToDesktop === true),
       });
     } catch (captureError) {
       setBusy(false);
@@ -793,6 +799,26 @@ export default function RegionPickerWindow() {
           void confirm(intent);
           return;
         }
+        if (
+          event.key.toLowerCase() === "p"
+          && !event.metaKey
+          && !event.ctrlKey
+          && !event.altKey
+          && intent === "screenshot"
+          && selection
+          && !busy
+          && countdown === null
+        ) {
+          const target = event.target as HTMLElement | null;
+          if (target?.closest("input, textarea, [contenteditable='true']")) return;
+          event.preventDefault();
+          void confirm("screenshot", selection, null, {
+            pinToDesktop: true,
+            skipDelay: true,
+            dismissUi: true,
+          });
+          return;
+        }
         if (event.key === " " && !busy) {
           event.preventDefault();
           selectFullScreen();
@@ -948,6 +974,13 @@ export default function RegionPickerWindow() {
           onRedo={redo}
           onSettingsChange={updateCaptureSettings}
           onConfirm={() => void confirm(intent, selection)}
+          onPin={intent === "screenshot"
+            ? () => void confirm("screenshot", selection, null, {
+              pinToDesktop: true,
+              skipDelay: true,
+              dismissUi: true,
+            })
+            : undefined}
           onCancel={() => void cancel()}
           onToolbarPointerDown={onToolbarPointerDown}
           onToolbarPointerMove={onToolbarPointerMove}
@@ -977,7 +1010,7 @@ export default function RegionPickerWindow() {
           {tool === "text"
             ? t(
               "screencap.picker.textHint",
-              "Click on the screenshot to place text · Enter finish · drag to move · corners resize",
+              "Click to place text · Enter finish · drag to move · corners resize · small fonts auto-zoom while typing",
             )
             : tool === "arrow"
               ? t("screencap.picker.arrowHint", "Drag inside the selection to draw an arrow")

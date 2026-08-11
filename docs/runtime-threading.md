@@ -48,6 +48,7 @@ worker，再在阻塞边界 join；因此播放过程中 UI、Workbench 选择�
 crate::runtime
 ├── install_async_runtime() // Builder 前：cap Tokio worker/blocking + keep-alive
 ├── install(app)            // setup 时钉死主线程 id（跨平台）
+├── start_health_monitor()  // 30s 低频 UI no-op；仅异常/恢复写诊断
 ├── is_main()
 ├── run_ui(app, f)          // 同步 hop（兼容旧 run_on_main）
 ├── ui(app, f).await        // 异步 hop（async command 优先）
@@ -68,6 +69,14 @@ crate::runtime
 | Tokio blocking | `clamp(8, 32)` | **是**（keep-alive 10s） |
 | `runtime::pool` | `clamp(2, 8)` 动态 | **是**（idle 12s） |
 | 守护线程 | 每种一个（clipboard / OCR / monitor…） | 进程级 |
+
+`runtime.health` 每 30 秒从独立守护线程向 UI event loop 投递一次 no-op，2 秒未响应才记录
+warning，恢复后记录一次 recovery；字段只包含连续超时次数与 `runtime::pool` 的 live / queued /
+media 计数。它不重启进程、不采集用户内容，也不在正常 heartbeat 上写日志。Advanced 的
+Diagnostic Logging 与 Developer Mode 都关闭时，诊断端口在入队前直接丢弃事件。
+
+诊断队列固定为 256 条；错误风暴时丢弃过量明细，并在下一条可写事件附上
+`droppedEvents`。日志配置最多每 2 秒重读一次，禁止每个高频错误都同步读取设置文件。
 
 **禁止**对短任务 `std::thread::spawn`：每次新建 OS 线程且不回收，剪贴板/OCR debounce/
 媒体编码会把线程数打爆。对齐 Tokio / 开源实践：有界池 + idle keep-alive。
@@ -132,3 +141,5 @@ pub async fn feature_do_thing(app: AppHandle, input: In) -> Result<Out, String> 
 - 截图 / 开始录制 / 停止录制后进程不退出（无新 `qx-*.ips` SIGTRAP）。
 - `cargo check` + `cargo test --lib screencap`。
 - 需要主线程断言时：在 UI 闭包内 `debug_assert!(runtime::is_main())`（可选）。
+- 长时诊断：启用 Diagnostic Logging 后，`runtime.health` 不应在健康空闲期产生记录；模拟
+  UI 阻塞时应出现 timeout，恢复后只出现一条 recovery，并带有后台池压力快照。

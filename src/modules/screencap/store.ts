@@ -51,6 +51,21 @@ export interface CaptureExecutionOptions {
   microphoneId?: string | null;
   recordingMasks?: RelativeCaptureRect[];
   playSound?: boolean;
+  /** Capture then open a floating desktop pin (贴图). */
+  pinToDesktop?: boolean;
+}
+
+/** Pin a saved screenshot PNG as an always-on-top desktop surface. */
+export function pinScreenshotToDesktop(
+  path: string,
+  options?: { width?: number; height?: number; monitorId?: number },
+): Promise<{ id: string; label: string; path: string }> {
+  return invoke("screencap_pin_image", {
+    path,
+    width: options?.width ?? null,
+    height: options?.height ?? null,
+    monitorId: options?.monitorId ?? null,
+  });
 }
 
 export interface AudioInput {
@@ -107,8 +122,7 @@ export function ensureCaptureToastListener(t?: Translate): void {
     (event) => {
     const path = event.payload?.path;
     if (!path || !path.toLowerCase().endsWith(".png")) return;
-    // Cmd/Ctrl+C copy-and-continue: image is already on the clipboard and Qx
-    // stays hidden — no "Screenshot saved / Copy" toast that would break flow.
+    // Cmd/Ctrl+C copy-and-continue, or pin-to-desktop: no toast card needed.
     if (event.payload?.dismissed) return;
     if (event.payload?.showFloatingThumbnail === false) return;
     queueScreenshotToast(path);

@@ -37,6 +37,7 @@ fn arm_exit_cleanup(app: &AppHandle) {
     // process begins its final exit transition. These are the same paths used
     // by Esc, the Stop button, and module teardown.
     let _ = crate::macro_cursor_overlay::hide(app);
+    crate::screencap::pin::close_all_for_shutdown(app);
     crate::macro_playback::stop_for_shutdown();
     crate::macro_recorder::stop_for_shutdown();
     crate::watchdog::mark_clean_shutdown();

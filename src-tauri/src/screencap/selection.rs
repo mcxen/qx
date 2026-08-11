@@ -713,6 +713,7 @@ pub async fn screencap_confirm_region_select(
         //
         // Pattern: runtime::blocking (capture) → runtime::ui (clipboard + restore).
         let include_cursor = capture_options.include_cursor.unwrap_or(false);
+        let pin_monitor_id = area.monitor_id;
         let result = crate::runtime::blocking(move || {
             take_screenshot_blocking(area, annotation_overlay_base64, include_cursor, mosaic_ops)
         })
@@ -754,6 +755,10 @@ pub async fn screencap_confirm_region_select(
                     None
                 };
 
+                let pin_to_desktop = capture_options.pin_to_desktop.unwrap_or(false);
+                let pin_width = output.width;
+                let pin_height = output.height;
+                let pin_path = output.path.clone();
                 let clipboard_error = crate::runtime::ui(&app, move || {
                     use tauri_plugin_clipboard_manager::ClipboardExt;
                     let mut clipboard_error = delivery.warning.clone();
@@ -768,6 +773,21 @@ pub async fn screencap_confirm_region_select(
                         });
                         if copy_error.is_some() {
                             clipboard_error = copy_error;
+                        }
+                    }
+
+                    if pin_to_desktop {
+                        if let Err(error) = super::pin::pin_after_capture(
+                            &app_ui,
+                            &pin_path,
+                            pin_width,
+                            pin_height,
+                            pin_monitor_id,
+                        ) {
+                            clipboard_error = Some(match clipboard_error {
+                                Some(existing) => format!("{existing}; pin failed: {error}"),
+                                None => format!("Screenshot saved, but pin failed: {error}"),
+                            });
                         }
                     }
 
@@ -831,7 +851,8 @@ pub async fn screencap_confirm_region_select(
                 // Delay so the main screencap surface can mount listeners first.
                 // Successful dismiss: skip toast — user is pasting elsewhere.
                 let emit_app = app.clone();
-                let skip_toast = dismiss_ui && clipboard_error.is_none();
+                // Pin is already the visible completion surface; skip the toast card.
+                let skip_toast = (dismiss_ui || pin_to_desktop) && clipboard_error.is_none();
                 tauri::async_runtime::spawn(async move {
                     tokio::time::sleep(std::time::Duration::from_millis(250)).await;
                     let _ = emit_app.emit(
@@ -842,7 +863,12 @@ pub async fn screencap_confirm_region_select(
                             "deliveredPath": delivered_path,
                             "copied": copy_to_clipboard,
                             "dismissed": skip_toast,
-                            "showFloatingThumbnail": capture_options.show_floating_thumbnail,
+                            "pinned": pin_to_desktop,
+                            "showFloatingThumbnail": if pin_to_desktop {
+                                Some(false)
+                            } else {
+                                capture_options.show_floating_thumbnail
+                            },
                         }),
                     );
                 });

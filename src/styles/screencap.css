@@ -1,3 +1,159 @@
+/* ── Desktop pin (贴图) floating surface ─────────────────────────────── */
+.qx-capture-pin-body,
+.qx-capture-pin-body #root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent !important;
+  user-select: none;
+}
+
+.qx-capture-pin {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: transparent;
+  cursor: grab;
+  outline: none;
+  border-radius: 4px;
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.18),
+    0 10px 28px rgb(0 0 0 / 0.38);
+}
+
+.qx-capture-pin:active {
+  cursor: grabbing;
+}
+
+.qx-capture-pin-image {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  transform-origin: center center;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.qx-capture-pin-chrome {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  background: linear-gradient(180deg, rgb(0 0 0 / 0.42), transparent);
+  opacity: 0;
+  transition: opacity 120ms ease;
+  pointer-events: none;
+}
+
+.qx-capture-pin:hover .qx-capture-pin-chrome,
+.qx-capture-pin.is-menu-open .qx-capture-pin-chrome {
+  opacity: 1;
+}
+
+.qx-capture-pin-hint {
+  min-width: 0;
+  overflow: hidden;
+  color: rgb(255 255 255 / 0.86);
+  font: 600 10px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.5);
+}
+
+.qx-capture-pin-close {
+  pointer-events: auto;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.55);
+  color: #fff;
+  font: 600 16px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.qx-capture-pin-close:hover {
+  background: var(--qx-danger, #ff453a);
+}
+
+.qx-capture-pin-error,
+.qx-capture-pin-toast {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  z-index: 3;
+  max-width: calc(100% - 24px);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgb(12 14 20 / 0.88);
+  color: #fff;
+  font: 600 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.qx-capture-pin-error {
+  background: color-mix(in srgb, var(--qx-danger, #ff453a) 88%, black);
+}
+
+.qx-capture-pin-menu {
+  position: fixed;
+  z-index: 4;
+  min-width: 148px;
+  padding: 4px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 10px;
+  background: color-mix(in srgb, #12161f 94%, black);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.4);
+}
+
+.qx-capture-pin-menu button {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: rgb(255 255 255 / 0.92);
+  font: 500 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qx-capture-pin-menu button:hover {
+  background: color-mix(in srgb, var(--qx-accent, #5b8cff) 28%, transparent);
+}
+
+.qx-capture-pin-menu button.is-danger:hover {
+  background: color-mix(in srgb, var(--qx-danger, #ff453a) 32%, transparent);
+}
+
+.qx-capture-pin.is-error {
+  display: grid;
+  place-items: center;
+  gap: 10px;
+  padding: 16px;
+  background: rgb(12 14 20 / 0.92);
+  color: #fff;
+  font: 500 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
 /* ── Region picker (dedicated transparent window; no glass shell) ─────── */
 .qx-region-picker-body,
 .qx-region-picker-body #root {
@@ -138,10 +294,13 @@
   pointer-events: auto;
   touch-action: none;
   user-select: none;
+  /* Allow the edit loupe to extend outside the true-size anchor. */
+  overflow: visible;
 }
 
 .qx-region-picker-text-box span,
-.qx-region-picker-text-box textarea {
+.qx-region-picker-text-box textarea,
+.qx-region-picker-text-ghost {
   display: block;
   width: 100%;
   height: 100%;
@@ -149,17 +308,112 @@
   min-height: 0;
   box-sizing: border-box;
   margin: 0;
-  padding: 0 max(2px, 0.22em);
+  padding: 2px max(2px, 0.22em);
   border: 0;
   border-radius: 2px;
   outline: none;
   background: transparent;
   font: 600 1em/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   text-align: left;
-  text-shadow: none;
+  text-shadow:
+    0 0 2px rgb(0 0 0 / 0.55),
+    0 1px 2px rgb(0 0 0 / 0.35);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   overflow: hidden;
+}
+
+.qx-region-picker-text-box.is-editing:not(.is-magnified) {
+  z-index: 6;
+  border-color: var(--qx-accent, #5b8cff);
+  border-style: solid;
+  background: color-mix(in srgb, #0b0f16 42%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--qx-accent, #5b8cff) 55%, transparent),
+    0 4px 14px rgb(0 0 0 / 0.28);
+}
+
+.qx-region-picker-text-box.is-magnified {
+  z-index: 7;
+  border-color: color-mix(in srgb, var(--qx-accent, #5b8cff) 70%, white);
+  border-style: dashed;
+  background: color-mix(in srgb, #0b0f16 28%, transparent);
+}
+
+.qx-region-picker-text-ghost {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.qx-region-picker-text-editor {
+  position: absolute;
+  z-index: 8;
+  left: 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  min-height: 44px;
+  padding: 4px 4px 2px;
+  border: 1px solid color-mix(in srgb, var(--qx-accent, #5b8cff) 78%, white);
+  border-radius: 8px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, #121722 92%, var(--qx-accent, #5b8cff)) 0%,
+      color-mix(in srgb, #0b0f16 94%, black) 100%
+    );
+  box-shadow:
+    0 0 0 1px rgb(255 255 255 / 0.08) inset,
+    0 10px 28px rgb(0 0 0 / 0.45);
+  pointer-events: auto;
+}
+
+.qx-region-picker-text-editor.is-below {
+  top: calc(100% + 10px);
+}
+
+.qx-region-picker-text-editor.is-above {
+  bottom: calc(100% + 10px);
+}
+
+.qx-region-picker-text-editor-label {
+  flex: 0 0 auto;
+  margin: 0 4px 2px;
+  font: 600 10px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--qx-accent, #5b8cff) 70%, white);
+  text-shadow: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.qx-region-picker-text-editor textarea {
+  flex: 1 1 auto;
+  width: 100%;
+  height: 100%;
+  min-height: 1.4em;
+  padding: 2px 6px 4px;
+  border: 0;
+  border-radius: 4px;
+  outline: none;
+  resize: none;
+  background: transparent;
+  font: 600 1em/1.25 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-align: left;
+  text-shadow:
+    0 0 2px rgb(0 0 0 / 0.55),
+    0 1px 2px rgb(0 0 0 / 0.35);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  caret-color: currentColor;
+  user-select: text;
+}
+
+.qx-region-picker-text-editor textarea::placeholder {
+  color: rgb(255 255 255 / 0.38);
+  text-shadow: none;
 }
 
 .qx-region-picker-text-delete {

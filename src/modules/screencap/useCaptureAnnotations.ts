@@ -68,11 +68,53 @@ function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
-export const CAPTURE_TEXT_INITIAL_WIDTH = 24;
-export const CAPTURE_TEXT_INITIAL_HEIGHT = 30;
-export const CAPTURE_TEXT_INITIAL_FONT_SIZE = 18;
+/**
+ * Text placement follows Flameshot-style in-place editing:
+ * start ~6 glyph-widths × 2.5 lines, then auto-grow with content.
+ * While editing small fonts, the UI magnifies to a readable size
+ * (see CaptureTextAnnotations) without changing the stored fontSize.
+ */
+export const CAPTURE_TEXT_INITIAL_FONT_SIZE = 24;
 export const CAPTURE_TEXT_MIN_FONT_SIZE = 8;
 export const CAPTURE_TEXT_MAX_FONT_SIZE = 160;
+/** Approximate glyph width factor for Latin/CJK mixed text at bold 600 weight. */
+export const CAPTURE_TEXT_GLYPH_EM = 0.62;
+/** Flameshot TextWidget uses ~6 line-spacings of initial width. */
+export const CAPTURE_TEXT_INITIAL_WIDTH_CHARS = 6;
+/** Flameshot TextWidget uses ~2.5 line-spacings of initial height. */
+export const CAPTURE_TEXT_INITIAL_HEIGHT_LINES = 2.5;
+/**
+ * Minimum visual font size while typing. Stored fontSize below this opens a
+ * floating loupe (auto-zoom editor); final paint still uses the stored size.
+ */
+export const CAPTURE_TEXT_EDIT_READABLE_PX = 22;
+export const CAPTURE_TEXT_EDIT_MAX_SCALE = 2.75;
+
+/** Empty / newly placed text box size for the given font, clamped to selection. */
+export function captureTextInitialBox(
+  fontSize: number,
+  selection: Rect,
+): { width: number; height: number; fontSize: number } {
+  const size = clamp(fontSize, CAPTURE_TEXT_MIN_FONT_SIZE, CAPTURE_TEXT_MAX_FONT_SIZE);
+  const paddingX = Math.max(2, size * 0.22) * 2;
+  const width = Math.min(
+    selection.w,
+    Math.max(56, size * CAPTURE_TEXT_GLYPH_EM * CAPTURE_TEXT_INITIAL_WIDTH_CHARS + paddingX),
+  );
+  const height = Math.min(
+    selection.h,
+    Math.max(
+      28,
+      size * CAPTURE_TEXT_LINE_HEIGHT * CAPTURE_TEXT_INITIAL_HEIGHT_LINES
+        + CAPTURE_TEXT_VERTICAL_PADDING * 2,
+    ),
+  );
+  return {
+    width,
+    height,
+    fontSize: Math.min(size, Math.max(CAPTURE_TEXT_MIN_FONT_SIZE, height * 0.72)),
+  };
+}
 
 function drawArrow(context: CanvasRenderingContext2D, x1: number, y1: number, x2: number, y2: number) {
   const angle = Math.atan2(y2 - y1, x2 - x1);
@@ -469,19 +511,18 @@ export function useCaptureAnnotations(selection: Rect | null, busy: boolean) {
    */
   const createTextAnnotation = useCallback((point: Point) => {
     if (!selection || busy) return null;
-    const width = Math.min(CAPTURE_TEXT_INITIAL_WIDTH, selection.w);
-    const height = Math.min(CAPTURE_TEXT_INITIAL_HEIGHT, selection.h);
-    const left = clamp(point.x, 0, Math.max(0, selection.w - width));
-    const top = clamp(point.y, 0, Math.max(0, selection.h - height));
+    const box = captureTextInitialBox(CAPTURE_TEXT_INITIAL_FONT_SIZE, selection);
+    const left = clamp(point.x, 0, Math.max(0, selection.w - box.width));
+    const top = clamp(point.y, 0, Math.max(0, selection.h - box.height));
     const id = `text-${nextTextId.current++}`;
     pushAnnotation({
       type: "text",
       id,
       x: left / selection.w,
       y: top / selection.h,
-      w: width / selection.w,
-      h: height / selection.h,
-      fontSize: Math.min(CAPTURE_TEXT_INITIAL_FONT_SIZE, height * 0.72),
+      w: box.width / selection.w,
+      h: box.height / selection.h,
+      fontSize: box.fontSize,
       text: "",
       color,
     });

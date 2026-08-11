@@ -6,6 +6,7 @@ import { installSafeTauriEventUnlisten } from "./lib/tauriEventSafety";
 import RecordingControlWindow from "./modules/screencap/RecordingControlWindow";
 import RegionPickerWindow from "./modules/screencap/RegionPickerWindow";
 import RegionPickerShadeWindow from "./modules/screencap/RegionPickerShadeWindow";
+import CapturePinWindow from "./modules/screencap/CapturePinWindow";
 import IslandFloatApp from "./island/float/IslandFloatApp";
 import { ThemeProvider } from "./ThemeProvider";
 import { installOverlayScrollbars } from "./utils/overlayScrollbar";
@@ -23,6 +24,7 @@ const surface = params.get("surface") ?? params.get("view");
 const isRecordingControls = surface === "recording-controls";
 const isRegionPicker = surface === "region-picker";
 const isRegionPickerShade = surface === "region-picker-shade";
+const isCapturePin = surface === "capture-pin";
 const isIslandFloat = surface === "island";
 const isLoadingLab = surface === "loading-lab";
 const isTrayPanel = surface === "tray";
@@ -63,6 +65,8 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
         <RegionPickerShadeWindow />
       ) : isRegionPicker ? (
         <RegionPickerWindow />
+      ) : isCapturePin ? (
+        <CapturePinWindow />
       ) : isIslandFloat ? (
         <IslandFloatApp />
       ) : isLoadingLab ? (

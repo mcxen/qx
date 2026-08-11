@@ -47,8 +47,11 @@
 //! and [`install`] once from app setup so main-thread identity is known on all
 //! platforms (not only macOS `NSThread`).
 
+mod health;
 mod main_thread;
 pub mod pool;
+
+pub use health::start as start_health_monitor;
 
 pub use main_thread::{
     blocking, install, install_async_runtime, is_main, run_on_main, run_ui, run_ui_timeout,

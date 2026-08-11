@@ -683,6 +683,26 @@ pub(crate) fn refresh_capture_monitor_cache() -> Result<Vec<xcap::Monitor>, Stri
     Ok(monitors)
 }
 
+/// Cheap topology probe for the always-on display monitor.
+///
+/// Building `xcap::Monitor` objects every two seconds needlessly traversed the
+/// native capture stack for the lifetime of Qx. On macOS, CoreGraphics exposes
+/// the active IDs directly; full xcap objects are refreshed only after a real
+/// count transition or when a capture workflow asks for them.
+#[cfg(target_os = "macos")]
+pub(crate) fn capture_monitor_count() -> Result<usize, String> {
+    core_graphics::display::CGDisplay::active_displays()
+        .map(|displays| displays.len())
+        .map_err(|error| format!("Cannot count displays: {error}"))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn capture_monitor_count() -> Result<usize, String> {
+    xcap::Monitor::all()
+        .map(|monitors| monitors.len())
+        .map_err(|error| format!("Cannot count displays: {error}"))
+}
+
 pub(crate) fn capture_monitor(id: Option<u32>) -> Result<xcap::Monitor, String> {
     let monitors = all_capture_monitors()?;
     if let Some(id) = id {

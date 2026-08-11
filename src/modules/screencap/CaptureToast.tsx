@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useT } from "../../i18n";
 import { revealSystemPath, writeImageFileToClipboard } from "../../system";
+import { pinScreenshotToDesktop } from "./store";
 
 interface Props {
   path: string;
@@ -9,10 +10,11 @@ interface Props {
   onDismiss: () => void;
 }
 
-/** Brief post-screenshot card with open / copy / reveal. */
+/** Brief post-screenshot card with open / copy / pin / reveal. */
 export default function CaptureToast({ path, onOpen, onDismiss }: Props) {
   const t = useT();
   const [copied, setCopied] = useState(false);
+  const [pinning, setPinning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const src = convertFileSrc(path);
   const fileName = path.split(/[\\/]/).pop() ?? path;
@@ -29,6 +31,18 @@ export default function CaptureToast({ path, onOpen, onDismiss }: Props) {
       setCopied(true);
     } catch (copyError) {
       setError(String(copyError));
+    }
+  };
+
+  const pin = async () => {
+    setError(null);
+    setPinning(true);
+    try {
+      await pinScreenshotToDesktop(path);
+      onDismiss();
+    } catch (pinError) {
+      setError(String(pinError));
+      setPinning(false);
     }
   };
 
@@ -53,6 +67,11 @@ export default function CaptureToast({ path, onOpen, onDismiss }: Props) {
           <button type="button" onClick={onOpen}>{t("screencap.toast.open", "Open")}</button>
           <button type="button" onClick={() => void copy()}>
             {copied ? t("screencap.toast.copied", "Copied") : t("screencap.toast.copy", "Copy")}
+          </button>
+          <button type="button" disabled={pinning} onClick={() => void pin()}>
+            {pinning
+              ? t("screencap.toast.pinning", "Pinning…")
+              : t("screencap.toast.pin", "Pin")}
           </button>
           <button type="button" onClick={() => void reveal()}>{t("screencap.toast.reveal", "Show")}</button>
           <button type="button" className="is-ghost" onClick={onDismiss}>{t("common.dismiss", "Dismiss")}</button>

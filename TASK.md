@@ -2,6 +2,51 @@
 
 - [x] 统一 Qx 公共控件尺寸与字重：标准控件 32px、紧凑控件 28px、Shell 控件 36px；Settings 表单尾部控件统一 220px 对齐，并移除 Button / Select / Segmented 默认 700 的混乱覆盖。
 
+## Feature — 截图桌面贴图（Pin）
+
+**状态**：代码完成，等待桌面运行态复核。
+
+- Snipaste 风格贴图：截图后将 PNG 以 always-on-top 无边框窗固定在桌面；最多 16 张。
+- 入口：圈选工具栏 Pin（快捷键 `P`）直接捕获并贴图；截图 toast 的「贴图」；`screencap_pin_image` IPC。
+- 贴图窗：拖动移动、滚轮/`+/-` 缩放、`[`/`]` 透明度、Esc/双击/关闭钮关闭、⌘/Ctrl+C 复制、右键菜单。
+- 后端 `screencap/pin.rs`；capability `capture-pin-*`；退出时 `close_all_for_shutdown`。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `cargo check`
+- [ ] 桌面态：工具栏 P 贴图、toast 贴图、多贴图拖动缩放关闭、macOS/Windows 置顶。
+
+## Fix — 截图文字标注可视化编辑（自动放大）
+
+**状态**：代码完成，等待桌面运行态复核。
+
+- 对照 Flameshot `TextWidget`：初始文字框约 6 字符宽 × 2.5 行高，随内容自动扩张。
+- 默认字号 24px；存储字号小于 22px 时编辑弹出浮动 loupe；保留 v0.6.76 IME preedit 行为。
+- 编辑态提高对比度与光标留白；失焦后按真实字号回写包围盒。
+
+### 验证
+
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [ ] 桌面态：放置文字、小字号双击编辑、角点缩小后再编辑、Enter/Esc/IME 完成。
+
+## Fix — Issue #2 长时无响应与风扇升速防护
+
+**状态**：代码修复完成，等待更长桌面运行态复核。
+
+- 显示器 monitor 低频 topology count；实际拓扑变化或捕获请求时才刷新 xcap inventory。
+- 新增 30 秒低频 UI event-loop health probe；2 秒无响应才记录 `runtime.health` warning。
+- 诊断日志有界队列与配置缓存，错误风暴不得无限堆积。
+
+### 验证
+
+- [x] `npm run check`
+- [x] `npx tsc --noEmit`
+- [x] `cargo check`
+- [ ] macOS 签名安装后持续运行与 Diagnostic Logging 事件验证。
+
 ## Feature — 宏录制 Workbench 与可停止播放
 
 **状态**：代码完成，等待桌面运行态复核。

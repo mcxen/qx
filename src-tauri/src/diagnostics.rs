@@ -3,11 +3,17 @@ use serde_json::{Map, Value};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::{mpsc, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{mpsc, Mutex, OnceLock};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 static PROCESS_STARTED_AT: OnceLock<u128> = OnceLock::new();
-static LOG_SENDER: OnceLock<mpsc::Sender<LogEventInput>> = OnceLock::new();
+static LOG_SENDER: OnceLock<mpsc::SyncSender<LogEventInput>> = OnceLock::new();
+static LOG_CONFIG: Mutex<Option<(Instant, Option<LogLevel>)>> = Mutex::new(None);
+static DROPPED_EVENTS: AtomicU64 = AtomicU64::new(0);
+
+const LOG_QUEUE_CAPACITY: usize = 256;
+const LOG_CONFIG_TTL: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "lowercase")]
@@ -64,23 +70,35 @@ pub fn log_file_path() -> PathBuf {
 }
 
 fn logging_config() -> Option<LogLevel> {
+    let mut cache = LOG_CONFIG
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if let Some((sampled_at, level)) = *cache {
+        if sampled_at.elapsed() < LOG_CONFIG_TTL {
+            return level;
+        }
+    }
     let settings = crate::settings::read_settings();
-    if settings.advanced.dev_mode {
+    let level = if settings.advanced.dev_mode {
         Some(LogLevel::Debug)
     } else if settings.advanced.logging_enabled {
         Some(LogLevel::from_settings(&settings.advanced.log_level))
     } else {
         None
-    }
+    };
+    *cache = Some((Instant::now(), level));
+    level
 }
 
 fn enabled(level: LogLevel) -> bool {
     logging_config().is_some_and(|threshold| level <= threshold)
 }
 
-fn log_sender() -> &'static mpsc::Sender<LogEventInput> {
+fn log_sender() -> &'static mpsc::SyncSender<LogEventInput> {
     LOG_SENDER.get_or_init(|| {
-        let (sender, receiver) = mpsc::channel::<LogEventInput>();
+        // A diagnostic storm must never become a second memory/CPU incident.
+        // Keep a small bounded queue and let producers drop excess detail.
+        let (sender, receiver) = mpsc::sync_channel::<LogEventInput>(LOG_QUEUE_CAPACITY);
         if let Err(error) = std::thread::Builder::new()
             .name("qx-log-writer".to_string())
             .spawn(move || {
@@ -130,6 +148,11 @@ fn write_json_line(event: LogEventInput) -> Result<(), String> {
 }
 
 pub fn log(level: LogLevel, target: &str, message: impl Into<String>, fields: Value) {
+    // Drop before allocating an event or starting the writer when diagnostics
+    // are disabled. The cached settings probe keeps hot error paths off disk.
+    if !enabled(level) {
+        return;
+    }
     let fields = match fields {
         Value::Object(map) => map,
         other => {
@@ -138,14 +161,26 @@ pub fn log(level: LogLevel, target: &str, message: impl Into<String>, fields: Va
             map
         }
     };
-    let event = LogEventInput {
+    let mut event = LogEventInput {
         level,
         target: target.to_string(),
         message: message.into(),
         fields,
     };
-    if let Err(error) = log_sender().send(event) {
-        eprintln!("[diagnostics] {error}");
+    let dropped = DROPPED_EVENTS.swap(0, Ordering::Relaxed);
+    if dropped > 0 {
+        event
+            .fields
+            .insert("droppedEvents".to_string(), Value::from(dropped));
+    }
+    match log_sender().try_send(event) {
+        Ok(()) => {}
+        Err(mpsc::TrySendError::Full(_)) => {
+            DROPPED_EVENTS.fetch_add(dropped.saturating_add(1), Ordering::Relaxed);
+        }
+        Err(mpsc::TrySendError::Disconnected(_)) => {
+            eprintln!("[diagnostics] log writer disconnected");
+        }
     }
 }
 

@@ -25,6 +25,8 @@ pub struct CaptureExecutionOptions {
     #[serde(default)]
     pub recording_masks: Vec<RelativeCaptureRect>,
     pub play_sound: Option<bool>,
+    /// After a successful screenshot, open a desktop pin (贴图) surface.
+    pub pin_to_desktop: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

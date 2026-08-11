@@ -13,6 +13,7 @@ import {
   ChevronDown,
   MoveUpRight,
   Pencil,
+  Pin,
   Play,
   Redo2,
   Undo2,
@@ -172,6 +173,8 @@ export interface CaptureToolbarProps {
   onRedo: () => void;
   onSettingsChange: (patch: Partial<ScreencapSettings>) => void;
   onConfirm: () => void;
+  /** Screenshot only: capture and pin a floating desktop image (贴图). */
+  onPin?: () => void;
   onCancel: () => void;
   onToolbarPointerDown?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onToolbarPointerMove?: (event: ReactPointerEvent<HTMLDivElement>) => void;
@@ -196,6 +199,7 @@ export const CaptureToolbar = forwardRef<HTMLDivElement, CaptureToolbarProps>(fu
   onRedo,
   onSettingsChange,
   onConfirm,
+  onPin,
   onCancel,
   onToolbarPointerDown,
   onToolbarPointerMove,
@@ -494,6 +498,17 @@ export const CaptureToolbar = forwardRef<HTMLDivElement, CaptureToolbarProps>(fu
           </PopoverContent>
         </Popover>
         <span />
+        {screenshot && onPin ? (
+          <ToolButton
+            label={t("screencap.picker.pin", "Pin to desktop")}
+            disabled={busy}
+            className="is-icon"
+            shortcut="P"
+            onClick={onPin}
+          >
+            <Pin size={16} strokeWidth={2.2} />
+          </ToolButton>
+        ) : null}
         <ToolButton
           label={screenshot
             ? t("screencap.picker.confirmScreenshot", "Confirm screenshot")

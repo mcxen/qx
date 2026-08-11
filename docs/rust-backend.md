@@ -26,10 +26,10 @@
 | `system_information.rs` + `system_information/` | 主机名/芯片/内存/存储/网络/进程/电源的统一命令；Windows 适配器直接使用 Win32 注册表、拓扑、磁盘、IP Helper、ToolHelp 与 System Power Status API，不以 PowerShell/WMI 子进程轮询；Unix 进程终止通过 `/bin/kill`，Windows 使用 `taskkill` 执行明确的终止动作 |
 | `windows_process.rs` | Windows GUI 进程的系统边界：从 `SystemRoot` 解析 inbox executable，直接读取 Machine/User 环境注册表组成桌面 PATH；OCR / toast 暂时通过 PowerShell 进入 WinRT 时必须走带硬超时和进程树清理的输出 helper。用户主动打开的终端/CLI shell 不属于系统采样。 |
 | `apps.rs` + `apps/icons.rs` | Windows 从开始菜单快捷方式枚举应用，以 Shell `HICON` 栅格化为 `%LOCALAPPDATA%/Qx/icons` 下的紧凑 PNG；该目录由 Tauri `$LOCALDATA/Qx/**` asset scope 放行，前端只通过 `convertFileSrc()` 加载绝对路径。 |
-| `runtime/` | **线程调度系统能力**：主线程 UI 事务（`ui`/`run_ui`）、blocking 算力池、跨平台主线程 id；所有窗口/剪贴板操作必须经此层。见 [runtime-threading.md](./runtime-threading.md) |
+| `runtime/` | **线程调度系统能力**：主线程 UI 事务（`ui`/`run_ui`）、blocking 算力池、跨平台主线程 id，以及仅在异常/恢复时写诊断的低频 event-loop health probe；所有窗口/剪贴板操作必须经此层。见 [runtime-threading.md](./runtime-threading.md) |
 | `display.rs` / `display/brightness_windows.rs` / `display_windows.rs` / `display_macos.m` | Qx 系统级显示器服务：统一枚举、捕获映射与显示器控制；macOS 内嵌 DisplayServices 与 DDC/CI I2C/IOAVService，Windows 使用 WMI 与 Win32 Monitor Configuration；公共 `display_brightness_*` 覆盖内置屏与外接屏并返回原始值及发现/读写诊断，不启动外部显示器工具。 |
 | `desktop_windows.rs` | Qx 系统级顶层窗口清单：可见窗枚举、几何、z 序、按显示器裁剪与逻辑坐标换算；公共 IPC `desktop_windows_list`；截图窗选等只消费该服务，禁止 feature 内直接 `xcap::Window` |
-| `display_monitor.rs` | 复用系统级显示器服务监听插拔并发出 `display:changed`，不得自行枚举或分类显示器 |
+| `display_monitor.rs` | 复用系统级显示器服务监听插拔并发出 `display:changed`；常驻轮询只读轻量 topology count（macOS CoreGraphics active IDs），仅变化时刷新完整 xcap capture inventory，不得每轮重建捕获对象 |
 
 ## 数据模块
 
@@ -47,7 +47,7 @@
 |---|---|---|
 | `media/` | OpenH264 + `mp4` + `gifski` | Qx 根级媒体服务；统一负责 H.264 码流/MP4 封装、媒体尺寸约束和 GIF 转换，不依赖截图模块或其历史库，供截图、剪贴板、OCR、文件预览等能力复用。 |
 | `clipboard.rs` | arboard + clipboard-manager | 系统剪贴板；公共 IPC `clipboard_write_image_file` 将磁盘图片发布到剪贴板，供捕获 toast / 历史回写等复用。 |
-| `screencap/` | 消费系统能力 | **仅捕获工作流**：圈选 session、录制生命周期、历史、控制岛、标注合成。显示器 / 窗列表 / 区域抓帧 / 剪贴板写图走 `display` · `desktop_windows` · `clipboard` · `media`；禁止模块内直接 `xcap::Window` 或重复显示器识别。 |
+| `screencap/` | 消费系统能力 | **仅捕获工作流**：圈选 session、录制生命周期、历史、控制岛、标注合成、桌面贴图（`pin.rs` 多实例 `capture-pin-*` 置顶窗）。显示器 / 窗列表 / 区域抓帧 / 剪贴板写图走 `display` · `desktop_windows` · `clipboard` · `media`；禁止模块内直接 `xcap::Window` 或重复显示器识别。 |
 | `ocr.rs` | 系统 OCR 能力 + 历史 | 平台引擎（macOS Vision / Windows.Media.Ocr）、OAR 模型下载、`ocr_history.db` 历史。**性能**：默认 Fast 识别 + 长边缩放（~1600）、路径/行缓存秒回、自动 OCR 单线程队列、批量 OCR 窗口并行 2、clipboard-updated 防抖 |
 | `macro_recorder.rs` + `macro_capture.rs` + `macro_playback.rs` | 原生 macOS event tap / Windows 双低级 hook + `enigo` | `MacroCaptureSession` 独立管理可停止的键鼠捕获；回调只投递有界原始事件队列，录制结果写入 `~/.qx/macros.db`，replay 通过后台 worker 的 `enigo` 模拟；跨平台 smoke macro 用受限的 `launch_application` / `text_input` 步骤验证启动 Chrome、定位地址栏、输入文本和提交 |
 
@@ -70,7 +70,7 @@
 | `settings/entry_config.rs` | Launcher 快捷入口与托盘动作的默认配置；兼容识别旧版默认快捷入口，避免覆盖用户自定义 |
 | `updater.rs` + `updater/` | 读取 per-target release manifest，校验资产，并编排 macOS bundle / Windows NSIS helper 更新；安装后 `app_quit::force_quit`（避开 macOS 双 ⌘Q）；helper 优先用 staging 二进制，等 PID 时 SIGTERM/SIGKILL |
 | `watchdog.rs` | Windows 常驻恢复边界：主进程每 30 秒通过命名事件发出轻量心跳，独立 helper 低频监测异常退出/无心跳并有限次静默重启；用户主动退出与更新退出发出 clean-stop 事件，避免误拉起 |
-| `diagnostics.rs` | 结构化诊断事件与日志文件路径；仅在 Advanced 日志开关或 Developer Mode 启用时落盘 |
+| `diagnostics.rs` | 结构化诊断事件与日志文件路径；仅在 Advanced 日志开关或 Developer Mode 启用时落盘；配置读取有短 TTL，队列有界，错误风暴不得形成新的内存/磁盘压力 |
 
 ## 通用工具
 

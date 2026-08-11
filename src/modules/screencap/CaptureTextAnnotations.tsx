@@ -1,13 +1,26 @@
-import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CompositionEvent,
+  type FocusEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+} from "react";
 import { X } from "lucide-react";
 import { useT } from "../../i18n";
 import {
+  CAPTURE_TEXT_EDIT_MAX_SCALE,
+  CAPTURE_TEXT_EDIT_READABLE_PX,
   CAPTURE_TEXT_MAX_FONT_SIZE,
   CAPTURE_TEXT_MIN_FONT_SIZE,
   type CaptureAnnotation,
   type Rect,
 } from "./useCaptureAnnotations";
 import {
+  captureTextEditScale,
   measureCaptureTextBox,
   projectCaptureTextCornerScale,
   shouldCommitCaptureTextChange,
@@ -304,10 +317,18 @@ export function CaptureTextAnnotations({
     if (!annotation) return "";
     const text = rawText.replace(/\r/g, "");
     const maximumWidth = Math.max(1, selection.w - annotation.x * selection.w);
+    // Flameshot-style floor so the frame does not collapse to one glyph while typing.
+    const preferredMin = Math.min(
+      maximumWidth,
+      Math.max(
+        annotation.w * selection.w,
+        annotation.fontSize * 0.62 * 4 + Math.max(4, annotation.fontSize * 0.44),
+      ),
+    );
     const layout = measureCaptureTextBox(
       text,
       annotation.fontSize,
-      Math.min(16, maximumWidth),
+      preferredMin,
       maximumWidth,
     );
     const height = Math.min(layout.height, selection.h);
@@ -324,7 +345,9 @@ export function CaptureTextAnnotations({
 
   const beginMove = (event: PointerEvent<HTMLDivElement>, annotation: TextAnnotation) => {
     const target = event.target as HTMLElement;
-    if (target.closest("textarea, button, .qx-region-picker-text-resize")) return;
+    if (target.closest("textarea, button, .qx-region-picker-text-resize, .qx-region-picker-text-editor")) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     setEditingId(null);
@@ -376,17 +399,104 @@ export function CaptureTextAnnotations({
       {annotations.map((annotation) => {
         const selected = activeId === annotation.id;
         const editing = editingId === annotation.id;
-        const width = annotation.w * selection.w;
-        const height = annotation.h * selection.h;
+        const realWidth = annotation.w * selection.w;
+        const realHeight = annotation.h * selection.h;
+        const realLeft = annotation.x * selection.w;
+        const realTop = annotation.y * selection.h;
+        const editScale = editing
+          ? captureTextEditScale(
+            annotation.fontSize,
+            CAPTURE_TEXT_EDIT_READABLE_PX,
+            CAPTURE_TEXT_EDIT_MAX_SCALE,
+          )
+          : 1;
+        const magnified = editing && editScale > 1.01;
+        const displayFont = annotation.fontSize * editScale;
+        const maxDisplayWidth = Math.max(1, selection.w - realLeft);
+        const displayPreferredMin = Math.min(
+          maxDisplayWidth,
+          Math.max(
+            realWidth * editScale,
+            displayFont * 0.62 * 6 + Math.max(4, displayFont * 0.44),
+          ),
+        );
+        const displayLayout = magnified
+          ? measureCaptureTextBox(
+            annotation.text,
+            displayFont,
+            displayPreferredMin,
+            maxDisplayWidth,
+          )
+          : { width: realWidth, height: realHeight, lines: [] as string[] };
+        const displayWidth = magnified
+          ? Math.min(displayLayout.width, maxDisplayWidth)
+          : realWidth;
+        const displayHeight = magnified
+          ? Math.min(displayLayout.height, Math.max(realHeight, selection.h - realTop))
+          : realHeight;
+        const spaceBelow = selection.h - realTop - realHeight;
+        const placeMagnifierBelow = !magnified || spaceBelow >= displayHeight + 10
+          || realTop < displayHeight + 10;
+
+        const bindTextarea = {
+          defaultValue: annotation.text,
+          "aria-label": t("screencap.picker.editText", "Edit annotation text"),
+          onChange: (event: ChangeEvent<HTMLTextAreaElement>) => {
+            const shouldPersist = shouldCommitCaptureTextChange(
+              composingIdRef.current === annotation.id,
+              (event.nativeEvent as InputEvent).isComposing,
+            );
+            // Native IME preedit remains visible in the uncontrolled
+            // textarea. It participates in frame measurement without
+            // entering the persisted annotation until compositionend.
+            layoutText(annotation.id, event.currentTarget.value, shouldPersist);
+          },
+          onCompositionStart: () => {
+            composingIdRef.current = annotation.id;
+          },
+          onCompositionEnd: (event: CompositionEvent<HTMLTextAreaElement>) => {
+            composingIdRef.current = null;
+            layoutText(annotation.id, event.currentTarget.value);
+          },
+          onBlur: (event: FocusEvent<HTMLTextAreaElement>) => {
+            const text = layoutText(annotation.id, event.currentTarget.value);
+            finishEditing(annotation.id, text);
+          },
+          onPointerDown: (event: PointerEvent<HTMLTextAreaElement>) => {
+            event.stopPropagation();
+          },
+          onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => {
+            event.stopPropagation();
+            const nativeEvent = event.nativeEvent;
+            if (shouldFinishCaptureTextEditing(
+              event.key,
+              event.shiftKey,
+              nativeEvent.isComposing,
+              nativeEvent.keyCode,
+              composingIdRef.current === annotation.id,
+            )) {
+              event.preventDefault();
+              event.currentTarget.blur();
+            }
+          },
+          style: { color: annotation.color },
+        };
+
         return (
           <div
             key={annotation.id}
-            className={`qx-region-picker-text-box${selected ? " is-selected" : ""}${editing ? " is-editing" : ""}${interactionId === annotation.id ? " is-interacting" : ""}`}
+            className={[
+              "qx-region-picker-text-box",
+              selected ? "is-selected" : "",
+              editing ? "is-editing" : "",
+              magnified ? "is-magnified" : "",
+              interactionId === annotation.id ? "is-interacting" : "",
+            ].filter(Boolean).join(" ")}
             style={{
-              left: annotation.x * selection.w,
-              top: annotation.y * selection.h,
-              width,
-              height,
+              left: realLeft,
+              top: realTop,
+              width: realWidth,
+              height: realHeight,
               fontSize: annotation.fontSize,
             }}
             tabIndex={selected ? 0 : -1}
@@ -407,7 +517,7 @@ export function CaptureTextAnnotations({
               setEditingId(annotation.id);
             }}
           >
-            {selected && (
+            {selected && !editing && (
               <>
                 <button
                   type="button"
@@ -448,48 +558,42 @@ export function CaptureTextAnnotations({
               </>
             )}
             {editing ? (
-              <textarea
-                autoFocus
-                defaultValue={annotation.text}
-                aria-label={t("screencap.picker.editText", "Edit annotation text")}
-                onChange={(event) => {
-                  const shouldPersist = shouldCommitCaptureTextChange(
-                    composingIdRef.current === annotation.id,
-                    (event.nativeEvent as InputEvent).isComposing,
-                  );
-                  // Native IME preedit remains visible in the uncontrolled
-                  // textarea. It participates in frame measurement without
-                  // entering the persisted annotation until compositionend.
-                  layoutText(annotation.id, event.currentTarget.value, shouldPersist);
-                }}
-                onCompositionStart={() => {
-                  composingIdRef.current = annotation.id;
-                }}
-                onCompositionEnd={(event) => {
-                  composingIdRef.current = null;
-                  layoutText(annotation.id, event.currentTarget.value);
-                }}
-                onBlur={(event) => {
-                  const text = layoutText(annotation.id, event.currentTarget.value);
-                  finishEditing(annotation.id, text);
-                }}
-                onPointerDown={(event) => event.stopPropagation()}
-                onKeyDown={(event) => {
-                  event.stopPropagation();
-                  const nativeEvent = event.nativeEvent;
-                  if (shouldFinishCaptureTextEditing(
-                    event.key,
-                    event.shiftKey,
-                    nativeEvent.isComposing,
-                    nativeEvent.keyCode,
-                    composingIdRef.current === annotation.id,
-                  )) {
-                    event.preventDefault();
-                    event.currentTarget.blur();
-                  }
-                }}
-                style={{ color: annotation.color }}
-              />
+              magnified ? (
+                <>
+                  <span
+                    className="qx-region-picker-text-ghost"
+                    style={{ color: annotation.color }}
+                    aria-hidden="true"
+                  >
+                    {annotation.text || "\u00a0"}
+                  </span>
+                  <div
+                    className={`qx-region-picker-text-editor is-magnified-panel${placeMagnifierBelow ? " is-below" : " is-above"}`}
+                    style={{
+                      width: displayWidth,
+                      height: displayHeight,
+                      fontSize: displayFont,
+                      color: annotation.color,
+                    }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    <div className="qx-region-picker-text-editor-label">
+                      {t("screencap.picker.textEditMagnifier", "Editing · auto-zoomed")}
+                    </div>
+                    <textarea
+                      autoFocus
+                      placeholder={t("screencap.picker.textPrompt", "Type annotation text")}
+                      {...bindTextarea}
+                    />
+                  </div>
+                </>
+              ) : (
+                <textarea
+                  autoFocus
+                  placeholder={t("screencap.picker.textPrompt", "Type annotation text")}
+                  {...bindTextarea}
+                />
+              )
             ) : (
               <span
                 style={{ color: annotation.color }}
