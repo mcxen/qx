@@ -205,13 +205,26 @@
 - 文字移动与缩放合并到每个动画帧最多一次状态更新，结束拖拽前刷新最后位置。
 - 纯文字内容和几何变化不再触发箭头、画笔、马赛克等非文字标注画布重绘。
 
+### 中文输入法与变换补充
+
+- 中文 IME 合成期间保留原生候选窗口，但文字框只绘制已确认文字；拼音 preedit 不写入
+  标注状态，也不触发框尺寸重排。候选确认后一次性提交汉字并按右边界重新排版。
+- IME 合成中的 Enter 不再结束编辑；普通 Enter / Esc 才结束编辑，点击框外先完成原生
+  compositionend / blur 提交，避免刚确认的汉字因旧状态被删除。
+- 上下左右边只调整对应方向尺寸；四角统一以对角为锚点等比缩放文字框与字号，不再按拖动
+  角度切换成只改宽度。
+- 输入内容从当前框宽继续增长，到截图右边界后固定宽度、自动换行并增加高度；接近底边时
+  向上调整，避免隐藏已确认文字。
+
 ### 验证
 
 - [x] `npx tsc --noEmit`
-- [x] `npm run check`
+- [x] `node scripts/check-qx-shell-navigation.mjs`（含 IME、边界换行与角点缩放断言）
 - [x] `npm run build`
-- [x] `npm run tauri build` 并签名安装到 `/Applications/Qx.app`
-- [ ] macOS 运行态验证长文本连续输入、自动换行扩高、四边拖动与四角缩放流畅度。
+- [ ] `npm run check`：本次相关闸门通过；现有 `external-display-control` 缺少
+  `invoke:qx_external_displays_driver` / `invoke:qx_external_displays_list` 权限声明，
+  `check:module-ports` 失败。
+- [ ] macOS 运行态验证中文候选确认、长文本连续输入、自动换行扩高、四边拖动与四角缩放。
 
 ## Fix — 取消双击选区直接截屏
 

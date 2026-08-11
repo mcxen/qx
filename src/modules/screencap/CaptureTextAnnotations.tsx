@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import { X } from "lucide-react";
 import { useT } from "../../i18n";
 import {
@@ -7,7 +7,12 @@ import {
   type CaptureAnnotation,
   type Rect,
 } from "./useCaptureAnnotations";
-import { measureCaptureTextBox } from "./captureTextLayout";
+import {
+  measureCaptureTextBox,
+  projectCaptureTextCornerScale,
+  shouldCommitCaptureTextChange,
+  shouldFinishCaptureTextEditing,
+} from "./captureTextLayout";
 
 type TextAnnotation = Extract<CaptureAnnotation, { type: "text" }>;
 type ResizeCorner = "nw" | "ne" | "se" | "sw";
@@ -67,32 +72,52 @@ export function CaptureTextAnnotations({
   const t = useT();
   const rootRef = useRef<HTMLDivElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [composingId, setComposingId] = useState<string | null>(null);
+  const composingIdRef = useRef<string | null>(null);
+  const annotationsRef = useRef(annotations);
   const interaction = useRef<TextInteraction | null>(null);
   const [interactionId, setInteractionId] = useState<string | null>(null);
+  annotationsRef.current = annotations;
 
   useEffect(() => {
-    if (!activeId) return;
+    if (!activeId) {
+      setEditingId(null);
+      setComposingId(null);
+      composingIdRef.current = null;
+      return;
+    }
     const annotation = annotations.find((item) => item.id === activeId);
     if (!annotation) {
       onActiveChange(null);
       setEditingId(null);
+      setComposingId(null);
+      composingIdRef.current = null;
       return;
     }
     if (!annotation.text) setEditingId(activeId);
   }, [activeId, annotations, onActiveChange]);
 
   useEffect(() => {
+    let finishTimer: number | null = null;
     const onDocumentPointerDown = (event: globalThis.PointerEvent) => {
       const target = event.target as Node | null;
       if (target && rootRef.current?.contains(target)) return;
-      const active = annotations.find((annotation) => annotation.id === activeId);
-      if (active && !active.text.trim()) onDelete(active.id);
-      setEditingId(null);
-      onActiveChange(null);
+      // Let the focused textarea deliver compositionend/blur before selection
+      // state can unmount it. Blur owns the final DOM-value commit and empty-box
+      // cleanup, so clicking outside cannot discard a just-confirmed candidate.
+      finishTimer = window.setTimeout(() => {
+        setEditingId(null);
+        setComposingId(null);
+        composingIdRef.current = null;
+        onActiveChange(null);
+      }, 0);
     };
     document.addEventListener("pointerdown", onDocumentPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onDocumentPointerDown, true);
-  }, [activeId, annotations, onActiveChange, onDelete]);
+    return () => {
+      if (finishTimer != null) window.clearTimeout(finishTimer);
+      document.removeEventListener("pointerdown", onDocumentPointerDown, true);
+    };
+  }, [onActiveChange]);
 
   useEffect(() => {
     if (!interactionId) return undefined;
@@ -184,41 +209,9 @@ export function CaptureTextAnnotations({
       const verticalDirection = current.handle.includes("n") ? -1 : 1;
       const horizontalDelta = (clientX - current.startX) * horizontalDirection;
       const verticalDelta = (clientY - current.startY) * verticalDirection;
-      const horizontalOnly =
-        Math.abs(verticalDelta) <= Math.max(5, Math.abs(horizontalDelta) * 0.28);
-      if (horizontalOnly) {
-        const anchorX = current.handle.includes("w")
-          ? current.left + current.width
-          : current.left;
-        const maximumWidth = current.handle.includes("w")
-          ? anchorX
-          : selection.w - anchorX;
-        const width = clamp(current.width + horizontalDelta, 16, Math.max(16, maximumWidth));
-        const left = current.handle.includes("w") ? anchorX - width : anchorX;
-        const layout = measureCaptureTextBox(
-          current.text,
-          current.fontSize,
-          width,
-          width,
-        );
-        const height = Math.min(layout.height, selection.h);
-        const top = clamp(current.top, 0, Math.max(0, selection.h - height));
-        onUpdate(current.id, {
-          x: left / selection.w,
-          y: top / selection.h,
-          w: width / selection.w,
-          h: height / selection.h,
-        });
-        return;
-      }
-      const horizontalScaleDelta =
-        horizontalDelta / current.width;
-      const verticalScaleDelta =
-        verticalDelta / current.height;
-      const dominantDelta =
-        Math.abs(horizontalScaleDelta) >= Math.abs(verticalScaleDelta)
-          ? horizontalScaleDelta
-          : verticalScaleDelta;
+      // A corner is exclusively a proportional scale handle. Project the
+      // pointer movement onto the box diagonal so font and frame change as one
+      // stable transform instead of switching behavior based on drag angle.
       const anchorX = current.handle.includes("w")
         ? current.left + current.width
         : current.left;
@@ -244,7 +237,16 @@ export function CaptureTextAnnotations({
           maximumVerticalScale,
         ),
       );
-      const scale = clamp(1 + dominantDelta, minimumScale, maximumScale);
+      const scale = clamp(
+        projectCaptureTextCornerScale(
+          horizontalDelta,
+          verticalDelta,
+          current.width,
+          current.height,
+        ),
+        minimumScale,
+        maximumScale,
+      );
       const width = current.width * scale;
       const height = current.height * scale;
       const left = current.handle.includes("w") ? anchorX - width : anchorX;
@@ -292,13 +294,40 @@ export function CaptureTextAnnotations({
     };
   }, [interactionId, onUpdate, selection.h, selection.w]);
 
-  const finishEditing = (annotation: TextAnnotation) => {
+  const finishEditing = (id: string, text: string) => {
     setEditingId(null);
-    if (!annotation.text.trim()) {
-      onDelete(annotation.id);
+    setComposingId(null);
+    composingIdRef.current = null;
+    if (!text.trim()) {
+      onDelete(id);
       onActiveChange(null);
     }
   };
+
+  const commitText = useCallback((id: string, rawText: string) => {
+    const annotation = annotationsRef.current.find((item) => item.id === id);
+    if (!annotation) return "";
+    const text = rawText.replace(/\r/g, "");
+    const currentWidth = annotation.w * selection.w;
+    const currentHeight = annotation.h * selection.h;
+    const maximumWidth = Math.max(1, selection.w - annotation.x * selection.w);
+    const layout = measureCaptureTextBox(
+      text,
+      annotation.fontSize,
+      Math.min(Math.max(16, currentWidth), maximumWidth),
+      maximumWidth,
+    );
+    const height = Math.min(Math.max(currentHeight, layout.height), selection.h);
+    const currentTop = annotation.y * selection.h;
+    const top = clamp(currentTop, 0, Math.max(0, selection.h - height));
+    onUpdate(id, {
+      text,
+      w: layout.width / selection.w,
+      h: height / selection.h,
+      y: top / selection.h,
+    });
+    return text;
+  }, [onUpdate, selection.h, selection.w]);
 
   const beginMove = (event: PointerEvent<HTMLDivElement>, annotation: TextAnnotation) => {
     const target = event.target as HTMLElement;
@@ -426,40 +455,59 @@ export function CaptureTextAnnotations({
               </>
             )}
             {editing ? (
-              <textarea
-                autoFocus
-                value={annotation.text}
-                aria-label={t("screencap.picker.editText", "Edit annotation text")}
-                onChange={(event) => {
-                  const text = event.target.value.replace(/\r/g, "");
-                  const maximumWidth = Math.max(1, selection.w - annotation.x * selection.w);
-                  const layout = measureCaptureTextBox(
-                    text,
-                    annotation.fontSize,
-                    Math.min(24, selection.w),
-                    maximumWidth,
-                  );
-                  const height = Math.min(layout.height, selection.h);
-                  const currentTop = annotation.y * selection.h;
-                  const top = clamp(currentTop, 0, Math.max(0, selection.h - height));
-                  onUpdate(annotation.id, {
-                    text,
-                    w: layout.width / selection.w,
-                    h: height / selection.h,
-                    y: top / selection.h,
-                  });
-                }}
-                onBlur={() => finishEditing(annotation)}
-                onPointerDown={(event) => event.stopPropagation()}
-                onKeyDown={(event) => {
-                  event.stopPropagation();
-                  if ((event.key === "Enter" && !event.shiftKey) || event.key === "Escape") {
-                    event.preventDefault();
-                    event.currentTarget.blur();
-                  }
-                }}
-                style={{ color: annotation.color }}
-              />
+              <>
+                {composingId === annotation.id && (
+                  <span
+                    className="qx-region-picker-text-committed-preview"
+                    style={{ color: annotation.color }}
+                    aria-hidden="true"
+                  >
+                    {annotation.text}
+                  </span>
+                )}
+                <textarea
+                  autoFocus
+                  defaultValue={annotation.text}
+                  className={composingId === annotation.id ? "is-composing" : undefined}
+                  aria-label={t("screencap.picker.editText", "Edit annotation text")}
+                  onChange={(event) => {
+                    if (!shouldCommitCaptureTextChange(
+                      composingIdRef.current === annotation.id,
+                      (event.nativeEvent as InputEvent).isComposing,
+                    )) return;
+                    commitText(annotation.id, event.currentTarget.value);
+                  }}
+                  onCompositionStart={() => {
+                    composingIdRef.current = annotation.id;
+                    setComposingId(annotation.id);
+                  }}
+                  onCompositionEnd={(event) => {
+                    composingIdRef.current = null;
+                    setComposingId(null);
+                    commitText(annotation.id, event.currentTarget.value);
+                  }}
+                  onBlur={(event) => {
+                    const text = commitText(annotation.id, event.currentTarget.value);
+                    finishEditing(annotation.id, text);
+                  }}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onKeyDown={(event) => {
+                    event.stopPropagation();
+                    const nativeEvent = event.nativeEvent;
+                    if (shouldFinishCaptureTextEditing(
+                      event.key,
+                      event.shiftKey,
+                      nativeEvent.isComposing,
+                      nativeEvent.keyCode,
+                      composingIdRef.current === annotation.id,
+                    )) {
+                      event.preventDefault();
+                      event.currentTarget.blur();
+                    }
+                  }}
+                  style={{ color: annotation.color }}
+                />
+              </>
             ) : (
               <span
                 style={{ color: annotation.color }}

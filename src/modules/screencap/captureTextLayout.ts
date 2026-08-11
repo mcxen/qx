@@ -7,6 +7,7 @@ let textMeasureContext: CanvasRenderingContext2D | null = null;
 const glyphWidthCache = new Map<number, Map<string, number>>();
 
 function getTextMeasureContext(): CanvasRenderingContext2D | null {
+  if (typeof document === "undefined") return null;
   if (!textMeasureContext) {
     textMeasureContext = document.createElement("canvas").getContext("2d");
   }
@@ -15,6 +16,38 @@ function getTextMeasureContext(): CanvasRenderingContext2D | null {
 
 export function captureTextPadding(fontSize: number): number {
   return Math.max(CAPTURE_TEXT_MIN_HORIZONTAL_PADDING, fontSize * CAPTURE_TEXT_HORIZONTAL_PADDING_EM);
+}
+
+export function shouldCommitCaptureTextChange(
+  sessionComposing: boolean,
+  eventComposing: boolean,
+): boolean {
+  return !sessionComposing && !eventComposing;
+}
+
+export function shouldFinishCaptureTextEditing(
+  key: string,
+  shiftKey: boolean,
+  eventComposing: boolean,
+  legacyKeyCode: number,
+  sessionComposing: boolean,
+): boolean {
+  if (eventComposing || sessionComposing) return false;
+  if (key === "Enter") return !shiftKey && legacyKeyCode !== 229;
+  return key === "Escape";
+}
+
+export function projectCaptureTextCornerScale(
+  horizontalDelta: number,
+  verticalDelta: number,
+  width: number,
+  height: number,
+): number {
+  const denominator = width * width + height * height;
+  if (denominator <= 0) return 1;
+  return 1 + (
+    horizontalDelta * width + verticalDelta * height
+  ) / denominator;
 }
 
 export function measureCaptureTextWidth(text: string, fontSize: number): number {

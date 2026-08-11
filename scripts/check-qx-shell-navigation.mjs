@@ -28,6 +28,12 @@ import {
   captureNumberForeground,
   captureNumberOutline,
 } from "../src/modules/screencap/captureColor.ts";
+import {
+  measureCaptureTextBox,
+  projectCaptureTextCornerScale,
+  shouldCommitCaptureTextChange,
+  shouldFinishCaptureTextEditing,
+} from "../src/modules/screencap/captureTextLayout.ts";
 import { launcherActionModel } from "../src/launcher/actionModel.ts";
 import { isOsReservedGlobalShortcutForPlatform } from "../src/utils/keyboard.ts";
 
@@ -166,6 +172,23 @@ assert.equal(captureNumberForeground("#ffffff"), "#111111");
 assert.equal(captureNumberForeground("#fff"), "#111111");
 assert.equal(captureNumberForeground("#ff3b30"), "#ffffff");
 assert.equal(captureNumberOutline("#ffffff"), "rgba(0,0,0,.72)");
+
+// Screenshot text keeps IME preedit out of persisted annotations. Candidate
+// confirmation Enter belongs to the IME; ordinary Enter finishes editing.
+assert.equal(shouldCommitCaptureTextChange(true, true), false);
+assert.equal(shouldCommitCaptureTextChange(false, false), true);
+assert.equal(shouldFinishCaptureTextEditing("Enter", false, true, 229, true), false);
+assert.equal(shouldFinishCaptureTextEditing("Enter", false, false, 13, false), true);
+assert.equal(shouldFinishCaptureTextEditing("Enter", true, false, 13, false), false);
+assert.equal(shouldFinishCaptureTextEditing("Escape", false, false, 229, false), true);
+
+// Corner dragging always projects onto one proportional scale, while committed
+// text grows to its horizontal boundary and then adds wrapped lines.
+assert.equal(projectCaptureTextCornerScale(100, 50, 100, 50), 2);
+assert.equal(projectCaptureTextCornerScale(-50, -25, 100, 50), 0.5);
+const captureTextLayout = measureCaptureTextBox("中文字", 18, 24, 40);
+assert.equal(captureTextLayout.width, 40);
+assert.equal(captureTextLayout.lines.length, 3);
 
 // Full-size Workbench media owns an inner scrollport. Portrait and long images
 // retain their natural aspect ratio instead of being forced into stage height.
