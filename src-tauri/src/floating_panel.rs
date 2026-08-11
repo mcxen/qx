@@ -607,6 +607,43 @@ mod platform {
 #[cfg(target_os = "macos")]
 use macos as platform;
 
+#[cfg(target_os = "windows")]
+fn suppress_windows_dwm_border(window: &WebviewWindow) -> Result<(), String> {
+    use windows_sys::Win32::Graphics::Dwm::{
+        DwmSetWindowAttribute, DWMWA_BORDER_COLOR, DWMWA_COLOR_NONE,
+    };
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetAncestor, GA_ROOT};
+
+    let webview_hwnd = window
+        .hwnd()
+        .map_err(|error| format!("get main window handle: {error}"))?
+        .0;
+    let hwnd = unsafe { GetAncestor(webview_hwnd, GA_ROOT) };
+    if hwnd.is_null() {
+        return Err("get main root window handle: unavailable".to_string());
+    }
+
+    // Windows 11 can draw the one-pixel accent/black border independently of
+    // the DWM shadow. Suppress only that border so the frameless launcher keeps
+    // a soft native shadow without looking like a rectangular framed window.
+    let border_color = DWMWA_COLOR_NONE;
+    let result = unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_BORDER_COLOR as u32,
+            std::ptr::from_ref(&border_color).cast(),
+            std::mem::size_of_val(&border_color) as u32,
+        )
+    };
+    if result < 0 {
+        return Err(format!(
+            "DwmSetWindowAttribute(DWMWA_BORDER_COLOR) failed: 0x{:08X}",
+            result as u32
+        ));
+    }
+    Ok(())
+}
+
 fn destination_geometry(
     area: DisplayArea,
     current_scale: f64,
@@ -675,15 +712,22 @@ pub fn install(app: &AppHandle, window_behavior: &str, show_in_app_list: bool) {
     }
     #[cfg(target_os = "windows")]
     if let Some(win) = app.get_webview_window(MAIN_LABEL) {
-        // Keep the borderless window in Tao's undecorated-shadow mode. Tao
-        // retains the native non-client frame insets, so DWM can render the
-        // real four-sided system shadow outside the WebView bounds.
+        // Keep the native four-sided shadow, then suppress Windows 11's
+        // separately rendered one-pixel non-client border.
         if let Err(error) = win.set_shadow(true) {
             crate::diagnostics::log(
                 crate::diagnostics::LogLevel::Warn,
                 "floating_panel",
                 "failed to enable the Windows native launcher shadow",
                 serde_json::json!({ "error": error.to_string() }),
+            );
+        }
+        if let Err(error) = suppress_windows_dwm_border(&win) {
+            crate::diagnostics::log(
+                crate::diagnostics::LogLevel::Warn,
+                "floating_panel",
+                "failed to suppress the Windows launcher border",
+                serde_json::json!({ "error": error }),
             );
         }
     }

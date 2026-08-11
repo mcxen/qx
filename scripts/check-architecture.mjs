@@ -67,6 +67,12 @@ if (!updateProgressView.includes('import { Button } from "../components/ui"')
     || !updateProgressHost.includes('.shadow(cfg!(target_os = "macos"))')) {
   fail("update progress window must use Qx controls and avoid Windows DWM square shadow");
 }
+const floatingPanelSource = read("src-tauri/src/floating_panel.rs");
+if (!floatingPanelSource.includes("DWMWA_BORDER_COLOR")
+    || !floatingPanelSource.includes("DWMWA_COLOR_NONE")
+    || !floatingPanelSource.includes("suppress_windows_dwm_border(&win)")) {
+  fail("Windows main window must suppress the DWM border while retaining its native shadow");
+}
 
 // --- 2. Host HTTP binary port (plugin external modules depend on this) ---
 const pluginApi = exists("src-tauri/src/plugin_api.rs") ? read("src-tauri/src/plugin_api.rs") : "";

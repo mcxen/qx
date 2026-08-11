@@ -232,6 +232,8 @@ useEffect(() => {
 
 ## 4. 隐藏窗口的正确入口
 
+Windows 主窗口保持无边框并使用 DWM 原生阴影。Windows 11 的非客户区边框与阴影是两个独立属性：宿主必须在启用阴影后将 `DWMWA_BORDER_COLOR` 设置为 `DWMWA_COLOR_NONE`，只移除一像素黑色/强调色边框，不得为隐藏黑框而关闭四边阴影或在 WebView 内伪造无法越过窗口边界的 CSS 阴影。
+
 | 场景 | 应调用 |
 |------|--------|
 | 全局快捷键关闭 | `hide_and_restore_focus`（toggle 内） |
