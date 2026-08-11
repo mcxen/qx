@@ -565,24 +565,25 @@ img.qx-ext-card-icon {
   margin-top: 2px;
 }
 
-/*
- * Settings row controls share one compact height.
- * Default SelectTrigger is 38px (shell density); Button size-sm / .qx-command-button
- * are 28px — without this rule About and General look misaligned.
- */
+/* Settings rows use one standard trailing control width and height. */
 .qx-settings-row-control > .qx-select,
 .qx-settings-row-control > .qx-inline-select {
-  width: auto;
-  min-width: 148px;
-  max-width: min(100%, 240px);
+  width: 100%;
+  min-width: min(148px, 100%);
+  max-width: 100%;
 }
 
-/* .qx-command-button and .qx-shadcn-button.size-sm are already 28px by
-   default; only enforce the min-height so non-size-sm buttons in rows stay
-   aligned with their compact siblings. */
+/* A size-sm request inside a settings row still aligns to the standard form
+   baseline; compact sizing is reserved for actual toolbars. */
 .qx-settings-row-control .qx-shadcn-button,
 .qx-settings-row-control .qx-command-button {
-  min-height: 28px;
+  min-height: var(--qx-control-height);
+}
+
+.qx-settings-row-control > .qx-shadcn-toggle-group,
+.qx-settings-row-control > .qx-slider,
+.qx-settings-row-control > .qx-window-size-group {
+  width: 100%;
 }
 
 .qx-settings-row-actions {
@@ -750,11 +751,11 @@ img.qx-ext-card-icon {
   min-width: 0;
 }
 
-/* Tabs and segmented controls already occupy 34px (28px item + 2px padding + border).
- * Match their outer height for the Select and small action buttons in this toolbar. */
+/* Plugin-manager controls share the standard form-control baseline. */
 .qx-plugin-manager-top .qx-shadcn-button.size-sm,
 .qx-plugin-manager-top .qx-shadcn-select-trigger {
-  height: 34px;
+  height: var(--qx-control-height);
+  min-height: var(--qx-control-height);
 }
 
 .qx-marketplace {
@@ -841,8 +842,8 @@ img.qx-ext-card-icon {
   align-items: center;
   flex: 1;
   min-width: 0;
-  height: 28px;
-  padding: 0 8px;
+  height: var(--qx-control-height);
+  padding: 0 var(--qx-control-padding-x);
   border: 1px solid var(--qx-border-1);
   border-radius: var(--qx-control-radius);
   background: var(--qx-overlay-1);
@@ -854,7 +855,7 @@ img.qx-ext-card-icon {
   flex: 1;
   min-width: 0;
   width: 100%;
-  height: 26px;
+  height: calc(var(--qx-control-height) - 2px);
   padding: 0;
   border: none;
   background: transparent;
@@ -1657,8 +1658,8 @@ span.qx-plugin-screenshot {
 }
 
 .qx-extension-shortcut-reset.qx-shadcn-button {
-  width: 28px;
-  height: 28px;
+  width: var(--qx-control-height);
+  height: var(--qx-control-height);
   color: var(--qx-text-tertiary);
 }
 
@@ -1877,9 +1878,10 @@ span.qx-plugin-screenshot {
 }
 
 .qx-icon-button {
-  height: 26px;
-  padding: 0 8px;
-  font-size: 12px;
+  height: var(--qx-control-height-compact);
+  padding: 0 var(--qx-control-padding-x);
+  font-size: var(--qx-control-font-size);
+  font-weight: var(--qx-control-font-weight);
 }
 
 .qx-empty-state {
@@ -1999,6 +2001,7 @@ span.qx-plugin-screenshot {
 .qx-window-size-group {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
 }
 
@@ -2019,14 +2022,14 @@ span.qx-plugin-screenshot {
 
 .qx-dimension-input {
   width: 56px;
-  height: 28px;
+  height: var(--qx-control-height);
   padding: 0 6px;
   border: 1px solid var(--qx-border-1);
   border-radius: var(--qx-control-radius);
   background: var(--qx-overlay-1);
   color: var(--qx-text-primary);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--qx-control-font-size);
+  font-weight: var(--qx-control-font-weight);
   text-align: center;
   outline: none;
   -moz-appearance: textfield;
@@ -2492,8 +2495,8 @@ span.qx-plugin-screenshot {
 }
 
 .qx-file-category-setting-actions .qx-shadcn-button {
-  width: 26px;
-  height: 26px;
+  width: var(--qx-control-height);
+  height: var(--qx-control-height);
 }
 
 .qx-file-category-dialog {
@@ -2559,7 +2562,7 @@ span.qx-plugin-screenshot {
    sensible max width while still shrinking at narrow window widths. */
 .qx-settings-input-wrap {
   width: 100%;
-  max-width: 280px;
+  max-width: var(--qx-settings-control-width);
   min-width: 0;
 }
 
@@ -2614,7 +2617,7 @@ span.qx-plugin-screenshot {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 28px;
+  height: var(--qx-control-height);
   flex-shrink: 0;
   color: var(--qx-text-primary);
 }
@@ -2650,15 +2653,16 @@ span.qx-plugin-screenshot {
 .qx-app-shortcut-picker-search {
   flex: 0 0 auto;
   width: 100%;
-  height: 30px;
+  height: var(--qx-control-height);
   margin: 0 0 6px;
   border: 1px solid var(--qx-border-1);
   border-radius: 6px;
   background: var(--qx-overlay-1);
   color: var(--qx-text-primary);
   font: inherit;
-  font-size: 12px;
-  padding: 0 8px;
+  font-size: var(--qx-control-font-size);
+  font-weight: var(--qx-control-font-weight);
+  padding: 0 var(--qx-control-padding-x);
   outline: none;
   box-sizing: border-box;
 }
@@ -2870,10 +2874,11 @@ span.qx-plugin-screenshot {
 }
 .qx-app-icon-picker {
   gap: 6px;
+  height: 54px;
 }
 
 .qx-appearance-settings .qx-settings-row-control > .qx-shadcn-toggle-group {
-  width: min(280px, 100%);
+  width: 100%;
 }
 
 .qx-appearance-settings .qx-settings-row-control > .qx-shadcn-toggle-group > * {

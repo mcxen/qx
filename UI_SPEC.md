@@ -18,6 +18,9 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
 - 截图或录屏成功后必须走同一个 capture-session 完成协议：结束 picker generation、隐藏并
   清空圈选层、解除内容保护、恢复结果界面，并按统一的捕获后隐藏设置处理控制栏。成功停止
   录屏不得重新弹出此前选区；仅失败时允许保留选区供重试。
+- 从常驻截图控制栏或全局截图快捷键启动截图时，如果主 Qx 窗口当前可见，必须保持其当前
+  模块与画面可见并临时解除主窗口内容保护，使 Qx 可以截取自身界面；圈选层、遮罩和截图
+  控制栏仍必须受内容保护并排除在成品之外。截图模块内部的普通捕获入口继续隐藏来源窗口。
 - 捕获预览的历史侧栏按“截图”和“录屏”分为两个默认展开的折叠组，不得把两种成品混排；
   每组可独立折叠，Shell 键盘导航只遍历当前展开组中的可见条目。
 - 截图与录屏历史项在列表和图库布局中均提供重命名操作；仅编辑文件主名并保留原扩展名，
@@ -321,6 +324,10 @@ Advanced → Diagnostics 提供独立的 **Diagnostic Logging** 开关，默认�
 
 组件规则：
 
+- 常规 Button、Input、Select、ToggleGroup/Tabs 的外框高度统一为 `32px`；紧凑工具栏允许使用 `28px`，Shell Top Bar 搜索与筛选统一为 `36px`。业务 CSS 不得再定义第四套默认控件高度。
+- 常规控件横向内边距统一为 `10px`，正文统一为 `12px / 500`；选中态、当前段和主操作使用 `600`，普通控件不得默认使用 `700` 造成无差别加粗。
+- Settings 非堆叠行的 Select、SegmentedControl、Slider、数字组合输入统一占用 `220px` trailing 轨道；Switch、图标按钮等固有尺寸控件除外。窄窗口允许收缩，但同组控件必须保持等宽与右侧对齐。
+- 视觉型选项（例如应用图标）可使用更高的内容区，但其外框宽度、圆角、选中态、字号和字重仍必须遵守同一控件系统。
 - `Select` 使用 Radix Select；分隔项约定 `value: "---divider---"`，只渲染分隔线，不可选。
 - `Slider` 使用 Radix Slider，必须支持 pointer、键盘、ARIA。
 - `Switch` 表达二元状态；不使用 checkbox 外观。
@@ -382,6 +389,7 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
 - Launcher 等带 Context Panel 的两栏 Shell，搜索卡片右边缘必须与 Main Area / Context Panel 分割线对齐，允许误差不超过 `4px`；筛选控件位于右侧 trailing/context 轨道。
 - 搜索占据可用主列；内容筛选通过 `QxShell.topbarFilters` 发布 `id / label / value / options / onChange`，由宿主固定 Select 渲染在 trailing 列，不得把搜索缩成短输入框。
 - 内置模块和插件都不得在 `trailing` 中自绘 Select、分段按钮或 tabs 充当内容筛选。刷新、新建、导入、录制等命令属于 Bottom Bar / Actions；短状态优先进入 Island，避免 Top Bar 重新变成工具按钮排。
+- 插件安装、升级、重装成功只通过 Bottom Island 显示一次结果，不得在插件库内容顶部再渲染重复成功横幅；下载、兼容、安装失败仍须在当前操作区域保留可读错误，同时可同步发布 Island 错误状态。
 - Quick Entries 不以成组图标占用 Top Bar；它们保留在 Context Panel、Actions 或专用入口中。Top Bar trailing 只保留筛选和当前上下文必需操作。
 - Launcher 右侧 Quick Entries 保持用户可编辑；其后提供默认展开、可折叠的“所有模块”目录，
   由宿主模块目录与外置插件注册表自动生成，只显示当前已启用入口，不维护第二份硬编码列表。
@@ -1140,7 +1148,7 @@ search={
 - 快捷键标签必须反映当前平台（macOS 用 ⌘，Windows 用 Ctrl）；不要把 macOS 符号写死为唯一说明。
 - Shell 快捷键是窗口内响应链事件，不是进程级全局快捷键；唯一默认全局键是召唤 Launcher。
 - 全局召唤分为两个可独立配置的动作：**Launcher Search** 显示 Qx、进入 Launcher 并聚焦搜索，再按一次隐藏；**Toggle Current Window** 只切换窗口显隐，再次显示时必须保留原模块、route 和子界面。后者默认开启：macOS 为 `Option+Space`，Windows 为 `Ctrl+Alt+Space`（避开系统窗口菜单及 PowerToys Run 常用的 `Alt+Space`）；Launcher Search 对应 Shift 组合默认关闭。
-- **禁止**把 host 的 Space 组合（macOS `Option+Space`、Windows `Ctrl+Alt+Space`）或 `Cmd+Space` / `Ctrl+Space`（系统 Spotlight / 输入切换等）绑成模块 Action；Shell 匹配层必须放行这些宿主级组合键，不得 `preventDefault`。
+- **禁止**把 host 的 Space 组合（macOS `Option+Space`、Windows `Ctrl+Alt+Space`）或系统级 `Cmd/Meta+Space` 绑成模块 Action；Shell 匹配层必须放行这些宿主级组合键，不得 `preventDefault`。Windows 全局快捷键设置允许 `Ctrl+Space`，它不属于 Windows 系统保留组合。
 - 剪贴板等模块的删除应使用 `Cmd/Ctrl+Backspace`（或 `Delete` 等价），不得使用 Space 系全局键。
 - 多栏编辑模块应给列表、编辑器、动作面板设置稳定 `data-qx-region`；列表的
   `navigation.regionId` 指向列表区域。编辑器获得焦点后，方向键、PageUp/PageDown、

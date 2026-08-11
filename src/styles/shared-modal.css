@@ -9,9 +9,15 @@
   justify-content: flex-end;
 }
 
+.qx-settings-row:not(.qx-settings-row--stacked) > .qx-settings-row-control {
+  width: min(var(--qx-settings-control-width), 100%);
+  flex-basis: var(--qx-settings-control-width);
+}
+
 @media (max-width: 520px) {
   .qx-settings-row-control {
     flex: 1 1 100%;
+    width: 100%;
     justify-content: flex-start;
   }
 }

@@ -35,7 +35,7 @@
   align-items: center;
   flex: 1;
   min-width: 0;
-  height: 42px;
+  height: var(--qx-control-height-shell);
   gap: 10px;
   padding: 0 12px;
   border: 1px solid var(--qx-border-1);
@@ -168,14 +168,14 @@
   justify-content: center;
   gap: 6px;
   min-width: 0;
-  height: 28px;
-  padding: 0 9px;
+  height: var(--qx-control-height-compact);
+  padding: 0 var(--qx-control-padding-x);
   border: 1px solid var(--qx-border-1);
   border-radius: var(--qx-control-radius);
   background: var(--qx-overlay-1);
   color: var(--qx-text-primary);
-  font-size: 12px;
-  font-weight: 500;
+  font-size: var(--qx-control-font-size);
+  font-weight: var(--qx-control-font-weight);
   cursor: pointer;
   white-space: nowrap;
   transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
@@ -194,6 +194,7 @@
   border-color: color-mix(in srgb, var(--qx-accent) 45%, var(--qx-border-1));
   background: var(--qx-accent);
   color: var(--qx-text-on-accent);
+  font-weight: var(--qx-control-font-weight-emphasis);
 }
 
 .qx-command-button.primary:hover {
@@ -218,13 +219,14 @@
 }
 
 .qx-inline-input {
-  height: 28px;
-  padding: 0 8px;
+  height: var(--qx-control-height-compact);
+  padding: 0 var(--qx-control-padding-x);
   border: 1px solid var(--qx-border-1);
   border-radius: var(--qx-control-radius);
   background: var(--qx-overlay-1);
   color: var(--qx-text-primary);
-  font-size: 12px;
+  font-size: var(--qx-control-font-size);
+  font-weight: var(--qx-control-font-weight);
   outline: none;
   transition: background-color 0.1s ease, color 0.1s ease, border-color 0.1s ease;
 }

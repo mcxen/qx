@@ -61,8 +61,11 @@ export interface AudioInput {
 }
 
 /** Shared capture-selection port used by the main module and floating island. */
-export function requestCaptureSelection(mode: CaptureMode): Promise<void> {
-  return invoke("screencap_begin_capture_select", { mode });
+export function requestCaptureSelection(
+  mode: CaptureMode,
+  includeMainWindow = false,
+): Promise<void> {
+  return invoke("screencap_begin_capture_select", { mode, includeMainWindow });
 }
 
 /** Re-shot the last confirmed region without opening the picker (global shortcut path). */

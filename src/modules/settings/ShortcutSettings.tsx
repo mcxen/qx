@@ -377,7 +377,7 @@ export default function ShortcutSettings() {
               ? t(
                 `shortcuts.issue.${issueCode}`,
                 issueCode === "reserved"
-                  ? "Reserved by the operating system (for example Windows Ctrl+Space)."
+                  ? "Reserved by the operating system."
                   : issueCode === "invalid"
                     ? "Invalid shortcut."
                     : "This shortcut is already used by another global action.",
@@ -554,7 +554,7 @@ export default function ShortcutSettings() {
               ? t(
                 `shortcuts.issue.${issueCode}`,
                 issueCode === "reserved"
-                  ? "Reserved by the operating system (for example Windows Ctrl+Space)."
+                  ? "Reserved by the operating system."
                   : issueCode === "invalid"
                     ? "Invalid shortcut."
                     : "This shortcut is already used by another global action.",

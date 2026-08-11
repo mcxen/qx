@@ -144,7 +144,7 @@ macOS 通过 `open -a "Google Chrome"` 启动，找不到应用时播放会明�
 
 ## screencap（工作流模块，消费系统能力）
 
-截图模块进入时调用 `display_list()` 异步预热原生显示器缓存；`screencap_begin_capture_select(mode)` 在鼠标所在显示器打开圈选层，`mode` 为 `screenshot` 或 `recording`；圈选层会为当前显示器集合创建轻量鼠标穿透遮罩，并由鼠标位置自动切换交互显示器；仅在圈选层成功显示后隐藏来源窗口，失败时保留原捕获岛/主窗口。
+截图模块进入时调用 `display_list()` 异步预热原生显示器缓存；`screencap_begin_capture_select(mode, includeMainWindow?)` 在鼠标所在显示器打开圈选层，`mode` 为 `screenshot` 或 `recording`；圈选层会为当前显示器集合创建轻量鼠标穿透遮罩，并由鼠标位置自动切换交互显示器。默认仅在圈选层成功显示后隐藏来源窗口；从跨模块浮动控制栏或全局截图快捷键启动截图时传入 `includeMainWindow=true`，主 Qx 窗口保持可见且解除内容保护，使 Qx 自身可进入截图，圈选层与控制栏仍始终排除。失败时保留原捕获岛/主窗口。
 
 **系统能力门面（兼容旧调用，新代码优先用系统命令）：**
 

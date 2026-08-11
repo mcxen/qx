@@ -1308,14 +1308,16 @@
 .qx-host-workbench-form-controls select,
 .qx-host-workbench-form-controls .qx-select {
   min-width: 0;
-  height: 30px;
-  padding: 0 9px;
+  height: var(--qx-control-height);
+  padding: 0 var(--qx-control-padding-x);
   border: 1px solid var(--qx-border-1);
   border-radius: 6px;
   outline: none;
   background: var(--qx-bg-component-1);
   color: var(--qx-text-primary);
   font: inherit;
+  font-size: var(--qx-control-font-size);
+  font-weight: var(--qx-control-font-weight);
 }
 
 .qx-host-workbench-form-controls .qx-select,

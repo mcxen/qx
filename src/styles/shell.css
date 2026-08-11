@@ -403,9 +403,9 @@
 }
 
 .qx-shell-content-filter .qx-shadcn-select-trigger {
-  height: 36px;
-  min-height: 36px;
-  max-height: 36px;
+  height: var(--qx-control-height-shell);
+  min-height: var(--qx-control-height-shell);
+  max-height: var(--qx-control-height-shell);
   border-radius: var(--qx-control-radius);
   font-size: 12px;
 }

@@ -189,6 +189,12 @@ Extensions → Browse 的搜索、仓库筛选和“仓库源”管理入口在�
 4. i18n：`nav.*` + 业务 key
 5. `docs/settings-panel.md` 更新本表
 
+### 控件尺寸
+
+- Settings 行使用 `--qx-control-height: 32px` 的常规表单控件；28px 紧凑控件只用于工具栏。
+- Select、SegmentedControl、Slider 和组合数字输入使用 `--qx-settings-control-width: 220px` 的统一尾部轨道。
+- 普通控件文字为 `12px / 500`，选中态与主操作为 `600`；视觉选项可以增高内容区，但不能另造宽度、字重和状态样式。
+
 ## 5. 响应式
 
 | 断点 | 效果 |

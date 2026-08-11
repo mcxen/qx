@@ -29,6 +29,7 @@ import {
   captureNumberOutline,
 } from "../src/modules/screencap/captureColor.ts";
 import { launcherActionModel } from "../src/launcher/actionModel.ts";
+import { isOsReservedGlobalShortcutForPlatform } from "../src/utils/keyboard.ts";
 
 const qxShellSource = readFileSync(
   new URL("../src/components/QxShell.tsx", import.meta.url),
@@ -420,5 +421,12 @@ assert.equal(normalizeSearchQuery("  Ｑx   AI  "), "qx ai");
 assert.equal(classifyMatch("QxAI", "qx ai"), MatchTier.exact);
 assert.equal(classifyMatch("screen-recording", "screen recording"), MatchTier.exact);
 assert.equal(textMatchesQuery("Cardinal", "cardinal file search"), true);
+
+// Windows can register Ctrl+Space as a process-global shortcut. Keep true OS
+// chords reserved without showing a false conflict for this valid binding.
+assert.equal(isOsReservedGlobalShortcutForPlatform("Ctrl+Space", "windows"), false);
+assert.equal(isOsReservedGlobalShortcutForPlatform("CmdOrCtrl+Space", "windows"), false);
+assert.equal(isOsReservedGlobalShortcutForPlatform("Meta+Space", "windows"), true);
+assert.equal(isOsReservedGlobalShortcutForPlatform("Ctrl+Space", "macos"), true);
 
 console.log("QxShell navigation checks passed");

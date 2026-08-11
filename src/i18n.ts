@@ -159,7 +159,7 @@ const zh: Record<string, string> = {
   "shortcuts.on": "开",
   "shortcuts.off": "关",
   "shortcuts.reset": "恢复默认快捷键",
-  "shortcuts.issue.reserved": "该快捷键已被操作系统保留（例如 Windows 的 Ctrl+Space）。",
+  "shortcuts.issue.reserved": "该快捷键已被操作系统保留。",
   "shortcuts.issue.invalid": "无效的快捷键。",
   "shortcuts.issue.conflict": "该快捷键已被另一个全局动作使用。",
   "shortcuts.extension.title": "快捷键",

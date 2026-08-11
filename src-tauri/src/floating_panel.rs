@@ -42,6 +42,9 @@ static ONBOARDING_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// window must survive the temporary focus transfer; focus returning to Qx
 /// ends the interaction and restores the normal Esc / outside-click lifecycle.
 static EXTERNAL_INTERACTION_ACTIVE: AtomicBool = AtomicBool::new(false);
+/// Sticky while the screenshot picker intentionally leaves the main Qx window
+/// visible so Qx itself can be selected.
+static CAPTURE_MAIN_VISIBLE_ACTIVE: AtomicBool = AtomicBool::new(false);
 /// Invalidates delayed blur decisions when focus moves between Qx-owned
 /// windows. A short settlement delay is required because macOS reports the
 /// main panel losing key status before the island becomes key.
@@ -131,6 +134,7 @@ pub fn suppress_auto_hide(duration: Duration) {
 pub fn auto_hide_suppressed() -> bool {
     if ONBOARDING_ACTIVE.load(Ordering::SeqCst)
         || EXTERNAL_INTERACTION_ACTIVE.load(Ordering::SeqCst)
+        || CAPTURE_MAIN_VISIBLE_ACTIVE.load(Ordering::SeqCst)
     {
         return true;
     }
@@ -140,6 +144,14 @@ pub fn auto_hide_suppressed() -> bool {
         .and_then(|guard| *guard)
         .map(|until| Instant::now() < until)
         .unwrap_or(false)
+}
+
+pub fn set_capture_main_visible_active(active: bool) {
+    CAPTURE_MAIN_VISIBLE_ACTIVE.store(active, Ordering::SeqCst);
+}
+
+pub fn capture_main_visible_active() -> bool {
+    CAPTURE_MAIN_VISIBLE_ACTIVE.load(Ordering::SeqCst)
 }
 
 fn should_hide_after_focus_settles(

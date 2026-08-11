@@ -603,7 +603,7 @@ function ExtensionShortcutsCard({
           ? t(
             `shortcuts.issue.${issueCode}`,
             issueCode === "reserved"
-              ? "Reserved by the operating system (for example Cmd/Ctrl+Space)."
+              ? "Reserved by the operating system."
               : issueCode === "invalid"
                 ? "Invalid shortcut."
                 : "This shortcut is already used by another global action.",
@@ -652,7 +652,7 @@ function ExtensionShortcutsCard({
           ? t(
             `shortcuts.issue.${issueCode}`,
             issueCode === "reserved"
-              ? "Reserved by the operating system (for example Cmd/Ctrl+Space)."
+              ? "Reserved by the operating system."
               : issueCode === "invalid"
                 ? "Invalid shortcut."
                 : "This shortcut is already used by another global action.",
@@ -1268,7 +1268,6 @@ function MarketplaceTab({
       const message = t(messageKey, fallback)
         .replace("{name}", localizeMarketplaceEntryName(entry, t, locale))
         .replace("{version}", entry.version) + sourceSuffix;
-      setInstallStatus({ tone: "success", message });
       showPluginInstallStatus({ kind: "success", label: message });
     } catch (err) {
       console.error("Marketplace install failed", err);
@@ -1980,7 +1979,6 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
       await install(trimmed);
       setArchivePath("");
       const message = t("plugins.installComplete", "Plugin installed.");
-      setInstallStatus(message);
       showPluginInstallStatus({ kind: "success", label: message });
     } catch (err) {
       console.error("Plugin install failed", err);
@@ -2007,7 +2005,6 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
       await refresh();
       setArchiveUrl("");
       const message = t("plugins.installComplete", "Plugin installed.");
-      setInstallStatus(message);
       showPluginInstallStatus({ kind: "success", label: message });
     } catch (err) {
       console.error("Plugin URL install failed", err);
@@ -2034,7 +2031,6 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
       await refresh();
       setRaycastUrl("");
       const message = t("plugins.installComplete", "Plugin installed.");
-      setInstallStatus(message);
       showPluginInstallStatus({ kind: "success", label: message });
     } catch (err) {
       console.error("Raycast extension install failed", err);

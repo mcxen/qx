@@ -55,7 +55,7 @@ export default function RecordingControlWindow() {
       // The backend maps and focuses the picker before hiding this calling
       // WebView. Hiding ourselves first can suspend WebView2 on Windows before
       // it gets a chance to issue the capture command.
-      await requestCaptureSelection(mode);
+      await requestCaptureSelection(mode, mode === "screenshot");
     } finally {
       setLaunching(false);
     }

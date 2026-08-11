@@ -42,7 +42,7 @@ scope: "in_app"     → 仅主窗 key window 且匹配上下文时；WebView key
 | 注册 API | `tauri-plugin-global-shortcut` | 不注册 OS 热键；读 settings → 匹配 `KeyboardEvent` |
 | 默认策略 | **默认关**（仅 `toggle_window` 默认开） | 可默认开（如 Actions Menu） |
 | 推荐修饰键 | `Alt`/`Option` + 键 | `Cmd`/`Ctrl` + 键（Primary） |
-| 禁止 | OS 保留（`Cmd/Ctrl+Space`）；慎用 `Cmd/Ctrl+V` | **禁止**绑定全局召唤键（`Alt+Space` 等 `isReservedGlobalShortcut`） |
+| 禁止 | OS 保留（如 `Cmd/Meta+Space`；Windows `Ctrl+Space` 可用）；慎用 `Cmd/Ctrl+V` | **禁止**绑定全局召唤键（`Alt+Space` 等 `isReservedGlobalShortcut`） |
 | 冲突池 | 所有 global 键 **全集互斥** | 同 context 内互斥；可与 global 同物理键（不推荐但允许不同 scope） |
 | 外接模组 | 需 permission `shortcut.global`；default deny | 需 `shortcut.in_app` 或随 action 声明；仅当前插件视图/命令 |
 
@@ -180,7 +180,7 @@ Extensions 详情卡里的 Shortcuts **只做跳转**到本页并 filter=`plugin
 ```ts
 function validateBinding(def: ShortcutActionDef, key: string, pool: BindingPool): Issue | null {
   if (def.scope === "global") {
-    if (isOsReservedGlobal(key)) return "reserved";      // Cmd/Ctrl+Space
+    if (isOsReservedGlobal(key)) return "reserved";      // Cmd/Meta+Space；Windows Ctrl+Space 可用
     if (conflictsInGlobalPool(key, pool.global)) return "conflict";
     // soft-warn: Cmd/Ctrl+V as global
     return null;

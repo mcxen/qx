@@ -224,14 +224,33 @@ export function isReservedGlobalShortcut(shortcut: string | undefined): boolean 
   );
 }
 
-function isOsReservedGlobalShortcut(shortcut: string | undefined): boolean {
+export function isOsReservedGlobalShortcutForPlatform(
+  shortcut: string | undefined,
+  platform: QxDesktopPlatform,
+): boolean {
+  const rawParts = shortcut ? shortcutTokens(shortcut).map((part) => part.toLowerCase()) : [];
+  const rawKey = normalizeShortcutKeyToken(rawParts[rawParts.length - 1] ?? "");
+  if (
+    platform === "windows"
+    && rawKey === "space"
+    && rawParts.slice(0, -1).some((part) => part === "cmd" || part === "command" || part === "meta")
+  ) {
+    return true;
+  }
   const canonical = canonicalizeShortcut(shortcut);
-  // Qx has a native macOS event-tap adapter for Cmd+Space. Keep the portable
-  // CmdOrCtrl spelling usable on macOS while retaining the Windows guard.
-  if (getQxDesktopPlatform() === "macos" && canonical === "cmdorctrl+space") {
+  // Portable primary+Space is a valid Qx global binding. On macOS Qx's native
+  // adapter can take Cmd+Space; on Windows Tauri can register Ctrl+Space.
+  if (canonical === "cmdorctrl+space") {
+    return false;
+  }
+  if (platform === "windows" && canonical === "ctrl+space") {
     return false;
   }
   return canonical ? OS_RESERVED_GLOBAL_SHORTCUTS.has(canonical) : false;
+}
+
+function isOsReservedGlobalShortcut(shortcut: string | undefined): boolean {
+  return isOsReservedGlobalShortcutForPlatform(shortcut, getQxDesktopPlatform());
 }
 
 /**

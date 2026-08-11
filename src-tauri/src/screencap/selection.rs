@@ -52,7 +52,9 @@ pub(super) fn restore_picker_selection_internal(app: &AppHandle) -> bool {
     let Some(session) = session else {
         return false;
     };
-    crate::floating_panel::hide(app);
+    if !crate::floating_panel::capture_main_visible_active() {
+        crate::floating_panel::hide(app);
+    }
     hide_recording_controls_internal(app);
     if !picker_window::restore_editable_selection(app, &session) {
         return false;
@@ -192,6 +194,7 @@ pub(super) fn finish_capture_session(
     restore_main_ui: bool,
 ) -> Result<(), String> {
     end_picker_session();
+    crate::floating_panel::set_capture_main_visible_active(false);
     hide_region_picker_internal(app);
     if let Ok(mut session) = picker_session().lock() {
         *session = None;
@@ -435,12 +438,16 @@ fn start_pointer_display_tracker(app: AppHandle, generation: u64) {
 
 #[command]
 pub async fn screencap_begin_region_select(app: AppHandle) -> Result<(), String> {
-    screencap_begin_capture_select(app, "recording".to_string()).await
+    screencap_begin_capture_select(app, "recording".to_string(), None).await
 }
 
 /// Start region selection on the display under the pointer.
 #[command]
-pub async fn screencap_begin_capture_select(app: AppHandle, mode: String) -> Result<(), String> {
+pub async fn screencap_begin_capture_select(
+    app: AppHandle,
+    mode: String,
+    include_main_window: Option<bool>,
+) -> Result<(), String> {
     if recording_state()
         .lock()
         .map(|recording| recording.is_some())
@@ -450,6 +457,13 @@ pub async fn screencap_begin_capture_select(app: AppHandle, mode: String) -> Res
     }
     ensure_screen_capture_permission(Some(&app))?;
     let mode = CaptureMode::parse(&mode)?;
+    let keep_main_visible = mode == CaptureMode::Screenshot
+        && include_main_window.unwrap_or(false)
+        && app
+            .get_webview_window(crate::floating_panel::MAIN_LABEL)
+            .and_then(|window| window.is_visible().ok())
+            .unwrap_or(false);
+    crate::floating_panel::set_capture_main_visible_active(keep_main_visible);
     // Invalidate any stale picker tracker before replacing its session.
     let generation = begin_picker_session();
     // Map/show the picker before hiding every existing Qx surface. If display
@@ -463,12 +477,20 @@ pub async fn screencap_begin_capture_select(app: AppHandle, mode: String) -> Res
             serde_json::json!({ "error": error, "mode": mode.as_str() }),
         );
         end_picker_session();
+        crate::floating_panel::set_capture_main_visible_active(false);
         error
     })?;
     // Only multi-display sessions pay for the pointer-follow task.
     start_pointer_display_tracker(app.clone(), generation);
     hide_recording_controls_internal(&app);
-    crate::floating_panel::hide(&app);
+    if keep_main_visible {
+        // Keep the current module capturable while the picker and controller
+        // remain protected and excluded from the screenshot.
+        set_recording_ui_protected(&app, false);
+        crate::floating_panel::cancel_pending_auto_hide();
+    } else {
+        crate::floating_panel::hide(&app);
+    }
     Ok(())
 }
 
@@ -594,6 +616,7 @@ pub fn screencap_region_picker_ready(app: AppHandle) -> Result<Option<PickerStat
 #[command]
 pub async fn screencap_cancel_region_select(app: AppHandle) -> Result<(), String> {
     end_picker_session();
+    crate::floating_panel::set_capture_main_visible_active(false);
     hide_region_picker_internal(&app);
     if let Ok(mut session) = picker_session().lock() {
         *session = None;
@@ -820,12 +843,16 @@ pub async fn screencap_confirm_region_select(
                 }
                 recording_session::emit_recording_status(&app);
                 if !restore_picker_selection_internal(&app) {
+                    crate::floating_panel::set_capture_main_visible_active(false);
                     let _ = restore_capture_surface(&app, 800);
                 }
                 return Err(error);
             }
         }
     }
+    // Recording always excludes Qx chrome, including when the picker started
+    // from the cross-module screenshot path and was switched to recording.
+    crate::floating_panel::set_capture_main_visible_active(false);
     // Area is CSS client points on a picker that covers the chosen display.
     match recording_session::start_recording(
         app.clone(),

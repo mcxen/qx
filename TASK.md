@@ -1,5 +1,7 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+- [x] 统一 Qx 公共控件尺寸与字重：标准控件 32px、紧凑控件 28px、Shell 控件 36px；Settings 表单尾部控件统一 220px 对齐，并移除 Button / Select / Segmented 默认 700 的混乱覆盖。
+
 ## Feature — 宏录制 Workbench 与可停止播放
 
 **状态**：代码完成，等待桌面运行态复核。
@@ -453,6 +455,8 @@
   边界，本地包和 URL 安装无法绕过。
 - 插件管理 Badge 收口为 neutral / accent / success / warning / danger 五种语义，
   版本、来源、权限、更新、安装、兼容和失败状态不再随机混用颜色。
+- 插件安装、升级与重装成功统一只在 Bottom Island 提示一次，插件库内容顶部不再重复显示
+  成功横幅；失败信息继续保留在当前操作区域并同步到 Island。
 
 ### 验证
 
@@ -1382,7 +1386,7 @@
 - 原 `toggle_launcher` 保留设置键与既有切换语义：隐藏时显示 Qx、切到 Launcher 并聚焦搜索，已显示时再次按下隐藏。
 - 新增 `toggle_window`：只切换主窗口显隐，隐藏后再显示保留当前模块、route 和子界面。
 - 当前窗口切换默认 `Alt+Space` 并启用；Launcher 搜索切换预设 `Alt+Shift+Space` 但默认关闭，两者均可在 Settings → Shortcuts 单独录制和启停。旧设置会自动补齐新增快捷键项，同时保留用户已有绑定。
-- 快捷键设置补齐中英文标签、语义说明与按钮文案，并允许 Qx 自身注册默认 `Alt+Space`，仍拦截系统 `Cmd/Ctrl+Space`。
+- 快捷键设置补齐中英文标签、语义说明与按钮文案，并允许 Qx 自身注册默认 `Alt+Space`；macOS `Cmd+Space` 由原生适配器接管，Windows `Ctrl+Space` 允许作为全局快捷键。
 
 ### 验证
 

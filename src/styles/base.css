@@ -31,6 +31,16 @@
   --qx-control-radius: 6px;
   --qx-card-radius: 8px;
   --radius: var(--qx-control-radius);
+  /* Product control metrics. Feature CSS may choose standard, compact or
+     shell density, but must not invent another default control scale. */
+  --qx-control-height: 32px;
+  --qx-control-height-compact: 28px;
+  --qx-control-height-shell: 36px;
+  --qx-control-padding-x: 10px;
+  --qx-control-font-size: 12px;
+  --qx-control-font-weight: 500;
+  --qx-control-font-weight-emphasis: 600;
+  --qx-settings-control-width: 220px;
   --qx-font-size: 14px;
   --qx-shell-gap: 16px;
   /* Shared horizontal inset for topbar + bottombar so chrome content lines up. */

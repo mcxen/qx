@@ -67,7 +67,7 @@
 }
 
 .qx-clipboard-filter .qx-shadcn-select-trigger {
-  height: 38px;
+  height: var(--qx-control-height-shell);
 }
 
 .qx-clipboard-body {
@@ -659,7 +659,7 @@
   }
 
   .qx-clipboard-filter .qx-shadcn-select-trigger {
-    height: 36px;
+    height: var(--qx-control-height-shell);
   }
 }
 

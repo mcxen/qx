@@ -143,8 +143,12 @@ fn shortcut_for(settings: &Settings, id: &str) -> Option<String> {
 
 fn begin_capture_from_shortcut(app: AppHandle, mode: &'static str) {
     tauri::async_runtime::spawn(async move {
-        if let Err(error) =
-            crate::screencap::screencap_begin_capture_select(app, mode.to_string()).await
+        if let Err(error) = crate::screencap::screencap_begin_capture_select(
+            app,
+            mode.to_string(),
+            Some(mode == "screenshot"),
+        )
+        .await
         {
             crate::diagnostics::log(
                 crate::diagnostics::LogLevel::Error,
