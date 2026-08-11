@@ -15,8 +15,8 @@ use tauri::{
 };
 
 const LABEL: &str = "update-progress";
-const WIDTH: f64 = 360.0;
-const HEIGHT: f64 = 148.0;
+const WIDTH: f64 = 376.0;
+const HEIGHT: f64 = 172.0;
 const EVENT: &str = "qx-update-progress";
 const MIN_EMIT_INTERVAL: Duration = Duration::from_millis(80);
 
@@ -289,7 +289,9 @@ fn ensure_window(app: &AppHandle) -> Result<tauri::WebviewWindow, String> {
     .minimizable(false)
     .decorations(false)
     .transparent(true)
-    .shadow(true)
+    // Windows DWM draws a rectangular shadow around transparent undecorated
+    // windows. The inset WebView surface owns its shadow and 8px clipping there.
+    .shadow(cfg!(target_os = "macos"))
     .always_on_top(true)
     // Keep a taskbar / dock presence so a stuck update is findable, and allow
     // the surface to receive the first click for Cancel / drag without an

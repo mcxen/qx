@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Button } from "../components/ui";
 import { useT } from "../i18n";
 import "../App.css";
 
@@ -220,20 +221,21 @@ export default function UpdateProgressApp() {
         </span>
         <div className="qx-update-progress-actions" data-qx-no-drag>
           {showInstall && (
-            <button
+            <Button
               type="button"
-              className="qx-command-button primary"
+              className="qx-update-progress-action"
               data-qx-no-drag
               onClick={handleInstallAndRestart}
               onPointerDown={(event) => event.stopPropagation()}
             >
               {t("update.progress.installRestart", "Install & Restart")}
-            </button>
+            </Button>
           )}
           {showCancel && (
-            <button
+            <Button
               type="button"
-              className="qx-command-button"
+              variant="outline"
+              className="qx-update-progress-action"
               data-qx-no-drag
               onClick={handleCancel}
               onPointerDown={(event) => event.stopPropagation()}
@@ -241,18 +243,19 @@ export default function UpdateProgressApp() {
               {isReady
                 ? t("update.progress.later", "Later")
                 : t("update.progress.cancel", "Cancel")}
-            </button>
+            </Button>
           )}
           {isError && (
-            <button
+            <Button
               type="button"
-              className="qx-command-button"
+              variant="outline"
+              className="qx-update-progress-action"
               data-qx-no-drag
               onClick={() => void invoke("qx_update_progress_close").catch(() => {})}
               onPointerDown={(event) => event.stopPropagation()}
             >
               {t("common.close", "Close")}
-            </button>
+            </Button>
           )}
         </div>
       </footer>

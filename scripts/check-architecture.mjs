@@ -52,6 +52,21 @@ if (/adhoc_codesign(?:_detached_helper)?\(app|adhoc_codesign(?:_detached_helper)
 if (!updaterSource.includes('arg("com.mcx.qx.update-helper")')) {
   fail("detached update helper must use its own code-signing identifier");
 }
+const updateProgressStyles = read("src/styles/update-progress.css");
+const updateProgressView = read("src/updater/UpdateProgressApp.tsx");
+const updateProgressHost = read("src-tauri/src/updater/progress.rs");
+if (!updateProgressStyles.includes("padding: 8px")
+    || !updateProgressStyles.includes("border-radius: var(--qx-effective-radius)")) {
+  fail("update progress window must use the standard 8px inset/radius contract");
+}
+if (updateProgressStyles.includes("border-radius: 14px")
+    || updateProgressView.includes("qx-command-button")) {
+  fail("update progress window must not use legacy radius or command buttons");
+}
+if (!updateProgressView.includes('import { Button } from "../components/ui"')
+    || !updateProgressHost.includes('.shadow(cfg!(target_os = "macos"))')) {
+  fail("update progress window must use Qx controls and avoid Windows DWM square shadow");
+}
 
 // --- 2. Host HTTP binary port (plugin external modules depend on this) ---
 const pluginApi = exists("src-tauri/src/plugin_api.rs") ? read("src-tauri/src/plugin_api.rs") : "";

@@ -3,6 +3,7 @@
 html.qx-update-progress-page,
 html.qx-update-progress-page body,
 .qx-update-progress-body {
+  box-sizing: border-box;
   margin: 0;
   width: 100%;
   height: 100%;
@@ -10,23 +11,29 @@ html.qx-update-progress-page body,
   background: transparent !important;
 }
 
+.qx-update-progress-body {
+  padding: 8px;
+}
+
 .qx-update-progress {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   height: 100%;
-  padding: 14px 16px 12px;
-  border-radius: 14px;
-  border: 1px solid color-mix(in srgb, var(--qx-border-1, rgba(255, 255, 255, 0.12)) 80%, transparent);
-  background: rgba(var(--qx-glass-bg, 28, 28, 30), 0.92);
+  padding: 14px;
+  overflow: hidden;
+  isolation: isolate;
+  border-radius: var(--qx-effective-radius);
+  border: 1px solid var(--qx-border-2);
+  background: rgba(var(--qx-glass-bg), 0.96);
   color: var(--qx-text-primary, #f5f5f7);
   box-shadow:
-    0 18px 48px rgba(0, 0, 0, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(22px) saturate(1.2);
-  -webkit-backdrop-filter: blur(22px) saturate(1.2);
+    0 8px 24px color-mix(in srgb, var(--qx-shadow) 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--qx-text-primary) 5%, transparent);
+  backdrop-filter: blur(var(--qx-window-blur)) saturate(145%);
+  -webkit-backdrop-filter: blur(var(--qx-window-blur)) saturate(145%);
   user-select: none;
   /* Explicit startDragging owns move; avoid competing CSS drag regions. */
   -webkit-app-region: no-drag;
@@ -57,25 +64,22 @@ html.qx-update-progress-page body,
 
 .qx-update-progress-title {
   font-size: 13px;
-  font-weight: 650;
-  letter-spacing: 0.01em;
+  font-weight: var(--qx-control-font-weight-emphasis);
 }
 
 .qx-update-progress-phase {
   flex-shrink: 0;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--qx-text-secondary, rgba(255, 255, 255, 0.62));
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  font-size: 12px;
+  font-weight: var(--qx-control-font-weight);
+  color: var(--qx-text-secondary);
 }
 
 .qx-update-progress-message {
   margin: 0;
-  min-height: 2.4em;
+  min-height: 2.8em;
   font-size: 12px;
   line-height: 1.4;
-  color: var(--qx-text-secondary, rgba(255, 255, 255, 0.72));
+  color: var(--qx-text-secondary);
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -84,21 +88,17 @@ html.qx-update-progress-page body,
 
 .qx-update-progress-track {
   position: relative;
-  height: 8px;
+  height: 4px;
   border-radius: 999px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--qx-text-primary, #fff) 10%, transparent);
+  background: var(--qx-island-progress-track);
 }
 
 .qx-update-progress-fill {
   height: 100%;
   width: 0%;
   border-radius: inherit;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--qx-accent, #6ea8fe) 88%, #fff),
-    var(--qx-accent, #6ea8fe)
-  );
+  background: var(--qx-accent);
   transition: width 120ms linear;
 }
 
@@ -119,8 +119,8 @@ html.qx-update-progress-page body,
   justify-content: space-between;
   gap: 10px;
   min-height: 28px;
-  font-size: 11px;
-  color: var(--qx-text-tertiary, rgba(255, 255, 255, 0.5));
+  font-size: 12px;
+  color: var(--qx-text-tertiary);
 }
 
 .qx-update-progress-actions {
@@ -130,17 +130,8 @@ html.qx-update-progress-page body,
   flex-shrink: 0;
 }
 
-.qx-update-progress-footer .qx-command-button {
-  height: 26px;
-  padding: 0 10px;
-  font-size: 11px;
-}
-
-.qx-update-progress-footer .qx-command-button.primary {
-  background: color-mix(in srgb, var(--qx-accent, #6ea8fe) 88%, #fff);
-  color: #0b1220;
-  border-color: transparent;
-  font-weight: 650;
+.qx-update-progress-action.qx-shadcn-button {
+  min-width: 64px;
 }
 
 .qx-update-progress[data-ready="true"] .qx-update-progress-fill {
@@ -154,22 +145,5 @@ html.qx-update-progress-page body,
   }
   100% {
     transform: translateX(320%);
-  }
-}
-
-@media (prefers-color-scheme: light) {
-  .qx-update-progress {
-    background: rgba(255, 255, 255, 0.94);
-    color: #1d1d1f;
-    border-color: rgba(0, 0, 0, 0.08);
-    box-shadow:
-      0 16px 40px rgba(0, 0, 0, 0.12),
-      inset 0 1px 0 rgba(255, 255, 255, 0.8);
-  }
-
-  .qx-update-progress-phase,
-  .qx-update-progress-message,
-  .qx-update-progress-footer {
-    color: rgba(0, 0, 0, 0.55);
   }
 }

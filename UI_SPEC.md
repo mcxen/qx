@@ -325,6 +325,7 @@ Advanced → Diagnostics 提供独立的 **Diagnostic Logging** 开关，默认�
 组件规则：
 
 - 常规 Button、Input、Select、ToggleGroup/Tabs 的外框高度统一为 `32px`；紧凑工具栏允许使用 `28px`，Shell Top Bar 搜索与筛选统一为 `36px`。业务 CSS 不得再定义第四套默认控件高度。
+- `update-progress` 等独立透明任务窗口必须在 WebView 边缘保留 `8px` 透明 inset，由单一内容表面使用 `--qx-effective-radius`（默认 `8px`）裁切和绘制阴影；禁止“直角原生阴影 + 内层大圆角卡片”的双层窗口。Windows 关闭透明无边框窗口的 DWM 方形阴影，按钮复用 Qx shadcn `Button` 的标准 `32px` 高度。
 - 常规控件横向内边距统一为 `10px`，正文统一为 `12px / 500`；选中态、当前段和主操作使用 `600`，普通控件不得默认使用 `700` 造成无差别加粗。
 - Settings 非堆叠行的 Select、SegmentedControl、Slider、数字组合输入统一占用 `220px` trailing 轨道；Switch、图标按钮等固有尺寸控件除外。窄窗口允许收缩，但同组控件必须保持等宽与右侧对齐。
 - 视觉型选项（例如应用图标）可使用更高的内容区，但其外框宽度、圆角、选中态、字号和字重仍必须遵守同一控件系统。
