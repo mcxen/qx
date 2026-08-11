@@ -22,6 +22,7 @@ import {
   localizePluginName,
 } from "../../../plugin/pluginLabels";
 import { ChevronRight } from "lucide-react";
+import { Button, Toggle } from "../../../components/ui";
 
 export type ExtensionCardBadgeTone = "neutral" | "accent" | "success" | "danger" | "warning";
 
@@ -35,6 +36,8 @@ export type ExtensionCardBadge = {
 export type ExtensionCardProps = {
   plugin: InstalledPlugin;
   onOpen: () => void;
+  onToggle?: () => void;
+  toggleDisabled?: boolean;
   /** Extra chips after built-in status chips. */
   badges?: ExtensionCardBadge[];
   /** Right-side slot (version, chevron, actions…). */
@@ -80,6 +83,8 @@ function StatusChip({
 export default function InstalledModuleCard({
   plugin,
   onOpen,
+  onToggle,
+  toggleDisabled = false,
   badges = [],
   trailing,
   footer,
@@ -148,8 +153,7 @@ export default function InstalledModuleCard({
     chips.length > 0;
 
   return (
-    <button
-      type="button"
+    <div
       className={[
         "qx-ext-card",
         plugin.enabled ? "" : "is-disabled",
@@ -157,47 +161,70 @@ export default function InstalledModuleCard({
       ]
         .filter(Boolean)
         .join(" ")}
-      onClick={onOpen}
       title={lastHint || displayDescription || undefined}
-      aria-label={`${displayName}. ${beta ? `${t("common.beta", "Beta")}. ` : ""}${subtitle}. ${t("plugins.openSettings", "Open settings")}.`}
     >
-      <span className="qx-ext-card-icon-well" aria-hidden="true">
-        <PluginAssetImage
-          plugin={plugin}
-          asset={plugin.manifest?.icon}
-          className="qx-ext-card-icon"
-          fallback={displayName}
-        />
-      </span>
+      <button
+        type="button"
+        className="qx-ext-card-open"
+        onClick={onOpen}
+        aria-label={`${displayName}. ${beta ? `${t("common.beta", "Beta")}. ` : ""}${subtitle}. ${t("plugins.openSettings", "Open settings")}.`}
+      >
+        <span className="qx-ext-card-icon-well" aria-hidden="true">
+          <PluginAssetImage
+            plugin={plugin}
+            asset={plugin.manifest?.icon}
+            className="qx-ext-card-icon"
+            fallback={displayName}
+          />
+        </span>
 
-      <span className="qx-ext-card-body">
-        <span className="qx-ext-card-title">{displayName}</span>
-        {subtitle ? (
-          <span className="qx-ext-card-subtitle">{subtitle}</span>
-        ) : null}
-        {footer ? <span className="qx-ext-card-footer">{footer}</span> : null}
-      </span>
+        <span className="qx-ext-card-body">
+          <span className="qx-ext-card-title">{displayName}</span>
+          {subtitle ? (
+            <span className="qx-ext-card-subtitle">{subtitle}</span>
+          ) : null}
+          {footer ? <span className="qx-ext-card-footer">{footer}</span> : null}
+        </span>
 
-      <span className="qx-ext-card-meta" aria-hidden={!hasChips}>
-        {beta && <BetaBadge />}
-        {plugin.enabled && background?.hasBackground && (
-          <PluginBackgroundBadge pluginId={plugin.id} compact />
-        )}
-        {chips.map((chip) => (
-          <StatusChip key={chip.id} label={chip.label} tone={chip.tone} />
-        ))}
-      </span>
+        <span className="qx-ext-card-meta" aria-hidden={!hasChips}>
+          {beta && <BetaBadge />}
+          {plugin.enabled && background?.hasBackground && (
+            <PluginBackgroundBadge pluginId={plugin.id} compact />
+          )}
+          {chips.map((chip) => (
+            <StatusChip key={chip.id} label={chip.label} tone={chip.tone} />
+          ))}
+        </span>
+      </button>
 
       <span className="qx-ext-card-trailing">
-        {trailing ?? (
-          <ChevronRight
-            className="qx-ext-card-chevron"
-            size={16}
-            strokeWidth={2}
-            aria-hidden="true"
+        {onToggle && (
+          <Toggle
+            value={plugin.enabled}
+            onChange={onToggle}
+            disabled={toggleDisabled}
+            ariaLabel={t("modules.enabled", "Enable module")}
           />
         )}
+        {trailing ?? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="qx-ext-card-open-button"
+            onClick={onOpen}
+            title={t("plugins.openSettings", "Open settings")}
+            aria-label={t("plugins.openSettings", "Open settings")}
+          >
+            <ChevronRight
+              className="qx-ext-card-chevron"
+              size={16}
+              strokeWidth={2}
+              aria-hidden="true"
+            />
+          </Button>
+        )}
       </span>
-    </button>
+    </div>
   );
 }

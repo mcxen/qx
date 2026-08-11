@@ -213,20 +213,16 @@
  */
 .qx-ext-card {
   display: grid;
-  /* Fixed tracks so icon / title / meta / chevron share the same X across rows. */
-  grid-template-columns: 34px minmax(0, 1fr) minmax(5.5rem, auto) 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  column-gap: 10px;
-  row-gap: 0;
   width: 100%;
   min-height: 52px;
-  padding: 7px 11px;
   border: none;
   border-radius: 0;
   background: transparent;
   color: var(--qx-text-primary);
   text-align: left;
-  cursor: pointer;
+  cursor: default;
   transition:
     border-color 0.1s ease,
     background-color 0.1s ease,
@@ -237,15 +233,35 @@
   background: var(--qx-bg-component-2);
 }
 
-.qx-ext-card:active {
-  background: var(--qx-bg-component-3);
-}
-
-.qx-ext-card:focus-visible {
+.qx-ext-card:has(.qx-ext-card-open:focus-visible) {
   outline: none;
   box-shadow:
     inset 3px 0 0 var(--qx-accent),
     inset 0 0 0 1px color-mix(in srgb, var(--qx-accent) 40%, transparent);
+}
+
+.qx-ext-card-open {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(5.5rem, auto);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 52px;
+  padding: 7px 6px 7px 11px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.qx-ext-card-open:focus-visible {
+  outline: none;
+}
+
+.qx-ext-card-open:active {
+  background: var(--qx-bg-component-3);
 }
 
 .qx-ext-card.is-disabled {
@@ -390,10 +406,17 @@ img.qx-ext-card-icon {
 
 .qx-ext-card-trailing {
   display: inline-flex;
-  width: 16px;
+  width: auto;
   align-items: center;
   justify-content: center;
+  gap: 4px;
+  padding-right: 7px;
   color: var(--qx-text-tertiary);
+}
+
+.qx-ext-card-open-button.qx-shadcn-button {
+  width: var(--qx-control-height-compact);
+  height: var(--qx-control-height-compact);
 }
 
 .qx-ext-card-chevron {

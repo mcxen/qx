@@ -76,7 +76,8 @@ export default function HomeSystemIsland({
   showCpu,
   showMemory,
 }: HomeSystemIslandProps) {
-  const { stats, ready } = useIslandStats();
+  const metricsEnabled = showCpu || showMemory;
+  const { stats, ready } = useIslandStats(metricsEnabled);
   const [cpuPoints, setCpuPoints] = useState<number[]>(emptyPoints);
   const [memPoints, setMemPoints] = useState<number[]>(emptyPoints);
 

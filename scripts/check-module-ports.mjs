@@ -392,6 +392,31 @@ if (homeIslandBusSource.includes('addEventListener("focusin"')
     || homeIslandBusSource.includes('addEventListener("focus"')) {
   fail("home island metrics must use the deferred activation port, not focus/focusin sampling waves");
 }
+const homeIslandHooksSource = read("src/home-island/data/hooks.ts");
+const systemIslandSource = read("src/home-island/modes/SystemIsland.tsx");
+const trayPanelSource = read("src/tray/TrayPanelApp.tsx");
+const moduleCatalogSource = read("src/modules/catalog.ts");
+const clipboardSource = read("src-tauri/src/clipboard.rs");
+if (!homeIslandHooksSource.includes("if (list.length === 0) return () => {}")) {
+  fail("home island metrics must support a true zero-channel subscription");
+}
+if (!systemIslandSource.includes("useIslandStats(metricsEnabled)")) {
+  fail("System island must release stats when every metric is disabled");
+}
+for (const token of ["releaseIdleResources", "clearKickTimers", "removeEventListener"]) {
+  if (!homeIslandBusSource.includes(token)) {
+    fail(`home island metrics idle teardown missing: ${token}`);
+  }
+}
+if (!trayPanelSource.includes("if (!panelActive)")) {
+  fail("hidden tray panels must stop CPU/memory/network polling");
+}
+if (moduleCatalogSource.includes('userDisableable: false')) {
+  fail("every listed built-in module must expose the direct enabled toggle");
+}
+if (!clipboardSource.includes('builtin_module_runtime_enabled("clipboard")')) {
+  fail("disabling the Clipboard built-in must pause its native polling worker");
+}
 const screenRecorderSource = read("src/modules/screencap/ScreenRecorder.tsx");
 if (screenRecorderSource.includes("onFocusChanged")) {
   fail("screen recorder focus refresh must use the deferred activation port");

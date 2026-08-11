@@ -723,6 +723,8 @@ Launcher 在**无搜索活动、无结果**时，由 **Launcher 单写者**经 `
 1. **首屏**：先渲染占位（`--` / 空 VU / 空条），禁止在 render 路径 `await invoke`。
 2. **首次采样**：`requestIdleCallback`（fallback `setTimeout(0)`），不得同步打满主线程。
 3. **兴趣计数**：仅挂载中的模式订阅的 channel 才轮询；卸载即减引用。
+   指标开关全关时必须传入零通道，不得仅隐藏 UI 后继续订阅；最后一个订阅释放时同步取消
+   interval、idle callback、延迟 kick 和窗口激活监听。托盘指标只在托盘窗口实际激活时采集。
 4. **隐藏暂停**：`document.hidden` 时停表；可见后 idle 再采。
 5. **防重入**：channel 级 in-flight；重叠采样直接跳过。
 6. **共享**：同一 channel（如 `stats`）多模式共享一次 IPC。
@@ -879,6 +881,10 @@ QxAI：
 - 文件列表本地持久化（`localStorage`）；Esc：重命名 → 清空搜索 → launcher。
 
 Settings：
+
+- Extensions → Installed 的每个模块行在尾部直接显示启停 Toggle，并保留 Lucide 详情按钮；
+  内置模块与外部插件使用同一交互。关闭内置模块后，Launcher、快捷入口、模块搜索和对应后台
+  worker 必须共同遵循 `builtin_modules`，不能只把入口隐藏。
 
 - 使用 `visual="elevated"`。
 - Esc / Close → 关闭设置面板。

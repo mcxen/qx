@@ -159,7 +159,7 @@ class HomeIslandDataBus {
         this.interest[ch] = Math.max(0, this.interest[ch] - 1);
       }
       this.reconcilePollers();
-      if (this.listeners.size === 0) this.releaseActivationHook();
+      if (this.listeners.size === 0) this.releaseIdleResources();
     };
   }
 
@@ -197,6 +197,22 @@ class HomeIslandDataBus {
     this.stopActivationTask = null;
     this.stopAvailabilitySubscription?.();
     this.stopAvailabilitySubscription = null;
+  }
+
+  private releaseIdleResources(): void {
+    this.generation += 1;
+    this.clearKickTimers();
+    if (this.idleHandle != null && typeof window !== "undefined") {
+      const idleWindow = window as Window & { cancelIdleCallback?: (id: number) => void };
+      idleWindow.cancelIdleCallback?.(this.idleHandle);
+      this.idleHandle = null;
+    }
+    this.netPrev = null;
+    this.releaseActivationHook();
+    if (this.visibilityBound && typeof document !== "undefined") {
+      document.removeEventListener("visibilitychange", this.onVisibility);
+      this.visibilityBound = false;
+    }
   }
 
   private onVisibility = (): void => {

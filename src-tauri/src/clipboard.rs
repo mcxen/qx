@@ -961,6 +961,10 @@ pub fn start_listener(app: &AppHandle) {
                 if shutdown_clone.load(Ordering::Relaxed) {
                     break;
                 }
+                if !crate::settings::builtin_module_runtime_enabled("clipboard") {
+                    std::thread::sleep(std::time::Duration::from_millis(1000));
+                    continue;
+                }
                 let current_change = clipboard_change_count();
                 if !capture_cursor.should_attempt(current_change) {
                     std::thread::sleep(std::time::Duration::from_millis(250));

@@ -3,7 +3,10 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Mutex, OnceLock,
+};
 use tauri::{command, AppHandle};
 
 mod entry_config;
@@ -25,6 +28,21 @@ use shortcuts::{
 pub(crate) use shortcuts::{global_shortcuts_are_paused, register_shortcuts};
 
 static SETTINGS_WRITE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static CLIPBOARD_MODULE_ENABLED: AtomicBool = AtomicBool::new(true);
+
+pub(crate) fn builtin_module_runtime_enabled(id: &str) -> bool {
+    match id {
+        "clipboard" => CLIPBOARD_MODULE_ENABLED.load(Ordering::Relaxed),
+        _ => true,
+    }
+}
+
+fn sync_builtin_runtime_flags(settings: &Settings) {
+    CLIPBOARD_MODULE_ENABLED.store(
+        settings.builtin_modules.is_enabled("clipboard"),
+        Ordering::Relaxed,
+    );
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneralSettings {
@@ -1055,6 +1073,7 @@ pub(crate) fn read_settings() -> Settings {
         settings.agent.default_provider = "openrouter".to_string();
         settings.agent.default_model = "openrouter/auto".to_string();
     }
+    sync_builtin_runtime_flags(&settings);
     settings
 }
 
@@ -1159,6 +1178,7 @@ pub async fn update_settings(app: AppHandle, mut settings: Settings) -> Result<S
         Ok((shortcuts_changed, tray_changed, app_icon_changed))
     })
     .await?;
+    sync_builtin_runtime_flags(&settings);
 
     if app_icon_changed {
         let icon_id = settings.appearance.app_icon.clone();
@@ -1185,6 +1205,7 @@ pub async fn reset_settings(app: AppHandle) -> Result<Settings, String> {
     let default = Settings::default();
     let default_for_io = default.clone();
     settings_io(move || write_settings(&default_for_io)).await?;
+    sync_builtin_runtime_flags(&default);
     let icon_id = default.appearance.app_icon.clone();
     let icon_app = app.clone();
     crate::runtime::ui(&app, move || crate::app_icon::apply(&icon_app, &icon_id))

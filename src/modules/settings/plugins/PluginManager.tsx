@@ -2269,6 +2269,7 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
                       <InstalledModuleCard
                         plugin={plugin}
                         onOpen={() => setConfigId(plugin.id)}
+                        onToggle={() => void handleToggle(plugin)}
                       />
                     </div>
                   ))}

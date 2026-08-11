@@ -16,6 +16,7 @@ export function useIslandData(channels: readonly IslandDataChannel[]): IslandDat
   const subscribe = useMemo(
     () => (onStoreChange: () => void) => {
       const list = (key ? key.split(",") : []) as IslandDataChannel[];
+      if (list.length === 0) return () => {};
       return homeIslandDataBus.subscribe(list, () => onStoreChange());
     },
     [key],
@@ -28,8 +29,8 @@ export function useIslandData(channels: readonly IslandDataChannel[]): IslandDat
   );
 }
 
-export function useIslandStats() {
-  const state = useIslandData(["stats"]);
+export function useIslandStats(enabled = true) {
+  const state = useIslandData(enabled ? ["stats"] : []);
   return {
     stats: state.stats,
     ready: state.ready.stats,

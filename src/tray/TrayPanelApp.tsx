@@ -80,6 +80,7 @@ function TrayContent() {
   const [stats, setStats] = useState<SystemStatsSnapshot | null>(null);
   const [networkRates, setNetworkRates] = useState({ down: 0, up: 0 });
   const [loading, setLoading] = useState(true);
+  const [panelActive, setPanelActive] = useState(false);
   const pending = useRef(new Map<string, number>());
   const writeTimers = useRef(new Map<string, number>());
   const queuedBrightness = useRef(new Map<string, number>());
@@ -191,6 +192,7 @@ function TrayContent() {
 
   useEffect(() => {
     let cancelled = false;
+    const trayWindow = getCurrentWindow();
     void Promise.all([
       invoke<InstalledPlugin[]>("list_installed_plugins"),
       invoke<QxSettings>("get_settings"),
@@ -199,7 +201,11 @@ function TrayContent() {
       setPlugins(nextPlugins);
       setSettings(nextSettings);
     }).catch(() => setLoading(false));
-    const unlistenFocus = getCurrentWindow().onFocusChanged(({ payload }) => {
+    void trayWindow.isFocused().then((focused) => {
+      if (!cancelled) setPanelActive(focused);
+    });
+    const unlistenFocus = trayWindow.onFocusChanged(({ payload }) => {
+      setPanelActive(payload);
       if (payload) cancelAutoHide();
       else scheduleAutoHide();
     });
@@ -229,10 +235,15 @@ function TrayContent() {
   }, []);
 
   useEffect(() => {
+    if (!panelActive) {
+      setStats(null);
+      previousNetwork.current = null;
+      return;
+    }
     void refresh();
     const timer = window.setInterval(() => void refresh(), 2500);
     return () => window.clearInterval(timer);
-  }, [refresh]);
+  }, [panelActive, refresh]);
 
   useEffect(() => () => {
     writeTimers.current.forEach((timer) => window.clearTimeout(timer));

@@ -235,6 +235,8 @@ modes ──useIsland*──► bus（interest + cache）
 - 首屏占位 `--`；数据到达后再更新。
 - 首次采样 idle 调度；`document.hidden` 暂停。
 - channel 兴趣计数 + in-flight 去重；`stats` 由 System/Orbit 共享。
+- 指标关闭时 hook 订阅零通道；最后一个消费者卸载后 bus 释放 timers、idle/kick 与激活监听。
+- Tray 的 CPU / Memory / Network 只在托盘窗口激活时轮询，窗口隐藏后不保温采样。
 - Hooks：`useIslandStats` / `useIslandPower` / `useIslandNet` / `useIslandData`。
 - 样式 token：`--qx-system-island-*`、`--qx-stats-*`（跟主题 Light/Dark/System）。
 

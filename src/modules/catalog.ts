@@ -1,13 +1,13 @@
 export const BUILTIN_MODULE_CATALOG = {
-  clipboard: { maturity: "stable", userDisableable: false },
-  "qx-ai": { maturity: "stable", userDisableable: false },
-  rss: { maturity: "stable", userDisableable: false },
+  clipboard: { maturity: "stable", userDisableable: true },
+  "qx-ai": { maturity: "stable", userDisableable: true },
+  rss: { maturity: "stable", userDisableable: true },
   screencap: { maturity: "beta", userDisableable: true },
   /** Prefer marketplace plugin `weather`. Built-in panel is opt-in. */
   weather: { maturity: "beta", userDisableable: true },
-  documents: { maturity: "stable", userDisableable: false },
+  documents: { maturity: "stable", userDisableable: true },
   macros: { maturity: "beta", userDisableable: true },
-  "qx-tty": { maturity: "stable", userDisableable: false },
+  "qx-tty": { maturity: "stable", userDisableable: true },
 } as const;
 
 export type BuiltinModuleId = keyof typeof BUILTIN_MODULE_CATALOG;
