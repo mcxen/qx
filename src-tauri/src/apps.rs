@@ -803,19 +803,44 @@ pub async fn search_files(
 ) -> Vec<AppEntry> {
     // Progressive passes: 0 quick, 1 expanded, 2+ system/broader.
     // Frontend merges asynchronously so later hits chase onto the list.
-    let pass = pass.unwrap_or(0);
-    let limit = match pass {
-        0 => 16,
-        1 => 24,
-        _ => 32,
-    };
-    crate::file_search::search(
-        query,
-        limit,
-        pass,
-        categories.unwrap_or_default(),
-        category_id,
-        request_id,
-    )
-    .await
+    let categories = categories.unwrap_or_default();
+    if let Some(pass) = pass {
+        let limit = match pass {
+            0 => 16,
+            1 => 24,
+            _ => 32,
+        };
+        return crate::file_search::search(query, limit, pass, categories, category_id, request_id)
+            .await;
+    }
+
+    // Compatibility and tool callers (QxAI / plugin context) do not manage the
+    // Launcher's progressive UI. Omitting `pass` therefore means "complete
+    // system search", not "quick pass only". Reuse the exact same three native
+    // passes and merge them here so every consumer reaches Everything/Cardinal
+    // plus the broader platform fallback.
+    let mut merged = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for (pass, limit) in [(0, 16), (1, 24), (2, 32)] {
+        let batch = crate::file_search::search(
+            query.clone(),
+            limit,
+            pass,
+            categories.clone(),
+            category_id.clone(),
+            request_id,
+        )
+        .await;
+        for entry in batch {
+            #[cfg(target_os = "windows")]
+            let identity = entry.path.to_lowercase();
+            #[cfg(not(target_os = "windows"))]
+            let identity = entry.path.clone();
+            if seen.insert(identity) {
+                merged.push(entry);
+            }
+        }
+    }
+    merged.truncate(64);
+    merged
 }

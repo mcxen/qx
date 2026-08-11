@@ -73,6 +73,11 @@ if (!floatingPanelSource.includes("DWMWA_BORDER_COLOR")
     || !floatingPanelSource.includes("suppress_windows_dwm_border(&win)")) {
   fail("Windows main window must suppress the DWM border while retaining its native shadow");
 }
+const appsSource = read("src-tauri/src/apps.rs");
+if (!appsSource.includes('Omitting `pass` therefore means "complete')
+    || !appsSource.includes("for (pass, limit) in [(0, 16), (1, 24), (2, 32)]")) {
+  fail("search_files callers without a pass must receive the complete shared system search");
+}
 
 // --- 2. Host HTTP binary port (plugin external modules depend on this) ---
 const pluginApi = exists("src-tauri/src/plugin_api.rs") ? read("src-tauri/src/plugin_api.rs") : "";

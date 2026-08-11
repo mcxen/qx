@@ -38,6 +38,9 @@ assert.match(agentSource, /The current operating system is Windows/);
 assert.doesNotMatch(agentSource, /Search installed macOS applications by name/);
 assert.doesNotMatch(agentSource, /Search files on the system by name fragment using Spotlight\/mdfind/);
 assert.match(storeSource, /messages:\s*requestMessages/);
+assert.match(agentSource, /required:\s*\["query",\s*"root"\]/);
+assert.match(agentSource, /Use files for filename or folder-name searches/);
+assert.match(agentSource, /Use apps only when the user is looking for an installed application/);
 
 const chatSource = readFileSync(
   new URL("../src/modules/qx-ai/QxAiChat.tsx", import.meta.url),

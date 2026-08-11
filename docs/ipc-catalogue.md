@@ -15,7 +15,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 | 命令 | 签名 | 用途 |
 |---|---|---|
 | `search_apps` | `(query: String) -> Vec<AppEntry>` | 已安装 `.app` 打分排序，空 query 返回前 20 |
-| `search_files` | `(query: String, pass?: u32, categories?: FileSearchCategory[], category_id?: String, request_id?: u64) -> Vec<AppEntry>` | Cardinal / Everything 渐进文件名搜索；每个 pass 单次后台调用按分类优先并平衡结果，`request_id` 使旧查询失效；所有平台统一 leaf-name 后置匹配，短 ASCII 查询不做松散逐字符召回；返回可选 `modified_at`，同分类先按名称相关性、再按修改时间倒序；Spotlight 作为 macOS 补充回退 |
+| `search_files` | `(query: String, pass?: u32, categories?: FileSearchCategory[], category_id?: String, request_id?: u64) -> Vec<AppEntry>` | Cardinal / Everything 文件名搜索；Launcher 显式传 `pass=0/1/2` 获得渐进批次并自行合并，QxAI / 插件等省略 `pass` 的调用方由后端执行并去重全部三轮，不能退化为仅 quick pass；`request_id` 使旧查询失效；所有平台统一 leaf-name 后置匹配，短 ASCII 查询不做松散逐字符召回；返回可选 `modified_at`，同分类先按名称相关性、再按修改时间倒序；Spotlight 作为 macOS 补充回退 |
 
 调用方：`App.tsx`、`plugin/runtime.ts`、`plugin/context.ts`、`modules/qx-ai/react-agent.ts`
 

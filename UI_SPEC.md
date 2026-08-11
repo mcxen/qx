@@ -855,6 +855,9 @@ QxAI：
 - Chat / Settings：Esc → 会话列表（`setView("list")`），不是直接 launcher。
 - 每次模型请求都必须在系统上下文中注入当前真实宿主平台。Windows 不得向模型声明使用
   Spotlight、`mdfind`、Finder 或 AppleScript；`files` / `apps` 统一描述为 Qx 跨平台宿主能力。
+- QxAI 的 `files` 必须复用 Launcher 的完整原生文件名搜索端口：未指定渐进 `pass` 时由后端
+  合并 quick / expanded / system 三轮并去重。`grep` 仅用于明确目录下的文件内容搜索，必须
+  提供 `root`，不得在文件名搜索无结果后扫描 Qx、编辑器或当前进程目录；`apps` 只查应用。
 - Chat 请求进行中使用 Bottom Island 的不确定 `dots` activity，不得伪造固定百分比；回复完成、
   失败或取消后必须清除 activity / progress meter，静态岛只显示会话消息数或错误状态。
 

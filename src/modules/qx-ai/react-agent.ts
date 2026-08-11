@@ -121,7 +121,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: "grep",
     description:
-      "Search file contents recursively using ripgrep. Returns matching lines with paths and line numbers.",
+      "Search text inside files recursively under an explicit directory using ripgrep. Use only for file-content search, never to locate a filename. Returns matching lines with paths and line numbers.",
     inputHint: '{"query": "TODO", "root": "~/code", "maxResults": 40}',
     parameters: {
       type: "object",
@@ -130,7 +130,7 @@ export const TOOLS: ToolSpec[] = [
         root: { type: "string", description: "Directory to search in" },
         maxResults: { type: "number", description: "Max results to return (default 40)" },
       },
-      required: ["query"],
+      required: ["query", "root"],
     },
     isEnabled: (s) => s.grep_search_enabled,
     run: async (input) => {
@@ -138,6 +138,9 @@ export const TOOLS: ToolSpec[] = [
       const query = stringField(rec, "query");
       if (!query.trim()) return "Error: grep requires a 'query' field.";
       const root = stringField(rec, "root").trim();
+      if (!root) {
+        return "Error: grep requires an explicit 'root' directory. Use the files tool for filename search.";
+      }
       const maxResults = numberField(rec, "maxResults", 40);
       const results = await invoke<Array<{ path: string; line: number | null; text: string }>>(
         "plugin_ai_grep_search",
@@ -385,6 +388,9 @@ Rules:
 - Action Input MUST be valid JSON on a single line.
 - Do not invent observations. Do not output "Observation:" yourself.
 - If a tool errors, read the error in the Observation and adapt.
+- Use files for filename or folder-name searches; it runs Qx's complete native system search.
+- Use grep only to search file contents under an explicit root directory. Never use grep as a filename-search fallback.
+- Use apps only when the user is looking for an installed application, not a document or folder.
 
 Available tools:
 ${toolBlock}`;
