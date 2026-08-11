@@ -1,15 +1,40 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Bot, Hammer, UserRound } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
+import {
+  Bot,
+  Clock3,
+  FolderOpen,
+  Hammer,
+  ListPlus,
+  RefreshCw,
+  Sparkles,
+  UserRound,
+  X,
+} from "lucide-react";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
 import { QxActionList } from "../../components/QxActionPanel";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
-import { Select, Toggle } from "../../components/ui";
+import { Button, Select, Toggle } from "../../components/ui";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
 import { useSettingsStore } from "../settings/store";
 import { openAgentSettingsTab } from "./AiProviderConfig";
 import { AiMessageContent } from "./message-rendering";
+import {
+  filterQxAiSkills,
+  listQxAiSkills,
+  openQxAiSkillsDirectory,
+  readQxAiSkill,
+  type QxAiSkillDocument,
+  type QxAiSkillSummary,
+} from "./skills";
 import { useG4fStore } from "./store";
 
 export default function QxAiChat() {
@@ -22,10 +47,12 @@ export default function QxAiChat() {
     streamedContent,
     streamedReasoning,
     streamingSteps,
+    messageQueue,
     error,
     providers,
     setView,
     sendMessage,
+    removeQueuedMessage,
     clearMessages,
     deleteConversation,
     createConversation,
@@ -35,6 +62,11 @@ export default function QxAiChat() {
   } = useG4fStore();
 
   const [input, setInput] = useState("");
+  const [skills, setSkills] = useState<QxAiSkillSummary[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [skillsFailed, setSkillsFailed] = useState(false);
+  const [selectedSkill, setSelectedSkill] = useState<QxAiSkillDocument | null>(null);
+  const [skillCursor, setSkillCursor] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentSettings = useSettingsStore((state) => state.settings.agent);
 
@@ -65,15 +97,74 @@ export default function QxAiChat() {
       activeProvider &&
       activeModels.some((model) => model.id === conv.model),
   );
+  const skillPickerOpen = input.startsWith("/");
+  const skillMatches = useMemo(
+    () => filterQxAiSkills(skills, skillPickerOpen ? input.slice(1) : "").slice(0, 12),
+    [input, skillPickerOpen, skills],
+  );
+  const queuedMessages = useMemo(
+    () => messageQueue.filter((message) => message.conversationId === conv?.id),
+    [conv?.id, messageQueue],
+  );
+
+  const refreshSkills = useCallback(async () => {
+    setSkillsLoading(true);
+    setSkillsFailed(false);
+    try {
+      setSkills(await listQxAiSkills());
+    } catch {
+      setSkills([]);
+      setSkillsFailed(true);
+    } finally {
+      setSkillsLoading(false);
+    }
+  }, []);
+
+  const selectSkill = useCallback(async (skill: QxAiSkillSummary) => {
+    try {
+      setSelectedSkill(await readQxAiSkill(skill.id));
+      setInput("");
+      setSkillCursor(0);
+      setSkillsFailed(false);
+    } catch {
+      setSkillsFailed(true);
+    }
+  }, []);
 
   const leave = useCallback(() => setView("list"), [setView]);
 
   const handleSend = useCallback(() => {
     const trimmed = input.trim();
-    if (!trimmed || isCurrentConversationStreaming || !canChat) return;
+    if (!trimmed || !canChat) return;
     setInput("");
-    void sendMessage(trimmed);
-  }, [canChat, input, isCurrentConversationStreaming, sendMessage]);
+    setSelectedSkill(null);
+    void sendMessage(trimmed, selectedSkill ?? undefined);
+  }, [canChat, input, selectedSkill, sendMessage]);
+
+  const handleComposerKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
+    if (!skillPickerOpen || event.nativeEvent.isComposing) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      const offset = event.key === "ArrowDown" ? 1 : -1;
+      setSkillCursor((current) => {
+        if (skillMatches.length === 0) return 0;
+        return (current + offset + skillMatches.length) % skillMatches.length;
+      });
+      return;
+    }
+    if (event.key === "Enter" && skillMatches[skillCursor]) {
+      event.preventDefault();
+      event.stopPropagation();
+      void selectSkill(skillMatches[skillCursor]);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      setInput("");
+    }
+  }, [selectSkill, skillCursor, skillMatches, skillPickerOpen]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -86,6 +177,18 @@ export default function QxAiChat() {
   }, [providers.length, loadProviders]);
 
   useEffect(() => {
+    void refreshSkills();
+  }, [refreshSkills]);
+
+  useEffect(() => {
+    setSkillCursor(0);
+  }, [input]);
+
+  useEffect(() => {
+    setSelectedSkill(null);
+  }, [conv?.id]);
+
+  useEffect(() => {
     if (!conv || providers.length === 0 || canChat) return;
     const provider = providers.find((p) => p.id === conv.provider) ?? providers[0];
     setConversationModel(conv.id, provider.id, provider.models[0]?.id ?? "");
@@ -95,11 +198,21 @@ export default function QxAiChat() {
     {
       id: "send",
       label: isCurrentConversationStreaming
-        ? t("qxai.sending", "Sending…")
+        ? t("qxai.queue.add", "Add to Queue")
         : t("qxai.send", "Send"),
       kbd: "↵",
-      disabled: isCurrentConversationStreaming || !input.trim() || !canChat,
+      disabled: !input.trim() || !canChat,
       onClick: handleSend,
+    },
+    {
+      id: "open-skills-folder",
+      label: t("qxai.skills.openFolder", "Open Skills Folder"),
+      onClick: () => void openQxAiSkillsDirectory(),
+    },
+    {
+      id: "refresh-skills",
+      label: t("qxai.skills.refresh", "Refresh Skills"),
+      onClick: () => void refreshSkills(),
     },
     {
       id: "new-chat",
@@ -147,6 +260,7 @@ export default function QxAiChat() {
     handleSend,
     input,
     isCurrentConversationStreaming,
+    refreshSkills,
     setView,
     t,
   ]);
@@ -156,7 +270,12 @@ export default function QxAiChat() {
   const island: BottomIslandContent = isCurrentConversationStreaming
     ? {
         label: t("qxai.title", "QxAI Chat"),
-        detail: t("qxai.streaming", "Streaming response…"),
+        detail: queuedMessages.length > 0
+          ? t("qxai.queue.streaming", "Streaming… · {n} queued").replace(
+              "{n}",
+              String(queuedMessages.length),
+            )
+          : t("qxai.streaming", "Streaming response…"),
         activity: "dots",
       }
     : error
@@ -192,12 +311,13 @@ export default function QxAiChat() {
           value={input}
           autoFocus
           onChange={setInput}
+          onKeyDown={handleComposerKeyDown}
           onFocus={requestPanelKeyWindow}
-          disabled={isCurrentConversationStreaming || !conv}
+          disabled={!conv}
           placeholder={
             isCurrentConversationStreaming
-              ? t("qxai.waitingResponse", "Waiting for response…")
-              : t("qxai.typeMessage", "Type a message… (Enter to send)")
+              ? t("qxai.queue.placeholder", "Type another message to queue…")
+              : t("qxai.typeMessage", "Type a message… (Enter to send, / for Skills)")
           }
         />
       }
@@ -316,6 +436,118 @@ export default function QxAiChat() {
       actions={actions}
     >
       <div className="qx-ai-conversation">
+        {skillPickerOpen && (
+          <div className="qx-ai-skill-picker" role="listbox" aria-label={t("qxai.skills.title", "Skills")}>
+            <div className="qx-ai-skill-picker-head">
+              <div>
+                <Sparkles size={15} />
+                <strong>{t("qxai.skills.title", "Skills")}</strong>
+              </div>
+              <div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  title={t("qxai.skills.openFolder", "Open Skills Folder")}
+                  aria-label={t("qxai.skills.openFolder", "Open Skills Folder")}
+                  onClick={() => void openQxAiSkillsDirectory()}
+                >
+                  <FolderOpen size={15} />
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  title={t("qxai.skills.refresh", "Refresh Skills")}
+                  aria-label={t("qxai.skills.refresh", "Refresh Skills")}
+                  onClick={() => void refreshSkills()}
+                >
+                  <RefreshCw size={15} className={skillsLoading ? "qx-spin" : undefined} />
+                </Button>
+              </div>
+            </div>
+            <div className="qx-ai-skill-options">
+              {skillMatches.map((skill, index) => (
+                <Button
+                  key={skill.id}
+                  type="button"
+                  variant="ghost"
+                  role="option"
+                  aria-selected={index === skillCursor}
+                  className={`qx-ai-skill-option${index === skillCursor ? " is-selected" : ""}`}
+                  onMouseEnter={() => setSkillCursor(index)}
+                  onClick={() => void selectSkill(skill)}
+                >
+                  <Sparkles size={15} />
+                  <span>
+                    <strong>{skill.name}</strong>
+                    <small>{skill.description || `/${skill.id}`}</small>
+                  </span>
+                  <code>/{skill.id}</code>
+                </Button>
+              ))}
+              {!skillsLoading && skillMatches.length === 0 && (
+                <div className="qx-ai-skill-empty">
+                  {skillsFailed
+                    ? t("qxai.skills.error", "Skills could not be loaded. Refresh to try again.")
+                    : t("qxai.skills.empty", "No matching Skills. Add SKILL.md files in the Skills folder.")}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {(selectedSkill || queuedMessages.length > 0) && (
+          <div className="qx-ai-composer-status">
+            {selectedSkill && (
+              <div className="qx-ai-selected-skill">
+                <Sparkles size={14} />
+                <span>
+                  {t("qxai.skills.using", "Using Skill")}: <strong>{selectedSkill.name}</strong>
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  title={t("qxai.skills.remove", "Remove Skill")}
+                  aria-label={t("qxai.skills.remove", "Remove Skill")}
+                  onClick={() => setSelectedSkill(null)}
+                >
+                  <X size={14} />
+                </Button>
+              </div>
+            )}
+            {queuedMessages.length > 0 && (
+              <div className="qx-ai-message-queue">
+                <div className="qx-ai-message-queue-title">
+                  <ListPlus size={14} />
+                  <strong>{t("qxai.queue.title", "Queued messages")}</strong>
+                  <span>{queuedMessages.length}</span>
+                </div>
+                {queuedMessages.map((message) => (
+                  <div className="qx-ai-message-queue-row" key={message.id}>
+                    <Clock3 size={14} />
+                    <span>{message.content}</span>
+                    {message.skill && (
+                      <small><Sparkles size={12} />{message.skill.name}</small>
+                    )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      title={t("qxai.queue.remove", "Remove queued message")}
+                      aria-label={t("qxai.queue.remove", "Remove queued message")}
+                      onClick={() => removeQueuedMessage(message.id)}
+                    >
+                      <X size={14} />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="qx-ai-message-list">
           {messages.map((msg, i) => (
             <div
@@ -328,6 +560,12 @@ export default function QxAiChat() {
               <div className="qx-ai-message-body">
                 <div className="qx-ai-message-meta">
                   {msg.role === "user" ? "You" : conv?.provider || "AI"}
+                  {msg.role === "user" && msg.skill && (
+                    <span className="qx-ai-message-skill">
+                      <Sparkles size={11} />
+                      {msg.skill.name}
+                    </span>
+                  )}
                 </div>
                 <div className="qx-ai-message-bubble">
                   <AiMessageContent

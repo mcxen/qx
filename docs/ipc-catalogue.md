@@ -119,7 +119,7 @@ macOS 通过 `open -a "Google Chrome"` 启动，找不到应用时播放会明�
 
 ## qxai / g4f
 
-面向前端的：`qxai_list_providers`、`qxai_stream_chat_events(request_id, provider?, model?, messages, reasoning?)`、`qxai_stream_chat_with_tools_events(request_id, provider?, model?, messages, tools, tool_choice?, reasoning?)`、`qxai_chat_with_tools(...)`、`qxai_fetch_models(base_url, api_key)`、`qxai_get_builtin_provider_credentials`、`qxai_save_builtin_provider_credentials`、`qxai_get_custom_providers`、`qxai_save_custom_providers`。
+面向前端的：`qxai_list_providers`、`qxai_stream_chat_events(request_id, provider?, model?, messages, reasoning?)`、`qxai_stream_chat_with_tools_events(request_id, provider?, model?, messages, tools, tool_choice?, reasoning?)`、`qxai_chat_with_tools(...)`、`qxai_fetch_models(base_url, api_key)`、`qxai_get_builtin_provider_credentials`、`qxai_save_builtin_provider_credentials`、`qxai_get_custom_providers`、`qxai_save_custom_providers`。Skill 目录端口为 `qxai_skills_directory`、`qxai_list_skills`、`qxai_read_skill(id)`；目录固定为 `~/.qx/skills`，扫描和读取均离开 async runtime 核心线程，单个 Skill 上限 256 KiB。
 
 内置只给插件层用的兼容命令：`g4f_chat`、`g4f_stream_chat`、`g4f_chat_custom`、`g4f_list_providers`、`qxai_stream_chat`。
 
@@ -290,7 +290,8 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `plugin_cli_poll`, `plugin_cli_cancel`, `plugin_cli_list_jobs`, `plugin_system_env`,
 `plugin_system_save_download`, `plugin_system_open_path`, `plugin_system_reveal_path`,
 `plugin_system_open_settings`, `plugin_ai_grep_search`, `plugin_ai_memory_list`, `plugin_ai_memory_add`,
-`plugin_ai_memory_delete`, `plugin_http_fetch`, `plugin_notification_show`, `plugin_resolve_asset`,
+`plugin_ai_memory_delete`, `qxai_skills_directory`, `qxai_list_skills`, `qxai_read_skill`,
+`plugin_http_fetch`, `plugin_notification_show`, `plugin_resolve_asset`,
 `qx_permissions_status`, `qx_permissions_request`, `qx_permissions_request_all`,
 `qx_permissions_open_settings`, `qx_onboarding_platform`, `qx_update_check`, `qx_update_download_and_install`,
 `qx_update_apply_and_restart`, `qx_update_progress_snapshot`, `qx_update_progress_close`, `qx_update_progress_cancel`, `download_ocr_model`,

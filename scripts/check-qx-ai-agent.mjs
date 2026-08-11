@@ -66,7 +66,27 @@ const chatSource = readFileSync(
   new URL("../src/modules/qx-ai/QxAiChat.tsx", import.meta.url),
   "utf8",
 );
+const skillsSource = readFileSync(
+  new URL("../src/modules/qx-ai/skills.ts", import.meta.url),
+  "utf8",
+);
+const nativeSkillsSource = readFileSync(
+  new URL("../src-tauri/src/qx_ai_skills.rs", import.meta.url),
+  "utf8",
+);
 assert.match(chatSource, /activity:\s*"dots"/);
 assert.doesNotMatch(chatSource, /progress:\s*55/);
+
+// Generating a response must not lock the composer: later submissions enter a
+// visible FIFO queue, and slash search resolves a managed Qx Skill document.
+assert.match(storeSource, /messageQueue:\s*\[/);
+assert.match(storeSource, /runNextQueuedMessage/);
+assert.match(chatSource, /t\("qxai\.queue\.add"/);
+assert.doesNotMatch(chatSource, /disabled=\{isCurrentConversationStreaming \|\| !conv\}/);
+assert.match(chatSource, /input\.startsWith\("\/"\)/);
+assert.match(chatSource, /<Sparkles/);
+assert.match(skillsSource, /filterQxAiSkills/);
+assert.match(nativeSkillsSource, /state_dir\(\)\.join\("skills"\)/);
+assert.match(nativeSkillsSource, /spawn_blocking/);
 
 console.log("QxAI agent tool-call checks passed");

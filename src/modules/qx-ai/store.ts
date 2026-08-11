@@ -10,6 +10,7 @@ import {
   runFunctionCallingAgent,
   runReactAgent,
 } from "./react-agent";
+import type { QxAiSkillDocument } from "./skills";
 
 export type { AgentStep } from "./react-agent";
 
@@ -19,6 +20,14 @@ export interface G4fMessage {
   reasoning?: string;
   steps?: AgentStep[];
   attachments?: QxAiFileAttachment[];
+  skill?: Pick<QxAiSkillDocument, "id" | "name">;
+}
+
+export interface QueuedAiMessage {
+  id: string;
+  conversationId: string;
+  content: string;
+  skill?: QxAiSkillDocument;
 }
 
 export interface G4fConversation {
@@ -121,6 +130,7 @@ interface G4fStore {
   streamedContent: string;
   streamedReasoning: string;
   streamingSteps: AgentStep[];
+  messageQueue: QueuedAiMessage[];
   error: string | null;
   view: G4fView;
   defaultSystemPrompt: string;
@@ -143,7 +153,9 @@ interface G4fStore {
   setConversationModel: (id: string, provider: string, model: string) => void;
   setConversationReasoning: (id: string, enabled: boolean) => void;
 
-  sendMessage: (content: string) => Promise<void>;
+  sendMessage: (content: string, skill?: QxAiSkillDocument, conversationId?: string) => Promise<void>;
+  runNextQueuedMessage: () => void;
+  removeQueuedMessage: (id: string) => void;
   clearMessages: () => void;
 
   loadProviders: () => Promise<void>;
@@ -193,6 +205,11 @@ function resolveProviderModel(
 
 function generateStreamRequestId(): string {
   return "qxai-stream-" + generateId();
+}
+
+function withSelectedSkill(basePrompt: string, skill?: QxAiSkillDocument): string {
+  if (!skill) return basePrompt;
+  return `${basePrompt.trim()}\n\nSelected Qx Skill: ${skill.name} (${skill.id})\nFollow this skill for the current user request. Treat it as task instructions, while system safety and explicit user instructions remain higher priority.\n\n<qx-skill>\n${skill.content}\n</qx-skill>`;
 }
 
 const STREAM_TIMEOUT_MS = 180_000;
@@ -293,6 +310,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   streamedContent: "",
   streamedReasoning: "",
   streamingSteps: [],
+  messageQueue: [],
   error: null,
   view: "list",
   defaultSystemPrompt: "You are a helpful AI assistant.",
@@ -348,6 +366,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       conversations: conversations.filter((c) => c.id !== id),
       currentConversationId:
         currentConversationId === id ? null : currentConversationId,
+      messageQueue: get().messageQueue.filter((message) => message.conversationId !== id),
     });
   },
 
@@ -398,9 +417,24 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     }));
   },
 
-  sendMessage: async (content) => {
+  sendMessage: async (content, skill, requestedConversationId) => {
+    const targetConversationId = requestedConversationId ?? get().currentConversationId;
+    if (!targetConversationId) return;
+    if (get().streaming || (!requestedConversationId && get().messageQueue.length > 0)) {
+      set((state) => ({
+        messageQueue: [
+          ...state.messageQueue,
+          {
+            id: `queue-${generateId()}`,
+            conversationId: targetConversationId,
+            content,
+            skill,
+          },
+        ],
+      }));
+      return;
+    }
     const {
-      currentConversationId,
       conversations,
       customProviders,
       providers,
@@ -408,7 +442,8 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       currentModel,
       defaultSystemPrompt,
     } = get();
-    if (!currentConversationId) return;
+    const currentConversationId = targetConversationId;
+    const scheduleNext = () => queueMicrotask(() => get().runNextQueuedMessage());
 
     const conv = conversations.find((c) => c.id === currentConversationId);
     if (!conv) return;
@@ -421,11 +456,13 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
 
     if (!selection.provider) {
       set({ error: "No AI provider available. Open QxAI Settings first." });
+      scheduleNext();
       return;
     }
 
     if (!selection.model) {
       set({ error: `No model available for provider "${selection.provider}".` });
+      scheduleNext();
       return;
     }
 
@@ -433,7 +470,14 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       ...conv,
       provider: selection.provider,
       model: selection.model,
-      messages: [...conv.messages, { role: "user", content }],
+      messages: [
+        ...conv.messages,
+        {
+          role: "user",
+          content,
+          ...(skill ? { skill: { id: skill.id, name: skill.name } } : {}),
+        },
+      ],
     };
     const titledConv = withAutoTitle(updatedConv);
 
@@ -457,27 +501,30 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         streamedReasoning: "",
         streamingSteps: [],
       });
+      scheduleNext();
       return;
     }
 
-    // The native tool boundary re-reads persisted settings for security. Flush
-    // the debounced Settings store first so a freshly enabled Bash/Tools switch
-    // cannot race the first tool invocation.
-    await useSettingsStore.getState().flush();
-    const agentSettings = useSettingsStore.getState().settings.agent;
-    const enabledTools = getEnabledTools(agentSettings);
-    const useAgent = enabledTools.length > 0;
-
     try {
+      // The native tool boundary re-reads persisted settings for security. Flush
+      // the debounced Settings store first so a freshly enabled Bash/Tools switch
+      // cannot race the first tool invocation.
+      await useSettingsStore.getState().flush();
+      const agentSettings = useSettingsStore.getState().settings.agent;
+      const enabledTools = getEnabledTools(agentSettings);
+      const useAgent = enabledTools.length > 0;
+
       if (selection.provider.startsWith("custom:")) {
         const cp = customProviders.find((p) => p.id === selection.provider);
         if (!cp) throw new Error(`Custom provider "${selection.provider}" not found`);
       }
 
       if (useAgent) {
-        const basePrompt =
+        const basePrompt = withSelectedSkill(
           titledConv.messages.find((m) => m.role === "system")?.content?.trim() ||
-          defaultSystemPrompt;
+            defaultSystemPrompt,
+          skill,
+        );
         const nonSystem = titledConv.messages.filter((m) => m.role !== "system");
 
         // Native function calling is opt-in because many compatible models do
@@ -544,13 +591,16 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           streamedReasoning: "",
           streamingSteps: [],
         }));
+        scheduleNext();
         return;
       }
 
       const requestId = generateStreamRequestId();
-      const basePrompt =
+      const basePrompt = withSelectedSkill(
         titledConv.messages.find((message) => message.role === "system")?.content?.trim()
-        || defaultSystemPrompt;
+          || defaultSystemPrompt,
+        skill,
+      );
       const requestMessages: G4fMessage[] = [
         { role: "system", content: buildQxHostSystemPrompt(basePrompt) },
         ...titledConv.messages.filter((message) => message.role !== "system"),
@@ -593,6 +643,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         streamedReasoning: "",
         streamingSteps: [],
       }));
+      scheduleNext();
     } catch (e) {
       set((s) => ({
         streaming: false,
@@ -602,7 +653,30 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         streamingSteps: [],
         error: s.currentConversationId === currentConversationId ? String(e) : s.error,
       }));
+      scheduleNext();
     }
+  },
+
+  runNextQueuedMessage: () => {
+    if (get().streaming) return;
+    const queue = get().messageQueue;
+    const next = queue.find((message) =>
+      get().conversations.some((conversation) => conversation.id === message.conversationId),
+    );
+    if (!next) {
+      if (queue.length > 0) set({ messageQueue: [] });
+      return;
+    }
+    set({ messageQueue: queue.filter((message) => message.id !== next.id) });
+    queueMicrotask(() => {
+      void get().sendMessage(next.content, next.skill, next.conversationId);
+    });
+  },
+
+  removeQueuedMessage: (id) => {
+    set((state) => ({
+      messageQueue: state.messageQueue.filter((message) => message.id !== id),
+    }));
   },
 
   clearMessages: () => {
@@ -611,6 +685,9 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     set({
       conversations: conversations.map((c) =>
         c.id === currentConversationId ? { ...c, messages: [] } : c,
+      ),
+      messageQueue: get().messageQueue.filter(
+        (message) => message.conversationId !== currentConversationId,
       ),
     });
   },

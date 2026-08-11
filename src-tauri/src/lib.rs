@@ -32,6 +32,7 @@ mod permissions;
 mod plugin_api;
 mod plugin_cli;
 mod plugin_system;
+mod qx_ai_skills;
 mod rss;
 mod runtime;
 mod screencap;
@@ -841,6 +842,9 @@ pub fn run() {
             plugin_api::plugin_ai_memory_list,
             plugin_api::plugin_ai_memory_add,
             plugin_api::plugin_ai_memory_delete,
+            qx_ai_skills::qxai_skills_directory,
+            qx_ai_skills::qxai_list_skills,
+            qx_ai_skills::qxai_read_skill,
             plugin_api::plugin_http_fetch,
             plugin_api::plugin_notification_show,
             plugin_api::plugin_resolve_asset,

@@ -863,6 +863,11 @@ QxAI：
   文件附件；“发送文件”必须渲染带打开、定位、复制动作的真实文件卡片，不能只输出路径文字。
 - Chat 请求进行中使用 Bottom Island 的不确定 `dots` activity，不得伪造固定百分比；回复完成、
   失败或取消后必须清除 activity / progress meter，静态岛只显示会话消息数或错误状态。
+- Chat 生成期间输入框保持可编辑；再次发送进入会话内可见队列，按提交顺序串行执行，并允许在
+  执行前逐条移除。队列状态使用 Lucide 图标和文本反馈，不用 emoji 或伪造进度。
+- Qx 管理 `~/.qx/skills`：支持 `<skill-id>/SKILL.md` 与根目录单文件 `<skill-id>.md`。输入 `/`
+  打开 Skill 模糊搜索，ArrowUp / ArrowDown 移动、Enter 选择、Esc 关闭；选中的 Skill 只注入
+  下一条用户请求，发送后自动清除。Skill 文件扫描和读取必须在异步阻塞边界执行。
 
 ### Documents（文本工具箱 · 简易 Notepad++）
 
