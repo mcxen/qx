@@ -221,9 +221,7 @@
 - [x] `npx tsc --noEmit`
 - [x] `node scripts/check-qx-shell-navigation.mjs`（含 IME、边界换行与角点缩放断言）
 - [x] `npm run build`
-- [ ] `npm run check`：本次相关闸门通过；现有 `external-display-control` 缺少
-  `invoke:qx_external_displays_driver` / `invoke:qx_external_displays_list` 权限声明，
-  `check:module-ports` 失败。
+- [x] `npm run check`（宿主同步到最新插件目录后全部闸门通过）
 - [ ] macOS 运行态验证中文候选确认、长文本连续输入、自动换行扩高、四边拖动与四角缩放。
 
 ## Fix — 取消双击选区直接截屏
