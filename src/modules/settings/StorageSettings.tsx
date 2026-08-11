@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Archive, RefreshCw } from "lucide-react";
+import { Archive, FolderOpen, RefreshCw, Trash2 } from "lucide-react";
 import { Button, SettingsCard } from "../../components/ui";
 import { useT } from "../../i18n";
+import { openSystemPath } from "../../system/pathActions";
 
 interface StoragePath {
   path: string;
@@ -21,9 +22,20 @@ interface StorageCacheTarget {
 }
 
 interface StorageOverview {
+  total_bytes: number;
   reclaimable_bytes: number;
   cache_targets: StorageCacheTarget[];
+  buckets: StorageBucket[];
   warnings: string[];
+}
+
+interface StorageBucket {
+  id: string;
+  label: string;
+  paths: StoragePath[];
+  bytes: number;
+  files: number;
+  clearable: boolean;
 }
 
 interface StorageClearResult {
@@ -132,7 +144,7 @@ export default function StorageSettings() {
     title: string;
     args?: Record<string, unknown>;
   }) => {
-    if (!window.confirm(confirm)) return;
+    if (!window.confirm(confirm)) return false;
     try {
       setBusy(id);
       setStatus("");
@@ -143,9 +155,11 @@ export default function StorageSettings() {
         : "";
       setStatus(`${title}: ${formatResult(result)}${warningText}`);
       await loadStorage(false);
+      return true;
     } catch (error) {
       setFailed(true);
       setStatus(String(error));
+      return false;
     } finally {
       setBusy(null);
     }
@@ -154,6 +168,7 @@ export default function StorageSettings() {
   const targets = storage?.cache_targets ?? [];
   const warnings = storage?.warnings ?? [];
   const reclaimableBytes = storage?.reclaimable_bytes ?? 0;
+  const qxAiStorage = storage?.buckets.find((bucket) => bucket.id === "qxai-sessions");
 
   return (
     <div className="qx-settings-page">
@@ -303,6 +318,75 @@ export default function StorageSettings() {
               {t("storage.empty", "No module storage is currently registered.")}
             </div>
           )}
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t("storage.qxai.title", "QxAI Sessions")}
+        description={t(
+          "storage.qxai.desc",
+          "Durable conversation history and managed copies of images and files attached to QxAI.",
+        )}
+      >
+        <div className="qx-storage-toolbar">
+          <div className="qx-storage-toolbar-copy">
+            <strong>{formatBytes(qxAiStorage?.bytes ?? 0)}</strong>
+            <span>
+              {t("storage.qxai.items", "{n} stored files").replace(
+                "{n}",
+                String(qxAiStorage?.files ?? 0),
+              )}
+            </span>
+            {qxAiStorage?.paths.map((entry) => (
+              <span className="qx-storage-path" key={entry.path} title={entry.path}>
+                {shortenPath(entry.path)}
+              </span>
+            ))}
+          </div>
+          <div className="qx-storage-actions">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!qxAiStorage?.paths[0] || busy !== null}
+              onClick={() => void invoke<string>("qxai_sessions_directory")
+                .then((path) => openSystemPath(path))}
+            >
+              <FolderOpen size={14} aria-hidden="true" />
+              {t("storage.qxai.open", "Open Folder")}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={busy !== null || (qxAiStorage?.bytes ?? 0) <= 0}
+              onClick={() => void runCleanup({
+                id: "qxai-sessions",
+                command: "qx_storage_clear_qxai_sessions",
+                title: t("storage.qxai.title", "QxAI Sessions"),
+                confirm: t(
+                  "storage.qxai.confirm",
+                  "Delete all QxAI conversation history and managed attachments? This cannot be undone.",
+                ),
+              }).then(async (cleared) => {
+                if (!cleared) return;
+                const { useG4fStore } = await import("../qx-ai/store");
+                const runIds = Object.keys(useG4fStore.getState().runs);
+                const { islandHost } = await import("../../island");
+                runIds.forEach((id) => islandHost.dismiss(`qxai.run.${id}`));
+                useG4fStore.setState({
+                  conversations: [],
+                  currentConversationId: null,
+                  messageQueue: [],
+                  runs: {},
+                  sessionsLoaded: true,
+                });
+              })}
+            >
+              <Trash2 size={14} aria-hidden="true" />
+              {busy === "qxai-sessions"
+                ? t("about.storage.clearing", "Clearing...")
+                : t("storage.qxai.clear", "Clear Sessions")}
+            </Button>
+          </div>
         </div>
       </SettingsCard>
     </div>

@@ -4,6 +4,29 @@
 
 QxAI is the shared AI substrate for built-in modules and plugins. It should not be a single chat panel API. It should expose a permissioned runtime that can choose models, call tools, use memory, stream output, and run background tasks.
 
+## QxAiSession persistence and concurrency
+
+Built-in chat history is durable data under `~/.qx/QxAiSession`, not browser
+localStorage. `sessions.json` stores the conversation model and each session's
+managed attachment copies live under `files/<conversation-id>/`. Writes are
+atomic and filesystem work runs behind the Rust blocking boundary. Settings →
+Storage Management reports this directory as a protected durable bucket; users
+may open it or explicitly clear all QxAI sessions, but general cache cleanup
+must never remove it.
+
+Each conversation owns an independent run state and FIFO input queue. Starting
+a request in one conversation must not serialize, replace, or hide streaming
+state from another conversation. Active runs publish separate
+`qxai.run.<conversation-id>` Island task sessions so work remains visible after
+the user switches chats or modules.
+
+User attachments are copied into the session directory before they enter chat
+history. The provider adapter converts supported images to OpenAI-compatible
+data URL content parts and bounded UTF-8 text files to inline file context.
+Other managed files retain a real local path for QxAI's permissioned file and
+bash tools. UI previews always use `convertFileSrc`; raw `file://` URLs are not
+part of the frontend protocol.
+
 ## Reference Shape
 
 - Provider abstraction follows the same boundary used by Rust AI SDKs such as Rig and genai: callers select `provider + model`, while the runtime normalizes request/response formats.

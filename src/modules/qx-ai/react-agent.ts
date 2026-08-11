@@ -22,6 +22,7 @@ export interface QxAiFileAttachment {
   name: string;
   kind: string;
   size: number;
+  mimeType?: string;
 }
 
 interface ToolExecutionResult {
@@ -1037,7 +1038,11 @@ export async function runFunctionCallingAgent(
       };
       continue;
     }
-    working.push({ role: m.role, content: messageContentToOpenAI(m.content) });
+    working.push({
+      role: m.role,
+      content: messageContentToOpenAI(m.content),
+      ...(m.attachments?.length ? { attachments: m.attachments } : {}),
+    });
   }
 
   const steps: AgentStep[] = [];

@@ -89,6 +89,10 @@ fn plugin_data_dir() -> PathBuf {
     qx_home_dir().join("plugin-data")
 }
 
+fn qxai_sessions_dir() -> PathBuf {
+    crate::qx_ai_sessions::storage_path()
+}
+
 fn ocr_models_dir() -> PathBuf {
     home_dir().join(".oar")
 }
@@ -591,6 +595,20 @@ fn build_storage_overview() -> StorageOverview {
         clearable: false,
     };
 
+    // QxAI sessions are durable user data: conversation JSON plus managed
+    // copies of files attached by the user. They are never part of cache or
+    // reclaimable-storage totals, but can be explicitly opened or cleared.
+    let qxai_path = qxai_sessions_dir();
+    let (qxai_bytes, qxai_files) = measure(&qxai_path, &mut warnings);
+    let qxai_sessions = StorageBucket {
+        id: "qxai-sessions".into(),
+        label: "QxAI Sessions".into(),
+        paths: vec![path_entry(qxai_path)],
+        bytes: qxai_bytes,
+        files: qxai_files,
+        clearable: true,
+    };
+
     let buckets = vec![
         cache,
         files,
@@ -598,6 +616,7 @@ fn build_storage_overview() -> StorageOverview {
         clipboard,
         plugins,
         plugin_data,
+        qxai_sessions,
         settings,
     ];
     let total_bytes = buckets.iter().map(|b| b.bytes).sum();
@@ -779,6 +798,14 @@ fn clear_cache_sync() -> Result<StorageClearResult, String> {
 #[command]
 pub async fn qx_storage_clear_files() -> Result<StorageClearResult, String> {
     storage_io(clear_files_sync).await
+}
+
+#[command]
+pub async fn qx_storage_clear_qxai_sessions() -> Result<StorageClearResult, String> {
+    storage_io(|| {
+        crate::qx_ai_sessions::with_storage_lock(|| clear_dir_contents(&qxai_sessions_dir()))
+    })
+    .await
 }
 
 fn clear_files_sync() -> Result<StorageClearResult, String> {

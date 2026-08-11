@@ -369,7 +369,14 @@ pub fn plugin_ai_chat(req: PluginAiChatRequest) -> Result<String, String> {
 #[tauri::command]
 pub fn plugin_ai_stream_chat(req: PluginAiChatRequest) -> Result<Vec<String>, String> {
     let (provider, model, messages) = normalize_ai_chat_request(req)?;
-    crate::g4f::qxai_stream_chat(provider, model, messages)
+    crate::g4f::qxai_stream_chat(
+        provider,
+        model,
+        messages
+            .into_iter()
+            .map(|message| serde_json::to_value(message).map_err(|error| error.to_string()))
+            .collect::<Result<Vec<_>, _>>()?,
+    )
 }
 
 #[tauri::command]
@@ -380,7 +387,17 @@ pub fn plugin_ai_stream_chat_events(
 ) -> Result<(), String> {
     let reasoning = req.reasoning;
     let (provider, model, messages) = normalize_ai_chat_request(req)?;
-    crate::g4f::qxai_stream_chat_events(app, request_id, provider, model, messages, reasoning)
+    crate::g4f::qxai_stream_chat_events(
+        app,
+        request_id,
+        provider,
+        model,
+        messages
+            .into_iter()
+            .map(|message| serde_json::to_value(message).map_err(|error| error.to_string()))
+            .collect::<Result<Vec<_>, _>>()?,
+        reasoning,
+    )
 }
 
 fn normalize_ai_chat_request(

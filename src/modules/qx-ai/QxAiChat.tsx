@@ -12,6 +12,7 @@ import {
   FolderOpen,
   Hammer,
   ListPlus,
+  Paperclip,
   RefreshCw,
   Sparkles,
   UserRound,
@@ -36,17 +37,15 @@ import {
   type QxAiSkillSummary,
 } from "./skills";
 import { useG4fStore } from "./store";
+import { chooseAndImportQxAiAttachments } from "./sessions";
+import type { QxAiFileAttachment } from "./react-agent";
 
 export default function QxAiChat() {
   const t = useT();
   const {
     conversations,
     currentConversationId,
-    streaming,
-    streamingConversationId,
-    streamedContent,
-    streamedReasoning,
-    streamingSteps,
+    runs,
     messageQueue,
     error,
     providers,
@@ -67,11 +66,19 @@ export default function QxAiChat() {
   const [skillsFailed, setSkillsFailed] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<QxAiSkillDocument | null>(null);
   const [skillCursor, setSkillCursor] = useState(0);
+  const [pendingAttachments, setPendingAttachments] = useState<QxAiFileAttachment[]>([]);
+  const [attachmentsBusy, setAttachmentsBusy] = useState(false);
+  const [attachmentsError, setAttachmentsError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const agentSettings = useSettingsStore((state) => state.settings.agent);
 
   const conv = conversations.find((c) => c.id === currentConversationId);
-  const isCurrentConversationStreaming = streaming && streamingConversationId === conv?.id;
+  const run = conv ? runs[conv.id] : undefined;
+  const isCurrentConversationStreaming = Boolean(run?.streaming);
+  const streamedContent = run?.streamedContent ?? "";
+  const streamedReasoning = run?.streamedReasoning ?? "";
+  const streamingSteps = run?.streamingSteps ?? [];
+  const currentError = run?.error ?? error;
   const enabledTools = useMemo(() => {
     if (!agentSettings.agent_mode_enabled || !agentSettings.tools_enabled) return [];
     return [
@@ -135,11 +142,35 @@ export default function QxAiChat() {
 
   const handleSend = useCallback(() => {
     const trimmed = input.trim();
-    if (!trimmed || !canChat) return;
+    if ((!trimmed && pendingAttachments.length === 0) || !canChat) return;
     setInput("");
     setSelectedSkill(null);
-    void sendMessage(trimmed, selectedSkill ?? undefined);
-  }, [canChat, input, selectedSkill, sendMessage]);
+    setPendingAttachments([]);
+    setAttachmentsError("");
+    void sendMessage(
+      trimmed || t("qxai.attachments.review", "Please review the attached files."),
+      selectedSkill ?? undefined,
+      undefined,
+      pendingAttachments,
+    );
+  }, [canChat, input, pendingAttachments, selectedSkill, sendMessage, t]);
+
+  const handleAttach = useCallback(async () => {
+    if (!conv || attachmentsBusy) return;
+    setAttachmentsBusy(true);
+    setAttachmentsError("");
+    try {
+      const imported = await chooseAndImportQxAiAttachments(conv.id);
+      setPendingAttachments((current) => [
+        ...current,
+        ...imported.filter((item) => !current.some((existing) => existing.path === item.path)),
+      ]);
+    } catch (error) {
+      setAttachmentsError(String(error));
+    } finally {
+      setAttachmentsBusy(false);
+    }
+  }, [attachmentsBusy, conv]);
 
   const handleComposerKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
     if (!skillPickerOpen || event.nativeEvent.isComposing) return;
@@ -186,6 +217,8 @@ export default function QxAiChat() {
 
   useEffect(() => {
     setSelectedSkill(null);
+    setPendingAttachments([]);
+    setAttachmentsError("");
   }, [conv?.id]);
 
   useEffect(() => {
@@ -201,8 +234,14 @@ export default function QxAiChat() {
         ? t("qxai.queue.add", "Add to Queue")
         : t("qxai.send", "Send"),
       kbd: "↵",
-      disabled: !input.trim() || !canChat,
+      disabled: (!input.trim() && pendingAttachments.length === 0) || !canChat,
       onClick: handleSend,
+    },
+    {
+      id: "attach-files",
+      label: t("qxai.attachments.add", "Attach Images or Files"),
+      disabled: !conv || attachmentsBusy,
+      onClick: () => void handleAttach(),
     },
     {
       id: "open-skills-folder",
@@ -257,9 +296,12 @@ export default function QxAiChat() {
     createConversation,
     currentConversationId,
     deleteConversation,
+    attachmentsBusy,
+    handleAttach,
     handleSend,
     input,
     isCurrentConversationStreaming,
+    pendingAttachments.length,
     refreshSkills,
     setView,
     t,
@@ -278,8 +320,8 @@ export default function QxAiChat() {
           : t("qxai.streaming", "Streaming response…"),
         activity: "dots",
       }
-    : error
-      ? { label: t("qxai.title", "QxAI Chat"), detail: error, tone: "danger" }
+    : currentError
+      ? { label: t("qxai.title", "QxAI Chat"), detail: currentError, tone: "danger" }
       : {
           label: t("qxai.title", "QxAI Chat"),
           detail:
@@ -293,7 +335,14 @@ export default function QxAiChat() {
   const shell = useQxModuleShell({
     leave,
     esc: {
-      query: { active: input.length > 0, clear: () => setInput("") },
+      query: {
+        active: input.length > 0 || pendingAttachments.length > 0 || Boolean(attachmentsError),
+        clear: () => {
+          setInput("");
+          setPendingAttachments([]);
+          setAttachmentsError("");
+        },
+      },
     },
     island,
   });
@@ -307,19 +356,32 @@ export default function QxAiChat() {
       className="qx-qxai-chat-shell"
       onKeyDown={shell.onKeyDown}
       search={
-        <QxModuleSearch
-          value={input}
-          autoFocus
-          onChange={setInput}
-          onKeyDown={handleComposerKeyDown}
-          onFocus={requestPanelKeyWindow}
-          disabled={!conv}
-          placeholder={
-            isCurrentConversationStreaming
-              ? t("qxai.queue.placeholder", "Type another message to queue…")
-              : t("qxai.typeMessage", "Type a message… (Enter to send, / for Skills)")
-          }
-        />
+        <div className="qx-ai-composer">
+          <QxModuleSearch
+            value={input}
+            autoFocus
+            onChange={setInput}
+            onKeyDown={handleComposerKeyDown}
+            onFocus={requestPanelKeyWindow}
+            disabled={!conv}
+            placeholder={
+              isCurrentConversationStreaming
+                ? t("qxai.queue.placeholder", "Type another message to queue…")
+                : t("qxai.typeMessage", "Type a message… (Enter to send, / for Skills)")
+            }
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            disabled={!conv || attachmentsBusy}
+            title={t("qxai.attachments.add", "Attach Images or Files")}
+            aria-label={t("qxai.attachments.add", "Attach Images or Files")}
+            onClick={() => void handleAttach()}
+          >
+            <Paperclip size={16} className={attachmentsBusy ? "qx-spin" : undefined} />
+          </Button>
+        </div>
       }
       context={
         <div className="qx-action-panel">
@@ -497,7 +559,7 @@ export default function QxAiChat() {
           </div>
         )}
 
-        {(selectedSkill || queuedMessages.length > 0) && (
+        {(selectedSkill || pendingAttachments.length > 0 || attachmentsError || queuedMessages.length > 0) && (
           <div className="qx-ai-composer-status">
             {selectedSkill && (
               <div className="qx-ai-selected-skill">
@@ -516,6 +578,30 @@ export default function QxAiChat() {
                   <X size={14} />
                 </Button>
               </div>
+            )}
+            {pendingAttachments.length > 0 && (
+              <div className="qx-ai-pending-attachments">
+                {pendingAttachments.map((attachment) => (
+                  <div className="qx-ai-pending-attachment" key={attachment.path}>
+                    <Paperclip size={14} aria-hidden="true" />
+                    <span title={attachment.path}>{attachment.name}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      title={t("common.remove", "Remove")}
+                      aria-label={t("common.remove", "Remove")}
+                      onClick={() => setPendingAttachments((items) =>
+                        items.filter((item) => item.path !== attachment.path))}
+                    >
+                      <X size={14} />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {attachmentsError && (
+              <div className="qx-ai-config-error">{attachmentsError}</div>
             )}
             {queuedMessages.length > 0 && (
               <div className="qx-ai-message-queue">

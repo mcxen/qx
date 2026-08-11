@@ -91,7 +91,7 @@ QxShell **不负责** 主搜索引，只负责模块打开后的：
 |---|---|---|---|
 | **RSS** | 订阅源 title/url/folder | Open / Add Feed / Import OPML | `openFeed`；add/import 打开对话框 |
 | **Clipboard** | Launcher 专用慢 Provider：历史项文本/文件名 | Open Clipboard | 选中对应项 |
-| **QxAI** | 当前会话名（内存列表） | Open / New Chat / Settings | `selectConversation` / `createConversation` / settings |
+| **QxAI** | `QxAiSession` 持久化会话名 | Open / New Chat / Settings | `selectConversation` / `createConversation` / settings；活动会话可并发后台运行 |
 | **Macros** | 已保存宏 | Open Macro Recorder | `playMacro(id)` |
 | **Screencap** | GIF 历史文件名 | Open / Start Recording | `setPreview` / `startRecording` |
 | **Documents** | — | Open / Clean / Markdown / JSON | 切换 mode |
@@ -188,7 +188,7 @@ Rust：`ModuleSearchSettings`（`settings/mod.rs`），`enabled` 的 serde 缺�
 
 ## 10. 后续
 
-- QxAI 会话持久化后 surface 才跨重启可用
+- QxAI surface 从 `~/.qx/QxAiSession/sessions.json` 恢复，跨重启可用；附件由同一会话协议托管。
 - 插件 API：`context.search.contribute(hits)`
 - 文章级 RSS surface（注意噪声与上限）
 - 文件夹拖拽管理 UI

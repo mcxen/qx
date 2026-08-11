@@ -751,6 +751,18 @@ pub fn qxai_chat(
     )
 }
 
+fn prepare_qxai_chat_messages(
+    messages: Vec<serde_json::Value>,
+) -> Result<Vec<ChatMessage>, String> {
+    crate::qx_ai_sessions::prepare_provider_messages(messages)?
+        .into_iter()
+        .map(|message| {
+            serde_json::from_value(message)
+                .map_err(|error| format!("invalid QxAI chat message: {error}"))
+        })
+        .collect()
+}
+
 /// OpenAI-style function calling for built-in and custom compatible providers.
 /// Returns the raw `choices[0].message` JSON, including any `tool_calls`.
 #[tauri::command]
@@ -766,6 +778,7 @@ pub async fn qxai_chat_with_tools(
 
     let endpoint = provider_endpoint(&selection.provider)?;
 
+    let messages = crate::qx_ai_sessions::prepare_provider_messages(messages)?;
     let choice = tool_choice.unwrap_or_else(|| "auto".to_string());
     provider_openai_chat_with_tools(
         endpoint.base_url,
@@ -809,6 +822,7 @@ pub fn qxai_stream_chat_with_tools_events(
             let providers = qxai_provider_catalog();
             let selection = resolve_model_selection(&providers, provider, model)?;
             let endpoint = provider_endpoint(&selection.provider)?;
+            let messages = crate::qx_ai_sessions::prepare_provider_messages(messages)?;
             provider_openai_chat_with_tools_stream(
                 &endpoint.base_url,
                 &endpoint.api_key,
@@ -845,12 +859,16 @@ pub fn qxai_stream_chat_with_tools_events(
 pub fn qxai_stream_chat(
     provider: Option<String>,
     model: Option<String>,
-    messages: Vec<ChatMessage>,
+    messages: Vec<serde_json::Value>,
 ) -> Result<Vec<String>, String> {
     let providers = qxai_provider_catalog();
     let selection = resolve_model_selection(&providers, provider, model)?;
 
-    g4f_stream_chat(selection.provider, Some(selection.model), messages)
+    g4f_stream_chat(
+        selection.provider,
+        Some(selection.model),
+        prepare_qxai_chat_messages(messages)?,
+    )
 }
 
 #[tauri::command]
@@ -859,7 +877,7 @@ pub fn qxai_stream_chat_events(
     request_id: String,
     provider: Option<String>,
     model: Option<String>,
-    messages: Vec<ChatMessage>,
+    messages: Vec<serde_json::Value>,
     reasoning: Option<bool>,
 ) -> Result<(), String> {
     if !crate::runtime::pool::try_spawn(move || {
@@ -884,6 +902,7 @@ pub fn qxai_stream_chat_events(
             let selection = resolve_model_selection(&providers, provider, model)?;
 
             let endpoint = provider_endpoint(&selection.provider)?;
+            let messages = prepare_qxai_chat_messages(messages)?;
             provider_openai_chat_stream(
                 &endpoint.base_url,
                 &endpoint.api_key,

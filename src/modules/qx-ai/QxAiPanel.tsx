@@ -6,6 +6,7 @@ import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
+import { Loader2 } from "lucide-react";
 import { useStore } from "../../store";
 import { openAgentSettingsTab } from "./AiProviderConfig";
 import { useG4fStore } from "./store";
@@ -15,6 +16,7 @@ export default function QxAiPanel() {
   const setTab = useStore((state) => state.setTab);
   const {
     conversations,
+    runs,
     loading,
     error,
     setView,
@@ -55,6 +57,7 @@ export default function QxAiPanel() {
   });
 
   const selectedConv = filtered[selectedIndex];
+  const runningCount = Object.values(runs).filter((run) => run.streaming).length;
 
   const openSelected = () => {
     if (!selectedConv) return;
@@ -74,10 +77,12 @@ export default function QxAiPanel() {
       loading,
       loadingDetail: t("qxai.island.loading", "Loading providers…"),
       error,
-      detail: t("qxai.island.conversations", "{n} conversations").replace(
-        "{n}",
-        String(conversations.length),
-      ),
+      detail: runningCount > 0
+        ? t("qxai.background.running", "{n} conversations running").replace("{n}", String(runningCount))
+        : t("qxai.island.conversations", "{n} conversations").replace(
+            "{n}",
+            String(conversations.length),
+          ),
     },
   });
 
@@ -206,7 +211,10 @@ export default function QxAiPanel() {
               type="button"
             >
               <span className="qx-list-copy">
-                <span className="qx-list-title">{conv.name}</span>
+                <span className="qx-list-title">
+                  {conv.name}
+                  {runs[conv.id]?.streaming && <Loader2 size={13} className="qx-spin" aria-label={t("qxai.background.active", "Running in background")} />}
+                </span>
                 <span className="qx-list-subtitle">
                   {conv.provider} ·{" "}
                   {t("qxai.messages", "{n} messages").replace(

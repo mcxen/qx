@@ -11,6 +11,18 @@ import {
   runReactAgent,
 } from "./react-agent";
 import type { QxAiSkillDocument } from "./skills";
+import {
+  deleteQxAiSessionFiles,
+  isTauriRuntime,
+  loadQxAiSessions,
+  saveQxAiSessions,
+} from "./sessions";
+import {
+  completeQxAiRun,
+  dismissQxAiRun,
+  failQxAiRun,
+  showQxAiRun,
+} from "./run-island";
 
 export type { AgentStep } from "./react-agent";
 
@@ -28,6 +40,16 @@ export interface QueuedAiMessage {
   conversationId: string;
   content: string;
   skill?: QxAiSkillDocument;
+  attachments?: QxAiFileAttachment[];
+}
+
+export interface QxAiConversationRun {
+  streaming: boolean;
+  streamedContent: string;
+  streamedReasoning: string;
+  streamingSteps: AgentStep[];
+  error: string | null;
+  startedAt: number;
 }
 
 export interface G4fConversation {
@@ -125,11 +147,8 @@ interface G4fStore {
   builtInCredentials: BuiltInProviderCredential[];
   customProviders: CustomProvider[];
   loading: boolean;
-  streaming: boolean;
-  streamingConversationId: string | null;
-  streamedContent: string;
-  streamedReasoning: string;
-  streamingSteps: AgentStep[];
+  sessionsLoaded: boolean;
+  runs: Record<string, QxAiConversationRun>;
   messageQueue: QueuedAiMessage[];
   error: string | null;
   view: G4fView;
@@ -141,7 +160,6 @@ interface G4fStore {
   setCurrentProvider: (p: string) => void;
   setCurrentModel: (m: string) => void;
   setDefaultSystemPrompt: (p: string) => void;
-  setStreamedContent: (c: string) => void;
 
   /** Combined list of built-in + custom providers for UI selection. */
   providers: G4fProvider[];
@@ -152,9 +170,10 @@ interface G4fStore {
   selectConversation: (id: string) => void;
   setConversationModel: (id: string, provider: string, model: string) => void;
   setConversationReasoning: (id: string, enabled: boolean) => void;
+  loadSessions: () => Promise<void>;
 
-  sendMessage: (content: string, skill?: QxAiSkillDocument, conversationId?: string) => Promise<void>;
-  runNextQueuedMessage: () => void;
+  sendMessage: (content: string, skill?: QxAiSkillDocument, conversationId?: string, attachments?: QxAiFileAttachment[]) => Promise<void>;
+  runNextQueuedMessage: (conversationId: string) => void;
   removeQueuedMessage: (id: string) => void;
   clearMessages: () => void;
 
@@ -166,10 +185,6 @@ interface G4fStore {
   addCustomProvider: (p: Omit<CustomProvider, "id">) => Promise<void>;
   removeCustomProvider: (id: string) => Promise<void>;
   updateCustomProvider: (id: string, p: Partial<CustomProvider>) => Promise<void>;
-}
-
-function isTauriRuntime(): boolean {
-  return "__TAURI_INTERNALS__" in window;
 }
 
 function buildProviders(
@@ -305,11 +320,8 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   builtInCredentials: [],
   customProviders: [],
   loading: false,
-  streaming: false,
-  streamingConversationId: null,
-  streamedContent: "",
-  streamedReasoning: "",
-  streamingSteps: [],
+  sessionsLoaded: false,
+  runs: {},
   messageQueue: [],
   error: null,
   view: "list",
@@ -328,7 +340,22 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   },
   setCurrentModel: (currentModel) => set({ currentModel }),
   setDefaultSystemPrompt: (defaultSystemPrompt) => set({ defaultSystemPrompt }),
-  setStreamedContent: (streamedContent) => set({ streamedContent }),
+
+  loadSessions: async () => {
+    if (get().sessionsLoaded) return;
+    try {
+      const stored = await loadQxAiSessions();
+      const current = get().conversations;
+      const conversations = [
+        ...stored,
+        ...current.filter((conversation) =>
+          !stored.some((saved) => saved.id === conversation.id)),
+      ];
+      set({ conversations, sessionsLoaded: true });
+    } catch (error) {
+      set({ sessionsLoaded: true, error: String(error) });
+    }
+  },
 
   createConversation: (provider, model) => {
     const { currentProvider, currentModel, conversations, defaultSystemPrompt, providers } =
@@ -367,7 +394,10 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       currentConversationId:
         currentConversationId === id ? null : currentConversationId,
       messageQueue: get().messageQueue.filter((message) => message.conversationId !== id),
+      runs: Object.fromEntries(Object.entries(get().runs).filter(([conversationId]) => conversationId !== id)),
     });
+    dismissQxAiRun(id);
+    void deleteQxAiSessionFiles(id);
   },
 
   renameConversation: (id, name) => {
@@ -417,10 +447,10 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     }));
   },
 
-  sendMessage: async (content, skill, requestedConversationId) => {
+  sendMessage: async (content, skill, requestedConversationId, attachments) => {
     const targetConversationId = requestedConversationId ?? get().currentConversationId;
     if (!targetConversationId) return;
-    if (get().streaming || (!requestedConversationId && get().messageQueue.length > 0)) {
+    if (get().runs[targetConversationId]?.streaming) {
       set((state) => ({
         messageQueue: [
           ...state.messageQueue,
@@ -429,6 +459,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
             conversationId: targetConversationId,
             content,
             skill,
+            attachments,
           },
         ],
       }));
@@ -443,7 +474,8 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       defaultSystemPrompt,
     } = get();
     const currentConversationId = targetConversationId;
-    const scheduleNext = () => queueMicrotask(() => get().runNextQueuedMessage());
+    const scheduleNext = () =>
+      queueMicrotask(() => get().runNextQueuedMessage(currentConversationId));
 
     const conv = conversations.find((c) => c.id === currentConversationId);
     if (!conv) return;
@@ -475,32 +507,43 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         {
           role: "user",
           content,
+          ...(attachments?.length ? { attachments } : {}),
           ...(skill ? { skill: { id: skill.id, name: skill.name } } : {}),
         },
       ],
     };
     const titledConv = withAutoTitle(updatedConv);
 
-    set({
-      conversations: conversations.map((c) =>
+    set((state) => ({
+      conversations: state.conversations.map((c) =>
         c.id === currentConversationId ? titledConv : c,
       ),
-      streaming: true,
-      streamingConversationId: currentConversationId,
-      streamedContent: "",
-      streamedReasoning: "",
-      streamingSteps: [],
+      runs: {
+        ...state.runs,
+        [currentConversationId]: {
+          streaming: true,
+          streamedContent: "",
+          streamedReasoning: "",
+          streamingSteps: [],
+          error: null,
+          startedAt: Date.now(),
+        },
+      },
       error: null,
-    });
+    }));
+    showQxAiRun(currentConversationId, titledConv.name);
 
     if (!isTauriRuntime()) {
-      set({
-        streaming: false,
-        streamingConversationId: null,
-        streamedContent: "",
-        streamedReasoning: "",
-        streamingSteps: [],
-      });
+      set((state) => ({
+        runs: {
+          ...state.runs,
+          [currentConversationId]: {
+            ...state.runs[currentConversationId],
+            streaming: false,
+          },
+        },
+      }));
+      dismissQxAiRun(currentConversationId);
       scheduleNext();
       return;
     }
@@ -540,35 +583,55 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           model: selection.model,
           basePrompt,
           agentSettings,
+          reasoning: Boolean(titledConv.reasoningEnabled),
           onStep: (step) =>
-            set((s) =>
-              s.streamingConversationId === currentConversationId
-                ? { streamingSteps: [...s.streamingSteps, step] }
-                : s,
-            ),
+            set((state) => {
+              const run = state.runs[currentConversationId];
+              return !run?.streaming ? state : {
+                runs: {
+                  ...state.runs,
+                  [currentConversationId]: {
+                    ...run,
+                    streamingSteps: [...run.streamingSteps, step],
+                  },
+                },
+              };
+            }),
           onStepUpdate: (id, patch) =>
-            set((s) =>
-              s.streamingConversationId === currentConversationId
-                ? {
-                    streamingSteps: s.streamingSteps.map((step) =>
+            set((state) => {
+              const run = state.runs[currentConversationId];
+              return !run?.streaming ? state : {
+                runs: {
+                  ...state.runs,
+                  [currentConversationId]: {
+                    ...run,
+                    streamingSteps: run.streamingSteps.map((step) =>
                       step.id === id ? { ...step, ...patch } : step,
                     ),
-                  }
-                : s,
-            ),
+                  },
+                },
+              };
+            }),
           onAssistantStream: (text) =>
-            set((s) =>
-              s.streamingConversationId === currentConversationId
-                ? { streamedContent: text }
-                : s,
-            ),
+            set((state) => {
+              const run = state.runs[currentConversationId];
+              return !run?.streaming ? state : {
+                runs: {
+                  ...state.runs,
+                  [currentConversationId]: { ...run, streamedContent: text },
+                },
+              };
+            }),
           onReasoningStream: (text) =>
-            set((s) =>
-              s.streamingConversationId === currentConversationId
-                ? { streamedReasoning: text }
-                : s,
-            ),
-          reasoning: Boolean(titledConv.reasoningEnabled),
+            set((state) => {
+              const run = state.runs[currentConversationId];
+              return !run?.streaming ? state : {
+                runs: {
+                  ...state.runs,
+                  [currentConversationId]: { ...run, streamedReasoning: text },
+                },
+              };
+            }),
         });
 
         const assistantMessage: G4fMessage = {
@@ -579,18 +642,30 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           attachments: result.attachments,
         };
 
+        if (!get().conversations.some((conversation) => conversation.id === currentConversationId)) {
+          dismissQxAiRun(currentConversationId);
+          return;
+        }
+
         set((s) => ({
           conversations: s.conversations.map((c) =>
             c.id === currentConversationId
               ? { ...c, messages: [...c.messages, assistantMessage] }
               : c,
           ),
-          streaming: false,
-          streamingConversationId: null,
-          streamedContent: "",
-          streamedReasoning: "",
-          streamingSteps: [],
+          runs: {
+            ...s.runs,
+            [currentConversationId]: {
+              ...s.runs[currentConversationId],
+              streaming: false,
+              streamedContent: "",
+              streamedReasoning: "",
+              streamingSteps: [],
+              error: null,
+            },
+          },
         }));
+        completeQxAiRun(currentConversationId, titledConv.name);
         scheduleNext();
         return;
       }
@@ -612,24 +687,37 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         messages: requestMessages,
         reasoning: Boolean(titledConv.reasoningEnabled),
         onChunk: (full) =>
-          set((s) =>
-            s.streamingConversationId === currentConversationId
-              ? { streamedContent: full }
-              : s,
-          ),
+          set((state) => {
+            const run = state.runs[currentConversationId];
+            return !run?.streaming ? state : {
+              runs: {
+                ...state.runs,
+                [currentConversationId]: { ...run, streamedContent: full },
+              },
+            };
+          }),
         onReasoning: (full) =>
-          set((s) =>
-            s.streamingConversationId === currentConversationId
-              ? { streamedReasoning: full }
-              : s,
-          ),
+          set((state) => {
+            const run = state.runs[currentConversationId];
+            return !run?.streaming ? state : {
+              runs: {
+                ...state.runs,
+                [currentConversationId]: { ...run, streamedReasoning: full },
+              },
+            };
+          }),
       });
 
       const assistantMessage: G4fMessage = {
         role: "assistant",
         content: response,
-        reasoning: get().streamedReasoning || undefined,
+        reasoning: get().runs[currentConversationId]?.streamedReasoning || undefined,
       };
+
+      if (!get().conversations.some((conversation) => conversation.id === currentConversationId)) {
+        dismissQxAiRun(currentConversationId);
+        return;
+      }
 
       set((s) => ({
         conversations: s.conversations.map((c) =>
@@ -637,39 +725,53 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
             ? { ...c, messages: [...c.messages, assistantMessage] }
             : c,
         ),
-        streaming: false,
-        streamingConversationId: null,
-        streamedContent: "",
-        streamedReasoning: "",
-        streamingSteps: [],
+        runs: {
+          ...s.runs,
+          [currentConversationId]: {
+            ...s.runs[currentConversationId],
+            streaming: false,
+            streamedContent: "",
+            streamedReasoning: "",
+            streamingSteps: [],
+            error: null,
+          },
+        },
       }));
+      completeQxAiRun(currentConversationId, titledConv.name);
       scheduleNext();
     } catch (e) {
+      if (!get().conversations.some((conversation) => conversation.id === currentConversationId)) {
+        dismissQxAiRun(currentConversationId);
+        return;
+      }
       set((s) => ({
-        streaming: false,
-        streamingConversationId: null,
-        streamedContent: "",
-        streamedReasoning: "",
-        streamingSteps: [],
-        error: s.currentConversationId === currentConversationId ? String(e) : s.error,
+        runs: {
+          ...s.runs,
+          [currentConversationId]: {
+            ...s.runs[currentConversationId],
+            streaming: false,
+            streamedContent: "",
+            streamedReasoning: "",
+            streamingSteps: [],
+            error: String(e),
+          },
+        },
       }));
+      failQxAiRun(currentConversationId, titledConv.name, e);
       scheduleNext();
     }
   },
 
-  runNextQueuedMessage: () => {
-    if (get().streaming) return;
+  runNextQueuedMessage: (conversationId) => {
+    if (get().runs[conversationId]?.streaming) return;
     const queue = get().messageQueue;
-    const next = queue.find((message) =>
-      get().conversations.some((conversation) => conversation.id === message.conversationId),
-    );
+    const next = queue.find((message) => message.conversationId === conversationId);
     if (!next) {
-      if (queue.length > 0) set({ messageQueue: [] });
       return;
     }
     set({ messageQueue: queue.filter((message) => message.id !== next.id) });
     queueMicrotask(() => {
-      void get().sendMessage(next.content, next.skill, next.conversationId);
+      void get().sendMessage(next.content, next.skill, next.conversationId, next.attachments);
     });
   },
 
@@ -690,6 +792,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         (message) => message.conversationId !== currentConversationId,
       ),
     });
+    void deleteQxAiSessionFiles(currentConversationId);
   },
 
   loadProviders: async () => {
@@ -816,3 +919,34 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     }
   },
 }));
+
+let persistedConversations = useG4fStore.getState().conversations;
+let pendingPersistence: G4fConversation[] | null = null;
+let persistTimer: number | undefined;
+let persistenceRunning = false;
+
+async function flushQxAiPersistence(): Promise<void> {
+  if (persistenceRunning) return;
+  persistenceRunning = true;
+  try {
+    while (pendingPersistence) {
+      const conversations = pendingPersistence;
+      pendingPersistence = null;
+      await saveQxAiSessions(conversations);
+    }
+  } finally {
+    persistenceRunning = false;
+  }
+}
+
+useG4fStore.subscribe((state) => {
+  if (!state.sessionsLoaded || state.conversations === persistedConversations) return;
+  persistedConversations = state.conversations;
+  pendingPersistence = state.conversations;
+  if (persistTimer !== undefined) window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(() => {
+    void flushQxAiPersistence().catch((error) => {
+      useG4fStore.setState({ error: String(error) });
+    });
+  }, 180);
+});

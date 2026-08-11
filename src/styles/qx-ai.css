@@ -6,6 +6,18 @@
   position: relative;
 }
 
+.qx-ai-composer {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.qx-ai-composer > .qx-shadcn-button {
+  flex: 0 0 auto;
+}
+
 .qx-ai-skill-picker {
   position: absolute;
   z-index: 20;
@@ -127,6 +139,34 @@
   background: var(--qx-bg-component-2);
   color: var(--qx-text-secondary);
   font-size: 12px;
+}
+
+.qx-ai-pending-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.qx-ai-pending-attachment {
+  min-width: 0;
+  max-width: min(320px, 100%);
+  min-height: var(--qx-control-height);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+  padding-left: 10px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+}
+
+.qx-ai-pending-attachment > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .qx-ai-selected-skill > svg,
@@ -282,6 +322,14 @@
 
 .qx-ai-attachment > svg {
   color: var(--qx-accent);
+}
+
+.qx-ai-attachment-preview {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--qx-control-radius);
+  object-fit: cover;
+  background: var(--qx-bg-component-2);
 }
 
 .qx-ai-attachment-copy {

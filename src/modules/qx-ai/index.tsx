@@ -6,11 +6,11 @@ import QxAiChat from "./QxAiChat";
 import QxAiSettings from "./QxAiSettings";
 
 export default function QxAiReader() {
-  const { view, loadProviders, selectConversation, setView, createConversation } = useG4fStore();
+  const { view, loadProviders, loadSessions, selectConversation, setView, createConversation } = useG4fStore();
 
   useEffect(() => {
-    void loadProviders();
-  }, [loadProviders]);
+    void Promise.all([loadProviders(), loadSessions()]);
+  }, [loadProviders, loadSessions]);
 
   useEffect(() => {
     const launch = takePendingModuleLaunch("qx-ai");

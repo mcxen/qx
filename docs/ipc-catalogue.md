@@ -127,6 +127,12 @@ macOS 通过 `open -a "Google Chrome"` 启动，找不到应用时播放会明�
 
 `plugin_ai_list_providers`、`plugin_ai_default_model`、`plugin_ai_agent_settings`、`plugin_ai_chat(req)`、`plugin_ai_stream_chat(req)`、`plugin_ai_stream_chat_events(request_id, req)`、`plugin_ai_run_bash(req)`（有 timeout）、`plugin_ai_grep_search(req)`、`plugin_ai_memory_list/add/delete`。QxAI 的宿主动作不另造 OS 分支：路径打开/定位复用 `plugin_system_open_path/reveal_path`，文本复制复用 `plugin_clipboard_write`，文件复制复用 `clipboard_write_file_paths`，发送文件先经 `clipboard_file_metadata` 校验并作为对话附件返回。
 
+QxAI 内置会话存储命令：`qxai_sessions_load/save`、
+`qxai_session_import_attachments/delete`、`qxai_sessions_directory`。会话与
+附件统一落在 `~/.qx/QxAiSession`；导入在阻塞线程复制真实文件，供应商
+适配层再将图片/有界文本转换为多模态请求。`qx_storage_overview` 将其作为
+durable bucket 报告，`qx_storage_clear_qxai_sessions` 仅在用户显式确认后清理。
+
 任何来自插件 iframe 的调用先进 `plugin/rpcMethods.ts` 做 capability 校验，再走这些命令。
 
 ## plugin 通用宿主 API
@@ -228,6 +234,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 - `qx_storage_overview` — 返回总占用、可回收模块缓存、manifest 登记的插件缓存目标与受保护分桶
 - `qx_storage_clear_cache_target(target_id)` — 只清理注册表中的单个可重建缓存；插件目标格式 `plugin:<id>:<cache-id>` 并只删除声明的 persist key
 - `qx_storage_clear_cache/clear_files/clear_clipboard` — 分别清理全部注册缓存、生成文件或剪贴板附件
+- `qx_storage_clear_qxai_sessions` — 显式清理 QxAI 会话历史与托管附件；不属于可回收缓存
 - `qx_permissions_status/request/request_all/open_settings` — macOS TCC（含 Full Disk Access）
 - `qx_onboarding_platform` — 返回 `macos` / `windows` / `other`（首次启动引导）
 - `floating_set_onboarding_active` — 引导期间抑制 blur 自动隐藏
@@ -256,7 +263,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `rss_rename_folder`, `rss_delete_folder`, `rss_set_feed_folder`, `rss_clear_read_articles`,
 `rss_clear_all_articles`, `rss_fetch_original_content`, `get_settings`, `update_settings`, `reset_settings`,
 `import_settings`, `export_settings`, `shortcuts_pause_global`, `shortcuts_resume_global`,
-`qx_storage_overview`, `qx_storage_clear_cache`, `qx_storage_clear_cache_target`, `qx_storage_clear_files`,
+`qx_storage_overview`, `qx_storage_clear_cache`, `qx_storage_clear_cache_target`, `qx_storage_clear_files`, `qx_storage_clear_qxai_sessions`,
 `qx_storage_clear_clipboard`, `qx_storage_clear_clipboard_history`, `qx_storage_clear_launcher_history`,
 `qx_storage_clear_rss_cache`, `qx_storage_clear_reclaimable`, `docs_workspace_path`, `docs_open_workspace`,
 `docs_list_files`, `docs_read_file`, `docs_write_file`, `docs_create_file`, `docs_rename_file`,
@@ -291,6 +298,8 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `plugin_system_save_download`, `plugin_system_open_path`, `plugin_system_reveal_path`,
 `plugin_system_open_settings`, `plugin_ai_grep_search`, `plugin_ai_memory_list`, `plugin_ai_memory_add`,
 `plugin_ai_memory_delete`, `qxai_skills_directory`, `qxai_list_skills`, `qxai_read_skill`,
+`qxai_sessions_load`, `qxai_sessions_save`, `qxai_session_import_attachments`,
+`qxai_session_delete`, `qxai_sessions_directory`,
 `plugin_http_fetch`, `plugin_notification_show`, `plugin_resolve_asset`,
 `qx_permissions_status`, `qx_permissions_request`, `qx_permissions_request_all`,
 `qx_permissions_open_settings`, `qx_onboarding_platform`, `qx_update_check`, `qx_update_download_and_install`,

@@ -1,6 +1,6 @@
 import { Suspense, lazy, memo, useMemo } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { Brain, CheckCircle2, Copy, ExternalLink, File, FolderSearch, Loader2, Search, Wrench, XCircle } from "lucide-react";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { Brain, CheckCircle2, Copy, ExternalLink, File, FolderSearch, Image, Loader2, Search, Wrench, XCircle } from "lucide-react";
 import { Button } from "../../components/ui";
 import { useT } from "../../i18n";
 import { openSystemPath, revealSystemPath } from "../../system/pathActions";
@@ -20,7 +20,13 @@ function FileAttachments({ attachments }: { attachments: QxAiFileAttachment[] })
     <div className="qx-ai-attachments">
       {attachments.map((attachment) => (
         <div className="qx-ai-attachment" key={attachment.path}>
-          <File size={18} aria-hidden="true" />
+          {attachment.kind === "image" ? (
+            <img className="qx-ai-attachment-preview" src={convertFileSrc(attachment.path)} alt="" />
+          ) : attachment.mimeType?.startsWith("image/") ? (
+            <Image size={18} aria-hidden="true" />
+          ) : (
+            <File size={18} aria-hidden="true" />
+          )}
           <div className="qx-ai-attachment-copy">
             <strong title={attachment.name}>{attachment.name}</strong>
             <span title={attachment.path}>{formatFileSize(attachment.size)} · {attachment.path}</span>

@@ -32,6 +32,7 @@ mod permissions;
 mod plugin_api;
 mod plugin_cli;
 mod plugin_system;
+mod qx_ai_sessions;
 mod qx_ai_skills;
 mod rss;
 mod runtime;
@@ -716,6 +717,7 @@ pub fn run() {
             storage::qx_storage_clear_cache,
             storage::qx_storage_clear_cache_target,
             storage::qx_storage_clear_files,
+            storage::qx_storage_clear_qxai_sessions,
             storage::qx_storage_clear_clipboard,
             storage::qx_storage_clear_clipboard_history,
             storage::qx_storage_clear_launcher_history,
@@ -845,6 +847,11 @@ pub fn run() {
             qx_ai_skills::qxai_skills_directory,
             qx_ai_skills::qxai_list_skills,
             qx_ai_skills::qxai_read_skill,
+            qx_ai_sessions::qxai_sessions_load,
+            qx_ai_sessions::qxai_sessions_save,
+            qx_ai_sessions::qxai_session_import_attachments,
+            qx_ai_sessions::qxai_session_delete,
+            qx_ai_sessions::qxai_sessions_directory,
             plugin_api::plugin_http_fetch,
             plugin_api::plugin_notification_show,
             plugin_api::plugin_resolve_asset,
