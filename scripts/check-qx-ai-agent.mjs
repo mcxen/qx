@@ -62,6 +62,18 @@ assert.match(agentSource, /clipboard_write_file_paths/);
 assert.match(storeSource, /attachments:\s*result\.attachments/);
 assert.match(messageSource, /qx-ai-attachments/);
 
+// Native reasoning is recorded as an ordered Agent step for every model turn.
+// It must be appended before that turn's tool action and updated in place,
+// rather than rendered through one global reasoning block that moves as tools arrive.
+assert.match(agentSource, /createOrderedReasoningRecorder/);
+assert.match(agentSource, /steps\.push\(reasoningStep\)/);
+assert.match(agentSource, /onStepUpdate\(reasoningStep\.id, \{ text \}\)/);
+assert.match(
+  agentSource,
+  /createOrderedReasoningRecorder\(steps, opts\)[\s\S]*?streamFunctionCallingOnce[\s\S]*?const toolCalls/,
+);
+assert.doesNotMatch(agentSource, /reasoning:\s*message\.reasoning_content/);
+
 const chatSource = readFileSync(
   new URL("../src/modules/qx-ai/QxAiChat.tsx", import.meta.url),
   "utf8",

@@ -890,6 +890,7 @@ async function streamFunctionCallingOnce(
   opts: AgentRunOptions,
   messages: Array<Record<string, unknown>>,
   tools: Array<Record<string, unknown>>,
+  onReasoningStream: (text: string) => void = opts.onReasoningStream,
 ): Promise<OpenAIMessage> {
   const requestId = `qxai-tools-${Date.now().toString(36)}-${Math.random()
     .toString(36)
@@ -928,7 +929,7 @@ async function streamFunctionCallingOnce(
       }
       if (event.payload.kind === "reasoning") {
         reasoning += event.payload.chunk;
-        opts.onReasoningStream(reasoning);
+        onReasoningStream(reasoning);
       } else {
         content += event.payload.chunk;
         opts.onAssistantStream(content);
@@ -970,7 +971,7 @@ async function streamFunctionCallingOnce(
         toolChoice: tools.length > 0 ? "auto" : "none",
       });
       if (message.reasoning_content) {
-        opts.onReasoningStream(message.reasoning_content);
+        onReasoningStream(message.reasoning_content);
       }
       if (message.content) {
         opts.onAssistantStream(message.content);
@@ -986,6 +987,33 @@ async function streamFunctionCallingOnce(
       );
     }
   }
+}
+
+function createOrderedReasoningRecorder(steps: AgentStep[], opts: AgentRunOptions) {
+  let reasoningStep: AgentStep | undefined;
+  return {
+    update(text: string) {
+      if (!text) return;
+      if (!reasoningStep) {
+        reasoningStep = {
+          id: nextStepId(),
+          kind: "thought",
+          text,
+          state: "running",
+        };
+        steps.push(reasoningStep);
+        opts.onStep(reasoningStep);
+        return;
+      }
+      reasoningStep.text = text;
+      opts.onStepUpdate(reasoningStep.id, { text });
+    },
+    complete() {
+      if (!reasoningStep) return;
+      reasoningStep.state = "completed";
+      opts.onStepUpdate(reasoningStep.id, { state: "completed" });
+    },
+  };
 }
 
 export async function runFunctionCallingAgent(
@@ -1019,9 +1047,12 @@ export async function runFunctionCallingAgent(
 
   for (let i = 0; i < maxIterations; i++) {
     let message: OpenAIMessage;
+    const reasoning = createOrderedReasoningRecorder(steps, opts);
     try {
-      message = await streamFunctionCallingOnce(opts, working, tools);
+      message = await streamFunctionCallingOnce(opts, working, tools, reasoning.update);
+      reasoning.complete();
     } catch (err) {
+      reasoning.complete();
       const errStep: AgentStep = {
         id: nextStepId(),
         kind: "error",
@@ -1048,7 +1079,6 @@ export async function runFunctionCallingAgent(
       opts.onStep(finalStep);
       return {
         finalAnswer: finalText,
-        reasoning: message.reasoning_content,
         steps,
         attachments,
       };
@@ -1131,12 +1161,15 @@ export async function runFunctionCallingAgent(
     },
   ];
 
+  const recoveryReasoning = createOrderedReasoningRecorder(steps, opts);
   try {
     const recoveryMessage = await streamFunctionCallingOnce(
       opts,
       recoveryMessages,
       [],
+      recoveryReasoning.update,
     );
+    recoveryReasoning.complete();
     const finalText = (recoveryMessage.content?.trim() ?? lastFinal).trim();
     const finalStep: AgentStep = {
       id: nextStepId(),
@@ -1148,11 +1181,11 @@ export async function runFunctionCallingAgent(
     opts.onStep(finalStep);
     return {
       finalAnswer: finalText,
-      reasoning: recoveryMessage.reasoning_content,
       steps,
       attachments,
     };
   } catch {
+    recoveryReasoning.complete();
     // recovery failed, fall through to error
   }
 
