@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { getQxDesktopPlatform } from "../utils/keyboard";
 
 function isTauriRuntime(): boolean {
   return "__TAURI_INTERNALS__" in window;
@@ -22,6 +23,10 @@ const KEY_WINDOW_MIN_INTERVAL_MS = 80;
  */
 export function requestPanelKeyWindow(): void {
   if (!isTauriRuntime()) return;
+  // Only the macOS NSPanel is intentionally non-activating. Windows/Tao has
+  // already focused the shown window; another native set_focus per DOM focus
+  // edge creates WebView2 focus churn on the typing critical path.
+  if (getQxDesktopPlatform() !== "macos") return;
   const now = Date.now();
   const elapsed = now - lastKeyWindowRequestAt;
   if (elapsed >= KEY_WINDOW_MIN_INTERVAL_MS) {

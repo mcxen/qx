@@ -353,6 +353,53 @@ const pluginRegistrySource = read("src/plugin/registry.ts");
 if (!pluginRegistrySource.includes("resolveBackgroundNextRunAt")) {
   fail("plugin registry must use the shared background schedule resolver");
 }
+if (pluginRegistrySource.includes("Dev watcher refresh tick")
+    || pluginRegistrySource.includes("startDevWatcher")) {
+  fail("plugin registry must not poll plugin files; rescans are manual or one-shot missing-target fallback");
+}
+for (const token of [
+  "resolveCommand: async",
+  "resolvePanel: async",
+  "waitForPluginRegistryIdle",
+  "await Promise.allSettled(eagerPlugins.map(loadOne))",
+]) {
+  if (!pluginRegistrySource.includes(token)) {
+    fail(`plugin registry missing asynchronous cached/fallback contract: ${token}`);
+  }
+}
+const marketplaceSource = read("src-tauri/src/marketplace/mod.rs");
+if (!marketplaceSource.includes("pub async fn list_installed_plugins()")
+    || !marketplaceSource.includes("spawn_blocking(list_installed_plugins_sync)")) {
+  fail("installed plugin directory scans must run asynchronously outside the Tauri command/UI thread");
+}
+const pluginManagerSource = read("src/modules/settings/plugins/PluginManager.tsx");
+if (pluginManagerSource.includes("if (!loaded && !loading)")) {
+  fail("PluginManager must consume the cached registry; mount must not start a refresh loop");
+}
+const activationSource = read("src/shell/windowActivation.ts");
+for (const token of [
+  "registerWindowActivationTask",
+  "publishWindowActivation",
+  "requestIdleCallback",
+  "setMainWindowAvailable",
+]) {
+  if (!activationSource.includes(token)) {
+    fail(`window activation port missing deferred scheduling contract: ${token}`);
+  }
+}
+const homeIslandBusSource = read("src/home-island/data/bus.ts");
+if (homeIslandBusSource.includes('addEventListener("focusin"')
+    || homeIslandBusSource.includes('addEventListener("focus"')) {
+  fail("home island metrics must use the deferred activation port, not focus/focusin sampling waves");
+}
+const screenRecorderSource = read("src/modules/screencap/ScreenRecorder.tsx");
+if (screenRecorderSource.includes("onFocusChanged")) {
+  fail("screen recorder focus refresh must use the deferred activation port");
+}
+const panelKeySource = read("src/hooks/usePanelKeyWindow.ts");
+if (!panelKeySource.includes('getQxDesktopPlatform() !== "macos"')) {
+  fail("Windows DOM focus must not repeatedly request the native panel key window");
+}
 for (const token of [
   "const pluginRpcHandlers = new Map",
   "installPluginRpcHandler(plugin.id, rpcHandler)",

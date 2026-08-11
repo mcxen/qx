@@ -39,7 +39,7 @@ function resolveProxyMode(adv: {
 
 export default function AdvancedSettings() {
   const { settings, patch, importFrom, exportTo, reset } = useSettingsStore();
-  const { devWatcherActive, startDevWatcher, stopDevWatcher, refresh } = usePluginRegistry();
+  const { refresh, loaded: pluginsLoaded, loading: pluginsLoading } = usePluginRegistry();
   const t = useT();
   const adv = settings.advanced;
   const g = settings.general;
@@ -347,25 +347,19 @@ export default function AdvancedSettings() {
         )}
 
         <Row
-          title={t("advanced.hotReload", "Dev Mode Hot Reload")}
-          description={t("advanced.hotReload.desc", "Auto-refresh plugins every 3 seconds while developing.")}
-        >
-          <Button
-            type="button"
-            variant={devWatcherActive ? "destructive" : "secondary"}
-            size="sm"
-            onClick={() => (devWatcherActive ? stopDevWatcher() : startDevWatcher())}
-          >
-            {devWatcherActive ? t("advanced.stopWatching", "Stop Watching") : t("advanced.startWatching", "Start Watching")}
-          </Button>
-        </Row>
-
-        <Row
           title={t("advanced.reloadPlugins", "Reload Plugins")}
           description={t("advanced.reloadPlugins.desc", "Manually rescan and reload all installed plugins.")}
         >
-          <Button type="button" variant="outline" size="sm" onClick={() => refresh()}>
-            {t("advanced.reloadNow", "Reload Now")}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={!pluginsLoaded || pluginsLoading}
+            onClick={() => void refresh()}
+          >
+            {pluginsLoading
+              ? t("plugins.marketplace.rescanning", "Rescanning")
+              : t("advanced.reloadNow", "Reload Now")}
           </Button>
         </Row>
       </SettingsCard>

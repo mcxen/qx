@@ -2956,8 +2956,10 @@ fn list_installed_plugins_sync() -> Result<Vec<InstalledPlugin>, String> {
 }
 
 #[command]
-pub fn list_installed_plugins() -> Result<Vec<InstalledPlugin>, String> {
-    list_installed_plugins_sync()
+pub async fn list_installed_plugins() -> Result<Vec<InstalledPlugin>, String> {
+    tauri::async_runtime::spawn_blocking(list_installed_plugins_sync)
+        .await
+        .map_err(|error| format!("join installed plugin scan: {error}"))?
 }
 
 #[command]

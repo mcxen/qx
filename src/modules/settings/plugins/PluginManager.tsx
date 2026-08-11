@@ -1956,13 +1956,6 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
     }
   }, [plugins]);
 
-  /* Trigger a load if the registry hasn't been populated yet. */
-  useEffect(() => {
-    if (!loaded && !loading) {
-      void refresh();
-    }
-  }, [loaded, loading, refresh]);
-
   /* ---- actions ---- */
 
   const handleInstallFromPath = async () => {
@@ -2139,9 +2132,21 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
               </Button>
             )}
             {tab === "installed" ? (
-              <Button variant="outline" size="sm" onClick={handleRefresh} title={t("plugins.rescan.desc", "Rescan plugins")}>
-                <RefreshCw size={13} aria-hidden="true" />
-                {t("plugins.rescan", "Rescan")}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                disabled={loading || !loaded}
+                title={t("plugins.rescan.desc", "Rescan plugins")}
+              >
+                {loading ? (
+                  <LoadingLabel>{t("plugins.marketplace.rescanning", "Rescanning")}</LoadingLabel>
+                ) : (
+                  <>
+                    <RefreshCw size={13} aria-hidden="true" />
+                    {t("plugins.rescan", "Rescan")}
+                  </>
+                )}
               </Button>
             ) : (
               <div className="qx-plugin-marketplace-tools-host" ref={setMarketplaceToolbarHost} />
@@ -2224,7 +2229,9 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
       <TabsContent value="installed" className="qx-marketplace qx-plugin-installed-tab">
         {displayPlugins.length === 0 ? (
           <div className="qx-empty-state">
-            {loading ? t("plugins.loadingModules", "Loading modules...") : t("plugins.noModules", "No modules installed")}
+            {!loaded || loading
+              ? t("plugins.loadingModules", "Loading modules...")
+              : t("plugins.noModules", "No modules installed")}
           </div>
         ) : filteredPlugins.length === 0 ? (
           <div className="qx-empty-state">

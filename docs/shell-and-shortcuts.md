@@ -301,6 +301,22 @@ with_db / ensure_open:
 
 `focusInput` 在 `visible` 变化与 Launcher 再次获得 key focus 时都会 immediate + rAF + 一次短 timeout 有限重试（key window / WebView first responder 异步）；失焦/隐藏必须立即取消前端 retry 与 debounce。Rust `floating_request_key` 在 UI 线程触碰 AppKit 前必须重新确认 `PANEL_OPEN && is_visible`，禁止迟到的 `makeKeyAndOrderFront` 复活已因 outside click 隐藏的窗口。重试不得形成轮询，也不得从已聚焦的其他文本编辑器或打开的键盘弹层抢焦点。Launcher 空 query 的 Esc 另有 window bubble fallback，仅在 React/Radix 未消费事件时隐藏窗口，不使用进程级键盘 monitor。
 
+Windows WebView2 已经拥有普通激活窗口语义，`usePanelKeyWindow` 不得在每次 DOM focus 时调用
+`floating_request_key`；该原生 key-window 请求只用于 macOS 非激活 NSPanel。否则输入框、按钮与
+列表之间的焦点移动会产生重复 IPC 和 WebView2 `set_focus` 抖动，直接拖慢键盘与搜索。
+
+### 6.0 窗口激活后台任务
+
+`src/shell/windowActivation.ts` 是窗口 show/focus/navigate 后的统一异步端口。`App.tsx` 的
+原生 focus 回调只同步可见状态、恢复 Launcher 快照和搜索焦点，然后发布一次 activation；
+缓存修复、使用记录读取、系统指标、剪贴板目标名称、截图会话与历史同步必须注册为稳定 id
+的 activation task。端口负责延迟到首帧之后、进入浏览器 idle queue、按 id 合并、限频，并在
+窗口隐藏时取消尚未开始的任务。
+
+禁止模块新增裸 `window.focus` / `focusin` 后台刷新监听，禁止在 focus 回调中扫描插件目录、
+遍历文件、查询数据库、启动多轮系统采样或等待 IPC。插件文件只在首次异步加载、用户手动
+“重新扫描”，以及执行时发现命令/面板缺失后的单次统一兜底刷新中读取。
+
 焦点所有权分成两层：
 
 - Launcher 的 `SearchBar` 在明确召唤/返回 Launcher 时聚焦，并保留 capture 级裸字符兜底；

@@ -157,17 +157,24 @@ interface PluginRegistryStore {
   refresh: () => Promise<void>;
   findCommands: (query: string) => CommandMatch[];
   getPanel: (id: string) => RegisteredPanel | undefined;
+  resolveCommand: (pluginId: string, commandName: string) => Promise<RegisteredCommand | undefined>;
+  resolvePanel: (pluginId: string) => Promise<RegisteredPanel | undefined>;
   runCommand: (
     command: RegisteredCommand,
     options?: import("./types").PluginCommandRunOptions,
   ) => Promise<void>;
-  /** Start watching for plugin file changes (dev mode). */
-  startDevWatcher: () => void;
-  /** Stop watching for plugin file changes. */
-  stopDevWatcher: () => void;
-  devWatcherActive: boolean;
-  /** @internal */ _devWatcherInterval: ReturnType<typeof setInterval> | null;
   /** @internal */ _loadToken: number;
+}
+
+function waitForPluginRegistryIdle(): Promise<void> {
+  if (!usePluginRegistry.getState().loading) return Promise.resolve();
+  return new Promise((resolve) => {
+    const unsubscribe = usePluginRegistry.subscribe((state) => {
+      if (state.loading) return;
+      unsubscribe();
+      resolve();
+    });
+  });
 }
 
 function normalizeQuery(q: string): string {
@@ -368,8 +375,6 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
   loading: false,
   error: null,
   hooks: null,
-  devWatcherActive: false,
-  _devWatcherInterval: null as ReturnType<typeof setInterval> | null,
   _loadToken: 0,
 
   load: async (hooks) => {
@@ -437,14 +442,6 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
         loaded: true,
       });
       startPluginLocaleBridge();
-
-      if (eagerPlugins.length > 0) {
-        hooks.onPluginStatus?.({
-          kind: "activity",
-          label: "Plugins",
-          detail: `Loading ${eagerPlugins.length} plugin${eagerPlugins.length === 1 ? "" : "s"}`,
-        });
-      }
 
       const loadOne = async (plugin: InstalledPlugin) => {
         if (get()._loadToken !== loadToken) return;
@@ -622,12 +619,6 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
             ...get().commands,
             ...result.commands,
           ]);
-          hooks.onPluginStatus?.({
-            kind: "success",
-            pluginId: plugin.id,
-            label: "Plugin loaded",
-            detail: plugin.name,
-          });
           return result;
         } catch (err) {
           registryLogger.error("Plugin failed to load into registry", {
@@ -717,15 +708,14 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
         registryLogger.debug("Plugin registered as manifest-only provider", { pluginId: plugin.id });
       }
 
-      void Promise.allSettled(eagerPlugins.map(loadOne)).then(() => {
-        if (get()._loadToken === loadToken) {
-          registryLogger.info("Plugin registry load completed", {
-            loadToken,
-            durationMs: Math.round(performance.now() - startedAt),
-          });
-          set({ loading: false });
-        }
-      });
+      await Promise.allSettled(eagerPlugins.map(loadOne));
+      if (get()._loadToken === loadToken) {
+        registryLogger.info("Plugin registry load completed", {
+          loadToken,
+          durationMs: Math.round(performance.now() - startedAt),
+        });
+        set({ loading: false });
+      }
     } catch (err) {
       registryLogger.error("Plugin registry load failed", {
         loadToken,
@@ -886,12 +876,12 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     const next = pluginRefreshQueue.then(async () => {
       const hooks = get().hooks;
       registryLogger.info("Plugin registry refresh started", { hasHooks: Boolean(hooks) });
-      await get().unload();
-      if (hooks) {
-        await get().load(hooks);
-      } else {
-        set({ loaded: true, loading: false });
+      if (!hooks) {
+        registryLogger.info("Plugin registry refresh deferred until initial load");
+        return;
       }
+      await get().unload();
+      await get().load(hooks);
       registryLogger.info("Plugin registry refresh requested");
     });
     pluginRefreshQueue = next.catch(() => undefined);
@@ -913,6 +903,37 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
   },
 
   getPanel: (id: string) => get().panels[id],
+
+  resolveCommand: async (pluginId, commandName) => {
+    const lookup = () => get().commands.find(
+      (command) => command.pluginId === pluginId && command.name === commandName,
+    );
+    let command = lookup();
+    if (command) return command;
+    await waitForPluginRegistryIdle();
+    command = lookup();
+    if (command) return command;
+    registryLogger.info("Plugin command missing; refreshing registry once", {
+      pluginId,
+      command: commandName,
+    });
+    await get().refresh();
+    await waitForPluginRegistryIdle();
+    return lookup();
+  },
+
+  resolvePanel: async (pluginId) => {
+    const lookup = () => get().panels[pluginId];
+    let panel = lookup();
+    if (panel) return panel;
+    await waitForPluginRegistryIdle();
+    panel = lookup();
+    if (panel) return panel;
+    registryLogger.info("Plugin panel missing; refreshing registry once", { pluginId });
+    await get().refresh();
+    await waitForPluginRegistryIdle();
+    return lookup();
+  },
 
   runCommand: async (command, options) => {
     const startedAt = performance.now();
@@ -968,27 +989,4 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     }
   },
 
-  startDevWatcher: () => {
-    if (get().devWatcherActive) return;
-    const existing = get()._devWatcherInterval;
-    if (existing) clearInterval(existing);
-    const interval = setInterval(async () => {
-      try {
-        registryLogger.debug("Dev watcher refresh tick");
-        await get().refresh();
-      } catch (error) {
-        registryLogger.warn("Dev watcher refresh failed", { error });
-        // Ignore errors during auto-refresh
-      }
-    }, 3000);
-    set({ devWatcherActive: true, _devWatcherInterval: interval });
-    registryLogger.info("Plugin dev watcher started");
-  },
-
-  stopDevWatcher: () => {
-    const interval = (get() as any)._devWatcherInterval;
-    if (interval) clearInterval(interval);
-    set({ devWatcherActive: false, _devWatcherInterval: null });
-    registryLogger.info("Plugin dev watcher stopped");
-  },
 }));

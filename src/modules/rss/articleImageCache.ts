@@ -34,19 +34,22 @@ function decodeLocalImage(source: string): Promise<void> {
   if (existing) return existing;
   if (typeof Image === "undefined") return Promise.resolve();
 
-  const pending = new Promise<void>((resolve) => {
+  const pending = new Promise<void>((resolve, reject) => {
     const image = new Image();
     image.decoding = "async";
     image.onload = () => {
       const decoded = image.decode?.();
       if (decoded) {
-        void decoded.catch(() => {}).finally(resolve);
+        void decoded.then(() => resolve(), reject);
       } else {
         resolve();
       }
     };
-    image.onerror = () => resolve();
+    image.onerror = () => reject(new Error(`Failed to load cached RSS image: ${source}`));
     image.src = source;
+  }).catch((error) => {
+    decodePromises.delete(source);
+    throw error;
   });
   decodePromises.set(source, pending);
   return pending;

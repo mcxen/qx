@@ -1,5 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { isTauriRuntime, pushLevel, rateToLevel } from "../shared";
+import {
+  isMainWindowAvailable,
+  registerWindowActivationTask,
+  subscribeMainWindowAvailability,
+} from "../../shell/windowActivation";
 import type {
   IslandDataChannel,
   IslandDataListener,
@@ -100,7 +105,8 @@ class HomeIslandDataBus {
   private generation = 0;
   private netPrev: { in: number; out: number; t: number } | null = null;
   private visibilityBound = false;
-  private focusBound = false;
+  private stopActivationTask: (() => void) | null = null;
+  private stopAvailabilitySubscription: (() => void) | null = null;
   private idleHandle: number | null = null;
   private kickTimers: ReturnType<typeof setTimeout>[] = [];
 
@@ -141,7 +147,7 @@ class HomeIslandDataBus {
     this.listeners.add(listener);
     listener(this.state);
     this.ensureVisibilityHook();
-    this.ensureFocusHook();
+    this.ensureActivationHook();
     this.reconcilePollers();
     // Immediate path + idle path so first paint isn't stuck on "--" forever.
     this.kick(channels);
@@ -153,6 +159,7 @@ class HomeIslandDataBus {
         this.interest[ch] = Math.max(0, this.interest[ch] - 1);
       }
       this.reconcilePollers();
+      if (this.listeners.size === 0) this.releaseActivationHook();
     };
   }
 
@@ -167,13 +174,29 @@ class HomeIslandDataBus {
     document.addEventListener("visibilitychange", this.onVisibility);
   }
 
-  private ensureFocusHook(): void {
-    if (this.focusBound || typeof window === "undefined") return;
-    this.focusBound = true;
-    // Floating panel show often restores focus without a clean visibility flip
-    // after WebView timer throttling — kick metrics when we become active again.
-    window.addEventListener("focus", this.onWindowFocus);
-    document.addEventListener("focusin", this.onWindowFocus);
+  private ensureActivationHook(): void {
+    if (this.stopActivationTask || typeof window === "undefined") return;
+    this.stopActivationTask = registerWindowActivationTask({
+      id: "home-island.metrics",
+      delayMs: 260,
+      minIntervalMs: 1_000,
+      run: () => {
+        const active = (Object.keys(this.interest) as IslandDataChannel[]).filter(
+          (channel) => this.interest[channel] > 0,
+        );
+        for (const channel of active) void this.sample(channel);
+      },
+    });
+    this.stopAvailabilitySubscription = subscribeMainWindowAvailability(() => {
+      this.reconcilePollers();
+    });
+  }
+
+  private releaseActivationHook(): void {
+    this.stopActivationTask?.();
+    this.stopActivationTask = null;
+    this.stopAvailabilitySubscription?.();
+    this.stopAvailabilitySubscription = null;
   }
 
   private onVisibility = (): void => {
@@ -182,22 +205,14 @@ class HomeIslandDataBus {
       const active = (Object.keys(this.interest) as IslandDataChannel[]).filter(
         (ch) => this.interest[ch] > 0,
       );
-      this.kick(active);
+      this.scheduleIdleSample(active);
     }
-  };
-
-  private onWindowFocus = (): void => {
-    if (typeof document !== "undefined" && document.hidden) return;
-    const active = (Object.keys(this.interest) as IslandDataChannel[]).filter(
-      (ch) => this.interest[ch] > 0,
-    );
-    if (active.length > 0) this.kick(active);
   };
 
   private reconcilePollers(): void {
     const hidden = typeof document !== "undefined" && document.hidden;
     for (const ch of Object.keys(INTERVAL_MS) as IslandDataChannel[]) {
-      const want = !hidden && this.interest[ch] > 0;
+      const want = !hidden && isMainWindowAvailable() && this.interest[ch] > 0;
       const has = this.timers[ch] !== undefined;
       if (want && !has) {
         this.timers[ch] = setInterval(() => {

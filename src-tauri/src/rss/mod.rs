@@ -747,10 +747,15 @@ pub async fn rss_fetch_original_content(url: String) -> Result<String, String> {
 
 #[command]
 pub async fn rss_cache_article_image(
+    app: AppHandle,
     url: String,
     referer: Option<String>,
 ) -> Result<String, String> {
-    article_image_cache::resolve(&url, referer.as_deref()).await
+    let path = article_image_cache::resolve(&url, referer.as_deref()).await?;
+    app.asset_protocol_scope()
+        .allow_file(Path::new(&path))
+        .map_err(|error| format!("allow cached RSS image failed: {error}"))?;
+    Ok(path)
 }
 
 fn extract_article_body(html: &str) -> String {

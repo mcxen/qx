@@ -101,7 +101,7 @@ leave 走 `closeSettings()`。该端口维护一层 `returnTo`，使「模块 �
 |------|--------|------------|
 | Rust setup | `apps::ensure_cache`（DB 冷读 ~1ms） | setup 线程内扫全盘、sips 图标、prune 更新缓存 |
 | Phase 1 | `search_apps("")` 与 `loadSettings` **并行** | 把首页 IPC 串在 settings 之后；插件加载 |
-| 唤醒 show | 复用 12s 内缓存 + `lastHomeAppResults` 快照；单次 focus | 每次 focus 全量 reload；`setTab` 清空 results；连发 `floating_request_key` |
+| 唤醒 show | 立即复用 `lastHomeAppResults` 快照；单次 focus；缺失/空图标稍后走 activation task 修复 | 每次 focus 全量 reload；`setTab` 清空 results；连发 `floating_request_key` |
 | 后台（延后） | 插件 ≥1.4s idle；模块 chunk idle 预取；自动更新 ≥18s 且面板隐藏 | 启动 2s 内下载 zip |
 | 事件 | `apps:updated` / `icons-ready` debounce | 扫描完成立刻多次 `search_apps` 打爆列表 |
 
@@ -118,7 +118,7 @@ leave 走 `closeSettings()`。该端口维护一层 `returnTo`，使「模块 �
 5. 计算器经 `calculatorAsync`（Worker + latest-wins；Worker 不可用时 microtask 降级）求值后 `prepend` 一条 `kind: "calculation"`；Enter 复制数值，不用 `eval`。回调用 `searchSeqRef` + 当前 query 双校验丢弃过期
 6. `search_apps` 只在 Rust 内存缓存中评分；查询热路径不修复图标、不访问文件系统。文件 pass 1/2 在自己的 provider 内渐进执行，但与应用、剪贴板、模块保持并发
 7. 结果合并 → `applyResults`：先按 provider 顺序立即发布，保证输入后马上可见；同时维护当前 query 的候选快照，经 `rankResultsAsync` 投递给独立 Web Worker 执行全局重排，回传后再更新稳定顺序
-8. **不阻塞主路径**：`refreshSearchUsageCache()` 异步拉 `get_search_click_stats`；就绪后用同一 `seq` 再 `applyResults` 一次
+8. **不阻塞主路径**：使用记录缓存由限频的 window activation task 在首帧后异步刷新；每次 query 只读取内存缓存，不再竞争 SQLite
 9. 900ms 后 `record_search(query)`；打开任一条结果时 `record_search_click`（fire-and-forget）
 10. `finishSearchActivity()` 关 `isSearching` → 180ms 后关 `isSearchSettling`（用于底部灵动岛的收尾动画）
 

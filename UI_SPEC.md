@@ -707,6 +707,9 @@ Launcher 在**无搜索活动、无结果**时，由 **Launcher 单写者**经 `
 ### Home Island 异步数据（强制 · 非阻塞）
 
 系统指标、网速、电源等采样**不得阻塞 paint、搜索或键盘**。
+窗口 show/focus/navigate 只允许同步恢复可见状态、缓存快照与必要焦点；系统指标、模块状态、
+历史记录和缓存修复统一进入 `windowActivation` 延迟/idle/合并调度。控件 `focusin` 不得触发
+后台采样，Windows 不得为普通 DOM 聚焦重复请求原生 key window。
 
 ```text
 岛 UI ──subscribe──► data/bus ──idle/timer──► Tauri invoke (Rust spawn_blocking)
@@ -929,7 +932,7 @@ Plugin Store 详情必须展示插件库提供的版本说明与历史版本（�
 **Tabs：**
 
 - Installed / Browse 用 `Tabs`（不是顶栏 `SegmentedControl` 代替主切换）
-- 首行保持单层紧凑工具条：Tabs 在左；Raycast Actions 开关、Import、Rescan 在右；窄宽度可换行但不得扩成说明卡片
+- 首行保持单层紧凑工具条：Tabs 在左；Raycast Actions 开关、Import、Rescan 在右；窄宽度可换行但不得扩成说明卡片。已安装插件列表使用内存缓存，禁止定时扫描插件目录；Rescan 是用户触发完整异步扫描的唯一常规入口。执行插件命令或打开面板时若注册项缺失，宿主可通过统一注册表解析端口异步补刷一次并重试，不得在渲染或输入线程同步遍历插件文件。
 - Import 打开独立 `Dialog`，集中承载本地压缩包、GitHub archive 与 Raycast extension URL 三种入口
 - 搜索已安装 + 过滤（All / Built-in / External / Enabled / Disabled）紧随首行，模块网格无需经过大段说明内容即可到达
 - Raycast Actions 的完整说明使用 tooltip / accessible description，页面上只保留短标签和开关

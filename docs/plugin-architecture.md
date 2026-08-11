@@ -306,8 +306,8 @@ iframe 内调用 plugin.panel.destroy(container)
 
 ## 7. 开发调试
 
-- **Rescan**：Extensions 页面顶部 `Rescan` 按钮重新扫描 `~/.qx/plugins/`，无需重启。
-- **Dev Mode Hot Reload**：Settings → Advanced → Developer Mode 开启后，插件文件变更每 3 秒自动重载。
+- **Rescan**：Extensions 页面顶部 `Rescan` 按钮异步重新扫描 `~/.qx/plugins/`，无需重启。设置页平时只读取注册表内存快照，不轮询插件目录。
+- **缺失兜底**：执行命令或打开面板时若目标未注册，统一通过 `resolveCommand` / `resolvePanel` 等待当前加载结束、补刷注册表一次并重试；仍缺失才返回真实错误。
 - **脚手架**：Settings → Advanced → Create Plugin (`qx init`) 可一键生成插件模板。
 - **手动安装**：将 `.qx-plugin` zip 放到 `~/.qx/plugins/` 并点击 Rescan。
 

@@ -26,6 +26,7 @@ import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import BetaBadge from "../../components/BetaBadge";
 import { useT } from "../../i18n";
+import { registerWindowActivationTask } from "../../shell/windowActivation";
 import {
   getCaptureHistoryKind,
   type CaptureHistoryKind,
@@ -228,12 +229,12 @@ export default function ScreenRecorder() {
   }, [isRecording, status, syncRecordingStatus]);
 
   useEffect(() => {
-    const onFocus = () => {
-      void syncRecordingStatus();
-      void loadHistory();
-    };
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
+    return registerWindowActivationTask({
+      id: "screencap.session",
+      delayMs: 180,
+      minIntervalMs: 750,
+      run: () => Promise.allSettled([syncRecordingStatus(), loadHistory()]).then(() => undefined),
+    });
   }, [loadHistory, syncRecordingStatus]);
 
   const beginAreaSelect = useCallback(

@@ -88,6 +88,11 @@ import { closeSettings, openSettings } from "./modules/settings/openSettings";
 import { ensureCaptureToastListener } from "./modules/screencap/store";
 import { openSystemPath } from "./system";
 import { readCachedHomeAppResults, writeCachedHomeAppResults } from "./home-dashboard/cache";
+import {
+  publishWindowActivation,
+  registerWindowActivationTask,
+  setMainWindowAvailable,
+} from "./shell/windowActivation";
 import "./App.css";
 
 // Clipboard is a core module: eager import (no React.lazy) so shortcut open never
@@ -137,6 +142,7 @@ const appLogger = createQxLogger("main.app");
 
 /** Module-level: shared by phase1, focus, apps:updated, and doSearch empty path. */
 let lastEmptyAppsFetchAt = 0;
+let emptyLauncherFetchInFlight: Promise<AppEntry[]> | null = null;
 /**
  * Last successful empty-query home list. Survives tab switches and brief store
  * empties so Option+Space can paint instantly while a background refresh runs.
@@ -156,6 +162,15 @@ function paintHomeAppResults(
   if (entries.length === 0) return;
   rememberHomeAppResults(entries);
   setResults(entries);
+}
+
+function fetchEmptyLauncherAppsFromHost(): Promise<AppEntry[]> {
+  if (emptyLauncherFetchInFlight) return emptyLauncherFetchInFlight;
+  emptyLauncherFetchInFlight = invoke<AppEntry[]>("search_apps", { query: "" })
+    .finally(() => {
+      emptyLauncherFetchInFlight = null;
+    });
+  return emptyLauncherFetchInFlight;
 }
 
 interface QxUpdateInfo {
@@ -539,7 +554,7 @@ async function loadEmptyLauncherApps(
     }
   }
   try {
-    const apps = await invoke<AppEntry[]>("search_apps", { query: "" });
+    const apps = await fetchEmptyLauncherAppsFromHost();
     const mapped = mapAppEntries(apps);
     lastEmptyAppsFetchAt = Date.now();
     if (mapped.length > 0) {
@@ -667,8 +682,6 @@ function App() {
   const windowFocusedRef = useRef<boolean | null>(null);
   /** Ignore blur-to-hide for a short window after first-launch show (focus can flicker). */
   const ignoreBlurUntilRef = useRef(0);
-  /** Throttle empty-launcher reloads — full search_apps("") on every focus made summon lag ~1s. */
-  const lastEmptyLauncherLoadAtRef = useRef(0);
   const emptyLauncherLoadInFlightRef = useRef(false);
   const pluginSearchVersionRef = useRef("");
   const [isSearching, setIsSearching] = useState(false);
@@ -992,6 +1005,45 @@ function App() {
     };
   }, [appsReady]);
 
+  // Window activation has one deferred background lane. The native focus
+  // callback only restores visible state/focus; cache repair and advisory
+  // ranking reads wait until after the first activation paint and are deduped.
+  useEffect(() => {
+    const stopHomeRepair = registerWindowActivationTask({
+      id: "launcher.home-cache",
+      delayMs: 140,
+      minIntervalMs: 1_000,
+      run: async () => {
+        const state = useStore.getState();
+        if (state.tab !== "launcher" || state.query.trim()) return;
+        const appRows = state.results.filter((entry) => {
+          const kind = entry.kind ?? "app";
+          return kind === "app" || kind === "command";
+        });
+        const needsRepair = appRows.length === 0 || appRows.some((entry) => !entry.icon);
+        if (!needsRepair || emptyLauncherLoadInFlightRef.current) return;
+        emptyLauncherLoadInFlightRef.current = true;
+        try {
+          await loadEmptyLauncherApps(setResults, setLoadingPhase, {
+            force: true,
+          });
+        } finally {
+          emptyLauncherLoadInFlightRef.current = false;
+        }
+      },
+    });
+    const stopUsageRefresh = registerWindowActivationTask({
+      id: "launcher.search-usage",
+      delayMs: 480,
+      minIntervalMs: 60_000,
+      run: () => refreshSearchUsageCache(),
+    });
+    return () => {
+      stopHomeRepair();
+      stopUsageRefresh();
+    };
+  }, [setLoadingPhase, setResults]);
+
   // Prefetch lazy module chunks off the critical path so first open after
   // summon does not wait on chunk parse/compile (still mounted on demand).
   useEffect(() => {
@@ -1155,14 +1207,19 @@ function App() {
       const pluginId = String(payload.pluginId || payload.plugin_id || "");
       const commandName = String(payload.command || "").trim();
       if (!pluginId || !commandName) return;
-      const command = usePluginRegistry
+      const commandPromise = usePluginRegistry
         .getState()
-        .commands.find((c) => c.pluginId === pluginId && c.name === commandName);
-      if (!command) {
-        appLogger.warn("Plugin tray command not found", { pluginId, commandName });
-        return;
-      }
-      void usePluginRegistry.getState().runCommand(command).catch((error) => {
+        .resolveCommand(pluginId, commandName);
+      void commandPromise.then((command) => {
+        if (!command) {
+          appLogger.warn("Plugin tray command not found after registry refresh", {
+            pluginId,
+            commandName,
+          });
+          return;
+        }
+        return usePluginRegistry.getState().runCommand(command);
+      }).catch((error) => {
         appLogger.error("Plugin tray command failed", { pluginId, commandName, error });
       });
     });
@@ -1306,9 +1363,7 @@ function App() {
         onPluginStatus: showPluginStatus,
         onRunPluginCommand: async (pluginId, commandName) => {
           const registry = usePluginRegistry.getState();
-          const command = registry.commands.find(
-            (item) => item.pluginId === pluginId && item.name === commandName,
-          );
+          const command = await registry.resolveCommand(pluginId, commandName);
           if (!command) throw new Error(`Plugin command not found: ${pluginId}/${commandName}`);
           await registry.runCommand(command, { launchType: "userInitiated" });
         },
@@ -1604,6 +1659,8 @@ function App() {
       await loadEmptyLauncherApps(setResults, setLoadingPhase);
       // Re-center once more after the panel is actually visible.
       await invoke("floating_show").catch(() => {});
+      setMainWindowAvailable(true);
+      publishWindowActivation("show");
       if (needsOnboarding) {
         await invoke("floating_set_onboarding_active", { active: true }).catch(() => {});
         setShowOnboarding(true);
@@ -1736,12 +1793,16 @@ function App() {
       if (focusVisibilityTimer !== null) window.clearTimeout(focusVisibilityTimer);
       if (focused) {
         setVisible(true);
+        setMainWindowAvailable(true);
       } else {
         // Let Rust settle the main/island focus group first, then mirror the
         // actual native visibility back into the frontend store.
         focusVisibilityTimer = window.setTimeout(() => {
           if (windowFocusedRef.current) return;
-          void win.isVisible().then(setVisible).catch(() => {});
+          void win.isVisible().then((visible) => {
+            setVisible(visible);
+            setMainWindowAvailable(visible);
+          }).catch(() => {});
         }, 140);
       }
       if (focused) {
@@ -1774,29 +1835,12 @@ function App() {
             setResults(lastHomeAppResults);
             appRows = lastHomeAppResults;
           }
-          const hasAppRows = appRows.length > 0;
-          const missingIcons = appRows.some((r) => !r.icon);
-          const stale = Date.now() - lastEmptyAppsFetchAt > EMPTY_LAUNCHER_CACHE_MS;
-          // Hot path: keep cached rows. Background-refresh when empty, stale, or icons blank
-          // (common after reinstall / scan-before-preload race). Never block paint.
-          if (
-            onLauncher
-            && (!hasAppRows || stale || missingIcons)
-            && !emptyLauncherLoadInFlightRef.current
-          ) {
-            emptyLauncherLoadInFlightRef.current = true;
-            lastEmptyLauncherLoadAtRef.current = Date.now();
-            void loadEmptyLauncherApps(setResults, setLoadingPhase, {
-              force: !hasAppRows || missingIcons,
-            }).finally(() => {
-              emptyLauncherLoadInFlightRef.current = false;
-            });
-          }
         }
         // Focus every time the launcher becomes key, not only when the native
         // focus edge is classified as a re-summon. AppKit may emit a micro edge
         // after show, and SearchBar coalesces these into one bounded retry.
         if (useStore.getState().tab === "launcher") requestLauncherSearchFocus();
+        publishWindowActivation("focus");
       }
     });
     const unlistenNav = listen<string>("navigate", (e) => {
@@ -1828,7 +1872,10 @@ function App() {
         }
         // Launcher recall is distinct from visibility-only toggling. Always
         // return focus to search, including when Launcher is already visible.
-        window.requestAnimationFrame(() => requestLauncherSearchFocus());
+        window.requestAnimationFrame(() => {
+          requestLauncherSearchFocus();
+          publishWindowActivation("navigate");
+        });
       } else if (next === "documents") {
         if (!isBuiltinModuleEnabled(next)) return;
         setTab("documents");
@@ -2093,7 +2140,6 @@ function App() {
           return kind === "app" || kind === "command";
         });
         const hasNonHome = homeRows.length !== current.length;
-        const cacheFresh = Date.now() - lastEmptyAppsFetchAt < EMPTY_LAUNCHER_CACHE_MS;
         // After a non-empty search, `current` only holds matches — restore the
         // last full home snapshot instead of collapsing to a partial app subset.
         if (lastHomeAppResults.length > 0 && (homeRows.length === 0 || hasNonHome)) {
@@ -2101,13 +2147,13 @@ function App() {
         } else if (homeRows.length > 0) {
           rememberHomeAppResults(homeRows.length === current.length ? current : homeRows);
         }
-        if ((lastHomeAppResults.length > 0 || homeRows.length > 0) && cacheFresh) {
+        if (lastHomeAppResults.length > 0 || homeRows.length > 0) {
           setIsSearching(false);
           setIsSearchSettling(false);
           return;
         }
         try {
-          const res = await abortableInvoke<AppEntry[]>("search_apps", { query: "" }, signal);
+          const res = await fetchEmptyLauncherAppsFromHost();
           if (seq !== searchSeqRef.current || signal.aborted) return;
           lastEmptyAppsFetchAt = Date.now();
           // applyResults mapAppEntries once (not double).
@@ -2283,18 +2329,15 @@ function App() {
       // the normal in-memory application search.
       const metadataMatches = Object.entries(settingsState.search_metadata)
         .filter(([key, metadata]) => key.startsWith("app:") && metadataMatchesQuery(metadata, q));
-      const metadataAppTask = metadataMatches.length > 0 && (scope === "all" || scope === "apps")
-        ? abortableInvoke<AppEntry[]>("search_apps", { query: "" }, signal)
-            .then((allApps) => {
-              if (seq !== searchSeqRef.current || signal.aborted) return;
-              const matchingPaths = new Set(metadataMatches.map(([key]) => key.slice("app:".length)));
-              const matches = allApps
-                .filter((item) => matchingPaths.has(item.path))
-                .map((item) => ({ ...item, kind: item.kind ?? "app" as const }));
-              if (matches.length > 0) applyResults(matches, { merge: true, prepend: true });
-            })
-            .catch(() => {})
-        : Promise.resolve();
+      const metadataAppTask = Promise.resolve().then(() => {
+        if (metadataMatches.length === 0 || (scope !== "all" && scope !== "apps")) return;
+        if (seq !== searchSeqRef.current || signal.aborted) return;
+        const matchingPaths = new Set(metadataMatches.map(([key]) => key.slice("app:".length)));
+        const matches = lastHomeAppResults
+          .filter((item) => matchingPaths.has(item.path))
+          .map((item) => ({ ...item, kind: item.kind ?? "app" as const }));
+        if (matches.length > 0) applyResults(matches, { merge: true, prepend: true });
+      });
 
       const filesPass0Task = filesPass0Promise.then((filesPass0) => {
         if (seq !== searchSeqRef.current || signal.aborted || filesPass0.length === 0) return;
@@ -2303,15 +2346,6 @@ function App() {
       const moduleSurfaceTask = trimmed && (scope === "all" || scope === "apps")
         ? loadModuleSurfaceProviders(q, scope, seq)
         : Promise.resolve();
-
-      const usageTask = refreshSearchUsageCache().then(() => {
-        if (seq !== searchSeqRef.current || signal.aborted) return;
-        if (useStore.getState().query.trim() !== trimmed) return;
-        const current = rankCandidatesRef.current?.query === trimmed
-          ? rankCandidatesRef.current.entries
-          : [];
-        if (current.length > 0) applyResults(current, { merge: true });
-      });
 
       const slowProvidersTask = shouldLoadSlowSearchProviders(q, scope)
         ? new Promise<void>((resolve) => {
@@ -2328,7 +2362,6 @@ function App() {
         metadataAppTask,
         filesPass0Task,
         moduleSurfaceTask,
-        usageTask,
         slowProvidersTask,
       ]).then(() => finishSearchActivity(seq));
 
@@ -2517,8 +2550,12 @@ function App() {
     // Handle plugin command execution
     if (item.path.startsWith("__qx:cmd:")) {
       const commandKey = item.path.slice("__qx:cmd:".length);
-      const { commands } = usePluginRegistry.getState();
-      const cmd = commands.find((c) => `${c.pluginId}:${c.name}` === commandKey);
+      const separator = commandKey.lastIndexOf(":");
+      const pluginId = separator > 0 ? commandKey.slice(0, separator) : "";
+      const commandName = separator > 0 ? commandKey.slice(separator + 1) : "";
+      const cmd = pluginId && commandName
+        ? await usePluginRegistry.getState().resolveCommand(pluginId, commandName)
+        : undefined;
       if (cmd) {
         await usePluginRegistry.getState().runCommand(cmd);
       }

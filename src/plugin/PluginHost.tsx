@@ -135,8 +135,9 @@ export function PluginPanelViewport() {
   );
   const goBack = useCallback(() => setTab("launcher"), [setTab]);
   const runPluginIslandCommand = useCallback(async (targetPluginId: string, commandName: string) => {
-    const command = usePluginRegistry.getState().commands.find(
-      (candidate) => candidate.pluginId === targetPluginId && candidate.name === commandName,
+    const command = await usePluginRegistry.getState().resolveCommand(
+      targetPluginId,
+      commandName,
     );
     if (!command) throw new Error(`Plugin island command is not registered: ${commandName}`);
     await usePluginRegistry.getState().runCommand(command);
@@ -356,14 +357,25 @@ export function PluginPanelViewport() {
     const container = containerRef.current;
     const activePanel = panel;
     if (!activePanel) {
-      // Host only registers a panel when manifest.panel exists (see loadPlugin).
-      // Island-only / command-only plugins must still declare a panel if they open as a tab.
-      setRenderState({
-        kind: "error",
-        detail:
-          "Panel not registered — add manifest.panel + export default.panel (see plugin AGENTS.md)",
+      let disposed = false;
+      setRenderState({ kind: "loading", detail: "Refreshing plugin registry" });
+      renderPluginStatus(container, `Loading ${pluginId}...`);
+      void usePluginRegistry.getState().resolvePanel(pluginId).then((resolved) => {
+        if (disposed || resolved) return;
+        // Island-only / command-only plugins must still declare a panel if they open as a tab.
+        const detail =
+          "Panel not registered — add manifest.panel + export default.panel (see plugin AGENTS.md)";
+        renderPluginStatus(container, detail, "danger");
+        setRenderState({ kind: "error", detail });
+      }).catch((error) => {
+        if (disposed) return;
+        const detail = String(error).replace(/^Error:\s*/i, "").slice(0, 120);
+        renderPluginStatus(container, `Plugin ${pluginId} refresh failed: ${detail}`, "danger");
+        setRenderState({ kind: "error", detail });
       });
-      return;
+      return () => {
+        disposed = true;
+      };
     }
 
     let disposed = false;

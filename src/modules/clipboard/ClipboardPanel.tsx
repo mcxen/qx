@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import type { LucideIcon } from "lucide-react";
 import { AlignLeft, AudioLines, CalendarDays, Code2, File, FileText, Folder, Image, Link, Pin, Shrink, Video } from "lucide-react";
@@ -20,6 +19,7 @@ import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useLocale, useT } from "../../i18n";
 import { setPendingModuleLaunch, takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import { ocrRecognizeClipboardImage, revealSystemPath } from "../../system";
+import { registerWindowActivationTask } from "../../shell/windowActivation";
 import {
   clearClipboardRestore,
   ensureClipboardRestoreOnHide,
@@ -311,12 +311,15 @@ export default function ClipboardPanel() {
         });
     };
     refreshTarget();
-    const unlisten = getCurrentWindow().onFocusChanged(({ payload }) => {
-      if (payload) refreshTarget();
+    const unregister = registerWindowActivationTask({
+      id: "clipboard.paste-target",
+      delayMs: 180,
+      minIntervalMs: 750,
+      run: refreshTarget,
     });
     return () => {
       cancelled = true;
-      void unlisten.then((dispose) => dispose());
+      unregister();
     };
   }, []);
 
