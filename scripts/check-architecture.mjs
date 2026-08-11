@@ -40,6 +40,19 @@ if (!docsIndex.includes("architecture-principles.md")) {
   fail("docs/README.md must index architecture-principles.md");
 }
 
+// --- macOS updater preserves the signed release identity (TCC boundary) ---
+const updaterSource = read("src-tauri/src/updater.rs");
+if (!updaterSource.includes("prepare_signed_app_for_launch")
+    || !updaterSource.includes('args(["--verify", "--deep", "--strict"])')) {
+  fail("macOS updater must verify and preserve the release app signature");
+}
+if (/adhoc_codesign(?:_detached_helper)?\(app|adhoc_codesign(?:_detached_helper)?\(staged_app|adhoc_codesign(?:_detached_helper)?\(target_app/.test(updaterSource)) {
+  fail("macOS updater must never ad-hoc re-sign Qx.app; only the detached helper may be signed");
+}
+if (!updaterSource.includes('arg("com.mcx.qx.update-helper")')) {
+  fail("detached update helper must use its own code-signing identifier");
+}
+
 // --- 2. Host HTTP binary port (plugin external modules depend on this) ---
 const pluginApi = exists("src-tauri/src/plugin_api.rs") ? read("src-tauri/src/plugin_api.rs") : "";
 if (pluginApi) {

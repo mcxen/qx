@@ -70,8 +70,8 @@ Qx 使用自定义跨平台 helper 更新，不依赖 Tauri signed updater：
     `Apple Development` 身份签名；这不会进入仓库，也不会改变 Release Action。
   - 本机 Apple Development 签名和 CI ad-hoc 签名是两个代码身份；测试 CI 下载包时
     仍可能需要单独授予 TCC 权限。
-  - 从 `Qx.app` 复制出的 update helper 必须再次：去 quarantine（`xattr -cr`）+ ad-hoc 重签，否则 Gatekeeper 会拦截 helper 进程。
-  - 解压后的 staging `Qx.app` 与替换后的目标 bundle 同样清理 xattr 并 ad-hoc 重签。
+  - 从 `Qx.app` 复制出的 update helper 必须再次：去 quarantine（`xattr -cr`）+ ad-hoc 重签，否则 Gatekeeper 会拦截 helper 进程；helper 使用独立标识 `com.mcx.qx.update-helper`。
+  - 解压后的 staging `Qx.app` 与替换后的目标 bundle 只清理 xattr、修复可执行位并执行 `codesign --verify --deep --strict`，**禁止重新签名主应用**。自动更新必须保留 Release 产物原始签名与 entitlements，否则 macOS TCC 会把截图、辅助功能等授权视为新的代码身份。
 - 安装编排完成后主进程通过 `app_quit::force_quit` 退出（**不得**裸调 `app.exit`：
   macOS 两次 ⌘Q 策略会拦截第一次 `ExitRequested`，helper 会一直等 PID 超时）。
 - Helper 二进制优先从 **staging 新版本** `Contents/MacOS/Qx` 复制（这样升级路径也能带上

@@ -839,12 +839,13 @@ fn download_and_stage_in_dir(
     if !staged_app.exists() {
         return Err("update archive did not contain Qx.app".to_string());
     }
-    // GitHub zip always arrives quarantined; clear + ad-hoc re-sign free of charge
-    // so the helper can open the staged bundle after swap.
+    // Clear download provenance without touching the release signature. TCC
+    // permissions are attached to that code identity, so re-signing here would
+    // make an automatic update look like a different application.
     if let Some(reporter) = reporter {
         reporter.emit_phase("staging", "Preparing app bundle…");
     }
-    prepare_app_for_launch(&staged_app)?;
+    prepare_signed_app_for_launch(&staged_app)?;
     progress::ensure_not_cancelled()?;
     Ok(staged_app)
 }
@@ -997,9 +998,9 @@ fn spawn_update_helper(
     target_app: &Path,
     version: &str,
 ) -> Result<PathBuf, String> {
-    // Prepare the staged replacement app before the main process exits so the
-    // helper only renames/ditto and does not fight Gatekeeper mid-flight.
-    prepare_app_for_launch(staged_app)?;
+    // Preserve and verify the release bundle signature before the main process
+    // exits. Only the detached helper receives a local ad-hoc signature.
+    prepare_signed_app_for_launch(staged_app)?;
 
     let helper_path = update_cache_dir().join(format!("qx-update-helper-{}", std::process::id()));
     // Prefer the *staged* binary as the helper so this install already carries
@@ -1098,25 +1099,17 @@ fn prepare_detached_helper(path: &Path) -> Result<(), String> {
         fs::set_permissions(path, fs::Permissions::from_mode(0o755))
             .map_err(|e| format!("set helper executable bit on {}: {e}", path.display()))?;
     }
-    adhoc_codesign(path, false)?;
+    adhoc_codesign_detached_helper(path)?;
     Ok(())
 }
 
-/// Free ad-hoc signature. Does **not** require an Apple Developer Program membership.
-/// Gatekeeper still prompts on first open of a downloaded .app; local helper
-/// copies re-signed this way should not be intercepted when replacing Qx.app.
-fn adhoc_codesign(path: &Path, deep: bool) -> Result<(), String> {
+/// Sign only the executable copied outside Qx.app for the one-shot update helper.
+/// The application bundle itself must retain the exact release signature so its
+/// designated requirement and TCC grants remain stable across updates.
+fn adhoc_codesign_detached_helper(path: &Path) -> Result<(), String> {
     let mut cmd = Command::new("/usr/bin/codesign");
     cmd.arg("--force").arg("--sign").arg("-");
-    // Stable id so Gatekeeper can track the free ad-hoc identity across updates.
-    cmd.arg("--identifier").arg("com.mcx.qx");
-    if deep {
-        cmd.arg("--deep");
-        let entitlements = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("entitlements.plist");
-        if entitlements.is_file() {
-            cmd.arg("--entitlements").arg(entitlements);
-        }
-    }
+    cmd.arg("--identifier").arg("com.mcx.qx.update-helper");
     // Avoid network timestamp servers (would require a real identity).
     cmd.arg("--timestamp=none");
     cmd.arg(path);
@@ -1169,7 +1162,7 @@ fn run_update_helper(args: &[String]) -> Result<(), String> {
     let restart = args.iter().any(|arg| arg == "--restart");
 
     wait_for_process_exit(pid, Duration::from_secs(90))?;
-    prepare_app_for_launch(&staged_app)?;
+    prepare_signed_app_for_launch(&staged_app)?;
     replace_app_bundle(&staged_app, &target_app, &backup_app)?;
     if restart {
         Command::new("/usr/bin/open")
@@ -1230,7 +1223,7 @@ fn replace_app_bundle(
         .status();
     match copy_result {
         Ok(status) if status.success() => {
-            if let Err(err) = prepare_app_for_launch(target_app) {
+            if let Err(err) = prepare_signed_app_for_launch(target_app) {
                 rollback_app(target_app, backup_app);
                 return Err(err);
             }
@@ -1248,7 +1241,7 @@ fn replace_app_bundle(
     }
 }
 
-fn prepare_app_for_launch(app: &Path) -> Result<(), String> {
+fn prepare_signed_app_for_launch(app: &Path) -> Result<(), String> {
     // Recursively clear quarantine on the whole bundle (download provenance).
     let _ = Command::new("/usr/bin/xattr")
         .args(["-cr"])
@@ -1256,9 +1249,32 @@ fn prepare_app_for_launch(app: &Path) -> Result<(), String> {
         .status();
     clear_quarantine_xattr(app)?;
     ensure_bundle_executable_permission(app)?;
-    // Free ad-hoc re-sign after ditto/unzip invalidates the previous seal.
-    adhoc_codesign(app, true)?;
+    verify_app_signature(app)?;
     Ok(())
+}
+
+fn verify_app_signature(app: &Path) -> Result<(), String> {
+    let output = Command::new("/usr/bin/codesign")
+        .args(["--verify", "--deep", "--strict"])
+        .arg(app)
+        .output()
+        .map_err(|error| format!("verify release signature on {}: {error}", app.display()))?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    Err(if stderr.is_empty() {
+        format!(
+            "release signature verification failed on {} with status {}",
+            app.display(),
+            output.status
+        )
+    } else {
+        format!(
+            "release signature verification failed on {}: {stderr}",
+            app.display()
+        )
+    })
 }
 
 fn clear_quarantine_xattr(app: &Path) -> Result<(), String> {

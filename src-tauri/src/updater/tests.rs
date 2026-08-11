@@ -238,6 +238,8 @@ fn prepares_app_bundle_for_launch() {
     let root = unique_temp_dir("qx-updater-test");
     let app = root.join("Qx.app");
     let executable = write_fake_app_bundle(&app, b"#!/bin/sh\n");
+    adhoc_sign_test_app(&app);
+    let entitlements_before = read_test_app_entitlements(&app);
 
     let _ = Command::new("/usr/bin/xattr")
         .args(["-w", "com.apple.quarantine", "0081;00000000;Qx;"])
@@ -246,7 +248,7 @@ fn prepares_app_bundle_for_launch() {
         .stderr(Stdio::null())
         .status();
 
-    prepare_app_for_launch(&app).expect("prepare app");
+    prepare_signed_app_for_launch(&app).expect("prepare app");
 
     #[cfg(unix)]
     {
@@ -266,6 +268,11 @@ fn prepares_app_bundle_for_launch() {
         .map(|status| status.success())
         .unwrap_or(false);
     assert!(!has_quarantine, "quarantine xattr should be absent");
+    assert_eq!(
+        read_test_app_entitlements(&app),
+        entitlements_before,
+        "preparing an update must preserve release entitlements"
+    );
 
     let _ = fs::remove_dir_all(root);
 }
@@ -279,6 +286,8 @@ fn replaces_app_bundle_and_prepares_target_for_launch() {
     let backup = root.join("backup/Qx.app");
     write_fake_app_bundle(&target, b"old");
     let staged_executable = write_fake_app_bundle(&staged, b"new");
+    adhoc_sign_test_app(&staged);
+    let entitlements_before = read_test_app_entitlements(&staged);
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -316,6 +325,11 @@ fn replaces_app_bundle_and_prepares_target_for_launch() {
         .map(|status| status.success())
         .unwrap_or(false);
     assert!(!has_quarantine, "target quarantine xattr should be absent");
+    assert_eq!(
+        read_test_app_entitlements(&target),
+        entitlements_before,
+        "bundle replacement must preserve release entitlements"
+    );
 
     let _ = fs::remove_dir_all(root);
 }
@@ -326,6 +340,8 @@ fn downloads_verifies_and_stages_app_zip() {
     let root = unique_temp_dir("qx-updater-download-test");
     let source_app = root.join("source/Qx.app");
     write_fake_app_bundle(&source_app, b"downloaded");
+    adhoc_sign_test_app(&source_app);
+    let entitlements_before = read_test_app_entitlements(&source_app);
     let zip_path = root.join("Qx.app.zip");
     let status = Command::new("/usr/bin/ditto")
         .args(["-c", "-k", "--sequesterRsrc", "--keepParent"])
@@ -347,6 +363,11 @@ fn downloads_verifies_and_stages_app_zip() {
     assert_eq!(
         fs::read(staged.join("Contents/MacOS/Qx")).expect("read staged executable"),
         b"downloaded"
+    );
+    assert_eq!(
+        read_test_app_entitlements(&staged),
+        entitlements_before,
+        "archive staging must preserve release entitlements"
     );
 
     let _ = fs::remove_dir_all(root);
@@ -372,6 +393,48 @@ fn write_fake_app_bundle(app: &Path, executable_contents: &[u8]) -> PathBuf {
     let executable = macos_dir.join("Qx");
     fs::write(&executable, executable_contents).expect("write executable");
     executable
+}
+
+#[cfg(target_os = "macos")]
+fn adhoc_sign_test_app(app: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let executable = app.join("Contents/MacOS/Qx");
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755))
+        .expect("make test app executable");
+    let entitlements = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Entitlements.plist");
+    let status = Command::new("/usr/bin/codesign")
+        .args(["--force", "--deep", "--sign", "-"])
+        .arg("--identifier")
+        .arg("com.mcx.qx")
+        .arg("--entitlements")
+        .arg(entitlements)
+        .arg("--timestamp=none")
+        .arg(app)
+        .status()
+        .expect("sign test app");
+    assert!(status.success(), "test app should be signed");
+}
+
+#[cfg(target_os = "macos")]
+fn read_test_app_entitlements(app: &Path) -> String {
+    let output = Command::new("/usr/bin/codesign")
+        .args(["-d", "--entitlements", "-"])
+        .arg(app)
+        .output()
+        .expect("read test app entitlements");
+    assert!(
+        output.status.success(),
+        "test app signature should be readable"
+    );
+    let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
+    combined.push_str(&String::from_utf8_lossy(&output.stderr));
+    let plist_start = combined.find("<?xml").expect("entitlements plist start");
+    let plist_end = combined[plist_start..]
+        .find("</plist>")
+        .map(|offset| plist_start + offset + "</plist>".len())
+        .expect("entitlements plist end");
+    combined[plist_start..plist_end].to_string()
 }
 
 #[cfg(target_os = "macos")]
