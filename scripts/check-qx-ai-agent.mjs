@@ -10,6 +10,14 @@ const agentSource = readFileSync(
   new URL("../src/modules/qx-ai/react-agent.ts", import.meta.url),
   "utf8",
 );
+const settingsSource = readFileSync(
+  new URL("../src/modules/settings/store.ts", import.meta.url),
+  "utf8",
+);
+const messageSource = readFileSync(
+  new URL("../src/modules/qx-ai/message-rendering.tsx", import.meta.url),
+  "utf8",
+);
 
 // Tool execution and model transport are separate switches. Models without
 // native tool schemas must retain the prompt-based ReAct path.
@@ -41,6 +49,18 @@ assert.match(storeSource, /messages:\s*requestMessages/);
 assert.match(agentSource, /required:\s*\["query",\s*"root"\]/);
 assert.match(agentSource, /Use files for filename or folder-name searches/);
 assert.match(agentSource, /Use apps only when the user is looking for an installed application/);
+
+// The complete Agent surface is available on first run and host-side file
+// actions produce real attachments / native clipboard payloads.
+assert.match(settingsSource, /agent_mode_enabled:\s*true/);
+assert.match(settingsSource, /tools_enabled:\s*true/);
+assert.match(settingsSource, /bash_enabled:\s*true/);
+assert.match(agentSource, /name:\s*"reveal_path"/);
+assert.match(agentSource, /name:\s*"copy_to_clipboard"/);
+assert.match(agentSource, /name:\s*"send_file"/);
+assert.match(agentSource, /clipboard_write_file_paths/);
+assert.match(storeSource, /attachments:\s*result\.attachments/);
+assert.match(messageSource, /qx-ai-attachments/);
 
 const chatSource = readFileSync(
   new URL("../src/modules/qx-ai/QxAiChat.tsx", import.meta.url),

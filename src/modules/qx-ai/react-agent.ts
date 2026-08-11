@@ -17,6 +17,18 @@ export interface AgentStep {
   state: "running" | "completed" | "error";
 }
 
+export interface QxAiFileAttachment {
+  path: string;
+  name: string;
+  kind: string;
+  size: number;
+}
+
+interface ToolExecutionResult {
+  observation: string;
+  attachments?: QxAiFileAttachment[];
+}
+
 interface StreamEvent {
   requestId: string;
   chunk: string;
@@ -30,7 +42,7 @@ interface ToolSpec {
   inputHint: string;
   parameters: Record<string, unknown>;
   isEnabled: (s: AgentSettings) => boolean;
-  run: (input: unknown) => Promise<string>;
+  run: (input: unknown) => Promise<string | ToolExecutionResult>;
 }
 
 const MAX_OBSERVATION_CHARS = 4000;
@@ -75,6 +87,10 @@ function numberField(rec: Record<string, unknown>, key: string, fallback: number
     if (Number.isFinite(parsed)) return parsed;
   }
   return fallback;
+}
+
+function normalizeToolResult(result: string | ToolExecutionResult): ToolExecutionResult {
+  return typeof result === "string" ? { observation: result } : result;
 }
 
 export const TOOLS: ToolSpec[] = [
@@ -253,6 +269,116 @@ export const TOOLS: ToolSpec[] = [
     },
   },
   {
+    name: "open_path",
+    description:
+      "Open a local file or directory with the operating system's default application. Use only when the user asks to open it.",
+    inputHint: '{"path": "<absolute path returned by files>"}',
+    parameters: {
+      type: "object",
+      properties: { path: { type: "string", description: "Existing local file or directory path" } },
+      required: ["path"],
+    },
+    isEnabled: (s) => s.qx_host_actions_enabled,
+    run: async (input) => {
+      const path = stringField(asRecord(input), "path").trim();
+      if (!path) return "Error: open_path requires a 'path' field.";
+      await invoke("plugin_system_open_path", { path });
+      return `Opened ${path}.`;
+    },
+  },
+  {
+    name: "reveal_path",
+    description:
+      "Reveal and select a local file or directory in Finder or Windows File Explorer. Use when the user asks for the containing folder or file location.",
+    inputHint: '{"path": "<absolute path returned by files>"}',
+    parameters: {
+      type: "object",
+      properties: { path: { type: "string", description: "Existing local file or directory path" } },
+      required: ["path"],
+    },
+    isEnabled: (s) => s.qx_host_actions_enabled,
+    run: async (input) => {
+      const path = stringField(asRecord(input), "path").trim();
+      if (!path) return "Error: reveal_path requires a 'path' field.";
+      await invoke("plugin_system_reveal_path", { path });
+      return `Revealed ${path} in the system file manager.`;
+    },
+  },
+  {
+    name: "copy_to_clipboard",
+    description:
+      "Copy text or real local files to the system clipboard. For files, use paths so Finder/Explorer receives native file references rather than path text.",
+    inputHint: '{"paths": ["<absolute path returned by files>"]}',
+    parameters: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "Text to copy when no file paths are supplied" },
+        paths: { type: "array", items: { type: "string" }, description: "Local file or directory paths to copy natively" },
+      },
+    },
+    isEnabled: (s) => s.qx_host_actions_enabled,
+    run: async (input) => {
+      const rec = asRecord(input);
+      const paths = Array.isArray(rec.paths)
+        ? rec.paths.filter((path): path is string => typeof path === "string" && path.trim().length > 0)
+        : [];
+      if (paths.length > 0) {
+        await invoke("clipboard_write_file_paths", { paths });
+        return `Copied ${paths.length} file${paths.length === 1 ? "" : "s"} to the system clipboard.`;
+      }
+      const text = stringField(rec, "text");
+      if (!text) return "Error: copy_to_clipboard requires non-empty 'text' or 'paths'.";
+      await invoke("plugin_clipboard_write", { text });
+      return "Copied text to the system clipboard.";
+    },
+  },
+  {
+    name: "send_file",
+    description:
+      "Attach an existing local file to the QxAI response so the user receives a file card with Open, Reveal, and Copy actions. Do not use for directories.",
+    inputHint: '{"path": "<absolute path returned by files>"}',
+    parameters: {
+      type: "object",
+      properties: { path: { type: "string", description: "Existing local file path to send" } },
+      required: ["path"],
+    },
+    isEnabled: (s) => s.qx_host_actions_enabled,
+    run: async (input) => {
+      const path = stringField(asRecord(input), "path").trim();
+      if (!path) return "Error: send_file requires a 'path' field.";
+      const metadata = await invoke<QxAiFileAttachment>("clipboard_file_metadata", { path });
+      if (metadata.kind === "folder") return "Error: send_file accepts files, not directories.";
+      return {
+        observation: `Attached ${metadata.name} to the response.`,
+        attachments: [metadata],
+      };
+    },
+  },
+  {
+    name: "notify",
+    description:
+      "Show a native Qx completion notification. Use for a requested completion alert, especially after a longer task.",
+    inputHint: '{"title": "QxAI", "body": "Task completed"}',
+    parameters: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Notification title" },
+        body: { type: "string", description: "Notification body" },
+      },
+      required: ["title"],
+    },
+    isEnabled: (s) => s.notifications_enabled,
+    run: async (input) => {
+      const rec = asRecord(input);
+      const title = stringField(rec, "title").trim();
+      if (!title) return "Error: notify requires a 'title' field.";
+      await invoke("plugin_notification_show", {
+        req: { title, body: stringField(rec, "body"), subtitle: "" },
+      });
+      return "Notification shown.";
+    },
+  },
+  {
     name: "memory_list",
     description:
       "List all stored memory entries (long-term notes the user has saved across sessions).",
@@ -391,6 +517,8 @@ Rules:
 - Use files for filename or folder-name searches; it runs Qx's complete native system search.
 - Use grep only to search file contents under an explicit root directory. Never use grep as a filename-search fallback.
 - Use apps only when the user is looking for an installed application, not a document or folder.
+- Use open_path, reveal_path, copy_to_clipboard, send_file, and notify only when they directly fulfill the user's request; these tools have visible host side effects.
+- When the user asks you to send or provide a local file, call send_file so Qx renders a real file attachment card. Do not merely print the path.
 
 Available tools:
 ${toolBlock}`;
@@ -541,6 +669,16 @@ export interface AgentRunResult {
   finalAnswer: string;
   reasoning?: string;
   steps: AgentStep[];
+  attachments: QxAiFileAttachment[];
+}
+
+function appendAttachments(
+  target: QxAiFileAttachment[],
+  incoming: QxAiFileAttachment[] | undefined,
+) {
+  for (const attachment of incoming ?? []) {
+    if (!target.some((item) => item.path === attachment.path)) target.push(attachment);
+  }
 }
 
 export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
@@ -555,6 +693,7 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
   }
 
   const steps: AgentStep[] = [];
+  const attachments: QxAiFileAttachment[] = [];
   const maxIterations = opts.maxIterations ?? opts.agentSettings.agent_max_iterations ?? 12;
   let lastRaw = "";
   let scratchpad = "";
@@ -601,7 +740,7 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
       };
       steps.push(finalStep);
       opts.onStep(finalStep);
-      return { finalAnswer: parsed.finalAnswer ?? lastRaw.trim(), steps };
+      return { finalAnswer: parsed.finalAnswer ?? lastRaw.trim(), steps, attachments };
     }
 
     if (parsed.kind === "none") {
@@ -613,7 +752,7 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
       };
       steps.push(finalStep);
       opts.onStep(finalStep);
-      return { finalAnswer: lastRaw.trim(), steps };
+      return { finalAnswer: lastRaw.trim(), steps, attachments };
     }
 
     const tool = enabled.find((t) => t.name === parsed.tool);
@@ -641,7 +780,9 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
         } catch {
           // pass raw string to tool, individual tools handle it
         }
-        observation = await tool.run(parsedInput);
+        const result = normalizeToolResult(await tool.run(parsedInput));
+        observation = result.observation;
+        appendAttachments(attachments, result.attachments);
         opts.onStepUpdate(actionStep.id, { state: "completed", output: observation });
       } catch (err) {
         observation = `Error: ${err instanceof Error ? err.message : String(err)}`;
@@ -689,7 +830,7 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
     };
     steps.push(finalStep);
     opts.onStep(finalStep);
-    return { finalAnswer: answer, steps };
+    return { finalAnswer: answer, steps, attachments };
   } catch {
     // recovery failed, fall through to error
   }
@@ -703,7 +844,7 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
   };
   steps.push(finalStep);
   opts.onStep(finalStep);
-  return { finalAnswer: truncatedFinal, steps };
+  return { finalAnswer: truncatedFinal, steps, attachments };
 }
 
 function toolsToOpenAISchema(enabled: ToolSpec[]): Array<Record<string, unknown>> {
@@ -872,6 +1013,7 @@ export async function runFunctionCallingAgent(
   }
 
   const steps: AgentStep[] = [];
+  const attachments: QxAiFileAttachment[] = [];
   const maxIterations = opts.maxIterations ?? opts.agentSettings.agent_max_iterations ?? 12;
   let lastFinal = "";
 
@@ -888,7 +1030,7 @@ export async function runFunctionCallingAgent(
       };
       steps.push(errStep);
       opts.onStep(errStep);
-      return { finalAnswer: errStep.text ?? "", steps };
+      return { finalAnswer: errStep.text ?? "", steps, attachments };
     }
 
     const toolCalls = message.tool_calls ?? [];
@@ -908,6 +1050,7 @@ export async function runFunctionCallingAgent(
         finalAnswer: finalText,
         reasoning: message.reasoning_content,
         steps,
+        attachments,
       };
     }
 
@@ -951,7 +1094,9 @@ export async function runFunctionCallingAgent(
         opts.onStepUpdate(actionStep.id, { state: "error", output: observation });
       } else {
         try {
-          observation = await tool.run(parsedArgs);
+          const result = normalizeToolResult(await tool.run(parsedArgs));
+          observation = result.observation;
+          appendAttachments(attachments, result.attachments);
           opts.onStepUpdate(actionStep.id, { state: "completed", output: observation });
         } catch (err) {
           observation = `Error: ${err instanceof Error ? err.message : String(err)}`;
@@ -1005,6 +1150,7 @@ export async function runFunctionCallingAgent(
       finalAnswer: finalText,
       reasoning: recoveryMessage.reasoning_content,
       steps,
+      attachments,
     };
   } catch {
     // recovery failed, fall through to error
@@ -1018,5 +1164,5 @@ export async function runFunctionCallingAgent(
   };
   steps.push(errStep);
   opts.onStep(errStep);
-  return { finalAnswer: lastFinal, steps };
+  return { finalAnswer: lastFinal, steps, attachments };
 }

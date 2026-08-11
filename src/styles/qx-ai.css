@@ -78,6 +78,59 @@
   border-color: transparent;
 }
 
+.qx-ai-attachments {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.qx-ai-attachment {
+  min-width: min(460px, 100%);
+  min-height: var(--qx-control-height);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 8px 7px 10px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-1);
+}
+
+.qx-ai-attachment > svg {
+  color: var(--qx-accent);
+}
+
+.qx-ai-attachment-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.qx-ai-attachment-copy strong,
+.qx-ai-attachment-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-ai-attachment-copy strong {
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.qx-ai-attachment-copy span {
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+}
+
+.qx-ai-attachment-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .qx-ai-reasoning-setting {
   display: flex;
   align-items: center;

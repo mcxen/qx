@@ -29,6 +29,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 | `read_clipboard_image_now()` | 立即读当前剪贴板图片，落盘并触发 `clipboard-updated` |
 | `write_clipboard_image_entry(id)` | 将历史图片回写系统剪贴板 |
 | `write_clipboard_file_entry(id)` | 使用原有顺序将历史文件列表作为真实文件对象整体回写系统剪贴板，使用时逐项校验存在性 |
+| `clipboard_write_file_paths(paths)` | 将现有本地路径列表按原生文件对象写入剪贴板（macOS file list / Windows `CF_HDROP`）；供 QxAI 与内置模块复用，不降级为路径文本 |
 | `clipboard_write_image_file(path)` | **系统能力**：把磁盘上的图片文件写入系统剪贴板（捕获 toast、导出等） |
 | `clipboard_file_metadata(path)` | 异步读取文件大小、图片尺寸、媒体时长与预览 |
 | `clipboard_compress_image(path, quality?)` | 启动后台图片压缩任务 |
@@ -124,7 +125,7 @@ macOS 通过 `open -a "Google Chrome"` 启动，找不到应用时播放会明�
 
 ## plugin AI （给插件的受控入口）
 
-`plugin_ai_list_providers`、`plugin_ai_default_model`、`plugin_ai_agent_settings`、`plugin_ai_chat(req)`、`plugin_ai_stream_chat(req)`、`plugin_ai_stream_chat_events(request_id, req)`、`plugin_ai_run_bash(req)`（有 timeout）、`plugin_ai_grep_search(req)`、`plugin_ai_memory_list/add/delete`。
+`plugin_ai_list_providers`、`plugin_ai_default_model`、`plugin_ai_agent_settings`、`plugin_ai_chat(req)`、`plugin_ai_stream_chat(req)`、`plugin_ai_stream_chat_events(request_id, req)`、`plugin_ai_run_bash(req)`（有 timeout）、`plugin_ai_grep_search(req)`、`plugin_ai_memory_list/add/delete`。QxAI 的宿主动作不另造 OS 分支：路径打开/定位复用 `plugin_system_open_path/reveal_path`，文本复制复用 `plugin_clipboard_write`，文件复制复用 `clipboard_write_file_paths`，发送文件先经 `clipboard_file_metadata` 校验并作为对话附件返回。
 
 任何来自插件 iframe 的调用先进 `plugin/rpcMethods.ts` 做 capability 校验，再走这些命令。
 
@@ -242,7 +243,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `tray_panel_get_focus_display`, `set_window_glass_effect`, `get_file_size`, `qx_log_event`, `qx_log_path`,
 `search_apps`, `search_files`, `open_app`, `set_window_size`, `get_clipboard_history`,
 `get_clipboard_history_page`, `get_clipboard_entry`, `read_clipboard_image_now`, `write_clipboard_image_entry`,
-`write_clipboard_file_entry`, `clipboard_file_metadata`, `clipboard_file_preview`,
+`write_clipboard_file_entry`, `clipboard_write_file_paths`, `clipboard_file_metadata`, `clipboard_file_preview`,
 `clipboard_file_media_probe`, `clipboard_compress_image`, `clipboard_video_to_gif`, `clear_clipboard_history`,
 `delete_clipboard_entry`, `toggle_clipboard_pin`, `record_clipboard_copy`, `update_clipboard_text_entry`,
 `create_clipboard_text_entry`, `read_image_file`, `clipboard_write_image_file`, `display_list`,

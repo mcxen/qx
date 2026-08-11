@@ -189,6 +189,8 @@ export interface AgentSettings {
   grep_root: string;
   grep_max_results: number;
   background_tasks_enabled: boolean;
+  qx_host_actions_enabled: boolean;
+  defaults_version: number;
   agent_max_iterations: number;
 }
 
@@ -511,25 +513,27 @@ export const DEFAULT_SETTINGS: Settings = {
     ocr_model_size: "tiny",
   },
   agent: {
-    agent_mode_enabled: false,
+    agent_mode_enabled: true,
     default_provider: "openrouter",
     default_model: "openrouter/auto",
     model_tools_enabled: false,
-    tools_enabled: false,
+    tools_enabled: true,
     memory_tool_enabled: true,
     app_search_enabled: true,
     file_search_enabled: true,
-    http_fetch_enabled: false,
+    http_fetch_enabled: true,
     notifications_enabled: true,
-    mcp_enabled: false,
-    bash_enabled: false,
+    mcp_enabled: true,
+    bash_enabled: true,
     bash_timeout_ms: 30000,
     bash_cwd: "",
-    grep_search_enabled: false,
+    grep_search_enabled: true,
     grep_command: "rg",
     grep_root: "",
     grep_max_results: 80,
-    background_tasks_enabled: false,
+    background_tasks_enabled: true,
+    qx_host_actions_enabled: true,
+    defaults_version: 1,
     agent_max_iterations: 12,
   },
   rss: {

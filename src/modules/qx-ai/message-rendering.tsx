@@ -1,8 +1,67 @@
 import { Suspense, lazy, memo, useMemo } from "react";
-import { Brain, CheckCircle2, Loader2, Search, Wrench, XCircle } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { Brain, CheckCircle2, Copy, ExternalLink, File, FolderSearch, Loader2, Search, Wrench, XCircle } from "lucide-react";
+import { Button } from "../../components/ui";
 import { useT } from "../../i18n";
-import type { AgentStep } from "./react-agent";
+import { openSystemPath, revealSystemPath } from "../../system/pathActions";
+import type { AgentStep, QxAiFileAttachment } from "./react-agent";
 const MarkdownRenderer = lazy(() => import("./MarkdownRenderer"));
+
+function formatFileSize(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  if (size < 1024 * 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function FileAttachments({ attachments }: { attachments: QxAiFileAttachment[] }) {
+  const t = useT();
+  return (
+    <div className="qx-ai-attachments">
+      {attachments.map((attachment) => (
+        <div className="qx-ai-attachment" key={attachment.path}>
+          <File size={18} aria-hidden="true" />
+          <div className="qx-ai-attachment-copy">
+            <strong title={attachment.name}>{attachment.name}</strong>
+            <span title={attachment.path}>{formatFileSize(attachment.size)} · {attachment.path}</span>
+          </div>
+          <div className="qx-ai-attachment-actions">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              title={t("common.open", "Open")}
+              aria-label={t("common.open", "Open")}
+              onClick={() => void openSystemPath(attachment.path)}
+            >
+              <ExternalLink size={14} />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              title={t("qxai.attachment.reveal", "Show in file manager")}
+              aria-label={t("qxai.attachment.reveal", "Show in file manager")}
+              onClick={() => void revealSystemPath(attachment.path)}
+            >
+              <FolderSearch size={14} />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              title={t("qxai.attachment.copy", "Copy file")}
+              aria-label={t("qxai.attachment.copy", "Copy file")}
+              onClick={() => void invoke("clipboard_write_file_paths", { paths: [attachment.path] })}
+            >
+              <Copy size={14} />
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 type MessagePart =
   | { type: "text"; text: string }
@@ -152,11 +211,13 @@ export function AiMessageContent({
   reasoning,
   streaming = false,
   steps,
+  attachments,
 }: {
   content: string;
   reasoning?: string;
   streaming?: boolean;
   steps?: AgentStep[];
+  attachments?: QxAiFileAttachment[];
 }) {
   const t = useT();
   const parts = useMemo(() => parseParts(content), [content]);
@@ -186,6 +247,9 @@ export function AiMessageContent({
           ),
         )}
       </Suspense>
+      {attachments && attachments.length > 0 ? (
+        <FileAttachments attachments={attachments} />
+      ) : null}
       {streaming && <span className="qx-typing-cursor">|</span>}
     </>
   );

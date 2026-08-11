@@ -333,7 +333,7 @@ impl Default for AdvancedSettings {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentSettings {
-    #[serde(default, rename = "agent_mode_enabled")]
+    #[serde(default = "default_true", rename = "agent_mode_enabled")]
     pub agent_mode_enabled: bool,
     #[serde(default, rename = "default_provider")]
     pub default_provider: String,
@@ -341,7 +341,7 @@ pub struct AgentSettings {
     pub default_model: String,
     #[serde(default, rename = "model_tools_enabled")]
     pub model_tools_enabled: bool,
-    #[serde(default, rename = "tools_enabled")]
+    #[serde(default = "default_true", rename = "tools_enabled")]
     pub tools_enabled: bool,
     #[serde(default = "default_true", rename = "memory_tool_enabled")]
     pub memory_tool_enabled: bool,
@@ -349,19 +349,19 @@ pub struct AgentSettings {
     pub app_search_enabled: bool,
     #[serde(default = "default_true", rename = "file_search_enabled")]
     pub file_search_enabled: bool,
-    #[serde(default, rename = "http_fetch_enabled")]
+    #[serde(default = "default_true", rename = "http_fetch_enabled")]
     pub http_fetch_enabled: bool,
     #[serde(default = "default_true", rename = "notifications_enabled")]
     pub notifications_enabled: bool,
-    #[serde(default, rename = "mcp_enabled")]
+    #[serde(default = "default_true", rename = "mcp_enabled")]
     pub mcp_enabled: bool,
-    #[serde(default, rename = "bash_enabled")]
+    #[serde(default = "default_true", rename = "bash_enabled")]
     pub bash_enabled: bool,
     #[serde(default = "default_agent_bash_timeout_ms", rename = "bash_timeout_ms")]
     pub bash_timeout_ms: u32,
     #[serde(default, rename = "bash_cwd")]
     pub bash_cwd: String,
-    #[serde(default, rename = "grep_search_enabled")]
+    #[serde(default = "default_true", rename = "grep_search_enabled")]
     pub grep_search_enabled: bool,
     #[serde(default = "default_agent_grep_command", rename = "grep_command")]
     pub grep_command: String,
@@ -372,8 +372,13 @@ pub struct AgentSettings {
         rename = "grep_max_results"
     )]
     pub grep_max_results: u32,
-    #[serde(default, rename = "background_tasks_enabled")]
+    #[serde(default = "default_true", rename = "background_tasks_enabled")]
     pub background_tasks_enabled: bool,
+    #[serde(default = "default_true", rename = "qx_host_actions_enabled")]
+    pub qx_host_actions_enabled: bool,
+    /// One-time migration marker for the on-by-default Agent tool surface.
+    #[serde(default, rename = "defaults_version")]
+    pub defaults_version: u32,
     #[serde(
         default = "default_agent_max_iterations",
         rename = "agent_max_iterations"
@@ -400,28 +405,49 @@ fn default_agent_max_iterations() -> u32 {
 impl Default for AgentSettings {
     fn default() -> Self {
         Self {
-            agent_mode_enabled: false,
+            agent_mode_enabled: true,
             default_provider: "openrouter".to_string(),
             default_model: "openrouter/auto".to_string(),
             model_tools_enabled: false,
-            tools_enabled: false,
+            tools_enabled: true,
             memory_tool_enabled: true,
             app_search_enabled: true,
             file_search_enabled: true,
-            http_fetch_enabled: false,
+            http_fetch_enabled: true,
             notifications_enabled: true,
-            mcp_enabled: false,
-            bash_enabled: false,
+            mcp_enabled: true,
+            bash_enabled: true,
             bash_timeout_ms: default_agent_bash_timeout_ms(),
             bash_cwd: String::new(),
-            grep_search_enabled: false,
+            grep_search_enabled: true,
             grep_command: default_agent_grep_command(),
             grep_root: String::new(),
             grep_max_results: default_agent_grep_max_results(),
-            background_tasks_enabled: false,
+            background_tasks_enabled: true,
+            qx_host_actions_enabled: true,
+            defaults_version: 1,
             agent_max_iterations: default_agent_max_iterations(),
         }
     }
+}
+
+fn migrate_agent_defaults(agent: &mut AgentSettings) {
+    if agent.defaults_version >= 1 {
+        return;
+    }
+    agent.agent_mode_enabled = true;
+    agent.tools_enabled = true;
+    agent.memory_tool_enabled = true;
+    agent.app_search_enabled = true;
+    agent.file_search_enabled = true;
+    agent.http_fetch_enabled = true;
+    agent.notifications_enabled = true;
+    agent.mcp_enabled = true;
+    agent.bash_enabled = true;
+    agent.grep_search_enabled = true;
+    agent.background_tasks_enabled = true;
+    agent.qx_host_actions_enabled = true;
+    agent.defaults_version = 1;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1021,6 +1047,7 @@ pub(crate) fn read_settings() -> Settings {
     shortcuts::migrate_swapped_window_launcher_defaults(&mut settings);
     shortcuts::migrate_windows_factory_host_shortcuts(&mut settings);
     migrate_legacy_default_quick_entries(&mut settings.quick_entries);
+    migrate_agent_defaults(&mut settings.agent);
     settings.appearance.app_icon =
         crate::app_icon::normalize_id(&settings.appearance.app_icon).to_string();
     if settings.agent.default_provider.is_empty() || settings.agent.default_provider == "duckduckgo"
@@ -1112,6 +1139,7 @@ pub async fn get_settings() -> Settings {
 #[command]
 pub async fn update_settings(app: AppHandle, mut settings: Settings) -> Result<Settings, String> {
     normalize_window_behavior(&mut settings);
+    migrate_agent_defaults(&mut settings.agent);
     settings.appearance.app_icon =
         crate::app_icon::normalize_id(&settings.appearance.app_icon).to_string();
     let settings_for_io = settings.clone();
@@ -1189,6 +1217,7 @@ pub async fn import_settings(app: AppHandle, path: String) -> Result<Settings, S
             };
         }
         normalize_window_behavior(&mut settings);
+        migrate_agent_defaults(&mut settings.agent);
         settings.appearance.app_icon =
             crate::app_icon::normalize_id(&settings.appearance.app_icon).to_string();
         write_settings(&settings)?;

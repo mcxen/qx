@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "../settings/store";
 import {
   type AgentStep,
+  type QxAiFileAttachment,
   buildQxHostSystemPrompt,
   getEnabledTools,
   runFunctionCallingAgent,
@@ -17,6 +18,7 @@ export interface G4fMessage {
   content: string;
   reasoning?: string;
   steps?: AgentStep[];
+  attachments?: QxAiFileAttachment[];
 }
 
 export interface G4fConversation {
@@ -527,6 +529,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           content: result.finalAnswer,
           reasoning: result.reasoning,
           steps: result.steps,
+          attachments: result.attachments,
         };
 
         set((s) => ({

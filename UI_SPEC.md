@@ -858,6 +858,9 @@ QxAI：
 - QxAI 的 `files` 必须复用 Launcher 的完整原生文件名搜索端口：未指定渐进 `pass` 时由后端
   合并 quick / expanded / system 三轮并去重。`grep` 仅用于明确目录下的文件内容搜索，必须
   提供 `root`，不得在文件名搜索无结果后扫描 Qx、编辑器或当前进程目录；`apps` 只查应用。
+- Agent、工具总开关、各内置工具组与 Bash 在新安装及一次性旧设置迁移后默认开启，用户仍可
+  逐项关闭。Qx 宿主动作统一提供打开路径、在 Finder/Explorer 定位、原生文件/文本剪贴板和
+  文件附件；“发送文件”必须渲染带打开、定位、复制动作的真实文件卡片，不能只输出路径文字。
 - Chat 请求进行中使用 Bottom Island 的不确定 `dots` activity，不得伪造固定百分比；回复完成、
   失败或取消后必须清除 activity / progress meter，静态岛只显示会话消息数或错误状态。
 

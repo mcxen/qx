@@ -654,6 +654,7 @@ pub fn run() {
             clipboard::history::read_clipboard_image_now,
             clipboard::history::write_clipboard_image_entry,
             clipboard::media::write_clipboard_file_entry,
+            clipboard::media::clipboard_write_file_paths,
             clipboard::media::clipboard_file_metadata,
             clipboard::media::clipboard_file_preview,
             clipboard::media::clipboard_file_media_probe,

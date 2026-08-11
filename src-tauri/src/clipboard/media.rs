@@ -339,6 +339,25 @@ pub(crate) fn write_file_path_to_clipboard(path: &Path) -> Result<(), String> {
     write_file_paths_to_clipboard(&[path.to_path_buf()])
 }
 
+/// Public host port for copying one or more real filesystem entries with
+/// native Finder / Explorer semantics. QxAI and first-party views use this
+/// instead of flattening files into path text.
+#[command]
+pub async fn clipboard_write_file_paths(paths: Vec<String>) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if paths.is_empty() {
+            return Err("file clipboard list is empty".to_string());
+        }
+        let paths = paths.into_iter().map(PathBuf::from).collect::<Vec<_>>();
+        if let Some(path) = paths.iter().find(|path| !path.exists()) {
+            return Err(format!("file no longer exists: {}", path.to_string_lossy()));
+        }
+        write_file_paths_to_clipboard(&paths)
+    })
+    .await
+    .map_err(|e| format!("file clipboard task failed: {e}"))?
+}
+
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn write_file_paths_to_clipboard(_paths: &[PathBuf]) -> Result<(), String> {
     Err("file clipboard is currently supported on macOS".to_string())

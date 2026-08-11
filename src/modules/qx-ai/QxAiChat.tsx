@@ -47,8 +47,10 @@ export default function QxAiChat() {
       agentSettings.app_search_enabled && "apps",
       agentSettings.file_search_enabled && "files",
       agentSettings.http_fetch_enabled && "http",
+      agentSettings.notifications_enabled && "notify",
       agentSettings.grep_search_enabled && "grep",
       agentSettings.bash_enabled && "bash",
+      agentSettings.qx_host_actions_enabled && "qx",
       agentSettings.mcp_enabled && "mcp",
     ].filter(Boolean) as string[];
   }, [agentSettings]);
@@ -332,6 +334,7 @@ export default function QxAiChat() {
                     content={msg.content}
                     reasoning={msg.reasoning}
                     steps={msg.steps}
+                    attachments={msg.attachments}
                   />
                 </div>
               </div>

@@ -100,6 +100,7 @@ export default function AgentSettings() {
     agent.mcp_enabled,
     agent.bash_enabled,
     agent.grep_search_enabled,
+    agent.qx_host_actions_enabled,
   ].filter(Boolean).length;
 
   return (
@@ -218,6 +219,15 @@ export default function AgentSettings() {
               onChange={(value) => patchAgent({ file_search_enabled: value })}
             />
           </div>
+        </Row>
+        <Row
+          title={t("agent.tools.qxHost", "Qx Host Actions")}
+          description={t("agent.tools.qxHost.desc", "Allow agents to open or reveal local paths, attach files to chat, and copy text or real files to the clipboard.")}
+        >
+          <Toggle
+            value={agent.qx_host_actions_enabled}
+            onChange={(value) => patchAgent({ qx_host_actions_enabled: value })}
+          />
         </Row>
         <Row
           title={t("agent.tools.network", "HTTP & Notifications")}

@@ -187,9 +187,55 @@ fn migrates_untouched_windows_alt_space_factory_bindings() {
 
 #[test]
 fn default_agent_uses_openrouter_auto() {
-    let agent = AgentSettings::default();
+    let mut agent = AgentSettings::default();
     assert_eq!(agent.default_provider, "openrouter");
     assert_eq!(agent.default_model, "openrouter/auto");
+    assert!(agent.agent_mode_enabled);
+    assert!(agent.tools_enabled);
+    assert!(agent.memory_tool_enabled);
+    assert!(agent.app_search_enabled);
+    assert!(agent.file_search_enabled);
+    assert!(agent.http_fetch_enabled);
+    assert!(agent.notifications_enabled);
+    assert!(agent.mcp_enabled);
+    assert!(agent.bash_enabled);
+    assert!(agent.grep_search_enabled);
+    assert!(agent.background_tasks_enabled);
+    assert!(agent.qx_host_actions_enabled);
+    assert_eq!(agent.defaults_version, 1);
+
+    agent.bash_enabled = false;
+    super::migrate_agent_defaults(&mut agent);
+    assert!(
+        !agent.bash_enabled,
+        "completed migration must preserve later user choices"
+    );
+}
+
+#[test]
+fn legacy_agent_settings_enable_complete_tool_surface_once() {
+    let mut agent: AgentSettings = serde_json::from_str(
+        r#"{
+            "agent_mode_enabled": false,
+            "tools_enabled": false,
+            "http_fetch_enabled": false,
+            "mcp_enabled": false,
+            "bash_enabled": false,
+            "grep_search_enabled": false,
+            "background_tasks_enabled": false
+        }"#,
+    )
+    .expect("legacy agent settings");
+    super::migrate_agent_defaults(&mut agent);
+    assert!(agent.agent_mode_enabled);
+    assert!(agent.tools_enabled);
+    assert!(agent.http_fetch_enabled);
+    assert!(agent.mcp_enabled);
+    assert!(agent.bash_enabled);
+    assert!(agent.grep_search_enabled);
+    assert!(agent.background_tasks_enabled);
+    assert!(agent.qx_host_actions_enabled);
+    assert_eq!(agent.defaults_version, 1);
 }
 
 #[test]
