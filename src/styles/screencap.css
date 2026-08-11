@@ -212,26 +212,6 @@
   user-select: text;
 }
 
-.qx-region-picker-text-box .qx-region-picker-text-committed-preview {
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  pointer-events: none;
-  cursor: text;
-}
-
-/* Keep the native textarea focused so the OS candidate window remains fully
-   functional, but paint only committed text while an IME preedit is active. */
-.qx-region-picker-text-box textarea.is-composing {
-  color: transparent !important;
-  caret-color: transparent;
-  -webkit-text-fill-color: transparent;
-}
-
-.qx-region-picker-text-box textarea.is-composing::selection {
-  background: transparent;
-}
-
 .qx-region-picker-text-resize {
   position: absolute;
   z-index: 3;

@@ -701,9 +701,7 @@ export default function RegionPickerWindow() {
   const rect = selection ?? draft;
   const display = picker?.monitorName ?? t("screencap.display", "display");
   const recordingActive = recording?.phase === "recording" || recording?.phase === "processing";
-  const visibleRect = recordingActive && rect
-    ? { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight }
-    : rect;
+  const visibleRect = rect;
   const {
     toolbarRef,
     toolbarStyle,
@@ -863,13 +861,13 @@ export default function RegionPickerWindow() {
     >
       {/* Dim the active display immediately so multi-monitor capture reads as a
           single capture session; cutout shades replace this once a rect exists. */}
-      {!recordingActive && countdown === null && !visibleRect && (
+      {countdown === null && !visibleRect && (
         <div className="qx-region-picker-shade is-full" aria-hidden="true" />
       )}
 
       {visibleRect && (
         <>
-          {!recordingActive && countdown === null && <>
+          {countdown === null && <>
             <div className="qx-region-picker-shade" style={{ left: 0, top: 0, right: 0, height: visibleRect.y }} />
             <div className="qx-region-picker-shade" style={{ left: 0, top: visibleRect.y + visibleRect.h, right: 0, bottom: 0 }} />
             <div className="qx-region-picker-shade" style={{ left: 0, top: visibleRect.y, width: visibleRect.x, height: visibleRect.h }} />

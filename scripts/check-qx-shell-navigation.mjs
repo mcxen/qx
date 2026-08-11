@@ -65,6 +65,10 @@ const mediaViewerSource = readFileSync(
   new URL("../src/components/QxMediaViewer.tsx", import.meta.url),
   "utf8",
 );
+const regionPickerSource = readFileSync(
+  new URL("../src/modules/screencap/RegionPickerWindow.tsx", import.meta.url),
+  "utf8",
+);
 const listIconsStyles = readFileSync(
   new URL("../src/styles/lists-icons.css", import.meta.url),
   "utf8",
@@ -173,8 +177,8 @@ assert.equal(captureNumberForeground("#fff"), "#111111");
 assert.equal(captureNumberForeground("#ff3b30"), "#ffffff");
 assert.equal(captureNumberOutline("#ffffff"), "rgba(0,0,0,.72)");
 
-// Screenshot text keeps IME preedit out of persisted annotations. Candidate
-// confirmation Enter belongs to the IME; ordinary Enter finishes editing.
+// Screenshot text shows IME preedit in the native control without persisting it.
+// Candidate confirmation Enter belongs to the IME; ordinary Enter finishes editing.
 assert.equal(shouldCommitCaptureTextChange(true, true), false);
 assert.equal(shouldCommitCaptureTextChange(false, false), true);
 assert.equal(shouldFinishCaptureTextEditing("Enter", false, true, 229, true), false);
@@ -189,6 +193,15 @@ assert.equal(projectCaptureTextCornerScale(-50, -25, 100, 50), 0.5);
 const captureTextLayout = measureCaptureTextBox("中文字", 18, 24, 40);
 assert.equal(captureTextLayout.width, 40);
 assert.equal(captureTextLayout.lines.length, 3);
+const expandedCaptureTextLayout = measureCaptureTextBox("abcdefgh", 18, 16, 400);
+const shrunkCaptureTextLayout = measureCaptureTextBox("a", 18, 16, 400);
+assert.ok(shrunkCaptureTextLayout.width < expandedCaptureTextLayout.width);
+assert.equal(shrunkCaptureTextLayout.lines.length, 1);
+
+// Recording retains the real selected rectangle and the same four outside
+// shades; it must not replace the visible cutout with a full-screen rectangle.
+assert.match(regionPickerSource, /const visibleRect = rect;/);
+assert.doesNotMatch(regionPickerSource, /recordingActive && rect[\s\S]*window\.innerWidth/);
 
 // Full-size Workbench media owns an inner scrollport. Portrait and long images
 // retain their natural aspect ratio instead of being forced into stage height.

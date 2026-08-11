@@ -72,7 +72,6 @@ export function CaptureTextAnnotations({
   const t = useT();
   const rootRef = useRef<HTMLDivElement>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [composingId, setComposingId] = useState<string | null>(null);
   const composingIdRef = useRef<string | null>(null);
   const annotationsRef = useRef(annotations);
   const interaction = useRef<TextInteraction | null>(null);
@@ -82,7 +81,6 @@ export function CaptureTextAnnotations({
   useEffect(() => {
     if (!activeId) {
       setEditingId(null);
-      setComposingId(null);
       composingIdRef.current = null;
       return;
     }
@@ -90,7 +88,6 @@ export function CaptureTextAnnotations({
     if (!annotation) {
       onActiveChange(null);
       setEditingId(null);
-      setComposingId(null);
       composingIdRef.current = null;
       return;
     }
@@ -107,7 +104,6 @@ export function CaptureTextAnnotations({
       // cleanup, so clicking outside cannot discard a just-confirmed candidate.
       finishTimer = window.setTimeout(() => {
         setEditingId(null);
-        setComposingId(null);
         composingIdRef.current = null;
         onActiveChange(null);
       }, 0);
@@ -296,7 +292,6 @@ export function CaptureTextAnnotations({
 
   const finishEditing = (id: string, text: string) => {
     setEditingId(null);
-    setComposingId(null);
     composingIdRef.current = null;
     if (!text.trim()) {
       onDelete(id);
@@ -304,24 +299,22 @@ export function CaptureTextAnnotations({
     }
   };
 
-  const commitText = useCallback((id: string, rawText: string) => {
+  const layoutText = useCallback((id: string, rawText: string, persistText = true) => {
     const annotation = annotationsRef.current.find((item) => item.id === id);
     if (!annotation) return "";
     const text = rawText.replace(/\r/g, "");
-    const currentWidth = annotation.w * selection.w;
-    const currentHeight = annotation.h * selection.h;
     const maximumWidth = Math.max(1, selection.w - annotation.x * selection.w);
     const layout = measureCaptureTextBox(
       text,
       annotation.fontSize,
-      Math.min(Math.max(16, currentWidth), maximumWidth),
+      Math.min(16, maximumWidth),
       maximumWidth,
     );
-    const height = Math.min(Math.max(currentHeight, layout.height), selection.h);
+    const height = Math.min(layout.height, selection.h);
     const currentTop = annotation.y * selection.h;
     const top = clamp(currentTop, 0, Math.max(0, selection.h - height));
     onUpdate(id, {
-      text,
+      ...(persistText ? { text } : {}),
       w: layout.width / selection.w,
       h: height / selection.h,
       y: top / selection.h,
@@ -455,59 +448,48 @@ export function CaptureTextAnnotations({
               </>
             )}
             {editing ? (
-              <>
-                {composingId === annotation.id && (
-                  <span
-                    className="qx-region-picker-text-committed-preview"
-                    style={{ color: annotation.color }}
-                    aria-hidden="true"
-                  >
-                    {annotation.text}
-                  </span>
-                )}
-                <textarea
-                  autoFocus
-                  defaultValue={annotation.text}
-                  className={composingId === annotation.id ? "is-composing" : undefined}
-                  aria-label={t("screencap.picker.editText", "Edit annotation text")}
-                  onChange={(event) => {
-                    if (!shouldCommitCaptureTextChange(
-                      composingIdRef.current === annotation.id,
-                      (event.nativeEvent as InputEvent).isComposing,
-                    )) return;
-                    commitText(annotation.id, event.currentTarget.value);
-                  }}
-                  onCompositionStart={() => {
-                    composingIdRef.current = annotation.id;
-                    setComposingId(annotation.id);
-                  }}
-                  onCompositionEnd={(event) => {
-                    composingIdRef.current = null;
-                    setComposingId(null);
-                    commitText(annotation.id, event.currentTarget.value);
-                  }}
-                  onBlur={(event) => {
-                    const text = commitText(annotation.id, event.currentTarget.value);
-                    finishEditing(annotation.id, text);
-                  }}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onKeyDown={(event) => {
-                    event.stopPropagation();
-                    const nativeEvent = event.nativeEvent;
-                    if (shouldFinishCaptureTextEditing(
-                      event.key,
-                      event.shiftKey,
-                      nativeEvent.isComposing,
-                      nativeEvent.keyCode,
-                      composingIdRef.current === annotation.id,
-                    )) {
-                      event.preventDefault();
-                      event.currentTarget.blur();
-                    }
-                  }}
-                  style={{ color: annotation.color }}
-                />
-              </>
+              <textarea
+                autoFocus
+                defaultValue={annotation.text}
+                aria-label={t("screencap.picker.editText", "Edit annotation text")}
+                onChange={(event) => {
+                  const shouldPersist = shouldCommitCaptureTextChange(
+                    composingIdRef.current === annotation.id,
+                    (event.nativeEvent as InputEvent).isComposing,
+                  );
+                  // Native IME preedit remains visible in the uncontrolled
+                  // textarea. It participates in frame measurement without
+                  // entering the persisted annotation until compositionend.
+                  layoutText(annotation.id, event.currentTarget.value, shouldPersist);
+                }}
+                onCompositionStart={() => {
+                  composingIdRef.current = annotation.id;
+                }}
+                onCompositionEnd={(event) => {
+                  composingIdRef.current = null;
+                  layoutText(annotation.id, event.currentTarget.value);
+                }}
+                onBlur={(event) => {
+                  const text = layoutText(annotation.id, event.currentTarget.value);
+                  finishEditing(annotation.id, text);
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+                onKeyDown={(event) => {
+                  event.stopPropagation();
+                  const nativeEvent = event.nativeEvent;
+                  if (shouldFinishCaptureTextEditing(
+                    event.key,
+                    event.shiftKey,
+                    nativeEvent.isComposing,
+                    nativeEvent.keyCode,
+                    composingIdRef.current === annotation.id,
+                  )) {
+                    event.preventDefault();
+                    event.currentTarget.blur();
+                  }
+                }}
+                style={{ color: annotation.color }}
+              />
             ) : (
               <span
                 style={{ color: annotation.color }}
