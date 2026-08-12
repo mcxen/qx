@@ -188,7 +188,7 @@ Rust：`ModuleSearchSettings`（`settings/mod.rs`），`enabled` 的 serde 缺�
 
 ## 10. 后续
 
-- QxAI surface 从 `~/.qx/QxAiSession/sessions.json` 恢复，跨重启可用；附件由同一会话协议托管。
+- QxAI surface 从 `~/.qx/QxAiSession/index.json` 与各 session 文件夹恢复，跨重启可用；附件由同一会话协议托管。
 - 插件 API：`context.search.contribute(hits)`
 - 文章级 RSS surface（注意噪声与上限）
 - 文件夹拖拽管理 UI

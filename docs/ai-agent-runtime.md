@@ -127,10 +127,14 @@ RLM-style modular units), not browser localStorage:
 
 Legacy `sessions.json` / `files/` are **not** migrated — missing layout marker or
 legacy paths trigger a one-time wipe; the user starts with an empty session tree.
-Deleting a conversation removes its entire folder. Settings → Storage Management
-reports this directory as a protected durable bucket; users may open it or
-explicitly clear all QxAI sessions, but general cache cleanup must never remove
-it. Writes are atomic and filesystem work runs behind the Rust blocking boundary.
+Each frontend mutation debounces into a single-session save command; it does not
+serialize every other conversation. The backend atomically replaces only that
+session's `session.json` and updates the small `index.json` catalog under a
+blocking worker. The legacy bulk save command remains for compatibility and
+recovery tooling. Deleting a conversation removes its entire folder. Settings →
+Storage Management reports this directory as a protected durable bucket; users
+may open it or explicitly clear all QxAI sessions, but general cache cleanup must
+never remove it.
 
 Each conversation owns an independent run state and FIFO input queue. Starting
 a request in one conversation must not serialize, replace, or hide streaming
@@ -157,7 +161,10 @@ RLM-style retrieval split:
 | **Hot snapshot** | Only a char-capped recent pack (~2200 / ~1375) is frozen into the system prompt |
 
 `MEMORY.md` / `USER.md` are best-effort mirrors of the hot window after migration.
-Dream consolidation rewrites the hot set; the archive remains searchable.
+Dream consolidation rewrites the hot set; the archive remains searchable. All
+memory commands, including the snapshot used before a turn, run through the
+blocking worker. The snapshot command must take the memory lock exactly once;
+it must never call a lock-taking wrapper while already holding that lock.
 `qxai_memory_clear` drops the database (explicit user action only).
 
 ## Reference Shape

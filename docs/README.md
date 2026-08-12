@@ -44,6 +44,7 @@
 | [plugin-storage.md](./plugin-storage.md) | **插件存储设计**：包/数据分离、生命周期、管理 API、分期 |
 | [plugin-design-research.md](./plugin-design-research.md) | 设计调研（历史） |
 | [mobile-plugin-portability-research.md](./mobile-plugin-portability-research.md) | **Android/iOS 插件无缝运行**：架构选型、能力矩阵、审核与路线图（Research） |
+| [macos-widget-plugin-research.md](./macos-widget-plugin-research.md) | **macOS WidgetKit 桌面小组件插件**：Apple 协议、快照契约、App Group、Widget Extension 与分阶段路线图（Research） |
 | [ai-agent-runtime.md](./ai-agent-runtime.md) | QxAI 各层 |
 | [`public/doc/plugin-system.md`](../public/doc/plugin-system.md) | 方案 + API/权限全表（参考） |
 | [`public/doc/plugin-marketplace.md`](../public/doc/plugin-marketplace.md) | 市场打包与安装 |
@@ -70,6 +71,7 @@
 - 想加 Rust 命令 → `rust-backend.md` + `ipc-catalogue.md`
 - 想写/审插件或复用模块端口 → **`module-port-inventory.md`** + **`public/doc/plugin-development-guide.md`** + `plugin-cli-protocol.md`
 - 想评估插件上 Android/iOS → **`mobile-plugin-portability-research.md`**
+- 想规划 macOS 桌面小组件 → **`macos-widget-plugin-research.md`**
 - 想改插件宿主 API → `plugin-architecture.md` + `rpcMethods.ts` + `plugin_api.rs`
 - 想改 AI → `ai-agent-runtime.md`
 - 想发版 → `release-and-versioning.md` + `public/doc/release-workflow.md` + `AGENTS.md` 的 Release 一节

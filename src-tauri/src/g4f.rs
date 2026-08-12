@@ -871,38 +871,44 @@ pub async fn g4f_chat(
 
 /// Send a chat message to an AI provider and return individual SSE chunks.
 #[tauri::command]
-pub fn g4f_stream_chat(
+pub async fn g4f_stream_chat(
     provider: String,
     model: Option<String>,
     messages: Vec<ChatMessage>,
 ) -> Result<Vec<String>, String> {
-    let endpoint = provider_endpoint(&provider)?;
-    let model = model.ok_or_else(|| format!("no model selected for {provider}"))?;
-    let mut chunks = Vec::new();
-    let _stream = provider_openai_chat_stream(
-        &endpoint.base_url,
-        &endpoint.api_key,
-        &model,
-        &messages,
-        false,
-        |kind, chunk| {
-            if kind == "text" {
-                chunks.push(chunk.to_string());
-            }
-        },
-    )?;
-    Ok(chunks)
+    crate::runtime::blocking(move || {
+        let endpoint = provider_endpoint(&provider)?;
+        let model = model.ok_or_else(|| format!("no model selected for {provider}"))?;
+        let mut chunks = Vec::new();
+        let _stream = provider_openai_chat_stream(
+            &endpoint.base_url,
+            &endpoint.api_key,
+            &model,
+            &messages,
+            false,
+            |kind, chunk| {
+                if kind == "text" {
+                    chunks.push(chunk.to_string());
+                }
+            },
+        )?;
+        Ok(chunks)
+    })
+    .await
+    .map_err(|error| format!("g4f stream task failed: {error}"))?
 }
 
 /// Send a chat message to an OpenAI-compatible custom provider (BYOK).
 #[tauri::command]
-pub fn g4f_chat_custom(
+pub async fn g4f_chat_custom(
     base_url: String,
     api_key: String,
     model: String,
     messages: Vec<ChatMessage>,
 ) -> Result<String, String> {
-    provider_openai_chat(&base_url, &api_key, &model, &messages)
+    crate::runtime::blocking(move || provider_openai_chat(&base_url, &api_key, &model, &messages))
+        .await
+        .map_err(|error| format!("custom g4f chat task failed: {error}"))?
 }
 
 /// List all available AI providers and their models.
@@ -1088,39 +1094,50 @@ pub async fn qxai_chat_with_tools(
     tools: Vec<serde_json::Value>,
     tool_choice: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let providers = qxai_provider_catalog();
-    let selection = resolve_model_selection(&providers, provider, model)?;
-
-    let endpoint = provider_endpoint(&selection.provider)?;
-
-    let messages = crate::qx_ai_sessions::prepare_provider_messages(messages)?;
-    let chat_messages: Vec<ChatMessage> = messages
-        .into_iter()
-        .map(|message| {
-            serde_json::from_value(message)
-                .map_err(|error| format!("invalid QxAI chat message: {error}"))
+    // Attachment reads and provider/settings resolution are synchronous work;
+    // keep them out of the Tokio worker before entering the async HTTP call.
+    let (base_url, api_key, selected_model, raw_messages) =
+        crate::runtime::blocking(move || -> Result<_, String> {
+            let providers = qxai_provider_catalog();
+            let selection = resolve_model_selection(&providers, provider, model)?;
+            let endpoint = provider_endpoint(&selection.provider)?;
+            let messages = crate::qx_ai_sessions::prepare_provider_messages(messages)?;
+            let chat_messages: Vec<ChatMessage> = messages
+                .into_iter()
+                .map(|message| {
+                    serde_json::from_value(message)
+                        .map_err(|error| format!("invalid QxAI chat message: {error}"))
+                })
+                .collect::<Result<_, _>>()?;
+            ensure_vision_capability(
+                &providers,
+                &selection.provider,
+                &selection.model,
+                &chat_messages,
+            )?;
+            let raw_messages = chat_messages
+                .into_iter()
+                .map(|message| {
+                    serde_json::json!({
+                        "role": message.role,
+                        "content": message.content,
+                    })
+                })
+                .collect::<Vec<_>>();
+            Ok((
+                endpoint.base_url,
+                endpoint.api_key,
+                selection.model,
+                raw_messages,
+            ))
         })
-        .collect::<Result<_, _>>()?;
-    ensure_vision_capability(
-        &providers,
-        &selection.provider,
-        &selection.model,
-        &chat_messages,
-    )?;
+        .await
+        .map_err(|error| format!("prepare QxAI tool request failed: {error}"))??;
     let choice = tool_choice.unwrap_or_else(|| "auto".to_string());
-    let raw_messages = chat_messages
-        .into_iter()
-        .map(|message| {
-            serde_json::json!({
-                "role": message.role,
-                "content": message.content,
-            })
-        })
-        .collect::<Vec<_>>();
     provider_openai_chat_with_tools(
-        endpoint.base_url,
-        endpoint.api_key,
-        selection.model,
+        base_url,
+        api_key,
+        selected_model,
         raw_messages,
         tools,
         choice,
@@ -1244,7 +1261,17 @@ pub fn qxai_stream_chat_with_tools_events(
 }
 
 #[tauri::command]
-pub fn qxai_stream_chat(
+pub async fn qxai_stream_chat(
+    provider: Option<String>,
+    model: Option<String>,
+    messages: Vec<serde_json::Value>,
+) -> Result<Vec<String>, String> {
+    crate::runtime::blocking(move || qxai_stream_chat_sync(provider, model, messages))
+        .await
+        .map_err(|error| format!("QxAI stream task failed: {error}"))?
+}
+
+fn qxai_stream_chat_sync(
     provider: Option<String>,
     model: Option<String>,
     messages: Vec<serde_json::Value>,
@@ -1254,7 +1281,21 @@ pub fn qxai_stream_chat(
     let prepared = prepare_qxai_chat_messages(messages)?;
     ensure_vision_capability(&providers, &selection.provider, &selection.model, &prepared)?;
 
-    g4f_stream_chat(selection.provider, Some(selection.model), prepared)
+    let endpoint = provider_endpoint(&selection.provider)?;
+    let mut chunks = Vec::new();
+    let _stream = provider_openai_chat_stream(
+        &endpoint.base_url,
+        &endpoint.api_key,
+        &selection.model,
+        &prepared,
+        false,
+        |kind, chunk| {
+            if kind == "text" {
+                chunks.push(chunk.to_string());
+            }
+        },
+    )?;
+    Ok(chunks)
 }
 
 #[tauri::command]

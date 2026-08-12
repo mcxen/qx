@@ -16,13 +16,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex, OnceLock,
+};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::g4f::{self, ChatMessage};
 
 pub const MEMORY_CHAR_LIMIT: usize = 2200;
 pub const USER_CHAR_LIMIT: usize = 1375;
+
+static MEMORY_ID_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -112,6 +117,8 @@ fn ensure_dirs() -> Result<(), String> {
 fn open_db() -> Result<Connection, String> {
     ensure_dirs()?;
     let conn = Connection::open(db_path()).map_err(|e| format!("open memory.db: {e}"))?;
+    conn.busy_timeout(Duration::from_millis(250))
+        .map_err(|e| format!("configure memory.db: {e}"))?;
     conn.execute_batch(
         "
         PRAGMA journal_mode = WAL;
@@ -147,7 +154,11 @@ fn now_ms() -> i64 {
 }
 
 fn new_id() -> String {
-    format!("m-{}", now_ms())
+    format!(
+        "m-{}-{}",
+        now_ms(),
+        MEMORY_ID_COUNTER.fetch_add(1, Ordering::Relaxed)
+    )
 }
 
 fn fts_insert(conn: &Connection, row: &MemoryRow) -> Result<(), String> {
@@ -321,6 +332,95 @@ fn count_target(conn: &Connection, target: MemoryTarget) -> Result<i64, String> 
     .map_err(|e| format!("count: {e}"))
 }
 
+fn plugin_entry_json(row: &MemoryRow) -> Value {
+    let tags = serde_json::from_str::<Value>(&row.tags).unwrap_or_else(|_| json!([]));
+    json!({
+        "id": row.id,
+        "text": row.content,
+        "tags": tags,
+        "createdAt": row.created_at,
+        "updatedAt": row.updated_at,
+    })
+}
+
+/// Compatibility projection for the plugin/settings memory API. It shares
+/// the same SQLite archive as the built-in Agent memory tool instead of
+/// maintaining the retired `qxai-memory.json` side store.
+pub fn plugin_memory_list() -> Result<Value, String> {
+    with_lock(|| {
+        with_db(|conn| {
+            let mut rows = list_target(conn, MemoryTarget::Memory)?;
+            rows.extend(list_target(conn, MemoryTarget::User)?);
+            rows.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+            Ok(Value::Array(rows.iter().map(plugin_entry_json).collect()))
+        })
+    })
+}
+
+pub fn plugin_memory_add(content: String, tags: Vec<String>) -> Result<Value, String> {
+    let content = content.trim().to_string();
+    if content.is_empty() {
+        return Err("memory text is empty".to_string());
+    }
+    let tags = tags
+        .into_iter()
+        .map(|tag| tag.trim().to_string())
+        .filter(|tag| !tag.is_empty())
+        .collect::<Vec<_>>();
+    let target = if tags
+        .iter()
+        .any(|tag| tag.eq_ignore_ascii_case("user") || tag.eq_ignore_ascii_case("pref"))
+    {
+        MemoryTarget::User
+    } else {
+        MemoryTarget::Memory
+    };
+    with_lock(|| {
+        with_db(|conn| {
+            let existing: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM memories WHERE target = ?1 AND content = ?2 LIMIT 1",
+                    params![target.as_str(), content],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| format!("dedupe memory: {e}"))?;
+            if let Some(id) = existing {
+                let row = load_row(conn, &id)?
+                    .ok_or_else(|| "memory disappeared after dedupe".to_string())?;
+                return Ok(plugin_entry_json(&row));
+            }
+            let ts = now_ms();
+            let row = MemoryRow {
+                id: new_id(),
+                target: target.as_str().to_string(),
+                content,
+                tags: serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string()),
+                created_at: ts,
+                updated_at: ts,
+            };
+            insert_row(conn, &row)?;
+            let hot = pack_hot(&list_target(conn, target)?, target.limit());
+            mirror_hot_markdown(target, &hot);
+            Ok(plugin_entry_json(&row))
+        })
+    })
+}
+
+pub fn plugin_memory_delete(id: String) -> Result<(), String> {
+    with_lock(|| {
+        with_db(|conn| {
+            let row = load_row(conn, id.trim())?
+                .ok_or_else(|| format!("memory entry not found: {id}"))?;
+            let target = MemoryTarget::parse(&row.target)?;
+            delete_row(conn, &row.id)?;
+            let hot = pack_hot(&list_target(conn, target)?, target.limit());
+            mirror_hot_markdown(target, &hot);
+            Ok(())
+        })
+    })
+}
+
 fn with_db<T>(f: impl FnOnce(&Connection) -> Result<T, String>) -> Result<T, String> {
     let conn = open_db()?;
     f(&conn)
@@ -329,29 +429,31 @@ fn with_db<T>(f: impl FnOnce(&Connection) -> Result<T, String>) -> Result<T, Str
 /// Drop all memory files (SQLite + md/json). Used when session layout resets.
 /// Does **not** import or convert legacy stores — start empty.
 pub fn wipe_memory_store_for_reset() -> Result<(), String> {
-    let _ = ensure_dirs();
-    for name in [
-        "memory.db",
-        "memory.db-wal",
-        "memory.db-shm",
-        "MEMORY.md",
-        "USER.md",
-    ] {
-        let path = memories_dir().join(name);
-        if path.exists() {
-            let _ = fs::remove_file(&path);
+    with_lock(|| {
+        let _ = ensure_dirs();
+        for name in [
+            "memory.db",
+            "memory.db-wal",
+            "memory.db-shm",
+            "MEMORY.md",
+            "USER.md",
+        ] {
+            let path = memories_dir().join(name);
+            if path.exists() {
+                let _ = fs::remove_file(&path);
+            }
         }
-    }
-    let legacy_json = crate::paths::state_dir().join("qxai-memory.json");
-    if legacy_json.exists() {
-        let _ = fs::remove_file(&legacy_json);
-    }
-    // Drop dream diaries too so nothing old is re-read.
-    if dreams_dir().is_dir() {
-        let _ = fs::remove_dir_all(dreams_dir());
-        let _ = fs::create_dir_all(dreams_dir());
-    }
-    Ok(())
+        let legacy_json = crate::paths::state_dir().join("qxai-memory.json");
+        if legacy_json.exists() {
+            let _ = fs::remove_file(&legacy_json);
+        }
+        // Drop dream diaries too so nothing old is re-read.
+        if dreams_dir().is_dir() {
+            let _ = fs::remove_dir_all(dreams_dir());
+            let _ = fs::create_dir_all(dreams_dir());
+        }
+        Ok(())
+    })
 }
 
 /// Frozen dual-store snapshot for system prompt injection.
@@ -362,8 +464,9 @@ pub fn memory_prompt_snapshot() -> String {
             let user_rows = list_target(conn, MemoryTarget::User)?;
             let memory = pack_hot(&memory_rows, MEMORY_CHAR_LIMIT);
             let user = pack_hot(&user_rows, USER_CHAR_LIMIT);
-            mirror_hot_markdown(MemoryTarget::Memory, &memory);
-            mirror_hot_markdown(MemoryTarget::User, &user);
+            // Markdown files are compatibility mirrors, not part of the turn
+            // critical path. They are refreshed by mutations/dream; reading a
+            // snapshot must remain a bounded SQLite read only.
             Ok(format!(
                 "{}\n\n{}\n\n(Full archive is SQLite FTS — use the memory search tool when you need older notes.)",
                 render_block(MemoryTarget::Memory, &memory),
@@ -869,7 +972,6 @@ fn rewrite_hot_set(
             created_at: ts,
             updated_at: ts,
         };
-        std::thread::sleep(std::time::Duration::from_millis(1));
         insert_row(conn, &row)?;
     }
     Ok(())
@@ -900,94 +1002,118 @@ fn extract_json_object(raw: &str) -> Option<String> {
 // ── Commands ────────────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn qxai_memory_snapshot() -> Result<String, String> {
-    with_lock(|| Ok(memory_prompt_snapshot()))
+pub async fn qxai_memory_snapshot() -> Result<String, String> {
+    // `memory_prompt_snapshot` owns the storage lock. Do not wrap it in
+    // another `with_lock`: std::sync::Mutex is not re-entrant, and the old
+    // nested lock deadlocked the command on the first AI turn.
+    crate::runtime::blocking(|| memory_prompt_snapshot())
+        .await
+        .map_err(|error| format!("memory snapshot task failed: {error}"))
 }
 
 #[tauri::command]
-pub fn qxai_memory_status() -> Result<Value, String> {
-    with_lock(status_all)
+pub async fn qxai_memory_status() -> Result<Value, String> {
+    crate::runtime::blocking(|| with_lock(status_all))
+        .await
+        .map_err(|error| format!("memory status task failed: {error}"))?
 }
 
 #[tauri::command]
-pub fn qxai_memory_mutate(
+pub async fn qxai_memory_mutate(
     action: String,
     target: Option<String>,
     content: Option<String>,
     old_text: Option<String>,
 ) -> Result<Value, String> {
-    with_lock(|| {
-        let action = action.trim().to_ascii_lowercase();
-        match action.as_str() {
-            "status" | "list" => status_all(),
-            "add" => {
-                let target = MemoryTarget::parse(target.as_deref().unwrap_or("memory"))?;
-                add_entry(target, content.unwrap_or_default(), None)
+    crate::runtime::blocking(move || {
+        with_lock(|| {
+            let action = action.trim().to_ascii_lowercase();
+            match action.as_str() {
+                "status" | "list" => status_all(),
+                "add" => {
+                    let target = MemoryTarget::parse(target.as_deref().unwrap_or("memory"))?;
+                    add_entry(target, content.unwrap_or_default(), None)
+                }
+                "replace" => {
+                    let target = MemoryTarget::parse(target.as_deref().unwrap_or("memory"))?;
+                    replace_entry(
+                        target,
+                        old_text.as_deref().unwrap_or(""),
+                        content.unwrap_or_default(),
+                    )
+                }
+                "remove" | "delete" => {
+                    let target = MemoryTarget::parse(target.as_deref().unwrap_or("memory"))?;
+                    remove_entry(target, old_text.as_deref().unwrap_or(""))
+                }
+                "search" => {
+                    let target = target
+                        .as_deref()
+                        .filter(|s| !s.trim().is_empty())
+                        .map(MemoryTarget::parse)
+                        .transpose()?;
+                    search_entries(content.as_deref().unwrap_or(""), target, 20)
+                }
+                other => Err(format!(
+                    "unknown memory action: {other} (use add|replace|remove|status|search)"
+                )),
             }
-            "replace" => {
-                let target = MemoryTarget::parse(target.as_deref().unwrap_or("memory"))?;
-                replace_entry(
-                    target,
-                    old_text.as_deref().unwrap_or(""),
-                    content.unwrap_or_default(),
-                )
-            }
-            "remove" | "delete" => {
-                let target = MemoryTarget::parse(target.as_deref().unwrap_or("memory"))?;
-                remove_entry(target, old_text.as_deref().unwrap_or(""))
-            }
-            "search" => {
-                let target = target
-                    .as_deref()
-                    .filter(|s| !s.trim().is_empty())
-                    .map(MemoryTarget::parse)
-                    .transpose()?;
-                search_entries(content.as_deref().unwrap_or(""), target, 20)
-            }
-            other => Err(format!(
-                "unknown memory action: {other} (use add|replace|remove|status|search)"
-            )),
-        }
+        })
     })
+    .await
+    .map_err(|error| format!("memory mutation task failed: {error}"))?
 }
 
 #[tauri::command]
 pub async fn qxai_memory_dream(transcript: Option<String>) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || run_memory_dream(transcript))
+    crate::runtime::blocking(move || run_memory_dream(transcript))
         .await
         .map_err(|e| format!("dream worker failed: {e}"))?
 }
 
 #[tauri::command]
-pub fn qxai_session_search(query: String, limit: Option<u32>) -> Result<Value, String> {
-    crate::qx_ai_sessions::session_search(&query, limit.unwrap_or(12).clamp(1, 50) as usize)
-}
-
-#[tauri::command]
-pub fn qxai_memories_directory() -> Result<String, String> {
-    ensure_dirs()?;
-    Ok(memories_dir().to_string_lossy().into_owned())
-}
-
-#[tauri::command]
-pub fn qxai_memory_clear() -> Result<Value, String> {
-    with_lock(|| {
-        ensure_dirs()?;
-        // Drop DB files (and WAL companions).
-        for name in ["memory.db", "memory.db-wal", "memory.db-shm"] {
-            let path = memories_dir().join(name);
-            if path.exists() {
-                fs::remove_file(&path).map_err(|e| format!("remove {}: {e}", path.display()))?;
-            }
-        }
-        for name in ["MEMORY.md", "USER.md"] {
-            let path = memories_dir().join(name);
-            if path.exists() {
-                let _ = fs::remove_file(&path);
-            }
-        }
-        Ok(json!({ "success": true, "message": "memory database cleared" }))
+pub async fn qxai_session_search(query: String, limit: Option<u32>) -> Result<Value, String> {
+    crate::runtime::blocking(move || {
+        crate::qx_ai_sessions::session_search(&query, limit.unwrap_or(12).clamp(1, 50) as usize)
     })
+    .await
+    .map_err(|error| format!("session search task failed: {error}"))?
+}
+
+#[tauri::command]
+pub async fn qxai_memories_directory() -> Result<String, String> {
+    crate::runtime::blocking(|| {
+        ensure_dirs()?;
+        Ok(memories_dir().to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|error| format!("memory directory task failed: {error}"))?
+}
+
+#[tauri::command]
+pub async fn qxai_memory_clear() -> Result<Value, String> {
+    crate::runtime::blocking(|| {
+        with_lock(|| {
+            ensure_dirs()?;
+            // Drop DB files (and WAL companions).
+            for name in ["memory.db", "memory.db-wal", "memory.db-shm"] {
+                let path = memories_dir().join(name);
+                if path.exists() {
+                    fs::remove_file(&path)
+                        .map_err(|e| format!("remove {}: {e}", path.display()))?;
+                }
+            }
+            for name in ["MEMORY.md", "USER.md"] {
+                let path = memories_dir().join(name);
+                if path.exists() {
+                    let _ = fs::remove_file(&path);
+                }
+            }
+            Ok(json!({ "success": true, "message": "memory database cleared" }))
+        })
+    })
+    .await
+    .map_err(|error| format!("memory clear task failed: {error}"))?
 }
 
 // keep path helper for diagnostics

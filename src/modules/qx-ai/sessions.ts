@@ -18,6 +18,12 @@ export async function saveQxAiSessions(conversations: G4fConversation[]): Promis
   await invoke("qxai_sessions_save", { conversations });
 }
 
+/** Persist one changed conversation without rewriting the session catalog. */
+export async function saveQxAiSession(conversation: G4fConversation): Promise<void> {
+  if (!isTauriRuntime()) return;
+  await invoke("qxai_session_save", { conversation });
+}
+
 export async function chooseAndImportQxAiAttachments(
   conversationId: string,
 ): Promise<QxAiFileAttachment[]> {

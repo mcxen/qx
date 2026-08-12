@@ -15,7 +15,7 @@
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::Serialize;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -295,9 +295,7 @@ fn save_all_conversations(conversations: Value) -> Result<(), String> {
             Some(map) => map.clone(),
             None => continue,
         };
-        object
-            .entry("updatedAt".to_string())
-            .or_insert(json!(now_ms));
+        object.insert("updatedAt".to_string(), json!(now_ms));
         let conversation = Value::Object(object);
         // Ensure files dir exists for the session unit.
         fs::create_dir_all(session_files_dir(id))
@@ -328,6 +326,66 @@ fn save_all_conversations(conversations: Value) -> Result<(), String> {
     });
     atomic_write_json(&index_file(), &Value::Array(summaries))?;
     Ok(())
+}
+
+/// Persist one conversation without serializing or rewriting every other
+/// session. The index is intentionally small, so updating it remains cheap
+/// while the full transcript stays isolated in its own session folder.
+fn save_one_conversation(conversation: Value) -> Result<(), String> {
+    purge_legacy_storage();
+    ensure_root()?;
+    let Some(id) = conversation.get("id").and_then(Value::as_str) else {
+        return Err("QxAI conversation id is missing".to_string());
+    };
+    let id = checked_id(id)?.to_string();
+    let mut object = conversation
+        .as_object()
+        .cloned()
+        .ok_or_else(|| "QxAI conversation must be an object".to_string())?;
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+    object.insert("updatedAt".to_string(), json!(now_ms));
+    let conversation = Value::Object(object);
+
+    fs::create_dir_all(session_files_dir(&id))
+        .map_err(|e| format!("create {}: {e}", session_files_dir(&id).display()))?;
+    atomic_write_json(&session_file(&id), &conversation)?;
+
+    let mut summaries = match fs::read(&index_file())
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .and_then(|value| value.as_array().cloned())
+    {
+        Some(summaries) => summaries,
+        None => {
+            // A missing/corrupt catalog should not make this incremental
+            // write erase summaries for older session folders.
+            rebuild_index_from_disk()?;
+            fs::read(&index_file())
+                .ok()
+                .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+                .and_then(|value| value.as_array().cloned())
+                .unwrap_or_default()
+        }
+    };
+    summaries.retain(|summary| summary.get("id").and_then(Value::as_str) != Some(&id));
+    summaries.push(conversation_summary(&conversation));
+    summaries.sort_by(|a, b| {
+        let a_t = a
+            .get("updatedAt")
+            .and_then(Value::as_i64)
+            .or_else(|| a.get("createdAt").and_then(Value::as_i64))
+            .unwrap_or(0);
+        let b_t = b
+            .get("updatedAt")
+            .and_then(Value::as_i64)
+            .or_else(|| b.get("createdAt").and_then(Value::as_i64))
+            .unwrap_or(0);
+        b_t.cmp(&a_t)
+    });
+    atomic_write_json(&index_file(), &Value::Array(summaries))
 }
 
 fn import_attachments_sync(
@@ -519,6 +577,15 @@ pub async fn qxai_sessions_save(conversations: Value) -> Result<(), String> {
     crate::runtime::blocking(move || with_storage_lock(|| save_all_conversations(conversations)))
         .await
         .map_err(|error| format!("save QxAI sessions task failed: {error}"))?
+}
+
+/// Persist only one changed session. The bulk command above remains available
+/// for compatibility with older clients and recovery tooling.
+#[tauri::command]
+pub async fn qxai_session_save(conversation: Value) -> Result<(), String> {
+    crate::runtime::blocking(move || with_storage_lock(|| save_one_conversation(conversation)))
+        .await
+        .map_err(|error| format!("save QxAI session task failed: {error}"))?
 }
 
 #[tauri::command]

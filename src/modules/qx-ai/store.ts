@@ -19,7 +19,7 @@ import {
   deleteQxAiSessionFiles,
   isTauriRuntime,
   loadQxAiSessions,
-  saveQxAiSessions,
+  saveQxAiSession,
 } from "./sessions";
 import {
   completeQxAiRun,
@@ -415,6 +415,7 @@ function withAutoTitle(conversation: G4fConversation): G4fConversation {
 }
 
 const titleJobs = new Set<string>();
+let sessionsLoadPromise: Promise<void> | null = null;
 
 /**
  * Ask the chat model for a short title after the first assistant turn.
@@ -819,33 +820,39 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
 
   loadSessions: async () => {
     if (get().sessionsLoaded) return;
-    try {
-      // Fresh layout may return [] after one-time wipe of legacy/broken trees.
-      const stored = await loadQxAiSessions();
-      const conversations = Array.isArray(stored) ? stored : [];
-      const preferred =
-        get().currentConversationId
-        ?? readLastConversationId();
-      const currentConversationId = pickConversationId(conversations, preferred);
-      writeLastConversationId(currentConversationId);
-      set({
-        conversations,
-        sessionsLoaded: true,
-        currentConversationId,
-        view: "chat",
-        error: null,
-      });
-    } catch (error) {
-      // Never block the workbench on storage errors — start empty.
-      console.warn("qxai loadSessions failed; starting empty", error);
-      set({
-        conversations: [],
-        sessionsLoaded: true,
-        currentConversationId: null,
-        view: "chat",
-        error: null,
-      });
-    }
+    if (sessionsLoadPromise) return sessionsLoadPromise;
+    sessionsLoadPromise = (async () => {
+      try {
+        // Fresh layout may return [] after one-time wipe of legacy/broken trees.
+        const stored = await loadQxAiSessions();
+        const conversations = Array.isArray(stored) ? stored : [];
+        const preferred =
+          get().currentConversationId
+          ?? readLastConversationId();
+        const currentConversationId = pickConversationId(conversations, preferred);
+        writeLastConversationId(currentConversationId);
+        set({
+          conversations,
+          sessionsLoaded: true,
+          currentConversationId,
+          view: "chat",
+          error: null,
+        });
+      } catch (error) {
+        // Never block the workbench on storage errors — start empty.
+        console.warn("qxai loadSessions failed; starting empty", error);
+        set({
+          conversations: [],
+          sessionsLoaded: true,
+          currentConversationId: null,
+          view: "chat",
+          error: null,
+        });
+      } finally {
+        sessionsLoadPromise = null;
+      }
+    })();
+    return sessionsLoadPromise;
   },
 
   createConversation: (provider, model, options) => {
@@ -911,7 +918,6 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       view: "chat",
     });
     dismissQxAiRun(id);
-    void deleteQxAiSessionFiles(id);
   },
 
   renameConversation: (id, name) => {
@@ -1680,7 +1686,6 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         (message) => message.conversationId !== currentConversationId,
       ),
     });
-    void deleteQxAiSessionFiles(currentConversationId);
   },
 
   loadProviders: async () => {
@@ -1813,18 +1818,52 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
 }));
 
 let persistedConversations = useG4fStore.getState().conversations;
-let pendingPersistence: G4fConversation[] | null = null;
+let persistenceBaselineReady = false;
+const pendingSessionWrites = new Map<string, G4fConversation>();
+const pendingSessionDeletes = new Set<string>();
 let persistTimer: number | undefined;
 let persistenceRunning = false;
+
+function scheduleQxAiPersistence(delayMs = 180): void {
+  if (persistTimer !== undefined) window.clearTimeout(persistTimer);
+  persistTimer = window.setTimeout(() => {
+    persistTimer = undefined;
+    void flushQxAiPersistence().catch((error) => {
+      useG4fStore.setState({ error: String(error) });
+      scheduleQxAiPersistence(1000);
+    });
+  }, delayMs);
+}
 
 async function flushQxAiPersistence(): Promise<void> {
   if (persistenceRunning) return;
   persistenceRunning = true;
   try {
-    while (pendingPersistence) {
-      const conversations = pendingPersistence;
-      pendingPersistence = null;
-      await saveQxAiSessions(conversations);
+    while (pendingSessionWrites.size > 0 || pendingSessionDeletes.size > 0) {
+      const writes = [...pendingSessionWrites.values()];
+      const deletes = [...pendingSessionDeletes];
+      pendingSessionWrites.clear();
+      pendingSessionDeletes.clear();
+      try {
+        await Promise.all([
+          ...writes.map((conversation) => saveQxAiSession(conversation)),
+          ...deletes.map((conversationId) => deleteQxAiSessionFiles(conversationId)),
+        ]);
+      } catch (error) {
+        // Keep failed work durable; a newer mutation already queued for the
+        // same id wins and must not be replaced by this older snapshot.
+        for (const conversation of writes) {
+          if (!pendingSessionWrites.has(conversation.id) && !pendingSessionDeletes.has(conversation.id)) {
+            pendingSessionWrites.set(conversation.id, conversation);
+          }
+        }
+        for (const conversationId of deletes) {
+          if (!pendingSessionWrites.has(conversationId) && !pendingSessionDeletes.has(conversationId)) {
+            pendingSessionDeletes.add(conversationId);
+          }
+        }
+        throw error;
+      }
     }
   } finally {
     persistenceRunning = false;
@@ -1832,13 +1871,27 @@ async function flushQxAiPersistence(): Promise<void> {
 }
 
 useG4fStore.subscribe((state) => {
-  if (!state.sessionsLoaded || state.conversations === persistedConversations) return;
+  if (!state.sessionsLoaded) return;
+  if (!persistenceBaselineReady) {
+    persistedConversations = state.conversations;
+    persistenceBaselineReady = true;
+    return;
+  }
+  if (state.conversations === persistedConversations) return;
+  const previousById = new Map(persistedConversations.map((conversation) => [conversation.id, conversation]));
+  const nextIds = new Set(state.conversations.map((conversation) => conversation.id));
+  for (const conversation of state.conversations) {
+    if (previousById.get(conversation.id) !== conversation) {
+      pendingSessionWrites.set(conversation.id, conversation);
+      pendingSessionDeletes.delete(conversation.id);
+    }
+  }
+  for (const conversation of persistedConversations) {
+    if (!nextIds.has(conversation.id)) {
+      pendingSessionWrites.delete(conversation.id);
+      pendingSessionDeletes.add(conversation.id);
+    }
+  }
   persistedConversations = state.conversations;
-  pendingPersistence = state.conversations;
-  if (persistTimer !== undefined) window.clearTimeout(persistTimer);
-  persistTimer = window.setTimeout(() => {
-    void flushQxAiPersistence().catch((error) => {
-      useG4fStore.setState({ error: String(error) });
-    });
-  }, 180);
+  scheduleQxAiPersistence();
 });

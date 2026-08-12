@@ -868,6 +868,7 @@ pub fn run() {
             qx_ai_mcp::qxai_write_mcp_config_raw,
             qx_ai_sessions::qxai_sessions_load,
             qx_ai_sessions::qxai_sessions_save,
+            qx_ai_sessions::qxai_session_save,
             qx_ai_sessions::qxai_session_import_attachments,
             qx_ai_sessions::qxai_session_delete,
             qx_ai_sessions::qxai_sessions_directory,

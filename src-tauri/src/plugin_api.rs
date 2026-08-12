@@ -2,8 +2,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 use tauri::AppHandle;
 
 // ---------------------------------------------------------------------------
@@ -90,8 +89,6 @@ pub struct PluginAiMemoryInput {
 fn default_ai_bash_timeout_ms() -> u64 {
     30_000
 }
-
-static AI_MEMORY_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn plugin_files_dir(id: &str) -> Result<PathBuf, String> {
     // Align with marketplace durable data root (`~/.qx/plugin-data/<id>/files`).
@@ -361,13 +358,15 @@ pub fn plugin_ai_agent_settings() -> Result<crate::settings::AgentSettings, Stri
 }
 
 #[tauri::command]
-pub fn plugin_ai_chat(req: PluginAiChatRequest) -> Result<String, String> {
+pub async fn plugin_ai_chat(req: PluginAiChatRequest) -> Result<String, String> {
     let (provider, model, messages) = normalize_ai_chat_request(req)?;
-    crate::g4f::qxai_chat(provider, model, messages)
+    crate::runtime::blocking(move || crate::g4f::qxai_chat(provider, model, messages))
+        .await
+        .map_err(|error| format!("plugin AI chat task failed: {error}"))?
 }
 
 #[tauri::command]
-pub fn plugin_ai_stream_chat(req: PluginAiChatRequest) -> Result<Vec<String>, String> {
+pub async fn plugin_ai_stream_chat(req: PluginAiChatRequest) -> Result<Vec<String>, String> {
     let (provider, model, messages) = normalize_ai_chat_request(req)?;
     crate::g4f::qxai_stream_chat(
         provider,
@@ -377,6 +376,7 @@ pub fn plugin_ai_stream_chat(req: PluginAiChatRequest) -> Result<Vec<String>, St
             .map(|message| serde_json::to_value(message).map_err(|error| error.to_string()))
             .collect::<Result<Vec<_>, _>>()?,
     )
+    .await
 }
 
 #[tauri::command]
@@ -680,81 +680,31 @@ fn parse_grep_output(output: &str, max_results: u32) -> Vec<PluginAiGrepResult> 
         .collect()
 }
 
-fn ai_memory_path() -> PathBuf {
-    let dir = home_dir().join(".qx");
-    let _ = std::fs::create_dir_all(&dir);
-    dir.join("qxai-memory.json")
-}
-
-fn now_millis() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64
-}
-
-fn read_ai_memory() -> Vec<PluginAiMemoryEntry> {
-    let path = ai_memory_path();
-    match std::fs::read_to_string(path) {
-        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
-        Err(_) => vec![],
-    }
-}
-
-fn write_ai_memory(entries: &[PluginAiMemoryEntry]) -> Result<(), String> {
-    let path = ai_memory_path();
-    let json =
-        serde_json::to_string_pretty(entries).map_err(|e| format!("serialize memory: {e}"))?;
-    let tmp = path.with_extension("json.tmp");
-    {
-        let mut file =
-            std::fs::File::create(&tmp).map_err(|e| format!("create memory tmp: {e}"))?;
-        file.write_all(json.as_bytes())
-            .map_err(|e| format!("write memory tmp: {e}"))?;
-    }
-    std::fs::rename(&tmp, &path).map_err(|e| format!("replace memory file: {e}"))
+#[tauri::command]
+pub async fn plugin_ai_memory_list() -> Result<Vec<PluginAiMemoryEntry>, String> {
+    let value = crate::runtime::blocking(crate::qx_ai_memory::plugin_memory_list)
+        .await
+        .map_err(|error| format!("plugin memory list task failed: {error}"))??;
+    serde_json::from_value(value).map_err(|error| format!("decode plugin memory list: {error}"))
 }
 
 #[tauri::command]
-pub fn plugin_ai_memory_list() -> Result<Vec<PluginAiMemoryEntry>, String> {
-    Ok(read_ai_memory())
+pub async fn plugin_ai_memory_add(
+    input: PluginAiMemoryInput,
+) -> Result<PluginAiMemoryEntry, String> {
+    let value = crate::runtime::blocking(move || {
+        crate::qx_ai_memory::plugin_memory_add(input.text, input.tags)
+    })
+    .await
+    .map_err(|error| format!("plugin memory add task failed: {error}"))??;
+    serde_json::from_value(value).map_err(|error| format!("decode plugin memory entry: {error}"))
 }
 
 #[tauri::command]
-pub fn plugin_ai_memory_add(input: PluginAiMemoryInput) -> Result<PluginAiMemoryEntry, String> {
-    let text = input.text.trim();
-    if text.is_empty() {
-        return Err("memory text is empty".to_string());
-    }
-    let now = now_millis();
-    let suffix = AI_MEMORY_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let entry = PluginAiMemoryEntry {
-        id: format!("mem-{now}-{suffix}"),
-        text: text.to_string(),
-        tags: input
-            .tags
-            .into_iter()
-            .map(|tag| tag.trim().to_string())
-            .filter(|tag| !tag.is_empty())
-            .collect(),
-        created_at: now,
-        updated_at: now,
-    };
-    let mut entries = read_ai_memory();
-    entries.push(entry.clone());
-    write_ai_memory(&entries)?;
-    Ok(entry)
-}
-
-#[tauri::command]
-pub fn plugin_ai_memory_delete(id: String) -> Result<(), String> {
-    let mut entries = read_ai_memory();
-    let before = entries.len();
-    entries.retain(|entry| entry.id != id);
-    if entries.len() == before {
-        return Err(format!("memory entry not found: {id}"));
-    }
-    write_ai_memory(&entries)
+pub async fn plugin_ai_memory_delete(id: String) -> Result<(), String> {
+    crate::runtime::blocking(move || crate::qx_ai_memory::plugin_memory_delete(id))
+        .await
+        .map_err(|error| format!("plugin memory delete task failed: {error}"))?
 }
 
 // ---------------------------------------------------------------------------
