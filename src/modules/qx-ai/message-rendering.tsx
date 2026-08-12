@@ -226,6 +226,7 @@ function ReasoningPanel({
   isStreaming,
   children,
   defaultOpen = true,
+  reasoningDurationMs,
 }: {
   title?: ReactNode;
   streamingLabel?: string;
@@ -233,6 +234,7 @@ function ReasoningPanel({
   isStreaming?: boolean;
   children: ReactNode;
   defaultOpen?: boolean;
+  reasoningDurationMs?: number;
 }) {
   const t = useT();
   const [open, setOpen] = useState(defaultOpen);
@@ -254,6 +256,10 @@ function ReasoningPanel({
     }
   }, [isStreaming, startedAt]);
 
+  const completedDurationSec = reasoningDurationMs != null
+    ? Math.max(1, Math.ceil(reasoningDurationMs / 1000))
+    : durationSec;
+
   const headerTitle = (() => {
     if (title) return title;
     if (isStreaming || durationSec === 0) {
@@ -263,12 +269,12 @@ function ReasoningPanel({
         </span>
       );
     }
-    if (durationSec === undefined) {
+    if (completedDurationSec === undefined) {
       return t("qxai.cot.thoughtBrief", "Thought for a few seconds");
     }
     return t("qxai.cot.thoughtFor", "{verb} for {n} seconds")
       .replace("{verb}", completedVerb ?? t("qxai.cot.thoughtVerb", "Thought"))
-      .replace("{n}", String(durationSec));
+      .replace("{n}", String(completedDurationSec));
   })();
 
   return (
@@ -335,9 +341,11 @@ export { ReasoningPanel, ToolCallPanel };
 export const AgentStepsView = memo(function AgentStepsView({
   steps,
   streaming = false,
+  reasoningDurationMs,
 }: {
   steps: AgentStep[];
   streaming?: boolean;
+  reasoningDurationMs?: number;
 }) {
   const t = useT();
   const visible = steps.filter((s) => s.kind !== "final");
@@ -348,7 +356,7 @@ export const AgentStepsView = memo(function AgentStepsView({
       streamingLabel={t("qxai.cot.thinking", "Thinking…")}
       completedVerb={t("qxai.cot.thoughtVerb", "Thought")}
       isStreaming={streaming}
-      defaultOpen={streaming}
+      reasoningDurationMs={reasoningDurationMs}
     >
       {visible.map((step) => {
         if (step.kind === "thought") {
@@ -435,6 +443,36 @@ export function TokenSpeedBadge({
   );
 }
 
+export function TokenUsageBadge({
+  usage,
+}: {
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    estimated?: boolean;
+  };
+}) {
+  const t = useT();
+  if (!usage) return null;
+  const input = usage.inputTokens && usage.inputTokens > 0 ? Math.round(usage.inputTokens) : 0;
+  const output = usage.outputTokens && usage.outputTokens > 0 ? Math.round(usage.outputTokens) : 0;
+  const total = usage.totalTokens && usage.totalTokens > 0 ? Math.round(usage.totalTokens) : input + output;
+  if (input === 0 && output === 0 && total === 0) return null;
+  const prefix = usage.estimated ? "~" : "";
+  return (
+    <span
+      className="qx-jan-token-usage"
+      title={t("qxai.tokens.usageDetails", "Token Usage")}
+    >
+      {t("qxai.tokens.usage", "Token Usage")}: {prefix}{total}
+      <span className="qx-jan-token-usage-detail">
+        ({prefix}{input} {t("qxai.tokens.input", "input")} · {prefix}{output} {t("qxai.tokens.output", "output")})
+      </span>
+    </span>
+  );
+}
+
 export function AiMessageContent({
   content,
   reasoning,
@@ -443,6 +481,8 @@ export function AiMessageContent({
   attachments,
   tokenSpeed,
   tokenCount,
+  usage,
+  reasoningDurationMs,
 }: {
   content: string;
   reasoning?: string;
@@ -451,6 +491,13 @@ export function AiMessageContent({
   attachments?: QxAiFileAttachment[];
   tokenSpeed?: number;
   tokenCount?: number;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    estimated?: boolean;
+  };
+  reasoningDurationMs?: number;
 }) {
   const t = useT();
   const parts = useMemo(() => parseParts(content), [content]);
@@ -459,16 +506,17 @@ export function AiMessageContent({
   return (
     <>
       {steps && steps.length > 0 ? (
-        <AgentStepsView steps={steps} streaming={streaming} />
+        <AgentStepsView
+          steps={steps}
+          streaming={streaming}
+          reasoningDurationMs={reasoningDurationMs}
+        />
       ) : reasoning ? (
         <JanChainOfThought
-          title={
-            streaming
-              ? t("qxai.reasoning.streaming", "Reasoning…")
-              : t("qxai.reasoning", "Reasoning")
-          }
+          streamingLabel={t("qxai.reasoning.streaming", "Reasoning…")}
+          completedVerb={t("qxai.cot.thoughtVerb", "Thought")}
           isStreaming={streaming}
-          defaultOpen={streaming}
+          reasoningDurationMs={reasoningDurationMs}
         >
           <div className="qx-jan-thought-text">{reasoning}</div>
         </JanChainOfThought>
@@ -494,9 +542,10 @@ export function AiMessageContent({
         <FileAttachments attachments={attachments} />
       ) : null}
 
-      {!streaming && (tokenSpeed || tokenCount) ? (
+      {!streaming && (tokenSpeed || tokenCount || usage) ? (
         <div className="qx-jan-message-foot">
           <TokenSpeedBadge tokenSpeed={tokenSpeed} tokenCount={tokenCount} />
+          <TokenUsageBadge usage={usage} />
         </div>
       ) : null}
 

@@ -1,7 +1,7 @@
 {
   "name": "qx",
   "private": true,
-  "version": "0.6.82",
+  "version": "0.6.83",
   "type": "module",
   "scripts": {
     "dev": "vite",

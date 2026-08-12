@@ -4,7 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "../settings/store";
 // Types only — agent harness is dynamically imported when a turn actually runs
 // so opening QxAI sessions/providers does not parse the full tool graph.
-import type { AgentStep, QxAiFileAttachment } from "./agent/types";
+import type { AgentStep, AgentStreamMetrics, QxAiFileAttachment } from "./agent/types";
 import { computeTokenSpeed, estimateTokens } from "./message-rendering";
 import {
   messageHasImages,
@@ -27,12 +27,23 @@ import {
   failQxAiRun,
   showQxAiRun,
 } from "./run-island";
+import {
+  finishReasoningTiming,
+  finishStreamTiming,
+  recordReasoningOutput,
+  recordStreamOutput,
+  resolveReasoningDuration,
+  resolveStreamDuration,
+  type StreamTiming,
+} from "./stream-metrics";
 
 export type { AgentStep, QxAiFileAttachment } from "./agent/types";
 
 export interface G4fMessage {
   role: "user" | "assistant" | "system";
   content: string;
+  /** Stable display timestamp; legacy sessions fall back to conversation time. */
+  createdAt?: number;
   reasoning?: string;
   steps?: AgentStep[];
   attachments?: QxAiFileAttachment[];
@@ -42,6 +53,15 @@ export interface G4fMessage {
   /** Tokens per second for the completion stream. */
   tokenSpeed?: number;
   durationMs?: number;
+  /** Observed visible reasoning/thought phase duration, in milliseconds. */
+  reasoningDurationMs?: number;
+  /** Provider usage; estimated is true when derived from chars/4. */
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    estimated?: boolean;
+  };
 }
 
 export interface QueuedAiMessage {
@@ -72,41 +92,139 @@ export interface QxAiConversationRun {
   /** Live completion tokens/sec estimate while streaming. */
   liveTokenSpeed?: number;
   liveTokenCount?: number;
+  reasoningStartedAt?: number;
+  reasoningLastDeltaAt?: number;
+  reasoningMs?: number;
+  /** Last provider usage metadata; preferred over frontend estimates. */
+  providerPromptTokenCount?: number;
+  providerTokenSpeed?: number;
+  providerTokenCount?: number;
+  providerTotalTokenCount?: number;
+  providerDurationMs?: number;
 }
 
-/** Active decode window: ignore multi-second pauses (tools / TTFT gaps). */
-const GENERATION_GAP_MS = 1500;
+function speedFromDuration(tokenCount: number, durationMs?: number): number {
+  if (tokenCount <= 0 || !durationMs || durationMs <= 0) return 0;
+  return Math.round(computeTokenSpeed(tokenCount, durationMs) * 100) / 100;
+}
 
-function nextGenerationTiming(
-  run: Pick<QxAiConversationRun, "firstTokenAt" | "lastDeltaAt" | "generationMs">,
+function speedFromTiming(tokenCount: number, timing?: StreamTiming, now = Date.now()): number {
+  if (tokenCount <= 0 || !timing) return 0;
+  const durationMs = resolveStreamDuration(timing, now);
+  return speedFromDuration(tokenCount, durationMs);
+}
+
+function estimateInputTokens(messages: G4fMessage[]): number {
+  return messages.reduce((total, message) => total + estimateTokens(message.content), 0);
+}
+
+function buildTokenUsage(
+  metrics: AgentStreamMetrics | undefined,
+  inputEstimate: number,
+  outputTokens: number,
+): G4fMessage["usage"] {
+  const inputTokens = metrics?.promptTokenCount && metrics.promptTokenCount > 0
+    ? metrics.promptTokenCount
+    : inputEstimate;
+  const totalTokens = metrics?.totalTokenCount && metrics.totalTokenCount > 0
+    ? metrics.totalTokenCount
+    : inputTokens + outputTokens;
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    estimated: !(metrics?.promptTokenCount && metrics?.tokenCount),
+  };
+}
+
+function updateReasoningTiming(
+  run: QxAiConversationRun,
   now: number,
-  hasText: boolean,
-): Pick<QxAiConversationRun, "firstTokenAt" | "lastDeltaAt" | "generationMs"> {
-  if (!hasText && run.firstTokenAt == null) {
-    return {
-      firstTokenAt: run.firstTokenAt,
-      lastDeltaAt: run.lastDeltaAt,
-      generationMs: run.generationMs,
-    };
-  }
-  const firstTokenAt = run.firstTokenAt ?? now;
-  let generationMs = run.generationMs ?? 0;
-  if (run.lastDeltaAt != null) {
-    const gap = now - run.lastDeltaAt;
-    if (gap > 0 && gap <= GENERATION_GAP_MS) generationMs += gap;
-  }
-  return { firstTokenAt, lastDeltaAt: now, generationMs };
+  hasOutput: boolean,
+): QxAiConversationRun {
+  const timing = recordReasoningOutput(
+    {
+      startedAt: run.reasoningStartedAt,
+      lastDeltaAt: run.reasoningLastDeltaAt,
+      durationMs: run.reasoningMs,
+    },
+    now,
+    hasOutput,
+  );
+  return {
+    ...run,
+    reasoningStartedAt: timing.startedAt,
+    reasoningLastDeltaAt: timing.lastDeltaAt,
+    reasoningMs: timing.durationMs,
+  };
 }
 
-function speedFromTiming(tokenCount: number, generationMs?: number, firstTokenAt?: number, now = Date.now()): number {
-  const activeMs =
-    generationMs && generationMs > 0
-      ? generationMs
-      : firstTokenAt
-        ? Math.max(1, now - firstTokenAt)
-        : 0;
-  if (tokenCount <= 0 || activeMs <= 0) return 0;
-  return Math.round(computeTokenSpeed(tokenCount, activeMs) * 100) / 100;
+function reasoningDurationFromRun(run: QxAiConversationRun | undefined, now: number): number | undefined {
+  if (!run?.reasoningStartedAt) return undefined;
+  return resolveReasoningDuration(
+    finishReasoningTiming(
+      {
+        startedAt: run.reasoningStartedAt,
+        lastDeltaAt: run.reasoningLastDeltaAt,
+        durationMs: run.reasoningMs,
+      },
+      now,
+    ),
+    now,
+  );
+}
+
+function updateStreamRun(
+  run: QxAiConversationRun | undefined,
+  content: string,
+  reasoning: string,
+  now = Date.now(),
+): QxAiConversationRun | undefined {
+  if (!run?.streaming) return undefined;
+  const timing = recordStreamOutput(run, now, Boolean(content.trim() || reasoning.trim()));
+  const hasNewReasoning = Boolean(reasoning.trim()) && reasoning !== run.streamedReasoning;
+  const reasoningRun = updateReasoningTiming(run, now, hasNewReasoning);
+  const liveTokenCount = estimateTokens(content);
+  return {
+    ...reasoningRun,
+    streamedContent: content,
+    streamedReasoning: reasoning,
+    ...timing,
+    liveTokenCount,
+    liveTokenSpeed: speedFromTiming(liveTokenCount, timing, now),
+    providerTokenSpeed: undefined,
+    providerTokenCount: undefined,
+    providerDurationMs: undefined,
+  };
+}
+
+function updateStreamMetrics(
+  run: QxAiConversationRun | undefined,
+  metrics: AgentStreamMetrics,
+): QxAiConversationRun | undefined {
+  if (!run?.streaming) return undefined;
+  const providerTokenCount = metrics.tokenCount && metrics.tokenCount > 0
+    ? metrics.tokenCount
+    : run.providerTokenCount;
+  const providerTokenSpeed = metrics.tokenSpeed && metrics.tokenSpeed > 0
+    ? Math.round(metrics.tokenSpeed * 100) / 100
+    : providerTokenCount && metrics.durationMs
+      ? speedFromDuration(providerTokenCount, metrics.durationMs)
+      : run.providerTokenSpeed;
+  return {
+    ...run,
+    ...(providerTokenCount ? { providerTokenCount, liveTokenCount: providerTokenCount } : {}),
+    ...(metrics.promptTokenCount && metrics.promptTokenCount > 0
+      ? { providerPromptTokenCount: metrics.promptTokenCount }
+      : {}),
+    ...(metrics.totalTokenCount && metrics.totalTokenCount > 0
+      ? { providerTotalTokenCount: metrics.totalTokenCount }
+      : {}),
+    ...(metrics.durationMs && metrics.durationMs > 0
+      ? { providerDurationMs: metrics.durationMs }
+      : {}),
+    ...(providerTokenSpeed ? { providerTokenSpeed, liveTokenSpeed: providerTokenSpeed } : {}),
+  };
 }
 
 export interface G4fConversation {
@@ -165,6 +283,11 @@ interface StreamEvent {
   done: boolean;
   message?: unknown;
   error?: string;
+  tokenCount?: number;
+  promptTokenCount?: number;
+  totalTokenCount?: number;
+  durationMs?: number;
+  tokenSpeed?: number;
 }
 
 /** `chat` is the master–detail workbench; `list` is retained as an alias for chat. */
@@ -412,6 +535,16 @@ interface G4fStore {
     id: string,
     patch: { content?: string; skill?: QxAiSkillDocument | null },
   ) => void;
+  /** Replace or remove one persisted transcript message by its full-array index. */
+  updateMessage: (conversationId: string, messageIndex: number, content: string) => void;
+  /** Jan-style edit: assistant edits stay local; user edits restart the turn. */
+  editMessage: (conversationId: string, messageIndex: number, content: string) => Promise<void>;
+  deleteMessage: (conversationId: string, messageIndex: number) => void;
+  /**
+   * Jan regenerate: drop the assistant turn (and anything after) plus its
+   * preceding user turn, then re-send that user content.
+   */
+  regenerateMessage: (conversationId: string, assistantIndex: number) => Promise<void>;
   clearMessages: () => void;
 
   loadProviders: () => Promise<void>;
@@ -543,8 +676,9 @@ interface StreamChatEventsArgs {
   provider: string;
   model: string;
   messages: G4fMessage[];
-  onChunk: (full: string) => void;
-  onReasoning: (full: string) => void;
+  /** One atomic snapshot keeps content, reasoning, and timing in sync. */
+  onUpdate: (content: string, reasoning: string) => void;
+  onMetrics?: (metrics: AgentStreamMetrics) => void;
   reasoning: boolean;
 }
 
@@ -553,8 +687,8 @@ async function streamChatEvents({
   provider,
   model,
   messages,
-  onChunk,
-  onReasoning,
+  onUpdate,
+  onMetrics,
   reasoning,
 }: StreamChatEventsArgs): Promise<string> {
   let responseText = "";
@@ -562,11 +696,30 @@ async function streamChatEvents({
   let unlisten: (() => void) | undefined;
   let settled = false;
   let timer: number | undefined;
+  let flushTimer: number | undefined;
+  let lastFlushAt = 0;
+
+  // Providers may emit hundreds of SSE deltas per second. Keep the complete
+  // accumulator for correctness, but publish UI snapshots at a bounded rate.
+  const flush = () => {
+    if (flushTimer !== undefined) {
+      window.clearTimeout(flushTimer);
+      flushTimer = undefined;
+    }
+    lastFlushAt = Date.now();
+    if (responseText || reasoningText) onUpdate(responseText, reasoningText);
+  };
+  const scheduleFlush = () => {
+    if (flushTimer !== undefined) return;
+    const delay = Math.max(0, 48 - (Date.now() - lastFlushAt));
+    flushTimer = window.setTimeout(flush, delay);
+  };
 
   const stop = () => {
     if (settled) return false;
     settled = true;
     if (timer !== undefined) window.clearTimeout(timer);
+    if (flushTimer !== undefined) window.clearTimeout(flushTimer);
     try {
       unlisten?.();
     } catch {
@@ -587,16 +740,24 @@ async function streamChatEvents({
         return;
       }
       if (event.payload.done) {
+        if (event.payload.chunk && !responseText) responseText = event.payload.chunk;
+        flush();
+        onMetrics?.({
+          tokenCount: event.payload.tokenCount,
+          promptTokenCount: event.payload.promptTokenCount,
+          totalTokenCount: event.payload.totalTokenCount,
+          durationMs: event.payload.durationMs,
+          tokenSpeed: event.payload.tokenSpeed,
+        });
         if (stop()) resolve(responseText || event.payload.chunk);
         return;
       }
       if (event.payload.kind === "reasoning") {
         reasoningText += event.payload.chunk;
-        onReasoning(reasoningText);
       } else {
         responseText += event.payload.chunk;
-        onChunk(responseText);
       }
+      scheduleFlush();
     })
       .then((un) => {
         if (settled) {
@@ -659,14 +820,9 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   loadSessions: async () => {
     if (get().sessionsLoaded) return;
     try {
+      // Fresh layout may return [] after one-time wipe of legacy/broken trees.
       const stored = await loadQxAiSessions();
-      const current = get().conversations;
-      const conversations = [
-        ...stored,
-        ...current.filter((conversation) =>
-          !stored.some((saved) => saved.id === conversation.id)),
-      ];
-      // Open workbench on the last used conversation (or newest by createdAt).
+      const conversations = Array.isArray(stored) ? stored : [];
       const preferred =
         get().currentConversationId
         ?? readLastConversationId();
@@ -677,9 +833,18 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         sessionsLoaded: true,
         currentConversationId,
         view: "chat",
+        error: null,
       });
     } catch (error) {
-      set({ sessionsLoaded: true, error: String(error) });
+      // Never block the workbench on storage errors — start empty.
+      console.warn("qxai loadSessions failed; starting empty", error);
+      set({
+        conversations: [],
+        sessionsLoaded: true,
+        currentConversationId: null,
+        view: "chat",
+        error: null,
+      });
     }
   },
 
@@ -919,6 +1084,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         {
           role: "user",
           content,
+          createdAt: Date.now(),
           ...(attachments?.length ? { attachments } : {}),
           ...(skill ? { skill: { id: skill.id, name: skill.name } } : {}),
         },
@@ -1007,6 +1173,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         const runAgent = agentSettings.model_tools_enabled
           ? runFunctionCallingAgent
           : runReactAgent;
+        let latestProviderMetrics: AgentStreamMetrics | undefined;
 
         // Hermes frozen memory snapshot (prefix-cache friendly; live writes via tools).
         const memorySnapshot = agentSettings.memory_tool_enabled
@@ -1026,12 +1193,14 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           onStep: (step) =>
             set((state) => {
               const run = state.runs[currentConversationId];
-              return !run?.streaming ? state : {
+              if (!run?.streaming) return state;
+              const updated = updateReasoningTiming(run, Date.now(), true);
+              return {
                 runs: {
                   ...state.runs,
                   [currentConversationId]: {
-                    ...run,
-                    streamingSteps: [...run.streamingSteps, step],
+                    ...updated,
+                    streamingSteps: [...updated.streamingSteps, step],
                   },
                 },
               };
@@ -1039,93 +1208,118 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           onStepUpdate: (id, patch) =>
             set((state) => {
               const run = state.runs[currentConversationId];
-              return !run?.streaming ? state : {
+              if (!run?.streaming) return state;
+              const updated = updateReasoningTiming(run, Date.now(), true);
+              return {
                 runs: {
                   ...state.runs,
                   [currentConversationId]: {
-                    ...run,
-                    streamingSteps: run.streamingSteps.map((step) =>
+                    ...updated,
+                    streamingSteps: updated.streamingSteps.map((step) =>
                       step.id === id ? { ...step, ...patch } : step,
                     ),
                   },
                 },
               };
             }),
+          onStreamUpdate: (text, reasoningText) =>
+            set((state) => {
+              const updated = updateStreamRun(
+                state.runs[currentConversationId],
+                text,
+                reasoningText,
+              );
+              return updated
+                ? {
+                    runs: {
+                      ...state.runs,
+                      [currentConversationId]: updated,
+                    },
+                  }
+                : state;
+            }),
           onAssistantStream: (text) =>
             set((state) => {
               const run = state.runs[currentConversationId];
-              if (!run?.streaming) return state;
-              const now = Date.now();
-              const timing = nextGenerationTiming(run, now, Boolean(text.trim()));
-              const liveTokenCount = estimateTokens(text);
-              return {
-                runs: {
-                  ...state.runs,
-                  [currentConversationId]: {
-                    ...run,
-                    streamedContent: text,
-                    ...timing,
-                    liveTokenCount,
-                    liveTokenSpeed: speedFromTiming(
-                      liveTokenCount,
-                      timing.generationMs,
-                      timing.firstTokenAt,
-                      now,
-                    ),
-                  },
-                },
-              };
+              const updated = updateStreamRun(run, text, run?.streamedReasoning ?? "");
+              const thinkingRun = updated
+                ? updateReasoningTiming(updated, Date.now(), true)
+                : undefined;
+              return thinkingRun
+                ? {
+                    runs: {
+                      ...state.runs,
+                      [currentConversationId]: thinkingRun,
+                    },
+                  }
+                : state;
             }),
           onReasoningStream: (text) =>
             set((state) => {
               const run = state.runs[currentConversationId];
-              if (!run?.streaming) return state;
-              const now = Date.now();
-              // Reasoning starts the clock; TPS still uses completion text only.
-              const timing = nextGenerationTiming(
-                run,
-                now,
-                Boolean(text.trim() || run.streamedContent),
-              );
-              const liveTokenCount = estimateTokens(run.streamedContent || "");
-              return {
-                runs: {
-                  ...state.runs,
-                  [currentConversationId]: {
-                    ...run,
-                    streamedReasoning: text,
-                    ...timing,
-                    liveTokenCount,
-                    liveTokenSpeed: speedFromTiming(
-                      liveTokenCount,
-                      timing.generationMs,
-                      timing.firstTokenAt,
-                      now,
-                    ),
-                  },
-                },
-              };
+              const updated = updateStreamRun(run, run?.streamedContent ?? "", text);
+              return updated
+                ? {
+                    runs: {
+                      ...state.runs,
+                      [currentConversationId]: updated,
+                    },
+                  }
+                : state;
             }),
+          onStreamMetrics: (metrics) => {
+            latestProviderMetrics = metrics;
+            set((state) => {
+              const updated = updateStreamMetrics(state.runs[currentConversationId], metrics);
+              return updated
+                ? {
+                    runs: {
+                      ...state.runs,
+                      [currentConversationId]: updated,
+                    },
+                  }
+                : state;
+            });
+          },
         });
 
         const finishedRun = get().runs[currentConversationId];
-        const tokenCount = estimateTokens(result.finalAnswer);
+        const finishedAt = Date.now();
+        const finishedTiming = finishedRun
+          ? finishStreamTiming(finishedRun, finishedAt)
+          : undefined;
+        const reasoningDurationMs = reasoningDurationFromRun(finishedRun, finishedAt);
+        const estimatedTokenCount = estimateTokens(result.finalAnswer);
+        const tokenCount = latestProviderMetrics?.tokenCount && latestProviderMetrics.tokenCount > 0
+          ? latestProviderMetrics.tokenCount
+          : estimatedTokenCount;
         const durationMs = Math.max(
           1,
-          finishedRun?.generationMs
-            && finishedRun.generationMs > 0
-            ? finishedRun.generationMs
-            : Date.now() - (finishedRun?.firstTokenAt ?? finishedRun?.startedAt ?? Date.now()),
+          latestProviderMetrics?.durationMs && latestProviderMetrics.durationMs > 0
+            ? latestProviderMetrics.durationMs
+            : finishedTiming
+              ? resolveStreamDuration(finishedTiming, finishedAt)
+              : 1,
         );
+        const tokenSpeed = latestProviderMetrics?.tokenSpeed && latestProviderMetrics.tokenSpeed > 0
+          ? Math.round(latestProviderMetrics.tokenSpeed * 100) / 100
+          : speedFromDuration(tokenCount, durationMs);
         const assistantMessage: G4fMessage = {
           role: "assistant",
           content: result.finalAnswer,
+          createdAt: finishedAt,
           reasoning: result.reasoning,
           steps: result.steps,
           attachments: result.attachments,
           tokenCount,
-          tokenSpeed: speedFromTiming(tokenCount, finishedRun?.generationMs, finishedRun?.firstTokenAt),
+          tokenSpeed,
           durationMs,
+          usage: buildTokenUsage(
+            latestProviderMetrics,
+            estimateInputTokens(nonSystem),
+            tokenCount,
+          ),
+          ...(reasoningDurationMs ? { reasoningDurationMs } : {}),
         };
 
         if (!get().conversations.some((conversation) => conversation.id === currentConversationId)) {
@@ -1201,82 +1395,79 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         { role: "system", content: buildQxHostSystemPrompt(basePrompt) },
         ...titledConv.messages.filter((message) => message.role !== "system"),
       ];
+      let latestProviderMetrics: AgentStreamMetrics | undefined;
       const response = await streamChatEvents({
         requestId,
         provider: selection.provider,
         model: selection.model,
         messages: requestMessages,
         reasoning: Boolean(titledConv.reasoningEnabled),
-        onChunk: (full) =>
+        onUpdate: (full, reasoningText) =>
           set((state) => {
-            const run = state.runs[currentConversationId];
-            if (!run?.streaming) return state;
-            const now = Date.now();
-            const timing = nextGenerationTiming(run, now, Boolean(full.trim()));
-            const liveTokenCount = estimateTokens(full);
-            return {
-              runs: {
-                ...state.runs,
-                [currentConversationId]: {
-                  ...run,
-                  streamedContent: full,
-                  ...timing,
-                  liveTokenCount,
-                  liveTokenSpeed: speedFromTiming(
-                    liveTokenCount,
-                    timing.generationMs,
-                    timing.firstTokenAt,
-                    now,
-                  ),
-                },
-              },
-            };
-          }),
-        onReasoning: (full) =>
-          set((state) => {
-            const run = state.runs[currentConversationId];
-            if (!run?.streaming) return state;
-            const now = Date.now();
-            const timing = nextGenerationTiming(
-              run,
-              now,
-              Boolean(full.trim() || run.streamedContent),
+            const updated = updateStreamRun(
+              state.runs[currentConversationId],
+              full,
+              reasoningText,
             );
-            const liveTokenCount = estimateTokens(run.streamedContent || "");
-            return {
-              runs: {
-                ...state.runs,
-                [currentConversationId]: {
-                  ...run,
-                  streamedReasoning: full,
-                  ...timing,
-                  liveTokenCount,
-                  liveTokenSpeed: speedFromTiming(
-                    liveTokenCount,
-                    timing.generationMs,
-                    timing.firstTokenAt,
-                    now,
-                  ),
-                },
-              },
-            };
+            return updated
+              ? {
+                  runs: {
+                    ...state.runs,
+                    [currentConversationId]: updated,
+                  },
+                }
+              : state;
           }),
+        onMetrics: (metrics) => {
+          latestProviderMetrics = metrics;
+          set((state) => {
+            const updated = updateStreamMetrics(state.runs[currentConversationId], metrics);
+            return updated
+              ? {
+                  runs: {
+                    ...state.runs,
+                    [currentConversationId]: updated,
+                  },
+                }
+              : state;
+          });
+        },
       });
 
       const finishedRun = get().runs[currentConversationId];
-      const tokenCount = estimateTokens(response);
+      const finishedAt = Date.now();
+      const finishedTiming = finishedRun
+        ? finishStreamTiming(finishedRun, finishedAt)
+        : undefined;
+      const reasoningDurationMs = reasoningDurationFromRun(finishedRun, finishedAt);
+      const estimatedTokenCount = estimateTokens(response);
+      const tokenCount = latestProviderMetrics?.tokenCount && latestProviderMetrics.tokenCount > 0
+        ? latestProviderMetrics.tokenCount
+        : estimatedTokenCount;
       const durationMs = Math.max(
         1,
-        finishedRun?.generationMs && finishedRun.generationMs > 0
-          ? finishedRun.generationMs
-          : Date.now() - (finishedRun?.firstTokenAt ?? finishedRun?.startedAt ?? Date.now()),
+        latestProviderMetrics?.durationMs && latestProviderMetrics.durationMs > 0
+          ? latestProviderMetrics.durationMs
+          : finishedTiming
+            ? resolveStreamDuration(finishedTiming, finishedAt)
+            : 1,
       );
+      const tokenSpeed = latestProviderMetrics?.tokenSpeed && latestProviderMetrics.tokenSpeed > 0
+        ? Math.round(latestProviderMetrics.tokenSpeed * 100) / 100
+        : speedFromDuration(tokenCount, durationMs);
       const assistantMessage: G4fMessage = {
         role: "assistant",
         content: response,
+        createdAt: finishedAt,
         tokenCount,
-        tokenSpeed: speedFromTiming(tokenCount, finishedRun?.generationMs, finishedRun?.firstTokenAt),
+        tokenSpeed,
         durationMs,
+        usage: buildTokenUsage(
+          latestProviderMetrics,
+          estimateInputTokens(requestMessages),
+          tokenCount,
+        ),
+        ...(reasoningDurationMs ? { reasoningDurationMs } : {}),
         reasoning: finishedRun?.streamedReasoning || undefined,
       };
 
@@ -1370,6 +1561,112 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         };
       }),
     }));
+  },
+
+  updateMessage: (conversationId, messageIndex, content) => {
+    const nextContent = content.trim();
+    if (!nextContent) return;
+    set((state) => ({
+      conversations: state.conversations.map((conversation) => {
+        if (conversation.id !== conversationId) return conversation;
+        if (messageIndex < 0 || messageIndex >= conversation.messages.length) return conversation;
+        const target = conversation.messages[messageIndex];
+        if (!target || target.role === "system") return conversation;
+        return {
+          ...conversation,
+          messages: conversation.messages.map((message, index) =>
+            index === messageIndex
+              ? {
+                  ...message,
+                  content: nextContent,
+                  ...(message.role === "assistant"
+                    ? {
+                        reasoning: undefined,
+                        steps: undefined,
+                        tokenCount: undefined,
+                        tokenSpeed: undefined,
+                        durationMs: undefined,
+                        usage: undefined,
+                      }
+                    : {}),
+                }
+              : message,
+          ),
+        };
+      }),
+    }));
+  },
+
+  editMessage: async (conversationId, messageIndex, content) => {
+    const nextContent = content.trim();
+    if (!nextContent) return;
+    const conversation = get().conversations.find((item) => item.id === conversationId);
+    const target = conversation?.messages[messageIndex];
+    if (!conversation || !target || target.role === "system") return;
+
+    if (target.role === "assistant") {
+      get().updateMessage(conversationId, messageIndex, nextContent);
+      return;
+    }
+
+    // Jan forks an edited user message and immediately regenerates its reply.
+    // QxAI keeps a linear transcript, so retain the prefix and send the edited
+    // user turn as the next request.
+    const prefix = conversation.messages.slice(0, messageIndex);
+    set((state) => ({
+      conversations: state.conversations.map((item) =>
+        item.id === conversationId
+          ? { ...item, messages: prefix }
+          : item,
+      ),
+    }));
+    await get().sendMessage(nextContent, undefined, conversationId, target.attachments);
+  },
+
+  deleteMessage: (conversationId, messageIndex) => {
+    set((state) => ({
+      conversations: state.conversations.map((conversation) => {
+        if (conversation.id !== conversationId) return conversation;
+        if (messageIndex < 0 || messageIndex >= conversation.messages.length) return conversation;
+        if (conversation.messages[messageIndex]?.role === "system") return conversation;
+        return {
+          ...conversation,
+          messages: conversation.messages.filter((_, index) => index !== messageIndex),
+        };
+      }),
+    }));
+  },
+
+  regenerateMessage: async (conversationId, assistantIndex) => {
+    const conv = get().conversations.find((item) => item.id === conversationId);
+    if (!conv) return;
+    if (get().runs[conversationId]?.streaming) return;
+    if (assistantIndex < 0 || assistantIndex >= conv.messages.length) return;
+    if (conv.messages[assistantIndex]?.role !== "assistant") return;
+
+    let userIndex = -1;
+    for (let i = assistantIndex - 1; i >= 0; i -= 1) {
+      if (conv.messages[i]?.role === "user") {
+        userIndex = i;
+        break;
+      }
+    }
+    if (userIndex < 0) return;
+
+    const userMessage = conv.messages[userIndex];
+    const kept = conv.messages.slice(0, userIndex);
+    set((state) => ({
+      conversations: state.conversations.map((item) =>
+        item.id === conversationId ? { ...item, messages: kept } : item,
+      ),
+    }));
+
+    await get().sendMessage(
+      userMessage.content,
+      undefined,
+      conversationId,
+      userMessage.attachments,
+    );
   },
 
   clearMessages: () => {

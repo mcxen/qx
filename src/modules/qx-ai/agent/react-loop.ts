@@ -80,6 +80,7 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
         runOpts.model,
         (partial) =>
           runOpts.onAssistantStream(scratchpad ? `${scratchpad}\n${partial}` : partial),
+        runOpts.onStreamMetrics,
       );
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Read};
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::Emitter;
 
 /// Frontend + Rust stream event channel.
@@ -84,6 +84,29 @@ pub struct QxaiStreamEvent {
     pub message: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// Provider-reported completion token count when the stream includes usage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_count: Option<u64>,
+    /// Provider-reported prompt/input token count when the stream includes usage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_token_count: Option<u64>,
+    /// Provider-reported total token count when the stream includes usage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_token_count: Option<u64>,
+    /// Wall-clock duration of this provider request, including TTFT.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+    /// Provider-reported generation speed, when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_speed: Option<f64>,
+}
+
+struct ProviderStreamResult {
+    content: String,
+    prompt_tokens: Option<u64>,
+    completion_tokens: Option<u64>,
+    total_tokens: Option<u64>,
+    provider_token_speed: Option<f64>,
 }
 
 // ---------------------------------------------------------------------------
@@ -470,7 +493,7 @@ fn provider_openai_chat_stream(
     messages: &[ChatMessage],
     reasoning: bool,
     mut on_delta: impl FnMut(&str, &str),
-) -> Result<String, String> {
+) -> Result<ProviderStreamResult, String> {
     let client = make_stream_client()?;
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
 
@@ -478,6 +501,7 @@ fn provider_openai_chat_stream(
         "model": model,
         "messages": messages,
         "stream": true,
+        "stream_options": { "include_usage": true },
     });
     apply_reasoning_request(base_url, &mut body, reasoning);
 
@@ -498,6 +522,10 @@ fn provider_openai_chat_stream(
     }
 
     let mut full = String::new();
+    let mut prompt_tokens = None;
+    let mut completion_tokens = None;
+    let mut total_tokens = None;
+    let mut provider_token_speed = None;
     let mut done = false;
     for_each_sse_line(resp, |line| {
         if done {
@@ -513,6 +541,18 @@ fn provider_openai_chat_stream(
         let Ok(value) = serde_json::from_str::<serde_json::Value>(data) else {
             return Ok(());
         };
+        if let Some(count) = value["usage"]["prompt_tokens"].as_u64() {
+            prompt_tokens = Some(count);
+        }
+        if let Some(count) = value["usage"]["completion_tokens"].as_u64() {
+            completion_tokens = Some(count);
+        }
+        if let Some(count) = value["usage"]["total_tokens"].as_u64() {
+            total_tokens = Some(count);
+        }
+        if let Some(speed) = value["timings"]["predicted_per_second"].as_f64() {
+            provider_token_speed = Some(speed);
+        }
         let delta = &value["choices"][0]["delta"];
         if let Some(reasoning) = delta["reasoning_content"]
             .as_str()
@@ -528,9 +568,23 @@ fn provider_openai_chat_stream(
     })?;
 
     if full.is_empty() {
-        return provider_openai_chat(base_url, api_key, model, messages);
+        return provider_openai_chat(base_url, api_key, model, messages).map(|content| {
+            ProviderStreamResult {
+                content,
+                prompt_tokens: None,
+                completion_tokens: None,
+                total_tokens: None,
+                provider_token_speed: None,
+            }
+        });
     }
-    Ok(full)
+    Ok(ProviderStreamResult {
+        content: full,
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+        provider_token_speed,
+    })
 }
 
 fn apply_reasoning_request(base_url: &str, body: &mut serde_json::Value, enabled: bool) {
@@ -676,13 +730,23 @@ fn provider_openai_chat_with_tools_stream(
     tool_choice: &str,
     reasoning: bool,
     mut on_delta: impl FnMut(&str, &str),
-) -> Result<serde_json::Value, String> {
+) -> Result<
+    (
+        serde_json::Value,
+        Option<u64>,
+        Option<u64>,
+        Option<u64>,
+        Option<f64>,
+    ),
+    String,
+> {
     let client = make_stream_client()?;
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let mut body = serde_json::json!({
         "model": model,
         "messages": messages,
         "stream": true,
+        "stream_options": { "include_usage": true },
     });
     if !tools.is_empty() {
         body["tools"] = serde_json::Value::Array(tools.to_vec());
@@ -711,6 +775,10 @@ fn provider_openai_chat_with_tools_stream(
     let mut reasoning_content = String::new();
     let mut reasoning_details = Vec::<serde_json::Value>::new();
     let mut tool_calls = Vec::<serde_json::Value>::new();
+    let mut prompt_tokens = None;
+    let mut completion_tokens = None;
+    let mut total_tokens = None;
+    let mut provider_token_speed = None;
     let mut done = false;
     for_each_sse_line(resp, |line| {
         if done {
@@ -726,6 +794,18 @@ fn provider_openai_chat_with_tools_stream(
         let Ok(value) = serde_json::from_str::<serde_json::Value>(data) else {
             return Ok(());
         };
+        if let Some(count) = value["usage"]["prompt_tokens"].as_u64() {
+            prompt_tokens = Some(count);
+        }
+        if let Some(count) = value["usage"]["completion_tokens"].as_u64() {
+            completion_tokens = Some(count);
+        }
+        if let Some(count) = value["usage"]["total_tokens"].as_u64() {
+            total_tokens = Some(count);
+        }
+        if let Some(speed) = value["timings"]["predicted_per_second"].as_f64() {
+            provider_token_speed = Some(speed);
+        }
         let delta = &value["choices"][0]["delta"];
         if let Some(text) = delta["reasoning_content"]
             .as_str()
@@ -764,19 +844,29 @@ fn provider_openai_chat_with_tools_stream(
     if !reasoning_details.is_empty() {
         message["reasoning_details"] = serde_json::Value::Array(reasoning_details);
     }
-    Ok(message)
+    Ok((
+        message,
+        prompt_tokens,
+        completion_tokens,
+        total_tokens,
+        provider_token_speed,
+    ))
 }
 
 /// Send a chat message to an AI provider and get a complete response.
 #[tauri::command]
-pub fn g4f_chat(
+pub async fn g4f_chat(
     provider: String,
     model: Option<String>,
     messages: Vec<ChatMessage>,
 ) -> Result<String, String> {
-    let endpoint = provider_endpoint(&provider)?;
-    let model = model.ok_or_else(|| format!("no model selected for {provider}"))?;
-    provider_openai_chat(&endpoint.base_url, &endpoint.api_key, &model, &messages)
+    tokio::task::spawn_blocking(move || {
+        let endpoint = provider_endpoint(&provider)?;
+        let model = model.ok_or_else(|| format!("no model selected for {provider}"))?;
+        provider_openai_chat(&endpoint.base_url, &endpoint.api_key, &model, &messages)
+    })
+    .await
+    .map_err(|error| format!("g4f chat task panicked: {error}"))?
 }
 
 /// Send a chat message to an AI provider and return individual SSE chunks.
@@ -789,7 +879,7 @@ pub fn g4f_stream_chat(
     let endpoint = provider_endpoint(&provider)?;
     let model = model.ok_or_else(|| format!("no model selected for {provider}"))?;
     let mut chunks = Vec::new();
-    provider_openai_chat_stream(
+    let _stream = provider_openai_chat_stream(
         &endpoint.base_url,
         &endpoint.api_key,
         &model,
@@ -1062,9 +1152,15 @@ pub fn qxai_stream_chat_with_tools_events(
                     done: false,
                     message: None,
                     error: None,
+                    token_count: None,
+                    prompt_token_count: None,
+                    total_token_count: None,
+                    duration_ms: None,
+                    token_speed: None,
                 },
             );
         };
+        let mut started_at = Instant::now();
         let result = (|| {
             let providers = qxai_provider_catalog();
             let selection = resolve_model_selection(&providers, provider, model)?;
@@ -1083,6 +1179,7 @@ pub fn qxai_stream_chat_with_tools_events(
                 &selection.model,
                 &chat_messages,
             )?;
+            started_at = Instant::now();
             provider_openai_chat_with_tools_stream(
                 &endpoint.base_url,
                 &endpoint.api_key,
@@ -1094,10 +1191,36 @@ pub fn qxai_stream_chat_with_tools_events(
                 emit_delta,
             )
         })();
-        let (message, error) = match result {
-            Ok(message) => (Some(message), None),
-            Err(error) => (None, Some(error)),
+        let (
+            message,
+            prompt_token_count,
+            token_count,
+            total_token_count,
+            provider_token_speed,
+            error,
+        ) = match result {
+            Ok((
+                message,
+                prompt_token_count,
+                token_count,
+                total_token_count,
+                provider_token_speed,
+            )) => (
+                Some(message),
+                prompt_token_count,
+                token_count,
+                total_token_count,
+                provider_token_speed,
+                None,
+            ),
+            Err(error) => (None, None, None, None, None, Some(error)),
         };
+        let duration_ms = started_at.elapsed().as_millis() as u64;
+        let token_speed = provider_token_speed.or_else(|| {
+            token_count.and_then(|count| {
+                (duration_ms > 0).then_some((count as f64 / duration_ms as f64) * 1000.0)
+            })
+        });
         let _ = app.emit(
             QXAI_STREAM_EVENT,
             QxaiStreamEvent {
@@ -1107,6 +1230,11 @@ pub fn qxai_stream_chat_with_tools_events(
                 done: true,
                 message,
                 error,
+                token_count,
+                prompt_token_count,
+                total_token_count,
+                duration_ms: Some(duration_ms),
+                token_speed,
             },
         );
     }) {
@@ -1151,9 +1279,15 @@ pub fn qxai_stream_chat_events(
                     done: false,
                     message: None,
                     error: None,
+                    token_count: None,
+                    prompt_token_count: None,
+                    total_token_count: None,
+                    duration_ms: None,
+                    token_speed: None,
                 },
             );
         };
+        let mut started_at = Instant::now();
 
         let work = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let providers = qxai_provider_catalog();
@@ -1162,6 +1296,7 @@ pub fn qxai_stream_chat_events(
             let endpoint = provider_endpoint(&selection.provider)?;
             let messages = prepare_qxai_chat_messages(messages)?;
             ensure_vision_capability(&providers, &selection.provider, &selection.model, &messages)?;
+            started_at = Instant::now();
             provider_openai_chat_stream(
                 &endpoint.base_url,
                 &endpoint.api_key,
@@ -1172,7 +1307,7 @@ pub fn qxai_stream_chat_events(
             )
         }));
 
-        let result: Result<String, String> = match work {
+        let result: Result<ProviderStreamResult, String> = match work {
             Ok(inner) => inner,
             Err(panic) => {
                 let msg = if let Some(s) = panic.downcast_ref::<&str>() {
@@ -1186,10 +1321,30 @@ pub fn qxai_stream_chat_events(
             }
         };
 
-        let (chunk, error) = match result {
-            Ok(text) => (text, None),
-            Err(err) => (String::new(), Some(err)),
+        let (
+            chunk,
+            prompt_token_count,
+            token_count,
+            total_token_count,
+            provider_token_speed,
+            error,
+        ) = match result {
+            Ok(stream) => (
+                stream.content,
+                stream.prompt_tokens,
+                stream.completion_tokens,
+                stream.total_tokens,
+                stream.provider_token_speed,
+                None,
+            ),
+            Err(err) => (String::new(), None, None, None, None, Some(err)),
         };
+        let duration_ms = started_at.elapsed().as_millis() as u64;
+        let token_speed = provider_token_speed.or_else(|| {
+            token_count.and_then(|count| {
+                (duration_ms > 0).then_some((count as f64 / duration_ms as f64) * 1000.0)
+            })
+        });
         let _ = app.emit(
             QXAI_STREAM_EVENT,
             QxaiStreamEvent {
@@ -1199,6 +1354,11 @@ pub fn qxai_stream_chat_events(
                 done: true,
                 message: None,
                 error,
+                token_count,
+                prompt_token_count,
+                total_token_count,
+                duration_ms: Some(duration_ms),
+                token_speed,
             },
         );
     }) {

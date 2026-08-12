@@ -81,6 +81,37 @@ QxAI is an **optional async substrate**. Launcher, clipboard, shell, plugins UI,
 
 Do **not** add synchronous AI init to `App` phase-1 load, clipboard capture, or global shortcut registration.
 
+## 异步解耦、高可用与 SOLID 约束
+
+QxAI 的开发规范以异步运行时为核心：UI、编排、传输、统计和 provider 适配必须是可
+替换的窄接口，不能把某个 provider 的字段或 React 状态写成全局协议。
+
+| 边界 | 唯一职责 | 不允许承担 |
+|---|---|---|
+| `agent/stream.ts` / Tauri stream event | 监听、取消、超时、归一化 `delta/done/error` | 直接修改会话或计算 UI 布局 |
+| `stream-metrics.ts` | 消费归一化输出快照，关闭生成计时窗口 | 读取 provider、React、Tauri |
+| `store.ts` | 会话队列、运行状态、结果持久化编排 | 在 UI 回调中执行同步网络/磁盘 |
+| provider / Rust adapter | 请求、SSE、usage 与 request duration | 泄漏 OS 分支或依赖 React |
+| title / dream / schedule | 可失败的旁路后台任务 | 阻塞主对话或改变主 turn 成功态 |
+
+### Stream contract
+
+每次流必须具备独立 request id 和明确终态：`started → delta* → done | error | timeout`。
+监听器、timer、队列占位和 Island session 在所有终态收敛；旧请求的事件不能覆盖新请求
+或另一个会话。UI 更新使用一个原子 `(content, reasoning)` 快照，避免两个回调重复推进
+计时或产生中间不一致状态。
+
+后端 `qxai-stream` 的 `done` 事件可扩展携带 `tokenCount`、`durationMs`、`tokenSpeed`：
+provider 有真实 usage 时优先使用；没有 usage 时，前端仅用本次 provider 请求耗时和明确标记
+为估算的 token 数计算 fallback。`durationMs` 包含 TTFT，但不包含工具轮次、标题生成或
+其它旁路任务；不得用首 token 时间差的 0/1ms 作为分母。
+
+### Failure isolation
+
+网络/provider 超时只失败当前 run；会话加载失败以空工作区启动并保留 Shell；标题、记忆
+dream、schedule 和 telemetry 均为 best-effort。阻塞 HTTP、数据库、文件和媒体操作必须
+进入 Rust blocking pool 或有界 worker；不能因为一个慢 provider 占满 UI/Tokio 核心线程。
+
 ## QxAiSession persistence and concurrency
 
 Built-in chat history is durable data under `~/.qx/QxAiSession` (folder layout,
@@ -94,7 +125,8 @@ RLM-style modular units), not browser localStorage:
     files/*                       # managed attachment copies
 ```
 
-Legacy monolithic `sessions.json` + `files/<id>/` is migrated once on load/save.
+Legacy `sessions.json` / `files/` are **not** migrated — missing layout marker or
+legacy paths trigger a one-time wipe; the user starts with an empty session tree.
 Deleting a conversation removes its entire folder. Settings → Storage Management
 reports this directory as a protected durable bucket; users may open it or
 explicitly clear all QxAI sessions, but general cache cleanup must never remove
@@ -170,6 +202,9 @@ Dream consolidation rewrites the hot set; the archive remains searchable.
      compatibility fallback for OpenAI-compatible providers that accept tools
      but do not stream tool-call deltas reliably.
    - Current synchronous chat remains available as `context.ai.chat`.
+   - The legacy host `g4f_chat` compatibility command is exposed as an async
+     Tauri command and runs blocking provider I/O behind `spawn_blocking`; QxAI
+     background title generation must never occupy the UI/runtime thread.
 
 4. **Module ports exposed to the agent**
    - Screencap headless: `qx_screenshot` → `qxai_capture_desktop` (full display PNG + optional copy into Downloads/QxLogs).
@@ -270,7 +305,7 @@ Dream consolidation rewrites the hot set; the archive remains searchable.
    - **Dream / sleep**: consolidates the hot set via the default model; diary under
      `~/.qx/memories/dreams/`. Archive rows remain searchable.
    - **Session search**: `qxai_session_search` walks `QxAiSession/sessions/*/session.json`.
-   - Legacy `MEMORY.md` / `USER.md` / `qxai-memory.json` migrate into SQLite on first access.
+   - No legacy import: layout reset deletes old MEMORY.md / USER.md / qxai-memory.json.
    - Explicit wipe: `qxai_memory_clear` (Settings → Storage).
 
 8. **Background Tasks**

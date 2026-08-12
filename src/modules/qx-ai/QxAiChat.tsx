@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -45,6 +46,8 @@ import { useStore } from "../../store";
 import { useSettingsStore } from "../settings/store";
 import { buildModelSelectOptions, openAgentSettingsTab } from "./AiProviderConfig";
 import { AiMessageContent } from "./message-rendering";
+import { QxAiMessageActions } from "./message-actions";
+import { QxAiTokenCounter } from "./token-counter";
 import QxAiConversationList from "./QxAiConversationList";
 import {
   filterQxAiSkills,
@@ -78,6 +81,9 @@ export default function QxAiChat() {
     sendMessage,
     removeQueuedMessage,
     updateQueuedMessage,
+    editMessage,
+    deleteMessage,
+    regenerateMessage,
     clearMessages,
     deleteConversation,
     createConversation,
@@ -100,8 +106,12 @@ export default function QxAiChat() {
   const [toolsPopoverOpen, setToolsPopoverOpen] = useState(false);
   const [editingQueueId, setEditingQueueId] = useState<string | null>(null);
   const [editingQueueDraft, setEditingQueueDraft] = useState("");
+  const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
+  const [editingMessageDraft, setEditingMessageDraft] = useState("");
+  const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  const scrollFrameRef = useRef<number | undefined>(undefined);
   const listRef = useRef<HTMLDivElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const agentSettings = useSettingsStore((state) => state.settings.agent);
@@ -199,6 +209,12 @@ export default function QxAiChat() {
     [conv?.id, messageQueue],
   );
 
+  const contextMaxTokens = useMemo(() => {
+    const raw = activeModel?.context_length ?? activeModel?.contextLength;
+    const n = typeof raw === "number" ? raw : Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : undefined;
+  }, [activeModel]);
+
   const refreshSkills = useCallback(async () => {
     setSkillsLoading(true);
     setSkillsFailed(false);
@@ -242,6 +258,52 @@ export default function QxAiChat() {
       pendingAttachments,
     );
   }, [canChat, input, pendingAttachments, selectedSkill, sendMessage, t]);
+
+  const beginEditMessage = useCallback((messageIndex: number, content: string) => {
+    setEditingMessageIndex(messageIndex);
+    setEditingMessageDraft(content);
+  }, []);
+
+  const cancelEditMessage = useCallback(() => {
+    setEditingMessageIndex(null);
+    setEditingMessageDraft("");
+  }, []);
+
+  const saveEditMessage = useCallback(() => {
+    if (!currentConversationId || editingMessageIndex === null) return;
+    const next = editingMessageDraft.trim();
+    if (!next) return;
+    void editMessage(currentConversationId, editingMessageIndex, next);
+    cancelEditMessage();
+  }, [cancelEditMessage, currentConversationId, editMessage, editingMessageDraft, editingMessageIndex]);
+
+  const copyMessage = useCallback(async (messageIndex: number, content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopiedMessageIndex(messageIndex);
+      window.setTimeout(() => {
+        setCopiedMessageIndex((current) => current === messageIndex ? null : current);
+      }, 1400);
+    } catch {
+      // Clipboard permissions are optional; keeping the message usable is more
+      // important than surfacing a global error for a local action.
+    }
+  }, []);
+
+  const removeMessage = useCallback((messageIndex: number) => {
+    if (!currentConversationId) return;
+    if (!window.confirm(t("qxai.message.deleteConfirm", "Delete this message?"))) return;
+    deleteMessage(currentConversationId, messageIndex);
+    if (editingMessageIndex === messageIndex) cancelEditMessage();
+  }, [cancelEditMessage, currentConversationId, deleteMessage, editingMessageIndex, t]);
+
+  const handleRegenerate = useCallback(
+    (messageIndex: number) => {
+      if (!currentConversationId || isCurrentConversationStreaming) return;
+      void regenerateMessage(currentConversationId, messageIndex);
+    },
+    [currentConversationId, isCurrentConversationStreaming, regenerateMessage],
+  );
 
   const handleAttach = useCallback(async () => {
     if (!conv || attachmentsBusy) return;
@@ -297,15 +359,34 @@ export default function QxAiChat() {
   }, [handleSend, selectSkill, skillCursor, skillMatches, skillPickerOpen]);
 
   const handleComposerInput = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
-    const el = event.target;
-    setInput(el.value);
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    setInput(event.target.value);
   }, []);
 
+  useLayoutEffect(() => {
+    const textarea = composerRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 28), 160)}px`;
+  }, [input]);
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [conv?.messages, streamedContent]);
+    if (scrollFrameRef.current !== undefined) {
+      cancelAnimationFrame(scrollFrameRef.current);
+    }
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = undefined;
+      // Streaming can publish many deltas per second. Smooth-scroll queues a
+      // new animation for every delta and can lock the WebView; one coalesced
+      // native-positioned scroll keeps the transcript responsive.
+      messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    });
+    return () => {
+      if (scrollFrameRef.current !== undefined) {
+        cancelAnimationFrame(scrollFrameRef.current);
+        scrollFrameRef.current = undefined;
+      }
+    };
+  }, [conv?.id, conv?.messages.length, streamedContent, streamedReasoning, streamingSteps.length]);
 
   useEffect(() => {
     if (providers.length === 0) {
@@ -327,16 +408,15 @@ export default function QxAiChat() {
     setAttachmentsError("");
     setEditingQueueId(null);
     setEditingQueueDraft("");
+    setEditingMessageIndex(null);
+    setEditingMessageDraft("");
+    setCopiedMessageIndex(null);
   }, [conv?.id]);
 
   /** Jan QueuedMessageChip: click text → put back into composer and leave the queue. */
   const editQueuedIntoComposer = useCallback(
     (id: string, content: string) => {
       setInput(content);
-      if (composerRef.current) {
-        composerRef.current.style.height = "auto";
-        composerRef.current.style.height = `${Math.min(composerRef.current.scrollHeight, 160)}px`;
-      }
       removeQueuedMessage(id);
       setEditingQueueId(null);
       setEditingQueueDraft("");
@@ -757,41 +837,110 @@ export default function QxAiChat() {
             <div className="qx-ai-conversation is-jan" data-qx-ai="conversation">
               <div className="qx-ai-message-list is-jan" data-qx-region-scroll data-qx-ai="conversation-content">
                 <div className="qx-ai-message-column">
-                  {messages.map((msg, i) => (
-                    <div
-                      key={`${conv?.id ?? "chat"}-${msg.role}-${i}-${msg.content.slice(0, 24)}`}
-                      className={`qx-ai-message is-jan is-${msg.role}`}
-                      data-qx-ai="message"
-                      data-role={msg.role}
-                    >
-                      <div className="qx-ai-message-body">
-                        <div className="qx-ai-message-meta">
-                          {msg.role === "user"
-                            ? t("qxai.you", "You")
-                            : activeModel?.name || conv?.model || "AI"}
-                          {msg.role === "user" && msg.skill ? (
-                            <span className="qx-ai-message-skill">
-                              <Sparkles size={11} />
-                              {msg.skill.name}
-                            </span>
+                  {messages.map((msg) => {
+                    const messageIndex = conv?.messages.indexOf(msg) ?? -1;
+                    const isEditing = editingMessageIndex === messageIndex;
+                    const messageTimestamp = msg.createdAt ?? conv?.createdAt;
+                    const isLastAssistant =
+                      msg.role === "assistant"
+                      && messageIndex === (conv?.messages.length ?? 0) - 1;
+                    return (
+                      <div
+                        key={`${conv?.id ?? "chat"}-${msg.role}-${messageIndex}-${msg.content.slice(0, 24)}`}
+                        className={`qx-ai-message is-jan is-${msg.role}`}
+                        data-qx-ai="message"
+                        data-role={msg.role}
+                      >
+                        <div className="qx-ai-message-body">
+                          <div className="qx-ai-message-meta">
+                            {msg.role === "user"
+                              ? t("qxai.you", "You")
+                              : activeModel?.name || conv?.model || "AI"}
+                            {msg.role === "user" && msg.skill ? (
+                              <span className="qx-ai-message-skill">
+                                <Sparkles size={11} />
+                                {msg.skill.name}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div
+                            className={`qx-ai-message-bubble is-jan is-${msg.role}`}
+                            data-qx-ai="message-content"
+                          >
+                            {isEditing ? (
+                              <div className="qx-jan-message-editor">
+                                <textarea
+                                  className="qx-jan-message-editor-input"
+                                  value={editingMessageDraft}
+                                  rows={3}
+                                  autoFocus
+                                  onChange={(event) => setEditingMessageDraft(event.target.value)}
+                                  onKeyDown={(event) => {
+                                    if (event.nativeEvent.isComposing) return;
+                                    if (event.key === "Escape") {
+                                      event.preventDefault();
+                                      cancelEditMessage();
+                                    }
+                                    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                                      event.preventDefault();
+                                      saveEditMessage();
+                                    }
+                                  }}
+                                  aria-label={t("qxai.message.edit", "Edit message")}
+                                />
+                                <div className="qx-jan-message-editor-actions">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    title={t("common.save", "Save")}
+                                    aria-label={t("common.save", "Save")}
+                                    onClick={saveEditMessage}
+                                  >
+                                    <Check size={14} />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    title={t("common.cancel", "Cancel")}
+                                    aria-label={t("common.cancel", "Cancel")}
+                                    onClick={cancelEditMessage}
+                                  >
+                                    <X size={14} />
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <AiMessageContent
+                                content={msg.content}
+                                reasoning={msg.reasoning}
+                                steps={msg.steps}
+                                attachments={msg.attachments}
+                                tokenSpeed={msg.tokenSpeed}
+                                tokenCount={msg.tokenCount}
+                                usage={msg.usage}
+                                reasoningDurationMs={msg.reasoningDurationMs}
+                              />
+                            )}
+                          </div>
+                          {msg.role === "user" || msg.role === "assistant" ? (
+                            <QxAiMessageActions
+                              role={msg.role}
+                              timestamp={messageTimestamp}
+                              copied={copiedMessageIndex === messageIndex}
+                              disabled={isCurrentConversationStreaming || isEditing}
+                              canRegenerate={isLastAssistant && !isCurrentConversationStreaming}
+                              onCopy={() => void copyMessage(messageIndex, msg.content)}
+                              onEdit={() => beginEditMessage(messageIndex, msg.content)}
+                              onDelete={() => removeMessage(messageIndex)}
+                              onRegenerate={() => handleRegenerate(messageIndex)}
+                            />
                           ) : null}
                         </div>
-                        <div
-                          className={`qx-ai-message-bubble is-jan is-${msg.role}`}
-                          data-qx-ai="message-content"
-                        >
-                          <AiMessageContent
-                            content={msg.content}
-                            reasoning={msg.reasoning}
-                            steps={msg.steps}
-                            attachments={msg.attachments}
-                            tokenSpeed={msg.tokenSpeed}
-                            tokenCount={msg.tokenCount}
-                          />
-                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
 
                   {isCurrentConversationStreaming
                     && (streamedContent || streamedReasoning || streamingSteps.length > 0) ? (
@@ -816,6 +965,7 @@ export default function QxAiChat() {
                             steps={streamingSteps}
                             tokenSpeed={run?.liveTokenSpeed}
                             tokenCount={run?.liveTokenCount}
+                            reasoningDurationMs={run?.reasoningMs}
                           />
                         </div>
                       </div>
@@ -1132,28 +1282,6 @@ export default function QxAiChat() {
                 )}
 
                 <div className="qx-ai-prompt qx-jan-composer" data-qx-ai="prompt-input">
-                  <div className="qx-jan-composer-tools" data-qx-ai="prompt-tools">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      disabled={!conv || attachmentsBusy}
-                      title={t("qxai.attachments.add", "Attach Images or Files")}
-                      aria-label={t("qxai.attachments.add", "Attach Images or Files")}
-                      onClick={() => void handleAttach()}
-                    >
-                      <Paperclip size={16} className={attachmentsBusy ? "qx-spin" : undefined} />
-                    </Button>
-                    {isCurrentConversationStreaming && run?.liveTokenSpeed ? (
-                      <span
-                        className="qx-jan-composer-speed"
-                        title={t("qxai.tokens.speed", "Generation speed")}
-                      >
-                        {Math.round(run.liveTokenSpeed)}{" "}
-                        {t("qxai.tokens.perSec", "tokens/sec")}
-                      </span>
-                    ) : null}
-                  </div>
                   <textarea
                     ref={composerRef}
                     className="qx-jan-composer-input"
@@ -1172,33 +1300,69 @@ export default function QxAiChat() {
                     onKeyDown={handleComposerKeyDown}
                     onFocus={requestPanelKeyWindow}
                   />
-                  <Button
-                    type="button"
-                    className={`qx-jan-composer-send${
-                      isCurrentConversationStreaming ? " is-queue" : ""
-                    }${
-                      canChat && (input.trim() || pendingAttachments.length > 0) ? " is-ready" : ""
-                    }`}
-                    size="icon"
-                    disabled={!canChat || (!input.trim() && pendingAttachments.length === 0)}
-                    title={
-                      isCurrentConversationStreaming
-                        ? t("qxai.queue.add", "Add to Queue")
-                        : t("qxai.send", "Send")
-                    }
-                    aria-label={
-                      isCurrentConversationStreaming
-                        ? t("qxai.queue.add", "Add to Queue")
-                        : t("qxai.send", "Send")
-                    }
-                    onClick={handleSend}
-                  >
-                    {isCurrentConversationStreaming ? (
-                      <ListPlus size={16} strokeWidth={2.2} aria-hidden="true" />
-                    ) : (
-                      <ArrowUp size={16} strokeWidth={2.4} aria-hidden="true" />
-                    )}
-                  </Button>
+                  <div className="qx-jan-composer-toolbar" data-qx-ai="prompt-toolbar">
+                    <div className="qx-jan-composer-tools" data-qx-ai="prompt-tools">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        disabled={!conv || attachmentsBusy}
+                        title={t("qxai.attachments.add", "Attach Images or Files")}
+                        aria-label={t("qxai.attachments.add", "Attach Images or Files")}
+                        onClick={() => void handleAttach()}
+                      >
+                        <Paperclip size={16} className={attachmentsBusy ? "qx-spin" : undefined} />
+                      </Button>
+                    </div>
+                    <div className="qx-jan-composer-meta">
+                      {isCurrentConversationStreaming && run?.liveTokenSpeed ? (
+                        <span
+                          className="qx-jan-composer-speed"
+                          title={t("qxai.tokens.speed", "Generation speed")}
+                        >
+                          {Math.round(run.liveTokenSpeed)}{" "}
+                          {t("qxai.tokens.perSec", "tokens/sec")}
+                        </span>
+                      ) : null}
+                      {conv ? (
+                        <QxAiTokenCounter
+                          messages={conv.messages}
+                          draft={input}
+                          maxTokens={contextMaxTokens}
+                          modelName={activeModel?.name || conv.model}
+                        />
+                      ) : null}
+                    </div>
+                    <Button
+                      type="button"
+                      className={`qx-jan-composer-send${
+                        isCurrentConversationStreaming ? " is-queue" : ""
+                      }${
+                        canChat && (input.trim() || pendingAttachments.length > 0)
+                          ? " is-ready"
+                          : ""
+                      }`}
+                      size="icon"
+                      disabled={!canChat || (!input.trim() && pendingAttachments.length === 0)}
+                      title={
+                        isCurrentConversationStreaming
+                          ? t("qxai.queue.add", "Add to Queue")
+                          : t("qxai.send", "Send")
+                      }
+                      aria-label={
+                        isCurrentConversationStreaming
+                          ? t("qxai.queue.add", "Add to Queue")
+                          : t("qxai.send", "Send")
+                      }
+                      onClick={handleSend}
+                    >
+                      {isCurrentConversationStreaming ? (
+                        <ListPlus size={16} strokeWidth={2.2} aria-hidden="true" />
+                      ) : (
+                        <ArrowUp size={16} strokeWidth={2.4} aria-hidden="true" />
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>

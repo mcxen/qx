@@ -7,8 +7,8 @@
 //!   prompt (Hermes dual-store shape), so context never blows up.
 //! - Dream consolidates hot notes; search always hits the full SQLite archive.
 //!
-//! Markdown files MEMORY.md / USER.md are migrated once, then treated as export
-//! mirrors of the hot window (best-effort).
+//! No legacy migration: old MEMORY.md / USER.md / qxai-memory.json are discarded on layout reset.
+//! Hot-window mirrors (MEMORY.md / USER.md) are best-effort writes only.
 
 use chrono::Local;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -321,106 +321,37 @@ fn count_target(conn: &Connection, target: MemoryTarget) -> Result<i64, String> 
     .map_err(|e| format!("count: {e}"))
 }
 
-/// Migrate legacy MEMORY.md / USER.md / qxai-memory.json once into SQLite.
-fn migrate_legacy_into_db(conn: &Connection) -> Result<(), String> {
-    let total: i64 = conn
-        .query_row("SELECT COUNT(*) FROM memories", [], |row| row.get(0))
-        .map_err(|e| format!("count memories: {e}"))?;
-    if total > 0 {
-        return Ok(());
-    }
-
-    // Markdown dual store
-    for target in [MemoryTarget::Memory, MemoryTarget::User] {
-        let path = memories_dir().join(target.md_name());
-        if !path.is_file() {
-            continue;
-        }
-        let Ok(raw) = fs::read_to_string(&path) else {
-            continue;
-        };
-        for piece in raw.split("\n§\n") {
-            let content = piece.trim();
-            if content.is_empty() {
-                continue;
-            }
-            let ts = now_ms();
-            let row = MemoryRow {
-                id: new_id(),
-                target: target.as_str().into(),
-                content: content.into(),
-                tags: "[]".into(),
-                created_at: ts,
-                updated_at: ts,
-            };
-            // Sleep 1ms worth of uniqueness for ids.
-            std::thread::sleep(std::time::Duration::from_millis(1));
-            insert_row(conn, &row)?;
-        }
-    }
-
-    // Very old JSON list
-    let legacy = crate::paths::state_dir().join("qxai-memory.json");
-    if legacy.is_file() {
-        if let Ok(raw) = fs::read_to_string(&legacy) {
-            if let Ok(entries) = serde_json::from_str::<Vec<Value>>(&raw) {
-                for entry in entries {
-                    let text = entry
-                        .get("text")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .trim()
-                        .to_string();
-                    if text.is_empty() {
-                        continue;
-                    }
-                    let tags = entry
-                        .get("tags")
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|t| t.as_str())
-                                .map(|s| s.to_ascii_lowercase())
-                                .collect::<Vec<_>>()
-                        })
-                        .unwrap_or_default();
-                    let target = if tags
-                        .iter()
-                        .any(|t| t.contains("user") || t.contains("pref"))
-                    {
-                        MemoryTarget::User
-                    } else {
-                        MemoryTarget::Memory
-                    };
-                    let ts = entry
-                        .get("updatedAt")
-                        .and_then(|v| v.as_i64())
-                        .or_else(|| entry.get("createdAt").and_then(|v| v.as_i64()))
-                        .unwrap_or_else(now_ms);
-                    let row = MemoryRow {
-                        id: entry
-                            .get("id")
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string())
-                            .unwrap_or_else(new_id),
-                        target: target.as_str().into(),
-                        content: text,
-                        tags: serde_json::to_string(&tags).unwrap_or_else(|_| "[]".into()),
-                        created_at: ts,
-                        updated_at: ts,
-                    };
-                    let _ = insert_row(conn, &row);
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
 fn with_db<T>(f: impl FnOnce(&Connection) -> Result<T, String>) -> Result<T, String> {
     let conn = open_db()?;
-    migrate_legacy_into_db(&conn)?;
     f(&conn)
+}
+
+/// Drop all memory files (SQLite + md/json). Used when session layout resets.
+/// Does **not** import or convert legacy stores — start empty.
+pub fn wipe_memory_store_for_reset() -> Result<(), String> {
+    let _ = ensure_dirs();
+    for name in [
+        "memory.db",
+        "memory.db-wal",
+        "memory.db-shm",
+        "MEMORY.md",
+        "USER.md",
+    ] {
+        let path = memories_dir().join(name);
+        if path.exists() {
+            let _ = fs::remove_file(&path);
+        }
+    }
+    let legacy_json = crate::paths::state_dir().join("qxai-memory.json");
+    if legacy_json.exists() {
+        let _ = fs::remove_file(&legacy_json);
+    }
+    // Drop dream diaries too so nothing old is re-read.
+    if dreams_dir().is_dir() {
+        let _ = fs::remove_dir_all(dreams_dir());
+        let _ = fs::create_dir_all(dreams_dir());
+    }
+    Ok(())
 }
 
 /// Frozen dual-store snapshot for system prompt injection.

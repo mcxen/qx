@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import type { G4fMessage } from "../store";
-import type { AgentRunOptions, AgentStep } from "./types";
+import type { AgentRunOptions, AgentStep, AgentStreamMetrics } from "./types";
 import { nextStepId } from "./types";
 
 interface StreamEvent {
@@ -9,6 +9,11 @@ interface StreamEvent {
   chunk: string;
   done: boolean;
   error?: string;
+  tokenCount?: number;
+  promptTokenCount?: number;
+  totalTokenCount?: number;
+  durationMs?: number;
+  tokenSpeed?: number;
 }
 
 export async function streamOnce(
@@ -16,6 +21,7 @@ export async function streamOnce(
   provider: string,
   model: string,
   onChunk: (text: string) => void,
+  onMetrics?: (metrics: AgentStreamMetrics) => void,
 ): Promise<string> {
   const requestId = `qxai-agent-${Math.random().toString(36).slice(2, 10)}`;
   let acc = "";
@@ -64,7 +70,15 @@ export async function streamOnce(
         return;
       }
       if (event.payload.done) {
+        if (event.payload.chunk && !acc) acc = event.payload.chunk;
         flush();
+        onMetrics?.({
+          tokenCount: event.payload.tokenCount,
+          promptTokenCount: event.payload.promptTokenCount,
+          totalTokenCount: event.payload.totalTokenCount,
+          durationMs: event.payload.durationMs,
+          tokenSpeed: event.payload.tokenSpeed,
+        });
         finish(null, acc || event.payload.chunk);
         return;
       }
@@ -117,6 +131,11 @@ interface FunctionStreamEvent {
   done: boolean;
   message?: OpenAIMessage;
   error?: string;
+  tokenCount?: number;
+  promptTokenCount?: number;
+  totalTokenCount?: number;
+  durationMs?: number;
+  tokenSpeed?: number;
 }
 
 function assertNamedToolCalls(message: OpenAIMessage, transport: string): OpenAIMessage {
@@ -141,9 +160,39 @@ export async function streamFunctionCallingOnce(
   let reasoning = "";
   let unlisten: (() => void) | undefined;
   let settled = false;
+  let timeout: number | undefined;
+  let flushTimer: number | undefined;
+  let lastFlushAt = 0;
+
+  // Bound React updates for providers that stream tool-call text in very small
+  // deltas. The full strings remain lossless; only the render cadence changes.
+  const flush = () => {
+    if (flushTimer !== undefined) {
+      window.clearTimeout(flushTimer);
+      flushTimer = undefined;
+    }
+    lastFlushAt = Date.now();
+    if (!settled) {
+      if (opts.onStreamUpdate) {
+        opts.onStreamUpdate(content, reasoning);
+        if (reasoning) onReasoningStream(reasoning);
+      } else {
+        if (content) opts.onAssistantStream(content);
+        if (reasoning) onReasoningStream(reasoning);
+      }
+    }
+  };
+  const scheduleFlush = () => {
+    if (flushTimer !== undefined) return;
+    const delay = Math.max(0, 48 - (Date.now() - lastFlushAt));
+    flushTimer = window.setTimeout(flush, delay);
+  };
+
   const stop = () => {
     if (settled) return false;
     settled = true;
+    if (timeout !== undefined) window.clearTimeout(timeout);
+    if (flushTimer !== undefined) window.clearTimeout(flushTimer);
     try {
       unlisten?.();
     } catch {
@@ -153,6 +202,10 @@ export async function streamFunctionCallingOnce(
   };
 
   const streamPromise = new Promise<OpenAIMessage>((resolve, reject) => {
+    timeout = window.setTimeout(() => {
+      if (stop()) reject(new Error("AI stream timed out"));
+    }, 180_000);
+
     listen<FunctionStreamEvent>("qxai-stream", (event) => {
       if (event.payload.requestId !== requestId) return;
       if (event.payload.error) {
@@ -160,6 +213,14 @@ export async function streamFunctionCallingOnce(
         return;
       }
       if (event.payload.done) {
+        flush();
+        opts.onStreamMetrics?.({
+          tokenCount: event.payload.tokenCount,
+          promptTokenCount: event.payload.promptTokenCount,
+          totalTokenCount: event.payload.totalTokenCount,
+          durationMs: event.payload.durationMs,
+          tokenSpeed: event.payload.tokenSpeed,
+        });
         if (stop()) {
           resolve(event.payload.message ?? {
             role: "assistant",
@@ -171,11 +232,10 @@ export async function streamFunctionCallingOnce(
       }
       if (event.payload.kind === "reasoning") {
         reasoning += event.payload.chunk;
-        onReasoningStream(reasoning);
       } else {
         content += event.payload.chunk;
-        opts.onAssistantStream(content);
       }
+      scheduleFlush();
     })
       .then((un) => {
         if (settled) {
@@ -209,11 +269,12 @@ export async function streamFunctionCallingOnce(
         tools,
         toolChoice: tools.length > 0 ? "auto" : "none",
       }), "Compatibility provider");
-      if (message.reasoning_content) {
-        onReasoningStream(message.reasoning_content);
-      }
-      if (message.content) {
-        opts.onAssistantStream(message.content);
+      if (opts.onStreamUpdate) {
+        opts.onStreamUpdate(message.content ?? "", message.reasoning_content ?? "");
+        if (message.reasoning_content) onReasoningStream(message.reasoning_content);
+      } else {
+        if (message.reasoning_content) onReasoningStream(message.reasoning_content);
+        if (message.content) opts.onAssistantStream(message.content);
       }
       return message;
     } catch (fallbackError) {

@@ -24,6 +24,15 @@ export interface ToolExecutionResult {
   attachments?: QxAiFileAttachment[];
 }
 
+/** Provider usage/timing metadata normalized at the stream boundary. */
+export interface AgentStreamMetrics {
+  tokenCount?: number;
+  promptTokenCount?: number;
+  totalTokenCount?: number;
+  durationMs?: number;
+  tokenSpeed?: number;
+}
+
 export interface ToolSpec {
   name: string;
   description: string;
@@ -54,6 +63,10 @@ export interface AgentRunOptions {
   onStepUpdate: (id: string, patch: Partial<AgentStep>) => void;
   onAssistantStream: (text: string) => void;
   onReasoningStream: (text: string) => void;
+  /** Atomic content + reasoning projection for consumers that track timing. */
+  onStreamUpdate?: (content: string, reasoning: string) => void;
+  /** Optional provider usage/timing projection; absent for legacy transports. */
+  onStreamMetrics?: (metrics: AgentStreamMetrics) => void;
   reasoning: boolean;
   maxIterations?: number;
   /** Frozen Hermes-style memory block for this session (prefix-cache friendly). */

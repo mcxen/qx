@@ -105,6 +105,38 @@ manifest 启动命令、后台 interval 与宿主 reload 不得自动混入当�
 - Island content 不依赖 shell DOM 结构；只依赖 session + action registry。
 - 设置文案依赖 `useT(key, fallback)`，不散落硬编码中文/英文分支。
 
+### QxAI：异步解耦、高可用与可扩展边界
+
+QxAI 的核心不是聊天面板，而是可被内置模块和插件复用的异步运行时。新增
+provider、工具、后台任务或 UI 投影时，必须保持下面的依赖方向：
+
+```text
+React / plugin projection
+        ↓  normalized stream + task ports
+QxAI orchestration / metrics / queue
+        ↓  stable command contracts
+provider adapters · session/memory services · bounded workers
+        ↓
+blocking HTTP · filesystem · native APIs
+```
+
+- **异步解耦**：UI 只订阅状态和归一化事件；网络、同步 HTTP、磁盘、模型/工具执行
+  不能在渲染、事件监听或 Tokio 核心线程上阻塞。流式请求必须快速返回 request id，
+  通过 `delta`、`done`、`error`、`timeout` 收敛生命周期，并在所有终态清理 listener、
+  timer 和队列占位。
+- **高可用**：provider usage/速率是可选增强；缺失时按本次 provider 请求耗时做保守
+  fallback。标题、梦境记忆、schedule 等旁路任务失败不得改变主对话结果；单个会话、
+  provider 或工具失败不得拖垮其它会话和 Shell。
+- **接口隔离**：transport 只负责协议和生命周期，`stream-metrics` 只负责归一化计时，
+  store 只负责会话编排，React 只负责投影。禁止让 provider 字段、Tauri event 细节或
+  React setter 穿透到其它层。
+- **可扩展性**：新增 provider 应实现现有 normalized stream port；新增工具通过
+  catalogue/permission registration；新增统计字段只能扩展事件 payload，不改变已有
+  `text`/`reasoning`/`done` 语义。
+- **速率不变量**：优先使用 provider `completion_tokens` 与 `token_speed`；没有 usage 时
+  才使用前端 token 估算和本次模型请求 `duration_ms`。禁止用首 token 时间的 0/1ms
+  作为分母，也禁止把 prompt、工具等待或标题生成时间算进完成速率。
+
 ## 3. 抽象层次（从稳到变）
 
 由稳到变，依赖只能**向下或向侧向 port**，禁止上层细节倒灌：

@@ -1,6 +1,6 @@
 # QxAI Chat UI Spec
 
-> 状态：Current · 适用版本：v0.6.82+ · Owner：Frontend · 最后复核：2026-08-12  
+> 状态：Current · 适用版本：v0.6.83+ · Owner：Frontend · 最后复核：2026-08-12
 > **结构标杆**：[AI Elements](https://elements.ai-sdk.dev/)（Conversation / Message / Reasoning / Tool / PromptInput / Queue）  
 > **视觉标杆**：[Beautiful UI](https://www.beautifului.dev/)（field 气泡、Thinking 时间线、stream caret、ink 发送方钮）  
 > 实现落点：`src/modules/qx-ai/**`、`src/styles/qx-ai.css`  
@@ -106,8 +106,10 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 对齐 Elements `Reasoning` + BUI Thinking：
 
 1. 折叠触发：Sparkles + 标题（流式 shimmer「Thinking…」/ 完成「Thought for N seconds」）。
+   完成态优先显示运行时记录的思考阶段耗时；旧消息没有该字段时才退回「Thought for a few seconds」。
 2. 流式时 **默认展开**；完成后可保持用户操作结果。
-3. 展开：左侧 **1px 时间线** + 步骤行（thought / tool / observation）。
+3. 展开：左侧 **1px 时间线** + 步骤行（thought / tool / observation）；active 步骤使用
+   accent 脉冲，complete/error 使用稳定状态图标，并尊重 reduced-motion。
 4. 不要厚边框大卡片包住整块思考（避免 web 营销卡）。
 
 实现：`ReasoningPanel`（原 `JanChainOfThought`）+ `AgentStepsView`。
@@ -163,14 +165,16 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 
 ## 10. 验收清单
 
-- [ ] 左列表标题 ellipsis；首条消息后有兜底名，助手完成后可换成 AI 标题  
-- [ ] 用户 field 气泡右对齐 ≤80%；助手满列裸文  
-- [ ] 思考流式展开 + shimmer；时间线步骤可读  
-- [ ] 流式 caret 为竖线  
-- [ ] 输入 field 风格；发送 28px 方钮 + 箭头  
-- [ ] 队列在输入上，点击回填  
-- [ ] 亮色 / 暗色均正常，无死黑块  
-- [ ] Esc / Bottom Bar 符合 UI_SPEC  
+- [x] 左列表标题 ellipsis；首条消息后有兜底名，助手完成后可换成 AI 标题
+- [x] 用户 field 气泡右对齐 ≤80%；助手满列裸文
+- [x] 思考流式展开 + shimmer；时间线步骤可读
+- [x] 流式 caret 为竖线
+- [x] 输入 field 风格；发送 28px 方钮 + 箭头，附件/队列位于输入上方
+- [x] Token Usage 显示上下文占用、输入/输出/总量，并优先使用供应商真实用量
+- [x] 消息下显示日期，并提供复制、编辑、删除；助手末条支持重新生成
+- [x] 队列在输入上，点击回填或直接编辑
+- [x] 亮色 / 暗色均正常，无死黑块
+- [x] Esc / Bottom Bar 符合 UI_SPEC
 
 ---
 

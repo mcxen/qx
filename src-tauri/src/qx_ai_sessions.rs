@@ -1,14 +1,16 @@
-//! QxAI durable session store — **folder layout** (RLM-style modular units).
+//! QxAI durable session store — **folder layout only** (no legacy migration).
 //!
 //! ```text
 //! ~/.qx/QxAiSession/
-//!   index.json                 # lightweight catalog for list UIs
+//!   .qxai-layout-v3            # layout marker (missing/old → wipe & restart empty)
+//!   index.json                 # lightweight catalog
 //!   sessions/<conversation-id>/
-//!     session.json             # full conversation document
-//!     files/*                  # managed attachment copies
+//!     session.json
+//!     files/*
 //! ```
 //!
-//! Legacy `sessions.json` + `files/<id>/` is migrated once on load/save.
+//! Old layouts are **deleted wholesale** (no convert). Missing `.qxai-layout-v3`
+//! also triggers a one-time empty reset so broken half-migrations cannot freeze load.
 //! Deletes remove the whole session directory (JSON + attachments).
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
@@ -46,14 +48,6 @@ fn sessions_dir() -> PathBuf {
 
 fn index_file() -> PathBuf {
     sessions_root().join("index.json")
-}
-
-fn legacy_sessions_file() -> PathBuf {
-    sessions_root().join("sessions.json")
-}
-
-fn legacy_attachments_root() -> PathBuf {
-    sessions_root().join("files")
 }
 
 fn session_dir(id: &str) -> PathBuf {
@@ -96,6 +90,28 @@ fn ensure_root() -> Result<(), String> {
     fs::create_dir_all(sessions_dir())
         .map_err(|error| format!("create {}: {error}", sessions_dir().display()))?;
     Ok(())
+}
+
+fn layout_marker() -> PathBuf {
+    sessions_root().join(".qxai-layout-v3")
+}
+
+/// Drop legacy / half-migrated trees without reading them. User starts empty.
+/// Called once until `.qxai-layout-v3` exists and no legacy paths remain.
+fn purge_legacy_storage() {
+    let root = sessions_root();
+    let has_legacy = root.join("sessions.json").exists()
+        || root.join("sessions.json.bak").exists()
+        || root.join("files").is_dir();
+    let needs_reset = has_legacy || !layout_marker().is_file();
+    if !needs_reset {
+        return;
+    }
+    // Nuclear wipe — no parse, no copy, no path rewrite (avoids UI freezes).
+    let _ = fs::remove_dir_all(&root);
+    let _ = crate::qx_ai_memory::wipe_memory_store_for_reset();
+    let _ = ensure_root();
+    let _ = fs::write(layout_marker(), b"v3\n");
 }
 
 fn atomic_write_json(path: &Path, value: &Value) -> Result<(), String> {
@@ -147,133 +163,6 @@ fn attachment_kind(mime: &str) -> &'static str {
     } else {
         "file"
     }
-}
-
-fn rewrite_attachment_paths(mut conversation: Value, id: &str) -> Value {
-    let new_files = session_files_dir(id);
-    let legacy_files = legacy_attachments_root().join(id);
-    let Some(messages) = conversation
-        .get_mut("messages")
-        .and_then(Value::as_array_mut)
-    else {
-        return conversation;
-    };
-    for message in messages {
-        let Some(attachments) = message.get_mut("attachments").and_then(Value::as_array_mut) else {
-            continue;
-        };
-        for attachment in attachments {
-            let Some(path) = attachment.get("path").and_then(Value::as_str) else {
-                continue;
-            };
-            let path_buf = PathBuf::from(path);
-            let file_name = path_buf.file_name().and_then(|n| n.to_str());
-            let Some(file_name) = file_name else {
-                continue;
-            };
-            // Prefer new layout if the file already lives there; else remap legacy.
-            let candidate_new = new_files.join(file_name);
-            let candidate_legacy = legacy_files.join(file_name);
-            if candidate_new.is_file() {
-                if let Some(object) = attachment.as_object_mut() {
-                    object.insert(
-                        "path".into(),
-                        Value::String(candidate_new.to_string_lossy().into_owned()),
-                    );
-                }
-            } else if candidate_legacy.is_file() || path.contains(&format!("files/{id}/")) {
-                if let Some(object) = attachment.as_object_mut() {
-                    object.insert(
-                        "path".into(),
-                        Value::String(candidate_new.to_string_lossy().into_owned()),
-                    );
-                }
-            }
-        }
-    }
-    conversation
-}
-
-fn move_dir_contents(from: &Path, to: &Path) -> Result<(), String> {
-    if !from.is_dir() {
-        return Ok(());
-    }
-    fs::create_dir_all(to).map_err(|e| format!("create {}: {e}", to.display()))?;
-    for entry in fs::read_dir(from).map_err(|e| format!("read {}: {e}", from.display()))? {
-        let entry = entry.map_err(|e| format!("entry: {e}"))?;
-        let src = entry.path();
-        let dest = to.join(entry.file_name());
-        if dest.exists() {
-            continue;
-        }
-        if fs::rename(&src, &dest).is_err() {
-            if src.is_file() {
-                fs::copy(&src, &dest).map_err(|e| format!("copy {}: {e}", src.display()))?;
-                let _ = fs::remove_file(&src);
-            }
-        }
-    }
-    let _ = fs::remove_dir_all(from);
-    Ok(())
-}
-
-/// One-time migration: monolithic `sessions.json` + `files/<id>/` → folder units.
-fn migrate_legacy_layout_if_needed() -> Result<(), String> {
-    ensure_root()?;
-    let legacy = legacy_sessions_file();
-    if !legacy.is_file() {
-        // Still move any leftover top-level files/ dirs into sessions/*/files.
-        let legacy_files = legacy_attachments_root();
-        if legacy_files.is_dir() {
-            for entry in fs::read_dir(&legacy_files)
-                .map_err(|e| format!("read {}: {e}", legacy_files.display()))?
-            {
-                let entry = entry.map_err(|e| format!("entry: {e}"))?;
-                let name = entry.file_name();
-                let Some(id) = name.to_str() else {
-                    continue;
-                };
-                if checked_id(id).is_err() {
-                    continue;
-                }
-                let dest = session_files_dir(id);
-                move_dir_contents(&entry.path(), &dest)?;
-            }
-            let _ = fs::remove_dir(&legacy_files);
-        }
-        return Ok(());
-    }
-
-    let bytes = fs::read(&legacy).map_err(|e| format!("read {}: {e}", legacy.display()))?;
-    let value: Value =
-        serde_json::from_slice(&bytes).map_err(|e| format!("decode legacy sessions: {e}"))?;
-    let Some(arr) = value.as_array() else {
-        return Err("legacy sessions.json must be an array".into());
-    };
-
-    for item in arr {
-        let Some(id) = item.get("id").and_then(Value::as_str) else {
-            continue;
-        };
-        let Ok(id) = checked_id(id) else {
-            continue;
-        };
-        let mut conversation = item.clone();
-        // Move attachments first so path rewrite can point at new files.
-        let legacy_att = legacy_attachments_root().join(id);
-        move_dir_contents(&legacy_att, &session_files_dir(id))?;
-        conversation = rewrite_attachment_paths(conversation, id);
-        atomic_write_json(&session_file(id), &conversation)?;
-    }
-
-    // Keep a backup then remove the live monolithic file.
-    let bak = sessions_root().join("sessions.json.bak");
-    let _ = fs::rename(&legacy, &bak);
-    if legacy_attachments_root().is_dir() {
-        let _ = fs::remove_dir_all(legacy_attachments_root());
-    }
-    rebuild_index_from_disk()?;
-    Ok(())
 }
 
 fn conversation_summary(conversation: &Value) -> Value {
@@ -337,13 +226,15 @@ fn rebuild_index_from_disk() -> Result<(), String> {
 }
 
 fn load_all_conversations() -> Result<Value, String> {
-    migrate_legacy_layout_if_needed()?;
+    purge_legacy_storage();
     ensure_root()?;
     let mut conversations = Vec::new();
     let dir = sessions_dir();
     if dir.is_dir() {
-        for entry in fs::read_dir(&dir).map_err(|e| format!("read {}: {e}", dir.display()))? {
-            let entry = entry.map_err(|e| format!("entry: {e}"))?;
+        let Ok(entries) = fs::read_dir(&dir) else {
+            return Ok(Value::Array(Vec::new()));
+        };
+        for entry in entries.flatten() {
             if !entry.path().is_dir() {
                 continue;
             }
@@ -358,10 +249,17 @@ fn load_all_conversations() -> Result<Value, String> {
             if !path.is_file() {
                 continue;
             }
-            let bytes = fs::read(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
-            let value: Value = serde_json::from_slice(&bytes)
-                .map_err(|e| format!("decode {}: {e}", path.display()))?;
-            conversations.push(rewrite_attachment_paths(value, id));
+            // Skip corrupt session files instead of failing the whole load.
+            let Ok(bytes) = fs::read(&path) else {
+                continue;
+            };
+            let Ok(value) = serde_json::from_slice::<Value>(&bytes) else {
+                continue;
+            };
+            if !value.is_object() {
+                continue;
+            }
+            conversations.push(value);
         }
     }
     conversations.sort_by(|a, b| {
@@ -373,7 +271,7 @@ fn load_all_conversations() -> Result<Value, String> {
 }
 
 fn save_all_conversations(conversations: Value) -> Result<(), String> {
-    migrate_legacy_layout_if_needed()?;
+    purge_legacy_storage();
     ensure_root()?;
     let Some(arr) = conversations.as_array() else {
         return Err("QxAI conversations must be an array".into());
@@ -401,7 +299,6 @@ fn save_all_conversations(conversations: Value) -> Result<(), String> {
             .entry("updatedAt".to_string())
             .or_insert(json!(now_ms));
         let conversation = Value::Object(object);
-        let conversation = rewrite_attachment_paths(conversation, id);
         // Ensure files dir exists for the session unit.
         fs::create_dir_all(session_files_dir(id))
             .map_err(|e| format!("create {}: {e}", session_files_dir(id).display()))?;
@@ -443,7 +340,7 @@ fn import_attachments_sync(
             "select at most {MAX_ATTACHMENTS_PER_IMPORT} attachments at a time"
         ));
     }
-    migrate_legacy_layout_if_needed()?;
+    purge_legacy_storage();
     let destination = session_files_dir(conversation_id);
     fs::create_dir_all(&destination)
         .map_err(|error| format!("create {}: {error}", destination.display()))?;
@@ -531,6 +428,12 @@ pub(crate) fn prepare_provider_messages(messages: Vec<Value>) -> Result<Vec<Valu
             object.remove("reasoning");
             object.remove("steps");
             object.remove("skill");
+            object.remove("createdAt");
+            object.remove("tokenCount");
+            object.remove("tokenSpeed");
+            object.remove("durationMs");
+            object.remove("reasoningDurationMs");
+            object.remove("usage");
             if !is_user {
                 return Ok(message);
             }
@@ -650,11 +553,6 @@ pub async fn qxai_session_delete(conversation_id: String) -> Result<(), String> 
                 fs::remove_dir_all(&path)
                     .map_err(|error| format!("remove {}: {error}", path.display()))?;
             }
-            // Legacy layout cleanup.
-            let legacy = legacy_attachments_root().join(id);
-            if legacy.exists() {
-                let _ = fs::remove_dir_all(&legacy);
-            }
             rebuild_index_from_disk()?;
             Ok(())
         })
@@ -680,7 +578,7 @@ pub async fn qxai_sessions_directory() -> Result<String, String> {
 pub async fn qxai_sessions_index() -> Result<Value, String> {
     crate::runtime::blocking(|| {
         with_storage_lock(|| {
-            migrate_legacy_layout_if_needed()?;
+            purge_legacy_storage();
             let path = index_file();
             if path.is_file() {
                 let bytes = fs::read(&path).map_err(|e| format!("read index: {e}"))?;
@@ -709,7 +607,7 @@ pub fn session_search(query: &str, limit: usize) -> Result<Value, String> {
     if query.is_empty() {
         return Err("query is empty".into());
     }
-    let _ = migrate_legacy_layout_if_needed();
+    purge_legacy_storage();
     let tokens: Vec<&str> = query.split_whitespace().collect();
     let mut hits = Vec::new();
     let dir = sessions_dir();
@@ -777,7 +675,3 @@ pub fn session_search(query: &str, limit: usize) -> Result<Value, String> {
     }
     Ok(json!({ "hits": hits }))
 }
-
-// Silence unused import if Map is only used via object.clone paths.
-#[allow(dead_code)]
-fn _touch_map(_: &Map<String, Value>) {}

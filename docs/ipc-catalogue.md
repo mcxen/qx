@@ -347,6 +347,11 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 | `macro:recording` | 宏录制 worker（约 16ms 节流） | 宏录制状态、指针 overlay、灵动岛 |
 | 显示器变化 | `display_monitor::start_display_monitor` | 内部 auto-show panel |
 
+`qxai-stream` 的基础 payload 保持 `requestId`、`kind`（`text` / `reasoning` / `done`）、
+`chunk`、`done`、`error` 语义不变；`done` 可额外携带 `tokenCount`（provider usage）、
+`durationMs`（本次 provider 请求耗时，含 TTFT）和 `tokenSpeed`（provider 速率）。这些
+字段是可选扩展，缺失时调用方必须走估算 fallback，不能阻塞或把请求判为失败。
+
 ## 约定
 
 - 每个命令的错误统一 `Result<T, String>`，字符串直接前端 `catch (e)` 展示。
