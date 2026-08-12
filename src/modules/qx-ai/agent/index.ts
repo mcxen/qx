@@ -74,7 +74,12 @@ export {
   type QxAiHookPhase,
 } from "./hooks";
 export {
+  BASH_COMMAND_BLACKLIST,
+  BASH_SAFE_COMMANDS,
   DANGEROUS_TOOLS,
+  classifyBashScript,
+  confirmSafetyGate,
+  evaluateSafetyGate,
   formatDangerousToolsBlock,
   getDangerousTool,
   isDangerousToolName,
@@ -82,6 +87,8 @@ export {
   resolveDangerousToolCall,
   type DangerousToolLevel,
   type DangerousToolSpec,
+  type SafetyGateAction,
+  type SafetyGateDecision,
 } from "./dangerous-tools";
 export {
   invalidateMemorySnapshot,

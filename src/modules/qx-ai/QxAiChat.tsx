@@ -42,7 +42,7 @@ import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
 import { useStore } from "../../store";
 import { useSettingsStore } from "../settings/store";
-import { openAgentSettingsTab } from "./AiProviderConfig";
+import { buildModelSelectOptions, openAgentSettingsTab } from "./AiProviderConfig";
 import { AiMessageContent } from "./message-rendering";
 import QxAiConversationList from "./QxAiConversationList";
 import {
@@ -585,21 +585,15 @@ export default function QxAiChat() {
               {activeModels.length > 0 || conv.model ? (
                 <Select
                   value={conv.model}
-                  options={[
-                    ...(!activeModels.some((model) => model.id === conv.model) && conv.model
-                      ? [{ value: conv.model, label: conv.model }]
-                      : []),
-                    ...activeModels.map((model) => ({
-                      value: model.id,
-                      label: resolveModelVision(
-                        conv.provider,
-                        model,
-                        agentSettings.model_capabilities,
-                      )
-                        ? `${model.name} · ${t("agent.model.vision.badge", "Vision")}`
-                        : model.name,
-                    })),
-                  ]}
+                  options={buildModelSelectOptions({
+                    providerId: conv.provider,
+                    models: activeModels,
+                    favorites: agentSettings.favorite_models,
+                    capabilities: agentSettings.model_capabilities,
+                    extraModelId: conv.model,
+                    visionBadge: t("agent.model.vision.badge", "Vision"),
+                    reasoningBadge: t("agent.model.reasoning.badge", "Reasoning"),
+                  })}
                   onChange={(model) => setConversationModel(conv.id, conv.provider, model)}
                   ariaLabel={t("qxai.model", "Model")}
                   className="qx-inline-select"

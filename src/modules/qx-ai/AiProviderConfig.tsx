@@ -1,14 +1,37 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { Pencil, Plus, Trash2 } from "lucide-react";
-import { Badge, Button, Input, LoadingLabel, Select } from "../../components/ui";
+import {
+  ChevronDown,
+  ChevronRight,
+  Eye,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Star,
+  Trash2,
+} from "lucide-react";
+import { Badge, Button, Input, LoadingLabel, Select, Toggle } from "../../components/ui";
 import { useT } from "../../i18n";
+import { useSettingsStore } from "../settings/store";
 import { openSettings } from "../settings/openSettings";
+import {
+  formatContextLength,
+  formatModelPickerLabel,
+  isFavoriteModel,
+  modelCapabilityKey,
+  normalizeCatalogModel,
+  resolveModelContextLength,
+  resolveModelReasoning,
+  resolveModelVision,
+  sortModelsForPicker,
+  toggleFavoriteModelList,
+} from "./model-capabilities";
 import {
   useG4fStore,
   type BuiltInProviderCredential,
   type CustomProvider,
   type G4fProvider,
+  type QxAiModelInfo,
 } from "./store";
 
 export interface AiMemoryEntry {
@@ -337,21 +360,16 @@ type ProviderEditorResult =
         name: string;
         baseUrl: string;
         apiKey: string;
-        models: { id: string; name: string }[];
+        models: QxAiModelInfo[];
       };
     };
 
-function providerModelsText(models: { id: string }[]): string {
-  return models.map((model) => model.id).join(", ");
-}
-
-function providerModels(text: string): { id: string; name: string; vision?: boolean }[] {
+function parseModelsFromText(text: string): QxAiModelInfo[] {
   return text
-    .split(",")
+    .split(/[,\n]/)
     .map((id) => id.trim())
     .filter(Boolean)
     .map((id) => {
-      // Local heuristic until catalog/API detection runs.
       const vision = /vision|vl|gpt-4o|gpt-4\.1|claude-|gemini|pixtral|llava|llama-?4|openrouter\/auto/i
         .test(id);
       return vision ? { id, name: id, vision: true } : { id, name: id };
@@ -389,8 +407,11 @@ function ProviderEditor({
   const [apiKey, setApiKey] = useState(
     initial?.kind === "builtin" ? initial.apiKey : initial?.provider.apiKey ?? "",
   );
+  const [models, setModels] = useState<QxAiModelInfo[]>(
+    (initialProvider?.models ?? []).map(normalizeCatalogModel),
+  );
   const [modelsText, setModelsText] = useState(
-    providerModelsText(initialProvider?.models ?? []),
+    (initialProvider?.models ?? []).map((model) => model.id).join(", "),
   );
   const [fetchingModels, setFetchingModels] = useState(false);
   const [modelsError, setModelsError] = useState<string | null>(null);
@@ -401,9 +422,9 @@ function ProviderEditor({
 
   const canFetchModels = Boolean(baseUrl.trim() && apiKey.trim() && !fetchingModels && !isBuiltIn);
   const canSave = Boolean(
-    name.trim() &&
-    baseUrl.trim() &&
-    (apiKey.trim() || (isBuiltIn && initial?.kind === "builtin")),
+    name.trim()
+    && baseUrl.trim()
+    && (apiKey.trim() || (isBuiltIn && initial?.kind === "builtin")),
   );
 
   const applyTemplate = (nextId: string) => {
@@ -413,12 +434,15 @@ function ProviderEditor({
       setName("");
       setBaseUrl("");
       setApiKey("");
+      setModels([]);
       setModelsText("");
       return;
     }
     setName(template.name);
     setBaseUrl(template.baseUrl ?? "");
-    setModelsText(providerModelsText(template.models));
+    const nextModels = template.models.map(normalizeCatalogModel);
+    setModels(nextModels);
+    setModelsText(nextModels.map((model) => model.id).join(", "));
   };
 
   const fetchModels = async () => {
@@ -426,11 +450,13 @@ function ProviderEditor({
     setFetchingModels(true);
     setModelsError(null);
     try {
-      const models = await invoke<{ id: string; name: string }[]>("qxai_fetch_models", {
+      const fetched = await invoke<QxAiModelInfo[]>("qxai_fetch_models", {
         baseUrl: baseUrl.trim(),
         apiKey,
       });
-      setModelsText(providerModelsText(models));
+      const next = fetched.map(normalizeCatalogModel);
+      setModels(next);
+      setModelsText(next.map((model) => model.id).join(", "));
     } catch (error) {
       setModelsError(String(error));
     } finally {
@@ -449,13 +475,17 @@ function ProviderEditor({
           apiKey: apiKey.trim(),
         });
       } else {
+        const fromText = parseModelsFromText(modelsText);
+        // Prefer structured fetch metadata when ids still match.
+        const byId = new Map(models.map((model) => [model.id, model]));
+        const merged = fromText.map((model) => byId.get(model.id) ?? model);
         await onSave({
           kind: "custom",
           data: {
             name: name.trim(),
             baseUrl: baseUrl.trim(),
             apiKey: apiKey.trim(),
-            models: providerModels(modelsText),
+            models: merged,
           },
         });
       }
@@ -524,10 +554,21 @@ function ProviderEditor({
         <Input
           value={modelsText}
           onChange={(event) => setModelsText(event.target.value)}
-          placeholder={t("qxai.providers.modelsPlaceholder", "gpt-4o, gpt-4o-mini")}
+          placeholder={t(
+            "qxai.providers.modelsPlaceholder",
+            "Fetch from /models or enter gpt-4o, gpt-4o-mini…",
+          )}
           readOnly={isBuiltIn}
         />
       </label>
+      {!isBuiltIn && models.length > 0 && (
+        <div className="qx-ai-config-card-meta">
+          {t(
+            "qxai.providers.modelsPreview",
+            "{count} models cached · vision / context filled when the catalog provides them",
+          ).replace("{count}", String(models.length))}
+        </div>
+      )}
 
       {!isBuiltIn && (
         <div className="qx-ai-config-row">
@@ -562,8 +603,187 @@ function ProviderEditor({
   );
 }
 
+function ProviderModelTable({
+  providerId,
+  models,
+  isCustom,
+  onRefreshModels,
+  refreshing,
+}: {
+  providerId: string;
+  models: QxAiModelInfo[];
+  isCustom: boolean;
+  onRefreshModels?: () => void;
+  refreshing?: boolean;
+}) {
+  const t = useT();
+  const { settings, patch } = useSettingsStore();
+  const agent = settings.agent;
+  const [query, setQuery] = useState("");
+
+  const favorites = agent.favorite_models ?? [];
+  const caps = agent.model_capabilities ?? {};
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = q
+      ? models.filter(
+          (model) =>
+            model.id.toLowerCase().includes(q) || (model.name || "").toLowerCase().includes(q),
+        )
+      : models;
+    return sortModelsForPicker(providerId, list, favorites);
+  }, [favorites, models, providerId, query]);
+
+  const patchAgent = (partial: Partial<typeof agent>) =>
+    patch("agent", { ...agent, ...partial });
+
+  const toggleStar = (modelId: string) => {
+    patchAgent({
+      favorite_models: toggleFavoriteModelList(favorites, providerId, modelId),
+    });
+  };
+
+  const setVision = (modelId: string, vision: boolean) => {
+    const key = modelCapabilityKey(providerId, modelId);
+    patchAgent({
+      model_capabilities: {
+        ...caps,
+        [key]: { ...(caps[key] ?? {}), vision },
+      },
+    });
+  };
+
+  if (models.length === 0) {
+    return (
+      <div className="qx-ai-model-table-empty">
+        {t("qxai.providers.noModelsInProvider", "No models in this provider yet.")}
+        {isCustom && onRefreshModels && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={refreshing}
+            onClick={onRefreshModels}
+          >
+            <RefreshCw size={13} aria-hidden="true" />
+            {refreshing
+              ? t("qxai.providers.fetchingModels", "Fetching models…")
+              : t("qxai.providers.fetchModels", "Fetch models")}
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="qx-ai-model-table">
+      <div className="qx-ai-model-table-toolbar">
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder={t("qxai.providers.modelSearch", "Search models…")}
+          aria-label={t("qxai.providers.modelSearch", "Search models…")}
+          className="qx-ai-model-search"
+        />
+        {isCustom && onRefreshModels && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={refreshing}
+            onClick={onRefreshModels}
+          >
+            <RefreshCw size={13} aria-hidden="true" />
+            {t("qxai.providers.refreshModels", "Refresh")}
+          </Button>
+        )}
+      </div>
+      <div className="qx-ai-model-table-head" aria-hidden="true">
+        <span />
+        <span>{t("qxai.providers.col.model", "Model")}</span>
+        <span>{t("qxai.providers.col.caps", "Capabilities")}</span>
+        <span>{t("qxai.providers.col.context", "Context")}</span>
+        <span>{t("qxai.providers.col.vision", "Vision")}</span>
+      </div>
+      <div className="qx-ai-model-table-body" role="list">
+        {filtered.map((model) => {
+          const starred = isFavoriteModel(providerId, model.id, favorites);
+          const vision = resolveModelVision(providerId, model, caps);
+          const reasoning = resolveModelReasoning(providerId, model, caps);
+          const ctx = formatContextLength(
+            resolveModelContextLength(providerId, model, caps),
+          );
+          return (
+            <div key={model.id} className="qx-ai-model-row" role="listitem">
+              <button
+                type="button"
+                className={`qx-ai-model-star${starred ? " is-on" : ""}`}
+                title={
+                  starred
+                    ? t("qxai.providers.unstar", "Remove star")
+                    : t("qxai.providers.star", "Star for quick pick")
+                }
+                aria-label={
+                  starred
+                    ? t("qxai.providers.unstar", "Remove star")
+                    : t("qxai.providers.star", "Star for quick pick")
+                }
+                aria-pressed={starred}
+                onClick={() => toggleStar(model.id)}
+              >
+                <Star size={14} fill={starred ? "currentColor" : "none"} aria-hidden="true" />
+              </button>
+              <div className="qx-ai-model-row-name" title={model.id}>
+                <span className="qx-ai-model-row-title">{model.name || model.id}</span>
+                {model.name && model.name !== model.id && (
+                  <span className="qx-ai-model-row-id">{model.id}</span>
+                )}
+              </div>
+              <div className="qx-ai-model-badges">
+                {vision && (
+                  <Badge variant="outline" className="qx-ai-cap-badge is-vision">
+                    <Eye size={11} aria-hidden="true" />
+                    {t("agent.model.vision.badge", "Vision")}
+                  </Badge>
+                )}
+                {reasoning && (
+                  <Badge variant="outline" className="qx-ai-cap-badge is-reasoning">
+                    {t("agent.model.reasoning.badge", "Reasoning")}
+                  </Badge>
+                )}
+                {!vision && !reasoning && (
+                  <span className="qx-ai-config-card-meta">
+                    {t("qxai.providers.caps.none", "Text")}
+                  </span>
+                )}
+              </div>
+              <div className="qx-ai-model-ctx" title={ctx ? `${ctx} tokens` : undefined}>
+                {ctx ?? "—"}
+              </div>
+              <div className="qx-ai-model-vision-toggle">
+                <Toggle
+                  value={vision}
+                  onChange={(value) => setVision(model.id, value)}
+                  ariaLabel={`${model.id} ${t("agent.model.vision", "Vision (images)")}`}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {filtered.length === 0 && (
+        <div className="qx-ai-model-table-empty">
+          {t("qxai.providers.modelSearchEmpty", "No models match this search.")}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ProviderListSection() {
   const t = useT();
+  const agentCaps = useSettingsStore((s) => s.settings.agent.model_capabilities);
   const {
     builtInProviders,
     builtInCredentials,
@@ -572,9 +792,12 @@ export function ProviderListSection() {
     removeCustomProvider,
     updateCustomProvider,
     saveBuiltInProviderKey,
+    loadProviders,
   } = useG4fStore();
   const [editor, setEditor] = useState<ProviderEditorInitial | "new" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
 
   const configured = [
     ...builtInProviders.map((provider) => ({
@@ -612,6 +835,7 @@ export function ProviderListSection() {
         await addCustomProvider(result.data);
       }
       closeEditor();
+      void loadProviders();
     } catch (error) {
       setActionError(String(error));
     }
@@ -623,8 +847,35 @@ export function ProviderListSection() {
     )) return;
     try {
       await removeCustomProvider(provider.id);
+      if (expandedId === provider.id) setExpandedId(null);
     } catch (error) {
       setActionError(String(error));
+    }
+  };
+
+  const refreshCustomModels = async (provider: CustomProvider) => {
+    if (!provider.baseUrl.trim() || !provider.apiKey.trim()) {
+      setActionError(t(
+        "qxai.providers.refreshNeedKey",
+        "Set base URL and API key before refreshing models.",
+      ));
+      return;
+    }
+    setRefreshingId(provider.id);
+    setActionError(null);
+    try {
+      const fetched = await invoke<QxAiModelInfo[]>("qxai_fetch_models", {
+        baseUrl: provider.baseUrl.trim(),
+        apiKey: provider.apiKey,
+      });
+      await updateCustomProvider(provider.id, {
+        models: fetched.map(normalizeCatalogModel),
+      });
+      void loadProviders();
+    } catch (error) {
+      setActionError(String(error));
+    } finally {
+      setRefreshingId(null);
     }
   };
 
@@ -636,7 +887,7 @@ export function ProviderListSection() {
         <div className="qx-ai-config-desc">
           {t(
             "qxai.providers.desc",
-            "Choose a built-in template or add any OpenAI-compatible provider. Providers are kept in one editable list.",
+            "Built-in templates and OpenAI-compatible providers. Expand a row to star models, toggle vision, and see context windows — same idea as Jan’s provider model list.",
           )}
         </div>
         {!editor && (
@@ -673,23 +924,42 @@ export function ProviderListSection() {
         <div className="qx-ai-provider-list" role="list">
           {configured.map((provider) => {
             const isCustom = provider.kind === "custom";
+            const expanded = expandedId === provider.id;
+            const visionCount = provider.models.filter((model) =>
+              resolveModelVision(provider.id, model, agentCaps),
+            ).length;
             return (
-              <div key={provider.id} className="qx-ai-provider-list-row" role="listitem">
+              <div
+                key={provider.id}
+                className={`qx-ai-provider-list-row${expanded ? " is-expanded" : ""}`}
+                role="listitem"
+              >
                 <div className="qx-ai-provider-list-main">
-                  <div className="qx-ai-provider-list-title">
-                    <span>{provider.name}</span>
+                  <button
+                    type="button"
+                    className="qx-ai-provider-expand"
+                    aria-expanded={expanded}
+                    onClick={() => setExpandedId(expanded ? null : provider.id)}
+                  >
+                    {expanded
+                      ? <ChevronDown size={15} aria-hidden="true" />
+                      : <ChevronRight size={15} aria-hidden="true" />}
+                    <span className="qx-ai-provider-list-title-text">{provider.name}</span>
                     <Badge variant="outline">
                       {isCustom
                         ? t("qxai.providers.customBadge", "Custom")
                         : t("qxai.providers.templateBadge", "Template")}
                     </Badge>
-                  </div>
+                  </button>
                   <div className="qx-ai-config-card-meta">{provider.baseUrl}</div>
                   <div className="qx-ai-config-card-meta">
                     {provider.apiKey
                       ? `${t("qxai.providers.key", "Key")}: ${maskProviderKey(provider.apiKey, "")}`
                       : t("qxai.providers.notConfigured", "API key not configured")}
                     {` · ${provider.models.length} ${t("qxai.providers.modelsCount", "models")}`}
+                    {visionCount > 0
+                      ? ` · ${visionCount} ${t("qxai.providers.visionCount", "vision")}`
+                      : ""}
                   </div>
                 </div>
                 <div className="qx-ai-provider-list-actions">
@@ -699,8 +969,12 @@ export function ProviderListSection() {
                     size="sm"
                     onClick={() => setEditor(
                       isCustom
-                        ? { kind: "custom", provider: provider.provider }
-                        : { kind: "builtin", provider: provider.provider, apiKey: provider.apiKey },
+                        ? { kind: "custom", provider: provider.provider as CustomProvider }
+                        : {
+                            kind: "builtin",
+                            provider: provider.provider as G4fProvider,
+                            apiKey: provider.apiKey,
+                          },
                     )}
                   >
                     <Pencil size={13} aria-hidden="true" />
@@ -712,13 +986,28 @@ export function ProviderListSection() {
                       variant="ghost"
                       size="sm"
                       className="qx-ai-provider-delete"
-                      onClick={() => void remove(provider.provider)}
+                      onClick={() => void remove(provider.provider as CustomProvider)}
                     >
                       <Trash2 size={13} aria-hidden="true" />
                       {t("common.delete", "Delete")}
                     </Button>
                   )}
                 </div>
+                {expanded && (
+                  <div className="qx-ai-provider-models-panel">
+                    <ProviderModelTable
+                      providerId={provider.id}
+                      models={provider.models}
+                      isCustom={isCustom}
+                      refreshing={refreshingId === provider.id}
+                      onRefreshModels={
+                        isCustom
+                          ? () => void refreshCustomModels(provider.provider as CustomProvider)
+                          : undefined
+                      }
+                    />
+                  </div>
+                )}
               </div>
             );
           })}
@@ -726,6 +1015,42 @@ export function ProviderListSection() {
       )}
     </div>
   );
+}
+
+/** Shared model option labels for Settings / chat selectors. */
+export function buildModelSelectOptions(options: {
+  providerId: string;
+  models: QxAiModelInfo[];
+  favorites?: string[];
+  capabilities?: Record<string, { vision?: boolean; reasoning?: boolean; context_length?: number }>;
+  extraModelId?: string;
+  visionBadge?: string;
+  reasoningBadge?: string;
+}): { value: string; label: string }[] {
+  const {
+    providerId,
+    models,
+    favorites,
+    capabilities,
+    extraModelId,
+    visionBadge = "Vision",
+    reasoningBadge = "Reasoning",
+  } = options;
+  const list = [...models];
+  if (extraModelId && !list.some((model) => model.id === extraModelId)) {
+    list.unshift({ id: extraModelId, name: extraModelId });
+  }
+  return sortModelsForPicker(providerId, list, favorites).map((model) => ({
+    value: model.id,
+    label: formatModelPickerLabel({
+      providerId,
+      model,
+      favorites,
+      overrides: capabilities,
+      visionLabel: visionBadge,
+      reasoningLabel: reasoningBadge,
+    }),
+  }));
 }
 
 export function MemorySection({ onSaved }: { onSaved?: (detail: string) => void }) {

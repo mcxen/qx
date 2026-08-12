@@ -25,16 +25,26 @@ Settings → AI Agent → **Safety & SOLO** (persisted on `agent`):
 
 | Setting | Default | Effect |
 |---|---|---|
-| `dangerous_tools_guard_enabled` | **on** | Classify high-impact tools; `before_tool` blocks them |
-| `solo_mode` | **off** | Autonomous bypass of the gate (SOLO) |
+| `dangerous_tools_guard_enabled` | **on** | Classify high-impact tools; content-aware bash gate + confirm |
+| `solo_mode` | **off** | Skip confirm prompts (autonomous SOLO) |
 
-Catalogue: `src/modules/qx-ai/agent/dangerous-tools.ts` (`bash`, writes, MCP rewrite, plugin/module runners, schedules, open_path, clipboard write, brightness, recapture, …). Nested ids on `run_qx_capability` / `run_module_action` / `run_plugin_command` are also resolved.
+Implementation: `src/modules/qx-ai/agent/dangerous-tools.ts` (`evaluateSafetyGate`, `classifyBashScript`, `BASH_COMMAND_BLACKLIST`, `BASH_SAFE_COMMANDS`, catalogue for writes / MCP / plugins / schedules / open_path / clipboard / brightness / recapture, …). Nested ids on `run_qx_capability` / `run_module_action` / `run_plugin_command` are also resolved.
+
+**Bash is not blanket-blocked.** With the guard on and SOLO off:
+
+| Script class | Gate |
+|---|---|
+| Blacklist (`rm -rf`, `mkfs`, `dd if=`, fork bomb, pipe-to-shell, force-push, …) | **deny** |
+| Safe / read-only (`ps`, `ls`, `git status`, `rg`, …) | **allow** |
+| Write / install / unknown / complex shell | **ask** once (`window.confirm`) |
+
+Other catalogue tools (writes, schedules, plugin runners, …) **ask** once rather than hard-deny. Headless contexts without `window.confirm` treat **ask** as deny.
 
 Policy:
 
-1. Guard **off** → no classification/blocking (user fully disabled).
-2. Guard **on** + SOLO **on** → tools run; system prompt notes SOLO.
-3. Guard **on** + SOLO **off** → dangerous tools cancelled with a message that points to Settings.
+1. Guard **off** → no classification / prompts (user fully disabled).
+2. Guard **on** + SOLO **on** → tools run without prompts; system prompt notes SOLO.
+3. Guard **on** + SOLO **off** → blacklist deny; safe bash allow; else confirm once.
 
 UI shows live status; SOLO toggle is disabled when the guard is off (gate already open).
 - Single-hook failures are logged and skipped; only `before_turn.cancel` aborts the turn.

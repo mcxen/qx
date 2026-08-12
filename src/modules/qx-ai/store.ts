@@ -119,10 +119,22 @@ export interface G4fConversation {
   reasoningEnabled?: boolean;
 }
 
+/** Catalog model entry (built-in or custom). Mirrors Rust `ProviderModel`. */
+export interface QxAiModelInfo {
+  id: string;
+  name: string;
+  reasoning?: boolean;
+  vision?: boolean;
+  /** Token context window when known. */
+  context_length?: number;
+  /** camelCase alias from some JSON paths. */
+  contextLength?: number;
+}
+
 export interface G4fProvider {
   id: string;
   name: string;
-  models: { id: string; name: string; reasoning?: boolean; vision?: boolean }[];
+  models: QxAiModelInfo[];
   baseUrl?: string;
   requiresApiKey?: boolean;
 }
@@ -132,7 +144,7 @@ export interface CustomProvider {
   name: string;
   baseUrl: string;
   apiKey: string;
-  models: { id: string; name: string; reasoning?: boolean; vision?: boolean }[];
+  models: QxAiModelInfo[];
 }
 
 export interface BuiltInProviderCredential {

@@ -164,12 +164,30 @@ assert.match(hooksSource, /builtin:host-context/);
 assert.match(hooksSource, /builtin:dangerous-tools-guard/);
 assert.match(hooksSource, /solo_mode/);
 assert.match(hooksSource, /dangerous_tools_guard_enabled/);
+assert.match(hooksSource, /evaluateSafetyGate/);
+assert.match(hooksSource, /confirmSafetyGate/);
 const dangerousToolsSource = readFileSync(
   new URL("../src/modules/qx-ai/agent/dangerous-tools.ts", import.meta.url),
   "utf8",
 );
-assert.match(dangerousToolsSource, /name:\s*"bash"/);
+assert.match(dangerousToolsSource, /BASH_COMMAND_BLACKLIST/);
+assert.match(dangerousToolsSource, /BASH_SAFE_COMMANDS/);
+assert.match(dangerousToolsSource, /classifyBashScript/);
+assert.match(dangerousToolsSource, /evaluateSafetyGate/);
 assert.match(dangerousToolsSource, /resolveDangerousToolCall/);
+assert.match(dangerousToolsSource, /rm\s+\\?-rf|rm -rf|recursive force delete/);
+// bash must not be a whole-tool hard block in the catalogue array
+{
+  const start = dangerousToolsSource.indexOf("export const DANGEROUS_TOOLS");
+  const end = dangerousToolsSource.indexOf("export const BASH_COMMAND_BLACKLIST", start);
+  const catalogue = start >= 0 && end > start
+    ? dangerousToolsSource.slice(start, end)
+    : "";
+  assert.ok(
+    catalogue && !/name:\s*"bash"/.test(catalogue),
+    "bash must be content-gated, not listed as a blanket DANGEROUS_TOOLS entry",
+  );
+}
 const settingsStoreSource = readFileSync(
   new URL("../src/modules/settings/store.ts", import.meta.url),
   "utf8",

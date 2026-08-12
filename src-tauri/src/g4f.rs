@@ -28,6 +28,13 @@ pub struct ProviderModel {
     /// Model accepts image inputs (OpenAI-style `image_url` content parts).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub vision: bool,
+    /// Advertised context window in tokens (from provider catalog when available).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        alias = "contextLength"
+    )]
+    pub context_length: Option<u32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -341,6 +348,36 @@ fn model_id_suggests_reasoning(id: &str) -> bool {
     TOKENS.iter().any(|token| id.contains(token))
 }
 
+/// Best-effort context window from OpenAI / OpenRouter-style model objects.
+fn detect_context_length(item: &serde_json::Value) -> Option<u32> {
+    let candidates = [
+        item.get("context_length"),
+        item.get("contextLength"),
+        item.get("context_window"),
+        item.get("max_model_len"),
+        item.get("max_tokens"),
+        item
+            .get("top_provider")
+            .and_then(|provider| provider.get("context_length")),
+        item
+            .get("top_provider")
+            .and_then(|provider| provider.get("max_completion_tokens")),
+    ];
+    for value in candidates.into_iter().flatten() {
+        if let Some(n) = value.as_u64().filter(|n| *n > 0 && *n <= u32::MAX as u64) {
+            return Some(n as u32);
+        }
+        if let Some(n) = value
+            .as_f64()
+            .filter(|n| *n > 0.0 && *n <= u32::MAX as f64)
+            .map(|n| n as u32)
+        {
+            return Some(n);
+        }
+    }
+    None
+}
+
 fn openai_list_models(base_url: &str, api_key: &str) -> Result<Vec<ProviderModel>, String> {
     let client = make_client()?;
     let url = format!("{}/models", base_url.trim_end_matches('/'));
@@ -368,11 +405,13 @@ fn openai_list_models(base_url: &str, api_key: &str) -> Result<Vec<ProviderModel
         .filter_map(|item| {
             let id = item.get("id").and_then(|id| id.as_str())?;
             let (reasoning, vision) = detect_model_capabilities(id, Some(item));
+            let context_length = detect_context_length(item);
             Some(ProviderModel {
                 id: id.to_string(),
                 name: id.to_string(),
                 reasoning,
                 vision,
+                context_length,
             })
         })
         .collect::<Vec<_>>();
@@ -793,6 +832,7 @@ pub fn g4f_list_providers() -> Vec<ProviderInfo> {
                 reasoning: true,
                 // Auto may route to vision-capable models when images are present.
                 vision: true,
+                context_length: Some(200_000),
             }],
         },
         ProviderInfo {
@@ -807,12 +847,14 @@ pub fn g4f_list_providers() -> Vec<ProviderInfo> {
                     reasoning: true,
                     // Chat V4 is text; DeepSeek-VL family is separate.
                     vision: false,
+                    context_length: Some(128_000),
                 },
                 ProviderModel {
                     id: "deepseek-v4-pro".to_string(),
                     name: "DeepSeek V4 Pro".to_string(),
                     reasoning: true,
                     vision: false,
+                    context_length: Some(128_000),
                 },
             ],
         },

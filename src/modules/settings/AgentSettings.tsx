@@ -11,6 +11,7 @@ import {
 import {
   MemorySection,
   ProviderListSection,
+  buildModelSelectOptions,
 } from "../qx-ai/AiProviderConfig";
 import { useG4fStore } from "../qx-ai/store";
 import {
@@ -25,7 +26,10 @@ import {
   type QxAiSkillSummary,
 } from "../qx-ai/skills";
 import {
+  formatContextLength,
   modelCapabilityKey,
+  resolveModelContextLength,
+  resolveModelReasoning,
   resolveModelVision,
 } from "../qx-ai/model-capabilities";
 import {
@@ -172,22 +176,20 @@ export default function AgentSettings() {
 
   const selectedProvider = allProviders.find((provider) => provider.id === effectiveProvider);
   const modelOptions = (() => {
-    const models = selectedProvider?.models ?? [];
-    const options = models.map((model) => ({
-      value: model.id,
-      label: model.name,
-    }));
-    // Keep a saved default visible even if the catalog has not listed it yet.
     const savedModel = agent.default_model.trim();
-    if (
+    const keepExtra =
       savedModel
       && effectiveProvider
-      && (agent.default_provider === effectiveProvider || !agent.default_provider)
-      && !options.some((option) => option.value === savedModel)
-    ) {
-      options.unshift({ value: savedModel, label: savedModel });
-    }
-    return options;
+      && (agent.default_provider === effectiveProvider || !agent.default_provider);
+    return buildModelSelectOptions({
+      providerId: effectiveProvider,
+      models: selectedProvider?.models ?? [],
+      favorites: agent.favorite_models,
+      capabilities: agent.model_capabilities,
+      extraModelId: keepExtra ? savedModel : undefined,
+      visionBadge: t("agent.model.vision.badge", "Vision"),
+      reasoningBadge: t("agent.model.reasoning.badge", "Reasoning"),
+    });
   })();
   const effectiveModel =
     modelOptions.find((option) => option.value === agent.default_model)?.value ||
@@ -216,10 +218,20 @@ export default function AgentSettings() {
   const selectedCatalogModel = selectedProvider?.models.find(
     (model) => model.id === effectiveModel,
   );
+  const effectiveModelMeta =
+    selectedCatalogModel ?? (effectiveModel ? { id: effectiveModel, name: effectiveModel } : undefined);
   const effectiveVision = resolveModelVision(
     effectiveProvider,
-    selectedCatalogModel ?? (effectiveModel ? { id: effectiveModel, name: effectiveModel } : undefined),
+    effectiveModelMeta,
     agent.model_capabilities,
+  );
+  const effectiveReasoning = resolveModelReasoning(
+    effectiveProvider,
+    effectiveModelMeta,
+    agent.model_capabilities,
+  );
+  const effectiveContext = formatContextLength(
+    resolveModelContextLength(effectiveProvider, effectiveModelMeta, agent.model_capabilities),
   );
 
   const setDefaultModelVision = (vision: boolean) => {
@@ -282,7 +294,10 @@ export default function AgentSettings() {
 
         <Row
           title={t("agent.defaultModel", "Default Model")}
-          description={t("agent.defaultModel.desc", "Used for new chats and agent runs.")}
+          description={t(
+            "agent.defaultModel.desc",
+            "Used for new chats and agent runs. Starred models appear first; labels show Vision / Reasoning / context.",
+          )}
         >
           <div className="qx-agent-control-stack">
             {loading ? (
@@ -301,24 +316,30 @@ export default function AgentSettings() {
                   <Select
                     value={effectiveModel}
                     onChange={selectModel}
-                    options={modelOptions.map((option) => {
-                      const meta = selectedProvider?.models.find((model) => model.id === option.value);
-                      const vision = resolveModelVision(
-                        effectiveProvider,
-                        meta ?? { id: option.value, name: option.label },
-                        agent.model_capabilities,
-                      );
-                      return {
-                        ...option,
-                        label: vision
-                          ? `${option.label} · ${t("agent.model.vision.badge", "Vision")}`
-                          : option.label,
-                      };
-                    })}
+                    options={modelOptions}
                     ariaLabel={t("agent.model", "Agent Model")}
                   />
                 ) : (
                   <span className="qx-settings-muted">{t("agent.noModels", "No models for this provider")}</span>
+                )}
+                {(effectiveVision || effectiveReasoning || effectiveContext) && (
+                  <div className="qx-agent-model-meta">
+                    {effectiveVision && (
+                      <span className="qx-ai-cap-badge is-vision">
+                        {t("agent.model.vision.badge", "Vision")}
+                      </span>
+                    )}
+                    {effectiveReasoning && (
+                      <span className="qx-ai-cap-badge is-reasoning">
+                        {t("agent.model.reasoning.badge", "Reasoning")}
+                      </span>
+                    )}
+                    {effectiveContext && (
+                      <span className="qx-ai-cap-badge is-context">
+                        {t("agent.model.context.badge", "Context")} {effectiveContext}
+                      </span>
+                    )}
+                  </div>
                 )}
               </>
             ) : (
@@ -331,7 +352,7 @@ export default function AgentSettings() {
           title={t("agent.model.vision", "Vision (images)")}
           description={t(
             "agent.model.vision.desc",
-            "Auto-detected from the model catalog. Override when detection is wrong so image attachments can be sent and previewed correctly.",
+            "Auto-detected from the model catalog. Override here or per-model in the provider list so image attachments send correctly.",
           )}
         >
           <Toggle
@@ -388,14 +409,14 @@ export default function AgentSettings() {
         title={t("agent.safety.title", "Safety & SOLO")}
         description={t(
           "agent.safety.desc",
-          "Dangerous tools (bash, writes, plugin commands, schedules…) are classified automatically. Keep the guard on for safer chat; enable SOLO only when you want full autonomy.",
+          "High-impact tools are classified automatically. Bash uses a blacklist (hard deny) plus safe allow; writes and other execute ask once. Enable SOLO only when you want no prompts.",
         )}
       >
         <Row
           title={t("agent.safety.guard", "Dangerous tools guard")}
           description={t(
             "agent.safety.guard.desc",
-            "When on, high-impact tools are blocked mid-turn unless SOLO mode is enabled. Turn off to disable recognition and blocking entirely.",
+            "When on: blacklisted shell (rm -rf, mkfs, …) is denied; safe bash (ps, ls, git status, …) runs; other bash/writes/plugins ask once. Turn off to disable the gate entirely.",
           )}
         >
           <Toggle
@@ -408,7 +429,7 @@ export default function AgentSettings() {
           title={t("agent.safety.solo", "SOLO mode")}
           description={t(
             "agent.safety.solo.desc",
-            "Autonomous mode: bypass the dangerous-tools gate so the agent may run bash, writes, plugin commands, and schedules without blocking. Use only when you trust the current task.",
+            "Autonomous mode: skip confirm prompts so the agent may run non-blacklisted bash, writes, plugin commands, and schedules without asking. Use only when you trust the current task.",
           )}
         >
           <Toggle
@@ -422,22 +443,22 @@ export default function AgentSettings() {
           {agent.dangerous_tools_guard_enabled === false
             ? t(
                 "agent.safety.status.off",
-                "Guard off — dangerous tools are not auto-blocked.",
+                "Guard off — no bash blacklist or confirm prompts.",
               )
             : agent.solo_mode
               ? t(
                   "agent.safety.status.solo",
-                  "SOLO on — dangerous tools are allowed this session policy.",
+                  "SOLO on — confirms skipped; prefer for trusted tasks only.",
                 )
               : t(
                   "agent.safety.status.guarded",
-                  "Guard on — dangerous tools blocked until you enable SOLO.",
+                  "Guard on — safe bash allowed; blacklist denied; other tools ask once.",
                 )}
         </p>
         <p className="qx-settings-muted">
           {t(
             "agent.safety.examples",
-            "Examples: bash, write_skill, write_mcp_config, docs_write, run_plugin_command, run_module_action, upsert/delete/run_schedule, open_path, copy_to_clipboard, screencap_recapture, brightness.",
+            "Bash: ps/ls auto · rm -rf denied · npm install / writes ask. Also gated: write_skill, write_mcp_config, docs_write, plugin/module runners, schedules, open_path, clipboard, recapture, brightness.",
           )}
         </p>
       </SettingsCard>

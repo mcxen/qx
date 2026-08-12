@@ -16,8 +16,9 @@
 import { getQxDesktopPlatform } from "../../../utils/keyboard";
 import { useSettingsStore } from "../../settings/store";
 import {
+  confirmSafetyGate,
+  evaluateSafetyGate,
   formatDangerousToolsBlock,
-  resolveDangerousToolCall,
 } from "./dangerous-tools";
 import type { AgentStep } from "./types";
 
@@ -268,17 +269,20 @@ export function ensureBuiltinQxAiHooks(): void {
         const safetyLines =
           !guardOn
             ? [
-                "- Dangerous-tools guard is OFF (user disabled). High-impact tools are not auto-blocked.",
+                "- Dangerous-tools guard is OFF (user disabled). High-impact tools are not auto-gated.",
               ]
             : solo
               ? [
-                  "- SOLO mode is ON: dangerous tools (bash, writes, plugin commands, schedules…) are allowed autonomously.",
+                  "- SOLO mode is ON: writes, schedules, plugin commands, and non-blacklisted bash run without prompts.",
+                  "- Blacklisted shell patterns (e.g. rm -rf, mkfs, pipe-to-shell) still apply only when the guard is on and SOLO is off; with SOLO they are not auto-blocked.",
                   "- Still prefer the least-destructive tool that solves the request.",
                 ]
               : [
-                  "- Dangerous-tools guard is ON (default). High-impact tools are blocked unless the user enables SOLO mode in Settings → AI Agent.",
-                  `- Classified dangerous tools:\n${formatDangerousToolsBlock()}`,
-                  "- If a tool is blocked, explain the block and offer a safer alternative or ask the user to enable SOLO.",
+                  "- Dangerous-tools guard is ON (default).",
+                  "- bash is content-gated: safe/read-only (ps, ls, git status, …) auto-allow; blacklist (rm -rf, mkfs, …) hard-deny; other shell asks the user once.",
+                  "- Writes and other high-impact tools ask the user once (not blanket-blocked). SOLO skips prompts.",
+                  `- Classified tools:\n${formatDangerousToolsBlock()}`,
+                  "- If denied or the user declines, explain and offer a safer alternative or SOLO for trusted tasks.",
                 ];
         return {
           systemAppend: [
@@ -301,18 +305,31 @@ export function ensureBuiltinQxAiHooks(): void {
         const agent = useSettingsStore.getState().settings.agent;
         // User can turn the whole recognition/gate off.
         if (agent.dangerous_tools_guard_enabled === false) return;
-        // SOLO mode: autonomous — do not block.
+        // SOLO mode: autonomous — do not prompt or block.
         if (agent.solo_mode === true) return;
 
-        const danger = resolveDangerousToolCall(ctx.toolName, ctx.toolInput);
-        if (!danger) return;
+        const decision = evaluateSafetyGate(ctx.toolName, ctx.toolInput);
+        if (!decision || decision.action === "allow") return;
+
+        if (decision.action === "deny") {
+          return {
+            cancel: true,
+            cancelReason: [
+              `Blocked "${decision.name}" [${decision.level}]: ${decision.reason}.`,
+              "This pattern is on the safety blacklist and cannot run while the guard is on.",
+              "Use a safer command, or have the user disable the Dangerous tools guard / enable SOLO only if they fully trust the task.",
+            ].join(" "),
+          };
+        }
+
+        // ask: one-shot user confirmation (not a blanket tool ban)
+        if (confirmSafetyGate(decision)) return;
 
         return {
           cancel: true,
           cancelReason: [
-            `Blocked dangerous tool "${danger.name}" [${danger.level}]: ${danger.reason}.`,
-            "Safety gate is on and SOLO mode is off.",
-            "Safer options: use read-only tools, ask the user to confirm, or have them enable SOLO mode / turn off Dangerous tools guard in Settings → AI Agent.",
+            `User declined "${decision.name}" [${decision.level}]: ${decision.reason}.`,
+            "Do not retry the same call without a safer alternative or explicit user approval (SOLO / confirm).",
           ].join(" "),
         };
       },

@@ -175,6 +175,8 @@ export type QxAiSkillLoadMode = "fixed" | "smart" | "disabled";
 export interface ModelCapabilityOverride {
   vision?: boolean;
   reasoning?: boolean;
+  /** Optional context window override (tokens). */
+  context_length?: number;
 }
 
 export interface AgentSettings {
@@ -201,19 +203,26 @@ export interface AgentSettings {
   /** System stats / displays / process tools. */
   qx_system_tools_enabled: boolean;
   /**
-   * When true (default), identify dangerous tools and block them unless SOLO
-   * mode is on. User can turn this off entirely.
+   * When true (default), classify high-impact tools: bash is content-gated
+   * (blacklist deny / safe allow / else ask); writes and other side-effect tools
+   * ask once. When false, the gate is fully disabled.
    */
   dangerous_tools_guard_enabled: boolean;
   /**
-   * SOLO mode: autonomous agent — bypass the dangerous-tools gate so high-impact
-   * tools (bash, plugin commands, writes, schedules…) may run without blocking.
+   * SOLO mode: autonomous agent — skip confirm prompts so high-impact tools
+   * (non-blacklisted bash, plugin commands, writes, schedules…) may run without
+   * asking. Prefer only for trusted tasks.
    */
   solo_mode: boolean;
   /** Overrides skill frontmatter mode by skill id. */
   skill_modes: Record<string, QxAiSkillLoadMode>;
   /** Per-model vision/reasoning overrides when auto-detect is wrong. */
   model_capabilities: Record<string, ModelCapabilityOverride>;
+  /**
+   * Starred models for quick pick. Keys are `provider|model` (same as capability keys).
+   * Sorted favorites float to the top of model selectors.
+   */
+  favorite_models: string[];
   defaults_version: number;
   agent_max_iterations: number;
 }
@@ -565,6 +574,7 @@ export const DEFAULT_SETTINGS: Settings = {
     solo_mode: false,
     skill_modes: {},
     model_capabilities: {},
+    favorite_models: [],
     defaults_version: 2,
     agent_max_iterations: 12,
   },
