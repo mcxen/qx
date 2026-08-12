@@ -856,8 +856,11 @@ Screenshot & Recording Module（截图录屏模块）：
 
 QxAI：
 
-- 列表：Esc → launcher。
-- Chat / Settings：Esc → 会话列表（`setView("list")`），不是直接 launcher。
+- **对话工作台视觉/排版/队列/token 速率的单一标杆**见 [`UI_SPEC_AI.md`](./UI_SPEC_AI.md)
+  （对齐 Jan ChatInput / MessageItem / QueuedMessageChip）。壳层规则仍以本文为准。
+- Workbench（左会话列表 + 右自绘聊天）为默认入口；打开恢复上次会话。Settings 为嵌套页。
+- Esc：Workbench 清搜索/输入 → **Launcher**；Settings → Workbench（`setView("chat")`）。
+  不再使用「Chat → 独立列表页」二级跳转。
 - 每次模型请求都必须在系统上下文中注入当前真实宿主平台。Windows 不得向模型声明使用
   Spotlight、`mdfind`、Finder 或 AppleScript；`files` / `apps` 统一描述为 Qx 跨平台宿主能力。
 - QxAI 的 `files` 必须复用 Launcher 的完整原生文件名搜索端口：未指定渐进 `pass` 时由后端
@@ -870,8 +873,11 @@ QxAI：
   失败或取消后必须清除 activity / progress meter，静态岛只显示会话消息数或错误状态。
 - Agent 的思考、工具调用和观察结果是只追加的时间序列：每轮思考必须在该轮工具调用之前占据
   固定步骤，后续轮次不得把已有思考移到工具结果下方；流式更新只修改原步骤内容和状态。
-- Chat 生成期间输入框保持可编辑；再次发送进入会话内可见队列，按提交顺序串行执行，并允许在
-  执行前逐条移除。队列状态使用 Lucide 图标和文本反馈，不用 emoji 或伪造进度。
+- Chat 生成期间输入框保持可编辑；再次发送进入会话内可见队列，按提交顺序串行执行。队列
+  交互对齐 Jan：chip 点击文案回填输入并离队，可删除；使用 Lucide 图标，不用 emoji 或伪造进度。
+- Token 速率对齐 Jan：按生成正文与活跃流式时长计量；**仅完成后**在消息脚注显示
+  `N tokens/sec (M tokens)`；流式消息脚注不刷 TPS。
+- Composer 为底部文档流 dock（非 absolute 遮挡消息）；Context 工具列表一行摘要 + 悬浮展开。
 - Qx 管理 `~/.qx/skills`：支持 `<skill-id>/SKILL.md` 与根目录单文件 `<skill-id>.md`。输入 `/`
   打开 Skill 模糊搜索，ArrowUp / ArrowDown 移动、Enter 选择、Esc 关闭；选中的 Skill 只注入
   下一条用户请求，发送后自动清除。Skill 文件扫描和读取必须在异步阻塞边界执行。

@@ -372,24 +372,28 @@
   color: var(--qx-accent);
 }
 
+/* Jan QueuedMessageChip stack: compact chips above input */
 .qx-ai-message-queue {
-  display: grid;
-  gap: 0;
-  border: 1px solid var(--qx-border-1);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--qx-bg-component-1) 92%, transparent);
-  overflow: hidden;
-  max-height: min(220px, 32vh);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: min(200px, 30vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0;
+  border: 0;
+  background: transparent;
 }
 
 .qx-ai-message-queue-title {
-  min-height: 30px;
-  gap: 7px;
-  padding: 0 10px;
-  color: var(--qx-text-secondary);
+  min-height: 22px;
+  gap: 6px;
+  padding: 0 2px;
+  color: var(--qx-text-tertiary);
   font-size: 11px;
-  border-bottom: 1px solid var(--qx-border-1);
-  background: color-mix(in srgb, var(--qx-bg-component-2) 70%, transparent);
+  border: 0;
+  background: transparent;
 }
 
 .qx-ai-message-queue-title span {
@@ -398,37 +402,42 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Chip row ≈ Jan rounded-lg bg-secondary/80 border */
 .qx-ai-message-queue-row {
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr) auto;
-  align-items: start;
+  align-items: center;
   gap: 8px;
-  padding: 8px 8px 8px 10px;
+  padding: 6px 8px 6px 10px;
   color: var(--qx-text-secondary);
-  font-size: 12px;
-  border-top: 1px solid color-mix(in srgb, var(--qx-border-1) 70%, transparent);
+  font-size: 12.5px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--qx-bg-component-2) 88%, transparent);
 }
 
 .qx-ai-message-queue-row:first-of-type {
-  border-top: 0;
+  border-top: 1px solid var(--qx-border-1);
 }
 
 .qx-ai-message-queue-row.is-editing {
   grid-template-columns: 22px minmax(0, 1fr);
-  background: color-mix(in srgb, var(--qx-accent, #5b8cff) 6%, transparent);
+  align-items: start;
+  background: color-mix(in srgb, var(--qx-accent, #5b8cff) 8%, var(--qx-bg-component-2));
+  border-color: color-mix(in srgb, var(--qx-accent, #5b8cff) 35%, var(--qx-border-1));
 }
 
 .qx-ai-message-queue-index {
   width: 18px;
   height: 18px;
-  margin-top: 2px;
   display: grid;
   place-items: center;
   border-radius: 999px;
-  background: var(--qx-bg-component-3, rgb(0 0 0 / 0.2));
+  background: color-mix(in srgb, var(--qx-bg-component-3, #0f131a) 70%, transparent);
   color: var(--qx-text-tertiary);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
 }
 
 .qx-ai-message-queue-body {
@@ -443,9 +452,21 @@
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  color: var(--qx-text-primary);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--qx-text-primary) 78%, transparent);
+  font: inherit;
   line-height: 1.4;
+  text-align: left;
   word-break: break-word;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.qx-ai-message-queue-text:hover {
+  color: var(--qx-text-primary);
 }
 
 .qx-ai-message-queue-body small {
@@ -946,14 +967,16 @@
 }
 
 .qx-ai-empty-state {
-  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 160px;
+  flex: 1 1 auto;
   color: var(--qx-text-tertiary);
   font-size: 14px;
+  line-height: 1.5;
   text-align: center;
-  padding: 24px;
+  padding: 32px 20px;
 }
 
 .qx-typing-cursor {
@@ -1071,43 +1094,71 @@
   box-sizing: border-box;
 }
 
-/* Centered reading column — keeps user/assistant bubbles aligned. */
+/* Centered reading column — Jan ConversationContent (md:w-4/5 xl:w-4/6 ≈ 760). */
 .qx-ai-message-column {
   width: min(760px, 100%);
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  min-height: min(100%, 240px);
+  min-height: min(100%, 200px);
+  padding-bottom: 4px;
 }
 
 .qx-ai-message.is-jan {
   display: flex;
   gap: 0;
   width: 100%;
-  max-width: 100%;
   box-sizing: border-box;
 }
 
+/* Jan: user right-aligned bubble ≤80% of column */
 .qx-ai-message.is-jan.is-user {
   align-self: flex-end;
+  width: auto;
+  max-width: min(80%, 100%);
+  justify-content: flex-end;
 }
 
+/* Non-first user turns get more breathing room (Jan mt-8 rhythm). */
+.qx-ai-message-column > .qx-ai-message.is-jan.is-user + .qx-ai-message.is-jan.is-user,
+.qx-ai-message-column > .qx-ai-message.is-jan.is-assistant + .qx-ai-message.is-jan.is-user {
+  margin-top: 10px;
+}
+
+/* Jan assistant: full column, no heavy card shell */
 .qx-ai-message.is-jan.is-assistant {
-  align-self: flex-start;
-  width: min(760px, 100%);
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
 }
 
 .qx-ai-message.is-jan .qx-ai-message-body {
   width: 100%;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.qx-ai-message.is-jan.is-user .qx-ai-message-body {
+  align-items: flex-end;
+}
+
+.qx-ai-message.is-jan.is-assistant .qx-ai-message-body {
+  align-items: stretch;
 }
 
 .qx-ai-message.is-jan .qx-ai-message-meta {
-  margin-bottom: 6px;
+  margin-bottom: 5px;
   font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--qx-text-tertiary);
+  line-height: 1.25;
+}
+
+.qx-ai-message.is-jan.is-user .qx-ai-message-meta {
+  padding-right: 2px;
 }
 
 .qx-ai-message-bubble.is-jan {
@@ -1115,17 +1166,43 @@
   background: transparent;
   border: 0;
   box-shadow: none;
+  max-width: 100%;
 }
 
+/* User bubble ≈ Jan secondary/primary soft chip */
 .qx-ai-message-bubble.is-jan.is-user {
-  padding: 10px 14px;
-  border-radius: 16px 16px 4px 16px;
-  background: color-mix(in srgb, var(--qx-accent, #5b8cff) 18%, var(--qx-bg-component-2, #1a1f2a));
-  border: 1px solid color-mix(in srgb, var(--qx-accent, #5b8cff) 28%, transparent);
+  padding: 8px 12px;
+  border-radius: 14px 14px 4px 14px;
+  background: color-mix(in srgb, var(--qx-bg-component-2) 88%, var(--qx-accent, #5b8cff) 12%);
+  border: 1px solid color-mix(in srgb, var(--qx-border-1) 70%, var(--qx-accent, #5b8cff) 30%);
+  color: var(--qx-text-primary);
+  font-size: 13.5px;
+  line-height: 1.5;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
+/* Assistant: bare markdown surface (no card chrome) */
 .qx-ai-message-bubble.is-jan.is-assistant {
   padding: 0;
+  background: transparent;
+  border: 0;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--qx-text-primary);
+}
+
+.qx-ai-message-bubble.is-jan.is-assistant .qx-md-body {
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.qx-ai-message-bubble.is-jan.is-assistant .qx-md-body p {
+  margin: 0 0 0.65em;
+}
+
+.qx-ai-message-bubble.is-jan.is-assistant .qx-md-body p:last-child {
+  margin-bottom: 0;
 }
 
 /*
@@ -1160,27 +1237,36 @@
   pointer-events: auto;
 }
 
+/* Jan ChatInput: rounded-3xl shell, focus ring, soft surface */
 .qx-jan-composer {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: end;
   gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid var(--qx-border-2, rgb(255 255 255 / 0.12));
+  padding: 10px 12px 12px;
+  border: 1px solid var(--qx-border-1);
   border-radius: 18px;
-  background: color-mix(in srgb, var(--qx-glass-bg-solid, #12161f) 94%, transparent);
+  background: color-mix(in srgb, var(--qx-bg-component-1) 55%, var(--qx-glass-bg-solid, #12161f) 45%);
   box-shadow:
-    0 10px 28px rgb(0 0 0 / 0.28),
-    0 0 0 1px rgb(255 255 255 / 0.04) inset;
+    0 10px 28px rgb(0 0 0 / 0.22),
+    0 0 0 1px color-mix(in srgb, #fff 4%, transparent) inset;
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.qx-jan-composer:focus-within {
+  border-color: color-mix(in srgb, var(--qx-accent, #5b8cff) 42%, var(--qx-border-1));
+  box-shadow:
+    0 10px 28px rgb(0 0 0 / 0.22),
+    0 0 0 1px color-mix(in srgb, var(--qx-accent, #5b8cff) 28%, transparent);
 }
 
 .qx-jan-composer-tools {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding-bottom: 2px;
+  padding-bottom: 4px;
 }
 
 .qx-jan-composer-speed {
@@ -1188,20 +1274,21 @@
   font-variant-numeric: tabular-nums;
   color: var(--qx-text-tertiary);
   padding: 0 4px;
+  white-space: nowrap;
 }
 
 .qx-jan-composer-input {
   width: 100%;
-  min-height: 28px;
-  max-height: 160px;
+  min-height: 40px; /* ~Jan minRows=2 feel */
+  max-height: 180px;
   margin: 0;
-  padding: 6px 4px;
+  padding: 8px 4px;
   border: 0;
   outline: none;
   resize: none;
   background: transparent;
-  color: var(--qx-text-primary, #f4f6fb);
-  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--qx-text-primary);
+  font: 13.5px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .qx-jan-composer-input::placeholder {
@@ -1209,10 +1296,11 @@
 }
 
 .qx-jan-composer-send {
-  height: 32px;
+  height: 34px;
+  min-width: 64px;
   padding: 0 14px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 12.5px;
   font-weight: 600;
 }
 
@@ -1367,21 +1455,23 @@
   word-break: break-word;
 }
 
+/* Jan message footer: muted xs row */
 .qx-jan-message-foot {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 10px;
-  min-height: 20px;
+  margin-top: 8px;
+  min-height: 18px;
   color: var(--qx-text-tertiary);
   font-size: 12px;
 }
 
 .qx-jan-message-foot.is-streaming {
   gap: 6px;
+  margin-top: 6px;
 }
 
-/* Jan completed-message footer: Gauge + "N tokens/sec" + "(N tokens)" */
+/* Gauge + "N tokens/sec" + "(N tokens)" — completed only */
 .qx-jan-token-speed {
   display: inline-flex;
   align-items: center;
@@ -1394,16 +1484,11 @@
 
 .qx-jan-token-speed > svg {
   flex: 0 0 auto;
-  opacity: 0.9;
+  opacity: 0.88;
 }
 
 .qx-jan-token-count {
-  opacity: 0.92;
-}
-
-.qx-jan-composer-speed {
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
+  opacity: 0.9;
 }
 
 .qx-jan-shimmer {

@@ -1872,6 +1872,7 @@ const zh: Record<string, string> = {
   "qxai.tools.listTitle": "已启用工具",
   "qxai.tools.listHint": "在 设置 → AI Agent 中配置工具组与安全策略。",
   "qxai.queue.edit": "编辑排队消息",
+  "qxai.queue.editIntoComposer": "点击后回到输入框编辑",
   "qxai.tools.enabled": "{n} 项已启用",
   "qxai.tools.disabled": "未启用",
   "qxai.tools.enableAgent": "请在 设置 → AI Agent 中开启 Agent 模式。",

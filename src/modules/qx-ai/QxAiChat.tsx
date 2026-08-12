@@ -328,6 +328,22 @@ export default function QxAiChat() {
     setEditingQueueDraft("");
   }, [conv?.id]);
 
+  /** Jan QueuedMessageChip: click text → put back into composer and leave the queue. */
+  const editQueuedIntoComposer = useCallback(
+    (id: string, content: string) => {
+      setInput(content);
+      if (composerRef.current) {
+        composerRef.current.style.height = "auto";
+        composerRef.current.style.height = `${Math.min(composerRef.current.scrollHeight, 160)}px`;
+      }
+      removeQueuedMessage(id);
+      setEditingQueueId(null);
+      setEditingQueueDraft("");
+      requestAnimationFrame(() => composerRef.current?.focus());
+    },
+    [removeQueuedMessage],
+  );
+
   const beginEditQueued = useCallback((id: string, content: string) => {
     setEditingQueueId(id);
     setEditingQueueDraft(content);
@@ -1052,9 +1068,19 @@ export default function QxAiChat() {
                               ) : (
                                 <>
                                   <div className="qx-ai-message-queue-body">
-                                    <span className="qx-ai-message-queue-text" title={message.content}>
+                                    <button
+                                      type="button"
+                                      className="qx-ai-message-queue-text"
+                                      title={t(
+                                        "qxai.queue.editIntoComposer",
+                                        "Click to edit in the input box",
+                                      )}
+                                      onClick={() =>
+                                        editQueuedIntoComposer(message.id, message.content)
+                                      }
+                                    >
                                       {message.content}
-                                    </span>
+                                    </button>
                                     {message.skill ? (
                                       <small>
                                         <Sparkles size={12} />

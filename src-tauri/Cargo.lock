@@ -5027,7 +5027,7 @@ dependencies = [
 
 [[package]]
 name = "qx"
-version = "0.6.79"
+version = "0.6.80"
 dependencies = [
  "arboard",
  "base64 0.22.1",
