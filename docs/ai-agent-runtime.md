@@ -74,8 +74,8 @@ QxAI is an **optional async substrate**. Launcher, clipboard, shell, plugins UI,
 |---|---|
 | No AI graph on App import | `App.tsx` does not statically import store/agent; schedule bridge is `import()` + idle deferred start |
 | Agent harness on demand | `store.sendMessage` / P仔 run dynamically `import("./agent")` only for a turn |
-| Schedule off UI thread | Rust `qx_ai_schedule::start` seeds files and ticks on a worker thread with panic isolation |
-| Frontend schedule bridge | Listens after idle; fire handlers `setTimeout(0)` + dynamic store import; errors logged only |
+| Schedule off UI thread | Rust `qx_ai_schedule::start` seeds files and ticks on a worker thread with panic isolation; each due job spawns its own worker |
+| Frontend schedule bridge | Listens after idle; `agent_prompt` opens a **background** conversation (no focus steal) and fire-and-forgets `sendMessage`; never awaits the full agent turn on the event path |
 | Module preload | Non-AI modules first wave; `qx-ai` / `p-zai` second idle wave |
 | Failure isolation | `loadSessions` / `loadProviders` / dream / schedule never throw into shell; turn-local errors stay on the conversation run |
 
@@ -83,13 +83,22 @@ Do **not** add synchronous AI init to `App` phase-1 load, clipboard capture, or 
 
 ## QxAiSession persistence and concurrency
 
-Built-in chat history is durable data under `~/.qx/QxAiSession`, not browser
-localStorage. `sessions.json` stores the conversation model and each session's
-managed attachment copies live under `files/<conversation-id>/`. Writes are
-atomic and filesystem work runs behind the Rust blocking boundary. Settings →
-Storage Management reports this directory as a protected durable bucket; users
-may open it or explicitly clear all QxAI sessions, but general cache cleanup
-must never remove it.
+Built-in chat history is durable data under `~/.qx/QxAiSession` (folder layout,
+RLM-style modular units), not browser localStorage:
+
+```text
+~/.qx/QxAiSession/
+  index.json                      # lightweight catalog
+  sessions/<conversation-id>/
+    session.json                  # full conversation document
+    files/*                       # managed attachment copies
+```
+
+Legacy monolithic `sessions.json` + `files/<id>/` is migrated once on load/save.
+Deleting a conversation removes its entire folder. Settings → Storage Management
+reports this directory as a protected durable bucket; users may open it or
+explicitly clear all QxAI sessions, but general cache cleanup must never remove
+it. Writes are atomic and filesystem work runs behind the Rust blocking boundary.
 
 Each conversation owns an independent run state and FIFO input queue. Starting
 a request in one conversation must not serialize, replace, or hide streaming
@@ -97,12 +106,27 @@ state from another conversation. Active runs publish separate
 `qxai.run.<conversation-id>` Island task sessions so work remains visible after
 the user switches chats or modules.
 
-User attachments are copied into the session directory before they enter chat
-history. The provider adapter converts supported images to OpenAI-compatible
-data URL content parts and bounded UTF-8 text files to inline file context.
-Other managed files retain a real local path for QxAI's permissioned file and
-bash tools. UI previews always use `convertFileSrc`; raw `file://` URLs are not
-part of the frontend protocol.
+User attachments are copied into that session's `files/` directory before they
+enter chat history. The provider adapter converts supported images to
+OpenAI-compatible data URL content parts and bounded UTF-8 text files to inline
+file context. Other managed files retain a real local path for QxAI's
+permissioned file and bash tools. UI previews always use `convertFileSrc`; raw
+`file://` URLs are not part of the frontend protocol.
+
+## QxAI long-term memory (SQLite + FTS)
+
+Long-term notes live under `~/.qx/memories/memory.db` (SQLite + FTS5), with an
+RLM-style retrieval split:
+
+| Layer | Role |
+|---|---|
+| **Cold archive** | Every `memory` / `user` note is stored (no hard size cap on the DB) |
+| **FTS search** | `memory action=search` finds older notes without stuffing them into the prompt |
+| **Hot snapshot** | Only a char-capped recent pack (~2200 / ~1375) is frozen into the system prompt |
+
+`MEMORY.md` / `USER.md` are best-effort mirrors of the hot window after migration.
+Dream consolidation rewrites the hot set; the archive remains searchable.
+`qxai_memory_clear` drops the database (explicit user action only).
 
 ## Reference Shape
 
@@ -236,16 +260,18 @@ part of the frontend protocol.
    - Planned Rust host layer uses the official Rust MCP SDK shape: one configured server becomes a live tool namespace for stdio calls.
    - MCP tools should be discoverable through `context.ai.tools.list()` and callable through `context.ai.tools.call(name, input)`.
 
-7. **Memory (Hermes-style harness)**
-   - Dual curated stores under `~/.qx/memories/`:
-     - `MEMORY.md` — agent notes (2 200 char cap)
-     - `USER.md` — user profile / preferences (1 375 char cap)
-   - Entries are separated by `§`. Exact duplicates are rejected; overflow returns a consolidate error (no silent drop).
-   - **Frozen snapshot**: `qxai_memory_snapshot` injects both stores into the system prompt once per turn (prefix-cache friendly). Mid-turn tool writes persist to disk; the prompt block updates next turn.
-   - Agent tools: unified `memory` (`add|replace|remove|status`, targets `memory|user`), plus legacy `memory_list/add/delete` aliases.
-   - **Dream / sleep**: `qxai_memory_dream` consolidates stores with the default model and writes a diary under `~/.qx/memories/dreams/`. The chat harness may auto-trigger dream after heavy tool turns.
-   - **Session search**: `qxai_session_search` scans durable `QxAiSession` history for on-demand recall without bloating the system prompt.
-   - Legacy `~/.qx/qxai-memory.json` is migrated into MEMORY/USER on first access.
+7. **Memory (RLM archive + Hermes hot window)**
+   - **Cold store**: SQLite + FTS5 at `~/.qx/memories/memory.db` (targets `memory` / `user`).
+     Notes are always appended; history is not silently dropped.
+   - **Hot snapshot**: `qxai_memory_snapshot` packs recent entries into char-capped
+     windows (~2200 memory / ~1375 user) for the system prompt (prefix-cache friendly).
+   - **Search**: `memory action=search` (or query via tools) uses FTS so long archives stay findable.
+   - Agent tools: unified `memory` (`add|replace|remove|status|search`), plus legacy aliases.
+   - **Dream / sleep**: consolidates the hot set via the default model; diary under
+     `~/.qx/memories/dreams/`. Archive rows remain searchable.
+   - **Session search**: `qxai_session_search` walks `QxAiSession/sessions/*/session.json`.
+   - Legacy `MEMORY.md` / `USER.md` / `qxai-memory.json` migrate into SQLite on first access.
+   - Explicit wipe: `qxai_memory_clear` (Settings → Storage).
 
 8. **Background Tasks**
    - Current in-process task API:

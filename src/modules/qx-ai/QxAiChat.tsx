@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import {
+  ArrowUp,
   Check,
   ChevronDown,
   FolderOpen,
@@ -753,13 +754,15 @@ export default function QxAiChat() {
               scroll: true,
             })}
           >
-            <div className="qx-ai-conversation is-jan">
-              <div className="qx-ai-message-list is-jan" data-qx-region-scroll>
+            <div className="qx-ai-conversation is-jan" data-qx-ai="conversation">
+              <div className="qx-ai-message-list is-jan" data-qx-region-scroll data-qx-ai="conversation-content">
                 <div className="qx-ai-message-column">
                   {messages.map((msg, i) => (
                     <div
                       key={`${conv?.id ?? "chat"}-${msg.role}-${i}-${msg.content.slice(0, 24)}`}
                       className={`qx-ai-message is-jan is-${msg.role}`}
+                      data-qx-ai="message"
+                      data-role={msg.role}
                     >
                       <div className="qx-ai-message-body">
                         <div className="qx-ai-message-meta">
@@ -773,7 +776,10 @@ export default function QxAiChat() {
                             </span>
                           ) : null}
                         </div>
-                        <div className={`qx-ai-message-bubble is-jan is-${msg.role}`}>
+                        <div
+                          className={`qx-ai-message-bubble is-jan is-${msg.role}`}
+                          data-qx-ai="message-content"
+                        >
                           <AiMessageContent
                             content={msg.content}
                             reasoning={msg.reasoning}
@@ -789,12 +795,20 @@ export default function QxAiChat() {
 
                   {isCurrentConversationStreaming
                     && (streamedContent || streamedReasoning || streamingSteps.length > 0) ? (
-                    <div className="qx-ai-message is-jan is-assistant">
+                    <div
+                      className="qx-ai-message is-jan is-assistant"
+                      data-qx-ai="message"
+                      data-role="assistant"
+                      data-streaming="true"
+                    >
                       <div className="qx-ai-message-body">
                         <div className="qx-ai-message-meta">
                           {activeModel?.name || conv?.model || "AI"}
                         </div>
-                        <div className="qx-ai-message-bubble is-jan is-assistant">
+                        <div
+                          className="qx-ai-message-bubble is-jan is-assistant"
+                          data-qx-ai="message-content"
+                        >
                           <AiMessageContent
                             content={streamedContent}
                             reasoning={streamedReasoning}
@@ -834,8 +848,8 @@ export default function QxAiChat() {
                 </div>
               </div>
 
-              {/* Bottom composer: in-flow dock (stable in workbench; not absolute overlay). */}
-              <div className="qx-jan-composer-dock is-docked-flow">
+              {/* PromptInput dock — Elements structure, BUI field chrome (in-flow). */}
+              <div className="qx-ai-prompt-dock qx-jan-composer-dock is-docked-flow" data-qx-ai="prompt-dock">
                 {skillPickerOpen ? (
                   <div
                     className="qx-ai-skill-picker is-docked is-vbg"
@@ -997,7 +1011,7 @@ export default function QxAiChat() {
                     ) : null}
 
                     {queuedMessages.length > 0 ? (
-                      <div className="qx-ai-message-queue">
+                      <div className="qx-ai-queue qx-ai-message-queue" data-qx-ai="queue">
                         <div className="qx-ai-message-queue-title">
                           <ListPlus size={14} />
                           <strong>{t("qxai.queue.title", "Queued messages")}</strong>
@@ -1117,8 +1131,8 @@ export default function QxAiChat() {
                   </div>
                 )}
 
-                <div className="qx-jan-composer">
-                  <div className="qx-jan-composer-tools">
+                <div className="qx-ai-prompt qx-jan-composer" data-qx-ai="prompt-input">
+                  <div className="qx-jan-composer-tools" data-qx-ai="prompt-tools">
                     <Button
                       type="button"
                       variant="ghost"
@@ -1160,13 +1174,30 @@ export default function QxAiChat() {
                   />
                   <Button
                     type="button"
-                    className="qx-jan-composer-send"
+                    className={`qx-jan-composer-send${
+                      isCurrentConversationStreaming ? " is-queue" : ""
+                    }${
+                      canChat && (input.trim() || pendingAttachments.length > 0) ? " is-ready" : ""
+                    }`}
+                    size="icon"
                     disabled={!canChat || (!input.trim() && pendingAttachments.length === 0)}
+                    title={
+                      isCurrentConversationStreaming
+                        ? t("qxai.queue.add", "Add to Queue")
+                        : t("qxai.send", "Send")
+                    }
+                    aria-label={
+                      isCurrentConversationStreaming
+                        ? t("qxai.queue.add", "Add to Queue")
+                        : t("qxai.send", "Send")
+                    }
                     onClick={handleSend}
                   >
-                    {isCurrentConversationStreaming
-                      ? t("qxai.queue.add", "Add to Queue")
-                      : t("qxai.send", "Send")}
+                    {isCurrentConversationStreaming ? (
+                      <ListPlus size={16} strokeWidth={2.2} aria-hidden="true" />
+                    ) : (
+                      <ArrowUp size={16} strokeWidth={2.4} aria-hidden="true" />
+                    )}
                   </Button>
                 </div>
               </div>

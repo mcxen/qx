@@ -1,286 +1,183 @@
-# QxAI Chat UI Spec（Jan 对齐标杆）
+# QxAI Chat UI Spec
 
-> 状态：Current · 适用版本：v0.6.80+ · Owner：Frontend · 最后复核：2026-08-12
-> 标杆来源：本地 Jan 源码 `Documents/OpenSpring/jan`（`ChatInput.tsx` / `MessageItem.tsx` / `QueuedMessageBubble.tsx` / `TokenSpeedIndicator.tsx` / `routes/threads/$threadId.tsx`）
-> 实现落点：`src/modules/qx-ai/**`、`src/styles/qx-ai.css`
-> 与壳层关系：本文件只约束 **对话工作台内容**；主壳仍以 [`UI_SPEC.md`](./UI_SPEC.md) 为准。
+> 状态：Current · 适用版本：v0.6.82+ · Owner：Frontend · 最后复核：2026-08-12  
+> **结构标杆**：[AI Elements](https://elements.ai-sdk.dev/)（Conversation / Message / Reasoning / Tool / PromptInput / Queue）  
+> **视觉标杆**：[Beautiful UI](https://www.beautifului.dev/)（field 气泡、Thinking 时间线、stream caret、ink 发送方钮）  
+> 实现落点：`src/modules/qx-ai/**`、`src/styles/qx-ai.css`  
+> 与壳层关系：只约束 **对话工作台内容**；主壳仍以 [`UI_SPEC.md`](./UI_SPEC.md) 为准。
 
-QxAI 的对话区目标：在 **QxShell 桌面工具壳** 内，复现 Jan 聊天窗口的 **阅读节奏、气泡层次、输入区一体感与队列交互**，同时不破坏 Qx 的 Top/Main/Bottom 与 Context 协议。
+## 0. 原则（必须）
 
-实现与本文冲突时：以代码为据并回写本文件；**视觉/交互新改动必须先满足本标杆**。
+| 层 | 标杆 | 做法 |
+|---|---|---|
+| **结构 / 状态机** | AI Elements | 按零件拆：会话列、消息、思考、工具、输入、队列；流式时思考展开、结束可收 |
+| **视觉 / 密度** | Beautiful UI | 中性 field 用户气泡、轻时间线思考、竖线 caret、field 输入栏 + 28px ink 发送 |
+| **主题** | Qx tokens | 只用 `--qx-*`；禁止暗色硬编码 fallback |
+| **宿主** | QxShell | Top / Main / Bottom / Context；Esc 级联；不引入 Vercel AI SDK 运行时依赖 |
+
+**禁止**整库安装 Beautiful UI 或 AI Elements runtime。可抄「协议与布局」，CSS/组件落在本仓库。
+
+实现与本文冲突时：以代码为据并回写本文件。
 
 ---
 
-## 1. 参考：Jan 窗口解剖
+## 1. 零件映射
 
-Jan 线程页（`threads/$threadId.tsx`）本质是：
+| AI Elements | Beautiful UI 感觉 | Qx 实现 |
+|---|---|---|
+| Conversation | 居中阅读列 | `.qx-ai-conversation` + `.qx-ai-message-list` |
+| ConversationContent | max ~760 列 | `.qx-ai-message-column` |
+| Message | 用户 field 胶囊 / 助手裸文 | `.qx-ai-message` + `.qx-ai-message-bubble` |
+| Reasoning | Thinking 触发条 + 时间线 | `.qx-ai-reasoning`（兼容 `.qx-jan-cot`） |
+| Tool | 紧凑 chip → 展开卡片 | `.qx-ai-tool`（兼容 `.qx-jan-tool`） |
+| PromptInput | field 底 + 方发送钮 | `.qx-ai-prompt` / `.qx-jan-composer` |
+| Queue | 输入上方 chips | `.qx-ai-message-queue` |
+| — | stream caret | `.qx-stream-caret` |
 
-```text
-┌ Header（模型切换） ─────────────────────────────┐
-│  Messages（flex-1，绝对填满可滚动）               │
-│    ConversationContent: mx-auto w-full           │
-│      md:w-4/5  xl:w-4/6  （阅读列收窄）           │
-│      MessageItem × N                             │
-│  ChatInput（底部，圆角大卡片，内嵌队列/附件）     │
-└──────────────────────────────────────────────────┘
+DOM 上应同时带 **Elements 语义类** 与现有 jan 类（过渡期），例如：
+
+```html
+<div class="qx-ai-message is-assistant">
+  <div class="qx-ai-reasoning qx-jan-cot is-streaming">…</div>
+  <div class="qx-ai-message-bubble is-assistant">…</div>
+</div>
+<div class="qx-ai-prompt qx-jan-composer">…</div>
 ```
 
-关键组件语义：
-
-| Jan | 职责 | Qx 对应 |
-|---|---|---|
-| 左侧 Thread 列表（sidebar） | 会话发现 | Workbench **左栏** `.qx-ai-conversation-list` |
-| `ConversationContent` | 消息阅读列 | `.qx-ai-message-column`（max **760px** 居中） |
-| `MessageItem` | 用户气泡 / 助手流式 / CoT / tools | `.qx-ai-message.is-jan` + `AiMessageContent` |
-| `TokenSpeedIndicator` | 完成后 tokens/sec | `TokenSpeedBadge` |
-| `ChatInput` | 圆角输入壳 + 附件 + 队列 chip | `.qx-jan-composer-dock` + `.qx-jan-composer` |
-| `QueuedMessageChip` | 队列紧凑 chip，点击回填输入 | `.qx-ai-message-queue` 芯片 |
-
-**不要**把 Jan 的整页 sidebar/header 照搬进 Qx：会话列表进左栏，模型/工具进 Context，Esc/Actions 进 Bottom Bar。
-
 ---
 
-## 2. Qx Workbench 布局（必须）
-
-### 2.1 壳与主从
+## 2. Workbench 布局（必须）
 
 ```text
-QxShell (qx-qxai-chat-shell qx-content-shell is-jan is-workbench)
+QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
   Top: 会话搜索
   Main: .qx-ai-workbench
-          QxResizableSplit (.qx-ai-split)
-            ├─ 左: 会话列表 (region qx-ai-list)
-            └─ 右: .qx-ai-chat-detail (region qx-ai-detail)
-                    .qx-ai-conversation.is-jan
+          QxResizableSplit
+            ├─ 左: .qx-ai-conversation-list  (titles: fallback → AI 生成)
+            └─ 右: .qx-ai-chat-detail
+                    .qx-ai-conversation
                       ├─ .qx-ai-message-list (scroll)
-                      │    └─ .qx-ai-message-column
-                      └─ .qx-jan-composer-dock.is-docked-flow  （文档流底部，禁止 absolute 盖消息）
-  Context: 模型 / Reasoning / Tools 紧凑行 / Actions
-  Bottom: Send | New | … | Esc
+                      │    └─ .qx-ai-message-column  (min(760px, 100%))
+                      └─ .qx-ai-prompt-dock.is-docked-flow  (in-flow，禁止 absolute 盖消息)
+  Context: 模型 / Reasoning / Tools / Actions
+  Bottom: 主操作 | New | … | Esc
 ```
 
 硬性规则：
 
-1. **`.qx-shell-content` 必须** `display:flex; flex-direction:column; min-height:0; overflow:hidden`（用 `qx-content-shell`）。
+1. `.qx-shell-content`：`flex` 列 + `min-height:0` + `overflow:hidden`（`qx-content-shell`）。
 2. 高度链：`workbench → split → detail → conversation → message-list(flex:1)` 不断裂。
-3. Composer **禁止** `position:absolute` 叠在 transcript 上（队列/附件一长必遮挡）。使用 **in-flow 底部 dock**。
-4. 消息列宽度 **`min(760px, 100%)` 水平居中**，对标 Jan `md:w-4/5 xl:w-4/6` 的「窄阅读列」。
-5. 左列表默认宽约 **280px**（可拖，持久化 `qx-ai.workbench.listWidth`），min ≥ 220。
+3. Composer **in-flow dock**，禁止 absolute 叠 transcript。
+4. 消息列 `min(760px, 100%)` 居中。
+5. 左列表默认 ~280px（持久化 `qx-ai.workbench.listWidth`），min ≥ 220；标题单行 ellipsis。
 
-### 2.2 Esc（Workbench 时代）
+### Esc
 
 | 层 | 行为 |
 |---|---|
-| query | 清会话搜索 / 输入 / 附件错误 |
-| leave | **Launcher**（不再 `setView("list")`） |
-| Settings 子页 | `setView("chat")` 回 Workbench |
+| query | 清搜索 / 输入 / 附件错误 |
+| leave | Launcher |
+| Settings 子页 | 回 Workbench |
 
 ---
 
-## 3. 消息排版（Jan MessageItem）
+## 3. Message（气泡）
 
-### 3.1 角色
+### 用户
 
-| 角色 | 对齐 | 容器 | 背景 |
-|---|---|---|---|
-| **user** | 右 | `max-width: min(80%, 列宽)` 的气泡 | 淡 accent 底 + 细 accent 边（Qx 映射 Jan `bg-secondary` / 可选 primary） |
-| **assistant** | 左 | 近全列宽，**无重气泡底** | 透明底；正文 Markdown 直接铺 |
+- 右对齐，`width: fit-content`，列内 **≤ 80%**。
+- **Beautiful UI**：`bg` ≈ field（`bg-component-2/3` mix），圆角 ~12px，细边框，轻阴影；**不是**实心 accent 块。
+- 字号 ~13px / line-height 1.4；明暗均用 token。
 
-禁止：
+### 助手
 
-- 助手消息再套厚卡片底（Jan 助手是「裸 Markdown + 脚注」）。
-- 用户/助手混用同一气泡皮肤。
-- 流式中在消息脚注刷 tokens/sec（见 §4）。
+- 满列、无卡片壳；markdown 可滚动代码块。
+- 流式：内容末 **竖线 caret**（`.qx-stream-caret`），不用 `|` 字符硬编码。
+- 完成后可显示 tokens/sec（仅完成态）。
 
-### 3.2 间距与字号
+### 附件
 
-| 元素 | 规范 |
+- 不得 `min-width: 460px` 撑破气泡；`min-width: 0; max-width: 100%`。
+
+---
+
+## 4. Reasoning（思考）
+
+对齐 Elements `Reasoning` + BUI Thinking：
+
+1. 折叠触发：Sparkles + 标题（流式 shimmer「Thinking…」/ 完成「Thought for N seconds」）。
+2. 流式时 **默认展开**；完成后可保持用户操作结果。
+3. 展开：左侧 **1px 时间线** + 步骤行（thought / tool / observation）。
+4. 不要厚边框大卡片包住整块思考（避免 web 营销卡）。
+
+实现：`ReasoningPanel`（原 `JanChainOfThought`）+ `AgentStepsView`。
+
+---
+
+## 5. Tool
+
+- 收起：圆角 pill chip（工具名 + 状态）。
+- 展开：轻边框参数/结果 pre。
+- 嵌在 Reasoning 列表内时避免双重标题噪音。
+
+---
+
+## 6. PromptInput（输入栏）
+
+对齐 Elements `PromptInput` + BUI Prompt Bar：
+
+1. 容器：~12px 圆角、field 底、hairline 边 + 轻阴影；focus 时 border 略加深（非重彩色光晕）。
+2. 文本：13px / 1.4，placeholder tertiary。
+3. 发送：**28×28** 方角钮；就绪 = `text-primary` 底 + 上箭头；禁用 = 中性灰底；排队中 = accent + ListPlus。
+4. 附件按钮 ghost icon；队列在 composer **上方**。
+
+---
+
+## 7. Queue
+
+- 在 prompt 上方，不进消息流。
+- 点击文案 → 回填 composer 并离队；X 删除。
+- 多条可滚，max-height 限制，避免顶破输入。
+
+---
+
+## 8. 会话标题（列表）
+
+| 时机 | 行为 |
 |---|---|
-| 消息间距 | 列内 `gap: 16–18px`；用户消息块上方可略疏（Jan `mt-8` 给非首条 user） |
-| meta（You / model） | 11–12px，`text-tertiary`，字重 600，气泡上 4–6px |
-| 用户气泡内文 | 13–14px，`line-height: 1.45–1.55`，padding `8–12px` |
-| 助手正文 | Markdown 默认 14px，段落间距克制 |
-| 脚注操作行 | 12px，`text-muted`；user 可用 hover 才显操作（Jan `group-hover`） |
+| 首条用户消息 | 本地兜底截断标题（`titleMode: auto`） |
+| 首轮助手结束 | 后台 `g4f_chat` 生成短标题（失败保留兜底） |
+| 用户手动改名 | `titleMode: manual`，不再覆盖 |
 
-### 3.3 思考 / 工具
-
-- CoT / tools 用可折叠时间线（`.qx-jan-cot` / `.qx-jan-tool`），**插在正文之前或按步骤交错**，不得把整段思考塞进用户气泡。
-- 工具名可读化（`web_search` → 展示层可 humanize）；状态：running / complete / error 三色轨。
-- 流式中：轻量「活动」指示即可，不伪造进度条百分比。
-
-### 3.4 错误
-
-- 助手失败：左边框 + 浅红底条（Jan `border-destructive/30 bg-destructive/5` 映射到 Qx `--qx-danger-*`）。
-- 文案完整、可换行；提供 Regenerate 入口时走 Actions，不抢 Bottom 主按钮语义。
+列表行：`grid minmax(0,1fr)` + `.qx-list-title-text` ellipsis；spinner 不挤标题。
 
 ---
 
-## 4. Token 速率（Jan TokenSpeedIndicator）
+## 9. 主题
 
-源码契约（`TokenSpeedIndicator.tsx` + `custom-chat-transport.ts`）：
+- 只用 `--qx-text-*` / `--qx-border-*` / `--qx-bg-component-*` / `--qx-accent` / `--qx-shadow`。
+- 禁止 `#12161f`、`#0f131a`、纯黑大阴影、仅暗色可用的 fallback。
+- 用户气泡在 light/dark 下均需足够对比。
 
-```text
-tokenSpeed = outputTokens / durationSec
-display  = Math.round(tokenSpeed) + " tokens/sec"
-count    = outputTokens   // "(N tokens)"
-streaming === true  →  组件返回 null（消息上不显示）
-```
+---
 
-Qx 对齐：
+## 10. 验收清单
 
-| 项 | 规则 |
+- [ ] 左列表标题 ellipsis；首条消息后有兜底名，助手完成后可换成 AI 标题  
+- [ ] 用户 field 气泡右对齐 ≤80%；助手满列裸文  
+- [ ] 思考流式展开 + shimmer；时间线步骤可读  
+- [ ] 流式 caret 为竖线  
+- [ ] 输入 field 风格；发送 28px 方钮 + 箭头  
+- [ ] 队列在输入上，点击回填  
+- [ ] 亮色 / 暗色均正常，无死黑块  
+- [ ] Esc / Bottom Bar 符合 UI_SPEC  
+
+---
+
+## 11. 边界
+
+| 归属 | 文件 |
 |---|---|
-| 计量起点 | **首个正文/推理 delta**（`firstTokenAt`），不是点发送时刻 |
-| 空闲剔除 | 连续 delta 间隔 **> 1.5s** 不计入 `generationMs`（工具等待） |
-| 计数文本 | **completion 正文**（`estimateTokens ≈ chars/4`，无 tokenizer 时） |
-| 消息脚注 | **仅完成后**显示 Gauge + `N tokens/sec` + `(N tokens)` |
-| 流式 | 消息脚注不显示 TPS；可选 live 速率只放 **composer 工具条** |
-| 展示 | 整数 tok/s；内部可保留 2 位小数再 round |
-
-禁止：把整轮 Agent 工具耗时算进 TPS 导致「几 tok/s」的假慢。
-
----
-
-## 5. Composer（Jan ChatInput）
-
-### 5.1 外形
-
-Jan：`rounded-3xl` + `border-input` + 浅半透明底；聚焦 `ring-1 ring-ring/50`；流式时外圈可有动效描边（Qx 可用静态 accent 边，不强求 MovingBorder）。
-
-Qx：
-
-- 容器 `.qx-jan-composer`：`border-radius: 16–18px`，模糊玻璃底，内边距 `10–12px`。
-- 网格：`[工具] 1fr [发送]`，工具与发送贴底对齐。
-- 宽度：`min(720px, 100%)` 与消息列视觉同轴。
-- 输入：`textarea` 自适应 1→~8 行；Enter 发送、Shift+Enter 换行；IME `isComposing` 不截获 Enter。
-
-### 5.2 内部栈（上→下）
-
-1. 附件缩略图行（可选）
-2. **队列 chips**（可选，§6）
-3. Skill 条 / 状态（可选）
-4. 主输入 + 发送
-
-生成中：发送钮文案 **「加入队列」**；有 Stop 能力时优先 Stop（未来）。
-
-### 5.3 Context 工具列表
-
-- Context 内 **一行摘要**（`N enabled`），点击 **Popover 悬浮** 展开芯片列表。
-- 禁止在 Context 常驻展开整表芯片占满滚动区。
-
----
-
-## 6. 排队消息（Jan QueuedMessageChip）
-
-Jan 交互：
-
-```ts
-// 点击文案 → 回填输入框并移出队列
-setPrompt(queued.text)
-removeQueuedMessage(queued.id)
-focus textarea
-// X → 仅删除
-```
-
-视觉：单行 chip — `rounded-lg`、`bg-secondary/80`、`border`、时钟图标 pulse、`truncate` 文案。
-
-Qx 必须：
-
-1. 队列在 **composer 上方**，不进消息流。
-2. **点击文案 = 回填编辑**（写入 composer 并移出队列）——与 Jan 一致。
-3. 删除按钮独立；图标 Lucide，**无 emoji**。
-4. 多条时纵向紧凑列表，整体 max-height 可滚，避免顶破输入区。
-5. 串行执行：当前会话 streaming 时新提交只入队。
-
-可选增强（非 Jan 默认）：铅笔内联改写；若保留，不得默认展开多行表单挤爆 dock。
-
----
-
-## 7. 会话列表（左栏）
-
-对标 Jan ThreadList 的紧凑度：
-
-| 项 | 规范 |
-|---|---|
-| 行高 | 接近 Qx list tall/default，双行：标题 + `provider · model` |
-| 选中 | `is-active` / list selection 端口 |
-| 流式 | 标题旁小 spinner，不整行闪 |
-| 空态 | 居中短文案 + 引导 New Chat |
-| 搜索 | Top Bar `QxModuleSearch` 过滤左列表 |
-
----
-
-## 8. 颜色与主题
-
-- **只用 Qx CSS 变量**（`--qx-text-*`、`--qx-border-*`、`--qx-bg-component-*`、`--qx-accent`）。
-- 映射 Jan token：
-  - `text-muted-foreground` → `--qx-text-tertiary` / secondary
-  - `bg-secondary` → `--qx-bg-component-2`
-  - `border-input` → `--qx-border-1/2`
-  - `primary` → `--qx-accent`
-- 深色玻璃：composer 可用 `color-mix` + blur，**不得**硬编码纯黑/纯白大块。
-- 用户气泡：淡 accent，保持可读，非营销渐变。
-
----
-
-## 9. CSS 类契约（实现检查表）
-
-| 类名 | 必须 |
-|---|---|
-| `.qx-qxai-chat-shell.is-workbench` | 配合 `qx-content-shell` |
-| `.qx-ai-workbench` / `.qx-ai-split` | 100% 高、flex/min-height 0 |
-| `.qx-ai-chat-detail` | column flex，overflow hidden |
-| `.qx-ai-message-column` | max 760px 居中 |
-| `.qx-ai-message.is-jan.is-user\|is-assistant` | 角色皮肤 |
-| `.qx-jan-composer-dock.is-docked-flow` | 文档流底部 |
-| `.qx-jan-composer` | 圆角输入壳 |
-| `.qx-jan-token-speed` | 完成后脚注 |
-| `.qx-ai-message-queue` | 队列芯片容器 |
-| `.qx-ai-tool-trigger` / `.qx-ai-tool-popover` | Context 工具展开 |
-
-样式源文件：`src/styles/qx-ai.css`。**业务组件不写行内色值。**
-
----
-
-## 10. 交互与无障碍
-
-- 发送：Enter；换行：Shift+Enter；IME 合成不发送。
-- `/` Skill 选择器：↑↓ Enter Esc（见 UI_SPEC 通用 QxAI 条）。
-- 队列 chip、工具 Popover：键盘可聚焦；Popover `modal={false}` 避免抢 shell 焦点。
-- 区域：`qx-ai-list` / `qx-ai-detail` / `qx-ai-actions` 走 master-detail 端口。
-- 流式时 Bottom Island：`activity: "dots"`，禁止假进度百分比。
-
----
-
-## 11. 明确不做（相对 Jan）
-
-| Jan | Qx |
-|---|---|
-| 独立应用侧栏 + 全屏聊天 | 嵌入 QxShell + Context |
-| MovingBorder 流式炫光 | 可选，非必须 |
-| 消息 hover 全套 Continue/Regenerate 工具条 | 优先 Bottom Actions / 后续增量 |
-| TokenCounter 输入字数统计 | 可选后续 |
-| 分支版本 `< n/m >` | 未做 |
-
----
-
-## 12. 验收清单（改样式必跑）
-
-- [ ] 左列表 + 右聊天：窄窗与宽窗高度填满，无双重滚动条争抢
-- [ ] 输入区在底部，加 3 条队列仍不遮挡最后一条消息
-- [ ] 用户右气泡 / 助手左裸文，列宽约 760
-- [ ] 完成后显示 `N tokens/sec (M tokens)`；流式消息脚注无 TPS
-- [ ] 队列 chip 点击文案 → 回填输入并离队；X 删除
-- [ ] Context 工具一行 + 悬浮列表
-- [ ] Esc：清输入/搜索 → 回 Launcher；Settings → 回 Workbench
-- [ ] `npx tsc --noEmit`、`npm run check`
-
----
-
-## 13. 与 UI_SPEC.md 的关系
-
-- **壳、Esc 胶囊、Bottom Island、token 色板** → `UI_SPEC.md`
-- **QxAI 对话阅读/输入/队列/token 速率/工作台主从** → **本文件**
-- Agent 能力与 hooks → `docs/ai-agent-runtime.md`
-
-新增 QxAI 视觉改动：先改本文件条款，再动 `qx-ai.css` / `QxAiChat.tsx`。
+| 壳、Esc、Bottom Island、token 色板 | `UI_SPEC.md` |
+| 对话阅读 / 输入 / 队列 / 思考 / 标题 | **本文件** |
+| Agent 运行时、记忆 SQLite、会话文件夹 | `docs/ai-agent-runtime.md` |

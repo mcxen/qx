@@ -856,7 +856,7 @@ Screenshot & Recording Module（截图录屏模块）：
 
 QxAI：
 
-- **对话工作台视觉/排版/队列/token 速率的单一标杆**见 [`UI_SPEC_AI.md`](./UI_SPEC_AI.md)
+- **对话工作台**结构（AI Elements）与视觉（Beautiful UI）的单一标杆见 [`UI_SPEC_AI.md`](./UI_SPEC_AI.md)
   （对齐 Jan ChatInput / MessageItem / QueuedMessageChip）。壳层规则仍以本文为准。
 - Workbench（左会话列表 + 右自绘聊天）为默认入口；打开恢复上次会话。Settings 为嵌套页。
 - Esc：Workbench 清搜索/输入 → **Launcher**；Settings → Workbench（`setView("chat")`）。

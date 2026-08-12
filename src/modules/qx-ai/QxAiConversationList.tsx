@@ -70,7 +70,9 @@ export default function QxAiConversationList({
         >
           <span className="qx-list-copy">
             <span className="qx-list-title">
-              {item.name}
+              <span className="qx-list-title-text" title={item.name}>
+                {item.name}
+              </span>
               {runs[item.id]?.streaming ? (
                 <Loader2
                   size={13}
@@ -79,7 +81,7 @@ export default function QxAiConversationList({
                 />
               ) : null}
             </span>
-            <span className="qx-list-subtitle">
+            <span className="qx-list-subtitle" title={`${item.provider} · ${item.model}`}>
               {item.provider} · {item.model}
             </span>
           </span>

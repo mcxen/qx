@@ -590,24 +590,28 @@ export const TOOLS: ToolSpec[] = [
   {
     name: "memory",
     description:
-      "Hermes-style curated memory. Targets: memory (agent notes) | user (profile). Actions: add | replace | remove | status. Char-capped (memory 2200, user 1375). Frozen snapshot is in the system prompt; tool results show live state.",
+      "Long-term memory (SQLite + FTS archive, RLM-style). Targets: memory | user. Actions: add | replace | remove | status | search. Hot prompt window is char-capped (~2200/1375); search hits the full archive so older notes stay findable. Snapshot is frozen in the system prompt.",
     inputHint:
-      '{"action":"add","target":"user","content":"Prefers concise Chinese answers"}',
+      '{"action":"search","content":"display brightness"} or {"action":"add","target":"user","content":"Prefers concise Chinese"}',
     parameters: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          description: "add | replace | remove | status",
+          description: "add | replace | remove | status | search",
         },
-        target: { type: "string", description: "memory | user" },
-        content: { type: "string", description: "New entry text for add/replace" },
+        target: { type: "string", description: "memory | user (optional filter for search)" },
+        content: {
+          type: "string",
+          description: "Entry text for add/replace, or search query for action=search",
+        },
         old_text: {
           type: "string",
-          description: "Unique substring identifying an entry for replace/remove",
+          description: "Unique substring or id for replace/remove",
         },
         // aliases for older tools
         text: { type: "string" },
+        query: { type: "string" },
         id: { type: "string" },
       },
       required: ["action"],
@@ -619,12 +623,16 @@ export const TOOLS: ToolSpec[] = [
       // Backward-compatible shims if the model emits memory_add style fields.
       if (!stringField(rec, "action") && stringField(rec, "text")) action = "add";
       if (!stringField(rec, "action") && stringField(rec, "id")) action = "remove";
-      const target = stringField(rec, "target") || "memory";
-      const content = stringField(rec, "content") || stringField(rec, "text");
+      if (!stringField(rec, "action") && stringField(rec, "query")) action = "search";
+      const target = stringField(rec, "target") || (action === "search" ? "" : "memory");
+      const content =
+        stringField(rec, "content")
+        || stringField(rec, "text")
+        || stringField(rec, "query");
       const oldText = stringField(rec, "old_text") || stringField(rec, "oldText") || stringField(rec, "id");
       const result = await invoke("qxai_memory_mutate", {
         action,
-        target,
+        target: target || null,
         content: content || null,
         oldText: oldText || null,
       });
@@ -655,7 +663,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: "session_search",
     description:
-      "Search past QxAI conversations (FTS-style). Use when recalling prior discussions not in MEMORY.",
+      "Search past QxAI conversation folders (per-session JSON under ~/.qx/QxAiSession/sessions/). Use when recalling prior chats not in the memory archive.",
     inputHint: '{"query": "morning desk log", "limit": 8}',
     parameters: {
       type: "object",

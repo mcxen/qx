@@ -117,6 +117,12 @@ export interface G4fConversation {
   provider: string;
   model: string;
   reasoningEnabled?: boolean;
+  /**
+   * Title ownership:
+   * - auto: may replace with fallback / AI titles
+   * - manual: user renamed — never overwrite
+   */
+  titleMode?: "auto" | "manual";
 }
 
 /** Catalog model entry (built-in or custom). Mirrors Rust `ProviderModel`. */
@@ -201,8 +207,24 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 }
 
-function isDefaultConversationName(name: string): boolean {
-  return /^Chat \d+$/.test(name);
+function isPlaceholderConversationName(name: string): boolean {
+  const trimmed = name.trim();
+  if (!trimmed) return true;
+  return (
+    /^Chat\s+\d+$/i.test(trimmed)
+    || /^对话\s*\d+$/i.test(trimmed)
+    || /^New chat$/i.test(trimmed)
+    || /^新对话$/i.test(trimmed)
+    || /^Scheduled task$/i.test(trimmed)
+    || /^Schedule\b/i.test(trimmed)
+  );
+}
+
+function canAutoTitle(conversation: G4fConversation): boolean {
+  if (conversation.titleMode === "manual") return false;
+  // Missing titleMode (legacy sessions) still auto-title while name looks placeholder.
+  if (conversation.titleMode === "auto") return true;
+  return isPlaceholderConversationName(conversation.name);
 }
 
 function normalizeTitleSource(content: string): string[] {
@@ -219,24 +241,123 @@ function normalizeTitleSource(content: string): string[] {
     .filter(Boolean);
 }
 
-function compactConversationTitle(messages: G4fMessage[]): string | null {
-  const userMessages = messages.filter((message) => message.role === "user");
-  const paragraphs = userMessages.flatMap((message) => normalizeTitleSource(message.content));
-
-  if (userMessages.length < 2 && paragraphs.length < 2) return null;
-
-  const source = paragraphs.slice(0, 2).join(" ");
+/** Instant local fallback from the first user message (no model call). */
+function fallbackTitleFromMessages(messages: G4fMessage[], maxLength = 28): string | null {
+  const firstUser = messages.find((message) => message.role === "user" && message.content.trim());
+  if (!firstUser) return null;
+  const paragraphs = normalizeTitleSource(firstUser.content);
+  const source = (paragraphs[0] || firstUser.content.replace(/\s+/g, " ").trim()).trim();
   if (!source) return null;
-
-  const maxLength = 32;
-  const title = source.length > maxLength ? `${source.slice(0, maxLength - 1).trimEnd()}...` : source;
-  return title || null;
+  const chars = [...source];
+  if (chars.length <= maxLength) return source;
+  return `${chars.slice(0, Math.max(1, maxLength - 1)).join("")}…`;
 }
 
+function sanitizeAiTitle(raw: string, maxLength = 24): string | null {
+  let title = raw
+    .trim()
+    .replace(/^["'「『《]+|["'」』》]+$/g, "")
+    .replace(/^标题[:：]\s*/i, "")
+    .replace(/^title[:：]\s*/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  // Single line only
+  title = title.split(/\n/)[0]?.trim() || "";
+  if (!title || title.length < 2) return null;
+  if (/^(chat|new chat|对话|新对话)\b/i.test(title)) return null;
+  const chars = [...title];
+  if (chars.length > maxLength) {
+    title = `${chars.slice(0, maxLength - 1).join("")}…`;
+  }
+  return title;
+}
+
+/** Local fallback title as soon as the user sends the first message. */
 function withAutoTitle(conversation: G4fConversation): G4fConversation {
-  if (!isDefaultConversationName(conversation.name)) return conversation;
-  const title = compactConversationTitle(conversation.messages);
-  return title ? { ...conversation, name: title } : conversation;
+  if (!canAutoTitle(conversation)) return conversation;
+  const title = fallbackTitleFromMessages(conversation.messages);
+  if (!title) return conversation;
+  // Don't thrash if already the same fallback / short title.
+  if (conversation.name.trim() === title) {
+    return { ...conversation, titleMode: conversation.titleMode ?? "auto" };
+  }
+  // Only replace placeholders or previous auto titles that still look generic.
+  if (
+    conversation.titleMode === "auto"
+    || isPlaceholderConversationName(conversation.name)
+  ) {
+    return { ...conversation, name: title, titleMode: "auto" };
+  }
+  return conversation;
+}
+
+const titleJobs = new Set<string>();
+
+/**
+ * Ask the chat model for a short title after the first assistant turn.
+ * Fire-and-forget; failures leave the local fallback name in place.
+ */
+async function maybeGenerateAiTitle(conversationId: string): Promise<void> {
+  if (titleJobs.has(conversationId)) return;
+  const state = useG4fStore.getState();
+  const conversation = state.conversations.find((item) => item.id === conversationId);
+  if (!conversation || !canAutoTitle(conversation)) return;
+  if (!isTauriRuntime()) return;
+
+  const userText = conversation.messages
+    .filter((message) => message.role === "user")
+    .map((message) => message.content.trim())
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("\n")
+    .slice(0, 600);
+  const assistantText = conversation.messages
+    .filter((message) => message.role === "assistant")
+    .map((message) => message.content.trim())
+    .filter(Boolean)
+    .slice(-1)[0]
+    ?.slice(0, 400);
+  if (!userText || !assistantText) return;
+
+  titleJobs.add(conversationId);
+  try {
+    const prompt = [
+      "Generate a short conversation title for a chat list.",
+      "Rules: max 18 characters (or ~10 CJK chars), no quotes, no trailing punctuation,",
+      "same language as the user, no markdown, output title only.",
+      "",
+      `User: ${userText}`,
+      `Assistant: ${assistantText}`,
+      "Title:",
+    ].join("\n");
+
+    const raw = await invoke<string>("g4f_chat", {
+      provider: conversation.provider,
+      model: conversation.model,
+      messages: [
+        { role: "system", content: "You write concise chat titles." },
+        { role: "user", content: prompt },
+      ],
+    });
+    const title = sanitizeAiTitle(raw);
+    if (!title) return;
+
+    // Re-read: user may have renamed or switched chats mid-flight.
+    const latest = useG4fStore.getState().conversations.find((item) => item.id === conversationId);
+    if (!latest || !canAutoTitle(latest)) return;
+
+    useG4fStore.setState((current) => ({
+      conversations: current.conversations.map((item) =>
+        item.id === conversationId
+          ? { ...item, name: title, titleMode: "auto" as const }
+          : item,
+      ),
+    }));
+  } catch (error) {
+    console.warn("qxai title generation failed", error);
+  } finally {
+    titleJobs.delete(conversationId);
+  }
 }
 
 function makeCustomProviderId(): string {
@@ -267,7 +388,15 @@ interface G4fStore {
   /** Combined list of built-in + custom providers for UI selection. */
   providers: G4fProvider[];
 
-  createConversation: (provider?: string, model?: string) => string;
+  /**
+   * Create a chat. Pass `{ background: true }` for schedule / headless runs so
+   * the UI does not steal focus from the conversation the user is reading.
+   */
+  createConversation: (
+    provider?: string,
+    model?: string,
+    options?: { background?: boolean; name?: string },
+  ) => string;
   deleteConversation: (id: string) => void;
   renameConversation: (id: string, name: string) => void;
   selectConversation: (id: string) => void;
@@ -554,7 +683,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
     }
   },
 
-  createConversation: (provider, model) => {
+  createConversation: (provider, model, options) => {
     const { currentProvider, currentModel, conversations, defaultSystemPrompt, providers } =
       get();
     // Prefer explicit args → persisted agent defaults → in-memory selection.
@@ -564,9 +693,15 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       model ?? currentModel,
     );
     const id = generateId();
+    const background = options?.background === true;
+    const displayName =
+      options?.name?.trim()
+      || (background
+        ? `Schedule ${new Date().toLocaleString()}`
+        : `Chat ${conversations.length + 1}`);
     const conv: G4fConversation = {
       id,
-      name: `Chat ${conversations.length + 1}`,
+      name: displayName,
       createdAt: Date.now(),
       messages: defaultSystemPrompt
         ? [{ role: "system", content: defaultSystemPrompt }]
@@ -576,13 +711,22 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       reasoningEnabled: providers
         .find((item) => item.id === selection.provider)
         ?.models.find((item) => item.id === selection.model)?.reasoning ?? false,
+      // Placeholder / schedule names stay auto until the user renames.
+      titleMode: "auto",
     };
-    writeLastConversationId(id);
-    set({
-      conversations: [...conversations, conv],
-      currentConversationId: id,
-      view: "chat",
-    });
+    if (background) {
+      // Headless / schedule: append only — do not steal current conversation or last-id.
+      set({
+        conversations: [...conversations, conv],
+      });
+    } else {
+      writeLastConversationId(id);
+      set({
+        conversations: [...conversations, conv],
+        currentConversationId: id,
+        view: "chat",
+      });
+    }
     return id;
   },
 
@@ -606,9 +750,11 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   },
 
   renameConversation: (id, name) => {
+    const next = name.trim();
+    if (!next) return;
     set((s) => ({
       conversations: s.conversations.map((c) =>
-        c.id === id ? { ...c, name } : c,
+        c.id === id ? { ...c, name: next, titleMode: "manual" as const } : c,
       ),
     }));
   },
@@ -691,14 +837,44 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       conv.model || currentModel,
     );
 
+    const touchesActiveChat = get().currentConversationId === currentConversationId;
+
     if (!selection.provider) {
-      set({ error: "No AI provider available. Open QxAI Settings first." });
+      const msg = "No AI provider available. Open QxAI Settings first.";
+      set({
+        ...(touchesActiveChat ? { error: msg } : {}),
+        runs: {
+          ...get().runs,
+          [currentConversationId]: {
+            streaming: false,
+            streamedContent: "",
+            streamedReasoning: "",
+            streamingSteps: [],
+            error: msg,
+            startedAt: Date.now(),
+          },
+        },
+      });
       scheduleNext();
       return;
     }
 
     if (!selection.model) {
-      set({ error: `No model available for provider "${selection.provider}".` });
+      const msg = `No model available for provider "${selection.provider}".`;
+      set({
+        ...(touchesActiveChat ? { error: msg } : {}),
+        runs: {
+          ...get().runs,
+          [currentConversationId]: {
+            streaming: false,
+            streamedContent: "",
+            streamedReasoning: "",
+            streamingSteps: [],
+            error: msg,
+            startedAt: Date.now(),
+          },
+        },
+      });
       scheduleNext();
       return;
     }
@@ -717,7 +893,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       const error =
         `Model "${selection.model}" does not support vision/images. Choose a multimodal model, enable Vision in Settings → AI Agent, or remove image attachments.`;
       set({
-        error,
+        ...(touchesActiveChat ? { error } : {}),
         runs: {
           ...get().runs,
           [currentConversationId]: {
@@ -770,7 +946,8 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           liveTokenCount: undefined,
         },
       },
-      error: null,
+      // Never clear the active chat's global error banner for a background turn.
+      ...(touchesActiveChat ? { error: null } : {}),
     }));
     showQxAiRun(currentConversationId, titledConv.name);
 
@@ -977,6 +1154,8 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           },
         }));
         completeQxAiRun(currentConversationId, titledConv.name);
+        // AI list title (async); local fallback already applied via withAutoTitle.
+        void maybeGenerateAiTitle(currentConversationId);
 
         // Hermes-style sleep/dream: background consolidate after substantial tool work.
         if (agentSettings.memory_tool_enabled) {
@@ -1125,6 +1304,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         },
       }));
       completeQxAiRun(currentConversationId, titledConv.name);
+      void maybeGenerateAiTitle(currentConversationId);
       scheduleNext();
     } catch (e) {
       if (!get().conversations.some((conversation) => conversation.id === currentConversationId)) {

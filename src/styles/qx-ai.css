@@ -1,6 +1,14 @@
 /* Master–detail workbench: left conversation list + right self-drawn chat.
    Shell places children in `.qx-shell-content` (not direct under `.qx-shell-main`).
    Reuse `.qx-content-shell` so the content region is a flex column with overflow hidden. */
+
+/* ── Semantic aliases (AI Elements structure; BUI visuals share rules) ── */
+.qx-ai-reasoning { /* see .qx-jan-cot */ }
+.qx-ai-tool { /* see .qx-jan-tool */ }
+.qx-ai-prompt-dock { /* see .qx-jan-composer-dock */ }
+.qx-ai-prompt { /* see .qx-jan-composer */ }
+.qx-ai-queue { /* see .qx-ai-message-queue */ }
+
 .qx-qxai-chat-shell.is-workbench .qx-shell-content {
   display: flex;
   flex-direction: column;
@@ -29,13 +37,55 @@
 .qx-ai-conversation-list {
   border-right: 1px solid var(--qx-border-1);
   background: color-mix(in srgb, var(--qx-bg-component-1) 72%, transparent);
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+/* List rows: full pane width, ellipsis titles (spinner stays visible). */
+.qx-ai-conversation-list > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding-inline: 10px;
+}
+
+.qx-ai-conversation-list .qx-list-copy {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .qx-ai-conversation-list .qx-list-title {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
+  max-width: 100%;
+  width: 100%;
+}
+
+.qx-ai-conversation-list .qx-list-title-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-ai-conversation-list .qx-list-title .qx-spin {
+  flex: 0 0 auto;
+}
+
+.qx-ai-conversation-list .qx-list-subtitle {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .qx-ai-chat-detail {
@@ -84,11 +134,11 @@
   flex-direction: column;
   border: 1px solid color-mix(in srgb, var(--qx-border-2) 70%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--qx-glass-bg-solid, #12161f) 94%, transparent);
+  background: rgba(var(--qx-glass-bg), 0.92);
   box-shadow:
-    0 1px 1px rgb(0 0 0 / 0.05),
-    0 8px 24px rgb(0 0 0 / 0.22),
-    inset 0 0 0 0.5px rgb(255 255 255 / 0.04);
+    0 1px 1px color-mix(in srgb, var(--qx-shadow) 8%, transparent),
+    0 8px 24px color-mix(in srgb, var(--qx-shadow) 20%, transparent),
+    inset 0 0 0 0.5px color-mix(in srgb, var(--qx-text-primary) 8%, transparent);
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   overflow: hidden;
@@ -154,10 +204,10 @@
   padding: 12px;
   border: 1px solid color-mix(in srgb, var(--qx-border-2) 60%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--qx-bg-component-2, #161a22) 92%, transparent);
+  background: color-mix(in srgb, var(--qx-bg-component-2) 92%, transparent);
   box-shadow:
-    0 1px 1px rgb(0 0 0 / 0.04),
-    0 2px 4px rgb(0 0 0 / 0.06);
+    0 1px 1px color-mix(in srgb, var(--qx-shadow) 6%, transparent),
+    0 2px 4px color-mix(in srgb, var(--qx-shadow) 10%, transparent);
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -170,10 +220,10 @@
 .qx-ai-skill-card:hover,
 .qx-ai-skill-card.is-selected {
   border-color: color-mix(in srgb, var(--qx-text-primary) 28%, transparent);
-  background: color-mix(in srgb, var(--qx-bg-component-2, #161a22) 80%, #fff 6%);
+  background: color-mix(in srgb, var(--qx-bg-component-2) 85%, var(--qx-text-primary) 8%);
   box-shadow:
-    0 1px 1px rgb(0 0 0 / 0.05),
-    0 4px 12px rgb(0 0 0 / 0.12);
+    0 1px 1px color-mix(in srgb, var(--qx-shadow) 8%, transparent),
+    0 4px 12px color-mix(in srgb, var(--qx-shadow) 14%, transparent);
 }
 
 .qx-ai-skill-card.is-selected {
@@ -190,7 +240,7 @@
   height: 28px;
   border-radius: 6px;
   border: 1px solid color-mix(in srgb, var(--qx-border-2) 70%, transparent);
-  background: color-mix(in srgb, var(--qx-bg-component-3, #0f131a) 80%, transparent);
+  background: color-mix(in srgb, var(--qx-bg-component-3) 80%, transparent);
   color: var(--qx-text-primary);
 }
 
@@ -258,8 +308,8 @@
   border-radius: 8px;
   background: color-mix(in srgb, var(--qx-bg-component-2) 92%, transparent);
   box-shadow:
-    0 1px 1px rgb(0 0 0 / 0.04),
-    0 2px 4px rgb(0 0 0 / 0.06);
+    0 1px 1px color-mix(in srgb, var(--qx-shadow) 6%, transparent),
+    0 2px 4px color-mix(in srgb, var(--qx-shadow) 10%, transparent);
   color: var(--qx-text-secondary);
   font-size: 12px;
 }
@@ -275,7 +325,7 @@
   height: 26px;
   border-radius: 6px;
   border: 1px solid color-mix(in srgb, var(--qx-border-2) 70%, transparent);
-  background: color-mix(in srgb, var(--qx-bg-component-3, #0f131a) 80%, transparent);
+  background: color-mix(in srgb, var(--qx-bg-component-3) 80%, transparent);
   color: var(--qx-text-primary);
   flex: 0 0 auto;
 }
@@ -342,7 +392,7 @@
   height: 32px;
   border-radius: 6px;
   object-fit: cover;
-  background: var(--qx-bg-component-3, #0f131a);
+  background: var(--qx-bg-component-3);
 }
 
 .qx-ai-capability-pill {
@@ -357,8 +407,9 @@
 }
 
 .qx-ai-capability-pill.is-on {
-  border-color: color-mix(in srgb, var(--qx-accent, #5b8cff) 35%, transparent);
-  color: color-mix(in srgb, var(--qx-accent, #5b9dff) 85%, #fff 15%);
+  border-color: color-mix(in srgb, var(--qx-accent) 40%, var(--qx-border-1));
+  background: color-mix(in srgb, var(--qx-accent) 12%, var(--qx-bg-component-2));
+  color: var(--qx-accent);
 }
 
 .qx-ai-pending-attachment > span {
@@ -423,8 +474,8 @@
 .qx-ai-message-queue-row.is-editing {
   grid-template-columns: 22px minmax(0, 1fr);
   align-items: start;
-  background: color-mix(in srgb, var(--qx-accent, #5b8cff) 8%, var(--qx-bg-component-2));
-  border-color: color-mix(in srgb, var(--qx-accent, #5b8cff) 35%, var(--qx-border-1));
+  background: color-mix(in srgb, var(--qx-accent) 8%, var(--qx-bg-component-2));
+  border-color: color-mix(in srgb, var(--qx-accent) 35%, var(--qx-border-1));
 }
 
 .qx-ai-message-queue-index {
@@ -433,7 +484,7 @@
   display: grid;
   place-items: center;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--qx-bg-component-3, #0f131a) 70%, transparent);
+  background: color-mix(in srgb, var(--qx-bg-component-3) 70%, transparent);
   color: var(--qx-text-tertiary);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
@@ -496,7 +547,7 @@
   max-height: 120px;
   margin: 0;
   padding: 8px 10px;
-  border: 1px solid var(--qx-border-2, rgb(255 255 255 / 0.12));
+  border: 1px solid var(--qx-border-2);
   border-radius: 10px;
   resize: vertical;
   background: var(--qx-bg-component-2);
@@ -507,7 +558,7 @@
 }
 
 .qx-ai-message-queue-textarea:focus {
-  border-color: color-mix(in srgb, var(--qx-accent, #5b8cff) 50%, var(--qx-border-1));
+  border-color: color-mix(in srgb, var(--qx-accent) 50%, var(--qx-border-1));
 }
 
 .qx-ai-message-queue-edit-actions {
@@ -577,6 +628,13 @@
 
 .qx-ai-message.is-user .qx-ai-message-body {
   align-items: flex-end;
+}
+
+/* Attachments must not force a 460px min width inside narrow bubbles */
+.qx-ai-message-bubble .qx-ai-attachment {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
 }
 
 .qx-ai-message-meta {
@@ -884,9 +942,9 @@
 
 .qx-ai-tool-trigger:hover,
 .qx-ai-tool-trigger.is-open {
-  border-color: color-mix(in srgb, var(--qx-accent, #5b8cff) 40%, var(--qx-border-1));
+  border-color: color-mix(in srgb, var(--qx-accent) 40%, var(--qx-border-1));
   color: var(--qx-text-primary);
-  background: color-mix(in srgb, var(--qx-accent, #5b8cff) 10%, var(--qx-bg-component-2));
+  background: color-mix(in srgb, var(--qx-accent) 10%, var(--qx-bg-component-2));
 }
 
 .qx-ai-tool-trigger-label {
@@ -979,17 +1037,36 @@
   padding: 32px 20px;
 }
 
-.qx-typing-cursor {
+/* Beautiful UI stream caret (vertical bar, step blink) */
+.qx-stream-caret {
   display: inline-block;
-  margin-left: 2px;
-  color: var(--qx-accent);
-  animation: qx-ai-cursor-blink 0.9s steps(2, start) infinite;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 1.5px;
+  border-radius: 1px;
+  background: var(--qx-text-primary);
+  vertical-align: text-bottom;
+  translate: 0 -0.5px;
+  animation: qx-stream-caret-blink 1s step-end infinite;
 }
 
-@keyframes qx-ai-cursor-blink {
+.qx-stream-caret.is-streaming {
+  animation: none;
+  opacity: 1;
+}
+
+@keyframes qx-stream-caret-blink {
   50% {
     opacity: 0;
   }
+}
+
+/* legacy alias */
+.qx-typing-cursor {
+  display: inline-block;
+  margin-left: 2px;
+  color: var(--qx-text-primary);
+  animation: qx-stream-caret-blink 1s step-end infinite;
 }
 
 /* ====== Agent steps (ReAct) ====== */
@@ -1100,30 +1177,37 @@
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
   min-height: min(100%, 200px);
+  min-width: 0;
   padding-bottom: 4px;
+  box-sizing: border-box;
 }
 
 .qx-ai-message.is-jan {
   display: flex;
+  flex-direction: column;
   gap: 0;
   width: 100%;
+  max-width: 100%;
+  margin-bottom: 0;
   box-sizing: border-box;
+  min-width: 0;
 }
 
-/* Jan: user right-aligned bubble ≤80% of column */
+/* Jan: user right-aligned bubble ≤80% of column (fit-content, not full stretch) */
 .qx-ai-message.is-jan.is-user {
   align-self: flex-end;
-  width: auto;
+  width: fit-content;
   max-width: min(80%, 100%);
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
 }
 
 /* Non-first user turns get more breathing room (Jan mt-8 rhythm). */
 .qx-ai-message-column > .qx-ai-message.is-jan.is-user + .qx-ai-message.is-jan.is-user,
 .qx-ai-message-column > .qx-ai-message.is-jan.is-assistant + .qx-ai-message.is-jan.is-user {
-  margin-top: 10px;
+  margin-top: 6px;
 }
 
 /* Jan assistant: full column, no heavy card shell */
@@ -1131,25 +1215,33 @@
   align-self: stretch;
   width: 100%;
   max-width: 100%;
+  align-items: stretch;
 }
 
+/* Override legacy 78% body cap — Jan column already constrains width. */
 .qx-ai-message.is-jan .qx-ai-message-body {
   width: 100%;
+  max-width: 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 5px;
 }
 
 .qx-ai-message.is-jan.is-user .qx-ai-message-body {
+  width: auto;
+  max-width: 100%;
   align-items: flex-end;
 }
 
 .qx-ai-message.is-jan.is-assistant .qx-ai-message-body {
+  width: 100%;
+  max-width: 100%;
   align-items: stretch;
 }
 
 .qx-ai-message.is-jan .qx-ai-message-meta {
-  margin-bottom: 5px;
+  margin-bottom: 0;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -1159,6 +1251,7 @@
 
 .qx-ai-message.is-jan.is-user .qx-ai-message-meta {
   padding-right: 2px;
+  text-align: right;
 }
 
 .qx-ai-message-bubble.is-jan {
@@ -1167,34 +1260,51 @@
   border: 0;
   box-shadow: none;
   max-width: 100%;
+  min-width: 0;
 }
 
-/* User bubble ≈ Jan secondary/primary soft chip */
+/*
+ * User bubble — Beautiful UI chat style:
+ * rounded-xl field surface, 13px / 1.4, no solid accent block.
+ */
+.qx-ai-message.is-jan.is-user .qx-ai-message-bubble.is-jan.is-user,
 .qx-ai-message-bubble.is-jan.is-user {
-  padding: 8px 12px;
-  border-radius: 14px 14px 4px 14px;
-  background: color-mix(in srgb, var(--qx-bg-component-2) 88%, var(--qx-accent, #5b8cff) 12%);
-  border: 1px solid color-mix(in srgb, var(--qx-border-1) 70%, var(--qx-accent, #5b8cff) 30%);
+  display: inline-block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 7px 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--qx-bg-component-3) 55%, var(--qx-bg-component-2) 45%);
+  border: 1px solid color-mix(in srgb, var(--qx-border-1) 88%, transparent);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--qx-shadow) 6%, transparent);
   color: var(--qx-text-primary);
-  font-size: 13.5px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.4;
   word-break: break-word;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
-/* Assistant: bare markdown surface (no card chrome) */
+/* Assistant: bare reading surface (StreamingText-like) */
+.qx-ai-message.is-jan.is-assistant .qx-ai-message-bubble.is-jan.is-assistant,
 .qx-ai-message-bubble.is-jan.is-assistant {
-  padding: 0;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  padding: 2px 0 0;
   background: transparent;
   border: 0;
-  font-size: 14px;
-  line-height: 1.55;
+  box-shadow: none;
   color: var(--qx-text-primary);
+  font-size: 13.5px;
+  line-height: 1.55;
 }
 
 .qx-ai-message-bubble.is-jan.is-assistant .qx-md-body {
   font-size: 14px;
   line-height: 1.55;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .qx-ai-message-bubble.is-jan.is-assistant .qx-md-body p {
@@ -1205,11 +1315,23 @@
   margin-bottom: 0;
 }
 
+.qx-ai-message-bubble.is-jan .qx-jan-cot,
+.qx-ai-message-bubble.is-jan .qx-jan-tool-call,
+.qx-ai-message-bubble.is-jan .qx-ai-attachments {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.qx-ai-message-bubble.is-jan .qx-ai-attachments {
+  width: 100%;
+}
+
 /*
  * Bottom composer dock — in document flow (not absolute overlay).
  * Avoids covering the transcript when queue/skill chips expand.
  */
-.qx-ai-conversation.is-jan .qx-jan-composer-dock.is-docked-flow {
+.qx-ai-conversation.is-jan .qx-jan-composer-dock.is-docked-flow,
+.qx-ai-conversation.is-jan .qx-ai-prompt-dock.is-docked-flow {
   position: relative;
   left: auto;
   bottom: auto;
@@ -1226,47 +1348,51 @@
   background: linear-gradient(
     180deg,
     transparent 0%,
-    color-mix(in srgb, var(--qx-glass-bg-solid, #12161f) 55%, transparent) 28%,
-    color-mix(in srgb, var(--qx-glass-bg-solid, #12161f) 88%, transparent) 100%
+    rgba(var(--qx-glass-bg), 0.45) 28%,
+    rgba(var(--qx-glass-bg), 0.82) 100%
   );
   pointer-events: none;
 }
 
-.qx-ai-conversation.is-jan .qx-jan-composer-dock.is-docked-flow > * {
+.qx-ai-conversation.is-jan .qx-jan-composer-dock.is-docked-flow,
+.qx-ai-conversation.is-jan .qx-ai-prompt-dock.is-docked-flow > * {
   width: min(720px, 100%);
   pointer-events: auto;
 }
 
-/* Jan ChatInput: rounded-3xl shell, focus ring, soft surface */
+/*
+ * Beautiful UI Prompt Bar:
+ * rounded-control + field bg + hairline border, compact ink send square.
+ */
 .qx-jan-composer {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: end;
   gap: 8px;
-  padding: 10px 12px 12px;
+  padding: 10px 10px 10px 12px;
   border: 1px solid var(--qx-border-1);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--qx-bg-component-1) 55%, var(--qx-glass-bg-solid, #12161f) 45%);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--qx-bg-component-2) 72%, var(--qx-bg-component-3) 28%);
   box-shadow:
-    0 10px 28px rgb(0 0 0 / 0.22),
-    0 0 0 1px color-mix(in srgb, #fff 4%, transparent) inset;
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+    0 0 0 1px color-mix(in srgb, var(--qx-border-1) 70%, transparent),
+    0 1px 2px color-mix(in srgb, var(--qx-shadow) 5%, transparent);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
 }
 
 .qx-jan-composer:focus-within {
-  border-color: color-mix(in srgb, var(--qx-accent, #5b8cff) 42%, var(--qx-border-1));
+  border-color: color-mix(in srgb, var(--qx-border-2) 85%, var(--qx-text-primary) 15%);
   box-shadow:
-    0 10px 28px rgb(0 0 0 / 0.22),
-    0 0 0 1px color-mix(in srgb, var(--qx-accent, #5b8cff) 28%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--qx-border-2) 80%, transparent),
+    0 1px 2px color-mix(in srgb, var(--qx-shadow) 4%, transparent);
 }
 
 .qx-jan-composer-tools {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding-bottom: 4px;
+  gap: 2px;
+  padding-bottom: 2px;
 }
 
 .qx-jan-composer-speed {
@@ -1279,29 +1405,61 @@
 
 .qx-jan-composer-input {
   width: 100%;
-  min-height: 40px; /* ~Jan minRows=2 feel */
-  max-height: 180px;
+  min-height: 36px;
+  max-height: 160px;
   margin: 0;
-  padding: 8px 4px;
+  padding: 8px 2px 6px;
   border: 0;
   outline: none;
   resize: none;
   background: transparent;
   color: var(--qx-text-primary);
-  font: 13.5px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
 .qx-jan-composer-input::placeholder {
   color: var(--qx-text-tertiary);
 }
 
+/* BUI send: 28px square, ink fill when ready */
+.qx-jan-composer-send.qx-shadcn-button,
 .qx-jan-composer-send {
-  height: 34px;
-  min-width: 64px;
-  padding: 0 14px;
-  border-radius: 999px;
-  font-size: 12.5px;
-  font-weight: 600;
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  border-radius: 8px !important;
+  border: 0 !important;
+  display: inline-grid !important;
+  place-items: center;
+  background: color-mix(in srgb, var(--qx-border-2) 80%, var(--qx-bg-component-3)) !important;
+  color: var(--qx-text-tertiary) !important;
+  box-shadow: none !important;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    transform 120ms ease;
+}
+
+.qx-jan-composer-send.is-ready {
+  background: var(--qx-text-primary) !important;
+  color: var(--qx-bg-200, #fff) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 14%, transparent) !important;
+}
+
+.qx-jan-composer-send.is-queue.is-ready {
+  background: color-mix(in srgb, var(--qx-accent) 88%, var(--qx-text-primary)) !important;
+  color: var(--qx-text-on-accent) !important;
+}
+
+.qx-jan-composer-send:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+.qx-jan-composer-send:disabled {
+  opacity: 1 !important;
+  cursor: default;
 }
 
 .qx-ai-skill-picker.is-docked,
@@ -1313,17 +1471,20 @@
   max-height: 240px;
 }
 
-/* Jan chain-of-thought + tool rows */
+/*
+ * Beautiful UI Thinking:
+ * compact header with sparkles + shimmer title; expandable timeline rail.
+ */
 .qx-jan-cot {
-  margin: 0 0 10px;
-  border-radius: 14px;
-  transition: background 120ms ease, border-color 120ms ease;
+  margin: 0 0 8px;
+  border-radius: 0;
+  transition: none;
 }
 
 .qx-jan-cot.is-open {
-  border: 1px solid color-mix(in srgb, var(--qx-border-2, #333) 70%, transparent);
-  background: color-mix(in srgb, var(--qx-bg-component-2, #1a1f2a) 80%, transparent);
-  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  padding: 0;
 }
 
 .qx-jan-cot-header,
@@ -1331,48 +1492,95 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  margin: 0;
-  padding: 4px 2px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 0 -6px;
+  padding: 4px 6px;
   border: 0;
+  border-radius: 8px;
   background: transparent;
   color: var(--qx-text-secondary);
-  font: 600 12px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font: 500 13px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   text-align: left;
   cursor: pointer;
+  transition: background-color 100ms ease, color 100ms ease;
 }
 
 .qx-jan-cot-header:hover,
 .qx-jan-tool-header:hover {
+  background: color-mix(in srgb, var(--qx-bg-component-3) 70%, transparent);
   color: var(--qx-text-primary);
+}
+
+.qx-jan-cot-spark {
+  flex: 0 0 auto;
+  color: var(--qx-text-tertiary);
+}
+
+.qx-jan-cot.is-streaming .qx-jan-cot-spark {
+  color: var(--qx-text-secondary);
 }
 
 .qx-jan-cot-title,
 .qx-jan-tool-label {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
+  white-space: nowrap;
+}
+
+.qx-jan-cot-title.is-shimmer,
+.qx-jan-shimmer {
+  color: transparent !important;
+  background-image: linear-gradient(
+    90deg,
+    var(--qx-text-tertiary) 35%,
+    var(--qx-text-primary) 50%,
+    var(--qx-text-tertiary) 65%
+  );
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  animation: qx-jan-shimmer 1.4s linear infinite;
 }
 
 .qx-jan-chevron {
-  transition: transform 140ms ease;
-  opacity: 0.7;
+  transition: transform 300ms cubic-bezier(0.23, 1, 0.32, 1);
+  color: var(--qx-text-tertiary);
+  opacity: 1;
 }
 
 .qx-jan-chevron.is-open {
   transform: rotate(180deg);
 }
 
+.qx-jan-cot-panel {
+  position: relative;
+  margin: 2px 0 0 5px;
+  padding: 0 0 0 14px;
+}
+
+.qx-jan-cot-rail {
+  position: absolute;
+  left: 3px;
+  top: 0;
+  bottom: 4px;
+  width: 1px;
+  background: var(--qx-border-1);
+}
+
 .qx-jan-cot-content {
-  margin-top: 8px;
+  margin-top: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
+  padding: 4px 0 2px;
 }
 
 .qx-jan-step {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
+  grid-template-columns: 16px minmax(0, 1fr);
   gap: 8px;
+  align-items: start;
 }
 
 .qx-jan-step-rail {
@@ -1383,50 +1591,74 @@
 }
 
 .qx-jan-step.is-active .qx-jan-step-rail {
-  color: var(--qx-accent, #5b8cff);
+  color: var(--qx-text-secondary);
 }
 
 .qx-jan-step.is-complete .qx-jan-step-rail {
-  color: var(--qx-success, #34c759);
+  color: var(--qx-text-tertiary);
 }
 
 .qx-jan-step.is-error .qx-jan-step-rail {
-  color: var(--qx-danger, #ff453a);
+  color: var(--qx-danger);
 }
 
 .qx-jan-step-label {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--qx-text-secondary);
 }
 
 .qx-jan-step-body {
-  margin-top: 4px;
+  margin-top: 2px;
 }
 
 .qx-jan-thought-text {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--qx-text-tertiary);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--qx-text-secondary);
   white-space: pre-wrap;
 }
 
 .qx-jan-thought-text.is-error {
-  color: var(--qx-danger, #ff453a);
+  color: var(--qx-danger);
 }
 
+/* Tool chips — compact field pills (Beautiful UI Tool Chips) */
 .qx-jan-tool {
   border-radius: 8px;
+  margin: 2px 0;
+}
+
+.qx-jan-tool-header {
+  gap: 6px;
+  font-weight: 500;
+  font-size: 12.5px;
 }
 
 .qx-jan-tool.is-open .qx-jan-tool-header {
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+}
+
+.qx-jan-tool:not(.is-open) .qx-jan-tool-header {
+  background: color-mix(in srgb, var(--qx-bg-component-3) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--qx-border-1) 80%, transparent);
+  border-radius: 999px;
+  padding: 3px 8px 3px 8px;
+}
+
+.qx-jan-tool-body {
+  margin-left: 2px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--qx-border-1);
+  background: color-mix(in srgb, var(--qx-bg-component-2) 88%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--qx-border-1) 50%, transparent);
 }
 
 .qx-jan-tool-body {
   margin-left: 6px;
   padding-left: 12px;
-  border-left: 2px dotted color-mix(in srgb, var(--qx-border-2, #555) 80%, transparent);
+  border-left: 2px dotted color-mix(in srgb, var(--qx-border-2) 80%, transparent);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1448,7 +1680,7 @@
   padding: 8px 10px;
   border: 1px solid var(--qx-border-1);
   border-radius: 8px;
-  background: var(--qx-bg-component-3, rgb(0 0 0 / 0.25));
+  background: var(--qx-bg-component-3);
   font: 11px/1.4 var(--qx-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   color: var(--qx-text-secondary);
   white-space: pre-wrap;
@@ -1514,11 +1746,6 @@
   opacity: 0.55;
 }
 
-.qx-typing-cursor {
-  animation: qx-blink 1s steps(1) infinite;
-  opacity: 0.7;
-}
-
 @keyframes qx-blink {
   50% { opacity: 0; }
 }
@@ -1529,11 +1756,11 @@
 }
 
 .qx-jan-tool.is-running .qx-jan-tool-label {
-  color: var(--qx-accent, #5b8cff);
+  color: var(--qx-accent);
 }
 
 .qx-jan-tool.is-error .qx-jan-tool-label {
-  color: var(--qx-danger, #ff453a);
+  color: var(--qx-danger);
 }
 
 .qx-jan-tool-section pre.is-output {
@@ -1927,11 +2154,11 @@
 
 .qx-ai-model-star:hover {
   color: var(--qx-text-secondary);
-  background: color-mix(in srgb, var(--qx-bg-component-3, #000) 12%, transparent);
+  background: color-mix(in srgb, var(--qx-bg-component-3) 12%, transparent);
 }
 
 .qx-ai-model-star.is-on {
-  color: #e8b923;
+  color: var(--qx-warning);
 }
 
 .qx-ai-model-row-name {
@@ -1974,7 +2201,7 @@
 }
 
 .qx-ai-cap-badge.is-vision {
-  color: color-mix(in srgb, var(--qx-accent, #5b8cff) 90%, var(--qx-text-primary));
+  color: color-mix(in srgb, var(--qx-accent) 90%, var(--qx-text-primary));
 }
 
 .qx-ai-cap-badge.is-reasoning {

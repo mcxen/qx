@@ -13,7 +13,7 @@ Before any code or documentation edit, read:
    `docs/module-port-inventory.md` + `public/doc/plugin-development-guide.md`.
 
 If the request is UI-related, treat `UI_SPEC.md` as the source of truth. Do not invent alternate layout systems or component conventions.
-If the request is **QxAI chat / workbench / message / composer / queue / token-speed** visual or interaction, also treat [`UI_SPEC_AI.md`](UI_SPEC_AI.md) as the source of truth (Jan-aligned). Shell chrome still follows `UI_SPEC.md`.
+If the request is **QxAI chat / workbench / message / composer / queue / token-speed** visual or interaction, also treat [`UI_SPEC_AI.md`](UI_SPEC_AI.md) as the source of truth: **AI Elements structure** + **Beautiful UI visuals** (not a full SDK install). Shell chrome still follows `UI_SPEC.md`.
 If the request changes **public interfaces or layer boundaries**, update docs in the same change.
 
 ## Working Rules

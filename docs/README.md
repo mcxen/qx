@@ -9,7 +9,7 @@
 1. [`AGENTS.md`](../AGENTS.md) — 代码风格、Esc 协议、shadcn/主题规则、发版流程
 2. [`architecture-principles.md`](./architecture-principles.md) — **SOLID、抽象层次、接口契约与文档义务**
 3. [`UI_SPEC.md`](../UI_SPEC.md) — UI 视觉规范、CSS token、shell 三段式布局
-4. [`UI_SPEC_AI.md`](../UI_SPEC_AI.md) — **QxAI 对话工作台**视觉标杆（对齐 Jan Chat）
+4. [`UI_SPEC_AI.md`](../UI_SPEC_AI.md) — **QxAI 对话工作台**标杆（AI Elements 结构 + Beautiful UI 视觉）
 5. [`landing/UI_SPEC.md`](../landing/UI_SPEC.md) — **官网落地页**视觉与实现约定（与应用壳分离）
 
 ## 架构

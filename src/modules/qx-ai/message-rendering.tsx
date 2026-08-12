@@ -1,7 +1,6 @@
 import { Suspense, lazy, memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import {
-  Brain,
   CheckCircle2,
   ChevronDown,
   CircleDot,
@@ -12,6 +11,7 @@ import {
   Gauge,
   Loader2,
   Search,
+  Sparkles,
   Wrench,
   XCircle,
 } from "lucide-react";
@@ -157,8 +157,11 @@ function parseParts(content: string): MessagePart[] {
   return parts.length ? parts : [{ type: "text", text: content }];
 }
 
-/** Jan-style collapsible tool row. */
-function JanToolCall({
+/**
+ * Tool call chip — AI Elements `Tool` structure, Beautiful UI compact chip look.
+ * CSS: `.qx-ai-tool` (canonical) + `.qx-jan-tool` (compat).
+ */
+function ToolCallPanel({
   name,
   state,
   input,
@@ -182,15 +185,18 @@ function JanToolCall({
       : t("qxai.tool.used", "Used {name}").replace("{name}", humanizeToolName(name));
 
   return (
-    <div className={`qx-jan-tool${open ? " is-open" : ""}${running ? " is-running" : ""}${failed ? " is-error" : ""}`}>
-      <button type="button" className="qx-jan-tool-header" onClick={() => setOpen((value) => !value)}>
+    <div
+      className={`qx-ai-tool qx-jan-tool${open ? " is-open" : ""}${running ? " is-running" : ""}${failed ? " is-error" : ""}`}
+      data-qx-ai="tool"
+    >
+      <button type="button" className="qx-ai-tool-header qx-jan-tool-header" onClick={() => setOpen((value) => !value)}>
         <Wrench size={14} aria-hidden="true" />
-        <span className="qx-jan-tool-label">{label}</span>
+        <span className="qx-ai-tool-label qx-jan-tool-label">{label}</span>
         {running ? <Loader2 size={13} className="qx-spin" /> : null}
         <ChevronDown size={14} className={`qx-jan-chevron${open ? " is-open" : ""}`} aria-hidden="true" />
       </button>
       {open && (
-        <div className="qx-jan-tool-body">
+        <div className="qx-ai-tool-body qx-jan-tool-body">
           {input ? (
             <div className="qx-jan-tool-section">
               <h4>{t("qxai.tool.parameters", "Parameters")}</h4>
@@ -209,8 +215,11 @@ function JanToolCall({
   );
 }
 
-/** Jan-style chain-of-thought card wrapping reasoning + tool steps. */
-function JanChainOfThought({
+/**
+ * Reasoning panel — AI Elements `Reasoning` structure, Beautiful UI Thinking look.
+ * CSS: `.qx-ai-reasoning` (canonical) + `.qx-jan-cot` (compat).
+ */
+function ReasoningPanel({
   title,
   streamingLabel,
   completedVerb,
@@ -263,16 +272,33 @@ function JanChainOfThought({
   })();
 
   return (
-    <div className={`qx-jan-cot${open ? " is-open" : ""}${isStreaming ? " is-streaming" : ""}`}>
-      <button type="button" className="qx-jan-cot-header" onClick={() => setOpen((value) => !value)}>
-        <Brain size={14} aria-hidden="true" />
-        <span className="qx-jan-cot-title">{headerTitle}</span>
+    <div
+      className={`qx-ai-reasoning qx-jan-cot${open ? " is-open" : ""}${isStreaming ? " is-streaming" : ""}`}
+      data-qx-ai="reasoning"
+    >
+      <button
+        type="button"
+        className="qx-ai-reasoning-header qx-jan-cot-header"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Sparkles size={15} strokeWidth={1.75} className="qx-jan-cot-spark" aria-hidden="true" />
+        <span className={`qx-ai-reasoning-title qx-jan-cot-title${isStreaming ? " is-shimmer" : ""}`}>
+          {headerTitle}
+        </span>
         <ChevronDown size={14} className={`qx-jan-chevron${open ? " is-open" : ""}`} aria-hidden="true" />
       </button>
-      {open && <div className="qx-jan-cot-content">{children}</div>}
+      {open ? (
+        <div className="qx-ai-reasoning-panel qx-jan-cot-panel">
+          <div className="qx-ai-reasoning-rail qx-jan-cot-rail" aria-hidden="true" />
+          <div className="qx-ai-reasoning-content qx-jan-cot-content">{children}</div>
+        </div>
+      ) : null}
     </div>
   );
 }
+
+/** @deprecated use ReasoningPanel */
+const JanChainOfThought = ReasoningPanel;
 
 function StepRow({
   status,
@@ -304,6 +330,8 @@ function StepRow({
   );
 }
 
+export { ReasoningPanel, ToolCallPanel };
+
 export const AgentStepsView = memo(function AgentStepsView({
   steps,
   streaming = false,
@@ -334,10 +362,10 @@ export const AgentStepsView = memo(function AgentStepsView({
             </StepRow>
           );
         }
-        // Jan: tool rows sit directly in the CoT list (no duplicate labels).
+        // Tool rows sit directly in the Reasoning list (Elements Tool + BUI chip).
         if (step.kind === "action") {
           return (
-            <JanToolCall
+            <ToolCallPanel
               key={step.id}
               name={step.tool ?? "tool"}
               state={step.state}
@@ -348,7 +376,7 @@ export const AgentStepsView = memo(function AgentStepsView({
         }
         if (step.kind === "observation") {
           return (
-            <JanToolCall
+            <ToolCallPanel
               key={step.id}
               name={step.tool ?? "tool"}
               state="completed"
@@ -449,7 +477,7 @@ export function AiMessageContent({
       <Suspense fallback={<div className="qx-md-body">{content}</div>}>
         {parts.map((part, index) =>
           part.type === "tool" ? (
-            <JanToolCall
+            <ToolCallPanel
               key={`tool-${index}-${part.name}`}
               name={part.name}
               state={part.state}
@@ -475,9 +503,7 @@ export function AiMessageContent({
       {streaming ? (
         <div className="qx-jan-message-foot is-streaming">
           {hasChain ? null : <Search size={12} className="qx-jan-streaming-dot" aria-hidden="true" />}
-          <span className="qx-typing-cursor" aria-hidden="true">
-            |
-          </span>
+          <span className="qx-stream-caret is-streaming" aria-hidden="true" />
         </div>
       ) : null}
     </>

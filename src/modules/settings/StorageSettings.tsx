@@ -322,10 +322,10 @@ export default function StorageSettings() {
       </SettingsCard>
 
       <SettingsCard
-        title={t("storage.qxai.title", "QxAI Sessions")}
+        title={t("storage.qxai.title", "QxAI Sessions & Memory")}
         description={t(
           "storage.qxai.desc",
-          "Durable conversation history and managed copies of images and files attached to QxAI.",
+          "Per-conversation folders under QxAiSession/sessions/<id>/ (session.json + files/), plus long-term memory SQLite with FTS at memories/memory.db.",
         )}
       >
         <div className="qx-storage-toolbar">
@@ -352,7 +352,17 @@ export default function StorageSettings() {
                 .then((path) => openSystemPath(path))}
             >
               <FolderOpen size={14} aria-hidden="true" />
-              {t("storage.qxai.open", "Open Folder")}
+              {t("storage.qxai.open", "Open sessions")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy !== null}
+              onClick={() => void invoke<string>("qxai_memories_directory")
+                .then((path) => openSystemPath(path))}
+            >
+              <FolderOpen size={14} aria-hidden="true" />
+              {t("storage.qxai.openMemory", "Open memory")}
             </Button>
             <Button
               variant="destructive"
@@ -361,10 +371,10 @@ export default function StorageSettings() {
               onClick={() => void runCleanup({
                 id: "qxai-sessions",
                 command: "qx_storage_clear_qxai_sessions",
-                title: t("storage.qxai.title", "QxAI Sessions"),
+                title: t("storage.qxai.title", "QxAI Sessions & Memory"),
                 confirm: t(
                   "storage.qxai.confirm",
-                  "Delete all QxAI conversation history and managed attachments? This cannot be undone.",
+                  "Delete all QxAI session folders (conversation JSON + attachments)? This cannot be undone.",
                 ),
               }).then(async (cleared) => {
                 if (!cleared) return;
@@ -385,6 +395,34 @@ export default function StorageSettings() {
               {busy === "qxai-sessions"
                 ? t("about.storage.clearing", "Clearing...")
                 : t("storage.qxai.clear", "Clear Sessions")}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={busy !== null}
+              onClick={() => {
+                if (!window.confirm(t(
+                  "storage.qxai.confirmMemory",
+                  "Delete the QxAI long-term memory SQLite database and hot-window mirrors? This cannot be undone.",
+                ))) return;
+                void (async () => {
+                  try {
+                    setBusy("qxai-memory");
+                    setFailed(false);
+                    await invoke("qxai_memory_clear");
+                    setStatus(t("storage.qxai.clearMemory", "Clear Memory DB") + ": OK");
+                    await loadStorage(false);
+                  } catch (error) {
+                    setFailed(true);
+                    setStatus(String(error));
+                  } finally {
+                    setBusy(null);
+                  }
+                })();
+              }}
+            >
+              <Trash2 size={14} aria-hidden="true" />
+              {t("storage.qxai.clearMemory", "Clear Memory DB")}
             </Button>
           </div>
         </div>

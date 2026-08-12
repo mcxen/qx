@@ -595,9 +595,9 @@ fn build_storage_overview() -> StorageOverview {
         clearable: false,
     };
 
-    // QxAI sessions are durable user data: conversation JSON plus managed
-    // copies of files attached by the user. They are never part of cache or
-    // reclaimable-storage totals, but can be explicitly opened or cleared.
+    // QxAI sessions are durable user data: per-conversation folders
+    // (session.json + files/) under QxAiSession. Never part of cache /
+    // reclaimable totals; users may open or clear them explicitly.
     let qxai_path = qxai_sessions_dir();
     let (qxai_bytes, qxai_files) = measure(&qxai_path, &mut warnings);
     let qxai_sessions = StorageBucket {

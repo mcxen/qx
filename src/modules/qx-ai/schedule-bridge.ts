@@ -20,6 +20,8 @@ let startPromise: Promise<void> | null = null;
  * - Does **not** import the AI store/agent at module load time (keeps App shell light).
  * - Starts asynchronously; failures never throw into the caller.
  * - Event handling yields to the macrotask queue so UI input is not blocked.
+ * - Creates a **background** conversation (no focus steal) and fire-and-forgets
+ *   `sendMessage` so the agent turn never blocks the event path or main shell.
  */
 export function startQxAiScheduleBridge(): void {
   if (started || typeof window === "undefined") return;
@@ -82,26 +84,61 @@ export function startQxAiScheduleBridgeDeferred(delayMs = 4_000): () => void {
   };
 }
 
+/**
+ * Kick off a scheduled agent turn in the background:
+ * 1. Ensure sessions/providers are loaded (async).
+ * 2. Open a **new** conversation without switching the user's current chat.
+ * 3. Auto-send the schedule prompt (fire-and-forget — do not await the full turn).
+ */
 async function handleScheduleFire(payload: ScheduleFireEvent | undefined): Promise<void> {
-  if (!payload?.prompt?.trim()) return;
+  if (!payload) return;
+  const prompt = payload.prompt?.trim();
+  if (!prompt) return;
+  const scheduleId = payload.id;
+  const scheduleName = payload.name?.trim() || "Scheduled task";
+  const skillId = payload.skillId;
+
+  // Yield once more so dynamic imports never run in the same turn as event dispatch.
+  await new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 0);
+  });
+
   // Dynamic import: agent graph only loads when a schedule actually needs chat.
   const [{ useG4fStore }, { readQxAiSkill }] = await Promise.all([
     import("./store"),
     import("./skills"),
   ]);
   const store = useG4fStore.getState();
-  if (!store.sessionsLoaded) await store.loadSessions();
-  if (store.providers.length === 0) await store.loadProviders();
-  const conversationId = store.createConversation();
+  if (!store.sessionsLoaded) {
+    await store.loadSessions();
+  }
+  if (store.providers.length === 0) {
+    await store.loadProviders();
+  }
+
+  const conversationId = store.createConversation(undefined, undefined, {
+    background: true,
+    name: scheduleName,
+  });
+
   let skill = undefined;
-  if (payload.skillId) {
+  if (skillId) {
     try {
-      skill = await readQxAiSkill(payload.skillId);
+      skill = await readQxAiSkill(skillId);
     } catch {
       skill = undefined;
     }
   }
-  await store.sendMessage(payload.prompt, skill, conversationId);
+
+  // Fire-and-forget: agent turns can take minutes; never block the bridge or UI.
+  // Per-conversation `runs[id]` keeps streaming isolated from the active chat.
+  void store.sendMessage(prompt, skill, conversationId).catch((error) => {
+    console.error("qxai schedule agent turn failed", {
+      scheduleId,
+      conversationId,
+      error,
+    });
+  });
 }
 
 export async function listQxAiSchedules() {

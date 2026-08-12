@@ -648,9 +648,9 @@ img.qx-ext-card-icon {
   display: grid;
   gap: 8px;
   padding: 12px 14px;
-  border: 1px solid color-mix(in srgb, var(--qx-border-2, #333) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--qx-border-2) 55%, transparent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--qx-bg-component-2, #161a22) 90%, transparent);
+  background: color-mix(in srgb, var(--qx-bg-component-2) 90%, transparent);
 }
 
 .qx-agent-schedule-head {
@@ -693,9 +693,9 @@ img.qx-ext-card-icon {
 }
 
 .qx-agent-skill-card {
-  --skill-card-bg: color-mix(in srgb, var(--qx-bg-component-2, #161a22) 92%, #fff 4%);
-  --skill-card-border: color-mix(in srgb, var(--qx-border-2, #333) 55%, transparent);
-  --skill-card-ink: var(--qx-text-primary, #f4f6fb);
+  --skill-card-bg: color-mix(in srgb, var(--qx-bg-component-2) 94%, var(--qx-text-primary) 4%);
+  --skill-card-border: color-mix(in srgb, var(--qx-border-2) 55%, transparent);
+  --skill-card-ink: var(--qx-text-primary);
   --skill-card-body: var(--qx-text-secondary, rgb(255 255 255 / 0.72));
   --skill-card-mute: var(--qx-text-tertiary, rgb(255 255 255 / 0.48));
   position: relative;
@@ -719,8 +719,8 @@ img.qx-ext-card-icon {
 }
 
 .qx-agent-skill-card:hover {
-  border-color: color-mix(in srgb, var(--qx-border-2, #555) 80%, transparent);
-  background: color-mix(in srgb, var(--skill-card-bg) 88%, #fff 6%);
+  border-color: color-mix(in srgb, var(--qx-border-2) 80%, transparent);
+  background: color-mix(in srgb, var(--skill-card-bg) 90%, var(--qx-text-primary) 6%);
   box-shadow:
     0 1px 1px rgb(0 0 0 / 0.05),
     0 4px 12px rgb(0 0 0 / 0.1),
@@ -732,8 +732,8 @@ img.qx-ext-card-icon {
  * hairline + stacked shadow + 1px ink ring (no full polarity flip; keeps Select readable).
  */
 .qx-agent-skill-card.is-fixed {
-  --skill-card-bg: color-mix(in srgb, var(--qx-bg-component-2, #161a22) 78%, #fff 8%);
-  --skill-card-border: color-mix(in srgb, var(--qx-text-primary, #f4f6fb) 42%, transparent);
+  --skill-card-bg: color-mix(in srgb, var(--qx-bg-component-2) 88%, var(--qx-accent) 8%);
+  --skill-card-border: color-mix(in srgb, var(--qx-text-primary) 42%, transparent);
   box-shadow:
     0 1px 1px rgb(0 0 0 / 0.06),
     0 6px 18px rgb(0 0 0 / 0.16),
@@ -741,8 +741,8 @@ img.qx-ext-card-icon {
 }
 
 .qx-agent-skill-card.is-fixed:hover {
-  border-color: color-mix(in srgb, var(--qx-text-primary, #f4f6fb) 55%, transparent);
-  background: color-mix(in srgb, var(--skill-card-bg) 90%, #fff 8%);
+  border-color: color-mix(in srgb, var(--qx-text-primary) 55%, transparent);
+  background: color-mix(in srgb, var(--skill-card-bg) 90%, var(--qx-text-primary) 6%);
 }
 
 .qx-agent-skill-card.is-disabled {
@@ -768,7 +768,7 @@ img.qx-ext-card-icon {
   height: 32px;
   border-radius: 8px;
   border: 1px solid color-mix(in srgb, var(--skill-card-border) 80%, transparent);
-  background: color-mix(in srgb, var(--skill-card-bg) 70%, #000 8%);
+  background: color-mix(in srgb, var(--skill-card-bg) 88%, var(--qx-text-primary) 8%);
   color: var(--skill-card-ink);
 }
 
@@ -779,7 +779,7 @@ img.qx-ext-card-icon {
   padding: 0 8px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--skill-card-border) 90%, transparent);
-  background: color-mix(in srgb, var(--skill-card-bg) 60%, #000 10%);
+  background: color-mix(in srgb, var(--skill-card-bg) 85%, var(--qx-text-primary) 10%);
   color: var(--skill-card-body);
   font-family: var(--qx-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size: 11px;
@@ -790,15 +790,15 @@ img.qx-ext-card-icon {
 }
 
 .qx-agent-skill-badge.is-fixed {
-  border-color: color-mix(in srgb, var(--qx-text-primary, #f4f6fb) 22%, transparent);
-  background: color-mix(in srgb, var(--qx-text-primary, #f4f6fb) 10%, transparent);
+  border-color: color-mix(in srgb, var(--qx-text-primary) 22%, transparent);
+  background: color-mix(in srgb, var(--qx-text-primary) 10%, transparent);
   color: var(--skill-card-ink);
 }
 
 .qx-agent-skill-badge.is-smart {
-  border-color: color-mix(in srgb, var(--qx-accent, #0070f3) 35%, transparent);
-  background: color-mix(in srgb, var(--qx-accent, #0070f3) 12%, transparent);
-  color: color-mix(in srgb, var(--qx-accent, #5b9dff) 88%, #fff 12%);
+  border-color: color-mix(in srgb, var(--qx-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--qx-accent) 12%, transparent);
+  color: color-mix(in srgb, var(--qx-accent) 90%, var(--qx-text-on-accent) 10%);
 }
 
 .qx-agent-skill-badge.is-disabled {
@@ -871,8 +871,8 @@ img.qx-ext-card-icon {
   padding: 10px 12px;
   border: 1px solid var(--qx-border-subtle, rgb(255 255 255 / 0.12));
   border-radius: 8px;
-  background: color-mix(in srgb, #0b0f16 90%, transparent);
-  color: var(--color-text-primary, #f4f6fb);
+  background: rgba(var(--qx-glass-bg), 0.92);
+  color: var(--qx-text-primary);
   font: 12px/1.45 var(--qx-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   resize: vertical;
 }
@@ -1504,7 +1504,7 @@ img.qx-plugin-detail-icon {
 }
 
 .qx-plugin-screenshot-carousel:focus-visible {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--qx-accent, #6ea8fe) 45%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--qx-accent) 45%, transparent);
   border-radius: 10px;
 }
 
@@ -1560,7 +1560,7 @@ img.qx-plugin-detail-icon {
   justify-content: center;
   border: 1px solid var(--qx-border-1);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--qx-bg-component-1, #1a1a1a) 88%, transparent);
+  background: color-mix(in srgb, var(--qx-bg-component-1) 88%, transparent);
   color: var(--qx-text-secondary);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1575,7 +1575,7 @@ img.qx-plugin-detail-icon {
 .qx-plugin-screenshot-nav:hover {
   color: var(--qx-text-primary);
   border-color: var(--qx-border-2);
-  background: color-mix(in srgb, var(--qx-bg-component-1, #1a1a1a) 96%, transparent);
+  background: color-mix(in srgb, var(--qx-bg-component-1) 96%, transparent);
 }
 
 .qx-plugin-screenshot-nav:focus-visible {
@@ -1635,7 +1635,7 @@ img.qx-plugin-detail-icon {
   padding: 2px 7px;
   border-radius: 999px;
   border: 1px solid var(--qx-border-1);
-  background: color-mix(in srgb, var(--qx-bg-component-1, #1a1a1a) 88%, transparent);
+  background: color-mix(in srgb, var(--qx-bg-component-1) 88%, transparent);
   color: var(--qx-text-tertiary);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -3263,6 +3263,6 @@ span.qx-plugin-screenshot {
 
 .qx-settings-error {
   margin: 6px 0;
-  color: var(--qx-danger, #ff5c5c);
+  color: var(--qx-danger);
   font-size: 12px;
 }

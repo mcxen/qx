@@ -1,6 +1,20 @@
+//! QxAI durable session store — **folder layout** (RLM-style modular units).
+//!
+//! ```text
+//! ~/.qx/QxAiSession/
+//!   index.json                 # lightweight catalog for list UIs
+//!   sessions/<conversation-id>/
+//!     session.json             # full conversation document
+//!     files/*                  # managed attachment copies
+//! ```
+//!
+//! Legacy `sessions.json` + `files/<id>/` is migrated once on load/save.
+//! Deletes remove the whole session directory (JSON + attachments).
+
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{json, Map, Value};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -26,12 +40,32 @@ fn sessions_root() -> PathBuf {
     crate::paths::state_dir().join("QxAiSession")
 }
 
-fn sessions_file() -> PathBuf {
+fn sessions_dir() -> PathBuf {
+    sessions_root().join("sessions")
+}
+
+fn index_file() -> PathBuf {
+    sessions_root().join("index.json")
+}
+
+fn legacy_sessions_file() -> PathBuf {
     sessions_root().join("sessions.json")
 }
 
-fn attachments_root() -> PathBuf {
+fn legacy_attachments_root() -> PathBuf {
     sessions_root().join("files")
+}
+
+fn session_dir(id: &str) -> PathBuf {
+    sessions_dir().join(id)
+}
+
+fn session_file(id: &str) -> PathBuf {
+    session_dir(id).join("session.json")
+}
+
+fn session_files_dir(id: &str) -> PathBuf {
+    session_dir(id).join("files")
 }
 
 fn storage_lock() -> &'static Mutex<()> {
@@ -56,6 +90,12 @@ fn checked_id(id: &str) -> Result<&str, String> {
         return Err("invalid QxAI session id".to_string());
     }
     Ok(id)
+}
+
+fn ensure_root() -> Result<(), String> {
+    fs::create_dir_all(sessions_dir())
+        .map_err(|error| format!("create {}: {error}", sessions_dir().display()))?;
+    Ok(())
 }
 
 fn atomic_write_json(path: &Path, value: &Value) -> Result<(), String> {
@@ -109,6 +149,290 @@ fn attachment_kind(mime: &str) -> &'static str {
     }
 }
 
+fn rewrite_attachment_paths(mut conversation: Value, id: &str) -> Value {
+    let new_files = session_files_dir(id);
+    let legacy_files = legacy_attachments_root().join(id);
+    let Some(messages) = conversation
+        .get_mut("messages")
+        .and_then(Value::as_array_mut)
+    else {
+        return conversation;
+    };
+    for message in messages {
+        let Some(attachments) = message.get_mut("attachments").and_then(Value::as_array_mut) else {
+            continue;
+        };
+        for attachment in attachments {
+            let Some(path) = attachment.get("path").and_then(Value::as_str) else {
+                continue;
+            };
+            let path_buf = PathBuf::from(path);
+            let file_name = path_buf.file_name().and_then(|n| n.to_str());
+            let Some(file_name) = file_name else {
+                continue;
+            };
+            // Prefer new layout if the file already lives there; else remap legacy.
+            let candidate_new = new_files.join(file_name);
+            let candidate_legacy = legacy_files.join(file_name);
+            if candidate_new.is_file() {
+                if let Some(object) = attachment.as_object_mut() {
+                    object.insert(
+                        "path".into(),
+                        Value::String(candidate_new.to_string_lossy().into_owned()),
+                    );
+                }
+            } else if candidate_legacy.is_file() || path.contains(&format!("files/{id}/")) {
+                if let Some(object) = attachment.as_object_mut() {
+                    object.insert(
+                        "path".into(),
+                        Value::String(candidate_new.to_string_lossy().into_owned()),
+                    );
+                }
+            }
+        }
+    }
+    conversation
+}
+
+fn move_dir_contents(from: &Path, to: &Path) -> Result<(), String> {
+    if !from.is_dir() {
+        return Ok(());
+    }
+    fs::create_dir_all(to).map_err(|e| format!("create {}: {e}", to.display()))?;
+    for entry in fs::read_dir(from).map_err(|e| format!("read {}: {e}", from.display()))? {
+        let entry = entry.map_err(|e| format!("entry: {e}"))?;
+        let src = entry.path();
+        let dest = to.join(entry.file_name());
+        if dest.exists() {
+            continue;
+        }
+        if fs::rename(&src, &dest).is_err() {
+            if src.is_file() {
+                fs::copy(&src, &dest).map_err(|e| format!("copy {}: {e}", src.display()))?;
+                let _ = fs::remove_file(&src);
+            }
+        }
+    }
+    let _ = fs::remove_dir_all(from);
+    Ok(())
+}
+
+/// One-time migration: monolithic `sessions.json` + `files/<id>/` → folder units.
+fn migrate_legacy_layout_if_needed() -> Result<(), String> {
+    ensure_root()?;
+    let legacy = legacy_sessions_file();
+    if !legacy.is_file() {
+        // Still move any leftover top-level files/ dirs into sessions/*/files.
+        let legacy_files = legacy_attachments_root();
+        if legacy_files.is_dir() {
+            for entry in fs::read_dir(&legacy_files)
+                .map_err(|e| format!("read {}: {e}", legacy_files.display()))?
+            {
+                let entry = entry.map_err(|e| format!("entry: {e}"))?;
+                let name = entry.file_name();
+                let Some(id) = name.to_str() else {
+                    continue;
+                };
+                if checked_id(id).is_err() {
+                    continue;
+                }
+                let dest = session_files_dir(id);
+                move_dir_contents(&entry.path(), &dest)?;
+            }
+            let _ = fs::remove_dir(&legacy_files);
+        }
+        return Ok(());
+    }
+
+    let bytes = fs::read(&legacy).map_err(|e| format!("read {}: {e}", legacy.display()))?;
+    let value: Value =
+        serde_json::from_slice(&bytes).map_err(|e| format!("decode legacy sessions: {e}"))?;
+    let Some(arr) = value.as_array() else {
+        return Err("legacy sessions.json must be an array".into());
+    };
+
+    for item in arr {
+        let Some(id) = item.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let Ok(id) = checked_id(id) else {
+            continue;
+        };
+        let mut conversation = item.clone();
+        // Move attachments first so path rewrite can point at new files.
+        let legacy_att = legacy_attachments_root().join(id);
+        move_dir_contents(&legacy_att, &session_files_dir(id))?;
+        conversation = rewrite_attachment_paths(conversation, id);
+        atomic_write_json(&session_file(id), &conversation)?;
+    }
+
+    // Keep a backup then remove the live monolithic file.
+    let bak = sessions_root().join("sessions.json.bak");
+    let _ = fs::rename(&legacy, &bak);
+    if legacy_attachments_root().is_dir() {
+        let _ = fs::remove_dir_all(legacy_attachments_root());
+    }
+    rebuild_index_from_disk()?;
+    Ok(())
+}
+
+fn conversation_summary(conversation: &Value) -> Value {
+    let id = conversation
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let messages = conversation
+        .get("messages")
+        .and_then(Value::as_array)
+        .map(|a| a.len())
+        .unwrap_or(0);
+    json!({
+        "id": id,
+        "name": conversation.get("name").cloned().unwrap_or(json!("")),
+        "createdAt": conversation.get("createdAt").cloned().unwrap_or(json!(0)),
+        "provider": conversation.get("provider").cloned().unwrap_or(json!("")),
+        "model": conversation.get("model").cloned().unwrap_or(json!("")),
+        "messageCount": messages,
+        "updatedAt": conversation
+            .get("updatedAt")
+            .cloned()
+            .or_else(|| conversation.get("createdAt").cloned())
+            .unwrap_or(json!(0)),
+    })
+}
+
+fn rebuild_index_from_disk() -> Result<(), String> {
+    ensure_root()?;
+    let mut summaries = Vec::new();
+    let dir = sessions_dir();
+    if dir.is_dir() {
+        for entry in fs::read_dir(&dir).map_err(|e| format!("read {}: {e}", dir.display()))? {
+            let entry = entry.map_err(|e| format!("entry: {e}"))?;
+            if !entry.path().is_dir() {
+                continue;
+            }
+            let id = entry.file_name();
+            let Some(id) = id.to_str() else {
+                continue;
+            };
+            if checked_id(id).is_err() {
+                continue;
+            }
+            let path = session_file(id);
+            if !path.is_file() {
+                continue;
+            }
+            let bytes = fs::read(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+            let value: Value = serde_json::from_slice(&bytes)
+                .map_err(|e| format!("decode {}: {e}", path.display()))?;
+            summaries.push(conversation_summary(&value));
+        }
+    }
+    summaries.sort_by(|a, b| {
+        let a_t = a.get("createdAt").and_then(Value::as_i64).unwrap_or(0);
+        let b_t = b.get("createdAt").and_then(Value::as_i64).unwrap_or(0);
+        b_t.cmp(&a_t)
+    });
+    atomic_write_json(&index_file(), &Value::Array(summaries))
+}
+
+fn load_all_conversations() -> Result<Value, String> {
+    migrate_legacy_layout_if_needed()?;
+    ensure_root()?;
+    let mut conversations = Vec::new();
+    let dir = sessions_dir();
+    if dir.is_dir() {
+        for entry in fs::read_dir(&dir).map_err(|e| format!("read {}: {e}", dir.display()))? {
+            let entry = entry.map_err(|e| format!("entry: {e}"))?;
+            if !entry.path().is_dir() {
+                continue;
+            }
+            let id = entry.file_name();
+            let Some(id) = id.to_str() else {
+                continue;
+            };
+            if checked_id(id).is_err() {
+                continue;
+            }
+            let path = session_file(id);
+            if !path.is_file() {
+                continue;
+            }
+            let bytes = fs::read(&path).map_err(|e| format!("read {}: {e}", path.display()))?;
+            let value: Value = serde_json::from_slice(&bytes)
+                .map_err(|e| format!("decode {}: {e}", path.display()))?;
+            conversations.push(rewrite_attachment_paths(value, id));
+        }
+    }
+    conversations.sort_by(|a, b| {
+        let a_t = a.get("createdAt").and_then(Value::as_i64).unwrap_or(0);
+        let b_t = b.get("createdAt").and_then(Value::as_i64).unwrap_or(0);
+        b_t.cmp(&a_t)
+    });
+    Ok(Value::Array(conversations))
+}
+
+fn save_all_conversations(conversations: Value) -> Result<(), String> {
+    migrate_legacy_layout_if_needed()?;
+    ensure_root()?;
+    let Some(arr) = conversations.as_array() else {
+        return Err("QxAI conversations must be an array".into());
+    };
+
+    let mut keep: HashSet<String> = HashSet::new();
+    let mut summaries = Vec::new();
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as i64;
+
+    for item in arr {
+        let Some(id) = item.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let id = checked_id(id)?;
+        keep.insert(id.to_string());
+
+        let mut object = match item.as_object() {
+            Some(map) => map.clone(),
+            None => continue,
+        };
+        object
+            .entry("updatedAt".to_string())
+            .or_insert(json!(now_ms));
+        let conversation = Value::Object(object);
+        let conversation = rewrite_attachment_paths(conversation, id);
+        // Ensure files dir exists for the session unit.
+        fs::create_dir_all(session_files_dir(id))
+            .map_err(|e| format!("create {}: {e}", session_files_dir(id).display()))?;
+        atomic_write_json(&session_file(id), &conversation)?;
+        summaries.push(conversation_summary(&conversation));
+    }
+
+    // Remove session directories no longer present (JSON + attachments).
+    if sessions_dir().is_dir() {
+        for entry in fs::read_dir(sessions_dir()).map_err(|e| format!("read sessions dir: {e}"))? {
+            let entry = entry.map_err(|e| format!("entry: {e}"))?;
+            let name = entry.file_name();
+            let Some(id) = name.to_str() else {
+                continue;
+            };
+            if !keep.contains(id) && entry.path().is_dir() {
+                fs::remove_dir_all(entry.path())
+                    .map_err(|e| format!("remove {}: {e}", entry.path().display()))?;
+            }
+        }
+    }
+
+    summaries.sort_by(|a, b| {
+        let a_t = a.get("createdAt").and_then(Value::as_i64).unwrap_or(0);
+        let b_t = b.get("createdAt").and_then(Value::as_i64).unwrap_or(0);
+        b_t.cmp(&a_t)
+    });
+    atomic_write_json(&index_file(), &Value::Array(summaries))?;
+    Ok(())
+}
+
 fn import_attachments_sync(
     conversation_id: &str,
     paths: Vec<String>,
@@ -119,7 +443,8 @@ fn import_attachments_sync(
             "select at most {MAX_ATTACHMENTS_PER_IMPORT} attachments at a time"
         ));
     }
-    let destination = attachments_root().join(conversation_id);
+    migrate_legacy_layout_if_needed()?;
+    let destination = session_files_dir(conversation_id);
     fs::create_dir_all(&destination)
         .map_err(|error| format!("create {}: {error}", destination.display()))?;
     let mut imported = Vec::new();
@@ -179,9 +504,9 @@ fn checked_managed_attachment(path: PathBuf) -> Result<PathBuf, String> {
     let canonical = path
         .canonicalize()
         .map_err(|error| format!("resolve attachment {}: {error}", path.display()))?;
-    let root = attachments_root()
+    let root = sessions_root()
         .canonicalize()
-        .map_err(|error| format!("resolve QxAI attachment root: {error}"))?;
+        .map_err(|error| format!("resolve QxAI session root: {error}"))?;
     if !canonical.starts_with(&root) {
         return Err(format!(
             "attachment is outside QxAiSession storage: {}",
@@ -254,7 +579,9 @@ pub(crate) fn prepare_provider_messages(messages: Vec<Value>) -> Result<Vec<Valu
                         "image_url": { "url": format!("data:{mime};base64,{}", BASE64.encode(bytes)) }
                     }));
                 } else if let Some(contents) = text_attachment(&path, metadata.len())? {
-                    text.push_str(&format!("\n\n<attached-file name=\"{name}\">\n{contents}\n</attached-file>"));
+                    text.push_str(&format!(
+                        "\n\n<attached-file name=\"{name}\">\n{contents}\n</attached-file>"
+                    ));
                 } else {
                     text.push_str(&format!(
                         "\n\nAttached file: {name} (managed local path: {})",
@@ -276,24 +603,9 @@ pub(crate) fn prepare_provider_messages(messages: Vec<Value>) -> Result<Vec<Valu
 
 #[tauri::command]
 pub async fn qxai_sessions_load() -> Result<Value, String> {
-    crate::runtime::blocking(|| {
-        with_storage_lock(|| {
-            let path = sessions_file();
-            if !path.exists() {
-                return Ok(Value::Array(Vec::new()));
-            }
-            let bytes =
-                fs::read(&path).map_err(|error| format!("read {}: {error}", path.display()))?;
-            let value: Value = serde_json::from_slice(&bytes)
-                .map_err(|error| format!("decode {}: {error}", path.display()))?;
-            if !value.is_array() {
-                return Err("QxAI sessions file must contain an array".to_string());
-            }
-            Ok(value)
-        })
-    })
-    .await
-    .map_err(|error| format!("load QxAI sessions task failed: {error}"))?
+    crate::runtime::blocking(|| with_storage_lock(load_all_conversations))
+        .await
+        .map_err(|error| format!("load QxAI sessions task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -301,11 +613,9 @@ pub async fn qxai_sessions_save(conversations: Value) -> Result<(), String> {
     if !conversations.is_array() {
         return Err("QxAI conversations must be an array".to_string());
     }
-    crate::runtime::blocking(move || {
-        with_storage_lock(|| atomic_write_json(&sessions_file(), &conversations))
-    })
-    .await
-    .map_err(|error| format!("save QxAI sessions task failed: {error}"))?
+    crate::runtime::blocking(move || with_storage_lock(|| save_all_conversations(conversations)))
+        .await
+        .map_err(|error| format!("save QxAI sessions task failed: {error}"))?
 }
 
 #[tauri::command]
@@ -320,7 +630,6 @@ pub async fn qxai_session_import_attachments(
     .await
     .map_err(|error| format!("import QxAI attachments task failed: {error}"))??;
 
-    // Allow convertFileSrc previews for managed attachment copies.
     for attachment in &imported {
         if attachment.kind == "image" {
             let _ = app
@@ -335,11 +644,18 @@ pub async fn qxai_session_import_attachments(
 pub async fn qxai_session_delete(conversation_id: String) -> Result<(), String> {
     crate::runtime::blocking(move || {
         with_storage_lock(|| {
-            let path = attachments_root().join(checked_id(&conversation_id)?);
+            let id = checked_id(&conversation_id)?;
+            let path = session_dir(id);
             if path.exists() {
                 fs::remove_dir_all(&path)
                     .map_err(|error| format!("remove {}: {error}", path.display()))?;
             }
+            // Legacy layout cleanup.
+            let legacy = legacy_attachments_root().join(id);
+            if legacy.exists() {
+                let _ = fs::remove_dir_all(&legacy);
+            }
+            rebuild_index_from_disk()?;
             Ok(())
         })
     })
@@ -351,16 +667,117 @@ pub async fn qxai_session_delete(conversation_id: String) -> Result<(), String> 
 pub async fn qxai_sessions_directory() -> Result<String, String> {
     crate::runtime::blocking(|| {
         with_storage_lock(|| {
-            let root = sessions_root();
-            fs::create_dir_all(&root)
-                .map_err(|error| format!("create {}: {error}", root.display()))?;
-            Ok(root.to_string_lossy().into_owned())
+            ensure_root()?;
+            Ok(sessions_root().to_string_lossy().into_owned())
         })
     })
     .await
     .map_err(|error| format!("open QxAI sessions task failed: {error}"))?
 }
 
+/// Lightweight catalog (index.json). Falls back to rebuilding from disk.
+#[tauri::command]
+pub async fn qxai_sessions_index() -> Result<Value, String> {
+    crate::runtime::blocking(|| {
+        with_storage_lock(|| {
+            migrate_legacy_layout_if_needed()?;
+            let path = index_file();
+            if path.is_file() {
+                let bytes = fs::read(&path).map_err(|e| format!("read index: {e}"))?;
+                let value: Value =
+                    serde_json::from_slice(&bytes).map_err(|e| format!("decode index: {e}"))?;
+                if value.is_array() {
+                    return Ok(value);
+                }
+            }
+            rebuild_index_from_disk()?;
+            let bytes = fs::read(&index_file()).map_err(|e| format!("read index: {e}"))?;
+            serde_json::from_slice(&bytes).map_err(|e| format!("decode index: {e}"))
+        })
+    })
+    .await
+    .map_err(|error| format!("index QxAI sessions task failed: {error}"))?
+}
+
 pub(crate) fn storage_path() -> PathBuf {
     sessions_root()
 }
+
+/// FTS-like search over per-session JSON files (used by memory session_search tool).
+pub fn session_search(query: &str, limit: usize) -> Result<Value, String> {
+    let query = query.trim().to_ascii_lowercase();
+    if query.is_empty() {
+        return Err("query is empty".into());
+    }
+    let _ = migrate_legacy_layout_if_needed();
+    let tokens: Vec<&str> = query.split_whitespace().collect();
+    let mut hits = Vec::new();
+    let dir = sessions_dir();
+    if !dir.is_dir() {
+        return Ok(json!({ "hits": [] }));
+    }
+    for entry in fs::read_dir(&dir).map_err(|e| format!("read sessions: {e}"))? {
+        let entry = entry.map_err(|e| format!("entry: {e}"))?;
+        if !entry.path().is_dir() {
+            continue;
+        }
+        let id = entry.file_name();
+        let Some(id) = id.to_str() else {
+            continue;
+        };
+        if checked_id(id).is_err() {
+            continue;
+        }
+        let path = session_file(id);
+        if !path.is_file() {
+            continue;
+        }
+        let Ok(bytes) = fs::read(&path) else {
+            continue;
+        };
+        let Ok(session) = serde_json::from_slice::<Value>(&bytes) else {
+            continue;
+        };
+        let name = session.get("name").and_then(|v| v.as_str()).unwrap_or("");
+        let messages = session
+            .get("messages")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        for (index, message) in messages.iter().enumerate() {
+            let role = message.get("role").and_then(|v| v.as_str()).unwrap_or("");
+            let content = message
+                .get("content")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if tokens
+                .iter()
+                .all(|t| content.contains(t) || name.to_ascii_lowercase().contains(t))
+            {
+                let snippet = message
+                    .get("content")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .chars()
+                    .take(280)
+                    .collect::<String>();
+                hits.push(json!({
+                    "conversationId": id,
+                    "name": name,
+                    "messageIndex": index,
+                    "role": role,
+                    "snippet": snippet,
+                }));
+                if hits.len() >= limit {
+                    return Ok(json!({ "hits": hits }));
+                }
+            }
+        }
+    }
+    Ok(json!({ "hits": hits }))
+}
+
+// Silence unused import if Map is only used via object.clone paths.
+#[allow(dead_code)]
+fn _touch_map(_: &Map<String, Value>) {}

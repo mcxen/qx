@@ -356,11 +356,9 @@ fn detect_context_length(item: &serde_json::Value) -> Option<u32> {
         item.get("context_window"),
         item.get("max_model_len"),
         item.get("max_tokens"),
-        item
-            .get("top_provider")
+        item.get("top_provider")
             .and_then(|provider| provider.get("context_length")),
-        item
-            .get("top_provider")
+        item.get("top_provider")
             .and_then(|provider| provider.get("max_completion_tokens")),
     ];
     for value in candidates.into_iter().flatten() {

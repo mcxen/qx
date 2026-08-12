@@ -456,8 +456,22 @@ fn tick(app: &AppHandle) {
             .collect())
     })
     .unwrap_or_default();
+    // Each job on its own worker so a long morning-desk capture never stalls
+    // agent_prompt emits or the next 30s tick loop.
     for schedule in due {
-        execute_schedule(app, &schedule);
+        let app = app.clone();
+        let schedule = schedule.clone();
+        let name = format!(
+            "qxai-sched-{}",
+            schedule.id.chars().take(12).collect::<String>()
+        );
+        let _ = std::thread::Builder::new().name(name).spawn(move || {
+            if let Err(error) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                execute_schedule(&app, &schedule);
+            })) {
+                eprintln!("qxai schedule job panicked: {error:?}");
+            }
+        });
     }
 }
 
@@ -588,17 +602,29 @@ pub fn qxai_run_schedule_now(app: AppHandle, id: String) -> Result<Value, String
             .find(|s| s.id == id)
             .ok_or_else(|| format!("schedule not found: {id}"))
     })?;
-    match schedule.kind {
-        QxAiScheduleKind::MorningDeskLog => {
-            let result = run_morning_desk_log(schedule.prompt.as_deref())?;
-            mark_run(&schedule.id, true, None);
-            Ok(result)
-        }
-        QxAiScheduleKind::AgentPrompt => {
-            execute_schedule(&app, &schedule);
-            Ok(json!({ "queued": true, "id": schedule.id }))
-        }
-    }
+    // Always queue work off the command path so Settings "Run now" never blocks the UI.
+    let app_for_job = app.clone();
+    let schedule_for_job = schedule.clone();
+    let _ = std::thread::Builder::new()
+        .name(format!(
+            "qxai-now-{}",
+            schedule.id.chars().take(12).collect::<String>()
+        ))
+        .spawn(move || {
+            if let Err(error) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                execute_schedule(&app_for_job, &schedule_for_job);
+            })) {
+                eprintln!("qxai run-now job panicked: {error:?}");
+            }
+        });
+    Ok(json!({
+        "queued": true,
+        "id": schedule.id,
+        "kind": match schedule.kind {
+            QxAiScheduleKind::MorningDeskLog => "morning_desk_log",
+            QxAiScheduleKind::AgentPrompt => "agent_prompt",
+        },
+    }))
 }
 
 #[tauri::command]
