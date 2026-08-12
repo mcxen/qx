@@ -242,12 +242,17 @@ export default function StorageSettings() {
           </div>
 
           {targets.map((target) => {
+            const isWorkbenchCache = target.id.endsWith(":__qx-host-workbench");
             const label = t(
-              CACHE_LABEL_KEYS[target.id] ?? `about.storage.cacheTarget.${target.id}`,
+              isWorkbenchCache
+                ? "storage.workbenchCache"
+                : CACHE_LABEL_KEYS[target.id] ?? `about.storage.cacheTarget.${target.id}`,
               target.label,
             );
             const description = t(
-              CACHE_DESCRIPTION_KEYS[target.id] ?? `about.storage.cacheTarget.${target.id}.desc`,
+              isWorkbenchCache
+                ? "storage.workbenchCache.desc"
+                : CACHE_DESCRIPTION_KEYS[target.id] ?? `about.storage.cacheTarget.${target.id}.desc`,
               target.description || target.module,
             );
             const targetBusy = busy === `cache:${target.id}`;

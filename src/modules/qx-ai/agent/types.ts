@@ -82,6 +82,8 @@ export interface AgentRunResult {
   reasoning?: string;
   steps: AgentStep[];
   attachments: QxAiFileAttachment[];
+  /** Failed runs are UI errors, never durable assistant messages. */
+  failed?: boolean;
 }
 
 export const MAX_OBSERVATION_CHARS = 4000;

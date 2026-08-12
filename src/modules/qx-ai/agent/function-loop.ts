@@ -77,7 +77,7 @@ export async function runFunctionCallingAgent(
       },
     ];
     opts.onStep(steps[0]);
-    return { finalAnswer: text, steps, attachments: [] };
+    return { finalAnswer: text, steps, attachments: [], failed: true };
   }
 
   const runOpts: AgentRunOptions = { ...opts, basePrompt: before.basePrompt };
@@ -148,7 +148,7 @@ export async function runFunctionCallingAgent(
       };
       steps.push(errStep);
       runOpts.onStep(errStep);
-      return { finalAnswer: text, steps, attachments };
+      return { finalAnswer: text, steps, attachments, failed: true };
     }
 
     const toolCalls = message.tool_calls ?? [];
@@ -250,5 +250,5 @@ export async function runFunctionCallingAgent(
   };
   steps.push(errStep);
   runOpts.onStep(errStep);
-  return { finalAnswer: lastFinal || errText, steps, attachments };
+  return { finalAnswer: lastFinal || errText, steps, attachments, failed: true };
 }

@@ -119,13 +119,19 @@ fn promote_pin(window: &tauri::WebviewWindow) {
     }
 }
 
-fn place_pin(
+#[derive(Debug, Clone, Copy)]
+struct PinPlacement {
+    position: PhysicalPosition<i32>,
+    size: PhysicalSize<u32>,
+    zoom: f64,
+}
+
+fn pin_placement(
     app: &AppHandle,
-    window: &tauri::WebviewWindow,
     pixel_w: u32,
     pixel_h: u32,
     monitor_id: Option<u32>,
-) {
+) -> Option<PinPlacement> {
     let monitor = monitor_id
         .and_then(|id| {
             crate::display::capture_monitor(Some(id))
@@ -134,9 +140,7 @@ fn place_pin(
         })
         .or_else(|| crate::display::cursor_monitor(app))
         .or_else(|| app.primary_monitor().ok().flatten());
-    let Some(monitor) = monitor else {
-        return;
-    };
+    let monitor = monitor?;
     let work = monitor.work_area();
     let scale = monitor.scale_factor().max(1.0);
     // work_area size is physical pixels. Prefer 1:1 capture pixels, then fit.
@@ -154,8 +158,19 @@ fn place_pin(
         .max(MIN_LOGICAL_EDGE * scale * 0.5) as i32;
     let x = work.position.x + (work.size.width as i32 - width).max(0) / 2;
     let y = work.position.y + (work.size.height as i32 - height).max(0) / 2;
-    let _ = window.set_size(PhysicalSize::new(width.max(1) as u32, height.max(1) as u32));
-    let _ = window.set_position(PhysicalPosition::new(x, y));
+    Some(PinPlacement {
+        position: PhysicalPosition::new(x, y),
+        size: PhysicalSize::new(width.max(1) as u32, height.max(1) as u32),
+        zoom: fit,
+    })
+}
+
+fn place_pin(window: &tauri::WebviewWindow, placement: Option<PinPlacement>) {
+    let Some(placement) = placement else {
+        return;
+    };
+    let _ = window.set_size(placement.size);
+    let _ = window.set_position(placement.position);
 }
 
 fn open_pin_now(
@@ -175,7 +190,13 @@ fn open_pin_now(
     let id = PIN_SEQ.fetch_add(1, Ordering::Relaxed);
     let label = format!("{PIN_PREFIX}{id}");
     let encoded = encode_path_query(&path);
-    let url = format!("index.html?view=capture-pin&id={id}&path={encoded}");
+    let placement = pin_placement(app, pixel_w, pixel_h, monitor_id);
+    // The frontend must start from the exact fit chosen here. Otherwise its
+    // first image-load effect resizes the window while a native drag may
+    // already be active, losing the pointer's relative position in the pin.
+    let initial_zoom = placement.map(|value| value.zoom).unwrap_or(1.0);
+    let url =
+        format!("index.html?view=capture-pin&id={id}&path={encoded}&initialZoom={initial_zoom:.8}");
     // Seamless pin: undecorated + transparent; the WebView *is* the image.
     // Soft OS shadow stays so the floating photo still lifts off the desktop.
     let window = WebviewWindowBuilder::new(app, &label, WebviewUrl::App(url.into()))
@@ -197,7 +218,7 @@ fn open_pin_now(
         .map_err(|error| format!("open pin window: {error}"))?;
     // Pins should accept activation so keyboard shortcuts (Esc, copy) work.
     let _ = window.set_always_on_top(true);
-    place_pin(app, &window, pixel_w, pixel_h, monitor_id);
+    place_pin(&window, placement);
     window
         .show()
         .map_err(|error| format!("show pin window: {error}"))?;

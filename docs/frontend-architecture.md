@@ -185,6 +185,18 @@ Enter 与 Actions 菜单。`PluginPanelViewport`（扩展）与 Weather / Macros
 `navigation.onChange` 提交条目后，在下一帧锚定同一 Actions Popover；Workbench List/Gallery
 因此无需各自实现右键菜单，编辑器和宿主 overlay 控件继续保留原生语义。
 
+Workbench Detail 通过 `useWorkbenchReadingPosition` 统一管理正文位置。内容键由插件、当前
+tab/filter scope 与稳定 item id 组成；新内容从顶部开始，切回旧内容按归一化百分比恢复，
+异步图片和回复改变正文高度时由短时 ResizeObserver 校正。该状态属于宿主呈现端口，插件
+不接触宿主 DOM，也不需要为 V2EX、社区文章等消费者各自保存像素偏移。
+
+Workbench 集合同时使用宿主统一的 stale-while-revalidate 缓存和 keyed mutation 协议。
+`PluginPanelViewport` 打开插件时异步读取上次成功的归一化快照；插件的 loading/error 空壳
+只能覆盖状态，不能清掉仍可用的旧 items/detail。`controller.updateItems()` 通过独立增量消息
+传递 upsert/remove/order/selection，宿主按稳定 item id 合并；成功空结果才有权替换旧集合。
+缓存写入 160ms 合并、单插件最多 6 个 scope/2 MB，瞬时 revision/loading/error/island/status
+不落盘，并作为 Storage Management 中可重建的插件 Workbench Cache 清理目标。
+
 ## Loading 与灵动岛
 
 ### 任务态 shell island

@@ -7,6 +7,9 @@ pub struct Feed {
     pub title: String,
     pub icon: String,
     pub last_fetched: i64,
+    /// Latest valid publication timestamp among this feed's persisted articles.
+    /// Zero means no article supplied a publication timestamp.
+    pub latest_article_published_at: i64,
     pub error_count: i64,
     pub unread_count: i64,
     pub created_at: i64,

@@ -315,6 +315,21 @@ export function buildPluginRuntimeHtml(
             });
           }
         },
+        publishWorkbenchUpdate: (update) => {
+          try {
+            workbenchMounted = true;
+            postToParent({
+              type: 'qx:plugin:workbench:update',
+              pluginId,
+              runtimeId,
+              update: serializeWorkbenchState(update),
+            });
+          } catch (error) {
+            postPluginLog('error', 'Workbench update is not serializable', {
+              error: summarizeLogValue(error),
+            });
+          }
+        },
       };
       const context = {
         pluginId,

@@ -1,5 +1,6 @@
 import {
   normalizePluginWorkbenchState,
+  normalizePluginWorkbenchItemsUpdate,
   type PluginWorkbenchEvent,
   type PluginWorkbenchPayload,
 } from "./workbenchTypes";
@@ -240,6 +241,16 @@ export function ensurePluginShellBridge(): void {
         pluginId,
         runtimeId,
         state: normalizePluginWorkbenchState(data.state),
+      });
+      return;
+    }
+
+    if (data.type === "qx:plugin:workbench:update") {
+      if (!pluginId || !runtimeId || !isPanelRuntimeSource(pluginId, runtimeId, event.source)) return;
+      publishSafely(workbenchListeners, {
+        pluginId,
+        runtimeId,
+        update: normalizePluginWorkbenchItemsUpdate(data.update),
       });
       return;
     }

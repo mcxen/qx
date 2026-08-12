@@ -474,6 +474,52 @@ fn checked_managed_attachment(path: PathBuf) -> Result<PathBuf, String> {
 /// Convert durable QxAI message attachments into OpenAI-compatible content.
 /// Images become data URLs; bounded text files become inline context. Other
 /// files retain a managed path so the permissioned Qx tools can inspect them.
+fn normalize_openai_user_part(part: &Value) -> Value {
+    let Some(object) = part.as_object() else {
+        return part.clone();
+    };
+    let kind = object.get("type").and_then(Value::as_str);
+    if matches!(kind, Some("image_url") | Some("input_image")) {
+        let image_url = object.get("image_url");
+        let url = image_url
+            .and_then(Value::as_str)
+            .or_else(|| image_url?.get("url")?.as_str());
+        if let Some(url) = url {
+            let detail = object
+                .get("detail")
+                .or_else(|| image_url.and_then(|value| value.get("detail")))
+                .and_then(Value::as_str)
+                .unwrap_or("auto");
+            return json!({
+                "type": "image_url",
+                "image_url": { "url": url, "detail": detail }
+            });
+        }
+    }
+    // Accept Anthropic-style base64 image parts at the Qx boundary, then send
+    // the canonical OpenAI-compatible Chat Completions representation.
+    if kind == Some("image") {
+        if let Some(source) = object.get("source") {
+            let media_type = source
+                .get("media_type")
+                .and_then(Value::as_str)
+                .unwrap_or("image/png");
+            if source.get("type").and_then(Value::as_str) == Some("base64") {
+                if let Some(data) = source.get("data").and_then(Value::as_str) {
+                    return json!({
+                        "type": "image_url",
+                        "image_url": {
+                            "url": format!("data:{media_type};base64,{data}"),
+                            "detail": "auto"
+                        }
+                    });
+                }
+            }
+        }
+    }
+    part.clone()
+}
+
 pub(crate) fn prepare_provider_messages(messages: Vec<Value>) -> Result<Vec<Value>, String> {
     messages
         .into_iter()
@@ -495,22 +541,16 @@ pub(crate) fn prepare_provider_messages(messages: Vec<Value>) -> Result<Vec<Valu
             if !is_user {
                 return Ok(message);
             }
-            let Some(attachments) = attachments.as_array() else {
-                return Ok(message);
-            };
-            if attachments.is_empty() {
-                return Ok(message);
-            }
-
-            let base_text = object
-                .get("content")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_string();
-            let mut text = base_text;
+            let original_content = object.get("content").cloned().unwrap_or(Value::Null);
+            let original_parts = original_content.as_array();
+            let mut parts: Vec<Value> = original_parts
+                .map(|items| items.iter().map(normalize_openai_user_part).collect())
+                .unwrap_or_default();
+            let mut text = original_content.as_str().unwrap_or_default().to_string();
+            let mut attachment_text = String::new();
             let mut image_parts = Vec::new();
             let mut image_context_bytes = 0_u64;
-            for attachment in attachments {
+            for attachment in attachments.as_array().into_iter().flatten() {
                 let path = attachment
                     .get("path")
                     .and_then(Value::as_str)
@@ -540,26 +580,70 @@ pub(crate) fn prepare_provider_messages(messages: Vec<Value>) -> Result<Vec<Valu
                         "image_url": { "url": format!("data:{mime};base64,{}", BASE64.encode(bytes)) }
                     }));
                 } else if let Some(contents) = text_attachment(&path, metadata.len())? {
-                    text.push_str(&format!(
+                    attachment_text.push_str(&format!(
                         "\n\n<attached-file name=\"{name}\">\n{contents}\n</attached-file>"
                     ));
                 } else {
-                    text.push_str(&format!(
+                    attachment_text.push_str(&format!(
                         "\n\nAttached file: {name} (managed local path: {})",
                         path.display()
                     ));
                 }
             }
-            if image_parts.is_empty() {
+            if original_parts.is_some() {
+                if !attachment_text.is_empty() {
+                    parts.push(json!({ "type": "text", "text": attachment_text }));
+                }
+                parts.extend(image_parts);
+                object.insert("content".to_string(), Value::Array(parts));
+            } else if image_parts.is_empty() {
+                text.push_str(&attachment_text);
                 object.insert("content".to_string(), Value::String(text));
             } else {
-                let mut parts = vec![json!({ "type": "text", "text": text })];
+                text.push_str(&attachment_text);
+                if !text.is_empty() {
+                    parts.push(json!({ "type": "text", "text": text }));
+                }
                 parts.extend(image_parts);
                 object.insert("content".to_string(), Value::Array(parts));
             }
             Ok(message)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod provider_message_tests {
+    use super::prepare_provider_messages;
+    use serde_json::json;
+
+    #[test]
+    fn normalizes_common_image_parts_to_chat_completions_shape() {
+        let messages = prepare_provider_messages(vec![json!({
+            "role": "user",
+            "content": [
+                { "type": "text", "text": "describe" },
+                { "type": "image_url", "image_url": "https://example.com/a.png" },
+                { "type": "input_image", "image_url": "data:image/png;base64,AA==" },
+                {
+                    "type": "image",
+                    "source": { "type": "base64", "media_type": "image/jpeg", "data": "AQ==" }
+                }
+            ]
+        })])
+        .expect("prepare multipart message");
+
+        assert_eq!(messages[0]["content"][1]["type"], "image_url");
+        assert_eq!(
+            messages[0]["content"][1]["image_url"]["url"],
+            "https://example.com/a.png"
+        );
+        assert_eq!(messages[0]["content"][2]["type"], "image_url");
+        assert_eq!(
+            messages[0]["content"][3]["image_url"]["url"],
+            "data:image/jpeg;base64,AQ=="
+        );
+    }
 }
 
 #[tauri::command]

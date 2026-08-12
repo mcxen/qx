@@ -44,6 +44,7 @@ type WorkbenchWindow = Window & {
   __qxPanelActionsHandler?: (event: MessageEvent) => void;
   __qxPluginUiBridge?: {
     publishWorkbench?: (state: PluginWorkbenchState) => void;
+    publishWorkbenchUpdate?: (update: PluginWorkbenchItemsUpdate) => void;
   };
 };
 
@@ -528,8 +529,17 @@ export function createPluginSdkRuntime(): PluginSdkRuntime {
         const selectedId = requestedSelection != null && emitted.has(String(requestedSelection))
           ? String(requestedSelection)
           : ordered[0]?.id ?? null;
-        currentState = { ...currentState, items: ordered, selectedId };
-        publish();
+        currentState = {
+          ...currentState,
+          revision: mutation.revision ?? currentState.revision,
+          items: ordered,
+          selectedId,
+        };
+        if (runtimeWindow.__qxPluginUiBridge?.publishWorkbenchUpdate) {
+          runtimeWindow.__qxPluginUiBridge.publishWorkbenchUpdate(mutation);
+        } else {
+          publish();
+        }
       };
       return {
         update,

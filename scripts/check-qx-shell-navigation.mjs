@@ -21,6 +21,11 @@ import {
 } from "../src/hooks/qxGridNavigation.ts";
 import { normalizePluginWorkbenchState } from "../src/plugin/workbenchTypes.ts";
 import {
+  clampWorkbenchReadingProgress,
+  workbenchReadingPositionKey,
+  workbenchScrollTopForProgress,
+} from "../src/plugin/useWorkbenchReadingPosition.ts";
+import {
   clampCaptureToolbarPosition,
   resolveCaptureToolbarPosition,
 } from "../src/modules/screencap/captureToolbarPosition.ts";
@@ -321,6 +326,17 @@ assert.equal(resolveQxGridIndex({ key: "ArrowDown", index: 2, count: 10, columns
 assert.equal(resolveQxGridIndex({ key: "ArrowDown", index: 6, count: 10, columns: 4 }), 9);
 assert.equal(resolveQxGridIndex({ key: "ArrowUp", index: 6, count: 10, columns: 4 }), 2);
 assert.equal(resolveQxGridIndex({ key: "Enter", index: 2, count: 10, columns: 4 }), null);
+
+// Workbench details share one keyed reading-position protocol. A new item must
+// never inherit the previous item's scrollTop; returning to the old key can
+// restore its own normalized position.
+const firstReadingKey = workbenchReadingPositionKey("v2ex", "hot", "topic-1");
+const secondReadingKey = workbenchReadingPositionKey("v2ex", "hot", "topic-2");
+assert.notEqual(firstReadingKey, secondReadingKey);
+assert.equal(firstReadingKey, workbenchReadingPositionKey("v2ex", "hot", "topic-1"));
+assert.equal(clampWorkbenchReadingProgress(137), 100);
+assert.equal(workbenchScrollTopForProgress(50, 1_200, 200), 500);
+assert.equal(workbenchScrollTopForProgress(0, 1_200, 200), 0);
 
 // Workbench trust boundary: optional ids must stay addressable by the iframe
 // event bridge, duplicate React keys are removed, and tab state is singular.

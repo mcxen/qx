@@ -35,6 +35,12 @@ import {
 import QxModuleSearch from "../components/QxModuleSearch";
 import PluginWorkbenchView, { PLUGIN_WORKBENCH_REGIONS } from "./PluginWorkbenchView";
 import type { PluginWorkbenchAction, PluginWorkbenchState } from "./workbenchTypes";
+import {
+  applyPluginWorkbenchItemsUpdate,
+  loadPluginWorkbenchCache,
+  mergePluginWorkbenchSnapshot,
+  schedulePluginWorkbenchCacheWrite,
+} from "./workbenchCache";
 import { useStore } from "../store";
 import { useSettingsStore } from "../modules/settings/store";
 import {
@@ -266,23 +272,50 @@ export function PluginPanelViewport() {
     });
     const unsubscribeWorkbench = subscribePluginWorkbench((payload) => {
       if (payload.pluginId !== pluginId) return;
+      if (
+        payload.state
+        && (payload.state.loading || payload.state.error)
+        && !(payload.state.items?.length || payload.state.detail)
+      ) {
+        const requestedKey = payload.state.cache?.key || "default";
+        void loadPluginWorkbenchCache(pluginId, requestedKey).then((cached) => {
+          if (!cached) return;
+          setWorkbench((current) => current
+            ? mergePluginWorkbenchSnapshot(cached, current)
+            : cached);
+        }).catch(() => {});
+      }
       setWorkbench((current) => {
-        const nextRevision = payload.state.revision;
-        const currentRevision = current?.revision;
-        if (
-          nextRevision != null
-          && currentRevision != null
-          && nextRevision < currentRevision
-        ) {
-          return current;
-        }
-        return payload.state;
+        const next = payload.update
+          ? current
+            ? applyPluginWorkbenchItemsUpdate(current, payload.update)
+            : current
+          : payload.state
+            ? mergePluginWorkbenchSnapshot(current, payload.state)
+            : current;
+        if (next && next !== current) schedulePluginWorkbenchCacheWrite(pluginId, next);
+        return next;
       });
     });
     return () => {
       unsubscribeActions();
       unsubscribeChrome();
       unsubscribeWorkbench();
+    };
+  }, [isPluginTab, pluginId]);
+
+  useEffect(() => {
+    if (!isPluginTab || !pluginId) return;
+    let disposed = false;
+    setWorkbench(null);
+    void loadPluginWorkbenchCache(pluginId).then((cached) => {
+      if (disposed || !cached) return;
+      setWorkbench((current) => current
+        ? mergePluginWorkbenchSnapshot(cached, current)
+        : cached);
+    }).catch(() => {});
+    return () => {
+      disposed = true;
     };
   }, [isPluginTab, pluginId]);
 
@@ -382,7 +415,6 @@ export function PluginPanelViewport() {
     let timeout: number | null = null;
     setItemActions([]);
     setSelectionTitle("");
-    setWorkbench(null);
     setWorkbenchDetailOpen(false);
     setRenderState({ kind: "loading", detail: "Rendering panel" });
     renderPluginStatus(container, `Loading ${pluginId}...`);
@@ -422,7 +454,6 @@ export function PluginPanelViewport() {
       setRenderState({ kind: "idle" });
       setItemActions([]);
       setSelectionTitle("");
-      setWorkbench(null);
       setWorkbenchDetailOpen(false);
     };
   }, [isPluginTab, panel, pluginId, refreshKey, raycastActionPanel]);

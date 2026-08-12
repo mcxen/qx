@@ -8,6 +8,7 @@ export interface RssFeed {
   title: string;
   icon: string;
   last_fetched: number;
+  latest_article_published_at: number;
   error_count: number;
   unread_count: number;
   created_at: number;

@@ -996,6 +996,9 @@ fn plugin_storage_lock() -> &'static Mutex<()> {
     PLUGIN_STORAGE_LOCK.get_or_init(|| Mutex::new(()))
 }
 
+const HOST_WORKBENCH_CACHE_KEY: &str = "__qx_host_workbench_cache_v1__";
+const HOST_WORKBENCH_TARGET_SUFFIX: &str = "__qx-host-workbench";
+
 fn plugin_install_lock() -> &'static Mutex<()> {
     PLUGIN_INSTALL_LOCK.get_or_init(|| Mutex::new(()))
 }
@@ -3157,15 +3160,30 @@ pub(crate) fn registered_plugin_cache_targets() -> Vec<RegisteredPluginCacheTarg
         {
             continue;
         }
-        let Some(storage) = manifest.storage else {
-            continue;
-        };
         let mut map = read_storage_map(&manifest.id).unwrap_or_default();
         let mut storage_changed = false;
         let storage_path = match checked_plugin_storage_path(&manifest.id) {
             Ok(path) => path,
             Err(_) => continue,
         };
+        if let Some(value) = map.get(HOST_WORKBENCH_CACHE_KEY) {
+            targets.push(RegisteredPluginCacheTarget {
+                id: format!("plugin:{}:{HOST_WORKBENCH_TARGET_SUFFIX}", manifest.id),
+                plugin_id: manifest.id.clone(),
+                plugin_name: manifest.name.clone(),
+                label: "Workbench Cache".to_string(),
+                description: "Host-managed stale-while-revalidate Workbench snapshot".to_string(),
+                storage_path: storage_path.clone(),
+                bytes: serde_json::to_vec(value)
+                    .map(|encoded| encoded.len() as u64)
+                    .unwrap_or(0),
+                records: 1,
+                // The active Workbench scope carries its own bounded maxAgeMs;
+                // stale entries stay reclaimable until the user clears them.
+                retention_days: None,
+            });
+        }
+        let storage = manifest.storage.unwrap_or_default();
         for declaration in storage.cache_targets {
             let mut bytes = 0_u64;
             let mut records = 0_u64;
@@ -3260,6 +3278,15 @@ pub(crate) fn clear_registered_plugin_cache_target(
     validate_manifest_storage(manifest.storage.as_ref())?;
     validate_manifest_home_widgets(&manifest.home_widgets)?;
     validate_manifest_surface_providers(&manifest.surface_providers)?;
+    if target_id == format!("plugin:{}:{HOST_WORKBENCH_TARGET_SUFFIX}", manifest.id) {
+        let _guard = plugin_storage_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut map = read_storage_map(&target.plugin_id)?;
+        let result = remove_plugin_cache_keys(&mut map, &[HOST_WORKBENCH_CACHE_KEY.to_string()]);
+        write_storage_map(&target.plugin_id, &map)?;
+        return Ok(result);
+    }
     let declaration = manifest
         .storage
         .and_then(|storage| {
@@ -3691,6 +3718,24 @@ mod tests {
         let result = remove_plugin_cache_keys(&mut map, &["cache.feed.v2".to_string()]);
         assert_eq!(result.cleared_records, 1);
         assert!(!map.contains_key("cache.feed.v2"));
+        assert!(map.contains_key("reading.preferences"));
+    }
+
+    #[test]
+    fn host_workbench_cache_clear_preserves_plugin_domain_state() {
+        let mut map = BTreeMap::from([
+            (
+                HOST_WORKBENCH_CACHE_KEY.to_string(),
+                serde_json::json!({ "version": 1, "entries": {} }),
+            ),
+            (
+                "reading.preferences".to_string(),
+                serde_json::json!({ "dense": true }),
+            ),
+        ]);
+        let result = remove_plugin_cache_keys(&mut map, &[HOST_WORKBENCH_CACHE_KEY.to_string()]);
+        assert_eq!(result.cleared_records, 1);
+        assert!(!map.contains_key(HOST_WORKBENCH_CACHE_KEY));
         assert!(map.contains_key("reading.preferences"));
     }
 

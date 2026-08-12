@@ -8,7 +8,7 @@ import type { AgentStep, AgentStreamMetrics, QxAiFileAttachment } from "./agent/
 import { computeTokenSpeed, estimateTokens } from "./message-rendering";
 import {
   messageHasImages,
-  resolveModelVision,
+  resolveModelVisionState,
 } from "./model-capabilities";
 import {
   buildAutoSkillPromptBlock,
@@ -36,6 +36,12 @@ import {
   resolveStreamDuration,
   type StreamTiming,
 } from "./stream-metrics";
+import {
+  canAutoTitle,
+  sanitizeAiTitle,
+  withAutoTitle,
+} from "./conversation-title";
+import { removeLegacySyntheticErrorMessages } from "./error-presentation";
 
 export type { AgentStep, QxAiFileAttachment } from "./agent/types";
 
@@ -249,6 +255,9 @@ export interface QxAiModelInfo {
   name: string;
   reasoning?: boolean;
   vision?: boolean;
+  /** True when the provider catalog explicitly described image input support. */
+  vision_known?: boolean;
+  visionKnown?: boolean;
   /** Token context window when known. */
   context_length?: number;
   /** camelCase alias from some JSON paths. */
@@ -330,90 +339,6 @@ function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
 }
 
-function isPlaceholderConversationName(name: string): boolean {
-  const trimmed = name.trim();
-  if (!trimmed) return true;
-  return (
-    /^Chat\s+\d+$/i.test(trimmed)
-    || /^对话\s*\d+$/i.test(trimmed)
-    || /^New chat$/i.test(trimmed)
-    || /^新对话$/i.test(trimmed)
-    || /^Scheduled task$/i.test(trimmed)
-    || /^Schedule\b/i.test(trimmed)
-  );
-}
-
-function canAutoTitle(conversation: G4fConversation): boolean {
-  if (conversation.titleMode === "manual") return false;
-  // Missing titleMode (legacy sessions) still auto-title while name looks placeholder.
-  if (conversation.titleMode === "auto") return true;
-  return isPlaceholderConversationName(conversation.name);
-}
-
-function normalizeTitleSource(content: string): string[] {
-  return content
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`([^`]+)`/g, "$1")
-    .split(/\n{2,}|[。！？!?]\s+|\.\s+/)
-    .map((part) =>
-      part
-        .replace(/[#*_~>\-[\](){}]/g, " ")
-        .replace(/\s+/g, " ")
-        .trim(),
-    )
-    .filter(Boolean);
-}
-
-/** Instant local fallback from the first user message (no model call). */
-function fallbackTitleFromMessages(messages: G4fMessage[], maxLength = 28): string | null {
-  const firstUser = messages.find((message) => message.role === "user" && message.content.trim());
-  if (!firstUser) return null;
-  const paragraphs = normalizeTitleSource(firstUser.content);
-  const source = (paragraphs[0] || firstUser.content.replace(/\s+/g, " ").trim()).trim();
-  if (!source) return null;
-  const chars = [...source];
-  if (chars.length <= maxLength) return source;
-  return `${chars.slice(0, Math.max(1, maxLength - 1)).join("")}…`;
-}
-
-function sanitizeAiTitle(raw: string, maxLength = 24): string | null {
-  let title = raw
-    .trim()
-    .replace(/^["'「『《]+|["'」』》]+$/g, "")
-    .replace(/^标题[:：]\s*/i, "")
-    .replace(/^title[:：]\s*/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  // Single line only
-  title = title.split(/\n/)[0]?.trim() || "";
-  if (!title || title.length < 2) return null;
-  if (/^(chat|new chat|对话|新对话)\b/i.test(title)) return null;
-  const chars = [...title];
-  if (chars.length > maxLength) {
-    title = `${chars.slice(0, maxLength - 1).join("")}…`;
-  }
-  return title;
-}
-
-/** Local fallback title as soon as the user sends the first message. */
-function withAutoTitle(conversation: G4fConversation): G4fConversation {
-  if (!canAutoTitle(conversation)) return conversation;
-  const title = fallbackTitleFromMessages(conversation.messages);
-  if (!title) return conversation;
-  // Don't thrash if already the same fallback / short title.
-  if (conversation.name.trim() === title) {
-    return { ...conversation, titleMode: conversation.titleMode ?? "auto" };
-  }
-  // Only replace placeholders or previous auto titles that still look generic.
-  if (
-    conversation.titleMode === "auto"
-    || isPlaceholderConversationName(conversation.name)
-  ) {
-    return { ...conversation, name: title, titleMode: "auto" };
-  }
-  return conversation;
-}
-
 const titleJobs = new Set<string>();
 let sessionsLoadPromise: Promise<void> | null = null;
 
@@ -442,6 +367,7 @@ async function maybeGenerateAiTitle(conversationId: string): Promise<void> {
     .slice(-1)[0]
     ?.slice(0, 400);
   if (!userText || !assistantText) return;
+  if (conversation.messages.filter((message) => message.role === "assistant").length !== 1) return;
 
   titleJobs.add(conversationId);
   try {
@@ -825,7 +751,17 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       try {
         // Fresh layout may return [] after one-time wipe of legacy/broken trees.
         const stored = await loadQxAiSessions();
-        const conversations = Array.isArray(stored) ? stored : [];
+        const sourceConversations = Array.isArray(stored) ? stored : [];
+        const conversations = sourceConversations.map((conversation) => {
+          const messages = removeLegacySyntheticErrorMessages(conversation.messages);
+          const repairedConversation = messages === conversation.messages
+            ? conversation
+            : { ...conversation, messages };
+          return withAutoTitle(repairedConversation);
+        });
+        const repaired = conversations.filter(
+          (conversation, index) => conversation !== sourceConversations[index],
+        );
         const preferred =
           get().currentConversationId
           ?? readLastConversationId();
@@ -838,6 +774,11 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           view: "chat",
           error: null,
         });
+        // Persist title repairs so corrupt auto-generated names do not return
+        // on every launch. This side task must never block opening the chat.
+        if (repaired.length > 0) {
+          void Promise.allSettled(repaired.map((conversation) => saveQxAiSession(conversation)));
+        }
       } catch (error) {
         // Never block the workbench on storage errors — start empty.
         console.warn("qxai loadSessions failed; starting empty", error);
@@ -994,6 +935,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       currentProvider,
       currentModel,
       defaultSystemPrompt,
+      builtInCredentials,
     } = get();
     const currentConversationId = targetConversationId;
     const scheduleNext = () =>
@@ -1050,6 +992,33 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       return;
     }
 
+    const selectedProvider = providers.find((provider) => provider.id === selection.provider);
+    if (
+      selectedProvider?.requiresApiKey
+      && !selection.provider.startsWith("custom:")
+      && !builtInCredentials.some(
+        (credential) => credential.id === selection.provider && credential.apiKey.trim(),
+      )
+    ) {
+      const msg = `API key missing for ${selectedProvider.name || selection.provider}. Add it in QxAI Settings.`;
+      set({
+        ...(touchesActiveChat ? { error: msg } : {}),
+        runs: {
+          ...get().runs,
+          [currentConversationId]: {
+            streaming: false,
+            streamedContent: "",
+            streamedReasoning: "",
+            streamingSteps: [],
+            error: msg,
+            startedAt: Date.now(),
+          },
+        },
+      });
+      scheduleNext();
+      return;
+    }
+
     const modelMeta = providers
       .find((provider) => provider.id === selection.provider)
       ?.models.find((model) => model.id === selection.model);
@@ -1059,7 +1028,11 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       || conv.messages.some((message) => messageHasImages(message.attachments));
     if (
       hasImages
-      && !resolveModelVision(selection.provider, modelMeta ?? { id: selection.model, name: selection.model }, agentSettings.model_capabilities)
+      && resolveModelVisionState(
+        selection.provider,
+        modelMeta ?? { id: selection.model, name: selection.model },
+        agentSettings.model_capabilities,
+      ) === "unsupported"
     ) {
       const error =
         `Model "${selection.model}" does not support vision/images. Choose a multimodal model, enable Vision in Settings → AI Agent, or remove image attachments.`;
@@ -1288,6 +1261,10 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
             });
           },
         });
+
+        if (result.failed) {
+          throw new Error(result.finalAnswer);
+        }
 
         const finishedRun = get().runs[currentConversationId];
         const finishedAt = Date.now();

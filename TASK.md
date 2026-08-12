@@ -1,5 +1,47 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — Workbench 增量更新与统一缓存协议
+
+**状态**：代码与自动验证完成，等待桌面交互复核。
+
+- `updateItems` 从 iframe 内部合并提升为宿主信任边界的 keyed mutation 协议，支持 revision、upsert、remove、order 与 selection。
+- 宿主按插件和 cache scope 保存有界成功快照；打开先显示 stale 内容，loading/error 空壳只更新状态，成功空结果才清空旧集合。
+- 缓存写入合并去抖，去除瞬时运行状态，并作为 Storage Management 可重建缓存目标；插件可按 scope 设置有效期或对敏感面板禁用。
+
+### 验证
+
+- [x] Workbench mutation/SWR 契约测试 / `npx tsc --noEmit` / `npm run check` / `npm run build`
+- [x] `cargo fmt --check` / `cargo check` / marketplace 缓存测试
+- [ ] 桌面实测：重开插件先显示旧列表，后台逐批更新；刷新失败保留旧内容。
+
+## Feature — 剪贴板 URL 浏览器解码
+
+**状态**：代码与自动验证完成，等待桌面交互复核。
+
+- 链接条目的操作菜单新增“URL 浏览器解码”，按浏览器 `decodeURIComponent` 语义解码一层百分号编码并复制结果。
+- 完整编码的 `http(s)` URL 也会被识别为链接；遇到残缺转义或非法 UTF-8 时保留无效片段，同时继续解码其他有效片段。
+- 解码写入会清除延迟剪贴板恢复，避免 Qx 隐藏时原始 URL 覆盖解码结果。
+
+### 验证
+
+- [x] URL 解码定向断言 / `npx tsc --noEmit` / `npm run check` / `npm run build`
+- [x] 原生控件扫描（剪贴板模块无新增匹配）
+- [ ] 桌面实测：编码 URL 解码复制后隐藏 Qx，结果不被原 URL 覆盖。
+
+## Feature — QxAI 多模态检测与图片协议
+
+**状态**：代码与自动验证完成，等待桌面真实供应商复核。
+
+- 模型视觉能力改为“支持 / 明确不支持 / 未知”三态；目录缺字段不再误判为仅文本，未知模型随用户的真实图片请求验证。
+- 统一供应商消息边界会保留多段正文，并把常见图片形态归一成 Chat Completions `image_url: { url, detail }`。
+- DeepSeek 官方 Chat Completions 仍只公开文本消息，因此内置 V4 保持明确的仅文本能力。
+
+### 验证
+
+- [x] `npx tsc --noEmit` / `npm run check` / `npm run build`
+- [x] Rust 多模态定向单测 / `cargo fmt --check` / `cargo check`
+- [ ] 桌面实测：目录明确视觉模型、目录未知但实际支持视觉的 OpenAI-compatible 模型、明确仅文本模型。
+
 - [x] 统一 Qx 公共控件尺寸与字重：标准控件 32px、紧凑控件 28px、Shell 控件 36px；Settings 表单尾部控件统一 220px 对齐，并移除 Button / Select / Segmented 默认 700 的混乱覆盖。
 
 ## Feature — QxAI 系统工具 / Skills 模式 / MCP 配置
@@ -23,6 +65,7 @@
 - Snipaste 风格贴图：截图后将 PNG 以 always-on-top 无边框窗固定在桌面；最多 16 张。
 - 入口：圈选工具栏 Pin（快捷键 `P`）直接捕获并贴图；截图 toast 的「贴图」；`screencap_pin_image` IPC。
 - 贴图窗：拖动移动、滚轮/`+/-` 缩放、`[`/`]` 透明度、Esc/双击/关闭钮关闭、⌘/Ctrl+C 复制、右键菜单。
+- 修复首次拖动跳位：后端把目标屏幕的初始 fit 传给贴图页，前端接受已放置的首帧窗口尺寸，不再在图片加载回调中以错误的 `zoom=1` 异步覆盖几何。
 - 后端 `screencap/pin.rs`；capability `capture-pin-*`；退出时 `close_all_for_shutdown`。
 
 ### 验证
@@ -30,7 +73,7 @@
 - [x] `npx tsc --noEmit`
 - [x] `npm run check`
 - [x] `cargo check`
-- [ ] 桌面态：工具栏 P 贴图、toast 贴图、多贴图拖动缩放关闭、macOS/Windows 置顶。
+- [ ] 桌面态：工具栏 P 贴图、toast 贴图、首次从图片任意落点拖动不跳位、多贴图拖动缩放关闭、macOS/Windows 置顶。
 
 ## Fix — 截图文字标注可视化编辑（自动放大）
 
@@ -165,6 +208,20 @@
 - [x] `cargo check`
 - [x] RSS 调度与 meta 单元测试（`cargo test rss::`，12 passed）
 - [ ] 长时运行 / 睡眠唤醒后确认只执行一次到期刷新。
+
+## Bugfix — RSS 订阅列表最新发表时间
+
+**状态**：实现完成，等待桌面数据复核。
+
+- `rss_list_feeds` 返回每个订阅已保存文章中最大的有效 `published_at`，不再让批量刷新后的统一 `last_fetched` 冒充文章时间。
+- Feed 列表优先显示最新文章发表时间；没有有效发表时间的文章时才回退到订阅抓取或创建时间。
+
+### 验证
+
+- [x] Rust RSS storage 定向单元测试 + `cargo test --lib rss::`（16 passed）
+- [x] `cargo fmt --check` / `cargo check`
+- [x] `npx tsc --noEmit` / `npm run build` / `npm run check`
+- [ ] 桌面实测多个更新时间不同的订阅，其相对时间分别对应各自最新文章。
 
 ## Refactor — 全量插件 Action 去重
 
@@ -428,7 +485,7 @@
 
 - [x] `npx tsc --noEmit`
 - [x] `cargo check`
-- [ ] `npm run check` / `npm run build`
+- [x] `npm run check` / `npm run build`
 - [ ] 480×360、680×500、980×576、1280×800 运行态拖拽与 Light/Dark/透明主题。
 
 ## Refactor — Top Bar 内容筛选与文本工具箱 Workbench 对齐
@@ -483,6 +540,21 @@
   操作；移除按 Cache / Files / Databases 等物理桶重复展示的第二套统计。
 - 保留逐模块清理、清理全部模块缓存和刷新；历史、生成文件、数据库、插件持久数据与
   设置不进入该页面，也不会被“清理全部缓存”删除。
+
+## Bugfix — Workbench 正文浏览位置统一协议
+
+**状态**：实现完成，等待桌面手势复核。
+
+- 宿主按 `pluginId + tab/filter scope + item.id` 为每篇 Workbench Detail 保存归一化正文位置；V2EX 等全部 `mountWorkbench()` 消费者共享，不由插件各写一套。
+- 第一次打开新条目固定从顶部开始，切换条目不再继承前一篇的 `scrollTop`；返回旧条目恢复其自身进度，异步图片与回复加载期间短时校正。
+- 浏览位置有界保留最近 256 条，避免长期使用导致宿主存储无限增长。
+
+### 验证
+
+- [x] Workbench 内容键隔离、50% 比例换算与新条目顶部回归断言
+- [x] `npx tsc --noEmit`
+- [ ] `npm run check` / `npm run build`
+- [ ] 桌面实测：V2EX 第一篇滚到 50% → 第二篇从顶部打开 → 返回第一篇恢复约 50%。
 
 ## Feature — Workbench 通用胶片与底部回复区
 
@@ -2111,6 +2183,8 @@
 - 流式 function calling 失败时，在任何本地工具执行前回退到完整响应工具命令。
 - DeepSeek 明确发送 thinking enabled/disabled；思考模式工具请求不再发送其拒绝的 `tool_choice`。
 - SSE 同时接受 `data:` 与 `data: `，并覆盖字符串碎片和对象形式的工具参数。
+- 2026-08-12 回归：完整响应兼容回退不再把工具消息缩减成 role/content；DeepSeek 多轮
+  function calling 保留 assistant `tool_calls` 与 tool `tool_call_id`，避免第二轮 HTTP 400。
 
 ### 验证
 

@@ -4,7 +4,7 @@ import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 import { useT } from "../../i18n";
 import { writeImageFileToClipboard } from "../../system";
 
-const MIN_ZOOM = 0.2;
+const MIN_ZOOM = 0.08;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 1.1;
 const MIN_EDGE = 64;
@@ -18,6 +18,13 @@ function decodePathParam(raw: string | null): string {
   }
 }
 
+function decodeInitialZoom(raw: string | null): number {
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0
+    ? Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value))
+    : 1;
+}
+
 /**
  * Seamless desktop pin: the window *is* the image (no nested chrome frame).
  * Drag to move, wheel / ± resize the window with the image, Esc close.
@@ -26,9 +33,10 @@ export default function CapturePinWindow() {
   const t = useT();
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const path = useMemo(() => decodePathParam(params.get("path")), [params]);
+  const initialZoom = useMemo(() => decodeInitialZoom(params.get("initialZoom")), [params]);
   const label = useMemo(() => getCurrentWindow().label, []);
   const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(initialZoom);
   const [opacity, setOpacity] = useState(1);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState({ x: 12, y: 12 });
@@ -37,6 +45,7 @@ export default function CapturePinWindow() {
   const [hover, setHover] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const applyingSize = useRef(false);
+  const acceptedInitialSize = useRef(false);
   const src = path ? convertFileSrc(path) : "";
 
   const closePin = useCallback(async () => {
@@ -94,8 +103,15 @@ export default function CapturePinWindow() {
 
   useEffect(() => {
     if (!natural) return;
+    // Rust already fitted and positioned the native window before showing it.
+    // Reapplying that size during the first native drag can move the window
+    // underneath the pointer, so accept the initial geometry as authoritative.
+    if (!acceptedInitialSize.current) {
+      acceptedInitialSize.current = true;
+      if (zoom === initialZoom) return;
+    }
     void applyWindowSize(natural);
-  }, [applyWindowSize, natural, zoom]);
+  }, [applyWindowSize, initialZoom, natural, zoom]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

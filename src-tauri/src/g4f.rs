@@ -28,6 +28,14 @@ pub struct ProviderModel {
     /// Model accepts image inputs (OpenAI-style `image_url` content parts).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub vision: bool,
+    /// Whether the catalog explicitly described image-input support. When this
+    /// is false, `vision: false` means unknown rather than text-only.
+    #[serde(
+        default,
+        skip_serializing_if = "std::ops::Not::not",
+        alias = "visionKnown"
+    )]
+    pub vision_known: bool,
     /// Advertised context window in tokens (from provider catalog when available).
     #[serde(
         default,
@@ -262,9 +270,14 @@ fn provider_endpoint(provider: &str) -> Result<ProviderEndpoint, String> {
 pub(crate) fn detect_model_capabilities(
     model_id: &str,
     item: Option<&serde_json::Value>,
-) -> (bool /* reasoning */, bool /* vision */) {
+) -> (
+    bool, /* reasoning */
+    bool, /* vision */
+    bool, /* vision known */
+) {
     let mut reasoning = false;
     let mut vision = false;
+    let mut vision_known = false;
 
     if let Some(item) = item {
         if let Some(parameters) = item.get("supported_parameters").and_then(|v| v.as_array()) {
@@ -273,13 +286,22 @@ pub(crate) fn detect_model_capabilities(
                     matches!(name, "reasoning" | "reasoning_effort" | "include_reasoning")
                 })
             });
+            if parameters.iter().any(|parameter| {
+                parameter
+                    .as_str()
+                    .is_some_and(|name| matches!(name, "image" | "images" | "image_url" | "vision"))
+            }) {
+                vision = true;
+                vision_known = true;
+            }
         }
         // OpenRouter-style architecture: modality "text+image->text", input_modalities: ["image"]
         if let Some(architecture) = item.get("architecture") {
             if let Some(modality) = architecture.get("modality").and_then(|v| v.as_str()) {
                 let lower = modality.to_ascii_lowercase();
-                vision |=
+                vision =
                     lower.contains("image") || lower.contains("file") || lower.contains("vision");
+                vision_known = true;
             }
             if let Some(inputs) = architecture
                 .get("input_modalities")
@@ -291,15 +313,27 @@ pub(crate) fn detect_model_capabilities(
                         lower.contains("image") || lower == "file" || lower == "vision"
                     })
                 });
+                vision_known = true;
             }
         }
         if let Some(modality) = item.get("modality").and_then(|v| v.as_str()) {
             let lower = modality.to_ascii_lowercase();
             vision |= lower.contains("image") || lower.contains("vision");
+            vision_known = true;
+        }
+        if let Some(inputs) = item.get("input_modalities").and_then(|v| v.as_array()) {
+            vision |= inputs.iter().any(|entry| {
+                entry.as_str().is_some_and(|name| {
+                    let lower = name.to_ascii_lowercase();
+                    lower.contains("image") || lower == "file" || lower == "vision"
+                })
+            });
+            vision_known = true;
         }
         if let Some(caps) = item.get("capabilities") {
-            if caps.get("vision").and_then(|v| v.as_bool()) == Some(true) {
-                vision = true;
+            if let Some(value) = caps.get("vision").and_then(|v| v.as_bool()) {
+                vision |= value;
+                vision_known = true;
             }
             if caps.get("reasoning").and_then(|v| v.as_bool()) == Some(true) {
                 reasoning = true;
@@ -308,13 +342,14 @@ pub(crate) fn detect_model_capabilities(
     }
 
     let id = model_id.to_ascii_lowercase();
-    if !vision {
+    if !vision_known && model_id_suggests_vision(&id) {
         vision = model_id_suggests_vision(&id);
+        vision_known = true;
     }
     if !reasoning {
         reasoning = model_id_suggests_reasoning(&id);
     }
-    (reasoning, vision)
+    (reasoning, vision, vision_known)
 }
 
 fn model_id_suggests_vision(id: &str) -> bool {
@@ -425,13 +460,14 @@ fn openai_list_models(base_url: &str, api_key: &str) -> Result<Vec<ProviderModel
         .iter()
         .filter_map(|item| {
             let id = item.get("id").and_then(|id| id.as_str())?;
-            let (reasoning, vision) = detect_model_capabilities(id, Some(item));
+            let (reasoning, vision, vision_known) = detect_model_capabilities(id, Some(item));
             let context_length = detect_context_length(item);
             Some(ProviderModel {
                 id: id.to_string(),
                 name: id.to_string(),
                 reasoning,
                 vision,
+                vision_known,
                 context_length,
             })
         })
@@ -926,6 +962,7 @@ pub fn g4f_list_providers() -> Vec<ProviderInfo> {
                 reasoning: true,
                 // Auto may route to vision-capable models when images are present.
                 vision: true,
+                vision_known: true,
                 context_length: Some(200_000),
             }],
         },
@@ -941,6 +978,7 @@ pub fn g4f_list_providers() -> Vec<ProviderInfo> {
                     reasoning: true,
                     // Chat V4 is text; DeepSeek-VL family is separate.
                     vision: false,
+                    vision_known: true,
                     context_length: Some(128_000),
                 },
                 ProviderModel {
@@ -948,6 +986,7 @@ pub fn g4f_list_providers() -> Vec<ProviderInfo> {
                     name: "DeepSeek V4 Pro".to_string(),
                     reasoning: true,
                     vision: false,
+                    vision_known: true,
                     context_length: Some(128_000),
                 },
             ],
@@ -1035,21 +1074,47 @@ fn capability_override_key(provider: &str, model: &str) -> String {
     format!("{provider}|{model}")
 }
 
-fn model_vision_enabled(providers: &[ProviderInfo], provider: &str, model: &str) -> bool {
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum VisionCapability {
+    Supported,
+    Unsupported,
+    Unknown,
+}
+
+fn model_vision_capability(
+    providers: &[ProviderInfo],
+    provider: &str,
+    model: &str,
+) -> VisionCapability {
     let settings = crate::settings::read_settings();
     let key = capability_override_key(provider, model);
     if let Some(override_entry) = settings.agent.model_capabilities.get(&key) {
         if let Some(vision) = override_entry.vision {
-            return vision;
+            return if vision {
+                VisionCapability::Supported
+            } else {
+                VisionCapability::Unsupported
+            };
         }
     }
     let model_info = providers
         .iter()
         .find(|item| item.id == provider)
         .and_then(|item| item.models.iter().find(|entry| entry.id == model));
-    model_info
-        .map(|entry| entry.vision)
-        .unwrap_or_else(|| detect_model_capabilities(model, None).1)
+    if let Some(entry) = model_info {
+        if entry.vision {
+            return VisionCapability::Supported;
+        }
+        if entry.vision_known {
+            return VisionCapability::Unsupported;
+        }
+    }
+    let (_, vision, known) = detect_model_capabilities(model, None);
+    match (vision, known) {
+        (true, _) => VisionCapability::Supported,
+        (false, true) => VisionCapability::Unsupported,
+        (false, false) => VisionCapability::Unknown,
+    }
 }
 
 fn ensure_vision_capability(
@@ -1064,7 +1129,7 @@ fn ensure_vision_capability(
     if !has_images {
         return Ok(());
     }
-    if model_vision_enabled(providers, provider, model) {
+    if model_vision_capability(providers, provider, model) != VisionCapability::Unsupported {
         return Ok(());
     }
     Err(format!(
@@ -1084,6 +1149,22 @@ fn prepare_qxai_chat_messages(
         .collect()
 }
 
+/// Validate the common role/content surface without discarding function-call
+/// protocol fields (`tool_calls`, `tool_call_id`, reasoning details).
+fn prepare_qxai_tool_messages(
+    messages: Vec<serde_json::Value>,
+) -> Result<(Vec<ChatMessage>, Vec<serde_json::Value>), String> {
+    let raw_messages = crate::qx_ai_sessions::prepare_provider_messages(messages)?;
+    let chat_messages = raw_messages
+        .iter()
+        .map(|message| {
+            serde_json::from_value::<ChatMessage>(message.clone())
+                .map_err(|error| format!("invalid QxAI chat message: {error}"))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((chat_messages, raw_messages))
+}
+
 /// OpenAI-style function calling for built-in and custom compatible providers.
 /// Returns the raw `choices[0].message` JSON, including any `tool_calls`.
 #[tauri::command]
@@ -1101,29 +1182,13 @@ pub async fn qxai_chat_with_tools(
             let providers = qxai_provider_catalog();
             let selection = resolve_model_selection(&providers, provider, model)?;
             let endpoint = provider_endpoint(&selection.provider)?;
-            let messages = crate::qx_ai_sessions::prepare_provider_messages(messages)?;
-            let chat_messages: Vec<ChatMessage> = messages
-                .into_iter()
-                .map(|message| {
-                    serde_json::from_value(message)
-                        .map_err(|error| format!("invalid QxAI chat message: {error}"))
-                })
-                .collect::<Result<_, _>>()?;
+            let (chat_messages, raw_messages) = prepare_qxai_tool_messages(messages)?;
             ensure_vision_capability(
                 &providers,
                 &selection.provider,
                 &selection.model,
                 &chat_messages,
             )?;
-            let raw_messages = chat_messages
-                .into_iter()
-                .map(|message| {
-                    serde_json::json!({
-                        "role": message.role,
-                        "content": message.content,
-                    })
-                })
-                .collect::<Vec<_>>();
             Ok((
                 endpoint.base_url,
                 endpoint.api_key,
@@ -1182,14 +1247,7 @@ pub fn qxai_stream_chat_with_tools_events(
             let providers = qxai_provider_catalog();
             let selection = resolve_model_selection(&providers, provider, model)?;
             let endpoint = provider_endpoint(&selection.provider)?;
-            let messages = crate::qx_ai_sessions::prepare_provider_messages(messages)?;
-            let chat_messages = messages
-                .iter()
-                .map(|message| {
-                    serde_json::from_value::<ChatMessage>(message.clone())
-                        .map_err(|error| format!("invalid QxAI chat message: {error}"))
-                })
-                .collect::<Result<Vec<_>, _>>()?;
+            let (chat_messages, messages) = prepare_qxai_tool_messages(messages)?;
             ensure_vision_capability(
                 &providers,
                 &selection.provider,
@@ -1503,8 +1561,55 @@ pub fn qxai_save_custom_providers(providers: Vec<CustomProviderConfig>) -> Resul
 #[cfg(test)]
 mod tests {
     use super::{
-        apply_reasoning_request, merge_stream_tool_calls, should_send_tool_choice, sse_data,
+        apply_reasoning_request, detect_model_capabilities, merge_stream_tool_calls,
+        prepare_qxai_tool_messages, should_send_tool_choice, sse_data,
     };
+
+    #[test]
+    fn model_catalog_vision_metadata_is_tri_state() {
+        let (_, vision, known) = detect_model_capabilities(
+            "plain-model",
+            Some(&serde_json::json!({
+                "architecture": { "input_modalities": ["text"] }
+            })),
+        );
+        assert!(!vision);
+        assert!(known);
+
+        let (_, vision, known) = detect_model_capabilities("plain-model", None);
+        assert!(!vision);
+        assert!(!known);
+
+        let (_, vision, known) = detect_model_capabilities(
+            "plain-model",
+            Some(&serde_json::json!({ "input_modalities": ["text", "image"] })),
+        );
+        assert!(vision);
+        assert!(known);
+    }
+
+    #[test]
+    fn tool_round_trip_preserves_call_ids_and_assistant_calls() {
+        let messages = vec![
+            serde_json::json!({
+                "role": "assistant",
+                "content": null,
+                "tool_calls": [{
+                    "id": "call_stats",
+                    "type": "function",
+                    "function": { "name": "system_stats", "arguments": "{}" }
+                }]
+            }),
+            serde_json::json!({
+                "role": "tool",
+                "content": "{\"ok\":true}",
+                "tool_call_id": "call_stats"
+            }),
+        ];
+        let (_, raw) = prepare_qxai_tool_messages(messages).expect("prepare tool messages");
+        assert_eq!(raw[0]["tool_calls"][0]["id"], "call_stats");
+        assert_eq!(raw[1]["tool_call_id"], "call_stats");
+    }
 
     #[test]
     fn sse_data_accepts_standard_spacing_variants() {

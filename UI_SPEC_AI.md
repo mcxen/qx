@@ -110,7 +110,9 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 2. 流式时 **默认展开**；完成后可保持用户操作结果。
 3. 展开：左侧 **1px 时间线** + 步骤行（thought / tool / observation）；active 步骤使用
    accent 脉冲，complete/error 使用稳定状态图标，并尊重 reduced-motion。
-4. 不要厚边框大卡片包住整块思考（避免 web 营销卡）。
+4. 时间线内每条 thought / error 与每次 tool execution 都是独立折叠项，默认收起；
+   运行中只更新状态和 spinner，不得强制展开参数、结果或长错误。用户展开某一项时不影响其它项。
+5. 不要厚边框大卡片包住整块思考（避免 web 营销卡）。
 
 实现：`ReasoningPanel`（原 `JanChainOfThought`）+ `AgentStepsView`。
 
@@ -132,6 +134,7 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 2. 文本：13px / 1.4，placeholder tertiary。
 3. 发送：**28×28** 方角钮；就绪 = `text-primary` 底 + 上箭头；禁用 = 中性灰底；排队中 = accent + ListPlus。
 4. 附件按钮 ghost icon；队列在 composer **上方**。
+5. token 占用与发送按钮组成右侧紧凑动作簇，垂直居中；不得让 token 按钮占据整条弹性中栏或漂在发送按钮上方。
 
 ---
 
@@ -171,7 +174,13 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 - [x] 流式 caret 为竖线
 - [x] 输入 field 风格；发送 28px 方钮 + 箭头，附件/队列位于输入上方
 - [x] Token Usage 显示上下文占用、输入/输出/总量，并优先使用供应商真实用量
+- [x] 缺少 API Key 等启动前可判定错误直接阻止请求；失败运行只显示一次错误，不保存为助手正文
+- [x] 旧会话中“错误 step 与 assistant 正文完全相同”的历史伪回复在加载时安全清理，正常消息不受影响
+- [x] 自动标题必须含 Unicode 字母或数字；`???` / `�` 等损坏结果保留或恢复本地兜底标题
+- [x] 思考步骤、执行步骤与错误步骤逐项独立折叠，包含运行态在内均默认收起
+- [x] function-calling 多轮消息完整保留 `tool_calls` / `tool_call_id`，流式与兼容回退使用同一消息协议
 - [x] 消息下显示日期，并提供复制、编辑、删除；助手末条支持重新生成
+- [x] 消息日期常驻，操作图标按 hover/focus 显示；图标使用无阴影、无毛玻璃的扁平 ghost 样式
 - [x] 队列在输入上，点击回填或直接编辑
 - [x] 亮色 / 暗色均正常，无死黑块
 - [x] Esc / Bottom Bar 符合 UI_SPEC

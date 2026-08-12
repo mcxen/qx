@@ -28,6 +28,18 @@ const messageSource = readFileSync(
   new URL("../src/modules/qx-ai/message-rendering.tsx", import.meta.url),
   "utf8",
 );
+const qxAiCssSource = readFileSync(
+  new URL("../src/styles/qx-ai.css", import.meta.url),
+  "utf8",
+);
+const errorPresentationSource = readFileSync(
+  new URL("../src/modules/qx-ai/error-presentation.ts", import.meta.url),
+  "utf8",
+);
+const conversationTitleSource = readFileSync(
+  new URL("../src/modules/qx-ai/conversation-title.ts", import.meta.url),
+  "utf8",
+);
 
 // Tool execution and model transport are separate switches. Models without
 // native tool schemas must retain the prompt-based ReAct path.
@@ -39,6 +51,19 @@ assert.match(
 // Native tool commands re-read settings from disk, so the debounced frontend
 // settings write must complete before the first tool invocation.
 assert.match(storeSource, /await useSettingsStore\.getState\(\)\.flush\(\)/);
+
+// Basic provider failures are rejected before transport, failed agent runs are
+// never persisted as assistant replies, and broken generated titles are ignored.
+assert.match(storeSource, /selectedProvider\?\.requiresApiKey/);
+assert.match(storeSource, /builtInCredentials\.some/);
+assert.match(storeSource, /if \(result\.failed\)\s*\{\s*throw new Error\(result\.finalAnswer\)/);
+assert.match(conversationTitleSource, /\[\\p\{L\}\\p\{N\}\]\/u/);
+assert.match(conversationTitleSource, /title\.includes\("\\uFFFD"\)/);
+assert.match(agentSource, /failed:\s*true/);
+assert.match(errorPresentationSource, /missing-api-key/);
+assert.match(errorPresentationSource, /first === fallback/);
+assert.match(errorPresentationSource, /removeLegacySyntheticErrorMessages/);
+assert.match(errorPresentationSource, /text === message\.content\.trim\(\)/);
 
 // Streaming tool calls must retain the previous complete-response transport as
 // a provider compatibility fallback.
@@ -73,6 +98,11 @@ assert.match(agentSource, /name:\s*"send_file"/);
 assert.match(agentSource, /clipboard_write_file_paths/);
 assert.match(storeSource, /attachments:\s*result\.attachments/);
 assert.match(messageSource, /qx-ai-attachments/);
+assert.match(messageSource, /function StepRow[\s\S]*?useState\(false\)/);
+assert.match(messageSource, /className="qx-jan-step-header"/);
+assert.match(messageSource, /aria-expanded=\{open\}/);
+assert.match(messageSource, /defaultOpen=\{false\}/);
+assert.doesNotMatch(messageSource, /defaultOpen=\{step\.state === "running"\}/);
 
 // Native reasoning is recorded as an ordered Agent step for every model turn.
 // It must be appended before that turn's tool action and updated in place,
@@ -222,6 +252,10 @@ const nativeSkillsSource = readFileSync(
 );
 assert.match(chatSource, /activity:\s*"dots"/);
 assert.doesNotMatch(chatSource, /progress:\s*55/);
+assert.match(chatSource, /className="qx-jan-composer-actions"/);
+assert.match(qxAiCssSource, /\.qx-jan-composer-actions\s*\{[\s\S]*?margin-left:\s*auto/);
+assert.match(qxAiCssSource, /\.qx-jan-message-actions \.qx-shadcn-button\s*\{[\s\S]*?box-shadow:\s*none/);
+assert.match(qxAiCssSource, /\.qx-jan-message-action-btns\s*\{[\s\S]*?opacity:\s*0/);
 
 // Generating a response must not lock the composer: later submissions enter a
 // visible FIFO queue, and slash search resolves a managed Qx Skill document.

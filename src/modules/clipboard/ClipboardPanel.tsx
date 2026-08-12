@@ -36,6 +36,7 @@ import {
 } from "./openSession";
 import {
   classify,
+  decodeClipboardUrl,
   clipboardFileLabel,
   clipboardFileKind,
   clipboardFilePaths,
@@ -47,6 +48,7 @@ import {
   contentType,
   matchesQuery,
   isClipboardImageItem,
+  isClipboardUrl,
 } from "./utils";
 
 type Filter = "all" | "pinned" | "links" | "code" | "long" | "frequent" | "image" | "file";
@@ -663,6 +665,21 @@ export default function ClipboardPanel() {
     } catch {}
   };
 
+  const decodeUrlItem = async (item?: ClipboardEntry) => {
+    if (!item || !isClipboardUrl(item.text)) return;
+    try {
+      // This is an explicit clipboard write. Do not let the deferred selection
+      // restore overwrite the decoded result when Qx subsequently hides.
+      clearClipboardRestore();
+      await writeText(decodeClipboardUrl(item.text));
+      setStatus(t("clipboard.urlDecoded", "URL decoded and copied"));
+      window.setTimeout(() => setStatus(""), 1600);
+    } catch (error) {
+      setStatus(String(error || t("clipboard.urlDecodeFailed", "Could not decode URL")));
+      window.setTimeout(() => setStatus(""), 1600);
+    }
+  };
+
   const pasteItem = async (item?: ClipboardEntry, options: { focusAtCursor?: boolean } = {}) => {
     if (!item) return;
     try {
@@ -957,6 +974,17 @@ export default function ClipboardPanel() {
         onClick: () => void importToTextTool(selectedItem),
       },
     ];
+
+    if (selectedItem && classify(selectedItem) === "links") {
+      list.splice(2, 0, {
+        id: "decode-url",
+        label: t("clipboard.decodeUrl", "Decode URL"),
+        kbd: "CmdOrCtrl+Shift+U",
+        menuKey: "u",
+        disabled: decodeClipboardUrl(selectedItem.text) === selectedItem.text.trim(),
+        onClick: () => void decodeUrlItem(selectedItem),
+      });
+    }
 
     // OCR for every image-shaped clipboard item (bitmap paste + image files).
     if (selectedItem && isClipboardImageItem(selectedItem)) {

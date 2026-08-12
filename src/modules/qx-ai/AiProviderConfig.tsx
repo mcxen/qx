@@ -23,6 +23,7 @@ import {
   resolveModelContextLength,
   resolveModelReasoning,
   resolveModelVision,
+  resolveModelVisionState,
   sortModelsForPicker,
   toggleFavoriteModelList,
 } from "./model-capabilities";
@@ -710,6 +711,7 @@ function ProviderModelTable({
         {filtered.map((model) => {
           const starred = isFavoriteModel(providerId, model.id, favorites);
           const vision = resolveModelVision(providerId, model, caps);
+          const visionState = resolveModelVisionState(providerId, model, caps);
           const reasoning = resolveModelReasoning(providerId, model, caps);
           const ctx = formatContextLength(
             resolveModelContextLength(providerId, model, caps),
@@ -752,7 +754,12 @@ function ProviderModelTable({
                     {t("agent.model.reasoning.badge", "Reasoning")}
                   </Badge>
                 )}
-                {!vision && !reasoning && (
+                {visionState === "unknown" && (
+                  <Badge variant="outline" className="qx-ai-cap-badge">
+                    {t("qxai.providers.caps.auto", "Auto detect")}
+                  </Badge>
+                )}
+                {visionState === "unsupported" && !reasoning && (
                   <span className="qx-ai-config-card-meta">
                     {t("qxai.providers.caps.none", "Text")}
                   </span>

@@ -35,7 +35,7 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
       },
     ];
     opts.onStep(steps[0]);
-    return { finalAnswer: text, steps, attachments: [] };
+    return { finalAnswer: text, steps, attachments: [], failed: true };
   }
 
   const runOpts: AgentRunOptions = { ...opts, basePrompt: before.basePrompt };
@@ -93,7 +93,7 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
       };
       steps.push(errStep);
       runOpts.onStep(errStep);
-      return { finalAnswer: text, steps, attachments };
+      return { finalAnswer: text, steps, attachments, failed: true };
     }
 
     const parsed = parseAgentResponse(lastRaw);

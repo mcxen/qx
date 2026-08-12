@@ -1057,8 +1057,72 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
     if (status?.completed !== 3 || status.total !== 5 || status.failed !== 1) {
       fail("Workbench activity status must preserve real batch counters");
     }
+    const mutation = workbench.normalizePluginWorkbenchItemsUpdate({
+      revision: 3,
+      upsert: [
+        { id: "topic-2", title: "Second" },
+        { id: "topic-2", title: "Duplicate must be removed" },
+      ],
+      removeIds: ["topic-1", "topic-1"],
+      order: ["topic-2", "topic-2"],
+      selectedId: "topic-2",
+    });
+    if (
+      mutation.revision !== 3
+      || mutation.upsert?.length !== 1
+      || mutation.removeIds?.length !== 1
+      || mutation.order?.length !== 1
+    ) {
+      fail("Workbench incremental mutation trust boundary must normalize ids and revisions");
+    }
   } catch (e) {
     fail(`Workbench detail protocol runtime test: ${e}`);
+  }
+}
+
+const workbenchCacheOut = path.join(scratch, "workbenchCache.mjs");
+if (bundleProductionModule("src/plugin/workbenchCache.ts", workbenchCacheOut)) {
+  try {
+    const cache = await import(pathToFileURL(workbenchCacheOut).href + `?t=${Date.now()}`);
+    const initial = {
+      revision: 1,
+      loading: false,
+      items: [{ id: "a", title: "A", detail: { body: "cached" } }],
+      selectedId: "a",
+    };
+    const incremented = cache.applyPluginWorkbenchItemsUpdate(initial, {
+      revision: 2,
+      upsert: [{ id: "a", title: "A2" }, { id: "b", title: "B" }],
+      order: ["b", "a"],
+      selectedId: "b",
+    });
+    if (
+      incremented.items?.map((item) => item.id).join(",") !== "b,a"
+      || incremented.items?.[1]?.detail?.body !== "cached"
+      || incremented.selectedId !== "b"
+    ) {
+      fail("Workbench host incremental merge must retain omitted item detail and stable order");
+    }
+    const staleVisible = cache.mergePluginWorkbenchSnapshot(incremented, {
+      revision: 3,
+      loading: true,
+      items: [],
+      error: null,
+    });
+    if (staleVisible.items?.length !== 2 || staleVisible.loading !== true) {
+      fail("Workbench SWR loading snapshot must retain usable cached items");
+    }
+    const emptySuccess = cache.mergePluginWorkbenchSnapshot(staleVisible, {
+      revision: 4,
+      loading: false,
+      items: [],
+      error: null,
+    });
+    if (emptySuccess.items?.length !== 0) {
+      fail("Workbench successful empty refresh must replace stale cached items");
+    }
+  } catch (e) {
+    fail(`Workbench cache/incremental protocol runtime test: ${e}`);
   }
 }
 

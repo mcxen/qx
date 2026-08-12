@@ -511,7 +511,10 @@ export default function RssPanel() {
                     </span>
                     <span className="qx-list-subtitle">
                       {feed.folder_name ? `${feed.folder_name} · ` : ""}
-                      {formatRelative(feed.last_fetched, t)
+                      {formatRelative(
+                        feed.latest_article_published_at || feed.last_fetched || feed.created_at,
+                        t,
+                      )
                         || t("rss.neverFetched", "never fetched")}
                       {feed.error_count > 0
                         ? ` · ${t("rss.errorCount", "{n} errors").replace(

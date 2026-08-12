@@ -373,6 +373,12 @@ export function ensureBuiltinQxAiHooks(): void {
       run: (ctx) => {
         const err = (ctx.error || "").trim();
         if (!err) return;
+        // Provider/configuration failures already contain their recovery path.
+        // Appending tool-discovery advice makes a basic setup error noisy and
+        // misleading (and used to be duplicated into the assistant message).
+        if (/api key|provider|model|unauthorized|forbidden|network|timed?\s*out/i.test(err)) {
+          return { finalAnswer: err };
+        }
         // Keep model error text; append recovery hint once.
         if (err.includes("list_qx_capabilities") || err.includes("SOLO mode")) return;
         return {

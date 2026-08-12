@@ -209,8 +209,10 @@ Sysinfo、Brew、Unsplash 等业务只负责领域状态。插件信任边界仍
 `workbenchTypes.normalizePluginWorkbenchState`，宿主 Shell 负责样式、焦点、导航与
 Esc。图片详情的自适应比例、加载失败与全尺寸预览也属于宿主能力，插件不得尝试从
 隐藏 iframe 覆盖宿主 CSS 或另起 lightbox。异步集合仍以插件业务 state 为最终事实源；
-`mountWorkbench()` 返回的 controller 只负责在 SDK 内按稳定 id 合并 `updateItems`
-并发布完整快照，信任边界不接受 DOM patch。内置 React 模块若需要更深的多层工作流，继续复用
+`mountWorkbench()` 返回的 controller 在 SDK 内按稳定 id 合并 `updateItems`，并把同一
+keyed mutation 交给宿主信任边界；宿主不接受 DOM patch。宿主为每个插件保存有界、版本化的
+Workbench 成功快照，打开时先恢复 stale 内容，再用完整快照或 mutation 增量更新。业务领域
+缓存仍由插件负责，Workbench 缓存只保存已归一化的呈现数据。内置 React 模块若需要更深的多层工作流，继续复用
 `useQxListSelection` / `useQxMasterDetail` / `QxShellAction`，不应为了“统一”绕进
 iframe RPC；多个领域动作组通过 `QxActionSections` 从同一 `QxShellAction[]` 投影，空组由
 端口统一跳过。两条路径共享的是端口语义和视觉令牌，而不是强制同一 runtime。

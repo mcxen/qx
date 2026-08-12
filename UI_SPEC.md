@@ -425,11 +425,15 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
 - Workbench List / Gallery 的鼠标点击必须由宿主立即更新选中态并异步通知插件；宿主视图可见时隐藏 iframe 必须退出指针命中层，不能让插件回传延迟或透明叠层造成点击无响应。
 - Workbench query、active tab、filter value 与 selectedId 采用受控双层状态：宿主先乐观呈现交互，插件 handler 同步更新业务 state 并重新发布；慢 I/O 不得阻塞回画。Action 事件必须携带触发瞬间的 selectedId 快照，快速选择后执行不能落到旧条目。
 - Workbench item `id` 是强制、稳定且唯一的业务键；缺失或重复 item/tab id 在信任边界直接拒绝，tabs 最多一个 active，不提供 title/index 兼容回退。`data:image/` 不得被截断成损坏 URL，超出宿主上限时应整体拒绝。
+- Workbench 打开时先显示宿主保存的上次成功快照，再以 loading 状态后台刷新；空 loading/error
+  快照不得替换仍可用的 items/detail。集合增量按稳定 item id 执行 upsert/remove/order，保持
+  未改变的详情、选择和滚动；只有成功的空结果可以清空旧集合。敏感面板可显式禁用宿主缓存。
 - Workbench manifest command 完成后宿主必须发送 `commandComplete` 回执；插件据此单次重读共享持久化状态，不得用亚秒级磁盘轮询等待暂停、继续、停止等动作生效。
 - Workbench Gallery 使用当前响应式网格的真实列数做二维选择：←/→ 在同行移动，↑/↓ 跨行并尽量保持列位置。焦点留在搜索框时，上下键仍浏览网格；空查询的左右键也浏览网格，有查询文字时左右键才保留原生光标语义。
 - 二维索引计算必须复用 `qxGridNavigation`；Workbench 只是消费者，不得在插件宿主内维护一份专用网格算法。List / Detail 的 region id 与 navigation 复用 `useQxMasterDetail`，Actions 项复用 `QxShellAction + QxActionList`。
 - Workbench List / Gallery 默认以完整 Main Area 作为浏览画布；点击条目或对带详情的条目按 Enter 后，宿主统一切换为「左侧保留当前 List / Gallery 集合 + 右侧 Detail」的主从布局。Esc 先关闭 Detail 并恢复全宽集合，再清本地 query，最后离开模块；Context Panel 仍只承载 Actions。插件不得为 Bing、Unsplash、Brew 等消费者各自复制这套布局状态。
 - Workbench List / Gallery 的内容轨是稳定宿主表面：空数据或少量数据时仍占满当前浏览区或已打开详情时的左侧集合栏；空态必须跨满所属区域并垂直居中，不能缩成首个 grid cell 或随 item 数量塌缩。若发布的是无条目的面板级 `detail`，Detail 直接占满 Main Area，不保留无意义的空集合栏。
+- Workbench Detail 的正文浏览位置由宿主按 `pluginId + tab/filter scope + item.id` 统一保存为归一化百分比。首次打开未读过的条目必须从顶部开始，不能继承前一个条目的 `scrollTop`；返回旧条目恢复其自身位置，正文和图片异步增长期间继续校正。插件不得自行操作宿主滚动 DOM。
 - Workbench List 必须像 V2EX 一样始终保留左栏 section header 与数量；首次空载显示统一骨架行 + LoadingLabel，已有条目刷新时保留旧列表并把数量短暂显示为 `…`，不得退回整栏纯文本 loading。
 - Workbench List 的单图缩略图继续使用 `item.image`；社区动态可用
   `item.images[]` 在文字轨下显示完整的横向滚动图片卡；宿主只保留与详情相同的 24 张
@@ -779,6 +783,9 @@ Clipboard：
 - 左侧历史列表，右侧预览和信息。
 - 列表、预览、信息区独立滚动。
 - 置顶、复制、删除等动作走 Bottom Bar / Actions。
+- HTTP(S) 链接条目的 Actions 提供“URL 浏览器解码”：按浏览器 `decodeURIComponent`
+  语义解开一层百分号编码并复制结果。整条被编码的 URL 仍归入链接筛选；非法转义保持
+  原样且不得阻断其他有效片段。显式解码写入必须取消延迟恢复，避免窗口隐藏时被原条目覆盖。
 - 剪贴板浏览态的“粘贴到 {前台应用} ↵”使用 Bottom Bar 主动作，固定在“操作
   Cmd/Ctrl+K”左侧；文本编辑且有改动时，Bottom Island 并列“保存 / 另存为新条目”。
   Island 动作组以短 enter 动画出现；保存成功后由宿主 effect 在岛边缘快速绕行
@@ -802,6 +809,7 @@ RSS：
   `⌘/Ctrl+D` 保存/取消保存文章，`⌘/Ctrl+S` 下载当前文章 HTML，`⌘/Ctrl+Shift+R` 全部刷新。
   上下方向键继续移动当前列表选择，Esc 阶梯不变。
 - “刷新订阅”只刷新当前 Feed；“刷新全部”必须读取数据库中的完整订阅集合逐个执行真实 HTTP 请求，不能只处理当前列表选中项。
+- Feed 列表副标题的相对时间显示该订阅已保存文章中最新的有效 `published_at`；文章未提供发表时间时才回退到订阅抓取/创建时间。批量刷新时间不得替代文章发表时间，导致所有订阅显示同一时间。
 - Settings → RSS Reader → Library & Storage 默认开启“每日后台刷新”，可选择每 6 / 12 / 24
   小时或关闭。Qx 运行时按最近一次全量刷新时间与所选周期执行；手动“全部刷新”重新计时。后台任务不得要求面板挂载、
   召唤或聚焦窗口，也不得与手动/单 Feed 刷新并发。
@@ -837,6 +845,7 @@ Screenshot & Recording Module（截图录屏模块）：
 - 捕获选项还包括浮动缩略图、截图/录屏指针、录屏点击效果和麦克风设备。录屏麦克风由随包 FFmpeg sidecar 采集 AAC 并在停止时合并；设备拔出、权限拒绝或合并失败时保留无声视频并显示局部警告。输入事件由共享服务供录屏点击效果和宏录制共同消费。
 - “开始截图”和“开始录制”是两个独立 Launcher command，也是默认关闭、可录入的全局快捷动作。
 - 截图完成后的默认动作可配置为“自动复制到剪贴板”或“仅保存”；复制失败不得删除已经保存并写入历史的 PNG。模块内展示轻量 post-capture toast（打开 / 复制 / 显示），宿主 Bottom Island 同时提供短时“复制”动作；复制成功后在原岛显示完成反馈。
+- 桌面贴图由 Rust 在显示前按目标显示器工作区缩放并定位；前端必须继承同一初始缩放比，图片首帧加载不得再次改变原生窗口几何。首次按下拖动时，鼠标在图片内的相对落点必须保持不变，不得跳到窗口中心或角落。
 - Windows 远程桌面会话不得继续使用可能“成功返回黑帧”的 WGC still-frame 路径，应直接走 GDI 兼容捕获；实体机会话继续优先使用 WGC。WGC 返回近全黑空帧时同样回退 GDI。透明 WebView2 圈选层挂载后必须通过 ready 握手重放 session 并重新置前/聚焦，避免远程环境中窗口已创建但选择器不可见或不接收输入。
 - 捕获历史支持 **列表 / 图库** 两种持久化视图：未打开条目时集合占满 Main Area；选择条目后，两种视图都切换为标准 Workbench 主从布局，左侧保留当前 List / Gallery 集合，右侧显示捕获详情。两种视图必须共享选择、预览、删除、Shell 键盘导航和 Actions，不得维护两份历史状态。
 - 捕获历史默认使用 Gallery：浏览态让缩略图网格占满 Main Area，打开卡片后保留左侧 Gallery 并在右侧显示详情，Esc 只关闭详情并返回全宽 Gallery；List 仍作为用户主动选择的紧凑模式保留，并遵循同一主从切换。

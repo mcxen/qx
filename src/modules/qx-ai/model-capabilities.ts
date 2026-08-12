@@ -6,6 +6,8 @@ export type ModelCapabilityFlags = {
   name: string;
   reasoning?: boolean;
   vision?: boolean;
+  vision_known?: boolean;
+  visionKnown?: boolean;
   context_length?: number;
   contextLength?: number;
 };
@@ -59,12 +61,23 @@ export function resolveModelVision(
   model: ModelCapabilityFlags | undefined,
   overrides?: Record<string, ModelCapabilityOverride>,
 ): boolean {
-  if (!model?.id) return false;
+  return resolveModelVisionState(providerId, model, overrides) === "supported";
+}
+
+export type ModelVisionState = "supported" | "unsupported" | "unknown";
+
+export function resolveModelVisionState(
+  providerId: string,
+  model: ModelCapabilityFlags | undefined,
+  overrides?: Record<string, ModelCapabilityOverride>,
+): ModelVisionState {
+  if (!model?.id) return "unknown";
   const key = modelCapabilityKey(providerId, model.id);
   const override = overrides?.[key]?.vision;
-  if (typeof override === "boolean") return override;
-  if (typeof model.vision === "boolean") return model.vision;
-  return detectVisionFromModelId(model.id);
+  if (typeof override === "boolean") return override ? "supported" : "unsupported";
+  if (model.vision) return "supported";
+  if (model.vision_known || model.visionKnown) return "unsupported";
+  return detectVisionFromModelId(model.id) ? "supported" : "unknown";
 }
 
 export function resolveModelReasoning(
@@ -200,6 +213,7 @@ export function normalizeCatalogModel(raw: QxAiModelInfo | ModelCapabilityFlags)
     name: raw.name || raw.id,
     reasoning: raw.reasoning,
     vision: raw.vision,
+    vision_known: raw.vision_known ?? raw.visionKnown,
     context_length: context,
   };
 }

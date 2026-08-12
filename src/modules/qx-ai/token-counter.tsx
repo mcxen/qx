@@ -141,7 +141,6 @@ export function QxAiTokenCounter({
 
   const badge = maxTokens && maxTokens > 0 && pct !== undefined ? (
     <div className={`qx-jan-token-badge is-${tier}`}>
-      <span className="qx-jan-token-badge-pct">{pct.toFixed(1)}%</span>
       <svg className="qx-jan-token-ring" viewBox="0 0 16 16" aria-hidden="true">
         <circle
           className="qx-jan-token-ring-track"
@@ -162,6 +161,7 @@ export function QxAiTokenCounter({
           strokeDashoffset={String(RING_C * (1 - Math.min(pct, 100) / 100))}
         />
       </svg>
+      <span className="qx-jan-token-badge-pct">{pct.toFixed(1)}%</span>
     </div>
   ) : (
     <div className="qx-jan-token-badge is-count">

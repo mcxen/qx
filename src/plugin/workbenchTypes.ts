@@ -239,9 +239,21 @@ export interface PluginWorkbenchState {
    * mounted Workbench after each completion so it can reload persisted data.
    */
   backgroundPoll?: { command: string };
+  /**
+   * Host-owned stale-while-revalidate snapshot policy. Workbench caching is on
+   * by default; use a stable key for multiple logical views, or disable it for
+   * sensitive/ephemeral panels.
+   */
+  cache?: {
+    key?: string;
+    mode?: "stale-while-revalidate" | "disabled";
+    maxAgeMs?: number;
+  };
 }
 
 export interface PluginWorkbenchItemsUpdate {
+  /** Optional monotonic publication revision for latest-wins async batches. */
+  revision?: number;
   /** Insert new ids and shallow-replace existing ids without rebuilding the collection. */
   upsert?: PluginWorkbenchItem[];
   /** Remove ids after applying upserts. */
@@ -273,7 +285,8 @@ export type PluginWorkbenchEvent =
 export interface PluginWorkbenchPayload {
   pluginId: string;
   runtimeId: string;
-  state: PluginWorkbenchState;
+  state?: PluginWorkbenchState;
+  update?: PluginWorkbenchItemsUpdate;
 }
 
 function shortText(value: unknown, max: number): string | undefined {
@@ -710,6 +723,11 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
     ? raw.backgroundPoll as Record<string, unknown>
     : null;
   const backgroundPollCommand = shortText(backgroundPollRaw?.command, 128);
+  const cacheRaw = raw.cache && typeof raw.cache === "object"
+    ? raw.cache as Record<string, unknown>
+    : null;
+  const cacheKey = shortText(cacheRaw?.key, 128)?.trim();
+  const cacheMaxAge = Number(cacheRaw?.maxAgeMs);
   const islandRaw = raw.island && typeof raw.island === "object"
     ? raw.island as Record<string, unknown>
     : null;
@@ -788,6 +806,43 @@ export function normalizePluginWorkbenchState(value: unknown): PluginWorkbenchSt
     detail: normalizeDetail(raw.detail, mediaBudget),
     emptyText: shortText(raw.emptyText, 500),
     ...(backgroundPollCommand ? { backgroundPoll: { command: backgroundPollCommand } } : {}),
+    ...(cacheRaw ? {
+      cache: {
+        key: cacheKey && /^[a-z0-9._:-]+$/i.test(cacheKey) ? cacheKey : undefined,
+        mode: cacheRaw.mode === "disabled" ? "disabled" : "stale-while-revalidate",
+        maxAgeMs: Number.isFinite(cacheMaxAge)
+          ? Math.max(60_000, Math.min(365 * 86_400_000, Math.round(cacheMaxAge)))
+          : undefined,
+      },
+    } : {}),
     ...(hasIsland ? { island } : {}),
   };
+}
+
+/** Trust boundary for iframe → host keyed collection mutations. */
+export function normalizePluginWorkbenchItemsUpdate(value: unknown): PluginWorkbenchItemsUpdate {
+  const raw = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
+  const normalizedItems = normalizePluginWorkbenchState({ items: raw.upsert }).items || [];
+  const uniqueIds = (candidate: unknown) => {
+    if (!Array.isArray(candidate)) return [];
+    const seen = new Set<string>();
+    return candidate.slice(0, 500).map((id) => shortText(id, 256)?.trim() || "")
+      .filter((id) => {
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      });
+  };
+  const normalized: PluginWorkbenchItemsUpdate = {
+    revision: Number.isFinite(Number(raw.revision))
+      ? Math.max(0, Math.floor(Number(raw.revision)))
+      : undefined,
+    upsert: normalizedItems,
+    removeIds: uniqueIds(raw.removeIds),
+    order: uniqueIds(raw.order),
+  };
+  if (Object.prototype.hasOwnProperty.call(raw, "selectedId")) {
+    normalized.selectedId = raw.selectedId == null ? null : shortText(raw.selectedId, 256) || null;
+  }
+  return normalized;
 }

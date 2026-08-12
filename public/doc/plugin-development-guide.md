@@ -213,8 +213,8 @@ Manifest 中声明的每个 command 必须在 `QxPlugin.commands` 中提供同�
 
 `panel.render(container, context)` 应快速完成：
 
-1. 读取缓存或本地持久状态。
-2. 立即挂载首帧 Workbench（通过 `context.ui.mountWorkbench`）。
+1. 立即挂载首帧 Workbench（通过 `context.ui.mountWorkbench`）；宿主会先恢复上次成功的呈现快照。
+2. 读取业务缓存或本地持久状态（游标、原始响应、离线正文等）；不要重复保存同一份 Workbench JSON。
 3. 通过命令、后台 interval 或用户动作刷新真实数据。
 4. 完成后更新存储、Workbench 或 Island。
 
@@ -224,6 +224,8 @@ Manifest 中声明的每个 command 必须在 `QxPlugin.commands` 中提供同�
 网络型面板采用 stale-while-revalidate：保留可用旧内容，显示真实刷新状态，
 慢请求不得把新选择或新查询覆盖回旧结果。进度必须来自真实阶段或明确标记为
 indeterminate，不能 mock 百分比。
+分页、流式批次或局部详情完成时使用 controller `updateItems({ upsert, removeIds, order,
+selectedId, revision })`；这会通过宿主增量协议合并并更新快照，不要为单个条目重发完整集合。
 
 媒体必须受字节预算约束，但不得用产品级图片数量上限截断上游正常集合：单个列表项
 最多 4 张紧凑预览，详情按源顺序发布完整集合；宿主仅在信任边界保留 96 张异常输入

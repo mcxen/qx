@@ -365,7 +365,13 @@ pub fn increment_feed_error(conn: &Connection, id: i64) -> rusqlite::Result<()> 
 
 pub fn list_feeds(conn: &Connection) -> rusqlite::Result<Vec<Feed>> {
     let mut stmt = conn.prepare(
-        "SELECT f.id, f.url, f.title, f.icon, f.last_fetched, f.error_count, f.created_at,
+        "SELECT f.id, f.url, f.title, f.icon, f.last_fetched,
+                COALESCE((
+                    SELECT MAX(NULLIF(a.published_at, 0))
+                    FROM rss_articles a
+                    WHERE a.feed_id = f.id
+                ), 0) AS latest_article_published_at,
+                f.error_count, f.created_at,
                 (SELECT COUNT(*) FROM rss_articles a WHERE a.feed_id = f.id AND a.is_read = 0) AS unread,
                 f.folder_id,
                 d.name AS folder_name
@@ -384,11 +390,12 @@ pub fn list_feeds(conn: &Connection) -> rusqlite::Result<Vec<Feed>> {
             title: row.get::<_, Option<String>>(2)?.unwrap_or_default(),
             icon: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
             last_fetched: row.get::<_, Option<i64>>(4)?.unwrap_or(0),
-            error_count: row.get::<_, Option<i64>>(5)?.unwrap_or(0),
-            created_at: row.get(6)?,
-            unread_count: row.get(7)?,
-            folder_id: row.get(8)?,
-            folder_name: row.get(9)?,
+            latest_article_published_at: row.get(5)?,
+            error_count: row.get::<_, Option<i64>>(6)?.unwrap_or(0),
+            created_at: row.get(7)?,
+            unread_count: row.get(8)?,
+            folder_id: row.get(9)?,
+            folder_name: row.get(10)?,
         })
     })?;
     let mut out = Vec::new();
@@ -874,5 +881,31 @@ mod tests {
         assert_eq!(snapshot.articles.len(), 1);
         assert_eq!(snapshot.articles[0].title, "Newest");
         assert_eq!(snapshot.articles[0].feed_title, "Example");
+    }
+
+    #[test]
+    fn feed_list_reports_latest_article_publication_instead_of_refresh_time() {
+        let mut conn = Connection::open_in_memory().expect("open rss db");
+        migrate_schema(&mut conn).expect("create schema");
+        conn.execute(
+            "INSERT INTO rss_feeds (url, title, last_fetched, created_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params!["https://example.com/feed.xml", "Example", 9_999_i64, 1_i64],
+        )
+        .expect("insert feed");
+        for (guid, published_at) in [("older", 100_i64), ("newest", 300_i64), ("missing", 0_i64)] {
+            conn.execute(
+                "INSERT INTO rss_articles
+                 (feed_id, guid, title, published_at, created_at)
+                 VALUES (1, ?1, ?1, ?2, ?3)",
+                params![guid, published_at, 8_888_i64],
+            )
+            .expect("insert article");
+        }
+
+        let feeds = list_feeds(&conn).expect("list feeds");
+        assert_eq!(feeds.len(), 1);
+        assert_eq!(feeds[0].last_fetched, 9_999);
+        assert_eq!(feeds[0].latest_article_published_at, 300);
     }
 }

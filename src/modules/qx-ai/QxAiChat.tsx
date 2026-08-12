@@ -60,7 +60,8 @@ import {
 import { useG4fStore } from "./store";
 import { chooseAndImportQxAiAttachments } from "./sessions";
 import type { QxAiFileAttachment } from "./agent/types";
-import { resolveModelVision } from "./model-capabilities";
+import { resolveModelVisionState } from "./model-capabilities";
+import { presentQxAiError } from "./error-presentation";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
 const MASTER_DETAIL = qxMasterDetailIds("qx-ai");
@@ -168,6 +169,11 @@ export default function QxAiChat() {
   const streamedReasoning = run?.streamedReasoning ?? "";
   const streamingSteps = run?.streamingSteps ?? [];
   const currentError = run?.error ?? error;
+  const errorPresentation = currentError ? presentQxAiError(currentError) : null;
+  const currentErrorText = errorPresentation?.kind === "missing-api-key"
+    ? t("qxai.error.apiKeyMissing", "{provider} is missing an API key. Add it in Settings → AI Agent.")
+        .replace("{provider}", errorPresentation.provider)
+    : errorPresentation?.detail ?? "";
   const settingsSnapshot = useSettingsStore((state) => state.settings);
   const [enabledTools, setEnabledTools] = useState<string[]>([]);
   // Tool catalogue is optional UI chrome — load async so chat shell paints first.
@@ -191,7 +197,7 @@ export default function QxAiChat() {
   );
   const activeModels = activeProvider?.models ?? [];
   const activeModel = activeModels.find((model) => model.id === conv?.model);
-  const modelSupportsVision = resolveModelVision(
+  const modelVisionState = resolveModelVisionState(
     conv?.provider ?? "",
     activeModel ?? (conv?.model ? { id: conv.model, name: conv.model } : undefined),
     agentSettings.model_capabilities,
@@ -558,8 +564,8 @@ export default function QxAiChat() {
           : t("qxai.streaming", "Streaming response…"),
         activity: "dots",
       }
-    : currentError
-      ? { label: t("qxai.title", "QxAI Chat"), detail: currentError, tone: "danger" }
+    : currentErrorText
+      ? { label: t("qxai.title", "QxAI Chat"), detail: currentErrorText, tone: "danger" }
       : {
           label: t("qxai.title", "QxAI Chat"),
           detail:
@@ -684,10 +690,15 @@ export default function QxAiChat() {
                   {t("qxai.noModels", "No models available for this provider")}
                 </div>
               )}
-              <div className={`qx-ai-capability-pill${modelSupportsVision ? " is-on" : ""}`}>
-                {modelSupportsVision
+              <div className={`qx-ai-capability-pill${modelVisionState !== "unsupported" ? " is-on" : ""}`}>
+                {modelVisionState === "supported"
                   ? t("qxai.model.vision.on", "Vision enabled — images can be sent")
-                  : t(
+                  : modelVisionState === "unknown"
+                    ? t(
+                        "qxai.model.vision.auto",
+                        "Vision auto-detect — an image request will verify support",
+                      )
+                    : t(
                       "qxai.model.vision.off",
                       "Text only — switch to a vision model or enable Vision in Settings → AI Agent",
                     )}
@@ -1080,6 +1091,7 @@ export default function QxAiChat() {
                 {(selectedSkill
                   || pendingAttachments.length > 0
                   || attachmentsError
+                  || currentErrorText
                   || queuedMessages.length > 0) && (
                   <div className="qx-ai-composer-status is-docked">
                     {selectedSkill ? (
@@ -1148,7 +1160,7 @@ export default function QxAiChat() {
 
                     {pendingAttachments.some(
                       (item) => item.kind === "image" || item.mimeType?.startsWith("image/"),
-                    ) && !modelSupportsVision ? (
+                    ) && modelVisionState === "unsupported" ? (
                       <div className="qx-ai-config-error">
                         {t(
                           "qxai.model.vision.required",
@@ -1158,6 +1170,22 @@ export default function QxAiChat() {
                     ) : null}
                     {attachmentsError ? (
                       <div className="qx-ai-config-error">{attachmentsError}</div>
+                    ) : null}
+                    {currentErrorText ? (
+                      <div className="qx-ai-config-error qx-ai-run-error" role="alert">
+                        <span>{currentErrorText}</span>
+                        {errorPresentation?.kind === "missing-api-key" ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            onClick={() => {
+                              openAgentSettingsTab();
+                            }}
+                          >
+                            {t("qxai.error.configure", "Configure")}
+                          </Button>
+                        ) : null}
+                      </div>
                     ) : null}
 
                     {queuedMessages.length > 0 ? (
@@ -1314,54 +1342,56 @@ export default function QxAiChat() {
                         <Paperclip size={16} className={attachmentsBusy ? "qx-spin" : undefined} />
                       </Button>
                     </div>
-                    <div className="qx-jan-composer-meta">
-                      {isCurrentConversationStreaming && run?.liveTokenSpeed ? (
-                        <span
-                          className="qx-jan-composer-speed"
-                          title={t("qxai.tokens.speed", "Generation speed")}
-                        >
-                          {Math.round(run.liveTokenSpeed)}{" "}
-                          {t("qxai.tokens.perSec", "tokens/sec")}
-                        </span>
-                      ) : null}
-                      {conv ? (
-                        <QxAiTokenCounter
-                          messages={conv.messages}
-                          draft={input}
-                          maxTokens={contextMaxTokens}
-                          modelName={activeModel?.name || conv.model}
-                        />
-                      ) : null}
+                    <div className="qx-jan-composer-actions">
+                      <div className="qx-jan-composer-meta">
+                        {isCurrentConversationStreaming && run?.liveTokenSpeed ? (
+                          <span
+                            className="qx-jan-composer-speed"
+                            title={t("qxai.tokens.speed", "Generation speed")}
+                          >
+                            {Math.round(run.liveTokenSpeed)}{" "}
+                            {t("qxai.tokens.perSec", "tokens/sec")}
+                          </span>
+                        ) : null}
+                        {conv ? (
+                          <QxAiTokenCounter
+                            messages={conv.messages}
+                            draft={input}
+                            maxTokens={contextMaxTokens}
+                            modelName={activeModel?.name || conv.model}
+                          />
+                        ) : null}
+                      </div>
+                      <Button
+                        type="button"
+                        className={`qx-jan-composer-send${
+                          isCurrentConversationStreaming ? " is-queue" : ""
+                        }${
+                          canChat && (input.trim() || pendingAttachments.length > 0)
+                            ? " is-ready"
+                            : ""
+                        }`}
+                        size="icon"
+                        disabled={!canChat || (!input.trim() && pendingAttachments.length === 0)}
+                        title={
+                          isCurrentConversationStreaming
+                            ? t("qxai.queue.add", "Add to Queue")
+                            : t("qxai.send", "Send")
+                        }
+                        aria-label={
+                          isCurrentConversationStreaming
+                            ? t("qxai.queue.add", "Add to Queue")
+                            : t("qxai.send", "Send")
+                        }
+                        onClick={handleSend}
+                      >
+                        {isCurrentConversationStreaming ? (
+                          <ListPlus size={16} strokeWidth={2.2} aria-hidden="true" />
+                        ) : (
+                          <ArrowUp size={16} strokeWidth={2.4} aria-hidden="true" />
+                        )}
+                      </Button>
                     </div>
-                    <Button
-                      type="button"
-                      className={`qx-jan-composer-send${
-                        isCurrentConversationStreaming ? " is-queue" : ""
-                      }${
-                        canChat && (input.trim() || pendingAttachments.length > 0)
-                          ? " is-ready"
-                          : ""
-                      }`}
-                      size="icon"
-                      disabled={!canChat || (!input.trim() && pendingAttachments.length === 0)}
-                      title={
-                        isCurrentConversationStreaming
-                          ? t("qxai.queue.add", "Add to Queue")
-                          : t("qxai.send", "Send")
-                      }
-                      aria-label={
-                        isCurrentConversationStreaming
-                          ? t("qxai.queue.add", "Add to Queue")
-                          : t("qxai.send", "Send")
-                      }
-                      onClick={handleSend}
-                    >
-                      {isCurrentConversationStreaming ? (
-                        <ListPlus size={16} strokeWidth={2.2} aria-hidden="true" />
-                      ) : (
-                        <ArrowUp size={16} strokeWidth={2.4} aria-hidden="true" />
-                      )}
-                    </Button>
                   </div>
                 </div>
               </div>

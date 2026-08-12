@@ -128,7 +128,8 @@
 2. 用户能打开面板 → **同时**写 `manifest.panel` 与 `export default.panel`
 3. 慢数据 → `context.storage.persist` SWR；频繁快照用 `context.state.createLatestWriter`
 4. 社区/列表状态 → `createReadLedger`；Data URL → `createLru`；tab/query 请求 → `createGenerationGate`
-5. 列表/详情型插件优先 `mountWorkbench(state, handlers)`；仅复杂可视化使用 custom panel
+5. 列表/详情型插件优先 `mountWorkbench(state, handlers)`，集合批次走 `updateItems`；宿主统一
+   恢复上次成功快照并增量合并，仅复杂可视化使用 custom panel
 6. `npm run package:plugins`；zip 内自带 AGENTS.md 方便后续 Agent 维护
 
 ### 明确不要复用的

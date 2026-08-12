@@ -315,23 +315,34 @@ function StepRow({
   label: string;
   children?: ReactNode;
 }) {
+  const [open, setOpen] = useState(false);
   return (
     <div className={`qx-jan-step is-${status}`}>
-      <div className="qx-jan-step-rail" aria-hidden="true">
-        {status === "complete" ? (
-          <CheckCircle2 size={14} />
-        ) : status === "error" ? (
-          <XCircle size={14} />
-        ) : status === "active" ? (
-          <CircleDot size={14} />
-        ) : (
-          <Loader2 size={14} className="qx-spin" />
-        )}
-      </div>
-      <div className="qx-jan-step-main">
-        <div className="qx-jan-step-label">{label}</div>
-        {children ? <div className="qx-jan-step-body">{children}</div> : null}
-      </div>
+      <button
+        type="button"
+        className="qx-jan-step-header"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="qx-jan-step-rail" aria-hidden="true">
+          {status === "complete" ? (
+            <CheckCircle2 size={14} />
+          ) : status === "error" ? (
+            <XCircle size={14} />
+          ) : status === "active" ? (
+            <CircleDot size={14} />
+          ) : (
+            <Loader2 size={14} className="qx-spin" />
+          )}
+        </span>
+        <span className="qx-jan-step-label">{label}</span>
+        <ChevronDown
+          size={14}
+          className={`qx-jan-chevron${open ? " is-open" : ""}`}
+          aria-hidden="true"
+        />
+      </button>
+      {open && children ? <div className="qx-jan-step-body">{children}</div> : null}
     </div>
   );
 }
@@ -378,7 +389,7 @@ export const AgentStepsView = memo(function AgentStepsView({
               name={step.tool ?? "tool"}
               state={step.state}
               input={step.input}
-              defaultOpen={step.state === "running"}
+              defaultOpen={false}
             />
           );
         }

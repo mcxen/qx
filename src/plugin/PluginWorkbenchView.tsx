@@ -41,6 +41,10 @@ import QxReplyList from "../components/QxReplyList";
 import QxMediaViewer, { type QxMediaViewerImage } from "../components/QxMediaViewer";
 import { resolveActivityPercent } from "../types/contentActivity";
 import { resolvePluginAssetUrl } from "./pluginRuntimeTransport";
+import {
+  useWorkbenchReadingPosition,
+  workbenchReadingPositionKey,
+} from "./useWorkbenchReadingPosition";
 
 export const PLUGIN_WORKBENCH_REGIONS = qxMasterDetailIds("plugin-workbench");
 
@@ -423,6 +427,7 @@ function WorkbenchListMedia({ images }: { images: PluginWorkbenchImage[] }) {
 
 function WorkbenchDetail({
   pluginId,
+  readingKey,
   detail,
   emptyText,
   onInput,
@@ -434,6 +439,7 @@ function WorkbenchDetail({
   nextText,
 }: {
   pluginId: string;
+  readingKey: string;
   detail?: PluginWorkbenchDetail;
   emptyText: string;
   onInput: (id: string, value: string) => void;
@@ -445,6 +451,8 @@ function WorkbenchDetail({
   nextText: string;
 }) {
   const t = useT();
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useWorkbenchReadingPosition(detail ? readingKey : null, scrollRef);
   if (!detail) {
     return <div className="qx-content-detail-empty">{emptyText}</div>;
   }
@@ -550,7 +558,7 @@ function WorkbenchDetail({
     <p className="qx-host-workbench-body">{detail.body}</p>
   ) : null;
   return (
-    <div className="qx-content-detail-scroll" data-qx-region-scroll>
+    <div ref={scrollRef} className="qx-content-detail-scroll" data-qx-region-scroll>
       {detail.mediaPlacement !== "after-body" ? detailMedia : null}
       {detail.title ? <h2 className="qx-content-detail-heading">{detail.title}</h2> : null}
       {detail.subtitle ? <div className="qx-content-detail-meta">{detail.subtitle}</div> : null}
@@ -681,6 +689,15 @@ export default function PluginWorkbenchView({
     enabled: selectedIndex >= 0,
   });
   const detail = selected?.detail || state.detail;
+  const detailScope = JSON.stringify([
+    state.tabs?.find((tab) => tab.active)?.id || "",
+    ...(state.filters || []).map((filter) => [filter.id, filter.value]),
+  ]);
+  const readingKey = workbenchReadingPositionKey(
+    pluginId,
+    detailScope,
+    selected?.id || "__panel__",
+  );
   const gallery = state.layout?.kind === "gallery";
   const loadingText = state.emptyText || t("plugins.workbench.loading", "Loading…");
   const activeTabLabel = state.tabs?.find((tab) => tab.active)?.label;
@@ -863,6 +880,7 @@ export default function PluginWorkbenchView({
         >
           <WorkbenchDetail
             pluginId={pluginId}
+            readingKey={readingKey}
             detail={state.detail}
             emptyText={t("plugins.workbench.select", "Select an item")}
             onInput={onInput}
@@ -894,6 +912,7 @@ export default function PluginWorkbenchView({
           >
             <WorkbenchDetail
               pluginId={pluginId}
+              readingKey={readingKey}
               detail={detail}
               emptyText={t("plugins.workbench.select", "Select an item")}
               onInput={onInput}

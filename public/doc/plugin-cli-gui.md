@@ -66,9 +66,12 @@ function toItems(rows) {
 不要在 `panel.render()` 中等待慢命令：
 
 ```js
-async function render(context) {
-  const cached = await context.storage.get("items");
-  return buildWorkbench(cached ?? [], { refreshing: false });
+let workbench;
+let revision = 0;
+
+function render(context) {
+  // Qx automatically restores the last successful Workbench presentation.
+  workbench = context.ui.mountWorkbench(buildWorkbench([], { refreshing: true }));
 }
 
 async function refresh(context) {
@@ -84,8 +87,8 @@ async function refresh(context) {
   const result = await context.cli.wait(task.id);
   if (!result.ok) throw new Error(result.stderr);
   const items = toItems(context.cli.parseJson(result.stdout));
-  await context.storage.persist("items", items);
-  return items;
+  workbench.updateItems({ revision: ++revision, upsert: items, order: items.map((item) => item.id) });
+  workbench.update({ loading: false, error: null });
 }
 ```
 
@@ -127,7 +130,8 @@ actions: [
 - non-zero exit：展示短错误，详细 stderr 进日志或详情；
 - parse error：保留原始输出摘要，避免把空数组伪装成成功。
 
-任何失败都不应清空仍可安全使用的缓存。
+任何失败都不应清空仍可安全使用的缓存。Workbench 呈现快照由宿主统一缓存；只有 CLI 游标、
+原始输出或离线业务数据需要插件自行写 `context.storage.persist`。
 
 ## 6. 并发与刷新
 

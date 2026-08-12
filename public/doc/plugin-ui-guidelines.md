@@ -97,7 +97,38 @@ type WorkbenchStatus = {
 `{ type: "asset-image", assetPath, alt }`。`assetPath` 必须是插件根目录内的相对路径，
 由宿主统一解析；行内图片采用紧凑正文尺寸，不进入媒体预览，缺失时显示 `alt`/正文回退。
 
-### 2.1 数据图表
+### 2.1 增量更新与宿主缓存
+
+Workbench 默认启用宿主管理的 stale-while-revalidate 快照。打开插件时，Qx 先显示上次成功
+且仍在有效期内的归一化呈现数据，再启动当前 panel；loading 或失败快照只更新状态，不得清空
+旧 items/detail。成功的空集合仍是权威结果，会替换旧缓存。需要多个逻辑视图或禁止持久化时：
+
+```ts
+cache: {
+  key: "latest", // 稳定、非本地化；默认 default
+  mode: "stale-while-revalidate", // 敏感/临时面板可用 disabled
+  maxAgeMs: 86_400_000,
+}
+```
+
+网络分页、流式批次和局部详情更新使用 controller 的 keyed mutation，不重发整份集合：
+
+```js
+const workbench = context.ui.mountWorkbench(initialState, handlers);
+workbench.updateItems({
+  revision: 12,
+  upsert: changedItems,
+  removeIds: deletedIds,
+  order: orderedIds,
+  selectedId,
+});
+```
+
+`upsert` 按稳定 `item.id` 浅合并并保留未提供的 detail；`removeIds` 随后删除；`order` 中未列出的
+条目按原相对顺序留在末尾。`revision` 可选，但异步并发时应单调递增，旧批次会被宿主忽略。
+宿主快照只缓存 Workbench 呈现数据；API 游标、原始响应和可继续分页的领域数据仍由插件存储。
+
+### 2.2 数据图表
 
 需要趋势、时间序列或指标曲线时，插件应发布结构化 `detail.chart`，由宿主使用 Qx 的
 shadcn/Radix 语义 token 绘制；不要把自绘 SVG、Canvas、data URI 或硬编码颜色塞进
@@ -248,6 +279,7 @@ filters: [
 ## 8. 焦点与响应
 
 - 打开 Actions 后关闭，应恢复原选择和阅读位置。
+- Workbench Detail 的正文位置由宿主按 tab/filter 与稳定 `item.id` 隔离保存；新条目从顶部打开，返回旧条目恢复原进度。插件不要保存或回放宿主 DOM 的 `scrollTop`。
 - 刷新时保留选择、滚动与搜索焦点。
 - Panel render 快速返回；网络、CLI、下载和解析在后台完成。
 - 慢的旧请求不能覆盖新的筛选或选择。

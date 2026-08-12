@@ -16,7 +16,7 @@ export function classify(item: ClipboardEntry): "pinned" | "links" | "code" | "l
   if (item.file_path) return "file";
   if (item.image_path) return "image";
   const text = item.text.trim();
-  if (/^https?:\/\/\S+$/i.test(text)) return "links";
+  if (isClipboardUrl(text)) return "links";
   if (
     /[{}[\]();]/.test(text) ||
     /\b(function|const|let|class|import|SELECT|FROM|fn|pub)\b/.test(text)
@@ -25,6 +25,32 @@ export function classify(item: ClipboardEntry): "pinned" | "links" | "code" | "l
   }
   if (text.length > 280 || text.includes("\n")) return "long";
   return "text";
+}
+
+/**
+ * Decode one browser-style percent-encoding layer. A malformed escape must not
+ * make the whole clipboard action fail: valid UTF-8 runs are still decoded and
+ * invalid runs remain byte-for-byte unchanged.
+ */
+export function decodeClipboardUrl(value: string): string {
+  const input = value.trim();
+  if (!/%[0-9a-f]{2}/i.test(input)) return input;
+  try {
+    return decodeURIComponent(input);
+  } catch {
+    return input.replace(/(?:%[0-9a-f]{2})+/gi, (encodedRun) => {
+      try {
+        return decodeURIComponent(encodedRun);
+      } catch {
+        return encodedRun;
+      }
+    });
+  }
+}
+
+/** Accept both ordinary HTTP(S) URLs and a whole URL encoded as one component. */
+export function isClipboardUrl(value: string): boolean {
+  return /^https?:\/\/\S+$/i.test(decodeClipboardUrl(value));
 }
 
 export function sectionName(timestamp: string, t: Translate): string {

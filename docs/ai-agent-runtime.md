@@ -179,17 +179,25 @@ it must never call a lock-taking wrapper while already holding that lock.
    - Built-in providers expose static model metadata.
    - OpenAI-compatible custom providers fetch model metadata from `GET /models`.
    - API keys stay in the Rust backend and are never exposed to plugin iframes.
-   - Model entries expose `reasoning` and `vision` (multimodal image input).
-     Detection order: provider `/models` architecture metadata → id heuristics
-     → Settings `agent.model_capabilities` overrides (`provider|model` keys).
-   - Image attachments require `vision`. The host fails with a clear unsupported
-     capability error when images are present on a non-vision model.
+   - Model entries expose `reasoning`, `vision` (multimodal image input), and
+     `vision_known`. Detection order: Settings `agent.model_capabilities`
+     override (`provider|model`) → provider `/models` input-modality metadata →
+     conservative id heuristics. A missing catalog field is `unknown`, not
+     evidence that the model is text-only.
+   - Image attachments are blocked only for explicitly unsupported models.
+     Unknown OpenAI-compatible models are verified by the user's real image
+     request, avoiding paid/background synthetic probes and false-negative
+     client-side rejection.
 
 2. **Message Transport**
    - Text messages use plain string content.
    - Multimodal messages use OpenAI-compatible content parts:
      - `{ type: "text", text }`
      - `{ type: "image_url", image_url: { url, detail } }`
+   - The provider boundary normalizes `image_url` strings, Responses-style
+     `input_image`, and Anthropic-style base64 parts into that Chat Completions
+     shape. Durable local attachments become bounded `data:` URLs; local paths
+     are never sent as image content.
    - Providers without image support must fail with a clear unsupported-capability error.
 
 3. **Streaming**
