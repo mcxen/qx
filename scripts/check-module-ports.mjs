@@ -264,7 +264,7 @@ const MODULE_PANELS = [
   "src/modules/screencap/ScreenRecorder.tsx",
   "src/modules/macros/MacroRecorder.tsx",
   "src/modules/qx-tty/QxTTYPanel.tsx",
-  "src/modules/qx-ai/QxAiPanel.tsx",
+  // QxAI workbench lives in QxAiChat (list+detail). QxAiPanel re-exports it.
   "src/modules/qx-ai/QxAiChat.tsx",
   "src/modules/qx-ai/QxAiSettings.tsx",
   "src/modules/settings/SettingsPanel.tsx",

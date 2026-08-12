@@ -8,7 +8,7 @@ mod picker_window;
 pub(crate) mod pin;
 mod recording_engine;
 pub(crate) mod recording_session;
-mod screenshot;
+pub(crate) mod screenshot;
 pub(crate) mod selection;
 mod state;
 mod storage;
@@ -32,6 +32,7 @@ pub use crate::display::DisplayDescriptor as CaptureDisplay;
 pub use commands::screencap_toggle_controls;
 pub use selection::screencap_begin_capture_select;
 pub use selection::screencap_recapture_last_region;
+pub(crate) use types::RecordingOutput;
 pub use types::{
     AudioInput, CaptureExecutionOptions, GifEntry, PickerStatus, RecordArea, RecordingOptions,
     RecordingStatusSnapshot,

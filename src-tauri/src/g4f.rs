@@ -25,6 +25,9 @@ pub struct ProviderModel {
     pub name: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub reasoning: bool,
+    /// Model accepts image inputs (OpenAI-style `image_url` content parts).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub vision: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -224,6 +227,120 @@ fn provider_endpoint(provider: &str) -> Result<ProviderEndpoint, String> {
     Ok(endpoint)
 }
 
+/// Detect vision / reasoning from OpenAI-compatible or OpenRouter model metadata,
+/// with id heuristics as fallback when the provider omits architecture fields.
+pub(crate) fn detect_model_capabilities(
+    model_id: &str,
+    item: Option<&serde_json::Value>,
+) -> (bool /* reasoning */, bool /* vision */) {
+    let mut reasoning = false;
+    let mut vision = false;
+
+    if let Some(item) = item {
+        if let Some(parameters) = item.get("supported_parameters").and_then(|v| v.as_array()) {
+            reasoning |= parameters.iter().any(|parameter| {
+                parameter.as_str().is_some_and(|name| {
+                    matches!(name, "reasoning" | "reasoning_effort" | "include_reasoning")
+                })
+            });
+        }
+        // OpenRouter-style architecture: modality "text+image->text", input_modalities: ["image"]
+        if let Some(architecture) = item.get("architecture") {
+            if let Some(modality) = architecture.get("modality").and_then(|v| v.as_str()) {
+                let lower = modality.to_ascii_lowercase();
+                vision |=
+                    lower.contains("image") || lower.contains("file") || lower.contains("vision");
+            }
+            if let Some(inputs) = architecture
+                .get("input_modalities")
+                .and_then(|v| v.as_array())
+            {
+                vision |= inputs.iter().any(|entry| {
+                    entry.as_str().is_some_and(|name| {
+                        let lower = name.to_ascii_lowercase();
+                        lower.contains("image") || lower == "file" || lower == "vision"
+                    })
+                });
+            }
+        }
+        if let Some(modality) = item.get("modality").and_then(|v| v.as_str()) {
+            let lower = modality.to_ascii_lowercase();
+            vision |= lower.contains("image") || lower.contains("vision");
+        }
+        if let Some(caps) = item.get("capabilities") {
+            if caps.get("vision").and_then(|v| v.as_bool()) == Some(true) {
+                vision = true;
+            }
+            if caps.get("reasoning").and_then(|v| v.as_bool()) == Some(true) {
+                reasoning = true;
+            }
+        }
+    }
+
+    let id = model_id.to_ascii_lowercase();
+    if !vision {
+        vision = model_id_suggests_vision(&id);
+    }
+    if !reasoning {
+        reasoning = model_id_suggests_reasoning(&id);
+    }
+    (reasoning, vision)
+}
+
+fn model_id_suggests_vision(id: &str) -> bool {
+    const TOKENS: &[&str] = &[
+        "vision",
+        "-vl",
+        "vl-",
+        "vl.",
+        "vl_",
+        "gpt-4o",
+        "gpt-4.1",
+        "gpt-4-turbo",
+        "gpt-5",
+        "o1",
+        "o3",
+        "o4",
+        "claude-3",
+        "claude-4",
+        "claude-sonnet",
+        "claude-opus",
+        "claude-haiku",
+        "gemini",
+        "pixtral",
+        "llava",
+        "qwen-vl",
+        "qwen2-vl",
+        "qwen2.5-vl",
+        "internvl",
+        "phi-4-multimodal",
+        "phi-3.5-vision",
+        "llama-4",
+        "llama4",
+        "grok-2-vision",
+        "grok-vision",
+        "sonar-pro",       // Perplexity online often multimodal
+        "openrouter/auto", // router may select vision models
+    ];
+    TOKENS.iter().any(|token| id.contains(token))
+}
+
+fn model_id_suggests_reasoning(id: &str) -> bool {
+    const TOKENS: &[&str] = &[
+        "reasoning",
+        "r1",
+        "o1",
+        "o3",
+        "o4",
+        "think",
+        "deepseek-r",
+        "deepseek-v4",
+        "qwq",
+        "openrouter/auto",
+    ];
+    TOKENS.iter().any(|token| id.contains(token))
+}
+
 fn openai_list_models(base_url: &str, api_key: &str) -> Result<Vec<ProviderModel>, String> {
     let client = make_client()?;
     let url = format!("{}/models", base_url.trim_end_matches('/'));
@@ -250,20 +367,12 @@ fn openai_list_models(base_url: &str, api_key: &str) -> Result<Vec<ProviderModel
         .iter()
         .filter_map(|item| {
             let id = item.get("id").and_then(|id| id.as_str())?;
-            let reasoning = item
-                .get("supported_parameters")
-                .and_then(|value| value.as_array())
-                .is_some_and(|parameters| {
-                    parameters.iter().any(|parameter| {
-                        parameter.as_str().is_some_and(|name| {
-                            matches!(name, "reasoning" | "reasoning_effort" | "include_reasoning")
-                        })
-                    })
-                });
+            let (reasoning, vision) = detect_model_capabilities(id, Some(item));
             Some(ProviderModel {
                 id: id.to_string(),
                 name: id.to_string(),
                 reasoning,
+                vision,
             })
         })
         .collect::<Vec<_>>();
@@ -682,6 +791,8 @@ pub fn g4f_list_providers() -> Vec<ProviderInfo> {
                 id: "openrouter/auto".to_string(),
                 name: "Auto Router".to_string(),
                 reasoning: true,
+                // Auto may route to vision-capable models when images are present.
+                vision: true,
             }],
         },
         ProviderInfo {
@@ -694,11 +805,14 @@ pub fn g4f_list_providers() -> Vec<ProviderInfo> {
                     id: "deepseek-v4-flash".to_string(),
                     name: "DeepSeek V4 Flash".to_string(),
                     reasoning: true,
+                    // Chat V4 is text; DeepSeek-VL family is separate.
+                    vision: false,
                 },
                 ProviderModel {
                     id: "deepseek-v4-pro".to_string(),
                     name: "DeepSeek V4 Pro".to_string(),
                     reasoning: true,
+                    vision: false,
                 },
             ],
         },
@@ -771,6 +885,57 @@ pub fn qxai_chat(
     )
 }
 
+fn message_contains_image_parts(content: &serde_json::Value) -> bool {
+    let Some(parts) = content.as_array() else {
+        return false;
+    };
+    parts.iter().any(|part| {
+        part.get("type").and_then(|value| value.as_str()) == Some("image_url")
+            || part.get("image_url").is_some()
+    })
+}
+
+fn capability_override_key(provider: &str, model: &str) -> String {
+    format!("{provider}|{model}")
+}
+
+fn model_vision_enabled(providers: &[ProviderInfo], provider: &str, model: &str) -> bool {
+    let settings = crate::settings::read_settings();
+    let key = capability_override_key(provider, model);
+    if let Some(override_entry) = settings.agent.model_capabilities.get(&key) {
+        if let Some(vision) = override_entry.vision {
+            return vision;
+        }
+    }
+    let model_info = providers
+        .iter()
+        .find(|item| item.id == provider)
+        .and_then(|item| item.models.iter().find(|entry| entry.id == model));
+    model_info
+        .map(|entry| entry.vision)
+        .unwrap_or_else(|| detect_model_capabilities(model, None).1)
+}
+
+fn ensure_vision_capability(
+    providers: &[ProviderInfo],
+    provider: &str,
+    model: &str,
+    messages: &[ChatMessage],
+) -> Result<(), String> {
+    let has_images = messages
+        .iter()
+        .any(|message| message_contains_image_parts(&message.content));
+    if !has_images {
+        return Ok(());
+    }
+    if model_vision_enabled(providers, provider, model) {
+        return Ok(());
+    }
+    Err(format!(
+        "Model `{model}` does not support vision/images. Choose a multimodal model (vision), enable Vision for this model in Settings → AI Agent, or remove image attachments."
+    ))
+}
+
 fn prepare_qxai_chat_messages(
     messages: Vec<serde_json::Value>,
 ) -> Result<Vec<ChatMessage>, String> {
@@ -799,12 +964,34 @@ pub async fn qxai_chat_with_tools(
     let endpoint = provider_endpoint(&selection.provider)?;
 
     let messages = crate::qx_ai_sessions::prepare_provider_messages(messages)?;
+    let chat_messages: Vec<ChatMessage> = messages
+        .into_iter()
+        .map(|message| {
+            serde_json::from_value(message)
+                .map_err(|error| format!("invalid QxAI chat message: {error}"))
+        })
+        .collect::<Result<_, _>>()?;
+    ensure_vision_capability(
+        &providers,
+        &selection.provider,
+        &selection.model,
+        &chat_messages,
+    )?;
     let choice = tool_choice.unwrap_or_else(|| "auto".to_string());
+    let raw_messages = chat_messages
+        .into_iter()
+        .map(|message| {
+            serde_json::json!({
+                "role": message.role,
+                "content": message.content,
+            })
+        })
+        .collect::<Vec<_>>();
     provider_openai_chat_with_tools(
         endpoint.base_url,
         endpoint.api_key,
         selection.model,
-        messages,
+        raw_messages,
         tools,
         choice,
     )
@@ -843,6 +1030,19 @@ pub fn qxai_stream_chat_with_tools_events(
             let selection = resolve_model_selection(&providers, provider, model)?;
             let endpoint = provider_endpoint(&selection.provider)?;
             let messages = crate::qx_ai_sessions::prepare_provider_messages(messages)?;
+            let chat_messages = messages
+                .iter()
+                .map(|message| {
+                    serde_json::from_value::<ChatMessage>(message.clone())
+                        .map_err(|error| format!("invalid QxAI chat message: {error}"))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            ensure_vision_capability(
+                &providers,
+                &selection.provider,
+                &selection.model,
+                &chat_messages,
+            )?;
             provider_openai_chat_with_tools_stream(
                 &endpoint.base_url,
                 &endpoint.api_key,
@@ -883,12 +1083,10 @@ pub fn qxai_stream_chat(
 ) -> Result<Vec<String>, String> {
     let providers = qxai_provider_catalog();
     let selection = resolve_model_selection(&providers, provider, model)?;
+    let prepared = prepare_qxai_chat_messages(messages)?;
+    ensure_vision_capability(&providers, &selection.provider, &selection.model, &prepared)?;
 
-    g4f_stream_chat(
-        selection.provider,
-        Some(selection.model),
-        prepare_qxai_chat_messages(messages)?,
-    )
+    g4f_stream_chat(selection.provider, Some(selection.model), prepared)
 }
 
 #[tauri::command]
@@ -923,6 +1121,7 @@ pub fn qxai_stream_chat_events(
 
             let endpoint = provider_endpoint(&selection.provider)?;
             let messages = prepare_qxai_chat_messages(messages)?;
+            ensure_vision_capability(&providers, &selection.provider, &selection.model, &messages)?;
             provider_openai_chat_stream(
                 &endpoint.base_url,
                 &endpoint.api_key,

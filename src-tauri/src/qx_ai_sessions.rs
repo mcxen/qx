@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::Manager;
 
 const MAX_IMAGE_BYTES: u64 = 20 * 1024 * 1024;
 const MAX_IMAGE_CONTEXT_BYTES: u64 = 40 * 1024 * 1024;
@@ -309,14 +310,25 @@ pub async fn qxai_sessions_save(conversations: Value) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn qxai_session_import_attachments(
+    app: tauri::AppHandle,
     conversation_id: String,
     paths: Vec<String>,
 ) -> Result<Vec<QxAiAttachment>, String> {
-    crate::runtime::blocking(move || {
+    let imported = crate::runtime::blocking(move || {
         with_storage_lock(|| import_attachments_sync(&conversation_id, paths))
     })
     .await
-    .map_err(|error| format!("import QxAI attachments task failed: {error}"))?
+    .map_err(|error| format!("import QxAI attachments task failed: {error}"))??;
+
+    // Allow convertFileSrc previews for managed attachment copies.
+    for attachment in &imported {
+        if attachment.kind == "image" {
+            let _ = app
+                .asset_protocol_scope()
+                .allow_file(std::path::Path::new(&attachment.path));
+        }
+    }
+    Ok(imported)
 }
 
 #[tauri::command]

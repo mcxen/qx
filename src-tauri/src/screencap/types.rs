@@ -241,10 +241,10 @@ pub(super) struct RecordingState {
 }
 
 #[derive(Debug)]
-pub(super) struct RecordingOutput {
-    pub(super) path: PathBuf,
-    pub(super) thumbnail_path: Option<PathBuf>,
-    pub(super) width: u32,
-    pub(super) height: u32,
-    pub(super) frame_count: u32,
+pub(crate) struct RecordingOutput {
+    pub(crate) path: PathBuf,
+    pub(crate) thumbnail_path: Option<PathBuf>,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) frame_count: u32,
 }

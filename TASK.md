@@ -2,6 +2,20 @@
 
 - [x] 统一 Qx 公共控件尺寸与字重：标准控件 32px、紧凑控件 28px、Shell 控件 36px；Settings 表单尾部控件统一 220px 对齐，并移除 Button / Select / Segmented 默认 700 的混乱覆盖。
 
+## Feature — QxAI 系统工具 / Skills 模式 / MCP 配置
+
+**状态**：代码完成，等待桌面运行态复核。
+
+- Agent 默认开启 tools + native tool calling；新增 Qx 系统工具（信息/统计/显示器/窗口/进程）。
+- Skills：`mode: fixed|smart|disabled`（frontmatter + 设置覆盖）；固定始终注入、智能按问题匹配、禁用仅 `/` 手动。
+- 设置页 Skill 卡片预览 + 模式切换；MCP `~/.qx/mcp.json` 编辑器；Agent 可 `write_skill` / `write_mcp_config`。
+- 简化 Settings → AI Agent 工具分组 UI。
+
+### 验证
+
+- [x] `npx tsc --noEmit` / `npm run check` / 相关 Rust 单测
+- [ ] 桌面态：对话调系统工具、Skill 自动加载、MCP JSON 保存、Agent 写 skill
+
 ## Feature — 截图桌面贴图（Pin）
 
 **状态**：代码完成，等待桌面运行态复核。

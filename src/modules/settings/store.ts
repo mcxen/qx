@@ -169,6 +169,14 @@ export const DEFAULT_PLUGIN_REGISTRIES: PluginRegistrySource[] = [
   },
 ];
 
+export type QxAiSkillLoadMode = "fixed" | "smart" | "disabled";
+
+/** Manual override for catalog-detected model capabilities. Key: `provider|model`. */
+export interface ModelCapabilityOverride {
+  vision?: boolean;
+  reasoning?: boolean;
+}
+
 export interface AgentSettings {
   agent_mode_enabled: boolean;
   default_provider: string;
@@ -190,6 +198,12 @@ export interface AgentSettings {
   grep_max_results: number;
   background_tasks_enabled: boolean;
   qx_host_actions_enabled: boolean;
+  /** System stats / displays / process tools. */
+  qx_system_tools_enabled: boolean;
+  /** Overrides skill frontmatter mode by skill id. */
+  skill_modes: Record<string, QxAiSkillLoadMode>;
+  /** Per-model vision/reasoning overrides when auto-detect is wrong. */
+  model_capabilities: Record<string, ModelCapabilityOverride>;
   defaults_version: number;
   agent_max_iterations: number;
 }
@@ -319,6 +333,7 @@ export type ModuleSearchModuleId =
   | "clipboard"
   | "qx-ai"
   | "rss"
+  | "p-zai"
   | "screencap"
   | "macros"
   | "documents"
@@ -329,6 +344,7 @@ export const MODULE_SEARCH_MODULE_IDS: ModuleSearchModuleId[] = [
   "clipboard",
   "qx-ai",
   "rss",
+  "p-zai",
   "screencap",
   "macros",
   "documents",
@@ -340,6 +356,7 @@ export const MODULE_SEARCH_LABELS: Record<ModuleSearchModuleId, { title: string;
   clipboard: { title: "Clipboard", hint: "History items and open command" },
   "qx-ai": { title: "QxAI", hint: "Conversations, new chat, settings" },
   rss: { title: "RSS Reader", hint: "Feeds, folders, open reader" },
+  "p-zai": { title: "P仔", hint: "AI reading companion for RSS" },
   screencap: { title: "Screenshot & Recording Module", hint: "Screenshots, MP4/MOV recording, and optional GIF conversion" },
   macros: { title: "Macro Recorder", hint: "Saved macros" },
   documents: { title: "Text Toolbox", hint: "Disk notepad · folder files" },
@@ -516,7 +533,7 @@ export const DEFAULT_SETTINGS: Settings = {
     agent_mode_enabled: true,
     default_provider: "openrouter",
     default_model: "openrouter/auto",
-    model_tools_enabled: false,
+    model_tools_enabled: true,
     tools_enabled: true,
     memory_tool_enabled: true,
     app_search_enabled: true,
@@ -533,7 +550,10 @@ export const DEFAULT_SETTINGS: Settings = {
     grep_max_results: 80,
     background_tasks_enabled: true,
     qx_host_actions_enabled: true,
-    defaults_version: 1,
+    qx_system_tools_enabled: true,
+    skill_modes: {},
+    model_capabilities: {},
+    defaults_version: 2,
     agent_max_iterations: 12,
   },
   rss: {
@@ -568,6 +588,7 @@ export const DEFAULT_SETTINGS: Settings = {
       clipboard: true,
       "qx-ai": true,
       rss: true,
+      "p-zai": true,
       screencap: true,
       macros: true,
       documents: true,

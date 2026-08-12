@@ -9,7 +9,9 @@ use super::storage::{captures_dir, insert_history};
 use super::types::{RecordArea, RecordingOutput};
 use crate::display::{capture_monitor, capture_region_from_monitor};
 
-pub(super) fn capture(
+/// Capture a still PNG of `area` into the screencap library (and history).
+/// Used by the interactive picker and headless QxAI / schedule jobs.
+pub(crate) fn capture(
     area: RecordArea,
     annotation_overlay_base64: Option<String>,
     include_cursor: bool,

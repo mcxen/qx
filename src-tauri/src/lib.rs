@@ -32,6 +32,9 @@ mod permissions;
 mod plugin_api;
 mod plugin_cli;
 mod plugin_system;
+mod qx_ai_mcp;
+mod qx_ai_memory;
+mod qx_ai_schedule;
 mod qx_ai_sessions;
 mod qx_ai_skills;
 mod rss;
@@ -534,6 +537,9 @@ pub fn run() {
                 );
             }
 
+            // QxAI schedules (morning desk log, agent_prompt) tick in the background.
+            qx_ai_schedule::start(handle.clone());
+
             // Subsystems that touch FFI / external state are panic-guarded so
             // a panic in one initializer does not abort the whole app.
             let safe_init = |name: &'static str, f: &dyn Fn()| {
@@ -855,11 +861,29 @@ pub fn run() {
             qx_ai_skills::qxai_skills_directory,
             qx_ai_skills::qxai_list_skills,
             qx_ai_skills::qxai_read_skill,
+            qx_ai_skills::qxai_write_skill,
+            qx_ai_mcp::qxai_mcp_config_path,
+            qx_ai_mcp::qxai_read_mcp_config,
+            qx_ai_mcp::qxai_write_mcp_config,
+            qx_ai_mcp::qxai_write_mcp_config_raw,
             qx_ai_sessions::qxai_sessions_load,
             qx_ai_sessions::qxai_sessions_save,
             qx_ai_sessions::qxai_session_import_attachments,
             qx_ai_sessions::qxai_session_delete,
             qx_ai_sessions::qxai_sessions_directory,
+            qx_ai_schedule::qxai_list_schedules,
+            qx_ai_schedule::qxai_upsert_schedule,
+            qx_ai_schedule::qxai_delete_schedule,
+            qx_ai_schedule::qxai_run_schedule_now,
+            qx_ai_schedule::qxai_capture_desktop,
+            qx_ai_schedule::qxai_clipboard_history,
+            qx_ai_schedule::qxai_logs_directory,
+            qx_ai_memory::qxai_memory_snapshot,
+            qx_ai_memory::qxai_memory_status,
+            qx_ai_memory::qxai_memory_mutate,
+            qx_ai_memory::qxai_memory_dream,
+            qx_ai_memory::qxai_session_search,
+            qx_ai_memory::qxai_memories_directory,
             plugin_api::plugin_http_fetch,
             plugin_api::plugin_notification_show,
             plugin_api::plugin_resolve_asset,

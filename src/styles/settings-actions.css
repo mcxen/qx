@@ -632,6 +632,251 @@ img.qx-ext-card-icon {
   text-transform: uppercase;
 }
 
+.qx-agent-skill-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.qx-agent-schedule-list {
+  display: grid;
+  gap: 10px;
+}
+
+.qx-agent-schedule-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--qx-border-2, #333) 55%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--qx-bg-component-2, #161a22) 90%, transparent);
+}
+
+.qx-agent-schedule-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.qx-agent-schedule-head strong {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.qx-agent-schedule-head code {
+  font-family: var(--qx-font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--qx-text-tertiary);
+}
+
+.qx-agent-schedule-meta {
+  margin: 0;
+  font-size: 11px;
+  color: var(--qx-text-tertiary);
+  word-break: break-word;
+}
+
+.qx-agent-schedule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Vercel design.md — template/pricing card rhythm: hairline, soft stack shadow, mono id. */
+.qx-agent-skill-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.qx-agent-skill-card {
+  --skill-card-bg: color-mix(in srgb, var(--qx-bg-component-2, #161a22) 92%, #fff 4%);
+  --skill-card-border: color-mix(in srgb, var(--qx-border-2, #333) 55%, transparent);
+  --skill-card-ink: var(--qx-text-primary, #f4f6fb);
+  --skill-card-body: var(--qx-text-secondary, rgb(255 255 255 / 0.72));
+  --skill-card-mute: var(--qx-text-tertiary, rgb(255 255 255 / 0.48));
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-height: 168px;
+  padding: 16px;
+  border: 1px solid var(--skill-card-border);
+  border-radius: 8px;
+  background: var(--skill-card-bg);
+  box-shadow:
+    0 1px 1px rgb(0 0 0 / 0.04),
+    0 2px 4px rgb(0 0 0 / 0.06),
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.04);
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.qx-agent-skill-card:hover {
+  border-color: color-mix(in srgb, var(--qx-border-2, #555) 80%, transparent);
+  background: color-mix(in srgb, var(--skill-card-bg) 88%, #fff 6%);
+  box-shadow:
+    0 1px 1px rgb(0 0 0 / 0.05),
+    0 4px 12px rgb(0 0 0 / 0.1),
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.06);
+}
+
+/*
+ * Featured / fixed — Vercel pricing-card-featured emphasis adapted for dark Qx:
+ * hairline + stacked shadow + 1px ink ring (no full polarity flip; keeps Select readable).
+ */
+.qx-agent-skill-card.is-fixed {
+  --skill-card-bg: color-mix(in srgb, var(--qx-bg-component-2, #161a22) 78%, #fff 8%);
+  --skill-card-border: color-mix(in srgb, var(--qx-text-primary, #f4f6fb) 42%, transparent);
+  box-shadow:
+    0 1px 1px rgb(0 0 0 / 0.06),
+    0 6px 18px rgb(0 0 0 / 0.16),
+    inset 0 0 0 0.5px rgb(255 255 255 / 0.08);
+}
+
+.qx-agent-skill-card.is-fixed:hover {
+  border-color: color-mix(in srgb, var(--qx-text-primary, #f4f6fb) 55%, transparent);
+  background: color-mix(in srgb, var(--skill-card-bg) 90%, #fff 8%);
+}
+
+.qx-agent-skill-card.is-disabled {
+  opacity: 0.58;
+}
+
+.qx-agent-skill-card.is-disabled:hover {
+  transform: none;
+}
+
+.qx-agent-skill-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.qx-agent-skill-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--skill-card-border) 80%, transparent);
+  background: color-mix(in srgb, var(--skill-card-bg) 70%, #000 8%);
+  color: var(--skill-card-ink);
+}
+
+.qx-agent-skill-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--skill-card-border) 90%, transparent);
+  background: color-mix(in srgb, var(--skill-card-bg) 60%, #000 10%);
+  color: var(--skill-card-body);
+  font-family: var(--qx-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.qx-agent-skill-badge.is-fixed {
+  border-color: color-mix(in srgb, var(--qx-text-primary, #f4f6fb) 22%, transparent);
+  background: color-mix(in srgb, var(--qx-text-primary, #f4f6fb) 10%, transparent);
+  color: var(--skill-card-ink);
+}
+
+.qx-agent-skill-badge.is-smart {
+  border-color: color-mix(in srgb, var(--qx-accent, #0070f3) 35%, transparent);
+  background: color-mix(in srgb, var(--qx-accent, #0070f3) 12%, transparent);
+  color: color-mix(in srgb, var(--qx-accent, #5b9dff) 88%, #fff 12%);
+}
+
+.qx-agent-skill-badge.is-disabled {
+  opacity: 0.9;
+}
+
+.qx-agent-skill-card-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.qx-agent-skill-card-head strong {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: -0.28px;
+  color: var(--skill-card-ink);
+}
+
+.qx-agent-skill-id {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--skill-card-mute);
+  font-family: var(--qx-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.qx-agent-skill-desc {
+  flex: 1 1 auto;
+  margin: 0 0 16px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--skill-card-body);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.qx-agent-skill-card-foot {
+  margin-top: auto;
+  display: grid;
+  gap: 6px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--skill-card-border) 90%, transparent);
+}
+
+.qx-agent-skill-mode-label {
+  font-family: var(--qx-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--skill-card-mute);
+}
+
+.qx-agent-skill-card .qx-inline-select,
+.qx-agent-skill-card-foot .qx-shadcn-select,
+.qx-agent-skill-card-foot [data-slot="select-trigger"],
+.qx-agent-skill-card-foot button {
+  width: 100%;
+}
+
+.qx-agent-mcp-editor {
+  width: 100%;
+  min-height: 180px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--qx-border-subtle, rgb(255 255 255 / 0.12));
+  border-radius: 8px;
+  background: color-mix(in srgb, #0b0f16 90%, transparent);
+  color: var(--color-text-primary, #f4f6fb);
+  font: 12px/1.45 var(--qx-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  resize: vertical;
+}
+
 .qx-agent-control-stack {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));

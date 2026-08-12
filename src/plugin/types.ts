@@ -354,6 +354,35 @@ export interface PluginAiTask {
   error?: string;
 }
 
+export type PluginModuleActionRisk = "read" | "write" | "network" | "destructive";
+
+/** Discoverable module/plugin action (shared agent port). */
+export interface PluginModuleActionDescriptor {
+  id: string;
+  title: string;
+  description: string;
+  moduleId: string;
+  pluginId?: string;
+  risk: PluginModuleActionRisk;
+  parameters?: Record<string, unknown>;
+  inputHint?: string;
+}
+
+/** Plugin-owned action registration for the shared agent action catalogue. */
+export interface PluginModuleActionRegistration {
+  /** Local id; host stores as `plugin:<pluginId>:<id>`. */
+  id: string;
+  title: string;
+  description: string;
+  risk?: PluginModuleActionRisk;
+  parameters?: Record<string, unknown>;
+  inputHint?: string;
+  /** Host invoke command (requires matching invoke permission). */
+  invokeCommand?: string;
+  /** Plugin command name to dispatch when the action runs. */
+  command?: string;
+}
+
 export interface PluginAiTaskInput extends PluginAiChatOptions {
   title?: string;
   notify?: boolean;
@@ -1008,6 +1037,21 @@ export interface PluginContext {
       list: () => Promise<PluginAiTask[]>;
       get: (id: string) => Promise<PluginAiTask | null>;
       cancel: (id: string) => Promise<PluginAiTask>;
+    };
+    /**
+     * Shared module-action catalogue used by QxAI / P仔 and plugins.
+     * - `list` / `run`: call host-registered actions (e.g. `rss.refresh_all`).
+     * - `register`: publish this plugin's actions into the agent catalogue.
+     * Permission: `ai-tools` (plus Agent tools enabled in Settings).
+     */
+    actions: {
+      list: (filter?: {
+        moduleId?: string;
+        query?: string;
+      }) => Promise<PluginModuleActionDescriptor[]>;
+      run: (id: string, input?: Record<string, unknown>) => Promise<string>;
+      register: (actions: PluginModuleActionRegistration[]) => Promise<void>;
+      unregister: () => Promise<void>;
     };
   };
   /**

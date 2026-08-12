@@ -119,7 +119,7 @@ macOS 通过 `open -a "Google Chrome"` 启动，找不到应用时播放会明�
 
 ## qxai / g4f
 
-面向前端的：`qxai_list_providers`、`qxai_stream_chat_events(request_id, provider?, model?, messages, reasoning?)`、`qxai_stream_chat_with_tools_events(request_id, provider?, model?, messages, tools, tool_choice?, reasoning?)`、`qxai_chat_with_tools(...)`、`qxai_fetch_models(base_url, api_key)`、`qxai_get_builtin_provider_credentials`、`qxai_save_builtin_provider_credentials`、`qxai_get_custom_providers`、`qxai_save_custom_providers`。Skill 目录端口为 `qxai_skills_directory`、`qxai_list_skills`、`qxai_read_skill(id)`；目录固定为 `~/.qx/skills`，扫描和读取均离开 async runtime 核心线程，单个 Skill 上限 256 KiB。
+面向前端的：`qxai_list_providers`、`qxai_stream_chat_events(request_id, provider?, model?, messages, reasoning?)`、`qxai_stream_chat_with_tools_events(request_id, provider?, model?, messages, tools, tool_choice?, reasoning?)`、`qxai_chat_with_tools(...)`、`qxai_fetch_models(base_url, api_key)`、`qxai_get_builtin_provider_credentials`、`qxai_save_builtin_provider_credentials`、`qxai_get_custom_providers`、`qxai_save_custom_providers`。Skill 端口：`qxai_skills_directory`、`qxai_list_skills`、`qxai_read_skill(id)`、`qxai_write_skill(id, content, mode?)`；目录 `~/.qx/skills`，frontmatter `mode: fixed|smart|disabled`，单文件 256 KiB。MCP 配置：`qxai_mcp_config_path`、`qxai_read_mcp_config`、`qxai_write_mcp_config`、`qxai_write_mcp_config_raw`（`~/.qx/mcp.json`）。定时任务：`qxai_list_schedules`、`qxai_upsert_schedule`、`qxai_delete_schedule`、`qxai_run_schedule_now`（`~/.qx/qxai-schedules.json`）；模块动作：`qxai_capture_desktop`、`qxai_clipboard_history`、`qxai_logs_directory`。
 
 内置只给插件层用的兼容命令：`g4f_chat`、`g4f_stream_chat`、`g4f_chat_custom`、`g4f_list_providers`、`qxai_stream_chat`。
 
@@ -299,8 +299,14 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `plugin_system_save_download`, `plugin_system_open_path`, `plugin_system_reveal_path`,
 `plugin_system_open_settings`, `plugin_ai_grep_search`, `plugin_ai_memory_list`, `plugin_ai_memory_add`,
 `plugin_ai_memory_delete`, `qxai_skills_directory`, `qxai_list_skills`, `qxai_read_skill`,
+`qxai_write_skill`, `qxai_mcp_config_path`, `qxai_read_mcp_config`, `qxai_write_mcp_config`,
+`qxai_write_mcp_config_raw`,
 `qxai_sessions_load`, `qxai_sessions_save`, `qxai_session_import_attachments`,
 `qxai_session_delete`, `qxai_sessions_directory`,
+`qxai_list_schedules`, `qxai_upsert_schedule`, `qxai_delete_schedule`, `qxai_run_schedule_now`,
+`qxai_capture_desktop`, `qxai_clipboard_history`, `qxai_logs_directory`,
+`qxai_memory_snapshot`, `qxai_memory_status`, `qxai_memory_mutate`, `qxai_memory_dream`,
+`qxai_session_search`, `qxai_memories_directory`,
 `plugin_http_fetch`, `plugin_notification_show`, `plugin_resolve_asset`,
 `qx_permissions_status`, `qx_permissions_request`, `qx_permissions_request_all`,
 `qx_permissions_open_settings`, `qx_onboarding_platform`, `qx_update_check`, `qx_update_download_and_install`,

@@ -325,6 +325,23 @@ export function createPluginContext(
         cancel: (id) =>
           rpc("aiTaskCancel", { id }) as ReturnType<PluginContext["ai"]["tasks"]["cancel"]>,
       },
+      actions: {
+        list: (filter = {}) =>
+          rpc("aiActionsList", {
+            moduleId: filter.moduleId,
+            query: filter.query,
+          }) as ReturnType<PluginContext["ai"]["actions"]["list"]>,
+        run: (id, input = {}) =>
+          rpc("aiActionsRun", { id, input }) as ReturnType<PluginContext["ai"]["actions"]["run"]>,
+        register: (actions) =>
+          rpc("aiActionsRegister", { actions }) as ReturnType<
+            PluginContext["ai"]["actions"]["register"]
+          >,
+        unregister: () =>
+          rpc("aiActionsUnregister", {}) as ReturnType<
+            PluginContext["ai"]["actions"]["unregister"]
+          >,
+      },
     },
     tray: {
       setItems: (items) =>

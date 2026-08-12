@@ -69,6 +69,7 @@ import {
 import { loadClipboardEntryById, pasteClipboardEntryAtCursor } from "./modules/clipboard/actions";
 import ClipboardPanel from "./modules/clipboard/ClipboardPanel";
 import { prefetchClipboardOpen } from "./modules/clipboard/openSession";
+import { startQxAiScheduleBridge } from "./modules/qx-ai/schedule-bridge";
 import { tryModuleEscapeStep } from "./hooks/moduleEscapeHost";
 import { useQxModuleShell } from "./hooks/useQxModuleShell";
 import { useLocale, useT } from "./i18n";
@@ -104,6 +105,7 @@ const OnboardingWizard = lazy(() => import("./modules/onboarding/OnboardingWizar
 const MACOS_PERMISSION_ONBOARDING_VERSION = 1;
 const RssReader = lazy(() => import("./modules/rss"));
 const G4fReader = lazy(() => import("./modules/qx-ai"));
+const PzaiReader = lazy(() => import("./modules/p-zai"));
 const MacroRecorder = lazy(() => import("./modules/macros/MacroRecorder"));
 const WeatherPanel = lazy(() => import("./modules/weather/WeatherPanel"));
 const QxTTYPanel = lazy(() => import("./modules/qx-tty/QxTTYPanel"));
@@ -192,6 +194,7 @@ const MODULE_LABEL_KEYS: Record<string, { key: string; fallback: string }> = {
   rss: { key: "launcher.rss", fallback: "RSS Reader" },
   weather: { key: "launcher.weather", fallback: "Weather" },
   "qx-ai": { key: "module.qx-ai", fallback: "QxAI Chat" },
+  "p-zai": { key: "module.p-zai", fallback: "P仔" },
   macros: { key: "launcher.macros", fallback: "Macro Recorder" },
   documents: { key: "launcher.documents", fallback: "Documents" },
   "qx-tty": { key: "launcher.qx-tty", fallback: "QxTTY" },
@@ -661,6 +664,11 @@ function App() {
   useEffect(() => {
     void invoke("set_active_route", { route: tab }).catch(() => {});
   }, [tab]);
+
+  // QxAI schedule agent_prompt jobs need a frontend listener even when chat is closed.
+  useEffect(() => {
+    startQxAiScheduleBridge();
+  }, []);
 
   // A module disabled from Settings must disappear immediately without ever
   // mounting its lazy view (and therefore without starting its effects/data).
@@ -1408,7 +1416,7 @@ function App() {
       } else if (tabId === "settings:plugins") {
         openSettings({ section: "plugins", returnTo: "launcher" });
       } else if (tabId === "clipboard" || tabId === "screencap"
-          || tabId === "rss" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "qx-tty") {
+          || tabId === "rss" || tabId === "weather" || tabId === "qx-ai" || tabId === "p-zai" || tabId === "macros" || tabId === "documents" || tabId === "qx-tty") {
         if (!isBuiltinModuleEnabled(tabId)) return;
         if (tabId === "clipboard") {
           void prefetchClipboardOpen({ captureLiveImage: true });
@@ -1849,7 +1857,7 @@ function App() {
         openSettings();
       } else if (next === "settings:plugins") {
         openSettings({ section: "plugins", returnTo: "launcher" });
-      } else if (next === "clipboard" || next === "screencap" || next === "rss" || next === "weather" || next === "qx-ai" || next === "macros" || next === "qx-tty") {
+      } else if (next === "clipboard" || next === "screencap" || next === "rss" || next === "weather" || next === "qx-ai" || next === "p-zai" || next === "macros" || next === "qx-tty") {
         if (!isBuiltinModuleEnabled(next)) return;
         // Start clipboard open work before React commits the tab switch.
         if (next === "clipboard") {
@@ -2591,7 +2599,7 @@ function App() {
       return;
     }
     // Handle __qx:<tabId> style paths (backward compat)
-    const tabMatch = item.path.match(/^__qx:(clipboard|screencap|rss|weather|qx-ai|macros|documents|qx-tty)$/);
+    const tabMatch = item.path.match(/^__qx:(clipboard|screencap|rss|weather|qx-ai|p-zai|macros|documents|qx-tty)$/);
     if (tabMatch) {
       if (!isBuiltinModuleEnabled(tabMatch[1])) return;
       setTab(tabMatch[1] as any);
@@ -2726,6 +2734,8 @@ function App() {
         return <RssReader />;
       case "qx-ai":
         return <G4fReader />;
+      case "p-zai":
+        return <PzaiReader />;
       case "macros":
         return <MacroRecorder />;
       case "documents":

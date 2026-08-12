@@ -218,6 +218,50 @@ command 动作。动作图标与胶囊按钮 chrome 来自宿主受限集合；�
 
 ## 5. AI 任务链路
 
+### 5.1 Module Action 目录（与 QxAI / P仔共享）
+
+```text
+context.ai.actions.list / run / register / unregister
+    │  permission: ai-tools + Settings Agent tools on
+    ▼
+rpcHandlers.aiActions*
+    │
+    ▼
+src/modules/qx-ai/agent/module-actions.ts  （host 注册表）
+    │
+    ├─ builtin: rss.refresh_all / pzai.* / docs.write / …
+    └─ plugin:<pluginId>:<localId>  （register 写入；disable/unload 清理）
+```
+
+插件应通过 `register` 发布可被对话发现的业务动作，而不是要求宿主为每个插件写死 tool。
+Agent 侧统一工具：`list_module_actions` / `run_module_action`。契约见 `docs/ai-agent-runtime.md` §4a。
+
+### 5.1b Skill 驱动的能力扩展
+
+```text
+Skill frontmatter capabilities: […]
+    │
+    ▼  auto / /skill 注入
+system prompt 绑定块（available vs missing）
+    │
+    ▼
+list_qx_capabilities / run_qx_capability
+list_plugins / run_plugin_command
+    │
+    ├─ module_action（§5.1）
+    ├─ command:<pluginId>:<name>  （已安装插件 launcher command）
+    └─ tool:<name>  （提示模型直接调用 agent tool）
+```
+
+插件作为可扩展能力的两种方式：
+
+1. **AI Action**：`context.ai.actions.register` → `plugin:<id>:<action>`
+2. **Launcher command**：manifest `commands[]` → `command:<id>:<name>`，Agent 用 `run_plugin_command` 调度
+
+推荐配套 skill（`~/.qx/skills`）用 `capabilities:` 声明工作流；示例 skill：`qx-plugin-capabilities`、`rss-brief`。
+
+### 5.2 后台 AI 任务
+
 ```text
 context.ai.tasks.submit({ prompt: "...", notify: true })
     │

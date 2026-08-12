@@ -1,14 +1,61 @@
-import { useEffect, useMemo } from "react";
-import { LoadingLabel, Row, SegmentedControl, Select, SettingsCard, Slider, Toggle } from "../../components/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Sparkles } from "lucide-react";
+import {
+  LoadingLabel,
+  Row,
+  Select,
+  SettingsCard,
+  Slider,
+  Toggle,
+} from "../../components/ui";
 import {
   MemorySection,
   ProviderListSection,
 } from "../qx-ai/AiProviderConfig";
 import { useG4fStore } from "../qx-ai/store";
+import {
+  listQxAiSkills,
+  openQxAiMcpConfig,
+  openQxAiSkillsDirectory,
+  readQxAiMcpConfig,
+  resolveSkillMode,
+  writeQxAiMcpConfig,
+  type QxAiMcpConfig,
+  type QxAiSkillLoadMode,
+  type QxAiSkillSummary,
+} from "../qx-ai/skills";
+import {
+  modelCapabilityKey,
+  resolveModelVision,
+} from "../qx-ai/model-capabilities";
+import {
+  deleteQxAiSchedule,
+  listQxAiSchedules,
+  runQxAiScheduleNow,
+  upsertQxAiSchedule,
+} from "../qx-ai/schedule-bridge";
 import { useT } from "../../i18n";
 import { useSettingsStore, type AgentSettings as AgentSettingsValue } from "./store";
 
+type ScheduleRow = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  kind: string;
+  dailyTime: string;
+  skillId?: string | null;
+  prompt?: string | null;
+  lastRunAt?: number | null;
+  lastError?: string | null;
+};
+
 type ProviderOption = { value: string; label: string; disabled?: boolean };
+
+const MODE_OPTIONS: { value: QxAiSkillLoadMode; labelKey: string; fallback: string }[] = [
+  { value: "fixed", labelKey: "agent.skills.mode.fixed", fallback: "Fixed" },
+  { value: "smart", labelKey: "agent.skills.mode.smart", fallback: "Smart" },
+  { value: "disabled", labelKey: "agent.skills.mode.disabled", fallback: "Disabled" },
+];
 
 export default function AgentSettings() {
   const { settings, patch } = useSettingsStore();
@@ -26,12 +73,71 @@ export default function AgentSettings() {
   } = useG4fStore();
   const t = useT();
   const agent = settings.agent;
+  const [skills, setSkills] = useState<QxAiSkillSummary[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+  const [skillsError, setSkillsError] = useState<string | null>(null);
+  const [mcp, setMcp] = useState<QxAiMcpConfig>({ servers: [] });
+  const [mcpLoading, setMcpLoading] = useState(false);
+  const [mcpError, setMcpError] = useState<string | null>(null);
+  const [mcpDraft, setMcpDraft] = useState("");
+  const [schedules, setSchedules] = useState<ScheduleRow[]>([]);
+  const [schedulesLoading, setSchedulesLoading] = useState(false);
+  const [schedulesError, setSchedulesError] = useState<string | null>(null);
+  const [scheduleBusyId, setScheduleBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     if (providers.length === 0 && builtInProviders.length === 0 && customProviders.length === 0) {
       void loadProviders();
     }
   }, [builtInProviders.length, customProviders.length, loadProviders, providers.length]);
+
+  const refreshSkills = useCallback(async () => {
+    setSkillsLoading(true);
+    setSkillsError(null);
+    try {
+      setSkills(await listQxAiSkills());
+    } catch (loadError) {
+      setSkills([]);
+      setSkillsError(String(loadError));
+    } finally {
+      setSkillsLoading(false);
+    }
+  }, []);
+
+  const refreshMcp = useCallback(async () => {
+    setMcpLoading(true);
+    setMcpError(null);
+    try {
+      const config = await readQxAiMcpConfig();
+      setMcp(config);
+      setMcpDraft(JSON.stringify(config, null, 2));
+    } catch (loadError) {
+      setMcp({ servers: [] });
+      setMcpError(String(loadError));
+    } finally {
+      setMcpLoading(false);
+    }
+  }, []);
+
+  const refreshSchedules = useCallback(async () => {
+    setSchedulesLoading(true);
+    setSchedulesError(null);
+    try {
+      const rows = (await listQxAiSchedules()) as ScheduleRow[];
+      setSchedules(rows);
+    } catch (loadError) {
+      setSchedules([]);
+      setSchedulesError(String(loadError));
+    } finally {
+      setSchedulesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshSkills();
+    void refreshMcp();
+    void refreshSchedules();
+  }, [refreshMcp, refreshSchedules, refreshSkills]);
 
   const allProviders = useMemo(() => {
     if (providers.length > 0) return providers;
@@ -59,19 +165,35 @@ export default function AgentSettings() {
 
   const effectiveProvider =
     allProviders.find((provider) => provider.id === agent.default_provider)?.id ||
-    currentProvider ||
+    allProviders.find((provider) => provider.id === currentProvider)?.id ||
     providerOptions.find((option) => !option.disabled)?.value ||
+    agent.default_provider ||
     "";
 
   const selectedProvider = allProviders.find((provider) => provider.id === effectiveProvider);
-  const modelOptions = (selectedProvider?.models ?? []).map((model) => ({
-    value: model.id,
-    label: model.name,
-  }));
+  const modelOptions = (() => {
+    const models = selectedProvider?.models ?? [];
+    const options = models.map((model) => ({
+      value: model.id,
+      label: model.name,
+    }));
+    // Keep a saved default visible even if the catalog has not listed it yet.
+    const savedModel = agent.default_model.trim();
+    if (
+      savedModel
+      && effectiveProvider
+      && (agent.default_provider === effectiveProvider || !agent.default_provider)
+      && !options.some((option) => option.value === savedModel)
+    ) {
+      options.unshift({ value: savedModel, label: savedModel });
+    }
+    return options;
+  })();
   const effectiveModel =
-    selectedProvider?.models.find((model) => model.id === agent.default_model)?.id ||
-    (currentProvider === effectiveProvider ? currentModel : "") ||
+    modelOptions.find((option) => option.value === agent.default_model)?.value ||
+    modelOptions.find((option) => option.value === currentModel)?.value ||
     modelOptions[0]?.value ||
+    agent.default_model ||
     "";
 
   const patchAgent = (partial: Partial<AgentSettingsValue>) =>
@@ -79,43 +201,78 @@ export default function AgentSettings() {
 
   const selectProvider = (provider: string) => {
     if (provider === "---divider---") return;
-    const nextProvider = allProviders.find((item) => item.id === provider);
-    const nextModel = nextProvider?.models[0]?.id ?? "";
-    patchAgent({ default_provider: provider, default_model: nextModel });
+    // Store setters persist agent.default_* — avoid double-write races.
     setCurrentProvider(provider);
-    if (nextModel) setCurrentModel(nextModel);
   };
 
   const selectModel = (model: string) => {
-    patchAgent({ default_provider: effectiveProvider, default_model: model });
+    // Ensure provider + model land together in settings.
+    if (effectiveProvider && currentProvider !== effectiveProvider) {
+      setCurrentProvider(effectiveProvider);
+    }
     setCurrentModel(model);
   };
 
-  const toolCount = [
-    agent.memory_tool_enabled,
-    agent.app_search_enabled,
-    agent.file_search_enabled,
-    agent.http_fetch_enabled,
-    agent.notifications_enabled,
-    agent.mcp_enabled,
-    agent.bash_enabled,
-    agent.grep_search_enabled,
-    agent.qx_host_actions_enabled,
-  ].filter(Boolean).length;
+  const selectedCatalogModel = selectedProvider?.models.find(
+    (model) => model.id === effectiveModel,
+  );
+  const effectiveVision = resolveModelVision(
+    effectiveProvider,
+    selectedCatalogModel ?? (effectiveModel ? { id: effectiveModel, name: effectiveModel } : undefined),
+    agent.model_capabilities,
+  );
+
+  const setDefaultModelVision = (vision: boolean) => {
+    if (!effectiveProvider || !effectiveModel) return;
+    const key = modelCapabilityKey(effectiveProvider, effectiveModel);
+    patchAgent({
+      model_capabilities: {
+        ...(agent.model_capabilities ?? {}),
+        [key]: {
+          ...(agent.model_capabilities?.[key] ?? {}),
+          vision,
+        },
+      },
+    });
+  };
+
+  const setSkillMode = (id: string, mode: QxAiSkillLoadMode) => {
+    patchAgent({
+      skill_modes: {
+        ...(agent.skill_modes ?? {}),
+        [id]: mode,
+      },
+    });
+  };
+
+  const saveMcpDraft = async () => {
+    setMcpError(null);
+    try {
+      const parsed = JSON.parse(mcpDraft) as QxAiMcpConfig;
+      const saved = await writeQxAiMcpConfig({
+        servers: Array.isArray(parsed.servers) ? parsed.servers : [],
+      });
+      setMcp(saved);
+      setMcpDraft(JSON.stringify(saved, null, 2));
+    } catch (saveError) {
+      setMcpError(String(saveError));
+    }
+  };
 
   return (
     <div className="qx-settings-page">
-      <SettingsCard
-        title={t("agent.providers.title", "Providers & Keys")}>
+      <SettingsCard title={t("agent.providers.title", "Providers & Keys")}>
         <ProviderListSection />
         <MemorySection />
       </SettingsCard>
 
-      <SettingsCard
-        title={t("agent.basics.title", "Agent & Model")}>
+      <SettingsCard title={t("agent.basics.title", "Chat & Agent")}>
         <Row
           title={t("agent.mode", "Agent Mode")}
-          description={t("agent.mode.desc", "Allow QxAI and plugins to run multi-step agent tasks with model and tool settings.")}
+          description={t(
+            "agent.mode.desc",
+            "On by default. Lets QxAI use tools for multi-step tasks. Turn off for plain chat only.",
+          )}
         >
           <Toggle
             value={agent.agent_mode_enabled}
@@ -124,8 +281,8 @@ export default function AgentSettings() {
         </Row>
 
         <Row
-          title={t("agent.defaultModel", "Default Agent Model")}
-          description={t("agent.defaultModel.desc", "Model used when an agent task does not specify provider or model.")}
+          title={t("agent.defaultModel", "Default Model")}
+          description={t("agent.defaultModel.desc", "Used for new chats and agent runs.")}
         >
           <div className="qx-agent-control-stack">
             {loading ? (
@@ -144,7 +301,20 @@ export default function AgentSettings() {
                   <Select
                     value={effectiveModel}
                     onChange={selectModel}
-                    options={modelOptions}
+                    options={modelOptions.map((option) => {
+                      const meta = selectedProvider?.models.find((model) => model.id === option.value);
+                      const vision = resolveModelVision(
+                        effectiveProvider,
+                        meta ?? { id: option.value, name: option.label },
+                        agent.model_capabilities,
+                      );
+                      return {
+                        ...option,
+                        label: vision
+                          ? `${option.label} · ${t("agent.model.vision.badge", "Vision")}`
+                          : option.label,
+                      };
+                    })}
                     ariaLabel={t("agent.model", "Agent Model")}
                   />
                 ) : (
@@ -158,8 +328,39 @@ export default function AgentSettings() {
         </Row>
 
         <Row
-          title={t("agent.modelTools", "Model Tool Calling")}
-          description={t("agent.modelTools.desc", "Mark the selected model as allowed to receive tool schemas when the runtime supports it.")}
+          title={t("agent.model.vision", "Vision (images)")}
+          description={t(
+            "agent.model.vision.desc",
+            "Auto-detected from the model catalog. Override when detection is wrong so image attachments can be sent and previewed correctly.",
+          )}
+        >
+          <Toggle
+            value={effectiveVision}
+            disabled={!effectiveProvider || !effectiveModel}
+            onChange={setDefaultModelVision}
+            ariaLabel={t("agent.model.vision", "Vision (images)")}
+          />
+        </Row>
+
+        <Row
+          title={t("agent.tools.enabled", "Tools")}
+          description={t(
+            "agent.tools.enabled.desc",
+            "Master switch. Host tools, system stats, skills, and MCP editing stay available when on.",
+          )}
+        >
+          <Toggle
+            value={agent.tools_enabled}
+            onChange={(value) => patchAgent({ tools_enabled: value })}
+          />
+        </Row>
+
+        <Row
+          title={t("agent.modelTools", "Native Tool Calling")}
+          description={t(
+            "agent.modelTools.desc",
+            "Prefer model function-calling schemas. Off falls back to the portable ReAct prompt path.",
+          )}
         >
           <Toggle
             value={agent.model_tools_enabled}
@@ -169,7 +370,7 @@ export default function AgentSettings() {
 
         <Row
           title={t("agent.maxIterations", "Max Iterations")}
-          description={t("agent.maxIterations.desc", "Maximum Thought/Action rounds before the agent is forced to summarize. Increase for complex multi-step tasks.")}
+          description={t("agent.maxIterations.desc", "Cap Thought/Action rounds before the agent must answer.")}
         >
           <Slider
             value={agent.agent_max_iterations}
@@ -184,175 +385,222 @@ export default function AgentSettings() {
       </SettingsCard>
 
       <SettingsCard
-        title={t("agent.tools", "Tools")}>
-        <Row
-          title={t("agent.tools.enabled", "Enable Tools")}
-          description={`${t("agent.tools.enabled.desc", "Master switch for agent tool execution.")} ${t("agent.tools.selectedCount", "{n} tool groups selected.").replace("{n}", String(toolCount))}`}
-        >
-          <Toggle
-            value={agent.tools_enabled}
-            onChange={(value) => patchAgent({ tools_enabled: value })}
-          />
+        title={t("agent.tools.groups", "Tool groups")}
+        description={t(
+          "agent.tools.groups.desc",
+          "All groups default on. Disable only what you do not want the model to call.",
+        )}
+      >
+        <Row title={t("agent.tools.memory", "Memory")} description={t("agent.tools.memory.desc", "Read/write long-term notes.")}>
+          <Toggle value={agent.memory_tool_enabled} onChange={(value) => patchAgent({ memory_tool_enabled: value })} />
         </Row>
-        <Row
-          title={t("agent.tools.memory", "Memory Tool")}
-          description={t("agent.tools.memory.desc", "Allow agents to read and write user-managed QxAI memory.")}
-        >
-          <Toggle
-            value={agent.memory_tool_enabled}
-            onChange={(value) => patchAgent({ memory_tool_enabled: value })}
-          />
-        </Row>
-        <Row
-          title={t("agent.tools.search", "App & File Search")}
-          description={t("agent.tools.search.desc", "Expose Qx app search and file search as agent tools.")}
-        >
+        <Row title={t("agent.tools.search", "Apps & Files")} description={t("agent.tools.search.desc", "Search installed apps and the file index.")}>
           <div className="qx-agent-inline-toggles">
             <span>{t("agent.tools.apps", "Apps")}</span>
-            <Toggle
-              value={agent.app_search_enabled}
-              onChange={(value) => patchAgent({ app_search_enabled: value })}
-            />
+            <Toggle value={agent.app_search_enabled} onChange={(value) => patchAgent({ app_search_enabled: value })} />
             <span>{t("agent.tools.files", "Files")}</span>
-            <Toggle
-              value={agent.file_search_enabled}
-              onChange={(value) => patchAgent({ file_search_enabled: value })}
-            />
+            <Toggle value={agent.file_search_enabled} onChange={(value) => patchAgent({ file_search_enabled: value })} />
           </div>
         </Row>
-        <Row
-          title={t("agent.tools.qxHost", "Qx Host Actions")}
-          description={t("agent.tools.qxHost.desc", "Allow agents to open or reveal local paths, attach files to chat, and copy text or real files to the clipboard.")}
-        >
-          <Toggle
-            value={agent.qx_host_actions_enabled}
-            onChange={(value) => patchAgent({ qx_host_actions_enabled: value })}
-          />
+        <Row title={t("agent.tools.qxHost", "Host actions")} description={t("agent.tools.qxHost.desc", "Open/reveal paths, clipboard, attach files.")}>
+          <Toggle value={agent.qx_host_actions_enabled} onChange={(value) => patchAgent({ qx_host_actions_enabled: value })} />
         </Row>
-        <Row
-          title={t("agent.tools.network", "HTTP & Notifications")}
-          description={t("agent.tools.network.desc", "Optional external fetch and completion notification tools.")}
-        >
+        <Row title={t("agent.tools.qxSystem", "System")} description={t("agent.tools.qxSystem.desc", "CPU/memory, displays, windows, processes.")}>
+          <Toggle value={agent.qx_system_tools_enabled} onChange={(value) => patchAgent({ qx_system_tools_enabled: value })} />
+        </Row>
+        <Row title={t("agent.tools.shell", "Shell & Grep")} description={t("agent.tools.shell.desc", "Bash scripts and content search.")}>
+          <div className="qx-agent-inline-toggles">
+            <span>{t("agent.bash.enabled", "Bash")}</span>
+            <Toggle value={agent.bash_enabled} onChange={(value) => patchAgent({ bash_enabled: value })} />
+            <span>{t("agent.grep.enabled", "Grep")}</span>
+            <Toggle value={agent.grep_search_enabled} onChange={(value) => patchAgent({ grep_search_enabled: value })} />
+          </div>
+        </Row>
+        <Row title={t("agent.tools.network", "HTTP & Notify")} description={t("agent.tools.network.desc", "Fetch URLs and show completion toasts.")}>
           <div className="qx-agent-inline-toggles">
             <span>{t("agent.tools.http", "HTTP")}</span>
-            <Toggle
-              value={agent.http_fetch_enabled}
-              onChange={(value) => patchAgent({ http_fetch_enabled: value })}
-            />
+            <Toggle value={agent.http_fetch_enabled} onChange={(value) => patchAgent({ http_fetch_enabled: value })} />
             <span>{t("agent.tools.notify", "Notify")}</span>
-            <Toggle
-              value={agent.notifications_enabled}
-              onChange={(value) => patchAgent({ notifications_enabled: value })}
-            />
+            <Toggle value={agent.notifications_enabled} onChange={(value) => patchAgent({ notifications_enabled: value })} />
           </div>
         </Row>
+        <Row title={t("agent.background", "Background tasks")} description={t("agent.background.desc", "Continue agent work while Qx is hidden.")}>
+          <Toggle value={agent.background_tasks_enabled} onChange={(value) => patchAgent({ background_tasks_enabled: value })} />
+        </Row>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t("agent.schedules.title", "Schedules")}
+        description={t(
+          "agent.schedules.desc",
+          "Timed QxAI jobs. Morning desk log captures the desktop and writes a Markdown journal under Downloads/QxLogs. Host actions must stay enabled.",
+        )}
+      >
+        <div className="qx-agent-skill-toolbar">
+          <button
+            type="button"
+            className="qx-command-button"
+            onClick={() => void refreshSchedules()}
+            disabled={schedulesLoading}
+          >
+            {schedulesLoading ? t("common.loading", "Loading…") : t("agent.schedules.refresh", "Refresh")}
+          </button>
+        </div>
+        {schedulesError && <p className="qx-settings-muted is-error">{schedulesError}</p>}
+        {!schedulesLoading && schedules.length === 0 && !schedulesError && (
+          <p className="qx-settings-muted">
+            {t("agent.schedules.empty", "No schedules yet. Ask QxAI to upsert_schedule, or reinstall to seed Morning desk log.")}
+          </p>
+        )}
+        <div className="qx-agent-schedule-list">
+          {schedules.map((schedule) => (
+            <article key={schedule.id} className="qx-agent-schedule-card">
+              <header className="qx-agent-schedule-head">
+                <strong>{schedule.name}</strong>
+                <code>{schedule.dailyTime}</code>
+              </header>
+              <p className="qx-agent-schedule-meta">
+                {schedule.kind} · {schedule.id}
+                {schedule.lastError ? ` · ${schedule.lastError}` : ""}
+              </p>
+              <div className="qx-agent-schedule-actions">
+                <Toggle
+                  value={schedule.enabled}
+                  onChange={(enabled) => {
+                    void upsertQxAiSchedule({ ...schedule, enabled }).then(() => refreshSchedules());
+                  }}
+                  ariaLabel={t("agent.schedules.enabled", "Enabled")}
+                />
+                <button
+                  type="button"
+                  className="qx-command-button"
+                  disabled={scheduleBusyId === schedule.id}
+                  onClick={() => {
+                    setScheduleBusyId(schedule.id);
+                    void runQxAiScheduleNow(schedule.id)
+                      .then(() => refreshSchedules())
+                      .catch((error) => setSchedulesError(String(error)))
+                      .finally(() => setScheduleBusyId(null));
+                  }}
+                >
+                  {scheduleBusyId === schedule.id
+                    ? t("common.loading", "Loading…")
+                    : t("agent.schedules.runNow", "Run now")}
+                </button>
+                <button
+                  type="button"
+                  className="qx-command-button"
+                  onClick={() => {
+                    void deleteQxAiSchedule(schedule.id).then(() => refreshSchedules());
+                  }}
+                >
+                  {t("common.delete", "Delete")}
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t("agent.skills.title", "Skills")}
+        description={t(
+          "agent.skills.desc",
+          "Markdown skills auto-load by mode: Fixed always, Smart by query, Disabled only via /name.",
+        )}
+      >
+        <div className="qx-agent-skill-toolbar">
+          <button type="button" className="qx-command-button" onClick={() => void refreshSkills()} disabled={skillsLoading}>
+            {skillsLoading ? t("common.loading", "Loading…") : t("agent.skills.refresh", "Refresh")}
+          </button>
+          <button type="button" className="qx-command-button" onClick={() => void openQxAiSkillsDirectory()}>
+            {t("agent.skills.openFolder", "Open skills folder")}
+          </button>
+        </div>
+        {skillsError && <p className="qx-settings-muted is-error">{skillsError}</p>}
+        {!skillsLoading && skills.length === 0 && !skillsError && (
+          <p className="qx-settings-muted">
+            {t("agent.skills.empty", "No skills yet. Drop SKILL.md files into the skills folder, or ask QxAI to write_skill.")}
+          </p>
+        )}
+        <div className="qx-agent-skill-grid">
+          {skills.map((skill) => {
+            const mode = resolveSkillMode(skill, agent);
+            const modeMeta = MODE_OPTIONS.find((option) => option.value === mode)
+              ?? MODE_OPTIONS[1];
+            return (
+              <article key={skill.id} className={`qx-agent-skill-card is-${mode}`}>
+                <div className="qx-agent-skill-card-top">
+                  <span className="qx-agent-skill-icon" aria-hidden="true">
+                    <Sparkles size={16} strokeWidth={1.75} />
+                  </span>
+                  <span className={`qx-agent-skill-badge is-${mode}`}>
+                    {t(modeMeta.labelKey, modeMeta.fallback)}
+                  </span>
+                </div>
+                <header className="qx-agent-skill-card-head">
+                  <strong>{skill.name}</strong>
+                  <code className="qx-agent-skill-id">/{skill.id}</code>
+                </header>
+                <p className="qx-agent-skill-desc">
+                  {skill.description || t("agent.skills.noDescription", "No description")}
+                </p>
+                <div className="qx-agent-skill-card-foot">
+                  <span className="qx-agent-skill-mode-label">
+                    {t("agent.skills.mode", "Load mode")}
+                  </span>
+                  <Select
+                    value={mode}
+                    onChange={(value) => setSkillMode(skill.id, value as QxAiSkillLoadMode)}
+                    options={MODE_OPTIONS.map((option) => ({
+                      value: option.value,
+                      label: t(option.labelKey, option.fallback),
+                    }))}
+                    ariaLabel={t("agent.skills.mode", "Load mode")}
+                  />
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title={t("agent.mcp.title", "MCP servers")}
+        description={t(
+          "agent.mcp.desc",
+          "User-managed MCP config (~/.qx/mcp.json). The agent can read/write this file when MCP tools are enabled.",
+        )}
+      >
         <Row
           title={t("agent.tools.mcp", "MCP Tools")}
-          description={t("agent.tools.mcp.desc", "Reserve MCP tool access for the agent runtime. Individual MCP servers are still configured separately.")}
+          description={t("agent.tools.mcp.desc", "Allow the agent to read and edit the MCP config file.")}
         >
-          <Toggle
-            value={agent.mcp_enabled}
-            onChange={(value) => patchAgent({ mcp_enabled: value })}
-          />
+          <Toggle value={agent.mcp_enabled} onChange={(value) => patchAgent({ mcp_enabled: value })} />
         </Row>
-        <Row
-          title={t("agent.background", "Background Tasks")}
-          description={t("agent.background.desc", "Allow agent tasks to continue while Qx is hidden and notify when they finish.")}
-        >
-          <Toggle
-            value={agent.background_tasks_enabled}
-            onChange={(value) => patchAgent({ background_tasks_enabled: value })}
-          />
-        </Row>
-      </SettingsCard>
-
-      <SettingsCard
-        title={t("agent.bash", "Bash Tool")}>
-        <Row
-          title={t("agent.bash.enabled", "Enable Bash")}
-          description={t("agent.bash.enabled.desc", "Allow permissioned plugins to run real /bin/bash scripts through the AI runtime.")}
-        >
-          <Toggle
-            value={agent.bash_enabled}
-            onChange={(value) => patchAgent({ bash_enabled: value })}
-          />
-        </Row>
-        <Row
-          title={t("agent.bash.cwd", "Default Working Directory")}
-          description={t("agent.bash.cwd.desc", "Optional cwd used when a task does not provide one. Empty uses the app process cwd.")}
-        >
-          <input
-            className="qx-inline-input"
-            value={agent.bash_cwd}
-            onChange={(event) => patchAgent({ bash_cwd: event.target.value })}
-            placeholder="~/Documents/OpenSpring/Qx"
-          />
-        </Row>
-        <Row
-          title={t("agent.bash.timeout", "Bash Timeout")}
-          description={t("agent.bash.timeout.desc", "Upper bound for each bash call. Plugin requests are clamped to this value.")}
-        >
-          <Slider
-            value={agent.bash_timeout_ms}
-            min={5000}
-            max={120000}
-            step={5000}
-            onChange={(value) => patchAgent({ bash_timeout_ms: value })}
-            formatLabel={(value) => `${Math.round(value / 1000)}s`}
-            ariaLabel={t("agent.bash.timeout", "Bash Timeout")}
-          />
-        </Row>
-      </SettingsCard>
-
-      <SettingsCard
-        title={t("agent.grep", "Grep Search")}>
-        <Row
-          title={t("agent.grep.enabled", "Enable Grep Search")}
-          description={t("agent.grep.enabled.desc", "Expose a real rg/grep text search tool for agent tasks.")}
-        >
-          <Toggle
-            value={agent.grep_search_enabled}
-            onChange={(value) => patchAgent({ grep_search_enabled: value })}
-          />
-        </Row>
-        <Row
-          title={t("agent.grep.command", "Search Backend")}
-          description={t("agent.grep.command.desc", "Use ripgrep when available; grep is the system fallback.")}
-        >
-          <SegmentedControl
-            value={agent.grep_command}
-            onChange={(value) => patchAgent({ grep_command: value })}
-            options={[
-              { value: "rg", label: "rg" },
-              { value: "grep", label: "grep" },
-            ]}
-          />
-        </Row>
-        <Row
-          title={t("agent.grep.root", "Default Search Root")}
-          description={t("agent.grep.root.desc", "Optional folder used when a grep task does not provide a root. Empty uses the home folder.")}
-        >
-          <input
-            className="qx-inline-input"
-            value={agent.grep_root}
-            onChange={(event) => patchAgent({ grep_root: event.target.value })}
-            placeholder="~/Documents"
-          />
-        </Row>
-        <Row
-          title={t("agent.grep.limit", "Max Grep Results")}
-          description={t("agent.grep.limit.desc", "Result cap returned to the agent for each grep search.")}
-        >
-          <Slider
-            value={agent.grep_max_results}
-            min={10}
-            max={250}
-            step={10}
-            onChange={(value) => patchAgent({ grep_max_results: value })}
-            formatLabel={(value) => `${value}`}
-            ariaLabel={t("agent.grep.limit", "Max Grep Results")}
-          />
-        </Row>
+        <div className="qx-agent-skill-toolbar">
+          <button type="button" className="qx-command-button" onClick={() => void refreshMcp()} disabled={mcpLoading}>
+            {mcpLoading ? t("common.loading", "Loading…") : t("agent.mcp.reload", "Reload")}
+          </button>
+          <button type="button" className="qx-command-button" onClick={() => void openQxAiMcpConfig()}>
+            {t("agent.mcp.openFile", "Open mcp.json")}
+          </button>
+          <button type="button" className="qx-command-button" onClick={() => void saveMcpDraft()}>
+            {t("agent.mcp.save", "Save config")}
+          </button>
+        </div>
+        {mcpError && <p className="qx-settings-muted is-error">{mcpError}</p>}
+        <p className="qx-settings-muted">
+          {t("agent.mcp.serverCount", "{n} servers").replace("{n}", String(mcp.servers?.length ?? 0))}
+        </p>
+        <textarea
+          className="qx-agent-mcp-editor"
+          value={mcpDraft}
+          onChange={(event) => setMcpDraft(event.target.value)}
+          rows={12}
+          spellCheck={false}
+          aria-label={t("agent.mcp.editor", "MCP JSON")}
+        />
       </SettingsCard>
     </div>
   );

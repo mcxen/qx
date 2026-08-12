@@ -7,6 +7,7 @@ import type {
 } from "./types";
 import {
   assertAgentToolFlag,
+  assertAgentToolsEnabled,
   cancelAiTask,
   getAiTask,
   listAiTasks,
@@ -22,6 +23,15 @@ import {
   updatePluginIsland,
 } from "./pluginIsland";
 import { postToPluginRuntimes } from "./pluginShellBridge";
+import {
+  ensureBuiltinModuleActionsRegistered,
+  listModuleActions,
+  registerPluginModuleActions,
+  runModuleAction,
+  unregisterModuleActionsByOwner,
+  type PluginModuleActionRegistration,
+} from "../modules/qx-ai/agent/module-actions";
+import { usePluginRegistry } from "./registry";
 
 const pluginSessionStorage = new Map<string, Map<string, unknown>>();
 
@@ -681,6 +691,98 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   aiTaskCancel: async (plugin, perms, payload) => {
     await readBackgroundPermission(plugin, perms);
     return cancelAiTask(plugin.id, String(payload.id || ""));
+  },
+
+  aiActionsList: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "ai-tools");
+    const settings = await readAgentRuntimeSettings();
+    assertAgentToolsEnabled(settings);
+    ensureBuiltinModuleActionsRegistered();
+    return listModuleActions({
+      moduleId: typeof payload.moduleId === "string" ? payload.moduleId : undefined,
+      query: typeof payload.query === "string" ? payload.query : undefined,
+    });
+  },
+
+  aiActionsRun: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "ai-tools");
+    const settings = await readAgentRuntimeSettings();
+    assertAgentToolsEnabled(settings);
+    const id = String(payload.id || "").trim();
+    const input =
+      payload.input && typeof payload.input === "object" && !Array.isArray(payload.input)
+        ? (payload.input as Record<string, unknown>)
+        : {};
+    return runModuleAction(id, input);
+  },
+
+  aiActionsRegister: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "ai-tools");
+    const settings = await readAgentRuntimeSettings();
+    assertAgentToolsEnabled(settings);
+    const raw = Array.isArray(payload.actions) ? payload.actions : [];
+    const actions: PluginModuleActionRegistration[] = raw
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+      .map((item) => ({
+        id: String(item.id || ""),
+        title: String(item.title || item.id || ""),
+        description: String(item.description || ""),
+        risk:
+          item.risk === "read" ||
+          item.risk === "write" ||
+          item.risk === "network" ||
+          item.risk === "destructive"
+            ? item.risk
+            : "write",
+        parameters:
+          item.parameters && typeof item.parameters === "object"
+            ? (item.parameters as Record<string, unknown>)
+            : undefined,
+        inputHint: typeof item.inputHint === "string" ? item.inputHint : undefined,
+        invokeCommand:
+          typeof item.invokeCommand === "string" ? item.invokeCommand : undefined,
+        command: typeof item.command === "string" ? item.command : undefined,
+      }));
+    for (const action of actions) {
+      if (action.invokeCommand) {
+        assertInvokeAllowed(plugin, perms, action.invokeCommand);
+      }
+    }
+    registerPluginModuleActions(plugin.id, actions, {
+      invokeAllowed: (cmd) => {
+        try {
+          assertInvokeAllowed(plugin, perms, cmd);
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      runCommand: async (commandName, input) => {
+        const command = await usePluginRegistry
+          .getState()
+          .resolveCommand(plugin.id, commandName);
+        if (!command) {
+          throw new Error(`Plugin command "${commandName}" not found for ${plugin.id}`);
+        }
+        await usePluginRegistry.getState().runCommand(command, {
+          launchType: "userInitiated",
+        });
+        return `Dispatched plugin command ${plugin.id}:${commandName}${
+          Object.keys(input).length ? ` (input: ${JSON.stringify(input)})` : ""
+        }.`;
+      },
+    });
+    qxLog("info", "plugin.rpc.ai", "Plugin module actions registered", {
+      pluginId: plugin.id,
+      count: actions.length,
+    });
+    return undefined;
+  },
+
+  aiActionsUnregister: async (plugin, perms) => {
+    assertPermission(plugin, perms, "ai-tools");
+    unregisterModuleActionsByOwner(`plugin:${plugin.id}`);
+    return undefined;
   },
 
   getPreference: async (plugin, _perms, payload, options) => {

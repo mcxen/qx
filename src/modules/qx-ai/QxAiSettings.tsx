@@ -29,7 +29,7 @@ export default function QxAiSettings() {
     loadProviders,
   } = useG4fStore();
 
-  const goBack = useCallback(() => setView("list"), [setView]);
+  const goBack = useCallback(() => setView("chat"), [setView]);
 
   const defaultIsland = useMemo<BottomIslandContent>(
     () => ({
@@ -96,24 +96,19 @@ export default function QxAiSettings() {
     }
   }, [loadProviders, builtInProviders.length, customProviders.length]);
 
+  // Only fill an empty selection — never force models[0] over a fixed default
+  // that is temporarily missing from the catalog.
   useEffect(() => {
-    if (models.length > 0 && !models.find((m) => m.id === currentModel)) {
+    if (models.length > 0 && !currentModel.trim()) {
       setCurrentModel(models[0].id);
     }
   }, [models, currentModel, setCurrentModel]);
 
   const handleProviderChange = (next: string) => {
     if (next === "---divider---") return;
+    // setCurrentProvider resolves a valid model and persists agent defaults.
     setCurrentProvider(next);
     flashSaved(t("qxai.settings.providerUpdated", "Provider updated"));
-    const allProvs = [
-      ...builtInProviders,
-      ...customProviders.map((c) => ({ id: c.id, name: c.name, models: c.models })),
-    ];
-    const prov = allProvs.find((p) => p.id === next);
-    if (prov && prov.models.length > 0) {
-      setCurrentModel(prov.models[0].id);
-    }
   };
 
   const settingsActions = useMemo<QxShellAction[]>(
@@ -152,7 +147,7 @@ export default function QxAiSettings() {
           title={t("qxai.settings.defaults", "Chat defaults")}
           description={t(
             "qxai.settings.defaults.desc",
-            "Defaults for new chats in this module. API keys, custom endpoints, memory, and agent tools live in Settings → AI Agent.",
+            "Defaults for new chats. Agent tools, skills, and MCP are on by default under Settings → AI Agent.",
           )}
         >
           <Row
@@ -182,10 +177,15 @@ export default function QxAiSettings() {
             title={t("qxai.model", "Model")}
             description={t("qxai.model.desc", "Default model for the selected provider.")}
           >
-            {models.length > 0 ? (
+            {models.length > 0 || currentModel ? (
               <Select
                 value={currentModel}
-                options={models.map((m) => ({ value: m.id, label: m.name }))}
+                options={[
+                  ...(!models.some((model) => model.id === currentModel) && currentModel
+                    ? [{ value: currentModel, label: currentModel }]
+                    : []),
+                  ...models.map((m) => ({ value: m.id, label: m.name })),
+                ]}
                 onChange={(next) => {
                   setCurrentModel(next);
                   flashSaved(t("qxai.settings.modelUpdated", "Model updated"));

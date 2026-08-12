@@ -54,6 +54,7 @@
 @import "./styles/clipboard.css";
 @import "./styles/weather.css";
 @import "./styles/qx-ai.css";
+@import "./styles/p-zai.css";
 @import "./styles/documents.css";
 @import "@xterm/xterm/css/xterm.css";
 @import "./styles/qx-tty.css";

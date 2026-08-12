@@ -478,6 +478,20 @@ export function buildPluginRuntimeHtml(
             get: (id) => rpc('aiTaskGet', { id: String(id || '') }),
             cancel: (id) => rpc('aiTaskCancel', { id: String(id || '') }),
           },
+          actions: {
+            list: (filter = {}) => rpc('aiActionsList', {
+              moduleId: filter && filter.moduleId,
+              query: filter && filter.query,
+            }),
+            run: (id, input = {}) => rpc('aiActionsRun', {
+              id: String(id || ''),
+              input: input && typeof input === 'object' ? input : {},
+            }),
+            register: (actions) => rpc('aiActionsRegister', {
+              actions: Array.isArray(actions) ? actions : [],
+            }),
+            unregister: () => rpc('aiActionsUnregister', {}),
+          },
         },
         tray: {
           setItems: (items) => rpc('traySetItems', { items: items || [] }),

@@ -1,10 +1,25 @@
-import { Suspense, lazy, memo, useMemo } from "react";
+import { Suspense, lazy, memo, useEffect, useMemo, useState, type ReactNode } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { Brain, CheckCircle2, Copy, ExternalLink, File, FolderSearch, Image, Loader2, Search, Wrench, XCircle } from "lucide-react";
+import {
+  Brain,
+  CheckCircle2,
+  ChevronDown,
+  CircleDot,
+  Copy,
+  ExternalLink,
+  File,
+  FolderSearch,
+  Gauge,
+  Loader2,
+  Search,
+  Wrench,
+  XCircle,
+} from "lucide-react";
 import { Button } from "../../components/ui";
 import { useT } from "../../i18n";
 import { openSystemPath, revealSystemPath } from "../../system/pathActions";
 import type { AgentStep, QxAiFileAttachment } from "./react-agent";
+
 const MarkdownRenderer = lazy(() => import("./MarkdownRenderer"));
 
 function formatFileSize(size: number): string {
@@ -14,57 +29,87 @@ function formatFileSize(size: number): string {
   return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
+function humanizeToolName(name: string): string {
+  const spaced = name.replace(/[_-]+/g, " ").trim();
+  if (!spaced) return "tool";
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
+}
+
+function isImageAttachment(attachment: QxAiFileAttachment): boolean {
+  return attachment.kind === "image" || Boolean(attachment.mimeType?.startsWith("image/"));
+}
+
 function FileAttachments({ attachments }: { attachments: QxAiFileAttachment[] }) {
   const t = useT();
   return (
     <div className="qx-ai-attachments">
-      {attachments.map((attachment) => (
-        <div className="qx-ai-attachment" key={attachment.path}>
-          {attachment.kind === "image" ? (
-            <img className="qx-ai-attachment-preview" src={convertFileSrc(attachment.path)} alt="" />
-          ) : attachment.mimeType?.startsWith("image/") ? (
-            <Image size={18} aria-hidden="true" />
-          ) : (
-            <File size={18} aria-hidden="true" />
-          )}
-          <div className="qx-ai-attachment-copy">
-            <strong title={attachment.name}>{attachment.name}</strong>
-            <span title={attachment.path}>{formatFileSize(attachment.size)} · {attachment.path}</span>
+      {attachments.map((attachment) => {
+        const isImage = isImageAttachment(attachment);
+        const previewSrc = isImage ? convertFileSrc(attachment.path) : "";
+        return (
+          <div
+            className={`qx-ai-attachment${isImage ? " is-image" : ""}`}
+            key={attachment.path}
+          >
+            {isImage ? (
+              <button
+                type="button"
+                className="qx-ai-attachment-preview-btn"
+                title={t("common.open", "Open")}
+                onClick={() => void openSystemPath(attachment.path)}
+              >
+                <img
+                  className="qx-ai-attachment-preview"
+                  src={previewSrc}
+                  alt={attachment.name}
+                  loading="lazy"
+                />
+              </button>
+            ) : (
+              <File size={18} aria-hidden="true" />
+            )}
+            <div className="qx-ai-attachment-copy">
+              <strong title={attachment.name}>{attachment.name}</strong>
+              <span title={attachment.path}>
+                {formatFileSize(attachment.size)}
+                {attachment.mimeType ? ` · ${attachment.mimeType}` : ""}
+              </span>
+            </div>
+            <div className="qx-ai-attachment-actions">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                title={t("common.open", "Open")}
+                aria-label={t("common.open", "Open")}
+                onClick={() => void openSystemPath(attachment.path)}
+              >
+                <ExternalLink size={14} />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                title={t("qxai.attachment.reveal", "Show in file manager")}
+                aria-label={t("qxai.attachment.reveal", "Show in file manager")}
+                onClick={() => void revealSystemPath(attachment.path)}
+              >
+                <FolderSearch size={14} />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                title={t("qxai.attachment.copy", "Copy file")}
+                aria-label={t("qxai.attachment.copy", "Copy file")}
+                onClick={() => void invoke("clipboard_write_file_paths", { paths: [attachment.path] })}
+              >
+                <Copy size={14} />
+              </Button>
+            </div>
           </div>
-          <div className="qx-ai-attachment-actions">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              title={t("common.open", "Open")}
-              aria-label={t("common.open", "Open")}
-              onClick={() => void openSystemPath(attachment.path)}
-            >
-              <ExternalLink size={14} />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              title={t("qxai.attachment.reveal", "Show in file manager")}
-              aria-label={t("qxai.attachment.reveal", "Show in file manager")}
-              onClick={() => void revealSystemPath(attachment.path)}
-            >
-              <FolderSearch size={14} />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              title={t("qxai.attachment.copy", "Copy file")}
-              aria-label={t("qxai.attachment.copy", "Copy file")}
-              onClick={() => void invoke("clipboard_write_file_paths", { paths: [attachment.path] })}
-            >
-              <Copy size={14} />
-            </Button>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -76,7 +121,6 @@ type MessagePart =
 function parseToolBlock(raw: string): MessagePart | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
-
   try {
     const value = JSON.parse(trimmed) as Record<string, unknown>;
     const name = value.name ?? value.tool ?? value.toolName ?? value.function;
@@ -100,7 +144,6 @@ function parseParts(content: string): MessagePart[] {
   const blockPattern = /```(?:tool|tool_call|tool-call)\s*\n([\s\S]*?)```/gi;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
-
   while ((match = blockPattern.exec(content))) {
     const before = content.slice(lastIndex, match.index);
     if (before) parts.push({ type: "text", text: before });
@@ -109,108 +152,262 @@ function parseParts(content: string): MessagePart[] {
     else parts.push({ type: "text", text: match[0] });
     lastIndex = match.index + match[0].length;
   }
-
   const rest = content.slice(lastIndex);
   if (rest) parts.push({ type: "text", text: rest });
   return parts.length ? parts : [{ type: "text", text: content }];
 }
 
-function ToolInvocation({ part }: { part: Extract<MessagePart, { type: "tool" }> }) {
+/** Jan-style collapsible tool row. */
+function JanToolCall({
+  name,
+  state,
+  input,
+  output,
+  defaultOpen = false,
+}: {
+  name: string;
+  state: string;
+  input?: string;
+  output?: string;
+  defaultOpen?: boolean;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(defaultOpen);
+  const running = state === "running" || state === "input-streaming" || state === "input-available";
+  const failed = state === "error" || state === "output-error";
+  const label = running
+    ? t("qxai.tool.running", "Running {name}…").replace("{name}", humanizeToolName(name))
+    : failed
+      ? t("qxai.tool.failed", "{name} failed").replace("{name}", humanizeToolName(name))
+      : t("qxai.tool.used", "Used {name}").replace("{name}", humanizeToolName(name));
+
   return (
-    <div className="qx-ai-tool-call">
-      <div className="qx-ai-tool-call-header">
-        <Wrench size={14} />
-        <span>{part.name}</span>
-        <em>{part.state}</em>
-      </div>
-      {part.input && (
-        <pre className="qx-ai-tool-call-body">
-          <code>{part.input}</code>
-        </pre>
-      )}
-      {part.output && (
-        <pre className="qx-ai-tool-call-body is-output">
-          <code>{part.output}</code>
-        </pre>
+    <div className={`qx-jan-tool${open ? " is-open" : ""}${running ? " is-running" : ""}${failed ? " is-error" : ""}`}>
+      <button type="button" className="qx-jan-tool-header" onClick={() => setOpen((value) => !value)}>
+        <Wrench size={14} aria-hidden="true" />
+        <span className="qx-jan-tool-label">{label}</span>
+        {running ? <Loader2 size={13} className="qx-spin" /> : null}
+        <ChevronDown size={14} className={`qx-jan-chevron${open ? " is-open" : ""}`} aria-hidden="true" />
+      </button>
+      {open && (
+        <div className="qx-jan-tool-body">
+          {input ? (
+            <div className="qx-jan-tool-section">
+              <h4>{t("qxai.tool.parameters", "Parameters")}</h4>
+              <pre><code>{input}</code></pre>
+            </div>
+          ) : null}
+          {output ? (
+            <div className="qx-jan-tool-section">
+              <h4>{failed ? t("common.error", "Error") : t("qxai.tool.result", "Result")}</h4>
+              <pre className="is-output"><code>{output}</code></pre>
+            </div>
+          ) : null}
+        </div>
       )}
     </div>
   );
 }
 
-function StepStateIcon({ state }: { state: AgentStep["state"] }) {
-  if (state === "running") return <Loader2 size={12} className="qx-spin" />;
-  if (state === "error") return <XCircle size={12} />;
-  return <CheckCircle2 size={12} />;
+/** Jan-style chain-of-thought card wrapping reasoning + tool steps. */
+function JanChainOfThought({
+  title,
+  streamingLabel,
+  completedVerb,
+  isStreaming,
+  children,
+  defaultOpen = true,
+}: {
+  title?: ReactNode;
+  streamingLabel?: string;
+  completedVerb?: string;
+  isStreaming?: boolean;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const t = useT();
+  const [open, setOpen] = useState(defaultOpen);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [durationSec, setDurationSec] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (isStreaming) setOpen(true);
+  }, [isStreaming]);
+
+  useEffect(() => {
+    if (isStreaming) {
+      if (startedAt === null) setStartedAt(Date.now());
+      return;
+    }
+    if (startedAt !== null) {
+      setDurationSec(Math.max(1, Math.ceil((Date.now() - startedAt) / 1000)));
+      setStartedAt(null);
+    }
+  }, [isStreaming, startedAt]);
+
+  const headerTitle = (() => {
+    if (title) return title;
+    if (isStreaming || durationSec === 0) {
+      return (
+        <span className="qx-jan-shimmer">
+          {streamingLabel ?? t("qxai.cot.thinking", "Thinking…")}
+        </span>
+      );
+    }
+    if (durationSec === undefined) {
+      return t("qxai.cot.thoughtBrief", "Thought for a few seconds");
+    }
+    return t("qxai.cot.thoughtFor", "{verb} for {n} seconds")
+      .replace("{verb}", completedVerb ?? t("qxai.cot.thoughtVerb", "Thought"))
+      .replace("{n}", String(durationSec));
+  })();
+
+  return (
+    <div className={`qx-jan-cot${open ? " is-open" : ""}${isStreaming ? " is-streaming" : ""}`}>
+      <button type="button" className="qx-jan-cot-header" onClick={() => setOpen((value) => !value)}>
+        <Brain size={14} aria-hidden="true" />
+        <span className="qx-jan-cot-title">{headerTitle}</span>
+        <ChevronDown size={14} className={`qx-jan-chevron${open ? " is-open" : ""}`} aria-hidden="true" />
+      </button>
+      {open && <div className="qx-jan-cot-content">{children}</div>}
+    </div>
+  );
 }
 
-export const AgentStepView = memo(function AgentStepView({ step }: { step: AgentStep }) {
-  if (step.kind === "thought") {
-    return (
-      <div className="qx-agent-step is-thought">
-        <div className="qx-agent-step-head">
-          <Brain size={12} />
-          <span>Thought</span>
-        </div>
-        <div className="qx-agent-step-body">{step.text}</div>
-      </div>
-    );
-  }
-  if (step.kind === "action") {
-    return (
-      <div className={`qx-agent-step is-action is-${step.state}`}>
-        <div className="qx-agent-step-head">
-          <Wrench size={12} />
-          <span>Action · {step.tool}</span>
-          <StepStateIcon state={step.state} />
-        </div>
-        {step.input && (
-          <pre className="qx-agent-step-pre">
-            <code>{step.input}</code>
-          </pre>
+function StepRow({
+  status,
+  label,
+  children,
+}: {
+  status: "complete" | "active" | "pending" | "error";
+  label: string;
+  children?: ReactNode;
+}) {
+  return (
+    <div className={`qx-jan-step is-${status}`}>
+      <div className="qx-jan-step-rail" aria-hidden="true">
+        {status === "complete" ? (
+          <CheckCircle2 size={14} />
+        ) : status === "error" ? (
+          <XCircle size={14} />
+        ) : status === "active" ? (
+          <CircleDot size={14} />
+        ) : (
+          <Loader2 size={14} className="qx-spin" />
         )}
       </div>
-    );
-  }
-  if (step.kind === "observation") {
-    return (
-      <div className="qx-agent-step is-observation">
-        <div className="qx-agent-step-head">
-          <Search size={12} />
-          <span>Observation{step.tool ? ` · ${step.tool}` : ""}</span>
-        </div>
-        {step.output && (
-          <pre className="qx-agent-step-pre is-output">
-            <code>{step.output}</code>
-          </pre>
-        )}
+      <div className="qx-jan-step-main">
+        <div className="qx-jan-step-label">{label}</div>
+        {children ? <div className="qx-jan-step-body">{children}</div> : null}
       </div>
-    );
-  }
-  if (step.kind === "error") {
-    return (
-      <div className="qx-agent-step is-error">
-        <div className="qx-agent-step-head">
-          <XCircle size={12} />
-          <span>Error</span>
-        </div>
-        <div className="qx-agent-step-body">{step.text}</div>
-      </div>
-    );
-  }
-  return null;
-});
+    </div>
+  );
+}
 
-export const AgentStepsView = memo(function AgentStepsView({ steps }: { steps: AgentStep[] }) {
+export const AgentStepsView = memo(function AgentStepsView({
+  steps,
+  streaming = false,
+}: {
+  steps: AgentStep[];
+  streaming?: boolean;
+}) {
+  const t = useT();
   const visible = steps.filter((s) => s.kind !== "final");
   if (visible.length === 0) return null;
+
   return (
-    <div className="qx-agent-steps">
-      {visible.map((step) => (
-        <AgentStepView key={step.id} step={step} />
-      ))}
-    </div>
+    <JanChainOfThought
+      streamingLabel={t("qxai.cot.thinking", "Thinking…")}
+      completedVerb={t("qxai.cot.thoughtVerb", "Thought")}
+      isStreaming={streaming}
+      defaultOpen={streaming}
+    >
+      {visible.map((step) => {
+        if (step.kind === "thought") {
+          return (
+            <StepRow
+              key={step.id}
+              status={step.state === "running" ? "active" : "complete"}
+              label={t("qxai.cot.thoughtStep", "Thought")}
+            >
+              <div className="qx-jan-thought-text">{step.text}</div>
+            </StepRow>
+          );
+        }
+        // Jan: tool rows sit directly in the CoT list (no duplicate labels).
+        if (step.kind === "action") {
+          return (
+            <JanToolCall
+              key={step.id}
+              name={step.tool ?? "tool"}
+              state={step.state}
+              input={step.input}
+              defaultOpen={step.state === "running"}
+            />
+          );
+        }
+        if (step.kind === "observation") {
+          return (
+            <JanToolCall
+              key={step.id}
+              name={step.tool ?? "tool"}
+              state="completed"
+              output={step.output}
+              defaultOpen={false}
+            />
+          );
+        }
+        if (step.kind === "error") {
+          return (
+            <StepRow key={step.id} status="error" label={t("common.error", "Error")}>
+              <div className="qx-jan-thought-text is-error">{step.text}</div>
+            </StepRow>
+          );
+        }
+        return null;
+      })}
+    </JanChainOfThought>
   );
 });
+
+export function TokenSpeedBadge({
+  tokenSpeed,
+  tokenCount,
+  streaming,
+}: {
+  tokenSpeed?: number;
+  tokenCount?: number;
+  streaming?: boolean;
+}) {
+  const t = useT();
+  if (streaming) {
+    if (!tokenSpeed || tokenSpeed <= 0) return null;
+    return (
+      <div className="qx-jan-token-speed is-live" title={t("qxai.tokens.speed", "Generation speed")}>
+        <Gauge size={14} aria-hidden="true" />
+        <span>
+          {Math.round(tokenSpeed)} {t("qxai.tokens.perSec", "tokens/sec")}
+        </span>
+      </div>
+    );
+  }
+  if ((!tokenSpeed || tokenSpeed <= 0) && (!tokenCount || tokenCount <= 0)) return null;
+  return (
+    <div className="qx-jan-token-speed" title={t("qxai.tokens.speed", "Generation speed")}>
+      <Gauge size={14} aria-hidden="true" />
+      {tokenSpeed && tokenSpeed > 0 ? (
+        <span>
+          {Math.round(tokenSpeed)} {t("qxai.tokens.perSec", "tokens/sec")}
+        </span>
+      ) : null}
+      {tokenCount && tokenCount > 0 ? (
+        <span className="qx-jan-token-count">
+          ({tokenCount} {t("qxai.tokens.unit", "tokens")})
+        </span>
+      ) : null}
+    </div>
+  );
+}
 
 export function AiMessageContent({
   content,
@@ -218,45 +415,83 @@ export function AiMessageContent({
   streaming = false,
   steps,
   attachments,
+  tokenSpeed,
+  tokenCount,
 }: {
   content: string;
   reasoning?: string;
   streaming?: boolean;
   steps?: AgentStep[];
   attachments?: QxAiFileAttachment[];
+  tokenSpeed?: number;
+  tokenCount?: number;
 }) {
   const t = useT();
   const parts = useMemo(() => parseParts(content), [content]);
+  const hasChain = Boolean((steps && steps.length > 0) || reasoning);
 
   return (
     <>
-      {steps && steps.length > 0 && <AgentStepsView steps={steps} />}
-      {reasoning ? (
-        <details className="qx-ai-reasoning" open={streaming}>
-          <summary>
-            <Brain size={13} />
-            <span>
-              {streaming
-                ? t("qxai.reasoning.streaming", "Reasoning…")
-                : t("qxai.reasoning", "Reasoning")}
-            </span>
-          </summary>
-          <div className="qx-ai-reasoning-body">{reasoning}</div>
-        </details>
+      {steps && steps.length > 0 ? (
+        <AgentStepsView steps={steps} streaming={streaming} />
+      ) : reasoning ? (
+        <JanChainOfThought
+          title={
+            streaming
+              ? t("qxai.reasoning.streaming", "Reasoning…")
+              : t("qxai.reasoning", "Reasoning")
+          }
+          isStreaming={streaming}
+          defaultOpen={streaming}
+        >
+          <div className="qx-jan-thought-text">{reasoning}</div>
+        </JanChainOfThought>
       ) : null}
+
       <Suspense fallback={<div className="qx-md-body">{content}</div>}>
         {parts.map((part, index) =>
           part.type === "tool" ? (
-            <ToolInvocation key={`tool-${index}-${part.name}`} part={part} />
+            <JanToolCall
+              key={`tool-${index}-${part.name}`}
+              name={part.name}
+              state={part.state}
+              input={part.input}
+              output={part.output}
+            />
           ) : (
             <MarkdownRenderer key={`text-${index}`} content={part.text} />
           ),
         )}
       </Suspense>
+
       {attachments && attachments.length > 0 ? (
         <FileAttachments attachments={attachments} />
       ) : null}
-      {streaming && <span className="qx-typing-cursor">|</span>}
+
+      {!streaming && (tokenSpeed || tokenCount) ? (
+        <div className="qx-jan-message-foot">
+          <TokenSpeedBadge tokenSpeed={tokenSpeed} tokenCount={tokenCount} />
+        </div>
+      ) : null}
+
+      {streaming && (
+        <div className="qx-jan-message-foot is-streaming">
+          {hasChain ? null : <Search size={12} className="qx-jan-streaming-dot" aria-hidden="true" />}
+          <TokenSpeedBadge tokenSpeed={tokenSpeed} streaming />
+          <span className="qx-typing-cursor">|</span>
+        </div>
+      )}
     </>
   );
+}
+
+/** Rough token estimate (chars / 4) for speed display without a tokenizer. */
+export function estimateTokens(text: string): number {
+  if (!text) return 0;
+  return Math.max(1, Math.ceil(text.length / 4));
+}
+
+export function computeTokenSpeed(tokenCount: number, durationMs: number): number {
+  if (tokenCount <= 0 || durationMs <= 0) return 0;
+  return (tokenCount / durationMs) * 1000;
 }

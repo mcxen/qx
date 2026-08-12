@@ -127,10 +127,13 @@ export function AddProviderForm({
     setFetchingModels(true);
     setModelsError(null);
     try {
-      const models = await invoke<{ id: string; name: string }[]>("qxai_fetch_models", {
-        baseUrl: baseUrl.trim(),
-        apiKey,
-      });
+      const models = await invoke<Array<{ id: string; name: string; vision?: boolean; reasoning?: boolean }>>(
+        "qxai_fetch_models",
+        {
+          baseUrl: baseUrl.trim(),
+          apiKey,
+        },
+      );
       setModelsText(models.map((model) => model.id).join(", "));
     } catch (error) {
       setModelsError(String(error));
@@ -342,12 +345,17 @@ function providerModelsText(models: { id: string }[]): string {
   return models.map((model) => model.id).join(", ");
 }
 
-function providerModels(text: string): { id: string; name: string }[] {
+function providerModels(text: string): { id: string; name: string; vision?: boolean }[] {
   return text
     .split(",")
     .map((id) => id.trim())
     .filter(Boolean)
-    .map((id) => ({ id, name: id }));
+    .map((id) => {
+      // Local heuristic until catalog/API detection runs.
+      const vision = /vision|vl|gpt-4o|gpt-4\.1|claude-|gemini|pixtral|llava|llama-?4|openrouter\/auto/i
+        .test(id);
+      return vision ? { id, name: id, vision: true } : { id, name: id };
+    });
 }
 
 function maskProviderKey(apiKey: string, emptyLabel: string): string {

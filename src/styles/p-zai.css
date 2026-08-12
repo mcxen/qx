@@ -1,0 +1,340 @@
+.qx-pzai-layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 280px) minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.qx-pzai-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--qx-border-1);
+}
+
+.qx-pzai-sidebar-head {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border-bottom: 1px solid var(--qx-border-1);
+}
+
+.qx-pzai-sidebar-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.qx-pzai-unread {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--qx-text-secondary);
+}
+
+.qx-pzai-unread > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-pzai-article-list {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px;
+}
+
+.qx-pzai-article-row {
+  width: 100%;
+  text-align: left;
+}
+
+.qx-pzai-article-row.is-unread .qx-list-title {
+  font-weight: 700;
+}
+
+.qx-pzai-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.qx-pzai-article-head {
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid var(--qx-border-1);
+}
+
+.qx-pzai-back {
+  margin: 0 0 8px;
+  height: 28px;
+  padding: 0 6px 0 2px;
+  gap: 2px;
+  font-size: 12px;
+  color: var(--qx-text-secondary);
+}
+
+.qx-pzai-article-head h2 {
+  margin: 0 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  overflow-wrap: anywhere;
+}
+
+.qx-pzai-article-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--qx-text-tertiary);
+}
+
+.qx-pzai-article-meta a {
+  color: var(--qx-accent, #5b8cff);
+  text-decoration: none;
+}
+
+.qx-pzai-workbench {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 16px 8px;
+  display: grid;
+  gap: 12px;
+}
+
+.qx-pzai-pane {
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--qx-border-2) 60%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--qx-bg-component-2, #161a22) 88%, transparent);
+  min-width: 0;
+}
+
+.qx-pzai-pane h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--qx-text-secondary);
+}
+
+.qx-pzai-pane.is-summary {
+  border-color: color-mix(in srgb, var(--qx-accent, #5b8cff) 30%, transparent);
+}
+
+.qx-pzai-html {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--qx-text-primary);
+  overflow-wrap: anywhere;
+}
+
+.qx-pzai-html img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.qx-pzai-text,
+.qx-pzai-draft-editor {
+  margin: 0;
+  width: 100%;
+  min-height: 120px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 13px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--qx-text-primary);
+  background: transparent;
+  border: 0;
+  resize: vertical;
+}
+
+.qx-pzai-draft-editor {
+  outline: none;
+  min-height: 220px;
+}
+
+.qx-pzai-composer {
+  flex: 0 0 auto;
+  padding: 8px 12px 12px;
+  border-top: 1px solid var(--qx-border-1);
+  display: grid;
+  gap: 8px;
+}
+
+.qx-pzai-agent-stream {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  max-height: 120px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--qx-bg-component-3, #0f131a) 80%, transparent);
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.qx-pzai-context .qx-pzai-edit {
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 8px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: 8px;
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.qx-pzai-context-meta {
+  margin: 0 0 10px;
+  font-size: 11px;
+  color: var(--qx-text-tertiary);
+}
+
+.qx-pzai-quick {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.qx-pzai-quick .qx-shadcn-button {
+  justify-content: flex-start;
+  height: auto;
+  min-height: 30px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.qx-pzai-error {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 56px;
+  z-index: 4;
+}
+
+/* ── Wide: optional two-column split panes ─────────────────────────── */
+@media (min-width: 960px) {
+  .qx-pzai-workbench:has(.qx-pzai-pane.is-summary):has(.qx-pzai-pane.is-draft),
+  .qx-pzai-layout:not(.is-narrow) .qx-pzai-workbench {
+    /* keep single column by default; split mode stacks unless wide enough */
+  }
+}
+
+/* ── Narrow: master–detail (list XOR reading) ──────────────────────── */
+@media (max-width: 720px) {
+  .qx-pzai-layout,
+  .qx-pzai-layout.is-narrow {
+    grid-template-columns: 1fr;
+  }
+
+  /* List only */
+  .qx-pzai-layout.is-narrow:not(.is-reading) .qx-pzai-main {
+    display: none;
+  }
+
+  .qx-pzai-layout.is-narrow:not(.is-reading) .qx-pzai-sidebar {
+    border-right: 0;
+    max-height: none;
+    height: 100%;
+  }
+
+  /* Reading only */
+  .qx-pzai-layout.is-narrow.is-reading .qx-pzai-sidebar {
+    display: none;
+  }
+
+  .qx-pzai-layout.is-narrow.is-reading .qx-pzai-main {
+    min-height: 0;
+    height: 100%;
+  }
+
+  .qx-pzai-article-head {
+    padding: 8px 12px 8px;
+  }
+
+  .qx-pzai-article-head h2 {
+    font-size: 15px;
+  }
+
+  .qx-pzai-workbench {
+    padding: 10px 12px 6px;
+    gap: 10px;
+  }
+
+  .qx-pzai-pane {
+    padding: 10px;
+    border-radius: 8px;
+  }
+
+  .qx-pzai-draft-editor {
+    min-height: 160px;
+  }
+
+  .qx-pzai-composer {
+    padding: 8px 10px 10px;
+  }
+
+  .qx-pzai-agent-stream {
+    max-height: 72px;
+  }
+
+  /* Compact jan composer inside narrow P仔 */
+  .qx-pzai-composer .qx-jan-composer {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+    padding: 8px 10px;
+    border-radius: 14px;
+  }
+
+  .qx-pzai-composer .qx-jan-composer-tools {
+    display: none;
+  }
+
+  .qx-pzai-composer .qx-jan-composer-input {
+    font-size: 13px;
+  }
+
+  .qx-pzai-empty-main {
+    display: none;
+  }
+}
+
+/* Very compact launcher widths (≤520): denser list + context density */
+@media (max-width: 520px) {
+  .qx-pzai-sidebar-head {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .qx-pzai-article-list {
+    padding: 2px;
+  }
+
+  .qx-pzai-article-row {
+    min-height: 40px;
+  }
+
+  .qx-pzai-context .qx-pzai-edit {
+    rows: 2;
+    min-height: 56px;
+  }
+
+  .qx-pzai-quick .qx-shadcn-button {
+    min-height: 34px;
+  }
+}

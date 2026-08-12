@@ -4,10 +4,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type KeyboardEvent,
 } from "react";
 import {
-  Bot,
   Clock3,
   FolderOpen,
   Hammer,
@@ -15,19 +15,27 @@ import {
   Paperclip,
   RefreshCw,
   Sparkles,
-  UserRound,
   X,
 } from "lucide-react";
 import QxShell, { type BottomIslandContent, type QxShellAction } from "../../components/QxShell";
+import QxResizableSplit from "../../components/QxResizableSplit";
 import { QxActionList } from "../../components/QxActionPanel";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
 import { Button, Select, Toggle } from "../../components/ui";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
+import { useQxListSelection } from "../../hooks/useQxListSelection";
+import {
+  qxMasterDetailIds,
+  qxRegionProps,
+  useQxMasterDetailFocus,
+} from "../../hooks/useQxMasterDetail";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useT } from "../../i18n";
+import { useStore } from "../../store";
 import { useSettingsStore } from "../settings/store";
 import { openAgentSettingsTab } from "./AiProviderConfig";
 import { AiMessageContent } from "./message-rendering";
+import QxAiConversationList from "./QxAiConversationList";
 import {
   filterQxAiSkills,
   listQxAiSkills,
@@ -38,16 +46,23 @@ import {
 } from "./skills";
 import { useG4fStore } from "./store";
 import { chooseAndImportQxAiAttachments } from "./sessions";
-import type { QxAiFileAttachment } from "./react-agent";
+import { getEnabledTools, type QxAiFileAttachment } from "./react-agent";
+import { resolveModelVision } from "./model-capabilities";
+import { convertFileSrc } from "@tauri-apps/api/core";
+
+const MASTER_DETAIL = qxMasterDetailIds("qx-ai");
+const LIST_WIDTH_KEY = "qx-ai.workbench.listWidth";
 
 export default function QxAiChat() {
   const t = useT();
+  const setTab = useStore((state) => state.setTab);
   const {
     conversations,
     currentConversationId,
     runs,
     messageQueue,
     error,
+    loading,
     providers,
     setView,
     sendMessage,
@@ -55,12 +70,14 @@ export default function QxAiChat() {
     clearMessages,
     deleteConversation,
     createConversation,
+    selectConversation,
     setConversationModel,
     setConversationReasoning,
     loadProviders,
   } = useG4fStore();
 
   const [input, setInput] = useState("");
+  const [listQuery, setListQuery] = useState("");
   const [skills, setSkills] = useState<QxAiSkillSummary[]>([]);
   const [skillsLoading, setSkillsLoading] = useState(false);
   const [skillsFailed, setSkillsFailed] = useState(false);
@@ -70,7 +87,55 @@ export default function QxAiChat() {
   const [attachmentsBusy, setAttachmentsBusy] = useState(false);
   const [attachmentsError, setAttachmentsError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const shellRef = useRef<HTMLDivElement>(null);
   const agentSettings = useSettingsStore((state) => state.settings.agent);
+  const { focusList, focusDetail } = useQxMasterDetailFocus(shellRef, MASTER_DETAIL);
+
+  const filteredConversations = useMemo(() => {
+    const q = listQuery.trim().toLowerCase();
+    const sorted = [...conversations].sort((a, b) => b.createdAt - a.createdAt);
+    if (!q) return sorted;
+    return sorted.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q)
+        || c.provider.toLowerCase().includes(q)
+        || c.model.toLowerCase().includes(q),
+    );
+  }, [conversations, listQuery]);
+
+  const selectedIndex = useMemo(() => {
+    if (!currentConversationId) return 0;
+    const index = filteredConversations.findIndex((c) => c.id === currentConversationId);
+    return index >= 0 ? index : 0;
+  }, [currentConversationId, filteredConversations]);
+
+  const setSelectedIndex = useCallback(
+    (next: number | ((current: number) => number)) => {
+      const resolved =
+        typeof next === "function" ? next(selectedIndex) : next;
+      if (filteredConversations.length === 0) return;
+      const clamped = Math.max(0, Math.min(resolved, filteredConversations.length - 1));
+      const target = filteredConversations[clamped];
+      if (target) selectConversation(target.id);
+    },
+    [filteredConversations, selectConversation, selectedIndex],
+  );
+
+  const { getItemProps } = useQxListSelection({
+    listRef,
+    index: selectedIndex,
+    listSignature: filteredConversations.map((c) => c.id).join("\0"),
+  });
+
+  const openSelectedConversation = useCallback(() => {
+    const target = filteredConversations[selectedIndex];
+    if (!target) return;
+    selectConversation(target.id);
+    focusDetail();
+    requestAnimationFrame(() => composerRef.current?.focus());
+  }, [filteredConversations, focusDetail, selectConversation, selectedIndex]);
 
   const conv = conversations.find((c) => c.id === currentConversationId);
   const run = conv ? runs[conv.id] : undefined;
@@ -79,31 +144,25 @@ export default function QxAiChat() {
   const streamedReasoning = run?.streamedReasoning ?? "";
   const streamingSteps = run?.streamingSteps ?? [];
   const currentError = run?.error ?? error;
-  const enabledTools = useMemo(() => {
-    if (!agentSettings.agent_mode_enabled || !agentSettings.tools_enabled) return [];
-    return [
-      agentSettings.memory_tool_enabled && "memory",
-      agentSettings.app_search_enabled && "apps",
-      agentSettings.file_search_enabled && "files",
-      agentSettings.http_fetch_enabled && "http",
-      agentSettings.notifications_enabled && "notify",
-      agentSettings.grep_search_enabled && "grep",
-      agentSettings.bash_enabled && "bash",
-      agentSettings.qx_host_actions_enabled && "qx",
-      agentSettings.mcp_enabled && "mcp",
-    ].filter(Boolean) as string[];
-  }, [agentSettings]);
+  const settingsSnapshot = useSettingsStore((state) => state.settings);
+  const enabledTools = useMemo(
+    () => getEnabledTools(agentSettings, settingsSnapshot).map((tool) => tool.name),
+    [agentSettings, settingsSnapshot],
+  );
   const activeProvider = useMemo(
     () => providers.find((provider) => provider.id === conv?.provider),
     [providers, conv?.provider],
   );
   const activeModels = activeProvider?.models ?? [];
   const activeModel = activeModels.find((model) => model.id === conv?.model);
-  const canChat = Boolean(
-    conv &&
-      activeProvider &&
-      activeModels.some((model) => model.id === conv.model),
+  const modelSupportsVision = resolveModelVision(
+    conv?.provider ?? "",
+    activeModel ?? (conv?.model ? { id: conv.model, name: conv.model } : undefined),
+    agentSettings.model_capabilities,
   );
+  // Allow a conversation model even when the catalog has not listed it yet
+  // (custom endpoints / delayed fetch). Empty model still needs recovery.
+  const canChat = Boolean(conv && activeProvider && conv.model.trim());
   const skillPickerOpen = input.startsWith("/");
   const skillMatches = useMemo(
     () => filterQxAiSkills(skills, skillPickerOpen ? input.slice(1) : "").slice(0, 12),
@@ -138,7 +197,7 @@ export default function QxAiChat() {
     }
   }, []);
 
-  const leave = useCallback(() => setView("list"), [setView]);
+  const leave = useCallback(() => setTab("launcher"), [setTab]);
 
   const handleSend = useCallback(() => {
     const trimmed = input.trim();
@@ -147,6 +206,9 @@ export default function QxAiChat() {
     setSelectedSkill(null);
     setPendingAttachments([]);
     setAttachmentsError("");
+    if (composerRef.current) {
+      composerRef.current.style.height = "auto";
+    }
     void sendMessage(
       trimmed || t("qxai.attachments.review", "Please review the attached files."),
       selectedSkill ?? undefined,
@@ -172,30 +234,48 @@ export default function QxAiChat() {
     }
   }, [attachmentsBusy, conv]);
 
-  const handleComposerKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
-    if (!skillPickerOpen || event.nativeEvent.isComposing) return;
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+  const handleComposerKeyDown = useCallback((event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.nativeEvent.isComposing) return;
+
+    if (skillPickerOpen) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        event.stopPropagation();
+        const offset = event.key === "ArrowDown" ? 1 : -1;
+        setSkillCursor((current) => {
+          if (skillMatches.length === 0) return 0;
+          return (current + offset + skillMatches.length) % skillMatches.length;
+        });
+        return;
+      }
+      if (event.key === "Enter" && skillMatches[skillCursor]) {
+        event.preventDefault();
+        event.stopPropagation();
+        void selectSkill(skillMatches[skillCursor]);
+        return;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        setInput("");
+        return;
+      }
+    }
+
+    // Jan-style: Enter sends, Shift+Enter inserts a newline.
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       event.stopPropagation();
-      const offset = event.key === "ArrowDown" ? 1 : -1;
-      setSkillCursor((current) => {
-        if (skillMatches.length === 0) return 0;
-        return (current + offset + skillMatches.length) % skillMatches.length;
-      });
-      return;
+      handleSend();
     }
-    if (event.key === "Enter" && skillMatches[skillCursor]) {
-      event.preventDefault();
-      event.stopPropagation();
-      void selectSkill(skillMatches[skillCursor]);
-      return;
-    }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      setInput("");
-    }
-  }, [selectSkill, skillCursor, skillMatches, skillPickerOpen]);
+  }, [handleSend, selectSkill, skillCursor, skillMatches, skillPickerOpen]);
+
+  const handleComposerInput = useCallback((event: ChangeEvent<HTMLTextAreaElement>) => {
+    const el = event.target;
+    setInput(el.value);
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -223,8 +303,20 @@ export default function QxAiChat() {
 
   useEffect(() => {
     if (!conv || providers.length === 0 || canChat) return;
-    const provider = providers.find((p) => p.id === conv.provider) ?? providers[0];
-    setConversationModel(conv.id, provider.id, provider.models[0]?.id ?? "");
+    // Recover only when provider/model are missing — never replace a fixed model
+    // with models[0] just because it is not in the current catalog.
+    const provider =
+      providers.find((item) => item.id === conv.provider) ?? providers[0];
+    if (!provider) return;
+    const model =
+      (conv.model && provider.models.some((item) => item.id === conv.model)
+        ? conv.model
+        : "") ||
+      provider.models[0]?.id ||
+      conv.model ||
+      "";
+    if (provider.id === conv.provider && model === conv.model) return;
+    setConversationModel(conv.id, provider.id, model);
   }, [conv, providers, canChat, setConversationModel]);
 
   const actions = useMemo<QxShellAction[]>(() => [
@@ -285,7 +377,6 @@ export default function QxAiChat() {
           && window.confirm(t("qxai.deleteConversation", "Delete this conversation?"))
         ) {
           deleteConversation(currentConversationId);
-          setView("list");
         }
       },
     },
@@ -308,6 +399,7 @@ export default function QxAiChat() {
   ]);
 
   const userMessageCount = conv?.messages.filter((m) => m.role === "user").length ?? 0;
+  const runningCount = Object.values(runs).filter((runItem) => runItem.streaming).length;
 
   const island: BottomIslandContent = isCurrentConversationStreaming
     ? {
@@ -325,19 +417,35 @@ export default function QxAiChat() {
       : {
           label: t("qxai.title", "QxAI Chat"),
           detail:
-            userMessageCount > 0
-              ? t("qxai.messages", "{n} messages").replace("{n}", String(userMessageCount))
-              : conv?.provider
-                ? `${conv.provider} · ${conv.model}`
-                : t("qxai.noMessages", "No messages yet"),
+            runningCount > 0
+              ? t("qxai.background.running", "{n} conversations running").replace(
+                  "{n}",
+                  String(runningCount),
+                )
+              : userMessageCount > 0
+                ? t("qxai.messages", "{n} messages").replace("{n}", String(userMessageCount))
+                : conv?.provider
+                  ? `${conv.provider} · ${conv.model}`
+                  : t("qxai.island.conversations", "{n} conversations").replace(
+                      "{n}",
+                      String(conversations.length),
+                    ),
         };
 
   const shell = useQxModuleShell({
     leave,
     esc: {
       query: {
-        active: input.length > 0 || pendingAttachments.length > 0 || Boolean(attachmentsError),
+        active:
+          listQuery.length > 0
+          || input.length > 0
+          || pendingAttachments.length > 0
+          || Boolean(attachmentsError),
         clear: () => {
+          if (listQuery) {
+            setListQuery("");
+            return;
+          }
           setInput("");
           setPendingAttachments([]);
           setAttachmentsError("");
@@ -347,44 +455,48 @@ export default function QxAiChat() {
     island,
   });
 
-  const messages = conv?.messages.filter((m) => m.role !== "system") ?? [];
+  const messages = useMemo(
+    () => conv?.messages.filter((m) => m.role !== "system") ?? [],
+    [conv?.messages],
+  );
+
+  const primaryActionId =
+    canChat && (input.trim() || pendingAttachments.length > 0) ? "send" : "new-chat";
 
   return (
     <QxShell
+      ref={shellRef}
       title={conv?.name ?? t("qxai.title", "QxAI Chat")}
-      islandKey="qx-ai.chat"
-      className="qx-qxai-chat-shell"
+      islandKey="qx-ai.workbench"
+      className="qx-qxai-chat-shell is-jan is-workbench"
       onKeyDown={shell.onKeyDown}
+      navigation={{
+        index: selectedIndex,
+        count: filteredConversations.length,
+        onChange: setSelectedIndex,
+        onOpen: openSelectedConversation,
+        pageSize: 8,
+        regionId: MASTER_DETAIL.list,
+      }}
       search={
-        <div className="qx-ai-composer">
-          <QxModuleSearch
-            value={input}
-            autoFocus
-            onChange={setInput}
-            onKeyDown={handleComposerKeyDown}
-            onFocus={requestPanelKeyWindow}
-            disabled={!conv}
-            placeholder={
-              isCurrentConversationStreaming
-                ? t("qxai.queue.placeholder", "Type another message to queue…")
-                : t("qxai.typeMessage", "Type a message… (Enter to send, / for Skills)")
-            }
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            disabled={!conv || attachmentsBusy}
-            title={t("qxai.attachments.add", "Attach Images or Files")}
-            aria-label={t("qxai.attachments.add", "Attach Images or Files")}
-            onClick={() => void handleAttach()}
-          >
-            <Paperclip size={16} className={attachmentsBusy ? "qx-spin" : undefined} />
-          </Button>
-        </div>
+        <QxModuleSearch
+          value={listQuery}
+          autoFocus={false}
+          onChange={setListQuery}
+          onFocus={() => {
+            requestPanelKeyWindow();
+            focusList();
+          }}
+          placeholder={t("qxai.searchConversations", "Search conversations…")}
+        />
       }
       context={
-        <div className="qx-action-panel">
+        <div
+          className="qx-action-panel"
+          {...qxRegionProps(MASTER_DETAIL.actions, {
+            label: t("qxai.actions", "AI Actions"),
+          })}
+        >
           <div className="qx-action-title">{t("qxai.model", "Model")}</div>
           {providers.length > 0 && conv ? (
             <>
@@ -405,13 +517,24 @@ export default function QxAiChat() {
                 ariaLabel={t("qxai.provider", "AI Provider")}
                 className="qx-inline-select"
               />
-              {activeModels.length > 0 ? (
+              {activeModels.length > 0 || conv.model ? (
                 <Select
                   value={conv.model}
-                  options={activeModels.map((model) => ({
-                    value: model.id,
-                    label: model.name,
-                  }))}
+                  options={[
+                    ...(!activeModels.some((model) => model.id === conv.model) && conv.model
+                      ? [{ value: conv.model, label: conv.model }]
+                      : []),
+                    ...activeModels.map((model) => ({
+                      value: model.id,
+                      label: resolveModelVision(
+                        conv.provider,
+                        model,
+                        agentSettings.model_capabilities,
+                      )
+                        ? `${model.name} · ${t("agent.model.vision.badge", "Vision")}`
+                        : model.name,
+                    })),
+                  ]}
                   onChange={(model) => setConversationModel(conv.id, conv.provider, model)}
                   ariaLabel={t("qxai.model", "Model")}
                   className="qx-inline-select"
@@ -421,6 +544,14 @@ export default function QxAiChat() {
                   {t("qxai.noModels", "No models available for this provider")}
                 </div>
               )}
+              <div className={`qx-ai-capability-pill${modelSupportsVision ? " is-on" : ""}`}>
+                {modelSupportsVision
+                  ? t("qxai.model.vision.on", "Vision enabled — images can be sent")
+                  : t(
+                      "qxai.model.vision.off",
+                      "Text only — switch to a vision model or enable Vision in Settings → AI Agent",
+                    )}
+              </div>
             </>
           ) : (
             <div className="qx-ai-tool-hint">
@@ -493,159 +624,55 @@ export default function QxAiChat() {
       }
       island={shell.island}
       escapeAction={shell.escapeAction}
-      primaryActionId="send"
-      actionTitle="Chat Actions"
+      primaryActionId={primaryActionId}
+      actionTitle={t("qxai.actions", "AI Actions")}
       actions={actions}
     >
-      <div className="qx-ai-conversation">
-        {skillPickerOpen && (
-          <div className="qx-ai-skill-picker" role="listbox" aria-label={t("qxai.skills.title", "Skills")}>
-            <div className="qx-ai-skill-picker-head">
-              <div>
-                <Sparkles size={15} />
-                <strong>{t("qxai.skills.title", "Skills")}</strong>
-              </div>
-              <div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  title={t("qxai.skills.openFolder", "Open Skills Folder")}
-                  aria-label={t("qxai.skills.openFolder", "Open Skills Folder")}
-                  onClick={() => void openQxAiSkillsDirectory()}
-                >
-                  <FolderOpen size={15} />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  title={t("qxai.skills.refresh", "Refresh Skills")}
-                  aria-label={t("qxai.skills.refresh", "Refresh Skills")}
-                  onClick={() => void refreshSkills()}
-                >
-                  <RefreshCw size={15} className={skillsLoading ? "qx-spin" : undefined} />
-                </Button>
-              </div>
-            </div>
-            <div className="qx-ai-skill-options">
-              {skillMatches.map((skill, index) => (
-                <Button
-                  key={skill.id}
-                  type="button"
-                  variant="ghost"
-                  role="option"
-                  aria-selected={index === skillCursor}
-                  className={`qx-ai-skill-option${index === skillCursor ? " is-selected" : ""}`}
-                  onMouseEnter={() => setSkillCursor(index)}
-                  onClick={() => void selectSkill(skill)}
-                >
-                  <Sparkles size={15} />
-                  <span>
-                    <strong>{skill.name}</strong>
-                    <small>{skill.description || `/${skill.id}`}</small>
-                  </span>
-                  <code>/{skill.id}</code>
-                </Button>
-              ))}
-              {!skillsLoading && skillMatches.length === 0 && (
-                <div className="qx-ai-skill-empty">
-                  {skillsFailed
-                    ? t("qxai.skills.error", "Skills could not be loaded. Refresh to try again.")
-                    : t("qxai.skills.empty", "No matching Skills. Add SKILL.md files in the Skills folder.")}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+      <div className="qx-ai-workbench">
+        <QxResizableSplit
+          className="qx-content-split qx-ai-split has-detail"
+          storageKey={LIST_WIDTH_KEY}
+          defaultLeftWidth={280}
+          minLeftWidth={220}
+          minRightWidth={320}
+          separatorLabel={t("qxai.resizeList", "Resize conversation list")}
+        >
+          <QxAiConversationList
+            listRef={listRef}
+            regionIds={MASTER_DETAIL}
+            conversations={filteredConversations}
+            runs={runs}
+            selectedId={currentConversationId}
+            loading={loading}
+            listQuery={listQuery}
+            getItemProps={getItemProps}
+            onSelect={selectConversation}
+            onOpen={(id) => {
+              selectConversation(id);
+              focusDetail();
+              requestAnimationFrame(() => composerRef.current?.focus());
+            }}
+            hasActiveConversation={Boolean(conv)}
+          />
 
-        {(selectedSkill || pendingAttachments.length > 0 || attachmentsError || queuedMessages.length > 0) && (
-          <div className="qx-ai-composer-status">
-            {selectedSkill && (
-              <div className="qx-ai-selected-skill">
-                <Sparkles size={14} />
-                <span>
-                  {t("qxai.skills.using", "Using Skill")}: <strong>{selectedSkill.name}</strong>
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  title={t("qxai.skills.remove", "Remove Skill")}
-                  aria-label={t("qxai.skills.remove", "Remove Skill")}
-                  onClick={() => setSelectedSkill(null)}
-                >
-                  <X size={14} />
-                </Button>
-              </div>
-            )}
-            {pendingAttachments.length > 0 && (
-              <div className="qx-ai-pending-attachments">
-                {pendingAttachments.map((attachment) => (
-                  <div className="qx-ai-pending-attachment" key={attachment.path}>
-                    <Paperclip size={14} aria-hidden="true" />
-                    <span title={attachment.path}>{attachment.name}</span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      title={t("common.remove", "Remove")}
-                      aria-label={t("common.remove", "Remove")}
-                      onClick={() => setPendingAttachments((items) =>
-                        items.filter((item) => item.path !== attachment.path))}
-                    >
-                      <X size={14} />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-            {attachmentsError && (
-              <div className="qx-ai-config-error">{attachmentsError}</div>
-            )}
-            {queuedMessages.length > 0 && (
-              <div className="qx-ai-message-queue">
-                <div className="qx-ai-message-queue-title">
-                  <ListPlus size={14} />
-                  <strong>{t("qxai.queue.title", "Queued messages")}</strong>
-                  <span>{queuedMessages.length}</span>
-                </div>
-                {queuedMessages.map((message) => (
-                  <div className="qx-ai-message-queue-row" key={message.id}>
-                    <Clock3 size={14} />
-                    <span>{message.content}</span>
-                    {message.skill && (
-                      <small><Sparkles size={12} />{message.skill.name}</small>
-                    )}
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      title={t("qxai.queue.remove", "Remove queued message")}
-                      aria-label={t("qxai.queue.remove", "Remove queued message")}
-                      onClick={() => removeQueuedMessage(message.id)}
-                    >
-                      <X size={14} />
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="qx-ai-message-list">
+          <article
+            className="qx-content-detail qx-ai-chat-detail"
+            {...qxRegionProps(MASTER_DETAIL.detail, {
+              label: t("qxai.conversation", "Conversation"),
+              initial: Boolean(conv),
+              scroll: true,
+            })}
+          >
+      <div className="qx-ai-conversation is-jan">
+        <div className="qx-ai-message-list is-jan" data-qx-region-scroll>
           {messages.map((msg, i) => (
             <div
               key={`${conv?.id ?? "chat"}-${msg.role}-${i}-${msg.content.slice(0, 24)}`}
-              className={`qx-ai-message is-${msg.role}`}
+              className={`qx-ai-message is-jan is-${msg.role}`}
             >
-              <div className="qx-ai-message-avatar" aria-hidden="true">
-                {msg.role === "user" ? <UserRound size={14} /> : <Bot size={14} />}
-              </div>
               <div className="qx-ai-message-body">
                 <div className="qx-ai-message-meta">
-                  {msg.role === "user" ? "You" : conv?.provider || "AI"}
+                  {msg.role === "user" ? t("qxai.you", "You") : (activeModel?.name || conv?.model || "AI")}
                   {msg.role === "user" && msg.skill && (
                     <span className="qx-ai-message-skill">
                       <Sparkles size={11} />
@@ -653,12 +680,14 @@ export default function QxAiChat() {
                     </span>
                   )}
                 </div>
-                <div className="qx-ai-message-bubble">
+                <div className={`qx-ai-message-bubble is-jan is-${msg.role}`}>
                   <AiMessageContent
                     content={msg.content}
                     reasoning={msg.reasoning}
                     steps={msg.steps}
                     attachments={msg.attachments}
+                    tokenSpeed={msg.tokenSpeed}
+                    tokenCount={msg.tokenCount}
                   />
                 </div>
               </div>
@@ -667,18 +696,17 @@ export default function QxAiChat() {
 
           {isCurrentConversationStreaming
             && (streamedContent || streamedReasoning || streamingSteps.length > 0) && (
-            <div className="qx-ai-message is-assistant">
-              <div className="qx-ai-message-avatar" aria-hidden="true">
-                <Bot size={14} />
-              </div>
+            <div className="qx-ai-message is-jan is-assistant">
               <div className="qx-ai-message-body">
-                <div className="qx-ai-message-meta">{conv?.provider || "AI"}</div>
-                <div className="qx-ai-message-bubble">
+                <div className="qx-ai-message-meta">{activeModel?.name || conv?.model || "AI"}</div>
+                <div className="qx-ai-message-bubble is-jan is-assistant">
                   <AiMessageContent
                     content={streamedContent}
                     reasoning={streamedReasoning}
                     streaming
                     steps={streamingSteps}
+                    tokenSpeed={run?.liveTokenSpeed}
+                    tokenCount={run?.liveTokenCount}
                   />
                 </div>
               </div>
@@ -688,19 +716,241 @@ export default function QxAiChat() {
           {conv && messages.length === 0 && !isCurrentConversationStreaming && (
             <div className="qx-ai-empty-state">
               {conv.provider
-                ? `Chatting with ${conv.provider} (${conv.model}). Type a message below.`
-                : "No provider selected. Open Chat Settings or Settings → AI Agent."}
+                ? t("qxai.empty.chat", "Chatting with {provider} ({model}). Type below.")
+                    .replace("{provider}", conv.provider)
+                    .replace("{model}", conv.model)
+                : t("qxai.empty.noProvider", "No provider selected. Open Settings → AI Agent.")}
             </div>
           )}
 
           {!conv && (
             <div className="qx-ai-empty-state">
-              Select or create a conversation to begin.
+              {t("qxai.empty.noConversation", "Select or create a conversation to begin.")}
             </div>
           )}
 
-          <div ref={messagesEndRef} />
+          <div ref={messagesEndRef} className="qx-ai-message-list-end" />
         </div>
+
+        {/* Jan-style floating composer at the bottom of the chat surface. */}
+        <div className="qx-jan-composer-dock">
+          {skillPickerOpen && (
+            <div className="qx-ai-skill-picker is-docked is-vbg" role="listbox" aria-label={t("qxai.skills.title", "Skills")}>
+              <div className="qx-ai-skill-picker-head">
+                <div>
+                  <Sparkles size={15} strokeWidth={1.75} />
+                  <strong>{t("qxai.skills.title", "Skills")}</strong>
+                  <span className="qx-ai-skill-picker-eyebrow">
+                    {t("qxai.skills.pickerHint", "Select a skill for this turn")}
+                  </span>
+                </div>
+                <div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    title={t("qxai.skills.openFolder", "Open Skills Folder")}
+                    aria-label={t("qxai.skills.openFolder", "Open Skills Folder")}
+                    onClick={() => void openQxAiSkillsDirectory()}
+                  >
+                    <FolderOpen size={15} />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    title={t("qxai.skills.refresh", "Refresh Skills")}
+                    aria-label={t("qxai.skills.refresh", "Refresh Skills")}
+                    onClick={() => void refreshSkills()}
+                  >
+                    <RefreshCw size={15} className={skillsLoading ? "qx-spin" : undefined} />
+                  </Button>
+                </div>
+              </div>
+              <div className="qx-ai-skill-options is-cards">
+                {skillMatches.map((skill, index) => (
+                  <button
+                    key={skill.id}
+                    type="button"
+                    role="option"
+                    aria-selected={index === skillCursor}
+                    className={`qx-ai-skill-card${index === skillCursor ? " is-selected" : ""}`}
+                    onMouseEnter={() => setSkillCursor(index)}
+                    onClick={() => void selectSkill(skill)}
+                  >
+                    <span className="qx-ai-skill-card-icon" aria-hidden="true">
+                      <Sparkles size={14} strokeWidth={1.75} />
+                    </span>
+                    <span className="qx-ai-skill-card-copy">
+                      <strong>{skill.name}</strong>
+                      <small>{skill.description || t("agent.skills.noDescription", "No description")}</small>
+                    </span>
+                    <code className="qx-ai-skill-card-id">/{skill.id}</code>
+                  </button>
+                ))}
+                {!skillsLoading && skillMatches.length === 0 && (
+                  <div className="qx-ai-skill-empty">
+                    {skillsFailed
+                      ? t("qxai.skills.error", "Skills could not be loaded. Refresh to try again.")
+                      : t("qxai.skills.empty", "No matching Skills. Add SKILL.md files in the Skills folder.")}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {(selectedSkill || pendingAttachments.length > 0 || attachmentsError || queuedMessages.length > 0) && (
+            <div className="qx-ai-composer-status is-docked">
+              {selectedSkill && (
+                <div className="qx-ai-selected-skill is-vbg">
+                  <span className="qx-ai-selected-skill-icon" aria-hidden="true">
+                    <Sparkles size={14} strokeWidth={1.75} />
+                  </span>
+                  <span className="qx-ai-selected-skill-copy">
+                    <small>{t("qxai.skills.using", "Using Skill")}</small>
+                    <strong>{selectedSkill.name}</strong>
+                    <code>/{selectedSkill.id}</code>
+                  </span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    title={t("qxai.skills.remove", "Remove Skill")}
+                    aria-label={t("qxai.skills.remove", "Remove Skill")}
+                    onClick={() => setSelectedSkill(null)}
+                  >
+                    <X size={14} />
+                  </Button>
+                </div>
+              )}
+              {pendingAttachments.length > 0 && (
+                <div className="qx-ai-pending-attachments">
+                  {pendingAttachments.map((attachment) => {
+                    const isImage =
+                      attachment.kind === "image"
+                      || Boolean(attachment.mimeType?.startsWith("image/"));
+                    return (
+                      <div
+                        className={`qx-ai-pending-attachment${isImage ? " is-image" : ""}`}
+                        key={attachment.path}
+                      >
+                        {isImage ? (
+                          <img
+                            className="qx-ai-pending-thumb"
+                            src={convertFileSrc(attachment.path)}
+                            alt={attachment.name}
+                          />
+                        ) : (
+                          <Paperclip size={14} aria-hidden="true" />
+                        )}
+                        <span title={attachment.path}>{attachment.name}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          title={t("common.remove", "Remove")}
+                          aria-label={t("common.remove", "Remove")}
+                          onClick={() => setPendingAttachments((items) =>
+                            items.filter((item) => item.path !== attachment.path))}
+                        >
+                          <X size={14} />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {pendingAttachments.some(
+                (item) => item.kind === "image" || item.mimeType?.startsWith("image/"),
+              ) && !modelSupportsVision ? (
+                <div className="qx-ai-config-error">
+                  {t(
+                    "qxai.model.vision.required",
+                    "Current model cannot read images. Pick a Vision model or enable Vision in Settings → AI Agent.",
+                  )}
+                </div>
+              ) : null}
+              {attachmentsError && (
+                <div className="qx-ai-config-error">{attachmentsError}</div>
+              )}
+              {queuedMessages.length > 0 && (
+                <div className="qx-ai-message-queue">
+                  <div className="qx-ai-message-queue-title">
+                    <ListPlus size={14} />
+                    <strong>{t("qxai.queue.title", "Queued messages")}</strong>
+                    <span>{queuedMessages.length}</span>
+                  </div>
+                  {queuedMessages.map((message) => (
+                    <div className="qx-ai-message-queue-row" key={message.id}>
+                      <Clock3 size={14} />
+                      <span>{message.content}</span>
+                      {message.skill && (
+                        <small><Sparkles size={12} />{message.skill.name}</small>
+                      )}
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        title={t("qxai.queue.remove", "Remove queued message")}
+                        aria-label={t("qxai.queue.remove", "Remove queued message")}
+                        onClick={() => removeQueuedMessage(message.id)}
+                      >
+                        <X size={14} />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="qx-jan-composer">
+            <div className="qx-jan-composer-tools">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                disabled={!conv || attachmentsBusy}
+                title={t("qxai.attachments.add", "Attach Images or Files")}
+                aria-label={t("qxai.attachments.add", "Attach Images or Files")}
+                onClick={() => void handleAttach()}
+              >
+                <Paperclip size={16} className={attachmentsBusy ? "qx-spin" : undefined} />
+              </Button>
+              {isCurrentConversationStreaming && run?.liveTokenSpeed ? (
+                <span className="qx-jan-composer-speed" title={t("qxai.tokens.speed", "Generation speed")}>
+                  {Math.round(run.liveTokenSpeed)} {t("qxai.tokens.perSec", "tokens/sec")}
+                </span>
+              ) : null}
+            </div>
+            <textarea
+              ref={composerRef}
+              className="qx-jan-composer-input"
+              value={input}
+              rows={1}
+              disabled={!conv}
+              placeholder={
+                isCurrentConversationStreaming
+                  ? t("qxai.queue.placeholder", "Type another message to queue…")
+                  : t("qxai.typeMessage", "Type a message… (Enter to send, / for Skills)")
+              }
+              onChange={handleComposerInput}
+              onKeyDown={handleComposerKeyDown}
+              onFocus={requestPanelKeyWindow}
+            />
+            <Button
+              type="button"
+              className="qx-jan-composer-send"
+              disabled={!canChat || (!input.trim() && pendingAttachments.length === 0)}
+              onClick={handleSend}
+            >
+              {t("qxai.send", "Send")}
+            </Button>
+          </div>
+        </div>
+      </div>
+          </article>
+        </QxResizableSplit>
       </div>
     </QxShell>
   );

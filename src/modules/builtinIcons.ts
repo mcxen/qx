@@ -7,6 +7,7 @@ import {
   FileText,
   Keyboard,
   MonitorPlay,
+  PawPrint,
   Rss,
   Settings,
   SquareTerminal,
@@ -22,6 +23,7 @@ export const BUILTIN_MODULE_ICONS: Record<string, LucideIcon> = {
   "builtin:documents": FileText,
   "builtin:weather": CloudSun,
   "builtin:qx-tty": SquareTerminal,
+  "builtin:p-zai": PawPrint,
   "builtin:settings": Settings,
   "builtin:calculator": Calculator,
 };
@@ -54,6 +56,8 @@ export function builtinModuleIconKind(value: string): string {
       return "weather";
     case "builtin:qx-tty":
       return "terminal";
+    case "builtin:p-zai":
+      return "p-zai";
     case "builtin:settings":
       return "settings";
     case "builtin:calculator":

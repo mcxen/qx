@@ -192,6 +192,7 @@ fn default_agent_uses_openrouter_auto() {
     assert_eq!(agent.default_model, "openrouter/auto");
     assert!(agent.agent_mode_enabled);
     assert!(agent.tools_enabled);
+    assert!(agent.model_tools_enabled);
     assert!(agent.memory_tool_enabled);
     assert!(agent.app_search_enabled);
     assert!(agent.file_search_enabled);
@@ -202,7 +203,8 @@ fn default_agent_uses_openrouter_auto() {
     assert!(agent.grep_search_enabled);
     assert!(agent.background_tasks_enabled);
     assert!(agent.qx_host_actions_enabled);
-    assert_eq!(agent.defaults_version, 1);
+    assert!(agent.qx_system_tools_enabled);
+    assert_eq!(agent.defaults_version, 2);
 
     agent.bash_enabled = false;
     super::migrate_agent_defaults(&mut agent);
@@ -229,13 +231,15 @@ fn legacy_agent_settings_enable_complete_tool_surface_once() {
     super::migrate_agent_defaults(&mut agent);
     assert!(agent.agent_mode_enabled);
     assert!(agent.tools_enabled);
+    assert!(agent.model_tools_enabled);
     assert!(agent.http_fetch_enabled);
     assert!(agent.mcp_enabled);
     assert!(agent.bash_enabled);
     assert!(agent.grep_search_enabled);
     assert!(agent.background_tasks_enabled);
     assert!(agent.qx_host_actions_enabled);
-    assert_eq!(agent.defaults_version, 1);
+    assert!(agent.qx_system_tools_enabled);
+    assert_eq!(agent.defaults_version, 2);
 }
 
 #[test]

@@ -6,10 +6,20 @@ const storeSource = readFileSync(
   new URL("../src/modules/qx-ai/store.ts", import.meta.url),
   "utf8",
 );
-const agentSource = readFileSync(
-  new URL("../src/modules/qx-ai/react-agent.ts", import.meta.url),
-  "utf8",
-);
+const agentSource = [
+  "../src/modules/qx-ai/react-agent.ts",
+  "../src/modules/qx-ai/agent/index.ts",
+  "../src/modules/qx-ai/agent/tools.ts",
+  "../src/modules/qx-ai/agent/tools-modules.ts",
+  "../src/modules/qx-ai/agent/module-actions.ts",
+  "../src/modules/qx-ai/agent/prompts.ts",
+  "../src/modules/qx-ai/agent/stream.ts",
+  "../src/modules/qx-ai/agent/function-loop.ts",
+  "../src/modules/qx-ai/agent/react-loop.ts",
+  "../src/modules/qx-ai/agent/memory.ts",
+]
+  .map((path) => readFileSync(new URL(path, import.meta.url), "utf8"))
+  .join("\n");
 const settingsSource = readFileSync(
   new URL("../src/modules/settings/store.ts", import.meta.url),
   "utf8",
@@ -75,6 +85,43 @@ assert.match(
   /createOrderedReasoningRecorder\(steps, opts\)[\s\S]*?streamFunctionCallingOnce[\s\S]*?const toolCalls/,
 );
 assert.doesNotMatch(agentSource, /reasoning:\s*message\.reasoning_content/);
+
+// Hermes harness: frozen memory snapshot + dream consolidator.
+assert.match(agentSource, /loadMemorySnapshot/);
+assert.match(agentSource, /qxai_memory_dream/);
+assert.match(agentSource, /session_search/);
+assert.match(storeSource, /memorySnapshot/);
+
+// Module Action port: discover + run stable module/plugin actions (RSS refresh, P仔, plugins).
+const moduleActionsSource = readFileSync(
+  new URL("../src/modules/qx-ai/agent/module-actions.ts", import.meta.url),
+  "utf8",
+);
+assert.match(agentSource, /name:\s*"list_module_actions"/);
+assert.match(agentSource, /name:\s*"run_module_action"/);
+assert.match(agentSource, /name:\s*"rss_refresh_all"/);
+assert.match(moduleActionsSource, /rss\.refresh_all/);
+assert.match(moduleActionsSource, /registerPluginModuleActions/);
+assert.match(moduleActionsSource, /listModuleActions/);
+
+// Skill-driven capability port: modules + plugins + skill frontmatter capabilities.
+const capabilitiesSource = readFileSync(
+  new URL("../src/modules/qx-ai/agent/capabilities.ts", import.meta.url),
+  "utf8",
+);
+const skillsSourceGate = readFileSync(
+  new URL("../src/modules/qx-ai/skills.ts", import.meta.url),
+  "utf8",
+);
+assert.match(agentSource, /name:\s*"list_qx_capabilities"/);
+assert.match(agentSource, /name:\s*"run_qx_capability"/);
+assert.match(agentSource, /name:\s*"list_plugins"/);
+assert.match(agentSource, /name:\s*"run_plugin_command"/);
+assert.match(capabilitiesSource, /parseSkillCapabilities/);
+assert.match(capabilitiesSource, /buildSkillCapabilityPromptBlock/);
+assert.match(capabilitiesSource, /command:\$\{/);
+assert.match(skillsSourceGate, /withSkillCapabilityBinding/);
+assert.match(skillsSourceGate, /buildSkillCapabilityPromptBlock/);
 
 const chatSource = readFileSync(
   new URL("../src/modules/qx-ai/QxAiChat.tsx", import.meta.url),

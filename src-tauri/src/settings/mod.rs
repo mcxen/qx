@@ -349,6 +349,15 @@ impl Default for AdvancedSettings {
     }
 }
 
+/// Manual override for catalog-detected model capabilities.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModelCapabilityOverride {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vision: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentSettings {
     #[serde(default = "default_true", rename = "agent_mode_enabled")]
@@ -357,7 +366,8 @@ pub struct AgentSettings {
     pub default_provider: String,
     #[serde(default, rename = "default_model")]
     pub default_model: String,
-    #[serde(default, rename = "model_tools_enabled")]
+    /// Prefer native OpenAI-style tool schemas when the model supports them.
+    #[serde(default = "default_true", rename = "model_tools_enabled")]
     pub model_tools_enabled: bool,
     #[serde(default = "default_true", rename = "tools_enabled")]
     pub tools_enabled: bool,
@@ -394,6 +404,16 @@ pub struct AgentSettings {
     pub background_tasks_enabled: bool,
     #[serde(default = "default_true", rename = "qx_host_actions_enabled")]
     pub qx_host_actions_enabled: bool,
+    /// Expose Qx system capability tools (stats, displays, processes, …).
+    #[serde(default = "default_true", rename = "qx_system_tools_enabled")]
+    pub qx_system_tools_enabled: bool,
+    /// Per-skill load mode overrides: fixed | smart | disabled.
+    #[serde(default, rename = "skill_modes")]
+    pub skill_modes: std::collections::BTreeMap<String, String>,
+    /// Per-model capability overrides. Key: `providerId|modelId`.
+    /// Used when catalog detection is wrong for a custom or routed model.
+    #[serde(default, rename = "model_capabilities")]
+    pub model_capabilities: std::collections::BTreeMap<String, ModelCapabilityOverride>,
     /// One-time migration marker for the on-by-default Agent tool surface.
     #[serde(default, rename = "defaults_version")]
     pub defaults_version: u32,
@@ -426,7 +446,7 @@ impl Default for AgentSettings {
             agent_mode_enabled: true,
             default_provider: "openrouter".to_string(),
             default_model: "openrouter/auto".to_string(),
-            model_tools_enabled: false,
+            model_tools_enabled: true,
             tools_enabled: true,
             memory_tool_enabled: true,
             app_search_enabled: true,
@@ -443,29 +463,40 @@ impl Default for AgentSettings {
             grep_max_results: default_agent_grep_max_results(),
             background_tasks_enabled: true,
             qx_host_actions_enabled: true,
-            defaults_version: 1,
+            qx_system_tools_enabled: true,
+            skill_modes: std::collections::BTreeMap::new(),
+            model_capabilities: std::collections::BTreeMap::new(),
+            defaults_version: 2,
             agent_max_iterations: default_agent_max_iterations(),
         }
     }
 }
 
 fn migrate_agent_defaults(agent: &mut AgentSettings) {
-    if agent.defaults_version >= 1 {
-        return;
+    if agent.defaults_version < 1 {
+        agent.agent_mode_enabled = true;
+        agent.tools_enabled = true;
+        agent.memory_tool_enabled = true;
+        agent.app_search_enabled = true;
+        agent.file_search_enabled = true;
+        agent.http_fetch_enabled = true;
+        agent.notifications_enabled = true;
+        agent.mcp_enabled = true;
+        agent.bash_enabled = true;
+        agent.grep_search_enabled = true;
+        agent.background_tasks_enabled = true;
+        agent.qx_host_actions_enabled = true;
+        agent.defaults_version = 1;
     }
-    agent.agent_mode_enabled = true;
-    agent.tools_enabled = true;
-    agent.memory_tool_enabled = true;
-    agent.app_search_enabled = true;
-    agent.file_search_enabled = true;
-    agent.http_fetch_enabled = true;
-    agent.notifications_enabled = true;
-    agent.mcp_enabled = true;
-    agent.bash_enabled = true;
-    agent.grep_search_enabled = true;
-    agent.background_tasks_enabled = true;
-    agent.qx_host_actions_enabled = true;
-    agent.defaults_version = 1;
+    if agent.defaults_version < 2 {
+        // Ship agent tools + native tool calling on by default so chat can
+        // use host capabilities without flipping every switch first.
+        agent.agent_mode_enabled = true;
+        agent.tools_enabled = true;
+        agent.model_tools_enabled = true;
+        agent.qx_system_tools_enabled = true;
+        agent.defaults_version = 2;
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

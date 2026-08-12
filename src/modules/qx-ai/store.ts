@@ -7,10 +7,22 @@ import {
   type QxAiFileAttachment,
   buildQxHostSystemPrompt,
   getEnabledTools,
+  loadMemorySnapshot,
   runFunctionCallingAgent,
+  runMemoryDream,
   runReactAgent,
+  shouldDreamAfterTurn,
 } from "./react-agent";
-import type { QxAiSkillDocument } from "./skills";
+import { computeTokenSpeed, estimateTokens } from "./message-rendering";
+import {
+  messageHasImages,
+  resolveModelVision,
+} from "./model-capabilities";
+import {
+  buildAutoSkillPromptBlock,
+  withSkillCapabilityBinding,
+  type QxAiSkillDocument,
+} from "./skills";
 import {
   deleteQxAiSessionFiles,
   isTauriRuntime,
@@ -33,6 +45,11 @@ export interface G4fMessage {
   steps?: AgentStep[];
   attachments?: QxAiFileAttachment[];
   skill?: Pick<QxAiSkillDocument, "id" | "name">;
+  /** Estimated completion tokens (chars/4) for Jan-style speed display. */
+  tokenCount?: number;
+  /** Tokens per second for the completion stream. */
+  tokenSpeed?: number;
+  durationMs?: number;
 }
 
 export interface QueuedAiMessage {
@@ -50,6 +67,9 @@ export interface QxAiConversationRun {
   streamingSteps: AgentStep[];
   error: string | null;
   startedAt: number;
+  /** Live completion tokens/sec estimate while streaming. */
+  liveTokenSpeed?: number;
+  liveTokenCount?: number;
 }
 
 export interface G4fConversation {
@@ -65,7 +85,7 @@ export interface G4fConversation {
 export interface G4fProvider {
   id: string;
   name: string;
-  models: { id: string; name: string; reasoning?: boolean }[];
+  models: { id: string; name: string; reasoning?: boolean; vision?: boolean }[];
   baseUrl?: string;
   requiresApiKey?: boolean;
 }
@@ -75,7 +95,7 @@ export interface CustomProvider {
   name: string;
   baseUrl: string;
   apiKey: string;
-  models: { id: string; name: string }[];
+  models: { id: string; name: string; reasoning?: boolean; vision?: boolean }[];
 }
 
 export interface BuiltInProviderCredential {
@@ -92,7 +112,41 @@ interface StreamEvent {
   error?: string;
 }
 
+/** `chat` is the master–detail workbench; `list` is retained as an alias for chat. */
 export type G4fView = "list" | "chat" | "settings";
+
+const LAST_CONVERSATION_KEY = "qx-ai.lastConversationId";
+
+function readLastConversationId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const id = window.localStorage.getItem(LAST_CONVERSATION_KEY);
+    return id?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastConversationId(id: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (id) window.localStorage.setItem(LAST_CONVERSATION_KEY, id);
+    else window.localStorage.removeItem(LAST_CONVERSATION_KEY);
+  } catch {
+    // Private WebView may block persistence; selection still works in-session.
+  }
+}
+
+function pickConversationId(
+  conversations: G4fConversation[],
+  preferredId: string | null | undefined,
+): string | null {
+  if (preferredId && conversations.some((item) => item.id === preferredId)) {
+    return preferredId;
+  }
+  const sorted = [...conversations].sort((a, b) => b.createdAt - a.createdAt);
+  return sorted[0]?.id ?? null;
+}
 
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
@@ -206,16 +260,58 @@ function resolveProviderModel(
 ): { provider: string; model: string } {
   if (providers.length === 0) return { provider: provider ?? "", model: model ?? "" };
 
-  const selectedProvider =
-    providers.find((p) => p.id === provider) ?? providers[0];
-  const selectedModel =
-    selectedProvider.models.find((m) => m.id === model) ??
-    selectedProvider.models[0];
+  const preferredProvider = provider
+    ? providers.find((item) => item.id === provider)
+    : undefined;
+  const selectedProvider = preferredProvider ?? providers[0];
+  const preferredModel = model
+    ? selectedProvider.models.find((item) => item.id === model)
+    : undefined;
+
+  // Keep an explicit model when its provider matched, even if the catalog has
+  // not listed it yet (custom endpoints / delayed model lists). Falling back
+  // to models[0] would silently unstick the user's default model.
+  if (preferredProvider && model && !preferredModel) {
+    return { provider: preferredProvider.id, model };
+  }
 
   return {
     provider: selectedProvider.id,
-    model: selectedModel?.id ?? "",
+    model: preferredModel?.id ?? selectedProvider.models[0]?.id ?? model ?? "",
   };
+}
+
+/** Persisted defaults in Settings → AI Agent (source of truth across restarts). */
+function readAgentDefaultSelection(): { provider: string; model: string } {
+  const agent = useSettingsStore.getState().settings.agent;
+  return {
+    provider: agent.default_provider?.trim() ?? "",
+    model: agent.default_model?.trim() ?? "",
+  };
+}
+
+function writeAgentDefaultSelection(provider: string, model: string): void {
+  const settings = useSettingsStore.getState();
+  const agent = settings.settings.agent;
+  if (agent.default_provider === provider && agent.default_model === model) return;
+  settings.patch("agent", {
+    ...agent,
+    default_provider: provider,
+    default_model: model,
+  });
+}
+
+function applyDefaultSelection(
+  providers: G4fProvider[],
+  provider?: string,
+  model?: string,
+): { provider: string; model: string } {
+  const persisted = readAgentDefaultSelection();
+  return resolveProviderModel(
+    providers,
+    provider || persisted.provider,
+    model || persisted.model,
+  );
 }
 
 function generateStreamRequestId(): string {
@@ -224,7 +320,29 @@ function generateStreamRequestId(): string {
 
 function withSelectedSkill(basePrompt: string, skill?: QxAiSkillDocument): string {
   if (!skill) return basePrompt;
-  return `${basePrompt.trim()}\n\nSelected Qx Skill: ${skill.name} (${skill.id})\nFollow this skill for the current user request. Treat it as task instructions, while system safety and explicit user instructions remain higher priority.\n\n<qx-skill>\n${skill.content}\n</qx-skill>`;
+  const agentSettings = useSettingsStore.getState().settings.agent;
+  const capabilityBlock = withSkillCapabilityBinding(
+    skill.id,
+    skill.content,
+    agentSettings,
+  );
+  return `${basePrompt.trim()}\n\nSelected Qx Skill: ${skill.name} (${skill.id})\nFollow this skill for the current user request. Treat it as task instructions, while system safety and explicit user instructions remain higher priority.\nExecute bound Qx capabilities via run_qx_capability / run_module_action / named tools (or list_plugins for marketplace plugins).\n\n<qx-skill id="${skill.id}" mode="selected">\n${skill.content}\n\n${capabilityBlock}\n</qx-skill>`;
+}
+
+async function withAutoAndSelectedSkills(
+  basePrompt: string,
+  userMessage: string,
+  skill?: QxAiSkillDocument,
+): Promise<string> {
+  const agentSettings = useSettingsStore.getState().settings.agent;
+  const autoBlock = await buildAutoSkillPromptBlock(
+    userMessage,
+    agentSettings,
+    skill?.id,
+  );
+  const withSelected = withSelectedSkill(basePrompt, skill);
+  if (!autoBlock) return withSelected;
+  return `${withSelected.trim()}\n\n${autoBlock}`;
 }
 
 const STREAM_TIMEOUT_MS = 180_000;
@@ -324,7 +442,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   runs: {},
   messageQueue: [],
   error: null,
-  view: "list",
+  view: "chat",
   defaultSystemPrompt: "You are a helpful AI assistant.",
   currentProvider: "",
   currentModel: "",
@@ -332,13 +450,19 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   // computed – kept in sync by actions
   providers: [],
 
-  setView: (view) => set({ view }),
+  setView: (view) => set({ view: view === "list" ? "chat" : view }),
   setCurrentProvider: (currentProvider) => {
     const { providers, currentModel } = get();
     const next = resolveProviderModel(providers, currentProvider, currentModel);
     set({ currentProvider: next.provider, currentModel: next.model });
+    if (next.provider) writeAgentDefaultSelection(next.provider, next.model);
   },
-  setCurrentModel: (currentModel) => set({ currentModel }),
+  setCurrentModel: (currentModel) => {
+    const { providers, currentProvider } = get();
+    const next = resolveProviderModel(providers, currentProvider, currentModel);
+    set({ currentProvider: next.provider, currentModel: next.model });
+    if (next.provider) writeAgentDefaultSelection(next.provider, next.model);
+  },
   setDefaultSystemPrompt: (defaultSystemPrompt) => set({ defaultSystemPrompt }),
 
   loadSessions: async () => {
@@ -351,7 +475,18 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         ...current.filter((conversation) =>
           !stored.some((saved) => saved.id === conversation.id)),
       ];
-      set({ conversations, sessionsLoaded: true });
+      // Open workbench on the last used conversation (or newest by createdAt).
+      const preferred =
+        get().currentConversationId
+        ?? readLastConversationId();
+      const currentConversationId = pickConversationId(conversations, preferred);
+      writeLastConversationId(currentConversationId);
+      set({
+        conversations,
+        sessionsLoaded: true,
+        currentConversationId,
+        view: "chat",
+      });
     } catch (error) {
       set({ sessionsLoaded: true, error: String(error) });
     }
@@ -360,7 +495,8 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   createConversation: (provider, model) => {
     const { currentProvider, currentModel, conversations, defaultSystemPrompt, providers } =
       get();
-    const selection = resolveProviderModel(
+    // Prefer explicit args → persisted agent defaults → in-memory selection.
+    const selection = applyDefaultSelection(
       providers,
       provider ?? currentProvider,
       model ?? currentModel,
@@ -379,6 +515,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         .find((item) => item.id === selection.provider)
         ?.models.find((item) => item.id === selection.model)?.reasoning ?? false,
     };
+    writeLastConversationId(id);
     set({
       conversations: [...conversations, conv],
       currentConversationId: id,
@@ -389,12 +526,18 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
 
   deleteConversation: (id) => {
     const { conversations, currentConversationId } = get();
+    const remaining = conversations.filter((c) => c.id !== id);
+    const nextId =
+      currentConversationId === id
+        ? pickConversationId(remaining, null)
+        : currentConversationId;
+    writeLastConversationId(nextId);
     set({
-      conversations: conversations.filter((c) => c.id !== id),
-      currentConversationId:
-        currentConversationId === id ? null : currentConversationId,
+      conversations: remaining,
+      currentConversationId: nextId,
       messageQueue: get().messageQueue.filter((message) => message.conversationId !== id),
       runs: Object.fromEntries(Object.entries(get().runs).filter(([conversationId]) => conversationId !== id)),
+      view: "chat",
     });
     dismissQxAiRun(id);
     void deleteQxAiSessionFiles(id);
@@ -409,12 +552,14 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   },
 
   selectConversation: (id) => {
+    writeLastConversationId(id);
     set({ currentConversationId: id, view: "chat" });
   },
 
   setConversationModel: (id, provider, model) => {
     const { providers } = get();
     const selection = resolveProviderModel(providers, provider, model);
+    // Per-conversation only — do not overwrite the fixed global default model.
     set((s) => ({
       conversations: s.conversations.map((c) =>
         c.id === id
@@ -431,8 +576,6 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
             }
           : c,
       ),
-      currentProvider: selection.provider,
-      currentModel: selection.model,
       error: null,
     }));
   },
@@ -498,6 +641,37 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       return;
     }
 
+    const modelMeta = providers
+      .find((provider) => provider.id === selection.provider)
+      ?.models.find((model) => model.id === selection.model);
+    const agentSettings = useSettingsStore.getState().settings.agent;
+    const hasImages =
+      messageHasImages(attachments)
+      || conv.messages.some((message) => messageHasImages(message.attachments));
+    if (
+      hasImages
+      && !resolveModelVision(selection.provider, modelMeta ?? { id: selection.model, name: selection.model }, agentSettings.model_capabilities)
+    ) {
+      const error =
+        `Model "${selection.model}" does not support vision/images. Choose a multimodal model, enable Vision in Settings → AI Agent, or remove image attachments.`;
+      set({
+        error,
+        runs: {
+          ...get().runs,
+          [currentConversationId]: {
+            streaming: false,
+            streamedContent: "",
+            streamedReasoning: "",
+            streamingSteps: [],
+            error,
+            startedAt: Date.now(),
+          },
+        },
+      });
+      scheduleNext();
+      return;
+    }
+
     const updatedConv: G4fConversation = {
       ...conv,
       provider: selection.provider,
@@ -553,8 +727,9 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       // the debounced Settings store first so a freshly enabled Bash/Tools switch
       // cannot race the first tool invocation.
       await useSettingsStore.getState().flush();
-      const agentSettings = useSettingsStore.getState().settings.agent;
-      const enabledTools = getEnabledTools(agentSettings);
+      const fullSettings = useSettingsStore.getState().settings;
+      const agentSettings = fullSettings.agent;
+      const enabledTools = getEnabledTools(agentSettings, fullSettings);
       const useAgent = enabledTools.length > 0;
 
       if (selection.provider.startsWith("custom:")) {
@@ -563,9 +738,10 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       }
 
       if (useAgent) {
-        const basePrompt = withSelectedSkill(
+        const basePrompt = await withAutoAndSelectedSkills(
           titledConv.messages.find((m) => m.role === "system")?.content?.trim() ||
             defaultSystemPrompt,
+          content,
           skill,
         );
         const nonSystem = titledConv.messages.filter((m) => m.role !== "system");
@@ -577,12 +753,18 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           ? runFunctionCallingAgent
           : runReactAgent;
 
+        // Hermes frozen memory snapshot (prefix-cache friendly; live writes via tools).
+        const memorySnapshot = agentSettings.memory_tool_enabled
+          ? await loadMemorySnapshot()
+          : "";
+
         const result = await runAgent({
           messages: nonSystem,
           provider: selection.provider,
           model: selection.model,
           basePrompt,
           agentSettings,
+          memorySnapshot,
           reasoning: Boolean(titledConv.reasoningEnabled),
           onStep: (step) =>
             set((state) => {
@@ -615,31 +797,55 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           onAssistantStream: (text) =>
             set((state) => {
               const run = state.runs[currentConversationId];
-              return !run?.streaming ? state : {
+              if (!run?.streaming) return state;
+              const elapsed = Math.max(1, Date.now() - run.startedAt);
+              const liveTokenCount = estimateTokens(text + (run.streamedReasoning || ""));
+              return {
                 runs: {
                   ...state.runs,
-                  [currentConversationId]: { ...run, streamedContent: text },
+                  [currentConversationId]: {
+                    ...run,
+                    streamedContent: text,
+                    liveTokenCount,
+                    liveTokenSpeed: computeTokenSpeed(liveTokenCount, elapsed),
+                  },
                 },
               };
             }),
           onReasoningStream: (text) =>
             set((state) => {
               const run = state.runs[currentConversationId];
-              return !run?.streaming ? state : {
+              if (!run?.streaming) return state;
+              const elapsed = Math.max(1, Date.now() - run.startedAt);
+              const liveTokenCount = estimateTokens((run.streamedContent || "") + text);
+              return {
                 runs: {
                   ...state.runs,
-                  [currentConversationId]: { ...run, streamedReasoning: text },
+                  [currentConversationId]: {
+                    ...run,
+                    streamedReasoning: text,
+                    liveTokenCount,
+                    liveTokenSpeed: computeTokenSpeed(liveTokenCount, elapsed),
+                  },
                 },
               };
             }),
         });
 
+        const durationMs = Math.max(
+          1,
+          Date.now() - (get().runs[currentConversationId]?.startedAt ?? Date.now()),
+        );
+        const tokenCount = estimateTokens(result.finalAnswer + (result.reasoning ?? ""));
         const assistantMessage: G4fMessage = {
           role: "assistant",
           content: result.finalAnswer,
           reasoning: result.reasoning,
           steps: result.steps,
           attachments: result.attachments,
+          tokenCount,
+          tokenSpeed: computeTokenSpeed(tokenCount, durationMs),
+          durationMs,
         };
 
         if (!get().conversations.some((conversation) => conversation.id === currentConversationId)) {
@@ -661,19 +867,52 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
               streamedContent: "",
               streamedReasoning: "",
               streamingSteps: [],
+              liveTokenSpeed: undefined,
+              liveTokenCount: undefined,
               error: null,
             },
           },
         }));
         completeQxAiRun(currentConversationId, titledConv.name);
+
+        // Hermes-style sleep/dream: background consolidate after substantial tool work.
+        if (agentSettings.memory_tool_enabled) {
+          const toolCallCount = result.steps.filter((step) => step.kind === "action").length;
+          const memoryToolUsed = result.steps.some(
+            (step) =>
+              step.kind === "action"
+              && (step.tool === "memory"
+                || step.tool === "memory_add"
+                || step.tool === "memory_dream"),
+          );
+          if (
+            shouldDreamAfterTurn({
+              toolCallCount,
+              steps: result.steps.length,
+              memoryToolUsed,
+            })
+          ) {
+            const transcript = nonSystem
+              .slice(-8)
+              .map((message) => `${message.role}: ${String(message.content).slice(0, 400)}`)
+              .join("\n");
+            void runMemoryDream(`${transcript}\nassistant: ${result.finalAnswer.slice(0, 800)}`).catch(
+              () => {
+                // Dream is best-effort; never fail the user-facing turn.
+              },
+            );
+          }
+        }
+
         scheduleNext();
         return;
       }
 
       const requestId = generateStreamRequestId();
-      const basePrompt = withSelectedSkill(
+      const basePrompt = await withAutoAndSelectedSkills(
         titledConv.messages.find((message) => message.role === "system")?.content?.trim()
           || defaultSystemPrompt,
+        content,
         skill,
       );
       const requestMessages: G4fMessage[] = [
@@ -689,28 +928,52 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         onChunk: (full) =>
           set((state) => {
             const run = state.runs[currentConversationId];
-            return !run?.streaming ? state : {
+            if (!run?.streaming) return state;
+            const elapsed = Math.max(1, Date.now() - run.startedAt);
+            const liveTokenCount = estimateTokens(full + (run.streamedReasoning || ""));
+            return {
               runs: {
                 ...state.runs,
-                [currentConversationId]: { ...run, streamedContent: full },
+                [currentConversationId]: {
+                  ...run,
+                  streamedContent: full,
+                  liveTokenCount,
+                  liveTokenSpeed: computeTokenSpeed(liveTokenCount, elapsed),
+                },
               },
             };
           }),
         onReasoning: (full) =>
           set((state) => {
             const run = state.runs[currentConversationId];
-            return !run?.streaming ? state : {
+            if (!run?.streaming) return state;
+            const elapsed = Math.max(1, Date.now() - run.startedAt);
+            const liveTokenCount = estimateTokens((run.streamedContent || "") + full);
+            return {
               runs: {
                 ...state.runs,
-                [currentConversationId]: { ...run, streamedReasoning: full },
+                [currentConversationId]: {
+                  ...run,
+                  streamedReasoning: full,
+                  liveTokenCount,
+                  liveTokenSpeed: computeTokenSpeed(liveTokenCount, elapsed),
+                },
               },
             };
           }),
       });
 
+      const durationMs = Math.max(
+        1,
+        Date.now() - (get().runs[currentConversationId]?.startedAt ?? Date.now()),
+      );
+      const tokenCount = estimateTokens(response);
       const assistantMessage: G4fMessage = {
         role: "assistant",
         content: response,
+        tokenCount,
+        tokenSpeed: computeTokenSpeed(tokenCount, durationMs),
+        durationMs,
         reasoning: get().runs[currentConversationId]?.streamedReasoning || undefined,
       };
 
@@ -822,13 +1085,17 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         providers: combinedProviders,
         loading: false,
       });
-      const { currentProvider, currentModel } = get();
-      const selection = resolveProviderModel(combinedProviders, currentProvider, currentModel);
-      if (selection.provider !== currentProvider || selection.model !== currentModel) {
-        set({
-          currentProvider: selection.provider,
-          currentModel: selection.model,
-        });
+      // Hydrate in-memory selection from persisted agent defaults so restarts
+      // and new chats keep the fixed default model.
+      const selection = applyDefaultSelection(combinedProviders);
+      set({
+        currentProvider: selection.provider,
+        currentModel: selection.model,
+      });
+      // Only seed empty agent defaults; never clobber a user-chosen fixed model.
+      const persisted = readAgentDefaultSelection();
+      if (selection.provider && (!persisted.provider || !persisted.model)) {
+        writeAgentDefaultSelection(selection.provider, selection.model);
       }
     } catch (e) {
       set({ loading: false, error: String(e) });
