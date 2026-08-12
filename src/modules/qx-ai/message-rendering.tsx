@@ -18,7 +18,7 @@ import {
 import { Button } from "../../components/ui";
 import { useT } from "../../i18n";
 import { openSystemPath, revealSystemPath } from "../../system/pathActions";
-import type { AgentStep, QxAiFileAttachment } from "./react-agent";
+import type { AgentStep, QxAiFileAttachment } from "./agent/types";
 
 const MarkdownRenderer = lazy(() => import("./MarkdownRenderer"));
 
@@ -370,6 +370,11 @@ export const AgentStepsView = memo(function AgentStepsView({
   );
 });
 
+/**
+ * Jan TokenSpeedIndicator semantics:
+ * - Hide while streaming (live TPS is optional elsewhere, e.g. composer).
+ * - Show rounded tokens/sec + (output token count) under completed assistant messages.
+ */
 export function TokenSpeedBadge({
   tokenSpeed,
   tokenCount,
@@ -380,29 +385,22 @@ export function TokenSpeedBadge({
   streaming?: boolean;
 }) {
   const t = useT();
-  if (streaming) {
-    if (!tokenSpeed || tokenSpeed <= 0) return null;
-    return (
-      <div className="qx-jan-token-speed is-live" title={t("qxai.tokens.speed", "Generation speed")}>
-        <Gauge size={14} aria-hidden="true" />
-        <span>
-          {Math.round(tokenSpeed)} {t("qxai.tokens.perSec", "tokens/sec")}
-        </span>
-      </div>
-    );
-  }
-  if ((!tokenSpeed || tokenSpeed <= 0) && (!tokenCount || tokenCount <= 0)) return null;
+  // Match Jan: completed messages only (streaming returns null).
+  if (streaming) return null;
+  const displaySpeed = tokenSpeed && tokenSpeed > 0 ? Math.round(tokenSpeed) : 0;
+  const displayCount = tokenCount && tokenCount > 0 ? Math.round(tokenCount) : 0;
+  if (displaySpeed === 0 && displayCount === 0) return null;
   return (
     <div className="qx-jan-token-speed" title={t("qxai.tokens.speed", "Generation speed")}>
-      <Gauge size={14} aria-hidden="true" />
-      {tokenSpeed && tokenSpeed > 0 ? (
+      <Gauge size={16} aria-hidden="true" />
+      {displaySpeed > 0 ? (
         <span>
-          {Math.round(tokenSpeed)} {t("qxai.tokens.perSec", "tokens/sec")}
+          {displaySpeed} {t("qxai.tokens.perSec", "tokens/sec")}
         </span>
       ) : null}
-      {tokenCount && tokenCount > 0 ? (
+      {displayCount > 0 ? (
         <span className="qx-jan-token-count">
-          ({tokenCount} {t("qxai.tokens.unit", "tokens")})
+          ({displayCount} {t("qxai.tokens.unit", "tokens")})
         </span>
       ) : null}
     </div>
@@ -474,13 +472,14 @@ export function AiMessageContent({
         </div>
       ) : null}
 
-      {streaming && (
+      {streaming ? (
         <div className="qx-jan-message-foot is-streaming">
           {hasChain ? null : <Search size={12} className="qx-jan-streaming-dot" aria-hidden="true" />}
-          <TokenSpeedBadge tokenSpeed={tokenSpeed} streaming />
-          <span className="qx-typing-cursor">|</span>
+          <span className="qx-typing-cursor" aria-hidden="true">
+            |
+          </span>
         </div>
-      )}
+      ) : null}
     </>
   );
 }

@@ -1,14 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { AgentSettings, QxAiSkillLoadMode } from "../settings/store";
 import { useSettingsStore } from "../settings/store";
-import {
-  buildSkillCapabilityPromptBlock,
-  parseSkillCapabilities,
-} from "./agent/capabilities";
-import { getEnabledTools } from "./agent/tools";
 
 export type { QxAiSkillLoadMode };
-export { parseSkillCapabilities };
+
+/** Re-export parser without pulling agent tools into every skills import site. */
+export async function parseSkillCapabilities(content: string): Promise<string[]> {
+  const { parseSkillCapabilities: parse } = await import("./agent/capabilities");
+  return parse(content);
+}
 
 export interface QxAiSkillSummary {
   id: string;
@@ -133,9 +133,11 @@ export function filterQxAiSkills(
 const MAX_AUTO_SKILL_CHARS = 6_000;
 const MAX_SMART_SKILLS = 2;
 
-function enabledToolNamesForSkills(settings: AgentSettings): string[] {
+async function enabledToolNamesForSkills(settings: AgentSettings): Promise<string[]> {
   try {
     const app = useSettingsStore.getState().settings;
+    // Dynamic: skill listing UI must not load the full agent tool graph.
+    const { getEnabledTools } = await import("./agent/tools");
     return getEnabledTools(settings, app).map((tool) => tool.name);
   } catch {
     return [];
@@ -143,18 +145,17 @@ function enabledToolNamesForSkills(settings: AgentSettings): string[] {
 }
 
 /** Append live capability binding for a skill document (frontmatter capabilities:). */
-export function withSkillCapabilityBinding(
+export async function withSkillCapabilityBinding(
   skillId: string,
   skillContent: string,
   settings: AgentSettings,
-): string {
+): Promise<string> {
   const app = useSettingsStore.getState().settings;
-  return buildSkillCapabilityPromptBlock(
-    skillId,
-    skillContent,
-    app,
+  const [{ buildSkillCapabilityPromptBlock }, toolNames] = await Promise.all([
+    import("./agent/capabilities"),
     enabledToolNamesForSkills(settings),
-  );
+  ]);
+  return buildSkillCapabilityPromptBlock(skillId, skillContent, app, toolNames);
 }
 
 /**
@@ -203,8 +204,11 @@ export async function buildAutoSkillPromptBlock(
   );
   if (selected.length === 0) return "";
 
-  const toolNames = enabledToolNamesForSkills(settings);
   const app = useSettingsStore.getState().settings;
+  const [{ buildSkillCapabilityPromptBlock }, toolNames] = await Promise.all([
+    import("./agent/capabilities"),
+    enabledToolNamesForSkills(settings),
+  ]);
   const chunks: string[] = [];
   let used = 0;
   for (const summary of selected) {

@@ -513,13 +513,28 @@ fn seed_bundled_skills() -> Result<(), String> {
 }
 
 /// Start the background scheduler (called from app setup).
+///
+/// Isolation: never run skill seeding / file IO on the Tauri setup thread.
+/// Failures inside the worker must not abort the process or block the UI.
 pub fn start(app: AppHandle) {
-    ensure_defaults();
     std::thread::Builder::new()
         .name("qxai-schedule".into())
-        .spawn(move || loop {
-            tick(&app);
-            std::thread::sleep(Duration::from_secs(TICK_SECS));
+        .spawn(move || {
+            // Seed skills + schedule file only on this worker (not setup).
+            if let Err(error) =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(ensure_defaults))
+            {
+                eprintln!("qxai schedule ensure_defaults panicked: {error:?}");
+            }
+
+            loop {
+                let tick_result =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| tick(&app)));
+                if let Err(error) = tick_result {
+                    eprintln!("qxai schedule tick panicked: {error:?}");
+                }
+                std::thread::sleep(Duration::from_secs(TICK_SECS));
+            }
         })
         .ok();
 }

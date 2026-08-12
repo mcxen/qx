@@ -1,13 +1,8 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { useSettingsStore } from "../settings/store";
-import {
-  getEnabledTools,
-  loadMemorySnapshot,
-  runFunctionCallingAgent,
-  runReactAgent,
-  type AgentStep,
-} from "../qx-ai/react-agent";
+// Type-only + dynamic harness: browsing RSS in P仔 must not load the agent graph.
+import type { AgentStep } from "../qx-ai/agent/types";
 
 export type PzaiDisplayMode = "original" | "summary" | "draft" | "split";
 
@@ -287,6 +282,13 @@ export const usePzaiStore = create<PzaiStore>((set, get) => ({
 
     try {
       await useSettingsStore.getState().flush();
+      // Agent harness is optional and heavy — only import when the user runs AI.
+      const {
+        getEnabledTools,
+        loadMemorySnapshot,
+        runFunctionCallingAgent,
+        runReactAgent,
+      } = await import("../qx-ai/agent");
       const providers = await invoke<
         Array<{ id: string; models: Array<{ id: string }> }>
       >("qxai_list_providers");
@@ -343,6 +345,8 @@ export const usePzaiStore = create<PzaiStore>((set, get) => ({
         basePrompt: P_ZAI_SYSTEM,
         agentSettings,
         memorySnapshot,
+        conversationId: wb.articleId != null ? `pzai-${wb.articleId}` : "pzai",
+        userMessage: text,
         reasoning: false,
         onStep: (step) =>
           set((state) => ({

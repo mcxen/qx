@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openSystemPath } from "../../system/pathActions";
-import type { QxAiFileAttachment } from "./react-agent";
+import type { QxAiFileAttachment } from "./agent/types";
 import type { G4fConversation } from "./store";
 
 export function isTauriRuntime(): boolean {

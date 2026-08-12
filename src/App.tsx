@@ -69,7 +69,7 @@ import {
 import { loadClipboardEntryById, pasteClipboardEntryAtCursor } from "./modules/clipboard/actions";
 import ClipboardPanel from "./modules/clipboard/ClipboardPanel";
 import { prefetchClipboardOpen } from "./modules/clipboard/openSession";
-import { startQxAiScheduleBridge } from "./modules/qx-ai/schedule-bridge";
+
 import { tryModuleEscapeStep } from "./hooks/moduleEscapeHost";
 import { useQxModuleShell } from "./hooks/useQxModuleShell";
 import { useLocale, useT } from "./i18n";
@@ -665,9 +665,24 @@ function App() {
     void invoke("set_active_route", { route: tab }).catch(() => {});
   }, [tab]);
 
-  // QxAI schedule agent_prompt jobs need a frontend listener even when chat is closed.
+  // QxAI schedule agent_prompt jobs need a frontend listener even when chat is
+  // closed — but must never block shell first paint or pull the agent graph at
+  // App import time. Dynamic + idle start; failures are swallowed.
   useEffect(() => {
-    startQxAiScheduleBridge();
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    void import("./modules/qx-ai/schedule-bridge")
+      .then(({ startQxAiScheduleBridgeDeferred }) => {
+        if (cancelled) return;
+        stop = startQxAiScheduleBridgeDeferred(4_500);
+      })
+      .catch((error) => {
+        console.error("qxai schedule bridge import failed", error);
+      });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
   }, []);
 
   // A module disabled from Settings must disappear immediately without ever
@@ -1061,16 +1076,36 @@ function App() {
     let timerId: ReturnType<typeof window.setTimeout> | undefined;
     const preload = () => {
       if (cancelled) return;
+      // Core modules first. AI/P仔 chunks are larger and optional — second wave
+      // after another idle tick so launcher/clipboard stay responsive.
       void Promise.allSettled([
         import("./modules/screencap/ScreenRecorder"),
         import("./modules/documents/DevTxtTool"),
         import("./modules/settings/SettingsPanel"),
         import("./modules/rss"),
-        import("./modules/qx-ai"),
         import("./modules/macros/MacroRecorder"),
         import("./modules/weather/WeatherPanel"),
         import("./modules/qx-tty/QxTTYPanel"),
-      ]);
+      ]).finally(() => {
+        if (cancelled) return;
+        const preloadAi = () => {
+          if (cancelled) return;
+          void Promise.allSettled([
+            import("./modules/qx-ai"),
+            import("./modules/p-zai"),
+          ]);
+        };
+        const ricAi = (
+          window as Window & {
+            requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
+          }
+        ).requestIdleCallback;
+        if (typeof ricAi === "function") {
+          ricAi(preloadAi, { timeout: MODULE_PRELOAD_DELAY_MS });
+        } else {
+          window.setTimeout(preloadAi, 1_200);
+        }
+      });
     };
     const ric = (
       window as Window & {

@@ -23,6 +23,7 @@ import {
   runPluginCommandCapability,
   runQxCapability,
 } from "./capabilities";
+import { listQxAiHooks } from "./hooks";
 
 const hostOn = (s: AgentSettings) => s.qx_host_actions_enabled;
 
@@ -175,6 +176,45 @@ export const CAPABILITY_TOOLS: ToolSpec[] = [
           ? (rec.input as Record<string, unknown>)
           : {};
       return runPluginCommandCapability(pluginId.trim(), command.trim(), payload);
+    },
+  },
+  {
+    name: "list_agent_hooks",
+    description:
+      "List registered QxAI agent hooks (before_turn, after_turn, on_error, before_tool, after_tool). Built-ins inject host context and normalize capability tool inputs; plugins may register command-backed hooks.",
+    inputHint: '{"phase": "before_turn"}',
+    parameters: {
+      type: "object",
+      properties: {
+        phase: {
+          type: "string",
+          description: "before_turn | after_turn | on_error | before_tool | after_tool",
+        },
+      },
+    },
+    isEnabled: hostOn,
+    run: async (input) => {
+      const phase = stringField(asRecord(input), "phase").trim();
+      const valid =
+        phase === "before_turn"
+        || phase === "after_turn"
+        || phase === "on_error"
+        || phase === "before_tool"
+        || phase === "after_tool"
+          ? phase
+          : undefined;
+      const hooks = listQxAiHooks(valid);
+      if (hooks.length === 0) return "No hooks registered.";
+      return truncate(
+        hooks
+          .map(
+            (hook) =>
+              `- ${hook.id} [${hook.phase.join(",")}] priority=${hook.priority}${
+                hook.owner ? ` owner=${hook.owner}` : ""
+              }`,
+          )
+          .join("\n"),
+      );
     },
   },
 ];

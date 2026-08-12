@@ -204,6 +204,8 @@ fn default_agent_uses_openrouter_auto() {
     assert!(agent.background_tasks_enabled);
     assert!(agent.qx_host_actions_enabled);
     assert!(agent.qx_system_tools_enabled);
+    assert!(agent.dangerous_tools_guard_enabled);
+    assert!(!agent.solo_mode);
     assert_eq!(agent.defaults_version, 2);
 
     agent.bash_enabled = false;

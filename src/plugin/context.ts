@@ -342,6 +342,18 @@ export function createPluginContext(
             PluginContext["ai"]["actions"]["unregister"]
           >,
       },
+      hooks: {
+        list: (phase) =>
+          rpc("aiHooksList", { phase }) as ReturnType<PluginContext["ai"]["hooks"]["list"]>,
+        register: (hooks) =>
+          rpc("aiHooksRegister", { hooks }) as ReturnType<
+            PluginContext["ai"]["hooks"]["register"]
+          >,
+        unregister: () =>
+          rpc("aiHooksUnregister", {}) as ReturnType<
+            PluginContext["ai"]["hooks"]["unregister"]
+          >,
+      },
     },
     tray: {
       setItems: (items) =>

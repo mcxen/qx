@@ -1,13 +1,15 @@
 import { useEffect } from "react";
 import { takePendingModuleLaunch } from "../../search/moduleSurfaces";
 import { useG4fStore } from "./store";
-import { startQxAiScheduleBridge } from "./schedule-bridge";
 import QxAiChat from "./QxAiChat";
 import QxAiSettings from "./QxAiSettings";
 
 /**
  * QxAI entry: default surface is the conversation workbench
  * (left list + right self-drawn chat). Settings is a nested view.
+ *
+ * Load providers/sessions asynchronously after mount; never block shell paint.
+ * Agent harness stays out of this entry — only `sendMessage` pulls it in.
  */
 export default function QxAiReader() {
   const {
@@ -20,8 +22,17 @@ export default function QxAiReader() {
   } = useG4fStore();
 
   useEffect(() => {
-    startQxAiScheduleBridge();
-    void Promise.all([loadProviders(), loadSessions()]);
+    // Schedule bridge is started from App (idle). Also ensure when user opens QxAI.
+    void import("./schedule-bridge")
+      .then(({ startQxAiScheduleBridge }) => startQxAiScheduleBridge())
+      .catch(() => {});
+    // Sessions and providers in parallel; each call is idempotent/resilient.
+    void loadSessions().catch((error) => {
+      console.error("qxai loadSessions failed", error);
+    });
+    void loadProviders().catch((error) => {
+      console.error("qxai loadProviders failed", error);
+    });
   }, [loadProviders, loadSessions]);
 
   useEffect(() => {

@@ -383,6 +383,29 @@ export interface PluginModuleActionRegistration {
   command?: string;
 }
 
+export type PluginAiHookPhase =
+  | "before_turn"
+  | "after_turn"
+  | "on_error"
+  | "before_tool"
+  | "after_tool";
+
+/** Plugin-owned agent hooks (command-backed; fires on QxAI turns). */
+export interface PluginAiHookRegistration {
+  id: string;
+  phase: PluginAiHookPhase | PluginAiHookPhase[];
+  priority?: number;
+  /** Plugin command name to dispatch when the phase fires. */
+  command: string;
+}
+
+export interface PluginAiHookDescriptor {
+  id: string;
+  phase: PluginAiHookPhase[];
+  priority: number;
+  owner?: string;
+}
+
 export interface PluginAiTaskInput extends PluginAiChatOptions {
   title?: string;
   notify?: boolean;
@@ -1051,6 +1074,16 @@ export interface PluginContext {
       }) => Promise<PluginModuleActionDescriptor[]>;
       run: (id: string, input?: Record<string, unknown>) => Promise<string>;
       register: (actions: PluginModuleActionRegistration[]) => Promise<void>;
+      unregister: () => Promise<void>;
+    };
+    /**
+     * Agent lifecycle hooks (pre / post / error / tool).
+     * Permission: `ai-tools`. Host runs hooks inside agent turns only.
+     * Plugin hooks dispatch a plugin `command` (no iframe JS callbacks).
+     */
+    hooks: {
+      list: (phase?: PluginAiHookPhase) => Promise<PluginAiHookDescriptor[]>;
+      register: (hooks: PluginAiHookRegistration[]) => Promise<void>;
       unregister: () => Promise<void>;
     };
   };

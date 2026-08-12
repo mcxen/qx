@@ -1,17 +1,29 @@
-/* Master–detail workbench: left conversation list + right self-drawn chat. */
+/* Master–detail workbench: left conversation list + right self-drawn chat.
+   Shell places children in `.qx-shell-content` (not direct under `.qx-shell-main`).
+   Reuse `.qx-content-shell` so the content region is a flex column with overflow hidden. */
+.qx-qxai-chat-shell.is-workbench .qx-shell-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .qx-ai-workbench {
   display: flex;
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  width: 100%;
   height: 100%;
+  overflow: hidden;
 }
 
 .qx-ai-split {
   flex: 1 1 0;
   min-width: 0;
   min-height: 0;
+  width: 100%;
+  height: 100%;
 }
 
 .qx-ai-conversation-list {
@@ -23,34 +35,30 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
 }
 
 .qx-ai-chat-detail {
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  background: transparent;
-}
-
-.qx-qxai-chat-shell.is-workbench .qx-shell-content,
-.qx-qxai-chat-shell.is-workbench .qx-shell-main {
+  position: relative;
   display: flex;
   flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
   min-height: 0;
   height: 100%;
   overflow: hidden;
-}
-
-.qx-qxai-chat-shell.is-workbench .qx-shell-main > .qx-ai-workbench {
-  flex: 1 1 0;
+  background: transparent;
 }
 
 .qx-ai-conversation {
   display: flex;
   flex-direction: column;
+  flex: 1 1 0;
+  width: 100%;
   height: 100%;
   min-height: 0;
   position: relative;
+  overflow: hidden;
 }
 
 .qx-ai-composer {
@@ -366,50 +374,134 @@
 
 .qx-ai-message-queue {
   display: grid;
-  gap: 2px;
+  gap: 0;
   border: 1px solid var(--qx-border-1);
-  border-radius: var(--qx-control-radius);
-  background: var(--qx-bg-component-1);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--qx-bg-component-1) 92%, transparent);
   overflow: hidden;
+  max-height: min(220px, 32vh);
 }
 
 .qx-ai-message-queue-title {
-  min-height: 28px;
+  min-height: 30px;
   gap: 7px;
   padding: 0 10px;
   color: var(--qx-text-secondary);
   font-size: 11px;
   border-bottom: 1px solid var(--qx-border-1);
+  background: color-mix(in srgb, var(--qx-bg-component-2) 70%, transparent);
 }
 
 .qx-ai-message-queue-title span {
   margin-left: auto;
   color: var(--qx-text-tertiary);
+  font-variant-numeric: tabular-nums;
 }
 
 .qx-ai-message-queue-row {
-  min-height: var(--qx-control-height);
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: start;
   gap: 8px;
-  padding-left: 10px;
+  padding: 8px 8px 8px 10px;
   color: var(--qx-text-secondary);
   font-size: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--qx-border-1) 70%, transparent);
 }
 
-.qx-ai-message-queue-row > span {
+.qx-ai-message-queue-row:first-of-type {
+  border-top: 0;
+}
+
+.qx-ai-message-queue-row.is-editing {
+  grid-template-columns: 22px minmax(0, 1fr);
+  background: color-mix(in srgb, var(--qx-accent, #5b8cff) 6%, transparent);
+}
+
+.qx-ai-message-queue-index {
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--qx-bg-component-3, rgb(0 0 0 / 0.2));
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.qx-ai-message-queue-body {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  padding-top: 1px;
+}
+
+.qx-ai-message-queue-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  color: var(--qx-text-primary);
+  line-height: 1.4;
+  word-break: break-word;
 }
 
-.qx-ai-message-queue-row small {
-  display: flex;
+.qx-ai-message-queue-body small {
+  display: inline-flex;
   align-items: center;
   gap: 4px;
   color: var(--qx-text-tertiary);
   white-space: nowrap;
+}
+
+.qx-ai-message-queue-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.qx-ai-message-queue-edit {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.qx-ai-message-queue-textarea {
+  width: 100%;
+  min-height: 64px;
+  max-height: 120px;
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--qx-border-2, rgb(255 255 255 / 0.12));
+  border-radius: 10px;
+  resize: vertical;
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-primary);
+  font: 12px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.qx-ai-message-queue-textarea:focus {
+  border-color: color-mix(in srgb, var(--qx-accent, #5b8cff) 50%, var(--qx-border-1));
+}
+
+.qx-ai-message-queue-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.qx-ai-composer-status.is-docked {
+  display: grid;
+  gap: 8px;
+  max-height: min(280px, 40vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .qx-ai-message-skill {
@@ -737,6 +829,10 @@
   gap: 8px;
 }
 
+.qx-ai-tool-summary.is-compact {
+  gap: 0;
+}
+
 .qx-ai-tool-summary-head {
   display: flex;
   align-items: center;
@@ -745,10 +841,90 @@
   font-size: 12px;
 }
 
+/* Compact Context row — click to open floating tool catalogue. */
+.qx-ai-tool-trigger {
+  width: 100%;
+  min-height: var(--qx-control-height, 32px);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 10px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-secondary);
+  font: 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-align: left;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.qx-ai-tool-trigger:hover,
+.qx-ai-tool-trigger.is-open {
+  border-color: color-mix(in srgb, var(--qx-accent, #5b8cff) 40%, var(--qx-border-1));
+  color: var(--qx-text-primary);
+  background: color-mix(in srgb, var(--qx-accent, #5b8cff) 10%, var(--qx-bg-component-2));
+}
+
+.qx-ai-tool-trigger-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-ai-tool-trigger-chevron {
+  flex: 0 0 auto;
+  opacity: 0.75;
+  transition: transform 120ms ease;
+}
+
+.qx-ai-tool-trigger.is-open .qx-ai-tool-trigger-chevron {
+  transform: rotate(180deg);
+}
+
+.qx-ai-tool-popover {
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(360px, 50vh);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px !important;
+  overflow: hidden;
+}
+
+.qx-ai-tool-popover-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--qx-text-primary);
+  font-size: 12px;
+}
+
+.qx-ai-tool-popover-head strong {
+  font-weight: 600;
+}
+
+.qx-ai-tool-popover-head span {
+  color: var(--qx-text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
 .qx-ai-tool-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.qx-ai-tool-chips.is-popover {
+  max-height: min(260px, 40vh);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 2px;
 }
 
 .qx-ai-tool-chips span {
@@ -759,6 +935,14 @@
   font-size: 11px;
   line-height: 1;
   padding: 5px 7px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.qx-ai-tool-popover-foot {
+  margin: 0;
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .qx-ai-empty-state {
@@ -869,26 +1053,40 @@
 
 .qx-ai-conversation.is-jan {
   position: relative;
-  height: 100%;
-  min-height: 0;
   display: flex;
   flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .qx-ai-message-list.is-jan {
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
+  overflow-x: hidden;
   overflow-y: auto;
-  padding: 16px 18px 148px;
+  overscroll-behavior: contain;
+  padding: 14px 16px 12px;
+  box-sizing: border-box;
+}
+
+/* Centered reading column — keeps user/assistant bubbles aligned. */
+.qx-ai-message-column {
+  width: min(760px, 100%);
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
+  min-height: min(100%, 240px);
 }
 
 .qx-ai-message.is-jan {
   display: flex;
   gap: 0;
-  max-width: min(760px, 100%);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .qx-ai-message.is-jan.is-user {
@@ -930,21 +1128,35 @@
   padding: 0;
 }
 
-/* Floating bottom composer (Jan ChatInput dock) */
-.qx-jan-composer-dock {
-  position: absolute;
-  left: 50%;
-  bottom: 12px;
-  z-index: 12;
-  width: min(720px, calc(100% - 28px));
-  transform: translateX(-50%);
+/*
+ * Bottom composer dock — in document flow (not absolute overlay).
+ * Avoids covering the transcript when queue/skill chips expand.
+ */
+.qx-ai-conversation.is-jan .qx-jan-composer-dock.is-docked-flow {
+  position: relative;
+  left: auto;
+  bottom: auto;
+  z-index: 5;
+  width: 100%;
+  transform: none;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 8px;
+  padding: 6px 12px 10px;
+  box-sizing: border-box;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    color-mix(in srgb, var(--qx-glass-bg-solid, #12161f) 55%, transparent) 28%,
+    color-mix(in srgb, var(--qx-glass-bg-solid, #12161f) 88%, transparent) 100%
+  );
   pointer-events: none;
 }
 
-.qx-jan-composer-dock > * {
+.qx-ai-conversation.is-jan .qx-jan-composer-dock.is-docked-flow > * {
+  width: min(720px, 100%);
   pointer-events: auto;
 }
 
@@ -956,9 +1168,9 @@
   padding: 10px 12px;
   border: 1px solid var(--qx-border-2, rgb(255 255 255 / 0.12));
   border-radius: 18px;
-  background: color-mix(in srgb, var(--qx-glass-bg-solid, #12161f) 92%, transparent);
+  background: color-mix(in srgb, var(--qx-glass-bg-solid, #12161f) 94%, transparent);
   box-shadow:
-    0 12px 36px rgb(0 0 0 / 0.35),
+    0 10px 28px rgb(0 0 0 / 0.28),
     0 0 0 1px rgb(255 255 255 / 0.04) inset;
   backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
@@ -1159,24 +1371,39 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 10px;
+  min-height: 20px;
   color: var(--qx-text-tertiary);
-  font-size: 11px;
+  font-size: 12px;
 }
 
+.qx-jan-message-foot.is-streaming {
+  gap: 6px;
+}
+
+/* Jan completed-message footer: Gauge + "N tokens/sec" + "(N tokens)" */
 .qx-jan-token-speed {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  color: var(--qx-text-tertiary);
+  font-size: 12px;
+  line-height: 1.2;
   font-variant-numeric: tabular-nums;
 }
 
-.qx-jan-token-speed.is-live {
-  color: var(--qx-accent, #5b8cff);
+.qx-jan-token-speed > svg {
+  flex: 0 0 auto;
+  opacity: 0.9;
 }
 
 .qx-jan-token-count {
-  opacity: 0.8;
+  opacity: 0.92;
+}
+
+.qx-jan-composer-speed {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .qx-jan-shimmer {

@@ -8,11 +8,13 @@ import {
   type KeyboardEvent,
 } from "react";
 import {
-  Clock3,
+  Check,
+  ChevronDown,
   FolderOpen,
   Hammer,
   ListPlus,
   Paperclip,
+  Pencil,
   RefreshCw,
   Sparkles,
   X,
@@ -21,7 +23,14 @@ import QxShell, { type BottomIslandContent, type QxShellAction } from "../../com
 import QxResizableSplit from "../../components/QxResizableSplit";
 import { QxActionList } from "../../components/QxActionPanel";
 import { QxModuleSearch } from "../../components/QxModuleSearch";
-import { Button, Select, Toggle } from "../../components/ui";
+import {
+  Button,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Select,
+  Toggle,
+} from "../../components/ui";
 import { requestPanelKeyWindow } from "../../hooks/usePanelKeyWindow";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import {
@@ -46,7 +55,7 @@ import {
 } from "./skills";
 import { useG4fStore } from "./store";
 import { chooseAndImportQxAiAttachments } from "./sessions";
-import { getEnabledTools, type QxAiFileAttachment } from "./react-agent";
+import type { QxAiFileAttachment } from "./agent/types";
 import { resolveModelVision } from "./model-capabilities";
 import { convertFileSrc } from "@tauri-apps/api/core";
 
@@ -67,6 +76,7 @@ export default function QxAiChat() {
     setView,
     sendMessage,
     removeQueuedMessage,
+    updateQueuedMessage,
     clearMessages,
     deleteConversation,
     createConversation,
@@ -86,6 +96,9 @@ export default function QxAiChat() {
   const [pendingAttachments, setPendingAttachments] = useState<QxAiFileAttachment[]>([]);
   const [attachmentsBusy, setAttachmentsBusy] = useState(false);
   const [attachmentsError, setAttachmentsError] = useState("");
+  const [toolsPopoverOpen, setToolsPopoverOpen] = useState(false);
+  const [editingQueueId, setEditingQueueId] = useState<string | null>(null);
+  const [editingQueueDraft, setEditingQueueDraft] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -145,10 +158,22 @@ export default function QxAiChat() {
   const streamingSteps = run?.streamingSteps ?? [];
   const currentError = run?.error ?? error;
   const settingsSnapshot = useSettingsStore((state) => state.settings);
-  const enabledTools = useMemo(
-    () => getEnabledTools(agentSettings, settingsSnapshot).map((tool) => tool.name),
-    [agentSettings, settingsSnapshot],
-  );
+  const [enabledTools, setEnabledTools] = useState<string[]>([]);
+  // Tool catalogue is optional UI chrome — load async so chat shell paints first.
+  useEffect(() => {
+    let cancelled = false;
+    void import("./agent")
+      .then(({ getEnabledTools }) => {
+        if (cancelled) return;
+        setEnabledTools(getEnabledTools(agentSettings, settingsSnapshot).map((tool) => tool.name));
+      })
+      .catch(() => {
+        if (!cancelled) setEnabledTools([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [agentSettings, settingsSnapshot]);
   const activeProvider = useMemo(
     () => providers.find((provider) => provider.id === conv?.provider),
     [providers, conv?.provider],
@@ -299,7 +324,31 @@ export default function QxAiChat() {
     setSelectedSkill(null);
     setPendingAttachments([]);
     setAttachmentsError("");
+    setEditingQueueId(null);
+    setEditingQueueDraft("");
   }, [conv?.id]);
+
+  const beginEditQueued = useCallback((id: string, content: string) => {
+    setEditingQueueId(id);
+    setEditingQueueDraft(content);
+  }, []);
+
+  const cancelEditQueued = useCallback(() => {
+    setEditingQueueId(null);
+    setEditingQueueDraft("");
+  }, []);
+
+  const saveEditQueued = useCallback(() => {
+    if (!editingQueueId) return;
+    const next = editingQueueDraft.trim();
+    if (!next) {
+      removeQueuedMessage(editingQueueId);
+    } else {
+      updateQueuedMessage(editingQueueId, { content: next });
+    }
+    setEditingQueueId(null);
+    setEditingQueueDraft("");
+  }, [editingQueueDraft, editingQueueId, removeQueuedMessage, updateQueuedMessage]);
 
   useEffect(() => {
     if (!conv || providers.length === 0 || canChat) return;
@@ -468,7 +517,7 @@ export default function QxAiChat() {
       ref={shellRef}
       title={conv?.name ?? t("qxai.title", "QxAI Chat")}
       islandKey="qx-ai.workbench"
-      className="qx-qxai-chat-shell is-jan is-workbench"
+      className="qx-qxai-chat-shell qx-content-shell is-jan is-workbench"
       onKeyDown={shell.onKeyDown}
       navigation={{
         index: selectedIndex,
@@ -583,36 +632,67 @@ export default function QxAiChat() {
           </div>
 
           <div className="qx-action-title">{t("qxai.tools", "Tools")}</div>
-          <div className="qx-ai-tool-summary">
-            <div className="qx-ai-tool-summary-head">
-              <Hammer size={14} />
-              <span>
-                {enabledTools.length
-                  ? t("qxai.tools.enabled", "{n} enabled").replace(
-                      "{n}",
-                      String(enabledTools.length),
-                    )
-                  : t("qxai.tools.disabled", "Disabled")}
-              </span>
-            </div>
-            {enabledTools.length > 0 ? (
-              <div className="qx-ai-tool-chips">
-                {enabledTools.map((tool) => (
-                  <span key={tool}>{tool}</span>
-                ))}
-              </div>
-            ) : (
-              <div className="qx-ai-tool-hint">
-                {!agentSettings.agent_mode_enabled
-                  ? t("qxai.tools.enableAgent", "Enable Agent mode in Settings → AI Agent.")
-                  : !agentSettings.tools_enabled
-                    ? t("qxai.tools.masterOff", "Master tools switch is off in Settings → AI Agent.")
-                    : t(
-                        "qxai.tools.none",
-                        "No individual tools enabled. Configure them in Settings → AI Agent.",
-                      )}
-              </div>
-            )}
+          <div className="qx-ai-tool-summary is-compact">
+            <Popover open={toolsPopoverOpen} onOpenChange={setToolsPopoverOpen} modal={false}>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className={`qx-ai-tool-trigger${toolsPopoverOpen ? " is-open" : ""}`}
+                  aria-expanded={toolsPopoverOpen}
+                  aria-haspopup="dialog"
+                >
+                  <Hammer size={14} aria-hidden="true" />
+                  <span className="qx-ai-tool-trigger-label">
+                    {enabledTools.length
+                      ? t("qxai.tools.enabled", "{n} enabled").replace(
+                          "{n}",
+                          String(enabledTools.length),
+                        )
+                      : t("qxai.tools.disabled", "Disabled")}
+                  </span>
+                  <ChevronDown size={14} className="qx-ai-tool-trigger-chevron" aria-hidden="true" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                side="left"
+                sideOffset={10}
+                collisionPadding={12}
+                className="qx-ai-tool-popover"
+              >
+                <div className="qx-ai-tool-popover-head">
+                  <strong>{t("qxai.tools.listTitle", "Enabled tools")}</strong>
+                  <span>{enabledTools.length}</span>
+                </div>
+                {enabledTools.length > 0 ? (
+                  <div className="qx-ai-tool-chips is-popover">
+                    {enabledTools.map((tool) => (
+                      <span key={tool}>{tool}</span>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="qx-ai-tool-hint">
+                    {!agentSettings.agent_mode_enabled
+                      ? t("qxai.tools.enableAgent", "Enable Agent mode in Settings → AI Agent.")
+                      : !agentSettings.tools_enabled
+                        ? t(
+                            "qxai.tools.masterOff",
+                            "Master tools switch is off in Settings → AI Agent.",
+                          )
+                        : t(
+                            "qxai.tools.none",
+                            "No individual tools enabled. Configure them in Settings → AI Agent.",
+                          )}
+                  </div>
+                )}
+                <p className="qx-ai-tool-popover-foot">
+                  {t(
+                    "qxai.tools.listHint",
+                    "Configure groups and safety under Settings → AI Agent.",
+                  )}
+                </p>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <div className="qx-action-title">{t("common.actions", "Actions")}</div>
@@ -663,292 +743,414 @@ export default function QxAiChat() {
               scroll: true,
             })}
           >
-      <div className="qx-ai-conversation is-jan">
-        <div className="qx-ai-message-list is-jan" data-qx-region-scroll>
-          {messages.map((msg, i) => (
-            <div
-              key={`${conv?.id ?? "chat"}-${msg.role}-${i}-${msg.content.slice(0, 24)}`}
-              className={`qx-ai-message is-jan is-${msg.role}`}
-            >
-              <div className="qx-ai-message-body">
-                <div className="qx-ai-message-meta">
-                  {msg.role === "user" ? t("qxai.you", "You") : (activeModel?.name || conv?.model || "AI")}
-                  {msg.role === "user" && msg.skill && (
-                    <span className="qx-ai-message-skill">
-                      <Sparkles size={11} />
-                      {msg.skill.name}
-                    </span>
-                  )}
-                </div>
-                <div className={`qx-ai-message-bubble is-jan is-${msg.role}`}>
-                  <AiMessageContent
-                    content={msg.content}
-                    reasoning={msg.reasoning}
-                    steps={msg.steps}
-                    attachments={msg.attachments}
-                    tokenSpeed={msg.tokenSpeed}
-                    tokenCount={msg.tokenCount}
-                  />
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {isCurrentConversationStreaming
-            && (streamedContent || streamedReasoning || streamingSteps.length > 0) && (
-            <div className="qx-ai-message is-jan is-assistant">
-              <div className="qx-ai-message-body">
-                <div className="qx-ai-message-meta">{activeModel?.name || conv?.model || "AI"}</div>
-                <div className="qx-ai-message-bubble is-jan is-assistant">
-                  <AiMessageContent
-                    content={streamedContent}
-                    reasoning={streamedReasoning}
-                    streaming
-                    steps={streamingSteps}
-                    tokenSpeed={run?.liveTokenSpeed}
-                    tokenCount={run?.liveTokenCount}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {conv && messages.length === 0 && !isCurrentConversationStreaming && (
-            <div className="qx-ai-empty-state">
-              {conv.provider
-                ? t("qxai.empty.chat", "Chatting with {provider} ({model}). Type below.")
-                    .replace("{provider}", conv.provider)
-                    .replace("{model}", conv.model)
-                : t("qxai.empty.noProvider", "No provider selected. Open Settings → AI Agent.")}
-            </div>
-          )}
-
-          {!conv && (
-            <div className="qx-ai-empty-state">
-              {t("qxai.empty.noConversation", "Select or create a conversation to begin.")}
-            </div>
-          )}
-
-          <div ref={messagesEndRef} className="qx-ai-message-list-end" />
-        </div>
-
-        {/* Jan-style floating composer at the bottom of the chat surface. */}
-        <div className="qx-jan-composer-dock">
-          {skillPickerOpen && (
-            <div className="qx-ai-skill-picker is-docked is-vbg" role="listbox" aria-label={t("qxai.skills.title", "Skills")}>
-              <div className="qx-ai-skill-picker-head">
-                <div>
-                  <Sparkles size={15} strokeWidth={1.75} />
-                  <strong>{t("qxai.skills.title", "Skills")}</strong>
-                  <span className="qx-ai-skill-picker-eyebrow">
-                    {t("qxai.skills.pickerHint", "Select a skill for this turn")}
-                  </span>
-                </div>
-                <div>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    title={t("qxai.skills.openFolder", "Open Skills Folder")}
-                    aria-label={t("qxai.skills.openFolder", "Open Skills Folder")}
-                    onClick={() => void openQxAiSkillsDirectory()}
-                  >
-                    <FolderOpen size={15} />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    title={t("qxai.skills.refresh", "Refresh Skills")}
-                    aria-label={t("qxai.skills.refresh", "Refresh Skills")}
-                    onClick={() => void refreshSkills()}
-                  >
-                    <RefreshCw size={15} className={skillsLoading ? "qx-spin" : undefined} />
-                  </Button>
-                </div>
-              </div>
-              <div className="qx-ai-skill-options is-cards">
-                {skillMatches.map((skill, index) => (
-                  <button
-                    key={skill.id}
-                    type="button"
-                    role="option"
-                    aria-selected={index === skillCursor}
-                    className={`qx-ai-skill-card${index === skillCursor ? " is-selected" : ""}`}
-                    onMouseEnter={() => setSkillCursor(index)}
-                    onClick={() => void selectSkill(skill)}
-                  >
-                    <span className="qx-ai-skill-card-icon" aria-hidden="true">
-                      <Sparkles size={14} strokeWidth={1.75} />
-                    </span>
-                    <span className="qx-ai-skill-card-copy">
-                      <strong>{skill.name}</strong>
-                      <small>{skill.description || t("agent.skills.noDescription", "No description")}</small>
-                    </span>
-                    <code className="qx-ai-skill-card-id">/{skill.id}</code>
-                  </button>
-                ))}
-                {!skillsLoading && skillMatches.length === 0 && (
-                  <div className="qx-ai-skill-empty">
-                    {skillsFailed
-                      ? t("qxai.skills.error", "Skills could not be loaded. Refresh to try again.")
-                      : t("qxai.skills.empty", "No matching Skills. Add SKILL.md files in the Skills folder.")}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {(selectedSkill || pendingAttachments.length > 0 || attachmentsError || queuedMessages.length > 0) && (
-            <div className="qx-ai-composer-status is-docked">
-              {selectedSkill && (
-                <div className="qx-ai-selected-skill is-vbg">
-                  <span className="qx-ai-selected-skill-icon" aria-hidden="true">
-                    <Sparkles size={14} strokeWidth={1.75} />
-                  </span>
-                  <span className="qx-ai-selected-skill-copy">
-                    <small>{t("qxai.skills.using", "Using Skill")}</small>
-                    <strong>{selectedSkill.name}</strong>
-                    <code>/{selectedSkill.id}</code>
-                  </span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    title={t("qxai.skills.remove", "Remove Skill")}
-                    aria-label={t("qxai.skills.remove", "Remove Skill")}
-                    onClick={() => setSelectedSkill(null)}
-                  >
-                    <X size={14} />
-                  </Button>
-                </div>
-              )}
-              {pendingAttachments.length > 0 && (
-                <div className="qx-ai-pending-attachments">
-                  {pendingAttachments.map((attachment) => {
-                    const isImage =
-                      attachment.kind === "image"
-                      || Boolean(attachment.mimeType?.startsWith("image/"));
-                    return (
-                      <div
-                        className={`qx-ai-pending-attachment${isImage ? " is-image" : ""}`}
-                        key={attachment.path}
-                      >
-                        {isImage ? (
-                          <img
-                            className="qx-ai-pending-thumb"
-                            src={convertFileSrc(attachment.path)}
-                            alt={attachment.name}
+            <div className="qx-ai-conversation is-jan">
+              <div className="qx-ai-message-list is-jan" data-qx-region-scroll>
+                <div className="qx-ai-message-column">
+                  {messages.map((msg, i) => (
+                    <div
+                      key={`${conv?.id ?? "chat"}-${msg.role}-${i}-${msg.content.slice(0, 24)}`}
+                      className={`qx-ai-message is-jan is-${msg.role}`}
+                    >
+                      <div className="qx-ai-message-body">
+                        <div className="qx-ai-message-meta">
+                          {msg.role === "user"
+                            ? t("qxai.you", "You")
+                            : activeModel?.name || conv?.model || "AI"}
+                          {msg.role === "user" && msg.skill ? (
+                            <span className="qx-ai-message-skill">
+                              <Sparkles size={11} />
+                              {msg.skill.name}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className={`qx-ai-message-bubble is-jan is-${msg.role}`}>
+                          <AiMessageContent
+                            content={msg.content}
+                            reasoning={msg.reasoning}
+                            steps={msg.steps}
+                            attachments={msg.attachments}
+                            tokenSpeed={msg.tokenSpeed}
+                            tokenCount={msg.tokenCount}
                           />
-                        ) : (
-                          <Paperclip size={14} aria-hidden="true" />
-                        )}
-                        <span title={attachment.path}>{attachment.name}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {isCurrentConversationStreaming
+                    && (streamedContent || streamedReasoning || streamingSteps.length > 0) ? (
+                    <div className="qx-ai-message is-jan is-assistant">
+                      <div className="qx-ai-message-body">
+                        <div className="qx-ai-message-meta">
+                          {activeModel?.name || conv?.model || "AI"}
+                        </div>
+                        <div className="qx-ai-message-bubble is-jan is-assistant">
+                          <AiMessageContent
+                            content={streamedContent}
+                            reasoning={streamedReasoning}
+                            streaming
+                            steps={streamingSteps}
+                            tokenSpeed={run?.liveTokenSpeed}
+                            tokenCount={run?.liveTokenCount}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {conv && messages.length === 0 && !isCurrentConversationStreaming ? (
+                    <div className="qx-ai-empty-state">
+                      {conv.provider
+                        ? t("qxai.empty.chat", "Chatting with {provider} ({model}). Type below.")
+                            .replace("{provider}", conv.provider)
+                            .replace("{model}", conv.model)
+                        : t(
+                            "qxai.empty.noProvider",
+                            "No provider selected. Open Settings → AI Agent.",
+                          )}
+                    </div>
+                  ) : null}
+
+                  {!conv ? (
+                    <div className="qx-ai-empty-state">
+                      {t(
+                        "qxai.empty.noConversation",
+                        "Select or create a conversation to begin.",
+                      )}
+                    </div>
+                  ) : null}
+
+                  <div ref={messagesEndRef} className="qx-ai-message-list-end" />
+                </div>
+              </div>
+
+              {/* Bottom composer: in-flow dock (stable in workbench; not absolute overlay). */}
+              <div className="qx-jan-composer-dock is-docked-flow">
+                {skillPickerOpen ? (
+                  <div
+                    className="qx-ai-skill-picker is-docked is-vbg"
+                    role="listbox"
+                    aria-label={t("qxai.skills.title", "Skills")}
+                  >
+                    <div className="qx-ai-skill-picker-head">
+                      <div>
+                        <Sparkles size={15} strokeWidth={1.75} />
+                        <strong>{t("qxai.skills.title", "Skills")}</strong>
+                        <span className="qx-ai-skill-picker-eyebrow">
+                          {t("qxai.skills.pickerHint", "Select a skill for this turn")}
+                        </span>
+                      </div>
+                      <div>
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
-                          title={t("common.remove", "Remove")}
-                          aria-label={t("common.remove", "Remove")}
-                          onClick={() => setPendingAttachments((items) =>
-                            items.filter((item) => item.path !== attachment.path))}
+                          title={t("qxai.skills.openFolder", "Open Skills Folder")}
+                          aria-label={t("qxai.skills.openFolder", "Open Skills Folder")}
+                          onClick={() => void openQxAiSkillsDirectory()}
+                        >
+                          <FolderOpen size={15} />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          title={t("qxai.skills.refresh", "Refresh Skills")}
+                          aria-label={t("qxai.skills.refresh", "Refresh Skills")}
+                          onClick={() => void refreshSkills()}
+                        >
+                          <RefreshCw size={15} className={skillsLoading ? "qx-spin" : undefined} />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="qx-ai-skill-options is-cards">
+                      {skillMatches.map((skill, index) => (
+                        <button
+                          key={skill.id}
+                          type="button"
+                          role="option"
+                          aria-selected={index === skillCursor}
+                          className={`qx-ai-skill-card${index === skillCursor ? " is-selected" : ""}`}
+                          onMouseEnter={() => setSkillCursor(index)}
+                          onClick={() => void selectSkill(skill)}
+                        >
+                          <span className="qx-ai-skill-card-icon" aria-hidden="true">
+                            <Sparkles size={14} strokeWidth={1.75} />
+                          </span>
+                          <span className="qx-ai-skill-card-copy">
+                            <strong>{skill.name}</strong>
+                            <small>
+                              {skill.description || t("agent.skills.noDescription", "No description")}
+                            </small>
+                          </span>
+                          <code className="qx-ai-skill-card-id">/{skill.id}</code>
+                        </button>
+                      ))}
+                      {!skillsLoading && skillMatches.length === 0 ? (
+                        <div className="qx-ai-skill-empty">
+                          {skillsFailed
+                            ? t(
+                                "qxai.skills.error",
+                                "Skills could not be loaded. Refresh to try again.",
+                              )
+                            : t(
+                                "qxai.skills.empty",
+                                "No matching Skills. Add SKILL.md files in the Skills folder.",
+                              )}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                {(selectedSkill
+                  || pendingAttachments.length > 0
+                  || attachmentsError
+                  || queuedMessages.length > 0) && (
+                  <div className="qx-ai-composer-status is-docked">
+                    {selectedSkill ? (
+                      <div className="qx-ai-selected-skill is-vbg">
+                        <span className="qx-ai-selected-skill-icon" aria-hidden="true">
+                          <Sparkles size={14} strokeWidth={1.75} />
+                        </span>
+                        <span className="qx-ai-selected-skill-copy">
+                          <small>{t("qxai.skills.using", "Using Skill")}</small>
+                          <strong>{selectedSkill.name}</strong>
+                          <code>/{selectedSkill.id}</code>
+                        </span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          title={t("qxai.skills.remove", "Remove Skill")}
+                          aria-label={t("qxai.skills.remove", "Remove Skill")}
+                          onClick={() => setSelectedSkill(null)}
                         >
                           <X size={14} />
                         </Button>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-              {pendingAttachments.some(
-                (item) => item.kind === "image" || item.mimeType?.startsWith("image/"),
-              ) && !modelSupportsVision ? (
-                <div className="qx-ai-config-error">
-                  {t(
-                    "qxai.model.vision.required",
-                    "Current model cannot read images. Pick a Vision model or enable Vision in Settings → AI Agent.",
-                  )}
-                </div>
-              ) : null}
-              {attachmentsError && (
-                <div className="qx-ai-config-error">{attachmentsError}</div>
-              )}
-              {queuedMessages.length > 0 && (
-                <div className="qx-ai-message-queue">
-                  <div className="qx-ai-message-queue-title">
-                    <ListPlus size={14} />
-                    <strong>{t("qxai.queue.title", "Queued messages")}</strong>
-                    <span>{queuedMessages.length}</span>
-                  </div>
-                  {queuedMessages.map((message) => (
-                    <div className="qx-ai-message-queue-row" key={message.id}>
-                      <Clock3 size={14} />
-                      <span>{message.content}</span>
-                      {message.skill && (
-                        <small><Sparkles size={12} />{message.skill.name}</small>
-                      )}
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        title={t("qxai.queue.remove", "Remove queued message")}
-                        aria-label={t("qxai.queue.remove", "Remove queued message")}
-                        onClick={() => removeQueuedMessage(message.id)}
-                      >
-                        <X size={14} />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+                    ) : null}
 
-          <div className="qx-jan-composer">
-            <div className="qx-jan-composer-tools">
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                disabled={!conv || attachmentsBusy}
-                title={t("qxai.attachments.add", "Attach Images or Files")}
-                aria-label={t("qxai.attachments.add", "Attach Images or Files")}
-                onClick={() => void handleAttach()}
-              >
-                <Paperclip size={16} className={attachmentsBusy ? "qx-spin" : undefined} />
-              </Button>
-              {isCurrentConversationStreaming && run?.liveTokenSpeed ? (
-                <span className="qx-jan-composer-speed" title={t("qxai.tokens.speed", "Generation speed")}>
-                  {Math.round(run.liveTokenSpeed)} {t("qxai.tokens.perSec", "tokens/sec")}
-                </span>
-              ) : null}
+                    {pendingAttachments.length > 0 ? (
+                      <div className="qx-ai-pending-attachments">
+                        {pendingAttachments.map((attachment) => {
+                          const isImage =
+                            attachment.kind === "image"
+                            || Boolean(attachment.mimeType?.startsWith("image/"));
+                          return (
+                            <div
+                              className={`qx-ai-pending-attachment${isImage ? " is-image" : ""}`}
+                              key={attachment.path}
+                            >
+                              {isImage ? (
+                                <img
+                                  className="qx-ai-pending-thumb"
+                                  src={convertFileSrc(attachment.path)}
+                                  alt={attachment.name}
+                                />
+                              ) : (
+                                <Paperclip size={14} aria-hidden="true" />
+                              )}
+                              <span title={attachment.path}>{attachment.name}</span>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                title={t("common.remove", "Remove")}
+                                aria-label={t("common.remove", "Remove")}
+                                onClick={() =>
+                                  setPendingAttachments((items) =>
+                                    items.filter((item) => item.path !== attachment.path),
+                                  )
+                                }
+                              >
+                                <X size={14} />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+
+                    {pendingAttachments.some(
+                      (item) => item.kind === "image" || item.mimeType?.startsWith("image/"),
+                    ) && !modelSupportsVision ? (
+                      <div className="qx-ai-config-error">
+                        {t(
+                          "qxai.model.vision.required",
+                          "Current model cannot read images. Pick a Vision model or enable Vision in Settings → AI Agent.",
+                        )}
+                      </div>
+                    ) : null}
+                    {attachmentsError ? (
+                      <div className="qx-ai-config-error">{attachmentsError}</div>
+                    ) : null}
+
+                    {queuedMessages.length > 0 ? (
+                      <div className="qx-ai-message-queue">
+                        <div className="qx-ai-message-queue-title">
+                          <ListPlus size={14} />
+                          <strong>{t("qxai.queue.title", "Queued messages")}</strong>
+                          <span>{queuedMessages.length}</span>
+                        </div>
+                        {queuedMessages.map((message, index) => {
+                          const isEditing = editingQueueId === message.id;
+                          return (
+                            <div
+                              className={`qx-ai-message-queue-row${isEditing ? " is-editing" : ""}`}
+                              key={message.id}
+                            >
+                              <div className="qx-ai-message-queue-index" aria-hidden="true">
+                                {index + 1}
+                              </div>
+                              {isEditing ? (
+                                <div className="qx-ai-message-queue-edit">
+                                  <textarea
+                                    className="qx-ai-message-queue-textarea"
+                                    value={editingQueueDraft}
+                                    rows={3}
+                                    autoFocus
+                                    onChange={(event) => setEditingQueueDraft(event.target.value)}
+                                    onKeyDown={(event) => {
+                                      if (event.nativeEvent.isComposing) return;
+                                      if (event.key === "Escape") {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        cancelEditQueued();
+                                      }
+                                      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        saveEditQueued();
+                                      }
+                                    }}
+                                    aria-label={t("qxai.queue.edit", "Edit queued message")}
+                                  />
+                                  <div className="qx-ai-message-queue-edit-actions">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      title={t("common.save", "Save")}
+                                      aria-label={t("common.save", "Save")}
+                                      onClick={saveEditQueued}
+                                    >
+                                      <Check size={14} />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      title={t("common.cancel", "Cancel")}
+                                      aria-label={t("common.cancel", "Cancel")}
+                                      onClick={cancelEditQueued}
+                                    >
+                                      <X size={14} />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="qx-ai-message-queue-body">
+                                    <span className="qx-ai-message-queue-text" title={message.content}>
+                                      {message.content}
+                                    </span>
+                                    {message.skill ? (
+                                      <small>
+                                        <Sparkles size={12} />
+                                        {message.skill.name}
+                                      </small>
+                                    ) : null}
+                                  </div>
+                                  <div className="qx-ai-message-queue-actions">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      title={t("qxai.queue.edit", "Edit queued message")}
+                                      aria-label={t("qxai.queue.edit", "Edit queued message")}
+                                      onClick={() => beginEditQueued(message.id, message.content)}
+                                    >
+                                      <Pencil size={14} />
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      title={t("qxai.queue.remove", "Remove queued message")}
+                                      aria-label={t("qxai.queue.remove", "Remove queued message")}
+                                      onClick={() => {
+                                        if (editingQueueId === message.id) cancelEditQueued();
+                                        removeQueuedMessage(message.id);
+                                      }}
+                                    >
+                                      <X size={14} />
+                                    </Button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                <div className="qx-jan-composer">
+                  <div className="qx-jan-composer-tools">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      disabled={!conv || attachmentsBusy}
+                      title={t("qxai.attachments.add", "Attach Images or Files")}
+                      aria-label={t("qxai.attachments.add", "Attach Images or Files")}
+                      onClick={() => void handleAttach()}
+                    >
+                      <Paperclip size={16} className={attachmentsBusy ? "qx-spin" : undefined} />
+                    </Button>
+                    {isCurrentConversationStreaming && run?.liveTokenSpeed ? (
+                      <span
+                        className="qx-jan-composer-speed"
+                        title={t("qxai.tokens.speed", "Generation speed")}
+                      >
+                        {Math.round(run.liveTokenSpeed)}{" "}
+                        {t("qxai.tokens.perSec", "tokens/sec")}
+                      </span>
+                    ) : null}
+                  </div>
+                  <textarea
+                    ref={composerRef}
+                    className="qx-jan-composer-input"
+                    value={input}
+                    rows={1}
+                    disabled={!conv}
+                    placeholder={
+                      isCurrentConversationStreaming
+                        ? t("qxai.queue.placeholder", "Type another message to queue…")
+                        : t(
+                            "qxai.typeMessage",
+                            "Type a message… (Enter to send, / for Skills)",
+                          )
+                    }
+                    onChange={handleComposerInput}
+                    onKeyDown={handleComposerKeyDown}
+                    onFocus={requestPanelKeyWindow}
+                  />
+                  <Button
+                    type="button"
+                    className="qx-jan-composer-send"
+                    disabled={!canChat || (!input.trim() && pendingAttachments.length === 0)}
+                    onClick={handleSend}
+                  >
+                    {isCurrentConversationStreaming
+                      ? t("qxai.queue.add", "Add to Queue")
+                      : t("qxai.send", "Send")}
+                  </Button>
+                </div>
+              </div>
             </div>
-            <textarea
-              ref={composerRef}
-              className="qx-jan-composer-input"
-              value={input}
-              rows={1}
-              disabled={!conv}
-              placeholder={
-                isCurrentConversationStreaming
-                  ? t("qxai.queue.placeholder", "Type another message to queue…")
-                  : t("qxai.typeMessage", "Type a message… (Enter to send, / for Skills)")
-              }
-              onChange={handleComposerInput}
-              onKeyDown={handleComposerKeyDown}
-              onFocus={requestPanelKeyWindow}
-            />
-            <Button
-              type="button"
-              className="qx-jan-composer-send"
-              disabled={!canChat || (!input.trim() && pendingAttachments.length === 0)}
-              onClick={handleSend}
-            >
-              {t("qxai.send", "Send")}
-            </Button>
-          </div>
-        </div>
-      </div>
           </article>
         </QxResizableSplit>
       </div>

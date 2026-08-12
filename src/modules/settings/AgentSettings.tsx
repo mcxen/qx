@@ -385,6 +385,64 @@ export default function AgentSettings() {
       </SettingsCard>
 
       <SettingsCard
+        title={t("agent.safety.title", "Safety & SOLO")}
+        description={t(
+          "agent.safety.desc",
+          "Dangerous tools (bash, writes, plugin commands, schedules…) are classified automatically. Keep the guard on for safer chat; enable SOLO only when you want full autonomy.",
+        )}
+      >
+        <Row
+          title={t("agent.safety.guard", "Dangerous tools guard")}
+          description={t(
+            "agent.safety.guard.desc",
+            "When on, high-impact tools are blocked mid-turn unless SOLO mode is enabled. Turn off to disable recognition and blocking entirely.",
+          )}
+        >
+          <Toggle
+            value={agent.dangerous_tools_guard_enabled !== false}
+            onChange={(value) => patchAgent({ dangerous_tools_guard_enabled: value })}
+            ariaLabel={t("agent.safety.guard", "Dangerous tools guard")}
+          />
+        </Row>
+        <Row
+          title={t("agent.safety.solo", "SOLO mode")}
+          description={t(
+            "agent.safety.solo.desc",
+            "Autonomous mode: bypass the dangerous-tools gate so the agent may run bash, writes, plugin commands, and schedules without blocking. Use only when you trust the current task.",
+          )}
+        >
+          <Toggle
+            value={agent.solo_mode === true}
+            disabled={agent.dangerous_tools_guard_enabled === false}
+            onChange={(value) => patchAgent({ solo_mode: value })}
+            ariaLabel={t("agent.safety.solo", "SOLO mode")}
+          />
+        </Row>
+        <p className="qx-settings-muted">
+          {agent.dangerous_tools_guard_enabled === false
+            ? t(
+                "agent.safety.status.off",
+                "Guard off — dangerous tools are not auto-blocked.",
+              )
+            : agent.solo_mode
+              ? t(
+                  "agent.safety.status.solo",
+                  "SOLO on — dangerous tools are allowed this session policy.",
+                )
+              : t(
+                  "agent.safety.status.guarded",
+                  "Guard on — dangerous tools blocked until you enable SOLO.",
+                )}
+        </p>
+        <p className="qx-settings-muted">
+          {t(
+            "agent.safety.examples",
+            "Examples: bash, write_skill, write_mcp_config, docs_write, run_plugin_command, run_module_action, upsert/delete/run_schedule, open_path, copy_to_clipboard, screencap_recapture, brightness.",
+          )}
+        </p>
+      </SettingsCard>
+
+      <SettingsCard
         title={t("agent.tools.groups", "Tool groups")}
         description={t(
           "agent.tools.groups.desc",

@@ -407,6 +407,12 @@ pub struct AgentSettings {
     /// Expose Qx system capability tools (stats, displays, processes, …).
     #[serde(default = "default_true", rename = "qx_system_tools_enabled")]
     pub qx_system_tools_enabled: bool,
+    /// Identify and block dangerous agent tools unless SOLO mode is on.
+    #[serde(default = "default_true", rename = "dangerous_tools_guard_enabled")]
+    pub dangerous_tools_guard_enabled: bool,
+    /// SOLO mode: autonomous — bypass the dangerous-tools gate.
+    #[serde(default, rename = "solo_mode")]
+    pub solo_mode: bool,
     /// Per-skill load mode overrides: fixed | smart | disabled.
     #[serde(default, rename = "skill_modes")]
     pub skill_modes: std::collections::BTreeMap<String, String>,
@@ -464,6 +470,8 @@ impl Default for AgentSettings {
             background_tasks_enabled: true,
             qx_host_actions_enabled: true,
             qx_system_tools_enabled: true,
+            dangerous_tools_guard_enabled: true,
+            solo_mode: false,
             skill_modes: std::collections::BTreeMap::new(),
             model_capabilities: std::collections::BTreeMap::new(),
             defaults_version: 2,

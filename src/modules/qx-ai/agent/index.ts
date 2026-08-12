@@ -61,6 +61,29 @@ export { parseAgentResponse, type ParsedAction } from "./parse";
 export { runReactAgent } from "./react-loop";
 export { runFunctionCallingAgent } from "./function-loop";
 export {
+  ensureBuiltinQxAiHooks,
+  listQxAiHooks,
+  registerPluginQxAiHooks,
+  registerQxAiHooks,
+  runQxAiHooks,
+  unregisterQxAiHooksByOwner,
+  type PluginQxAiHookRegistration,
+  type QxAiHook,
+  type QxAiHookContext,
+  type QxAiHookPatch,
+  type QxAiHookPhase,
+} from "./hooks";
+export {
+  DANGEROUS_TOOLS,
+  formatDangerousToolsBlock,
+  getDangerousTool,
+  isDangerousToolName,
+  listDangerousToolNames,
+  resolveDangerousToolCall,
+  type DangerousToolLevel,
+  type DangerousToolSpec,
+} from "./dangerous-tools";
+export {
   invalidateMemorySnapshot,
   loadMemorySnapshot,
   runMemoryDream,

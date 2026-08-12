@@ -48,6 +48,7 @@ import {
 } from "./platform";
 import { resolvePluginShortcutBinding } from "./pluginShortcuts";
 import { unregisterModuleActionsByOwner } from "../modules/qx-ai/agent/module-actions";
+import { unregisterQxAiHooksByOwner } from "../modules/qx-ai/agent/hooks";
 
 /** One pending timer per plugin command — never stack duplicates. */
 const backgroundTimers = new Map<string, number>();
@@ -198,8 +199,9 @@ function clearBackgroundTimers(pluginId?: string): void {
       if (key.startsWith(`${pluginId}\0`)) backgroundInFlight.delete(key);
     }
     usePluginBackgroundStore.getState().clearPlugin(pluginId);
-    // Drop plugin-owned agent actions so disabled/unloaded plugins leave no catalogue entries.
+    // Drop plugin-owned agent actions/hooks so disabled plugins leave no catalogue entries.
     unregisterModuleActionsByOwner(`plugin:${pluginId}`);
+    unregisterQxAiHooksByOwner(`plugin:${pluginId}`);
     return;
   }
   for (const timer of backgroundTimers.values()) {

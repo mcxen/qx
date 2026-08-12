@@ -1,12 +1,17 @@
 import type { G4fMessage } from "../store";
+import { ensureBuiltinQxAiHooks } from "./hooks";
 import { buildQxHostSystemPrompt } from "./prompts";
 import { createOrderedReasoningRecorder, streamFunctionCallingOnce } from "./stream";
+import {
+  executeToolWithHooks,
+  runAfterTurnHooks,
+  runBeforeTurnHooks,
+  runTurnErrorHooks,
+} from "./tool-runner";
 import { getEnabledTools, toolsToOpenAISchema } from "./tools";
 import {
-  appendAttachments,
   compactMessages,
   nextStepId,
-  normalizeToolResult,
   type AgentRunOptions,
   type AgentRunResult,
   type AgentStep,
@@ -38,45 +43,15 @@ async function runToolCalls(
     } catch {
       // pass raw string
     }
-    const tool = enabled.find((t) => t.name === name);
-    const actionStep: AgentStep = {
-      id: nextStepId(),
-      kind: "action",
-      tool: name,
-      input: rawArgs,
-      state: "running",
-    };
-    steps.push(actionStep);
-    opts.onStep(actionStep);
-
-    let observation: string;
-    if (!tool) {
-      observation = `Error: tool "${name}" is not available. Enabled: ${
-        enabled.map((t) => t.name).join(", ") || "(none)"
-      }.`;
-      opts.onStepUpdate(actionStep.id, { state: "error", output: observation });
-    } else {
-      try {
-        const result = normalizeToolResult(await tool.run(parsedArgs));
-        observation = result.observation;
-        appendAttachments(attachments, result.attachments);
-        opts.onStepUpdate(actionStep.id, { state: "completed", output: observation });
-      } catch (err) {
-        observation = `Error: ${err instanceof Error ? err.message : String(err)}`;
-        opts.onStepUpdate(actionStep.id, { state: "error", output: observation });
-      }
-    }
-
-    const obsStep: AgentStep = {
-      id: nextStepId(),
-      kind: "observation",
-      tool: name,
-      output: observation,
-      state: "completed",
-    };
-    steps.push(obsStep);
-    opts.onStep(obsStep);
-
+    const observation = await executeToolWithHooks(
+      opts,
+      enabled,
+      name,
+      parsedArgs,
+      rawArgs,
+      steps,
+      attachments,
+    );
     return { callId: call.id, name, observation };
   });
 
@@ -87,15 +62,34 @@ async function runToolCalls(
 export async function runFunctionCallingAgent(
   opts: AgentRunOptions,
 ): Promise<AgentRunResult> {
-  const enabled = getEnabledTools(opts.agentSettings);
+  ensureBuiltinQxAiHooks();
+  const before = await runBeforeTurnHooks(opts);
+  if (before.cancel) {
+    const text =
+      before.cancelReason?.trim()
+      || "This turn was cancelled by a before_turn hook.";
+    const steps: AgentStep[] = [
+      {
+        id: nextStepId(),
+        kind: "error",
+        text,
+        state: "error",
+      },
+    ];
+    opts.onStep(steps[0]);
+    return { finalAnswer: text, steps, attachments: [] };
+  }
+
+  const runOpts: AgentRunOptions = { ...opts, basePrompt: before.basePrompt };
+  const enabled = getEnabledTools(runOpts.agentSettings);
   const tools = toolsToOpenAISchema(enabled);
 
   const working: Array<Record<string, unknown>> = [];
-  let systemPrompt = buildQxHostSystemPrompt(opts.basePrompt);
-  if (opts.memorySnapshot?.trim()) {
+  let systemPrompt = buildQxHostSystemPrompt(runOpts.basePrompt);
+  if (runOpts.memorySnapshot?.trim()) {
     systemPrompt = systemPrompt
-      ? `${systemPrompt}\n\n${opts.memorySnapshot.trim()}`
-      : opts.memorySnapshot.trim();
+      ? `${systemPrompt}\n\n${runOpts.memorySnapshot.trim()}`
+      : runOpts.memorySnapshot.trim();
   }
   // Compact tool catalog for prefix cache / speed (only tools that passed
   // agent switches + module availability gates).
@@ -109,7 +103,7 @@ export async function runFunctionCallingAgent(
   if (systemPrompt) {
     working.push({ role: "system", content: systemPrompt });
   }
-  for (const m of opts.messages) {
+  for (const m of runOpts.messages) {
     if (m.role === "system" && working.length > 0 && working[0].role === "system") {
       working[0] = {
         role: "system",
@@ -128,15 +122,15 @@ export async function runFunctionCallingAgent(
 
   const steps: AgentStep[] = [];
   const attachments: QxAiFileAttachment[] = [];
-  const maxIterations = opts.maxIterations ?? opts.agentSettings.agent_max_iterations ?? 12;
+  const maxIterations = runOpts.maxIterations ?? runOpts.agentSettings.agent_max_iterations ?? 12;
   let lastFinal = "";
 
   for (let i = 0; i < maxIterations; i++) {
     let message: Awaited<ReturnType<typeof streamFunctionCallingOnce>>;
-    const reasoning = createOrderedReasoningRecorder(steps, opts);
+    const reasoning = createOrderedReasoningRecorder(steps, runOpts);
     try {
       message = await streamFunctionCallingOnce(
-        opts,
+        runOpts,
         compactMessages(working as Array<{ role: string }>) as Array<Record<string, unknown>>,
         tools,
         reasoning.update,
@@ -144,15 +138,17 @@ export async function runFunctionCallingAgent(
       reasoning.complete();
     } catch (err) {
       reasoning.complete();
+      const raw = err instanceof Error ? err.message : String(err);
+      const text = await runTurnErrorHooks(runOpts, raw, steps);
       const errStep: AgentStep = {
         id: nextStepId(),
         kind: "error",
-        text: err instanceof Error ? err.message : String(err),
+        text,
         state: "error",
       };
       steps.push(errStep);
-      opts.onStep(errStep);
-      return { finalAnswer: errStep.text ?? "", steps, attachments };
+      runOpts.onStep(errStep);
+      return { finalAnswer: text, steps, attachments };
     }
 
     const toolCalls = message.tool_calls ?? [];
@@ -167,9 +163,13 @@ export async function runFunctionCallingAgent(
         state: "completed",
       };
       steps.push(finalStep);
-      opts.onStep(finalStep);
-      return {
+      runOpts.onStep(finalStep);
+      const finalAnswer = await runAfterTurnHooks(runOpts, {
         finalAnswer: finalText,
+        steps,
+      });
+      return {
+        finalAnswer,
         steps,
         attachments,
       };
@@ -187,7 +187,7 @@ export async function runFunctionCallingAgent(
         : {}),
     });
 
-    const results = await runToolCalls(enabled, toolCalls, steps, opts, attachments);
+    const results = await runToolCalls(enabled, toolCalls, steps, runOpts, attachments);
     for (const result of results) {
       working.push({
         role: "tool",
@@ -206,10 +206,10 @@ export async function runFunctionCallingAgent(
     },
   ];
 
-  const recoveryReasoning = createOrderedReasoningRecorder(steps, opts);
+  const recoveryReasoning = createOrderedReasoningRecorder(steps, runOpts);
   try {
     const recoveryMessage = await streamFunctionCallingOnce(
-      opts,
+      runOpts,
       recoveryMessages,
       [],
       recoveryReasoning.update,
@@ -223,9 +223,13 @@ export async function runFunctionCallingAgent(
       state: "completed",
     };
     steps.push(finalStep);
-    opts.onStep(finalStep);
-    return {
+    runOpts.onStep(finalStep);
+    const finalAnswer = await runAfterTurnHooks(runOpts, {
       finalAnswer: finalText,
+      steps,
+    });
+    return {
+      finalAnswer,
       steps,
       attachments,
     };
@@ -233,13 +237,18 @@ export async function runFunctionCallingAgent(
     recoveryReasoning.complete();
   }
 
+  const errText = await runTurnErrorHooks(
+    runOpts,
+    "Function calling agent hit iteration limit without producing a final answer.",
+    steps,
+  );
   const errStep: AgentStep = {
     id: nextStepId(),
     kind: "error",
-    text: "Function calling agent hit iteration limit without producing a final answer.",
+    text: errText,
     state: "error",
   };
   steps.push(errStep);
-  opts.onStep(errStep);
-  return { finalAnswer: lastFinal, steps, attachments };
+  runOpts.onStep(errStep);
+  return { finalAnswer: lastFinal || errText, steps, attachments };
 }

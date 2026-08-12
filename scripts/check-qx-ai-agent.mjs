@@ -82,7 +82,7 @@ assert.match(agentSource, /steps\.push\(reasoningStep\)/);
 assert.match(agentSource, /onStepUpdate\(reasoningStep\.id, \{ text \}\)/);
 assert.match(
   agentSource,
-  /createOrderedReasoningRecorder\(steps, opts\)[\s\S]*?streamFunctionCallingOnce[\s\S]*?const toolCalls/,
+  /createOrderedReasoningRecorder\(steps, (opts|runOpts)\)[\s\S]*?streamFunctionCallingOnce[\s\S]*?const toolCalls/,
 );
 assert.doesNotMatch(agentSource, /reasoning:\s*message\.reasoning_content/);
 
@@ -122,6 +122,73 @@ assert.match(capabilitiesSource, /buildSkillCapabilityPromptBlock/);
 assert.match(capabilitiesSource, /command:\$\{/);
 assert.match(skillsSourceGate, /withSkillCapabilityBinding/);
 assert.match(skillsSourceGate, /buildSkillCapabilityPromptBlock/);
+
+// Isolation: App must not statically import the AI store/agent graph; schedule
+// bridge starts deferred; sendMessage loads harness dynamically.
+const appSource = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+const scheduleBridgeSource = readFileSync(
+  new URL("../src/modules/qx-ai/schedule-bridge.ts", import.meta.url),
+  "utf8",
+);
+const storeIsolationSource = readFileSync(
+  new URL("../src/modules/qx-ai/store.ts", import.meta.url),
+  "utf8",
+);
+assert.doesNotMatch(appSource, /from ["']\.\/modules\/qx-ai\/schedule-bridge["']/);
+assert.match(appSource, /startQxAiScheduleBridgeDeferred/);
+assert.match(scheduleBridgeSource, /startQxAiScheduleBridgeDeferred/);
+assert.match(scheduleBridgeSource, /import\(["']\.\/store["']\)/);
+assert.match(storeIsolationSource, /loadAgentHarness|import\(["']\.\/agent["']\)/);
+assert.match(storeIsolationSource, /import type \{ AgentStep/);
+
+// Agent hooks: pre/post/error/tool lifecycle wired into both loops.
+const hooksSource = readFileSync(
+  new URL("../src/modules/qx-ai/agent/hooks.ts", import.meta.url),
+  "utf8",
+);
+const functionLoopSource = readFileSync(
+  new URL("../src/modules/qx-ai/agent/function-loop.ts", import.meta.url),
+  "utf8",
+);
+const reactLoopSource = readFileSync(
+  new URL("../src/modules/qx-ai/agent/react-loop.ts", import.meta.url),
+  "utf8",
+);
+assert.match(hooksSource, /before_turn/);
+assert.match(hooksSource, /after_turn/);
+assert.match(hooksSource, /before_tool/);
+assert.match(hooksSource, /after_tool/);
+assert.match(hooksSource, /on_error/);
+assert.match(hooksSource, /registerQxAiHooks/);
+assert.match(hooksSource, /builtin:host-context/);
+assert.match(hooksSource, /builtin:dangerous-tools-guard/);
+assert.match(hooksSource, /solo_mode/);
+assert.match(hooksSource, /dangerous_tools_guard_enabled/);
+const dangerousToolsSource = readFileSync(
+  new URL("../src/modules/qx-ai/agent/dangerous-tools.ts", import.meta.url),
+  "utf8",
+);
+assert.match(dangerousToolsSource, /name:\s*"bash"/);
+assert.match(dangerousToolsSource, /resolveDangerousToolCall/);
+const settingsStoreSource = readFileSync(
+  new URL("../src/modules/settings/store.ts", import.meta.url),
+  "utf8",
+);
+assert.match(settingsStoreSource, /dangerous_tools_guard_enabled:\s*true/);
+assert.match(settingsStoreSource, /solo_mode:\s*false/);
+const agentSettingsUi = readFileSync(
+  new URL("../src/modules/settings/AgentSettings.tsx", import.meta.url),
+  "utf8",
+);
+assert.match(agentSettingsUi, /agent\.safety\.solo/);
+assert.match(agentSettingsUi, /dangerous_tools_guard_enabled/);
+assert.match(functionLoopSource, /runBeforeTurnHooks/);
+assert.match(functionLoopSource, /runAfterTurnHooks/);
+assert.match(functionLoopSource, /executeToolWithHooks/);
+assert.match(reactLoopSource, /runBeforeTurnHooks/);
+assert.match(reactLoopSource, /executeToolWithHooks/);
+assert.match(agentSource, /name:\s*"list_agent_hooks"/);
+assert.match(storeIsolationSource, /userMessage:\s*content/);
 
 const chatSource = readFileSync(
   new URL("../src/modules/qx-ai/QxAiChat.tsx", import.meta.url),

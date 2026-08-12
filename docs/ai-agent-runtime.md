@@ -4,6 +4,73 @@
 
 QxAI is the shared AI substrate for built-in modules and plugins. It should not be a single chat panel API. It should expose a permissioned runtime that can choose models, call tools, use memory, stream output, and run background tasks.
 
+## Agent Hooks (pre / post / error / tool)
+
+Host port: `src/modules/qx-ai/agent/hooks.ts` (+ `tool-runner.ts`).
+
+| Phase | When | Typical use |
+|---|---|---|
+| `before_turn` | Start of ReAct / function-calling turn | Inject host context, cancel, rewrite base prompt |
+| `after_turn` | After final answer | Post-process answer text (best-effort) |
+| `on_error` | Stream/tool/iteration failure | Friendly recovery text |
+| `before_tool` | Before each tool `run` | Normalize args, block unsafe calls |
+| `after_tool` | After tool observation | Enrich / redact observation |
+
+- Registry: `registerQxAiHooks` / `unregisterQxAiHooksByOwner` / `listQxAiHooks` / `runQxAiHooks`.
+- Built-ins (auto-seeded): `builtin:host-context`, `builtin:dangerous-tools-guard`, `builtin:tool-input-normalize`, `builtin:error-friendly`.
+
+### Dangerous tools + SOLO mode
+
+Settings → AI Agent → **Safety & SOLO** (persisted on `agent`):
+
+| Setting | Default | Effect |
+|---|---|---|
+| `dangerous_tools_guard_enabled` | **on** | Classify high-impact tools; `before_tool` blocks them |
+| `solo_mode` | **off** | Autonomous bypass of the gate (SOLO) |
+
+Catalogue: `src/modules/qx-ai/agent/dangerous-tools.ts` (`bash`, writes, MCP rewrite, plugin/module runners, schedules, open_path, clipboard write, brightness, recapture, …). Nested ids on `run_qx_capability` / `run_module_action` / `run_plugin_command` are also resolved.
+
+Policy:
+
+1. Guard **off** → no classification/blocking (user fully disabled).
+2. Guard **on** + SOLO **on** → tools run; system prompt notes SOLO.
+3. Guard **on** + SOLO **off** → dangerous tools cancelled with a message that points to Settings.
+
+UI shows live status; SOLO toggle is disabled when the guard is off (gate already open).
+- Single-hook failures are logged and skipped; only `before_turn.cancel` aborts the turn.
+- Agent tool `list_agent_hooks` is read-only discovery.
+- Plugin SDK (`ai-tools`): `context.ai.hooks.list/register/unregister` — plugin hooks dispatch a plugin **command** (no iframe JS callbacks). Cleared on plugin disable/unload.
+- First-party modules may `registerQxAiHooks` with full `run` functions (same process).
+
+```ts
+import { registerQxAiHooks } from "./agent";
+
+registerQxAiHooks([{
+  id: "my-module:enrich",
+  phase: "before_turn",
+  priority: 40,
+  owner: "builtin:my-module",
+  run: (ctx) => ({
+    systemAppend: `User locale notes: …`,
+  }),
+}]);
+```
+
+## Isolation (must not affect main features)
+
+QxAI is an **optional async substrate**. Launcher, clipboard, shell, plugins UI, and other modules must keep working when AI is slow, disabled, or failing.
+
+| Rule | Implementation |
+|---|---|
+| No AI graph on App import | `App.tsx` does not statically import store/agent; schedule bridge is `import()` + idle deferred start |
+| Agent harness on demand | `store.sendMessage` / P仔 run dynamically `import("./agent")` only for a turn |
+| Schedule off UI thread | Rust `qx_ai_schedule::start` seeds files and ticks on a worker thread with panic isolation |
+| Frontend schedule bridge | Listens after idle; fire handlers `setTimeout(0)` + dynamic store import; errors logged only |
+| Module preload | Non-AI modules first wave; `qx-ai` / `p-zai` second idle wave |
+| Failure isolation | `loadSessions` / `loadProviders` / dream / schedule never throw into shell; turn-local errors stay on the conversation run |
+
+Do **not** add synchronous AI init to `App` phase-1 load, clipboard capture, or global shortcut registration.
+
 ## QxAiSession persistence and concurrency
 
 Built-in chat history is durable data under `~/.qx/QxAiSession`, not browser

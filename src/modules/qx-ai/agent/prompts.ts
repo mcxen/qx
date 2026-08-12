@@ -65,6 +65,9 @@ export function buildReactSystemPrompt(
     names.has("list_qx_capabilities") || names.has("run_qx_capability")
       ? "- Qx capabilities (skill-driven): list_qx_capabilities discovers module actions + plugin commands + tools. run_qx_capability executes action/command ids. Skills may declare capabilities: in frontmatter — follow that list. list_plugins / run_plugin_command for marketplace plugins."
       : null,
+    names.has("list_agent_hooks")
+      ? "- Agent hooks run automatically (before_turn/after_turn/on_error/before_tool/after_tool). list_agent_hooks shows registrations; you cannot call hooks as tools."
+      : null,
     names.has("pzai_get_workbench") || names.has("pzai_set_summary")
       ? "- P仔 workbench tools when listed: pzai_get/set summary|draft|display_mode|notes, pzai_open_article, pzai_save_docs."
       : null,

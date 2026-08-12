@@ -2,17 +2,9 @@ import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useSettingsStore } from "../settings/store";
-import {
-  type AgentStep,
-  type QxAiFileAttachment,
-  buildQxHostSystemPrompt,
-  getEnabledTools,
-  loadMemorySnapshot,
-  runFunctionCallingAgent,
-  runMemoryDream,
-  runReactAgent,
-  shouldDreamAfterTurn,
-} from "./react-agent";
+// Types only — agent harness is dynamically imported when a turn actually runs
+// so opening QxAI sessions/providers does not parse the full tool graph.
+import type { AgentStep, QxAiFileAttachment } from "./agent/types";
 import { computeTokenSpeed, estimateTokens } from "./message-rendering";
 import {
   messageHasImages,
@@ -36,7 +28,7 @@ import {
   showQxAiRun,
 } from "./run-island";
 
-export type { AgentStep } from "./react-agent";
+export type { AgentStep, QxAiFileAttachment } from "./agent/types";
 
 export interface G4fMessage {
   role: "user" | "assistant" | "system";
@@ -66,10 +58,55 @@ export interface QxAiConversationRun {
   streamedReasoning: string;
   streamingSteps: AgentStep[];
   error: string | null;
+  /** Request start (tools + model). Not used for generation speed. */
   startedAt: number;
+  /**
+   * Jan-style generation clock: first assistant text/reasoning delta.
+   * Used with generationMs for decode-speed (excludes long tool idle gaps).
+   */
+  firstTokenAt?: number;
+  /** Last text/reasoning delta timestamp for active-generation windows. */
+  lastDeltaAt?: number;
+  /** Accumulated ms while tokens were actively streaming (gaps >1.5s ignored). */
+  generationMs?: number;
   /** Live completion tokens/sec estimate while streaming. */
   liveTokenSpeed?: number;
   liveTokenCount?: number;
+}
+
+/** Active decode window: ignore multi-second pauses (tools / TTFT gaps). */
+const GENERATION_GAP_MS = 1500;
+
+function nextGenerationTiming(
+  run: Pick<QxAiConversationRun, "firstTokenAt" | "lastDeltaAt" | "generationMs">,
+  now: number,
+  hasText: boolean,
+): Pick<QxAiConversationRun, "firstTokenAt" | "lastDeltaAt" | "generationMs"> {
+  if (!hasText && run.firstTokenAt == null) {
+    return {
+      firstTokenAt: run.firstTokenAt,
+      lastDeltaAt: run.lastDeltaAt,
+      generationMs: run.generationMs,
+    };
+  }
+  const firstTokenAt = run.firstTokenAt ?? now;
+  let generationMs = run.generationMs ?? 0;
+  if (run.lastDeltaAt != null) {
+    const gap = now - run.lastDeltaAt;
+    if (gap > 0 && gap <= GENERATION_GAP_MS) generationMs += gap;
+  }
+  return { firstTokenAt, lastDeltaAt: now, generationMs };
+}
+
+function speedFromTiming(tokenCount: number, generationMs?: number, firstTokenAt?: number, now = Date.now()): number {
+  const activeMs =
+    generationMs && generationMs > 0
+      ? generationMs
+      : firstTokenAt
+        ? Math.max(1, now - firstTokenAt)
+        : 0;
+  if (tokenCount <= 0 || activeMs <= 0) return 0;
+  return Math.round(computeTokenSpeed(tokenCount, activeMs) * 100) / 100;
 }
 
 export interface G4fConversation {
@@ -229,6 +266,11 @@ interface G4fStore {
   sendMessage: (content: string, skill?: QxAiSkillDocument, conversationId?: string, attachments?: QxAiFileAttachment[]) => Promise<void>;
   runNextQueuedMessage: (conversationId: string) => void;
   removeQueuedMessage: (id: string) => void;
+  /** Update a queued message body (and optional skill) before it runs. */
+  updateQueuedMessage: (
+    id: string,
+    patch: { content?: string; skill?: QxAiSkillDocument | null },
+  ) => void;
   clearMessages: () => void;
 
   loadProviders: () => Promise<void>;
@@ -318,10 +360,13 @@ function generateStreamRequestId(): string {
   return "qxai-stream-" + generateId();
 }
 
-function withSelectedSkill(basePrompt: string, skill?: QxAiSkillDocument): string {
+async function withSelectedSkill(
+  basePrompt: string,
+  skill?: QxAiSkillDocument,
+): Promise<string> {
   if (!skill) return basePrompt;
   const agentSettings = useSettingsStore.getState().settings.agent;
-  const capabilityBlock = withSkillCapabilityBinding(
+  const capabilityBlock = await withSkillCapabilityBinding(
     skill.id,
     skill.content,
     agentSettings,
@@ -340,9 +385,14 @@ async function withAutoAndSelectedSkills(
     agentSettings,
     skill?.id,
   );
-  const withSelected = withSelectedSkill(basePrompt, skill);
+  const withSelected = await withSelectedSkill(basePrompt, skill);
   if (!autoBlock) return withSelected;
   return `${withSelected.trim()}\n\n${autoBlock}`;
+}
+
+/** Load agent harness only when a chat turn needs tools (keeps module shell light). */
+async function loadAgentHarness() {
+  return import("./agent");
 }
 
 const STREAM_TIMEOUT_MS = 180_000;
@@ -701,6 +751,11 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           streamingSteps: [],
           error: null,
           startedAt: Date.now(),
+          firstTokenAt: undefined,
+          lastDeltaAt: undefined,
+          generationMs: 0,
+          liveTokenSpeed: undefined,
+          liveTokenCount: undefined,
         },
       },
       error: null,
@@ -729,6 +784,17 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       await useSettingsStore.getState().flush();
       const fullSettings = useSettingsStore.getState().settings;
       const agentSettings = fullSettings.agent;
+
+      // Agent tools/harness load only for this turn — never at module import.
+      const {
+        getEnabledTools,
+        loadMemorySnapshot,
+        runFunctionCallingAgent,
+        runReactAgent,
+        runMemoryDream,
+        shouldDreamAfterTurn,
+        buildQxHostSystemPrompt,
+      } = await loadAgentHarness();
       const enabledTools = getEnabledTools(agentSettings, fullSettings);
       const useAgent = enabledTools.length > 0;
 
@@ -765,6 +831,8 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           basePrompt,
           agentSettings,
           memorySnapshot,
+          conversationId: currentConversationId,
+          userMessage: content,
           reasoning: Boolean(titledConv.reasoningEnabled),
           onStep: (step) =>
             set((state) => {
@@ -798,16 +866,23 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
             set((state) => {
               const run = state.runs[currentConversationId];
               if (!run?.streaming) return state;
-              const elapsed = Math.max(1, Date.now() - run.startedAt);
-              const liveTokenCount = estimateTokens(text + (run.streamedReasoning || ""));
+              const now = Date.now();
+              const timing = nextGenerationTiming(run, now, Boolean(text.trim()));
+              const liveTokenCount = estimateTokens(text);
               return {
                 runs: {
                   ...state.runs,
                   [currentConversationId]: {
                     ...run,
                     streamedContent: text,
+                    ...timing,
                     liveTokenCount,
-                    liveTokenSpeed: computeTokenSpeed(liveTokenCount, elapsed),
+                    liveTokenSpeed: speedFromTiming(
+                      liveTokenCount,
+                      timing.generationMs,
+                      timing.firstTokenAt,
+                      now,
+                    ),
                   },
                 },
               };
@@ -816,27 +891,43 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
             set((state) => {
               const run = state.runs[currentConversationId];
               if (!run?.streaming) return state;
-              const elapsed = Math.max(1, Date.now() - run.startedAt);
-              const liveTokenCount = estimateTokens((run.streamedContent || "") + text);
+              const now = Date.now();
+              // Reasoning starts the clock; TPS still uses completion text only.
+              const timing = nextGenerationTiming(
+                run,
+                now,
+                Boolean(text.trim() || run.streamedContent),
+              );
+              const liveTokenCount = estimateTokens(run.streamedContent || "");
               return {
                 runs: {
                   ...state.runs,
                   [currentConversationId]: {
                     ...run,
                     streamedReasoning: text,
+                    ...timing,
                     liveTokenCount,
-                    liveTokenSpeed: computeTokenSpeed(liveTokenCount, elapsed),
+                    liveTokenSpeed: speedFromTiming(
+                      liveTokenCount,
+                      timing.generationMs,
+                      timing.firstTokenAt,
+                      now,
+                    ),
                   },
                 },
               };
             }),
         });
 
+        const finishedRun = get().runs[currentConversationId];
+        const tokenCount = estimateTokens(result.finalAnswer);
         const durationMs = Math.max(
           1,
-          Date.now() - (get().runs[currentConversationId]?.startedAt ?? Date.now()),
+          finishedRun?.generationMs
+            && finishedRun.generationMs > 0
+            ? finishedRun.generationMs
+            : Date.now() - (finishedRun?.firstTokenAt ?? finishedRun?.startedAt ?? Date.now()),
         );
-        const tokenCount = estimateTokens(result.finalAnswer + (result.reasoning ?? ""));
         const assistantMessage: G4fMessage = {
           role: "assistant",
           content: result.finalAnswer,
@@ -844,7 +935,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           steps: result.steps,
           attachments: result.attachments,
           tokenCount,
-          tokenSpeed: computeTokenSpeed(tokenCount, durationMs),
+          tokenSpeed: speedFromTiming(tokenCount, finishedRun?.generationMs, finishedRun?.firstTokenAt),
           durationMs,
         };
 
@@ -929,16 +1020,23 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           set((state) => {
             const run = state.runs[currentConversationId];
             if (!run?.streaming) return state;
-            const elapsed = Math.max(1, Date.now() - run.startedAt);
-            const liveTokenCount = estimateTokens(full + (run.streamedReasoning || ""));
+            const now = Date.now();
+            const timing = nextGenerationTiming(run, now, Boolean(full.trim()));
+            const liveTokenCount = estimateTokens(full);
             return {
               runs: {
                 ...state.runs,
                 [currentConversationId]: {
                   ...run,
                   streamedContent: full,
+                  ...timing,
                   liveTokenCount,
-                  liveTokenSpeed: computeTokenSpeed(liveTokenCount, elapsed),
+                  liveTokenSpeed: speedFromTiming(
+                    liveTokenCount,
+                    timing.generationMs,
+                    timing.firstTokenAt,
+                    now,
+                  ),
                 },
               },
             };
@@ -947,34 +1045,48 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
           set((state) => {
             const run = state.runs[currentConversationId];
             if (!run?.streaming) return state;
-            const elapsed = Math.max(1, Date.now() - run.startedAt);
-            const liveTokenCount = estimateTokens((run.streamedContent || "") + full);
+            const now = Date.now();
+            const timing = nextGenerationTiming(
+              run,
+              now,
+              Boolean(full.trim() || run.streamedContent),
+            );
+            const liveTokenCount = estimateTokens(run.streamedContent || "");
             return {
               runs: {
                 ...state.runs,
                 [currentConversationId]: {
                   ...run,
                   streamedReasoning: full,
+                  ...timing,
                   liveTokenCount,
-                  liveTokenSpeed: computeTokenSpeed(liveTokenCount, elapsed),
+                  liveTokenSpeed: speedFromTiming(
+                    liveTokenCount,
+                    timing.generationMs,
+                    timing.firstTokenAt,
+                    now,
+                  ),
                 },
               },
             };
           }),
       });
 
+      const finishedRun = get().runs[currentConversationId];
+      const tokenCount = estimateTokens(response);
       const durationMs = Math.max(
         1,
-        Date.now() - (get().runs[currentConversationId]?.startedAt ?? Date.now()),
+        finishedRun?.generationMs && finishedRun.generationMs > 0
+          ? finishedRun.generationMs
+          : Date.now() - (finishedRun?.firstTokenAt ?? finishedRun?.startedAt ?? Date.now()),
       );
-      const tokenCount = estimateTokens(response);
       const assistantMessage: G4fMessage = {
         role: "assistant",
         content: response,
         tokenCount,
-        tokenSpeed: computeTokenSpeed(tokenCount, durationMs),
+        tokenSpeed: speedFromTiming(tokenCount, finishedRun?.generationMs, finishedRun?.firstTokenAt),
         durationMs,
-        reasoning: get().runs[currentConversationId]?.streamedReasoning || undefined,
+        reasoning: finishedRun?.streamedReasoning || undefined,
       };
 
       if (!get().conversations.some((conversation) => conversation.id === currentConversationId)) {
@@ -1041,6 +1153,30 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
   removeQueuedMessage: (id) => {
     set((state) => ({
       messageQueue: state.messageQueue.filter((message) => message.id !== id),
+    }));
+  },
+
+  updateQueuedMessage: (id, patch) => {
+    const nextContent =
+      typeof patch.content === "string" ? patch.content.trim() : undefined;
+    if (nextContent !== undefined && !nextContent) {
+      // Empty content removes the queued turn (same as discard).
+      get().removeQueuedMessage(id);
+      return;
+    }
+    set((state) => ({
+      messageQueue: state.messageQueue.map((message) => {
+        if (message.id !== id) return message;
+        return {
+          ...message,
+          ...(nextContent !== undefined ? { content: nextContent } : {}),
+          ...(patch.skill === null
+            ? { skill: undefined }
+            : patch.skill
+              ? { skill: patch.skill }
+              : {}),
+        };
+      }),
     }));
   },
 

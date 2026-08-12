@@ -1,13 +1,18 @@
 import type { G4fMessage } from "../store";
+import { ensureBuiltinQxAiHooks } from "./hooks";
 import { parseAgentResponse } from "./parse";
 import { buildReactSystemPrompt } from "./prompts";
 import { streamOnce } from "./stream";
+import {
+  executeToolWithHooks,
+  runAfterTurnHooks,
+  runBeforeTurnHooks,
+  runTurnErrorHooks,
+} from "./tool-runner";
 import { getEnabledTools } from "./tools";
 import {
-  appendAttachments,
   compactMessages,
   nextStepId,
-  normalizeToolResult,
   type AgentRunOptions,
   type AgentRunResult,
   type AgentStep,
@@ -15,13 +20,32 @@ import {
 } from "./types";
 
 export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResult> {
-  const enabled = getEnabledTools(opts.agentSettings);
-  let systemPrompt = buildReactSystemPrompt(opts.basePrompt, enabled);
-  if (opts.memorySnapshot?.trim()) {
-    systemPrompt = `${systemPrompt}\n\n${opts.memorySnapshot.trim()}`;
+  ensureBuiltinQxAiHooks();
+  const before = await runBeforeTurnHooks(opts);
+  if (before.cancel) {
+    const text =
+      before.cancelReason?.trim()
+      || "This turn was cancelled by a before_turn hook.";
+    const steps: AgentStep[] = [
+      {
+        id: nextStepId(),
+        kind: "error",
+        text,
+        state: "error",
+      },
+    ];
+    opts.onStep(steps[0]);
+    return { finalAnswer: text, steps, attachments: [] };
   }
 
-  const working: G4fMessage[] = opts.messages.map((m) => ({ ...m }));
+  const runOpts: AgentRunOptions = { ...opts, basePrompt: before.basePrompt };
+  const enabled = getEnabledTools(runOpts.agentSettings);
+  let systemPrompt = buildReactSystemPrompt(runOpts.basePrompt, enabled);
+  if (runOpts.memorySnapshot?.trim()) {
+    systemPrompt = `${systemPrompt}\n\n${runOpts.memorySnapshot.trim()}`;
+  }
+
+  const working: G4fMessage[] = runOpts.messages.map((m) => ({ ...m }));
   if (working.length > 0 && working[0].role === "system") {
     working[0] = { role: "system", content: systemPrompt };
   } else {
@@ -30,7 +54,7 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
 
   const steps: AgentStep[] = [];
   const attachments: QxAiFileAttachment[] = [];
-  const maxIterations = opts.maxIterations ?? opts.agentSettings.agent_max_iterations ?? 12;
+  const maxIterations = runOpts.maxIterations ?? runOpts.agentSettings.agent_max_iterations ?? 12;
   let lastRaw = "";
   let scratchpad = "";
 
@@ -49,12 +73,27 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
         : working,
     );
 
-    lastRaw = await streamOnce(
-      messagesForTurn,
-      opts.provider,
-      opts.model,
-      (partial) => opts.onAssistantStream(scratchpad ? `${scratchpad}\n${partial}` : partial),
-    );
+    try {
+      lastRaw = await streamOnce(
+        messagesForTurn,
+        runOpts.provider,
+        runOpts.model,
+        (partial) =>
+          runOpts.onAssistantStream(scratchpad ? `${scratchpad}\n${partial}` : partial),
+      );
+    } catch (err) {
+      const raw = err instanceof Error ? err.message : String(err);
+      const text = await runTurnErrorHooks(runOpts, raw, steps);
+      const errStep: AgentStep = {
+        id: nextStepId(),
+        kind: "error",
+        text,
+        state: "error",
+      };
+      steps.push(errStep);
+      runOpts.onStep(errStep);
+      return { finalAnswer: text, steps, attachments };
+    }
 
     const parsed = parseAgentResponse(lastRaw);
 
@@ -66,65 +105,46 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
         state: "completed",
       };
       steps.push(thoughtStep);
-      opts.onStep(thoughtStep);
+      runOpts.onStep(thoughtStep);
     }
 
     if (parsed.kind === "final") {
+      const finalText = parsed.finalAnswer ?? "";
       const finalStep: AgentStep = {
         id: nextStepId(),
         kind: "final",
-        text: parsed.finalAnswer ?? "",
+        text: finalText,
         state: "completed",
       };
       steps.push(finalStep);
-      opts.onStep(finalStep);
+      runOpts.onStep(finalStep);
+      const finalAnswer = await runAfterTurnHooks(runOpts, {
+        finalAnswer: finalText,
+        steps,
+      });
       return {
-        finalAnswer: parsed.finalAnswer ?? "",
+        finalAnswer,
         steps,
         attachments,
       };
     }
 
     if (parsed.kind === "action" && parsed.tool) {
-      const tool = enabled.find((t) => t.name === parsed.tool);
-      const actionStep: AgentStep = {
-        id: nextStepId(),
-        kind: "action",
-        tool: parsed.tool,
-        input: parsed.input,
-        state: "running",
-      };
-      steps.push(actionStep);
-      opts.onStep(actionStep);
-
-      let observation: string;
-      if (!tool) {
-        observation = `Error: unknown tool "${parsed.tool}". Available: ${
-          enabled.map((t) => t.name).join(", ") || "(none)"
-        }.`;
-        opts.onStepUpdate(actionStep.id, { state: "error", output: observation });
-      } else {
-        try {
-          const result = normalizeToolResult(await tool.run(parsed.input));
-          observation = result.observation;
-          appendAttachments(attachments, result.attachments);
-          opts.onStepUpdate(actionStep.id, { state: "completed", output: observation });
-        } catch (err) {
-          observation = `Error: ${err instanceof Error ? err.message : String(err)}`;
-          opts.onStepUpdate(actionStep.id, { state: "error", output: observation });
-        }
+      let parsedInput: unknown = parsed.input;
+      try {
+        parsedInput = JSON.parse(parsed.input ?? "{}");
+      } catch {
+        parsedInput = parsed.input;
       }
-
-      const obsStep: AgentStep = {
-        id: nextStepId(),
-        kind: "observation",
-        tool: parsed.tool,
-        output: observation,
-        state: "completed",
-      };
-      steps.push(obsStep);
-      opts.onStep(obsStep);
-
+      const observation = await executeToolWithHooks(
+        runOpts,
+        enabled,
+        parsed.tool,
+        parsedInput,
+        parsed.input ?? "",
+        steps,
+        attachments,
+      );
       scratchpad += `${lastRaw.trim()}\nObservation: ${observation}\n`;
       continue;
     }
@@ -138,15 +158,23 @@ export async function runReactAgent(opts: AgentRunOptions): Promise<AgentRunResu
       state: "completed",
     };
     steps.push(finalStep);
-    opts.onStep(finalStep);
-    return { finalAnswer: finalText, steps, attachments };
+    runOpts.onStep(finalStep);
+    const finalAnswer = await runAfterTurnHooks(runOpts, {
+      finalAnswer: finalText,
+      steps,
+    });
+    return { finalAnswer, steps, attachments };
   }
 
   const truncatedFinal =
     lastRaw.trim()
     || "I reached the iteration limit before producing a Final Answer. Please narrow the request or raise the Agent max-steps setting.";
-  return {
+  const finalAnswer = await runAfterTurnHooks(runOpts, {
     finalAnswer: truncatedFinal,
+    steps,
+  });
+  return {
+    finalAnswer,
     steps,
     attachments,
   };

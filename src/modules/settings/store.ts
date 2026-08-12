@@ -200,6 +200,16 @@ export interface AgentSettings {
   qx_host_actions_enabled: boolean;
   /** System stats / displays / process tools. */
   qx_system_tools_enabled: boolean;
+  /**
+   * When true (default), identify dangerous tools and block them unless SOLO
+   * mode is on. User can turn this off entirely.
+   */
+  dangerous_tools_guard_enabled: boolean;
+  /**
+   * SOLO mode: autonomous agent — bypass the dangerous-tools gate so high-impact
+   * tools (bash, plugin commands, writes, schedules…) may run without blocking.
+   */
+  solo_mode: boolean;
   /** Overrides skill frontmatter mode by skill id. */
   skill_modes: Record<string, QxAiSkillLoadMode>;
   /** Per-model vision/reasoning overrides when auto-detect is wrong. */
@@ -551,6 +561,8 @@ export const DEFAULT_SETTINGS: Settings = {
     background_tasks_enabled: true,
     qx_host_actions_enabled: true,
     qx_system_tools_enabled: true,
+    dangerous_tools_guard_enabled: true,
+    solo_mode: false,
     skill_modes: {},
     model_capabilities: {},
     defaults_version: 2,

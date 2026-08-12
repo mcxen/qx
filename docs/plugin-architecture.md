@@ -260,6 +260,21 @@ list_plugins / run_plugin_command
 
 推荐配套 skill（`~/.qx/skills`）用 `capabilities:` 声明工作流；示例 skill：`qx-plugin-capabilities`、`rss-brief`。
 
+### 5.1c Agent Hooks（前置 / 后置 / 错误 / 工具）
+
+```text
+before_turn → model/tool loop → after_turn
+                 │
+                 ├─ before_tool → tool.run → after_tool
+                 └─ on_error
+```
+
+- Host：`registerQxAiHooks`（同进程完整 `run` 回调）
+- 插件：`context.ai.hooks.register([{ id, phase, priority?, command }])`  
+  触发时调度插件 command（权限 `ai-tools`）；disable/unload 自动清理
+- 内置：`host-context`、`tool-input-normalize`、`error-friendly`
+- 契约见 `docs/ai-agent-runtime.md` Agent Hooks 节
+
 ### 5.2 后台 AI 任务
 
 ```text

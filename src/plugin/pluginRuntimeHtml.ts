@@ -492,6 +492,13 @@ export function buildPluginRuntimeHtml(
             }),
             unregister: () => rpc('aiActionsUnregister', {}),
           },
+          hooks: {
+            list: (phase) => rpc('aiHooksList', { phase: phase || undefined }),
+            register: (hooks) => rpc('aiHooksRegister', {
+              hooks: Array.isArray(hooks) ? hooks : [],
+            }),
+            unregister: () => rpc('aiHooksUnregister', {}),
+          },
         },
         tray: {
           setItems: (items) => rpc('traySetItems', { items: items || [] }),

@@ -58,6 +58,10 @@ export interface AgentRunOptions {
   maxIterations?: number;
   /** Frozen Hermes-style memory block for this session (prefix-cache friendly). */
   memorySnapshot?: string;
+  /** Optional conversation id for hooks / telemetry (never required for tools). */
+  conversationId?: string;
+  /** Latest user text for before_turn hooks (skill matching, guards). */
+  userMessage?: string;
 }
 
 export interface AgentRunResult {

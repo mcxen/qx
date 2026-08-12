@@ -31,6 +31,13 @@ import {
   unregisterModuleActionsByOwner,
   type PluginModuleActionRegistration,
 } from "../modules/qx-ai/agent/module-actions";
+import {
+  listQxAiHooks,
+  registerPluginQxAiHooks,
+  unregisterQxAiHooksByOwner,
+  type PluginQxAiHookRegistration,
+  type QxAiHookPhase,
+} from "../modules/qx-ai/agent/hooks";
 import { usePluginRegistry } from "./registry";
 
 const pluginSessionStorage = new Map<string, Map<string, unknown>>();
@@ -782,6 +789,67 @@ export const rpcHandlers: Record<string, RpcHandler> = {
   aiActionsUnregister: async (plugin, perms) => {
     assertPermission(plugin, perms, "ai-tools");
     unregisterModuleActionsByOwner(`plugin:${plugin.id}`);
+    return undefined;
+  },
+
+  aiHooksList: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "ai-tools");
+    const settings = await readAgentRuntimeSettings();
+    assertAgentToolsEnabled(settings);
+    const phase =
+      payload.phase === "before_turn"
+      || payload.phase === "after_turn"
+      || payload.phase === "on_error"
+      || payload.phase === "before_tool"
+      || payload.phase === "after_tool"
+        ? (payload.phase as QxAiHookPhase)
+        : undefined;
+    return listQxAiHooks(phase);
+  },
+
+  aiHooksRegister: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "ai-tools");
+    const settings = await readAgentRuntimeSettings();
+    assertAgentToolsEnabled(settings);
+    const raw = Array.isArray(payload.hooks) ? payload.hooks : [];
+    const hooks: PluginQxAiHookRegistration[] = raw
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+      .map((item) => {
+        const phaseRaw = item.phase;
+        const phase = Array.isArray(phaseRaw)
+          ? (phaseRaw as QxAiHookPhase[])
+          : (String(phaseRaw || "after_turn") as QxAiHookPhase);
+        return {
+          id: String(item.id || ""),
+          phase,
+          priority: typeof item.priority === "number" ? item.priority : undefined,
+          command: String(item.command || ""),
+        };
+      })
+      .filter((item) => item.id && item.command);
+    registerPluginQxAiHooks(plugin.id, hooks, {
+      runCommand: async (commandName) => {
+        const command = await usePluginRegistry
+          .getState()
+          .resolveCommand(plugin.id, commandName);
+        if (!command) {
+          throw new Error(`Plugin command "${commandName}" not found for ${plugin.id}`);
+        }
+        await usePluginRegistry.getState().runCommand(command, {
+          launchType: "userInitiated",
+        });
+      },
+    });
+    qxLog("info", "plugin.rpc.ai", "Plugin AI hooks registered", {
+      pluginId: plugin.id,
+      count: hooks.length,
+    });
+    return undefined;
+  },
+
+  aiHooksUnregister: async (plugin, perms) => {
+    assertPermission(plugin, perms, "ai-tools");
+    unregisterQxAiHooksByOwner(`plugin:${plugin.id}`);
     return undefined;
   },
 
