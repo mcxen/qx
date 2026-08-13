@@ -1,5 +1,23 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — Agent Usage 社区插件原生重写
+
+**状态**：已发布到社区市场 `main` 与 `v1.6.1`；Release 工作流正在运行。
+
+- 基于上游 Agent Usage 的业务意图彻底重写，不使用已冻结的 Raycast 转换器、runtime 或 UI shim。
+- 首版接入已用本机真实登录态验证成功的 Codex JSON 配额与 Grok gRPC-Web 二进制计费链路；未验证服务商不创建虚假入口。
+- 使用宿主 Workbench 的紧凑 List → Detail、搜索、标签和 Actions；Enter/Esc、主题、Actions 菜单与底栏继续由 Qx Shell 统一处理。
+- 面板即时绘制并使用去敏 SWR 快照；只读 `~/.codex/auth.json` / `~/.grok/auth.json`，不缓存或记录 token、刷新 token、原始凭据和完整响应。
+
+### 验证
+
+- [x] `qx-plugins`: `npm run smoke:agent-usage`
+- [x] Codex 与 Grok 当前真实接口成功响应（含 Grok 二进制帧）
+- [x] `npm run package:one -- --only=agent-usage` / 本地安装包复核
+- [x] 社区市场 `main` 与 `v1.6.1` 指向 `36202fe`；远端索引和归档 SHA-256 已复核
+- [ ] Release 工作流 [31698154777](https://github.com/mcxen/qx-plugins/actions/runs/31698154777) 仍在运行；遵循发布规范不轮询等待
+- [ ] Computer Use 原生管道恢复后补桌面视觉、Actions、Esc 与双主题复核
+
 ## Feature — P仔作为 RSS 右侧上下文助手
 
 **状态**：实现完成，等待桌面运行态视觉复核。
