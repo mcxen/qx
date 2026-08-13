@@ -92,6 +92,7 @@
 
 | 插件 id | panel 注册 | AGENTS.md | 主要端口 | 缓存 | 缺口 |
 |---------|------------|-----------|----------|------|------|
+| **another-boring-piece** | ✅ | ✅ | **host Workbench List + media detail + Actions**；http + system wallpaper/download + 精确文件写入 + clipboard/open-url/notifications | 6 小时 catalog SWR + 20 槽本地壁纸环 + 200 条用户历史 | 今日作品/历史收敛到单面板；自动轮换默认关闭且按 30 分钟 heartbeat 检查用户间隔；保留原作者 `yevgen_glukhov` 与贡献者署名；无 Raycast runtime/shim、自绘 shell/CSS 或无界文件缓存 |
 | **agent-usage** | ✅ | ✅ | **host Workbench List + detail + Actions**；http 二进制通道 + 精确本机登录态只读 invoke + clipboard/open-url | persist SWR（仅归一化配额，不含 token/原始响应） | 首版只发布已完成真实成功验证的 Codex JSON 与 Grok gRPC-Web 链路；本机登录态缺失/过期时显示可操作提示，不写回凭据、不模拟用量；无 Raycast runtime/shim、自绘 shell 或 CSS |
 | **pomodoro-island** | ✅ manifest + export | ✅ | **host Workbench** + background heartbeat + host countdown/activity/action island + notifications | persist state/history/deadline | **QxIsland 首个规范样板**：running=`pulse + endsAt`、paused=冻结 countdown、complete=100%；插件不能自动弹窗，用户手动浮出后可关闭，打开目标由 host 固定回插件 Panel |
 | **weather** | ✅ | ✅ | http + invoke weather* | persist SWR | 无 |

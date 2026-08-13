@@ -1,5 +1,24 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — Another Boring Piece 艺术壁纸社区插件
+
+**状态**：已发布到社区市场 `main` 与 `v1.7.0`；Release 工作流成功，商店索引与全量打包工作流正在运行。
+
+- 基于指定 commit 的 Art Wallpapers / Another boring piece. Daily. 业务意图彻底重写，不使用 Raycast runtime、UI shim 或转换器产物。
+- Manifest 保留原作者 `yevgen_glukhov`，README 与随包 `THIRD_PARTY_NOTICES.md` 保留贡献者 `alexi.build`、`0xdhrv` 及 MIT 声明。
+- 今日三幅作品与操作历史收敛到一个紧凑 Workbench；图片详情、Actions、Enter/Esc、主题和响应式布局由宿主统一处理。
+- 目录采用 6 小时 SWR 与失败保留旧缓存；设壁纸文件使用 20 个固定 JPEG 槽循环复用，历史只保留最近 200 条；自动轮换默认关闭。
+
+### 验证
+
+- [x] `qx-plugins`: `npm run smoke:another-boring-piece`
+- [x] 缓存回归：重复作品不重新下载；21 次写入仍为 20 个固定槽；HTML 错误体不作为图片
+- [x] 实际 catalog / random / artwork page / JPEG 下载接口返回成功
+- [x] `npm run package:one -- --only=another-boring-piece` / 本地安装复核
+- [x] 社区市场 `main` 与 `v1.7.0` 指向 `9f669f5`；远端索引和归档 SHA-256 已复核
+- [x] Release 工作流 [31700270737](https://github.com/mcxen/qx-plugins/actions/runs/31700270737) 成功
+- [ ] Plugin Store [31700294323](https://github.com/mcxen/qx-plugins/actions/runs/31700294323) 与 Package Plugins [31700294378](https://github.com/mcxen/qx-plugins/actions/runs/31700294378) 在单次状态快照中仍在运行；遵循发布规范不轮询等待
+
 ## Feature — Agent Usage 社区插件原生重写
 
 **状态**：已发布到社区市场 `main` 与 `v1.6.1`；Release 工作流正在运行。
