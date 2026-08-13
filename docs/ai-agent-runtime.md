@@ -142,6 +142,14 @@ state from another conversation. Active runs publish separate
 `qxai.run.<conversation-id>` Island task sessions so work remains visible after
 the user switches chats or modules.
 
+Contextual assistants (for example P仔 inside RSS) use the same session store.
+They create a background conversation with a caller-supplied system prompt, so
+opening the assistant does not steal the active QxAI chat. The system message
+contains the current content snapshot; visible turns, streaming state, queueing,
+errors, and persistence remain owned by `useG4fStore`. Closing a contextual
+projection never deletes its conversation. Content-specific writes use narrow
+domain tools (P仔 summary/draft) instead of mutating the source document.
+
 User attachments are copied into that session's `files/` directory before they
 enter chat history. The provider adapter converts supported images to
 OpenAI-compatible data URL content parts and bounded UTF-8 text files to inline

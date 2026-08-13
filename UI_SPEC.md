@@ -801,6 +801,12 @@ Clipboard：
 RSS：
 
 - 阅读器可使用三栏：Feed / Article List / Detail。
+- P仔是阅读上下文助手，不复制 RSS 的 Feed / Article / Detail 主布局。文章打开后从统一
+  `QxShellAction[]` 提供“问 P仔”；触发后在右侧 Context 内显示一张紧凑悬浮会话面板，
+  Esc 先关闭助手再退出正文。助手默认注入当前完整正文，并可通过 RSS Agent tools 查询
+  当前内容库的其它/全部文章；摘要写入 summary，翻译与改写写入可编辑 draft，不覆盖
+  不可变的 RSS 源正文。每个助手会话使用 QxAI session store，关闭面板后仍出现在 QxAI 历史中。
+  P仔不再注册独立 Launcher Panel 或 Module Search 项，设置中的模块开关只控制该助手能力。
 - 右侧 Context 是 RSS 唯一的完整 Action 面：Feed 视图按“订阅 / 内容库”分组；文章视图按
   “文章 / 刷新 / 导航”分组。文章组提供阅读、保存、已读状态、下载 HTML、在浏览器中打开与
   正文加载；同一动作不得再复制到右侧手写按钮、正文 footer 或 Bottom Bar Actions 菜单。

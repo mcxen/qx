@@ -136,6 +136,9 @@ blocking HTTP · filesystem · native APIs
 - **速率不变量**：优先使用 provider `completion_tokens` 与 `token_speed`；没有 usage 时
   才使用前端 token 估算和本次模型请求 `duration_ms`。禁止用首 token 时间的 0/1ms
   作为分母，也禁止把 prompt、工具等待或标题生成时间算进完成速率。
+- **内容助手投影**：RSS / Workbench 等内容表面只提供当前对象上下文和窄写回端口；
+  对话、队列、流式状态与历史统一依赖 QxAI session store。不得为每个内容模块复制
+  一套 Agent run 或聊天持久化，也不得让助手直接覆盖外部来源的不可变正文。
 
 ## 3. 抽象层次（从稳到变）
 

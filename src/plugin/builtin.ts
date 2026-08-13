@@ -166,11 +166,7 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
       "搭子",
     ],
     commands: [],
-    panel: {
-      title: "P仔",
-      keywords: ["p仔", "reading", "rss", "summary", "阅读", "摘要"],
-    },
-    description: "AI reading companion for RSS — summary, draft rewrite, workbench",
+    description: "Contextual AI reading assistant opened from RSS article Actions",
   },
   {
     id: "macros",

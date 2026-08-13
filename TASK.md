@@ -1,5 +1,21 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — P仔作为 RSS 右侧上下文助手
+
+**状态**：实现完成，等待桌面运行态视觉复核。
+
+- RSS 正文 Action 新增“问 P仔”，在 Context 内打开紧凑悬浮对话；Esc 优先关闭助手。
+- 新会话默认注入当前完整文章内容，并继续使用 RSS tools 查询其它/全部文章。
+- 摘要写入 P仔 summary；翻译、改写和手工修改写入 draft，不覆盖 RSS 源正文，可保存到文本工具箱。
+- 对话直接使用 QxAI 的后台 conversation、stream、queue 与磁盘持久化；可一键在 QxAI 打开续聊。
+
+### 验证
+
+- [x] `npm run check`
+- [x] `npx tsc --noEmit`
+- [x] `npm run build`
+- [ ] RSS 正文 → Action → P仔 → 摘要/翻译/草稿 → QxAI 历史桌面运行态检查。
+
 ## Feature — Workbench 增量更新与统一缓存协议
 
 **状态**：代码与自动验证完成，等待桌面交互复核。

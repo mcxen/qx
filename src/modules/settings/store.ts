@@ -352,7 +352,6 @@ export type ModuleSearchModuleId =
   | "clipboard"
   | "qx-ai"
   | "rss"
-  | "p-zai"
   | "screencap"
   | "macros"
   | "documents"
@@ -363,7 +362,6 @@ export const MODULE_SEARCH_MODULE_IDS: ModuleSearchModuleId[] = [
   "clipboard",
   "qx-ai",
   "rss",
-  "p-zai",
   "screencap",
   "macros",
   "documents",
@@ -375,7 +373,6 @@ export const MODULE_SEARCH_LABELS: Record<ModuleSearchModuleId, { title: string;
   clipboard: { title: "Clipboard", hint: "History items and open command" },
   "qx-ai": { title: "QxAI", hint: "Conversations, new chat, settings" },
   rss: { title: "RSS Reader", hint: "Feeds, folders, open reader" },
-  "p-zai": { title: "P仔", hint: "AI reading companion for RSS" },
   screencap: { title: "Screenshot & Recording Module", hint: "Screenshots, MP4/MOV recording, and optional GIF conversion" },
   macros: { title: "Macro Recorder", hint: "Saved macros" },
   documents: { title: "Text Toolbox", hint: "Disk notepad · folder files" },
@@ -610,7 +607,6 @@ export const DEFAULT_SETTINGS: Settings = {
       clipboard: true,
       "qx-ai": true,
       rss: true,
-      "p-zai": true,
       screencap: true,
       macros: true,
       documents: true,

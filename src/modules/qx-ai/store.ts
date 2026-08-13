@@ -445,7 +445,7 @@ interface G4fStore {
   createConversation: (
     provider?: string,
     model?: string,
-    options?: { background?: boolean; name?: string },
+    options?: { background?: boolean; name?: string; systemPrompt?: string },
   ) => string;
   deleteConversation: (id: string) => void;
   renameConversation: (id: string, name: string) => void;
@@ -812,12 +812,13 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
       || (background
         ? `Schedule ${new Date().toLocaleString()}`
         : `Chat ${conversations.length + 1}`);
+    const systemPrompt = options?.systemPrompt?.trim() || defaultSystemPrompt;
     const conv: G4fConversation = {
       id,
       name: displayName,
       createdAt: Date.now(),
-      messages: defaultSystemPrompt
-        ? [{ role: "system", content: defaultSystemPrompt }]
+      messages: systemPrompt
+        ? [{ role: "system", content: systemPrompt }]
         : [],
       provider: selection.provider,
       model: selection.model,

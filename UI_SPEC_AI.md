@@ -194,3 +194,11 @@ QxShell (qx-qxai-chat-shell qx-content-shell is-workbench)
 | 壳、Esc、Bottom Island、token 色板 | `UI_SPEC.md` |
 | 对话阅读 / 输入 / 队列 / 思考 / 标题 | **本文件** |
 | Agent 运行时、记忆 SQLite、会话文件夹 | `docs/ai-agent-runtime.md` |
+
+### 内容助手投影
+
+RSS 等阅读表面可以把 QxAI 会话投影为右侧极简助手，但不得复制完整 QxAI Workbench。
+入口必须来自当前对象的统一 Action；面板只保留标题、摘要/翻译/改写快捷入口、消息流、
+输入框和草稿视图。上下文作为 system message 写入新建的后台会话，用户消息与助手回复继续
+使用同一个持久会话协议，因此可从完整 QxAI Workbench 打开和续聊。关闭助手只关闭投影，
+不得删除会话。

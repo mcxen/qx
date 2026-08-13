@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
@@ -30,6 +39,9 @@ import { useArticleReadingProgress } from "./useArticleReadingProgress";
 import { useT } from "../../i18n";
 import { buildRssRefreshIsland } from "./refreshProgress";
 import { getQxDesktopPlatform } from "../../utils/keyboard";
+import { isBuiltinModuleEnabled } from "../moduleAvailability";
+
+const PzaiAssistantPanel = lazy(() => import("../p-zai/PzaiAssistantPanel"));
 
 interface V2exReply {
   id: number;
@@ -108,6 +120,7 @@ export default function ArticleList() {
   const listRef = useRef<HTMLDivElement>(null);
   const { focusList, focusDetail } = useQxMasterDetailFocus(shellRef, MD);
   const rss = useSettingsStore((s) => s.settings.rss);
+  const pzaiEnabled = useSettingsStore((s) => isBuiltinModuleEnabled("p-zai", s.settings));
   const { bottom_island_mode, image_display_mode, image_fixed_width, article_font_size, article_font_family } = rss;
 
   const [originalContent, setOriginalContent] = useState<string | null>(null);
@@ -115,6 +128,16 @@ export default function ArticleList() {
   const [loadingOriginal, setLoadingOriginal] = useState(false);
   const [v2exReplies, setV2exReplies] = useState<V2exReply[]>([]);
   const [v2exLoading, setV2exLoading] = useState(false);
+  const [pzaiOpen, setPzaiOpen] = useState(false);
+  const [pzaiConversationIds, setPzaiConversationIds] = useState<Record<number, string>>({});
+
+  const rememberPzaiConversation = useCallback((articleId: number, conversationId: string) => {
+    setPzaiConversationIds((current) => (
+      current[articleId] === conversationId
+        ? current
+        : { ...current, [articleId]: conversationId }
+    ));
+  }, []);
 
   useEffect(() => {
     setOriginalContent(null);
@@ -370,10 +393,14 @@ export default function ArticleList() {
     leave: goBack,
     esc: {
       inner: {
-        active: currentArticle !== null || lightbox !== null,
+        active: pzaiOpen || currentArticle !== null || lightbox !== null,
         close: () => {
           if (lightbox) {
             setLightbox(null);
+            return;
+          }
+          if (pzaiOpen) {
+            setPzaiOpen(false);
             return;
           }
           closeArticleToList();
@@ -428,6 +455,12 @@ export default function ArticleList() {
         disabled: !currentArticle,
         onClick: closeArticleToList,
       },
+      ...(pzaiEnabled ? [{
+        id: "ask-pzai",
+        label: t("rss.askPzai", "Ask P仔"),
+        disabled: !currentArticle,
+        onClick: () => setPzaiOpen(true),
+      }] : []),
       {
         id: "toggle-star",
         label: focusArticle?.is_starred
@@ -524,11 +557,12 @@ export default function ArticleList() {
       });
     }
     return list;
-  }, [closeArticleToList, currentArticle, focusArticle, loadingOriginal, markRead, next, openArticleForReading, originalContent, prev, refreshAll, refreshFeed, refreshingFeedId, selectedFeedId, t, toggleStar]);
+  }, [closeArticleToList, currentArticle, focusArticle, loadingOriginal, markRead, next, openArticleForReading, originalContent, prev, pzaiEnabled, refreshAll, refreshFeed, refreshingFeedId, selectedFeedId, t, toggleStar]);
 
   const primaryActionId = currentArticle ? "return-to-article-list" : "read-article";
   const articleActionIds = [
     ...(!currentArticle ? ["read-article"] : []),
+    ...(currentArticle && pzaiEnabled ? ["ask-pzai"] : []),
     "toggle-star",
     "toggle-read",
     "download-article",
@@ -542,6 +576,17 @@ export default function ArticleList() {
     && ["next-article", "previous-article"].includes(action.id));
 
   const isReading = Boolean(currentArticle);
+  const pzaiArticleContext = useMemo(() => (
+    currentArticle
+      ? {
+          id: currentArticle.id,
+          title: currentArticle.title,
+          link: currentArticle.link,
+          author: currentArticle.author,
+          content: originalContent ?? currentArticle.content ?? currentArticle.summary,
+        }
+      : null
+  ), [currentArticle, originalContent]);
 
   return (
     <QxShell
@@ -593,35 +638,53 @@ export default function ArticleList() {
         onChange: (value) => setFilter(value as typeof filter),
       }]}
       context={
-        <aside
-          className="qx-action-panel"
-          {...qxRegionProps(MD.actions, {
-            label: t("rss.articleActions", "Article actions"),
-            scroll: true,
-          })}
-        >
-          <QxActionSections
-            sections={[
-              {
-                id: "article",
-                title: t("rss.article", "Article"),
-                actions: articleActions,
-              },
-              {
-                id: "refresh",
-                title: t("rss.refresh", "Refresh"),
-                actions: feedActions,
-                showShortcuts: true,
-              },
-              {
-                id: "navigation",
-                title: t("rss.navigation", "Navigation"),
-                actions: navigationActions,
-                showShortcuts: false,
-              },
-            ]}
-          />
-        </aside>
+        pzaiOpen && currentArticle && pzaiArticleContext ? (
+          <Suspense
+            fallback={(
+              <div className="qx-pzai-assistant-loading">
+                {t("pzai.assistant.preparing", "Preparing article context…")}
+              </div>
+            )}
+          >
+            <PzaiAssistantPanel
+              key={currentArticle.id}
+              article={pzaiArticleContext}
+              conversationId={pzaiConversationIds[currentArticle.id]}
+              onConversationCreated={rememberPzaiConversation}
+              onClose={() => setPzaiOpen(false)}
+            />
+          </Suspense>
+        ) : (
+          <aside
+            className="qx-action-panel"
+            {...qxRegionProps(MD.actions, {
+              label: t("rss.articleActions", "Article actions"),
+              scroll: true,
+            })}
+          >
+            <QxActionSections
+              sections={[
+                {
+                  id: "article",
+                  title: t("rss.article", "Article"),
+                  actions: articleActions,
+                },
+                {
+                  id: "refresh",
+                  title: t("rss.refresh", "Refresh"),
+                  actions: feedActions,
+                  showShortcuts: true,
+                },
+                {
+                  id: "navigation",
+                  title: t("rss.navigation", "Navigation"),
+                  actions: navigationActions,
+                  showShortcuts: false,
+                },
+              ]}
+            />
+          </aside>
+        )
       }
       island={shell.island}
       primaryActionId={primaryActionId}

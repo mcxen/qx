@@ -40,6 +40,18 @@ const conversationTitleSource = readFileSync(
   new URL("../src/modules/qx-ai/conversation-title.ts", import.meta.url),
   "utf8",
 );
+const pzaiAssistantSource = readFileSync(
+  new URL("../src/modules/p-zai/PzaiAssistantPanel.tsx", import.meta.url),
+  "utf8",
+);
+const rssArticleSource = readFileSync(
+  new URL("../src/modules/rss/ArticleList.tsx", import.meta.url),
+  "utf8",
+);
+const builtinSource = readFileSync(
+  new URL("../src/plugin/builtin.ts", import.meta.url),
+  "utf8",
+);
 
 // Tool execution and model transport are separate switches. Models without
 // native tool schemas must retain the prompt-based ReAct path.
@@ -64,6 +76,27 @@ assert.match(errorPresentationSource, /missing-api-key/);
 assert.match(errorPresentationSource, /first === fallback/);
 assert.match(errorPresentationSource, /removeLegacySyntheticErrorMessages/);
 assert.match(errorPresentationSource, /text === message\.content\.trim\(\)/);
+
+// Context assistants project the durable QxAI session port instead of owning a
+// second chat runtime. P仔 is opened from RSS article Actions, injects the open
+// article as system context, writes edits through narrow tools, and has no
+// standalone builtin panel entry.
+assert.match(storeSource, /options\?: \{ background\?: boolean; name\?: string; systemPrompt\?: string \}/);
+assert.match(storeSource, /options\?\.systemPrompt\?\.trim\(\) \|\| defaultSystemPrompt/);
+assert.match(rssArticleSource, /id: "ask-pzai"/);
+assert.match(rssArticleSource, /<PzaiAssistantPanel/);
+assert.match(pzaiAssistantSource, /background: true/);
+assert.match(pzaiAssistantSource, /systemPrompt: buildArticleSystemPrompt\(article\)/);
+assert.match(pzaiAssistantSource, /pzai_set_summary/);
+assert.match(pzaiAssistantSource, /pzai_set_draft/);
+assert.match(pzaiAssistantSource, /messageQueue\.filter/);
+const pzaiBuiltinStart = builtinSource.indexOf('id: "p-zai"');
+const pzaiBuiltinEnd = builtinSource.indexOf("\n  },", pzaiBuiltinStart);
+const pzaiBuiltinEntry = pzaiBuiltinStart >= 0 && pzaiBuiltinEnd > pzaiBuiltinStart
+  ? builtinSource.slice(pzaiBuiltinStart, pzaiBuiltinEnd)
+  : "";
+assert.ok(pzaiBuiltinEntry, "P仔 builtin metadata must remain registered for capability gating");
+assert.doesNotMatch(pzaiBuiltinEntry, /panel:\s*\{/);
 
 // Streaming tool calls must retain the previous complete-response transport as
 // a provider compatibility fallback.
