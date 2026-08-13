@@ -21,7 +21,7 @@
 
 ## Feature — Agent Usage 社区插件原生重写
 
-**状态**：安装修复已发布到社区市场 `main` 与 `v1.7.1`：`storage.cacheTargets` 错用了旧的 `{ key, label }` 结构，导致 Rust manifest 反序列化报 `missing field id`；现已改为正式的 `id / keys / retentionDays` schema，并将最低 Qx 声明修正为真实 API 下限 `0.6.50`。
+**状态**：Agent Usage `v1.1.0` 已发布到社区市场 `main` 与 `v1.8.0`：包含服务商设置、官方设备登录/重新连接、登录进度与错误诊断闭环。
 
 - 基于上游 Agent Usage 的业务意图彻底重写，不使用已冻结的 Raycast 转换器、runtime 或 UI shim。
 - 首版接入已用本机真实登录态验证成功的 Codex JSON 配额与 Grok gRPC-Web 二进制计费链路；未验证服务商不创建虚假入口。
@@ -37,6 +37,12 @@
 - [x] 本机当前运行实例复核：`/Applications/Qx.app` 与实际进程均为 `0.6.84`；无法据此复现用户在 `0.6.86` 的失败
 - [x] 宿主端口历史复核：`maxBytes` 自 Qx `0.6.50` 可用，其余所用端口更早可用；最低版本修正为 `0.6.50`
 - [x] 安装错误原文复核：`missing field id at line 38` 对应 `storage.cacheTargets[0]`，现已加入完整 schema smoke 回归
+- [x] 设置新增 Codex/Grok 独立显示开关；登录不保存 token 到普通 Qx 偏好
+- [x] 隔离认证目录真实验证 `codex login --device-auth` 与 `grok login --device-auth` 输出；仅允许打开 OpenAI/xAI/Grok 官方域名
+- [x] 服务商 Actions 支持登录、重新连接、取消，可见显示官方 CLI 输出，成功后自动刷新用量
+- [x] 本机真实 Codex 登录态与当前解析器返回成功；Grok 当前请求失败会明确显示网络诊断而非误报未登录
+- [x] 社区市场 `main` 与 `v1.8.0` 指向 `882d39c`；远端索引、包内 manifest、归档大小及 SHA-256 已复核
+- [ ] Release [31703358926](https://github.com/mcxen/qx-plugins/actions/runs/31703358926)、Plugin Store [31703353770](https://github.com/mcxen/qx-plugins/actions/runs/31703353770) 与 Package Plugins [31703353820](https://github.com/mcxen/qx-plugins/actions/runs/31703353820) 在单次状态快照中仍在运行；遵循发布规范不轮询等待
 - [ ] Release [31701628209](https://github.com/mcxen/qx-plugins/actions/runs/31701628209)、Plugin Store [31701623178](https://github.com/mcxen/qx-plugins/actions/runs/31701623178) 与 Package Plugins [31701623052](https://github.com/mcxen/qx-plugins/actions/runs/31701623052) 在单次状态快照中仍在运行；遵循发布规范不轮询等待
 - [ ] Computer Use 原生管道恢复后补桌面视觉、Actions、Esc 与双主题复核
 

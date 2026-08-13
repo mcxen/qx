@@ -93,7 +93,7 @@
 | 插件 id | panel 注册 | AGENTS.md | 主要端口 | 缓存 | 缺口 |
 |---------|------------|-----------|----------|------|------|
 | **another-boring-piece** | ✅ | ✅ | **host Workbench List + media detail + Actions**；http + system wallpaper/download + 精确文件写入 + clipboard/open-url/notifications | 6 小时 catalog SWR + 20 槽本地壁纸环 + 200 条用户历史 | 今日作品/历史收敛到单面板；自动轮换默认关闭且按 30 分钟 heartbeat 检查用户间隔；保留原作者 `yevgen_glukhov` 与贡献者署名；无 Raycast runtime/shim、自绘 shell/CSS 或无界文件缓存 |
-| **agent-usage** | ✅ | ✅ | **host Workbench List + detail + Actions**；http 二进制通道 + 精确本机登录态只读 invoke + clipboard/open-url | persist SWR（仅归一化配额，不含 token/原始响应） | 首版只发布已完成真实成功验证的 Codex JSON 与 Grok gRPC-Web 链路；本机登录态缺失/过期时显示可操作提示，不写回凭据、不模拟用量；无 Raycast runtime/shim、自绘 shell 或 CSS |
+| **agent-usage** | ✅ | ✅ | **host Workbench List + detail + Actions**；http 二进制通道 + 精确本机登录态只读 invoke + 官方 CLI device-auth + clipboard/open-url | persist SWR（仅归一化配额，不含 token/原始响应） | 设置控制服务商可见性；登录/重新连接由官方 Codex/Grok CLI 持有凭据，面板显示进度并在成功后刷新；缺失/过期/网络/解析错误分别呈现，不写回 token、不模拟用量；无 Raycast runtime/shim、自绘 shell 或 CSS |
 | **pomodoro-island** | ✅ manifest + export | ✅ | **host Workbench** + background heartbeat + host countdown/activity/action island + notifications | persist state/history/deadline | **QxIsland 首个规范样板**：running=`pulse + endsAt`、paused=冻结 countdown、complete=100%；插件不能自动弹窗，用户手动浮出后可关闭，打开目标由 host 固定回插件 Panel |
 | **weather** | ✅ | ✅ | http + invoke weather* | persist SWR | 无 |
 | **v2ex** | ✅ | ✅ | **host Workbench** List + detail + replies + tabs/filters + actions；http + invoke v2ex* | persist SWR + host disk | 内置面板已移除；Latest/Hot 无需 token，Nodes/Notifications 需要；Enter/Esc 走宿主 |
