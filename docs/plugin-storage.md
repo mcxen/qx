@@ -111,7 +111,7 @@ Settings → System → Storage Management 只展示 manifest 登记的可重建
 未登记的 `plugin-data/` 继续作为**受保护的持久数据**保留，不进入管理列表或清理总量。
 默认情况下，“清理全部缓存”和逐模块缓存清理不会删除 preferences、persist KV 或
 files。唯一例外是插件通过 `manifest.storage.cacheTargets[]` 明确登记的
-**可重建 persist key**：宿主只统计和删除这些精确 key，其余业务状态仍受保护。
+**可重建 persist key 或 key 前缀**：宿主只统计和删除匹配项，其余业务状态仍受保护。
 需要清除整个插件数据时必须走 `plugin_data_clear` 的显式 scope 与独立确认。
 
 ### 5.1 可重建缓存声明
@@ -124,6 +124,7 @@ files。唯一例外是插件通过 `manifest.storage.cacheTargets[]` 明确登�
       "label": "Community Feed",
       "description": "Rebuildable list and detail responses.",
       "keys": ["cache.feed.v2"],
+      "keyPrefixes": ["cache.thread.v2."],
       "retentionDays": 7
     }]
   }
@@ -131,8 +132,11 @@ files。唯一例外是插件通过 `manifest.storage.cacheTargets[]` 明确登�
 ```
 
 - `id` 在插件内唯一；宿主目标 id 为 `plugin:<plugin-id>:<id>`。
-- `keys` 是精确 persist key 白名单，不接受前缀、glob 或目录。
-- 同一个 key 不能被两个 target 重复声明。
+- `keys` 是精确 persist key 白名单；`keyPrefixes` 用于逐主题评论等有界动态 key。
+  两者至少声明一个，总数不超过 64；不支持 glob 或目录。
+- target 之间的精确 key / 前缀不得重叠。宿主保留的 Workbench 缓存 key 不能登记。
+- 统计、按 target 清理和 `retentionDays` 懒淘汰使用同一套 key 解析，动态评论缓存不会
+  出现“插件能写、设置页看不见或清不掉”的分叉。
 - `retentionDays` 为 1–365 天。缓存值应使用 `{ savedAt, ... }` envelope，其中
   `savedAt` 是 Unix 毫秒；宿主在统计存储时会懒清理整个过期 key。
 - 插件仍应按业务粒度主动淘汰记录。例如已读文章可按各自 `readAt` 删除，而宿主的
@@ -178,10 +182,13 @@ context.getPreference(id)                // 单键；宿主从 preferences.json
 | `qx_storage_clear_cache_target` | 精确清除宿主目标或 `plugin:<id>:<cache-id>` |
 
 前端 Settings → 插件详情可展示 **占用** 与 **清除数据**（后续 UI）。
+上述持久化、偏好、占用统计与清理命令保持原 IPC 形状，但均在宿主 blocking pool 执行；
+调用方必须 `await` 结果，不得依赖同步磁盘完成时序。
 
 ### 6.3 并发
 
-- **按 plugin id 加锁**（不要全局一把锁堵所有插件）。  
+- **按 plugin id 加锁**（不要全局一把锁堵所有插件）。同一插件的 read-modify-write 串行，
+  不同插件可在 blocking pool 并发。
 - 写 `storage.json` / `preferences.json` 使用 **atomic_write**（先写临时文件再 rename）。
 
 ### 6.4 配额（软限制，可演进）

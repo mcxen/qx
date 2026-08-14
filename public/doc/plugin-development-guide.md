@@ -196,7 +196,8 @@ Manifest 只声明包元数据、入口、命令、面板、权限与兼容范�
 `agent.usage` 约定插件把无凭据的归一化快照写入 `agent-usage.snapshot.v1`；Home 只读该缓存，
 不启动插件 runtime，也不代替插件执行登录或网络刷新。
 当前可用的 Home 信息源包括 `rss.unread-latest`：Qx 统一读取 RSS 未读快照、先画缓存、
-节流刷新并绘制最新帖子；插件只声明稳定 id、双语标题/说明和 `surfaces: ["home"]`，不提交
+按主窗口可见性节流刷新并绘制最新帖子；定时、数据完成事件和窗口激活统一 single-flight
+合并，慢请求最多保留一次尾随刷新，失败保留最近可用快照。插件只声明稳定 id、双语标题/说明和 `surfaces: ["home"]`，不提交
 数据请求、DOM、CSS、轮询周期或尺寸。展示 Home/Tray Provider 不会启动完整插件运行时；
 点击后才按需进入 RSS 模块或插件 Panel。新增信息能力必须先在宿主注册原子适配器，再加入
 Manifest 校验，禁止用一个泛化 JSON 卡片端口绕过这个边界。
@@ -249,6 +250,11 @@ Base64/Data URL 缓存应使用 `context.state.createLru({ maxEntries, maxSize, 
 应使用有上限的并发队列，完成后按源顺序合并，避免逐张回画、无界 fan-out 或后一次
 异步结果覆盖整组图片。
 
+评论缓存采用 stale-while-revalidate：命中缓存后立即回画评论，刷新期间旧评论保持可读，
+活动态只进入 `island`；TTL 到期必须真正更新当前 Workbench 快照，不能只在后台覆写磁盘。
+逐主题动态 persist key 通过 `storage.cacheTargets[].keyPrefixes` 登记，确保设置页统计、
+过期淘汰和清理使用同一范围。
+
 社区列表可在选中项加载完成后，低优先级串行预取相邻 1–3 条正文和评论并写入内容缓存；
 不得把预取条目标记为已读，也不要预取整页原图。用户改变选择、tab 或销毁 panel 后，
 旧预取队列必须停止继续扩展。
@@ -258,6 +264,31 @@ Base64/Data URL 缓存应使用 `context.state.createLru({ maxEntries, maxSize, 
 它只属于宿主模块端口。
 
 ## 6. Workbench 与动作
+
+社区回复统一发布为 `detail.replies.items[]` 纯数据树，插件不得自行绘制 Reddit/Tieba
+评论 DOM：
+
+```js
+{
+  id: "reply-42",
+  floor: "12.2",
+  author: "bob",
+  body: "@alice ...",
+  parentId: "reply-12",     // 可选：同一 items[] 内稳定父回复 id
+  depth: 2,                 // 可选：父项分页缺失时的 0–8 层提示
+  replyToAuthor: "alice",  // 可选：宿主本地化显示“回复 alice”
+}
+```
+
+`author` 与 `replyToAuthor` 应发布去除首尾空白后的真实显示名；只有 `@`、空字符串或
+全空白回复对象必须省略 `replyToAuthor`。宿主会在 Workbench 信任边界再次归一化，
+不会渲染“回复〔空白〕”。
+
+宿主按 `parentId` 保持同级源顺序并生成父项优先的树，统一负责缩进、分支线、折叠和
+无障碍按钮；有效 `parentId` 的派生层级优先于 `depth`。缺失父项、自引用或循环关系必须
+安全降级为根回复，视觉深度最多 8 层。分页接口可保留 `parentId + depth`，但不得伪造
+未加载的父回复。回复树是 Workbench 公共接口，QxTieba、V2EX、Hacker News 等消费者
+只能适配源数据，不得复制宿主树算法或 CSS。
 
 动作对象必须有稳定、非翻译的 `id`。最多一个动作标记 `primary: true`：
 

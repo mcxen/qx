@@ -49,6 +49,9 @@ interface V2exReply {
   author: string;
   created: number;
   floor: number;
+  parent_id?: number;
+  depth?: number;
+  reply_to_author?: string;
 }
 function formatTime(publishedAt: number): string {
   if (!publishedAt) return "";
@@ -855,6 +858,9 @@ export default function ArticleList() {
                         id: String(reply.id),
                         floor: reply.floor,
                         author: reply.author,
+                        parentId: reply.parent_id == null ? undefined : String(reply.parent_id),
+                        depth: reply.depth,
+                        replyToAuthor: reply.reply_to_author,
                         createdAt: formatTime(reply.created),
                         originalPoster: Boolean(
                           currentArticle.author

@@ -59,7 +59,7 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 
 ## v2ex
 
-`v2ex_fetch_topics(mode)`、`v2ex_search_topics(query)`、`v2ex_fetch_node_topics(node)`（需 token）、`v2ex_fetch_topic_replies(topic_id)`、`v2ex_fetch_token_info()`、`v2ex_fetch_notifications()`。
+`v2ex_fetch_topics(mode)`、`v2ex_search_topics(query)`、`v2ex_fetch_node_topics(node)`（需 token）、`v2ex_fetch_topic_replies(topic_id)`、`v2ex_fetch_token_info()`、`v2ex_fetch_notifications()`。回复模型除稳定 `id / floor / author / content / created` 外，还返回 `parent_id? / depth / reply_to_author?`：宿主只把开头 `@member` 关联到该成员最近的前序回复，因此关系确定、无环且最多 8 层；无法匹配时保留为根回复并保留 reply target。
 
 ## weather
 
@@ -150,7 +150,7 @@ bucket 报告，`qx_storage_clear_qxai_sessions` 仅在用户显式确认后清�
 
 ## marketplace
 
-`fetch_plugin_index(source_id?, force_refresh?)`（合并 `settings.plugin_registries` 中所有已启用库的 `index.json`；条目带 `source_id` / `source_name` / `source_index_url` 归属；返回 `sources[]` 各库状态；默认优先使用 15 分钟本地索引缓存，`force_refresh` 跳过缓存并更新缓存）、`marketplace_update_compatible_plugins()`（后台刷新市场，按当前 Qx 版本/平台选择每个已安装插件的最高兼容版本，校验大小、SHA256、包 id 与版本后逐个安装；返回成功、跳过和失败明细，单个失败不阻塞其他插件）、`download_plugin(url)`、`install_plugin(path)`、`install_plugin_from_url(url)`、`install_raycast_extension_from_url(url)`、`uninstall_plugin(id)`、`list_installed_plugins()`（在阻塞线程枚举安装目录，避免占用 Tauri 命令/UI 调度线程）、`read_plugin_entry(id)`、`read_plugin_modules(id)`（返回受文件数与总字节上限保护的包内 ESM 图）、`set_plugin_enabled(id, enabled)`、`plugin_storage_get/set/delete(id, key, value?)`、`plugin_preferences_get/set(id, values?)`、`sign_plugin(dir, private_key_hex)`、`scaffold_plugin(name, output_dir)`。
+`fetch_plugin_index(source_id?, force_refresh?)`（合并 `settings.plugin_registries` 中所有已启用库的 `index.json`；条目带 `source_id` / `source_name` / `source_index_url` 归属；返回 `sources[]` 各库状态；默认优先使用 15 分钟本地索引缓存，`force_refresh` 跳过缓存并更新缓存）、`marketplace_update_compatible_plugins()`（后台刷新市场，按当前 Qx 版本/平台选择每个已安装插件的最高兼容版本，校验大小、SHA256、包 id 与版本后逐个安装；返回成功、跳过和失败明细，单个失败不阻塞其他插件）、`download_plugin(url)`、`install_plugin(path)`、`install_plugin_from_url(url)`、`install_raycast_extension_from_url(url)`、`uninstall_plugin(id)`、`list_installed_plugins()`（在阻塞线程枚举安装目录，避免占用 Tauri 命令/UI 调度线程）、`read_plugin_entry(id)`、`read_plugin_modules(id)`（返回受文件数与总字节上限保护的包内 ESM 图）、`set_plugin_enabled(id, enabled)`、`plugin_storage_get/set/delete/list/clear`、`plugin_preferences_get/set`、`plugin_data_usage/clear`（以上磁盘端口保持既有 IPC 形状，在 blocking pool 执行；同一 plugin id 的 persist 写入串行、不同插件可并发）、`sign_plugin(dir, private_key_hex)`、`scaffold_plugin(name, output_dir)`。
 
 ## settings
 

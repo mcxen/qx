@@ -1,6 +1,9 @@
 .qx-home-dashboard {
   container-name: qx-home-dashboard;
   container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   min-width: 0;
   height: 100%;
   overflow: auto;
@@ -8,18 +11,47 @@
   padding: 12px;
 }
 
+.qx-home-dashboard-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  padding-inline: 2px;
+}
+
+.qx-home-dashboard-title {
+  color: var(--qx-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.qx-launcher-home-edit-trigger {
+  gap: 6px;
+  height: 28px;
+  padding-inline: 9px;
+}
+
 .qx-home-dashboard-grid {
+  flex: 1;
   display: grid;
   grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   gap: 10px;
-  min-height: 100%;
+  min-height: 0;
 }
 
 .qx-home-primary {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 10px;
   min-height: 0;
+}
+
+.qx-home-primary.has-pinned {
+  grid-template-columns: minmax(0, 2fr) minmax(220px, 1fr);
+}
+
+.qx-home-primary:not(.has-pinned) .qx-home-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .qx-home-widget {
@@ -128,12 +160,6 @@ button.qx-home-widget:focus-visible,
   display: inline-flex;
   align-items: center;
   gap: 4px;
-}
-
-.qx-home-widget-header .qx-launcher-home-menu-trigger {
-  width: 26px;
-  height: 26px;
-  margin: 0;
 }
 
 .qx-home-widget-heading {
@@ -457,6 +483,15 @@ button.qx-home-widget:focus-visible,
 
   .qx-home-metrics {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .qx-launcher-home-edit-trigger span {
+    display: none;
+  }
+
+  .qx-launcher-home-edit-trigger {
+    width: 28px;
+    padding-inline: 0;
   }
 }
 

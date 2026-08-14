@@ -560,6 +560,8 @@ zip -r ~/Desktop/my-plugin.qx-plugin manifest.json index.js icon.png README.md
 
 - 每个缓存目标有稳定的 target id 和展示文案
 
+- 固定缓存使用 `keys`，逐帖子评论等动态缓存使用受限 `keyPrefixes`
+
 - 可设置 `retentionDays` 自动过期
 
 - 插件内部负责细粒度淘汰（如按 `readAt` 时间）

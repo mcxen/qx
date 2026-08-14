@@ -121,6 +121,8 @@ class HomeIslandDataBus {
       ?? (Object.keys(this.interest) as IslandDataChannel[]).filter((ch) => this.interest[ch] > 0);
     if (list.length === 0) return;
     this.reconcilePollers();
+    const hidden = typeof document !== "undefined" && document.hidden;
+    if (hidden || !isMainWindowAvailable()) return;
     for (const ch of list) {
       void this.sample(ch, { force: true });
     }
@@ -298,8 +300,9 @@ class HomeIslandDataBus {
     }
     if (this.inFlight[channel] && !opts?.force) return;
     if (this.interest[channel] <= 0) return;
-    // Still allow forced kick even if briefly hidden during space switch.
+    // Forced samples only originate after kick() passes its visibility gate.
     if (!opts?.force && typeof document !== "undefined" && document.hidden) return;
+    if (!opts?.force && !isMainWindowAvailable()) return;
     if (this.inFlight[channel]) return;
 
     this.inFlight[channel] = true;

@@ -38,8 +38,8 @@
 | 跨会话缓存 | localStorage / Rust 磁盘缓存 | **`context.storage.persist`** | SWR：先画缓存再刷新 |
 | 进程内缓存 | React state / ref | **`context.storage.session`** | — |
 | 状态生命周期原语 | feature helper / store | **`context.state`**：`createLatestWriter`、`createReadLedger`、`createLru`、`createGenerationGate` | 纯进程内 SDK，无权限/RPC；社区插件统一已读保留、最新快照串行落盘、媒体内存预算与过期请求防护 |
-| 宿主缓存统计 / 清理 | **`storage` 注册表 + `StorageSettings`** | `manifest.storage.cacheTargets[]` 精确登记可重建 persist keys；未登记插件数据仍受保护 | Settings → System → Storage Management 只消费 `cache_targets`；`qx_storage_overview` 与 `qx_storage_clear_cache_target` 共用目标；插件目标为 `plugin:<id>:<cache-id>`，只清 key 白名单 |
-| Launcher Home / Tray 轻量数据 | **`src/plugin/surfaceProviders.ts` + Rust 领域服务** | `manifest.homeWidgets[]` 关联 Home Panel；`manifest.surfaceProviders[]` 关联 Tray/Home；当前 Home 信息源含 `rss.unread-latest` 与 `agent.usage` | 宿主绘制、采样、版本化本地缓存、排序和节流；Provider 插件可 manifest-only 懒加载，不提供 DOM/CSS/私有轮询；RSS 快照由 `rss_dashboard_snapshot` 原子返回；Agent Usage 只读取插件已归一化、无凭据的 persist 快照，Dashboard 不加载插件 runtime 或直接读取登录态 |
+| 宿主缓存统计 / 清理 | **`storage` 注册表 + `StorageSettings`** | `manifest.storage.cacheTargets[]` 以 `keys` / `keyPrefixes` 登记可重建 persist keys；未登记插件数据仍受保护 | Settings → System → Storage Management 只消费 `cache_targets`；`qx_storage_overview` 与 `qx_storage_clear_cache_target` 共用解析器；插件目标为 `plugin:<id>:<cache-id>`，只清白名单匹配项 |
+| Launcher Home / Tray 轻量数据 | **`src/plugin/surfaceProviders.ts` + `home-dashboard/useDashboardRefresh.ts` + Rust 领域服务** | `manifest.homeWidgets[]` 关联 Home Panel；`manifest.surfaceProviders[]` 关联 Tray/Home；当前 Home 信息源含 `rss.unread-latest` 与 `agent.usage` | 宿主绘制、版本化缓存并统一调度：隐藏暂停、激活补采样、single-flight + 单次尾随刷新，失败保留最近快照；Provider 插件可 manifest-only 懒加载，不提供 DOM/CSS/私有轮询；RSS 快照由 `rss_dashboard_snapshot` 原子返回；Agent Usage 只经异步 blocking 存储端口读取插件已归一化、无凭据的 persist 快照，Dashboard 不加载插件 runtime 或直接读取登录态 |
 | 灵动岛 | `island` prop / **`islandHost`** | **`context.island`** | 权限 `island`；真实进度可声明宿主受控 `progressStyle`（默认 `surface-fill`，另有 `icon-ring/island-ring/compact-line`），禁止插件注入视觉代码；`QxShell.islandKey` 必须稳定并由 Shell 绑定内置模块 `openTarget`；插件目标由 bridge 绑定；store 单写、DockSlot 单渲染；前台非粘性 location 高于后台粘性轮播；桌面浮窗只由用户从 Qx 手动浮出并可关闭 |
 | 主题 / 语义 token | `ThemeProvider` + `base.css` | Workbench 由 host 渲染；Custom Panel 由 `pluginTheme` 注入 | 同步 resolved Light/Dark、`.dark`、公开 shadcn/Qx token；插件 UI 规范见 `public/doc/plugin-ui-guidelines.md` |
 | 语言 / 本地化 | `useLocale` / `useT` | **`context.locale.current` / `preference` / `onChange`** | 无权限；值是 Qx 生效语言而非浏览器语言。插件用 `current` 匹配文案与 `Intl`，不得读取 `navigator.language` 推测 Qx 设置 |
@@ -49,6 +49,11 @@
 | 打开外链 | `@tauri-apps/plugin-opener` | **`context.openUrl`** | `open-url` |
 | OCR 识别 / 历史 | `src/system/ocr.ts` + 设置历史 | **`context.ocr.*`**（`recognizePath` / `recognizeClipboardImage` / `listHistory` / …） | 权限 `ocr`；宿主 Settings → OCR 启用；支持 `no-view`+`interval` 后台定时 |
 | 打开宿主 Settings（带回程） | **`openSettings` / `closeSettings`**（`modules/settings/openSettings.ts`） | 插件 panel：`qx:plugin:open-preferences` → 同端口 | 禁止 `setTab("settings")` + 手写 sessionStorage；Esc leave 回调用方模块/插件 |
+
+回复树同样属于 Workbench 宿主端口：`detail.replies.items[]` 用稳定
+`parentId / depth / replyToAuthor` 发布关系，`QxReplyList` 统一负责父项优先排序、最多
+8 层缩进、分支折叠和无效关系降级。QxTieba、V2EX、Hacker News 等消费者只转换源
+数据，不维护自有评论树 DOM、折叠状态或 CSS。
 
 **原则（与 architecture-principles 一致）**：缺口修**端口一次**，不要在每个模块/插件里 fork 一套 Esc 或缓存。
 

@@ -2153,12 +2153,19 @@
 }
 
 .qx-reply-item {
+  --qx-reply-depth: 0;
   padding: 10px 0;
   border-top: 1px solid var(--qx-border-1);
+  margin-inline-start: calc(var(--qx-reply-depth) * 16px);
 }
 
 .qx-reply-item:first-of-type {
   border-top: none;
+}
+
+.qx-reply-item.is-nested {
+  padding-inline-start: 10px;
+  border-inline-start: 2px solid var(--qx-border-1);
 }
 
 .qx-reply-meta {
@@ -2179,6 +2186,37 @@
 .qx-reply-author {
   color: var(--qx-text-primary);
   font-weight: 600;
+}
+
+.qx-reply-target {
+  color: var(--qx-text-tertiary);
+}
+
+.qx-reply-thread-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 24px;
+  height: 20px;
+  padding: 0 3px;
+  border: 0;
+  border-radius: var(--qx-control-radius);
+  background: transparent;
+  color: var(--qx-text-tertiary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.qx-reply-thread-toggle:hover,
+.qx-reply-thread-toggle:focus-visible {
+  background: var(--qx-bg-component-2);
+  color: var(--qx-text-primary);
+}
+
+@media (max-width: 620px) {
+  .qx-reply-item {
+    margin-inline-start: calc(var(--qx-reply-depth) * 10px);
+  }
 }
 
 .qx-reply-likes {

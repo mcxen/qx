@@ -36,6 +36,15 @@ export interface PluginWorkbenchReply {
   floor: string | number;
   author: string;
   body: string;
+  /** Stable id of the loaded parent reply. The host derives tree order and depth. */
+  parentId?: string;
+  /**
+   * Optional source depth hint (root = 0). Used when a paged response does not
+   * include the parent; a valid parentId always wins.
+   */
+  depth?: number;
+  /** Optional display label for @/quoted replies. */
+  replyToAuthor?: string;
   /**
    * Optional ordered inline content. The plain body remains the accessible and
    * backwards-compatible fallback when an asset cannot be resolved.
@@ -539,6 +548,11 @@ function normalizeDetail(
           floor,
           author: shortText(reply.author, 160) || "",
           body: legacyLikeSuffix ? rawBody.slice(0, -legacyLikeSuffix.length) : rawBody,
+          parentId: shortText(reply.parentId, 256),
+          depth: Number.isFinite(Number(reply.depth))
+            ? Math.min(8, Math.max(0, Math.round(Number(reply.depth))))
+            : undefined,
+          replyToAuthor: shortText(reply.replyToAuthor, 160)?.trim() || undefined,
           content: normalizeReplyContent(reply.content, budget),
           likeCount,
           createdAt: shortText(reply.createdAt, 160),

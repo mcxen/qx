@@ -23,6 +23,7 @@ import type { AppEntry, SearchHistoryEntry } from "../store";
 import { homeDashboardWidgetOptions, homeWidgetProvider, sanitizeHomeDashboardWidgets } from "./catalog";
 import { readCachedRssDashboardSnapshot, writeCachedRssDashboardSnapshot } from "./cache";
 import LauncherHomePopover from "../launcher/LauncherHomePopover";
+import { useDashboardRefresh } from "./useDashboardRefresh";
 
 function clampPercent(value: number | null | undefined): number {
   return Math.min(100, Math.max(0, Number(value) || 0));
@@ -267,6 +268,10 @@ export default function HomeDashboard({
     () => sanitizeHomeDashboardWidgets(settings.appearance.home_dashboard_widgets, homeProviderWidgetIds),
     [homeProviderWidgetIds, settings.appearance.home_dashboard_widgets],
   );
+  const widgetOptions = useMemo(
+    () => homeDashboardWidgetOptions(t, plugins, locale),
+    [locale, plugins, t],
+  );
   const channels = useMemo(() => [
     ...(enabled.some((id) => id === "system.cpu" || id === "system.memory") ? ["stats" as const] : []),
     ...(enabled.includes("system.power") ? ["power" as const] : []),
@@ -286,25 +291,23 @@ export default function HomeDashboard({
   );
   const rssEnabled = rssWidgetIds.length > 0;
   const [rssSnapshot, setRssSnapshot] = useState<RssDashboardSnapshot | null>(() => readCachedRssDashboardSnapshot());
+  const rssRefresh = useDashboardRefresh({
+    id: "rss",
+    enabled: rssEnabled,
+    intervalMs: 60_000,
+    load: readRssDashboardProvider,
+    onSuccess: (snapshot) => {
+      setRssSnapshot(snapshot);
+      writeCachedRssDashboardSnapshot(snapshot);
+    },
+  });
   useEffect(() => {
     if (!rssEnabled) return;
     let cancelled = false;
-    const refresh = async () => {
-      try {
-        const snapshot = await readRssDashboardProvider();
-        if (cancelled) return;
-        setRssSnapshot(snapshot);
-        writeCachedRssDashboardSnapshot(snapshot);
-      } catch {
-        // Keep the last usable snapshot visible when RSS is unavailable.
-      }
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 60_000);
     let removeRefreshListener: (() => void) | undefined;
     if ("__TAURI_INTERNALS__" in window) {
       void listen<{ phase?: string }>("rss:refresh-progress", (event) => {
-        if (event.payload.phase === "finished") void refresh();
+        if (event.payload.phase === "finished") rssRefresh.refresh();
       }).then((unlisten) => {
         if (cancelled) unlisten();
         else removeRefreshListener = unlisten;
@@ -312,10 +315,9 @@ export default function HomeDashboard({
     }
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
       removeRefreshListener?.();
     };
-  }, [rssEnabled]);
+  }, [rssEnabled, rssRefresh.refresh]);
   const selectedAgentUsageProviders = useMemo(
     () => homeProviders.filter((provider) => (
       provider.declaration.source === "agent.usage"
@@ -327,38 +329,25 @@ export default function HomeDashboard({
   const [agentUsageSnapshots, setAgentUsageSnapshots] = useState<
     Record<string, AgentUsageDashboardSnapshot | null>
   >({});
-  useEffect(() => {
-    if (selectedAgentUsageProviders.length === 0) return;
-    let cancelled = false;
-    const refresh = async () => {
-      const snapshots = await Promise.all(selectedAgentUsageProviders.map(async (provider) => {
-        try {
-          return [provider.key, await readAgentUsageDashboardProvider(provider.pluginId)] as const;
-        } catch {
-          return [provider.key, null] as const;
-        }
-      }));
-      if (!cancelled) {
-        setAgentUsageSnapshots((current) => ({ ...current, ...Object.fromEntries(snapshots) }));
-      }
-    };
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 60_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [agentUsageProviderKey]);
-  useEffect(() => {
-    if (!enabled.includes("system.display-brightness")) return;
-    let cancelled = false;
-    const refresh = () => void readDisplayBrightnessProvider()
-      .then((items) => { if (!cancelled) setDisplayBrightness(items); })
-      .catch(() => {});
-    refresh();
-    const timer = window.setInterval(refresh, 2000);
-    return () => { cancelled = true; window.clearInterval(timer); };
-  }, [enabled.includes("system.display-brightness")]);
+  useDashboardRefresh({
+    id: "agent-usage",
+    enabled: selectedAgentUsageProviders.length > 0,
+    intervalMs: 60_000,
+    refreshKey: agentUsageProviderKey,
+    load: () => Promise.all(selectedAgentUsageProviders.map(async (provider) => (
+      [provider.key, await readAgentUsageDashboardProvider(provider.pluginId)] as const
+    ))),
+    onSuccess: (snapshots) => {
+      setAgentUsageSnapshots((current) => ({ ...current, ...Object.fromEntries(snapshots) }));
+    },
+  });
+  useDashboardRefresh({
+    id: "display-brightness",
+    enabled: enabled.includes("system.display-brightness"),
+    intervalMs: 2_000,
+    load: readDisplayBrightnessProvider,
+    onSuccess: setDisplayBrightness,
+  });
   const pinned = items.filter((item) => isEntryPinned(settings, metadataKeyForEntry(item))).slice(0, 12);
   const number = useMemo(() => new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }), [locale]);
   const rate = (bytes: number) => {
@@ -388,11 +377,30 @@ export default function HomeDashboard({
       ? `plugin:${provider.pluginId}`
       : "rss");
   };
+  const toggleWidget = (id: typeof enabled[number], enabledNext: boolean) => {
+    const widgets = enabledNext
+      ? [...enabled, id]
+      : enabled.filter((value) => value !== id);
+    if (widgets.length === 0) return;
+    patch("appearance", {
+      ...settings.appearance,
+      home_dashboard_widgets: widgets,
+    });
+  };
 
   return (
     <div className="qx-home-dashboard" data-qx-region="launcher-home" data-qx-region-initial="true">
+      <header className="qx-home-dashboard-toolbar">
+        <span className="qx-home-dashboard-title">{t("launcher.home.title", "Home")}</span>
+        <LauncherHomePopover
+          entries={items}
+          homeWidgets={enabled}
+          widgetOptions={widgetOptions}
+          onToggleWidget={toggleWidget}
+        />
+      </header>
       <div className="qx-home-dashboard-grid">
-        <div className="qx-home-primary">
+        <div className={`qx-home-primary${enabled.includes("launcher.pinned") ? " has-pinned" : ""}`}>
           {enabled.includes("launcher.pinned") && (
             <section className="qx-home-widget qx-home-pinned" data-widget-id="launcher.pinned">
               <header className="qx-home-widget-header">
@@ -402,21 +410,6 @@ export default function HomeDashboard({
                 </span>
                 <span className="qx-home-widget-header-actions">
                   <span className="qx-home-widget-count">{pinned.length}</span>
-                  <LauncherHomePopover
-                    entries={items}
-                    homeWidgets={enabled}
-                    widgetOptions={homeDashboardWidgetOptions(t, plugins, locale)}
-                    onToggleWidget={(id, enabledNext) => {
-                      const widgets = enabledNext
-                        ? [...enabled, id]
-                        : enabled.filter((value) => value !== id);
-                      if (widgets.length === 0) return;
-                      patch("appearance", {
-                        ...settings.appearance,
-                        home_dashboard_widgets: widgets,
-                      });
-                    }}
-                  />
                 </span>
               </header>
               {pinned.length > 0 ? (
@@ -444,7 +437,7 @@ export default function HomeDashboard({
               ) : (
                 <div className="qx-home-widget-empty">
                   <span>{t("launcher.home.pinned.empty", "No pinned entries")}</span>
-                  <small>{t("launcher.home.pinned.hint", "Use the three-dot menu to add apps or modules.")}</small>
+                  <small>{t("launcher.home.pinned.hint", "Use Edit Home to add apps or modules.")}</small>
                 </div>
               )}
             </section>

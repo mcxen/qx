@@ -86,6 +86,39 @@ if (pluginApi) {
     fail("plugin_api.rs: HttpResponse must expose body_base64 for binary plugin fetch (port, not per-plugin curl forks)");
   }
 }
+
+// Plugin persistence is an IPC port: keep filesystem work off async runtime
+// threads and preserve its public command names while implementations evolve.
+const marketplaceSource = read("src-tauri/src/marketplace/mod.rs");
+for (const command of [
+  "plugin_storage_get",
+  "plugin_storage_set",
+  "plugin_storage_delete",
+  "plugin_storage_list",
+  "plugin_storage_clear",
+  "plugin_data_usage",
+  "plugin_data_clear",
+  "plugin_preferences_get",
+  "plugin_preferences_set",
+]) {
+  const start = marketplaceSource.indexOf(`pub async fn ${command}`);
+  if (start < 0) {
+    fail(`marketplace persistence command must remain async: ${command}`);
+    continue;
+  }
+  const nextCommand = marketplaceSource.indexOf("#[command]", start + 1);
+  const implementation = marketplaceSource.slice(
+    start,
+    nextCommand < 0 ? marketplaceSource.length : nextCommand,
+  );
+  if (!implementation.includes("crate::runtime::blocking")) {
+    fail(`marketplace persistence command must use runtime::blocking: ${command}`);
+  }
+}
+if (!marketplaceSource.includes("PLUGIN_STORAGE_LOCKS")
+    || !marketplaceSource.includes("plugin_storage_lock(&id)")) {
+  fail("plugin persistence mutations must serialize per plugin instead of through one global lock");
+}
 const runtimeHtml = exists("src/plugin/pluginRuntimeHtml.ts")
   ? read("src/plugin/pluginRuntimeHtml.ts")
   : exists("src/plugin/runtime.ts")

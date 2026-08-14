@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import { Check, MoreHorizontal, Pin, Search } from "lucide-react";
+import { Check, Pin, Search, SlidersHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import {
   Button,
@@ -133,13 +133,14 @@ export default function LauncherHomePopover({
       <PopoverTrigger asChild>
         <Button
           type="button"
-          size="icon"
-          variant="ghost"
-          className="qx-launcher-home-menu-trigger"
+          size="sm"
+          variant="secondary"
+          className="qx-launcher-home-edit-trigger"
           aria-label={t("launcher.home.configure", "Configure home")}
           title={t("launcher.home.configure", "Configure home")}
         >
-          <MoreHorizontal size={16} strokeWidth={2.2} />
+          <SlidersHorizontal size={14} strokeWidth={2.1} aria-hidden="true" />
+          <span>{t("launcher.home.edit", "Edit Home")}</span>
         </Button>
       </PopoverTrigger>
       <PopoverContent

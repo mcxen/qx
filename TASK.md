@@ -1,5 +1,77 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Fix — 空白 @回复对象
+
+**状态**：代码与自动验证完成，等待桌面运行态复核。
+
+- V2EX 仅把至少含一个字母或数字的前导 `@用户` 识别为回复对象；只有 `@`、空白、
+  `_` / `-` 占位符均保持普通正文，不生成父级或空白回复标签。
+- Workbench 统一去除 `replyToAuthor` 首尾空白并丢弃空值，`QxReplyList` 渲染层保留同一兜底。
+
+### 验证
+
+- [x] `npm run check` / `npx tsc --noEmit`
+- [x] `cargo fmt --check` / V2EX 空白 mention 定向测试
+- [ ] 桌面态：`@`、`@   ` 与空白旧缓存不显示“回复〔空白〕”，正常 `@alice` 仍正确嵌套。
+
+## Fix — 评论缓存一致性与灵动岛加载
+
+**状态**：代码与自动验证完成，等待桌面运行态复核。
+
+- V2EX / Hacker News 评论缓存按 TTL 重验；命中缓存立即回画，过期刷新会更新当前 Workbench，失败保留旧评论。
+- 评论的 indeterminate loading 只进入 Bottom Island，详情评论区不再重复渲染 loading 行。
+- 插件缓存声明新增受限 `keyPrefixes`，动态逐主题评论 key 与固定 key 共用统计、过期和清理解析器。
+
+### 验证
+
+- [x] `npm run check` / `npx tsc --noEmit` / `npm run build`
+- [x] `cargo fmt --check` / `cargo check` / 插件缓存 target 定向测试
+- [x] `qx-plugins`: V2EX / Hacker News smoke、单包打包与归档复核
+- [ ] 桌面态：缓存评论立即出现、刷新只在灵动岛动画、离线失败不清空旧评论、设置页可统计并清理动态评论缓存。
+
+## Feature — Workbench 统一回复树
+
+**状态**：代码与自动验证完成，等待桌面运行态复核。
+
+- `detail.replies.items[]` 新增稳定 `parentId / depth / replyToAuthor` 端口；宿主统一树排序、最多 8 层缩进、分支折叠与异常关系降级。
+- QxTieba 将楼中楼从父楼正文拆为真实子回复；V2EX 在 Rust 领域服务中把开头 `@member` 关联到该用户最近的前序回复，插件和 RSS 共用结果。
+- 插件只发布纯数据，不维护评论 DOM、树算法或 CSS；Workbench 继续统一负责详情、键盘、Actions 与缓存。
+
+### 验证
+
+- [x] `npm run check` / `npx tsc --noEmit` / `npm run build`
+- [x] `cargo fmt --check` / `cargo check` / V2EX 回复关系定向测试
+- [x] `qx-plugins`: QxTieba / V2EX / Hacker News smoke、构建、单包打包与归档复核
+- [ ] 桌面态：QxTieba 楼中楼与 V2EX @回复呈梯级显示，折叠/展开不改变详情滚动与选择。
+
+## Fix — Home Dashboard 设置入口与指标布局
+
+**状态**：代码完成，等待桌面运行态视觉复核。
+
+- “编辑主页”提升为 Dashboard 顶部常驻入口，不再依附于可关闭的置顶卡；即使没有置顶项或隐藏置顶组件，仍可添加入口和开关主页卡片。
+- 置顶卡关闭后，CPU、内存、电量、网络等指标从右侧窄列自动铺为双列；窄窗口继续降为单列。
+- 空置顶卡提示改为指向稳定的“编辑主页”入口。
+
+### 验证
+
+- [x] `npm run check` / `npx tsc --noEmit` / `npm run build`
+- [ ] 480×360、680×500、980×576 下检查空置顶、隐藏置顶卡、指标双列/单列和 Popover。
+
+## Fix — Home Dashboard 高效刷新与 Provider 端口
+
+**状态**：代码与自动验证完成，等待桌面运行态复核。
+
+- RSS、Agent Usage 与显示器亮度统一接入窗口可见性刷新端口：隐藏暂停、激活补采样，定时/事件/激活触发 single-flight 合并并最多保留一次尾随刷新。
+- 插件 persist、preferences 与 data 管理命令保持既有 IPC 形状，磁盘和 JSON 工作统一进入 blocking pool；persist 锁按 plugin id 隔离。
+- Agent Usage 1.2.0 补齐 `agent.usage` Home Surface Provider，只向主页提供无凭据归一化快照，不启动插件 runtime 或后台网络请求。
+
+### 验证
+
+- [x] `npm run check` / `npx tsc --noEmit` / `npm run build`
+- [x] `cargo fmt --check` / `cargo check` / marketplace 与 RSS 定向测试
+- [x] `qx-plugins`: Agent Usage smoke、单包打包与 Manifest/归档复核
+- [ ] 桌面态：隐藏主窗口后无 Dashboard 轮询，重新召唤立即刷新；慢亮度读取不并发堆积。
+
 ## Feature — Agent Usage 主页 Dashboard
 
 **状态**：代码与自动验证完成，等待桌面运行态复核。

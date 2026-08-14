@@ -116,6 +116,9 @@ pub async fn feature_do_thing(app: AppHandle, input: In) -> Result<Out, String> 
 2. **blocking 里禁止**：`WebviewWindow::show/hide`、`ns_window`、剪贴板写图、`set_focus`。
 3. **已在主线程**（快捷键回调）：`run_ui` / `ui` 直接 inline，不二次排队。
 4. **模块边界**：surface 的 `*_now`（如 `show_floating_now`）只给「已在 UI 事务内」调用；对外仍走会 hop 的包装。
+5. **插件持久化**：`plugin_storage_*`、`plugin_preferences_*` 与 `plugin_data_*` 的磁盘读取、
+   JSON 编解码、目录统计和清理统一进入 `runtime::blocking`；同一插件的 persist 写入按 plugin id
+   串行，不同插件可并发，IPC 名称和序列化结果保持不变。
 
 ## 4. 与 SOLID 对齐
 

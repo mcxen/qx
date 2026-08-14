@@ -852,6 +852,63 @@ if (bundleProductionModule("src/plugin/surfaceProviders.ts", surfaceProvidersOut
   }
 }
 
+const dashboardRefreshSource = read("src/home-dashboard/useDashboardRefresh.ts");
+const homeDashboardSource = read("src/home-dashboard/HomeDashboard.tsx");
+if (!homeDashboardSource.includes("useDashboardRefresh")) {
+  fail("Home Dashboard lightweight sources must use the shared refresh lifecycle port");
+}
+if (/\bsetInterval\s*\(/.test(homeDashboardSource)) {
+  fail("Home Dashboard sources must not create private polling intervals");
+}
+for (const contract of [
+  "subscribeMainWindowAvailability",
+  "registerWindowActivationTask",
+  "createDashboardRefreshRunner",
+]) {
+  if (!dashboardRefreshSource.includes(contract)) {
+    fail(`Dashboard refresh port is missing ${contract}`);
+  }
+}
+
+const dashboardRefreshOut = path.join(scratch, "dashboardRefresh.mjs");
+if (bundleProductionModule("src/home-dashboard/useDashboardRefresh.ts", dashboardRefreshOut)) {
+  try {
+    const dashboardRefresh = await import(
+      pathToFileURL(dashboardRefreshOut).href + `?t=${Date.now()}`
+    );
+    let active = true;
+    let calls = 0;
+    const resolvers = [];
+    const values = [];
+    const runner = dashboardRefresh.createDashboardRefreshRunner({
+      isActive: () => active,
+      load: () => new Promise((resolve) => {
+        calls += 1;
+        resolvers.push(resolve);
+      }),
+      onSuccess: (value) => values.push(value),
+      onError: (error) => fail(`Dashboard refresh runner rejected: ${error}`),
+    });
+    const first = runner.request();
+    await runner.request();
+    if (calls !== 1) fail(`Dashboard refresh must be single-flight; calls=${calls}`);
+    resolvers.shift()(1);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    if (calls !== 2) fail(`Dashboard refresh must retain one trailing refresh; calls=${calls}`);
+    resolvers.shift()(2);
+    await first;
+    if (values.join(",") !== "1,2") {
+      fail(`Dashboard refresh trailing results are out of order: ${values.join(",")}`);
+    }
+    active = false;
+    await runner.request();
+    runner.dispose();
+    if (calls !== 2) fail("Inactive Dashboard refresh runner must not start new work");
+  } catch (e) {
+    fail(`Dashboard refresh runtime test: ${e}`);
+  }
+}
+
 const backgroundScheduleOut = path.join(scratch, "backgroundActivity.mjs");
 if (bundleProductionModule("src/plugin/backgroundActivity.ts", backgroundScheduleOut)) {
   try {
@@ -1056,6 +1113,9 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
               likeCount: index === 0 ? 23 : 0,
               createdAt: "2026-07-24",
               originalPoster: index === 0,
+              parentId: index === 1 ? "reply-1" : undefined,
+              depth: index === 1 ? 1 : undefined,
+              replyToAuthor: index === 1 ? "Author 1" : index === 2 ? "   " : undefined,
               body: `Reply ${index + 1}${index === 0 ? "\n\n♥ 23" : ""}`,
               content: index === 0 ? [
                 { type: "text", text: "Reply " },
@@ -1087,6 +1147,16 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
       fail("Workbench replies must remove the legacy body like suffix when likeCount is structured");
     }
     if (
+      detail.replies.items[1]?.parentId !== "reply-1"
+      || detail.replies.items[1]?.depth !== 1
+      || detail.replies.items[1]?.replyToAuthor !== "Author 1"
+    ) {
+      fail("Workbench replies must preserve the shared parent/depth/reply-target contract");
+    }
+    if (detail.replies.items[2]?.replyToAuthor !== undefined) {
+      fail("Workbench replies must discard blank reply-target authors");
+    }
+    if (
       detail.replies.items[0]?.content?.length !== 2
       || detail.replies.items[0]?.content?.[1]?.type !== "asset-image"
     ) {
@@ -1115,6 +1185,35 @@ if (bundleProductionModule("src/plugin/workbenchTypes.ts", workbenchTypesOut)) {
     }
   } catch (e) {
     fail(`Workbench detail protocol runtime test: ${e}`);
+  }
+}
+
+const replyTreeOut = path.join(scratch, "replyTree.mjs");
+if (bundleProductionModule("src/components/QxReplyList.tsx", replyTreeOut)) {
+  try {
+    const replies = await import(pathToFileURL(replyTreeOut).href + `?t=${Date.now()}`);
+    const items = [
+      { id: "root", floor: 1, author: "Root", body: "root" },
+      { id: "later", floor: 2, author: "Later", body: "later" },
+      { id: "child", parentId: "root", floor: "1.1", author: "Child", body: "child" },
+      { id: "grandchild", parentId: "child", floor: "1.1.1", author: "Grandchild", body: "nested" },
+      { id: "orphan", parentId: "missing", depth: 3, floor: 3, author: "Orphan", body: "orphan" },
+      { id: "cycle-a", parentId: "cycle-b", floor: 4, author: "A", body: "cycle" },
+      { id: "cycle-b", parentId: "cycle-a", floor: 5, author: "B", body: "cycle" },
+    ];
+    const rows = replies.buildQxReplyTreeRows(items);
+    if (rows.map((row) => row.id).join(",") !== "root,child,grandchild,later,orphan,cycle-a,cycle-b") {
+      fail(`reply tree must use stable parent-first order: ${rows.map((row) => row.id).join(",")}`);
+    }
+    if (rows[2]?.treeDepth !== 2 || rows[4]?.treeDepth !== 3) {
+      fail("reply tree must derive loaded depth and preserve bounded orphan depth hints");
+    }
+    const collapsed = replies.buildQxReplyTreeRows(items, new Set(["root"]));
+    if (collapsed.map((row) => row.id).join(",") !== "root,later,orphan,cycle-a,cycle-b") {
+      fail("collapsed reply descendants must stay hidden instead of being appended as roots");
+    }
+  } catch (e) {
+    fail(`reply tree runtime test: ${e}`);
   }
 }
 

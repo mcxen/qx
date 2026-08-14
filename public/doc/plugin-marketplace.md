@@ -71,7 +71,13 @@ my-plugin/
     "keywords": ["dashboard"]
   },
   "storage": {
-    "cacheTargets": ["feed-cache"]
+    "cacheTargets": [{
+      "id": "feed-cache",
+      "label": "Feed cache",
+      "keys": ["feed.latest.v1"],
+      "keyPrefixes": ["feed.thread.v1."],
+      "retentionDays": 7
+    }]
   },
   "homeWidgets": [
     { "id": "cpu", "source": "system.cpu" }
@@ -103,7 +109,7 @@ my-plugin/
 | `commands` | 否 | 可搜索命令 |
 | `shortcuts` | 否 | 用户可启用的全局命令快捷键；仅作默认声明，宿主将用户 override 存入 `settings.shortcuts` 的 `plugin:<pluginId>:<command>` |
 | `panel` | 否 | 注册面板入口；`title` 应省略或与 `name` 相同，以便宿主使用 `names` 本地化 |
-| `storage.cacheTargets` | 否 | 可重建缓存的精确 persist key 白名单 |
+| `storage.cacheTargets` | 否 | 可重建缓存的 persist `keys` / `keyPrefixes` 白名单；用于固定列表和逐主题动态缓存 |
 | `homeWidgets` | 否 | 将宿主支持的语义系统数据源关联到本插件 Panel；不提供视觉代码 |
 | `surfaceProviders` | 否 | 声明宿主登记的轻量 Tray/Home 数据源；当前 Home 支持 `rss.unread-latest`，可用 `presentation` 选择 `compact` / `standard` / `wide`，不加载插件入口、不提供视觉代码 |
 | `min_app_version` | 否 | 最低 Qx 版本 |

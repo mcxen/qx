@@ -7,13 +7,13 @@ use std::io::{Cursor, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
-    Mutex, OnceLock,
+    Arc, Mutex, OnceLock,
 };
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::command;
 
 const USER_AGENT: &str = "Qx/0.1 (Marketplace; +https://github.com/mcxen/qx)";
-static PLUGIN_STORAGE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+static PLUGIN_STORAGE_LOCKS: OnceLock<Mutex<BTreeMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
 static PLUGIN_INSTALL_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 static PLUGIN_AUTO_UPDATE_RUNNING: AtomicBool = AtomicBool::new(false);
 const HTTP_RETRY_ATTEMPTS: usize = 2;
@@ -157,6 +157,9 @@ pub struct PluginCacheTargetDeclaration {
     /// Exact persist keys owned by this rebuildable cache group.
     #[serde(default)]
     pub keys: Vec<String>,
+    /// Persist-key prefixes owned by this rebuildable cache group.
+    #[serde(default)]
+    pub key_prefixes: Vec<String>,
     /// Author-facing retention contract; pruning remains plugin-owned.
     #[serde(default)]
     pub retention_days: Option<u32>,
@@ -268,7 +271,7 @@ fn validate_manifest_storage(storage: Option<&PluginStorageManifest>) -> Result<
         return Err("manifest.storage.cacheTargets exceeds 16 entries".to_string());
     }
     let mut target_ids = BTreeSet::new();
-    let mut registered_keys = BTreeSet::new();
+    let mut registered_selectors: Vec<(String, bool, String)> = Vec::new();
     for target in &storage.cache_targets {
         let target_id = validate_plugin_id(&target.id)?;
         if !target_ids.insert(target_id.to_string()) {
@@ -284,9 +287,11 @@ fn validate_manifest_storage(storage: Option<&PluginStorageManifest>) -> Result<
                 "description is too long for plugin cache target: {target_id}"
             ));
         }
-        if target.keys.is_empty() || target.keys.len() > 64 {
+        if target.keys.is_empty() && target.key_prefixes.is_empty()
+            || target.keys.len().saturating_add(target.key_prefixes.len()) > 64
+        {
             return Err(format!(
-                "plugin cache target {target_id} must declare 1–64 persist keys"
+                "plugin cache target {target_id} must declare 1–64 persist keys or key prefixes"
             ));
         }
         if let Some(days) = target.retention_days {
@@ -296,21 +301,62 @@ fn validate_manifest_storage(storage: Option<&PluginStorageManifest>) -> Result<
                 ));
             }
         }
-        for key in &target.keys {
-            let key = key.trim();
-            if key.is_empty() || key.len() > 256 || key.chars().any(char::is_control) {
+        for (selector, is_prefix) in target
+            .keys
+            .iter()
+            .map(|key| (key, false))
+            .chain(target.key_prefixes.iter().map(|prefix| (prefix, true)))
+        {
+            let selector = selector.trim();
+            if selector.is_empty()
+                || selector.len() > 256
+                || selector.chars().any(char::is_control)
+                || (is_prefix && HOST_WORKBENCH_CACHE_KEY.starts_with(selector))
+                || (!is_prefix && selector == HOST_WORKBENCH_CACHE_KEY)
+            {
                 return Err(format!(
-                    "invalid persist key in plugin cache target: {target_id}"
+                    "invalid persist key selector in plugin cache target: {target_id}"
                 ));
             }
-            if !registered_keys.insert(key.to_string()) {
+            let overlaps =
+                registered_selectors
+                    .iter()
+                    .any(|(_, registered_is_prefix, registered)| {
+                        match (*registered_is_prefix, is_prefix) {
+                            (false, false) => registered == selector,
+                            (true, false) => selector.starts_with(registered),
+                            (false, true) => registered.starts_with(selector),
+                            (true, true) => {
+                                registered.starts_with(selector) || selector.starts_with(registered)
+                            }
+                        }
+                    });
+            if overlaps {
                 return Err(format!(
-                    "persist cache key is registered more than once: {key}"
+                    "persist cache selector overlaps another target: {selector}"
                 ));
             }
+            registered_selectors.push((target_id.to_string(), is_prefix, selector.to_string()));
         }
     }
     Ok(())
+}
+
+fn plugin_cache_target_keys(
+    map: &BTreeMap<String, serde_json::Value>,
+    declaration: &PluginCacheTargetDeclaration,
+) -> Vec<String> {
+    let mut keys: BTreeSet<String> = declaration.keys.iter().cloned().collect();
+    for key in map.keys() {
+        if declaration
+            .key_prefixes
+            .iter()
+            .any(|prefix| key.starts_with(prefix))
+        {
+            keys.insert(key.clone());
+        }
+    }
+    keys.into_iter().collect()
 }
 
 fn validate_manifest_home_widgets(widgets: &[PluginHomeWidgetDeclaration]) -> Result<(), String> {
@@ -994,8 +1040,16 @@ fn checked_plugin_storage_path(id: &str) -> Result<PathBuf, String> {
     Ok(checked_plugin_data_dir(id)?.join("storage.json"))
 }
 
-fn plugin_storage_lock() -> &'static Mutex<()> {
-    PLUGIN_STORAGE_LOCK.get_or_init(|| Mutex::new(()))
+fn plugin_storage_lock(id: &str) -> Arc<Mutex<()>> {
+    let locks = PLUGIN_STORAGE_LOCKS.get_or_init(|| Mutex::new(BTreeMap::new()));
+    let mut locks = locks
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    Arc::clone(
+        locks
+            .entry(id.to_string())
+            .or_insert_with(|| Arc::new(Mutex::new(()))),
+    )
 }
 
 const HOST_WORKBENCH_CACHE_KEY: &str = "__qx_host_workbench_cache_v1__";
@@ -3140,9 +3194,6 @@ pub(crate) struct PluginCacheClearResult {
 }
 
 pub(crate) fn registered_plugin_cache_targets() -> Vec<RegisteredPluginCacheTarget> {
-    let _guard = plugin_storage_lock()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut targets = Vec::new();
     let Ok(entries) = fs::read_dir(plugins_root()) else {
         return targets;
@@ -3162,6 +3213,10 @@ pub(crate) fn registered_plugin_cache_targets() -> Vec<RegisteredPluginCacheTarg
         {
             continue;
         }
+        let storage_lock = plugin_storage_lock(&manifest.id);
+        let _guard = storage_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut map = read_storage_map(&manifest.id).unwrap_or_default();
         let mut storage_changed = false;
         let storage_path = match checked_plugin_storage_path(&manifest.id) {
@@ -3189,16 +3244,16 @@ pub(crate) fn registered_plugin_cache_targets() -> Vec<RegisteredPluginCacheTarg
         for declaration in storage.cache_targets {
             let mut bytes = 0_u64;
             let mut records = 0_u64;
-            for key in &declaration.keys {
+            for key in plugin_cache_target_keys(&map, &declaration) {
                 if declaration
                     .retention_days
-                    .is_some_and(|days| plugin_cache_value_expired(map.get(key), days))
+                    .is_some_and(|days| plugin_cache_value_expired(map.get(&key), days))
                 {
-                    map.remove(key);
+                    map.remove(&key);
                     storage_changed = true;
                     continue;
                 }
-                let Some(value) = map.get(key) else {
+                let Some(value) = map.get(&key) else {
                     continue;
                 };
                 bytes = bytes.saturating_add(
@@ -3281,7 +3336,8 @@ pub(crate) fn clear_registered_plugin_cache_target(
     validate_manifest_home_widgets(&manifest.home_widgets)?;
     validate_manifest_surface_providers(&manifest.surface_providers)?;
     if target_id == format!("plugin:{}:{HOST_WORKBENCH_TARGET_SUFFIX}", manifest.id) {
-        let _guard = plugin_storage_lock()
+        let storage_lock = plugin_storage_lock(&target.plugin_id);
+        let _guard = storage_lock
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let mut map = read_storage_map(&target.plugin_id)?;
@@ -3299,39 +3355,62 @@ pub(crate) fn clear_registered_plugin_cache_target(
         })
         .ok_or_else(|| format!("plugin cache target no longer registered: {target_id}"))?;
 
-    let _guard = plugin_storage_lock()
+    let storage_lock = plugin_storage_lock(&target.plugin_id);
+    let _guard = storage_lock
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let mut map = read_storage_map(&target.plugin_id)?;
-    let result = remove_plugin_cache_keys(&mut map, &declaration.keys);
+    let keys = plugin_cache_target_keys(&map, &declaration);
+    let result = remove_plugin_cache_keys(&mut map, &keys);
     write_storage_map(&target.plugin_id, &map)?;
     Ok(result)
 }
 
 #[command]
-pub fn plugin_storage_get(id: String, key: String) -> Result<Option<serde_json::Value>, String> {
-    let map = read_storage_map(&id)?;
-    Ok(map.get(&key).cloned())
+pub async fn plugin_storage_get(
+    id: String,
+    key: String,
+) -> Result<Option<serde_json::Value>, String> {
+    crate::runtime::blocking(move || {
+        let map = read_storage_map(&id)?;
+        Ok(map.get(&key).cloned())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[command]
-pub fn plugin_storage_set(id: String, key: String, value: serde_json::Value) -> Result<(), String> {
-    let _guard = plugin_storage_lock()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let mut map = read_storage_map(&id)?;
-    map.insert(key, value);
-    write_storage_map(&id, &map)
+pub async fn plugin_storage_set(
+    id: String,
+    key: String,
+    value: serde_json::Value,
+) -> Result<(), String> {
+    crate::runtime::blocking(move || {
+        let storage_lock = plugin_storage_lock(&id);
+        let _guard = storage_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut map = read_storage_map(&id)?;
+        map.insert(key, value);
+        write_storage_map(&id, &map)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[command]
-pub fn plugin_storage_delete(id: String, key: String) -> Result<(), String> {
-    let _guard = plugin_storage_lock()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    let mut map = read_storage_map(&id)?;
-    map.remove(&key);
-    write_storage_map(&id, &map)
+pub async fn plugin_storage_delete(id: String, key: String) -> Result<(), String> {
+    crate::runtime::blocking(move || {
+        let storage_lock = plugin_storage_lock(&id);
+        let _guard = storage_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut map = read_storage_map(&id)?;
+        map.remove(&key);
+        write_storage_map(&id, &map)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3343,25 +3422,34 @@ pub struct PluginStorageKeyInfo {
 }
 
 #[command]
-pub fn plugin_storage_list(id: String) -> Result<Vec<PluginStorageKeyInfo>, String> {
-    let map = read_storage_map(&id)?;
-    let mut out = Vec::with_capacity(map.len());
-    for (key, value) in map {
-        let bytes = serde_json::to_vec(&value)
-            .map(|v| v.len() as u64)
-            .unwrap_or(0);
-        out.push(PluginStorageKeyInfo { key, bytes });
-    }
-    out.sort_by(|a, b| a.key.cmp(&b.key));
-    Ok(out)
+pub async fn plugin_storage_list(id: String) -> Result<Vec<PluginStorageKeyInfo>, String> {
+    crate::runtime::blocking(move || {
+        let map = read_storage_map(&id)?;
+        let mut out = Vec::with_capacity(map.len());
+        for (key, value) in map {
+            let bytes = serde_json::to_vec(&value)
+                .map(|v| v.len() as u64)
+                .unwrap_or(0);
+            out.push(PluginStorageKeyInfo { key, bytes });
+        }
+        out.sort_by(|a, b| a.key.cmp(&b.key));
+        Ok(out)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[command]
-pub fn plugin_storage_clear(id: String) -> Result<(), String> {
-    let _guard = plugin_storage_lock()
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    write_storage_map(&id, &BTreeMap::new())
+pub async fn plugin_storage_clear(id: String) -> Result<(), String> {
+    crate::runtime::blocking(move || {
+        let storage_lock = plugin_storage_lock(&id);
+        let _guard = storage_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        write_storage_map(&id, &BTreeMap::new())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -3376,23 +3464,27 @@ pub struct PluginDataUsage {
 }
 
 #[command]
-pub fn plugin_data_usage(id: String) -> Result<PluginDataUsage, String> {
-    let id = validate_plugin_id(&id)?.to_string();
-    let dir = checked_plugin_data_dir(&id)?;
-    let preferences_bytes = dir_size_bytes(&dir.join("preferences.json"));
-    let storage_bytes = dir_size_bytes(&dir.join("storage.json"));
-    let files_bytes = dir_size_bytes(&dir.join("files"));
-    let total_bytes = preferences_bytes
-        .saturating_add(storage_bytes)
-        .saturating_add(files_bytes);
-    Ok(PluginDataUsage {
-        plugin_id: id,
-        data_dir: dir.to_string_lossy().to_string(),
-        preferences_bytes,
-        storage_bytes,
-        files_bytes,
-        total_bytes,
+pub async fn plugin_data_usage(id: String) -> Result<PluginDataUsage, String> {
+    crate::runtime::blocking(move || {
+        let id = validate_plugin_id(&id)?.to_string();
+        let dir = checked_plugin_data_dir(&id)?;
+        let preferences_bytes = dir_size_bytes(&dir.join("preferences.json"));
+        let storage_bytes = dir_size_bytes(&dir.join("storage.json"));
+        let files_bytes = dir_size_bytes(&dir.join("files"));
+        let total_bytes = preferences_bytes
+            .saturating_add(storage_bytes)
+            .saturating_add(files_bytes);
+        Ok(PluginDataUsage {
+            plugin_id: id,
+            data_dir: dir.to_string_lossy().to_string(),
+            preferences_bytes,
+            storage_bytes,
+            files_bytes,
+            total_bytes,
+        })
     })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -3405,60 +3497,79 @@ pub struct PluginDataClearRequest {
 }
 
 #[command]
-pub fn plugin_data_clear(req: PluginDataClearRequest) -> Result<(), String> {
-    let id = validate_plugin_id(&req.id)?.to_string();
-    let scopes: Vec<String> = if req.scopes.is_empty() {
-        vec!["all".to_string()]
-    } else {
-        req.scopes
-    };
-    let all = scopes.iter().any(|s| s == "all");
-    let dir = checked_plugin_data_dir(&id)?;
-    fs::create_dir_all(&dir).ok();
-
-    if all || scopes.iter().any(|s| s == "persist" || s == "storage") {
-        let _guard = plugin_storage_lock()
+pub async fn plugin_data_clear(req: PluginDataClearRequest) -> Result<(), String> {
+    crate::runtime::blocking(move || {
+        let id = validate_plugin_id(&req.id)?.to_string();
+        let storage_lock = plugin_storage_lock(&id);
+        let _guard = storage_lock
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        write_storage_map(&id, &BTreeMap::new())?;
-    }
-    if all || scopes.iter().any(|s| s == "preferences") {
-        let path = dir.join("preferences.json");
-        if path.exists() {
-            fs::remove_file(&path).map_err(|e| format!("clear preferences: {e}"))?;
+        let scopes: Vec<String> = if req.scopes.is_empty() {
+            vec!["all".to_string()]
+        } else {
+            req.scopes
+        };
+        let all = scopes.iter().any(|s| s == "all");
+        let dir = checked_plugin_data_dir(&id)?;
+        fs::create_dir_all(&dir).ok();
+
+        if all || scopes.iter().any(|s| s == "persist" || s == "storage") {
+            write_storage_map(&id, &BTreeMap::new())?;
         }
-    }
-    if all || scopes.iter().any(|s| s == "files") {
-        let files = dir.join("files");
-        if files.exists() {
-            fs::remove_dir_all(&files).map_err(|e| format!("clear files: {e}"))?;
+        if all || scopes.iter().any(|s| s == "preferences") {
+            let path = dir.join("preferences.json");
+            if path.exists() {
+                fs::remove_file(&path).map_err(|e| format!("clear preferences: {e}"))?;
+            }
         }
-        fs::create_dir_all(&files).ok();
-    }
-    Ok(())
+        if all || scopes.iter().any(|s| s == "files") {
+            let files = dir.join("files");
+            if files.exists() {
+                fs::remove_dir_all(&files).map_err(|e| format!("clear files: {e}"))?;
+            }
+            fs::create_dir_all(&files).ok();
+        }
+        Ok(())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[command]
-pub fn plugin_preferences_get(id: String) -> Result<BTreeMap<String, serde_json::Value>, String> {
-    let path = checked_plugin_data_dir(&id)?.join("preferences.json");
-    if !path.exists() {
-        return Ok(BTreeMap::new());
-    }
-    let content =
-        fs::read_to_string(&path).map_err(|e| format!("read preferences for {id}: {e}"))?;
-    serde_json::from_str(&content).map_err(|e| format!("parse preferences for {id}: {e}"))
+pub async fn plugin_preferences_get(
+    id: String,
+) -> Result<BTreeMap<String, serde_json::Value>, String> {
+    crate::runtime::blocking(move || {
+        let path = checked_plugin_data_dir(&id)?.join("preferences.json");
+        if !path.exists() {
+            return Ok(BTreeMap::new());
+        }
+        let content =
+            fs::read_to_string(&path).map_err(|e| format!("read preferences for {id}: {e}"))?;
+        serde_json::from_str(&content).map_err(|e| format!("parse preferences for {id}: {e}"))
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[command]
-pub fn plugin_preferences_set(
+pub async fn plugin_preferences_set(
     id: String,
     values: BTreeMap<String, serde_json::Value>,
 ) -> Result<(), String> {
-    let dir = checked_plugin_data_dir(&id)?;
-    fs::create_dir_all(&dir).ok();
-    let path = dir.join("preferences.json");
-    let json = serde_json::to_string_pretty(&values).map_err(|e| format!("serialize: {e}"))?;
-    atomic_write(&path, json.as_bytes()).map_err(|e| format!("write preferences for {id}: {e}"))
+    crate::runtime::blocking(move || {
+        let storage_lock = plugin_storage_lock(&id);
+        let _guard = storage_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let dir = checked_plugin_data_dir(&id)?;
+        fs::create_dir_all(&dir).ok();
+        let path = dir.join("preferences.json");
+        let json = serde_json::to_string_pretty(&values).map_err(|e| format!("serialize: {e}"))?;
+        atomic_write(&path, json.as_bytes()).map_err(|e| format!("write preferences for {id}: {e}"))
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[command]
@@ -3579,6 +3690,16 @@ mod tests {
     const RAYCAST_SYSTEM_INFORMATION_URL: &str = "https://github.com/raycast/extensions/tree/888d04008da11340e0a0fa98b32dde4465a33e72/extensions/system-information";
 
     #[test]
+    fn plugin_persistence_locks_are_scoped_per_plugin() {
+        let first = plugin_storage_lock("lock-test-first");
+        let first_again = plugin_storage_lock("lock-test-first");
+        let second = plugin_storage_lock("lock-test-second");
+
+        assert!(Arc::ptr_eq(&first, &first_again));
+        assert!(!Arc::ptr_eq(&first, &second));
+    }
+
+    #[test]
     fn manifest_platforms_are_closed_and_portable() {
         assert!(validate_manifest_platforms(&[]).is_ok());
         assert!(validate_manifest_platforms(&["macos".to_string(), "windows".to_string()]).is_ok());
@@ -3686,6 +3807,7 @@ mod tests {
                 label: "Community Cache".to_string(),
                 description: "Rebuildable posts".to_string(),
                 keys: vec!["cache.community.v2".to_string()],
+                key_prefixes: vec!["cache.community.detail.".to_string()],
                 retention_days: Some(7),
             }],
         };
@@ -3699,6 +3821,7 @@ mod tests {
                     label: "Detail Cache".to_string(),
                     description: String::new(),
                     keys: vec!["cache.community.v2".to_string()],
+                    key_prefixes: Vec::new(),
                     retention_days: Some(3),
                 },
             ],
@@ -3712,6 +3835,65 @@ mod tests {
             }],
         };
         assert!(validate_manifest_storage(Some(&invalid_retention)).is_err());
+
+        let reserved_host_prefix = PluginStorageManifest {
+            cache_targets: vec![PluginCacheTargetDeclaration {
+                id: "reserved".to_string(),
+                label: "Reserved".to_string(),
+                description: String::new(),
+                keys: Vec::new(),
+                key_prefixes: vec!["__qx_host_".to_string()],
+                retention_days: Some(7),
+            }],
+        };
+        assert!(validate_manifest_storage(Some(&reserved_host_prefix)).is_err());
+
+        let overlapping_prefix = PluginStorageManifest {
+            cache_targets: vec![
+                valid.cache_targets[0].clone(),
+                PluginCacheTargetDeclaration {
+                    id: "overlap".to_string(),
+                    label: "Overlap".to_string(),
+                    description: String::new(),
+                    keys: vec!["cache.community.detail.42".to_string()],
+                    key_prefixes: Vec::new(),
+                    retention_days: Some(3),
+                },
+            ],
+        };
+        assert!(validate_manifest_storage(Some(&overlapping_prefix)).is_err());
+    }
+
+    #[test]
+    fn plugin_cache_target_resolves_dynamic_prefix_keys_only() {
+        let map = BTreeMap::from([
+            (
+                "comments.1".to_string(),
+                serde_json::json!({ "savedAt": 1 }),
+            ),
+            (
+                "comments.2".to_string(),
+                serde_json::json!({ "savedAt": 2 }),
+            ),
+            ("preference.theme".to_string(), serde_json::json!("dark")),
+        ]);
+        let declaration = PluginCacheTargetDeclaration {
+            id: "comments".to_string(),
+            label: "Comments".to_string(),
+            description: String::new(),
+            keys: Vec::new(),
+            key_prefixes: vec!["comments.".to_string()],
+            retention_days: Some(7),
+        };
+        let keys = plugin_cache_target_keys(&map, &declaration);
+        assert_eq!(
+            keys,
+            vec!["comments.1".to_string(), "comments.2".to_string()]
+        );
+        let mut cleared = map;
+        let result = remove_plugin_cache_keys(&mut cleared, &keys);
+        assert_eq!(result.cleared_records, 2);
+        assert!(cleared.contains_key("preference.theme"));
     }
 
     #[test]

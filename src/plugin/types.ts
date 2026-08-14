@@ -91,7 +91,9 @@ export interface PluginCacheTargetDeclaration {
   label: string;
   description?: string;
   /** Exact context.storage.persist keys that are safe to rebuild and clear. */
-  keys: string[];
+  keys?: string[];
+  /** Persist key prefixes for bounded dynamic caches such as per-thread comments. */
+  keyPrefixes?: string[];
   /** Plugin-owned automatic pruning window advertised to the host. */
   retentionDays?: number;
 }

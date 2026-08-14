@@ -36,6 +36,12 @@ pub struct V2exReply {
     pub author: String,
     pub created: i64,
     pub floor: u32,
+    #[serde(default)]
+    pub parent_id: Option<u64>,
+    #[serde(default)]
+    pub depth: u8,
+    #[serde(default)]
+    pub reply_to_author: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -417,9 +423,68 @@ fn parse_replies_legacy(json: &str) -> Result<Vec<V2exReply>, String> {
                 author,
                 created,
                 floor: (index as u32).saturating_add(1),
+                parent_id: None,
+                depth: 0,
+                reply_to_author: None,
             })
         })
         .collect())
+}
+
+fn leading_reply_mention(content: &str) -> Option<String> {
+    let mut visible = String::new();
+    let mut inside_tag = false;
+    for ch in content.chars().take(512) {
+        match ch {
+            '<' => inside_tag = true,
+            '>' => inside_tag = false,
+            _ if !inside_tag => visible.push(ch),
+            _ => {}
+        }
+        if visible.len() >= 160 {
+            break;
+        }
+    }
+    let mention = visible.trim_start().strip_prefix('@')?;
+    let author: String = mention
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '-')
+        .take(64)
+        .collect();
+    author
+        .chars()
+        .any(|ch| ch.is_ascii_alphanumeric())
+        .then_some(author)
+}
+
+/// V2EX exposes chronological replies but not a parent id. Resolve a leading
+/// @mention to the latest earlier reply by that member. This is deterministic,
+/// never creates cycles, and keeps unmatched mentions as flat replies.
+fn thread_v2ex_replies(mut replies: Vec<V2exReply>) -> Vec<V2exReply> {
+    let mut latest_by_author: HashMap<String, (u64, u8, String)> = HashMap::new();
+    for reply in &mut replies {
+        reply.parent_id = None;
+        reply.depth = 0;
+        reply.reply_to_author = None;
+        if let Some(mention) = leading_reply_mention(&reply.content) {
+            reply.reply_to_author = Some(mention.clone());
+            if let Some((parent_id, parent_depth, parent_author)) =
+                latest_by_author.get(&mention.to_lowercase())
+            {
+                reply.parent_id = Some(*parent_id);
+                reply.depth = parent_depth.saturating_add(1).min(8);
+                reply.reply_to_author = Some(parent_author.clone());
+            }
+        }
+        let author = reply.author.trim();
+        if !author.is_empty() {
+            latest_by_author.insert(
+                author.to_lowercase(),
+                (reply.id, reply.depth, author.to_string()),
+            );
+        }
+    }
+    replies
 }
 
 #[tauri::command]
@@ -493,7 +558,7 @@ pub async fn v2ex_fetch_topic_replies(
         let cache_key = format!("replies:{topic_id}");
         if let Some(hit) = cache_get(&cache_key, TTL_REPLIES_SECS) {
             if let Ok(parsed) = serde_json::from_str::<Vec<V2exReply>>(&hit) {
-                return Ok(parsed);
+                return Ok(thread_v2ex_replies(parsed));
             }
         }
 
@@ -534,11 +599,15 @@ pub async fn v2ex_fetch_topic_replies(
                             author,
                             created,
                             floor,
+                            parent_id: None,
+                            depth: 0,
+                            reply_to_author: None,
                         })
                     })
                     .collect()
             }
         };
+        let replies = thread_v2ex_replies(replies);
 
         if let Ok(serialized) = serde_json::to_string(&replies) {
             cache_set(&cache_key, serialized);
@@ -547,6 +616,62 @@ pub async fn v2ex_fetch_topic_replies(
     })
     .await
     .map_err(|e| format!("V2EX replies panicked: {e}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reply(id: u64, author: &str, content: &str) -> V2exReply {
+        V2exReply {
+            id,
+            content: content.to_string(),
+            author: author.to_string(),
+            created: 0,
+            floor: id as u32,
+            parent_id: None,
+            depth: 0,
+            reply_to_author: None,
+        }
+    }
+
+    #[test]
+    fn leading_mentions_form_a_bounded_acyclic_reply_tree() {
+        let replies = thread_v2ex_replies(vec![
+            reply(1, "alice", "root"),
+            reply(2, "bob", r#"<a href="/member/alice">@alice</a> first"#),
+            reply(3, "carol", "@bob nested"),
+            reply(4, "dave", "@missing remains flat"),
+        ]);
+
+        assert_eq!(replies[1].parent_id, Some(1));
+        assert_eq!(replies[1].depth, 1);
+        assert_eq!(replies[2].parent_id, Some(2));
+        assert_eq!(replies[2].depth, 2);
+        assert_eq!(replies[3].parent_id, None);
+        assert_eq!(replies[3].depth, 0);
+        assert_eq!(replies[3].reply_to_author.as_deref(), Some("missing"));
+    }
+
+    #[test]
+    fn blank_or_placeholder_mentions_do_not_create_reply_targets() {
+        for content in [
+            "@",
+            "@   ",
+            "@_",
+            "@---",
+            r#"<a href="/member/">@</a> text"#,
+        ] {
+            assert_eq!(leading_reply_mention(content), None, "content={content:?}");
+        }
+
+        let replies = thread_v2ex_replies(vec![
+            reply(1, "   ", "anonymous"),
+            reply(2, "bob", "@   no target"),
+        ]);
+        assert_eq!(replies[1].parent_id, None);
+        assert_eq!(replies[1].reply_to_author, None);
+    }
 }
 
 #[tauri::command]
