@@ -1127,7 +1127,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         runFunctionCallingAgent,
         runReactAgent,
         runMemoryDream,
-        shouldDreamAfterTurn,
+        shouldExtractMemoryAfterTurn,
         buildQxHostSystemPrompt,
       } = await loadAgentHarness();
       const enabledTools = getEnabledTools(agentSettings, fullSettings);
@@ -1157,6 +1157,7 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
 
         // Hermes frozen memory snapshot (prefix-cache friendly; live writes via tools).
         const memorySnapshot = agentSettings.memory_tool_enabled
+          && agentSettings.memory_policy !== "off"
           ? await loadMemorySnapshot()
           : "";
 
@@ -1335,30 +1336,19 @@ export const useG4fStore = create<G4fStore>((set, get) => ({
         // AI list title (async); local fallback already applied via withAutoTitle.
         void maybeGenerateAiTitle(currentConversationId);
 
-        // Hermes-style sleep/dream: background consolidate after substantial tool work.
-        if (agentSettings.memory_tool_enabled) {
-          const toolCallCount = result.steps.filter((step) => step.kind === "action").length;
-          const memoryToolUsed = result.steps.some(
-            (step) =>
-              step.kind === "action"
-              && (step.tool === "memory"
-                || step.tool === "memory_add"
-                || step.tool === "memory_dream"),
-          );
-          if (
-            shouldDreamAfterTurn({
-              toolCallCount,
-              steps: result.steps.length,
-              memoryToolUsed,
-            })
-          ) {
-            const transcript = nonSystem
-              .slice(-8)
-              .map((message) => `${message.role}: ${String(message.content).slice(0, 400)}`)
-              .join("\n");
-            void runMemoryDream(`${transcript}\nassistant: ${result.finalAnswer.slice(0, 800)}`).catch(
+        // Smart memory evaluates the conversation itself. Tool count is never a
+        // trigger, and the selective extractor may validly return no candidates.
+        if (agentSettings.memory_tool_enabled && agentSettings.memory_policy === "smart") {
+          const transcript = [
+            ...nonSystem.slice(-8).map(
+              (message) => `${message.role}: ${String(message.content).slice(0, 400)}`,
+            ),
+            `assistant: ${result.finalAnswer.slice(0, 800)}`,
+          ].join("\n");
+          if (shouldExtractMemoryAfterTurn({ policy: "smart", transcript })) {
+            void runMemoryDream(transcript, "smart").catch(
               () => {
-                // Dream is best-effort; never fail the user-facing turn.
+                // Extraction is best-effort; never fail the user-facing turn.
               },
             );
           }

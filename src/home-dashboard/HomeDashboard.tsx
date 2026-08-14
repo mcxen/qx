@@ -1,4 +1,4 @@
-import { BatteryCharging, BatteryMedium, Cpu, MemoryStick, Monitor, Network, Pin, Rss, Search } from "lucide-react";
+import { BatteryCharging, BatteryMedium, Cpu, Gauge, MemoryStick, Monitor, Network, Pin, Rss, Search } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { LauncherAppIcon } from "../ResultsList";
@@ -8,11 +8,13 @@ import { useSettingsStore } from "../modules/settings/store";
 import { usePluginRegistry } from "../plugin/registry";
 import {
   dashboardProviderWidgetId,
+  readAgentUsageDashboardProvider,
   readRssDashboardProvider,
   resolveSurfaceProviders,
   readDisplayBrightnessProvider,
   type ResolvedSurfaceProvider,
   type DisplayBrightnessProviderItem,
+  type AgentUsageDashboardSnapshot,
   type RssDashboardSnapshot,
 } from "../plugin/surfaceProviders";
 import { useDisplayName } from "../search/appDisplay";
@@ -138,6 +140,101 @@ function RssDashboardCard({
   );
 }
 
+function formatUsageReset(resetAt: string | null, locale: string, fallback: string): string {
+  if (!resetAt) return fallback;
+  const reset = Date.parse(resetAt);
+  if (!Number.isFinite(reset)) return fallback;
+  const seconds = Math.round((reset - Date.now()) / 1000);
+  if (seconds <= 0) return fallback;
+  const formatter = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  if (seconds < 3600) return formatter.format(Math.max(1, Math.ceil(seconds / 60)), "minute");
+  if (seconds < 86_400) return formatter.format(Math.ceil(seconds / 3600), "hour");
+  return formatter.format(Math.ceil(seconds / 86_400), "day");
+}
+
+function AgentUsageDashboardCard({
+  id,
+  title,
+  snapshot,
+  locale,
+  loadingLabel,
+  emptyLabel,
+  remainingLabel,
+  resetLabel,
+  updatedLabel,
+  windowLabel,
+  onOpen,
+}: {
+  id: string;
+  title: string;
+  snapshot: AgentUsageDashboardSnapshot | null | undefined;
+  locale: string;
+  loadingLabel: string;
+  emptyLabel: string;
+  remainingLabel: string;
+  resetLabel: string;
+  updatedLabel: string;
+  windowLabel: (label: string) => string;
+  onOpen: () => void;
+}) {
+  const updated = snapshot?.savedAt
+    ? new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" }).format(snapshot.savedAt)
+    : "";
+  return (
+    <section className="qx-home-widget qx-home-agent-usage" data-widget-id={id}>
+      <header className="qx-home-widget-header">
+        <span className="qx-home-widget-heading">
+          <Gauge size={14} strokeWidth={2.1} aria-hidden="true" />
+          <span className="qx-home-widget-title">{title}</span>
+        </span>
+        <span className="qx-home-widget-count">{updated ? `${updatedLabel} ${updated}` : ""}</span>
+      </header>
+      {snapshot === undefined ? (
+        <div className="qx-home-widget-empty"><span>{loadingLabel}</span></div>
+      ) : snapshot && snapshot.usage.length > 0 ? (
+        <div className="qx-home-agent-usage-list">
+          {snapshot.usage.map((usage) => {
+            const primaryWindow = usage.windows.reduce<typeof usage.windows[number] | undefined>(
+              (lowest, window) => !lowest || window.remainingPercent < lowest.remainingPercent
+                ? window
+                : lowest,
+              undefined,
+            );
+            return (
+              <button
+                key={`${id}-${usage.provider}`}
+                type="button"
+                className="qx-home-agent-usage-item"
+                onClick={onOpen}
+              >
+                <span className="qx-home-agent-usage-copy">
+                  <strong>{usage.title}</strong>
+                  <small>
+                    {primaryWindow
+                      ? `${windowLabel(primaryWindow.label)} · ${resetLabel} ${formatUsageReset(primaryWindow.resetAt, locale, "—")}`
+                      : resetLabel}
+                  </small>
+                </span>
+                <span className="qx-home-agent-usage-value">
+                  {Math.round(usage.remainingPercent)}%
+                  <small>{remainingLabel}</small>
+                </span>
+                <span className="qx-home-meter" aria-hidden="true">
+                  <span style={{ width: `${clampPercent(usage.remainingPercent)}%` }} />
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <button type="button" className="qx-home-widget-empty qx-home-agent-usage-empty" onClick={onOpen}>
+          <span>{emptyLabel}</span>
+        </button>
+      )}
+    </section>
+  );
+}
+
 export default function HomeDashboard({
   items,
   recentSearches,
@@ -219,6 +316,39 @@ export default function HomeDashboard({
       removeRefreshListener?.();
     };
   }, [rssEnabled]);
+  const selectedAgentUsageProviders = useMemo(
+    () => homeProviders.filter((provider) => (
+      provider.declaration.source === "agent.usage"
+      && enabled.includes(dashboardProviderWidgetId(provider.key))
+    )),
+    [enabled, homeProviders],
+  );
+  const agentUsageProviderKey = selectedAgentUsageProviders.map((provider) => provider.key).join("|");
+  const [agentUsageSnapshots, setAgentUsageSnapshots] = useState<
+    Record<string, AgentUsageDashboardSnapshot | null>
+  >({});
+  useEffect(() => {
+    if (selectedAgentUsageProviders.length === 0) return;
+    let cancelled = false;
+    const refresh = async () => {
+      const snapshots = await Promise.all(selectedAgentUsageProviders.map(async (provider) => {
+        try {
+          return [provider.key, await readAgentUsageDashboardProvider(provider.pluginId)] as const;
+        } catch {
+          return [provider.key, null] as const;
+        }
+      }));
+      if (!cancelled) {
+        setAgentUsageSnapshots((current) => ({ ...current, ...Object.fromEntries(snapshots) }));
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [agentUsageProviderKey]);
   useEffect(() => {
     if (!enabled.includes("system.display-brightness")) return;
     let cancelled = false;
@@ -254,7 +384,7 @@ export default function HomeDashboard({
     return provider.declaration.source === "rss.unread-latest" && enabled.includes(id);
   });
   const openProvider = (provider: ResolvedSurfaceProvider) => {
-    onNavigate(provider.pluginId && provider.declaration.source === "rss.unread-latest" && plugins.find((plugin) => plugin.id === provider.pluginId)?.manifest?.panel
+    onNavigate(provider.pluginId && plugins.find((plugin) => plugin.id === provider.pluginId)?.manifest?.panel
       ? `plugin:${provider.pluginId}`
       : "rss");
   };
@@ -386,6 +516,32 @@ export default function HomeDashboard({
               );
             })()}
           </div>
+          {selectedAgentUsageProviders.map((provider) => (
+            <AgentUsageDashboardCard
+              key={dashboardProviderWidgetId(provider.key)}
+              id={dashboardProviderWidgetId(provider.key)}
+              title={provider.title}
+              snapshot={agentUsageSnapshots[provider.key]}
+              locale={locale}
+              loadingLabel={t("launcher.home.agentUsage.loading", "Reading agent usage")}
+              emptyLabel={t("launcher.home.agentUsage.empty", "Open Agent Usage to load quota data")}
+              remainingLabel={t("launcher.home.agentUsage.remaining", "remaining")}
+              resetLabel={t("launcher.home.agentUsage.reset", "Resets")}
+              updatedLabel={t("launcher.home.agentUsage.updated", "Updated")}
+              windowLabel={(label) => {
+                switch (label) {
+                  case "5h": return t("launcher.home.agentUsage.window.5h", "5-hour window");
+                  case "weekly": return t("launcher.home.agentUsage.window.weekly", "Weekly window");
+                  case "monthly": return t("launcher.home.agentUsage.window.monthly", "Monthly window");
+                  case "credits": return t("launcher.home.agentUsage.window.credits", "Credits");
+                  case "primary": return t("launcher.home.agentUsage.window.primary", "Primary window");
+                  case "secondary": return t("launcher.home.agentUsage.window.secondary", "Secondary window");
+                  default: return label;
+                }
+              }}
+              onOpen={() => openProvider(provider)}
+            />
+          ))}
           {enabled.includes("rss.unread-latest") && (
             <RssDashboardCard
               id="rss.unread-latest"

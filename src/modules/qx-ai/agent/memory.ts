@@ -22,20 +22,24 @@ export function invalidateMemorySnapshot(): void {
   cachedSnapshot = null;
 }
 
-/** Sleep/dream consolidator — call after long agent turns or on schedule. */
-export async function runMemoryDream(transcript?: string): Promise<unknown> {
+/** Selective extractor / consolidator. The backend may validly return no candidates. */
+export async function runMemoryDream(
+  transcript?: string,
+  mode: "manual" | "smart" = "manual",
+): Promise<unknown> {
   invalidateMemorySnapshot();
   return invoke("qxai_memory_dream", {
     transcript: transcript?.trim() || null,
+    mode,
   });
 }
 
-export function shouldDreamAfterTurn(opts: {
-  toolCallCount: number;
-  steps: number;
-  memoryToolUsed: boolean;
+export function shouldExtractMemoryAfterTurn(opts: {
+  policy: "manual" | "smart" | "off";
+  transcript: string;
 }): boolean {
-  // Hermes-style nudge: consolidate after substantial work, not every turn.
-  if (opts.memoryToolUsed) return false;
-  return opts.toolCallCount >= 4 || opts.steps >= 8;
+  if (opts.policy !== "smart") return false;
+  // This only avoids empty acknowledgements. Candidate selection belongs to the
+  // extractor and an empty candidate list is a successful result.
+  return opts.transcript.trim().length >= 40;
 }

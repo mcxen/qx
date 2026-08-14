@@ -373,6 +373,9 @@ pub struct AgentSettings {
     pub tools_enabled: bool,
     #[serde(default = "default_true", rename = "memory_tool_enabled")]
     pub memory_tool_enabled: bool,
+    /// Memory capture/recall policy: manual | smart | off.
+    #[serde(default = "default_memory_policy", rename = "memory_policy")]
+    pub memory_policy: String,
     #[serde(default = "default_true", rename = "app_search_enabled")]
     pub app_search_enabled: bool,
     #[serde(default = "default_true", rename = "file_search_enabled")]
@@ -434,6 +437,10 @@ fn default_agent_bash_timeout_ms() -> u32 {
     30_000
 }
 
+fn default_memory_policy() -> String {
+    "smart".to_string()
+}
+
 fn default_agent_grep_command() -> String {
     "rg".to_string()
 }
@@ -455,6 +462,7 @@ impl Default for AgentSettings {
             model_tools_enabled: true,
             tools_enabled: true,
             memory_tool_enabled: true,
+            memory_policy: default_memory_policy(),
             app_search_enabled: true,
             file_search_enabled: true,
             http_fetch_enabled: true,

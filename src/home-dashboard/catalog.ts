@@ -1,7 +1,7 @@
 import type { HomeDashboardWidgetId } from "../modules/settings/store";
 import type { InstalledPlugin, PluginHomeWidgetSource, PluginLocale } from "../plugin/types";
 import type { LucideIcon } from "lucide-react";
-import { Cpu, MemoryStick, Monitor, Network, Pin, Rss, Zap } from "lucide-react";
+import { Cpu, Gauge, MemoryStick, Monitor, Network, Pin, Rss, Zap } from "lucide-react";
 import {
   dashboardProviderWidgetId,
   resolveSurfaceProviders,
@@ -76,7 +76,10 @@ export function homeDashboardWidgetOptions(
     },
   ];
   const providers = resolveSurfaceProviders(plugins, "home", locale)
-    .filter((provider) => provider.declaration.source === "rss.unread-latest");
+    .filter((provider) => (
+      provider.declaration.source === "rss.unread-latest"
+      || provider.declaration.source === "agent.usage"
+    ));
   for (const provider of providers) {
     options.push({
       id: dashboardProviderWidgetId(provider.key),
@@ -84,7 +87,7 @@ export function homeDashboardWidgetOptions(
       description: provider.declaration.descriptions?.[locale]
         || provider.declaration.description
         || "",
-      icon: Rss,
+      icon: provider.declaration.source === "agent.usage" ? Gauge : Rss,
     });
   }
   return options;

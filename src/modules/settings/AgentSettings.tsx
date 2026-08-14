@@ -3,6 +3,7 @@ import { Sparkles } from "lucide-react";
 import {
   LoadingLabel,
   Row,
+  SegmentedControl,
   Select,
   SettingsCard,
   Slider,
@@ -472,6 +473,23 @@ export default function AgentSettings() {
       >
         <Row title={t("agent.tools.memory", "Memory")} description={t("agent.tools.memory.desc", "Read/write long-term notes.")}>
           <Toggle value={agent.memory_tool_enabled} onChange={(value) => patchAgent({ memory_tool_enabled: value })} />
+        </Row>
+        <Row
+          title={t("agent.memory.policy", "Memory strategy")}
+          description={t(
+            "agent.memory.policy.desc",
+            "Manual saves only on request. Smart selectively extracts durable facts and may save nothing. Off preserves stored memory but pauses recall and capture.",
+          )}
+        >
+          <SegmentedControl
+            value={agent.memory_policy}
+            options={[
+              { value: "manual", label: t("agent.memory.policy.manual", "Manual") },
+              { value: "smart", label: t("agent.memory.policy.smart", "Smart") },
+              { value: "off", label: t("agent.memory.policy.off", "Off") },
+            ]}
+            onChange={(value) => patchAgent({ memory_policy: value })}
+          />
         </Row>
         <Row title={t("agent.tools.search", "Apps & Files")} description={t("agent.tools.search.desc", "Search installed apps and the file index.")}>
           <div className="qx-agent-inline-toggles">

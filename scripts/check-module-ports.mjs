@@ -814,6 +814,44 @@ if (bundleProductionModule("src/components/qx-shell/actionProtocol.ts", actionPr
   }
 }
 
+const surfaceProvidersOut = path.join(scratch, "surfaceProviders.mjs");
+if (bundleProductionModule("src/plugin/surfaceProviders.ts", surfaceProvidersOut)) {
+  try {
+    const providers = await import(
+      pathToFileURL(surfaceProvidersOut).href + `?t=${Date.now()}`
+    );
+    const snapshot = providers.normalizeAgentUsageDashboardSnapshot({
+      savedAt: 123,
+      token: "must-not-project",
+      usage: [{
+        provider: "codex",
+        title: "Codex",
+        remainingPercent: 69,
+        allowed: true,
+        fetchedAt: 120,
+        rawResponse: "must-not-project",
+        windows: [{
+          id: "primary",
+          label: "weekly",
+          remainingPercent: 69,
+          resetAt: "2026-08-20T06:24:12.000Z",
+        }],
+      }],
+    });
+    if (snapshot?.usage[0]?.remainingPercent !== 69) {
+      fail(`Agent Usage Home snapshot normalization failed: ${JSON.stringify(snapshot)}`);
+    }
+    if (JSON.stringify(snapshot).includes("must-not-project")) {
+      fail("Agent Usage Home snapshot must discard credentials and unregistered fields");
+    }
+    if (providers.normalizeAgentUsageDashboardSnapshot({ usage: [{ token: "secret" }] }) !== null) {
+      fail("Agent Usage Home snapshot must reject malformed cache payloads");
+    }
+  } catch (e) {
+    fail(`surface provider runtime test: ${e}`);
+  }
+}
+
 const backgroundScheduleOut = path.join(scratch, "backgroundActivity.mjs");
 if (bundleProductionModule("src/plugin/backgroundActivity.ts", backgroundScheduleOut)) {
   try {

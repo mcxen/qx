@@ -354,27 +354,29 @@ fn validate_manifest_surface_providers(
         }
         if !matches!(
             provider.source.as_str(),
-            "system.display-brightness" | "rss.unread-latest"
+            "system.display-brightness" | "rss.unread-latest" | "agent.usage"
         ) {
             return Err(format!(
                 "unsupported surface provider source: {}",
                 provider.source
             ));
         }
-        if provider.source == "rss.unread-latest"
-            && ["en", "zh-CN"].iter().any(|locale| {
-                provider
-                    .titles
+        if matches!(
+            provider.source.as_str(),
+            "rss.unread-latest" | "agent.usage"
+        ) && ["en", "zh-CN"].iter().any(|locale| {
+            provider
+                .titles
+                .get(*locale)
+                .map_or(true, |value| value.trim().is_empty())
+                || provider
+                    .descriptions
                     .get(*locale)
                     .map_or(true, |value| value.trim().is_empty())
-                    || provider
-                        .descriptions
-                        .get(*locale)
-                        .map_or(true, |value| value.trim().is_empty())
-            })
-        {
+        }) {
             return Err(format!(
-                "rss.unread-latest provider requires non-empty titles and descriptions for en and zh-CN: {id}"
+                "{} provider requires non-empty titles and descriptions for en and zh-CN: {id}",
+                provider.source
             ));
         }
         if provider
@@ -3646,6 +3648,34 @@ mod tests {
 
         let duplicate = vec![valid[0].clone(), valid[0].clone()];
         assert!(validate_manifest_home_widgets(&duplicate).is_err());
+    }
+
+    #[test]
+    fn agent_usage_surface_requires_localized_host_contract() {
+        let localized = std::collections::HashMap::from([
+            ("en".to_string(), "Agent Usage".to_string()),
+            ("zh-CN".to_string(), "Agent 用量".to_string()),
+        ]);
+        let valid = vec![PluginSurfaceProviderDeclaration {
+            id: "usage-overview".to_string(),
+            source: "agent.usage".to_string(),
+            surfaces: vec!["home".to_string()],
+            presentation: Some("wide".to_string()),
+            title: String::new(),
+            titles: localized.clone(),
+            description: String::new(),
+            descriptions: localized,
+            default_enabled: false,
+        }];
+        assert!(validate_manifest_surface_providers(&valid).is_ok());
+
+        let mut missing_zh = valid[0].clone();
+        missing_zh.descriptions.remove("zh-CN");
+        assert!(validate_manifest_surface_providers(&[missing_zh]).is_err());
+
+        let mut arbitrary = valid[0].clone();
+        arbitrary.source = "agent.usage-html".to_string();
+        assert!(validate_manifest_surface_providers(&[arbitrary]).is_err());
     }
 
     #[test]

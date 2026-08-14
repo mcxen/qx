@@ -194,6 +194,7 @@ fn default_agent_uses_openrouter_auto() {
     assert!(agent.tools_enabled);
     assert!(agent.model_tools_enabled);
     assert!(agent.memory_tool_enabled);
+    assert_eq!(agent.memory_policy, "smart");
     assert!(agent.app_search_enabled);
     assert!(agent.file_search_enabled);
     assert!(agent.http_fetch_enabled);

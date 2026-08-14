@@ -35,6 +35,27 @@ export interface RssDashboardSnapshot {
   generatedAt: number;
 }
 
+export interface AgentUsageDashboardWindow {
+  id: string;
+  label: string;
+  remainingPercent: number;
+  resetAt: string | null;
+}
+
+export interface AgentUsageDashboardProvider {
+  provider: string;
+  title: string;
+  remainingPercent: number;
+  allowed: boolean;
+  fetchedAt: number;
+  windows: AgentUsageDashboardWindow[];
+}
+
+export interface AgentUsageDashboardSnapshot {
+  savedAt: number;
+  usage: AgentUsageDashboardProvider[];
+}
+
 export interface ResolvedSurfaceProvider {
   key: string;
   pluginId: string;
@@ -126,6 +147,63 @@ export const surfaceProviderAdapters = {
   } satisfies LightweightSurfaceProviderAdapter<RssDashboardSnapshot>,
 } as const;
 
+const AGENT_USAGE_CACHE_KEY = "agent-usage.snapshot.v1";
+
+function finitePercent(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.min(100, Math.max(0, parsed)) : null;
+}
+
+export function normalizeAgentUsageDashboardSnapshot(value: unknown): AgentUsageDashboardSnapshot | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as { savedAt?: unknown; usage?: unknown };
+  const usage = (Array.isArray(raw.usage) ? raw.usage : []).flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const item = entry as Record<string, unknown>;
+    const remainingPercent = finitePercent(item.remainingPercent);
+    if (
+      typeof item.provider !== "string"
+      || typeof item.title !== "string"
+      || remainingPercent == null
+    ) {
+      return [];
+    }
+    const windows = (Array.isArray(item.windows) ? item.windows : []).flatMap((window) => {
+      if (!window || typeof window !== "object") return [];
+      const candidate = window as Record<string, unknown>;
+      const windowRemaining = finitePercent(candidate.remainingPercent);
+      if (
+        typeof candidate.id !== "string"
+        || typeof candidate.label !== "string"
+        || windowRemaining == null
+      ) {
+        return [];
+      }
+      return [{
+        id: candidate.id.slice(0, 128),
+        label: candidate.label.slice(0, 128),
+        remainingPercent: windowRemaining,
+        resetAt: typeof candidate.resetAt === "string" ? candidate.resetAt.slice(0, 128) : null,
+      }];
+    }).slice(0, 8);
+    return [{
+      provider: item.provider.slice(0, 128),
+      title: item.title.slice(0, 128),
+      remainingPercent,
+      allowed: item.allowed !== false,
+      fetchedAt: typeof item.fetchedAt === "number" && Number.isFinite(item.fetchedAt)
+        ? item.fetchedAt
+        : 0,
+      windows,
+    }];
+  }).slice(0, 8);
+  if (usage.length === 0) return null;
+  return {
+    savedAt: typeof raw.savedAt === "number" && Number.isFinite(raw.savedAt) ? raw.savedAt : 0,
+    usage,
+  };
+}
+
 export async function readDisplayBrightnessProvider(): Promise<DisplayBrightnessProviderItem[]> {
   return surfaceProviderAdapters["system.display-brightness"].read();
 }
@@ -136,4 +214,14 @@ export async function writeDisplayBrightnessProvider(id: string, value: number):
 
 export async function readRssDashboardProvider(): Promise<RssDashboardSnapshot> {
   return surfaceProviderAdapters["rss.unread-latest"].read();
+}
+
+export async function readAgentUsageDashboardProvider(
+  pluginId: string,
+): Promise<AgentUsageDashboardSnapshot | null> {
+  const value = await invoke<unknown>("plugin_storage_get", {
+    id: pluginId,
+    key: AGENT_USAGE_CACHE_KEY,
+  });
+  return normalizeAgentUsageDashboardSnapshot(value);
 }

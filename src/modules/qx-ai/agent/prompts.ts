@@ -87,7 +87,7 @@ export function buildReactSystemPrompt(
       ? "- Skills: list_skills / read_skill / write_skill manage ~/.qx/skills. Prefer writing frontmatter mode: fixed|smart|disabled."
       : null,
     names.has("memory") || names.has("memory_list")
-      ? "- Memory: memory tool with add/replace/remove/status on targets memory|user (char-capped). Snapshot is frozen in the system prompt. Use memory_dream to consolidate when full. Use session_search for past chats."
+      ? "- Memory: core facts are frozen in the prompt; episodic records are recalled on demand with memory search. memory_dream creates derived summaries and never deletes source records. Use session_search for past chats."
       : null,
     names.has("read_mcp_config")
       ? "- MCP: read_mcp_config / write_mcp_config manage ~/.qx/mcp.json. Only change MCP when the user asks."

@@ -116,7 +116,10 @@ export interface PluginHomeWidgetDeclaration {
   source: PluginHomeWidgetSource;
 }
 
-export type PluginSurfaceProviderSource = "system.display-brightness" | "rss.unread-latest";
+export type PluginSurfaceProviderSource =
+  | "system.display-brightness"
+  | "rss.unread-latest"
+  | "agent.usage";
 export type PluginSurfaceProviderTarget = "tray" | "home";
 export type PluginSurfaceProviderPresentation = "compact" | "standard" | "wide";
 
@@ -290,6 +293,7 @@ export interface PluginAiAgentSettings {
   model_tools_enabled: boolean;
   tools_enabled: boolean;
   memory_tool_enabled: boolean;
+  memory_policy: "manual" | "smart" | "off";
   app_search_enabled: boolean;
   file_search_enabled: boolean;
   http_fetch_enabled: boolean;
@@ -327,6 +331,10 @@ export interface PluginAiMemoryEntry {
   id: string;
   text: string;
   tags: string[];
+  source: string;
+  type: "core" | "episodic";
+  importance: number;
+  supersedes: string[];
   createdAt: number;
   updatedAt: number;
 }

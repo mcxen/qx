@@ -170,6 +170,7 @@ export const DEFAULT_PLUGIN_REGISTRIES: PluginRegistrySource[] = [
 ];
 
 export type QxAiSkillLoadMode = "fixed" | "smart" | "disabled";
+export type QxAiMemoryPolicy = "manual" | "smart" | "off";
 
 /** Manual override for catalog-detected model capabilities. Key: `provider|model`. */
 export interface ModelCapabilityOverride {
@@ -186,6 +187,8 @@ export interface AgentSettings {
   model_tools_enabled: boolean;
   tools_enabled: boolean;
   memory_tool_enabled: boolean;
+  /** Smart extracts selective candidates; manual only writes on request; off preserves but does not recall memory. */
+  memory_policy: QxAiMemoryPolicy;
   app_search_enabled: boolean;
   file_search_enabled: boolean;
   http_fetch_enabled: boolean;
@@ -552,6 +555,7 @@ export const DEFAULT_SETTINGS: Settings = {
     model_tools_enabled: true,
     tools_enabled: true,
     memory_tool_enabled: true,
+    memory_policy: "smart",
     app_search_enabled: true,
     file_search_enabled: true,
     http_fetch_enabled: true,

@@ -24,6 +24,14 @@ const settingsSource = readFileSync(
   new URL("../src/modules/settings/store.ts", import.meta.url),
   "utf8",
 );
+const memoryBackendSource = readFileSync(
+  new URL("../src-tauri/src/qx_ai_memory.rs", import.meta.url),
+  "utf8",
+);
+const memoryExtractorSource = readFileSync(
+  new URL("../src-tauri/src/qx_ai_memory/extraction.rs", import.meta.url),
+  "utf8",
+);
 const messageSource = readFileSync(
   new URL("../src/modules/qx-ai/message-rendering.tsx", import.meta.url),
   "utf8",
@@ -38,6 +46,10 @@ const errorPresentationSource = readFileSync(
 );
 const conversationTitleSource = readFileSync(
   new URL("../src/modules/qx-ai/conversation-title.ts", import.meta.url),
+  "utf8",
+);
+const toolRunnerSource = readFileSync(
+  new URL("../src/modules/qx-ai/agent/tool-runner.ts", import.meta.url),
   "utf8",
 );
 const pzaiAssistantSource = readFileSync(
@@ -137,6 +149,18 @@ assert.match(messageSource, /aria-expanded=\{open\}/);
 assert.match(messageSource, /defaultOpen=\{false\}/);
 assert.doesNotMatch(messageSource, /defaultOpen=\{step\.state === "running"\}/);
 
+// Tool completion must update both the live streaming projection and the
+// durable steps returned with the finished assistant message. Otherwise the
+// completed message restores stale `running` actions and their spinners.
+assert.match(
+  toolRunnerSource,
+  /function updateActionStep[\s\S]*?Object\.assign\(actionStep, patch\)[\s\S]*?opts\.onStepUpdate\(actionStep\.id, patch\)/,
+);
+assert.match(
+  toolRunnerSource,
+  /updateActionStep\(actionStep, opts, \{ state: "completed", output: observation \}\)/,
+);
+
 // Native reasoning is recorded as an ordered Agent step for every model turn.
 // It must be appended before that turn's tool action and updated in place,
 // rather than rendered through one global reasoning block that moves as tools arrive.
@@ -149,11 +173,19 @@ assert.match(
 );
 assert.doesNotMatch(agentSource, /reasoning:\s*message\.reasoning_content/);
 
-// Hermes harness: frozen memory snapshot + dream consolidator.
+// Selective memory: policy-driven, empty candidates allowed, original source
+// rows preserved, and only core records stay resident in the prompt.
 assert.match(agentSource, /loadMemorySnapshot/);
 assert.match(agentSource, /qxai_memory_dream/);
 assert.match(agentSource, /session_search/);
 assert.match(storeSource, /memorySnapshot/);
+assert.match(settingsSource, /memory_policy:\s*"smart"/);
+assert.match(storeSource, /memory_policy === "smart"/);
+assert.doesNotMatch(storeSource, /toolCallCount\s*>=|steps\.length\s*>=/);
+assert.match(memoryExtractorSource, /empty candidates array/);
+assert.match(memoryBackendSource, /list_active_core/);
+assert.match(memoryBackendSource, /source: format!\("dream\.\{mode\}"\)/);
+assert.doesNotMatch(memoryBackendSource, /fn rewrite_hot_set/);
 
 // Module Action port: discover + run stable module/plugin actions (RSS refresh, P仔, plugins).
 const moduleActionsSource = readFileSync(

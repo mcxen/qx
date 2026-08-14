@@ -39,6 +39,10 @@ export interface AiMemoryEntry {
   id: string;
   text: string;
   tags: string[];
+  source?: string;
+  type?: "core" | "episodic";
+  importance?: number;
+  supersedes?: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -1177,6 +1181,7 @@ export function MemorySection({ onSaved }: { onSaved?: (detail: string) => void 
                     {memory.text}
                   </div>
                   <div className="qx-ai-config-card-meta" style={{ marginTop: 4 }}>
+                    {memory.type ?? "core"} · {memory.source ?? "manual"} · {memory.importance ?? 60} ·{" "}
                     {memory.tags.length > 0 ? memory.tags.join(", ") : "untagged"} ·{" "}
                     {new Date(memory.updatedAt).toLocaleString()}
                   </div>

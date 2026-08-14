@@ -76,16 +76,16 @@ export async function executeToolWithHooks(
     observation = `Error: tool "${name}" is not available. Enabled: ${
       enabled.map((t) => t.name).join(", ") || "(none)"
     }.`;
-    opts.onStepUpdate(actionStep.id, { state: "error", output: observation });
+    updateActionStep(actionStep, opts, { state: "error", output: observation });
   } else {
     try {
       const result = normalizeToolResult(await tool.run(toolInput));
       observation = result.observation;
       appendAttachments(attachments, result.attachments);
-      opts.onStepUpdate(actionStep.id, { state: "completed", output: observation });
+      updateActionStep(actionStep, opts, { state: "completed", output: observation });
     } catch (err) {
       observation = `Error: ${err instanceof Error ? err.message : String(err)}`;
-      opts.onStepUpdate(actionStep.id, { state: "error", output: observation });
+      updateActionStep(actionStep, opts, { state: "error", output: observation });
       const errPatch = await runQxAiHooks("on_error", {
         conversationId: opts.conversationId,
         provider: opts.provider,
@@ -123,6 +123,17 @@ export async function executeToolWithHooks(
 
   pushObservation(steps, opts, name, observation);
   return observation;
+}
+
+function updateActionStep(
+  actionStep: AgentStep,
+  opts: AgentRunOptions,
+  patch: Partial<AgentStep>,
+) {
+  // Keep the durable Agent result aligned with the live store projection.
+  // The completed message replaces streamingSteps with this same steps array.
+  Object.assign(actionStep, patch);
+  opts.onStepUpdate(actionStep.id, patch);
 }
 
 function pushAction(

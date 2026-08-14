@@ -3,6 +3,11 @@
 这份文档负责把作者从“一个业务能力”带到“可安装、可验证的 Qx 插件”。
 字段全集与底层实现不在这里重复：UI、CLI、Manifest、Tray 和运行时分别由对应协议文档负责。
 
+AI 记忆兼容性：`context.ai.memory.list()` 返回项包含宿主管理的
+`source`、`type`（`core|episodic`）、`importance`（0–100）和
+`supersedes` 谱系字段。插件不应改写这些元数据；用户选择 Off 时，
+记忆调用暂停，但宿主保留已有数据。
+
 ## 1. 心智模型
 
 Qx 插件是业务模块，不是自行绘制窗口的网页：
@@ -188,6 +193,8 @@ Manifest 只声明包元数据、入口、命令、面板、权限与兼容范�
 
 `homeWidgets[]` 只负责把宿主系统数据源关联到插件 Panel。若插件希望在 Launcher Home
 直接提供一张宿主卡片，应声明 `surfaceProviders[]`，并且只能使用 Qx 已登记的语义源。
+`agent.usage` 约定插件把无凭据的归一化快照写入 `agent-usage.snapshot.v1`；Home 只读该缓存，
+不启动插件 runtime，也不代替插件执行登录或网络刷新。
 当前可用的 Home 信息源包括 `rss.unread-latest`：Qx 统一读取 RSS 未读快照、先画缓存、
 节流刷新并绘制最新帖子；插件只声明稳定 id、双语标题/说明和 `surfaces: ["home"]`，不提交
 数据请求、DOM、CSS、轮询周期或尺寸。展示 Home/Tray Provider 不会启动完整插件运行时；

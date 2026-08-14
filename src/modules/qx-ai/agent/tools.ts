@@ -616,7 +616,7 @@ export const TOOLS: ToolSpec[] = [
       },
       required: ["action"],
     },
-    isEnabled: (s) => s.memory_tool_enabled,
+    isEnabled: (s) => s.memory_tool_enabled && s.memory_policy !== "off",
     run: async (input) => {
       const rec = asRecord(input);
       let action = stringField(rec, "action").trim().toLowerCase() || "status";
@@ -642,7 +642,7 @@ export const TOOLS: ToolSpec[] = [
   {
     name: "memory_dream",
     description:
-      "Run the sleep/dream consolidator: compress MEMORY+USER (and optional transcript) via the default model. Writes ~/.qx/memories/dreams/ diary.",
+      "Run selective memory consolidation manually. Original records are preserved; any summary is stored as a derived record with source lineage.",
     inputHint: '{"transcript": "optional recent conversation summary"}',
     parameters: {
       type: "object",
@@ -650,12 +650,13 @@ export const TOOLS: ToolSpec[] = [
         transcript: { type: "string", description: "Optional session text to distill" },
       },
     },
-    isEnabled: (s) => s.memory_tool_enabled,
+    isEnabled: (s) => s.memory_tool_enabled && s.memory_policy !== "off",
     run: async (input) => {
       const rec = asRecord(input);
       const transcript = stringField(rec, "transcript") || undefined;
       const result = await invoke("qxai_memory_dream", {
         transcript: transcript?.trim() || null,
+        mode: "manual",
       });
       return truncate(JSON.stringify(result, null, 2));
     },
@@ -673,7 +674,7 @@ export const TOOLS: ToolSpec[] = [
       },
       required: ["query"],
     },
-    isEnabled: (s) => s.memory_tool_enabled,
+    isEnabled: (s) => s.memory_tool_enabled && s.memory_policy !== "off",
     run: async (input) => {
       const rec = asRecord(input);
       const query = stringField(rec, "query").trim();
@@ -689,7 +690,7 @@ export const TOOLS: ToolSpec[] = [
     description: "Alias for memory action=status.",
     inputHint: "{}",
     parameters: { type: "object", properties: {} },
-    isEnabled: (s) => s.memory_tool_enabled,
+    isEnabled: (s) => s.memory_tool_enabled && s.memory_policy !== "off",
     run: async () => {
       const result = await invoke("qxai_memory_mutate", {
         action: "status",
@@ -714,7 +715,7 @@ export const TOOLS: ToolSpec[] = [
       },
       required: ["text"],
     },
-    isEnabled: (s) => s.memory_tool_enabled,
+    isEnabled: (s) => s.memory_tool_enabled && s.memory_policy !== "off",
     run: async (input) => {
       const rec = asRecord(input);
       const content = stringField(rec, "content") || stringField(rec, "text");
@@ -745,7 +746,7 @@ export const TOOLS: ToolSpec[] = [
         target: { type: "string" },
       },
     },
-    isEnabled: (s) => s.memory_tool_enabled,
+    isEnabled: (s) => s.memory_tool_enabled && s.memory_policy !== "off",
     run: async (input) => {
       const rec = asRecord(input);
       const oldText = stringField(rec, "old_text") || stringField(rec, "id");

@@ -157,7 +157,9 @@ my-plugin/
 ### Home Surface Providers
 
 `surfaceProviders[]` 是不启动插件运行时的宿主数据端口。当前登记的 `rss.unread-latest` 返回
-RSS 未读总数和有界的最新帖子投影，Qx 负责 SQLite 读取、本地缓存、节流、空态和卡片绘制。
+RSS 未读总数和有界的最新帖子投影；`agent.usage` 读取插件保存的归一化配额快照，只接受
+服务商、剩余百分比、重置时间和更新时间，不读取 token、认证文件或原始响应。Qx 负责
+本地缓存读取、节流、空态和卡片绘制。
 插件可以声明 `surfaces: ["home"]` 让用户在 Home 三点菜单中选择该卡片；`titles`、
 `descriptions` 必须同时提供 `en` 与 `zh-CN`，旧包缺少这些元数据时宿主不会按插件 id 维护
 内置中文映射。Provider 不得携带命令、私有轮询、HTML/CSS 或任意数据结构；需要新的信息

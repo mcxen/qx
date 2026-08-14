@@ -1,11 +1,11 @@
 //! QxAI long-term memory — **SQLite + FTS5** with a small hot prompt window.
 //!
 //! Design (RLM-style retrieval layering):
-//! - **Cold store**: `~/.qx/memories/memory.db` holds every note (memory|user).
+//! - **Cold store**: `~/.qx/memories/memory.db` holds every original and derived note.
 //! - **FTS**: full-text search so long history stays findable.
-//! - **Hot snapshot**: only a char-capped recent pack is injected into the system
-//!   prompt (Hermes dual-store shape), so context never blows up.
-//! - Dream consolidates hot notes; search always hits the full SQLite archive.
+//! - **Core snapshot**: only active core records are injected into the prompt.
+//! - **Episodic recall**: contextual records remain in FTS and load on demand.
+//! - Dream/extraction appends derived records with lineage; sources are never deleted.
 //!
 //! No legacy migration: old MEMORY.md / USER.md / qxai-memory.json are discarded on layout reset.
 //! Hot-window mirrors (MEMORY.md / USER.md) are best-effort writes only.
@@ -22,7 +22,9 @@ use std::sync::{
 };
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::g4f::{self, ChatMessage};
+mod extraction;
+
+use extraction::{extract_candidates, ExtractionCandidate};
 
 pub const MEMORY_CHAR_LIMIT: usize = 2200;
 pub const USER_CHAR_LIMIT: usize = 1375;
@@ -80,6 +82,10 @@ struct MemoryRow {
     target: String,
     content: String,
     tags: String,
+    source: String,
+    memory_type: String,
+    importance: i64,
+    supersedes: String,
     created_at: i64,
     updated_at: i64,
 }
@@ -129,7 +135,11 @@ fn open_db() -> Result<Connection, String> {
             content TEXT NOT NULL,
             tags TEXT NOT NULL DEFAULT '[]',
             created_at INTEGER NOT NULL,
-            updated_at INTEGER NOT NULL
+            updated_at INTEGER NOT NULL,
+            source TEXT NOT NULL DEFAULT 'legacy',
+            memory_type TEXT NOT NULL DEFAULT 'core',
+            importance INTEGER NOT NULL DEFAULT 60,
+            supersedes TEXT NOT NULL DEFAULT '[]'
         );
         CREATE INDEX IF NOT EXISTS idx_memories_target_updated
             ON memories(target, updated_at DESC);
@@ -143,7 +153,31 @@ fn open_db() -> Result<Connection, String> {
         ",
     )
     .map_err(|e| format!("init memory schema: {e}"))?;
+    ensure_column(&conn, "source", "TEXT NOT NULL DEFAULT 'legacy'")?;
+    ensure_column(&conn, "memory_type", "TEXT NOT NULL DEFAULT 'core'")?;
+    ensure_column(&conn, "importance", "INTEGER NOT NULL DEFAULT 60")?;
+    ensure_column(&conn, "supersedes", "TEXT NOT NULL DEFAULT '[]'")?;
     Ok(conn)
+}
+
+fn ensure_column(conn: &Connection, name: &str, declaration: &str) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(memories)")
+        .map_err(|e| format!("inspect memory schema: {e}"))?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| format!("query memory schema: {e}"))?;
+    for column in columns {
+        if column.map_err(|e| format!("read memory schema: {e}"))? == name {
+            return Ok(());
+        }
+    }
+    conn.execute(
+        &format!("ALTER TABLE memories ADD COLUMN {name} {declaration}"),
+        [],
+    )
+    .map_err(|e| format!("migrate memory schema ({name}): {e}"))?;
+    Ok(())
 }
 
 fn now_ms() -> i64 {
@@ -178,15 +212,21 @@ fn fts_delete(conn: &Connection, id: &str) -> Result<(), String> {
 
 fn insert_row(conn: &Connection, row: &MemoryRow) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO memories(id, target, content, tags, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        "INSERT INTO memories(
+            id, target, content, tags, created_at, updated_at,
+            source, memory_type, importance, supersedes
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
         params![
             row.id,
             row.target,
             row.content,
             row.tags,
             row.created_at,
-            row.updated_at
+            row.updated_at,
+            row.source,
+            row.memory_type,
+            row.importance,
+            row.supersedes,
         ],
     )
     .map_err(|e| format!("insert memory: {e}"))?;
@@ -213,7 +253,9 @@ fn delete_row(conn: &Connection, id: &str) -> Result<(), String> {
 
 fn load_row(conn: &Connection, id: &str) -> Result<Option<MemoryRow>, String> {
     conn.query_row(
-        "SELECT id, target, content, tags, created_at, updated_at FROM memories WHERE id = ?1",
+        "SELECT id, target, content, tags, created_at, updated_at,
+                source, memory_type, importance, supersedes
+         FROM memories WHERE id = ?1",
         params![id],
         |row| {
             Ok(MemoryRow {
@@ -223,6 +265,10 @@ fn load_row(conn: &Connection, id: &str) -> Result<Option<MemoryRow>, String> {
                 tags: row.get(3)?,
                 created_at: row.get(4)?,
                 updated_at: row.get(5)?,
+                source: row.get(6)?,
+                memory_type: row.get(7)?,
+                importance: row.get(8)?,
+                supersedes: row.get(9)?,
             })
         },
     )
@@ -233,9 +279,10 @@ fn load_row(conn: &Connection, id: &str) -> Result<Option<MemoryRow>, String> {
 fn list_target(conn: &Connection, target: MemoryTarget) -> Result<Vec<MemoryRow>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, target, content, tags, created_at, updated_at
+            "SELECT id, target, content, tags, created_at, updated_at,
+                    source, memory_type, importance, supersedes
              FROM memories WHERE target = ?1
-             ORDER BY updated_at DESC",
+             ORDER BY importance DESC, updated_at DESC",
         )
         .map_err(|e| format!("prepare list: {e}"))?;
     let rows = stmt
@@ -247,6 +294,10 @@ fn list_target(conn: &Connection, target: MemoryTarget) -> Result<Vec<MemoryRow>
                 tags: row.get(3)?,
                 created_at: row.get(4)?,
                 updated_at: row.get(5)?,
+                source: row.get(6)?,
+                memory_type: row.get(7)?,
+                importance: row.get(8)?,
+                supersedes: row.get(9)?,
             })
         })
         .map_err(|e| format!("query list: {e}"))?;
@@ -255,6 +306,21 @@ fn list_target(conn: &Connection, target: MemoryTarget) -> Result<Vec<MemoryRow>
         out.push(row.map_err(|e| format!("row: {e}"))?);
     }
     Ok(out)
+}
+
+/// Core records stay resident. A source row remains archived/searchable after a
+/// derived record supersedes it, but only the newest active projection is packed.
+fn list_active_core(conn: &Connection, target: MemoryTarget) -> Result<Vec<MemoryRow>, String> {
+    let rows = list_target(conn, target)?;
+    let superseded = rows
+        .iter()
+        .filter(|row| row.memory_type == "core")
+        .flat_map(|row| serde_json::from_str::<Vec<String>>(&row.supersedes).unwrap_or_default())
+        .collect::<std::collections::HashSet<_>>();
+    Ok(rows
+        .into_iter()
+        .filter(|row| row.memory_type == "core" && !superseded.contains(&row.id))
+        .collect())
 }
 
 /// Pack newest entries until char budget for the hot prompt window.
@@ -338,6 +404,10 @@ fn plugin_entry_json(row: &MemoryRow) -> Value {
         "id": row.id,
         "text": row.content,
         "tags": tags,
+        "source": row.source,
+        "type": row.memory_type,
+        "importance": row.importance,
+        "supersedes": serde_json::from_str::<Value>(&row.supersedes).unwrap_or_else(|_| json!([])),
         "createdAt": row.created_at,
         "updatedAt": row.updated_at,
     })
@@ -396,11 +466,15 @@ pub fn plugin_memory_add(content: String, tags: Vec<String>) -> Result<Value, St
                 target: target.as_str().to_string(),
                 content,
                 tags: serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string()),
+                source: "plugin".to_string(),
+                memory_type: "core".to_string(),
+                importance: 70,
+                supersedes: "[]".to_string(),
                 created_at: ts,
                 updated_at: ts,
             };
             insert_row(conn, &row)?;
-            let hot = pack_hot(&list_target(conn, target)?, target.limit());
+            let hot = pack_hot(&list_active_core(conn, target)?, target.limit());
             mirror_hot_markdown(target, &hot);
             Ok(plugin_entry_json(&row))
         })
@@ -414,7 +488,7 @@ pub fn plugin_memory_delete(id: String) -> Result<(), String> {
                 .ok_or_else(|| format!("memory entry not found: {id}"))?;
             let target = MemoryTarget::parse(&row.target)?;
             delete_row(conn, &row.id)?;
-            let hot = pack_hot(&list_target(conn, target)?, target.limit());
+            let hot = pack_hot(&list_active_core(conn, target)?, target.limit());
             mirror_hot_markdown(target, &hot);
             Ok(())
         })
@@ -460,8 +534,8 @@ pub fn wipe_memory_store_for_reset() -> Result<(), String> {
 pub fn memory_prompt_snapshot() -> String {
     with_lock(|| {
         with_db(|conn| {
-            let memory_rows = list_target(conn, MemoryTarget::Memory)?;
-            let user_rows = list_target(conn, MemoryTarget::User)?;
+            let memory_rows = list_active_core(conn, MemoryTarget::Memory)?;
+            let user_rows = list_active_core(conn, MemoryTarget::User)?;
             let memory = pack_hot(&memory_rows, MEMORY_CHAR_LIMIT);
             let user = pack_hot(&user_rows, USER_CHAR_LIMIT);
             // Markdown files are compatibility mirrors, not part of the turn
@@ -497,7 +571,7 @@ fn add_entry(
             .optional()
             .map_err(|e| format!("dedupe: {e}"))?;
         if exists.is_some() {
-            let rows = list_target(conn, target)?;
+            let rows = list_active_core(conn, target)?;
             let hot = pack_hot(&rows, target.limit());
             return Ok(json!({
                 "success": true,
@@ -514,11 +588,15 @@ fn add_entry(
             target: target.as_str().into(),
             content: content.clone(),
             tags: tags_json,
+            source: "manual".to_string(),
+            memory_type: "core".to_string(),
+            importance: 80,
+            supersedes: "[]".to_string(),
             created_at: ts,
             updated_at: ts,
         };
         insert_row(conn, &row)?;
-        let rows = list_target(conn, target)?;
+        let rows = list_active_core(conn, target)?;
         let hot = pack_hot(&rows, target.limit());
         mirror_hot_markdown(target, &hot);
         Ok(json!({
@@ -549,7 +627,8 @@ fn find_matches(
     }
     let mut stmt = conn
         .prepare(
-            "SELECT id, target, content, tags, created_at, updated_at
+            "SELECT id, target, content, tags, created_at, updated_at,
+                    source, memory_type, importance, supersedes
              FROM memories WHERE target = ?1 AND content LIKE ?2
              ORDER BY updated_at DESC LIMIT 20",
         )
@@ -564,6 +643,10 @@ fn find_matches(
                 tags: row.get(3)?,
                 created_at: row.get(4)?,
                 updated_at: row.get(5)?,
+                source: row.get(6)?,
+                memory_type: row.get(7)?,
+                importance: row.get(8)?,
+                supersedes: row.get(9)?,
             })
         })
         .map_err(|e| format!("query match: {e}"))?;
@@ -592,7 +675,7 @@ fn replace_entry(target: MemoryTarget, old_text: &str, content: String) -> Resul
         }
         let id = matches[0].id.clone();
         update_row_content(conn, &id, &content)?;
-        let rows = list_target(conn, target)?;
+        let rows = list_active_core(conn, target)?;
         let hot = pack_hot(&rows, target.limit());
         mirror_hot_markdown(target, &hot);
         Ok(json!({
@@ -623,7 +706,7 @@ fn remove_entry(target: MemoryTarget, old_text: &str) -> Result<Value, String> {
         }
         let id = matches[0].id.clone();
         delete_row(conn, &id)?;
-        let rows = list_target(conn, target)?;
+        let rows = list_active_core(conn, target)?;
         let hot = pack_hot(&rows, target.limit());
         mirror_hot_markdown(target, &hot);
         Ok(json!({
@@ -667,7 +750,8 @@ fn search_entries(
 
         let sql = if target.is_some() {
             "SELECT m.id, m.target, m.content, m.tags, m.created_at, m.updated_at,
-                    snippet(memories_fts, 2, '«', '»', '…', 18) AS snip
+                    snippet(memories_fts, 2, '«', '»', '…', 18) AS snip,
+                    m.source, m.memory_type, m.importance, m.supersedes
              FROM memories_fts
              JOIN memories m ON m.id = memories_fts.id
              WHERE memories_fts MATCH ?1 AND m.target = ?2
@@ -675,7 +759,8 @@ fn search_entries(
              LIMIT ?3"
         } else {
             "SELECT m.id, m.target, m.content, m.tags, m.created_at, m.updated_at,
-                    snippet(memories_fts, 2, '«', '»', '…', 18) AS snip
+                    snippet(memories_fts, 2, '«', '»', '…', 18) AS snip,
+                    m.source, m.memory_type, m.importance, m.supersedes
              FROM memories_fts
              JOIN memories m ON m.id = memories_fts.id
              WHERE memories_fts MATCH ?1
@@ -696,6 +781,10 @@ fn search_entries(
                         "createdAt": row.get::<_, i64>(4)?,
                         "updatedAt": row.get::<_, i64>(5)?,
                         "snippet": row.get::<_, String>(6)?,
+                        "source": row.get::<_, String>(7)?,
+                        "type": row.get::<_, String>(8)?,
+                        "importance": row.get::<_, i64>(9)?,
+                        "supersedes": serde_json::from_str::<Value>(&row.get::<_, String>(10)?).unwrap_or_else(|_| json!([])),
                     }))
                 })
                 .map_err(|e| format!("fts query: {e}"))?;
@@ -714,6 +803,10 @@ fn search_entries(
                         "createdAt": row.get::<_, i64>(4)?,
                         "updatedAt": row.get::<_, i64>(5)?,
                         "snippet": row.get::<_, String>(6)?,
+                        "source": row.get::<_, String>(7)?,
+                        "type": row.get::<_, String>(8)?,
+                        "importance": row.get::<_, i64>(9)?,
+                        "supersedes": serde_json::from_str::<Value>(&row.get::<_, String>(10)?).unwrap_or_else(|_| json!([])),
                     }))
                 })
                 .map_err(|e| format!("fts query: {e}"))?;
@@ -727,7 +820,8 @@ fn search_entries(
             let pattern = format!("%{query}%");
             let mut stmt = conn
                 .prepare(
-                    "SELECT id, target, content, tags, created_at, updated_at
+                    "SELECT id, target, content, tags, created_at, updated_at,
+                            source, memory_type, importance, supersedes
                      FROM memories
                      WHERE content LIKE ?1
                      ORDER BY updated_at DESC
@@ -745,6 +839,10 @@ fn search_entries(
                         "tags": row.get::<_, String>(3)?,
                         "createdAt": row.get::<_, i64>(4)?,
                         "updatedAt": row.get::<_, i64>(5)?,
+                        "source": row.get::<_, String>(6)?,
+                        "type": row.get::<_, String>(7)?,
+                        "importance": row.get::<_, i64>(8)?,
+                        "supersedes": serde_json::from_str::<Value>(&row.get::<_, String>(9)?).unwrap_or_else(|_| json!([])),
                         "snippet": snip,
                     }))
                 })
@@ -764,8 +862,8 @@ fn search_entries(
 
 fn status_all() -> Result<Value, String> {
     with_db(|conn| {
-        let memory_rows = list_target(conn, MemoryTarget::Memory)?;
-        let user_rows = list_target(conn, MemoryTarget::User)?;
+        let memory_rows = list_active_core(conn, MemoryTarget::Memory)?;
+        let user_rows = list_active_core(conn, MemoryTarget::User)?;
         let memory_hot = pack_hot(&memory_rows, MEMORY_CHAR_LIMIT);
         let user_hot = pack_hot(&user_rows, USER_CHAR_LIMIT);
         let snapshot = format!(
@@ -793,144 +891,113 @@ fn status_all() -> Result<Value, String> {
     })
 }
 
-/// Dream / sleep: consolidate hot notes with the default model, rewrite SQLite rows.
-pub fn run_memory_dream(transcript: Option<String>) -> Result<Value, String> {
+/// Selectively extract or consolidate memory. Original rows are immutable here:
+/// candidates are appended as derived records with explicit supersedes lineage.
+pub fn run_memory_dream(transcript: Option<String>, mode: Option<String>) -> Result<Value, String> {
+    let mode = match mode.as_deref().unwrap_or("manual").trim() {
+        "smart" => "smart",
+        _ => "manual",
+    };
     let (memory_rows, user_rows) = with_lock(|| {
         with_db(|conn| {
             Ok((
-                list_target(conn, MemoryTarget::Memory)?,
-                list_target(conn, MemoryTarget::User)?,
+                list_active_core(conn, MemoryTarget::Memory)?,
+                list_active_core(conn, MemoryTarget::User)?,
             ))
         })
     })?;
-    let memory = pack_hot(&memory_rows, MEMORY_CHAR_LIMIT * 2);
-    let user = pack_hot(&user_rows, USER_CHAR_LIMIT * 2);
-    if memory.is_empty()
-        && user.is_empty()
-        && transcript
-            .as_ref()
-            .map(|s| s.trim().is_empty())
-            .unwrap_or(true)
-    {
+    let transcript = transcript.unwrap_or_default();
+    if memory_rows.is_empty() && user_rows.is_empty() && transcript.trim().is_empty() {
         return Ok(json!({
             "ok": true,
             "success": true,
-            "message": "nothing to consolidate",
+            "message": "no candidates",
+            "candidateCount": 0,
         }));
     }
-
-    let memory_blob = if memory.is_empty() {
-        "(empty)".to_string()
-    } else {
-        memory.join("\n---\n")
-    };
-    let user_blob = if user.is_empty() {
-        "(empty)".to_string()
-    } else {
-        user.join("\n---\n")
-    };
-    let transcript_for_prompt = {
-        let t = transcript
-            .as_deref()
-            .unwrap_or("")
-            .chars()
-            .take(6000)
-            .collect::<String>();
-        if t.trim().is_empty() {
-            "(none)".to_string()
-        } else {
-            t
-        }
-    };
 
     let settings = crate::settings::read_settings();
     let provider = Some(settings.agent.default_provider.clone()).filter(|s| !s.is_empty());
     let model = Some(settings.agent.default_model.clone()).filter(|s| !s.is_empty());
-
-    let prompt = format!(
-        r#"You are the QxAI dream / sleep consolidator (Hermes + RLM archive).
-
-Compress into TWO tight hot stores with hard character caps:
-- MEMORY notes (environment, projects, lessons): max {mem_limit} characters total
-- USER profile (preferences, style): max {user_limit} characters total
-
-Rules:
-- Dense bullet-like sentences (array of entry strings).
-- Drop ephemera, secrets, raw logs, and duplicates.
-- Prefer durable facts the agent should always know.
-- Reply with ONLY valid JSON:
-{{"memory":["entry1","entry2"],"user":["entry1"],"diary":"short paragraph of what changed"}}
-
-Current MEMORY (hot pack + recent):
-{memory_blob}
-
-Current USER (hot pack + recent):
-{user_blob}
-
-Optional recent session transcript (for distillation):
-{transcript_for_prompt}
-"#,
-        mem_limit = MEMORY_CHAR_LIMIT,
-        user_limit = USER_CHAR_LIMIT,
-        memory_blob = memory_blob,
-        user_blob = user_blob,
-        transcript_for_prompt = transcript_for_prompt,
-    );
-
-    let messages = vec![
-        ChatMessage {
-            role: "system".into(),
-            content: json!("You consolidate agent memory. Output JSON only."),
-        },
-        ChatMessage {
-            role: "user".into(),
-            content: json!(prompt),
-        },
-    ];
-    let raw = g4f::qxai_chat(provider, model, messages)?;
-    let extracted = extract_json_object(&raw).unwrap_or(raw);
-    let parsed: Value = serde_json::from_str(&extracted)
-        .map_err(|e| format!("dream model returned non-JSON: {e}; raw={extracted}"))?;
-
-    let mut next_memory = value_string_list(parsed.get("memory"));
-    let mut next_user = value_string_list(parsed.get("user"));
-    while join_entries(&next_memory).chars().count() > MEMORY_CHAR_LIMIT {
-        next_memory.pop();
-    }
-    while join_entries(&next_user).chars().count() > USER_CHAR_LIMIT {
-        next_user.pop();
-    }
+    let existing = memory_rows
+        .iter()
+        .chain(user_rows.iter())
+        .map(|row| format!("{} | {} | {}", row.id, row.target, row.content))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let transcript = transcript.chars().take(6000).collect::<String>();
+    let (candidates, diary) = extract_candidates(provider, model, &existing, &transcript, mode)?;
+    let allowed_source_ids = memory_rows
+        .iter()
+        .chain(user_rows.iter())
+        .map(|row| row.id.clone())
+        .collect::<std::collections::HashSet<_>>();
 
     with_lock(|| {
         with_db(|conn| {
-            rewrite_hot_set(conn, MemoryTarget::Memory, &memory_rows, &next_memory)?;
-            rewrite_hot_set(conn, MemoryTarget::User, &user_rows, &next_user)?;
-            mirror_hot_markdown(MemoryTarget::Memory, &next_memory);
-            mirror_hot_markdown(MemoryTarget::User, &next_user);
-
-            let diary = parsed
-                .get("diary")
-                .and_then(|v| v.as_str())
-                .unwrap_or("consolidated")
-                .trim()
-                .to_string();
-            ensure_dirs()?;
-            let stamp = Local::now().format("%Y-%m-%d_%H%M%S").to_string();
-            let dream_path = dreams_dir().join(format!("{stamp}.md"));
-            let dream_body = format!(
-                "# Dream {stamp}\n\n{diary}\n\n## MEMORY\n{}\n\n## USER\n{}\n",
-                join_entries(&next_memory),
-                join_entries(&next_user)
+            let mut inserted = Vec::new();
+            for candidate in candidates.into_iter().take(12) {
+                if let Some(row) = derived_row(candidate, mode, &allowed_source_ids)? {
+                    let duplicate: Option<String> = conn
+                        .query_row(
+                            "SELECT id FROM memories WHERE target = ?1 AND content = ?2 LIMIT 1",
+                            params![row.target, row.content],
+                            |result| result.get(0),
+                        )
+                        .optional()
+                        .map_err(|e| format!("dedupe derived memory: {e}"))?;
+                    if duplicate.is_some() {
+                        continue;
+                    }
+                    insert_row(conn, &row)?;
+                    inserted.push(row);
+                }
+            }
+            let memory_hot = pack_hot(
+                &list_active_core(conn, MemoryTarget::Memory)?,
+                MEMORY_CHAR_LIMIT,
             );
-            fs::write(&dream_path, dream_body).map_err(|e| format!("write dream diary: {e}"))?;
+            let user_hot = pack_hot(
+                &list_active_core(conn, MemoryTarget::User)?,
+                USER_CHAR_LIMIT,
+            );
+            mirror_hot_markdown(MemoryTarget::Memory, &memory_hot);
+            mirror_hot_markdown(MemoryTarget::User, &user_hot);
+
+            let dream_path = if inserted.is_empty() {
+                None
+            } else {
+                ensure_dirs()?;
+                let stamp = Local::now().format("%Y-%m-%d_%H%M%S").to_string();
+                let path = dreams_dir().join(format!("{stamp}.md"));
+                let body = format!(
+                    "# Memory extraction {stamp}\n\nMode: {mode}\n\n{}\n\n{}\n",
+                    if diary.is_empty() {
+                        "selected durable candidates"
+                    } else {
+                        &diary
+                    },
+                    inserted
+                        .iter()
+                        .map(|row| format!(
+                            "- [{}:{}] {}",
+                            row.memory_type, row.importance, row.content
+                        ))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                );
+                fs::write(&path, body).map_err(|e| format!("write extraction diary: {e}"))?;
+                Some(path)
+            };
 
             Ok(json!({
                 "ok": true,
                 "success": true,
-                "message": "consolidated",
-                "dreamPath": dream_path.to_string_lossy(),
-                "memoryUsage": format_usage(&next_memory, MEMORY_CHAR_LIMIT),
-                "userUsage": format_usage(&next_user, USER_CHAR_LIMIT),
+                "message": if inserted.is_empty() { "no candidates" } else { "derived candidates saved" },
+                "candidateCount": inserted.len(),
+                "dreamPath": dream_path.map(|path| path.to_string_lossy().into_owned()),
+                "memoryUsage": format_usage(&memory_hot, MEMORY_CHAR_LIMIT),
+                "userUsage": format_usage(&user_hot, USER_CHAR_LIMIT),
                 "memoryArchiveCount": count_target(conn, MemoryTarget::Memory)?,
                 "userArchiveCount": count_target(conn, MemoryTarget::User)?,
                 "diary": diary,
@@ -939,64 +1006,38 @@ Optional recent session transcript (for distillation):
     })
 }
 
-/// Remove previous hot-pack rows and insert consolidated entries.
-fn rewrite_hot_set(
-    conn: &Connection,
-    target: MemoryTarget,
-    previous_hot_source: &[MemoryRow],
-    next: &[String],
-) -> Result<(), String> {
-    let hot_ids: Vec<String> = pack_hot(previous_hot_source, target.limit() * 2)
-        .iter()
-        .filter_map(|content| {
-            previous_hot_source
-                .iter()
-                .find(|r| r.content == *content)
-                .map(|r| r.id.clone())
-        })
-        .collect();
-    for id in hot_ids {
-        delete_row(conn, &id)?;
+fn derived_row(
+    candidate: ExtractionCandidate,
+    mode: &str,
+    allowed_source_ids: &std::collections::HashSet<String>,
+) -> Result<Option<MemoryRow>, String> {
+    let content = candidate.content.trim();
+    if content.is_empty() {
+        return Ok(None);
     }
-    for content in next {
-        let content = content.trim();
-        if content.is_empty() {
-            continue;
-        }
-        let ts = now_ms();
-        let row = MemoryRow {
-            id: new_id(),
-            target: target.as_str().into(),
-            content: content.into(),
-            tags: r#"["dream"]"#.into(),
-            created_at: ts,
-            updated_at: ts,
-        };
-        insert_row(conn, &row)?;
-    }
-    Ok(())
-}
-
-fn value_string_list(value: Option<&Value>) -> Vec<String> {
-    value
-        .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|item| item.as_str())
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-fn extract_json_object(raw: &str) -> Option<String> {
-    let start = raw.find('{')?;
-    let end = raw.rfind('}')?;
-    if end < start {
-        return None;
-    }
-    Some(raw[start..=end].to_string())
+    let target = MemoryTarget::parse(&candidate.target)?;
+    let memory_type = match candidate.memory_type.trim() {
+        "core" => "core",
+        _ => "episodic",
+    };
+    let supersedes = candidate
+        .supersedes
+        .into_iter()
+        .filter(|id| allowed_source_ids.contains(id))
+        .collect::<Vec<_>>();
+    let ts = now_ms();
+    Ok(Some(MemoryRow {
+        id: new_id(),
+        target: target.as_str().to_string(),
+        content: content.chars().take(1200).collect(),
+        tags: serde_json::to_string(&vec!["derived", mode]).unwrap_or_else(|_| "[]".into()),
+        source: format!("dream.{mode}"),
+        memory_type: memory_type.to_string(),
+        importance: candidate.importance.clamp(0, 100),
+        supersedes: serde_json::to_string(&supersedes).unwrap_or_else(|_| "[]".into()),
+        created_at: ts,
+        updated_at: ts,
+    }))
 }
 
 // ── Commands ────────────────────────────────────────────────────────────
@@ -1065,8 +1106,11 @@ pub async fn qxai_memory_mutate(
 }
 
 #[tauri::command]
-pub async fn qxai_memory_dream(transcript: Option<String>) -> Result<Value, String> {
-    crate::runtime::blocking(move || run_memory_dream(transcript))
+pub async fn qxai_memory_dream(
+    transcript: Option<String>,
+    mode: Option<String>,
+) -> Result<Value, String> {
+    crate::runtime::blocking(move || run_memory_dream(transcript, mode))
         .await
         .map_err(|e| format!("dream worker failed: {e}"))?
 }
@@ -1120,4 +1164,126 @@ pub async fn qxai_memory_clear() -> Result<Value, String> {
 #[allow(dead_code)]
 fn _path_exists(path: &Path) -> bool {
     path.exists()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_conn() -> Connection {
+        let conn = Connection::open_in_memory().expect("memory db");
+        conn.execute_batch(
+            "CREATE TABLE memories (
+                id TEXT PRIMARY KEY NOT NULL,
+                target TEXT NOT NULL,
+                content TEXT NOT NULL,
+                tags TEXT NOT NULL DEFAULT '[]',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL,
+                source TEXT NOT NULL,
+                memory_type TEXT NOT NULL,
+                importance INTEGER NOT NULL,
+                supersedes TEXT NOT NULL
+             );",
+        )
+        .expect("schema");
+        conn
+    }
+
+    fn row(id: &str, memory_type: &str, supersedes: &[&str]) -> MemoryRow {
+        MemoryRow {
+            id: id.to_string(),
+            target: "memory".to_string(),
+            content: format!("content {id}"),
+            tags: "[]".to_string(),
+            source: "test".to_string(),
+            memory_type: memory_type.to_string(),
+            importance: 70,
+            supersedes: serde_json::to_string(supersedes).expect("lineage"),
+            created_at: 1,
+            updated_at: 1,
+        }
+    }
+
+    fn insert_without_fts(conn: &Connection, row: &MemoryRow) {
+        conn.execute(
+            "INSERT INTO memories VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            params![
+                row.id,
+                row.target,
+                row.content,
+                row.tags,
+                row.created_at,
+                row.updated_at,
+                row.source,
+                row.memory_type,
+                row.importance,
+                row.supersedes
+            ],
+        )
+        .expect("insert");
+    }
+
+    #[test]
+    fn derived_summary_preserves_source_and_replaces_only_core_projection() {
+        let conn = test_conn();
+        insert_without_fts(&conn, &row("source", "core", &[]));
+        insert_without_fts(&conn, &row("episode", "episodic", &[]));
+        insert_without_fts(&conn, &row("summary", "core", &["source"]));
+
+        assert_eq!(count_target(&conn, MemoryTarget::Memory).unwrap(), 3);
+        let active = list_active_core(&conn, MemoryTarget::Memory).unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].id, "summary");
+        assert!(load_row(&conn, "source").unwrap().is_some());
+    }
+
+    #[test]
+    fn legacy_schema_gains_metadata_without_losing_rows() {
+        let conn = Connection::open_in_memory().expect("memory db");
+        conn.execute_batch(
+            "CREATE TABLE memories (
+                id TEXT PRIMARY KEY NOT NULL,
+                target TEXT NOT NULL,
+                content TEXT NOT NULL,
+                tags TEXT NOT NULL DEFAULT '[]',
+                created_at INTEGER NOT NULL,
+                updated_at INTEGER NOT NULL
+             );
+             INSERT INTO memories VALUES ('legacy', 'memory', 'keep me', '[]', 1, 1);",
+        )
+        .expect("legacy schema");
+        ensure_column(&conn, "source", "TEXT NOT NULL DEFAULT 'legacy'").unwrap();
+        ensure_column(&conn, "memory_type", "TEXT NOT NULL DEFAULT 'core'").unwrap();
+        ensure_column(&conn, "importance", "INTEGER NOT NULL DEFAULT 60").unwrap();
+        ensure_column(&conn, "supersedes", "TEXT NOT NULL DEFAULT '[]'").unwrap();
+
+        let row = load_row(&conn, "legacy").unwrap().expect("preserved row");
+        assert_eq!(row.content, "keep me");
+        assert_eq!(row.source, "legacy");
+        assert_eq!(row.memory_type, "core");
+        assert_eq!(row.importance, 60);
+        assert_eq!(row.supersedes, "[]");
+    }
+
+    #[test]
+    fn derived_candidate_allows_empty_supersedes_and_clamps_importance() {
+        let allowed = std::collections::HashSet::new();
+        let row = derived_row(
+            ExtractionCandidate {
+                target: "memory".to_string(),
+                content: "durable fact".to_string(),
+                memory_type: "core".to_string(),
+                importance: 140,
+                supersedes: vec!["unknown".to_string()],
+            },
+            "smart",
+            &allowed,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(row.importance, 100);
+        assert_eq!(row.supersedes, "[]");
+        assert_eq!(row.source, "dream.smart");
+    }
 }

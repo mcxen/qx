@@ -1,5 +1,36 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — Agent Usage 主页 Dashboard
+
+**状态**：代码与自动验证完成，等待桌面运行态复核。
+
+- Agent Usage 声明 `agent.usage` Home Surface Provider，用户可从主页三点菜单启用。
+- Dashboard 由宿主绘制 Codex/Grok 剩余百分比、重置时间和快照更新时间；点击进入完整 Agent Usage Workbench。
+- 主页仅读取插件已保存的归一化无凭据快照，不加载插件 runtime、不读取认证文件、不发起登录或上游请求。
+
+### 验证
+
+- [x] Agent Usage smoke / package / 1.2.0 临时安装验证；plugin-data 快照未改动，活动安装因当前宿主仍为 0.6.86 已恢复 1.1.0
+- [x] `npx tsc --noEmit` / `npm run check` / `npm run build`
+- [x] `cargo fmt --check` / `cargo check` / marketplace 定向测试
+- [ ] 桌面态：主页菜单启用 Agent Usage，显示 Codex/Grok 配额并可打开插件。
+
+## Fix — QxAI 完成后工具步骤仍显示运行中
+
+**状态**：代码修复完成，等待桌面运行态复核。
+
+- 工具终态现在同时写回 Agent 的持久 `steps` 与实时 `streamingSteps` 投影。
+- 回答完成、界面切换到持久消息后，不再把已完成或失败的工具恢复成 `running` 并继续转圈。
+- 修复位于共享工具执行端口，同时覆盖原生 function calling 与 ReAct 工具调用。
+
+### 验证
+
+- [x] `npm run test:qx-ai-agent`
+- [x] `npx tsc --noEmit`
+- [x] `npm run check`
+- [x] `npm run build`
+- [ ] 桌面态：连续调用多个 Qx 系统工具，回答完成后所有工具均停止转圈。
+
 ## Feature — Another Boring Piece 艺术壁纸社区插件
 
 **状态**：已发布到社区市场 `main` 与 `v1.7.0`；Release 工作流成功，商店索引与全量打包工作流正在运行。
@@ -2639,3 +2670,18 @@ Vercel 标志性设计元素：在全局设置面板的背景中叠加半透明�
 - [ ] `npm run check`（本次检查项通过；完整命令被相邻 `qx-plugins/external-display-control` 既有权限清单问题阻断）
 - [x] `npm run build`
 - [ ] Windows 安装包运行态复核：快捷键截取 Qx 自身、Esc 退出、重复插件刷新后内存稳定。
+
+## Feature — QxAI selective memory lifecycle
+
+**状态**：代码实现与自动验证完成；真实模型选择性提取的桌面运行态复核待新版安装包。
+
+- [x] 移除按工具调用数 / Agent step 数自动触发 Dream。
+- [x] 增加 Manual / Smart / Off；Off 保留数据库但暂停召回与写入。
+- [x] Smart 选择器允许返回空候选，空候选不产生记忆记录。
+- [x] Dream 摘要保存为派生记录，不删除输入的原始记忆。
+- [x] SQLite 增加 `source`、`memory_type`、`importance`、`supersedes` 迁移字段。
+- [x] 核心记忆进入有界 prompt；情景记忆和被替代来源仅按需 FTS 召回。
+- [x] 暂缓本地 embeddings，不引入图数据库。
+- [x] `npx tsc --noEmit`、`node scripts/check-qx-ai-agent.mjs`、`npm run check`、`npm run build`。
+- [x] `cargo fmt --check`、`cargo check`、QxAI memory/settings 定向测试。
+- [ ] 桌面运行态：分别验证 Smart 空候选、Smart 派生候选、Manual Dream 与 Off 不注入。

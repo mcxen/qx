@@ -19,6 +19,7 @@ export interface AgentRuntimeSettings {
   agent_mode_enabled: boolean;
   tools_enabled: boolean;
   memory_tool_enabled: boolean;
+  memory_policy: "manual" | "smart" | "off";
   notifications_enabled: boolean;
   background_tasks_enabled: boolean;
 }
@@ -57,6 +58,9 @@ export function assertAgentToolFlag(
   assertAgentToolsEnabled(settings);
   if (!settings[key]) {
     throw new Error(`${label} is disabled in Settings > Agent`);
+  }
+  if (key === "memory_tool_enabled" && settings.memory_policy === "off") {
+    throw new Error(`${label} is off in Settings > Agent`);
   }
 }
 

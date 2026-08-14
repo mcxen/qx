@@ -164,12 +164,18 @@ RLM-style retrieval split:
 
 | Layer | Role |
 |---|---|
-| **Cold archive** | Every `memory` / `user` note is stored (no hard size cap on the DB) |
-| **FTS search** | `memory action=search` finds older notes without stuffing them into the prompt |
-| **Hot snapshot** | Only a char-capped recent pack (~2200 / ~1375) is frozen into the system prompt |
+| **Cold archive** | Every original and derived `memory` / `user` record is retained in SQLite |
+| **FTS search** | Core, episodic, active, and superseded records remain available on demand |
+| **Core snapshot** | Only active `core` records are packed into the char-capped system prompt |
 
 `MEMORY.md` / `USER.md` are best-effort mirrors of the hot window after migration.
-Dream consolidation rewrites the hot set; the archive remains searchable. All
+Extraction never deletes or rewrites its source rows. A summary is a derived
+record carrying `source`, `type`, `importance`, and `supersedes` lineage;
+superseded sources leave the resident projection but remain searchable.
+`episodic` records are never injected automatically. Settings exposes `Manual`
+(explicit writes only), `Smart` (selective extraction, where zero candidates is
+valid), and `Off` (preserve the database while pausing recall and capture).
+Tool/step count is not an extraction trigger. All
 memory commands, including the snapshot used before a turn, run through the
 blocking worker. The snapshot command must take the memory lock exactly once;
 it must never call a lock-taking wrapper while already holding that lock.
@@ -319,14 +325,18 @@ it must never call a lock-taking wrapper while already holding that lock.
    - MCP tools should be discoverable through `context.ai.tools.list()` and callable through `context.ai.tools.call(name, input)`.
 
 7. **Memory (RLM archive + Hermes hot window)**
-   - **Cold store**: SQLite + FTS5 at `~/.qx/memories/memory.db` (targets `memory` / `user`).
-     Notes are always appended; history is not silently dropped.
-   - **Hot snapshot**: `qxai_memory_snapshot` packs recent entries into char-capped
-     windows (~2200 memory / ~1375 user) for the system prompt (prefix-cache friendly).
-   - **Search**: `memory action=search` (or query via tools) uses FTS so long archives stay findable.
+   - **Cold store**: SQLite + FTS5 at `~/.qx/memories/memory.db`; original and derived
+     records carry source/type/importance/supersedes metadata.
+   - **Core snapshot**: `qxai_memory_snapshot` packs active core records into char-capped
+     windows (~2200 memory / ~1375 user) for the system prompt.
+   - **Episodic recall**: episodic and superseded records stay out of the prompt and
+     remain available through `memory action=search`.
    - Agent tools: unified `memory` (`add|replace|remove|status|search`), plus legacy aliases.
-   - **Dream / sleep**: consolidates the hot set via the default model; diary under
-     `~/.qx/memories/dreams/`. Archive rows remain searchable.
+   - **Selective extraction**: Manual / Smart / Off policy. The model may return no
+     candidates; accepted candidates append derived rows and a diary under
+     `~/.qx/memories/dreams/`. Source rows are never deleted.
+   - Embeddings remain an optional future retrieval adapter. A graph database is not
+     part of the current memory contract.
    - **Session search**: `qxai_session_search` walks `QxAiSession/sessions/*/session.json`.
    - No legacy import: layout reset deletes old MEMORY.md / USER.md / qxai-memory.json.
    - Explicit wipe: `qxai_memory_clear` (Settings → Storage).
