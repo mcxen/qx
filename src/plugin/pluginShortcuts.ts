@@ -13,6 +13,11 @@ export function pluginShortcutSettingsKey(pluginId: string, commandName: string)
   return `plugin:${pluginId}:${commandName}`;
 }
 
+/** Stable host-owned shortcut id for opening any built-in or plugin panel. */
+export function pluginLaunchShortcutSettingsKey(route: string): string {
+  return `open:${route}`;
+}
+
 /** Resolve a manifest declaration to the binding shape used by Qx settings. */
 export function defaultPluginShortcutBinding(shortcut: PluginShortcut): ShortcutBinding {
   return {

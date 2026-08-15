@@ -283,6 +283,11 @@ export interface TrayActionConfig {
   id: string;
   title: string;
   enabled: boolean;
+  /** Omitted for host actions; modules and plugin commands use stable targets. */
+  kind?: "module" | "plugin-command";
+  target?: string;
+  plugin_id?: string;
+  command?: string;
 }
 
 export interface TrayProviderConfig {

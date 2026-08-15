@@ -5027,7 +5027,7 @@ dependencies = [
 
 [[package]]
 name = "qx"
-version = "0.6.89"
+version = "0.6.90"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -5075,6 +5075,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tauri-plugin-single-instance",
  "tokio",
+ "url",
  "urlencoding",
  "window-vibrancy",
  "windows-sys 0.59.0",

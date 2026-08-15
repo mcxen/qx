@@ -779,6 +779,7 @@ pub fn apply_window_behavior(app: &AppHandle, behavior: &str) {
 /// Safe from tokio async command workers: AppKit ordering is dispatched to the
 /// main thread (macOS aborts with SIGTRAP if orderFront runs off-main).
 pub fn show_floating(app: &AppHandle) {
+    crate::file_manager::capture_before_summon(app);
     let app = app.clone();
     let _ = crate::main_thread::run_on_main(&app.clone(), move || show_floating_now(&app));
 }
@@ -909,6 +910,7 @@ pub fn toggle_launcher(app: &AppHandle) {
 /// Show + navigate to a route by emitting the existing `navigate` event.
 /// Mirrors the old `show_and_navigate` behavior but never steals focus.
 pub fn show_and_navigate(app: &AppHandle, route: &str) {
+    crate::file_manager::capture_before_summon(app);
     let app = app.clone();
     let route = route.to_string();
     let _ = crate::main_thread::run_on_main(&app.clone(), move || {

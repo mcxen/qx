@@ -95,6 +95,7 @@ export type BuiltinTab =
   | "settings"
   | "macros"
   | "documents"
+  | "file-actions"
   | "qx-tty";
 export type Tab = BuiltinTab | string;
 export type SearchScope = "all" | "apps" | "files" | "clipboard";

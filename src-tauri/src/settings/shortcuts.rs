@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use tauri::{command, AppHandle};
+use serde::Serialize;
+use tauri::{command, AppHandle, Emitter};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 use super::macos_shortcut_override::{self, CmdSpaceHandler};
@@ -240,6 +241,43 @@ fn toggle_route(app: &AppHandle, route: &str) {
     crate::floating_panel::toggle_route(app, route);
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DynamicShortcutTarget {
+    OpenRoute(String),
+    PluginCommand { plugin_id: String, command: String },
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct PluginShortcutEvent {
+    plugin_id: String,
+    command: String,
+}
+
+fn valid_dynamic_part(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 240
+        && !value.chars().any(|character| character.is_control())
+}
+
+fn dynamic_shortcut_target(id: &str) -> Option<DynamicShortcutTarget> {
+    if let Some(route) = id.strip_prefix("open:") {
+        if valid_dynamic_part(route) && !matches!(route, "launcher" | "settings") {
+            return Some(DynamicShortcutTarget::OpenRoute(route.to_string()));
+        }
+        return None;
+    }
+    let payload = id.strip_prefix("plugin:")?;
+    let (plugin_id, command) = payload.rsplit_once(':')?;
+    if !valid_dynamic_part(plugin_id) || !valid_dynamic_part(command) {
+        return None;
+    }
+    Some(DynamicShortcutTarget::PluginCommand {
+        plugin_id: plugin_id.to_string(),
+        command: command.to_string(),
+    })
+}
+
 pub(crate) fn global_shortcuts_are_paused() -> bool {
     GLOBAL_SHORTCUTS_PAUSED.load(Ordering::SeqCst)
 }
@@ -384,6 +422,50 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
         }
     }
 
+    // Dynamic panel and plugin-command bindings share the Rust lifecycle with
+    // every other OS hotkey. This keeps ShortcutRecorder pause/resume and
+    // settings reload from unregistering frontend-owned plugin shortcuts.
+    for (id, binding) in &settings.shortcuts {
+        let Some(target) = dynamic_shortcut_target(id) else {
+            continue;
+        };
+        let Some(key) = enabled_shortcut_key(binding) else {
+            continue;
+        };
+        if registered.contains(&key) {
+            eprintln!("skip duplicate dynamic shortcut {key} for {id}");
+            continue;
+        }
+        let context = format!("register dynamic shortcut {id}");
+        let registration_succeeded = match target {
+            DynamicShortcutTarget::OpenRoute(route) => {
+                collect_registration!(
+                    context,
+                    register_shortcut(app, key.as_str(), move |app| {
+                        toggle_route(&app, &route);
+                    })
+                )
+            }
+            DynamicShortcutTarget::PluginCommand { plugin_id, command } => {
+                collect_registration!(
+                    context,
+                    register_shortcut(app, key.as_str(), move |app| {
+                        let _ = app.emit(
+                            "plugin-global-shortcut",
+                            PluginShortcutEvent {
+                                plugin_id: plugin_id.clone(),
+                                command: command.clone(),
+                            },
+                        );
+                    })
+                )
+            }
+        };
+        if registration_succeeded {
+            registered.insert(key);
+        }
+    }
+
     for (id, binding) in &settings.app_shortcuts {
         let Some(key) = enabled_shortcut_key(binding) else {
             continue;
@@ -415,5 +497,32 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
         Ok(())
     } else {
         Err(failures.join("; "))
+    }
+}
+
+#[cfg(test)]
+mod dynamic_shortcut_tests {
+    use super::{dynamic_shortcut_target, DynamicShortcutTarget};
+
+    #[test]
+    fn parses_panel_and_plugin_command_targets() {
+        assert_eq!(
+            dynamic_shortcut_target("open:file-actions"),
+            Some(DynamicShortcutTarget::OpenRoute("file-actions".into()))
+        );
+        assert_eq!(
+            dynamic_shortcut_target("plugin:com.example.tools:format"),
+            Some(DynamicShortcutTarget::PluginCommand {
+                plugin_id: "com.example.tools".into(),
+                command: "format".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_reserved_or_incomplete_dynamic_targets() {
+        assert_eq!(dynamic_shortcut_target("open:launcher"), None);
+        assert_eq!(dynamic_shortcut_target("open:"), None);
+        assert_eq!(dynamic_shortcut_target("plugin:missing-command"), None);
     }
 }

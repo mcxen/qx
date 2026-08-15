@@ -163,6 +163,9 @@ pub(super) struct PickerSession {
     pub(super) frame_y: i32,
     /// Cached at session open: skip outer shades + pointer-follow when false.
     pub(super) multi_display: bool,
+    /// The main Qx surface was visible when this picker session started.
+    /// Esc may restore it only in that case; desktop shortcuts stay invisible.
+    pub(super) main_was_visible: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

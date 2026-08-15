@@ -104,6 +104,7 @@ struct NetSample {
 
 struct TrayRuntime {
     plugin_items: HashMap<String, Vec<PluginTrayItem>>,
+    status_items: HashMap<String, MenuItem<Wry>>,
     net_sample: Option<NetSample>,
     refresh_started: AtomicBool,
 }
@@ -113,6 +114,7 @@ fn tray_runtime() -> &'static Mutex<TrayRuntime> {
     RT.get_or_init(|| {
         Mutex::new(TrayRuntime {
             plugin_items: HashMap::new(),
+            status_items: HashMap::new(),
             net_sample: None,
             refresh_started: AtomicBool::new(false),
         })
@@ -322,6 +324,7 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
     drop(rt);
 
     let menu = Menu::new(app)?;
+    let mut status_items = HashMap::new();
 
     // The configured list is the menu. Preserve its exact order and insert a
     // separator only when the user crosses between status and command rows.
@@ -345,6 +348,9 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
             None::<&str>,
         )?;
         menu.append(&item)?;
+        if is_status {
+            status_items.insert(action.id.trim().to_string(), item.clone());
+        }
         status_appended |= is_status;
         appended_action |= !is_status;
         previous_was_status = Some(is_status);
@@ -445,18 +451,63 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
         Some("CmdOrCtrl+Q"),
     )?;
     menu.append(&quit)?;
+
+    // Retain handles to the status rows so the timer can update their text in
+    // place. Replacing the whole native menu every few seconds leaks USER menu
+    // objects in the Windows tray backend and eventually prevents right-click
+    // menus and new windows from being created.
+    tray_runtime()
+        .lock()
+        .map_err(|_| tauri::Error::FailedToReceiveMessage)?
+        .status_items = status_items;
     Ok(menu)
 }
 
 pub fn handle_tray_action(app: &AppHandle, action_id: &str) {
+    if let Some(action) = settings::read_settings()
+        .tray_actions
+        .into_iter()
+        .find(|action| action.enabled && action.id.trim() == action_id)
+    {
+        match action.kind.as_deref() {
+            Some("module") => {
+                if let Some(target) = action
+                    .target
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    crate::floating_panel::show_and_navigate(app, target);
+                }
+                return;
+            }
+            Some("plugin-command") => {
+                let plugin_id = action.plugin_id.unwrap_or_default();
+                let command = action.command.unwrap_or_default();
+                if !plugin_id.trim().is_empty() && !command.trim().is_empty() {
+                    let _ = app.emit(
+                        "plugin-tray-action",
+                        PluginTrayClickEvent {
+                            plugin_id,
+                            item_id: action.id,
+                            command: Some(command),
+                        },
+                    );
+                }
+                return;
+            }
+            _ => {}
+        }
+    }
+
     match action_id {
         "open_main" | "show" => crate::floating_panel::show_floating(app),
         "settings" => crate::floating_panel::show_and_navigate(app, "settings"),
         "hide_main" => crate::floating_panel::hide(app),
         "status_memory" | "status_cpu" | "status_network" => {
-            // Refresh labels on click; open main for a closer look.
+            // Refresh the retained native labels without replacing the menu.
             let settings = settings::read_settings();
-            let _ = refresh_tray_menu(app, &settings);
+            let _ = refresh_tray_status(&settings);
         }
         "keep_visible" => {
             let mut next = settings::read_settings();
@@ -525,8 +576,31 @@ pub fn refresh_tray_menu(app: &AppHandle, settings: &settings::Settings) -> Resu
     Ok(())
 }
 
+fn refresh_tray_status(settings: &settings::Settings) -> Result<(), String> {
+    let locale = tray_locale(settings);
+    let (status, status_items) = {
+        let mut rt = tray_runtime()
+            .lock()
+            .map_err(|_| "tray registry lock poisoned".to_string())?;
+        let status = sample_status_titles(&mut rt, locale);
+        (status, rt.status_items.clone())
+    };
+
+    for action in settings
+        .tray_actions
+        .iter()
+        .filter(|action| action.enabled && is_status_action(action.id.trim()))
+    {
+        if let Some(item) = status_items.get(action.id.trim()) {
+            item.set_text(tray_action_title(settings, action, &status, locale))
+                .map_err(|error| format!("refresh tray status {}: {error}", action.id.trim()))?;
+        }
+    }
+    Ok(())
+}
+
 /// Refresh tray labels every few seconds when status rows are enabled.
-pub fn ensure_status_refresh_loop(app: &AppHandle) {
+pub fn ensure_status_refresh_loop(_app: &AppHandle) {
     let settings = settings::read_settings();
     if !needs_status_refresh(&settings) {
         return;
@@ -544,7 +618,6 @@ pub fn ensure_status_refresh_loop(app: &AppHandle) {
     }
     drop(rt);
 
-    let handle = app.clone();
     std::thread::Builder::new()
         .name("qx-tray-status".into())
         .spawn(move || loop {
@@ -556,7 +629,7 @@ pub fn ensure_status_refresh_loop(app: &AppHandle) {
                 }
                 break;
             }
-            let _ = refresh_tray_menu(&handle, &settings);
+            let _ = refresh_tray_status(&settings);
         })
         .ok();
 }
@@ -706,6 +779,10 @@ mod tests {
             id: "open_main".into(),
             title: "Open Main Window".into(),
             enabled: true,
+            kind: None,
+            target: None,
+            plugin_id: None,
+            command: None,
         };
         assert_eq!(
             tray_action_title(&settings, &action, &status, TrayLocale::ZhCn),

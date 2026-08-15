@@ -195,6 +195,8 @@ const PERMISSION_LABELS: Record<string, [key: string, fallback: string]> = {
   processes: ["plugins.permission.processes", "Process management"],
   "display-control": ["plugins.permission.displayControl", "Display control"],
   "external-displays": ["plugins.permission.externalDisplays", "External displays"],
+  "file-selection": ["plugins.permission.fileSelection", "Read file-manager selection"],
+  "file-operations": ["plugins.permission.fileOperations", "Modify selected files"],
 };
 
 const HOST_CAPABILITY_LABELS: Record<string, [key: string, fallback: string]> = {

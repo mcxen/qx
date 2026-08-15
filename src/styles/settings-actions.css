@@ -3207,6 +3207,53 @@ span.qx-plugin-screenshot {
 .qx-tray-add-row .qx-shadcn-button {
   gap: 5px;
 }
+
+.qx-tray-picker {
+  width: min(360px, calc(100vw - 32px));
+  padding: 6px;
+}
+
+.qx-tray-picker-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.qx-tray-picker-search > svg {
+  position: absolute;
+  left: 9px;
+  z-index: 1;
+  color: var(--qx-text-tertiary);
+  pointer-events: none;
+}
+
+.qx-tray-picker-search .qx-shadcn-input {
+  width: 100%;
+  height: var(--qx-control-height);
+  padding-left: 30px;
+}
+
+.qx-tray-picker-list {
+  display: grid;
+  max-height: 300px;
+  margin-top: 5px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.qx-tray-picker-item.qx-shadcn-button {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  width: 100%;
+  height: 42px;
+  justify-content: stretch;
+  padding: 3px 6px;
+  text-align: left;
+}
+
+.qx-tray-picker-item .qx-tray-item-copy {
+  align-items: flex-start;
+}
 .qx-app-icon-picker {
   gap: 6px;
   height: 54px;

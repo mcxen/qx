@@ -1,6 +1,6 @@
 [package]
 name = "qx"
-version = "0.6.89"
+version = "0.6.90"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -52,6 +52,7 @@ hex = "0.4"
 libc = "0.2"
 dirs = "5"
 urlencoding = "2"
+url = "2"
 pinyin = "0.10"
 base64 = "0.22"
 regex = "1"
@@ -70,7 +71,7 @@ rdev = { path = "vendor/rdev" }
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
 objc2-foundation = "0.3"
-objc2-app-kit = { version = "0.3", features = ["NSBitmapImageRep", "NSImage", "NSImageRep", "NSSound", "NSWorkspace", "NSWindow", "NSPanel", "NSResponder", "NSView"] }
+objc2-app-kit = { version = "0.3", features = ["NSBitmapImageRep", "NSImage", "NSImageRep", "NSRunningApplication", "NSSound", "NSWorkspace", "NSWindow", "NSPanel", "NSResponder", "NSView"] }
 window-vibrancy = "0.6"
 core-graphics = "0.21"
 search-cache = { path = "vendor/cardinal/search-cache" }

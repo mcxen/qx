@@ -18,6 +18,14 @@ pub struct TrayActionConfig {
     pub title: String,
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub target: Option<String>,
+    #[serde(default)]
+    pub plugin_id: Option<String>,
+    #[serde(default)]
+    pub command: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -133,6 +141,10 @@ pub(super) fn default_tray_actions() -> Vec<TrayActionConfig> {
         id: id.to_string(),
         title: title.to_string(),
         enabled,
+        kind: None,
+        target: None,
+        plugin_id: None,
+        command: None,
     })
     .collect()
 }
@@ -152,6 +164,10 @@ pub(super) fn legacy_default_tray_actions() -> Vec<TrayActionConfig> {
         id: id.to_string(),
         title: title.to_string(),
         enabled,
+        kind: None,
+        target: None,
+        plugin_id: None,
+        command: None,
     })
     .collect()
 }

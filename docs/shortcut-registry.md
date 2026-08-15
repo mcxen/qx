@@ -2,8 +2,8 @@
 
 | 字段 | 值 |
 |---|---|
-| **Status** | Design |
-| **Date** | 2026-07-15 |
+| **Status** | Implemented baseline |
+| **Date** | 2026-08-15 |
 | **Related** | `docs/shell-and-shortcuts.md`、`ShortcutSettings.tsx`、`utils/keyboard.ts`、`plugin/registry.ts` |
 
 ---
@@ -16,7 +16,7 @@
 |---|---|---|---|---|
 | `settings.shortcuts`（Launcher / 窗口 / 剪贴板 / RSS / 录屏） | **全局** | Rust `register_shortcuts` | 有 UI（但 Shortcuts 页未挂导航） | 硬编码 id |
 | `settings.app_shortcuts` | **全局** | Rust | 结果项右键 | 未进 Shortcuts 汇总 |
-| 插件 `manifest.shortcuts` | **全局** | 前端 `plugin-global-shortcut` | 扩展卡只读/半残 | 与 Rust `unregister_all` 会打架 |
+| 插件面板 `open:<route>` / `manifest.shortcuts` | **全局** | Rust `register_shortcuts` | 扩展详情卡 | 统一重绑；命令通过事件交给 registry 执行 |
 | 模块 `actions[].kbd` / Shell `Cmd+K` | **应用内** | `QxShell` `matchesQxShortcut` | 代码写死 | 不进设置 |
 
 若把所有 `kbd` 都当成「全局热键」进设置：
@@ -141,7 +141,8 @@ interface ShortcutBinding {
 
 **位置**：Settings → **Core → Shortcuts** 只维护 Qx 主窗口召唤与应用启动；模块和插件命令的全局快捷键在对应模块/插件详情中维护，避免重复入口。
 
-Extensions 详情卡里的 Shortcuts **只做跳转**到本页并 filter=`plugin:<id>`，不再维护第二套编辑器。
+Extensions 详情卡直接维护该插件的面板启动键和命令快捷键；所有写入仍进入同一份
+`settings.shortcuts`，由 Rust 统一重绑，不存在第二套 OS 注册器。
 
 ### 4.1 页面结构
 
@@ -204,7 +205,7 @@ flowchart LR
   subgraph GlobalPath
     OS[OS hotkey] --> RustReg[Rust register_shortcuts]
     RustReg --> Host[toggle_launcher / toggle / toggle_route / launch_app]
-    RustReg --> PluginEvt[emit plugin:run-command]
+    RustReg --> PluginEvt[emit plugin-global-shortcut]
   end
 
   subgraph InAppPath
@@ -222,7 +223,7 @@ flowchart LR
 - **唯一注册权**：Rust（推荐）。`unregister_all` 后只由 Rust 重装全部 global，包括：
   - host / module.open
   - app.launch
-  - plugin 命令（emit `plugin:run-command` 或等价，前端执行）
+  - plugin 命令（emit `plugin-global-shortcut`，前端 registry 校验并执行）
 - 前端 **禁止**再 `register()` 插件热键（迁完后删除 `plugin/registry.ts` 内 global register）。
 - 模块禁用（`builtin_modules`）→ 对应 `module.open.*` 不注册。
 - 插件卸载 → 贡献条目从列表消失；绑定可留在 settings（再装恢复）或 GC。

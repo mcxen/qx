@@ -19,6 +19,7 @@ import { usePluginRegistry } from "../../../plugin/registry";
 import { resolvePluginAssetUrl } from "../../../plugin/runtime";
 import {
   defaultPluginShortcutBinding,
+  pluginLaunchShortcutSettingsKey,
   pluginShortcutSettingsKey,
   resolvePluginShortcutBinding,
 } from "../../../plugin/pluginShortcuts";
@@ -574,27 +575,63 @@ function PreferenceField({
 
 function ExtensionShortcutsCard({
   plugin,
-  onShortcutsChanged,
 }: {
   plugin: InstalledPlugin;
-  onShortcutsChanged?: () => void;
 }) {
   const t = useT();
   const locale = useLocale();
   const { settings, patchShortcut } = useSettingsStore();
   const builtinShortcutIds = BUILTIN_PLUGIN_SHORTCUTS[plugin.id] ?? [];
   const manifestShortcuts = plugin.manifest?.shortcuts ?? [];
+  const builtinModuleId = isBuiltin(plugin) ? normalizeBuiltinModuleId(plugin.id) : null;
+  const launchRoute = builtinModuleId ?? `plugin:${plugin.id}`;
+  const launchSettingKey = pluginLaunchShortcutSettingsKey(launchRoute);
+  const launchBinding = settings.shortcuts[launchSettingKey] ?? { key: "", enabled: false };
+  const hasLaunchShortcut = Boolean(plugin.manifest?.panel);
   const counts = useMemo(
     () => countEnabledGlobalShortcuts(settings.shortcuts, settings.app_shortcuts),
     [settings.shortcuts, settings.app_shortcuts],
   );
 
-  if (builtinShortcutIds.length === 0 && manifestShortcuts.length === 0) return null;
+  if (!hasLaunchShortcut && builtinShortcutIds.length === 0 && manifestShortcuts.length === 0) return null;
 
   return (
     <SettingsCard
       title={t("shortcuts.extension.title", "Shortcuts")}
     >
+      {hasLaunchShortcut ? (
+        <Row
+          title={t("shortcuts.extension.open", "Open Plugin")}
+          description={t(
+            "shortcuts.extension.openDesc",
+            "Global shortcut to open this panel; press it again on the same panel to hide Qx.",
+          )}
+        >
+          <div className="qx-extension-shortcut-control">
+            <Toggle
+              value={launchBinding.enabled}
+              onChange={(enabled) => patchShortcut(launchSettingKey, { ...launchBinding, enabled })}
+              ariaLabel={t("shortcuts.toggleEnabled", "Toggle enabled state")}
+            />
+            <ShortcutRecorder
+              initial={launchBinding.key}
+              conflict={shortcutHasConflict(launchBinding, counts)}
+              onCommit={(next) => patchShortcut(launchSettingKey, next)}
+              onCancel={() => {}}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="qx-extension-shortcut-reset"
+              onClick={() => patchShortcut(launchSettingKey, { key: "", enabled: false })}
+              title={t("plugins.shortcut.reset", "Reset shortcut")}
+            >
+              <RotateCcw size={13} aria-hidden="true" />
+            </Button>
+          </div>
+        </Row>
+      ) : null}
       {builtinShortcutIds.map((id) => {
         const binding = settings.shortcuts[id] ?? DEFAULT_SETTINGS.shortcuts[id] ?? { key: "", enabled: true };
         const conflict = shortcutHasConflict(binding, counts);
@@ -661,7 +698,6 @@ function ExtensionShortcutsCard({
         const defaultBinding = defaultPluginShortcutBinding(shortcut);
         const commit = (next: ShortcutBinding) => {
           patchShortcut(settingKey, next);
-          onShortcutsChanged?.();
         };
         return (
           <Row
@@ -712,12 +748,10 @@ function PluginDetail({
   plugin,
   onToggle,
   onUninstall,
-  onShortcutsChanged,
 }: {
   plugin: InstalledPlugin;
   onToggle: () => void;
   onUninstall: () => void;
-  onShortcutsChanged?: () => void;
 }) {
   const t = useT();
   const locale = useLocale();
@@ -978,7 +1012,7 @@ function PluginDetail({
 
       {!builtin && <RaycastCompatibilityReport plugin={plugin} />}
 
-      <ExtensionShortcutsCard plugin={plugin} onShortcutsChanged={onShortcutsChanged} />
+      <ExtensionShortcutsCard plugin={plugin} />
 
       <SettingsCard
         title={t("plugins.aliasesTags", "Search Aliases & Tags")}
@@ -2295,7 +2329,6 @@ export default function PluginManager({ searchQuery }: { searchQuery: string }) 
                 <PluginDetail
                   plugin={configPlugin}
                   onToggle={() => void handleToggle(configPlugin)}
-                  onShortcutsChanged={() => void refresh()}
                   onUninstall={() => {
                     void handleUninstall(configPlugin.id);
                     setConfigId(null);

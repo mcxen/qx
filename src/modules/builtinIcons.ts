@@ -5,6 +5,7 @@ import {
   Clipboard,
   CloudSun,
   FileText,
+  Files,
   Keyboard,
   MonitorPlay,
   PawPrint,
@@ -21,6 +22,7 @@ export const BUILTIN_MODULE_ICONS: Record<string, LucideIcon> = {
   "builtin:rss": Rss,
   "builtin:macros": Keyboard,
   "builtin:documents": FileText,
+  "builtin:file-actions": Files,
   "builtin:weather": CloudSun,
   "builtin:qx-tty": SquareTerminal,
   "builtin:p-zai": PawPrint,
@@ -51,6 +53,8 @@ export function builtinModuleIconKind(value: string): string {
     case "builtin:macros":
       return "macro";
     case "builtin:documents":
+      return "document";
+    case "builtin:file-actions":
       return "document";
     case "builtin:weather":
       return "weather";

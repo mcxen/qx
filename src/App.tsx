@@ -108,6 +108,7 @@ const G4fReader = lazy(() => import("./modules/qx-ai"));
 const MacroRecorder = lazy(() => import("./modules/macros/MacroRecorder"));
 const WeatherPanel = lazy(() => import("./modules/weather/WeatherPanel"));
 const QxTTYPanel = lazy(() => import("./modules/qx-tty/QxTTYPanel"));
+const FileActionsPanel = lazy(() => import("./modules/file-actions/FileActionsPanel"));
 
 const SETTINGS_SEARCH_TERMS = [
   "settings",
@@ -193,6 +194,7 @@ const MODULE_LABEL_KEYS: Record<string, { key: string; fallback: string }> = {
   rss: { key: "launcher.rss", fallback: "RSS Reader" },
   weather: { key: "launcher.weather", fallback: "Weather" },
   "qx-ai": { key: "module.qx-ai", fallback: "QxAI Chat" },
+  "file-actions": { key: "module.file-actions", fallback: "File Actions" },
   macros: { key: "launcher.macros", fallback: "Macro Recorder" },
   documents: { key: "launcher.documents", fallback: "Documents" },
   "qx-tty": { key: "launcher.qx-tty", fallback: "QxTTY" },
@@ -1446,7 +1448,7 @@ function App() {
       } else if (tabId === "settings:plugins") {
         openSettings({ section: "plugins", returnTo: "launcher" });
       } else if (tabId === "clipboard" || tabId === "screencap"
-          || tabId === "rss" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "qx-tty") {
+          || tabId === "rss" || tabId === "weather" || tabId === "qx-ai" || tabId === "macros" || tabId === "documents" || tabId === "file-actions" || tabId === "qx-tty") {
         if (!isBuiltinModuleEnabled(tabId)) return;
         if (tabId === "clipboard") {
           void prefetchClipboardOpen({ captureLiveImage: true });
@@ -2768,6 +2770,8 @@ function App() {
         return <MacroRecorder />;
       case "documents":
         return <DevTxtTool />;
+      case "file-actions":
+        return <FileActionsPanel />;
       case "weather":
         return <WeatherPanel />;
       case "qx-tty":

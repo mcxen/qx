@@ -1,5 +1,36 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Fix — Windows Tray native-menu USER handle exhaustion
+
+**状态**：代码修复、自动验证与 Windows 短时资源回归完成，等待安装版长时运行复核。
+
+- Tray 实时状态刷新不再每 3 秒重建并替换整棵原生菜单，而是保留状态 `MenuItem` 句柄并原位更新文本。
+- 状态行点击同样只刷新现有标签；设置或插件贡献改变时仍按结构变化重建菜单。
+- 根因已由安装版实测确认：运行约 9.6 小时后 Qx `UserObjects` 达到 9999，右键菜单和新窗口图标均因 Window Manager 对象配额耗尽而失败。
+
+### 验证
+
+- [x] `cargo fmt --check`、Tray 单测与 `cargo check`。
+- [x] `npm run tauri build` 生成 Windows MSI/NSIS；release 进程跨 18 秒、6 个状态刷新周期采样，`UserObjects` 在启动稳定后保持 58 不增长。
+- [x] `npm run check`；使用 CI 同步的最新 `qx-plugins/main` 检出后全部检查组通过。
+- [ ] Windows 安装版持续运行，确认 `UserObjects` 保持稳定且 Tray 右键菜单持续可用。
+
+## Feature — Finder / Explorer 选择作为文件操作输入
+
+**状态**：跨平台端口、内置模块与自动编译验证完成；等待 macOS Finder 权限和桌面交互复核。
+
+- Qx 在主窗口获得焦点前捕获前台 Finder / Explorer 选择，保存带单调 revision 的不可变快照；Windows 已用真实 Explorer 多选响应验证。
+- 新增内置 File Actions：左侧使用标准列表显示选择项，中间提供重命名、新建文件夹归拢、ZIP 压缩和批量 ZIP 解压。
+- 根级 Rust 文件操作拒绝过期快照、目标覆盖、跨目录归拢、符号链接归档、ZIP 路径穿越、超量条目和超过 20 GiB 的展开结果。
+- 插件端口 `context.files.selection()` / `performSelectionOperation()` 分别需要 `file-selection` / `file-operations` 权限；插件不能提交快照之外的路径。
+
+### 验证
+
+- [x] Windows Explorer 当前 22 项真实多选可由宿主解析器完整读取。
+- [x] `cargo check`（MSVC）/ `npx tsc --noEmit`。
+- [ ] macOS：Finder 单选、多选、中文名、文件夹与 Automation 拒绝/授权路径。
+- [ ] Windows 安装态：快捷键唤起后左栏保持选择；逐项实测重命名、归拢、压缩、批量解压与冲突错误。
+
 ## Fix — 空白 @回复对象
 
 **状态**：代码与自动验证完成，等待桌面运行态复核。
@@ -2757,3 +2788,8 @@ Vercel 标志性设计元素：在全局设置面板的背景中叠加半透明�
 - [x] `npx tsc --noEmit`、`node scripts/check-qx-ai-agent.mjs`、`npm run check`、`npm run build`。
 - [x] `cargo fmt --check`、`cargo check`、QxAI memory/settings 定向测试。
 - [ ] 桌面运行态：分别验证 Smart 空候选、Smart 派生候选、Manual Dream 与 Off 不注入。
+# 全局插件快捷键与 Windows 单实例（2026-08-15）
+
+- [x] 所有带 Panel 的内置模块/插件详情均可录入通用全局“打开插件”快捷键，File Actions 使用相同端口。
+- [x] 插件命令快捷键收归 Rust `register_shortcuts`，Settings 保存与 ShortcutRecorder pause/resume 不再注销后丢失。
+- [x] Windows 不再复制并常驻第二个 Qx-branded watchdog；重复启动由 single-instance 唤起现有进程。

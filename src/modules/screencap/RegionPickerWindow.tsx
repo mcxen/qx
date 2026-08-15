@@ -268,23 +268,6 @@ export default function RegionPickerWindow() {
     await invoke("screencap_cancel_region_select").catch(() => {});
   }, [busy, countdown]);
 
-  useEffect(() => {
-    // The picker normally focuses `rootRef`, whose React handler owns the
-    // stepped Esc behavior. If WebView2 instead leaves focus on body (observed
-    // when capturing Qx itself), keep an emergency window-local cancellation
-    // path so the fullscreen overlay can never trap desktop input.
-    const onUnownedEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      const active = document.activeElement;
-      if (active && rootRef.current?.contains(active)) return;
-      event.preventDefault();
-      event.stopPropagation();
-      void cancel();
-    };
-    window.addEventListener("keydown", onUnownedEscape, true);
-    return () => window.removeEventListener("keydown", onUnownedEscape, true);
-  }, [cancel]);
-
   const confirm = useCallback(async (
     action: CaptureMode,
     areaOverride?: Rect,
@@ -423,6 +406,47 @@ export default function RegionPickerWindow() {
       setError(String(captureError));
     }
   }, [annotations, busy, captureSettings, countdown, exportMosaicOps, exportOverlayBase64, picker?.monitorId, selection, t]);
+
+  useEffect(() => {
+    // WebView2 can leave focus on body or an overlay-owned element. Capture
+    // Ctrl/Cmd+C at the window boundary so copy remains a picker command even
+    // when React's root responder does not receive the key event.
+    const onPickerShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      const target = event.target as HTMLElement | null;
+      const isEditable = !!target?.closest("input, textarea, [contenteditable='true']");
+      if (
+        (event.metaKey || event.ctrlKey)
+        && !event.altKey
+        && !event.shiftKey
+        && event.key.toLowerCase() === "c"
+        && !isEditable
+        && selection
+        && !busy
+        && countdown === null
+      ) {
+        event.preventDefault();
+        event.stopPropagation();
+        void confirm("screenshot", selection, null, {
+          forceCopy: true,
+          skipDelay: true,
+          dismissUi: true,
+        });
+        return;
+      }
+
+      // The picker normally focuses `rootRef`, whose React handler owns the
+      // stepped Esc behavior. Keep a window-local fallback when focus is lost.
+      if (event.key !== "Escape") return;
+      const active = document.activeElement;
+      if (active && rootRef.current?.contains(active)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      void cancel();
+    };
+    window.addEventListener("keydown", onPickerShortcut, true);
+    return () => window.removeEventListener("keydown", onPickerShortcut, true);
+  }, [busy, cancel, confirm, countdown, selection]);
 
   const selectFullScreen = useCallback(() => {
     if (busy) return;

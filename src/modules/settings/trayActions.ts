@@ -36,6 +36,7 @@ export function sanitizeTrayActions(actions: TrayActionConfig[] | undefined): Tr
     if (seen.has(id)) return [];
     seen.add(id);
     return [{
+      ...action,
       id,
       title: action.title?.trim() || labelForId(id),
       enabled: true,

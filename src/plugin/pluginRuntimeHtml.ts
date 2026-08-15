@@ -582,6 +582,8 @@ export function buildPluginRuntimeHtml(
             const results = await rpc('invoke', { cmd: 'search_files', args: { query: String(query || '') } });
             return typeof limit === 'number' ? results.slice(0, Math.max(0, limit)) : results;
           },
+          selection: () => rpc('fileSelection'),
+          performSelectionOperation: (request) => rpc('fileSelectionOperation', { request: request || {} }),
         },
         qx: {
           invokeRust: (cmd, args) => rpc('invokeRust', { cmd, args }),

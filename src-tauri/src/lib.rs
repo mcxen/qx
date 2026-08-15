@@ -10,6 +10,7 @@ mod display;
 mod display_monitor;
 #[cfg(target_os = "windows")]
 mod display_windows;
+mod file_manager;
 mod file_search;
 mod floating_panel;
 mod g4f;
@@ -304,6 +305,15 @@ pub fn run() {
 
     if watchdog::maybe_run_from_args() || updater::maybe_run_update_helper_from_args() {
         return;
+    }
+
+    #[cfg(target_os = "windows")]
+    if std::env::var_os("WEBVIEW2_DEFAULT_BACKGROUND_COLOR").is_none() {
+        // This is the single-threaded startup boundary, before Tauri creates a
+        // WebView2 controller. Setting the transparent default here prevents
+        // the controller's initial/retained white backing surface from showing
+        // through Qx's transparent picker and auxiliary windows.
+        unsafe { std::env::set_var("WEBVIEW2_DEFAULT_BACKGROUND_COLOR", "00000000") };
     }
 
     // Cap Tokio worker + blocking pools before any plugin/command uses
@@ -673,6 +683,8 @@ pub fn run() {
             open_app,
             set_window_size,
             clipboard::history::get_clipboard_history,
+            file_manager::file_manager_get_selection,
+            file_manager::file_manager_perform_operation,
             clipboard::history::get_clipboard_history_page,
             clipboard::history::get_clipboard_entry,
             clipboard::history::read_clipboard_image_now,

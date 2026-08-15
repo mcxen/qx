@@ -32,6 +32,8 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 | `clipboard_write_file_paths(paths)` | 将现有本地路径列表按原生文件对象写入剪贴板（macOS file list / Windows `CF_HDROP`）；供 QxAI 与内置模块复用，不降级为路径文本 |
 | `clipboard_write_image_file(path)` | **系统能力**：把磁盘上的图片文件写入系统剪贴板（捕获 toast、导出等） |
 | `clipboard_file_metadata(path)` | 异步读取文件大小、图片尺寸、媒体时长与预览 |
+| `file_manager_get_selection()` | 读取 Qx 获得焦点前捕获的 Finder / Windows Explorer 选择快照；返回稳定 `revision`、来源和有序文件/文件夹列表 |
+| `file_manager_perform_operation(request)` | 对同一 `revision` 执行受校验的 `rename` / `collect` / `compress` / `extract`；拒绝过期选择、目标覆盖与不安全 ZIP 路径 |
 | `clipboard_compress_image(path, quality?)` | 启动后台图片压缩任务 |
 | `clipboard_video_to_gif(path)` | 启动后台视频转 GIF 任务 |
 | `clear_clipboard_history()` | 清空全部 |
@@ -146,6 +148,8 @@ bucket 报告，`qx_storage_clear_qxai_sessions` 仅在用户显式确认后清�
 
 `plugin_clipboard_read/write`、`plugin_perform_paste`、`plugin_perform_paste_at_cursor`、`plugin_http_fetch(req)`（只允许 http/https + 超时）、`plugin_notification_show(req)`、`plugin_resolve_asset(id, asset_path)`。
 
+文件管理器输入端口：`context.files.selection()` 需要 `file-selection`，只读取宿主在唤起前捕获的不可变快照；`context.files.performSelectionOperation(request)` 需要 `file-operations`，请求必须携带当前快照 `revision`。插件不能用这两个权限把任意路径伪装成用户选择。
+
 插件 CLI 端口（`cli` 权限，**不**受 AI Agent Bash 开关门控）：`plugin_cli_run` / `plugin_cli_bash` / `plugin_cli_which`（同步），`plugin_cli_start` / `plugin_cli_poll` / `plugin_cli_cancel` / `plugin_cli_list_jobs`（异步并发 job）。Windows 的 GUI PATH 由宿主直接合并 Machine/User 环境注册表，不为路径发现启动 PowerShell；只有插件明确请求 PowerShell 或内置终端会按用户意图启动 shell。系统能力（`system` 权限）：`plugin_system_env` / `plugin_system_open_path` / `plugin_system_reveal_path` / `plugin_system_open_settings` / `plugin_system_set_wallpaper`；系统设置与壁纸均由宿主在 macOS / Windows 适配，不要求插件执行 PowerShell。
 
 ## marketplace
@@ -256,6 +260,7 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `tray_panel_hide`, `tray_panel_open_settings`, `tray_panel_run_action`, `tray_panel_resize`,
 `tray_panel_get_focus_display`, `set_window_glass_effect`, `get_file_size`, `qx_log_event`, `qx_log_path`,
 `search_apps`, `search_files`, `open_app`, `set_window_size`, `get_clipboard_history`,
+`file_manager_get_selection`, `file_manager_perform_operation`,
 `get_clipboard_history_page`, `get_clipboard_entry`, `read_clipboard_image_now`, `write_clipboard_image_entry`,
 `write_clipboard_file_entry`, `clipboard_write_file_paths`, `clipboard_file_metadata`, `clipboard_file_preview`,
 `clipboard_file_media_probe`, `clipboard_compress_image`, `clipboard_video_to_gif`, `clear_clipboard_history`,

@@ -217,6 +217,7 @@ fn show_region_picker_internal(
     app: &AppHandle,
     mode: CaptureMode,
     selected_monitor_id: Option<u32>,
+    main_was_visible: bool,
 ) -> Result<(), String> {
     let selected_capture = match selected_monitor_id {
         Some(monitor_id) => capture_monitor(Some(monitor_id))?,
@@ -269,6 +270,7 @@ fn show_region_picker_internal(
             frame_x: position.x,
             frame_y: position.y,
             multi_display,
+            main_was_visible,
         });
     }
     // Window create/show/focus are AppKit main-thread only when reached from async commands.
@@ -319,6 +321,7 @@ fn show_region_picker_internal(
         let picker = app_for_ui
             .get_webview_window(PICKER_LABEL)
             .ok_or_else(|| "region picker window is unavailable".to_string())?;
+        picker_window::prepare_for_show(&picker);
         let _ = picker.set_content_protected(true);
         let _ = picker.set_always_on_top(true);
         // Cover the selected display exactly. Physical size/position matches the
@@ -400,10 +403,12 @@ fn start_pointer_display_tracker(app: AppHandle, generation: u64) {
                         session.monitor_id,
                         session.frame_x,
                         session.frame_y,
+                        session.main_was_visible,
                     )
                 })
             });
-            let Some((mode, current_monitor_id, frame_x, frame_y)) = current else {
+            let Some((mode, current_monitor_id, frame_x, frame_y, main_was_visible)) = current
+            else {
                 break;
             };
             // Same physical origin ⇒ still on the active display (cheap reject).
@@ -424,7 +429,9 @@ fn start_pointer_display_tracker(app: AppHandle, generation: u64) {
             if !picker_pointer_following(generation) {
                 continue;
             }
-            if let Err(error) = show_region_picker_internal(&app, mode, Some(monitor_id)) {
+            if let Err(error) =
+                show_region_picker_internal(&app, mode, Some(monitor_id), main_was_visible)
+            {
                 crate::diagnostics::log(
                     crate::diagnostics::LogLevel::Warn,
                     "screencap.pointer_follow",
@@ -457,12 +464,12 @@ pub async fn screencap_begin_capture_select(
     }
     ensure_screen_capture_permission(Some(&app))?;
     let mode = CaptureMode::parse(&mode)?;
-    let keep_main_visible = mode == CaptureMode::Screenshot
-        && include_main_window.unwrap_or(false)
-        && app
-            .get_webview_window(crate::floating_panel::MAIN_LABEL)
-            .and_then(|window| window.is_visible().ok())
-            .unwrap_or(false);
+    let main_was_visible = app
+        .get_webview_window(crate::floating_panel::MAIN_LABEL)
+        .and_then(|window| window.is_visible().ok())
+        .unwrap_or(false);
+    let keep_main_visible =
+        mode == CaptureMode::Screenshot && include_main_window.unwrap_or(false) && main_was_visible;
     crate::floating_panel::set_capture_main_visible_active(keep_main_visible);
     if keep_main_visible {
         // Change main-window capture affinity before the fullscreen picker is
@@ -476,7 +483,7 @@ pub async fn screencap_begin_capture_select(
     // Map/show the picker before hiding every existing Qx surface. If display
     // matching or window creation fails, the user must never be left with an
     // apparently terminated app and no way to recover.
-    show_region_picker_internal(&app, mode, None).map_err(|error| {
+    show_region_picker_internal(&app, mode, None, main_was_visible).map_err(|error| {
         crate::diagnostics::log(
             crate::diagnostics::LogLevel::Error,
             "screencap.picker",
@@ -504,7 +511,11 @@ pub async fn screencap_begin_capture_select(
             if let Ok(mut session) = picker_session().lock() {
                 *session = None;
             }
-            let _ = restore_capture_surface(&app, 800);
+            if main_was_visible {
+                let _ = restore_capture_surface(&app, 800);
+            } else {
+                crate::floating_panel::hide(&app);
+            }
             return Err(error);
         }
     } else {
@@ -588,12 +599,16 @@ pub fn screencap_select_display(app: AppHandle, monitor_id: u32) -> Result<(), S
     // An explicit monitor choice is sticky until the user clears/restarts the
     // selection; otherwise the pointer left on the old screen would snap back.
     set_picker_pointer_follow(false);
-    let mode = picker_session()
+    let (mode, main_was_visible) = picker_session()
         .lock()
         .ok()
-        .and_then(|session| session.as_ref().map(|session| session.mode))
+        .and_then(|session| {
+            session
+                .as_ref()
+                .map(|session| (session.mode, session.main_was_visible))
+        })
         .ok_or_else(|| "Capture selection session is unavailable".to_string())?;
-    show_region_picker_internal(&app, mode, Some(monitor_id))
+    show_region_picker_internal(&app, mode, Some(monitor_id), main_was_visible)
 }
 
 #[command]
@@ -634,13 +649,25 @@ pub fn screencap_region_picker_ready(app: AppHandle) -> Result<Option<PickerStat
 
 #[command]
 pub async fn screencap_cancel_region_select(app: AppHandle) -> Result<(), String> {
+    let main_was_visible = picker_session()
+        .lock()
+        .ok()
+        .and_then(|session| session.as_ref().map(|session| session.main_was_visible))
+        .unwrap_or(false);
     end_picker_session();
     crate::floating_panel::set_capture_main_visible_active(false);
     hide_region_picker_internal(&app);
     if let Ok(mut session) = picker_session().lock() {
         *session = None;
     }
-    restore_capture_surface(&app, 800)
+    set_recording_ui_protected(&app, false);
+    hide_recording_controls_internal(&app);
+    if main_was_visible {
+        restore_capture_surface(&app, 800)
+    } else {
+        crate::floating_panel::hide(&app);
+        Ok(())
+    }
 }
 
 /// Confirm a logical-point crop from the picker and start recording immediately.

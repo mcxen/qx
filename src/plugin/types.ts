@@ -763,6 +763,34 @@ export interface PluginGenerationGate {
   isCurrent: (generation: number) => boolean;
 }
 
+export interface PluginSelectedFile {
+  path: string;
+  name: string;
+  parent: string;
+  kind: "file" | "folder" | "symlink";
+  exists: boolean;
+}
+
+/** Immutable Finder/Explorer selection captured before Qx receives focus. */
+export interface PluginFileSelectionSnapshot {
+  revision: number;
+  capturedAtMs: number;
+  source: "finder" | "explorer" | "operation" | "none" | "unsupported";
+  items: PluginSelectedFile[];
+  error?: string | null;
+}
+
+export type PluginFileSelectionOperation =
+  | { revision: number; operation: "rename"; path: string; name: string }
+  | { revision: number; operation: "collect" | "compress"; name: string }
+  | { revision: number; operation: "extract" };
+
+export interface PluginFileOperationResult {
+  operation: PluginFileSelectionOperation["operation"];
+  outputPaths: string[];
+  affectedCount: number;
+}
+
 export interface PluginContext {
   pluginId: string;
   /**
@@ -1162,6 +1190,12 @@ export interface PluginContext {
   };
   files: {
     search: (query: string, limit?: number) => Promise<unknown[]>;
+    /** Read the Finder/Explorer selection captured before Qx was summoned (`file-selection`). */
+    selection: () => Promise<PluginFileSelectionSnapshot>;
+    /** Run a revision-checked host file operation (`file-operations`). */
+    performSelectionOperation: (
+      request: PluginFileSelectionOperation,
+    ) => Promise<PluginFileOperationResult>;
   };
   qx: {
     invokeRust: (cmd: string, args?: Record<string, unknown>) => Promise<unknown>;

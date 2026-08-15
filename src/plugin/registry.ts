@@ -1,8 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
-import { register, unregister } from "@tauri-apps/plugin-global-shortcut";
+import { listen } from "@tauri-apps/api/event";
 import { getVersion } from "@tauri-apps/api/app";
-import { toPortableGlobalShortcut } from "../utils/keyboard";
 import {
   handlePluginRpc,
   isExpectedPluginMessageOrigin,
@@ -58,7 +57,8 @@ const backgroundInFlight = new Set<string>();
 const lazyPluginLoads = new Map<string, Promise<void>>();
 const registryLogger = createQxLogger("plugin.registry");
 let stopPluginLocaleBridge: (() => void) | null = null;
-/** Serialize refreshes so shortcut unregister/register cycles cannot overlap. */
+let pluginShortcutBridgeStarted = false;
+/** Serialize runtime refreshes so iframe teardown/load cycles cannot overlap. */
 let pluginRefreshQueue: Promise<void> = Promise.resolve();
 /**
  * One host RPC listener per plugin, independent of worker-store publication.
@@ -70,6 +70,27 @@ let pluginRefreshQueue: Promise<void> = Promise.resolve();
  * deterministic even across that race.
  */
 const pluginRpcHandlers = new Map<string, (event: MessageEvent) => void>();
+
+function startPluginShortcutBridge(): void {
+  if (pluginShortcutBridgeStarted) return;
+  pluginShortcutBridgeStarted = true;
+  void listen<{ pluginId: string; command: string }>("plugin-global-shortcut", (event) => {
+    const pluginId = String(event.payload?.pluginId || "");
+    const commandName = String(event.payload?.command || "");
+    if (!pluginId || !commandName) return;
+    void (async () => {
+      const command = await usePluginRegistry.getState().resolveCommand(pluginId, commandName);
+      if (!command) {
+        registryLogger.warn("Plugin shortcut command unavailable", { pluginId, command: commandName });
+        return;
+      }
+      await usePluginRegistry.getState().runCommand(command);
+    })();
+  }).catch((error) => {
+    pluginShortcutBridgeStarted = false;
+    registryLogger.error("Plugin shortcut bridge failed", { error });
+  });
+}
 
 function installPluginRpcHandler(
   pluginId: string,
@@ -145,7 +166,6 @@ interface PluginRegistryStore {
   commands: RegisteredCommand[];
   panels: Record<string, RegisteredPanel>;
   workers: Record<string, HTMLIFrameElement>;
-  shortcuts: Record<string, string[]>;
   loaded: boolean;
   loading: boolean;
   error: string | null;
@@ -375,7 +395,6 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
   commands: [],
   panels: {},
   workers: {},
-  shortcuts: {},
   loaded: false,
   loading: false,
   error: null,
@@ -386,6 +405,7 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     if (get().loading || get().loaded) return;
     const loadToken = get()._loadToken + 1;
     set({ loading: true, error: null, hooks, _loadToken: loadToken });
+    startPluginShortcutBridge();
     const startedAt = performance.now();
     registryLogger.info("Plugin registry load started", { loadToken });
     try {
@@ -443,7 +463,6 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
         commands: builtinCommands,
         panels: builtinPanels,
         workers: {},
-        shortcuts: {},
         loaded: true,
       });
       startPluginLocaleBridge();
@@ -560,47 +579,8 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
             __qxRuntimeId?: string;
           }).__qxRpcHandler = rpcHandler;
           (result.iframe as HTMLIFrameElement & { __qxRuntimeId?: string }).__qxRuntimeId = result.runtimeId;
-          const pluginShortcuts = plugin.manifest?.shortcuts || [];
-          const registeredShortcuts: string[] = [];
-          for (const shortcut of pluginShortcuts) {
-            // A plugin shortcut is process-global. Manifest declarations are
-            // opt-in defaults; settings.shortcuts may contain the user's
-            // namespaced override for this command.
-            if (!shortcut.command) continue;
-            const binding = resolvePluginShortcutBinding(
-              useSettingsStore.getState().settings,
-              plugin.id,
-              shortcut,
-            );
-            if (!binding.enabled || !binding.key) continue;
-            const portableKey = toPortableGlobalShortcut(binding.key);
-            const command = result.commands.find((cmd) => cmd.name === shortcut.command);
-            if (!command) continue;
-            try {
-              await register(portableKey, (event) => {
-                if (event.state !== "Pressed") return;
-                void get().runCommand(command);
-              });
-              registeredShortcuts.push(portableKey);
-            } catch (error) {
-              registryLogger.warn("Plugin shortcut registration failed", {
-                pluginId: plugin.id,
-                shortcut: portableKey,
-                command: shortcut.command,
-                error,
-              });
-              console.warn(`Failed to register shortcut ${binding.key} for ${plugin.id}:`, error);
-              hooks.onPluginStatus?.({
-                kind: "error",
-                pluginId: plugin.id,
-                label: "Shortcut failed",
-                detail: `${plugin.name}: ${summarizeError(error)}`,
-              });
-            }
-          }
           if (get()._loadToken !== loadToken) {
             removePluginRpcHandler(plugin.id, rpcHandler);
-            await Promise.all(registeredShortcuts.map((key) => unregister(key).catch(() => undefined)));
             unloadPluginRuntime(plugin.id, result.iframe, result.runtimeId);
             result.iframe.remove();
             clearPluginIslandProjection(plugin.id);
@@ -612,9 +592,6 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
               ? { ...state.panels, [result.panel.pluginId]: result.panel }
               : state.panels,
             workers: { ...state.workers, [plugin.id]: result.iframe },
-            shortcuts: registeredShortcuts.length
-              ? { ...state.shortcuts, [plugin.id]: registeredShortcuts }
-              : state.shortcuts,
           }));
           clearBackgroundTimers(plugin.id);
           for (const command of result.commands) {
@@ -739,10 +716,9 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
   },
 
   unload: async () => {
-    const { workers, shortcuts } = get();
+    const { workers } = get();
     registryLogger.info("Plugin registry unload started", {
       workers: Object.keys(workers).length,
-      shortcuts: Object.values(shortcuts).flat().length,
     });
     // Bump generation first so in-flight background finally blocks cannot re-arm.
     const nextLoadToken = get()._loadToken + 1;
@@ -755,13 +731,6 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
     // Includes handlers from loads invalidated before their iframe reached the
     // public worker map. Removing only `workers` is insufficient in that race.
     removeAllPluginRpcHandlers();
-    const unregisterResults = Object.values(shortcuts).flat().map((shortcut) =>
-      unregister(shortcut).catch(() => undefined),
-    );
-    // A refresh must not race a new registration against the native
-    // unregister calls. Awaiting all best-effort removals keeps a just-saved
-    // plugin override from being shadowed by the previous binding.
-    await Promise.all(unregisterResults);
     for (const session of drainPanelRuntimeSessions()) {
       unloadPluginRuntime(session.pluginId, session.iframe, session.runtimeId);
       session.iframe.remove();
@@ -790,7 +759,6 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       commands: builtinCommands,
       panels: builtinPanels,
       workers: {},
-      shortcuts: {},
       loaded: false,
       loading: false,
       _loadToken: nextLoadToken,
@@ -833,10 +801,6 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       // Order matters: drop worker + mark disabled before clearing timers so any
       // in-flight background finally cannot re-arm (shouldReschedule checks both).
       const worker = get().workers[id];
-      const shortcutKeys = get().shortcuts[id];
-      if (shortcutKeys?.length) {
-        await Promise.all(shortcutKeys.map((key) => unregister(key).catch(() => undefined)));
-      }
       if (worker) {
         const decorated = worker as HTMLIFrameElement & {
           __qxRpcHandler?: (event: MessageEvent) => void;
@@ -853,14 +817,12 @@ export const usePluginRegistry = create<PluginRegistryStore>((set, get) => ({
       set((state) => {
         const { [id]: _removed, ...restWorkers } = state.workers;
         const { [id]: _panel, ...restPanels } = state.panels;
-        const { [id]: _shortcuts, ...restShortcuts } = state.shortcuts;
         return {
           plugins: state.plugins.map((plugin) =>
             plugin.id === id ? { ...plugin, enabled: false } : plugin,
           ),
           workers: restWorkers,
           panels: restPanels,
-          shortcuts: restShortcuts,
           commands: state.commands.filter((command) => command.pluginId !== id),
         };
       });

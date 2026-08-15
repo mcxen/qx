@@ -176,12 +176,34 @@ Manifest 只声明包元数据、入口、命令、面板、权限与兼容范�
 | 有预算的内存缓存 | `context.state.createLru` | 无上限保存 Data URL / 大字符串 |
 | 丢弃过期异步结果 | `context.state.createGenerationGate` | 让旧请求覆盖新 tab / 新查询 |
 | 本机命令 | `context.cli` | `child_process` |
+| Finder / Explorer 当前选择 | `context.files.selection()` + `file-selection` | 用剪贴板文本猜测路径 |
+| 修改当前选择 | `context.files.performSelectionOperation()` + `file-operations` | 拼 PowerShell / AppleScript 或接受任意未授权路径 |
 | 宿主命令 | `context.invoke` | 猜测 Tauri 内部实现 |
 | 进度与快捷反馈 | `context.island` | 自建悬浮窗口 |
 | Launcher Home 入口 | `manifest.homeWidgets[]`（把宿主源关联到插件 Panel）或 `manifest.surfaceProviders[]`（把受支持轻量信息源透出到 Home） | 自绘首页卡片、私有轮询 |
 | 托盘状态 | `context.tray` | 直接调用系统托盘库 |
 | Tray/Home 标准控件 | `manifest.surfaceProviders[]`（受支持语义源） | 为常驻展示加载完整 Panel 运行时 |
 | 翻译 | `context.i18n` | 硬编码单一语言 UI |
+
+文件管理器输入是唤起前快照，不是实时查询当前焦点窗口：
+
+```js
+const selection = await context.files.selection();
+if (selection.items.length === 1) {
+  await context.files.performSelectionOperation({
+    revision: selection.revision,
+    operation: "rename",
+    path: selection.items[0].path,
+    name: "new-name.txt",
+  });
+}
+```
+
+支持的操作为 `rename`、`collect`、`compress`、`extract`。`collect` / `compress` 还需提供 `name`；`extract` 只接受 ZIP。宿主会重新检查 revision、选择成员、名称、目标冲突及归档路径，旧快照必须让用户重新唤起或重新打开模块，插件不得自动改用任意磁盘路径重试。
+
+带 `manifest.panel` 的插件由宿主自动提供“打开插件”全局快捷键录入项，不需要在
+`shortcuts[]` 中伪造打开命令。`shortcuts[]` 只声明具体 command 的可选默认键；面板与
+命令热键都由 Rust 宿主统一注册，插件不得直接调用 global-shortcut API。
 
 `context.http.fetch` 的 `body` 是 UTF-8 文本。发送 Protobuf、压缩包等原始字节时，
 把字节编码为标准 base64 后传入 `bodyBase64`；它会覆盖 `body`。二进制响应继续通过

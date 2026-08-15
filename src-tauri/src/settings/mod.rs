@@ -884,6 +884,7 @@ impl Default for BuiltinModulesSettings {
             ("v2ex", false),
             ("weather", false),
             ("macros", true),
+            ("file-actions", true),
         ]
         .into_iter()
         .map(|(id, on)| (id.to_string(), on))

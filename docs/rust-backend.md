@@ -66,10 +66,10 @@
 | `marketplace/mod.rs` | `.qx-plugin` 安装、签名（ed25519）、`~/.qx/plugins/<id>/` 落盘、**多源** `plugin_registries` 索引合并与来源归属、按当前 Qx/平台筛选最高兼容版本的后台插件自动升级、Raycast extension 转换、开发脚手架 |
 | `permissions.rs` | macOS TCC：屏幕录制 / 辅助功能 / 输入监控 状态与请求 |
 | `storage.rs` | 统一缓存目标注册表驱动存储统计与精确清理；逐模块 `clear_cache_target` 只接受注册目标并保护 state/data/cache 根目录；通过 marketplace manifest 登记的插件 cache key 作为动态目标接入，其余插件持久数据仍受保护 |
-| `settings/mod.rs` | `~/.qx/settings.json` 读写；写入后 re-register 全局快捷键 + 刷新托盘菜单 + emit `settings-updated` |
+| `settings/mod.rs` | `~/.qx/settings.json` 读写；写入后 re-register 全局快捷键 + 刷新托盘菜单 + emit `settings-updated`。托盘菜单结构仅在设置或插件贡献变化时重建；实时状态行保留原生 `MenuItem` 句柄并原位更新文本，禁止定时替换整棵菜单以免耗尽 Windows USER 对象。 |
 | `settings/entry_config.rs` | Launcher 快捷入口与托盘动作的默认配置；兼容识别旧版默认快捷入口，避免覆盖用户自定义 |
 | `updater.rs` + `updater/` | 读取 per-target release manifest，校验资产，并编排 macOS bundle / Windows NSIS helper 更新；安装后 `app_quit::force_quit`（避开 macOS 双 ⌘Q）；helper 优先用 staging 二进制，等 PID 时 SIGTERM/SIGKILL |
-| `watchdog.rs` | Windows 常驻恢复边界：主进程每 30 秒通过命名事件发出轻量心跳，独立 helper 低频监测异常退出/无心跳并有限次静默重启；用户主动退出与更新退出发出 clean-stop 事件，避免误拉起 |
+| `watchdog.rs` | 仅保留旧 `--qx-watchdog` 参数兼容；Qx 不再复制并常驻第二个 Qx-branded helper，进程唯一性由 Tauri single-instance 插件负责，健康观测仍在 `runtime::health` |
 | `diagnostics.rs` | 结构化诊断事件与日志文件路径；仅在 Advanced 日志开关或 Developer Mode 启用时落盘；配置读取有短 TTL，队列有界，错误风暴不得形成新的内存/磁盘压力 |
 
 ## 通用工具

@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   AppWindow,
+  Boxes,
+  Command,
   Cpu,
   EyeOff,
   GripVertical,
@@ -10,12 +12,25 @@ import {
   Pin,
   Plus,
   RotateCcw,
+  Search,
   Settings,
   SlidersHorizontal,
   Trash2,
 } from "lucide-react";
-import { Button, Select, SettingsCard } from "../../components/ui";
+import {
+  Button,
+  Input,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Select,
+  SettingsCard,
+} from "../../components/ui";
 import { useLocale, useT } from "../../i18n";
+import {
+  localizePluginCommandTitle,
+  localizePluginName,
+} from "../../plugin/pluginLabels";
 import { usePluginRegistry } from "../../plugin/registry";
 import { resolveSurfaceProviders } from "../../plugin/surfaceProviders";
 import { useSettingsStore, type TrayActionConfig } from "./store";
@@ -29,6 +44,12 @@ import {
 
 type DragGroup = "actions" | "providers";
 type DragState = { group: DragGroup; id: string };
+
+type TrayCandidate = {
+  action: TrayActionConfig;
+  category: "builtin" | "module" | "plugin-command";
+  subtitle: string;
+};
 
 const actionIcons = {
   status_memory: MemoryStick,
@@ -57,6 +78,8 @@ export default function TrayMenuSettings() {
   const locale = useLocale();
   const { settings, patch } = useSettingsStore();
   const plugins = usePluginRegistry((state) => state.plugins);
+  const commands = usePluginRegistry((state) => state.commands);
+  const panels = usePluginRegistry((state) => state.panels);
   const trayActions = useMemo(
     () => sanitizeTrayActions(settings.tray_actions),
     [settings.tray_actions],
@@ -78,21 +101,72 @@ export default function TrayMenuSettings() {
     providerConfig.get(provider.key)?.enabled ?? provider.declaration.defaultEnabled === true
   ));
 
-  const [addAction, setAddAction] = useState<string>(TRAY_ACTION_TYPES[0].value);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addQuery, setAddQuery] = useState("");
   const [addProvider, setAddProvider] = useState<string>("");
   const [dragged, setDragged] = useState<DragState | null>(null);
   const [dropTarget, setDropTarget] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
 
-  const availableActions = TRAY_ACTION_TYPES.filter(
-    (type) => !trayActions.some((action) => action.id === type.value),
-  );
+  const availableActions = useMemo<TrayCandidate[]>(() => {
+    const selected = new Set(trayActions.map((action) => action.id));
+    const builtinCandidates = TRAY_ACTION_TYPES
+      .filter((type) => !selected.has(type.value))
+      .map((type) => ({
+        action: createTrayAction(type.value),
+        category: "builtin" as const,
+        subtitle: t("general.trayMenu.builtinAction", "Tray action"),
+      }));
+    const moduleCandidates = Object.values(panels).flatMap((panel) => {
+      const target = panel.pluginId.startsWith("builtin:")
+        ? panel.pluginId.slice("builtin:".length)
+        : `plugin:${panel.pluginId}`;
+      const id = `module:${target}`;
+      if (!target || selected.has(id)) return [];
+      const plugin = plugins.find((item) => item.id === panel.pluginId);
+      const title = plugin
+        ? localizePluginName(plugin, t, locale)
+        : panel.title || panel.pluginName;
+      return [{
+        action: { id, title, enabled: true, kind: "module" as const, target },
+        category: "module" as const,
+        subtitle: t("general.trayMenu.module", "Module"),
+      }];
+    });
+    const commandCandidates = commands.flatMap((command) => {
+      const id = `command:${command.pluginId}:${command.name}`;
+      if (selected.has(id)) return [];
+      const plugin = plugins.find((item) => item.id === command.pluginId);
+      const title = plugin
+        ? localizePluginCommandTitle(plugin, command, t, locale)
+        : command.title || command.name;
+      return [{
+        action: {
+          id,
+          title,
+          enabled: true,
+          kind: "plugin-command" as const,
+          plugin_id: command.pluginId,
+          command: command.name,
+        },
+        category: "plugin-command" as const,
+        subtitle: plugin
+          ? localizePluginName(plugin, t, locale)
+          : command.pluginName,
+      }];
+    });
+    return [...builtinCandidates, ...moduleCandidates, ...commandCandidates];
+  }, [commands, locale, panels, plugins, t, trayActions]);
+  const filteredActions = useMemo(() => {
+    const query = addQuery.trim().toLocaleLowerCase(locale);
+    if (!query) return availableActions;
+    return availableActions.filter(({ action, subtitle }) => (
+      `${action.title} ${subtitle} ${action.id}`.toLocaleLowerCase(locale).includes(query)
+    ));
+  }, [addQuery, availableActions, locale]);
   const availableProviders = orderedProviders.filter(
     (provider) => !selectedProviders.some((selected) => selected.key === provider.key),
   );
-  const actionToAdd = availableActions.some((type) => type.value === addAction)
-    ? addAction
-    : availableActions[0]?.value ?? "";
   const providerToAdd = availableProviders.some((provider) => provider.key === addProvider)
     ? addProvider
     : availableProviders[0]?.key ?? "";
@@ -209,7 +283,11 @@ export default function TrayMenuSettings() {
         <div className="qx-tray-compact-list">
           {trayActions.map((action) => {
             const catalog = TRAY_ACTION_TYPES.find((type) => type.value === action.id);
-            const Icon = actionIcons[action.id as keyof typeof actionIcons] ?? Activity;
+            const Icon = action.kind === "module"
+              ? Boxes
+              : action.kind === "plugin-command"
+                ? Command
+                : actionIcons[action.id as keyof typeof actionIcons] ?? Activity;
             return (
               <div
                 key={action.id}
@@ -224,6 +302,10 @@ export default function TrayMenuSettings() {
                   <small>
                     {isTrayStatusAction(action.id)
                       ? t("general.trayMenu.liveStatus", "Live status")
+                      : action.kind === "module"
+                        ? t("general.trayMenu.module", "Module")
+                        : action.kind === "plugin-command"
+                          ? t("general.trayMenu.pluginCommand", "Plugin command")
                       : t("general.trayMenu.command", "Command")}
                   </small>
                 </div>
@@ -244,26 +326,69 @@ export default function TrayMenuSettings() {
           )}
         </div>
         <div className="qx-tray-add-row">
-          {availableActions.length > 0 && (
-            <>
-              <Select
-                value={actionToAdd}
-                onChange={setAddAction}
-                options={availableActions.map((type) => ({ value: type.value, label: t(type.labelKey, type.label) }))}
-                ariaLabel={t("general.trayMenu.addAction", "Add item")}
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={!actionToAdd}
-                onClick={() => saveActions([...trayActions, createTrayAction(actionToAdd)])}
-              >
+          <Popover
+            open={addOpen}
+            onOpenChange={(open) => {
+              setAddOpen(open);
+              if (!open) setAddQuery("");
+            }}
+          >
+            <PopoverTrigger asChild>
+              <Button type="button" size="sm" variant="secondary">
                 <Plus size={14} />
-                {t("general.trayMenu.add", "Add")}
+                {t("general.trayMenu.addItem", "Add module or command")}
               </Button>
-            </>
-          )}
+            </PopoverTrigger>
+            <PopoverContent align="start" className="qx-tray-picker">
+              <div className="qx-tray-picker-search">
+                <Search size={14} />
+                <Input
+                  autoFocus
+                  value={addQuery}
+                  onChange={(event) => setAddQuery(event.target.value)}
+                  placeholder={t("general.trayMenu.searchPlaceholder", "Search modules or commands…")}
+                  aria-label={t("general.trayMenu.searchPlaceholder", "Search modules or commands…")}
+                />
+              </div>
+              <div className="qx-tray-picker-list">
+                {filteredActions.map((candidate) => {
+                  const CandidateIcon = candidate.category === "module"
+                    ? Boxes
+                    : candidate.category === "plugin-command"
+                      ? Command
+                      : actionIcons[candidate.action.id as keyof typeof actionIcons] ?? Activity;
+                  const catalog = TRAY_ACTION_TYPES.find((type) => type.value === candidate.action.id);
+                  return (
+                    <Button
+                      key={candidate.action.id}
+                      type="button"
+                      variant="ghost"
+                      className="qx-tray-picker-item"
+                      onClick={() => {
+                        const action = catalog
+                          ? { ...candidate.action, title: t(catalog.labelKey, catalog.label) }
+                          : candidate.action;
+                        saveActions([...trayActions, action]);
+                        setAddOpen(false);
+                        setAddQuery("");
+                      }}
+                    >
+                      <span className="qx-tray-item-icon"><CandidateIcon size={15} /></span>
+                      <span className="qx-tray-item-copy">
+                        <span>{catalog ? t(catalog.labelKey, catalog.label) : candidate.action.title}</span>
+                        <small>{candidate.subtitle}</small>
+                      </span>
+                    </Button>
+                  );
+                })}
+                {filteredActions.length === 0 && (
+                  <div className="qx-tray-empty">
+                    {t("general.trayMenu.noResults", "No matching modules or commands")}
+                  </div>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button type="button" size="sm" variant="ghost" onClick={() => saveActions(DEFAULT_TRAY_ACTIONS)}>
             <RotateCcw size={14} />
             {t("general.trayMenu.reset", "Reset")}

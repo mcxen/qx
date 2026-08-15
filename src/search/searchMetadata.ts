@@ -29,7 +29,7 @@ export function metadataKeyForEntry(item: AppEntry): string | null {
     }
     return null;
   }
-  const tabMatch = item.path.match(/^__qx:(clipboard|screencap|rss|weather|qx-ai|macros|documents|qx-tty|settings)$/);
+  const tabMatch = item.path.match(/^__qx:(clipboard|screencap|rss|weather|qx-ai|macros|documents|file-actions|qx-tty|settings)$/);
   if (tabMatch) return moduleMetadataKey(tabMatch[1]);
   if ((item.kind ?? "app") === "app" && item.path) return appMetadataKey(item.path);
   return null;

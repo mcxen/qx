@@ -100,6 +100,10 @@ Shell 端口并按平台排列控制按钮。拖动继续使用 `allow-start-dra
 | `show_and_navigate(route)` | 显示并 `emit("navigate", route)`，同时 `remember_active_route` |
 | `set_active_route`（command） | 前端 tab 变化时同步 Rust 侧 route |
 
+### 文件管理器选择的唤起前快照
+
+`show_floating` 与 `show_and_navigate` 在 Qx 取得焦点前调用根级 `file_manager` 服务。Windows 先保存前台 Explorer HWND，再在 worker 中读取该窗口的 `SelectedItems`；macOS 仅在 Finder 为前台应用时读取 Finder selection。结果以带单调 `revision` 的 `file-manager:selection` 事件和 `file_manager_get_selection` 命令发布。Qx 已经位于前台或来源不是系统文件管理器时不得清空上一份快照，否则模块切换会丢失用户刚才的输入上下文。
+
 ### 2.3 `toggle_route(route)` 规则
 
 ```text
@@ -172,8 +176,16 @@ Spotlight 之前消费精确的 `Cmd+Space`，然后调用同一个 Qx 动作回
 manifest 的 `shortcuts[]` 只提供默认声明（默认应为 disabled），用户在 **设置 →
 扩展 → 已安装 → 插件 → Shortcuts** 的 Toggle / ShortcutRecorder 中启用或重录。
 用户值持久化在 `settings.shortcuts` 的稳定 namespaced id
-`plugin:<pluginId>:<command>`；注册前将其与 manifest 默认合并，修改后先安全注销旧键再
+`plugin:<pluginId>:<command>`；注册前将其与 manifest 默认合并，修改后由宿主统一
 重新注册。插件 command 不得伪装成原生 App 快捷键。
+
+所有带 Panel 的内置模块与市场插件还会显示一个通用“打开插件”录入项，保存为
+`open:<route>`（例如 `open:file-actions`、`open:plugin:<pluginId>`）。Rust
+`register_shortcuts` 统一注册这些面板快捷键，并沿用 `toggle_route` 的再次按键隐藏语义。
+插件命令的 `plugin:<pluginId>:<command>` 也由 Rust 注册；触发时只向已加载的前端
+runtime 发布 `plugin-global-shortcut`，再由 registry 校验启用状态并解析命令。前端不得
+直接调用 global-shortcut `register`，否则 Settings 保存或录制暂停后的 `unregister_all`
+会让插件绑定永久丢失。
 
 默认键（`Settings::default`）。Windows 避开系统窗口菜单及 PowerToys Run 常用的
 `Alt+Space`；macOS 继续使用对应的 `Option+Space`：
@@ -215,6 +227,10 @@ useEffect(() => {
 
 ### 3.3 快捷键录制器
 
+- Windows 截图完成、复制或取消时，必须先 cloak 透明 picker 和 shade HWND，隐藏并跨过一次
+  `DwmFlush` 合成边界后再恢复主 WebView；复用前解除 cloak，并在启动时为 WebView2 配置
+  透明默认背景。
+
 - 录制期间以 `Esc`、取消按钮或点击录制器外部作为取消入口；不得用录制按钮的
   DOM `blur` 取消。Windows 按下 `Alt` 时可能短暂转移控件焦点，而截图/录屏默认键
   正是 `Alt+Shift+S` / `Alt+G`，把 blur 当取消会导致主键永远无法录入。
@@ -223,6 +239,9 @@ useEffect(() => {
 - 全局截图快捷键在主 Qx 窗口可见时保留当前模块，让 Qx 自身可被截图；截图 picker 会用
   专用的 capture-main-visible guard 暂停失焦自动隐藏。取消、完成或切换为录屏时必须清除此
   guard；圈选层和独立截图控制栏始终保持内容保护。
+- 截图会话必须记录启动瞬间主 Qx 窗口是否可见。桌面应用中用全局快捷键启动后，Esc 仅
+  关闭 picker 并保持 Qx 隐藏；只有从可见 Qx 界面启动的会话，Esc 才恢复原模块。该来源
+  状态随跨显示器 picker 迁移保留，不得用“取消后总是打开截图模块”的布尔逻辑替代。
 - Windows 在保留主窗口截图时，必须先解除主窗口的内容保护，再显示、置顶并聚焦 picker；
   所有主窗口/控制栏变更完成后要重新确认 picker 的交互与焦点。焦点交接失败必须立即隐藏
   全屏 picker、结束 capture session 并恢复可操作界面，不能留下吞掉桌面点击但收不到 Esc

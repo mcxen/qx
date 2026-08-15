@@ -303,6 +303,22 @@ fn tray_defaults_store_only_visible_items() {
 }
 
 #[test]
+fn tray_actions_preserve_optional_module_and_command_dispatch() {
+    let module: super::TrayActionConfig = serde_json::from_str(
+        r#"{"id":"module:rss","title":"RSS","enabled":true,"kind":"module","target":"rss"}"#,
+    )
+    .expect("module tray action");
+    assert_eq!(module.kind.as_deref(), Some("module"));
+    assert_eq!(module.target.as_deref(), Some("rss"));
+
+    let legacy: super::TrayActionConfig =
+        serde_json::from_str(r#"{"id":"open_main","title":"Open Main Window","enabled":true}"#)
+            .expect("legacy tray action");
+    assert!(legacy.kind.is_none());
+    assert!(legacy.command.is_none());
+}
+
+#[test]
 fn shortcut_migration_moves_capture_to_module_default_and_removes_tray_keys() {
     let mut settings = Settings::default();
     settings.shortcuts.insert(

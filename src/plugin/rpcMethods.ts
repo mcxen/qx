@@ -609,6 +609,17 @@ export const rpcHandlers: Record<string, RpcHandler> = {
     return invoke("plugin_system_reveal_path", { path: String(payload.path || "") });
   },
 
+  fileSelection: async (plugin, perms) => {
+    assertPermission(plugin, perms, "file-selection");
+    return invoke("file_manager_get_selection");
+  },
+
+  fileSelectionOperation: async (plugin, perms, payload) => {
+    assertPermission(plugin, perms, "file-operations");
+    const request = (payload.request || {}) as Record<string, unknown>;
+    return invoke("file_manager_perform_operation", { request });
+  },
+
   systemOpenSettings: async (plugin, perms, payload) => {
     assertPermission(plugin, perms, "system");
     return invoke("plugin_system_open_settings", {

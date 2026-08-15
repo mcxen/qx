@@ -13,9 +13,19 @@ position. Provider controls are appended as standard host-rendered cards. The
 settings page is therefore the single source of truth for visibility and order;
 there is no second left-click menu configuration.
 
-The native menu does not inherit Launcher `quick_entries`. Modules and plugin
-commands expose global shortcuts from their own settings/detail page; tray
-composition is only tray composition.
+The native menu is rebuilt only when that structure or plugin contributions
+change. Live status sampling updates retained native menu-item labels in place;
+periodic whole-menu replacement is forbidden because the Windows tray backend
+can retain native menu objects until the process exhausts its USER object quota.
+
+The native menu does not inherit Launcher `quick_entries`. The user may add a
+registered module or plugin command explicitly through the tray picker. These
+rows extend `TrayActionConfig` with a narrow dispatch descriptor:
+`kind=module` + `target`, or `kind=plugin-command` + `plugin_id` + `command`.
+Rust owns native-menu dispatch; module rows use the existing Qx navigation port,
+and command rows emit the existing `plugin-tray-action` event so lazy plugin
+loading remains a frontend registry concern. Global shortcuts stay in the
+module/plugin detail page; tray composition is only tray composition.
 
 The Tray Surface is transient: its close button only hides the Tray window and never
 summons the main launcher. The host starts a 2.4 second grace period when the pointer

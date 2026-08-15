@@ -16,11 +16,57 @@ pub(crate) fn is_picker_surface(label: &str) -> bool {
     label == PICKER_LABEL || label.starts_with(SHADE_PREFIX)
 }
 
+#[cfg(target_os = "windows")]
+fn set_windows_cloaked(window: &tauri::WebviewWindow, cloaked: bool) {
+    use windows_sys::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_CLOAK};
+    use windows_sys::Win32::UI::WindowsAndMessaging::{GetAncestor, GA_ROOT};
+
+    let Ok(webview_hwnd) = window.hwnd() else {
+        return;
+    };
+    let hwnd = unsafe { GetAncestor(webview_hwnd.0, GA_ROOT) };
+    if hwnd.is_null() {
+        return;
+    }
+    let value: i32 = i32::from(cloaked);
+    let _ = unsafe {
+        DwmSetWindowAttribute(
+            hwnd,
+            DWMWA_CLOAK as u32,
+            std::ptr::from_ref(&value).cast(),
+            std::mem::size_of_val(&value) as u32,
+        )
+    };
+}
+
+#[cfg(not(target_os = "windows"))]
+fn set_windows_cloaked(_window: &tauri::WebviewWindow, _cloaked: bool) {}
+
+/// Prepare a reusable transparent picker surface before restoring its geometry.
+/// Windows keeps the HWND alive but excludes it from DWM while hidden, so it
+/// must be uncloaked before the next show.
+pub(super) fn prepare_for_show(window: &tauri::WebviewWindow) {
+    set_windows_cloaked(window, false);
+}
+
+fn hide_surface(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = window.set_ignore_cursor_events(true);
+        // Cloak first so DWM stops presenting the old transparent WebView2
+        // swapchain before Tauri hides the reusable HWND.
+        set_windows_cloaked(window, true);
+        let _ = window.set_size(PhysicalSize::new(1, 1));
+        let _ = window.set_position(PhysicalPosition::new(-32_000, -32_000));
+    }
+    let _ = window.hide();
+}
+
 /// Hide every outer multi-display shade surface (kept alive for reuse).
 pub(super) fn hide_shades(app: &AppHandle) {
     for window in app.webview_windows().into_values() {
         if window.label().starts_with(SHADE_PREFIX) {
-            let _ = window.hide();
+            hide_surface(&window);
         }
     }
 }
@@ -59,7 +105,7 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
 
     for window in app.webview_windows().into_values() {
         if window.label().starts_with(SHADE_PREFIX) && !desired_shades.contains(window.label()) {
-            let _ = window.hide();
+            hide_surface(&window);
         }
     }
 
@@ -67,7 +113,7 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
         let label = shade_label(*shade_id);
         if *shade_id == active_monitor_id {
             if let Some(active_shade) = app.get_webview_window(&label) {
-                let _ = active_shade.hide();
+                hide_surface(&active_shade);
             }
             continue;
         }
@@ -108,6 +154,7 @@ pub(super) fn show_shades(app: &AppHandle, active_monitor_id: u32) -> Result<(),
         };
         let _ = shade.set_content_protected(true);
         let _ = shade.set_always_on_top(true);
+        prepare_for_show(&shade);
         shade
             .set_position(PhysicalPosition::new(*shade_x, *shade_y))
             .map_err(|error| format!("position capture shade: {error}"))?;
@@ -141,15 +188,14 @@ pub(super) fn hide(app: &AppHandle) {
                 // the desktop. Move the reusable surface off-screen and
                 // shrink it before hiding; show_shades/show_region_picker
                 // restore the real geometry on the next capture.
-                #[cfg(target_os = "windows")]
-                {
-                    let _ = window.set_ignore_cursor_events(true);
-                    let _ = window.set_size(PhysicalSize::new(1, 1));
-                    let _ = window.set_position(PhysicalPosition::new(-32_000, -32_000));
-                }
-                let _ = window.hide();
+                hide_surface(&window);
             }
         }
+        // Establish a compositor boundary before the caller restores another
+        // Qx WebView. Without this, WebView2 can leave its last full-screen
+        // transparent swapchain visible as an opaque white rectangle.
+        #[cfg(target_os = "windows")]
+        let _ = unsafe { windows_sys::Win32::Graphics::Dwm::DwmFlush() };
     });
 }
 
@@ -163,6 +209,7 @@ pub(super) fn reassert_interactive(app: &AppHandle) -> Result<(), String> {
         let picker = app
             .get_webview_window(PICKER_LABEL)
             .ok_or_else(|| "region picker window is unavailable".to_string())?;
+        prepare_for_show(&picker);
         picker
             .set_ignore_cursor_events(false)
             .map_err(|error| format!("picker input: {error}"))?;
@@ -201,6 +248,7 @@ pub(super) fn restore_editable_selection(app: &AppHandle, session: &PickerSessio
         }
         let _ = picker.hide();
         let _ = picker.set_content_protected(true);
+        prepare_for_show(&picker);
         if picker.set_ignore_cursor_events(false).is_err()
             || picker
                 .set_position(PhysicalPosition::new(
@@ -268,6 +316,7 @@ pub(super) fn show_recording_frame(
         let _ = picker.set_content_protected(true);
         #[cfg(target_os = "windows")]
         let _ = picker.set_content_protected(false);
+        prepare_for_show(&picker);
         picker
             .set_position(PhysicalPosition::new(
                 monitor.position().x,

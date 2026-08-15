@@ -436,13 +436,23 @@ for (const token of [
   }
 }
 const screencapSelectionSource = read("src-tauri/src/screencap/selection.rs");
+const screencapPickerWindowSource = read("src-tauri/src/screencap/picker_window.rs");
+const tauriCompositionSource = read("src-tauri/src/lib.rs");
 const unprotectMainAt = screencapSelectionSource.indexOf("set_recording_ui_protected(&app, false)");
-const showPickerAt = screencapSelectionSource.indexOf("show_region_picker_internal(&app, mode, None)");
+const showPickerAt = screencapSelectionSource.indexOf("show_region_picker_internal(&app, mode, None, main_was_visible)");
 if (unprotectMainAt < 0 || showPickerAt < 0 || unprotectMainAt > showPickerAt) {
   fail("self-capture must unprotect the main window before showing the fullscreen picker");
 }
 if (!screencapSelectionSource.includes("picker_window::reassert_interactive(&app)")) {
   fail("self-capture must reassert picker focus after main/control window mutations");
+}
+for (const token of ["DWMWA_CLOAK", "DwmFlush", "prepare_for_show"]) {
+  if (!screencapPickerWindowSource.includes(token)) {
+    fail(`Windows picker teardown must exclude and flush reusable WebView surfaces: ${token}`);
+  }
+}
+if (!tauriCompositionSource.includes("WEBVIEW2_DEFAULT_BACKGROUND_COLOR")) {
+  fail("Windows transparent WebViews must set their default background before controller creation");
 }
 for (const legacyToken of [
   "qx-plugin-chrome-tabs",

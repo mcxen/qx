@@ -6,6 +6,7 @@ export const BUILTIN_MODULE_CATALOG = {
   /** Prefer marketplace plugin `weather`. Built-in panel is opt-in. */
   weather: { maturity: "beta", userDisableable: true },
   documents: { maturity: "stable", userDisableable: true },
+  "file-actions": { maturity: "stable", userDisableable: true },
   macros: { maturity: "beta", userDisableable: true },
   "qx-tty": { maturity: "stable", userDisableable: true },
   /** AI reading companion on RSS + workbench (summary/draft). */

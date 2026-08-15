@@ -208,6 +208,17 @@ const BUILTIN_MODULES: BuiltinInfo[] = [
     description: "Disk-backed text toolbox",
   },
   {
+    id: "file-actions",
+    name: "File Actions",
+    keywords: ["file actions", "rename", "archive", "zip", "extract", "folder", "文件操作", "重命名", "压缩", "解压", "文件夹"],
+    commands: [],
+    panel: {
+      title: "File Actions",
+      keywords: ["selected files", "finder", "explorer", "archive", "选择的文件", "文件管理器"],
+    },
+    description: "Operate on files selected in Finder or File Explorer",
+  },
+  {
     id: "qx-tty",
     name: "QxTTY",
     keywords: ["terminal", "tty", "shell", "command line", "command", "console", "终端", "命令行", "命令", "控制台"],

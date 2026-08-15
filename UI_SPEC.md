@@ -1,5 +1,13 @@
 # Qx UI Spec
 
+## File Actions 内置模块
+
+- File Actions 使用标准 Top Bar / Main Area / Bottom Bar，不另造工具窗口。Main Area 为可调整的两栏：左侧是 Qx 唤起前 Finder / Windows Explorer 的完整选择列表，中间是操作选择与参数区。
+- 左侧列表复用 `useQxListSelection`，显示文件/文件夹图标、名称与父目录；不得把系统选择降级成剪贴板文本，也不得因 Qx 获得焦点而清空刚捕获的选择快照。
+- 中间操作区提供重命名、移入新文件夹、压缩为 ZIP、解压 ZIP。重命名仅允许单选；归拢与压缩要求选择项位于同一父目录；解压只接受 ZIP。
+- Enter 执行当前有效操作，Esc 经 `useQxModuleShell` 返回 Launcher。运行中以 Bottom Island 的真实 indeterminate 状态反馈，不造成布局跳动；错误保留在操作区，选择列表仍可使用。
+- 所有参数输入使用 Qx shadcn 控件和主题变量。写操作不得静默覆盖已有目标；完成后左栏切换为宿主返回的输出项快照。
+
 > 状态：Current · 适用版本：v0.5.13 · Owner：Frontend · 最后复核：2026-07-14
 >
 > 事实来源：`src/components/QxShell.tsx`、`src/hooks/useEscBack.ts`、`src/styles/shell.css`、`src/styles/settings-actions.css`、`src/home-island/`、`src/modules/settings/plugins/`、`src/i18n.ts`
@@ -9,6 +17,10 @@
 Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索优先，内容居中，右侧给上下文，**底部最右侧统一 Esc 返回**，中间承载状态与可扩展灵动岛，右侧依次承载主动作、Actions 与 Esc。模块只替换内容区和 Context Panel，不重新发明主壳。
 
 ## Core Rules
+
+- Windows 可复用透明截图 picker/shade 在隐藏前必须先从 DWM 合成中 cloak，隐藏后提交一次
+  compositor flush，再恢复其他 Qx 窗口；复用前解除 cloak。创建任何 WebView2 controller 前
+  必须将默认背景设为透明，确认、复制或取消后不得残留全屏白色合成面。
 
 - 主壳固定为三层：Top Bar / Main Area / Bottom Bar。
 - Qx 完全退出后再次启动时，新进程必须主动显示一次 Launcher，让用户明确知道重启已完成；
@@ -21,6 +33,9 @@ Qx 的 UI 目标是一个稳定、紧凑、可透明的桌面工具壳：搜索�
 - 从常驻截图控制栏或全局截图快捷键启动截图时，如果主 Qx 窗口当前可见，必须保持其当前
   模块与画面可见并临时解除主窗口内容保护，使 Qx 可以截取自身界面；圈选层、遮罩和截图
   控制栏仍必须受内容保护并排除在成品之外。截图模块内部的普通捕获入口继续隐藏来源窗口。
+- 圈选会话记录启动时主 Qx 窗口是否可见：从桌面全局快捷键启动后 Esc 只退出圈选并恢复
+  原前台应用，不得额外打开 Qx；从可见 Qx 界面启动后 Esc 才恢复原模块。`⌘C` / `Ctrl+C`
+  无论 WebView 焦点落在根节点还是非编辑覆盖层，都必须直接截图并写入系统图片剪贴板。
 - 捕获预览的历史侧栏按“截图”和“录屏”分为两个默认展开的折叠组，不得把两种成品混排；
   每组可独立折叠，Shell 键盘导航只遍历当前展开组中的可见条目。
 - 截图与录屏历史项在列表和图库布局中均提供重命名操作；仅编辑文件主名并保留原扩展名，
@@ -916,7 +931,7 @@ Settings：
 - 使用 `visual="elevated"`。
 - Esc / Close → 关闭设置面板。
 - Appearance 的应用图标选择保留原版与云月两个内置选项；切换只影响应用/窗口图标，菜单栏与系统托盘图标始终保持独立。
-- 托盘菜单配置归入 Settings → General。列表本身就是可见内容：加入即显示、移除即隐藏，拖动决定顺序，不再提供重复的可见性开关或托盘专用快捷键。模块与插件命令的全局快捷键在对应模块/插件详情中配置。插件只能贡献原生 action/status 行与可选子菜单分组；不得把 Web CSS、颜色或自绘控件带入 macOS / Windows 系统菜单。
+- 托盘菜单配置归入 Settings → General。列表本身就是可见内容：加入即显示、移除即隐藏，拖动决定顺序，不再提供重复的可见性开关或托盘专用快捷键。“添加项目”统一搜索内置托盘操作、已注册模块与插件命令；模块点击后走 Qx 导航目标，命令点击后走插件命令端口。模块与插件命令的全局快捷键仍在对应模块/插件详情中配置。插件只能贡献原生 action/status 行与可选子菜单分组；不得把 Web CSS、颜色或自绘控件带入 macOS / Windows 系统菜单。
 - 菜单栏 / 系统托盘图标按平台使用不同呈现：macOS 使用 template 图标让系统自动
   着色；Windows 使用有前景/背景层次的彩色非 template 图标，确保浅色和深色任务栏
   都可辨认。不得把 macOS 单色 template 标志直接当作 Windows tray 图标。

@@ -478,6 +478,12 @@ export function createPluginContext(
         })) as unknown[];
         return typeof limit === "number" ? results.slice(0, Math.max(0, limit)) : results;
       },
+      selection: () =>
+        rpc("fileSelection") as ReturnType<PluginContext["files"]["selection"]>,
+      performSelectionOperation: (request) =>
+        rpc("fileSelectionOperation", { request }) as ReturnType<
+          PluginContext["files"]["performSelectionOperation"]
+        >,
     },
     qx: {
       invokeRust: (cmd, args) => rpc("invokeRust", { cmd, args }),
