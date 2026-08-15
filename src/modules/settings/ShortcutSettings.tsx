@@ -2,7 +2,6 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ShortcutRecorder from "../../components/ShortcutRecorder";
-import TrayMenuSettings from "./TrayMenuSettings";
 import {
   LinkButton,
   Popover,
@@ -29,19 +28,6 @@ const DEFAULT_HOST_SHORTCUTS = getDefaultQxHostShortcuts();
 const DEFAULT_GLOBAL_KEYS: Record<string, string> = {
   toggle_launcher: DEFAULT_HOST_SHORTCUTS.toggleLauncher,
   toggle_window: DEFAULT_HOST_SHORTCUTS.toggleWindow,
-  clipboard: "Alt+V",
-  record_gif: "Alt+G",
-  capture_screenshot: "Alt+Shift+S",
-  recapture_last_region: "Alt+Shift+R",
-  toggle_capture_controls: "Alt+Shift+C",
-  rss: "Alt+R",
-  tray_open_main: "Alt+Shift+O",
-  tray_keep_visible: "Alt+Shift+K",
-  tray_settings: "Alt+Shift+,",
-  tray_hide_main: "Alt+Shift+H",
-  tray_status_memory: "",
-  tray_status_network: "",
-  tray_status_cpu: "",
 };
 
 type DraftAppShortcut = {
@@ -456,8 +442,6 @@ export default function ShortcutSettings() {
           })}
         </div>
       ))}
-
-      <TrayMenuSettings />
 
       <div style={{ marginBottom: 16 }}>
         <div className="qx-app-shortcut-section-header">

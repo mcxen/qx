@@ -3065,80 +3065,147 @@ span.qx-plugin-screenshot {
   color: var(--qx-text-tertiary);
 }
 
-/* ====== Tray Action Editor ====== */
-.qx-tray-action-editor {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+/* ====== Tray Menu Composer ====== */
+.qx-tray-menu-hint {
+  margin: 0 0 8px;
 }
 
-.qx-tray-action-edit-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 8px;
+.qx-tray-list-section + .qx-tray-list-section {
+  margin-top: 12px;
+}
+
+.qx-tray-list-heading {
+  display: flex;
   align-items: center;
-  min-height: 46px;
-  padding: 7px 8px;
-  border: 1px solid var(--qx-border-1);
-  border-radius: var(--qx-control-radius);
-  background: var(--qx-bg-component-1);
-}
-
-.qx-tray-provider-section {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 4px;
-  padding-top: 9px;
-  border-top: 1px solid var(--qx-border-1);
-}
-
-.qx-tray-provider-heading {
+  justify-content: space-between;
+  min-height: 24px;
+  padding-inline: 2px;
   color: var(--qx-text-secondary);
   font-size: 11px;
   font-weight: 650;
 }
 
-.qx-tray-action-edit-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.qx-tray-action-edit-fields .qx-shadcn-input {
-  width: 100%;
-  min-width: 0;
-}
-
-.qx-tray-action-edit-id {
+.qx-tray-list-heading > :last-child {
   color: var(--qx-text-tertiary);
-  font-family: var(--qx-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.qx-tray-compact-list {
+  overflow: hidden;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-bg-component-1);
+}
+
+.qx-tray-compact-row {
+  display: grid;
+  grid-template-columns: 24px 26px minmax(0, 1fr) 28px;
+  align-items: center;
+  min-height: 38px;
+  padding: 3px 4px 3px 2px;
+  transition: background 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+
+.qx-tray-compact-row + .qx-tray-compact-row {
+  border-top: 1px solid var(--qx-border-1);
+}
+
+.qx-tray-compact-row:hover {
+  background: var(--qx-bg-component-2);
+}
+
+.qx-tray-compact-row.is-dragging {
+  opacity: 0.48;
+}
+
+.qx-tray-compact-row.is-drop-target {
+  box-shadow: inset 0 2px 0 var(--qx-accent);
+}
+
+.qx-tray-drag-handle {
+  display: grid;
+  width: 24px;
+  height: 28px;
+  place-items: center;
+  border-radius: var(--qx-control-radius);
+  color: var(--qx-text-tertiary);
+  cursor: grab;
+  touch-action: none;
+}
+
+.qx-tray-drag-handle:active {
+  cursor: grabbing;
+}
+
+.qx-tray-drag-handle:focus-visible {
+  outline: 2px solid var(--qx-accent);
+  outline-offset: -2px;
+}
+
+.qx-tray-item-icon {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: var(--qx-control-radius);
+  background: var(--qx-accent-soft);
+  color: var(--qx-accent);
+}
+
+.qx-tray-item-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  padding-inline: 7px;
+  line-height: 1.2;
+}
+
+.qx-tray-item-copy > span,
+.qx-tray-item-copy > small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.qx-tray-item-copy > span {
+  color: var(--qx-text-primary);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.qx-tray-item-copy > small {
+  margin-top: 2px;
+  color: var(--qx-text-tertiary);
   font-size: 10px;
-  line-height: 1.3;
 }
 
-.qx-tray-action-edit-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.qx-tray-compact-row > .qx-shadcn-button {
+  width: 28px;
+  height: 28px;
+  color: var(--qx-text-tertiary);
 }
 
-.qx-tray-action-editor-footer {
+.qx-tray-empty {
+  padding: 12px;
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+  text-align: center;
+}
+
+.qx-tray-add-row {
   display: flex;
   align-items: center;
-  gap: 8px;
   justify-content: flex-end;
-  flex-wrap: wrap;
-  margin-top: 4px;
-}
-
-.qx-tray-action-editor-footer .qx-select {
-  min-width: 120px;
-}
-
-.qx-tray-action-editor-footer .qx-shadcn-button {
   gap: 6px;
+  margin-top: 7px;
+}
+
+.qx-tray-add-row .qx-select {
+  min-width: 156px;
+}
+
+.qx-tray-add-row .qx-shadcn-button {
+  gap: 5px;
 }
 .qx-app-icon-picker {
   gap: 6px;

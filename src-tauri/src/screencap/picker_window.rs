@@ -135,6 +135,18 @@ pub(super) fn hide(app: &AppHandle) {
     let _ = crate::main_thread::run_on_main(&app.clone(), move || {
         for window in app.webview_windows().into_values() {
             if is_picker_surface(window.label()) {
+                // WebView2 can retain the last compositor surface for a
+                // transparent window after Hide(). If that surface is still
+                // full-screen, Windows paints it as a white rectangle over
+                // the desktop. Move the reusable surface off-screen and
+                // shrink it before hiding; show_shades/show_region_picker
+                // restore the real geometry on the next capture.
+                #[cfg(target_os = "windows")]
+                {
+                    let _ = window.set_ignore_cursor_events(true);
+                    let _ = window.set_size(PhysicalSize::new(1, 1));
+                    let _ = window.set_position(PhysicalPosition::new(-32_000, -32_000));
+                }
                 let _ = window.hide();
             }
         }

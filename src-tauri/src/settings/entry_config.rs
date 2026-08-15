@@ -124,6 +124,23 @@ pub(super) fn default_tray_actions() -> Vec<TrayActionConfig> {
     [
         ("status_memory", "Memory", true),
         ("status_network", "Network", true),
+        ("open_main", "Open Main Window", true),
+        ("keep_visible", "Keep Window Visible", true),
+        ("settings", "Settings", true),
+    ]
+    .into_iter()
+    .map(|(id, title, enabled)| TrayActionConfig {
+        id: id.to_string(),
+        title: title.to_string(),
+        enabled,
+    })
+    .collect()
+}
+
+pub(super) fn legacy_default_tray_actions() -> Vec<TrayActionConfig> {
+    [
+        ("status_memory", "Memory", true),
+        ("status_network", "Network", true),
         ("status_cpu", "CPU", false),
         ("open_main", "Open Main Window", true),
         ("keep_visible", "Keep Window Visible", true),
@@ -137,6 +154,12 @@ pub(super) fn default_tray_actions() -> Vec<TrayActionConfig> {
         enabled,
     })
     .collect()
+}
+
+pub(super) fn migrate_legacy_default_tray_actions(entries: &mut Vec<TrayActionConfig>) {
+    if *entries == legacy_default_tray_actions() {
+        *entries = default_tray_actions();
+    }
 }
 
 fn quick_entry((target, title, subtitle): (&str, &str, &str)) -> QuickEntryConfig {

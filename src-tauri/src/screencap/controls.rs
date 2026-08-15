@@ -1,5 +1,6 @@
 use std::sync::atomic::Ordering;
 
+use tauri::utils::config::Color;
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder};
 
 use super::state::{picker, CONTROLS_PINNED};
@@ -127,6 +128,7 @@ fn show_now(app: &AppHandle) -> Result<(), String> {
         .minimizable(false)
         .decorations(false)
         .transparent(true)
+        .background_color(Color(0, 0, 0, 0))
         .shadow(false)
         .always_on_top(true)
         .skip_taskbar(true)

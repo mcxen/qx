@@ -247,4 +247,7 @@ pub(crate) struct RecordingOutput {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) frame_count: u32,
+    /// Still captures retain their decoded pixels so clipboard delivery does
+    /// not reopen and decode the PNG that was just persisted.
+    pub(crate) rgba: Option<Vec<u8>>,
 }

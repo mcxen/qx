@@ -721,8 +721,8 @@ pub async fn screencap_confirm_region_select(
         .map_err(|error| format!("screenshot worker failed: {error}"))
         .and_then(|inner| inner);
         match result {
-            Ok(output) => {
-                super::feedback::play_screenshot_sound(&app, capture_options.play_sound).await;
+            Ok(mut output) => {
+                super::feedback::play_screenshot_sound(&app, capture_options.play_sound);
                 let delivery_options = capture_options.clone();
                 let source_for_delivery = output.path.clone();
                 let delivery = crate::runtime::blocking(move || {
@@ -733,6 +733,9 @@ pub async fn screencap_confirm_region_select(
                 let output_path = output.path.to_string_lossy().to_string();
                 let delivered_path = delivery.delivered_path.to_string_lossy().to_string();
                 let path_for_clip = output.path.clone();
+                let rgba_for_clip = output.rgba.take();
+                let clipboard_width = output.width;
+                let clipboard_height = output.height;
                 let path_for_event = output_path.clone();
                 let app_ui = app.clone();
                 let screencap_settings = crate::settings::read_settings().screencap;
@@ -763,12 +766,19 @@ pub async fn screencap_confirm_region_select(
                     use tauri_plugin_clipboard_manager::ClipboardExt;
                     let mut clipboard_error = delivery.warning.clone();
                     if copy_to_clipboard {
-                        let copy_error = crate::clipboard::write_image_file_to_clipboard(
-                            &app_ui,
-                            &path_for_clip,
-                        )
-                        .err()
-                        .map(|error| {
+                        let copy_result = match rgba_for_clip {
+                            Some(rgba) => crate::clipboard::write_rgba_image_to_clipboard(
+                                &app_ui,
+                                rgba,
+                                clipboard_width,
+                                clipboard_height,
+                            ),
+                            None => crate::clipboard::write_image_file_to_clipboard(
+                                &app_ui,
+                                &path_for_clip,
+                            ),
+                        };
+                        let copy_error = copy_result.err().map(|error| {
                             format!("Screenshot saved, but automatic copy failed: {error}")
                         });
                         if copy_error.is_some() {
@@ -985,12 +995,11 @@ pub async fn screencap_recapture_last_region(app: AppHandle) -> Result<(), Strin
     .and_then(|inner| inner);
 
     match result {
-        Ok(output) => {
+        Ok(mut output) => {
             super::feedback::play_screenshot_sound(
                 &app,
                 Some(capture_settings.screenshot_sound_enabled),
-            )
-            .await;
+            );
             let source_for_delivery = output.path.clone();
             let delivery = crate::runtime::blocking(move || {
                 super::delivery::deliver_capture(&source_for_delivery, &execution)
@@ -1000,17 +1009,28 @@ pub async fn screencap_recapture_last_region(app: AppHandle) -> Result<(), Strin
             let output_path = output.path.to_string_lossy().to_string();
             let delivered_path = delivery.delivered_path.to_string_lossy().to_string();
             let path_for_clip = output.path.clone();
+            let rgba_for_clip = output.rgba.take();
+            let clipboard_width = output.width;
+            let clipboard_height = output.height;
             let path_for_event = output_path.clone();
             let app_ui = app.clone();
             let clipboard_error = crate::runtime::ui(&app, move || {
                 let mut clipboard_error = delivery.warning.clone();
                 if copy_to_clipboard {
-                    let copy_error =
-                        crate::clipboard::write_image_file_to_clipboard(&app_ui, &path_for_clip)
-                            .err()
-                            .map(|error| {
-                                format!("Screenshot saved, but automatic copy failed: {error}")
-                            });
+                    let copy_result = match rgba_for_clip {
+                        Some(rgba) => crate::clipboard::write_rgba_image_to_clipboard(
+                            &app_ui,
+                            rgba,
+                            clipboard_width,
+                            clipboard_height,
+                        ),
+                        None => {
+                            crate::clipboard::write_image_file_to_clipboard(&app_ui, &path_for_clip)
+                        }
+                    };
+                    let copy_error = copy_result.err().map(|error| {
+                        format!("Screenshot saved, but automatic copy failed: {error}")
+                    });
                     if copy_error.is_some() {
                         clipboard_error = copy_error;
                     }

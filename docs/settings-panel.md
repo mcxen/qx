@@ -67,7 +67,8 @@ QxShell (visual="elevated")
 | **General** | 启动与行为（登录启动、语言、自动更新开关；更新源在 About） |
 | **Search Settings** | 文件类型分类 · Cardinal/Everything 优先级 · 拖动排序 · 新增/编辑/删除 · 启动器模块搜索源 |
 | **Appearance** | 应用图标 · 主题与分区透明度 · 窗口与密度 · Home Island |
-| **Shortcuts** | 全局 / 应用快捷键 · 托盘菜单（后台时可用的内置菜单项） |
+| **General** | 启动与行为 · 托盘菜单（加入即显示、拖动排序） |
+| **Shortcuts** | Qx 主窗口召唤 / 应用快捷键；模块快捷键在对应插件详情中配置 |
 | **Extensions** | Installed 使用分组连续列表，Browse 使用主从列表，配置走 Dialog；天气等内置扩展的专属配置也在此处 |
 | **AI Agent** | 供应商 · 模型 · 工具 · Bash · Grep |
 | **OCR / RSS** | 各自模块设置 |

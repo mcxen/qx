@@ -1009,8 +1009,8 @@ export default function ClipboardPanel() {
         list.push({
           id: "pin-desktop",
           label: t("screencap.pin.action", "Pin to Desktop"),
-          kbd: "CmdOrCtrl+Shift+I",
-          menuKey: "i",
+          kbd: "CmdOrCtrl+T",
+          menuKey: "t",
           onClick: () => {
             void pinScreenshotToDesktop(pinPath).catch((error) => {
               setStatus(String(error));

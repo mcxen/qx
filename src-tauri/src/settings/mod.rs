@@ -15,6 +15,7 @@ pub(crate) mod shortcuts;
 
 use entry_config::{
     default_quick_entries, default_tray_actions, migrate_legacy_default_quick_entries,
+    migrate_legacy_default_tray_actions,
 };
 pub use entry_config::{QuickEntryConfig, TrayActionConfig, TrayProviderConfig};
 #[cfg(all(test, target_os = "windows"))]
@@ -1111,7 +1112,10 @@ pub(crate) fn read_settings() -> Settings {
     shortcuts::merge_missing_default_shortcuts(&mut settings);
     shortcuts::migrate_swapped_window_launcher_defaults(&mut settings);
     shortcuts::migrate_windows_factory_host_shortcuts(&mut settings);
+    shortcuts::migrate_capture_shortcut_default(&mut settings);
+    shortcuts::remove_legacy_tray_shortcuts(&mut settings);
     migrate_legacy_default_quick_entries(&mut settings.quick_entries);
+    migrate_legacy_default_tray_actions(&mut settings.tray_actions);
     migrate_agent_defaults(&mut settings.agent);
     settings.appearance.app_icon =
         crate::app_icon::normalize_id(&settings.appearance.app_icon).to_string();
@@ -1214,13 +1218,15 @@ pub async fn update_settings(app: AppHandle, mut settings: Settings) -> Result<S
         let shortcuts_changed = old.shortcuts != settings_for_io.shortcuts
             || old.app_shortcuts != settings_for_io.app_shortcuts
             || old.builtin_modules != settings_for_io.builtin_modules;
-        let tray_changed = old.quick_entries != settings_for_io.quick_entries
-            || old.tray_actions != settings_for_io.tray_actions
+        let tray_changed = old.tray_actions != settings_for_io.tray_actions
             || old.tray_providers != settings_for_io.tray_providers
             || old.general.auto_hide_on_blur != settings_for_io.general.auto_hide_on_blur
             || old.appearance.window_behavior != settings_for_io.appearance.window_behavior
             || old.general.language != settings_for_io.general.language;
         let app_icon_changed = old.appearance.app_icon != settings_for_io.appearance.app_icon;
+        if old.general.launch_at_login != settings_for_io.general.launch_at_login {
+            crate::startup::sync(settings_for_io.general.launch_at_login)?;
+        }
         write_settings(&settings_for_io)?;
         Ok((shortcuts_changed, tray_changed, app_icon_changed))
     })
@@ -1251,7 +1257,11 @@ pub async fn update_settings(app: AppHandle, mut settings: Settings) -> Result<S
 pub async fn reset_settings(app: AppHandle) -> Result<Settings, String> {
     let default = Settings::default();
     let default_for_io = default.clone();
-    settings_io(move || write_settings(&default_for_io)).await?;
+    settings_io(move || {
+        crate::startup::sync(default_for_io.general.launch_at_login)?;
+        write_settings(&default_for_io)
+    })
+    .await?;
     sync_builtin_runtime_flags(&default);
     let icon_id = default.appearance.app_icon.clone();
     let icon_app = app.clone();
@@ -1288,6 +1298,7 @@ pub async fn import_settings(app: AppHandle, path: String) -> Result<Settings, S
         migrate_agent_defaults(&mut settings.agent);
         settings.appearance.app_icon =
             crate::app_icon::normalize_id(&settings.appearance.app_icon).to_string();
+        crate::startup::sync(settings.general.launch_at_login)?;
         write_settings(&settings)?;
         Ok(settings)
     })

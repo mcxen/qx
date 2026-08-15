@@ -40,17 +40,10 @@ pub(super) fn default_shortcut_bindings() -> BTreeMap<String, ShortcutBinding> {
         ("toggle_window", default_toggle_window_shortcut(), true),
         ("clipboard", "Alt+V", false),
         ("record_gif", "Alt+G", false),
-        ("capture_screenshot", "Alt+Shift+S", false),
+        ("capture_screenshot", "Ctrl+G", true),
         ("recapture_last_region", "Alt+Shift+R", false),
         ("toggle_capture_controls", "Alt+Shift+C", false),
         ("rss", "Alt+R", false),
-        ("tray_open_main", "Alt+Shift+O", false),
-        ("tray_keep_visible", "Alt+Shift+K", false),
-        ("tray_settings", "Alt+Shift+,", false),
-        ("tray_hide_main", "Alt+Shift+H", false),
-        ("tray_status_memory", "", false),
-        ("tray_status_network", "", false),
-        ("tray_status_cpu", "", false),
     ] {
         shortcuts.insert(
             id.to_string(),
@@ -67,6 +60,20 @@ pub(super) fn merge_missing_default_shortcuts(settings: &mut Settings) {
     for (id, binding) in Settings::default().shortcuts {
         settings.shortcuts.entry(id).or_insert(binding);
     }
+}
+
+pub(super) fn migrate_capture_shortcut_default(settings: &mut Settings) {
+    let Some(binding) = settings.shortcuts.get_mut("capture_screenshot") else {
+        return;
+    };
+    if binding.key == "Alt+Shift+S" && !binding.enabled {
+        binding.key = "Ctrl+G".to_string();
+        binding.enabled = true;
+    }
+}
+
+pub(super) fn remove_legacy_tray_shortcuts(settings: &mut Settings) {
+    settings.shortcuts.retain(|id, _| !id.starts_with("tray_"));
 }
 
 /// One-time flip for installs that still have the pre-swap factory defaults:
@@ -331,28 +338,6 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
             })
         ) {
             registered.insert(key);
-        }
-    }
-
-    for (shortcut_id, action_id) in [
-        ("tray_open_main", "open_main"),
-        ("tray_keep_visible", "keep_visible"),
-        ("tray_settings", "settings"),
-        ("tray_hide_main", "hide_main"),
-        ("tray_status_memory", "status_memory"),
-        ("tray_status_network", "status_network"),
-        ("tray_status_cpu", "status_cpu"),
-    ] {
-        if let Some(key) = shortcut_for(settings, shortcut_id) {
-            let action_id = action_id.to_string();
-            if collect_registration!(
-                format!("register {shortcut_id} shortcut"),
-                register_shortcut(app, key.as_str(), move |app| {
-                    crate::tray_menu::handle_tray_action(&app, &action_id);
-                })
-            ) {
-                registered.insert(key);
-            }
         }
     }
 

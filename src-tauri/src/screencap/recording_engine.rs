@@ -548,6 +548,7 @@ fn recording_loop_inner(
         width,
         height,
         frame_count: frame_idx as u32,
+        rgba: None,
     })
 }
 

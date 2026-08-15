@@ -503,7 +503,7 @@ export default function ScreenRecorder() {
         actions.push({
           id: "pin-desktop",
           label: t("screencap.pin.action", "Pin to Desktop"),
-          kbd: "CmdOrCtrl+Shift+I",
+          kbd: "CmdOrCtrl+T",
           onClick: () => {
             void pinScreenshotToDesktop(lastGifPath).catch((error) => {
               useScreencapStore.setState({ error: String(error) });
@@ -526,7 +526,6 @@ export default function ScreenRecorder() {
       actions.push({
         id: "new-capture",
         label: t("screencap.preview.list.newCapture", "New capture"),
-        kbd: "Enter",
         onClick: () => void beginScreenshot(),
       });
       actions.push({

@@ -131,8 +131,6 @@ interface ShortcutBinding {
 | `capture_screenshot` | `module.capture.screenshot` | global |
 | `record_gif` | `module.capture.recording` | global |
 | `toggle_capture_controls` | `module.capture.controls` | global |
-| `tray_open_main` / `tray_keep_visible` / `tray_settings` / `tray_hide_main` | `tray.*` | global |
-| `tray_status_memory` / `tray_status_network` / `tray_status_cpu` | `tray.status.*` | global |
 | `app_shortcuts["app:…"]` | 同 id 或 `app.launch.…` | global |
 
 读 settings 时 **双读** legacy + namespaced；写时写 namespaced（可选同时写 legacy 一版迁移）。
@@ -141,7 +139,7 @@ interface ShortcutBinding {
 
 ## 4. 设置 UI：一页、分栏、分校验
 
-**位置**：Settings → **Core → Shortcuts**（独立 tab，唯一汇总入口）。
+**位置**：Settings → **Core → Shortcuts** 只维护 Qx 主窗口召唤与应用启动；模块和插件命令的全局快捷键在对应模块/插件详情中维护，避免重复入口。
 
 Extensions 详情卡里的 Shortcuts **只做跳转**到本页并 filter=`plugin:<id>`，不再维护第二套编辑器。
 

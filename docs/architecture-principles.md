@@ -104,6 +104,8 @@ manifest 启动命令、后台 interval 与宿主 reload 不得自动混入当�
 - 业务代码不直接 `fetch` 外网装插件；走 market/host 管线。
 - Island content 不依赖 shell DOM 结构；只依赖 session + action registry。
 - 设置文案依赖 `useT(key, fallback)`，不散落硬编码中文/英文分支。
+- 开机启动是 host capability：Settings 只持久化用户意图，
+  `src-tauri/src/startup.rs` 统一负责原生注册和启动参数语义；UI 与功能模块不得直接写平台启动项。
 
 ### QxAI：异步解耦、高可用与可扩展边界
 

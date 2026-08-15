@@ -17,19 +17,29 @@ pub(crate) fn capture(
     include_cursor: bool,
     mosaic_ops: Option<Vec<MosaicOp>>,
 ) -> Result<RecordingOutput, String> {
-    // The picker hide is dispatched synchronously to the UI thread. Keep one
-    // compositor-frame grace period for Windows DWM / macOS WindowServer
-    // without imposing the old fixed 120 ms latency on every screenshot.
+    // The picker hide is dispatched synchronously to the UI thread. Synchronize
+    // with DWM on Windows, then keep only a short driver grace period instead
+    // of paying the old fixed 80-110 ms on every screenshot.
     // Mosaic redaction needs a clean post-hide frame; Windows layered-window
     // teardown can lag slightly longer when the picker also hosted a freeze
     // capture earlier in the session.
     let has_mosaic = mosaic_ops.as_ref().is_some_and(|ops| !ops.is_empty());
     #[cfg(target_os = "windows")]
-    std::thread::sleep(std::time::Duration::from_millis(if has_mosaic {
-        110
-    } else {
-        80
-    }));
+    {
+        let dwm_synced = unsafe { windows_sys::Win32::Graphics::Dwm::DwmFlush() } >= 0;
+        let grace_ms = if dwm_synced {
+            if has_mosaic {
+                24
+            } else {
+                12
+            }
+        } else if has_mosaic {
+            110
+        } else {
+            80
+        };
+        std::thread::sleep(std::time::Duration::from_millis(grace_ms));
+    }
     #[cfg(not(target_os = "windows"))]
     std::thread::sleep(std::time::Duration::from_millis(if has_mosaic {
         32
@@ -87,12 +97,14 @@ pub(crate) fn capture(
     .map_err(|error| format!("save screenshot: {error}"))?;
     insert_history(&output_path, width, height, 1, 0)
         .map_err(|error| format!("save screenshot history: {error}"))?;
+    let rgba = image.into_raw();
     Ok(RecordingOutput {
         path: output_path,
         thumbnail_path: None,
         width,
         height,
         frame_count: 1,
+        rgba: Some(rgba),
     })
 }
 

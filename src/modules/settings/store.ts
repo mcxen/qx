@@ -486,17 +486,10 @@ export const DEFAULT_SETTINGS: Settings = {
     toggle_window: { key: DEFAULT_HOST_SHORTCUTS.toggleWindow, enabled: true },
     clipboard: { key: "Alt+V", enabled: false },
     record_gif: { key: "Alt+G", enabled: false },
-    capture_screenshot: { key: "Alt+Shift+S", enabled: false },
+    capture_screenshot: { key: "Ctrl+G", enabled: true },
     recapture_last_region: { key: "Alt+Shift+R", enabled: false },
     toggle_capture_controls: { key: "Alt+Shift+C", enabled: false },
     rss: { key: "Alt+R", enabled: false },
-    tray_open_main: { key: "Alt+Shift+O", enabled: false },
-    tray_keep_visible: { key: "Alt+Shift+K", enabled: false },
-    tray_settings: { key: "Alt+Shift+,", enabled: false },
-    tray_hide_main: { key: "Alt+Shift+H", enabled: false },
-    tray_status_memory: { key: "", enabled: false },
-    tray_status_network: { key: "", enabled: false },
-    tray_status_cpu: { key: "", enabled: false },
   },
   app_shortcuts: {},
   plugins: [],
@@ -645,11 +638,9 @@ export const DEFAULT_SETTINGS: Settings = {
   tray_actions: [
     { id: "status_memory", title: "Memory", enabled: true },
     { id: "status_network", title: "Network", enabled: true },
-    { id: "status_cpu", title: "CPU", enabled: false },
     { id: "open_main", title: "Open Main Window", enabled: true },
     { id: "keep_visible", title: "Window Display Mode", enabled: true },
     { id: "settings", title: "Settings", enabled: true },
-    { id: "hide_main", title: "Hide Main Window", enabled: false },
   ],
   tray_providers: [],
 };
@@ -811,7 +802,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
           quick_entries: Array.isArray(s.quick_entries) && s.quick_entries.length > 0
             ? s.quick_entries
             : DEFAULT_SETTINGS.quick_entries,
-          tray_actions: Array.isArray(s.tray_actions) && s.tray_actions.length > 0
+          tray_actions: Array.isArray(s.tray_actions)
             ? s.tray_actions
             : DEFAULT_SETTINGS.tray_actions,
           tray_providers: Array.isArray(s.tray_providers) ? s.tray_providers : [],
@@ -908,10 +899,6 @@ async function flushSettingsSave(get: () => SettingsStore) {
 
 export const SHORTCUT_GROUPS: { group: string; ids: string[] }[] = [
   { group: "global", ids: ["toggle_launcher", "toggle_window"] },
-  { group: "clipboard", ids: ["clipboard"] },
-  { group: "rss", ids: ["rss"] },
-  { group: "capture", ids: ["capture_screenshot", "recapture_last_region", "record_gif", "toggle_capture_controls"] },
-  { group: "tray", ids: ["tray_open_main", "tray_keep_visible", "tray_settings", "tray_hide_main", "tray_status_memory", "tray_status_network", "tray_status_cpu"] },
 ];
 
 export const SHORTCUT_LABELS: Record<string, string> = {
@@ -923,11 +910,4 @@ export const SHORTCUT_LABELS: Record<string, string> = {
   recapture_last_region: "Recapture Last Region",
   toggle_capture_controls: "Toggle Capture Island",
   rss: "Open RSS Reader",
-  tray_open_main: "Tray · Open Main Window",
-  tray_keep_visible: "Tray · Keep Window Visible",
-  tray_settings: "Tray · Settings",
-  tray_hide_main: "Tray · Hide Main Window",
-  tray_status_memory: "Tray · Memory Status",
-  tray_status_network: "Tray · Network Status",
-  tray_status_cpu: "Tray · CPU Status",
 };

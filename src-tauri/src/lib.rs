@@ -41,6 +41,7 @@ mod rss;
 mod runtime;
 mod screencap;
 mod settings;
+mod startup;
 mod storage;
 mod system_information;
 mod system_stats;
@@ -313,10 +314,12 @@ pub fn run() {
     // Windows/Linux forward `qx://…` into the existing process.
     tauri::Builder::default()
         .manage(terminal::TerminalManager::default())
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             // Focus the running helper when the user re-opens a deep link or
             // second process. Deep-link args are handled by the plugin feature.
-            floating_panel::show_floating(app);
+            if !startup::is_autostart_invocation(&argv) {
+                floating_panel::show_floating(app);
+            }
         }))
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
@@ -420,6 +423,14 @@ pub fn run() {
             }
 
             let mut startup_settings = settings::read_settings();
+            if let Err(error) = startup::sync(startup_settings.general.launch_at_login) {
+                diagnostics::log(
+                    diagnostics::LogLevel::Warn,
+                    "main.autostart",
+                    "failed to synchronize launch-at-login registration",
+                    serde_json::json!({ "error": error }),
+                );
+            }
             diagnostics::log(
                 diagnostics::LogLevel::Info,
                 "main.setup",

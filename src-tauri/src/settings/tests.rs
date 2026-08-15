@@ -50,14 +50,14 @@ fn canonicalizes_primary_modifier_for_both_desktop_platforms() {
 }
 
 #[test]
-fn default_global_shortcuts_only_enable_window_toggle() {
+fn default_global_shortcuts_enable_capture_and_window_toggle() {
     let settings = Settings::default();
     let enabled = settings
         .shortcuts
         .iter()
         .filter_map(|(id, binding)| binding.enabled.then_some(id.as_str()))
         .collect::<Vec<_>>();
-    assert_eq!(enabled, vec!["toggle_window"]);
+    assert_eq!(enabled, vec!["capture_screenshot", "toggle_window"]);
     assert_eq!(
         settings.shortcuts.get("toggle_launcher"),
         Some(&super::ShortcutBinding {
@@ -286,6 +286,47 @@ fn quick_entry_migration_preserves_user_customization() {
     let expected = customized.clone();
     super::entry_config::migrate_legacy_default_quick_entries(&mut customized);
     assert_eq!(customized, expected);
+}
+
+#[test]
+fn tray_defaults_store_only_visible_items() {
+    let mut legacy = super::entry_config::legacy_default_tray_actions();
+    super::entry_config::migrate_legacy_default_tray_actions(&mut legacy);
+    assert_eq!(legacy, super::default_tray_actions());
+    assert!(legacy.iter().all(|entry| entry.enabled));
+
+    let mut customized = super::entry_config::legacy_default_tray_actions();
+    customized.reverse();
+    let expected = customized.clone();
+    super::entry_config::migrate_legacy_default_tray_actions(&mut customized);
+    assert_eq!(customized, expected);
+}
+
+#[test]
+fn shortcut_migration_moves_capture_to_module_default_and_removes_tray_keys() {
+    let mut settings = Settings::default();
+    settings.shortcuts.insert(
+        "capture_screenshot".to_string(),
+        super::ShortcutBinding {
+            key: "Alt+Shift+S".to_string(),
+            enabled: false,
+        },
+    );
+    settings.shortcuts.insert(
+        "tray_open_main".to_string(),
+        super::ShortcutBinding {
+            key: "Alt+Shift+O".to_string(),
+            enabled: true,
+        },
+    );
+
+    super::shortcuts::migrate_capture_shortcut_default(&mut settings);
+    super::shortcuts::remove_legacy_tray_shortcuts(&mut settings);
+
+    let capture = settings.shortcuts.get("capture_screenshot").unwrap();
+    assert_eq!(capture.key, "Ctrl+G");
+    assert!(capture.enabled);
+    assert!(!settings.shortcuts.contains_key("tray_open_main"));
 }
 
 #[test]

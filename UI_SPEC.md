@@ -916,7 +916,7 @@ Settings：
 - 使用 `visual="elevated"`。
 - Esc / Close → 关闭设置面板。
 - Appearance 的应用图标选择保留原版与云月两个内置选项；切换只影响应用/窗口图标，菜单栏与系统托盘图标始终保持独立。
-- 托盘菜单配置归入 Settings → Shortcuts：它与全局快捷键一样在主窗口隐藏时生效。插件只能贡献原生 action/status 行与可选子菜单分组；不得把 Web CSS、颜色或自绘控件带入 macOS / Windows 系统菜单。
+- 托盘菜单配置归入 Settings → General。列表本身就是可见内容：加入即显示、移除即隐藏，拖动决定顺序，不再提供重复的可见性开关或托盘专用快捷键。模块与插件命令的全局快捷键在对应模块/插件详情中配置。插件只能贡献原生 action/status 行与可选子菜单分组；不得把 Web CSS、颜色或自绘控件带入 macOS / Windows 系统菜单。
 - 菜单栏 / 系统托盘图标按平台使用不同呈现：macOS 使用 template 图标让系统自动
   着色；Windows 使用有前景/背景层次的彩色非 template 图标，确保浅色和深色任务栏
   都可辨认。不得把 macOS 单色 template 标志直接当作 Windows tray 图标。

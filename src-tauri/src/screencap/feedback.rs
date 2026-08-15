@@ -20,7 +20,7 @@ fn shutter_path(app: &AppHandle) -> Result<PathBuf, String> {
     Err("capture sound resource is unavailable".to_string())
 }
 
-pub(super) async fn play_screenshot_sound(app: &AppHandle, enabled: Option<bool>) {
+pub(super) fn play_screenshot_sound(app: &AppHandle, enabled: Option<bool>) {
     if !enabled.unwrap_or_else(|| {
         crate::settings::read_settings()
             .screencap
@@ -40,15 +40,20 @@ pub(super) async fn play_screenshot_sound(app: &AppHandle, enabled: Option<bool>
             return;
         }
     };
-    let result = play(app, path).await;
-    if let Err(error) = result {
-        crate::diagnostics::log(
-            crate::diagnostics::LogLevel::Warn,
-            "screencap.feedback",
-            "screenshot saved but shutter sound playback failed",
-            serde_json::json!({ "error": error }),
-        );
-    }
+    let app = app.clone();
+    // Completion feedback must never delay clipboard availability. Windows'
+    // synchronous PlaySoundW waits for the entire bundled sound (~392 ms), so
+    // run every platform implementation as detached best-effort feedback.
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = play(&app, path).await {
+            crate::diagnostics::log(
+                crate::diagnostics::LogLevel::Warn,
+                "screencap.feedback",
+                "screenshot saved but shutter sound playback failed",
+                serde_json::json!({ "error": error }),
+            );
+        }
+    });
 }
 
 #[cfg(target_os = "macos")]

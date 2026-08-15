@@ -1,6 +1,7 @@
 import { useSettingsStore } from "./store";
 import { Row, Toggle, Select, SettingsCard } from "../../components/ui";
 import { useT } from "../../i18n";
+import TrayMenuSettings from "./TrayMenuSettings";
 
 /**
  * General — only app-wide daily prefs (UI_SPEC: compact native density).
@@ -57,6 +58,7 @@ export default function GeneralSettings() {
           />
         </Row>
       </SettingsCard>
+      <TrayMenuSettings />
     </div>
   );
 }

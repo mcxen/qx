@@ -41,8 +41,9 @@ context.system.networkCounters() → 字节计数（插件自己算速率）
 
 当前登记源为 `system.display-brightness`；Launcher Home 另支持 `rss.unread-latest`，由 RSS
 快照端口提供未读计数和最新帖子。Tray 和 Launcher Home 消费同一适配器契约；读取、缓存、
-写入、节流、平台差异和错误均由宿主负责。设置中的 `tray_providers` 只保存稳定的
-`<plugin-id>:<provider-id>`、开关与数组顺序。声明 Provider 且没有 interval 或已启用全局
+写入、节流、平台差异和错误均由宿主负责。设置页只展示已经加入托盘面板的 Provider；加入即
+显示、移除即隐藏，并可拖动排序，不再提供重复的可见性开关。`tray_providers` 继续保存稳定的
+`<plugin-id>:<provider-id>`、兼容状态与数组顺序。声明 Provider 且没有 interval 或已启用全局
 快捷键的插件采用 manifest-only 懒加载，首次打开 Panel/执行命令时才创建运行时。
 
 `presentation` 可选 `compact`（288 pt）、`standard`（360 pt）或 `wide`（440 pt）。这只是
@@ -182,7 +183,7 @@ async function tick(context) {
 
 ## 与宿主内置状态行的关系
 
-设置 → **快捷键 → 托盘菜单** 里的 `Status · Memory / Network / CPU` 是**宿主内置**实现，不占插件配额。
+设置 → **通用 → 托盘菜单** 里的 `Status · Memory / Network / CPU` 是**宿主内置**实现，不占插件配额。
 插件用 `context.tray` 做**自己的**状态/入口；两者可同时出现。
 
 ## 约束

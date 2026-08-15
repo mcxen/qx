@@ -252,7 +252,7 @@ fn pasteboard_snapshot_has_file_reference(manifest_path: &str) -> bool {
     })
 }
 
-fn write_rgba_image_to_clipboard(rgba: Vec<u8>, width: u32, height: u32) -> Result<(), String> {
+fn write_rgba_image_with_arboard(rgba: Vec<u8>, width: u32, height: u32) -> Result<(), String> {
     let mut clipboard = Clipboard::new().map_err(|e| format!("open clipboard: {e}"))?;
     clipboard
         .set_image(ImageData {
@@ -261,6 +261,34 @@ fn write_rgba_image_to_clipboard(rgba: Vec<u8>, width: u32, height: u32) -> Resu
             bytes: Cow::Owned(rgba),
         })
         .map_err(|e| format!("write clipboard image: {e}"))
+}
+
+/// Publish an already-decoded frame. Screenshot capture uses this path to
+/// avoid reopening and decoding the PNG it just encoded for durable history.
+pub(crate) fn write_rgba_image_to_clipboard(
+    app: &tauri::AppHandle,
+    rgba: Vec<u8>,
+    width: u32,
+    height: u32,
+) -> Result<(), String> {
+    let expected_len = (width as usize)
+        .checked_mul(height as usize)
+        .and_then(|pixels| pixels.checked_mul(4));
+    if width > MAX_IMAGE_DIMENSION
+        || height > MAX_IMAGE_DIMENSION
+        || (width as u64).saturating_mul(height as u64) > MAX_IMAGE_PIXELS
+        || expected_len != Some(rgba.len())
+    {
+        return Err("clipboard image is too large or malformed".to_string());
+    }
+    if let Err(arboard_error) = write_rgba_image_with_arboard(rgba.clone(), width, height) {
+        let image = tauri::image::Image::new_owned(rgba, width, height);
+        use tauri_plugin_clipboard_manager::ClipboardExt;
+        app.clipboard().write_image(&image).map_err(|tauri_error| {
+            format!("write clipboard image: {arboard_error}; tauri fallback: {tauri_error}")
+        })?;
+    }
+    Ok(())
 }
 
 pub(crate) fn write_image_file_to_clipboard(
@@ -278,14 +306,7 @@ pub(crate) fn write_image_file_to_clipboard(
         return Err("clipboard image is too large".to_string());
     }
     let rgba = decoded.into_raw();
-    if let Err(arboard_error) = write_rgba_image_to_clipboard(rgba.clone(), width, height) {
-        let image = tauri::image::Image::new_owned(rgba, width, height);
-        use tauri_plugin_clipboard_manager::ClipboardExt;
-        app.clipboard().write_image(&image).map_err(|tauri_error| {
-            format!("write clipboard image: {arboard_error}; tauri fallback: {tauri_error}")
-        })?;
-    }
-    Ok(())
+    write_rgba_image_to_clipboard(app, rgba, width, height)
 }
 
 /// Public IPC: copy a PNG/JPEG (or other image crate format) file onto the system clipboard.

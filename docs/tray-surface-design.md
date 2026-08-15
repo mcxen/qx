@@ -5,12 +5,17 @@ Qx has two Tray surfaces with different jobs:
 - The right-click native menu is for conventional commands, keyboard equivalents, and short live status rows.
 - The left-click Tray Surface is a transient host-rendered panel for sliders, grids, richer status, and short descriptions.
 
-The two surfaces consume the same ordered `settings.tray_actions` list. Enabled
-built-in status entries become status rows in the left-click surface, while each
+The two surfaces consume the same ordered `settings.tray_actions` list. Presence
+in the list means visible; removing an entry hides it, so there is no second
+visibility switch. Built-in status entries become status rows in the left-click surface, while each
 contiguous run of ordinary actions becomes a shortcut grid in that exact list
 position. Provider controls are appended as standard host-rendered cards. The
 settings page is therefore the single source of truth for visibility and order;
 there is no second left-click menu configuration.
+
+The native menu does not inherit Launcher `quick_entries`. Modules and plugin
+commands expose global shortcuts from their own settings/detail page; tray
+composition is only tray composition.
 
 The Tray Surface is transient: its close button only hides the Tray window and never
 summons the main launcher. The host starts a 2.4 second grace period when the pointer

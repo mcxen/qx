@@ -386,7 +386,6 @@ Tray menu is built in `tray_menu.rs`:
 | Source | Content |
 |--------|---------|
 | `tray_actions` status ids | Live **Memory / Network / CPU** (≈3s refresh while enabled) |
-| `quick_entries` | Open modules |
 | `tray_actions` window ids | Open / Keep visible / Settings / Hide |
 | Plugin `context.tray` | Per-plugin items (`permission: tray`), optional native submenu and non-clickable status presentation |
 

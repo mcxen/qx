@@ -297,48 +297,6 @@ fn tray_action_title(
     }
 }
 
-fn quick_entry_title(entry: &settings::QuickEntryConfig, locale: TrayLocale) -> String {
-    let title = entry.title.trim();
-    let localized = match entry.target.trim() {
-        "clipboard" if matches!(title, "" | "Clipboard History") => {
-            Some(tr(locale, "Clipboard History", "剪贴板历史"))
-        }
-        "screencap" if matches!(title, "" | "Screenshot Module" | "Screen Capture") => {
-            Some(tr(locale, "Screenshot Module", "截图与录屏"))
-        }
-        "documents" if matches!(title, "" | "Text Tools" | "Documents") => {
-            Some(tr(locale, "Text Tools", "文本工具"))
-        }
-        "settings:plugins"
-            if matches!(
-                title,
-                "" | "Extensions" | "Plugins" | "Plugin Store" | "扩展" | "插件"
-            ) =>
-        {
-            Some(tr(locale, "Extensions", "扩展 / 插件"))
-        }
-        "settings" if matches!(title, "" | "Qx Settings" | "Settings") => {
-            Some(tr(locale, "Qx Settings", "Qx 设置"))
-        }
-        "rss" if matches!(title, "" | "RSS Reader") => Some(tr(locale, "RSS Reader", "RSS 阅读器")),
-        "file-search" if matches!(title, "" | "File Search") => {
-            Some(tr(locale, "File Search", "文件搜索"))
-        }
-        "weather" if matches!(title, "" | "Weather") => Some(tr(locale, "Weather", "天气")),
-        "macros" if matches!(title, "" | "Macro Recorder") => {
-            Some(tr(locale, "Macro Recorder", "宏录制"))
-        }
-        _ => None,
-    };
-    localized.unwrap_or_else(|| {
-        if title.is_empty() {
-            entry.target.trim().to_string()
-        } else {
-            title.to_string()
-        }
-    })
-}
-
 fn is_status_action(id: &str) -> bool {
     matches!(id, "status_memory" | "status_cpu" | "status_network")
 }
@@ -365,54 +323,20 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
 
     let menu = Menu::new(app)?;
 
-    // Live status block (memory / net / cpu)
+    // The configured list is the menu. Preserve its exact order and insert a
+    // separator only when the user crosses between status and command rows.
     let mut status_appended = false;
+    let mut appended_action = false;
+    let mut previous_was_status: Option<bool> = None;
     for action in settings
         .tray_actions
         .iter()
-        .filter(|a| a.enabled && is_status_action(a.id.trim()))
+        .filter(|action| action.enabled && !action.id.trim().is_empty())
     {
-        let title = tray_action_title(settings, action, &status, locale);
-        let item = MenuItem::with_id(
-            app,
-            format!("tray_action:{}", action.id.trim()),
-            title,
-            true,
-            None::<&str>,
-        )?;
-        menu.append(&item)?;
-        status_appended = true;
-    }
-    if status_appended {
-        menu.append(&PredefinedMenuItem::separator(app)?)?;
-    }
-
-    // Quick entries
-    for (index, entry) in settings
-        .quick_entries
-        .iter()
-        .filter(|entry| entry.enabled && !entry.target.trim().is_empty())
-        .enumerate()
-    {
-        let title = quick_entry_title(entry, locale);
-        let item = MenuItem::with_id(
-            app,
-            format!("quick:{index}:{}", entry.target.trim()),
-            title,
-            true,
-            None::<&str>,
-        )?;
-        menu.append(&item)?;
-    }
-    if settings.quick_entries.iter().any(|entry| entry.enabled) {
-        menu.append(&PredefinedMenuItem::separator(app)?)?;
-    }
-
-    // Window / settings actions (non-status)
-    let mut appended_action = false;
-    for action in settings.tray_actions.iter().filter(|action| {
-        action.enabled && !action.id.trim().is_empty() && !is_status_action(action.id.trim())
-    }) {
+        let is_status = is_status_action(action.id.trim());
+        if previous_was_status.is_some_and(|previous| previous != is_status) {
+            menu.append(&PredefinedMenuItem::separator(app)?)?;
+        }
         let item = MenuItem::with_id(
             app,
             format!("tray_action:{}", action.id.trim()),
@@ -421,19 +345,9 @@ pub fn build_tray_menu(app: &AppHandle, settings: &settings::Settings) -> tauri:
             None::<&str>,
         )?;
         menu.append(&item)?;
-        appended_action = true;
-    }
-
-    if !appended_action && !status_appended {
-        let show = MenuItem::with_id(
-            app,
-            "show",
-            tr(locale, "Show/Hide", "显示/隐藏"),
-            true,
-            None::<&str>,
-        )?;
-        menu.append(&show)?;
-        appended_action = true;
+        status_appended |= is_status;
+        appended_action |= !is_status;
+        previous_was_status = Some(is_status);
     }
 
     // Plugin contributions
