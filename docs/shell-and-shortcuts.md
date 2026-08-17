@@ -199,6 +199,7 @@ runtime 发布 `plugin-global-shortcut`，再由 registry 校验启用状态并�
 | `record_gif` | `Alt+G` | `Alt+G` | false |
 | `toggle_capture_controls` | `Alt+Shift+C` | `Alt+Shift+C` | false |
 | `rss` | `Alt+R` | `Alt+R` | false |
+| `open:file-actions` | `Alt+F`（Option+F） | `Alt+F` | true |
 
 启动时单个全局键若被系统或第三方程序占用，只记录诊断并继续创建托盘和首启界面；
 不得因为快捷键注册失败中止 `setup`，否则初始隐藏窗口会表现成 Qx 完全无法启动。

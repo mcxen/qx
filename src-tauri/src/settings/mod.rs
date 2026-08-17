@@ -57,11 +57,11 @@ pub struct GeneralSettings {
     pub data_path: String,
     #[serde(default)]
     pub has_shown_launcher: bool,
-    /// macOS first-launch permission wizard completed (or skipped on non-macOS).
+    /// Cross-platform first-launch introduction completed or skipped.
     #[serde(default)]
     pub has_completed_onboarding: bool,
     /// Versioned macOS privacy walkthrough. Raising the host version reopens
-    /// onboarding once after an update when permission guidance changes.
+    /// onboarding once on macOS when permission guidance changes.
     #[serde(default)]
     pub permission_onboarding_version: u32,
 }

@@ -10,7 +10,9 @@ use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+#[cfg(target_os = "windows")]
+use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 
 const MAX_SELECTION_ITEMS: usize = 512;
@@ -327,7 +329,7 @@ fn validate_leaf_name(name: &str) -> Result<&str, String> {
     Ok(name)
 }
 
-fn selection_for_revision(revision: u64) -> Result<FileSelectionSnapshot, String> {
+pub(crate) fn selection_for_revision(revision: u64) -> Result<FileSelectionSnapshot, String> {
     let snapshot = snapshot_store()
         .lock()
         .map_err(|_| "file selection store is unavailable".to_string())?
@@ -339,6 +341,22 @@ fn selection_for_revision(revision: u64) -> Result<FileSelectionSnapshot, String
         return Err("no files or folders are selected".to_string());
     }
     Ok(snapshot)
+}
+
+pub(crate) fn selected_path_for_preview(revision: u64, index: usize) -> Result<PathBuf, String> {
+    let snapshot = selection_for_revision(revision)?;
+    let item = snapshot
+        .items
+        .get(index)
+        .ok_or_else(|| "selected item is no longer available".to_string())?;
+    let path = PathBuf::from(&item.path);
+    if !path.exists() {
+        return Err(format!(
+            "selected item no longer exists: {}",
+            path.display()
+        ));
+    }
+    Ok(path)
 }
 
 fn selected_paths(snapshot: &FileSelectionSnapshot) -> Result<Vec<PathBuf>, String> {

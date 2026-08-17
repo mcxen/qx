@@ -495,6 +495,7 @@ export const DEFAULT_SETTINGS: Settings = {
     recapture_last_region: { key: "Alt+Shift+R", enabled: false },
     toggle_capture_controls: { key: "Alt+Shift+C", enabled: false },
     rss: { key: "Alt+R", enabled: false },
+    "open:file-actions": { key: "Alt+F", enabled: true },
   },
   app_shortcuts: {},
   plugins: [],

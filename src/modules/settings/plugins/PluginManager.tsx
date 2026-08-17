@@ -586,7 +586,9 @@ function ExtensionShortcutsCard({
   const builtinModuleId = isBuiltin(plugin) ? normalizeBuiltinModuleId(plugin.id) : null;
   const launchRoute = builtinModuleId ?? `plugin:${plugin.id}`;
   const launchSettingKey = pluginLaunchShortcutSettingsKey(launchRoute);
-  const launchBinding = settings.shortcuts[launchSettingKey] ?? { key: "", enabled: false };
+  const defaultLaunchBinding = DEFAULT_SETTINGS.shortcuts[launchSettingKey]
+    ?? { key: "", enabled: false };
+  const launchBinding = settings.shortcuts[launchSettingKey] ?? defaultLaunchBinding;
   const hasLaunchShortcut = Boolean(plugin.manifest?.panel);
   const counts = useMemo(
     () => countEnabledGlobalShortcuts(settings.shortcuts, settings.app_shortcuts),
@@ -624,7 +626,7 @@ function ExtensionShortcutsCard({
               variant="ghost"
               size="icon"
               className="qx-extension-shortcut-reset"
-              onClick={() => patchShortcut(launchSettingKey, { key: "", enabled: false })}
+              onClick={() => patchShortcut(launchSettingKey, defaultLaunchBinding)}
               title={t("plugins.shortcut.reset", "Reset shortcut")}
             >
               <RotateCcw size={13} aria-hidden="true" />

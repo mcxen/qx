@@ -50,14 +50,24 @@ fn canonicalizes_primary_modifier_for_both_desktop_platforms() {
 }
 
 #[test]
-fn default_global_shortcuts_enable_capture_and_window_toggle() {
+fn default_global_shortcuts_enable_capture_file_actions_and_window_toggle() {
     let settings = Settings::default();
     let enabled = settings
         .shortcuts
         .iter()
         .filter_map(|(id, binding)| binding.enabled.then_some(id.as_str()))
         .collect::<Vec<_>>();
-    assert_eq!(enabled, vec!["capture_screenshot", "toggle_window"]);
+    assert_eq!(
+        enabled,
+        vec!["capture_screenshot", "open:file-actions", "toggle_window"]
+    );
+    assert_eq!(
+        settings.shortcuts.get("open:file-actions"),
+        Some(&super::ShortcutBinding {
+            key: "Alt+F".to_string(),
+            enabled: true,
+        })
+    );
     assert_eq!(
         settings.shortcuts.get("toggle_launcher"),
         Some(&super::ShortcutBinding {

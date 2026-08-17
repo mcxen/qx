@@ -1,4 +1,4 @@
-# macOS 首次启动引导（权限）
+# 跨平台首次启动引导与 macOS 权限
 
 > 状态：Current · 适用版本：v0.6.0+ · Owner：Core
 
@@ -36,9 +36,9 @@ Welcome → Full Disk Access → Optional features → Done
 | Rust 窗口 | `src-tauri/src/floating_panel.rs` | `ONBOARDING_ACTIVE` 与 `EXTERNAL_INTERACTION_ACTIVE` 抑制 blur 自动隐藏 |
 | 文件搜索 | `src-tauri/src/file_search/platform_macos.rs` | 未获 FDA 时只用 Spotlight；检测到 FDA 后一次性启动完整索引 |
 | 设置 | `general.has_completed_onboarding` + `permission_onboarding_version` | 持久化完成状态与当前引导协议版本 |
-| UI | `src/modules/onboarding/OnboardingWizard.tsx` | 分步向导 |
+| UI | `src/modules/onboarding/OnboardingWizard.tsx` | 跨平台首装能力介绍；macOS 继续进入分步权限向导 |
 | 设置页 | `src/modules/settings/PermissionSettings.tsx` | 后续可再次申请（含 FDA + 全部请求） |
-| 启动 | `src/App.tsx` | 首次 macOS 启动或引导协议升级后展示一次向导 |
+| 启动 | `src/App.tsx` | 两个平台首次安装展示；macOS 引导协议升级后可重放权限向导 |
 
 ## 权限与功能映射
 
@@ -62,12 +62,12 @@ Welcome → Full Disk Access → Optional features → Done
   拖拽命中区覆盖。
 - `permission_onboarding_version` 是权限引导的协议版本。新增重要权限说明或修复授权
   流程时递增它，已完成旧版本的安装会在更新后再显示一次；同一版本不重复打扰用户。
-- 非 macOS：自动把 `has_completed_onboarding` 标为 true，不展示向导。
+- Windows 首次安装也展示能力与默认快捷键介绍，但不展示 macOS 权限步骤；完成或跳过后写入 `has_completed_onboarding`。
 - 跳过不等于失败；启动器仍可用，仅能力降级。
 
 ## 手动验证
 
-1. 清空或新建 `has_completed_onboarding: false`（且为 macOS）→ 启动应出现向导。
+1. 清空或新建 `has_completed_onboarding: false` → macOS 与 Windows 启动均应出现能力介绍；macOS 继续显示权限步骤，Windows 直接进入快捷键完成页。
 2. FDA 步骤：打开系统设置后打开 Qx 开关，向导状态应变为已授权。
 3. 可选步骤：仅勾选辅助功能 →「启用所选」打开对应面板。
 4. 跳过全部 → 可进入 Launcher；设置 → 权限 仍可补授。

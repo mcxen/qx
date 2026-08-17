@@ -1,7 +1,7 @@
 {
   "name": "qx",
   "private": true,
-  "version": "0.6.91",
+  "version": "0.6.92",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@earendil-works/pi-coding-agent": "^0.80.2",
+    "@file-viewer/pptx": "^2.2.9",
     "@radix-ui/react-context-menu": "^2.3.2",
     "@radix-ui/react-dialog": "^1.1.17",
     "@radix-ui/react-dropdown-menu": "^2.1.18",
@@ -49,13 +50,16 @@
     "@xterm/xterm": "^6.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "docx-preview": "^0.4.0",
     "es-module-lexer": "^1.7.0",
     "framer-motion": "^12.40.0",
     "geist": "^1.7.2",
+    "libarchive.js": "^2.0.2",
     "lucide-react": "^1.21.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^9.1.0",
+    "read-excel-file": "^9.3.10",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
     "shiki": "^1.29.2",

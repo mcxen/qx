@@ -27,7 +27,7 @@
 | [runtime-threading.md](./runtime-threading.md) | **主线程 UI + blocking 多线程**：`runtime::ui` / `blocking`、模块命令模板、SIGTRAP 规避 |
 | [ipc-catalogue.md](./ipc-catalogue.md) | 全部 310+ 个 Tauri 命令 + 事件通道；按模块分组 |
 | [settings-panel.md](./settings-panel.md) | Settings/About 面板结构、Row/Card/SettingsCard 规范 |
-| [macos-onboarding.md](./macos-onboarding.md) | macOS 首次启动权限引导（FDA / 剪贴板粘贴 / 可选 TCC） |
+| [macos-onboarding.md](./macos-onboarding.md) | 跨平台首次启动能力介绍与 macOS 权限引导（FDA / 可选 TCC） |
 | [qx-island-architecture.md](./qx-island-architecture.md) | 灵动岛统一抽象层：info channels、size/surface、capabilities/styles |
 | [shortcut-registry.md](./shortcut-registry.md) | 统一快捷键注册表（Global vs In-App）· 状态：Design |
 | [user-guide/README.md](./user-guide/README.md) | 终端用户指南（安装、搜索、模块、插件、设置） |

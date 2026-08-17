@@ -4,8 +4,11 @@
 
 - File Actions 使用标准 Top Bar / Main Area / Bottom Bar，不另造工具窗口。Main Area 为可调整的两栏：左侧是 Qx 唤起前 Finder / Windows Explorer 的完整选择列表，中间是操作选择与参数区。
 - 左侧列表复用 `useQxListSelection`，显示文件/文件夹图标、名称与父目录；不得把系统选择降级成剪贴板文本，也不得因 Qx 获得焦点而清空刚捕获的选择快照。
-- 中间操作区提供重命名、移入新文件夹、压缩为 ZIP、解压 ZIP。重命名仅允许单选；归拢与压缩要求选择项位于同一父目录；解压只接受 ZIP。
-- Enter 执行当前有效操作，Esc 经 `useQxModuleShell` 返回 Launcher。运行中以 Bottom Island 的真实 indeterminate 状态反馈，不造成布局跳动；错误保留在操作区，选择列表仍可使用。
+- 中间操作区提供重命名、移入新文件夹、压缩为 ZIP、解压 ZIP。单项压缩默认使用“原名称.zip”，多项使用通用压缩包名；重命名仅允许单选；归拢与压缩要求选择项位于同一父目录；解压只接受 ZIP。
+- Space 打开/关闭当前选择项的 Quick Preview；预览保持左侧列表，上下键切换项目时中间内容随选择更新。支持图片、音视频、完整 PDF、文本/代码、文件夹、ZIP/TAR/GZIP/7z/RAR，以及 DOCX、XLSX、PPTX；旧二进制 Office 格式显示元数据并交给默认应用。预览打开时 Esc 只关闭预览，下一次 Esc 才返回 Launcher。
+- Top Bar 右上角在操作区与历史记录间切换；仅记录最近 5 条成功操作，按完成时间倒序，持久化文件名而非完整路径，并支持清空。历史视图按 Esc 先返回操作区。
+- File Actions 的安装默认全局快捷键为 macOS `Option+F`、Windows `Alt+F`，默认开启；设置页的重置必须恢复该平台化显示与启用状态。
+- Enter 执行当前有效操作，Esc 经 `useQxModuleShell` 逐层返回。运行中以 Bottom Island 的真实 indeterminate 状态反馈，不造成布局跳动；错误保留在操作区，选择列表仍可使用。
 - 所有参数输入使用 Qx shadcn 控件和主题变量。写操作不得静默覆盖已有目标；完成后左栏切换为宿主返回的输出项快照。
 
 > 状态：Current · 适用版本：v0.5.13 · Owner：Frontend · 最后复核：2026-07-14
@@ -1227,7 +1230,7 @@ search={
 | `Cmd+Backspace` / `Ctrl+Backspace` | 删除当前对象（模块内） |
 
 - 快捷键标签必须反映当前平台（macOS 用 ⌘，Windows 用 Ctrl）；不要把 macOS 符号写死为唯一说明。
-- Shell 快捷键是窗口内响应链事件，不是进程级全局快捷键；唯一默认全局键是召唤 Launcher。
+- Shell 快捷键是窗口内响应链事件，不是进程级全局快捷键；进程级默认只启用明确列入首装介绍的宿主能力：当前窗口召唤、File Actions 与截图。
 - 全局召唤分为两个可独立配置的动作：**Launcher Search** 显示 Qx、进入 Launcher 并聚焦搜索，再按一次隐藏；**Toggle Current Window** 只切换窗口显隐，再次显示时必须保留原模块、route 和子界面。后者默认开启：macOS 为 `Option+Space`，Windows 为 `Ctrl+Alt+Space`（避开系统窗口菜单及 PowerToys Run 常用的 `Alt+Space`）；Launcher Search 对应 Shift 组合默认关闭。
 - **禁止**把 host 的 Space 组合（macOS `Option+Space`、Windows `Ctrl+Alt+Space`）或系统级 `Cmd/Meta+Space` 绑成模块 Action；Shell 匹配层必须放行这些宿主级组合键，不得 `preventDefault`。Windows 全局快捷键设置允许 `Ctrl+Space`，它不属于 Windows 系统保留组合。
 - 剪贴板等模块的删除应使用 `Cmd/Ctrl+Backspace`（或 `Delete` 等价），不得使用 Space 系全局键。
@@ -1269,6 +1272,14 @@ search={
   `Cmd/Ctrl+K` 和裸键动作只在当前窗口当前 Shell 的事件链中处理。
 - 状态不得只靠颜色表达；至少同时提供文字、图标、形状或数值之一。
 - 自动化最低要求：静态 a11y 检查 + 关键 Shell/Dialog 的键盘人工验收。
+
+## First-install Landing
+
+- macOS 与 Windows 首次安装都显示一次能力介绍。它是紧凑的桌面“能力控制台”，不是营销网页：同屏说明搜索、文件工具、剪贴板、捕获与扩展，并提供清晰的继续与跳过动作。
+- Landing 可使用基于主题变量的网格、辉光、信号环与轻量动画表达高光科幻感；不得硬编码颜色，`prefers-reduced-motion` 时必须停用装饰动画。
+- 快捷键教学必须使用 `formatQxShortcut` 平台化显示。完成页至少列出当前窗口召唤、File Actions 与截图，其中 File Actions 明确标记为首次安装默认开启。
+- macOS 从 Landing 继续进入 FDA 与可选权限步骤；Windows 不显示 macOS 权限内容，直接进入快捷键完成页。完成或跳过后都持久化 `has_completed_onboarding`，同一安装不重复打扰。
+- 引导期间窗口保持可见并保留独立拖拽握区；所有能力说明、按钮与状态均走 i18n，装饰图形对辅助技术隐藏。
 
 ## Internationalization And Content
 

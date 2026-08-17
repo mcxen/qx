@@ -2,7 +2,7 @@
 
 ## 文件管理器选择端口
 
-文件管理器上下文由根级 `file_manager` 服务承担：`floating_panel` 在显示 Qx 前只采集轻量来源提示（Windows Explorer HWND / macOS Finder 前台状态），worker 随后解析有序选择并发布 revision 快照。内置 File Actions 与插件 `context.files.*` 都依赖该快照；重命名、归拢、ZIP 压缩/解压在 blocking worker 执行并再次校验 revision，平台脚本与 Finder/Explorer 细节不进入 React 或业务插件。
+文件管理器上下文由根级 `file_manager` 服务承担：`floating_panel` 在显示 Qx 前只采集轻量来源提示（Windows Explorer HWND / macOS Finder 前台状态），worker 随后解析有序选择并发布 revision 快照。内置 File Actions 与插件 `context.files.*` 都依赖该快照；重命名、归拢、ZIP 压缩/解压在 blocking worker 执行并再次校验 revision。根级 `file_preview` 只按当前 revision/index 提供有界元数据、目录和字节流，WebView 不获得通用本地路径读取能力；PDF/Office/压缩包渲染器按格式懒加载。
 
 > 状态：Current · 适用版本：v0.5.13 · Owner：Core · 最后复核：2026-07-14
 >

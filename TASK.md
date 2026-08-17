@@ -37,6 +37,10 @@
 
 - Qx 在主窗口获得焦点前捕获前台 Finder / Explorer 选择，保存带单调 revision 的不可变快照；Windows 已用真实 Explorer 多选响应验证。
 - 新增内置 File Actions：左侧使用标准列表显示选择项，中间提供重命名、新建文件夹归拢、ZIP 压缩和批量 ZIP 解压。
+- 新增选择快照范围内的 Space 快速预览：图片、音视频、PDF、文本、文件夹、常见压缩包和 OOXML Office 按需加载；Esc/上下键遵循 Shell 层级与选择协议。
+- File Actions 右上角可切换最近 5 条成功操作历史；记录按完成时间倒序，可清空且不持久化完整路径。
+- File Actions 新增安装默认全局快捷键：macOS `Option+F`、Windows `Alt+F`，默认开启；旧设置只补齐缺失项，不覆盖用户已有绑定。
+- 首次安装引导升级为跨平台高光能力 Landing：同屏介绍搜索、文件、剪贴板、捕获与扩展，按平台展示当前窗口、File Actions、截图快捷键；macOS 随后进入权限步骤，Windows 直接完成。
 - 根级 Rust 文件操作拒绝过期快照、目标覆盖、跨目录归拢、符号链接归档、ZIP 路径穿越、超量条目和超过 20 GiB 的展开结果。
 - 插件端口 `context.files.selection()` / `performSelectionOperation()` 分别需要 `file-selection` / `file-operations` 权限；插件不能提交快照之外的路径。
 
@@ -44,8 +48,10 @@
 
 - [x] Windows Explorer 当前 22 项真实多选可由宿主解析器完整读取。
 - [x] `cargo check`（MSVC）/ `npx tsc --noEmit`。
+- [x] 本地 TypeScript、Rust 与生产构建验证预览 Worker/WASM 均进入按需产物。
 - [ ] macOS：Finder 单选、多选、中文名、文件夹与 Automation 拒绝/授权路径。
 - [ ] Windows 安装态：快捷键唤起后左栏保持选择；逐项实测重命名、归拢、压缩、批量解压与冲突错误。
+- [ ] 新配置首装态：macOS/Windows 均展示 Landing；Option+F/Alt+F 可直接打开 File Actions，完成后重启不重复展示。
 
 ## Fix — 空白 @回复对象
 

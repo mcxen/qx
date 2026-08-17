@@ -34,6 +34,8 @@ Qx 前后端通过 Tauri v2 的 `invoke` 通道通信。当前 `tauri::generate_
 | `clipboard_file_metadata(path)` | 异步读取文件大小、图片尺寸、媒体时长与预览 |
 | `file_manager_get_selection()` | 读取 Qx 获得焦点前捕获的 Finder / Windows Explorer 选择快照；返回稳定 `revision`、来源和有序文件/文件夹列表 |
 | `file_manager_perform_operation(request)` | 对同一 `revision` 执行受校验的 `rename` / `collect` / `compress` / `extract`；拒绝过期选择、目标覆盖与不安全 ZIP 路径 |
+| `file_preview_info(revision, index)` / `file_preview_read(revision, index, maxBytes?)` | 读取当前选择快照内单项的元数据/受限字节流；文本可读取受限前缀，完整读取拒绝过期 revision、消失路径、目录和超过 256 MB 的文件 |
+| `file_preview_folder(revision, index)` | 后台读取当前快照内文件夹，排序并限制为前 500 项 |
 | `clipboard_compress_image(path, quality?)` | 启动后台图片压缩任务 |
 | `clipboard_video_to_gif(path)` | 启动后台视频转 GIF 任务 |
 | `clear_clipboard_history()` | 清空全部 |
@@ -260,7 +262,8 @@ Screen Capture 的独立控制窗通过 `screencap:controls-pinned` 将关闭 / 
 `tray_panel_hide`, `tray_panel_open_settings`, `tray_panel_run_action`, `tray_panel_resize`,
 `tray_panel_get_focus_display`, `set_window_glass_effect`, `get_file_size`, `qx_log_event`, `qx_log_path`,
 `search_apps`, `search_files`, `open_app`, `set_window_size`, `get_clipboard_history`,
-`file_manager_get_selection`, `file_manager_perform_operation`,
+`file_manager_get_selection`, `file_manager_perform_operation`, `file_preview_info`, `file_preview_read`,
+`file_preview_folder`,
 `get_clipboard_history_page`, `get_clipboard_entry`, `read_clipboard_image_now`, `write_clipboard_image_entry`,
 `write_clipboard_file_entry`, `clipboard_write_file_paths`, `clipboard_file_metadata`, `clipboard_file_preview`,
 `clipboard_file_media_probe`, `clipboard_compress_image`, `clipboard_video_to_gif`, `clear_clipboard_history`,

@@ -1659,33 +1659,16 @@ function App() {
       startupWindowRestoredRef.current = true;
       setTab("launcher");
       const needsOnboarding =
-        getQxDesktopPlatform() === "macos"
-        && (
-          !currentSettings.general.has_completed_onboarding
-          || currentSettings.general.permission_onboarding_version
+        !currentSettings.general.has_completed_onboarding
+        || (
+          getQxDesktopPlatform() === "macos"
+          && currentSettings.general.permission_onboarding_version
             < MACOS_PERMISSION_ONBOARDING_VERSION
         );
       if (!currentSettings.general.has_shown_launcher) {
         useSettingsStore.getState().patch("general", {
           ...currentSettings.general,
           has_shown_launcher: true,
-        });
-        await useSettingsStore.getState().flush();
-      }
-      // Non-macOS: mark onboarding complete so the flag stays meaningful.
-      if (
-        getQxDesktopPlatform() !== "macos"
-        && (
-          !currentSettings.general.has_completed_onboarding
-          || currentSettings.general.permission_onboarding_version
-            < MACOS_PERMISSION_ONBOARDING_VERSION
-        )
-      ) {
-        const g = useSettingsStore.getState().settings.general;
-        useSettingsStore.getState().patch("general", {
-          ...g,
-          has_completed_onboarding: true,
-          permission_onboarding_version: MACOS_PERMISSION_ONBOARDING_VERSION,
         });
         await useSettingsStore.getState().flush();
       }

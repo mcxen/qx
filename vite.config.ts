@@ -1,13 +1,39 @@
 import { defineConfig } from "vite";
+import type { Plugin } from "vite";
+import { readFileSync } from "node:fs";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
 
+function previewRuntimeAssets(): Plugin {
+  const files = new Map([
+    ["worker-bundle.js", readFileSync(new URL("./node_modules/libarchive.js/dist/worker-bundle.js", import.meta.url))],
+    ["libarchive.wasm", readFileSync(new URL("./node_modules/libarchive.js/dist/libarchive.wasm", import.meta.url))],
+  ]);
+  return {
+    name: "qx-preview-runtime-assets",
+    configureServer(server) {
+      server.middlewares.use("/vendor/libarchive", (request, response, next) => {
+        const name = request.url?.split("?")[0].replace(/^\//, "") ?? "";
+        const source = files.get(name);
+        if (!source) return next();
+        response.setHeader("Content-Type", name.endsWith(".wasm") ? "application/wasm" : "text/javascript");
+        response.end(source);
+      });
+    },
+    generateBundle() {
+      for (const [name, source] of files) {
+        this.emitFile({ type: "asset", fileName: `vendor/libarchive/${name}`, source });
+      }
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), previewRuntimeAssets()],
   resolve: {
     alias: {
       "@": new URL("./src", import.meta.url).pathname,

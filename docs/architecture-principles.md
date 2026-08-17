@@ -193,7 +193,7 @@ blocking HTTP · filesystem · native APIs
 | 顶层窗口清单与几何 | `desktop_windows` | `desktop_windows_list` / `src/system/desktopWindows.ts` |
 | 区域 still-frame / 录制降级抓帧 | `display::capture_region*` | 内部 API（工作流封装；Windows WGC still-frame 失败走 GDI，原生连续流失败后的高频轮询复用一个 GDI DC/DIB/RGBA session，避免逐帧重建 WGC/D3D 或 GDI 资源） |
 | 磁盘图写剪贴板 | `clipboard` | `clipboard_write_image_file` / `src/system/clipboard.ts` |
-| 文件管理器选择与文件操作 | `file_manager` | 唤起前 Finder/Explorer 快照；`src/system/fileManager.ts`；插件 `context.files.selection/performSelectionOperation` |
+| 文件管理器选择、预览与文件操作 | `file_manager` + `file_preview` | 唤起前 Finder/Explorer 快照；预览只接受当前 revision/index 且有 256 MB 上限；`src/system/fileManager.ts`；插件 `context.files.selection/performSelectionOperation` |
 | 视频/GIF 编解码 | `media/` | 既有 convert 命令 |
 | 主线程 UI / 后台算力 | `runtime/` | `runtime::ui` · `runtime::blocking` · `runtime::install`（见 runtime-threading.md） |
 | 系统信息 / 设置目的地 | `system_information` · `display` · `plugin_system` | `context.system.info/storage/displays/network/power/stats/processes/openSettings`；插件只见同形数据和语义 section，不见 PowerShell / AppKit / `ms-settings:`；Windows 高频与静态采样均走 Rust + Win32 API（注册表、拓扑、磁盘、DisplayConfig、IP Helper、ToolHelp、System Power Status），不得通过 PowerShell/WMI 子进程轮询；静态 CPU 拓扑/缓存和内核 family/release 只进一次性信息快照，缺失的缓存层级不猜测，实时负载独立采样；显示器协议和 EDID 标识仅在系统明确返回有效值时暴露；Power 模型将电池存在、外接电源、充电与充满拆成独立状态，健康/容量字段按硬件能力可选；macOS 内存必须使用 SDK 匹配的 `vm_statistics64` 布局与真实页大小，CPU 累计 tick 的近同时多消费者读取复用稳定样本，APFS 存储统计读取 Data volume 而非只读系统快照 |

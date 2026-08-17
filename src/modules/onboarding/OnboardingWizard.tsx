@@ -1,5 +1,5 @@
 /**
- * macOS first-launch onboarding.
+ * Cross-platform first-launch introduction plus macOS permission onboarding.
  *
  * Step 1 — Full Disk Access (files): guided System Settings hand-off, polled until granted or skipped.
  * Step 2 — Optional automation/capture/macros: Accessibility (clipboard paste), Screen Recording, Input Monitoring.
@@ -9,9 +9,21 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  ArrowRight,
+  Clipboard,
+  Files,
+  ScanLine,
+  Search,
+  Sparkles,
+} from "lucide-react";
 import { useT } from "../../i18n";
 import { Button, Toggle } from "../../components/ui";
-import { getQxDesktopPlatform } from "../../utils/keyboard";
+import {
+  formatQxShortcut,
+  getDefaultQxHostShortcuts,
+  getQxDesktopPlatform,
+} from "../../utils/keyboard";
 
 export interface PermissionStatus {
   id: string;
@@ -78,6 +90,11 @@ export interface OnboardingWizardProps {
 
 export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const t = useT();
+  const macOs = isMacOs();
+  const hostShortcuts = getDefaultQxHostShortcuts();
+  const summonShortcut = formatQxShortcut(hostShortcuts.toggleWindow) ?? hostShortcuts.toggleWindow;
+  const fileActionsShortcut = formatQxShortcut("Alt+F") ?? "Alt+F";
+  const captureShortcut = formatQxShortcut("Ctrl+G") ?? "Ctrl+G";
   const [step, setStep] = useState<Step>("welcome");
   const [items, setItems] = useState<PermissionStatus[]>([]);
   const [loading, setLoading] = useState(false);
@@ -192,12 +209,70 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     onComplete();
   };
 
-  const stepIndex = step === "welcome" ? 0 : step === "files" ? 1 : step === "optional" ? 2 : 3;
-  const stepLabels = [
-    t("onboarding.step.welcome", "Welcome"),
-    t("onboarding.step.files", "Files"),
-    t("onboarding.step.optional", "Features"),
-    t("onboarding.step.done", "Ready"),
+  const stepLabels: Array<{ id: Step; label: string }> = macOs
+    ? [
+        { id: "welcome", label: t("onboarding.step.welcome", "Welcome") },
+        { id: "files", label: t("onboarding.step.files", "Files") },
+        { id: "optional", label: t("onboarding.step.optional", "Features") },
+        { id: "done", label: t("onboarding.step.done", "Ready") },
+      ]
+    : [
+        { id: "welcome", label: t("onboarding.step.welcome", "Welcome") },
+        { id: "done", label: t("onboarding.step.done", "Ready") },
+      ];
+  const stepIndex = Math.max(0, stepLabels.findIndex((item) => item.id === step));
+
+  const capabilities = [
+    {
+      icon: Search,
+      title: t("onboarding.capability.search", "Search and launch"),
+      description: t(
+        "onboarding.capability.search.desc",
+        "Find apps, files, commands, and module content from one keyboard-first surface.",
+      ),
+    },
+    {
+      icon: Files,
+      title: t("onboarding.capability.files", "File Actions"),
+      description: t(
+        "onboarding.capability.files.desc",
+        "Preview, compress, convert, rename, and review the latest five file jobs.",
+      ),
+    },
+    {
+      icon: Clipboard,
+      title: t("onboarding.capability.clipboard", "Clipboard memory"),
+      description: t(
+        "onboarding.capability.clipboard.desc",
+        "Bring text, images, and real file items back without breaking their native meaning.",
+      ),
+    },
+    {
+      icon: ScanLine,
+      title: t("onboarding.capability.capture", "Capture and automate"),
+      description: t(
+        "onboarding.capability.capture.desc",
+        "Capture the screen, record workflows, and extend Qx with focused modules.",
+      ),
+    },
+  ];
+
+  const shortcutCards = [
+    {
+      label: t("onboarding.shortcut.summon", "Summon Qx"),
+      key: summonShortcut,
+      description: t("onboarding.shortcut.summon.desc", "Search, launch, and switch modules"),
+    },
+    {
+      label: t("onboarding.shortcut.files", "File Actions"),
+      key: fileActionsShortcut,
+      description: t("onboarding.shortcut.files.desc", "Enabled by default on first install"),
+    },
+    {
+      label: t("onboarding.shortcut.capture", "Capture screen"),
+      key: captureShortcut,
+      description: t("onboarding.shortcut.capture.desc", "Start a precise region capture"),
+    },
   ];
 
   return (
@@ -208,16 +283,16 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
       aria-labelledby="qx-onboarding-title"
       data-tauri-drag-region
     >
-      <div className="qx-onboarding-card">
+      <div className="qx-onboarding-card" data-step={step}>
         <div
           className="qx-onboarding-window-drag"
           data-tauri-drag-region
           aria-hidden="true"
         />
         <div className="qx-onboarding-steps" aria-hidden="true">
-          {stepLabels.map((label, i) => (
+          {stepLabels.map(({ id, label }, i) => (
             <div
-              key={label}
+              key={id}
               className={`qx-onboarding-step-dot ${i === stepIndex ? "is-active" : ""} ${i < stepIndex ? "is-done" : ""}`}
             >
               <span className="qx-onboarding-step-index">{i + 1}</span>
@@ -227,38 +302,53 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
         </div>
 
         {step === "welcome" && (
-          <div className="qx-onboarding-body">
-            <h1 id="qx-onboarding-title" className="qx-onboarding-title">
-              {t("onboarding.welcome.title", "Welcome to Qx")}
-            </h1>
-            <p className="qx-onboarding-lead">
-              {t(
-                "onboarding.welcome.lead",
-                "A quick setup so search, clipboard paste, and capture work as expected. You can change permissions later in Settings.",
-              )}
-            </p>
-            <ul className="qx-onboarding-bullets">
-              <li>
-                {t(
-                  "onboarding.welcome.bullet1",
-                  "Full Disk Access once — unlock complete file search across protected folders.",
-                )}
-              </li>
-              <li>
-                {t(
-                  "onboarding.welcome.bullet2",
-                  "Optional: Accessibility for auto-paste, Screen Recording, and macro Input Monitoring.",
-                )}
-              </li>
-              <li>
-                {t(
-                  "onboarding.welcome.bullet3",
-                  "Everything is skippable; core launcher still works with reduced coverage.",
-                )}
-              </li>
-            </ul>
+          <div className="qx-onboarding-body qx-onboarding-landing">
+            <div className="qx-onboarding-hero">
+              <div className="qx-onboarding-hero-copy">
+                <div className="qx-onboarding-eyebrow">
+                  <Sparkles size={13} aria-hidden="true" />
+                  {t("onboarding.welcome.eyebrow", "Your desktop command layer")}
+                </div>
+                <h1 id="qx-onboarding-title" className="qx-onboarding-title">
+                  {t("onboarding.welcome.title", "Move at the speed of intent")}
+                </h1>
+                <p className="qx-onboarding-lead">
+                  {t(
+                    "onboarding.welcome.lead",
+                    "Qx unifies search, files, clipboard, capture, and extensions in one fast, keyboard-first workspace.",
+                  )}
+                </p>
+              </div>
+              <div className="qx-onboarding-core" aria-hidden="true">
+                <span className="qx-onboarding-core-orbit" />
+                <span className="qx-onboarding-core-mark">Qx</span>
+                <span className="qx-onboarding-core-signal" />
+              </div>
+            </div>
+
+            <div className="qx-onboarding-capabilities">
+              {capabilities.map(({ icon: Icon, title, description }, index) => (
+                <div className="qx-onboarding-capability" key={title}>
+                  <span className="qx-onboarding-capability-index">0{index + 1}</span>
+                  <Icon size={17} aria-hidden="true" />
+                  <div>
+                    <div className="qx-onboarding-capability-title">{title}</div>
+                    <div className="qx-onboarding-capability-desc">{description}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="qx-onboarding-command-rail">
+              <span>{t("onboarding.welcome.try", "Your first command")}</span>
+              <kbd>{summonShortcut}</kbd>
+              <ArrowRight size={13} aria-hidden="true" />
+              <span>{t("onboarding.welcome.search", "Type what you need")}</span>
+              <ArrowRight size={13} aria-hidden="true" />
+              <kbd>Enter</kbd>
+            </div>
             <div className="qx-onboarding-actions">
-              <Button variant="default" onClick={() => setStep("files")}>
+              <Button variant="default" onClick={() => setStep(macOs ? "files" : "done")}>
                 {t("onboarding.welcome.continue", "Continue")}
               </Button>
               <Button variant="ghost" onClick={finish}>
@@ -470,37 +560,50 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
         )}
 
         {step === "done" && (
-          <div className="qx-onboarding-body">
+          <div className="qx-onboarding-body qx-onboarding-ready">
             <h1 id="qx-onboarding-title" className="qx-onboarding-title">
               {t("onboarding.done.title", "You're ready")}
             </h1>
             <p className="qx-onboarding-lead">
               {t(
                 "onboarding.done.lead",
-                "Summon Qx with ⌥Space (default). Open Settings → Permissions anytime to review access.",
+                "Three shortcuts are ready now. You can review or change every binding in Settings → Shortcuts.",
               )}
             </p>
-            <ul className="qx-onboarding-bullets">
-              <li>
-                {fda?.granted
-                  ? t("onboarding.done.fdaOk", "Full Disk Access is on — file search can cover protected paths.")
-                  : t(
-                      "onboarding.done.fdaSkip",
-                      "Full Disk Access was skipped — enable later for complete file search.",
-                    )}
-              </li>
-              <li>
-                {byId.get("accessibility")?.granted
-                  ? t(
-                      "onboarding.done.axOk",
-                      "Accessibility is on — clipboard history can paste into other apps.",
-                    )
-                  : t(
-                      "onboarding.done.axSkip",
-                      "Accessibility off — you can still copy items; auto-paste needs Accessibility.",
-                    )}
-              </li>
-            </ul>
+            <div className="qx-onboarding-shortcuts">
+              {shortcutCards.map((item) => (
+                <div className="qx-onboarding-shortcut" key={item.label}>
+                  <div>
+                    <div className="qx-onboarding-shortcut-label">{item.label}</div>
+                    <div className="qx-onboarding-shortcut-desc">{item.description}</div>
+                  </div>
+                  <kbd>{item.key}</kbd>
+                </div>
+              ))}
+            </div>
+            {macOs && (
+              <ul className="qx-onboarding-bullets qx-onboarding-permission-summary">
+                <li>
+                  {fda?.granted
+                    ? t("onboarding.done.fdaOk", "Full Disk Access is on — file search can cover protected paths.")
+                    : t(
+                        "onboarding.done.fdaSkip",
+                        "Full Disk Access was skipped — enable later for complete file search.",
+                      )}
+                </li>
+                <li>
+                  {byId.get("accessibility")?.granted
+                    ? t(
+                        "onboarding.done.axOk",
+                        "Accessibility is on — clipboard history can paste into other apps.",
+                      )
+                    : t(
+                        "onboarding.done.axSkip",
+                        "Accessibility off — you can still copy items; auto-paste needs Accessibility.",
+                      )}
+                </li>
+              </ul>
+            )}
             <div className="qx-onboarding-actions">
               <Button variant="default" onClick={finish}>
                 {t("onboarding.done.start", "Start using Qx")}

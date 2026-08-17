@@ -11,6 +11,7 @@ mod display_monitor;
 #[cfg(target_os = "windows")]
 mod display_windows;
 mod file_manager;
+mod file_preview;
 mod file_search;
 mod floating_panel;
 mod g4f;
@@ -685,6 +686,9 @@ pub fn run() {
             clipboard::history::get_clipboard_history,
             file_manager::file_manager_get_selection,
             file_manager::file_manager_perform_operation,
+            file_preview::file_preview_info,
+            file_preview::file_preview_read,
+            file_preview::file_preview_folder,
             clipboard::history::get_clipboard_history_page,
             clipboard::history::get_clipboard_entry,
             clipboard::history::read_clipboard_image_now,

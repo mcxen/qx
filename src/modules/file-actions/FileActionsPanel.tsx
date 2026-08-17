@@ -7,7 +7,10 @@ import {
   File,
   Folder,
   FolderInput,
+  History,
   PenLine,
+  SlidersHorizontal,
+  Trash2,
   TriangleAlert,
 } from "lucide-react";
 import QxShell, { type QxShellAction } from "../../components/QxShell";
@@ -15,7 +18,7 @@ import QxResizableSplit from "../../components/QxResizableSplit";
 import { Button, Input, LoadingSpinner } from "../../components/ui";
 import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
-import { useT } from "../../i18n";
+import { useLocale, useT } from "../../i18n";
 import {
   getFileManagerSelection,
   performFileSelectionOperation,
@@ -23,8 +26,15 @@ import {
   type FileSelectionSnapshot,
 } from "../../system";
 import { useStore } from "../../store";
+import FileQuickPreview from "./FileQuickPreview";
 
 type Operation = "rename" | "collect" | "compress" | "extract";
+type OperationHistory = { operation: Operation; completedAtMs: number; inputs: string[]; outputs: string[]; affectedCount: number };
+const HISTORY_KEY = "qx.fileActions.history.v1";
+
+function loadHistory(): OperationHistory[] {
+  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]").slice(0, 5); } catch { return []; }
+}
 
 const EMPTY_SELECTION: FileSelectionSnapshot = {
   revision: 0,
@@ -42,12 +52,15 @@ function defaultName(
 ): string {
   if (operation === "rename") return snapshot.items[0]?.name ?? "";
   if (operation === "collect") return folderName;
-  if (operation === "compress") return archiveName;
+  if (operation === "compress") {
+    return snapshot.items.length === 1 ? `${snapshot.items[0].name}.zip` : archiveName;
+  }
   return "";
 }
 
 export default function FileActionsPanel() {
   const t = useT();
+  const locale = useLocale();
   const setTab = useStore((state) => state.setTab);
   const listRef = useRef<HTMLDivElement>(null);
   const [snapshot, setSnapshot] = useState<FileSelectionSnapshot>(EMPTY_SELECTION);
@@ -58,9 +71,17 @@ export default function FileActionsPanel() {
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<FileOperationResult | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [history, setHistory] = useState<OperationHistory[]>(loadHistory);
+  const clearHistory = () => {
+    setHistory([]);
+    try { localStorage.removeItem(HISTORY_KEY); } catch { /* Storage may be disabled. */ }
+  };
 
   const applySnapshot = useCallback((next: FileSelectionSnapshot) => {
     setSnapshot(next);
+    if (next.items.length === 0) setPreviewOpen(false);
     setSelectedIndex((current) => Math.max(0, Math.min(current, next.items.length - 1)));
     setLoading(false);
   }, []);
@@ -109,10 +130,17 @@ export default function FileActionsPanel() {
   }, [snapshot, t]);
 
   const selected = snapshot.items[selectedIndex] ?? null;
+  const togglePreview = useCallback(() => {
+    if (selected?.exists) {
+      setHistoryOpen(false);
+      setPreviewOpen((open) => !open);
+    }
+  }, [selected]);
   const canExtract = snapshot.items.length > 0
     && snapshot.items.every((item) => item.kind === "file" && item.name.toLowerCase().endsWith(".zip"));
   const canRun = snapshot.revision > 0
     && snapshot.items.length > 0
+    && !historyOpen
     && !running
     && (operation === "extract" ? canExtract : Boolean(name.trim()))
     && (operation !== "rename" || snapshot.items.length === 1);
@@ -130,6 +158,12 @@ export default function FileActionsPanel() {
           : { revision: snapshot.revision, operation, name: name.trim() } as const;
       const next = await performFileSelectionOperation(request);
       setResult(next);
+      const entry = { operation, completedAtMs: Date.now(), inputs: snapshot.items.map((item) => item.name), outputs: next.outputPaths.map((path) => path.split(/[\\/]/).pop() ?? path), affectedCount: next.affectedCount };
+      setHistory((current) => {
+        const updated = [entry, ...current].slice(0, 5);
+        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(updated)); } catch { /* Keep session history if storage is unavailable. */ }
+        return updated;
+      });
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -139,18 +173,34 @@ export default function FileActionsPanel() {
 
   const shell = useQxModuleShell({
     leave: () => setTab("launcher"),
+    esc: {
+      inner: { active: previewOpen || historyOpen, close: () => previewOpen ? setPreviewOpen(false) : setHistoryOpen(false) },
+    },
     islandState: {
       title: t("fileActions.title", "File Actions"),
       loading: loading || running,
       error,
       count: snapshot.items.length,
-      detail: running
+      detail: previewOpen
+        ? t("filePreview.quickPreview", "Quick Preview")
+        : historyOpen
+          ? t("fileActions.history", "History")
+        : running
         ? t("fileActions.running", "Working…")
         : t("fileActions.selectedCount", "{n} selected").replace("{n}", String(snapshot.items.length)),
     },
   });
 
   const actions = useMemo<QxShellAction[]>(() => [
+    {
+      id: "toggle-preview",
+      label: previewOpen
+        ? t("filePreview.close", "Close Preview")
+        : t("filePreview.quickPreview", "Quick Preview"),
+      kbd: "Space",
+      disabled: historyOpen || !selected?.exists,
+      onClick: togglePreview,
+    },
     {
       id: "run-operation",
       label: running
@@ -182,7 +232,7 @@ export default function FileActionsPanel() {
       disabled: !canExtract,
       onClick: () => chooseOperation("extract"),
     },
-  ], [canExtract, canRun, chooseOperation, run, running, snapshot.items.length, t]);
+  ], [canExtract, canRun, chooseOperation, historyOpen, previewOpen, run, running, selected?.exists, snapshot.items.length, t, togglePreview]);
 
   const { getItemProps } = useQxListSelection({
     listRef,
@@ -200,6 +250,7 @@ export default function FileActionsPanel() {
   return (
     <QxShell
       title={t("fileActions.title", "File Actions")}
+      trailing={<Button type="button" size="sm" variant={historyOpen ? "secondary" : "outline"} disabled={running} onClick={() => { setPreviewOpen(false); setHistoryOpen((open) => !open); }}>{historyOpen ? <SlidersHorizontal size={14} aria-hidden="true" /> : <History size={14} aria-hidden="true" />}{historyOpen ? t("fileActions.operations", "Operations") : t("fileActions.history", "History")}</Button>}
       islandKey="file-actions"
       escapeAction={shell.escapeAction}
       onKeyDown={shell.onKeyDown}
@@ -248,6 +299,10 @@ export default function FileActionsPanel() {
                 key={item.path}
                 {...getItemProps(index, { className: "qx-file-actions-row" })}
                 onClick={() => setSelectedIndex(index)}
+                onDoubleClick={() => {
+                  setSelectedIndex(index);
+                  if (item.exists) setPreviewOpen(true);
+                }}
                 title={item.path}
               >
                 <Icon size={17} aria-hidden="true" />
@@ -261,7 +316,19 @@ export default function FileActionsPanel() {
           })}
         </section>
 
-        <main className="qx-file-actions-workspace">
+        {historyOpen ? (
+          <main className="qx-file-actions-workspace">
+            <header className="qx-file-actions-workspace-head">
+              <div><h2>{t("fileActions.history", "History")}</h2><p>{t("fileActions.historyHint", "The five most recent successful operations, newest first.")}</p></div>
+              {history.length ? <Button type="button" size="sm" variant="outline" onClick={clearHistory}><Trash2 size={14} aria-hidden="true" />{t("fileActions.clearHistory", "Clear")}</Button> : null}
+            </header>
+            <section className="qx-file-actions-editor">
+              {history.length ? history.map((entry) => <div className="qx-file-actions-notice" key={entry.completedAtMs}><History size={16} aria-hidden="true" /><span><strong>{operationOptions.find((option) => option.id === entry.operation)?.label ?? entry.operation}</strong><br />{entry.inputs.join(", ")} → {entry.outputs.join(", ")}<br /><small>{new Date(entry.completedAtMs).toLocaleString(locale)} · {t("fileActions.historyCount", "{n} item(s)").replace("{n}", String(entry.affectedCount))}</small></span></div>) : <div className="qx-file-actions-empty"><History size={28} aria-hidden="true" /><strong>{t("fileActions.noHistory", "No operation history")}</strong></div>}
+            </section>
+          </main>
+        ) : previewOpen && selected ? (
+          <FileQuickPreview revision={snapshot.revision} index={selectedIndex} item={selected} />
+        ) : <main className="qx-file-actions-workspace">
           <header className="qx-file-actions-workspace-head">
             <div>
               <h2>{t("fileActions.operation", "Choose an operation")}</h2>
@@ -336,7 +403,7 @@ export default function FileActionsPanel() {
               {running ? t("fileActions.running", "Working…") : t("fileActions.run", "Run Operation")}
             </Button>
           </section>
-        </main>
+        </main>}
       </QxResizableSplit>
     </QxShell>
   );

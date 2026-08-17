@@ -45,6 +45,7 @@ pub(super) fn default_shortcut_bindings() -> BTreeMap<String, ShortcutBinding> {
         ("recapture_last_region", "Alt+Shift+R", false),
         ("toggle_capture_controls", "Alt+Shift+C", false),
         ("rss", "Alt+R", false),
+        ("open:file-actions", "Alt+F", true),
     ] {
         shortcuts.insert(
             id.to_string(),
@@ -439,6 +440,11 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
         let context = format!("register dynamic shortcut {id}");
         let registration_succeeded = match target {
             DynamicShortcutTarget::OpenRoute(route) => {
+                if settings.builtin_modules.modules.contains_key(&route)
+                    && !settings.builtin_modules.is_enabled(&route)
+                {
+                    continue;
+                }
                 collect_registration!(
                     context,
                     register_shortcut(app, key.as_str(), move |app| {
