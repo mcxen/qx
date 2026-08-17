@@ -15,15 +15,16 @@
 ## 流程
 
 ```
-Welcome → Full Disk Access → Optional features → Done
-                │                    │
-                │ skip               │ skip / enable selected
-                └────────────────────┴─→ 写入完成状态 + 引导协议版本
+Welcome → Personalize → Full Disk Access → Optional features → Done
+                            │                    │
+                            │ skip               │ skip / enable selected
+                            └────────────────────┴─→ 写入完成状态 + 引导协议版本
 ```
 
 | 步骤 | 内容 | 可跳过 |
 |---|---|---|
-| Welcome | 说明引导目的 | 可「跳过设置」直接结束 |
+| Welcome | 能力介绍；免费开源与反付费下载提醒；官网入口 | 可「跳过设置」直接结束 |
+| Personalize | 主题、窗口标题栏与主搜索全局快捷键 | 可保留当前设置 |
 | Files | FDA 检测 + 打开 System Settings + 轮询状态 | 是 |
 | Optional | Accessibility / Screen Recording / Input Monitoring 多选 | 是 |
 | Done | 状态摘要 + 默认快捷键提示 | — |
@@ -64,10 +65,11 @@ Welcome → Full Disk Access → Optional features → Done
   流程时递增它，已完成旧版本的安装会在更新后再显示一次；同一版本不重复打扰用户。
 - Windows 首次安装也展示能力与默认快捷键介绍，但不展示 macOS 权限步骤；完成或跳过后写入 `has_completed_onboarding`。
 - 跳过不等于失败；启动器仍可用，仅能力降级。
+- Settings → General 的“再次显示欢迎引导”只重新挂载 UI 流程并恢复引导失焦保护；不重置完成标记、权限探测结果或用户设置，适合人工回归测试。
 
 ## 手动验证
 
-1. 清空或新建 `has_completed_onboarding: false` → macOS 与 Windows 启动均应出现能力介绍；macOS 继续显示权限步骤，Windows 直接进入快捷键完成页。
+1. 清空或新建 `has_completed_onboarding: false` → macOS 与 Windows 启动均应出现能力介绍与个性化步骤；macOS 继续显示权限步骤，Windows 直接进入快捷键完成页。
 2. FDA 步骤：打开系统设置后打开 Qx 开关，向导状态应变为已授权。
 3. 可选步骤：仅勾选辅助功能 →「启用所选」打开对应面板。
 4. 跳过全部 → 可进入 Launcher；设置 → 权限 仍可补授。
@@ -80,3 +82,4 @@ Welcome → Full Disk Access → Optional features → Done
    后回到 Qx，Esc 与点击窗口外隐藏恢复。
 9. 在 Welcome、Files、Optional、Done 每一步，从卡片顶部握区或卡片外背景拖动窗口，
    窗口应立即移动；按钮、开关和正文选择仍正常。
+10. Welcome 官网按钮必须通过系统浏览器打开 `https://qx.xpai.uk`；Personalize 的主题、标题栏和主搜索快捷键变更立即生效并持久化，冲突快捷键不能继续保存。

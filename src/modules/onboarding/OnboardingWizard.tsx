@@ -9,20 +9,28 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowRight,
   Clipboard,
   Files,
+  Globe2,
   ScanLine,
   Search,
+  ShieldCheck,
   Sparkles,
 } from "lucide-react";
 import { useT } from "../../i18n";
-import { Button, Toggle } from "../../components/ui";
+import ShortcutRecorder from "../../components/ShortcutRecorder";
+import { Button, SegmentedControl, Toggle } from "../../components/ui";
+import { useTheme, type ThemeMode } from "../../ThemeProvider";
+import { useSettingsStore } from "../settings/store";
 import {
+  countEnabledGlobalShortcuts,
   formatQxShortcut,
   getDefaultQxHostShortcuts,
   getQxDesktopPlatform,
+  globalShortcutIssue,
 } from "../../utils/keyboard";
 
 export interface PermissionStatus {
@@ -61,7 +69,9 @@ const WHY_KEYS: Record<string, string> = {
   "input-monitoring": "onboarding.why.inputMonitoring",
 };
 
-type Step = "welcome" | "files" | "optional" | "done";
+type Step = "welcome" | "setup" | "files" | "optional" | "done";
+
+const OFFICIAL_WEBSITE = "https://qx.xpai.uk";
 
 async function invokeWithTimeout<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   let timer: ReturnType<typeof window.setTimeout> | undefined;
@@ -90,9 +100,16 @@ export interface OnboardingWizardProps {
 
 export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) {
   const t = useT();
+  const { theme, setTheme } = useTheme();
+  const { settings, patch, patchShortcut } = useSettingsStore();
   const macOs = isMacOs();
   const hostShortcuts = getDefaultQxHostShortcuts();
-  const summonShortcut = formatQxShortcut(hostShortcuts.toggleWindow) ?? hostShortcuts.toggleWindow;
+  const currentWindowBinding = settings.shortcuts.toggle_window
+    ?? { key: hostShortcuts.toggleWindow, enabled: true };
+  const launcherBinding = settings.shortcuts.toggle_launcher
+    ?? { key: hostShortcuts.toggleLauncher, enabled: false };
+  const summonShortcut = formatQxShortcut(currentWindowBinding.key) ?? currentWindowBinding.key;
+  const launcherShortcut = formatQxShortcut(launcherBinding.key) ?? launcherBinding.key;
   const fileActionsShortcut = formatQxShortcut("Alt+F") ?? "Alt+F";
   const captureShortcut = formatQxShortcut("Ctrl+G") ?? "Ctrl+G";
   const [step, setStep] = useState<Step>("welcome");
@@ -209,15 +226,28 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
     onComplete();
   };
 
+  const shortcutCounts = countEnabledGlobalShortcuts(
+    settings.shortcuts,
+    settings.app_shortcuts,
+  );
+  const launcherIssue = globalShortcutIssue(launcherBinding, shortcutCounts);
+
+  const setOnboardingTheme = (nextTheme: ThemeMode) => {
+    setTheme(nextTheme);
+    patch("appearance", { ...settings.appearance, theme: nextTheme });
+  };
+
   const stepLabels: Array<{ id: Step; label: string }> = macOs
     ? [
         { id: "welcome", label: t("onboarding.step.welcome", "Welcome") },
+        { id: "setup", label: t("onboarding.step.setup", "Personalize") },
         { id: "files", label: t("onboarding.step.files", "Files") },
         { id: "optional", label: t("onboarding.step.optional", "Features") },
         { id: "done", label: t("onboarding.step.done", "Ready") },
       ]
     : [
         { id: "welcome", label: t("onboarding.step.welcome", "Welcome") },
+        { id: "setup", label: t("onboarding.step.setup", "Personalize") },
         { id: "done", label: t("onboarding.step.done", "Ready") },
       ];
   const stepIndex = Math.max(0, stepLabels.findIndex((item) => item.id === step));
@@ -259,19 +289,24 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
 
   const shortcutCards = [
     {
-      label: t("onboarding.shortcut.summon", "Summon Qx"),
-      key: summonShortcut,
-      description: t("onboarding.shortcut.summon.desc", "Search, launch, and switch modules"),
+      label: t("onboarding.shortcut.launcher", "Launcher Search"),
+      key: launcherShortcut,
+      description: launcherBinding.enabled
+        ? t("onboarding.shortcut.launcher.enabled", "Enabled · opens Qx directly on search")
+        : t("onboarding.shortcut.launcher.disabled", "Off · enable anytime in Settings → Shortcuts"),
+      enabled: launcherBinding.enabled,
     },
     {
       label: t("onboarding.shortcut.files", "File Actions"),
       key: fileActionsShortcut,
       description: t("onboarding.shortcut.files.desc", "Enabled by default on first install"),
+      enabled: true,
     },
     {
       label: t("onboarding.shortcut.capture", "Capture screen"),
       key: captureShortcut,
       description: t("onboarding.shortcut.capture.desc", "Start a precise region capture"),
+      enabled: true,
     },
   ];
 
@@ -310,7 +345,7 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
                   {t("onboarding.welcome.eyebrow", "Your desktop command layer")}
                 </div>
                 <h1 id="qx-onboarding-title" className="qx-onboarding-title">
-                  {t("onboarding.welcome.title", "Move at the speed of intent")}
+                  {t("onboarding.welcome.title", "Welcome to Qx")}
                 </h1>
                 <p className="qx-onboarding-lead">
                   {t(
@@ -339,6 +374,28 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
               ))}
             </div>
 
+            <div className="qx-onboarding-open-source" role="note">
+              <ShieldCheck size={18} aria-hidden="true" />
+              <div className="qx-onboarding-open-source-copy">
+                <strong>{t("onboarding.opensource.title", "Qx is completely free and open source")}</strong>
+                <span>
+                  {t(
+                    "onboarding.opensource.warning",
+                    "If you paid to download Qx, report that listing to the platform immediately. Get the safest, latest version only from the official website.",
+                  )}
+                </span>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => void openUrl(OFFICIAL_WEBSITE).catch(() => {})}
+              >
+                <Globe2 size={14} aria-hidden="true" />
+                qx.xpai.uk
+              </Button>
+            </div>
+
             <div className="qx-onboarding-command-rail">
               <span>{t("onboarding.welcome.try", "Your first command")}</span>
               <kbd>{summonShortcut}</kbd>
@@ -348,11 +405,130 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
               <kbd>Enter</kbd>
             </div>
             <div className="qx-onboarding-actions">
-              <Button variant="default" onClick={() => setStep(macOs ? "files" : "done")}>
+              <Button variant="default" onClick={() => setStep("setup")}>
                 {t("onboarding.welcome.continue", "Continue")}
               </Button>
               <Button variant="ghost" onClick={finish}>
                 {t("onboarding.skipAll", "Skip setup")}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {step === "setup" && (
+          <div className="qx-onboarding-body qx-onboarding-setup">
+            <h1 id="qx-onboarding-title" className="qx-onboarding-title">
+              {t("onboarding.setup.title", "Make Qx yours")}
+            </h1>
+            <p className="qx-onboarding-lead">
+              {t(
+                "onboarding.setup.lead",
+                "Choose the appearance and Launcher shortcut now. These settings take effect immediately and remain editable later.",
+              )}
+            </p>
+
+            <div className="qx-onboarding-setup-list">
+              <div className="qx-onboarding-setup-row">
+                <div className="qx-onboarding-setup-copy">
+                  <strong>{t("appearance.theme", "Theme")}</strong>
+                  <span>{t("appearance.theme.desc", "Choose the interface color scheme.")}</span>
+                </div>
+                <SegmentedControl
+                  value={theme}
+                  onChange={setOnboardingTheme}
+                  options={[
+                    { value: "light", label: t("appearance.theme.light", "Light") },
+                    { value: "dark", label: t("appearance.theme.dark", "Dark") },
+                    { value: "system", label: t("appearance.theme.system", "System") },
+                  ]}
+                />
+              </div>
+
+              <div className="qx-onboarding-setup-row">
+                <div className="qx-onboarding-setup-copy">
+                  <strong>{t("onboarding.setup.titleBar", "Window title bar")}</strong>
+                  <span>
+                    {t(
+                      "onboarding.setup.titleBar.desc",
+                      "Show platform-style minimize, maximize, and close controls above the Qx toolbar.",
+                    )}
+                  </span>
+                </div>
+                <SegmentedControl
+                  value={settings.appearance.title_bar_visible ? "visible" : "hidden"}
+                  onChange={(value) => patch("appearance", {
+                    ...settings.appearance,
+                    title_bar_visible: value === "visible",
+                  })}
+                  options={[
+                    { value: "visible", label: t("appearance.titleBar.visible", "Always Show") },
+                    { value: "hidden", label: t("appearance.titleBar.hidden", "Always Hide") },
+                  ]}
+                />
+              </div>
+
+              <div className="qx-onboarding-setup-row qx-onboarding-shortcut-setup">
+                <div className="qx-onboarding-setup-copy">
+                  <strong>{t("onboarding.setup.launcherShortcut", "Launcher Search shortcut")}</strong>
+                  <span>
+                    {launcherIssue
+                      ? t(
+                          `shortcuts.issue.${launcherIssue}`,
+                          launcherIssue === "reserved"
+                            ? "Reserved by the operating system."
+                            : launcherIssue === "invalid"
+                              ? "Invalid shortcut."
+                              : "This shortcut is already used by another global action.",
+                        )
+                      : t(
+                          "onboarding.setup.launcherShortcut.desc",
+                          "Show Qx directly on the main search screen and focus the search field.",
+                        )}
+                  </span>
+                </div>
+                <div className="qx-onboarding-shortcut-control">
+                  <Toggle
+                    value={launcherBinding.enabled}
+                    onChange={(enabled) => patchShortcut("toggle_launcher", {
+                      ...launcherBinding,
+                      enabled,
+                    })}
+                    ariaLabel={t("onboarding.setup.launcherShortcut", "Launcher Search shortcut")}
+                  />
+                  <ShortcutRecorder
+                    initial={launcherBinding.key}
+                    conflict={Boolean(launcherIssue)}
+                    onCommit={(binding) => patchShortcut("toggle_launcher", binding)}
+                    onCancel={() => {}}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="qx-onboarding-setup-summary">
+              <span>{t("onboarding.setup.preview", "Current Launcher shortcut")}</span>
+              <kbd>{launcherShortcut}</kbd>
+              <span>
+                {launcherBinding.enabled
+                  ? t("shortcuts.on", "On")
+                  : t("shortcuts.off", "Off")}
+              </span>
+            </div>
+
+            <div className="qx-onboarding-actions">
+              <Button
+                variant="default"
+                disabled={Boolean(launcherIssue)}
+                onClick={() => setStep(macOs ? "files" : "done")}
+              >
+                {t("onboarding.setup.continue", "Save and continue")}
+              </Button>
+              <Button
+                variant="ghost"
+                disabled={Boolean(launcherIssue)}
+                onClick={() => setStep(macOs ? "files" : "done")}
+              >
+                {t("onboarding.setup.skip", "Keep current settings")}
               </Button>
             </div>
           </div>
@@ -567,12 +743,12 @@ export default function OnboardingWizard({ onComplete }: OnboardingWizardProps) 
             <p className="qx-onboarding-lead">
               {t(
                 "onboarding.done.lead",
-                "Three shortcuts are ready now. You can review or change every binding in Settings → Shortcuts.",
+                "Your first-run choices are saved. You can review or change every binding in Settings → Shortcuts.",
               )}
             </p>
             <div className="qx-onboarding-shortcuts">
               {shortcutCards.map((item) => (
-                <div className="qx-onboarding-shortcut" key={item.label}>
+                <div className={`qx-onboarding-shortcut ${item.enabled ? "" : "is-disabled"}`} key={item.label}>
                   <div>
                     <div className="qx-onboarding-shortcut-label">{item.label}</div>
                     <div className="qx-onboarding-shortcut-desc">{item.description}</div>

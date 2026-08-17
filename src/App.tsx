@@ -1463,6 +1463,17 @@ function App() {
   }, [setResults, setTab]);
 
   useEffect(() => {
+    const showWelcomeGuide = () => {
+      setTab("launcher");
+      ignoreBlurUntilRef.current = Date.now() + 120_000;
+      void invoke("floating_set_onboarding_active", { active: true }).catch(() => {});
+      setShowOnboarding(true);
+    };
+    window.addEventListener("qx:show-onboarding", showWelcomeGuide);
+    return () => window.removeEventListener("qx:show-onboarding", showWelcomeGuide);
+  }, [setTab]);
+
+  useEffect(() => {
     const shellRadius = Math.min(8, Math.max(4, settings.appearance.border_radius));
     const controlRadius = Math.min(6, Math.max(4, settings.appearance.border_radius));
     const glassEnabled = settings.appearance.glass_enabled;

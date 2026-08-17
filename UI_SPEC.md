@@ -1275,11 +1275,13 @@ search={
 
 ## First-install Landing
 
-- macOS 与 Windows 首次安装都显示一次能力介绍。它是紧凑的桌面“能力控制台”，不是营销网页：同屏说明搜索、文件工具、剪贴板、捕获与扩展，并提供清晰的继续与跳过动作。
+- macOS 与 Windows 首次安装都显示一次能力介绍。它是紧凑的桌面“能力控制台”，不是营销网页：同屏说明搜索、文件工具、剪贴板、捕获与扩展，并提供清晰的继续与跳过动作。第一页必须明确说明 Qx 完全免费且开源；若用户从付费渠道下载，应提示立即向平台举报，并把 `https://qx.xpai.uk` 标记为获取安全、最新版本的官方网站。
 - Landing 可使用基于主题变量的网格、辉光、信号环与轻量动画表达高光科幻感；不得硬编码颜色，`prefers-reduced-motion` 时必须停用装饰动画。
-- 快捷键教学必须使用 `formatQxShortcut` 平台化显示。完成页至少列出当前窗口召唤、File Actions 与截图，其中 File Actions 明确标记为首次安装默认开启。
-- macOS 从 Landing 继续进入 FDA 与可选权限步骤；Windows 不显示 macOS 权限内容，直接进入快捷键完成页。完成或跳过后都持久化 `has_completed_onboarding`，同一安装不重复打扰。
+- Landing 后增加一次性个性化步骤：主题可选浅色、深色或跟随系统并立即预览；窗口标题栏可选择始终显示或隐藏；主搜索全局快捷键复用 `ShortcutRecorder`，支持启停、冲突提示与实时重注册。所有选择写入正式 Settings 端口，不维护引导专用副本。
+- 快捷键教学必须使用 `formatQxShortcut` 平台化显示。完成页至少列出主搜索、File Actions 与截图及其实际启用状态，其中 File Actions 明确标记为首次安装默认开启。
+- macOS 从个性化步骤继续进入 FDA 与可选权限步骤；Windows 不显示 macOS 权限内容，直接进入快捷键完成页。完成或跳过后都持久化 `has_completed_onboarding`，同一安装不重复打扰。
 - 引导期间窗口保持可见并保留独立拖拽握区；所有能力说明、按钮与状态均走 i18n，装饰图形对辅助技术隐藏。
+- Settings → General 提供“再次显示欢迎引导”动作，用于测试和复习。它必须从 Welcome 第一步重新挂载完整流程并启用引导期间的失焦保护，但不得清空、降级或伪造 `has_completed_onboarding`、权限状态、主题、标题栏或快捷键设置；完成后按正常引导协议退出。
 
 ## Internationalization And Content
 

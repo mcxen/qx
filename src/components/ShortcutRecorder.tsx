@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { ShortcutBinding } from "../modules/settings/store";
+import { useT } from "../i18n";
 import { formatQxShortcut, getQxDesktopPlatform } from "../utils/keyboard";
 
 function isModifierKey(key: string): boolean {
@@ -119,8 +120,10 @@ export default function ShortcutRecorder({
   /** When true, enter recording mode on mount (settings add-app flow). */
   autoStart?: boolean;
 }) {
+  const t = useT();
   const [recording, setRecording] = useState(false);
-  const [heldPreview, setHeldPreview] = useState("Press shortcut…");
+  const prompt = t("shortcuts.record.prompt", "Press shortcut…");
+  const [heldPreview, setHeldPreview] = useState(prompt);
   const containerRef = useRef<HTMLDivElement>(null);
   const onCommitRef = useRef(onCommit);
   const onCancelRef = useRef(onCancel);
@@ -133,7 +136,7 @@ export default function ShortcutRecorder({
     if (!recordingRef.current) return;
     recordingRef.current = false;
     setRecording(false);
-    setHeldPreview("Press shortcut…");
+    setHeldPreview(prompt);
     void resumeGlobalShortcuts();
     if (cancelled) onCancelRef.current();
   };
@@ -141,7 +144,7 @@ export default function ShortcutRecorder({
   const startRecording = () => {
     if (recordingRef.current) return;
     recordingRef.current = true;
-    setHeldPreview("Press shortcut…");
+    setHeldPreview(prompt);
     setRecording(true);
     void pauseGlobalShortcuts();
     // Keep focus so key events land here even after OS blur races.
@@ -180,7 +183,7 @@ export default function ShortcutRecorder({
         // Commit full chord (e.g. Alt+Shift+G, Cmd+K).
         recordingRef.current = false;
         setRecording(false);
-        setHeldPreview("Press shortcut…");
+        setHeldPreview(prompt);
         void resumeGlobalShortcuts().finally(() => {
           onCommitRef.current(binding);
         });
@@ -241,7 +244,7 @@ export default function ShortcutRecorder({
           startRecording();
         }}
       >
-        {recording ? heldPreview : formatQxShortcut(initial) || "None"}
+        {recording ? heldPreview : formatQxShortcut(initial) || t("shortcuts.none", "None")}
       </button>
       {recording && (
         <button
@@ -251,7 +254,8 @@ export default function ShortcutRecorder({
             event.preventDefault();
             stopRecording(true);
           }}
-          title="Cancel (Esc)"
+          title={t("shortcuts.record.cancel", "Cancel (Esc)")}
+          aria-label={t("shortcuts.record.cancel", "Cancel (Esc)")}
         >
           x
         </button>

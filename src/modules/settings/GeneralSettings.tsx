@@ -1,5 +1,6 @@
 import { useSettingsStore } from "./store";
-import { Row, Toggle, Select, SettingsCard } from "../../components/ui";
+import { Sparkles } from "lucide-react";
+import { Button, Row, Toggle, Select, SettingsCard } from "../../components/ui";
 import { useT } from "../../i18n";
 import TrayMenuSettings from "./TrayMenuSettings";
 
@@ -56,6 +57,25 @@ export default function GeneralSettings() {
             value={g.auto_update}
             onChange={(v) => patch("general", { ...g, auto_update: v })}
           />
+        </Row>
+      </SettingsCard>
+      <SettingsCard title={t("general.welcome.title", "Welcome & Setup")}>
+        <Row
+          title={t("general.welcome.replay", "Show welcome guide again")}
+          description={t(
+            "general.welcome.replay.desc",
+            "Replay the full introduction for testing or review. Your settings and permission status are preserved.",
+          )}
+        >
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => window.dispatchEvent(new Event("qx:show-onboarding"))}
+          >
+            <Sparkles size={14} aria-hidden="true" />
+            {t("general.welcome.open", "Open Welcome")}
+          </Button>
         </Row>
       </SettingsCard>
       <TrayMenuSettings />

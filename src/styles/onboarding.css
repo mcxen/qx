@@ -25,6 +25,7 @@
 }
 
 .qx-onboarding-card[data-step="welcome"],
+.qx-onboarding-card[data-step="setup"],
 .qx-onboarding-card[data-step="done"] {
   width: min(760px, 100%);
   position: relative;
@@ -44,6 +45,7 @@
 }
 
 .qx-onboarding-card[data-step="welcome"]::before,
+.qx-onboarding-card[data-step="setup"]::before,
 .qx-onboarding-card[data-step="done"]::before {
   position: absolute;
   z-index: -1;
@@ -155,9 +157,9 @@
 
 .qx-onboarding-landing .qx-onboarding-title {
   max-width: 520px;
-  font-size: clamp(26px, 4vw, 38px);
-  line-height: 1.04;
-  letter-spacing: -0.045em;
+  font-size: clamp(24px, 3.2vw, 32px);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
 }
 
 .qx-onboarding-landing .qx-onboarding-lead {
@@ -285,6 +287,44 @@
   line-height: 1.4;
 }
 
+.qx-onboarding-open-source {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 11px;
+  border: 1px solid color-mix(in srgb, var(--qx-stats-cpu) 34%, var(--qx-border-1));
+  border-radius: var(--qx-control-radius);
+  background: color-mix(in srgb, var(--qx-stats-cpu) 8%, var(--qx-bg-component-2));
+}
+
+.qx-onboarding-open-source > svg {
+  color: var(--qx-stats-cpu);
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--qx-stats-cpu) 44%, transparent));
+}
+
+.qx-onboarding-open-source-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.qx-onboarding-open-source-copy strong {
+  color: var(--qx-text-primary);
+  font-size: 11px;
+}
+
+.qx-onboarding-open-source-copy span {
+  color: var(--qx-text-tertiary);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.qx-onboarding-open-source .qx-shadcn-button {
+  flex: 0 0 auto;
+}
+
 .qx-onboarding-command-rail {
   display: flex;
   align-items: center;
@@ -304,6 +344,7 @@
 }
 
 .qx-onboarding-command-rail kbd,
+.qx-onboarding-setup-summary kbd,
 .qx-onboarding-shortcut kbd {
   flex: 0 0 auto;
   min-width: 34px;
@@ -341,6 +382,81 @@
 .qx-onboarding-shortcut:nth-child(2) {
   border-color: color-mix(in srgb, var(--qx-accent) 42%, var(--qx-border-1));
   box-shadow: inset 3px 0 0 color-mix(in srgb, var(--qx-accent) 72%, transparent);
+}
+
+.qx-onboarding-shortcut.is-disabled {
+  opacity: 0.68;
+}
+
+.qx-onboarding-setup .qx-onboarding-lead {
+  max-width: 620px;
+}
+
+.qx-onboarding-setup-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.qx-onboarding-setup-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  min-height: 68px;
+  padding: 11px 12px;
+  border: 1px solid var(--qx-border-1);
+  border-radius: var(--qx-control-radius);
+  background: color-mix(in srgb, var(--qx-bg-component-2) 88%, transparent);
+}
+
+.qx-onboarding-setup-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.qx-onboarding-setup-copy strong {
+  color: var(--qx-text-primary);
+  font-size: 12px;
+}
+
+.qx-onboarding-setup-copy span {
+  color: var(--qx-text-tertiary);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.qx-onboarding-shortcut-setup:has(.has-conflict) {
+  border-color: color-mix(in srgb, var(--qx-danger) 42%, var(--qx-border-1));
+}
+
+.qx-onboarding-shortcut-setup:has(.has-conflict) .qx-onboarding-setup-copy span {
+  color: var(--qx-danger);
+}
+
+.qx-onboarding-shortcut-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qx-onboarding-setup-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--qx-accent) 24%, var(--qx-border-1));
+  border-radius: var(--qx-control-radius);
+  background: color-mix(in srgb, var(--qx-accent-soft) 42%, var(--qx-bg-component-2));
+  color: var(--qx-text-secondary);
+  font-size: 11px;
+}
+
+.qx-onboarding-setup-summary > span:last-child {
+  margin-left: auto;
+  color: var(--qx-text-tertiary);
 }
 
 .qx-onboarding-permission-summary {
@@ -546,6 +662,21 @@
 
   .qx-onboarding-command-rail {
     flex-wrap: wrap;
+  }
+
+  .qx-onboarding-open-source,
+  .qx-onboarding-setup-row {
+    grid-template-columns: 1fr;
+  }
+
+  .qx-onboarding-open-source > svg {
+    display: none;
+  }
+
+  .qx-onboarding-open-source .qx-shadcn-button,
+  .qx-onboarding-setup-row > .qx-shadcn-toggle-group,
+  .qx-onboarding-shortcut-control {
+    justify-self: stretch;
   }
 }
 
