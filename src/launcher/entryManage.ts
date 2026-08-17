@@ -22,7 +22,7 @@ export function isManageableLauncherEntry(item: AppEntry): boolean {
   if (item.path.startsWith("__qx:plugin:")) return true;
   if (item.path.startsWith("__qx:cmd:")) return true;
   if (
-    /^__qx:(clipboard|screencap|rss|weather|qx-ai|macros|documents|qx-tty|settings)$/.test(
+    /^__qx:(clipboard|screencap|rss|weather|qx-ai|macros|documents|file-actions|qx-tty|settings)$/.test(
       item.path,
     )
   ) {

@@ -32,6 +32,28 @@ QxShell（Top Bar / Main Area / Bottom Bar）
   提交自绘 SVG/Canvas 或硬编码业务颜色。历史图表只能展示真实源数据或持久化真实采样。
 - 平台差异由宿主端口处理，插件不要判断 macOS/Windows 后自行拼系统命令。
 
+### 1.2 发现、兼容与权限不是同一件事
+
+Qx 对外部插件采用 Manifest 驱动的发现机制，不维护允许安装的插件 ID 白名单：
+
+1. 安装器校验并解包 `.qx-plugin` 到 `~/.qx/plugins/<id>/`；目录名必须与
+   `manifest.id` 一致。
+2. 启动或用户点击 Settings → Extensions → Rescan 时，Rust 在 blocking worker
+   中扫描已安装目录并读取 `manifest.json`。宿主不持续监听文件系统，也不会因为作者
+   只把源码目录复制进仓库就自动注册插件。
+3. 被发现只表示“出现在已安装列表”。只有插件已启用、`platforms` 匹配当前系统、
+   `min_app_version` 被当前 Qx 满足且依赖可解析时，宿主才注册 command / panel、创建
+   sandbox iframe、后台任务或全局快捷键。Provider-only 插件可以保持 Manifest-only，
+   直到对应 surface 或 command 真正使用时再懒加载。
+4. 执行后仍受能力白名单约束。`manifest.permissions` 只申请宿主已经定义的
+   `context.*` 能力；危险 Rust 命令要求精确 `invoke:<command>`。被发现或启用都不等于
+   获得任意 Tauri、文件系统或网络权限。
+
+内置 React 模块是另一条链：它们随 Qx 编译，不扫描 `src/modules/` 自动发现，必须进入
+宿主的静态模块目录、route composition、图标与可用性注册。插件作者通常不需要修改这条链；
+核心贡献者应按 [`docs/module-port-inventory.md`](../../docs/module-port-inventory.md) 的
+“新内置模块”清单登记，避免模块能打开却无法置顶、搜索或绑定快捷键。
+
 旧包没有 `names` / `descriptions` 时仍可安装，但宿主只显示包内原始 `name` / `description`；
 插件仓库的打包校验会拒绝继续发布缺少这些本地化映射的版本。设置偏好使用 `labels` /
 `descriptions` / `placeholders`，命令使用 `titles` / `descriptions`，面板使用 `titles`，

@@ -46,6 +46,7 @@ pub(super) fn default_shortcut_bindings() -> BTreeMap<String, ShortcutBinding> {
         ("toggle_capture_controls", "Alt+Shift+C", false),
         ("rss", "Alt+R", false),
         ("open:file-actions", "Alt+F", true),
+        ("open:file-preview", "Alt+O", false),
     ] {
         shortcuts.insert(
             id.to_string(),
@@ -440,8 +441,13 @@ pub(crate) fn register_shortcuts(app: &AppHandle, settings: &Settings) -> Result
         let context = format!("register dynamic shortcut {id}");
         let registration_succeeded = match target {
             DynamicShortcutTarget::OpenRoute(route) => {
-                if settings.builtin_modules.modules.contains_key(&route)
-                    && !settings.builtin_modules.is_enabled(&route)
+                let module_id = if route == "file-preview" {
+                    "file-actions"
+                } else {
+                    route.as_str()
+                };
+                if settings.builtin_modules.modules.contains_key(module_id)
+                    && !settings.builtin_modules.is_enabled(module_id)
                 {
                     continue;
                 }
@@ -515,6 +521,10 @@ mod dynamic_shortcut_tests {
         assert_eq!(
             dynamic_shortcut_target("open:file-actions"),
             Some(DynamicShortcutTarget::OpenRoute("file-actions".into()))
+        );
+        assert_eq!(
+            dynamic_shortcut_target("open:file-preview"),
+            Some(DynamicShortcutTarget::OpenRoute("file-preview".into()))
         );
         assert_eq!(
             dynamic_shortcut_target("plugin:com.example.tools:format"),

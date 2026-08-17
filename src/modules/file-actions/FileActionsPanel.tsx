@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
 import {
   Archive,
   ArchiveRestore,
@@ -20,29 +19,21 @@ import { useQxListSelection } from "../../hooks/useQxListSelection";
 import { useQxModuleShell } from "../../hooks/useQxModuleShell";
 import { useLocale, useT } from "../../i18n";
 import {
-  getFileManagerSelection,
   performFileSelectionOperation,
   type FileOperationResult,
   type FileSelectionSnapshot,
 } from "../../system";
 import { useStore } from "../../store";
 import FileQuickPreview from "./FileQuickPreview";
+import {
+  clearRecentFiles,
+  loadRecentFiles,
+  recordRecentFile,
+  type RecentFileEntry,
+} from "./recentFiles";
+import { useFileManagerSelection } from "./useFileManagerSelection";
 
 type Operation = "rename" | "collect" | "compress" | "extract";
-type OperationHistory = { operation: Operation; completedAtMs: number; inputs: string[]; outputs: string[]; affectedCount: number };
-const HISTORY_KEY = "qx.fileActions.history.v1";
-
-function loadHistory(): OperationHistory[] {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? "[]").slice(0, 5); } catch { return []; }
-}
-
-const EMPTY_SELECTION: FileSelectionSnapshot = {
-  revision: 0,
-  capturedAtMs: 0,
-  source: "none",
-  items: [],
-  error: null,
-};
 
 function defaultName(
   operation: Operation,
@@ -63,59 +54,24 @@ export default function FileActionsPanel() {
   const locale = useLocale();
   const setTab = useStore((state) => state.setTab);
   const listRef = useRef<HTMLDivElement>(null);
-  const [snapshot, setSnapshot] = useState<FileSelectionSnapshot>(EMPTY_SELECTION);
+  const { snapshot, loading, error, setError } = useFileManagerSelection();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [operation, setOperation] = useState<Operation>("collect");
   const [name, setName] = useState(() => t("fileActions.defaultFolder", "New Folder"));
-  const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<FileOperationResult | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [history, setHistory] = useState<OperationHistory[]>(loadHistory);
+  const [history, setHistory] = useState<RecentFileEntry[]>(loadRecentFiles);
   const clearHistory = () => {
     setHistory([]);
-    try { localStorage.removeItem(HISTORY_KEY); } catch { /* Storage may be disabled. */ }
+    clearRecentFiles();
   };
 
-  const applySnapshot = useCallback((next: FileSelectionSnapshot) => {
-    setSnapshot(next);
-    if (next.items.length === 0) setPreviewOpen(false);
-    setSelectedIndex((current) => Math.max(0, Math.min(current, next.items.length - 1)));
-    setLoading(false);
-  }, []);
-
   useEffect(() => {
-    let cancelled = false;
-    let unlisten: (() => void) | undefined;
-    void listen<FileSelectionSnapshot>("file-manager:selection", (event) => {
-      if (!cancelled) applySnapshot(event.payload);
-    }).then((stop) => {
-      if (cancelled) stop();
-      else unlisten = stop;
-    });
-    void getFileManagerSelection()
-      .then((next) => {
-        if (!cancelled) applySnapshot(next);
-      })
-      .catch((cause) => {
-        if (!cancelled) {
-          setError(String(cause));
-          setLoading(false);
-        }
-      });
-    const retry = window.setTimeout(() => {
-      void getFileManagerSelection().then((next) => {
-        if (!cancelled && next.revision >= snapshot.revision) applySnapshot(next);
-      }).catch(() => {});
-    }, 450);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(retry);
-      unlisten?.();
-    };
-  }, [applySnapshot]);
+    if (snapshot.items.length === 0) setPreviewOpen(false);
+    setSelectedIndex((current) => Math.max(0, Math.min(current, snapshot.items.length - 1)));
+  }, [snapshot.items.length, snapshot.revision]);
 
   const chooseOperation = useCallback((next: Operation) => {
     setOperation(next);
@@ -130,6 +86,10 @@ export default function FileActionsPanel() {
   }, [snapshot, t]);
 
   const selected = snapshot.items[selectedIndex] ?? null;
+  useEffect(() => {
+    if (!selected || historyOpen) return;
+    setHistory(recordRecentFile(selected));
+  }, [historyOpen, selected?.path]);
   const togglePreview = useCallback(() => {
     if (selected?.exists) {
       setHistoryOpen(false);
@@ -158,12 +118,6 @@ export default function FileActionsPanel() {
           : { revision: snapshot.revision, operation, name: name.trim() } as const;
       const next = await performFileSelectionOperation(request);
       setResult(next);
-      const entry = { operation, completedAtMs: Date.now(), inputs: snapshot.items.map((item) => item.name), outputs: next.outputPaths.map((path) => path.split(/[\\/]/).pop() ?? path), affectedCount: next.affectedCount };
-      setHistory((current) => {
-        const updated = [entry, ...current].slice(0, 5);
-        try { localStorage.setItem(HISTORY_KEY, JSON.stringify(updated)); } catch { /* Keep session history if storage is unavailable. */ }
-        return updated;
-      });
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -319,11 +273,14 @@ export default function FileActionsPanel() {
         {historyOpen ? (
           <main className="qx-file-actions-workspace">
             <header className="qx-file-actions-workspace-head">
-              <div><h2>{t("fileActions.history", "History")}</h2><p>{t("fileActions.historyHint", "The five most recent successful operations, newest first.")}</p></div>
+              <div><h2>{t("fileActions.history", "History")}</h2><p>{t("fileActions.historyHint", "The five most recently selected or previewed files, newest first.")}</p></div>
               {history.length ? <Button type="button" size="sm" variant="outline" onClick={clearHistory}><Trash2 size={14} aria-hidden="true" />{t("fileActions.clearHistory", "Clear")}</Button> : null}
             </header>
             <section className="qx-file-actions-editor">
-              {history.length ? history.map((entry) => <div className="qx-file-actions-notice" key={entry.completedAtMs}><History size={16} aria-hidden="true" /><span><strong>{operationOptions.find((option) => option.id === entry.operation)?.label ?? entry.operation}</strong><br />{entry.inputs.join(", ")} → {entry.outputs.join(", ")}<br /><small>{new Date(entry.completedAtMs).toLocaleString(locale)} · {t("fileActions.historyCount", "{n} item(s)").replace("{n}", String(entry.affectedCount))}</small></span></div>) : <div className="qx-file-actions-empty"><History size={28} aria-hidden="true" /><strong>{t("fileActions.noHistory", "No operation history")}</strong></div>}
+              {history.length ? history.map((entry) => {
+                const EntryIcon = entry.kind === "folder" ? Folder : File;
+                return <div className="qx-file-actions-notice" key={entry.path}><EntryIcon size={16} aria-hidden="true" /><span><strong>{entry.name}</strong><br />{entry.parent}<br /><small>{t("fileActions.viewedAt", "Viewed {time}").replace("{time}", new Date(entry.viewedAtMs).toLocaleString(locale))}</small></span></div>;
+              }) : <div className="qx-file-actions-empty"><History size={28} aria-hidden="true" /><strong>{t("fileActions.noHistory", "No recently viewed files")}</strong></div>}
             </section>
           </main>
         ) : previewOpen && selected ? (

@@ -496,6 +496,7 @@ export const DEFAULT_SETTINGS: Settings = {
     toggle_capture_controls: { key: "Alt+Shift+C", enabled: false },
     rss: { key: "Alt+R", enabled: false },
     "open:file-actions": { key: "Alt+F", enabled: true },
+    "open:file-preview": { key: "Alt+O", enabled: false },
   },
   app_shortcuts: {},
   plugins: [],
@@ -916,4 +917,6 @@ export const SHORTCUT_LABELS: Record<string, string> = {
   recapture_last_region: "Recapture Last Region",
   toggle_capture_controls: "Toggle Capture Island",
   rss: "Open RSS Reader",
+  "open:file-actions": "Open File Actions",
+  "open:file-preview": "Preview Selected Files",
 };

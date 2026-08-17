@@ -38,12 +38,15 @@
 - Qx 在主窗口获得焦点前捕获前台 Finder / Explorer 选择，保存带单调 revision 的不可变快照；Windows 已用真实 Explorer 多选响应验证。
 - 新增内置 File Actions：左侧使用标准列表显示选择项，中间提供重命名、新建文件夹归拢、ZIP 压缩和批量 ZIP 解压。
 - 新增选择快照范围内的 Space 快速预览：图片、音视频、PDF、文本、文件夹、常见压缩包和 OOXML Office 按需加载；Esc/上下键遵循 Shell 层级与选择协议。
-- File Actions 右上角可切换最近 5 条成功操作历史；记录按完成时间倒序，可清空且不持久化完整路径。
+- File Actions 右上角可切换最近文件历史；记录最近选择或预览过的 5 个文件，按查看时间倒序且按路径去重，可清空。它不是重命名、压缩或解压操作日志，旧操作历史会被丢弃。
 - File Actions 新增安装默认全局快捷键：macOS `Option+F`、Windows `Alt+F`，默认开启；旧设置只补齐缺失项，不覆盖用户已有绑定。
 - 首次安装引导升级为跨平台高光能力 Landing：同屏介绍搜索、文件、剪贴板、捕获与扩展，按平台展示当前窗口、File Actions、截图快捷键；macOS 随后进入权限步骤，Windows 直接完成。
 - 首屏新增“Qx 完全免费且开源”的反付费下载提醒，付费下载时提示举报平台，并将 `https://qx.xpai.uk` 作为官方最新版入口。
 - 引导新增一次性个性化步骤：即时选择浅色/深色/跟随系统主题、窗口标题栏显示策略，并通过正式 ShortcutRecorder 启停或录制主搜索快捷键；完成页展示实际绑定与启用状态。
 - Settings → General 新增“再次显示欢迎引导”，可从 Welcome 首步重放完整流程用于测试，不清除现有设置或权限状态。
+- 修复 File Actions 未进入 Launcher 可置顶/主页入口目录，以及 Rust `navigate` 已发出但 App 原生事件白名单漏接 `file-actions` 导致 `Option+F` / `Alt+F` 显示窗口却不进入模块的问题。
+- 新增独立 QxPreview：在 File Actions 扩展设置中可录制 `Option+O` / `Alt+O` 建议键，直接预览 Finder / Explorer 当前选择；复用 revision 快照和跨平台全局快捷键端口，多选可用上下键切换，Space/再次按键关闭。
+- PPTX 预览根据分栏可用宽度动态缩放，并监听窗口/分栏尺寸变化重新适宽。
 - 根级 Rust 文件操作拒绝过期快照、目标覆盖、跨目录归拢、符号链接归档、ZIP 路径穿越、超量条目和超过 20 GiB 的展开结果。
 - 插件端口 `context.files.selection()` / `performSelectionOperation()` 分别需要 `file-selection` / `file-operations` 权限；插件不能提交快照之外的路径。
 
@@ -56,6 +59,7 @@
 - [ ] Windows 安装态：快捷键唤起后左栏保持选择；逐项实测重命名、归拢、压缩、批量解压与冲突错误。
 - [ ] 新配置首装态：macOS/Windows 均展示 Landing；Option+F/Alt+F 可直接打开 File Actions，完成后重启不重复展示。
 - [ ] 首装个性化：官网按钮在系统浏览器打开；主题实时切换；标题栏即时显隐；主搜索快捷键录制、冲突校验、完成后后台唤起均生效。
+- [ ] macOS/Windows 安装态：置顶 File Actions 后主页立即出现；`Option+F` / `Alt+F` 打开 File Actions；启用 QxPreview 建议键后可直接预览多选文件并用上下键切换。
 
 ## Fix — 空白 @回复对象
 

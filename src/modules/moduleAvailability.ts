@@ -5,7 +5,8 @@ export function isBuiltinModuleEnabled(
   value: string,
   settings: Settings = useSettingsStore.getState().settings,
 ): boolean {
-  const id = normalizeBuiltinModuleId(value);
+  const normalized = normalizeBuiltinModuleId(value);
+  const id = normalized === "file-preview" ? "file-actions" : normalized;
   if (!isConfigurableBuiltinModule(id)) return true;
   return settings.builtin_modules.modules[id] !== false;
 }

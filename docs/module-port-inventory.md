@@ -29,7 +29,7 @@
 | 二维网格索引 | **`qxGridNavigation`** | Workbench Gallery 由宿主处理 | 通用纯函数；不得放回 PluginHost 专用算法 |
 | Actions 数据 / 右栏渲染 | **`QxShellAction[]` + `primaryActionId` + `QxActionList` / `QxActionSections`** | Workbench 发布 action descriptor；自定义 HTML panel 用 **`context.ui.mountActions`** | 稳定动作 ID 驱动 Bottom Bar 与 Enter；`primary:false` 的自定义 panel 动作只进入 Context / Actions 菜单。完整 Context 型页面只投影非 primary 业务动作，多个领域组统一交给 `QxActionSections` 跳过空组，并关闭重复 Actions 菜单。manifest 启动/后台命令及宿主 reload 不混入插件业务 Action；宿主仅以保留 `__qx:*` id 追加结构动作和通用能力：资讯详情自动提供离线 HTML 快照保存，序列化当前 `body/content/fields/sections/replies`，以 4 路有界并发把 HTTPS 和包内 asset 图片转成 Data URL 后写入 Downloads，任一图片失败则不落盘且不回传插件 handler；Shell 通过 `data-qx-list-index` + `navigation.onChange` 统一处理条目右键，模块不得复制菜单 |
 | 插件 Panel / command 全局快捷键 | Rust `register_shortcuts` + `settings.shortcuts` + `ShortcutRecorder` | 所有 Panel 提供 `open:<route>`；`manifest.shortcuts[]` 命令使用 `plugin:<pluginId>:<command>`，触发事件后仍由插件 `runCommand` 执行 | OS 注册统一归 Rust，录制 pause/resume 不丢绑定；Panel 再按 toggle 隐藏；不得写入 `app_shortcuts`、伪装原生 App 或在前端直接注册全局键 |
-| 插件注册表发现 / 缺失恢复 | **`usePluginRegistry.refresh` / `resolveCommand` / `resolvePanel`** | 无；插件只声明 manifest 与运行时导出 | 已安装列表读取内存快照，不定时扫描目录；用户 Rescan 才完整异步重载。执行目标缺失时统一等待当前加载、补刷一次并重试；原生目录枚举必须在 blocking worker 上运行，不占 UI/Tauri 调度线程 |
+| 插件注册表发现 / 缺失恢复 | **外部：`marketplace::list_installed_plugins` + `usePluginRegistry.refresh` / `resolveCommand` / `resolvePanel`；内置：`builtin` + `catalog` 静态目录** | 外部插件只声明 manifest 与运行时导出，不申请 ID 白名单 | 外部已安装目录按 Manifest 发现；已安装列表读取内存快照，不定时扫描目录，用户 Rescan 才完整异步重载。发现后再过 enabled/platform/min-version/dependency 和 permission 门禁。执行目标缺失时统一等待当前加载、补刷一次并重试；原生目录枚举必须在 blocking worker 上运行，不占 UI/Tauri 调度线程。`src/modules/` 不自动发现，内置漏登记必须由下方清单阻止 |
 | 插件 Context「关于」 | 内置模块按领域自行提供辅助说明 | Manifest `names` / `descriptions` + `author`，由 `PluginHost` 固定投影 | 固定在 Context 末尾；名称与描述统一走 `pluginLabels` 本地化端口，缺少当前语言时回退英文；插件不得自绘重复 About |
 | 模块搜索框 | **`QxModuleSearch`**（默认不自动聚焦；首要搜索页显式 `autoFocus`） | Workbench 由宿主渲染受控 query；custom panel 自绘 input | Workbench handler 必须同步回画；pointer 进入表单/详情后不得抢回搜索焦点；Launcher 搜索另见 SearchBar |
 | Top Bar 内容筛选 | **`QxShell.topbarFilters`**（宿主固定 Select） | Workbench `tabs[] / filters[]` 由 PluginHost 投影；custom panel 应改用 Workbench | 模块/插件只发布 `id / label / value / options`；不得在 `trailing` 自绘 tabs、SegmentedControl 或 Select；命令按钮进入 Bottom Bar / Actions |
@@ -75,7 +75,7 @@
 | 模块 | 表面 | Shell / Esc | 列表 / 主从 | 搜索 loading | 数据 / 缓存 | 缺口 / 备注 |
 |------|------|-------------|-------------|--------------|-------------|-------------|
 | **clipboard** | 全屏面板（**核心**，eager import） | `useQxModuleShell` + stepBack | `useQxListSelection` | `QxModuleSearch` | Rust clipboard DB；**打开端口** `openSession.prefetchClipboardOpen`（热窗口 history 并发；idle warm；SWR 先画 store）；**冷存储** `loadMoreClipboardHistory`（列表滚到底 / 键盘近底加载） | 快捷键打开：navigate 即预取热窗口，滚底再拉更早记录；面板非 lazy |
-| **file-actions** | Finder / Explorer 选择列表 + 操作/快速预览工作区 | `useQxModuleShell` + preview inner Esc | `useQxListSelection` + `QxResizableSplit` | — | 根级 Rust `file_manager` + `file_preview`；插件复用 `context.files.selection/performSelectionOperation` | Space 预览、上下键换项；预览读取同样受 snapshot revision 约束并按格式懒加载；写操作在 blocking worker |
+| **file-actions / file-preview** | Finder / Explorer 选择列表 + 操作工作区；独立 QxPreview 只读 surface | `useQxModuleShell` + preview inner Esc；QxPreview Space 关闭 | `useQxListSelection` + `QxResizableSplit` | — | 共用 `useFileManagerSelection`、最近查看文件历史、根级 Rust `file_manager` + `file_preview`；插件复用 `context.files.selection/performSelectionOperation` | `open:file-actions` 进入操作，`open:file-preview` 直接预览；两者共享 snapshot revision、最近 5 个按路径去重的选择/预览历史与模块可用性。历史不是操作日志；上下键换项；格式渲染器懒加载；PPTX 跟随预览区域适宽；写操作仅在 File Actions blocking worker |
 | **rss** | feeds / articles / detail | shell 各层；`goBack` 嵌套；Enter 遵循阅读层级 | `useQxListSelection` + `useQxMasterDetail`（文章） | `QxModuleSearch` + `QxListLoading` | `rss.db` + 默认目录 seed + 阅读进度 + 64px 本地图标缓存 + 正文图片缓存 + `rss_meta.last_refresh_all_at` | RSS 作为深层内置 React 工作流直接复用 Workbench 的 Shell、selection、master-detail、split、media、reply、search/loading 与 `QxActionSections` 端口；文件夹/日期分组、受信任清洗后的原文 HTML、阅读进度和领域 Dialog 留在 RSS，不绕进插件 iframe RPC。右侧 Context 是唯一完整 Action 面并按领域分组，不再投影 Bottom Bar Actions 菜单或裸键；Enter 依次进入订阅、打开文章、正文返回文章列表并恢复列表焦点，`Cmd/Ctrl+R` 刷新当前订阅，`Cmd/Ctrl+D` 保存文章，`Cmd/Ctrl+S` 下载 HTML，`Cmd/Ctrl+Shift+R` 全部刷新。嵌套 leave 已对齐 host Esc；单 Feed 刷新用 activity，刷新全部按 Rust `rss:refresh-progress` 的真实 completed/total 驱动 Island；后台刷新可在 Settings 选择关闭或 6 / 12 / 24 小时，复用同一全量流程与刷新锁，面板未挂载也可运行，手动全量刷新重新计时；favicon 30 天复用并支持 stale fallback；正文远程图片通过 `rss_cache_article_image` 复用宿主代理、逐文件扩展 asset protocol scope 并转成本地 asset URL，避免 WKWebView / WebView2 网络栈差异 |
 | **documents** | 文件列表 + 编辑 | shell | list + master-detail | `QxModuleSearch` | 本地文件 invoke | 无重大缺口 |
 | **screencap** | 录制 / 历史主从预览 | shell + 录制 / 详情 inner Esc | `useQxListSelection` + list/gallery + right-side detail | 标题槽（非搜索） | Rust capture | 布局选择持久化；Windows RDP still-frame 走 GDI，picker ready 后重放 session；截图完成由宿主 Island 提供快捷复制；权限动作统一由捕获灵动岛承载 |
@@ -124,11 +124,23 @@
 
 ### 新内置模块
 
-1. `useQxModuleShell({ leave, esc, islandState, onKeyDown })`
-2. 列表 → `useQxListSelection` + 可选 `useQxMasterDetail`；网格索引 → `qxGridNavigation`
-3. 搜索 → `QxModuleSearch`；loading → `QxListLoading`
-4. Context Actions → `QxActionList`，并把同一 `QxShellAction[]` 交给 Shell，以 `primaryActionId` 引用主动作
-5. 不要手写 bare Enter、Actions 触发器或 `kbd: CmdOrCtrl+K`；QxShell 从同一动作集合派生
+内置模块不是目录发现；新增或重命名必须逐项核对：
+
+1. 领域 UI 使用 `useQxModuleShell({ leave, esc, islandState, onKeyDown })`；列表用
+   `useQxListSelection` + 可选 `useQxMasterDetail`，网格用 `qxGridNavigation`。
+2. 在 `src/plugin/builtin.ts` 登记可见名称、关键词、panel/preferences；在
+   `src/modules/catalog.ts` 登记成熟度、启停；在 `src/modules/builtinIcons.ts` 登记图标。
+3. 在 `App.tsx` composition root 登记 lazy import、route 接收白名单、render switch 与
+   模块 label；同步 `src/store.ts` tab 类型。一个领域有多个 surface route 时，统一映射
+   `moduleAvailability`，不得用别名绕过模块禁用。
+4. Launcher/主页需要可发现、置顶或 Quick Entry 时，同步 `quickEntries`、
+   `searchMetadata` 与 `entryManage` 的稳定 `__qx:<route>` 协议；新增全局打开键同步 Rust
+   defaults/registration、前端 Settings defaults/labels 和迁移测试。
+5. 搜索用 `QxModuleSearch`，loading 用 `QxListLoading`；Context Actions 交给
+   `QxActionList`，并把同一 `QxShellAction[]` 交给 Shell，以 `primaryActionId` 引用主动作。
+6. 新增用户文案补 `src/i18n.ts`；公共命令、权限或插件端口同步 `public/doc/`；最后更新
+   本表并运行 `npm run check`。不要手写 bare Enter、Actions 触发器、全局 Esc 或
+   `kbd: CmdOrCtrl+K`。
 
 ### 新市场插件
 

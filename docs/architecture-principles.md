@@ -50,7 +50,9 @@ manifest 启动命令、后台 interval 与宿主 reload 不得自动混入当�
 
 通过**注册与适配**扩展，而不是改核心 switch 长尾。
 
-- 内置模块：`catalog` / `builtin` 注册，避免在 `App.tsx` 堆业务分支。
+- 内置模块：`catalog` / `builtin` 静态注册，`App.tsx` 只保留 composition-root route
+  组装；`src/modules/` 不按目录自动发现。外部插件则按已安装目录 + Manifest 发现，二者
+  不得混称为同一注册机制。
 - Home 灵动岛模式：`home-island/registry` + content-only modes。
 - Island session：producer 推 session / 注册 action；surface 只订阅。
 - Raycast 转换器处于 Frozen 状态，仅保留历史入口；正式插件从上游源代码出发，直接依赖 Qx host ports，不继续扩展 converter shim。

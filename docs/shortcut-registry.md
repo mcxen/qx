@@ -226,6 +226,9 @@ flowchart LR
   - plugin 命令（emit `plugin-global-shortcut`，前端 registry 校验并执行）
 - 前端 **禁止**再 `register()` 插件热键（迁完后删除 `plugin/registry.ts` 内 global register）。
 - 模块禁用（`builtin_modules`）→ 对应 `module.open.*` 不注册。
+- 一个模块可暴露多个 route shortcut，例如 File Actions 的 `open:file-actions` 与
+  `open:file-preview`；后者的可用性仍映射到 `builtin_modules.file-actions`，不能因
+  route 名不同绕过模块禁用。
 - 插件卸载 → 贡献条目从列表消失；绑定可留在 settings（再装恢复）或 GC。
 
 ### 5.2 In-App

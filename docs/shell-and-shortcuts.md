@@ -200,6 +200,12 @@ runtime 发布 `plugin-global-shortcut`，再由 registry 校验启用状态并�
 | `toggle_capture_controls` | `Alt+Shift+C` | `Alt+Shift+C` | false |
 | `rss` | `Alt+R` | `Alt+R` | false |
 | `open:file-actions` | `Alt+F`（Option+F） | `Alt+F` | true |
+| `open:file-preview` | `Alt+O`（Option+O） | `Alt+O` | false |
+
+`open:file-preview` 是 File Actions 的独立 QxPreview surface；模块可用性仍归属
+`file-actions`。它与 File Actions 共用唤起前 Finder / Explorer selection snapshot，
+但直接进入只读预览 route。旧设置缺少新增默认项时，读取迁移必须补齐并原子写回，
+不得只在单次进程内存中合并。
 
 启动时单个全局键若被系统或第三方程序占用，只记录诊断并继续创建托盘和首启界面；
 不得因为快捷键注册失败中止 `setup`，否则初始隐藏窗口会表现成 Qx 完全无法启动。

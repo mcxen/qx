@@ -22,6 +22,7 @@ export type QuickEntryTargetOption = {
 export const QUICK_ENTRY_TARGETS = [
   { value: "clipboard", label: "Clipboard History", subtitle: "Pinned, frequent, links", titleKey: "launcher.clipboard", subtitleKey: "launcher.clipboard.desc" },
   { value: "file-search", label: "File Search", subtitle: "Find recent files and folders", titleKey: "launcher.fileSearch", subtitleKey: "launcher.fileSearch.desc" },
+  { value: "file-actions", label: "File Actions", subtitle: "Operate on the current Finder or Explorer selection", titleKey: "launcher.file-actions", subtitleKey: "launcher.file-actions.desc" },
   { value: "qx-ai", label: "QxAI", subtitle: "Chat and agent tasks", titleKey: "launcher.qx-ai", subtitleKey: "launcher.qx-ai.desc" },
   { value: "rss", label: "RSS Reader", subtitle: "Feeds and articles", titleKey: "launcher.rss", subtitleKey: "launcher.rss.desc" },
   { value: "screencap", label: "Screenshot & Recording Module", subtitle: "Screenshots and MP4/MOV recording", titleKey: "launcher.screencap", subtitleKey: "launcher.screencap.desc" },

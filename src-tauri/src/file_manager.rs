@@ -150,7 +150,9 @@ pub(crate) fn capture_before_summon(app: &AppHandle) {
     static CAPTURE_GENERATION: AtomicU64 = AtomicU64::new(0);
     let generation = CAPTURE_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let Some(hint) = selection_hint() else {
-        publish_snapshot(app, build_snapshot("none", Vec::new(), None));
+        // Qx itself or another non-file-manager app is in front. Preserve the
+        // most recent immutable selection instead of erasing the context while
+        // the user switches between File Actions and QxPreview.
         return;
     };
     let app = app.clone();

@@ -69,6 +69,13 @@ fn default_global_shortcuts_enable_capture_file_actions_and_window_toggle() {
         })
     );
     assert_eq!(
+        settings.shortcuts.get("open:file-preview"),
+        Some(&super::ShortcutBinding {
+            key: "Alt+O".to_string(),
+            enabled: false,
+        })
+    );
+    assert_eq!(
         settings.shortcuts.get("toggle_launcher"),
         Some(&super::ShortcutBinding {
             key: default_toggle_launcher_shortcut().to_string(),

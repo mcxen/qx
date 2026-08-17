@@ -126,18 +126,43 @@ function PptxPreview({ buffer }: { buffer: ArrayBuffer }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    let viewer: { destroy: () => void } | undefined;
+    let viewer: { destroy: () => void; setZoom: (percent: number) => Promise<void> } | undefined;
+    let slideWidth = 0;
+    let resizeObserver: ResizeObserver | undefined;
+    let resizeFrame = 0;
     const root = rootRef.current;
     if (!root) return;
+    const fitToWidth = () => {
+      if (!viewer || !slideWidth || !root.clientWidth) return;
+      window.cancelAnimationFrame(resizeFrame);
+      resizeFrame = window.requestAnimationFrame(() => {
+        const percent = Math.max(25, Math.min(300, (root.clientWidth / slideWidth) * 100));
+        void viewer?.setZoom(percent);
+      });
+    };
     void import("@file-viewer/pptx").then(async ({ PptxViewer }) => {
       viewer = await PptxViewer.open(buffer.slice(0), root, {
         workerUrl: pptxWorkerUrl,
         fitMode: "contain",
         lazySlides: true,
         listOptions: { windowed: true, initialSlides: 3, batchSize: 3 },
+        onSlideSize: (size) => {
+          const width = Number(size.width);
+          if (Number.isFinite(width) && width > 0) slideWidth = width;
+          fitToWidth();
+        },
+        onSlideRendered: () => fitToWidth(),
       });
+      resizeObserver = new ResizeObserver(fitToWidth);
+      resizeObserver.observe(root);
+      fitToWidth();
     }).catch((cause) => setError(String(cause)));
-    return () => { viewer?.destroy(); root.replaceChildren(); };
+    return () => {
+      window.cancelAnimationFrame(resizeFrame);
+      resizeObserver?.disconnect();
+      viewer?.destroy();
+      root.replaceChildren();
+    };
   }, [buffer]);
   return error ? <PreviewError message={error} /> : <div ref={rootRef} className="qx-file-preview-pptx" />;
 }

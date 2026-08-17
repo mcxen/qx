@@ -2,7 +2,7 @@
 
 ## 文件管理器选择端口
 
-文件管理器上下文由根级 `file_manager` 服务承担：`floating_panel` 在显示 Qx 前只采集轻量来源提示（Windows Explorer HWND / macOS Finder 前台状态），worker 随后解析有序选择并发布 revision 快照。内置 File Actions 与插件 `context.files.*` 都依赖该快照；重命名、归拢、ZIP 压缩/解压在 blocking worker 执行并再次校验 revision。根级 `file_preview` 只按当前 revision/index 提供有界元数据、目录和字节流，WebView 不获得通用本地路径读取能力；PDF/Office/压缩包渲染器按格式懒加载。
+文件管理器上下文由根级 `file_manager` 服务承担：`floating_panel` 在显示 Qx 前只采集轻量来源提示（Windows Explorer HWND / macOS Finder 前台状态），worker 随后解析有序选择并发布 revision 快照。内置 File Actions、只读 `file-preview` route 与插件 `context.files.*` 都依赖该快照；两个内置 surface 通过 `useFileManagerSelection` 消费同一 revision，模块启停统一归属 `file-actions`。重命名、归拢、ZIP 压缩/解压在 blocking worker 执行并再次校验 revision。根级 `file_preview` 只按当前 revision/index 提供有界元数据、目录和字节流，WebView 不获得通用本地路径读取能力；PDF/Office/压缩包渲染器按格式懒加载，PPTX 渲染器监听可用区域并动态适宽。
 
 > 状态：Current · 适用版本：v0.5.13 · Owner：Core · 最后复核：2026-07-14
 >
@@ -144,16 +144,25 @@ tab = "plugin:*"   → PluginPanelViewport
 
 ### 3.3 插件系统（内置 + 外部）
 
-**内置模块注册** (`registerAllBuiltins()`):
-- 启动时调用，将 6 个内置模块的 command + panel 信息写入 `usePluginRegistry`
-- 每个内置 command 的 `run()` 调用 `navigateToTab(mod.id)`
-- 内置模块仍通过 React 组件渲染（非 iframe）
+**内置模块（静态注册）**：
+- `src/plugin/builtin.ts` 的 `BUILTIN_MODULES` 生成 Settings/Launcher 消费的合成
+  `InstalledPlugin` 条目；`src/modules/catalog.ts` 管成熟度和可禁用性，
+  `src/modules/builtinIcons.ts` 管图标，`App.tsx` composition root 负责 lazy view 与 route。
+- `src/modules/` 不是自动扫描目录。新增内置模块必须完成上述登记，并同步搜索/主页入口、
+  快捷键 route、i18n 与 `docs/module-port-inventory.md`；不能只创建 React 文件。
+- 内置模块通过 React 组件渲染，不创建插件 iframe；启停统一读取 `builtin_modules`。
 
-**外部插件** (`plugin/runtime.ts` + `plugin/pluginRuntimeHtml.ts`):
-- 从 `~/.qx/plugins/` 加载 zip 包
-- 每个插件运行在独立的 sandboxed iframe 中
-- 通过 `postMessage` RPC 与主进程通信
-- 支持 Tauri invoke、storage、toast 等 API
+**外部插件（目录发现）** (`marketplace::list_installed_plugins` + `plugin/registry.ts`)：
+- 安装器先校验 `.qx-plugin`，再解包到 `~/.qx/plugins/<id>/`。Rust 在 blocking worker
+  中枚举直接子目录并读取 `manifest.json`；目录 ID 必须合法且与 Manifest ID 一致。
+- 启动加载一次已安装快照；Settings 的 Rescan 才触发完整 refresh。没有持续目录 watcher，
+  也没有允许执行的插件 ID 白名单。
+- Registry 先保留全部发现项供 Settings 管理，再按 enabled、`platforms`、
+  `min_app_version` 与依赖拓扑选择 runtime；不兼容插件不得创建 iframe、command、panel、
+  后台任务或全局快捷键。仅提供 surface 的插件可 Manifest-only 懒加载。
+- 可执行插件运行在独立 sandboxed iframe，通过 `postMessage` RPC 请求宿主能力。权限不是
+  发现机制：`manifest.permissions` 与精确 `invoke:<command>` 在 RPC 边界再次做能力白名单
+  校验，插件不直接继承主 WebView 的 Tauri capability。
 
 ### 3.4 主题系统
 

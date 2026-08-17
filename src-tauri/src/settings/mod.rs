@@ -1110,6 +1110,10 @@ pub(crate) fn read_settings() -> Settings {
     if settings.plugin_registries.is_empty() {
         settings.plugin_registries = default_plugin_registries();
     }
+    let had_missing_default_shortcuts = Settings::default()
+        .shortcuts
+        .keys()
+        .any(|id| !settings.shortcuts.contains_key(id));
     shortcuts::merge_missing_default_shortcuts(&mut settings);
     shortcuts::migrate_swapped_window_launcher_defaults(&mut settings);
     shortcuts::migrate_windows_factory_host_shortcuts(&mut settings);
@@ -1126,6 +1130,14 @@ pub(crate) fn read_settings() -> Settings {
         settings.agent.default_model = "openrouter/auto".to_string();
     }
     sync_builtin_runtime_flags(&settings);
+    // Persist additive shortcut migrations once. Otherwise an older settings
+    // file keeps relying on an in-memory merge and can lose new factory
+    // bindings when another process or older frontend writes the file.
+    if had_missing_default_shortcuts {
+        if let Err(error) = write_settings(&settings) {
+            eprintln!("persist default shortcut migration: {error}");
+        }
+    }
     settings
 }
 

@@ -132,6 +132,7 @@ const BUILTIN_PLUGIN_SHORTCUTS: Record<string, string[]> = {
   "builtin:clipboard": ["clipboard"],
   "builtin:rss": ["rss"],
   "builtin:screencap": ["capture_screenshot", "record_gif", "toggle_capture_controls"],
+  "builtin:file-actions": ["open:file-preview"],
 };
 const PLATFORM_LABELS: Record<PluginPlatform, string> = {
   macos: "macOS",
