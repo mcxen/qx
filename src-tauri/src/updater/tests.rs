@@ -306,7 +306,10 @@ fn replaces_app_bundle_and_prepares_target_for_launch() {
     assert!(!staged.exists(), "staged app should be removed");
     assert!(backup.exists(), "previous app should be kept as backup");
     let target_executable = target.join("Contents/MacOS/Qx");
-    assert_eq!(fs::read(&target_executable).expect("read target"), b"new");
+    assert_eq!(
+        fs::read(target.join("Contents/Resources/test-payload")).expect("read target payload"),
+        b"new"
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -361,7 +364,7 @@ fn downloads_verifies_and_stages_app_zip() {
 
     assert!(staged.ends_with("Qx.app"));
     assert_eq!(
-        fs::read(staged.join("Contents/MacOS/Qx")).expect("read staged executable"),
+        fs::read(staged.join("Contents/Resources/test-payload")).expect("read staged payload"),
         b"downloaded"
     );
     assert_eq!(
@@ -391,7 +394,14 @@ fn write_fake_app_bundle(app: &Path, executable_contents: &[u8]) -> PathBuf {
     )
     .expect("write Info.plist");
     let executable = macos_dir.join("Qx");
-    fs::write(&executable, executable_contents).expect("write executable");
+    // Use a real Mach-O so current codesign versions embed entitlements in the
+    // fixture. A script/generic executable can be signed successfully while
+    // silently omitting the entitlement blob on macOS 15. Keep the test's
+    // old/new marker in Resources so the Mach-O remains valid.
+    fs::copy("/usr/bin/true", &executable).expect("copy fixture executable");
+    let resources = app.join("Contents/Resources");
+    fs::create_dir_all(&resources).expect("create app resources");
+    fs::write(resources.join("test-payload"), executable_contents).expect("write fixture payload");
     executable
 }
 
@@ -429,12 +439,26 @@ fn read_test_app_entitlements(app: &Path) -> String {
     );
     let mut combined = String::from_utf8_lossy(&output.stdout).into_owned();
     combined.push_str(&String::from_utf8_lossy(&output.stderr));
-    let plist_start = combined.find("<?xml").expect("entitlements plist start");
-    let plist_end = combined[plist_start..]
-        .find("</plist>")
-        .map(|offset| plist_start + offset + "</plist>".len())
-        .expect("entitlements plist end");
-    combined[plist_start..plist_end].to_string()
+    if let Some(plist_start) = combined.find("<?xml") {
+        let plist_end = combined[plist_start..]
+            .find("</plist>")
+            .map(|offset| plist_start + offset + "</plist>".len())
+            .expect("entitlements plist end");
+        return combined[plist_start..plist_end].to_string();
+    }
+    // macOS 15 may render ad-hoc entitlements in codesign's stable dictionary
+    // form instead of XML. Discard the bundle-specific Executable line so the
+    // before/after comparison still verifies the entitlement payload itself.
+    let dictionary_start = combined
+        .find("[Dict]")
+        .unwrap_or_else(|| panic!("entitlements dictionary start: {combined:?}"));
+    combined[dictionary_start..]
+        .lines()
+        .filter(|line| !line.starts_with("Executable=") && !line.starts_with("warning:"))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
 }
 
 #[cfg(target_os = "macos")]

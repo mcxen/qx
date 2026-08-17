@@ -15,6 +15,8 @@ use tauri::{command, AppHandle};
 
 #[cfg(target_os = "windows")]
 mod brightness_windows;
+#[cfg(target_os = "macos")]
+mod capture_macos;
 
 #[cfg(target_os = "macos")]
 const DISPLAY_CACHE_TTL: Duration = Duration::from_millis(750);
@@ -1014,6 +1016,11 @@ pub(crate) fn capture_region_from_monitor(
     width: u32,
     height: u32,
 ) -> Result<image::RgbaImage, String> {
+    #[cfg(target_os = "macos")]
+    {
+        return capture_macos::capture_region(monitor, x, y, width, height);
+    }
+
     #[cfg(target_os = "windows")]
     {
         let monitor_x = monitor.x().map_err(|error| format!("display x: {error}"))?;
@@ -1060,7 +1067,7 @@ pub(crate) fn capture_region_from_monitor(
         );
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
         monitor
             .capture_region(x, y, width, height)

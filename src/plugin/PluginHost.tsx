@@ -63,6 +63,7 @@ import {
   syncPluginWorkbenchIsland,
 } from "./pluginIsland";
 import { islandHost } from "../island";
+import { useWorkbenchHtmlExportAction } from "./useWorkbenchHtmlExportAction";
 
 export function PluginHost() {
   const loaded = usePluginRegistry((state) => state.loaded);
@@ -482,6 +483,8 @@ export function PluginPanelViewport() {
   }, [workbench]);
 
   const selectedWorkbenchDetail = selectedWorkbenchItem?.detail || workbench?.detail;
+  const workbenchDetailVisible = workbenchDetailOpen
+    || Boolean(workbench && !workbench.items?.length && workbench.detail);
 
   useEffect(() => {
     if (workbenchDetailOpen && !selectedWorkbenchDetail) {
@@ -553,6 +556,16 @@ export function PluginPanelViewport() {
       return true;
     });
   }, [selectedWorkbenchDetail]);
+
+  const workbenchHtmlExportAction = useWorkbenchHtmlExportAction({
+    pluginId,
+    pluginName: pluginDisplayName,
+    panelTitle: workbench?.title,
+    itemTitle: selectedWorkbenchItem?.title,
+    detail: selectedWorkbenchDetail,
+    visible: workbenchDetailVisible,
+    existingActions: [...workbenchActionDescriptors, ...workbenchFormActionDescriptors],
+  });
 
   const primaryWorkbenchAction = workbench
     ? workbenchActionDescriptors.find((action) => action.primary && !action.disabled)
@@ -663,6 +676,7 @@ export function PluginPanelViewport() {
         tone: (action.tone === "danger" ? "danger" : action.primary ? "primary" : "normal") as QxShellAction["tone"],
         onClick: () => runWorkbenchAction(action.id),
       })),
+      ...(workbenchHtmlExportAction ? [workbenchHtmlExportAction] : []),
     ]
     : itemActions.map((action, index) => ({
         id: `item-${action.id}`,
@@ -680,6 +694,7 @@ export function PluginPanelViewport() {
         workbench,
         workbenchActionDescriptors,
         workbenchCloseDetailAction,
+        workbenchHtmlExportAction,
         workbenchOpenDetailAction,
         workbenchPrimaryActionId,
       ]);

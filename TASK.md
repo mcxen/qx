@@ -1,5 +1,21 @@
 > Settings/About 面板的结构、设计令牌、Row/Card 规范与响应式断点见 [docs/settings-panel.md](docs/settings-panel.md)。
 
+## Feature — 资讯 Workbench 通用 HTML 保存
+
+**状态**：代码、文档与自动验证完成，等待桌面交互复核。
+
+- 已打开且含正文、结构化内容或评论的声明式 Workbench 由宿主自动提供“保存为 HTML”，插件无需逐个声明或申请文件权限。
+- HTML 使用触发瞬间的可信快照，包含标题、正文、图片、字段、分节与评论树；评论保留楼层、作者、父子层级、回复对象、点赞和时间。
+- 已有非 SVG Data URL、普通 HTTPS 图片和插件包内表情/资源统一嵌入 HTML，并按图片魔数校验；4 路有界并发，单图 12 MiB、总计 64 MiB，任一图片失败则不保存需要联网的半成品。
+- 上游评论总数大于当前已加载数时在文件内明确标注范围；保存走跨平台 Downloads 端口，同名文件不覆盖，结果由 Bottom Island 反馈。
+
+### 验证
+
+- [x] `npx tsc --noEmit` / `npm run check` / `npm run build`
+- [x] HTML 序列化 smoke：UTF-8 往返、HTML 转义、结构化正文/字段/分节、评论父子层级与部分加载计数。
+- [x] 图片离线化 smoke：远程 URL / 包内 asset 去重、Data URL 替换、评论图片与失败不落盘。
+- [ ] 桌面态：V2EX / Hacker News / 贴吧等详情出现通用 Action，HTML 可在浏览器打开且正文、图片和评论完整可读。
+
 ## Fix — Windows Tray native-menu USER handle exhaustion
 
 **状态**：代码修复、自动验证与 Windows 短时资源回归完成，等待安装版长时运行复核。
@@ -1791,6 +1807,7 @@
 
 ### 截图与多显示器统一捕获（2026-07-15）
 
+- **macOS 系统栏完整截图（2026-08-17）**：静态截图从 xcap 的 `CGWindowListCreateImage` 窗口合成切到根级 display adapter 的 `CGDisplayCreateImage` framebuffer，再按 Retina 比例裁剪；隐藏受保护 picker 后给 WindowServer 80ms（马赛克 110ms）收敛，菜单栏、应用标题栏与 Dock 不再被全屏圈选层覆盖后遗漏。录屏与 Windows 捕获路径保持不变。
 - **Windows xcap 与圈选兼容层（2026-07-19）**：Windows 构建启用 xcap 0.9 的 WGC still-frame/recording 后端；根级 `display` 服务捕获 WGC 失败或 panic 时自动降级到 GDI，并修正 compatible bitmap 的透明 alpha；录屏原生流初始化失败、断开或连续无帧时改走同一系统捕获端口轮询，不再由 screencap 私自选择后端；全局截图/录屏快捷键失败写入诊断日志。圈选 picker 与多屏 shade 同时显式设置 WebView2 alpha=0 背景，避免 Windows 只透明化原生窗口、WebView 控制器仍以不透明黑底覆盖桌面。远程桌面/虚拟显示驱动仍需 Windows 真机 smoke test。
 - **Windows RDP 截图兼容与完成 Island（2026-07-25）**：远程桌面会话直接绕过可能返回黑帧的 WGC still-frame；实体机会话保留 WGC，并对成功返回的近全黑空帧执行 GDI 回退。picker WebView 挂载后通过 ready IPC 重放 session、重新置前聚焦。截图完成由宿主 Bottom Island 显示文件名与快捷复制，成功/失败在原 session 回馈。
 - **RSS 真实刷新进度（2026-07-25）**：移除 Feed/Article Island 的固定 42/55 模拟百分比；单 Feed HTTP 请求显示 activity，全量刷新读取数据库全部订阅并逐项请求，以 Rust `rss:refresh-progress` 的 completed/total/failed 驱动确定进度；Feeds 与 Articles Actions 均提供 Refresh All。

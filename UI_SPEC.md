@@ -480,6 +480,13 @@ Top Bar 包含搜索、可选 leading 和宿主统一渲染的内容筛选。**�
   失败不得阻塞当前图片或改变导航顺序。
   不得注入宿主类名 CSS 或自建 lightbox 来修右栏。
 - Workbench 的局部异步反馈使用 `item.status` / `detail.status`，已有图片和字段在刷新时继续可见。状态可传真实 `progress: 0–100`，或批量任务的 `completed / total / failed`，宿主通过统一 activity 协议计算百分比；未知进度不得模拟。分批/批量结果通过 `mountWorkbench()` controller 的 `updateItems({ upsert, removeIds, order, selectedId })` 按稳定 id 合并；SDK 仍向宿主发布完整纯数据快照。并发整快照可用单调 `revision` 做 latest-wins，旧 revision 不得覆盖新数据、选择或详情。
+- 已打开且含 `detail.body`、`detail.content[]` 或 `detail.replies.items[]` 的资讯/社区 Workbench
+  由宿主自动提供“保存为 HTML”Action；插件不得重复声明。导出以触发瞬间的可信详情快照为准，
+  同时包含标题、正文、结构化图片/字段/分节和当前已加载的完整评论树，并在上游总数大于已加载数时
+  写明快照范围。所有远程图片和插件包内 `asset-image` 必须在有界并发、单图 12 MiB / 总计
+  64 MiB 预算内转为 `data:image`；已有 Data URL 和包内资源同样必须通过图片魔数校验，可能继续引用
+  外部资源的 SVG 不进入离线导出；任一图片下载、类型校验或嵌入失败时整个导出失败，不得保存仍依赖 URL
+  的伪离线文件。文件通过宿主 Downloads 端口异步保存且不覆盖同名文件，进度/成功/失败进入 Bottom Island。
 - Workbench 管理型详情可在 `detail.form.actions` 发布表单底部动作；同一业务对象的连续 controls 可用稳定 `group.id` 合并为一个 fieldset，并由首个 control 的 `group.action` 提供组内操作。宿主统一渲染按钮、危险色和事件 selectedId，插件不得为参数删除等常规管理重新自绘 DOM。
 - Settings → Extensions 的 Installed / Plugin Store 与当前页工具必须共用一行紧凑工具栏。Plugin Store 在该行依次放仓库筛选、仓库源管理与唯一的“重新扫描”；每个仓库及“全部插件库”的插件数量直接显示在筛选下拉项，内容区不得再画数量标签或重复一行“刷新仓库源”。“重新扫描”在商店页强制重新读取当前仓库源。
 - Top Bar 必须保持单行。筛选、状态和 trailing 操作不得换行，不得移动到第二行，也不得用 `grid-column: 1 / -1` 做窄屏兜底。
@@ -855,6 +862,7 @@ V2EX / Weather / DevTxt / Screen Capture / Macro / Plugin Host：
 Screenshot & Recording Module（截图录屏模块）：
 
 - 截图与录屏共用一个模块、历史列表和显示器选择协议；截图保存 PNG，录屏保存 MP4/MOV 并可按需转 GIF。
+- macOS 静态截图必须从完整显示器帧取样，选区允许覆盖菜单栏、应用窗口标题栏与 Dock；受保护的圈选层隐藏后必须等待 WindowServer 提交，再抓取显示器 framebuffer，不能以“工作区”或仅普通应用窗口列表代替整屏。
 - 显示器枚举、稳定 ID、内置/外接/主屏判断、鼠标所在屏幕和跨后端映射属于 Qx 系统级能力；截图、窗口管理、浮窗与热插拔监听必须消费同一服务，不得在模块内各自判断。圈选打开时先立即检测一次，随后以约 40ms 间隔检测鼠标所在显示器并随跨屏移动；一旦开始框选、已有选区或进入确认流程就停止跟随，避免编辑状态被迁移。圈选层同时为每个显示器创建轻量、鼠标穿透的黑色半透明遮罩，只有鼠标所在显示器保留交互层。
 - Qx 首次启动后的第一次唤起也必须出现在鼠标所在显示器与当前 macOS Space；不得沿用隐藏窗口创建时的主屏、DPI 或桌面归属，后续唤起遵循同一规则。
 - 点击截图/录屏入口或对应快捷键后直接进入拖拽圈选，不显示圈选前模式条；窗口捕获和 OCR 后端能力继续保留但不进入圈选控制栏。跨屏时由鼠标所在显示器自动决定目标，其他显示器使用不抢焦点的浅黑遮罩；捕获目标必须携带显示器 ID，不得把外接屏圈选错误映射回主屏。

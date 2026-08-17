@@ -77,6 +77,15 @@ open-detail / close-detail 再声明插件 action，也不要假设 `kbd: "Enter
 主导航。Raycast 的 `ActionPanel` 映射为同一份 `actions[]`，不再额外声明 Bottom Bar
 或 Enter handler。
 
+资讯、文章和社区帖子只要在详情发布 `body`、有序 `content[]` 或 `replies.items[]`，宿主就会在
+详情态自动加入“保存离线 HTML”。插件不要重复声明导出 Action，也不需要为此申请 `system` 权限；
+宿主只序列化已通过 Workbench 信任边界的当前快照，包含正文、图片、字段、分节和当前已加载的
+评论树。已有 Data URL、HTTPS 图片与包内 `asset-image` 由宿主有界并发读取并按文件魔数校验；
+SVG 可能继续引用外部资源，因此不进入严格离线导出。其余图片转成 Data URL；单图上限 12 MiB、
+一次导出新增图片总量上限 64 MiB。任一图片无法嵌入时不会生成
+仍依赖网络的半成品；全部图片完成后才无覆盖地写入用户 Downloads。若评论 `total` 大于当前 `items.length`，HTML 会明确
+标注已保存数量；插件若要求全量评论，应先通过自己的分页/加载流程把它们发布到 `items[]`。
+
 ## 2. 文档地图
 
 - 布局、Workbench、Actions、Esc、主题：[`plugin-ui-guidelines.md`](./plugin-ui-guidelines.md)
@@ -348,6 +357,8 @@ Actions 不是说明列表。每个可见业务 action 都必须执行一个真�
 
 `menuKey` 与 `kbd` 不同：前者仅在 Actions 菜单打开时生效，不会抢走搜索输入；后者是可选的
 窗口内完整快捷键，业务动作使用 `CmdOrCtrl+…` 等可移植写法，不能用单字母 `kbd` 抢占输入。
+插件 action id 不得使用宿主保留的 `__qx:` 前缀；打开/关闭详情和资讯 HTML 保存等宿主动作
+不会进入插件 `onAction`。
 
 无法用 Workbench 表达而保留自定义 HTML 的面板，必须通过 `context.ui.mountActions()` 发布
 宿主 Actions，不能在内容区自绘命令工具栏。设置 `primary: false` 的动作只进入 Context / Actions

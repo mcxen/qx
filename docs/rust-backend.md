@@ -27,7 +27,7 @@
 | `windows_process.rs` | Windows GUI 进程的系统边界：从 `SystemRoot` 解析 inbox executable，直接读取 Machine/User 环境注册表组成桌面 PATH；OCR / toast 暂时通过 PowerShell 进入 WinRT 时必须走带硬超时和进程树清理的输出 helper。用户主动打开的终端/CLI shell 不属于系统采样。 |
 | `apps.rs` + `apps/icons.rs` | Windows 从开始菜单快捷方式枚举应用，以 Shell `HICON` 栅格化为 `%LOCALAPPDATA%/Qx/icons` 下的紧凑 PNG；该目录由 Tauri `$LOCALDATA/Qx/**` asset scope 放行，前端只通过 `convertFileSrc()` 加载绝对路径。 |
 | `runtime/` | **线程调度系统能力**：主线程 UI 事务（`ui`/`run_ui`）、blocking 算力池、跨平台主线程 id，以及仅在异常/恢复时写诊断的低频 event-loop health probe；所有窗口/剪贴板操作必须经此层。见 [runtime-threading.md](./runtime-threading.md) |
-| `display.rs` / `display/brightness_windows.rs` / `display_windows.rs` / `display_macos.m` | Qx 系统级显示器服务：统一枚举、捕获映射与显示器控制；macOS 内嵌 DisplayServices 与 DDC/CI I2C/IOAVService，Windows 使用 WMI 与 Win32 Monitor Configuration；公共 `display_brightness_*` 覆盖内置屏与外接屏并返回原始值及发现/读写诊断，不启动外部显示器工具。 |
+| `display.rs` / `display/capture_macos.rs` / `display/brightness_windows.rs` / `display_windows.rs` / `display_macos.m` | Qx 系统级显示器服务：统一枚举、捕获映射与显示器控制；macOS 静态帧从完整 display framebuffer 读取并按 Retina 比例裁剪，保留菜单栏、窗口标题栏与 Dock，Windows still-frame 使用 WGC/GDI 兼容层；macOS 另内嵌 DisplayServices 与 DDC/CI I2C/IOAVService，Windows 显示控制使用 WMI + Win32 Monitor Configuration。公共 `display_brightness_*` 覆盖内置屏与外接屏并返回原始值及发现/读写诊断，不启动外部显示器工具。 |
 | `desktop_windows.rs` | Qx 系统级顶层窗口清单：可见窗枚举、几何、z 序、按显示器裁剪与逻辑坐标换算；公共 IPC `desktop_windows_list`；截图窗选等只消费该服务，禁止 feature 内直接 `xcap::Window` |
 | `display_monitor.rs` | 复用系统级显示器服务监听插拔并发出 `display:changed`；常驻轮询只读轻量 topology count（macOS CoreGraphics active IDs），仅变化时刷新完整 xcap capture inventory，不得每轮重建捕获对象 |
 

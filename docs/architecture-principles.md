@@ -39,6 +39,10 @@
 只走 `escapeAction` / `useEscBack`。
 插件宿主固定使用这一路径：Bottom Bar 投影 primary 与 Actions 菜单，Context 投影其余业务动作；
 manifest 启动命令、后台 interval 与宿主 reload 不得自动混入当前面板的业务 Actions。
+宿主自身的结构动作（打开/关闭详情）和跨插件通用能力（例如把资讯详情快照连同已加载评论树
+保存为 HTML）使用保留的 `__qx:*` id 在信任边界追加；它们不回传插件 `onAction`，插件也不得
+声明或覆盖这些 id。通用能力只能消费 Workbench 已发布的纯数据，不读取插件私有 `raw`；图片
+离线化只复用受限 HTTP 二进制端口和已校验的包内 asset 解析，不允许把任意本地路径扩成导出输入。
 
 新增文件时先问：它的「唯一变化原因」是什么？说不清就拆。
 
@@ -201,7 +205,7 @@ Feature（如 `screencap`）只保留：**session / 工作流 / 历史 / UI 语�
 高频录屏路径必须复用固定尺寸的捕获与颜色转换缓冲区；禁止为每一帧重复分配 GDI
 bitmap、RGBA、RGB + YUV 整帧内存。按目标 FPS 等待时保留队列中的最新帧，不得先清空再等待下一次显示刷新；
 捕获 worker 由主线程完成 picker 隐藏后显式放行，禁止用固定启动 sleep 猜测 UI 时序。
-截图隐藏 picker 后只保留一个 compositor frame 的收敛窗口，并使用快速 PNG 编码设置；
+截图隐藏 picker 后使用平台适配的 compositor 收敛窗口（macOS 等待 WindowServer 提交后读取完整 display framebuffer），并使用快速 PNG 编码设置；
 平台捕获与编码重活继续留在 blocking worker。
 录屏历史封面在捕获 worker 已持有首帧像素时一次性生成并持久化；History 不得依赖
 WebKit/WebView2 对本地 `<video preload="metadata">` 自动绘制首帧。旧记录可以保留

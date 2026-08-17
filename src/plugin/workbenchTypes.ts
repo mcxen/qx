@@ -608,7 +608,7 @@ function normalizeActions(value: unknown): PluginWorkbenchAction[] {
       disabled: raw.disabled === true,
       tone: normalizeTone(raw.tone),
     };
-  }).filter((action) => Boolean(action.id));
+  }).filter((action) => Boolean(action.id) && !action.id.startsWith("__qx:"));
 }
 
 function normalizeImage(value: unknown, detail = false): PluginWorkbenchItem["image"] {

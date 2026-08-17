@@ -40,7 +40,16 @@ pub(crate) fn capture(
         };
         std::thread::sleep(std::time::Duration::from_millis(grace_ms));
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    // Hiding the protected, full-display picker is asynchronous in
+    // WindowServer. Give system-owned layers (menu bar, Dock, and app window
+    // chrome) one compositor turn before taking the framebuffer snapshot.
+    std::thread::sleep(std::time::Duration::from_millis(if has_mosaic {
+        110
+    } else {
+        80
+    }));
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     std::thread::sleep(std::time::Duration::from_millis(if has_mosaic {
         32
     } else {

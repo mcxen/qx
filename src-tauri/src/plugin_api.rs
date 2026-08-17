@@ -289,10 +289,14 @@ pub fn plugin_file_write_base64(
 }
 
 #[tauri::command]
-pub fn plugin_file_read_base64(id: String, path: String) -> Result<String, String> {
-    let target = plugin_file_path(&id, &path)?;
-    let bytes = std::fs::read(&target).map_err(|e| format!("read plugin file: {e}"))?;
-    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+pub async fn plugin_file_read_base64(id: String, path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let target = plugin_file_path(&id, &path)?;
+        let bytes = std::fs::read(&target).map_err(|e| format!("read plugin file: {e}"))?;
+        Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+    })
+    .await
+    .map_err(|error| format!("read plugin file task failed: {error}"))?
 }
 
 #[tauri::command]
