@@ -1,0 +1,4 @@
+interface:
+  display_name: "Project Image Generation"
+  short_description: "Generate and integrate Qx plugin image assets"
+  default_prompt: "Use the project image-generation workflow to create a new asset and wire it into Qx."

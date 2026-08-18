@@ -8,7 +8,7 @@
 my-plugin/
 ├── manifest.json
 ├── index.js
-├── icon.png
+├── icon-generated.png
 ├── README.md
 ├── lib/
 └── assets/
@@ -49,7 +49,7 @@ my-plugin/
     "zh-CN": "一个专注的 Qx 模块"
   },
   "author": "Your Name",
-  "icon": "icon.png",
+  "icon": "icon-generated.png",
   "screenshots": ["screenshot-1.png"],
   "platforms": ["macos", "windows"],
   "keywords": ["example"],
@@ -115,7 +115,7 @@ my-plugin/
 | `version` | 是 | SemVer |
 | `description`, `author` | 否 | 默认描述与作者；市场插件提供描述时必须同时提供 `descriptions.en` 与 `descriptions.zh-CN` |
 | `descriptions` | 市场插件是 | 本地化描述；至少包含 `en` 与 `zh-CN` |
-| `icon`, `screenshots` | 否 | 包内相对路径 |
+| `icon`, `screenshots` | 否 | 包内相对路径；社区插件默认使用 `icon-generated.png`，市场展示优先使用 `manifest.icon` |
 | `platforms` | 否 | `macos`、`windows`、`linux` 的去重数组；空或省略表示全平台。非空时宿主会从市场列表隐藏不匹配的包（例如 Windows 不展示 macOS-only 的 Homebrew），并拒绝安装与运行 |
 | `keywords` | 否 | 搜索别名 |
 | `permissions` | 否 | 最小能力集合 |
@@ -129,6 +129,30 @@ my-plugin/
 | `surfaceProviders` | 否 | 声明宿主登记的轻量 Tray/Home 数据源；当前 Home 支持 `rss.unread-latest`，可用 `presentation` 选择 `compact` / `standard` / `wide`，不加载插件入口、不提供视觉代码 |
 | `min_app_version` | 否 | 最低 Qx 版本 |
 | `pubkey`, `signature` | 否 | 可选 ed25519 签名 |
+
+### 图标与 Pages 静态商店
+
+社区插件图标默认由 Qx 仓库的 `skills/imagegen` Skill 生成。最终图标应是插件目录根部的
+独立 `icon-generated.png`（建议 512×512 方形 PNG），并在 Manifest 中显式声明：
+
+```json
+{ "icon": "icon-generated.png" }
+```
+
+`scripts/package-plugins.mjs` 会把该文件放入 `.qx-plugin`；`store/scripts/prepare.mjs`
+会优先读取同一个 Manifest 路径，把图标和 `manifest.screenshots` 声明的截图同步到 Pages
+静态站。`store/public/catalog.json`、`store/public/icons/` 和
+`store/public/screenshots/` 是构建产物，不要手工编辑或把它们当成资源源文件。
+
+新增或更新插件后，在 `qx-plugins/` 根目录执行：
+
+```bash
+npm run package:plugins
+npm run store:build
+```
+
+然后检查 `index.json`、插件包和 `store/dist/` 的列表/详情页。合并到 `main` 后，Package
+Plugins 工作流负责更新索引和包，Plugin Store 工作流负责重新构建并按配置部署 Pages。
 
 ### Preferences
 
@@ -221,14 +245,16 @@ HTTPS 地址，也可以是相对索引的包路径。镜像应保持 `index.jso
 建议发布流程：
 
 1. 检查 `.qx-plugin` 包结构并验证 Manifest/导出一致性。
-2. 逐条实际调用插件依赖的线上接口主路径，确认真实响应能被当前实现处理；不得用 mock
+2. 使用 `skills/imagegen` 生成并检查 `icon-generated.png`，确认 `manifest.icon` 指向
+   包内文件；若有界面预览，同时确认 `manifest.screenshots` 文件存在。
+3. 逐条实际调用插件依赖的线上接口主路径，确认真实响应能被当前实现处理；不得用 mock
    或 fixture 结果替代。详细门禁见
    [`plugin-development-guide.md`](./plugin-development-guide.md#8-真实接口测试上架门禁)。
-3. 生成包并计算仓库要求的摘要或签名。
-4. 把不可变版本包上传到插件仓库。
-5. 更新 `index.json` 的版本、兼容范围和下载地址。
-6. 提交 PR，附跨平台与权限说明。
-7. 合并后确认市场索引与插件包下载可用。
+4. 运行 `npm run package:plugins` 生成包、更新 `index.json` 并计算仓库要求的摘要或签名。
+5. 运行 `npm run store:build`，确认 Pages 静态商店的列表页和详情页显示新版本、图标和截图。
+6. 把不可变版本包上传到插件仓库，或按本仓库工作流提交源文件等待自动打包。
+7. 提交 PR，附跨平台、权限和真实接口验证说明。
+8. 合并后确认市场索引、插件包和 Pages 静态商店下载/展示可用。
 
 不要覆盖已经发布的同版本包；修复后递增版本。
 
@@ -318,6 +344,8 @@ open 'qx://plugins/install?id=weather'
 - [ ] id 稳定，版本和 `min_app_version` 合法。
 - [ ] platforms 无重复且真实验证。
 - [ ] 权限最小，快捷键默认关闭。
+- [ ] 已用 `skills/imagegen` 生成 `icon-generated.png`，Manifest 的 `icon` 路径存在且已进入包。
+- [ ] 已运行 `npm run store:build`，静态商店列表/详情页能显示图标；截图路径存在时也能显示截图。
 - [ ] 已实际调用每条线上接口主路径；fixture/mock 仅用于回归测试。
 - [ ] HTTP 已验证真实成功与错误响应；二进制协议额外验证压缩、Content-Type/Encoding 和前导字节。
 - [ ] 包内无密钥、缓存和临时文件。

@@ -118,6 +118,41 @@ SVG 可能继续引用外部资源，因此不进入严格离线导出。其余�
 - 运行时与权限边界：[`plugin-system.md`](./plugin-system.md)
 - 内置 React 端口和插件端口映射：[`docs/module-port-inventory.md`](../../docs/module-port-inventory.md)
 
+### 2.1 图标与社区商店资源
+
+社区插件的图标默认使用仓库内的 `skills/imagegen` Skill 生成。它是图标的默认生产流程，
+不是把一张参考图直接当成最终 Logo：先读 Skill 和本手册，针对当前插件生成独立的方形图标，
+再人工检查主体、边缘、缩放和浅色/深色背景下的可读性。
+
+推荐约定：
+
+- 在 Qx 主仓库的 `skills/imagegen/SKILL.md` 指导下，为每个插件单独生成一个图标；不要把
+  多图 Logo 墙或带多个候选图标的拼图作为插件 Logo。
+- 最终文件保存为插件目录根部的 `icon-generated.png`，建议为 512×512 方形 PNG；图标中
+  不要放难以缩放的长标题、版本号或运行时状态。若插件有必须保留的官方商标，应在 Skill
+  生成提示中明确用途，并检查其授权与误导风险。
+- 在 `manifest.json` 中声明 `"icon": "icon-generated.png"`。旧的 `icon.svg`、`icon.png`
+  可以保留作回退或品牌原稿，但不能让文件名排序决定市场使用哪一张图。
+- 预览图使用 `manifest.screenshots` 声明包内相对路径；只放真实的插件界面截图，不把图标
+  生成过程或候选 Logo 墙当作产品截图。
+
+插件市场构建会优先读取 `manifest.icon`，将它复制到 Pages 静态站的生成目录，并从同一个
+`index.json` 生成列表和详情页。作者不应手工编辑 `store/public/catalog.json`、
+`store/public/icons/` 或 `store/public/screenshots/`；这些都是 `npm run store:build` 的
+构建产物。
+
+新插件或更新插件的最小商店同步流程（在 `qx-plugins/` 仓库根目录执行）如下：
+
+```bash
+npm run package:plugins
+npm run store:build
+```
+
+发布前应确认 `index.json` 已包含插件、`.qx-plugin` 包包含 `icon-generated.png`，并在本地
+打开 `store/dist/` 检查列表页和插件详情页。若修改了图标或 `manifest.screenshots`，重复
+执行 `npm run store:build`；合并到 `main` 后，Package Plugins 与 Plugin Store 工作流会
+分别更新索引、重新烘焙静态页面并按配置部署 Pages。
+
 显示器亮度插件应使用 `context.system.displayBrightness()` 读取 Qx 提供的内置屏和
 外接 DDC/CI 目标，并使用 `context.system.setDisplayBrightness(id, value)` 写入 0–100
 亮度。返回值中的 `current` 是百分比，`rawCurrent/rawMax` 是显示器 VCP 的真实值；
@@ -451,11 +486,13 @@ Island 内容必须有稳定会话标识。插件可选择宿主支持的进度�
 ## 9. 本地开发流程
 
 1. 用脚手架或现有插件复制最小目录。
-2. 编写 `manifest.json` 和 `index.js`。
+2. 按本手册 §2.1 使用 `skills/imagegen` 生成 `icon-generated.png`，再编写
+   `manifest.json` 和 `index.js`。
 3. 在设置中启用开发者模式并从本地目录安装。
 4. 修改后使用 Reload Panel。
 5. 检查插件日志、权限错误和 Workbench 返回结构。
-6. 检查最终安装包的结构、入口和声明；接口测试不要求冷安装。
+6. 运行 `npm run package:plugins` 与 `npm run store:build`，检查最终安装包和 Pages
+   静态站的列表/详情页；接口测试不要求冷安装。
 
 除上一节的真实接口门禁外，建议至少验证：
 
@@ -484,6 +521,9 @@ Island 内容必须有稳定会话标识。插件可选择宿主支持的进度�
 - [ ] 网络、CLI、下载和进度都是真实结果。
 - [ ] 已逐条实际调用线上接口主路径；mock/fixture 未被当作上架依据。
 - [ ] 二进制接口已验证压缩、响应类型与 HTML/JSON 错误体，不会把错误响应误报为协议解析失败。
+- [ ] 已使用 `skills/imagegen` 生成独立的 `icon-generated.png`，且 `manifest.icon` 指向它。
+- [ ] `manifest.screenshots` 中的文件存在；已运行 `npm run package:plugins` 和
+  `npm run store:build`，确认 Pages 列表与详情页能显示新插件和图标。
 - [ ] `panel.render()` 不等待长任务。
 - [ ] 用户可从错误状态重试。
 
